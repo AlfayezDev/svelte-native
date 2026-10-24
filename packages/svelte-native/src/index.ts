@@ -1,0 +1,12 @@
+export { default as View } from "./components/View.svelte";
+export { default as Text } from "./components/Text.svelte";
+export { default as TextInput } from "./components/TextInput.svelte";
+export { default as Pressable } from "./components/Pressable.svelte";
+export { default as ScrollView } from "./components/ScrollView.svelte";
+export { default as Image } from "./components/Image.svelte";
+export { default as Modal } from "./components/Modal.svelte";
+export { default as SafeAreaView } from "./components/SafeAreaView.svelte";
+export { default as ActivityIndicator } from "./components/ActivityIndicator.svelte";
+export { default as Switch } from "./components/Switch.svelte";
+export { default as Router } from "./Router.svelte";
+export { createRouter, useRouter, type NativeRoute, type NativeLocation } from "./router.svelte.ts";

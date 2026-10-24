@@ -1,0 +1,10 @@
+{
+	"ios": {
+		"CFBundleDisplayName": "Rasheed",
+		"NSCameraUsageDescription": "Rasheed attaches the photos you take to your replies.",
+		"NSPhotoLibraryUsageDescription": "Rasheed attaches the photos and videos you choose to your replies."
+	},
+	"android": {
+		"app_name": "Rasheed"
+	}
+}

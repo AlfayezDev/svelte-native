@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["react", "react-native", "node"],
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true
+  },
+  "include": ["src/lib/native/**/*", "src/routes/**/+mobile.svelte", "src/routes/**/+layout.mobile.svelte", "src/routes/**/+error.mobile.svelte", "metro.config.cjs"],
+  "exclude": ["node_modules", "build", ".svelte-native"]
+}

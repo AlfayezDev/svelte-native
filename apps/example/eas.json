@@ -1,0 +1,46 @@
+{
+	"cli": {
+		"version": ">= 24.14.0",
+		"appVersionSource": "remote"
+	},
+	"build": {
+		"base": {
+			"node": "25.0.0",
+			"pnpm": "12.3.4"
+		},
+		"development": {
+			"extends": "base",
+			"developmentClient": true,
+			"distribution": "internal"
+		},
+		"preview": {
+			"extends": "base",
+			"distribution": "internal",
+			"env": {
+				"EXPO_PUBLIC_API_URL": "https://dev.qarnos.com",
+				"APP_VARIANT": "production"
+			},
+			"android": {
+				"buildType": "apk"
+			}
+		},
+		"production": {
+			"extends": "base",
+			"autoIncrement": true,
+			"env": {
+				"EXPO_PUBLIC_API_URL": "https://qarnos.com",
+				"APP_VARIANT": "production"
+			}
+		}
+	},
+	"submit": {
+		"production": {
+			"android": {
+				"track": "internal"
+			},
+			"ios": {
+				"ascAppId": "6823075203"
+			}
+		}
+	}
+}

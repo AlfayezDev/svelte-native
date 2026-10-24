@@ -2,9 +2,11 @@ import { Appearance } from "react-native";
 import { setStatusBarStyle } from "expo-status-bar";
 import * as SecureStore from "expo-secure-store";
 import { getLocales } from "expo-localization";
+import { applicationId } from "expo-application";
 import { ar, en, arCounts, enCounts, createTranslator, type Locale, type Translate } from "@rasheed/client/messages";
 
 export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "https://dev.qarnos.com";
+export const nativeLabEnabled = __DEV__ || applicationId === "io.rasheed.svelteqa";
 const storedLanguage = SecureStore.getItem("interface_language");
 let locale = $state<Locale>(storedLanguage === "ar" || storedLanguage === "en" ? storedLanguage : getLocales()[0]?.languageCode === "ar" ? "ar" : "en");
 let appearance = $state<"system" | "light" | "dark">("system");

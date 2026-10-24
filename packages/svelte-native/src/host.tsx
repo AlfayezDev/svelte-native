@@ -4,6 +4,7 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { Screen, ScreenStack } from "react-native-screens";
 import { mount, unmount, type Component } from "svelte";
 import renderer, { NativeNode, type NativeReference } from "./renderer.ts";
+import { NativeAnimatedView } from "./animated-host.ts";
 
 const components = {
   "native-view": View,
@@ -19,6 +20,7 @@ const components = {
   "native-keyboard": KeyboardAvoidingView,
   "native-screen": Screen,
   "native-stack": ScreenStack,
+  "native-animated-view": NativeAnimatedView,
 };
 
 const NativeBranch = memo(function NativeBranch({ node }: { node: NativeNode }): ReactNode {

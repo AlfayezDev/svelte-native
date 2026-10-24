@@ -51,10 +51,13 @@ export async function syncNative(root: string): Promise<void> {
 }
 
 export function runExpo(root: string, args: string[]) {
+  const env: NodeJS.ProcessEnv = { ...process.env, EXPO_NO_TELEMETRY: "1" };
+  // adb reverse connects over IPv4; Node may otherwise bind localhost to ::1.
+  if (args.includes("--localhost")) env.NODE_OPTIONS = `${env.NODE_OPTIONS ?? ""} --dns-result-order=ipv4first`.trim();
   return spawn(process.execPath, [require.resolve("expo/bin/cli"), ...args], {
     cwd: root,
     stdio: "inherit",
-    env: { ...process.env, EXPO_NO_TELEMETRY: "1" },
+    env,
   });
 }
 

@@ -38,7 +38,8 @@ export function transform(input: TransformInput) {
       if (result.js.map) maps.unshift(new TraceMap(result.js.map.toString()));
     }
   }
-  const output = upstream.transform({ ...input, src: code, filename: filename.endsWith(".svelte") ? `${filename}.js` : filename });
+  // Worklets reads this real filename when generating its source maps.
+  const output = upstream.transform({ ...input, src: code });
   if (maps.length && output.ast) traverseFast(output.ast, (node) => {
     if (!node.loc) return;
     for (const position of [node.loc.start, node.loc.end]) {
@@ -53,4 +54,6 @@ export function transform(input: TransformInput) {
   return output;
 }
 
-export function getCacheKey(): string { return createHash("sha256").update(readFileSync(import.meta.filename)).digest("hex"); }
+export function getCacheKey(options?: unknown): string {
+  return createHash("sha256").update(readFileSync(import.meta.filename)).update(upstream.getCacheKey(options)).digest("hex");
+}

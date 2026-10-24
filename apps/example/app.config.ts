@@ -25,6 +25,7 @@ export default {
     },
   },
   plugins: [
+    "@rasheed/svelte-native/expo",
     "expo-secure-store",
     "expo-image-picker",
     ["expo-splash-screen", {

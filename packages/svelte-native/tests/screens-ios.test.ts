@@ -155,6 +155,7 @@ test("the first iOS navigation node registers the view configs of the six compon
     topAppear: { registrationName: "onAppear" },
     topDisappear: { registrationName: "onDisappear" },
     topDismissed: { registrationName: "onDismissed" },
+    topExited: { registrationName: "onExited" },
     topDetentChange: { registrationName: "onDetentChange" },
   });
   expect(eventsOf("SvelteHeader")).toEqual({ topMetrics: { registrationName: "onMetrics" } });
@@ -163,7 +164,7 @@ test("the first iOS navigation node registers the view configs of the six compon
   expect(eventsOf("SvelteTab")).toEqual({});
 });
 
-test("a pressable is an accessibility element on iOS, so VoiceOver reads it as a button; on Android the engine exposes it by its click action", async () => {
+test("a pressable and a block of text are accessibility elements on iOS, so VoiceOver reads a button as a button and the text at all; on Android the engine exposes them itself", async () => {
   const lowered = (platform: "android" | "ios", surface: number) => async () => {
     environment.__navigationOS = platform;
     try {
@@ -172,11 +173,11 @@ test("a pressable is an accessibility element on iOS, so VoiceOver reads it as a
       m.startSurface(surface, m.Fixture, {});
       await settle(m);
       const byTestID = (id: string) => flatten(roots[surface]).find((node) => node.props.testID === id);
-      return { plain: byTestID("plain")?.props.accessible, hidden: byTestID("hidden")?.props.accessible, passive: byTestID("passive")?.props.accessible, label: byTestID("plain")?.props.accessibilityLabel };
+      return { plain: byTestID("plain")?.props.accessible, hidden: byTestID("hidden")?.props.accessible, passive: byTestID("passive")?.props.accessible, label: byTestID("plain")?.props.accessibilityLabel, words: byTestID("words")?.props.accessible, silent: byTestID("silent")?.props.accessible };
     } finally { delete environment.__navigationOS; }
   };
-  expect(await lowered("ios", 67)()).toEqual({ plain: true, hidden: false, passive: undefined, label: "Go" });
-  expect(await lowered("android", 68)()).toEqual({ plain: undefined, hidden: false, passive: undefined, label: "Go" });
+  expect(await lowered("ios", 67)()).toEqual({ plain: true, hidden: false, passive: undefined, label: "Go", words: true, silent: false });
+  expect(await lowered("android", 68)()).toEqual({ plain: undefined, hidden: false, passive: undefined, label: "Go", words: undefined, silent: false });
 });
 
 // The pure C++ parts of the module, built with the system compiler and compared with the reference implementations.

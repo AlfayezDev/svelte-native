@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Pressable, SafeAreaView, Screen, ScrollView, Tabs, Text, TextInput, View, useRouter, type TabHandle, type TabItem } from "@rasheed/svelte-native";
+  import { KeyboardAvoidingView, Pressable, SafeAreaView, Screen, ScrollView, Tabs, Text, TextInput, View, useRouter, type TabHandle, type TabItem } from "@rasheed/svelte-native";
   import { nativeLabEnabled, theme } from "#lib/native/state.svelte.ts";
   import { screenLab } from "#lib/native/dev/model.svelte.ts";
   import Button from "#lib/native/components/Button.svelte";
@@ -34,7 +34,7 @@
   <Button {label} variant={variant} onPress={press} />
 {/snippet}
 {#snippet card(text: string)}
-  <View style={{ padding: 12, borderRadius: 10, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.surface }}>
+  <View style={{ padding: 12, borderRadius: 10, borderWidth: screenLab.rows === "plain" ? 0 : 1, overflow: screenLab.rows === "image" ? "visible" : "hidden", borderColor: theme.border, backgroundColor: theme.surface }}>
     <Text style={{ color: theme.foreground, fontSize: 15 }}>{text}</Text>
   </View>
 {/snippet}
@@ -90,7 +90,7 @@
       </ScrollView>
     </Screen>
   {:else if mode === "header"}
-    <Screen title={`Screen ${depth}`} subtitle="Native header" headerRight={bell} onAppear={() => { screenLab.appears++; }} onDisappear={() => { screenLab.disappears++; }} style={{ backgroundColor: theme.background }}>
+    <Screen title={screenLab.header === "plain" ? undefined : `Screen ${depth}`} subtitle={screenLab.header === "full" ? "Native header" : undefined} headerRight={screenLab.header === "full" ? bell : undefined} onAppear={() => { screenLab.appears++; }} onDisappear={() => { screenLab.disappears++; }} style={{ backgroundColor: theme.background }}>
       <SafeAreaView edges={["bottom", "left", "right"]} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={{ padding: 16, gap: 10, direction: theme.direction }}>
           {#each rows as row (row)}{@render card(`Screen ${depth} · row ${row}`)}{/each}
@@ -133,9 +133,20 @@
   {:else if mode === "form"}
     <Screen title="Form sheet" headerLeft={close} sheet={{ grabber: false }} style={{ backgroundColor: theme.background }}>
       <View style={{ padding: 16, gap: 12 }}>
-        <TextInput accessibilityLabel="Name" placeholder="Name" placeholderTextColor={theme.muted} style={{ minHeight: 52, borderWidth: 1, borderColor: theme.border, borderRadius: 12, paddingHorizontal: 14, backgroundColor: theme.surface, color: theme.foreground, fontSize: 17 }} />
+        <TextInput accessibilityLabel="Name" placeholder="Name" placeholderTextColor={theme.muted} style={{ minHeight: 52, borderWidth: 1, borderColor: theme.border, borderRadius: 12, overflow: "hidden", paddingHorizontal: 14, backgroundColor: theme.surface, color: theme.foreground, fontSize: 17 }} />
         {@render button("Save", () => router.back(), "primary")}
       </View>
+    </Screen>
+  {:else if mode === "keyboard"}
+    <Screen title="Keyboard" style={{ backgroundColor: theme.background }}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
+        <View style={{ flex: 1, padding: 16 }}>{@render card("The field below sits at the bottom; the keyboard must not cover it.")}</View>
+        <SafeAreaView edges={["bottom", "left", "right"]}>
+          <View style={{ padding: 16 }}>
+            <TextInput accessibilityLabel="Message" placeholder="Message" placeholderTextColor={theme.muted} style={{ minHeight: 52, borderWidth: 1, borderColor: theme.border, borderRadius: 12, overflow: "hidden", paddingHorizontal: 14, backgroundColor: theme.surface, color: theme.foreground, fontSize: 17 }} />
+          </View>
+        </SafeAreaView>
+      </KeyboardAvoidingView>
     </Screen>
   {:else if mode === "tabs"}
     <Tabs items={tabItems} selected={tabSelected} onSelect={(key) => { tabSelected = key; }} content={pane} tint={theme.foreground} />

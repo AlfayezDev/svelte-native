@@ -16,7 +16,7 @@
 <Screen title={depth === 0 ? name : `${name} · ${depth}`} subtitle={`This tab's own stack, level ${depth + 1}`} headerRight={actions} style={{ backgroundColor: theme.background }}>
   <ScrollView contentContainerStyle={{ padding: 16, gap: 10, direction: theme.direction }}>
     {#each Array.from({ length: 16 }, (_, index) => index + 1) as row (row)}
-      <View style={{ padding: 12, borderRadius: 10, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.surface }}>
+      <View style={{ padding: 12, borderRadius: 10, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.surface, overflow: "hidden" }}>
         <Text style={{ color: theme.foreground, fontSize: 15 }}>{name} row {row}</Text>
       </View>
     {/each}

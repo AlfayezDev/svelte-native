@@ -368,8 +368,8 @@ describe("frozen dumps of the QA app (the checklist's findings in them, not the 
 			};
 			const full = parseHierarchy(sample(`uia-${id}-full.xml`));
 			const important = parseHierarchy(sample(`uia-${id}-important.xml`));
-			expect(analyzeScreen({ ...input, tree: full }).focusLeaks, `${id} judged on the full dump`).toBe(c.hidden.length);
-			expect(analyzeScreen({ ...input, tree: full, importantTree: important }).focusLeaks, id).toBe(0);
+			expect(analyzeScreen({ ...input, tree: full }).focusLeaks).toBe(c.hidden.length); // judged on the full dump
+			expect(analyzeScreen({ ...input, tree: full, importantTree: important }).focusLeaks).toBe(0);
 		}
 	});
 

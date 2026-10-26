@@ -163,6 +163,22 @@ test("the first iOS navigation node registers the view configs of the six compon
   expect(eventsOf("SvelteTab")).toEqual({});
 });
 
+test("a pressable is an accessibility element on iOS, so VoiceOver reads it as a button; on Android the engine exposes it by its click action", async () => {
+  const lowered = (platform: "android" | "ios", surface: number) => async () => {
+    environment.__navigationOS = platform;
+    try {
+      const m = await load("pressable-fixture.svelte");
+      roots = {};
+      m.startSurface(surface, m.Fixture, {});
+      await settle(m);
+      const byTestID = (id: string) => flatten(roots[surface]).find((node) => node.props.testID === id);
+      return { plain: byTestID("plain")?.props.accessible, hidden: byTestID("hidden")?.props.accessible, passive: byTestID("passive")?.props.accessible, label: byTestID("plain")?.props.accessibilityLabel };
+    } finally { delete environment.__navigationOS; }
+  };
+  expect(await lowered("ios", 67)()).toEqual({ plain: true, hidden: false, passive: undefined, label: "Go" });
+  expect(await lowered("android", 68)()).toEqual({ plain: undefined, hidden: false, passive: undefined, label: "Go" });
+});
+
 // The pure C++ parts of the module, built with the system compiler and compared with the reference implementations.
 const compiler = Bun.which("c++") ?? Bun.which("clang++") ?? Bun.which("g++");
 let driver: string | undefined;

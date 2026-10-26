@@ -288,7 +288,12 @@ function splitProps(attributes: Record<string, unknown>, into: State): Record<st
   if (into.viewName === "RCTScrollView") props.style = [attributes.horizontal === true ? scrollBaseHorizontal : scrollBaseVertical, props.style];
   // A pressable node listens for `click`: Fabric's view props carry the event, and the Android engine makes the view
   // clickable for accessibility services, whose activation comes back as `click` (see `responder.click`).
-  if (pressHandlerNames.some((name) => handlers[name])) props.onClick = true;
+  if (pressHandlerNames.some((name) => handlers[name])) {
+    props.onClick = true;
+    // On iOS a view is not an accessibility element unless it says so, and without that VoiceOver reads a button's text as plain
+    // text (no button trait, no label of its own). React Native's Pressable sets `accessible` for the same reason.
+    if (Platform.OS === "ios" && props.accessible === undefined) props.accessible = true;
+  }
   if (into.viewName === "AndroidProgressBar") {
     // React Native's ActivityIndicator always sends these; the native measure path dereferences `styleAttr`.
     props.styleAttr = props.styleAttr ?? (props.size === "large" ? "Large" : "Normal");

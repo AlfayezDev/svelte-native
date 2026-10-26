@@ -1,6 +1,6 @@
 import { wake } from "../lib/adb.ts";
 import { analyzeScreen } from "../lib/a11y.ts";
-import { deviceGone, readDisplay, withSession } from "../lib/device.ts";
+import { deviceGone, dumpUi, readDisplay, withSession } from "../lib/device.ts";
 import { openCase, settledTree } from "../lib/drive.ts";
 import { flagString, parseFlags } from "../lib/flags.ts";
 import { currentSource } from "../lib/git.ts";
@@ -21,7 +21,7 @@ import type { A11yFile, A11yScreenResult } from "../lib/types.ts";
 
 /** What the checks read, stated in every run file: TalkBack is not installed on the emulator. */
 export const oracle =
-	"uiautomator dump of the foreground window: the accessibility node info the engine publishes (A11y.kt, EngineText, EngineHeader, EngineTabs), which is what any accessibility service receives. TalkBack itself was not run.";
+	"uiautomator dump of the foreground window: the accessibility node info the engine publishes (A11y.kt, EngineText, EngineHeader, EngineTabs), which is what any accessibility service receives. The focus trap is judged on the dump without the views that are not important for accessibility (`--compressed`), which is the tree a service that does not ask for them, TalkBack among them, walks. The suite does not run TalkBack itself.";
 
 function emptyResult(screen: ScreenCase, variant: Variant, error: string): A11yScreenResult {
 	return {
@@ -100,8 +100,12 @@ export async function a11y(argv: string[]): Promise<void> {
 							);
 							return attempt();
 						});
+						// What a screen reader walks: only needed (and only different) while a sheet or modal covers a screen.
+						const importantTree =
+							screen.hidden.length > 0 ? await dumpUi(serial, { important: true }) : undefined;
 						const analysis = analyzeScreen({
 							tree,
+							importantTree,
 							direction: variant.direction,
 							display,
 							title: screen.title === null ? null : localize(screen.title, variant.direction),

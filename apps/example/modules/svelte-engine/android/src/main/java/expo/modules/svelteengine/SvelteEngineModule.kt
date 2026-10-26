@@ -144,6 +144,17 @@ class SvelteEngineModule : Module() {
       true
     }
 
+    // A full Java collection with its finalizers, for the soak runner's idle windows: a dead view, text layout or render node
+    // keeps the native memory behind it (display lists, glyph runs) until its Java object is collected, so a window taken
+    // between two collections counts garbage as growth.
+    Function("collectJava") {
+      System.gc()
+      @Suppress("DEPRECATION")
+      Runtime.getRuntime().runFinalization()
+      System.gc()
+      true
+    }
+
     // Live counts for the soak runner (MountingManager.stats); null while the main thread is busy for over 500 ms or before install.
     Function("stats") { onMainBlocking { mountingManager?.stats() } }
 

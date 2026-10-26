@@ -37,12 +37,57 @@ function jsHeap(samples: JsSample[], phase: JsSample["phase"]): number | null {
 	);
 }
 
+/** The worklet runtime's heap, from samples taken right after a full collection there. */
+function uiHeapOf(samples: JsSample[], phase: JsSample["phase"]): number | null {
+	return median(
+		samples
+			.filter((sample) => sample.phase === phase && sample.ui?.collected === 1 && sample.ui.allocated >= 0)
+			.map((sample) => sample.ui?.allocated ?? 0),
+	);
+}
+
 function memory(
 	samples: MemSample[],
 	tag: MemSample["tag"],
 	pick: (sample: MemSample) => number,
 ): number | null {
 	return median(samples.filter((sample) => sample.tag === tag).map(pick));
+}
+
+/**
+ * The idle floors of the native heap over time, one per window: the baseline, every checkpoint (an idle window the lab
+ * takes every two minutes) and the final window, each the median of its samples at the median of their times.
+ * Windows are told apart by a gap of more than 30 s between samples of the same tag.
+ */
+export function idleFloors(samples: MemSample[]): { minutes: number; kb: number }[] {
+	const windows: MemSample[][] = [];
+	for (const sample of samples) {
+		if (sample.tag === "series") continue;
+		const last = windows.at(-1);
+		const previous = last?.at(-1);
+		if (last && previous && previous.tag === sample.tag && sample.atMs - previous.atMs <= 30_000) last.push(sample);
+		else windows.push([sample]);
+	}
+	return windows.map((window) => ({
+		minutes: (median(window.map((sample) => sample.atMs)) ?? 0) / 60_000,
+		kb: median(window.map((sample) => sample.nativeAllocKb)) ?? 0,
+	}));
+}
+
+/** Least-squares slope of `Native Heap` Heap Alloc over the idle floors, in KB per minute; null with fewer than two windows. */
+function floorSlope(samples: MemSample[]): number | null {
+	const floors = idleFloors(samples);
+	if (floors.length < 2) return null;
+	const n = floors.length;
+	const meanX = floors.reduce((sum, point) => sum + point.minutes, 0) / n;
+	const meanY = floors.reduce((sum, point) => sum + point.kb, 0) / n;
+	let covariance = 0;
+	let variance = 0;
+	for (const point of floors) {
+		covariance += (point.minutes - meanX) * (point.kb - meanY);
+		variance += (point.minutes - meanX) ** 2;
+	}
+	return variance === 0 ? null : covariance / variance;
 }
 
 function lastOf(samples: JsSample[], phase: JsSample["phase"]): JsSample | null {
@@ -52,12 +97,13 @@ function lastOf(samples: JsSample[], phase: JsSample["phase"]): JsSample | null 
 /**
  * The soak's derived measurements, from its raw series. Heap growth compares two idle windows of the same app state
  * (everything unmounted): the three samples taken after the warm-up cycles (`baseline`) and the three taken after the
- * last cycle (`final`), each the median of its window. The Hermes heap is collected (`gc()`) before every such sample. The
- * native heap is `Native Heap` Heap Alloc, the live malloc bytes (a leak raises it; arena slack does not). Growth is
- * the worse of the two. A missing window makes the metric null (not measured), never zero.
+ * last cycle (`final`), each the median of its window. The Hermes heap of both runtimes (the app's and the worklet runtime's)
+ * is collected (`gc()`) before every such sample. The native heap is `Native Heap` Heap Alloc, the live malloc bytes (a
+ * leak raises it; arena slack does not). Growth is the worst of the three. A missing window makes the metric null (not measured), never zero.
  */
 export function soakMetrics(file: SoakFile): Metrics {
 	const jsGrowth = growthPct(jsHeap(file.js, "baseline"), jsHeap(file.js, "final"));
+	const uiGrowth = growthPct(uiHeapOf(file.js, "baseline"), uiHeapOf(file.js, "final"));
 	const nativeGrowth = growthPct(
 		memory(file.memory, "baseline", (sample) => sample.nativeAllocKb),
 		memory(file.memory, "final", (sample) => sample.nativeAllocKb),
@@ -88,20 +134,29 @@ export function soakMetrics(file: SoakFile): Metrics {
 		writes(sample, (engine) => engine.staleWrites + engine.expiredWrites + engine.overflowWrites);
 	const deadStart = dead(start);
 	const deadFinal = dead(final);
+	const emitterGrowth =
+		baseline?.engine?.emitters !== undefined && final?.engine?.emitters !== undefined
+			? Math.max(0, final.engine.emitters - baseline.engine.emitters)
+			: null;
 	const lateStart = writes(start, (engine) => engine.lateWrites);
 	const lateFinal = writes(final, (engine) => engine.lateWrites);
 	const lastFinalMem = file.memory.findLast((sample) => sample.tag === "final") ?? null;
 
 	return {
 		"memory.heapGrowthPct": round(
-			jsGrowth !== null && nativeGrowth !== null ? Math.max(jsGrowth, nativeGrowth) : null,
+			jsGrowth !== null && nativeGrowth !== null
+				? Math.max(jsGrowth, nativeGrowth, uiGrowth ?? Number.NEGATIVE_INFINITY)
+				: null,
 			2,
 		),
 		"memory.js.growthPct": round(jsGrowth, 2),
+		"memory.ui.growthPct": round(uiGrowth, 2),
 		"memory.native.growthPct": round(nativeGrowth, 2),
 		"memory.native.pssGrowthPct": round(nativePssGrowth, 2),
+		"memory.native.slopeKbPerMin": round(floorSlope(file.memory), 1),
 		"memory.java.growthPct": round(javaGrowth, 2),
 		"memory.leakedViews": leaked,
+		"memory.leakedEmitters": emitterGrowth,
 		"memory.deadTagWrites": deadStart !== null && deadFinal !== null ? deadFinal - deadStart : null,
 		"memory.lateTagWrites": lateStart !== null && lateFinal !== null ? lateFinal - lateStart : null,
 		"memory.androidViews.growth":

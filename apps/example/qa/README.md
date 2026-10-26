@@ -128,14 +128,14 @@ Both runners take the same lock as `lab` and `boot` for their whole run, install
 6. a 300-row windowed list mounted, scrolled to the end and back, unmounted,
 7. three tab switches.
 
-About 28 s per cycle on the emulator. After the second cycle and after the last one everything is unmounted and the app idles for about 8 s: that is the **baseline** and the **final** window, three samples each, each taken right after `gc()` (this Hermes build exposes it; without it the lab records `collected: null` and no JS growth is derived). In between, every 5 s, a `[Svelte soak]` line carries the same numbers without a collection.
+About 28 s per cycle on the emulator. After the second cycle and after the last one everything is unmounted and the app idles for about 8 s: that is the **baseline** and the **final** window, three samples each. Before every sample of a window the lab collects all three heaps that can hold garbage: this runtime (`gc()`; this Hermes build exposes it, and without it the lab records `collected: null` and no JS growth is derived), the Java heap (`SvelteEngine.collectJava()`: a dead view, text layout or render node holds native memory until its Java object is collected, so a window taken between two Java collections counts that garbage as growth) and the worklet (UI) runtime's own Hermes heap (`gc()` on the UI thread). In between, every 5 s, a `[Svelte soak]` line carries the same numbers without a collection, and every two minutes of soak time (after a cycle) the lab takes a **checkpoint**: the same idle window as the baseline, three samples. The floors of the windows over time say whether a growth keeps rising (a leak) or levels off (allocator, caches): `memory.native.slopeKbPerMin`.
 
 Three sources are read:
 
 | Source | What | Where it comes from |
 | --- | --- | --- |
-| lab, JS heap | `allocated`, `heapSize`, `malloc`, `va`, `gcs` | `HermesInternal.getInstrumentedStats()`, logged by the lab as `[Svelte soak]` |
-| lab, engine | `alive` (engine views mounted under a React tag), `pooled`, `held`, `created`, `deleted`, and the animated-write classes `lateWrites`, `staleWrites`, `replayedWrites`, `expiredWrites`, `overflowWrites`, `earlyPending` | `SvelteEngine.stats()` (`MountingManager.stats()`, SPEC "Stats for the soak runner") |
+| lab, JS heap | `allocated`, `heapSize`, `malloc`, `va`, `gcs` of this runtime (`heap`) and of the worklet runtime (`ui`: `allocated` after its collection, `uiBefore`: without) | `HermesInternal.getInstrumentedStats()`, logged by the lab as `[Svelte soak]` |
+| lab, engine | `alive` (engine views mounted under a React tag), `pooled`, `held`, `created`, `deleted`, the animated-write classes `lateWrites`, `staleWrites`, `replayedWrites`, `expiredWrites`, `overflowWrites`, `earlyPending`, and the sizes of the C++ delegate's tables `emitters` and `scrollStates` | `SvelteEngine.stats()` (`MountingManager.stats()`, SPEC "Stats for the soak runner") |
 | host, process | Native Heap Pss / Heap Alloc / Heap Size, Dalvik Heap Pss / Alloc, total Pss, `Views`, `ViewRootImpl`, `Activities`, `AppContexts` | `adb shell dumpsys meminfo <package>`, every `--interval` seconds and once per window sample the lab announces (`parseMeminfo`) |
 
 `--parts churn,static,nav,modal,sheet,header,list,tabs` runs only the named parts of the cycle (`static` is plain view churn, off by default), to find where a growth comes from; such a run is written as `partsoak-<device>-<stamp>.json`, which `report` never reads, so a bisect cannot stand in for the full soak.
@@ -144,9 +144,11 @@ Three sources are read:
 
 | Metric | Definition |
 | --- | --- |
-| `memory.heapGrowthPct` | the worse of `memory.js.growthPct` (Hermes `allocated`) and `memory.native.growthPct` (`Native Heap` Heap Alloc, the live malloc bytes: a leak raises it, arena slack does not), final window over baseline window, medians of three. Not derived (null, so `not measured`) when either window is missing or a JS sample was not collected |
+| `memory.heapGrowthPct` | the worst of `memory.js.growthPct` (Hermes `allocated`), `memory.ui.growthPct` (the worklet runtime's, when the build logs it) and `memory.native.growthPct` (`Native Heap` Heap Alloc, the live malloc bytes: a leak raises it, arena slack does not), final window over baseline window, medians of three. Not derived (null, so `not measured`) when either window is missing or a JS sample was not collected |
 | `memory.native.pssGrowthPct`, `memory.java.growthPct` | the same for `Native Heap` Pss and for Dalvik Heap Alloc; reported, not gated |
+| `memory.native.slopeKbPerMin` | least-squares slope of `Native Heap` Heap Alloc over the idle floors (baseline, every checkpoint, final; the median of each window at the median of its time); reported, not gated. A leak is a slope that stays positive from the first checkpoint on; a cache or an allocator arena fills and then goes flat |
 | `memory.leakedViews` | engine views alive in the last final sample minus the last baseline sample (everything unmounted in both), never below 0 |
+| `memory.leakedEmitters` | nodes the C++ delegate holds an event emitter for in the last final sample minus the last baseline sample, never below 0 (a node Fabric deleted must leave the table); null for builds that do not log it |
 | `memory.deadTagWrites` | `staleWrites + expiredWrites + overflowWrites` between the start sample and the last final sample: animated writes for a tag deleted more than 1 s ago (an animation that outlives its node), never claimed by a view within 1 s, or dropped because the table of early writes was full |
 | `memory.lateTagWrites` | `lateWrites` over the same span: writes for a tag deleted a moment ago. Expected by design (SPEC "View recycling"): Reanimated drops a removed node a frame or two after the batch that deleted it. Reported, not gated |
 | `memory.androidViews.growth`, `memory.viewRootImpls`, `memory.activities` | `Views` growth between the windows, and `ViewRootImpl` and `Activities` at the end |

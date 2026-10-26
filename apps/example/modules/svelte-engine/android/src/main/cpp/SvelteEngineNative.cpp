@@ -152,6 +152,14 @@ jint SvelteEngineNative::foreignCount() {
   return static_cast<jint>(delegate_->foreignNodeCount());
 }
 
+jint SvelteEngineNative::emitterCount() {
+  return static_cast<jint>(delegate_->emitterCount());
+}
+
+jint SvelteEngineNative::scrollStateCount() {
+  return static_cast<jint>(delegate_->scrollStateCount());
+}
+
 // An accessibility service activated a clickable node (ACTION_CLICK -> performClick -> here): the node's emitter sends
 // `click`, which the host turns into the press (as the Android touch path would).
 void SvelteEngineNative::dispatchClick(jint tag) {
@@ -220,6 +228,8 @@ void SvelteEngineNative::registerNatives() {
       makeNativeMethod("registerForeign", SvelteEngineNative::registerForeign),
       makeNativeMethod("isForeign", SvelteEngineNative::isForeign),
       makeNativeMethod("foreignCount", SvelteEngineNative::foreignCount),
+      makeNativeMethod("emitterCount", SvelteEngineNative::emitterCount),
+      makeNativeMethod("scrollStateCount", SvelteEngineNative::scrollStateCount),
       makeNativeMethod("updateScrollState", SvelteEngineNative::updateScrollState),
   });
   registerViewEventNatives();

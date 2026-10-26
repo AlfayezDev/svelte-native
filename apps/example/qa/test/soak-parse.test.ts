@@ -63,6 +63,19 @@ describe("parseSoakSamples", () => {
 				.every((entry) => entry.collected === null),
 		).toBe(true);
 	});
+	test("the C++ table sizes and the worklet runtime heap are read when the build logs them, and absent otherwise", () => {
+		expect(samples[0]?.engine?.emitters).toBeUndefined();
+		const engine =
+			'{"alive":90,"pooled":1,"held":0,"created":5,"deleted":4,"lateWrites":0,"staleWrites":0,"replayedWrites":0,"expiredWrites":0,"overflowWrites":0,"earlyPending":0,"emitters":96,"scrollStates":2}';
+		const line = `10-26 08:58:33.538  4197  4219 I ReactNativeJS: '[Svelte soak]', '{"phase":"checkpoint","cycle":4,"t":1000,"collected":"gc","heap":null,"engine":${engine}}'`;
+		const [entry] = parseSoakSamples(line);
+		expect(entry?.phase).toBe("checkpoint");
+		expect(entry?.engine?.emitters).toBe(96);
+		expect(entry?.engine?.scrollStates).toBe(2);
+		expect(entry?.ui).toBeNull();
+		const withUi = line.replace('"heap":null', '"heap":null,"ui":{"collected":1,"allocated":463440,"heapSize":8388608}');
+		expect(parseSoakSamples(withUi)[0]?.ui).toEqual({ collected: 1, allocated: 463440 });
+	});
 	test("a line cut off by logcat throws, a sample missing from the series must never go unnoticed", () => {
 		const line = sample("soak-run.log").split("\n")[0] ?? "";
 		expect(() => parseSoakSamples(line.slice(0, line.length - 40))).toThrow(
@@ -86,6 +99,7 @@ describe("soakPhaseOf", () => {
 	test("reads the phase without parsing the payload", () => {
 		expect(soakPhaseOf(`'[Svelte soak]', '{"phase":"baseline","cycle":2}'`)).toBe("baseline");
 		expect(soakPhaseOf(`'[Svelte soak]', '{"phase":"final","cycle":9}'`)).toBe("final");
+		expect(soakPhaseOf(`'[Svelte soak]', '{"phase":"checkpoint","cycle":9}'`)).toBe("checkpoint");
 	});
 	test("other messages and unknown phases are null", () => {
 		expect(soakPhaseOf(`'[Svelte stress]', '{"phase":"final"}'`)).toBeNull();

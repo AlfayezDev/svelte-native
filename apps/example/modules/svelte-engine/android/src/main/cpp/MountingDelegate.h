@@ -38,6 +38,9 @@ class MountingDelegate : public facebook::react::MountingOverrideDelegate {
   void setReanimatedHookFirst(bool first) { reanimatedHookFirst_ = first; }
 
   facebook::react::EventEmitter::Shared emitterFor(facebook::react::Tag tag) const;
+  // How many nodes the delegate keeps an event emitter / a ScrollView state for (the soak runner's native leak check).
+  size_t emitterCount() const;
+  size_t scrollStateCount() const;
   // Latest shadow-node state of a ScrollView (used by updateScrollState); null for other tags.
   facebook::react::State::Shared scrollStateFor(facebook::react::Tag tag) const;
 

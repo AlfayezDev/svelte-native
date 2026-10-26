@@ -15,7 +15,7 @@ import type {
 	SuiteRun,
 } from "../lib/types.ts";
 import { parseSoakSamples } from "../soak/log.ts";
-import { crashMetrics, soakMetrics } from "../soak/metrics.ts";
+import { crashMetrics, idleFloors, soakMetrics } from "../soak/metrics.ts";
 import { sample } from "./sample.ts";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -126,6 +126,69 @@ describe("soakMetrics", () => {
 		const result = soakMetrics(soakFile({ js: grown }));
 		expect(result["memory.js.growthPct"]).toBeCloseTo(10, 4);
 		expect(result["memory.heapGrowthPct"]).toBeCloseTo(10, 4);
+	});
+	test("the idle floors over time give a slope: the baseline, each two-minute checkpoint and the final window", () => {
+		// 50.2 MB at 42 s, 51.2 MB at 92 s: 1000 KB over 50 s
+		expect(metrics["memory.native.slopeKbPerMin"]).toBeCloseTo(1200, 0);
+		const checkpoints = soakMetrics(
+			soakFile({
+				memory: [
+					mem("baseline", 40_000, 50_000),
+					mem("baseline", 42_000, 50_400),
+					mem("baseline", 44_000, 50_200),
+					mem("series", 100_000, 70_000),
+					mem("checkpoint", 160_000, 51_000),
+					mem("checkpoint", 162_000, 51_200),
+					mem("checkpoint", 164_000, 51_100),
+					mem("checkpoint", 280_000, 51_100),
+					mem("checkpoint", 282_000, 51_000),
+					mem("checkpoint", 284_000, 51_200),
+					mem("final", 400_000, 51_000),
+					mem("final", 402_000, 51_200),
+					mem("final", 404_000, 51_100),
+				],
+			}),
+		);
+		// floors: 50.2 @ 0.7 min, 51.1 @ 2.7, 51.1 @ 4.7, 51.1 @ 6.7: a rise that levels off
+		expect(checkpoints["memory.native.slopeKbPerMin"]).toBeCloseTo(135, 0);
+		expect(idleFloors(soakFile().memory)).toHaveLength(2);
+	});
+	test("the worklet runtime's heap counts only when it was collected, and the worst of the three growths is the heap growth", () => {
+		expect(metrics["memory.ui.growthPct"]).toBeNull();
+		const ui = (allocated: number, collected = 1) => ({ collected, allocated });
+		const grown = withJs((samples) => {
+			for (const entry of samples) {
+				if (entry.phase === "baseline") entry.ui = ui(400_000);
+				if (entry.phase === "final") entry.ui = ui(460_000);
+			}
+		});
+		const result = soakMetrics(soakFile({ js: grown }));
+		expect(result["memory.ui.growthPct"]).toBeCloseTo(15, 4);
+		expect(result["memory.heapGrowthPct"]).toBeCloseTo(15, 4);
+		const uncollected = withJs((samples) => {
+			for (const entry of samples) {
+				if (entry.phase === "baseline") entry.ui = ui(400_000, 0);
+				if (entry.phase === "final") entry.ui = ui(460_000, 0);
+			}
+		});
+		expect(soakMetrics(soakFile({ js: uncollected }))["memory.ui.growthPct"]).toBeNull();
+	});
+	test("emitters kept by the C++ delegate past the baseline are a leak; builds that do not log them leave the metric not measured", () => {
+		expect(metrics["memory.leakedEmitters"]).toBeNull();
+		const counted = withJs((samples) => {
+			for (const entry of samples)
+				if (entry.engine)
+					entry.engine = {
+						...entry.engine,
+						emitters: entry.phase === "final" ? entry.engine.alive + 7 : entry.engine.alive,
+					};
+		});
+		expect(soakMetrics(soakFile({ js: counted }))["memory.leakedEmitters"]).toBe(7);
+	});
+	test("fewer than two windows leave the slope not measured", () => {
+		expect(
+			soakMetrics(soakFile({ memory: [mem("baseline", 40_000, 50_000)] }))["memory.native.slopeKbPerMin"],
+		).toBeNull();
 	});
 	test("views alive at the end minus at the baseline; fewer is not a leak", () => {
 		expect(metrics["memory.leakedViews"]).toBe(0);

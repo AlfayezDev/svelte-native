@@ -37,6 +37,9 @@ class SvelteEngineNative : public facebook::jni::HybridClass<SvelteEngineNative>
   void registerForeign(facebook::jni::alias_ref<jstring> name);
   jboolean isForeign(jint tag);
   jint foreignCount();
+  // Live sizes of the delegate's tables (emitters, scroll states), for the soak runner.
+  jint emitterCount();
+  jint scrollStateCount();
 
   ~SvelteEngineNative();
 

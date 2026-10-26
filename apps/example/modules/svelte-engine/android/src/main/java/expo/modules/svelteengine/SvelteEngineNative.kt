@@ -67,6 +67,10 @@ class SvelteEngineNative(fabricUIManager: FabricUIManager, mountingManager: Moun
   /** How many nodes (foreign views and everything inside them) React Native's mounting owns now. */
   external fun foreignCount(): Int
 
+  /** How many nodes the C++ delegate holds an event emitter for, and a ScrollView state for (a node that was deleted must be gone from both). */
+  external fun emitterCount(): Int
+  external fun scrollStateCount(): Int
+
   companion object {
     init {
       System.loadLibrary("svelteengine")

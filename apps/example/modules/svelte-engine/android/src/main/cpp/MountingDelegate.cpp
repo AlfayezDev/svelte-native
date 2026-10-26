@@ -91,6 +91,16 @@ State::Shared MountingDelegate::scrollStateFor(Tag tag) const {
   return it == scrollStates_.end() ? nullptr : it->second;
 }
 
+size_t MountingDelegate::emitterCount() const {
+  std::lock_guard<std::mutex> lock(emittersMutex_);
+  return emitters_.size();
+}
+
+size_t MountingDelegate::scrollStateCount() const {
+  std::lock_guard<std::mutex> lock(emittersMutex_);
+  return scrollStates_.size();
+}
+
 EventEmitter::Shared MountingDelegate::emitterFor(Tag tag) const {
   std::lock_guard<std::mutex> lock(emittersMutex_);
   auto it = emitters_.find(tag);

@@ -133,7 +133,13 @@ test("animatedStyle: initial values in the first payload, one descriptor and one
   await settle(m);
   expect(A.mappers[1].stopped).toBe(true);
   expect(A.descriptors[0].removes).toEqual([anim.tag]);
-  expect(A.removable).toContain(A.descriptors[0].adds.at(-1)?.shadowNodeWrapper);
+  const removed = A.descriptors[0].adds.at(-1)?.shadowNodeWrapper;
+  expect(A.removable).toContain(removed);
+  expect(A.removable.filter((entry) => entry === removed)).toHaveLength(1);
+  // A mapper batch collected before the node left is flushed into Reanimated's registry one frame later, after the mark was
+  // handled: the node is marked once more so that the next mount removes that late entry too.
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  expect(A.removable.filter((entry) => entry === removed)).toHaveLength(2);
 
   app.show(); // a node that comes back attaches afresh
   await settle(m);

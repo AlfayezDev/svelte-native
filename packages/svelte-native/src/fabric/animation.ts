@@ -393,6 +393,34 @@ function stopStyle(style: StyleRuntime, tag: number): void {
   style.descriptors.remove(tag);
 }
 
+/**
+ * Reanimated keeps the last animated props of every node in a registry (`UpdatesRegistry`) and empties a node's entry when
+ * the node was marked removable and a mount finds it gone from the tree. A mapper's batch that was collected before the
+ * node left (one per animated frame) is flushed into that registry one frame later, after the entry was emptied, and
+ * puts it back with nothing left to remove it: the shadow node family, its props and a `folly::dynamic` stay for the life
+ * of the process (about 1.4 KB for each of the ~10 % of removed tiles that had an update pending, measured under
+ * `malloc_debug`). Marking the node again after that frame makes the next mount remove the late entry.
+ */
+const REMARK_AFTER_MS = 400;
+let remarks: { wrapper: unknown; due: number }[] = [];
+let remarkTimer: ReturnType<typeof setTimeout> | undefined;
+function remark(): void {
+  remarkTimer = undefined;
+  const now = Date.now();
+  const waiting: typeof remarks = [];
+  for (const entry of remarks) {
+    if (entry.due <= now) markNodeAsRemovable(entry.wrapper as never);
+    else waiting.push(entry);
+  }
+  remarks = waiting;
+  if (remarks.length) remarkTimer = setTimeout(remark, Math.max(50, (remarks[0]?.due ?? now) - now));
+}
+function markRemovable(wrapper: unknown): void {
+  markNodeAsRemovable(wrapper as never);
+  remarks.push({ wrapper, due: Date.now() + REMARK_AFTER_MS });
+  remarkTimer ??= setTimeout(remark, REMARK_AFTER_MS);
+}
+
 /** Stops the mapper, drops the view descriptors, cleans up CSS animations and transitions, and forgets the node. */
 export function detachAnimation(node: object): void {
   const record = records.get(node);
@@ -403,7 +431,7 @@ export function detachAnimation(node: object): void {
   if (record.style) stopStyle(record.style, tag);
   record.inline?.detachInlineProps();
   record.cssManager?.unmountCleanup();
-  if (record.wrapper) markNodeAsRemovable(record.wrapper as never);
+  if (record.wrapper) markRemovable(record.wrapper);
 }
 
 /** Detaches every animated node for which `live` is false; the host calls it after commits that removed children. */

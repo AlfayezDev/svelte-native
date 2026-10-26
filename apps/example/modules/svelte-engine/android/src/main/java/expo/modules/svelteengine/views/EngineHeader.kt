@@ -145,7 +145,7 @@ class EngineHeader(context: Context) : EngineView(context) {
 
   private fun dp(value: Float) = (value * density).roundToInt()
 
-  private fun isRtl() = layoutDirection == LAYOUT_DIRECTION_RTL
+  private fun isRtl() = isRtlLayout()
 
   private val dark: Boolean
     get() = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
@@ -711,7 +711,7 @@ class EngineHeader(context: Context) : EngineView(context) {
       // The 24 dp icon grid, centered; the arrow points the other way for right-to-left.
       canvas.translate(cx - 12f * density, cy - 12f * density)
       canvas.scale(density, density)
-      if (glyph == Glyph.ARROW && layoutDirection == LAYOUT_DIRECTION_RTL) canvas.scale(-1f, 1f, 12f, 12f)
+      if (glyph == Glyph.ARROW && isRtlLayout()) canvas.scale(-1f, 1f, 12f, 12f)
       paint.color = ink
       paint.strokeWidth = 2f
       path.reset()

@@ -82,13 +82,28 @@ function rgba(color: string): number | undefined {
 }
 
 /** `processColor`: ARGB, a signed 32-bit integer on Android. */
-const colorFor = (platform: Platform): Converter => (color) => {
+const processColorFor = (platform: Platform): Converter => (color) => {
   if (color === undefined || color === null) return color;
   const known = typeof color === "number" ? (color >>> 0 === color ? color : null) : typeof color === "string" ? rgba(color) : undefined;
   if (known === undefined) return reactNativeColor(color);
   if (known === null) return undefined;
   const argb = ((known << 24) | (known >>> 8)) >>> 0;
   return platform === "android" ? argb | 0 : argb;
+};
+
+const COLOR_CACHE_LIMIT = 256;
+/** A text colour is converted by regular expressions and `parseInt`; a list repeats the same few strings on every row, so the answer for a string is kept (bounded, emptied when full). */
+const colorFor = (platform: Platform): Converter => {
+  const convert = processColorFor(platform);
+  const cache = new Map<string, unknown>();
+  return (color) => {
+    if (typeof color !== "string") return convert(color);
+    if (cache.has(color)) return cache.get(color);
+    const result = convert(color);
+    if (cache.size >= COLOR_CACHE_LIMIT) cache.clear();
+    cache.set(color, result);
+    return result;
+  };
 };
 
 /** Arrays pass as they are (React Native only validates them in development); strings go through React Native's parser. */

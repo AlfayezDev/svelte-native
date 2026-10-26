@@ -386,6 +386,10 @@ Reanimated drives engine views from the UI thread without React Native's ViewMan
 - JavaScript: `src/fabric/insets.ts` (`subscribeInsets`, payload types, padding math), `src/insets.svelte.ts` (`insets` store, `connectInsets`), `SafeAreaView` (padding = style's own padding + inset on `edges`, default all), `KeyboardAvoidingView` (`padding`, `height`, `position`, `keyboardVerticalOffset`, `enabled`, measured with `measureInWindow`). The React host path is unchanged (registry components).
 - Gaps: no keyboard animation on the JS side (the padding steps once at animation start); a `Modal`'s layer insets its own content frame by the bars (unless it is translucent under them), so a `SafeAreaView` inside a modal that is not translucent pads a second time, as in React Native; API 24-29 IME values depend on the compat shim; no device verification yet.
 
+### Insets and keyboard on iOS (`SvelteInsets`)
+
+Until iOS wave 4 the store was Android-only: `subscribeInsets` looked for the `SvelteEngine` module, which iOS does not have, so on an iPhone every inset was 0 (no safe area, no keyboard avoidance, `Screen` sized its sheet box from nothing). The module `apps/platform/modules/svelte-insets-ios` (Swift, Expo) has the same surface, under its own name because `SvelteEngine` being present tells the host that the Android engine is installed: `Events("insets")` and the synchronous `getInsets()`, same payload in points (`top/right/bottom/left` = `UIWindow.safeAreaInsets`; `keyboardHeight` = how much of the window the keyboard's end frame covers, from `keyboardWillChangeFrame`/`keyboardWillHide`, sent at the start of the animation; `frame` = the window). A zero-alpha probe view in the key window hears `safeAreaInsetsDidChange` and layout (rotation); a value is sent only when it changed. `fabric/insets.ts` looks for `SvelteEngine` first and `SvelteInsets` second.
+
 
 ### Activity recreation
 

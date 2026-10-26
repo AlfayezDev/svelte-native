@@ -488,10 +488,10 @@ Both platforms expose one API. The encoders are platform-neutral: iOS uses the s
 | `sheet` | `{ detents, initialDetent, grabber, dismissible, backdrop }` | see below | `sheet` and `formSheet` only |
 | `statusBar` | `{ style: auto \| light \| dark, hidden }` | `auto`, shown | `light` = light icons (for a dark background); `auto` follows the system appearance |
 | `navigationBar` | `{ color, style }` | transparent, `auto` | Android only (iOS ignores it) |
-| `animation`, `gestureEnabled`, `nativeBackButtonDismissalEnabled`, `activityState` | as in "Navigation" | | stack plumbing the router sets |
+| `animation`, `gestureEnabled`, `nativeBackButtonDismissalEnabled`, `activityState` | as in "Navigation" | | stack plumbing the router sets; `activityState` 0 on a live screen means "leave", see "Screen exit" |
 | `canGoBack` | boolean | false | the stack has a screen below; the router sets it (`entries.length > 1`, index > 0) |
 | `style` | style | none | the screen view (a background color goes here) |
-| `onAppear`, `onDisappear`, `onDismiss`, `onDetentChange({ index, fraction })` | functions | none | see "Events" |
+| `onAppear`, `onDisappear`, `onDismiss`, `onExited`, `onDetentChange({ index, fraction })` | functions | none | see "Events"; `onExited` is the router's (see "Screen exit") |
 
 `header`: `hidden` no header node at all; `large` large title (a second row of 56 dp / 52 pt) that collapses with the screen's first scroll view; `translucent` the header overlays the content; `hideBack` no back button; `backTitle` iOS back button label (Android: accessibility label of the arrow); `tint` icons, back button and title text; `background` bar color (default: the system surface); `hideShadow` no divider. `sheet`: `detents` fractions in (0, 1] of the space below the top inset or `"auto"` (content height), ascending, at most 4, default `[0.5, 1]`; `initialDetent` one of `detents`, default the first; `grabber` default true (`formSheet`: false); `dismissible` default true (drag down, backdrop tap, back); `backdrop` `dim` (default) or `none` (no scrim, the screen behind stays interactive).
 
@@ -607,6 +607,7 @@ Native emits `top<Name>` on the node's emitter (`EventEmitter::dispatchEvent`, p
 | screen | `topAppear` (`onAppear`) | `{}` | the screen became visible and its transition finished; the first screen after its first layout |
 | screen | `topDisappear` (`onDisappear`) | `{}` | the screen stopped being visible: covered by an opaque screen (`push`, `modal`), its tab deselected, or removed; not for `transparentModal`, `sheet`, `formSheet` above it |
 | screen | `topDismissed` (`onDismissed`, public `onDismiss`) | `{ dismissCount: 1 }` | the user dismissed it (back key, edge swipe, swipe down, backdrop, header back button), after the exit transition; never for a JavaScript-initiated pop |
+| screen | `topExited` (`onExited`) | `{}` | iOS only for now (see "Screen exit"): JavaScript set the screen's `activityState` to 0 and the stack finished taking it away: after its exit transition, or at once when nothing animates; sent once |
 | screen | `topDetentChange` (`onDetentChange`) | `{ index, fraction }` | a user drag settled on another detent; `fraction` is the resolved height over `available` (for `auto`, the measured fraction) |
 | header, tabs | `topMetrics` (`onMetrics`) | `{ height, inset }` dp | the first layout, and whenever either value changes |
 | header-search | `topChange` (`onChange`) | `{ text, eventCount }` | the user edited the text; `eventCount` counts native edits |
@@ -614,7 +615,21 @@ Native emits `top<Name>` on the node's emitter (`EventEmitter::dispatchEvent`, p
 | header-search | `topCancel` (`onCancel`) | `{}` | the search was dismissed (cancel button, back key) |
 | tabs | `topSelect` (`onSelect`) | `{ key, index }` | a tab press (also on the selected tab) |
 
-Order at the end of a transition: the new top screen's `onAppear`, then the leaving screen's `onDisappear`, then its `onDismissed` if the user caused it. Search text: native owns the field; `v` is applied only when `ec >= the native edit count` (the rule of TextInput's `mostRecentEventCount`), so a rejected edit is put back by the next commit.
+Order at the end of a transition: the new top screen's `onAppear`, then the leaving screen's `onDisappear`, then its `onDismissed` if the user caused it, or its `onExited` if JavaScript did (`activityState` 0). Search text: native owns the field; `v` is applied only when `ec >= the native edit count` (the rule of TextInput's `mostRecentEventCount`), so a rejected edit is put back by the next commit.
+
+### Screen exit (`activityState` 0 and `topExited`)
+
+Status: implemented on iOS (iOS wave 4, 26 Oct 2026); **not on Android**, whose stack still animates a removal itself and keeps the router's old behaviour. `EXIT_REPORTED` in `fabric/navigation.ts` is the per-platform switch (`{ android: false, ios: true }`); it is the only line the Android owner flips once the stack below reports exits.
+
+Why: when JavaScript popped a screen the router removed its `native-screen`, so the page's whole subtree was unmounted in the mounting transaction that also started the exit transition. On iOS that is React Native's `unmountChildComponentView` of every descendant plus UIKit's own work on the popped view, one long frame at the start of every pop (navigation-8 and header-8 dropped a frame per pop). The fix is to keep the screen mounted until its exit transition has ended, and to unmount it afterwards, in a frame where nothing moves.
+
+Contract:
+
+1. **JavaScript.** An entry that leaves a router (`back`, `goto` with `replaceState` or `reset`, `replaceBase`) is not removed from the tree on a platform with `EXIT_REPORTED`. The router keeps its `Screen` mounted with `activityState={0}` and passes `onExited`; `router.entries` (what `back`, `goto` and `current` work on) is the live stack, `router.screens` is what the router renders: the entries and the leaving ones, each where it was (a screen pushed while another leaves goes below it). A page therefore lives up to one exit transition longer than before (about 0.35 s for a push, 0.5 s for a sheet); its `onDestroy` and effects run then. If `topExited` does not arrive within `EXIT_TIMEOUT_MS` (2.5 s) the router removes the entries anyway and logs a warning. A **user** dismissal (`topDismissed`) is not retained: the platform already took the screen away, so `router.dismissed` drops it and the ones above it at once.
+2. **Native stack.** A mounted screen whose `a` (record 110 `activityState`) becomes 0 leaves the stack exactly as a removed screen would have: a pushed screen on top pops (with its `stackAnimation`, interactive gestures aside), covered screens go without animation, a presented screen (modal, sheet) is dismissed. The view tree stays mounted (the platform may swap its picture in for the animation, but must not unmount or detach the views). When the stack is at rest again it sends `topExited` once per screen: after the transition for the screen it animated, in the next run-loop turn for a screen that had nothing to animate (not on top, `animation: none`, no window, nothing else live), and never before a transition in progress has ended. `topExited` is sent after the lifecycle events of the same transition (`appear` of the new top, `disappear` of the leaving screen).
+3. **Why a turn later.** The event is sent in the turn after UIKit's completion work, and JavaScript's removal comes back asynchronously after that, so the unmount lands in a frame of its own, not in the last frame of the transition.
+
+What Android must do to adopt it (`EngineStack`, `EngineScreen`, `NavEvents`; JavaScript is ready): (a) today a live screen at `activityState` 0 is hidden at once (alpha 0, "leaves the stack" in the section "Navigation"); make it instead "animate out as `removeScreen` does for an unremoved view, keep the view attached, then detach it", and send `NavEvents.exited(tag)` (`topExited`, payload `{}`) when the animation ends, or at once when there is nothing to animate (the first screen, `none`, not laid out); (b) a screen that is already `leaving` or `dismissed` is not animated again; (c) `activityState` 0 on a screen that is not on top, or that was never shown, is hidden as today and reports `exited` immediately; (d) then set `EXIT_REPORTED.android = true`. Until then the router removes entries on Android as before and the existing tests ("on Android the router removes a popped screen at once") keep that honest.
 
 ### Behaviour
 

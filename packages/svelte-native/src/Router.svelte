@@ -25,8 +25,8 @@
 </script>
 
 <Host name="native-stack" attributes={{ style: { flex: 1 } }}>
-  {#each router.entries as entry, index (entry.key)}
-    <Screen presentation={entry.presentation} canGoBack={index > 0} activityState={2} animation="default" onDismiss={() => router.dismissed(entry.key)}>
+  {#each router.screens as { entry, canGoBack, leaving } (entry.key)}
+    <Screen presentation={entry.presentation} {canGoBack} activityState={leaving ? 0 : 2} animation="default" onDismiss={() => router.dismissed(entry.key)} onExited={() => router.exited(entry.key)}>
       <RouteView {entry} {router} {loading} />
     </Screen>
   {/each}

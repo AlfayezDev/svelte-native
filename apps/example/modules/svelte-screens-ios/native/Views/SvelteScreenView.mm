@@ -63,6 +63,14 @@ using namespace facebook::react;
 
 @end
 
+/// The `nativeID` of a screen without its `a=<activityState>` pair (always the first one, record 110).
+static std::string WithoutActivityState(const std::string &nativeId) {
+  const size_t at = nativeId.find(";a=");
+  if (at == std::string::npos) return nativeId;
+  const size_t end = nativeId.find(';', at + 1);
+  return end == std::string::npos ? nativeId.substr(0, at) : nativeId.substr(0, at) + nativeId.substr(end);
+}
+
 @implementation SvelteScreenView {
   SvelteScreenController *_controller;
   SvelteNavigationController *_wrapper;
@@ -74,6 +82,7 @@ using namespace facebook::react;
   CGSize _reportedSize;
   BOOL _unmounted;
   BOOL _userDismissed;
+  BOOL _exitReported;
   BOOL _needsUpdate;
   BOOL _initialDetentApplied;
   BOOL _visible;
@@ -122,16 +131,27 @@ using namespace facebook::react;
   _userDismissed = YES;
 }
 
+- (BOOL)exitReported {
+  return _exitReported;
+}
+
 #pragma mark - Component view protocol
 
 - (void)updateProps:(const Props::Shared &)props oldProps:(const Props::Shared &)oldProps {
   [super updateProps:props oldProps:oldProps];
   const auto &viewProps = static_cast<const ViewProps &>(*props);
   if (_specParsed && viewProps.nativeId == _nativeId) return;
+  const BOOL onlyActivity = _specParsed && WithoutActivityState(viewProps.nativeId) == WithoutActivityState(_nativeId);
   _nativeId = viewProps.nativeId;
   _specParsed = YES;
   _spec = svelte::parseScreen(_nativeId);
+  if (_spec.activityState != 0) _exitReported = NO;
   _controller.animation = _spec.animation;
+  if (onlyActivity) {
+    // A screen JavaScript sent away (`activityState` 0) is taken off the stack; its bar, scroll view and sheet stay as they were.
+    [_stack setNeedsFlush];
+    return;
+  }
   [_controller setNeedsStatusBarAppearanceUpdate];
   [self setNeedsUpdate];
 }
@@ -220,6 +240,9 @@ using namespace facebook::react;
   }
   if (_spec.animation == svelte::kAnimationFade && !_spec.isSheet()) presented.modalTransitionStyle = UIModalTransitionStyleCrossDissolve;
   presented.modalPresentationCapturesStatusBarAppearance = YES;
+  // VoiceOver must not reach what is under a modal or a sheet: its view hides its siblings from the accessibility tree, unless the
+  // sheet has no backdrop, where the screen behind stays interactive.
+  presented.view.accessibilityViewIsModal = !(_spec.isSheet() && _spec.noBackdrop != 0);
   presented.presentationController.delegate = self;
   [self applyDismissalPolicy];
   [self applySheetConfiguration];
@@ -286,6 +309,16 @@ using namespace facebook::react;
 
 - (void)emitDismissedWithCount:(NSInteger)count {
   SvelteEmit(_eventEmitter, "dismissed", folly::dynamic::object("dismissCount", (int)count));
+}
+
+- (void)emitExited {
+  if (_exitReported) return;
+  _exitReported = YES;
+  __weak SvelteScreenView *weakSelf = self;
+  SvelteScheduleLifecycle(SvelteLifecycleExited, ^{
+    SvelteScreenView *screen = weakSelf;
+    if (screen != nil) SvelteEmit(screen->_eventEmitter, "exited", folly::dynamic::object());
+  });
 }
 
 - (void)reportHeaderMetrics {

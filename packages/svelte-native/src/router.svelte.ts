@@ -1,8 +1,9 @@
-import { getContext, setContext } from "svelte";
+import { getContext, onDestroy, setContext } from "svelte";
 import type { Component } from "svelte";
 import { SvelteMap, SvelteURL } from "svelte/reactivity";
+import Platform from "react-native/Libraries/Utilities/Platform";
 import { hmrState, type HmrState } from "./hmr-state.ts";
-import type { Presentation, RouterScopeOptions } from "./fabric/navigation.ts";
+import { EXIT_REPORTED, EXIT_TIMEOUT_MS, type Presentation, type RouterScopeOptions } from "./fabric/navigation.ts";
 
 /** What loading a route yields: its page and the layouts around it, outermost first. */
 export type RouteModules = { component: Component; layouts: Component[] };
@@ -22,6 +23,8 @@ export type NativeLocation = {
   /** The screen's presentation: the one `goto` was given, else the route's, else `push`. Fixed for the life of the entry. */
   presentation: Presentation;
 };
+/** One screen of the router's native stack: a live entry, or a popped one the stack is still taking away (`leaving`). */
+export type RouterScreen = { entry: NativeLocation; canGoBack: boolean; leaving: boolean };
 export type NavigateOptions = { replaceState?: boolean; reset?: boolean; presentation?: Presentation };
 const contextKey = Symbol("svelte-native-router");
 /** The router context: each `createRouter` links to the one above it, so `useRouter(scope)` can walk up to a named ancestor. */
@@ -105,13 +108,50 @@ export function createRouter(routes: readonly NativeRoute[], initial = "/auth/lo
   }
   for (const entry of entries) load(entry.route);
   const active = options.active ?? (() => true);
+  // A popped entry stays in the native stack, inactive, until the stack reports that its exit transition ended (SPEC.md
+  // "Screen exit"), so the unmount of the page (the whole subtree) is not part of the transition's frames. Platforms whose
+  // stack animates a removal itself (`EXIT_REPORTED`) drop the entry at once. `screens` is what the router renders: the
+  // entries and the ones on their way out, each at the place it had, so nothing moves in the native stack when one leaves.
+  const reportsExit = EXIT_REPORTED[Platform.OS === "ios" ? "ios" : "android"];
+  let screens = $state.raw<readonly RouterScreen[]>(entries.map((entry, index) => ({ entry, canGoBack: index > 0, leaving: false })));
+  let exitTimer: ReturnType<typeof setTimeout> | undefined;
+  onDestroy(() => clearTimeout(exitTimer));
+  /** Makes `next` the live stack. `retire` keeps what it removes on screen until it reports its exit; the user's own dismissal has happened natively already (no `retire`). */
+  function setEntries(next: readonly NativeLocation[], retire = reportsExit) {
+    let retired = false;
+    const list: RouterScreen[] = [];
+    for (const screen of screens) {
+      if (screen.leaving) list.push(screen);
+      else if (next.includes(screen.entry)) {
+        const canGoBack = next.indexOf(screen.entry) > 0;
+        list.push(canGoBack === screen.canGoBack ? screen : { ...screen, canGoBack });
+      } else if (retire) { list.push({ ...screen, leaving: true }); retired = true; }
+    }
+    // A new entry goes right after the one below it in the stack, so a screen pushed while another leaves sits under it.
+    next.forEach((entry, index) => {
+      if (list.some((screen) => screen.entry === entry)) return;
+      list.splice(index === 0 ? 0 : list.findIndex((screen) => screen.entry === next[index - 1]) + 1, 0, { entry, canGoBack: index > 0, leaving: false });
+    });
+    entries = next;
+    screens = list;
+    if (retired) {
+      clearTimeout(exitTimer);
+      exitTimer = setTimeout(() => {
+        console.warn(`[Svelte router] ${screens.filter((screen) => screen.leaving).length} screen(s) did not report their exit within ${EXIT_TIMEOUT_MS} ms; removing them`);
+        screens = screens.filter((screen) => !screen.leaving);
+      }, EXIT_TIMEOUT_MS);
+    }
+  }
   const router = {
     scope,
     /** Whether another router is above this one (a tab's or a sheet's own stack): only the outermost router takes links. */
     nested: parent !== undefined,
     /** Whether this router currently answers the back key and links (a tab's router while its tab is selected). */
     active,
+    /** The live stack, bottom first: what `back`, `goto` and `current` work on. */
     get entries() { return entries; },
+    /** The stack the native side holds: `entries` plus the popped ones still leaving, in place; what the router renders. */
+    get screens() { return screens; },
     get current() { return entries[entries.length - 1]; },
     /** The route's page and layouts once loaded, `undefined` while loading; throws what a failed load threw. */
     modules(route: NativeRoute): RouteModules | undefined {
@@ -123,17 +163,17 @@ export function createRouter(routes: readonly NativeRoute[], initial = "/auth/lo
       const next = location(href, navigation.presentation);
       if (next.url.href === router.current.url.href && !navigation.reset) return;
       load(next.route);
-      entries = navigation.reset ? [next] : navigation.replaceState ? [...entries.slice(0, -1), next] : [...entries, next];
+      setEntries(navigation.reset ? [next] : navigation.replaceState ? [...entries.slice(0, -1), next] : [...entries, next]);
     },
     back(): boolean {
       if (entries.length < 2) return false;
-      entries = entries.slice(0, -1);
+      setEntries(entries.slice(0, -1));
       return true;
     },
     replaceBase(href: string): void {
       const base = location(href);
       load(base.route);
-      entries = [base, ...entries.slice(1)];
+      setEntries([base, ...entries.slice(1)]);
     },
     openURL(href: string): boolean {
       const url = URL.parse(href);
@@ -144,9 +184,16 @@ export function createRouter(routes: readonly NativeRoute[], initial = "/auth/lo
       router.goto(`${path}${url.search}${url.hash}`);
       return true;
     },
+    /** The user dismissed the screen natively (after its transition): it and the ones above it are gone already, so they are dropped at once. */
     dismissed(key: number): void {
       const index = entries.findIndex((entry) => entry.key === key);
-      if (index > 0) entries = entries.slice(0, index);
+      if (index > 0) setEntries(entries.slice(0, index), false);
+    },
+    /** The native stack finished taking a popped screen away: its page unmounts now. */
+    exited(key: number): void {
+      if (!screens.some((screen) => screen.leaving && screen.entry.key === key)) return;
+      screens = screens.filter((screen) => screen.entry.key !== key);
+      if (!screens.some((screen) => screen.leaving)) clearTimeout(exitTimer);
     },
   };
   setContext(contextKey, { router, scope, parent });

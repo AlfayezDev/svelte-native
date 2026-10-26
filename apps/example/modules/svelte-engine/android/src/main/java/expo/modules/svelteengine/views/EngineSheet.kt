@@ -1,0 +1,431 @@
+package expo.modules.svelteengine.views
+
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.ValueAnimator
+import android.content.Context
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Outline
+import android.graphics.Paint
+import android.graphics.RectF
+import android.view.MotionEvent
+import android.view.View
+import android.view.ViewConfiguration
+import android.view.ViewGroup
+import android.view.ViewOutlineProvider
+import android.view.ViewTreeObserver
+import android.view.animation.DecelerateInterpolator
+import android.widget.ScrollView
+import expo.modules.svelteengine.NavEvents
+import expo.modules.svelteengine.NavProps
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
+
+/**
+ * A `sheet` or `formSheet` screen (SPEC.md "Native screens, Android"). The screen's Yoga box is bottom anchored and as
+ * tall as the tallest detent; the sheet moves that box up and down between detents with its own drag and never resizes
+ * it, so the content keeps one layout and only its visible part changes. The stack slides the sheet in and out; the
+ * scrim is a view of the stack right under it, its alpha follows the sheet's position.
+ *
+ * Drag: a vertical drag that starts anywhere in the box moves the sheet unless a scroll view under the finger can still
+ * scroll that way (a scroll view at its top hands a downward drag over; below the top detent an upward drag moves the
+ * sheet first). Release snaps to the nearest detent, a fling over 1000 dp/s goes to the next one in its direction; past
+ * a quarter of the lowest detent below it, or a fling down from it, the sheet is dismissed when it is dismissible.
+ */
+class EngineSheet(context: Context) : EngineScreen(context) {
+  private val density = resources.displayMetrics.density
+  private val slop = ViewConfiguration.get(context).scaledTouchSlop
+  private val interpolator = DecelerateInterpolator(1.5f)
+  private val corner = CORNER_DP * density
+
+  /** Heights as fractions of the available height, -1 for "auto" (the box's own height); as given, not sorted. */
+  private var detents = floatArrayOf(0.5f, 1f)
+  private var initialIndex = 0
+  private var grabber = true
+  private var dismissibleFlag = true
+  var backdropNone = false
+    private set
+  /** The detent (index into [detents]) the sheet rests at. */
+  private var current = 0
+  private var reported = 0
+  private var configured = false
+
+  /** Dimming view of the stack, just under the sheet; only part of the stack's children while the sheet has a backdrop. */
+  val scrim: View = object : View(context) {
+    // A solid color: its alpha needs no offscreen layer, which would otherwise be composited for the whole stack's width and height.
+    override fun hasOverlappingRendering(): Boolean = false
+  }.apply {
+    setBackgroundColor(Color.BLACK)
+    alpha = 0f
+    isClickable = true
+    importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+    setOnClickListener { if (dismissibleFlag) stack?.dismissTop() }
+  }
+
+  private val grabberPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x66808080 }
+  private val grabberRect = RectF()
+
+  private var settler: ValueAnimator? = null
+  private var dragging = false
+  /** The drag holds the sheet's layer until the settle (or the dismissal) that follows has its own. */
+  private var dragLayer = false
+  private var downX = 0f
+  private var downY = 0f
+  private var startTranslation = 0f
+  private var scrollUnderFinger: ScrollView? = null
+  // Recent finger positions (screen px) for the release velocity: translation moves the view, so view coordinates would cancel out.
+  private val sampleTime = LongArray(SAMPLES)
+  private val sampleY = FloatArray(SAMPLES)
+  private var samples = 0
+
+  private val preDraw = ViewTreeObserver.OnPreDrawListener {
+    updateScrim()
+    true
+  }
+
+  init {
+    setWillNotDraw(false)
+    outlineProvider = object : ViewOutlineProvider() {
+      override fun getOutline(view: View, outline: Outline) {
+        // The box is rounded at the top only: the bottom corners are pushed out of the box.
+        outline.setRoundRect(0, 0, view.width, view.height + corner.toInt(), corner)
+      }
+    }
+    clipToOutline = true
+  }
+
+  override val dismissible: Boolean get() = dismissibleFlag
+
+  override fun apply(p: NavProps) {
+    super.apply(p)
+    if (!p.sheetSeen || p.detents.isEmpty()) return
+    val changed = !configured || !p.detents.contentEquals(detents) || p.initialDetent != initialIndex
+    detents = p.detents
+    initialIndex = min(max(0, p.initialDetent), detents.size - 1)
+    val grabberChanged = grabber != p.grabber
+    grabber = p.grabber
+    dismissibleFlag = p.dismissible
+    backdropNone = p.backdropNone
+    scrim.isClickable = !backdropNone
+    scrim.visibility = if (backdropNone) GONE else VISIBLE
+    if (grabberChanged) invalidate()
+    if (changed) {
+      configured = true
+      // New detents, or the first ones: back to the initial detent unless the user is mid-drag.
+      if (!dragging) {
+        current = min(initialIndex, detents.size - 1)
+        reported = current
+        moveToRest(false)
+      }
+    }
+  }
+
+  // Geometry --------------------------------------------------------------------------------------------------------
+
+  /** Height below the top inset, px: what the detent fractions are fractions of. Read at layout and when a drag starts, not per touch event. */
+  private var availableCache = -1
+
+  private fun refreshAvailable() {
+    val st = stack ?: return
+    availableCache = max(0, st.height - (SafeArea.top(st) ?: 0))
+  }
+
+  private fun available(): Int {
+    if (availableCache < 0) refreshAvailable()
+    return max(0, availableCache)
+  }
+
+  /** The visible height of detent [index], px: a fraction of the available height, or the whole box for "auto". */
+  private fun visibleFor(index: Int): Int {
+    val box = node.h
+    val avail = available()
+    if (box <= 0 || avail <= 0) return box
+    val d = detents[index]
+    return if (d < 0f) min(box, avail) else min(box, max(1, (d * avail).roundToInt()))
+  }
+
+  private fun offsetFor(index: Int): Float = max(0, node.h - visibleFor(index)).toFloat()
+
+  override val restY: Float get() = if (detents.isEmpty()) 0f else offsetFor(min(current, detents.size - 1))
+
+  /** Offsets of every distinct detent, top-most (smallest) first. */
+  private fun sortedOffsets(): FloatArray {
+    val list = ArrayList<Float>(detents.size)
+    for (i in detents.indices) {
+      val o = offsetFor(i)
+      if (list.none { abs(it - o) < 1f }) list.add(o)
+    }
+    list.sort()
+    return list.toFloatArray()
+  }
+
+  private fun indexForOffset(offset: Float): Int {
+    var best = 0
+    var distance = Float.MAX_VALUE
+    for (i in detents.indices) {
+      val d = abs(offsetFor(i) - offset)
+      if (d < distance) { distance = d; best = i }
+    }
+    return best
+  }
+
+  override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+    super.onLayout(changed, l, t, r, b)
+    refreshAvailable()
+    if (changed && !dragging && settler == null && !transitioning && !leaving) translationY = restY
+  }
+
+  /** The enter transition ended: rest at the detent the sheet has by now (new detents may have arrived while it ran). */
+  fun snapToRest() {
+    if (!dragging && settler == null) translationY = restY
+  }
+
+  private fun moveToRest(animated: Boolean) {
+    if (leaving || transitioning || dragging) return
+    val target = restY
+    if (!animated || !isAttachedToWindow) {
+      cancelSettle()
+      translationY = target
+    } else {
+      settleTo(target)
+    }
+  }
+
+  // Scrim and grabber -----------------------------------------------------------------------------------------------
+
+  private fun updateScrim() {
+    if (backdropNone) return
+    val box = node.h
+    if (box <= 0 || detents.isEmpty()) return
+    val lowest = box - sortedLowestOffset()
+    val visible = box - translationY
+    val fraction = if (lowest <= 0f) 0f else (visible / lowest).coerceIn(0f, 1f)
+    val alpha = DIM * fraction
+    if (scrim.alpha != alpha) scrim.alpha = alpha
+  }
+
+  private fun sortedLowestOffset(): Float {
+    var lowest = 0f
+    for (i in detents.indices) lowest = max(lowest, offsetFor(i))
+    return lowest
+  }
+
+  override fun onAttachedToWindow() {
+    super.onAttachedToWindow()
+    availableCache = -1
+    viewTreeObserver.addOnPreDrawListener(preDraw)
+  }
+
+  override fun onDetachedFromWindow() {
+    super.onDetachedFromWindow()
+    viewTreeObserver.removeOnPreDrawListener(preDraw)
+    cancelSettle()
+    endDragLayer()
+  }
+
+  override fun dispatchDraw(canvas: Canvas) {
+    super.dispatchDraw(canvas)
+    if (grabber) {
+      val w = GRABBER_W_DP * density
+      val h = GRABBER_H_DP * density
+      val left = (width - w) / 2f
+      val top = GRABBER_TOP_DP * density
+      grabberRect.set(left, top, left + w, top + h)
+      canvas.drawRoundRect(grabberRect, h / 2f, h / 2f, grabberPaint)
+    }
+  }
+
+  // Drag ------------------------------------------------------------------------------------------------------------
+
+  /** Stops a settle in progress (the stack starts its own transition, or the sheet is going away). */
+  fun cancelSettle() {
+    settler?.let {
+      settler = null
+      it.cancel()
+    }
+  }
+
+  private fun scrollAt(x: Float, y: Float): ScrollView? = findScroll(this, x, y)
+
+  private fun findScroll(group: ViewGroup, x: Float, y: Float): ScrollView? {
+    for (i in group.childCount - 1 downTo 0) {
+      val c = group.getChildAt(i)
+      if (c.visibility != VISIBLE) continue
+      val cx = x + group.scrollX - c.left
+      val cy = y + group.scrollY - c.top
+      if (cx < 0f || cy < 0f || cx >= c.width || cy >= c.height) continue
+      if (c is ScrollView) return c
+      if (c is ViewGroup) findScroll(c, cx, cy)?.let { return it }
+    }
+    return null
+  }
+
+  override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
+    // The stack's own transition owns the translation while it runs.
+    if (transitioning || leaving) return false
+    when (ev.actionMasked) {
+      MotionEvent.ACTION_DOWN -> {
+        downX = ev.rawX; downY = ev.rawY
+        scrollUnderFinger = scrollAt(ev.x, ev.y)
+        samples = 0
+        addSample(ev)
+      }
+      MotionEvent.ACTION_MOVE -> if (!dragging) {
+        val dx = ev.rawX - downX
+        val dy = ev.rawY - downY
+        if (abs(dy) > slop && abs(dy) > abs(dx) && shouldTake(dy > 0f)) {
+          startDrag(ev)
+          return true
+        }
+      }
+    }
+    return false
+  }
+
+  /** A scroll view that can still move the way the finger goes keeps the drag; otherwise the sheet takes it. */
+  private fun shouldTake(down: Boolean): Boolean {
+    val scroll = scrollUnderFinger
+    val offsets = sortedOffsets()
+    if (down) return scroll == null || scroll.scrollY <= 0
+    // Dragging up: the sheet first, until it is at its top detent; then the content scrolls.
+    return translationY > offsets.first() + 1f || scroll == null
+  }
+
+  private fun startDrag(ev: MotionEvent) {
+    var p = parent
+    while (p != null) {
+      if (p is EngineRoot) { p.cancelActiveTouch(); break }
+      p = p.parent
+    }
+    cancelSettle()
+    refreshAvailable()
+    stack?.parent?.requestDisallowInterceptTouchEvent(true)
+    dragging = true
+    if (!dragLayer) { dragLayer = true; holdLayer() }
+    startTranslation = translationY
+    downY = ev.rawY
+  }
+
+  override fun onTouchEvent(event: MotionEvent): Boolean {
+    if (!dragging) return super.onTouchEvent(event)
+    addSample(event)
+    when (event.actionMasked) {
+      MotionEvent.ACTION_MOVE -> {
+        val offsets = sortedOffsets()
+        val top = offsets.first()
+        var y = startTranslation + (event.rawY - downY)
+        // Resistance above the top detent; the box never goes below its own bottom.
+        if (y < top) y = top - (top - y) * RESISTANCE
+        translationY = min(y, node.h.toFloat())
+      }
+      MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+        dragging = false
+        stack?.parent?.requestDisallowInterceptTouchEvent(false)
+        settle(if (event.actionMasked == MotionEvent.ACTION_UP) velocity() else 0f)
+        endDragLayer()
+      }
+    }
+    return true
+  }
+
+  private fun endDragLayer() {
+    if (!dragLayer) return
+    dragLayer = false
+    releaseLayer()
+  }
+
+  private fun addSample(ev: MotionEvent) {
+    val i = samples % SAMPLES
+    sampleTime[i] = ev.eventTime
+    sampleY[i] = ev.rawY
+    samples++
+  }
+
+  /** Vertical velocity of the finger over the last 100 ms, px/s, positive downwards. */
+  private fun velocity(): Float {
+    if (samples < 2) return 0f
+    val n = min(samples, SAMPLES)
+    val last = (samples - 1) % SAMPLES
+    val lastTime = sampleTime[last]
+    var firstIndex = last
+    for (k in 1 until n) {
+      val i = ((samples - 1 - k) % SAMPLES + SAMPLES) % SAMPLES
+      if (lastTime - sampleTime[i] > VELOCITY_WINDOW_MS) break
+      firstIndex = i
+    }
+    val dt = lastTime - sampleTime[firstIndex]
+    return if (dt <= 0L) 0f else (sampleY[last] - sampleY[firstIndex]) / dt * 1000f
+  }
+
+  private fun settle(velocity: Float) {
+    val stack = stack ?: return
+    val offsets = sortedOffsets()
+    val y = translationY
+    val lowest = offsets.last()
+    val lowestVisible = node.h - lowest
+    var target = offsets.minByOrNull { abs(it - y) } ?: lowest
+    var dismiss = false
+    if (abs(velocity) > FLING_DP * density) {
+      if (velocity > 0f) {
+        val next = offsets.firstOrNull { it > y + 1f }
+        if (next == null) dismiss = true else target = next
+      } else {
+        target = offsets.lastOrNull { it < y - 1f } ?: offsets.first()
+      }
+    } else if (y - lowest > lowestVisible * DISMISS_FRACTION) {
+      dismiss = true
+    }
+    if (dismiss && dismissibleFlag) {
+      stack.dismissTop()
+      return
+    }
+    if (dismiss) target = lowest
+    settleTo(target)
+  }
+
+  private fun settleTo(target: Float) {
+    // The layer is taken before the old settle is cancelled, so it is handed over.
+    holdLayer()
+    cancelSettle()
+    val animator = ValueAnimator.ofFloat(translationY, target).setDuration(SETTLE_MS)
+    animator.interpolator = interpolator
+    animator.addUpdateListener { translationY = it.animatedValue as Float }
+    animator.addListener(object : AnimatorListenerAdapter() {
+      private var cancelled = false
+      override fun onAnimationCancel(animation: Animator) { cancelled = true }
+      override fun onAnimationEnd(animation: Animator) {
+        if (settler === animation) settler = null
+        releaseLayer()
+        if (cancelled) return
+        translationY = target
+        val index = indexForOffset(target)
+        current = index
+        if (index != reported) {
+          reported = index
+          val avail = available()
+          val fraction = if (avail > 0) visibleFor(index).toFloat() / avail else 1f
+          NavEvents.detentChange(node.tag, index, fraction)
+        }
+      }
+    })
+    settler = animator
+    animator.start()
+  }
+
+  private companion object {
+    const val CORNER_DP = 28f
+    const val GRABBER_W_DP = 32f
+    const val GRABBER_H_DP = 4f
+    const val GRABBER_TOP_DP = 8f
+    const val DIM = 0.32f
+    const val FLING_DP = 1000f
+    const val DISMISS_FRACTION = 0.25f
+    const val RESISTANCE = 0.2f
+    const val SETTLE_MS = 220L
+    const val SAMPLES = 8
+    const val VELOCITY_WINDOW_MS = 100L
+  }
+}

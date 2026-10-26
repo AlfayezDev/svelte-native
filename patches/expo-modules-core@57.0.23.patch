@@ -1,0 +1,550 @@
+diff --git a/android/src/main/java/expo/modules/adapters/react/ModuleRegistryAdapter.java b/android/src/main/java/expo/modules/adapters/react/ModuleRegistryAdapter.java
+index 10af42b2bcbeccaa1f39db6c9acc5d4234b405c2..ea1d1f9de7b0340614141cb096b9ecd10bf1cf8c 100644
+--- a/android/src/main/java/expo/modules/adapters/react/ModuleRegistryAdapter.java
++++ b/android/src/main/java/expo/modules/adapters/react/ModuleRegistryAdapter.java
+@@ -38,9 +38,6 @@ public class ModuleRegistryAdapter implements ReactPackage {
+ 
+   private void setModulesProxy(@Nullable NativeModulesProxy newProxy) {
+     mModulesProxy = newProxy;
+-    if (mModulesProxy != null) {
+-      mModulesProxy.getKotlinInteropModuleRegistry().setLegacyModulesProxy(mModulesProxy);
+-    }
+   }
+ 
+   // We need to save all view holders to update them when the new kotlin module registry will be created.
+@@ -75,6 +72,11 @@ public class ModuleRegistryAdapter implements ReactPackage {
+       kotlinInteropModuleRegistry.updateModuleHoldersInViewDelegates(mWrapperDelegates);
+     }
+ 
++    // The legacy registry is complete here, so the app context can be built off this thread.
++    if (expo.modules.kotlin.ModuleRegistry.isPrewarmEnabled()) {
++      proxy.startInteropInBackground();
++    }
++
+     return nativeModules;
+   }
+ 
+diff --git a/android/src/main/java/expo/modules/adapters/react/NativeModulesProxy.java b/android/src/main/java/expo/modules/adapters/react/NativeModulesProxy.java
+index c39159cd47d1c1ec19ea608ec5d49f25e7cf8ac7..4cd1210092fd6f1d3fae021e5c47233439f5671f 100644
+--- a/android/src/main/java/expo/modules/adapters/react/NativeModulesProxy.java
++++ b/android/src/main/java/expo/modules/adapters/react/NativeModulesProxy.java
+@@ -10,6 +10,7 @@ import java.lang.ref.WeakReference;
+ import java.util.HashMap;
+ import java.util.Map;
+ import java.util.Objects;
++import java.util.function.Supplier;
+ 
+ import javax.annotation.Nullable;
+ 
+@@ -35,32 +36,55 @@ public class NativeModulesProxy extends ReactContextBaseJavaModule {
+ 
+   private ModuleRegistry mModuleRegistry;
+   private KotlinInteropModuleRegistry mKotlinInteropModuleRegistry;
++  private final Supplier<KotlinInteropModuleRegistry> mInteropFactory;
++  private final Object mInteropLock = new Object();
+   private Map<String, Object> cachedConstants;
+ 
+   public NativeModulesProxy(ReactApplicationContext context, ModuleRegistry moduleRegistry) {
+     super(context);
+     mModuleRegistry = moduleRegistry;
+-
+-    mKotlinInteropModuleRegistry = new KotlinInteropModuleRegistry(
++    mInteropFactory = () -> new KotlinInteropModuleRegistry(
+       Objects.requireNonNull(ExpoModulesHelper.Companion.getModulesProvider()),
+       moduleRegistry,
+       new WeakReference<>(context)
+     );
++    buildInteropUnlessPrewarmed();
+   }
+ 
+   public NativeModulesProxy(ReactApplicationContext context, ModuleRegistry moduleRegistry, ModulesProvider modulesProvider) {
+     super(context);
+     mModuleRegistry = moduleRegistry;
+-
+-    mKotlinInteropModuleRegistry = new KotlinInteropModuleRegistry(
++    mInteropFactory = () -> new KotlinInteropModuleRegistry(
+       Objects.requireNonNull(modulesProvider),
+       moduleRegistry,
+       new WeakReference<>(context)
+     );
++    buildInteropUnlessPrewarmed();
++  }
++
++  private void buildInteropUnlessPrewarmed() {
++    if (!expo.modules.kotlin.ModuleRegistry.isPrewarmEnabled()) {
++      getKotlinInteropModuleRegistry();
++    }
++  }
++
++  /**
++   * With the prewarm thread the interop registry, whose construction creates the app context, is built there instead of
++   * on the thread that creates the native modules; whoever needs it first waits for it.
++   */
++  public void startInteropInBackground() {
++    expo.modules.kotlin.ModuleRegistry.startBackgroundSetup(() -> getKotlinInteropModuleRegistry().getAppContext());
+   }
+ 
+   public KotlinInteropModuleRegistry getKotlinInteropModuleRegistry() {
+-    return mKotlinInteropModuleRegistry;
++    synchronized (mInteropLock) {
++      if (mKotlinInteropModuleRegistry == null) {
++        KotlinInteropModuleRegistry registry = mInteropFactory.get();
++        registry.setLegacyModulesProxy(this);
++        mKotlinInteropModuleRegistry = registry;
++      }
++      return mKotlinInteropModuleRegistry;
++    }
+   }
+ 
+   @NonNull
+@@ -85,7 +109,7 @@ public class NativeModulesProxy extends ReactContextBaseJavaModule {
+     Map<String, Object> constants = new HashMap<>(3);
+     constants.put(MODULES_CONSTANTS_KEY, new HashMap<>());
+     constants.put(EXPORTED_METHODS_KEY, new HashMap<>());
+-    constants.put(VIEW_MANAGERS_METADATA_KEY, mKotlinInteropModuleRegistry.viewManagersMetadata());
++    constants.put(VIEW_MANAGERS_METADATA_KEY, kotlinModuleRegistry.viewManagersMetadata());
+ 
+     CoreLoggerKt.getLogger().info("✅ Constants were exported");
+ 
+@@ -104,8 +128,9 @@ public class NativeModulesProxy extends ReactContextBaseJavaModule {
+    */
+   @ReactMethod
+   public void callMethod(String moduleName, String methodName, ReadableArray arguments, final Promise promise) {
+-    if (mKotlinInteropModuleRegistry.hasModule(moduleName)) {
+-      mKotlinInteropModuleRegistry.callMethod(moduleName, methodName, arguments, new KPromiseWrapper(promise));
++    KotlinInteropModuleRegistry kotlinModuleRegistry = getKotlinInteropModuleRegistry();
++    if (kotlinModuleRegistry.hasModule(moduleName)) {
++      kotlinModuleRegistry.callMethod(moduleName, methodName, arguments, new KPromiseWrapper(promise));
+       return;
+     }
+ 
+@@ -119,7 +144,7 @@ public class NativeModulesProxy extends ReactContextBaseJavaModule {
+   public void invalidate() {
+     super.invalidate();
+     mModuleRegistry.onDestroy();
+-    mKotlinInteropModuleRegistry.onDestroy();
++    getKotlinInteropModuleRegistry().onDestroy();
+   }
+ 
+   ModuleRegistry getModuleRegistry() {
+diff --git a/android/src/main/java/expo/modules/kotlin/AppContext.kt b/android/src/main/java/expo/modules/kotlin/AppContext.kt
+index 7bb61c680027d60c4ab79d91db5169589a512353..1861a538cba2195cbe2be90d6491ed918a512134 100644
+--- a/android/src/main/java/expo/modules/kotlin/AppContext.kt
++++ b/android/src/main/java/expo/modules/kotlin/AppContext.kt
+@@ -21,7 +21,9 @@ import expo.modules.kotlin.activityresult.ActivityResultsManager
+ import expo.modules.kotlin.activityresult.DefaultAppContextActivityResultCaller
+ import expo.modules.kotlin.defaultmodules.ErrorManagerModule
+ import expo.modules.kotlin.defaultmodules.JSLoggerModule
++import expo.modules.kotlin.defaultmodules.JSLoggerModuleName
+ import expo.modules.kotlin.defaultmodules.NativeModulesProxyModule
++import expo.modules.kotlin.defaultmodules.NativeModulesProxyModuleName
+ import expo.modules.kotlin.events.EventEmitter
+ import expo.modules.kotlin.events.EventName
+ import expo.modules.kotlin.events.KEventEmitterWrapper
+@@ -125,8 +127,8 @@ class AppContext(
+       // Registering modules has to happen at the very end of `AppContext` creation. Some modules need to access
+       // `AppContext` during their initialisation, so we need to ensure all `AppContext`'s
+       // properties are initialized first. Not having that would trigger NPE.
+-      registry.register(NativeModulesProxyModule(), null)
+-      registry.register(JSLoggerModule(), null)
++      registry.registerLazily(NativeModulesProxyModule::class.java, NativeModulesProxyModuleName)
++      registry.registerLazily(JSLoggerModule::class.java, JSLoggerModuleName)
+ 
+       registry.register(modulesProvider)
+ 
+@@ -252,7 +254,7 @@ class AppContext(
+       ?: return null
+     return KModuleEventEmitterWrapper(
+       requireNotNull(registry.getModuleHolder(module)) {
+-        val availableModulesNames = registry.registry.keys.joinToString(", ")
++        val availableModulesNames = registry.moduleNames().joinToString(", ")
+         "Cannot create an event emitter for module ${module.javaClass} that isn't present in the module registry. Available modules: [$availableModulesNames]."
+       },
+       legacyEventEmitter,
+diff --git a/android/src/main/java/expo/modules/kotlin/ModuleRegistry.kt b/android/src/main/java/expo/modules/kotlin/ModuleRegistry.kt
+index d1e5b3952b08accb1dee87aeb5819f5427c1f325..0c394f2b4616d106782d18ea2bc1d17e38106b15 100644
+--- a/android/src/main/java/expo/modules/kotlin/ModuleRegistry.kt
++++ b/android/src/main/java/expo/modules/kotlin/ModuleRegistry.kt
+@@ -9,16 +9,45 @@ import kotlinx.coroutines.CoroutineName
+ import kotlinx.coroutines.CoroutineScope
+ import kotlinx.coroutines.Dispatchers
+ import kotlinx.coroutines.SupervisorJob
++import com.facebook.soloader.SoLoader
+ import java.lang.ref.WeakReference
++import java.util.concurrent.ConcurrentHashMap
++import java.util.concurrent.locks.ReentrantReadWriteLock
++import java.util.function.Supplier
++import kotlin.concurrent.read
++import kotlin.concurrent.write
+ 
+ class ModuleRegistry(
+   private val appContextHolder: WeakReference<AppContext>
+ ) : Iterable<ModuleHolder<*>> {
++  /**
++   * Lazy registration (headless/Svelte build patch). Enabled by the `expo.modules.lazy=true` system property
++   * (or [lazyModules]), read when the registry is created, i.e. before `AppContext` registers modules.
++   * Modules listed in [LAZY_MODULE_NAMES] are not instantiated at startup: their class is kept in [pending]
++   * under its known name and instantiated (+ `definition()` run) on first lookup by name / type, or earlier by
++   * [startBackgroundSetup] on a background thread. Everything else stays eager, so the default build is unchanged.
++   */
++  private val lazy = isLazyEnabled()
++
+   @PublishedApi
+-  internal val registry = mutableMapOf<String, ModuleHolder<*>>()
++  internal val registry: MutableMap<String, ModuleHolder<*>> =
++    if (lazy) ConcurrentHashMap() else mutableMapOf()
++
++  private val pending = if (lazy) ConcurrentHashMap<String, Class<out Module>>() else null
++
++  /** One monitor per lazy module name, so building one module never waits for another. */
++  private val creating = ConcurrentHashMap<String, Any>()
++
++  /**
++   * Held for reading while a lazy module is created and for writing while `postOnCreate` sends `MODULE_CREATE`.
++   * A module created on the prewarm thread is therefore either in the registry before that round or replays it,
++   * never neither and never both.
++   */
++  private val startup = ReentrantReadWriteLock()
+ 
+   private val eventQueue = mutableListOf<PostponedEvent>()
+ 
++  @Volatile
+   private var isReadyForPostingEvents = false
+ 
+   fun <T : Module> register(module: T, name: String?) = trace("ModuleRegistry.register(${module.javaClass})") {
+@@ -41,6 +70,11 @@ class ModuleRegistry(
+ 
+   fun register(provider: ModulesProvider) = apply {
+     provider.getModulesMap().forEach { (classifier, name) ->
++      val lazyName = if (pending != null) name ?: LAZY_MODULE_NAMES[classifier.name] else null
++      if (lazyName != null) {
++        pending!![lazyName] = classifier
++        return@forEach
++      }
+       val module = classifier.getDeclaredConstructor().newInstance()
+       register(module, name)
+     }
+@@ -52,21 +86,86 @@ class ModuleRegistry(
+     }
+   }
+ 
+-  fun hasModule(name: String): Boolean = registry.containsKey(name)
++  /** Registers a module class under its known name: lazily when the registry is lazy, at once otherwise. */
++  fun registerLazily(classifier: Class<out Module>, name: String) {
++    if (pending != null) {
++      pending[name] = classifier
++    } else {
++      register(classifier.getDeclaredConstructor().newInstance(), null)
++    }
++  }
+ 
+-  fun getModule(name: String): Module? = registry[name]?.module
++  fun hasModule(name: String): Boolean = registry.containsKey(name) || pending?.containsKey(name) == true
++
++  /** Names of all modules, including the ones that are registered lazily and not instantiated yet. */
++  fun moduleNames(): Set<String> = if (pending == null) registry.keys else registry.keys + pending.keys
++
++  fun getModule(name: String): Module? = getModuleHolder(name)?.module
+ 
+   inline fun <reified T> getModule(): T? {
+-    return registry.values.find { it.module is T }?.module as? T
++    registry.values.find { it.module is T && isReady(it.name) }?.let { return it.module as? T }
++    return materializePending(T::class.java)?.module as? T
+   }
+ 
+-  fun getModuleHolder(name: String): ModuleHolder<*>? = registry[name]
++  /** A lazily registered module stays pending until it is created and has caught up on the startup events. */
++  @PublishedApi
++  internal fun isReady(name: String): Boolean = pending?.containsKey(name) != true
++
++  fun getModuleHolder(name: String): ModuleHolder<*>? =
++    if (isReady(name)) registry[name] else materializePending(name)
+ 
+   @Suppress("UNCHECKED_CAST")
+   fun <T : Module> getModuleHolder(module: T): ModuleHolder<T>? =
+     registry.values.find { it.module === module } as? ModuleHolder<T>
+ 
++  @PublishedApi
++  internal fun materializePending(type: Class<*>): ModuleHolder<*>? {
++    val pending = pending ?: return null
++    val name = pending.entries.firstOrNull { type.isAssignableFrom(it.value) }?.key ?: return null
++    return materializePending(name)
++  }
++
++  /**
++   * Instantiates a lazily registered module, mirroring what eager registration + `postOnCreate` do. The module stays
++   * in [pending] until it is complete, so lookups on other threads wait at its gate instead of seeing a half-built holder.
++   */
++  private fun materializePending(name: String): ModuleHolder<*>? {
++    val pending = pending ?: return null
++    if (!pending.containsKey(name)) return registry[name]
++    val gate = creating.computeIfAbsent(name) { Any() }
++    return startup.read {
++      synchronized(gate) {
++        // Another thread may have finished this module while this one waited.
++        if (!pending.containsKey(name)) return@read registry[name]
++        val classifier = pending[name] ?: return@read null
++        val module = classifier.getDeclaredConstructor().newInstance()
++        register(module, null)
++        val holder = registry[name]
++          ?: throw IllegalStateException("Lazy module ${classifier.name} was expected to be named '$name', fix LAZY_MODULE_NAMES.")
++        try {
++          // The module missed the startup event round, replay what a late registration needs.
++          if (isReadyForPostingEvents) {
++            holder.post(EventName.MODULE_CREATE)
++            holder.registerContracts()
++          }
++        } catch (e: Throwable) {
++          // Stay pending: the next lookup builds a fresh instance and surfaces the failure again.
++          registry.remove(name)
++          throw e
++        }
++        pending.remove(name)
++        holder
++      }
++    }
++  }
++
++  /** Instantiates every lazily registered module (used by lookups that scan all definitions). */
++  private fun materializeAllPending() {
++    pending?.keys?.toList()?.forEach { materializePending(it) }
++  }
++
+   fun <T : View> getModuleHolder(viewClass: Class<T>): ModuleHolder<*>? {
++    materializeAllPending()
+     return registry.firstNotNullOfOrNull { (_, holder) ->
+       holder.takeIf { getViewDefinition(holder, viewClass) != null }
+     }
+@@ -84,11 +183,15 @@ class ModuleRegistry(
+    * Post onCreate event to all modules. It has its own method to ensure that it’s called first.
+    */
+   fun postOnCreate() {
+-    forEach {
+-      it.post(EventName.MODULE_CREATE)
++    // The round must find these in the registry, as it would have with eager registration.
++    STARTUP_MODULE_NAMES.forEach { getModuleHolder(it) }
++    startup.write {
++      forEach {
++        it.post(EventName.MODULE_CREATE)
++      }
++      registerActivityContracts()
++      readyForPostingEvents()
+     }
+-    registerActivityContracts()
+-    readyForPostingEvents()
+     flushTheEventQueue()
+   }
+ 
+@@ -124,7 +227,31 @@ class ModuleRegistry(
+ 
+   override fun iterator(): Iterator<ModuleHolder<*>> = registry.values.iterator()
+ 
++  /**
++   * Builds the core module's JavaScript object and the modules a typical start uses ([PREWARM_MODULE_NAMES]), so the
++   * JavaScript thread finds them ready instead of building them between bundle evaluation steps. Runs on the prewarm
++   * thread. A failure is logged and surfaces again, with its stack, at the first real use of that module.
++   */
++  private fun prewarm() {
++    val pending = pending ?: return
++    try {
++      appContextHolder.get()?.runtime?.coreModule?.jsObject
++    } catch (e: Exception) {
++      logger.error("❌ Prewarm of the core module failed: $e", e)
++    }
++    for (name in PREWARM_MODULE_NAMES.filter { pending.containsKey(it) }) {
++      try {
++        val holder = getModuleHolder(name)
++        // Building the JavaScript object runs the module's `Constants` block, which must be free of side effects.
++        if (name !in DEFINITION_ONLY_MODULE_NAMES) holder?.jsObject
++      } catch (e: Exception) {
++        logger.error("❌ Prewarm of module '$name' failed: $e", e)
++      }
++    }
++  }
++
+   fun cleanUp() {
++    pending?.clear()
+     registry.clear()
+     logger.info("✅ ModuleRegistry was destroyed")
+   }
+@@ -190,4 +317,111 @@ class ModuleRegistry(
+       moduleHolder.post(eventName)
+     }
+   }
++
++
++  companion object {
++    /** Programmatic alternative to `-Dexpo.modules.lazy=true`; set before the `AppContext` is created. */
++    @JvmStatic
++    @Volatile
++    var lazyModules = false
++
++    @JvmStatic
++    fun isLazyEnabled(): Boolean = lazyModules || System.getProperty("expo.modules.lazy") == "true"
++
++    /**
++     * The prewarm thread and the deferred `AppContext` come with the lazy registry. `-Dexpo.modules.prewarm=false` keeps the
++     * lazy registry but builds the `AppContext` in `NativeModulesProxy` and each module on the thread that first needs it,
++     * which shows what the extra thread buys on a device.
++     */
++    @JvmStatic
++    fun isPrewarmEnabled(): Boolean = isLazyEnabled() && System.getProperty("expo.modules.prewarm") != "false"
++
++    /**
++     * Starts the prewarm thread. It loads `libexpo-modules-core.so` (which pulls in `libworklets.so`), runs
++     * [createAppContext], which builds the app context and with it the registry, then prewarms that registry. The thread
++     * that creates the native modules therefore does none of that work; whoever needs the app context first waits for it.
++     * A failure is logged and surfaces again, with its stack, where the app context or a module is first used.
++     */
++    @JvmStatic
++    fun startBackgroundSetup(createAppContext: Supplier<AppContext>) {
++      Thread({
++        trace("ModuleRegistry.prewarm") {
++          try {
++            SoLoader.loadLibrary("expo-modules-core")
++          } catch (e: UnsatisfiedLinkError) {
++            logger.error("❌ Prewarm cannot load expo-modules-core: $e", e)
++          }
++          try {
++            createAppContext.get().registry.prewarm()
++          } catch (e: Exception) {
++            logger.error("❌ Prewarm cannot create the app context: $e", e)
++          }
++        }
++      }, "expo-modules-prewarm").apply { isDaemon = true }.start()
++    }
++
++    /**
++     * Modules that may be instantiated on first use, keyed by class name -> JS module name
++     * (`ModulesProvider` maps carry no names, `Name(...)` lives in `definition()` which we must not run).
++     * Only modules that need none of `OnActivityEntersForeground`/`OnActivityEntersBackground`/`OnNewIntent`/view
++     * definitions belong here: `OnCreate` and `RegisterActivityContracts` are replayed on materialization, the
++     * foreground and background rounds are not.
++     * `ExpoVideo` is the one exception: its foreground and background hooks act on later transitions only, and its
++     * views are built on demand by the engine (ExpoViews.kt in modules/svelte-engine).
++     * Anything not listed (dev menu, other custom modules...) stays eager.
++     */
++    private val LAZY_MODULE_NAMES = mapOf(
++      "expo.modules.application.ApplicationModule" to "ExpoApplication",
++      "expo.modules.asset.AssetModule" to "ExpoAsset",
++      "expo.modules.constants.ConstantsModule" to "ExponentConstants",
++      "expo.modules.fetch.ExpoFetchModule" to "ExpoFetchModule",
++      "expo.modules.crypto.CryptoModule" to "ExpoCrypto",
++      "expo.modules.crypto.aes.AesCryptoModule" to "ExpoCryptoAES",
++      "expo.modules.filesystem.FileSystemModule" to "FileSystem",
++      "expo.modules.filesystem.legacy.FileSystemLegacyModule" to "ExponentFileSystem",
++      "expo.modules.font.FontLoaderModule" to "ExpoFontLoader",
++      "expo.modules.font.FontUtilsModule" to "ExpoFontUtils",
++      "expo.modules.imagepicker.ImagePickerModule" to "ExponentImagePicker",
++      "expo.modules.keepawake.KeepAwakeModule" to "ExpoKeepAwake",
++      "expo.modules.localization.LocalizationModule" to "ExpoLocalization",
++      "expo.modules.securestore.SecureStoreModule" to "ExpoSecureStore",
++      "expo.modules.splashscreen.SplashScreenModule" to "ExpoSplashScreen",
++      "expo.modules.svelteengine.SvelteEngineModule" to "SvelteEngine",
++      "expo.modules.svelteupdates.SvelteUpdatesModule" to "SvelteUpdates",
++      "expo.modules.systemui.SystemUIModule" to "ExpoSystemUI",
++      "expo.modules.video.VideoModule" to "ExpoVideo",
++      "expo.modules.viewbench.ViewBenchModule" to "ViewBench"
++    )
++
++    /**
++     * Lazy modules that must exist when `postOnCreate` sends `MODULE_CREATE`: Localization sets the RTL flags in its
++     * `OnCreate`, before JavaScript reads them.
++     */
++    private val STARTUP_MODULE_NAMES = listOf("ExpoLocalization")
++
++    /**
++     * Prewarmed modules whose JavaScript object stays lazy. `NativeModulesProxy` exports the constants of
++     * `NativeUnimoduleProxy.getConstants()`, and that call installs the JSI interop, which only the JavaScript thread may do.
++     */
++    private val DEFINITION_ONLY_MODULE_NAMES = setOf("NativeModulesProxy")
++
++    /**
++     * Lazy modules the app touches before its first frame, in the order its JavaScript reaches them. The ones
++     * only some screens import (crypto, file system, fetch) come last.
++     */
++    private val PREWARM_MODULE_NAMES = listOf(
++      "ExpoLocalization",
++      "NativeModulesProxy",
++      "ExpoModulesCoreJSLogger",
++      "ExponentConstants",
++      "ExpoSecureStore",
++      "ExpoApplication",
++      "SvelteUpdates",
++      "SvelteEngine",
++      "ExpoSplashScreen",
++      "ExpoCryptoAES",
++      "FileSystem",
++      "ExpoFetchModule"
++    )
++  }
+ }
+diff --git a/android/src/main/java/expo/modules/kotlin/jni/JSIContext.kt b/android/src/main/java/expo/modules/kotlin/jni/JSIContext.kt
+index 148a85e735122a21156b26b37f041c62ee6f1310..09da51082be5cb7abcc0f28ff4c7e820849feee7 100644
+--- a/android/src/main/java/expo/modules/kotlin/jni/JSIContext.kt
++++ b/android/src/main/java/expo/modules/kotlin/jni/JSIContext.kt
+@@ -82,10 +82,17 @@ class JSIContext @DoNotStrip internal constructor(
+     val runtime = runtimeHolder.get() ?: return null
+     val appContext = runtime.appContext ?: return null
+ 
+-    val classDefinition = appContext.registry
++    fun findClass() = appContext.registry
+       .asSequence()
+       .flatMap { it.definition.classData }
+       .firstOrNull { it.constructor.ownerType?.jClass == nativeClass }
++
++    val classDefinition = findClass()
++      ?: run {
++        // Lazily registered modules (expo.modules.lazy) may own the class: instantiate them and retry.
++        appContext.registry.moduleNames().forEach { appContext.registry.getModuleHolder(it) }
++        findClass()
++      }
+       ?: return null
+ 
+     val decorator = JSDecoratorsBridgingObject(runtime.deallocator)
+@@ -120,7 +127,7 @@ class JSIContext @DoNotStrip internal constructor(
+   @Suppress("unused")
+   @DoNotStrip
+   fun getJavaScriptModulesName(): Array<String> {
+-    return runtimeHolder.get()?.appContext?.registry?.registry?.keys?.toTypedArray()
++    return runtimeHolder.get()?.appContext?.registry?.moduleNames()?.toTypedArray()
+       ?: emptyArray()
+   }
+ 
+diff --git a/android/src/main/java/expo/modules/kotlin/runtime/MainRuntime.kt b/android/src/main/java/expo/modules/kotlin/runtime/MainRuntime.kt
+index bb88e7c3f4f9bda3ce4400b0a683faf33b76bb0e..deca7346a26e3e39f6161c736224857a90863f84 100644
+--- a/android/src/main/java/expo/modules/kotlin/runtime/MainRuntime.kt
++++ b/android/src/main/java/expo/modules/kotlin/runtime/MainRuntime.kt
+@@ -61,7 +61,7 @@ class MainRuntime(
+    *
+    * Note: in current implementation this module won't receive any events.
+    */
+-  internal val coreModule = run {
++  internal val coreModule by lazy {
+     val module = CoreModule()
+     module._appContextHolder = appContextHolder
+     ModuleHolder(module, null)
+diff --git a/src/NativeViewManagerAdapter.native.tsx b/src/NativeViewManagerAdapter.native.tsx
+index 8d31011024a07fd908d97b817e7072078ef5f92e..4572d3d120f2c5037cca00de16a73bc55821650f 100644
+--- a/src/NativeViewManagerAdapter.native.tsx
++++ b/src/NativeViewManagerAdapter.native.tsx
+@@ -6,7 +6,6 @@
+ 
+ import { type Component, type ComponentType, createRef, PureComponent } from 'react';
+ import { type ReactNativeElement, findNodeHandle, type HostComponent } from 'react-native';
+-import { get as componentRegistryGet } from 'react-native/Libraries/NativeComponent/NativeComponentRegistry';
+ 
+ import { SharedObject } from './SharedObject';
+ import { requireNativeModule } from './requireNativeModule';
+@@ -55,6 +54,11 @@ function requireNativeComponent<Props>(
+     ? `ViewManagerAdapter_${moduleName}_${viewName}${viewNameSuffix}`
+     : `ViewManagerAdapter_${moduleName}${viewNameSuffix}`;
+ 
++  // Required on the first native view instead of at import: loading the registry evaluates `getNativeComponentAttributes`
++  // and `UIManager`, which an app that renders no Expo native view never needs.
++  const { get: componentRegistryGet } =
++    require('react-native/Libraries/NativeComponent/NativeComponentRegistry') as typeof import('react-native/Libraries/NativeComponent/NativeComponentRegistry');
++
+   return componentRegistryGet<Props>(nativeViewName, () => {
+     const expoViewConfig = globalThis.expo?.getViewConfig(moduleName, viewName);
+ 

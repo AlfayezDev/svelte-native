@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import type { NativeAnimatedViewProps } from "../animated-host.ts";
-  import Host from "./Host.svelte";
+  import type { NativeAnimatedViewProps } from "../elements.d.ts";
+  import { createNativeProps } from "../native-props.ts";
   let { children, ...attributes }: Omit<NativeAnimatedViewProps, "children"> & { children?: Snippet } = $props();
+  const resolveProps = createNativeProps();
 </script>
-<Host name="native-animated-view" {attributes}>{@render children?.()}</Host>
+<native-animated-view nativeProps={resolveProps(attributes)}>{@render children?.()}</native-animated-view>

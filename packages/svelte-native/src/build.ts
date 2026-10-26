@@ -2,9 +2,31 @@ import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve, sep } from "node:path";
+import type { parse as parseSvelte } from "svelte/compiler";
 
 const require = createRequire(import.meta.url);
 const posix = (path: string) => path.split(sep).join("/");
+
+/**
+ * A page's `presentation` (`"push"` unless its module script exports `const presentation` as one of the five screen presentations). The route
+ * table carries it so a screen's container is built before the page's modules load, which makes it a literal read here.
+ */
+const PRESENTATIONS = new Set(["push", "modal", "transparentModal", "sheet", "formSheet"]);
+type RoutePresentation = "push" | "modal" | "transparentModal" | "sheet" | "formSheet";
+
+function presentationOf(parse: typeof parseSvelte, file: string, source: string): RoutePresentation {
+  const { module } = parse(source, { modern: true, filename: file });
+  for (const statement of module?.content.body ?? []) {
+    if (statement.type !== "ExportNamedDeclaration") continue;
+    const declarations = statement.declaration?.type === "VariableDeclaration" ? statement.declaration.declarations : [];
+    const declared = declarations.find((declaration) => declaration.id.type === "Identifier" && declaration.id.name === "presentation");
+    const init = declared?.init;
+    if (init?.type === "Literal" && typeof init.value === "string" && PRESENTATIONS.has(init.value)) return init.value as RoutePresentation;
+    const aliased = statement.specifiers.some((specifier) => specifier.exported.type === "Identifier" && specifier.exported.name === "presentation");
+    if (declared || aliased) throw new Error(`${file}: export \`presentation\` as one of the literals "push", "modal", "transparentModal", "sheet", "formSheet"; the route table reads it at build time`);
+  }
+  return "push";
+}
 
 export async function syncNative(root: string): Promise<void> {
   const routesRoot = resolve(root, "src/routes");
@@ -23,26 +45,40 @@ export async function syncNative(root: string): Promise<void> {
   });
   const output = resolve(root, ".svelte-native");
   await mkdir(output, { recursive: true });
-  const imported: string[] = [];
+  // The compiler is large; every Expo command that reads the app's config loads this module, so it is imported only here.
+  const { parse } = await import("svelte/compiler");
   const routeRows: string[] = [];
-  for (const [index, file] of pages.entries()) {
+  for (const file of pages) {
     const id = posix(relative(routesRoot, dirname(file)));
     const path = `/${id.split("/").filter((part) => !part.startsWith("(")).join("/")}`;
-    imported.push(`import * as page${index} from ${JSON.stringify(posix(relative(output, file)))};`);
     const ancestors = id.split("/");
-    const layouts: string[] = [];
+    const modules = [file];
     for (let depth = 1; depth <= ancestors.length; depth++) {
       const layout = resolve(routesRoot, ...ancestors.slice(0, depth), "+layout.mobile.svelte");
-      if (files.includes(layout)) {
-        const name = `layout${index}_${depth}`;
-        imported.push(`import ${name} from ${JSON.stringify(posix(relative(output, layout)))};`);
-        layouts.push(name);
-      }
+      if (files.includes(layout)) modules.push(layout);
     }
-    routeRows.push(`{ id: ${JSON.stringify(id)}, path: ${JSON.stringify(path)}, component: page${index}.default, layouts: [${layouts}], presentation: 'presentation' in page${index} && page${index}.presentation === 'modal' ? 'modal' : 'push' }`);
+    const [page, ...layouts] = modules.map((target) => `require(${JSON.stringify(posix(relative(output, target)))}).default`);
+    const presentation = presentationOf(parse, file, await readFile(file, "utf8"));
+    routeRows.push(`  {
+    id: ${JSON.stringify(id)}, path: ${JSON.stringify(path)}, presentation: ${JSON.stringify(presentation)},
+    load: async () => ({ component: ${page}, layouts: [${layouts.join(", ")}] }),
+  }`);
   }
-  const manifest = `${imported.join("\n")}\nimport type { NativeRoute } from '@rasheed/svelte-native/router';\nexport const routes: NativeRoute[] = [\n${routeRows.join(",\n")}\n];\n`;
-  const entry = `import '@rasheed/svelte-native/polyfills';\nimport { registerRootComponent } from 'expo';\nimport { createNativeApp } from '@rasheed/svelte-native/host';\nimport App from '../src/routes/+layout.mobile.svelte';\nimport { routes } from './routes';\nregisterRootComponent(createNativeApp(App, { routes }));\n`;
+  // Each route is a loader whose `require`s run when it is called, so a screen's modules (and whatever they import) evaluate when the
+  // screen is first needed, not at boot. A `require` rather than `import()` keeps the page in the entry's module graph, which is
+  // what lets a hot update of a page reach the entry's accept handler; `import()` would make Metro's development server serve it as a
+  // separate bundle with no importer to accept the update. Metro's release export has a single bundle either way.
+  const manifest = `import type { NativeRoute } from '@rasheed/svelte-native/router';\n\nexport const routes: NativeRoute[] = [\n${routeRows.join(",\n")}\n];\n`;
+  // The entry boots the app layout with the generated routes; SVELTE_NATIVE_ROOT=<path> renders that component as the root
+  // instead (the lab's spike roots).
+  const customRoot = process.env.SVELTE_NATIVE_ROOT;
+  const prelude = "import '@rasheed/svelte-native/init';\nimport '@rasheed/svelte-native/polyfills';\nimport { createFabricApp, remountSurfaces } from '@rasheed/svelte-native/fabric';\n";
+  // In development the entry accepts every hot update itself (see `fabric/hmr.ts`): Metro re-runs the edited module and its importers up to
+  // here, which re-registers the app, and the handler remounts the running surfaces.
+  const hot = "declare const module: { hot?: { accept(callback?: () => void): void } };\nif (__DEV__) module.hot?.accept(() => remountSurfaces());\n";
+  const entry = customRoot
+    ? `${prelude}import App from ${JSON.stringify(posix(relative(output, resolve(root, customRoot))))};\ncreateFabricApp(App, {});\n${hot}`
+    : `${prelude}import App from '../src/routes/+layout.mobile.svelte';\nimport { routes } from './routes';\ncreateFabricApp(App, { routes });\n${hot}`;
   for (const [file, content] of [["routes.ts", manifest], ["entry.ts", entry]]) {
     const destination = resolve(output, file);
     const current = await readFile(destination, "utf8").catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return ""; throw error; });

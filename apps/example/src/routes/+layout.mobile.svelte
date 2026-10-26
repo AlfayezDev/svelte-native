@@ -6,7 +6,6 @@
   import mediumFont from "../../assets/native/fonts/IBMPlexSansArabic-Medium.ttf";
   import semiboldFont from "../../assets/native/fonts/IBMPlexSansArabic-SemiBold.ttf";
   import * as v from "valibot";
-  import NativeSession from "#lib/native/Session.svelte";
   import Page from "#lib/native/components/Page.svelte";
   import Button from "#lib/native/components/Button.svelte";
   import Notice from "#lib/native/components/Notice.svelte";
@@ -14,6 +13,9 @@
   import type { NativeConfiguration } from "#lib/native/session.svelte.ts";
   let { routes }: { routes: NativeRoute[] } = $props();
   let configuration = $state<NativeConfiguration | null>(null);
+  // The session (SpacetimeDB client, effect, the account screens) is only needed once the configuration is in; loading it
+  // after that keeps its module evaluation off the first paint.
+  let NativeSession = $state<typeof import("#lib/native/Session.svelte").default | null>(null);
   let error = $state<string>();
   $effect(syncStatusBar);
   const schema = v.object({ uri: v.pipe(v.string(), v.url()), databaseName: v.pipe(v.string(), v.nonEmpty()) });
@@ -28,7 +30,8 @@
         "IBMPlexSansArabic-Medium": mediumFont,
         "IBMPlexSansArabic-SemiBold": semiboldFont,
       });
-      if (!signal?.aborted) configuration = config;
+      const session = (await import("#lib/native/Session.svelte")).default;
+      if (!signal?.aborted) { NativeSession = session; configuration = config; }
     } catch (cause) {
       if (signal?.aborted) return;
       console.error("[native startup]", cause);
@@ -43,7 +46,7 @@
   });
 </script>
 <svelte:boundary {failed}>
-  {#if configuration}
+  {#if configuration && NativeSession}
     <NativeSession {configuration} {routes} />
   {:else}
     <Page title="Rasheed">

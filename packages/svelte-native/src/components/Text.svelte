@@ -1,7 +1,9 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
+  import type {} from "../elements.d.ts";
+  import { createNativeProps } from "../native-props.ts";
   import type { TextProps } from "react-native";
-  import Host from "./Host.svelte";
   let { children, ...attributes }: Omit<TextProps, "children"> & { children?: Snippet } = $props();
+  const resolveProps = createNativeProps();
 </script>
-<Host name="native-text" {attributes}>{@render children?.()}</Host>
+<native-text nativeProps={resolveProps(attributes)}>{@render children?.()}</native-text>

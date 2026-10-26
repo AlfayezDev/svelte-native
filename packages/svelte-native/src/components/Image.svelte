@@ -1,6 +1,8 @@
 <script lang="ts">
+  import type {} from "../elements.d.ts";
+  import { createNativeProps } from "../native-props.ts";
   import type { ImageProps } from "react-native";
-  import Host from "./Host.svelte";
-  let attributes: ImageProps = $props();
+  let { ...attributes }: ImageProps = $props();
+  const resolveProps = createNativeProps();
 </script>
-<Host name="native-image" {attributes} />
+<native-image nativeProps={resolveProps(attributes)}></native-image>

@@ -1,4 +1,4 @@
-import { Appearance } from "react-native";
+import * as Appearance from "react-native/Libraries/Utilities/Appearance";
 import { setStatusBarStyle } from "expo-status-bar";
 import * as SecureStore from "expo-secure-store";
 import { getLocales } from "expo-localization";

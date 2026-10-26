@@ -1,0 +1,94 @@
+import { describe, expect, test } from "bun:test";
+import { parseSoakSamples, soakPhaseOf } from "../soak/log.ts";
+import { parseMeminfo } from "../soak/meminfo.ts";
+import { sample } from "./sample.ts";
+
+describe("parseMeminfo", () => {
+	test("reads the heaps, the totals and the object counts of a captured dumpsys meminfo", () => {
+		expect(parseMeminfo(sample("dumpsys-meminfo.txt"))).toEqual({
+			pid: 4197,
+			nativePssKb: 83706,
+			nativeAllocKb: 68394,
+			nativeSizeKb: 103664,
+			dalvikPssKb: 11096,
+			dalvikAllocKb: 6694,
+			totalPssKb: Number(/^\s*TOTAL\s+(\d+)\s/m.exec(sample("dumpsys-meminfo.txt"))?.[1]),
+			views: 233,
+			viewRootImpls: 1,
+			activities: 1,
+			appContexts: 5,
+		});
+	});
+	test("no process is null, not zero", () => {
+		expect(parseMeminfo("No process found for: io.rasheed.svelteqa\n")).toBeNull();
+	});
+	test("an output this parser does not know throws instead of reading as zero growth", () => {
+		expect(() =>
+			parseMeminfo("Applications Memory Usage (in Kilobytes):\n\n** MEMINFO in pid 5 [x] **\n"),
+		).toThrow("unrecognized dumpsys meminfo output");
+	});
+});
+
+describe("parseSoakSamples", () => {
+	const samples = parseSoakSamples(sample("soak-run.log"));
+	test("every [Svelte soak] line becomes a sample, in log order", () => {
+		expect(samples).toHaveLength(26);
+		expect([samples[0]?.phase, samples[0]?.cycle, samples[0]?.t]).toEqual(["start", 0, 0]);
+		expect(samples.map((entry) => entry.t)).toEqual(
+			[...samples.map((entry) => entry.t)].sort((a, b) => a - b),
+		);
+	});
+	test("the heap and the engine counts come through as numbers", () => {
+		const start = samples[0];
+		expect(start?.heap).toEqual({
+			allocated: 8905720,
+			heapSize: 12582912,
+			malloc: 0,
+			va: 12582912,
+			gcs: 4,
+		});
+		expect(start?.engine?.alive).toBe(90);
+		expect(start?.engine?.lateWrites).toBe(48);
+		expect(start?.engine?.staleWrites).toBe(0);
+	});
+	test("the idle windows carry the collection that preceded them", () => {
+		const baseline = samples.filter((entry) => entry.phase === "baseline");
+		const final = samples.filter((entry) => entry.phase === "final");
+		expect(baseline).toHaveLength(3);
+		expect(final).toHaveLength(3);
+		expect([...baseline, ...final].every((entry) => entry.collected === "gc")).toBe(true);
+		expect(
+			samples
+				.filter((entry) => entry.phase === "sample")
+				.every((entry) => entry.collected === null),
+		).toBe(true);
+	});
+	test("a line cut off by logcat throws, a sample missing from the series must never go unnoticed", () => {
+		const line = sample("soak-run.log").split("\n")[0] ?? "";
+		expect(() => parseSoakSamples(line.slice(0, line.length - 40))).toThrow(
+			"malformed [Svelte soak] line",
+		);
+	});
+	test("a payload without the expected fields throws", () => {
+		const line = `10-26 08:58:33.538  4197  4219 I ReactNativeJS: '[Svelte soak]', '{"phase":"later","cycle":0,"t":0}'`;
+		expect(() => parseSoakSamples(line)).toThrow("unexpected [Svelte soak] payload");
+	});
+	test("lines of other tags are ignored", () => {
+		expect(
+			parseSoakSamples(
+				"10-26 08:58:33.538  4197  4219 I ReactNativeJS: '[Svelte stress] complete', '{}'",
+			),
+		).toEqual([]);
+	});
+});
+
+describe("soakPhaseOf", () => {
+	test("reads the phase without parsing the payload", () => {
+		expect(soakPhaseOf(`'[Svelte soak]', '{"phase":"baseline","cycle":2}'`)).toBe("baseline");
+		expect(soakPhaseOf(`'[Svelte soak]', '{"phase":"final","cycle":9}'`)).toBe("final");
+	});
+	test("other messages and unknown phases are null", () => {
+		expect(soakPhaseOf(`'[Svelte stress]', '{"phase":"final"}'`)).toBeNull();
+		expect(soakPhaseOf(`'[Svelte soak]', '{"phase":"other"}'`)).toBeNull();
+	});
+});

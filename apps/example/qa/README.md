@@ -1,0 +1,351 @@
+# native-qa
+
+The Svelte Native QA harness. It builds the QA app, runs the lab (28 functional checks plus the stress scenarios) and the boot runner on a device, merges what it measured into `report.json`, and judges that report against the production bar in `gates.json`. `gates` exits non-zero on any miss.
+
+```
+pnpm native-qa build  [--abi x86_64|arm64-v8a] [--prebuild]
+pnpm native-qa lab    --device <serial> [--apk <path> | --no-install] [--dexopt profile|none] [--repeat <n>] [--run checks,quick] [--timeout <s>]
+pnpm native-qa boot   --device <serial> [--apk <path> | --no-install] [--dexopt profile|none] [--warm <n>] [--cold <n>] [--idle <s>]
+pnpm native-qa soak   --device <serial> [--apk <path> | --no-install] [--minutes 10] [--interval <s>] [--parts <names>]
+pnpm native-qa crashes --device <serial> [--apk <path> | --no-install] [--starts 1000] [--suites 100] [--idle <s>] [--map <file>] [--symbols <dir>]
+pnpm native-qa symbolicate [--input <logcat file>] [--map <file>] [--symbols <dir>] [--abi x86_64] [--all]
+pnpm native-qa parity     --device <serial> [--apk <path> | --no-install] [--update | --missing] [--quick] [--filter <screen>]
+pnpm native-qa a11y       --device <serial> [--apk <path> | --no-install] [--quick] [--filter <screen>]
+pnpm native-qa resilience --device <serial> [--apk <path> | --no-install] [--rotations <n>] [--cycles <n>] [--rounds <n>]
+pnpm native-qa report
+pnpm native-qa gates  [--platform android|ios] [--all]
+pnpm native-qa:emulator     # build, lab x10, boot 30 warm + 30 cold, report, gates (android) on localhost:5555
+pnpm native-qa:suites       # parity, a11y and resilience on localhost:5555, then report (see "Parity, accessibility, resilience")
+pnpm native-qa:test         # bun test qa
+pnpm native-qa:typecheck    # tsc -p qa
+```
+
+Node 25 runs the TypeScript directly (`node qa/native-qa.ts`). Bun is only needed for the tests. Prerequisites for `build` are the Android SDK, JDK 17 and the repo's `pnpm install`; `lab` and `boot` need `adb` and `flock`.
+
+## Devices and locks
+
+`--device` is required for `lab` and `boot`; nothing defaults to a phone or a Mac. Serials that reach the shared OVH emulator (`localhost:<port>`, `127.0.0.1:<port>`, `emulator-<n>`) make the command re-run itself under `flock /tmp/svelte-qa-emulator.lock`, so it waits while another agent or job holds the emulator. `build` always runs under `flock /tmp/svelte-qa-gradle.lock`. If the tunnel is down: `ssh -f -N -L 5555:127.0.0.1:5555 ovh-root && adb connect localhost:5555`.
+
+## Dexopt
+
+`adb install` leaves an app at dexopt `verify`: everything runs in ART's interpreter until the JIT warms it up, which is not what a store install ships. After every install the harness does what the store does — installs the APK's baseline profile (`am broadcast -a androidx.profileinstaller.action.INSTALL_PROFILE -n <package>/androidx.profileinstaller.ProfileInstallReceiver`) and compiles against it (`cmd package compile -m speed-profile -f`), printing the broadcast result (1 installed, 2 already there) and the resulting dexopt status. `--dexopt none` skips it to measure the verify-only state; `--no-install` never touches it. The profile itself comes from the svelte-native Expo plugin (`baseline-prof.txt`: the engine and the updates module).
+
+## Commands
+
+**build** runs `svelte-native sync`, runs `expo prebuild --platform android --no-install` when `apps/platform/android` is missing or older than `app.config.ts`, `package.json`, the svelte-native Expo plugin or a module's `expo-module.config.json` (or with `--prebuild`), then `./gradlew :app:assembleRelease -PreactNativeArchitectures=<abi>` with the memory settings from the build recipe. The APK is copied to `qa/out/app-<abi>.apk` and described in `qa/out/build-<abi>.json` (size, sha256, commit, whether the tree was dirty). Gradle output goes to `qa/out/build-<abi>.log`. `EXPO_PUBLIC_API_URL` defaults to `https://dev.qarnos.com`.
+
+**lab** installs the APK (`--apk`, else `qa/out/app-<abi>.apk` for the device's ABI if present, else the app already installed is measured as it is; `--no-install` never installs), then repeats `--repeat` times: force-stop, clear logcat, open `rasheed-svelte:///__dev?run=checks,quick`, follow logcat until the lab logs `[Svelte stress] complete` (or `--timeout` seconds pass), force-stop. The full logcat of each run is kept in `qa/runs/lab-<device>-<stamp>-<n>.log`; the parsed run goes to `qa/runs/lab-<device>-<stamp>.json`. A lab that hangs or crashes is recorded as incomplete, not as an error of the tool.
+
+**boot** installs the same way and then measures `--warm` warm and `--cold` cold launches (30 each by default, the production sample size). Per launch it clears logcat, runs `am start -W -n <package>/.MainActivity`, waits for `Displayed` and the `[Svelte boot]` line, and parses logcat. Results go to `qa/runs/boot-<device>-<stamp>.json` and a filtered log (`Start proc`, `Displayed`, `Running "main"`, `[Svelte boot]`, engine lines, faults) to `qa/runs/boot-<device>-<stamp>.log`.
+
+**report** takes the newest lab run and the newest boot run of each device, computes the flat metrics, evaluates every gate and writes `qa/report.json`. It prints a per-device summary and the gate table. It warns when a device's lab and boot runs measured different installed builds (sha256 of the installed `base.apk`) or different commits.
+
+**gates** evaluates `gates.json` against the metrics in `report.json` (so editing a bar needs no new measurement), prints the table (wildcard gates collapsed to their worst value; `--all` prints every row) and exits 1 unless every row passed. `--platform android` judges only the Android bars, which is what the emulator lane does. A gate nobody measured is `not measured`, and `not measured` fails.
+
+## Boot definitions
+
+Both are processes started from nothing: `am force-stop` kills the app first, so `Start proc` is always in the log. The distance of each from a real first launch after install or reboot is stated, not hidden.
+
+- **warm**: `am force-stop`, a 1.5 s pause, `am start`. The previous launch ran seconds earlier, so the page cache and the dex and oat files are hot.
+- **cold**: Settings is brought to the front, the app is killed with `am force-stop`, the device idles `--idle` seconds (default 20), then the app is launched. Nothing is cleared (a `pm clear` would also delete the session and make every launch a first-run launch), and a stock emulator or phone cannot drop the page cache, so this is a process-cold, idle-gap launch, not a power-cycle launch. It captures what a user sees after the app has been out of the foreground and swapped out for a while.
+
+The number gated is `Displayed` minus `Start proc`, both timestamps from the activity manager's lines in `logcat -v threadtime`, so it contains the zygote fork, the native host and the JavaScript. `am start -W` `TotalTime`, the system's own `Displayed ... +NNNms`, `Start proc` to `Running "main"` and the `[Svelte boot]` JavaScript total are recorded next to it (`boot.<kind>.totalTime.p90`, `.runningMain.p90`, `.jsTotal.p90`). p90 is nearest rank: with 30 samples it is the 27th smallest.
+
+## Where every number comes from
+
+| Metric              | logcat line                                                                                                                                                                | Parser                 |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
+| boot display        | `ActivityManager: Start proc <pid>:<package>/...` and `ActivityTaskManager: Displayed <package>/.MainActivity ...: +NNNms`                                                 | `parseLaunchMarkers`   |
+| boot JS marks       | `ReactNativeJS: [Svelte boot] init 1 · polyfills 2 · ... · total 321 ms`                                                                                                   | `parseSvelteBoot`      |
+| checks              | `'[native lab results]', '{"phase":"checks",...,"checks":[{"name":...,"passed":true},...]}'`, counted entry by entry because logcat cuts a line near 4 KB                  | `parseLabChecks`       |
+| frames per scenario | `'[Svelte stress]', '{"name":...,"verdict":...,"frames":{"periodMs":...,"max":...,"droppedPct":...}}'`                                                                     | `parseStressScenarios` |
+| list mount          | the `detail.mountMs` of the `list-300-virtual` scenario line                                                                                                               | `parseStressScenarios` |
+| lab completion      | `'[Svelte stress] complete', '{"periodMs":...,"results":[{"name":...,"verdict":...}]}'`                                                                                    | `parseStressComplete`  |
+| fatals              | `AndroidRuntime: FATAL EXCEPTION` followed by `Process: <package>`, `F libc: Fatal signal` for the package's process, `ANR in <package>`, a JavaScript fatal (`BridgelessReact: ...handleHostException(message = "..."`: a release build then destroys the React host and the process stays alive and blank, with no `FATAL EXCEPTION`), and every `E ReactNativeJS` line | `findFaults`           |
+| engine warnings     | `W` and `E` lines with the tag `SvelteEngine`                                                                                                                              | `findEngineWarnings`   |
+
+A scenario line cut by logcat, or a malformed one, throws instead of dropping the scenario (the raw log is already saved). A scenario the lab announced in its completion line but that has no frame data becomes a `null` metric, which is `not measured`.
+
+## Metrics and gates
+
+`report.json` holds one flat map of numbers per device (`devices.<serial>.metrics`). Across repeated lab runs a metric is the worst run (largest drop rate, smallest checks count); a scenario missing from any run is `null`.
+
+| Metric                                                         | Meaning                                                                              |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `boot.{warm,cold}.{samples,attempts,min,p50,p90,max}`          | `Displayed` minus `Start proc`, ms; `samples` counts launches that produced the pair |
+| `boot.{warm,cold}.{runningMain,totalTime,jsTotal}.p90`         | the side measurements named above                                                    |
+| `lab.runs`, `lab.incompleteRuns`                               | complete and incomplete lab runs                                                     |
+| `lab.checks.{passed,failed}`                                   | functional checks                                                                    |
+| `lab.scenarios.failed`                                         | scenarios the lab itself marks `fail`                                                |
+| `frames.<scenario>.{droppedPct,maxMs,maxPeriodRatio,periodMs}` | per scenario; ratio is the longest interval over the frame period                    |
+| `list.virtual300.mountMs`                                      | 300-row virtual list, mount to layout                                                |
+| `log.fatals`, `log.engineWarnings`                             | counted over every lab run and every boot launch                                     |
+| `memory.heapGrowthPct`, `memory.leakedViews`, `memory.deadTagWrites`, `soak.*`, `crashes.*` | written by the soak and crash runners, see "Soak and crashes"        |
+
+`gates.json` is the production bar of `packages/svelte-native/PLAN.md`:
+
+```json
+{
+	"id": "boot.warm.p90",
+	"title": "Warm boot p90, Start proc to Displayed",
+	"unit": "ms",
+	"metric": "boot.warm.p90",
+	"bar": { "android": { "max": 350 }, "ios": { "max": 250 } }
+}
+```
+
+`bar` maps a platform to `max`, `min` or both, with an optional `round` (decimals the measured value is rounded to before comparing; `droppedPct` uses 1, so 0.04 % reads as the lab prints it, 0.0 %). A gate is judged for every device of each platform it names. A platform with no device in the report (today: iOS) and a metric a device never produced are `not measured`, which fails. `*` in `metric` matches one name segment and yields one row per match (`frames.*.droppedPct` is one row per scenario).
+
+To add a gate:
+
+1. Make the measurement a metric: add it in `lib/metrics.ts` from the run files (or have the new runner write it into a run file in the same schema) and give it a key.
+2. Add an entry to `gates.json` with that key and a bar per platform. A bar whose metric no runner writes yet is allowed and shows up as `not measured`.
+3. Add a case to `test/metrics.test.ts` or `test/gates.test.ts`, and run `pnpm native-qa:test`.
+
+A new runner for another device (the iPhone) only has to write `qa/runs/<kind>-<device>-<stamp>.json` in the schema of `lib/types.ts` (`LabFile`, `BootFile`, `SoakFile`, `CrashesFile`) with `device.platform` set; `report` picks the newest of each kind (`runKinds` in `lib/runs.ts`) per device.
+
+## Soak and crashes
+
+PLAN.md step 8: the heap, the views and the crash count over time. Three commands, one run-file kind each, merged by `report` like the lab and the boot run (the newest `soak-*.json` and `crashes-*.json` of each device).
+
+```
+pnpm native-qa soak    --device localhost:5555 --apk qa/out/app-x86_64.apk [--minutes 10] [--interval 5] [--parts churn,nav]
+pnpm native-qa crashes --device localhost:5555 --apk qa/out/app-x86_64.apk [--starts 1000] [--suites 100] [--idle 2] [--chunk 300] [--resume] [--inject-crash --suites 0]
+pnpm native-qa symbolicate --input qa/runs/crashes-localhost_5555-<stamp>.log [--all]
+```
+
+Both runners take the same lock as `lab` and `boot` for their whole run, install the APK the same way (`--apk`, `--no-install`, `--dexopt`) and accept `--package`.
+
+### soak
+
+`native-qa soak` opens the lab as `rasheed-svelte:///__dev?run=soak-mix-<seconds>s`. Its `soak-mix` scenario (`src/lib/native/dev/Stress.svelte`) repeats one cycle until the requested time is up (the first two cycles are the warm-up and count in it):
+
+1. 6 s of animated churn (32 Reanimated tiles replaced every 250 ms, the cleanup check of `churn-60s`),
+2. two push/pop of a 60-row screen,
+3. two modal open/close,
+4. one sheet open/close,
+5. two native-header screens pushed and popped,
+6. a 300-row windowed list mounted, scrolled to the end and back, unmounted,
+7. three tab switches.
+
+About 28 s per cycle on the emulator. After the second cycle and after the last one everything is unmounted and the app idles for about 8 s: that is the **baseline** and the **final** window, three samples each, each taken right after `gc()` (this Hermes build exposes it; without it the lab records `collected: null` and no JS growth is derived). In between, every 5 s, a `[Svelte soak]` line carries the same numbers without a collection.
+
+Three sources are read:
+
+| Source | What | Where it comes from |
+| --- | --- | --- |
+| lab, JS heap | `allocated`, `heapSize`, `malloc`, `va`, `gcs` | `HermesInternal.getInstrumentedStats()`, logged by the lab as `[Svelte soak]` |
+| lab, engine | `alive` (engine views mounted under a React tag), `pooled`, `held`, `created`, `deleted`, and the animated-write classes `lateWrites`, `staleWrites`, `replayedWrites`, `expiredWrites`, `overflowWrites`, `earlyPending` | `SvelteEngine.stats()` (`MountingManager.stats()`, SPEC "Stats for the soak runner") |
+| host, process | Native Heap Pss / Heap Alloc / Heap Size, Dalvik Heap Pss / Alloc, total Pss, `Views`, `ViewRootImpl`, `Activities`, `AppContexts` | `adb shell dumpsys meminfo <package>`, every `--interval` seconds and once per window sample the lab announces (`parseMeminfo`) |
+
+`--parts churn,static,nav,modal,sheet,header,list,tabs` runs only the named parts of the cycle (`static` is plain view churn, off by default), to find where a growth comes from; such a run is written as `partsoak-<device>-<stamp>.json`, which `report` never reads, so a bisect cannot stand in for the full soak.
+
+`qa/runs/soak-<device>-<stamp>.json` keeps the raw series (`js`, `memory`), the faults seen, and the `metrics` derived from them (`report` derives them again from the series, so editing the derivation needs no new run); the full logcat is `soak-<device>-<stamp>.log`.
+
+| Metric | Definition |
+| --- | --- |
+| `memory.heapGrowthPct` | the worse of `memory.js.growthPct` (Hermes `allocated`) and `memory.native.growthPct` (`Native Heap` Heap Alloc, the live malloc bytes: a leak raises it, arena slack does not), final window over baseline window, medians of three. Not derived (null, so `not measured`) when either window is missing or a JS sample was not collected |
+| `memory.native.pssGrowthPct`, `memory.java.growthPct` | the same for `Native Heap` Pss and for Dalvik Heap Alloc; reported, not gated |
+| `memory.leakedViews` | engine views alive in the last final sample minus the last baseline sample (everything unmounted in both), never below 0 |
+| `memory.deadTagWrites` | `staleWrites + expiredWrites + overflowWrites` between the start sample and the last final sample: animated writes for a tag deleted more than 1 s ago (an animation that outlives its node), never claimed by a view within 1 s, or dropped because the table of early writes was full |
+| `memory.lateTagWrites` | `lateWrites` over the same span: writes for a tag deleted a moment ago. Expected by design (SPEC "View recycling"): Reanimated drops a removed node a frame or two after the batch that deleted it. Reported, not gated |
+| `memory.androidViews.growth`, `memory.viewRootImpls`, `memory.activities` | `Views` growth between the windows, and `ViewRootImpl` and `Activities` at the end |
+| `soak.minutes` | from the lab's `start` sample to its last `final` sample, warm-up and idle windows included |
+| `soak.crashes` | crash, native signal and ANR lines of the package during the run, plus one if the process died without any |
+| `soak.complete` | 1 when the lab announced its end and the final window exists |
+
+### crashes
+
+`native-qa crashes` runs `--starts` cold starts and then `--suites` full lab suites on the same install, and writes `crashes-<device>-<stamp>.json` (rewritten every 25 starts and after every suite, and on Ctrl-C, so a run of hours is never lost) with `crashes-<device>-<stamp>.log` (the tail of the log of every failed start) and `...-suite-<n>.log` (the full logcat of each suite).
+
+A **cold start** is the boot runner's launch loop without its timing: wake, `am force-stop`, `--idle` s (default 2), `logcat -c`, `am start -W`, follow logcat (main, system, crash) until `[Svelte boot]` plus 1.5 s, then `pidof`. It **crashed** when the log has a `FATAL EXCEPTION` or a native `Fatal signal` of the package, or a JavaScript fatal (in this release build React Native logs `handleHostException` with the JS stack, destroys the React host and leaves the process alive and blank: there is no `FATAL EXCEPTION`, and only the log shows it), an **ANR** with `ANR in <package>`, and it **died** when no process is left after the boot line. A start that did none of that but printed no `[Svelte boot]` within 20 s is a start without boot. A **suite** is `lab --run checks,quick` (`labOnce`): it crashed with any crash or ANR line of the package, and is incomplete when the lab never logged its last line or its log could not be parsed (the error is stored in the suite).
+
+| Metric | Definition |
+| --- | --- |
+| `crashes.coldStarts`, `crashes.suites` | runs made (the bar is 1000 and 100) |
+| `crashes.coldStartCrashes` | starts that crashed or died |
+| `crashes.coldStartsNoBoot` | starts that hung without booting and without crashing |
+| `crashes.suiteCrashes`, `crashes.suitesIncomplete` | suites with a crash; suites that did not complete and did not crash |
+| `crashes.anrs` | ANRs over starts and suites |
+| `crashes.signatures` | distinct failures kept (at most 20) |
+
+`--resume` continues the device's newest `crashes-*.json` (same installed build required) after an emulator outage, a Ctrl-C or between the chunks of `--chunk`: the runs already measured are kept and the counts go on from there. A device that goes offline ends the run with an error instead of counting as a crash, and what was measured is written first.
+
+`--inject-crash --suites 0` is a self-test: after every launch the runner sends `am crash <package>` (a real Java crash of the app process) and writes `crashtest-<device>-<stamp>.json`, which `report` never reads. It proves that a crash is seen, classified, deduplicated into one signature with a count and symbolicated.
+
+The file holds the first 20 distinct failures as `signatures`: kind (`java`, `native`, `anr`, `death`, `no-boot`, `suite-incomplete`), title, frames, a count (the same failure again is one signature with a higher count; the key ignores pids, fault addresses, install paths and build ids) and where it was first seen.
+
+### Symbolication
+
+The release bundle is Hermes bytecode and the native libraries are stripped, so `native-qa build` keeps what is needed next to the APK (`qa/out/build-<abi>.json` records them):
+
+- `app-<abi>.bundle.map`: the composed source map React Native's Gradle plugin writes at `android/app/build/generated/sourcemaps/react/release/index.android.bundle.map` (Metro's map composed with Hermes's; one generated line, columns are bytecode offsets). No Gradle change was needed, the plugin already runs `hermesc -output-source-map` for release.
+- `app-<abi>.symbols/`: the unstripped `libsvelteengine.so` and `libreanimated.so` (our engine and Reanimated with the engine's sink) from `merged_native_libs`, before Gradle's strip step.
+
+`soak/symbolicate.ts` (also `native-qa symbolicate`) reads a logcat capture on stdin or `--input` and prints each crash of the package with its frames resolved: JavaScript frames (Hermes `at name (address at index.android.bundle:1:OFFSET)` and React Native's fatal-exception `name@1:OFFSET`) through the map with `@jridgewell/trace-mapping`, native frames through `ndk-stack -sym app-<abi>.symbols` (found from `ANDROID_NDK_HOME`, `ANDROID_HOME/ndk/<newest>` or the path). `--all` prints the whole capture with every JavaScript frame rewritten instead. The crash runner symbolicates every signature it stores the same way and warns when `qa/out/build-<abi>.json` describes another APK than the installed one; `--map` and `--symbols` point it at the files of the build that was installed. The offset convention is React Native's own (`parseHermesStack`: line 1, 0-based virtual offset).
+
+### Durations and the full run
+
+On the OVH emulator (60 Hz, software GL) a cold start takes about 5 s with its idle gap and liveness check, a suite 2.4 to 3 minutes, and a soak takes its requested time plus about 40 s (the last cycle finishes, two idle windows) and the install. The full production run is therefore
+
+```
+pnpm native-qa build --abi x86_64
+pnpm native-qa soak    --device localhost:5555 --minutes 10                  # about 13 min
+pnpm native-qa crashes --device localhost:5555 --starts 1000 --suites 100 --chunk 300   # about 1.5 h for the starts, about 4-5 h for the suites
+pnpm native-qa report && pnpm native-qa gates --platform android
+```
+
+`--chunk 300` runs the series as several commands (cold starts in steps of 300, suites in steps of 10, 20 s apart, each chunk continuing the same file with `--resume`, so the counts add up), each taking and releasing the emulator lock on its own: the OVH emulator's graphics stack (`-gpu swiftshader_indirect`) leaks about 13 MB of host memory per app launch, so a thousand launches must let the host's watchdog restart the emulator between chunks, and the other agents get the device between them. A chunk that fails stops the run with the command to continue it. Without `--chunk` the command holds the lock for the whole series; run that only when nothing else needs the device. `report` takes the newest file of each kind, so a short run made afterwards replaces a full one: the count gates (`crashes.coldStarts` 1000, `crashes.suites` 100, `soak.minutes` 10) fail for what was not run.
+
+### What the medium pass measured (26 October, OVH emulator, release x86_64 build)
+
+One 10-minute soak, 200 cold starts and 5 full suites, all on the same installed build (`s-soak4.apk`, the tree as of 12:13, baseline profile compiled).
+
+| Metric | Measured | Bar |
+| --- | --- | --- |
+| `soak.minutes` | 10.27 (130 lab samples, 131 process samples, 29 cycles) | >= 10 |
+| `memory.js.growthPct` | +0.03 % (Hermes allocated 6.05 MB at both windows) | |
+| `memory.native.growthPct` | **+25.59 %** (Native Heap Heap Alloc 63.9 MB at the baseline window, 80.3 MB at the final; Pss +21.05 %) | |
+| `memory.heapGrowthPct` | **25.59 %** (worse of the two) | <= 5 |
+| `memory.java.growthPct` | -3.98 % (Dalvik Heap Alloc 6.1 MB, 5.9 MB) | |
+| `memory.leakedViews` | 0 (95 engine views alive at both windows, 128 pooled, 0 held) | 0 |
+| `memory.androidViews.growth` | 0 (`Views` 235 at both windows; `ViewRootImpl` 1, `Activities` 1) | |
+| `memory.deadTagWrites` | 0 (`staleWrites`, `expiredWrites`, `overflowWrites` all 0 after 34,144 views were deleted) | 0 |
+| `memory.lateTagWrites` | 17,936 (about 0.5 per deleted view, 1 s grace; by design, not gated) | |
+| `soak.crashes` | 0 | 0 |
+| `crashes.coldStarts` | 200: 0 crashed or died, 0 ANR, 0 without boot | 1000 starts, 0 crashes |
+| `crashes.suites` | 5: 28/28 checks each, 141 to 142 s each, 0 crashes, 0 ANR, 0 incomplete | 100 suites, 0 crashes |
+
+The native heap is the one number that misses its bar, and the series shows a leak, not noise: with the JS heap, the Java heap, the engine's views, the pool and the Android view count all flat, the floor of `Native Heap` Heap Alloc rises by about 2 MB per minute (minimum per minute of the series: 68.5, 69.1, 70.1, 74.1, 76.2, 79.3, 81.1, 84.8, 84.7 MB), 16.4 MB over 31,000 views created and destroyed, about 520 bytes per view. It is native (C++) memory that `gc()` does not return: Fabric shadow nodes held past their unmount, the engine's C++ side, or Reanimated's native registries are the candidates. Splitting the soak into its parts (`--parts`, three minutes each) points at the animated tiles: `--parts churn` alone grew `Native Heap` Heap Alloc by 16.7 % (63.5 → 74.1 MB over 11,104 tiles created and destroyed, about 980 bytes per animated tile, with the JS heap -0.8 %, 0 leaked views and 0 dead-tag writes), about the per-tile cost the full soak implies. `--parts static` (19,600 plain views created and destroyed, no animation) stayed flat: +0.3 MB, +0.65 %. The third split (`--parts nav,modal,sheet,header,list,tabs`) was cut short when the emulator went offline during it (about 14:54, `adb logcat exited with 255`, which the runner reports as an error, not as a crash); the full soak's per-view cost (520 bytes over all views, 980 over the animated tiles that make up about two thirds of them) says the other parts add little, but that is not measured. The leak is therefore tied to animated views: roughly 1 KB of native memory per Reanimated tile that `gc()` and the unmount do not return, in Reanimated's native registries (CSS animation and keyframe registrations, shared-value and mapper bookkeeping) or in the engine's animated write path.
+
+The 200 cold starts ran as 100 and 100: the emulator host went down after start 100 (about 13:00), the runner stopped on `adb shell pidof ... device offline` instead of counting a death, and `--resume` continued from the file it had written. The cold-start loop takes about 4.8 s per start (idle gap, `am start -W`, boot line, settle, `pidof`): 1000 starts are about 80 minutes. A suite takes 141 to 142 s: 100 are about 4 hours, so the full run is about 5.5 hours of device time.
+
+Faults found on the way, both visible only through this runner. A JavaScript fatal in this release build is not a crash to Android: React Native logs `handleHostException`, destroys the React host, and the process stays alive with a blank activity (no `FATAL EXCEPTION`, no tombstone, `pidof` still finds it); `findFaults` now counts it, so lab, boot and the runners see it. And the symbolicator was checked on a real stack of such a fatal (the lab's `crash-js` scenario, `anonymous@1:3185559`): it resolves to `apps/platform/src/lib/native/dev/Stress.svelte:375:41`, the `throw` of the scenario. Native symbolication was checked with ndk-stack on a tombstone written around two real addresses of `libsvelteengine.so` (they resolve to `encodeProps` and `encodeState` in `PropsEncoder.cpp`); no native crash of the app has been seen to date.
+
+## Parity, accessibility, resilience
+
+Production step 7. Three suites drive the QA app on a device through adb, each writes one run file, and `report` merges the newest of each per device into the metrics `gates.json` judges.
+
+```
+pnpm native-qa parity     --device <serial> [--apk <path> | --no-install] [--update | --missing] [--quick] [--filter <screen>]
+pnpm native-qa a11y       --device <serial> [--apk <path> | --no-install] [--quick] [--filter <screen>]
+pnpm native-qa resilience --device <serial> [--apk <path> | --no-install] [--rotations 5] [--cycles 100] [--rounds 2]
+pnpm native-qa:suites     # all three on localhost:5555 (parity compares, it never updates), then report
+```
+
+None of them exits non-zero for a failed check; `gates` judges, as for `lab` and `boot`. They take the device flags and the emulator lock of `lab` and `boot` (`--device`, `--apk`, `--no-install`, `--dexopt`, `--package`; `flock /tmp/svelte-qa-emulator.lock` for the shared emulator, so install the build you mean with `--apk qa/out/<your copy>.apk` when other agents overwrite `qa/out/app-<abi>.apk`). `--quick` runs four variants (parity) or two (a11y), `--filter` selects the screens whose id contains the text, `--rotations`, `--cycles` and `--rounds` shorten the resilience plan; a partial run leaves the rest of the matrix counted as missing, so it cannot pass a gate.
+
+### What the suites drive
+
+`lib/screens.ts` holds the screens: one route in one state each, reachable without a signed-in session.
+
+| id                                                                                       | route                                                                 | state                         |
+| ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ----------------------------- |
+| `startup-loading`, `startup-error`                                                       | `/` while the platform configuration is pending / unreachable         | loading, error                |
+| `login`                                                                                  | `/auth/login`                                                         | ready (needs the dev backend) |
+| `dev-checks`, `dev-binding`, `dev-rows`, `dev-async`, `dev-animation`                    | `/__dev` panels                                                       | ready                         |
+| `dev-async-loading`, `dev-async-error`                                                   | `/__dev` async panel: `{#await}` pending, tripped `<svelte:boundary>` | loading, error                |
+| `lab-screen`                                                                             | `/__dev/screen`                                                       | ready                         |
+| `screens-menu`, `screens-header`, `screens-slots`, `screens-translucent`, `screens-tabs` | `/__dev/screens?mode=...`                                             | ready                         |
+| `screens-sheet`, `screens-sheet-auto`, `screens-form-sheet`, `screens-modal`             | the menu's buttons, presented as sheets and a modal                   | ready                         |
+
+The loading and error states of the startup screen are made, not waited for: the app's HTTP is routed (`settings put global http_proxy localhost:<port>` and `adb reverse`) to a socket on the machine running the suite that accepts and never answers (the 10 s fetch timeout is the loading state) or one that refuses (the error state). The proxy is removed afterwards. Routes with a `+mobile.svelte` page that no case reaches are listed in `notCovered` with the reason; `test/screens.test.ts` fails when a page is neither covered nor listed, so a new route cannot slip by.
+
+Every screen runs in the **variants** theme (light, dark: `cmd uimode night yes|no`) x direction (LTR, RTL: `cmd locale set-app-locales io.rasheed.svelteqa --locales en-US|ar-SA`, which gives the app Arabic strings and a `ldrtl` configuration for the native chrome) x text size (1.0 and 2.0, `settings put system font_scale`, the largest Android 14+ offers), eight in all (`light-ltr-normal` ... `dark-rtl-large`). Rotation is locked to portrait. Everything the suites change is recorded before the first change in `qa/out/device-state-<serial>.json` and put back in a `finally` (and on SIGINT/SIGTERM); if a run was killed outright, the next run restores from that file first.
+
+### Parity
+
+```
+screenshots/<device kind>/<screen>--<variant>.png    one reference per case
+screenshots/<device kind>/manifest.json              checksum, size, masks, what it is a reference of
+```
+
+The references are about 130 KB each, 18 MB for the 152 of one device kind. The device kind is `<platform>-api<sdk>-<emulator | model>-<width>x<height>-<dpi>dpi` (today `android-api36-emulator-1080x2400-420dpi`): pixels depend on all of them, so a different device kind has its own references (and its first run is `--update`). A reference is a full-display screenshot (status and navigation bar included) written as PNG by the harness's own encoder (`lib/png.ts`, no dependency).
+
+- **Check** (the default): launch the screen from a fresh process, run its steps, take screenshots until one equals the reference, for up to 12 s (25 s for the login screen). The bar is **0 differing pixels outside the masks**: all four channels, no tolerance, no anti-aliasing allowance. If the window closes without a match, one more screenshot decides between `unstable` (two in a row disagree outside the masks) and `fail`; a failure keeps what the device drew and a red-on-grey diff in `qa/runs/parity-<device>-<stamp>/<name>.actual.png` and `.diff.png`, and the run file records the count and the bounding box.
+- **Masks** are frozen in the manifest beside the image: the status bar band (its inset frame from the window manager, 0 to 128 px on the emulator: the clock, battery and notification icons vary) and, per case, the bounds of nodes that move on their own (the startup spinner, the Reanimated test square). A mask whose node is not in the tree when the reference is taken is an error, not an unmasked reference, except for nodes the largest text pushes off screen. The report shows `parity.maskedPct`, the share of the screen the masks cover.
+- **Update** (`--update`): the same launch, but the anchor of the screen must be in the accessibility tree and two screenshots in a row must agree outside the masks before one is frozen, so a reference is never taken mid-animation. Each updated case says `new`, `unchanged` or `changed` against the previous reference. The manifest is rewritten after every case; `--missing` updates only the cases that have no reference yet, which resumes an interrupted update. If the device goes away mid-run (adb offline) the suites stop with that error instead of recording every remaining case as failed. An update run verifies nothing: `report` ignores its metrics, so a gate stays "not measured" until a check run follows. Review the changed PNGs in the diff like any other change.
+
+### Accessibility
+
+`a11y` opens each screen in four layouts (LTR and RTL at text size 1.0 and 2.0; theme changes no node) and checks the accessibility tree. **TalkBack is not installed on the AVD**, so the oracle is `uiautomator dump`: the node info the engine publishes (`A11y.kt`, `EngineText`, `EngineHeader`, `EngineTabs`), which is what any accessibility service receives. The run file says so (`oracle`). The manual TalkBack and VoiceOver passes of the plan are still needed; this suite is the part a machine can repeat.
+
+| check       | passes when                                                                                                                                                                                                                                                                    |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| reachable   | the element is in the tree with non-zero bounds inside the display, is enabled, and a service can focus it (focusable, actionable or labeled); a control the screen's source declares (`controls` in `lib/screens.ts`, by label) that is not in the tree at all is unreachable; `scrolled` lists controls the largest text pushes below the fold, which are checked when the tree has them and never reported missing |
+| labeled     | text, content description or hint on the node or a descendant                                                                                                                                                                                                                  |
+| actionable  | clickable, long-clickable, checkable, or a text field: a node exposed as a button (`android.widget.Button`) that advertises no action fails                                                                                                                                    |
+| order       | the focus stops, in tree order, run top to bottom and, within a row, start to end (right to left in RTL); stacked stops (a button and the text inside it) are not compared                                                                                                     |
+| title first | the screen's title is a focus stop and no content stop comes before it; a header reads its title (or center slot) first and then the controls at its start side by design, which the order check allows                                                                        |
+| focus trap  | while a sheet or modal is up, the labels of the screen underneath (`hidden`) are not in the tree                                                                                                                                                                               |
+
+An interactive element is a node that is clickable, long-clickable, checkable, a text field, or of a control class. Disabled controls are counted (`disabled`) but not checked, and a node uiautomator reports with a negative extent (a row scrolled partly out of its container) is `clipped` and skipped. The heading flag and `accessibilityTraversalBefore/After` are not in the dump: the title is identified by its text, and a header's own traversal chain is not observable here.
+
+### Resilience
+
+`resilience` runs one screen (`screens-menu`: a large header over a scroll view) through the plan, then the low-memory rounds on `screens-header`. After every step it asks, in one adb call, whether the process is alive (`pidof`) and what the filtered log shows (`AndroidRuntime:E ActivityManager:E SvelteEngine:W libc:F DEBUG:F ReactNativeJS:E`, then cleared): a fatal, an ANR, a native signal, a JavaScript error or an engine warning fails the step. Steps with anchors also dump the tree and need the header and a content node on screen. Failures keep their log lines in `qa/runs/resilience-<device>-<stamp>.log`. After a failed step the app is started again on the loop screen (`recovered: true` in the step), so one hang does not fail every step after it; the low-memory rounds are left as they fall, because they depend on the process state.
+
+| group      | steps                                                                                                                                                                                   |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| rotation   | launch, then landscape and portrait x 5 (`user_rotation`, auto-rotate off)                                                                                                              |
+| font scale | 2.0, 0.85, 1.0                                                                                                                                                                          |
+| locale     | Arabic while running, Arabic after a restart, English while running, English after a restart                                                                                            |
+| background | `HOME` then `am start -n .../.MainActivity` x 100 (the process and log every cycle, the tree every tenth and the last)                                                                  |
+| low memory | x 2: `am send-trim-memory RUNNING_CRITICAL` in the foreground, `HOME` and `COMPLETE`, `am kill` (the process must be gone), return to the app (the route of the deep link must be back) |
+
+The full plan has 126 steps.
+
+### Run files
+
+| file                                                                  | written by   | holds                                                                                                                                                              |
+| --------------------------------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `runs/parity-<device>-<stamp>.json`, `runs/parity-<device>-<stamp>/`  | `parity`     | one record per case (verdict, differing pixels, masked pixels, bounding box, attempts) and `notCovered`; failing cases keep `<name>.actual.png` and `.diff.png` in the directory |
+| `runs/a11y-<device>-<stamp>.json`                                     | `a11y`       | per screen: the counts, the focus stops in tree order, every finding with its element and why; the `oracle`                                                        |
+| `runs/resilience-<device>-<stamp>.json`, `.log`                       | `resilience` | per step: group, name, ok, failures, `recovered`, duration; the log keeps the lines of every failed step                                                           |
+
+Each carries the device, the installed build (`app.installedSha256`) and the source commit, like the lab and boot files; `aborted` is set when the device went away mid-run. `report` reads the newest of each per device, so after a partial run (`--quick`, `--filter`) run the whole suite again before `gates`.
+
+### Metrics and gates
+
+| metric                                                                                        | meaning                                                                                            | bar                            |
+| --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------ |
+| `parity.cases`, `parity.casesExpected`                                                        | cases compared against a reference; cases in the whole matrix                                      |                                |
+| `parity.diffPixelsOutsideMasks`                                                               | worst case over the compared cases                                                                 | 0                              |
+| `parity.casesIncomplete`                                                                      | expected minus compared: missing reference, unstable, errored, skipped or not run                  | 0                              |
+| `parity.casesDiffering`, `parity.casesSkipped`, `parity.maskedPct`, `parity.routesNotCovered` | for reading the run                                                                                |                                |
+| `a11y.screens`, `a11y.screensExpected`, `a11y.screensIncomplete`, `a11y.interactive`          | screens dumped, screens in the matrix, screens not dumped, interactive elements seen               | `screensIncomplete` 0          |
+| `a11y.unreachable`, `a11y.unlabeled`, `a11y.notActionable`                                    | elements failing each check (100 % means 0)                                                        | 0                              |
+| `a11y.orderViolations`, `a11y.titleNotFirst`, `a11y.focusLeaks`                               | consecutive stops out of order, screens whose title is not first, covered labels still in the tree | 0                              |
+| `a11y.reachablePct`, `a11y.labeledPct`, `a11y.actionablePct`                                  | the same as shares of `a11y.interactive`                                                           |                                |
+| `resilience.steps`, `resilience.failures`, `resilience.stepsMissing`                          | steps run, steps that failed a check, steps of the full plan not run                               | `failures` 0, `stepsMissing` 0 |
+
+A run that is cut short because the device went away (adb offline, which the emulator host does about once an hour when its watchdog restarts it) stops, keeps what it measured and records `aborted` in its run file; the cases it did not reach count as missing, so rerun it.
+
+### Not covered, and why
+
+- `/__dev` async panel, pending and error-boundary states, at 200 % text (`notCoveredStates`, 8 cases of the 160 left out of the matrix, 152 remain): the button that sets the state is below the first screen of a `Page`, and the `Page`'s scroll view reports `scrollable=false` and does not move under a swipe (the same on `/__dev/screen` with its 60 rows), so neither a user nor the harness can reach it.
+- Every route behind the login (account, onboarding, workspaces, workspace, settings): no credential. They are listed in the run file's `notCovered` and in `lib/screens.ts`.
+- `/__dev/foreign` (WebView, map, video): third-party content that varies between runs.
+- Empty states of search results and the keyboard: the soft keyboard is not part of the app and its rendering varies; the one list with an empty state (header search in `screens-slots`) needs typed text.
+- VoiceOver and TalkBack themselves, and the iPhone: no iOS device in this lane, no TalkBack on the AVD.
+- The login screen is skipped, not failed, when the dev backend does not answer from the machine running the suite (`parity.casesSkipped`; the gate on `casesIncomplete` still fails).
+
+## Files
+
+```
+native-qa.ts          entry point
+commands/             build, lab, boot, parity, a11y, resilience, report, gates
+lib/                  adb, exec, flock, flags, run files, metrics, gate evaluation, types; png (codec and diff), uia (uiautomator tree), a11y (the checklist), device (screens, settings, the failing proxy), drive (opening a screen), screens (the matrix), parity, resilience, suite-metrics
+parse/                logcat, adb and statistics parsers
+soak/                 soak and crashes runners, meminfo and soak-log parsers, their metrics, crash signatures, symbolication
+gates.json            the production bar
+screenshots/          frozen parity references per device kind (committed), with their manifest and masks
+test/                 bun tests; test/samples holds captured device output
+out/ runs/ report.json    generated, git-ignored (APKs, source maps and unstripped libraries, build logs, run files, merged report)
+```
+
+## CI
+
+`.github/workflows/native-qa.yml` runs the emulator lane on a self-hosted runner labelled `svelte-qa-emulator` for every push and on demand: parser tests, typecheck, connect the emulator, build, lab x10, boot 30 + 30, report, `gates --platform android`, then uploads `report.json`, the run files and logs and the build record as an artifact. The runner needs the Android SDK, JDK 17, `adb`, `flock`, and a way to reach the emulator (set the repository variable `QA_TUNNEL_HOST` to the ssh host that forwards port 5555, or leave it empty when `localhost:5555` already works). Runs queue on one concurrency group because the emulator and the Gradle daemon are shared.
+
+Gate note (26 Oct): the cold gate is as strict as the warm one (350 ms Android, 250 iOS). An immediate relaunch after `am force-stop` (the warm series) runs while the previous process is still being torn down and tends to be slower than a launch after a 20 s idle gap (the cold series); both are reported, both must pass.

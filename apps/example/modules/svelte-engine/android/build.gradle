@@ -1,0 +1,90 @@
+import expo.modules.plugin.gradle.ExpoModuleExtension
+
+apply plugin: 'com.android.library'
+apply plugin: 'expo-module-gradle-plugin'
+
+group = 'expo.modules.svelteengine'
+version = '0.1.0'
+
+def expoModuleExtension = project.extensions.getByType(ExpoModuleExtension)
+
+def reactNativeArchitectures() {
+  def value = project.getProperties().get("reactNativeArchitectures")
+  return value ? value.split(",") : ["armeabi-v7a", "x86", "x86_64", "arm64-v8a"]
+}
+
+android {
+  if (rootProject.hasProperty("ndkPath")) {
+    ndkPath rootProject.ext.ndkPath
+  }
+  if (rootProject.hasProperty("ndkVersion")) {
+    ndkVersion rootProject.ext.ndkVersion
+  }
+
+  namespace "expo.modules.svelteengine"
+
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+
+    externalNativeBuild {
+      cmake {
+        arguments(
+          "-DANDROID_STL=c++_shared",
+          "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON",
+          "-DREACT_NATIVE_DIR=${expoModuleExtension.reactNativeDir}",
+          "-DREACT_NATIVE_TARGET_VERSION=${expoModuleExtension.reactNativeVersion.minor}"
+        )
+        abiFilters(*reactNativeArchitectures())
+      }
+    }
+  }
+
+  externalNativeBuild {
+    cmake {
+      path "CMakeLists.txt"
+    }
+  }
+
+  buildFeatures {
+    prefab true
+  }
+
+  lintOptions { abortOnError false }
+
+  packagingOptions {
+    // Intermediate link libraries from prefab; the app packages the real ones.
+    excludes += [
+      "**/libc++_shared.so",
+      "**/libfabricjni.so",
+      "**/libfbjni.so",
+      "**/libfolly_json.so",
+      "**/libfolly_runtime.so",
+      "**/libglog.so",
+      "**/libhermesvm.so",
+      "**/libjsi.so",
+      "**/libreactnative.so",
+      "**/libreactnativejni.so",
+      "**/libreact_debug.so",
+      "**/libreact_nativemodule_core.so",
+      "**/libreact_utils.so",
+      "**/libreact_render_debug.so",
+      "**/libreact_render_graphics.so",
+      "**/libreact_render_core.so",
+      "**/libreact_render_componentregistry.so",
+      "**/libreact_render_mapbuffer.so",
+      "**/librrc_view.so",
+      "**/libruntimeexecutor.so",
+      "**/libyoga.so",
+    ]
+  }
+}
+
+dependencies {
+  implementation 'com.facebook.react:react-android'
+  compileOnly 'com.facebook.fbjni:fbjni:0.5.1'
+  implementation "androidx.core:core-ktx:1.17.0"
+  implementation "androidx.annotation:annotation:1.9.1"
+  implementation "androidx.activity:activity:1.10.1"
+  implementation "androidx.tracing:tracing-ktx:1.2.0"
+}

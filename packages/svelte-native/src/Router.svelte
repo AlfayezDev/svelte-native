@@ -1,30 +1,33 @@
 <script lang="ts">
-  import { onMount } from "svelte";
-  import { BackHandler, Linking } from "react-native";
+  import { onMount, setContext, type Snippet } from "svelte";
+  import BackHandler from "react-native/Libraries/Utilities/BackHandler";
+  import Linking from "react-native/Libraries/Linking/Linking";
   import Host from "./components/Host.svelte";
+  import Screen from "./components/Screen.svelte";
   import RouteView from "./RouteView.svelte";
-  import type { createRouter } from "./router.svelte.ts";
-  let { router }: { router: ReturnType<typeof createRouter> } = $props();
+  import { SCREEN_CONTEXT } from "./fabric/navigation.ts";
+  import type { NativeLocation, createRouter } from "./router.svelte.ts";
+  /** `loading` is what a screen shows while its route's modules load; without it the screen is empty until they arrive. */
+  let { router, loading }: { router: ReturnType<typeof createRouter>; loading?: Snippet<[NativeLocation]> } = $props();
+  // The router's screens are real screens of its own stack, wherever the router sits (inside a tab pane, a sheet, a page).
+  setContext(SCREEN_CONTEXT, undefined);
+  // The back key belongs to the router only while it is active: a tab's stack answers while its tab is selected.
+  // A link is the app's, not a tab's: it opens in the outermost router, or the same URL would also be pushed onto
+  // every tab stack whose routes happen to match it.
+  const opensLinks = () => !router.nested && router.active();
   onMount(() => {
-    const back = BackHandler.addEventListener("hardwareBackPress", () => router.back());
-    let active = true;
-    const links = Linking.addEventListener("url", ({ url }) => router.openURL(url));
-    void Linking.getInitialURL().then((url) => { if (active && url) router.openURL(url); });
-    return () => { active = false; back.remove(); links.remove(); };
+    const back = BackHandler.addEventListener("hardwareBackPress", () => router.active() && router.back());
+    let live = true;
+    const links = Linking.addEventListener("url", ({ url }) => { if (opensLinks()) router.openURL(url); });
+    void Linking.getInitialURL().then((url) => { if (live && url && opensLinks()) router.openURL(url); });
+    return () => { live = false; back.remove(); links.remove(); };
   });
 </script>
 
 <Host name="native-stack" attributes={{ style: { flex: 1 } }}>
-  {#each router.entries as entry (entry.key)}
-    <Host name="native-screen" attributes={{
-      style: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0 },
-      isNativeStack: true,
-      activityState: 2,
-      stackPresentation: entry.route.presentation === "modal" ? "modal" : "push",
-      stackAnimation: "default",
-      onDismissed: () => router.dismissed(entry.key),
-    }}>
-      <RouteView {entry} />
-    </Host>
+  {#each router.entries as entry, index (entry.key)}
+    <Screen presentation={entry.presentation} canGoBack={index > 0} activityState={2} animation="default" onDismiss={() => router.dismissed(entry.key)}>
+      <RouteView {entry} {router} {loading} />
+    </Screen>
   {/each}
 </Host>

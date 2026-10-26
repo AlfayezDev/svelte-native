@@ -1,0 +1,4 @@
+List of devices attached
+R5XXXXXXXXX	device
+localhost:5555	device
+

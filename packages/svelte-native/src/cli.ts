@@ -18,13 +18,14 @@ if (command === "build") {
   child.once("error", (error) => { console.error(error); process.exitCode = 1; });
   child.once("exit", (code) => { process.exitCode = code ?? 1; });
 } else if (command === "dev") {
+  await syncNative(root);
   let syncing = Promise.resolve();
   const watcher = watch(resolve(root, "src/routes"), { recursive: true }, (_event, file) => {
     if (file && /\+(?:mobile|layout\.mobile)\.svelte$/.test(file)) {
       syncing = syncing.then(() => syncNative(root)).catch((error: unknown) => { console.error(error); });
     }
   });
-  const child = runExpo(root, ["start", "--dev-client", ...args]);
+  const child = runExpo(root, ["start", ...args]);
   const stop = () => { watcher.close(); child.kill("SIGTERM"); };
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);

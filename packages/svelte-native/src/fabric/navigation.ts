@@ -1,0 +1,448 @@
+import { getContext, type Snippet } from "svelte";
+
+/**
+ * The navigation tags on the Fabric host. They are plain `RCTView` nodes: the engine tells them apart by `nativeID`
+ * and reads their configuration from it, because `RCTView` has no codegen props for them and Fabric keeps no raw
+ * props it could rely on. The contract (API, grammar, records, events) is `apps/platform/modules/svelte-engine/SPEC.md`,
+ * "Screen API contract (header, sheet, tabs)"; this module is its executable form: pure encoders, a reference decoder
+ * (`decodeRecords`) that native decoders are tested against, and the layout constants JavaScript and native share.
+ *
+ * `nativeID` = `svelte:<kind>` followed by `;key=value` pairs. Values are `encodeURIComponent` output (so `;`, `=`, `,`
+ * and `%` never appear raw); a list is its items encoded and joined by `,`. Keys are unique per kind, unknown keys are
+ * ignored by decoders, and a key that is absent means its default. Kinds and keys:
+ *
+ * - `stack`
+ * - `screen`: `a` activityState, `p` presentation, `g` gesture, `s` animation, `b` nativeBack (always present, in this order);
+ *   `dt` detents and `di` initial detent index (sheet only), `gr` grabber (`0` off for a sheet, `1` on for a form sheet),
+ *   `dm=0` not dismissible, `bd=1` no backdrop (sheet and formSheet);
+ *   `ss` status bar style (`l`|`d`), `sx=1` status bar hidden, `nc` navigation bar color, `ns` navigation bar style (`l`|`d`)
+ * - `header`: `t` title, `st` subtitle, `bt` backTitle, `l=1` large, `tl=1` translucent, `bk=1` back button, `hs=1` no shadow,
+ *   `tc` tint, `bg` background, `sl` slot mask
+ * - `header-left`, `header-center`, `header-right`
+ * - `header-search`: `ph` placeholder, `v` value, `ec` event count
+ * - `tabs`: `sel` selected index, `sc` select count, `tc` tint, `uc` inactive tint, `bg` background, `lb=1` no labels
+ * - `tab`: `k` key, `t` title, `ic` icon uri, `is` selected icon uri, `iv=1` icon is a view, `bd` badge text (present and empty = dot), `ds=1` disabled
+ * - `tab-icon`
+ *
+ * Colors are `rrggbbaa` (8 hex digits). Events are ordinary handlers: the engine emits `top<Name>` on the node's emitter
+ * and the host maps it to the `on<Name>` attribute.
+ */
+export const navigationTags: ReadonlySet<string> = new Set([
+  "native-stack",
+  "native-screen",
+  "native-header",
+  "native-header-left",
+  "native-header-center",
+  "native-header-right",
+  "native-header-search",
+  "native-tabs",
+  "native-tab",
+  "native-tab-icon",
+]);
+
+/** Context keys shared by the components: the nearest `Screen` (nested screens register into it) and its header geometry. */
+export const SCREEN_CONTEXT = Symbol.for("svelte-native.screen");
+export const HEADER_CONTEXT = Symbol.for("svelte-native.header");
+
+/** The header geometry of the screen around the caller, in dp: `height` includes the status bar `inset`. Read it to pad content under a `large` or `translucent` header. */
+export function useHeader(): { readonly height: number; readonly inset: number } {
+  return getContext<{ readonly height: number; readonly inset: number } | undefined>(HEADER_CONTEXT) ?? { height: 0, inset: 0 };
+}
+
+/** A source `resolveAssetSource` accepts: a `require`d asset or `{ uri }`. Drawn as a template image, tinted by the bar. */
+export type TabIconSource = number | { uri: string };
+export type TabItem = {
+  key: string;
+  title: string;
+  /** An asset, or a snippet drawn as a template (alpha only) by the bar; it receives whether the tab is selected. */
+  icon?: TabIconSource | Snippet<[selected: boolean]>;
+  selectedIcon?: TabIconSource;
+  /** Text or a number (above 99 it reads "99+"); `true` shows a dot. */
+  badge?: string | number | boolean;
+  disabled?: boolean;
+  /** Label of the tab bar item (default: its title and badge); not the pane's. */
+  accessibilityLabel?: string;
+  testID?: string;
+};
+/** What a tab's `content` snippet receives. Hand it to the tab's router as `{ scope: tab.key, active: () => tab.selected }`. */
+export type TabHandle = { readonly key: string; readonly selected: boolean };
+
+/** What `createRouter` takes to keep one stack per tab: the router answers `useRouter(scope)`, and handles back and links only while `active()`. */
+export type RouterScopeOptions = { scope?: string; active?: () => boolean };
+
+// Layout constants shared by the encoders, the components and both native sides (dp on Android, pt on iOS).
+export type NavigationPlatform = "android" | "ios";
+/** Bar height without the status bar inset: Material app bar height, UIKit navigation bar height. */
+export const HEADER_BAR: Record<NavigationPlatform, number> = { android: 56, ios: 44 };
+/** Extra height of an expanded large title: a second 56 dp row on Android, the 52 pt large title area of UIKit. */
+export const HEADER_LARGE_EXTRA: Record<NavigationPlatform, number> = { android: 56, ios: 52 };
+/** Tab bar height without the bottom inset: icon 24 + label 12 sp + padding on Android, UITabBar on iOS. */
+export const TAB_BAR: Record<NavigationPlatform, number> = { android: 64, ios: 49 };
+/** Width reserved at the start of the header for the back button; also the minimum hit area. */
+export const BACK_BUTTON_WIDTH = 48;
+/** Size of a tab icon slot. */
+export const TAB_ICON_SIZE = 24;
+export const SHEET_MAX_DETENTS = 4;
+export const SHEET_DEFAULT_DETENTS: readonly Detent[] = [0.5, 1];
+
+/** Total header height (status bar inset included) before the native side reports its own with `onMetrics`. */
+export function headerHeight(platform: NavigationPlatform, inset: number, large: boolean): number {
+  return inset + HEADER_BAR[platform] + (large ? HEADER_LARGE_EXTRA[platform] : 0);
+}
+
+export type Detent = number | "auto";
+export type Presentation = "push" | "modal" | "transparentModal" | "sheet" | "formSheet";
+export type BarStyle = "auto" | "light" | "dark";
+export type HeaderOptions = {
+  hidden?: boolean;
+  /** Large title that collapses with the screen's first scroll view. */
+  large?: boolean;
+  /** The header overlays the content instead of reserving space. */
+  translucent?: boolean;
+  hideBack?: boolean;
+  /** iOS back button label; the Android arrow's accessibility label. */
+  backTitle?: string;
+  tint?: string;
+  background?: string;
+  hideShadow?: boolean;
+};
+export type SearchOptions = {
+  value?: string;
+  placeholder?: string;
+  onChangeText?: (text: string) => void;
+  onSubmit?: (text: string) => void;
+  onCancel?: () => void;
+};
+export type SheetOptions = {
+  /** Heights as fractions of the space below the top inset, ascending; `"auto"` is the content height. Default `[0.5, 1]`. */
+  detents?: readonly Detent[];
+  /** The detent shown first, one of `detents`; default the first. */
+  initialDetent?: Detent;
+  grabber?: boolean;
+  dismissible?: boolean;
+  backdrop?: "dim" | "none";
+};
+export type StatusBarOptions = { style?: BarStyle; hidden?: boolean };
+export type NavigationBarOptions = { color?: string; style?: BarStyle };
+export type DetentChange = { index: number; fraction: number };
+export type HeaderMetrics = { height: number; inset: number };
+export type ScreenAnimation = "default" | "none" | "fade" | "slide_from_right" | "slide_from_bottom";
+
+/** Everything a `Screen` takes besides its content. Nested screens of one stack entry merge into one of these. */
+export type ScreenOptions = {
+  title?: string;
+  subtitle?: string;
+  header?: HeaderOptions;
+  headerLeft?: Snippet;
+  headerRight?: Snippet;
+  headerCenter?: Snippet;
+  headerSearch?: Snippet;
+  search?: SearchOptions;
+  presentation?: Presentation;
+  sheet?: SheetOptions;
+  statusBar?: StatusBarOptions;
+  navigationBar?: NavigationBarOptions;
+  animation?: ScreenAnimation;
+  gestureEnabled?: boolean;
+  nativeBackButtonDismissalEnabled?: boolean;
+  /** 0 detached/inactive, 1 transitioning, 2 active; only the top active screen takes touches. */
+  activityState?: 0 | 1 | 2;
+  /** Whether the stack has a screen below this one; the header then reserves and draws the back button. */
+  canGoBack?: boolean;
+  style?: unknown;
+  onAppear?: () => void;
+  onDisappear?: () => void;
+  onDismiss?: () => void;
+  onDetentChange?: (event: DetentChange) => void;
+};
+
+const definedEntries = (value: object) => Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined));
+const objectOptions = ["header", "search", "sheet", "statusBar", "navigationBar"] as const;
+const eventOptions = ["onAppear", "onDisappear", "onDismiss", "onDetentChange"] as const;
+
+/**
+ * One option set laid over another, as nested `Screen`s do: a defined value of `over` wins, object options (`header`,
+ * `sheet`, ...) merge key by key, and event handlers are chained (`base` first) so neither side loses its callbacks.
+ */
+export function mergeScreenOptions(base: Readonly<ScreenOptions>, over: Readonly<ScreenOptions>): ScreenOptions {
+  const merged: Record<string, unknown> = { ...base };
+  for (const [key, value] of Object.entries(over)) if (value !== undefined) merged[key] = value;
+  for (const key of objectOptions) if (base[key] && over[key]) merged[key] = { ...base[key], ...definedEntries(over[key]) };
+  for (const key of eventOptions) {
+    const first = base[key] as ((event?: never) => void) | undefined;
+    const second = over[key] as ((event?: never) => void) | undefined;
+    if (first && second) merged[key] = (event?: never) => { first(event); second(event); };
+  }
+  return merged as ScreenOptions;
+}
+
+// Grammar.
+
+type Pair = readonly [key: string, value: string | number | undefined];
+const encode = (value: string | number) => encodeURIComponent(String(value));
+
+/** `svelte:<kind>` plus the pairs whose value is defined; values are percent-encoded, a pre-joined list goes through `list`. */
+export function encodeNativeID(kind: string, pairs: readonly Pair[]): string {
+  let id = `svelte:${kind}`;
+  for (const [key, value] of pairs) if (value !== undefined) id += `;${key}=${value}`;
+  return id;
+}
+const text = (value: unknown): string | undefined => typeof value === "string" && value !== "" ? encode(value) : undefined;
+const list = (items: readonly (string | number)[]): string => items.map(encode).join(",");
+const flag = (value: unknown): 1 | undefined => value === true ? 1 : undefined;
+
+/** The parts of a `nativeID`: its kind and its raw (still encoded) values; use `decodeValue` and `decodeList` to read them. */
+export function parseNativeID(id: string): { kind: string; pairs: Record<string, string> } | null {
+  if (!id.startsWith("svelte:")) return null;
+  const [kind, ...rest] = id.slice("svelte:".length).split(";");
+  const pairs: Record<string, string> = {};
+  for (const part of rest) {
+    const at = part.indexOf("=");
+    if (at > 0) pairs[part.slice(0, at)] = part.slice(at + 1);
+  }
+  return { kind, pairs };
+}
+export const decodeValue = (raw: string): string => decodeURIComponent(raw);
+export const decodeList = (raw: string): string[] => raw === "" ? [] : raw.split(",").map(decodeValue);
+
+/** `rrggbbaa` for `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`, `rgb(r, g, b)`, `rgba(r, g, b, a)`, `transparent` and React Native's processed `0xAARRGGBB` numbers; undefined for anything else. */
+export function colorToWire(value: unknown): string | undefined {
+  const byte = (n: number) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, "0");
+  if (typeof value === "number") return Number.isInteger(value) ? `${byte((value >>> 16) & 255)}${byte((value >>> 8) & 255)}${byte(value & 255)}${byte((value >>> 24) & 255)}` : undefined;
+  if (typeof value !== "string") return undefined;
+  const source = value.trim().toLowerCase();
+  if (source === "transparent") return "00000000";
+  const hex = /^#([0-9a-f]+)$/.exec(source)?.[1];
+  if (hex && [3, 4, 6, 8].includes(hex.length)) {
+    const full = hex.length <= 4 ? [...hex].map((digit) => digit + digit).join("") : hex;
+    return full.length === 6 ? `${full}ff` : full;
+  }
+  const rgb = /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*(?:,\s*(\d*\.?\d+)\s*)?\)$/.exec(source);
+  if (rgb) return `${byte(Number(rgb[1]))}${byte(Number(rgb[2]))}${byte(Number(rgb[3]))}${byte(rgb[4] === undefined ? 255 : Number(rgb[4]) * 255)}`;
+  return undefined;
+}
+
+const wireInt = (raw: string | undefined, fallback: number): number => {
+  const value = raw === undefined ? Number.NaN : Number.parseInt(raw, 10);
+  return Number.isNaN(value) ? fallback : value;
+};
+const argb = (raw: string | undefined): [number, number] => {
+  if (!raw || !/^[0-9a-f]{8}$/.test(raw)) return [0, 0];
+  const rgba = Number.parseInt(raw, 16);
+  return [1, (((rgba & 255) << 24) | (rgba >>> 8)) >>> 0];
+};
+
+// Screen.
+
+const presentations = new Set<string>(["push", "modal", "transparentModal", "sheet", "formSheet"]);
+const animations = new Set<string>(["default", "none", "fade", "slide_from_right", "slide_from_bottom"]);
+const screenStyle = { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 };
+const stackStyle = { flex: 1 };
+const barStyleCode: Record<string, string> = { light: "l", dark: "d" };
+
+/** At most `SHEET_MAX_DETENTS` valid entries (fractions in (0, 1] or `"auto"`) in the given order without repeats; the default when none is valid. */
+export function normalizeDetents(input: unknown): Detent[] {
+  const out: Detent[] = [];
+  if (Array.isArray(input)) {
+    for (const item of input) {
+      const valid = item === "auto" || (typeof item === "number" && item > 0 && item <= 1);
+      if (valid && !out.includes(item) && out.length < SHEET_MAX_DETENTS) out.push(item);
+    }
+  }
+  return out.length ? out : [...SHEET_DEFAULT_DETENTS];
+}
+
+/**
+ * The Yoga box of a sheet screen: anchored to the bottom, as tall as its tallest fractional detent of `available`
+ * (the surface height below the top inset; a percentage of the stack while unknown); with an `"auto"` detent the
+ * height follows the content, at least the tallest fraction and at most `available`.
+ */
+export function sheetStyle(detents: readonly Detent[], available: number | undefined): Record<string, unknown> {
+  const fractions = detents.filter((detent): detent is number => detent !== "auto");
+  const tallest = fractions.length ? Math.max(...fractions) : 0;
+  const size = (fraction: number) => available === undefined ? `${Math.round(fraction * 100)}%` : Math.round(fraction * available);
+  const box: Record<string, unknown> = { position: "absolute", left: 0, right: 0, bottom: 0, maxHeight: available === undefined ? "100%" : Math.round(available) };
+  if (detents.includes("auto")) { if (tallest) box.minHeight = size(tallest); }
+  else box.height = size(tallest);
+  return box;
+}
+
+const SCREEN_KEYS = ["activityState", "stackPresentation", "gestureEnabled", "stackAnimation", "nativeBackButtonDismissalEnabled", "sheetDetents", "sheetInitialDetent", "sheetGrabber", "sheetDismissible", "sheetBackdrop", "availableHeight", "topInset", "statusBarStyle", "statusBarHidden", "navigationBarColor", "navigationBarStyle"];
+
+function screenProps(attributes: Record<string, unknown>): Record<string, unknown> {
+  const presentation = typeof attributes.stackPresentation === "string" && presentations.has(attributes.stackPresentation) ? attributes.stackPresentation : "push";
+  const animation = typeof attributes.stackAnimation === "string" && animations.has(attributes.stackAnimation) ? attributes.stackAnimation : "default";
+  const state = typeof attributes.activityState === "number" ? attributes.activityState : 2;
+  const pairs: Pair[] = [
+    ["a", state], ["p", presentation], ["g", attributes.gestureEnabled === false ? 0 : 1], ["s", animation], ["b", attributes.nativeBackButtonDismissalEnabled === false ? 0 : 1],
+  ];
+  let style: Record<string, unknown> = screenStyle;
+  const dismissible = ["dm", attributes.sheetDismissible === false ? 0 : undefined] as const;
+  const backdrop = ["bd", attributes.sheetBackdrop === "none" ? 1 : undefined] as const;
+  if (presentation === "sheet") {
+    const detents = normalizeDetents(attributes.sheetDetents);
+    const initial = Math.max(0, detents.indexOf(attributes.sheetInitialDetent as Detent));
+    pairs.push(["dt", list(detents)], ["di", initial === 0 ? undefined : initial], ["gr", attributes.sheetGrabber === false ? 0 : undefined], dismissible, backdrop);
+    style = sheetStyle(detents, typeof attributes.availableHeight === "number" ? attributes.availableHeight : undefined);
+  } else if (presentation === "formSheet") {
+    // One fixed detent below the top inset; no grabber unless asked for.
+    pairs.push(["gr", attributes.sheetGrabber === true ? 1 : undefined], dismissible, backdrop);
+    style = { position: "absolute", top: typeof attributes.topInset === "number" ? attributes.topInset : 0, left: 0, right: 0, bottom: 0 };
+  }
+  pairs.push(
+    ["ss", barStyleCode[attributes.statusBarStyle as string]], ["sx", flag(attributes.statusBarHidden)],
+    ["nc", colorToWire(attributes.navigationBarColor)], ["ns", barStyleCode[attributes.navigationBarStyle as string]],
+  );
+  return withId(attributes, SCREEN_KEYS, encodeNativeID("screen", pairs), style);
+}
+
+// Header.
+
+const HEADER_KEYS = ["title", "subtitle", "backTitle", "large", "translucent", "back", "hideShadow", "tint", "background", "slots", "headerHeight", "headerInset", "align"];
+
+/** Slot mask bits of the `sl` key and record 121. */
+export const SLOT_LEFT = 1;
+export const SLOT_CENTER = 2;
+export const SLOT_RIGHT = 4;
+export const SLOT_SEARCH = 8;
+
+function headerProps(attributes: Record<string, unknown>): Record<string, unknown> {
+  const overlay = attributes.large === true || attributes.translucent === true;
+  const inset = typeof attributes.headerInset === "number" ? attributes.headerInset : 0;
+  const height = typeof attributes.headerHeight === "number" ? attributes.headerHeight : 0;
+  // An overlay header sits over the content view, which comes after it in the tree: the z-index keeps it drawn and hit first.
+  const box = {
+    ...(overlay ? { position: "absolute", top: 0, left: 0, right: 0, zIndex: 1 } : {}),
+    height, paddingTop: inset, paddingStart: attributes.back === true ? BACK_BUTTON_WIDTH : 0, flexDirection: "row", alignItems: "center",
+  };
+  const id = encodeNativeID("header", [
+    ["t", text(attributes.title)], ["st", text(attributes.subtitle)], ["bt", text(attributes.backTitle)],
+    ["l", flag(attributes.large)], ["tl", flag(attributes.translucent)], ["bk", flag(attributes.back)], ["hs", flag(attributes.hideShadow)],
+    ["tc", colorToWire(attributes.tint)], ["bg", colorToWire(attributes.background)], ["sl", typeof attributes.slots === "number" && attributes.slots > 0 ? attributes.slots : undefined],
+  ]);
+  return withId(attributes, HEADER_KEYS, id, box);
+}
+
+const SLOT_KEYS = ["placeholder", "value", "eventCount", "align", "surfaceHeight", "headerHeight"];
+
+function slotProps(name: string, attributes: Record<string, unknown>): Record<string, unknown> {
+  const row = { flexDirection: "row", alignItems: "center" };
+  if (name === "native-header-left") return withId(attributes, SLOT_KEYS, encodeNativeID("header-left", []), row);
+  if (name === "native-header-right") return withId(attributes, SLOT_KEYS, encodeNativeID("header-right", []), row);
+  if (name === "native-header-center") {
+    return withId(attributes, SLOT_KEYS, encodeNativeID("header-center", []), { ...row, flex: 1, justifyContent: attributes.align === "start" ? "flex-start" : "center" });
+  }
+  // The search slot hosts the results shown while the search is active: absolute, from the header's bottom edge to the surface's.
+  const below = typeof attributes.surfaceHeight === "number" && typeof attributes.headerHeight === "number" ? Math.max(0, attributes.surfaceHeight - attributes.headerHeight) : undefined;
+  const box = { position: "absolute", top: "100%", left: 0, right: 0, ...(below === undefined ? { bottom: 0 } : { height: below }) };
+  const id = encodeNativeID("header-search", [
+    ["ph", text(attributes.placeholder)], ["v", text(attributes.value)], ["ec", typeof attributes.eventCount === "number" && attributes.eventCount > 0 ? attributes.eventCount : undefined],
+  ]);
+  return withId(attributes, SLOT_KEYS, id, box);
+}
+
+// Tabs.
+
+const TABS_KEYS = ["selectedIndex", "selectCount", "tint", "inactiveTint", "background", "labels", "barHeight"];
+const TAB_KEYS = ["tabKey", "title", "icon", "selectedIcon", "iconView", "badge", "disabled", "barHeight"];
+
+/** The badge of a tab as the wire carries it: a number or text, `true` for a dot (empty text), undefined for none; numbers above 99 read "99+". */
+export function badgeText(badge: unknown): string | undefined {
+  if (badge === true) return "";
+  if (typeof badge === "number" && Number.isFinite(badge) && badge > 0) return badge > 99 ? "99+" : String(Math.floor(badge));
+  return typeof badge === "string" && badge !== "" ? badge : undefined;
+}
+
+function tabsProps(name: string, attributes: Record<string, unknown>): Record<string, unknown> {
+  if (name === "native-tabs") {
+    const id = encodeNativeID("tabs", [
+      ["sel", typeof attributes.selectedIndex === "number" ? attributes.selectedIndex : 0], ["sc", typeof attributes.selectCount === "number" && attributes.selectCount > 0 ? attributes.selectCount : undefined],
+      ["tc", colorToWire(attributes.tint)], ["uc", colorToWire(attributes.inactiveTint)], ["bg", colorToWire(attributes.background)], ["lb", attributes.labels === "never" ? 1 : undefined],
+    ]);
+    return withId(attributes, TABS_KEYS, id, stackStyle);
+  }
+  if (name === "native-tab") {
+    const badge = badgeText(attributes.badge);
+    const id = encodeNativeID("tab", [
+      ["k", text(attributes.tabKey)], ["t", text(attributes.title)], ["ic", text(attributes.icon)], ["is", text(attributes.selectedIcon)],
+      ["iv", flag(attributes.iconView)], ["bd", badge === undefined ? undefined : encode(badge)], ["ds", flag(attributes.disabled)],
+    ]);
+    const bottom = typeof attributes.barHeight === "number" ? attributes.barHeight : 0;
+    return withId(attributes, TAB_KEYS, id, { position: "absolute", top: 0, left: 0, right: 0, bottom });
+  }
+  // Out of the pane's flow, so the content below is not pushed down; the bar draws it, the pane does not.
+  return withId(attributes, TAB_KEYS, encodeNativeID("tab-icon", []), { position: "absolute", top: 0, left: 0, width: TAB_ICON_SIZE, height: TAB_ICON_SIZE, alignItems: "center", justifyContent: "center" });
+}
+
+/** Attributes the encoder consumed leave the props; the rest (handlers, `ref`, accessibility, `testID`) pass through. */
+function withId(attributes: Record<string, unknown>, consumed: readonly string[], nativeID: string, style: Record<string, unknown>): Record<string, unknown> {
+  const rest: Record<string, unknown> = {};
+  for (const key in attributes) if (!consumed.includes(key)) rest[key] = attributes[key];
+  return { ...rest, nativeID, style: [style, attributes.style] };
+}
+
+/** `activityState` 0 detached/inactive, 1 transitioning, 2 active; the other props default as in react-native-screens. */
+export function navigationProps(name: string, attributes: Record<string, unknown>): Record<string, unknown> {
+  if (name === "native-stack") return { ...attributes, nativeID: "svelte:stack", style: [stackStyle, attributes.style] };
+  if (name === "native-screen") return screenProps(attributes);
+  if (name === "native-header") return headerProps(attributes);
+  if (name === "native-header-left" || name === "native-header-center" || name === "native-header-right" || name === "native-header-search") return slotProps(name, attributes);
+  return tabsProps(name, attributes);
+}
+
+// Reference decoder: what the engine's C++ (Android) and the iOS components must read out of a `nativeID`.
+
+export type NavRecord = { id: number; values: (number | string)[] };
+/** Engine view kinds of the navigation tags (10 and 11 predate the screen API). */
+export const NAV_KINDS: Record<string, number> = { stack: 10, screen: 11, header: 12, "header-left": 13, "header-center": 13, "header-right": 13, "header-search": 13, tabs: 14, tab: 15, "tab-icon": 16 };
+const SLOTS: Record<string, number> = { "header-left": 0, "header-center": 1, "header-right": 2, "header-search": 3 };
+const PRESENTATION_CODE: Record<string, number> = { push: 0, modal: 1, transparentModal: 2, sheet: 3, formSheet: 4 };
+const ANIMATION_CODE: Record<string, number> = { default: 0, none: 1, fade: 2, slide_from_right: 3, slide_from_bottom: 4 };
+const barCode = (raw: string | undefined) => raw === "l" ? 1 : raw === "d" ? 2 : 0;
+
+/**
+ * The prop records a `nativeID` stands for, in the order the batch carries them, as the SPEC tables define them.
+ * Strings are the decoded text or -1 when absent, colors are `hasColor` then unsigned `0xAARRGGBB`, flags and enums
+ * are their codes, detents are fractions with -1 for `"auto"`. Null for a string that is not a navigation `nativeID`.
+ */
+export function decodeRecords(nativeID: string): { kind: number; records: NavRecord[] } | null {
+  const parsed = parseNativeID(nativeID);
+  const kind = parsed ? NAV_KINDS[parsed.kind] : undefined;
+  if (!parsed || kind === undefined) return null;
+  const { pairs } = parsed;
+  const string = (key: string): string | number => pairs[key] === undefined ? -1 : decodeValue(pairs[key]);
+  const records: NavRecord[] = [];
+  switch (parsed.kind) {
+    case "screen": {
+      records.push({ id: 110, values: [wireInt(pairs.a, 2), PRESENTATION_CODE[pairs.p] ?? 0, wireInt(pairs.g, 1), ANIMATION_CODE[pairs.s] ?? 0, wireInt(pairs.b, 1)] });
+      if (pairs.p === "sheet" || pairs.p === "formSheet") {
+        const form = pairs.p === "formSheet";
+        const detents = form ? [1] : pairs.dt === undefined ? [...SHEET_DEFAULT_DETENTS] : decodeList(pairs.dt).map((item) => item === "auto" ? "auto" : Number(item));
+        const fractions = detents.slice(0, SHEET_MAX_DETENTS).map((item) => item === "auto" ? -1 : item);
+        records.push({ id: 122, values: [fractions.length, ...fractions, Math.min(wireInt(pairs.di, 0), fractions.length - 1), wireInt(pairs.gr, form ? 0 : 1), wireInt(pairs.dm, 1), wireInt(pairs.bd, 0)] });
+      }
+      if (["ss", "sx", "nc", "ns"].some((key) => pairs[key] !== undefined)) {
+        records.push({ id: 125, values: [barCode(pairs.ss), wireInt(pairs.sx, 0), ...argb(pairs.nc), barCode(pairs.ns)] });
+      }
+      break;
+    }
+    case "header": {
+      const flags = (pairs.l === "1" ? 1 : 0) | (pairs.tl === "1" ? 2 : 0) | (pairs.bk === "1" ? 4 : 0) | (pairs.hs === "1" ? 8 : 0);
+      records.push({ id: 120, values: [flags, string("t"), string("st"), string("bt"), ...argb(pairs.tc), ...argb(pairs.bg)] });
+      records.push({ id: 121, values: [wireInt(pairs.sl, 0)] });
+      break;
+    }
+    case "header-left": case "header-center": case "header-right": case "header-search": {
+      records.push({ id: 126, values: [SLOTS[parsed.kind]] });
+      if (parsed.kind === "header-search") records.push({ id: 127, values: [string("ph"), string("v"), wireInt(pairs.ec, 0)] });
+      break;
+    }
+    case "tabs":
+      records.push({ id: 123, values: [wireInt(pairs.sel, 0), wireInt(pairs.sc, 0), ...argb(pairs.tc), ...argb(pairs.uc), ...argb(pairs.bg), wireInt(pairs.lb, 0)] });
+      break;
+    case "tab":
+      records.push({ id: 124, values: [string("k"), string("t"), string("ic"), string("is"), wireInt(pairs.iv, 0), pairs.bd === undefined ? 0 : decodeValue(pairs.bd) === "" ? 1 : 2, pairs.bd === undefined ? -1 : decodeValue(pairs.bd), wireInt(pairs.ds, 0)] });
+      break;
+  }
+  return { kind, records };
+}

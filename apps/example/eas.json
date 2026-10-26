@@ -10,13 +10,14 @@
 		},
 		"development": {
 			"extends": "base",
-			"developmentClient": true,
 			"distribution": "internal"
 		},
 		"preview": {
 			"extends": "base",
 			"distribution": "internal",
+			"channel": "preview",
 			"env": {
+				"UPDATES_CHANNEL": "preview",
 				"EXPO_PUBLIC_API_URL": "https://dev.qarnos.com",
 				"APP_VARIANT": "production"
 			},
@@ -27,10 +28,16 @@
 		"production": {
 			"extends": "base",
 			"autoIncrement": true,
+			"channel": "production",
 			"env": {
+				"UPDATES_CHANNEL": "production",
 				"EXPO_PUBLIC_API_URL": "https://qarnos.com",
 				"APP_VARIANT": "production"
 			}
+		},
+		"preview-store": {
+			"extends": "preview",
+			"distribution": "store"
 		}
 	},
 	"submit": {

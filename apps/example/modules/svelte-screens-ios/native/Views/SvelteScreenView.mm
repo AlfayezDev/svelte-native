@@ -1,0 +1,445 @@
+#import "SvelteScreenView.h"
+
+#import <React/RCTComponentViewFactory.h>
+#import <React/RCTConversions.h>
+#import <React/RCTScrollViewComponentView.h>
+#import <react/renderer/componentregistry/ComponentDescriptorProvider.h>
+#import <react/renderer/components/view/ViewProps.h>
+#import <react/renderer/core/EventQueue.h>
+
+#import "SvelteComponents.h"
+#import "SvelteHeaderView.h"
+#import "SvelteScreensCore.h"
+#import "SvelteStackView.h"
+#import "SvelteSupport.h"
+
+using namespace facebook::react;
+
+@interface SvelteScreenView ()
+- (void)controllerDidAppear;
+- (void)controllerDidDisappear;
+- (void)controllerDidLayout;
+- (UIStatusBarStyle)statusBarStyle;
+- (BOOL)statusBarHidden;
+@end
+
+@implementation SvelteScreenController
+
+- (instancetype)initWithScreenView:(SvelteScreenView *)screenView {
+  if (self = [super initWithNibName:nil bundle:nil]) {
+    _screenView = screenView;
+    self.view = screenView;
+    // The view extends under the bar, so that Yoga's header band is drawn over and the screen's frame stays the whole container.
+    self.edgesForExtendedLayout = UIRectEdgeAll;
+    self.extendedLayoutIncludesOpaqueBars = YES;
+  }
+  return self;
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+  [super viewDidAppear:animated];
+  [self.screenView controllerDidAppear];
+}
+
+- (void)viewDidDisappear:(BOOL)animated {
+  [super viewDidDisappear:animated];
+  [self.screenView controllerDidDisappear];
+}
+
+- (void)viewDidLayoutSubviews {
+  [super viewDidLayoutSubviews];
+  [self.screenView controllerDidLayout];
+}
+
+- (UIStatusBarStyle)preferredStatusBarStyle {
+  SvelteScreenView *screen = self.screenView;
+  return screen != nil ? [screen statusBarStyle] : UIStatusBarStyleDefault;
+}
+
+- (BOOL)prefersStatusBarHidden {
+  SvelteScreenView *screen = self.screenView;
+  return screen != nil ? [screen statusBarHidden] : NO;
+}
+
+@end
+
+@implementation SvelteScreenView {
+  SvelteScreenController *_controller;
+  SvelteNavigationController *_wrapper;
+  __weak SvelteHeaderView *_header;
+  svelte::ScreenSpec _spec;
+  std::string _nativeId;
+  BOOL _specParsed;
+  svelte::SvelteScreenShadowNode::ConcreteState::Shared _state;
+  CGSize _reportedSize;
+  BOOL _unmounted;
+  BOOL _userDismissed;
+  BOOL _needsUpdate;
+  BOOL _initialDetentApplied;
+  BOOL _visible;
+  std::vector<double> _appliedDetents;
+  SvelteTouchHost *_touch;
+  __weak RCTScrollViewComponentView *_adjustedScroll;
+}
+
++ (ComponentDescriptorProvider)componentDescriptorProvider {
+  return concreteComponentDescriptorProvider<svelte::SvelteScreenComponentDescriptor>();
+}
+
++ (BOOL)shouldBeRecycled {
+  return NO;
+}
+
++ (void)load {
+  [[RCTComponentViewFactory currentComponentViewFactory] registerComponentViewClass:self];
+}
+
+- (instancetype)initWithFrame:(CGRect)frame {
+  if (self = [super initWithFrame:frame]) {
+    _controller = [[SvelteScreenController alloc] initWithScreenView:self];
+  }
+  return self;
+}
+
+- (const svelte::ScreenSpec &)spec {
+  return _spec;
+}
+
+- (BOOL)needsUpdate {
+  return _needsUpdate;
+}
+
+- (void)setNeedsUpdate {
+  _needsUpdate = YES;
+  [_stack setNeedsFlush];
+}
+
+- (void)markUnmounted {
+  _unmounted = YES;
+}
+
+- (void)markUserDismissed {
+  _userDismissed = YES;
+}
+
+#pragma mark - Component view protocol
+
+- (void)updateProps:(const Props::Shared &)props oldProps:(const Props::Shared &)oldProps {
+  [super updateProps:props oldProps:oldProps];
+  const auto &viewProps = static_cast<const ViewProps &>(*props);
+  if (_specParsed && viewProps.nativeId == _nativeId) return;
+  _nativeId = viewProps.nativeId;
+  _specParsed = YES;
+  _spec = svelte::parseScreen(_nativeId);
+  _controller.animation = _spec.animation;
+  [_controller setNeedsStatusBarAppearanceUpdate];
+  [self setNeedsUpdate];
+}
+
+- (void)updateState:(const State::Shared &)state oldState:(const State::Shared &)oldState {
+  _state = std::static_pointer_cast<const svelte::SvelteScreenShadowNode::ConcreteState>(state);
+}
+
+// UIKit sizes the controller's view while the screen is in a navigation controller or presented, and Yoga learns the size
+// through the shadow state (`controllerDidLayout`); before that the frame Yoga computed applies.
+- (void)updateLayoutMetrics:(const LayoutMetrics &)layoutMetrics oldLayoutMetrics:(const LayoutMetrics &)oldLayoutMetrics {
+  if (_controller.parentViewController != nil || _controller.presentingViewController != nil) {
+    _layoutMetrics = layoutMetrics;
+    return;
+  }
+  [super updateLayoutMetrics:layoutMetrics oldLayoutMetrics:oldLayoutMetrics];
+}
+
+- (void)mountChildComponentView:(UIView<RCTComponentViewProtocol> *)childComponentView index:(NSInteger)index {
+  if ([childComponentView isKindOfClass:[SvelteHeaderView class]]) {
+    SvelteHeaderView *header = (SvelteHeaderView *)childComponentView;
+    header.screen = self;
+    _header = header;
+  }
+  [super mountChildComponentView:childComponentView index:index];
+  [self setNeedsUpdate];
+}
+
+- (void)unmountChildComponentView:(UIView<RCTComponentViewProtocol> *)childComponentView index:(NSInteger)index {
+  SvelteHeaderView *header = _header;
+  if (childComponentView == header) {
+    header.screen = nil;
+    _header = nil;
+  }
+  [super unmountChildComponentView:childComponentView index:index];
+  [self setNeedsUpdate];
+}
+
+- (void)invalidate {
+  _unmounted = YES;
+  [_touch detach];
+  // The controller and its view hold each other: let go once UIKit is done with whatever it still animates.
+  dispatch_async(dispatch_get_main_queue(), ^{
+    self->_controller = nil;
+    self->_wrapper = nil;
+  });
+}
+
+#pragma mark - Presentation
+
+- (UIViewController *)presentedController {
+  return _wrapper != nil ? (UIViewController *)_wrapper : (UIViewController *)_controller;
+}
+
+// A modal has no navigation controller above it: a modal with a header gets one of its own, as it is presented (a screen
+// that the stack pushes must not have one: its controller belongs to the stack's).
+- (void)ensureWrapper {
+  if (_wrapper != nil || _controller == nil || _header == nil || _spec.presentation == svelte::kPush) return;
+  _wrapper = [[SvelteNavigationController alloc] initWithRootViewController:_controller];
+  _wrapper.navigationBar.prefersLargeTitles = YES;
+  _wrapper.delegate = self;
+  __weak SvelteScreenView *weakSelf = self;
+  _wrapper.didLayout = ^{
+    SvelteScreenView *screen = weakSelf;
+    if (screen != nil) [screen->_header reportMetrics];
+  };
+}
+
+- (void)preparePresentation {
+  [self ensureWrapper];
+  UIViewController *presented = self.presentedController;
+  if (presented == nil) return;
+  switch (_spec.presentation) {
+    case svelte::kModal:
+      presented.modalPresentationStyle = UIModalPresentationFullScreen;
+      break;
+    case svelte::kTransparentModal:
+      presented.modalPresentationStyle = UIModalPresentationOverCurrentContext;
+      break;
+    case svelte::kSheet:
+    case svelte::kFormSheet:
+      presented.modalPresentationStyle = UIModalPresentationPageSheet;
+      break;
+    default:
+      return;
+  }
+  if (_spec.animation == svelte::kAnimationFade && !_spec.isSheet()) presented.modalTransitionStyle = UIModalTransitionStyleCrossDissolve;
+  presented.modalPresentationCapturesStatusBarAppearance = YES;
+  presented.presentationController.delegate = self;
+  [self applyDismissalPolicy];
+  [self applySheetConfiguration];
+}
+
+// The swipe-down gesture and a tap outside dismiss a sheet unless the screen opted out; a screen without `gestureEnabled` stays too.
+- (void)applyDismissalPolicy {
+  UIViewController *presented = self.presentedController;
+  if (presented == nil || _spec.presentation == svelte::kPush) return;
+  presented.modalInPresentation = _spec.gesture == 0 || (_spec.isSheet() && _spec.dismissible == 0);
+}
+
+- (NSString *)detentIdentifierAtIndex:(NSInteger)index {
+  return [@(index) stringValue];
+}
+
+- (void)applySheetConfiguration {
+  if (!_spec.isSheet()) return;
+  UISheetPresentationController *sheet = self.presentedController.sheetPresentationController;
+  if (sheet == nil) return;
+  sheet.delegate = self;
+  if (_appliedDetents != _spec.detents) {
+    NSMutableArray<UISheetPresentationControllerDetent *> *detents = [NSMutableArray new];
+    __weak SvelteScreenView *weakSelf = self;
+    for (size_t index = 0; index < _spec.detents.size(); index++) {
+      const double fraction = _spec.detents[index];
+      [detents addObject:[UISheetPresentationControllerDetent
+                             customDetentWithIdentifier:[self detentIdentifierAtIndex:(NSInteger)index]
+                                               resolver:^CGFloat(id<UISheetPresentationControllerDetentResolutionContext> context) {
+                                                 // `auto` is the height Yoga gave the screen's content.
+                                                 SvelteScreenView *screen = weakSelf;
+                                                 const double content = screen != nil ? screen->_layoutMetrics.frame.size.height : 0;
+                                                 return svelte::detentHeight(fraction, context.maximumDetentValue, content);
+                                               }]];
+    }
+    _appliedDetents = _spec.detents;
+    if (self.presentedController.presentingViewController != nil) {
+      [sheet animateChanges:^{
+        sheet.detents = detents;
+      }];
+    } else {
+      sheet.detents = detents;
+    }
+  }
+  if (!_initialDetentApplied && !_spec.detents.empty()) {
+    sheet.selectedDetentIdentifier = [self detentIdentifierAtIndex:_spec.initialDetent];
+    _initialDetentApplied = YES;
+  }
+  sheet.prefersGrabberVisible = _spec.grabber != 0;
+  sheet.prefersScrollingExpandsWhenScrolledToEdge = YES;
+  // Without a backdrop every detent is undimmed and the screen behind stays interactive.
+  sheet.largestUndimmedDetentIdentifier =
+      _spec.noBackdrop != 0 && !_spec.detents.empty() ? [self detentIdentifierAtIndex:(NSInteger)_spec.detents.size() - 1] : nil;
+}
+
+- (void)presentationControllerDidDismiss:(UIPresentationController *)presentationController {
+  [self presentationDidEndByUser];
+}
+
+- (void)presentationDidEndByUser {
+  _userDismissed = YES;
+  [_stack modalWasDismissedByUser:self];
+}
+
+- (void)emitDismissedWithCount:(NSInteger)count {
+  SvelteEmit(_eventEmitter, "dismissed", folly::dynamic::object("dismissCount", (int)count));
+}
+
+- (void)reportHeaderMetrics {
+  [_header reportMetrics];
+}
+
+- (void)sheetPresentationControllerDidChangeSelectedDetentIdentifier:(UISheetPresentationController *)sheetPresentationController {
+  const NSInteger index = sheetPresentationController.selectedDetentIdentifier.integerValue;
+  if (index < 0 || index >= (NSInteger)_spec.detents.size()) return;
+  double fraction = _spec.detents[(size_t)index];
+  if (fraction < 0) {
+    // The measured fraction of an `auto` detent: its content over the space below the top inset.
+    UIWindow *window = self.window;
+    const double available = window != nil ? window.bounds.size.height - window.safeAreaInsets.top : 0;
+    fraction = available > 0 ? MIN(1.0, _layoutMetrics.frame.size.height / available) : 1.0;
+  }
+  SvelteEmit(_eventEmitter, "detentChange", folly::dynamic::object("index", (int)index)("fraction", fraction));
+}
+
+#pragma mark - Navigation bar
+
+- (void)navigationController:(UINavigationController *)navigationController
+      willShowViewController:(UIViewController *)viewController
+                    animated:(BOOL)animated {
+  [self applyBarConfigurationTo:navigationController animated:animated];
+}
+
+- (void)applyBarConfigurationTo:(UINavigationController *)navigation animated:(BOOL)animated {
+  SvelteHeaderView *header = _header;
+  [navigation setNavigationBarHidden:header == nil animated:animated];
+  if (header == nil) return;
+  navigation.navigationBar.tintColor = SvelteColor([header spec].tint);
+  // The back button shows the title of the screen below, unless this screen names it.
+  const NSUInteger index = [navigation.viewControllers indexOfObject:_controller];
+  if (index != NSNotFound && index > 0) {
+    navigation.viewControllers[index - 1].navigationItem.backButtonTitle = SvelteString([header spec].backTitle);
+  }
+}
+
+- (void)update {
+  _needsUpdate = NO;
+  if (_controller == nil) return;
+  SvelteHeaderView *header = _header;
+  if (header != nil) [header applyToController:_controller];
+  else [SvelteHeaderView clearController:_controller];
+  UINavigationController *navigation = _controller.navigationController;
+  if (navigation != nil && navigation.topViewController == _controller) [self applyBarConfigurationTo:navigation animated:NO];
+  [self configureScrollView];
+  [self applyDismissalPolicy];
+  [self applySheetConfiguration];
+  [_controller setNeedsStatusBarAppearanceUpdate];
+  [header reportMetrics];
+}
+
+static RCTScrollViewComponentView *_Nullable FirstScrollView(UIView *view) {
+  for (UIView *child in view.subviews) {
+    if ([child isKindOfClass:[RCTScrollViewComponentView class]]) return (RCTScrollViewComponentView *)child;
+    RCTScrollViewComponentView *nested = FirstScrollView(child);
+    if (nested != nil) return nested;
+  }
+  return nil;
+}
+
+// Under a large or translucent header the first scroll view runs under the bar: UIKit insets it by the bar's current
+// height and collapses the large title as it scrolls. JavaScript does not pad it (SPEC.md, "Layout rules").
+- (void)configureScrollView {
+  SvelteHeaderView *header = _header;
+  const BOOL underBar = header != nil && ([header spec].large || [header spec].translucent);
+  RCTScrollViewComponentView *scroll = underBar ? FirstScrollView(self) : nil;
+  RCTScrollViewComponentView *adjusted = _adjustedScroll;
+  if (scroll == adjusted) return;
+  if (adjusted != nil) adjusted.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+  [_controller setContentScrollView:scroll.scrollView forEdge:NSDirectionalRectEdgeTop];
+  if (scroll != nil) scroll.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentAutomatic;
+  _adjustedScroll = scroll;
+}
+
+#pragma mark - Status bar
+
+- (UIStatusBarStyle)statusBarStyle {
+  if (!_spec.hasBars) return UIStatusBarStyleDefault;
+  if (_spec.statusStyle == svelte::kBarLight) return UIStatusBarStyleLightContent;
+  if (_spec.statusStyle == svelte::kBarDark) return UIStatusBarStyleDarkContent;
+  return UIStatusBarStyleDefault;
+}
+
+- (BOOL)statusBarHidden {
+  return _spec.hasBars && _spec.statusHidden != 0;
+}
+
+#pragma mark - Controller callbacks
+
+// UIKit also calls `viewDidAppear` after a cancelled back swipe and `viewDidDisappear` for the screen below it: only a change of
+// visibility is an event.
+- (void)controllerDidAppear {
+  [_header reportMetrics];
+  if (_visible) return;
+  _visible = YES;
+  __weak SvelteScreenView *weakSelf = self;
+  SvelteScheduleLifecycle(SvelteLifecycleAppear, ^{
+    SvelteScreenView *screen = weakSelf;
+    if (screen != nil) SvelteEmit(screen->_eventEmitter, "appear", folly::dynamic::object());
+  });
+}
+
+- (void)controllerDidDisappear {
+  if (_visible) {
+    _visible = NO;
+    __weak SvelteScreenView *weakSelf = self;
+    SvelteScheduleLifecycle(SvelteLifecycleDisappear, ^{
+      SvelteScreenView *screen = weakSelf;
+      if (screen != nil) SvelteEmit(screen->_eventEmitter, "disappear", folly::dynamic::object());
+    });
+  }
+  // A pushed screen that UIKit took out of the stack on its own (a back swipe or the back button): the user dismissed it.
+  if (!_unmounted && _spec.presentation == svelte::kPush && _controller.parentViewController == nil && _controller.presentingViewController == nil) {
+    [_stack screenWasRemovedByUIKit:self];
+  }
+}
+
+// A presented screen (a modal, a sheet) is sized by UIKit, which may differ from what Yoga computed: tell the shadow tree.
+- (void)controllerDidLayout {
+  if (_unmounted || _state == nullptr || _spec.presentation == svelte::kPush) return;
+  if (std::find(_spec.detents.begin(), _spec.detents.end(), -1.0) != _spec.detents.end()) return;  // `auto`: Yoga measures the content
+  const CGSize size = self.bounds.size;
+  if (size.width < 1 || size.height < 1 || CGSizeEqualToSize(size, _reportedSize)) return;
+  _reportedSize = size;
+  _state->updateState(svelte::SvelteScreenState{RCTSizeFromCGSize(size)}, EventQueue::UpdateMode::unstable_Immediate);
+}
+
+- (void)didMoveToWindow {
+  [super didMoveToWindow];
+  // A presented screen lives outside the surface's root view: React Native's touch handler is attached to it, and not to a screen
+  // that is below the root (a pushed one, or a modal presented over the current context), where the root's handler already listens.
+  UIViewController *presented = _wrapper != nil ? (UIViewController *)_wrapper : (UIViewController *)_controller;
+  if (self.window != nil && presented.presentingViewController != nil && !SvelteIsUnderSurfaceRoot(presented.view)) {
+    if (_touch == nil) _touch = [SvelteTouchHost new];
+    [_touch attachToView:presented.view offset:CGPointMake(_layoutMetrics.frame.origin.x, _layoutMetrics.frame.origin.y)];
+  } else {
+    [_touch detach];
+  }
+}
+
+#pragma mark - Removal
+
+- (void)replaceViewWithSnapshot {
+  if (self.window == nil || _controller == nil || _controller.view != self) return;
+  UIView *snapshot = [self snapshotViewAfterScreenUpdates:NO];
+  if (snapshot == nil) return;
+  snapshot.frame = self.frame;
+  UIView *parent = self.superview;
+  [self removeFromSuperview];
+  _controller.view = snapshot;
+  [parent addSubview:snapshot];
+}
+
+@end

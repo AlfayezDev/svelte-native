@@ -4,6 +4,7 @@ import { transformSync } from "esbuild";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { traverseFast } from "@babel/types";
+import { lowerPrimitives } from "./lower.ts";
 import { TraceMap, originalPositionFor } from "@jridgewell/trace-mapping";
 
 const require = createRequire(import.meta.url);
@@ -15,7 +16,7 @@ export function transform(input: TransformInput) {
   let code = src;
   const maps: TraceMap[] = [];
   if (filename.endsWith(".svelte")) {
-    const result = compile(src, {
+    const result = compile(lowerPrimitives(src, { filename }), {
       filename,
       dev: false,
       css: "external",
@@ -55,5 +56,5 @@ export function transform(input: TransformInput) {
 }
 
 export function getCacheKey(options?: unknown): string {
-  return createHash("sha256").update(readFileSync(import.meta.filename)).update(upstream.getCacheKey(options)).digest("hex");
+  return createHash("sha256").update(readFileSync(import.meta.filename)).update(readFileSync(new URL("./lower.ts", import.meta.url))).update(upstream.getCacheKey(options)).digest("hex");
 }

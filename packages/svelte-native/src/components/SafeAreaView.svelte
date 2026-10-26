@@ -1,7 +1,14 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import type { SafeAreaViewProps } from "react-native-safe-area-context";
-  import Host from "./Host.svelte";
-  let { children, ...attributes }: Omit<SafeAreaViewProps, "children"> & { children?: Snippet } = $props();
+  import type {} from "../elements.d.ts";
+  import type { ViewProps } from "react-native";
+  import { createNativeProps } from "../native-props.ts";
+  import { safeAreaStyle, type Edge } from "../fabric/insets.ts";
+  import { connectInsets, insets } from "../insets.svelte.ts";
+  /** A plain view padded by the insets store on the selected `edges` (default all). */
+  let { children, edges, style, ...attributes }: Omit<ViewProps, "children"> & { children?: Snippet; edges?: readonly Edge[] } = $props();
+  connectInsets();
+  const resolveProps = createNativeProps();
+  const nativeProps = $derived(resolveProps({ ...attributes, style: safeAreaStyle(style, insets, edges) }));
 </script>
-<Host name="native-safe-area" {attributes}>{@render children?.()}</Host>
+<native-safe-area {nativeProps}>{@render children?.()}</native-safe-area>

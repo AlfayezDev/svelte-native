@@ -1,0 +1,300 @@
+package expo.modules.svelteengine.views
+
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.content.res.Configuration
+import android.os.Build
+import android.view.View
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import expo.modules.svelteengine.NavProps
+import kotlin.math.max
+
+/** The system bar options of a screen (record 125); styles are 0 auto, 1 light icons, 2 dark icons. */
+data class SystemBarsSpec(val statusStyle: Int, val statusHidden: Boolean, val hasNavColor: Boolean, val navColor: Int, val navStyle: Int)
+
+/**
+ * One screen of an [EngineStack]: an absolutely filled [EngineView] (Yoga's frame) plus the navigation state the stack
+ * reads. Its translation and alpha belong to the stack's transitions, never to the committed transform/opacity props.
+ * Sheets and form sheets are [EngineSheet]s.
+ */
+open class EngineScreen(context: Context) : EngineView(context) {
+  /** 0 detached/inactive, 1 transitioning, 2 active. */
+  var activityState = 2
+  /** 0 push, 1 modal, 2 transparentModal, 3 sheet, 4 formSheet. */
+  var presentation = 0
+  var gestureEnabled = true
+  /** 0 default, 1 none, 2 fade, 3 slide_from_right, 4 slide_from_bottom. */
+  var animation = 0
+  var backDismissal = true
+  /** Record 125; null when the screen sets no system bar option. */
+  var bars: SystemBarsSpec? = null
+
+  /** Yoga's `display: none`; the stack decides everything else about visibility. */
+  var displayNone = false
+
+  /** Popping (JavaScript removed it, or the user dismissed it): still attached while its exit plays, no longer part of the stack. */
+  var leaving = false
+  /** Dismissed by the user: `onDismissed` was (or is about to be) sent; the removal that follows needs no animation. */
+  var dismissed = false
+  /** A transition is running on this view. */
+  var transitioning = false
+  /** Only the top active screen takes touches ([HitTest]). */
+  var touchable = true
+  /** `topAppear` was sent and `topDisappear` has not followed ([EngineStack.syncAppearance]). */
+  var appeared = false
+  /** A screen above holds focus for accessibility services: this one is hidden from them. */
+  private var a11yHidden = false
+
+  internal var running: android.view.ViewPropertyAnimator? = null
+
+  /**
+   * Hidden by the stack: inactive, or settled under another settled push screen. The view keeps its subtree and every
+   * display list and the renderer skips it (alpha 0). It used to be `INVISIBLE`, which Android dispatches to every
+   * descendant: each one with a background drawable is invalidated, so the whole screen re-recorded when it came back
+   * (5–13 ms on the main thread per pop for a screen of a hundred views).
+   */
+  var hidden = false
+    private set
+
+  fun setHidden(hidden: Boolean) {
+    if (this.hidden == hidden) return
+    this.hidden = hidden
+    if (hidden) {
+      if (hasFocus()) clearFocus()
+      alpha = 0f
+    } else {
+      alpha = 1f
+    }
+    applyA11y()
+  }
+
+  private var layerHolds = 0
+
+  /**
+   * The settled top screen above the first one keeps its hardware layer between transitions (see [EngineStack.refresh]):
+   * it is the screen the next pop or back gesture moves, and building the layer on that first frame cost 6–18 ms of GPU
+   * driver time for a fresh full-screen framebuffer. The hold is taken before the transition's own hold is released, so
+   * the layer is handed over, never rebuilt.
+   *
+   * A layer is only free while its content stands still: every invalidation under the screen (an animated tile, a
+   * scrolling list, a keystroke) makes the renderer draw the whole screen into the layer again and then composite it,
+   * 0.5–14 ms per frame on top of the drawing itself on a Mali-G57. So the resident hold lets go on the first descendant
+   * invalidation and is not taken again until the next settle: rebuilding it after a quiet period costs a full-screen
+   * render (20–35 ms for a 300-row list on the A16) on a frame nobody asked for, and a pop after content changed pays
+   * the first-frame build instead, which is the rarer of the two. [onDescendantInvalidated] exists since API 26; older
+   * devices never hold a resident layer.
+   */
+  var resident = false
+    private set
+  private var residentHeld = false
+
+  fun setResident(resident: Boolean) {
+    val wanted = resident && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+    if (this.resident == wanted) return
+    this.resident = wanted
+    if (wanted) {
+      residentHeld = true
+      holdLayer()
+    } else if (residentHeld) {
+      residentHeld = false
+      releaseLayer()
+    }
+  }
+
+  override fun onDescendantInvalidated(child: View, target: View) {
+    super.onDescendantInvalidated(child, target)
+    if (residentHeld) {
+      residentHeld = false
+      releaseLayer()
+    }
+  }
+
+  /**
+   * Renders the screen into a hardware layer while something moves it (a transition, a drag), so each frame composites a
+   * texture instead of replaying every row and text of the screen. Holds are counted: overlapping movements share the layer,
+   * and the layer type goes back to none when the last one lets go, so no layer outlives the movement and later content
+   * changes are drawn the ordinary way.
+   */
+  fun holdLayer() {
+    if (layerHolds++ == 0) setLayerType(LAYER_TYPE_HARDWARE, null)
+  }
+
+  fun releaseLayer() {
+    if (layerHolds > 0 && --layerHolds == 0) setLayerType(LAYER_TYPE_NONE, null)
+  }
+
+  val stack: EngineStack? get() = parent as? EngineStack
+
+  /** The header node of this screen, or null. */
+  val header: EngineHeader?
+    get() {
+      for (i in 0 until childCount) (getChildAt(i) as? EngineHeader)?.let { return it }
+      return null
+    }
+
+  override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+    super.onLayout(changed, l, t, r, b)
+    // Content may have arrived since the last pass: a large or translucent header insets the first scroll view.
+    header?.queueAdopt()
+  }
+
+  /** How far below its Yoga frame the screen rests, px: 0, or the detent a sheet sits at. */
+  open val restY: Float get() = 0f
+
+  /** Whether the user may dismiss the screen (back key, swipe, scrim); sheets can opt out. */
+  open val dismissible: Boolean get() = true
+
+  open fun apply(p: NavProps) {
+    if (!p.seen) return
+    val changed = activityState != p.activityState || presentation != p.presentation || gestureEnabled != p.gestureEnabled ||
+      animation != p.animation || backDismissal != p.backDismissal
+    activityState = p.activityState; presentation = p.presentation; gestureEnabled = p.gestureEnabled
+    animation = p.animation; backDismissal = p.backDismissal
+    val spec = if (p.barsSeen) SystemBarsSpec(p.statusStyle, p.statusHidden, p.hasNavColor, p.navColor, p.navStyle) else null
+    val barsChanged = spec != bars
+    bars = spec
+    // The common props reset the accessibility flag on every update; the stack's choice is applied again.
+    applyA11y()
+    if (changed) stack?.refresh()
+    if (barsChanged) SystemBars.invalidate(this)
+  }
+
+  /** The stack calls this from `refresh()`: hidden while a modal presentation above holds focus. */
+  fun setA11yHidden(hidden: Boolean) {
+    if (a11yHidden == hidden) return
+    a11yHidden = hidden
+    applyA11y()
+  }
+
+  private fun applyA11y() {
+    if (a11yHidden || hidden) {
+      if (importantForAccessibility != IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS) importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+    } else if (importantForAccessibility == IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS) {
+      importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_AUTO
+    }
+  }
+
+  /** The transition this screen plays: 0 none, 1 fade, 2 from the right, 3 from the bottom. */
+  fun transitionKind(): Int = when (animation) {
+    1 -> 0
+    2 -> 1
+    3 -> 2
+    4 -> 3
+    else -> when (presentation) {
+      0 -> 2
+      1, 3, 4 -> 3
+      else -> 1
+    }
+  }
+}
+
+/** The engine overlay above [this] view, or null while it is not mounted. */
+internal fun View.engineRoot(): EngineRoot? {
+  var p = parent
+  while (p != null) {
+    if (p is EngineRoot) return p
+    p = p.parent
+  }
+  return null
+}
+
+/**
+ * The part of the window's safe-area insets that a view reaches into, in px: system bars and display cutout, reduced by
+ * how far the overlay's own frame already sits inside that edge and by how far the view's edge is from the overlay's (a
+ * header at the top of the screen gets the whole status bar, tabs embedded mid-screen get none). Positions come from
+ * layout, so a transition running on the view or its ancestors does not move the result. Main thread only.
+ */
+object SafeArea {
+  private val location = IntArray(2)
+
+  /** The top inset in px, or null while the window has not reported insets (a caller must not mistake that for 0). */
+  fun top(view: View): Int? = read(view, true)
+  fun bottom(view: View): Int? = read(view, false)
+
+  private fun read(view: View, top: Boolean): Int? {
+    val root = view.engineRoot() ?: (view as? EngineRoot) ?: return null
+    if (!root.isAttachedToWindow) return null
+    val all = ViewCompat.getRootWindowInsets(root) ?: return null
+    val bars = all.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+    root.getLocationInWindow(location)
+    var y = 0
+    var v: View = view
+    while (v !== root) {
+      y += v.top
+      v = v.parent as? View ?: break
+    }
+    return if (top) max(0, bars.top - location[1] - y)
+    else max(0, bars.bottom - (root.rootView.height - (location[1] + root.height)) - (root.height - (y + view.height)))
+  }
+}
+
+/**
+ * The status and navigation bar options of the top screen (record 125), applied to the activity's window. Each stack's
+ * top screen is a candidate: the deepest visible one that sets an option wins (a tab's screen over the screen that holds
+ * the tabs), and when none does, the window goes back to what it was. The search walks only visible screens and runs
+ * once per frame at most, after a push, pop, tab switch or option change.
+ */
+object SystemBars {
+  private var queued = false
+  private var original: Int? = null
+  private var applied: SystemBarsSpec? = null
+
+  fun invalidate(view: View) {
+    if (queued) return
+    val root = view.engineRoot() ?: return
+    queued = true
+    root.post {
+      queued = false
+      if (root.isAttachedToWindow) apply(root, find(root))
+    }
+  }
+
+  private fun find(view: View): SystemBarsSpec? {
+    var found: SystemBarsSpec? = null
+    when (view) {
+      is EngineStack -> view.topScreen()?.let { top ->
+        top.bars?.let { found = it }
+        find(top)?.let { found = it }
+      }
+      is EngineTabs -> view.selectedPane()?.let { pane -> find(pane)?.let { found = it } }
+      is android.view.ViewGroup -> for (i in 0 until view.childCount) find(view.getChildAt(i))?.let { found = it }
+    }
+    return found
+  }
+
+  private fun activityOf(view: View): Activity? {
+    var context: Context? = view.rootView.context
+    while (context is ContextWrapper) {
+      if (context is Activity) return context
+      context = context.baseContext
+    }
+    return context as? Activity
+  }
+
+  private fun apply(root: EngineRoot, spec: SystemBarsSpec?) {
+    if (spec == applied) return
+    val window = activityOf(root)?.window ?: return
+    val controller = WindowCompat.getInsetsController(window, window.decorView)
+    val night = root.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+    if (original == null) {
+      @Suppress("DEPRECATION")
+      original = window.navigationBarColor
+    }
+    // "light" means light icons (for a dark background): the platform flag is named for the bar, not the icons.
+    controller.isAppearanceLightStatusBars = when (spec?.statusStyle ?: 0) { 1 -> false; 2 -> true; else -> !night }
+    controller.isAppearanceLightNavigationBars = when (spec?.navStyle ?: 0) { 1 -> false; 2 -> true; else -> !night }
+    if (spec?.statusHidden == true) {
+      controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+      controller.hide(WindowInsetsCompat.Type.statusBars())
+    } else {
+      controller.show(WindowInsetsCompat.Type.statusBars())
+    }
+    @Suppress("DEPRECATION")
+    window.navigationBarColor = if (spec?.hasNavColor == true) spec.navColor else original ?: 0
+    applied = spec
+  }
+}

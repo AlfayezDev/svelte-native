@@ -1,0 +1,7 @@
+Starting: Intent { cmp=io.rasheed.svelteqa/.MainActivity }
+Status: ok
+LaunchState: COLD
+Activity: io.rasheed.svelteqa/.MainActivity
+TotalTime: 776
+WaitTime: 780
+Complete

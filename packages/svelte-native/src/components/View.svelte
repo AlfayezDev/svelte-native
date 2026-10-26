@@ -1,7 +1,13 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
+  import type {} from "../elements.d.ts";
+  import { createNativeProps } from "../native-props.ts";
   import type { ViewProps } from "react-native";
-  import Host from "./Host.svelte";
-  let { children, ...attributes }: Omit<ViewProps, "children"> & { children?: Snippet } = $props();
+  let { children, ref, ...attributes }: Omit<ViewProps, "children"> & {
+    children?: Snippet;
+    /** Receives the host handle (`HostHandle` in `fabric/host.ts`: `tag`, `measure`, `measureInWindow`, `dispatchCommand`, ...), or null on unmount. */
+    ref?: (handle: unknown) => void;
+  } = $props();
+  const resolveProps = createNativeProps();
 </script>
-<Host name="native-view" {attributes}>{@render children?.()}</Host>
+<native-view nativeProps={resolveProps({ ...attributes, ref })}>{@render children?.()}</native-view>

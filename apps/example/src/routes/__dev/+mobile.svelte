@@ -1,6 +1,9 @@
 <script lang="ts">
   import { onMount, setContext, tick, untrack } from "svelte";
+  import Platform from "react-native/Libraries/Utilities/Platform";
   import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
+  import { File, Paths } from "expo-file-system";
+  import { nativeApplicationVersion } from "expo-application";
   import { randomUUID } from "expo-crypto";
   import { SvelteMap, SvelteSet, SvelteDate, SvelteURL } from "svelte/reactivity";
   import { writable, derived } from "svelte/store";
@@ -15,7 +18,28 @@
   import Page from "#lib/native/components/Page.svelte";
   import Button from "#lib/native/components/Button.svelte";
 
+  /** `?run=checks,quick` (or scenario names) drives the lab without touching the screen; results land in Documents/lab-results.json. */
+  let { url: pageUrl }: { url?: URL } = $props();
+  const autorun = untrack(() => pageUrl?.searchParams.get("run") ?? "");
+  const stressAutorun = $derived(autorun.split(",").filter((part) => part && part !== "checks").join(","));
+  let stressResults: unknown[] = [];
+  let stressDone = false;
+  function saveResults(phase: string) {
+    const report = { phase, finishedAt: new Date().toISOString(), platform: Platform.OS, osVersion: String(Platform.Version), appVersion: nativeApplicationVersion, checks: $state.snapshot(checks), stress: stressResults, stressDone };
+    console.info("[native lab results]", JSON.stringify(report));
+    try { new File(Paths.document, "lab-results.json").write(JSON.stringify(report)); }
+    catch (error) { console.error("[native lab results]", error); }
+  }
   const router = useRouter();
+  onMount(() => {
+    if (!nativeLabEnabled || !autorun) return;
+    const timer = setTimeout(() => { void (async () => {
+      if (autorun.includes("checks")) { await runChecks(); saveResults("checks"); }
+      if (stressAutorun) panel = "stress";
+      else saveResults("done");
+    })(); }, 1500);
+    return () => clearTimeout(timer);
+  });
   onMount(() => {
     if (!nativeLabEnabled) return;
     const tag = `svelte-native-lab:${randomUUID()}`;
@@ -301,7 +325,7 @@
       <Text style={textStyle}>{boundaryValue()}</Text>
     </svelte:boundary>
   {:else if panel === "stress"}
-    <Stress />
+    <Stress autorun={stressAutorun} onResult={(results, done) => { stressResults = results; stressDone = done; saveResults(done ? "done" : "stress"); }} />
   {:else}
     <Text style={textStyle}>Transforms and opacity run through Reanimated. Normal controls respect the system’s reduced-motion setting.</Text>
     <View style={{ height: 100, padding: 16, borderRadius: 16, backgroundColor: theme.surface }}>

@@ -1,13 +1,51 @@
 import { onDestroy } from "svelte";
-import { cancelAnimation, makeMutable, type SharedValue } from "react-native-reanimated";
+import type * as Reanimated from "react-native-reanimated";
+import type * as Worklets from "react-native-worklets";
+import { loadReanimated, onReanimatedLoaded } from "./fabric/reanimated-load.ts";
 
 export { default as AnimatedView } from "./components/AnimatedView.svelte";
-export { cancelAnimation, Easing, ReduceMotion, withTiming, withSpring, withRepeat, withSequence, withDelay } from "react-native-reanimated";
 export type { SharedValue } from "react-native-reanimated";
-export { runOnUISync, runOnUIAsync } from "react-native-worklets";
 
-export function createSharedValue<Value>(initial: Value): SharedValue<Value> {
-  const value = makeMutable(initial);
+/**
+ * Reanimated and worklets load on the first call into this module (or on the first animated node the Fabric host
+ * mounts), not when a screen that imports it is evaluated. Until then each export is a stub that triggers the load;
+ * from then on the exports are Reanimated's own functions, re-assigned through these live bindings, so a worklet that
+ * captures `withTiming` or `ReduceMotion` after any animation API ran carries the real, UI-runtime-capable value.
+ * A worklet created before any call would capture a stub, which the UI runtime rejects as a remote function: create
+ * shared values (or call `runOnUISync`) before defining such worklets, as the lab does.
+ */
+const rea = (): typeof Reanimated => loadReanimated().reanimated;
+const wk = (): typeof Worklets => loadReanimated().worklets;
+
+export let withTiming = ((...args: Parameters<typeof Reanimated.withTiming>) => rea().withTiming(...args)) as typeof Reanimated.withTiming;
+export let withSpring = ((...args: Parameters<typeof Reanimated.withSpring>) => rea().withSpring(...args)) as typeof Reanimated.withSpring;
+export let withRepeat = ((...args: Parameters<typeof Reanimated.withRepeat>) => rea().withRepeat(...args)) as typeof Reanimated.withRepeat;
+export let withSequence = ((...args: Parameters<typeof Reanimated.withSequence>) => rea().withSequence(...args)) as typeof Reanimated.withSequence;
+export let withDelay = ((...args: Parameters<typeof Reanimated.withDelay>) => rea().withDelay(...args)) as typeof Reanimated.withDelay;
+export let cancelAnimation = ((...args: Parameters<typeof Reanimated.cancelAnimation>) => rea().cancelAnimation(...args)) as typeof Reanimated.cancelAnimation;
+export let runOnUISync = ((...args: Parameters<typeof Worklets.runOnUISync>) => wk().runOnUISync(...args)) as typeof Worklets.runOnUISync;
+export let runOnUIAsync = ((...args: Parameters<typeof Worklets.runOnUIAsync>) => wk().runOnUIAsync(...args)) as typeof Worklets.runOnUIAsync;
+
+/** Property reads resolve on first use (`Easing.inOut(Easing.ease)`, `ReduceMotion.System`); after the load these are Reanimated's objects. */
+function lazyObject<T extends object>(read: () => T): T {
+  return new Proxy({} as T, {
+    get: (_target, key) => (read() as Record<PropertyKey, unknown>)[key],
+    has: (_target, key) => key in read(),
+    ownKeys: () => Reflect.ownKeys(read()),
+    getOwnPropertyDescriptor: (_target, key) => { const descriptor = Reflect.getOwnPropertyDescriptor(read(), key); return descriptor && { ...descriptor, configurable: true }; },
+  });
+}
+export let Easing: typeof Reanimated.Easing = lazyObject(() => rea().Easing);
+export let ReduceMotion: typeof Reanimated.ReduceMotion = lazyObject(() => rea().ReduceMotion);
+
+onReanimatedLoaded(({ reanimated, worklets }) => {
+  withTiming = reanimated.withTiming; withSpring = reanimated.withSpring; withRepeat = reanimated.withRepeat; withSequence = reanimated.withSequence;
+  withDelay = reanimated.withDelay; cancelAnimation = reanimated.cancelAnimation; Easing = reanimated.Easing; ReduceMotion = reanimated.ReduceMotion;
+  runOnUISync = worklets.runOnUISync; runOnUIAsync = worklets.runOnUIAsync;
+});
+
+export function createSharedValue<Value>(initial: Value): Reanimated.SharedValue<Value> {
+  const value = rea().makeMutable(initial);
   onDestroy(() => cancelAnimation(value));
   return value;
 }

@@ -1,0 +1,553 @@
+{
+  "version": 1,
+  "gates": [
+    {
+      "id": "checks.passed",
+      "title": "Functional checks passed (of 28)",
+      "unit": "checks",
+      "metric": "lab.checks.passed",
+      "bar": {
+        "android": {
+          "min": 28
+        },
+        "ios": {
+          "min": 28
+        }
+      }
+    },
+    {
+      "id": "checks.failed",
+      "title": "Functional checks failed",
+      "unit": "checks",
+      "metric": "lab.checks.failed",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "lab.runs",
+      "title": "Complete lab runs, consecutive",
+      "unit": "runs",
+      "metric": "lab.runs",
+      "bar": {
+        "android": {
+          "min": 10
+        },
+        "ios": {
+          "min": 10
+        }
+      }
+    },
+    {
+      "id": "lab.incomplete",
+      "title": "Lab runs that never logged their completion line",
+      "unit": "runs",
+      "metric": "lab.incompleteRuns",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "lab.scenarios.failed",
+      "title": "Scenarios the lab itself marks failed",
+      "unit": "scenarios",
+      "metric": "lab.scenarios.failed",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "boot.warm.p90",
+      "title": "Warm boot p90, Start proc to Displayed",
+      "unit": "ms",
+      "metric": "boot.warm.p90",
+      "bar": {
+        "android": {
+          "max": 350
+        },
+        "ios": {
+          "max": 250
+        }
+      }
+    },
+    {
+      "id": "boot.cold.p90",
+      "title": "Cold boot p90, Start proc to Displayed (process cold after an idle gap; the launch users feel)",
+      "unit": "ms",
+      "metric": "boot.cold.p90",
+      "bar": {
+        "android": {
+          "max": 350
+        },
+        "ios": {
+          "max": 250
+        }
+      }
+    },
+    {
+      "id": "boot.warm.samples",
+      "title": "Warm boot samples",
+      "unit": "launches",
+      "metric": "boot.warm.samples",
+      "bar": {
+        "android": {
+          "min": 30
+        },
+        "ios": {
+          "min": 30
+        }
+      }
+    },
+    {
+      "id": "boot.cold.samples",
+      "title": "Cold boot samples",
+      "unit": "launches",
+      "metric": "boot.cold.samples",
+      "bar": {
+        "android": {
+          "min": 30
+        },
+        "ios": {
+          "min": 30
+        }
+      }
+    },
+    {
+      "id": "boot.warm.jsTotal.p90",
+      "title": "JavaScript before first content, warm p90",
+      "unit": "ms",
+      "metric": "boot.warm.jsTotal.p90",
+      "bar": {
+        "android": {
+          "max": 100
+        },
+        "ios": {
+          "max": 100
+        }
+      }
+    },
+    {
+      "id": "frames.droppedPct",
+      "title": "Dropped frames per scenario",
+      "unit": "%",
+      "metric": "frames.*.droppedPct",
+      "bar": {
+        "android": {
+          "max": 0,
+          "round": 1
+        },
+        "ios": {
+          "max": 0,
+          "round": 1
+        }
+      }
+    },
+    {
+      "id": "frames.maxPeriodRatio",
+      "title": "Longest frame over the frame period, per scenario",
+      "unit": "x period",
+      "metric": "frames.*.maxPeriodRatio",
+      "bar": {
+        "android": {
+          "max": 1.5
+        },
+        "ios": {
+          "max": 1.5
+        }
+      }
+    },
+    {
+      "id": "frames.maxMs",
+      "title": "Longest frame, per scenario",
+      "unit": "ms",
+      "metric": "frames.*.maxMs",
+      "bar": {
+        "android": {
+          "max": 33
+        },
+        "ios": {
+          "max": 33
+        }
+      }
+    },
+    {
+      "id": "list.virtual300.mountMs",
+      "title": "300-row virtual list, mount to layout",
+      "unit": "ms",
+      "metric": "list.virtual300.mountMs",
+      "bar": {
+        "android": {
+          "max": 10
+        },
+        "ios": {
+          "max": 15
+        }
+      }
+    },
+    {
+      "id": "log.fatals",
+      "title": "Fatals: crashes, ANRs and JavaScript error logs",
+      "unit": "lines",
+      "metric": "log.fatals",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "log.engineWarnings",
+      "title": "Engine warnings (SvelteEngine W and E lines)",
+      "unit": "lines",
+      "metric": "log.engineWarnings",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "memory.heapGrowthPct",
+      "title": "Heap growth after the soak, over post-boot",
+      "unit": "%",
+      "metric": "memory.heapGrowthPct",
+      "bar": {
+        "android": {
+          "max": 5
+        },
+        "ios": {
+          "max": 5
+        }
+      }
+    },
+    {
+      "id": "memory.leakedViews",
+      "title": "Engine views alive after the soak's last unmount, over the baseline",
+      "unit": "views",
+      "metric": "memory.leakedViews",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "memory.deadTagWrites",
+      "title": "Animated writes outliving their node by over 1 s, never claimed or dropped",
+      "unit": "writes",
+      "metric": "memory.deadTagWrites",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "soak.minutes",
+      "title": "Soak duration (churn, navigation, modal, sheet, list, tabs)",
+      "unit": "min",
+      "metric": "soak.minutes",
+      "bar": {
+        "android": {
+          "min": 10
+        },
+        "ios": {
+          "min": 10
+        }
+      }
+    },
+    {
+      "id": "soak.crashes",
+      "title": "Crashes, ANRs and process deaths during the soak",
+      "unit": "crashes",
+      "metric": "soak.crashes",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "crashes.coldStarts",
+      "title": "Cold starts run for the crash count",
+      "unit": "starts",
+      "metric": "crashes.coldStarts",
+      "bar": {
+        "android": {
+          "min": 1000
+        },
+        "ios": {
+          "min": 1000
+        }
+      }
+    },
+    {
+      "id": "crashes.coldStartCrashes",
+      "title": "Cold starts that crashed or died",
+      "unit": "starts",
+      "metric": "crashes.coldStartCrashes",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "crashes.coldStartsNoBoot",
+      "title": "Cold starts that never logged [Svelte boot] and did not crash",
+      "unit": "starts",
+      "metric": "crashes.coldStartsNoBoot",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "crashes.suites",
+      "title": "Full lab suites run for the crash count",
+      "unit": "suites",
+      "metric": "crashes.suites",
+      "bar": {
+        "android": {
+          "min": 100
+        },
+        "ios": {
+          "min": 100
+        }
+      }
+    },
+    {
+      "id": "crashes.suiteCrashes",
+      "title": "Full suites with a crash",
+      "unit": "suites",
+      "metric": "crashes.suiteCrashes",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "crashes.suitesIncomplete",
+      "title": "Full suites that never logged their last line and did not crash",
+      "unit": "suites",
+      "metric": "crashes.suitesIncomplete",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "crashes.anrs",
+      "title": "ANRs over the cold starts and the suites",
+      "unit": "ANRs",
+      "metric": "crashes.anrs",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "parity.diffPixels",
+      "title": "Screenshot parity: differing pixels outside the masks, worst case",
+      "unit": "px",
+      "metric": "parity.diffPixelsOutsideMasks",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "parity.incomplete",
+      "title": "Parity cases not compared against a reference (missing, unstable, errored, skipped, not run)",
+      "unit": "cases",
+      "metric": "parity.casesIncomplete",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "a11y.unreachable",
+      "title": "Accessibility: interactive elements not reachable",
+      "unit": "elements",
+      "metric": "a11y.unreachable",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "a11y.unlabeled",
+      "title": "Accessibility: interactive elements without a label",
+      "unit": "elements",
+      "metric": "a11y.unlabeled",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "a11y.notActionable",
+      "title": "Accessibility: interactive elements without an action",
+      "unit": "elements",
+      "metric": "a11y.notActionable",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "a11y.orderViolations",
+      "title": "Accessibility: focus order differing from visual order",
+      "unit": "pairs",
+      "metric": "a11y.orderViolations",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "a11y.titleNotFirst",
+      "title": "Accessibility: screens whose title is not first",
+      "unit": "screens",
+      "metric": "a11y.titleNotFirst",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "a11y.focusLeaks",
+      "title": "Accessibility: covered screen still reachable under a sheet or modal",
+      "unit": "elements",
+      "metric": "a11y.focusLeaks",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "a11y.incomplete",
+      "title": "Accessibility: screens not dumped",
+      "unit": "screens",
+      "metric": "a11y.screensIncomplete",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "resilience.failures",
+      "title": "Resilience: steps that failed (process, log, engine warnings, render)",
+      "unit": "steps",
+      "metric": "resilience.failures",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "resilience.stepsMissing",
+      "title": "Resilience: steps of the full plan not run",
+      "unit": "steps",
+      "metric": "resilience.stepsMissing",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    }
+  ]
+}

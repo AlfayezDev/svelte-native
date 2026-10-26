@@ -1,7 +1,13 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import type { ScrollViewProps } from "react-native";
-  import Host from "./Host.svelte";
-  let { children, ...attributes }: Omit<ScrollViewProps, "children"> & { children?: Snippet } = $props();
+  import type {} from "../elements.d.ts";
+  import { createNativeProps } from "../native-props.ts";
+  import type { ScrollView as NativeScrollView, ScrollViewProps } from "react-native";
+  let { children, ref, ...attributes }: Omit<ScrollViewProps, "children"> & {
+    children?: Snippet;
+    /** Receives the React Native ScrollView instance for `scrollTo` and friends. */
+    ref?: (instance: NativeScrollView | null) => void;
+  } = $props();
+  const resolveProps = createNativeProps();
 </script>
-<Host name="native-scroll" {attributes}>{@render children?.()}</Host>
+<native-scroll nativeProps={resolveProps({ ...attributes, ref })}>{@render children?.()}</native-scroll>

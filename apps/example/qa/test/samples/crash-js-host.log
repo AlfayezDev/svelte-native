@@ -1,0 +1,7 @@
+10-26 09:22:56.016 10302 10323 W unknown:BridgelessReact: ReactHost{0}.handleHostException(message = "Error: qa crash-js: uncaught error from a timer, stack:
+10-26 09:22:56.016 10302 10323 W unknown:BridgelessReact: anonymous@1:130
+10-26 09:22:56.016 10302 10323 W unknown:BridgelessReact: ")
+10-26 09:22:56.020 10302 10319 W unknown:BridgelessReact: ReactHost{0}.getOrCreateDestroyTask()
+10-26 09:22:56.020 10302 10319 W unknown:BridgelessReact: ReactHost{0}.getOrCreateDestroyTask(): Resetting createReactInstance task ref
+10-26 09:22:56.026 10302 10322 E ReactNativeJS: '[native lab keep awake cleanup]', { [Error: Call to function 'ExpoKeepAwake.deactivate' has been rejected.
+10-26 09:22:56.026 10302 10322 E ReactNativeJS: → Caused by: The current activity is no longer available] code: 'ERR_MISSING_ACTIVITY' }

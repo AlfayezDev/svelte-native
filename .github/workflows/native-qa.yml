@@ -1,0 +1,106 @@
+name: native-qa
+
+on:
+  push:
+  workflow_dispatch:
+    inputs:
+      repeat:
+        description: Lab runs (the production bar is 10 consecutive complete runs)
+        default: "10"
+      warm:
+        description: Warm boot launches (the production bar is 30)
+        default: "30"
+      cold:
+        description: Cold boot launches (the production bar is 30)
+        default: "30"
+
+# One emulator, one Gradle daemon: runs queue instead of cancelling each other.
+concurrency:
+  group: native-qa-emulator
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  emulator:
+    name: Android emulator lane
+    runs-on: [self-hosted, svelte-qa-emulator]
+    timeout-minutes: 150
+    env:
+      CI: "1"
+      EXPO_NO_TELEMETRY: "1"
+      EXPO_PUBLIC_API_URL: https://dev.qarnos.com
+      QA_DEVICE: localhost:5555
+      QA_TUNNEL_HOST: ${{ vars.QA_TUNNEL_HOST }}
+      QA_REPEAT: ${{ inputs.repeat || '10' }}
+      QA_WARM: ${{ inputs.warm || '30' }}
+      QA_COLD: ${{ inputs.cold || '30' }}
+    defaults:
+      run:
+        working-directory: apps/platform
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: pnpm
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: .
+
+      - name: Parser unit tests
+        run: pnpm native-qa:test
+
+      - name: Typecheck the harness
+        run: pnpm native-qa:typecheck
+
+      - name: Connect the emulator
+        run: |
+          adb start-server
+          if ! adb devices | grep -qE "^${QA_DEVICE}[[:space:]]+device$"; then
+            if [ -n "$QA_TUNNEL_HOST" ] && ! pgrep -f "ssh .*-L 5555:127.0.0.1:5555" > /dev/null; then
+              ssh -f -N -L 5555:127.0.0.1:5555 "$QA_TUNNEL_HOST"
+            fi
+            adb connect "$QA_DEVICE"
+          fi
+          adb devices | grep -E "^${QA_DEVICE}[[:space:]]+device$"
+
+      - name: Build the release APK (x86_64)
+        id: build
+        run: pnpm native-qa build --abi x86_64
+
+      - name: Lab, checks and stress
+        run: pnpm native-qa lab --device "$QA_DEVICE" --repeat "$QA_REPEAT"
+
+      - name: Boot, warm and cold launches
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: pnpm native-qa boot --device "$QA_DEVICE" --warm "$QA_WARM" --cold "$QA_COLD"
+
+      - name: Report
+        if: ${{ !cancelled() }}
+        run: pnpm native-qa report
+
+      - name: Gates
+        if: ${{ !cancelled() }}
+        run: pnpm native-qa gates --platform android
+
+      - name: Upload report and logs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-qa-emulator-${{ github.run_id }}
+          if-no-files-found: warn
+          path: |
+            apps/platform/qa/report.json
+            apps/platform/qa/runs/
+            apps/platform/qa/out/build-*.json
+            apps/platform/qa/out/build-*.log

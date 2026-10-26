@@ -1,6 +1,11 @@
 <script lang="ts">
-  import type { TextInputProps } from "react-native";
-  import Host from "./Host.svelte";
-  let { value = $bindable(""), onChangeText, ...attributes }: TextInputProps = $props();
+  import type {} from "../elements.d.ts";
+  import { createNativeProps } from "../native-props.ts";
+  import type { TextInput as NativeTextInput, TextInputProps } from "react-native";
+  let { value = $bindable(""), onChangeText, ref, ...attributes }: TextInputProps & {
+    /** Receives the React Native TextInput instance for `focus`, `blur` and `clear`. */
+    ref?: (instance: NativeTextInput | null) => void;
+  } = $props();
+  const resolveProps = createNativeProps();
 </script>
-<Host name="native-input" attributes={{ ...attributes, value, onChangeText: (text: string) => { value = text; onChangeText?.(text); } }} />
+<native-input nativeProps={resolveProps({ ...attributes, ref, value, onChangeText: (text: string) => { value = text; onChangeText?.(text); } })}></native-input>

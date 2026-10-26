@@ -1,8 +1,7 @@
 import { createRenderer } from "svelte/renderer";
 
-export type NativeReference = { focus?: () => void; blur?: () => void };
 type Listener = (...args: unknown[]) => void;
-type Snapshot = {
+export type Snapshot = {
   props: Readonly<Record<string, unknown>>;
   children: readonly NativeNode[];
   text: string;
@@ -10,53 +9,128 @@ type Snapshot = {
 
 let nextId = 0;
 
+export type Invalidation = "props" | "children" | "text";
+let invalidationSink: ((node: NativeNode, reason: Invalidation) => void) | null = null;
+/** The host (see `fabric/`) hears every change through this sink. */
+export function setInvalidationSink(sink: ((node: NativeNode, reason: Invalidation) => void) | null): void { invalidationSink = sink; }
+
+/**
+ * One node of the Svelte host tree. Children form a doubly linked list, so the renderer's
+ * sibling queries, inserts and keyed moves are O(1). The host reads an immutable snapshot
+ * that is rebuilt lazily after a change.
+ */
 export class NativeNode {
   readonly id = ++nextId;
   parent: NativeNode | null = null;
-  reference: NativeReference | null = null;
+  firstChild: NativeNode | null = null;
+  lastChild: NativeNode | null = null;
+  previousSibling: NativeNode | null = null;
+  nextSibling: NativeNode | null = null;
   readonly listeners = new Map<string, Set<Listener>>();
-  private readonly subscribers = new Set<() => void>();
-  private snapshot: Snapshot;
+  private readonly dispatchers = new Map<string, Listener>();
+  private props: Readonly<Record<string, unknown>> = {};
+  private text: string;
+  private children: readonly NativeNode[] = [];
+  private childrenStale = false;
+  private snapshot: Snapshot | null = null;
 
   constructor(readonly kind: "element" | "fragment" | "text" | "comment", readonly name = "", text = "") {
-    this.snapshot = { props: {}, children: [], text };
+    this.text = text;
   }
 
-  getSnapshot = (): Snapshot => this.snapshot;
-  subscribe = (listener: () => void): (() => void) => {
-    this.subscribers.add(listener);
-    return () => { this.subscribers.delete(listener); };
+  /** The current state as one object; a new object appears only after a change. */
+  getSnapshot = (): Snapshot => {
+    if (this.snapshot) return this.snapshot;
+    if (this.childrenStale) {
+      const children: NativeNode[] = [];
+      for (let child = this.firstChild; child; child = child.nextSibling) children.push(child);
+      this.children = children;
+      this.childrenStale = false;
+    }
+    this.snapshot = { props: this.props, children: this.children, text: this.text };
+    return this.snapshot;
   };
 
-  update(patch: Partial<Snapshot>): void {
-    this.snapshot = { ...this.snapshot, ...patch };
-    for (const listener of this.subscribers) listener();
+  /** A stable function per event type, so host props keep their identity between flushes. */
+  dispatcher(type: string): Listener {
+    let dispatcher = this.dispatchers.get(type);
+    if (!dispatcher) {
+      dispatcher = (...args) => {
+        const handlers = this.listeners.get(type);
+        if (handlers) for (const handler of [...handlers]) handler(...args);
+      };
+      this.dispatchers.set(type, dispatcher);
+    }
+    return dispatcher;
   }
 
-  focus(): void { this.reference?.focus?.(); }
-  blur(): void { this.reference?.blur?.(); }
+  setProps(props: Readonly<Record<string, unknown>>): void {
+    this.props = props;
+    this.invalidate("props");
+  }
+
+  setText(text: string): void {
+    this.text = text;
+    this.invalidate("text");
+  }
+
+  childrenChanged(): void {
+    this.childrenStale = true;
+    this.invalidate("children");
+  }
+
+  /** Drops the cached snapshot and reports the change to the host. */
+  invalidate(reason: Invalidation = "props"): void {
+    this.snapshot = null;
+    invalidationSink?.(this, reason);
+  }
 }
 
-function remove(node: NativeNode): void {
+function unlink(node: NativeNode): void {
   const parent = node.parent;
   if (!parent) return;
-  node.parent = null;
-  parent.update({ children: parent.getSnapshot().children.filter((child) => child !== node) });
+  const { previousSibling, nextSibling } = node;
+  if (previousSibling) previousSibling.nextSibling = nextSibling;
+  else parent.firstChild = nextSibling;
+  if (nextSibling) nextSibling.previousSibling = previousSibling;
+  else parent.lastChild = previousSibling;
+  node.parent = node.previousSibling = node.nextSibling = null;
+  parent.childrenChanged();
+}
+
+function link(parent: NativeNode, node: NativeNode, anchor: NativeNode | null): void {
+  if (anchor && anchor.parent !== parent) throw new Error("Native insertion anchor is not a child of its parent");
+  node.parent = parent;
+  if (anchor) {
+    const previous = anchor.previousSibling;
+    node.previousSibling = previous;
+    node.nextSibling = anchor;
+    anchor.previousSibling = node;
+    if (previous) previous.nextSibling = node;
+    else parent.firstChild = node;
+  } else {
+    const last = parent.lastChild;
+    node.previousSibling = last;
+    node.nextSibling = null;
+    if (last) last.nextSibling = node;
+    else parent.firstChild = node;
+    parent.lastChild = node;
+  }
+  parent.childrenChanged();
 }
 
 function insert(parent: NativeNode, node: NativeNode, anchor: NativeNode | null): void {
   if (node === anchor) return;
   if (node.kind === "fragment") {
-    for (const child of [...node.getSnapshot().children]) insert(parent, child, anchor);
+    for (let child = node.firstChild, next: NativeNode | null; child; child = next) {
+      next = child.nextSibling;
+      unlink(child);
+      link(parent, child, anchor);
+    }
     return;
   }
-  remove(node);
-  const children = [...parent.getSnapshot().children];
-  const index = anchor === null ? children.length : children.indexOf(anchor);
-  if (index < 0) throw new Error("Native insertion anchor is not a child of its parent");
-  children.splice(index, 0, node);
-  node.parent = parent;
-  parent.update({ children });
+  unlink(node);
+  link(parent, node, anchor);
 }
 
 const renderer = createRenderer<{
@@ -73,44 +147,43 @@ const renderer = createRenderer<{
     return value == null ? null : String(value);
   },
   setAttribute: (node, key, value: unknown) => {
-    if (Object.is(node.getSnapshot().props[key], value)) return;
-    node.update({ props: { ...node.getSnapshot().props, [key]: value } });
+    const props = node.getSnapshot().props;
+    if (Object.is(props[key], value)) return;
+    node.setProps({ ...props, [key]: value });
   },
   removeAttribute: (node, key) => {
     const props = { ...node.getSnapshot().props };
+    if (!Object.hasOwn(props, key)) return;
     delete props[key];
-    node.update({ props });
+    node.setProps(props);
   },
   hasAttribute: (node, key) => Object.hasOwn(node.getSnapshot().props, key),
   setText: (node, text) => {
-    if (node.kind === "text" || node.kind === "comment") node.update({ text });
+    if (node.kind === "text" || node.kind === "comment") node.setText(text);
     else {
-      for (const child of [...node.getSnapshot().children]) remove(child);
-      if (text) insert(node, new NativeNode("text", "", text), null);
+      while (node.firstChild) unlink(node.firstChild);
+      if (text) link(node, new NativeNode("text", "", text), null);
     }
   },
-  getFirstChild: (node) => node.getSnapshot().children[0] ?? null,
-  getLastChild: (node) => node.getSnapshot().children.at(-1) ?? null,
-  getNextSibling: (node) => {
-    const siblings = node.parent?.getSnapshot().children;
-    return siblings?.[siblings.indexOf(node) + 1] ?? null;
-  },
+  getFirstChild: (node) => node.firstChild,
+  getLastChild: (node) => node.lastChild,
+  getNextSibling: (node) => node.nextSibling,
   insert,
-  remove,
+  remove: unlink,
   getParent: (node) => node.parent,
   addEventListener: (node, type, handler: Listener) => {
-    let handlers = node.listeners.get(type);
-    if (!handlers) {
-      handlers = new Set();
-      node.listeners.set(type, handlers);
+    const handlers = node.listeners.get(type);
+    if (handlers) handlers.add(handler);
+    else {
+      node.listeners.set(type, new Set([handler]));
+      node.invalidate();
     }
-    handlers.add(handler);
-    node.update({});
   },
   removeEventListener: (node, type, handler: Listener) => {
-    node.listeners.get(type)?.delete(handler);
-    if (!node.listeners.get(type)?.size) node.listeners.delete(type);
-    node.update({});
+    const handlers = node.listeners.get(type);
+    if (!handlers?.delete(handler) || handlers.size) return;
+    node.listeners.delete(type);
+    node.invalidate();
   },
 });
 

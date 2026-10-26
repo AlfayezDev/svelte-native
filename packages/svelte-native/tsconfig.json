@@ -5,10 +5,9 @@
     "moduleResolution": "bundler",
     "strict": true,
     "skipLibCheck": true,
-    "jsx": "react-jsx",
     "allowImportingTsExtensions": true,
     "noEmit": true,
-    "types": ["node", "react"]
+    "types": ["node"]
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.svelte"]
+  "include": ["src/**/*.ts", "src/**/*.svelte"]
 }

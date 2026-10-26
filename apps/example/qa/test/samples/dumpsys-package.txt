@@ -1,0 +1,19 @@
+    legacyNativeLibraryDir=/data/app/~~E_w38z7eX4_0csmdoatE7Q==/io.rasheed.svelteqa-WTic2Uwr_vgAvpAx3feKQw==/lib
+    extractNativeLibs=false
+    primaryCpuAbi=x86_64
+    secondaryCpuAbi=null
+    cpuAbiOverride=null
+    versionCode=1 minSdk=24 targetSdk=36
+    minExtensionVersions=[]
+    versionName=0.1.0
+    hiddenApiEnforcementPolicy=2
+    usesNonSdkApi=false
+    splits=[base]
+      /system_ext/framework/androidx.window.sidecar.jar
+    timeStamp=2026-10-25 20:20:09
+    lastUpdateTime=2026-10-25 20:20:10
+    installerPackageName=null
+      installReason=0
+      dataDir=/data/user/0/io.rasheed.svelteqa
+      firstInstallTime=2026-10-25 12:31:51
+      uninstallReason=0

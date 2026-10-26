@@ -1,5 +1,7 @@
-import "hermes-intl";
-import { AppState, type NativeEventSubscription } from "react-native";
+import { mark } from "./boot-marks.ts";
+import "./intl.ts"; // lazy: `mark("intl")` fires on the first Intl.PluralRules/RelativeTimeFormat/ListFormat/Locale access
+import AppState from "react-native/Libraries/AppState/AppState";
+import type { EventSubscription as NativeEventSubscription } from "react-native/Libraries/vendor/emitter/EventEmitter";
 
 if (!("toSorted" in Array.prototype)) Object.defineProperty(Array.prototype, "toSorted", {
   value(this: unknown[], compare?: (a: unknown, b: unknown) => number) { return [...this].sort(compare); },
@@ -21,3 +23,4 @@ if (typeof window.addEventListener !== "function") {
     },
   });
 }
+mark("polyfills");

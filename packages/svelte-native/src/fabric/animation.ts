@@ -407,13 +407,10 @@ let remarkTimer: ReturnType<typeof setTimeout> | undefined;
 function remark(): void {
   remarkTimer = undefined;
   const now = Date.now();
-  const waiting: typeof remarks = [];
-  for (const entry of remarks) {
-    if (entry.due <= now) markNodeAsRemovable(entry.wrapper as never);
-    else waiting.push(entry);
-  }
-  remarks = waiting;
+  const due = remarks.filter((entry) => entry.due <= now);
+  remarks = remarks.filter((entry) => entry.due > now);
   if (remarks.length) remarkTimer = setTimeout(remark, Math.max(50, (remarks[0]?.due ?? now) - now));
+  for (const entry of due) markNodeAsRemovable(entry.wrapper as never);
 }
 function markRemovable(wrapper: unknown): void {
   markNodeAsRemovable(wrapper as never);

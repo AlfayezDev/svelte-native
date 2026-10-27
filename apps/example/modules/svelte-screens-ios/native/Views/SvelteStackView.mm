@@ -304,6 +304,7 @@ using namespace facebook::react;
         [self flushAfterNextFrame];
         return;
       }
+      if (_staged != top) [self unstage];
       _staged = nil;
       install();
       [_controller pushViewController:top.controller animated:visible && [top spec].animation != svelte::kAnimationNone];
@@ -321,6 +322,7 @@ using namespace facebook::react;
         [self flushAfterNextFrame];
         return;
       }
+      if (_staged != revealed) [self unstage];
       _staged = nil;
       if (visible) [leavingController.screenView replaceViewWithSnapshot];
       install();
@@ -353,6 +355,9 @@ using namespace facebook::react;
 }
 
 - (void)flushAfterNextFrame {
+  // A flush queued by a mount runs only while something needs it: a direct flush in between (a transition's end, the window)
+  // clears that and stages here, so the staged step is what the queued flush must do.
+  _needsFlush = YES;
   if (_flushQueued) return;
   _flushQueued = YES;
   __weak SvelteStackView *weakSelf = self;
@@ -362,6 +367,12 @@ using namespace facebook::react;
     stack->_flushQueued = NO;
     [stack flush];
   });
+}
+
+- (void)unstagePresented {
+  UIView *view = _stagedPresented.presentedController.view;
+  _stagedPresented = nil;
+  if (view != nil && view.superview == _controller.view) [view removeFromSuperview];
 }
 
 - (void)updatePresentedControllers {
@@ -434,12 +445,13 @@ using namespace facebook::react;
   [screen preparePresentation];
   UIViewController *next = screen.presentedController;
   if (next == nil || previous.isBeingDismissed) {
+    [self unstagePresented];
     completion();
     return;
   }
   // The presented view joins the navigation controller's own view a frame before UIKit presents it, as a pushed screen's does.
   if (self.window != nil && _stagedPresented != screen) {
-    if (_stagedPresented != nil) [_stagedPresented.presentedController.view removeFromSuperview];
+    [self unstagePresented];
     _stagedPresented = screen;
     UIView *view = next.view;
     const CGRect bounds = _controller.view.bounds;

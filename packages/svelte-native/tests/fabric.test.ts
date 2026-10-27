@@ -88,7 +88,7 @@ const settle = async (m: { tick: () => Promise<void> }) => { await m.tick(); awa
 test("the Fabric host mounts, updates and clears a scroll list with one content child", async () => {
   const m = await load();
   calls.length = 0; roots = {};
-  const app = m.startSurface(11, m.Fixture, {}) as { fill: (n: number) => void; clear: () => void; rename: (s: string) => void };
+  const app = m.startSurface(11, m.Fixture, {}) as { fill: (n: number) => void; clear: () => void; rename: (s: string) => void; pad: (n: number) => void };
   expect(calls.at(-1)).toBe("completeRoot");
   let scroll = find(roots[11], "RCTScrollView");
   expect(scroll).toHaveLength(1);
@@ -114,6 +114,17 @@ test("the Fabric host mounts, updates and clears a scroll list with one content 
   expect(find(roots[11], "RCTRawText")[0].props.text).toBe("after");
   expect(calls.filter((c) => c.startsWith("create"))).toHaveLength(0);
   expect(scroll[0].children[0].children).toHaveLength(300);
+
+  // The content container's own style changes with the rows as they were: the container is cloned with its children kept.
+  calls.length = 0;
+  app.pad(16);
+  await settle(m);
+  scroll = find(roots[11], "RCTScrollView");
+  expect((scroll[0].children[0].props as { padding?: number }).padding).toBe(16);
+  expect(scroll[0].children[0].children).toHaveLength(300);
+  expect(calls.filter((c) => c.startsWith("create"))).toHaveLength(0);
+  expect(calls).toContain("cloneProps RCTView");
+  expect(calls).toContain("cloneChildren RCTScrollView");
 
   calls.length = 0;
   app.clear();

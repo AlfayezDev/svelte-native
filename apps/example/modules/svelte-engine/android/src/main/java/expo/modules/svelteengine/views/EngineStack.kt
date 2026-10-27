@@ -142,7 +142,19 @@ class EngineStack(context: Context) : EngineView(context) {
     backCallback.remove()
     backRegistered = false
     releaseGesture()
-    for (i in 0 until childCount) (getChildAt(i) as? EngineScreen)?.let { cancelRunning(it) }
+    for (i in 0 until childCount) (getChildAt(i) as? EngineScreen)?.let { land(it) }
+  }
+
+  /**
+   * The stack leaves the window with a transition in flight (the overlay moves to a recreated Activity): the screen lands
+   * where the transition was going and the transition's end runs, so what JavaScript waits for (`exited`, `dismissed`, the
+   * removal of a popped view) is not lost with the animator. Safe here: the children are detached already, and a removal
+   * only touches this group's own list.
+   */
+  private fun land(s: EngineScreen) {
+    val landing = s.landing
+    cancelRunning(s)
+    landing?.invoke()
   }
 
   private fun ensureBackCallback() {
@@ -372,7 +384,20 @@ class EngineStack(context: Context) : EngineView(context) {
    * to animate. A screen already leaving (dismissed by the user, or exited) is not animated again.
    */
   fun exitScreen(child: EngineScreen) {
-    if (child.leaving || child.dismissed || child.exited || child.parent !== this) return
+    if (child.exited || child.parent !== this) return
+    if (child.dismissed) {
+      // The user is dismissing it and JavaScript retired it meanwhile (a back of its own at the same time): the dismissal's
+      // end reports the exit (see dismissTop), nothing brings the screen back, and a dismissal that ended already reports now.
+      child.dismissed = false
+      child.leaving = true
+      if (child.running == null) {
+        child.exited = true
+        refresh()
+        post { if (child.parent === this && child.exited) NavEvents.exited(child.node.tag) }
+      }
+      return
+    }
+    if (child.leaving) return
     val others = live().filter { it !== child }
     val index = indexOfChild(child)
     var above = false
@@ -382,6 +407,9 @@ class EngineStack(context: Context) : EngineView(context) {
       child.visibility == View.VISIBLE && !child.hidden && child.appeared
     child.leaving = true
     if (!animate) {
+      // A screen still entering (popped within its push) stops where it is; hidden, it must not keep fading in.
+      cancelRunning(child)
+      child.transitioning = false
       child.exited = true
       refresh()
       post { if (child.parent === this && child.exited) NavEvents.exited(child.node.tag) }
@@ -459,7 +487,7 @@ class EngineStack(context: Context) : EngineView(context) {
       override fun onAnimationCancel(animation: Animator) { cancelled = true }
       override fun onAnimationEnd(animation: Animator) {
         s.animate().setListener(null)
-        if (s.running === a) s.running = null
+        if (s.running === a) { s.running = null; s.landing = null }
         // `done` refreshes the stack, which may make this screen keep its layer as the settled top: that hold is taken
         // before the transition's hold goes, so the layer type never flips and the layer is not rebuilt.
         if (!cancelled) done()
@@ -467,11 +495,20 @@ class EngineStack(context: Context) : EngineView(context) {
       }
     })
     s.running = a
+    s.landing = {
+      s.translationX = x
+      s.translationY = y
+      s.alpha = alpha
+      s.scaleX = scale
+      s.scaleY = scale
+      done()
+    }
     a.start()
   }
 
   private fun cancelRunning(s: EngineScreen) {
     (s as? EngineSheet)?.cancelSettle()
+    s.landing = null
     val running = s.running ?: return
     s.running = null
     running.cancel()
@@ -492,12 +529,18 @@ class EngineStack(context: Context) : EngineView(context) {
     val duration = max(120L, (DURATION * remaining).toLong())
     exitTo(s, kind, duration) {
       s.transitioning = false
-      if (s.parent === this) {
-        // The screen below appears and this one disappears before JavaScript hears it was dismissed.
-        syncAppearance()
-        NavEvents.dismissed(s.node.tag)
-        postDelayed({ if (s.parent === this && s.dismissed) restore(s) }, RESTORE_MS)
+      if (s.parent !== this) return@exitTo
+      if (!s.dismissed) {
+        // JavaScript retired the screen while the user dismissed it (exitScreen): it waits for the exit, not a dismissal.
+        s.exited = true
+        refresh()
+        post { if (s.parent === this && s.exited) NavEvents.exited(s.node.tag) }
+        return@exitTo
       }
+      // The screen below appears and this one disappears before JavaScript hears it was dismissed.
+      syncAppearance()
+      NavEvents.dismissed(s.node.tag)
+      postDelayed({ if (s.parent === this && s.dismissed) restore(s) }, RESTORE_MS)
     }
   }
 

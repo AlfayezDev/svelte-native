@@ -7,6 +7,8 @@
   export function fill(n) { rows = Array.from({ length: n }, (_, i) => i); }
   export function clear() { rows = []; }
   export function rename(next) { label = next; }
+  let padding = $state(8);
+  export function pad(next) { padding = next; }
   let direct = $state([]);
   let handle = null;
   let layouts = [];
@@ -16,7 +18,7 @@
 </script>
 <View style={{ flex: 1 }}>
   <Text style={{ fontSize: 20 }}>{label}</Text>
-  <ScrollView style={{ height: 360 }} contentContainerStyle={{ padding: 8 }}>
+  <ScrollView style={{ height: 360 }} contentContainerStyle={{ padding }}>
     {#each rows as row (row)}
       <View style={{ padding: 10 }} onLayout={row === rows.length - 1 ? () => {} : undefined}><Text style={{ fontSize: 14 }}>Row {row + 1}</Text></View>
     {/each}

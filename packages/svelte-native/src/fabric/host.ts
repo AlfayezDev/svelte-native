@@ -377,18 +377,28 @@ function build(node: NativeNode, rootTag: number, insideText: boolean, insideFor
     } else childrenHost(current.node);
   } else {
     const payload = current.propsDirty ? diffPayload(current.props, rnProps, config) : null;
-    if (scroll && current.childrenDirty && current.content) {
+    if (scroll && current.content && (current.childrenDirty || current.propsDirty)) {
+      // The content container follows the scroll view's own attributes (`contentContainerStyle`, `horizontal`), which
+      // `splitProps` keeps out of the scroll view's payload: a change of them alone (a direction switch, a padding) is a
+      // clone of the container with its rows kept, and the scroll view takes that clone.
       const content = state(contentNode(node), "RCTView");
       const nextContent = contentProps(attributes);
       const contentPayload = diffPayload(content.props, nextContent, viewConfig("RCTView"));
-      content.node = contentPayload ? binding.cloneNodeWithNewChildrenAndProps(content.node as FabricNode, contentPayload) : binding.cloneNodeWithNewChildren(content.node as FabricNode);
-      content.props = nextContent;
-      stats.lastCloned++;
-      childrenHost(content.node);
-      current.node = payload ? binding.cloneNodeWithNewChildrenAndProps(current.node, payload) : binding.cloneNodeWithNewChildren(current.node);
-      stats.lastCloned++;
-      binding.appendChild(current.node, content.node);
-      current.content = content.node;
+      if (current.childrenDirty || contentPayload) {
+        content.node = current.childrenDirty
+          ? contentPayload ? binding.cloneNodeWithNewChildrenAndProps(content.node as FabricNode, contentPayload) : binding.cloneNodeWithNewChildren(content.node as FabricNode)
+          : binding.cloneNodeWithNewProps(content.node as FabricNode, contentPayload as Record<string, unknown>);
+        content.props = nextContent;
+        stats.lastCloned++;
+        if (current.childrenDirty) childrenHost(content.node);
+        current.node = payload ? binding.cloneNodeWithNewChildrenAndProps(current.node, payload) : binding.cloneNodeWithNewChildren(current.node);
+        stats.lastCloned++;
+        binding.appendChild(current.node, content.node);
+        current.content = content.node;
+      } else if (payload) {
+        current.node = binding.cloneNodeWithNewProps(current.node, payload);
+        stats.lastCloned++;
+      }
     } else if (current.childrenDirty) {
       current.node = payload ? binding.cloneNodeWithNewChildrenAndProps(current.node, payload) : binding.cloneNodeWithNewChildren(current.node);
       stats.lastCloned++;

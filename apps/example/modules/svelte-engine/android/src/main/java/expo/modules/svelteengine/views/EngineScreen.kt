@@ -52,6 +52,8 @@ open class EngineScreen(context: Context) : EngineView(context) {
   private var a11yHidden = false
 
   internal var running: android.view.ViewPropertyAnimator? = null
+  /** Where the running transition lands and what its end does; the stack runs it when it leaves the window mid-transition. */
+  internal var landing: (() -> Unit)? = null
 
   /**
    * Hidden by the stack: inactive, or settled under another settled push screen. The view keeps its subtree and every

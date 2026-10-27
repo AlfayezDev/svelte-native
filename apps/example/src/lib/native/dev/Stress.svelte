@@ -218,13 +218,17 @@
     scope.__svelteFlushLog = [];
     scope.__svelteFabricProfile = profile;
     const mountStart = performance.now();
-    rows = Array.from({ length: 300 }, (_, index) => index);
-    await tick();
-    const svelteMs = performance.now() - mountStart;
-    await laidOut;
+    let svelteMs: number;
+    try {
+      rows = Array.from({ length: 300 }, (_, index) => index);
+      await tick();
+      svelteMs = performance.now() - mountStart;
+      await laidOut;
+    } finally {
+      scope.__svelteFabricProfile = false;
+    }
     const mountMs = performance.now() - mountStart;
     const flushes = profile ? (scope.__svelteFlushLog ?? []).map((flush) => ({ ...(flush as Record<string, number>), at: (flush as { at: number }).at - mountStart })) : undefined;
-    scope.__svelteFabricProfile = false;
     const { frames } = await measure(async () => {
       for (let leg = 0; leg < 3 && !signal.aborted; leg++) {
         virtualList?.scrollToIndex(299, true);

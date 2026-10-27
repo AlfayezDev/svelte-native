@@ -267,7 +267,9 @@ static BOOL SvelteHasNativeSubtitle(void) {
   item.hidesSearchBarWhenScrolling = NO;
   // iOS 26 puts the field at the bottom of the screen unless told otherwise, over the content Yoga laid out to the screen's edge;
   // the contract's field sits in the bar, under the title, where `topMetrics` counts it.
+#if SVELTE_IOS26_SDK
   if (@available(iOS 26.0, *)) item.preferredSearchBarPlacement = UINavigationItemSearchBarPlacementStacked;
+#endif
   [self applySearchState];
 }
 

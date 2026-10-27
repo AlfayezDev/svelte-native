@@ -181,6 +181,9 @@ enum SvelteQA {
     let format = UIGraphicsImageRendererFormat()
     format.scale = window.screen.scale
     format.opaque = true
+    // The device's default range is extended on a wide-gamut screen: the PNG then comes out 16-bit and its values depend on
+    // what the window holds. The parity suite compares 8-bit sRGB pixels, the same on every launch.
+    format.preferredRange = .standard
     let renderer = UIGraphicsImageRenderer(bounds: window.bounds, format: format)
     var drawn = false
     let image = renderer.image { _ in

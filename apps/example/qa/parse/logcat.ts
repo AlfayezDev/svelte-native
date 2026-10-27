@@ -115,7 +115,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function frameStats(value: unknown): FrameStats | null {
+export function frameStats(value: unknown): FrameStats | null {
 	if (!isRecord(value)) return null;
 	const keys = [
 		"periodMs",
@@ -199,19 +199,25 @@ export type BootMarks = Record<string, number>;
 const camel = (label: string) =>
 	label.replace(/[- ]+(\w)/g, (_, letter: string) => letter.toUpperCase());
 
-/** The first `[Svelte boot] init 2 · polyfills 12 · … · total 201 ms` line, as a map of phase to milliseconds. */
-export function parseSvelteBoot(text: string): BootMarks | null {
-	const line = parseLines(text).find((entry) => entry.message.includes("[Svelte boot]"));
-	if (!line) return null;
-	const body = line.message
-		.slice(line.message.indexOf("[Svelte boot]") + "[Svelte boot]".length)
-		.replace(/'\s*$/, "");
+/** `init 2 · polyfills 12 · … · total 201 ms` as a map of phase to milliseconds. */
+export function parseBootBody(body: string): BootMarks | null {
 	const marks: BootMarks = {};
 	for (const part of body.split("·")) {
 		const m = /^\s*(.+?)\s+(\d+(?:\.\d+)?)(?:\s*ms)?\s*$/.exec(part);
 		if (m?.[1] !== undefined && m[2] !== undefined) marks[camel(m[1])] = Number(m[2]);
 	}
 	return Object.keys(marks).length ? marks : null;
+}
+
+/** The first `[Svelte boot] init 2 · polyfills 12 · … · total 201 ms` line, as a map of phase to milliseconds. */
+export function parseSvelteBoot(text: string): BootMarks | null {
+	const line = parseLines(text).find((entry) => entry.message.includes("[Svelte boot]"));
+	if (!line) return null;
+	return parseBootBody(
+		line.message
+			.slice(line.message.indexOf("[Svelte boot]") + "[Svelte boot]".length)
+			.replace(/'\s*$/, ""),
+	);
 }
 
 export type LaunchMarkers = {

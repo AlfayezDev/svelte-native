@@ -11,7 +11,7 @@ import {
 	type DeviceSession,
 } from "../lib/device.ts";
 import { findNode, launchCase, maskRects, settledScreenshot, waitForNode } from "../lib/drive.ts";
-import { flagString, parseFlags } from "../lib/flags.ts";
+import { flagString, parseFlags, platformOf } from "../lib/flags.ts";
 import { currentSource } from "../lib/git.ts";
 import { qaDir, runsDir } from "../lib/paths.ts";
 import {
@@ -40,6 +40,7 @@ import {
 } from "../lib/screens.ts";
 import { backendStatus, commonOptions, startSuite, type BackendStatus } from "../lib/suite.ts";
 import type { ParityCase, ParityFile, Source } from "../lib/types.ts";
+import { iosParity } from "./ios-parity.ts";
 import { sleep } from "../lib/wait.ts";
 import { deviceKindName } from "../parse/device-state.ts";
 
@@ -267,6 +268,7 @@ function ordered(selected: ScreenCase[]): ScreenCase[] {
 }
 
 export async function parity(argv: string[]): Promise<void> {
+	if (platformOf(argv) === "ios") return iosParity(argv);
 	const { values } = parseFlags(argv, {
 		...commonOptions,
 		update: { type: "boolean" },

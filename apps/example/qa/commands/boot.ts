@@ -11,13 +11,14 @@ import {
 	wake,
 } from "../lib/adb.ts";
 import { dexoptFlag, prepareApp } from "../lib/app.ts";
-import { flagString, integerFlag, parseFlags, requireString } from "../lib/flags.ts";
+import { flagString, integerFlag, parseFlags, platformOf, requireString } from "../lib/flags.ts";
 import { currentSource } from "../lib/git.ts";
 import { lockFor, reexecUnderLock } from "../lib/lock.ts";
 import { defaultPackage, qaDir, runsDir } from "../lib/paths.ts";
 import { slug, stamp, writeRun } from "../lib/runs.ts";
 import type { BootDefinition, BootFile, Launch } from "../lib/types.ts";
 import { sleep } from "../lib/wait.ts";
+import { iosBoot } from "./ios-boot.ts";
 import { parseAmStart } from "../parse/adb.ts";
 import {
 	findEngineWarnings,
@@ -102,6 +103,7 @@ function describeLaunch(kind: string, launch: Launch): string {
 }
 
 export async function boot(argv: string[]): Promise<void> {
+	if (platformOf(argv) === "ios") return iosBoot(argv);
 	const { values } = parseFlags(argv, {
 		device: { type: "string" },
 		apk: { type: "string" },

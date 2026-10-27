@@ -2,7 +2,7 @@ import { wake } from "../lib/adb.ts";
 import { analyzeScreen } from "../lib/a11y.ts";
 import { deviceGone, readDisplay, withSession } from "../lib/device.ts";
 import { openCase, settledTree } from "../lib/drive.ts";
-import { flagString, parseFlags } from "../lib/flags.ts";
+import { flagString, parseFlags, platformOf } from "../lib/flags.ts";
 import { currentSource } from "../lib/git.ts";
 import { writeRun } from "../lib/runs.ts";
 import {
@@ -18,6 +18,7 @@ import {
 } from "../lib/screens.ts";
 import { backendStatus, commonOptions, startSuite, type BackendStatus } from "../lib/suite.ts";
 import type { A11yFile, A11yScreenResult } from "../lib/types.ts";
+import { iosA11y } from "./ios-a11y.ts";
 
 /** What the checks read, stated in every run file: TalkBack is not installed on the emulator. */
 export const oracle =
@@ -49,6 +50,7 @@ function emptyResult(screen: ScreenCase, variant: Variant, error: string): A11yS
 }
 
 export async function a11y(argv: string[]): Promise<void> {
+	if (platformOf(argv) === "ios") return iosA11y(argv);
 	const { values } = parseFlags(argv, {
 		...commonOptions,
 		quick: { type: "boolean" },

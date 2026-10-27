@@ -2,7 +2,7 @@ import { copyFile, mkdir, readdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { describeApk } from "../lib/app.ts";
 import { execToFile } from "../lib/exec.ts";
-import { flagString, parseFlags } from "../lib/flags.ts";
+import { flagString, parseFlags, platformOf } from "../lib/flags.ts";
 import { currentSource } from "../lib/git.ts";
 import { reexecUnderLock } from "../lib/lock.ts";
 import {
@@ -15,6 +15,7 @@ import {
 } from "../lib/paths.ts";
 import { writeBuild } from "../lib/runs.ts";
 import type { BuildFile } from "../lib/types.ts";
+import { iosBuild } from "./ios-build.ts";
 
 const abis = ["x86_64", "arm64-v8a"];
 const buildEnv = {
@@ -104,6 +105,7 @@ async function step(
 }
 
 export async function build(argv: string[]): Promise<void> {
+	if (platformOf(argv) === "ios") return iosBuild(argv);
 	const { values } = parseFlags(argv, { abi: { type: "string" }, prebuild: { type: "boolean" } });
 	const abi = flagString(values.abi) ?? "x86_64";
 	if (!abis.includes(abi)) throw new Error(`--abi must be one of ${abis.join(", ")}`);

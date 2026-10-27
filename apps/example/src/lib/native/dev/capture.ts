@@ -59,6 +59,10 @@ export type CaptureEntry = {
   stable: boolean;
   /** Frames (points) of the views that move on their own: spinners and the lab's `qa-mask` views. */
   moving: number[][];
+  /** Frames (points) of the system's glass chrome in the window: UIKit draws their edges slightly differently from launch to launch, so the parity suite masks the edges. */
+  glass: number[][];
+  /** Frames (points) of presented sheets' cards: their rim and shadow are the system's too. */
+  sheets: number[][];
   error: string | null;
 };
 export type CaptureIndex = { schema: 1; token: string | null; startedAt: string; finishedAt: string | null; done: boolean; themes: Theme[]; entries: CaptureEntry[]; error: string | null };
@@ -98,7 +102,7 @@ export async function runCapture(router: Router, ids: readonly string[], themes:
 
 async function captureScreen(router: Router, qa: NonNullable<typeof qaModule>, directory: Directory, screen: string, theme: Theme): Promise<CaptureEntry> {
   const name = `${screen}--${theme}`;
-  const entry: CaptureEntry = { name, screen, theme, rtl: null, png: null, a11y: null, uikit: null, width: null, height: null, scale: null, sha256: null, attempts: null, stable: false, moving: [], error: null };
+  const entry: CaptureEntry = { name, screen, theme, rtl: null, png: null, a11y: null, uikit: null, width: null, height: null, scale: null, sha256: null, attempts: null, stable: false, moving: [], glass: [], sheets: [], error: null };
   const spec = captureSpecs[screen];
   if (!spec) return { ...entry, error: `no capture spec for ${screen}` };
   try {
@@ -120,9 +124,11 @@ async function captureScreen(router: Router, qa: NonNullable<typeof qaModule>, d
       await pause(250);
     }
     entry.attempts = attempts;
-    const tree = JSON.parse(await qa.accessibilityTree()) as { rtl?: boolean; movingViews?: { frame: number[] }[] };
+    const tree = JSON.parse(await qa.accessibilityTree()) as { rtl?: boolean; movingViews?: { frame: number[] }[]; glassViews?: { frame: number[] }[]; sheetViews?: { frame: number[] }[] };
     entry.rtl = tree.rtl ?? null;
     entry.moving = (tree.movingViews ?? []).map((view) => view.frame);
+    entry.glass = (tree.glassViews ?? []).map((view) => view.frame);
+    entry.sheets = (tree.sheetViews ?? []).map((view) => view.frame);
     new File(directory, `${name}.a11y.json`).write(JSON.stringify(tree));
     entry.a11y = `${name}.a11y.json`;
     new File(directory, `${name}.uikit.json`).write(await qa.uikitState());

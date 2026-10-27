@@ -19,6 +19,10 @@ enum SvelteQAAccessibility {
     var elements: [[String: Any]] = []
     var modals: [[String: Any]] = []
     var moving: [[String: Any]] = []
+    /// The system's glass chrome (the capsules of iOS 26 bars and tab bars): UIKit draws their edges a little differently from one launch to the next.
+    var glass: [[String: Any]] = []
+    /// The cards of presented sheets (UIKit's drop shadow views): their rounded rim and shadow vary the same way.
+    var sheets: [[String: Any]] = []
     /// One id per container that lists its own elements: the harness keeps a group together in the order the container set.
     var groups = 0
     mutating func newGroup() -> Int { groups += 1; return groups }
@@ -35,6 +39,8 @@ enum SvelteQAAccessibility {
       "elements": walk.elements,
       "modalViews": walk.modals,
       "movingViews": walk.moving,
+      "glassViews": walk.glass,
+      "sheetViews": walk.sheets,
     ]
     let data = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
     guard let text = String(data: data, encoding: .utf8) else { throw QAError("the accessibility tree is not UTF-8") }
@@ -52,6 +58,13 @@ enum SvelteQAAccessibility {
   private static func visit(_ object: Any, explicit: Bool, group: Int, container: String? = nil, into walk: inout Walk) {
     if let view = object as? UIView {
       guard visible(view) else { return }
+      let name = NSStringFromClass(type(of: view))
+      if name.contains("Glass") || name.contains("Platter"), let window = view.window {
+        walk.glass.append(["class": name, "frame": rect(view.convert(view.bounds, to: window))])
+      }
+      if name.contains("DropShadow"), let window = view.window, view.bounds.width < window.bounds.width {
+        walk.sheets.append(["class": name, "frame": rect(view.convert(view.bounds, to: window))])
+      }
       if view is UIActivityIndicatorView || (view.accessibilityIdentifier ?? "").hasPrefix("qa-mask") {
         if let window = view.window {
           walk.moving.append(["class": NSStringFromClass(type(of: view)), "frame": rect(view.convert(view.bounds, to: window))])

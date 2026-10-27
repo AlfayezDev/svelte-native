@@ -33,3 +33,15 @@ export function integerFlag(
 		throw new Error(`--${name} must be a non-negative integer`);
 	return parsed;
 }
+
+/** The platform a command is asked to run on (`--platform ios`, default android); read before the strict parse, which needs to know the flag set. */
+export function platformOf(argv: string[]): "android" | "ios" {
+	for (let index = 0; index < argv.length; index++) {
+		const part = argv[index] as string;
+		const value = part === "--platform" ? argv[index + 1] : part.startsWith("--platform=") ? part.slice("--platform=".length) : undefined;
+		if (value === undefined) continue;
+		if (value === "android" || value === "ios") return value;
+		throw new Error(`--platform must be android or ios, not ${value}`);
+	}
+	return "android";
+}

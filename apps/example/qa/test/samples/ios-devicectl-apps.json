@@ -1,0 +1,31 @@
+{
+ "info": {
+  "commandType": "devicectl.device.info.apps",
+  "jsonVersion": 3,
+  "outcome": "success",
+  "version": "518.31"
+ },
+ "result": {
+  "apps": [
+   {
+    "appClip": false,
+    "builtByDeveloper": true,
+    "bundleIdentifier": "io.rasheed.svelteqa",
+    "bundleVersion": "1",
+    "defaultApp": false,
+    "hidden": false,
+    "internalApp": false,
+    "name": "Rasheed Svelte QA",
+    "removable": true,
+    "url": "file:///private/var/containers/Bundle/Application/8D336698-E426-40ED-B526-F63994397144/RasheedSvelteQA.app/",
+    "version": "0.1.0"
+   }
+  ],
+  "defaultAppsIncluded": false,
+  "deviceIdentifier": "E74A5608-BF8E-5806-8699-1605F82ADED9",
+  "hiddenAppsIncluded": false,
+  "internalAppsIncluded": false,
+  "matchingBundleIdentifier": "io.rasheed.svelteqa",
+  "removableAppsIncluded": true
+ }
+}

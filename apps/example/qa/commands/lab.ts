@@ -10,16 +10,16 @@ import {
 	wake,
 } from "../lib/adb.ts";
 import { dexoptFlag, prepareApp } from "../lib/app.ts";
-import { flagString, integerFlag, parseFlags, requireString } from "../lib/flags.ts";
+import { flagString, integerFlag, parseFlags, platformOf, requireString } from "../lib/flags.ts";
 import { currentSource } from "../lib/git.ts";
-import { labRunFrom } from "../lib/lab-run.ts";
+import { describeRun, labRunFrom, stressRequested } from "../lib/lab-run.ts";
 import { lockFor, reexecUnderLock } from "../lib/lock.ts";
 import { defaultPackage, qaDir, runsDir } from "../lib/paths.ts";
 import { slug, stamp, writeRun } from "../lib/runs.ts";
 import type { LabFile, LabRun } from "../lib/types.ts";
 import { sleep } from "../lib/wait.ts";
+import { iosLab } from "./ios-lab.ts";
 
-const stressRequested = (run: string) => run.split(",").some((part) => part && part !== "checks");
 
 /** The lab's last line: after the stress scenarios, or after the checks when only they were requested. */
 function completionMarker(run: string): RegExp {
@@ -60,28 +60,8 @@ export async function labOnce(
 	}
 }
 
-function describeRun(run: LabRun): string[] {
-	const lines = [
-		`  complete ${run.complete} in ${(run.durationMs / 1000).toFixed(0)} s, checks ${run.checks ? `${run.checks.passed}/${run.checks.total}` : "none logged"}, fatals ${run.crashes.length + run.jsErrors.length}, engine warnings ${run.engineWarnings.length}`,
-	];
-	if (run.boot)
-		lines.push(
-			`  [Svelte boot] ${Object.entries(run.boot)
-				.map(([key, value]) => `${key} ${value}`)
-				.join(" · ")}`,
-		);
-	for (const scenario of run.scenarios) {
-		const frames = scenario.frames;
-		lines.push(
-			`  ${scenario.name.padEnd(24)} ${scenario.verdict.padEnd(5)} ${frames ? `dropped ${frames.droppedPct.toFixed(1)} %  p95 ${frames.p95}  max ${frames.max} ms` : scenario.summary.slice(0, 80)}`,
-		);
-	}
-	for (const fault of [...run.crashes, ...run.jsErrors].slice(0, 5))
-		lines.push(`  fatal: ${fault.slice(0, 200)}`);
-	return lines;
-}
-
 export async function lab(argv: string[]): Promise<void> {
+	if (platformOf(argv) === "ios") return iosLab(argv);
 	const { values } = parseFlags(argv, {
 		device: { type: "string" },
 		apk: { type: "string" },

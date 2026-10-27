@@ -32,7 +32,9 @@ static BOOL SvelteHasNativeSubtitle(void) {
 
 - (void)viewDidLayoutSubviews {
   [super viewDidLayoutSubviews];
-  self.slot.frame = self.view.bounds;
+  // UIKit lets the results run under the bar and the search field (with the stacked placement the field is over their top), and
+  // reports the covered strip in the safe area, as it does for the table of a results controller.
+  self.slot.frame = UIEdgeInsetsInsetRect(self.view.bounds, self.view.safeAreaInsets);
 }
 
 // UIKit may show the results outside the surface's root view, where React Native's touch handler does not listen.

@@ -1,7 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { clearLogcat, forceStop, shell, startApp, wake } from "../lib/adb.ts";
-import { deviceGone, key, withSession, type DeviceSession } from "../lib/device.ts";
+import { endsRun, key, newSessionNotes, reportRestore, withSession, type DeviceSession } from "../lib/device.ts";
 import { openCase, waitForNode } from "../lib/drive.ts";
 import { integerFlag, parseFlags } from "../lib/flags.ts";
 import { currentSource } from "../lib/git.ts";
@@ -97,7 +97,7 @@ async function runStep(
 	try {
 		await perform(context, step.action);
 	} catch (error) {
-		if (deviceGone(error)) throw error;
+		if (endsRun(error)) throw error;
 		failures.push(
 			`the step could not be performed: ${error instanceof Error ? error.message : String(error)}`,
 		);
@@ -172,6 +172,7 @@ export async function resilience(argv: string[]): Promise<void> {
 	const steps: ResilienceStep[] = [];
 	const evidence: string[] = [];
 	let aborted: string | null = null;
+	const notes = newSessionNotes();
 	try {
 		await withSession(serial, packageName, async (session) => {
 			await session.theme("light");
@@ -190,9 +191,9 @@ export async function resilience(argv: string[]): Promise<void> {
 						`  ${result.ok ? "ok  " : "FAIL"} ${String(result.index).padStart(3)} ${result.group.padEnd(10)} ${result.name} (${(result.durationMs / 1000).toFixed(1)} s)${result.ok ? "" : `\n        ${result.failures.join("\n        ")}`}`,
 					);
 			}
-		});
+		}, { notes });
 	} catch (error) {
-		if (!deviceGone(error)) throw error;
+		if (!endsRun(error)) throw error;
 		aborted = error instanceof Error ? error.message : String(error);
 		console.log(`stopped: ${aborted.slice(0, 200)}`);
 	}
@@ -217,9 +218,12 @@ export async function resilience(argv: string[]): Promise<void> {
 		planned: plan.length,
 		logFile: logPath.slice(qaDir.length + 1),
 		aborted,
+		leftovers: notes.leftovers,
+		restoreFailures: notes.restoreFailures,
 	};
 	const name = await writeRun("resilience", serial, startedAt, file);
 	const failed = steps.filter((step) => !step.ok).length;
 	console.log(`resilience: ${steps.length} steps, ${failed} failed`);
 	console.log(`wrote qa/runs/${name}.json`);
+	reportRestore(notes);
 }

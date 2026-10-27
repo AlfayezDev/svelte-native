@@ -2,15 +2,25 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { wake } from "../lib/adb.ts";
 import { join } from "node:path";
 import {
-	deviceGone,
 	dumpUi,
+	endsRun,
+	newSessionNotes,
 	readDisplay,
+	reportRestore,
 	screenshot,
 	statusBarRect,
 	withSession,
 	type DeviceSession,
 } from "../lib/device.ts";
-import { findNode, launchCase, maskRects, settledScreenshot, waitForNode } from "../lib/drive.ts";
+import {
+	assertDeviceState,
+	findNode,
+	guardAnchorFailure,
+	launchCase,
+	maskRects,
+	settledScreenshot,
+	waitForNode,
+} from "../lib/drive.ts";
 import { flagString, parseFlags, platformOf } from "../lib/flags.ts";
 import { currentSource } from "../lib/git.ts";
 import { qaDir, runsDir } from "../lib/paths.ts";
@@ -129,11 +139,13 @@ async function checkCase(
 	const again = await screenshot(context.serial);
 	attempts++;
 	const anchor = await anchorState(context.serial, screen, variant);
+	// No anchor on a screen that differs from its reference: ask the device whether it is in the state the case needs.
+	if (anchor.missing) await assertDeviceState(context.session, screen, variant.fontScale);
 	if (diffImages(last, again, previous.masks).differing !== 0)
 		return caseRecord(screen, variant, {
 			verdict: "unstable",
 			attempts,
-			detail: `the screen kept changing outside the masks for ${attempts} screenshots; ${anchor}`,
+			detail: `the screen kept changing outside the masks for ${attempts} screenshots; ${anchor.detail}`,
 		});
 	const result = compare(reference, again, previous.masks);
 	const record = caseRecord(screen, variant, {
@@ -143,19 +155,28 @@ async function checkCase(
 		differingMaskedPixels: result.differingMaskedPixels,
 		bounds: result.bounds,
 		attempts,
-		detail: result.verdict === "fail" ? anchor : null,
+		detail: result.verdict === "fail" ? anchor.detail : null,
 	});
 	if (result.diffImage) await saveFailure(context, name, again, result.diffImage, record);
 	return record;
 }
 
 /** Whether the case's anchor is on screen, for the failure report; a failed dump is part of the answer, not an error. */
-async function anchorState(serial: string, screen: ScreenCase, variant: Variant): Promise<string> {
+async function anchorState(
+	serial: string,
+	screen: ScreenCase,
+	variant: Variant,
+): Promise<{ detail: string; missing: boolean }> {
 	try {
 		const found = findNode(await dumpUi(serial), screen.anchor, variant.direction);
-		return found ? "the anchor is on screen" : "the anchor is not on screen";
+		return found
+			? { detail: "the anchor is on screen", missing: false }
+			: { detail: "the anchor is not on screen", missing: true };
 	} catch (error) {
-		return `the accessibility tree could not be read (${error instanceof Error ? error.message : String(error)})`;
+		return {
+			detail: `the accessibility tree could not be read (${error instanceof Error ? error.message : String(error)})`,
+			missing: false,
+		};
 	}
 }
 
@@ -261,8 +282,10 @@ async function runCase(
 			});
 		return await checkCase(context, screen, variant, previous);
 	} catch (error) {
-		// A device that went away fails every case after this one the same way: stop, keep what was taken.
-		if (deviceGone(error)) throw error;
+		// A device that went away, or one left with a proxy or text size the case does not need, fails every case after
+		// this one the same way: stop, keep what was taken.
+		if (endsRun(error)) throw error;
+		await guardAnchorFailure(context.session, screen, variant.fontScale, error);
 		return caseRecord(screen, variant, {
 			verdict: "error",
 			detail: error instanceof Error ? error.message : String(error),
@@ -319,6 +342,7 @@ export async function parity(argv: string[]): Promise<void> {
 	const artifacts = join(runsDir, `parity-${slug(serial)}-${stamp(startedAt)}`);
 	const results: ParityCase[] = [];
 	let aborted: string | null = null;
+	const notes = newSessionNotes();
 	try {
 		await withSession(serial, packageName, async (session) => {
 			await wake(serial);
@@ -359,9 +383,9 @@ export async function parity(argv: string[]): Promise<void> {
 			} finally {
 				if (update) await writeManifest(manifest);
 			}
-		});
+		}, { notes });
 	} catch (error) {
-		if (!deviceGone(error)) throw error;
+		if (!endsRun(error)) throw error;
 		aborted = error instanceof Error ? error.message : String(error);
 		console.log(`stopped: ${aborted.slice(0, 200)}`);
 	}
@@ -383,6 +407,8 @@ export async function parity(argv: string[]): Promise<void> {
 		cases: results,
 		notCovered: [...notCovered, ...notCoveredStates],
 		aborted,
+		leftovers: notes.leftovers,
+		restoreFailures: notes.restoreFailures,
 	};
 	const name = await writeRun("parity", serial, startedAt, file);
 	const count = (verdict: ParityCase["verdict"]) =>
@@ -391,4 +417,5 @@ export async function parity(argv: string[]): Promise<void> {
 		`parity: ${count("pass")} pass, ${count("fail")} fail, ${count("missing-reference")} missing reference, ${count("unstable")} unstable, ${count("error")} error, ${count("skipped")} skipped, ${count("updated")} updated; ${notCovered.length} routes not covered`,
 	);
 	console.log(`wrote qa/runs/${name}.json`);
+	reportRestore(notes);
 }

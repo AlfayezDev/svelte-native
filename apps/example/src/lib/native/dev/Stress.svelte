@@ -127,7 +127,7 @@
       let collected = 0;
       if (collect && typeof scope.gc === "function") { scope.gc(); collected = 1; }
       const stats = scope.HermesInternal?.getInstrumentedStats?.();
-      if (!stats) return { collected, allocated: -1 };
+      if (!stats) return { collected, allocated: -1, heapSize: -1, malloc: -1, va: -1, gcs: -1 };
       return { collected, allocated: stats.js_allocatedBytes ?? -1, heapSize: stats.js_heapSize ?? -1, malloc: stats.js_mallocSizeEstimate ?? -1, va: stats.js_vaSize ?? -1, gcs: stats.js_numGCs ?? -1 };
     });
   }

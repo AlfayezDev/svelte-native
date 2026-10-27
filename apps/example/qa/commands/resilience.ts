@@ -1,8 +1,8 @@
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { clearLogcat, forceStop, shell, startApp, wake } from "../lib/adb.ts";
+import { clearLogcat, shell, startApp, wake } from "../lib/adb.ts";
 import { endsRun, key, newSessionNotes, reportRestore, withSession, type DeviceSession } from "../lib/device.ts";
-import { openCase, waitForNode } from "../lib/drive.ts";
+import { launchCase, openCase, waitForNode } from "../lib/drive.ts";
 import { integerFlag, parseFlags } from "../lib/flags.ts";
 import { currentSource } from "../lib/git.ts";
 import { qaDir, runsDir } from "../lib/paths.ts";
@@ -52,9 +52,8 @@ async function perform(context: Context, action: Action): Promise<void> {
 			await session.direction(action.direction);
 			await sleep(1500);
 			if (action.restart) {
-				await forceStop(serial, packageName);
-				await sleep(400);
-				await startApp(serial, packageName, screenById("screens-menu").deepLink ?? undefined);
+				// The menu is reached the way every run reaches it (a pushed screen, with its back button), not by its link alone.
+				await launchCase(session, screenById(loopScreen), action.direction);
 			}
 			return;
 		}

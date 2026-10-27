@@ -138,7 +138,7 @@ export async function launchCase(
 	await session.run(serial, ["shell", `am force-stop ${packageName}; sleep 0.3; ${start}`], {
 		timeoutMs: 90_000,
 	});
-	for (const step of screen.steps) await runStep(serial, step, direction);
+	for (const step of screen.steps) await runStep(session, step, direction);
 }
 
 /** Launches the case and waits for its anchor; returns the accessibility tree that contains the anchor. */
@@ -157,9 +157,17 @@ export async function openCase(
 	return { tree };
 }
 
-async function runStep(serial: string, step: Step, direction: Direction): Promise<void> {
+async function runStep(session: DeviceSession, step: Step, direction: Direction): Promise<void> {
+	const { serial, packageName } = session;
 	if ("pause" in step) {
 		await sleep(step.pause);
+	} else if ("open" in step) {
+		// The activity is not stopped: the running app is told of the link (`singleTask`) and its router goes to it like any later link.
+		await session.run(
+			serial,
+			["shell", `am start -W -a android.intent.action.VIEW -d ${shellQuote(step.open)} ${packageName}`],
+			{ timeoutMs: 90_000 },
+		);
 	} else if ("wait" in step) {
 		await waitForNode(serial, step.wait, direction, step.timeoutMs);
 	} else {

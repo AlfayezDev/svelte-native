@@ -187,6 +187,28 @@ describe("the network mode is read back", () => {
 	});
 });
 
+describe("a case that pushes its screen onto the one the launch link opened", () => {
+	test("an `open` step is a second link into the running app: no force-stop, the same package, the link given", async () => {
+		const device = new FakeDevice();
+		await withDevice(device, async ({ options }) => {
+			const session = await DeviceSession.open(device.serial, device.packageName, options);
+			const pushed: ScreenCase = {
+				...normalScreen,
+				deepLink: "rasheed-svelte:///__dev/screens",
+				steps: [{ open: "rasheed-svelte:///__dev/screens?mode=toolbar" }],
+			};
+			await launchCase(session, pushed, "ltr");
+			const starts = device.commands("am start");
+			expect(starts).toHaveLength(2);
+			expect(starts[0]).toContain("force-stop io.rasheed.svelteqa; sleep 0.3; am start -W -a android.intent.action.VIEW -d 'rasheed-svelte:///__dev/screens' io.rasheed.svelteqa");
+			expect(starts[1]).toContain("-d 'rasheed-svelte:///__dev/screens?mode=toolbar' io.rasheed.svelteqa");
+			expect(starts[1]).not.toContain("force-stop");
+			expect(device.commands("force-stop")).toHaveLength(1);
+			await session.close();
+		});
+	});
+});
+
 describe("a case that does not show its anchor", () => {
 	test("on the normal network, a proxy or text size the case does not need is the cause, named with what it needed", async () => {
 		const device = new FakeDevice();

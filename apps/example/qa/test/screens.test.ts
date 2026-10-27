@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import {
 	cases,
@@ -13,6 +13,7 @@ import {
 	referenceName,
 	selectorFor,
 	variants,
+	type ScreenCase,
 } from "../lib/screens.ts";
 import { platformDir } from "../lib/paths.ts";
 
@@ -86,6 +87,52 @@ describe("the screen matrix", () => {
 			(entry) => entry.layout === "sheet" || entry.layout === "modal",
 		))
 			expect(screen.hidden.length > 0).toBe(true);
+	});
+});
+
+describe("the way a screen is reached decides whether it has a back button", () => {
+	// The router makes the launch link the base of the stack (no back arrow): a screen declared with "Navigate up" is one the lab
+	// pushes, so the launch link is the screen under it and a step pushes it.
+	const wantsBack = cases.filter((screen) => screen.controls.some((control) => localize(control, "ltr") === "Navigate up"));
+
+	test("the cases that declare the back button", () => {
+		expect(wantsBack.map((screen) => screen.id)).toEqual([
+			"screens-menu",
+			"screens-header",
+			"screens-translucent",
+			"screens-toolbar",
+			"screens-toolbar-center",
+			"tree-detail",
+		]);
+	});
+
+	test("each is pushed by a step, except the one a pane's stack gives its back arrow itself", () => {
+		for (const screen of wantsBack.filter((entry) => entry.id !== "tree-detail")) {
+			expect(screen.steps.some((step) => "tap" in step || "open" in step)).toBe(true);
+			expect(screen.deepLink?.endsWith(screen.route.replace("/__dev", ""))).toBe(false);
+		}
+		const detail = wantsBack.find((entry) => entry.id === "tree-detail");
+		expect(detail?.steps).toEqual([]);
+		expect(detail?.deepLink).toBe("rasheed-svelte:///__dev/tree/home/detail/7");
+	});
+
+	test("the base is the lab's own screen for the menu and the menu for the screens it pushes, by its button where it has one", () => {
+		const byId = (id: string) => cases.find((entry) => entry.id === id) as ScreenCase;
+		expect(byId("screens-menu").deepLink).toBe("rasheed-svelte:///__dev");
+		for (const id of ["screens-header", "screens-translucent", "screens-toolbar", "screens-toolbar-center"])
+			expect(byId(id).deepLink).toBe("rasheed-svelte:///__dev/screens");
+		expect(byId("screens-header").steps.map((step) => JSON.stringify(step))).toContain(JSON.stringify({ tap: { label: "Push eight screens with headers" } }));
+		expect(byId("screens-translucent").steps.map((step) => JSON.stringify(step))).toContain(JSON.stringify({ tap: { label: "Translucent header over content" } }));
+		expect(byId("screens-toolbar").steps.map((step) => JSON.stringify(step))).toContain(JSON.stringify({ open: "rasheed-svelte:///__dev/screens?mode=toolbar" }));
+		expect(byId("screens-toolbar-center").steps.map((step) => JSON.stringify(step))).toContain(JSON.stringify({ open: "rasheed-svelte:///__dev/screens?mode=toolbar-center" }));
+	});
+
+	test("a button the case taps is on the lab menu's page", () => {
+		const menu = readFileSync(join(platformDir, "src/routes/__dev/screens/+mobile.svelte"), "utf8");
+		for (const screen of cases)
+			for (const step of screen.steps)
+				if ("tap" in step && screen.deepLink?.endsWith("/__dev/screens"))
+					expect(menu).toContain(`"${localize(step.tap.label as string, "ltr")}"`);
 	});
 });
 

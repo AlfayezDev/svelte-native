@@ -12,7 +12,15 @@ export type Localized = string | { en: string; ar: string };
 /** A node of the accessibility tree: by its text or content description, by its class, or both. */
 export type Selector = { label?: Localized; className?: string };
 
-export type Step = { wait: Selector; timeoutMs?: number } | { tap: Selector } | { pause: number };
+/**
+ * `open` is a link opened into the running app (`am start` of a deep link without stopping it): the router treats it as a
+ * plain goto, so it pushes the screen onto the stack the launch link made. `tap` pushes from a screen's own button.
+ */
+export type Step =
+	| { wait: Selector; timeoutMs?: number }
+	| { tap: Selector }
+	| { open: string }
+	| { pause: number };
 
 /** How the screen's chrome is built, which decides the reading order the accessibility suite expects. */
 export type Layout = "page" | "header" | "sheet" | "tabs" | "modal";
@@ -22,7 +30,11 @@ export type ScreenCase = {
 	/** The route in the app's own terms, for the report. */
 	route: string;
 	state: "ready" | "loading" | "error";
-	/** A deep link opened with `am start`; null starts the launcher activity (the startup screen). */
+	/**
+	 * A deep link opened with `am start`; null starts the launcher activity (the startup screen). The router makes the launch link
+	 * the base of the stack (no back arrow), so a screen the lab pushes from another is reached with that other screen as the
+	 * link and a step that pushes it: a tap on the menu's button, or an `open` of the screen's own link where the menu has none.
+	 */
 	deepLink: string | null;
 	/** What the app's network sees while the screen is open. */
 	network: NetworkMode;
@@ -90,6 +102,16 @@ export function ownLabels(screen: ScreenCase, direction: Direction): string[] {
 const label = (text: string): Selector => ({ label: text });
 const tapLabel = (text: string): Step => ({ tap: label(text) });
 const waitFor = (text: string): Step => ({ wait: label(text) });
+
+/** The menu's own button for a screen it pushes: the lab menu is the base (the launch link), the tap pushes the screen onto it. */
+const pushFromMenu = (button: string): Step[] => [tapLabel(button), { pause: 600 }];
+
+/** For the screens the menu has no button for (a button would move the rows the menu's references show): the link opened onto the menu. */
+const openFromMenu = (mode: string): Step[] => [
+	waitFor("Push eight screens with headers"),
+	{ open: `${screens}?mode=${mode}` },
+	{ pause: 600 },
+];
 
 const menuButtons = [
 	"Push eight screens with headers",
@@ -189,6 +211,8 @@ export const cases: ScreenCase[] = [
 				"Change key",
 				"Tap a",
 				"Tap b",
+				// The draft input sits on the scroll view's bottom edge, where uiautomator clips its bounds to no height.
+				"Row A",
 			],
 		},
 	),
@@ -211,8 +235,6 @@ export const cases: ScreenCase[] = [
 	screenCase("dev-async-error", "/__dev (async, error boundary)", dev, label("Reset boundary"), {
 		state: "error",
 		largestText: false,
-				// The draft input sits on the scroll view's bottom edge, where uiautomator clips its bounds to no height.
-				"Row A",
 		steps: [
 			tapLabel("async"),
 			waitFor("Trip error boundary"),
@@ -255,7 +277,9 @@ export const cases: ScreenCase[] = [
 		layout: "header",
 		title: "Lab screen",
 	}),
-	screenCase("screens-menu", "/__dev/screens", screens, label("Push eight screens with headers"), {
+	// The lab's menu is only linked to, never pushed by a button: the lab's own screen is the base and the link is opened onto it.
+	screenCase("screens-menu", "/__dev/screens", dev, label("Push eight screens with headers"), {
+		steps: [waitFor("Run all checks"), { open: screens }, { pause: 600 }],
 		layout: "header",
 		title: "Native screens",
 		controls: ["Navigate up", "Notifications", ...menuButtons],
@@ -263,9 +287,10 @@ export const cases: ScreenCase[] = [
 	screenCase(
 		"screens-header",
 		"/__dev/screens?mode=header",
-		`${screens}?mode=header&depth=1`,
+		screens,
 		label("Screen 1, Native header"),
 		{
+			steps: pushFromMenu("Push eight screens with headers"),
 			layout: "header",
 			title: "Screen 1, Native header",
 			controls: ["Navigate up", "Notifications"],
@@ -285,9 +310,10 @@ export const cases: ScreenCase[] = [
 	screenCase(
 		"screens-translucent",
 		"/__dev/screens?mode=translucent",
-		`${screens}?mode=translucent`,
+		screens,
 		label("Translucent, Content runs under the bar"),
 		{
+			steps: pushFromMenu("Translucent header over content"),
 			layout: "header",
 			title: "Translucent, Content runs under the bar",
 			controls: ["Navigate up"],
@@ -307,9 +333,10 @@ export const cases: ScreenCase[] = [
 	screenCase(
 		"screens-toolbar",
 		"/__dev/screens?mode=toolbar",
-		`${screens}?mode=toolbar`,
+		screens,
 		label("Toolbar, Four actions"),
 		{
+			steps: openFromMenu("toolbar"),
 			layout: "header",
 			title: "Toolbar, Four actions",
 			controls: ["Navigate up", "Reply", "Archive", "Flag", "Delete"],
@@ -318,9 +345,10 @@ export const cases: ScreenCase[] = [
 	screenCase(
 		"screens-toolbar-center",
 		"/__dev/screens?mode=toolbar-center",
-		`${screens}?mode=toolbar-center`,
+		screens,
 		label("Toolbar center"),
 		{
+			steps: openFromMenu("toolbar-center"),
 			layout: "header",
 			title: "Toolbar center",
 			controls: ["Navigate up", "Attach", "Send", "List", "Grid"],

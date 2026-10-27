@@ -437,6 +437,9 @@ export function connectHost(router: Router): () => void {
  * passes its selection (default: always). The navigators below the root get their routers where their screens render.
  */
 export function createRouter(tree: StackNode, initial = "/auth/login", options: RouterScopeOptions = {}): Router {
+  if (!tree || typeof tree !== "object" || tree.kind !== "stack" || !Array.isArray(tree.routes)) {
+    throw new Error(`createRouter takes the route tree, a root stack node ({ kind: "stack", id, path, routes }) such as the \`tree\` .svelte-native/routes.ts exports, not ${Array.isArray(tree) ? "an array of routes (the form before the route tree)" : typeof tree}`);
+  }
   const above = getContext<RouterContext | undefined>(contextKey);
   const scope = options.scope ?? (above ? undefined : "root");
   const store = createStore(tree);

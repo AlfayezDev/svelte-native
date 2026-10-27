@@ -735,6 +735,18 @@ test("layouts render around the page once the route's modules are in, outermost 
   expect(find([layout], "RCTRawText").map((node) => node.props.text)).toEqual(["page /a"]);
 });
 
+test("createRouter takes the route tree: the array of routes it took before fails by naming the contract", async () => {
+  const m = await load("router-array-fixture.svelte");
+  calls.length = 0; roots = {};
+  delete (globalThis as { __routerError?: string }).__routerError;
+  m.startSurface(46, m.Fixture, {});
+  const message = (globalThis as { __routerError?: string }).__routerError ?? "";
+  expect(message).toContain("createRouter takes the route tree");
+  expect(message).toContain("kind: \"stack\"");
+  expect(message).toContain(".svelte-native/routes.ts");
+  expect(message).not.toContain("iterable");
+});
+
 test("a route that fails to load throws where it renders and loads again on its next navigation", async () => {
   const m = await load("router-fixture.svelte");
   calls.length = 0; roots = {};

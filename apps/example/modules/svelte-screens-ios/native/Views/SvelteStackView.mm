@@ -150,7 +150,10 @@ using namespace facebook::react;
 // What the children say becomes UIKit's state in one go, after all of a transaction's mutations: the screens' navigation
 // items first, so that the first frame of a screen has its title, then the pushed controllers, then the presented ones.
 - (void)flush {
-  if (self.window == nil) {
+  // A full screen modal takes the stack's view out of the window while it covers it: what JavaScript asks of the modals (a back,
+  // a reset) still has to reach UIKit then, and the pushed screens catch up when the view comes back (`didMoveToWindow`).
+  const BOOL covered = self.window == nil && _presented.count > 0;
+  if (self.window == nil && !covered) {
     [self reportExits];
     return;
   }
@@ -158,8 +161,10 @@ using namespace facebook::react;
   for (SvelteScreenView *screen in [_screens copy]) {
     if ([screen needsUpdate]) [screen update];
   }
-  [self updatePushedControllers];
-  [self attachControllerIfNeeded];
+  if (!covered) {
+    [self updatePushedControllers];
+    [self attachControllerIfNeeded];
+  }
   [self updatePresentedControllers];
   [self reportExits];
 }

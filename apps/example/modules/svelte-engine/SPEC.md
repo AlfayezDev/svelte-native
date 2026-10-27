@@ -670,6 +670,105 @@ New module `apps/platform/modules/svelte-screens-ios/**` with `ViewProps`-derive
 
 iPad centered form sheets, tab bars on the side or top, nested tab bars, header buttons as a native menu (`UIMenu`, popup), per-tab bar hiding, shared-element transitions, `fullScreenSwipeEnabled`, header height animation by JavaScript. Device verification of every behaviour above is the integration lane's.
 
+## Route tree: layouts as navigators (SvelteKit-native file routing)
+
+Status: contract (27 Oct 2026). Sources of truth, in order: this section, then `packages/svelte-native/src/route-tree.ts` (pure: the tree from a file list, the resolution of an href, the navigation plan) and the golden vectors in `tests/route-tree.test.ts`; then `build.ts` (the generator), `router.svelte.ts`, `Router.svelte`, `components/Stack.svelte`, `components/Tabs.svelte`. It replaces the flat route table: a `+layout.mobile.svelte` can be a navigator the way an Expo Router `_layout` is, and the directory tree decides which stack or tab pane a page belongs to.
+
+### Files
+
+| file | role |
+|---|---|
+| `+mobile.svelte` | a page: one screen of the nearest navigator above it. Its module script may `export const presentation` (a literal: `push`, `modal`, `transparentModal`, `sheet`, `formSheet`; `push` by default), read at build time as today. Everything else about the screen (title, header, slots, search, sheet, system bars, toolbar) is set at run time with `<Screen …>` inside the page. |
+| `+layout.mobile.svelte` with `export const navigator = "stack" \| "tabs"` in its module script (a literal) | a **navigator layout**: its directory is one screen of the parent navigator, and the pages and navigators below it are its own. |
+| `+layout.mobile.svelte` without that export | a **content layout**: wraps the content of every screen in its subtree (pages and navigator screens alike), outermost first, as today. The root `+layout.mobile.svelte` is the app shell: it wraps the root navigator itself and receives `children` (the navigator) instead of `routes`. |
+| `+error.mobile.svelte` | unchanged. |
+| `(group)` | transparent for paths, as today; a group directly under a tabs node is flattened, its child directories become panes. |
+
+### The tree
+
+```
+RouteNode  = StackNode | TabsNode
+StackNode  = { kind: "stack", id, path, layout?: Loader, routes: (PageRoute | RouteNode)[] }
+TabsNode   = { kind: "tabs",  id, path, layout: Loader, panes: Pane[] }
+Pane       = { key, stack: StackNode }                           // key = the pane directory's name
+PageRoute  = { kind: "page", id, path, presentation, load: () => Promise<RouteModules> }
+Loader     = () => Promise<{ component: Component }>              // the navigator layout
+```
+
+- The root is an implicit stack (`id ""`, `path "/"`), with the root layout as the app shell around it (not as `layout`).
+- A page belongs to the nearest navigator above it. Content layouts between them are the page's `layouts` (outermost first), including content layouts above the navigator (the root layout excluded).
+- A navigator layout directory is one route of its parent navigator: a screen whose path is the directory's path (groups removed) and whose content is the navigator layout's component. A `+mobile.svelte` next to a navigator layout is a build error (the layout is the screen).
+- Under a tabs node, every immediate child directory (after group flattening) is a pane: an implicit stack (`id` the directory's id) whose base entry is the pane's index page (`<dir>/+mobile.svelte`, required: a build error names a pane without one). A pane directory may hold its own content layout, which then wraps its pages, and may not be a navigator layout itself (no tab bars inside tab bars, "Not in this contract").
+- A page directly under a tabs node (not in a pane directory) is a build error: it has no pane to show in.
+- Within a navigator, routes sort as today (static segments before parameters, deeper first); matching goes through the whole tree so a resolved href names exactly one page and the chain of navigators above it.
+- `routes.ts` exports `tree: RouteNode`; `createRouter(tree, initial)` replaces `createRouter(routes, initial)`.
+
+### Resolution and the navigation plan (`route-tree.ts`, pure)
+
+`resolve(tree, href)` returns `{ page, params, chain }` where `chain` lists, from the root down, `{ node, select?: paneKey }` for every navigator on the way, or `null` when no page matches. `plan(state, target, navigation)` turns the current state (`{ [nodeId]: { entries: hrefs[] | selected: paneKey } }`) and a resolved target into operations, one per navigator on the chain, in root-first order:
+
+| navigator | operation |
+|---|---|
+| a tabs node on the chain | `select(paneKey)` (no animation; a reselect is a no-op) |
+| the owning stack (the last of the chain) | `push(href, presentation)`; `replace` with `replaceState`; `reset` keeps only the owner's base and the target |
+| a stack above the owner | if the chain's next screen is in its entries: `popTo(thatScreen)` (a modal over the tabs goes away when a tab route is navigated to); else `push(thatScreen)` (a deep link into tabs that are not on the stack yet pushes the tabs screen first, then selects and pushes) |
+
+`back()` asks the innermost active navigator first: a stack pops when it has more than one entry; a pane stack at its base does not pop and does not switch tabs (the decision in "Defaults decided here" stands); then the stack above it; the root at a single entry returns `false` (Android leaves the app). `current` is the deepest shown entry. `useRouter()` is the nearest navigator's router, `useRouter("root")` the root's; a pane's router is named by the pane's key, a nested navigator's by its id. Links open through the root (`openURL` → `goto`). A navigation that does not resolve throws as today. Hot reload keeps every navigator's stack and every tabs node's selection by node id (`hmrState().scopes`).
+
+The owner of a modal, sheet or form sheet is the stack its page belongs to: a modal that must cover the tab bar lives outside the tabs directory (at the root or in a root-level group), as in Expo Router.
+
+### Navigator layout components
+
+```svelte
+<!-- routes/(workspace)/[slug]/(tabs)/+layout.mobile.svelte -->
+<script lang="ts" module>export const navigator = "tabs";</script>
+<script lang="ts">
+  let { panes, children } = $props();           // panes: [{ key: "home" }, { key: "inbox" }], from the directory
+  const items = [{ key: "home", title: t("home"), icon: home }, { key: "inbox", title: t("inbox"), icon: inbox, badge: unread }];
+</script>
+<Tabs {items} tint={theme.foreground}>{@render children()}</Tabs>
+```
+
+```svelte
+<!-- routes/(workspace)/[slug]/(tabs)/inbox/+layout.mobile.svelte (optional; the pane is a stack without it) -->
+<script lang="ts" module>export const navigator = "stack";</script>
+<Stack header={{ large: true }} animation="slide_from_right">{@render children()}</Stack>
+```
+
+- `children` is the navigator's content: for a stack, its screens (`Router.svelte` renders them); for tabs, the panes (`native-tab` per pane with the pane's stack). A navigator layout that renders `{@render children()}` without `<Stack>`/`<Tabs>` gets the defaults.
+- `<Stack>` props are screen defaults merged under each screen's own options (`mergeScreenOptions`, the screen wins): `header`, `animation`, `gestureEnabled`, `statusBar`, `navigationBar`, `style`, plus `loading` (snippet shown while a route's modules load).
+- `<Tabs>` in a navigator layout owns no selection: the router's tabs node does (a press selects at once and the owner can override it by navigating, the `onSelect` prop still reports). `items` keys must be the pane keys; an item for a key that is no pane, or a pane without an item, is a development error logged once. The component mode (`selected`/`onSelect`/`content`) stays for tabs outside the route tree (the lab).
+- Pages keep `<Screen …>` for their options; `export const presentation` stays static.
+
+### Toolbar (kinds 17 `toolbar`, 18 `toolbar-item`; records 128, 129)
+
+A bar of actions at the bottom of a screen (iOS `UIToolbar`, Material bottom app bar), declared by the screen:
+
+```svelte
+<Screen title="Thread" toolbar={{ items: [{ key: "reply", title: t("reply"), icon: reply }, { key: "archive", title: t("archive"), icon: archive, badge: 2 }], onPress: (key) => … }}>
+  {#snippet toolbarCenter()}…{/snippet}       <!-- optional custom content between the items -->
+```
+
+| option | meaning |
+|---|---|
+| `toolbar.items[]` | `key`, `title`, `icon` (asset, drawn as a template image and tinted; or a snippet `(pressed: boolean)`), `badge` (as tabs), `disabled`, `accessibilityLabel`, `testID`; `{ key, spacer: true }` is flexible space |
+| `toolbar.hidden`, `translucent`, `tint`, `background` | as the header's |
+| `toolbar.onPress(key)` | a press |
+| `toolbarCenter` snippet | custom content in the bar between the items (a composer, a segmented control) |
+
+Tree and layout: `native-toolbar` (`svelte:toolbar;hd=1;tl=1;tc;bg;sl`) is the last child of `native-screen`, a Yoga row of `height = bar + bottom inset` (bar 56 dp Android, 44 pt iOS), `paddingBottom = inset`, in flow below the content view (`flex: 1`) unless `translucent`, then `position: absolute` at the bottom; `sl` bit 1 says a center slot exists (`native-toolbar-center`, kind 13 with slot 4 in record 126). A snippet icon renders a `native-toolbar-item` child (kind 18, Yoga-sized, placed by the native side like a header slot). Inside a tab pane the bar sits above the tab bar (the pane's bottom is the tab bar). `useToolbar()` returns `{ height, inset }` of the nearest screen's toolbar (0 without one), reactive, for content under a translucent bar.
+
+| id | values | kind |
+|---|---|---|
+| 128 | toolbar: flags (1 hidden, 2 translucent), hasTint, tint, hasBackground, background, slots (1 center), itemCount | 17 |
+| 129 | toolbar item: key string, title string, iconUri string, iconIsView, badgeKind (0 none, 1 dot, 2 text), badgeText string, disabled, spacer | 17 (one record per item, in order) |
+
+Events: `toolbar` emits `topToolbarPress { key, index }` (`onToolbarPress`); `topMetrics { height, inset }` like the header. Android (NA): `EngineToolbar` in `EngineScreen` like the header, items as 48 dp targets (icon 24, label 12 sp under it when a title is given, ripple, badge drawn as the tab bar's), the bar is part of the screen's layer during transitions. iOS (NI): the screen's view controller gets `toolbarItems` (`UIBarButtonItem` with image or title; a snippet item as `customView`), the navigation controller shows its toolbar while the top screen declares one and hides it on the next push or pop; `translucent` maps to the toolbar's appearance; the Yoga band reserves the space the same way the header does.
+
+### App adoption (platform app)
+
+Product pages use native headers (`<Screen title>`; `Page` keeps its scroll, padding and direction and drops its drawn title), the workspace becomes a tabs navigator (`(workspace)/[slug]/(tabs)/+layout.mobile.svelte`; which panes is the product's decision), the account and settings routes stay root-level modals, `/auth/login` and `/onboarding/*` stay root stack pages. The lab (`/__dev/*`) keeps its component-mode tabs. Parity and a11y references are added for every new layout (the signed-in screens stay outside the suites until a QA session exists).
+
 ## Expo modules at boot
 
 Every Expo package the app imports (secure store, crypto, application, constants, file system, fetch, splash screen, localization) and the engine module itself are Expo modules, so `expo-modules-core` runs inside the headless host. Its Kotlin module registry used to sit on both boot critical paths. On the Samsung (`.rasheed/native-qa/2026-10-25/runs/boot-lazy/`):

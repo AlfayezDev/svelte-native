@@ -166,7 +166,7 @@ export type SheetOptions = {
 export type ToolbarItem = {
   key: string;
   title?: string;
-  /** An asset, drawn as a template image and tinted by the bar; or a snippet, which receives `pressed` (always `false` for now: the contract has no pressed-state event). */
+  /** An asset, drawn as a template image and tinted by the bar; or a snippet, which receives `pressed` (always `false` for now: the contract has no pressed-state event). A snippet is drawn, not pressed: a `Pressable` inside it never fires, the item is the only press (`ToolbarOptions.onPress`). */
   icon?: TabIconSource | Snippet<[pressed: boolean]>;
   /** Text or a number (above 99 it reads "99+"); `true` shows a dot. */
   badge?: string | number | boolean;
@@ -479,7 +479,9 @@ function toolbarProps(name: string, attributes: Record<string, unknown>): Record
     // A fixed width, not a minimum: the native side places every item at exactly `item` (plus `gap` each side), so the center's
     // Yoga width is the span it gets. A snippet icon is drawn inside, centered by the native side.
     const style = { width: metrics.item, marginHorizontal: metrics.gap, flexDirection: "row", alignItems: "center", justifyContent: "center" };
-    return withId(attributes, TOOLBAR_ITEM_KEYS, id, style);
+    // The item is the only press (`toolbar.onPress(key)`, from the native control): `box-only` ends a JavaScript touch at the item
+    // node, which has no press handler, so a Pressable inside a snippet never fires, on either platform.
+    return { ...withId(attributes, TOOLBAR_ITEM_KEYS, id, style), pointerEvents: "box-only" };
   }
   // The custom content between the items: fills what they leave, centered like the header's center slot.
   return withId(attributes, TOOLBAR_ITEM_KEYS, encodeNativeID("toolbar-center", []), { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center" });

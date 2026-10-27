@@ -266,6 +266,13 @@ test("toolbar items encode their key, title, icon, badge and flags; a spacer car
   expect(navigationProps("native-toolbar-item", { toolbarPlatform: "android" }).style).toEqual([{ width: 48, marginHorizontal: 0, ...row }, undefined]);
   // On iOS an item is UIKit's 44 pt button with 4 pt each side: it occupies 52.
   expect(navigationProps("native-toolbar-item", { toolbarPlatform: "ios" }).style).toEqual([{ width: 44, marginHorizontal: 4, ...row }, undefined]);
+  // The item is the only press: its JavaScript node takes touches as a box and its children (a snippet icon) take none; a spacer, the band and the center are left alone.
+  expect(navigationProps("native-toolbar-item", {}).pointerEvents).toBe("box-only");
+  expect(navigationProps("native-toolbar-item", { toolbarPlatform: "ios", iconView: true, itemKey: "s" }).pointerEvents).toBe("box-only");
+  expect(navigationProps("native-toolbar-item", { pointerEvents: "auto" }).pointerEvents).toBe("box-only");
+  expect("pointerEvents" in navigationProps("native-toolbar-item", { spacer: true })).toBe(false);
+  expect("pointerEvents" in navigationProps("native-toolbar-center", {})).toBe(false);
+  expect("pointerEvents" in navigationProps("native-toolbar", {})).toBe(false);
   const full = navigationProps("native-toolbar-item", { itemKey: "in/box", title: "A;B=C, 100%", icon: "asset:/a b.png", iconView: false, badge: 120, disabled: true, accessibilityLabel: "Open", testID: "item" });
   expect(full.nativeID).toBe("svelte:toolbar-item;k=in%2Fbox;t=A%3BB%3DC%2C%20100%25;ic=asset%3A%2Fa%20b.png;bd=99%2B;ds=1");
   expect(full.accessibilityLabel).toBe("Open");
@@ -793,6 +800,8 @@ test("a Screen renders its toolbar as the last child, one item node per item in 
     // An item is 48 dp wide in Yoga, as the engine places it.
     expect(flat(items()[0].props.style)).toMatchObject({ width: 48, marginHorizontal: 0 });
     expect(flat(items()[1].props.style)).toMatchObject({ width: 48, marginHorizontal: 0 });
+    // The snippet icon's item takes the touch as a box: a Pressable inside the snippet is out of its reach.
+    expect(items().map((item) => item.props.pointerEvents)).toEqual(["box-only", "box-only", undefined, "box-only", "box-only"]);
     // An asset icon is a uri on the node; a snippet icon is the node's child, drawn live with `pressed` false.
     expect(items()[0].children).toHaveLength(0);
     expect(ofTestID(items()[1].children, "glyph-false")).toHaveLength(1);

@@ -283,8 +283,8 @@ class EngineToolbarItem(context: Context) : EngineView(context) {
 
   private val pressable: Boolean get() = !spacer && !disabled
 
-  // A snippet inside the item (a Pressable of the app) hears the gesture through JavaScript's own dispatch, which does not
-  // depend on this one; the item takes the platform's gesture so a press on any part of it is a press of the item.
+  // JavaScript's own touch dispatch ends at the item node (`pointerEvents: box-only` from `toolbarProps`), so a Pressable inside
+  // a snippet never fires: the item is the only press. It takes the platform's gesture so a press on any part of it is a press of the item.
   override fun onInterceptTouchEvent(ev: MotionEvent): Boolean = pressable && ev.actionMasked == MotionEvent.ACTION_DOWN
 
   override fun onTouchEvent(event: MotionEvent): Boolean {

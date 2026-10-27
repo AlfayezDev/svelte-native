@@ -10,7 +10,9 @@ import {
 	startApp,
 	wake,
 } from "../lib/adb.ts";
+import { afterRetry, launchFrom, shouldRetry } from "../lib/boot-launch.ts";
 import { dexoptFlag, prepareApp } from "../lib/app.ts";
+import { isRunning } from "../lib/device.ts";
 import { flagString, integerFlag, parseFlags, platformOf, requireString } from "../lib/flags.ts";
 import { currentSource } from "../lib/git.ts";
 import { lockFor, reexecUnderLock } from "../lib/lock.ts";
@@ -20,12 +22,7 @@ import type { BootDefinition, BootFile, Launch } from "../lib/types.ts";
 import { sleep } from "../lib/wait.ts";
 import { iosBoot } from "./ios-boot.ts";
 import { parseAmStart } from "../parse/adb.ts";
-import {
-	findEngineWarnings,
-	findFaults,
-	parseLaunchMarkers,
-	parseSvelteBoot,
-} from "../parse/logcat.ts";
+import { parseLaunchMarkers } from "../parse/logcat.ts";
 
 const settleMs = 2500;
 const logTimeoutMs = 12_000;
@@ -47,6 +44,7 @@ async function launchOnce(
 	kind: "warm" | "cold",
 	index: number,
 	idleSeconds: number,
+	attempt: number,
 ): Promise<{ launch: Launch; log: string }> {
 	await wake(serial);
 	if (kind === "cold") {
@@ -72,34 +70,32 @@ async function launchOnce(
 		text = await dumpLogcat(serial);
 	}
 
-	const markers = parseLaunchMarkers(text, packageName);
-	const faults = findFaults(text, packageName);
-	const launch: Launch = {
-		index,
-		displayMs: markers.displayMs,
-		runningMainMs: markers.runningMainMs,
-		displayedReportedMs: markers.displayedReportedMs,
-		totalTimeMs: am.totalTimeMs,
-		jsMarks: parseSvelteBoot(text),
-		crashes: faults.crashes.length,
-		jsErrors: faults.jsErrors.length,
-		engineWarnings: findEngineWarnings(text).length,
-		error:
-			markers.displayMs === null
-				? "no Start proc to Displayed pair in logcat"
-				: am.status === "ok"
-					? null
-					: `am start status ${am.status}`,
-	};
+	const launch = launchFrom(index, text, am, packageName);
 	const log = [
-		`=== ${kind} ${index} ===`,
+		`=== ${kind} ${index}${attempt > 1 ? ` (attempt ${attempt})` : ""} ===`,
 		...text.split("\n").filter((line) => interesting.test(line)),
 	].join("\n");
 	return { launch, log };
 }
 
+/** One slot of the series: a launch, and when its logcat pair is missing with the app alive, one more launch at once. */
+async function launchSlot(
+	serial: string,
+	packageName: string,
+	kind: "warm" | "cold",
+	index: number,
+	idleSeconds: number,
+): Promise<{ launch: Launch; logs: string[] }> {
+	const first = await launchOnce(serial, packageName, kind, index, idleSeconds, 1);
+	if (first.launch.displayMs !== null || !shouldRetry(first.launch, await isRunning(serial, packageName)))
+		return { launch: first.launch, logs: [first.log] };
+	console.log(`  ${kind} ${String(index).padStart(2)}: ${first.launch.error}, the app is running: launching again`);
+	const second = await launchOnce(serial, packageName, kind, index, idleSeconds, 2);
+	return { launch: afterRetry(second.launch), logs: [first.log, second.log] };
+}
+
 function describeLaunch(kind: string, launch: Launch): string {
-	return `  ${kind} ${String(launch.index).padStart(2)}: ${launch.displayMs ?? "-"} ms (Start proc to Displayed), running main ${launch.runningMainMs ?? "-"}, am TotalTime ${launch.totalTimeMs ?? "-"}, js ${launch.jsMarks?.total ?? "-"}${launch.error ? `  [${launch.error}]` : ""}`;
+	return `  ${kind} ${String(launch.index).padStart(2)}: ${launch.displayMs ?? "-"} ms (Start proc to Displayed), running main ${launch.runningMainMs ?? "-"}, am TotalTime ${launch.totalTimeMs ?? "-"}, js ${launch.jsMarks?.total ?? "-"}${(launch.attempts ?? 1) > 1 ? ` (attempt ${launch.attempts})` : ""}${launch.error ? `  [${launch.error}]` : ""}`;
 }
 
 export async function boot(argv: string[]): Promise<void> {
@@ -143,9 +139,9 @@ export async function boot(argv: string[]): Promise<void> {
 		["cold", coldCount],
 	] as const) {
 		for (let index = 1; index <= count; index++) {
-			const { launch, log } = await launchOnce(serial, packageName, kind, index, idleSeconds);
+			const { launch, logs: slotLogs } = await launchSlot(serial, packageName, kind, index, idleSeconds);
 			launches[kind].push(launch);
-			logs.push(log);
+			logs.push(...slotLogs);
 			console.log(describeLaunch(kind, launch));
 		}
 	}

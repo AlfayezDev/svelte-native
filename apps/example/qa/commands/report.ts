@@ -426,7 +426,7 @@ export async function report(): Promise<void> {
 			`${serial}: ${entry.info.model} (${entry.info.kind}, ${entry.info.abi}, ${entry.info.refreshHz ?? "?"} Hz)`,
 		);
 		console.log(
-			`  boot warm p90 ${m["boot.warm.p90"] ?? "-"} ms (${m["boot.warm.samples"] ?? 0} samples), cold p90 ${m["boot.cold.p90"] ?? "-"} ms (${m["boot.cold.samples"] ?? 0} samples)`,
+			`  boot warm p90 ${m["boot.warm.p90"] ?? "-"} ms (${m["boot.warm.samples"] ?? 0} samples, ${m["boot.warm.retried"] ?? 0} retried), cold p90 ${m["boot.cold.p90"] ?? "-"} ms (${m["boot.cold.samples"] ?? 0} samples, ${m["boot.cold.retried"] ?? 0} retried)`,
 		);
 		console.log(
 			`  lab ${m["lab.runs"] ?? 0} complete run(s) (--run ${entry.lab?.run ?? "not recorded"}), checks ${m["lab.checks.passed"] ?? "-"} passed / ${m["lab.checks.failed"] ?? "-"} failed, fatals ${m["log.fatals"] ?? "not measured"}, engine warnings ${m["log.engineWarnings"] ?? "-"}`,

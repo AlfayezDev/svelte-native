@@ -130,6 +130,7 @@ function bootSeries(prefix: string, launches: Launch[]): Metrics {
 		[`${prefix}.attempts`]: launches.length,
 		[`${prefix}.samples`]: display.samples,
 		[`${prefix}.failed`]: launches.length - display.samples,
+		[`${prefix}.retried`]: launches.filter((launch) => (launch.attempts ?? 1) > 1).length,
 		[`${prefix}.min`]: display.min,
 		[`${prefix}.p50`]: display.p50,
 		[`${prefix}.p90`]: display.p90,

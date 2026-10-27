@@ -125,6 +125,8 @@ export type Launch = {
 	jsErrors: number | null;
 	engineWarnings: number;
 	error: string | null;
+	/** Android: how many launches filled the slot. 2 when the first one's logcat had no `Start proc` to `Displayed` pair while the process was alive and the launch was run again at once; absent in runs recorded before the field and on iOS. */
+	attempts?: number;
 	/** iOS: when the harness started the launch command (its clock) and the process start the app reported (the phone's); a report older than the launch is another launch's. */
 	commandStartedAtMs?: number | null;
 	processStartMs?: number | null;

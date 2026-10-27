@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { onMount } from "svelte";
-  import { ActivityIndicator, bootSummary, type NativeRoute } from "@rasheed/svelte-native";
+  import { onMount, type Snippet } from "svelte";
+  import { ActivityIndicator, bootSummary } from "@rasheed/svelte-native";
   import * as Font from "expo-font";
   import regularFont from "../../assets/native/fonts/IBMPlexSansArabic-Regular.ttf";
   import mediumFont from "../../assets/native/fonts/IBMPlexSansArabic-Medium.ttf";
@@ -12,7 +12,8 @@
   import { API_URL, nativeLabEnabled, theme, t, watchAppearance, syncStatusBar } from "#lib/native/state.svelte.ts";
   import { installErrorCounter, jsErrorCount } from "#lib/native/dev/errors.ts";
   import type { NativeConfiguration } from "#lib/native/session.svelte.ts";
-  let { routes }: { routes: NativeRoute[] } = $props();
+  /** The app shell: `children` is the root navigator, and the router above this layout is `useRouter("root")`. */
+  let { children }: { children: Snippet } = $props();
   let configuration = $state<NativeConfiguration | null>(null);
   // The session (SpacetimeDB client, effect, the account screens) is only needed once the configuration is in; loading it
   // after that keeps its module evaluation off the first paint.
@@ -51,7 +52,7 @@
 </script>
 <svelte:boundary {failed}>
   {#if configuration && NativeSession}
-    <NativeSession {configuration} {routes} />
+    <NativeSession {configuration}>{@render children()}</NativeSession>
   {:else}
     <Page title="Rasheed">
       {#if error}<Notice message={error} /><Button label={t("common.retry")} onPress={() => load()} />

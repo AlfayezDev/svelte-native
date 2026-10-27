@@ -4,7 +4,7 @@
  * Without React Fast Refresh, Metro applies an update by re-running the edited module and every module between it and
  * the nearest `module.hot.accept()`. The generated Fabric entry accepts at the top, so each edit re-runs the entry,
  * which calls `createFabricApp` again with the fresh root component, and its accept handler calls `remountSurfaces()`:
- * every running surface is unmounted and started again on the same root tag with the same props and navigation stack.
+ * every running surface is unmounted and started again on the same root tag with the same props and navigation state.
  */
 import { hmrState } from "../hmr-state.ts";
 import { startSurface, stopSurface } from "./host.ts";
@@ -31,13 +31,13 @@ export function stopApplication(rootTag: number): void {
   stopSurface(rootTag);
 }
 
-/** Unmounts every surface and starts it again with the latest registered app, keeping the navigation stack. */
+/** Unmounts every surface and starts it again with the latest registered app, keeping the navigation state (every stack and tabs selection). */
 export function remountSurfaces(): void {
   const state = hmrState();
   const surfaces = [...state.surfaces];
   if (surfaces.length === 0) return;
   console.log(`[Svelte HMR] remount ${surfaces.length} surface${surfaces.length === 1 ? "" : "s"}`);
-  state.restore = state.stack?.();
+  state.restore = state.navigation?.();
   try {
     for (const [rootTag] of surfaces) {
       try { stopSurface(rootTag); } catch (error) { console.error(error); }

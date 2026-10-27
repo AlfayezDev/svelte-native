@@ -43,7 +43,7 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/Renderer/shims/ReactNativeViewConfigRegistry": "export const register = (name) => name; export const get = (name) => ({ uiViewClassName: name, validAttributes: {}, bubblingEventTypes: { topChange: { phasedRegistrationNames: { bubbled: 'onChange', captured: 'onChangeCapture' } } }, directEventTypes: { topLayout: { registrationName: 'onLayout' }, topScroll: { registrationName: 'onScroll' } } });",
   "react-native/Libraries/Utilities/Platform": "export default { get OS() { return globalThis.__navigationOS ?? 'android'; }, Version: 34 };",
   "react-native/Libraries/Utilities/BackHandler": "const handlers = (globalThis.__backHandlers ??= []); export default { addEventListener: (name, handler) => { handlers.push(handler); return { remove() { const at = handlers.indexOf(handler); if (at >= 0) handlers.splice(at, 1); } }; } };",
-  "react-native/Libraries/Linking/Linking": "const handlers = (globalThis.__linkHandlers ??= []); export default { addEventListener: (name, handler) => { handlers.push(handler); return { remove() { const at = handlers.indexOf(handler); if (at >= 0) handlers.splice(at, 1); } }; }, getInitialURL: () => Promise.resolve(null) };",
+  "react-native/Libraries/Linking/Linking": "const handlers = (globalThis.__linkHandlers ??= []); export default { addEventListener: (name, handler) => { handlers.push(handler); return { remove() { const at = handlers.indexOf(handler); if (at >= 0) handlers.splice(at, 1); } }; }, getInitialURL: () => { globalThis.__initialURLReads = (globalThis.__initialURLReads ?? 0) + 1; return Promise.resolve(null); } };",
   "react-native/Libraries/Image/resolveAssetSource": "export default (source) => source && typeof source === 'object' && 'uri' in source ? { scale: 1, ...source } : null;",
   "react-native/Libraries/NativeComponent/ViewConfig": "export const createViewConfig = (partial) => partial;",
   "react-native/Libraries/Components/View/ViewNativeComponent": "export {};",
@@ -460,13 +460,15 @@ test("merging screen options: the toolbar merges like the header, key by key, an
   expect(mergeScreenOptions({}, { toolbar: { hidden: true } }).toolbar).toEqual({ hidden: true });
 });
 
-test("Screen and Tabs stay components: they take snippets, so the lowering preprocessor must not rewrite them", () => {
+test("Screen, Stack and Tabs stay components: they take snippets, so the lowering preprocessor must not rewrite them", () => {
   expect(Object.hasOwn(LOWERED_TAGS, "Screen")).toBe(false);
+  expect(Object.hasOwn(LOWERED_TAGS, "Stack")).toBe(false);
   expect(Object.hasOwn(LOWERED_TAGS, "Tabs")).toBe(false);
-  const source = `<script>\n  import { Screen, Tabs, View } from "@rasheed/svelte-native";\n</script>\n<Screen title="x">{#snippet headerRight()}<View />{/snippet}</Screen>\n<Tabs items={items} selected={s} content={pane} />`;
+  const source = `<script>\n  import { Screen, Stack, Tabs, View } from "@rasheed/svelte-native";\n</script>\n<Screen title="x">{#snippet headerRight()}<View />{/snippet}</Screen>\n<Stack header={{ large: true }}>{@render children()}</Stack>\n<Tabs items={items} selected={s} content={pane} />`;
   const lowered = lowerPrimitives(source, { filename: "x.svelte", warn: noop });
   expect(lowered).toContain('<Screen title="x">');
   expect(lowered).toContain("<native-view ></native-view>");
+  expect(lowered).toContain("<Stack header={{ large: true }}>");
   expect(lowered).toContain("<Tabs items={items}");
 });
 
@@ -475,7 +477,7 @@ const ofKind = (nodes: FakeNode[], kind: string): FakeNode[] => nodes.flatMap((n
 const ofTestID = (nodes: FakeNode[], testID: string): FakeNode[] => nodes.flatMap((node) => [...(node.props.testID === testID ? [node] : []), ...ofTestID(node.children, testID)]);
 const environment = globalThis as { __navigationInsets?: unknown; __navigationOS?: string };
 const withInsets = (top: number, bottom = 34) => { environment.__navigationInsets = { top, right: 0, bottom, left: 0, keyboardHeight: 0, keyboardVisible: false, frame: { x: 0, y: 0, width: 400, height: 800 } }; };
-const reset = () => { delete environment.__navigationInsets; delete environment.__navigationOS; };
+const reset = () => { delete environment.__navigationInsets; delete environment.__navigationOS; jest.useRealTimers(); };
 type ScreenApp = { set: (patch: object) => void; show: (patch: object) => void; nest: (value: object | null) => void; events: () => string[] };
 type TabsApp = { select: (key: string) => void; setItems: (items: object[]) => void; setLazy: (value: boolean) => void; selection: () => string; events: () => string[]; handle: (key: string) => { key: string; selected: boolean } };
 const flat = (style: unknown): Record<string, unknown> => Object.assign({}, ...(Array.isArray(style) ? style : [style]).filter(Boolean));
@@ -1004,6 +1006,18 @@ test("layouts render around the page once the route's modules are in, outermost 
   expect(find([layout], "RCTRawText").map((node) => node.props.text)).toEqual(["page /a"]);
 });
 
+test("createRouter takes the route tree: the array of routes it took before fails by naming the contract", async () => {
+  const m = await load("router-array-fixture.svelte");
+  calls.length = 0; roots = {};
+  delete (globalThis as { __routerError?: string }).__routerError;
+  m.startSurface(46, m.Fixture, {});
+  const message = (globalThis as { __routerError?: string }).__routerError ?? "";
+  expect(message).toContain("createRouter takes the route tree");
+  expect(message).toContain("kind: \"stack\"");
+  expect(message).toContain(".svelte-native/routes.ts");
+  expect(message).not.toContain("iterable");
+});
+
 test("a route that fails to load throws where it renders and loads again on its next navigation", async () => {
   const m = await load("router-fixture.svelte");
   calls.length = 0; roots = {};
@@ -1100,7 +1114,7 @@ test("on iOS a popped screen stays mounted with activityState 0 until the stack 
     await turns(m);
     expect(app.screens()).toEqual(["/:root:live"]);
     expect(screens()).toHaveLength(1);
-  } finally { jest.useRealTimers(); reset(); }
+  } finally { reset(); }
 });
 
 test("a screen pushed while another leaves goes below it; a replacement, a reset and a base replacement retire what they remove; a user dismissal drops at once", async () => {
@@ -1140,7 +1154,7 @@ test("a screen pushed while another leaves goes below it; a replacement, a reset
     await turns(second);
     expect(plain.screens()).toEqual(["/:root:live"]);
     expect(roots[58][0].children).toHaveLength(1);
-  } finally { jest.useRealTimers(); reset(); }
+  } finally { reset(); }
 });
 
 test("a popped screen that never reports its exit is removed after EXIT_TIMEOUT_MS, with a warning", async () => {
@@ -1187,7 +1201,7 @@ test("on Android a popped screen stays mounted with activityState 0 until the st
     expect(app.screens()).toEqual(["/:root:live"]);
     expect(screens()).toHaveLength(1);
     expect(screens().map(activityOf)).toEqual(["2"]);
-  } finally { jest.useRealTimers(); reset(); }
+  } finally { reset(); }
 });
 
 type NestedApp = ScreensApp & { dummy?: never };
@@ -1243,7 +1257,7 @@ test("the back key belongs to a router only while it is active, and links only t
   // React Native asks the handlers newest first and stops at the first `true`.
   const back = () => [...handlersOf("__backHandlers")].reverse().some((handler) => (handler as () => boolean)());
   const link = (url: string) => { for (const handler of handlersOf("__linkHandlers")) (handler as (event: { url: string }) => void)({ url }); };
-  expect(handlersOf("__backHandlers")).toHaveLength(2);
+  expect(handlersOf("__backHandlers")).toHaveLength(1); // the root's alone: it asks the nested router first while it is active
 
   expect(back()).toBe(false); // one entry in each stack: nobody takes it, the app may leave
   nested.router.goto("/t/b");
@@ -1270,4 +1284,600 @@ test("the back key belongs to a router only while it is active, and links only t
   expect(back()).toBe(true); // the tab is at its root: the key falls through to the root stack, which pops the screen the link opened
   expect(app.stack()).toEqual(["/:push"]);
   expect(back()).toBe(false);
+});
+
+// The route tree: navigators as routes, tabs with a stack per pane (SPEC.md "Route tree: layouts as navigators").
+type TreeRouter = {
+  scope: string | undefined; active: () => boolean; entries: { url: URL; presentation: string; params: Record<string, string> }[]; current: { url: URL };
+  selected: string | undefined; goto: (href: string, options?: { replaceState?: boolean; reset?: boolean; presentation?: string }) => void; back: () => boolean;
+  replaceBase: (href: string) => void; openURL: (href: string) => boolean; screens: { leaving: boolean; canGoBack: boolean }[];
+  node: { kind: string; panes?: { key: string; stack: object }[] }; modules: (node: object) => unknown;
+};
+type TreeApp = { root: () => TreeRouter; show: (shown: boolean) => void };
+const treeGlobals = globalThis as { __treeRoots?: Record<string, TreeRouter>; __treeRouters?: Record<string, TreeRouter>; __treeOptions?: Record<string, object>; __treeTabs?: object[]; __treeSelections?: string[]; __treePanes?: unknown; __treeTabsRouter?: TreeRouter; __treeLayouts?: { path?: string; params?: object }[] };
+const pathsOf = (router: TreeRouter) => router.entries.map((entry) => `${entry.url.pathname}${entry.url.search}`);
+const selectedIndex = (surface: number) => parseNativeID(String(ofKind(roots[surface], "tabs")[0].props.nativeID))?.pairs.sel;
+const paneRouter = (path: string): TreeRouter => { const router = treeGlobals.__treeRouters?.[path]; if (!router) throw new Error(`no page rendered at ${path}`); return router; };
+
+async function mountTree(surface: number, props: Record<string, unknown> = {}) {
+  const m = await load("tree-fixture.svelte");
+  jest.useFakeTimers(); // a popped screen's exit timer must not fire into whichever test runs after this one
+  calls.length = 0; roots = {};
+  treeGlobals.__treeRouters = {}; treeGlobals.__treeRoots = {}; delete treeGlobals.__treeOptions; delete treeGlobals.__treeTabs; delete treeGlobals.__treeSelections; delete treeGlobals.__treeLayouts;
+  handlersOf("__backHandlers").length = 0;
+  handlersOf("__linkHandlers").length = 0;
+  delete (globalThis as { __initialURLReads?: number }).__initialURLReads;
+  const app = m.startSurface(surface, m.Fixture, props) as TreeApp;
+  await turns(m);
+  // React Native asks the handlers newest first and stops at the first `true`.
+  const hardwareBack = () => [...handlersOf("__backHandlers")].reverse().some((handler) => (handler as () => boolean)());
+  const settled = () => turns(m);
+  return { m, app, router: app.root(), hardwareBack, settled, texts: () => texts(surface), tree: () => roots[surface] };
+}
+const tabScreens = (tree: FakeNode[]) => ofKind(tree, "tab").map((pane) => ofKind(pane.children, "screen"));
+
+test("a deep link into the tabs puts the tabs screen on the root stack, selects the pane and stacks its route there; only the selected pane mounts", async () => {
+  withInsets(24);
+  try {
+    const { router, texts: shown, tree } = await mountTree(81, { initial: "/acme/inbox/compose" });
+    expect(router.scope).toBe("root");
+    expect(pathsOf(router)).toEqual(["/acme"]);
+    expect(router.entries[0].params).toEqual({ slug: "acme" });
+    expect(router.selected).toBeUndefined(); // the root is a stack; the tabs router is the layout's
+    expect(treeGlobals.__treeRoots?.["/acme/inbox/compose"]).toBe(router); // useRouter("root") from inside a pane
+    expect(selectedIndex(81)).toBe("1");
+    expect(paneRouter("/acme/inbox/compose").scope).toBe("inbox");
+    expect(paneRouter("/acme/inbox").scope).toBe("inbox");
+    expect(router.current.url.pathname).toBe("/acme/inbox/compose"); // the deepest shown entry
+    expect(shown()).toEqual(["page /acme/inbox", "page /acme/inbox/compose"]); // the home pane has not mounted
+    expect(ofKind(tree(), "tab").map((pane) => String(pane.props.nativeID).split(";").slice(1, 3).join(";"))).toEqual(["k=home;t=Home", "k=inbox;t=Inbox"]);
+    const [home, inbox] = tabScreens(tree());
+    expect(home).toHaveLength(0);
+    expect(inbox.map((screen) => String(screen.props.nativeID).split(";").slice(0, 3).join(";"))).toEqual(["svelte:screen;a=2;p=push", "svelte:screen;a=2;p=sheet"]);
+    expect(treeGlobals.__treePanes).toEqual([{ key: "home" }, { key: "inbox" }]);
+  } finally { reset(); }
+});
+
+test("a push within the shown pane touches only that pane's stack; a route of another pane selects the tab and stacks there", async () => {
+  withInsets(24);
+  try {
+    const { router, settled, texts: shown } = await mountTree(82, { initial: "/acme/home" });
+    expect(selectedIndex(82)).toBe("0");
+    router.goto("/acme/home/thread/42");
+    await settled();
+    expect(pathsOf(router)).toEqual(["/acme"]);
+    expect(pathsOf(paneRouter("/acme/home"))).toEqual(["/acme/home", "/acme/home/thread/42"]);
+    expect(paneRouter("/acme/home/thread/42").entries[1].params).toEqual({ slug: "acme", id: "42" });
+    expect(selectedIndex(82)).toBe("0");
+
+    router.goto("/acme/inbox");
+    await settled();
+    expect(selectedIndex(82)).toBe("1");
+    expect(pathsOf(paneRouter("/acme/inbox"))).toEqual(["/acme/inbox"]); // the pane starts on its index page; the route is that page
+    expect(pathsOf(paneRouter("/acme/home"))).toEqual(["/acme/home", "/acme/home/thread/42"]); // the other pane keeps its stack
+    expect(pathsOf(router)).toEqual(["/acme"]);
+    expect(shown()).toEqual(["page /acme/home", "page /acme/home/thread/42", "page /acme/inbox"]);
+
+    router.goto("/acme/inbox/compose", { presentation: "modal" });
+    await settled();
+    expect(paneRouter("/acme/inbox").entries.map((entry) => entry.presentation)).toEqual(["push", "modal"]);
+    // The tabs screen is the root's; `useRouter()` on a page in a pane is the pane's; both reach the same tree.
+    paneRouter("/acme/home").goto("/acme/home/thread/43");
+    await settled();
+    expect(selectedIndex(82)).toBe("0");
+    expect(pathsOf(paneRouter("/acme/home"))).toEqual(["/acme/home", "/acme/home/thread/42", "/acme/home/thread/43"]);
+  } finally { reset(); }
+});
+
+test("a modal over the tabs is popped by a navigation to a tab route; the route that is already shown does nothing", async () => {
+  withInsets(24);
+  try {
+    const { router, settled, tree } = await mountTree(83, { initial: "/acme/home" });
+    router.goto("/account");
+    await settled();
+    expect(pathsOf(router)).toEqual(["/acme", "/account"]);
+    expect(router.entries[1].presentation).toBe("modal");
+    expect(router.current.url.pathname).toBe("/account");
+    expect(paneRouter("/acme/home").active()).toBe(false); // covered
+    expect(router.active()).toBe(true);
+
+    router.goto("/acme/home"); // shown below the modal: the modal goes, nothing is pushed
+    await settled();
+    expect(pathsOf(router)).toEqual(["/acme"]);
+    expect(pathsOf(paneRouter("/acme/home"))).toEqual(["/acme/home"]);
+    const rootScreens = () => ofKind(tree(), "stack")[0].children;
+    expect(rootScreens().map(activityOf)).toEqual(["2", "0"]); // the modal stays mounted, leaving, until the native stack reports its exit
+    emit(rootScreens()[1].target, "topExited", {});
+    await settled();
+    expect(rootScreens()).toHaveLength(1);
+
+    router.goto("/account");
+    router.goto("/acme/inbox");
+    await settled();
+    expect(pathsOf(router)).toEqual(["/acme"]);
+    expect(selectedIndex(83)).toBe("1");
+    expect(paneRouter("/acme/home").active()).toBe(false); // its tab is not selected
+    expect(paneRouter("/acme/inbox").active()).toBe(true);
+  } finally { reset(); }
+});
+
+test("back at a pane's base neither pops the pane nor switches tabs: the stack above it pops, and the root at one entry leaves the app", async () => {
+  withInsets(24);
+  try {
+    const { router, settled, hardwareBack } = await mountTree(84, { initial: "/acme/inbox/compose" });
+    router.goto("/acme/home/thread/1"); // also visits the home pane
+    await settled();
+    router.goto("/acme/inbox");
+    await settled();
+    const inbox = paneRouter("/acme/inbox/compose");
+    expect(pathsOf(inbox)).toEqual(["/acme/inbox", "/acme/inbox/compose", "/acme/inbox"]);
+
+    expect(inbox.back()).toBe(true);
+    expect(pathsOf(inbox)).toEqual(["/acme/inbox", "/acme/inbox/compose"]);
+    expect(hardwareBack()).toBe(true);
+    expect(pathsOf(inbox)).toEqual(["/acme/inbox"]);
+    expect(hardwareBack()).toBe(false); // at the base, one screen on the root: the key falls through to the app
+    expect(inbox.back()).toBe(false);
+    expect(selectedIndex(84)).toBe("1");
+    expect(pathsOf(paneRouter("/acme/home"))).toEqual(["/acme/home", "/acme/home/thread/1"]); // not asked: its tab is not selected
+
+    // A screen on the root stack above the tabs: its pop is the pane's base pop.
+    router.goto("/workspaces");
+    await settled();
+    expect(inbox.active()).toBe(false);
+    expect(hardwareBack()).toBe(true);
+    expect(pathsOf(router)).toEqual(["/acme"]);
+    expect(inbox.back()).toBe(false);
+    // Programmatically, a pane at its base hands the pop to the stack above it.
+    router.goto("/account");
+    await settled();
+    expect(inbox.back()).toBe(true);
+    expect(pathsOf(router)).toEqual(["/acme"]);
+    expect(selectedIndex(84)).toBe("1");
+  } finally { reset(); }
+});
+
+test("the root router alone owns the back key and the launch link, so a reset of the root <Router> still gives the key to the pane first", async () => {
+  withInsets(24);
+  try {
+    const { app, router, settled, hardwareBack } = await mountTree(97, { initial: "/workspaces" });
+    router.goto("/acme/home/thread/1");
+    await settled();
+    expect(handlersOf("__backHandlers")).toHaveLength(1); // the root's: the pane's and the tabs' routers register nothing
+    expect(handlersOf("__linkHandlers")).toHaveLength(1);
+    expect((globalThis as { __initialURLReads?: number }).__initialURLReads).toBe(1);
+
+    // The session resets: the root <Router> unmounts and mounts again with every module warm, so the panes mount before the root's own effects run.
+    app.show(false);
+    await settled();
+    expect(handlersOf("__backHandlers")).toHaveLength(0);
+    app.show(true);
+    await settled();
+    expect(handlersOf("__backHandlers")).toHaveLength(1);
+    expect(handlersOf("__linkHandlers")).toHaveLength(1);
+    expect((globalThis as { __initialURLReads?: number }).__initialURLReads).toBe(1); // the launch link is not opened again by a remount
+    expect(pathsOf(paneRouter("/acme/home"))).toEqual(["/acme/home", "/acme/home/thread/1"]);
+
+    expect(hardwareBack()).toBe(true); // the pane has depth: it pops, the root is untouched
+    expect(pathsOf(paneRouter("/acme/home"))).toEqual(["/acme/home"]);
+    expect(pathsOf(router)).toEqual(["/workspaces", "/acme"]);
+    expect(hardwareBack()).toBe(true); // at its base the pane keeps its page and the root pops the tabs screen
+    expect(pathsOf(paneRouter("/acme/home"))).toEqual(["/acme/home"]);
+    expect(pathsOf(router)).toEqual(["/workspaces"]);
+    expect(hardwareBack()).toBe(false); // the root at one entry: the app may leave
+  } finally { reset(); }
+});
+
+test("back() on a tabs router pops the selected pane first, then the stack above, and a pane that is not selected never pops its sibling", async () => {
+  withInsets(24);
+  try {
+    const { router, settled } = await mountTree(98, { initial: "/workspaces" });
+    router.goto("/acme/inbox"); // visits the inbox pane, which stays at its base
+    await settled();
+    router.goto("/acme/home/thread/1");
+    await settled();
+    const tabs = treeGlobals.__treeTabsRouter;
+    const inbox = paneRouter("/acme/inbox");
+    const home = paneRouter("/acme/home");
+    if (!tabs) throw new Error("the tabs layout did not render");
+    expect(tabs.selected).toBe("home");
+    expect(pathsOf(tabs)).toEqual(["/acme/home", "/acme/home/thread/1"]); // entries are the selected pane's
+    expect(tabs.current.url.pathname).toBe("/acme/home/thread/1");
+
+    expect(tabs.back()).toBe(true); // the pane has depth: it pops, the root screen below the tabs stays
+    expect(pathsOf(home)).toEqual(["/acme/home"]);
+    expect(pathsOf(router)).toEqual(["/workspaces", "/acme"]);
+    home.goto("/acme/home/thread/2");
+    await settled();
+    expect(inbox.back()).toBe(true); // at its base the unselected pane hands the pop to the root, not to the selected pane
+    expect(pathsOf(home)).toEqual(["/acme/home", "/acme/home/thread/2"]);
+    expect(pathsOf(router)).toEqual(["/workspaces"]);
+  } finally { reset(); }
+});
+
+test("a modal over the tabs takes the back key before the pane below it, whatever the pane's depth", async () => {
+  withInsets(24);
+  try {
+    const { router, settled, hardwareBack } = await mountTree(85, { initial: "/acme/home" });
+    router.goto("/acme/home/thread/9");
+    router.goto("/account");
+    await settled();
+    expect(hardwareBack()).toBe(true);
+    expect(pathsOf(router)).toEqual(["/acme"]);
+    expect(pathsOf(paneRouter("/acme/home"))).toEqual(["/acme/home", "/acme/home/thread/9"]);
+    expect(hardwareBack()).toBe(true);
+    expect(pathsOf(paneRouter("/acme/home"))).toEqual(["/acme/home"]);
+  } finally { reset(); }
+});
+
+test("two screens of one tabs navigator keep a state each: another workspace's tabs start on their first pane with their own stacks", async () => {
+  withInsets(24);
+  try {
+    const { router, settled } = await mountTree(86, { initial: "/acme/inbox" });
+    router.goto("/acme/inbox/compose");
+    router.goto("/other/home");
+    await settled();
+    expect(pathsOf(router)).toEqual(["/acme", "/other"]);
+    expect(router.entries.map((entry) => entry.params.slug)).toEqual(["acme", "other"]);
+    expect(router.current.url.pathname).toBe("/other/home");
+    expect(pathsOf(paneRouter("/other/home"))).toEqual(["/other/home"]);
+    expect(pathsOf(paneRouter("/acme/inbox/compose"))).toEqual(["/acme/inbox", "/acme/inbox/compose"]);
+    expect(router.back()).toBe(true);
+    expect(router.current.url.pathname).toBe("/acme/inbox/compose");
+  } finally { reset(); }
+});
+
+test("links open through the root and select the pane; a link no route matches is ignored; replaceBase swaps the root's first screen", async () => {
+  withInsets(24);
+  try {
+    const { router, settled } = await mountTree(87, { initial: "/workspaces" });
+    expect(router.openURL("rasheed://acme/inbox/compose")).toBe(true);
+    expect(router.openURL("https://example.com/acme/home")).toBe(true);
+    expect(router.openURL("rasheed://acme/nowhere/at/all")).toBe(false);
+    await settled();
+    expect(pathsOf(router)).toEqual(["/workspaces", "/acme"]);
+    expect(pathsOf(paneRouter("/acme/home"))).toEqual(["/acme/home"]);
+    expect(selectedIndex(87)).toBe("0");
+    router.replaceBase("/account");
+    await settled();
+    expect(pathsOf(router)).toEqual(["/account", "/acme"]);
+    expect(() => router.replaceBase("/acme/home")).toThrow("not a page of this navigator");
+    expect(() => router.goto("/nowhere/at/all")).toThrow("No native screen for /nowhere/at/all");
+  } finally { reset(); }
+});
+
+test("a navigator layout's <Stack> lays its defaults under each screen's own options: the page wins, objects merge key by key", async () => {
+  withInsets(24);
+  try {
+    treeGlobals.__treeOptions = { "/acme/inbox": { header: { tint: "#abcdef" }, animation: "fade" } };
+    const m = await load("tree-fixture.svelte");
+    calls.length = 0; roots = {};
+    treeGlobals.__treeRouters = {};
+    treeGlobals.__treeOptions = { "/acme/inbox": { header: { tint: "#abcdef" }, animation: "fade" } };
+    const app = m.startSurface(88, m.Fixture, { initial: "/acme/inbox/compose" }) as TreeApp;
+    await turns(m);
+    const [, inbox] = tabScreens(roots[88]);
+    const [base, compose] = inbox.map((screen) => parseNativeID(String(screen.props.nativeID))?.pairs);
+    expect(base.s).toBe("fade"); // the page's own animation
+    expect(compose.s).toBe("default"); // a sheet is no push: the layout's animation is for its push screens
+    const headers = ofKind(inbox, "header").map((node) => parseNativeID(String(node.props.nativeID))?.pairs);
+    expect(headers[0]).toMatchObject({ t: "%2Facme%2Finbox", l: "1", tc: "abcdefff" }); // large from the layout, tint from the page
+    expect(headers[1]).toMatchObject({ t: "%2Facme%2Finbox%2Fcompose", l: "1", tc: "123456ff" });
+    // The home pane has no <Stack>: its screens take the router's defaults.
+    app.root().goto("/acme/home");
+    await turns(m);
+    const [home] = tabScreens(roots[88]);
+    expect(parseNativeID(String(home[0].props.nativeID))?.pairs.s).toBe("default");
+    expect(ofKind(home, "header").map((node) => parseNativeID(String(node.props.nativeID))?.pairs.l)).toEqual([undefined]);
+  } finally { reset(); }
+});
+
+test("a <Stack>'s animation is the default of its push screens only: a modal, a sheet and a form sheet keep the platform's", async () => {
+  withInsets(24);
+  try {
+    const { router, settled, tree } = await mountTree(106, { initial: "/acme/flow/start" });
+    const flow = paneRouter("/acme/flow/start");
+    flow.goto("/acme/flow/done");
+    flow.goto("/acme/flow/start", { presentation: "modal" });
+    flow.goto("/acme/flow/done", { presentation: "formSheet" });
+    flow.goto("/acme/flow/start", { presentation: "transparentModal" });
+    flow.goto("/acme/flow/done", { presentation: "sheet" });
+    await settled();
+    expect(pathsOf(router)).toEqual(["/acme/flow"]);
+    const screens = ofKind(tree(), "screen").map((screen) => parseNativeID(String(screen.props.nativeID))?.pairs);
+    expect(screens.map((pairs) => `${pairs?.p}:${pairs?.s}`)).toEqual([
+      "push:default", // the root's own screen, the flow
+      "push:slide_from_right", "push:slide_from_right", "modal:default", "formSheet:default", "transparentModal:default", "sheet:default",
+    ]);
+  } finally { reset(); }
+});
+
+test("a route's modules load when its navigation or its screen asks first; a pane's layout waits for its pane, and the <Stack>'s loading snippet shows until a page arrives", async () => {
+  withInsets(24);
+  try {
+    const logLoads: string[] = [];
+    const hold: Record<string, (() => void)[]> = {};
+    const release = (path: string) => hold[path]?.shift()?.();
+    const tabsLayout = "(workspace)/[slug]/(tabs)/+layout.mobile.svelte";
+    const inboxLayout = "(workspace)/[slug]/(tabs)/inbox/+layout.mobile.svelte";
+    const inboxPage = "(workspace)/[slug]/(tabs)/inbox/+mobile.svelte";
+    const compose = "(workspace)/[slug]/(tabs)/inbox/compose/+mobile.svelte";
+    const { router, settled, texts: shown, tree } = await mountTree(89, { initial: "/acme/inbox/compose", logLoads, hold });
+    expect(logLoads).toEqual([tabsLayout]); // creating the router loads nothing; the first screen's own modules load as it renders
+    expect(ofKind(tree(), "tab")).toHaveLength(0);
+    release(tabsLayout);
+    await settled();
+    expect(ofKind(tree(), "tab")).toHaveLength(2);
+    expect(logLoads).toEqual([tabsLayout, inboxLayout]); // the pane's layout loads with the pane
+    expect(shown()).toEqual([]);
+    release(inboxLayout);
+    await settled();
+    expect(logLoads).toEqual([tabsLayout, inboxLayout, inboxPage, compose]);
+    expect(shown()).toEqual(["loading /acme/inbox", "loading /acme/inbox/compose"]); // the layout's <Stack loading>
+    release(compose);
+    await settled();
+    expect(shown()).toEqual(["loading /acme/inbox", "page /acme/inbox/compose"]);
+    release(inboxPage);
+    await settled();
+    expect(shown()).toEqual(["page /acme/inbox", "page /acme/inbox/compose"]);
+    router.goto("/acme/home/thread/5"); // a navigation loads what it pushes at once
+    expect(logLoads.at(-1)).toBe("(workspace)/[slug]/(tabs)/home/thread/[id]/+mobile.svelte");
+  } finally { reset(); }
+});
+
+test("a pane's stack layout receives the params and url of the tabs screen that hosts it, like every other layout", async () => {
+  withInsets(24);
+  try {
+    await mountTree(103, { initial: "/acme/inbox" });
+    expect(treeGlobals.__treeLayouts).toEqual([{ path: "/acme", params: { slug: "acme" } }]);
+  } finally { reset(); }
+});
+
+test("while a pane's layout loads the pane shows the placeholder of the router around it, and the layout's own loading snippet takes over once it is in", async () => {
+  withInsets(24);
+  try {
+    const hold: Record<string, ((error?: Error) => void)[]> = {};
+    const release = (path: string) => hold[path]?.shift()?.();
+    const { settled, texts: shown } = await mountTree(104, { initial: "/acme/inbox", hold, outerLoading: true });
+    expect(shown()).toEqual(["outer loading /acme"]); // the tabs screen's own modules
+    release("(workspace)/[slug]/(tabs)/+layout.mobile.svelte");
+    await settled();
+    expect(shown()).toEqual(["outer loading /acme/inbox"]); // the pane's layout is pending: not a blank pane
+    release("(workspace)/[slug]/(tabs)/inbox/+layout.mobile.svelte");
+    await settled();
+    expect(shown()).toEqual(["loading /acme/inbox"]); // the layout's <Stack loading> while the page loads
+    release("(workspace)/[slug]/(tabs)/inbox/+mobile.svelte");
+    await settled();
+    expect(shown()).toEqual(["page /acme/inbox"]);
+  } finally { reset(); }
+});
+
+test("a pane's layout that failed to load throws where the pane renders and loads again on the next navigation into the pane", async () => {
+  withInsets(24);
+  try {
+    const logLoads: string[] = [];
+    const hold: Record<string, ((error?: Error) => void)[]> = {};
+    const release = (path: string, error?: Error) => hold[path]?.shift()?.(error);
+    const tabsLayout = "(workspace)/[slug]/(tabs)/+layout.mobile.svelte";
+    const inboxLayout = "(workspace)/[slug]/(tabs)/inbox/+layout.mobile.svelte";
+    const { router, settled, texts: shown } = await mountTree(105, { initial: "/acme/home", logLoads, hold, boundary: true });
+    release(tabsLayout);
+    await settled();
+    release("(workspace)/[slug]/(tabs)/home/+mobile.svelte");
+    await settled();
+    const tabs = treeGlobals.__treeTabsRouter;
+    const inbox = tabs?.node.panes?.find((pane) => pane.key === "inbox")?.stack;
+    if (!tabs || !inbox) throw new Error("the tabs layout did not render");
+    expect(shown()).toEqual(["page /acme/home"]);
+
+    router.goto("/acme/inbox"); // a navigation into the pane loads its layout before the pane mounts
+    expect(logLoads.filter((path) => path === inboxLayout)).toHaveLength(1);
+    release(inboxLayout, new Error("chunk missing"));
+    await settled();
+    expect(() => tabs.modules(inbox)).toThrow("chunk missing");
+    expect(shown()).toEqual(["failed: chunk missing"]); // thrown where the pane renders: the nearest boundary draws it
+
+    router.goto("/acme/inbox/compose");
+    expect(logLoads.filter((path) => path === inboxLayout)).toHaveLength(2); // retried by the next navigation into the pane
+    expect(tabs.modules(inbox)).toBeUndefined(); // the failure is cleared while the new load runs
+    release(inboxLayout);
+    await settled();
+    expect(tabs.modules(inbox)).toBeDefined();
+  } finally { reset(); }
+});
+
+test("tabs in a layout take the order of its items, a layout without <Tabs> gets a bar of the pane keys, and a mismatch between items and panes is said once", async () => {
+  withInsets(24);
+  const errors: string[] = [];
+  const logged = console.error;
+  console.error = (...args: unknown[]) => { errors.push(args.map(String).join(" ")); };
+  (globalThis as { __DEV__?: boolean }).__DEV__ = true;
+  try {
+    treeGlobals.__treeTabs = [{ key: "inbox", title: "Inbox" }, { key: "ghost", title: "Ghost" }];
+    const m = await load("tree-fixture.svelte");
+    calls.length = 0; roots = {};
+    treeGlobals.__treeRouters = {};
+    treeGlobals.__treeTabs = [{ key: "inbox", title: "Inbox" }, { key: "ghost", title: "Ghost" }];
+    const app = m.startSurface(90, m.Fixture, { initial: "/acme/inbox" }) as TreeApp;
+    await turns(m);
+    expect(ofKind(roots[90], "tab").map((pane) => parseNativeID(String(pane.props.nativeID))?.pairs.k)).toEqual(["inbox", "home"]); // the items' order, then the pane without an item
+    expect(selectedIndex(90)).toBe("0");
+    expect(errors).toHaveLength(2);
+    expect(errors[0]).toContain("items without a pane");
+    expect(errors[0]).toContain("ghost");
+    expect(errors[1]).toContain("panes without an item");
+    expect(errors[1]).toContain("home");
+    app.root().goto("/acme/home");
+    await turns(m);
+    expect(selectedIndex(90)).toBe("1");
+    expect(errors).toHaveLength(2); // not again
+
+    errors.length = 0;
+    delete treeGlobals.__treeTabs;
+    const bare = await load("tree-fixture.svelte");
+    calls.length = 0; roots = {};
+    bare.startSurface(91, bare.Fixture, { initial: "/acme/home", bareTabs: true });
+    await turns(bare);
+    expect(ofKind(roots[91], "tab").map((pane) => parseNativeID(String(pane.props.nativeID))?.pairs.t)).toEqual(["home", "inbox"]);
+    expect(errors).toEqual([]);
+  } finally { console.error = logged; delete (globalThis as { __DEV__?: boolean }).__DEV__; reset(); }
+});
+
+test("a press on the tab bar selects the pane at once through the router's tabs node, and the layout's onSelect still reports", async () => {
+  withInsets(24);
+  try {
+    const { router, settled, tree } = await mountTree(92, { initial: "/acme/home" });
+    const tabs = () => ofKind(tree(), "tabs")[0];
+    emit(tabs().target, "topSelect", { key: "inbox", index: 1 });
+    await settled();
+    expect(selectedIndex(92)).toBe("1");
+    expect(treeGlobals.__treeSelections).toEqual(["inbox"]);
+    expect(pathsOf(paneRouter("/acme/inbox"))).toEqual(["/acme/inbox"]); // the pane mounted lazily on selection
+    // The owner can override it by navigating.
+    router.goto("/acme/home");
+    await settled();
+    expect(selectedIndex(92)).toBe("0");
+    expect(paneRouter("/acme/home").active()).toBe(true);
+    expect(paneRouter("/acme/inbox").active()).toBe(false);
+  } finally { reset(); }
+});
+
+test("the back key reaches the pane before the root: screens below the tabs on the root stack stay while the pane has screens to pop", async () => {
+  withInsets(24);
+  try {
+    const { router, settled, hardwareBack } = await mountTree(93, { initial: "/workspaces" });
+    router.goto("/acme/home/thread/1");
+    await settled();
+    expect(pathsOf(router)).toEqual(["/workspaces", "/acme"]);
+    expect(hardwareBack()).toBe(true);
+    expect(pathsOf(paneRouter("/acme/home"))).toEqual(["/acme/home"]);
+    expect(pathsOf(router)).toEqual(["/workspaces", "/acme"]);
+    expect(hardwareBack()).toBe(true);
+    expect(pathsOf(router)).toEqual(["/workspaces"]);
+  } finally { reset(); }
+});
+
+test("a nested stack navigator is a screen of its parent: the stack inside it starts with the route, its first back pops the screen, and a new visit starts a new stack", async () => {
+  withInsets(24);
+  try {
+    const { router, settled, hardwareBack, tree } = await mountTree(94, { initial: "/acme/home" });
+    router.goto("/acme/flow/start");
+    await settled();
+    expect(pathsOf(router)).toEqual(["/acme", "/acme/flow"]);
+    const flow = paneRouter("/acme/flow/start");
+    expect(flow.scope).toBe("(workspace)/[slug]/flow");
+    expect(pathsOf(flow)).toEqual(["/acme/flow/start"]); // no base page: the stack starts with the route that opened it
+    expect(router.current.url.pathname).toBe("/acme/flow/start");
+    expect(ofTestID(tree(), "content-layout")).toHaveLength(4); // around the tabs screen, its home page, the flow screen and its page: a content layout wraps every screen below it
+
+    flow.goto("/acme/flow/done");
+    await settled();
+    expect(pathsOf(flow)).toEqual(["/acme/flow/start", "/acme/flow/done"]);
+    expect(pathsOf(router)).toEqual(["/acme", "/acme/flow"]);
+    expect(hardwareBack()).toBe(true);
+    expect(pathsOf(flow)).toEqual(["/acme/flow/start"]);
+    expect(hardwareBack()).toBe(true); // one screen in the stack: the screen of the flow pops
+    expect(pathsOf(router)).toEqual(["/acme"]);
+
+    router.goto("/acme/flow/done");
+    await settled();
+    expect(pathsOf(paneRouter("/acme/flow/done"))).toEqual(["/acme/flow/done"]); // a new visit, a new stack
+    expect(pathsOf(flow)).toEqual(["/acme/flow/start"]); // the old one went with its screen
+  } finally { reset(); }
+});
+
+test("the first screen of a nested stack navigator can go back when its own screen has one below it; a pane's base and the root's first screen cannot", async () => {
+  withInsets(24);
+  try {
+    const arrows = (router: TreeRouter) => router.screens.filter((screen) => !screen.leaving).map((screen) => screen.canGoBack);
+    const { router, settled } = await mountTree(101, { initial: "/acme/home" });
+    expect(arrows(paneRouter("/acme/home"))).toEqual([false]); // a pane's base: its first back does not pop the pane
+    router.goto("/acme/flow/start");
+    await settled();
+    const flow = paneRouter("/acme/flow/start");
+    expect(arrows(router)).toEqual([false, true]);
+    expect(arrows(flow)).toEqual([true]); // its first back pops the flow's screen from the root, where the tabs are below it
+    flow.goto("/acme/flow/done");
+    await settled();
+    expect(arrows(flow)).toEqual([true, true]);
+    flow.back();
+    flow.back();
+    await settled();
+    expect(arrows(router)).toEqual([false]);
+    router.goto("/acme/flow/inner/step");
+    await settled();
+    expect(pathsOf(router)).toEqual(["/acme", "/acme/flow"]);
+    expect(arrows(paneRouter("/acme/flow/inner/step"))).toEqual([true]); // the inner flow is the flow's first screen, and the flow can go back: so can the inner one, by popping the whole flow
+
+    const first = await mountTree(102, { initial: "/acme/flow/start" }); // the flow is the root's first screen: nothing to go back to
+    expect(pathsOf(first.router)).toEqual(["/acme/flow"]);
+    expect(arrows(first.router)).toEqual([false]);
+    expect(arrows(paneRouter("/acme/flow/start"))).toEqual([false]);
+    paneRouter("/acme/flow/start").goto("/acme/flow/done");
+    await first.settled();
+    expect(arrows(paneRouter("/acme/flow/done"))).toEqual([false, true]);
+  } finally { reset(); }
+});
+
+test("a pane's stack keeps the exit contract of its own: a popped screen stays until the stack reports its exit, or until the timeout, with the same warning", async () => {
+  withInsets(24);
+  const warnings: unknown[][] = [];
+  const warn = console.warn;
+  console.warn = (...args: unknown[]) => { warnings.push(args); };
+  jest.useFakeTimers();
+  try {
+    const { router, settled, tree } = await mountTree(95, { initial: "/acme/home" });
+    router.goto("/acme/home/thread/1");
+    await settled();
+    const home = paneRouter("/acme/home");
+    expect(home.back()).toBe(true);
+    await settled();
+    const screens = () => tabScreens(tree())[0];
+    expect(home.screens.map((screen) => screen.leaving)).toEqual([false, true]);
+    expect(screens().map(activityOf)).toEqual(["2", "0"]);
+    expect(ofKind(tree(), "stack")[0].children.map(activityOf)).toEqual(["2"]); // the root stack is not involved
+    emit(screens()[1].target, "topExited", {});
+    await settled();
+    expect(home.screens).toHaveLength(1);
+    expect(screens()).toHaveLength(1);
+
+    home.goto("/acme/home/thread/2");
+    await settled();
+    home.back();
+    await settled();
+    expect(home.screens).toHaveLength(2);
+    jest.advanceTimersByTime(EXIT_TIMEOUT_MS + 1);
+    await settled();
+    expect(home.screens).toHaveLength(1);
+    expect(screens()).toHaveLength(1);
+    expect(warnings).toHaveLength(1);
+  } finally { jest.useRealTimers(); console.warn = warn; reset(); }
+});
+
+test("the tabs screen resolves to its first pane; replaceState replaces the pane's top, reset keeps the pane's index page and the route", async () => {
+  withInsets(24);
+  try {
+    const { router, settled } = await mountTree(96, { initial: "/acme" });
+    expect(pathsOf(router)).toEqual(["/acme"]);
+    expect(selectedIndex(96)).toBe("0");
+    expect(pathsOf(paneRouter("/acme/home"))).toEqual(["/acme/home"]);
+
+    router.goto("/acme/home/thread/1");
+    router.goto("/acme/home/thread/2", { replaceState: true });
+    await settled();
+    const home = paneRouter("/acme/home");
+    expect(pathsOf(home)).toEqual(["/acme/home", "/acme/home/thread/2"]);
+    router.goto("/acme/home/thread/3");
+    router.goto("/acme/home/thread/4", { reset: true });
+    await settled();
+    expect(pathsOf(home)).toEqual(["/acme/home", "/acme/home/thread/4"]);
+    expect(home.entries[0].key).toBeLessThan(home.entries[1].key);
+    router.goto("/acme/home", { reset: true });
+    await settled();
+    expect(pathsOf(home)).toEqual(["/acme/home"]);
+    expect(pathsOf(router)).toEqual(["/acme"]);
+    router.goto("/workspaces", { reset: true }); // a root page: the root stack is the owner and keeps nothing else
+    await settled();
+    expect(pathsOf(router)).toEqual(["/workspaces"]);
+  } finally { reset(); }
 });

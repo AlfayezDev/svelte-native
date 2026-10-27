@@ -16,7 +16,7 @@ function dump(elements: IosElement[], rtl = false): IosDump {
 }
 
 function analyze(elements: IosElement[], fields: Partial<IosA11yInput> = {}) {
-	return analyzeIosScreen({ dump: dump(elements, fields.direction === "rtl"), direction: "ltr", title: null, lead: [], controls: [], scrolled: [], hidden: [], layout: "page", ...fields });
+	return analyzeIosScreen({ dump: dump(elements, fields.direction === "rtl"), direction: "ltr", title: null, controls: [], scrolled: [], hidden: [], layout: "page", ...fields });
 }
 
 describe("iOS accessibility checks", () => {
@@ -168,12 +168,57 @@ describe("title and focus trap", () => {
 		expect(result.titleFirst).toBe(true);
 	});
 
-	test("a header's lead stops (a center slot) before the start-side controls are not order violations", () => {
+	test("a header reads the back button, then the title, then the end controls: start to end, mirrored in right-to-left (the Android suite's rule)", () => {
+		const bar = [
+			button("Back", [0, 20, 80, 44]),
+			text("Screen 1", [130, 20, 115, 44], { traits: ["header"] }),
+			button("Notifications", [295, 20, 80, 44]),
+			text("Row", [16, 120, 343, 44]),
+		];
+		for (const layout of ["header", "page"] as const) {
+			const result = analyze(bar, { title: "Screen 1", layout });
+			expect([result.titleFirst, result.orderViolations, result.findings]).toEqual([true, 0, []]);
+		}
+		const mirrored = analyze(
+			[button("Back", [295, 20, 80, 44]), text("Screen 1", [130, 20, 115, 44], { traits: ["header"] }), button("Notifications", [0, 20, 80, 44]), text("Row", [16, 120, 343, 44])],
+			{ title: "Screen 1", layout: "header", direction: "rtl" },
+		);
+		expect([mirrored.titleFirst, mirrored.orderViolations]).toEqual([true, 0]);
+	});
+
+	test("an end control before the title fails title first; the title before the back button is an order violation", () => {
+		// A container orders these (`explicit`), so the walk keeps the order given here.
+		const container = { explicit: true, group: 1 };
+		const heading = (frame: [number, number, number, number]) => text("Screen 1", frame, { traits: ["header"], ...container });
+		const end = analyze(
+			[button("Back", [0, 20, 80, 44], container), button("Notifications", [295, 20, 80, 44], container), heading([130, 20, 115, 44])],
+			{ title: "Screen 1", layout: "header" },
+		);
+		expect(end.titleFirst).toBe(false);
+		expect(end.findings.find((finding) => finding.kind === "title")?.detail).toContain("end side");
+		const old = analyze([heading([130, 20, 115, 44]), button("Back", [0, 20, 80, 44], container)], { title: "Screen 1", layout: "header" });
+		expect([old.titleFirst, old.orderViolations]).toEqual([true, 1]);
+	});
+
+	test("a large title is the bar's second row: after the back button, before the end controls, and that step up is no violation in a header", () => {
+		const container = { explicit: true, group: 1 };
+		const large = [
+			button("Back", [0, 20, 80, 44], container),
+			text("Native screens", [16, 64, 343, 52], { traits: ["header"], ...container }),
+			button("Notifications", [295, 20, 80, 44], container),
+			text("Row", [16, 130, 343, 44], container),
+		];
+		const header = analyze(large, { title: "Native screens", layout: "header" });
+		expect([header.titleFirst, header.orderViolations, header.findings]).toEqual([true, 0, []]);
+		expect(analyze(large, { title: "Native screens", layout: "page" }).orderViolations).toBe(1);
+	});
+
+	test("a center slot after the left slot: its first control is the title and the next one follows it", () => {
 		const result = analyze(
 			[button("Close", [8, 20, 60, 44]), button("Segment A", [130, 20, 60, 44]), button("Segment B", [200, 20, 60, 44])],
-			{ title: "Segment A", lead: ["Segment B"], layout: "header", controls: ["Close", "Segment A", "Segment B"] },
+			{ title: "Segment A", layout: "header", controls: ["Close", "Segment A", "Segment B"] },
 		);
-		expect(result.orderViolations).toBe(0);
+		expect([result.titleFirst, result.orderViolations]).toEqual([true, 0]);
 	});
 });
 
@@ -223,7 +268,6 @@ describe("UIKit's own chrome", () => {
 			state: state({ class: "Root", children: [stack([{ title: "Root" }, { title: "Screen 1" }])] }),
 			direction: "ltr",
 			title: "Screen 1",
-			lead: [],
 			controls: ["Back"],
 			scrolled: [],
 			hidden: [],
@@ -239,7 +283,6 @@ describe("UIKit's own chrome", () => {
 			state: state({ class: "Root", children: [stack([{ title: "Root" }, { title: "Screen 1" }])] }),
 			direction: "ltr" as const,
 			title: "Screen 1",
-			lead: [],
 			controls: ["Back"],
 			scrolled: [],
 			hidden: [],
@@ -258,7 +301,6 @@ describe("UIKit's own chrome", () => {
 			state: state({ class: "Root", children: [stack([{ title: "Screen 1", hidesBackButton: true }, { title: "Screen 2", hidesBackButton: true }])] }),
 			direction: "ltr",
 			title: "Screen 2",
-			lead: [],
 			controls: ["Back"],
 			scrolled: [],
 			hidden: [],
@@ -270,7 +312,7 @@ describe("UIKit's own chrome", () => {
 	test("the bars under a sheet are a focus leak when the dump shows no modal view hiding them, and not when it does", () => {
 		const tabs = { class: "Tabs", shown: true, tabs: { selectedIndex: 0, barFrame: [0, 600, 375, 67], items: [{ title: "Home" }, { title: "Me" }] } };
 		const covered = state({ class: "Root", children: [tabs], presented: { class: "Sheet", shown: true } });
-		const input = { dump: dump([text("Two detents", [16, 300, 343, 30], { traits: ["header"] })]), state: covered, direction: "ltr" as const, title: "Two detents", lead: [], controls: [], scrolled: [], hidden: ["Home"], layout: "sheet" as const };
+		const input = { dump: dump([text("Two detents", [16, 300, 343, 30], { traits: ["header"] })]), state: covered, direction: "ltr" as const, title: "Two detents", controls: [], scrolled: [], hidden: ["Home"], layout: "sheet" as const };
 		expect(analyzeIosScreen(input).focusLeaks).toBe(1);
 		const hiding = { ...input, dump: { ...input.dump, modalViews: [{ class: "UITransitionView", ignoredSiblings: 2 }] } };
 		expect(analyzeIosScreen(hiding).focusLeaks).toBe(0);

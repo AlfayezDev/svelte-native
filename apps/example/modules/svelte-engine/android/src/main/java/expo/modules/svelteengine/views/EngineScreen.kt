@@ -153,6 +153,36 @@ open class EngineScreen(context: Context) : EngineView(context) {
     header?.queueAdopt()
   }
 
+  /**
+   * The header's stops come before the content's, whatever the header's frame is. The framework does not read the child
+   * order: `ViewGroup.addChildrenForAccessibility` sorts the children by their bounds (above, then the start edge, then
+   * the top, then the taller view first), and `accessibilityTraversalBefore` never reaches the node tree's order, which
+   * is what uiautomator dumps and what a service walks. An in-flow header sits above the content view and sorts first by
+   * itself. A large or translucent header is absolute over a content view that fills the screen: both start at the same
+   * corner, the taller content view won the tie and the header (title, back button, slots) came after the last row. The
+   * Fabric child order (header, content, toolbar) and the header's `zIndex` (drawing and hit order) are right and stay;
+   * only the node tree's order is set here, as [EngineRoot] and [EngineHeader] set theirs. The rest keeps the
+   * framework's order (the toolbar at the bottom sorts after the content by itself).
+   */
+  override fun addChildrenForAccessibility(outChildren: ArrayList<View>) {
+    val bar = header
+    if (bar == null) {
+      super.addChildrenForAccessibility(outChildren)
+      return
+    }
+    val all = ArrayList<View>()
+    super.addChildrenForAccessibility(all)
+    val rest = ArrayList<View>(all.size)
+    for (v in all) if (isInside(v, bar)) outChildren.add(v) else rest.add(v)
+    outChildren.addAll(rest)
+  }
+
+  private fun isInside(view: View, ancestor: View): Boolean {
+    var p: View? = view
+    while (p != null && p !== ancestor) p = p.parent as? View
+    return p != null
+  }
+
   /** How far below its Yoga frame the screen rests, px: 0, or the detent a sheet sits at. */
   open val restY: Float get() = 0f
 

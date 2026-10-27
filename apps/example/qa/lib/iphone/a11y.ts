@@ -1,4 +1,4 @@
-import { followsInOrderRect, type A11yFinding, type A11yScreen } from "../a11y.ts";
+import { judgeReadingOrder, type A11yFinding, type A11yScreen } from "../a11y.ts";
 import type { Direction } from "../device.ts";
 import type { Rect } from "../png.ts";
 import type { Layout } from "../screens.ts";
@@ -21,7 +21,9 @@ import type { Layout } from "../screens.ts";
  * - order: VoiceOver sorts the elements of a screen by position (rows from the top; within a row from the start edge, the right
  *   edge in right-to-left) except those a container orders itself (`explicit`), which keep the container's order; the sorted list
  *   must run top to bottom and start to end;
- * - title first: the screen's title is a stop with the header trait and no content comes before it;
+ * - title first: the screen's title is a stop with the header trait and it is the first stop after the bar's back button and left
+ *   slot (nothing before it but start controls above or beside it, no content). The order and title rules are
+ *   `judgeReadingOrder` of `lib/a11y.ts`, the same definition the Android suite runs;
  * - focus trap: while a sheet or modal is up, the labels of the screen underneath are not in the tree.
  *
  * UIKit's bars (navigation bar title and back button, search field, tab bar items) are not accessibility elements until an
@@ -85,10 +87,8 @@ export type IosA11yInput = {
 	/** The state of the view controllers: UIKit's own chrome (title, back button, search field, tab bar items) is an accessibility element only while a service runs, so it is read from here. */
 	state?: UiKitState | null;
 	direction: Direction;
-	/** The title the screen should lead with (the heading), or null for a screen without one. */
+	/** The title the screen should lead with (the heading, after the bar's back button and left slot), or null for a screen without one. */
 	title: string | null;
-	/** Further stops the header reads right after the title by design. */
-	lead: string[];
 	/** Labels of the controls the screen's source declares. */
 	controls: string[];
 	/** Controls that may be below the fold: checked when the dump has them, never reported missing. */
@@ -254,7 +254,7 @@ export function chromeElements(state: UiKitState): IosElement[] {
 const scrollView = /ScrollView|UITableView|UICollectionView/;
 
 export function analyzeIosScreen(input: IosA11yInput): A11yScreen {
-	const { direction, title, lead, controls, scrolled, hidden, layout } = input;
+	const { direction, title, controls, scrolled, hidden, layout } = input;
 	const modelled = input.state ? chromeElements(input.state) : [];
 	const chromeShown = modelled.filter((element) => !element.covered);
 	const dump: IosDump = { ...input.dump, elements: [...input.dump.elements, ...chromeShown] };
@@ -339,30 +339,31 @@ export function analyzeIosScreen(input: IosA11yInput): A11yScreen {
 	const titleStop = title === null ? null : (stops.find((stop) => matches(stop, title)) ?? null);
 	let titleFirst: boolean | null = null;
 	let orderViolations = 0;
+	const judged = judgeReadingOrder(stops.map(rectOf), titleStop ? stops.indexOf(titleStop) : null, direction, layout);
 	if (title !== null) {
 		if (!titleStop) {
 			titleFirst = false;
 			findings.push({ kind: "title", element: JSON.stringify(title), detail: "the screen's title is not a focus stop in the tree" });
 		} else {
-			const titleRect = rectOf(titleStop);
-			const before = stops.slice(0, stops.indexOf(titleStop));
-			const content = before.find((stop) => stop.frame[1] >= titleRect.y + titleRect.height - 4);
+			const offender = judged.before;
 			// A title the header's center slot replaces is a control of the slot (Android's contract too), not a heading.
 			const heading = titleStop.traits.includes("header") || controls.some((label) => matches(titleStop, label));
-			titleFirst = content === undefined && heading;
-			if (content) findings.push({ kind: "title", element: describe(titleStop), detail: `content comes before the title: ${describe(content)}` });
+			titleFirst = offender === null && heading;
+			if (offender) {
+				findings.push({
+					kind: "title",
+					element: describe(titleStop),
+					detail: `${offender.content ? "content" : "a control at the end side of the title"} comes before the title: ${describe(stops[offender.index] as IosElement)}`,
+				});
+			}
 			if (!heading) findings.push({ kind: "title", element: describe(titleStop), detail: "the title is not exposed as a heading (no header trait)" });
 		}
 	}
-	for (let index = 0; index + 1 < stops.length; index++) {
-		const a = stops[index] as IosElement;
-		const b = stops[index + 1] as IosElement;
-		if (layout !== "page" && (a === titleStop || lead.some((label) => matches(a, label)))) continue;
-		if (followsInOrderRect(rectOf(a), rectOf(b), direction)) continue;
+	for (const index of judged.violations) {
 		orderViolations++;
 		findings.push({
 			kind: "order",
-			element: `${describe(a)} then ${describe(b)}`,
+			element: `${describe(stops[index] as IosElement)} then ${describe(stops[index + 1] as IosElement)}`,
 			detail: `${direction === "rtl" ? "right to left" : "left to right"}, top to bottom expected`,
 		});
 	}

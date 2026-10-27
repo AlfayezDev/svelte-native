@@ -104,6 +104,8 @@ class EngineHeader(context: Context) : EngineView(context) {
   private var searchButton: IconButton? = null
   private var searchInput: EngineInput? = null
   private var searchActive = false
+  /** Which title the traversal chain was last built for ([updateHeading]). */
+  private var headingIsLarge = false
 
   private var scroll: EngineScroll? = null
   private var scrolled = false
@@ -147,7 +149,8 @@ class EngineHeader(context: Context) : EngineView(context) {
     addView(titleView)
     addView(largeView)
     ViewCompat.setAccessibilityHeading(titleView, true)
-    largeView.importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+    ViewCompat.setAccessibilityHeading(largeView, true)
+    updateHeading()
     largeView.visibility = GONE
     titleView.visibility = GONE
   }
@@ -236,19 +239,62 @@ class EngineHeader(context: Context) : EngineView(context) {
     titleView.alpha = fraction
     largeView.alpha = if (large) 1f - fraction else 0f
     largeView.translationY = -collapse
+    updateHeading()
   }
 
-  /** Reading order: the title (or the center slot) first as a heading, then back, the left slot, the right slot, search. */
-  private fun updateTraversal() {
-    val order = ArrayList<View>(6)
-    if (nativeTitle() && !searchActive) order.add(titleView) else slotOf(1)?.let { order.add(it) }
+  /** Whether the large title is the one showing: the inline title takes over once the collapse has passed its half (where the cross-fade meets). */
+  private fun largeShows() = large && title != null && collapse * 2f < largePx
+
+  /**
+   * The heading is the title that shows. A view at alpha 0 is not visible to the user: uiautomator leaves it out of the dump and
+   * TalkBack never focuses it, so under a large title at rest the inline title (alpha 0, its bounds kept) was no stop and the
+   * screen had no heading at all. Exactly one of the two is important for accessibility at a time, so a service never reads the
+   * title twice while they cross-fade.
+   */
+  private fun updateHeading() {
+    val onLarge = largeShows()
+    val wanted = if (onLarge) IMPORTANT_FOR_ACCESSIBILITY_YES else IMPORTANT_FOR_ACCESSIBILITY_NO
+    val other = if (onLarge) IMPORTANT_FOR_ACCESSIBILITY_NO else IMPORTANT_FOR_ACCESSIBILITY_YES
+    if (largeView.importantForAccessibility != wanted) largeView.importantForAccessibility = wanted
+    if (titleView.importantForAccessibility != other) titleView.importantForAccessibility = other
+    if (onLarge != headingIsLarge) {
+      headingIsLarge = onLarge
+      updateTraversal()
+    }
+  }
+
+  private fun heading(): View = if (largeShows()) largeView else titleView
+
+  /**
+   * Reading order, start to end (the start is the right edge in right-to-left, so this is logical order and the layout mirrors
+   * it): the back button, the left slot, the title (or the center slot), the search field while it is open, the right slot,
+   * the search icon, the search results. It is the order of the native bars (UIKit's: back, title, trailing items; Material's
+   * toolbar: navigation icon, title, actions) and what the accessibility suite's order rule runs on both platforms. The large
+   * title is the bar's second row and is the one step that goes up: it is read after the back button, before the end controls.
+   */
+  private fun readingOrder(): List<View> {
+    val order = ArrayList<View>(8)
     backButton?.let { order.add(it) }
     slotOf(0)?.let { order.add(it) }
+    order.add(heading())
+    slotOf(1)?.let { order.add(it) }
+    searchInput?.let { order.add(it) }
     slotOf(2)?.let { order.add(it) }
     searchButton?.let { order.add(it) }
-    searchInput?.let { if (searchActive) order.add(it) }
-    for (v in order) if (v.id == NO_ID) v.id = View.generateViewId()
-    for (i in order.indices) order[i].accessibilityTraversalBefore = if (i + 1 < order.size) order[i + 1].id else NO_ID
+    slotOf(3)?.let { order.add(it) }
+    return order
+  }
+
+  /** The chain `accessibilityTraversalBefore` makes for the services that read it: the reading order of what is on show. */
+  private fun updateTraversal() {
+    val all = readingOrder()
+    val shown = all.filter { it.visibility == VISIBLE }
+    for (v in shown) if (v.id == NO_ID) v.id = View.generateViewId()
+    // What is not in the order (the title that does not show, a closed field) is in no chain.
+    titleView.accessibilityTraversalBefore = NO_ID
+    largeView.accessibilityTraversalBefore = NO_ID
+    for (v in all) v.accessibilityTraversalBefore = NO_ID
+    for (i in shown.indices) shown[i].accessibilityTraversalBefore = if (i + 1 < shown.size) shown[i + 1].id else NO_ID
   }
 
   private fun slotOf(kind: Int): EngineHeaderSlot? {
@@ -277,20 +323,10 @@ class EngineHeader(context: Context) : EngineView(context) {
 
   /**
    * The order accessibility services read the header in, whatever order the views were added in (slots first, as Fabric
-   * inserts them, then the chrome) and wherever they sit: the title, the center slot, back, the left slot, the right slot,
-   * the search icon, the field, the search results.
+   * inserts them, then the chrome) and wherever they sit: [readingOrder].
    */
   override fun addChildrenForAccessibility(outChildren: ArrayList<View>) {
-    val order = ArrayList<View>(8)
-    order.add(titleView)
-    slotOf(1)?.let { order.add(it) }
-    backButton?.let { order.add(it) }
-    slotOf(0)?.let { order.add(it) }
-    slotOf(2)?.let { order.add(it) }
-    searchButton?.let { order.add(it) }
-    searchInput?.let { order.add(it) }
-    slotOf(3)?.let { order.add(it) }
-    for (view in order) {
+    for (view in readingOrder()) {
       if (view.visibility != VISIBLE) continue
       if (view.isImportantForAccessibility) outChildren.add(view) else if (view is ViewGroup) view.addChildrenForAccessibility(outChildren)
     }

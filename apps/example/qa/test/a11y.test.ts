@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	analyzeScreen,
 	focusStops,
+	isToolbarNode,
 	isActionable,
 	isInteractive,
 	type A11yInput,
@@ -581,6 +582,88 @@ describe("frozen dumps of the QA app (the checklist's findings in them, not the 
 			normal.interactive,
 			normal.notActionable,
 			normal.titleFirst,
+		]);
+	});
+});
+
+describe("the toolbar band", () => {
+	const row = (label: string, y: number): N => ({ text: label, bounds: [76, y, 1004, y + 54] });
+	const item = (label: string, bounds: [number, number, number, number], extra: Partial<N> = {}): N => ({
+		cls: "android.widget.Button",
+		desc: label,
+		bounds,
+		clickable: true,
+		focusable: true,
+		...extra,
+	});
+	/** `node` has no resource id; the engine's toolbar puts `svelte-toolbar:<key>` on its controls. */
+	const marked = (xml: string, labels: string[]) =>
+		labels.reduce((out, label) => out.replace(new RegExp(`resource-id="" (class="[^"]*" package="p" content-desc="${label}")`), `resource-id="svelte-toolbar:${label.toLowerCase()}" $1`), xml);
+	const analyzeMarked = (nodes: N[], labels: string[], fields: Partial<A11yInput> = {}) => {
+		const xml = marked(
+			`<?xml version='1.0' ?><hierarchy rotation="0">${node({ cls: "android.widget.FrameLayout", bounds: [0, 0, 1080, 2400], children: nodes })}</hierarchy>`,
+			labels,
+		);
+		return analyzeScreen({ tree: parseHierarchy(xml), direction: "ltr", display, title: null, controls: [], scrolled: [], hidden: [], layout: "page", ...fields });
+	};
+
+	test("the band is the nodes with the toolbar's resource id, or inside one", () => {
+		const t = parseHierarchy(
+			marked(
+				`<hierarchy rotation="0">${node({ bounds: [0, 0, 1080, 2400], children: [item("Reply", [10, 2195, 136, 2321]), item("Plain", [146, 2195, 272, 2321])] })}</hierarchy>`,
+				["Reply"],
+			),
+		);
+		expect(t.nodes.filter(isToolbarNode).map((n) => n.contentDesc)).toEqual(["Reply"]);
+		const slot = parseHierarchy(
+			`<hierarchy rotation="0"><node index="0" text="" resource-id="svelte-toolbar" class="android.view.ViewGroup" package="p" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" bounds="[0,0][10,10]"><node index="0" text="List" resource-id="" class="android.widget.TextView" package="p" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" bounds="[0,0][10,10]"/></node></hierarchy>`,
+		);
+		expect(slot.nodes.every(isToolbarNode)).toBe(true);
+		for (const id of ["svelte-toolbarX", "my-svelte-toolbar", ""]) expect(isToolbarNode({ ...t.nodes[1]!, resourceId: id, parent: null })).toBe(false);
+	});
+
+	test("the last row under the translucent toolbar is content: no order finding when the band comes after it", () => {
+		const nodes = [row("Row 6", 1900), row("Row 7", 2200), item("Reply", [10, 2195, 136, 2321]), item("Delete", [944, 2195, 1070, 2321])];
+		const banded = analyzeMarked(nodes, ["Reply", "Delete"]);
+		expect(banded.orderViolations).toBe(0);
+		// Without the marker the frames overlap and the row's x decides: the finding the band rule removes.
+		expect(analyze(nodes).orderViolations).toBe(1);
+	});
+
+	test("a toolbar control read before a content row is an order violation", () => {
+		const result = analyzeMarked([item("Reply", [10, 2195, 136, 2321]), row("Row 6", 1900)], ["Reply"]);
+		expect(result.findings.filter((f) => f.kind === "order").map((f) => f.element)).toEqual([
+			'Button "Reply" [10,2195 126x126] then TextView "Row 6" [76,1900 928x54]',
+		]);
+	});
+
+	test("inside the band the controls run from the start edge to the end, mirrored in right-to-left", () => {
+		const ltr = [row("Row 7", 2200), item("Reply", [10, 2195, 136, 2321]), item("Delete", [944, 2195, 1070, 2321])];
+		expect(analyzeMarked(ltr, ["Reply", "Delete"]).orderViolations).toBe(0);
+		expect(analyzeMarked([row("Row 7", 2200), item("Delete", [944, 2195, 1070, 2321]), item("Reply", [10, 2195, 136, 2321])], ["Reply", "Delete"]).orderViolations).toBe(1);
+		const rtl = [row("Row 7", 2200), item("Reply", [944, 2195, 1070, 2321]), item("Delete", [10, 2195, 136, 2321])];
+		expect(analyzeMarked(rtl, ["Reply", "Delete"], { direction: "rtl" }).orderViolations).toBe(0);
+	});
+
+	test("the engine's toolbar screen (a compressed dump, written by hand): the band is read last and the screen has no order finding", () => {
+		const c = cases.find((entry) => entry.id === "screens-toolbar");
+		if (!c) throw new Error("no case screens-toolbar");
+		const input = {
+			tree: parseHierarchy(sample("uia-screens-toolbar.xml")),
+			direction: "ltr" as const,
+			display,
+			title: c.title === null ? null : localize(c.title, "ltr"),
+			controls: c.controls.map((label) => localize(label, "ltr")),
+			scrolled: [],
+			hidden: [],
+			layout: c.layout,
+		};
+		const r = analyzeScreen(input);
+		expect(r.stops.slice(-5)).toEqual(["Row 7", "Reply", "Archive", "Flag", "Delete"]);
+		expect([r.orderViolations, r.titleFirst, r.unreachable]).toEqual([0, true, 0]);
+		const plain = analyzeScreen({ ...input, tree: parseHierarchy(sample("uia-screens-toolbar.xml").replace(/svelte-toolbar:\w+/g, "")) });
+		expect(plain.findings.filter((f) => f.kind === "order").map((f) => f.element)).toEqual([
+			'TextView "Row 7" [76,2200 928x54] then Button "Reply" [10,2195 126x126]',
 		]);
 	});
 });

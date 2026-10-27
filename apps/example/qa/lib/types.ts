@@ -38,6 +38,39 @@ export type AppInfo = {
 
 export type Source = { commit: string; dirty: boolean };
 
+/**
+ * What an iOS command records of the phone's crash log: the reports that are new since the command started, or why they could not be
+ * read (the pull failed: the count is then not measured, never 0). Runs of other platforms and runs recorded before the pull have neither.
+ */
+export type CrashReportsRecord = { crashReports?: CrashReport[]; crashReportsError?: string };
+
+/** One frame of a crashed thread: the image it is in, the offset in that image, and the symbol the report resolved (null when it did not). */
+export type CrashFrame = { image: string | null; offset: number; symbol: string | null };
+
+/**
+ * One report of the iPhone's crash log for the app (`idevicecrashreport`, `lib/iphone/crash-reports.ts`): a crash (`EXC_CRASH` and the
+ * other `EXC_` types), a kill the system's memory manager logged for the app (`JETSAM`), or a report of the app that could not be read
+ * (`exceptionType` null). Times are the phone's own, as the report carries them (an instant: the report names its UTC offset).
+ */
+export type CrashReport = {
+	/** The file's name on the phone (`RasheedSvelteQA-2026-10-27-090359.ips`); a copy is kept in `qa/runs/<run>-crashes/`. */
+	file: string;
+	/** The report's `captureTime` (its header's `timestamp` when it has none), as an ISO 8601 instant; null for a report that could not be read. */
+	capturedAt: string | null;
+	/** When the report says the process started (`procLaunch`); null for a jetsam event, which does not. */
+	processStartedAt: string | null;
+	pid: number | null;
+	exceptionType: string | null;
+	signal: string | null;
+	/** The exception's message (`exceptionReason`), else the abort's own words (`asi`), else the termination's; at most 300 characters. */
+	reason: string | null;
+	/** The first 12 frames of `lastExceptionBacktrace` (where the exception was thrown), or of the faulting thread when the report has none. */
+	framesOf: "lastExceptionBacktrace" | "faultingThread" | null;
+	topFrames: CrashFrame[];
+	/** `lab` and `boot`: the run or launch whose process it was (`lab 3`, `warm 7`), or `unattributed`: a report of a process no run of the command launched, which counts all the same. Absent in the other commands. */
+	attributedTo?: string;
+};
+
 export type LabRun = {
 	startedAt: string;
 	durationMs: number;
@@ -51,6 +84,8 @@ export type LabRun = {
 	engineWarnings: string[];
 	/** The app's own `console.error` count since launch (iOS: the app reports it, null when it does not). Android counts the `E ReactNativeJS` lines in `jsErrors`; absent in runs recorded before the field. */
 	jsErrorCount?: number | null;
+	/** iOS: the process the run launched; the crash reports of the phone are matched to the run by it. */
+	pid?: number | null;
 	logFile: string;
 };
 
@@ -65,7 +100,7 @@ export type LabFile = {
 	/** The `--run` value the lab was started with (`checks,quick` is the full run `gates.json` pins). */
 	run: string;
 	runs: LabRun[];
-};
+} & CrashReportsRecord;
 
 export type Launch = {
 	index: number;
@@ -82,6 +117,8 @@ export type Launch = {
 	/** iOS: when the harness started the launch command (its clock) and the process start the app reported (the phone's); a report older than the launch is another launch's. */
 	commandStartedAtMs?: number | null;
 	processStartMs?: number | null;
+	/** iOS: the process of the launch; the crash reports of the phone are matched to the launch by it. */
+	pid?: number | null;
 };
 
 export type BootDefinition = { warm: string; cold: string; coldIdleSeconds: number };
@@ -98,7 +135,7 @@ export type BootFile = {
 	warm: Launch[];
 	cold: Launch[];
 	logFile: string;
-};
+} & CrashReportsRecord;
 
 /** A measurement: a number, or a text for the few gates that compare for equality; null means the run was made but produced no value. */
 export type Metric = number | string | null;
@@ -326,7 +363,7 @@ export type ParityFile = {
 	cases: ParityCase[];
 	notCovered: NotCoveredRoute[];	/** Why the run stopped before the end of its matrix (the device went away), or null. The cases it did not reach count as missing. */
 	aborted: string | null;
-};
+} & CrashReportsRecord;
 
 export type A11yScreenResult = {
 	name: string;
@@ -371,7 +408,7 @@ export type A11yFile = {
 	screens: A11yScreenResult[];
 	notCovered: NotCoveredRoute[];	/** Why the run stopped before the end of its matrix (the device went away), or null. The cases it did not reach count as missing. */
 	aborted: string | null;
-};
+} & CrashReportsRecord;
 
 export type ResilienceStep = {
 	index: number;

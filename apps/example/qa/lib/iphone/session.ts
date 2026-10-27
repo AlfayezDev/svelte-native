@@ -44,7 +44,7 @@ export type IosBuildFile = {
 	/** The SHA-256 of `main.jsbundle` (`bundleSha256` is the name older records give it) and of the executable the app's Info.plist names (absent from older records). */
 	bundleSha256: string;
 	jsbundleSha256?: string;
-	executableSha256?: string;
+	cdHash?: string;
 	bundleBytes: number;
 	logFile: string;
 };
@@ -54,7 +54,7 @@ export function buildRecordOf(file: IosBuildFile): BuildRecord {
 		commit: file.source.commit,
 		dirty: file.source.dirty,
 		jsbundleSha256: file.jsbundleSha256 ?? file.bundleSha256,
-		executableSha256: file.executableSha256 ?? null,
+		cdHash: file.cdHash ?? null,
 	};
 }
 

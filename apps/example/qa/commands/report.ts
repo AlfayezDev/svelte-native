@@ -170,11 +170,11 @@ function series(launches: BootFile["warm"]): BootSeries {
 
 /**
  * What identifies the build a run measured: an iOS run by the identity its app reported (the digests of `main.jsbundle` and
- * of the executable), an Android run by the digest of the installed APK; null when the run could not tell.
+ * of the executable: its CDHash), an Android run by the digest of the installed APK; null when the run could not tell.
  */
 export function buildKey(app: AppInfo): string | null {
 	if (app.installed)
-		return `main.jsbundle ${app.installed.jsbundleSha256.slice(0, 12)}, executable ${app.installed.executableSha256.slice(0, 12)}`;
+		return `main.jsbundle ${app.installed.jsbundleSha256.slice(0, 12)}, CDHash ${app.installed.cdHash.slice(0, 12)}`;
 	return app.installedSha256 ? `sha256 ${app.installedSha256.slice(0, 12)}` : null;
 }
 
@@ -208,8 +208,8 @@ export function buildWarnings(serial: string, runs: [string, Measured | null][])
 	const boot = present.find(({ label }) => label === "boot");
 	if (lab && boot && commitOf(lab.run) !== commitOf(boot.run))
 		warnings.push(`${serial}: the lab ran at ${commitOf(lab.run)} and the boot run at ${commitOf(boot.run)}`);
-	if (present.some(({ run }) => run.app.build && run.app.build.executableSha256 === null))
-		warnings.push(`${serial}: the build record (qa/out/ios-build.json) has no executable digest: build again`);
+	if (present.some(({ run }) => run.app.build && run.app.build.cdHash === null))
+		warnings.push(`${serial}: the build record (qa/out/ios-build.json) has no CDHash: build again`);
 	return warnings;
 }
 

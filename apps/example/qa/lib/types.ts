@@ -18,10 +18,10 @@ export type DeviceInfo = {
 export type ApkInfo = { path: string; sizeBytes: number; sha256: string };
 
 /** What the iOS app reports of itself in the files it writes: the SHA-256 of `main.jsbundle` and of the executable. */
-export type BuildIdentity = { jsbundleSha256: string; executableSha256: string };
+export type BuildIdentity = { jsbundleSha256: string; cdHash: string };
 
 /** What `native-qa build --platform ios` recorded of the build the run was meant to measure. The executable digest is absent from a record made before it was taken. */
-export type BuildRecord = { commit: string; dirty: boolean; jsbundleSha256: string; executableSha256: string | null };
+export type BuildRecord = { commit: string; dirty: boolean; jsbundleSha256: string; cdHash: string | null };
 
 export type AppInfo = {
 	package: string;

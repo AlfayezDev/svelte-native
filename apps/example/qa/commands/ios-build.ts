@@ -87,11 +87,10 @@ export async function iosBuild(argv: string[]): Promise<void> {
 	const digest = (await remoteOk(mac, `shasum -a 256 ${shellQuote(`${app}/main.jsbundle`)} && stat -f %z ${shellQuote(`${app}/main.jsbundle`)}`)).trim().split("\n");
 	const sha = /^([0-9a-f]{64})/.exec(digest[0] ?? "")?.[1];
 	if (!sha) throw new Error(`cannot read the bundle's digest: ${digest.join(" ")}`);
-	const executable = (await remoteOk(mac, `/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" ${shellQuote(`${app}/Info.plist`)}`)).trim();
-	if (!executable) throw new Error(`${app}/Info.plist names no CFBundleExecutable`);
-	const executableDigest = (await remoteOk(mac, `shasum -a 256 ${shellQuote(`${app}/${executable}`)}`)).trim();
-	const executableSha = /^([0-9a-f]{64})/.exec(executableDigest)?.[1];
-	if (!executableSha) throw new Error(`cannot read the executable's digest: ${executableDigest}`);
+	// The code directory hash of the signed executable: what the app reads from its own signature (`SvelteQA.buildIdentity`).
+	const signature = (await remoteOk(mac, `codesign -dvvv ${shellQuote(app)} 2>&1`)).trim();
+	const cdHash = /^CDHash=([0-9a-f]{40})$/m.exec(signature)?.[1];
+	if (!cdHash) throw new Error(`cannot read the app's CDHash from codesign: ${signature.split("\n").slice(-3).join(" ")}`);
 	await remote(mac, `cd ${shellQuote(`${checkout}/apps/platform`)} && node ../../packages/svelte-native/src/cli.ts sync > /dev/null 2>&1`);
 	await writeFile(logFile, `${log.join("\n")}\n`);
 	await writeIosBuild({
@@ -104,9 +103,9 @@ export async function iosBuild(argv: string[]): Promise<void> {
 		appPath: app,
 		bundleSha256: sha,
 		jsbundleSha256: sha,
-		executableSha256: executableSha,
+		cdHash,
 		bundleBytes: Number(digest[1] ?? 0),
 		logFile: logFile.slice(qaDir.length + 1),
 	});
-	note(`wrote ${iosBuildPath.slice(qaDir.length + 1)} (main.jsbundle ${sha.slice(0, 12)}, ${executable} ${executableSha.slice(0, 12)}, ${Math.round((Date.now() - began) / 1000)} s)`);
+	note(`wrote ${iosBuildPath.slice(qaDir.length + 1)} (main.jsbundle ${sha.slice(0, 12)}, CDHash ${cdHash.slice(0, 12)}, ${Math.round((Date.now() - began) / 1000)} s)`);
 }

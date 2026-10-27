@@ -11,8 +11,10 @@ import { launchFromReport, parseBootReport, parseIdentity } from "../parse/ios.t
 import { sample } from "./sample.ts";
 
 const digest = (seed: string) => seed.repeat(64).slice(0, 64);
-const identity = (js = "a", executable = "b"): BuildIdentity => ({ jsbundleSha256: digest(js), executableSha256: digest(executable) });
-const record = (js = "a", executable: string | null = "b"): BuildRecord => ({ commit: "afabc2ad7", dirty: false, jsbundleSha256: digest(js), executableSha256: executable === null ? null : digest(executable) });
+/** A code directory hash is 20 bytes: the first 40 hex digits of a digest stand in. */
+const cd = (seed: string) => digest(seed).slice(0, 40);
+const identity = (js = "a", executable = "b"): BuildIdentity => ({ jsbundleSha256: digest(js), cdHash: cd(executable) });
+const record = (js = "a", executable: string | null = "b"): BuildRecord => ({ commit: "afabc2ad7", dirty: false, jsbundleSha256: digest(js), cdHash: executable === null ? null : cd(executable) });
 
 describe("the identity the app reports", () => {
 	test("both digests, or nothing: a build field that is missing, partial or not a digest is not an identity", () => {
@@ -20,7 +22,8 @@ describe("the identity the app reports", () => {
 		expect(parseIdentity(undefined)).toBeNull();
 		expect(parseIdentity(null)).toBeNull();
 		expect(parseIdentity({ jsbundleSha256: digest("a") })).toBeNull();
-		expect(parseIdentity({ jsbundleSha256: "abc", executableSha256: digest("b") })).toBeNull();
+		expect(parseIdentity({ jsbundleSha256: "abc", cdHash: cd("b") })).toBeNull();
+		expect(parseIdentity({ jsbundleSha256: digest("a"), cdHash: digest("b") })).toBeNull();
 	});
 
 	test("lab results, the boot report and the capture index carry it, and an older app's files read as not reported", () => {
@@ -75,13 +78,13 @@ describe("the reported build against the build record", () => {
 		expect(reportedIdentity([], record(), "lab")).toBeNull();
 		const app = { package: "io.rasheed.svelteqa", versionName: "0.1.0", versionCode: 1, lastUpdateTime: null, installedSha256: "stale", apk: null } satisfies AppInfo;
 		expect(withIdentity(app, null)).toEqual({ ...app, installed: null, installedSha256: null });
-		expect(withIdentity(app, identity())).toEqual({ ...app, installed: identity(), installedSha256: digest("b") });
+		expect(withIdentity(app, identity())).toEqual({ ...app, installed: identity(), installedSha256: cd("b") });
 	});
 
 	test("the record is read from ios-build.json, with the bundle digest under either of its names", () => {
 		const file = { schema: 1, kind: "ios-build", finishedAt: "", durationMs: 1, source: { commit: "afabc2ad7", dirty: true }, macCheckout: "/m", appPath: "/m/App.app", bundleSha256: digest("a"), bundleBytes: 1, logFile: "x" } satisfies IosBuildFile;
-		expect(buildRecordOf(file)).toEqual({ commit: "afabc2ad7", dirty: true, jsbundleSha256: digest("a"), executableSha256: null });
-		expect(buildRecordOf({ ...file, jsbundleSha256: digest("c"), executableSha256: digest("d") })).toEqual({ commit: "afabc2ad7", dirty: true, jsbundleSha256: digest("c"), executableSha256: digest("d") });
+		expect(buildRecordOf(file)).toEqual({ commit: "afabc2ad7", dirty: true, jsbundleSha256: digest("a"), cdHash: null });
+		expect(buildRecordOf({ ...file, jsbundleSha256: digest("c"), cdHash: cd("d") })).toEqual({ commit: "afabc2ad7", dirty: true, jsbundleSha256: digest("c"), cdHash: cd("d") });
 	});
 });
 
@@ -111,10 +114,10 @@ describe("a boot report that is not this launch's", () => {
 describe("which build a run measured, across the runs of a device", () => {
 	const app = (fields: Partial<AppInfo> = {}): AppInfo => ({ package: "io.rasheed.svelteqa", versionName: "0.1.0", versionCode: 1, lastUpdateTime: null, installedSha256: null, apk: null, ...fields });
 	const run = (fields: Partial<AppInfo> = {}, commit = "afabc2ad7") => ({ app: app(fields), source: { commit, dirty: false } });
-	const reported = (js = "a", executable = "b") => run({ installed: identity(js, executable), installedSha256: digest(executable), build: record(js, executable) });
+	const reported = (js = "a", executable = "b") => run({ installed: identity(js, executable), installedSha256: cd(executable), build: record(js, executable) });
 
 	test("iOS runs are told apart by what the app reported, Android runs by the APK's digest", () => {
-		expect(buildKey(app({ installed: identity("a", "b") }))).toBe("main.jsbundle aaaaaaaaaaaa, executable bbbbbbbbbbbb");
+		expect(buildKey(app({ installed: identity("a", "b") }))).toBe("main.jsbundle aaaaaaaaaaaa, CDHash bbbbbbbbbbbb");
 		expect(buildKey(app({ installedSha256: digest("c") }))).toBe("sha256 cccccccccccc");
 		expect(buildKey(app({ installed: null }))).toBeNull();
 	});
@@ -148,9 +151,9 @@ describe("which build a run measured, across the runs of a device", () => {
 		expect(buildWarnings("E74A", [["lab", reported()], ["boot", sameBuild]])).toEqual([]);
 	});
 
-	test("a build record without the executable digest is a warning", () => {
-		const old = run({ installed: identity(), installedSha256: digest("b"), build: record("a", null) });
-		expect(buildWarnings("E74A", [["lab", old]])).toEqual(["E74A: the build record (qa/out/ios-build.json) has no executable digest: build again"]);
+	test("a build record without the CDHash is a warning", () => {
+		const old = run({ installed: identity(), installedSha256: cd("b"), build: record("a", null) });
+		expect(buildWarnings("E74A", [["lab", old]])).toEqual(["E74A: the build record (qa/out/ios-build.json) has no CDHash: build again"]);
 	});
 });
 

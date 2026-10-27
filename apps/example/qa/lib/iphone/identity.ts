@@ -15,8 +15,8 @@ export function identityMismatch(reported: BuildIdentity, build: BuildRecord): s
 	const differences: string[] = [];
 	if (reported.jsbundleSha256 !== build.jsbundleSha256)
 		differences.push(`main.jsbundle ${short(reported.jsbundleSha256)} on the phone, ${short(build.jsbundleSha256)} in the build record`);
-	if (build.executableSha256 !== null && reported.executableSha256 !== build.executableSha256)
-		differences.push(`executable ${short(reported.executableSha256)} on the phone, ${short(build.executableSha256)} in the build record`);
+	if (build.cdHash !== null && reported.cdHash !== build.cdHash)
+		differences.push(`executable ${short(reported.cdHash)} on the phone, ${short(build.cdHash)} in the build record`);
 	return differences.length === 0 ? null : `the app on the phone is not the recorded build (qa/out/ios-build.json): ${differences.join("; ")}`;
 }
 
@@ -26,7 +26,7 @@ export function reportedIdentity(reports: (BuildIdentity | null)[], build: Build
 	const first = reported[0];
 	if (!first) return null;
 	if (reported.length < reports.length) throw new IdentityMismatch(`${what}: the app reported its build in ${reported.length} of ${reports.length} files, and not in the others`);
-	if (reported.some((identity) => identity.jsbundleSha256 !== first.jsbundleSha256 || identity.executableSha256 !== first.executableSha256))
+	if (reported.some((identity) => identity.jsbundleSha256 !== first.jsbundleSha256 || identity.cdHash !== first.cdHash))
 		throw new IdentityMismatch(`${what}: the app's reported build changed during the run`);
 	const mismatch = build ? identityMismatch(first, build) : null;
 	if (mismatch) throw new IdentityMismatch(`${what}: ${mismatch}`);
@@ -35,7 +35,7 @@ export function reportedIdentity(reports: (BuildIdentity | null)[], build: Build
 
 /** The app of a run file with what the app reported: `installedSha256` is the executable digest, null when it reported none. */
 export function withIdentity(app: AppInfo, installed: BuildIdentity | null): AppInfo {
-	return { ...app, installed, installedSha256: installed?.executableSha256 ?? null };
+	return { ...app, installed, installedSha256: installed?.cdHash ?? null };
 }
 
 export const notReported = "build identity not reported by the app (an older build): the run file records installed: null";

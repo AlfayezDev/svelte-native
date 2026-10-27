@@ -31,10 +31,10 @@ const sha256 = /^[0-9a-f]{64}$/;
 /** The `build` the app writes into its files: both digests, or null for an app that reports none (or not a whole identity). */
 export function parseIdentity(value: unknown): BuildIdentity | null {
 	if (!isRecord(value)) return null;
-	const { jsbundleSha256, executableSha256 } = value;
+	const { jsbundleSha256, cdHash } = value;
 	if (typeof jsbundleSha256 !== "string" || !sha256.test(jsbundleSha256)) return null;
-	if (typeof executableSha256 !== "string" || !sha256.test(executableSha256)) return null;
-	return { jsbundleSha256, executableSha256 };
+	if (typeof cdHash !== "string" || !/^[0-9a-f]{40}$/.test(cdHash)) return null;
+	return { jsbundleSha256, cdHash };
 }
 
 /** `devicectl list devices --json-output`: the device with the given identifier (or hardware UDID), as the report describes devices. */

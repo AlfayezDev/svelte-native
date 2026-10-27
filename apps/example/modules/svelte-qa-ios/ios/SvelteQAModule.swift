@@ -21,7 +21,8 @@ public final class SvelteQAModule: Module {
       SvelteQA.boot?.recordJavaScript(summary, jsErrors: jsErrors)
     }
 
-    // What is installed, for the harness to compare with its build record: the SHA-256 of `main.jsbundle` and of the executable.
+    // What is installed, for the harness to compare with its build record: the SHA-256 of `main.jsbundle` and the executable's
+    // code directory hash (what `codesign -dvvv` prints as CDHash: the signature identifies the binary without hashing 30 MB).
     AsyncFunction("buildIdentity") { () -> [String: String] in
       try SvelteQA.requireEnabled()
       return try SvelteQA.buildIdentity()
@@ -113,22 +114,66 @@ enum SvelteQA {
 
   private static var identity: [String: String]?
 
-  /// Hashed once per process, on first use (after the boot report's times are taken, never before).
+  /// Computed once per process, on first use (after the boot report's times are taken, never before).
   static func buildIdentity() throws -> [String: String] {
     if let identity { return identity }
     guard let bundle = Bundle.main.url(forResource: "main", withExtension: "jsbundle") else { throw QAError("the app has no main.jsbundle") }
     guard let executable = Bundle.main.executableURL else { throw QAError("the app has no executable") }
     let computed = [
-      "jsbundleSha256": try sha256(of: bundle),
-      "executableSha256": try sha256(of: executable),
+      "jsbundleSha256": hex(SHA256.hash(data: try Data(contentsOf: bundle, options: .mappedIfSafe))),
+      "cdHash": try codeDirectoryHash(of: executable),
     ]
     identity = computed
     return computed
   }
 
-  private static func sha256(of url: URL) throws -> String {
-    let data = try Data(contentsOf: url, options: .mappedIfSafe)
-    return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+  private static func hex<D: Sequence>(_ digest: D) -> String where D.Element == UInt8 {
+    digest.map { String(format: "%02x", $0) }.joined()
+  }
+
+  /// The CDHash of a thin arm64 Mach-O: the SHA-256 of its SHA-256 code directory (the primary one when there is no other),
+  /// truncated to 20 bytes, read from `LC_CODE_SIGNATURE` alone. `codesign -dvvv` prints the same value as `CDHash=`.
+  private static func codeDirectoryHash(of url: URL) throws -> String {
+    let handle = try FileHandle(forReadingFrom: url)
+    defer { try? handle.close() }
+    func read(_ offset: UInt64, _ count: Int) throws -> Data {
+      try handle.seek(toOffset: offset)
+      guard let data = try handle.read(upToCount: count), data.count == count else { throw QAError("the executable is shorter than its headers say") }
+      return data
+    }
+    func u32(_ data: Data, _ at: Int, bigEndian: Bool) -> UInt32 {
+      let value = data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: at, as: UInt32.self) }
+      return bigEndian ? UInt32(bigEndian: value) : UInt32(littleEndian: value)
+    }
+    let header = try read(0, 32)
+    guard u32(header, 0, bigEndian: false) == 0xfeedfacf else { throw QAError("the executable is not a thin 64-bit Mach-O") }
+    let commandCount = Int(u32(header, 16, bigEndian: false))
+    let commandsSize = Int(u32(header, 20, bigEndian: false))
+    let commands = try read(32, commandsSize)
+    var offset = 0
+    var signature: (offset: UInt64, size: Int)?
+    for _ in 0..<commandCount {
+      let command = u32(commands, offset, bigEndian: false)
+      let size = Int(u32(commands, offset + 4, bigEndian: false))
+      if command == 0x1d { signature = (UInt64(u32(commands, offset + 8, bigEndian: false)), Int(u32(commands, offset + 12, bigEndian: false))) }
+      offset += size
+    }
+    guard let signature else { throw QAError("the executable has no code signature") }
+    let blob = try read(signature.offset, signature.size)
+    guard u32(blob, 0, bigEndian: true) == 0xfade0cc0 else { throw QAError("the code signature is not a SuperBlob") }
+    var chosen: Data?
+    for index in 0..<Int(u32(blob, 8, bigEndian: true)) {
+      let at = Int(u32(blob, 12 + index * 8 + 4, bigEndian: true))
+      guard at + 40 <= blob.count, u32(blob, at, bigEndian: true) == 0xfade0c02 else { continue }
+      let length = Int(u32(blob, at + 4, bigEndian: true))
+      guard at + length <= blob.count else { continue }
+      let directory = blob.subdata(in: at..<(at + length))
+      let hashType = directory[37]
+      if chosen == nil || hashType == 2 { chosen = directory }
+      if hashType == 2 { break }
+    }
+    guard let chosen else { throw QAError("the code signature has no code directory") }
+    return hex(SHA256.hash(data: chosen).prefix(20))
   }
 
   static func capture(to path: String) throws -> [String: Any] {

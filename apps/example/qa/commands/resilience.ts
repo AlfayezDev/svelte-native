@@ -219,6 +219,7 @@ export async function resilience(argv: string[]): Promise<void> {
 		aborted,
 		leftovers: notes.leftovers,
 		restoreFailures: notes.restoreFailures,
+		deviceRestarts: notes.deviceRestarts,
 	};
 	const name = await writeRun("resilience", serial, startedAt, file);
 	const failed = steps.filter((step) => !step.ok).length;

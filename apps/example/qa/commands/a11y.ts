@@ -162,6 +162,7 @@ export async function a11y(argv: string[]): Promise<void> {
 		aborted,
 		leftovers: notes.leftovers,
 		restoreFailures: notes.restoreFailures,
+		deviceRestarts: notes.deviceRestarts,
 	};
 	const name = await writeRun("a11y", serial, startedAt, file);
 	const total = (pick: (screen: A11yScreenResult) => number) =>

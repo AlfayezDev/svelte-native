@@ -393,3 +393,149 @@ describe("a device that is lost before the session is closed", () => {
 		});
 	});
 });
+
+describe("a device that restarts under a run", () => {
+	test("a new boot id before a case: the settings are re-applied and read back, the restart is recorded, and the case runs", async () => {
+		const device = new FakeDevice();
+		await withDevice(device, async ({ options, warnings }) => {
+			const session = await DeviceSession.open(device.serial, device.packageName, options);
+			await session.theme("dark");
+			await session.fontScale(2);
+			await session.direction("rtl");
+			await session.rotation(1);
+			await launchCase(session, normalScreen, "rtl");
+			expect(options.notes?.deviceRestarts).toEqual([]);
+			expect(warnings).toEqual([]);
+
+			device.restart();
+			expect(device.night).toBe("no");
+			await launchCase(session, normalScreen, "rtl");
+			expect(device.night).toBe("yes");
+			expect(device.get("system/font_scale")).toBe("2.00");
+			expect(device.locales).toBe("ar-SA");
+			expect(device.get("system/accelerometer_rotation")).toBe("0");
+			expect(device.get("system/user_rotation")).toBe("1");
+			expect(device.commands("am start")).toHaveLength(2);
+			const restarts = options.notes?.deviceRestarts ?? [];
+			expect(restarts).toHaveLength(1);
+			expect(restarts[0]?.bootId).toBe(device.bootId as string);
+			expect(Number.isNaN(Date.parse(restarts[0]?.at ?? ""))).toBe(false);
+			expect(warnings).toHaveLength(1);
+			expect(warnings[0]).toMatch(
+				new RegExp(`^the device restarted at \\S+ \\(boot id ${device.bootId}\\): re-applying its settings$`),
+			);
+
+			await launchCase(session, normalScreen, "rtl");
+			expect(options.notes?.deviceRestarts).toHaveLength(1);
+			await session.close();
+		});
+	});
+
+	test("without a readable boot_id the boot time of init is the identity", async () => {
+		const device = new FakeDevice();
+		device.bootId = null;
+		await withDevice(device, async ({ options }) => {
+			const session = await DeviceSession.open(device.serial, device.packageName, options);
+			await session.theme("dark");
+			device.restart();
+			await launchCase(session, normalScreen, "ltr");
+			expect(device.night).toBe("yes");
+			expect(options.notes?.deviceRestarts).toHaveLength(1);
+			expect(options.notes?.deviceRestarts[0]?.bootId).toBe(`boottime-init-${device.bootTimeInit}`);
+			await session.close();
+		});
+	});
+
+	test("the holes are made again: the reverse ports died with the device, and the failing proxy points at them", async () => {
+		const device = new FakeDevice();
+		await withDevice(device, async ({ options }) => {
+			const session = await DeviceSession.open(device.serial, device.packageName, options);
+			await launchCase(session, hangScreen, "ltr");
+			const ports = [...device.reverses];
+			expect(ports).toHaveLength(2);
+			const proxy = device.get("global/http_proxy");
+			expect(proxy).toMatch(/^localhost:\d+$/);
+
+			device.restart();
+			expect(device.reverses.size).toBe(0);
+			expect(device.get("global/http_proxy")).toBeNull();
+			await launchCase(session, hangScreen, "ltr");
+			expect([...device.reverses].sort()).toEqual([...ports].sort());
+			expect(device.get("global/http_proxy")).toBe(proxy);
+			expect(device.commands("am start")).toHaveLength(2);
+			await session.close();
+			expect(device.get("global/http_proxy")).toBeNull();
+			expect(device.reverses.size).toBe(0);
+		});
+	});
+
+	test("a case in flight when the device restarted is retried once, after the settings are back", async () => {
+		const device = new FakeDevice();
+		await withDevice(device, async ({ options }) => {
+			const session = await DeviceSession.open(device.serial, device.packageName, options);
+			await session.theme("dark");
+			let calls = 0;
+			const lines: string[] = [];
+			const result = await session.guarded(async () => {
+				calls++;
+				if (calls === 1) {
+					device.restart();
+					throw new Error("adb -s localhost:5555 shell am start exited with 1: adb: device 'localhost:5555' not found");
+				}
+				expect(device.night).toBe("yes");
+				return "ran";
+			}, (line) => lines.push(line));
+			expect(result).toBe("ran");
+			expect(calls).toBe(2);
+			expect(lines).toHaveLength(1);
+			expect(options.notes?.deviceRestarts).toHaveLength(1);
+
+			// A failure on a device that did not restart is the case's own: no retry.
+			calls = 0;
+			await expect(
+				session.guarded(async () => {
+					calls++;
+					throw new Error("device 'localhost:5555' not found");
+				}),
+			).rejects.toThrow("not found");
+			expect(calls).toBe(1);
+			await session.close();
+		});
+	});
+
+	test("a setting that reads back differently after the re-apply is a DeviceStateError, and the case is not run", async () => {
+		const device = new FakeDevice();
+		await withDevice(device, async ({ options }) => {
+			const session = await DeviceSession.open(device.serial, device.packageName, options);
+			await session.fontScale(2);
+			device.restart();
+			device.ignoreFontScaleWrites = true;
+			const error = await launchCase(session, normalScreen, "ltr").catch((caught: unknown) => caught);
+			expect(error instanceof DeviceStateError).toBe(true);
+			expect((error as Error).message).toContain("read back differently after they were re-applied: fontScale: 2.00");
+			expect(endsRun(error)).toBe(true);
+			expect(device.commands("am start")).toEqual([]);
+			expect(options.notes?.deviceRestarts).toHaveLength(1);
+			device.ignoreFontScaleWrites = false;
+			await session.close();
+		});
+	});
+
+	test("a restart found in close() is recorded, and the restore is still attempted", async () => {
+		const device = new FakeDevice();
+		device.set("system/font_scale", "1.15");
+		await withDevice(device, async ({ options, warnings, dir }) => {
+			const session = await DeviceSession.open(device.serial, device.packageName, options);
+			await session.fontScale(2);
+			await session.theme("dark");
+			device.restart();
+			await session.close();
+			expect(device.get("system/font_scale")).toBe("1.15");
+			expect(device.night).toBe("no");
+			expect(options.notes?.deviceRestarts).toHaveLength(1);
+			expect(options.notes?.restoreFailures).toEqual([]);
+			expect(warnings.at(-1)).toContain("restoring its original settings");
+			await expect(stat(join(dir, "device-state-localhost_5555.json"))).rejects.toThrow();
+		});
+	});
+});

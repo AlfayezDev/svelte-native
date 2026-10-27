@@ -49,9 +49,12 @@ export type CrashReportsRecord = { crashReports?: CrashReport[]; crashReportsErr
  * `leftovers`: settings of the suites' own an earlier run left on the device (a failing proxy, a text size), cleared at the start,
  * so a report shows the previous run did not restore. `restoreFailures`: what this run could not put back (the device was lost, a
  * setting did not take): the device was left in a changed state, which `report` warns about and `gates` fails on. Absent in files
- * written before they were recorded.
+ * written before they were recorded. `deviceRestarts`: the times the session saw the device boot again (its boot id changed: the
+ * emulator died or a watchdog restarted it), each after the session re-applied its settings; `at` is when the device booted, as
+ * far as its uptime says, else when the session noticed. A run that survived a restart is still a measured run.
  */
-export type SessionRecord = { leftovers?: string[]; restoreFailures?: string[] };
+export type DeviceRestart = { at: string; bootId: string };
+export type SessionRecord = { leftovers?: string[]; restoreFailures?: string[]; deviceRestarts?: DeviceRestart[] };
 
 /** One frame of a crashed thread: the image it is in, the offset in that image, and the symbol the report resolved (null when it did not). */
 export type CrashFrame = { image: string | null; offset: number; symbol: string | null };

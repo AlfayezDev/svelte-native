@@ -270,7 +270,7 @@ async function runCase(
 	const previous = context.manifest.references[referenceName(screen, variant)];
 	try {
 		if (context.update) {
-			const captured = await captureCase(context, screen, variant, previous);
+			const captured = await context.session.guarded(() => captureCase(context, screen, variant, previous));
 			// Written after every case, so an interrupted run keeps the references it took.
 			if (captured.verdict === "updated") await writeManifest(context.manifest);
 			return captured;
@@ -280,7 +280,7 @@ async function runCase(
 				verdict: "missing-reference",
 				detail: `no reference in screenshots/${context.deviceKind}; run with --update to create it`,
 			});
-		return await checkCase(context, screen, variant, previous);
+		return await context.session.guarded(() => checkCase(context, screen, variant, previous));
 	} catch (error) {
 		// A device that went away, or one left with a proxy or text size the case does not need, fails every case after
 		// this one the same way: stop, keep what was taken.
@@ -409,6 +409,7 @@ export async function parity(argv: string[]): Promise<void> {
 		aborted,
 		leftovers: notes.leftovers,
 		restoreFailures: notes.restoreFailures,
+		deviceRestarts: notes.deviceRestarts,
 	};
 	const name = await writeRun("parity", serial, startedAt, file);
 	const count = (verdict: ParityCase["verdict"]) =>

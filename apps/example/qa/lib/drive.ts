@@ -109,12 +109,12 @@ export async function retryCase<T>(
 	log: (message: string) => void = console.log,
 ): Promise<T> {
 	try {
-		return await attempt();
+		return await session.guarded(attempt, log);
 	} catch (error) {
 		if (endsRun(error)) throw error;
 		await guardAnchorFailure(session, screen, fontScale, error);
 		log(`  retrying ${label}: ${error instanceof Error ? error.message.slice(0, 100) : String(error)}`);
-		return attempt();
+		return session.guarded(attempt, log);
 	}
 }
 
@@ -124,7 +124,15 @@ export type OpenedCase = { tree: UiTree };
  * A fresh process on the case's screen: the network the case needs, then, in one adb call, the old process killed and the
  * deep link (or the launcher activity) opened, then the steps. Returns without waiting for the anchor.
  */
-export async function launchCase(
+export function launchCase(
+	session: DeviceSession,
+	screen: ScreenCase,
+	direction: Direction,
+): Promise<void> {
+	return session.guarded(() => launchOnce(session, screen, direction));
+}
+
+async function launchOnce(
 	session: DeviceSession,
 	screen: ScreenCase,
 	direction: Direction,
@@ -147,14 +155,16 @@ export async function openCase(
 	screen: ScreenCase,
 	direction: Direction,
 ): Promise<OpenedCase> {
-	await launchCase(session, screen, direction);
-	const { tree } = await waitForNode(
-		session.serial,
-		screen.anchor,
-		direction,
-		screen.needsBackend ? 25_000 : 15_000,
-	);
-	return { tree };
+	return session.guarded(async () => {
+		await launchOnce(session, screen, direction);
+		const { tree } = await waitForNode(
+			session.serial,
+			screen.anchor,
+			direction,
+			screen.needsBackend ? 25_000 : 15_000,
+		);
+		return { tree };
+	});
 }
 
 async function runStep(session: DeviceSession, step: Step, direction: Direction): Promise<void> {

@@ -7,6 +7,7 @@ import type { ExecOptions } from "./exec.ts";
 import { decodePng, type Image, type Rect } from "./png.ts";
 import { outDir } from "./paths.ts";
 import { slug } from "./runs.ts";
+import type { DeviceRestart } from "./types.ts";
 import { largestFontScale } from "./screens.ts";
 import { parseHierarchy, type UiTree } from "./uia.ts";
 import { sleep } from "./wait.ts";
@@ -160,10 +161,33 @@ export class DeviceStateError extends Error {
 }
 
 /** What a session found and could not do, for the run file: settings an earlier run left behind, and settings it could not put back. */
-export type SessionNotes = { leftovers: string[]; restoreFailures: string[] };
+export type SessionNotes = { leftovers: string[]; restoreFailures: string[]; deviceRestarts: DeviceRestart[] };
 
 export function newSessionNotes(): SessionNotes {
-	return { leftovers: [], restoreFailures: [] };
+	return { leftovers: [], restoreFailures: [], deviceRestarts: [] };
+}
+
+/**
+ * The identity of one boot of the device: `/proc/sys/kernel/random/boot_id` (a new UUID at every boot, readable by the adb shell),
+ * else `getprop ro.boottime.init` (the nanoseconds of init's start, which differs at every boot). Null when neither is readable,
+ * which turns the restart check off. A failure that is the device being gone is thrown, as it is for any other command.
+ */
+export async function readBootId(serial: string, run: AdbRun = realAdb): Promise<string | null> {
+	let failure: unknown = null;
+	try {
+		const id = (await run(serial, ["shell", "cat", "/proc/sys/kernel/random/boot_id"])).trim();
+		if (/^[0-9a-f-]{16,}$/i.test(id)) return id;
+	} catch (error) {
+		failure = error;
+	}
+	try {
+		const id = (await run(serial, ["shell", "getprop", "ro.boottime.init"])).trim();
+		if (/^\d+$/.test(id)) return `boottime-init-${id}`;
+	} catch (error) {
+		failure = error;
+	}
+	if (failure !== null && deviceGone(failure)) throw failure;
+	return null;
 }
 
 async function setting(
@@ -387,7 +411,14 @@ export type SessionOptions = {
 	warn?: (message: string) => void;
 	/** Filled with what the session found and could not do, for the run file. */
 	notes?: SessionNotes;
+	/** How long a case's failure waits for a device that dropped off to come back before it is taken for gone (default 90 s). */
+	deviceBackMs?: number;
+	/** How often it looks while waiting (default 2 s). */
+	devicePollMs?: number;
 };
+
+/** The settings the session has applied and so must put back when the device restarts: a fresh boot has the system's defaults. */
+type Applied = { night?: "yes" | "no"; fontScale?: number; appLocales?: string; rotation?: 0 | 1 | 2 | 3 };
 
 /**
  * Owns the settings one suite run changes. `open` first repairs what a killed earlier run left behind (the state it saved
@@ -395,11 +426,23 @@ export type SessionOptions = {
  * port, a text size or language only the suites set: warned about, cleared and noted, never taken for the device's own);
  * `close` restores it. Nothing else in the harness changes these settings, so the other agents' runs on the shared emulator
  * see the device as they left it.
+ *
+ * The device can restart under a long run (the emulator dies, a watchdog restarts it): a fresh boot has the system defaults, and
+ * the reverse ports of the holes are gone. The session records the device's boot id at `open` (`readBootId`), compares it before
+ * every case, after a failed one and in `close`, and when it changed re-applies and reads back every setting it manages
+ * (`guarded`; the restart goes in `notes.deviceRestarts`).
  */
 export class DeviceSession {
 	private network: NetworkMode = "normal";
 	private holes: Holes | null = null;
 	private closed = false;
+	private bootId: string | null;
+	private readonly applied: Applied = {};
+	private restarts = 0;
+	private depth = 0;
+	private readonly warn: (message: string) => void;
+	private readonly deviceBackMs: number;
+	private readonly devicePollMs: number;
 
 	readonly serial: string;
 	readonly packageName: string;
@@ -413,7 +456,8 @@ export class DeviceSession {
 		serial: string,
 		packageName: string,
 		original: DeviceState,
-		options: Required<Pick<SessionOptions, "run" | "stateDir" | "notes">>,
+		bootId: string | null,
+		options: Required<Pick<SessionOptions, "run" | "stateDir" | "notes" | "warn" | "deviceBackMs" | "devicePollMs">>,
 	) {
 		this.serial = serial;
 		this.packageName = packageName;
@@ -421,6 +465,10 @@ export class DeviceSession {
 		this.run = options.run;
 		this.stateDir = options.stateDir;
 		this.notes = options.notes;
+		this.bootId = bootId;
+		this.warn = options.warn;
+		this.deviceBackMs = options.deviceBackMs;
+		this.devicePollMs = options.devicePollMs;
 	}
 
 	static async open(
@@ -433,6 +481,7 @@ export class DeviceSession {
 		const warn = options.warn ?? ((message: string) => console.warn(message));
 		const notes = options.notes ?? newSessionNotes();
 		await mkdir(stateDir, { recursive: true });
+		const bootId = await readBootId(serial, run);
 		let saved: DeviceState | null = null;
 		try {
 			saved = JSON.parse(await readFile(stateFile(serial, stateDir), "utf8")) as DeviceState;
@@ -454,7 +503,14 @@ export class DeviceSession {
 			notes.leftovers.push(...leftovers);
 		}
 		await writeFile(stateFile(serial, stateDir), `${JSON.stringify(original, null, "\t")}\n`);
-		return new DeviceSession(serial, packageName, original, { run, stateDir, notes });
+		return new DeviceSession(serial, packageName, original, bootId, {
+			run,
+			stateDir,
+			notes,
+			warn,
+			deviceBackMs: options.deviceBackMs ?? 90_000,
+			devicePollMs: options.devicePollMs ?? 2_000,
+		});
 	}
 
 	get originalState(): DeviceState {
@@ -470,6 +526,7 @@ export class DeviceSession {
 	async close(): Promise<void> {
 		if (this.closed) return;
 		this.closed = true;
+		await this.noteRestartBeforeRestore();
 		const failures = await restoreState(this.serial, this.packageName, this.original, this.run);
 		if (this.holes) await closeHoles(this.serial, this.holes, this.run);
 		this.holes = null;
@@ -497,27 +554,167 @@ export class DeviceSession {
 	}
 
 	async theme(theme: Theme): Promise<void> {
-		await setNight(this.serial, theme === "dark" ? "yes" : "no", this.run);
+		const night = theme === "dark" ? "yes" : "no";
+		await setNight(this.serial, night, this.run);
+		this.applied.night = night;
 	}
 
 	async fontScale(scale: number): Promise<void> {
 		await writeSetting(this.serial, "system", "font_scale", scale.toFixed(2), this.run);
+		this.applied.fontScale = scale;
 	}
 
 	/** Arabic (right-to-left) or English (left-to-right) for the app, through the per-app language the system keeps. */
 	async direction(direction: Direction): Promise<void> {
-		await setAppLocales(
-			this.serial,
-			this.packageName,
-			direction === "rtl" ? rtlLocale : ltrLocale,
-			this.run,
-		);
+		const locales = direction === "rtl" ? rtlLocale : ltrLocale;
+		await setAppLocales(this.serial, this.packageName, locales, this.run);
+		this.applied.appLocales = locales;
 	}
 
 	/** 0 portrait, 1 landscape (90 degrees), 2 reverse portrait, 3 reverse landscape; auto-rotate is switched off. */
 	async rotation(rotation: 0 | 1 | 2 | 3): Promise<void> {
 		await writeSetting(this.serial, "system", "accelerometer_rotation", "0", this.run);
 		await writeSetting(this.serial, "system", "user_rotation", String(rotation), this.run);
+		this.applied.rotation = rotation;
+	}
+
+	/** The proxy the current network mode means: a failing one on a port of the holes, or the device's own. */
+	private expectedProxy(): string | null {
+		return this.network === "normal" || this.holes === null
+			? this.original.proxy
+			: `localhost:${this.network === "hang" ? this.holes.hang : this.holes.refuse}`;
+	}
+
+	/** The device's boot id now; with `wait`, a device that dropped off is waited for (a restart takes a while) before its failure is thrown. */
+	private async currentBootId(wait: boolean): Promise<string | null> {
+		const deadline = Date.now() + this.deviceBackMs;
+		for (;;) {
+			try {
+				return await readBootId(this.serial, this.run);
+			} catch (error) {
+				if (!wait || !deviceGone(error) || Date.now() >= deadline) throw error;
+				await sleep(this.devicePollMs);
+			}
+		}
+	}
+
+	/** When the device booted: now less its uptime; the moment of noticing when the uptime cannot be read. */
+	private async bootedAt(): Promise<string> {
+		try {
+			const uptime = Number.parseFloat((await this.run(this.serial, ["shell", "cat", "/proc/uptime"])).split(/\s+/)[0] ?? "");
+			if (Number.isFinite(uptime) && uptime >= 0) return new Date(Date.now() - uptime * 1000).toISOString();
+		} catch {
+			// the time of noticing is the answer
+		}
+		return new Date().toISOString();
+	}
+
+	private async recordRestart(bootId: string, action: string): Promise<void> {
+		const at = await this.bootedAt();
+		this.bootId = bootId;
+		this.restarts++;
+		this.notes.deviceRestarts.push({ at, bootId });
+		this.warn(`the device restarted at ${at} (boot id ${bootId}): ${action}`);
+	}
+
+	private async waitBooted(): Promise<void> {
+		const deadline = Date.now() + this.deviceBackMs;
+		for (;;) {
+			try {
+				if ((await this.run(this.serial, ["shell", "getprop", "sys.boot_completed"])).trim() === "1") return;
+			} catch (error) {
+				if (!deviceGone(error)) throw error;
+			}
+			if (Date.now() >= deadline)
+				throw new DeviceStateError(`${this.serial} restarted and did not finish booting in ${this.deviceBackMs} ms`);
+			await sleep(this.devicePollMs);
+		}
+	}
+
+	/**
+	 * Whether the device restarted since the last look (its boot id changed); if it did, records the restart and puts back every
+	 * setting the session manages, then reads them back: a setting that reads differently is a `DeviceStateError`. The reverse
+	 * ports of the holes died with the device and are made again (the host side still listens on the same ports).
+	 */
+	async checkRestart(options: { wait?: boolean } = {}): Promise<boolean> {
+		if (this.bootId === null) return false;
+		const now = await this.currentBootId(options.wait ?? false);
+		if (now === null || now === this.bootId) return false;
+		await this.recordRestart(now, "re-applying its settings");
+		await this.waitBooted();
+		await this.run(this.serial, ["shell", "input", "keyevent", "KEYCODE_WAKEUP"]);
+		const { night, fontScale, appLocales, rotation } = this.applied;
+		if (night !== undefined) await setNight(this.serial, night, this.run);
+		if (fontScale !== undefined)
+			await writeSetting(this.serial, "system", "font_scale", fontScale.toFixed(2), this.run);
+		if (appLocales !== undefined) await setAppLocales(this.serial, this.packageName, appLocales, this.run);
+		if (rotation !== undefined) await this.rotation(rotation);
+		if (this.holes) {
+			await this.run(this.serial, ["reverse", `tcp:${this.holes.hang}`, `tcp:${this.holes.hang}`]);
+			await this.run(this.serial, ["reverse", `tcp:${this.holes.refuse}`, `tcp:${this.holes.refuse}`]);
+		}
+		const proxy = this.expectedProxy();
+		if (proxy !== null || (await setting(this.serial, "global", "http_proxy", this.run)) !== null)
+			await setProxy(this.serial, proxy, this.run);
+		const state = await captureState(this.serial, this.packageName, this.run);
+		const wrong: string[] = [];
+		if (night !== undefined && state.night !== night) wrong.push(`night: "${night}" -> ${JSON.stringify(state.night)}`);
+		if (fontScale !== undefined && Number(state.fontScale ?? 1) !== fontScale)
+			wrong.push(`fontScale: ${fontScale.toFixed(2)} -> ${JSON.stringify(state.fontScale)}`);
+		if (appLocales !== undefined && state.appLocales !== appLocales)
+			wrong.push(`appLocales: ${JSON.stringify(appLocales)} -> ${JSON.stringify(state.appLocales)}`);
+		if (rotation !== undefined && (state.accelerometerRotation !== "0" || state.userRotation !== String(rotation)))
+			wrong.push(
+				`rotation: ${rotation} -> accelerometer_rotation ${JSON.stringify(state.accelerometerRotation)}, user_rotation ${JSON.stringify(state.userRotation)}`,
+			);
+		if (state.proxy !== proxy) wrong.push(`proxy: ${JSON.stringify(proxy)} -> ${JSON.stringify(state.proxy)}`);
+		if (wrong.length > 0)
+			throw new DeviceStateError(
+				`${this.serial} restarted and its settings read back differently after they were re-applied: ${wrong.join("; ")}`,
+			);
+		return true;
+	}
+
+	/**
+	 * Runs one case (a launch, or the whole case): the device is checked for a restart first; a failure is checked again (the
+	 * device may have restarted under the case, so it was lost or showed a fresh boot's settings), and when it had, the settings are
+	 * back and the case is run once more. Inside another `guarded` only the first check applies: the outer one retries.
+	 */
+	async guarded<T>(body: () => Promise<T>, log: (message: string) => void = console.log): Promise<T> {
+		if (this.depth > 0) {
+			await this.checkRestart();
+			return body();
+		}
+		this.depth++;
+		try {
+			await this.checkRestart();
+			const before = this.restarts;
+			try {
+				return await body();
+			} catch (error) {
+				const restarted = await this.checkRestart({ wait: true }).catch((checkError: unknown) => {
+					if (deviceGone(checkError)) return false;
+					throw checkError;
+				});
+				if (!restarted && this.restarts === before) throw error;
+				log("  the device restarted under the case: retrying it once");
+				return await body();
+			}
+		} finally {
+			this.depth--;
+		}
+	}
+
+	/** At `close`: a restart is recorded, but nothing is re-applied: the restore is about to put the original settings back. */
+	private async noteRestartBeforeRestore(): Promise<void> {
+		if (this.bootId === null) return;
+		try {
+			const now = await this.currentBootId(false);
+			if (now !== null && now !== this.bootId)
+				await this.recordRestart(now, "restoring its original settings");
+		} catch {
+			// a device that is gone is what the restore reports
+		}
 	}
 
 	/**

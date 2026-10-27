@@ -142,7 +142,9 @@ class EngineStack(context: Context) : EngineView(context) {
     backCallback.remove()
     backRegistered = false
     releaseGesture()
-    for (i in 0 until childCount) (getChildAt(i) as? EngineScreen)?.let { land(it) }
+    // A landing may remove the screen (a pop cut short), so the list is taken first.
+    val screens = (0 until childCount).mapNotNull { getChildAt(it) as? EngineScreen }
+    for (s in screens) land(s)
   }
 
   /**

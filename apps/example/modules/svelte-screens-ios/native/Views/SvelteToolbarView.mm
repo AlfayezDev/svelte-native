@@ -1,6 +1,7 @@
 #import "SvelteToolbarView.h"
 
 #import <cmath>
+#import <objc/runtime.h>
 
 #import <React/RCTComponentViewFactory.h>
 #import <React/RCTConversions.h>
@@ -20,6 +21,10 @@ using namespace facebook::react;
 static const CGFloat kSvelteToolbarTarget = 44;
 /// An image is drawn 24 pt (`SvelteTemplateImage`).
 static const CGFloat kSvelteToolbarIcon = 24;
+
+/// The look last assigned to a `UIToolbar`, kept on the bar: it is the navigation controller's, shared by every screen of the stack,
+/// and every appearance setter makes it lay out again, whether the value is equal or not.
+static const void *kSvelteToolbarLook = &kSvelteToolbarLook;
 
 static BOOL SvelteSameString(NSString *_Nullable a, NSString *_Nullable b) {
   return (a == nil && b == nil) || (a != nil && b != nil && [a isEqualToString:b]);
@@ -603,6 +608,11 @@ static CGFloat SvelteRoundToPixel(CGFloat value) {
 // As the header's: the bar keeps its configured look, a translucent one is transparent while the content is at its end (under it
 // when the content is scrolled to its end, nothing is under the bar), so that the content may run under the blurred bar.
 - (void)applyAppearanceTo:(UIToolbar *)toolbar {
+  // What the appearance depends on: translucency, tint and background. The bar keeps what it was given until one of them changes.
+  NSString *look = [NSString stringWithFormat:@"%d|%d:%08x|%d:%08x", _spec.translucent ? 1 : 0, _spec.tint.set ? 1 : 0, (unsigned)_spec.tint.argb,
+                                              _spec.background.set ? 1 : 0, (unsigned)_spec.background.argb];
+  if ([objc_getAssociatedObject(toolbar, kSvelteToolbarLook) isEqualToString:look]) return;
+  objc_setAssociatedObject(toolbar, kSvelteToolbarLook, look, OBJC_ASSOCIATION_COPY_NONATOMIC);
   toolbar.tintColor = SvelteColor(_spec.tint);
   UIToolbarAppearance *standard = [self appearanceWithTransparentBackground:NO];
   UIToolbarAppearance *edge = _spec.translucent ? [self appearanceWithTransparentBackground:YES] : standard;

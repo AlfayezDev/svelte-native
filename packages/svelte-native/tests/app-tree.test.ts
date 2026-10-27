@@ -182,6 +182,13 @@ test("the app's tree: the root stack's pages and presentations, the workspace as
 const workspaceTabs = [{ key: "home", title: "Home" }, { key: "settings", title: "Settings" }];
 const mountApp = async (surface: number, initial: string) => mountTree(surface, { initial, files: await appFiles(), tabs: workspaceTabs });
 
+// What each shown header says of its back arrow, by title (the stub pages title themselves with their path).
+const backFlags = (nodes: FakeNode[]) => Object.fromEntries(ofKind(nodes, "header").map((node) => {
+  const pairs = parseNativeID(String(node.props.nativeID))?.pairs ?? {};
+  return [decodeURIComponent(String(pairs.t)), pairs.bk === "1"];
+}));
+const arrows = (router: TreeRouter) => router.screens.filter((screen) => !screen.leaving).map((screen) => screen.canGoBack);
+
 test("login, the workspaces, a workspace's home pane, Workspace settings selects the settings tab, the account is a modal over the tabs", async () => {
   withInsets(24);
   try {
@@ -191,57 +198,66 @@ test("login, the workspaces, a workspace's home pane, Workspace settings selects
     await settled();
     expect(pathsOf(router)).toEqual(["/workspaces"]);
 
-    // The picker opens a workspace: `reset` into the tabs resets the pane, not the root, so the picker stays below the workspace.
+    // The list opens a workspace: reset is a new root, so the tabs screen is the root's only entry (and its base).
     router.goto("/acme", { reset: true });
     await settled();
-    expect(pathsOf(router)).toEqual(["/workspaces", "/acme"]);
-    expect(router.entries[1].params).toEqual({ slug: "acme" });
+    expect(pathsOf(router)).toEqual(["/acme"]);
+    expect(router.entries[0].params).toEqual({ slug: "acme" });
     expect(router.current.url.pathname).toBe("/acme/home"); // the deepest shown entry: the home pane's base
     expect(selectedIndex(120)).toBe("0");
     expect(paneRouter("/acme/home").scope).toBe("home");
     expect(treeGlobals.__treePanes).toEqual([{ key: "home" }, { key: "settings" }]);
     expect(ofKind(tree(), "tab").map((pane) => String(parseNativeID(String(pane.props.nativeID))?.pairs.k))).toEqual(["home", "settings"]);
+    expect(arrows(router)).toEqual([false]); // no back arrow on the tabs screen,
+    expect(backFlags(tree())).toMatchObject({ "/acme/home": false }); // nor on the home pane's base
+    expect(hardwareBack()).toBe(false); // and the back key leaves the app
 
     // "Manage workspace" is goto(`/${slug}/settings`) from the home pane: it selects the settings tab, nothing is pushed on the root.
     paneRouter("/acme/home").goto("/acme/settings");
     await settled();
     expect(selectedIndex(120)).toBe("1");
     expect(treeGlobals.__treeTabsRouter?.selected).toBe("settings");
-    expect(pathsOf(router)).toEqual(["/workspaces", "/acme"]);
+    expect(pathsOf(router)).toEqual(["/acme"]);
     expect(router.current.url.pathname).toBe("/acme/settings");
     expect(pathsOf(paneRouter("/acme/settings"))).toEqual(["/acme/settings"]);
 
-    // A section is a page pushed within the settings pane; the tab bar stays.
+    // A section is a page pushed within the settings pane; the tab bar stays, and the section has the back arrow.
     paneRouter("/acme/settings").goto("/acme/settings/devices");
     await settled();
     expect(pathsOf(paneRouter("/acme/settings"))).toEqual(["/acme/settings", "/acme/settings/devices"]);
     expect(paneRouter("/acme/settings/devices").entries[1].params).toEqual({ slug: "acme", section: "devices" });
     expect(router.current.url.pathname).toBe("/acme/settings/devices");
     expect(selectedIndex(120)).toBe("1");
+    expect(arrows(paneRouter("/acme/settings"))).toEqual([false, true]);
+    expect(backFlags(tree())).toMatchObject({ "/acme/settings": false, "/acme/settings/devices": true });
 
     // The account is a root page presented as a modal over the tabs, from either pane.
     paneRouter("/acme/settings").goto("/account");
     await settled();
-    expect(pathsOf(router)).toEqual(["/workspaces", "/acme", "/account"]);
-    expect(router.entries[2].presentation).toBe("modal");
+    expect(pathsOf(router)).toEqual(["/acme", "/account"]);
+    expect(router.entries[1].presentation).toBe("modal");
     expect(router.current.url.pathname).toBe("/account");
     expect(ofKind(tree(), "screen").map((screen) => parseNativeID(String(screen.props.nativeID))?.pairs.p).filter((value) => value === "modal")).toHaveLength(1);
     expect(treeGlobals.__treeTabsRouter?.selected).toBe("settings"); // the tabs are still there under the modal
+    expect(backFlags(tree())["/account"]).toBe(false); // a modal gets no arrow: its page's Close button is the way out
 
     // Back closes the modal first, then pops the section; the selected tab never changes.
     expect(hardwareBack()).toBe(true);
     await settled();
-    expect(pathsOf(router)).toEqual(["/workspaces", "/acme"]);
+    expect(pathsOf(router)).toEqual(["/acme"]);
     expect(router.current.url.pathname).toBe("/acme/settings/devices");
     expect(hardwareBack()).toBe(true);
     await settled();
     expect(pathsOf(paneRouter("/acme/settings"))).toEqual(["/acme/settings"]);
     expect(selectedIndex(120)).toBe("1");
     expect(router.current.url.pathname).toBe("/acme/settings");
+    expect(hardwareBack()).toBe(false); // the settings pane's base: back does not switch to the home tab, and nothing is below the tabs
+    await settled();
+    expect(selectedIndex(120)).toBe("1");
   } finally { reset(); }
 });
 
-test("back at the base of the settings pane does not switch to the home tab: with the workspace alone on the stack the key leaves the app, with the picker below it pops the workspace", async () => {
+test("back at the base of the settings pane does not switch to the home tab, whether the tabs were opened by a link, by the list's reset, or over the list", async () => {
   withInsets(24);
   try {
     const alone = await mountApp(121, "/acme/settings");
@@ -256,14 +272,24 @@ test("back at the base of the settings pane does not switch to the home tab: wit
     expect(selectedIndex(121)).toBe("1");
     expect(alone.router.current.url.pathname).toBe("/acme/settings");
 
-    const below = await mountApp(122, "/workspaces");
+    // Opened from the list with a reset (what the list and the creation of a workspace do): nothing is left below the workspace.
+    const opened = await mountApp(122, "/workspaces");
+    opened.router.goto("/acme/settings", { reset: true });
+    await opened.settled();
+    expect(pathsOf(opened.router)).toEqual(["/acme"]);
+    expect(selectedIndex(122)).toBe("1");
+    expect(opened.hardwareBack()).toBe(false);
+    expect(selectedIndex(122)).toBe("1");
+
+    // Pushed over the list (a link while the list is shown): the key pops the workspace, still without switching tabs on the way.
+    const below = await mountApp(123, "/workspaces");
     below.router.goto("/acme/settings");
     await below.settled();
     expect(pathsOf(below.router)).toEqual(["/workspaces", "/acme"]);
-    expect(selectedIndex(122)).toBe("1");
+    expect(selectedIndex(123)).toBe("1");
     below.router.goto("/acme/home");
     await below.settled();
-    expect(selectedIndex(122)).toBe("0"); // navigating selects; only that does
+    expect(selectedIndex(123)).toBe("0"); // navigating selects; only that does
     below.router.goto("/acme/settings");
     await below.settled();
     expect(below.hardwareBack()).toBe(true);
@@ -279,7 +305,7 @@ test("the session guard on the app's tree: login, onboarding and workspaces by t
   withInsets(24);
   try {
     // Signed out: everything but the login goes to it, from a workspace and from a modal over one.
-    const out = await mountApp(123, "/acme/home");
+    const out = await mountApp(124, "/acme/home");
     expect(out.router.current.url.pathname).toBe("/acme/home");
     guard(out.router, signedIn({ user: null }));
     await out.settled();
@@ -326,34 +352,42 @@ test("the session guard on the app's tree: login, onboarding and workspaces by t
   } finally { reset(); }
 });
 
-test("the session guard sends the user to the workspaces when the shown workspace is no longer theirs, and a workspace under a modal waits until it is shown again", async () => {
+test("the session guard sends the user to the workspaces when their workspace is no longer theirs; the account modal above it stays", async () => {
   withInsets(24);
   try {
-    const { router, settled } = await mountApp(124, "/workspaces");
+    const { router, settled } = await mountApp(125, "/workspaces");
     router.goto("/acme", { reset: true });
     await settled();
-    expect(pathsOf(router)).toEqual(["/workspaces", "/acme"]);
-    // The workspace's tabs are the root's last entry, not its first: the slug is read from there.
-    expect(router.entries[0].params.slug).toBeUndefined();
-    expect(router.entries.at(-1)?.params.slug).toBe("acme");
+    expect(pathsOf(router)).toEqual(["/acme"]);
+    expect(router.entries[0].params.slug).toBe("acme"); // the workspace is the root's base
     guard(router, signedIn());
-    expect(pathsOf(router)).toEqual(["/workspaces", "/acme"]); // still theirs: nothing happens
+    expect(pathsOf(router)).toEqual(["/acme"]); // still theirs: nothing happens
     guard(router, signedIn({ workspaces: [{ slug: "other" }] }));
     await settled();
     expect(pathsOf(router)).toEqual(["/workspaces"]);
 
-    // The account modal that deleted the workspace stays up; the guard acts when the workspace is shown again.
+    // The account modal that deleted the workspace stays up: the list replaces the workspace under it.
     router.goto("/acme", { reset: true });
     router.goto("/account");
     await settled();
-    expect(pathsOf(router)).toEqual(["/workspaces", "/acme", "/account"]);
-    const deleted = signedIn({ workspaces: [] });
-    guard(router, deleted);
-    expect(pathsOf(router)).toEqual(["/workspaces", "/acme", "/account"]);
+    expect(pathsOf(router)).toEqual(["/acme", "/account"]);
+    const modal = router.entries[1];
+    guard(router, signedIn({ workspaces: [] }));
+    await settled();
+    expect(pathsOf(router)).toEqual(["/workspaces", "/account"]);
+    expect(router.entries[1]).toBe(modal);
+    expect(router.current.url.pathname).toBe("/account");
     router.back(); // the modal's Close
     await settled();
-    expect(router.current.url.pathname).toBe("/acme/home");
-    guard(router, deleted);
+    expect(pathsOf(router)).toEqual(["/workspaces"]);
+
+    // A workspace pushed over the list (a link) is dealt with when it is the shown one.
+    router.goto("/acme");
+    await settled();
+    expect(pathsOf(router)).toEqual(["/workspaces", "/acme"]);
+    guard(router, signedIn());
+    expect(pathsOf(router)).toEqual(["/workspaces", "/acme"]);
+    guard(router, signedIn({ workspaces: [] }));
     await settled();
     expect(pathsOf(router)).toEqual(["/workspaces"]);
   } finally { reset(); }
@@ -362,17 +396,17 @@ test("the session guard sends the user to the workspaces when the shown workspac
 test("replaceBase on the root router replaces the first screen with a root page and keeps the screens above it", async () => {
   withInsets(24);
   try {
-    const { router, settled } = await mountApp(125, "/workspaces");
+    const { router, settled } = await mountApp(126, "/workspaces");
     router.goto("/acme", { reset: true });
     router.goto("/account");
     await settled();
-    const [first, tabs, modal] = router.entries;
-    router.replaceBase("/workspaces");
+    const [tabs, modal] = router.entries;
+    router.replaceBase("/workspaces"); // the workspace under the modal goes, the modal stays
     await settled();
-    expect(pathsOf(router)).toEqual(["/workspaces", "/acme", "/account"]);
-    expect(router.entries[0]).not.toBe(first); // a new entry for the same page
-    expect(router.entries[1]).toBe(tabs);
-    expect(router.entries[2]).toBe(modal);
+    expect(pathsOf(router)).toEqual(["/workspaces", "/account"]);
+    expect(router.entries[0]).not.toBe(tabs);
+    expect(router.entries[1]).toBe(modal);
+    expect(arrows(router)).toEqual([false, true]);
     expect(() => router.replaceBase("/acme")).toThrow(); // the workspace is a navigator's screen, not a page of the root stack
   } finally { reset(); }
 });

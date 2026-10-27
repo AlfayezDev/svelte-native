@@ -478,6 +478,8 @@ class EngineToolbar(context: Context) : EngineView(context) {
     cachedInset = SafeArea.bottom(this) ?: -1
     val rowTop = max(0, (b - t) - inset() - barPx)
     layoutRow(r - l, rowTop)
+    // In a sheet the band follows the sheet's visible bottom (`EngineSheet.syncToolbar`); it has a size now.
+    (parent as? EngineSheet)?.syncToolbar()
     if (isAttachedToWindow) reportMetrics()
   }
 

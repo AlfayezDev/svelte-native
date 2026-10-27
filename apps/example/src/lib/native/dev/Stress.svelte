@@ -209,6 +209,16 @@
     });
   }
 
+  /**
+   * `onLayout` is emitted when Fabric commits, usually before the engine has applied the mount on the UI thread, so a window opened
+   * right after `laidOut` would hold that apply and the first draw of the new rows as one frame interval (70 ms for 300 rows on the A16:
+   * 43 ms of view creation, then a 29 ms frame recording them) instead of the scrolling it is meant to measure. Six frames are enough
+   * for the rows to be on screen and the renderer to have caught up.
+   */
+  async function mountFrames(signal: AbortSignal) {
+    for (let frame = 0; frame < 6 && !signal.aborted; frame++) await new Promise<void>((resolve) => { requestAnimationFrame(() => resolve()); });
+  }
+
   /** `profile` turns on the host's per-flush timings (`__svelteFabricProfile`) and returns every flush of the mount in `detail.flushes`. */
   async function virtualList300(signal: AbortSignal, profile: boolean): Promise<Omit<Result, "name">> {
     const scope = globalThis as { __svelteFabricProfile?: boolean; __svelteFlushLog?: unknown[] };
@@ -228,6 +238,7 @@
       scope.__svelteFabricProfile = false;
     }
     const mountMs = performance.now() - mountStart;
+    await mountFrames(signal);
     const flushes = profile ? (scope.__svelteFlushLog ?? []).map((flush) => ({ ...(flush as Record<string, number>), at: (flush as { at: number }).at - mountStart })) : undefined;
     const { frames } = await measure(async () => {
       for (let leg = 0; leg < 3 && !signal.aborted; leg++) {
@@ -280,6 +291,7 @@
       const svelteMs = performance.now() - mountStart;
       await laidOut;
       const mountMs = performance.now() - mountStart;
+      await mountFrames(signal);
       const { frames } = await measure(async () => {
         for (let leg = 0; leg < 3 && !signal.aborted; leg++) {
           scroller?.scrollToEnd({ animated: true });

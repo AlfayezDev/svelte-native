@@ -114,7 +114,9 @@ describe("resolving an href to a page and its chain of navigators", () => {
   });
 
   test("no page, no match; a bad escape is no match", () => {
-    expect(resolve(tree, "/nowhere")).toBeNull();
+    // "/nowhere" is a workspace slug, so it is the tabs screen; a path no route has the shape of is nothing.
+    expect(resolve(tree, "/a/b/c/d/e")).toBeNull();
+    expect(resolve(tree, "/acme/inbox/compose/more")).toBeNull();
     expect(resolve(tree, "/acme/inbox/%E0%A4%A")).toBeNull();
   });
 });

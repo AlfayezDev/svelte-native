@@ -83,6 +83,17 @@ describe("paths", () => {
     expect(locate(tree, "/t")?.route.kind).toBe("tabs");
     expect(locate(tree, "/nowhere/else")).toBeNull();
   });
+
+  test("an entry is located by the id of the route it was, so a page and a navigator that share a path come back as they were; an id that is gone falls back to the href", () => {
+    const tree = buildTree([file("x/flow/+layout.mobile.svelte", { navigator: "stack" }), file("x/flow/start/+mobile.svelte"), file("x/[id]/+mobile.svelte")]);
+    const navigated = resolve(tree, "/x/flow");
+    expect(navigated?.page.id).toBe("x/[id]"); // the navigator's own path is no page: navigating to it lands on the page
+    expect(locate(tree, "/x/flow")?.route.id).toBe("x/flow"); // by the href alone, the first route that matches: the navigator
+    expect(locate(tree, "/x/flow", "x/[id]")).toMatchObject({ route: { id: "x/[id]", kind: "page" }, params: { id: "flow" } });
+    expect(locate(tree, "/x/flow", "x/flow")?.route.kind).toBe("stack");
+    expect(locate(tree, "/x/7", "renamed")).toMatchObject({ route: { id: "x/[id]" }, params: { id: "7" } });
+    expect(locate(tree, "/x/7", "x/flow")?.route.id).toBe("x/[id]"); // the id's route no longer matches the href
+  });
 });
 
 describe("order", () => {

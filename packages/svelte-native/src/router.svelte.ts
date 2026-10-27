@@ -271,7 +271,7 @@ function createStore(tree: StackNode) {
     return {
       entries: stack.entries.map((entry) => {
         const navigator = entry.navigator;
-        const saved = { href: hrefOf(entry), presentation: entry.presentation };
+        const saved = { route: entry.route.id, href: hrefOf(entry), presentation: entry.presentation };
         if (navigator?.kind === "stack") return { ...saved, stack: snapshot(navigator.stack) };
         if (navigator) return { ...saved, tabs: { selected: navigator.selected, panes: Object.fromEntries([...navigator.panes].map(([key, pane]) => [key, snapshot(pane)])) } };
         return saved;
@@ -280,7 +280,7 @@ function createStore(tree: StackNode) {
   }
   function restoreEntries(node: StackNode, saved: StackSnapshot, baseBack = false): NativeLocation[] {
     return saved.entries.map((row, index) => {
-      const hit = locate(node, row.href);
+      const hit = locate(node, row.href, row.route);
       if (!hit) throw unresolved(row.href);
       const canGoBack = index > 0 || baseBack;
       const entry = entryFor(hit.route, row.href, hit.params, row.presentation, canGoBack);

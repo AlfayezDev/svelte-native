@@ -4,6 +4,8 @@ import type { Presentation } from "./fabric/navigation.ts";
 /** One stack of a router as hot reload keeps it: its entries bottom first, each with the state of the navigator it is the screen of. */
 export type StackSnapshot = {
   entries: {
+    /** The id of the route the entry shows (a page, or a navigator); restore finds it by this and falls back to the href, so a snapshot without it still restores. */
+    route?: string;
     href: string;
     presentation: Presentation;
     /** The nested stack's entries (a stack navigator's screen). */

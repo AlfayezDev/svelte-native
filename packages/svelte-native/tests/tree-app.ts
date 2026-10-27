@@ -28,16 +28,23 @@ export const files: RouteFile[] = [
   file("(workspace)/+layout.mobile.svelte"),
 ];
 
-/** The tree `buildTree` makes of `files`, linked to the test components the way the generated table links the app's. */
-export function appTree({ bareTabs = false, logLoads, hold }: { bareTabs?: boolean; logLoads?: string[]; hold?: Record<string, ((error?: Error) => void)[]> } = {}): StackNode {
-  const layouts: Record<string, Component> = {
-    "(workspace)/+layout.mobile.svelte": ContentLayout,
-    "(workspace)/[slug]/(tabs)/+layout.mobile.svelte": bareTabs ? BareTabsLayout : TabsLayout,
-    "(workspace)/[slug]/(tabs)/inbox/+layout.mobile.svelte": StackLayout,
-    "(workspace)/[slug]/flow/+layout.mobile.svelte": StackLayout,
-    "(workspace)/[slug]/flow/inner/+layout.mobile.svelte": StackLayout,
+/** A page and a navigator in one stack whose paths overlap: `/x/flow` is the navigator's own, yet navigating to it lands on the page `/x/[id]`. */
+export const collidingFiles: RouteFile[] = [
+  file("+layout.mobile.svelte"),
+  file("x/flow/+layout.mobile.svelte", { navigator: "stack" }),
+  file("x/flow/start/+mobile.svelte"),
+  file("x/[id]/+mobile.svelte"),
+];
+
+type AppTreeOptions = { files?: RouteFile[]; bareTabs?: boolean; logLoads?: string[]; hold?: Record<string, ((error?: Error) => void)[]> };
+
+/** The tree `buildTree` makes of `files` (the product shape by default), linked to the test components the way the generated table links the app's: a layout is a tabs bar, a stack or a content layout by what it exports. */
+export function appTree({ files: source = files, bareTabs = false, logLoads, hold }: AppTreeOptions = {}): StackNode {
+  const componentOf = (path: string): Component => {
+    const layout = source.find((candidate) => candidate.path === path && path.endsWith("+layout.mobile.svelte"));
+    if (!layout) return Page;
+    return layout.exports.navigator === "tabs" ? (bareTabs ? BareTabsLayout : TabsLayout) : layout.exports.navigator === "stack" ? StackLayout : ContentLayout;
   };
-  const componentOf = (path: string): Component => layouts[path] ?? Page;
   // With `hold`, a loader waits until the test calls the release it left there (given an error, the load fails with it).
   const loader = (path: string, around: readonly string[] = []) => () => {
     logLoads?.push(path);
@@ -52,5 +59,5 @@ export function appTree({ bareTabs = false, logLoads, hold }: { bareTabs?: boole
     return node.layoutFile === undefined ? linked as Node : { ...linked, layout: loader(node.layoutFile, node.layouts) } as Node;
   };
   const link = (route: PageRoute | RouteNode): PageRoute | RouteNode => route.kind === "page" ? { ...route, load: loader(route.file ?? "", route.layouts) } : linkNode(route);
-  return linkNode(buildTree(files));
+  return linkNode(buildTree(source));
 }

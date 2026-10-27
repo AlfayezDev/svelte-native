@@ -296,9 +296,16 @@ export function resolve(tree: StackNode, href: string): Resolution | null {
   return { page: hit.page, params: hit.params, chain: hit.chain, href: `${hit.canonical ? fillPath(hit.page.path, hit.params) : url.pathname}${rest}` };
 }
 
-/** The route of `stack` an entry href shows: one of its pages, or the screen of one of its navigators (matched on the navigator's own path). */
-export function locate(stack: StackNode, href: string): { route: PageRoute | RouteNode; params: Record<string, string> } | null {
+/**
+ * The route of `stack` an entry shows: the one with the `id` it was recorded with when that route is still there and still matches
+ * the href (a page and a navigator of one stack can share a path: only the id says which it was), else the first route whose own
+ * path matches, a page or the screen of a navigator.
+ */
+export function locate(stack: StackNode, href: string, id?: string): { route: PageRoute | RouteNode; params: Record<string, string> } | null {
   const { pathname } = new URL(href, BASE);
+  const known = id === undefined ? undefined : stack.routes.find((route) => route.id === id);
+  const knownParams = known && matchPath(known.path, pathname);
+  if (known && knownParams) return { route: known, params: knownParams };
   for (const route of stack.routes) {
     const params = matchPath(route.path, pathname);
     if (params) return { route, params };

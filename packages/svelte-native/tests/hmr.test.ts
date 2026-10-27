@@ -43,9 +43,9 @@ async function load(fixture = "hmr-fixture.svelte") {
     stdin: {
       contents: `import Fixture from './${fixture}';
         import { createFabricApp, remountSurfaces, showError } from '../src/fabric/index.ts';
-        import { appTree } from './tree-app.ts';
+        import { appTree, collidingFiles } from './tree-app.ts';
         import { tick } from 'svelte';
-        export { createFabricApp, remountSurfaces, showError, tick, Fixture, appTree };`,
+        export { createFabricApp, remountSurfaces, showError, tick, Fixture, appTree, collidingFiles };`,
       resolveDir: import.meta.dirname,
     },
     bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], write: false,
@@ -87,7 +87,7 @@ test("remountSurfaces unmounts the old tree and mounts the fresh app on the same
   expect(texts(31)).toEqual(["v1:/:1"]);
 
   // The surface's exports are not reachable through the runnable, so navigate through the router the fixture created.
-  expect(hmrState().navigation?.()).toEqual({ entries: [{ href: "/", presentation: "push" }] });
+  expect(hmrState().navigation?.()).toEqual({ entries: [{ route: "/", href: "/", presentation: "push" }] });
 
   // A hot update re-runs the entry: same registration call, new component props.
   const first = commits.length;
@@ -117,7 +117,8 @@ test("the navigation stack survives a remount", async () => {
   await settle(m);
   expect(texts(32)).toEqual(["v1:/b:2"]);
   expect((globalThis as { __routeLoads?: string[] }).__routeLoads).toEqual(["/a", "/b"]); // the adopted stack's routes load again when their screens render; the others wait for a navigation
-  expect(hot.navigation()).toEqual(saved);
+  // A snapshot without route ids restores by href; the next one records them.
+  expect(hot.navigation()).toEqual({ entries: [{ route: "/a", href: "/a", presentation: "push" }, { route: "/b", href: "/b?x=1", presentation: "push" }] });
   expect(hot.restore).toBeUndefined();
 });
 
@@ -177,7 +178,7 @@ test("a named router's stack survives a remount too: the root takes the recorded
   expect(texts(34)).toEqual(["v2:2", "tab:/t/a,/t/b,/t/c,/t/a"]);
 });
 
-type TreeRouter = { entries: { url: URL; presentation: string }[]; goto(href: string, options?: { reset?: boolean }): void; selected: string | undefined };
+type TreeRouter = { entries: { url: URL; presentation: string; route: { id: string } }[]; screens: { canGoBack: boolean; leaving: boolean }[]; goto(href: string, options?: { reset?: boolean }): void; selected: string | undefined };
 const treeScope = globalThis as { __shellRouter?: TreeRouter; __treeRouters?: Record<string, TreeRouter> };
 const hrefs = (router: TreeRouter | undefined) => router?.entries.map((entry) => entry.url.pathname);
 const turns = async (m: { tick: () => Promise<void> }) => { for (let turn = 0; turn < 8; turn++) await settle(m); };
@@ -242,4 +243,50 @@ test("a saved state of routes that no longer exist is dropped: the router starts
   await turns(m);
   expect(hrefs(treeScope.__shellRouter)).toEqual(["/acme"]); // a pane that is gone is ignored, the screen that is still there is kept
   expect(nodesOf(36, "tabs")[0].props.nativeID).toContain("sel=0");
+});
+
+test("a restored entry is the route it was: a page the resolver chose over a navigator of the same path is not rebuilt as the navigator, and an id that is gone falls back to the href", async () => {
+  delete (globalThis as { __svelteNativeHmrState?: unknown }).__svelteNativeHmrState; // each test loads its own module instances
+  const m = await load("hmr-tree-shell.svelte");
+  roots = {}; commits.length = 0;
+  const tree = () => m.appTree({ files: m.collidingFiles });
+  m.createFabricApp(m.Fixture, { tree: tree(), initial: "/x/flow" });
+  runnables.main({ rootTag: 37 });
+  await turns(m);
+  expect(treeScope.__shellRouter?.entries.map((entry) => entry.route.id)).toEqual(["x/[id]"]); // `/x/flow` navigated to the page, not to the navigator whose own path it is
+  expect(texts(37)).toEqual(["page /x/flow"]);
+  expect(hmrState().navigation?.().entries.map((entry) => entry.route)).toEqual(["x/[id]"]);
+
+  m.createFabricApp(m.Fixture, { tree: tree(), initial: "/x/flow" });
+  m.remountSurfaces();
+  await turns(m);
+  expect(treeScope.__shellRouter?.entries.map((entry) => entry.route.id)).toEqual(["x/[id]"]);
+  expect(texts(37)).toEqual(["page /x/flow"]);
+
+  // A route that was renamed (its id is gone) is found by its href.
+  hmrState().navigation = () => ({ entries: [{ route: "x/[slug]", href: "/x/7", presentation: "push" }] });
+  m.createFabricApp(m.Fixture, { tree: tree(), initial: "/x/flow" });
+  m.remountSurfaces();
+  await turns(m);
+  expect(treeScope.__shellRouter?.entries.map((entry) => entry.route.id)).toEqual(["x/[id]"]);
+  expect(texts(37)).toEqual(["page /x/7"]);
+});
+
+test("a restored nested stack navigator keeps its first screen's way back: the screen below it on the stack above is restored with it", async () => {
+  delete (globalThis as { __svelteNativeHmrState?: unknown }).__svelteNativeHmrState; // each test loads its own module instances
+  const m = await load("hmr-tree-shell.svelte");
+  roots = {}; commits.length = 0;
+  m.createFabricApp(m.Fixture, { tree: m.appTree(), initial: "/acme/home" });
+  runnables.main({ rootTag: 38 });
+  await turns(m);
+  treeScope.__shellRouter?.goto("/acme/flow/start");
+  await turns(m);
+  const arrows = () => treeScope.__treeRouters?.["/acme/flow/start"]?.screens.filter((screen) => !screen.leaving).map((screen) => screen.canGoBack);
+  expect(arrows()).toEqual([true]);
+  treeScope.__treeRouters = {};
+  m.createFabricApp(m.Fixture, { tree: m.appTree(), initial: "/acme/home" });
+  m.remountSurfaces();
+  await turns(m);
+  expect(hrefs(treeScope.__shellRouter)).toEqual(["/acme", "/acme/flow"]);
+  expect(arrows()).toEqual([true]);
 });

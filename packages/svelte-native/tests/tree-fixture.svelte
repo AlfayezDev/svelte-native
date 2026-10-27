@@ -2,8 +2,10 @@
   import Router from "../src/Router.svelte";
   import { createRouter } from "../src/router.svelte.ts";
   import { appTree } from "./tree-app.ts";
-  let { initial = "/workspaces", bareTabs = false, logLoads, hold, boundary = false, outerLoading = false } = $props();
-  const router = createRouter(appTree({ bareTabs, logLoads, hold }), initial);
+  let { initial = "/workspaces", bareTabs = false, logLoads, hold, boundary = false, outerLoading = false, files, tabs } = $props();
+  // `files` is another app's route files (the platform app's), `tabs` the items its tabs layout shows.
+  if (tabs) globalThis.__treeTabs = tabs;
+  const router = createRouter(appTree({ files, bareTabs, logLoads, hold }), initial);
   export function root() { return router; }
   // The session resets by unmounting the root <Router> while the app keeps its router.
   let shown = $state(true);

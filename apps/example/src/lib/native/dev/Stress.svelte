@@ -354,11 +354,11 @@
       view = "none"; await settle();
       return { verdict: verdict(frames, shows === 8), summary: `${describe(frames)} · ${shows} / 8 shows`, frames };
     } },
-    { name: "navigation-8", label: "Push and pop a screen 8 times", async run(signal) {
+    { name: "navigation-8", label: "Push and pop a screen without a native header 8 times", async run(signal) {
       const depth = router.entries.length;
       const { frames } = await measure(async () => {
         for (let cycle = 0; cycle < 8 && !signal.aborted; cycle++) {
-          router.goto("/__dev/screen");
+          router.goto("/__dev/screen?header=none");
           await pause(800, signal);
           router.back();
           await pause(800, signal);
@@ -463,7 +463,7 @@
             created += report.created; destroyed += report.destroyed; changesAfterDestroy += report.changesAfterDestroy; lateCompletions += report.lateCompletions;
           }
           if (soakParts.has("static")) await churn(signal, false, 6000, false);
-          if (soakParts.has("nav")) for (let push = 0; push < 2 && !signal.aborted; push++) { router.goto("/__dev/screen"); await pause(700, signal); router.back(); await pause(700, signal); }
+          if (soakParts.has("nav")) for (let push = 0; push < 2 && !signal.aborted; push++) { router.goto("/__dev/screen?header=none"); await pause(700, signal); router.back(); await pause(700, signal); }
           if (soakParts.has("modal")) {
             view = "modal"; await settle();
             for (let open = 0; open < 2 && !signal.aborted; open++) { modalVisible = true; await pause(600, signal); modalVisible = false; await pause(500, signal); }

@@ -92,6 +92,34 @@ void SvelteAfterNextFrame(dispatch_block_t block) {
   if (self.didLayout != nil) self.didLayout();
 }
 
+// UIKit builds the large title's label in the first layout of the bar after the controller began to appear. A stack that is a child of a
+// screen the window already holds (the screen is staged for its push, a pane is shown the first time) gets an appearance at once and the
+// screen's own, animated, when the push starts; the layout that UIKit makes inside the second `viewWillAppear` leaves the large title's
+// band empty, and nothing lays the bar out again (the inbox pane of the route-tree lab drew its title on one launch in four). The next
+// layout builds it: one after the frame in which the appearance began, and one when it ended.
+- (void)layOutLargeTitle {
+  UINavigationBar *bar = self.navigationBar;
+  if (!bar.prefersLargeTitles || self.topViewController.navigationItem.largeTitleDisplayMode != UINavigationItemLargeTitleDisplayModeAlways) return;
+  [bar setNeedsLayout];
+  [bar layoutIfNeeded];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+  [super viewWillAppear:animated];
+  __weak SvelteNavigationController *weakSelf = self;
+  SvelteAfterNextFrame(^{
+    [weakSelf layOutLargeTitle];
+  });
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+  [super viewDidAppear:animated];
+  __weak SvelteNavigationController *weakSelf = self;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [weakSelf layOutLargeTitle];
+  });
+}
+
 @end
 
 @implementation SvelteTouchHost {

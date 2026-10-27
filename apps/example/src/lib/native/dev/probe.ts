@@ -138,6 +138,18 @@ const probes: Record<string, (context: Context) => Promise<void>> = {
     context.log({ name: "tabs", state: await state(context), shot: await shot(context, "tabs") });
   },
 
+  /** The tabs screen mounted and unmounted thirty times: the unmount of a tab with a snippet icon aborted the app (27 Oct). */
+  async "tabs-churn"(context) {
+    await open(context, "/__dev");
+    for (let round = 0; round < 30; round++) {
+      context.router.goto(`${screens}?mode=tabs`);
+      await pause(500);
+      context.router.back();
+      await pause(700);
+    }
+    context.log({ name: "tabs-churn", rounds: 30, entries: context.router.entries.length, state: await state(context) });
+  },
+
   /** A text field at the bottom of a KeyboardAvoidingView: focusing it brings the keyboard up; the field must end up above it. */
   async keyboard(context) {
     await open(context, "/__dev", `${screens}?mode=keyboard`);

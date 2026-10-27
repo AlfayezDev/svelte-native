@@ -30,6 +30,9 @@ using namespace facebook::react;
   /// Holds the `native-tab-icon` view while it waits to be drawn: laid out, never visible.
   UIView *_iconHolder;
   __weak RCTViewComponentView *_iconView;
+  /// The icon's index among the tab's children in the shadow tree (`NSNotFound` without one): the icon lives in its holder,
+  /// not among the subviews, so the content's index is one less than the tree's once the icon precedes it.
+  NSInteger _iconIndex;
   /// The icon assets, once loaded, and the uris they were loaded from.
   UIImage *_image;
   UIImage *_selectedImage;
@@ -112,25 +115,34 @@ static BOOL IsIcon(UIView *view) {
   return [view isKindOfClass:[RCTViewComponentView class]] && [((RCTViewComponentView *)view).nativeId isEqualToString:@"svelte:tab-icon"];
 }
 
+// The tree's index of a content child, as a subview index: the icon is not a subview (it sits in its holder), so what
+// follows it is one place earlier. React Native checks the index against the subviews when it unmounts, and the check's
+// own message indexed past the end when they disagreed (an NSRangeException at the end of every tabs scenario).
+- (NSInteger)subviewIndexFor:(NSInteger)index {
+  return _iconView != nil && _iconIndex != NSNotFound && _iconIndex < index ? index - 1 : index;
+}
+
 - (void)mountChildComponentView:(UIView<RCTComponentViewProtocol> *)childComponentView index:(NSInteger)index {
   if (IsIcon(childComponentView)) {
     _iconView = (RCTViewComponentView *)childComponentView;
+    _iconIndex = index;
     [_iconHolder addSubview:childComponentView];
     _iconDirty = YES;
     [_tabs setNeedsFlush];
     return;
   }
-  [super mountChildComponentView:childComponentView index:index];
+  [super mountChildComponentView:childComponentView index:[self subviewIndexFor:index]];
 }
 
 - (void)unmountChildComponentView:(UIView<RCTComponentViewProtocol> *)childComponentView index:(NSInteger)index {
   if (IsIcon(childComponentView)) {
     [childComponentView removeFromSuperview];
     _iconView = nil;
+    _iconIndex = NSNotFound;
     [_tabs setNeedsFlush];
     return;
   }
-  [super unmountChildComponentView:childComponentView index:index];
+  [super unmountChildComponentView:childComponentView index:[self subviewIndexFor:index]];
 }
 
 static void CollectTags(UIView *view, std::unordered_set<Tag> &tags) {

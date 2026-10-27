@@ -18,6 +18,8 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
+import android.view.accessibility.AccessibilityNodeInfo
+import expo.modules.svelteengine.A11y
 import expo.modules.svelteengine.Fragment
 import expo.modules.svelteengine.NavEvents
 import expo.modules.svelteengine.NavProps
@@ -152,6 +154,12 @@ class EngineToolbarItem(context: Context) : EngineView(context) {
   private fun itemColor(): Int = toolbar?.itemColor() ?: if (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES) 0xFFCAC4D0.toInt() else 0xFF49454F.toInt()
 
   override fun getAccessibilityClassName(): CharSequence = "android.widget.Button"
+
+  /** Marks the control as part of the toolbar band for the QA suite (`A11y.TOOLBAR_ID`); a spacer is not in the tree. A `testID` is appended by `A11y`'s delegate. */
+  override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
+    super.onInitializeAccessibilityNodeInfo(info)
+    info.viewIdResourceName = if (key.isEmpty()) A11y.TOOLBAR_ID else "${A11y.TOOLBAR_ID}:$key"
+  }
 
   // Icon ---------------------------------------------------------------------------------------------------------------
 

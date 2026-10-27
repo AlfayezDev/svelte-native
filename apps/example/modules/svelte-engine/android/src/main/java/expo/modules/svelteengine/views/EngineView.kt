@@ -5,6 +5,8 @@ import android.graphics.drawable.GradientDrawable
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.accessibility.AccessibilityNodeInfo
+import expo.modules.svelteengine.A11y
 
 /** Per-view state the mounting layer keeps outside of View ids and tags. */
 class NodeState {
@@ -125,6 +127,19 @@ open class EngineView(context: Context) : ViewGroup(context), EngineNode {
   var offscreenAlpha = false
 
   override fun hasOverlappingRendering(): Boolean = offscreenAlpha
+
+  /** The center slot of a toolbar (`EngineHeaderSlot` of slot 4) and what it holds are part of the toolbar band: `svelte-toolbar:center` (`A11y.TOOLBAR_ID`). A `testID` is appended by `A11y`'s delegate. */
+  override fun onInitializeAccessibilityNodeInfo(info: AccessibilityNodeInfo) {
+    super.onInitializeAccessibilityNodeInfo(info)
+    var view: View? = this
+    while (view is EngineView && view !is EngineToolbar) {
+      if (view is EngineHeaderSlot && view.toolbar != null) {
+        info.viewIdResourceName = "${A11y.TOOLBAR_ID}:center"
+        return
+      }
+      view = view.parent as? View
+    }
+  }
 
   /** Children with a non-default zIndex or elevation; 0 means plain insertion order everywhere. */
   private var stacked = 0

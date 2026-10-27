@@ -40,6 +40,14 @@ object A11y {
    */
   const val TEST_ID_AS_CONTENT_DESCRIPTION = false
 
+  /**
+   * The resource id of a control of the bottom toolbar band: `svelte-toolbar:<key>` on an item, `svelte-toolbar:center` on the
+   * center slot and what it holds. The uiautomator tree shows no view class of the band (items are `android.widget.Button`, the
+   * container is not important for accessibility), so this is how the QA accessibility suite (`qa/lib/a11y.ts`) knows what is
+   * read after the content. A `testID` of the node is appended (`svelte-toolbar:<key>:<testID>`), never replaces it.
+   */
+  const val TOOLBAR_ID = "svelte-toolbar"
+
   fun apply(view: View, st: NodeState, p: PropSet) {
     if (view.tag != p.testID) view.tag = p.testID
     val desc = p.label ?: if (TEST_ID_AS_CONTENT_DESCRIPTION) p.testID else null
@@ -70,7 +78,10 @@ object A11y {
   private class EngineDelegate(private val st: NodeState) : AccessibilityDelegateCompat() {
     override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfoCompat) {
       super.onInitializeAccessibilityNodeInfo(host, info)
-      st.testID?.let { info.viewIdResourceName = it }
+      st.testID?.let { id ->
+        val band = info.viewIdResourceName
+        info.viewIdResourceName = if (band != null && band.startsWith(TOOLBAR_ID)) "$band:$id" else id
+      }
       when (st.role) {
         "button" -> info.className = "android.widget.Button"
         "imagebutton" -> info.className = "android.widget.ImageButton"

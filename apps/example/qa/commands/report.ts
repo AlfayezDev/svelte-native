@@ -15,7 +15,7 @@ import { reachPct } from "../lib/a11y.ts";
 import { deviceMetrics, missingScenarios, runFatals } from "../lib/metrics.ts";
 import type { SuiteFiles } from "../lib/suite-metrics.ts";
 import { gatesPath, reportPath } from "../lib/paths.ts";
-import { latestRunFiles, readBuilds, readJson, runKinds } from "../lib/runs.ts";
+import { latestRunFiles, readBuilds, readJson, runKinds, type RunKind } from "../lib/runs.ts";
 import type {
 	A11yFile,
 	AppInfo,
@@ -134,6 +134,8 @@ type ReportDeviceEntry = {
 	/** What the device is for (`devices` in `gates.json`): a gate that is not for its role is informational. Null: not listed, every gate judges it. */
 	role: Role | null;
 	name: string | null;
+	/** The run kinds the device provides (`devices` in `gates.json`); null: every kind. */
+	runs: RunKind[] | null;
 	info: DeviceInfo;
 	app: AppInfo;
 	lab: LabSummary | null;
@@ -298,7 +300,7 @@ export function reportDevices(report: ReportFile, gates: GatesFile): Record<stri
 	return Object.fromEntries(
 		Object.entries(report.devices).map(([serial, entry]) => [
 			serial,
-			{ platform: entry.platform, role: gates.devices[serial]?.role ?? null, metrics: entry.metrics },
+			{ platform: entry.platform, role: gates.devices[serial]?.role ?? null, runs: gates.devices[serial]?.runs ?? null, metrics: entry.metrics },
 		]),
 	);
 }
@@ -368,6 +370,7 @@ export async function report(): Promise<void> {
 			platform,
 			role: gates.devices[serial]?.role ?? null,
 			name: gates.devices[serial]?.name ?? null,
+			runs: gates.devices[serial]?.runs ?? null,
 			info: reference.device,
 			app: reference.app,
 			lab: lab && labPath ? summarizeLab(lab, labPath.slice(labPath.lastIndexOf("runs/")), pinned) : null,
@@ -439,7 +442,7 @@ export async function report(): Promise<void> {
 		Object.fromEntries(
 			Object.entries(devices).map(([serial, entry]) => [
 				serial,
-				{ platform: entry.platform, role: entry.role, metrics: entry.metrics },
+				{ platform: entry.platform, role: entry.role, runs: entry.runs, metrics: entry.metrics },
 			]),
 		),
 	);

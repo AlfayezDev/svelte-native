@@ -1,3 +1,4 @@
+import { runKinds, type RunKind } from "./runs.ts";
 import type { Metric, Metrics, Platform } from "./types.ts";
 
 /** `max` and `min` bound a number (`round` decimals first); `equals` is for a measurement that is a text. */
@@ -19,10 +20,12 @@ export type Gate = {
 	/** The roles the gate judges; for a device of another role the row is `informational`. Absent: every role. */
 	roles?: Role[];
 };
-export type DeviceRole = { role: Role; name: string };
+/** `runs` are the run kinds the device is meant to provide: a gate of another kind is informational for it. */
+export type DeviceRole = { role: Role; name: string; runs: RunKind[] };
 /**
  * `scenarios` is the fixed list of scenarios a full `checks,quick` lab run produces, per platform: a run missing any is not that run.
- * `devices` maps a serial to its role; a serial not listed has no role, and every gate judges it.
+ * `devices` maps a serial to its role and the run kinds it provides; a serial not listed has no role, provides every kind, and
+ * every gate judges it.
  */
 export type GatesFile = {
 	version: 1;
@@ -31,7 +34,7 @@ export type GatesFile = {
 	gates: Gate[];
 };
 
-/** `informational`: the gate is not for the device's role. The value is shown; the row is neither a pass nor a failure nor a gap. */
+/** `informational`: the gate is not for the device's role, or is of a run kind the device does not provide. The value is shown; the row is neither a pass nor a failure nor a gap. */
 export type Verdict = "pass" | "fail" | "not measured" | "informational";
 
 export type GateRow = {
@@ -48,13 +51,51 @@ export type GateRow = {
 	verdict: Verdict;
 };
 
-export type ReportDevice = { platform: Platform; role?: Role | null; metrics: Metrics };
+export type ReportDevice = {
+	platform: Platform;
+	role?: Role | null;
+	/** The run kinds the device provides; null or absent: every kind. */
+	runs?: RunKind[] | null;
+	metrics: Metrics;
+};
+
+/** The run kinds a gate's metric comes from, by its prefix; null for a metric that belongs to no kind (every kind). */
+export function gateKinds(gate: Gate): RunKind[] | null {
+	const prefix = gate.metric.split(".")[0] as string;
+	switch (prefix) {
+		case "lab":
+		case "checks":
+		case "frames":
+		case "list":
+			return ["lab"];
+		case "boot":
+			return ["boot"];
+		case "log":
+			return ["lab", "boot"];
+		case "memory":
+		case "soak":
+			return ["soak"];
+		case "crashes":
+		case "parity":
+		case "a11y":
+		case "resilience":
+			return [prefix];
+		default:
+			return null;
+	}
+}
 
 /** A malformed table is an error, not a silent exemption: an unknown role in `roles` would make every device informational. */
 export function checkGatesFile(file: GatesFile): void {
 	const known = new Set<string>(roles);
 	for (const [serial, entry] of Object.entries(file.devices))
 		if (!known.has(entry.role)) throw new Error(`gates.json: device ${serial} has the unknown role ${JSON.stringify(entry.role)}`);
+	const kinds = new Set<string>(runKinds);
+	for (const [serial, entry] of Object.entries(file.devices)) {
+		if (entry.runs.length === 0) throw new Error(`gates.json: device ${serial} has an empty runs list (every gate would be informational)`);
+		for (const kind of entry.runs)
+			if (!kinds.has(kind)) throw new Error(`gates.json: device ${serial} has the unknown run kind ${JSON.stringify(kind)}`);
+	}
 	for (const gate of file.gates) {
 		if (gate.roles === undefined) continue;
 		if (gate.roles.length === 0) throw new Error(`gates.json: gate ${gate.id} has an empty roles list (omit it to judge every role)`);
@@ -68,9 +109,19 @@ export function deviceRoles(file: GatesFile, serials: string[]): Record<string, 
 	return Object.fromEntries(serials.map((serial) => [serial, file.devices[serial]?.role ?? null]));
 }
 
-/** A gate applies to a device with no role, and to one whose role the gate lists (no list: every role). */
-export function appliesTo(gate: Gate, role: Role | null | undefined): boolean {
-	return gate.roles === undefined || role === null || role === undefined || gate.roles.includes(role);
+/** The run kinds each device of a gates file provides; null for a serial it does not list (every kind). */
+export function deviceRuns(file: GatesFile, serials: string[]): Record<string, RunKind[] | null> {
+	return Object.fromEntries(serials.map((serial) => [serial, file.devices[serial]?.runs ?? null]));
+}
+
+/**
+ * A gate applies to a device with no role, and to one whose role the gate lists (no list: every role); and to a device
+ * that provides a run kind the gate's metric comes from (`runs` null: every kind; a gate of no kind: always).
+ */
+export function appliesTo(gate: Gate, role: Role | null | undefined, runs?: RunKind[] | null): boolean {
+	if (gate.roles !== undefined && role !== null && role !== undefined && !gate.roles.includes(role)) return false;
+	const kinds = gateKinds(gate);
+	return kinds === null || runs === null || runs === undefined || kinds.some((kind) => runs.includes(kind));
 }
 
 function matcher(pattern: string): RegExp {
@@ -122,7 +173,7 @@ export function evaluate(
 			}
 			for (const [serial, device] of platformDevices) {
 				const role = device.role ?? null;
-				const applies = appliesTo(gate, role);
+				const applies = appliesTo(gate, role, device.runs);
 				const pattern = matcher(gate.metric);
 				const keys = gate.metric.includes("*")
 					? Object.keys(device.metrics)

@@ -4,8 +4,10 @@ import { join } from "node:path";
 import {
 	checkGatesFile,
 	deviceRoles,
+	deviceRuns,
 	evaluate,
 	formatBar,
+	gateKinds,
 	groupRows,
 	judge,
 	renderTable,
@@ -305,8 +307,54 @@ describe("device roles", () => {
 		const file = (patch: Partial<GatesFile> & { gates?: Gate[] }): GatesFile => ({ version: 1, devices: {}, scenarios: { android: [], ios: [] }, gates: [], ...patch });
 		expect(() => checkGatesFile(file({ gates: [{ ...frames, roles: ["phones" as "phone"] }] }))).toThrow(/unknown role "phones"/);
 		expect(() => checkGatesFile(file({ gates: [{ ...frames, roles: [] }] }))).toThrow(/empty roles list/);
-		expect(() => checkGatesFile(file({ devices: { x: { role: "emulator" as "lab", name: "x" } } }))).toThrow(/unknown role "emulator"/);
-		expect(() => checkGatesFile(file({ devices: { x: { role: "lab", name: "x" } }, gates: [frames, memory] }))).not.toThrow();
+		expect(() => checkGatesFile(file({ devices: { x: { role: "emulator" as "lab", name: "x", runs: ["lab"] } } }))).toThrow(/unknown role "emulator"/);
+		expect(() => checkGatesFile(file({ devices: { x: { role: "lab", name: "x", runs: ["lab", "perf" as "lab"] } } }))).toThrow(/unknown run kind "perf"/);
+		expect(() => checkGatesFile(file({ devices: { x: { role: "lab", name: "x", runs: [] } } }))).toThrow(/empty runs list/);
+		expect(() => checkGatesFile(file({ devices: { x: { role: "lab", name: "x", runs: ["lab"] } }, gates: [frames, memory] }))).not.toThrow();
+	});
+});
+
+describe("run kinds", () => {
+	const gate = (metric: string): Gate => ({ id: metric, title: metric, unit: "", metric, bar: { android: { max: 0 } } });
+	const device = (runs: ReportDevice["runs"], metrics: ReportDevice["metrics"] = {}): Record<string, ReportDevice> => ({
+		x: { platform: "android", role: null, runs, metrics },
+	});
+	test("a gate maps to a run kind by its metric prefix", () => {
+		const kinds = (metric: string) => gateKinds(gate(metric));
+		expect(kinds("lab.runs")).toEqual(["lab"]);
+		expect(kinds("lab.checks.passed")).toEqual(["lab"]);
+		expect(kinds("frames.*.maxMs")).toEqual(["lab"]);
+		expect(kinds("list.virtual300.mountMs")).toEqual(["lab"]);
+		expect(kinds("boot.warm.p90")).toEqual(["boot"]);
+		expect(kinds("log.fatals")).toEqual(["lab", "boot"]);
+		expect(kinds("memory.leakedViews")).toEqual(["soak"]);
+		expect(kinds("soak.minutes")).toEqual(["soak"]);
+		for (const kind of ["crashes", "parity", "a11y", "resilience"]) expect(kinds(`${kind}.x`)).toEqual([kind]);
+		expect(kinds("something.else")).toBeNull();
+	});
+	test("a kind the device does not provide is informational, with its value or a dash; one it provides but never measured is not measured", () => {
+		const rows = evaluate([gate("crashes.coldStarts"), gate("parity.diffPixelsOutsideMasks")], device(["lab"], { "crashes.coldStarts": 15 }));
+		expect(rows.map((row) => [row.metric, row.measured, row.verdict])).toEqual([
+			["crashes.coldStarts", 15, "informational"],
+			["parity.diffPixelsOutsideMasks", null, "informational"],
+		]);
+		expect(renderTable(rows, false).split("\n")[2]).toMatch(/\s-\s+informational$/);
+		expect(evaluate([gate("parity.diffPixelsOutsideMasks")], device(["lab", "parity"])).map((row) => row.verdict)).toEqual(["not measured"]);
+	});
+	test("log gates count when either of lab and boot is provided", () => {
+		for (const runs of [["lab"], ["boot"], ["lab", "boot"]] as const)
+			expect(evaluate([gate("log.fatals")], device([...runs], { "log.fatals": 1 })).map((row) => row.verdict)).toEqual(["fail"]);
+		expect(evaluate([gate("log.fatals")], device(["soak"], { "log.fatals": 1 })).map((row) => row.verdict)).toEqual(["informational"]);
+	});
+	test("a gate of no kind, and a device with no runs list, are always judged", () => {
+		expect(evaluate([gate("something.else")], device(["lab"], { "something.else": 1 })).map((row) => row.verdict)).toEqual(["fail"]);
+		for (const runs of [null, undefined])
+			expect(evaluate([gate("crashes.coldStarts")], device(runs, { "crashes.coldStarts": 1 })).map((row) => row.verdict)).toEqual(["fail"]);
+	});
+	test("a role mismatch and a run-kind mismatch are both informational", () => {
+		const frames: Gate = { ...gate("frames.*.maxMs"), roles: ["phone"] };
+		const rows = evaluate([frames], { x: { platform: "android", role: "lab", runs: ["lab"], metrics: { "frames.idle.maxMs": 90 } } });
+		expect(rows.map((row) => row.verdict)).toEqual(["informational"]);
 	});
 });
 
@@ -338,9 +386,9 @@ describe("gates.json", () => {
 	});
 	test("devices: the Samsung and the iPhone are phones, the OVH emulator is the lab", () => {
 		expect(file.devices).toEqual({
-			R58Y90KNGRP: { role: "phone", name: "Samsung A16" },
-			"E74A5608-BF8E-5806-8699-1605F82ADED9": { role: "phone", name: "iPhone SE 3" },
-			"localhost:5555": { role: "lab", name: "OVH emulator, software GL" },
+			R58Y90KNGRP: { role: "phone", name: "Samsung A16", runs: ["lab", "boot"] },
+			"E74A5608-BF8E-5806-8699-1605F82ADED9": { role: "phone", name: "iPhone SE 3", runs: ["lab", "boot", "parity", "a11y"] },
+			"localhost:5555": { role: "lab", name: "OVH emulator, software GL", runs: ["lab", "soak", "crashes", "parity", "a11y", "resilience"] },
 		});
 		expect(() => checkGatesFile(file)).not.toThrow();
 	});
@@ -375,6 +423,38 @@ describe("gates.json", () => {
 		expect(judged("localhost:5555")).toEqual(["informational"]);
 		expect(judged("R58Y90KNGRP")).toEqual(["fail"]);
 		expect(judged("emulator-5556")).toEqual(["fail"]);
+	});
+	test("the Samsung is judged on lab and boot only, the emulator on its lab runs, an unlisted device on everything", () => {
+		const metrics = { "crashes.coldStarts": 15, "parity.diffPixelsOutsideMasks": 3, "lab.runs": 1, "boot.warm.p90": 900 };
+		const judged = (serial: string) =>
+			Object.fromEntries(
+				evaluate(
+					file.gates.filter((gate) => ["crashes.coldStarts", "parity.diffPixels", "lab.runs", "boot.warm.p90", "crashes.suites"].includes(gate.id)),
+					{ [serial]: { platform: "android", role: deviceRoles(file, [serial])[serial], runs: deviceRuns(file, [serial])[serial], metrics } },
+					"android",
+				).map((row) => [row.id, row.verdict]),
+			);
+		expect(judged("R58Y90KNGRP")).toEqual({
+			"crashes.coldStarts": "informational",
+			"crashes.suites": "informational",
+			"parity.diffPixels": "informational",
+			"lab.runs": "fail",
+			"boot.warm.p90": "fail",
+		});
+		expect(judged("localhost:5555")).toEqual({
+			"crashes.coldStarts": "fail",
+			"crashes.suites": "not measured",
+			"parity.diffPixels": "fail",
+			"lab.runs": "fail",
+			"boot.warm.p90": "informational",
+		});
+		expect(judged("emulator-5556")).toEqual({
+			"crashes.coldStarts": "fail",
+			"crashes.suites": "not measured",
+			"parity.diffPixels": "fail",
+			"lab.runs": "fail",
+			"boot.warm.p90": "fail",
+		});
 	});
 	test("memory is gated, and with no measurement it fails as not measured", () => {
 		const rows = evaluate(file.gates, android({}), "android").filter(

@@ -82,6 +82,18 @@ enum SvelteQAUIKit {
       "cornerRadius": json(sheet.preferredCornerRadius),
     ]
     out["presentedViewFrame"] = json(sheet.presentedView.map { windowFrame($0) })
+    // The views around the presented view, for finding out where the card the system draws (rim, corner mask, shadow) ends: on iOS 26.6
+    // the presented view sits directly in a full-window transition view, so there is no drop shadow ancestor to report as `cardFrame`
+    // (an iOS that has one gets it reported; the parity masks use it before the presented view's own frame).
+    var ancestors: [[String: Any]] = []
+    var current = sheet.presentedView?.superview
+    while let view = current, ancestors.count < 4 {
+      let name = NSStringFromClass(type(of: view))
+      ancestors.append(["class": name, "frame": windowFrame(view)])
+      if name.contains("DropShadow") { out["cardFrame"] = windowFrame(view) }
+      current = view.superview
+    }
+    out["ancestors"] = ancestors
     return out
   }
 

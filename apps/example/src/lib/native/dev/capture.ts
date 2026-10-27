@@ -100,14 +100,14 @@ export async function runCapture(router: Router, ids: readonly string[], themes:
   }
 }
 
-type StateNode = { children?: StateNode[]; presented?: StateNode; sheet?: { presentedViewFrame?: number[] | null } };
+type StateNode = { children?: StateNode[]; presented?: StateNode; sheet?: { presentedViewFrame?: number[] | null; cardFrame?: number[] | null } };
 
 /** The cards of the presented sheets in a `uikitState` snapshot, in points: the system draws their rim and shadow a level differently from launch to launch. */
 function sheetFrames(state: { root?: StateNode }): number[][] {
   const frames: number[][] = [];
   const walk = (node: StateNode | undefined) => {
     if (!node) return;
-    const frame = node.sheet?.presentedViewFrame;
+    const frame = node.sheet?.cardFrame ?? node.sheet?.presentedViewFrame;
     if (frame) frames.push(frame);
     for (const child of node.children ?? []) walk(child);
     walk(node.presented);

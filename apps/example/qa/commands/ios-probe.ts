@@ -26,12 +26,15 @@ export async function iosProbe(argv: string[]): Promise<void> {
 	while (Date.now() < deadline && !done) {
 		await sleep(6000);
 		const text = await readAppFile(session.target, "Documents/probe/index.json");
-		if (text !== null) {
-			const index = JSON.parse(text) as { token: string | null; done: boolean; probes: unknown[] };
-			if (index.token === token) {
-				done = index.done;
-				console.log(`  ${index.probes.length} of ${names.length} probes done`);
-			}
+		let index: { token: string | null; done: boolean; probes: unknown[] } | null = null;
+		try {
+			index = text === null ? null : (JSON.parse(text) as { token: string | null; done: boolean; probes: unknown[] });
+		} catch {
+			// A copy that caught the file while the app wrote it: read again on the next poll.
+		}
+		if (index && index.token === token) {
+			done = index.done;
+			console.log(`  ${index.probes.length} of ${names.length} probes done`);
 		}
 		if (!done && !(await appProcesses(session.target, session.installed)).includes(pid)) throw new Error(`the app (pid ${pid}) exited before the probes finished`);
 	}

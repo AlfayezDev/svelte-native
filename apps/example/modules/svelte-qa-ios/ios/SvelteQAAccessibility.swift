@@ -30,6 +30,7 @@ enum SvelteQAAccessibility {
     guard let window = SvelteQA.keyWindow else { throw QAError("there is no key window") }
     var walk = Walk()
     visit(window, explicit: false, group: 0, into: &walk)
+    collectGlass(window, into: &walk)
     let scale = window.screen.scale
     let payload: [String: Any] = [
       "screen": ["width": Double(window.bounds.width), "height": Double(window.bounds.height), "scale": Double(scale)],
@@ -44,6 +45,16 @@ enum SvelteQAAccessibility {
     return text
   }
 
+  /// Every glass view that is drawn, also the ones under a sheet: the walk above stops at a modal view, the screenshot does not.
+  private static func collectGlass(_ view: UIView, into walk: inout Walk) {
+    guard !view.isHidden, view.alpha > 0.01 else { return }
+    let name = NSStringFromClass(type(of: view))
+    if name.contains("Glass") || name.contains("Platter"), let window = view.window {
+      walk.glass.append(["class": name, "frame": rect(view.convert(view.bounds, to: window))])
+    }
+    for subview in view.subviews { collectGlass(subview, into: &walk) }
+  }
+
   private static func visible(_ view: UIView) -> Bool {
     !view.isHidden && view.alpha > 0.01 && !view.accessibilityElementsHidden
   }
@@ -55,10 +66,6 @@ enum SvelteQAAccessibility {
   private static func visit(_ object: Any, explicit: Bool, group: Int, container: String? = nil, into walk: inout Walk) {
     if let view = object as? UIView {
       guard visible(view) else { return }
-      let name = NSStringFromClass(type(of: view))
-      if name.contains("Glass") || name.contains("Platter"), let window = view.window {
-        walk.glass.append(["class": name, "frame": rect(view.convert(view.bounds, to: window))])
-      }
       if view is UIActivityIndicatorView || (view.accessibilityIdentifier ?? "").hasPrefix("qa-mask") {
         if let window = view.window {
           walk.moving.append(["class": NSStringFromClass(type(of: view)), "frame": rect(view.convert(view.bounds, to: window))])

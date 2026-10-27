@@ -58,12 +58,12 @@ function movingMasks(entry: CaptureEntry): Rect[] {
 
 /**
  * The edges of the system's glass capsules (bar items, the tab bar), in pixels: iOS 26 draws them with a blur whose rim differs by a
- * level on a few pixels from one launch to the next. A wide capsule is masked at its two round ends and along its top and bottom
- * edge, what is inside it (icons, labels, badges: the app's own drawing) is compared; a capsule less than one and a half times as wide as it is tall is masked whole.
+ * level on a few pixels from one launch to the next. A wide capsule is masked at its two round ends (half its height and 6 pt more) and along its top and bottom
+ * edge (6 pt), what is inside it (icons, labels, badges: the app's own drawing) is compared; a capsule less than one and a half times as wide as it is tall is masked whole.
  */
 export function glassMasks(entry: CaptureEntry): Rect[] {
 	const scale = entry.scale ?? 1;
-	const edge = 2 * scale;
+	const edge = 6 * scale;
 	const masks: Rect[] = [];
 	for (const [x = 0, y = 0, width = 0, height = 0] of entry.glass ?? []) {
 		const rect = { x: x * scale, y: y * scale, width: width * scale, height: height * scale };
@@ -71,7 +71,7 @@ export function glassMasks(entry: CaptureEntry): Rect[] {
 			masks.push(rect);
 			continue;
 		}
-		const end = rect.height / 2;
+		const end = rect.height / 2 + 6 * scale;
 		masks.push(
 			{ x: rect.x, y: rect.y, width: end, height: rect.height },
 			{ x: rect.x + rect.width - end, y: rect.y, width: end, height: rect.height },
@@ -83,30 +83,32 @@ export function glassMasks(entry: CaptureEntry): Rect[] {
 }
 
 /**
- * The rim of a presented sheet's card, in pixels: its rounded corners (a 32 pt square at each) and a strip along every side, 3 pt
- * inside the card's frame and 3 pt outside it, where the system's corner mask, border and shadow are drawn a level differently from one
- * launch to the next (the shadow's first line lies outside the frame). The sheet's content is compared.
+ * The rim of a presented sheet's card, in pixels: its rounded corners (a 64 pt square at each: the corner radius of an iOS 26 sheet is
+ * large) and a strip along every side, 6 pt inside the frame of the sheet's presented view and 8 pt outside it, 32 pt above it (the card of
+ * a sheet that fits its content starts about 25 pt above its presented view), where the system's corner mask, border and shadow are drawn a
+ * level differently from one launch to the next. The sheet's content is compared.
  */
 export function sheetMasks(entry: CaptureEntry): Rect[] {
 	const scale = entry.scale ?? 1;
-	const corner = 32 * scale;
-	const inside = 3 * scale;
-	const outside = 3 * scale;
+	const corner = 64 * scale;
+	const inside = 6 * scale;
+	const outside = 8 * scale;
+	const above = 32 * scale;
 	const masks: Rect[] = [];
 	for (const [x = 0, y = 0, width = 0, height = 0] of entry.sheets ?? []) {
 		const rect = { x: x * scale, y: y * scale, width: width * scale, height: height * scale };
 		const left = rect.x - outside;
-		const top = rect.y - outside;
+		const top = rect.y - above;
 		const right = rect.x + rect.width + outside;
 		const bottom = rect.y + rect.height + outside;
 		masks.push(
-			{ x: left, y: top, width: corner + outside, height: corner + outside },
-			{ x: right - corner - outside, y: top, width: corner + outside, height: corner + outside },
+			{ x: left, y: top, width: corner + outside, height: corner + above },
+			{ x: right - corner - outside, y: top, width: corner + outside, height: corner + above },
 			{ x: left, y: bottom - corner - outside, width: corner + outside, height: corner + outside },
 			{ x: right - corner - outside, y: bottom - corner - outside, width: corner + outside, height: corner + outside },
 			{ x: left, y: top, width: inside + outside, height: bottom - top },
 			{ x: right - inside - outside, y: top, width: inside + outside, height: bottom - top },
-			{ x: left, y: top, width: right - left, height: inside + outside },
+			{ x: left, y: top, width: right - left, height: inside + above },
 			{ x: left, y: bottom - inside - outside, width: right - left, height: inside + outside },
 		);
 	}

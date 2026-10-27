@@ -1,6 +1,8 @@
 import { getContext, onDestroy, setContext } from "svelte";
 import { SvelteMap, SvelteURL } from "svelte/reactivity";
 import Platform from "react-native/Libraries/Utilities/Platform";
+import BackHandler from "react-native/Libraries/Utilities/BackHandler";
+import Linking from "react-native/Libraries/Linking/Linking";
 import { hmrState, type StackSnapshot } from "./hmr-state.ts";
 import { EXIT_REPORTED, EXIT_TIMEOUT_MS, type Presentation, type RouterScopeOptions } from "./fabric/navigation.ts";
 import {
@@ -32,7 +34,7 @@ export interface Router {
   readonly scope: string | undefined;
   /** The navigator this router drives. */
   readonly node: StackNode | TabsNode;
-  /** Whether another router is above this one (a tab's or a nested navigator's own): only the outermost router takes links. */
+  /** Whether another router is above this one (a tab's or a nested navigator's own): only the outermost router answers the back key and links (`connectHost`). */
   readonly nested: boolean;
   /** Whether this router currently answers the back key and links: a tab's stack while its tab is selected, and nothing under a screen that covers it. */
   active(): boolean;
@@ -68,8 +70,8 @@ type StackState = ReturnType<typeof createStack>;
 type TabsState = { readonly kind: "tabs"; readonly selected: string; select(key: string): void; readonly panes: ReadonlyMap<string, StackState> };
 type NavigatorState = { kind: "stack"; stack: StackState } | TabsState;
 type Store = ReturnType<typeof createStore>;
-/** What a router is bound to: the store of its tree, the state of its navigator, and its place above. */
-type Binding = { store: Store; stack?: StackState; tabs?: TabsState; above?: Router };
+/** What a router is bound to: the store of its tree, the state of its navigator, its place above, and the routers registered below it (oldest first). */
+type Binding = { store: Store; stack?: StackState; tabs?: TabsState; above?: Router; inner: Router[] };
 const bindings = new WeakMap<Router, Binding>();
 
 const BASE = "https://native.invalid";
@@ -158,6 +160,8 @@ function createStore(tree: StackNode) {
   let nextKey = 0;
   const reportsExit = EXIT_REPORTED[Platform.OS === "ios" ? "ios" : "android"];
   const root = createStack(reportsExit);
+  let disposed = false;
+  let launchRead = false;
 
   function entryFor(route: PageRoute | RouteNode, href: string, params: Record<string, string>, presentation: Presentation): NativeLocation {
     const entry: NativeLocation = { key: ++nextKey, route, url: new SvelteURL(href, BASE), params, presentation };
@@ -318,7 +322,13 @@ function createStore(tree: StackNode) {
       router.goto(`${path}${url.search}${url.hash}`);
       return true;
     },
-    dispose() { root.dispose(); },
+    /** Opens the link the app was launched with, once for the life of the router: a remount of its `<Router>` (a session reset) does not open it again. */
+    openLaunchURL(router: Router): void {
+      if (launchRead) return;
+      launchRead = true;
+      void Linking.getInitialURL().then((url) => { if (url && !disposed && router.active()) router.openURL(url); });
+    },
+    dispose() { disposed = true; root.dispose(); },
   };
 }
 
@@ -358,14 +368,13 @@ function makeRouter({ store, node, scope, above, navigator, active }: Spec): Rou
     modules: store.modules,
     goto(href, navigation = {}) { store.navigate(href, navigation); },
     back() {
-      for (let current: Router | undefined = router; current; current = bindings.get(current)?.above) {
-        const own = bindings.get(current)?.stack;
-        if (own && own.entries.length > 1) {
-          own.set(own.entries.slice(0, -1));
-          return true;
-        }
-      }
-      return false;
+      // This router's own stack first (a tabs router's is the selected pane's), then the stacks above it: a pane at its base hands the pop up, it does not pop its sibling.
+      const stacks = [shown()];
+      for (let above = bindings.get(router)?.above; above; above = bindings.get(above)?.above) stacks.push(bindings.get(above)?.stack);
+      const top = stacks.find((candidate) => candidate && candidate.entries.length > 1);
+      if (!top) return false;
+      top.set(top.entries.slice(0, -1));
+      return true;
     },
     replaceBase(href) {
       if (!stack || node.kind !== "stack") throw new Error(`Navigator ${node.id} has no base entry to replace`);
@@ -375,9 +384,40 @@ function makeRouter({ store, node, scope, above, navigator, active }: Spec): Rou
     dismissed(key) { stack?.dismissed(key); },
     exited(key) { stack?.exited(key); },
   };
-  bindings.set(router, { store, stack, tabs, above: above?.router });
+  bindings.set(router, { store, stack, tabs, above: above?.router, inner: [] });
   setContext(contextKey, { router, scope, parent: above } satisfies RouterContext);
+  // The router is known to the one above while its component lives: the back key finds the innermost active router through them.
+  const hosting = above && bindings.get(above.router);
+  if (hosting) {
+    hosting.inner.push(router);
+    onDestroy(() => {
+      const at = hosting.inner.indexOf(router);
+      if (at >= 0) hosting.inner.splice(at, 1);
+    });
+  }
   return router;
+}
+
+/** The innermost active router below `router` (itself when none is): the newest active one at each level, as the back key would ask them. */
+function innermost(router: Router): Router {
+  const inner = bindings.get(router)?.inner ?? [];
+  for (let at = inner.length - 1; at >= 0; at--) if (inner[at].active()) return innermost(inner[at]);
+  return router;
+}
+
+/**
+ * Connects the app's root router to the host while its `<Router>` is mounted: the Android back key and links. Only the outermost
+ * router does, and it is the only one that registers anything: the key goes to the innermost active router (through tabs and
+ * nested stacks, hand-made named routers included), and its `back()` hands the pop outward when it has nothing to pop. The link the
+ * app was launched with is read once per router, however often its `<Router>` mounts. Returns what disconnects.
+ */
+export function connectHost(router: Router): () => void {
+  const binding = bindings.get(router);
+  if (!binding || router.nested) return () => {};
+  const back = BackHandler.addEventListener("hardwareBackPress", () => router.active() && innermost(router).back());
+  const links = Linking.addEventListener("url", ({ url }) => { if (router.active()) router.openURL(url); });
+  binding.store.openLaunchURL(router);
+  return () => { back.remove(); links.remove(); };
 }
 
 /**

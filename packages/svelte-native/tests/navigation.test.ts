@@ -43,7 +43,7 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/Renderer/shims/ReactNativeViewConfigRegistry": "export const register = (name) => name; export const get = (name) => ({ uiViewClassName: name, validAttributes: {}, bubblingEventTypes: { topChange: { phasedRegistrationNames: { bubbled: 'onChange', captured: 'onChangeCapture' } } }, directEventTypes: { topLayout: { registrationName: 'onLayout' }, topScroll: { registrationName: 'onScroll' } } });",
   "react-native/Libraries/Utilities/Platform": "export default { get OS() { return globalThis.__navigationOS ?? 'android'; }, Version: 34 };",
   "react-native/Libraries/Utilities/BackHandler": "const handlers = (globalThis.__backHandlers ??= []); export default { addEventListener: (name, handler) => { handlers.push(handler); return { remove() { const at = handlers.indexOf(handler); if (at >= 0) handlers.splice(at, 1); } }; } };",
-  "react-native/Libraries/Linking/Linking": "const handlers = (globalThis.__linkHandlers ??= []); export default { addEventListener: (name, handler) => { handlers.push(handler); return { remove() { const at = handlers.indexOf(handler); if (at >= 0) handlers.splice(at, 1); } }; }, getInitialURL: () => Promise.resolve(null) };",
+  "react-native/Libraries/Linking/Linking": "const handlers = (globalThis.__linkHandlers ??= []); export default { addEventListener: (name, handler) => { handlers.push(handler); return { remove() { const at = handlers.indexOf(handler); if (at >= 0) handlers.splice(at, 1); } }; }, getInitialURL: () => { globalThis.__initialURLReads = (globalThis.__initialURLReads ?? 0) + 1; return Promise.resolve(null); } };",
   "react-native/Libraries/Image/resolveAssetSource": "export default (source) => source && typeof source === 'object' && 'uri' in source ? { scale: 1, ...source } : null;",
   "react-native/Libraries/NativeComponent/ViewConfig": "export const createViewConfig = (partial) => partial;",
   "react-native/Libraries/Components/View/ViewNativeComponent": "export {};",
@@ -974,7 +974,7 @@ test("the back key belongs to a router only while it is active, and links only t
   // React Native asks the handlers newest first and stops at the first `true`.
   const back = () => [...handlersOf("__backHandlers")].reverse().some((handler) => (handler as () => boolean)());
   const link = (url: string) => { for (const handler of handlersOf("__linkHandlers")) (handler as (event: { url: string }) => void)({ url }); };
-  expect(handlersOf("__backHandlers")).toHaveLength(2);
+  expect(handlersOf("__backHandlers")).toHaveLength(1); // the root's alone: it asks the nested router first while it is active
 
   expect(back()).toBe(false); // one entry in each stack: nobody takes it, the app may leave
   nested.router.goto("/t/b");
@@ -1009,7 +1009,7 @@ type TreeRouter = {
   selected: string | undefined; goto: (href: string, options?: { replaceState?: boolean; reset?: boolean; presentation?: string }) => void; back: () => boolean;
   replaceBase: (href: string) => void; openURL: (href: string) => boolean; screens: { leaving: boolean }[];
 };
-type TreeApp = { root: () => TreeRouter };
+type TreeApp = { root: () => TreeRouter; show: (shown: boolean) => void };
 const treeGlobals = globalThis as { __treeRoots?: Record<string, TreeRouter>; __treeRouters?: Record<string, TreeRouter>; __treeOptions?: Record<string, object>; __treeTabs?: object[]; __treeSelections?: string[]; __treePanes?: unknown };
 const pathsOf = (router: TreeRouter) => router.entries.map((entry) => `${entry.url.pathname}${entry.url.search}`);
 const selectedIndex = (surface: number) => parseNativeID(String(ofKind(roots[surface], "tabs")[0].props.nativeID))?.pairs.sel;
@@ -1020,12 +1020,14 @@ async function mountTree(surface: number, props: Record<string, unknown> = {}) {
   calls.length = 0; roots = {};
   treeGlobals.__treeRouters = {}; treeGlobals.__treeRoots = {}; delete treeGlobals.__treeOptions; delete treeGlobals.__treeTabs; delete treeGlobals.__treeSelections;
   handlersOf("__backHandlers").length = 0;
+  handlersOf("__linkHandlers").length = 0;
+  delete (globalThis as { __initialURLReads?: number }).__initialURLReads;
   const app = m.startSurface(surface, m.Fixture, props) as TreeApp;
   await turns(m);
   // React Native asks the handlers newest first and stops at the first `true`.
   const hardwareBack = () => [...handlersOf("__backHandlers")].reverse().some((handler) => (handler as () => boolean)());
   const settled = () => turns(m);
-  return { m, router: app.root(), hardwareBack, settled, texts: () => texts(surface), tree: () => roots[surface] };
+  return { m, app, router: app.root(), hardwareBack, settled, texts: () => texts(surface), tree: () => roots[surface] };
 }
 const tabScreens = (tree: FakeNode[]) => ofKind(tree, "tab").map((pane) => ofKind(pane.children, "screen"));
 
@@ -1148,6 +1150,38 @@ test("back at a pane's base neither pops the pane nor switches tabs: the stack a
     expect(pathsOf(router)).toEqual(["/acme"]);
     expect(selectedIndex(84)).toBe("1");
   } finally { reset(); }
+});
+
+test("the root router alone owns the back key and the launch link, so a reset of the root <Router> still gives the key to the pane first", async () => {
+  withInsets(24);
+  jest.useFakeTimers(); // the popped screens' exit timers die with the test
+  try {
+    const { app, router, settled, hardwareBack } = await mountTree(97, { initial: "/workspaces" });
+    router.goto("/acme/home/thread/1");
+    await settled();
+    expect(handlersOf("__backHandlers")).toHaveLength(1); // the root's: the pane's and the tabs' routers register nothing
+    expect(handlersOf("__linkHandlers")).toHaveLength(1);
+    expect((globalThis as { __initialURLReads?: number }).__initialURLReads).toBe(1);
+
+    // The session resets: the root <Router> unmounts and mounts again with every module warm, so the panes mount before the root's own effects run.
+    app.show(false);
+    await settled();
+    expect(handlersOf("__backHandlers")).toHaveLength(0);
+    app.show(true);
+    await settled();
+    expect(handlersOf("__backHandlers")).toHaveLength(1);
+    expect(handlersOf("__linkHandlers")).toHaveLength(1);
+    expect((globalThis as { __initialURLReads?: number }).__initialURLReads).toBe(1); // the launch link is not opened again by a remount
+    expect(pathsOf(paneRouter("/acme/home"))).toEqual(["/acme/home", "/acme/home/thread/1"]);
+
+    expect(hardwareBack()).toBe(true); // the pane has depth: it pops, the root is untouched
+    expect(pathsOf(paneRouter("/acme/home"))).toEqual(["/acme/home"]);
+    expect(pathsOf(router)).toEqual(["/workspaces", "/acme"]);
+    expect(hardwareBack()).toBe(true); // at its base the pane keeps its page and the root pops the tabs screen
+    expect(pathsOf(paneRouter("/acme/home"))).toEqual(["/acme/home"]);
+    expect(pathsOf(router)).toEqual(["/workspaces"]);
+    expect(hardwareBack()).toBe(false); // the root at one entry: the app may leave
+  } finally { jest.useRealTimers(); reset(); }
 });
 
 test("a modal over the tabs takes the back key before the pane below it, whatever the pane's depth", async () => {

@@ -5,5 +5,8 @@
   let { initial = "/workspaces", bareTabs = false, logLoads, hold } = $props();
   const router = createRouter(appTree({ bareTabs, logLoads, hold }), initial);
   export function root() { return router; }
+  // The session resets by unmounting the root <Router> while the app keeps its router.
+  let shown = $state(true);
+  export function show(value) { shown = value; }
 </script>
-<Router {router} />
+{#if shown}<Router {router} />{/if}

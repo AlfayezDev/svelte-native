@@ -463,7 +463,8 @@ function toolbarProps(name: string, attributes: Record<string, unknown>): Record
       ["k", text(attributes.itemKey)], ["t", text(attributes.title)], ["ic", text(attributes.icon)],
       ["iv", flag(attributes.iconView)], ["bd", badge === undefined ? undefined : encode(badge)], ["ds", flag(attributes.disabled)],
     ]);
-    return withId(attributes, TOOLBAR_ITEM_KEYS, id, { flexDirection: "row", alignItems: "center", justifyContent: "center" });
+    // An asset icon gives Yoga no content: the target's width keeps a `flex: 1` center from taking the items' room.
+    return withId(attributes, TOOLBAR_ITEM_KEYS, id, { minWidth: 48, flexDirection: "row", alignItems: "center", justifyContent: "center" });
   }
   // The custom content between the items: fills what they leave, centered like the header's center slot.
   return withId(attributes, TOOLBAR_ITEM_KEYS, encodeNativeID("toolbar-center", []), { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center" });

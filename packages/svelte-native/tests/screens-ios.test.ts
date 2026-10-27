@@ -137,13 +137,25 @@ test("tabs, tab panes and their stacks mount as the Svelte components on iOS; th
   expect(phone.ids).toEqual(android.ids);
 });
 
-test("the first iOS navigation node registers the view configs of the six components, once, with their events", async () => {
+test("a toolbar, its items and its center mount as the Svelte components on iOS and as RCTView on Android, with the same nativeIDs", async () => {
+  const android = await mount("toolbar-fixture.svelte", "android", 76);
+  const phone = await mount("toolbar-fixture.svelte", "ios", 77);
+  expect(new Set(android.pairs.map(([, name]) => name))).toEqual(new Set(["RCTView"]));
+  const names: Record<string, string> = { stack: "SvelteStack", screen: "SvelteScreen", header: "SvelteHeader", toolbar: "SvelteToolbar", "toolbar-item": "SvelteToolbarItem", "toolbar-center": "SvelteToolbarCenter" };
+  expect(phone.pairs).toEqual(android.pairs.map(([kind]) => [kind, names[String(kind)]]));
+  const kinds = phone.pairs.map(([kind]) => kind);
+  expect(kinds.filter((kind) => kind === "toolbar")).toHaveLength(1);
+  expect(kinds.filter((kind) => kind === "toolbar-item")).toHaveLength(5);
+  expect(phone.ids).toEqual(android.ids);
+});
+
+test("the first iOS navigation node registers the view configs of the nine components, once, with their events", async () => {
   const android = await mount("screen-fixture.svelte", "android", 65);
   expect(android.pairs.length).toBeGreaterThan(0);
   expect(environment.__registeredViewConfigs?.size).toBe(0);
   await mount("screen-fixture.svelte", "ios", 66);
   const configs = environment.__registeredViewConfigs ?? new Map();
-  expect([...configs.keys()].sort()).toEqual(["SvelteHeader", "SvelteHeaderSlot", "SvelteScreen", "SvelteStack", "SvelteTab", "SvelteTabs"]);
+  expect([...configs.keys()].sort()).toEqual(["SvelteHeader", "SvelteHeaderSlot", "SvelteScreen", "SvelteStack", "SvelteTab", "SvelteTabs", "SvelteToolbar", "SvelteToolbarCenter", "SvelteToolbarItem"]);
   const configOf = (name: string) => {
     const config = configs.get(name);
     if (!config) throw new Error(`${name} is not registered`);
@@ -162,6 +174,9 @@ test("the first iOS navigation node registers the view configs of the six compon
   expect(eventsOf("SvelteHeaderSlot")).toEqual({ topCancel: { registrationName: "onCancel" } });
   expect(eventsOf("SvelteTabs")).toEqual({ topSelect: { registrationName: "onSelect" }, topMetrics: { registrationName: "onMetrics" } });
   expect(eventsOf("SvelteTab")).toEqual({});
+  expect(eventsOf("SvelteToolbar")).toEqual({ topPress: { registrationName: "onPress" }, topMetrics: { registrationName: "onMetrics" } });
+  expect(eventsOf("SvelteToolbarItem")).toEqual({});
+  expect(eventsOf("SvelteToolbarCenter")).toEqual({});
 });
 
 test("a pressable and a block of text are accessibility elements on iOS, so VoiceOver reads a button as a button and the text at all; on Android the engine exposes them itself", async () => {

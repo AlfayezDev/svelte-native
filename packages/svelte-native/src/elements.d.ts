@@ -125,6 +125,44 @@ type NativeTabProps = NativeElementAttributes<ViewProps & {
 }>;
 
 /**
+ * The toolbar band at the bottom of a screen (SPEC.md "Toolbar"): the engine draws its chrome (background, items, badges) in the
+ * node's frame and reports its real size with `onMetrics`. Its children are `native-toolbar-item`s in order, then the optional
+ * `native-toolbar-center`.
+ */
+type NativeToolbarProps = NativeElementAttributes<ViewProps & {
+  /** No toolbar is drawn; `Screen` omits the node instead. */
+  hidden?: boolean;
+  translucent?: boolean;
+  tint?: string;
+  background?: string;
+  /** Mask of the slots present: 1 center. */
+  slots?: number;
+  /** Estimated total height and bottom inset in dp until the native side reports its own. */
+  toolbarHeight?: number;
+  toolbarInset?: number;
+  /** The platform whose row metrics (`TOOLBAR_METRICS`) the band's Yoga style uses. */
+  toolbarPlatform?: "android" | "ios";
+  /** An item was pressed; `index` is its position among the item nodes. */
+  onPress?: (event: { nativeEvent: { key: string; index: number } }) => void;
+  onMetrics?: (event: { nativeEvent: HeaderMetrics }) => void;
+}>;
+/** One toolbar action, or flexible space with `spacer`. A snippet icon is the node's child, drawn live. */
+type NativeToolbarItemProps = NativeElementAttributes<ViewProps & {
+  itemKey?: string;
+  title?: string;
+  icon?: string;
+  /** The icon is the node's child content. */
+  iconView?: boolean;
+  badge?: string | number | boolean;
+  disabled?: boolean;
+  spacer?: boolean;
+  /** The toolbar has a center slot: a spacer does not grow, the center takes all the free width. */
+  centered?: boolean;
+  /** The platform whose row metrics (`TOOLBAR_METRICS`) the item's Yoga style uses. */
+  toolbarPlatform?: "android" | "ios";
+}>;
+
+/**
  * A component another library mounts through React Native's own mounting (a WebView, a map, an Expo module's view), by its
  * Fabric component name. Every other attribute is a prop of that component; `fabric/view-configs.ts` says which ones it
  * takes. Its children are mounted by the same library (a map's markers). See SPEC.md, "Foreign views".
@@ -157,6 +195,9 @@ declare module "svelte/elements" {
     "native-tabs": NativeTabsProps;
     "native-tab": NativeTabProps;
     "native-tab-icon": NativeElementAttributes<ViewProps>;
+    "native-toolbar": NativeToolbarProps;
+    "native-toolbar-item": NativeToolbarItemProps;
+    "native-toolbar-center": NativeElementAttributes<ViewProps>;
     "native-animated-view": ElementProps;
     "native-foreign": NativeForeignProps;
   }

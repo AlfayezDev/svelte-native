@@ -83,8 +83,12 @@ class EngineSheet(context: Context) : EngineScreen(context) {
 
   private val preDraw = ViewTreeObserver.OnPreDrawListener {
     updateScrim()
+    syncToolbar()
     true
   }
+
+  /** How far the toolbar band sits above its Yoga place, px ([syncToolbar]); NaN until it was first placed. */
+  private var toolbarShift = Float.NaN
 
   init {
     setWillNotDraw(false)
@@ -150,6 +154,43 @@ class EngineSheet(context: Context) : EngineScreen(context) {
   private fun offsetFor(index: Int): Float = max(0, node.h - visibleFor(index)).toFloat()
 
   override val restY: Float get() = if (detents.isEmpty()) 0f else offsetFor(min(current, detents.size - 1))
+
+  // Every write of the translation (a drag, a settle, the rest, the stack's own) goes through here; the stack's animator does
+  // not, and the pre-draw pass catches that one.
+  override fun setTranslationY(translationY: Float) {
+    super.setTranslationY(translationY)
+    syncToolbar()
+  }
+
+  /**
+   * The toolbar band is the bottom of the Yoga box, whose height is the tallest detent; the sheet shows only the box's top
+   * `height - translationY` rows, so at a lower detent the band would sit below the visible part. It is moved up by how far
+   * the sheet is moved down (`translationY` of the band, inside the sheet's own layer, so it travels with the sheet in every
+   * transition and keeps the hit test and the accessibility bounds right): its bottom edge is the sheet's visible bottom, at the
+   * detent it rests at, follows the detent as the sheet settles, and follows a drag between the top detent and the lowest one
+   * (below the lowest the whole sheet moves down, bar included; above the top the resistance does not move it). While the stack
+   * plays an enter or an exit the band stays where the sheet rests (or last was); the band's own layout stays Yoga's, so its
+   * inset (`SafeArea.bottom`, read from layout positions) is that of the screen's bottom edge, which is where the visible bottom is.
+   */
+  internal fun syncToolbar() {
+    val bar = toolbar ?: return
+    val box = node.h
+    if (box <= 0 || detents.isEmpty()) return
+    val wanted = when {
+      dragging || settler != null -> translationY
+      (transitioning || leaving) && !toolbarShift.isNaN() -> toolbarShift
+      else -> restY
+    }
+    val shift = wanted.coerceIn(topOffset(), sortedLowestOffset()).coerceAtMost(max(0, box - bar.height).toFloat())
+    toolbarShift = shift
+    if (bar.translationY != -shift) bar.translationY = -shift
+  }
+
+  private fun topOffset(): Float {
+    var top = Float.MAX_VALUE
+    for (i in detents.indices) top = min(top, offsetFor(i))
+    return if (top == Float.MAX_VALUE) 0f else top
+  }
 
   /** Offsets of every distinct detent, top-most (smallest) first. */
   private fun sortedOffsets(): FloatArray {
@@ -403,6 +444,8 @@ class EngineSheet(context: Context) : EngineScreen(context) {
         translationY = target
         val index = indexForOffset(target)
         current = index
+        // The band follows the detent the sheet now rests at (the write above still saw the old one).
+        syncToolbar()
         if (index != reported) {
           reported = index
           val avail = available()

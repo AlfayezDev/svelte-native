@@ -339,6 +339,9 @@ const kinds: Record<Platform, Record<string, Kind>> = {
     SvelteHeaderSlot: { events: "topCancel topChange topSubmitEditing" },
     SvelteTabs: { events: "topSelect topMetrics" },
     SvelteTab: {},
+    SvelteToolbar: { events: "topPress topMetrics" },
+    SvelteToolbarItem: {},
+    SvelteToolbarCenter: {},
     RCTText: {
       plain: `
         adjustsFontSizeToFit allowFontScaling android_hyphenationFrequency dataDetectorType disabled dynamicTypeRamp

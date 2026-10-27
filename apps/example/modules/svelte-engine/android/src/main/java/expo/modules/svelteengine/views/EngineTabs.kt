@@ -497,21 +497,45 @@ internal class TabItemView(context: Context, private val tabs: EngineTabs, priva
     drawBadge(canvas, cx, iconTop, icon)
   }
 
-  /** A dot (8 dp) or a text pill at the top end of the icon. */
+  private val badge = BadgeDrawer(density)
+
   private fun drawBadge(canvas: Canvas, cx: Float, iconTop: Float, icon: Float) {
-    if (tab.badgeKind == 0) return
-    val rtl = isRtlLayout()
+    badge.draw(canvas, tab.badgeKind, tab.badgeText, isRtlLayout(), cx, iconTop, icon)
+  }
+
+  private companion object {
+    const val ICON_DP = 24f
+    const val GAP_DP = 4f
+    const val LABEL_SP = 12f
+    const val PILL_W_DP = 56f
+    const val PILL_PAD_DP = 4f
+    const val MAX_FONT_SCALE = 1.3f
+  }
+}
+
+/**
+ * The badge of a bar item, shared by the tab bar and the toolbar: a dot (8 dp) or a text pill at the top end of the
+ * 24 dp icon whose horizontal center is [draw]'s `cx` and top `iconTop`. Origins and sizes are whole pixels. One per
+ * item view: it owns the paint and the rectangle, so drawing allocates nothing.
+ */
+internal class BadgeDrawer(private val density: Float) {
+  private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+  private val rect = RectF()
+
+  /** [kind] is 0 none, 1 dot, 2 [text]. */
+  fun draw(canvas: Canvas, kind: Int, text: String?, rtl: Boolean, cx: Float, iconTop: Float, icon: Float) {
+    if (kind == 0) return
     val side = if (rtl) -1f else 1f
     paint.color = BADGE_COLOR
-    if (tab.badgeKind == 1) {
+    if (kind == 1) {
       val r = 4f * density
       canvas.drawCircle((cx + side * (icon / 2f)).roundToInt().toFloat(), (iconTop + r / 2f).roundToInt().toFloat(), r, paint)
       return
     }
-    val text = tab.badgeText ?: return
+    val label = text ?: return
     paint.textSize = BADGE_SP * density
     paint.typeface = android.graphics.Typeface.DEFAULT_BOLD
-    val textWidth = paint.measureText(text)
+    val textWidth = paint.measureText(label)
     val h = 16f * density
     val w = max(h, textWidth + 8f * density)
     val centerX = (cx + side * (icon / 2f + 2f * density)).roundToInt().toFloat()
@@ -521,18 +545,12 @@ internal class TabItemView(context: Context, private val tabs: EngineTabs, priva
     paint.color = Color.WHITE
     paint.textAlign = Paint.Align.CENTER
     val baseline = rect.centerY() - (paint.descent() + paint.ascent()) / 2f
-    canvas.drawText(text, rect.centerX(), baseline, paint)
+    canvas.drawText(label, rect.centerX(), baseline, paint)
     paint.textAlign = Paint.Align.LEFT
   }
 
   private companion object {
-    const val ICON_DP = 24f
-    const val GAP_DP = 4f
-    const val LABEL_SP = 12f
     const val BADGE_SP = 10f
-    const val PILL_W_DP = 56f
-    const val PILL_PAD_DP = 4f
-    const val MAX_FONT_SCALE = 1.3f
     const val BADGE_COLOR = 0xFFB3261E.toInt()
   }
 }

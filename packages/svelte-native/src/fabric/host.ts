@@ -143,6 +143,9 @@ const viewNames: Record<string, string | ((props: Record<string, unknown>) => st
   "native-tabs": () => android() ? "RCTView" : iosNavigationViewName("native-tabs"),
   "native-tab": () => android() ? "RCTView" : iosNavigationViewName("native-tab"),
   "native-tab-icon": "RCTView",
+  "native-toolbar": () => android() ? "RCTView" : iosNavigationViewName("native-toolbar"),
+  "native-toolbar-item": () => android() ? "RCTView" : iosNavigationViewName("native-toolbar-item"),
+  "native-toolbar-center": () => android() ? "RCTView" : iosNavigationViewName("native-toolbar-center"),
   // A component another library mounts through React Native's own mounting (SPEC.md, "Foreign views"), by its Fabric name.
   "native-foreign": (props) => {
     if (typeof props.component !== "string" || !props.component) throw new Error("native-foreign needs the name of the component to mount");
@@ -270,7 +273,7 @@ function imageProps(props: Record<string, unknown>): Record<string, unknown> {
 const scrollBaseVertical = { flexGrow: 1, flexShrink: 1, flexDirection: "column", overflow: "scroll" };
 const scrollBaseHorizontal = { flexGrow: 1, flexShrink: 1, flexDirection: "row", overflow: "scroll" };
 
-function splitProps(attributes: Record<string, unknown>, into: State): Record<string, unknown> {
+function splitProps(attributes: Record<string, unknown>, into: State, navigation = false): Record<string, unknown> {
   const props: Record<string, unknown> = {};
   const handlers: Record<string, Handler> = {};
   const textInput = isTextInputView(into.viewName);
@@ -296,7 +299,9 @@ function splitProps(attributes: Record<string, unknown>, into: State): Record<st
   // read by VoiceOver) and so does its Pressable (a button is a button with a label of its own); the lowered tags and the
   // components that bypass them must do the same, unless the caller says `accessible={false}`.
   if (Platform.OS === "ios" && props.accessible === undefined && into.viewName === "RCTText") props.accessible = true;
-  for (let index = 0; index < pressHandlerNames.length; index++) {
+  // A navigation tag's `onPress` is the engine's own event (the toolbar's `topPress { key, index }`), not a responder
+  // handler: it must neither make the node clickable and an accessibility element nor start Pressability on it.
+  for (let index = 0; index < pressHandlerNames.length && !navigation; index++) {
     if (!handlers[pressHandlerNames[index] as string]) continue;
     props.onClick = true;
     if (Platform.OS === "ios" && props.accessible === undefined) props.accessible = true;
@@ -348,7 +353,7 @@ function build(node: NativeNode, rootTag: number, insideText: boolean, insideFor
   const config = viewConfig(viewName);
   // `animatedStyle` and the CSS keys never reach the payload; once loaded, the animation layer sees every node so it can detach.
   const animated = animation || wantsAnimation(attributes) ? loadAnimation().animationProps(node, current, attributes) : attributes;
-  const rnProps = splitProps(node.name === "native-image" ? imageProps(animated) : navigationTags.has(node.name) ? navigationProps(node.name, animated) : animated, current);
+  const rnProps = splitProps(node.name === "native-image" ? imageProps(animated) : navigationTags.has(node.name) ? navigationProps(node.name, animated) : animated, current, navigationTags.has(node.name));
   const scroll = viewName === "RCTScrollView";
   const childrenHost = (parent: FabricNode) => {
     for (let child = node.firstChild; child; child = child.nextSibling) {
@@ -496,7 +501,7 @@ const pressabilities = new WeakMap<NativeNode, Pressability>();
 function pressabilityFor(node: NativeNode): ResponderHandlers | undefined {
   const own = stateOf(node);
   let press = pressabilities.get(node);
-  if (!own || !pressHandlerNames.some((name) => own.handlers[name])) {
+  if (!own || navigationTags.has(node.name) || !pressHandlerNames.some((name) => own.handlers[name])) {
     if (press) { press.reset(); pressabilities.delete(node); }
     return undefined;
   }

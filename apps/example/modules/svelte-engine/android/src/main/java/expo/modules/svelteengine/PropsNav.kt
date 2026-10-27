@@ -46,7 +46,7 @@ class NavProps {
   var background = 0
   var slotMask = 0
 
-  // Records 126 and 127, header slots: 0 left, 1 center, 2 right, 3 search.
+  // Records 126 and 127, header slots: 0 left, 1 center, 2 right, 3 search, 4 the toolbar's center.
   var slotSeen = false
   var slot = 0
   var searchSeen = false
@@ -77,6 +77,26 @@ class NavProps {
   var badgeText: String? = null
   var tabDisabled = false
 
+  // Record 128, toolbar: flags 1 hidden, 2 translucent; slot mask 1 center.
+  var toolbarSeen = false
+  var toolbarFlags = 0
+  var hasToolbarTint = false
+  var toolbarTint = 0
+  var hasToolbarBackground = false
+  var toolbarBackground = 0
+  var toolbarSlots = 0
+
+  // Record 129, toolbar item: badge kind 0 none, 1 dot, 2 text; a spacer is flexible space and draws nothing.
+  var itemSeen = false
+  var itemKey: String? = null
+  var itemTitle: String? = null
+  var itemIconUri: String? = null
+  var itemIconIsView = false
+  var itemBadgeKind = 0
+  var itemBadgeText: String? = null
+  var itemDisabled = false
+  var itemSpacer = false
+
   /** A record of this group was decoded since the last reset (PropSet.reset clears the group only then). */
   var touched = false
 
@@ -92,6 +112,10 @@ class NavProps {
     hasInactiveTint = false; inactiveTint = 0; hasTabBackground = false; tabBackground = 0; labelsHidden = false
     tabSeen = false; tabKey = null; tabTitle = null; iconUri = null; selectedIconUri = null; iconIsView = false
     badgeKind = 0; badgeText = null; tabDisabled = false
+    toolbarSeen = false; toolbarFlags = 0; hasToolbarTint = false; toolbarTint = 0; hasToolbarBackground = false
+    toolbarBackground = 0; toolbarSlots = 0
+    itemSeen = false; itemKey = null; itemTitle = null; itemIconUri = null; itemIconIsView = false; itemBadgeKind = 0
+    itemBadgeText = null; itemDisabled = false; itemSpacer = false
   }
 
   private companion object {
@@ -157,6 +181,21 @@ object PropsNav {
         n.placeholder = s(ops, i, strings); n.searchValue = s(ops, i + 1, strings); n.searchCount = ops[i + 2]
         i += 3
       }
+      128 -> {
+        n.toolbarSeen = true
+        n.toolbarFlags = ops[i]
+        n.hasToolbarTint = ops[i + 1] == 1; n.toolbarTint = ops[i + 2]
+        n.hasToolbarBackground = ops[i + 3] == 1; n.toolbarBackground = ops[i + 4]
+        n.toolbarSlots = ops[i + 5]
+        i += 6
+      }
+      129 -> {
+        n.itemSeen = true
+        n.itemKey = s(ops, i, strings); n.itemTitle = s(ops, i + 1, strings); n.itemIconUri = s(ops, i + 2, strings)
+        n.itemIconIsView = ops[i + 3] == 1; n.itemBadgeKind = ops[i + 4]; n.itemBadgeText = s(ops, i + 5, strings)
+        n.itemDisabled = ops[i + 6] == 1; n.itemSpacer = ops[i + 7] == 1
+        i += 8
+      }
       else -> throw IllegalStateException("SvelteEngine: unknown nav prop id $id at ${at - 1}")
     }
     return i
@@ -181,7 +220,7 @@ object NavEvents {
   /** A user drag settled the sheet [tag] on another detent: `topDetentChange { index, fraction }`. */
   @JvmStatic external fun detentChange(tag: Int, index: Int, fraction: Float)
 
-  /** Header or tab bar size in dp (inset included in [height]): `topMetrics { height, inset }`. */
+  /** Header, tab bar or toolbar size in dp (inset included in [height]): `topMetrics { height, inset }`. */
   @JvmStatic external fun metrics(tag: Int, height: Float, inset: Float)
 
   /** The header search of the slot [tag] was dismissed: `topCancel`. */
@@ -189,6 +228,9 @@ object NavEvents {
 
   /** A tab bar press on the tabs node [tag]: `topSelect { key, index }`. */
   @JvmStatic external fun select(tag: Int, key: String, index: Int)
+
+  /** A press on item [index] (counting spacers) of the toolbar [tag]: `topPress { key, index }`. */
+  @JvmStatic external fun press(tag: Int, key: String, index: Int)
 
   init {
     System.loadLibrary("svelteengine")

@@ -7,7 +7,7 @@
 #include <vector>
 
 // Reader for the navigation `nativeID` (apps/platform/modules/svelte-engine/SPEC.md, "Screen API contract (header,
-// sheet, tabs)"). The grammar and the defaults are those of `decodeRecords` in packages/svelte-native/src/fabric/navigation.ts;
+// sheet, tabs)" and "Toolbar"). The grammar and the defaults are those of `decodeRecords` in packages/svelte-native/src/fabric/navigation.ts;
 // test/records_dump.cpp prints the records of every spec so that tests can compare them with that reference decoder.
 // No Foundation or UIKit here: the file builds and runs anywhere.
 
@@ -25,7 +25,8 @@ struct NativeId {
 
 NativeId splitNativeId(const std::string &id);
 
-enum class Kind { Unknown, Stack, Screen, Header, HeaderSlot, Tabs, Tab, TabIcon };
+/// `toolbar-center` is a `HeaderSlot` (kind 13, slot 4 of record 126), as in the SPEC.
+enum class Kind { Unknown, Stack, Screen, Header, HeaderSlot, Tabs, Tab, TabIcon, Toolbar, ToolbarItem };
 Kind kindOf(const NativeId &id);
 
 /// `0xAARRGGBB`; `set` is false for a color that is absent or not `rrggbbaa`.
@@ -36,7 +37,7 @@ struct Color {
 
 enum Presentation { kPush = 0, kModal = 1, kTransparentModal = 2, kSheet = 3, kFormSheet = 4 };
 enum Animation { kAnimationDefault = 0, kAnimationNone = 1, kAnimationFade = 2, kSlideFromRight = 3, kSlideFromBottom = 4 };
-enum Slot { kSlotLeft = 0, kSlotCenter = 1, kSlotRight = 2, kSlotSearch = 3 };
+enum Slot { kSlotLeft = 0, kSlotCenter = 1, kSlotRight = 2, kSlotSearch = 3, kSlotToolbarCenter = 4 };
 enum BarStyle { kBarAuto = 0, kBarLight = 1, kBarDark = 2 };
 
 /// Records 110, 122 and 125. Flags keep the integer the wire carries (`g=2` is 2); test them with `!= 0`.
@@ -76,6 +77,16 @@ struct HeaderSpec {
   int slots = 0;
 };
 
+/// Record 128.
+struct ToolbarSpec {
+  bool hidden = false;
+  bool translucent = false;
+  Color tint;
+  Color background;
+  /// Slot mask: 1 center.
+  int slots = 0;
+};
+
 /// Records 126 and 127 (the search fields only for the search slot).
 struct SlotSpec {
   int slot = kSlotLeft;
@@ -108,11 +119,25 @@ struct TabSpec {
   int disabled = 0;
 };
 
+/// Record 129. A spacer carries no other key.
+struct ToolbarItemSpec {
+  std::optional<std::string> key;
+  std::optional<std::string> title;
+  std::optional<std::string> icon;
+  int iconIsView = 0;
+  int badgeKind = kBadgeNone;
+  std::optional<std::string> badgeText;
+  int disabled = 0;
+  int spacer = 0;
+};
+
 ScreenSpec parseScreen(const NativeId &id);
 HeaderSpec parseHeader(const NativeId &id);
 SlotSpec parseSlot(const NativeId &id);
 TabsSpec parseTabs(const NativeId &id);
 TabSpec parseTab(const NativeId &id);
+ToolbarSpec parseToolbar(const NativeId &id);
+ToolbarItemSpec parseToolbarItem(const NativeId &id);
 
 /// Convenience for the views: split and parse in one step. A string that is not a `svelte:` nativeID parses as the defaults.
 ScreenSpec parseScreen(const std::string &id);
@@ -120,5 +145,7 @@ HeaderSpec parseHeader(const std::string &id);
 SlotSpec parseSlot(const std::string &id);
 TabsSpec parseTabs(const std::string &id);
 TabSpec parseTab(const std::string &id);
+ToolbarSpec parseToolbar(const std::string &id);
+ToolbarItemSpec parseToolbarItem(const std::string &id);
 
 }  // namespace svelte

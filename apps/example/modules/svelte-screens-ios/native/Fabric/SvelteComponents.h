@@ -8,7 +8,7 @@
 
 // The Fabric side of the components: shadow nodes and descriptors without codegen (Expo autolinks local modules without
 // running React Native's codegen). Every component is `ViewProps`-derived: Yoga lays it out like a `View`, and what makes it
-// a screen, a header or a tab arrives in `nativeID` (SPEC.md, "Screen API contract"). Events go through the plain
+// a screen, a header, a tab or a toolbar arrives in `nativeID` (SPEC.md, "Screen API contract"). Events go through the plain
 // `ViewEventEmitter` (`dispatchEvent("appear")` reaches JavaScript as `topAppear`). The names are the ones
 // packages/svelte-native/src/fabric/navigation.ios.ts registers view configs for.
 
@@ -20,6 +20,9 @@ extern const char SvelteHeaderComponentName[];
 extern const char SvelteHeaderSlotComponentName[];
 extern const char SvelteTabsComponentName[];
 extern const char SvelteTabComponentName[];
+extern const char SvelteToolbarComponentName[];
+extern const char SvelteToolbarItemComponentName[];
+extern const char SvelteToolbarCenterComponentName[];
 
 class SvelteStackShadowNode final : public facebook::react::ConcreteViewShadowNode<SvelteStackComponentName> {
  public:
@@ -62,11 +65,29 @@ class SvelteTabShadowNode final : public facebook::react::ConcreteViewShadowNode
   using ConcreteViewShadowNode::ConcreteViewShadowNode;
 };
 
+class SvelteToolbarShadowNode final : public facebook::react::ConcreteViewShadowNode<SvelteToolbarComponentName> {
+ public:
+  using ConcreteViewShadowNode::ConcreteViewShadowNode;
+};
+
+class SvelteToolbarItemShadowNode final : public facebook::react::ConcreteViewShadowNode<SvelteToolbarItemComponentName> {
+ public:
+  using ConcreteViewShadowNode::ConcreteViewShadowNode;
+};
+
+class SvelteToolbarCenterShadowNode final : public facebook::react::ConcreteViewShadowNode<SvelteToolbarCenterComponentName> {
+ public:
+  using ConcreteViewShadowNode::ConcreteViewShadowNode;
+};
+
 using SvelteStackComponentDescriptor = facebook::react::ConcreteComponentDescriptor<SvelteStackShadowNode>;
 using SvelteHeaderComponentDescriptor = facebook::react::ConcreteComponentDescriptor<SvelteHeaderShadowNode>;
 using SvelteHeaderSlotComponentDescriptor = facebook::react::ConcreteComponentDescriptor<SvelteHeaderSlotShadowNode>;
 using SvelteTabsComponentDescriptor = facebook::react::ConcreteComponentDescriptor<SvelteTabsShadowNode>;
 using SvelteTabComponentDescriptor = facebook::react::ConcreteComponentDescriptor<SvelteTabShadowNode>;
+using SvelteToolbarComponentDescriptor = facebook::react::ConcreteComponentDescriptor<SvelteToolbarShadowNode>;
+using SvelteToolbarItemComponentDescriptor = facebook::react::ConcreteComponentDescriptor<SvelteToolbarItemShadowNode>;
+using SvelteToolbarCenterComponentDescriptor = facebook::react::ConcreteComponentDescriptor<SvelteToolbarCenterShadowNode>;
 
 class SvelteScreenComponentDescriptor final : public facebook::react::ConcreteComponentDescriptor<SvelteScreenShadowNode> {
  public:

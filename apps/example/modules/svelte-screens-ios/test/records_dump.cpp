@@ -121,6 +121,19 @@ std::string recordsFor(const std::string &line) {
       break;
     }
     case svelte::Kind::TabIcon: kindCode = 16; break;
+    case svelte::Kind::Toolbar: {
+      kindCode = 17;
+      const svelte::ToolbarSpec spec = svelte::parseToolbar(id);
+      const int flags = (spec.hidden ? 1 : 0) | (spec.translucent ? 2 : 0);
+      records.push_back(Record(128).i(flags).c(spec.tint).c(spec.background).i(spec.slots));
+      break;
+    }
+    case svelte::Kind::ToolbarItem: {
+      kindCode = 18;
+      const svelte::ToolbarItemSpec spec = svelte::parseToolbarItem(id);
+      records.push_back(Record(129).s(spec.key).s(spec.title).s(spec.icon).i(spec.iconIsView).i(spec.badgeKind).s(spec.badgeText).i(spec.disabled).i(spec.spacer));
+      break;
+    }
     case svelte::Kind::Unknown: break;
   }
   Out out;

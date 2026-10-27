@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { compile, compileModule } from "svelte/compiler";
 import { reanimatedStubs } from "./reanimated-stubs.ts";
-import { EXIT_TIMEOUT_MS, badgeText, colorToWire, decodeList, decodeRecords, decodeValue, headerHeight, mergeScreenOptions, navigationProps, normalizeDetents, parseNativeID, sheetStyle } from "../src/fabric/navigation.ts";
+import { EXIT_TIMEOUT_MS, NAV_KINDS, TOOLBAR_BAR, TOOLBAR_METRICS, badgeText, colorToWire, decodeList, decodeRecords, decodeValue, headerHeight, mergeScreenOptions, navigationProps, navigationTags, normalizeDetents, parseNativeID, sheetStyle, toolbarHeight } from "../src/fabric/navigation.ts";
 import { LOWERED_TAGS, lowerPrimitives } from "../src/lower.ts";
 
 type FakeNode = { tag: number; name: string; props: Record<string, unknown>; children: FakeNode[]; sealed: boolean; target?: unknown };
@@ -236,6 +236,88 @@ test("tabs, tab and tab icon encode the selection, the bar colors, the items and
   expect(icon.style).toEqual([{ position: "absolute", top: 0, left: 0, width: 24, height: 24, alignItems: "center", justifyContent: "center" }, undefined]);
 });
 
+test("the toolbar nativeID carries flags only when set, colors as rrggbbaa, the slot mask; it is a row in flow, or absolute at the bottom when translucent", () => {
+  expect(navigationProps("native-toolbar", {}).nativeID).toBe("svelte:toolbar");
+  const bar = navigationProps("native-toolbar", {
+    hidden: true, translucent: true, tint: "#fff", background: "rgba(0, 0, 0, 0.5)", slots: 1, toolbarHeight: 90, toolbarInset: 34, onPress: noop, onMetrics: noop, testID: "bar",
+  });
+  expect(bar.nativeID).toBe("svelte:toolbar;hd=1;tl=1;tc=ffffffff;bg=00000080;sl=1");
+  expect(bar.style).toEqual([{ position: "absolute", left: 0, right: 0, bottom: 0, height: 90, paddingBottom: 34, paddingHorizontal: 4, flexDirection: "row", alignItems: "center" }, undefined]);
+  expect(bar.onPress).toBe(noop);
+  expect(bar.onMetrics).toBe(noop);
+  expect(bar.testID).toBe("bar");
+  for (const key of ["hidden", "translucent", "tint", "background", "slots", "toolbarHeight", "toolbarInset", "toolbarPlatform"]) expect(key in bar).toBe(false);
+  const flow = navigationProps("native-toolbar", { toolbarHeight: 56, toolbarInset: 0, style: { opacity: 0.5 } });
+  expect(flow.nativeID).toBe("svelte:toolbar");
+  expect(flow.style).toEqual([{ height: 56, paddingBottom: 0, paddingHorizontal: 4, flexDirection: "row", alignItems: "center" }, { opacity: 0.5 }]);
+  // The band's horizontal padding is the platform's edge: 4 dp on Android, 16 pt on iOS.
+  const ios = navigationProps("native-toolbar", { toolbarHeight: 78, toolbarInset: 34, toolbarPlatform: "ios" });
+  expect(ios.style).toEqual([{ height: 78, paddingBottom: 34, paddingHorizontal: 16, flexDirection: "row", alignItems: "center" }, undefined]);
+  expect("toolbarPlatform" in ios).toBe(false);
+  expect(navigationProps("native-toolbar", { hidden: false, translucent: false, tint: "papayawhip", slots: 0 }).nativeID).toBe("svelte:toolbar");
+  expect(navigationProps("native-toolbar", { slots: 1 }).nativeID).toBe("svelte:toolbar;sl=1");
+});
+
+test("toolbar items encode their key, title, icon, badge and flags; a spacer carries nothing else; the center is its own kind", () => {
+  const row = { flexDirection: "row", alignItems: "center", justifyContent: "center" };
+  expect(navigationProps("native-toolbar-item", {}).nativeID).toBe("svelte:toolbar-item");
+  // An item has a fixed width, whatever its content: Yoga and the native side place it by the same number, so a flex: 1 center gets the span the items leave.
+  expect(navigationProps("native-toolbar-item", {}).style).toEqual([{ width: 48, marginHorizontal: 0, ...row }, undefined]);
+  expect(navigationProps("native-toolbar-item", { toolbarPlatform: "android" }).style).toEqual([{ width: 48, marginHorizontal: 0, ...row }, undefined]);
+  // On iOS an item is UIKit's 44 pt button with 4 pt each side: it occupies 52.
+  expect(navigationProps("native-toolbar-item", { toolbarPlatform: "ios" }).style).toEqual([{ width: 44, marginHorizontal: 4, ...row }, undefined]);
+  // The item is the only press: its JavaScript node takes touches as a box and its children (a snippet icon) take none; a spacer, the band and the center are left alone.
+  expect(navigationProps("native-toolbar-item", {}).pointerEvents).toBe("box-only");
+  expect(navigationProps("native-toolbar-item", { toolbarPlatform: "ios", iconView: true, itemKey: "s" }).pointerEvents).toBe("box-only");
+  expect(navigationProps("native-toolbar-item", { pointerEvents: "auto" }).pointerEvents).toBe("box-only");
+  expect("pointerEvents" in navigationProps("native-toolbar-item", { spacer: true })).toBe(false);
+  expect("pointerEvents" in navigationProps("native-toolbar-center", {})).toBe(false);
+  expect("pointerEvents" in navigationProps("native-toolbar", {})).toBe(false);
+  const full = navigationProps("native-toolbar-item", { itemKey: "in/box", title: "A;B=C, 100%", icon: "asset:/a b.png", iconView: false, badge: 120, disabled: true, accessibilityLabel: "Open", testID: "item" });
+  expect(full.nativeID).toBe("svelte:toolbar-item;k=in%2Fbox;t=A%3BB%3DC%2C%20100%25;ic=asset%3A%2Fa%20b.png;bd=99%2B;ds=1");
+  expect(full.accessibilityLabel).toBe("Open");
+  expect(full.testID).toBe("item");
+  for (const key of ["itemKey", "title", "icon", "iconView", "badge", "disabled", "toolbarPlatform", "centered"]) expect(key in full).toBe(false);
+  expect(navigationProps("native-toolbar-item", { itemKey: "flag", title: "Flag", badge: true }).nativeID).toBe("svelte:toolbar-item;k=flag;t=Flag;bd=");
+  expect(navigationProps("native-toolbar-item", { itemKey: "n", title: "N", badge: "new" }).nativeID).toBe("svelte:toolbar-item;k=n;t=N;bd=new");
+  expect(navigationProps("native-toolbar-item", { itemKey: "n", title: "N", badge: 0 }).nativeID).toBe("svelte:toolbar-item;k=n;t=N");
+  expect(navigationProps("native-toolbar-item", { itemKey: "s", title: "S", iconView: true }).nativeID).toBe("svelte:toolbar-item;k=s;t=S;iv=1");
+  const spacer = navigationProps("native-toolbar-item", { itemKey: "gap", title: "x", icon: "asset:/x.png", badge: true, disabled: true, spacer: true });
+  expect(spacer.nativeID).toBe("svelte:toolbar-item;sp=1");
+  expect(spacer.style).toEqual([{ flexGrow: 1 }, undefined]);
+  // Beside a center slot a spacer does not grow: the center takes all the free width, as the native sides place it. A spacer has no width, so the platform does not matter.
+  const beside = navigationProps("native-toolbar-item", { spacer: true, centered: true, toolbarPlatform: "ios" });
+  expect(beside.style).toEqual([{ flexGrow: 0 }, undefined]);
+  expect(navigationProps("native-toolbar-item", { spacer: true, centered: false, toolbarPlatform: "ios" }).style).toEqual([{ flexGrow: 1 }, undefined]);
+  for (const key of ["spacer", "centered", "toolbarPlatform"]) expect(key in beside).toBe(false);
+  const center = navigationProps("native-toolbar-center", {});
+  expect(center.nativeID).toBe("svelte:toolbar-center");
+  expect(center.style).toEqual([{ flex: 1, ...row }, undefined]);
+});
+
+test("toolbar tags are navigation tags with their engine kinds; the bar is 56 dp on Android and 44 pt on iOS, plus the bottom inset", () => {
+  for (const tag of ["native-toolbar", "native-toolbar-item", "native-toolbar-center"]) expect(navigationTags.has(tag)).toBe(true);
+  expect([NAV_KINDS.toolbar, NAV_KINDS["toolbar-item"], NAV_KINDS["toolbar-center"]]).toEqual([17, 18, 13]);
+  expect(TOOLBAR_BAR).toEqual({ android: 56, ios: 44 });
+  expect(toolbarHeight("android", 34)).toBe(90);
+  expect(toolbarHeight("ios", 34)).toBe(78);
+  expect(toolbarHeight("ios", 0)).toBe(44);
+});
+
+test("the toolbar row has one geometry: Yoga's widths are the numbers the native sides place the items by", () => {
+  expect(TOOLBAR_METRICS).toEqual({ android: { edge: 4, item: 48, gap: 0 }, ios: { edge: 16, item: 44, gap: 4 } });
+  // What the center's `flex: 1` gets: the band's width less its two edges and every solid item with its margins. Android: 360 dp, three items; iOS: 390 pt, three items.
+  const center = (platform: "android" | "ios", width: number, solid: number) => {
+    const m = TOOLBAR_METRICS[platform];
+    return width - 2 * m.edge - (m.item + 2 * m.gap) * solid;
+  };
+  expect(center("android", 360, 3)).toBe(208);
+  expect(center("ios", 390, 3)).toBe(202);
+  // The iOS numbers are the ones the UIKit side budgets: 32 for the edges, 52 for an item.
+  expect(2 * TOOLBAR_METRICS.ios.edge).toBe(32);
+  expect(TOOLBAR_METRICS.ios.item + 2 * TOOLBAR_METRICS.ios.gap).toBe(52);
+});
+
 test("colors reach the wire as rrggbbaa; forms the contract does not carry are dropped", () => {
   const wire: [unknown, string | undefined][] = [
     ["#fff", "ffffffff"], ["#0a8", "00aa88ff"], ["#0a8c", "00aa88cc"], ["#102030", "102030ff"], ["#10203040", "10203040"], [" #ABCDEF ", "abcdefff"],
@@ -311,6 +393,19 @@ test("reference decoder: the prop records every nativeID stands for (golden vect
   expect(decodeRecords("svelte:tab;k=me;t=Me;iv=1;bd=")?.records).toEqual([{ id: 124, values: ["me", "Me", -1, -1, 1, 1, "", 0] }]);
   expect(decodeRecords("svelte:tab-icon")).toEqual({ kind: 16, records: [] });
 
+  // Toolbar: record 128 (flags 1 hidden 2 translucent, tint, background, slot mask), record 129 per item, the center is slot 4 of record 126.
+  expect(decodeRecords("svelte:toolbar")).toEqual({ kind: 17, records: [{ id: 128, values: [0, 0, 0, 0, 0, 0] }] });
+  expect(decodeRecords("svelte:toolbar;hd=1;tl=1;tc=ffffffff;bg=00000080;sl=1")?.records).toEqual([{ id: 128, values: [3, 1, 0xffffffff, 1, 0x80000000, 1] }]);
+  expect(decodeRecords("svelte:toolbar;tl=1;tc=0a84ffff")?.records).toEqual([{ id: 128, values: [2, 1, 0xff0a84ff, 0, 0, 0] }]);
+  expect(decodeRecords("svelte:toolbar-item")).toEqual({ kind: 18, records: [{ id: 129, values: [-1, -1, -1, 0, 0, -1, 0, 0] }] });
+  expect(decodeRecords("svelte:toolbar-item;k=in%2Fbox;t=A%3BB%3DC%2C%20100%25;ic=asset%3A%2Fa%20b.png;bd=99%2B;ds=1")?.records)
+    .toEqual([{ id: 129, values: ["in/box", "A;B=C, 100%", "asset:/a b.png", 0, 2, "99+", 1, 0] }]);
+  expect(decodeRecords("svelte:toolbar-item;k=flag;t=Flag;bd=")?.records).toEqual([{ id: 129, values: ["flag", "Flag", -1, 0, 1, "", 0, 0] }]);
+  expect(decodeRecords("svelte:toolbar-item;k=n;t=N;bd=new")?.records).toEqual([{ id: 129, values: ["n", "N", -1, 0, 2, "new", 0, 0] }]);
+  expect(decodeRecords("svelte:toolbar-item;k=s;t=S;iv=1")?.records).toEqual([{ id: 129, values: ["s", "S", -1, 1, 0, -1, 0, 0] }]);
+  expect(decodeRecords("svelte:toolbar-item;sp=1")?.records).toEqual([{ id: 129, values: [-1, -1, -1, 0, 0, -1, 0, 1] }]);
+  expect(decodeRecords("svelte:toolbar-center")).toEqual({ kind: 13, records: [{ id: 126, values: [4] }] });
+
   expect(decodeRecords("svelte:bogus")).toBeNull();
   expect(decodeRecords("view-1")).toBeNull();
 });
@@ -322,6 +417,10 @@ test("every encoder output decodes: the records of a nativeID built by navigatio
     ["native-header-search", { placeholder: "p", eventCount: 2 }],
     ["native-tabs", { selectedIndex: 1, tint: "#123456" }],
     ["native-tab", { tabKey: "k", title: "t", badge: 7 }],
+    ["native-toolbar", { translucent: true, tint: "#123456", slots: 1 }],
+    ["native-toolbar-item", { itemKey: "k", title: "t", badge: true, disabled: true }],
+    ["native-toolbar-item", { spacer: true }],
+    ["native-toolbar-center", {}],
   ];
   for (const [name, attributes] of cases) {
     const decoded = decodeRecords(String(navigationProps(name, attributes).nativeID));
@@ -347,6 +446,18 @@ test("merging screen options: the inner value wins, objects merge, handlers chai
   merged.onDisappear?.();
   expect(order).toEqual(["outer", "inner", "appear", "disappear"]);
   expect(mergeScreenOptions({ title: "A" }, {})).toEqual({ title: "A" });
+});
+
+test("merging screen options: the toolbar merges like the header, key by key, and the inner items replace the outer ones", () => {
+  const outer = () => {};
+  const inner = () => {};
+  const merged = mergeScreenOptions(
+    { toolbar: { translucent: true, tint: "#fff", items: [{ key: "a" }], onPress: outer } },
+    { toolbar: { tint: "#000", translucent: undefined, items: [{ key: "b" }, { key: "gap", spacer: true }], onPress: inner } },
+  );
+  expect(merged.toolbar).toEqual({ translucent: true, tint: "#000", items: [{ key: "b" }, { key: "gap", spacer: true }], onPress: inner });
+  expect(mergeScreenOptions({ toolbar: { tint: "#fff" } }, {}).toolbar).toEqual({ tint: "#fff" });
+  expect(mergeScreenOptions({}, { toolbar: { hidden: true } }).toolbar).toEqual({ hidden: true });
 });
 
 test("Screen and Tabs stay components: they take snippets, so the lowering preprocessor must not rewrite them", () => {
@@ -651,6 +762,166 @@ test("tab bar metrics from the native side set the panes' bottom edge; the estim
   try {
     const { panes } = await mountTabs(55);
     expect(panes().map((pane) => flat(pane.props.style).bottom)).toEqual([83, 83, 83]);
+  } finally { reset(); }
+});
+
+// The toolbar (SPEC.md "Toolbar"): the last child of the screen, one item node per item, then the optional center.
+type ToolbarApp = { set: (patch: object) => void; setToolbar: (patch: object | undefined) => void; showCenter: (value: boolean) => void; nest: (value: object | null) => void; events: () => string[] };
+const ids = (nodes: FakeNode[]) => nodes.map((node) => node.props.nativeID);
+const itemIds = [
+  "svelte:toolbar-item;k=reply;t=Reply;ic=asset%3A%2Freply.png",
+  "svelte:toolbar-item;k=archive;t=Archive;iv=1;bd=99%2B",
+  "svelte:toolbar-item;sp=1",
+  "svelte:toolbar-item;k=flag;t=Flag;ic=asset%3A%2Fflag.png;bd=",
+  "svelte:toolbar-item;k=delete;t=Delete;ds=1",
+];
+
+async function mountToolbar(surface: number) {
+  const m = await load("toolbar-fixture.svelte");
+  calls.length = 0; roots = {};
+  const app = m.startSurface(surface, m.Fixture, {}) as ToolbarApp;
+  await settle(m);
+  const screen = () => ofKind(roots[surface], "screen")[0];
+  const toolbar = () => ofKind(roots[surface], "toolbar")[0];
+  return { m, app, screen, toolbar, items: () => ofKind(roots[surface], "toolbar-item"), flush: () => settle(m), tree: () => roots[surface] };
+}
+
+test("a Screen renders its toolbar as the last child, one item node per item in order, sized from the platform bar and the bottom inset", async () => {
+  withInsets(24, 34);
+  try {
+    const { screen, toolbar, items, tree } = await mountToolbar(70);
+    expect(screen().children.map((child) => child.props.nativeID ?? "content")).toEqual(["svelte:header;t=Thread", "content", "svelte:toolbar"]);
+    expect(flat(toolbar().props.style)).toEqual({ height: 90, paddingBottom: 34, paddingHorizontal: 4, flexDirection: "row", alignItems: "center" });
+    expect(ids(toolbar().children)).toEqual(itemIds);
+    expect(ids(items())).toEqual(itemIds);
+    expect(items()[0].props.accessibilityLabel).toBe("Reply to thread");
+    expect(items()[0].props.testID).toBe("tb-reply");
+    expect(flat(items()[2].props.style)).toEqual({ flexGrow: 1 });
+    // An item is 48 dp wide in Yoga, as the engine places it.
+    expect(flat(items()[0].props.style)).toMatchObject({ width: 48, marginHorizontal: 0 });
+    expect(flat(items()[1].props.style)).toMatchObject({ width: 48, marginHorizontal: 0 });
+    // The snippet icon's item takes the touch as a box: a Pressable inside the snippet is out of its reach.
+    expect(items().map((item) => item.props.pointerEvents)).toEqual(["box-only", "box-only", undefined, "box-only", "box-only"]);
+    // An asset icon is a uri on the node; a snippet icon is the node's child, drawn live with `pressed` false.
+    expect(items()[0].children).toHaveLength(0);
+    expect(ofTestID(items()[1].children, "glyph-false")).toHaveLength(1);
+    expect(ofTestID(tree(), "glyph-false")).toHaveLength(1);
+    expect(ofTestID(tree(), "toolbar-90-34")).toHaveLength(1);
+    // The engine's `topPress` is a native event, not a responder handler: the toolbar is neither clickable nor an accessibility element.
+    expect(toolbar().props.onPress).toBe(true);
+    expect(toolbar().props.onClick).toBeUndefined();
+    expect(toolbar().props.accessible).toBeUndefined();
+  } finally { reset(); }
+});
+
+test("the toolbar follows its options: center content last, translucent overlay at the bottom, hidden or absent leaves no node", async () => {
+  withInsets(24, 34);
+  try {
+    const { app, toolbar, items, flush, tree } = await mountToolbar(71);
+    app.showCenter(true);
+    await flush();
+    expect(toolbar().props.nativeID).toBe("svelte:toolbar;sl=1");
+    expect(toolbar().children.map((child) => parseNativeID(String(child.props.nativeID))?.kind)).toEqual(["toolbar-item", "toolbar-item", "toolbar-item", "toolbar-item", "toolbar-item", "toolbar-center"]);
+    expect(toolbar().children[5].props.nativeID).toBe("svelte:toolbar-center");
+    expect(ofTestID(toolbar().children[5].children, "composer")).toHaveLength(1);
+    // With a center the spacer does not grow: the center's `flex: 1` is all the free width, as the native sides place it.
+    expect(flat(items()[2].props.style)).toEqual({ flexGrow: 0 });
+
+    app.setToolbar({ translucent: true, tint: "#fff", background: "#102030" });
+    await flush();
+    expect(flat(items()[2].props.style)).toEqual({ flexGrow: 0 });
+    expect(toolbar().props.nativeID).toBe("svelte:toolbar;tl=1;tc=ffffffff;bg=102030ff;sl=1");
+    expect(flat(toolbar().props.style)).toEqual({ position: "absolute", left: 0, right: 0, bottom: 0, height: 90, paddingBottom: 34, paddingHorizontal: 4, flexDirection: "row", alignItems: "center" });
+    expect(ofTestID(tree(), "toolbar-90-34")).toHaveLength(1);
+
+    app.setToolbar({ translucent: false, tint: undefined, background: undefined, items: [{ key: "only", title: "Only", disabled: true }] });
+    await flush();
+    expect(toolbar().props.nativeID).toBe("svelte:toolbar;sl=1");
+    expect(ids(items())).toEqual(["svelte:toolbar-item;k=only;t=Only;ds=1"]);
+
+    app.setToolbar({ hidden: true });
+    await flush();
+    expect(ofKind(tree(), "toolbar")).toHaveLength(0);
+    expect(ofKind(tree(), "toolbar-item")).toHaveLength(0);
+    expect(ofKind(tree(), "toolbar-center")).toHaveLength(0);
+    expect(ofTestID(tree(), "toolbar-0-0")).toHaveLength(1);
+
+    // `toolbarCenter` alone is enough, as a header snippet is for the header; without either there is no toolbar.
+    app.setToolbar(undefined);
+    await flush();
+    expect(toolbar().props.nativeID).toBe("svelte:toolbar;sl=1");
+    expect(toolbar().children).toHaveLength(1);
+    app.showCenter(false);
+    await flush();
+    expect(ofKind(tree(), "toolbar")).toHaveLength(0);
+  } finally { reset(); }
+});
+
+test("a press reaches toolbar.onPress with the key; an inner Screen's toolbar merges into the outer one and its handler wins", async () => {
+  withInsets(24, 34);
+  try {
+    const { app, toolbar, flush, tree } = await mountToolbar(72);
+    emit(toolbar().target, "topPress", { key: "archive", index: 1 });
+    expect(app.events()).toEqual(["press archive"]);
+    const inner: string[] = [];
+    app.nest({ toolbar: { tint: "#0a84ff", onPress: (key: string) => inner.push(key) } });
+    await flush();
+    expect(ofKind(tree(), "screen")).toHaveLength(1);
+    expect(ofKind(tree(), "toolbar")).toHaveLength(1);
+    expect(toolbar().props.nativeID).toBe("svelte:toolbar;tc=0a84ffff");
+    expect(ids(toolbar().children)).toEqual(itemIds);
+    emit(toolbar().target, "topPress", { key: "reply", index: 0 });
+    expect(inner).toEqual(["reply"]);
+    expect(app.events()).toEqual(["press archive"]);
+    expect(ofTestID(tree(), "toolbar-90-34")).toHaveLength(1);
+  } finally { reset(); }
+});
+
+test("toolbar metrics from the native side correct the estimate, which uses the platform bar and the bottom inset", async () => {
+  withInsets(59, 34);
+  environment.__navigationOS = "ios";
+  try {
+    const { toolbar, items, flush, tree } = await mountToolbar(73);
+    expect(flat(toolbar().props.style)).toMatchObject({ height: 78, paddingBottom: 34, paddingHorizontal: 16 });
+    // An iOS item is UIKit's 44 pt button with 4 pt each side.
+    expect(flat(items()[0].props.style)).toMatchObject({ width: 44, marginHorizontal: 4 });
+    expect(ofTestID(tree(), "toolbar-78-34")).toHaveLength(1);
+    emit(toolbar().target, "topMetrics", { height: 83, inset: 39 });
+    await flush();
+    expect(flat(toolbar().props.style)).toMatchObject({ height: 83, paddingBottom: 39 });
+    expect(ofTestID(tree(), "toolbar-83-39")).toHaveLength(1);
+  } finally { reset(); }
+});
+
+test("inside a tab pane the bar sits above the tab bar: it takes no bottom inset of its own", async () => {
+  withInsets(24, 34);
+  try {
+    const m = await load("toolbar-tabs-fixture.svelte");
+    calls.length = 0; roots = {};
+    const app = m.startSurface(74, m.Fixture, {}) as { select: (key: string) => void };
+    await settle(m);
+    const panes = () => ofKind(roots[74], "tab");
+    const bars = () => ofKind(roots[74], "toolbar");
+    expect(bars()).toHaveLength(1);
+    expect(ofKind(panes()[0].children, "toolbar")).toHaveLength(1);
+    expect(flat(bars()[0].props.style)).toEqual({ height: 56, paddingBottom: 0, paddingHorizontal: 4, flexDirection: "row", alignItems: "center" });
+    expect(ids(bars()[0].children)).toEqual(["svelte:toolbar-item;k=reply;t=Reply", "svelte:toolbar-item;sp=1", "svelte:toolbar-item;k=archive;t=Archive"]);
+    expect(ofTestID(roots[74], "toolbar-56-0")).toHaveLength(1);
+    // The pane's bottom edge is the tab bar's top; the screen that holds the tabs has no toolbar.
+    expect(flat(panes()[0].props.style).bottom).toBe(98);
+    app.select("inbox");
+    await settle(m);
+    expect(bars()).toHaveLength(2);
+    expect(bars().map((bar) => flat(bar.props.style).paddingBottom)).toEqual([0, 0]);
+  } finally { reset(); }
+  withInsets(24, 34);
+  environment.__navigationOS = "ios";
+  try {
+    const m = await load("toolbar-tabs-fixture.svelte");
+    roots = {};
+    m.startSurface(75, m.Fixture, {});
+    await settle(m);
+    expect(flat(ofKind(roots[75], "toolbar")[0].props.style)).toMatchObject({ height: 44, paddingBottom: 0, paddingHorizontal: 16 });
   } finally { reset(); }
 });
 

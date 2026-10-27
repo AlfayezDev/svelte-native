@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  export { useHeader } from "../fabric/navigation.ts";
+  export { useHeader, useToolbar } from "../fabric/navigation.ts";
 </script>
 
 <script lang="ts">
@@ -7,11 +7,12 @@
   import type {} from "../elements.d.ts";
   import Platform from "react-native/Libraries/Utilities/Platform";
   import { createNativeProps } from "../native-props.ts";
+  import { resolveAssetSource } from "../fabric/deps-rn.ts";
   import { connectInsets, insets } from "../insets.svelte.ts";
   import {
-    HEADER_CONTEXT, SCREEN_CONTEXT, SLOT_CENTER, SLOT_LEFT, SLOT_RIGHT, SLOT_SEARCH,
-    headerHeight, mergeScreenOptions,
-    type DetentChange, type HeaderMetrics, type NavigationPlatform, type ScreenOptions,
+    HEADER_CONTEXT, PANE_CONTEXT, SCREEN_CONTEXT, SLOT_CENTER, SLOT_LEFT, SLOT_RIGHT, SLOT_SEARCH, SLOT_TOOLBAR_CENTER, TOOLBAR_CONTEXT,
+    headerHeight, mergeScreenOptions, toolbarHeight,
+    type DetentChange, type HeaderMetrics, type NavigationPlatform, type ScreenOptions, type TabIconSource,
   } from "../fabric/navigation.ts";
 
   /**
@@ -20,6 +21,7 @@
    * inside another one (a page inside the router's screen, a page inside a layout's) renders only its content and hands its
    * options to the outer one: the inner value wins per option, object options merge, event handlers all run.
    * The header is opt-in: it is shown when `title`, `subtitle`, `header`, a header snippet or `search` is given.
+   * So is the toolbar: `toolbar` or a `toolbarCenter` snippet, unless `toolbar.hidden`; it is the screen's last child.
    */
   let { children, ...own }: ScreenOptions & { children?: Snippet } = $props();
 
@@ -47,6 +49,18 @@
   function metrics(event: { nativeEvent: HeaderMetrics }) { measured = { height: event.nativeEvent.height, inset: event.nativeEvent.inset, large }; }
   if (!parent) setContext(HEADER_CONTEXT, { get height() { return shown ? height : 0; }, get inset() { return shown ? inset : 0; } });
 
+  // The toolbar band: in flow below the content, or over it when translucent. Inside a tab pane the tab bar covers the bottom inset.
+  const inPane = getContext<boolean | undefined>(PANE_CONTEXT) === true;
+  const toolbar = $derived(options.toolbar);
+  const toolbarShown = $derived((toolbar !== undefined || options.toolbarCenter !== undefined) && toolbar?.hidden !== true);
+  let measuredToolbar = $state<HeaderMetrics | null>(null);
+  const toolbarInset = $derived(measuredToolbar?.inset ?? (inPane ? 0 : insets.bottom));
+  const toolbarSize = $derived(measuredToolbar?.height ?? toolbarHeight(platform, inPane ? 0 : insets.bottom));
+  function toolbarMetrics(event: { nativeEvent: HeaderMetrics }) { measuredToolbar = event.nativeEvent; }
+  const pressItem = (event: { nativeEvent: { key: string } }) => options.toolbar?.onPress?.(event.nativeEvent.key);
+  const iconUri = (icon: TabIconSource | undefined) => icon === undefined ? undefined : resolveAssetSource(icon)?.uri;
+  if (!parent) setContext(TOOLBAR_CONTEXT, { get height() { return toolbarShown ? toolbarSize : 0; }, get inset() { return toolbarShown ? toolbarInset : 0; } });
+
   // Search text is native-owned; `value` is applied by the native side only while no newer edit than the acknowledged count is pending.
   let count = $state(0);
   function change(event: { nativeEvent: { text: string; eventCount: number } }) {
@@ -66,6 +80,7 @@
   const resolveHeader = createNativeProps();
   const resolveCenter = createNativeProps();
   const resolveSearch = createNativeProps();
+  const resolveToolbar = createNativeProps();
   const resolveContent = createNativeProps();
   const screenProps = $derived(resolveScreen({
     style: options.style,
@@ -118,6 +133,17 @@
     onCancel: cancel,
   }));
   const contentProps = $derived(resolveContent({ style: { flex: 1 } }));
+  const toolbarProps = $derived(resolveToolbar({
+    translucent: toolbar?.translucent,
+    tint: toolbar?.tint,
+    background: toolbar?.background,
+    slots: options.toolbarCenter ? SLOT_TOOLBAR_CENTER : 0,
+    toolbarHeight: toolbarSize,
+    toolbarInset,
+    toolbarPlatform: platform,
+    onPress: toolbar?.onPress && pressItem,
+    onMetrics: toolbarMetrics,
+  }));
 </script>
 
 {#if parent}
@@ -133,5 +159,26 @@
       </native-header>
     {/if}
     <native-view nativeProps={contentProps}>{@render children?.()}</native-view>
+    {#if toolbarShown}
+      <native-toolbar nativeProps={toolbarProps}>
+        {#each toolbar?.items ?? [] as item (item.key)}
+          {#if item.spacer}
+            <native-toolbar-item nativeProps={{ spacer: true, centered: options.toolbarCenter !== undefined }}></native-toolbar-item>
+          {:else}
+            {@const view = typeof item.icon === "function" ? item.icon : undefined}
+            <native-toolbar-item
+              nativeProps={{
+                itemKey: item.key, title: item.title, badge: item.badge, disabled: item.disabled, iconView: view !== undefined,
+                icon: view ? undefined : iconUri(item.icon as TabIconSource | undefined),
+                accessibilityLabel: item.accessibilityLabel, testID: item.testID, toolbarPlatform: platform,
+              }}
+            >
+              {#if view}{@render view(false)}{/if}
+            </native-toolbar-item>
+          {/if}
+        {/each}
+        {#if options.toolbarCenter}<native-toolbar-center>{@render options.toolbarCenter()}</native-toolbar-center>{/if}
+      </native-toolbar>
+    {/if}
   </native-screen>
 {/if}

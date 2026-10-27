@@ -46,7 +46,7 @@ void detentChange(jni::alias_ref<jclass>, jint tag, jint index, jfloat fraction)
   dispatch(tag, "detentChange", folly::dynamic::object("index", index)("fraction", fraction)("target", tag));
 }
 
-// Header or tab bar size in dp: `height` including the inset, and the inset itself.
+// Header, tab bar or toolbar size in dp: `height` including the inset, and the inset itself.
 void metrics(jni::alias_ref<jclass>, jint tag, jfloat height, jfloat inset) {
   dispatch(tag, "metrics", folly::dynamic::object("height", height)("inset", inset)("target", tag));
 }
@@ -59,6 +59,11 @@ void cancel(jni::alias_ref<jclass>, jint tag) {
 // A tab bar press.
 void select(jni::alias_ref<jclass>, jint tag, jni::alias_ref<jstring> key, jint index) {
   dispatch(tag, "select", folly::dynamic::object("key", key ? key->toStdString() : std::string())("index", index)("target", tag));
+}
+
+// A toolbar item press, sent to the toolbar node: `topPress { key, index }`; `index` counts the item nodes, spacers included.
+void press(jni::alias_ref<jclass>, jint tag, jni::alias_ref<jstring> key, jint index) {
+  dispatch(tag, "press", folly::dynamic::object("key", key ? key->toStdString() : std::string())("index", index)("target", tag));
 }
 
 } // namespace
@@ -74,6 +79,8 @@ Kind kindForView(const ShadowView &view) {
     case nav::kTabsNode: return kTabs;
     case nav::kTabNode: return kTab;
     case nav::kTabIconNode: return kTabIcon;
+    case nav::kToolbarNode: return kToolbar;
+    case nav::kToolbarItemNode: return kToolbarItem;
     default: return kind;
   }
 }
@@ -94,6 +101,7 @@ void registerNavEventNatives() {
           makeNativeMethod("metrics", metrics),
           makeNativeMethod("cancel", cancel),
           makeNativeMethod("select", select),
+          makeNativeMethod("press", press),
       });
 }
 

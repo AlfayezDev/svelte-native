@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { KeyboardAvoidingView, Pressable, SafeAreaView, Screen, ScrollView, Tabs, Text, TextInput, View, useRouter, type TabHandle, type TabItem } from "@rasheed/svelte-native";
+  import { KeyboardAvoidingView, Pressable, SafeAreaView, Screen, ScrollView, Tabs, Text, TextInput, View, useRouter, type TabHandle, type TabItem, type ToolbarItem } from "@rasheed/svelte-native";
   import { nativeLabEnabled, theme } from "#lib/native/state.svelte.ts";
   import { screenLab } from "#lib/native/dev/model.svelte.ts";
   import Button from "#lib/native/components/Button.svelte";
@@ -8,6 +8,8 @@
   /**
    * The native screens lab: `?mode=` picks the page. The menu opens the others; the stress scenarios header-8 and sheet-8
    * open `header` and `sheet` directly. Sheets and modals are presented by the caller (`goto(..., { presentation })`).
+   * `toolbar` and `toolbar-center` are reached by link only (`/__dev/screens?mode=toolbar`): a menu button for them would
+   * move the rows the parity references of the menu, the sheets and the modal show.
    */
   let { url }: { url?: URL } = $props();
   const router = useRouter();
@@ -20,6 +22,8 @@
   let detent = $state("0");
   let tabSelected = $state("home");
   let left = $state("Segment A");
+  let toolbarPressed = $state("none");
+  let arrangement = $state("List");
 
   // A 24 px asset (a data URI) for the first tab; the other two draw their icon from a snippet.
   const disc = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAcklEQVR42mNgGAkgHojXAPEDIP4NxQ+gYvGUGgwy6D8B/IAciyYRYTA6nkRLw4m2JJ4Cw2EYb3A9oIIFD2jpery+WENFC9bQKnjwBtNvKlrwe0AsoHkQ0TySaZ5MaZ7R6FJU0Lywo0txTZcKhy5V5tAAABEGOLR+xGf5AAAAAElFTkSuQmCC";
@@ -28,6 +32,21 @@
     { key: "inbox", title: "Inbox", icon: square, badge: 120 },
     { key: "me", title: "Me", icon: ring },
   ];
+  // The toolbar pages: two actions with an asset icon, flexible space, a dot badge on a snippet icon, a disabled action.
+  const toolbarItems: ToolbarItem[] = [
+    { key: "reply", title: "Reply", icon: { uri: disc }, accessibilityLabel: "Reply" },
+    { key: "archive", title: "Archive", icon: { uri: disc }, accessibilityLabel: "Archive" },
+    { key: "gap", spacer: true },
+    { key: "flag", title: "Flag", icon: square, badge: true, accessibilityLabel: "Flag" },
+    { key: "delete", title: "Delete", icon: { uri: disc }, disabled: true, accessibilityLabel: "Delete" },
+  ];
+  // With a center the spacer is where it goes: one action on each side of the switch.
+  const composeItems: ToolbarItem[] = [
+    { key: "attach", title: "Attach", icon: { uri: disc }, accessibilityLabel: "Attach" },
+    { key: "gap", spacer: true },
+    { key: "send", title: "Send", icon: { uri: disc }, accessibilityLabel: "Send" },
+  ];
+  const pressToolbar = (key: string) => { toolbarPressed = key; };
 </script>
 
 {#snippet button(label: string, press: () => void, variant: "primary" | "secondary" = "secondary")}
@@ -57,14 +76,20 @@
     <Text style={{ color: theme.foreground, fontSize: 18 }}>×</Text>
   </Pressable>
 {/snippet}
-{#snippet segments()}
+{#snippet segmented(labels: string[], value: string, choose: (label: string) => void)}
   <View style={{ flexDirection: "row", borderRadius: 18, borderWidth: 1, borderColor: theme.border, overflow: "hidden" }}>
-    {#each ["Segment A", "Segment B"] as label (label)}
-      <Pressable accessibilityRole="button" onPress={() => { left = label; }} style={{ paddingHorizontal: 12, minHeight: 36, justifyContent: "center", backgroundColor: left === label ? theme.surface : "transparent" }}>
+    {#each labels as label (label)}
+      <Pressable accessibilityRole="button" onPress={() => choose(label)} style={{ paddingHorizontal: 12, minHeight: 36, justifyContent: "center", backgroundColor: value === label ? theme.surface : "transparent" }}>
         <Text style={{ color: theme.foreground, fontSize: 13 }}>{label}</Text>
       </Pressable>
     {/each}
   </View>
+{/snippet}
+{#snippet segments()}
+  {@render segmented(["Segment A", "Segment B"], left, (label) => { left = label; })}
+{/snippet}
+{#snippet arrangements()}
+  {@render segmented(["List", "Grid"], arrangement, (label) => { arrangement = label; })}
 {/snippet}
 {#snippet results()}
   <ScrollView style={{ flex: 1, backgroundColor: theme.background }} keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 16, gap: 8 }}>
@@ -147,6 +172,24 @@
           </View>
         </SafeAreaView>
       </KeyboardAvoidingView>
+    </Screen>
+  {:else if mode === "toolbar"}
+    <Screen title="Toolbar" subtitle="Four actions" toolbar={{ items: toolbarItems, onPress: pressToolbar }} style={{ backgroundColor: theme.background }}>
+      <SafeAreaView edges={["left", "right"]} style={{ flex: 1 }}>
+        <ScrollView contentContainerStyle={{ padding: 16, gap: 10, direction: theme.direction }}>
+          {@render card(`Last press: ${toolbarPressed}`)}
+          {#each rows as row (row)}{@render card(`Row ${row}`)}{/each}
+        </ScrollView>
+      </SafeAreaView>
+    </Screen>
+  {:else if mode === "toolbar-center"}
+    <Screen title="Toolbar center" toolbar={{ items: composeItems, onPress: pressToolbar }} toolbarCenter={arrangements} style={{ backgroundColor: theme.background }}>
+      <SafeAreaView edges={["left", "right"]} style={{ flex: 1 }}>
+        <ScrollView contentContainerStyle={{ padding: 16, gap: 10, direction: theme.direction }}>
+          {@render card(`Layout: ${arrangement}. Last press: ${toolbarPressed}`)}
+          {#each rows as row (row)}{@render card(`Row ${row}`)}{/each}
+        </ScrollView>
+      </SafeAreaView>
     </Screen>
   {:else if mode === "tabs"}
     <Tabs items={tabItems} selected={tabSelected} onSelect={(key) => { tabSelected = key; }} content={pane} tint={theme.foreground} />

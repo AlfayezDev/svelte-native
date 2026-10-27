@@ -24,13 +24,15 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
+private const val TOOLBAR_CENTER = 4
+
 /**
  * A slot of a screen's header: `native-header-left|center|right` hold the app's content for the bar, `native-header-search`
  * the results shown while the search is active (and the search field's placeholder, value and edit count). Yoga sizes a
  * slot; [EngineHeader] places it in the bar.
  */
 class EngineHeaderSlot(context: Context) : EngineView(context) {
-  /** 0 left, 1 center, 2 right, 3 search. */
+  /** 0 left, 1 center, 2 right, 3 search, 4 the center of a toolbar. */
   var slot = 0
   var placeholder: String? = null
   var value: String? = null
@@ -40,20 +42,27 @@ class EngineHeaderSlot(context: Context) : EngineView(context) {
 
   val header: EngineHeader? get() = parent as? EngineHeader
 
+  /** The toolbar this slot is the center of (slot 4), or null. */
+  val toolbar: EngineToolbar? get() = parent as? EngineToolbar
+
   fun apply(p: NavProps) {
     if (p.slotSeen) slot = p.slot
+    // The toolbar's center may reach over the items (EngineToolbar.placeCenter): only its content takes touches.
+    if (slot == TOOLBAR_CENTER && node.pointer == 0) node.pointer = 2
     if (p.searchSeen) {
       placeholder = p.placeholder
       value = p.searchValue
       eventCount = p.searchCount
     }
     header?.slotChanged(this)
+    toolbar?.slotChanged(this)
   }
 
   override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
     super.onLayout(changed, l, t, r, b)
-    // The mounting layer places a slot at its Yoga frame; the header moves it to its place in the bar.
+    // The mounting layer places a slot at its Yoga frame; the header or the toolbar moves it to its place in the bar.
     header?.slotPlaced(this)
+    toolbar?.slotPlaced(this)
   }
 }
 
@@ -508,7 +517,7 @@ class EngineHeader(context: Context) : EngineView(context) {
     val screen = parent as? ViewGroup ?: return null
     for (i in 0 until screen.childCount) {
       val child = screen.getChildAt(i)
-      if (child !== this) findScroll(child)?.let { return it }
+      if (child !== this && child !is EngineToolbar) findScroll(child)?.let { return it }
     }
     return null
   }

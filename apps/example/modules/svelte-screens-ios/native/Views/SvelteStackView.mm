@@ -53,7 +53,7 @@ using namespace facebook::react;
     __weak SvelteStackView *weakSelf = self;
     _controller.didLayout = ^{
       SvelteStackView *stack = weakSelf;
-      if (stack != nil) [[stack screenForController:stack->_controller.topViewController] reportHeaderMetrics];
+      if (stack != nil) [[stack screenForController:stack->_controller.topViewController] reportBarMetrics];
     };
     // A large title renders expanded only when the controller starts with a non-empty stack, as react-native-screens found.
     [_controller setViewControllers:@[ [UIViewController new] ]];
@@ -554,12 +554,22 @@ using namespace facebook::react;
       willShowViewController:(UIViewController *)viewController
                     animated:(BOOL)animated {
   [[self screenForController:viewController] applyBarConfigurationTo:navigationController animated:animated];
+  // A back swipe the user lets go of puts the screen it started from back on top: its bars (the navigation bar and the toolbar are
+  // the stack's, one for every screen) come back with it.
+  id<UIViewControllerTransitionCoordinator> coordinator = navigationController.transitionCoordinator;
+  UIViewController *from = [coordinator viewControllerForKey:UITransitionContextFromViewControllerKey];
+  if (coordinator != nil && from != nil) {
+    __weak SvelteStackView *weakSelf = self;
+    [coordinator notifyWhenInteractionChangesUsingBlock:^(id<UIViewControllerTransitionCoordinatorContext> context) {
+      if (context.isCancelled) [[weakSelf screenForController:from] applyBarConfigurationTo:navigationController animated:YES];
+    }];
+  }
 }
 
 - (void)navigationController:(UINavigationController *)navigationController
        didShowViewController:(UIViewController *)viewController
                     animated:(BOOL)animated {
-  [[self screenForController:viewController] reportHeaderMetrics];
+  [[self screenForController:viewController] reportBarMetrics];
 }
 
 - (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gestureRecognizer {

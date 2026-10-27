@@ -7,11 +7,14 @@
 #import <react/renderer/components/view/ViewProps.h>
 #import <react/renderer/core/EventQueue.h>
 
+#import <cmath>
+
 #import "SvelteComponents.h"
 #import "SvelteHeaderView.h"
 #import "SvelteScreensCore.h"
 #import "SvelteStackView.h"
 #import "SvelteSupport.h"
+#import "SvelteToolbarView.h"
 
 using namespace facebook::react;
 
@@ -79,6 +82,7 @@ static std::string WithoutActivityState(const std::string &nativeId) {
   SvelteScreenController *_controller;
   SvelteNavigationController *_wrapper;
   __weak SvelteHeaderView *_header;
+  __weak SvelteToolbarView *_toolbar;
   svelte::ScreenSpec _spec;
   std::string _nativeId;
   BOOL _specParsed;
@@ -89,11 +93,14 @@ static std::string WithoutActivityState(const std::string &nativeId) {
   BOOL _userDismissed;
   BOOL _exitReported;
   BOOL _needsUpdate;
+  BOOL _needsToolbarUpdate;
   BOOL _initialDetentApplied;
   BOOL _visible;
   std::vector<double> _appliedDetents;
   SvelteTouchHost *_touch;
   __weak RCTScrollViewComponentView *_adjustedScroll;
+  /// The toolbar height taken off `_adjustedScroll`'s bottom content inset (and added to its indicator inset); 0 when none is.
+  CGFloat _toolbarInset;
 }
 
 + (ComponentDescriptorProvider)componentDescriptorProvider {
@@ -120,11 +127,16 @@ static std::string WithoutActivityState(const std::string &nativeId) {
 }
 
 - (BOOL)needsUpdate {
-  return _needsUpdate;
+  return _needsUpdate || _needsToolbarUpdate;
 }
 
 - (void)setNeedsUpdate {
   _needsUpdate = YES;
+  [_stack setNeedsFlush];
+}
+
+- (void)setNeedsToolbarUpdate {
+  _needsToolbarUpdate = YES;
   [_stack setNeedsFlush];
 }
 
@@ -181,6 +193,12 @@ static std::string WithoutActivityState(const std::string &nativeId) {
     header.screen = self;
     _header = header;
   }
+  if ([childComponentView isKindOfClass:[SvelteToolbarView class]]) {
+    SvelteToolbarView *toolbar = (SvelteToolbarView *)childComponentView;
+    toolbar.screen = self;
+    _toolbar = toolbar;
+    _needsToolbarUpdate = YES;
+  }
   [super mountChildComponentView:childComponentView index:index];
   [self setNeedsUpdate];
 }
@@ -190,6 +208,12 @@ static std::string WithoutActivityState(const std::string &nativeId) {
   if (childComponentView == header) {
     header.screen = nil;
     _header = nil;
+  }
+  SvelteToolbarView *toolbar = _toolbar;
+  if (childComponentView == toolbar) {
+    toolbar.screen = nil;
+    _toolbar = nil;
+    _needsToolbarUpdate = YES;
   }
   [super unmountChildComponentView:childComponentView index:index];
   [self setNeedsUpdate];
@@ -211,17 +235,17 @@ static std::string WithoutActivityState(const std::string &nativeId) {
   return _wrapper != nil ? (UIViewController *)_wrapper : (UIViewController *)_controller;
 }
 
-// A modal has no navigation controller above it: a modal with a header gets one of its own, as it is presented (a screen
-// that the stack pushes must not have one: its controller belongs to the stack's).
+// A modal has no navigation controller above it: a modal with a header or a toolbar gets one of its own, as it is presented (a
+// screen that the stack pushes must not have one: its controller belongs to the stack's). One without either has no bar to show.
 - (void)ensureWrapper {
-  if (_wrapper != nil || _controller == nil || _header == nil || _spec.presentation == svelte::kPush) return;
+  if (_wrapper != nil || _controller == nil || (_header == nil && _toolbar == nil) || _spec.presentation == svelte::kPush) return;
   _wrapper = [[SvelteNavigationController alloc] initWithRootViewController:_controller];
   _wrapper.navigationBar.prefersLargeTitles = YES;
   _wrapper.delegate = self;
   __weak SvelteScreenView *weakSelf = self;
   _wrapper.didLayout = ^{
     SvelteScreenView *screen = weakSelf;
-    if (screen != nil) [screen->_header reportMetrics];
+    if (screen != nil) [screen reportBarMetrics];
   };
 }
 
@@ -229,6 +253,9 @@ static std::string WithoutActivityState(const std::string &nativeId) {
   [self ensureWrapper];
   UIViewController *presented = self.presentedController;
   if (presented == nil) return;
+  // A wrapper that has no header must not show UIKit's bar, and its toolbar is shown from the start: `willShowViewController` is
+  // not guaranteed for the root of a controller that is presented.
+  if (_wrapper != nil) [self applyBarConfigurationTo:_wrapper animated:NO];
   switch (_spec.presentation) {
     case svelte::kModal:
       presented.modalPresentationStyle = UIModalPresentationFullScreen;
@@ -376,8 +403,9 @@ static std::string WithoutActivityState(const std::string &nativeId) {
   });
 }
 
-- (void)reportHeaderMetrics {
+- (void)reportBarMetrics {
   [_header reportMetrics];
+  [_toolbar reportMetrics];
 }
 
 - (void)sheetPresentationControllerDidChangeSelectedDetentIdentifier:(UISheetPresentationController *)sheetPresentationController {
@@ -402,6 +430,7 @@ static std::string WithoutActivityState(const std::string &nativeId) {
 }
 
 - (void)applyBarConfigurationTo:(UINavigationController *)navigation animated:(BOOL)animated {
+  [self applyToolbarTo:navigation animated:animated];
   SvelteHeaderView *header = _header;
   [navigation setNavigationBarHidden:header == nil animated:animated];
   if (header == nil) return;
@@ -413,19 +442,48 @@ static std::string WithoutActivityState(const std::string &nativeId) {
   }
 }
 
+// The navigation controller's toolbar is one for the whole stack: it is shown while the screen on top declares one (and does not hide
+// it), with the push or the pop when called from `willShowViewController`, and hidden otherwise. The screen's items are its own
+// (`toolbarItems`, which UIKit swaps in with the transition).
+- (void)applyToolbarTo:(UINavigationController *)navigation animated:(BOOL)animated {
+  SvelteToolbarView *toolbar = _toolbar;
+  const BOOL shown = toolbar != nil && ![toolbar spec].hidden;
+  if (shown) {
+    // `UINavigationController.toolbar` creates the bar when it is first read: only a screen that has a toolbar does.
+    UIToolbar *bar = navigation.toolbar;
+    [toolbar applyAppearanceTo:bar];
+    if (bar.semanticContentAttribute != self.semanticContentAttribute) bar.semanticContentAttribute = self.semanticContentAttribute;
+  }
+  [navigation setToolbarHidden:!shown animated:animated];
+}
+
 - (void)update {
+  const BOOL full = _needsUpdate;
   _needsUpdate = NO;
+  _needsToolbarUpdate = NO;
   if (_controller == nil) return;
+  SvelteToolbarView *toolbar = _toolbar;
+  if (toolbar != nil) [toolbar applyToController:_controller];
+  else [SvelteToolbarView clearController:_controller];
+  UINavigationController *navigation = _controller.navigationController;
+  const BOOL top = navigation != nil && navigation.topViewController == _controller;
+  if (!full) {
+    // The toolbar alone: the header is not touched. A visible screen shows or hides its toolbar with UIKit's animation.
+    if (top) [self applyToolbarTo:navigation animated:_visible];
+    [toolbar reportMetrics];
+    [self applyToolbarInset];
+    return;
+  }
   SvelteHeaderView *header = _header;
   if (header != nil) [header applyToController:_controller];
   else [SvelteHeaderView clearController:_controller];
-  UINavigationController *navigation = _controller.navigationController;
-  if (navigation != nil && navigation.topViewController == _controller) [self applyBarConfigurationTo:navigation animated:NO];
+  if (top) [self applyBarConfigurationTo:navigation animated:NO];
   [self configureScrollView];
   [self applyDismissalPolicy];
   [self applySheetConfiguration];
   [_controller setNeedsStatusBarAppearanceUpdate];
   [header reportMetrics];
+  [toolbar reportMetrics];
 }
 
 static RCTScrollViewComponentView *_Nullable FirstScrollView(UIView *view) {
@@ -437,18 +495,60 @@ static RCTScrollViewComponentView *_Nullable FirstScrollView(UIView *view) {
   return nil;
 }
 
+static void SvelteSetBottomInset(UIScrollView *scroll, CGFloat content, CGFloat indicator) {
+  UIEdgeInsets inset = scroll.contentInset;
+  if (std::fabs(inset.bottom - content) >= 0.01) {
+    inset.bottom = content;
+    scroll.contentInset = inset;
+  }
+  UIEdgeInsets indicators = scroll.verticalScrollIndicatorInsets;
+  if (std::fabs(indicators.bottom - indicator) >= 0.01) {
+    indicators.bottom = indicator;
+    scroll.verticalScrollIndicatorInsets = indicators;
+  }
+}
+
 // Under a large or translucent header the first scroll view runs under the bar: UIKit insets it by the bar's current
-// height and collapses the large title as it scrolls. JavaScript does not pad it (SPEC.md, "Layout rules").
+// height and collapses the large title as it scrolls. JavaScript does not pad it at the top (SPEC.md, "Layout rules").
 - (void)configureScrollView {
   SvelteHeaderView *header = _header;
   const BOOL underBar = header != nil && ([header spec].large || [header spec].translucent);
   RCTScrollViewComponentView *scroll = underBar ? FirstScrollView(self) : nil;
   RCTScrollViewComponentView *adjusted = _adjustedScroll;
-  if (scroll == adjusted) return;
-  if (adjusted != nil) adjusted.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
-  [_controller setContentScrollView:scroll.scrollView forEdge:NSDirectionalRectEdgeTop];
-  if (scroll != nil) scroll.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentAutomatic;
-  _adjustedScroll = scroll;
+  if (scroll != adjusted) {
+    if (adjusted != nil) {
+      adjusted.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+      if (_toolbarInset > 0) SvelteSetBottomInset(adjusted.scrollView, 0, 0);
+    }
+    _toolbarInset = 0;
+    [_controller setContentScrollView:scroll.scrollView forEdge:NSDirectionalRectEdgeTop];
+    if (scroll != nil) scroll.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentAutomatic;
+    _adjustedScroll = scroll;
+  }
+  [self applyToolbarInset];
+}
+
+// A translucent toolbar overlays the bottom of the content, and `Automatic` also adds its height there (the navigation controller
+// puts the bar in the safe area), while JavaScript pads the content by `useToolbar().height` as well. The bottom is JavaScript's:
+// the content inset takes the bar's reported height off again, so the adjusted bottom inset is 0, and the scroll indicator stops
+// above the bar. An opaque toolbar is in flow below the content in Yoga, so the scroll view never reaches it and needs nothing.
+// The inset goes with the toolbar (hidden, removed, no longer translucent) and follows the reported height.
+- (void)applyToolbarInset {
+  RCTScrollViewComponentView *scroll = _adjustedScroll;
+  if (scroll == nil) {
+    _toolbarInset = 0;
+    return;
+  }
+  SvelteToolbarView *toolbar = _toolbar;
+  const BOOL under = toolbar != nil && [toolbar spec].translucent && ![toolbar spec].hidden;
+  const CGFloat height = under ? [toolbar reportedHeight] : 0;
+  if (height == 0 && _toolbarInset == 0) return;
+  SvelteSetBottomInset(scroll.scrollView, -height, height);
+  _toolbarInset = height;
+}
+
+- (void)toolbarMetricsDidChange {
+  [self applyToolbarInset];
 }
 
 #pragma mark - Status bar

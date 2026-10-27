@@ -11,6 +11,8 @@ NS_ASSUME_NONNULL_BEGIN
 @class SvelteHeaderView;
 @class SvelteScreenView;
 @class SvelteStackView;
+@class SvelteToolbarView;
+@class SvelteToolbarView;
 
 /// The view controller of one screen: its view is the screen's component view, as react-native-screens' `RNSScreen`.
 @interface SvelteScreenController : UIViewController
@@ -42,6 +44,8 @@ NS_ASSUME_NONNULL_BEGIN
 /// Something that the screen's navigation item, bar or scroll view depends on changed; the stack applies it at the end of the transaction.
 - (void)setNeedsUpdate;
 - (BOOL)needsUpdate;
+/// Only the toolbar's items, appearance or visibility changed (a badge, a title): the header is left alone.
+- (void)setNeedsToolbarUpdate;
 - (void)update;
 /// Configures the presented controller (style, detents, dismissal) before the stack presents it.
 - (void)preparePresentation;
@@ -49,6 +53,7 @@ NS_ASSUME_NONNULL_BEGIN
 /// presenter's view in the window) and the view in it that holds the presented content hide their siblings from the accessibility
 /// tree (unless a sheet has no backdrop).
 - (void)markPresentationModal;
+/// The navigation bar's visibility and tint, and the toolbar's, for this screen being shown in `navigation`.
 - (void)applyBarConfigurationTo:(UINavigationController *)navigation animated:(BOOL)animated;
 - (void)markUnmounted;
 - (void)markUserDismissed;
@@ -62,8 +67,10 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)emitExited;
 /// What the sheet's detent resolvers were last asked and answered, per detent index (the QA module reads it through the stack's `qaState`).
 - (NSDictionary *)qaDetents;
-/// The header measures the bar again and tells JavaScript when its height or inset changed.
-- (void)reportHeaderMetrics;
+/// The header and the toolbar measure their bars again and tell JavaScript when a height or an inset changed.
+- (void)reportBarMetrics;
+/// The toolbar reported another height: the first scroll view's bottom inset under a translucent toolbar follows it.
+- (void)toolbarMetricsDidChange;
 @end
 
 NS_ASSUME_NONNULL_END

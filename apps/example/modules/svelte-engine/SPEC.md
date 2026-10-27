@@ -593,7 +593,7 @@ Records (C++ `encodeNavProps` emits them after the common records 1..13, in this
 | 123 | tabs: selectedIndex, selectCount, hasTint, tint, hasInactiveTint, inactiveTint, hasBackground, background, labels (0 always, 1 never) | 14 |
 | 124 | tab item: key string, title string, iconUri string, selectedIconUri string, iconIsView, badgeKind (0 none, 1 dot, 2 text), badgeText string, disabled | 15 |
 | 125 | system bars (present when any `ss sx nc ns` key is): statusStyle (0 auto, 1 light, 2 dark), statusHidden, hasNavColor, navColor, navStyle (0 auto, 1 light, 2 dark) | 11 |
-| 126 | header slot: slot (0 left, 1 center, 2 right, 3 search) | 13 |
+| 126 | header slot: slot (0 left, 1 center, 2 right, 3 search, 4 toolbar center) | 13 |
 | 127 | header search: placeholder string, value string, eventCount | 13 |
 
 The common records still arrive. On a screen the engine ignores `transform` and `opacity` (the stack owns them, as before); the header, slots, tabs and panes honour all common records (`accessibilityLabel`, `testID` on a `tab` belong to its tab bar item).
@@ -669,6 +669,105 @@ New module `apps/platform/modules/svelte-screens-ios/**` with `ViewProps`-derive
 ### Not in this contract
 
 iPad centered form sheets, tab bars on the side or top, nested tab bars, header buttons as a native menu (`UIMenu`, popup), per-tab bar hiding, shared-element transitions, `fullScreenSwipeEnabled`, header height animation by JavaScript. Device verification of every behaviour above is the integration lane's.
+
+## Route tree: layouts as navigators (SvelteKit-native file routing)
+
+Status: contract (27 Oct 2026). Sources of truth, in order: this section, then `packages/svelte-native/src/route-tree.ts` (pure: the tree from a file list, the resolution of an href, the navigation plan) and the golden vectors in `tests/route-tree.test.ts`; then `build.ts` (the generator), `router.svelte.ts`, `Router.svelte`, `components/Stack.svelte`, `components/Tabs.svelte`. It replaces the flat route table: a `+layout.mobile.svelte` can be a navigator the way an Expo Router `_layout` is, and the directory tree decides which stack or tab pane a page belongs to.
+
+### Files
+
+| file | role |
+|---|---|
+| `+mobile.svelte` | a page: one screen of the nearest navigator above it. Its module script may `export const presentation` (a literal: `push`, `modal`, `transparentModal`, `sheet`, `formSheet`; `push` by default), read at build time as today. Everything else about the screen (title, header, slots, search, sheet, system bars, toolbar) is set at run time with `<Screen …>` inside the page. |
+| `+layout.mobile.svelte` with `export const navigator = "stack" \| "tabs"` in its module script (a literal) | a **navigator layout**: its directory is one screen of the parent navigator, and the pages and navigators below it are its own. |
+| `+layout.mobile.svelte` without that export | a **content layout**: wraps the content of every screen in its subtree (pages and navigator screens alike), outermost first, as today. The root `+layout.mobile.svelte` is the app shell: it wraps the root navigator itself and receives `children` (the navigator) instead of `routes`. |
+| `+error.mobile.svelte` | unchanged. |
+| `(group)` | transparent for paths, as today; a group directly under a tabs node is flattened, its child directories become panes. |
+
+### The tree
+
+```
+RouteNode  = StackNode | TabsNode
+StackNode  = { kind: "stack", id, path, layout?: Loader, routes: (PageRoute | RouteNode)[] }
+TabsNode   = { kind: "tabs",  id, path, layout: Loader, panes: Pane[] }
+Pane       = { key, stack: StackNode }                           // key = the pane directory's name
+PageRoute  = { kind: "page", id, path, presentation, load: () => Promise<RouteModules> }
+Loader     = () => Promise<{ component: Component }>              // the navigator layout
+```
+
+- The root is an implicit stack (`id ""`, `path "/"`), with the root layout as the app shell around it (not as `layout`).
+- A page belongs to the nearest navigator above it. Content layouts between them are the page's `layouts` (outermost first), including content layouts above the navigator (the root layout excluded).
+- A navigator layout directory is one route of its parent navigator: a screen whose path is the directory's path (groups removed) and whose content is the navigator layout's component. A `+mobile.svelte` next to a navigator layout is a build error (the layout is the screen).
+- Under a tabs node, every immediate child directory (after group flattening) is a pane: an implicit stack (`id` the directory's id) whose base entry is the pane's index page (`<dir>/+mobile.svelte`, required: a build error names a pane without one). A pane directory may hold its own content layout, which then wraps its pages, and may not be a navigator layout itself (no tab bars inside tab bars, "Not in this contract").
+- A page directly under a tabs node (not in a pane directory) is a build error: it has no pane to show in.
+- Within a navigator, routes sort as today (static segments before parameters, deeper first); matching goes through the whole tree so a resolved href names exactly one page and the chain of navigators above it.
+- `routes.ts` exports `tree: RouteNode`; `createRouter(tree, initial)` replaces `createRouter(routes, initial)`.
+
+### Resolution and the navigation plan (`route-tree.ts`, pure)
+
+`resolve(tree, href)` returns `{ page, params, chain }` where `chain` lists, from the root down, `{ node, select?: paneKey }` for every navigator on the way, or `null` when no page matches. `plan(state, target, navigation)` turns the current state (`{ [nodeId]: { entries: hrefs[] | selected: paneKey } }`) and a resolved target into operations, one per navigator on the chain, in root-first order:
+
+| navigator | operation |
+|---|---|
+| a tabs node on the chain | `select(paneKey)` (no animation; a reselect is a no-op) |
+| the owning stack (the last of the chain) | `push(href, presentation)`; `replace` with `replaceState`; `reset` keeps only the owner's base and the target |
+| a stack above the owner | if the chain's next screen is in its entries: `popTo(thatScreen)` (a modal over the tabs goes away when a tab route is navigated to); else `push(thatScreen)` (a deep link into tabs that are not on the stack yet pushes the tabs screen first, then selects and pushes) |
+
+`back()` asks the innermost active navigator first: a stack pops when it has more than one entry; a pane stack at its base does not pop and does not switch tabs (the decision in "Defaults decided here" stands); then the stack above it; the root at a single entry returns `false` (Android leaves the app). `current` is the deepest shown entry. `useRouter()` is the nearest navigator's router, `useRouter("root")` the root's; a pane's router is named by the pane's key, a nested navigator's by its id. Links open through the root (`openURL` → `goto`). A navigation that does not resolve throws as today. Hot reload keeps every navigator's stack and every tabs node's selection by node id (`hmrState().scopes`).
+
+The owner of a modal, sheet or form sheet is the stack its page belongs to: a modal that must cover the tab bar lives outside the tabs directory (at the root or in a root-level group), as in Expo Router.
+
+### Navigator layout components
+
+```svelte
+<!-- routes/(workspace)/[slug]/(tabs)/+layout.mobile.svelte -->
+<script lang="ts" module>export const navigator = "tabs";</script>
+<script lang="ts">
+  let { panes, children } = $props();           // panes: [{ key: "home" }, { key: "inbox" }], from the directory
+  const items = [{ key: "home", title: t("home"), icon: home }, { key: "inbox", title: t("inbox"), icon: inbox, badge: unread }];
+</script>
+<Tabs {items} tint={theme.foreground}>{@render children()}</Tabs>
+```
+
+```svelte
+<!-- routes/(workspace)/[slug]/(tabs)/inbox/+layout.mobile.svelte (optional; the pane is a stack without it) -->
+<script lang="ts" module>export const navigator = "stack";</script>
+<Stack header={{ large: true }} animation="slide_from_right">{@render children()}</Stack>
+```
+
+- `children` is the navigator's content: for a stack, its screens (`Router.svelte` renders them); for tabs, the panes (`native-tab` per pane with the pane's stack). A navigator layout that renders `{@render children()}` without `<Stack>`/`<Tabs>` gets the defaults.
+- `<Stack>` props are screen defaults merged under each screen's own options (`mergeScreenOptions`, the screen wins): `header`, `animation`, `gestureEnabled`, `statusBar`, `navigationBar`, `style`, plus `loading` (snippet shown while a route's modules load).
+- `<Tabs>` in a navigator layout owns no selection: the router's tabs node does (a press selects at once and the owner can override it by navigating, the `onSelect` prop still reports). `items` keys must be the pane keys; an item for a key that is no pane, or a pane without an item, is a development error logged once. The component mode (`selected`/`onSelect`/`content`) stays for tabs outside the route tree (the lab).
+- Pages keep `<Screen …>` for their options; `export const presentation` stays static.
+
+### Toolbar (kinds 17 `toolbar`, 18 `toolbar-item`; records 128, 129)
+
+A bar of actions at the bottom of a screen (iOS `UIToolbar`, Material bottom app bar), declared by the screen:
+
+```svelte
+<Screen title="Thread" toolbar={{ items: [{ key: "reply", title: t("reply"), icon: reply }, { key: "archive", title: t("archive"), icon: archive, badge: 2 }], onPress: (key) => … }}>
+  {#snippet toolbarCenter()}…{/snippet}       <!-- optional custom content between the items -->
+```
+
+| option | meaning |
+|---|---|
+| `toolbar.items[]` | `key`, `title`, `icon` (asset, drawn as a template image and tinted; or a snippet `(pressed: boolean)`, drawn and never pressed: a `Pressable` inside it does not fire, presses reach `toolbar.onPress(key)` only), `badge` (as tabs), `disabled`, `accessibilityLabel`, `testID`; `{ key, spacer: true }` is flexible space |
+| `toolbar.hidden`, `translucent`, `tint`, `background` | as the header's |
+| `toolbar.onPress(key)` | a press |
+| `toolbarCenter` snippet | custom content in the bar between the items (a composer, a segmented control) |
+
+Tree and layout: `native-toolbar` (`svelte:toolbar;hd=1;tl=1;tc;bg;sl`, kind 17) is the last child of `native-screen`, a Yoga row of `height = bar + bottom inset` (bar 56 dp Android, 44 pt iOS), `paddingBottom = inset`, `paddingHorizontal = edge` (below), in flow below the content view (`flex: 1`) unless `translucent`, then `position: absolute` at the bottom; its children are one `native-toolbar-item` per item, in order (`svelte:toolbar-item;k;t;ic;iv=1;bd;ds=1;sp=1`, kind 18, record 129; a snippet icon renders inside it, Yoga-sized, placed by the native side), and `native-toolbar-center` (kind 13, slot 4 in record 126) when the `toolbarCenter` snippet is given (`sl` bit 1). Keys: `k` key, `t` title, `ic` icon uri, `iv=1` icon is a snippet (child content), `bd` badge text (present and empty = dot), `ds=1` disabled, `sp=1` flexible space (no other key). Inside a tab pane the bar sits above the tab bar (the pane's bottom is the tab bar). One row geometry: Yoga and both native sides lay the row out by `TOOLBAR_METRICS` of `fabric/navigation.ts`, `{ edge, item, gap }` = Android `{ 4, 48, 0 }` dp, iOS `{ 16, 44, 4 }` pt. The band's `paddingHorizontal` is `edge`; every item node (spacers excepted) has `width: item` (fixed, not a minimum) and `marginHorizontal: gap`, so an iOS item occupies `item + 2 * gap` = 52 pt and the band's edges take 32; a spacer is `flexGrow: 1`, or `0` when the screen has a center slot (the center takes all the free width natively, so Yoga must not share it with the spacers); the center is `flex: 1`. The center's Yoga width is therefore `band width - 2 * edge - (item + 2 * gap) * (items that are not spacers)`, the free span between the items on both platforms, and the native sides use it as it is. `useToolbar()` returns `{ height, inset }` of the nearest screen's toolbar (0 without one), reactive, for content under a translucent bar.
+
+| id | values | kind |
+|---|---|---|
+| 128 | toolbar: flags (1 hidden, 2 translucent), hasTint, tint, hasBackground, background, slots (1 center) | 17 |
+| 129 | toolbar item: key string, title string, iconUri string, iconIsView, badgeKind (0 none, 1 dot, 2 text), badgeText string, disabled, spacer | 18 |
+
+Events: `toolbar` emits `topPress { key, index }` (`onPress`, the component calls `toolbar.onPress(key)`) and `topMetrics { height, inset }` like the header. Android (`views/EngineToolbar.kt`): `EngineToolbar` (kind 17) is the last child of its `EngineScreen` like the header (`EngineScreen.toolbar`), so it moves with the screen in push, pop, predictive back and edge swipe. It draws the band's background over its whole Yoga frame (`bg`; else the tab bar's surface-container color; transparent when `translucent`; a hairline on top unless transparent) and lays out its children itself in the 56 dp bar row at the bottom of the band, above the inset (`SafeArea.bottom`, Yoga's `paddingBottom` until the window reports; zero inside a tab pane, whose bottom is the tab bar, so there the first `topMetrics { height, inset }` corrects JavaScript's estimate; sent after layout once per change, never while hidden). Items (`EngineToolbarItem`, kind 18, one per item node, spacers included; Yoga's frame of an item is ignored) are 48 dp high targets packed from the start edge (mirrored in RTL) after a 4 dp edge (`EDGE_DP`), each exactly 48 dp wide (`ITEM_DP`, the width Yoga gives the item node; a label is ellipsized within the item, less 4 dp each side, as the tab bar's; only a row with more items than the bar holds, more than seven on a 360 dp phone, makes them give up equal shares, and Yoga's numbers no longer hold there); a spacer takes an equal share of the free width; the center slot (`native-toolbar-center`, an `EngineHeaderSlot` of slot 4) takes the place of the first spacer (after the last item when there is none) and all the free width (other spacers are then zero), at its Yoga height up to 56 dp; it keeps the width Yoga gave it, which is the free span (`band width - 2 * 4 dp - 48 dp * items`: Yoga and the row agree, so nothing is measured or clamped) and sits at the span's start edge with its content already centered in it by Yoga, so a content-sized center (a segmented control) is centered between the items and a `flex: 1` composer fills the span; the slot lets touches through where it has no content. An item draws a 24 dp icon (`ic` through `ImageLoader`, `SRC_IN` tinted with `tc`, else on-surface-variant), the 12 sp label under it (icon and label centered as one block) and the badge (`BadgeDrawer`, shared with the tab bar); a snippet icon (`iv=1`) is the item's Yoga-sized child, drawn as it is (not tinted), centered where the icon would be and cropped to the item's 48 dp. The item is its own control: bounded ripple, a press sends `topPress { key, index }` on the toolbar node (`index` counts item nodes, spacers included), role Button, `enabled` false and everything drawn at 38 % when disabled (not clickable), label = the node's `accessibilityLabel`, else the title plus ", new items" or ", <badge>" (the key when both are absent), `testID` on the item, spacers hidden from accessibility; a snippet icon is drawn, not pressed: the item node has `pointerEvents: "box-only"`, so JavaScript's touch dispatch ends at it (it has no press handler) and a `Pressable` inside the snippet never fires; presses reach `toolbar.onPress(key)` only, as on iOS. Accessibility order is row order, the center slot at its place. `hd=1` makes the band `GONE`; `translucent` only clears the default background (JavaScript puts the band out of flow). In a sheet the band follows the sheet's visible bottom, not the box's ("Native screens, Android", Sheet: `EngineSheet.syncToolbar`; compiled, not run on a device). Not pooled (`ViewPool` pools exact classes only, like the header); `NavProps` fields `toolbar*` (record 128) and `item*` (record 129), slot 4 in `slot`. Compiled (release build, x86_64) and checked on the host for records 128, 129 and slot 4 against `decodeRecords`; not run on a device. iOS (NI, built; "Native screens, iOS", Toolbar): `SvelteToolbar`, `SvelteToolbarItem` and `SvelteToolbarCenter` (`Views/SvelteToolbarView.{h,mm}`) read the same `nativeID`s; the screen's controller gets `toolbarItems` (a `UIBarButtonItem` per item: UIKit's own button for an image or a title, a control as its `customView` for a snippet icon, an image with a title and anything with a badge, `UIBarButtonSystemItemFlexibleSpace` for a spacer, the center slot as a custom view in the place of the first spacer), and the stack's `UINavigationController` shows its own `UIToolbar` while the screen on top declares a toolbar (shown and hidden with the push or pop transition); the `native-toolbar` band draws nothing and the `UIToolbar` is drawn over it, at the bottom of the navigation controller's view, where Yoga laid the band out; `tc`, `bg` and `tl` become the bar's tint and `UIToolbarAppearance`; `topPress { key, index }` and `topMetrics { height, inset }` come from the toolbar node, the metrics being the bar's frame height (home indicator included) and the bottom safe-area inset. JavaScript (`packages/svelte-native`): `fabric/navigation.ts` holds the encoders (`TOOLBAR_KEYS` and `TOOLBAR_ITEM_KEYS` are the attributes `native-toolbar` and `native-toolbar-item` consume), `decodeRecords` for kinds 17 and 18 and the center slot (records 128, 129 and 126 with slot 4), `NAV_KINDS` (`toolbar: 17`, `"toolbar-item": 18`, `"toolbar-center": 13`), `TOOLBAR_BAR` (56, 44) with `toolbarHeight(platform, inset)`, `TOOLBAR_METRICS` (the row geometry above), `useToolbar`, and `mergeScreenOptions` merges `toolbar` key by key like `header` (the inner `items` and `onPress` replace the outer ones); golden vectors and the rendering tests are in `tests/navigation.test.ts` (`tests/toolbar-fixture.svelte`, `tests/toolbar-tabs-fixture.svelte`). `Screen.svelte` renders `native-toolbar` last in `native-screen` when `toolbar` or a `toolbarCenter` snippet is given and `toolbar.hidden` is not true (a hidden toolbar has no node, so `hd=1` is never sent by `Screen`), its children are the item nodes in order and then `native-toolbar-center`, and the lab pages are `/__dev/screens?mode=toolbar` and `?mode=toolbar-center`. Yoga styles (`Screen` passes the platform to the band and to every item as `toolbarPlatform`, and `centered` to a spacer when it has a center slot): the toolbar is `flexDirection: row`, `alignItems: center`, `height`, `paddingBottom: inset`, `paddingHorizontal: edge` (and `position: absolute; left/right/bottom: 0` when translucent); an item is a centered row of `width: item` and `marginHorizontal: gap`, with `pointerEvents: "box-only"` (a snippet icon is its child, drawn and never pressed; it receives `pressed`, which is always `false` until a pressed-state event exists), a spacer is `flexGrow: 1` (`0` beside a center), the center is `flex: 1`; the native side decides the real placement (the center takes the place of the first spacer, after the last item without one, and `index` of `topPress` counts spacers). `Screen` sends `height = bar + inset` with `inset` the bottom inset, or 0 inside a `Tabs` pane (`Tabs` marks its panes; the pane ends at the tab bar) until `topMetrics` corrects it. The host does not make a navigation tag a pressable: `native-toolbar`'s `onPress` is the engine's event, so it gets neither `onClick`, `accessible` nor Pressability. iOS names (`navigation.ios.ts`, static configs in `view-configs.ts`): `native-toolbar` is `SvelteToolbar` (events `topPress`, `topMetrics`), `native-toolbar-item` `SvelteToolbarItem`, `native-toolbar-center` `SvelteToolbarCenter`; on Android all three are `RCTView` and the engine reads the `nativeID`.
+
+### App adoption (platform app)
+
+Product pages use native headers (`<Screen title>`; `Page` keeps its scroll, padding and direction and drops its drawn title), the workspace becomes a tabs navigator (`(workspace)/[slug]/(tabs)/+layout.mobile.svelte`; which panes is the product's decision), the account and settings routes stay root-level modals, `/auth/login` and `/onboarding/*` stay root stack pages. The lab (`/__dev/*`) keeps its component-mode tabs. Parity and a11y references are added for every new layout (the signed-in screens stay outside the suites until a QA session exists).
 
 ## Expo modules at boot
 
@@ -999,25 +1098,26 @@ Expected: in a steady animated scenario (`animation-48`, `animation-48-translate
 
 ## Native screens, Android
 
-The engine side of "Screen API contract (header, sheet, tabs)": views `EngineHeader`, `EngineHeaderSlot`, `EngineSheet`, `EngineTabs`, `EngineTab`, `EngineTabIcon`, changes in `EngineStack` and `EngineScreen`, the record decoder and encoder for ids 120 to 127, the router integration. Nothing about the contract's API, nativeID grammar or record layout changed; what the contract left open is decided under "Decisions". Device verification is open, see "Not verified".
+The engine side of "Screen API contract (header, sheet, tabs)": views `EngineHeader`, `EngineHeaderSlot`, `EngineSheet`, `EngineTabs`, `EngineTab`, `EngineTabIcon`, `EngineToolbar`, `EngineToolbarItem`, changes in `EngineStack` and `EngineScreen`, the record decoder and encoder for ids 120 to 129, the router integration. Nothing about the contract's API, nativeID grammar or record layout changed; what the contract left open is decided under "Decisions". Device verification is open, see "Not verified".
 
 ### What is where
 
 | file | role |
 |---|---|
 | `cpp/PropsEncoderNavRecords.h` | the grammar and the records, standard library only (percent decoding, lists, colors, `Writer<Sink>`, `encodeRecords`); the host check includes it |
-| `cpp/PropsEncoderNav.{h,cpp}` | `kindForView` (kinds 10 to 16 from the nativeID kind token), `encodeNavProps`, the `NavEvents` natives |
-| `PropsNav.kt` | `NavProps` (one field group per record, a `*Seen` flag each), `PropsNav.decode` (110 to 139), `NavEvents` |
+| `cpp/PropsEncoderNav.{h,cpp}` | `kindForView` (kinds 10 to 18 from the nativeID kind token), `encodeNavProps`, the `NavEvents` natives (including `press`) |
+| `PropsNav.kt` | `NavProps` (one field group per record, a `*Seen` flag each), `PropsNav.decode` (110 to 139; the toolbar's 128 and 129), `NavEvents` |
 | `views/EngineScreen.kt` | `EngineScreen` (open), `SystemBarsSpec`, `SafeArea`, `SystemBars` |
 | `views/EngineStack.kt` | sheets, scrim, appearance events, accessibility hiding, back callback activity, dismissal path |
 | `views/EngineSheet.kt` | `EngineSheet : EngineScreen` for presentation 3 and 4 |
 | `views/EngineHeader.kt` | `EngineHeader`, `EngineHeaderSlot` and the chrome views |
-| `views/EngineTabs.kt` | `EngineTabs`, `EngineTab`, `EngineTabIcon`, the bar and its items |
-| `MountingManager.kt`, `Props.kt` | creation by kind (`KIND_*` 12 to 16; a screen with presentation >= 3 is an `EngineSheet`), the `when` of `applyProps`, two cases in `applyLayout` (tab panes and header slots keep `display: none` to their owner, as screens do), the dispatch line `in 110..139` |
+| `views/EngineTabs.kt` | `EngineTabs`, `EngineTab`, `EngineTabIcon`, the bar and its items, `BadgeDrawer` (the badge of a tab item and of a toolbar item) |
+| `views/EngineToolbar.kt` | `EngineToolbar` (the band and the row layout), `EngineToolbarItem` (the control: icon, label, badge, ripple, press, accessibility) |
+| `MountingManager.kt`, `Props.kt` | creation by kind (`KIND_*` 12 to 18; the foreign frame is 19; a screen with presentation >= 3 is an `EngineSheet`), the `when` of `applyProps`, cases in `applyLayout` (tab panes, header slots and the toolbar keep `display: none` to their owner, as screens do; a toolbar item's snippet child is re-placed after Yoga's frame is applied), the dispatch line `in 110..139` |
 | `packages/svelte-native/src/router.svelte.ts`, `Router.svelte`, `index.ts`, `elements.d.ts`, `fabric/navigation.ts` | JavaScript side, below |
 | `packages/svelte-native/tests/navigation-native.test.ts`, `tests/native/*` | the host check of the C++ encoder and the Kotlin decoder against `decodeRecords` |
 
-Kinds map to Kotlin views as: 12 `EngineHeader`, 13 `EngineHeaderSlot`, 14 `EngineTabs`, 15 `EngineTab`, 16 `EngineTabIcon`; kind 11 is an `EngineSheet` when record 110 says sheet or formSheet at creation (presentation never changes after mount), else an `EngineScreen`. None of them is pooled (`ViewPool` pools exact classes only). Children of header slots, tab panes and screens are ordinary pooled views.
+Kinds map to Kotlin views as: 12 `EngineHeader`, 13 `EngineHeaderSlot` (also the toolbar's center, slot 4), 14 `EngineTabs`, 15 `EngineTab`, 16 `EngineTabIcon`, 17 `EngineToolbar`, 18 `EngineToolbarItem` (`EngineForeign` is kind 19); kind 11 is an `EngineSheet` when record 110 says sheet or formSheet at creation (presentation never changes after mount), else an `EngineScreen`. None of them is pooled (`ViewPool` pools exact classes only). Children of header slots, tab panes and screens are ordinary pooled views.
 
 ### Events sent
 
@@ -1026,10 +1126,11 @@ Kinds map to Kotlin views as: 12 `EngineHeader`, 13 `EngineHeaderSlot`, 14 `Engi
 | `topAppear`, `topDisappear` | `EngineStack.syncAppearance` | per the contract's visibility rule; every event of a stack waits until none of its screens is in a transition, so at the end of one the new top screen appears first, then the leaving screen disappears, then `topDismissed` (sent after `syncAppearance` in the dismissal path). A screen in a tab that is not selected, or under a screen another stack put above its own screen, is not shown; a tab switch and a change in front cascade to the stacks below (`syncWithin`) |
 | `topDismissed` | `EngineStack.dismissTop` | after the exit transition of a user dismissal: back key, header back button, predictive back, edge swipe, sheet drag, scrim tap |
 | `topDetentChange {index, fraction}` | `EngineSheet` | a drag settled on another detent; `index` into the detents as given, `fraction` visible height over available height |
-| `topMetrics {height, inset}` | `EngineHeader`, `EngineTabs` | after layout, once per change, only after the window has reported its insets (so a missing report never shrinks the header) |
+| `topMetrics {height, inset}` | `EngineHeader`, `EngineTabs`, `EngineToolbar` | after layout, once per change, only after the window has reported its insets (so a missing report never shrinks the header) |
 | `topChange`, `topSubmitEditing` | the search `EngineInput` | the field's node tag is the search slot's tag, so `ViewEvents.input` reaches that emitter: `{ text, eventCount }`, `{ text }` |
 | `topCancel` | `EngineHeader` | the search was closed by its icon or the back key |
 | `topSelect {key, index}` | `EngineTabs` | a press on an enabled item, also on the selected one |
+| `topPress {key, index}` | `EngineToolbar` | a press on an enabled item (the tag is the toolbar's; `index` counts item nodes, spacers included) |
 
 ### Header
 
@@ -1045,7 +1146,7 @@ Kinds map to Kotlin views as: 12 `EngineHeader`, 13 `EngineHeaderSlot`, 14 `Engi
 
 ### Sheet
 
-`EngineSheet` keeps the Yoga box (bottom anchored, as tall as the tallest fractional detent) and moves it with `translationY`; `restY` is `box height - visible height of the current detent`, and the stack animates to that instead of 0. `available = stack height - stack's top inset`; a fraction is `round(f * available)` of visible height, `auto` is the box's own height; at most the box. Detents are resolved to offsets and de-duplicated, sorted top-most first.
+`EngineSheet` keeps the Yoga box (bottom anchored, as tall as the tallest fractional detent) and moves it with `translationY`; `restY` is `box height - visible height of the current detent`, and the stack animates to that instead of 0. `available = stack height - stack's top inset`; a fraction is `round(f * available)` of visible height, `auto` is the box's own height; at most the box. Detents are resolved to offsets and de-duplicated, sorted top-most first. A toolbar in a sheet: the band is the bottom of the Yoga box, which at a lower detent is below the visible part, so `EngineSheet.syncToolbar` sets the band's `translationY` to minus the sheet's (its bottom edge is the sheet's visible bottom): at the sheet's rest, following the detent as it settles, following a drag between the top and the lowest detent (below the lowest the whole sheet moves, bar included; above the top nothing moves it), and held at the rest, or where it last was, while the stack enters or exits the sheet. It runs from `setTranslationY`, from the pre-draw pass (the stack's animator bypasses the setter) and from the band's layout; the band stays a child of the sheet, so it keeps the sheet's layer, hit test and accessibility bounds, and its layout, hence its bottom inset, stays Yoga's.
 
 - Corners: top 28 dp (`outlineProvider` and `clipToOutline`, the bottom corners pushed out of the box), grabber 32 x 4 dp at 8 dp when `gr` says so.
 - Scrim: a black view in the stack directly under the sheet (`insertScreen` adds it first, `detach` removes it), 32 % at the lowest detent, alpha from the sheet's position in a pre-draw listener, so it follows the stack's slide, a drag and the exit. A tap dismisses when dismissible; with `bd=1` there is no scrim and `EngineStack.refresh` keeps the screens below touchable (down to the first screen that blocks them).
@@ -1112,9 +1213,12 @@ Status: written without a Mac, brought up on the iPhone SE 3 (iOS 26.6, 60 Hz) i
 | `native-header-left`, `-center`, `-right`, `-search` | `SvelteHeaderSlot` | `SvelteHeaderSlotView` | `UIBarButtonItem(customView:)`, `titleView`, the results controller of the search |
 | `native-tabs` | `SvelteTabs` | `SvelteTabsView` | `UITabBarController` |
 | `native-tab` | `SvelteTab` | `SvelteTabView` | a child controller (the pane is a subview of its view) and its `UITabBarItem` |
+| `native-toolbar` | `SvelteToolbar` | `SvelteToolbarView` | `toolbarItems` of the screen's controller; the stack's `UIToolbar` and its `UIToolbarAppearance` |
+| `native-toolbar-item` | `SvelteToolbarItem` | `SvelteToolbarItemView` | one `UIBarButtonItem`: a flexible space, an image or a title, or a `SvelteToolbarButton` control as its custom view |
+| `native-toolbar-center` | `SvelteToolbarCenter` | `SvelteToolbarCenterView` | `UIBarButtonItem(customView:)` |
 | `native-tab-icon` | `RCTView` (unchanged) | none | drawn into the item's image |
 
-Files: `native/Core/SvelteNativeID.{h,cpp}` (reader of the grammar, no Foundation), `Core/SvelteScreensCore.h` (stack planner, detent height), `Fabric/SvelteComponents.{h,cpp}`, `Views/Svelte{Support,ScreenView,StackView,HeaderView,TabsView}.{h,mm}`, `SvelteScreensIOS.podspec`. JavaScript: `src/fabric/navigation.ios.ts` re-exports the shared encoders and decoder unchanged and holds the component names and the registration of their view configs (the host calls `iosNavigationViewName` from the `viewNames` entries); the entries of the other platforms are unchanged.
+Files: `native/Core/SvelteNativeID.{h,cpp}` (reader of the grammar, no Foundation), `Core/SvelteScreensCore.h` (stack planner, detent height), `Fabric/SvelteComponents.{h,cpp}`, `Views/Svelte{Support,ScreenView,StackView,HeaderView,TabsView,ToolbarView}.{h,mm}` (`ToolbarView` holds the three toolbar views and the control of an item), `SvelteScreensIOS.podspec`. JavaScript: `src/fabric/navigation.ios.ts` re-exports the shared encoders and decoder unchanged and holds the component names and the registration of their view configs (the host calls `iosNavigationViewName` from the `viewNames` entries); the entries of the other platforms are unchanged.
 
 ### Stack and screens
 
@@ -1171,9 +1275,41 @@ Search (slot 3): a `UISearchController` in `navigationItem.searchController` (`h
 
 Selection is JavaScript's: `sel` and `sc` are applied (`selectedIndex`) when either changed since the last application, so a press that `Tabs` did not follow is put back. Every `UITabBarItem` setter makes UIKit rebuild and lay out the bar's buttons, so `applyToItemWithLabels:selected:` assigns a property only when it differs from what this view last assigned (the item's own getters are not the reference: `image` reads back as UIKit's internal template image, and comparing against it re-assigned every image on every flush). A drawn icon is one image per state: drawn the first time the tab is seen unselected and the first time it is seen selected, and redrawn only when a commit touches the icon's views for another reason than the selection flip (the snippet gets `selected` from JavaScript, so every switch arrives as a commit that touches the two icons that flipped). On the iPhone SE 3 (Time Profiler, `tools/xct_callees.py`), tabs-8 went 3.3 % dropped / max 40 ms → 0.0 % / max 25 in three steps: hosting the panes in the tabs view instead of the controllers' views (no change on its own: UIKit's controller transition was not the cost), one drawing per state without the PNG comparison (max 34), and the own-assignment comparison (the dropped interval per switch was the image setters re-run on every flush). `topMetrics { height, inset }` is the tab bar's frame height (home indicator included) and the bottom safe area inset, after layout, when either changed.
 
+### Toolbar
+
+`SvelteToolbar` draws nothing: it is the Yoga band (the last child of its screen) and its props and children become UIKit state of the screen it is in, applied at the flush like the header (`SvelteScreenView.update`; a change of an item, a badge or a title only sets `setNeedsToolbarUpdate`, the header is not touched). Its children are never subviews of it: it keeps them in order and builds `controller.toolbarItems` from them, assigned (`animated: NO`) only when the list changed by identity.
+
+| record | UIKit |
+|---|---|
+| 128 flags hidden | `setToolbarHidden:YES` on the stack's navigation controller (the items are still set) |
+| 128 flags translucent | `scrollEdgeAppearance` and `compactScrollEdgeAppearance` transparent (the content may run under the blurred bar); `standardAppearance` and `compactAppearance` as set |
+| 128 tint, background | `UIToolbar.tintColor` (images and titles); `UIToolbarAppearance`: `configureWithOpaqueBackground` with `backgroundColor`, else `configureWithDefaultBackground` |
+| 128 slots | nothing: the center slot is a child when it exists |
+| 129 spacer | `UIBarButtonSystemItemFlexibleSpace` |
+| 129 icon, title | one `UIBarButtonItem` with the image (`ic` through `SvelteLoadImage` like the tabs' icons, fitted into 24 pt, template, tinted), or with the title when there is no icon: only when the item has no badge and no `iv=1` and not both an icon and a title |
+| 129 `iv=1`, an icon with a title, a badge | `UIBarButtonItem(customView:)` of a `SvelteToolbarButton`, a `UIControl` that draws the image (24 pt template) or hosts the snippet's content, the title under it (`caption2`, in the bar's tint; alone it is `body`) and the badge, at least 44 x 44 pt; the item changes form when a badge appears or goes |
+| 129 badge | drawn by the control: `systemRed` pill with white 11 pt semibold text (an 8 pt dot when empty) over the top corner at the end of the image (the title when there is none), mirrored in right to left. UIKit's own `UIBarButtonItem.badge` (iOS 26) is documented for navigation bars only, so it is not used |
+| 129 disabled | `enabled = NO` (the control is drawn at 40 %, with the not-enabled trait); a pressed control is drawn at 50 % |
+| 129 label, test id | the node's `accessibilityLabel` (else the title, with ", new items" or ", <badge>" as the tabs) and `testID` on the bar item or the control (a snippet icon without a label has none: give it one) |
+| 126 slot 4 (`SvelteToolbarCenter`) | `UIBarButtonItem(customView:)` of a `SvelteBarContainer` sized by Yoga |
+
+The snippet of an `iv=1` item lives in a container that does not take touches: the control owns the tap, so a `Pressable` inside the snippet does not hear it (the snippet's `pressed` stays `false`). A snippet icon is drawn, not pressed, on both platforms: the item node is `pointerEvents: "box-only"` in JavaScript (Android's engine honors it in its hit test), and presses reach `toolbar.onPress(key)` only. The center slot takes touches like the header's slots (the bar is below the surface's root view, so React Native's touch handler hears it).
+
+The center slot takes the place of the first flexible space, flanked by two flexible spaces of its own so that it stays centered in what is left; without a spacer it follows the last item (Android's rule). Yoga sizes it with the numbers UIKit lays the bar out with (`TOOLBAR_METRICS.ios`: 16 pt edges, 44 pt items with 4 pt on each side), so its Yoga width, `band width - 32 - 52 x the items that are not spacers`, is the free span between the items and its container takes that width unchanged (no clamp; a spacer beside a center has no growth in Yoga, the center takes the whole span). `topPress { key, index }`: a tap on an item (`UIControlEventTouchUpInside`, or the bar button's action), `index` counting the item nodes, spacers included.
+
+Showing and hiding: the stack's `UINavigationController` has one `UIToolbar`. `applyBarConfigurationTo:animated:` (the navigation bar's visibility and tint) now also applies the toolbar of the screen being shown: `setToolbarHidden:` with `UIToolbarAppearance` and tint when the screen has a toolbar that is not `hidden`, hidden otherwise; from `willShowViewController` it animates with the push or the pop, and `toolbarItems` are swapped by UIKit with the transition. A change of the toolbar alone on a screen that is on top animates too (`animated:` is whether the screen has appeared). A back swipe that the user lets go of puts the screen it started from back on top: `willShowViewController` registers `notifyWhenInteractionChangesUsingBlock:` and applies that screen's bars again (one call restores the navigation bar and the toolbar). The appearance is requested each time a screen with a toolbar is shown (the bar is shared), and the bar keeps the look it has (translucency, tint and background, as an associated object of the `UIToolbar`, as `SvelteTabsView` keeps `_appearanceApplied`): new `UIToolbarAppearance` objects and the tint are assigned only when one of them changed, every setter making the bar lay out again. The bar's `semanticContentAttribute` is set from the screen's in the same place, when a toolbar is shown: the stack never reads `UINavigationController.toolbar`, which creates the bar on first use; a toolbar inside a tab pane is the pane stack's, above the tab bar.
+
+`topMetrics { height, inset }`: `navigation.toolbar.frame.size.height` (UIKit's frame, taken to be the bar and the home indicator's inset as the band is `bar + inset` and the tab bar's frame is; inside a tab pane the inset is 0 because the pane ends at the tab bar) and `navigation.view.safeAreaInsets.bottom`, sent after layout, on `viewDidAppear`/`didShowViewController` and on every update, only for the screen on top with the toolbar shown and only when either changed.
+
+The scroll view under a translucent toolbar: the first scroll view of a screen with a large or translucent header is `Automatic` ("Scroll view under a large or translucent header"), and with a translucent toolbar (JavaScript puts the band out of flow, over the content) UIKit would add the bar's height to its bottom as well, while `useToolbar().height` pads it in JavaScript. The bottom is JavaScript's, never UIKit's: `SvelteScreenView.applyToolbarInset` sets that scroll view's `contentInset.bottom` to minus the toolbar's reported `topMetrics` height, so the adjusted bottom inset is 0, and its `verticalScrollIndicatorInsets.bottom` to that height, so the indicator stops above the bar; it is applied again when the reported height changes, and removed (both back to 0) when the toolbar is hidden, removed or no longer translucent, or when another scroll view becomes the first one. An opaque toolbar is in flow below the content in Yoga, the scroll view never reaches it and nothing is set; a screen whose header is neither large nor translucent has a `.never` scroll view, which UIKit does not inset.
+
+Presented screens: a presented controller has no navigation controller above it, so the screen creates one of its own, as it does for a header, when it has a header or a toolbar at the moment it is presented (`ensureWrapper`; `preparePresentation` applies the bars to it at once). A sheet, form sheet or modal with a toolbar therefore shows it at the bottom of the presented view; one whose toolbar mounts after it is presented has no bar to show it in, and a presented screen with neither is not wrapped.
+
+Not verified (no device was used): every drawing and behaviour above is compiled (Release, `iphoneos`, no signing) and nothing more: the toolbar's frame against the Yoga band (on a phone with a home indicator, where the test phone, an iPhone SE 3, has none, and with the iOS 26 floating toolbar), the iOS 26 capsule around a 44 pt control (the container centers it, as the header's slots), the badge's place, the center's width against UIKit's real item widths (an item wider than 44 pt, a long title, widens UIKit's row beyond Yoga's numbers), tap handling next to React Native's touch handler, the pop animation of the toolbar and the cancelled back swipe, a toolbar in a sheet and a modal, the first scroll view of a large or translucent header with a translucent toolbar (the negative bottom inset above: that the adjusted inset is 0, and whether UIKit's automatic scroll indicator adjustment adds the bar's height on top of `verticalScrollIndicatorInsets.bottom`, which would put the indicator twice as high), VoiceOver and Dynamic Type.
+
 ### Scroll view under a large or translucent header
 
-With a large or translucent header the first `RCTScrollViewComponentView` of the screen (document order) gets `contentInsetAdjustmentBehavior = .automatic` and becomes the controller's content scroll view (`setContentScrollView:forEdge:`), so UIKit insets it by the bar and collapses the large title as it scrolls; it goes back to `.never` when the header changes. Measured on the device (`large-title` probe, iPhone SE 3): the expanded bar is 126 pt tall and collapses to 54 pt (a large title adds 72 pt, not Android's 56 dp) once the content has scrolled between 52 and 120 pt from rest, and expands again when it returns; a translucent header (`translucent: true`) lets the rows run under the blurred bar. Not normalized: React Native sends the raw `contentOffset` of the `UIScrollView`, which at rest is minus the adjusted top inset (-146 with the large title expanded, -74 collapsed or translucent), not 0 as the layout rules above say for Android. Nothing in the package depends on it (`List` virtualizes by content coordinates, for which the raw offset is the right one); an app effect keyed on the offset adds `useHeader().height` on iOS. A native normalization would need to hook React Native's scroll event, which the prebuilt framework does not allow; a JavaScript one needs to know which scroll view the native side chose.
+With a large or translucent header the first `RCTScrollViewComponentView` of the screen (document order) gets `contentInsetAdjustmentBehavior = .automatic` and becomes the controller's content scroll view (`setContentScrollView:forEdge:`), so UIKit insets it by the bar and collapses the large title as it scrolls; it goes back to `.never` when the header changes. Under a translucent toolbar its bottom inset is not UIKit's ("Toolbar" above). Measured on the device (`large-title` probe, iPhone SE 3): the expanded bar is 126 pt tall and collapses to 54 pt (a large title adds 72 pt, not Android's 56 dp) once the content has scrolled between 52 and 120 pt from rest, and expands again when it returns; a translucent header (`translucent: true`) lets the rows run under the blurred bar. Not normalized: React Native sends the raw `contentOffset` of the `UIScrollView`, which at rest is minus the adjusted top inset (-146 with the large title expanded, -74 collapsed or translucent), not 0 as the layout rules above say for Android. Nothing in the package depends on it (`List` virtualizes by content coordinates, for which the raw offset is the right one); an app effect keyed on the offset adds `useHeader().height` on iOS. A native normalization would need to hook React Native's scroll event, which the prebuilt framework does not allow; a JavaScript one needs to know which scroll view the native side chose.
 
 ### Status bar
 
@@ -1181,7 +1317,7 @@ With a large or translucent header the first `RCTScrollViewComponentView` of the
 
 ### Tests
 
-`packages/svelte-native/tests/screens-ios.test.ts`: the shared wire re-exported unchanged; the host mounting the tags as the `Svelte*` components on iOS and as `RCTView` on Android with equal nativeIDs; the view config registration (six components, once, their direct events). `test/records_dump.cpp` is built with the system C++ compiler (`c++`, `clang++` or `g++`; the test fails without one) from `native/Core`: it reads the `nativeID`s of golden vectors, of malformed and repeated-key inputs, and of about 730 strings the encoders build from a grid of attributes, and its records equal `decodeRecords` for every one; it also runs the stack planner over a table of transitions and the detent arithmetic.
+`packages/svelte-native/tests/screens-ios.test.ts`: the shared wire re-exported unchanged; the host mounting the tags as the `Svelte*` components on iOS and as `RCTView` on Android with equal nativeIDs; the view config registration (six components, once, their direct events). `test/records_dump.cpp` is built with the system C++ compiler (`c++`, `clang++` or `g++`; the test fails without one) from `native/Core`: it reads the `nativeID`s of golden vectors, of malformed and repeated-key inputs, and of about 730 strings the encoders build from a grid of attributes, and its records equal `decodeRecords` for every one; it also runs the stack planner over a table of transitions and the detent arithmetic. It prints kinds 17 and 18 (records 128 and 129) and the toolbar's center (kind 13, slot 4 of record 126) as well.
 
 ### Accessibility
 
@@ -1303,7 +1439,7 @@ Written by agent X on 26 Oct 2026 (wave 2). Foreign views are views other librar
 | `cpp/ForeignSplit.h` | which mounting layer owns which node of a transaction (no React Native, no JNI; `src/test/cpp/ForeignSplitTest.cpp` runs on the host under ASan/UBSan) |
 | `cpp/MountingDelegate.{h,cpp}` | registry of foreign component names, the classification per transaction, the mutations returned to React Native, `inEngineFrame` |
 | `cpp/SvelteEngineNative.{h,cpp}`, `SvelteEngineNative.kt` | JNI: `registerForeign(name)`, `isForeign(tag)`, `foreignCount()` |
-| `views/EngineForeign.kt` | the engine's frame for a foreign root: an `EngineView` (kind 17) with React Native's view as its only child |
+| `views/EngineForeign.kt` | the engine's frame for a foreign root: an `EngineView` (kind 19) with React Native's view as its only child |
 | `ForeignViews.kt` | puts React Native's view into its frame (`resolveView`, `UIManagerListener.didMountItems`), counts, taps and drags for the lab |
 | `ExpoViews.kt` | lazily registered Expo modules' views: builds the module, registers its Fabric components, serves its view managers on demand |
 | `views/HitTest.kt` | touch gating |
@@ -1319,7 +1455,7 @@ The JS host tells the engine every foreign component name before it commits the 
 
 - A node of a registered name under an engine node is a **root**. A node under a foreign node is a **descendant**, whatever its name (a map's marker is a foreign component under a foreign parent): React Native mounts it into the parent's own `ViewGroupManager`. Fabric emits a new subtree's `Create`s, then the children's `Insert`s, then the parent's, so the whole list is read for parents before any node is classified; the registry then follows the transaction in order (a `Delete` is still foreign when it arrives, then it leaves).
 - **Descendant**: every mutation (`Create`, `Insert`, `Update`, `Remove`, `Delete`) goes to React Native unchanged and nothing goes to the engine.
-- **Root**: the engine batch carries it as a `View` of kind 17 (`CREATE`, `INSERT`, `UPDATE_PROPS`, `UPDATE_LAYOUT`, `REMOVE`, `DELETE`, common records only, no state, no emitter). React Native receives `Create` and `Delete` unchanged, an `Update` only when props, state, emitter or its layout in the frame changed, and **the first `Insert` only**, rewritten to `Insert(surfaceId, view, 0)`. The `Remove` and later inserts of a root (a move inside the engine's tree) never reach React Native.
+- **Root**: the engine batch carries it as a `View` of kind 19 (`CREATE`, `INSERT`, `UPDATE_PROPS`, `UPDATE_LAYOUT`, `REMOVE`, `DELETE`, common records only, no state, no emitter). React Native receives `Create` and `Delete` unchanged, an `Update` only when props, state, emitter or its layout in the frame changed, and **the first `Insert` only**, rewritten to `Insert(surfaceId, view, 0)`. The `Remove` and later inserts of a root (a move inside the engine's tree) never reach React Native.
 - **Frame**: `inEngineFrame` gives React Native the root's layout at origin (0, 0) in the size `round(x + w) - round(x)` pixels, the rounding `MountingManager.applyLayout` uses, so the view's own `layout(0, 0, w, h)` and the engine's agree to the pixel. Position and stacking are the frame's.
 - The returned `MountingTransaction` holds exactly these mutations. The Reanimated layout-animation delegate chained after ours therefore sees an empty list for every engine subtree, as before, and the foreign mutations for the rest. `foreign: surface=S created=C deleted=D forwarded=F of N mutations` is logged for every transaction that creates or deletes a foreign node.
 - `isForeign(tag)` (any thread) answers for roots and descendants; `MountingManager.applyAnimated` returns false for a tag that has no engine view and is foreign, so Reanimated's own path (React Native's `updatePropsSynchronously`) writes it. The typed animated path hands such tags back (step 7 of "Animated write path"). A root has an engine view (the frame), so opacity and transform animations of a foreign view run on the frame.
@@ -1328,7 +1464,7 @@ The JS host tells the engine every foreign component name before it commits the 
 
 React Native inserts a root's view into the surface's root view (attached to the window) and then inserts the children, because a view manager may rely on its view being attached when its children arrive: react-native-maps starts its lifecycle on attach and creates its marker layer in `onMapReady`. `ForeignViews` moves the view into its `EngineForeign` frame afterwards:
 
-1. Engine batch first (the usual order: it is posted before React Native's batch is scheduled): `OP_CREATE` of kind 17 makes the frame and registers it; `ForeignViews.created` asks `FabricUIManager.resolveView(tag)`; it is not there yet, so the frame waits in `waiting`.
+1. Engine batch first (the usual order: it is posted before React Native's batch is scheduled): `OP_CREATE` of kind 19 makes the frame and registers it; `ForeignViews.created` asks `FabricUIManager.resolveView(tag)`; it is not there yet, so the frame waits in `waiting`.
 2. React Native's batch runs (create, insert into the root, children, layout). `UIManagerListener.didMountItems` runs right after it on the main thread, before the next draw: each waiting frame gets its view (`adoptedAtMount`), the view is taken out of the root view and added to the frame, so there is never a drawn frame with the view in the wrong place.
 3. React Native first (the engine's batch was held back behind a frame callback): the frame's `created` finds the view and adopts it at once (`adoptedAtCreate`).
 

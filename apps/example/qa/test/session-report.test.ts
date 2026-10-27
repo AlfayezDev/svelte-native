@@ -30,6 +30,17 @@ describe("what the suites' sessions say of the device in the report", () => {
 		expect(notes[0]).toContain("localhost:33699");
 	});
 
+	test("a device restart a run survived is a note per restart, never a warning: the run is still a measured one", () => {
+		const { warnings, notes } = sessionFindings("localhost:5555", [
+			["parity", { deviceRestarts: [{ at: "2026-10-27T14:55:42.000Z", bootId: "0f1c2a3b-0000-4000-8000-000000000002" }] }],
+			["accessibility", { deviceRestarts: [] }],
+		]);
+		expect(warnings).toEqual([]);
+		expect(notes).toEqual([
+			"localhost:5555: the device restarted at 2026-10-27T14:55:42.000Z (boot id 0f1c2a3b-0000-4000-8000-000000000002) during the parity run, which re-applied its settings and retried the case in flight",
+		]);
+	});
+
 	test("run files written before the record existed, or with nothing in it, say nothing", () => {
 		expect(
 			sessionFindings("localhost:5555", [

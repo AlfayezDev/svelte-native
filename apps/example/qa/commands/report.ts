@@ -209,8 +209,10 @@ const commitOf = (run: Measured): string => {
 };
 
 /**
- * What the runs of one device must agree on: every run says which build it measured, all of them the same build, and the
- * lab and the boot run the same commit. A build nobody identified cannot be told from another, so it is a warning too.
+ * What the runs of one device must agree on: every run says which build it measured, and all of them the same build (the
+ * installed artifact: the APK digest on Android, the `installed` pair on iOS). A build nobody identified cannot be told from
+ * another, so it is a warning too. The commit a run was started at is not compared here: harness-only commits land between the
+ * runs of one campaign, and runs of one artifact at different commits are a note (`buildNotes`).
  */
 export function buildWarnings(serial: string, runs: [string, Measured | null][]): string[] {
 	const present = runs.flatMap(([label, run]) => (run ? [{ label, run }] : []));
@@ -226,20 +228,34 @@ export function buildWarnings(serial: string, runs: [string, Measured | null][])
 		warnings.push(
 			`${serial}: the runs measured different builds (${keys.map((key) => `${keyed.filter((entry) => entry.key === key).map((entry) => entry.label).join(" and ")}: ${key}`).join("; ")})`,
 		);
-	const lab = present.find(({ label }) => label === "lab");
-	const boot = present.find(({ label }) => label === "boot");
-	if (lab && boot && commitOf(lab.run) !== commitOf(boot.run))
-		warnings.push(`${serial}: the lab ran at ${commitOf(lab.run)} and the boot run at ${commitOf(boot.run)}`);
 	if (present.some(({ run }) => run.app.build && run.app.build.cdHash === null))
 		warnings.push(`${serial}: the build record (qa/out/ios-build.json) has no CDHash: build again`);
 	return warnings;
 }
 
 /**
+ * The commit of each run of a device, when the runs measured one artifact (every run identified, all with the same identity):
+ * the runs of one campaign may be taken at different commits when only the harness changed in between, so a difference is a note.
+ * A difference in the identity is `buildWarnings`' warning, and then the commits say nothing more.
+ */
+export function buildNotes(serial: string, runs: [string, Measured | null][]): string[] {
+	const present = runs.flatMap(([label, run]) => (run ? [{ label, run }] : []));
+	const keys = present.map(({ run }) => buildKey(run.app));
+	if (present.length === 0 || keys.includes(null) || new Set(keys).size > 1) return [];
+	const commits = new Set(present.map(({ run }) => commitOf(run)));
+	if (commits.size < 2) return [];
+	return [
+		`${serial}: the runs of one build (${keys[0]}) were taken at different commits (${present.map(({ label, run }) => `${label}: ${commitOf(run)}`).join(", ")}); the installed artifact is the same`,
+	];
+}
+
+/**
  * What the Android suites' sessions recorded of the device's state. A run that could not put the device back
  * (`restoreFailures`: it was lost, a setting did not take) left it in a changed state, a warning like the cross-build ones:
  * `gates` fails on it. A run that found settings an earlier run left (`leftovers`) cleared them before it measured, so its
- * numbers stand; the note shows that the earlier run did not restore.
+ * numbers stand; the note shows that the earlier run did not restore. A run that saw the device restart (`deviceRestarts`: the
+ * emulator died or a watchdog restarted it) re-applied its settings and retried the case in flight, so it is still a measured run:
+ * a note per restart; a restart that broke a case is that case's own error.
  */
 export function sessionFindings(
 	serial: string,
@@ -256,6 +272,10 @@ export function sessionFindings(
 		if (run.leftovers && run.leftovers.length > 0)
 			notes.push(
 				`${serial}: the ${label} run found what an earlier run left on the device, so that run did not restore it, and cleared it (${run.leftovers.join("; ")})`,
+			);
+		for (const restart of run.deviceRestarts ?? [])
+			notes.push(
+				`${serial}: the device restarted at ${restart.at} (boot id ${restart.bootId}) during the ${label} run, which re-applied its settings and retried the case in flight`,
 			);
 	}
 	return { warnings, notes };
@@ -312,17 +332,17 @@ export async function report(): Promise<void> {
 		if (!reference) continue;
 		const serial = reference.device.serial;
 		const platform: Platform = reference.device.platform;
-		warnings.push(
-			...buildWarnings(serial, [
-				["lab", lab],
-				["boot", boot],
-				["soak", soak],
-				["crash", crashes],
-				["parity", suites.parity],
-				["accessibility", suites.a11y],
-				["resilience", suites.resilience],
-			]),
-		);
+		const measured: [string, Measured | null][] = [
+			["lab", lab],
+			["boot", boot],
+			["soak", soak],
+			["crash", crashes],
+			["parity", suites.parity],
+			["accessibility", suites.a11y],
+			["resilience", suites.resilience],
+		];
+		warnings.push(...buildWarnings(serial, measured));
+		notes.push(...buildNotes(serial, measured));
 		const found = sessionFindings(serial, [
 			["parity", suites.parity],
 			["accessibility", suites.a11y],

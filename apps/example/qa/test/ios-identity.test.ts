@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readLaunchReport, staleReport } from "../commands/ios-boot.ts";
-import { buildKey, buildWarnings, type ReportFile } from "../commands/report.ts";
+import { buildKey, buildNotes, buildWarnings, type ReportFile } from "../commands/report.ts";
 import { reportProblems, type RunFileState } from "../commands/gates.ts";
 import { parseCaptureIndex } from "../lib/iphone/capture.ts";
 import { IdentityMismatch, identityMismatch, reportedIdentity, withIdentity } from "../lib/iphone/identity.ts";
@@ -142,13 +142,31 @@ describe("which build a run measured, across the runs of a device", () => {
 		expect(warnings[0]).toContain("boot: main.jsbundle cccccccccccc");
 	});
 
-	test("the lab and the boot run must be of one commit: the build's on iOS, the harness's checkout on Android", () => {
+	test("runs of one artifact at different harness commits are a note, not a warning", () => {
+		const lab = run({ installedSha256: digest("a") }, "bfc59cb3c");
+		const parity = run({ installedSha256: digest("a") }, "aaa1111");
+		const runs: [string, typeof lab][] = [["lab", lab], ["parity", parity]];
+		expect(buildWarnings("emulator", runs)).toEqual([]);
+		expect(buildNotes("emulator", runs)).toEqual([
+			"emulator: the runs of one build (sha256 aaaaaaaaaaaa) were taken at different commits (lab: bfc59cb3c, parity: aaa1111); the installed artifact is the same",
+		]);
+		// one commit: nothing to say
+		expect(buildNotes("emulator", [["lab", lab], ["boot", run({ installedSha256: digest("a") }, "bfc59cb3c")]])).toEqual([]);
+		// the harness checkout moved between two runs of one iOS build: the build record says which commit each was
+		const later = { ...reported(), source: { commit: "later", dirty: true } };
+		expect(buildWarnings("E74A", [["lab", reported()], ["boot", later]])).toEqual([]);
+		expect(buildNotes("E74A", [["lab", reported()], ["boot", later]])).toEqual([]);
+	});
+
+	test("a different artifact stays a warning whatever the commits, and then the commits are not a note", () => {
 		const lab = run({ installedSha256: digest("a") }, "aaa1111");
-		const boot = run({ installedSha256: digest("a") }, "bbb2222");
-		expect(buildWarnings("emulator", [["lab", lab], ["boot", boot]])).toEqual(["emulator: the lab ran at aaa1111 and the boot run at bbb2222"]);
-		// the harness checkout moved between two runs of one iOS build: not a mix, the build record says which commit it was
-		const sameBuild = { ...reported(), source: { commit: "later", dirty: true } };
-		expect(buildWarnings("E74A", [["lab", reported()], ["boot", sameBuild]])).toEqual([]);
+		const boot = run({ installedSha256: digest("b") }, "bbb2222");
+		const warnings = buildWarnings("emulator", [["lab", lab], ["boot", boot]]);
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]).toContain("different builds");
+		expect(buildNotes("emulator", [["lab", lab], ["boot", boot]])).toEqual([]);
+		// an unreported identity is a warning, not a note
+		expect(buildNotes("emulator", [["lab", lab], ["boot", run({}, "bbb2222")]])).toEqual([]);
 	});
 
 	test("a build record without the CDHash is a warning", () => {

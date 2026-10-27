@@ -629,6 +629,11 @@ static CGFloat SvelteRoundToPixel(CGFloat value) {
   _lastHeight = height;
   _lastInset = inset;
   SvelteEmit(_eventEmitter, "metrics", folly::dynamic::object("height", (double)height)("inset", (double)inset));
+  [_screen toolbarMetricsDidChange];
+}
+
+- (CGFloat)reportedHeight {
+  return _reported ? _lastHeight : 0;
 }
 
 - (void)invalidate {

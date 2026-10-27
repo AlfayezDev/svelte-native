@@ -7,6 +7,8 @@
 #import <react/renderer/components/view/ViewProps.h>
 #import <react/renderer/core/EventQueue.h>
 
+#import <cmath>
+
 #import "SvelteComponents.h"
 #import "SvelteHeaderView.h"
 #import "SvelteScreensCore.h"
@@ -97,6 +99,8 @@ static std::string WithoutActivityState(const std::string &nativeId) {
   std::vector<double> _appliedDetents;
   SvelteTouchHost *_touch;
   __weak RCTScrollViewComponentView *_adjustedScroll;
+  /// The toolbar height taken off `_adjustedScroll`'s bottom content inset (and added to its indicator inset); 0 when none is.
+  CGFloat _toolbarInset;
 }
 
 + (ComponentDescriptorProvider)componentDescriptorProvider {
@@ -462,6 +466,7 @@ static std::string WithoutActivityState(const std::string &nativeId) {
     // The toolbar alone: the header is not touched. A visible screen shows or hides its toolbar with UIKit's animation.
     if (top) [self applyToolbarTo:navigation animated:_visible];
     [toolbar reportMetrics];
+    [self applyToolbarInset];
     return;
   }
   SvelteHeaderView *header = _header;
@@ -485,18 +490,60 @@ static RCTScrollViewComponentView *_Nullable FirstScrollView(UIView *view) {
   return nil;
 }
 
+static void SvelteSetBottomInset(UIScrollView *scroll, CGFloat content, CGFloat indicator) {
+  UIEdgeInsets inset = scroll.contentInset;
+  if (std::fabs(inset.bottom - content) >= 0.01) {
+    inset.bottom = content;
+    scroll.contentInset = inset;
+  }
+  UIEdgeInsets indicators = scroll.verticalScrollIndicatorInsets;
+  if (std::fabs(indicators.bottom - indicator) >= 0.01) {
+    indicators.bottom = indicator;
+    scroll.verticalScrollIndicatorInsets = indicators;
+  }
+}
+
 // Under a large or translucent header the first scroll view runs under the bar: UIKit insets it by the bar's current
-// height and collapses the large title as it scrolls. JavaScript does not pad it (SPEC.md, "Layout rules").
+// height and collapses the large title as it scrolls. JavaScript does not pad it at the top (SPEC.md, "Layout rules").
 - (void)configureScrollView {
   SvelteHeaderView *header = _header;
   const BOOL underBar = header != nil && ([header spec].large || [header spec].translucent);
   RCTScrollViewComponentView *scroll = underBar ? FirstScrollView(self) : nil;
   RCTScrollViewComponentView *adjusted = _adjustedScroll;
-  if (scroll == adjusted) return;
-  if (adjusted != nil) adjusted.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
-  [_controller setContentScrollView:scroll.scrollView forEdge:NSDirectionalRectEdgeTop];
-  if (scroll != nil) scroll.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentAutomatic;
-  _adjustedScroll = scroll;
+  if (scroll != adjusted) {
+    if (adjusted != nil) {
+      adjusted.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+      if (_toolbarInset > 0) SvelteSetBottomInset(adjusted.scrollView, 0, 0);
+    }
+    _toolbarInset = 0;
+    [_controller setContentScrollView:scroll.scrollView forEdge:NSDirectionalRectEdgeTop];
+    if (scroll != nil) scroll.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentAutomatic;
+    _adjustedScroll = scroll;
+  }
+  [self applyToolbarInset];
+}
+
+// A translucent toolbar overlays the bottom of the content, and `Automatic` also adds its height there (the navigation controller
+// puts the bar in the safe area), while JavaScript pads the content by `useToolbar().height` as well. The bottom is JavaScript's:
+// the content inset takes the bar's reported height off again, so the adjusted bottom inset is 0, and the scroll indicator stops
+// above the bar. An opaque toolbar is in flow below the content in Yoga, so the scroll view never reaches it and needs nothing.
+// The inset goes with the toolbar (hidden, removed, no longer translucent) and follows the reported height.
+- (void)applyToolbarInset {
+  RCTScrollViewComponentView *scroll = _adjustedScroll;
+  if (scroll == nil) {
+    _toolbarInset = 0;
+    return;
+  }
+  SvelteToolbarView *toolbar = _toolbar;
+  const BOOL under = toolbar != nil && [toolbar spec].translucent && ![toolbar spec].hidden;
+  const CGFloat height = under ? [toolbar reportedHeight] : 0;
+  if (height == 0 && _toolbarInset == 0) return;
+  SvelteSetBottomInset(scroll.scrollView, -height, height);
+  _toolbarInset = height;
+}
+
+- (void)toolbarMetricsDidChange {
+  [self applyToolbarInset];
 }
 
 #pragma mark - Status bar

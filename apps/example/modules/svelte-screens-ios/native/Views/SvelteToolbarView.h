@@ -26,6 +26,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)applyAppearanceTo:(UIToolbar *)toolbar;
 /// `topMetrics { height, inset }` when the bar's height or the bottom inset changed.
 - (void)reportMetrics;
+/// The height `topMetrics` last carried (the bar's frame height, home indicator included); 0 before the first report.
+- (CGFloat)reportedHeight;
 /// An item's or the center slot's props, size or content changed.
 - (void)contentDidChange;
 /// `topPress { key, index }`.

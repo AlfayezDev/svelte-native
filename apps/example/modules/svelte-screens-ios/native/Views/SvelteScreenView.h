@@ -69,6 +69,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSDictionary *)qaDetents;
 /// The header and the toolbar measure their bars again and tell JavaScript when a height or an inset changed.
 - (void)reportBarMetrics;
+/// The toolbar reported another height: the first scroll view's bottom inset under a translucent toolbar follows it.
+- (void)toolbarMetricsDidChange;
 @end
 
 NS_ASSUME_NONNULL_END

@@ -4,10 +4,11 @@ import { flagString, parseFlags } from "../lib/flags.ts";
 import { reachPct } from "../lib/a11y.ts";
 import { analyzeIosScreen, type IosDump, type UiKitState } from "../lib/iphone/a11y.ts";
 import { captureScreens } from "../lib/iphone/capture.ts";
+import { describeCrashReports, finishCrashWatch, keepCrashFiles } from "../lib/iphone/crash-reports.ts";
 import { IdentityMismatch, notReported, reportedIdentity, withIdentity } from "../lib/iphone/identity.ts";
 import { iosBelowTheFold, iosCases, iosControl, iosLayoutVariants, iosMatrix, iosNotCovered, iosTitle } from "../lib/iphone/screens.ts";
 import { currentSource, iosOptions, newToken, startIosSuite } from "../lib/iphone/session.ts";
-import { runsDir } from "../lib/paths.ts";
+import { qaDir, runsDir } from "../lib/paths.ts";
 import { slug, stamp, writeRun } from "../lib/runs.ts";
 import { localize, referenceName, type ScreenCase, type Variant } from "../lib/screens.ts";
 import { backendStatus } from "../lib/suite.ts";
@@ -114,6 +115,9 @@ export async function iosA11y(argv: string[]): Promise<void> {
 	}
 	const installed = reportedIdentity(reports, session.build, "a11y");
 	if (reports.length > 0 && installed === null) console.log(`warning: ${notReported}`);
+	// The captures ended the app: what the phone's crash log gained since the start is this run's.
+	const found = await finishCrashWatch(session.crashes);
+	for (const line of describeCrashReports(found.record)) console.log(line);
 
 	const file: A11yFile = {
 		schema: 1,
@@ -128,8 +132,11 @@ export async function iosA11y(argv: string[]): Promise<void> {
 		screens: results,
 		notCovered: iosNotCovered,
 		aborted,
+		...found.record,
 	};
 	const name = await writeRun("a11y", session.device.serial, session.startedAt, file);
+	const kept = await keepCrashFiles(found, name);
+	if (kept) console.log(`kept the crash reports in ${kept.slice(qaDir.length + 1)}`);
 	const total = (pick: (screen: A11yScreenResult) => number) => results.reduce((sum, screen) => sum + pick(screen), 0);
 	console.log(
 		`a11y: ${results.length} screens, ${total((s) => s.interactive)} interactive elements, ${total((s) => s.unreachable)} unreachable, ${total((s) => s.unlabeled)} unlabeled, ${total((s) => s.notActionable)} not actionable, ${total((s) => s.orderViolations)} order violations, ${results.filter((s) => s.titleFirst === false).length} titles not first, ${total((s) => s.focusLeaks)} focus leaks, ${results.filter((s) => s.error !== null).length} errors`,

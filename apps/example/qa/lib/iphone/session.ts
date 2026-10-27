@@ -5,6 +5,7 @@ import { currentSource } from "../git.ts";
 import { reexecUnderLock } from "../lock.ts";
 import { defaultPackage, outDir } from "../paths.ts";
 import type { AppInfo, BuildRecord, DeviceInfo, Source } from "../types.ts";
+import { defaultHardwareUdid, startCrashWatch, type CrashWatch } from "./crash-reports.ts";
 import { deviceDetails, installedApp, type IosTarget } from "./device.ts";
 import { macFrom, remoteOk, words } from "./mac.ts";
 import type { InstalledApp } from "../../parse/ios.ts";
@@ -16,6 +17,8 @@ export const iphoneLock = "/tmp/svelte-qa-iphone.lock";
 export const iosOptions = {
 	platform: { type: "string" },
 	device: { type: "string" },
+	/** The phone's hardware UDID (`idevice_id -l` on the Mac), which the crash log is read by; `--device` is the CoreDevice id `devicectl` takes. */
+	udid: { type: "string" },
 	mac: { type: "string" },
 	package: { type: "string" },
 	app: { type: "string" },
@@ -25,6 +28,7 @@ export const iosOptions = {
 export type IosValues = {
 	platform?: string | boolean | undefined;
 	device?: string | boolean | undefined;
+	udid?: string | boolean | undefined;
 	mac?: string | boolean | undefined;
 	package?: string | boolean | undefined;
 	app?: string | boolean | undefined;
@@ -79,12 +83,16 @@ export const newToken = (): string => `${Date.now().toString(36)}${Math.random()
 
 export type IosSession = {
 	target: IosTarget;
+	/** The hardware UDID the crash log is read by: `--udid`, else the lab phone's (`defaultHardwareUdid`). */
+	udid: string;
 	device: DeviceInfo;
 	installed: InstalledApp;
 	/** What the app reported is not known yet: `installed` and `installedSha256` are filled in by the command from the files it reads (`withIdentity`). */
 	app: AppInfo;
 	/** The build the run is meant to measure, from `qa/out/ios-build.json`; null when there is no record of the app under test. */
 	build: BuildRecord | null;
+	/** The phone's crash log as it was when the command started: `finishCrashWatch` tells what the run added. */
+	crashes: CrashWatch;
 	startedAt: Date;
 };
 
@@ -97,6 +105,7 @@ export async function startIosSuite(command: string, argv: string[], values: Ios
 	const id = requireString(values.device, "device");
 	const mac = macFrom(flagString(values.mac));
 	const bundleId = flagString(values.package) ?? defaultPackage;
+	const udid = flagString(values.udid) ?? defaultHardwareUdid;
 	const target: IosTarget = { mac, id, bundleId };
 	const startedAt = new Date();
 	const device = await deviceDetails(target);
@@ -123,7 +132,11 @@ export async function startIosSuite(command: string, argv: string[], values: Ios
 		build,
 	};
 	console.log(`${device.model} (${id}), iOS ${device.osVersion}; app ${installed.version ?? "?"} (${installed.bundleVersion ?? "?"})`);
-	return { target, device, installed, app, build, startedAt };
+	// After the install, before anything runs: the reports that are on the phone now are not this run's.
+	const crashes = await startCrashWatch(mac, udid, bundleId);
+	if (crashes.known) console.log(`crash log of ${udid}: ${crashes.known.size} report(s) of the app already on the phone`);
+	else console.log(`warning: the crash log of ${udid} cannot be read (${crashes.startError}); this run will say so and log.crashReports will read not measured`);
+	return { target, udid, device, installed, app, build, crashes, startedAt };
 }
 
 export { currentSource };

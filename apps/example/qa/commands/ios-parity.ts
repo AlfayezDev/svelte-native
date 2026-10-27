@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { Direction } from "../lib/device.ts";
 import { flagString, parseFlags } from "../lib/flags.ts";
 import { captureScreens, type CaptureEntry } from "../lib/iphone/capture.ts";
+import { describeCrashReports, finishCrashWatch, keepCrashFiles } from "../lib/iphone/crash-reports.ts";
 import { IdentityMismatch, notReported, reportedIdentity, withIdentity } from "../lib/iphone/identity.ts";
 import { currentSource, iosOptions, newToken, startIosSuite } from "../lib/iphone/session.ts";
 import { iosCases, iosMatrix, iosNotCovered, iosVariants } from "../lib/iphone/screens.ts";
@@ -183,6 +184,9 @@ export async function iosParity(argv: string[]): Promise<void> {
 	}
 	const installed = reportedIdentity(reports, session.build, "parity");
 	if (reports.length > 0 && installed === null) console.log(`warning: ${notReported}`);
+	// The captures ended the app: what the phone's crash log gained since the start is this run's.
+	const found = await finishCrashWatch(session.crashes);
+	for (const line of describeCrashReports(found.record)) console.log(line);
 
 	const file: ParityFile = {
 		schema: 1,
@@ -201,8 +205,11 @@ export async function iosParity(argv: string[]): Promise<void> {
 		cases: results,
 		notCovered: iosNotCovered,
 		aborted,
+		...found.record,
 	};
 	const name = await writeRun("parity", session.device.serial, session.startedAt, file);
+	const kept = await keepCrashFiles(found, name);
+	if (kept) console.log(`kept the crash reports in ${kept.slice(qaDir.length + 1)}`);
 	const count = (verdict: ParityCase["verdict"]) => results.filter((record) => record.verdict === verdict).length;
 	console.log(`parity: ${count("pass")} pass, ${count("fail")} fail, ${count("missing-reference")} missing reference, ${count("unstable")} unstable, ${count("error")} error, ${count("skipped")} skipped, ${count("updated")} updated; ${iosNotCovered.length} routes or states not covered`);
 	console.log(`wrote qa/runs/${name}.json`);

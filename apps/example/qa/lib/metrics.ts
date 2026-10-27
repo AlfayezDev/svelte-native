@@ -1,9 +1,12 @@
 import { summarize } from "../parse/stats.ts";
 import { crashMetrics, soakMetrics } from "../soak/metrics.ts";
+import { unattributedCount } from "./iphone/crash-reports.ts";
 import { suiteMetrics, type SuiteFiles } from "./suite-metrics.ts";
 import type {
 	BootFile,
 	CrashesFile,
+	CrashReportsRecord,
+	DeviceInfo,
 	LabFile,
 	LabRun,
 	Launch,
@@ -85,7 +88,8 @@ export function labMetrics(file: LabFile, pinned: readonly string[]): Metrics {
 			runs.map((run) => run.scenarios.filter((scenario) => scenario.verdict === "fail").length),
 		),
 		"lab.scenarios.missing": missingScenarios(runs, pinned).length,
-		"lab.fatals": fatalCount(total(runs.map((run) => run.crashes.length)), jsErrors),
+		// The crash reports no run owns (iOS: a process the command did not launch) are fatals of the file all the same.
+		"lab.fatals": fatalCount(total(runs.map((run) => run.crashes.length)) + unattributedCount(file.crashReports), jsErrors),
 		"lab.engineWarnings": total(runs.map((run) => run.engineWarnings.length)),
 	};
 	for (const name of measuredNames(runs, pinned)) {
@@ -147,11 +151,26 @@ export function bootMetrics(file: BootFile): Metrics {
 		...bootSeries("boot.warm", file.warm),
 		...bootSeries("boot.cold", file.cold),
 		"boot.fatals": fatalCount(
-			total(launches.map((launch) => launch.crashes)),
+			total(launches.map((launch) => launch.crashes)) + unattributedCount(file.crashReports),
 			launches.map((launch) => launch.jsErrors),
 		),
 		"boot.engineWarnings": total(launches.map((launch) => launch.engineWarnings)),
 	};
+}
+
+type CrashRecorded = { device: DeviceInfo } & CrashReportsRecord;
+
+/**
+ * The reports the iPhone's crash log gained during the runs, over every iOS run file (lab, boot, parity, a11y), attributed or not. A
+ * file whose pull failed, or that was recorded before the pull existed, measured nothing: that is null (not measured, which fails the
+ * gate), never 0, unless another file already counted a report. Other platforms have no such metric.
+ */
+export function crashReportMetrics(files: CrashRecorded[]): Metrics {
+	const ios = files.filter((file) => file.device.platform === "ios");
+	if (ios.length === 0) return {};
+	const measured = ios.filter((file) => file.crashReports !== undefined && file.crashReportsError === undefined);
+	const found = total(measured.map((file) => file.crashReports?.length ?? 0));
+	return { "log.crashReports": measured.length < ios.length && found === 0 ? null : found };
 }
 
 /** Device-level measurements from whichever runs exist, plus the faults seen across all of them. */
@@ -169,6 +188,7 @@ export function deviceMetrics(
 		...(soak ? soakMetrics(soak) : {}),
 		...(crashes ? crashMetrics(crashes) : {}),
 		...suiteMetrics(suites),
+		...crashReportMetrics([lab, boot, suites.parity, suites.a11y].filter((file) => file !== null)),
 	};
 	// A run that was made but measured nothing (null) leaves the sum unmeasured; a run that was not made adds nothing.
 	const sum = (a: string, b: string) => {

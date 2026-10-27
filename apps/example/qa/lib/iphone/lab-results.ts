@@ -99,6 +99,8 @@ export type IosLabCapture = {
 	durationMs: number;
 	/** The app was gone before the lab finished. */
 	died: string | null;
+	/** The process the lab launched: the phone's crash reports name it. */
+	pid?: number;
 	logFile: string;
 };
 
@@ -119,6 +121,7 @@ export function labRunFromIos(capture: IosLabCapture, stressRequested: boolean):
 		jsErrors: [],
 		jsErrorCount: results?.jsErrors ?? null,
 		engineWarnings: [],
+		pid: capture.pid ?? null,
 		logFile: capture.logFile,
 	};
 }

@@ -3178,7 +3178,7 @@
 		},
 		"screens-tabs--dark-ltr-normal": {
 			"file": "screens-tabs--dark-ltr-normal.png",
-			"sha256": "b174a9a2b78de3cadbbccb132628d73f26b65d0e3c2f1088025b5b961e1d3612",
+			"sha256": "c6947cc76f33281a00a16df34e272ed4bed00c976f37323b5b7162efdcb081a6",
 			"width": 1080,
 			"height": 2400,
 			"masks": [
@@ -3196,9 +3196,9 @@
 			"theme": "dark",
 			"direction": "ltr",
 			"fontScale": 1,
-			"updatedAt": "2026-10-26T17:09:27.405Z",
+			"updatedAt": "2026-10-26T21:12:35.995Z",
 			"source": {
-				"commit": "3fcf4171c",
+				"commit": "fc1c3141a",
 				"dirty": true
 			}
 		},
@@ -3256,7 +3256,7 @@
 		},
 		"screens-tabs--light-ltr-large": {
 			"file": "screens-tabs--light-ltr-large.png",
-			"sha256": "f615383e274dda62951ec18baa0379c627ab0ee7cb610f438774e52114c7834f",
+			"sha256": "0bcec76552ac107506b2455fdbb3484d2c8b7e4bb09cb6afa5fa74a6130a0556",
 			"width": 1080,
 			"height": 2400,
 			"masks": [
@@ -3274,15 +3274,15 @@
 			"theme": "light",
 			"direction": "ltr",
 			"fontScale": 2,
-			"updatedAt": "2026-10-26T17:08:49.894Z",
+			"updatedAt": "2026-10-26T21:13:01.734Z",
 			"source": {
-				"commit": "3fcf4171c",
+				"commit": "fc1c3141a",
 				"dirty": true
 			}
 		},
 		"screens-tabs--light-ltr-normal": {
 			"file": "screens-tabs--light-ltr-normal.png",
-			"sha256": "583eed72af511804ba686e84e7a9a8042ee6d3745a8b3da7a6e54c02d4537b52",
+			"sha256": "792ab43307ddccb848e80fedf045fc0fba58a8798ec507fcfa7eecf2c18a7600",
 			"width": 1080,
 			"height": 2400,
 			"masks": [
@@ -3300,9 +3300,9 @@
 			"theme": "light",
 			"direction": "ltr",
 			"fontScale": 1,
-			"updatedAt": "2026-10-26T17:08:35.176Z",
+			"updatedAt": "2026-10-26T21:12:24.038Z",
 			"source": {
-				"commit": "3fcf4171c",
+				"commit": "fc1c3141a",
 				"dirty": true
 			}
 		},
@@ -3334,7 +3334,7 @@
 		},
 		"screens-tabs--light-rtl-normal": {
 			"file": "screens-tabs--light-rtl-normal.png",
-			"sha256": "ec86c488db6904352bc3693355689d45efd80549992d47f077c45ed41082fec9",
+			"sha256": "3d6823e334e845ec7a7194c0ebe909dde10ef9b245502cc9a75bf0a04054d0d9",
 			"width": 1080,
 			"height": 2400,
 			"masks": [
@@ -3352,9 +3352,9 @@
 			"theme": "light",
 			"direction": "rtl",
 			"fontScale": 1,
-			"updatedAt": "2026-10-26T17:09:02.008Z",
+			"updatedAt": "2026-10-26T21:12:48.277Z",
 			"source": {
-				"commit": "3fcf4171c",
+				"commit": "fc1c3141a",
 				"dirty": true
 			}
 		},

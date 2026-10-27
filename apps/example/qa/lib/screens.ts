@@ -104,9 +104,7 @@ const menuButtons = [
 	"Modal",
 ];
 
-const back: Localized = { en: "Back", ar: "رجوع" };
 const devCommon: Localized[] = [
-	back,
 	"Run all checks",
 	"checks",
 	"binding",
@@ -126,6 +124,7 @@ export const cases: ScreenCase[] = [
 		{
 			state: "loading",
 			network: "hang",
+			layout: "header",
 			title: "Rasheed",
 			masks: [{ className: "android.widget.ProgressBar" }],
 		},
@@ -138,6 +137,7 @@ export const cases: ScreenCase[] = [
 		{
 			state: "error",
 			network: "refuse",
+			layout: "header",
 			title: "Rasheed",
 			controls: [{ en: "Retry", ar: "إعادة المحاولة" }],
 		},
@@ -149,6 +149,7 @@ export const cases: ScreenCase[] = [
 		{ className: "android.widget.EditText" },
 		{
 			needsBackend: true,
+			layout: "header",
 			title: { en: "What’s your email address?", ar: "ما بريدك الإلكتروني؟" },
 			controls: [
 				{ en: "Email", ar: "البريد الإلكتروني" },
@@ -159,12 +160,14 @@ export const cases: ScreenCase[] = [
 		},
 	),
 	screenCase("dev-checks", "/__dev (checks)", dev, label("Run all checks"), {
+		layout: "header",
 		title: "Mobile development lab",
 		controls: devCommon,
 		scrolled: ["Increment state"],
 	}),
 	screenCase("dev-binding", "/__dev (binding)", dev, label("Parent value: parent before"), {
 		steps: [tapLabel("binding"), waitFor("Parent value: parent before")],
+		layout: "header",
 		title: "Mobile development lab",
 		controls: devCommon,
 		scrolled: ["Bound child input", "Change from child", "Change parent and context"],
@@ -179,6 +182,7 @@ export const cases: ScreenCase[] = [
 				tapLabel("rows"),
 				waitFor("Edit a draft or tap a row, then reverse. Its local state should follow its key."),
 			],
+			layout: "header",
 			title: "Mobile development lab",
 			controls: devCommon,
 			scrolled: [
@@ -193,6 +197,7 @@ export const cases: ScreenCase[] = [
 	),
 	screenCase("dev-async", "/__dev (async, idle)", dev, label("Start async"), {
 		steps: [tapLabel("async"), waitFor("Start async")],
+		layout: "header",
 		title: "Mobile development lab",
 		controls: devCommon,
 		scrolled: asyncButtons,
@@ -201,6 +206,7 @@ export const cases: ScreenCase[] = [
 		state: "loading",
 		largestText: false,
 		steps: [tapLabel("async"), waitFor("Start async"), tapLabel("Start async"), waitFor("pending")],
+		layout: "header",
 		title: "Mobile development lab",
 		controls: devCommon,
 		scrolled: asyncButtons,
@@ -214,6 +220,7 @@ export const cases: ScreenCase[] = [
 			tapLabel("Trip error boundary"),
 			waitFor("Reset boundary"),
 		],
+		layout: "header",
 		title: "Mobile development lab",
 		controls: devCommon,
 		scrolled: [...asyncButtons, "Reset boundary"],
@@ -232,6 +239,7 @@ export const cases: ScreenCase[] = [
 					"Transforms and opacity run through Reanimated. Normal controls respect the system’s reduced-motion setting.",
 				),
 			],
+			layout: "header",
 			title: "Mobile development lab",
 			controls: devCommon,
 			// The Reanimated test square is driven by a shared value and is drawn differently from one launch to the next.
@@ -245,8 +253,8 @@ export const cases: ScreenCase[] = [
 		},
 	),
 	screenCase("lab-screen", "/__dev/screen", `${dev}/screen`, label("Lab screen"), {
+		layout: "header",
 		title: "Lab screen",
-		controls: [back],
 	}),
 	screenCase("screens-menu", "/__dev/screens", screens, label("Push eight screens with headers"), {
 		layout: "header",
@@ -428,8 +436,9 @@ export const notCovered: NotCovered[] = [
 	{ route: "/onboarding/profile", reason: needsSession },
 	{ route: "/workspaces", reason: needsSession },
 	{ route: "/workspaces/create", reason: needsSession },
-	{ route: "/(workspace)/[slug]", reason: needsSession },
-	{ route: "/(workspace)/[slug]/settings/[[section]]", reason: needsSession },
+	{ route: "/(workspace)/[slug]/home", reason: needsSession },
+	{ route: "/(workspace)/[slug]/settings", reason: needsSession },
+	{ route: "/(workspace)/[slug]/settings/[section]", reason: needsSession },
 ];
 
 /** The route directories (relative to `src/routes`) of the screens the cases reach, for the completeness check. */

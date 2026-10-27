@@ -354,8 +354,12 @@
       view = "none"; await settle();
       return { verdict: verdict(frames, shows === 8), summary: `${describe(frames)} · ${shows} / 8 shows`, frames };
     } },
-    { name: "navigation-8", label: "Push and pop a screen without a native header 8 times", async run(signal) {
+    { name: "navigation-8", label: "Push and pop a screen without a native header 8 times, over another one", async run(signal) {
       const depth = router.entries.length;
+      // The lab page's own screen has a native header: a pop that reveals it shows the navigation bar again, which is header-8's cost.
+      // The screens pushed and popped here lie over a bare one, so the scenario measures the stack alone.
+      router.goto("/__dev/screen?header=none");
+      await pause(900, signal);
       const { frames } = await measure(async () => {
         for (let cycle = 0; cycle < 8 && !signal.aborted; cycle++) {
           router.goto("/__dev/screen?header=none");
@@ -364,6 +368,8 @@
           await pause(800, signal);
         }
       });
+      router.back();
+      await pause(600, signal);
       return { verdict: verdict(frames, router.entries.length === depth), summary: `${describe(frames)} · stack depth ${router.entries.length} (expected ${depth})`, frames };
     } },
     { name: "header-8", label: "Push 8 screens with native headers and go back through them", async run(signal) {

@@ -7,10 +7,11 @@
   import type {} from "../elements.d.ts";
   import Platform from "react-native/Libraries/Utilities/Platform";
   import { createNativeProps } from "../native-props.ts";
+  import Host from "./Host.svelte";
   import { resolveAssetSource } from "../fabric/deps-rn.ts";
   import { connectInsets, insets } from "../insets.svelte.ts";
   import {
-    HEADER_CONTEXT, PANE_CONTEXT, SCREEN_CONTEXT, SLOT_CENTER, SLOT_LEFT, SLOT_RIGHT, SLOT_SEARCH, SLOT_TOOLBAR_CENTER, TOOLBAR_CONTEXT,
+    HEADER_CONTEXT, IN_STACK_CONTEXT, PANE_CONTEXT, SCREEN_CONTEXT, SLOT_CENTER, SLOT_LEFT, SLOT_RIGHT, SLOT_SEARCH, SLOT_TOOLBAR_CENTER, TOOLBAR_CONTEXT,
     headerHeight, mergeScreenOptions, toolbarHeight,
     type DetentChange, type HeaderMetrics, type NavigationPlatform, type ScreenOptions, type TabIconSource,
   } from "../fabric/navigation.ts";
@@ -26,6 +27,8 @@
   let { children, ...own }: ScreenOptions & { children?: Snippet } = $props();
 
   const parent = getContext<{ set(options: ScreenOptions): void; clear(): void } | undefined>(SCREEN_CONTEXT);
+  // The outermost screen of a subtree no stack holds (the app shell, a `Modal`'s content) is a one-entry stack of its own.
+  const inStack = getContext<boolean | undefined>(IN_STACK_CONTEXT) === true;
   let nested = $state.raw<ScreenOptions>({});
   const options = $derived(mergeScreenOptions(own, nested));
   setContext(SCREEN_CONTEXT, { set(value: ScreenOptions) { nested = value; }, clear() { nested = {}; } });
@@ -146,9 +149,7 @@
   }));
 </script>
 
-{#if parent}
-  {@render children?.()}
-{:else}
+{#snippet screen()}
   <native-screen nativeProps={screenProps}>
     {#if shown}
       <native-header nativeProps={headerProps}>
@@ -181,4 +182,12 @@
       </native-toolbar>
     {/if}
   </native-screen>
+{/snippet}
+
+{#if parent}
+  {@render children?.()}
+{:else if inStack}
+  {@render screen()}
+{:else}
+  <Host name="native-stack" attributes={{ style: { flex: 1 } }}>{@render screen()}</Host>
 {/if}

@@ -6,7 +6,7 @@
   import { connectInsets, insets } from "../insets.svelte.ts";
   import { nearestRouter } from "../router.svelte.ts";
   import Tab from "./Tab.svelte";
-  import { PANE_CONTEXT, SCREEN_CONTEXT, TAB_BAR, type HeaderMetrics, type NavigationPlatform, type TabHandle, type TabItem } from "../fabric/navigation.ts";
+  import { IN_STACK_CONTEXT, PANE_CONTEXT, SCREEN_CONTEXT, TAB_BAR, type HeaderMetrics, type NavigationPlatform, type TabHandle, type TabItem } from "../fabric/navigation.ts";
   import { TABS_CONTEXT, type TabsBar } from "../navigator-context.ts";
 
   /**
@@ -42,6 +42,7 @@
 
   // A pane's screens are not nested in the screen that holds the tabs: its own stack renders its own `native-screen`s.
   setContext(SCREEN_CONTEXT, undefined);
+  setContext(IN_STACK_CONTEXT, undefined);
   // A pane ends at the tab bar, which covers the bottom inset: a toolbar inside it needs none of its own.
   setContext(PANE_CONTEXT, true);
   connectInsets();

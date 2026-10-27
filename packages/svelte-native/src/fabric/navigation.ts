@@ -50,6 +50,8 @@ export const navigationTags: ReadonlySet<string> = new Set([
 export const SCREEN_CONTEXT = Symbol.for("svelte-native.screen");
 export const HEADER_CONTEXT = Symbol.for("svelte-native.header");
 export const TOOLBAR_CONTEXT = Symbol.for("svelte-native.toolbar");
+/** Set by a `native-stack` host for everything inside it; `Modal` and `Tabs` clear it. A `Screen` with no stack above it (and no screen around it) makes a one-entry stack of its own: on iOS only a stack draws a screen's header. */
+export const IN_STACK_CONTEXT = Symbol.for("svelte-native.in-stack");
 /** Set by `Tabs` for everything inside a pane: the pane ends at the tab bar, which already covers the bottom inset. */
 export const PANE_CONTEXT = Symbol.for("svelte-native.pane");
 

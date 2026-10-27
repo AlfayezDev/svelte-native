@@ -8,7 +8,13 @@
   export function setOpen(value) { open = value; }
 </script>
 
-{#snippet pane()}<PaneProbe name="pane" />{/snippet}
+{#snippet pane()}
+  <PaneProbe name="pane" />
+  <Modal visible={open}>
+    <PaneProbe name="modal-in-pane" />
+    <Screen title="Pane modal"><native-view testID="pane-inner"></native-view></Screen>
+  </Modal>
+{/snippet}
 
 <Host name="native-stack" attributes={{ style: { flex: 1 } }}>
   <Screen title="Outer">

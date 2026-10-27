@@ -493,24 +493,47 @@ async function mountScreen(surface: number) {
   return { m, app, screen, header, flush: () => settle(m), tree: () => roots[surface] };
 }
 
-test("a Screen inside a Modal is a screen of its own and leaves the title of the screen around the Modal alone; inTabPane is true only inside a pane", async () => {
+test("a Screen inside a Modal is a screen of its own, in a stack of its own, and leaves the title of the screen around the Modal alone; a Modal in a tab pane pads its own bottom inset", async () => {
   withInsets(24);
   try {
     const m = await load("modal-screen-fixture.svelte");
     calls.length = 0; roots = {};
-    (globalThis as { __paneProbe?: Record<string, boolean> }).__paneProbe = {};
+    const probes = globalThis as { __paneProbe?: Record<string, boolean> };
+    probes.__paneProbe = {};
     const app = m.startSurface(40, m.Fixture, {}) as { setOpen: (value: boolean) => void };
     await settle(m);
-    const titles = () => ofKind(roots[40], "header").map((node) => decodeURIComponent(String(parseNativeID(String(node.props.nativeID))?.pairs.t)));
-    expect(titles()).toEqual(["Outer", "Inner"]); // the inner title is the modal's own header, not the outer screen's
-    const inner = ofTestID(roots[40], "inner")[0];
-    expect(ofKind(roots[40], "screen")).toHaveLength(2);
-    expect(ofKind(ofKind(roots[40], "screen")[0].children, "screen")).toHaveLength(1); // the modal's screen sits inside the outer one, in the Modal's content
-    expect(inner).toBeDefined();
-    expect((globalThis as { __paneProbe?: Record<string, boolean> }).__paneProbe).toEqual({ screen: false, pane: true });
+    const titleOf = (header: FakeNode) => decodeURIComponent(String(parseNativeID(String(header.props.nativeID))?.pairs.t));
+    const titles = () => ofKind(roots[40], "header").map(titleOf);
+    expect(titles()).toEqual(["Outer", "Inner", "Pane modal"]); // the modals' titles are their own headers, not the outer screen's
+    // iOS draws a screen's header only under a stack: a modal's screen gets a one-entry stack of its own, `native-stack > native-screen`.
+    expect(ofKind(roots[40], "stack")).toHaveLength(3); // the outer one, and one in each modal
+    for (const title of ["Outer", "Inner", "Pane modal"]) {
+      const stack = ofKind(roots[40], "stack").find((candidate) => candidate.children.some((screen) => ofKind(screen.children, "header").map(titleOf).includes(title) && !ofKind(screen.children, "stack").some((below) => ofKind(below.children, "header").map(titleOf).includes(title))));
+      expect(stack?.children.map((child) => parseNativeID(String(child.props.nativeID))?.kind)).toEqual(["screen"]);
+    }
+    expect(probes.__paneProbe).toEqual({ screen: false, pane: true, "modal-in-pane": false }); // a modal covers the tab bar: no pane around it
     app.setOpen(false);
     await settle(m);
     expect(titles()[0]).toBe("Outer");
+  } finally { reset(); }
+});
+
+test("a Screen with no stack above it is a one-entry stack: native-stack > native-screen at the root, none for a nested Screen", async () => {
+  withInsets(24);
+  try {
+    const m = await load("screen-root-fixture.svelte");
+    calls.length = 0; roots = {};
+    m.startSurface(42, m.Fixture, {});
+    await settle(m);
+    const [top] = roots[42];
+    expect(parseNativeID(String(top.props.nativeID))?.kind).toBe("stack");
+    expect(top.props.style).toEqual([{ flex: 1 }, { flex: 1 }]);
+    expect(top.children.map((child) => parseNativeID(String(child.props.nativeID))?.kind)).toEqual(["screen"]);
+    expect(top.children[0].props.nativeID).toBe("svelte:screen;a=2;p=push;g=1;s=default;b=1");
+    expect(ofKind(roots[42], "stack")).toHaveLength(1);
+    expect(ofKind(roots[42], "screen")).toHaveLength(1); // the nested Screen hands its options over
+    expect(ofKind(roots[42], "header")).toHaveLength(1);
+    expect(parseNativeID(String(ofKind(roots[42], "header")[0].props.nativeID))?.pairs).toMatchObject({ t: "Root", st: "Nested" });
   } finally { reset(); }
 });
 
@@ -1901,6 +1924,20 @@ test("the tabs screen resolves to its first pane; replaceState replaces the pane
     router.goto("/workspaces", { reset: true }); // a root page: the root stack is the owner and keeps nothing else
     await settled();
     expect(pathsOf(router)).toEqual(["/workspaces"]);
+  } finally { reset(); }
+});
+
+test("a Screen in a router entry does not get a stack of its own: one stack per router, the pages' screens are its screens", async () => {
+  withInsets(24);
+  try {
+    const { router, settled, tree } = await mountTree(132, { initial: "/acme/home" });
+    router.goto("/acme/home/thread/1");
+    router.goto("/acme/inbox");
+    await settled();
+    const stacks = ofKind(tree(), "stack");
+    expect(stacks).toHaveLength(3); // the root's, the home pane's and the inbox pane's
+    for (const stack of stacks) expect(stack.children.every((child) => parseNativeID(String(child.props.nativeID))?.kind === "screen")).toBe(true);
+    expect(ofKind(tree(), "screen")).toHaveLength(ofKind(tree(), "header").length + 1); // a header per page, and the root's screen for the tabs
   } finally { reset(); }
 });
 

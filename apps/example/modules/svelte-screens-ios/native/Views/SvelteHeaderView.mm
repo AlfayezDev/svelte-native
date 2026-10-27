@@ -263,6 +263,9 @@ static BOOL SvelteHasNativeSubtitle(void) {
   _searchController.showsSearchResultsController = search.contentCount > 0;
   item.searchController = _searchController;
   item.hidesSearchBarWhenScrolling = NO;
+  // iOS 26 puts the field at the bottom of the screen unless told otherwise, over the content Yoga laid out to the screen's edge;
+  // the contract's field sits in the bar, under the title, where `topMetrics` counts it.
+  if (@available(iOS 26.0, *)) item.preferredSearchBarPlacement = UINavigationItemSearchBarPlacementStacked;
   [self applySearchState];
 }
 
@@ -410,8 +413,10 @@ static BOOL SvelteHasNativeSubtitle(void) {
   if (_spec.slot == svelte::kSlotSearch) return;
   const CGSize size = RCTCGSizeFromSize(layoutMetrics.frame.size);
   if (!std::isfinite(size.width) || !std::isfinite(size.height)) return;
+  // The slot's size is Yoga's; its place is the container's, which centers it in what UIKit gives (iOS 26 gives a bar item at most
+  // 36 pt of height whatever the custom view asks for, so a 48 pt target overflows by 6 pt on each side instead of hanging below).
   self.bounds = CGRectMake(0, 0, size.width, size.height);
-  self.center = CGPointMake(size.width / 2, size.height / 2);
+  [_barView setNeedsLayout];
   const UISemanticContentAttribute direction = layoutMetrics.layoutDirection == LayoutDirection::RightToLeft
       ? UISemanticContentAttributeForceRightToLeft
       : UISemanticContentAttributeForceLeftToRight;

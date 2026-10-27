@@ -314,7 +314,7 @@
 </script>
 
 {#if nativeLabEnabled}
-<Page title="Mobile development lab" description="Svelte on Hermes · real native views · Reanimated UI runtime" back={() => { if (!router.back()) router.goto("/auth/login", { reset: true }); }}>
+<Page title="Mobile development lab" description="Svelte on Hermes · real native views · Reanimated UI runtime">
   <Text style={titleStyle} accessibilityLiveRegion="polite">{checks.length ? `${passed} functional checks passed · ${failed} failed` : "Ready to test"}</Text>
   {#each checks.filter((check) => !check.passed) as failure, index (`${index}:${failure.name}`)}
     <Text style={{ color: theme.danger, fontSize: 15 }}>FAIL · {failure.name}{failure.detail ? ` · ${failure.detail}` : ""}</Text>

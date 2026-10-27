@@ -1,5 +1,12 @@
-import { adbOk } from "./adb.ts";
-import { dumpUi, screenshot, tap, type DeviceSession, type Direction } from "./device.ts";
+import {
+	DeviceStateError,
+	dumpUi,
+	endsRun,
+	screenshot,
+	tap,
+	type DeviceSession,
+	type Direction,
+} from "./device.ts";
 import { shellQuote } from "./exec.ts";
 import { diffImages, type Image, type Rect } from "./png.ts";
 import { selectorFor, type Selector, type ScreenCase, type Step } from "./screens.ts";
@@ -30,6 +37,14 @@ export function describeSelector(selector: Selector, direction: Direction): stri
 		.join(" ");
 }
 
+/** No node answered to the selector in time: the screen is not the one the case means, or the device is not in the state it needs (`assertDeviceState`). */
+export class NodeNotFoundError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "NodeNotFoundError";
+	}
+}
+
 /** Polls the accessibility tree until a node answers to the selector; returns that tree, or throws after the timeout. */
 export async function waitForNode(
 	serial: string,
@@ -43,10 +58,63 @@ export async function waitForNode(
 		const node = findNode(tree, selector, direction);
 		if (node) return { tree, node };
 		if (Date.now() >= deadline)
-			throw new Error(
+			throw new NodeNotFoundError(
 				`no node ${describeSelector(selector, direction)} on screen after ${timeoutMs} ms`,
 			);
 		await sleep(400);
+	}
+}
+
+/**
+ * A case on the normal network did not show its anchor: before blaming the screen, ask the device once whether it is in the state
+ * the case needs (no proxy, the variant's text size). A proxy or text size left behind by a run that did not restore makes the
+ * app show its startup error and every case after this one fail the same way, so that is a `DeviceStateError`, which stops the run
+ * (the suite restores the device, records the cause as `aborted` and prints it). Cases on the failing proxies are not asked.
+ */
+export async function assertDeviceState(
+	session: DeviceSession,
+	screen: ScreenCase,
+	fontScale: number,
+): Promise<void> {
+	if (screen.network !== "normal") return;
+	const problems = await session.stateProblems(fontScale);
+	if (problems.length > 0)
+		throw new DeviceStateError(
+			`the device is not in the state the case needs: ${problems.join(", ")} (case ${screen.id}, which did not show its anchor)`,
+		);
+}
+
+/** `assertDeviceState` for a failed case, when the failure is that its anchor was not on screen; any other failure is left to the caller. */
+export async function guardAnchorFailure(
+	session: DeviceSession,
+	screen: ScreenCase,
+	fontScale: number,
+	error: unknown,
+): Promise<void> {
+	if (error instanceof NodeNotFoundError) await assertDeviceState(session, screen, fontScale);
+}
+
+/**
+ * Runs `attempt` for a case, and once more when it fails for a reason that is not the device going away or being in the wrong
+ * state: the first dump after the emulator was restarted can come back empty while its UI is still starting, and a slow screen
+ * can miss its anchor once. An anchor that is missing is first checked against the device (`guardAnchorFailure`), so a left-behind
+ * proxy or text size stops the run instead of being retried and recorded for every case.
+ */
+export async function retryCase<T>(
+	session: DeviceSession,
+	screen: ScreenCase,
+	fontScale: number,
+	label: string,
+	attempt: () => Promise<T>,
+	log: (message: string) => void = console.log,
+): Promise<T> {
+	try {
+		return await attempt();
+	} catch (error) {
+		if (endsRun(error)) throw error;
+		await guardAnchorFailure(session, screen, fontScale, error);
+		log(`  retrying ${label}: ${error instanceof Error ? error.message.slice(0, 100) : String(error)}`);
+		return attempt();
 	}
 }
 
@@ -62,11 +130,12 @@ export async function launchCase(
 	direction: Direction,
 ): Promise<void> {
 	const { serial, packageName } = session;
+	// Before the app is launched: a device whose proxy is not the case's would show a screen the case does not mean.
 	await session.networkMode(screen.network);
 	const start = screen.deepLink
 		? `am start -W -a android.intent.action.VIEW -d ${shellQuote(screen.deepLink)} ${packageName}`
 		: `am start -W -n ${packageName}/.MainActivity`;
-	await adbOk(serial, ["shell", `am force-stop ${packageName}; sleep 0.3; ${start}`], {
+	await session.run(serial, ["shell", `am force-stop ${packageName}; sleep 0.3; ${start}`], {
 		timeoutMs: 90_000,
 	});
 	for (const step of screen.steps) await runStep(serial, step, direction);

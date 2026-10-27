@@ -44,6 +44,15 @@ export type Source = { commit: string; dirty: boolean };
  */
 export type CrashReportsRecord = { crashReports?: CrashReport[]; crashReportsError?: string };
 
+/**
+ * What an Android suite's device session found and could not do (`DeviceSession`), in the run file of parity, a11y and resilience.
+ * `leftovers`: settings of the suites' own an earlier run left on the device (a failing proxy, a text size), cleared at the start,
+ * so a report shows the previous run did not restore. `restoreFailures`: what this run could not put back (the device was lost, a
+ * setting did not take): the device was left in a changed state, which `report` warns about and `gates` fails on. Absent in files
+ * written before they were recorded.
+ */
+export type SessionRecord = { leftovers?: string[]; restoreFailures?: string[] };
+
 /** One frame of a crashed thread: the image it is in, the offset in that image, and the symbol the report resolved (null when it did not). */
 export type CrashFrame = { image: string | null; offset: number; symbol: string | null };
 
@@ -363,7 +372,8 @@ export type ParityFile = {
 	cases: ParityCase[];
 	notCovered: NotCoveredRoute[];	/** Why the run stopped before the end of its matrix (the device went away), or null. The cases it did not reach count as missing. */
 	aborted: string | null;
-} & CrashReportsRecord;
+} & CrashReportsRecord &
+	SessionRecord;
 
 export type A11yScreenResult = {
 	name: string;
@@ -408,7 +418,8 @@ export type A11yFile = {
 	screens: A11yScreenResult[];
 	notCovered: NotCoveredRoute[];	/** Why the run stopped before the end of its matrix (the device went away), or null. The cases it did not reach count as missing. */
 	aborted: string | null;
-} & CrashReportsRecord;
+} & CrashReportsRecord &
+	SessionRecord;
 
 export type ResilienceStep = {
 	index: number;
@@ -437,4 +448,4 @@ export type ResilienceFile = {
 	planned: number;
 	logFile: string;	/** Why the run stopped before the end of its matrix (the device went away), or null. The cases it did not reach count as missing. */
 	aborted: string | null;
-};
+} & SessionRecord;

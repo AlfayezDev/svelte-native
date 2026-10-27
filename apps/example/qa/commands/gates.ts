@@ -11,8 +11,8 @@ export type RunFileState = { file: string; modifiedAt: Date; platform: Platform 
 
 /**
  * Why a report cannot be judged, or nothing: a run file of a device of this platform was written after the report was, so the
- * verdict would not be about the newest measurements, or the report itself warns (runs of different builds or commits, or of a
- * build nobody identified), so its numbers do not describe one build.
+ * verdict would not be about the newest measurements, or the report itself warns (runs of different builds or commits, of a
+ * build nobody identified, or a suite that could not put its device back), so its numbers do not describe one build.
  */
 export function reportProblems(report: ReportFile, runs: RunFileState[], platform?: Platform): string[] {
 	const generatedAt = new Date(report.generatedAt);

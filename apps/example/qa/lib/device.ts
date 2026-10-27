@@ -2,10 +2,12 @@ import { spawn } from "node:child_process";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type AddressInfo, type Server, type Socket } from "node:net";
 import { join } from "node:path";
-import { adb, adbOk, shell } from "./adb.ts";
+import { adbOk, shell } from "./adb.ts";
+import type { ExecOptions } from "./exec.ts";
 import { decodePng, type Image, type Rect } from "./png.ts";
 import { outDir } from "./paths.ts";
 import { slug } from "./runs.ts";
+import { largestFontScale } from "./screens.ts";
 import { parseHierarchy, type UiTree } from "./uia.ts";
 import { sleep } from "./wait.ts";
 import {
@@ -132,6 +134,11 @@ export async function focusedWindow(serial: string): Promise<string> {
 
 /* ---- device settings the suites change, and putting them back ---- */
 
+/** One adb command for a device, returning its output or throwing. Tests hand a fake device in; the harness uses `adbOk`. */
+export type AdbRun = (serial: string, args: string[], options?: ExecOptions) => Promise<string>;
+
+const realAdb: AdbRun = (serial, args, options) => adbOk(serial, args, options);
+
 export type DeviceState = {
 	night: "yes" | "no" | "auto";
 	fontScale: string | null;
@@ -141,8 +148,31 @@ export type DeviceState = {
 	proxy: string | null;
 };
 
-async function setting(serial: string, namespace: string, name: string): Promise<string | null> {
-	return parseSetting(await adbOk(serial, ["shell", "settings", "get", namespace, name]));
+/**
+ * The device is not in the state a case needs (a proxy or text size an earlier run left behind, a setting that did not take).
+ * Every case after it would fail the same way, so a suite stops on it, restores the device and records it as the run's `aborted`.
+ */
+export class DeviceStateError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "DeviceStateError";
+	}
+}
+
+/** What a session found and could not do, for the run file: settings an earlier run left behind, and settings it could not put back. */
+export type SessionNotes = { leftovers: string[]; restoreFailures: string[] };
+
+export function newSessionNotes(): SessionNotes {
+	return { leftovers: [], restoreFailures: [] };
+}
+
+async function setting(
+	serial: string,
+	namespace: string,
+	name: string,
+	run: AdbRun,
+): Promise<string | null> {
+	return parseSetting(await run(serial, ["shell", "settings", "get", namespace, name]));
 }
 
 async function writeSetting(
@@ -150,30 +180,101 @@ async function writeSetting(
 	namespace: string,
 	name: string,
 	value: string | null,
+	run: AdbRun,
 ): Promise<void> {
-	if (value === null) await adbOk(serial, ["shell", "settings", "delete", namespace, name]);
-	else await adbOk(serial, ["shell", "settings", "put", namespace, name, value]);
+	if (value === null) await run(serial, ["shell", "settings", "delete", namespace, name]);
+	else await run(serial, ["shell", "settings", "put", namespace, name, value]);
 }
 
-export async function captureState(serial: string, packageName: string): Promise<DeviceState> {
+/** The state of the device as it is now, whatever put it there. */
+export async function captureState(
+	serial: string,
+	packageName: string,
+	run: AdbRun = realAdb,
+): Promise<DeviceState> {
 	return {
-		night: parseNightMode(await adbOk(serial, ["shell", "cmd", "uimode", "night"])),
-		fontScale: await setting(serial, "system", "font_scale"),
+		night: parseNightMode(await run(serial, ["shell", "cmd", "uimode", "night"])),
+		fontScale: await setting(serial, "system", "font_scale", run),
 		appLocales: parseAppLocales(
-			await adbOk(serial, ["shell", "cmd", "locale", "get-app-locales", packageName]),
+			await run(serial, ["shell", "cmd", "locale", "get-app-locales", packageName]),
 		),
-		accelerometerRotation: await setting(serial, "system", "accelerometer_rotation"),
-		userRotation: await setting(serial, "system", "user_rotation"),
-		proxy: await setting(serial, "global", "http_proxy"),
+		accelerometerRotation: await setting(serial, "system", "accelerometer_rotation", run),
+		userRotation: await setting(serial, "system", "user_rotation", run),
+		proxy: await setting(serial, "global", "http_proxy", run),
 	};
 }
 
-async function setNight(serial: string, mode: DeviceState["night"]): Promise<void> {
-	await adbOk(serial, ["shell", "cmd", "uimode", "night", mode]);
+/** The per-app languages the suites set (English for left-to-right, Arabic for right-to-left). */
+const ltrLocale = "en-US";
+const rtlLocale = "ar-SA";
+export const harnessLocales: readonly string[] = [ltrLocale, rtlLocale];
+
+/** The text sizes the suites set that no device has by default (1.0 is the default and cannot be told from it). */
+const harnessFontScales: readonly number[] = [largestFontScale];
+
+/** A proxy on this machine's loopback is one of the failing proxies of `openHoles`: no device is configured with one on purpose. */
+const harnessProxy = /^(?:localhost|127\.0\.0\.1):\d+$/;
+
+/**
+ * The settings of a captured state that are the suites' own, left by a run that did not restore (killed, or the device lost),
+ * and the state with them cleared, which is what the device is like without the harness. Not judged: the theme (a dark device is
+ * indistinguishable from a dark theme the suite set, and every variant sets it anyway) and `accelerometer_rotation` (many devices
+ * lock rotation themselves). Each leftover is a sentence for the warning and for the run file.
+ */
+export function harnessLeftovers(
+	state: DeviceState,
+	packageName: string,
+): { state: DeviceState; leftovers: string[] } {
+	const cleaned: DeviceState = { ...state };
+	const leftovers: string[] = [];
+	if (state.proxy !== null && harnessProxy.test(state.proxy)) {
+		leftovers.push(
+			`http_proxy was "${state.proxy}", the failing proxy of an earlier run that did not restore it: cleared`,
+		);
+		cleaned.proxy = null;
+	}
+	if (state.fontScale !== null && harnessFontScales.includes(Number(state.fontScale))) {
+		leftovers.push(
+			`font_scale was ${state.fontScale}, the text size of an earlier run that did not restore it: cleared`,
+		);
+		cleaned.fontScale = null;
+	}
+	if (harnessLocales.includes(state.appLocales)) {
+		leftovers.push(
+			`the app locales of ${packageName} were ${state.appLocales}, the language of an earlier run that did not restore it: cleared`,
+		);
+		cleaned.appLocales = "";
+	}
+	if (state.userRotation !== null && ["1", "2", "3"].includes(state.userRotation)) {
+		leftovers.push(
+			`user_rotation was ${state.userRotation}, the rotation of an earlier run that did not restore it: cleared`,
+		);
+		cleaned.userRotation = null;
+	}
+	return { state: cleaned, leftovers };
 }
 
-async function setAppLocales(serial: string, packageName: string, locales: string): Promise<void> {
-	await adbOk(serial, [
+/** `captureState` with the harness's own leftovers taken out: the state the device is in apart from the harness, and what was taken out. */
+export async function captureOriginal(
+	serial: string,
+	packageName: string,
+	run: AdbRun = realAdb,
+): Promise<{ original: DeviceState; leftovers: string[] }> {
+	const { state, leftovers } = harnessLeftovers(await captureState(serial, packageName, run), packageName);
+	return { original: state, leftovers };
+}
+
+async function setNight(serial: string, mode: DeviceState["night"], run: AdbRun): Promise<void> {
+	await run(serial, ["shell", "cmd", "uimode", "night", mode]);
+}
+
+async function setAppLocales(
+	serial: string,
+	packageName: string,
+	locales: string,
+	run: AdbRun,
+): Promise<void> {
+	await run(serial, [
 		"shell",
 		"cmd",
 		"locale",
@@ -184,12 +285,12 @@ async function setAppLocales(serial: string, packageName: string, locales: strin
 	]);
 }
 
-async function setProxy(serial: string, value: string | null): Promise<void> {
+async function setProxy(serial: string, value: string | null, run: AdbRun): Promise<void> {
 	if (value === null) {
-		await adbOk(serial, ["shell", "settings", "put", "global", "http_proxy", ":0"]);
-		await adbOk(serial, ["shell", "settings", "delete", "global", "http_proxy"]);
+		await run(serial, ["shell", "settings", "put", "global", "http_proxy", ":0"]);
+		await run(serial, ["shell", "settings", "delete", "global", "http_proxy"]);
 	} else {
-		await adbOk(serial, ["shell", "settings", "put", "global", "http_proxy", value]);
+		await run(serial, ["shell", "settings", "put", "global", "http_proxy", value]);
 	}
 }
 
@@ -206,25 +307,26 @@ export async function restoreState(
 	serial: string,
 	packageName: string,
 	state: DeviceState,
+	run: AdbRun = realAdb,
 ): Promise<string[]> {
 	const failures: string[] = [];
-	const attempt = async (name: string, run: () => Promise<unknown>) => {
+	const attempt = async (name: string, step: () => Promise<unknown>) => {
 		try {
-			await run();
+			await step();
 		} catch (error) {
 			failures.push(`${name}: ${error instanceof Error ? error.message : String(error)}`);
 		}
 	};
-	await attempt("night mode", () => setNight(serial, state.night));
-	await attempt("font_scale", () => writeSetting(serial, "system", "font_scale", state.fontScale));
-	await attempt("app locales", () => setAppLocales(serial, packageName, state.appLocales));
+	await attempt("night mode", () => setNight(serial, state.night, run));
+	await attempt("font_scale", () => writeSetting(serial, "system", "font_scale", state.fontScale, run));
+	await attempt("app locales", () => setAppLocales(serial, packageName, state.appLocales, run));
 	await attempt("accelerometer_rotation", () =>
-		writeSetting(serial, "system", "accelerometer_rotation", state.accelerometerRotation),
+		writeSetting(serial, "system", "accelerometer_rotation", state.accelerometerRotation, run),
 	);
 	await attempt("user_rotation", () =>
-		writeSetting(serial, "system", "user_rotation", state.userRotation),
+		writeSetting(serial, "system", "user_rotation", state.userRotation, run),
 	);
-	await attempt("http_proxy", () => setProxy(serial, state.proxy));
+	await attempt("http_proxy", () => setProxy(serial, state.proxy, run));
 	return failures;
 }
 
@@ -245,7 +347,7 @@ async function freePort(): Promise<number> {
 	});
 }
 
-async function openHoles(serial: string): Promise<Holes> {
+async function openHoles(serial: string, run: AdbRun): Promise<Holes> {
 	const sockets = new Set<Socket>();
 	const server = createServer((socket) => {
 		sockets.add(socket);
@@ -258,14 +360,15 @@ async function openHoles(serial: string): Promise<Holes> {
 	});
 	const hang = (server.address() as AddressInfo).port;
 	const refuse = await freePort();
-	await adbOk(serial, ["reverse", `tcp:${hang}`, `tcp:${hang}`]);
-	await adbOk(serial, ["reverse", `tcp:${refuse}`, `tcp:${refuse}`]);
+	await run(serial, ["reverse", `tcp:${hang}`, `tcp:${hang}`]);
+	await run(serial, ["reverse", `tcp:${refuse}`, `tcp:${refuse}`]);
 	return { hang, refuse, server, sockets };
 }
 
-async function closeHoles(serial: string, holes: Holes): Promise<void> {
+async function closeHoles(serial: string, holes: Holes, run: AdbRun): Promise<void> {
+	// A device that is gone has no reverse to remove: closing the sockets here is what is left to do.
 	for (const port of [holes.hang, holes.refuse])
-		await adb(serial, ["reverse", "--remove", `tcp:${port}`]);
+		await run(serial, ["reverse", "--remove", `tcp:${port}`]).catch(() => undefined);
 	for (const socket of holes.sockets) socket.destroy();
 	await new Promise<void>((resolve) => holes.server.close(() => resolve()));
 }
@@ -273,12 +376,25 @@ async function closeHoles(serial: string, holes: Holes): Promise<void> {
 export type Theme = "light" | "dark";
 export type Direction = "ltr" | "rtl";
 
-const stateFile = (serial: string) => join(outDir, `device-state-${slug(serial)}.json`);
+const stateFile = (serial: string, dir: string) => join(dir, `device-state-${slug(serial)}.json`);
+
+export type SessionOptions = {
+	/** The adb the session talks through; a fake device in tests. */
+	run?: AdbRun;
+	/** Where the state saved before the first change lives (qa/out). */
+	stateDir?: string;
+	/** Where a warning goes (`console.warn`). */
+	warn?: (message: string) => void;
+	/** Filled with what the session found and could not do, for the run file. */
+	notes?: SessionNotes;
+};
 
 /**
  * Owns the settings one suite run changes. `open` first repairs what a killed earlier run left behind (the state it saved
- * before changing anything), then records the current state; `close` restores it. Nothing else in the harness changes
- * these settings, so the other agents' runs on the shared emulator see the device as they left it.
+ * before changing anything), then records the current state, less what is evidently an earlier run's (a proxy to a loopback
+ * port, a text size or language only the suites set: warned about, cleared and noted, never taken for the device's own);
+ * `close` restores it. Nothing else in the harness changes these settings, so the other agents' runs on the shared emulator
+ * see the device as they left it.
  */
 export class DeviceSession {
 	private network: NetworkMode = "normal";
@@ -287,100 +403,182 @@ export class DeviceSession {
 
 	readonly serial: string;
 	readonly packageName: string;
+	readonly notes: SessionNotes;
+	/** The adb the session's commands go through: the one it was opened with. */
+	readonly run: AdbRun;
 	private readonly original: DeviceState;
+	private readonly stateDir: string;
 
-	private constructor(serial: string, packageName: string, original: DeviceState) {
+	private constructor(
+		serial: string,
+		packageName: string,
+		original: DeviceState,
+		options: Required<Pick<SessionOptions, "run" | "stateDir" | "notes">>,
+	) {
 		this.serial = serial;
 		this.packageName = packageName;
 		this.original = original;
+		this.run = options.run;
+		this.stateDir = options.stateDir;
+		this.notes = options.notes;
 	}
 
-	static async open(serial: string, packageName: string): Promise<DeviceSession> {
-		await mkdir(outDir, { recursive: true });
-		let leftover: DeviceState | null = null;
+	static async open(
+		serial: string,
+		packageName: string,
+		options: SessionOptions = {},
+	): Promise<DeviceSession> {
+		const run = options.run ?? realAdb;
+		const stateDir = options.stateDir ?? outDir;
+		const warn = options.warn ?? ((message: string) => console.warn(message));
+		const notes = options.notes ?? newSessionNotes();
+		await mkdir(stateDir, { recursive: true });
+		let saved: DeviceState | null = null;
 		try {
-			leftover = JSON.parse(await readFile(stateFile(serial), "utf8")) as DeviceState;
+			saved = JSON.parse(await readFile(stateFile(serial, stateDir), "utf8")) as DeviceState;
 		} catch (error) {
 			if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
 		}
-		if (leftover) {
+		if (saved) {
 			console.log(`restoring the settings an interrupted run left on ${serial}`);
-			const failures = await restoreState(serial, packageName, leftover);
+			const failures = await restoreState(serial, packageName, saved, run);
 			if (failures.length) throw new Error(`could not repair ${serial}: ${failures.join("; ")}`);
-			await rm(stateFile(serial));
+			await rm(stateFile(serial, stateDir));
 		}
-		const original = await captureState(serial, packageName);
-		await writeFile(stateFile(serial), `${JSON.stringify(original, null, "\t")}\n`);
-		return new DeviceSession(serial, packageName, original);
+		const { original, leftovers } = await captureOriginal(serial, packageName, run);
+		if (leftovers.length > 0) {
+			for (const leftover of leftovers) warn(`warning: ${serial}: ${leftover}`);
+			const failures = await restoreState(serial, packageName, original, run);
+			if (failures.length)
+				throw new Error(`could not clear what an earlier run left on ${serial}: ${failures.join("; ")}`);
+			notes.leftovers.push(...leftovers);
+		}
+		await writeFile(stateFile(serial, stateDir), `${JSON.stringify(original, null, "\t")}\n`);
+		return new DeviceSession(serial, packageName, original, { run, stateDir, notes });
 	}
 
 	get originalState(): DeviceState {
 		return this.original;
 	}
 
-	/** Restores everything, then removes the saved state. Safe to call twice. Throws if a setting could not be put back. */
+	/**
+	 * Restores everything, then removes the saved state. Safe to call twice. Throws if a setting could not be put back, after
+	 * recording in `notes.restoreFailures` what could not be (the failures `restoreState` returns, the adb error that kept the
+	 * result from being read, or the settings that differ): the device was then left in a changed state, and the run file says so.
+	 * The saved state stays, so the next run repairs the device first.
+	 */
 	async close(): Promise<void> {
 		if (this.closed) return;
 		this.closed = true;
-		const failures = await restoreState(this.serial, this.packageName, this.original);
-		if (this.holes) await closeHoles(this.serial, this.holes);
+		const failures = await restoreState(this.serial, this.packageName, this.original, this.run);
+		if (this.holes) await closeHoles(this.serial, this.holes, this.run);
 		this.holes = null;
-		if (failures.length)
+		if (failures.length) {
+			this.notes.restoreFailures.push(...failures);
 			throw new Error(`could not restore ${this.serial}: ${failures.join("; ")}`);
-		const now = await captureState(this.serial, this.packageName);
+		}
+		let now: DeviceState;
+		try {
+			now = await captureState(this.serial, this.packageName, this.run);
+		} catch (error) {
+			this.notes.restoreFailures.push(
+				`could not read ${this.serial} back: ${error instanceof Error ? error.message : String(error)}`,
+			);
+			throw error;
+		}
 		const differing = stateDifferences(this.original, now);
-		if (differing.length)
+		if (differing.length) {
+			this.notes.restoreFailures.push(...differing);
 			throw new Error(
 				`${this.serial} is not back to its original settings after the restore: ${differing.join("; ")}`,
 			);
-		await rm(stateFile(this.serial), { force: true });
+		}
+		await rm(stateFile(this.serial, this.stateDir), { force: true });
 	}
 
 	async theme(theme: Theme): Promise<void> {
-		await setNight(this.serial, theme === "dark" ? "yes" : "no");
+		await setNight(this.serial, theme === "dark" ? "yes" : "no", this.run);
 	}
 
 	async fontScale(scale: number): Promise<void> {
-		await writeSetting(this.serial, "system", "font_scale", scale.toFixed(2));
+		await writeSetting(this.serial, "system", "font_scale", scale.toFixed(2), this.run);
 	}
 
 	/** Arabic (right-to-left) or English (left-to-right) for the app, through the per-app language the system keeps. */
 	async direction(direction: Direction): Promise<void> {
-		await setAppLocales(this.serial, this.packageName, direction === "rtl" ? "ar-SA" : "en-US");
+		await setAppLocales(
+			this.serial,
+			this.packageName,
+			direction === "rtl" ? rtlLocale : ltrLocale,
+			this.run,
+		);
 	}
 
 	/** 0 portrait, 1 landscape (90 degrees), 2 reverse portrait, 3 reverse landscape; auto-rotate is switched off. */
 	async rotation(rotation: 0 | 1 | 2 | 3): Promise<void> {
-		await writeSetting(this.serial, "system", "accelerometer_rotation", "0");
-		await writeSetting(this.serial, "system", "user_rotation", String(rotation));
+		await writeSetting(this.serial, "system", "accelerometer_rotation", "0", this.run);
+		await writeSetting(this.serial, "system", "user_rotation", String(rotation), this.run);
 	}
 
-	/** Routes the app's HTTP(S) through a proxy that never answers (`hang`) or always refuses (`refuse`), or back to the real network. */
+	/**
+	 * Routes the app's HTTP(S) through a proxy that never answers (`hang`) or always refuses (`refuse`), or back to the real
+	 * network, then reads the proxy back: an app launched on a device whose proxy is not the mode's would show a screen the
+	 * case does not mean, so a mismatch is a `DeviceStateError` and the case is not launched. The read-back also runs when
+	 * the mode is the one already set, which catches a proxy changed behind the session's back.
+	 */
 	async networkMode(mode: NetworkMode): Promise<void> {
-		if (mode === this.network) return;
-		if (mode === "normal") {
-			await setProxy(this.serial, this.original.proxy);
-		} else {
-			this.holes ??= await openHoles(this.serial);
-			await setProxy(
-				this.serial,
-				`localhost:${mode === "hang" ? this.holes.hang : this.holes.refuse}`,
-			);
+		if (mode !== this.network) {
+			if (mode === "normal") {
+				await setProxy(this.serial, this.original.proxy, this.run);
+			} else {
+				this.holes ??= await openHoles(this.serial, this.run);
+				await setProxy(
+					this.serial,
+					`localhost:${mode === "hang" ? this.holes.hang : this.holes.refuse}`,
+					this.run,
+				);
+			}
+			this.network = mode;
 		}
-		this.network = mode;
+		const expected =
+			mode === "normal" || this.holes === null
+				? this.original.proxy
+				: `localhost:${mode === "hang" ? this.holes.hang : this.holes.refuse}`;
+		const actual = await setting(this.serial, "global", "http_proxy", this.run);
+		if (actual !== expected)
+			throw new DeviceStateError(
+				`the proxy on ${this.serial} is "${actual ?? "none"}" after switching to ${mode}`,
+			);
+	}
+
+	/**
+	 * How the device differs from what a case on the normal network at this text size needs (the original proxy, the text size
+	 * the variant set), as phrases for the abort message; empty when it is what the case needs.
+	 */
+	async stateProblems(fontScale: number): Promise<string[]> {
+		const problems: string[] = [];
+		const proxy = await setting(this.serial, "global", "http_proxy", this.run);
+		if (proxy !== this.original.proxy)
+			problems.push(`http_proxy ${proxy ?? "none"} (expected ${this.original.proxy ?? "none"})`);
+		const size = await setting(this.serial, "system", "font_scale", this.run);
+		if (Number(size ?? 1) !== fontScale)
+			problems.push(`font_scale ${size ?? "unset"} (expected ${fontScale.toFixed(2)})`);
+		return problems;
 	}
 }
 
 /**
  * Runs `body` with a session whose settings are restored when it returns, throws, or the process is interrupted. A restore
- * failure is reported on top of (never instead of) the body's own error.
+ * failure is reported on top of (never instead of) the body's own error; after a body that returned, it is logged and left
+ * in `options.notes` for the run file rather than thrown, so the run's results are still written (see `reportRestore`).
  */
 export async function withSession<T>(
 	serial: string,
 	packageName: string,
 	body: (session: DeviceSession) => Promise<T>,
+	options: SessionOptions = {},
 ): Promise<T> {
-	const session = await DeviceSession.open(serial, packageName);
+	const session = await DeviceSession.open(serial, packageName, options);
 	const interrupted = (signal: NodeJS.Signals) => {
 		console.error(`${signal}: restoring ${serial}`);
 		session
@@ -406,6 +604,24 @@ export async function withSession<T>(
 		process.off("SIGINT", interrupted);
 		process.off("SIGTERM", interrupted);
 	}
-	await session.close();
+	try {
+		await session.close();
+	} catch (restoreError) {
+		console.error(restoreError instanceof Error ? restoreError.message : String(restoreError));
+	}
 	return result;
+}
+
+/** Whether a failure ends a suite: the device is gone, or it is not in the state the cases need. Both fail every case after. */
+export function endsRun(error: unknown): boolean {
+	return deviceGone(error) || error instanceof DeviceStateError;
+}
+
+/** Says, and sets the exit code, when a session could not put the device back: the run file records it, `report` warns and `gates` fails. */
+export function reportRestore(notes: SessionNotes): void {
+	if (notes.restoreFailures.length === 0) return;
+	console.error(
+		`the device was left in a changed state (${notes.restoreFailures.join("; ")}); the next run repairs it first`,
+	);
+	process.exitCode = 1;
 }

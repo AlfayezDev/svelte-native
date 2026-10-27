@@ -28,6 +28,7 @@ import type {
 	ParityFile,
 	Platform,
 	ResilienceFile,
+	SessionRecord,
 	SoakFile,
 	Source,
 } from "../lib/types.ts";
@@ -117,6 +118,8 @@ export type ReportFile = {
 	builds: Record<string, BuildFile>;
 	devices: Record<string, ReportDeviceEntry>;
 	warnings: string[];
+	/** What a report shows without failing a gate: settings an earlier run left on a device, which a suite cleared before it measured. Absent in reports written before. */
+	notes?: string[];
 	gates: GateRow[];
 	verdict: ReturnType<typeof tally>;
 };
@@ -229,6 +232,32 @@ export function buildWarnings(serial: string, runs: [string, Measured | null][])
 	return warnings;
 }
 
+/**
+ * What the Android suites' sessions recorded of the device's state. A run that could not put the device back
+ * (`restoreFailures`: it was lost, a setting did not take) left it in a changed state, a warning like the cross-build ones:
+ * `gates` fails on it. A run that found settings an earlier run left (`leftovers`) cleared them before it measured, so its
+ * numbers stand; the note shows that the earlier run did not restore.
+ */
+export function sessionFindings(
+	serial: string,
+	runs: [string, SessionRecord | null][],
+): { warnings: string[]; notes: string[] } {
+	const warnings: string[] = [];
+	const notes: string[] = [];
+	for (const [label, run] of runs) {
+		if (!run) continue;
+		if (run.restoreFailures && run.restoreFailures.length > 0)
+			warnings.push(
+				`${serial}: the device was left in a changed state by the ${label} run (${run.restoreFailures.join("; ")})`,
+			);
+		if (run.leftovers && run.leftovers.length > 0)
+			notes.push(
+				`${serial}: the ${label} run found what an earlier run left on the device, so that run did not restore it, and cleared it (${run.leftovers.join("; ")})`,
+			);
+	}
+	return { warnings, notes };
+}
+
 export async function loadGates(): Promise<GatesFile> {
 	return JSON.parse(await readFile(gatesPath, "utf8")) as GatesFile;
 }
@@ -258,6 +287,7 @@ export async function report(): Promise<void> {
 	const slugs = new Set(runKinds.flatMap((kind) => [...files[kind].keys()]));
 	const devices: Record<string, ReportDeviceEntry> = {};
 	const warnings: string[] = [];
+	const notes: string[] = [];
 	for (const key of slugs) {
 		const labPath = labFiles.get(key);
 		const bootPath = bootFiles.get(key);
@@ -290,6 +320,13 @@ export async function report(): Promise<void> {
 				["resilience", suites.resilience],
 			]),
 		);
+		const found = sessionFindings(serial, [
+			["parity", suites.parity],
+			["accessibility", suites.a11y],
+			["resilience", suites.resilience],
+		]);
+		warnings.push(...found.warnings);
+		notes.push(...found.notes);
 		const pinned = gates.scenarios[platform];
 		devices[serial] = {
 			platform,
@@ -374,6 +411,7 @@ export async function report(): Promise<void> {
 		builds: await readBuilds(),
 		devices,
 		warnings,
+		notes,
 		gates: rows,
 		verdict: tally(rows),
 	};
@@ -428,6 +466,7 @@ export async function report(): Promise<void> {
 				`  crashes ${m["crashes.coldStarts"] ?? 0} cold starts (${m["crashes.coldStartCrashes"] ?? "-"} crashed, ${m["crashes.coldStartsNoBoot"] ?? "-"} without boot), ${m["crashes.suites"] ?? 0} suites (${m["crashes.suiteCrashes"] ?? "-"} crashed, ${m["crashes.suitesIncomplete"] ?? "-"} incomplete), ANRs ${m["crashes.anrs"] ?? "-"}`,
 			);
 	}
+	for (const note of notes) console.log(`note: ${note}`);
 	for (const warning of warnings) console.log(`warning: ${warning}`);
 	console.log("");
 	printVerdict(rows, false);

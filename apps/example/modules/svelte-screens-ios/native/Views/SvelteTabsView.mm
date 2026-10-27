@@ -97,7 +97,6 @@ using namespace facebook::react;
 - (void)showPane:(BOOL)shown {
   if (_pane.hidden == !shown) return;
   _pane.hidden = !shown;
-  SvelteQALog([NSString stringWithFormat:@"pane %@ shown=%d window=%d", SvelteString(_spec.key) ?: @"?", shown, _pane.window != nil]);
 }
 
 - (void)updateProps:(const Props::Shared &)props oldProps:(const Props::Shared &)oldProps {

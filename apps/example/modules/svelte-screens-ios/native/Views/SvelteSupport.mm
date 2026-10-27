@@ -77,84 +77,7 @@ void SvelteAfterNextFrame(dispatch_block_t block) {
   [link addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
 }
 
-static NSMutableArray<NSString *> *QALog;
-
-void SvelteQALog(NSString *line) {
-  if (QALog == nil) QALog = [NSMutableArray new];
-  if (QALog.count < 500) [QALog addObject:[NSString stringWithFormat:@"%.3f %@", [NSProcessInfo processInfo].systemUptime, line]];
-}
-
-NSArray<NSString *> *SvelteQALogLines(void) {
-  return [QALog copy] ?: @[];
-}
-
-NSInteger SvelteQAVariant(void) {
-  NSString *path = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject stringByAppendingPathComponent:@"svelte-variant.txt"];
-  NSString *text = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];
-  return text.integerValue;
-}
-
-@implementation SvelteNavigationController {
-  NSInteger _qaLayouts;
-}
-
-- (NSInteger)qaLayouts {
-  return _qaLayouts;
-}
-
-static BOOL QAHasLargeTitle(UIView *view) {
-  if ([NSStringFromClass([view class]) isEqualToString:@"_UINavigationBarLargeTitleView"]) return YES;
-  for (UIView *child in view.subviews) {
-    if (QAHasLargeTitle(child)) return YES;
-  }
-  return NO;
-}
-
-- (BOOL)qaHasLargeTitle {
-  return QAHasLargeTitle(self.navigationBar);
-}
-
-- (void)qaKick:(NSString *)why {
-  const NSInteger variant = SvelteQAVariant();
-  const BOOL before = [self qaHasLargeTitle];
-  [self.navigationBar setNeedsLayout];
-  if (!(variant & 64)) [self.navigationBar layoutIfNeeded];
-  if (variant & 128) {
-    [self.view setNeedsLayout];
-    [self.view layoutIfNeeded];
-  }
-  [self qaNote:[NSString stringWithFormat:@"kick %@ large %d -> %d", why, before, [self qaHasLargeTitle]]];
-}
-
-- (void)qaNote:(NSString *)what {
-  SvelteQALog([NSString stringWithFormat:@"nav%04lx %@", (unsigned long)((uintptr_t)self & 0xffff), what]);
-}
-
-- (void)viewWillAppear:(BOOL)animated {
-  [self qaNote:[NSString stringWithFormat:@"viewWillAppear %d", animated]];
-  [super viewWillAppear:animated];
-}
-
-- (void)viewDidAppear:(BOOL)animated {
-  [self qaNote:[NSString stringWithFormat:@"viewDidAppear %d large=%d", animated, [self qaHasLargeTitle]]];
-  [super viewDidAppear:animated];
-  if (!(SvelteQAVariant() & 512)) {
-    __weak SvelteNavigationController *weakSelf = self;
-    dispatch_async(dispatch_get_main_queue(), ^{
-      [weakSelf qaKick:animated ? @"didAppear(animated)" : @"didAppear"];
-    });
-  }
-}
-
-- (void)viewWillDisappear:(BOOL)animated {
-  [self qaNote:@"viewWillDisappear"];
-  [super viewWillDisappear:animated];
-}
-
-- (void)didMoveToParentViewController:(UIViewController *)parent {
-  [self qaNote:[NSString stringWithFormat:@"didMoveToParent %@ parentWindow=%d", parent == nil ? @"nil" : NSStringFromClass([parent class]), parent.isViewLoaded && parent.view.window != nil]];
-  [super didMoveToParentViewController:parent];
-}
+@implementation SvelteNavigationController
 
 - (UIViewController *)childViewControllerForStatusBarStyle {
   return self.topViewController;
@@ -166,8 +89,6 @@ static BOOL QAHasLargeTitle(UIView *view) {
 
 - (void)viewDidLayoutSubviews {
   [super viewDidLayoutSubviews];
-  _qaLayouts += 1;
-  if (_qaLayouts <= 3) [self qaNote:[NSString stringWithFormat:@"layout %ld bar=%@", (long)_qaLayouts, NSStringFromCGRect(self.navigationBar.frame)]];
   if (self.didLayout != nil) self.didLayout();
 }
 

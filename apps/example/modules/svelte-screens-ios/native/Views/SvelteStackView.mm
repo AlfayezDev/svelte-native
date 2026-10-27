@@ -236,32 +236,6 @@ using namespace facebook::react;
   }
 #endif
   [self navigationController:_controller willShowViewController:_controller.topViewController animated:NO];
-  const NSInteger variant = SvelteQAVariant();
-  SvelteQALog([NSString stringWithFormat:@"stack attach nav%04lx variant=%ld parent=%@ parentWindow=%d inWindow=%d", (unsigned long)((uintptr_t)_controller & 0xffff), (long)variant, NSStringFromClass([parent class]), parent.isViewLoaded && parent.view.window != nil, self.window != nil]);
-  __weak SvelteNavigationController *weakController = _controller;
-  const NSInteger delays[] = {0, 100, 200, 300, 400};
-  for (NSInteger bit = 1; bit <= 4; bit++) {
-    if (!(variant & (1 << (bit - 1)))) continue;
-    const NSInteger delay = delays[bit];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
-      [weakController qaKick:[NSString stringWithFormat:@"+%ldms", (long)delay]];
-    });
-  }
-  if (variant & 16) {
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(50 * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
-      [weakController qaKick:@"+50ms"];
-    });
-  }
-  if (variant & 256) {
-    for (NSInteger step = 1; step <= 40; step++) {
-      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(step * 25 * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
-        SvelteNavigationController *controller = weakController;
-        if (controller == nil) return;
-        UIView *host = controller.parentViewController.view;
-        SvelteQALog([NSString stringWithFormat:@"probe nav%04lx t=%ldms large=%d barY=%.0f hostX=%.0f parentTransition=%d", (unsigned long)((uintptr_t)controller & 0xffff), (long)(step * 25), [controller qaHasLargeTitle], controller.navigationBar.frame.origin.y, host != nil ? [host convertPoint:CGPointZero toView:nil].x : -1.0, controller.parentViewController.transitionCoordinator != nil]);
-      });
-    }
-  }
 }
 
 - (void)updatePushedControllers {
@@ -504,50 +478,6 @@ using namespace facebook::react;
                        }];
 }
 
-static NSArray *QARect(UIView *view) {
-  const CGRect r = [view convertRect:view.bounds toView:nil];
-  return @[ @(r.origin.x), @(r.origin.y), @(r.size.width), @(r.size.height) ];
-}
-
-static NSDictionary *SvelteQAViewTree(UIView *view, int depth) {
-  NSMutableDictionary *out = [NSMutableDictionary new];
-  out[@"class"] = NSStringFromClass([view class]);
-  out[@"frame"] = QARect(view);
-  if (view.hidden) out[@"hidden"] = @YES;
-  if (view.alpha < 0.999) out[@"alpha"] = @(view.alpha);
-  if ([view isKindOfClass:[UILabel class]]) {
-    UILabel *label = (UILabel *)view;
-    out[@"text"] = label.text ?: @"";
-    out[@"font"] = @(label.font.pointSize);
-  }
-  if (depth < 7 && view.subviews.count > 0) {
-    NSMutableArray *kids = [NSMutableArray new];
-    for (UIView *child in view.subviews) {
-      if (kids.count >= 12) break;
-      [kids addObject:SvelteQAViewTree(child, depth + 1)];
-    }
-    out[@"subviews"] = kids;
-  }
-  return out;
-}
-
-static NSDictionary *SvelteQAScrollState(UINavigationController *navigation) {
-  UIViewController *top = navigation.topViewController;
-  UIScrollView *scroll = [top contentScrollViewForEdge:NSDirectionalRectEdgeTop];
-  NSMutableDictionary *out = [NSMutableDictionary new];
-  out[@"top"] = top != nil ? NSStringFromClass([top class]) : @"nil";
-  out[@"found"] = @(scroll != nil);
-  if (scroll != nil) {
-    out[@"offset"] = @[ @(scroll.contentOffset.x), @(scroll.contentOffset.y) ];
-    out[@"inset"] = @[ @(scroll.contentInset.top), @(scroll.contentInset.bottom) ];
-    out[@"adjusted"] = @[ @(scroll.adjustedContentInset.top), @(scroll.adjustedContentInset.bottom) ];
-    out[@"behavior"] = @(scroll.contentInsetAdjustmentBehavior);
-    out[@"frame"] = QARect(scroll);
-    out[@"hidden"] = @(scroll.hidden);
-  }
-  return out;
-}
-
 // What the stack believes, for the QA module (`apps/platform/modules/svelte-qa-ios`, `uikitState`): it finds this method by its
 // selector, so that a transition that did not happen can be traced to the flag that held it back.
 - (NSDictionary *)qaState {
@@ -576,12 +506,6 @@ static NSDictionary *SvelteQAScrollState(UINavigationController *navigation) {
     @"needsFlush" : @(_needsFlush),
     @"transitioning" : @(_controller.transitionCoordinator != nil),
     @"viewControllers" : @(_controller.viewControllers.count),
-    @"qaLog" : SvelteQALogLines(),
-    @"navId" : [NSString stringWithFormat:@"nav%04lx", (unsigned long)((uintptr_t)_controller & 0xffff)],
-    @"navLayouts" : @(_controller.qaLayouts),
-    @"parentClass" : _controller.parentViewController != nil ? NSStringFromClass([_controller.parentViewController class]) : @"nil",
-    @"contentScroll" : SvelteQAScrollState(_controller),
-    @"bar" : SvelteQAViewTree(_controller.navigationBar, 0),
   };
 }
 

@@ -10,8 +10,8 @@
 
 namespace expo::svelteengine {
 
-// Component kinds, as in SPEC.md.
-enum Kind : int32_t { kSkip = 0, kView = 1, kText = 2, kScroll = 4, kInput = 5, kSwitch = 6, kProgress = 7, kImage = 8, kModal = 9, kStack = 10, kScreen = 11, kHeader = 12, kHeaderSlot = 13, kTabs = 14, kTab = 15, kTabIcon = 16, kForeign = 17 };
+// Component kinds, as in SPEC.md. 10..18 are the navigation kinds with the numbers of `NAV_KINDS` in navigation.ts.
+enum Kind : int32_t { kSkip = 0, kView = 1, kText = 2, kScroll = 4, kInput = 5, kSwitch = 6, kProgress = 7, kImage = 8, kModal = 9, kStack = 10, kScreen = 11, kHeader = 12, kHeaderSlot = 13, kTabs = 14, kTab = 15, kTabIcon = 16, kToolbar = 17, kToolbarItem = 18, kForeign = 19 };
 
 enum Op : int32_t {
   kOpCreate = 1,

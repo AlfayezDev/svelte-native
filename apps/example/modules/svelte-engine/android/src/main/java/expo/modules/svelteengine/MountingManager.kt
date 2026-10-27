@@ -63,7 +63,9 @@ private const val KIND_HEADER_SLOT = 13
 private const val KIND_TABS = 14
 private const val KIND_TAB = 15
 private const val KIND_TAB_ICON = 16
-private const val KIND_FOREIGN = 17
+private const val KIND_TOOLBAR = 17
+private const val KIND_TOOLBAR_ITEM = 18
+private const val KIND_FOREIGN = 19
 
 /** Applies C++ mounting batches to the engine view tree. Main thread only. */
 class MountingManager(context: Context) {

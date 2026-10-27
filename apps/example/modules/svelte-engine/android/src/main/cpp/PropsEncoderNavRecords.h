@@ -26,6 +26,8 @@ enum NavKind : int32_t {
   kTabsNode = 14,
   kTabNode = 15,
   kTabIconNode = 16,
+  kToolbarNode = 17,
+  kToolbarItemNode = 18,
 };
 
 constexpr std::string_view kPrefix = "svelte:";
@@ -43,6 +45,8 @@ enum RecordId : int32_t {
   kSystemBarsRecord = 125,
   kSlotRecord = 126,
   kSearchRecord = 127,
+  kToolbarRecord = 128,
+  kToolbarItemRecord = 129,
 };
 
 // A parsed `nativeID`: the kind token and the raw (still percent-encoded) values, as views into the id.
@@ -83,6 +87,10 @@ inline NavKind kindOf(std::string_view kind) {
   if (kind == "tabs") return kTabsNode;
   if (kind == "tab") return kTabNode;
   if (kind == "tab-icon") return kTabIconNode;
+  if (kind == "toolbar") return kToolbarNode;
+  if (kind == "toolbar-item") return kToolbarItemNode;
+  // The toolbar's center slot is a slot like the header's, number 4.
+  if (kind == "toolbar-center") return kHeaderSlotNode;
   return kNone;
 }
 
@@ -197,6 +205,7 @@ inline int32_t slotCode(std::string_view kind) {
   if (kind == "header-center") return 1;
   if (kind == "header-right") return 2;
   if (kind == "header-search") return 3;
+  if (kind == "toolbar-center") return 4;
   return 0;
 }
 
@@ -267,7 +276,8 @@ int32_t encodeRecords(Sink &out, std::string_view id) {
     w.color("bg");
     w.begin(kHeaderSlotsRecord);
     w.integer("sl", 0);
-  } else if (kind == "header-left" || kind == "header-center" || kind == "header-right" || kind == "header-search") {
+  } else if (kind == "header-left" || kind == "header-center" || kind == "header-right" || kind == "header-search" ||
+      kind == "toolbar-center") {
     w.begin(kSlotRecord);
     w.integer(slotCode(kind));
     if (kind == "header-search") {
@@ -295,6 +305,24 @@ int32_t encodeRecords(Sink &out, std::string_view id) {
     w.integer(!badge ? 0 : decode(*badge).empty() ? 1 : 2);
     w.string("bd");
     w.integer("ds", 0);
+  } else if (kind == "toolbar") {
+    int32_t flags = (wireInt(parsed->find("hd"), 0) == 1 ? 1 : 0) | (wireInt(parsed->find("tl"), 0) == 1 ? 2 : 0);
+    w.begin(kToolbarRecord);
+    w.integer(flags);
+    w.color("tc");
+    w.color("bg");
+    w.integer("sl", 0);
+  } else if (kind == "toolbar-item") {
+    auto badge = parsed->find("bd");
+    w.begin(kToolbarItemRecord);
+    w.string("k");
+    w.string("t");
+    w.string("ic");
+    w.integer("iv", 0);
+    w.integer(!badge ? 0 : decode(*badge).empty() ? 1 : 2);
+    w.string("bd");
+    w.integer("ds", 0);
+    w.integer("sp", 0);
   }
   return w.count;
 }

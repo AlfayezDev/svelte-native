@@ -19,6 +19,8 @@ import type {
 	BootFile,
 	BuildFile,
 	CrashesFile,
+	CrashReport,
+	CrashReportsRecord,
 	CrashSignature,
 	DeviceInfo,
 	LabFile,
@@ -100,6 +102,9 @@ type A11yScreenSummary = {
 	stable: boolean | null;
 };
 
+/** What one iOS run file recorded of the phone's crash log: the reports, or why there are none to count (`error`: the pull failed, or the file was recorded before it existed). */
+type CrashReportsSummary = { run: "lab" | "boot" | "parity" | "a11y"; file: string; error: string | null; reports: CrashReport[] };
+
 type SuitesSummary = {
 	parity: { file: string; mode: "check" | "update"; deviceKind: string } | null;
 	a11y: { file: string; oracle: string; screens: A11yScreenSummary[] } | null;
@@ -124,9 +129,20 @@ type ReportDeviceEntry = {
 	boot: BootSummary | null;
 	soak: SoakSummary | null;
 	crashes: CrashesSummary | null;
+	/** iOS only: the crash reports of the phone each run file recorded. */
+	crashReports: CrashReportsSummary[];
 	suites: SuitesSummary;
 	metrics: Metrics;
 };
+
+function crashReportSummaries(platform: Platform, files: [CrashReportsSummary["run"], string | undefined, CrashReportsRecord | null][]): CrashReportsSummary[] {
+	if (platform !== "ios") return [];
+	return files.flatMap(([run, path, file]) => {
+		if (!file || !path) return [];
+		const error = file.crashReportsError ?? (file.crashReports === undefined ? "recorded before the crash log was read" : null);
+		return [{ run, file: path.slice(path.lastIndexOf("runs/")), error, reports: error === null ? (file.crashReports ?? []) : [] }];
+	});
+}
 
 function summarizeLab(file: LabFile, fileName: string, pinned: readonly string[]): LabSummary {
 	return {
@@ -312,6 +328,12 @@ export async function report(): Promise<void> {
 							signatures: crashes.signatures,
 						}
 					: null,
+			crashReports: crashReportSummaries(platform, [
+				["lab", labPath, lab],
+				["boot", bootPath, boot],
+				["parity", parityPath, suites.parity],
+				["a11y", a11yPath, suites.a11y],
+			]),
 			suites: {
 				parity: suites.parity && parityPath ? { file: parityPath.slice(parityPath.lastIndexOf("runs/")), mode: suites.parity.mode, deviceKind: suites.parity.deviceKind } : null,
 				a11y:
@@ -368,6 +390,14 @@ export async function report(): Promise<void> {
 		console.log(
 			`  lab ${m["lab.runs"] ?? 0} complete run(s) (--run ${entry.lab?.run ?? "not recorded"}), checks ${m["lab.checks.passed"] ?? "-"} passed / ${m["lab.checks.failed"] ?? "-"} failed, fatals ${m["log.fatals"] ?? "not measured"}, engine warnings ${m["log.engineWarnings"] ?? "-"}`,
 		);
+		if (entry.platform === "ios") {
+			console.log(`  crash reports ${m["log.crashReports"] ?? "not measured"}`);
+			for (const summary of entry.crashReports) {
+				if (summary.error !== null) console.log(`    ${summary.run}: not measured (${summary.error})`);
+				for (const report of summary.reports)
+					console.log(`    ${summary.run}: ${report.file} pid ${report.pid ?? "?"} ${report.exceptionType ?? "unreadable"}${report.signal ? ` ${report.signal}` : ""}${report.attributedTo ? ` [${report.attributedTo}]` : ""}: ${report.reason ?? "no reason"}`);
+			}
+		}
 		if (entry.lab && entry.lab.missingScenarios.length > 0)
 			console.log(
 				`  lab is not the full run: ${entry.lab.missingScenarios.length} of ${gates.scenarios[entry.platform].length} scenarios missing (${entry.lab.missingScenarios.join(", ")})`,

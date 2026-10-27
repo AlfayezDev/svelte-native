@@ -310,6 +310,17 @@
       }
     },
     {
+      "id": "log.crashReports",
+      "title": "Crash reports of the app in the iPhone's crash log (after the results too)",
+      "unit": "reports",
+      "metric": "log.crashReports",
+      "bar": {
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
       "id": "log.engineWarnings",
       "title": "Engine warnings (SvelteEngine W and E lines)",
       "unit": "lines",

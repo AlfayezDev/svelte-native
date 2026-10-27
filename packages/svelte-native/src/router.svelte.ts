@@ -54,7 +54,7 @@ export interface Router {
   modules(route: PageRoute | RouteNode): RouteModules | undefined;
   /** Navigates anywhere in the tree: the plan selects tabs, pops covering screens and pushes where the route belongs. */
   goto(href: string, navigation?: NavigateOptions): void;
-  /** Pops this navigator's top screen; at its base, the stack above gets to pop; `false` when nothing can (the app may leave). */
+  /** Pops this navigator's top screen (a tabs router's: the selected pane's); at its base, the stack above gets to pop; `false` when nothing can (the app may leave). */
   back(): boolean;
   /** Replaces the first entry of this stack with a page of this navigator. */
   replaceBase(href: string): void;

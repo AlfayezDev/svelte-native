@@ -1010,7 +1010,7 @@ type TreeRouter = {
   replaceBase: (href: string) => void; openURL: (href: string) => boolean; screens: { leaving: boolean }[];
 };
 type TreeApp = { root: () => TreeRouter; show: (shown: boolean) => void };
-const treeGlobals = globalThis as { __treeRoots?: Record<string, TreeRouter>; __treeRouters?: Record<string, TreeRouter>; __treeOptions?: Record<string, object>; __treeTabs?: object[]; __treeSelections?: string[]; __treePanes?: unknown };
+const treeGlobals = globalThis as { __treeRoots?: Record<string, TreeRouter>; __treeRouters?: Record<string, TreeRouter>; __treeOptions?: Record<string, object>; __treeTabs?: object[]; __treeSelections?: string[]; __treePanes?: unknown; __treeTabsRouter?: TreeRouter };
 const pathsOf = (router: TreeRouter) => router.entries.map((entry) => `${entry.url.pathname}${entry.url.search}`);
 const selectedIndex = (surface: number) => parseNativeID(String(ofKind(roots[surface], "tabs")[0].props.nativeID))?.pairs.sel;
 const paneRouter = (path: string): TreeRouter => { const router = treeGlobals.__treeRouters?.[path]; if (!router) throw new Error(`no page rendered at ${path}`); return router; };
@@ -1181,6 +1181,34 @@ test("the root router alone owns the back key and the launch link, so a reset of
     expect(pathsOf(paneRouter("/acme/home"))).toEqual(["/acme/home"]);
     expect(pathsOf(router)).toEqual(["/workspaces"]);
     expect(hardwareBack()).toBe(false); // the root at one entry: the app may leave
+  } finally { jest.useRealTimers(); reset(); }
+});
+
+test("back() on a tabs router pops the selected pane first, then the stack above, and a pane that is not selected never pops its sibling", async () => {
+  withInsets(24);
+  jest.useFakeTimers();
+  try {
+    const { router, settled } = await mountTree(98, { initial: "/workspaces" });
+    router.goto("/acme/inbox"); // visits the inbox pane, which stays at its base
+    await settled();
+    router.goto("/acme/home/thread/1");
+    await settled();
+    const tabs = treeGlobals.__treeTabsRouter;
+    const inbox = paneRouter("/acme/inbox");
+    const home = paneRouter("/acme/home");
+    if (!tabs) throw new Error("the tabs layout did not render");
+    expect(tabs.selected).toBe("home");
+    expect(pathsOf(tabs)).toEqual(["/acme/home", "/acme/home/thread/1"]); // entries are the selected pane's
+    expect(tabs.current.url.pathname).toBe("/acme/home/thread/1");
+
+    expect(tabs.back()).toBe(true); // the pane has depth: it pops, the root screen below the tabs stays
+    expect(pathsOf(home)).toEqual(["/acme/home"]);
+    expect(pathsOf(router)).toEqual(["/workspaces", "/acme"]);
+    home.goto("/acme/home/thread/2");
+    await settled();
+    expect(inbox.back()).toBe(true); // at its base the unselected pane hands the pop to the root, not to the selected pane
+    expect(pathsOf(home)).toEqual(["/acme/home", "/acme/home/thread/2"]);
+    expect(pathsOf(router)).toEqual(["/workspaces"]);
   } finally { jest.useRealTimers(); reset(); }
 });
 

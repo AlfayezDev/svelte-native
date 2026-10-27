@@ -50,8 +50,6 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// `SvelteToolbarCenter`: custom content between the items.
 @interface SvelteToolbarCenterView : SvelteToolbarContentView
-/// The most the bar can give the slot (the width of what UIKit shows of it): Yoga's width is clamped to it.
-@property (nonatomic) CGFloat maxWidth;
 - (UIBarButtonItem *)barItem;
 @end
 

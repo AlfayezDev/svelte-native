@@ -23,17 +23,21 @@ import expo.modules.svelteengine.NavEvents
 import expo.modules.svelteengine.NavProps
 import expo.modules.svelteengine.TextLayouts
 import expo.modules.svelteengine.TextSpec
-import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+
+/** The row's geometry, `TOOLBAR_METRICS.android` of `fabric/navigation.ts`: Yoga lays the band out with the same numbers (SPEC.md, "Toolbar"). */
+private const val ITEM_DP = 48f
+private const val EDGE_DP = 4f
 
 /**
  * One action of a toolbar (`native-toolbar-item`, SPEC.md "Toolbar"): a 48 dp high target that draws its own icon, label
  * and badge, so it is also its control: it takes the press, the ripple, the accessibility role and the disabled state.
  * The icon is an asset drawn as a template in the toolbar's tint, or the app's snippet (a child of this view, laid out by
  * Yoga and drawn as it is, centered where the 24 dp icon would be). A spacer is flexible space and draws nothing. The
- * toolbar decides the item's place and width ([wantedWidth]); Yoga's frame of the item itself is not used.
+ * toolbar decides the item's place; its width is [ITEM_DP], the number JavaScript gives the item node's Yoga style
+ * (`TOOLBAR_METRICS.android.item`), and Yoga's frame of the item itself is not used.
  */
 class EngineToolbarItem(context: Context) : EngineView(context) {
   var key = ""
@@ -179,10 +183,7 @@ class EngineToolbarItem(context: Context) : EngineView(context) {
 
   // Label --------------------------------------------------------------------------------------------------------------
 
-  /** The widest an item grows for its label or snippet, px. */
-  private fun maxWidth() = dp(MAX_DP)
-
-  /** The label as one centered line, ellipsized at the widest item (less its padding); null without a title. */
+  /** The label as one centered line, ellipsized within the item (less 4 dp each side, as the tab bar's labels); null without a title. */
   private fun labelLayout(color: Int): Layout? {
     val text = title
     if (text.isEmpty()) return null
@@ -197,26 +198,12 @@ class EngineToolbarItem(context: Context) : EngineView(context) {
     spec.includeFontPadding = false
     spec.rtl = rtl
     spec.fragments = arrayListOf(Fragment(text, LABEL_SP * density * scale, color, 500, false, null, 0f, 0f))
-    label = TextLayouts.build(spec, maxWidth() - dp(PAD_DP), 0)?.layout
+    label = TextLayouts.build(spec, dp(ITEM_DP) - dp(LABEL_PAD_DP), 0)?.layout
     labelColor = color
     labelText = text
     labelRtl = rtl
     labelScale = scale
     return label
-  }
-
-  /**
-   * The width this item wants in the row, px: a 48 dp target, wider for a long label or a wide snippet (with 8 dp each
-   * side), at most [MAX_DP].
-   */
-  internal fun wantedWidth(): Int {
-    var w = dp(ITEM_DP)
-    labelLayout(itemColor())?.let { w = max(w, ceil(it.getLineWidth(0)).toInt() + dp(PAD_DP)) }
-    for (i in 0 until childCount) {
-      val st = (getChildAt(i) as? EngineNode)?.node ?: continue
-      if (st.hasFrame) w = max(w, st.w + dp(PAD_DP))
-    }
-    return min(w, maxWidth())
   }
 
   /** The icon (24 dp) and the label under it are centered as one block; the block's top, whole pixels. */
@@ -324,9 +311,7 @@ class EngineToolbarItem(context: Context) : EngineView(context) {
 
   private companion object {
     const val ICON_DP = 24f
-    const val ITEM_DP = 48f
-    const val MAX_DP = 96f
-    const val PAD_DP = 16f
+    const val LABEL_PAD_DP = 8f
     const val GAP_DP = 2f
     const val LABEL_SP = 12f
     const val MAX_FONT_SCALE = 1.3f
@@ -338,10 +323,11 @@ class EngineToolbarItem(context: Context) : EngineView(context) {
 /**
  * The toolbar band of a screen (SPEC.md "Toolbar", "Native screens, Android"): a child of [EngineScreen], the last one,
  * that draws the bar in its Yoga frame, which is the 56 dp bar plus the bottom inset (Yoga's `paddingBottom`). The bar
- * row sits at the bottom of the band above the inset; the items and the center slot are laid out in it here, not by
- * Yoga: items are 48 dp targets (wider for a long label), packed from the start edge, a spacer takes an equal share of
- * the free width, and a center slot (`native-toolbar-center`, an [EngineHeaderSlot] of slot 4) takes the place of the
- * first spacer (after the last item without one) and all the free width. Because the band is a child of the screen it moves
+ * row sits at the bottom of the band above the inset; the items and the center slot are laid out in it here, with the
+ * numbers Yoga used (4 dp edges, items exactly 48 dp wide, [ITEM_DP] and [EDGE_DP]): items are packed from the start
+ * edge, a spacer takes an equal share of the free width, and a center slot (`native-toolbar-center`, an
+ * [EngineHeaderSlot] of slot 4) takes the place of the first spacer (after the last item without one) and all the free
+ * width, which is the width Yoga gave it. Because the band is a child of the screen it moves
  * with it in push, pop, predictive back and edge swipe.
  *
  * Translucent: the background is transparent unless one is given (JavaScript puts the band out of flow, over the
@@ -499,6 +485,7 @@ class EngineToolbar(context: Context) : EngineView(context) {
     val n = childCount
     if (widths.size < n) widths = IntArray(n + 4)
     val pad = dp(EDGE_DP)
+    val itemW = dp(ITEM_DP)
     val available = max(0, w - 2 * pad)
     var fixed = 0
     var spacers = 0
@@ -507,11 +494,12 @@ class EngineToolbar(context: Context) : EngineView(context) {
       widths[i] = 0
       if (item == null || item.visibility == GONE) continue
       if (item.spacer) spacers++ else {
-        widths[i] = item.wantedWidth()
-        fixed += widths[i]
+        widths[i] = itemW
+        fixed += itemW
       }
     }
-    // More items than the bar holds: every item gives up the same share rather than leaving the bar.
+    // A row with more items than the bar holds (more than seven on a 360 dp phone): every item gives up the same share rather
+    // than leaving the bar. Yoga's numbers no longer hold there (its center is zero), and the items are narrower than 48 dp.
     if (fixed > available && fixed > 0) {
       val total = fixed
       fixed = 0
@@ -528,7 +516,7 @@ class EngineToolbar(context: Context) : EngineView(context) {
     var lastSpacer = -1
     if (remainder > 0) for (i in n - 1 downTo 0) if ((getChildAt(i) as? EngineToolbarItem)?.spacer == true && getChildAt(i).visibility != GONE) { lastSpacer = i; break }
     val rtl = isRtlLayout()
-    val itemH = min(barPx, dp(48f))
+    val itemH = min(barPx, itemW)
     var x = pad
     for (i in 0..n) {
       if (i == at && slot != null) {
@@ -556,30 +544,18 @@ class EngineToolbar(context: Context) : EngineView(context) {
   }
 
   /**
-   * Yoga laid the center's content out in the center's own width, which is what its `flex: 1` leaves after the items'
-   * Yoga widths (the items have none for an asset icon, so the whole row). The slot keeps that width and is placed so
-   * that its content sits centered in the free span; content wider than the span starts at the span's start edge. The
-   * slot's frame may therefore reach over the items: it lets touches through where it has no content ([EngineHeaderSlot.apply]).
+   * The center slot fills the free span: Yoga gave it `flex: 1` in a row whose edges are [EDGE_DP] and whose items are
+   * [ITEM_DP] wide (JavaScript's `TOOLBAR_METRICS.android`, the numbers [layoutRow] uses), with spacers that do not grow beside
+   * a center, so Yoga's width of the slot is `band width - 2 * EDGE_DP - ITEM_DP * items`, which is [free]. The slot keeps that
+   * width and sits at the span's start; its content was centered inside it by Yoga (mirrored there for right-to-left), so
+   * nothing is measured or clamped here. The slot lets touches through where it has no content ([EngineHeaderSlot.apply]).
    */
   private fun placeCenter(s: EngineHeaderSlot, start: Int, free: Int, w: Int, rowTop: Int, rtl: Boolean) {
     val height = if (s.node.h in 1..barPx) s.node.h else barPx
-    val width = if (s.node.w > 0) s.node.w else free
-    var minX = Int.MAX_VALUE
-    var maxX = Int.MIN_VALUE
-    for (i in 0 until s.childCount) {
-      val st = (s.getChildAt(i) as? EngineNode)?.node ?: continue
-      if (!st.hasFrame) continue
-      minX = min(minX, st.l)
-      maxX = max(maxX, st.r)
-    }
-    if (minX > maxX) {
-      minX = 0
-      maxX = width
-    }
-    // Physical coordinates: Yoga has already mirrored the content inside the slot for right-to-left.
+    val width = s.node.w
+    // Physical coordinates; equal widths put the slot exactly on the span, a different one anchors it at the span's start edge.
     val spanLeft = if (rtl) w - start - free else start
-    val contentW = maxX - minX
-    val left = if (contentW <= free) spanLeft + (free - contentW) / 2 - minX else if (rtl) spanLeft + free - maxX else spanLeft - minX
+    val left = if (rtl) spanLeft + free - width else spanLeft
     val top = rowTop + (barPx - height) / 2
     centerRect[0] = left; centerRect[1] = top; centerRect[2] = left + width; centerRect[3] = top + height
     centerPlaced = true
@@ -639,7 +615,6 @@ class EngineToolbar(context: Context) : EngineView(context) {
 
   private companion object {
     const val BAR_DP = 56f
-    const val EDGE_DP = 4f
     const val CENTER_SLOT = 4
   }
 }

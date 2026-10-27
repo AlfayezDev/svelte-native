@@ -140,6 +140,8 @@ type NativeToolbarProps = NativeElementAttributes<ViewProps & {
   /** Estimated total height and bottom inset in dp until the native side reports its own. */
   toolbarHeight?: number;
   toolbarInset?: number;
+  /** The platform whose row metrics (`TOOLBAR_METRICS`) the band's Yoga style uses. */
+  toolbarPlatform?: "android" | "ios";
   /** An item was pressed; `index` is its position among the item nodes. */
   onPress?: (event: { nativeEvent: { key: string; index: number } }) => void;
   onMetrics?: (event: { nativeEvent: HeaderMetrics }) => void;
@@ -154,6 +156,10 @@ type NativeToolbarItemProps = NativeElementAttributes<ViewProps & {
   badge?: string | number | boolean;
   disabled?: boolean;
   spacer?: boolean;
+  /** The toolbar has a center slot: a spacer does not grow, the center takes all the free width. */
+  centered?: boolean;
+  /** The platform whose row metrics (`TOOLBAR_METRICS`) the item's Yoga style uses. */
+  toolbarPlatform?: "android" | "ios";
 }>;
 
 /**

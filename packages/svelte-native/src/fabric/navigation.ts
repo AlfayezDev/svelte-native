@@ -95,6 +95,16 @@ export const TAB_BAR: Record<NavigationPlatform, number> = { android: 64, ios: 4
 /** Toolbar height without the bottom inset: Material bottom app bar, UIKit toolbar. */
 export const TOOLBAR_BAR: Record<NavigationPlatform, number> = { android: 56, ios: 44 };
 /**
+ * The toolbar row's horizontal geometry, in dp on Android and pt on iOS. Yoga lays the row out with these numbers (`edge` is the
+ * band's horizontal padding, `item` the width of an item, `gap` the margin on each side of one) and the native side places the
+ * items by the same numbers, so the center's Yoga width is the free span between the items: an Android item occupies 48, an
+ * iOS one `item + 2 * gap` = 52 (UIKit's 44 pt button and the 8 pt between two), the iOS band's edges 32.
+ */
+export const TOOLBAR_METRICS: Record<NavigationPlatform, { readonly edge: number; readonly item: number; readonly gap: number }> = {
+  android: { edge: 4, item: 48, gap: 0 },
+  ios: { edge: 16, item: 44, gap: 4 },
+};
+/**
  * Whether the native stack of a platform keeps a screen whose `activityState` JavaScript set to 0 on screen, takes it
  * away with its exit transition and then sends `topExited` (SPEC.md, "Screen exit"). Where it does, the router keeps a
  * popped entry mounted until that event, so the unmount of the page leaves the transition's frames; where it does not,
@@ -435,19 +445,21 @@ function tabsProps(name: string, attributes: Record<string, unknown>): Record<st
 
 // Toolbar.
 
-const TOOLBAR_KEYS = ["hidden", "translucent", "tint", "background", "slots", "toolbarHeight", "toolbarInset"];
-const TOOLBAR_ITEM_KEYS = ["itemKey", "title", "icon", "iconView", "badge", "disabled", "spacer"];
+const TOOLBAR_KEYS = ["hidden", "translucent", "tint", "background", "slots", "toolbarHeight", "toolbarInset", "toolbarPlatform"];
+const TOOLBAR_ITEM_KEYS = ["itemKey", "title", "icon", "iconView", "badge", "disabled", "spacer", "centered", "toolbarPlatform"];
 /** Slot mask bit of the toolbar's `sl` key and record 128. */
 export const SLOT_TOOLBAR_CENTER = 1;
 
 function toolbarProps(name: string, attributes: Record<string, unknown>): Record<string, unknown> {
+  // `Screen` passes the platform like the band's height; a node without it is laid out as on Android.
+  const metrics = TOOLBAR_METRICS[attributes.toolbarPlatform === "ios" ? "ios" : "android"];
   if (name === "native-toolbar") {
     const inset = typeof attributes.toolbarInset === "number" ? attributes.toolbarInset : 0;
     const height = typeof attributes.toolbarHeight === "number" ? attributes.toolbarHeight : 0;
     // In flow below the content view (`flex: 1`), or over it at the bottom edge when translucent; the node is the last child of the screen, so it is drawn and hit last.
     const box = {
       ...(attributes.translucent === true ? { position: "absolute", left: 0, right: 0, bottom: 0 } : {}),
-      height, paddingBottom: inset, flexDirection: "row", alignItems: "center",
+      height, paddingBottom: inset, paddingHorizontal: metrics.edge, flexDirection: "row", alignItems: "center",
     };
     const id = encodeNativeID("toolbar", [
       ["hd", flag(attributes.hidden)], ["tl", flag(attributes.translucent)],
@@ -456,15 +468,18 @@ function toolbarProps(name: string, attributes: Record<string, unknown>): Record
     return withId(attributes, TOOLBAR_KEYS, id, box);
   }
   if (name === "native-toolbar-item") {
-    // Flexible space carries no other key; a snippet icon is sized by Yoga inside the item and placed by the native side.
-    if (attributes.spacer === true) return withId(attributes, TOOLBAR_ITEM_KEYS, encodeNativeID("toolbar-item", [["sp", 1]]), { flexGrow: 1 });
+    // Flexible space carries no other key. With a center slot the center takes all the free width (natively, on both platforms,
+    // the other spacers are then zero), so Yoga must not share it with the spacers: they do not grow.
+    if (attributes.spacer === true) return withId(attributes, TOOLBAR_ITEM_KEYS, encodeNativeID("toolbar-item", [["sp", 1]]), { flexGrow: attributes.centered === true ? 0 : 1 });
     const badge = badgeText(attributes.badge);
     const id = encodeNativeID("toolbar-item", [
       ["k", text(attributes.itemKey)], ["t", text(attributes.title)], ["ic", text(attributes.icon)],
       ["iv", flag(attributes.iconView)], ["bd", badge === undefined ? undefined : encode(badge)], ["ds", flag(attributes.disabled)],
     ]);
-    // An asset icon gives Yoga no content: the target's width keeps a `flex: 1` center from taking the items' room.
-    return withId(attributes, TOOLBAR_ITEM_KEYS, id, { minWidth: 48, flexDirection: "row", alignItems: "center", justifyContent: "center" });
+    // A fixed width, not a minimum: the native side places every item at exactly `item` (plus `gap` each side), so the center's
+    // Yoga width is the span it gets. A snippet icon is drawn inside, centered by the native side.
+    const style = { width: metrics.item, marginHorizontal: metrics.gap, flexDirection: "row", alignItems: "center", justifyContent: "center" };
+    return withId(attributes, TOOLBAR_ITEM_KEYS, id, style);
   }
   // The custom content between the items: fills what they leave, centered like the header's center slot.
   return withId(attributes, TOOLBAR_ITEM_KEYS, encodeNativeID("toolbar-center", []), { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center" });

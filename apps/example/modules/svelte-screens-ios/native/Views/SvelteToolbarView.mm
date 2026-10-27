@@ -14,7 +14,9 @@
 
 using namespace facebook::react;
 
-/// What a toolbar item shows at least: UIKit's own bar buttons are 44 pt wide and tall.
+/// What a toolbar item shows at least: UIKit's own bar buttons are 44 pt wide and tall. This is `TOOLBAR_METRICS.ios.item` of
+/// `fabric/navigation.ts`: Yoga gives every item node that width plus 4 pt on each side and the band 16 pt edges, so the center slot's
+/// Yoga width is the free span between UIKit's items (SPEC.md, "Native screens, iOS", Toolbar).
 static const CGFloat kSvelteToolbarTarget = 44;
 /// An image is drawn 24 pt (`SvelteTemplateImage`).
 static const CGFloat kSvelteToolbarIcon = 24;
@@ -213,8 +215,6 @@ static CGFloat SvelteRoundToPixel(CGFloat value) {
 #pragma mark - Children of the toolbar
 
 @interface SvelteToolbarContentView ()
-- (CGSize)fittedSize;
-- (void)applySize;
 - (void)contentSizeDidChange;
 @end
 
@@ -233,13 +233,10 @@ static CGFloat SvelteRoundToPixel(CGFloat value) {
   return _contentCount;
 }
 
-/// The size the bar gives the container, from what Yoga computed.
-- (CGSize)fittedSize {
-  return _yogaSize;
-}
-
+/// The container is as large as Yoga laid the node out, unchanged: for the center slot that is the free span between the items
+/// (the band's width less its edges and what the items take, the numbers UIKit lays the bar out with).
 - (void)applySize {
-  self.barView.contentSize = [self fittedSize];
+  self.barView.contentSize = _yogaSize;
   [self contentSizeDidChange];
 }
 
@@ -449,7 +446,6 @@ static CGFloat SvelteRoundToPixel(CGFloat value) {
 
 @implementation SvelteToolbarCenterView {
   UIBarButtonItem *_barItem;
-  CGFloat _maxWidth;
 }
 
 + (ComponentDescriptorProvider)componentDescriptorProvider {
@@ -462,23 +458,6 @@ static CGFloat SvelteRoundToPixel(CGFloat value) {
 
 + (void)load {
   [[RCTComponentViewFactory currentComponentViewFactory] registerComponentViewClass:self];
-}
-
-- (CGFloat)maxWidth {
-  return _maxWidth;
-}
-
-- (void)setMaxWidth:(CGFloat)maxWidth {
-  if (std::fabs(_maxWidth - maxWidth) < 0.5) return;
-  _maxWidth = maxWidth;
-  [self applySize];
-}
-
-// Yoga laid the slot out against the whole band; what UIKit shows of it is less: the width is clamped, and what does not fit is cut
-// off at both ends (the content stays centered in what it gets).
-- (CGSize)fittedSize {
-  const CGSize size = [super fittedSize];
-  return CGSizeMake(_maxWidth > 0 ? MIN(size.width, _maxWidth) : size.width, size.height);
 }
 
 - (UIBarButtonItem *)barItem {
@@ -507,7 +486,6 @@ static CGFloat SvelteRoundToPixel(CGFloat value) {
   BOOL _reported;
   CGFloat _lastHeight;
   CGFloat _lastInset;
-  CGFloat _lastWidth;
 }
 
 + (ComponentDescriptorProvider)componentDescriptorProvider {
@@ -566,16 +544,6 @@ static CGFloat SvelteRoundToPixel(CGFloat value) {
   [_screen setNeedsToolbarUpdate];
 }
 
-// The band's width is what the center slot's width is measured against.
-- (void)updateLayoutMetrics:(const LayoutMetrics &)layoutMetrics oldLayoutMetrics:(const LayoutMetrics &)oldLayoutMetrics {
-  [super updateLayoutMetrics:layoutMetrics oldLayoutMetrics:oldLayoutMetrics];
-  const CGFloat width = layoutMetrics.frame.size.width;
-  if (std::isfinite(width) && std::fabs(width - _lastWidth) >= 0.5) {
-    _lastWidth = width;
-    [_screen setNeedsToolbarUpdate];
-  }
-}
-
 - (void)contentDidChange {
   [_screen setNeedsToolbarUpdate];
 }
@@ -598,15 +566,8 @@ static CGFloat SvelteRoundToPixel(CGFloat value) {
 
 - (void)applyToController:(UIViewController *)controller {
   SvelteToolbarCenterView *center = nil;
-  NSUInteger solid = 0;
   for (SvelteToolbarContentView *child in _children) {
     if ([child isKindOfClass:[SvelteToolbarCenterView class]]) center = (SvelteToolbarCenterView *)child;
-    else if ([(SvelteToolbarItemView *)child spec].spacer == 0) solid += 1;
-  }
-  if (center != nil) {
-    // The bar's margins (16 pt each side) and 52 pt for every other item (44 pt wide and the 8 pt between).
-    const CGFloat width = _lastWidth > 0 ? _lastWidth : controller.view.bounds.size.width;
-    center.maxWidth = MAX(kSvelteToolbarTarget, width - 32 - 52.0 * (CGFloat)solid);
   }
   // The center slot takes the place of the first flexible space, flanked by two of its own so that it stays in the middle of what is
   // left; without a flexible space it follows the last item.

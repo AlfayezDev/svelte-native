@@ -140,6 +140,7 @@
     slots: options.toolbarCenter ? SLOT_TOOLBAR_CENTER : 0,
     toolbarHeight: toolbarSize,
     toolbarInset,
+    toolbarPlatform: platform,
     onPress: toolbar?.onPress && pressItem,
     onMetrics: toolbarMetrics,
   }));
@@ -162,14 +163,14 @@
       <native-toolbar nativeProps={toolbarProps}>
         {#each toolbar?.items ?? [] as item (item.key)}
           {#if item.spacer}
-            <native-toolbar-item nativeProps={{ spacer: true }}></native-toolbar-item>
+            <native-toolbar-item nativeProps={{ spacer: true, centered: options.toolbarCenter !== undefined }}></native-toolbar-item>
           {:else}
             {@const view = typeof item.icon === "function" ? item.icon : undefined}
             <native-toolbar-item
               nativeProps={{
                 itemKey: item.key, title: item.title, badge: item.badge, disabled: item.disabled, iconView: view !== undefined,
                 icon: view ? undefined : iconUri(item.icon as TabIconSource | undefined),
-                accessibilityLabel: item.accessibilityLabel, testID: item.testID,
+                accessibilityLabel: item.accessibilityLabel, testID: item.testID, toolbarPlatform: platform,
               }}
             >
               {#if view}{@render view(false)}{/if}

@@ -24,12 +24,12 @@ async function entryFor(root?: string): Promise<string> {
   }
 }
 
-test("the entry boots the app layout with the generated routes and accepts hot updates", async () => {
+test("the entry boots the app layout as the shell of the generated tree and accepts hot updates", async () => {
   const entry = await entryFor();
   expect(entry).toContain("import '@rasheed/svelte-native/init';");
   expect(entry).toContain("import App from '../src/routes/+layout.mobile.svelte';");
-  expect(entry).toContain("import { routes } from './routes';");
-  expect(entry).toContain("createFabricApp(App, { routes });");
+  expect(entry).toContain("import { tree } from './routes';");
+  expect(entry).toContain("createFabricApp(App, { tree });");
   expect(entry).toContain("module.hot?.accept(() => remountSurfaces())");
   expect(entry).not.toContain("registerRootComponent");
 });
@@ -68,15 +68,15 @@ test("the route table loads no page up front: every route is a loader", async ()
   await withRoutes(tree, async (_directory, table) => {
     expect(table).not.toMatch(/^import (?!type)/m);
     expect(table).not.toContain("import * as");
-    expect(table).toContain("import type { NativeRoute } from '@rasheed/svelte-native/router';");
-    expect(table).toContain("export const routes: NativeRoute[] = [");
-    expect([...table.matchAll(/id: "([^"]*)", path: "([^"]*)"/g)].map((match) => `${match[1]} ${match[2]}`).sort()).toEqual([
+    expect(table).toContain("import type { StackNode } from '@rasheed/svelte-native/router';");
+    expect(table).toContain("export const tree: StackNode = {");
+    expect([...table.matchAll(/kind: "page", id: "([^"]*)", path: "([^"]*)"/g)].map((match) => `${match[1]} ${match[2]}`).sort()).toEqual([
       " /", "(group)/b/[id] /b/[id]", "a /a", "a/[...rest] /a/[...rest]",
     ]);
     expect([...table.matchAll(/load: async/g)]).toHaveLength(4);
     expect(table).toContain('load: async () => ({ component: require("../src/routes/a/+mobile.svelte").default, layouts: [require("../src/routes/a/+layout.mobile.svelte").default] }),');
     expect(table).not.toContain("import("); // a require keeps the page in the entry's module graph, so a hot update of it reaches the entry's accept handler
-    expect(table.indexOf('id: ""')).toBeGreaterThan(table.indexOf('id: "a"')); // static routes still precede the root and parameter routes' order is unchanged
+    expect(table.indexOf('kind: "page", id: ""')).toBeGreaterThan(table.indexOf('kind: "page", id: "a"')); // static routes still precede the root and parameter routes' order is unchanged
   });
 });
 
@@ -100,7 +100,8 @@ test("a loader requires its page and layouts when called and not before", async 
     await writeFile(file, bundle.outputFiles[0].contents);
     const evaluated = () => (globalThis as { __evaluatedPages?: string[] }).__evaluatedPages ?? [];
     delete (globalThis as { __evaluatedPages?: string[] }).__evaluatedPages;
-    const { routes } = await import(pathToFileURL(file).href) as { routes: { id: string; presentation: string; load: () => Promise<{ component: string; layouts: string[] }> }[] };
+    const { tree } = await import(pathToFileURL(file).href) as { tree: { routes: { id: string; presentation: string; load: () => Promise<{ component: string; layouts: string[] }> }[] } };
+    const { routes } = tree;
     expect(routes).toHaveLength(4);
     expect(evaluated()).toEqual([]);
     const route = (id: string) => routes.find((row) => row.id === id);
@@ -122,7 +123,7 @@ test("presentation is read from the page's module script without loading the pag
     "instance/+mobile.svelte": '<script lang="ts">export const presentation = "modal";</script>',
     "plain/+mobile.svelte": "<script module>export const other = 1;</script>",
   }, async (_directory, table) => {
-    const presentations = Object.fromEntries([...table.matchAll(/id: "([^"]*)", path: "[^"]*", presentation: "([^"]*)"/g)].map((match) => [match[1], match[2]]));
+    const presentations = Object.fromEntries([...table.matchAll(/kind: "page", id: "([^"]*)", path: "[^"]*", presentation: "([^"]*)"/g)].map((match) => [match[1], match[2]]));
     expect(presentations).toEqual({ modal: "modal", legacy: "modal", instance: "push", plain: "push" });
   });
 });

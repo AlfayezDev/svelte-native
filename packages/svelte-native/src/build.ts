@@ -85,7 +85,7 @@ ${indent}}`;
       if (node.shellFile !== undefined) lines.push(`shellFile: ${json(node.shellFile)},`);
       lines.push(`routes: [\n${node.routes.map((route) => `${routeOf(route, `${inner}  `)},`).join("\n")}\n${inner}],`);
     } else {
-      lines.push(`panes: [\n${node.panes.map((pane) => `${inner}  { key: ${json(pane.key)}, stack: ${nodeOf(pane.stack, `${inner}  `)} },`).join("\n")}\n${inner}],`);
+      lines.push(`panes: [\n${node.panes.map((pane) => `${inner}  { key: ${json(pane.key)}, stack: ${nodeOf(pane.stack, `${inner}  `).trimStart()} },`).join("\n")}\n${inner}],`);
     }
     return `${indent}{\n${lines.map((line) => `${inner}${line}`).join("\n")}\n${indent}}`;
   };

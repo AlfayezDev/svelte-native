@@ -352,6 +352,14 @@ export function plan(state: State, target: Resolution, navigation: Navigation): 
     const entries = (fresh ? undefined : entriesOf(state, node.id)) ?? (inPane ? [fillPath(node.path, params)] : []);
     if (at === chain.length - 1) {
       const presentation = navigation.presentation ?? target.page.presentation;
+      // A goto to an href the owner already holds goes back to that entry instead of stacking a copy of it (Expo Router's `navigate`).
+      if (!navigation.reset && !navigation.replaceState) {
+        const held = entries.lastIndexOf(target.href);
+        if (held >= 0) {
+          if (held < entries.length - 1) operations.push({ node: node.id, op: "popTo", href: target.href });
+          return;
+        }
+      }
       if (!navigation.reset && entries[entries.length - 1] === target.href) return;
       const op = navigation.reset ? "reset" : navigation.replaceState ? "replace" : "push";
       operations.push({ node: node.id, op, href: target.href, presentation });

@@ -257,6 +257,28 @@ test("login, the workspaces, a workspace's home pane, Workspace settings selects
   } finally { reset(); }
 });
 
+test("Workspace settings from Home, twice, and with a section open, leaves the settings pane at its base", async () => {
+  withInsets(24);
+  try {
+    const { router, settled } = await mountApp(127, "/acme/home");
+    paneRouter("/acme/home").goto("/acme/settings"); // the Manage workspace button
+    await settled();
+    expect(selectedIndex(127)).toBe("1");
+    paneRouter("/acme/settings").goto("/acme/settings/profile");
+    await settled();
+    expect(pathsOf(paneRouter("/acme/settings"))).toEqual(["/acme/settings", "/acme/settings/profile"]);
+    paneRouter("/acme/settings").goto("/acme/settings/profile"); // the section's own row again: nothing
+    paneRouter("/acme/home").goto("/acme/settings"); // back on Home, the button again: the tab is selected and the open section is popped
+    await settled();
+    expect(selectedIndex(127)).toBe("1");
+    expect(pathsOf(paneRouter("/acme/settings"))).toEqual(["/acme/settings"]);
+    paneRouter("/acme/home").goto("/acme/settings");
+    await settled();
+    expect(pathsOf(paneRouter("/acme/settings"))).toEqual(["/acme/settings"]);
+    expect(pathsOf(router)).toEqual(["/acme"]);
+  } finally { reset(); }
+});
+
 test("back at the base of the settings pane does not switch to the home tab, whether the tabs were opened by a link, by the list's reset, or over the list", async () => {
   withInsets(24);
   try {

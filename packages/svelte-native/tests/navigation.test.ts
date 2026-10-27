@@ -1452,10 +1452,10 @@ test("back at a pane's base neither pops the pane nor switches tabs: the stack a
     const { router, settled, hardwareBack } = await mountTree(84, { initial: "/acme/inbox/compose" });
     router.goto("/acme/home/thread/1"); // also visits the home pane
     await settled();
-    router.goto("/acme/inbox");
+    router.goto("/acme/inbox?again"); // another href of the pane's base page, so it stacks
     await settled();
     const inbox = paneRouter("/acme/inbox/compose");
-    expect(pathsOf(inbox)).toEqual(["/acme/inbox", "/acme/inbox/compose", "/acme/inbox"]);
+    expect(pathsOf(inbox)).toEqual(["/acme/inbox", "/acme/inbox/compose", "/acme/inbox?again"]);
 
     expect(inbox.back()).toBe(true);
     expect(pathsOf(inbox)).toEqual(["/acme/inbox", "/acme/inbox/compose"]);
@@ -1623,10 +1623,10 @@ test("a <Stack>'s animation is the default of its push screens only: a modal, a 
     const { router, settled, tree } = await mountTree(106, { initial: "/acme/flow/start" });
     const flow = paneRouter("/acme/flow/start");
     flow.goto("/acme/flow/done");
-    flow.goto("/acme/flow/start", { presentation: "modal" });
-    flow.goto("/acme/flow/done", { presentation: "formSheet" });
-    flow.goto("/acme/flow/start", { presentation: "transparentModal" });
-    flow.goto("/acme/flow/done", { presentation: "sheet" });
+    flow.goto("/acme/flow/start?modal", { presentation: "modal" }); // other hrefs than the stack holds: the same href pops to its entry
+    flow.goto("/acme/flow/done?form", { presentation: "formSheet" });
+    flow.goto("/acme/flow/start?transparent", { presentation: "transparentModal" });
+    flow.goto("/acme/flow/done?sheet", { presentation: "sheet" });
     await settled();
     expect(pathsOf(router)).toEqual(["/acme/flow"]);
     const screens = ofKind(tree(), "screen").map((screen) => parseNativeID(String(screen.props.nativeID))?.pairs);
@@ -1924,6 +1924,50 @@ test("the tabs screen resolves to its first pane; replaceState replaces the pane
     router.goto("/workspaces", { reset: true }); // a root page: the root stack is the owner and keeps nothing else
     await settled();
     expect(pathsOf(router)).toEqual(["/workspaces"]);
+  } finally { reset(); }
+});
+
+test("a goto to an href the owner stack already holds pops to that entry, from the same pane or another; replaceState and reset do not", async () => {
+  withInsets(24);
+  try {
+    const { router, settled } = await mountTree(133, { initial: "/acme/home" });
+    const home = paneRouter("/acme/home");
+    router.goto("/acme/home/thread/1");
+    router.goto("/acme/home/thread/2");
+    router.goto("/acme/home/thread/3");
+    await settled();
+    expect(pathsOf(home)).toEqual(["/acme/home", "/acme/home/thread/1", "/acme/home/thread/2", "/acme/home/thread/3"]);
+    const second = home.entries[2];
+    router.goto("/acme/home/thread/2");
+    await settled();
+    expect(pathsOf(home)).toEqual(["/acme/home", "/acme/home/thread/1", "/acme/home/thread/2"]);
+    expect(home.entries[2]).toBe(second); // the entry itself stays: nothing remounts
+    router.goto("/acme/home/thread/2");
+    expect(pathsOf(home)).toHaveLength(3); // the top: nothing
+
+    router.goto("/acme/inbox"); // another pane: the tab is selected, then the stack there has its base
+    router.goto("/acme/inbox/compose");
+    await settled();
+    expect(selectedIndex(133)).toBe("1");
+    expect(pathsOf(paneRouter("/acme/inbox"))).toEqual(["/acme/inbox", "/acme/inbox/compose"]);
+    router.goto("/acme/home/thread/1"); // from the inbox pane back to a screen deep in the home stack
+    await settled();
+    expect(selectedIndex(133)).toBe("0");
+    expect(pathsOf(home)).toEqual(["/acme/home", "/acme/home/thread/1"]);
+    router.goto("/acme/inbox"); // the inbox base: selected, and its sheet popped
+    await settled();
+    expect(selectedIndex(133)).toBe("1");
+    expect(pathsOf(paneRouter("/acme/inbox"))).toEqual(["/acme/inbox"]);
+
+    router.goto("/acme/home/thread/1", { replaceState: true });
+    await settled();
+    expect(pathsOf(home)).toEqual(["/acme/home", "/acme/home/thread/1"]); // the top: the replacement of an entry by its own href is nothing, as before
+    router.goto("/acme/home", { replaceState: true });
+    await settled();
+    expect(pathsOf(home)).toEqual(["/acme/home", "/acme/home"]); // replaceState keeps its meaning: the top is replaced
+    router.goto("/acme/home", { reset: true });
+    await settled();
+    expect(pathsOf(home)).toEqual(["/acme/home"]);
   } finally { reset(); }
 });
 

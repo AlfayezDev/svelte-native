@@ -162,6 +162,23 @@ describe("the navigation plan", () => {
     ]);
   });
 
+  test("a goto to an href already in the owner stack pops to it instead of stacking a copy; replaceState and reset do not", () => {
+    const deep = { ...state, "(workspace)/[slug]/(tabs)/home": { entries: ["/acme/home", "/acme/home/thread/1", "/acme/home/thread/2"] }, "(workspace)/[slug]/(tabs)": { selected: "inbox" } };
+    expect(plan(deep, target("/acme/home/thread/1"), {})).toEqual([
+      { node: "(workspace)/[slug]/(tabs)", op: "select", pane: "home" },
+      { node: "(workspace)/[slug]/(tabs)/home", op: "popTo", href: "/acme/home/thread/1" },
+    ]);
+    expect(plan(deep, target("/acme/home"), {})[1]).toEqual({ node: "(workspace)/[slug]/(tabs)/home", op: "popTo", href: "/acme/home" }); // the pane's base too
+    // The top is nothing to pop to (and the shown pane selects nothing).
+    expect(plan({ ...deep, "(workspace)/[slug]/(tabs)": { selected: "home" } }, target("/acme/home/thread/2"), {})).toEqual([]);
+    // A modal over the tabs goes first, as for any route of the tabs.
+    const withModal = { ...deep, "": { entries: ["/workspaces", "/acme", "/account"] } };
+    expect(plan(withModal, target("/acme/home/thread/1"), {}).map((operation) => operation.op)).toEqual(["popTo", "select", "popTo"]);
+    // replaceState and reset are what they were.
+    expect(plan(deep, target("/acme/home/thread/1"), { replaceState: true })[1]).toMatchObject({ op: "replace", href: "/acme/home/thread/1" });
+    expect(plan(deep, target("/acme/home/thread/1"), { reset: true }).at(-1)).toMatchObject({ op: "reset", href: "/acme/home/thread/1" });
+  });
+
   test("replaceState replaces the owner's top and touches no other stack", () => {
     const deep = { ...state, "(workspace)/[slug]/(tabs)/home": { entries: ["/acme/home", "/acme/home/thread/1"] } };
     expect(plan(deep, target("/acme/home/thread/2"), { replaceState: true })).toEqual([

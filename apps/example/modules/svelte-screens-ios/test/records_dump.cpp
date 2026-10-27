@@ -3,7 +3,7 @@
 // plans. Modes (first argument), one input per line on standard input, one JSON value per line on standard output:
 //   records  a nativeID               -> null | { "kind", "records": [{ "id", "values" }] } in the shape of `decodeRecords`
 //   plan     "1,2,3|1,2,4"            -> { "step", "staged" } of planStack(current|desired)
-//   detent   "<fraction> <max> <content>" -> detentHeight
+//   detent   "<fraction> <available> <maximum> <content>" -> detentHeight
 
 #include <cmath>
 #include <cstdio>
@@ -158,10 +158,10 @@ std::string planFor(const std::string &line) {
 
 std::string detentFor(const std::string &line) {
   std::stringstream stream(line);
-  double fraction = 0, maximum = 0, content = 0;
-  stream >> fraction >> maximum >> content;
+  double fraction = 0, available = 0, maximum = 0, content = 0;
+  stream >> fraction >> available >> maximum >> content;
   Out out;
-  out.real(svelte::detentHeight(fraction, maximum, content));
+  out.real(svelte::detentHeight(fraction, available, maximum, content));
   return out.text;
 }
 

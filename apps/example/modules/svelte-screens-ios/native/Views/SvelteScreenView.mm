@@ -250,6 +250,8 @@ static std::string WithoutActivityState(const std::string &nativeId) {
 }
 
 - (void)markPresentationModal {
+  // The detents were resolved before the sheet had a window: resolve them again against it.
+  if (_spec.isSheet()) [self.presentedController.sheetPresentationController invalidateDetents];
   if (_spec.isSheet() && _spec.noBackdrop != 0) return;
   UIViewController *presented = self.presentedController;
   presented.view.accessibilityViewIsModal = YES;
@@ -287,7 +289,12 @@ static std::string WithoutActivityState(const std::string &nativeId) {
                                                  // `auto` is the height Yoga gave the screen's content.
                                                  SvelteScreenView *screen = weakSelf;
                                                  const double content = screen != nil ? screen->_layoutMetrics.frame.size.height : 0;
-                                                 return svelte::detentHeight(fraction, context.maximumDetentValue, content);
+                                                 // The contract's space is the window below its top safe area (Android's stack below the status
+                                                 // bar); UIKit's largest detent (`maximumDetentValue`: on iOS 26 a floating sheet stops lower)
+                                                 // only limits it. Before the sheet is in a window the largest detent stands in.
+                                                 UIWindow *window = screen.window;
+                                                 const double available = window != nil ? window.bounds.size.height - window.safeAreaInsets.top : context.maximumDetentValue;
+                                                 return svelte::detentHeight(fraction, available, context.maximumDetentValue, content);
                                                }]];
     }
     _appliedDetents = _spec.detents;

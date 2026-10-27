@@ -48,12 +48,13 @@ inline StackPlan planStack(const std::vector<int> &current, const std::vector<in
   return plan;
 }
 
-/// Height of a sheet detent: `fraction` of the largest detent (`maximum`, the container below the top safe area) or, for a
-/// negative fraction ("auto"), the height of the content; never above `maximum`, never below zero.
-inline double detentHeight(double fraction, double maximum, double content) {
-  const double top = std::max(0.0, maximum);
+/// Height of a sheet detent: `fraction` of `available` (the container below the top safe area) or, for a negative fraction
+/// ("auto"), the height of the content; never above `maximum` (the largest detent UIKit allows: on iOS 26 a floating sheet
+/// stops a little below the top safe area line) nor above `available`, never below zero.
+inline double detentHeight(double fraction, double available, double maximum, double content) {
+  const double top = std::max(0.0, available);
   const double wanted = fraction < 0 ? content : top * std::clamp(fraction > 0 ? fraction : 0.0, 0.0, 1.0);
-  return std::clamp(wanted, 0.0, top);
+  return std::clamp(wanted, 0.0, std::min(top, std::max(0.0, maximum)));
 }
 
 }  // namespace svelte

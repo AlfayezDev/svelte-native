@@ -1,7 +1,7 @@
 import { parseLines } from "../parse/logcat.ts";
-import type { EngineStats, HermesHeap, JsSample, SoakPhase } from "../lib/types.ts";
+import type { EngineStats, HermesHeap, JsSample, SoakPhase, UiHeap } from "../lib/types.ts";
 
-const phases: readonly string[] = ["start", "sample", "baseline", "final"] satisfies SoakPhase[];
+const phases: readonly string[] = ["start", "sample", "baseline", "checkpoint", "final"] satisfies SoakPhase[];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -35,6 +35,24 @@ const engineKeys = [
 	"overflowWrites",
 	"earlyPending",
 ] as const;
+
+/** The engine's counts; the two C++ table sizes are optional (logs of older builds lack them). */
+function engineStats(value: unknown): EngineStats | null {
+	const counts = numbers(value, engineKeys);
+	if (counts === null || !isRecord(value)) return counts;
+	const emitters = value.emitters;
+	const scrollStates = value.scrollStates;
+	return {
+		...counts,
+		...(typeof emitters === "number" ? { emitters } : {}),
+		...(typeof scrollStates === "number" ? { scrollStates } : {}),
+	};
+}
+
+function uiHeap(value: unknown): UiHeap | null {
+	if (!isRecord(value) || typeof value.collected !== "number" || typeof value.allocated !== "number") return null;
+	return { collected: value.collected, allocated: value.allocated };
+}
 
 const prefix = "'[Svelte soak]', '";
 
@@ -71,7 +89,8 @@ export function parseSoakSamples(text: string): JsSample[] {
 			t: value.t,
 			collected: typeof value.collected === "string" ? value.collected : null,
 			heap: numbers(value.heap, heapKeys) satisfies HermesHeap | null,
-			engine: numbers(value.engine, engineKeys) satisfies EngineStats | null,
+			engine: engineStats(value.engine),
+			ui: uiHeap(value.ui),
 		});
 	}
 	return samples;

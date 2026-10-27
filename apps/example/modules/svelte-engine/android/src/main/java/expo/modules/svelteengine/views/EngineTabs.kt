@@ -314,7 +314,7 @@ class EngineTabs(context: Context) : EngineView(context) {
       if (items.isEmpty()) return
       val w = r - l
       val each = w / items.size
-      val rtl = layoutDirection == LAYOUT_DIRECTION_RTL
+      val rtl = isRtlLayout()
       for ((i, item) in items.withIndex()) {
         val x = if (rtl) w - (i + 1) * each else i * each
         item.layout(x, 0, x + each, barPx)
@@ -332,10 +332,10 @@ class EngineTabs(context: Context) : EngineView(context) {
 
 /** The bar item of one tab, drawn in one piece: indicator, icon, label, badge. */
 internal class TabItemView(context: Context, private val tabs: EngineTabs, private val tab: EngineTab) : View(context) {
-  // The label's direction is baked in when it is built; a direction resolved after the first build (the view inherits it
-  // once attached) rebuilds it, and the bar lays the items out again for the mirrored order.
-  override fun onRtlPropertiesChanged(layoutDirection: Int) {
-    super.onRtlPropertiesChanged(layoutDirection)
+  // The label bakes in its direction and the font scale when it is built: a configuration change (locale, font scale)
+  // rebuilds it, and the bar lays the items out again for the mirrored order.
+  override fun onConfigurationChanged(newConfig: Configuration) {
+    super.onConfigurationChanged(newConfig)
     label = null
     requestLayout()
     invalidate()
@@ -343,7 +343,7 @@ internal class TabItemView(context: Context, private val tabs: EngineTabs, priva
 
   var index = 0
   private val density = resources.displayMetrics.density
-  private val fontScale = min(resources.configuration.fontScale, MAX_FONT_SCALE)
+  private val fontScale: Float get() = min(resources.configuration.fontScale, MAX_FONT_SCALE)
   private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
   private val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG)
   private val rect = RectF()
@@ -357,6 +357,8 @@ internal class TabItemView(context: Context, private val tabs: EngineTabs, priva
   private var labelColor = 0
   private var labelText = ""
   private var labelSelected = false
+  private var labelRtl = false
+  private var labelScale = 0f
   private var rippleColor = 0
 
   private val selected: Boolean get() = tabs.selectedIndex == index
@@ -428,20 +430,24 @@ internal class TabItemView(context: Context, private val tabs: EngineTabs, priva
   private fun labelLayout(color: Int, width: Int): Layout? {
     val text = tab.title
     if (labelsHiddenOrEmpty(text) || width <= 0) return null
-    if (label != null && labelWidth == width && labelColor == color && labelText == text && labelSelected == selected) return label
+    val rtl = isRtlLayout()
+    val scale = fontScale
+    if (label != null && labelWidth == width && labelColor == color && labelText == text && labelSelected == selected && labelRtl == rtl && labelScale == scale) return label
     val spec = TextSpec()
     spec.maxLines = 1
     spec.ellipsize = 0
     spec.align = 1
     spec.breakStrategy = 0
     spec.includeFontPadding = false
-    spec.rtl = layoutDirection == LAYOUT_DIRECTION_RTL
-    spec.fragments = arrayListOf(Fragment(text, LABEL_SP * density * fontScale, color, if (selected) 600 else 500, false, null, 0f, 0f))
+    spec.rtl = rtl
+    spec.fragments = arrayListOf(Fragment(text, LABEL_SP * density * scale, color, if (selected) 600 else 500, false, null, 0f, 0f))
     label = TextLayouts.build(spec, width, 0)?.layout
     labelWidth = width
     labelColor = color
     labelText = text
     labelSelected = selected
+    labelRtl = rtl
+    labelScale = scale
     return label
   }
 
@@ -494,7 +500,7 @@ internal class TabItemView(context: Context, private val tabs: EngineTabs, priva
   /** A dot (8 dp) or a text pill at the top end of the icon. */
   private fun drawBadge(canvas: Canvas, cx: Float, iconTop: Float, icon: Float) {
     if (tab.badgeKind == 0) return
-    val rtl = layoutDirection == LAYOUT_DIRECTION_RTL
+    val rtl = isRtlLayout()
     val side = if (rtl) -1f else 1f
     paint.color = BADGE_COLOR
     if (tab.badgeKind == 1) {

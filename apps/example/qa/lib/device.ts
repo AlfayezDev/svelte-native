@@ -62,12 +62,18 @@ export function screenshot(serial: string): Promise<Image> {
  * The accessibility tree of the foreground window, from `uiautomator dump` (the same node info a screen reader gets). The
  * file is removed first so a failed dump (`could not get idle state`) is never answered with the previous one.
  */
-export async function dumpUi(serial: string): Promise<UiTree> {
+export async function dumpUi(
+	serial: string,
+	options: { important?: boolean } = {},
+): Promise<UiTree> {
 	let last = "";
+	// `--compressed` drops the nodes a service that does not ask for flagIncludeNotImportantViews never receives: views that
+	// are `importantForAccessibility=no` and everything under a `no-hide-descendants` view (uiautomator asks for all of them).
+	const flags = options.important ? "--compressed " : "";
 	for (let attempt = 1; attempt <= 5; attempt++) {
 		const result = await shell(
 			serial,
-			`rm -f ${dumpFile}; uiautomator dump ${dumpFile} >/dev/null 2>&1; cat ${dumpFile}`,
+			`rm -f ${dumpFile}; uiautomator dump ${flags}${dumpFile} >/dev/null 2>&1; cat ${dumpFile}`,
 			{ timeoutMs: 60_000 },
 		);
 		const start = result.stdout.indexOf("<?xml");

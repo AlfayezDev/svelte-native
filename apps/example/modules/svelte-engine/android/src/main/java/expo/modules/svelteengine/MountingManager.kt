@@ -145,6 +145,8 @@ class MountingManager(context: Context) {
     "expiredWrites" to expiredWrites,
     "overflowWrites" to overflowWrites,
     "earlyPending" to earlyAnimated.size(),
+    "emitters" to (native?.emitterCount() ?: -1),
+    "scrollStates" to (native?.scrollStateCount() ?: -1),
   )
 
   /**

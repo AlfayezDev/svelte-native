@@ -28,8 +28,12 @@ export class NativeNode {
   nextSibling: NativeNode | null = null;
   readonly listeners = new Map<string, Set<Listener>>();
   private readonly dispatchers = new Map<string, Listener>();
-  private props: Readonly<Record<string, unknown>> = {};
+  private props: Record<string, unknown> = {};
+  /** The current `props` object went out in a snapshot or was handed in whole: the next change copies it first. */
+  private propsShared = false;
   private text: string;
+  /** What the host keeps for this node (`fabric/host.ts`): a field, not a WeakMap lookup on every flush. */
+  hostState: unknown = null;
   private children: readonly NativeNode[] = [];
   private childrenStale = false;
   private snapshot: Snapshot | null = null;
@@ -48,8 +52,30 @@ export class NativeNode {
       this.childrenStale = false;
     }
     this.snapshot = { props: this.props, children: this.children, text: this.text };
+    this.propsShared = true;
     return this.snapshot;
   };
+
+  /** The attributes as they are now, for a reader that copies what it needs and keeps no reference (no snapshot is built). */
+  peekProps(): Readonly<Record<string, unknown>> { return this.props; }
+  get textValue(): string { return this.text; }
+  hasProp(key: string): boolean { return Object.hasOwn(this.props, key); }
+  getProp(key: string): unknown { return this.props[key]; }
+
+  /** Sets one attribute. A snapshot already handed out keeps the object it saw, so a shared object is copied before the write; consecutive writes to a fresh element change one object. */
+  setProp(key: string, value: unknown): void {
+    if (Object.is(this.props[key], value)) return;
+    if (this.propsShared) { this.props = { ...this.props }; this.propsShared = false; }
+    this.props[key] = value;
+    this.invalidate("props");
+  }
+
+  removeProp(key: string): void {
+    if (!Object.hasOwn(this.props, key)) return;
+    if (this.propsShared) { this.props = { ...this.props }; this.propsShared = false; }
+    delete this.props[key];
+    this.invalidate("props");
+  }
 
   /** A stable function per event type, so host props keep their identity between flushes. */
   dispatcher(type: string): Listener {
@@ -65,7 +91,8 @@ export class NativeNode {
   }
 
   setProps(props: Readonly<Record<string, unknown>>): void {
-    this.props = props;
+    this.props = props as Record<string, unknown>;
+    this.propsShared = true;
     this.invalidate("props");
   }
 
@@ -141,23 +168,14 @@ const renderer = createRenderer<{
   createTextNode: (text) => new NativeNode("text", "", text),
   createComment: (text) => new NativeNode("comment", "", text),
   nodeType: (node) => node.kind,
-  getNodeValue: (node) => node.getSnapshot().text,
+  getNodeValue: (node) => node.textValue,
   getAttribute: (node, name) => {
-    const value = node.getSnapshot().props[name];
+    const value = node.getProp(name);
     return value == null ? null : String(value);
   },
-  setAttribute: (node, key, value: unknown) => {
-    const props = node.getSnapshot().props;
-    if (Object.is(props[key], value)) return;
-    node.setProps({ ...props, [key]: value });
-  },
-  removeAttribute: (node, key) => {
-    const props = { ...node.getSnapshot().props };
-    if (!Object.hasOwn(props, key)) return;
-    delete props[key];
-    node.setProps(props);
-  },
-  hasAttribute: (node, key) => Object.hasOwn(node.getSnapshot().props, key),
+  setAttribute: (node, key, value: unknown) => node.setProp(key, value),
+  removeAttribute: (node, key) => node.removeProp(key),
+  hasAttribute: (node, key) => node.hasProp(key),
   setText: (node, text) => {
     if (node.kind === "text" || node.kind === "comment") node.setText(text);
     else {

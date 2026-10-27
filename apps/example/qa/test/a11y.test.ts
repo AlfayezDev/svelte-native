@@ -276,6 +276,65 @@ describe("focus trap", () => {
 	});
 });
 
+describe("focus trap on the tree a screen reader walks", () => {
+	const covered = [button("Push", [0, 0, 100, 100]), button("Other", [0, 200, 100, 300])];
+	const sheet = [button("Close", [0, 1500, 100, 1600])];
+
+	test("a label only the full dump lists is not a leak: the not-important views are not what a service walks", () => {
+		// uiautomator's full dump lists the covered screen (it is no-hide-descendants for services); the compressed one does not.
+		const full = tree(...covered, ...sheet);
+		const important = tree(...sheet);
+		const r = analyzeScreen({
+			tree: full,
+			importantTree: important,
+			direction: "ltr",
+			display,
+			title: null,
+			lead: [],
+			controls: [],
+			scrolled: [],
+			hidden: ["Push", "Other"],
+			layout: "sheet",
+		});
+		expect(r.focusLeaks).toBe(0);
+	});
+
+	test("a label the walked tree still lists is a leak", () => {
+		const r = analyzeScreen({
+			tree: tree(...covered, ...sheet),
+			importantTree: tree(covered[0] as N, ...sheet),
+			direction: "ltr",
+			display,
+			title: null,
+			lead: [],
+			controls: [],
+			scrolled: [],
+			hidden: ["Push", "Other"],
+			layout: "sheet",
+		});
+		expect(r.focusLeaks).toBe(1);
+		expect(r.findings[0]?.element).toContain("Push");
+	});
+
+	test("a sheet titled like the button that opened it does not leak its own title, but a button with that label does", () => {
+		const titled = { cls: "android.view.View", desc: "Form sheet", bounds: [147, 255, 1038, 402] as N["bounds"] };
+		const base = {
+			direction: "ltr" as const,
+			display,
+			title: "Form sheet",
+			lead: [],
+			controls: [],
+			scrolled: [],
+			hidden: ["Form sheet"],
+			layout: "sheet" as const,
+		};
+		expect(analyzeScreen({ ...base, tree: tree(titled, ...sheet) }).focusLeaks).toBe(0);
+		expect(
+			analyzeScreen({ ...base, tree: tree(titled, button("Form sheet", [42, 1430, 1038, 1566]), ...sheet) }).focusLeaks,
+		).toBe(1);
+	});
+});
+
 describe("frozen dumps of the QA app (the checklist's findings in them, not the engine's state today)", () => {
 	function screen(file: string, id: string, direction: "ltr" | "rtl" = "ltr") {
 		const c = cases.find((entry) => entry.id === id);
@@ -292,6 +351,27 @@ describe("frozen dumps of the QA app (the checklist's findings in them, not the 
 			layout: c.layout,
 		});
 	}
+
+	test("sheet and modal over the menu (a TalkBack session on the emulator, 27 Oct): the full dump lists the covered screen, the tree a service walks does not", () => {
+		for (const id of ["screens-sheet", "screens-modal"]) {
+			const c = cases.find((entry) => entry.id === id);
+			if (!c) throw new Error(`no case ${id}`);
+			const input = {
+				direction: "ltr" as const,
+				display,
+				title: c.title === null ? null : localize(c.title, "ltr"),
+				lead: c.lead.map((label) => localize(label, "ltr")),
+				controls: c.controls.map((label) => localize(label, "ltr")),
+				scrolled: c.scrolled.map((label) => localize(label, "ltr")),
+				hidden: c.hidden.map((label) => localize(label, "ltr")),
+				layout: c.layout,
+			};
+			const full = parseHierarchy(sample(`uia-${id}-full.xml`));
+			const important = parseHierarchy(sample(`uia-${id}-important.xml`));
+			expect(analyzeScreen({ ...input, tree: full }).focusLeaks).toBe(c.hidden.length); // judged on the full dump
+			expect(analyzeScreen({ ...input, tree: full, importantTree: important }).focusLeaks).toBe(0);
+		}
+	});
 
 	test("large-title header: the title is not exposed and the header comes after the content", () => {
 		const r = screen("uia-screens-menu.xml", "screens-menu");

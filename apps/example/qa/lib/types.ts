@@ -118,6 +118,9 @@ export type EngineStats = {
 	expiredWrites: number;
 	overflowWrites: number;
 	earlyPending: number;
+	/** Nodes the C++ delegate holds an event emitter (and, for scroll views, a state) for: a deleted node must be gone from both. Absent in logs of builds before the counters. */
+	emitters?: number;
+	scrollStates?: number;
 };
 
 /** `HermesInternal.getInstrumentedStats()`, bytes: live objects plus the old generation's garbage, committed heap, malloc estimate, address space, collections so far. */
@@ -129,7 +132,10 @@ export type HermesHeap = {
 	gcs: number;
 };
 
-export type SoakPhase = "start" | "sample" | "baseline" | "final";
+/** The worklet (UI) runtime's Hermes heap as the lab reads it on the UI thread; `collected` is 1 when a full collection ran just before. Absent in logs of builds before it was logged. */
+export type UiHeap = { collected: number; allocated: number; heapSize?: number; malloc?: number; va?: number; gcs?: number };
+
+export type SoakPhase = "start" | "sample" | "baseline" | "checkpoint" | "final";
 
 /** One `[Svelte soak]` line from the lab. `t` is milliseconds since the soak scenario began. */
 export type JsSample = {
@@ -140,11 +146,12 @@ export type JsSample = {
 	collected: string | null;
 	heap: HermesHeap | null;
 	engine: EngineStats | null;
+	ui?: UiHeap | null;
 };
 
 /** One `dumpsys meminfo` of the app process; `tag` says which window it belongs to. */
 export type MemSample = {
-	tag: "series" | "baseline" | "final";
+	tag: "series" | "baseline" | "checkpoint" | "final";
 	/** Milliseconds since the soak command launched the app. */
 	atMs: number;
 	pid: number;

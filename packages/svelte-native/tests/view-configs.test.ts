@@ -96,6 +96,20 @@ for (const platform of platforms) {
     expect(create("#000000")).toBe(platform === "android" ? -16777216 : 4278190080);
     expect(create("rgba(0,0,0,0.5)")).toBe(platform === "android" ? 2147483648 | 0 : 2147483648);
   }, timeout);
+
+  test(`${platform}: a colour answers the same when it is converted again and after the colour cache filled up and emptied`, async () => {
+    const reference = await loadReference(platform);
+    const view = reference.configs.viewConfigFor("RCTView", platform);
+    const registered = reference.get("RCTView");
+    const spellings = Array.from({ length: 700 }, (_, index) => `rgb(${index % 256}, ${(index * 7) % 256}, ${Math.floor(index / 3) % 256})`);
+    // Two rounds: the first fills the cache past its limit (it empties itself), the second finds some entries and recomputes the rest.
+    for (let round = 0; round < 2; round++) {
+      for (const backgroundColor of [...spellings, "red", "#191b1e", "not a color"]) {
+        const props = { backgroundColor };
+        expect(outcome(() => reference.configs.createPayload(props, view)), backgroundColor).toEqual(outcome(() => reference.create(props, registered.validAttributes)));
+      }
+    }
+  }, timeout);
 }
 
 /** `ours` is the payload this builder sends where React Native sends something else that leaves the native side with the same props. */

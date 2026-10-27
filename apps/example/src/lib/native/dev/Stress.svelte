@@ -82,7 +82,7 @@
   const megabytes = (bytes: number) => (bytes < 0 ? "n/a" : `${(bytes / 1048576).toFixed(1)} MB`);
 
   /** The engine's live counts (`SvelteEngine.stats()`, read on the main thread, null while that is busy for 500 ms). */
-  const engineModule = requireOptionalNativeModule<{ stats?: () => Record<string, number> | null }>("SvelteEngine");
+  const engineModule = requireOptionalNativeModule<{ stats?: () => Record<string, number> | null; collectJava?: () => boolean }>("SvelteEngine");
   async function engineStats(): Promise<Record<string, number> | null> {
     for (let attempt = 0; attempt < 3; attempt++) {
       const stats = engineModule?.stats?.() ?? null;
@@ -100,17 +100,36 @@
   /**
    * Hermes counts old-generation garbage as allocated until a full collection, and native memory held by dead JS
    * wrappers (shadow nodes) is freed with them, so a sample is only comparable after one. This Hermes build exposes
-   * `gc()`; without it the sample says it was not collected and qa/soak does not derive a growth from it.
+   * `gc()`; without it the sample says it was not collected and qa/soak does not derive a growth from it. The Java
+   * heap goes next (dead views, layouts and render nodes hold native memory until collected), then this runtime once
+   * more for what the Java collection released; `soakSample` collects the worklet runtime.
    */
-  function collectGarbage(): string | null {
+  async function collectGarbage(): Promise<string | null> {
     const gc = (globalThis as { gc?: () => void }).gc;
     if (typeof gc !== "function") return null;
+    gc();
+    engineModule?.collectJava?.();
+    await pause(300);
     gc();
     return "gc";
   }
   /** One `[Svelte soak]` line for qa/soak: the phase (`start`, `sample`, `baseline`, `final`), milliseconds since the soak began, the Hermes heap and the engine counts. */
   async function soakSample(phase: string, since: number, cycle: number, collected: string | null = null) {
-    console.info("[Svelte soak]", JSON.stringify({ phase, cycle, t: Date.now() - since, collected, heap: hermesHeap(), engine: await engineStats() }));
+    const uiBefore = await uiHeap(false);
+    const ui = collected !== null ? await uiHeap(true) : uiBefore;
+    console.info("[Svelte soak]", JSON.stringify({ phase, cycle, t: Date.now() - since, collected, heap: hermesHeap(), engine: await engineStats(), ui, uiBefore }));
+  }
+  /** The worklet (UI) runtime is a second Hermes heap with its own garbage; `collect` runs a full collection there first, like `collectGarbage` does for this runtime. */
+  function uiHeap(collect: boolean): Promise<Record<string, number> | null> {
+    return runOnUIAsync(() => {
+      "worklet";
+      const scope = globalThis as { gc?: () => void; HermesInternal?: { getInstrumentedStats?: () => Record<string, number> } };
+      let collected = 0;
+      if (collect && typeof scope.gc === "function") { scope.gc(); collected = 1; }
+      const stats = scope.HermesInternal?.getInstrumentedStats?.();
+      if (!stats) return { collected, allocated: -1, heapSize: -1, malloc: -1, va: -1, gcs: -1 };
+      return { collected, allocated: stats.js_allocatedBytes ?? -1, heapSize: stats.js_heapSize ?? -1, malloc: stats.js_mallocSizeEstimate ?? -1, va: stats.js_vaSize ?? -1, gcs: stats.js_numGCs ?? -1 };
+    });
   }
   let soakSeconds = 600;
   /** The parts of one soak cycle. `run=soak-mix-<seconds>s` runs the default ones, `.static.churn` and the like only those named (to bisect a growth); `static` is plain view churn, off by default. */
@@ -190,6 +209,37 @@
     });
   }
 
+  /** `profile` turns on the host's per-flush timings (`__svelteFabricProfile`) and returns every flush of the mount in `detail.flushes`. */
+  async function virtualList300(signal: AbortSignal, profile: boolean): Promise<Omit<Result, "name">> {
+    const scope = globalThis as { __svelteFabricProfile?: boolean; __svelteFlushLog?: unknown[] };
+    view = "virtual-list"; rows = []; await settle();
+    // The first window holds rows 0-9; the last of them reports the layout.
+    const laidOut = waitFor(signal, (resolve) => { rowsLaidOut = resolve; }, 8000, "Row layout");
+    scope.__svelteFlushLog = [];
+    scope.__svelteFabricProfile = profile;
+    const mountStart = performance.now();
+    rows = Array.from({ length: 300 }, (_, index) => index);
+    await tick();
+    const svelteMs = performance.now() - mountStart;
+    await laidOut;
+    const mountMs = performance.now() - mountStart;
+    const flushes = profile ? (scope.__svelteFlushLog ?? []).map((flush) => ({ ...(flush as Record<string, number>), at: (flush as { at: number }).at - mountStart })) : undefined;
+    scope.__svelteFabricProfile = false;
+    const { frames } = await measure(async () => {
+      for (let leg = 0; leg < 3 && !signal.aborted; leg++) {
+        virtualList?.scrollToIndex(299, true);
+        await pause(800, signal);
+        virtualList?.scrollToIndex(0, true);
+        await pause(800, signal);
+      }
+    });
+    const unmountStart = performance.now();
+    rows = []; await settle();
+    const unmountMs = performance.now() - unmountStart;
+    view = "none"; await settle();
+    return { verdict: verdict(frames), summary: `${describe(frames)} · mount to layout ${mountMs.toFixed(0)} ms (Svelte flush ${svelteMs.toFixed(0)} ms) · unmount ${unmountMs.toFixed(0)} ms`, frames, detail: { mountMs, svelteMs, unmountMs, clipped: false, raw: false, virtual: true, flushes } };
+  }
+
   const scenarios: Scenario[] = [
     { name: "warm-up", label: "Warm-up · 3 s of animated tiles, unmeasured (shader compilation, JIT)", async run(signal) {
       animatedTiles = true; tileVariant = "default"; view = "tiles"; tiles = Array.from({ length: 48 }, (_, index) => index); await settle();
@@ -240,30 +290,27 @@
       view = "none"; await settle();
       return { verdict: verdict(frames), summary: `${describe(frames)} · mount to layout ${mountMs.toFixed(0)} ms (Svelte flush ${svelteMs.toFixed(0)} ms) · unmount ${unmountMs.toFixed(0)} ms`, frames, detail: { mountMs, svelteMs, unmountMs, clipped, raw } };
     } })),
-    { name: "list-300-virtual", label: "Mount, scroll and unmount 300 rows in the windowed List", async run(signal) {
+    { name: "list-300-virtual", label: "Mount, scroll and unmount 300 rows in the windowed List", run: (signal) => virtualList300(signal, false) },
+    { name: "list-mount-loop", label: "Mount the windowed List 40 times (for a CPU profile of the mount: `simpleperf record -t <JS thread>` while it runs)", async run(signal) {
       view = "virtual-list"; rows = []; await settle();
-      // The first window holds rows 0-9; the last of them reports the layout.
-      const laidOut = waitFor(signal, (resolve) => { rowsLaidOut = resolve; }, 8000, "Row layout");
-      const mountStart = performance.now();
-      rows = Array.from({ length: 300 }, (_, index) => index);
-      await tick();
-      const svelteMs = performance.now() - mountStart;
-      await laidOut;
-      const mountMs = performance.now() - mountStart;
-      const { frames } = await measure(async () => {
-        for (let leg = 0; leg < 3 && !signal.aborted; leg++) {
-          virtualList?.scrollToIndex(299, true);
-          await pause(800, signal);
-          virtualList?.scrollToIndex(0, true);
-          await pause(800, signal);
-        }
-      });
-      const unmountStart = performance.now();
-      rows = []; await settle();
-      const unmountMs = performance.now() - unmountStart;
+      const times: number[] = [];
+      for (let round = 0; round < 40 && !signal.aborted; round++) {
+        const laidOut = waitFor(signal, (resolve) => { rowsLaidOut = resolve; }, 8000, "Row layout");
+        const start = performance.now();
+        rows = Array.from({ length: 300 }, (_, index) => index);
+        await tick();
+        await laidOut;
+        times.push(performance.now() - start);
+        await pause(120, signal);
+        rows = []; await settle();
+        await pause(120, signal);
+      }
       view = "none"; await settle();
-      return { verdict: verdict(frames), summary: `${describe(frames)} · mount to layout ${mountMs.toFixed(0)} ms (Svelte flush ${svelteMs.toFixed(0)} ms) · unmount ${unmountMs.toFixed(0)} ms`, frames, detail: { mountMs, svelteMs, unmountMs, clipped: false, raw: false, virtual: true } };
+      const sorted = [...times].sort((a, b) => a - b);
+      const median = sorted[Math.floor(sorted.length / 2)] ?? 0;
+      return { verdict: "info", summary: `${times.length} mounts to layout: median ${median.toFixed(1)} ms, min ${(sorted[0] ?? 0).toFixed(1)}, max ${(sorted.at(-1) ?? 0).toFixed(1)} · first ${times.slice(0, 3).map((t) => t.toFixed(1)).join(", ")}`, detail: { times } };
     } },
+    { name: "list-300-virtual-profile", label: "The windowed List again, with the host timing every flush (`detail.flushes`)", run: (signal) => virtualList300(signal, true) },
     { name: "input-120", label: "Push 120 characters through bind:value", async run(signal) {
       view = "input"; typed = ""; await settle();
       const { frames } = await measure(async () => {
@@ -388,15 +435,17 @@
       const since = Date.now();
       const depth = router.entries.length;
       const warmupCycles = 2;
+      const CHECKPOINT_MS = 120_000;
+      let lastCheckpoint = Date.now();
       let cycle = 0;
       let cleanupFailures = 0;
       let created = 0; let destroyed = 0; let changesAfterDestroy = 0; let lateCompletions = 0;
       // Idle samples of the two states the heap growth compares: after the warm-up cycles, and after the last unmount.
-      const idle = async (phase: "baseline" | "final") => {
+      const idle = async (phase: "baseline" | "checkpoint" | "final") => {
         view = "none"; tiles = []; rows = []; modalVisible = false; await settle();
         await pause(1500, signal);
         for (let sample = 0; sample < 3 && !signal.aborted; sample++) {
-          await soakSample(phase, since, cycle, collectGarbage());
+          await soakSample(phase, since, cycle, await collectGarbage());
           await pause(2000, signal);
         }
       };
@@ -440,7 +489,9 @@
           }
           cycle++;
           status = `${running} · ${Math.floor((Date.now() - since) / 1000)} / ${soakSeconds} s · cycle ${cycle}`;
-          if (cycle === warmupCycles) await idle("baseline");
+          if (cycle === warmupCycles) { await idle("baseline"); lastCheckpoint = Date.now(); }
+          // An idle window every two minutes in between: the floor of the heap over time says whether a growth keeps rising (a leak) or levels off (allocator and caches).
+          else if (cycle > warmupCycles && Date.now() - lastCheckpoint >= CHECKPOINT_MS && Date.now() - since < (soakSeconds - 30) * 1000) { await idle("checkpoint"); lastCheckpoint = Date.now(); }
         }
         await idle("final");
       } finally {
@@ -450,7 +501,7 @@
       return { verdict: clean ? "info" : "fail", summary: `${cycle} cycles in ${((Date.now() - since) / 1000).toFixed(0)} s · ${created} tiles mounted / ${destroyed} destroyed · ${changesAfterDestroy} values changed after destruction · stack depth ${router.entries.length} (expected ${depth}) · cleanup ${clean ? "ok" : "FAILED"}`, detail: { cycles: cycle, created, destroyed, changesAfterDestroy, lateCompletions, cleanupFailures } };
     } },
   ];
-  const quick = scenarios.filter((scenario) => !["warm-up", "input-typing", "foreign-views", "churn-60s", "soak-120s", "soak-mix", "crash-js"].includes(scenario.name));
+  const quick = scenarios.filter((scenario) => !["warm-up", "input-typing", "foreign-views", "churn-60s", "soak-120s", "soak-mix", "crash-js", "list-300-virtual-profile", "list-mount-loop"].includes(scenario.name));
   const ordered = $derived(scenarios.flatMap((scenario) => results.filter((result) => result.name === scenario.name)));
 
   function record(result: Result) {

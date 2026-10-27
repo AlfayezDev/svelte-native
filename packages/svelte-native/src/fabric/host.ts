@@ -22,9 +22,13 @@ let animation: AnimationModule | null = null;
 const ANIMATION_ATTRIBUTES = new Set(["animatedStyle", "entering", "exiting", "layout"]);
 const CSS_ANIMATION_KEY = /^(?:animation|transition)[A-Z]/;
 function styleWantsAnimation(style: unknown): boolean {
-  if (Array.isArray(style)) return style.some(styleWantsAnimation);
+  if (Array.isArray(style)) { for (let index = 0; index < style.length; index++) if (styleWantsAnimation(style[index])) return true; return false; }
   if (!style || typeof style !== "object") return false;
-  for (const key in style as Record<string, unknown>) if (CSS_ANIMATION_KEY.test(key)) return true;
+  for (const key in style as Record<string, unknown>) {
+    // Only `animation…` and `transition…` keys can match; the first letter rules out nearly every style key without a regex.
+    const first = key.charCodeAt(0);
+    if ((first === 97 || first === 116) && CSS_ANIMATION_KEY.test(key)) return true;
+  }
   return false;
 }
 function wantsAnimation(attributes: Record<string, unknown>): boolean {
@@ -145,7 +149,7 @@ const viewNames: Record<string, string | ((props: Record<string, unknown>) => st
     return props.component;
   },
 };
-const states = new WeakMap<NativeNode, State>();
+const stateOf = (node: NativeNode): State | null => node.hostState as State | null;
 const dirty = new Set<NativeNode>();
 const roots = new Map<number, Root>();
 let nextTag = 2;
@@ -213,17 +217,17 @@ function allocateTag(): number {
 }
 
 function state(node: NativeNode, viewName: string): State {
-  let current = states.get(node);
+  let current = stateOf(node);
   if (!current) {
     current = { tag: allocateTag(), viewName, node: null, props: {}, handlers: {}, propsDirty: true, childrenDirty: true, content: null, ref: undefined, eventCount: 0, foreign: false };
-    states.set(node, current);
+    node.hostState = current;
   }
   return current;
 }
 
 /** The element's attributes as React Native props (see `mergeHostProps`), with each listener registered on the node as its `on…` handler. */
 function nativeProps(node: NativeNode): Record<string, unknown> {
-  const props = mergeHostProps(node.getSnapshot().props);
+  const props = mergeHostProps(node.peekProps());
   for (const type of node.listeners.keys()) props[`on${type[0]?.toUpperCase()}${type.slice(1)}`] = node.dispatcher(type);
   return props;
 }
@@ -288,7 +292,7 @@ function splitProps(attributes: Record<string, unknown>, into: State): Record<st
   if (into.viewName === "RCTScrollView") props.style = [attributes.horizontal === true ? scrollBaseHorizontal : scrollBaseVertical, props.style];
   // A pressable node listens for `click`: Fabric's view props carry the event, and the Android engine makes the view
   // clickable for accessibility services, whose activation comes back as `click` (see `responder.click`).
-  if (pressHandlerNames.some((name) => handlers[name])) props.onClick = true;
+  for (let index = 0; index < pressHandlerNames.length; index++) if (handlers[pressHandlerNames[index] as string]) { props.onClick = true; break; }
   if (into.viewName === "AndroidProgressBar") {
     // React Native's ActivityIndicator always sends these; the native measure path dereferences `styleAttr`.
     props.styleAttr = props.styleAttr ?? (props.size === "large" ? "Large" : "Normal");
@@ -311,7 +315,7 @@ function build(node: NativeNode, rootTag: number, insideText: boolean, insideFor
   if (!binding) throw new Error("nativeFabricUIManager is not installed");
   if (node.kind === "comment" || node.kind === "fragment") return null;
   if (node.kind === "text") {
-    const text = node.getSnapshot().text;
+    const text = node.textValue;
     if (!insideText) return null; // bare text outside a Text is not renderable, as in React Native
     const current = state(node, "RCTRawText");
     if (!current.node) {
@@ -407,7 +411,7 @@ function contentNode(scroll: NativeNode): NativeNode {
 }
 
 function onInvalidate(node: NativeNode, reason: Invalidation): void {
-  const current = states.get(node);
+  const current = stateOf(node);
   if (current) {
     if (reason === "children") current.childrenDirty = true;
     else current.propsDirty = true;
@@ -432,10 +436,10 @@ export function flush(): void {
   profile = profiling();
   stats.lastCreated = 0; stats.lastCloned = 0; stats.lastCompleted = 0; stats.payloadMs = 0; stats.createMs = 0; stats.appendMs = 0; stats.completeMs = 0;
   for (const node of dirty) {
-    const own = states.get(node);
+    const own = stateOf(node);
     if (own && node.kind === "text") own.propsDirty = true;
     for (let parent = node.parent; parent; parent = parent.parent) {
-      const ancestor = states.get(parent);
+      const ancestor = stateOf(parent);
       if (ancestor) ancestor.childrenDirty = true;
     }
   }
@@ -455,6 +459,10 @@ export function flush(): void {
   if (childrenInvalidated) { childrenInvalidated = false; detachRemovedAnimations(); }
   stats.flushes++;
   stats.lastFlushMs = performance.now() - started;
+  if (profile) {
+    const log = ((globalThis as { __svelteFlushLog?: unknown[] }).__svelteFlushLog ??= []);
+    log.push({ at: started, ms: stats.lastFlushMs, created: stats.lastCreated, cloned: stats.lastCloned, payloadMs: stats.payloadMs, createMs: stats.createMs, appendMs: stats.appendMs, completeMs: stats.completeMs });
+  }
 }
 
 const noEvents: ReadonlyMap<string, string> = new Map();
@@ -467,7 +475,7 @@ const pressHandlerNames = ["onPress", "onPressIn", "onPressOut", "onLongPress", 
 const pressabilities = new WeakMap<NativeNode, Pressability>();
 /** Pressability's responder handlers for a node that carries press handlers; created on first use and disposed when the handlers go away. */
 function pressabilityFor(node: NativeNode): ResponderHandlers | undefined {
-  const own = states.get(node);
+  const own = stateOf(node);
   let press = pressabilities.get(node);
   if (!own || !pressHandlerNames.some((name) => own.handlers[name])) {
     if (press) { press.reset(); pressabilities.delete(node); }
@@ -486,7 +494,7 @@ function pressabilityFor(node: NativeNode): ResponderHandlers | undefined {
 function userHandler(node: NativeNode, name: string): ((...args: unknown[]) => unknown) | undefined {
   const raw = node.listeners.get(name.slice(2)) ?? node.listeners.get(`${name[2]?.toLowerCase()}${name.slice(3)}`);
   if (raw) for (const listener of raw) return listener;
-  return states.get(node)?.handlers[name] as never;
+  return stateOf(node)?.handlers[name] as never;
 }
 const responder = createResponder<NativeNode>({ parent: (node) => node.parent, handler: userHandler, pressability: pressabilityFor });
 
@@ -496,7 +504,7 @@ function dispatchEvent(target: unknown, topLevelType: string, nativeEvent: objec
     else if (topLevelType === "topClick" && responder.click(target as NativeNode, nativeEvent)) return;
   }
   for (let node = target as NativeNode | null; node; node = node.parent) {
-    const own = states.get(node);
+    const own = stateOf(node);
     const name = (own && eventNamesOf(own.viewName).get(topLevelType)) ?? `on${topLevelType.replace(/^top/, "")}`;
     const handler = own?.handlers[name];
     if (handler) { handler({ nativeEvent }); return; }

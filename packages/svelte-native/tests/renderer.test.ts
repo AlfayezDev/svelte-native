@@ -83,3 +83,44 @@ test("compiled Svelte updates text, moves keyed nodes, removes branches and disp
   await result.tick();
   expect(root.getSnapshot().children).toHaveLength(0);
 });
+
+test("attribute writes between snapshots change one object, and a snapshot keeps what it saw", async () => {
+  const { NativeNode } = await import("../src/renderer.ts");
+  const reports: string[] = [];
+  const { setInvalidationSink } = await import("../src/renderer.ts");
+  setInvalidationSink((_node, reason) => { reports.push(reason); });
+  try {
+    const node = new NativeNode("element", "native-view");
+    node.setProp("a", 1);
+    node.setProp("b", 2);
+    const first = node.peekProps();
+    node.setProp("c", 3);
+    expect(node.peekProps()).toBe(first); // no snapshot went out: the same object took both writes
+    expect(first).toEqual({ a: 1, b: 2, c: 3 });
+
+    const snapshot = node.getSnapshot();
+    node.setProp("a", 9);
+    expect(snapshot.props).toEqual({ a: 1, b: 2, c: 3 }); // the snapshot kept its object
+    expect(node.getProp("a")).toBe(9);
+    expect(node.getSnapshot()).not.toBe(snapshot);
+    node.removeProp("b");
+    expect(node.hasProp("b")).toBe(false);
+    expect(node.getSnapshot().props).toEqual({ a: 9, c: 3 });
+
+    reports.length = 0;
+    node.setProp("a", 9); // unchanged
+    node.removeProp("missing");
+    expect(reports).toEqual([]);
+    node.setProp("a", 10);
+    node.removeProp("a");
+    expect(reports).toEqual(["props", "props"]);
+
+    const whole = { x: 1 };
+    node.setProps(whole);
+    node.setProp("y", 2);
+    expect(whole).toEqual({ x: 1 }); // an object handed in is never written to
+    expect(node.getSnapshot().props).toEqual({ x: 1, y: 2 });
+  } finally {
+    setInvalidationSink(null);
+  }
+});

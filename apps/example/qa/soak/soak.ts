@@ -183,7 +183,7 @@ export async function soak(argv: string[]): Promise<void> {
 		if (!entry) return;
 		if (entry.message.includes("[Svelte boot]")) state.booted = true;
 		const phase = soakPhaseOf(entry.message);
-		if (phase === "baseline" || phase === "final") enqueue(phase);
+		if (phase === "baseline" || phase === "checkpoint" || phase === "final") enqueue(phase);
 		if (entry.message.startsWith("'[Svelte stress] complete'")) state.completedAt ??= Date.now();
 		if (
 			new RegExp(`^Process ${packageName.replaceAll(".", "\\.")} \\(pid \\d+\\) has died`).test(

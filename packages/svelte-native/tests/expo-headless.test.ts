@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { applyHeadlessApplication, applyHeadlessSettings, headlessExcludedPackages, headlessPackageSource, onDemandPackageSource } from "../src/expo.ts";
+import { applyHeadlessApplication, applyHeadlessSettings, applyMainActivity, headlessExcludedPackages, headlessPackageSource, onDemandPackageSource } from "../src/expo.ts";
 
 const application = `class MainApplication {
   override val reactHost: ReactHost by lazy {
@@ -14,6 +14,42 @@ const application = `class MainApplication {
   override fun onCreate() {
     loadReactNative(this)
     ApplicationLifecycleDispatcher.onApplicationCreate(this)
+  }
+}
+`;
+/** The `MainActivity.kt` Expo's template generates (SDK 57, with the splash screen plugin's block). */
+const activity = `package io.example.app
+import expo.modules.splashscreen.SplashScreenManager
+
+import android.os.Build
+import android.os.Bundle
+
+import com.facebook.react.ReactActivity
+import com.facebook.react.ReactActivityDelegate
+import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled
+import com.facebook.react.defaults.DefaultReactActivityDelegate
+
+import expo.modules.ReactActivityDelegateWrapper
+
+class MainActivity : ReactActivity() {
+  override fun onCreate(savedInstanceState: Bundle?) {
+    // @generated begin expo-splashscreen - expo prebuild (DO NOT MODIFY) sync-f3ff59a738c56c9a6119210cb55f0b613eb8b6af
+    SplashScreenManager.registerOnActivity(this)
+    // @generated end expo-splashscreen
+    super.onCreate(null)
+  }
+
+  override fun getMainComponentName(): String = "main"
+
+  override fun createReactActivityDelegate(): ReactActivityDelegate {
+    return ReactActivityDelegateWrapper(
+          this,
+          BuildConfig.IS_NEW_ARCHITECTURE_ENABLED,
+          object : DefaultReactActivityDelegate(
+              this,
+              mainComponentName,
+              fabricEnabled
+          ){})
   }
 }
 `;
@@ -48,6 +84,20 @@ describe("headless Android config", () => {
     expect(source).toContain("if (viewManagerName !in names) return null");
     // Announced names would each be read (and so created) by React Native's UIManager when JavaScript starts.
     expect(source).toContain("getViewManagerNames(reactContext: ReactApplicationContext): Collection<String> = emptyList()");
+  });
+  test("MainActivity keeps the navigation in its saved state and hands it back as launch options, idempotently", () => {
+    const once = applyMainActivity(activity);
+    // Saved on the way to the background, read in onCreate before the template's super.onCreate(null), given to JavaScript as initialProps.navigation.
+    expect(once).toContain("expo.modules.svelteengine.NavigationState.saveTo(outState)");
+    expect(once).toContain("expo.modules.svelteengine.NavigationState.destroyed(isFinishing)");
+    expect(once.indexOf("NavigationState.restoredFrom(savedInstanceState)")).toBeLessThan(once.indexOf("super.onCreate(null)"));
+    expect(once.indexOf("NavigationState.restoredFrom(savedInstanceState)")).toBeGreaterThan(once.indexOf("expo-splashscreen"));
+    expect(once).toContain('putString("navigation", json)');
+    expect(once).toMatch(/fabricEnabled\n {10}\) \{\n[^]*override fun getLaunchOptions\(\): android\.os\.Bundle\? =[^]*\n {10}\}\)\n/);
+    expect(applyMainActivity(once)).toBe(once);
+  });
+  test("MainActivity: a template without the expected shape fails with a message", () => {
+    expect(() => applyMainActivity("class MainActivity : AppCompatActivity() {}")).toThrow("could not find the class, super.onCreate(null) and the ReactActivityDelegate in MainActivity.kt");
   });
   test("settings.gradle is idempotent", () => {
     const once = applyHeadlessSettings(settings);

@@ -70,6 +70,12 @@ class SvelteEngineModule : Module() {
     // is loaded now, so the typed animated path (SPEC.md, "Animated write path") can register with it.
     Function("reanimatedLoaded") { native?.reanimatedLoaded(); AnimatedBridge.attach() }
 
+    // The root router's navigation state as JSON, after every change (SPEC.md, "Navigation state across recreation and process
+    // death"); MainActivity keeps it in the Activity's saved instance state. `finishing` is read when a surface stops: true when the
+    // Activity is going away for good, so the next start does not adopt the state.
+    Function("saveNavigation") { json: String? -> NavigationState.save(json) }
+    Function("finishing") { NavigationState.finishing }
+
     // Safe-area and keyboard insets of the overlay (SPEC.md, "Insets and keyboard"); null before the overlay has a window.
     Function("getInsets") { onMainBlocking { insets?.read() } }
 

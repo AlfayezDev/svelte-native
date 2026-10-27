@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { withAndroidManifest, withAppBuildGradle, withDangerousMod, withMainApplication, withSettingsGradle, type ConfigPlugin } from "expo/config-plugins";
+import { withAndroidManifest, withAppBuildGradle, withDangerousMod, withMainActivity, withMainApplication, withSettingsGradle, type ConfigPlugin } from "expo/config-plugins";
 import { syncNative } from "./build.ts";
 
 export type ViewRecycling = { view?: boolean; text?: boolean; image?: boolean; scrollView?: boolean };
@@ -58,6 +58,12 @@ const packagesBegin = "          // Svelte native: headless package list (genera
 const packagesEnd = "          // Svelte native: end of headless package list";
 const startBegin = "    // Svelte native: headless host start (generated, do not edit)";
 const startEnd = "    // Svelte native: end of headless host start";
+const activityBegin = "  // Svelte native: navigation state across recreation and process death (generated, do not edit)";
+const activityEnd = "  // Svelte native: end of navigation state";
+const savedBegin = "    // Svelte native: the navigation this Activity was saved with (generated, do not edit)";
+const savedEnd = "    // Svelte native: end of saved navigation";
+const launchBegin = "            // Svelte native: the saved navigation reaches JavaScript as initialProps.navigation (generated, do not edit)";
+const launchEnd = "            // Svelte native: end of launch options";
 const gradleBegin = "// Svelte native: headless autolinking excludes (generated, do not edit)";
 const gradleEnd = "// Svelte native: end of headless autolinking excludes";
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -125,6 +131,49 @@ export function applyHeadlessApplication(contents: string, onDemand: Record<stri
   const packagesAt = packagesAnchor.index + packagesAnchor[0].length;
   const startAt = startAnchor.index + startAnchor[0].length;
   return `${stripped.slice(0, packagesAt)}\n${packages}${stripped.slice(packagesAt, startAt)}\n${start}${stripped.slice(startAt)}`;
+}
+
+/**
+ * `MainActivity.kt`: keeps the root router's navigation state in the Activity's saved instance state and passes it back to
+ * JavaScript when the surface starts again (`initialProps.navigation`): after the Activity was recreated (font scale, locale)
+ * and after the process was killed in the background. Expo's template calls `super.onCreate(null)`, so the saved state is read
+ * in `onCreate` before that. Idempotent (prebuild re-runs on the same file).
+ */
+export function applyMainActivity(contents: string): string {
+  const stripped = contents.replace(blockPattern(activityBegin, activityEnd), "").replace(blockPattern(savedBegin, savedEnd), "").replace(blockPattern(launchBegin, launchEnd), "");
+  const classAnchor = /^class MainActivity : ReactActivity\(\) \{[ \t]*$/m.exec(stripped);
+  const createAnchor = /^[ \t]*super\.onCreate\(null\)[ \t]*$/m.exec(stripped);
+  const delegateAnchor = /(fabricEnabled\s*\))\s*\{\s*\}/.exec(stripped);
+  if (!classAnchor || !createAnchor || !delegateAnchor || !(classAnchor.index < createAnchor.index && createAnchor.index < delegateAnchor.index)) {
+    throw new Error("Svelte native could not find the class, super.onCreate(null) and the ReactActivityDelegate in MainActivity.kt");
+  }
+  const members = [
+    activityBegin,
+    "  private var svelteNavigation: String? = null",
+    "",
+    "  override fun onSaveInstanceState(outState: Bundle) {",
+    "    super.onSaveInstanceState(outState)",
+    "    expo.modules.svelteengine.NavigationState.saveTo(outState)",
+    "  }",
+    "",
+    "  override fun onDestroy() {",
+    "    expo.modules.svelteengine.NavigationState.destroyed(isFinishing)",
+    "    super.onDestroy()",
+    "  }",
+    activityEnd,
+  ].join("\n");
+  const saved = [savedBegin, "    svelteNavigation = expo.modules.svelteengine.NavigationState.restoredFrom(savedInstanceState)", savedEnd, ""].join("\n");
+  const launch = [
+    `${delegateAnchor[1]} {`,
+    launchBegin,
+    "            override fun getLaunchOptions(): android.os.Bundle? =",
+    "              svelteNavigation?.let { json -> android.os.Bundle().apply { putString(\"navigation\", json) } }",
+    launchEnd,
+    "          }",
+  ].join("\n");
+  const classEnd = classAnchor.index + classAnchor[0].length;
+  const delegateEnd = delegateAnchor.index + delegateAnchor[0].length;
+  return `${stripped.slice(0, classEnd)}\n${members}${stripped.slice(classEnd, createAnchor.index)}${saved}${stripped.slice(createAnchor.index, delegateAnchor.index)}${launch}${stripped.slice(delegateEnd)}`;
 }
 
 /** `settings.gradle`: excludes packages from Expo and React Native autolinking. Idempotent. */
@@ -279,6 +328,11 @@ const withSvelteNative: ConfigPlugin<SvelteNativeOptions | undefined> = (config,
     await writeFile(join(dir, "baseline-prof.txt"), baselineProfile());
     return config;
   }]);
+  config = withMainActivity(config, (config) => {
+    if (config.modResults.language !== "kt") throw new Error("Svelte native requires Expo's Kotlin MainActivity");
+    config.modResults.contents = applyMainActivity(config.modResults.contents);
+    return config;
+  });
   config = withMainApplication(config, (config) => {
     if (config.modResults.language !== "kt") throw new Error("Svelte native requires Expo's Kotlin MainApplication");
     const flags: Record<string, boolean> = { ...Object.fromEntries(recyclingOverrides(options?.androidViewRecycling).map((name) => [name, true])), ...options?.androidFeatureFlags };

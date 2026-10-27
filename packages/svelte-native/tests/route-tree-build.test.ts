@@ -4,6 +4,7 @@ import { buildTree, fillPath, locate, matchPath, plan, resolve, type RouteFile, 
 /** What the golden vectors (route-tree.test.ts) leave open: nested stack navigators, the other build errors, parameters, ordering. */
 const file = (path: string, exports: RouteFile["exports"] = {}): RouteFile => ({ path, exports });
 const paths = (tree: StackNode) => tree.routes.map((route) => route.path);
+const target = (tree: StackNode, href: string) => { const hit = resolve(tree, href); if (!hit) throw new Error(`${href} resolves to nothing`); return hit; };
 
 describe("a stack navigator below the root", () => {
   const tree = buildTree([
@@ -30,17 +31,16 @@ describe("a stack navigator below the root", () => {
     expect(hit?.params).toEqual({ slug: "acme", n: "2" });
     expect(resolve(tree, "/acme")?.chain.map((step) => step.node.id)).toEqual([""]);
     expect(resolve(tree, "/acme/flow")).toBeNull(); // the layout is the screen, not a page
-    const flow = resolve(tree, "/acme/flow/start");
     const state = { "": { entries: ["/acme"] } };
-    expect(plan(state, flow!, {})).toEqual([
+    expect(plan(state, target(tree, "/acme/flow/start"), {})).toEqual([
       { node: "", op: "push", href: "/acme/flow", presentation: "push" },
       { node: "(app)/[slug]/flow", op: "push", href: "/acme/flow/start", presentation: "push" },
     ]);
     // On its stack already: a second route in it only pushes there; from above it, the screen pops back to it first.
     const inside = { "": { entries: ["/acme", "/acme/flow"] }, "(app)/[slug]/flow": { entries: ["/acme/flow/start"] } };
-    expect(plan(inside, resolve(tree, "/acme/flow/step/1")!, {})).toEqual([{ node: "(app)/[slug]/flow", op: "push", href: "/acme/flow/step/1", presentation: "modal" }]);
+    expect(plan(inside, target(tree, "/acme/flow/step/1"), {})).toEqual([{ node: "(app)/[slug]/flow", op: "push", href: "/acme/flow/step/1", presentation: "modal" }]);
     const above = { ...inside, "": { entries: ["/acme", "/acme/flow", "/acme"] } };
-    expect(plan(above, resolve(tree, "/acme/flow/step/1")!, {})[0]).toEqual({ node: "", op: "popTo", href: "/acme/flow" });
+    expect(plan(above, target(tree, "/acme/flow/step/1"), {})[0]).toEqual({ node: "", op: "popTo", href: "/acme/flow" });
   });
 });
 

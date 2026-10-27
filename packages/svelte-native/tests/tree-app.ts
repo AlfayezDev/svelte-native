@@ -39,7 +39,10 @@ export function appTree({ bareTabs = false, logLoads, hold }: { bareTabs?: boole
   const loader = (path: string, around: readonly string[] = []) => () => {
     logLoads?.push(path);
     const modules = { component: componentOf(path), layouts: around.map(componentOf) };
-    return hold ? new Promise<typeof modules>((done) => { (hold[path] ??= []).push(() => done(modules)); }) : Promise.resolve(modules);
+    if (!hold) return Promise.resolve(modules);
+    const releases = hold[path] ?? [];
+    hold[path] = releases;
+    return new Promise<typeof modules>((done) => { releases.push(() => done(modules)); });
   };
   const linkNode = <Node extends RouteNode>(node: Node): Node => {
     const linked = node.kind === "stack" ? { ...node, routes: node.routes.map(link) } : { ...node, panes: node.panes.map((pane) => ({ key: pane.key, stack: linkNode(pane.stack) })) };

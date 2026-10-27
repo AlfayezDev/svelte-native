@@ -349,13 +349,15 @@ test("merging screen options: the inner value wins, objects merge, handlers chai
   expect(mergeScreenOptions({ title: "A" }, {})).toEqual({ title: "A" });
 });
 
-test("Screen and Tabs stay components: they take snippets, so the lowering preprocessor must not rewrite them", () => {
+test("Screen, Stack and Tabs stay components: they take snippets, so the lowering preprocessor must not rewrite them", () => {
   expect(Object.hasOwn(LOWERED_TAGS, "Screen")).toBe(false);
+  expect(Object.hasOwn(LOWERED_TAGS, "Stack")).toBe(false);
   expect(Object.hasOwn(LOWERED_TAGS, "Tabs")).toBe(false);
-  const source = `<script>\n  import { Screen, Tabs, View } from "@rasheed/svelte-native";\n</script>\n<Screen title="x">{#snippet headerRight()}<View />{/snippet}</Screen>\n<Tabs items={items} selected={s} content={pane} />`;
+  const source = `<script>\n  import { Screen, Stack, Tabs, View } from "@rasheed/svelte-native";\n</script>\n<Screen title="x">{#snippet headerRight()}<View />{/snippet}</Screen>\n<Stack header={{ large: true }}>{@render children()}</Stack>\n<Tabs items={items} selected={s} content={pane} />`;
   const lowered = lowerPrimitives(source, { filename: "x.svelte", warn: noop });
   expect(lowered).toContain('<Screen title="x">');
   expect(lowered).toContain("<native-view ></native-view>");
+  expect(lowered).toContain("<Stack header={{ large: true }}>");
   expect(lowered).toContain("<Tabs items={items}");
 });
 

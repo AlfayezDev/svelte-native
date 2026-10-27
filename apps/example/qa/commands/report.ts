@@ -394,8 +394,8 @@ export async function report(): Promise<void> {
 			console.log(`  crash reports ${m["log.crashReports"] ?? "not measured"}`);
 			for (const summary of entry.crashReports) {
 				if (summary.error !== null) console.log(`    ${summary.run}: not measured (${summary.error})`);
-				for (const report of summary.reports)
-					console.log(`    ${summary.run}: ${report.file} pid ${report.pid ?? "?"} ${report.exceptionType ?? "unreadable"}${report.signal ? ` ${report.signal}` : ""}${report.attributedTo ? ` [${report.attributedTo}]` : ""}: ${report.reason ?? "no reason"}`);
+				for (const crash of summary.reports)
+					console.log(`    ${summary.run}: ${crash.file} pid ${crash.pid ?? "?"} ${crash.exceptionType ?? "unreadable"}${crash.signal ? ` ${crash.signal}` : ""}${crash.attributedTo ? ` [${crash.attributedTo}]` : ""}: ${crash.reason ?? "no reason"}`);
 			}
 		}
 		if (entry.lab && entry.lab.missingScenarios.length > 0)

@@ -257,7 +257,8 @@ test("the toolbar nativeID carries flags only when set, colors as rrggbbaa, the 
 test("toolbar items encode their key, title, icon, badge and flags; a spacer carries nothing else; the center is its own kind", () => {
   const row = { flexDirection: "row", alignItems: "center", justifyContent: "center" };
   expect(navigationProps("native-toolbar-item", {}).nativeID).toBe("svelte:toolbar-item");
-  expect(navigationProps("native-toolbar-item", {}).style).toEqual([row, undefined]);
+  // An asset icon gives Yoga no content: the target keeps its width so a flex: 1 center cannot take the items' room.
+  expect(navigationProps("native-toolbar-item", {}).style).toEqual([{ minWidth: 48, ...row }, undefined]);
   const full = navigationProps("native-toolbar-item", { itemKey: "in/box", title: "A;B=C, 100%", icon: "asset:/a b.png", iconView: false, badge: 120, disabled: true, accessibilityLabel: "Open", testID: "item" });
   expect(full.nativeID).toBe("svelte:toolbar-item;k=in%2Fbox;t=A%3BB%3DC%2C%20100%25;ic=asset%3A%2Fa%20b.png;bd=99%2B;ds=1");
   expect(full.accessibilityLabel).toBe("Open");

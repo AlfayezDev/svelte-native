@@ -14,6 +14,9 @@ const components = {
   "native-header-search": "SvelteHeaderSlot",
   "native-tabs": "SvelteTabs",
   "native-tab": "SvelteTab",
+  "native-toolbar": "SvelteToolbar",
+  "native-toolbar-item": "SvelteToolbarItem",
+  "native-toolbar-center": "SvelteToolbarCenter",
 } as const satisfies Record<string, string>;
 
 export type IosNavigationTag = keyof typeof components;
@@ -24,6 +27,7 @@ const directEvents: Readonly<Record<string, readonly string[]>> = {
   SvelteHeader: ["topMetrics"],
   SvelteHeaderSlot: ["topCancel"],
   SvelteTabs: ["topSelect", "topMetrics"],
+  SvelteToolbar: ["topPress", "topMetrics"],
 };
 
 type ViewConfigRegistry = { register(name: string, config: () => unknown): string };

@@ -23,6 +23,9 @@ import { getContext, type Snippet } from "svelte";
  * - `tabs`: `sel` selected index, `sc` select count, `tc` tint, `uc` inactive tint, `bg` background, `lb=1` no labels
  * - `tab`: `k` key, `t` title, `ic` icon uri, `is` selected icon uri, `iv=1` icon is a view, `bd` badge text (present and empty = dot), `ds=1` disabled
  * - `tab-icon`
+ * - `toolbar`: `hd=1` hidden, `tl=1` translucent, `tc` tint, `bg` background, `sl` slot mask (bit 1 center)
+ * - `toolbar-item`: `k` key, `t` title, `ic` icon uri, `iv=1` icon is a view, `bd` badge text (present and empty = dot), `ds=1` disabled, `sp=1` flexible space (a spacer carries no other key)
+ * - `toolbar-center`
  *
  * Colors are `rrggbbaa` (8 hex digits). Events are ordinary handlers: the engine emits `top<Name>` on the node's emitter
  * and the host maps it to the `on<Name>` attribute.
@@ -38,15 +41,26 @@ export const navigationTags: ReadonlySet<string> = new Set([
   "native-tabs",
   "native-tab",
   "native-tab-icon",
+  "native-toolbar",
+  "native-toolbar-item",
+  "native-toolbar-center",
 ]);
 
 /** Context keys shared by the components: the nearest `Screen` (nested screens register into it) and its header geometry. */
 export const SCREEN_CONTEXT = Symbol.for("svelte-native.screen");
 export const HEADER_CONTEXT = Symbol.for("svelte-native.header");
+export const TOOLBAR_CONTEXT = Symbol.for("svelte-native.toolbar");
+/** Set by `Tabs` for everything inside a pane: the pane ends at the tab bar, which already covers the bottom inset. */
+export const PANE_CONTEXT = Symbol.for("svelte-native.pane");
 
 /** The header geometry of the screen around the caller, in dp: `height` includes the status bar `inset`. Read it to pad content under a `large` or `translucent` header. */
 export function useHeader(): { readonly height: number; readonly inset: number } {
   return getContext<{ readonly height: number; readonly inset: number } | undefined>(HEADER_CONTEXT) ?? { height: 0, inset: 0 };
+}
+
+/** The toolbar geometry of the screen around the caller, in dp: `height` includes the bottom `inset`. Read it to pad content under a `translucent` toolbar. */
+export function useToolbar(): { readonly height: number; readonly inset: number } {
+  return getContext<{ readonly height: number; readonly inset: number } | undefined>(TOOLBAR_CONTEXT) ?? { height: 0, inset: 0 };
 }
 
 /** A source `resolveAssetSource` accepts: a `require`d asset or `{ uri }`. Drawn as a template image, tinted by the bar. */
@@ -78,6 +92,8 @@ export const HEADER_BAR: Record<NavigationPlatform, number> = { android: 56, ios
 export const HEADER_LARGE_EXTRA: Record<NavigationPlatform, number> = { android: 56, ios: 52 };
 /** Tab bar height without the bottom inset: icon 24 + label 12 sp + padding on Android, UITabBar on iOS. */
 export const TAB_BAR: Record<NavigationPlatform, number> = { android: 64, ios: 49 };
+/** Toolbar height without the bottom inset: Material bottom app bar, UIKit toolbar. */
+export const TOOLBAR_BAR: Record<NavigationPlatform, number> = { android: 56, ios: 44 };
 /**
  * Whether the native stack of a platform keeps a screen whose `activityState` JavaScript set to 0 on screen, takes it
  * away with its exit transition and then sends `topExited` (SPEC.md, "Screen exit"). Where it does, the router keeps a
@@ -97,6 +113,11 @@ export const SHEET_DEFAULT_DETENTS: readonly Detent[] = [0.5, 1];
 /** Total header height (status bar inset included) before the native side reports its own with `onMetrics`. */
 export function headerHeight(platform: NavigationPlatform, inset: number, large: boolean): number {
   return inset + HEADER_BAR[platform] + (large ? HEADER_LARGE_EXTRA[platform] : 0);
+}
+
+/** Total toolbar height (bottom inset included) before the native side reports its own with `onMetrics`. */
+export function toolbarHeight(platform: NavigationPlatform, inset: number): number {
+  return TOOLBAR_BAR[platform] + inset;
 }
 
 export type Detent = number | "auto";
@@ -131,6 +152,30 @@ export type SheetOptions = {
   dismissible?: boolean;
   backdrop?: "dim" | "none";
 };
+/** One action of a screen's toolbar; `{ key, spacer: true }` is flexible space and takes nothing else. */
+export type ToolbarItem = {
+  key: string;
+  title?: string;
+  /** An asset, drawn as a template image and tinted by the bar; or a snippet, which receives `pressed` (always `false` for now: the contract has no pressed-state event). */
+  icon?: TabIconSource | Snippet<[pressed: boolean]>;
+  /** Text or a number (above 99 it reads "99+"); `true` shows a dot. */
+  badge?: string | number | boolean;
+  disabled?: boolean;
+  accessibilityLabel?: string;
+  testID?: string;
+  spacer?: boolean;
+};
+export type ToolbarOptions = {
+  items?: readonly ToolbarItem[];
+  /** No toolbar node at all. */
+  hidden?: boolean;
+  /** The toolbar overlays the content instead of reserving space; pad content with `useToolbar().height`. */
+  translucent?: boolean;
+  tint?: string;
+  background?: string;
+  /** A press on an item, by its key. */
+  onPress?: (key: string) => void;
+};
 export type StatusBarOptions = { style?: BarStyle; hidden?: boolean };
 export type NavigationBarOptions = { color?: string; style?: BarStyle };
 export type DetentChange = { index: number; fraction: number };
@@ -147,6 +192,9 @@ export type ScreenOptions = {
   headerCenter?: Snippet;
   headerSearch?: Snippet;
   search?: SearchOptions;
+  toolbar?: ToolbarOptions;
+  /** Custom content in the toolbar between its items (a composer, a segmented control). */
+  toolbarCenter?: Snippet;
   presentation?: Presentation;
   sheet?: SheetOptions;
   statusBar?: StatusBarOptions;
@@ -168,7 +216,7 @@ export type ScreenOptions = {
 };
 
 const definedEntries = (value: object) => Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined));
-const objectOptions = ["header", "search", "sheet", "statusBar", "navigationBar"] as const;
+const objectOptions = ["header", "search", "sheet", "statusBar", "navigationBar", "toolbar"] as const;
 const eventOptions = ["onAppear", "onDisappear", "onDismiss", "onExited", "onDetentChange"] as const;
 
 /**
@@ -385,6 +433,42 @@ function tabsProps(name: string, attributes: Record<string, unknown>): Record<st
   return withId(attributes, TAB_KEYS, encodeNativeID("tab-icon", []), { position: "absolute", top: 0, left: 0, width: TAB_ICON_SIZE, height: TAB_ICON_SIZE, alignItems: "center", justifyContent: "center" });
 }
 
+// Toolbar.
+
+const TOOLBAR_KEYS = ["hidden", "translucent", "tint", "background", "slots", "toolbarHeight", "toolbarInset"];
+const TOOLBAR_ITEM_KEYS = ["itemKey", "title", "icon", "iconView", "badge", "disabled", "spacer"];
+/** Slot mask bit of the toolbar's `sl` key and record 128. */
+export const SLOT_TOOLBAR_CENTER = 1;
+
+function toolbarProps(name: string, attributes: Record<string, unknown>): Record<string, unknown> {
+  if (name === "native-toolbar") {
+    const inset = typeof attributes.toolbarInset === "number" ? attributes.toolbarInset : 0;
+    const height = typeof attributes.toolbarHeight === "number" ? attributes.toolbarHeight : 0;
+    // In flow below the content view (`flex: 1`), or over it at the bottom edge when translucent; the node is the last child of the screen, so it is drawn and hit last.
+    const box = {
+      ...(attributes.translucent === true ? { position: "absolute", left: 0, right: 0, bottom: 0 } : {}),
+      height, paddingBottom: inset, flexDirection: "row", alignItems: "center",
+    };
+    const id = encodeNativeID("toolbar", [
+      ["hd", flag(attributes.hidden)], ["tl", flag(attributes.translucent)],
+      ["tc", colorToWire(attributes.tint)], ["bg", colorToWire(attributes.background)], ["sl", typeof attributes.slots === "number" && attributes.slots > 0 ? attributes.slots : undefined],
+    ]);
+    return withId(attributes, TOOLBAR_KEYS, id, box);
+  }
+  if (name === "native-toolbar-item") {
+    // Flexible space carries no other key; a snippet icon is sized by Yoga inside the item and placed by the native side.
+    if (attributes.spacer === true) return withId(attributes, TOOLBAR_ITEM_KEYS, encodeNativeID("toolbar-item", [["sp", 1]]), { flexGrow: 1 });
+    const badge = badgeText(attributes.badge);
+    const id = encodeNativeID("toolbar-item", [
+      ["k", text(attributes.itemKey)], ["t", text(attributes.title)], ["ic", text(attributes.icon)],
+      ["iv", flag(attributes.iconView)], ["bd", badge === undefined ? undefined : encode(badge)], ["ds", flag(attributes.disabled)],
+    ]);
+    return withId(attributes, TOOLBAR_ITEM_KEYS, id, { flexDirection: "row", alignItems: "center", justifyContent: "center" });
+  }
+  // The custom content between the items: fills what they leave, centered like the header's center slot.
+  return withId(attributes, TOOLBAR_ITEM_KEYS, encodeNativeID("toolbar-center", []), { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center" });
+}
+
 /** Attributes the encoder consumed leave the props; the rest (handlers, `ref`, accessibility, `testID`) pass through. */
 function withId(attributes: Record<string, unknown>, consumed: readonly string[], nativeID: string, style: Record<string, unknown>): Record<string, unknown> {
   const rest: Record<string, unknown> = {};
@@ -398,6 +482,7 @@ export function navigationProps(name: string, attributes: Record<string, unknown
   if (name === "native-screen") return screenProps(attributes);
   if (name === "native-header") return headerProps(attributes);
   if (name === "native-header-left" || name === "native-header-center" || name === "native-header-right" || name === "native-header-search") return slotProps(name, attributes);
+  if (name === "native-toolbar" || name === "native-toolbar-item" || name === "native-toolbar-center") return toolbarProps(name, attributes);
   return tabsProps(name, attributes);
 }
 
@@ -405,8 +490,9 @@ export function navigationProps(name: string, attributes: Record<string, unknown
 
 export type NavRecord = { id: number; values: (number | string)[] };
 /** Engine view kinds of the navigation tags (10 and 11 predate the screen API). */
-export const NAV_KINDS: Record<string, number> = { stack: 10, screen: 11, header: 12, "header-left": 13, "header-center": 13, "header-right": 13, "header-search": 13, tabs: 14, tab: 15, "tab-icon": 16 };
-const SLOTS: Record<string, number> = { "header-left": 0, "header-center": 1, "header-right": 2, "header-search": 3 };
+export const NAV_KINDS: Record<string, number> = { stack: 10, screen: 11, header: 12, "header-left": 13, "header-center": 13, "header-right": 13, "header-search": 13, tabs: 14, tab: 15, "tab-icon": 16, toolbar: 17, "toolbar-item": 18, "toolbar-center": 13 };
+/** Slot codes of record 126: the toolbar's center content is slot 4 of the header slots' kind. */
+const SLOTS: Record<string, number> = { "header-left": 0, "header-center": 1, "header-right": 2, "header-search": 3, "toolbar-center": 4 };
 const PRESENTATION_CODE: Record<string, number> = { push: 0, modal: 1, transparentModal: 2, sheet: 3, formSheet: 4 };
 const ANIMATION_CODE: Record<string, number> = { default: 0, none: 1, fade: 2, slide_from_right: 3, slide_from_bottom: 4 };
 const barCode = (raw: string | undefined) => raw === "l" ? 1 : raw === "d" ? 2 : 0;
@@ -443,7 +529,7 @@ export function decodeRecords(nativeID: string): { kind: number; records: NavRec
       records.push({ id: 121, values: [wireInt(pairs.sl, 0)] });
       break;
     }
-    case "header-left": case "header-center": case "header-right": case "header-search": {
+    case "header-left": case "header-center": case "header-right": case "header-search": case "toolbar-center": {
       records.push({ id: 126, values: [SLOTS[parsed.kind]] });
       if (parsed.kind === "header-search") records.push({ id: 127, values: [string("ph"), string("v"), wireInt(pairs.ec, 0)] });
       break;
@@ -453,6 +539,12 @@ export function decodeRecords(nativeID: string): { kind: number; records: NavRec
       break;
     case "tab":
       records.push({ id: 124, values: [string("k"), string("t"), string("ic"), string("is"), wireInt(pairs.iv, 0), pairs.bd === undefined ? 0 : decodeValue(pairs.bd) === "" ? 1 : 2, pairs.bd === undefined ? -1 : decodeValue(pairs.bd), wireInt(pairs.ds, 0)] });
+      break;
+    case "toolbar":
+      records.push({ id: 128, values: [(pairs.hd === "1" ? 1 : 0) | (pairs.tl === "1" ? 2 : 0), ...argb(pairs.tc), ...argb(pairs.bg), wireInt(pairs.sl, 0)] });
+      break;
+    case "toolbar-item":
+      records.push({ id: 129, values: [string("k"), string("t"), string("ic"), wireInt(pairs.iv, 0), pairs.bd === undefined ? 0 : decodeValue(pairs.bd) === "" ? 1 : 2, pairs.bd === undefined ? -1 : decodeValue(pairs.bd), wireInt(pairs.ds, 0), wireInt(pairs.sp, 0)] });
       break;
   }
   return { kind, records };

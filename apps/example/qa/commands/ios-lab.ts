@@ -33,8 +33,13 @@ export async function iosLabOnce(session: IosSession, run: string, timeoutMs: nu
 	while (Date.now() < deadline) {
 		await sleep(pollMs);
 		const text = await readAppFile(target, "Documents/lab-results.json");
-		if (text !== null) {
-			const parsed = parseIosLabResults(text);
+		let parsed: IosLabResults | null = null;
+		try {
+			parsed = text === null ? null : parseIosLabResults(text);
+		} catch {
+			// The app writes the file while the harness copies it: a copy that caught it empty or half written is read again on the next poll.
+		}
+		if (text !== null && parsed) {
 			if (parsed.token === token) {
 				results = parsed;
 				raw = text;

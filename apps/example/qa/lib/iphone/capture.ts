@@ -51,6 +51,15 @@ export function parseCaptureIndex(text: string): CaptureIndex {
 	return index as CaptureIndex;
 }
 
+/** The index as far as it is readable: the app writes it while the harness copies it, and a copy can catch it empty or half written. */
+export function tryParseCaptureIndex(text: string): CaptureIndex | null {
+	try {
+		return parseCaptureIndex(text);
+	} catch {
+		return null;
+	}
+}
+
 /** What it takes to make the app start in right-to-left: the language of the launch (the app's own `Info.plist` lists Arabic). */
 export const launchArguments: Record<Direction, string[]> = {
 	ltr: [],
@@ -79,8 +88,8 @@ export async function captureScreens(
 	while (Date.now() < deadline && !done) {
 		await sleep(pollMs);
 		const text = await readAppFile(target, "Documents/capture/index.json");
-		if (text !== null) {
-			const index = parseCaptureIndex(text);
+		const index = text === null ? null : tryParseCaptureIndex(text);
+		if (index) {
 			if (index.token === options.token) {
 				done = index.done;
 				if (index.entries.length !== seen) {
@@ -96,18 +105,31 @@ export async function captureScreens(
 	}
 	if (died) throw new Error(died);
 	if (!done) throw new Error(`the capture did not finish within ${options.timeoutMs / 1000} s`);
-	await rm(options.dir, { recursive: true, force: true });
-	await mkdir(options.dir, { recursive: true });
-	await fetchAppPath(target, "Documents/capture", options.dir);
+	// A copy of the directory can fail or catch a file empty (devicectl's file service drops its connection now and then): try again.
+	let fetched: Captured | null = null;
+	let fault = "";
+	for (let attempt = 1; attempt <= 3 && !fetched; attempt++) {
+		try {
+			await rm(options.dir, { recursive: true, force: true });
+			await mkdir(options.dir, { recursive: true });
+			await fetchAppPath(target, "Documents/capture", options.dir);
+			const root = await captureRoot(options.dir);
+			const index = parseCaptureIndex(await readFile(join(root, "index.json"), "utf8"));
+			if (index.token !== options.token) throw new Error("the capture directory fetched from the phone belongs to another launch");
+			fetched = { index, dir: root };
+		} catch (cause) {
+			fault = cause instanceof Error ? cause.message : String(cause);
+			options.log(`  fetching the capture failed (${fault}); ${attempt < 3 ? "trying again" : "giving up"}`);
+			await sleep(2000);
+		}
+	}
 	try {
 		await terminateApp(target, pid);
 	} catch {
 		// The capture ended the lab's work; the app may already be gone.
 	}
-	const root = await captureRoot(options.dir);
-	const index = parseCaptureIndex(await readFile(join(root, "index.json"), "utf8"));
-	if (index.token !== options.token) throw new Error("the capture directory fetched from the phone belongs to another launch");
-	return { index, dir: root };
+	if (!fetched) throw new Error(fault);
+	return fetched;
 }
 
 /** `devicectl device copy from` puts a directory either directly in the destination or inside a directory of its name. */

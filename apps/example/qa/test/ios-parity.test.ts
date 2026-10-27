@@ -27,12 +27,13 @@ describe("masks for the system's glass capsules", () => {
 });
 
 describe("masks for a presented sheet's card", () => {
-	test("the corners and a strip along each side are masked, the inside is compared", () => {
+	test("the corners and a strip along each side, inside and outside the frame, are masked; the inside is compared", () => {
 		// the sheet of the lab at one detent: 359 x 248 pt at (8, 411), two pixels per point
 		const masks = sheetMasks({ scale: 2, sheets: [[8, 411, 359, 248]] } as unknown as CaptureEntry);
 		expect(masks).toHaveLength(8);
-		expect(masks[0]).toEqual({ x: 16, y: 822, width: 64, height: 64 });
-		expect(masks[5]).toEqual({ x: 16 + 718 - 6, y: 822, width: 6, height: 496 });
+		expect(masks[0]).toEqual({ x: 10, y: 816, width: 70, height: 70 });
+		expect(masks[4]).toEqual({ x: 10, y: 816, width: 12, height: 508 });
+		expect(masks[5]).toEqual({ x: 16 + 718 + 6 - 12, y: 816, width: 12, height: 508 });
 		expect(sheetMasks({ scale: 2 } as unknown as CaptureEntry)).toEqual([]);
 	});
 });

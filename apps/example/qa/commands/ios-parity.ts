@@ -83,25 +83,31 @@ export function glassMasks(entry: CaptureEntry): Rect[] {
 }
 
 /**
- * The rim of a presented sheet's card, in pixels: its rounded corners (a 32 pt square at each) and a 3 pt strip along every side, where
- * the system's corner mask, border and shadow are drawn a level differently from one launch to the next. The sheet's content is compared.
+ * The rim of a presented sheet's card, in pixels: its rounded corners (a 32 pt square at each) and a strip along every side, 3 pt
+ * inside the card's frame and 3 pt outside it, where the system's corner mask, border and shadow are drawn a level differently from one
+ * launch to the next (the shadow's first line lies outside the frame). The sheet's content is compared.
  */
 export function sheetMasks(entry: CaptureEntry): Rect[] {
 	const scale = entry.scale ?? 1;
 	const corner = 32 * scale;
-	const edge = 3 * scale;
+	const inside = 3 * scale;
+	const outside = 3 * scale;
 	const masks: Rect[] = [];
 	for (const [x = 0, y = 0, width = 0, height = 0] of entry.sheets ?? []) {
 		const rect = { x: x * scale, y: y * scale, width: width * scale, height: height * scale };
+		const left = rect.x - outside;
+		const top = rect.y - outside;
+		const right = rect.x + rect.width + outside;
+		const bottom = rect.y + rect.height + outside;
 		masks.push(
-			{ x: rect.x, y: rect.y, width: corner, height: corner },
-			{ x: rect.x + rect.width - corner, y: rect.y, width: corner, height: corner },
-			{ x: rect.x, y: rect.y + rect.height - corner, width: corner, height: corner },
-			{ x: rect.x + rect.width - corner, y: rect.y + rect.height - corner, width: corner, height: corner },
-			{ x: rect.x, y: rect.y, width: edge, height: rect.height },
-			{ x: rect.x + rect.width - edge, y: rect.y, width: edge, height: rect.height },
-			{ x: rect.x, y: rect.y, width: rect.width, height: edge },
-			{ x: rect.x, y: rect.y + rect.height - edge, width: rect.width, height: edge },
+			{ x: left, y: top, width: corner + outside, height: corner + outside },
+			{ x: right - corner - outside, y: top, width: corner + outside, height: corner + outside },
+			{ x: left, y: bottom - corner - outside, width: corner + outside, height: corner + outside },
+			{ x: right - corner - outside, y: bottom - corner - outside, width: corner + outside, height: corner + outside },
+			{ x: left, y: top, width: inside + outside, height: bottom - top },
+			{ x: right - inside - outside, y: top, width: inside + outside, height: bottom - top },
+			{ x: left, y: top, width: right - left, height: inside + outside },
+			{ x: left, y: bottom - inside - outside, width: right - left, height: inside + outside },
 		);
 	}
 	return masks;

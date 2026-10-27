@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { iosDeviceKind } from "../commands/ios-parity.ts";
-import { launchArguments, parseCaptureIndex } from "../lib/iphone/capture.ts";
+import { launchArguments, parseCaptureIndex, tryParseCaptureIndex } from "../lib/iphone/capture.ts";
 import { iosCases, iosControl, iosLayoutVariants, iosMatrix, iosNotCovered, iosTitle, iosVariants } from "../lib/iphone/screens.ts";
 import { cases, referenceName } from "../lib/screens.ts";
 import { platformOf } from "../lib/flags.ts";
@@ -62,6 +62,13 @@ describe("device kind, capture index and launch arguments", () => {
 		expect(() => parseCaptureIndex("{}")).toThrow("unexpected shape");
 		const index = parseCaptureIndex(JSON.stringify({ schema: 1, token: "t", startedAt: "x", finishedAt: null, done: false, themes: ["light"], entries: [], error: null }));
 		expect(index.done).toBe(false);
+	});
+
+	test("an index that a copy caught empty or half written is not ready yet, not an error", () => {
+		expect(tryParseCaptureIndex("")).toBeNull();
+		expect(tryParseCaptureIndex('{"schema":1,"token":"t","entries":[{"name"')).toBeNull();
+		expect(tryParseCaptureIndex("{}")).toBeNull();
+		expect(tryParseCaptureIndex(JSON.stringify({ schema: 1, token: "t", startedAt: "x", finishedAt: null, done: true, themes: ["light"], entries: [], error: null }))?.done).toBe(true);
 	});
 
 	test("--platform picks the runner and says what it does not know", () => {

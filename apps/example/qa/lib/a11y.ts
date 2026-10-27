@@ -20,7 +20,8 @@ import { bottom, descendants, right, spokenLabel, type UiNode, type UiTree } fro
  * - actionable: it advertises an action (clickable, long-clickable, checkable, or a text field).
  * - order: the focus stops, in tree order, run top to bottom and, within a row, from the start edge to the end (left to
  *   right, right to left in RTL).
- * - title first: the screen's title is a stop, and no content stop comes before it.
+ * - title first: the screen's title is a stop (a stop with no label of its own is the label its content carries: a `Pressable`
+ *   around a `Text`), and no content stop comes before it.
  * - focus trap: while a sheet or modal is up, nothing of the screen underneath is in the tree (a service must not be able to
  *   reach it).
  */
@@ -131,6 +132,30 @@ function hasLabel(node: UiNode): boolean {
 
 function sameLabel(node: UiNode, label: string): boolean {
 	return node.text.trim() === label || node.contentDesc.trim() === label;
+}
+
+/**
+ * What a service speaks for a group that says nothing itself: the labels of what it holds, in tree order, leaving out the
+ * controls inside it (stops of their own). A `Pressable` around a `Text` is a clickable view with no text and a child with
+ * "Segment A"; TalkBack reads it as "Segment A, button", so that is the label the checks match against.
+ */
+function heldLabel(node: UiNode): string {
+	const labels: string[] = [];
+	const walk = (current: UiNode): void => {
+		for (const child of current.children) {
+			if (isInteractive(child)) continue;
+			const label = spokenLabel(child).trim();
+			if (label) labels.push(label);
+			else walk(child);
+		}
+	};
+	walk(node);
+	return labels.join(", ");
+}
+
+/** A stop is the label if it says so itself, or, saying nothing itself, if what it holds does ([heldLabel]). */
+function stopSays(stop: UiNode, label: string): boolean {
+	return sameLabel(stop, label) || (spokenLabel(stop).trim() === "" && heldLabel(stop) === label);
 }
 
 const scrollContainer = /ScrollView|RecyclerView|ListView|ViewPager/;
@@ -316,7 +341,7 @@ export function analyzeScreen(input: A11yInput): A11yScreen {
 
 	/* Order and title. */
 	const stops = focusStops(tree);
-	const titleStop = title === null ? null : (stops.find((stop) => sameLabel(stop, title)) ?? null);
+	const titleStop = title === null ? null : (stops.find((stop) => stopSays(stop, title)) ?? null);
 	let titleFirst: boolean | null = null;
 	let orderViolations = 0;
 	if (title !== null) {
@@ -344,7 +369,7 @@ export function analyzeScreen(input: A11yInput): A11yScreen {
 		const b = stops[index + 1] as UiNode;
 		// The header leads with its title and then runs back, left slot, right slot, search: by design the title is read
 		// before the controls that sit at its start side.
-		if (layout !== "page" && (a === titleStop || lead.some((label) => sameLabel(a, label))))
+		if (layout !== "page" && (a === titleStop || lead.some((label) => stopSays(a, label))))
 			continue;
 		if (followsInOrder(a, b, direction)) continue;
 		orderViolations++;
@@ -384,7 +409,7 @@ export function analyzeScreen(input: A11yInput): A11yScreen {
 		unreachable,
 		unlabeled,
 		notActionable,
-		stops: stops.map((stop) => spokenLabel(stop) || describe(stop)),
+		stops: stops.map((stop) => spokenLabel(stop) || heldLabel(stop) || describe(stop)),
 		orderViolations,
 		titleFirst,
 		focusLeaks,

@@ -295,6 +295,88 @@ describe("focus stops and order", () => {
 	});
 });
 
+describe("a stop that says nothing itself is judged by what it holds", () => {
+	// The QA slots screen (emulator run of 27 Oct): each segment is a `Pressable`, a clickable Button whose label is the Text inside it.
+	const segment = (label: string, bounds: N["bounds"]): N => ({
+		cls: "android.widget.Button",
+		bounds,
+		clickable: true,
+		focusable: true,
+		children: [{ text: label, bounds: [bounds[0] + 40, bounds[1] + 20, bounds[2] - 40, bounds[3] - 20] }],
+	});
+
+	test("the center slot's segments are the title and its lead, and the stops are named by their text", () => {
+		const slots = [
+			segment("Segment A", [129, 155, 364, 250]),
+			segment("Segment B", [364, 155, 598, 250]),
+			button("Close", [0, 138, 126, 264]),
+			button("Notifications", [954, 138, 1080, 264]),
+			{ text: "Row 1", bounds: [76, 351, 1004, 405] },
+		] satisfies N[];
+		const r = analyze(slots, { title: "Segment A", lead: ["Segment B"], layout: "header" });
+		expect(r.stops.slice(0, 4)).toEqual(["Segment A", "Segment B", "Close", "Notifications"]);
+		expect([r.titleFirst, r.orderViolations, r.findings]).toEqual([true, 0, []]);
+		// The lead is what exempts the segment from the start-side rule: without it the same tree has the violation.
+		expect(analyze(slots, { title: "Segment A", lead: [], layout: "header" }).orderViolations).toBe(1);
+	});
+
+	test("in right-to-left the first segment is at the end of the row and the order holds the same way", () => {
+		const slots = [
+			segment("Segment A", [482, 155, 716, 250]),
+			segment("Segment B", [248, 155, 482, 250]),
+			button("Close", [954, 138, 1080, 264]),
+			button("Notifications", [0, 138, 126, 264]),
+		] satisfies N[];
+		const r = analyze(slots, { title: "Segment A", lead: ["Segment B"], layout: "header", direction: "rtl" });
+		expect([r.titleFirst, r.orderViolations]).toEqual([true, 0]);
+	});
+
+	test("a group whose text is not the title does not stand in for it, and a control inside a group is not part of its label", () => {
+		const r = analyze([segment("Other", [129, 155, 364, 250])], { title: "Segment A", layout: "header" });
+		expect(r.titleFirst).toBe(false);
+		const group: N = {
+			cls: "android.widget.Button",
+			bounds: [0, 100, 600, 300],
+			clickable: true,
+			focusable: true,
+			children: [{ text: "Title", bounds: [10, 110, 200, 160] }, button("Inner", [300, 110, 500, 290])],
+		};
+		expect(analyze([group], { title: "Title", layout: "header" }).titleFirst).toBe(true);
+		expect(analyze([group], { title: "Title, Inner", layout: "header" }).titleFirst).toBe(false);
+	});
+});
+
+describe("an overlay header read after the content", () => {
+	// The QA translucent and large-title screens before EngineScreen.addChildrenForAccessibility: the rows, then the bar.
+	const rows: N[] = [
+		{ text: "Row 1", bounds: [76, 351, 1004, 405] },
+		{ text: "Row 2", bounds: [76, 430, 1004, 484] },
+	];
+	const bar: N[] = [
+		{ desc: "Translucent, Content runs under the bar", bounds: [147, 128, 933, 275] },
+		button("Navigate up", [0, 128, 126, 275]),
+	];
+
+	test("is a title finding and an order finding; the header first has neither", () => {
+		const after = analyze([...rows, ...bar], { title: "Translucent, Content runs under the bar", layout: "header" });
+		expect([after.titleFirst, after.orderViolations]).toEqual([false, 1]);
+		expect(after.findings.map((f) => f.kind)).toEqual(["title", "order"]);
+		const first = analyze([...bar, ...rows], { title: "Translucent, Content runs under the bar", layout: "header" });
+		expect([first.titleFirst, first.orderViolations, first.findings]).toEqual([true, 0, []]);
+	});
+
+	test("a large title that is not in the tree is a title finding; as a heading in the second row it leads", () => {
+		const title = "Native screens";
+		const none = analyze([button("Navigate up", [0, 128, 126, 275]), ...rows], { title, layout: "header" });
+		expect(none.findings.map((f) => f.kind)).toEqual(["title"]);
+		const large = analyze(
+			[{ desc: title, bounds: [42, 275, 1038, 422] }, button("Navigate up", [0, 128, 126, 275]), button("Notifications", [954, 128, 1080, 275]), ...rows],
+			{ title, layout: "header" },
+		);
+		expect([large.titleFirst, large.orderViolations, large.findings]).toEqual([true, 0, []]);
+	});
+});
+
 describe("focus trap", () => {
 	test("labels of the covered screen left in the tree are leaks", () => {
 		const r = analyze([button("Push", [0, 0, 100, 100]), button("Close", [0, 200, 100, 300])], {

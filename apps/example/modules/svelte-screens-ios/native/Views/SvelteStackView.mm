@@ -237,74 +237,30 @@ using namespace facebook::react;
 #endif
   [self navigationController:_controller willShowViewController:_controller.topViewController animated:NO];
   const NSInteger variant = SvelteQAVariant();
-  SvelteQALog([NSString stringWithFormat:@"stack attach nav%04lx variant=%ld parent=%@ parentWindow=%d parentVisible=%d", (unsigned long)((uintptr_t)_controller & 0xffff), (long)variant, NSStringFromClass([parent class]), parent.isViewLoaded && parent.view.window != nil, self.window != nil]);
-  __weak SvelteStackView *weakSelf = self;
-  if (variant & 1) {
-    if (parent.isViewLoaded && parent.view.window != nil) {
-      [_controller beginAppearanceTransition:YES animated:NO];
-      [_controller endAppearanceTransition];
-    }
-  }
-  if (variant & 2) {
-    SvelteAfterNextFrame(^{
-      SvelteStackView *stack = weakSelf;
-      if (stack == nil) return;
-      [stack->_controller.navigationBar setNeedsLayout];
-      [stack->_controller.navigationBar layoutIfNeeded];
-      [stack->_controller.view setNeedsLayout];
-      [stack->_controller.view layoutIfNeeded];
-    });
-  }
-  if (variant & 4) {
-    SvelteAfterNextFrame(^{
-      SvelteStackView *stack = weakSelf;
-      if (stack == nil) return;
-      stack->_controller.navigationBar.prefersLargeTitles = NO;
-      stack->_controller.navigationBar.prefersLargeTitles = YES;
-    });
-  }
-  if (variant & 8) {
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-      SvelteStackView *stack = weakSelf;
-      if (stack == nil) return;
-      [stack->_controller.navigationBar setNeedsLayout];
-      [stack->_controller.navigationBar layoutIfNeeded];
+  SvelteQALog([NSString stringWithFormat:@"stack attach nav%04lx variant=%ld parent=%@ parentWindow=%d inWindow=%d", (unsigned long)((uintptr_t)_controller & 0xffff), (long)variant, NSStringFromClass([parent class]), parent.isViewLoaded && parent.view.window != nil, self.window != nil]);
+  __weak SvelteNavigationController *weakController = _controller;
+  const NSInteger delays[] = {0, 100, 200, 300, 400};
+  for (NSInteger bit = 1; bit <= 4; bit++) {
+    if (!(variant & (1 << (bit - 1)))) continue;
+    const NSInteger delay = delays[bit];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
+      [weakController qaKick:[NSString stringWithFormat:@"+%ldms", (long)delay]];
     });
   }
   if (variant & 16) {
-    SvelteAfterNextFrame(^{
-      SvelteStackView *stack = weakSelf;
-      if (stack == nil) return;
-      [stack->_controller setViewControllers:[stack->_controller.viewControllers copy] animated:NO];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(50 * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
+      [weakController qaKick:@"+50ms"];
     });
   }
-  if (variant & 32) {
-    SvelteAfterNextFrame(^{
-      SvelteStackView *stack = weakSelf;
-      if (stack == nil) return;
-      UINavigationItem *item = stack->_controller.topViewController.navigationItem;
-      NSString *title = item.title;
-      item.title = nil;
-      item.title = title;
-    });
-  }
-  if (variant & 64) {
-    SvelteAfterNextFrame(^{
-      SvelteStackView *stack = weakSelf;
-      if (stack == nil) return;
-      UINavigationItem *item = stack->_controller.topViewController.navigationItem;
-      const UINavigationItemLargeTitleDisplayMode mode = item.largeTitleDisplayMode;
-      item.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
-      item.largeTitleDisplayMode = mode;
-    });
-  }
-  if (variant & 128) {
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-      SvelteStackView *stack = weakSelf;
-      if (stack == nil) return;
-      stack->_controller.navigationBar.prefersLargeTitles = NO;
-      stack->_controller.navigationBar.prefersLargeTitles = YES;
-    });
+  if (variant & 256) {
+    for (NSInteger step = 1; step <= 40; step++) {
+      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(step * 25 * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
+        SvelteNavigationController *controller = weakController;
+        if (controller == nil) return;
+        UIView *host = controller.parentViewController.view;
+        SvelteQALog([NSString stringWithFormat:@"probe nav%04lx t=%ldms large=%d barY=%.0f hostX=%.0f parentTransition=%d", (unsigned long)((uintptr_t)controller & 0xffff), (long)(step * 25), [controller qaHasLargeTitle], controller.navigationBar.frame.origin.y, host != nil ? [host convertPoint:CGPointZero toView:nil].x : -1.0, controller.parentViewController.transitionCoordinator != nil]);
+      });
+    }
   }
 }
 

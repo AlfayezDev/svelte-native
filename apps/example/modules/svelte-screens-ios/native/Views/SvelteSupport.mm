@@ -81,7 +81,7 @@ static NSMutableArray<NSString *> *QALog;
 
 void SvelteQALog(NSString *line) {
   if (QALog == nil) QALog = [NSMutableArray new];
-  if (QALog.count < 120) [QALog addObject:[NSString stringWithFormat:@"%.3f %@", [NSProcessInfo processInfo].systemUptime, line]];
+  if (QALog.count < 500) [QALog addObject:[NSString stringWithFormat:@"%.3f %@", [NSProcessInfo processInfo].systemUptime, line]];
 }
 
 NSArray<NSString *> *SvelteQALogLines(void) {
@@ -102,6 +102,30 @@ NSInteger SvelteQAVariant(void) {
   return _qaLayouts;
 }
 
+static BOOL QAHasLargeTitle(UIView *view) {
+  if ([NSStringFromClass([view class]) isEqualToString:@"_UINavigationBarLargeTitleView"]) return YES;
+  for (UIView *child in view.subviews) {
+    if (QAHasLargeTitle(child)) return YES;
+  }
+  return NO;
+}
+
+- (BOOL)qaHasLargeTitle {
+  return QAHasLargeTitle(self.navigationBar);
+}
+
+- (void)qaKick:(NSString *)why {
+  const NSInteger variant = SvelteQAVariant();
+  const BOOL before = [self qaHasLargeTitle];
+  [self.navigationBar setNeedsLayout];
+  if (!(variant & 64)) [self.navigationBar layoutIfNeeded];
+  if (variant & 128) {
+    [self.view setNeedsLayout];
+    [self.view layoutIfNeeded];
+  }
+  [self qaNote:[NSString stringWithFormat:@"kick %@ large %d -> %d", why, before, [self qaHasLargeTitle]]];
+}
+
 - (void)qaNote:(NSString *)what {
   SvelteQALog([NSString stringWithFormat:@"nav%04lx %@", (unsigned long)((uintptr_t)self & 0xffff), what]);
 }
@@ -112,8 +136,14 @@ NSInteger SvelteQAVariant(void) {
 }
 
 - (void)viewDidAppear:(BOOL)animated {
-  [self qaNote:@"viewDidAppear"];
+  [self qaNote:[NSString stringWithFormat:@"viewDidAppear %d large=%d", animated, [self qaHasLargeTitle]]];
   [super viewDidAppear:animated];
+  if (!(SvelteQAVariant() & 512)) {
+    __weak SvelteNavigationController *weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [weakSelf qaKick:animated ? @"didAppear(animated)" : @"didAppear"];
+    });
+  }
 }
 
 - (void)viewWillDisappear:(BOOL)animated {

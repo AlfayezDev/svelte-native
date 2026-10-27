@@ -56,6 +56,10 @@ void SvelteAfterNextFrame(dispatch_block_t block);
 @interface SvelteNavigationController : UINavigationController
 @property (nonatomic, copy, nullable) void (^didLayout)(void);
 @property (nonatomic, readonly) NSInteger qaLayouts;
+/// QA: whether the bar has built the large title's label view.
+- (BOOL)qaHasLargeTitle;
+/// QA: lays the bar out now (`Documents/svelte-variant.txt` bits 64: the bar only, 128: the controller's view too) and logs whether the large title appeared.
+- (void)qaKick:(NSString *)why;
 @end
 
 /// QA: a line in the process-wide event log (what UIKit and the views did, with the uptime in seconds), read by `qaState`.

@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { flagString, integerFlag, parseFlags } from "../lib/flags.ts";
 import { appProcesses, launchApp, readAppFile, terminateApp } from "../lib/iphone/device.ts";
+import { describeCrashReports, finishCrashWatch, keepCrashFiles, labRunsWithCrashes, withReports } from "../lib/iphone/crash-reports.ts";
 import { notReported, reportedIdentity, withIdentity } from "../lib/iphone/identity.ts";
 import { labFinished, labRunFromIos, parseIosLabResults, type IosLabResults } from "../lib/iphone/lab-results.ts";
 import { currentSource, iosOptions, newToken, startIosSuite, type IosSession } from "../lib/iphone/session.ts";
@@ -61,7 +62,7 @@ export async function iosLabOnce(session: IosSession, run: string, timeoutMs: nu
 		// The app already ended (a finished lab or a crash); there is nothing left to stop.
 	}
 	await writeFile(logPath, raw || "no results were written\n");
-	return { run: labRunFromIos({ results, startedAt, durationMs: Date.now() - startedAt.getTime(), died, logFile: logPath.slice(qaDir.length + 1) }, wanted), results };
+	return { run: labRunFromIos({ results, startedAt, durationMs: Date.now() - startedAt.getTime(), died, pid, logFile: logPath.slice(qaDir.length + 1) }, wanted), results };
 }
 
 export async function iosLab(argv: string[]): Promise<void> {
@@ -92,6 +93,18 @@ export async function iosLab(argv: string[]): Promise<void> {
 	}
 	const installed = reportedIdentity(reports, session.build, "lab");
 	if (reports.length > 0 && installed === null) console.log(`warning: ${notReported}`);
+	// The app is ended: what the phone's crash log gained since the start is this run's. A run whose app aborted (after it wrote its
+	// results, at its teardown) is incomplete; a report no run owns still counts (`lab.fatals`, `log.crashReports`).
+	const found = await finishCrashWatch(session.crashes);
+	const attributed = found.record.crashReports ? labRunsWithCrashes(runs, found.record.crashReports) : null;
+	const crashRecord = attributed ? withReports(found.record, attributed.reports) : found.record;
+	for (const [index, marked] of (attributed?.runs ?? []).entries()) {
+		const before = runs[index];
+		if (!before || marked === before) continue;
+		runs[index] = marked;
+		for (const line of marked.crashes.slice(before.crashes.length)) console.log(`lab run ${index + 1} is incomplete: ${line}`);
+	}
+	for (const line of describeCrashReports(crashRecord)) console.log(line);
 	const idle = runs.flatMap((entry) => entry.scenarios).find((scenario) => scenario.name === "idle")?.periodMs;
 	const device = idle ? { ...session.device, refreshHz: Math.round(1000 / idle) } : session.device;
 	const file: LabFile = {
@@ -104,7 +117,10 @@ export async function iosLab(argv: string[]): Promise<void> {
 		app: withIdentity(session.app, installed),
 		run,
 		runs,
+		...crashRecord,
 	};
 	const name = await writeRun("lab", device.serial, session.startedAt, file);
+	const kept = await keepCrashFiles(found, name);
+	if (kept) console.log(`kept the crash reports in ${kept.slice(qaDir.length + 1)}`);
 	console.log(`wrote qa/runs/${name}.json`);
 }

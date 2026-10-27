@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { integerFlag, parseFlags } from "../lib/flags.ts";
 import { appProcesses, launchApp, readAppFile, terminateApp } from "../lib/iphone/device.ts";
+import { describeCrashReports, finishCrashWatch, keepCrashFiles, launchesWithCrashes, withReports } from "../lib/iphone/crash-reports.ts";
 import { notReported, reportedIdentity, withIdentity } from "../lib/iphone/identity.ts";
 import { currentSource, iosOptions, startIosSuite, type IosSession } from "../lib/iphone/session.ts";
 import { qaDir, runsDir } from "../lib/paths.ts";
@@ -103,7 +104,7 @@ async function launchOnce(session: IosSession, kind: "warm" | "cold", index: num
 		const alive = (await appProcesses(target, session.installed)).includes(pid);
 		launch = { ...launch, crashes: alive ? 0 : 1, error: alive ? error : "the app exited before its first frame" };
 	}
-	return { launch, pid, report: accepted };
+	return { launch: { ...launch, pid }, pid, report: accepted };
 }
 
 /** The process start of the boot report on the phone before the run, if one is there and readable. */
@@ -157,6 +158,16 @@ export async function iosBoot(argv: string[]): Promise<void> {
 			// Already gone.
 		}
 	}
+	// The app is ended: what the phone's crash log gained since the start belongs to a launch (by its pid) or to no run. A launch whose
+	// app aborted keeps its measurement and gains a crash; a report no launch owns still counts (`boot.fatals`, `log.crashReports`).
+	const found = await finishCrashWatch(session.crashes);
+	const attributed = found.record.crashReports ? launchesWithCrashes(launches, found.record.crashReports) : null;
+	const crashRecord = attributed ? withReports(found.record, attributed.reports) : found.record;
+	if (attributed) {
+		launches.warm = attributed.warm;
+		launches.cold = attributed.cold;
+	}
+	for (const line of describeCrashReports(crashRecord)) console.log(line);
 	await mkdir(runsDir, { recursive: true });
 	const logPath = join(runsDir, `boot-${slug(session.device.serial)}-${stamp(session.startedAt)}.log`);
 	await writeFile(logPath, `${logs.join("\n")}\n`);
@@ -172,7 +183,10 @@ export async function iosBoot(argv: string[]): Promise<void> {
 		warm: launches.warm,
 		cold: launches.cold,
 		logFile: logPath.slice(qaDir.length + 1),
+		...crashRecord,
 	};
 	const name = await writeRun("boot", session.device.serial, session.startedAt, file);
+	const kept = await keepCrashFiles(found, name);
+	if (kept) console.log(`kept the crash reports in ${kept.slice(qaDir.length + 1)}`);
 	console.log(`wrote qa/runs/${name}.json`);
 }

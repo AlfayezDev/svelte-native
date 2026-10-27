@@ -41,6 +41,11 @@ describe("a stack navigator below the root", () => {
     expect(plan(inside, target(tree, "/acme/flow/step/1"), {})).toEqual([{ node: "(app)/[slug]/flow", op: "push", href: "/acme/flow/step/1", presentation: "modal" }]);
     const above = { ...inside, "": { entries: ["/acme", "/acme/flow", "/acme"] } };
     expect(plan(above, target(tree, "/acme/flow/step/1"), {})[0]).toEqual({ node: "", op: "popTo", href: "/acme/flow" });
+    // A reset resets the root to the navigator's screen and the nested stack to the target.
+    expect(plan(inside, target(tree, "/acme/flow/step/1"), { reset: true })).toEqual([
+      { node: "", op: "reset", href: "/acme/flow", presentation: "push" },
+      { node: "(app)/[slug]/flow", op: "reset", href: "/acme/flow/step/1", presentation: "modal" },
+    ]);
   });
 });
 

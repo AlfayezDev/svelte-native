@@ -162,19 +162,50 @@ describe("the navigation plan", () => {
     ]);
   });
 
-  test("replaceState replaces the owner's top; reset keeps the owner's base and the target", () => {
+  test("replaceState replaces the owner's top and touches no other stack", () => {
     const deep = { ...state, "(workspace)/[slug]/(tabs)/home": { entries: ["/acme/home", "/acme/home/thread/1"] } };
     expect(plan(deep, target("/acme/home/thread/2"), { replaceState: true })).toEqual([
       { node: "(workspace)/[slug]/(tabs)/home", op: "replace", href: "/acme/home/thread/2", presentation: "push" },
     ]);
-    expect(plan(deep, target("/acme/home/thread/2"), { reset: true })).toEqual([
-      { node: "(workspace)/[slug]/(tabs)/home", op: "reset", href: "/acme/home/thread/2", presentation: "push" },
-    ]);
   });
 
-  test("the same href as the shown entry is a no-op unless reset", () => {
+  test("reset is a new root for the whole chain: every stack above the owner resets to its screen, the root's op first, every tabs node selects, the owner keeps its base and the target", () => {
+    const deep = { ...state, "(workspace)/[slug]/(tabs)/home": { entries: ["/acme/home", "/acme/home/thread/1"] } };
+    expect(plan(deep, target("/acme/home/thread/2"), { reset: true })).toEqual([
+      { node: "", op: "reset", href: "/acme", presentation: "push" },
+      { node: "(workspace)/[slug]/(tabs)", op: "select", pane: "home" },
+      { node: "(workspace)/[slug]/(tabs)/home", op: "reset", href: "/acme/home/thread/2", presentation: "push" },
+    ]);
+    // Another pane: the same, selecting that pane (the page's own presentation applies to the owner).
+    expect(plan(state, target("/acme/inbox/compose"), { reset: true })).toEqual([
+      { node: "", op: "reset", href: "/acme", presentation: "push" },
+      { node: "(workspace)/[slug]/(tabs)", op: "select", pane: "inbox" },
+      { node: "(workspace)/[slug]/(tabs)/inbox", op: "reset", href: "/acme/inbox/compose", presentation: "sheet" },
+    ]);
+    // From a modal over the tabs, and from the screens below them: the root keeps only the tabs screen.
+    const withModal = { ...state, "": { entries: ["/workspaces", "/acme", "/account"] } };
+    expect(plan(withModal, target("/acme"), { reset: true })).toEqual([
+      { node: "", op: "reset", href: "/acme", presentation: "push" },
+      { node: "(workspace)/[slug]/(tabs)", op: "select", pane: "home" },
+      { node: "(workspace)/[slug]/(tabs)/home", op: "reset", href: "/acme/home", presentation: "push" },
+    ]);
+    // A deep link into tabs that are not on the stack: the root resets to a new tabs screen, which starts empty.
+    expect(plan({ "": { entries: ["/auth/login"] } }, target("/acme/inbox/compose"), { reset: true })).toEqual([
+      { node: "", op: "reset", href: "/acme", presentation: "push" },
+      { node: "(workspace)/[slug]/(tabs)", op: "select", pane: "inbox" },
+      { node: "(workspace)/[slug]/(tabs)/inbox", op: "reset", href: "/acme/inbox/compose", presentation: "sheet" },
+    ]);
+    // A root page is its own owner: the root resets to it and nothing else is on the chain.
+    expect(plan(withModal, target("/workspaces"), { reset: true })).toEqual([{ node: "", op: "reset", href: "/workspaces", presentation: "push" }]);
+  });
+
+  test("the same href as the shown entry is a no-op unless reset, which resets the whole chain", () => {
     expect(plan(state, target("/acme/home"), {})).toEqual([]);
-    expect(plan(state, target("/acme/home"), { reset: true })).toEqual([{ node: "(workspace)/[slug]/(tabs)/home", op: "reset", href: "/acme/home", presentation: "push" }]);
+    expect(plan(state, target("/acme/home"), { reset: true })).toEqual([
+      { node: "", op: "reset", href: "/acme", presentation: "push" },
+      { node: "(workspace)/[slug]/(tabs)", op: "select", pane: "home" },
+      { node: "(workspace)/[slug]/(tabs)/home", op: "reset", href: "/acme/home", presentation: "push" },
+    ]);
   });
 
   test("a root page from inside a pane pushes on the root (a modal over the tabs)", () => {

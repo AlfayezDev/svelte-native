@@ -331,7 +331,9 @@ const entriesOf = (state: State, id: string): readonly string[] | undefined => {
 
 /**
  * The operations that take the app to `target`, one per navigator on its chain that has something to do, root first. A navigator
- * pushed by the plan starts empty: what the state says about the ones below it belongs to another instance.
+ * pushed by the plan starts empty: what the state says about the ones below it belongs to another instance. With `reset` every
+ * navigator on the chain has something to do: each stack above the owner resets to its screen of the chain (an instance that is
+ * already there stays), each tabs node selects the pane, and the owner resets to the target (keeping its base page in a pane).
  */
 export function plan(state: State, target: Resolution, navigation: Navigation): Operation[] {
   const operations: Operation[] = [];
@@ -342,7 +344,7 @@ export function plan(state: State, target: Resolution, navigation: Navigation): 
     if (node.kind === "tabs") {
       const selected = fresh ? undefined : state[node.id];
       const shown = (selected && "selected" in selected ? selected.selected : undefined) ?? node.panes[0]?.key;
-      if (step.select !== undefined && step.select !== shown) operations.push({ node: node.id, op: "select", pane: step.select });
+      if (step.select !== undefined && (navigation.reset || step.select !== shown)) operations.push({ node: node.id, op: "select", pane: step.select });
       return;
     }
     // A pane's stack starts with its index page.
@@ -357,6 +359,12 @@ export function plan(state: State, target: Resolution, navigation: Navigation): 
     }
     const screen = fillPath(chain[at + 1].node.path, params);
     const index = entries.lastIndexOf(screen);
+    if (navigation.reset) {
+      // A reset is a new root for the whole chain: the stack keeps only this screen (the instance it has, when it has one).
+      operations.push({ node: node.id, op: "reset", href: screen, presentation: "push" });
+      if (index < 0) fresh = true;
+      return;
+    }
     if (index < 0) {
       operations.push({ node: node.id, op: "push", href: screen, presentation: "push" });
       fresh = true;

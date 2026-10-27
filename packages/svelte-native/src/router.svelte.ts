@@ -115,13 +115,15 @@ function createStack(reportsExit: boolean, initial: readonly NativeLocation[] = 
     get entries() { return entries; },
     get screens() { return screens; },
     /** Makes `next` the live stack. `retire` keeps what it removes on screen until it reports its exit; the user's own dismissal has happened natively already (no `retire`). */
-    set(next: readonly NativeLocation[], retire = reportsExit) {
+    set(next: readonly NativeLocation[], retire = reportsExit): void {
       let retired = false;
       const list: RouterScreen[] = [];
       for (const screen of screens) {
         if (screen.leaving) list.push(screen);
         else if (next.includes(screen.entry)) {
           const canGoBack = canGoBackAt(next.indexOf(screen.entry));
+          // A kept entry can move down the stack (a reset keeps one screen): the first screen of a nested stack navigator goes back through its own screen.
+          if (screen.entry.navigator?.kind === "stack") screen.entry.navigator.stack.setBaseBack(canGoBack);
           list.push(canGoBack === screen.canGoBack ? screen : { ...screen, canGoBack });
         } else if (retire) { list.push({ ...screen, leaving: true }); retired = true; }
       }
@@ -139,6 +141,18 @@ function createStack(reportsExit: boolean, initial: readonly NativeLocation[] = 
           show(screens.filter((screen) => !screen.leaving));
         }, EXIT_TIMEOUT_MS);
       }
+    },
+    /** Whether the first screen of this stack can go back changed: its own screen moved in the stack above (see `set`). */
+    setBaseBack(value: boolean): void {
+      if (value === baseBack) return;
+      baseBack = value;
+      screens = screens.map((screen) => {
+        const index = entries.indexOf(screen.entry);
+        if (screen.leaving || index < 0) return screen;
+        const canGoBack = canGoBackAt(index);
+        if (screen.entry.navigator?.kind === "stack") screen.entry.navigator.stack.setBaseBack(canGoBack);
+        return canGoBack === screen.canGoBack ? screen : { ...screen, canGoBack };
+      });
     },
     /** The user dismissed the screen natively (after its transition): it and the ones above it are gone already, so they are dropped at once. */
     dismissed(key: number): void {
@@ -251,6 +265,12 @@ function createStore(tree: StackNode) {
       const base = target.chain[at - 1]?.select === undefined ? undefined : stack.entries[0];
       if (operation.op === "reset" && base && hrefOf(base) === operation.href) {
         stack.set([base]);
+        continue;
+      }
+      // A reset above the owner keeps the instance of the screen it keeps (its navigator's panes and stacks stay mounted), and drops the rest.
+      const present = owner || operation.op !== "reset" ? undefined : stack.entries[lastIndexOfHref(stack.entries, operation.href)];
+      if (present?.route === route) {
+        stack.set(base ? [base, present] : [present]);
         continue;
       }
       const kept = stack.entries;

@@ -1876,7 +1876,7 @@ test("a pane's stack keeps the exit contract of its own: a popped screen stays u
   } finally { jest.useRealTimers(); console.warn = warn; reset(); }
 });
 
-test("the tabs screen resolves to its first pane; replaceState replaces the pane's top, reset keeps the pane's index page and the route", async () => {
+test("the tabs screen resolves to its first pane; replaceState replaces the pane's top, reset keeps the pane's index page and the tabs screen", async () => {
   withInsets(24);
   try {
     const { router, settled } = await mountTree(96, { initial: "/acme" });
@@ -1901,5 +1901,81 @@ test("the tabs screen resolves to its first pane; replaceState replaces the pane
     router.goto("/workspaces", { reset: true }); // a root page: the root stack is the owner and keeps nothing else
     await settled();
     expect(pathsOf(router)).toEqual(["/workspaces"]);
+  } finally { reset(); }
+});
+
+test("reset is a new root for the whole chain: the root keeps only the tabs screen, the instance it had, with its panes mounted; nothing below or above survives and no arrow shows at the base", async () => {
+  withInsets(24);
+  try {
+    const arrows = (router: TreeRouter) => router.screens.filter((screen) => !screen.leaving).map((screen) => screen.canGoBack);
+    const { router, settled, hardwareBack } = await mountTree(130, { initial: "/workspaces" });
+    router.goto("/acme"); // the workspace over the list, as a link or a plain push leaves it
+    await settled();
+    expect(pathsOf(router)).toEqual(["/workspaces", "/acme"]);
+    const tabs = router.entries[1];
+    const home = paneRouter("/acme/home");
+    const base = home.entries[0];
+
+    calls.length = 0;
+    router.goto("/acme", { reset: true }); // what the workspace list does to open a workspace
+    await settled();
+    expect(pathsOf(router)).toEqual(["/acme"]); // the list is gone
+    expect(router.entries[0]).toBe(tabs); // the same tabs screen: nothing is created, nothing remounts
+    expect(home.entries[0]).toBe(base);
+    expect(paneRouter("/acme/home")).toBe(home);
+    expect(calls.filter((call) => call.startsWith("create"))).toEqual([]);
+    expect(arrows(router)).toEqual([false]); // the tabs screen is the root's only entry
+    expect(arrows(home)).toEqual([false]); // a pane's base has no arrow either
+    expect(hardwareBack()).toBe(false); // Android's back key leaves the app from the home pane's base
+    expect(selectedIndex(130)).toBe("0");
+
+    // A pane's stack, then a modal over the tabs; a reset from the modal to the other pane drops the modal and the stacks it names.
+    router.goto("/acme/home/thread/1");
+    router.goto("/account");
+    await settled();
+    expect(pathsOf(router)).toEqual(["/acme", "/account"]);
+    expect(arrows(router)).toEqual([false, true]);
+    router.goto("/acme/inbox/compose", { reset: true });
+    await settled();
+    expect(pathsOf(router)).toEqual(["/acme"]);
+    expect(router.entries[0]).toBe(tabs);
+    expect(selectedIndex(130)).toBe("1");
+    expect(pathsOf(paneRouter("/acme/inbox"))).toEqual(["/acme/inbox", "/acme/inbox/compose"]);
+    expect(arrows(paneRouter("/acme/inbox"))).toEqual([false, true]); // the sheet's header can go back, the base cannot
+    expect(pathsOf(home)).toEqual(["/acme/home", "/acme/home/thread/1"]); // a pane the chain does not name is left alone
+    expect(arrows(router)).toEqual([false]);
+
+    // A root page resets the root to itself: the workspace goes.
+    router.goto("/workspaces", { reset: true });
+    await settled();
+    expect(pathsOf(router)).toEqual(["/workspaces"]);
+    expect(hardwareBack()).toBe(false);
+  } finally { reset(); }
+});
+
+test("a reset that keeps a nested stack navigator's screen moves it to the root's base: its first screen no longer goes back", async () => {
+  withInsets(24);
+  try {
+    const arrows = (router: TreeRouter) => router.screens.filter((screen) => !screen.leaving).map((screen) => screen.canGoBack);
+    const { router, settled } = await mountTree(131, { initial: "/workspaces" });
+    router.goto("/acme/flow/start");
+    await settled();
+    expect(pathsOf(router)).toEqual(["/workspaces", "/acme/flow"]);
+    const flow = paneRouter("/acme/flow/start");
+    const screen = router.entries[1];
+    expect(arrows(flow)).toEqual([true]); // its first back pops the flow from the root, where the list is below it
+    flow.goto("/acme/flow/done");
+    await settled();
+    flow.goto("/acme/flow/start", { reset: true });
+    await settled();
+    expect(pathsOf(router)).toEqual(["/acme/flow"]); // the list below it is gone, the flow is the root's base
+    expect(router.entries[0]).toBe(screen);
+    expect(pathsOf(flow)).toEqual(["/acme/flow/start"]);
+    expect(paneRouter("/acme/flow/start")).toBe(flow);
+    expect(arrows(router)).toEqual([false]);
+    expect(arrows(flow)).toEqual([false]); // nothing below the flow to go back to
+    flow.goto("/acme/flow/done");
+    await settled();
+    expect(arrows(flow)).toEqual([false, true]);
   } finally { reset(); }
 });

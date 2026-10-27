@@ -2,7 +2,8 @@
   import Router from "../src/Router.svelte";
   import { createRouter, useRouter } from "../src/router.svelte.ts";
   import Page from "./route-screen-page.svelte";
-  const routes = ["/t/a", "/t/b", "/t/n/[id]"].map((path) => ({ id: path, path, load: () => Promise.resolve({ component: Page, layouts: [] }) }));
+  import { page, stackOf } from "./tree.ts";
+  const routes = stackOf(["/t/a", "/t/b", "/t/n/[id]"].map((path) => page(path, path, () => Promise.resolve({ component: Page, layouts: [] }))), "tab-a");
   const outer = useRouter();
   let active = $state(true);
   const router = createRouter(routes, "/t/a", { scope: "tab-a", active: () => active });

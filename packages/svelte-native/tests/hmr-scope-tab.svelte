@@ -1,6 +1,7 @@
 <script>
   import { createRouter } from "../src/router.svelte.ts";
-  const routes = ["/t/a", "/t/b", "/t/c"].map((path) => ({ id: path, path, load: () => Promise.resolve({ component: null, layouts: [] }) }));
+  import { page, stackOf } from "./tree.ts";
+  const routes = stackOf(["/t/a", "/t/b", "/t/c"].map((path) => page(path, path, () => Promise.resolve({ component: null, layouts: [] }))), "tab-a");
   const router = createRouter(routes, "/t/a", { scope: "tab-a" });
   globalThis.__tabRouter = router;
 </script>

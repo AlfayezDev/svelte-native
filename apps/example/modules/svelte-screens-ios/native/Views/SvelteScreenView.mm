@@ -51,6 +51,10 @@ using namespace facebook::react;
   [self.screenView controllerDidLayout];
 }
 
+- (BOOL)accessibilityPerformEscape {
+  return [self.screenView accessibilityPerformEscape];
+}
+
 - (UIStatusBarStyle)preferredStatusBarStyle {
   SvelteScreenView *screen = self.screenView;
   return screen != nil ? [screen statusBarStyle] : UIStatusBarStyleDefault;
@@ -240,12 +244,20 @@ static std::string WithoutActivityState(const std::string &nativeId) {
   }
   if (_spec.animation == svelte::kAnimationFade && !_spec.isSheet()) presented.modalTransitionStyle = UIModalTransitionStyleCrossDissolve;
   presented.modalPresentationCapturesStatusBarAppearance = YES;
-  // VoiceOver must not reach what is under a modal or a sheet: its view hides its siblings from the accessibility tree, unless the
-  // sheet has no backdrop, where the screen behind stays interactive.
-  presented.view.accessibilityViewIsModal = !(_spec.isSheet() && _spec.noBackdrop != 0);
   presented.presentationController.delegate = self;
   [self applyDismissalPolicy];
   [self applySheetConfiguration];
+}
+
+- (void)markPresentationModal {
+  if (_spec.isSheet() && _spec.noBackdrop != 0) return;
+  UIViewController *presented = self.presentedController;
+  presented.view.accessibilityViewIsModal = YES;
+  // VoiceOver skips the siblings of a modal view: UIKit holds the presented content in a view of the presentation's container
+  // (next to its dimming view), and the container itself sits next to the presenter's view in the window. The container is the
+  // view whose siblings are the screen under the sheet.
+  presented.presentationController.presentedView.accessibilityViewIsModal = YES;
+  presented.presentationController.containerView.accessibilityViewIsModal = YES;
 }
 
 // The swipe-down gesture and a tap outside dismiss a sheet unless the screen opted out; a screen without `gestureEnabled` stays too.
@@ -300,6 +312,25 @@ static std::string WithoutActivityState(const std::string &nativeId) {
 
 - (void)presentationControllerDidDismiss:(UIPresentationController *)presentationController {
   [self presentationDidEndByUser];
+}
+
+// VoiceOver's escape (a two finger scrub) dismisses the sheet or modal on top as a swipe down would, and pops a pushed screen
+// as the back button does: JavaScript hears `topDismissed`, not a removal it asked for. A presentation that forbids the swipe
+// (`gestureEnabled` false, a sheet with `dismissible` false) forbids this too; so does `nativeBackButtonDismissalEnabled` false.
+- (BOOL)accessibilityPerformEscape {
+  if (_spec.presentation == svelte::kPush) return !_unmounted && !_userDismissed && [_stack popByEscape:self];
+  UIViewController *presented = self.presentedController;
+  if (_unmounted || _userDismissed || presented.presentingViewController == nil ||
+      presented.presentedViewController != nil || presented.isModalInPresentation) {
+    return NO;
+  }
+  __weak SvelteScreenView *weakSelf = self;
+  [presented dismissViewControllerAnimated:YES
+                                completion:^{
+                                  SvelteScreenView *screen = weakSelf;
+                                  if (screen != nil && !screen->_unmounted) [screen presentationDidEndByUser];
+                                }];
+  return YES;
 }
 
 - (void)presentationDidEndByUser {

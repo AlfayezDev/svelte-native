@@ -20,6 +20,9 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)screenWasRemovedByUIKit:(SvelteScreenView *)screen;
 /// The user dismissed a presented screen (a swipe, a tap outside a sheet).
 - (void)modalWasDismissedByUser:(SvelteScreenView *)screen;
+/// The accessibility escape on a pushed screen: pops it as the back button does, if the screen is the top of a stack of two or
+/// more, nothing moves and the screen has not turned its native back off.
+- (BOOL)popByEscape:(SvelteScreenView *)screen;
 @end
 
 NS_ASSUME_NONNULL_END

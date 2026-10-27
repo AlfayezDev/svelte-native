@@ -461,6 +461,7 @@ using namespace facebook::react;
                          if (stack == nil) return;
                          [stack->_presented addObject:next];
                          [stack->_presentedScreens addObject:screen];
+                         [screen markPresentationModal];
                          [stack presentScreens:screens from:index + 1 above:next completion:completion];
                        }];
 }
@@ -495,6 +496,13 @@ using namespace facebook::react;
   SvelteScheduleLifecycle(SvelteLifecycleDismissed, ^{
     [screen emitDismissedWithCount:count];
   });
+}
+
+- (BOOL)popByEscape:(SvelteScreenView *)screen {
+  if (_controller.viewControllers.count < 2 || _controller.transitionCoordinator != nil || _controller.topViewController != screen.controller) return NO;
+  if ([screen spec].nativeBack == 0) return NO;
+  [_controller popViewControllerAnimated:YES];
+  return YES;
 }
 
 #pragma mark - Navigation controller and gestures

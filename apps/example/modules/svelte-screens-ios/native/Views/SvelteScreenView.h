@@ -45,6 +45,10 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)update;
 /// Configures the presented controller (style, detents, dismissal) before the stack presents it.
 - (void)preparePresentation;
+/// Once the screen is presented: VoiceOver must not reach the screen under it, so the presentation's container (a sibling of the
+/// presenter's view in the window) and the view in it that holds the presented content hide their siblings from the accessibility
+/// tree (unless a sheet has no backdrop).
+- (void)markPresentationModal;
 - (void)applyBarConfigurationTo:(UINavigationController *)navigation animated:(BOOL)animated;
 - (void)markUnmounted;
 - (void)markUserDismissed;

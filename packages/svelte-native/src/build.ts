@@ -30,7 +30,7 @@ const PRESENTATIONS = ["push", "modal", "transparentModal", "sheet", "formSheet"
 const NAVIGATORS = ["stack", "tabs"] as const;
 
 /** The route files under `src/routes` (`+mobile.svelte` pages and `+layout.mobile.svelte` layouts) with the literals they export, in a stable order. */
-async function routeFiles(routesRoot: string): Promise<RouteFile[]> {
+export async function routeFiles(routesRoot: string): Promise<RouteFile[]> {
   const paths: string[] = [];
   async function walk(directory: string) {
     for (const item of await readdir(directory, { withFileTypes: true })) {

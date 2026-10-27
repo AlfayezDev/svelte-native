@@ -45,6 +45,7 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/Utilities/BackHandler": "const handlers = (globalThis.__backHandlers ??= []); export default { addEventListener: (name, handler) => { handlers.push(handler); return { remove() { const at = handlers.indexOf(handler); if (at >= 0) handlers.splice(at, 1); } }; } };",
   "react-native/Libraries/Linking/Linking": "const handlers = (globalThis.__linkHandlers ??= []); export default { addEventListener: (name, handler) => { handlers.push(handler); return { remove() { const at = handlers.indexOf(handler); if (at >= 0) handlers.splice(at, 1); } }; }, getInitialURL: () => { globalThis.__initialURLReads = (globalThis.__initialURLReads ?? 0) + 1; return Promise.resolve(null); } };",
   "react-native/Libraries/Image/resolveAssetSource": "export default (source) => source && typeof source === 'object' && 'uri' in source ? { scale: 1, ...source } : null;",
+  "react-native/Libraries/Components/Keyboard/Keyboard": "export default { isVisible: () => false, dismiss() {} };",
   "react-native/Libraries/NativeComponent/ViewConfig": "export const createViewConfig = (partial) => partial;",
   "react-native/Libraries/Components/View/ViewNativeComponent": "export {};",
   "react-native/Libraries/Text/TextNativeComponent": "export {};",
@@ -491,6 +492,27 @@ async function mountScreen(surface: number) {
   const header = () => ofKind(roots[surface], "header")[0];
   return { m, app, screen, header, flush: () => settle(m), tree: () => roots[surface] };
 }
+
+test("a Screen inside a Modal is a screen of its own and leaves the title of the screen around the Modal alone; inTabPane is true only inside a pane", async () => {
+  withInsets(24);
+  try {
+    const m = await load("modal-screen-fixture.svelte");
+    calls.length = 0; roots = {};
+    (globalThis as { __paneProbe?: Record<string, boolean> }).__paneProbe = {};
+    const app = m.startSurface(40, m.Fixture, {}) as { setOpen: (value: boolean) => void };
+    await settle(m);
+    const titles = () => ofKind(roots[40], "header").map((node) => decodeURIComponent(String(parseNativeID(String(node.props.nativeID))?.pairs.t)));
+    expect(titles()).toEqual(["Outer", "Inner"]); // the inner title is the modal's own header, not the outer screen's
+    const inner = ofTestID(roots[40], "inner")[0];
+    expect(ofKind(roots[40], "screen")).toHaveLength(2);
+    expect(ofKind(ofKind(roots[40], "screen")[0].children, "screen")).toHaveLength(1); // the modal's screen sits inside the outer one, in the Modal's content
+    expect(inner).toBeDefined();
+    expect((globalThis as { __paneProbe?: Record<string, boolean> }).__paneProbe).toEqual({ screen: false, pane: true });
+    app.setOpen(false);
+    await settle(m);
+    expect(titles()[0]).toBe("Outer");
+  } finally { reset(); }
+});
 
 test("a Screen renders its native-screen, an opt-in header sized from the insets store, and a content view", async () => {
   withInsets(24);

@@ -63,6 +63,11 @@ export function useToolbar(): { readonly height: number; readonly inset: number 
   return getContext<{ readonly height: number; readonly inset: number } | undefined>(TOOLBAR_CONTEXT) ?? { height: 0, inset: 0 };
 }
 
+/** Whether the caller sits in a tab pane: the pane ends at the tab bar, which already covers the bottom inset, so content there pads no bottom inset of its own. */
+export function inTabPane(): boolean {
+  return getContext<boolean | undefined>(PANE_CONTEXT) === true;
+}
+
 /** A source `resolveAssetSource` accepts: a `require`d asset or `{ uri }`. Drawn as a template image, tinted by the bar. */
 export type TabIconSource = number | { uri: string };
 export type TabItem = {

@@ -1,5 +1,19 @@
 {
   "version": 1,
+  "devices": {
+    "R58Y90KNGRP": {
+      "role": "phone",
+      "name": "Samsung A16"
+    },
+    "E74A5608-BF8E-5806-8699-1605F82ADED9": {
+      "role": "phone",
+      "name": "iPhone SE 3"
+    },
+    "localhost:5555": {
+      "role": "lab",
+      "name": "OVH emulator, software GL"
+    }
+  },
   "scenarios": {
     "android": [
       "idle",
@@ -109,7 +123,10 @@
         "ios": {
           "max": 0
         }
-      }
+      },
+      "roles": [
+        "phone"
+      ]
     },
     {
       "id": "lab.scenarios.missing",
@@ -137,7 +154,10 @@
         "ios": {
           "max": 250
         }
-      }
+      },
+      "roles": [
+        "phone"
+      ]
     },
     {
       "id": "boot.cold.p90",
@@ -151,7 +171,10 @@
         "ios": {
           "max": 250
         }
-      }
+      },
+      "roles": [
+        "phone"
+      ]
     },
     {
       "id": "boot.warm.samples",
@@ -165,7 +188,10 @@
         "ios": {
           "min": 30
         }
-      }
+      },
+      "roles": [
+        "phone"
+      ]
     },
     {
       "id": "boot.cold.samples",
@@ -179,7 +205,10 @@
         "ios": {
           "min": 30
         }
-      }
+      },
+      "roles": [
+        "phone"
+      ]
     },
     {
       "id": "boot.warm.failed",
@@ -193,7 +222,10 @@
         "ios": {
           "max": 0
         }
-      }
+      },
+      "roles": [
+        "phone"
+      ]
     },
     {
       "id": "boot.cold.failed",
@@ -207,7 +239,10 @@
         "ios": {
           "max": 0
         }
-      }
+      },
+      "roles": [
+        "phone"
+      ]
     },
     {
       "id": "boot.warm.jsTotal.p90",
@@ -221,7 +256,10 @@
         "ios": {
           "max": 100
         }
-      }
+      },
+      "roles": [
+        "phone"
+      ]
     },
     {
       "id": "boot.js.samples",
@@ -235,7 +273,10 @@
         "ios": {
           "min": 30
         }
-      }
+      },
+      "roles": [
+        "phone"
+      ]
     },
     {
       "id": "frames.droppedPct",
@@ -251,7 +292,10 @@
           "max": 0,
           "round": 1
         }
-      }
+      },
+      "roles": [
+        "phone"
+      ]
     },
     {
       "id": "frames.maxPeriodRatio",
@@ -265,7 +309,10 @@
         "ios": {
           "max": 1.5
         }
-      }
+      },
+      "roles": [
+        "phone"
+      ]
     },
     {
       "id": "frames.maxMs",
@@ -279,7 +326,10 @@
         "ios": {
           "max": 33
         }
-      }
+      },
+      "roles": [
+        "phone"
+      ]
     },
     {
       "id": "list.virtual300.mountMs",
@@ -293,7 +343,10 @@
         "ios": {
           "max": 15
         }
-      }
+      },
+      "roles": [
+        "phone"
+      ]
     },
     {
       "id": "log.fatals",

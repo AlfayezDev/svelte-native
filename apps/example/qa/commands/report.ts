@@ -1,12 +1,15 @@
 import { writeFile } from "node:fs/promises";
 import { readFile } from "node:fs/promises";
 import {
+	checkGatesFile,
 	evaluate,
 	renderTable,
 	tally,
+	tallyByDevice,
 	type GatesFile,
 	type GateRow,
 	type ReportDevice,
+	type Role,
 } from "../lib/gates.ts";
 import { reachPct } from "../lib/a11y.ts";
 import { deviceMetrics, missingScenarios, runFatals } from "../lib/metrics.ts";
@@ -128,6 +131,9 @@ export type ReportFile = {
 
 type ReportDeviceEntry = {
 	platform: "android" | "ios";
+	/** What the device is for (`devices` in `gates.json`): a gate that is not for its role is informational. Null: not listed, every gate judges it. */
+	role: Role | null;
+	name: string | null;
 	info: DeviceInfo;
 	app: AppInfo;
 	lab: LabSummary | null;
@@ -282,24 +288,31 @@ export function sessionFindings(
 }
 
 export async function loadGates(): Promise<GatesFile> {
-	return JSON.parse(await readFile(gatesPath, "utf8")) as GatesFile;
+	const file = JSON.parse(await readFile(gatesPath, "utf8")) as GatesFile;
+	checkGatesFile(file);
+	return file;
 }
 
-export function reportDevices(report: ReportFile): Record<string, ReportDevice> {
+/** The devices of a report as the gates see them. Roles come from `gates.json` as it is now, so editing them needs no new measurement. */
+export function reportDevices(report: ReportFile, gates: GatesFile): Record<string, ReportDevice> {
 	return Object.fromEntries(
 		Object.entries(report.devices).map(([serial, entry]) => [
 			serial,
-			{ platform: entry.platform, metrics: entry.metrics },
+			{ platform: entry.platform, role: gates.devices[serial]?.role ?? null, metrics: entry.metrics },
 		]),
 	);
 }
 
 export function printVerdict(rows: GateRow[], all: boolean): boolean {
 	console.log(renderTable(rows, all));
-	const { gates, ok } = tally(rows);
+	const { gates, informational, ok } = tally(rows);
 	console.log(
-		`\n${gates.pass} gates pass, ${gates.fail} fail, ${gates.notMeasured} not measured (a gate that was not measured fails)`,
+		`\n${gates.pass} gates pass, ${gates.fail} fail, ${gates.notMeasured} not measured (a gate that was not measured fails)${informational > 0 ? `; ${informational} informational, not counted` : ""}`,
 	);
+	for (const entry of tallyByDevice(rows))
+		console.log(
+			`  ${entry.device}${entry.role ? ` (${entry.role})` : ""}: ${entry.gates.pass} pass, ${entry.gates.fail} fail, ${entry.gates.notMeasured} not measured${entry.informational > 0 ? `, ${entry.informational} informational` : ""}`,
+		);
 	return ok;
 }
 
@@ -353,6 +366,8 @@ export async function report(): Promise<void> {
 		const pinned = gates.scenarios[platform];
 		devices[serial] = {
 			platform,
+			role: gates.devices[serial]?.role ?? null,
+			name: gates.devices[serial]?.name ?? null,
 			info: reference.device,
 			app: reference.app,
 			lab: lab && labPath ? summarizeLab(lab, labPath.slice(labPath.lastIndexOf("runs/")), pinned) : null,
@@ -424,7 +439,7 @@ export async function report(): Promise<void> {
 		Object.fromEntries(
 			Object.entries(devices).map(([serial, entry]) => [
 				serial,
-				{ platform: entry.platform, metrics: entry.metrics },
+				{ platform: entry.platform, role: entry.role, metrics: entry.metrics },
 			]),
 		),
 	);
@@ -443,7 +458,7 @@ export async function report(): Promise<void> {
 	for (const [serial, entry] of Object.entries(devices)) {
 		const m = entry.metrics;
 		console.log(
-			`${serial}: ${entry.info.model} (${entry.info.kind}, ${entry.info.abi}, ${entry.info.refreshHz ?? "?"} Hz)`,
+			`${serial}: ${entry.info.model} (${entry.info.kind}, ${entry.info.abi}, ${entry.info.refreshHz ?? "?"} Hz)${entry.role ? ` [${entry.role}${entry.name ? `: ${entry.name}` : ""}]` : ""}`,
 		);
 		console.log(
 			`  boot warm p90 ${m["boot.warm.p90"] ?? "-"} ms (${m["boot.warm.samples"] ?? 0} samples, ${m["boot.warm.retried"] ?? 0} retried), cold p90 ${m["boot.cold.p90"] ?? "-"} ms (${m["boot.cold.samples"] ?? 0} samples, ${m["boot.cold.retried"] ?? 0} retried)`,

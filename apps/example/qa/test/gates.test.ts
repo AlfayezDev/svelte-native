@@ -2,12 +2,15 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+	checkGatesFile,
+	deviceRoles,
 	evaluate,
 	formatBar,
 	groupRows,
 	judge,
 	renderTable,
 	tally,
+	tallyByDevice,
 	type Gate,
 	type GatesFile,
 	type ReportDevice,
@@ -138,6 +141,7 @@ describe("tally and rendering", () => {
 		expect(tally(rows)).toEqual({
 			rows: { pass: 1, fail: 0, notMeasured: 1 },
 			gates: { pass: 1, fail: 0, notMeasured: 1 },
+			informational: 0,
 			ok: false,
 		});
 		expect(tally(rows.filter((row) => row.platform === "android")).ok).toBe(true);
@@ -152,6 +156,7 @@ describe("tally and rendering", () => {
 		expect(tally(rows)).toEqual({
 			rows: { pass: 1, fail: 2, notMeasured: 0 },
 			gates: { pass: 0, fail: 1, notMeasured: 0 },
+			informational: 0,
 			ok: false,
 		});
 	});
@@ -213,6 +218,98 @@ describe("tally and rendering", () => {
 	});
 });
 
+describe("device roles", () => {
+	const frames: Gate = {
+		id: "frames.droppedPct",
+		title: "Dropped",
+		unit: "%",
+		metric: "frames.*.droppedPct",
+		bar: { android: { max: 0, round: 1 } },
+		roles: ["phone"],
+	};
+	const memory: Gate = {
+		id: "memory.leakedViews",
+		title: "Leaked",
+		unit: "views",
+		metric: "memory.leakedViews",
+		bar: { android: { max: 0 } },
+	};
+	const metrics = { "frames.animation-48.droppedPct": 48.3, "frames.idle.droppedPct": 0, "memory.leakedViews": 2 };
+	const device = (role: ReportDevice["role"]): Record<string, ReportDevice> => ({
+		x: { platform: "android", role, metrics },
+	});
+
+	test("a gate not for the device's role is informational: the value shows, nothing fails", () => {
+		const rows = evaluate([frames], device("lab"));
+		expect(rows.map((row) => [row.metric, row.measured, row.verdict, row.role])).toEqual([
+			["frames.animation-48.droppedPct", 48.3, "informational", "lab"],
+			["frames.idle.droppedPct", 0, "informational", "lab"],
+		]);
+		const table = renderTable(rows, false).split("\n");
+		expect(table[1]).toMatch(/^frames\.droppedPct\s+android\s+x \(lab\)\s+<= 0 %\s+48\.3 \(animation-48\)\s+informational$/);
+		expect(tally(rows)).toEqual({
+			rows: { pass: 0, fail: 0, notMeasured: 0 },
+			gates: { pass: 0, fail: 0, notMeasured: 0 },
+			informational: 1,
+			ok: false,
+		});
+	});
+	test("a phone is judged by the same gate", () => {
+		const rows = evaluate([frames], device("phone"));
+		expect(rows.map((row) => row.verdict)).toEqual(["fail", "pass"]);
+		expect(tally(rows).gates).toEqual({ pass: 0, fail: 1, notMeasured: 0 });
+	});
+	test("a metric the lab never produced is informational too, never not measured", () => {
+		const rows = evaluate([frames], { x: { platform: "android", role: "lab", metrics: {} } });
+		expect(rows).toEqual([expect.objectContaining({ metric: "frames.*.droppedPct", measured: null, verdict: "informational" })]);
+		expect(tally(rows).gates).toEqual({ pass: 0, fail: 0, notMeasured: 0 });
+	});
+	test("a device with no role, or one the table does not list, gets every gate", () => {
+		for (const role of [null, undefined]) {
+			const rows = evaluate([frames], device(role));
+			expect(rows.map((row) => row.verdict)).toEqual(["fail", "pass"]);
+		}
+		const file = { devices: { a: { role: "lab", name: "A" } } } as unknown as GatesFile;
+		expect(deviceRoles(file, ["a", "unknown"])).toEqual({ a: "lab", unknown: null });
+	});
+	test("a gate without roles is judged for every role", () => {
+		for (const role of ["phone", "lab"] as const)
+			expect(evaluate([memory], device(role)).map((row) => row.verdict)).toEqual(["fail"]);
+	});
+	test("a lab device's timing gates leave the summary; the others still count", () => {
+		const rows = evaluate([frames, memory], device("lab"));
+		expect(tally(rows)).toEqual({
+			rows: { pass: 0, fail: 1, notMeasured: 0 },
+			gates: { pass: 0, fail: 1, notMeasured: 0 },
+			informational: 1,
+			ok: false,
+		});
+		expect(tallyByDevice(rows)).toEqual([
+			{ device: "x", role: "lab", gates: { pass: 0, fail: 1, notMeasured: 0 }, informational: 1 },
+		]);
+		const clean = evaluate([frames, memory], { x: { platform: "android", role: "lab", metrics: { ...metrics, "memory.leakedViews": 0 } } });
+		expect(tally(clean).ok).toBe(true);
+	});
+	test("the same gate is informational on one device and a failure on another", () => {
+		const rows = evaluate([frames], {
+			"localhost:5555": { platform: "android", role: "lab", metrics },
+			R58Y90KNGRP: { platform: "android", role: "phone", metrics },
+		});
+		expect(tallyByDevice(rows)).toEqual([
+			{ device: "localhost:5555", role: "lab", gates: { pass: 0, fail: 0, notMeasured: 0 }, informational: 1 },
+			{ device: "R58Y90KNGRP", role: "phone", gates: { pass: 0, fail: 1, notMeasured: 0 }, informational: 0 },
+		]);
+		expect(tally(rows).ok).toBe(false);
+	});
+	test("checkGatesFile refuses a role that would silently exempt a device", () => {
+		const file = (patch: Partial<GatesFile> & { gates?: Gate[] }): GatesFile => ({ version: 1, devices: {}, scenarios: { android: [], ios: [] }, gates: [], ...patch });
+		expect(() => checkGatesFile(file({ gates: [{ ...frames, roles: ["phones" as "phone"] }] }))).toThrow(/unknown role "phones"/);
+		expect(() => checkGatesFile(file({ gates: [{ ...frames, roles: [] }] }))).toThrow(/empty roles list/);
+		expect(() => checkGatesFile(file({ devices: { x: { role: "emulator" as "lab", name: "x" } } }))).toThrow(/unknown role "emulator"/);
+		expect(() => checkGatesFile(file({ devices: { x: { role: "lab", name: "x" } }, gates: [frames, memory] }))).not.toThrow();
+	});
+});
+
 describe("gates.json", () => {
 	const file = JSON.parse(
 		readFileSync(join(import.meta.dirname, "..", "gates.json"), "utf8"),
@@ -238,6 +335,46 @@ describe("gates.json", () => {
 		expect(bar("checks.passed")).toEqual({ android: { min: 28 }, ios: { min: 28 } });
 		expect(bar("log.fatals")).toEqual({ android: { max: 0 }, ios: { max: 0 } });
 		expect(bar("log.engineWarnings")).toEqual({ android: { max: 0 }, ios: { max: 0 } });
+	});
+	test("devices: the Samsung and the iPhone are phones, the OVH emulator is the lab", () => {
+		expect(file.devices).toEqual({
+			R58Y90KNGRP: { role: "phone", name: "Samsung A16" },
+			"E74A5608-BF8E-5806-8699-1605F82ADED9": { role: "phone", name: "iPhone SE 3" },
+			"localhost:5555": { role: "lab", name: "OVH emulator, software GL" },
+		});
+		expect(() => checkGatesFile(file)).not.toThrow();
+	});
+	test("the timing gates are for phones only; everything else, memory and leaks included, is for both roles", () => {
+		const timing = [
+			"lab.scenarios.failed",
+			"boot.warm.p90",
+			"boot.cold.p90",
+			"boot.warm.samples",
+			"boot.cold.samples",
+			"boot.warm.failed",
+			"boot.cold.failed",
+			"boot.warm.jsTotal.p90",
+			"boot.js.samples",
+			"frames.droppedPct",
+			"frames.maxPeriodRatio",
+			"frames.maxMs",
+			"list.virtual300.mountMs",
+		];
+		for (const gate of file.gates)
+			expect([gate.id, gate.roles]).toEqual([gate.id, timing.includes(gate.id) ? ["phone"] : undefined]);
+		for (const id of timing) expect(file.gates.some((gate) => gate.id === id)).toBe(true);
+	});
+	test("the emulator's frame gate reads informational, the Samsung's fails, a device nobody listed is judged", () => {
+		const metrics = { "frames.animation-48-square.droppedPct": 48.3 };
+		const judged = (serial: string, platform: "android" | "ios" = "android") =>
+			evaluate(
+				file.gates.filter((gate) => gate.id === "frames.droppedPct"),
+				{ [serial]: { platform, role: deviceRoles(file, [serial])[serial] ?? null, metrics } },
+				platform,
+			).map((row) => row.verdict);
+		expect(judged("localhost:5555")).toEqual(["informational"]);
+		expect(judged("R58Y90KNGRP")).toEqual(["fail"]);
+		expect(judged("emulator-5556")).toEqual(["fail"]);
 	});
 	test("memory is gated, and with no measurement it fails as not measured", () => {
 		const rows = evaluate(file.gates, android({}), "android").filter(

@@ -67,7 +67,8 @@ export async function gates(argv: string[]): Promise<void> {
 	const problems = reportProblems(reportFile, await newestRunFiles(reportFile), platform);
 	console.log(`report generated ${reportFile.generatedAt} (${age(new Date(reportFile.generatedAt))} ago)`);
 	for (const problem of problems) console.log(`FAIL: ${problem}`);
-	const rows = evaluate((await loadGates()).gates, reportDevices(reportFile), platform);
+	const gatesFile = await loadGates();
+	const rows = evaluate(gatesFile.gates, reportDevices(reportFile, gatesFile), platform);
 	const ok = printVerdict(rows, values.all === true);
 	if (problems.length > 0) console.log(`\n${problems.length} problem(s) with the report itself: the verdict above is not one that can pass`);
 	process.exitCode = ok && problems.length === 0 ? 0 : 1;

@@ -2,23 +2,45 @@ import type { Metric, Metrics, Platform } from "./types.ts";
 
 /** `max` and `min` bound a number (`round` decimals first); `equals` is for a measurement that is a text. */
 export type Bar = { max?: number; min?: number; round?: number; equals?: string };
+/**
+ * What a device is for. A `phone` is real hardware: its frame, boot and list timings are the production numbers. A `lab` is a
+ * device that exists for the engine checks, crash volume, soak, parity pixels, accessibility and resilience (the OVH emulator
+ * under software GL): its timings say nothing about production.
+ */
+export type Role = "phone" | "lab";
+export const roles: readonly Role[] = ["phone", "lab"];
+
 export type Gate = {
 	id: string;
 	title: string;
 	unit: string;
 	metric: string;
 	bar: Partial<Record<Platform, Bar>>;
+	/** The roles the gate judges; for a device of another role the row is `informational`. Absent: every role. */
+	roles?: Role[];
 };
-/** `scenarios` is the fixed list of scenarios a full `checks,quick` lab run produces, per platform: a run missing any is not that run. */
-export type GatesFile = { version: 1; scenarios: Record<Platform, string[]>; gates: Gate[] };
+export type DeviceRole = { role: Role; name: string };
+/**
+ * `scenarios` is the fixed list of scenarios a full `checks,quick` lab run produces, per platform: a run missing any is not that run.
+ * `devices` maps a serial to its role; a serial not listed has no role, and every gate judges it.
+ */
+export type GatesFile = {
+	version: 1;
+	devices: Record<string, DeviceRole>;
+	scenarios: Record<Platform, string[]>;
+	gates: Gate[];
+};
 
-export type Verdict = "pass" | "fail" | "not measured";
+/** `informational`: the gate is not for the device's role. The value is shown; the row is neither a pass nor a failure nor a gap. */
+export type Verdict = "pass" | "fail" | "not measured" | "informational";
 
 export type GateRow = {
 	id: string;
 	title: string;
 	platform: Platform;
 	device: string | null;
+	/** The device's role; null for a device with none (or no device). */
+	role: Role | null;
 	metric: string;
 	unit: string;
 	bar: Bar;
@@ -26,7 +48,30 @@ export type GateRow = {
 	verdict: Verdict;
 };
 
-export type ReportDevice = { platform: Platform; metrics: Metrics };
+export type ReportDevice = { platform: Platform; role?: Role | null; metrics: Metrics };
+
+/** A malformed table is an error, not a silent exemption: an unknown role in `roles` would make every device informational. */
+export function checkGatesFile(file: GatesFile): void {
+	const known = new Set<string>(roles);
+	for (const [serial, entry] of Object.entries(file.devices))
+		if (!known.has(entry.role)) throw new Error(`gates.json: device ${serial} has the unknown role ${JSON.stringify(entry.role)}`);
+	for (const gate of file.gates) {
+		if (gate.roles === undefined) continue;
+		if (gate.roles.length === 0) throw new Error(`gates.json: gate ${gate.id} has an empty roles list (omit it to judge every role)`);
+		for (const role of gate.roles)
+			if (!known.has(role)) throw new Error(`gates.json: gate ${gate.id} names the unknown role ${JSON.stringify(role)}`);
+	}
+}
+
+/** The role of each device a gates file names, for the devices of a report. */
+export function deviceRoles(file: GatesFile, serials: string[]): Record<string, Role | null> {
+	return Object.fromEntries(serials.map((serial) => [serial, file.devices[serial]?.role ?? null]));
+}
+
+/** A gate applies to a device with no role, and to one whose role the gate lists (no list: every role). */
+export function appliesTo(gate: Gate, role: Role | null | undefined): boolean {
+	return gate.roles === undefined || role === null || role === undefined || gate.roles.includes(role);
+}
 
 function matcher(pattern: string): RegExp {
 	const escaped = pattern.split("*").map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&"));
@@ -47,6 +92,8 @@ export function judge(bar: Bar, measured: Metric): Verdict {
 /**
  * Every gate against every device of each platform it names. A platform with no device in the
  * report, or a metric the device never produced, is "not measured", which fails: nothing is skipped.
+ * A gate whose `roles` leave out the role of a device is still evaluated for it, but its verdict is
+ * "informational": the value is shown and nothing counts. A device with no role gets every gate.
  * `*` in a metric matches one name segment and expands to one row per matching metric.
  */
 export function evaluate(
@@ -66,6 +113,7 @@ export function evaluate(
 				rows.push({
 					...base,
 					device: null,
+					role: null,
 					metric: gate.metric,
 					measured: null,
 					verdict: "not measured",
@@ -73,6 +121,8 @@ export function evaluate(
 				continue;
 			}
 			for (const [serial, device] of platformDevices) {
+				const role = device.role ?? null;
+				const applies = appliesTo(gate, role);
 				const pattern = matcher(gate.metric);
 				const keys = gate.metric.includes("*")
 					? Object.keys(device.metrics)
@@ -83,9 +133,10 @@ export function evaluate(
 					rows.push({
 						...base,
 						device: serial,
+						role,
 						metric: gate.metric,
 						measured: null,
-						verdict: "not measured",
+						verdict: applies ? "not measured" : "informational",
 					});
 					continue;
 				}
@@ -94,9 +145,10 @@ export function evaluate(
 					rows.push({
 						...base,
 						device: serial,
+						role,
 						metric: key,
 						measured,
-						verdict: judge(bar, measured),
+						verdict: applies ? judge(bar, measured) : "informational",
 					});
 				}
 			}
@@ -109,6 +161,7 @@ export type RowGroup = {
 	id: string;
 	platform: Platform;
 	device: string | null;
+	role: Role | null;
 	bar: Bar;
 	unit: string;
 	measured: Metric;
@@ -140,15 +193,18 @@ export function groupRows(rows: GateRow[]): RowGroup[] {
 						: a,
 				)
 			: first;
-		const verdict: Verdict = members.some((row) => row.verdict === "fail")
-			? "fail"
-			: members.some((row) => row.verdict === "not measured")
-				? "not measured"
-				: "pass";
+		const verdict: Verdict = members.every((row) => row.verdict === "informational")
+			? "informational"
+			: members.some((row) => row.verdict === "fail")
+				? "fail"
+				: members.some((row) => row.verdict === "not measured")
+					? "not measured"
+					: "pass";
 		return {
 			id: first.id,
 			platform: first.platform,
 			device: first.device,
+			role: first.role,
 			bar: first.bar,
 			unit: first.unit,
 			measured: worstRow.measured,
@@ -176,6 +232,11 @@ export function formatValue(value: Metric, bar: Bar): string {
 	return value.toFixed(digits);
 }
 
+/** The serial, and the role of a device that has one: `localhost:5555 (lab)`. */
+function deviceCell(device: string | null, role: Role | null): string {
+	return device === null ? "-" : role === null ? device : `${device} (${role})`;
+}
+
 export function renderTable(rows: GateRow[], all: boolean): string {
 	const lines: string[][] = [["gate", "platform", "device", "bar", "measured", "verdict"]];
 	if (all) {
@@ -183,7 +244,7 @@ export function renderTable(rows: GateRow[], all: boolean): string {
 			lines.push([
 				row.metric,
 				row.platform,
-				row.device ?? "-",
+				deviceCell(row.device, row.role),
 				formatBar(row.bar, row.unit),
 				formatValue(row.measured, row.bar),
 				row.verdict,
@@ -193,11 +254,13 @@ export function renderTable(rows: GateRow[], all: boolean): string {
 			const measured =
 				formatValue(group.measured, group.bar) + (group.worst ? ` (${group.worst})` : "");
 			const verdict =
-				group.total > 1 ? `${group.verdict} ${group.ok}/${group.total}` : group.verdict;
+				group.total > 1 && group.verdict !== "informational"
+					? `${group.verdict} ${group.ok}/${group.total}`
+					: group.verdict;
 			lines.push([
 				group.id,
 				group.platform,
-				group.device ?? "-",
+				deviceCell(group.device, group.role),
 				formatBar(group.bar, group.unit),
 				measured,
 				verdict,
@@ -224,11 +287,32 @@ function count(verdicts: Verdict[]): Tally {
 	return { pass: of("pass"), fail: of("fail"), notMeasured: of("not measured") };
 }
 
-/** Rows are the finest unit (one per scenario for a wildcard gate); gates are the lines the table prints. */
-export function tally(rows: GateRow[]): { rows: Tally; gates: Tally; ok: boolean } {
+const counted = (verdicts: Verdict[]): Verdict[] => verdicts.filter((verdict) => verdict !== "informational");
+
+/**
+ * Rows are the finest unit (one per scenario for a wildcard gate); gates are the lines the table prints. Informational
+ * rows are in neither tally (`informational` is how many gate lines were left out): they are not a pass, a failure or a gap.
+ */
+export function tally(rows: GateRow[]): { rows: Tally; gates: Tally; informational: number; ok: boolean } {
+	const judged = rows.filter((row) => row.verdict !== "informational");
+	const groups = groupRows(rows).map((group) => group.verdict);
 	return {
-		rows: count(rows.map((row) => row.verdict)),
-		gates: count(groupRows(rows).map((group) => group.verdict)),
-		ok: rows.length > 0 && rows.every((row) => row.verdict === "pass"),
+		rows: count(counted(rows.map((row) => row.verdict))),
+		gates: count(counted(groups)),
+		informational: groups.length - counted(groups).length,
+		ok: judged.length > 0 && judged.every((row) => row.verdict === "pass"),
 	};
+}
+
+export type DeviceTally = { device: string; role: Role | null; gates: Tally; informational: number };
+
+/** The gate counts of each device, in the order the devices first appear in the rows. A row with no device is left out. */
+export function tallyByDevice(rows: GateRow[]): DeviceTally[] {
+	const devices = new Map<string, GateRow[]>();
+	for (const row of rows)
+		if (row.device !== null) devices.set(row.device, [...(devices.get(row.device) ?? []), row]);
+	return [...devices].map(([device, own]) => {
+		const { gates, informational } = tally(own);
+		return { device, role: (own[0] as GateRow).role, gates, informational };
+	});
 }

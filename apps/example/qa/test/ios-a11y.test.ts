@@ -1,0 +1,199 @@
+import { describe, expect, test } from "bun:test";
+import { analyzeIosScreen, chromeElements, isActionable, spoken, voiceOverOrder, type IosDump, type IosElement, type IosA11yInput, type UiKitState } from "../lib/iphone/a11y.ts";
+
+const screen = { width: 375, height: 667, scale: 2 };
+
+function element(fields: Partial<IosElement> & { frame: [number, number, number, number] }): IosElement {
+	return { class: "RCTParagraphComponentView", traits: ["staticText"], explicit: false, group: 0, ...fields };
+}
+const button = (label: string, frame: [number, number, number, number], fields: Partial<IosElement> = {}) =>
+	element({ class: "RCTViewComponentView", label, traits: ["button"], frame, ...fields });
+const text = (label: string, frame: [number, number, number, number], fields: Partial<IosElement> = {}) =>
+	element({ label, frame, ...fields });
+
+function dump(elements: IosElement[], rtl = false): IosDump {
+	return { screen, rtl, elements, modalViews: [], movingViews: [] };
+}
+
+function analyze(elements: IosElement[], fields: Partial<IosA11yInput> = {}) {
+	return analyzeIosScreen({ dump: dump(elements, fields.direction === "rtl"), direction: "ltr", title: null, lead: [], controls: [], scrolled: [], hidden: [], layout: "page", ...fields });
+}
+
+describe("iOS accessibility checks", () => {
+	test("a button with a label and the trait passes every check", () => {
+		const result = analyze([button("Run all checks", [16, 100, 343, 48])], { controls: ["Run all checks"] });
+		expect(result.interactive).toBe(1);
+		expect([result.reachable, result.labeled, result.actionable]).toEqual([1, 1, 1]);
+		expect([result.unreachable, result.unlabeled, result.notActionable, result.orderViolations]).toEqual([0, 0, 0, 0]);
+	});
+
+	test("a declared control that VoiceOver reads as plain text is not actionable; one that is missing is unreachable", () => {
+		const result = analyze([text("Save", [16, 100, 100, 44])], { controls: ["Save", "Cancel"] });
+		expect(result.notActionable).toBe(1);
+		expect(result.unreachable).toBe(1);
+		expect(result.findings.map((finding) => finding.kind).sort()).toEqual(["notActionable", "unreachable"]);
+	});
+
+	test("an element with no label, value or hint is unlabeled and unreachable", () => {
+		const result = analyze([button("", [16, 100, 44, 44], { label: undefined })]);
+		expect(result.unlabeled).toBe(1);
+		expect(result.unreachable).toBe(1);
+	});
+
+	test("a disabled control is counted but not checked; one outside the screen is clipped", () => {
+		const result = analyze([button("Save", [16, 100, 100, 44], { traits: ["button", "notEnabled"] }), button("Below", [16, 900, 100, 44])]);
+		expect(result.disabled).toBe(1);
+		expect(result.clipped).toBe(1);
+		expect(result.notActionable + result.unreachable + result.unlabeled).toBe(0);
+	});
+
+	test("a text field is actionable by its class", () => {
+		const field = element({ class: "RCTUITextField", label: "Name", traits: [], frame: [16, 100, 343, 52] });
+		expect(isActionable(field)).toBe(true);
+		expect(analyze([field]).actionable).toBe(1);
+	});
+
+	test("label and value are spoken together", () => {
+		expect(spoken(element({ label: "Volume", value: "50 %", frame: [0, 0, 1, 1] }))).toBe("Volume, 50 %");
+	});
+});
+
+describe("VoiceOver order", () => {
+	test("positions decide: rows from the top, the start edge first (the right edge in right-to-left)", () => {
+		const a = text("a", [200, 100, 50, 20]);
+		const b = text("b", [16, 100, 50, 20]);
+		const c = text("c", [16, 300, 50, 20]);
+		const d = text("d", [16, 200, 50, 20]);
+		expect(voiceOverOrder([c, a, d, b], "ltr").map((entry) => entry.label)).toEqual(["b", "a", "d", "c"]);
+		expect(voiceOverOrder([c, a, d, b], "rtl").map((entry) => entry.label)).toEqual(["a", "b", "d", "c"]);
+	});
+
+	test("what a container orders itself keeps its order, as a group at the position of its first element", () => {
+		const first = text("first", [16, 500, 50, 20], { explicit: true, group: 1 });
+		const second = text("second", [16, 100, 50, 20], { explicit: true, group: 1 });
+		const loose = text("loose", [16, 300, 50, 20]);
+		expect(voiceOverOrder([second, first, loose], "ltr").map((entry) => entry.label)).toEqual(["second", "first", "loose"]);
+	});
+
+	test("an explicit order that runs against the layout is an order violation", () => {
+		const lower = text("lower", [16, 400, 100, 20], { explicit: true, group: 1 });
+		const upper = text("upper", [16, 100, 100, 20], { explicit: true, group: 1 });
+		const result = analyze([lower, upper]);
+		expect(result.orderViolations).toBe(1);
+	});
+});
+
+describe("title and focus trap", () => {
+	const header = [
+		button("Back", [8, 20, 60, 44]),
+		text("Screen 1", [130, 20, 115, 44], { traits: ["header"] }),
+		button("Notifications", [300, 20, 60, 44]),
+		text("Row", [16, 120, 343, 44]),
+	];
+
+	test("the title is first when it is a heading and nothing below the header comes before it", () => {
+		const result = analyze(header, { title: "Screen 1", layout: "header" });
+		expect(result.titleFirst).toBe(true);
+		expect(result.orderViolations).toBe(0);
+	});
+
+	test("a title that is not exposed as a heading is not first, whatever its position", () => {
+		const plain = header.map((entry) => (entry.label === "Screen 1" ? { ...entry, traits: ["staticText"] } : entry));
+		const result = analyze(plain, { title: "Screen 1", layout: "header" });
+		expect(result.titleFirst).toBe(false);
+		expect(result.findings.some((finding) => finding.kind === "title" && finding.detail.includes("heading"))).toBe(true);
+	});
+
+	test("content a container lists before the title puts the title second", () => {
+		const content = text("Row", [16, 300, 343, 44], { explicit: true, group: 1 });
+		const title = text("Screen 1", [130, 20, 115, 44], { traits: ["header"], explicit: true, group: 1 });
+		const result = analyze([content, title], { title: "Screen 1", layout: "header" });
+		expect(result.titleFirst).toBe(false);
+		expect(result.findings.some((finding) => finding.kind === "title" && finding.detail.includes("comes before"))).toBe(true);
+	});
+
+	test("a missing title is a finding", () => {
+		const result = analyze([text("Something else", [16, 100, 100, 20])], { title: "Screen 1" });
+		expect(result.titleFirst).toBe(false);
+	});
+
+	test("labels of the covered screen still in the dump are focus leaks", () => {
+		const result = analyze([text("Two detents", [16, 300, 343, 30], { traits: ["header"] }), button("Header slots and search", [16, 100, 343, 48])], { hidden: ["Header slots and search", "Modal"], layout: "sheet", title: "Two detents" });
+		expect(result.focusLeaks).toBe(1);
+		const clean = analyze([text("Two detents", [16, 300, 343, 30], { traits: ["header"] })], { hidden: ["Header slots and search"], layout: "sheet", title: "Two detents" });
+		expect(clean.focusLeaks).toBe(0);
+	});
+
+	test("a heading of the sheet that reads like a control under it is not a leak", () => {
+		const result = analyze([text("Form sheet", [16, 100, 343, 30], { traits: ["header"] }), text("Name", [16, 140, 343, 30])], { hidden: ["Form sheet"], layout: "sheet", title: "Form sheet" });
+		expect(result.focusLeaks).toBe(0);
+	});
+
+	test("a title the center slot replaces is one of the slot's controls and needs no heading trait", () => {
+		const result = analyze([button("Segment A", [130, 20, 60, 44]), text("Row", [16, 120, 343, 44])], { title: "Segment A", layout: "header", controls: ["Segment A"] });
+		expect(result.titleFirst).toBe(true);
+	});
+
+	test("a header's lead stops (a center slot) before the start-side controls are not order violations", () => {
+		const result = analyze(
+			[button("Close", [8, 20, 60, 44]), button("Segment A", [130, 20, 60, 44]), button("Segment B", [200, 20, 60, 44])],
+			{ title: "Segment A", lead: ["Segment B"], layout: "header", controls: ["Close", "Segment A", "Segment B"] },
+		);
+		expect(result.orderViolations).toBe(0);
+	});
+});
+
+describe("UIKit's own chrome", () => {
+	const state = (root: UiKitState["root"], rtl = false): UiKitState => ({ screen, safeArea: [20, 0, 0, 0], rtl, root });
+	const stack = (items: object[], extra: object = {}) => ({
+		class: "SvelteNavigationController",
+		shown: true,
+		navigation: { barHidden: false, barFrame: [0, 0, 375, 108], topIndex: items.length - 1, items },
+		...extra,
+	});
+
+	test("the bar contributes a heading for the title and a back button when there is a screen to go back to", () => {
+		const elements = chromeElements(state({ class: "Root", children: [stack([{ title: "Root" }, { title: "Screen 1", hidesBackButton: false }])] }));
+		expect(elements.map((entry) => [entry.label, entry.traits.join("+")])).toEqual([["Screen 1", "staticText+header"], ["Back", "button"]]);
+		const first = chromeElements(state({ class: "Root", children: [stack([{ title: "Root" }])] }));
+		expect(first.map((entry) => entry.label)).toEqual(["Root"]);
+		const hidden = chromeElements(state({ class: "Root", children: [stack([{ title: "A" }, { title: "B", hidesBackButton: true }])] }));
+		expect(hidden.map((entry) => entry.label)).toEqual(["B"]);
+	});
+
+	test("a hidden bar, a hidden tab pane and the controllers under a presented screen contribute nothing", () => {
+		expect(chromeElements(state({ class: "Root", children: [{ ...stack([{ title: "A" }]), navigation: { barHidden: true, barFrame: [0, 0, 375, 0], topIndex: 0, items: [{ title: "A" }] } }] }))).toEqual([]);
+		expect(chromeElements(state({ class: "Root", children: [stack([{ title: "Pane" }], { shown: false })] }))).toEqual([]);
+		const presented = chromeElements(state({ class: "Root", children: [stack([{ title: "Under" }])], presented: { class: "Sheet", shown: true } }));
+		expect(presented).toEqual([]);
+	});
+
+	test("tab items carry their own label or the title and badge, the selected one is selected, and the order mirrors in right-to-left", () => {
+		const tabs = { class: "Tabs", shown: true, tabs: { selectedIndex: 1, barFrame: [0, 600, 375, 67], items: [{ title: "Home", badge: "" }, { title: "Inbox", badge: "99+", accessibilityLabel: "Inbox, 99+" }, { title: "Me" }] } };
+		const ltr = chromeElements(state({ class: "Root", children: [tabs] }));
+		expect(ltr.map((entry) => entry.label)).toEqual(["Home, new items", "Inbox, 99+", "Me"]);
+		expect(ltr[1]?.traits).toEqual(["button", "selected"]);
+		expect(ltr.map((entry) => Math.round(entry.frame[0]))).toEqual([0, 125, 250]);
+		const rtl = chromeElements(state({ class: "Root", children: [tabs] }, true));
+		expect(rtl.map((entry) => Math.round(entry.frame[0]))).toEqual([250, 125, 0]);
+	});
+
+	test("a screen's title and its tab bar are found through the chrome, not the dump", () => {
+		const dumpOnly = analyze([text("Row", [16, 120, 343, 44])], { title: "Screen 1", layout: "header" });
+		expect(dumpOnly.titleFirst).toBe(false);
+		const merged = analyzeIosScreen({
+			dump: dump([text("Row", [16, 120, 343, 44])]),
+			state: state({ class: "Root", children: [stack([{ title: "Root" }, { title: "Screen 1" }])] }),
+			direction: "ltr",
+			title: "Screen 1",
+			lead: [],
+			controls: ["Back"],
+			scrolled: [],
+			hidden: [],
+			layout: "header",
+		});
+		expect(merged.titleFirst).toBe(true);
+		expect(merged.unreachable).toBe(0);
+		expect(merged.actionable).toBe(1);
+	});
+});

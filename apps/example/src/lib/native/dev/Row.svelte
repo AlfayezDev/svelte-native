@@ -21,7 +21,7 @@
     return () => remove(id);
   });
 </script>
-<View style={{ gap: 8, borderWidth: 1, borderColor: theme.border, borderRadius: 12, padding: 12 }}>
+<View style={{ gap: 8, borderWidth: 1, borderColor: theme.border, borderRadius: 12, padding: 12, overflow: "hidden" }}>
   <Text style={{ color: theme.foreground }}>{row.name} · instance {instance} · taps {taps}</Text>
   <Field label={`Draft ${id}`} bind:value={draft} />
   <Button label={`Tap ${id}`} variant="secondary" onPress={() => { taps++; }} />

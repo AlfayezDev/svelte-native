@@ -51,6 +51,10 @@ using namespace facebook::react;
   [self.screenView controllerDidLayout];
 }
 
+- (BOOL)accessibilityPerformEscape {
+  return [self.screenView accessibilityPerformEscape];
+}
+
 - (UIStatusBarStyle)preferredStatusBarStyle {
   SvelteScreenView *screen = self.screenView;
   return screen != nil ? [screen statusBarStyle] : UIStatusBarStyleDefault;
@@ -63,6 +67,14 @@ using namespace facebook::react;
 
 @end
 
+/// The `nativeID` of a screen without its `a=<activityState>` pair (always the first one, record 110).
+static std::string WithoutActivityState(const std::string &nativeId) {
+  const size_t at = nativeId.find(";a=");
+  if (at == std::string::npos) return nativeId;
+  const size_t end = nativeId.find(';', at + 1);
+  return end == std::string::npos ? nativeId.substr(0, at) : nativeId.substr(0, at) + nativeId.substr(end);
+}
+
 @implementation SvelteScreenView {
   SvelteScreenController *_controller;
   SvelteNavigationController *_wrapper;
@@ -73,7 +85,9 @@ using namespace facebook::react;
   svelte::SvelteScreenShadowNode::ConcreteState::Shared _state;
   CGSize _reportedSize;
   BOOL _unmounted;
+  NSMutableDictionary<NSString *, NSDictionary *> *_qaDetents;
   BOOL _userDismissed;
+  BOOL _exitReported;
   BOOL _needsUpdate;
   BOOL _initialDetentApplied;
   BOOL _visible;
@@ -122,16 +136,27 @@ using namespace facebook::react;
   _userDismissed = YES;
 }
 
+- (BOOL)exitReported {
+  return _exitReported;
+}
+
 #pragma mark - Component view protocol
 
 - (void)updateProps:(const Props::Shared &)props oldProps:(const Props::Shared &)oldProps {
   [super updateProps:props oldProps:oldProps];
   const auto &viewProps = static_cast<const ViewProps &>(*props);
   if (_specParsed && viewProps.nativeId == _nativeId) return;
+  const BOOL onlyActivity = _specParsed && WithoutActivityState(viewProps.nativeId) == WithoutActivityState(_nativeId);
   _nativeId = viewProps.nativeId;
   _specParsed = YES;
   _spec = svelte::parseScreen(_nativeId);
+  if (_spec.activityState != 0) _exitReported = NO;
   _controller.animation = _spec.animation;
+  if (onlyActivity) {
+    // A screen JavaScript sent away (`activityState` 0) is taken off the stack; its bar, scroll view and sheet stay as they were.
+    [_stack setNeedsFlush];
+    return;
+  }
   [_controller setNeedsStatusBarAppearanceUpdate];
   [self setNeedsUpdate];
 }
@@ -225,6 +250,19 @@ using namespace facebook::react;
   [self applySheetConfiguration];
 }
 
+- (void)markPresentationModal {
+  // The detents were resolved before the sheet had a window: resolve them again against it.
+  if (_spec.isSheet()) [self.presentedController.sheetPresentationController invalidateDetents];
+  if (_spec.isSheet() && _spec.noBackdrop != 0) return;
+  UIViewController *presented = self.presentedController;
+  presented.view.accessibilityViewIsModal = YES;
+  // VoiceOver skips the siblings of a modal view: UIKit holds the presented content in a view of the presentation's container
+  // (next to its dimming view), and the container itself sits next to the presenter's view in the window. The container is the
+  // view whose siblings are the screen under the sheet.
+  presented.presentationController.presentedView.accessibilityViewIsModal = YES;
+  presented.presentationController.containerView.accessibilityViewIsModal = YES;
+}
+
 // The swipe-down gesture and a tap outside dismiss a sheet unless the screen opted out; a screen without `gestureEnabled` stays too.
 - (void)applyDismissalPolicy {
   UIViewController *presented = self.presentedController;
@@ -252,7 +290,24 @@ using namespace facebook::react;
                                                  // `auto` is the height Yoga gave the screen's content.
                                                  SvelteScreenView *screen = weakSelf;
                                                  const double content = screen != nil ? screen->_layoutMetrics.frame.size.height : 0;
-                                                 return svelte::detentHeight(fraction, context.maximumDetentValue, content);
+                                                 // The contract's space is the window below its top safe area (Android's stack below the status
+                                                 // bar); UIKit's largest detent (`maximumDetentValue`: on iOS 26 a floating sheet stops lower)
+                                                 // only limits it. Before the sheet is in a window the largest detent stands in.
+                                                 UIWindow *window = screen.window;
+                                                 const double available = window != nil ? window.bounds.size.height - window.safeAreaInsets.top : context.maximumDetentValue;
+                                                 const double height = svelte::detentHeight(fraction, available, context.maximumDetentValue, content);
+                                                 if (screen != nil) {
+                                                   if (screen->_qaDetents == nil) screen->_qaDetents = [NSMutableDictionary new];
+                                                   screen->_qaDetents[[@(index) stringValue]] = @{
+                                                     @"fraction" : @(fraction),
+                                                     @"available" : @(available),
+                                                     @"maximum" : @(context.maximumDetentValue),
+                                                     @"content" : @(content),
+                                                     @"inWindow" : @(window != nil),
+                                                     @"height" : @(height),
+                                                   };
+                                                 }
+                                                 return height;
                                                }]];
     }
     _appliedDetents = _spec.detents;
@@ -279,13 +334,46 @@ using namespace facebook::react;
   [self presentationDidEndByUser];
 }
 
+// VoiceOver's escape (a two finger scrub) dismisses the sheet or modal on top as a swipe down would, and pops a pushed screen
+// as the back button does: JavaScript hears `topDismissed`, not a removal it asked for. A presentation that forbids the swipe
+// (`gestureEnabled` false, a sheet with `dismissible` false) forbids this too; so does `nativeBackButtonDismissalEnabled` false.
+- (BOOL)accessibilityPerformEscape {
+  if (_spec.presentation == svelte::kPush) return !_unmounted && !_userDismissed && [_stack popByEscape:self];
+  UIViewController *presented = self.presentedController;
+  if (_unmounted || _userDismissed || presented.presentingViewController == nil ||
+      presented.presentedViewController != nil || presented.isModalInPresentation) {
+    return NO;
+  }
+  __weak SvelteScreenView *weakSelf = self;
+  [presented dismissViewControllerAnimated:YES
+                                completion:^{
+                                  SvelteScreenView *screen = weakSelf;
+                                  if (screen != nil && !screen->_unmounted) [screen presentationDidEndByUser];
+                                }];
+  return YES;
+}
+
 - (void)presentationDidEndByUser {
   _userDismissed = YES;
   [_stack modalWasDismissedByUser:self];
 }
 
+- (NSDictionary *)qaDetents {
+  return [_qaDetents copy] ?: @{};
+}
+
 - (void)emitDismissedWithCount:(NSInteger)count {
   SvelteEmit(_eventEmitter, "dismissed", folly::dynamic::object("dismissCount", (int)count));
+}
+
+- (void)emitExited {
+  if (_exitReported) return;
+  _exitReported = YES;
+  __weak SvelteScreenView *weakSelf = self;
+  SvelteScheduleLifecycle(SvelteLifecycleExited, ^{
+    SvelteScreenView *screen = weakSelf;
+    if (screen != nil) SvelteEmit(screen->_eventEmitter, "exited", folly::dynamic::object());
+  });
 }
 
 - (void)reportHeaderMetrics {

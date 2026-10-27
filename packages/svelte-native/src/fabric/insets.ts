@@ -14,7 +14,8 @@ type EngineModule = Partial<Emitter> & { getInsets?: () => InsetsEvent | null };
 
 /** Subscribes to insets changes and delivers the current value first when the engine already has one. Returns the unsubscribe function, or null without the engine module. */
 export function subscribeInsets(listener: (event: InsetsEvent) => void): (() => void) | null {
-  const module = requireOptionalNativeModule<EngineModule>("SvelteEngine");
+  // Android: the engine module reports them; iOS: `SvelteInsets` (apps/platform/modules/svelte-insets-ios) has the same surface and is not the engine.
+  const module = requireOptionalNativeModule<EngineModule>("SvelteEngine") ?? requireOptionalNativeModule<EngineModule>("SvelteInsets");
   if (!module) return null;
   const emitter = (typeof module.addListener === "function" ? module : new EventEmitter(module as never)) as unknown as Emitter;
   const subscription = emitter.addListener("insets", listener);

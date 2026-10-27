@@ -10,12 +10,12 @@ import type { NativeNode } from "../src/renderer.ts";
 type Event = { top: number; right: number; bottom: number; left: number; keyboardHeight: number; keyboardVisible: boolean; frame: { x: number; y: number; width: number; height: number } };
 const event = (patch: Partial<Event> = {}): Event => ({ top: 24, right: 0, bottom: 34, left: 0, keyboardHeight: 0, keyboardVisible: false, frame: { x: 0, y: 0, width: 400, height: 800 }, ...patch });
 
-const stub = { listener: null as null | ((e: Event) => void), current: null as Event | null, removed: 0 };
+const stub = { listener: null as null | ((e: Event) => void), current: null as Event | null, removed: 0, available: ["SvelteEngine"] };
 (globalThis as { __insetsStub?: unknown }).__insetsStub = stub;
 const stubs: Record<string, string> = {
   "expo-modules-core": `const stub = globalThis.__insetsStub;
     export const EventEmitter = class {};
-    export const requireOptionalNativeModule = () => ({ getInsets: () => stub.current, addListener: (name, listener) => { if (name === "insets") stub.listener = listener; return { remove() { stub.removed++; } }; } });`,
+    export const requireOptionalNativeModule = (name) => !stub.available.includes(name) ? null : ({ getInsets: () => stub.current, addListener: (name, listener) => { if (name === "insets") stub.listener = listener; return { remove() { stub.removed++; } }; } });`,
 };
 
 async function load() {
@@ -26,7 +26,7 @@ async function load() {
         import { mergeHostProps } from '../src/native-props.ts';
         import { insets, resetInsets } from '../src/insets.svelte.ts';
         import { mount, tick, unmount } from 'svelte';
-        export { avoidingStyle, flattenStyle, keyboardOverlap, safeAreaStyle } from '../src/fabric/insets.ts';
+        export { avoidingStyle, flattenStyle, keyboardOverlap, safeAreaStyle, subscribeInsets } from '../src/fabric/insets.ts';
         export { Fixture, renderer, NativeNode, mergeHostProps, insets, resetInsets, mount, tick, unmount };`,
       resolveDir: import.meta.dirname,
     },
@@ -132,4 +132,21 @@ test("padding math", async () => {
   expect(avoidingStyle("height", { flex: 1 }, 0, 700)).toEqual({ flex: 1 });
   expect(avoidingStyle("height", { flex: 1 }, 200, 700)).toEqual([{ flex: 1 }, { height: 500, flex: 0 }]);
   expect(avoidingStyle(undefined, { flex: 1 }, 200, 700)).toEqual({ flex: 1 });
+});
+
+test("the insets come from the engine module on Android and from SvelteInsets on iOS; without either there are none", async () => {
+  const m = await load();
+  const seen: Event[] = [];
+  try {
+    stub.available = ["SvelteInsets"];
+    stub.current = event({ top: 47, bottom: 34 });
+    const unsubscribe = m.subscribeInsets((value: Event) => seen.push(value));
+    expect(unsubscribe).not.toBeNull();
+    expect(seen).toEqual([event({ top: 47, bottom: 34 })]);
+    stub.listener?.(event({ keyboardHeight: 300, keyboardVisible: true }));
+    expect(seen.at(-1)?.keyboardHeight).toBe(300);
+    unsubscribe?.();
+    stub.available = [];
+    expect(m.subscribeInsets(() => {})).toBeNull();
+  } finally { stub.available = ["SvelteEngine"]; stub.current = null; }
 });

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Screen, ScrollView, Text, View, useRouter } from "@rasheed/svelte-native";
+  import { Pressable, Screen, ScrollView, Text, View, useRouter } from "@rasheed/svelte-native";
   import Button from "../components/Button.svelte";
   import { theme } from "../state.svelte.ts";
   /** A screen of one tab's own stack in the screens lab: `/[tab]` is the tab's root, `/[tab]/[depth]` a screen pushed on it. */
@@ -11,12 +11,14 @@
 </script>
 
 {#snippet actions()}
-  <Text accessibilityRole="button" style={{ color: theme.foreground, fontSize: 15, paddingHorizontal: 16, minHeight: 48, textAlignVertical: "center" }} onPress={() => root.goto("/__dev/screens?mode=header&depth=1", { presentation: "modal" })}>Modal</Text>
+  <Pressable accessibilityRole="button" accessibilityLabel="Modal" style={{ paddingHorizontal: 16, minHeight: 48, justifyContent: "center" }} onPress={() => root.goto("/__dev/screens?mode=header&depth=1", { presentation: "modal" })}>
+    <Text style={{ color: theme.foreground, fontSize: 15 }}>Modal</Text>
+  </Pressable>
 {/snippet}
 <Screen title={depth === 0 ? name : `${name} · ${depth}`} subtitle={`This tab's own stack, level ${depth + 1}`} headerRight={actions} style={{ backgroundColor: theme.background }}>
   <ScrollView contentContainerStyle={{ padding: 16, gap: 10, direction: theme.direction }}>
     {#each Array.from({ length: 16 }, (_, index) => index + 1) as row (row)}
-      <View style={{ padding: 12, borderRadius: 10, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.surface }}>
+      <View style={{ padding: 12, borderRadius: 10, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.surface, overflow: "hidden" }}>
         <Text style={{ color: theme.foreground, fontSize: 15 }}>{name} row {row}</Text>
       </View>
     {/each}

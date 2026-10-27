@@ -186,14 +186,18 @@ function verticalOverlap(a: Rect, b: Rect): number {
  * Whether stop `b` may follow stop `a` in reading order. Stacked stops (one inside or over the other) are left alone,
  * stops in one row run from the start edge to the end, and otherwise the next stop is not above the previous one.
  */
-function followsInOrder(a: UiNode, b: UiNode, direction: Direction): boolean {
-	if (overlapRatio(a.bounds, b.bounds) > 0.5) return true;
-	if (verticalOverlap(a.bounds, b.bounds) >= 0.5) {
+export function followsInOrderRect(a: Rect, b: Rect, direction: Direction): boolean {
+	if (overlapRatio(a, b) > 0.5) return true;
+	if (verticalOverlap(a, b) >= 0.5) {
 		return direction === "ltr"
-			? centerX(b.bounds) >= centerX(a.bounds) - tolerance
-			: centerX(b.bounds) <= centerX(a.bounds) + tolerance;
+			? centerX(b) >= centerX(a) - tolerance
+			: centerX(b) <= centerX(a) + tolerance;
 	}
-	return centerY(b.bounds) >= centerY(a.bounds) - tolerance;
+	return centerY(b) >= centerY(a) - tolerance;
+}
+
+function followsInOrder(a: UiNode, b: UiNode, direction: Direction): boolean {
+	return followsInOrderRect(a.bounds, b.bounds, direction);
 }
 
 type Element = { node: UiNode | null; label: string };

@@ -13,6 +13,8 @@ using namespace facebook::react;
 
 @implementation SvelteStackView {
   SvelteNavigationController *_controller;
+  __weak SvelteScreenView *_staged;
+  __weak SvelteScreenView *_stagedPresented;
   NSMutableArray<SvelteScreenView *> *_screens;
   /// The pushed screens JavaScript holds, bottom first, as of the last update.
   NSArray<SvelteScreenView *> *_desired;
@@ -24,6 +26,7 @@ using namespace facebook::react;
   BOOL _updateScheduled;
   BOOL _updatingModals;
   BOOL _modalsDirty;
+  BOOL _exitsQueued;
 }
 
 + (ComponentDescriptorProvider)componentDescriptorProvider {
@@ -84,7 +87,9 @@ using namespace facebook::react;
   if (![childComponentView isKindOfClass:[SvelteScreenView class]]) return;
   SvelteScreenView *screen = (SvelteScreenView *)childComponentView;
   [screen markUnmounted];
-  [screen replaceViewWithSnapshot];
+  // A screen JavaScript took out through `activityState` 0 was animated away first and reported `exited`: nothing to draw.
+  // A live screen removed outright (its stack goes with a parent) is replaced by a picture, so UIKit has something to move.
+  if (!screen.exitReported) [screen replaceViewWithSnapshot];
   screen.stack = nil;
   [_screens removeObject:screen];
   _needsFlush = YES;
@@ -109,23 +114,27 @@ using namespace facebook::react;
   }
 }
 
-// The transaction's views are complete here, but a pushed screen's layers are not in a window yet. Pushing in this same
-// run-loop turn puts the screen's mount, UIKit's layout and display of its layers and the transition's setup into one
-// frame (25–40 ms for a 60-row screen on an iPhone SE 3, one or two dropped frames per push); the next turn starts the
-// transition on a frame of its own.
+// What a transaction mounted reaches UIKit in steps, each on a frame of its own (a Time Profiler run of navigation-8 on an iPhone
+// SE 3: a 60-row screen of 180 views costs 15 ms to mount, 20 ms to attach to the window and start the transition, 14 ms to end
+// it, and the same again on the way back, each of them one dropped interval at 60 Hz when they share a frame): the transaction's
+// own frame mounts the views; the next frame's start applies what changed (`flush`), which for a screen that is going to be
+// shown only attaches its view to the navigation controller's view out of sight (`stage:`); the frame after that pushes,
+// pops or presents it, UIKit finding its view in the window already.
 - (void)mountingTransactionDidMount:(const MountingTransaction &)transaction withSurfaceTelemetry:(const SurfaceTelemetry &)surfaceTelemetry {
   if (!_needsFlush || _flushQueued) return;
   _flushQueued = YES;
   __weak SvelteStackView *weakSelf = self;
-  dispatch_async(dispatch_get_main_queue(), ^{
+  dispatch_block_t run = ^{
     SvelteStackView *stack = weakSelf;
     if (stack == nil) return;
     stack->_flushQueued = NO;
     if (stack->_needsFlush) [stack flush];
-  });
+  };
+  SvelteAfterNextFrame(run);
 }
 
 - (void)invalidate {
+  [self unstage];
   for (UIViewController *modal in _presented) [modal dismissViewControllerAnimated:NO completion:nil];
   [_presented removeAllObjects];
   [_presentedScreens removeAllObjects];
@@ -141,14 +150,72 @@ using namespace facebook::react;
 // What the children say becomes UIKit's state in one go, after all of a transaction's mutations: the screens' navigation
 // items first, so that the first frame of a screen has its title, then the pushed controllers, then the presented ones.
 - (void)flush {
-  if (self.window == nil) return;
+  // A full screen modal takes the stack's view out of the window while it covers it: what JavaScript asks of the modals (a back,
+  // a reset) still has to reach UIKit then, and the pushed screens catch up when the view comes back (`didMoveToWindow`).
+  const BOOL covered = self.window == nil && _presented.count > 0;
+  if (self.window == nil && !covered) {
+    [self reportExits];
+    return;
+  }
   _needsFlush = NO;
   for (SvelteScreenView *screen in [_screens copy]) {
     if ([screen needsUpdate]) [screen update];
   }
-  [self updatePushedControllers];
-  [self attachControllerIfNeeded];
+  if (!covered) {
+    [self updatePushedControllers];
+    [self attachControllerIfNeeded];
+  }
   [self updatePresentedControllers];
+  [self reportExits];
+}
+
+// A screen whose `activityState` JavaScript set to 0 is taken away by `updatePushedControllers` and
+// `updatePresentedControllers` (animated unless its `animation` is none) and stays mounted all along, so that the unmount of its
+// subtree is not part of the transition's frames. Once nothing moves any more, `topExited` tells JavaScript it may remove it.
+// Every flush and every end of a transition asks again; the turn between keeps the end of UIKit's own completion work out of the
+// frame in which JavaScript's removal arrives.
+- (void)reportExits {
+  if (_exitsQueued) return;
+  _exitsQueued = YES;
+  __weak SvelteStackView *weakSelf = self;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    SvelteStackView *stack = weakSelf;
+    if (stack == nil) return;
+    stack->_exitsQueued = NO;
+    [stack sendExits];
+  });
+}
+
+- (void)sendExits {
+  if (_updatingModals) return;  // `finish` of the presentation asks again
+  id<UIViewControllerTransitionCoordinator> coordinator = _controller.transitionCoordinator;
+  if (coordinator != nil) {
+    __weak SvelteStackView *weakSelf = self;
+    const BOOL queued = [coordinator animateAlongsideTransition:nil
+                                                     completion:^(id<UIViewControllerTransitionCoordinatorContext> context) {
+                                                       [weakSelf reportExits];
+                                                     }];
+    if (!queued) {
+      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.05 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [weakSelf reportExits];
+      });
+    }
+    return;
+  }
+  for (SvelteScreenView *screen in [_screens copy]) {
+    if ([screen spec].activityState == 0 && [self hasLeft:screen]) [screen emitExited];
+  }
+}
+
+// A screen has left when UIKit no longer holds its controller: not a child of the navigation controller, not presented. A pop
+// that waits for its frame (the staging above) has not happened yet, and its screen is still the top of the stack.
+- (BOOL)hasLeft:(SvelteScreenView *)screen {
+  SvelteScreenController *controller = screen.controller;
+  if (controller == nil) return YES;
+  if ([_presentedScreens containsObject:screen]) return NO;
+  UIViewController *presented = screen.presentedController;
+  if (presented.presentingViewController != nil) return NO;
+  return controller.parentViewController == nil || ([screen spec].presentation != svelte::kPush && presented.parentViewController == nil);
 }
 
 // The controller joins the controller above it, so that appearance callbacks and the status bar follow; its view joins ours.
@@ -197,7 +264,10 @@ using namespace facebook::react;
   }
   for (SvelteScreenView *screen in desired) wanted.push_back(identify(screen.controller));
   const svelte::StackPlan plan = svelte::planStack(current, wanted);
-  if (plan.step == svelte::StackStep::None) return;
+  if (plan.step == svelte::StackStep::None) {
+    [self unstage];
+    return;
+  }
 
   // UIKit ignores changes while a transition runs: the update waits for its end.
   id<UIViewControllerTransitionCoordinator> coordinator = _controller.transitionCoordinator;
@@ -219,27 +289,79 @@ using namespace facebook::react;
   NSMutableArray<UIViewController *> *staged = [NSMutableArray new];
   for (int index : plan.staged) [staged addObject:known[(NSUInteger)index]];
   const BOOL visible = self.window != nil;
+  dispatch_block_t install = ^{
+    if (![_controller.viewControllers isEqualToArray:staged]) [_controller setViewControllers:staged animated:NO];
+  };
   switch (plan.step) {
     case svelte::StackStep::Replace:
+      [self unstage];
       [_controller setViewControllers:staged animated:NO];
       break;
     case svelte::StackStep::Push: {
       SvelteScreenView *top = desired.lastObject;
-      [_controller setViewControllers:staged animated:NO];
+      if (visible && _staged != top) {
+        [self stage:top];
+        [self flushAfterNextFrame];
+        return;
+      }
+      _staged = nil;
+      install();
       [_controller pushViewController:top.controller animated:visible && [top spec].animation != svelte::kAnimationNone];
       break;
     }
     case svelte::StackStep::Pop: {
       // The screen on top of `staged` is the one that leaves: its animation tells how (its view may be gone already).
       UIViewController *leaving = staged.lastObject;
-      const int animation = [leaving isKindOfClass:[SvelteScreenController class]] ? ((SvelteScreenController *)leaving).animation : svelte::kAnimationDefault;
-      [_controller setViewControllers:staged animated:NO];
+      SvelteScreenController *leavingController = [leaving isKindOfClass:[SvelteScreenController class]] ? (SvelteScreenController *)leaving : nil;
+      const int animation = leavingController != nil ? leavingController.animation : svelte::kAnimationDefault;
+      SvelteScreenView *revealed = desired.lastObject;
+      if (visible && _staged != revealed && revealed.controller.view.superview == nil) {
+        [self stage:revealed];
+        [leavingController.screenView replaceViewWithSnapshot];
+        [self flushAfterNextFrame];
+        return;
+      }
+      _staged = nil;
+      if (visible) [leavingController.screenView replaceViewWithSnapshot];
+      install();
       [_controller popViewControllerAnimated:visible && animation != svelte::kAnimationNone];
       break;
     }
     case svelte::StackStep::None:
       break;
   }
+}
+
+// The screen's view joins the navigation controller's own view, out of sight behind the current screen, a frame before UIKit
+// moves it into the transition: attaching its subtree to the window (traits, layout, the first drawing of its text) is then a
+// frame of its own, not part of the one that starts the transition.
+- (void)stage:(SvelteScreenView *)screen {
+  UIView *view = screen.controller.view;
+  if (view == nil) return;
+  if (_staged != screen) [self unstage];
+  _staged = screen;
+  const CGRect bounds = _controller.view.bounds;
+  view.frame = CGRectMake(bounds.size.width * 2, 0, bounds.size.width, bounds.size.height);
+  [_controller.view insertSubview:view atIndex:0];
+}
+
+- (void)unstage {
+  SvelteScreenView *staged = _staged;
+  _staged = nil;
+  UIView *view = staged.controller.view;
+  if (view != nil && view.superview == _controller.view) [view removeFromSuperview];
+}
+
+- (void)flushAfterNextFrame {
+  if (_flushQueued) return;
+  _flushQueued = YES;
+  __weak SvelteStackView *weakSelf = self;
+  SvelteAfterNextFrame(^{
+    SvelteStackView *stack = weakSelf;
+    if (stack == nil) return;
+    stack->_flushQueued = NO;
+    [stack flush];
+  });
 }
 
 - (void)updatePresentedControllers {
@@ -276,6 +398,7 @@ using namespace facebook::react;
       stack->_modalsDirty = NO;
       [stack flush];
     }
+    [stack reportExits];
   };
   void (^presentNew)(void) = ^{
     SvelteStackView *stack = weakSelf;
@@ -314,6 +437,21 @@ using namespace facebook::react;
     completion();
     return;
   }
+  // The presented view joins the navigation controller's own view a frame before UIKit presents it, as a pushed screen's does.
+  if (self.window != nil && _stagedPresented != screen) {
+    if (_stagedPresented != nil) [_stagedPresented.presentedController.view removeFromSuperview];
+    _stagedPresented = screen;
+    UIView *view = next.view;
+    const CGRect bounds = _controller.view.bounds;
+    view.frame = CGRectMake(bounds.size.width * 2, 0, bounds.size.width, bounds.size.height);
+    [_controller.view insertSubview:view atIndex:0];
+    __weak SvelteStackView *weakSelf = self;
+    SvelteAfterNextFrame(^{
+      [weakSelf presentScreens:screens from:index above:previous completion:completion];
+    });
+    return;
+  }
+  if (_stagedPresented == screen) _stagedPresented = nil;
   const BOOL animated = index == screens.count - 1 && [screen spec].animation != svelte::kAnimationNone;
   __weak SvelteStackView *weakSelf = self;
   [previous presentViewController:next
@@ -323,8 +461,40 @@ using namespace facebook::react;
                          if (stack == nil) return;
                          [stack->_presented addObject:next];
                          [stack->_presentedScreens addObject:screen];
+                         [screen markPresentationModal];
                          [stack presentScreens:screens from:index + 1 above:next completion:completion];
                        }];
+}
+
+// What the stack believes, for the QA module (`apps/platform/modules/svelte-qa-ios`, `uikitState`): it finds this method by its
+// selector, so that a transition that did not happen can be traced to the flag that held it back.
+- (NSDictionary *)qaState {
+  NSMutableArray *screens = [NSMutableArray new];
+  for (SvelteScreenView *screen in _screens) {
+    [screens addObject:@{
+      @"activityState" : @([screen spec].activityState),
+      @"presentation" : @([screen spec].presentation),
+      @"exitReported" : @(screen.exitReported),
+      @"userDismissed" : @(screen.userDismissed),
+      @"unmounted" : @(screen.unmounted),
+      @"hasLeft" : @([self hasLeft:screen]),
+      @"presenting" : @(screen.presentedController.presentingViewController != nil),
+      @"detents" : [screen qaDetents],
+    }];
+  }
+  return @{
+    @"screens" : screens,
+    @"presented" : @(_presented.count),
+    @"presentedScreens" : @(_presentedScreens.count),
+    @"updatingModals" : @(_updatingModals),
+    @"modalsDirty" : @(_modalsDirty),
+    @"updateScheduled" : @(_updateScheduled),
+    @"flushQueued" : @(_flushQueued),
+    @"exitsQueued" : @(_exitsQueued),
+    @"needsFlush" : @(_needsFlush),
+    @"transitioning" : @(_controller.transitionCoordinator != nil),
+    @"viewControllers" : @(_controller.viewControllers.count),
+  };
 }
 
 #pragma mark - What the user did
@@ -357,6 +527,13 @@ using namespace facebook::react;
   SvelteScheduleLifecycle(SvelteLifecycleDismissed, ^{
     [screen emitDismissedWithCount:count];
   });
+}
+
+- (BOOL)popByEscape:(SvelteScreenView *)screen {
+  if (_controller.viewControllers.count < 2 || _controller.transitionCoordinator != nil || _controller.topViewController != screen.controller) return NO;
+  if ([screen spec].nativeBack == 0) return NO;
+  [_controller popViewControllerAnimated:YES];
+  return YES;
 }
 
 #pragma mark - Navigation controller and gestures

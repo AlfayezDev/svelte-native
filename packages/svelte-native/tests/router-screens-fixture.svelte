@@ -11,6 +11,9 @@
   ];
   const router = createRouter(routes, "/");
   export function goto(href, options) { router.goto(href, options); }
+  export function back() { return router.back(); }
+  export function screens() { return router.screens.map(({ entry, canGoBack, leaving }) => `${entry.url.pathname}:${canGoBack ? "back" : "root"}:${leaving ? "leaving" : "live"}`); }
+  export function exited(index) { router.exited(router.screens[index].entry.key); }
   export function stack() { return router.entries.map((entry) => `${entry.url.pathname}:${entry.presentation}`); }
   export function dismissedKey(index) { return router.entries[index]?.key; }
   export function scope() { return router.scope; }

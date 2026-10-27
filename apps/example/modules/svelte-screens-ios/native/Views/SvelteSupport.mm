@@ -50,6 +50,33 @@ void SvelteScheduleLifecycle(SvelteLifecycle kind, dispatch_block_t send) {
   });
 }
 
+@interface SvelteFrameTick : NSObject
+@end
+
+@implementation SvelteFrameTick {
+  dispatch_block_t _block;
+}
+
+- (instancetype)initWithBlock:(dispatch_block_t)block {
+  if (self = [super init]) _block = [block copy];
+  return self;
+}
+
+- (void)tick:(CADisplayLink *)link {
+  [link invalidate];
+  dispatch_block_t block = _block;
+  _block = nil;
+  if (block != nil) block();
+}
+
+@end
+
+void SvelteAfterNextFrame(dispatch_block_t block) {
+  SvelteFrameTick *tick = [[SvelteFrameTick alloc] initWithBlock:block];
+  CADisplayLink *link = [CADisplayLink displayLinkWithTarget:tick selector:@selector(tick:)];
+  [link addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
+}
+
 @implementation SvelteNavigationController
 
 - (UIViewController *)childViewControllerForStatusBarStyle {

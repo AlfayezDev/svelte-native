@@ -60,6 +60,8 @@ type NativeScreenProps = NativeElementAttributes<ViewProps & {
   onDisappear?: () => void;
   /** The user dismissed the screen (back button or gesture, after the transition): the router removes it. */
   onDismissed?: (event: { nativeEvent: { dismissCount?: number } }) => void;
+  /** A screen whose `activityState` was set to 0 has left (iOS: SPEC.md "Screen exit"); sent once, after the exit transition. */
+  onExited?: () => void;
   onDetentChange?: (event: { nativeEvent: DetentChange }) => void;
 }>;
 /** The header band of a screen: the engine draws its chrome (background, title, back arrow, divider, search) in the node's frame. */

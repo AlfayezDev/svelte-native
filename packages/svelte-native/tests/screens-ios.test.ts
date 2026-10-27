@@ -155,12 +155,29 @@ test("the first iOS navigation node registers the view configs of the six compon
     topAppear: { registrationName: "onAppear" },
     topDisappear: { registrationName: "onDisappear" },
     topDismissed: { registrationName: "onDismissed" },
+    topExited: { registrationName: "onExited" },
     topDetentChange: { registrationName: "onDetentChange" },
   });
   expect(eventsOf("SvelteHeader")).toEqual({ topMetrics: { registrationName: "onMetrics" } });
   expect(eventsOf("SvelteHeaderSlot")).toEqual({ topCancel: { registrationName: "onCancel" } });
   expect(eventsOf("SvelteTabs")).toEqual({ topSelect: { registrationName: "onSelect" }, topMetrics: { registrationName: "onMetrics" } });
   expect(eventsOf("SvelteTab")).toEqual({});
+});
+
+test("a pressable and a block of text are accessibility elements on iOS, so VoiceOver reads a button as a button and the text at all; on Android the engine exposes them itself", async () => {
+  const lowered = (platform: "android" | "ios", surface: number) => async () => {
+    environment.__navigationOS = platform;
+    try {
+      const m = await load("pressable-fixture.svelte");
+      roots = {};
+      m.startSurface(surface, m.Fixture, {});
+      await settle(m);
+      const byTestID = (id: string) => flatten(roots[surface]).find((node) => node.props.testID === id);
+      return { plain: byTestID("plain")?.props.accessible, hidden: byTestID("hidden")?.props.accessible, passive: byTestID("passive")?.props.accessible, label: byTestID("plain")?.props.accessibilityLabel, words: byTestID("words")?.props.accessible, silent: byTestID("silent")?.props.accessible };
+    } finally { delete environment.__navigationOS; }
+  };
+  expect(await lowered("ios", 67)()).toEqual({ plain: true, hidden: false, passive: undefined, label: "Go", words: true, silent: false });
+  expect(await lowered("android", 68)()).toEqual({ plain: undefined, hidden: false, passive: undefined, label: "Go", words: undefined, silent: false });
 });
 
 // The pure C++ parts of the module, built with the system compiler and compared with the reference implementations.
@@ -296,10 +313,13 @@ test("the stack planner pushes a new top, pops a top that left, and applies othe
   for (const [index, [input, expected]] of cases.entries()) expect(JSON.parse(out[index]), input).toEqual(expected);
 });
 
-test("a sheet detent is a fraction of the largest detent, the content height for auto, never above the largest", async () => {
+test("a sheet detent is a fraction of the space below the top inset, the content height for auto, never above what UIKit allows", async () => {
   const cases: [string, number][] = [
-    ["0.5 800 0", 400], ["1 800 0", 800], ["0.25 800 0", 200], ["0 800 500", 0], ["2 800 0", 800],
-    ["-1 800 300", 300], ["-1 800 900", 800], ["-1 800 -5", 0], ["0.5 0 0", 0], ["0.5 -20 0", 0],
+    // available, maximum: both 800 (UIKit allows the whole container)
+    ["0.5 800 800 0", 400], ["1 800 800 0", 800], ["0.25 800 800 0", 200], ["0 800 800 500", 0], ["2 800 800 0", 800],
+    ["-1 800 800 300", 300], ["-1 800 800 900", 800], ["-1 800 800 -5", 0], ["0.5 0 0 0", 0], ["0.5 -20 -20 0", 0],
+    // iOS 26 floating sheet on an iPhone SE 3: 647 below the top inset, 610 the largest detent UIKit resolves
+    ["0.5 640 610 0", 320], ["1 640 610 0", 610], ["0.75 800 610 0", 600], ["-1 640 610 900", 610], ["-1 640 610 300", 300], ["0.5 640 0 0", 0],
   ];
   const out = await run("detent", cases.map(([input]) => input));
   for (const [index, [input, expected]] of cases.entries()) expect(Number(out[index]), input).toBe(expected);

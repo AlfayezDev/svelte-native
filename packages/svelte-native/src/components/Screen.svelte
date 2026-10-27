@@ -59,6 +59,7 @@
   const appear = () => options.onAppear?.();
   const disappear = () => options.onDisappear?.();
   const dismissed = () => options.onDismiss?.();
+  const exited = () => options.onExited?.();
   const detentChange = (event: { nativeEvent: DetentChange }) => options.onDetentChange?.(event.nativeEvent);
 
   const resolveScreen = createNativeProps();
@@ -87,6 +88,7 @@
     onAppear: options.onAppear && appear,
     onDisappear: options.onDisappear && disappear,
     onDismissed: dismissed,
+    onExited: options.onExited && exited,
     onDetentChange: options.onDetentChange && detentChange,
   }));
   const headerProps = $derived(resolveHeader({

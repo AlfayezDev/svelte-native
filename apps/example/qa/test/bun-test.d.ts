@@ -1,12 +1,14 @@
 declare module "bun:test" {
 	interface Matchers {
 		not: Matchers;
+		rejects: Matchers;
 		toBe(expected: unknown): void;
 		toEqual(expected: unknown): void;
 		toBeNull(): void;
 		toBeUndefined(): void;
 		toMatch(pattern: RegExp): void;
 		toBeCloseTo(expected: number, digits?: number): void;
+		toBeGreaterThan(expected: number): void;
 		toContain(expected: unknown): void;
 		toHaveLength(expected: number): void;
 		toThrow(message?: string | RegExp): void;

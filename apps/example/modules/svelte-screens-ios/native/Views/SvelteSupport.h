@@ -35,16 +35,22 @@ BOOL SvelteIsUnderSurfaceRoot(UIView *view);
 /// `emitter->dispatchEvent("appear", payload)`: JavaScript receives `topAppear` with the payload as its native event.
 void SvelteEmit(const facebook::react::SharedViewEventEmitter &emitter, const char *type, folly::dynamic payload);
 
-/// Order of the lifecycle events inside one transition (SPEC.md): the new top's `appear`, the leaving screen's `disappear`, then its `dismissed`.
+/// Order of the lifecycle events inside one transition (SPEC.md): the new top's `appear`, the leaving screen's `disappear`,
+/// then its `dismissed` (a user's) or `exited` (JavaScript's).
 typedef NS_ENUM(NSInteger, SvelteLifecycle) {
   SvelteLifecycleAppear = 0,
   SvelteLifecycleDisappear = 1,
   SvelteLifecycleDismissed = 2,
+  SvelteLifecycleExited = 3,
 };
 
 /// UIKit reports the two ends of a transition in the same run-loop turn but in an order of its own: the sends are collected
 /// and run in the next turn sorted by `kind` (stable otherwise).
 void SvelteScheduleLifecycle(SvelteLifecycle kind, dispatch_block_t send);
+
+/// Runs `block` in the display link callback of the next frame (the start of a frame, before its Core Animation commit), so that
+/// work queued from a transaction lands in a frame of its own instead of the one the transaction mounted in.
+void SvelteAfterNextFrame(dispatch_block_t block);
 
 /// A `UINavigationController` whose status bar follows its top screen and that tells its owner when it has laid out.
 @interface SvelteNavigationController : UINavigationController

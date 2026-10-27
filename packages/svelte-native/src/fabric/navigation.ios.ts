@@ -20,7 +20,7 @@ export type IosNavigationTag = keyof typeof components;
 
 /** Events the components emit that React Native's base view config does not know (`topChange` and `topSubmitEditing` it does). */
 const directEvents: Readonly<Record<string, readonly string[]>> = {
-  SvelteScreen: ["topAppear", "topDisappear", "topDismissed", "topDetentChange"],
+  SvelteScreen: ["topAppear", "topDisappear", "topDismissed", "topExited", "topDetentChange"],
   SvelteHeader: ["topMetrics"],
   SvelteHeaderSlot: ["topCancel"],
   SvelteTabs: ["topSelect", "topMetrics"],

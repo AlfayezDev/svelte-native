@@ -1,4 +1,4 @@
-import { test, expect } from "bun:test";
+import { test, expect, jest } from "bun:test";
 import { build, transform } from "esbuild";
 import { readFile, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { compile, compileModule } from "svelte/compiler";
 import { reanimatedStubs } from "./reanimated-stubs.ts";
-import { badgeText, colorToWire, decodeList, decodeRecords, decodeValue, headerHeight, mergeScreenOptions, navigationProps, normalizeDetents, parseNativeID, sheetStyle } from "../src/fabric/navigation.ts";
+import { EXIT_TIMEOUT_MS, badgeText, colorToWire, decodeList, decodeRecords, decodeValue, headerHeight, mergeScreenOptions, navigationProps, normalizeDetents, parseNativeID, sheetStyle } from "../src/fabric/navigation.ts";
 import { LOWERED_TAGS, lowerPrimitives } from "../src/lower.ts";
 
 type FakeNode = { tag: number; name: string; props: Record<string, unknown>; children: FakeNode[]; sealed: boolean; target?: unknown };
@@ -753,6 +753,9 @@ test("a route that fails to load throws where it renders and loads again on its 
 // The router renders the contract's outer Screen per entry and names its stacks.
 type ScreensApp = {
   goto: (href: string, options?: { replaceState?: boolean; reset?: boolean; presentation?: string }) => void;
+  back: () => boolean;
+  screens: () => string[];
+  exited: (index: number) => void;
   stack: () => string[];
   scope: () => string | undefined;
 };
@@ -787,6 +790,121 @@ test("the router renders a Screen per entry: presentation from the route or the 
   await turns(m);
   expect(app.stack()).toEqual(["/:push", "/a:push"]);
   expect(screens()).toHaveLength(2);
+});
+
+// A popped screen stays in the native stack, inactive, until the stack reports its exit (SPEC.md "Screen exit"): the unmount of its page then leaves the transition.
+const activityOf = (screen: FakeNode) => String(screen.props.nativeID).match(/;a=(\d)/)?.[1];
+
+test("on iOS a popped screen stays mounted with activityState 0 until the stack sends topExited; the stack the router works on drops it at once", async () => {
+  environment.__navigationOS = "ios";
+  jest.useFakeTimers(); // the exit timeout of what the test leaves leaving never fires
+  try {
+    const m = await load("router-screens-fixture.svelte");
+    calls.length = 0; roots = {};
+    const app = m.startSurface(56, m.Fixture, {}) as ScreensApp;
+    await turns(m);
+    app.goto("/a");
+    app.goto("/b/3");
+    await turns(m);
+    const screens = () => roots[56][0].children;
+    expect(screens().map(activityOf)).toEqual(["2", "2", "2"]);
+    expect(app.back()).toBe(true);
+    await turns(m);
+    expect(app.stack()).toEqual(["/:push", "/a:push"]); // `entries`, `current` and `back` see the live stack
+    expect(app.screens()).toEqual(["/:root:live", "/a:back:live", "/b/3:back:leaving"]);
+    expect(screens()).toHaveLength(3);
+    expect(screens().map(activityOf)).toEqual(["2", "2", "0"]);
+    expect(find([screens()[2]], "RCTRawText").map((node) => node.props.text)).toEqual(["page /b/3:3"]); // its page is still there
+    expect(app.back()).toBe(true);
+    await turns(m);
+    expect(app.screens()).toEqual(["/:root:live", "/a:back:leaving", "/b/3:back:leaving"]);
+    app.exited(2);
+    await turns(m);
+    expect(app.screens()).toEqual(["/:root:live", "/a:back:leaving"]);
+    expect(screens()).toHaveLength(2);
+    emit(screens()[1].target, "topExited", {});
+    await turns(m);
+    expect(app.screens()).toEqual(["/:root:live"]);
+    expect(screens()).toHaveLength(1);
+  } finally { jest.useRealTimers(); reset(); }
+});
+
+test("a screen pushed while another leaves goes below it; a replacement, a reset and a base replacement retire what they remove; a user dismissal drops at once", async () => {
+  environment.__navigationOS = "ios";
+  jest.useFakeTimers(); // the exit timeout of what the test leaves leaving never fires
+  try {
+    const m = await load("router-screens-fixture.svelte");
+    calls.length = 0; roots = {};
+    const app = m.startSurface(57, m.Fixture, {}) as ScreensApp;
+    await turns(m);
+    app.goto("/a");
+    app.goto("/b/3");
+    await turns(m);
+    app.back();
+    app.goto("/a?x=1");
+    await turns(m);
+    expect(app.screens()).toEqual(["/:root:live", "/a:back:live", "/a:back:live", "/b/3:back:leaving"]);
+    app.goto("/b/4", { replaceState: true });
+    await turns(m);
+    expect(app.screens()).toEqual(["/:root:live", "/a:back:live", "/b/4:back:live", "/a:back:leaving", "/b/3:back:leaving"]); // the new screen goes under the ones that leave
+    app.goto("/a", { reset: true });
+    await turns(m);
+    expect(app.stack()).toEqual(["/a:push"]);
+    expect(app.screens().filter((entry) => entry.endsWith("leaving"))).toHaveLength(5);
+    const screens = () => roots[57][0].children;
+    expect(screens().filter((screen) => activityOf(screen) === "0")).toHaveLength(5);
+
+    // The user's own dismissal has happened natively by the time JavaScript hears of it: nothing to wait for.
+    const second = await load("router-screens-fixture.svelte");
+    calls.length = 0; roots = {};
+    const plain = second.startSurface(58, second.Fixture, {}) as ScreensApp;
+    await turns(second);
+    plain.goto("/a");
+    plain.goto("/b/3");
+    await turns(second);
+    emit(roots[58][0].children[1].target, "topDismissed", { dismissCount: 1 });
+    await turns(second);
+    expect(plain.screens()).toEqual(["/:root:live"]);
+    expect(roots[58][0].children).toHaveLength(1);
+  } finally { jest.useRealTimers(); reset(); }
+});
+
+test("a popped screen that never reports its exit is removed after EXIT_TIMEOUT_MS, with a warning", async () => {
+  environment.__navigationOS = "ios";
+  const warnings: unknown[][] = [];
+  const warn = console.warn;
+  console.warn = (...args: unknown[]) => { warnings.push(args); };
+  jest.useFakeTimers();
+  try {
+    const m = await load("router-screens-fixture.svelte");
+    calls.length = 0; roots = {};
+    const app = m.startSurface(59, m.Fixture, {}) as ScreensApp;
+    await turns(m);
+    app.goto("/a");
+    app.back();
+    await turns(m);
+    expect(app.screens()).toEqual(["/:root:live", "/a:back:leaving"]);
+    jest.advanceTimersByTime(EXIT_TIMEOUT_MS - 1);
+    expect(app.screens()).toHaveLength(2);
+    jest.advanceTimersByTime(2);
+    await turns(m);
+    expect(app.screens()).toEqual(["/:root:live"]);
+    expect(roots[59][0].children).toHaveLength(1);
+    expect(warnings).toHaveLength(1);
+  } finally { jest.useRealTimers(); console.warn = warn; reset(); }
+});
+
+test("on Android the router removes a popped screen at once: the engine animates the removal itself", async () => {
+  const m = await load("router-screens-fixture.svelte");
+  calls.length = 0; roots = {};
+  const app = m.startSurface(60, m.Fixture, {}) as ScreensApp;
+  await turns(m);
+  app.goto("/a");
+  app.back();
+  await turns(m);
+  expect(app.screens()).toEqual(["/:root:live"]);
+  expect(roots[60][0].children).toHaveLength(1);
+  expect(roots[60][0].children.map(activityOf)).toEqual(["2"]);
 });
 
 type NestedApp = ScreensApp & { dummy?: never };

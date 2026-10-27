@@ -78,6 +78,15 @@ export const HEADER_BAR: Record<NavigationPlatform, number> = { android: 56, ios
 export const HEADER_LARGE_EXTRA: Record<NavigationPlatform, number> = { android: 56, ios: 52 };
 /** Tab bar height without the bottom inset: icon 24 + label 12 sp + padding on Android, UITabBar on iOS. */
 export const TAB_BAR: Record<NavigationPlatform, number> = { android: 64, ios: 49 };
+/**
+ * Whether the native stack of a platform keeps a screen whose `activityState` JavaScript set to 0 on screen, takes it
+ * away with its exit transition and then sends `topExited` (SPEC.md, "Screen exit"). Where it does, the router keeps a
+ * popped entry mounted until that event, so the unmount of the page leaves the transition's frames; where it does not,
+ * the router removes the entry at once and the stack animates the removal itself (Android's `EngineStack.removeScreen`).
+ */
+export const EXIT_REPORTED: Record<NavigationPlatform, boolean> = { android: false, ios: true };
+/** How long the router waits for `topExited` before it removes a popped entry anyway (and says so). The longest exit is a sheet's, about 0.5 s. */
+export const EXIT_TIMEOUT_MS = 2500;
 /** Width reserved at the start of the header for the back button; also the minimum hit area. */
 export const BACK_BUTTON_WIDTH = 48;
 /** Size of a tab icon slot. */
@@ -153,12 +162,14 @@ export type ScreenOptions = {
   onAppear?: () => void;
   onDisappear?: () => void;
   onDismiss?: () => void;
+  /** The exit transition of a screen whose `activityState` JavaScript set to 0 ended (only on platforms in `EXIT_REPORTED`): the router removes it. */
+  onExited?: () => void;
   onDetentChange?: (event: DetentChange) => void;
 };
 
 const definedEntries = (value: object) => Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined));
 const objectOptions = ["header", "search", "sheet", "statusBar", "navigationBar"] as const;
-const eventOptions = ["onAppear", "onDisappear", "onDismiss", "onDetentChange"] as const;
+const eventOptions = ["onAppear", "onDisappear", "onDismiss", "onExited", "onDetentChange"] as const;
 
 /**
  * One option set laid over another, as nested `Screen`s do: a defined value of `over` wins, object options (`header`,

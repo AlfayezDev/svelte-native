@@ -3,6 +3,7 @@ import {
 	elapsedMs,
 	findEngineWarnings,
 	findFaults,
+	findInterruption,
 	parseLabChecks,
 	parseLaunchMarkers,
 	parseLine,
@@ -249,5 +250,38 @@ describe("findEngineWarnings", () => {
 		expect(
 			findEngineWarnings("10-25 20:00:00.000 1 2 E SvelteEngine: unknown op 99 at 3\n"),
 		).toEqual(["unknown op 99 at 3"]);
+	});
+});
+
+describe("findInterruption", () => {
+	const cellBroadcast = "com.google.android.cellbroadcastreceiver/com.android.cellbroadcastreceiver.CellBroadcastAlertDialog";
+	test("an emergency alert opening over the app is found at its first line, not at the window that preceded the start", () => {
+		expect(findInterruption(sample("lab-interrupted.log"), pkg)).toEqual({ at: "10-27 14:49:13.668", by: cellBroadcast });
+	});
+	test("the START line alone, the Displayed line alone and a Transition requested with only the top activity are each enough", () => {
+		const start = "10-27 14:48:19.415  2160  3194 I ActivityTaskManager: START u0 {act=android.intent.action.VIEW pkg=io.rasheed.svelteqa cmp=io.rasheed.svelteqa/.MainActivity} with LAUNCH_SINGLE_TASK from uid 2000 (com.android.shell) result code=0";
+		const only = (line: string) => findInterruption(`${start}\n${line}\n`, pkg);
+		expect(only("10-27 14:50:00.100  2160  5015 I ActivityTaskManager: START u0 {flg=0x10040000 cmp=com.android.settings/.Settings} with LAUNCH_SINGLE_TOP from uid 1000 result code=0")).toEqual({
+			at: "10-27 14:50:00.100",
+			by: "com.android.settings/.Settings",
+		});
+		expect(only("10-27 14:50:01.200  2160  2186 I ActivityTaskManager: Displayed com.android.dialer/.DialtactsActivity for user 0: +300ms")).toEqual({
+			at: "10-27 14:50:01.200",
+			by: "com.android.dialer/.DialtactsActivity",
+		});
+		expect(
+			only("10-27 14:50:02.300  3028  3082 V WindowManagerShell: Transition requested (#9): x TransitionRequestInfo { type = OPEN, triggerTask = TaskInfo{taskId=5 baseIntent=Intent { flg=0x1 } topActivity=ComponentInfo{com.sec.android.app.launcher/.Home} origActivity=null}, flags = 0 }"),
+		).toEqual({ at: "10-27 14:50:02.300", by: "com.sec.android.app.launcher/.Home" });
+	});
+	test("the app's own starts, a CLOSE transition, other apps' Start proc lines and a log without the app's start are not interruptions", () => {
+		expect(findInterruption(sample("lab-run.log"), pkg)).toBeNull();
+		expect(findInterruption(sample("boot-launch.log"), pkg)).toBeNull();
+		const lines = sample("lab-interrupted.log").split("\n");
+		const upToOwnStart = lines.slice(0, 4).join("\n");
+		expect(findInterruption(upToOwnStart, pkg)).toBeNull();
+		const withoutStart = lines.filter((line) => !line.includes("pkg=io.rasheed.svelteqa")).join("\n");
+		expect(findInterruption(withoutStart, pkg)).toBeNull();
+		const close = "10-27 14:50:02.300  3028  3082 V WindowManagerShell: Transition requested (#9): x TransitionRequestInfo { type = CLOSE, triggerTask = TaskInfo{ baseIntent=Intent { cmp=com.other/.A } }, flags = 0 }";
+		expect(findInterruption(`${upToOwnStart}\n${close}\n10-27 14:50:03.000  1000  1000 I ActivityManager: Start proc 9:com.other/u0a1 for service\n`, pkg)).toBeNull();
 	});
 });

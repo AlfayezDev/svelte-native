@@ -82,6 +82,7 @@ export function labMetrics(file: LabFile, pinned: readonly string[]): Metrics {
 	const metrics: Metrics = {
 		"lab.runs": runs.filter((run) => run.complete).length,
 		"lab.incompleteRuns": runs.filter((run) => !run.complete).length,
+		"lab.interruptedRuns": runs.filter((run) => run.interrupted).length,
 		"lab.checks.passed": smallest(runs.map((run) => run.checks?.passed ?? 0)),
 		"lab.checks.failed": largest(runs.map((run) => run.checks?.failed ?? 0)),
 		"lab.scenarios.failed": largest(

@@ -2,6 +2,7 @@ import type { LabRun } from "./types.ts";
 import {
 	findEngineWarnings,
 	findFaults,
+	findInterruption,
 	parseLabChecks,
 	parseStressComplete,
 	parseStressScenarios,
@@ -25,10 +26,11 @@ export function labRunFrom(
 	const { text } = capture;
 	const completion = parseStressComplete(text);
 	const faults = findFaults(text, packageName);
+	const interrupted = findInterruption(text, packageName);
 	return {
 		startedAt: capture.startedAt.toISOString(),
 		durationMs: capture.durationMs,
-		complete: capture.matched && (!stressRequested || completion !== null),
+		complete: capture.matched && (!stressRequested || completion !== null) && interrupted === null,
 		checks: parseLabChecks(text),
 		boot: parseSvelteBoot(text),
 		scenarios: parseStressScenarios(text),
@@ -39,6 +41,7 @@ export function labRunFrom(
 		jsErrors: faults.jsErrors,
 		jsErrorCount: faults.jsErrors.length,
 		engineWarnings: findEngineWarnings(text),
+		...(interrupted ? { interrupted } : {}),
 		logFile: capture.logFile,
 	};
 }
@@ -51,6 +54,7 @@ export function describeRun(run: LabRun): string[] {
 	const lines = [
 		`  complete ${run.complete} in ${(run.durationMs / 1000).toFixed(0)} s, checks ${run.checks ? `${run.checks.passed}/${run.checks.total}` : "none logged"}, fatals ${fatals}, engine warnings ${run.engineWarnings.length}`,
 	];
+	if (run.interrupted) lines.push(`  interrupted by ${run.interrupted.by} at ${run.interrupted.at} (device clock)`);
 	if (run.boot)
 		lines.push(
 			`  [Svelte boot] ${Object.entries(run.boot)

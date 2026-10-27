@@ -45,6 +45,8 @@ type LabSummary = {
 		startedAt: string;
 		durationMs: number;
 		complete: boolean;
+		/** Android: the other app that came to the front during the run; null when none did. */
+		interrupted: { at: string; by: string } | null;
 		checks: { passed: number; failed: number; total: number } | null;
 		/** Crashes and JavaScript errors; null when the app does not report its JavaScript errors and nothing else is a fatal. */
 		fatals: number | null;
@@ -157,6 +159,7 @@ function summarizeLab(file: LabFile, fileName: string, pinned: readonly string[]
 			startedAt: run.startedAt,
 			durationMs: run.durationMs,
 			complete: run.complete,
+			interrupted: run.interrupted ?? null,
 			checks: run.checks
 				? { passed: run.checks.passed, failed: run.checks.failed, total: run.checks.total }
 				: null,
@@ -428,6 +431,9 @@ export async function report(): Promise<void> {
 		console.log(
 			`  lab ${m["lab.runs"] ?? 0} complete run(s) (--run ${entry.lab?.run ?? "not recorded"}), checks ${m["lab.checks.passed"] ?? "-"} passed / ${m["lab.checks.failed"] ?? "-"} failed, fatals ${m["log.fatals"] ?? "not measured"}, engine warnings ${m["log.engineWarnings"] ?? "-"}`,
 		);
+		for (const [index, run] of (entry.lab?.runs ?? []).entries())
+			if (run.interrupted)
+				console.log(`  lab run ${index + 1} is incomplete: interrupted by ${run.interrupted.by} at ${run.interrupted.at} (device clock), after ${run.scenarios.length} scenario(s)`);
 		if (entry.platform === "ios") {
 			console.log(`  crash reports ${m["log.crashReports"] ?? "not measured"}`);
 			for (const summary of entry.crashReports) {

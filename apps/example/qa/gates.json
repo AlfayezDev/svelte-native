@@ -85,7 +85,7 @@
     },
     {
       "id": "lab.incomplete",
-      "title": "Lab runs that never logged their completion line",
+      "title": "Lab runs that never logged their completion line, or that another app interrupted",
       "unit": "runs",
       "metric": "lab.incompleteRuns",
       "bar": {

@@ -267,6 +267,48 @@ export function parseLaunchMarkers(text: string, packageName: string): LaunchMar
 	};
 }
 
+export type Interruption = {
+	/** The device clock of the line that showed it, as logcat prints it (`MM-DD HH:MM:SS.mmm`, no year). */
+	at: string;
+	/** The component that came to the front, `<package>/<class>` as the system wrote it. */
+	by: string;
+};
+
+const stamped = /^(\d\d-\d\d \d\d:\d\d:\d\d\.\d{3}) /;
+const startedComponent = /^START u\d+ \{.*? cmp=([\w.]+)\/([^\s}]+)/;
+const requestedOpen = /^Transition requested .*type = OPEN,.*?(?:cmp=|ComponentInfo\{)([\w.]+)\/([^\s}]+)/;
+const displayedComponent = /^Displayed ([\w.]+)\/(\S+?):? /;
+
+/**
+ * Another app coming to the front while the lab ran, or null. Once the package has been started (its own `START` or
+ * `Start proc`), the first line that shows a component of another package opening is the interruption: the activity
+ * manager's `START u0 {cmp=<package>/<class> ...}`, the shell's `Transition requested ... type = OPEN` naming the
+ * task's component, or `Displayed <package>/<class>`. An emergency alert, a permission dialog or a call screen does
+ * this; whatever opened before the app started (a leftover window) does not.
+ */
+export function findInterruption(text: string, packageName: string): Interruption | null {
+	let started = false;
+	for (const raw of text.split("\n")) {
+		const line = parseLine(raw);
+		const at = stamped.exec(raw)?.[1];
+		if (!line || !at) continue;
+		const activityManager = line.tag === "ActivityTaskManager" || line.tag === "ActivityManager";
+		if (!started) {
+			started =
+				(activityManager && line.message.startsWith("START ") && startedComponent.exec(line.message)?.[1] === packageName) ||
+				(line.tag === "ActivityManager" && new RegExp(`^Start proc \\d+:${escapeRegExp(packageName)}/`).test(line.message));
+			continue;
+		}
+		const match =
+			(activityManager && line.message.startsWith("START ") && startedComponent.exec(line.message)) ||
+			(line.tag === "WindowManagerShell" && requestedOpen.exec(line.message)) ||
+			(activityManager && line.message.startsWith("Displayed ") && displayedComponent.exec(line.message)) ||
+			null;
+		if (match?.[1] && match[1] !== packageName) return { at, by: `${match[1]}/${match[2]}` };
+	}
+	return null;
+}
+
 function escapeRegExp(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

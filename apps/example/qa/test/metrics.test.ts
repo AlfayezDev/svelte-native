@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { labRunFrom } from "../lib/lab-run.ts";
+import { describeRun, labRunFrom } from "../lib/lab-run.ts";
 import { bootMetrics, deviceMetrics, labMetrics, missingScenarios } from "../lib/metrics.ts";
 import { evaluate, type GatesFile } from "../lib/gates.ts";
 import { readFileSync } from "node:fs";
@@ -73,6 +73,19 @@ describe("labRunFrom", () => {
 		expect(result.expectedScenarios).toHaveLength(14);
 		expect(result.engineWarnings).toHaveLength(3);
 		expect(result.boot?.total).toBe(201);
+	});
+	test("a run another app interrupted is incomplete even when the lab's last line was logged, and says by whom", () => {
+		const completed = `${sample("lab-run.log")}\n${sample("lab-interrupted.log")}`;
+		const result = run(completed);
+		expect(result.complete).toBe(false);
+		expect(result.interrupted?.by).toBe("com.google.android.cellbroadcastreceiver/com.android.cellbroadcastreceiver.CellBroadcastAlertDialog");
+		expect(result.interrupted?.at).toBe("10-27 14:49:13.668");
+		expect(describeRun(result).some((line) => line.includes("interrupted by com.google.android.cellbroadcastreceiver"))).toBe(true);
+		expect(run().interrupted).toBeUndefined();
+		const metrics = labMetrics(labFile(run(), result), []);
+		expect(metrics["lab.runs"]).toBe(1);
+		expect(metrics["lab.incompleteRuns"]).toBe(1);
+		expect(metrics["lab.interruptedRuns"]).toBe(1);
 	});
 	test("a lab whose completion line never came is incomplete", () => {
 		const result = labRunFrom(

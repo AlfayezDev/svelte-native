@@ -95,6 +95,8 @@ export type LabRun = {
 	jsErrorCount?: number | null;
 	/** iOS: the process the run launched; the crash reports of the phone are matched to the run by it. */
 	pid?: number | null;
+	/** Android: another app's activity came to the front while the lab ran (an emergency alert, a permission dialog). The run is incomplete however far it got; `at` is the device clock, `by` the component. Absent when nothing did, and in runs recorded before the field. */
+	interrupted?: { at: string; by: string };
 	logFile: string;
 };
 

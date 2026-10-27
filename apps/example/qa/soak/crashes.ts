@@ -470,7 +470,12 @@ export async function crashes(argv: string[]): Promise<void> {
 						`suite ${index}`,
 						result.complete
 							? null
-							: { kind: "suite-incomplete", title: "the lab never logged its last line" },
+							: {
+									kind: "suite-incomplete",
+									title: result.interrupted
+										? `the lab was interrupted by ${result.interrupted.by}`
+										: "the lab never logged its last line",
+								},
 					);
 			} catch (error) {
 				// A log that cannot be parsed is a suite that did not measure; a device that went away ends the run.

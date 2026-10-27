@@ -366,7 +366,7 @@ const ofKind = (nodes: FakeNode[], kind: string): FakeNode[] => nodes.flatMap((n
 const ofTestID = (nodes: FakeNode[], testID: string): FakeNode[] => nodes.flatMap((node) => [...(node.props.testID === testID ? [node] : []), ...ofTestID(node.children, testID)]);
 const environment = globalThis as { __navigationInsets?: unknown; __navigationOS?: string };
 const withInsets = (top: number, bottom = 34) => { environment.__navigationInsets = { top, right: 0, bottom, left: 0, keyboardHeight: 0, keyboardVisible: false, frame: { x: 0, y: 0, width: 400, height: 800 } }; };
-const reset = () => { delete environment.__navigationInsets; delete environment.__navigationOS; };
+const reset = () => { delete environment.__navigationInsets; delete environment.__navigationOS; jest.useRealTimers(); };
 type ScreenApp = { set: (patch: object) => void; show: (patch: object) => void; nest: (value: object | null) => void; events: () => string[] };
 type TabsApp = { select: (key: string) => void; setItems: (items: object[]) => void; setLazy: (value: boolean) => void; selection: () => string; events: () => string[]; handle: (key: string) => { key: string; selected: boolean } };
 const flat = (style: unknown): Record<string, unknown> => Object.assign({}, ...(Array.isArray(style) ? style : [style]).filter(Boolean));
@@ -831,7 +831,7 @@ test("on iOS a popped screen stays mounted with activityState 0 until the stack 
     await turns(m);
     expect(app.screens()).toEqual(["/:root:live"]);
     expect(screens()).toHaveLength(1);
-  } finally { jest.useRealTimers(); reset(); }
+  } finally { reset(); }
 });
 
 test("a screen pushed while another leaves goes below it; a replacement, a reset and a base replacement retire what they remove; a user dismissal drops at once", async () => {
@@ -871,7 +871,7 @@ test("a screen pushed while another leaves goes below it; a replacement, a reset
     await turns(second);
     expect(plain.screens()).toEqual(["/:root:live"]);
     expect(roots[58][0].children).toHaveLength(1);
-  } finally { jest.useRealTimers(); reset(); }
+  } finally { reset(); }
 });
 
 test("a popped screen that never reports its exit is removed after EXIT_TIMEOUT_MS, with a warning", async () => {
@@ -918,7 +918,7 @@ test("on Android a popped screen stays mounted with activityState 0 until the st
     expect(app.screens()).toEqual(["/:root:live"]);
     expect(screens()).toHaveLength(1);
     expect(screens().map(activityOf)).toEqual(["2"]);
-  } finally { jest.useRealTimers(); reset(); }
+  } finally { reset(); }
 });
 
 type NestedApp = ScreensApp & { dummy?: never };
@@ -1018,6 +1018,7 @@ const paneRouter = (path: string): TreeRouter => { const router = treeGlobals.__
 
 async function mountTree(surface: number, props: Record<string, unknown> = {}) {
   const m = await load("tree-fixture.svelte");
+  jest.useFakeTimers(); // a popped screen's exit timer must not fire into whichever test runs after this one
   calls.length = 0; roots = {};
   treeGlobals.__treeRouters = {}; treeGlobals.__treeRoots = {}; delete treeGlobals.__treeOptions; delete treeGlobals.__treeTabs; delete treeGlobals.__treeSelections; delete treeGlobals.__treeLayouts;
   handlersOf("__backHandlers").length = 0;
@@ -1155,7 +1156,6 @@ test("back at a pane's base neither pops the pane nor switches tabs: the stack a
 
 test("the root router alone owns the back key and the launch link, so a reset of the root <Router> still gives the key to the pane first", async () => {
   withInsets(24);
-  jest.useFakeTimers(); // the popped screens' exit timers die with the test
   try {
     const { app, router, settled, hardwareBack } = await mountTree(97, { initial: "/workspaces" });
     router.goto("/acme/home/thread/1");
@@ -1182,12 +1182,11 @@ test("the root router alone owns the back key and the launch link, so a reset of
     expect(pathsOf(paneRouter("/acme/home"))).toEqual(["/acme/home"]);
     expect(pathsOf(router)).toEqual(["/workspaces"]);
     expect(hardwareBack()).toBe(false); // the root at one entry: the app may leave
-  } finally { jest.useRealTimers(); reset(); }
+  } finally { reset(); }
 });
 
 test("back() on a tabs router pops the selected pane first, then the stack above, and a pane that is not selected never pops its sibling", async () => {
   withInsets(24);
-  jest.useFakeTimers();
   try {
     const { router, settled } = await mountTree(98, { initial: "/workspaces" });
     router.goto("/acme/inbox"); // visits the inbox pane, which stays at its base
@@ -1210,7 +1209,7 @@ test("back() on a tabs router pops the selected pane first, then the stack above
     expect(inbox.back()).toBe(true); // at its base the unselected pane hands the pop to the root, not to the selected pane
     expect(pathsOf(home)).toEqual(["/acme/home", "/acme/home/thread/2"]);
     expect(pathsOf(router)).toEqual(["/workspaces"]);
-  } finally { jest.useRealTimers(); reset(); }
+  } finally { reset(); }
 });
 
 test("a modal over the tabs takes the back key before the pane below it, whatever the pane's depth", async () => {
@@ -1277,7 +1276,7 @@ test("a navigator layout's <Stack> lays its defaults under each screen's own opt
     const [, inbox] = tabScreens(roots[88]);
     const [base, compose] = inbox.map((screen) => parseNativeID(String(screen.props.nativeID))?.pairs);
     expect(base.s).toBe("fade"); // the page's own animation
-    expect(compose.s).toBe("slide_from_right"); // the layout's default
+    expect(compose.s).toBe("default"); // a sheet is no push: the layout's animation is for its push screens
     const headers = ofKind(inbox, "header").map((node) => parseNativeID(String(node.props.nativeID))?.pairs);
     expect(headers[0]).toMatchObject({ t: "%2Facme%2Finbox", l: "1", tc: "abcdefff" }); // large from the layout, tint from the page
     expect(headers[1]).toMatchObject({ t: "%2Facme%2Finbox%2Fcompose", l: "1", tc: "123456ff" });
@@ -1287,6 +1286,26 @@ test("a navigator layout's <Stack> lays its defaults under each screen's own opt
     const [home] = tabScreens(roots[88]);
     expect(parseNativeID(String(home[0].props.nativeID))?.pairs.s).toBe("default");
     expect(ofKind(home, "header").map((node) => parseNativeID(String(node.props.nativeID))?.pairs.l)).toEqual([undefined]);
+  } finally { reset(); }
+});
+
+test("a <Stack>'s animation is the default of its push screens only: a modal, a sheet and a form sheet keep the platform's", async () => {
+  withInsets(24);
+  try {
+    const { router, settled, tree } = await mountTree(106, { initial: "/acme/flow/start" });
+    const flow = paneRouter("/acme/flow/start");
+    flow.goto("/acme/flow/done");
+    flow.goto("/acme/flow/start", { presentation: "modal" });
+    flow.goto("/acme/flow/done", { presentation: "formSheet" });
+    flow.goto("/acme/flow/start", { presentation: "transparentModal" });
+    flow.goto("/acme/flow/done", { presentation: "sheet" });
+    await settled();
+    expect(pathsOf(router)).toEqual(["/acme/flow"]);
+    const screens = ofKind(tree(), "screen").map((screen) => parseNativeID(String(screen.props.nativeID))?.pairs);
+    expect(screens.map((pairs) => `${pairs?.p}:${pairs?.s}`)).toEqual([
+      "push:default", // the root's own screen, the flow
+      "push:slide_from_right", "push:slide_from_right", "modal:default", "formSheet:default", "transparentModal:default", "sheet:default",
+    ]);
   } finally { reset(); }
 });
 
@@ -1486,7 +1505,6 @@ test("a nested stack navigator is a screen of its parent: the stack inside it st
 
 test("the first screen of a nested stack navigator can go back when its own screen has one below it; a pane's base and the root's first screen cannot", async () => {
   withInsets(24);
-  jest.useFakeTimers();
   try {
     const arrows = (router: TreeRouter) => router.screens.filter((screen) => !screen.leaving).map((screen) => screen.canGoBack);
     const { router, settled } = await mountTree(101, { initial: "/acme/home" });
@@ -1515,7 +1533,7 @@ test("the first screen of a nested stack navigator can go back when its own scre
     paneRouter("/acme/flow/start").goto("/acme/flow/done");
     await first.settled();
     expect(arrows(paneRouter("/acme/flow/done"))).toEqual([false, true]);
-  } finally { jest.useRealTimers(); reset(); }
+  } finally { reset(); }
 });
 
 test("a pane's stack keeps the exit contract of its own: a popped screen stays until the stack reports its exit, or until the timeout, with the same warning", async () => {

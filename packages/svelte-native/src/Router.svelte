@@ -9,6 +9,7 @@
   /**
    * The native stack of a stack router: a screen per entry. `loading` is what a screen shows while its route's modules load;
    * without it the `loading` of the `<Stack>` around this router is used, and without that the screen is empty until they arrive.
+   * The `animation` of that `<Stack>` is the default of its push screens: a modal or a sheet keeps the platform's.
    */
   let { router, loading }: { router: Router; loading?: Snippet<[NativeLocation]> } = $props();
   // The router's screens are real screens of its own stack, wherever the router sits (inside a tab pane, a sheet, a page).
@@ -29,7 +30,7 @@
       presentation={entry.presentation}
       {canGoBack}
       activityState={leaving ? 0 : 2}
-      animation={stack?.defaults.animation ?? "default"}
+      animation={entry.presentation === "push" ? stack?.defaults.animation ?? "default" : "default"}
       onDismiss={() => router.dismissed(entry.key)}
       onExited={() => router.exited(entry.key)}
     >

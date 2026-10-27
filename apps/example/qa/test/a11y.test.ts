@@ -146,6 +146,21 @@ describe("reachable, labeled, actionable", () => {
 		expect(negative.findings[0]?.detail).toContain("negative extent");
 	});
 
+	test("a control with no visible size defers to the clipped rule: clipped inside a scroll container when declared below the fold, unreachable anywhere else", () => {
+		const scroller = (child: N): N => ({
+			cls: "android.widget.ScrollView",
+			bounds: [0, 0, 1080, 2400],
+			children: [child],
+		});
+		const edge = button("Edge", [97, 2337, 983, 2337]);
+		const declared = analyze([scroller(edge)], { scrolled: ["Edge"] });
+		expect([declared.clipped, declared.unreachable, declared.findings]).toEqual([1, 0, []]);
+		const undeclared = analyze([scroller(edge)]);
+		expect([undeclared.clipped, undeclared.unreachable, undeclared.findings[0]?.detail]).toEqual([0, 1, "zero-size bounds"]);
+		const outside = analyze([edge], { scrolled: ["Edge"] });
+		expect([outside.clipped, outside.unreachable, outside.findings[0]?.detail]).toEqual([0, 1, "zero-size bounds"]);
+	});
+
 	test("a control the screen declares but the tree lacks is unreachable", () => {
 		const r = analyze([button("Save", [0, 0, 100, 100])], { controls: ["Save", "Notifications"] });
 		expect([r.interactive, r.unreachable]).toEqual([2, 1]);
@@ -495,6 +510,26 @@ describe("frozen dumps of the QA app (the checklist's findings in them, not the 
 			layout: c.layout,
 		});
 	}
+
+	test("the draft input on the bottom edge of the rows page has no visible height: clipped when the screen declares it below the fold, unreachable when it does not", () => {
+		const rows = cases.find((entry) => entry.id === "dev-rows");
+		if (!rows) throw new Error("no case dev-rows");
+		expect(rows.scrolled).toContain("Row A");
+		const r = screen("uia-dev-rows.xml", "dev-rows");
+		expect([r.interactive, r.reachable, r.clipped, r.unreachable, r.findings]).toEqual([12, 11, 1, 0, []]);
+		const undeclared = analyzeScreen({
+			tree: parseHierarchy(sample("uia-dev-rows.xml")),
+			direction: "ltr",
+			display,
+			title: null,
+			controls: [],
+			scrolled: [],
+			hidden: [],
+			layout: "header",
+		});
+		expect([undeclared.clipped, undeclared.unreachable]).toEqual([0, 1]);
+		expect(undeclared.findings[0]?.detail).toBe("zero-size bounds");
+	});
 
 	test("sheet and modal over the menu (a TalkBack session on the emulator, 27 Oct): the full dump reads as findings no service meets, the compressed dump as none", () => {
 		const expectedOnFull: Record<string, string[]> = {

@@ -49,7 +49,7 @@ export type A11yScreen = {
 	actionable: number;
 	/** Interactive and disabled: not counted against any check (a disabled control is deliberately unavailable). */
 	disabled: number;
-	/** Interactive, outside the display or scrolled out of its container (uiautomator reports a negative extent), inside a scroll container, and declared below the fold by the screen (`scrolled`): not checked. Any other element outside the display is unreachable. */
+	/** Interactive, outside the display, scrolled out of its container (uiautomator reports a negative extent) or with no visible size (its bounds are clipped to nothing), inside a scroll container, and declared below the fold by the screen (`scrolled`): not checked. Any other element outside the display is unreachable. */
 	clipped: number;
 	unreachable: number;
 	unlabeled: number;
@@ -119,6 +119,11 @@ function intersects(rect: Rect, display: { width: number; height: number }): boo
 /** A node outside the display, or with the negative width or height uiautomator reports for one scrolled out of its container. */
 function isOffScreen(node: UiNode, display: { width: number; height: number }): boolean {
 	return node.bounds.width < 0 || node.bounds.height < 0 || (node.bounds.width > 0 && node.bounds.height > 0 && !intersects(node.bounds, display));
+}
+
+/** A node with no width or height: uiautomator reports one this way when the visible part of a view at the edge of its scroll container is empty. */
+function hasNoVisibleSize(node: UiNode): boolean {
+	return node.bounds.width === 0 || node.bounds.height === 0;
 }
 
 function describe(node: UiNode): string {
@@ -345,9 +350,9 @@ export function analyzeScreen(input: A11yInput): A11yScreen {
 			disabled++;
 			continue;
 		}
-		// Off the screen is clipped only where the screen says a scroll container holds the control below the fold; anywhere else it is out of reach.
+		// Off the screen, or with no visible size (uiautomator clips the bounds to the visible area, so a view on the edge of its scroll view has none), is clipped only where the screen says a scroll container holds the control below the fold; anywhere else it is out of reach.
 		if (
-			isOffScreen(node, display) &&
+			(isOffScreen(node, display) || hasNoVisibleSize(node)) &&
 			inScrollContainer(node) &&
 			scrolled.some((label) => sameLabel(node, label))
 		) {

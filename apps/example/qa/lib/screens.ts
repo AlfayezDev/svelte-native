@@ -211,6 +211,8 @@ export const cases: ScreenCase[] = [
 	screenCase("dev-async-error", "/__dev (async, error boundary)", dev, label("Reset boundary"), {
 		state: "error",
 		largestText: false,
+				// The draft input sits on the scroll view's bottom edge, where uiautomator clips its bounds to no height.
+				"Row A",
 		steps: [
 			tapLabel("async"),
 			waitFor("Trip error boundary"),

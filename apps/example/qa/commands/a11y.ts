@@ -114,7 +114,6 @@ export async function a11y(argv: string[]): Promise<void> {
 							direction: variant.direction,
 							display,
 							title: screen.title === null ? null : localize(screen.title, variant.direction),
-							lead: screen.lead.map((label) => localize(label, variant.direction)),
 							scrolled: screen.scrolled.map((control) => localize(control, variant.direction)),
 							controls: screen.controls.map((control) => localize(control, variant.direction)),
 							hidden: screen.hidden.map((label) => localize(label, variant.direction)),

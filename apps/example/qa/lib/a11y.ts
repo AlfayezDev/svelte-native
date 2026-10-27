@@ -19,9 +19,11 @@ import { bottom, descendants, right, spokenLabel, type UiNode, type UiTree } fro
  * - labeled: it has text, a content description or a hint of its own, or a descendant that does.
  * - actionable: it advertises an action (clickable, long-clickable, checkable, or a text field).
  * - order: the focus stops, in tree order, run top to bottom and, within a row, from the start edge to the end (left to
- *   right, right to left in RTL).
+ *   right, right to left in RTL). A header reads back button, left slot, title (or center slot), right slot, search: that is
+ *   start to end, so it needs no exemption; its large title, the bar's second row, is the one step that goes up.
  * - title first: the screen's title is a stop (a stop with no label of its own is the label its content carries: a `Pressable`
- *   around a `Text`), and no content stop comes before it.
+ *   around a `Text`), and it is the first stop after the bar's back button and left slot: whatever comes before it sits above
+ *   its row or at its start side, and no content does. `judgeReadingOrder` is that rule and the order rule for both platforms.
  * - focus trap: while a sheet or modal is up, nothing of the screen underneath is in the tree (a service must not be able to
  *   reach it).
  */
@@ -69,10 +71,8 @@ export type A11yInput = {
 	tree: UiTree;
 	direction: Direction;
 	display: { width: number; height: number };
-	/** The localized title the screen should lead with, or null for a screen without one. */
+	/** The localized title the screen should lead with (after the bar's back button and left slot), or null for a screen without one. */
 	title: string | null;
-	/** Further stops the header reads right after the title by design (a center slot's controls) before the controls at its start side. */
-	lead: string[];
 	/** The localized labels of the controls the screen's source declares. */
 	controls: string[];
 	/** Controls that may be below the fold at the largest text: evaluated when the tree has them, not reported missing when it does not. */
@@ -229,14 +229,54 @@ export function followsInOrderRect(a: Rect, b: Rect, direction: Direction): bool
 	return centerY(b) >= centerY(a) - tolerance;
 }
 
-function followsInOrder(a: UiNode, b: UiNode, direction: Direction): boolean {
-	return followsInOrderRect(a.bounds, b.bounds, direction);
+export type ReadingOrder = {
+	/**
+	 * The first stop before the title that is not a start control of the bar, or null: `content` when it starts at or below the
+	 * title's bottom edge, otherwise it is beside or above the title but after it in reading order (an end control).
+	 */
+	before: { index: number; content: boolean } | null;
+	/** The indices `i` where stop `i + 1` does not follow stop `i`. */
+	violations: number[];
+};
+
+/**
+ * The reading-order rules, one definition for both platforms (`analyzeScreen` here and `analyzeIosScreen` for the iPhone), on the
+ * stops' rectangles in the order a service reads them, and the index of the title's stop (null: no title to judge).
+ *
+ * - Title first: the title is the first stop after the bar's back button and left slot. Whatever comes before it sits above its row
+ *   or at its start side (where those controls are, mirrored in right-to-left), and none of it is content.
+ * - Order: each stop follows the one before it, top to bottom and, in a row, start to end. A header's large title is the bar's
+ *   second row and is read before the end controls of the first, so the step from the title up to a stop above it is not a
+ *   violation (header layouts only; a page's title has no bar over it).
+ */
+export function judgeReadingOrder(stops: Rect[], titleAt: number | null, direction: Direction, layout: Layout): ReadingOrder {
+	let before: ReadingOrder["before"] = null;
+	const title = titleAt === null ? undefined : stops[titleAt];
+	if (title && titleAt !== null) {
+		for (let index = 0; index < titleAt; index++) {
+			const stop = stops[index] as Rect;
+			const content = stop.y >= bottom(title) - tolerance;
+			if (content || !followsInOrderRect(stop, title, direction)) {
+				before = { index, content };
+				break;
+			}
+		}
+	}
+	const violations: number[] = [];
+	for (let index = 0; index + 1 < stops.length; index++) {
+		const a = stops[index] as Rect;
+		const b = stops[index + 1] as Rect;
+		if (followsInOrderRect(a, b, direction)) continue;
+		if (layout !== "page" && index === titleAt && verticalOverlap(a, b) < 0.5 && centerY(b) < centerY(a)) continue;
+		violations.push(index);
+	}
+	return { before, violations };
 }
 
 type Element = { node: UiNode | null; label: string };
 
 export function analyzeScreen(input: A11yInput): A11yScreen {
-	const { tree, direction, display, title, lead, controls, scrolled, hidden, layout } = input;
+	const { tree, direction, display, title, controls, scrolled, hidden, layout } = input;
 	const findings: A11yFinding[] = [];
 
 	/* Elements: every interactive node, plus each declared control, matched to a node (an interactive one if there is one). */
@@ -344,6 +384,12 @@ export function analyzeScreen(input: A11yInput): A11yScreen {
 	const titleStop = title === null ? null : (stops.find((stop) => stopSays(stop, title)) ?? null);
 	let titleFirst: boolean | null = null;
 	let orderViolations = 0;
+	const judged = judgeReadingOrder(
+		stops.map((stop) => stop.bounds),
+		titleStop ? stops.indexOf(titleStop) : null,
+		direction,
+		layout,
+	);
 	if (title !== null) {
 		if (!titleStop) {
 			titleFirst = false;
@@ -353,29 +399,21 @@ export function analyzeScreen(input: A11yInput): A11yScreen {
 				detail: "the screen's title is not a focus stop in the tree",
 			});
 		} else {
-			const before = stops.slice(0, stops.indexOf(titleStop));
-			const content = before.find((stop) => stop.bounds.y >= bottom(titleStop.bounds) - tolerance);
-			titleFirst = content === undefined;
-			if (content)
+			const offender = judged.before;
+			titleFirst = offender === null;
+			if (offender)
 				findings.push({
 					kind: "title",
 					element: describe(titleStop),
-					detail: `content comes before the title in the tree: ${describe(content)}`,
+					detail: `${offender.content ? "content" : "a control at the end side of the title"} comes before the title in the tree: ${describe(stops[offender.index] as UiNode)}`,
 				});
 		}
 	}
-	for (let index = 0; index + 1 < stops.length; index++) {
-		const a = stops[index] as UiNode;
-		const b = stops[index + 1] as UiNode;
-		// The header leads with its title and then runs back, left slot, right slot, search: by design the title is read
-		// before the controls that sit at its start side.
-		if (layout !== "page" && (a === titleStop || lead.some((label) => stopSays(a, label))))
-			continue;
-		if (followsInOrder(a, b, direction)) continue;
+	for (const index of judged.violations) {
 		orderViolations++;
 		findings.push({
 			kind: "order",
-			element: `${describe(a)} then ${describe(b)}`,
+			element: `${describe(stops[index] as UiNode)} then ${describe(stops[index + 1] as UiNode)}`,
 			detail: `${direction === "rtl" ? "right to left" : "left to right"}, top to bottom expected`,
 		});
 	}

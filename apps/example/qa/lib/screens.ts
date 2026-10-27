@@ -32,10 +32,8 @@ export type ScreenCase = {
 	steps: Step[];
 	/** What must be on screen when the case is ready (the anchor the resilience suite also looks for). */
 	anchor: Selector;
-	/** The screen's title, expected first in the reading order; null where the screen has none. */
+	/** The screen's title, expected first in the reading order after the bar's back button and left slot; null where the screen has none. */
 	title: Localized | null;
-	/** Further stops the header reads right after the title by design: the controls of a center slot (SPEC: title or center first). */
-	lead: Localized[];
 	layout: Layout;
 	/** Controls the screen's source declares, each of which the accessibility tree must expose by this label. They sit in the first screen of the content at every text size. */
 	controls: Localized[];
@@ -72,7 +70,6 @@ function screenCase(
 		steps: [],
 		anchor,
 		title: null,
-		lead: [],
 		layout: "page",
 		controls: [],
 		scrolled: [],
@@ -280,7 +277,6 @@ export const cases: ScreenCase[] = [
 		{
 			layout: "header",
 			title: "Segment A",
-			lead: ["Segment B"],
 			controls: ["Close", "Segment A", "Segment B", "Notifications", "Search"],
 		},
 	),

@@ -41,7 +41,6 @@ function analyze(nodes: N[], fields: Partial<A11yInput> = {}) {
 		direction: "ltr",
 		display,
 		title: null,
-		lead: [],
 		controls: [],
 		scrolled: [],
 		hidden: [],
@@ -246,17 +245,61 @@ describe("focus stops and order", () => {
 		expect(r.orderViolations).toBe(0);
 	});
 
-	test("a header leads with its title, then the controls at its start side, by design", () => {
+	test("a header reads its back button, then the title, then the controls at its end, start to end", () => {
 		const header = [
-			{ desc: "Screen", bounds: [147, 128, 933, 275] },
 			button("Navigate up", [0, 128, 126, 275]),
+			{ desc: "Screen", bounds: [147, 128, 933, 275] },
 			button("Search", [954, 128, 1080, 275]),
 			{ text: "row", bounds: [76, 351, 1004, 405] },
 		] satisfies N[];
-		const r = analyze(header, { title: "Screen", layout: "header" });
-		expect([r.orderViolations, r.titleFirst]).toEqual([0, true]);
-		// A page has no such exemption: the same order is a violation there.
-		expect(analyze(header, { title: "Screen", layout: "page" }).orderViolations).toBe(1);
+		for (const layout of ["header", "page"] as const) {
+			const r = analyze(header, { title: "Screen", layout });
+			expect([r.orderViolations, r.titleFirst, r.findings]).toEqual([0, true, []]);
+		}
+		// RTL mirrors it: the back button at the right edge is the start.
+		const rtl = [
+			button("Navigate up", [954, 128, 1080, 275]),
+			{ desc: "Screen", bounds: [147, 128, 933, 275] },
+			button("Search", [0, 128, 126, 275]),
+			{ text: "row", bounds: [76, 351, 1004, 405] },
+		] satisfies N[];
+		const mirrored = analyze(rtl, { title: "Screen", layout: "header", direction: "rtl" });
+		expect([mirrored.orderViolations, mirrored.titleFirst]).toEqual([0, true]);
+	});
+
+	test("the title before the back button was the old order: now an order violation, and an end control before the title fails title first", () => {
+		const old = analyze(
+			[
+				{ desc: "Screen", bounds: [147, 128, 933, 275] },
+				button("Navigate up", [0, 128, 126, 275]),
+				button("Search", [954, 128, 1080, 275]),
+			],
+			{ title: "Screen", layout: "header" },
+		);
+		expect([old.titleFirst, old.orderViolations]).toEqual([true, 1]);
+		const end = analyze(
+			[
+				button("Navigate up", [0, 128, 126, 275]),
+				button("Search", [954, 128, 1080, 275]),
+				{ desc: "Screen", bounds: [147, 128, 933, 275] },
+			],
+			{ title: "Screen", layout: "header" },
+		);
+		expect(end.titleFirst).toBe(false);
+		expect(end.findings.find((f) => f.kind === "title")?.detail).toContain("end side");
+	});
+
+	test("a large title is the bar's second row: read after the back button and before the end controls, which is the one step that goes up", () => {
+		const large = [
+			button("Navigate up", [0, 128, 126, 275]),
+			{ desc: "Native screens", bounds: [42, 275, 1038, 422] },
+			button("Notifications", [954, 128, 1080, 275]),
+			{ text: "row", bounds: [42, 464, 1038, 558] },
+		] satisfies N[];
+		const r = analyze(large, { title: "Native screens", layout: "header" });
+		expect([r.titleFirst, r.orderViolations, r.findings]).toEqual([true, 0, []]);
+		// A page has no bar over its title: the same step up is a violation there.
+		expect(analyze(large, { title: "Native screens", layout: "page" }).orderViolations).toBe(1);
 	});
 
 	test("content before the title, or no title at all, fails title first", () => {
@@ -279,19 +322,18 @@ describe("focus stops and order", () => {
 		expect(analyze([{ text: "x", bounds: [0, 0, 5, 5] }]).titleFirst).toBeNull();
 	});
 
-	test("the center slot's lead stops are exempt from the start-side rule", () => {
+	test("the center slot follows the left slot: its first control is the title, the next one follows it", () => {
 		const slots = [
+			button("Close", [50, 168, 126, 233]),
 			{ text: "Segment A", bounds: [160, 178, 332, 225] },
 			{ text: "Segment B", bounds: [395, 178, 566, 225] },
-			{ text: "×", bounds: [50, 168, 76, 233] },
 			button("Search", [954, 128, 1080, 275]),
 		] satisfies N[];
-		expect(
-			analyze(slots, { title: "Segment A", lead: ["Segment B"], layout: "header" }).orderViolations,
-		).toBe(0);
-		expect(analyze(slots, { title: "Segment A", lead: [], layout: "header" }).orderViolations).toBe(
-			1,
-		);
+		const r = analyze(slots, { title: "Segment A", layout: "header" });
+		expect([r.orderViolations, r.titleFirst]).toEqual([0, true]);
+		// The center slot before the left slot, the order before this one, runs against the start edge.
+		const centerFirst = [slots[1], slots[2], slots[0], slots[3]] as N[];
+		expect(analyze(centerFirst, { title: "Segment A", layout: "header" }).orderViolations).toBe(1);
 	});
 });
 
@@ -305,29 +347,27 @@ describe("a stop that says nothing itself is judged by what it holds", () => {
 		children: [{ text: label, bounds: [bounds[0] + 40, bounds[1] + 20, bounds[2] - 40, bounds[3] - 20] }],
 	});
 
-	test("the center slot's segments are the title and its lead, and the stops are named by their text", () => {
+	test("the center slot's segments are the title and the control after it, and the stops are named by their text", () => {
 		const slots = [
+			button("Close", [0, 138, 126, 264]),
 			segment("Segment A", [129, 155, 364, 250]),
 			segment("Segment B", [364, 155, 598, 250]),
-			button("Close", [0, 138, 126, 264]),
 			button("Notifications", [954, 138, 1080, 264]),
 			{ text: "Row 1", bounds: [76, 351, 1004, 405] },
 		] satisfies N[];
-		const r = analyze(slots, { title: "Segment A", lead: ["Segment B"], layout: "header" });
-		expect(r.stops.slice(0, 4)).toEqual(["Segment A", "Segment B", "Close", "Notifications"]);
+		const r = analyze(slots, { title: "Segment A", layout: "header" });
+		expect(r.stops.slice(0, 4)).toEqual(["Close", "Segment A", "Segment B", "Notifications"]);
 		expect([r.titleFirst, r.orderViolations, r.findings]).toEqual([true, 0, []]);
-		// The lead is what exempts the segment from the start-side rule: without it the same tree has the violation.
-		expect(analyze(slots, { title: "Segment A", lead: [], layout: "header" }).orderViolations).toBe(1);
 	});
 
 	test("in right-to-left the first segment is at the end of the row and the order holds the same way", () => {
 		const slots = [
+			button("Close", [954, 138, 1080, 264]),
 			segment("Segment A", [482, 155, 716, 250]),
 			segment("Segment B", [248, 155, 482, 250]),
-			button("Close", [954, 138, 1080, 264]),
 			button("Notifications", [0, 138, 126, 264]),
 		] satisfies N[];
-		const r = analyze(slots, { title: "Segment A", lead: ["Segment B"], layout: "header", direction: "rtl" });
+		const r = analyze(slots, { title: "Segment A", layout: "header", direction: "rtl" });
 		expect([r.titleFirst, r.orderViolations]).toEqual([true, 0]);
 	});
 
@@ -353,8 +393,8 @@ describe("an overlay header read after the content", () => {
 		{ text: "Row 2", bounds: [76, 430, 1004, 484] },
 	];
 	const bar: N[] = [
-		{ desc: "Translucent, Content runs under the bar", bounds: [147, 128, 933, 275] },
 		button("Navigate up", [0, 128, 126, 275]),
+		{ desc: "Translucent, Content runs under the bar", bounds: [147, 128, 933, 275] },
 	];
 
 	test("is a title finding and an order finding; the header first has neither", () => {
@@ -397,7 +437,6 @@ describe("the tree a screen reader walks is the only tree the checks read", () =
 		direction: "ltr" as const,
 		display,
 		title: null,
-		lead: [],
 		controls: [],
 		scrolled: [],
 		hidden: ["Push", "Other"],
@@ -449,7 +488,6 @@ describe("frozen dumps of the QA app (the checklist's findings in them, not the 
 			direction,
 			display,
 			title: c.title === null ? null : localize(c.title, direction),
-			lead: c.lead.map((label) => localize(label, direction)),
 			controls: c.controls.map((label) => localize(label, direction)),
 			scrolled: c.scrolled.map((label) => localize(label, direction)),
 			hidden: c.hidden.map((label) => localize(label, direction)),
@@ -476,7 +514,6 @@ describe("frozen dumps of the QA app (the checklist's findings in them, not the 
 				direction: "ltr" as const,
 				display,
 				title: c.title === null ? null : localize(c.title, "ltr"),
-				lead: c.lead.map((label) => localize(label, "ltr")),
 				controls: c.controls.map((label) => localize(label, "ltr")),
 				scrolled: c.scrolled.map((label) => localize(label, "ltr")),
 				hidden: c.hidden.map((label) => localize(label, "ltr")),
@@ -504,10 +541,13 @@ describe("frozen dumps of the QA app (the checklist's findings in them, not the 
 		).toBe(true);
 	});
 
-	test("inline header: title first, back button a clickable stop, slot content missing", () => {
+	test("inline header in the order before back-first: the title leads, and the back button after it is the one order violation", () => {
 		const r = screen("uia-screens-header.xml", "screens-header");
 		expect(r.titleFirst).toBe(true);
-		expect(r.orderViolations).toBe(0);
+		expect(r.orderViolations).toBe(1);
+		expect(r.findings.find((f) => f.kind === "order")?.element).toBe(
+			'View "Screen 1, Native header" [147,128 786x147] then Button "Navigate up" [0,128 126x147]',
+		);
 		expect(r.stops.slice(0, 2)).toEqual(["Screen 1, Native header", "Navigate up"]);
 		expect([r.interactive, r.actionable, r.unreachable]).toEqual([2, 1, 1]);
 	});

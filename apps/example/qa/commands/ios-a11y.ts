@@ -96,7 +96,6 @@ export async function iosA11y(argv: string[]): Promise<void> {
 					state,
 					direction: variant.direction,
 					title: iosTitle(screen, variant.direction),
-					lead: screen.lead.map((label) => localize(label, variant.direction)),
 					scrolled: [...screen.scrolled.map((control) => iosControl(control, variant.direction)), ...(iosBelowTheFold[screen.id] ?? [])],
 					controls: screen.controls.map((control) => iosControl(control, variant.direction)),
 					hidden: screen.hidden.map((label) => localize(label, variant.direction)),

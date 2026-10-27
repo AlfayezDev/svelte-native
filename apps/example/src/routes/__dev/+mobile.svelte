@@ -19,6 +19,8 @@
   import Button from "#lib/native/components/Button.svelte";
   import { runCapture } from "#lib/native/dev/capture.ts";
   import { runProbes } from "#lib/native/dev/probe.ts";
+  import { jsErrorCount } from "#lib/native/dev/errors.ts";
+  import { qaModule, type BuildIdentity } from "#lib/native/dev/qa.ts";
 
   /**
    * `?run=checks,quick` (or scenario names) drives the lab without touching the screen; results land in Documents/lab-results.json.
@@ -42,8 +44,11 @@
   const stressAutorun = $derived(capture || probes ? "" : autorun.split(",").filter((part) => part && part !== "checks").join(","));
   let stressResults: unknown[] = [];
   let stressDone = false;
+  /** What is installed, from the QA module (iOS); Android's harness knows its APK by its own hash. */
+  let build: BuildIdentity | null = null;
+  if (qaModule?.enabled) void qaModule.buildIdentity().then((identity) => { build = identity; });
   function saveResults(phase: string) {
-    const report = { phase, token, finishedAt: new Date().toISOString(), platform: Platform.OS, osVersion: String(Platform.Version), appVersion: nativeApplicationVersion, checks: $state.snapshot(checks), stress: stressResults, stressDone };
+    const report = { phase, token, finishedAt: new Date().toISOString(), platform: Platform.OS, osVersion: String(Platform.Version), appVersion: nativeApplicationVersion, build, jsErrors: jsErrorCount(), checks: $state.snapshot(checks), stress: stressResults, stressDone };
     console.info("[native lab results]", JSON.stringify(report));
     try { new File(Paths.document, "lab-results.json").write(JSON.stringify(report)); }
     catch (error) { console.error("[native lab results]", error); }

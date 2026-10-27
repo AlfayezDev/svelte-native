@@ -3,8 +3,10 @@ import { requireOptionalNativeModule } from "expo-modules-core";
 /** `SvelteQA` (apps/platform/modules/svelte-qa-ios): present in iOS builds, and every function but `recordBoot` refuses to run outside the QA app. */
 export type SvelteQA = {
   enabled: boolean;
-  /** The `[Svelte boot]` phases of this launch; the module writes `Documents/boot-report.json` once the first frame is out. */
-  recordBoot(summary: string): void;
+  /** The `[Svelte boot]` phases of this launch and the `console.error` count so far; the module writes `Documents/boot-report.json` once the first frame is out. */
+  recordBoot(summary: string, jsErrors: number): void;
+  /** What is installed: the SHA-256 of `main.jsbundle` and of the executable, which the harness compares with its build record. */
+  buildIdentity(): Promise<BuildIdentity>;
   /** The app's window as a PNG at `path`: size in pixels, the bytes and the SHA-256 of the file. */
   capture(path: string): Promise<{ width: number; height: number; scale: number; bytes: number; sha256: string }>;
   /** The accessibility elements of the window in VoiceOver's discovery order (JSON text). */
@@ -21,5 +23,7 @@ export type SvelteQA = {
   /** Forces the interface style of the app's windows (the native chrome follows it); `unspecified` gives control back to the system. */
   setInterfaceStyle(style: "light" | "dark" | "unspecified"): Promise<void>;
 };
+
+export type BuildIdentity = { jsbundleSha256: string; executableSha256: string };
 
 export const qaModule = requireOptionalNativeModule<SvelteQA>("SvelteQA");

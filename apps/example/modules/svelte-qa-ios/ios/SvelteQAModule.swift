@@ -17,8 +17,14 @@ public final class SvelteQAModule: Module {
     Constant("enabled") { SvelteQA.enabled }
 
     // The `[Svelte boot]` phases of the launch, kept with the native times; the report file is written when both are complete.
-    Function("recordBoot") { (summary: String) in
-      SvelteQA.boot?.recordJavaScript(summary)
+    Function("recordBoot") { (summary: String, jsErrors: Int) in
+      SvelteQA.boot?.recordJavaScript(summary, jsErrors: jsErrors)
+    }
+
+    // What is installed, for the harness to compare with its build record: the SHA-256 of `main.jsbundle` and of the executable.
+    AsyncFunction("buildIdentity") { () -> [String: String] in
+      try SvelteQA.requireEnabled()
+      return try SvelteQA.buildIdentity()
     }
 
     // The app's own window as a PNG at the screen's scale (no status bar: that is another process's), written to `path`.
@@ -105,6 +111,26 @@ enum SvelteQA {
       .first { $0.isKeyWindow }
   }
 
+  private static var identity: [String: String]?
+
+  /// Hashed once per process, on first use (after the boot report's times are taken, never before).
+  static func buildIdentity() throws -> [String: String] {
+    if let identity { return identity }
+    guard let bundle = Bundle.main.url(forResource: "main", withExtension: "jsbundle") else { throw QAError("the app has no main.jsbundle") }
+    guard let executable = Bundle.main.executableURL else { throw QAError("the app has no executable") }
+    let computed = [
+      "jsbundleSha256": try sha256(of: bundle),
+      "executableSha256": try sha256(of: executable),
+    ]
+    identity = computed
+    return computed
+  }
+
+  private static func sha256(of url: URL) throws -> String {
+    let data = try Data(contentsOf: url, options: .mappedIfSafe)
+    return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+  }
+
   static func capture(to path: String) throws -> [String: Any] {
     guard let window = keyWindow else { throw QAError("there is no key window") }
     let format = UIGraphicsImageRendererFormat()
@@ -137,6 +163,7 @@ final class BootRecorder {
   private var contentAppearedMs: Double?
   private var displayedMs: Double?
   private var javaScript: String?
+  private var jsErrors = 0
   private var link: CADisplayLink?
   private var written = false
 
@@ -173,9 +200,10 @@ final class BootRecorder {
     writeIfComplete()
   }
 
-  func recordJavaScript(_ summary: String) {
+  func recordJavaScript(_ summary: String, jsErrors: Int) {
     DispatchQueue.main.async {
       self.javaScript = summary
+      self.jsErrors = jsErrors
       self.writeIfComplete()
     }
   }
@@ -183,24 +211,29 @@ final class BootRecorder {
   private func writeIfComplete() {
     guard !written, let displayed = displayedMs, let content = contentAppearedMs, let summary = javaScript else { return }
     written = true
-    let report: [String: Any] = [
+    var report: [String: Any] = [
       "pid": Int(pid),
       "processStartMs": processStartMs,
       "launchedMs": launchedMs,
       "contentAppearedMs": content,
       "displayedMs": displayed,
       "javaScript": summary,
+      "jsErrors": jsErrors,
       "osVersion": UIDevice.current.systemVersion,
     ]
     guard let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
       NSLog("[SvelteQA] the boot report has no Documents directory to go to")
       return
     }
-    do {
-      let data = try JSONSerialization.data(withJSONObject: report, options: [.sortedKeys])
-      try data.write(to: documents.appendingPathComponent("boot-report.json"), options: .atomic)
-    } catch {
-      NSLog("[SvelteQA] the boot report could not be written: %@", String(describing: error))
+    // The times are all taken; hashing the installed files for the report's build identity happens off the main thread.
+    DispatchQueue.global(qos: .utility).async {
+      do {
+        report["build"] = try SvelteQA.buildIdentity()
+        let data = try JSONSerialization.data(withJSONObject: report, options: [.sortedKeys])
+        try data.write(to: documents.appendingPathComponent("boot-report.json"), options: .atomic)
+      } catch {
+        NSLog("[SvelteQA] the boot report could not be written: %@", String(describing: error))
+      }
     }
   }
 }

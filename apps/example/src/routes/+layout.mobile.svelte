@@ -10,6 +10,7 @@
   import Button from "#lib/native/components/Button.svelte";
   import Notice from "#lib/native/components/Notice.svelte";
   import { API_URL, nativeLabEnabled, theme, t, watchAppearance, syncStatusBar } from "#lib/native/state.svelte.ts";
+  import { installErrorCounter, jsErrorCount } from "#lib/native/dev/errors.ts";
   import type { NativeConfiguration } from "#lib/native/session.svelte.ts";
   let { routes }: { routes: NativeRoute[] } = $props();
   let configuration = $state<NativeConfiguration | null>(null);
@@ -38,12 +39,13 @@
       error = t("errors.unavailableBody");
     }
   }
+  if (nativeLabEnabled) installErrorCounter();
   onMount(() => {
     const controller = new AbortController();
     const unwatch = watchAppearance();
     void load(controller.signal);
     // The QA app hands the native recorder its boot phases; after the host's first commit, which logs the line they come from.
-    if (nativeLabEnabled) setTimeout(() => { void import("#lib/native/dev/qa.ts").then(({ qaModule }) => qaModule?.recordBoot(bootSummary())); }, 0);
+    if (nativeLabEnabled) setTimeout(() => { void import("#lib/native/dev/qa.ts").then(({ qaModule }) => qaModule?.recordBoot(bootSummary(), jsErrorCount())); }, 0);
     return () => { controller.abort(); unwatch(); };
   });
 </script>

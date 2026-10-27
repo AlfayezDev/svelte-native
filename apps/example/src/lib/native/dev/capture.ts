@@ -1,6 +1,6 @@
 import { Directory, File, Paths } from "expo-file-system";
 import type { Presentation } from "@rasheed/svelte-native";
-import { qaModule } from "./qa.ts";
+import { qaModule, type BuildIdentity } from "./qa.ts";
 
 /**
  * The iOS side of the parity and accessibility suites (`apps/platform/qa`, "iOS"): nothing outside the process can take an iOS
@@ -65,7 +65,7 @@ export type CaptureEntry = {
   sheets: number[][];
   error: string | null;
 };
-export type CaptureIndex = { schema: 1; token: string | null; startedAt: string; finishedAt: string | null; done: boolean; themes: Theme[]; entries: CaptureEntry[]; error: string | null };
+export type CaptureIndex = { schema: 1; token: string | null; build: BuildIdentity; startedAt: string; finishedAt: string | null; done: boolean; themes: Theme[]; entries: CaptureEntry[]; error: string | null };
 
 const pause = (milliseconds: number) => new Promise<void>((resolve) => { setTimeout(resolve, milliseconds); });
 const plain = (uri: string) => uri.replace(/^file:\/\//, "");
@@ -77,7 +77,7 @@ export async function runCapture(router: Router, ids: readonly string[], themes:
   const directory = new Directory(Paths.document, "capture");
   if (directory.exists) directory.delete();
   directory.create({ intermediates: true, idempotent: true });
-  const index: CaptureIndex = { schema: 1, token, startedAt: new Date().toISOString(), finishedAt: null, done: false, themes: [...themes], entries: [], error: null };
+  const index: CaptureIndex = { schema: 1, token, build: await qa.buildIdentity(), startedAt: new Date().toISOString(), finishedAt: null, done: false, themes: [...themes], entries: [], error: null };
   const save = () => new File(directory, "index.json").write(JSON.stringify(index));
   save();
   try {

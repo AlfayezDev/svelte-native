@@ -448,7 +448,12 @@ static std::string WithoutActivityState(const std::string &nativeId) {
 - (void)applyToolbarTo:(UINavigationController *)navigation animated:(BOOL)animated {
   SvelteToolbarView *toolbar = _toolbar;
   const BOOL shown = toolbar != nil && ![toolbar spec].hidden;
-  if (shown) [toolbar applyAppearanceTo:navigation.toolbar];
+  if (shown) {
+    // `UINavigationController.toolbar` creates the bar when it is first read: only a screen that has a toolbar does.
+    UIToolbar *bar = navigation.toolbar;
+    [toolbar applyAppearanceTo:bar];
+    if (bar.semanticContentAttribute != self.semanticContentAttribute) bar.semanticContentAttribute = self.semanticContentAttribute;
+  }
   [navigation setToolbarHidden:!shown animated:animated];
 }
 

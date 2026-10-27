@@ -99,7 +99,6 @@ using namespace facebook::react;
   [super updateLayoutMetrics:layoutMetrics oldLayoutMetrics:oldLayoutMetrics];
   _controller.view.semanticContentAttribute = self.semanticContentAttribute;
   _controller.navigationBar.semanticContentAttribute = self.semanticContentAttribute;
-  _controller.toolbar.semanticContentAttribute = self.semanticContentAttribute;
 }
 
 - (void)layoutSubviews {

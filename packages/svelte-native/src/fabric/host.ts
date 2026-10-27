@@ -160,7 +160,7 @@ let flushScheduled = false;
 let childrenInvalidated = false;
 let engineInstalled = false;
 let reanimatedAtInstall = false;
-let engineModule: { reanimatedLoaded?: () => void; dispatchCommand?: (tag: number, name: string, args: unknown[]) => void; setNativeProps?: (tag: number, props: Record<string, unknown>) => void; registerForeign?: (name: string) => boolean } | null = null;
+let engineModule: { reanimatedLoaded?: () => void; dispatchCommand?: (tag: number, name: string, args: unknown[]) => void; setNativeProps?: (tag: number, props: Record<string, unknown>) => void; registerForeign?: (name: string) => boolean; saveNavigation?: (json: string) => void; finishing?: () => boolean } | null = null;
 /** The foreign components the engine was told about: its mounting delegate must know a component's name before the first node of it is committed. */
 const foreignNames = new Set<string>();
 function registerForeign(viewName: string): void {
@@ -176,6 +176,10 @@ let profile = false;
 const now = () => performance.now();
 
 /** Timings of the most recent flush, for the lab; also published on `globalThis.__svelteFabric` so app code needs no import. */
+/** Hands the root router's navigation state to the host, which keeps it for a restart of the process (Android: the Activity's saved instance state). Nothing happens without the engine module. */
+export function saveNavigation(json: string): void { engineModule?.saveNavigation?.(json); }
+/** Whether the host's window went away because the user left (Back, a swipe from Recents) and not because it is being recreated: Android's `Activity.isFinishing`. */
+export function hostFinishing(): boolean { return engineModule?.finishing?.() === true; }
 export function fabricStats() { return { ...stats, engineInstalled, animationLoaded: animation !== null }; }
 /**
  * Spike instrumentation: the cost of the Fabric binding itself, per call, measured without Svelte.

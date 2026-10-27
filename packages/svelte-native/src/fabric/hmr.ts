@@ -7,7 +7,7 @@
  * every running surface is unmounted and started again on the same root tag with the same props and navigation state.
  */
 import { hmrState } from "../hmr-state.ts";
-import { startSurface, stopSurface } from "./host.ts";
+import { hostFinishing, startSurface, stopSurface } from "./host.ts";
 import ErrorScreen from "./ErrorScreen.svelte";
 
 const dev = () => typeof __DEV__ !== "undefined" && __DEV__;
@@ -16,6 +16,8 @@ const dev = () => typeof __DEV__ !== "undefined" && __DEV__;
 export function launchSurface(rootTag: number, initialProps?: Record<string, unknown>): void {
   const state = hmrState();
   if (!state.app) throw new Error("No Fabric app is registered: createFabricApp has not run");
+  // A surface that starts while another still runs (a recreated Activity whose old surface stops after the new one starts): the new root router takes the running one's navigation, as it does after a stop.
+  if ([...state.surfaces.keys()].some((running) => running !== rootTag)) state.restore ??= state.navigation?.();
   state.surfaces.set(rootTag, initialProps);
   try {
     startSurface(rootTag, state.app.App, { ...state.app.props, ...initialProps });
@@ -26,8 +28,15 @@ export function launchSurface(rootTag: number, initialProps?: Record<string, unk
   }
 }
 
+/**
+ * The host stopped a surface (a recreated Android Activity, a torn-down root). The last one to go leaves its router's navigation
+ * state for the next surface to adopt, unless the app is closing for good (the user left; Android's `isFinishing`): the next
+ * launch starts from its own first screen.
+ */
 export function stopApplication(rootTag: number): void {
-  hmrState().surfaces.delete(rootTag);
+  const state = hmrState();
+  state.surfaces.delete(rootTag);
+  if (state.surfaces.size === 0) state.restore = hostFinishing() ? undefined : state.navigation?.();
   stopSurface(rootTag);
 }
 

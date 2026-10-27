@@ -33,9 +33,9 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/Renderer/shims/ReactNativeViewConfigRegistry": "export const get = (name) => ({ uiViewClassName: name, validAttributes: {}, bubblingEventTypes: {}, directEventTypes: {} });",
   "react-native/Libraries/Utilities/Platform": "export default { OS: 'android', Version: 34 };",
   "react-native/Libraries/Utilities/BackHandler": "export default { addEventListener: () => ({ remove() {} }) };",
-  "react-native/Libraries/Linking/Linking": "export default { addEventListener: () => ({ remove() {} }), getInitialURL: () => Promise.resolve(null) };",
+  "react-native/Libraries/Linking/Linking": "export default { addEventListener: () => ({ remove() {} }), getInitialURL: () => Promise.resolve(globalThis.__initialURL ?? null) };",
   "react-native/Libraries/Image/resolveAssetSource": "export default () => null;",
-  "expo-modules-core": "export const EventEmitter = class {}; export const requireOptionalNativeModule = () => null;",
+  "expo-modules-core": "export const EventEmitter = class {}; export const requireOptionalNativeModule = (name) => (globalThis.__nativeModules ?? {})[name] ?? null;",
 };
 
 async function load(fixture = "hmr-fixture.svelte") {
@@ -87,7 +87,7 @@ test("remountSurfaces unmounts the old tree and mounts the fresh app on the same
   expect(texts(31)).toEqual(["v1:/:1"]);
 
   // The surface's exports are not reachable through the runnable, so navigate through the router the fixture created.
-  expect(hmrState().navigation?.()).toEqual({ entries: [{ route: "/", href: "/", presentation: "push" }] });
+  expect(hmrState().navigation?.()).toEqual({ stack: { entries: [{ route: "/", href: "/", presentation: "push" }] } });
 
   // A hot update re-runs the entry: same registration call, new component props.
   const first = commits.length;
@@ -111,14 +111,14 @@ test("the navigation stack survives a remount", async () => {
   const hot = hmrState();
   // Drive the router through the navigation hook the fixture registered: replace it with a two-screen stack, as after two `goto` calls.
   const saved = { entries: [{ href: "/a", presentation: "push" as const }, { href: "/b?x=1", presentation: "push" as const }] };
-  hot.navigation = () => saved;
+  hot.navigation = () => ({ stack: saved });
   (globalThis as { __routeLoads?: string[] }).__routeLoads = [];
   m.remountSurfaces();
   await settle(m);
   expect(texts(32)).toEqual(["v1:/b:2"]);
   expect((globalThis as { __routeLoads?: string[] }).__routeLoads).toEqual(["/a", "/b"]); // the adopted stack's routes load again when their screens render; the others wait for a navigation
   // A snapshot without route ids restores by href; the next one records them.
-  expect(hot.navigation()).toEqual({ entries: [{ route: "/a", href: "/a", presentation: "push" }, { route: "/b", href: "/b?x=1", presentation: "push" }] });
+  expect(hot.navigation()).toEqual({ stack: { entries: [{ route: "/a", href: "/a", presentation: "push" }, { route: "/b", href: "/b?x=1", presentation: "push" }] } });
   expect(hot.restore).toBeUndefined();
 });
 
@@ -200,7 +200,7 @@ test("a tree app: the root layout is the shell around the root navigator, in the
   router?.goto("/account");
   await turns(m);
   expect(hrefs(router)).toEqual(["/acme", "/account"]);
-  const before = hmrState().navigation?.();
+  const before = hmrState().navigation?.().stack;
   expect(before?.entries.map((entry) => [entry.href, entry.presentation])).toEqual([["/acme", "push"], ["/account", "modal"]]);
   expect(before?.entries[0].tabs?.selected).toBe("inbox");
   expect(Object.keys(before?.entries[0].tabs?.panes ?? {})).toEqual(["home", "inbox"]);
@@ -215,7 +215,7 @@ test("a tree app: the root layout is the shell around the root navigator, in the
   expect(next).not.toBe(router);
   expect(hrefs(next)).toEqual(["/acme", "/account"]);
   expect(next?.entries.map((entry) => entry.presentation)).toEqual(["push", "modal"]);
-  expect(hmrState().navigation?.()).toEqual(before);
+  expect(hmrState().navigation?.().stack).toEqual(before);
   expect(texts(35)).toEqual(["page /acme/inbox", "page /acme/inbox/compose", "page /account"]); // the selected pane and its stack are back; the home pane waits for its tab
   expect(nodesOf(35, "tabs")[0].props.nativeID).toContain("sel=1");
 
@@ -232,12 +232,12 @@ test("a saved state of routes that no longer exist is dropped: the router starts
   m.createFabricApp(m.Fixture, { tree: m.appTree(), initial: "/workspaces" });
   runnables.main({ rootTag: 36 });
   await turns(m);
-  hmrState().navigation = () => ({ entries: [{ href: "/workspaces", presentation: "push" }, { href: "/gone/for/good", presentation: "push" }] });
+  hmrState().navigation = () => ({ stack: { entries: [{ href: "/workspaces", presentation: "push" }, { href: "/gone/for/good", presentation: "push" }] } });
   m.createFabricApp(m.Fixture, { tree: m.appTree(), initial: "/workspaces" });
   m.remountSurfaces();
   await turns(m);
   expect(hrefs(treeScope.__shellRouter)).toEqual(["/workspaces"]);
-  hmrState().navigation = () => ({ entries: [{ href: "/acme", presentation: "push", tabs: { selected: "ghost", panes: { ghost: { entries: [{ href: "/acme/ghost", presentation: "push" }] } } } }] });
+  hmrState().navigation = () => ({ stack: { entries: [{ href: "/acme", presentation: "push", tabs: { selected: "ghost", panes: { ghost: { entries: [{ href: "/acme/ghost", presentation: "push" }] } } } }] } });
   m.createFabricApp(m.Fixture, { tree: m.appTree(), initial: "/workspaces" });
   m.remountSurfaces();
   await turns(m);
@@ -255,7 +255,7 @@ test("a restored entry is the route it was: a page the resolver chose over a nav
   await turns(m);
   expect(treeScope.__shellRouter?.entries.map((entry) => entry.route.id)).toEqual(["x/[id]"]); // `/x/flow` navigated to the page, not to the navigator whose own path it is
   expect(texts(37)).toEqual(["page /x/flow"]);
-  expect(hmrState().navigation?.().entries.map((entry) => entry.route)).toEqual(["x/[id]"]);
+  expect(hmrState().navigation?.().stack.entries.map((entry) => entry.route)).toEqual(["x/[id]"]);
 
   m.createFabricApp(m.Fixture, { tree: tree(), initial: "/x/flow" });
   m.remountSurfaces();
@@ -264,7 +264,7 @@ test("a restored entry is the route it was: a page the resolver chose over a nav
   expect(texts(37)).toEqual(["page /x/flow"]);
 
   // A route that was renamed (its id is gone) is found by its href.
-  hmrState().navigation = () => ({ entries: [{ route: "x/[slug]", href: "/x/7", presentation: "push" }] });
+  hmrState().navigation = () => ({ stack: { entries: [{ route: "x/[slug]", href: "/x/7", presentation: "push" }] } });
   m.createFabricApp(m.Fixture, { tree: tree(), initial: "/x/flow" });
   m.remountSurfaces();
   await turns(m);
@@ -289,4 +289,190 @@ test("a restored nested stack navigator keeps its first screen's way back: the s
   await turns(m);
   expect(hrefs(treeScope.__shellRouter)).toEqual(["/acme", "/acme/flow"]);
   expect(arrows()).toEqual([true]);
+});
+
+// A recreated Android Activity (a font scale or locale change) stops its surface and starts another in the same JavaScript runtime; a
+// process that was killed starts a new runtime, and the host passes what the router saved as `initialProps.navigation`.
+const stopSurface = (rootTag: number) => (globalThis as { __svelteFabricStop?: (rootTag: number) => void }).__svelteFabricStop?.(rootTag);
+const arrows = (router: TreeRouter | undefined) => router?.screens.filter((screen) => !screen.leaving).map((screen) => screen.canGoBack);
+const environment = globalThis as { __initialURL?: string; __nativeModules?: Record<string, object> };
+const freshRuntime = () => { delete (globalThis as { __svelteNativeHmrState?: unknown }).__svelteNativeHmrState; treeScope.__treeRouters = {}; };
+/** The engine module as the Android host has it, as far as navigation goes: what the router saved, and whether the Activity is finishing. */
+function engineModule() {
+  const module = { saved: [] as string[], finishing: false };
+  environment.__nativeModules = { SvelteEngine: { install: () => false, addListener: () => ({ remove() {} }), getInsets: () => null, saveNavigation: (json: string) => module.saved.push(json), finishing: () => module.finishing } };
+  return module;
+}
+/** The product tree with a workspace open on the inbox, a modal on its stack and an account modal over the tabs. */
+async function openApp(m: Awaited<ReturnType<typeof load>>, rootTag: number, initialProps?: Record<string, unknown>) {
+  m.createFabricApp(m.Fixture, { tree: m.appTree(), initial: "/acme/home" });
+  runnables.main({ rootTag, initialProps });
+  await turns(m);
+}
+async function wander(m: Awaited<ReturnType<typeof load>>) {
+  const router = treeScope.__shellRouter;
+  router?.goto("/acme/home/thread/7");
+  router?.goto("/acme/inbox/compose", { presentation: "modal" } as never);
+  await turns(m);
+  router?.goto("/account");
+  await turns(m);
+}
+
+test("recreation: the surface stops and a new one starts, and every navigator's stack and the tab selection come back", async () => {
+  freshRuntime();
+  const m = await load("hmr-tree-shell.svelte");
+  roots = {}; commits.length = 0;
+  await openApp(m, 40);
+  await wander(m);
+  const router = treeScope.__shellRouter;
+  const before = { hrefs: hrefs(router), arrows: arrows(router), saved: hmrState().navigation?.() };
+  expect(before.hrefs).toEqual(["/acme", "/account"]);
+  expect(before.arrows).toEqual([false, true]);
+
+  stopSurface(40);
+  expect(roots[40]).toEqual([]);
+  expect(hmrState().restore).toEqual(before.saved); // taken on every stop, in release builds too
+
+  treeScope.__treeRouters = {};
+  runnables.main({ rootTag: 41 });
+  await turns(m);
+  const next = treeScope.__shellRouter;
+  expect(next).not.toBe(router);
+  expect(hrefs(next)).toEqual(before.hrefs);
+  expect(next?.entries.map((entry) => entry.presentation)).toEqual(["push", "modal"]);
+  expect(arrows(next)).toEqual(before.arrows);
+  expect(hmrState().navigation?.()).toEqual(before.saved);
+  expect(hmrState().restore).toBeUndefined();
+  expect(texts(41)).toEqual(["page /acme/inbox", "page /acme/inbox/compose", "page /account"]);
+  expect(nodesOf(41, "tabs")[0].props.nativeID).toContain("sel=1");
+  next?.goto("/acme/home/thread/7");
+  await turns(m);
+  expect(hrefs(treeScope.__treeRouters?.["/acme/home/thread/7"] as TreeRouter | undefined)).toEqual(["/acme/home", "/acme/home/thread/7"]);
+  expect(arrows(treeScope.__treeRouters?.["/acme/home/thread/7"] as TreeRouter | undefined)).toEqual([false, true]);
+});
+
+test("recreation: a new surface that starts before the old one has stopped takes the running router's state, and the old stop leaves nothing behind", async () => {
+  freshRuntime();
+  const m = await load("hmr-tree-shell.svelte");
+  roots = {}; commits.length = 0;
+  await openApp(m, 42);
+  await wander(m);
+  const saved = hmrState().navigation?.();
+
+  treeScope.__treeRouters = {};
+  runnables.main({ rootTag: 43 });
+  await turns(m);
+  expect(hrefs(treeScope.__shellRouter)).toEqual(["/acme", "/account"]);
+  expect(hmrState().restore).toBeUndefined();
+  stopSurface(42);
+  expect(hmrState().restore).toBeUndefined(); // 43 is still running: nothing to hand on
+  expect(hmrState().navigation?.()).toEqual(saved);
+  expect(texts(43)).toEqual(["page /acme/inbox", "page /acme/inbox/compose", "page /account"]);
+  expect(roots[42]).toEqual([]);
+});
+
+test("recreation: an app the user is leaving (Android's isFinishing) starts from its first screen next time", async () => {
+  freshRuntime();
+  const engine = engineModule();
+  try {
+    const m = await load("hmr-tree-shell.svelte");
+    roots = {}; commits.length = 0;
+    await openApp(m, 44);
+    await wander(m);
+    engine.finishing = true;
+    stopSurface(44);
+    expect(hmrState().restore).toBeUndefined();
+    treeScope.__treeRouters = {};
+    runnables.main({ rootTag: 45 });
+    await turns(m);
+    expect(hrefs(treeScope.__shellRouter)).toEqual(["/acme"]);
+    expect(texts(45)).toEqual(["page /acme/home"]);
+  } finally { delete environment.__nativeModules; }
+});
+
+test("process death: the router writes its state through the engine module after each change, and a new process adopts it from initialProps.navigation", async () => {
+  freshRuntime();
+  const engine = engineModule();
+  let saved: string;
+  try {
+    const m = await load("hmr-tree-shell.svelte");
+    roots = {}; commits.length = 0;
+    await openApp(m, 46);
+    expect(engine.saved.map((json) => JSON.parse(json).stack.entries.map((entry: { href: string }) => entry.href))).toEqual([["/acme"]]);
+    await wander(m);
+    expect(engine.saved.length).toBe(3); // one write per batch of changes: the thread and the modal together, then the account modal
+    expect(JSON.parse(engine.saved.at(-1) as string)).toEqual(hmrState().navigation?.());
+    await turns(m);
+    expect(engine.saved.length).toBe(3); // nothing changed: nothing is written
+    saved = engine.saved.at(-1) as string;
+  } finally { delete environment.__nativeModules; }
+
+  // The process dies: a new runtime has no state of its own, and the host starts the surface with what it kept.
+  freshRuntime();
+  const m = await load("hmr-tree-shell.svelte");
+  roots = {}; commits.length = 0;
+  await openApp(m, 47, { navigation: saved });
+  expect(hrefs(treeScope.__shellRouter)).toEqual(["/acme", "/account"]);
+  expect(arrows(treeScope.__shellRouter)).toEqual([false, true]);
+  expect(texts(47)).toEqual(["page /acme/inbox", "page /acme/inbox/compose", "page /account"]);
+  expect(nodesOf(47, "tabs")[0].props.nativeID).toContain("sel=1");
+
+  // A state that is no state, and one whose routes are gone, leave the app on its first screen.
+  for (const navigation of ["not json", "{\"stack\":{}}", 7, JSON.stringify({ stack: { entries: [{ href: "/gone/for/good", presentation: "push" }] } })]) {
+    freshRuntime();
+    const again = await load("hmr-tree-shell.svelte");
+    roots = {}; commits.length = 0;
+    await openApp(again, 48, { navigation });
+    expect(hrefs(treeScope.__shellRouter)).toEqual(["/acme"]);
+    expect(texts(48)).toEqual(["page /acme/home"]);
+  }
+});
+
+test("the launch link: a state restored with the intent that opened it is not opened again, a different link wins", async () => {
+  freshRuntime();
+  const engine = engineModule();
+  try {
+    const m = await load("hmr-tree-shell.svelte");
+    roots = {}; commits.length = 0;
+    environment.__initialURL = "https://app.test/acme/home/thread/7";
+    m.createFabricApp(m.Fixture, { tree: m.appTree(), initial: "/workspaces" });
+    runnables.main({ rootTag: 50 });
+    await turns(m);
+    expect(hrefs(treeScope.__shellRouter)).toEqual(["/acme"]); // a launch link resets: its screen is the base
+    expect(hmrState().navigation?.().launch).toBe("https://app.test/acme/home/thread/7");
+    treeScope.__shellRouter?.goto("/acme/inbox/compose", { presentation: "modal" } as never);
+    await turns(m);
+    treeScope.__shellRouter?.goto("/account");
+    await turns(m);
+
+    // The Activity is recreated: the intent still carries the link, and it was opened already.
+    stopSurface(50);
+    treeScope.__treeRouters = {};
+    runnables.main({ rootTag: 51 });
+    await turns(m);
+    expect(hrefs(treeScope.__shellRouter)).toEqual(["/acme", "/account"]);
+    expect(texts(51)).toEqual(["page /acme/inbox", "page /acme/inbox/compose", "page /account"]);
+    const saved = engine.saved.at(-1) as string;
+    expect(JSON.parse(saved).launch).toBe("https://app.test/acme/home/thread/7");
+
+    // A new launch link arrives with the next start: it wins over the restored state.
+    stopSurface(51);
+    environment.__initialURL = "https://app.test/workspaces";
+    runnables.main({ rootTag: 52 });
+    await turns(m);
+    expect(hrefs(treeScope.__shellRouter)).toEqual(["/workspaces"]);
+    expect(hmrState().navigation?.().launch).toBe("https://app.test/workspaces");
+
+    // The process died: the same applies to the state the host kept, which remembers the link it was opened with.
+    for (const [link, expected] of [["https://app.test/acme/home/thread/7", ["/acme", "/account"]], ["https://app.test/workspaces", ["/workspaces"]]] as const) {
+      freshRuntime();
+      const again = await load("hmr-tree-shell.svelte");
+      roots = {}; commits.length = 0;
+      environment.__initialURL = link;
+      again.createFabricApp(again.Fixture, { tree: again.appTree(), initial: "/acme/home" });
+      runnables.main({ rootTag: 53, initialProps: { navigation: saved } });
+      await turns(again);
+      expect(hrefs(treeScope.__shellRouter)).toEqual(expected);
+    }
+  } finally { delete environment.__nativeModules; delete environment.__initialURL; }
 });

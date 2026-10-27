@@ -4,6 +4,7 @@ import { hmrState } from "../hmr-state.ts";
 import Root from "../Root.svelte";
 import type { StackNode } from "../route-tree.ts";
 import { launchSurface, stopApplication } from "./hmr.ts";
+import { saveNavigation } from "./host.ts";
 
 export { fabricStats, flush } from "./host.ts";
 export { remountSurfaces, showError } from "./hmr.ts";
@@ -27,9 +28,11 @@ export function createFabricApp<Props extends Record<string, unknown>>(App: Comp
 export function createFabricApp(App: Component<never>, props: Record<string, unknown>, appKey = "main"): void {
   mark("app");
   // Held on `globalThis`, not in this module: a hot update re-runs the entry, which registers the fresh component here.
-  hmrState().app = "tree" in props
+  const state = hmrState();
+  state.app = "tree" in props
     ? { App: Root as unknown as Component<Record<string, unknown>>, props: { ...props, shell: App } }
     : { App: App as unknown as Component<Record<string, unknown>>, props };
+  state.save = saveNavigation;
   registry().registerRunnable(appKey, (parameters: { rootTag: number; initialProps?: Record<string, unknown> }) => {
     launchSurface(parameters.rootTag, parameters.initialProps);
   });

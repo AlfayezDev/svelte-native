@@ -3,7 +3,7 @@ import { SvelteMap, SvelteURL } from "svelte/reactivity";
 import Platform from "react-native/Libraries/Utilities/Platform";
 import BackHandler from "react-native/Libraries/Utilities/BackHandler";
 import Linking from "react-native/Libraries/Linking/Linking";
-import { hmrState, type StackSnapshot } from "./hmr-state.ts";
+import { hmrState, type NavigationState, type StackSnapshot } from "./hmr-state.ts";
 import { EXIT_REPORTED, EXIT_TIMEOUT_MS, type Presentation, type RouterScopeOptions } from "./fabric/navigation.ts";
 import {
   fillPath, locate, matchPath, plan, resolve,
@@ -181,6 +181,8 @@ function createStore(tree: StackNode) {
   const root = createStack(reportsExit);
   let disposed = false;
   let launchRead = false;
+  /** The launch link this router (or the one whose state it adopted) has acted on; reactive so that the state saved for a restart follows it. */
+  let launched = $state.raw<string | undefined>(undefined);
 
   /** `canGoBack` is whether the entry's own screen will have one below it: a nested stack navigator's first screen takes it for its own. */
   function entryFor(route: PageRoute | RouteNode, href: string, params: Record<string, string>, presentation: Presentation, canGoBack: boolean): NativeLocation {
@@ -318,7 +320,7 @@ function createStore(tree: StackNode) {
   }
 
   return {
-    tree, root, load, modules, snapshot: () => snapshot(root), resolved,
+    tree, root, load, modules, snapshot: () => snapshot(root), state: (): NavigationState => ({ stack: snapshot(root), launch: launched }), resolved,
     navigate(href: string, navigation: Navigation) {
       const target = resolved(href);
       apply(plan(stateOf(target), target, navigation), target, true);
@@ -326,10 +328,11 @@ function createStore(tree: StackNode) {
       for (const { node } of target.chain) if (node.layout) load(node);
     },
     /** Puts the first screen on the root stack (it loads when it renders, not here), from a saved state when there is one. */
-    start(initial: string, saved?: StackSnapshot) {
-      if (saved?.entries.length) {
+    start(initial: string, saved?: NavigationState) {
+      if (saved?.stack.entries.length) {
         try {
-          root.set(restoreEntries(tree, saved), false);
+          root.set(restoreEntries(tree, saved.stack), false);
+          launched = saved.launch;
           return;
         } catch { /* a route that no longer exists: start from the initial screen */ }
       }
@@ -352,11 +355,20 @@ function createStore(tree: StackNode) {
       router.goto(`${path}${url.search}${url.hash}`, navigation);
       return true;
     },
-    /** Opens the link the app was launched with, once for the life of the router: a remount of its `<Router>` (a session reset) does not open it again. A direct load has no history, so it is a `reset` (like SvelteKit's first page): the link's screen is the base of the stack and has no back arrow. Later links are plain `goto`s. */
+    /**
+     * Opens the link the app was launched with, once for the life of the router: a remount of its `<Router>` (a session reset) does not open it again.
+     * A direct load has no history, so it is a `reset` (like SvelteKit's first page): the link's screen is the base of the stack and has no back arrow.
+     * Later links are plain `goto`s. A router that adopted a saved state also adopted the link that state was opened with: an Activity that is recreated
+     * or restored after its process died reports the intent it was started with again, and that is no new launch (a different link is, and wins).
+     */
     openLaunchURL(router: Router): void {
       if (launchRead) return;
       launchRead = true;
-      void Linking.getInitialURL().then((url) => { if (url && !disposed && router.active()) router.openURL(url, { reset: true }); });
+      void Linking.getInitialURL().then((url) => {
+        if (!url || disposed || !router.active() || url === launched) return;
+        launched = url;
+        router.openURL(url, { reset: true });
+      });
     },
     dispose() { disposed = true; root.dispose(); },
   };
@@ -464,25 +476,37 @@ export function createRouter(tree: StackNode, initial = "/auth/login", options: 
   const scope = options.scope ?? (above ? undefined : "root");
   const store = createStore(tree);
   onDestroy(store.dispose);
-  // A development remount hands the previous router's navigation state over, so an edit does not send the app back to its
-  // first screen. The root router takes the state the remount recorded; the root adopting it also collects what the named
-  // routers had, and each of them takes its own the first time it is created (a tab pane mounts on first selection).
+  // A surface that stops and another that starts (a development remount, a recreated Android Activity) hand the previous
+  // router's navigation state over, so neither sends the app back to its first screen. The root router takes the state the
+  // stop recorded, else the one the host started the surface with (the process died: `options.restore`); the root adopting
+  // the first also collects what the named routers had, and each of them takes its own the first time it is created (a tab
+  // pane mounts on first selection).
   const hot = hmrState();
   hot.scopes ??= new SvelteMap();
   hot.scopeRestore ??= new SvelteMap();
   const { scopes, scopeRestore } = hot as Required<typeof hot>;
-  let restored: StackSnapshot | undefined;
+  let restored: NavigationState | undefined;
   if (scope === "root") {
-    restored = hot.restore;
+    restored = hot.restore ?? options.restore;
+    if (hot.restore) for (const [name, saved] of scopes) scopeRestore.set(name, saved());
     hot.restore = undefined;
-    if (restored) for (const [name, saved] of scopes) scopeRestore.set(name, saved());
   } else if (scope !== undefined) {
-    restored = scopeRestore.get(scope);
+    const named = scopeRestore.get(scope);
+    restored = named && { stack: named };
     scopeRestore.delete(scope);
   }
   store.start(initial, restored);
-  if (scope === "root") hot.navigation = store.snapshot;
-  else if (scope !== undefined) scopes.set(scope, store.snapshot);
+  if (scope === "root") {
+    hot.navigation = store.state;
+    // Every change of the stacks writes the state for the host to keep (a settled navigation: effects run once per batch of changes, after the flush that made them).
+    let written = "";
+    $effect(() => {
+      const json = JSON.stringify(store.state());
+      if (json === written) return;
+      written = json;
+      hot.save?.(json);
+    });
+  } else if (scope !== undefined) scopes.set(scope, store.snapshot);
   return makeRouter({ store, node: tree, scope, above, navigator: { kind: "stack", stack: store.root }, active: options.active ?? (() => true) });
 }
 

@@ -1,4 +1,5 @@
 import { getContext, type Snippet } from "svelte";
+import type { NavigationState } from "../hmr-state.ts";
 
 /**
  * The navigation tags on the Fabric host. They are plain `RCTView` nodes: the engine tells them apart by `nativeID`
@@ -88,8 +89,11 @@ export type TabItem = {
 /** What a tab's `content` snippet receives. Hand it to the tab's router as `{ scope: tab.key, active: () => tab.selected }`. */
 export type TabHandle = { readonly key: string; readonly selected: boolean };
 
-/** What `createRouter` takes to keep one stack per tab: the router answers `useRouter(scope)`, and handles back and links only while `active()`. */
-export type RouterScopeOptions = { scope?: string; active?: () => boolean };
+/**
+ * What `createRouter` takes to keep one stack per tab: the router answers `useRouter(scope)`, and handles back and links only while `active()`.
+ * `restore` is for the root router: the state a process that died left (`parseNavigation(initialProps.navigation)`), adopted unless a stopped surface left a fresher one.
+ */
+export type RouterScopeOptions = { scope?: string; active?: () => boolean; restore?: NavigationState };
 
 // Layout constants shared by the encoders, the components and both native sides (dp on Android, pt on iOS).
 export type NavigationPlatform = "android" | "ios";

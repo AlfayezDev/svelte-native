@@ -14,6 +14,7 @@ export type CaptureSpec = { goto: string; base?: string; presentation?: Presenta
 
 const lab = "/__dev";
 const screens = `${lab}/screens`;
+const tree = `${lab}/tree`;
 export const captureSpecs: Record<string, CaptureSpec> = {
   login: { goto: "/auth/login" },
   "dev-checks": { goto: `${lab}?panel=checks` },
@@ -32,6 +33,11 @@ export const captureSpecs: Record<string, CaptureSpec> = {
   "screens-tabs": { base: lab, goto: `${screens}?mode=tabs` },
   "screens-toolbar": { base: lab, goto: `${screens}?mode=toolbar` },
   "screens-toolbar-center": { base: lab, goto: `${screens}?mode=toolbar-center` },
+  // The route-tree lab: a tabs navigator over the lab page; the sheet is a screen of the inbox pane's own stack.
+  "tree-home": { base: lab, goto: tree },
+  "tree-detail": { base: lab, goto: `${tree}/home/detail/7` },
+  "tree-inbox": { base: lab, goto: `${tree}/inbox` },
+  "tree-compose": { base: `${tree}/inbox`, goto: `${tree}/inbox/compose`, presentation: "sheet" },
   "screens-sheet": { base: screens, goto: `${screens}?mode=sheet`, presentation: "sheet" },
   "screens-sheet-auto": { base: screens, goto: `${screens}?mode=auto`, presentation: "sheet" },
   "screens-form-sheet": { base: screens, goto: `${screens}?mode=form`, presentation: "formSheet" },

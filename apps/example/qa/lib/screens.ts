@@ -53,6 +53,7 @@ export type ScreenCase = {
 
 const dev = "rasheed-svelte:///__dev";
 const screens = `${dev}/screens`;
+const tree = `${dev}/tree`;
 
 function screenCase(
 	id: string,
@@ -319,6 +320,41 @@ export const cases: ScreenCase[] = [
 			controls: ["Navigate up", "Attach", "Send", "List", "Grid"],
 		},
 	),
+	screenCase("tree-home", "/__dev/tree", tree, label("Home row 1"), {
+		layout: "tabs",
+		title: "Home, Route tree",
+		controls: ["Home", "Inbox, 3"],
+		scrolled: ["Push detail"],
+	}),
+	screenCase(
+		"tree-detail",
+		"/__dev/tree/home/detail/7",
+		`${tree}/home/detail/7`,
+		label("Open account modal"),
+		{
+			layout: "tabs",
+			title: "Detail 7",
+			controls: ["Navigate up", "Back", "Open account modal", "Home", "Inbox, 3"],
+		},
+	),
+	screenCase("tree-inbox", "/__dev/tree/inbox", `${tree}/inbox`, label("Message 1"), {
+		layout: "tabs",
+		title: "Inbox",
+		controls: ["Home", "Inbox, 3"],
+		scrolled: ["Compose"],
+	}),
+	screenCase(
+		"tree-compose",
+		"/__dev/tree/inbox/compose (sheet)",
+		`${tree}/inbox/compose`,
+		label("Done"),
+		{
+			layout: "sheet",
+			title: "New message",
+			controls: ["Message", "Done"],
+			hidden: ["Message 1", "Compose"],
+		},
+	),
 	screenCase(
 		"screens-sheet",
 		"/__dev/screens?mode=sheet (presented)",
@@ -401,6 +437,10 @@ export const coveredRouteDirectories = [
 	"__dev",
 	"__dev/screen",
 	"__dev/screens",
+	"__dev/tree/home",
+	"__dev/tree/home/detail/[id]",
+	"__dev/tree/inbox",
+	"__dev/tree/inbox/compose",
 	"(public)/auth/login",
 ];
 

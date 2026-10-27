@@ -8,6 +8,7 @@ import { compile, compileModule } from "svelte/compiler";
 import { reanimatedStubs } from "./reanimated-stubs.ts";
 import { EXIT_TIMEOUT_MS, NAV_KINDS, TOOLBAR_BAR, TOOLBAR_METRICS, badgeText, colorToWire, decodeList, decodeRecords, decodeValue, headerHeight, mergeScreenOptions, navigationProps, navigationTags, normalizeDetents, parseNativeID, sheetStyle, toolbarHeight } from "../src/fabric/navigation.ts";
 import { LOWERED_TAGS, lowerPrimitives } from "../src/lower.ts";
+import { routeFiles } from "../src/build.ts";
 
 type FakeNode = { tag: number; name: string; props: Record<string, unknown>; children: FakeNode[]; sealed: boolean; target?: unknown };
 const calls: string[] = [];
@@ -43,7 +44,7 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/Renderer/shims/ReactNativeViewConfigRegistry": "export const register = (name) => name; export const get = (name) => ({ uiViewClassName: name, validAttributes: {}, bubblingEventTypes: { topChange: { phasedRegistrationNames: { bubbled: 'onChange', captured: 'onChangeCapture' } } }, directEventTypes: { topLayout: { registrationName: 'onLayout' }, topScroll: { registrationName: 'onScroll' } } });",
   "react-native/Libraries/Utilities/Platform": "export default { get OS() { return globalThis.__navigationOS ?? 'android'; }, Version: 34 };",
   "react-native/Libraries/Utilities/BackHandler": "const handlers = (globalThis.__backHandlers ??= []); export default { addEventListener: (name, handler) => { handlers.push(handler); return { remove() { const at = handlers.indexOf(handler); if (at >= 0) handlers.splice(at, 1); } }; } };",
-  "react-native/Libraries/Linking/Linking": "const handlers = (globalThis.__linkHandlers ??= []); export default { addEventListener: (name, handler) => { handlers.push(handler); return { remove() { const at = handlers.indexOf(handler); if (at >= 0) handlers.splice(at, 1); } }; }, getInitialURL: () => { globalThis.__initialURLReads = (globalThis.__initialURLReads ?? 0) + 1; return Promise.resolve(null); } };",
+  "react-native/Libraries/Linking/Linking": "const handlers = (globalThis.__linkHandlers ??= []); export default { addEventListener: (name, handler) => { handlers.push(handler); return { remove() { const at = handlers.indexOf(handler); if (at >= 0) handlers.splice(at, 1); } }; }, getInitialURL: () => { globalThis.__initialURLReads = (globalThis.__initialURLReads ?? 0) + 1; return Promise.resolve(globalThis.__initialURL ?? null); } };",
   "react-native/Libraries/Image/resolveAssetSource": "export default (source) => source && typeof source === 'object' && 'uri' in source ? { scale: 1, ...source } : null;",
   "react-native/Libraries/Components/Keyboard/Keyboard": "export default { isVisible: () => false, dismiss() {} };",
   "react-native/Libraries/NativeComponent/ViewConfig": "export const createViewConfig = (partial) => partial;",
@@ -1969,6 +1970,47 @@ test("a goto to an href the owner stack already holds pops to that entry, from t
     await settled();
     expect(pathsOf(home)).toEqual(["/acme/home"]);
   } finally { reset(); }
+});
+
+test("the launch link is the stack's base: no back arrow on /__dev; later links are plain gotos", async () => {
+  withInsets(24);
+  const launch = globalThis as { __initialURL?: string };
+  try {
+    const files = await routeFiles(resolve(import.meta.dirname, "../../../apps/platform/src/routes"));
+    const arrows = (router: TreeRouter) => router.screens.filter((screen) => !screen.leaving).map((screen) => screen.canGoBack);
+    const backOf = (surface: number) => Object.fromEntries(ofKind(roots[surface], "header").map((node) => {
+      const pairs = parseNativeID(String(node.props.nativeID))?.pairs ?? {};
+      return [decodeURIComponent(String(pairs.t)), pairs.bk === "1"];
+    }));
+
+    launch.__initialURL = "rasheed-svelte:///__dev";
+    const lab = await mountTree(134, { initial: "/auth/login", files });
+    await lab.settled();
+    expect(pathsOf(lab.router)).toEqual(["/__dev"]); // a direct load has no history: the login is not below it
+    expect(arrows(lab.router)).toEqual([false]);
+    expect(backOf(134)["/__dev"]).toBe(false); // so the lab's header has no arrow, and its declared controls have no Back
+    expect(lab.hardwareBack()).toBe(false);
+    // A link that arrives while the app runs opens like any goto: the screen stacks and has its arrow.
+    for (const handler of handlersOf("__linkHandlers")) (handler as (event: { url: string }) => void)({ url: "rasheed-svelte:///__dev/screens" });
+    await lab.settled();
+    expect(pathsOf(lab.router)).toEqual(["/__dev", "/__dev/screens"]);
+    expect(arrows(lab.router)).toEqual([false, true]);
+
+    // A workspace opened by the launch link is the base too: the tabs are the root's only entry.
+    launch.__initialURL = "https://example.test/acme/settings";
+    const workspace = await mountTree(135, { initial: "/auth/login", files, tabs: [{ key: "home", title: "Home" }, { key: "settings", title: "Settings" }] });
+    await workspace.settled();
+    expect(pathsOf(workspace.router)).toEqual(["/acme"]);
+    expect(selectedIndex(135)).toBe("1");
+    expect(arrows(workspace.router)).toEqual([false]);
+    expect(workspace.hardwareBack()).toBe(false);
+
+    // A link no screen matches is ignored: the app stays on its first screen.
+    launch.__initialURL = "rasheed-svelte:///a/b/c/d/e";
+    const nothing = await mountTree(136, { initial: "/auth/login", files });
+    await nothing.settled();
+    expect(pathsOf(nothing.router)).toEqual(["/auth/login"]);
+  } finally { delete launch.__initialURL; reset(); }
 });
 
 test("a Screen in a router entry does not get a stack of its own: one stack per router, the pages' screens are its screens", async () => {

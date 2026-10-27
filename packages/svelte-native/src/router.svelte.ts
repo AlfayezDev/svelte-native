@@ -58,8 +58,8 @@ export interface Router {
   back(): boolean;
   /** Replaces the first entry of this stack with a page of this navigator. */
   replaceBase(href: string): void;
-  /** Opens a link (`https:` or the app's scheme) when a screen matches it. */
-  openURL(href: string): boolean;
+  /** Opens a link (`https:` or the app's scheme) when a screen matches it; `navigation` is `goto`'s (the launch link is opened with `reset`). */
+  openURL(href: string, navigation?: NavigateOptions): boolean;
   /** The user dismissed the screen natively (after its transition): it and the ones above it are dropped at once. */
   dismissed(key: number): void;
   /** The native stack finished taking a popped screen away: its page unmounts now. */
@@ -343,20 +343,20 @@ function createStore(tree: StackNode) {
       load(target.page);
       stack.set([base, ...stack.entries.slice(1)]);
     },
-    openURL(router: Router, href: string): boolean {
+    openURL(router: Router, href: string, navigation: Navigation = {}): boolean {
       const url = URL.parse(href);
       if (!url || url.hostname === "expo-development-client") return false;
       const path = url.protocol === "https:" || url.protocol === "http:"
         ? url.pathname : `${url.hostname ? `/${url.hostname}` : ""}${url.pathname}`;
       if (!resolve(tree, path)) return false;
-      router.goto(`${path}${url.search}${url.hash}`);
+      router.goto(`${path}${url.search}${url.hash}`, navigation);
       return true;
     },
-    /** Opens the link the app was launched with, once for the life of the router: a remount of its `<Router>` (a session reset) does not open it again. */
+    /** Opens the link the app was launched with, once for the life of the router: a remount of its `<Router>` (a session reset) does not open it again. A direct load has no history, so it is a `reset` (like SvelteKit's first page): the link's screen is the base of the stack and has no back arrow. Later links are plain `goto`s. */
     openLaunchURL(router: Router): void {
       if (launchRead) return;
       launchRead = true;
-      void Linking.getInitialURL().then((url) => { if (url && !disposed && router.active()) router.openURL(url); });
+      void Linking.getInitialURL().then((url) => { if (url && !disposed && router.active()) router.openURL(url, { reset: true }); });
     },
     dispose() { disposed = true; root.dispose(); },
   };
@@ -410,7 +410,7 @@ function makeRouter({ store, node, scope, above, navigator, active, entry }: Spe
       if (!stack || node.kind !== "stack") throw new Error(`Navigator ${node.id} has no base entry to replace`);
       store.replaceBase(stack, node, href);
     },
-    openURL(href) { return store.openURL(router, href); },
+    openURL(href, navigation) { return store.openURL(router, href, navigation); },
     dismissed(key) { stack?.dismissed(key); },
     exited(key) { stack?.exited(key); },
   };

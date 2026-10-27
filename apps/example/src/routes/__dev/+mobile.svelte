@@ -10,29 +10,57 @@
   import { Text, View, Pressable, useRouter } from "@rasheed/svelte-native";
   import { AnimatedView, createSharedValue, withTiming, withSpring, withRepeat, withSequence, cancelAnimation, ReduceMotion, runOnUISync } from "@rasheed/svelte-native/animation";
   import { nativeLabEnabled, theme } from "#lib/native/state.svelte.ts";
-  import { labContext, RuneCounter, runeCounter, type RowHandle } from "#lib/native/dev/model.svelte.ts";
+  import { labContext, RuneCounter, runeCounter, screenLab, type RowHandle } from "#lib/native/dev/model.svelte.ts";
   import Binding from "#lib/native/dev/Binding.svelte";
   import Row from "#lib/native/dev/Row.svelte";
   import Observed from "#lib/native/dev/Observed.svelte";
   import Stress from "#lib/native/dev/Stress.svelte";
   import Page from "#lib/native/components/Page.svelte";
   import Button from "#lib/native/components/Button.svelte";
+  import { runCapture } from "#lib/native/dev/capture.ts";
+  import { runProbes } from "#lib/native/dev/probe.ts";
 
-  /** `?run=checks,quick` (or scenario names) drives the lab without touching the screen; results land in Documents/lab-results.json. */
+  /**
+   * `?run=checks,quick` (or scenario names) drives the lab without touching the screen; results land in Documents/lab-results.json.
+   * `?run=probe:<names>` (iOS) runs device probes of the native screens (`lib/native/dev/probe.ts`) into Documents/probe.
+   * `?run=capture:<ids>&themes=light.dark` (iOS) screenshots and dumps the accessibility tree of the named screens into Documents/capture,
+   * `?panel=<name>` opens a panel of this page and `&state=pending|error` puts the async panel in that state (the parity and accessibility suites).
+   */
   let { url: pageUrl }: { url?: URL } = $props();
   const autorun = untrack(() => pageUrl?.searchParams.get("run") ?? "");
-  const stressAutorun = $derived(autorun.split(",").filter((part) => part && part !== "checks").join(","));
+  const capture = autorun.startsWith("capture:") ? autorun.slice("capture:".length).split(".").filter(Boolean) : null;
+  const probes = autorun.startsWith("probe:") ? autorun.slice("probe:".length).split(".").filter(Boolean) : null;
+  const captureThemes = untrack(() => (pageUrl?.searchParams.get("themes") ?? "light").split(".").filter((theme): theme is "light" | "dark" => theme === "light" || theme === "dark"));
+  /** `&token=<text>` is echoed into every file the run writes, so the harness knows a file belongs to the launch it made. */
+  const token = untrack(() => pageUrl?.searchParams.get("token") ?? null);
+  const initialPanel = untrack(() => pageUrl?.searchParams.get("panel"));
+  const headerVariant = untrack(() => pageUrl?.searchParams.get("hv"));
+  if (headerVariant === "title" || headerVariant === "plain") screenLab.header = headerVariant;
+  const rowVariant = untrack(() => pageUrl?.searchParams.get("rv"));
+  if (rowVariant === "plain" || rowVariant === "image") screenLab.rows = rowVariant;
+  const initialState = untrack(() => pageUrl?.searchParams.get("state"));
+  const stressAutorun = $derived(capture || probes ? "" : autorun.split(",").filter((part) => part && part !== "checks").join(","));
   let stressResults: unknown[] = [];
   let stressDone = false;
   function saveResults(phase: string) {
-    const report = { phase, finishedAt: new Date().toISOString(), platform: Platform.OS, osVersion: String(Platform.Version), appVersion: nativeApplicationVersion, checks: $state.snapshot(checks), stress: stressResults, stressDone };
+    const report = { phase, token, finishedAt: new Date().toISOString(), platform: Platform.OS, osVersion: String(Platform.Version), appVersion: nativeApplicationVersion, checks: $state.snapshot(checks), stress: stressResults, stressDone };
     console.info("[native lab results]", JSON.stringify(report));
     try { new File(Paths.document, "lab-results.json").write(JSON.stringify(report)); }
     catch (error) { console.error("[native lab results]", error); }
   }
   const router = useRouter();
   onMount(() => {
-    if (!nativeLabEnabled || !autorun) return;
+    if (!nativeLabEnabled || !capture) return;
+    const timer = setTimeout(() => { void runCapture(router, capture, captureThemes, token).catch((error: unknown) => console.error("[native lab capture]", error)); }, 1500);
+    return () => clearTimeout(timer);
+  });
+  onMount(() => {
+    if (!nativeLabEnabled || !probes) return;
+    const timer = setTimeout(() => { void runProbes(router, probes, token).catch((error: unknown) => console.error("[native lab probe]", error)); }, 1500);
+    return () => clearTimeout(timer);
+  });
+  onMount(() => {
+    if (!nativeLabEnabled || !autorun || capture || probes) return;
     const timer = setTimeout(() => { void (async () => {
       if (autorun.includes("checks")) { await runChecks(); saveResults("checks"); }
       if (stressAutorun) panel = "stress";
@@ -50,7 +78,8 @@
   });
   type Check = { name: string; passed: boolean; detail: string };
   type Panel = "checks" | "binding" | "rows" | "async" | "animation" | "stress";
-  let panel = $state<Panel>("checks");
+  const panels: readonly Panel[] = ["checks", "binding", "rows", "async", "animation", "stress"];
+  let panel = $state<Panel>(panels.find((name) => name === initialPanel) ?? "checks");
   let running = $state(false);
   let checks = $state<Check[]>([]);
   const passed = $derived(checks.filter((check) => check.passed).length);
@@ -113,6 +142,11 @@
     return "Boundary healthy";
   }
   function resetBoundary() { trip = false; const reset = recover; recover = undefined; boundaryError = null; reset?.(); }
+  onMount(() => {
+    if (!nativeLabEnabled || panel !== "async") return;
+    if (initialState === "pending") startAsync();
+    else if (initialState === "error") trip = true;
+  });
 
   const position = createSharedValue(0);
   const finishedAt = createSharedValue(0);
@@ -329,7 +363,7 @@
   {:else}
     <Text style={textStyle}>Transforms and opacity run through Reanimated. Normal controls respect the system’s reduced-motion setting.</Text>
     <View style={{ height: 100, padding: 16, borderRadius: 16, backgroundColor: theme.surface }}>
-      <AnimatedView {animatedStyle} onLayout={() => { animationMounted = true; animationReady?.(); }} accessibilityLabel="Reanimated test square" style={{ width: 52, height: 52, borderRadius: 12, backgroundColor: "#3685ff" }}>
+      <AnimatedView {animatedStyle} testID="qa-mask-square" onLayout={() => { animationMounted = true; animationReady?.(); }} accessibilityLabel="Reanimated test square" style={{ width: 52, height: 52, borderRadius: 12, backgroundColor: "#3685ff" }}>
         <Pressable accessibilityRole="button" accessibilityLabel="Animated touch target" onPress={() => { animatedTaps++; }} style={{ flex: 1, alignItems: "center", justifyContent: "center" }}><Text style={{ color: "white" }}>Tap</Text></Pressable>
       </AnimatedView>
     </View>

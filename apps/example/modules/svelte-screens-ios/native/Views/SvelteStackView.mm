@@ -466,6 +466,37 @@ using namespace facebook::react;
                        }];
 }
 
+// What the stack believes, for the QA module (`apps/platform/modules/svelte-qa-ios`, `uikitState`): it finds this method by its
+// selector, so that a transition that did not happen can be traced to the flag that held it back.
+- (NSDictionary *)qaState {
+  NSMutableArray *screens = [NSMutableArray new];
+  for (SvelteScreenView *screen in _screens) {
+    [screens addObject:@{
+      @"activityState" : @([screen spec].activityState),
+      @"presentation" : @([screen spec].presentation),
+      @"exitReported" : @(screen.exitReported),
+      @"userDismissed" : @(screen.userDismissed),
+      @"unmounted" : @(screen.unmounted),
+      @"hasLeft" : @([self hasLeft:screen]),
+      @"presenting" : @(screen.presentedController.presentingViewController != nil),
+      @"detents" : [screen qaDetents],
+    }];
+  }
+  return @{
+    @"screens" : screens,
+    @"presented" : @(_presented.count),
+    @"presentedScreens" : @(_presentedScreens.count),
+    @"updatingModals" : @(_updatingModals),
+    @"modalsDirty" : @(_modalsDirty),
+    @"updateScheduled" : @(_updateScheduled),
+    @"flushQueued" : @(_flushQueued),
+    @"exitsQueued" : @(_exitsQueued),
+    @"needsFlush" : @(_needsFlush),
+    @"transitioning" : @(_controller.transitionCoordinator != nil),
+    @"viewControllers" : @(_controller.viewControllers.count),
+  };
+}
+
 #pragma mark - What the user did
 
 - (void)screenWasRemovedByUIKit:(SvelteScreenView *)screen {

@@ -60,6 +60,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)emitDismissedWithCount:(NSInteger)count;
 /// `topExited`: JavaScript set `activityState` to 0 and the stack has taken the screen away, so JavaScript may unmount it.
 - (void)emitExited;
+/// What the sheet's detent resolvers were last asked and answered, per detent index (the QA module reads it through the stack's `qaState`).
+- (NSDictionary *)qaDetents;
 /// The header measures the bar again and tells JavaScript when its height or inset changed.
 - (void)reportHeaderMetrics;
 @end

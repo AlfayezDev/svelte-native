@@ -85,6 +85,7 @@ static std::string WithoutActivityState(const std::string &nativeId) {
   svelte::SvelteScreenShadowNode::ConcreteState::Shared _state;
   CGSize _reportedSize;
   BOOL _unmounted;
+  NSMutableDictionary<NSString *, NSDictionary *> *_qaDetents;
   BOOL _userDismissed;
   BOOL _exitReported;
   BOOL _needsUpdate;
@@ -294,7 +295,19 @@ static std::string WithoutActivityState(const std::string &nativeId) {
                                                  // only limits it. Before the sheet is in a window the largest detent stands in.
                                                  UIWindow *window = screen.window;
                                                  const double available = window != nil ? window.bounds.size.height - window.safeAreaInsets.top : context.maximumDetentValue;
-                                                 return svelte::detentHeight(fraction, available, context.maximumDetentValue, content);
+                                                 const double height = svelte::detentHeight(fraction, available, context.maximumDetentValue, content);
+                                                 if (screen != nil) {
+                                                   if (screen->_qaDetents == nil) screen->_qaDetents = [NSMutableDictionary new];
+                                                   screen->_qaDetents[[@(index) stringValue]] = @{
+                                                     @"fraction" : @(fraction),
+                                                     @"available" : @(available),
+                                                     @"maximum" : @(context.maximumDetentValue),
+                                                     @"content" : @(content),
+                                                     @"inWindow" : @(window != nil),
+                                                     @"height" : @(height),
+                                                   };
+                                                 }
+                                                 return height;
                                                }]];
     }
     _appliedDetents = _spec.detents;
@@ -343,6 +356,10 @@ static std::string WithoutActivityState(const std::string &nativeId) {
 - (void)presentationDidEndByUser {
   _userDismissed = YES;
   [_stack modalWasDismissedByUser:self];
+}
+
+- (NSDictionary *)qaDetents {
+  return [_qaDetents copy] ?: @{};
 }
 
 - (void)emitDismissedWithCount:(NSInteger)count {

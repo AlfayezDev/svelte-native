@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { ActivityIndicator, type NativeRoute } from "@rasheed/svelte-native";
+  import { ActivityIndicator, bootSummary, type NativeRoute } from "@rasheed/svelte-native";
   import * as Font from "expo-font";
   import regularFont from "../../assets/native/fonts/IBMPlexSansArabic-Regular.ttf";
   import mediumFont from "../../assets/native/fonts/IBMPlexSansArabic-Medium.ttf";
@@ -9,7 +9,7 @@
   import Page from "#lib/native/components/Page.svelte";
   import Button from "#lib/native/components/Button.svelte";
   import Notice from "#lib/native/components/Notice.svelte";
-  import { API_URL, theme, t, watchAppearance, syncStatusBar } from "#lib/native/state.svelte.ts";
+  import { API_URL, nativeLabEnabled, theme, t, watchAppearance, syncStatusBar } from "#lib/native/state.svelte.ts";
   import type { NativeConfiguration } from "#lib/native/session.svelte.ts";
   let { routes }: { routes: NativeRoute[] } = $props();
   let configuration = $state<NativeConfiguration | null>(null);
@@ -42,6 +42,8 @@
     const controller = new AbortController();
     const unwatch = watchAppearance();
     void load(controller.signal);
+    // The QA app hands the native recorder its boot phases; after the host's first commit, which logs the line they come from.
+    if (nativeLabEnabled) setTimeout(() => { void import("#lib/native/dev/qa.ts").then(({ qaModule }) => qaModule?.recordBoot(bootSummary())); }, 0);
     return () => { controller.abort(); unwatch(); };
   });
 </script>

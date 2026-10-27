@@ -20,6 +20,9 @@ export const files: RouteFile[] = [
   file("(workspace)/[slug]/(tabs)/inbox/+mobile.svelte"),
   file("(workspace)/[slug]/(tabs)/inbox/compose/+mobile.svelte", { presentation: "sheet" }),
   file("(workspace)/[slug]/settings/[[section]]/+mobile.svelte", { presentation: "modal" }),
+  file("(workspace)/[slug]/flow/+layout.mobile.svelte", { navigator: "stack" }),
+  file("(workspace)/[slug]/flow/start/+mobile.svelte"),
+  file("(workspace)/[slug]/flow/done/+mobile.svelte"),
   file("(workspace)/+layout.mobile.svelte"),
 ];
 
@@ -29,6 +32,7 @@ export function appTree({ bareTabs = false, logLoads, hold }: { bareTabs?: boole
     "(workspace)/+layout.mobile.svelte": ContentLayout,
     "(workspace)/[slug]/(tabs)/+layout.mobile.svelte": bareTabs ? BareTabsLayout : TabsLayout,
     "(workspace)/[slug]/(tabs)/inbox/+layout.mobile.svelte": StackLayout,
+    "(workspace)/[slug]/flow/+layout.mobile.svelte": StackLayout,
   };
   const componentOf = (path: string): Component => layouts[path] ?? Page;
   // With `hold`, a loader waits until the test calls the release it left there.

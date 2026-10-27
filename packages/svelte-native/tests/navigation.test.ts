@@ -1008,7 +1008,7 @@ type TreeRouter = {
   replaceBase: (href: string) => void; openURL: (href: string) => boolean; screens: { leaving: boolean }[];
 };
 type TreeApp = { root: () => TreeRouter };
-const treeGlobals = globalThis as { __treeRouters?: Record<string, TreeRouter>; __treeOptions?: Record<string, object>; __treeTabs?: object[]; __treeSelections?: string[]; __treePanes?: unknown };
+const treeGlobals = globalThis as { __treeRoots?: Record<string, TreeRouter>; __treeRouters?: Record<string, TreeRouter>; __treeOptions?: Record<string, object>; __treeTabs?: object[]; __treeSelections?: string[]; __treePanes?: unknown };
 const pathsOf = (router: TreeRouter) => router.entries.map((entry) => `${entry.url.pathname}${entry.url.search}`);
 const selectedIndex = (surface: number) => parseNativeID(String(ofKind(roots[surface], "tabs")[0].props.nativeID))?.pairs.sel;
 const paneRouter = (path: string): TreeRouter => { const router = treeGlobals.__treeRouters?.[path]; if (!router) throw new Error(`no page rendered at ${path}`); return router; };
@@ -1016,7 +1016,7 @@ const paneRouter = (path: string): TreeRouter => { const router = treeGlobals.__
 async function mountTree(surface: number, props: Record<string, unknown> = {}) {
   const m = await load("tree-fixture.svelte");
   calls.length = 0; roots = {};
-  treeGlobals.__treeRouters = {}; delete treeGlobals.__treeOptions; delete treeGlobals.__treeTabs; delete treeGlobals.__treeSelections;
+  treeGlobals.__treeRouters = {}; treeGlobals.__treeRoots = {}; delete treeGlobals.__treeOptions; delete treeGlobals.__treeTabs; delete treeGlobals.__treeSelections;
   handlersOf("__backHandlers").length = 0;
   const app = m.startSurface(surface, m.Fixture, props) as TreeApp;
   await turns(m);
@@ -1035,6 +1035,7 @@ test("a deep link into the tabs puts the tabs screen on the root stack, selects 
     expect(pathsOf(router)).toEqual(["/acme"]);
     expect(router.entries[0].params).toEqual({ slug: "acme" });
     expect(router.selected).toBeUndefined(); // the root is a stack; the tabs router is the layout's
+    expect(treeGlobals.__treeRoots?.["/acme/inbox/compose"]).toBe(router); // useRouter("root") from inside a pane
     expect(selectedIndex(81)).toBe("1");
     expect(paneRouter("/acme/inbox/compose").scope).toBe("inbox");
     expect(paneRouter("/acme/inbox").scope).toBe("inbox");
@@ -1310,5 +1311,112 @@ test("a press on the tab bar selects the pane at once through the router's tabs 
     expect(selectedIndex(92)).toBe("0");
     expect(paneRouter("/acme/home").active()).toBe(true);
     expect(paneRouter("/acme/inbox").active()).toBe(false);
+  } finally { reset(); }
+});
+
+test("the back key reaches the pane before the root: screens below the tabs on the root stack stay while the pane has screens to pop", async () => {
+  withInsets(24);
+  try {
+    const { router, settled, hardwareBack } = await mountTree(93, { initial: "/workspaces" });
+    router.goto("/acme/home/thread/1");
+    await settled();
+    expect(pathsOf(router)).toEqual(["/workspaces", "/acme"]);
+    expect(hardwareBack()).toBe(true);
+    expect(pathsOf(paneRouter("/acme/home"))).toEqual(["/acme/home"]);
+    expect(pathsOf(router)).toEqual(["/workspaces", "/acme"]);
+    expect(hardwareBack()).toBe(true);
+    expect(pathsOf(router)).toEqual(["/workspaces"]);
+  } finally { reset(); }
+});
+
+test("a nested stack navigator is a screen of its parent: the stack inside it starts with the route, its first back pops the screen, and a new visit starts a new stack", async () => {
+  withInsets(24);
+  try {
+    const { router, settled, hardwareBack, tree } = await mountTree(94, { initial: "/acme/home" });
+    router.goto("/acme/flow/start");
+    await settled();
+    expect(pathsOf(router)).toEqual(["/acme", "/acme/flow"]);
+    const flow = paneRouter("/acme/flow/start");
+    expect(flow.scope).toBe("(workspace)/[slug]/flow");
+    expect(pathsOf(flow)).toEqual(["/acme/flow/start"]); // no base page: the stack starts with the route that opened it
+    expect(router.current.url.pathname).toBe("/acme/flow/start");
+    expect(ofTestID(tree(), "content-layout")).toHaveLength(4); // around the tabs screen, its home page, the flow screen and its page: a content layout wraps every screen below it
+
+    flow.goto("/acme/flow/done");
+    await settled();
+    expect(pathsOf(flow)).toEqual(["/acme/flow/start", "/acme/flow/done"]);
+    expect(pathsOf(router)).toEqual(["/acme", "/acme/flow"]);
+    expect(hardwareBack()).toBe(true);
+    expect(pathsOf(flow)).toEqual(["/acme/flow/start"]);
+    expect(hardwareBack()).toBe(true); // one screen in the stack: the screen of the flow pops
+    expect(pathsOf(router)).toEqual(["/acme"]);
+
+    router.goto("/acme/flow/done");
+    await settled();
+    expect(pathsOf(paneRouter("/acme/flow/done"))).toEqual(["/acme/flow/done"]); // a new visit, a new stack
+    expect(pathsOf(flow)).toEqual(["/acme/flow/start"]); // the old one went with its screen
+  } finally { reset(); }
+});
+
+test("a pane's stack keeps the exit contract of its own: a popped screen stays until the stack reports its exit, or until the timeout, with the same warning", async () => {
+  withInsets(24);
+  const warnings: unknown[][] = [];
+  const warn = console.warn;
+  console.warn = (...args: unknown[]) => { warnings.push(args); };
+  jest.useFakeTimers();
+  try {
+    const { router, settled, tree } = await mountTree(95, { initial: "/acme/home" });
+    router.goto("/acme/home/thread/1");
+    await settled();
+    const home = paneRouter("/acme/home");
+    expect(home.back()).toBe(true);
+    await settled();
+    const screens = () => tabScreens(tree())[0];
+    expect(home.screens.map((screen) => screen.leaving)).toEqual([false, true]);
+    expect(screens().map(activityOf)).toEqual(["2", "0"]);
+    expect(ofKind(tree(), "stack")[0].children.map(activityOf)).toEqual(["2"]); // the root stack is not involved
+    emit(screens()[1].target, "topExited", {});
+    await settled();
+    expect(home.screens).toHaveLength(1);
+    expect(screens()).toHaveLength(1);
+
+    home.goto("/acme/home/thread/2");
+    await settled();
+    home.back();
+    await settled();
+    expect(home.screens).toHaveLength(2);
+    jest.advanceTimersByTime(EXIT_TIMEOUT_MS + 1);
+    await settled();
+    expect(home.screens).toHaveLength(1);
+    expect(screens()).toHaveLength(1);
+    expect(warnings).toHaveLength(1);
+  } finally { jest.useRealTimers(); console.warn = warn; reset(); }
+});
+
+test("the tabs screen resolves to its first pane; replaceState replaces the pane's top, reset keeps the pane's index page and the route", async () => {
+  withInsets(24);
+  try {
+    const { router, settled } = await mountTree(96, { initial: "/acme" });
+    expect(pathsOf(router)).toEqual(["/acme"]);
+    expect(selectedIndex(96)).toBe("0");
+    expect(pathsOf(paneRouter("/acme/home"))).toEqual(["/acme/home"]);
+
+    router.goto("/acme/home/thread/1");
+    router.goto("/acme/home/thread/2", { replaceState: true });
+    await settled();
+    const home = paneRouter("/acme/home");
+    expect(pathsOf(home)).toEqual(["/acme/home", "/acme/home/thread/2"]);
+    router.goto("/acme/home/thread/3");
+    router.goto("/acme/home/thread/4", { reset: true });
+    await settled();
+    expect(pathsOf(home)).toEqual(["/acme/home", "/acme/home/thread/4"]);
+    expect(home.entries[0].key).toBeLessThan(home.entries[1].key);
+    router.goto("/acme/home", { reset: true });
+    await settled();
+    expect(pathsOf(home)).toEqual(["/acme/home"]);
+    expect(pathsOf(router)).toEqual(["/acme"]);
+    router.goto("/workspaces", { reset: true }); // a root page: the root stack is the owner and keeps nothing else
+    await settled();
+    expect(pathsOf(router)).toEqual(["/workspaces"]);
   } finally { reset(); }
 });

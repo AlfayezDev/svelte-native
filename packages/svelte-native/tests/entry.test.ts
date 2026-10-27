@@ -137,3 +137,75 @@ test("a presentation the build cannot read as a literal fails the sync and names
     await expect(withRoutes({ "x/+mobile.svelte": source }, async () => undefined)).rejects.toThrow(/x\/\+mobile\.svelte: export `presentation` as one of the literals/);
   }
 });
+
+const navigators = {
+  "+layout.mobile.svelte": "",
+  "(workspace)/+layout.mobile.svelte": "",
+  "(workspace)/[slug]/(tabs)/+layout.mobile.svelte": '<script lang="ts" module>export const navigator = "tabs";</script>',
+  "(workspace)/[slug]/(tabs)/home/+mobile.svelte": "",
+  "(workspace)/[slug]/(tabs)/inbox/+layout.mobile.svelte": "<script module>export const navigator = 'stack';</script>",
+  "(workspace)/[slug]/(tabs)/inbox/+mobile.svelte": "",
+  "(workspace)/[slug]/(tabs)/inbox/compose/+mobile.svelte": '<script module>export const presentation = "sheet";</script>',
+  "workspaces/+mobile.svelte": "",
+};
+
+test("navigator layouts and panes are in the table with a loader per layout; nothing loads until it is called", async () => {
+  await withRoutes(navigators, async (directory, table) => {
+    expect(table).not.toMatch(/^import (?!type)/m);
+    expect(table).toContain('kind: "tabs", id: "(workspace)/[slug]/(tabs)", path: "/[slug]",');
+    expect(table).toContain('layoutFile: "(workspace)/[slug]/(tabs)/+layout.mobile.svelte", layouts: ["(workspace)/+layout.mobile.svelte"],');
+    expect(table).toContain('layout: async () => ({ component: require("../src/routes/(workspace)/[slug]/(tabs)/+layout.mobile.svelte").default, layouts: [require("../src/routes/(workspace)/+layout.mobile.svelte").default] }),');
+    expect(table).toContain('shellFile: "+layout.mobile.svelte",');
+    const bundle = await build({
+      entryPoints: [resolve(directory, ".svelte-native/routes.ts")],
+      bundle: true, format: "esm", platform: "neutral", write: false,
+      plugins: [{
+        name: "route-pages",
+        setup(builder) {
+          builder.onResolve({ filter: /\.svelte$/ }, (args) => ({ path: resolve(args.resolveDir, args.path), namespace: "page" }));
+          builder.onLoad({ filter: /.*/, namespace: "page" }, (args) => {
+            const name = args.path.slice(args.path.indexOf("src/routes/") + "src/routes/".length);
+            return { contents: `(globalThis.__evaluatedLayouts ??= []).push(${JSON.stringify(name)}); export default ${JSON.stringify(`component ${name}`)};`, loader: "js" };
+          });
+        },
+      }],
+    });
+    const file = resolve(directory, "routes.mjs");
+    await writeFile(file, bundle.outputFiles[0].contents);
+    delete (globalThis as { __evaluatedLayouts?: string[] }).__evaluatedLayouts;
+    type Loaded = Promise<{ component: string; layouts: string[] }>;
+    type Node = { kind: string; id: string; path: string; layout?: () => Loaded; routes?: Node[]; panes?: { key: string; stack: Node }[]; load?: () => Loaded; presentation?: string };
+    const { tree } = await import(pathToFileURL(file).href) as { tree: Node };
+    expect((globalThis as { __evaluatedLayouts?: string[] }).__evaluatedLayouts).toBeUndefined();
+    expect(tree.routes?.map((route) => `${route.kind} ${route.path}`)).toEqual(["page /workspaces", "tabs /[slug]"]);
+    const tabs = tree.routes?.[1];
+    expect(tabs?.panes?.map((pane) => `${pane.key} ${pane.stack.path} ${pane.stack.routes?.map((route) => route.path).join(" ")}`)).toEqual([
+      "home /[slug]/home /[slug]/home", "inbox /[slug]/inbox /[slug]/inbox/compose /[slug]/inbox",
+    ]);
+    expect(tabs?.panes?.[0].stack.layout).toBeUndefined(); // a pane without a layout has no loader
+    expect(await tabs?.layout?.()).toEqual({ component: "component (workspace)/[slug]/(tabs)/+layout.mobile.svelte", layouts: ["component (workspace)/+layout.mobile.svelte"] });
+    expect(await tabs?.panes?.[1].stack.layout?.()).toEqual({ component: "component (workspace)/[slug]/(tabs)/inbox/+layout.mobile.svelte", layouts: [] });
+    expect(await tabs?.panes?.[1].stack.routes?.[0].load?.()).toEqual({
+      component: "component (workspace)/[slug]/(tabs)/inbox/compose/+mobile.svelte", layouts: ["component (workspace)/+layout.mobile.svelte"],
+    });
+    expect(tabs?.panes?.[1].stack.routes?.[0].presentation).toBe("sheet");
+  });
+});
+
+test("the table does not depend on the order the file system lists the routes in", async () => {
+  const forward = await withRoutes(navigators, async (_directory, table) => table);
+  const backward = await withRoutes(Object.fromEntries(Object.entries(navigators).reverse()), async (_directory, table) => table);
+  expect(backward).toBe(forward);
+});
+
+test("a navigator the build cannot read as a literal, a root navigator and a misplaced page fail the sync and name the file", async () => {
+  for (const source of [
+    '<script module>export const navigator = cond ? "tabs" : "stack";</script>',
+    '<script module>const value = "tabs"; export { value as navigator };</script>',
+    '<script module>export const navigator = "drawer";</script>',
+  ]) {
+    await expect(withRoutes({ "x/+layout.mobile.svelte": source }, async () => undefined)).rejects.toThrow(/x\/\+layout\.mobile\.svelte: export `navigator` as one of the literals "stack", "tabs"/);
+  }
+  await expect(withRoutes({ "+layout.mobile.svelte": '<script module>export const navigator = "stack";</script>' }, async () => undefined)).rejects.toThrow("+layout.mobile.svelte: the root layout is the app shell and cannot be a navigator");
+  await expect(withRoutes({ ...navigators, "(workspace)/[slug]/(tabs)/+mobile.svelte": "" }, async () => undefined)).rejects.toThrow("(workspace)/[slug]/(tabs)/+mobile.svelte: a tabs layout is the screen of its directory");
+});

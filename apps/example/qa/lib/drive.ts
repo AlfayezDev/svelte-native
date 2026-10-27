@@ -223,9 +223,9 @@ function signature(tree: UiTree): string {
 }
 
 /**
- * The dump a service that skips the not-important views reads, taken until it holds the screen's own controls: one taken while
- * the screen is still drawing lacks them, and the covered screen would be judged on a half-built tree. Throws after `attempts`
- * dumps without them, which the suite records as an error for the screen.
+ * The dump a service that skips the not-important views reads (`--compressed`, the tree every accessibility check judges),
+ * taken until it holds the screen's own controls: one taken while the screen is still drawing lacks them, and the screen would
+ * be judged on a half-built tree. Throws after `attempts` dumps without them, which the suite records as an error for the screen.
  */
 export async function dumpWithOwnControls(
 	dump: () => Promise<UiTree>,
@@ -250,16 +250,20 @@ export async function dumpWithOwnControls(
 	);
 }
 
-/** Dumps again until two dumps in a row are the same tree, so a header still populating is not read half built. */
+/**
+ * Dumps again until two dumps in a row are the same tree, so a header still populating is not read half built. `important`
+ * takes the dumps a service walks (`--compressed`); `first` must be a dump of the same kind.
+ */
 export async function settledTree(
 	serial: string,
 	first: UiTree,
 	maxDumps = 6,
+	options: { important?: boolean } = {},
 ): Promise<{ tree: UiTree; stable: boolean }> {
 	let previous = first;
 	for (let dump = 1; dump <= maxDumps; dump++) {
 		await sleep(300);
-		const next = await dumpUi(serial);
+		const next = await dumpUi(serial, options);
 		const same = signature(previous) === signature(next);
 		previous = next;
 		if (same) return { tree: next, stable: true };

@@ -23,7 +23,7 @@ import { iosA11y } from "./ios-a11y.ts";
 
 /** What the checks read, stated in every run file. */
 export const oracle =
-	"uiautomator dump of the foreground window: the accessibility node info the engine publishes (A11y.kt, EngineText, EngineHeader, EngineTabs), which is what any accessibility service receives. The focus trap is judged on the dump without the views that are not important for accessibility (`--compressed`), which is the tree a service that does not ask for them, TalkBack among them, walks. The suite does not run TalkBack itself.";
+	"uiautomator dump --compressed of the foreground window: the accessibility node info the engine publishes (A11y.kt, EngineText, EngineHeader, EngineTabs) for the views that are important for accessibility, without what the engine hides from services (a screen under a sheet or modal, a scrim), which is the tree a service that does not ask for the other views, TalkBack among them, walks. Every check reads that tree; the plain dump, which lists all views, only drives the app (anchor, taps). The suite does not run TalkBack itself.";
 
 function emptyResult(screen: ScreenCase, variant: Variant, error: string): A11yScreenResult {
 	return {
@@ -93,29 +93,24 @@ export async function a11y(argv: string[]): Promise<void> {
 						continue;
 					}
 					try {
-						// One more try after a failure that is not the device going away: the first dump after the
-						// emulator was restarted can come back empty while its UI is still starting.
+						// Every check reads what a screen reader walks (`--compressed`); the plain dump only drives the launch (anchor, taps).
+						// Under a sheet or modal that dump is taken until it holds the screen's own controls, which one taken mid-draw lacks; on
+						// any other screen a declared control that is missing is a finding, not a half-built dump. One more try after a failure
+						// that is not the device going away: the first dump after the emulator was restarted can come back empty.
+						const own = screen.hidden.length > 0 ? ownLabels(screen, variant.direction) : [];
 						const { tree, stable } = await retryCase(
 							session,
 							screen,
 							variant.fontScale,
 							referenceName(screen, variant),
 							async () => {
-								const opened = await openCase(session, screen, variant.direction);
-								return settledTree(serial, opened.tree);
+								await openCase(session, screen, variant.direction);
+								const first = await dumpWithOwnControls(() => dumpUi(serial, { important: true }), own);
+								return settledTree(serial, first, undefined, { important: true });
 							},
 						);
-						// What a screen reader walks: only needed (and only different) while a sheet or modal covers a screen.
-						const importantTree =
-							screen.hidden.length > 0
-								? await dumpWithOwnControls(
-										() => dumpUi(serial, { important: true }),
-										ownLabels(screen, variant.direction),
-									)
-								: undefined;
 						const analysis = analyzeScreen({
 							tree,
-							importantTree,
 							direction: variant.direction,
 							display,
 							title: screen.title === null ? null : localize(screen.title, variant.direction),

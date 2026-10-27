@@ -100,6 +100,22 @@ export async function runCapture(router: Router, ids: readonly string[], themes:
   }
 }
 
+type StateNode = { children?: StateNode[]; presented?: StateNode; sheet?: { presentedViewFrame?: number[] | null } };
+
+/** The cards of the presented sheets in a `uikitState` snapshot, in points: the system draws their rim and shadow a level differently from launch to launch. */
+function sheetFrames(state: { root?: StateNode }): number[][] {
+  const frames: number[][] = [];
+  const walk = (node: StateNode | undefined) => {
+    if (!node) return;
+    const frame = node.sheet?.presentedViewFrame;
+    if (frame) frames.push(frame);
+    for (const child of node.children ?? []) walk(child);
+    walk(node.presented);
+  };
+  walk(state.root);
+  return frames;
+}
+
 async function captureScreen(router: Router, qa: NonNullable<typeof qaModule>, directory: Directory, screen: string, theme: Theme): Promise<CaptureEntry> {
   const name = `${screen}--${theme}`;
   const entry: CaptureEntry = { name, screen, theme, rtl: null, png: null, a11y: null, uikit: null, width: null, height: null, scale: null, sha256: null, attempts: null, stable: false, moving: [], glass: [], sheets: [], error: null };
@@ -124,15 +140,16 @@ async function captureScreen(router: Router, qa: NonNullable<typeof qaModule>, d
       await pause(250);
     }
     entry.attempts = attempts;
-    const tree = JSON.parse(await qa.accessibilityTree()) as { rtl?: boolean; movingViews?: { frame: number[] }[]; glassViews?: { frame: number[] }[]; sheetViews?: { frame: number[] }[] };
+    const tree = JSON.parse(await qa.accessibilityTree()) as { rtl?: boolean; movingViews?: { frame: number[] }[]; glassViews?: { frame: number[] }[] };
     entry.rtl = tree.rtl ?? null;
     entry.moving = (tree.movingViews ?? []).map((view) => view.frame);
     entry.glass = (tree.glassViews ?? []).map((view) => view.frame);
-    entry.sheets = (tree.sheetViews ?? []).map((view) => view.frame);
     new File(directory, `${name}.a11y.json`).write(JSON.stringify(tree));
     entry.a11y = `${name}.a11y.json`;
-    new File(directory, `${name}.uikit.json`).write(await qa.uikitState());
+    const state = await qa.uikitState();
+    new File(directory, `${name}.uikit.json`).write(state);
     entry.uikit = `${name}.uikit.json`;
+    entry.sheets = sheetFrames(JSON.parse(state));
   } catch (error) {
     entry.error = error instanceof Error ? error.message : String(error);
   }

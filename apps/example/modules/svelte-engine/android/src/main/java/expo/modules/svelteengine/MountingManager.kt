@@ -30,6 +30,8 @@ import expo.modules.svelteengine.views.EngineTab
 import expo.modules.svelteengine.views.EngineTabIcon
 import expo.modules.svelteengine.views.EngineTabs
 import expo.modules.svelteengine.views.EngineText
+import expo.modules.svelteengine.views.EngineToolbar
+import expo.modules.svelteengine.views.EngineToolbarItem
 import expo.modules.svelteengine.views.EngineView
 import expo.modules.svelteengine.views.Frames
 import expo.modules.svelteengine.views.ViewPool
@@ -479,6 +481,8 @@ class MountingManager(context: Context) {
       KIND_TABS -> EngineTabs(appContext)
       KIND_TAB -> EngineTab(appContext)
       KIND_TAB_ICON -> EngineTabIcon(appContext)
+      KIND_TOOLBAR -> EngineToolbar(appContext)
+      KIND_TOOLBAR_ITEM -> EngineToolbarItem(appContext)
       KIND_FOREIGN -> EngineForeign(appContext)
       KIND_MODAL -> EngineModal(appContext, root)
       else -> pooled(ViewPool.VIEW) { EngineView(appContext) }
@@ -517,6 +521,8 @@ class MountingManager(context: Context) {
       is EngineTabs -> view.apply(p.nav)
       is EngineTab -> view.apply(p.nav)
       is EngineTabIcon -> view.apply()
+      is EngineToolbar -> view.apply(p.nav)
+      is EngineToolbarItem -> view.apply(p.nav)
       is EngineScroll -> {
         view.bridge.configure(p, create)
         view.isVerticalScrollBarEnabled = p.indicator == 1
@@ -551,6 +557,11 @@ class MountingManager(context: Context) {
     } else if (view is EngineHeaderSlot) {
       view.displayNone = vis == View.GONE
       view.header?.slotChanged(view)
+      view.toolbar?.slotChanged(view)
+    } else if (view is EngineToolbar) {
+      // The `hd` flag hides the band as well as Yoga's `display: none`.
+      view.displayNone = vis == View.GONE
+      view.updateVisibility()
     } else if (view.visibility != vis) view.visibility = vis
     if (view is EngineText && (padChanged || view.builtWidth != (node.w - pl - pr).toInt() || view.heightMatters && view.builtHeight != (node.h - pt - pb).toInt())) markDirty(view)
     if (view is EngineInput) view.syncPadding()
@@ -559,5 +570,7 @@ class MountingManager(context: Context) {
     if (!view.isAttachedToWindow) return
     val parent = view.parent
     if (parent is EngineView || parent is EngineRoot) Frames.place(view) else parent?.requestLayout()
+    // A toolbar item puts its snippet icon where the icon would be, not at Yoga's frame.
+    if (parent is EngineToolbarItem) parent.placeSnippet()
   }
 }

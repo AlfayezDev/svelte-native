@@ -140,6 +140,13 @@ open class EngineScreen(context: Context) : EngineView(context) {
       return null
     }
 
+  /** The toolbar band of this screen, or null. */
+  val toolbar: EngineToolbar?
+    get() {
+      for (i in childCount - 1 downTo 0) (getChildAt(i) as? EngineToolbar)?.let { return it }
+      return null
+    }
+
   override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
     super.onLayout(changed, l, t, r, b)
     // Content may have arrived since the last pass: a large or translucent header insets the first scroll view.

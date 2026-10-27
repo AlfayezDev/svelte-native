@@ -19,7 +19,7 @@ import {
 import { backendStatus, commonOptions, startSuite, type BackendStatus } from "../lib/suite.ts";
 import type { A11yFile, A11yScreenResult } from "../lib/types.ts";
 
-/** What the checks read, stated in every run file: TalkBack is not installed on the emulator. */
+/** What the checks read, stated in every run file. */
 export const oracle =
 	"uiautomator dump of the foreground window: the accessibility node info the engine publishes (A11y.kt, EngineText, EngineHeader, EngineTabs), which is what any accessibility service receives. The focus trap is judged on the dump without the views that are not important for accessibility (`--compressed`), which is the tree a service that does not ask for them, TalkBack among them, walks. The suite does not run TalkBack itself.";
 

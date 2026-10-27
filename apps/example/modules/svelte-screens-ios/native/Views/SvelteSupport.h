@@ -55,7 +55,14 @@ void SvelteAfterNextFrame(dispatch_block_t block);
 /// A `UINavigationController` whose status bar follows its top screen and that tells its owner when it has laid out.
 @interface SvelteNavigationController : UINavigationController
 @property (nonatomic, copy, nullable) void (^didLayout)(void);
+@property (nonatomic, readonly) NSInteger qaLayouts;
 @end
+
+/// QA: a line in the process-wide event log (what UIKit and the views did, with the uptime in seconds), read by `qaState`.
+void SvelteQALog(NSString *line);
+NSArray<NSString *> *SvelteQALogLines(void);
+/// QA: the experiment bits in `Documents/svelte-variant.txt` (0 without the file).
+NSInteger SvelteQAVariant(void);
 
 /// Holds React Native's touch handler for a view that is presented outside the surface's root view (a modal or a sheet).
 @interface SvelteTouchHost : NSObject

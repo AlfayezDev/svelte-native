@@ -77,7 +77,54 @@ void SvelteAfterNextFrame(dispatch_block_t block) {
   [link addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
 }
 
-@implementation SvelteNavigationController
+static NSMutableArray<NSString *> *QALog;
+
+void SvelteQALog(NSString *line) {
+  if (QALog == nil) QALog = [NSMutableArray new];
+  if (QALog.count < 120) [QALog addObject:[NSString stringWithFormat:@"%.3f %@", [NSProcessInfo processInfo].systemUptime, line]];
+}
+
+NSArray<NSString *> *SvelteQALogLines(void) {
+  return [QALog copy] ?: @[];
+}
+
+NSInteger SvelteQAVariant(void) {
+  NSString *path = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject stringByAppendingPathComponent:@"svelte-variant.txt"];
+  NSString *text = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];
+  return text.integerValue;
+}
+
+@implementation SvelteNavigationController {
+  NSInteger _qaLayouts;
+}
+
+- (NSInteger)qaLayouts {
+  return _qaLayouts;
+}
+
+- (void)qaNote:(NSString *)what {
+  SvelteQALog([NSString stringWithFormat:@"nav%04lx %@", (unsigned long)((uintptr_t)self & 0xffff), what]);
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+  [self qaNote:[NSString stringWithFormat:@"viewWillAppear %d", animated]];
+  [super viewWillAppear:animated];
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+  [self qaNote:@"viewDidAppear"];
+  [super viewDidAppear:animated];
+}
+
+- (void)viewWillDisappear:(BOOL)animated {
+  [self qaNote:@"viewWillDisappear"];
+  [super viewWillDisappear:animated];
+}
+
+- (void)didMoveToParentViewController:(UIViewController *)parent {
+  [self qaNote:[NSString stringWithFormat:@"didMoveToParent %@ parentWindow=%d", parent == nil ? @"nil" : NSStringFromClass([parent class]), parent.isViewLoaded && parent.view.window != nil]];
+  [super didMoveToParentViewController:parent];
+}
 
 - (UIViewController *)childViewControllerForStatusBarStyle {
   return self.topViewController;
@@ -89,6 +136,8 @@ void SvelteAfterNextFrame(dispatch_block_t block) {
 
 - (void)viewDidLayoutSubviews {
   [super viewDidLayoutSubviews];
+  _qaLayouts += 1;
+  if (_qaLayouts <= 3) [self qaNote:[NSString stringWithFormat:@"layout %ld bar=%@", (long)_qaLayouts, NSStringFromCGRect(self.navigationBar.frame)]];
   if (self.didLayout != nil) self.didLayout();
 }
 

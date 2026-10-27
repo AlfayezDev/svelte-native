@@ -107,8 +107,8 @@ export async function writeReference(
 	};
 }
 
-/** The masks a reference is frozen with: the status bar (clock, battery, notification icons) and the case's own nodes. */
-export function referenceMasks(statusBar: Rect | null, caseMasks: Rect[], image: Image): ReferenceMask[] {
+/** The masks a reference is frozen with: the status bar (clock, battery, notification icons), the navigation bar (the gesture pill) and the case's own nodes. */
+export function referenceMasks(statusBar: Rect | null, caseMasks: Rect[], image: Image, navigationBar: Rect | null = null): ReferenceMask[] {
 	const pad = 2;
 	const clip = (rect: Rect): Rect => {
 		const x = Math.max(0, rect.x - pad);
@@ -122,6 +122,7 @@ export function referenceMasks(statusBar: Rect | null, caseMasks: Rect[], image:
 	};
 	return [
 		...(statusBar ? [{ name: "status bar", ...statusBar }] : []),
+		...(navigationBar ? [{ name: "navigation bar", ...navigationBar }] : []),
 		...caseMasks.map((rect, index) => ({ name: `moving node ${index + 1}`, ...clip(rect) })),
 	];
 }

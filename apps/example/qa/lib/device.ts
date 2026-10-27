@@ -17,7 +17,7 @@ import {
 	parseNightMode,
 	parsePids,
 	parseSetting,
-	parseStatusBarFrame,
+	parseNavigationBarFrame, parseStatusBarFrame,
 	type DisplayInfo,
 } from "../parse/device-state.ts";
 
@@ -125,6 +125,12 @@ export function deviceGone(error: unknown): boolean {
 export async function statusBarRect(serial: string): Promise<Rect> {
 	const result = await shell(serial, "dumpsys window", { timeoutMs: 60_000 });
 	return parseStatusBarFrame(result.stdout);
+}
+
+/** The navigation bar's band: the gesture pill is drawn a level differently from one launch to the next, like the status bar's icons. */
+export async function navigationBarRect(serial: string): Promise<Rect | null> {
+	const result = await shell(serial, "dumpsys window", { timeoutMs: 60_000 });
+	return parseNavigationBarFrame(result.stdout);
 }
 
 /** The foreground package and activity, from the window manager (`mCurrentFocus`). */

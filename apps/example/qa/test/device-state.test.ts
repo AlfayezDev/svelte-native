@@ -8,6 +8,7 @@ import {
 	parseNightMode,
 	parsePids,
 	parseSetting,
+	parseNavigationBarFrame,
 	parseStatusBarFrame,
 } from "../parse/device-state.ts";
 import { sample } from "./sample.ts";
@@ -66,6 +67,8 @@ describe("device state parsers", () => {
 			height: 128,
 		});
 		expect(() => parseStatusBarFrame("no insets")).toThrow("no statusBars");
+		expect(parseNavigationBarFrame(sample("dumpsys-window-insets.txt"))).toEqual({ x: 0, y: 2337, width: 1080, height: 63 });
+		expect(parseNavigationBarFrame("no insets")).toBeNull();
 	});
 
 	test("the device kind names what the pixels depend on", () => {

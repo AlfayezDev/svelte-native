@@ -8,6 +8,7 @@ import {
 	readDisplay,
 	reportRestore,
 	screenshot,
+	navigationBarRect,
 	statusBarRect,
 	withSession,
 	type DeviceSession,
@@ -61,6 +62,7 @@ type Context = {
 	deviceKind: string;
 	manifest: Manifest;
 	statusBar: Rect;
+	navigationBar: Rect | null;
 	update: boolean;
 	backend: BackendStatus;
 	artifacts: string;
@@ -199,7 +201,7 @@ async function captureCase(
 	} else {
 		await sleep(900);
 	}
-	const shot = await settledScreenshot(context.serial, [context.statusBar, ...nodeMasks]);
+	const shot = await settledScreenshot(context.serial, [context.statusBar, ...(context.navigationBar ? [context.navigationBar] : []), ...nodeMasks]);
 	if (!shot.stable)
 		return caseRecord(screen, variant, {
 			verdict: "unstable",
@@ -217,6 +219,7 @@ async function captureCase(
 	const refusal = maskRefusal(
 		[
 			{ name: "status bar", masks: [context.statusBar] },
+			{ name: "navigation bar", masks: context.navigationBar ? [context.navigationBar] : [] },
 			{ name: "moving nodes", masks: nodeMasks },
 		],
 		shot.image,
@@ -239,7 +242,7 @@ async function captureCase(
 	}
 	context.manifest.references[name] = {
 		...written,
-		masks: referenceMasks(context.statusBar, nodeMasks, shot.image),
+		masks: referenceMasks(context.statusBar, nodeMasks, shot.image, context.navigationBar),
 		screen: screen.id,
 		route: screen.route,
 		state: screen.state,
@@ -348,12 +351,14 @@ export async function parity(argv: string[]): Promise<void> {
 			await wake(serial);
 			await session.rotation(0);
 			const statusBar = await statusBarRect(serial);
+			const navigationBar = await navigationBarRect(serial);
 			const context: Context = {
 				session,
 				serial,
 				deviceKind,
 				manifest,
 				statusBar,
+				navigationBar,
 				update,
 				backend,
 				artifacts,

@@ -53,8 +53,7 @@ describe("the masks of a capture against the gate", () => {
 			{ name: "sheet views", masks: sheetMasks(entry) },
 		];
 		const share = maskedPct(parts.flatMap((part) => part.masks), phone);
-		expect(share).toBeGreaterThan(19);
-		expect(share).toBeLessThan(25);
+		expect(share > 19 && share < 25).toBe(true);
 		expect(maskRefusal(parts, phone)).toBeNull();
 	});
 

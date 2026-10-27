@@ -91,3 +91,11 @@ export function parseStatusBarFrame(stdout: string): Rect {
 	];
 	return { x: left, y: top, width: right - left, height: bottom - top };
 }
+
+/** The navigation bar's band (the gesture pill or the three buttons), or null on a device that reports none. */
+export function parseNavigationBarFrame(stdout: string): Rect | null {
+	const frame = /type=navigationBars frame=\[(\d+),(\d+)\]\[(\d+),(\d+)\]/.exec(stdout);
+	if (!frame?.[1] || !frame[2] || !frame[3] || !frame[4]) return null;
+	const [left, top, right, bottom] = [frame[1], frame[2], frame[3], frame[4]].map(Number) as [number, number, number, number];
+	return { x: left, y: top, width: right - left, height: bottom - top };
+}

@@ -13,9 +13,10 @@ export const AppRegistry = {
   /**
    * React component registration is accepted and ignored: the Fabric host renders Svelte components registered by
    * `createFabricApp`. Expo's `Expo.fx` registers a placeholder "main" component in development and expects
-   * `registerRootComponent` to replace it; here `createFabricApp` is what replaces it.
+   * `registerRootComponent` to replace it; here `createFabricApp` is what replaces it. The provider argument is
+   * not read.
    */
-  registerComponent(appKey: string, _provider: unknown): string {
+  registerComponent(appKey: string): string {
     return appKey;
   },
   getAppKeys: () => Object.keys(runnables),

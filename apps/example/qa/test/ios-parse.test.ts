@@ -72,7 +72,7 @@ describe("boot report", () => {
 	});
 
 	test("a report with a missing field is refused, not read as zero", () => {
-		const { displayedMs: _dropped, ...partial } = report;
+		const partial = { ...report, displayedMs: undefined }; // JSON.stringify leaves an undefined field out
 		expect(() => parseBootReport(JSON.stringify(partial))).toThrow("displayedMs");
 	});
 

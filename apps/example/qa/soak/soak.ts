@@ -199,7 +199,7 @@ export async function soak(argv: string[]): Promise<void> {
 			state.faulted = true;
 	});
 
-	let text = "";
+	let text: string;
 	let timedOut = false;
 	try {
 		await startApp(

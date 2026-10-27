@@ -1,7 +1,7 @@
 import { wake } from "../lib/adb.ts";
-import { analyzeScreen } from "../lib/a11y.ts";
+import { analyzeScreen, reachPct } from "../lib/a11y.ts";
 import { deviceGone, dumpUi, readDisplay, withSession } from "../lib/device.ts";
-import { openCase, settledTree } from "../lib/drive.ts";
+import { dumpWithOwnControls, openCase, settledTree } from "../lib/drive.ts";
 import { flagString, parseFlags, platformOf } from "../lib/flags.ts";
 import { currentSource } from "../lib/git.ts";
 import { writeRun } from "../lib/runs.ts";
@@ -12,6 +12,7 @@ import {
 	notCoveredStates,
 	localize,
 	notCovered,
+	ownLabels,
 	referenceName,
 	type ScreenCase,
 	type Variant,
@@ -45,6 +46,8 @@ function emptyResult(screen: ScreenCase, variant: Variant, error: string): A11yS
 		focusLeaks: 0,
 		stops: [],
 		findings: [],
+		chromeModelled: 0,
+		stable: null,
 		error,
 	};
 }
@@ -95,7 +98,7 @@ export async function a11y(argv: string[]): Promise<void> {
 							const opened = await openCase(session, screen, variant.direction);
 							return settledTree(serial, opened.tree);
 						};
-						const { tree } = await attempt().catch((error: unknown) => {
+						const { tree, stable } = await attempt().catch((error: unknown) => {
 							if (deviceGone(error)) throw error;
 							console.log(
 								`  retrying ${referenceName(screen, variant)}: ${error instanceof Error ? error.message.slice(0, 100) : String(error)}`,
@@ -104,7 +107,12 @@ export async function a11y(argv: string[]): Promise<void> {
 						});
 						// What a screen reader walks: only needed (and only different) while a sheet or modal covers a screen.
 						const importantTree =
-							screen.hidden.length > 0 ? await dumpUi(serial, { important: true }) : undefined;
+							screen.hidden.length > 0
+								? await dumpWithOwnControls(
+										() => dumpUi(serial, { important: true }),
+										ownLabels(screen, variant.direction),
+									)
+								: undefined;
 						const analysis = analyzeScreen({
 							tree,
 							importantTree,
@@ -124,10 +132,11 @@ export async function a11y(argv: string[]): Promise<void> {
 							direction: variant.direction,
 							fontScale: variant.fontScale,
 							...analysis,
+							stable,
 							error: null,
 						});
 						console.log(
-							`  ${referenceName(screen, variant).padEnd(44)} interactive ${analysis.interactive}, unreachable ${analysis.unreachable}, unlabeled ${analysis.unlabeled}, not actionable ${analysis.notActionable}, order ${analysis.orderViolations}, title ${analysis.titleFirst === null ? "-" : analysis.titleFirst ? "first" : "NOT first"}, leaks ${analysis.focusLeaks} (${((Date.now() - began) / 1000).toFixed(1)} s)`,
+							`  ${referenceName(screen, variant).padEnd(44)} interactive ${analysis.interactive} (reach ${reachPct(analysis)}, clipped ${analysis.clipped}), unreachable ${analysis.unreachable}, unlabeled ${analysis.unlabeled}, not actionable ${analysis.notActionable}, order ${analysis.orderViolations}, title ${analysis.titleFirst === null ? "-" : analysis.titleFirst ? "first" : "NOT first"}, leaks ${analysis.focusLeaks}${stable ? "" : ", tree NOT settled"} (${((Date.now() - began) / 1000).toFixed(1)} s)`,
 						);
 					} catch (error) {
 						if (deviceGone(error)) throw error;

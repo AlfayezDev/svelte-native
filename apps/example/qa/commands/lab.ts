@@ -112,6 +112,7 @@ export async function lab(argv: string[]): Promise<void> {
 		source: await currentSource(),
 		device,
 		app,
+		run,
 		runs,
 	};
 	const name = await writeRun("lab", serial, startedAt, file);

@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { iosDeviceKind } from "../commands/ios-parity.ts";
 import { launchArguments, parseCaptureIndex, tryParseCaptureIndex } from "../lib/iphone/capture.ts";
-import { iosCases, iosControl, iosLayoutVariants, iosMatrix, iosNotCovered, iosTitle, iosVariants } from "../lib/iphone/screens.ts";
+import { iosBelowTheFold, iosCases, iosControl, iosLayoutVariants, iosMatrix, iosNotCovered, iosTitle, iosVariants } from "../lib/iphone/screens.ts";
 import { cases, referenceName } from "../lib/screens.ts";
 import { platformOf } from "../lib/flags.ts";
 
@@ -21,6 +21,11 @@ describe("the iOS matrix", () => {
 		const source = await readFile(fileURLToPath(new URL("../../src/lib/native/dev/capture.ts", import.meta.url)), "utf8");
 		const known = [...source.matchAll(/^\s*(?:"([\w-]+)"|(\w+)): \{ (?:base|goto):/gm)].map((match) => match[1] ?? match[2]);
 		for (const screen of iosCases) expect(known).toContain(screen.id);
+	});
+
+	test("the controls the iPhone leaves below the fold belong to screens of the matrix", () => {
+		const ids = iosCases.map((screen) => screen.id);
+		for (const id of Object.keys(iosBelowTheFold)) expect(ids).toContain(id);
 	});
 
 	test("references are named like the Android ones, so the same screen in the same variant has one name on both", () => {

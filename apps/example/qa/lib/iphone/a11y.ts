@@ -11,7 +11,9 @@ import type { Layout } from "../screens.ts";
  * services receive, not VoiceOver itself: the run file says so. Same six checks and the same counts as the Android suite
  * (`lib/a11y.ts`), so the report and the gates read both alike:
  *
- * - reachable: the element has a frame inside the screen and says something (a label, a value or a hint);
+ * - reachable: the element has a frame inside the screen and says something (a label, a value or a hint). One outside the screen
+ *   is unreachable, unless it sits in a scroll view and the screen declares it below the fold (`scrolled`): that one is clipped,
+ *   counted and not checked;
  * - labeled: it has a label, a value or a hint;
  * - actionable: it is exposed as a control: the button, link, adjustable or search field trait, or a text input. A control the
  *   screen's source declares (by label) whose element has none of these (a pressable VoiceOver reads as plain text) fails here,
@@ -21,6 +23,12 @@ import type { Layout } from "../screens.ts";
  *   must run top to bottom and start to end;
  * - title first: the screen's title is a stop with the header trait and no content comes before it;
  * - focus trap: while a sheet or modal is up, the labels of the screen underneath are not in the tree.
+ *
+ * UIKit's bars (navigation bar title and back button, search field, tab bar items) are not accessibility elements until an
+ * accessibility client runs, so the dump has none of them. They are modelled from `uikitState` (real titles, tab titles, labels,
+ * badges and enabled flags; guessed frames), marked `synthesized`, kept in the order model (title first) and left out of
+ * `interactive`, `labeled`, `actionable` and the other counts: a label the harness wrote itself proves nothing. `chromeModelled`
+ * counts them.
  */
 
 export type IosElement = {
@@ -37,6 +45,10 @@ export type IosElement = {
 	explicit: boolean;
 	group: number;
 	parents?: string[];
+	/** The harness modelled this element from UIKit's state; no accessibility client reported it. */
+	synthesized?: boolean;
+	/** Modelled chrome of a screen that a presented sheet or modal sits over. */
+	covered?: boolean;
 };
 
 export type IosDump = {
@@ -183,33 +195,34 @@ export function voiceOverOrder(elements: IosElement[], direction: Direction): Io
 	);
 }
 
-function eachController(controller: UiKitController, visit: (controller: UiKitController) => void): void {
-	visit(controller);
-	for (const child of controller.children ?? []) eachController(child, visit);
-	if (controller.presented) eachController(controller.presented, visit);
+/** Every controller, with whether a presented screen sits over it (the presenter, and what it contains). */
+function eachController(controller: UiKitController, covered: boolean, visit: (controller: UiKitController, covered: boolean) => void): void {
+	const under = covered || controller.presented !== undefined;
+	visit(controller, under);
+	for (const child of controller.children ?? []) eachController(child, under, visit);
+	if (controller.presented) eachController(controller.presented, covered, visit);
 }
 
-const chrome = (label: string, traits: string[], frame: number[], extra: Partial<IosElement> = {}): IosElement => ({
+const chrome = (label: string, traits: string[], frame: number[], covered: boolean): IosElement => ({
 	class: "UIKit chrome",
 	label,
 	traits,
 	frame: [frame[0] ?? 0, frame[1] ?? 0, frame[2] ?? 0, frame[3] ?? 0],
 	explicit: false,
 	group: 0,
-	...extra,
+	synthesized: true,
+	covered,
 });
 
 /**
  * The elements UIKit's own chrome contributes: the navigation bar's title (a heading), its back button, a search field, and the tab
- * bar's items with their labels. Only what is on screen counts (a hidden tab pane's stack has a bar too), and a presented screen
- * hides the controllers under it. The frames are where UIKit lays them out: title in the middle of the bar, back at its start,
- * the tabs side by side across the tab bar.
+ * bar's items with their labels, of every controller that is on screen (a hidden tab pane's stack has a bar too). The ones of a
+ * screen under a presented sheet or modal are marked `covered`. The frames are where UIKit lays them out: title in the middle of
+ * the bar, back at its start, the tabs side by side across the tab bar.
  */
 export function chromeElements(state: UiKitState): IosElement[] {
-	let top = state.root;
-	while (top.presented) top = top.presented;
 	const elements: IosElement[] = [];
-	eachController(top, (controller) => {
+	eachController(state.root, false, (controller, covered) => {
 		if (controller.shown === false) return;
 		const navigation = controller.navigation;
 		if (navigation && !navigation.barHidden && (navigation.barFrame[3] ?? 0) > 0) {
@@ -217,11 +230,11 @@ export function chromeElements(state: UiKitState): IosElement[] {
 			const item = navigation.items[navigation.topIndex];
 			const barTop = y + Math.min(state.safeArea[0] ?? 0, height);
 			const barHeight = Math.max(height - (barTop - y), 0);
-			if (item?.title) elements.push(chrome(item.title, ["staticText", "header"], [x + width * 0.25, barTop, width * 0.5, Math.min(barHeight, 44)]));
+			if (item?.title) elements.push(chrome(item.title, ["staticText", "header"], [x + width * 0.25, barTop, width * 0.5, Math.min(barHeight, 44)], covered));
 			if (navigation.topIndex > 0 && item?.hidesBackButton !== true) {
-				elements.push(chrome("Back", ["button"], [state.rtl ? x + width - 80 : x, barTop, 80, Math.min(barHeight, 44)]));
+				elements.push(chrome("Back", ["button"], [state.rtl ? x + width - 80 : x, barTop, 80, Math.min(barHeight, 44)], covered));
 			}
-			if (item?.hasSearchController) elements.push(chrome(item.searchPlaceholder || "Search", ["searchField"], [x + 8, barTop + Math.min(barHeight, 44), width - 16, 36]));
+			if (item?.hasSearchController) elements.push(chrome(item.searchPlaceholder || "Search", ["searchField"], [x + 8, barTop + Math.min(barHeight, 44), width - 16, 36], covered));
 		}
 		const tabs = controller.tabs;
 		if (tabs && tabs.items.length > 0 && (tabs.barFrame[3] ?? 0) > 0) {
@@ -231,18 +244,29 @@ export function chromeElements(state: UiKitState): IosElement[] {
 				const slot = state.rtl ? tabs.items.length - 1 - index : index;
 				const label = item.accessibilityLabel || [item.title, item.badge === "" ? "new items" : item.badge].filter(Boolean).join(", ");
 				const traits = ["button", ...(index === tabs.selectedIndex ? ["selected"] : []), ...(item.enabled === false ? ["notEnabled"] : [])];
-				elements.push(chrome(label, traits, [x + slot * each, y, each, height]));
+				elements.push(chrome(label, traits, [x + slot * each, y, each, height], covered));
 			});
 		}
 	});
 	return elements;
 }
 
+const scrollView = /ScrollView|UITableView|UICollectionView/;
+
 export function analyzeIosScreen(input: IosA11yInput): A11yScreen {
 	const { direction, title, lead, controls, scrolled, hidden, layout } = input;
-	const dump: IosDump = input.state ? { ...input.dump, elements: [...input.dump.elements, ...chromeElements(input.state)] } : input.dump;
+	const modelled = input.state ? chromeElements(input.state) : [];
+	const chromeShown = modelled.filter((element) => !element.covered);
+	const dump: IosDump = { ...input.dump, elements: [...input.dump.elements, ...chromeShown] };
 	const findings: A11yFinding[] = [];
 	const visible = dump.elements.filter((element) => onScreen(rectOf(element), dump.screen));
+	// The bars of a screen under a sheet or modal are as reachable as its content: when the dump shows no modal view hiding what lies under it.
+	const coveredReachable = input.dump.modalViews.some((view) => view.ignoredSiblings > 0)
+		? []
+		: modelled.filter((element) => element.covered && onScreen(rectOf(element), dump.screen));
+	// Off screen is out of reach, unless the element sits in a scroll view (its ancestors say so) and the screen declares it scrolled to.
+	const belowTheFold = (element: IosElement): boolean =>
+		(element.parents?.some((name) => scrollView.test(name)) ?? false) && scrolled.some((label) => matches(element, label));
 
 	/* Elements: every interactive one, plus each declared control no interactive element carries. */
 	type Candidate = { element: IosElement | null; label: string };
@@ -263,7 +287,10 @@ export function analyzeIosScreen(input: IosA11yInput): A11yScreen {
 	let unreachable = 0;
 	let unlabeled = 0;
 	let notActionable = 0;
+	let interactive = 0;
 	for (const { element, label } of candidates) {
+		if (element?.synthesized) continue;
+		interactive++;
 		if (!element) {
 			unreachable++;
 			findings.push({ kind: "unreachable", element: JSON.stringify(label), detail: "declared by the screen but not in the accessibility tree" });
@@ -274,7 +301,7 @@ export function analyzeIosScreen(input: IosA11yInput): A11yScreen {
 			continue;
 		}
 		const rect = rectOf(element);
-		if (!onScreen(rect, dump.screen) && rect.width > 0 && rect.height > 0) {
+		if (!onScreen(rect, dump.screen) && rect.width > 0 && rect.height > 0 && belowTheFold(element)) {
 			clipped++;
 			continue;
 		}
@@ -343,14 +370,15 @@ export function analyzeIosScreen(input: IosA11yInput): A11yScreen {
 	let focusLeaks = 0;
 	for (const label of hidden) {
 		// The hidden labels are the controls of the screen under the sheet: a heading of the sheet that reads the same is not one of them.
-		const leaked = visible.find((element) => isActionable(element) && matches(element, label));
+		const leaked = [...visible, ...coveredReachable].find((element) => isActionable(element) && matches(element, label));
 		if (!leaked) continue;
 		focusLeaks++;
 		findings.push({ kind: "leak", element: describe(leaked), detail: "belongs to the screen under the sheet or modal, which VoiceOver can still reach" });
 	}
 
 	return {
-		interactive: candidates.length,
+		interactive,
+		chromeModelled: chromeShown.length,
 		reachable,
 		labeled,
 		actionable,

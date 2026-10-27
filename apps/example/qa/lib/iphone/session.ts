@@ -4,7 +4,7 @@ import { flagString, requireString } from "../flags.ts";
 import { currentSource } from "../git.ts";
 import { reexecUnderLock } from "../lock.ts";
 import { defaultPackage, outDir } from "../paths.ts";
-import type { AppInfo, DeviceInfo, Source } from "../types.ts";
+import type { AppInfo, BuildRecord, DeviceInfo, Source } from "../types.ts";
 import { deviceDetails, installedApp, type IosTarget } from "./device.ts";
 import { macFrom, remoteOk, words } from "./mac.ts";
 import type { InstalledApp } from "../../parse/ios.ts";
@@ -41,10 +41,22 @@ export type IosBuildFile = {
 	/** The Mac checkout the build ran in, and the signed `.app` inside its DerivedData. */
 	macCheckout: string;
 	appPath: string;
+	/** The SHA-256 of `main.jsbundle` (`bundleSha256` is the name older records give it) and of the executable the app's Info.plist names (absent from older records). */
 	bundleSha256: string;
+	jsbundleSha256?: string;
+	executableSha256?: string;
 	bundleBytes: number;
 	logFile: string;
 };
+
+export function buildRecordOf(file: IosBuildFile): BuildRecord {
+	return {
+		commit: file.source.commit,
+		dirty: file.source.dirty,
+		jsbundleSha256: file.jsbundleSha256 ?? file.bundleSha256,
+		executableSha256: file.executableSha256 ?? null,
+	};
+}
 
 export const iosBuildPath = join(outDir, "ios-build.json");
 
@@ -69,7 +81,10 @@ export type IosSession = {
 	target: IosTarget;
 	device: DeviceInfo;
 	installed: InstalledApp;
+	/** What the app reported is not known yet: `installed` and `installedSha256` are filled in by the command from the files it reads (`withIdentity`). */
 	app: AppInfo;
+	/** The build the run is meant to measure, from `qa/out/ios-build.json`; null when there is no record of the app under test. */
+	build: BuildRecord | null;
 	startedAt: Date;
 };
 
@@ -85,14 +100,16 @@ export async function startIosSuite(command: string, argv: string[], values: Ios
 	const target: IosTarget = { mac, id, bundleId };
 	const startedAt = new Date();
 	const device = await deviceDetails(target);
-	const build = await readIosBuild();
-	const appPath = flagString(values.app) ?? build?.appPath;
-	let installedSha: string | null = null;
-	if (values["no-install"] !== true && appPath) {
+	const record = await readIosBuild();
+	const appPath = flagString(values.app) ?? record?.appPath;
+	const installing = values["no-install"] !== true && appPath;
+	if (installing) {
 		console.log(`installing ${appPath} on ${device.model} (${id})`);
 		await remoteOk(mac, words(["xcrun", "devicectl", "device", "install", "app", "--device", id, appPath]), { timeoutMs: 600_000 });
-		installedSha = build && build.appPath === appPath ? build.bundleSha256 : null;
 	} else console.log(`no build to install; measuring the app already on ${id}`);
+	// The record describes the app it names: another `--app` has none, so what that app reports is recorded and not compared.
+	const build = record && (!installing || appPath === record.appPath) ? buildRecordOf(record) : null;
+	if (record && !build) console.log(`${appPath} is not the app of qa/out/ios-build.json: the identity it reports is recorded, not compared`);
 	const installed = await installedApp(target);
 	const versionCode = installed.bundleVersion !== null ? Number(installed.bundleVersion) : Number.NaN;
 	const app: AppInfo = {
@@ -100,11 +117,13 @@ export async function startIosSuite(command: string, argv: string[], values: Ios
 		versionName: installed.version,
 		versionCode: Number.isFinite(versionCode) ? versionCode : null,
 		lastUpdateTime: null,
-		installedSha256: installedSha,
+		installedSha256: null,
 		apk: null,
+		installed: null,
+		build,
 	};
 	console.log(`${device.model} (${id}), iOS ${device.osVersion}; app ${installed.version ?? "?"} (${installed.bundleVersion ?? "?"})`);
-	return { target, device, installed, app, startedAt };
+	return { target, device, installed, app, build, startedAt };
 }
 
 export { currentSource };

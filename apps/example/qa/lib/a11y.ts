@@ -39,7 +39,7 @@ export type A11yScreen = {
 	actionable: number;
 	/** Interactive and disabled: not counted against any check (a disabled control is deliberately unavailable). */
 	disabled: number;
-	/** Interactive but scrolled partly out of its container (uiautomator reports a negative extent): not checked. */
+	/** Interactive, outside the display or scrolled out of its container (uiautomator reports a negative extent), inside a scroll container, and declared below the fold by the screen (`scrolled`): not checked. Any other element outside the display is unreachable. */
 	clipped: number;
 	unreachable: number;
 	unlabeled: number;
@@ -51,7 +51,14 @@ export type A11yScreen = {
 	/** Labels of the screen underneath that a sheet or modal leaves in the tree. */
 	focusLeaks: number;
 	findings: A11yFinding[];
+	/** iOS: the bars modelled from UIKit's state, which no accessibility client reported and the counts above leave out. */
+	chromeModelled?: number;
 };
+
+/** The share of a screen's interactive elements that are reachable, for the line printed per screen. */
+export function reachPct(screen: { interactive: number; reachable: number }): string {
+	return screen.interactive === 0 ? "-" : `${((screen.reachable / screen.interactive) * 100).toFixed(0)} %`;
+}
 
 export type A11yInput = {
 	tree: UiTree;
@@ -104,13 +111,13 @@ export function isInteractive(node: UiNode): boolean {
 	return isActionable(node) || interactiveClasses.has(node.className);
 }
 
-/** A node that reports a negative width or height: uiautomator's way of saying it is scrolled out of its container. */
-function isClipped(node: UiNode): boolean {
-	return node.bounds.width < 0 || node.bounds.height < 0;
-}
-
 function intersects(rect: Rect, display: { width: number; height: number }): boolean {
 	return rect.x < display.width && right(rect) > 0 && rect.y < display.height && bottom(rect) > 0;
+}
+
+/** A node outside the display, or with the negative width or height uiautomator reports for one scrolled out of its container. */
+function isOffScreen(node: UiNode, display: { width: number; height: number }): boolean {
+	return node.bounds.width < 0 || node.bounds.height < 0 || (node.bounds.width > 0 && node.bounds.height > 0 && !intersects(node.bounds, display));
 }
 
 function describe(node: UiNode): string {
@@ -134,6 +141,11 @@ const scrollContainer = /ScrollView|RecyclerView|ListView|ViewPager/;
 
 function isScrollContainer(node: UiNode): boolean {
 	return node.scrollable || scrollContainer.test(node.className);
+}
+
+function inScrollContainer(node: UiNode): boolean {
+	for (let ancestor = node.parent; ancestor; ancestor = ancestor.parent) if (isScrollContainer(ancestor)) return true;
+	return false;
 }
 
 /**
@@ -252,7 +264,12 @@ export function analyzeScreen(input: A11yInput): A11yScreen {
 			disabled++;
 			continue;
 		}
-		if (isClipped(node)) {
+		// Off the screen is clipped only where the screen says a scroll container holds the control below the fold; anywhere else it is out of reach.
+		if (
+			isOffScreen(node, display) &&
+			inScrollContainer(node) &&
+			scrolled.some((label) => sameLabel(node, label))
+		) {
 			clipped++;
 			continue;
 		}
@@ -270,11 +287,13 @@ export function analyzeScreen(input: A11yInput): A11yScreen {
 				kind: "unreachable",
 				element: where,
 				detail:
-					node.bounds.width <= 0 || node.bounds.height <= 0
-						? "zero-size bounds"
-						: !intersects(node.bounds, display)
-							? "outside the display"
-							: "a service cannot focus it (not focusable, not actionable, no label)",
+					node.bounds.width < 0 || node.bounds.height < 0
+						? "negative extent (scrolled out of its container) and not declared below the fold"
+						: node.bounds.width === 0 || node.bounds.height === 0
+							? "zero-size bounds"
+							: !intersects(node.bounds, display)
+								? "outside the display"
+								: "a service cannot focus it (not focusable, not actionable, no label)",
 			});
 		}
 		if (hasLabel(node)) {

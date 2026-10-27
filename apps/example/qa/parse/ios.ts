@@ -1,4 +1,4 @@
-import type { DeviceInfo } from "../lib/types.ts";
+import type { BuildIdentity, DeviceInfo } from "../lib/types.ts";
 import { parseBootBody, type BootMarks } from "./logcat.ts";
 
 /** Parsers for what `xcrun devicectl` and the QA app write on iOS. */
@@ -25,6 +25,17 @@ function result(text: string, what: string): Record<string, unknown> {
 }
 
 const str = (value: unknown): string | null => (typeof value === "string" && value !== "" ? value : null);
+
+const sha256 = /^[0-9a-f]{64}$/;
+
+/** The `build` the app writes into its files: both digests, or null for an app that reports none (or not a whole identity). */
+export function parseIdentity(value: unknown): BuildIdentity | null {
+	if (!isRecord(value)) return null;
+	const { jsbundleSha256, executableSha256 } = value;
+	if (typeof jsbundleSha256 !== "string" || !sha256.test(jsbundleSha256)) return null;
+	if (typeof executableSha256 !== "string" || !sha256.test(executableSha256)) return null;
+	return { jsbundleSha256, executableSha256 };
+}
 
 /** `devicectl list devices --json-output`: the device with the given identifier (or hardware UDID), as the report describes devices. */
 export function parseDeviceDetails(text: string, id: string): DeviceInfo {
@@ -103,6 +114,9 @@ export type BootReport = {
 	contentAppearedMs: number;
 	displayedMs: number;
 	javaScript: string;
+	/** `console.error` calls since the app's root layout ran; null for an app that does not count them. */
+	jsErrors: number | null;
+	build: BuildIdentity | null;
 	osVersion: string;
 };
 
@@ -118,6 +132,8 @@ export function parseBootReport(text: string): BootReport {
 		contentAppearedMs: value.contentAppearedMs as number,
 		displayedMs: value.displayedMs as number,
 		javaScript: value.javaScript,
+		jsErrors: typeof value.jsErrors === "number" ? value.jsErrors : null,
+		build: parseIdentity(value.build),
 		osVersion: typeof value.osVersion === "string" ? value.osVersion : "unknown",
 	};
 }

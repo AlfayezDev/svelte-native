@@ -1,6 +1,6 @@
 import { Directory, File, Paths } from "expo-file-system";
 import type { Presentation } from "@rasheed/svelte-native";
-import { qaModule, type SvelteQA } from "./qa.ts";
+import { qaModule, type SvelteQA, type BuildIdentity } from "./qa.ts";
 
 /**
  * Device probes for the native screens on iOS (`run=probe:<names>`): each puts a screen in a state, does what a user would
@@ -169,7 +169,7 @@ export async function runProbes(router: Router, names: readonly string[], token:
   const directory = new Directory(Paths.document, "probe");
   if (directory.exists) directory.delete();
   directory.create({ intermediates: true, idempotent: true });
-  const index: { token: string | null; done: boolean; probes: { name: string; error: string | null; file: string }[] } = { token, done: false, probes: [] };
+  const index: { token: string | null; build: BuildIdentity; done: boolean; probes: { name: string; error: string | null; file: string }[] } = { token, build: await qa.buildIdentity(), done: false, probes: [] };
   const save = () => new File(directory, "index.json").write(JSON.stringify(index));
   save();
   for (const name of names) {

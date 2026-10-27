@@ -40,11 +40,45 @@ describe("iOS accessibility checks", () => {
 		expect(result.unreachable).toBe(1);
 	});
 
-	test("a disabled control is counted but not checked; one outside the screen is clipped", () => {
+	test("a disabled control is counted but not checked; one outside the screen that nothing scrolls is unreachable", () => {
 		const result = analyze([button("Save", [16, 100, 100, 44], { traits: ["button", "notEnabled"] }), button("Below", [16, 900, 100, 44])]);
 		expect(result.disabled).toBe(1);
-		expect(result.clipped).toBe(1);
-		expect(result.notActionable + result.unreachable + result.unlabeled).toBe(0);
+		expect(result.clipped).toBe(0);
+		expect(result.unreachable).toBe(1);
+		expect(result.findings).toEqual([expect.objectContaining({ kind: "unreachable", detail: "outside the screen" })]);
+	});
+
+	describe("a control outside the screen", () => {
+		const inScrollView = ["RCTViewComponentView", "RCTEnhancedScrollView", "RCTScrollViewComponentView", "RCTRootComponentView"];
+		const below = (label = "Push screen 2", fields: Partial<IosElement> = {}) => button(label, [24, 900, 327, 52], { parents: inScrollView, ...fields });
+
+		test("is clipped, and not checked, when it sits in a scroll view and the screen declares it below the fold", () => {
+			const result = analyze([below()], { scrolled: ["Push screen 2"] });
+			expect([result.interactive, result.clipped, result.unreachable, result.reachable]).toEqual([1, 1, 0, 0]);
+			expect(result.findings).toEqual([]);
+		});
+
+		test("is unreachable when the screen does not declare it, though a scroll view holds it", () => {
+			const result = analyze([below("Push screen 3")], { scrolled: ["Push screen 2"] });
+			expect([result.clipped, result.unreachable]).toEqual([0, 1]);
+			expect(result.findings[0]?.detail).toBe("outside the screen");
+		});
+
+		test("is unreachable when it is declared but no scroll view holds it: a footer the layout pushed off the display", () => {
+			const footer = button("Push screen 2", [24, 900, 327, 52], { parents: ["RCTViewComponentView", "RCTRootComponentView"] });
+			const result = analyze([footer], { scrolled: ["Push screen 2"] });
+			expect([result.clipped, result.unreachable]).toEqual([0, 1]);
+			expect(result.findings[0]?.detail).toBe("outside the screen");
+		});
+
+		test("a text field is in a scroll view by its ancestors, like any element (the dump lists them for UIKit's fields too), and out of reach without them", () => {
+			const field = (fields: Partial<IosElement> = {}) => element({ class: "RCTUITextField", label: "Draft a", traits: [], frame: [38, 874, 299, 50], ...fields });
+			const rows = [below("Reverse rows", { frame: [24, 700, 327, 52] }), below("Tap a", { frame: [24, 1100, 327, 52] })];
+			const within = analyze([...rows, field({ parents: inScrollView })], { scrolled: ["Draft a", "Reverse rows", "Tap a"] });
+			expect([within.clipped, within.unreachable]).toEqual([3, 0]);
+			const beyond = analyze([...rows, field()], { scrolled: ["Draft a", "Reverse rows", "Tap a"] });
+			expect([beyond.clipped, beyond.unreachable]).toEqual([2, 1]);
+		});
 	});
 
 	test("a text field is actionable by its class", () => {
@@ -161,11 +195,14 @@ describe("UIKit's own chrome", () => {
 		expect(hidden.map((entry) => entry.label)).toEqual(["B"]);
 	});
 
-	test("a hidden bar, a hidden tab pane and the controllers under a presented screen contribute nothing", () => {
+	test("a hidden bar and a hidden tab pane contribute nothing", () => {
 		expect(chromeElements(state({ class: "Root", children: [{ ...stack([{ title: "A" }]), navigation: { barHidden: true, barFrame: [0, 0, 375, 0], topIndex: 0, items: [{ title: "A" }] } }] }))).toEqual([]);
 		expect(chromeElements(state({ class: "Root", children: [stack([{ title: "Pane" }], { shown: false })] }))).toEqual([]);
-		const presented = chromeElements(state({ class: "Root", children: [stack([{ title: "Under" }])], presented: { class: "Sheet", shown: true } }));
-		expect(presented).toEqual([]);
+	});
+
+	test("every stack on screen is walked, and the ones under a presented screen are marked covered", () => {
+		const under = chromeElements(state({ class: "Root", children: [stack([{ title: "Under" }])], presented: { class: "Sheet", shown: true, children: [stack([{ title: "Over" }])] } }));
+		expect(under.map((entry) => [entry.label, entry.covered, entry.synthesized])).toEqual([["Under", true, true], ["Over", false, true]]);
 	});
 
 	test("tab items carry their own label or the title and badge, the selected one is selected, and the order mirrors in right-to-left", () => {
@@ -194,6 +231,48 @@ describe("UIKit's own chrome", () => {
 		});
 		expect(merged.titleFirst).toBe(true);
 		expect(merged.unreachable).toBe(0);
-		expect(merged.actionable).toBe(1);
+	});
+
+	test("modelled chrome is in the order model but not in the counts: a label the harness wrote proves nothing", () => {
+		const input = {
+			dump: dump([text("Row", [16, 120, 343, 44])]),
+			state: state({ class: "Root", children: [stack([{ title: "Root" }, { title: "Screen 1" }])] }),
+			direction: "ltr" as const,
+			title: "Screen 1",
+			lead: [],
+			controls: ["Back"],
+			scrolled: [],
+			hidden: [],
+			layout: "header" as const,
+		};
+		const merged = analyzeIosScreen(input);
+		// the title and the back button are modelled; neither is an interactive, labeled or actionable element of the screen
+		expect([merged.interactive, merged.reachable, merged.labeled, merged.actionable, merged.chromeModelled]).toEqual([0, 0, 0, 0, 2]);
+		expect(merged.stops.slice(0, 2).sort()).toEqual(["Back", "Screen 1"]);
+		expect(merged.titleFirst).toBe(true);
+	});
+
+	test("a declared control the model does not have is still unreachable, and counts", () => {
+		const merged = analyzeIosScreen({
+			dump: dump([text("Row", [16, 120, 343, 44])]),
+			state: state({ class: "Root", children: [stack([{ title: "Screen 1", hidesBackButton: true }, { title: "Screen 2", hidesBackButton: true }])] }),
+			direction: "ltr",
+			title: "Screen 2",
+			lead: [],
+			controls: ["Back"],
+			scrolled: [],
+			hidden: [],
+			layout: "header",
+		});
+		expect([merged.interactive, merged.unreachable, merged.chromeModelled]).toEqual([1, 1, 1]);
+	});
+
+	test("the bars under a sheet are a focus leak when the dump shows no modal view hiding them, and not when it does", () => {
+		const tabs = { class: "Tabs", shown: true, tabs: { selectedIndex: 0, barFrame: [0, 600, 375, 67], items: [{ title: "Home" }, { title: "Me" }] } };
+		const covered = state({ class: "Root", children: [tabs], presented: { class: "Sheet", shown: true } });
+		const input = { dump: dump([text("Two detents", [16, 300, 343, 30], { traits: ["header"] })]), state: covered, direction: "ltr" as const, title: "Two detents", lead: [], controls: [], scrolled: [], hidden: ["Home"], layout: "sheet" as const };
+		expect(analyzeIosScreen(input).focusLeaks).toBe(1);
+		const hiding = { ...input, dump: { ...input.dump, modalViews: [{ class: "UITransitionView", ignoredSiblings: 2 }] } };
+		expect(analyzeIosScreen(hiding).focusLeaks).toBe(0);
 	});
 });

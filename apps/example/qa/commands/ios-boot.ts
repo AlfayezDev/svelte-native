@@ -2,12 +2,13 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { integerFlag, parseFlags } from "../lib/flags.ts";
 import { appProcesses, launchApp, readAppFile, terminateApp } from "../lib/iphone/device.ts";
+import { notReported, reportedIdentity, withIdentity } from "../lib/iphone/identity.ts";
 import { currentSource, iosOptions, startIosSuite, type IosSession } from "../lib/iphone/session.ts";
 import { qaDir, runsDir } from "../lib/paths.ts";
 import { slug, stamp, writeRun } from "../lib/runs.ts";
-import type { BootDefinition, BootFile, Launch } from "../lib/types.ts";
+import type { BootDefinition, BootFile, BuildIdentity, Launch } from "../lib/types.ts";
 import { sleep } from "../lib/wait.ts";
-import { launchFromReport, parseBootReport } from "../parse/ios.ts";
+import { launchFromReport, parseBootReport, type BootReport } from "../parse/ios.ts";
 
 const reportWaitMs = 25_000;
 const reportPollMs = 1500;
@@ -20,7 +21,38 @@ export function iosBootDefinition(coldIdleSeconds: number): BootDefinition {
 	};
 }
 
-async function launchOnce(session: IosSession, kind: "warm" | "cold", index: number, idleSeconds: number, previous: number | null): Promise<{ launch: Launch; pid: number }> {
+/**
+ * Why a boot report is not the launch just made, or null: it names another process, or its process started before the launch
+ * command ran (the report a previous launch left behind). The two times are on different clocks, the phone's and this machine's,
+ * which agree to well within the seconds a launch takes.
+ */
+/**
+ * Whether the report is an earlier launch's: a different process than the one launched, or one that started no later than the
+ * process measured before it (`baselineStartMs`, the phone's own clock, so no two clocks are compared). The first launch's
+ * baseline is the report found on the phone before the run.
+ */
+export function staleReport(report: BootReport, pid: number, baselineStartMs: number | null): string | null {
+	if (report.pid !== pid) return `from process ${report.pid}, not ${pid}`;
+	if (baselineStartMs !== null && report.processStartMs <= baselineStartMs)
+		return `of a process that started ${Math.round(baselineStartMs - report.processStartMs)} ms before the one measured before it`;
+	return null;
+}
+
+export type ReportRead = { report: BootReport } | { stale: string } | null;
+
+/** One poll's copy of boot-report.json: null while it cannot be read yet (a copy that caught the app writing it), `stale` when it is not this launch's. */
+export function readLaunchReport(text: string, pid: number, baselineStartMs: number | null): ReportRead {
+	let report: BootReport;
+	try {
+		report = parseBootReport(text);
+	} catch {
+		return null;
+	}
+	const stale = staleReport(report, pid, baselineStartMs);
+	return stale === null ? { report } : { stale };
+}
+
+async function launchOnce(session: IosSession, kind: "warm" | "cold", index: number, idleSeconds: number, previous: number | null, baselineStartMs: number | null): Promise<{ launch: Launch; pid: number; report: BootReport | null }> {
 	const { target } = session;
 	if (previous !== null) {
 		try {
@@ -30,17 +62,26 @@ async function launchOnce(session: IosSession, kind: "warm" | "cold", index: num
 		}
 	}
 	await sleep(kind === "cold" ? idleSeconds * 1000 : 1500);
-	const { pid } = await launchApp(target, { terminateExisting: false });
+	const commandStartedAtMs = Date.now();
+	const { pid } = await launchApp(target);
 	const deadline = Date.now() + reportWaitMs;
 	let error: string | null = "no boot report was written";
-	let launch: Launch = { index, displayMs: null, runningMainMs: null, displayedReportedMs: null, totalTimeMs: null, jsMarks: null, crashes: 0, jsErrors: 0, engineWarnings: 0, error };
+	let launch: Launch = { index, displayMs: null, runningMainMs: null, displayedReportedMs: null, totalTimeMs: null, jsMarks: null, crashes: 0, jsErrors: null, engineWarnings: 0, error, commandStartedAtMs, processStartMs: null };
+	let accepted: BootReport | null = null;
 	while (Date.now() < deadline) {
 		await sleep(reportPollMs);
 		const text = await readAppFile(target, "Documents/boot-report.json");
 		if (text === null) continue;
-		const report = parseBootReport(text);
-		if (report.pid !== pid) continue;
+		const read = readLaunchReport(text, pid, baselineStartMs);
+		// The app writes the file while the harness copies it: a copy that caught it half written is read again on the next poll.
+		if (read === null) continue;
+		if ("stale" in read) {
+			error = `the boot report found is ${read.stale}; no report of this launch was written`;
+			continue;
+		}
+		const { report } = read;
 		const measured = launchFromReport(report);
+		accepted = report;
 		error = null;
 		launch = {
 			index,
@@ -50,9 +91,11 @@ async function launchOnce(session: IosSession, kind: "warm" | "cold", index: num
 			totalTimeMs: Math.round(measured.launchedMs),
 			jsMarks: measured.jsMarks,
 			crashes: 0,
-			jsErrors: 0,
+			jsErrors: report.jsErrors,
 			engineWarnings: 0,
 			error: null,
+			commandStartedAtMs,
+			processStartMs: report.processStartMs,
 		};
 		break;
 	}
@@ -60,7 +103,18 @@ async function launchOnce(session: IosSession, kind: "warm" | "cold", index: num
 		const alive = (await appProcesses(target, session.installed)).includes(pid);
 		launch = { ...launch, crashes: alive ? 0 : 1, error: alive ? error : "the app exited before its first frame" };
 	}
-	return { launch, pid };
+	return { launch, pid, report: accepted };
+}
+
+/** The process start of the boot report on the phone before the run, if one is there and readable. */
+async function previousStart(session: IosSession): Promise<number | null> {
+	const text = await readAppFile(session.target, "Documents/boot-report.json");
+	if (text === null) return null;
+	try {
+		return parseBootReport(text).processStartMs;
+	} catch {
+		return null;
+	}
 }
 
 function describeLaunch(kind: string, launch: Launch): string {
@@ -77,16 +131,25 @@ export async function iosBoot(argv: string[]): Promise<void> {
 
 	const launches = { warm: [] as Launch[], cold: [] as Launch[] };
 	const logs: string[] = [];
+	const reports: (BuildIdentity | null)[] = [];
 	let running: number | null = null;
+	// The report left on the phone by an earlier run is the first launch's baseline; each accepted report is the next one's.
+	let baselineStartMs = await previousStart(session);
 	for (const [kind, count] of [["warm", warmCount], ["cold", coldCount]] as const) {
 		for (let index = 1; index <= count; index++) {
-			const { launch, pid } = await launchOnce(session, kind, index, idleSeconds, running);
+			const { launch, pid, report } = await launchOnce(session, kind, index, idleSeconds, running, baselineStartMs);
 			running = pid;
+			if (report) baselineStartMs = report.processStartMs;
 			launches[kind].push(launch);
 			logs.push(`=== ${kind} ${index} ===\n${JSON.stringify(launch)}`);
 			console.log(describeLaunch(kind, launch));
+			// Every launch that reported must be the recorded build, checked as it comes so a wrong build ends the run at once.
+			if (report) reports.push(report.build);
+			reportedIdentity(reports, session.build, "boot");
 		}
 	}
+	const installed = reportedIdentity(reports, session.build, "boot");
+	if (reports.length > 0 && installed === null) console.log(`warning: ${notReported}`);
 	if (running !== null) {
 		try {
 			await terminateApp(session.target, running);
@@ -104,7 +167,7 @@ export async function iosBoot(argv: string[]): Promise<void> {
 		finishedAt: new Date().toISOString(),
 		source: await currentSource(),
 		device: session.device,
-		app: session.app,
+		app: withIdentity(session.app, installed),
 		definition: iosBootDefinition(idleSeconds),
 		warm: launches.warm,
 		cold: launches.cold,

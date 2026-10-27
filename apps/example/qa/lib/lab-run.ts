@@ -37,6 +37,7 @@ export function labRunFrom(
 			.map((result) => result.name),
 		crashes: faults.crashes,
 		jsErrors: faults.jsErrors,
+		jsErrorCount: faults.jsErrors.length,
 		engineWarnings: findEngineWarnings(text),
 		logFile: capture.logFile,
 	};
@@ -45,8 +46,10 @@ export function labRunFrom(
 export const stressRequested = (run: string) => run.split(",").some((part) => part && part !== "checks");
 
 export function describeRun(run: LabRun): string[] {
+	const jsErrors = run.jsErrorCount === undefined ? run.jsErrors.length : run.jsErrorCount;
+	const fatals = jsErrors === null ? `${run.crashes.length} (JavaScript errors not reported by the app)` : run.crashes.length + jsErrors;
 	const lines = [
-		`  complete ${run.complete} in ${(run.durationMs / 1000).toFixed(0)} s, checks ${run.checks ? `${run.checks.passed}/${run.checks.total}` : "none logged"}, fatals ${run.crashes.length + run.jsErrors.length}, engine warnings ${run.engineWarnings.length}`,
+		`  complete ${run.complete} in ${(run.durationMs / 1000).toFixed(0)} s, checks ${run.checks ? `${run.checks.passed}/${run.checks.total}` : "none logged"}, fatals ${fatals}, engine warnings ${run.engineWarnings.length}`,
 	];
 	if (run.boot)
 		lines.push(

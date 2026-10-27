@@ -83,6 +83,12 @@ function screenCase(
 	};
 }
 
+/** The labels that say the screen itself is on screen: its declared controls, or its title when it declares none. */
+export function ownLabels(screen: ScreenCase, direction: Direction): string[] {
+	if (screen.controls.length > 0) return screen.controls.map((control) => localize(control, direction));
+	return screen.title === null ? [] : [localize(screen.title, direction)];
+}
+
 const label = (text: string): Selector => ({ label: text });
 const tapLabel = (text: string): Step => ({ tap: label(text) });
 const waitFor = (text: string): Step => ({ wait: label(text) });

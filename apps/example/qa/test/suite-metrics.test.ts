@@ -320,7 +320,7 @@ describe("the gates of the three suites", () => {
 	});
 
 	test("a clean run passes all of them, one pixel or one failed step fails its own", () => {
-		const clean = deviceMetrics(null, null, null, null, {
+		const clean = deviceMetrics(null, null, [], null, null, {
 			parity: parityFile([parityCase("a")]),
 			a11y: a11yFile([screen("a")]),
 			resilience: resilienceFile(

@@ -105,16 +105,45 @@ describe("reachable, labeled, actionable", () => {
 	});
 
 	test("zero-size and off-screen interactive nodes are unreachable; a clipped one is skipped; a disabled one is exempt", () => {
-		const r = analyze([
-			button("Zero", [10, 10, 10, 50]),
-			button("Gone", [2000, 10, 2100, 50]),
-			button("Clipped", [76, 2281, 1004, 2169]),
-			button("Off", [10, 300, 200, 400], { enabled: false }),
-		]);
+		const r = analyze(
+			[
+				button("Zero", [10, 10, 10, 50]),
+				button("Gone", [2000, 10, 2100, 50]),
+				{
+					cls: "androidx.recyclerview.widget.RecyclerView",
+					scrollable: true,
+					bounds: [0, 0, 1080, 2400],
+					children: [button("Clipped", [76, 2281, 1004, 2169])],
+				},
+				button("Off", [10, 300, 200, 400], { enabled: false }),
+			],
+			{ scrolled: ["Clipped"] },
+		);
 		expect([r.interactive, r.unreachable, r.clipped, r.disabled, r.reachable]).toEqual([
 			4, 2, 1, 1, 0,
 		]);
 		expect(r.findings.map((f) => f.detail)).toEqual(["zero-size bounds", "outside the display"]);
+	});
+
+	test("a control outside the display is clipped only inside a scroll container, and only when the screen declares it below the fold", () => {
+		const scroller = (child: N): N => ({
+			cls: "android.widget.ScrollView",
+			scrollable: true,
+			bounds: [0, 0, 1080, 2400],
+			children: [child],
+		});
+		const below = button("Below", [10, 2500, 400, 2600]);
+		const declared = analyze([scroller(below)], { scrolled: ["Below"] });
+		expect([declared.clipped, declared.unreachable, declared.findings]).toEqual([1, 0, []]);
+		const undeclared = analyze([scroller(below)]);
+		expect([undeclared.clipped, undeclared.unreachable]).toEqual([0, 1]);
+		expect(undeclared.findings[0]?.detail).toBe("outside the display");
+		const fixed = analyze([below], { scrolled: ["Below"] });
+		expect([fixed.clipped, fixed.unreachable]).toEqual([0, 1]);
+		expect(fixed.findings[0]?.detail).toBe("outside the display");
+		const negative = analyze([button("Negative", [76, 2281, 1004, 2169])]);
+		expect([negative.clipped, negative.unreachable]).toEqual([0, 1]);
+		expect(negative.findings[0]?.detail).toContain("negative extent");
 	});
 
 	test("a control the screen declares but the tree lacks is unreachable", () => {

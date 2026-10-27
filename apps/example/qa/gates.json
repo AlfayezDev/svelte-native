@@ -1,5 +1,45 @@
 {
   "version": 1,
+  "scenarios": {
+    "android": [
+      "idle",
+      "animation-48",
+      "animation-48-square",
+      "animation-48-translate",
+      "animation-48-css",
+      "churn-static",
+      "churn-animated",
+      "list-300",
+      "list-300-clipped",
+      "list-300-raw",
+      "list-300-virtual",
+      "input-120",
+      "modal-8",
+      "navigation-8",
+      "header-8",
+      "sheet-8",
+      "tabs-8"
+    ],
+    "ios": [
+      "idle",
+      "animation-48",
+      "animation-48-square",
+      "animation-48-translate",
+      "animation-48-css",
+      "churn-static",
+      "churn-animated",
+      "list-300",
+      "list-300-clipped",
+      "list-300-raw",
+      "list-300-virtual",
+      "input-120",
+      "modal-8",
+      "navigation-8",
+      "header-8",
+      "sheet-8",
+      "tabs-8"
+    ]
+  },
   "gates": [
     {
       "id": "checks.passed",
@@ -72,6 +112,20 @@
       }
     },
     {
+      "id": "lab.scenarios.missing",
+      "title": "Scenarios of the full checks,quick run absent from the lab run (the list is `scenarios` above)",
+      "unit": "scenarios",
+      "metric": "lab.scenarios.missing",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
       "id": "boot.warm.p90",
       "title": "Warm boot p90, Start proc to Displayed",
       "unit": "ms",
@@ -128,6 +182,34 @@
       }
     },
     {
+      "id": "boot.warm.failed",
+      "title": "Warm launches that produced no display time",
+      "unit": "launches",
+      "metric": "boot.warm.failed",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "boot.cold.failed",
+      "title": "Cold launches that produced no display time",
+      "unit": "launches",
+      "metric": "boot.cold.failed",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
       "id": "boot.warm.jsTotal.p90",
       "title": "JavaScript before first content, warm p90",
       "unit": "ms",
@@ -138,6 +220,20 @@
         },
         "ios": {
           "max": 100
+        }
+      }
+    },
+    {
+      "id": "boot.js.samples",
+      "title": "Warm launches that logged the [Svelte boot] total, behind the p90 above",
+      "unit": "launches",
+      "metric": "boot.warm.jsTotal.samples",
+      "bar": {
+        "android": {
+          "min": 30
+        },
+        "ios": {
+          "min": 30
         }
       }
     },
@@ -340,6 +436,20 @@
       }
     },
     {
+      "id": "crashes.run",
+      "title": "The lab run of the crash suites",
+      "unit": "",
+      "metric": "crashes.run",
+      "bar": {
+        "android": {
+          "equals": "checks,quick"
+        },
+        "ios": {
+          "equals": "checks,quick"
+        }
+      }
+    },
+    {
       "id": "crashes.suites",
       "title": "Full lab suites run for the crash count",
       "unit": "suites",
@@ -420,6 +530,20 @@
         },
         "ios": {
           "max": 0
+        }
+      }
+    },
+    {
+      "id": "parity.maskedPct",
+      "title": "Screenshot parity: share of the screen the masks cover, worst case",
+      "unit": "%",
+      "metric": "parity.maskedPct",
+      "bar": {
+        "android": {
+          "max": 25
+        },
+        "ios": {
+          "max": 25
         }
       }
     },

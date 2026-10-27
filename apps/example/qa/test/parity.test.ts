@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -5,6 +6,9 @@ import { describe, expect, test } from "bun:test";
 import {
 	compare,
 	emptyManifest,
+	maskedPct,
+	maskRefusal,
+	maxMaskedPct,
 	readManifest,
 	readReference,
 	referenceMasks,
@@ -12,6 +16,7 @@ import {
 	writeReference,
 	type Manifest,
 } from "../lib/parity.ts";
+import type { GatesFile } from "../lib/gates.ts";
 import { decodePng, type Image } from "../lib/png.ts";
 
 function image(width: number, height: number, tint = 0): Image {
@@ -131,5 +136,42 @@ describe("comparison", () => {
 		const written = await writeReference("k", "n", picture, root);
 		const bytes = await readFile(join(root, "k", written.file));
 		expect(decodePng(bytes).data.equals(picture.data)).toBe(true);
+	});
+});
+
+describe("how much of the screen the masks may cover", () => {
+	const screen = { width: 100, height: 100 };
+
+	test("the share is the covered pixels over the screen's, overlaps counted once", () => {
+		expect(maskedPct([], screen)).toBe(0);
+		expect(maskedPct([{ x: 0, y: 0, width: 50, height: 50 }], screen)).toBe(25);
+		expect(maskedPct([{ x: 0, y: 0, width: 50, height: 50 }, { x: 25, y: 25, width: 50, height: 50 }], screen)).toBe(43.75);
+		expect(maskedPct([{ x: -10, y: -10, width: 20, height: 20 }], screen)).toBe(1);
+	});
+
+	test("a reference whose masks cover more than the gate allows is refused, naming which kind of view hides the screen", () => {
+		const refusal = maskRefusal(
+			[
+				{ name: "moving views", masks: [{ x: 0, y: 0, width: 100, height: 20 }] },
+				{ name: "glass views", masks: [{ x: 0, y: 80, width: 100, height: 8 }] },
+				{ name: "sheet views", masks: [{ x: 0, y: 20, width: 100, height: 20 }] },
+			],
+			screen,
+		);
+		expect(refusal).toContain("its masks cover 48.0 % of the screen, more than the 25 % the parity.maskedPct gate allows");
+		expect(refusal).toContain("moving views: 1 masks, 20.0 %");
+		expect(refusal).toContain("glass views: 1 masks, 8.0 %");
+		expect(refusal).toContain("sheet views: 1 masks, 20.0 %");
+	});
+
+	test("masks at the limit are accepted", () => {
+		expect(maskRefusal([{ name: "moving views", masks: [{ x: 0, y: 0, width: 100, height: 25 }] }], screen)).toBeNull();
+		expect(maskRefusal([{ name: "moving views", masks: [{ x: 0, y: 0, width: 100, height: 26 }] }], screen)).not.toBeNull();
+	});
+
+	test("the limit is the one gates.json gates parity.maskedPct at, on both platforms", () => {
+		const file = JSON.parse(readFileSync(join(import.meta.dirname, "..", "gates.json"), "utf8")) as GatesFile;
+		const bar = file.gates.find((gate) => gate.id === "parity.maskedPct")?.bar;
+		expect(bar).toEqual({ android: { max: maxMaskedPct }, ios: { max: maxMaskedPct } });
 	});
 });

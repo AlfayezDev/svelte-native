@@ -1,6 +1,7 @@
-import type { Metrics, Platform } from "./types.ts";
+import type { Metric, Metrics, Platform } from "./types.ts";
 
-export type Bar = { max?: number; min?: number; round?: number };
+/** `max` and `min` bound a number (`round` decimals first); `equals` is for a measurement that is a text. */
+export type Bar = { max?: number; min?: number; round?: number; equals?: string };
 export type Gate = {
 	id: string;
 	title: string;
@@ -8,7 +9,8 @@ export type Gate = {
 	metric: string;
 	bar: Partial<Record<Platform, Bar>>;
 };
-export type GatesFile = { version: 1; gates: Gate[] };
+/** `scenarios` is the fixed list of scenarios a full `checks,quick` lab run produces, per platform: a run missing any is not that run. */
+export type GatesFile = { version: 1; scenarios: Record<Platform, string[]>; gates: Gate[] };
 
 export type Verdict = "pass" | "fail" | "not measured";
 
@@ -20,7 +22,7 @@ export type GateRow = {
 	metric: string;
 	unit: string;
 	bar: Bar;
-	measured: number | null;
+	measured: Metric;
 	verdict: Verdict;
 };
 
@@ -31,8 +33,11 @@ function matcher(pattern: string): RegExp {
 	return new RegExp(`^${escaped.join("[^.]+")}$`);
 }
 
-export function judge(bar: Bar, measured: number | null): Verdict {
-	if (measured === null || Number.isNaN(measured)) return "not measured";
+export function judge(bar: Bar, measured: Metric): Verdict {
+	if (measured === null || (typeof measured === "number" && Number.isNaN(measured)))
+		return "not measured";
+	if (bar.equals !== undefined) return measured === bar.equals ? "pass" : "fail";
+	if (typeof measured === "string") return "fail";
 	const value = bar.round === undefined ? measured : Number(measured.toFixed(bar.round));
 	if (bar.max !== undefined && value > bar.max) return "fail";
 	if (bar.min !== undefined && value < bar.min) return "fail";
@@ -106,7 +111,7 @@ export type RowGroup = {
 	device: string | null;
 	bar: Bar;
 	unit: string;
-	measured: number | null;
+	measured: Metric;
 	worst: string;
 	ok: number;
 	total: number;
@@ -123,7 +128,7 @@ export function groupRows(rows: GateRow[]): RowGroup[] {
 	return [...groups.values()].map((members) => {
 		const first = members[0] as GateRow;
 		const lowerIsWorse = first.bar.min !== undefined && first.bar.max === undefined;
-		const numeric = members.filter((row) => row.measured !== null);
+		const numeric = members.filter((row) => typeof row.measured === "number");
 		const worstRow = numeric.length
 			? numeric.reduce((a, b) =>
 					(
@@ -159,12 +164,14 @@ export function formatBar(bar: Bar, unit: string): string {
 	const parts = [
 		bar.max !== undefined ? `<= ${bar.max}` : null,
 		bar.min !== undefined ? `>= ${bar.min}` : null,
+		bar.equals !== undefined ? `== ${JSON.stringify(bar.equals)}` : null,
 	].filter(Boolean);
 	return `${parts.join(" and ")} ${unit}`.trim();
 }
 
-export function formatValue(value: number | null, bar: Bar): string {
+export function formatValue(value: Metric, bar: Bar): string {
 	if (value === null) return "-";
+	if (typeof value === "string") return JSON.stringify(value);
 	const digits = bar.round ?? (Number.isInteger(value) ? 0 : 1);
 	return value.toFixed(digits);
 }

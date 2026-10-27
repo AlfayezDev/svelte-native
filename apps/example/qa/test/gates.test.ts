@@ -57,6 +57,13 @@ describe("judge", () => {
 		expect(judge({ max: 350 }, null)).toBe("not measured");
 		expect(judge({ max: 350 }, Number.NaN)).toBe("not measured");
 	});
+	test("an equality bar passes only the text it names; anything else, a number included, fails", () => {
+		expect(judge({ equals: "checks,quick" }, "checks,quick")).toBe("pass");
+		expect(judge({ equals: "checks,quick" }, "checks,list-300-virtual")).toBe("fail");
+		expect(judge({ equals: "checks,quick" }, 3)).toBe("fail");
+		expect(judge({ equals: "checks,quick" }, null)).toBe("not measured");
+		expect(judge({ max: 5 }, "checks,quick")).toBe("fail");
+	});
 });
 
 describe("evaluate", () => {
@@ -194,6 +201,15 @@ describe("tally and rendering", () => {
 	});
 	test("bar text", () => {
 		expect(formatBar({ max: 1.5 }, "x period")).toBe("<= 1.5 x period");
+		expect(formatBar({ equals: "checks,quick" }, "")).toBe('== "checks,quick"');
+	});
+	test("a text measurement shows in the table and fails an equality gate", () => {
+		const equality: Gate[] = [{ id: "crashes.run", title: "Run", unit: "", metric: "crashes.run", bar: { android: { equals: "checks,quick" } } }];
+		const rows = evaluate(equality, android({ "crashes.run": "checks,list-300-virtual" }), "android");
+		expect(rows[0]?.verdict).toBe("fail");
+		expect(renderTable(rows, false).split("\n")[1]).toMatch(/^crashes\.run\s+android\s+localhost:5555\s+== "checks,quick"\s+"checks,list-300-virtual"\s+fail$/);
+		expect(tally(rows).ok).toBe(false);
+		expect(tally(evaluate(equality, android({ "crashes.run": "checks,quick" }), "android")).ok).toBe(true);
 	});
 });
 
@@ -228,5 +244,23 @@ describe("gates.json", () => {
 			(row) => row.id === "memory.heapGrowthPct",
 		);
 		expect(rows).toEqual([expect.objectContaining({ verdict: "not measured" })]);
+	});
+	test("the full run's scenarios are pinned per platform, and the lab gate on the ones missing is zero", () => {
+		for (const platform of ["android", "ios"] as const) {
+			expect(file.scenarios[platform]).toHaveLength(17);
+			expect(file.scenarios[platform]).toContain("list-300-virtual");
+			expect(file.scenarios[platform]).not.toContain("warm-up");
+		}
+		expect(bar("lab.scenarios.missing")).toEqual({ android: { max: 0 }, ios: { max: 0 } });
+	});
+	test("the boot samples are gated: no failed launch of either series, 30 launches behind the JavaScript p90", () => {
+		expect(bar("boot.warm.failed")).toEqual({ android: { max: 0 }, ios: { max: 0 } });
+		expect(bar("boot.cold.failed")).toEqual({ android: { max: 0 }, ios: { max: 0 } });
+		expect(bar("boot.js.samples")).toEqual({ android: { min: 30 }, ios: { min: 30 } });
+		expect(file.gates.find((gate) => gate.id === "boot.js.samples")?.metric).toBe("boot.warm.jsTotal.samples");
+	});
+	test("the crash suites must have run the full lab, and the masks may cover a quarter of the screen", () => {
+		expect(bar("crashes.run")).toEqual({ android: { equals: "checks,quick" }, ios: { equals: "checks,quick" } });
+		expect(bar("parity.maskedPct")).toEqual({ android: { max: 25 }, ios: { max: 25 } });
 	});
 });

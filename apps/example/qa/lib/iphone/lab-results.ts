@@ -1,5 +1,6 @@
 import { frameStats, type LabChecks, type Scenario } from "../../parse/logcat.ts";
-import type { LabRun } from "../types.ts";
+import { parseIdentity } from "../../parse/ios.ts";
+import type { BuildIdentity, LabRun } from "../types.ts";
 
 /**
  * What the lab writes to `Documents/lab-results.json` on iOS (`routes/__dev/+mobile.svelte`, `saveResults`): the functional checks
@@ -14,6 +15,10 @@ export type IosLabResults = {
 	platform: string;
 	osVersion: string;
 	appVersion: string | null;
+	/** What the app reports of its build (null before it has hashed it, and for an app that does not report one). */
+	build: BuildIdentity | null;
+	/** `console.error` calls since launch; null for an app that does not count them. */
+	jsErrors: number | null;
 	checks: { name: string; passed: boolean; detail: string }[];
 	stress: { name: string; verdict: string; summary: string; frames?: unknown; detail?: unknown }[];
 	stressDone: boolean;
@@ -39,6 +44,8 @@ export function parseIosLabResults(text: string): IosLabResults {
 		platform: typeof value.platform === "string" ? value.platform : "unknown",
 		osVersion: typeof value.osVersion === "string" ? value.osVersion : "unknown",
 		appVersion: typeof value.appVersion === "string" ? value.appVersion : null,
+		build: parseIdentity(value.build),
+		jsErrors: typeof value.jsErrors === "number" ? value.jsErrors : null,
 		checks: value.checks.filter(isRecord).map((entry) => ({
 			name: String(entry.name),
 			passed: entry.passed === true,
@@ -110,6 +117,7 @@ export function labRunFromIos(capture: IosLabCapture, stressRequested: boolean):
 		expectedScenarios: scenarios.filter((scenario) => scenario.verdict !== "info").map((scenario) => scenario.name),
 		crashes: capture.died ? [capture.died] : [],
 		jsErrors: [],
+		jsErrorCount: results?.jsErrors ?? null,
 		engineWarnings: [],
 		logFile: capture.logFile,
 	};

@@ -2,12 +2,13 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { flagString, integerFlag, parseFlags } from "../lib/flags.ts";
 import { appProcesses, launchApp, readAppFile, terminateApp } from "../lib/iphone/device.ts";
+import { notReported, reportedIdentity, withIdentity } from "../lib/iphone/identity.ts";
 import { labFinished, labRunFromIos, parseIosLabResults, type IosLabResults } from "../lib/iphone/lab-results.ts";
 import { currentSource, iosOptions, newToken, startIosSuite, type IosSession } from "../lib/iphone/session.ts";
 import { describeRun, stressRequested } from "../lib/lab-run.ts";
 import { qaDir, runsDir } from "../lib/paths.ts";
 import { slug, stamp, writeRun } from "../lib/runs.ts";
-import type { LabFile, LabRun } from "../lib/types.ts";
+import type { BuildIdentity, LabFile, LabRun } from "../lib/types.ts";
 import { sleep } from "../lib/wait.ts";
 
 
@@ -17,9 +18,9 @@ const aliveEveryMs = 30_000;
 /**
  * One lab run on the iPhone: the lab is started by its URL (with a token that comes back in every file it writes), and its results
  * are read from `Documents/lab-results.json` until it says it has finished. The app is ended afterwards, the way the Android run
- * force-stops it.
+ * force-stops it. `results` is what the app last wrote for this launch, null when it wrote nothing.
  */
-export async function iosLabOnce(session: IosSession, run: string, timeoutMs: number, logPath: string): Promise<LabRun> {
+export async function iosLabOnce(session: IosSession, run: string, timeoutMs: number, logPath: string): Promise<{ run: LabRun; results: IosLabResults | null }> {
 	const { target } = session;
 	const token = newToken();
 	const startedAt = new Date();
@@ -60,7 +61,7 @@ export async function iosLabOnce(session: IosSession, run: string, timeoutMs: nu
 		// The app already ended (a finished lab or a crash); there is nothing left to stop.
 	}
 	await writeFile(logPath, raw || "no results were written\n");
-	return labRunFromIos({ results, startedAt, durationMs: Date.now() - startedAt.getTime(), died, logFile: logPath.slice(qaDir.length + 1) }, wanted);
+	return { run: labRunFromIos({ results, startedAt, durationMs: Date.now() - startedAt.getTime(), died, logFile: logPath.slice(qaDir.length + 1) }, wanted), results };
 }
 
 export async function iosLab(argv: string[]): Promise<void> {
@@ -78,13 +79,19 @@ export async function iosLab(argv: string[]): Promise<void> {
 
 	await mkdir(runsDir, { recursive: true });
 	const runs: LabRun[] = [];
+	const reports: (BuildIdentity | null)[] = [];
 	for (let index = 1; index <= repeat; index++) {
 		console.log(`lab run ${index}/${repeat} (${run})`);
 		const logPath = join(runsDir, `lab-${slug(session.device.serial)}-${stamp(session.startedAt)}-${index}.log`);
 		const result = await iosLabOnce(session, run, timeoutMs, logPath);
-		runs.push(result);
-		for (const line of describeRun(result)) console.log(line);
+		runs.push(result.run);
+		// A run that did not finish measured nothing to compare. Every one that did must be the recorded build, checked as it comes so a wrong build ends the run at once.
+		if (result.run.complete && result.results) reports.push(result.results.build);
+		reportedIdentity(reports, session.build, "lab");
+		for (const line of describeRun(result.run)) console.log(line);
 	}
+	const installed = reportedIdentity(reports, session.build, "lab");
+	if (reports.length > 0 && installed === null) console.log(`warning: ${notReported}`);
 	const idle = runs.flatMap((entry) => entry.scenarios).find((scenario) => scenario.name === "idle")?.periodMs;
 	const device = idle ? { ...session.device, refreshHz: Math.round(1000 / idle) } : session.device;
 	const file: LabFile = {
@@ -94,7 +101,8 @@ export async function iosLab(argv: string[]): Promise<void> {
 		finishedAt: new Date().toISOString(),
 		source: await currentSource(),
 		device,
-		app: session.app,
+		app: withIdentity(session.app, installed),
+		run,
 		runs,
 	};
 	const name = await writeRun("lab", device.serial, session.startedAt, file);

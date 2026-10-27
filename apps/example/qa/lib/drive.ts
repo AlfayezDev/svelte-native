@@ -153,6 +153,34 @@ function signature(tree: UiTree): string {
 		.join("\n");
 }
 
+/**
+ * The dump a service that skips the not-important views reads, taken until it holds the screen's own controls: one taken while
+ * the screen is still drawing lacks them, and the covered screen would be judged on a half-built tree. Throws after `attempts`
+ * dumps without them, which the suite records as an error for the screen.
+ */
+export async function dumpWithOwnControls(
+	dump: () => Promise<UiTree>,
+	own: string[],
+	attempts = 3,
+	pauseMs = 400,
+): Promise<UiTree> {
+	let missing = own;
+	for (let attempt = 1; attempt <= attempts; attempt++) {
+		const tree = await dump();
+		missing = own.filter(
+			(label) =>
+				!tree.nodes.some(
+					(node) => node.bounds.width > 0 && node.bounds.height > 0 && matches(node, { label }),
+				),
+		);
+		if (missing.length === 0) return tree;
+		if (attempt < attempts) await sleep(pauseMs);
+	}
+	throw new Error(
+		`the important-views dump lacks ${missing.map((label) => JSON.stringify(label)).join(", ")} of the screen itself after ${attempts} dumps`,
+	);
+}
+
 /** Dumps again until two dumps in a row are the same tree, so a header still populating is not read half built. */
 export async function settledTree(
 	serial: string,

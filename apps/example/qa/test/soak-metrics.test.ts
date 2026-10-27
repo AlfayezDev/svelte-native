@@ -11,6 +11,7 @@ import type {
 	DeviceInfo,
 	JsSample,
 	MemSample,
+	Metrics,
 	SoakFile,
 	SuiteRun,
 } from "../lib/types.ts";
@@ -173,6 +174,19 @@ describe("soakMetrics", () => {
 		});
 		expect(soakMetrics(soakFile({ js: uncollected }))["memory.ui.growthPct"]).toBeNull();
 	});
+	test("a build that logs the worklet heap but has a window of it uncollected has no heap growth: the missing one would be the worst", () => {
+		const half = withJs((samples) => {
+			for (const entry of samples) {
+				if (entry.phase === "baseline") entry.ui = { collected: 1, allocated: 400_000 };
+				if (entry.phase === "final") entry.ui = { collected: 0, allocated: 900_000 };
+			}
+		});
+		const result = soakMetrics(soakFile({ js: half }));
+		expect(result["memory.js.growthPct"]).toBe(0);
+		expect(result["memory.native.growthPct"]).toBeCloseTo(1.99, 2);
+		expect(result["memory.ui.growthPct"]).toBeNull();
+		expect(result["memory.heapGrowthPct"]).toBeNull();
+	});
 	test("emitters kept by the C++ delegate past the baseline are a leak; builds that do not log them leave the metric not measured", () => {
 		expect(metrics["memory.leakedEmitters"]).toBeNull();
 		const counted = withJs((samples) => {
@@ -301,6 +315,9 @@ function crashesFile(coldStarts: ColdStart[], suites: SuiteRun[]): CrashesFile {
 		device,
 		app,
 		definition: "",
+		run: "checks,quick",
+		idleSeconds: 2,
+		packageName: "io.rasheed.svelteqa",
 		coldStarts,
 		suites,
 		signatures: [],
@@ -309,9 +326,18 @@ function crashesFile(coldStarts: ColdStart[], suites: SuiteRun[]): CrashesFile {
 }
 
 describe("crashMetrics", () => {
+	test("the suites' lab run is a metric, and a file that never recorded it has none", () => {
+		expect(crashMetrics(crashesFile([start(1)], []))["crashes.run"]).toBe("checks,quick");
+		const partial = { ...crashesFile([start(1)], []), run: "checks,list-300-virtual" };
+		expect(crashMetrics(partial)["crashes.run"]).toBe("checks,list-300-virtual");
+		const legacy = crashesFile([start(1)], []) as Partial<CrashesFile>;
+		delete legacy.run;
+		expect(crashMetrics(legacy as CrashesFile)["crashes.run"]).toBeNull();
+	});
 	test("clean series", () => {
 		const metrics = crashMetrics(crashesFile([start(1), start(2)], [suite(1)]));
 		expect(metrics).toEqual({
+			"crashes.run": "checks,quick",
 			"crashes.coldStarts": 2,
 			"crashes.coldStartCrashes": 0,
 			"crashes.coldStartsNoBoot": 0,
@@ -361,12 +387,13 @@ describe("the soak and crash gates", () => {
 		"crashes.coldStarts",
 		"crashes.coldStartCrashes",
 		"crashes.coldStartsNoBoot",
+		"crashes.run",
 		"crashes.suites",
 		"crashes.suiteCrashes",
 		"crashes.suitesIncomplete",
 		"crashes.anrs",
 	];
-	const verdicts = (metrics: Record<string, number | null>) =>
+	const verdicts = (metrics: Metrics) =>
 		Object.fromEntries(
 			evaluate(
 				file.gates.filter((gate) => ids.includes(gate.id)),
@@ -430,7 +457,7 @@ describe("the soak and crash gates", () => {
 
 describe("deviceMetrics", () => {
 	test("merges the soak and the crash runs next to the lab and the boot", () => {
-		const metrics = deviceMetrics(null, null, soakFile(), crashesFile([start(1)], [suite(1)]));
+		const metrics = deviceMetrics(null, null, [], soakFile(), crashesFile([start(1)], [suite(1)]));
 		expect(metrics["memory.heapGrowthPct"]).toBeCloseTo(1.99, 2);
 		expect(metrics["crashes.coldStarts"]).toBe(1);
 		expect(metrics["lab.runs"]).toBeUndefined();

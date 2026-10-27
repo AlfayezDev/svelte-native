@@ -6,11 +6,68 @@ import {
 	classifyStart,
 	classifySuite,
 	crashesDefinition,
+	resumeMismatch,
+	type RunIdentity,
 } from "../soak/crashes.ts";
 import { findFaults } from "../parse/logcat.ts";
+import type { CrashesFile } from "../lib/types.ts";
 import { sample } from "./sample.ts";
 
 const pkg = "io.rasheed.svelteqa";
+
+describe("resuming a crashes file", () => {
+	const sha = "d089db0466db".repeat(5).slice(0, 64);
+	const file = (fields: Partial<CrashesFile> = {}, installedSha256: string | null = sha): CrashesFile => ({
+		schema: 1,
+		kind: "crashes",
+		startedAt: "2026-10-26T09:00:00Z",
+		finishedAt: "2026-10-26T10:00:00Z",
+		source: { commit: "abc1234", dirty: false },
+		device: { serial: "localhost:5555", platform: "android", kind: "emulator", model: "sdk", osVersion: "16", sdk: 36, abi: "x86_64", refreshHz: 60 },
+		app: { package: pkg, versionName: "0.1.0", versionCode: 1, lastUpdateTime: null, installedSha256, apk: null },
+		definition: "",
+		run: "checks,quick",
+		idleSeconds: 2,
+		packageName: pkg,
+		coldStarts: [],
+		suites: [],
+		signatures: [],
+		logFile: "runs/x.log",
+		...fields,
+	});
+	const now = (fields: Partial<RunIdentity> = {}): RunIdentity => ({ run: "checks,quick", idleSeconds: 2, packageName: pkg, installedSha256: sha, ...fields });
+
+	test("the same suites, idle gap, package and build continue the file", () => {
+		expect(resumeMismatch(file(), now())).toBeNull();
+	});
+
+	test("a different --run, --idle or --package is refused, each by name", () => {
+		expect(resumeMismatch(file(), now({ run: "checks,list-300-virtual" }))).toContain('--run "checks,quick" in the file, "checks,list-300-virtual" now');
+		expect(resumeMismatch(file(), now({ idleSeconds: 20 }))).toContain("--idle 2 in the file, 20 now");
+		expect(resumeMismatch(file(), now({ packageName: "io.other" }))).toContain('--package "io.rasheed.svelteqa" in the file, "io.other" now');
+	});
+
+	test("another installed build is refused", () => {
+		expect(resumeMismatch(file(), now({ installedSha256: "f".repeat(64) }))).toContain("installed build");
+	});
+
+	test("a build that could not be identified on either side is refused, even when both are null", () => {
+		expect(resumeMismatch(file({}, null), now({ installedSha256: null }))).toContain("could not be identified");
+		expect(resumeMismatch(file({}, null), now())).toContain("could not be identified");
+		expect(resumeMismatch(file(), now({ installedSha256: null }))).toContain("could not be identified");
+	});
+
+	test("a file from before the run, the idle gap and the package were recorded cannot prove it is the same run", () => {
+		const legacy = file() as Partial<CrashesFile>;
+		delete legacy.run;
+		delete legacy.idleSeconds;
+		delete legacy.packageName;
+		const reason = resumeMismatch(legacy as CrashesFile, now());
+		expect(reason).toContain("--run null in the file");
+		expect(reason).toContain("--idle null in the file");
+		expect(reason).toContain("--package null in the file");
+	});
+});
 
 describe("classifyStart", () => {
 	test("a clean launch: the host booted, the process is alive, nothing fatal", () => {

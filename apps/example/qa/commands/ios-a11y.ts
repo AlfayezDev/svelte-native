@@ -1,19 +1,21 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { flagString, parseFlags } from "../lib/flags.ts";
+import { reachPct } from "../lib/a11y.ts";
 import { analyzeIosScreen, type IosDump, type UiKitState } from "../lib/iphone/a11y.ts";
 import { captureScreens } from "../lib/iphone/capture.ts";
-import { iosCases, iosControl, iosLayoutVariants, iosMatrix, iosNotCovered, iosTitle } from "../lib/iphone/screens.ts";
+import { IdentityMismatch, notReported, reportedIdentity, withIdentity } from "../lib/iphone/identity.ts";
+import { iosBelowTheFold, iosCases, iosControl, iosLayoutVariants, iosMatrix, iosNotCovered, iosTitle } from "../lib/iphone/screens.ts";
 import { currentSource, iosOptions, newToken, startIosSuite } from "../lib/iphone/session.ts";
 import { runsDir } from "../lib/paths.ts";
 import { slug, stamp, writeRun } from "../lib/runs.ts";
 import { localize, referenceName, type ScreenCase, type Variant } from "../lib/screens.ts";
 import { backendStatus } from "../lib/suite.ts";
-import type { A11yFile, A11yScreenResult } from "../lib/types.ts";
+import type { A11yFile, A11yScreenResult, BuildIdentity } from "../lib/types.ts";
 
 /** What the checks read, stated in every run file: VoiceOver itself was not run. */
 export const iosOracle =
-	"the accessibility elements the app reports for its own window (UIAccessibility traversal in SvelteQAAccessibility.swift: hidden views, accessibilityElementsHidden, accessibilityElements, containers and accessibilityViewIsModal applied as the system applies them), with label, value, hint, traits and frame, which is what the accessibility services receive. VoiceOver itself was not run; its default order is modelled as a sort by position (rows from the top, start edge first) for the elements no container orders.";
+	"the accessibility elements the app reports for its own window (UIAccessibility traversal in SvelteQAAccessibility.swift: hidden views, accessibilityElementsHidden, accessibilityElements, containers and accessibilityViewIsModal applied as the system applies them), with label, value, hint, traits and frame, which is what the accessibility services receive. VoiceOver itself was not run; its default order is modelled as a sort by position (rows from the top, start edge first) for the elements no container orders. UIKit's bars are not accessibility elements until a client runs: their titles, back buttons, search fields and tab items (labels, badges, enabled) are modelled from uikitState with guessed frames, marked synthesized, kept in the order model and left out of the counts (chromeModelled).";
 
 function emptyResult(screen: ScreenCase, variant: Variant, error: string): A11yScreenResult {
 	return {
@@ -36,6 +38,8 @@ function emptyResult(screen: ScreenCase, variant: Variant, error: string): A11yS
 		focusLeaks: 0,
 		stops: [],
 		findings: [],
+		chromeModelled: 0,
+		stable: null,
 		error,
 	};
 }
@@ -51,6 +55,7 @@ export async function iosA11y(argv: string[]): Promise<void> {
 	console.log(`checking ${iosMatrix(chosenCases, chosenVariants).length} screens in ${chosenVariants.length} layouts; backend: ${backend.detail}`);
 
 	const results: A11yScreenResult[] = [];
+	const reports: (BuildIdentity | null)[] = [];
 	let aborted: string | null = null;
 	try {
 		for (const variant of chosenVariants) {
@@ -64,6 +69,9 @@ export async function iosA11y(argv: string[]): Promise<void> {
 				timeoutMs: 600_000,
 				log: (line) => console.log(line),
 			});
+			// Before any of its screens are read: a capture of the wrong build ends the run and writes nothing.
+			reports.push(captured.index.build);
+			reportedIdentity(reports, session.build, "a11y");
 			for (const { screen } of iosMatrix(chosenCases, [variant])) {
 				if (screen.needsBackend && !backend.ok) {
 					results.push(emptyResult(screen, variant, `needs the dev backend: ${backend.detail}`));
@@ -88,21 +96,24 @@ export async function iosA11y(argv: string[]): Promise<void> {
 					direction: variant.direction,
 					title: iosTitle(screen, variant.direction),
 					lead: screen.lead.map((label) => localize(label, variant.direction)),
-					scrolled: screen.scrolled.map((control) => iosControl(control, variant.direction)),
+					scrolled: [...screen.scrolled.map((control) => iosControl(control, variant.direction)), ...(iosBelowTheFold[screen.id] ?? [])],
 					controls: screen.controls.map((control) => iosControl(control, variant.direction)),
 					hidden: screen.hidden.map((label) => localize(label, variant.direction)),
 					layout: screen.layout,
 				});
-				results.push({ name: referenceName(screen, variant), screen: screen.id, route: screen.route, direction: variant.direction, fontScale: variant.fontScale, ...analysis, error: null });
+				results.push({ name: referenceName(screen, variant), screen: screen.id, route: screen.route, direction: variant.direction, fontScale: variant.fontScale, ...analysis, stable: null, error: null });
 				console.log(
-					`  ${referenceName(screen, variant).padEnd(44)} interactive ${analysis.interactive}, unreachable ${analysis.unreachable}, unlabeled ${analysis.unlabeled}, not actionable ${analysis.notActionable}, order ${analysis.orderViolations}, title ${analysis.titleFirst === null ? "-" : analysis.titleFirst ? "first" : "NOT first"}, leaks ${analysis.focusLeaks}`,
+					`  ${referenceName(screen, variant).padEnd(44)} interactive ${analysis.interactive} (reach ${reachPct(analysis)}, clipped ${analysis.clipped}, modelled chrome ${analysis.chromeModelled}), unreachable ${analysis.unreachable}, unlabeled ${analysis.unlabeled}, not actionable ${analysis.notActionable}, order ${analysis.orderViolations}, title ${analysis.titleFirst === null ? "-" : analysis.titleFirst ? "first" : "NOT first"}, leaks ${analysis.focusLeaks}`,
 				);
 			}
 		}
 	} catch (error) {
+		if (error instanceof IdentityMismatch) throw error;
 		aborted = error instanceof Error ? error.message : String(error);
 		console.log(`stopped: ${aborted.slice(0, 300)}`);
 	}
+	const installed = reportedIdentity(reports, session.build, "a11y");
+	if (reports.length > 0 && installed === null) console.log(`warning: ${notReported}`);
 
 	const file: A11yFile = {
 		schema: 1,
@@ -111,7 +122,7 @@ export async function iosA11y(argv: string[]): Promise<void> {
 		finishedAt: new Date().toISOString(),
 		source: await currentSource(),
 		device: session.device,
-		app: session.app,
+		app: withIdentity(session.app, installed),
 		oracle: iosOracle,
 		matrixSize: iosMatrix(iosCases, iosLayoutVariants).length,
 		screens: results,

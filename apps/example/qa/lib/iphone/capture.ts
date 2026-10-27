@@ -3,7 +3,9 @@ import { join } from "node:path";
 import type { Direction } from "../device.ts";
 import { fetchAppPath, launchApp, readAppFile, terminateApp, appProcesses } from "./device.ts";
 import type { IosSession } from "./session.ts";
+import type { BuildIdentity } from "../types.ts";
 import { sleep } from "../wait.ts";
+import { parseIdentity } from "../../parse/ios.ts";
 
 /** `Documents/capture/index.json` as `lib/native/dev/capture.ts` writes it (the type lives there too; the app's project is not part of this one). */
 export type CaptureEntry = {
@@ -30,6 +32,8 @@ export type CaptureEntry = {
 export type CaptureIndex = {
 	schema: 1;
 	token: string | null;
+	/** What the app reports of its build; null for an app that does not. */
+	build: BuildIdentity | null;
 	startedAt: string;
 	finishedAt: string | null;
 	done: boolean;
@@ -48,7 +52,7 @@ export function parseCaptureIndex(text: string): CaptureIndex {
 	const index = value as Partial<CaptureIndex> | null;
 	if (!index || index.schema !== 1 || !Array.isArray(index.entries) || typeof index.done !== "boolean")
 		throw new Error(`capture/index.json has an unexpected shape: ${text.slice(0, 160)}`);
-	return index as CaptureIndex;
+	return { ...(index as CaptureIndex), build: parseIdentity(index.build) };
 }
 
 /** The index as far as it is readable: the app writes it while the harness copies it, and a copy can catch it empty or half written. */

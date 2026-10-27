@@ -8,7 +8,8 @@ import {
 	type GateRow,
 	type ReportDevice,
 } from "../lib/gates.ts";
-import { deviceMetrics } from "../lib/metrics.ts";
+import { reachPct } from "../lib/a11y.ts";
+import { deviceMetrics, missingScenarios, runFatals } from "../lib/metrics.ts";
 import type { SuiteFiles } from "../lib/suite-metrics.ts";
 import { gatesPath, reportPath } from "../lib/paths.ts";
 import { latestRunFiles, readBuilds, readJson, runKinds } from "../lib/runs.ts";
@@ -23,6 +24,7 @@ import type {
 	LabFile,
 	Metrics,
 	ParityFile,
+	Platform,
 	ResilienceFile,
 	SoakFile,
 	Source,
@@ -32,12 +34,17 @@ import { summarize, type Summary } from "../parse/stats.ts";
 type LabSummary = {
 	file: string;
 	source: Source;
+	/** The `--run` the lab was started with; null for a file written before it was recorded. */
+	run: string | null;
+	/** Scenarios of the full run (`gates.json`) that some run of the file lacks. */
+	missingScenarios: string[];
 	runs: {
 		startedAt: string;
 		durationMs: number;
 		complete: boolean;
 		checks: { passed: number; failed: number; total: number } | null;
-		fatals: number;
+		/** Crashes and JavaScript errors; null when the app does not report its JavaScript errors and nothing else is a fatal. */
+		fatals: number | null;
 		engineWarnings: number;
 		boot: Record<string, number> | null;
 		scenarios: {
@@ -84,9 +91,18 @@ type CrashesSummary = {
 	signatures: CrashSignature[];
 };
 
+type A11yScreenSummary = {
+	name: string;
+	interactive: number;
+	reachable: number;
+	clipped: number;
+	chromeModelled: number;
+	stable: boolean | null;
+};
+
 type SuitesSummary = {
 	parity: { file: string; mode: "check" | "update"; deviceKind: string } | null;
-	a11y: { file: string; oracle: string } | null;
+	a11y: { file: string; oracle: string; screens: A11yScreenSummary[] } | null;
 	resilience: { file: string; screen: string } | null;
 };
 
@@ -112,10 +128,12 @@ type ReportDeviceEntry = {
 	metrics: Metrics;
 };
 
-function summarizeLab(file: LabFile, fileName: string): LabSummary {
+function summarizeLab(file: LabFile, fileName: string, pinned: readonly string[]): LabSummary {
 	return {
 		file: fileName,
 		source: file.source,
+		run: typeof file.run === "string" ? file.run : null,
+		missingScenarios: missingScenarios(file.runs, pinned),
 		runs: file.runs.map((run) => ({
 			startedAt: run.startedAt,
 			durationMs: run.durationMs,
@@ -123,7 +141,7 @@ function summarizeLab(file: LabFile, fileName: string): LabSummary {
 			checks: run.checks
 				? { passed: run.checks.passed, failed: run.checks.failed, total: run.checks.total }
 				: null,
-			fatals: run.crashes.length + run.jsErrors.length,
+			fatals: runFatals(file.device.platform, run),
 			engineWarnings: run.engineWarnings.length,
 			boot: run.boot,
 			scenarios: run.scenarios.map((scenario) => ({
@@ -150,34 +168,48 @@ function series(launches: BootFile["warm"]): BootSeries {
 	};
 }
 
-/** The soak and the crash runs of a device against the build its lab or boot run measured. */
-function runsOfOtherBuilds(
-	serial: string,
-	reference: { app: AppInfo } | null,
-	others: [string, { app: AppInfo } | null][],
-): string[] {
-	const expected = reference?.app.installedSha256;
-	if (!expected) return [];
-	return others.flatMap(([label, other]) =>
-		other?.app.installedSha256 && other.app.installedSha256 !== expected
-			? [
-					`${serial}: the ${label} run measured another installed build than the lab and boot runs (sha256 ${other.app.installedSha256.slice(0, 12)} and ${expected.slice(0, 12)})`,
-				]
-			: [],
-	);
+/**
+ * What identifies the build a run measured: an iOS run by the identity its app reported (the digests of `main.jsbundle` and
+ * of the executable), an Android run by the digest of the installed APK; null when the run could not tell.
+ */
+export function buildKey(app: AppInfo): string | null {
+	if (app.installed)
+		return `main.jsbundle ${app.installed.jsbundleSha256.slice(0, 12)}, executable ${app.installed.executableSha256.slice(0, 12)}`;
+	return app.installedSha256 ? `sha256 ${app.installedSha256.slice(0, 12)}` : null;
 }
 
-function consistency(serial: string, lab: LabFile | null, boot: BootFile | null): string[] {
-	if (!lab || !boot) return [];
-	const warnings: string[] = [];
-	if (lab.app.installedSha256 !== boot.app.installedSha256)
+type Measured = { app: AppInfo; source: Source };
+
+/** The commit an iOS run was built at (its build record), else the one the harness ran at. */
+const commitOf = (run: Measured): string => {
+	const { commit, dirty } = run.app.build ?? run.source;
+	return `${commit}${dirty ? "+dirty" : ""}`;
+};
+
+/**
+ * What the runs of one device must agree on: every run says which build it measured, all of them the same build, and the
+ * lab and the boot run the same commit. A build nobody identified cannot be told from another, so it is a warning too.
+ */
+export function buildWarnings(serial: string, runs: [string, Measured | null][]): string[] {
+	const present = runs.flatMap(([label, run]) => (run ? [{ label, run }] : []));
+	const warnings = present
+		.filter(({ run }) => buildKey(run.app) === null)
+		.map(({ label }) => `${serial}: the ${label} run does not identify its build (build identity not reported)`);
+	const keyed = present.flatMap(({ label, run }) => {
+		const key = buildKey(run.app);
+		return key === null ? [] : [{ label, key }];
+	});
+	const keys = [...new Set(keyed.map((entry) => entry.key))];
+	if (keys.length > 1)
 		warnings.push(
-			`${serial}: the lab and the boot run measured different installed builds (sha256 ${lab.app.installedSha256?.slice(0, 12)} and ${boot.app.installedSha256?.slice(0, 12)})`,
+			`${serial}: the runs measured different builds (${keys.map((key) => `${keyed.filter((entry) => entry.key === key).map((entry) => entry.label).join(" and ")}: ${key}`).join("; ")})`,
 		);
-	if (lab.source.commit !== boot.source.commit || lab.source.dirty !== boot.source.dirty)
-		warnings.push(
-			`${serial}: the lab ran at ${lab.source.commit}${lab.source.dirty ? "+dirty" : ""} and the boot run at ${boot.source.commit}${boot.source.dirty ? "+dirty" : ""}`,
-		);
+	const lab = present.find(({ label }) => label === "lab");
+	const boot = present.find(({ label }) => label === "boot");
+	if (lab && boot && commitOf(lab.run) !== commitOf(boot.run))
+		warnings.push(`${serial}: the lab ran at ${commitOf(lab.run)} and the boot run at ${commitOf(boot.run)}`);
+	if (present.some(({ run }) => run.app.build && run.app.build.executableSha256 === null))
+		warnings.push(`${serial}: the build record (qa/out/ios-build.json) has no executable digest: build again`);
 	return warnings;
 }
 
@@ -204,6 +236,7 @@ export function printVerdict(rows: GateRow[], all: boolean): boolean {
 }
 
 export async function report(): Promise<void> {
+	const gates = await loadGates();
 	const files = await latestRunFiles();
 	const { lab: labFiles, boot: bootFiles, soak: soakFiles, crashes: crashesFiles } = files;
 	const slugs = new Set(runKinds.flatMap((kind) => [...files[kind].keys()]));
@@ -229,9 +262,11 @@ export async function report(): Promise<void> {
 		const reference = lab ?? boot ?? soak ?? crashes ?? suites.parity ?? suites.a11y ?? suites.resilience;
 		if (!reference) continue;
 		const serial = reference.device.serial;
-		warnings.push(...consistency(serial, lab, boot));
+		const platform: Platform = reference.device.platform;
 		warnings.push(
-			...runsOfOtherBuilds(serial, lab ?? boot, [
+			...buildWarnings(serial, [
+				["lab", lab],
+				["boot", boot],
 				["soak", soak],
 				["crash", crashes],
 				["parity", suites.parity],
@@ -239,11 +274,12 @@ export async function report(): Promise<void> {
 				["resilience", suites.resilience],
 			]),
 		);
+		const pinned = gates.scenarios[platform];
 		devices[serial] = {
-			platform: reference.device.platform,
+			platform,
 			info: reference.device,
 			app: reference.app,
-			lab: lab && labPath ? summarizeLab(lab, labPath.slice(labPath.lastIndexOf("runs/"))) : null,
+			lab: lab && labPath ? summarizeLab(lab, labPath.slice(labPath.lastIndexOf("runs/")), pinned) : null,
 			boot:
 				boot && bootPath
 					? {
@@ -278,14 +314,29 @@ export async function report(): Promise<void> {
 					: null,
 			suites: {
 				parity: suites.parity && parityPath ? { file: parityPath.slice(parityPath.lastIndexOf("runs/")), mode: suites.parity.mode, deviceKind: suites.parity.deviceKind } : null,
-				a11y: suites.a11y && a11yPath ? { file: a11yPath.slice(a11yPath.lastIndexOf("runs/")), oracle: suites.a11y.oracle } : null,
+				a11y:
+					suites.a11y && a11yPath
+						? {
+								file: a11yPath.slice(a11yPath.lastIndexOf("runs/")),
+								oracle: suites.a11y.oracle,
+								screens: suites.a11y.screens
+									.filter((screen) => screen.error === null)
+									.map((screen) => ({
+										name: screen.name,
+										interactive: screen.interactive,
+										reachable: screen.reachable,
+										clipped: screen.clipped,
+										chromeModelled: screen.chromeModelled ?? 0,
+										stable: screen.stable ?? null,
+									})),
+							}
+						: null,
 				resilience: suites.resilience && resiliencePath ? { file: resiliencePath.slice(resiliencePath.lastIndexOf("runs/")), screen: suites.resilience.screen } : null,
 			},
-			metrics: deviceMetrics(lab, boot, soak, crashes, suites),
+			metrics: deviceMetrics(lab, boot, pinned, soak, crashes, suites),
 		};
 	}
 
-	const gates = await loadGates();
 	const rows = evaluate(
 		gates.gates,
 		Object.fromEntries(
@@ -315,8 +366,12 @@ export async function report(): Promise<void> {
 			`  boot warm p90 ${m["boot.warm.p90"] ?? "-"} ms (${m["boot.warm.samples"] ?? 0} samples), cold p90 ${m["boot.cold.p90"] ?? "-"} ms (${m["boot.cold.samples"] ?? 0} samples)`,
 		);
 		console.log(
-			`  lab ${m["lab.runs"] ?? 0} complete run(s), checks ${m["lab.checks.passed"] ?? "-"} passed / ${m["lab.checks.failed"] ?? "-"} failed, fatals ${m["log.fatals"] ?? "-"}, engine warnings ${m["log.engineWarnings"] ?? "-"}`,
+			`  lab ${m["lab.runs"] ?? 0} complete run(s) (--run ${entry.lab?.run ?? "not recorded"}), checks ${m["lab.checks.passed"] ?? "-"} passed / ${m["lab.checks.failed"] ?? "-"} failed, fatals ${m["log.fatals"] ?? "not measured"}, engine warnings ${m["log.engineWarnings"] ?? "-"}`,
 		);
+		if (entry.lab && entry.lab.missingScenarios.length > 0)
+			console.log(
+				`  lab is not the full run: ${entry.lab.missingScenarios.length} of ${gates.scenarios[entry.platform].length} scenarios missing (${entry.lab.missingScenarios.join(", ")})`,
+			);
 		if (entry.soak)
 			console.log(
 				`  soak ${m["soak.minutes"] ?? "-"} min, heap growth ${m["memory.heapGrowthPct"] ?? "-"} % (JS ${m["memory.js.growthPct"] ?? "-"}, native ${m["memory.native.growthPct"] ?? "-"}), leaked views ${m["memory.leakedViews"] ?? "-"}, dead-tag writes ${m["memory.deadTagWrites"] ?? "-"}, crashes ${m["soak.crashes"] ?? "-"}`,
@@ -325,10 +380,15 @@ export async function report(): Promise<void> {
 			console.log(
 				`  parity ${m["parity.cases"] ?? 0}/${m["parity.casesExpected"] ?? "-"} cases compared, worst ${m["parity.diffPixelsOutsideMasks"] ?? "-"} px outside the masks, ${m["parity.casesSkipped"] ?? 0} skipped, ${m["parity.routesNotCovered"] ?? 0} routes not covered`,
 			);
-		if (entry.suites.a11y)
+		if (entry.suites.a11y) {
 			console.log(
 				`  a11y ${m["a11y.screens"] ?? 0}/${m["a11y.screensExpected"] ?? "-"} screens, ${m["a11y.interactive"] ?? 0} interactive elements: unreachable ${m["a11y.unreachable"] ?? "-"}, unlabeled ${m["a11y.unlabeled"] ?? "-"}, not actionable ${m["a11y.notActionable"] ?? "-"}, order violations ${m["a11y.orderViolations"] ?? "-"}, titles not first ${m["a11y.titleNotFirst"] ?? "-"}, focus leaks ${m["a11y.focusLeaks"] ?? "-"}`,
 			);
+			for (const screen of entry.suites.a11y.screens)
+				console.log(
+					`    ${screen.name.padEnd(44)} reach ${reachPct(screen).padStart(5)} of ${String(screen.interactive).padStart(2)}, clipped ${screen.clipped}${screen.chromeModelled > 0 ? `, modelled chrome ${screen.chromeModelled}` : ""}${screen.stable === false ? ", tree not settled" : ""}`,
+				);
+		}
 		if (entry.suites.resilience)
 			console.log(
 				`  resilience ${m["resilience.steps"] ?? 0} steps, ${m["resilience.failures"] ?? "-"} failed`,

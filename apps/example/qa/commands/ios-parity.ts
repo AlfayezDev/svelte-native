@@ -3,12 +3,14 @@ import { join } from "node:path";
 import type { Direction } from "../lib/device.ts";
 import { flagString, parseFlags } from "../lib/flags.ts";
 import { captureScreens, type CaptureEntry } from "../lib/iphone/capture.ts";
+import { IdentityMismatch, notReported, reportedIdentity, withIdentity } from "../lib/iphone/identity.ts";
 import { currentSource, iosOptions, newToken, startIosSuite } from "../lib/iphone/session.ts";
 import { iosCases, iosMatrix, iosNotCovered, iosVariants } from "../lib/iphone/screens.ts";
 import { qaDir, runsDir } from "../lib/paths.ts";
 import {
 	compare,
 	emptyManifest,
+	maskRefusal,
 	readManifest,
 	readReference,
 	referenceMasks,
@@ -20,7 +22,7 @@ import {
 import { decodePng, encodePng, type Image, type Rect } from "../lib/png.ts";
 import { slug, stamp, writeRun } from "../lib/runs.ts";
 import { referenceName, type ScreenCase, type Variant } from "../lib/screens.ts";
-import type { ParityCase, ParityFile } from "../lib/types.ts";
+import type { BuildIdentity, ParityCase, ParityFile } from "../lib/types.ts";
 
 function caseRecord(screen: ScreenCase, variant: Variant, fields: Partial<ParityCase>): ParityCase {
 	return {
@@ -129,6 +131,7 @@ export async function iosParity(argv: string[]): Promise<void> {
 
 	const artifacts = join(runsDir, `parity-${slug(session.device.serial)}-${stamp(session.startedAt)}`);
 	const results: ParityCase[] = [];
+	const reports: (BuildIdentity | null)[] = [];
 	let aborted: string | null = null;
 	let deviceKind: string | null = null;
 	let manifest: Manifest | null = null;
@@ -149,6 +152,9 @@ export async function iosParity(argv: string[]): Promise<void> {
 				timeoutMs: 600_000,
 				log: (line) => console.log(line),
 			});
+			// Before any of its cases are read: a capture of the wrong build ends the run and writes nothing.
+			reports.push(captured.index.build);
+			reportedIdentity(reports, session.build, "parity");
 			const sized = captured.index.entries.find((entry) => entry.width && entry.height && entry.scale);
 			if (!sized?.width || !sized.height || !sized.scale) throw new Error("the capture produced no screenshot");
 			if (deviceKind === null) {
@@ -164,15 +170,19 @@ export async function iosParity(argv: string[]): Promise<void> {
 					const record = await runCase({ screen, variant, entry: captured.index.entries.find((candidate) => candidate.name === `${screen.id}--${variant.theme}`), dir: captured.dir, deviceKind, manifest: manifest as Manifest, update, source, artifacts });
 					results.push(record);
 					const diff = record.differingPixels === null ? "" : ` ${record.differingPixels} px`;
-					console.log(`  ${record.verdict.padEnd(17)} ${record.name}${diff}${record.detail && record.verdict !== "updated" ? `: ${record.detail.slice(0, 160)}` : ""}`);
+					const masked = record.maskedPixels === null ? "" : ` (masked ${((record.maskedPixels / screenPixels) * 100).toFixed(1)} %)`;
+					console.log(`  ${record.verdict.padEnd(17)} ${record.name}${diff}${masked}${record.detail && record.verdict !== "updated" ? `: ${record.detail.slice(0, 160)}` : ""}`);
 					if (update && record.verdict === "updated" && manifest) await writeManifest(manifest);
 				}
 			}
 		}
 	} catch (error) {
+		if (error instanceof IdentityMismatch) throw error;
 		aborted = error instanceof Error ? error.message : String(error);
 		console.log(`stopped: ${aborted.slice(0, 300)}`);
 	}
+	const installed = reportedIdentity(reports, session.build, "parity");
+	if (reports.length > 0 && installed === null) console.log(`warning: ${notReported}`);
 
 	const file: ParityFile = {
 		schema: 1,
@@ -181,7 +191,7 @@ export async function iosParity(argv: string[]): Promise<void> {
 		finishedAt: new Date().toISOString(),
 		source,
 		device: session.device,
-		app: session.app,
+		app: withIdentity(session.app, installed),
 		deviceKind: deviceKind ?? "ios-unknown",
 		mode: update ? "update" : "check",
 		screenPixels,
@@ -226,6 +236,15 @@ async function runCase(input: CaseInput): Promise<ParityCase> {
 	}
 	const previous: ReferenceEntry | undefined = manifest.references[name];
 	if (update) {
+		const refusal = maskRefusal(
+			[
+				{ name: "moving views", masks: movingMasks(entry) },
+				{ name: "glass views", masks: glassMasks(entry) },
+				{ name: "sheet views", masks: sheetMasks(entry) },
+			],
+			actual,
+		);
+		if (refusal) return caseRecord(screen, variant, { verdict: "error", detail: `no reference written: ${refusal}` });
 		const written = await writeReference(deviceKind, name, actual);
 		let changed: number | null = null;
 		let detail = "new";

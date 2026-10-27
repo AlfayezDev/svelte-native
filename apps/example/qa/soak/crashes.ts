@@ -45,6 +45,27 @@ export function crashesDefinition(idleSeconds: number): string {
 	].join(" ");
 }
 
+export type RunIdentity = { run: string; idleSeconds: number; packageName: string; installedSha256: string | null };
+
+/**
+ * Why a crashes file cannot be continued by this command, or null when it can: the suites, the idle gap, the package and the
+ * installed build must all be the ones it measured. A file from before these were recorded, or a build that could not be
+ * hashed on either side, cannot prove it, so it is refused too.
+ */
+export function resumeMismatch(resumed: CrashesFile, current: RunIdentity): string | null {
+	const differences: string[] = [];
+	const check = (name: string, before: unknown, now: unknown) => {
+		if (before !== now) differences.push(`${name} ${JSON.stringify(before ?? null)} in the file, ${JSON.stringify(now)} now`);
+	};
+	check("--run", resumed.run, current.run);
+	check("--idle", resumed.idleSeconds, current.idleSeconds);
+	check("--package", resumed.packageName, current.packageName);
+	check("installed build", resumed.app.installedSha256?.slice(0, 12), current.installedSha256?.slice(0, 12));
+	if (resumed.app.installedSha256 === null || current.installedSha256 === null)
+		differences.push("the installed build could not be identified on one side");
+	return differences.length === 0 ? null : differences.join("; ");
+}
+
 /** The crash lines `findFaults` returns, split into ANRs and everything else. */
 function split(crashes: string[], packageName: string): { crashes: number; anrs: number } {
 	const anrs = crashes.filter((line) => line.startsWith(`ANR in ${packageName}`)).length;
@@ -321,9 +342,12 @@ export async function crashes(argv: string[]): Promise<void> {
 		packageName,
 		dexopt: dexoptFlag(values.dexopt),
 	});
-	if (resumed && resumed.app.installedSha256 !== app.installedSha256)
+	const mismatch = resumed
+		? resumeMismatch(resumed, { run, idleSeconds, packageName, installedSha256: app.installedSha256 })
+		: null;
+	if (mismatch)
 		throw new Error(
-			`--resume: the installed build (${app.installedSha256?.slice(0, 12)}) is not the one the run being resumed measured (${resumed.app.installedSha256?.slice(0, 12)}); install it again with --apk`,
+			`--resume: this is not the run being resumed (${mismatch}); pass the same flags and install the same build with --apk`,
 		);
 	const symbolizer = await loadSymbolizer({
 		map: flagString(values.map),
@@ -363,6 +387,9 @@ export async function crashes(argv: string[]): Promise<void> {
 			device,
 			app,
 			definition: crashesDefinition(idleSeconds),
+			run,
+			idleSeconds,
+			packageName,
 			coldStarts,
 			suites,
 			signatures,
@@ -478,6 +505,9 @@ export async function crashes(argv: string[]): Promise<void> {
 		device,
 		app,
 		definition: "",
+		run,
+		idleSeconds,
+		packageName,
 		coldStarts,
 		suites,
 		signatures,

@@ -109,7 +109,7 @@ describe("lab results", () => {
 		const results = parseIosLabResults(text);
 		const run = labRunFromIos({ results, startedAt: new Date(), durationMs: 1, died: null, logFile: "x" }, true);
 		const file = { schema: 1, kind: "lab", device: { platform: "ios" }, runs: [run] } as unknown as LabFile;
-		const metrics = labMetrics(file);
+		const metrics = labMetrics(file, run.scenarios.filter((scenario) => scenario.verdict !== "info").map((scenario) => scenario.name));
 		expect(metrics["lab.checks.passed"]).toBe(28);
 		expect(typeof metrics["frames.navigation-8.droppedPct"]).toBe("number");
 		expect(metrics["frames.idle.droppedPct"]).toBe(0);

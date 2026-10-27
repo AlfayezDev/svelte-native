@@ -153,7 +153,19 @@ enum SvelteQAAccessibility {
     if let label, !label.isEmpty { entry["label"] = label }
     if let value = (view as? UITextField)?.text ?? (view as? UITextView)?.text, !value.isEmpty { entry["value"] = value }
     if let toggle = view as? UISwitch { entry["value"] = toggle.isOn ? "1" : "0" }
+    entry["parents"] = parents(of: view)
     return entry
+  }
+
+  /// The classes of the view's ancestors, nearest first: the harness reads scroll membership from them.
+  private static func parents(of view: UIView) -> [String] {
+    var names: [String] = []
+    var ancestor = view.superview
+    while let current = ancestor, names.count < 14 {
+      names.append(NSStringFromClass(type(of: current)))
+      ancestor = current.superview
+    }
+    return names
   }
 
   private static func describe(_ element: NSObject, explicit: Bool, group: Int, container: String?) -> [String: Any] {
@@ -175,13 +187,7 @@ enum SvelteQAAccessibility {
     }
     if let view = element as? UIView {
       entry["text"] = (view as? UILabel)?.text ?? (view as? UITextField)?.text ?? (view as? UITextView)?.text
-      var parents: [String] = []
-      var ancestor = view.superview
-      while let current = ancestor, parents.count < 14 {
-        parents.append(NSStringFromClass(type(of: current)))
-        ancestor = current.superview
-      }
-      entry["parents"] = parents
+      entry["parents"] = parents(of: view)
     }
     return entry
   }

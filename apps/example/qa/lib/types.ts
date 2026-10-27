@@ -17,13 +17,23 @@ export type DeviceInfo = {
 
 export type ApkInfo = { path: string; sizeBytes: number; sha256: string };
 
+/** What the iOS app reports of itself in the files it writes: the SHA-256 of `main.jsbundle` and of the executable. */
+export type BuildIdentity = { jsbundleSha256: string; executableSha256: string };
+
+/** What `native-qa build --platform ios` recorded of the build the run was meant to measure. The executable digest is absent from a record made before it was taken. */
+export type BuildRecord = { commit: string; dirty: boolean; jsbundleSha256: string; executableSha256: string | null };
+
 export type AppInfo = {
 	package: string;
 	versionName: string | null;
 	versionCode: number | null;
 	lastUpdateTime: string | null;
+	/** Android: the SHA-256 of the installed `base.apk`. iOS: the executable digest the app reported (`installed`), null when it did not report one. */
 	installedSha256: string | null;
 	apk: ApkInfo | null;
+	/** iOS only: the identity the app reported in this run's files (null: an app that does not report one), and the build record it was compared with (null: no record for this app). */
+	installed?: BuildIdentity | null;
+	build?: BuildRecord | null;
 };
 
 export type Source = { commit: string; dirty: boolean };
@@ -39,6 +49,8 @@ export type LabRun = {
 	crashes: string[];
 	jsErrors: string[];
 	engineWarnings: string[];
+	/** The app's own `console.error` count since launch (iOS: the app reports it, null when it does not). Android counts the `E ReactNativeJS` lines in `jsErrors`; absent in runs recorded before the field. */
+	jsErrorCount?: number | null;
 	logFile: string;
 };
 
@@ -50,6 +62,8 @@ export type LabFile = {
 	source: Source;
 	device: DeviceInfo;
 	app: AppInfo;
+	/** The `--run` value the lab was started with (`checks,quick` is the full run `gates.json` pins). */
+	run: string;
 	runs: LabRun[];
 };
 
@@ -61,9 +75,13 @@ export type Launch = {
 	totalTimeMs: number | null;
 	jsMarks: BootMarks | null;
 	crashes: number;
-	jsErrors: number;
+	/** `E ReactNativeJS` lines (Android) or the app's reported `console.error` count (iOS); null when the app did not report one. */
+	jsErrors: number | null;
 	engineWarnings: number;
 	error: string | null;
+	/** iOS: when the harness started the launch command (its clock) and the process start the app reported (the phone's); a report older than the launch is another launch's. */
+	commandStartedAtMs?: number | null;
+	processStartMs?: number | null;
 };
 
 export type BootDefinition = { warm: string; cold: string; coldIdleSeconds: number };
@@ -82,8 +100,9 @@ export type BootFile = {
 	logFile: string;
 };
 
-/** One flat number per measurement; null means the run was made but produced no value. */
-export type Metrics = Record<string, number | null>;
+/** A measurement: a number, or a text for the few gates that compare for equality; null means the run was made but produced no value. */
+export type Metric = number | string | null;
+export type Metrics = Record<string, Metric>;
 
 export type BuildFile = {
 	schema: 1;
@@ -241,6 +260,10 @@ export type CrashesFile = {
 	device: DeviceInfo;
 	app: AppInfo;
 	definition: string;
+	/** What the run was started with, which `--resume` must find unchanged: the lab `--run` of the suites, the idle gap of the cold starts, the package. */
+	run: string;
+	idleSeconds: number;
+	packageName: string;
 	coldStarts: ColdStart[];
 	suites: SuiteRun[];
 	/** The first 20 distinct failures. */
@@ -326,6 +349,10 @@ export type A11yScreenResult = {
 	focusLeaks: number;
 	stops: string[];
 	findings: A11yFinding[];
+	/** iOS: elements the harness modelled from UIKit's state (the bars), which no accessibility client reported; excluded from the counts above. Absent in runs before they were marked. */
+	chromeModelled?: number;
+	/** Android: the dump was identical to the next one (`settledTree`); null where the tree is not dumped repeatedly (iOS). Absent in runs before it was recorded. */
+	stable?: boolean | null;
 	/** Set when the screen could not be dumped; the other fields are then zero and the screen counts as not measured. */
 	error: string | null;
 };

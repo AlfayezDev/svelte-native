@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { glassMasks, sheetMasks } from "../commands/ios-parity.ts";
 import type { CaptureEntry } from "../lib/iphone/capture.ts";
+import { maskedPct, maskRefusal } from "../lib/parity.ts";
 
 const entry = (glass: number[][], scale = 2) => ({ scale, glass }) as unknown as CaptureEntry;
 
@@ -36,5 +37,37 @@ describe("masks for a presented sheet's card", () => {
 		expect(masks[4]).toEqual({ x: 0, y: 758, width: 28, height: 576 });
 		expect(masks[5]).toEqual({ x: 16 + 718 + 16 - 28, y: 758, width: 28, height: 576 });
 		expect(sheetMasks({ scale: 2 } as unknown as CaptureEntry)).toEqual([]);
+	});
+});
+
+describe("the masks of a capture against the gate", () => {
+	const phone = { width: 750, height: 1334 };
+	const capture = (fields: object) => ({ scale: 2, ...fields }) as unknown as CaptureEntry;
+
+	test("the lab's sheet and the tab bar together stay within the 25 % the gate allows", () => {
+		const entry = capture({ sheets: [[8, 411, 359, 248]], glass: [[50, 584, 275, 62], [307, 20, 56, 44]] });
+		const parts = [
+			{ name: "moving views", masks: [] },
+			{ name: "glass views", masks: glassMasks(entry) },
+			{ name: "sheet views", masks: sheetMasks(entry) },
+		];
+		expect(maskedPct(parts.flatMap((part) => part.masks), phone)).toBeCloseTo(18.7, 1);
+		expect(maskRefusal(parts, phone)).toBeNull();
+	});
+
+	test("a spinner view that spans most of the screen is refused at update, with the three kinds of view named", () => {
+		const entry = capture({ sheets: [[8, 411, 359, 248]] });
+		const refusal = maskRefusal(
+			[
+				{ name: "moving views", masks: [{ x: 0, y: 0, width: 750, height: 800 }] },
+				{ name: "glass views", masks: glassMasks(entry) },
+				{ name: "sheet views", masks: sheetMasks(entry) },
+			],
+			phone,
+		);
+		expect(refusal).toContain("its masks cover");
+		expect(refusal).toContain("moving views: 1 masks, 60.0 %");
+		expect(refusal).toContain("glass views: 0 masks, 0.0 %");
+		expect(refusal).toContain("sheet views: 8 masks, 15.8 %");
 	});
 });

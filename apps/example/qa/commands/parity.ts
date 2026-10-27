@@ -17,6 +17,7 @@ import { qaDir, runsDir } from "../lib/paths.ts";
 import {
 	compare,
 	emptyManifest,
+	maskRefusal,
 	readManifest,
 	readReference,
 	referenceMasks,
@@ -192,6 +193,14 @@ async function captureCase(
 			detail:
 				"the anchor of the screen was not on screen after the screenshots (a screen that moves on, or the wrong screen)",
 		});
+	const refusal = maskRefusal(
+		[
+			{ name: "status bar", masks: [context.statusBar] },
+			{ name: "moving nodes", masks: nodeMasks },
+		],
+		shot.image,
+	);
+	if (refusal) return caseRecord(screen, variant, { verdict: "error", detail: `no reference written: ${refusal}` });
 	const written = await writeReference(context.deviceKind, name, shot.image);
 	let changed: number | null = null;
 	let detail = "new";
@@ -338,8 +347,12 @@ export async function parity(argv: string[]): Promise<void> {
 						const record = await runCase(context, screen, variant);
 						results.push(record);
 						const diff = record.differingPixels === null ? "" : ` ${record.differingPixels} px`;
+						const masked =
+							record.maskedPixels === null
+								? ""
+								: ` (masked ${((record.maskedPixels / (display.width * display.height)) * 100).toFixed(1)} %)`;
 						console.log(
-							`  ${record.verdict.padEnd(17)} ${record.name}${diff} (${((Date.now() - began) / 1000).toFixed(1)} s)${record.detail && record.verdict !== "updated" ? `: ${record.detail.slice(0, 160)}` : ""}`,
+							`  ${record.verdict.padEnd(17)} ${record.name}${diff}${masked} (${((Date.now() - began) / 1000).toFixed(1)} s)${record.detail && record.verdict !== "updated" ? `: ${record.detail.slice(0, 160)}` : ""}`,
 						);
 					}
 				}

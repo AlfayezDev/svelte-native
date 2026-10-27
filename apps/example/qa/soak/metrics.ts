@@ -141,14 +141,16 @@ export function soakMetrics(file: SoakFile): Metrics {
 	const lateStart = writes(start, (engine) => engine.lateWrites);
 	const lateFinal = writes(final, (engine) => engine.lateWrites);
 	const lastFinalMem = file.memory.findLast((sample) => sample.tag === "final") ?? null;
+	// A build that logs the worklet runtime's heap must have both of its collected windows: the growth it left out would be the worst one.
+	const growths = file.js.some((sample) => sample.ui)
+		? [jsGrowth, nativeGrowth, uiGrowth]
+		: [jsGrowth, nativeGrowth];
+	const worstGrowth = growths.some((growth) => growth === null)
+		? null
+		: Math.max(...(growths as number[]));
 
 	return {
-		"memory.heapGrowthPct": round(
-			jsGrowth !== null && nativeGrowth !== null
-				? Math.max(jsGrowth, nativeGrowth, uiGrowth ?? Number.NEGATIVE_INFINITY)
-				: null,
-			2,
-		),
+		"memory.heapGrowthPct": round(worstGrowth, 2),
 		"memory.js.growthPct": round(jsGrowth, 2),
 		"memory.ui.growthPct": round(uiGrowth, 2),
 		"memory.native.growthPct": round(nativeGrowth, 2),
@@ -178,6 +180,8 @@ export function crashMetrics(file: CrashesFile): Metrics {
 	const crashed = (start: CrashesFile["coldStarts"][number]) => start.crash || start.died;
 	const suiteCrashed = (suite: CrashesFile["suites"][number]) => suite.crashes > 0;
 	return {
+		// A file written before the run was recorded cannot say what its suites ran.
+		"crashes.run": typeof file.run === "string" ? file.run : null,
 		"crashes.coldStarts": starts.length,
 		"crashes.coldStartCrashes": starts.filter(crashed).length,
 		"crashes.coldStartsNoBoot": starts.filter(

@@ -41,6 +41,19 @@ export const iosNotCovered: NotCovered[] = [
 	},
 ];
 
+/**
+ * Controls the iPhone SE's 667 pt screen leaves below the fold, inside the scroll view that holds them, which the Android matrix
+ * does not list (its screen is taller): the accessibility check counts a control outside the screen as clipped only when it is
+ * declared here or in `scrolled` and sits in a scroll view, and as unreachable otherwise.
+ */
+export const iosBelowTheFold: Record<string, string[]> = {
+	"dev-rows": ["Draft a", "Draft b", "Draft keyed", "Tap keyed"],
+	"dev-animation": ["Verify UI thread · block JS for 1 second"],
+	"screens-header": ["Push screen 2"],
+	"screens-tabs": ["Push on this tab", "Open a sheet on the root stack"],
+	"screens-modal": ["Push screen 2"],
+};
+
 /** The labels an iOS screen exposes for the controls the Android matrix names: the back button of a pushed screen reads "Back" (the title of the screen below when it has one), the search field its placeholder. */
 const iosLabels: Record<string, string> = { "Navigate up": "Back", Search: "Search people" };
 

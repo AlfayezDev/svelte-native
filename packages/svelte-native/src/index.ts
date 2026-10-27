@@ -9,5 +9,6 @@ export { useHeader } from "./fabric/navigation.ts";
 export { bootSummary } from "./boot-marks.ts";
 export type {
   BarStyle, Detent, DetentChange, HeaderMetrics, HeaderOptions, NavigationBarOptions, Presentation, RouterScopeOptions,
-  ScreenAnimation, ScreenOptions, SearchOptions, SheetOptions, StackDefaults, StatusBarOptions, TabHandle, TabIconSource, TabItem,
+  ScreenAnimation, ScreenOptions, SearchOptions, SheetOptions, StatusBarOptions, TabHandle, TabIconSource, TabItem,
 } from "./fabric/navigation.ts";
+export type { StackDefaults } from "./navigator-context.ts";

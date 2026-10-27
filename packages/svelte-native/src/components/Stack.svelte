@@ -1,6 +1,6 @@
 <script lang="ts">
   import { setContext, type Snippet } from "svelte";
-  import { STACK_CONTEXT, type StackContext, type StackDefaults } from "../fabric/navigation.ts";
+  import { STACK_CONTEXT, type StackContext, type StackDefaults } from "../navigator-context.ts";
   import type { NativeLocation } from "../router.svelte.ts";
 
   /**

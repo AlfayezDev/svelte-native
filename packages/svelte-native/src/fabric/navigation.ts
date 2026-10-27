@@ -1,5 +1,4 @@
 import { getContext, type Snippet } from "svelte";
-import type { NativeLocation } from "../router.svelte.ts";
 
 /**
  * The navigation tags on the Fabric host. They are plain `RCTView` nodes: the engine tells them apart by `nativeID`
@@ -44,9 +43,6 @@ export const navigationTags: ReadonlySet<string> = new Set([
 /** Context keys shared by the components: the nearest `Screen` (nested screens register into it) and its header geometry. */
 export const SCREEN_CONTEXT = Symbol.for("svelte-native.screen");
 export const HEADER_CONTEXT = Symbol.for("svelte-native.header");
-/** What `<Stack>` gives the screens of its navigator, and what `<Tabs>` in a tabs layout gives the panes (see `StackContext`, `TabsBar`). */
-export const STACK_CONTEXT = Symbol.for("svelte-native.stack");
-export const TABS_CONTEXT = Symbol.for("svelte-native.tabs");
 
 /** The header geometry of the screen around the caller, in dp: `height` includes the status bar `inset`. Read it to pad content under a `large` or `translucent` header. */
 export function useHeader(): { readonly height: number; readonly inset: number } {
@@ -70,21 +66,6 @@ export type TabItem = {
 };
 /** What a tab's `content` snippet receives. Hand it to the tab's router as `{ scope: tab.key, active: () => tab.selected }`. */
 export type TabHandle = { readonly key: string; readonly selected: boolean };
-
-/** The options `<Stack>` lays under each screen of its navigator: a page's own `<Screen>` options win (`mergeScreenOptions`). */
-export type StackDefaults = Pick<ScreenOptions, "header" | "animation" | "gestureEnabled" | "statusBar" | "navigationBar" | "style">;
-/** What a `<Stack>` provides to the router rendering its screens: the defaults and the snippet shown while a route's modules load. */
-export type StackContext = { readonly defaults: StackDefaults; readonly loading: Snippet<[NativeLocation]> | undefined };
-/** What a `<Tabs>` in a tabs layout provides to the panes the router renders inside it. */
-export type TabsBar = {
-  /** The pane keys in the bar's order: the layout's items first, then the panes it gave no item. */
-  readonly order: readonly string[];
-  item(key: string): TabItem;
-  readonly selected: string;
-  readonly barHeight: number;
-  /** Whether the pane's content is mounted (a lazy pane mounts on first selection and then stays). */
-  mounted(key: string): boolean;
-};
 
 /** What `createRouter` takes to keep one stack per tab: the router answers `useRouter(scope)`, and handles back and links only while `active()`. */
 export type RouterScopeOptions = { scope?: string; active?: () => boolean };

@@ -5,7 +5,8 @@
   import Host from "./components/Host.svelte";
   import Screen from "./components/Screen.svelte";
   import RouteView from "./RouteView.svelte";
-  import { SCREEN_CONTEXT, STACK_CONTEXT, type StackContext } from "./fabric/navigation.ts";
+  import { SCREEN_CONTEXT } from "./fabric/navigation.ts";
+  import { STACK_CONTEXT, type StackContext } from "./navigator-context.ts";
   import type { NativeLocation, Router } from "./router.svelte.ts";
   /**
    * The native stack of a stack router: a screen per entry. `loading` is what a screen shows while its route's modules load;

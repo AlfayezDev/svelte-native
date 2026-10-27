@@ -3,7 +3,7 @@
   import Tab from "./components/Tab.svelte";
   import NavigatorPane from "./NavigatorPane.svelte";
   import { useRouter } from "./router.svelte.ts";
-  import { TABS_CONTEXT, type TabsBar } from "./fabric/navigation.ts";
+  import { TABS_CONTEXT, type TabsBar } from "./navigator-context.ts";
   /** A `Tab` per pane of the tabs navigator with the pane's stack in it, in the bar's order; the enclosing `<Tabs>` decides the items, the selection and when a pane mounts. */
   const router = useRouter();
   const bar = getContext<TabsBar | undefined>(TABS_CONTEXT);

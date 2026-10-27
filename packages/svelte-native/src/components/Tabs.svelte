@@ -6,7 +6,8 @@
   import { connectInsets, insets } from "../insets.svelte.ts";
   import { nearestRouter } from "../router.svelte.ts";
   import Tab from "./Tab.svelte";
-  import { SCREEN_CONTEXT, TABS_CONTEXT, TAB_BAR, type HeaderMetrics, type NavigationPlatform, type TabHandle, type TabItem, type TabsBar } from "../fabric/navigation.ts";
+  import { SCREEN_CONTEXT, TAB_BAR, type HeaderMetrics, type NavigationPlatform, type TabHandle, type TabItem } from "../fabric/navigation.ts";
+  import { TABS_CONTEXT, type TabsBar } from "../navigator-context.ts";
 
   /**
    * Bottom tab bar with one live pane per tab (contract: SPEC.md "Screen API contract" and "Route tree"). Two modes:

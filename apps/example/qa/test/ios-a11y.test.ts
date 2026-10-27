@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { judgeReadingOrder } from "../lib/a11y.ts";
+import { cases } from "../lib/screens.ts";
+import { iosControl, iosTitle } from "../lib/iphone/screens.ts";
+import { sample } from "./sample.ts";
 import { analyzeIosScreen, chromeElements, isActionable, spoken, voiceOverOrder, type IosDump, type IosElement, type IosA11yInput, type UiKitState } from "../lib/iphone/a11y.ts";
 
 const screen = { width: 375, height: 667, scale: 2 };
@@ -316,5 +320,81 @@ describe("UIKit's own chrome", () => {
 		expect(analyzeIosScreen(input).focusLeaks).toBe(1);
 		const hiding = { ...input, dump: { ...input.dump, modalViews: [{ class: "UITransitionView", ignoredSiblings: 2 }] } };
 		expect(analyzeIosScreen(hiding).focusLeaks).toBe(0);
+	});
+});
+
+describe("the toolbar band", () => {
+	const toolbarParents = ["_UIFloatingBarContainerView", "UILayoutContainerView", "SvelteStackView"];
+	const toolbarButton = (label: string, frame: [number, number, number, number]) =>
+		element({ class: "SvelteToolbarButton", label, traits: ["button"], frame, parents: toolbarParents });
+	// The last row of a list under a translucent toolbar: its frame overlaps the items' by 11 of the row's 18 points.
+	const row = text("Row 9", [29, 589, 317, 18]);
+
+	test("a content row that overlaps the toolbar's frame is read before the band, in no row with it", () => {
+		const items = [toolbarButton("Reply", [33, 596, 44, 38]), toolbarButton("Archive", [91, 596, 44, 38])];
+		const result = analyze([...items, row], { direction: "ltr" });
+		expect(result.stops.map((stop) => stop.split(" ")[0])).toEqual(["Row", "Reply", "Archive"]);
+		expect(result.orderViolations).toBe(0);
+	});
+
+	test("the band reads from the start edge to the end, mirrored in right-to-left, and content stays first", () => {
+		const items = [toolbarButton("Reply", [33, 596, 44, 38]), toolbarButton("Delete", [298, 596, 44, 38])];
+		expect(voiceOverOrder([...items, row], "ltr").map((entry) => entry.label)).toEqual(["Row 9", "Reply", "Delete"]);
+		expect(voiceOverOrder([...items, row], "rtl").map((entry) => entry.label)).toEqual(["Row 9", "Delete", "Reply"]);
+		expect(analyze([...items, row], { direction: "rtl" }).orderViolations).toBe(0);
+	});
+
+	test("the toolbar's center slot is the band too: anything under a SvelteToolbarCenterView", () => {
+		const center = button("List", [140, 597, 46, 36], { parents: ["RCTViewComponentView", "SvelteToolbarCenterView", "SvelteBarContainer"] });
+		expect(voiceOverOrder([center, row], "ltr").map((entry) => entry.label)).toEqual(["Row 9", "List"]);
+	});
+
+	test("the check and the sort agree: a toolbar stop read before a content stop is an order violation, content before the toolbar never is", () => {
+		const content = { x: 29, y: 589, width: 317, height: 18 };
+		const item = { x: 33, y: 596, width: 44, height: 38 };
+		expect(judgeReadingOrder([content, item], null, "ltr", "header", [false, true]).violations).toEqual([]);
+		expect(judgeReadingOrder([item, content], null, "ltr", "header", [true, false]).violations).toEqual([0]);
+		// Without the band, the two frames form one row and the content stop (to the right of the item's center) is read after it.
+		expect(judgeReadingOrder([content, item], null, "ltr", "header").violations).toEqual([0]);
+	});
+
+	describe("the lab's toolbar screens, frozen from the iPhone run of 27 October (the run reported 4 order findings)", () => {
+		for (const id of ["screens-toolbar", "screens-toolbar-center"]) {
+			for (const direction of ["ltr", "rtl"] as const) {
+				const run = (identified: boolean) => {
+					const c = cases.find((entry) => entry.id === id);
+					if (!c) throw new Error(`no case ${id}`);
+					const dumped = JSON.parse(sample(`ios-${id}-${direction}.a11y.json`)) as IosDump;
+					// Unidentified: the toolbar's own views stripped of their names, as an app that did not say so.
+					const elements = identified
+						? dumped.elements
+						: dumped.elements.map((entry) => (entry.class.includes("Toolbar") || entry.parents?.some((name) => name.includes("SvelteToolbar")) ? { ...entry, class: "RCTViewComponentView", parents: ["RCTView"] } : entry));
+					return analyzeIosScreen({
+						dump: { ...dumped, elements },
+						state: JSON.parse(sample(`ios-${id}-${direction}.uikit.json`)) as UiKitState,
+						direction,
+						title: iosTitle(c, direction),
+						controls: c.controls.map((label) => iosControl(label, direction)),
+						scrolled: [],
+						hidden: [],
+						layout: c.layout,
+					});
+				};
+
+				test(`${id} ${direction}: one order finding without the band, none with it, and the toolbar is read last`, () => {
+					const before = run(false);
+					expect(before.findings.filter((finding) => finding.kind === "order")).toHaveLength(1);
+					expect(before.findings.find((finding) => finding.kind === "order")?.element).toContain('"Row 9"');
+					const after = run(true);
+					expect(after.findings.filter((finding) => finding.kind === "order")).toEqual([]);
+					expect(after.orderViolations).toBe(0);
+					expect(after.titleFirst).toBe(true);
+					const labels = after.stops;
+					const items = id === "screens-toolbar" ? ["Reply", "Archive", "Flag", "Delete"] : ["Attach", "List", "Grid", "Send"];
+					// The same logical order in both directions: the dump mirrors the frames, so right-to-left runs from the right edge.
+					expect(labels.slice(-4).map((label) => label.split(" ")[0])).toEqual(items);
+				});
+			}
+		}
 	});
 });

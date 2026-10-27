@@ -21,6 +21,10 @@ import { bottom, descendants, right, spokenLabel, type UiNode, type UiTree } fro
  * - order: the focus stops, in tree order, run top to bottom and, within a row, from the start edge to the end (left to
  *   right, right to left in RTL). A header reads back button, left slot, title (or center slot), right slot, search: that is
  *   start to end, so it needs no exemption; its large title, the bar's second row, is the one step that goes up.
+ * - toolbar band: a toolbar at the bottom of the screen is its own group, read after the content as the header is read first
+ *   (inside it from the start edge to the end). Content never joins a toolbar's row, however far the two frames overlap: the
+ *   last visible row of a list can sit under a translucent toolbar. The engine marks the toolbar's controls with a resource id
+ *   (`isToolbarNode`); a stop of the band read before a stop of the content is an order violation.
  * - title first: the screen's title is a stop (a stop with no label of its own is the label its content carries: a `Pressable`
  *   around a `Text`), and it is the first stop after the bar's back button and left slot: whatever comes before it sits above
  *   its row or at its start side, and no content does. `judgeReadingOrder` is that rule and the order rule for both platforms.
@@ -229,6 +233,15 @@ export function followsInOrderRect(a: Rect, b: Rect, direction: Direction): bool
 	return centerY(b) >= centerY(a) - tolerance;
 }
 
+/** The resource id the engine's toolbar puts on its controls (`svelte-toolbar`, or `svelte-toolbar:<key>`): the one thing the dump carries of the band, its view classes being `android.widget.Button` and `android.view.ViewGroup`. */
+const toolbarResource = /^svelte-toolbar(?:[:./-].*)?$/;
+
+/** Whether the node, or a node holding it, is part of the engine's toolbar band (a control of its items or its center slot). */
+export function isToolbarNode(node: UiNode): boolean {
+	for (let current: UiNode | null = node; current; current = current.parent) if (toolbarResource.test(current.resourceId)) return true;
+	return false;
+}
+
 export type ReadingOrder = {
 	/**
 	 * The first stop before the title that is not a start control of the bar, or null: `content` when it starts at or below the
@@ -245,11 +258,14 @@ export type ReadingOrder = {
  *
  * - Title first: the title is the first stop after the bar's back button and left slot. Whatever comes before it sits above its row
  *   or at its start side (where those controls are, mirrored in right-to-left), and none of it is content.
+ * - Toolbar band: `band[i]` says stop `i` belongs to the bottom toolbar. The band is a group of its own: the step from content into
+ *   the band is never judged by position (the band is read after the content, even when a content row's frame overlaps it), the
+ *   steps inside the band are judged like any row, and a step from the band back to content is a violation.
  * - Order: each stop follows the one before it, top to bottom and, in a row, start to end. A header's large title is the bar's
  *   second row and is read before the end controls of the first, so the step from the title up to a stop above it is not a
  *   violation (header layouts only; a page's title has no bar over it).
  */
-export function judgeReadingOrder(stops: Rect[], titleAt: number | null, direction: Direction, layout: Layout): ReadingOrder {
+export function judgeReadingOrder(stops: Rect[], titleAt: number | null, direction: Direction, layout: Layout, band: boolean[] = []): ReadingOrder {
 	let before: ReadingOrder["before"] = null;
 	const title = titleAt === null ? undefined : stops[titleAt];
 	if (title && titleAt !== null) {
@@ -266,6 +282,11 @@ export function judgeReadingOrder(stops: Rect[], titleAt: number | null, directi
 	for (let index = 0; index + 1 < stops.length; index++) {
 		const a = stops[index] as Rect;
 		const b = stops[index + 1] as Rect;
+		const inBand = band[index] === true;
+		if (inBand !== (band[index + 1] === true)) {
+			if (inBand) violations.push(index);
+			continue;
+		}
 		if (followsInOrderRect(a, b, direction)) continue;
 		if (layout !== "page" && index === titleAt && verticalOverlap(a, b) < 0.5 && centerY(b) < centerY(a)) continue;
 		violations.push(index);
@@ -389,6 +410,7 @@ export function analyzeScreen(input: A11yInput): A11yScreen {
 		titleStop ? stops.indexOf(titleStop) : null,
 		direction,
 		layout,
+		stops.map(isToolbarNode),
 	);
 	if (title !== null) {
 		if (!titleStop) {

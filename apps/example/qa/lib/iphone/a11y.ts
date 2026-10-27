@@ -21,6 +21,10 @@ import type { Layout } from "../screens.ts";
  * - order: VoiceOver sorts the elements of a screen by position (rows from the top; within a row from the start edge, the right
  *   edge in right-to-left) except those a container orders itself (`explicit`), which keep the container's order; the sorted list
  *   must run top to bottom and start to end;
+ * - toolbar band: the elements of a bottom toolbar (`isToolbarElement`: the class or an ancestor is a `SvelteToolbar…` view) are a
+ *   group of their own, read after the content; inside it from the start edge. `voiceOverOrder` sorts content and band apart and
+ *   `judgeReadingOrder` is told which stops are the band, so the sort and the check cannot disagree about a row of content that
+ *   overlaps the toolbar's frame;
  * - title first: the screen's title is a stop with the header trait and it is the first stop after the bar's back button and left
  *   slot (nothing before it but start controls above or beside it, no content). The order and title rules are
  *   `judgeReadingOrder` of `lib/a11y.ts`, the same definition the Android suite runs;
@@ -149,12 +153,25 @@ function matches(element: IosElement, label: string): boolean {
 	return said === label || said.startsWith(`${label},`);
 }
 
+const toolbarView = /SvelteToolbar/;
+
+/** Whether the element is a control of a bottom toolbar: `SvelteToolbarButton`, or anything in the toolbar's center slot (`SvelteToolbarCenterView` among its ancestors). */
+export const isToolbarElement = (element: IosElement): boolean =>
+	toolbarView.test(element.class) || (element.parents?.some((name) => toolbarView.test(name)) ?? false);
+
 /**
- * The elements in the order VoiceOver walks them. Elements whose container set the order keep it (a group stays together, at
+ * The elements in the order VoiceOver walks them: the content, then the toolbar band (each ordered as `rowOrder` says).
+ */
+export function voiceOverOrder(elements: IosElement[], direction: Direction): IosElement[] {
+	return [...rowOrder(elements.filter((element) => !isToolbarElement(element)), direction), ...rowOrder(elements.filter(isToolbarElement), direction)];
+}
+
+/**
+ * One group in the order VoiceOver walks it. Elements whose container set the order keep it (a group stays together, at
  * the position of its first element); the others are sorted by row: rows from the top, an element joining a row when it
  * overlaps the row's first element by half its height, and within a row from the start edge.
  */
-export function voiceOverOrder(elements: IosElement[], direction: Direction): IosElement[] {
+function rowOrder(elements: IosElement[], direction: Direction): IosElement[] {
 	type Unit = { first: IosElement; items: IosElement[] };
 	const units: Unit[] = [];
 	const groups = new Map<number, Unit>();
@@ -339,7 +356,7 @@ export function analyzeIosScreen(input: IosA11yInput): A11yScreen {
 	const titleStop = title === null ? null : (stops.find((stop) => matches(stop, title)) ?? null);
 	let titleFirst: boolean | null = null;
 	let orderViolations = 0;
-	const judged = judgeReadingOrder(stops.map(rectOf), titleStop ? stops.indexOf(titleStop) : null, direction, layout);
+	const judged = judgeReadingOrder(stops.map(rectOf), titleStop ? stops.indexOf(titleStop) : null, direction, layout, stops.map(isToolbarElement));
 	if (title !== null) {
 		if (!titleStop) {
 			titleFirst = false;

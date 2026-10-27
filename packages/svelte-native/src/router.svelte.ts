@@ -70,8 +70,8 @@ type StackState = ReturnType<typeof createStack>;
 type TabsState = { readonly kind: "tabs"; readonly selected: string; select(key: string): void; readonly panes: ReadonlyMap<string, StackState> };
 type NavigatorState = { kind: "stack"; stack: StackState } | TabsState;
 type Store = ReturnType<typeof createStore>;
-/** What a router is bound to: the store of its tree, the state of its navigator, its place above, and the routers registered below it (oldest first). */
-type Binding = { store: Store; stack?: StackState; tabs?: TabsState; above?: Router; inner: Router[] };
+/** What a router is bound to: the store of its tree, the state of its navigator, its place above, the screen that hosts a nested navigator, and the routers registered below it (oldest first). */
+type Binding = { store: Store; stack?: StackState; tabs?: TabsState; above?: Router; entry?: NativeLocation; inner: Router[] };
 const bindings = new WeakMap<Router, Binding>();
 
 const BASE = "https://native.invalid";
@@ -302,6 +302,8 @@ function createStore(tree: StackNode) {
     navigate(href: string, navigation: Navigation) {
       const target = resolved(href);
       apply(plan(stateOf(target), target, navigation), target, true);
+      // A navigation passes through the navigators of its chain: the layout of each is loaded if it is not, and again if its load failed (a pane's layout is no route of any stack, so nothing else would).
+      for (const { node } of target.chain) if (node.layout) load(node);
     },
     /** Puts the first screen on the root stack (it loads when it renders, not here), from a saved state when there is one. */
     start(initial: string, saved?: StackSnapshot) {
@@ -347,9 +349,9 @@ function deepest(entry: NativeLocation): NativeLocation {
   return next ? deepest(next) : entry;
 }
 
-type Spec = { store: Store; node: StackNode | TabsNode; scope: string | undefined; above: RouterContext | undefined; navigator: NavigatorState; active: () => boolean };
+type Spec = { store: Store; node: StackNode | TabsNode; scope: string | undefined; above: RouterContext | undefined; navigator: NavigatorState; active: () => boolean; entry?: NativeLocation };
 
-function makeRouter({ store, node, scope, above, navigator, active }: Spec): Router {
+function makeRouter({ store, node, scope, above, navigator, active, entry }: Spec): Router {
   const stack = navigator.kind === "stack" ? navigator.stack : undefined;
   const tabs = navigator.kind === "tabs" ? navigator : undefined;
   /** The stack this router shows: its own, or for tabs the selected pane's. */
@@ -392,7 +394,7 @@ function makeRouter({ store, node, scope, above, navigator, active }: Spec): Rou
     dismissed(key) { stack?.dismissed(key); },
     exited(key) { stack?.exited(key); },
   };
-  bindings.set(router, { store, stack, tabs, above: above?.router, inner: [] });
+  bindings.set(router, { store, stack, tabs, above: above?.router, entry, inner: [] });
   setContext(contextKey, { router, scope, parent: above } satisfies RouterContext);
   // The router is known to the one above while its component lives: the back key finds the innermost active router through them.
   const hosting = above && bindings.get(above.router);
@@ -474,18 +476,19 @@ export function enterNavigator(entry: NativeLocation): Router {
   const { navigator, route } = entry;
   if (!hosting?.stack || !navigator || route.kind === "page") throw new Error(`${entry.url.pathname} is not the screen of a navigator`);
   const stack = hosting.stack;
-  return makeRouter({ store: hosting.store, node: route, scope: route.id, above, navigator, active: () => above.router.active() && stack.entries.at(-1) === entry });
+  return makeRouter({ store: hosting.store, node: route, scope: route.id, above, navigator, entry, active: () => above.router.active() && stack.entries.at(-1) === entry });
 }
 
-/** The router of a pane of the tabs navigator above: a stack of its own, active while its tab is selected. */
-export function enterPane(key: string): Router {
+/** The router of a pane of the tabs navigator above: a stack of its own, active while its tab is selected. `host` is the screen of the tabs navigator, whose params and url the pane's layout is given. */
+export function enterPane(key: string): { router: Router; host: NativeLocation } {
   const above = routerAbove();
   const hosting = bindings.get(above.router);
   const stack = hosting?.tabs?.panes.get(key);
   const pane = above.router.node.kind === "tabs" ? above.router.node.panes.find((candidate) => candidate.key === key) : undefined;
   const tabs = hosting?.tabs;
-  if (!hosting || !tabs || !stack || !pane) throw new Error(`No pane ${key} in the navigator above`);
-  return makeRouter({ store: hosting.store, node: pane.stack, scope: key, above, navigator: { kind: "stack", stack }, active: () => above.router.active() && tabs.selected === key });
+  if (!hosting || !tabs || !stack || !pane || !hosting.entry) throw new Error(`No pane ${key} in the navigator above`);
+  const router = makeRouter({ store: hosting.store, node: pane.stack, scope: key, above, navigator: { kind: "stack", stack }, active: () => above.router.active() && tabs.selected === key });
+  return { router, host: hosting.entry };
 }
 
 /** The nearest router above this component, if any: what `Tabs` asks to tell a tabs layout from a tab bar of a page. */

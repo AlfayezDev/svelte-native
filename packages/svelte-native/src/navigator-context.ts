@@ -10,6 +10,9 @@ export const TABS_CONTEXT = Symbol.for("svelte-native.tabs");
 export type StackDefaults = Pick<ScreenOptions, "header" | "animation" | "gestureEnabled" | "statusBar" | "navigationBar" | "style">;
 /** What a `<Stack>` provides to the router rendering its screens: the defaults and the snippet shown while a route's modules load. */
 export type StackContext = { readonly defaults: StackDefaults; readonly loading: Snippet<[NativeLocation]> | undefined };
+/** What a `<Router>` provides to the navigators inside its screens: the snippet its own screens show while a route's modules load (a pane's layout is not loaded yet, so it cannot say its own). */
+export const PLACEHOLDER_CONTEXT = Symbol.for("svelte-native.placeholder");
+export type PlaceholderContext = { readonly loading: Snippet<[NativeLocation]> | undefined };
 /** What a `<Tabs>` in a tabs layout provides to the panes the router renders inside it. */
 export type TabsBar = {
   /** The pane keys in the bar's order: the layout's items first, then the panes it gave no item. */

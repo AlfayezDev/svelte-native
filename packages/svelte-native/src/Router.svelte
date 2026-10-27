@@ -4,7 +4,7 @@
   import Screen from "./components/Screen.svelte";
   import RouteView from "./RouteView.svelte";
   import { SCREEN_CONTEXT } from "./fabric/navigation.ts";
-  import { STACK_CONTEXT, type StackContext } from "./navigator-context.ts";
+  import { PLACEHOLDER_CONTEXT, STACK_CONTEXT, type PlaceholderContext, type StackContext } from "./navigator-context.ts";
   import { connectHost, type NativeLocation, type Router } from "./router.svelte.ts";
   /**
    * The native stack of a stack router: a screen per entry. `loading` is what a screen shows while its route's modules load;
@@ -17,6 +17,7 @@
   // The options of a `<Stack>` belong to the stack it wraps, not to routers below its pages.
   setContext(STACK_CONTEXT, undefined);
   const placeholder = $derived(loading ?? stack?.loading);
+  setContext(PLACEHOLDER_CONTEXT, { get loading() { return placeholder; } } satisfies PlaceholderContext);
   // The root router connects the app to the host (the back key, links); the routers of panes and nested navigators leave it to it.
   onMount(() => connectHost(router));
 </script>

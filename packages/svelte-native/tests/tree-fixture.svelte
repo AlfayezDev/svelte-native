@@ -2,11 +2,16 @@
   import Router from "../src/Router.svelte";
   import { createRouter } from "../src/router.svelte.ts";
   import { appTree } from "./tree-app.ts";
-  let { initial = "/workspaces", bareTabs = false, logLoads, hold } = $props();
+  let { initial = "/workspaces", bareTabs = false, logLoads, hold, boundary = false, outerLoading = false } = $props();
   const router = createRouter(appTree({ bareTabs, logLoads, hold }), initial);
   export function root() { return router; }
   // The session resets by unmounting the root <Router> while the app keeps its router.
   let shown = $state(true);
   export function show(value) { shown = value; }
 </script>
-{#if shown}<Router {router} />{/if}
+{#snippet loading(entry)}<native-text>outer loading {entry.url.pathname}</native-text>{/snippet}
+{#snippet failed(error)}<native-text>failed: {error.message}</native-text>{/snippet}
+{#snippet app()}
+  {#if shown}{#if outerLoading}<Router {router} {loading} />{:else}<Router {router} />{/if}{/if}
+{/snippet}
+{#if boundary}<svelte:boundary {failed}>{@render app()}</svelte:boundary>{:else}{@render app()}{/if}

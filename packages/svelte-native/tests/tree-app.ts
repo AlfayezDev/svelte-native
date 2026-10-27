@@ -29,7 +29,7 @@ export const files: RouteFile[] = [
 ];
 
 /** The tree `buildTree` makes of `files`, linked to the test components the way the generated table links the app's. */
-export function appTree({ bareTabs = false, logLoads, hold }: { bareTabs?: boolean; logLoads?: string[]; hold?: Record<string, (() => void)[]> } = {}): StackNode {
+export function appTree({ bareTabs = false, logLoads, hold }: { bareTabs?: boolean; logLoads?: string[]; hold?: Record<string, ((error?: Error) => void)[]> } = {}): StackNode {
   const layouts: Record<string, Component> = {
     "(workspace)/+layout.mobile.svelte": ContentLayout,
     "(workspace)/[slug]/(tabs)/+layout.mobile.svelte": bareTabs ? BareTabsLayout : TabsLayout,
@@ -38,14 +38,14 @@ export function appTree({ bareTabs = false, logLoads, hold }: { bareTabs?: boole
     "(workspace)/[slug]/flow/inner/+layout.mobile.svelte": StackLayout,
   };
   const componentOf = (path: string): Component => layouts[path] ?? Page;
-  // With `hold`, a loader waits until the test calls the release it left there.
+  // With `hold`, a loader waits until the test calls the release it left there (given an error, the load fails with it).
   const loader = (path: string, around: readonly string[] = []) => () => {
     logLoads?.push(path);
     const modules = { component: componentOf(path), layouts: around.map(componentOf) };
     if (!hold) return Promise.resolve(modules);
     const releases = hold[path] ?? [];
     hold[path] = releases;
-    return new Promise<typeof modules>((done) => { releases.push(() => done(modules)); });
+    return new Promise<typeof modules>((done, fail) => { releases.push((error) => (error ? fail(error) : done(modules))); });
   };
   const linkNode = <Node extends RouteNode>(node: Node): Node => {
     const linked = node.kind === "stack" ? { ...node, routes: node.routes.map(link) } : { ...node, panes: node.panes.map((pane) => ({ key: pane.key, stack: linkNode(pane.stack) })) };

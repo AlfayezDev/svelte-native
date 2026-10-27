@@ -1008,9 +1008,10 @@ type TreeRouter = {
   scope: string | undefined; active: () => boolean; entries: { url: URL; presentation: string; params: Record<string, string> }[]; current: { url: URL };
   selected: string | undefined; goto: (href: string, options?: { replaceState?: boolean; reset?: boolean; presentation?: string }) => void; back: () => boolean;
   replaceBase: (href: string) => void; openURL: (href: string) => boolean; screens: { leaving: boolean; canGoBack: boolean }[];
+  node: { kind: string; panes?: { key: string; stack: object }[] }; modules: (node: object) => unknown;
 };
 type TreeApp = { root: () => TreeRouter; show: (shown: boolean) => void };
-const treeGlobals = globalThis as { __treeRoots?: Record<string, TreeRouter>; __treeRouters?: Record<string, TreeRouter>; __treeOptions?: Record<string, object>; __treeTabs?: object[]; __treeSelections?: string[]; __treePanes?: unknown; __treeTabsRouter?: TreeRouter };
+const treeGlobals = globalThis as { __treeRoots?: Record<string, TreeRouter>; __treeRouters?: Record<string, TreeRouter>; __treeOptions?: Record<string, object>; __treeTabs?: object[]; __treeSelections?: string[]; __treePanes?: unknown; __treeTabsRouter?: TreeRouter; __treeLayouts?: { path?: string; params?: object }[] };
 const pathsOf = (router: TreeRouter) => router.entries.map((entry) => `${entry.url.pathname}${entry.url.search}`);
 const selectedIndex = (surface: number) => parseNativeID(String(ofKind(roots[surface], "tabs")[0].props.nativeID))?.pairs.sel;
 const paneRouter = (path: string): TreeRouter => { const router = treeGlobals.__treeRouters?.[path]; if (!router) throw new Error(`no page rendered at ${path}`); return router; };
@@ -1018,7 +1019,7 @@ const paneRouter = (path: string): TreeRouter => { const router = treeGlobals.__
 async function mountTree(surface: number, props: Record<string, unknown> = {}) {
   const m = await load("tree-fixture.svelte");
   calls.length = 0; roots = {};
-  treeGlobals.__treeRouters = {}; treeGlobals.__treeRoots = {}; delete treeGlobals.__treeOptions; delete treeGlobals.__treeTabs; delete treeGlobals.__treeSelections;
+  treeGlobals.__treeRouters = {}; treeGlobals.__treeRoots = {}; delete treeGlobals.__treeOptions; delete treeGlobals.__treeTabs; delete treeGlobals.__treeSelections; delete treeGlobals.__treeLayouts;
   handlersOf("__backHandlers").length = 0;
   handlersOf("__linkHandlers").length = 0;
   delete (globalThis as { __initialURLReads?: number }).__initialURLReads;
@@ -1319,6 +1320,67 @@ test("a route's modules load when its navigation or its screen asks first; a pan
     expect(shown()).toEqual(["page /acme/inbox", "page /acme/inbox/compose"]);
     router.goto("/acme/home/thread/5"); // a navigation loads what it pushes at once
     expect(logLoads.at(-1)).toBe("(workspace)/[slug]/(tabs)/home/thread/[id]/+mobile.svelte");
+  } finally { reset(); }
+});
+
+test("a pane's stack layout receives the params and url of the tabs screen that hosts it, like every other layout", async () => {
+  withInsets(24);
+  try {
+    await mountTree(103, { initial: "/acme/inbox" });
+    expect(treeGlobals.__treeLayouts).toEqual([{ path: "/acme", params: { slug: "acme" } }]);
+  } finally { reset(); }
+});
+
+test("while a pane's layout loads the pane shows the placeholder of the router around it, and the layout's own loading snippet takes over once it is in", async () => {
+  withInsets(24);
+  try {
+    const hold: Record<string, ((error?: Error) => void)[]> = {};
+    const release = (path: string) => hold[path]?.shift()?.();
+    const { settled, texts: shown } = await mountTree(104, { initial: "/acme/inbox", hold, outerLoading: true });
+    expect(shown()).toEqual(["outer loading /acme"]); // the tabs screen's own modules
+    release("(workspace)/[slug]/(tabs)/+layout.mobile.svelte");
+    await settled();
+    expect(shown()).toEqual(["outer loading /acme/inbox"]); // the pane's layout is pending: not a blank pane
+    release("(workspace)/[slug]/(tabs)/inbox/+layout.mobile.svelte");
+    await settled();
+    expect(shown()).toEqual(["loading /acme/inbox"]); // the layout's <Stack loading> while the page loads
+    release("(workspace)/[slug]/(tabs)/inbox/+mobile.svelte");
+    await settled();
+    expect(shown()).toEqual(["page /acme/inbox"]);
+  } finally { reset(); }
+});
+
+test("a pane's layout that failed to load throws where the pane renders and loads again on the next navigation into the pane", async () => {
+  withInsets(24);
+  try {
+    const logLoads: string[] = [];
+    const hold: Record<string, ((error?: Error) => void)[]> = {};
+    const release = (path: string, error?: Error) => hold[path]?.shift()?.(error);
+    const tabsLayout = "(workspace)/[slug]/(tabs)/+layout.mobile.svelte";
+    const inboxLayout = "(workspace)/[slug]/(tabs)/inbox/+layout.mobile.svelte";
+    const { router, settled, texts: shown } = await mountTree(105, { initial: "/acme/home", logLoads, hold, boundary: true });
+    release(tabsLayout);
+    await settled();
+    release("(workspace)/[slug]/(tabs)/home/+mobile.svelte");
+    await settled();
+    const tabs = treeGlobals.__treeTabsRouter;
+    const inbox = tabs?.node.panes?.find((pane) => pane.key === "inbox")?.stack;
+    if (!tabs || !inbox) throw new Error("the tabs layout did not render");
+    expect(shown()).toEqual(["page /acme/home"]);
+
+    router.goto("/acme/inbox"); // a navigation into the pane loads its layout before the pane mounts
+    expect(logLoads.filter((path) => path === inboxLayout)).toHaveLength(1);
+    release(inboxLayout, new Error("chunk missing"));
+    await settled();
+    expect(() => tabs.modules(inbox)).toThrow("chunk missing");
+    expect(shown()).toEqual(["failed: chunk missing"]); // thrown where the pane renders: the nearest boundary draws it
+
+    router.goto("/acme/inbox/compose");
+    expect(logLoads.filter((path) => path === inboxLayout)).toHaveLength(2); // retried by the next navigation into the pane
+    expect(tabs.modules(inbox)).toBeUndefined(); // the failure is cleared while the new load runs
+    release(inboxLayout);
+    await settled();
+    expect(tabs.modules(inbox)).toBeDefined();
   } finally { reset(); }
 });
 

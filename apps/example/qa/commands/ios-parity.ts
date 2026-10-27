@@ -67,19 +67,22 @@ function movingMasks(entry: CaptureEntry): Rect[] {
 export function glassMasks(entry: CaptureEntry): Rect[] {
 	const scale = entry.scale ?? 1;
 	const edge = 6 * scale;
+	// The capsule's shadow and blur halo lie outside its frame: a run that passed 93 of 96 cases differed by exactly two pixels one
+	// row under a tab bar's frame on the three others. The halo is masked with the rim.
+	const halo = 4 * scale;
 	const masks: Rect[] = [];
 	for (const [x = 0, y = 0, width = 0, height = 0] of entry.glass ?? []) {
 		const rect = { x: x * scale, y: y * scale, width: width * scale, height: height * scale };
 		if (rect.width <= rect.height * 1.5) {
-			masks.push(rect);
+			masks.push({ x: rect.x - halo, y: rect.y - halo, width: rect.width + 2 * halo, height: rect.height + 2 * halo });
 			continue;
 		}
 		const end = rect.height / 2 + 6 * scale;
 		masks.push(
-			{ x: rect.x, y: rect.y, width: end, height: rect.height },
-			{ x: rect.x + rect.width - end, y: rect.y, width: end, height: rect.height },
-			{ x: rect.x, y: rect.y, width: rect.width, height: edge },
-			{ x: rect.x, y: rect.y + rect.height - edge, width: rect.width, height: edge },
+			{ x: rect.x - halo, y: rect.y - halo, width: end + halo, height: rect.height + 2 * halo },
+			{ x: rect.x + rect.width - end, y: rect.y - halo, width: end + halo, height: rect.height + 2 * halo },
+			{ x: rect.x - halo, y: rect.y - halo, width: rect.width + 2 * halo, height: edge + halo },
+			{ x: rect.x - halo, y: rect.y + rect.height - edge, width: rect.width + 2 * halo, height: edge + halo },
 		);
 	}
 	return masks;

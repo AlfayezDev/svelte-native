@@ -211,7 +211,7 @@ class EngineStack(context: Context) : EngineView(context) {
       val visibility = if (s.displayNone) View.GONE else View.VISIBLE
       if (s.visibility != visibility) s.visibility = visibility
       // Inactive or covered screens are hidden through alpha, not INVISIBLE (see EngineScreen.setHidden).
-      s.setHidden(!s.displayNone && !s.leaving && (s.activityState == 0 || covered(screens, s)))
+      s.setHidden(!s.displayNone && ((!s.leaving && (s.activityState == 0 || covered(screens, s))) || s.exited))
       s.touchable = !s.leaving && s === top
     }
     // Below a sheet that has no scrim the screens stay interactive, down to the first screen that blocks them.
@@ -327,6 +327,7 @@ class EngineStack(context: Context) : EngineView(context) {
     child.transitioning = false
     child.leaving = false
     child.dismissed = false
+    child.exited = false
     child.alpha = 1f
     child.translationX = 0f
     val others = live().filter { it !== child }
@@ -345,6 +346,11 @@ class EngineStack(context: Context) : EngineView(context) {
       val s = getChildAt(i) as? EngineScreen
       if (s != null && s.leaving) bringChildToFront(s)
     }
+    if (child.activityState == 0) {
+      // Mounted already inactive: nothing to animate, it reports its exit at once (SPEC, "Screen exit").
+      exitScreen(child)
+      return
+    }
     val kind = child.transitionKind()
     if (atTop && others.isNotEmpty() && kind != 0 && isLaidOut && width > 0) {
       enterFrom(child, kind)
@@ -356,6 +362,41 @@ class EngineStack(context: Context) : EngineView(context) {
       }
     }
     refresh()
+  }
+
+  /**
+   * JavaScript set a mounted screen's `activityState` to 0 (SPEC, "Screen exit"): the screen leaves exactly as a removed
+   * one would (the top pushed screen with its exit transition, anything else at once), but the view tree stays attached
+   * and hidden until JavaScript removes it, and `topExited` is sent once the stack is at rest again: a turn after the
+   * transition's end (after `appear` of the new top and `disappear` of this screen), or at once for a screen with nothing
+   * to animate. A screen already leaving (dismissed by the user, or exited) is not animated again.
+   */
+  fun exitScreen(child: EngineScreen) {
+    if (child.leaving || child.dismissed || child.exited || child.parent !== this) return
+    val others = live().filter { it !== child }
+    val index = indexOfChild(child)
+    var above = false
+    for (i in index + 1 until childCount) if (getChildAt(i) is EngineScreen) above = true
+    val kind = child.transitionKind()
+    val animate = !above && others.isNotEmpty() && kind != 0 && isLaidOut && width > 0 &&
+      child.visibility == View.VISIBLE && !child.hidden && child.appeared
+    child.leaving = true
+    if (!animate) {
+      child.exited = true
+      refresh()
+      post { if (child.parent === this && child.exited) NavEvents.exited(child.node.tag) }
+      return
+    }
+    cancelRunning(child)
+    child.transitioning = true
+    refresh()
+    exitTo(child, kind, DURATION) {
+      child.transitioning = false
+      child.exited = true
+      // The screen below appears and this one disappears before JavaScript hears the exit ended.
+      refresh()
+      post { if (child.parent === this && child.exited) NavEvents.exited(child.node.tag) }
+    }
   }
 
   fun removeScreen(child: EngineScreen) {

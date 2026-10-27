@@ -38,6 +38,8 @@ open class EngineScreen(context: Context) : EngineView(context) {
 
   /** Popping (JavaScript removed it, or the user dismissed it): still attached while its exit plays, no longer part of the stack. */
   var leaving = false
+  /** JavaScript set `activityState` to 0 and the stack took the screen away ("Screen exit" in SPEC): `topExited` was sent; the view waits, hidden, for its removal. */
+  var exited = false
   /** Dismissed by the user: `onDismissed` was (or is about to be) sent; the removal that follows needs no animation. */
   var dismissed = false
   /** A transition is running on this view. */
@@ -152,6 +154,8 @@ open class EngineScreen(context: Context) : EngineView(context) {
     if (!p.seen) return
     val changed = activityState != p.activityState || presentation != p.presentation || gestureEnabled != p.gestureEnabled ||
       animation != p.animation || backDismissal != p.backDismissal
+    // A live screen whose activityState drops to 0 leaves through the stack's exit (SPEC, "Screen exit"), not through hiding.
+    val exits = p.activityState == 0 && activityState != 0
     activityState = p.activityState; presentation = p.presentation; gestureEnabled = p.gestureEnabled
     animation = p.animation; backDismissal = p.backDismissal
     val spec = if (p.barsSeen) SystemBarsSpec(p.statusStyle, p.statusHidden, p.hasNavColor, p.navColor, p.navStyle) else null
@@ -159,7 +163,7 @@ open class EngineScreen(context: Context) : EngineView(context) {
     bars = spec
     // The common props reset the accessibility flag on every update; the stack's choice is applied again.
     applyA11y()
-    if (changed) stack?.refresh()
+    if (exits && stack != null) stack?.exitScreen(this) else if (changed) stack?.refresh()
     if (barsChanged) SystemBars.invalidate(this)
   }
 

@@ -82,9 +82,9 @@ export const TAB_BAR: Record<NavigationPlatform, number> = { android: 64, ios: 4
  * Whether the native stack of a platform keeps a screen whose `activityState` JavaScript set to 0 on screen, takes it
  * away with its exit transition and then sends `topExited` (SPEC.md, "Screen exit"). Where it does, the router keeps a
  * popped entry mounted until that event, so the unmount of the page leaves the transition's frames; where it does not,
- * the router removes the entry at once and the stack animates the removal itself (Android's `EngineStack.removeScreen`).
+ * the router removes the entry at once and the stack animates the removal itself (how Android worked before `EngineStack.exitScreen`).
  */
-export const EXIT_REPORTED: Record<NavigationPlatform, boolean> = { android: false, ios: true };
+export const EXIT_REPORTED: Record<NavigationPlatform, boolean> = { android: true, ios: true };
 /** How long the router waits for `topExited` before it removes a popped entry anyway (and says so). The longest exit is a sheet's, about 0.5 s. */
 export const EXIT_TIMEOUT_MS = 2500;
 /** Width reserved at the start of the header for the back button; also the minimum hit area. */

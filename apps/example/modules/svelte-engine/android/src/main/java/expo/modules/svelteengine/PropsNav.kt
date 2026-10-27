@@ -169,6 +169,9 @@ object NavEvents {
   /** The user dismissed the screen [tag] (back button, predictive back, edge swipe, sheet drag or scrim) and its transition finished: `topDismissed`. */
   @JvmStatic external fun dismissed(tag: Int)
 
+  /** JavaScript set the screen [tag]'s activityState to 0 and the stack finished taking it away (SPEC, "Screen exit"): `topExited`. */
+  @JvmStatic external fun exited(tag: Int)
+
   /** The screen became visible and its transition finished: `topAppear`. */
   @JvmStatic external fun appear(tag: Int)
 

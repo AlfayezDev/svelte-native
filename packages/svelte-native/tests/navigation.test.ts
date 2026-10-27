@@ -692,6 +692,9 @@ test("the router loads the first screen's route when it is created and every oth
   await turns(m);
   expect(app.loadLog()).toEqual(["home", "section", "item"]); // each route loads once
   expect(app.stack()).toEqual(["/b/7"]);
+  // The left screens stay mounted (activityState 0) until the stack reports their exit.
+  for (const screen of roots[41][0].children) if (activityOf(screen) === "0") emit(screen.target, "topExited", {});
+  await turns(m);
   expect(texts(41)).toEqual(["page /b/7:7"]);
 });
 
@@ -894,17 +897,26 @@ test("a popped screen that never reports its exit is removed after EXIT_TIMEOUT_
   } finally { jest.useRealTimers(); console.warn = warn; reset(); }
 });
 
-test("on Android the router removes a popped screen at once: the engine animates the removal itself", async () => {
-  const m = await load("router-screens-fixture.svelte");
-  calls.length = 0; roots = {};
-  const app = m.startSurface(60, m.Fixture, {}) as ScreensApp;
-  await turns(m);
-  app.goto("/a");
-  app.back();
-  await turns(m);
-  expect(app.screens()).toEqual(["/:root:live"]);
-  expect(roots[60][0].children).toHaveLength(1);
-  expect(roots[60][0].children.map(activityOf)).toEqual(["2"]);
+test("on Android a popped screen stays mounted with activityState 0 until the stack sends topExited", async () => {
+  jest.useFakeTimers(); // the exit timeout never fires here
+  try {
+    const m = await load("router-screens-fixture.svelte");
+    calls.length = 0; roots = {};
+    const app = m.startSurface(60, m.Fixture, {}) as ScreensApp;
+    await turns(m);
+    app.goto("/a");
+    await turns(m);
+    const screens = () => roots[60][0].children;
+    expect(app.back()).toBe(true);
+    await turns(m);
+    expect(app.screens()).toEqual(["/:root:live", "/a:back:leaving"]);
+    expect(screens().map(activityOf)).toEqual(["2", "0"]);
+    emit(screens()[1].target, "topExited", {});
+    await turns(m);
+    expect(app.screens()).toEqual(["/:root:live"]);
+    expect(screens()).toHaveLength(1);
+    expect(screens().map(activityOf)).toEqual(["2"]);
+  } finally { jest.useRealTimers(); reset(); }
 });
 
 type NestedApp = ScreensApp & { dummy?: never };

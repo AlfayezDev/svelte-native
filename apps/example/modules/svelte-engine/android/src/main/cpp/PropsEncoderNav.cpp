@@ -28,6 +28,11 @@ void dismissed(jni::alias_ref<jclass>, jint tag) {
   dispatch(tag, "dismissed", folly::dynamic::object("dismissCount", 1)("target", tag));
 }
 
+// JavaScript set the screen's activityState to 0 and the stack finished taking it away (SPEC, "Screen exit").
+void exited(jni::alias_ref<jclass>, jint tag) {
+  dispatch(tag, "exited", folly::dynamic::object("target", tag));
+}
+
 void appear(jni::alias_ref<jclass>, jint tag) {
   dispatch(tag, "appear", folly::dynamic::object("target", tag));
 }
@@ -82,6 +87,7 @@ void registerNavEventNatives() {
   jni::findClassStatic("expo/modules/svelteengine/NavEvents")
       ->registerNatives({
           makeNativeMethod("dismissed", dismissed),
+          makeNativeMethod("exited", exited),
           makeNativeMethod("appear", appear),
           makeNativeMethod("disappear", disappear),
           makeNativeMethod("detentChange", detentChange),

@@ -298,6 +298,28 @@ export const cases: ScreenCase[] = [
 		},
 	),
 	screenCase(
+		"screens-toolbar",
+		"/__dev/screens?mode=toolbar",
+		`${screens}?mode=toolbar`,
+		label("Toolbar, Four actions"),
+		{
+			layout: "header",
+			title: "Toolbar, Four actions",
+			controls: ["Navigate up", "Reply", "Archive", "Flag", "Delete"],
+		},
+	),
+	screenCase(
+		"screens-toolbar-center",
+		"/__dev/screens?mode=toolbar-center",
+		`${screens}?mode=toolbar-center`,
+		label("Toolbar center"),
+		{
+			layout: "header",
+			title: "Toolbar center",
+			controls: ["Navigate up", "Attach", "Send", "List", "Grid"],
+		},
+	),
+	screenCase(
 		"screens-sheet",
 		"/__dev/screens?mode=sheet (presented)",
 		screens,

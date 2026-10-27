@@ -144,10 +144,14 @@ Kind kindOf(const NativeId &id) {
   if (id.kind == "stack") return Kind::Stack;
   if (id.kind == "screen") return Kind::Screen;
   if (id.kind == "header") return Kind::Header;
-  if (id.kind == "header-left" || id.kind == "header-center" || id.kind == "header-right" || id.kind == "header-search") return Kind::HeaderSlot;
+  if (id.kind == "header-left" || id.kind == "header-center" || id.kind == "header-right" || id.kind == "header-search" || id.kind == "toolbar-center") {
+    return Kind::HeaderSlot;
+  }
   if (id.kind == "tabs") return Kind::Tabs;
   if (id.kind == "tab") return Kind::Tab;
   if (id.kind == "tab-icon") return Kind::TabIcon;
+  if (id.kind == "toolbar") return Kind::Toolbar;
+  if (id.kind == "toolbar-item") return Kind::ToolbarItem;
   return Kind::Unknown;
 }
 
@@ -218,6 +222,7 @@ SlotSpec parseSlot(const NativeId &id) {
   if (id.kind == "header-center") spec.slot = kSlotCenter;
   else if (id.kind == "header-right") spec.slot = kSlotRight;
   else if (id.kind == "header-search") spec.slot = kSlotSearch;
+  else if (id.kind == "toolbar-center") spec.slot = kSlotToolbarCenter;
   else spec.slot = kSlotLeft;
   spec.placeholder = text(id, "ph");
   spec.value = text(id, "v");
@@ -251,10 +256,37 @@ TabSpec parseTab(const NativeId &id) {
   return spec;
 }
 
+ToolbarSpec parseToolbar(const NativeId &id) {
+  ToolbarSpec spec;
+  spec.hidden = flagIs1(id, "hd");
+  spec.translucent = flagIs1(id, "tl");
+  spec.tint = color(id, "tc");
+  spec.background = color(id, "bg");
+  spec.slots = integer(id, "sl", 0);
+  return spec;
+}
+
+ToolbarItemSpec parseToolbarItem(const NativeId &id) {
+  ToolbarItemSpec spec;
+  spec.key = text(id, "k");
+  spec.title = text(id, "t");
+  spec.icon = text(id, "ic");
+  spec.iconIsView = integer(id, "iv", 0);
+  if (id.find("bd")) {
+    spec.badgeText = text(id, "bd");
+    spec.badgeKind = spec.badgeText->empty() ? kBadgeDot : kBadgeText;
+  }
+  spec.disabled = integer(id, "ds", 0);
+  spec.spacer = integer(id, "sp", 0);
+  return spec;
+}
+
 ScreenSpec parseScreen(const std::string &id) { return parseScreen(splitNativeId(id)); }
 HeaderSpec parseHeader(const std::string &id) { return parseHeader(splitNativeId(id)); }
 SlotSpec parseSlot(const std::string &id) { return parseSlot(splitNativeId(id)); }
 TabsSpec parseTabs(const std::string &id) { return parseTabs(splitNativeId(id)); }
 TabSpec parseTab(const std::string &id) { return parseTab(splitNativeId(id)); }
+ToolbarSpec parseToolbar(const std::string &id) { return parseToolbar(splitNativeId(id)); }
+ToolbarItemSpec parseToolbarItem(const std::string &id) { return parseToolbarItem(splitNativeId(id)); }
 
 }  // namespace svelte

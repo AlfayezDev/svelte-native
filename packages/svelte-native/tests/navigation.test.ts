@@ -1007,7 +1007,7 @@ test("the back key belongs to a router only while it is active, and links only t
 type TreeRouter = {
   scope: string | undefined; active: () => boolean; entries: { url: URL; presentation: string; params: Record<string, string> }[]; current: { url: URL };
   selected: string | undefined; goto: (href: string, options?: { replaceState?: boolean; reset?: boolean; presentation?: string }) => void; back: () => boolean;
-  replaceBase: (href: string) => void; openURL: (href: string) => boolean; screens: { leaving: boolean }[];
+  replaceBase: (href: string) => void; openURL: (href: string) => boolean; screens: { leaving: boolean; canGoBack: boolean }[];
 };
 type TreeApp = { root: () => TreeRouter; show: (shown: boolean) => void };
 const treeGlobals = globalThis as { __treeRoots?: Record<string, TreeRouter>; __treeRouters?: Record<string, TreeRouter>; __treeOptions?: Record<string, object>; __treeTabs?: object[]; __treeSelections?: string[]; __treePanes?: unknown; __treeTabsRouter?: TreeRouter };
@@ -1420,6 +1420,40 @@ test("a nested stack navigator is a screen of its parent: the stack inside it st
     expect(pathsOf(paneRouter("/acme/flow/done"))).toEqual(["/acme/flow/done"]); // a new visit, a new stack
     expect(pathsOf(flow)).toEqual(["/acme/flow/start"]); // the old one went with its screen
   } finally { reset(); }
+});
+
+test("the first screen of a nested stack navigator can go back when its own screen has one below it; a pane's base and the root's first screen cannot", async () => {
+  withInsets(24);
+  jest.useFakeTimers();
+  try {
+    const arrows = (router: TreeRouter) => router.screens.filter((screen) => !screen.leaving).map((screen) => screen.canGoBack);
+    const { router, settled } = await mountTree(101, { initial: "/acme/home" });
+    expect(arrows(paneRouter("/acme/home"))).toEqual([false]); // a pane's base: its first back does not pop the pane
+    router.goto("/acme/flow/start");
+    await settled();
+    const flow = paneRouter("/acme/flow/start");
+    expect(arrows(router)).toEqual([false, true]);
+    expect(arrows(flow)).toEqual([true]); // its first back pops the flow's screen from the root, where the tabs are below it
+    flow.goto("/acme/flow/done");
+    await settled();
+    expect(arrows(flow)).toEqual([true, true]);
+    flow.back();
+    flow.back();
+    await settled();
+    expect(arrows(router)).toEqual([false]);
+    router.goto("/acme/flow/inner/step");
+    await settled();
+    expect(pathsOf(router)).toEqual(["/acme", "/acme/flow"]);
+    expect(arrows(paneRouter("/acme/flow/inner/step"))).toEqual([true]); // the inner flow is the flow's first screen, and the flow can go back: so can the inner one, by popping the whole flow
+
+    const first = await mountTree(102, { initial: "/acme/flow/start" }); // the flow is the root's first screen: nothing to go back to
+    expect(pathsOf(first.router)).toEqual(["/acme/flow"]);
+    expect(arrows(first.router)).toEqual([false]);
+    expect(arrows(paneRouter("/acme/flow/start"))).toEqual([false]);
+    paneRouter("/acme/flow/start").goto("/acme/flow/done");
+    await first.settled();
+    expect(arrows(paneRouter("/acme/flow/done"))).toEqual([false, true]);
+  } finally { jest.useRealTimers(); reset(); }
 });
 
 test("a pane's stack keeps the exit contract of its own: a popped screen stays until the stack reports its exit, or until the timeout, with the same warning", async () => {

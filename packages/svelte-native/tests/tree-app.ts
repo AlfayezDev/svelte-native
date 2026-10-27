@@ -8,7 +8,7 @@ import StackLayout from "./tree-stack-layout.svelte";
 
 const file = (path: string, exports: RouteFile["exports"] = {}): RouteFile => ({ path, exports });
 
-/** The product shape the contract describes: pages at the root, a modal, a workspace with tabs (home and inbox, the inbox with a stack layout) and a modal over them. */
+/** The product shape the contract describes: pages at the root, a modal, a workspace with tabs (home and inbox, the inbox with a stack layout), a modal over them, and a flow (a stack navigator, with a stack navigator of its own). */
 export const files: RouteFile[] = [
   file("+layout.mobile.svelte"),
   file("workspaces/+mobile.svelte"),
@@ -23,6 +23,8 @@ export const files: RouteFile[] = [
   file("(workspace)/[slug]/flow/+layout.mobile.svelte", { navigator: "stack" }),
   file("(workspace)/[slug]/flow/start/+mobile.svelte"),
   file("(workspace)/[slug]/flow/done/+mobile.svelte"),
+  file("(workspace)/[slug]/flow/inner/+layout.mobile.svelte", { navigator: "stack" }),
+  file("(workspace)/[slug]/flow/inner/step/+mobile.svelte"),
   file("(workspace)/+layout.mobile.svelte"),
 ];
 
@@ -33,6 +35,7 @@ export function appTree({ bareTabs = false, logLoads, hold }: { bareTabs?: boole
     "(workspace)/[slug]/(tabs)/+layout.mobile.svelte": bareTabs ? BareTabsLayout : TabsLayout,
     "(workspace)/[slug]/(tabs)/inbox/+layout.mobile.svelte": StackLayout,
     "(workspace)/[slug]/flow/+layout.mobile.svelte": StackLayout,
+    "(workspace)/[slug]/flow/inner/+layout.mobile.svelte": StackLayout,
   };
   const componentOf = (path: string): Component => layouts[path] ?? Page;
   // With `hold`, a loader waits until the test calls the release it left there.

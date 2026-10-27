@@ -94,10 +94,13 @@ function release(entry: NativeLocation): void {
  * ended (SPEC.md "Screen exit"), so the unmount of the page (the whole subtree) is not part of the transition's frames.
  * Platforms whose stack animates a removal itself (`EXIT_REPORTED` false) drop the entry at once. `screens` is what the router
  * renders: the entries and the ones on their way out, each at the place it had, so nothing moves in the native stack when one leaves.
+ * A screen can go back when another is below it, or when `baseBack` says the first one can: a nested stack navigator's first
+ * screen goes back by popping its own screen from the stack above (a pane's base does not).
  */
-function createStack(reportsExit: boolean, initial: readonly NativeLocation[] = []) {
+function createStack(reportsExit: boolean, initial: readonly NativeLocation[] = [], baseBack = false) {
+  const canGoBackAt = (index: number) => index > 0 || baseBack;
   let entries = $state.raw<readonly NativeLocation[]>(initial);
-  let screens = $state.raw<readonly RouterScreen[]>(initial.map((entry, index) => ({ entry, canGoBack: index > 0, leaving: false })));
+  let screens = $state.raw<readonly RouterScreen[]>(initial.map((entry, index) => ({ entry, canGoBack: canGoBackAt(index), leaving: false })));
   let exitTimer: ReturnType<typeof setTimeout> | undefined;
   /** Makes `next` the screens, and frees the navigators of the entries that are gone. */
   function show(next: readonly RouterScreen[]) {
@@ -106,6 +109,8 @@ function createStack(reportsExit: boolean, initial: readonly NativeLocation[] = 
     for (const screen of gone) release(screen.entry);
   }
   const stack = {
+    /** Whether the first screen of this stack can go back. */
+    get baseBack() { return baseBack; },
     /** The live stack, bottom first: what `back`, `goto` and `current` work on. */
     get entries() { return entries; },
     get screens() { return screens; },
@@ -116,14 +121,14 @@ function createStack(reportsExit: boolean, initial: readonly NativeLocation[] = 
       for (const screen of screens) {
         if (screen.leaving) list.push(screen);
         else if (next.includes(screen.entry)) {
-          const canGoBack = next.indexOf(screen.entry) > 0;
+          const canGoBack = canGoBackAt(next.indexOf(screen.entry));
           list.push(canGoBack === screen.canGoBack ? screen : { ...screen, canGoBack });
         } else if (retire) { list.push({ ...screen, leaving: true }); retired = true; }
       }
       // A new entry goes right after the one below it in the stack, so a screen pushed while another leaves sits under it.
       next.forEach((entry, index) => {
         if (list.some((screen) => screen.entry === entry)) return;
-        list.splice(index === 0 ? 0 : list.findIndex((screen) => screen.entry === next[index - 1]) + 1, 0, { entry, canGoBack: index > 0, leaving: false });
+        list.splice(index === 0 ? 0 : list.findIndex((screen) => screen.entry === next[index - 1]) + 1, 0, { entry, canGoBack: canGoBackAt(index), leaving: false });
       });
       entries = next;
       show(list);
@@ -163,9 +168,10 @@ function createStore(tree: StackNode) {
   let disposed = false;
   let launchRead = false;
 
-  function entryFor(route: PageRoute | RouteNode, href: string, params: Record<string, string>, presentation: Presentation): NativeLocation {
+  /** `canGoBack` is whether the entry's own screen will have one below it: a nested stack navigator's first screen takes it for its own. */
+  function entryFor(route: PageRoute | RouteNode, href: string, params: Record<string, string>, presentation: Presentation, canGoBack: boolean): NativeLocation {
     const entry: NativeLocation = { key: ++nextKey, route, url: new SvelteURL(href, BASE), params, presentation };
-    if (route.kind === "stack") entry.navigator = { kind: "stack", stack: createStack(reportsExit) };
+    if (route.kind === "stack") entry.navigator = { kind: "stack", stack: createStack(reportsExit, [], canGoBack) };
     else if (route.kind === "tabs") entry.navigator = tabsFor(route, params);
     return entry;
   }
@@ -175,7 +181,7 @@ function createStore(tree: StackNode) {
     const panes = new Map(node.panes.map(({ key, stack }) => {
       const page = indexPage(stack);
       const href = fillPath(stack.path, params);
-      return [key, createStack(reportsExit, page ? [entryFor(page, href, matchPath(page.path, href) ?? params, "push")] : [])];
+      return [key, createStack(reportsExit, page ? [entryFor(page, href, matchPath(page.path, href) ?? params, "push", false)] : [])];
     }));
     return { kind: "tabs", get selected() { return selected; }, select(key) { if (panes.has(key)) selected = key; }, panes };
   }
@@ -247,9 +253,10 @@ function createStore(tree: StackNode) {
         stack.set([base]);
         continue;
       }
-      const next = entryFor(route, operation.href, params, operation.presentation);
-      if (eager) load(route);
       const kept = stack.entries;
+      const index = operation.op === "push" ? kept.length : operation.op === "replace" ? kept.length - 1 : base ? 1 : 0;
+      const next = entryFor(route, operation.href, params, operation.presentation, index > 0 || stack.baseBack);
+      if (eager) load(route);
       stack.set(operation.op === "push" ? [...kept, next] : operation.op === "replace" ? [...kept.slice(0, -1), next] : base ? [base, next] : [next]);
     }
   }
@@ -271,13 +278,14 @@ function createStore(tree: StackNode) {
       }),
     };
   }
-  function restoreEntries(node: StackNode, saved: StackSnapshot): NativeLocation[] {
-    return saved.entries.map((row) => {
+  function restoreEntries(node: StackNode, saved: StackSnapshot, baseBack = false): NativeLocation[] {
+    return saved.entries.map((row, index) => {
       const hit = locate(node, row.href);
       if (!hit) throw unresolved(row.href);
-      const entry = entryFor(hit.route, row.href, hit.params, row.presentation);
+      const canGoBack = index > 0 || baseBack;
+      const entry = entryFor(hit.route, row.href, hit.params, row.presentation, canGoBack);
       const navigator = entry.navigator;
-      if (navigator?.kind === "stack" && hit.route.kind === "stack" && row.stack) navigator.stack.set(restoreEntries(hit.route, row.stack), false);
+      if (navigator?.kind === "stack" && hit.route.kind === "stack" && row.stack) navigator.stack.set(restoreEntries(hit.route, row.stack, canGoBack), false);
       if (navigator?.kind === "tabs" && hit.route.kind === "tabs" && row.tabs) {
         for (const pane of hit.route.panes) {
           const savedPane = row.tabs.panes[pane.key];
@@ -309,7 +317,7 @@ function createStore(tree: StackNode) {
     replaceBase(stack: StackState, node: StackNode, href: string) {
       const target = resolved(href);
       if (target.chain[target.chain.length - 1].node !== node) throw new Error(`${href} is not a page of this navigator`);
-      const base = entryFor(target.page, target.href, target.params, target.page.presentation);
+      const base = entryFor(target.page, target.href, target.params, target.page.presentation, stack.baseBack);
       load(target.page);
       stack.set([base, ...stack.entries.slice(1)]);
     },

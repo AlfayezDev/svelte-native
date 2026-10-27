@@ -8,4 +8,7 @@ extern const char SvelteHeaderComponentName[] = "SvelteHeader";
 extern const char SvelteHeaderSlotComponentName[] = "SvelteHeaderSlot";
 extern const char SvelteTabsComponentName[] = "SvelteTabs";
 extern const char SvelteTabComponentName[] = "SvelteTab";
+extern const char SvelteToolbarComponentName[] = "SvelteToolbar";
+extern const char SvelteToolbarItemComponentName[] = "SvelteToolbarItem";
+extern const char SvelteToolbarCenterComponentName[] = "SvelteToolbarCenter";
 }  // namespace svelte

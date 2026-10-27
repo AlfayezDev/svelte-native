@@ -4,11 +4,14 @@ import type { Layout } from "./screens.ts";
 import { bottom, descendants, right, spokenLabel, type UiNode, type UiTree } from "./uia.ts";
 
 /**
- * The accessibility checklist, run on the tree `uiautomator dump` returns for a screen: the node info the engine's `A11y.kt`,
- * `EngineText`, `EngineHeader` and `EngineTabs` publish, which is what any accessibility service receives. TalkBack is on
- * the emulator, but its swipes do not reach an injected gesture reliably enough to drive a suite; a pass with it (and with a
- * probe service logging its events, SPEC "Android wave 4") confirmed that the tree without the not-important views is what
- * it reads, which is the tree the focus trap is judged on. Six checks, counted per element or per screen:
+ * The accessibility checklist, run on the tree an accessibility service walks: `uiautomator dump --compressed`, the dump
+ * without the views that are not important for accessibility and without everything under a `no-hide-descendants` view
+ * (the screens under a sheet or modal, the sheet's scrim). It carries the node info the engine's `A11y.kt`, `EngineText`,
+ * `EngineHeader` and `EngineTabs` publish. TalkBack is on the emulator, but its swipes do not reach an injected gesture
+ * reliably enough to drive a suite; a pass with it (and with a probe service logging its events, SPEC "Android wave 4")
+ * confirmed that this tree is what it reads. The plain dump lists the views a service never visits (uiautomator asks for
+ * them), so no check reads it: judged on it, the scrim of a sheet is an unlabeled stop and the screen under the sheet
+ * breaks the order and the title. Six checks, counted per element or per screen:
  *
  * - reachable: the element is in the tree, has non-zero bounds inside the display, is enabled, and a service can put focus
  *   on it (it is focusable or actionable or says something). A control the screen's source declares that the tree does not
@@ -61,15 +64,8 @@ export function reachPct(screen: { interactive: number; reachable: number }): st
 }
 
 export type A11yInput = {
+	/** What a service walks: the dump taken with `--compressed` (see the top of this file). */
 	tree: UiTree;
-	/**
-	 * The same window as a service sees it when it does not ask for `flagIncludeNotImportantViews` (`uiautomator dump
-	 * --compressed`): without the views that are not important for accessibility and everything under a
-	 * `no-hide-descendants` view. The focus trap is judged on this tree, because `tree` holds views a screen reader never
-	 * visits (a screen under a sheet is hidden from services with `no-hide-descendants`, which the full dump still lists).
-	 * Absent: `tree` is used.
-	 */
-	importantTree?: UiTree;
 	direction: Direction;
 	display: { width: number; height: number };
 	/** The localized title the screen should lead with, or null for a screen without one. */
@@ -216,7 +212,6 @@ type Element = { node: UiNode | null; label: string };
 
 export function analyzeScreen(input: A11yInput): A11yScreen {
 	const { tree, direction, display, title, lead, controls, scrolled, hidden, layout } = input;
-	const trapTree = input.importantTree ?? tree;
 	const findings: A11yFinding[] = [];
 
 	/* Elements: every interactive node, plus each declared control, matched to a node (an interactive one if there is one). */
@@ -363,7 +358,7 @@ export function analyzeScreen(input: A11yInput): A11yScreen {
 	let focusLeaks = 0;
 	for (const label of hidden) {
 		// A sheet is titled like the button that opened it ("Form sheet"): its own title is not the screen underneath.
-		const leaked = trapTree.nodes.find(
+		const leaked = tree.nodes.find(
 			(node) =>
 				node.bounds.width > 0 &&
 				node.bounds.height > 0 &&

@@ -305,61 +305,55 @@ describe("focus trap", () => {
 	});
 });
 
-describe("focus trap on the tree a screen reader walks", () => {
+describe("the tree a screen reader walks is the only tree the checks read", () => {
 	const covered = [button("Push", [0, 0, 100, 100]), button("Other", [0, 200, 100, 300])];
 	const sheet = [button("Close", [0, 1500, 100, 1600])];
+	// The full dump of a sheet over a screen: the screen under it (no-hide-descendants for a service) and the sheet's scrim, a
+	// clickable, focusable view with no label that is not important for accessibility; the compressed dump has neither.
+	const scrim: N = { cls: "android.view.View", clickable: true, focusable: true, bounds: [0, 0, 1080, 2400] };
+	const base = {
+		direction: "ltr" as const,
+		display,
+		title: null,
+		lead: [],
+		controls: [],
+		scrolled: [],
+		hidden: ["Push", "Other"],
+		layout: "sheet" as const,
+	};
 
-	test("a label only the full dump lists is not a leak: the not-important views are not what a service walks", () => {
-		// uiautomator's full dump lists the covered screen (it is no-hide-descendants for services); the compressed one does not.
-		const full = tree(...covered, ...sheet);
-		const important = tree(...sheet);
-		const r = analyzeScreen({
-			tree: full,
-			importantTree: important,
-			direction: "ltr",
-			display,
-			title: null,
-			lead: [],
-			controls: [],
-			scrolled: [],
-			hidden: ["Push", "Other"],
-			layout: "sheet",
+	test("the compressed dump has no leak where the full dump, read as the tree, has two", () => {
+		const walked = analyzeScreen({ ...base, tree: tree(...sheet) });
+		expect([walked.focusLeaks, walked.findings]).toEqual([0, []]);
+		const full = analyzeScreen({ ...base, tree: tree(scrim, ...covered, ...sheet) });
+		expect(full.focusLeaks).toBe(2);
+	});
+
+	test("the scrim and the covered screen's controls are findings only in the tree a service does not walk", () => {
+		const titled = { text: "Sheet", bounds: [42, 1400, 600, 1460] as N["bounds"] };
+		const fields = { ...base, title: "Sheet", hidden: [] };
+		const walked = analyzeScreen({ ...fields, tree: tree(titled, ...sheet) });
+		expect([walked.unlabeled, walked.titleFirst, walked.orderViolations]).toEqual([0, true, 0]);
+		const full = analyzeScreen({
+			...fields,
+			tree: tree(scrim, button("Push", [42, 1766, 1038, 1902]), titled, ...sheet),
 		});
-		expect(r.focusLeaks).toBe(0);
+		expect(full.findings.map((f) => f.kind)).toEqual(["unlabeled", "title", "order"]);
+		expect(full.findings[0]?.element).toBe("View [0,0 1080x2400]");
 	});
 
 	test("a label the walked tree still lists is a leak", () => {
-		const r = analyzeScreen({
-			tree: tree(...covered, ...sheet),
-			importantTree: tree(covered[0] as N, ...sheet),
-			direction: "ltr",
-			display,
-			title: null,
-			lead: [],
-			controls: [],
-			scrolled: [],
-			hidden: ["Push", "Other"],
-			layout: "sheet",
-		});
+		const r = analyzeScreen({ ...base, tree: tree(covered[0] as N, ...sheet) });
 		expect(r.focusLeaks).toBe(1);
 		expect(r.findings[0]?.element).toContain("Push");
 	});
 
 	test("a sheet titled like the button that opened it does not leak its own title, but a button with that label does", () => {
 		const titled = { cls: "android.view.View", desc: "Form sheet", bounds: [147, 255, 1038, 402] as N["bounds"] };
-		const base = {
-			direction: "ltr" as const,
-			display,
-			title: "Form sheet",
-			lead: [],
-			controls: [],
-			scrolled: [],
-			hidden: ["Form sheet"],
-			layout: "sheet" as const,
-		};
-		expect(analyzeScreen({ ...base, tree: tree(titled, ...sheet) }).focusLeaks).toBe(0);
+		const named = { ...base, title: "Form sheet", hidden: ["Form sheet"] };
+		expect(analyzeScreen({ ...named, tree: tree(titled, ...sheet) }).focusLeaks).toBe(0);
 		expect(
-			analyzeScreen({ ...base, tree: tree(titled, button("Form sheet", [42, 1430, 1038, 1566]), ...sheet) }).focusLeaks,
+			analyzeScreen({ ...named, tree: tree(titled, button("Form sheet", [42, 1430, 1038, 1566]), ...sheet) }).focusLeaks,
 		).toBe(1);
 	});
 });
@@ -381,7 +375,18 @@ describe("frozen dumps of the QA app (the checklist's findings in them, not the 
 		});
 	}
 
-	test("sheet and modal over the menu (a TalkBack session on the emulator, 27 Oct): the full dump lists the covered screen, the tree a service walks does not", () => {
+	test("sheet and modal over the menu (a TalkBack session on the emulator, 27 Oct): the full dump reads as findings no service meets, the compressed dump as none", () => {
+		const expectedOnFull: Record<string, string[]> = {
+			"screens-sheet": [
+				'unlabeled: View [0,0 1080x2400] | no text, content description or hint, and no labeled descendant',
+				'title: TextView "Two detents" [42,1564 996x71] | content comes before the title in the tree: Button "Bottom tabs, a stack in each" [42,1766 996x136]',
+				'order: TextView "Row 3" [76,2275 928x54] then Button "Notifications" [954,138 126x126] | left to right, top to bottom expected',
+			],
+			"screens-modal": [
+				'order: TextView "Screen 1 · row 14" [76,2281 928x54] then TextView "Each page below is a real screen: the engine draws its header, sheet and tab bar." [42,464 996x94] | left to right, top to bottom expected',
+				'order: TextView "Row 3" [76,2275 928x54] then Button "Notifications" [954,138 126x126] | left to right, top to bottom expected',
+			],
+		};
 		for (const id of ["screens-sheet", "screens-modal"]) {
 			const c = cases.find((entry) => entry.id === id);
 			if (!c) throw new Error(`no case ${id}`);
@@ -395,10 +400,14 @@ describe("frozen dumps of the QA app (the checklist's findings in them, not the 
 				hidden: c.hidden.map((label) => localize(label, "ltr")),
 				layout: c.layout,
 			};
-			const full = parseHierarchy(sample(`uia-${id}-full.xml`));
-			const important = parseHierarchy(sample(`uia-${id}-important.xml`));
-			expect(analyzeScreen({ ...input, tree: full }).focusLeaks).toBe(c.hidden.length); // judged on the full dump
-			expect(analyzeScreen({ ...input, tree: full, importantTree: important }).focusLeaks).toBe(0);
+			const full = analyzeScreen({ ...input, tree: parseHierarchy(sample(`uia-${id}-full.xml`)) });
+			const walked = analyzeScreen({ ...input, tree: parseHierarchy(sample(`uia-${id}-important.xml`)) });
+			const detail = (f: { kind: string; element: string; detail: string }) => `${f.kind}: ${f.element} | ${f.detail}`;
+			expect(full.findings.filter((f) => f.kind !== "leak").map(detail)).toEqual(expectedOnFull[id] as string[]);
+			expect(full.focusLeaks).toBe(c.hidden.length);
+			expect(walked.findings).toEqual([]);
+			expect([walked.unlabeled, walked.orderViolations, walked.focusLeaks]).toEqual([0, 0, 0]);
+			expect(walked.titleFirst).toBe(true);
 		}
 	});
 

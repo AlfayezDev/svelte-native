@@ -14,8 +14,13 @@ type HandlerModule = {
   flushOperations(): void;
 };
 
+/** Selects a tab of the page's tabs (`mode=tabs`); nothing when the page has none. */
+export function selectTab(key: string): void {
+  gestureProbe.select?.(key);
+}
+
 /** The view tags the page reported, by name. */
-export const gestureProbe: { tags: Record<string, number>; events: string[] } = { tags: {}, events: [] };
+export const gestureProbe: { tags: Record<string, number>; events: string[]; select: ((key: string) => void) | null } = { tags: {}, events: [], select: null };
 
 let module: HandlerModule | null = null;
 let nextHandlerTag = 90_000;

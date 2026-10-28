@@ -1,7 +1,7 @@
 import { Directory, File, Paths } from "expo-file-system";
 import type { Presentation } from "@rasheed/svelte-native";
 import { qaModule, type SvelteQA, type BuildIdentity } from "./qa.ts";
-import { attachHandler, dropHandler, gestureProbe, updateHandler } from "./gesture-probe.ts";
+import { attachHandler, dropHandler, gestureProbe, selectTab, updateHandler } from "./gesture-probe.ts";
 
 /**
  * Device probes for the native screens on iOS (`run=probe:<names>`): each puts a screen in a state, does what a user would
@@ -232,6 +232,29 @@ const probes: Record<string, (context: Context) => Promise<void>> = {
     dropHandler(inside);
     await pause(300);
     context.router.back();
+  },
+
+  /**
+   * A handler on a view of a tab pane the user has not selected: attached as the pane mounts (with `tabs-eager` that is at launch, long before the pane has a
+   * place; with `tabs` it is at the first selection), checked after RNGH's attach retries are over (2.5 s), and again once the pane is shown.
+   */
+  async "gestures-tab-pane"(context) {
+    for (const mode of ["tabs-eager", "tabs"]) {
+      gestureProbe.tags = {};
+      gestureProbe.select = null;
+      await open(context, "/__dev", `${gesturePage}?mode=${mode}&attach=early`);
+      await pause(4000);
+      const before = gestureProbe.tags.pane;
+      context.log({ name: `${mode}: pane not selected`, paneTag: before ?? null, handler: gestureProbe.tags.handler ?? null, view: before === undefined ? null : await recognizersOf(context, before) });
+      selectTab("b");
+      await pause(1500);
+      const pane = gestureProbe.tags.pane;
+      context.log({ name: `${mode}: pane selected`, paneTag: pane ?? null, handler: gestureProbe.tags.handler ?? null, view: pane === undefined ? null : await recognizersOf(context, pane), shot: await shot(context, `gestures-tab-pane-${mode}`) });
+      if (gestureProbe.tags.handler !== undefined) dropHandler(gestureProbe.tags.handler);
+      await pause(300);
+      context.router.back();
+      await pause(1000);
+    }
   },
 
   /** The edge swipe of a pushed screen and a handler's pan: what the stack's delegate answers with one screen (no swipe can begin) and with two. */

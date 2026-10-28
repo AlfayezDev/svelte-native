@@ -1,0 +1,5 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "types": ["node"], "noImplicitAny": false },
+  "include": ["foreign-harness.ts", "../src/**/*.d.ts"]
+}

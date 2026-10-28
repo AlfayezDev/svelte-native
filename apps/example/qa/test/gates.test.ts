@@ -386,9 +386,9 @@ describe("gates.json", () => {
 	});
 	test("devices: the Samsung and the iPhone are phones, the OVH emulator is the lab", () => {
 		expect(file.devices).toEqual({
-			R58Y90KNGRP: { role: "phone", name: "Samsung A16", runs: ["lab", "boot"] },
-			"E74A5608-BF8E-5806-8699-1605F82ADED9": { role: "phone", name: "iPhone SE 3", runs: ["lab", "boot", "parity", "a11y"] },
-			"localhost:5555": { role: "lab", name: "OVH emulator, software GL", runs: ["lab", "soak", "crashes", "parity", "a11y", "resilience"] },
+			R58Y90KNGRP: { role: "phone", name: "Samsung A16", runs: ["lab", "boot", "gestures"] },
+			"E74A5608-BF8E-5806-8699-1605F82ADED9": { role: "phone", name: "iPhone SE 3", runs: ["lab", "boot", "parity", "a11y", "gestures"] },
+			"localhost:5555": { role: "lab", name: "OVH emulator, software GL", runs: ["lab", "soak", "crashes", "parity", "a11y", "resilience", "gestures"] },
 		});
 		expect(() => checkGatesFile(file)).not.toThrow();
 	});
@@ -407,6 +407,9 @@ describe("gates.json", () => {
 			"frames.maxPeriodRatio",
 			"frames.maxMs",
 			"list.virtual300.mountMs",
+			"gestures.frames.droppedPct",
+			"gestures.frames.maxPeriodRatio",
+			"gestures.frames.maxMs",
 		];
 		for (const gate of file.gates)
 			expect([gate.id, gate.roles]).toEqual([gate.id, timing.includes(gate.id) ? ["phone"] : undefined]);

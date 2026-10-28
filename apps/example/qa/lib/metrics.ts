@@ -1,12 +1,14 @@
 import { summarize } from "../parse/stats.ts";
 import { crashMetrics, soakMetrics } from "../soak/metrics.ts";
 import { unattributedCount } from "./iphone/crash-reports.ts";
+import { allScenarios, gesturesMetrics } from "./gestures.ts";
 import { suiteMetrics, type SuiteFiles } from "./suite-metrics.ts";
 import type {
 	BootFile,
 	CrashesFile,
 	CrashReportsRecord,
 	DeviceInfo,
+	GesturesFile,
 	LabFile,
 	LabRun,
 	Launch,
@@ -183,6 +185,8 @@ export function deviceMetrics(
 	soak: SoakFile | null = null,
 	crashes: CrashesFile | null = null,
 	suites: SuiteFiles = { parity: null, a11y: null, resilience: null },
+	gestures: GesturesFile | null = null,
+	pinnedGestures: readonly string[] = allScenarios,
 ): Metrics {
 	const metrics: Metrics = {
 		...(lab ? labMetrics(lab, pinned) : {}),
@@ -190,7 +194,8 @@ export function deviceMetrics(
 		...(soak ? soakMetrics(soak) : {}),
 		...(crashes ? crashMetrics(crashes) : {}),
 		...suiteMetrics(suites),
-		...crashReportMetrics([lab, boot, suites.parity, suites.a11y].filter((file) => file !== null)),
+		...(gestures ? gesturesMetrics(gestures, pinnedGestures) : {}),
+		...crashReportMetrics([lab, boot, suites.parity, suites.a11y, gestures].filter((file) => file !== null)),
 	};
 	// A run that was made but measured nothing (null) leaves the sum unmeasured; a run that was not made adds nothing.
 	const sum = (a: string, b: string) => {

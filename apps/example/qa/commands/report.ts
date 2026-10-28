@@ -13,6 +13,7 @@ import {
 } from "../lib/gates.ts";
 import { reachPct } from "../lib/a11y.ts";
 import { deviceMetrics, missingScenarios, runFatals } from "../lib/metrics.ts";
+import { allScenarios, failedChecks } from "../lib/gestures.ts";
 import type { SuiteFiles } from "../lib/suite-metrics.ts";
 import { gatesPath, reportPath } from "../lib/paths.ts";
 import { latestRunFiles, readBuilds, readJson, runKinds, type RunKind } from "../lib/runs.ts";
@@ -26,6 +27,7 @@ import type {
 	CrashReportsRecord,
 	CrashSignature,
 	DeviceInfo,
+	GesturesFile,
 	LabFile,
 	Metrics,
 	ParityFile,
@@ -109,7 +111,14 @@ type A11yScreenSummary = {
 };
 
 /** What one iOS run file recorded of the phone's crash log: the reports, or why there are none to count (`error`: the pull failed, or the file was recorded before it existed). */
-type CrashReportsSummary = { run: "lab" | "boot" | "parity" | "a11y"; file: string; error: string | null; reports: CrashReport[] };
+type CrashReportsSummary = { run: "lab" | "boot" | "parity" | "a11y" | "gestures"; file: string; error: string | null; reports: CrashReport[] };
+
+/** One gestures run file: how each launch was driven and what each scenario came to. */
+type GesturesSummary = {
+	file: string;
+	inputs: string[];
+	launches: { input: string; complete: boolean; scenarios: { name: string; verdict: string; failedChecks: number }[] }[];
+};
 
 type SuitesSummary = {
 	parity: { file: string; mode: "check" | "update"; deviceKind: string } | null;
@@ -142,6 +151,7 @@ type ReportDeviceEntry = {
 	boot: BootSummary | null;
 	soak: SoakSummary | null;
 	crashes: CrashesSummary | null;
+	gestures: GesturesSummary | null;
 	/** iOS only: the crash reports of the phone each run file recorded. */
 	crashReports: CrashReportsSummary[];
 	suites: SuitesSummary;
@@ -338,12 +348,14 @@ export async function report(): Promise<void> {
 		const parityPath = files.parity.get(key);
 		const a11yPath = files.a11y.get(key);
 		const resiliencePath = files.resilience.get(key);
+		const gesturesPath = files.gestures.get(key);
+		const gestures = gesturesPath ? await readJson<GesturesFile>(gesturesPath) : null;
 		const suites: SuiteFiles = {
 			parity: parityPath ? await readJson<ParityFile>(parityPath) : null,
 			a11y: a11yPath ? await readJson<A11yFile>(a11yPath) : null,
 			resilience: resiliencePath ? await readJson<ResilienceFile>(resiliencePath) : null,
 		};
-		const reference = lab ?? boot ?? soak ?? crashes ?? suites.parity ?? suites.a11y ?? suites.resilience;
+		const reference = lab ?? boot ?? soak ?? crashes ?? suites.parity ?? suites.a11y ?? suites.resilience ?? gestures;
 		if (!reference) continue;
 		const serial = reference.device.serial;
 		const platform: Platform = reference.device.platform;
@@ -355,6 +367,7 @@ export async function report(): Promise<void> {
 			["parity", suites.parity],
 			["accessibility", suites.a11y],
 			["resilience", suites.resilience],
+			["gestures", gestures],
 		];
 		warnings.push(...buildWarnings(serial, measured));
 		notes.push(...buildNotes(serial, measured));
@@ -366,6 +379,7 @@ export async function report(): Promise<void> {
 		warnings.push(...found.warnings);
 		notes.push(...found.notes);
 		const pinned = gates.scenarios[platform];
+		const pinnedGestures = gates.gestures?.[platform] ?? allScenarios;
 		devices[serial] = {
 			platform,
 			role: gates.devices[serial]?.role ?? null,
@@ -406,11 +420,24 @@ export async function report(): Promise<void> {
 							signatures: crashes.signatures,
 						}
 					: null,
+			gestures:
+				gestures && gesturesPath
+					? {
+							file: gesturesPath.slice(gesturesPath.lastIndexOf("runs/")),
+							inputs: gestures.inputs,
+							launches: gestures.launches.map((launch) => ({
+								input: launch.input,
+								complete: launch.complete,
+								scenarios: launch.scenarios.map((result) => ({ name: result.name, verdict: result.verdict, failedChecks: failedChecks(result) })),
+							})),
+						}
+					: null,
 			crashReports: crashReportSummaries(platform, [
 				["lab", labPath, lab],
 				["boot", bootPath, boot],
 				["parity", parityPath, suites.parity],
 				["a11y", a11yPath, suites.a11y],
+				["gestures", gesturesPath, gestures],
 			]),
 			suites: {
 				parity: suites.parity && parityPath ? { file: parityPath.slice(parityPath.lastIndexOf("runs/")), mode: suites.parity.mode, deviceKind: suites.parity.deviceKind } : null,
@@ -433,7 +460,7 @@ export async function report(): Promise<void> {
 						: null,
 				resilience: suites.resilience && resiliencePath ? { file: resiliencePath.slice(resiliencePath.lastIndexOf("runs/")), screen: suites.resilience.screen } : null,
 			},
-			metrics: deviceMetrics(lab, boot, pinned, soak, crashes, suites),
+			metrics: deviceMetrics(lab, boot, pinned, soak, crashes, suites, gestures, pinnedGestures),
 		};
 	}
 
@@ -504,6 +531,10 @@ export async function report(): Promise<void> {
 		if (entry.suites.resilience)
 			console.log(
 				`  resilience ${m["resilience.steps"] ?? 0} steps, ${m["resilience.failures"] ?? "-"} failed`,
+			);
+		if (entry.gestures)
+			console.log(
+				`  gestures ${m["gestures.launches"] ?? 0} complete launch(es) (${entry.gestures.inputs.join(", ")}), ${m["gestures.scenarios.missing"] ?? "-"} scenarios missing, agreement mismatches ${m["gestures.agreement.mismatches"] ?? "not measured"}, fatals ${m["gestures.fatals"] ?? "-"}, engine warnings ${m["gestures.engineWarnings"] ?? "-"}; checks failed: ${entry.gestures.launches.flatMap((launch) => launch.scenarios.filter((result) => result.failedChecks > 0).map((result) => `${result.name} (${launch.input})`)).join(", ") || "none"}`,
 			);
 		if (entry.crashes)
 			console.log(

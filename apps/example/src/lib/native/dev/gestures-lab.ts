@@ -809,6 +809,8 @@ export type Outcome = {
   verdict: "pass" | "fail" | "info";
   summary: string;
   checks: Check[];
+  /** Why a round was given up on (its budget, or "stopped"); null when every round finished. */
+  timedOut: string | null;
 };
 
 /** The scenario's verdict from its checks (and its frames when they count); `timedOut` names a round that ran out of time. */
@@ -820,7 +822,7 @@ export function outcomeOf(spec: ScenarioSpec, checks: Check[], frames: FrameVerd
   if (timedOut) parts.push(`TIMED OUT: ${timedOut}`);
   for (const entry of failed.slice(0, 4)) parts.push(`FAILED ${entry.name}${entry.value === undefined ? "" : ` (${entry.value})`}`);
   if (frames) parts.push(`frames ${frames.droppedPct.toFixed(1)}% dropped, p95 ${frames.p95}, max ${frames.max.toFixed(0)} ms${spec.judgesFrames && !frames.smooth ? " NOT SMOOTH" : ""}`);
-  return { verdict: spec.info ? "info" : ok ? "pass" : "fail", summary: parts.join(" · "), checks };
+  return { verdict: spec.info ? "info" : ok ? "pass" : "fail", summary: parts.join(" · "), checks, timedOut };
 }
 
 const compactCounter = (c: Counter): number[] => [c.begin, c.start, c.update, c.end, c.endOk, c.finalize, c.finalizeOk];
@@ -834,6 +836,7 @@ export function detailOf(spec: ScenarioSpec, outcome: Outcome, rounds: Snapshot[
     mode: spec.mode,
     busy: spec.busy,
     drive,
+    timedOut: outcome.timedOut,
     checks: [...outcome.checks].sort((a, b) => Number(a.ok) - Number(b.ok)).map((entry) => [entry.name, entry.ok ? 1 : 0, ...(entry.value === undefined ? [] : [entry.value])]),
     ...(withCounters ? { counters: rounds.map((round) => Object.fromEntries(Object.entries(round.counters).map(([name, counter]) => [name, compactCounter(counter)]))) } : {}),
     marks: rounds.map((round) => round.marks),

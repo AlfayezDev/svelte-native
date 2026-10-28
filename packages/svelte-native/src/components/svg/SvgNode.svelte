@@ -62,4 +62,4 @@
   $effect.pre(() => { if (!Tag && unimplemented.has(node.tag)) warnUnimplementedFilter(); });
   const attributes: Record<string, unknown> = $derived.by(() => { const rest: Record<string, unknown> = { ...node.props }; delete rest.class; return rest; });
 </script>
-{#if Tag}<Tag {...attributes}>{#each node.children as child, index (index)}{#if typeof child === "string"}{child}{:else}<Self node={child} />{/if}{/each}</Tag>{/if}
+{#if Tag}<Tag {...attributes} {...(node.tag === "tspan" || node.tag === "textPath" ? { childrenAsArray: true } : {})}>{#each node.children as child, index (index)}{#if typeof child === "string"}{child}{:else}<Self node={child} />{/if}{/each}</Tag>{/if}

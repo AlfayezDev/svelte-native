@@ -11,4 +11,4 @@
   const hostRef = handleRef(() => ref);
   const native = $derived(feColorMatrixNativeProps(props));
 </script>
-<native-foreign component="RNSVGFeColorMatrix" nativeProps={resolveProps({ ...native, animatedProps, ref: hostRef })}></native-foreign>
+<native-foreign component="RNSVGFeColorMatrix" nativeProps={resolveProps({ ...native, ...(animatedProps ? { animatedProps } : null), ref: hostRef })}></native-foreign>

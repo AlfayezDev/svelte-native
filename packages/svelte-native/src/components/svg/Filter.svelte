@@ -12,4 +12,4 @@
   const hostRef = handleRef(() => ref);
   const native = $derived(filterNativeProps(props));
 </script>
-<native-foreign component="RNSVGFilter" nativeProps={resolveProps({ ...native, animatedProps, ref: hostRef })}>{@render children?.()}</native-foreign>
+<native-foreign component="RNSVGFilter" nativeProps={resolveProps({ ...native, ...(animatedProps ? { animatedProps } : null), ref: hostRef })}>{@render children?.()}</native-foreign>

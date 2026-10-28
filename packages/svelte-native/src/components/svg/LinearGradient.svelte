@@ -20,4 +20,4 @@
   setContext(stopsKey, stops);
   const native = $derived.by(() => { void version; return linearGradientNativeProps(props, stops.read()); });
 </script>
-<native-foreign component="RNSVGLinearGradient" nativeProps={resolveProps({ ...native, animatedProps, ref: hostRef })}>{@render children?.()}</native-foreign>
+<native-foreign component="RNSVGLinearGradient" nativeProps={resolveProps({ ...native, ...(animatedProps ? { animatedProps } : null), ref: hostRef })}>{@render children?.()}</native-foreign>

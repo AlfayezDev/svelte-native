@@ -11,4 +11,4 @@
   const hostRef = handleRef(() => ref);
   const native = $derived(feCompositeNativeProps(props));
 </script>
-<native-foreign component="RNSVGFeComposite" nativeProps={resolveProps({ ...native, animatedProps, ref: hostRef })}></native-foreign>
+<native-foreign component="RNSVGFeComposite" nativeProps={resolveProps({ ...native, ...(animatedProps ? { animatedProps } : null), ref: hostRef })}></native-foreign>

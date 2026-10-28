@@ -79,8 +79,9 @@ export function describeTheirs(nodes: (OracleNode | string)[], loaded: SvgLoaded
   });
 }
 
+/** As the library's XML renderer builds elements (`astToReact`): the children are always an array, even for one string. */
 export const toReact = (oracle: Oracle, spec: Spec | string): unknown =>
-  typeof spec === "string" ? spec : oracle.create(oracle.tags[spec.tag], spec.props ?? null, ...(spec.children ?? []).map((child) => toReact(oracle, child)));
+  typeof spec === "string" ? spec : oracle.create(oracle.tags[spec.tag], { ...spec.props, children: (spec.children ?? []).map((child) => toReact(oracle, child)) });
 
 export const toNode = (spec: Spec | string): unknown =>
   typeof spec === "string" ? spec : { tag: spec.tag, props: spec.props ?? {}, children: (spec.children ?? []).map(toNode) };

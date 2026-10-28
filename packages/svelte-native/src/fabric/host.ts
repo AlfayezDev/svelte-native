@@ -394,7 +394,8 @@ function build(node: NativeNode, rootTag: number, insideText: boolean, insideFor
   // A foreign library's text component takes the strings between its tags itself (`foreign-text.ts`): as the `content` of the span it is, or as spans of their own.
   const text = foreignText.handler;
   const textMode = text && node.name === "native-foreign" ? text.mode(viewName) : null;
-  const lone = textMode === "span" ? loneText(node) : null;
+  // `childrenAsArray`: the library's XML renderer hands its elements an array of children even for one string, which makes a span of it rather than its `content`.
+  const lone = textMode === "span" && attributes.childrenAsArray !== true ? loneText(node) : null;
   if (lone) attributes = { ...attributes, content: lone.textValue };
   const current = state(node, viewName);
   current.foreign = foreign;

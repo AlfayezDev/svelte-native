@@ -12,4 +12,4 @@
   const hostRef = handleRef(() => ref);
   const native = $derived(clipPathNativeProps(props));
 </script>
-<native-foreign component="RNSVGClipPath" nativeProps={resolveProps({ ...native, animatedProps, ref: hostRef })}>{@render children?.()}</native-foreign>
+<native-foreign component="RNSVGClipPath" nativeProps={resolveProps({ ...native, ...(animatedProps ? { animatedProps } : null), ref: hostRef })}>{@render children?.()}</native-foreign>

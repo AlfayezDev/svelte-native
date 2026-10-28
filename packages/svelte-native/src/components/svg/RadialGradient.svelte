@@ -17,4 +17,4 @@
   setContext(stopsKey, stops);
   const native = $derived.by(() => { void version; return radialGradientNativeProps(props, stops.read()); });
 </script>
-<native-foreign component="RNSVGRadialGradient" nativeProps={resolveProps({ ...native, animatedProps, ref: hostRef })}>{@render children?.()}</native-foreign>
+<native-foreign component="RNSVGRadialGradient" nativeProps={resolveProps({ ...native, ...(animatedProps ? { animatedProps } : null), ref: hostRef })}>{@render children?.()}</native-foreign>

@@ -15,4 +15,4 @@
   const hostRef = handleRef(() => ref, { matrix: true });
   const native = $derived(textNativeProps(props));
 </script>
-<native-foreign component="RNSVGText" nativeProps={resolveProps({ ...native, animatedProps, ref: hostRef })}>{@render children?.()}</native-foreign>
+<native-foreign component="RNSVGText" nativeProps={resolveProps({ ...native, ...(animatedProps ? { animatedProps } : null), ref: hostRef })}>{@render children?.()}</native-foreign>

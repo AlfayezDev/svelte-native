@@ -16,4 +16,4 @@
   setContext(mergeNodesKey, nodes);
   const native = $derived.by(() => { void version; return feMergeNativeProps(props, nodes.read()); });
 </script>
-<native-foreign component="RNSVGFeMerge" nativeProps={resolveProps({ ...native, animatedProps, ref: hostRef })}>{@render children?.()}</native-foreign>
+<native-foreign component="RNSVGFeMerge" nativeProps={resolveProps({ ...native, ...(animatedProps ? { animatedProps } : null), ref: hostRef })}>{@render children?.()}</native-foreign>

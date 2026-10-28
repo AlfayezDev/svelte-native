@@ -11,4 +11,4 @@
   const hostRef = handleRef(() => ref);
   const native = $derived(pathNativeProps(props));
 </script>
-<native-foreign component="RNSVGPath" nativeProps={resolveProps({ ...native, animatedProps, ref: hostRef })}></native-foreign>
+<native-foreign component="RNSVGPath" nativeProps={resolveProps({ ...native, ...(animatedProps ? { animatedProps } : null), ref: hostRef })}></native-foreign>

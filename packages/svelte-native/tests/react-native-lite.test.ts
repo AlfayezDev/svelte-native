@@ -16,6 +16,7 @@ type Lite = {
   StatusBar: { setBarStyle(style: string): string; current: string };
   Networking: { sendRequest(): string };
   Appearance: { getColorScheme(): string };
+  PanResponder: { create(config: object): { panHandlers: Record<string, unknown> } };
   View(): unknown;
   findNodeHandle(): unknown;
   Animated: { Value: new (value: number) => { _value: number }; createAnimatedComponent(component: unknown): unknown };
@@ -39,6 +40,7 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/Utilities/useColorScheme": "() => 'dark'",
   "react-native/Libraries/Components/StatusBar/StatusBar": "{ setBarStyle: (style) => 'bar:' + style, current: 'default' }",
   "react-native/Libraries/Network/RCTNetworking": "{ sendRequest: () => 'sent' }",
+  "react-native/Libraries/Interaction/PanResponder": "{ create: () => ({ panHandlers: { onResponderGrant: () => 'grant' } }) }",
 };
 // `Appearance` is the module namespace, not a default export.
 const appearance = "react-native/Libraries/Utilities/Appearance";
@@ -103,6 +105,13 @@ describe("react-native-lite", () => {
     expect(lite.Networking.sendRequest()).toBe("sent");
     expect(lite.Appearance.getColorScheme()).toBe("light");
     expect(evaluated.slice(before)).toHaveLength(5);
+  });
+
+  test("PanResponder, which react-native-svg's extractResponder reads when it loads, is the real module once it is used and not before", async () => {
+    const { lite, evaluated } = await load();
+    expect(evaluated).not.toContain("react-native/Libraries/Interaction/PanResponder");
+    expect(Object.keys(lite.PanResponder.create({}).panHandlers)).toEqual(["onResponderGrant"]);
+    expect(evaluated.filter((path) => path.endsWith("/PanResponder"))).toHaveLength(1);
   });
 
   test("shim placeholders stay inert", async () => {

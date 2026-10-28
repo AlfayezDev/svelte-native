@@ -296,6 +296,8 @@ final class BootRecorder {
 public final class SvelteQABootSubscriber: ExpoAppDelegateSubscriber {
   public func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
     if SvelteQA.enabled { SvelteQA.boot = BootRecorder() }
+    // `-SvelteQAGestureTrace YES` among the launch arguments: the recognizers' time line (SvelteQAGestureTrace.swift).
+    SvelteQAGestureTrace.startIfRequested()
     return true
   }
 }

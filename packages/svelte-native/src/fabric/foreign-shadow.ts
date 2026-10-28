@@ -31,7 +31,7 @@ export type ShadowParams = { color?: unknown; opacity?: number; radius?: number;
 /**
  * `shadowStyle`: the same shadow on every platform. iOS draws a radius twice as large as design tools and CSS do, so it is halved there.
  */
-export function shadowStyle({ color, opacity, radius, offset }: ShadowParams, platform: "android" | "ios"): Style {
+export function shadowStyle({ color, opacity, radius, offset }: ShadowParams, platform: "android" | "ios" = currentPlatform()): Style {
   return {
     shadowColor: color,
     shadowOpacity: opacity,
@@ -76,6 +76,10 @@ export function shadowedParts(style: unknown, rtl: boolean): { content: Style; b
   }
   return { content, box, shadow, cornerRadii: cornerRadiiFromStyle(flat, rtl) ?? { topLeft: 0, topRight: 0, bottomLeft: 0, bottomRight: 0 } };
 }
+
+const currentPlatform = (): "android" | "ios" =>
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  (require("react-native/Libraries/Utilities/Platform") as { default: { OS: string } }).default.OS === "ios" ? "ios" : "android";
 
 /** `I18nManager.isRTL`, from React Native's own module. */
 export function isRightToLeft(): boolean {

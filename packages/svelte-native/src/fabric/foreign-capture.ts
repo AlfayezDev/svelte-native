@@ -11,7 +11,6 @@
  *
  * Nothing here imports the library.
  */
-import { Platform as ReactNativePlatform } from "./deps-rn.ts";
 import { turboModule } from "./foreign.ts";
 
 export type CaptureFormat = "jpg" | "png" | "webm" | "raw";
@@ -70,7 +69,9 @@ type ViewShotModule = {
 type CaptureEngine = { captureView?(tag: number, options: CaptureOptions): Promise<string | null> };
 const engine = (): CaptureEngine | null => (globalThis as { expo?: { modules?: { SvelteEngine?: CaptureEngine } } }).expo?.modules?.SvelteEngine ?? null;
 const viewShot = (): ViewShotModule => turboModule<ViewShotModule>("RNViewShot");
-const platform = (): Platform => (ReactNativePlatform.OS === "android" ? "android" : "ios");
+const platform = (): Platform =>
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  (require("react-native/Libraries/Utilities/Platform") as { default: { OS: string } }).default.OS === "android" ? "android" : "ios";
 
 /** A host handle (`ref` of a view), or the React tag it carries. */
 export type CaptureTarget = { readonly tag: number } | number | null | undefined;

@@ -99,3 +99,12 @@ test("valueless attributes stay boolean true on lowered tags", () => {
   const source = `<script>\n  import { ScrollView } from "@rasheed/svelte-native";\n</script>\n<ScrollView nestedScrollEnabled horizontal={false}>x</ScrollView>`;
   expect(lowerPrimitives(source)).toContain(`<native-scroll nestedScrollEnabled={true} horizontal={false}>x</native-scroll>`);
 });
+
+test("what the svg entry exports as Text and Image is not lowered: they are SVG elements, not the primitives", () => {
+  const header = `<script>\n  import { View } from "@rasheed/svelte-native";\n  import { Svg, Text, Image as SvgImage, Text as Label } from "@rasheed/svelte-native/svg";\n</script>\n`;
+  const markup = `<View><Svg><Text x={1}>a</Text><SvgImage href="x" /><Label>b</Label></Svg></View>`;
+  expect(run(markup, header)).toBe(`<native-view><Svg><Text x={1}>a</Text><SvgImage href="x" /><Label>b</Label></Svg></native-view>`);
+  // The other entries still lower: a subpath that exports a primitive is the package's own.
+  const core = `<script>\n  import { Text } from "@rasheed/svelte-native/core";\n</script>\n`;
+  expect(run(`<Text>a</Text>`, core)).toBe(`<native-text>a</native-text>`);
+});

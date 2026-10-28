@@ -4,10 +4,12 @@
   import { createNativeProps } from "../native-props.ts";
   import { IN_STACK_CONTEXT, PANE_CONTEXT, SCREEN_CONTEXT } from "../fabric/navigation.ts";
   import type { ModalProps } from "react-native";
-  import KeyboardModule from "react-native/Libraries/Components/Keyboard/Keyboard";
-  const Keyboard = KeyboardModule as unknown as { isVisible(): boolean; dismiss(): void };
   let { children, onRequestClose, ...attributes }: Omit<ModalProps, "children"> & { children?: Snippet } = $props();
+  // Loaded on the first back press: `Keyboard` pulls in LayoutAnimation and with it UIManager.js, whose module body reads the
+  // constants of every view manager (16 JNI calls, 21 ms of the JavaScript thread on the Galaxy A16) before the first commit.
   function close(event: Parameters<NonNullable<ModalProps["onRequestClose"]>>[0]) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const Keyboard = (require("react-native/Libraries/Components/Keyboard/Keyboard") as { default: { isVisible(): boolean; dismiss(): void } }).default;
     if (Keyboard.isVisible()) Keyboard.dismiss();
     else onRequestClose?.(event);
   }

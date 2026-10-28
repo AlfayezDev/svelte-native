@@ -23,7 +23,8 @@
    * `&js=busy` blocks the JavaScript thread 40 ms of every 50 while the gesture runs, `&round=<n>` picks a round of a scenario that has
    * several (`pushed-edge`), `&drive=<adb|qa|xctest>` says who injects the input (`qa`: this page, through `SvelteQaTouch`, Android's QA
    * variant only; `adb` and `xctest`: the harness, which reads the `[Svelte gesture] ready` lines) and `&managed=1` leaves the start to
-   * the stress scenario that opened the page. Opened by hand (no `managed`), the page starts itself after 1.2 s and logs the same lines.
+   * the stress scenario that opened the page, which also presents `mode=sheet` as a sheet (`goto(..., { presentation: "sheet" })`; opened by
+   * link it is a plain screen). Opened by hand (no `managed`), the page starts itself after 1.2 s and logs the same lines.
    * `testID`s are `gesture.<name>` for every view a step aims at, and `gestures.status` holds the last `ready` line for an XCUITest.
    */
   let { url }: { url?: URL } = $props();

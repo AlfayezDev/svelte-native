@@ -148,28 +148,35 @@
     const steps: Snapshot[][] = [];
     let timedOut: string | null = null;
     let frames: FrameSummary | undefined;
-    for (let round = 0; round < spec.rounds.length && !signal.aborted; round++) {
-      const query = `?mode=${spec.mode}${spec.busy ? "&js=busy" : ""}&drive=${gestureDrive}&managed=1&round=${round}`;
-      router.goto(`/__dev/gestures${query}`, spec.presentation ? { presentation: spec.presentation } : undefined);
-      // The push (or the sheet's rise) has to be over: the page measures the views where they are, and the harness aims at them.
-      await pause(1000, signal);
-      const session = await gestureLab.wait(spec.name, round, 8000);
-      const budget = Math.max(20_000, 6_000 * (spec.rounds[round]?.steps.length ?? 0) + 4_000);
-      const limit = new AbortController();
-      signal.addEventListener("abort", () => { limit.abort(); }, { once: true });
-      void pause(budget, limit.signal).then(() => { session.abort(signal.aborted ? "stopped" : `${budget / 1000} s`); });
-      const measured = await measure(async () => { await session.start(); return session.finished; });
-      limit.abort();
-      frames = measured.frames;
-      snapshots.push(measured.value);
-      steps.push(session.steps);
-      if (session.timedOut) timedOut = session.timedOut;
-      if (router.entries.length > depth) { router.back(); await pause(800, signal); }
+    try {
+      for (let round = 0; round < spec.rounds.length && !signal.aborted; round++) {
+        const query = `?mode=${spec.mode}${spec.busy ? "&js=busy" : ""}&drive=${gestureDrive}&managed=1&round=${round}`;
+        router.goto(`/__dev/gestures${query}`, spec.presentation ? { presentation: spec.presentation } : undefined);
+        // The push (or the sheet's rise) has to be over: the page measures the views where they are, and the harness aims at them.
+        await pause(1000, signal);
+        const session = await gestureLab.wait(spec.name, round, 8000);
+        const budget = Math.max(20_000, 6_000 * (spec.rounds[round]?.steps.length ?? 0) + 4_000);
+        const limit = new AbortController();
+        signal.addEventListener("abort", () => { limit.abort(); }, { once: true });
+        void pause(budget, limit.signal).then(() => { session.abort(signal.aborted ? "stopped" : `${budget / 1000} s`); });
+        const measured = await measure(async () => { await session.start(); return session.finished; });
+        limit.abort();
+        frames = measured.frames;
+        snapshots.push(measured.value);
+        steps.push(session.steps);
+        if (session.timedOut) timedOut = session.timedOut;
+        if (router.entries.length > depth) { router.back(); await pause(800, signal); }
+      }
+    } finally {
+      // A round that threw leaves its page on the stack: take it off, so the next scenario does not start under it.
+      for (let attempt = 0; attempt < 3 && router.entries.length > depth; attempt++) { router.back(); await pause(800); }
     }
     const checks = spec.evaluate(snapshots, steps, { platform: Platform.OS, drive: gestureDrive, density: Dimensions.get("window").scale });
+    // Every round's page was pushed and has to be gone: a screen left on the stack would sit under the next scenario.
+    checks.push({ name: "stack back where it began", ok: router.entries.length === depth, value: String(router.entries.length - depth) });
     const outcome = outcomeOf(spec, checks, frames ?? null, timedOut);
     const observed = frames ? { frames: { periodMs: Number(frames.periodMs.toFixed(2)), p50: frames.p50, p95: frames.p95, max: Math.round(frames.max), droppedPct: Number(frames.droppedPct.toFixed(1)) } } : {};
-    return { verdict: outcome.verdict, summary: outcome.summary, ...(spec.judgesFrames && frames ? { frames } : {}), detail: detailOf(spec, outcome, snapshots, gestureDrive, { observed, depth: router.entries.length - depth }) };
+    return { verdict: outcome.verdict, summary: outcome.summary, ...(spec.judgesFrames && frames ? { frames } : {}), detail: detailOf(spec, outcome, snapshots, gestureDrive, { observed }) };
   }
 
   let soakSeconds = 600;

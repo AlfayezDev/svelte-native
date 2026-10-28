@@ -83,8 +83,8 @@ describe("lazy Expo module registry", () => {
   });
 
   test("the modules whose views the foreign components mount and that stay eager have no lazy entry", () => {
-    // `ViewManagerAdapter_ExpoImage`, `_ExpoBlur_*`, `_ExpoLinearGradient`: built at start by Expo, as in any app.
-    for (const name of ["ExpoImage", "ExpoBlur", "ExpoLinearGradient"]) expect(lazyEntries.some(([, lazyName]) => lazyName === name), name).toBe(false);
+    // `ViewManagerAdapter_ExpoImage`, `_ExpoBlur_*`, `_ExpoLinearGradient`, `_ConicGradient`: built at start by Expo, as in any app.
+    for (const name of ["ExpoImage", "ExpoBlur", "ExpoLinearGradient", "ConicGradient"]) expect(lazyEntries.some(([, lazyName]) => lazyName === name), name).toBe(false);
   });
 
   test("core modules registered lazily keep their names", () => {

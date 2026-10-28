@@ -2,7 +2,7 @@
 export type AnimLog = {
   descriptors: { id: number; adds: { tag: number; shadowNodeWrapper: object }[]; removes: number[] }[];
   mappers: { id: number; worklet: (forceUpdate?: boolean) => void; inputs: unknown[]; stopped: boolean }[];
-  updates: { descriptors: unknown; values: Record<string, unknown> }[];
+  updates: { descriptors: unknown; values: Record<string, unknown>; animatedProps: boolean }[];
   css: { shadowNodeWrapper: object; viewTag: number; reactViewName: string; updates: Record<string, unknown>[]; cleaned: boolean }[];
   removable: object[];
   layoutConfigs?: { viewTag: number; type: number; config: unknown }[];
@@ -23,7 +23,7 @@ export const reanimatedStubs: Record<string, string> = {
   "react-native-reanimated/src/UpdateLayoutAnimations": `${head} export const updateLayoutAnimations = (viewTag, type, config) => { (A.layoutConfigs ??= []).push({ viewTag, type, config }); };`,
   "react-native-worklets": "export const makeShareable = (value) => value;",
   "react-native-reanimated/src/animation/util": "export const initialUpdaterRun = (updater) => updater();",
-  "react-native-reanimated/src/updateProps": `${head} export const updateProps = (descriptors, values) => { A.updates.push({ descriptors, values: { ...values } }); };`,
+  "react-native-reanimated/src/updateProps": `${head} export const updateProps = (descriptors, values, isAnimatedProps) => { A.updates.push({ descriptors, values: { ...values }, animatedProps: isAnimatedProps === true }); };`,
   "react-native-reanimated/src/ViewDescriptorsSet": `${head}
     export const makeViewDescriptorsSet = () => {
       const entry = { id: A.descriptors.length + 1, adds: [], removes: [] };

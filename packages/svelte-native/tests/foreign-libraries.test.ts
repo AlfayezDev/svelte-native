@@ -7,13 +7,20 @@ import { compile } from "svelte/compiler";
 import { createHarness } from "./foreign-harness.ts";
 
 /**
- * The six native-view libraries (expo-image, expo-blur, expo-linear-gradient, react-native-video, @react-native-community/datetimepicker,
- * lottie-react-native; SPEC.md, "Foreign views"): what the entry `@rasheed/svelte-native/foreign` pulls into a bundle, and the static
- * view configs that are not compared with a TypeScript spec in `foreign.test.ts`. React must stay out: the components mount the native
- * views by name and port the libraries' prop handling, so nothing of the libraries' JavaScript (which imports React) is bundled.
+ * The twelve native-view libraries (expo-image, expo-blur, expo-linear-gradient, react-native-video, @react-native-community/datetimepicker,
+ * lottie-react-native, react-native-pdf with react-native-blob-util, react-native-view-shot, rive-react-native, expo-conic-gradient,
+ * react-native-fast-shadow, react-native-animateable-text; SPEC.md, "Foreign views"): what the entry `@rasheed/svelte-native/foreign`
+ * pulls into a bundle, and the static view configs that are not compared with a TypeScript spec in `foreign.test.ts`. React must stay
+ * out: the components mount the native views by name and port the libraries' prop handling, so nothing of the libraries' JavaScript
+ * (which imports React) is bundled.
  */
 const modules = resolve(import.meta.dirname, "../../../node_modules");
-const libraries = ["expo-image", "expo-blur", "expo-linear-gradient", "expo-video", "react-native-video", "@react-native-community/datetimepicker", "lottie-react-native", "react-native-webview", "react-native-maps"];
+const libraries = [
+  "expo-image", "expo-blur", "expo-linear-gradient", "expo-video", "react-native-video", "@react-native-community/datetimepicker", "lottie-react-native", "react-native-webview", "react-native-maps",
+  "react-native-pdf", "react-native-blob-util", "react-native-view-shot", "rive-react-native", "expo-conic-gradient", "react-native-fast-shadow", "react-native-animateable-text",
+];
+const components = ["ExpoImage", "BlurView", "BlurTargetView", "LinearGradient", "Video", "DateTimePicker", "LottieView", "Pdf", "ViewShot", "Rive", "ConicGradient", "ShadowedView", "AnimateableText"];
+const helpers = ["image", "gradient", "video", "datetime", "lottie", "pdf", "capture", "rive", "shadow"];
 
 type Bundle = { externals: string[]; inputs: string[] };
 async function bundleForeignEntry(): Promise<Bundle> {
@@ -53,6 +60,8 @@ test("the foreign entry bundles no React and none of the libraries' JavaScript, 
     "react-native/Libraries/BatchedBridge/NativeModules",
     "react-native/Libraries/Image/resolveAssetSource",
     "react-native/Libraries/Linking/Linking",
+    // Right-to-left layouts (`ShadowedView`'s corner radii).
+    "react-native/Libraries/ReactNative/I18nManager",
     // The host's lazy requires for a name its static tables do not list (`view-configs.ts`).
     "react-native/Libraries/ReactNative/ReactFabricPublicInstance/ReactNativeAttributePayload",
     "react-native/Libraries/Renderer/shims/ReactNativeViewConfigRegistry",
@@ -63,14 +72,13 @@ test("the foreign entry bundles no React and none of the libraries' JavaScript, 
   for (const path of externals) {
     if (!path.startsWith("react-native/Libraries/StyleSheet/process")) expect(allowed.has(path), `${path} is not an allowed deep import`).toBe(true);
   }
-  // The six components and their helpers are part of the entry.
-  for (const file of ["ExpoImage", "BlurView", "BlurTargetView", "LinearGradient", "Video", "DateTimePicker", "LottieView"]) expect(inputs.some((path) => path.endsWith(`components/${file}.svelte`)), file).toBe(true);
-  for (const file of ["foreign-image", "foreign-gradient", "foreign-video", "foreign-datetime", "foreign-lottie"]) expect(inputs.some((path) => path.endsWith(`fabric/${file}.ts`)), file).toBe(true);
+  // The twelve libraries' components and helpers are part of the entry.
+  for (const file of components) expect(inputs.some((path) => path.endsWith(`components/${file}.svelte`)), file).toBe(true);
+  for (const file of helpers) expect(inputs.some((path) => path.endsWith(`fabric/foreign-${file}.ts`)), file).toBe(true);
 });
 
 test("no source of the package imports one of the libraries or React", () => {
-  const sources = ["src/foreign.ts", "src/fabric/foreign.ts", ...["image", "gradient", "video", "datetime", "lottie"].map((name) => `src/fabric/foreign-${name}.ts`),
-    ...["ExpoImage", "BlurView", "BlurTargetView", "LinearGradient", "Video", "DateTimePicker", "LottieView"].map((name) => `src/components/${name}.svelte`)];
+  const sources = ["src/foreign.ts", "src/fabric/foreign.ts", ...helpers.map((name) => `src/fabric/foreign-${name}.ts`), ...components.map((name) => `src/components/${name}.svelte`)];
   for (const file of sources) {
     const text = readFileSync(resolve(import.meta.dirname, "..", file), "utf8");
     for (const specifier of text.matchAll(/(?:from|require\()\s*["']([^"']+)["']/g)) {
@@ -126,4 +134,42 @@ test("every prop and event the Android RCTVideo manager reads or emits is in the
   for (const event of events) expect(config.events.has(event), `event ${event}`).toBe(true);
   // The shutter colour is the one colour prop.
   expect(typeof config.attributes.shutterColor).toBe("function");
+});
+
+// react-native-pdf's spec is Flow too, with its members written `name: ?type,`.
+function pdfSpec(file: string): { props: string[]; handlers: string[] } {
+  const text = readFileSync(resolve(modules, file), "utf8");
+  const body = /export type NativeProps = \$ReadOnly<\{\|([\s\S]*?)\|\}>;/.exec(text)?.[1] ?? "";
+  const props: string[] = [];
+  const handlers: string[] = [];
+  for (const [, name = "", type = ""] of body.matchAll(/^\s+(\w+): (.*?),$/gm)) (/EventHandler/.test(type) ? handlers : props).push(name);
+  return { props, handlers };
+}
+
+test("the static config of RNPDFPdfView lists the props of the library's Flow spec, the one bubbling event and the Android manager's props", async () => {
+  const spec = pdfSpec("react-native-pdf/fabric/RNPDFPdfNativeComponent.js");
+  expect(spec.props.length).toBeGreaterThan(15);
+  expect(spec.handlers).toEqual(["onChange"]);
+  const loaded = await createHarness("android").load("foreign-pdf-fixture.svelte");
+  for (const platform of ["android", "ios"] as const) {
+    const config = loaded.configs.viewConfigFor("RNPDFPdfView", platform);
+    const base = loaded.configs.viewConfigFor("RCTView", platform);
+    expect(Object.keys(config.attributes).filter((key) => !(key in base.attributes)).sort(), platform).toEqual(spec.props.filter((key) => !(key in base.attributes)).sort());
+    expect(config.events.get("topChange")).toBe("onChange");
+  }
+  // The Android manager sets exactly these (its `@ReactProp`s and the delegate's two no-ops).
+  const manager = readFileSync(resolve(modules, "react-native-pdf/android/src/main/java/org/wonday/pdf/PdfManager.java"), "utf8");
+  const set = [...manager.matchAll(/@ReactProp\(name = "(\w+)"\)/g)].map((match) => match[1] as string);
+  for (const prop of set) expect(spec.props, prop).toContain(prop);
+  expect(/REACT_CLASS = "(\w+)"/.exec(manager)?.[1]).toBe("RNPDFPdfView");
+});
+
+test("the static config of FastShadowView lists the props the Android manager reads, the colour converted", async () => {
+  const manager = readFileSync(resolve(modules, "react-native-fast-shadow/android/src/main/java/com/reactnativefastshadow/FastShadowViewManager.java"), "utf8");
+  const props = [...manager.matchAll(/@ReactProp\(name = "(\w+)"/g)].map((match) => match[1] as string).sort();
+  expect(props).toEqual(["cornerRadii", "shadowColor", "shadowOffset", "shadowOpacity", "shadowRadius"]);
+  const loaded = await createHarness("android").load("foreign-shadow-fixture.svelte");
+  const config = loaded.configs.viewConfigFor("FastShadowView", "android");
+  for (const prop of props) expect(prop in config.attributes, prop).toBe(true);
+  expect(typeof config.attributes.shadowColor).toBe("function");
 });

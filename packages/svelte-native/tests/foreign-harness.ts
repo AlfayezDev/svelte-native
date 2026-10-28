@@ -23,6 +23,10 @@ export type Natives = {
   turbo: Record<string, object>;
   modules: Record<string, object>;
   opened: string[];
+  /** What the engine's `captureView` answers: a URI or data, or null for a tag that is not an engine view of its own. */
+  engineCapture?: string | null;
+  /** `I18nManager.isRTL`. */
+  rtl?: boolean;
 };
 
 const modules = resolve(import.meta.dirname, "../../../node_modules");
@@ -100,12 +104,14 @@ export function createHarness(platform: Platform, options: { expo?: Record<strin
     dispatchCommand: (tag: number, name: string, args: unknown[]) => { calls.push(`engine.dispatchCommand ${tag} ${name} ${JSON.stringify(args)}`); },
     setNativeProps: () => {},
     registerForeign: (name: string) => { calls.push(`engine.registerForeign ${name}`); return true; },
+    captureView: (tag: number, options: object) => { calls.push(`engine.captureView ${tag} ${JSON.stringify(options)}`); return Promise.resolve(natives.engineCapture ?? null); },
   };
   const scope = globalThis as Record<string, unknown>;
   scope.nativeFabricUIManager = fake;
   scope.RN$registerCallableModule = () => {};
   scope.expo = {
     getViewConfig: (moduleName: string, viewName?: string) => options.expo?.[moduleName]?.[viewName ?? ""] ?? null,
+    modules: { SvelteEngine: engine },
   };
   scope.__harness = { engine, natives };
 
@@ -114,6 +120,7 @@ export function createHarness(platform: Platform, options: { expo?: Record<strin
     "react-native/Libraries/Image/resolveAssetSource": "export default (source) => (typeof source === 'number' ? (globalThis.__harness.natives.assets[source] ?? null) : source && typeof source === 'object' && 'uri' in source ? { scale: 1, ...source } : null);",
     "react-native/Libraries/TurboModule/TurboModuleRegistry": "export const getEnforcing = (name) => { const module = globalThis.__harness.natives.turbo[name]; if (!module) throw new Error('no TurboModule ' + name); return module; };",
     "react-native/Libraries/BatchedBridge/NativeModules": "export default globalThis.__harness.natives.modules;",
+    "react-native/Libraries/ReactNative/I18nManager": "export default { get isRTL() { return globalThis.__harness.natives.rtl === true; } };",
     "react-native/Libraries/Linking/Linking": "export default { openURL: (url) => { globalThis.__harness.natives.opened.push(url); return Promise.resolve(); } };",
     "expo-modules-core": "export const requireOptionalNativeModule = (name) => (name === 'SvelteEngine' ? globalThis.__harness.engine : null);",
     "react-native": "export const AppRegistry = { registerRunnable() {} };",
@@ -123,12 +130,12 @@ export function createHarness(platform: Platform, options: { expo?: Record<strin
     const bundle = await build({
       stdin: {
         contents: `import Fixture from ${JSON.stringify(resolve(import.meta.dirname, fixture))};
-          import { startSurface } from '../src/fabric/host.ts';
+          import { startSurface, stopSurface } from '../src/fabric/host.ts';
           import { tick } from 'svelte';
           export * as foreign from '../src/fabric/foreign.ts';
           export * as configs from '../src/fabric/view-configs.ts';
           export * as datetime from '../src/fabric/foreign-datetime.ts';
-          export { startSurface, tick, Fixture };`,
+          export { startSurface, stopSurface, tick, Fixture };`,
         resolveDir: import.meta.dirname,
       },
       bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], mainFields: ["main"], write: false,
@@ -151,7 +158,7 @@ export function createHarness(platform: Platform, options: { expo?: Record<strin
     await writeFile(file, bundle.outputFiles[0].contents);
     const loaded = await import(pathToFileURL(file).href);
     await rm(directory, { recursive: true });
-    return loaded as { foreign: typeof import("../src/fabric/foreign.ts"); configs: typeof import("../src/fabric/view-configs.ts"); datetime: typeof import("../src/fabric/foreign-datetime.ts"); startSurface: (rootTag: number, app: unknown, props: object) => Record<string, unknown>; tick: () => Promise<void>; Fixture: unknown };
+    return loaded as { foreign: typeof import("../src/fabric/foreign.ts"); configs: typeof import("../src/fabric/view-configs.ts"); datetime: typeof import("../src/fabric/foreign-datetime.ts"); startSurface: (rootTag: number, app: unknown, props: object) => Record<string, unknown>; stopSurface: (rootTag: number) => void; tick: () => Promise<void>; Fixture: unknown };
   }
 
   return {

@@ -87,8 +87,8 @@ async function load() {
 const find = (nodes: FakeNode[], name: string): FakeNode[] => nodes.flatMap((n) => [...(n.name === name ? [n] : []), ...find(n.children, name)]);
 const byId = (root: number, id: string) => find(roots[root] ?? [], "RCTView").find((n) => n.props.testID === id) as FakeNode;
 const settle = async (m: { tick: () => Promise<void> }) => { await m.tick(); await Promise.resolve(); await Promise.resolve(); };
-type App = { hide: () => void; show: () => void; pad: (n: number) => void; dropCss: () => void; useInline: () => void; two: () => void };
-const animationKeys = ["animationName", "animationDuration", "transitionProperty", "transitionDuration", "animatedStyle"];
+type App = { hide: () => void; show: () => void; pad: (n: number) => void; dropCss: () => void; useInline: () => void; two: () => void; useProps: () => void };
+const animationKeys = ["animationName", "animationDuration", "transitionProperty", "transitionDuration", "animatedStyle", "animatedProps"];
 const fresh = async () => { delete (globalThis as { __anim?: unknown }).__anim; roots = {}; return load(); };
 
 test("animatedStyle: initial values in the first payload, one descriptor and one mapper, re-pointed after a clone, stopped on removal", async () => {
@@ -145,6 +145,45 @@ test("animatedStyle: initial values in the first payload, one descriptor and one
   await settle(m);
   expect(A.descriptors).toHaveLength(2);
   expect(A.mappers).toHaveLength(3);
+});
+
+test("animatedProps: first-run values in the node's props, a descriptor set and a mapper of its own that write as animated props, stopped with the node", async () => {
+  const m = await fresh();
+  const app = m.startSurface(34, m.Fixture, {}) as App;
+  app.useProps();
+  await settle(m);
+  const node = byId(34, "props");
+  // The style worklet's values go in the style, the props worklet's in the props: both are in the first commit, neither key reaches the native payload.
+  expect(node.props).toEqual({ testID: "props", padding: 1, opacity: 0.5, transform: [{ scale: 2 }], accessibilityLabel: "count 3" });
+  expect("animatedProps" in node.props).toBe(false);
+
+  const A = log();
+  const own = A.descriptors.filter((entry) => entry.adds.some((add) => add.tag === node.tag));
+  expect(own).toHaveLength(2); // one set for the style updater, one for the props updater
+  expect(A.mappers.filter((entry) => !entry.stopped)).toHaveLength(3); // "anim"'s and the two of this node
+
+  // Each mapper writes to its own set (a forced run: the values did not change since the first one); only the props mapper says the values are animated props, which Reanimated hands on unbuilt.
+  A.updates.length = 0;
+  for (const mapper of A.mappers.slice(1)) mapper.worklet(true);
+  expect(A.updates).toHaveLength(2);
+  const byFlag = (animatedProps: boolean) => A.updates.find((update) => update.animatedProps === animatedProps);
+  expect(byFlag(true)?.values).toEqual({ accessibilityLabel: "count 3" });
+  expect(byFlag(false)?.values).toEqual({ opacity: 0.5, transform: [{ scale: 2 }] });
+  expect(own.map((entry) => entry.id)).toContain((byFlag(true)?.descriptors as { id: number }).id);
+  expect((byFlag(true)?.descriptors as { id: number }).id).not.toBe((byFlag(false)?.descriptors as { id: number }).id);
+
+  // A clone of the node points both sets at the new shadow node; the mappers stay.
+  app.pad(2);
+  await settle(m);
+  const cloned = byId(34, "props");
+  expect(cloned).not.toBe(node);
+  for (const entry of own) expect(entry.adds.at(-1)?.shadowNodeWrapper).toBe(cloned);
+  expect(A.mappers.filter((entry) => !entry.stopped)).toHaveLength(3);
+
+  app.hide();
+  await settle(m);
+  expect(A.mappers.filter((entry) => !entry.stopped)).toHaveLength(0);
+  for (const entry of own) expect(entry.removes).toEqual([node.tag]);
 });
 
 test("Reanimated CSS keys go to a CSSManager built from the node, and never reach the native payload", async () => {

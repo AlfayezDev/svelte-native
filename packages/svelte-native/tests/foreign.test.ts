@@ -327,7 +327,8 @@ test("the on-demand view manager names are the ones the packages register", asyn
   const entry = config.plugins.find((plugin): plugin is [string, { androidOnDemandViewManagers: Record<string, string[]> }] => Array.isArray(plugin) && plugin[0] === "@rasheed/svelte-native/expo");
   const listed = entry?.[1].androidOnDemandViewManagers ?? {};
   expect(Object.keys(listed).sort()).toEqual([
-    "com.airbnb.android.react.lottie.LottiePackage", "com.brentvatne.react.ReactVideoPackage", "com.reactnativecommunity.webview.RNCWebViewPackage", "com.rnmaps.maps.MapsPackage",
+    "com.airbnb.android.react.lottie.LottiePackage", "com.brentvatne.react.ReactVideoPackage", "com.reactnativecommunity.webview.RNCWebViewPackage", "com.reactnativefastshadow.FastShadowPackage",
+    "com.reactnativereanimatedtext.ReanimatedTextPackage", "com.rivereactnative.RiveReactNativePackage", "com.rnmaps.maps.MapsPackage", "org.wonday.pdf.RNPDFPackage",
   ]);
 
   const maps = resolve(modules, "react-native-maps/android/src/main/java/com/rnmaps");
@@ -354,4 +355,22 @@ test("the on-demand view manager names are the ones the packages register", asyn
   const lottie = resolve(modules, "lottie-react-native/android/src/main/java/com/airbnb/android/react/lottie");
   expect(listed["com.airbnb.android.react.lottie.LottiePackage"]).toEqual([/REACT_CLASS = "(\w+)"/.exec(ts.sys.readFile(resolve(lottie, "LottieAnimationViewManagerImpl.kt")) ?? "")?.[1]]);
   expect(ts.sys.readFile(resolve(lottie, "LottiePackage.kt"))).toMatch(/class LottiePackage : ReactPackage\b/);
+  expect(ts.sys.readFile(resolve(modules, "react-native-pdf/android/src/main/java/org/wonday/pdf/RNPDFPackage.java"))).toMatch(/class RNPDFPackage implements ReactPackage\b/);
+
+  // The four packages after them: plain `ReactPackage`s too (Rive's native modules come from `createNativeModules`), one view manager each.
+  const pdf = ts.sys.readFile(resolve(modules, "react-native-pdf/android/src/main/java/org/wonday/pdf/PdfManager.java")) ?? "";
+  expect(listed["org.wonday.pdf.RNPDFPackage"]).toEqual([/REACT_CLASS = "(\w+)"/.exec(pdf)?.[1]]);
+  const rive = resolve(modules, "rive-react-native/android/src/main/java/com/rivereactnative");
+  expect(listed["com.rivereactnative.RiveReactNativePackage"]).toEqual([/override fun getName\(\) = "(\w+)"/.exec(ts.sys.readFile(resolve(rive, "RiveReactNativeViewManager.kt")) ?? "")?.[1]]);
+  const rivePackage = ts.sys.readFile(resolve(rive, "RiveReactNativePackage.kt")) ?? "";
+  expect(rivePackage).toMatch(/class RiveReactNativePackage : ReactPackage\b/);
+  expect(rivePackage).toContain("RiveReactNativeRendererModule(reactContext), RiveReactNativeModule(reactContext)");
+  const shadow = resolve(modules, "react-native-fast-shadow/android/src/main/java/com/reactnativefastshadow");
+  expect(listed["com.reactnativefastshadow.FastShadowPackage"]).toEqual([/REACT_CLASS = "(\w+)"/.exec(ts.sys.readFile(resolve(shadow, "FastShadowViewManager.java")) ?? "")?.[1]]);
+  expect(ts.sys.readFile(resolve(shadow, "FastShadowPackage.java"))).toMatch(/class FastShadowPackage implements ReactPackage\b/);
+  const text = resolve(modules, "react-native-animateable-text/android/src/main/java/com/reactnativereanimatedtext");
+  expect(listed["com.reactnativereanimatedtext.ReanimatedTextPackage"]).toEqual([/REACT_CLASS = "(\w+)"/.exec(ts.sys.readFile(resolve(text, "JBAnimatedTextViewManager.java")) ?? "")?.[1]]);
+  expect(ts.sys.readFile(resolve(text, "ReanimatedTextPackage.kt"))).toMatch(/class ReanimatedTextPackage : ReactPackage\b/);
+  // react-native-view-shot and react-native-blob-util have no view, so nothing of theirs is deferred.
+  for (const key of Object.keys(listed)) expect(key).not.toMatch(/viewshot|ReactNativeBlobUtil/);
 });

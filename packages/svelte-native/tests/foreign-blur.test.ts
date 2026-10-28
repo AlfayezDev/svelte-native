@@ -34,13 +34,16 @@ test("Android: the blur view fills a container that holds the children, and the 
   // The target's handle exists when the first transaction is built, the id goes to the blur view with the update after it.
   expect(app.targetHandle()?.tag).toBe(target.tag);
   expect(blur.props.blurTargetId).toBeUndefined();
+  // Both views are told to the engine before they are created.
+  for (const name of ["ViewManagerAdapter_ExpoBlur_ExpoBlurTargetView", "ViewManagerAdapter_ExpoBlur_ExpoBlurView"]) {
+    expect(harness.calls.indexOf(`engine.registerForeign ${name}`), name).toBeGreaterThanOrEqual(0);
+    expect(harness.calls.indexOf(`engine.registerForeign ${name}`), name).toBeLessThan(harness.calls.indexOf(`create ${name}`));
+  }
   harness.calls.length = 0;
   await settle(loaded);
   blur = find(roots(), "ViewManagerAdapter_ExpoBlur_ExpoBlurView")[0];
   expect(blur.props.blurTargetId).toBe(target.tag);
   expect(harness.calls.filter((call) => call.startsWith("create"))).toEqual([]);
-  // Both views are told to the engine before they are created.
-  for (const name of ["ViewManagerAdapter_ExpoBlur_ExpoBlurTargetView", "ViewManagerAdapter_ExpoBlur_ExpoBlurView"]) expect(harness.calls.indexOf(`engine.registerForeign ${name}`)).toBe(-1);
 
   app.setMethod("none");
   await settle(loaded);

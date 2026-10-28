@@ -96,6 +96,28 @@ The lab's **stress** panel is a scenario runner. Every scenario samples UI-runti
 
 On 25 October 2026 the physical Samsung SM-A165F (90 Hz) passed all 28 functional checks on the final build, and Perfetto plus gfxinfo traced the stress-test "scroll lag" to React Native Android itself rather than scrolling or this renderer: scrolling the lab without the stress runs at p50 7.9 ms with no frame over 17 ms, while the 48-tile animated churn costs 13–14 ms per frame whether or not the page scrolls (Reanimated's synchronous Java prop path ≈ 3.3 ms per frame for 48 views, Fabric view creation ≈ 0.5 ms per view, RenderThread drawing of rounded semi-transparent views, 3–5 ms of GPU). React Native's experimental Android view recycling halved view creation but did not change frame times, so it stays off. In the lab's own scenarios, idle, square or single-property animation of 48 tiles, keyboard typing and the cleanup checks pass at 90 Hz; animated churn, the first draw of 300 unvirtualized rows, JavaScript-driven text values and Android dialog creation exceed the budget on this device. The same build on the physical iPhone SE (3rd generation, iOS 26.6, 60 Hz) passed all 28 checks and every quick scenario, driven by the `rasheed-svelte:///__dev?run=checks,quick` deep link and read back from `Documents/lab-results.json` with `devicectl`. Details, traces and the measurement tools are in `.rasheed/native-qa/2026-10-25/` (not committed).
 
+
+## Foreign views
+
+`@rasheed/svelte-native/foreign` mounts views other native libraries own inside the engine's tree (design and measurements in `apps/platform/modules/svelte-engine/SPEC.md`, "Foreign views"). The components mount the native view by its Fabric name and port what the library's React code does before it; none imports the library or React.
+
+```svelte
+<script lang="ts">
+  import { ExpoImage, BlurTargetView, BlurView, LinearGradient, Video, LottieView, DateTimePicker, openDatePicker, WebView, MapView, Marker } from "@rasheed/svelte-native/foreign";
+</script>
+```
+
+| Library | Components | Notes |
+|---|---|---|
+| expo-image | `ExpoImage` | `source`, `placeholder` (URL, `{ uri, headers }`, `require`d asset, blurhash, thumbhash), `contentFit`, `transition`, `cachePolicy`, `priority`, `recyclingKey`, `tintColor`, `onLoad`/`onError`. Our `Image` is unchanged. Static methods and the view's functions are not ported (use `requireNativeModule("ExpoImage")`). |
+| expo-blur | `BlurView`, `BlurTargetView` | iOS blurs what is behind. On Android `blurMethod="none"` (the default) is a translucent tint; the real blur renders a `BlurTargetView`, whose `ref` goes to `blurTarget`. The target's children are mounted by React Native: they draw and lay out but take no JavaScript touch events. |
+| expo-linear-gradient | `LinearGradient` | `colors` (any colour React Native takes), `locations`, `start`, `end`; the children are the engine's views. |
+| react-native-video 6 | `Video` | `source`, `paused`, `muted`, `repeat`, `resizeMode`, `rate`, `volume`, `controls`, `poster` and the library's callbacks; `ref` gives `seek`, `pause`, `resume`, `setVolume`, `getCurrentPosition`, `setSource`, ... through the library's `VideoManager`. `renderLoader` and FairPlay's `getLicense` are not ported. |
+| @react-native-community/datetimepicker | `DateTimePicker` (iOS), `openDatePicker` (Android) | One pattern: `{#if Platform.OS === "ios"}<DateTimePicker {value} onValueChange={(_, date) => (value = date)} />{:else}…await openDatePicker({ value, mode: "date" })…{/if}`; `openDatePicker` answers with the `Date`, or `null` when the dialog is dismissed. |
+| lottie-react-native | `LottieView` | `source` (a name, `{ uri }`, a `.lottie` asset or the animation object), `autoPlay`, `loop`, `speed`, `duration`, `progress`, `colorFilters`, `onAnimationFinish`; `ref` gives `play`, `pause`, `resume`, `reset`. |
+
+Every library is an app dependency (`npx expo install`) and a native rebuild. The config plugin's `androidOnDemandViewManagers` option keeps a package's view managers off the host's start (`{ "com.brentvatne.react.ReactVideoPackage": ["RCTVideo"] }`: the package's class name and the Fabric names it provides); it also works for packages that still build their native modules with `createNativeModules`. A view inside a list row or a sheet follows the platform's touch rules. Run `bun test tests/foreign*.test.ts` for the component, view-config and bundle checks; devices are needed for rendering.
+
 ## Renderer
 
 Mounting is not free: Svelte's runtime (component, effects, host nodes) runs before the host builds the Fabric payload, so 300 lowered `View`/`Text` rows mount in 75–80 ms on the Samsung SM-A165F against 61–65 ms for plain React Native (25 October 2026; details below). Keep unvirtualized lists short, paginate, or use `List`.

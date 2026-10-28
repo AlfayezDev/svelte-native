@@ -43,6 +43,11 @@ export default {
         // react-native-video builds its `VideoManager` module with createNativeModules: the wrapper for such packages keeps it.
         "com.brentvatne.react.ReactVideoPackage": ["RCTVideo"],
         "com.airbnb.android.react.lottie.LottiePackage": ["LottieAnimationView"],
+        // Four more legacy packages (view managers made with `createViewManagers`; Rive's modules stay with it): the PDF view, Rive, the Android shadow and the animateable text.
+        "org.wonday.pdf.RNPDFPackage": ["RNPDFPdfView"],
+        "com.rivereactnative.RiveReactNativePackage": ["RiveReactNativeView"],
+        "com.reactnativefastshadow.FastShadowPackage": ["FastShadowView"],
+        "com.reactnativereanimatedtext.ReanimatedTextPackage": ["JBAnimatedText"],
       },
     }],
     "expo-secure-store",

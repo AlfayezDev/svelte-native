@@ -80,7 +80,16 @@ export function expoViewConfigs(moduleFile: string): Record<string, ExpoViewConf
   return configs;
 }
 
-export function createHarness(platform: Platform, options: { expo?: Record<string, Record<string, ExpoViewConfig>>; natives?: Partial<Natives> } = {}) {
+export function createHarness(platform: Platform, options: {
+  expo?: Record<string, Record<string, ExpoViewConfig>>;
+  natives?: Partial<Natives>;
+  /** More stubbed modules, by import path (the source of an ES module). */
+  stubs?: Record<string, string>;
+  /** Esbuild plugins that resolve before the harness's own (a library's own sources, for the tests that bundle them). */
+  plugins?: import("esbuild").Plugin[];
+  /** More exports of the bundle, as source text appended to its entry (`export * as svg from '../src/fabric/foreign-svg.ts'`). */
+  exports?: string;
+} = {}) {
   const calls: string[] = [];
   const state = { roots: {} as Record<number, FakeNode[]>, handler: undefined as ((target: unknown, type: string, event: object) => void) | undefined };
   const natives: Natives = { assets: {}, turbo: {}, modules: {}, opened: [], ...options.natives };
@@ -124,6 +133,7 @@ export function createHarness(platform: Platform, options: { expo?: Record<strin
     "react-native/Libraries/Linking/Linking": "export default { openURL: (url) => { globalThis.__harness.natives.opened.push(url); return Promise.resolve(); } };",
     "expo-modules-core": "export const requireOptionalNativeModule = (name) => (name === 'SvelteEngine' ? globalThis.__harness.engine : null);",
     "react-native": "export const AppRegistry = { registerRunnable() {} };",
+    ...options.stubs,
   };
 
   async function load(fixture: string) {
@@ -135,11 +145,12 @@ export function createHarness(platform: Platform, options: { expo?: Record<strin
           export * as foreign from '../src/fabric/foreign.ts';
           export * as configs from '../src/fabric/view-configs.ts';
           export * as datetime from '../src/fabric/foreign-datetime.ts';
-          export { startSurface, stopSurface, tick, Fixture };`,
+          export { startSurface, stopSurface, tick, Fixture };
+          ${options.exports ?? ""}`,
         resolveDir: import.meta.dirname,
       },
       bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], mainFields: ["main"], write: false,
-      plugins: [...reactNativeConverters(platform), {
+      plugins: [...(options.plugins ?? []), ...reactNativeConverters(platform), {
         name: "foreign-fixture",
         setup(builder) {
           builder.onResolve({ filter: /^(react-native|expo-modules-core)/ }, (args) => ({ path: args.path, namespace: "stub" }));

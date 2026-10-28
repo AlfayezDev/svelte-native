@@ -22,10 +22,13 @@ final class GesturesUITests: XCTestCase {
 
     func testDrive() throws {
         let app = XCUIApplication(bundleIdentifier: bundleId)
-        app.activate()
-        let status = app.staticTexts["gestures.status"]
         let deadline = Date().addingTimeInterval(seconds)
+        // The harness starts the lab when it reads this line, so every input a page waits for finds the test already here.
+        Self.emit("GESTURES-READY")
+        while Date() < deadline, app.state != .runningForeground { Thread.sleep(forTimeInterval: 0.25) }
+        let status = app.staticTexts["gestures.status"]
         var performed = Set<String>()
+        var lastBeat = Date()
         while Date() < deadline {
             // The stress panel says "Done." when the last scenario has been judged.
             if app.staticTexts["Done."].exists { break }
@@ -33,26 +36,37 @@ final class GesturesUITests: XCTestCase {
                 XCTFail("the lab app is not in the foreground (state \(app.state.rawValue))")
                 return
             }
+            if Date().timeIntervalSince(lastBeat) > 10 {
+                lastBeat = Date()
+                Self.emit("GESTURES-WAIT {\"status\":\"\(status.exists ? status.label.prefix(60).replacingOccurrences(of: "\"", with: "'") : "no element")\"}")
+            }
             guard status.exists, let ready = Self.readyLine(status.label), ready["drive"] as? String == "xctest" else {
-                Thread.sleep(forTimeInterval: 0.25)
+                Thread.sleep(forTimeInterval: 0.1)
                 continue
             }
             let key = "\(ready["scenario"] ?? "")#\(ready["round"] ?? 0)#\(ready["step"] ?? 0)"
             guard !performed.contains(key), let input = ready["input"] as? [String: Any] else {
-                Thread.sleep(forTimeInterval: 0.25)
+                Thread.sleep(forTimeInterval: 0.1)
                 continue
             }
             performed.insert(key)
             var failure: String? = nil
+            let began = Date()
             do {
                 try perform(input, in: app)
             } catch {
                 failure = "\(error)"
                 XCTFail("\(key): \(error)")
             }
-            Self.report(ready, input: input, error: failure)
+            Self.report(ready, input: input, error: failure, from: began, to: Date())
         }
         XCTAssertLessThan(Date(), deadline, "the lab did not finish within \(seconds) s")
+    }
+
+    /// One line of the harness's protocol: printed and flushed at once, because the output is a pipe and a buffered line would reach it late.
+    private static func emit(_ line: String) {
+        print(line)
+        fflush(stdout)
     }
 
     // MARK: the lab's line
@@ -64,14 +78,16 @@ final class GesturesUITests: XCTestCase {
         return object
     }
 
-    private static func report(_ ready: [String: Any], input: [String: Any], error: String?) {
+    private static func report(_ ready: [String: Any], input: [String: Any], error: String?, from began: Date, to ended: Date) {
         var line: [String: Any] = [
             "scenario": ready["scenario"] ?? "", "round": ready["round"] ?? 0, "step": ready["step"] ?? 0,
             "kind": input["kind"] ?? "",
+            // The phone's own clock, in milliseconds: the recognizer trace (`-SvelteQAGestureTrace`) stamps its rows with the same one.
+            "beganMs": (began.timeIntervalSince1970 * 1000).rounded(), "endedMs": (ended.timeIntervalSince1970 * 1000).rounded(),
         ]
         if let error = error { line["error"] = error }
         if let data = try? JSONSerialization.data(withJSONObject: line), let text = String(data: data, encoding: .utf8) {
-            print("GESTURES-ACTION \(text)")
+            emit("GESTURES-ACTION \(text)")
         }
     }
 

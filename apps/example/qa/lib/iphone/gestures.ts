@@ -221,6 +221,21 @@ export async function prepareUiTests(session: IosSession, options: { team: strin
 
 const pollMs = 10_000;
 const aliveEveryMs = 30_000;
+const readyWaitMs = 180_000;
+
+/** The line the test prints when it is running on the phone and waits for the lab. */
+export const testReadyLine = "GESTURES-READY";
+
+/** Waits until the test's output has its ready line; false when it did not come (the run goes on and records the harness error). */
+async function waitForTestReady(mac: Mac, outFile: string, maxMs: number): Promise<boolean> {
+	const deadline = Date.now() + maxMs;
+	while (Date.now() < deadline) {
+		const result = await remote(mac, `grep -c ${shellQuote(testReadyLine)} ${shellQuote(outFile)} 2>/dev/null`);
+		if (result.stdout.trim() !== "" && result.stdout.trim() !== "0") return true;
+		await sleep(1500);
+	}
+	return false;
+}
 
 /** One launch of the lab with the given scenarios on the iPhone, an XCUITest injecting while the app writes its results. */
 export async function iosGesturesOnce(session: IosSession, names: string[], timeoutMs: number, logPath: string): Promise<{ launch: GestureLaunch; results: IosLabResults | null }> {
@@ -229,10 +244,13 @@ export async function iosGesturesOnce(session: IosSession, names: string[], time
 	const token = newToken();
 	const startedAt = new Date();
 	const outFile = `${uiTestsRemote}/test-output-${token}.log`;
-	const { pid } = await launchApp(target, { payloadUrl: `rasheed-svelte:///__dev?run=${runValue(names, "xctest")}&token=${token}` });
 	const seconds = Math.ceil(timeoutMs / 1000);
+	// The test starts first and says when it waits for the lab: a page gives its input up after a few seconds, and xcodebuild needs longer than that to get a runner going on the phone.
 	const started = await remoteOk(mac, inBackground(testCommand({ dir: uiTestsRemote, udid: session.udid, bundleId: target.bundleId, seconds, outFile })));
 	const testPid = Number(started.trim().split("\n").pop());
+	const testReady = await waitForTestReady(mac, outFile, readyWaitMs);
+	if (!testReady) console.log(`warning: the test did not say ${testReadyLine} within ${readyWaitMs / 1000} s; the lab starts anyway`);
+	const { pid } = await launchApp(target, { payloadUrl: `rasheed-svelte:///__dev?run=${runValue(names, "xctest")}&token=${token}` });
 	const deadline = Date.now() + timeoutMs;
 	let results: IosLabResults | null = null;
 	let raw = "";
@@ -257,7 +275,8 @@ export async function iosGesturesOnce(session: IosSession, names: string[], time
 			if (!(await appProcesses(target, session.installed)).includes(pid)) { died = `the app (pid ${pid}) was not running before the scenarios finished`; break; }
 		}
 	}
-	if (Number.isFinite(testPid)) await remote(mac, `kill ${testPid} 2>/dev/null; pkill -f 'xcodebuild test-without-building' 2>/dev/null; true`);
+	// Only the test this launch started: its shell's children (xcodebuild), then the shell.
+	if (Number.isFinite(testPid)) await remote(mac, `pkill -TERM -P ${testPid} 2>/dev/null; kill ${testPid} 2>/dev/null; true`);
 	try {
 		await terminateApp(target, pid);
 	} catch {

@@ -7,6 +7,10 @@
  *
  * - `animatedStyle`, a worklet (or an array of them) returning a style object: `useAnimatedStyle` without
  *   the hook. One view-descriptor set and one mapper per node; the mapper runs `styleUpdater` on the UI runtime.
+ * - `animatedProps`, the same for props that are not style (`useAnimatedProps` without the hook): a worklet returning
+ *   `{ text }` for a text view. A second set and mapper per node; the updater writes with `updateProps(..., true)`, which
+ *   hands the values to Reanimated as they are instead of building them as style, and the first-run values go in the
+ *   node's props (not its style) so the first commit already shows them.
  * - Reanimated CSS keys (`animationName`, `transitionProperty`, ...) in `style` or as top-level props: one `CSSManager`.
  * - SharedValues inside `style` (animated props): Reanimated's own `InlinePropManager`.
  * - `entering`, `exiting`, `layout`: layout animations, configured through `updateLayoutAnimations` like
@@ -30,6 +34,8 @@ export type AnimationTarget = { tag: number; viewName: string; node: object | nu
 type Values = Record<string, unknown>;
 type Updater = (() => Values) & { __closure?: Values };
 type StyleRuntime = {
+  /** The updater's values are props (`animatedProps`), not style: `updateProps`' `isAnimatedProps`. */
+  animatedProps: boolean;
   descriptors: ViewDescriptorsSet;
   remoteState: SharedValue<unknown>;
   active: SharedValue<boolean>;
@@ -43,12 +49,15 @@ type Record_ = {
   first: boolean;
   wrapper: object | null;
   wantsStyle: boolean;
+  wantsProps: boolean;
   wantsInline: boolean;
   /** The style with Reanimated CSS keys merged in, handed to `CSSManager.update`; null when the node has none. */
   css: Values | null;
   cssChanged: boolean;
   rawStyle: unknown;
   style: StyleRuntime | null;
+  /** The runtime of `animatedProps`; null without it. */
+  props: StyleRuntime | null;
   inline: InlinePropManager | null;
   cssManager: CSSManager | null;
   /** `nativeID` of the entering config (Reanimated reads it off the inserted view); null without `entering`. */
@@ -164,7 +173,7 @@ function runAnimations(animation: any, timestamp: number, key: number | string, 
   return true;
 }
 
-function styleUpdater(viewDescriptors: SharedValue<any>, updater: Updater, state: any, animationsActive: SharedValue<boolean>, forceUpdate?: boolean): void {
+function styleUpdater(viewDescriptors: SharedValue<any>, updater: Updater, state: any, animationsActive: SharedValue<boolean>, forceUpdate?: boolean, isAnimatedProps?: boolean): void {
   "worklet";
   const animations = state.animations ?? {};
   const newValues = updater() ?? {};
@@ -214,7 +223,7 @@ function styleUpdater(viewDescriptors: SharedValue<any>, updater: Updater, state
           allFinished = false;
         }
       }
-      if (updates) updateProps(viewDescriptors, updates, false);
+      if (updates) updateProps(viewDescriptors, updates, isAnimatedProps === true);
       if (!allFinished) requestAnimationFrame(frame);
       else state.isAnimationRunning = false;
     };
@@ -224,21 +233,22 @@ function styleUpdater(viewDescriptors: SharedValue<any>, updater: Updater, state
       state.isAnimationRunning = true;
       frame(frameTimestamp as number);
     }
-    if (hasNonAnimatedValues) updateProps(viewDescriptors, nonAnimatedNewValues, false);
+    if (hasNonAnimatedValues) updateProps(viewDescriptors, nonAnimatedNewValues, isAnimatedProps === true);
   } else {
     state.isAnimationCancelled = true;
     state.animations = [];
-    if (!shallowEqual(oldValues, newValues) || forceUpdate) updateProps(viewDescriptors, newValues, false);
+    if (!shallowEqual(oldValues, newValues) || forceUpdate) updateProps(viewDescriptors, newValues, isAnimatedProps === true);
   }
   state.last = newValues;
 }
 // biome-ignore-end lint: Reanimated's worklets
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-function createStyleRuntime(updaters: Updater[]): StyleRuntime {
+function createStyleRuntime(updaters: Updater[], animatedProps = false): StyleRuntime {
   const initial = { ...initialUpdaterRun(combine(updaters)) } as Values;
   validateAnimatedStyles(initial);
   return {
+    animatedProps,
     descriptors: makeViewDescriptorsSet(),
     remoteState: makeShareable({ last: initial, animations: {}, isAnimationCancelled: false, isAnimationRunning: false }) as unknown as SharedValue<unknown>,
     active: makeMutable(true),
@@ -259,6 +269,7 @@ const sameList = (a: readonly unknown[], b: readonly unknown[] | null) => b !== 
 export function animationProps(node: object, target: AnimationTarget, props: Record<string, unknown>): Record<string, unknown> {
   let record = records.get(node);
   const updaters = updatersOf(props.animatedStyle);
+  const propUpdaters = updatersOf(props.animatedProps);
   const styles = flatten(props.style);
   let cssTop: Values | null = null;
   for (const key in props) {
@@ -269,10 +280,10 @@ export function animationProps(node: object, target: AnimationTarget, props: Rec
   const layoutAnimated = props.entering !== undefined || props.exiting !== undefined || props.layout !== undefined;
   const inline = styles.some((style) => hasInlineStyles(style as Values));
   const cssInStyle = styles.some((style) => Object.keys(style as Values).some(isCssKey));
-  if (!record && updaters.length === 0 && !cssTop && !cssInStyle && !inline && !layoutAnimated) return props;
+  if (!record && updaters.length === 0 && propUpdaters.length === 0 && !cssTop && !cssInStyle && !inline && !layoutAnimated) return props;
 
   if (!record) {
-    record = { target, first: true, wrapper: null, wantsStyle: false, wantsInline: false, css: null, cssChanged: false, rawStyle: undefined, style: null, inline: null, cssManager: null, enteringId: null, layoutProps: {}, layoutRegistered: {} };
+    record = { target, first: true, wrapper: null, wantsStyle: false, wantsProps: false, wantsInline: false, css: null, cssChanged: false, rawStyle: undefined, style: null, props: null, inline: null, cssManager: null, enteringId: null, layoutProps: {}, layoutRegistered: {} };
     records.set(node, record);
     if (props.entering !== undefined) {
       // Before the commit that inserts the view, like the constructor in AnimatedComponent.
@@ -287,12 +298,18 @@ export function animationProps(node: object, target: AnimationTarget, props: Rec
     if (!record.style) record.style = createStyleRuntime(updaters);
     record.style.updaters = updaters;
   }
+  record.wantsProps = propUpdaters.length > 0;
+  if (record.wantsProps) {
+    if (!record.props) record.props = createStyleRuntime(propUpdaters, true);
+    record.props.updaters = propUpdaters;
+  }
   record.wantsInline = inline;
   record.rawStyle = props.style;
 
   const mapped = styles.map((style) => (hasInlineStyles(style as Values) ? getInlineStyle(style as Values, record.first) : style)) as Values[];
   const out: Record<string, unknown> = { ...props };
   delete out.animatedStyle;
+  delete out.animatedProps;
   delete out.entering;
   delete out.exiting;
   delete out.layout;
@@ -312,6 +329,7 @@ export function animationProps(node: object, target: AnimationTarget, props: Rec
   if (record.style) style = [style, record.style.initial];
   if (style === undefined) delete out.style;
   else out.style = style;
+  if (record.props) Object.assign(out, record.props.initial);
   pending.add(node);
   return out;
 }
@@ -323,8 +341,8 @@ export function commitAnimations(): void {
 }
 
 /**
- * Attaches Reanimated to one node whose Fabric node exists (`target.node`): view descriptors and mapper for `animatedStyle`,
- * the inline-prop mapper, and the CSS manager. Safe to repeat; each call re-points descriptors at the latest shadow node
+ * Attaches Reanimated to one node whose Fabric node exists (`target.node`): view descriptors and mapper for `animatedStyle`
+ * and for `animatedProps`, the inline-prop mapper, and the CSS manager. Safe to repeat; each call re-points descriptors at the latest shadow node
  * (a clone replaces the handle) and refreshes only what changed.
  */
 export function attachAnimation(node: object): void {
@@ -336,27 +354,8 @@ export function attachAnimation(node: object): void {
   const moved = record.wrapper !== wrapper;
   record.wrapper = wrapper;
 
-  const style = record.style;
-  if (style) {
-    if (record.wantsStyle) {
-      if (moved) style.descriptors.add({ tag, shadowNodeWrapper: wrapper as never });
-      if (!sameList(style.updaters, style.mounted)) {
-        if (style.mapperId !== null) stopMapper(style.mapperId);
-        const updater = combine(style.updaters);
-        const { descriptors, remoteState, active } = style;
-        const shareable = descriptors.shareableViewDescriptors;
-        const run = (forceUpdate?: boolean) => {
-          "worklet";
-          styleUpdater(shareable, updater, remoteState, active, forceUpdate);
-        };
-        style.mapperId = startMapper(run, style.updaters.flatMap((entry) => Object.values(entry.__closure ?? {})));
-        style.mounted = style.updaters;
-      }
-    } else {
-      stopStyle(style, tag);
-      record.style = null;
-    }
-  }
+  if (record.style) record.style = syncRuntime(record.style, record.wantsStyle, moved, tag, wrapper);
+  if (record.props) record.props = syncRuntime(record.props, record.wantsProps, moved, tag, wrapper);
 
   if (record.wantsInline) {
     record.inline ??= new InlinePropManager();
@@ -374,6 +373,31 @@ export function attachAnimation(node: object): void {
     record.cssChanged = false;
   }
   record.first = false;
+}
+
+/**
+ * Attaches one updater runtime (`animatedStyle` or `animatedProps`) to the node's shadow node: the descriptor re-pointed at a clone,
+ * the mapper started again when the updaters changed. Returns the runtime, or null when the node no longer wants it (stopped).
+ */
+function syncRuntime(runtime: StyleRuntime, wanted: boolean, moved: boolean, tag: number, wrapper: object): StyleRuntime | null {
+  if (!wanted) {
+    stopStyle(runtime, tag);
+    return null;
+  }
+  if (moved) runtime.descriptors.add({ tag, shadowNodeWrapper: wrapper as never });
+  if (!sameList(runtime.updaters, runtime.mounted)) {
+    if (runtime.mapperId !== null) stopMapper(runtime.mapperId);
+    const updater = combine(runtime.updaters);
+    const { descriptors, remoteState, active, animatedProps } = runtime;
+    const shareable = descriptors.shareableViewDescriptors;
+    const run = (forceUpdate?: boolean) => {
+      "worklet";
+      styleUpdater(shareable, updater, remoteState, active, forceUpdate, animatedProps);
+    };
+    runtime.mapperId = startMapper(run, runtime.updaters.flatMap((entry) => Object.values(entry.__closure ?? {})));
+    runtime.mounted = runtime.updaters;
+  }
+  return runtime;
 }
 
 /** `exiting` and `layout` by view tag, once the shadow node exists and again whenever the prop changed; `undefined` removes a config. */
@@ -426,6 +450,7 @@ export function detachAnimation(node: object): void {
   pending.delete(node);
   const { tag } = record.target;
   if (record.style) stopStyle(record.style, tag);
+  if (record.props) stopStyle(record.props, tag);
   record.inline?.detachInlineProps();
   record.cssManager?.unmountCleanup();
   if (record.wrapper) markRemovable(record.wrapper);

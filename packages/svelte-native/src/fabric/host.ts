@@ -19,7 +19,7 @@ import { mount, unmount, type Component } from "./deps-svelte.ts";
 // phone) loads on the first node that needs it; a plain first screen boots without it.
 type AnimationModule = typeof import("./animation.ts");
 let animation: AnimationModule | null = null;
-const ANIMATION_ATTRIBUTES = new Set(["animatedStyle", "entering", "exiting", "layout"]);
+const ANIMATION_ATTRIBUTES = new Set(["animatedStyle", "animatedProps", "entering", "exiting", "layout"]);
 const CSS_ANIMATION_KEY = /^(?:animation|transition)[A-Z]/;
 function styleWantsAnimation(style: unknown): boolean {
   if (Array.isArray(style)) { for (let index = 0; index < style.length; index++) if (styleWantsAnimation(style[index])) return true; return false; }
@@ -355,7 +355,7 @@ function build(node: NativeNode, rootTag: number, insideText: boolean, insideFor
   const current = state(node, viewName);
   current.foreign = foreign;
   const config = viewConfig(viewName);
-  // `animatedStyle` and the CSS keys never reach the payload; once loaded, the animation layer sees every node so it can detach.
+  // `animatedStyle`, `animatedProps` and the CSS keys never reach the payload; once loaded, the animation layer sees every node so it can detach.
   const animated = animation || wantsAnimation(attributes) ? loadAnimation().animationProps(node, current, attributes) : attributes;
   const rnProps = splitProps(node.name === "native-image" ? imageProps(animated) : navigationTags.has(node.name) ? navigationProps(node.name, animated) : animated, current, navigationTags.has(node.name));
   const scroll = viewName === "RCTScrollView";

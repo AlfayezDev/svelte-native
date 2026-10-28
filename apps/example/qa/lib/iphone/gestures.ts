@@ -9,6 +9,7 @@ import { qaDir, runsDir } from "../paths.ts";
 import { slug, stamp, writeRun } from "../runs.ts";
 import { sleep } from "../wait.ts";
 import { launchApp, appProcesses, readAppFile, terminateApp } from "./device.ts";
+import { describeStories, storiesFrom, type TraceAction, type TraceFile } from "./gesture-trace.ts";
 import { attribute, describeCrash, describeCrashReports, finishCrashWatch, keepCrashFiles, withReports } from "./crash-reports.ts";
 import { notReported, reportedIdentity, withIdentity } from "./identity.ts";
 import { labFinished, labScenarios, parseIosLabResults, type IosLabResults } from "./lab-results.ts";
@@ -77,7 +78,7 @@ export function testCommand(options: TestRun): string {
 export const inBackground = (command: string): string => `nohup sh -c ${shellQuote(command)} > /dev/null 2>&1 & echo $!`;
 
 export type UiTestOutput = {
-	actions: { scenario: string; round: number; step: number; kind: string; error: string | null }[];
+	actions: { scenario: string; round: number; step: number; kind: string; error: string | null; beganMs: number | null; endedMs: number | null }[];
 	failures: string[];
 	/** The test case's own verdict line, when it got that far (a run the harness stopped has none). */
 	ended: "passed" | "failed" | null;
@@ -99,6 +100,8 @@ export function parseUiTestOutput(text: string): UiTestOutput {
 					step: Number(value.step ?? 0),
 					kind: String(value.kind ?? ""),
 					error: typeof value.error === "string" ? value.error : null,
+					beganMs: typeof value.beganMs === "number" ? value.beganMs : null,
+					endedMs: typeof value.endedMs === "number" ? value.endedMs : null,
 				});
 			} catch {
 				failures.push(`unreadable action line: ${line.slice(0, 120)}`);
@@ -238,8 +241,28 @@ async function waitForTestReady(mac: Mac, outFile: string, maxMs: number): Promi
 	return false;
 }
 
+/** The app's recognizer recording (`--trace`), kept beside the log as `<log>.trace.json`, and what it says about each action the test performed. */
+async function readTrace(target: IosSession["target"], logPath: string, outFile: string, mac: Mac): Promise<string[]> {
+	// The app writes the recording about every 0.4 s while it changes: the last rows are in the file a moment after the last action.
+	await sleep(1500);
+	const text = await readAppFile(target, "Documents/gesture-trace.json");
+	if (text === null) return ["trace: the app wrote no Documents/gesture-trace.json (is this build one with SvelteQAGestureTrace?)"];
+	await writeFile(logPath.replace(/\.log$/, ".trace.json"), text);
+	let trace: TraceFile;
+	try {
+		trace = JSON.parse(text) as TraceFile;
+	} catch {
+		return ["trace: Documents/gesture-trace.json is not JSON"];
+	}
+	const out = (await remote(mac, `cat ${shellQuote(outFile)} 2>/dev/null`)).stdout;
+	const actions: TraceAction[] = parseUiTestOutput(out).actions.flatMap((action) =>
+		action.beganMs !== null && action.endedMs !== null ? [{ scenario: action.scenario, round: action.round, step: action.step, kind: action.kind, beganMs: action.beganMs, endedMs: action.endedMs }] : [],
+	);
+	return [`trace: ${trace.rows.length} rows, ${trace.meta.length} recognizers, ${trace.context.length} context samples; ${actions.length} actions`, ...describeStories(storiesFrom(trace, actions))];
+}
+
 /** One launch of the lab with the given scenarios on the iPhone, an XCUITest injecting while the app writes its results. */
-export async function iosGesturesOnce(session: IosSession, names: string[], timeoutMs: number, logPath: string): Promise<{ launch: GestureLaunch; results: IosLabResults | null }> {
+export async function iosGesturesOnce(session: IosSession, names: string[], timeoutMs: number, logPath: string, options: { trace?: boolean } = {}): Promise<{ launch: GestureLaunch; results: IosLabResults | null }> {
 	const { target } = session;
 	const { mac } = target;
 	const token = newToken();
@@ -251,7 +274,7 @@ export async function iosGesturesOnce(session: IosSession, names: string[], time
 	const testPid = Number(started.trim().split("\n").pop());
 	const testReady = await waitForTestReady(mac, outFile, readyWaitMs);
 	if (!testReady) console.log(`warning: the test did not say ${testReadyLine} within ${readyWaitMs / 1000} s; the lab starts anyway`);
-	const { pid } = await launchApp(target, { payloadUrl: `rasheed-svelte:///__dev?run=${runValue(names, "xctest")}&token=${token}` });
+	const { pid } = await launchApp(target, { payloadUrl: `rasheed-svelte:///__dev?run=${runValue(names, "xctest")}&token=${token}`, ...(options.trace ? { args: ["-SvelteQAGestureTrace", "YES"] } : {}) });
 	const deadline = Date.now() + timeoutMs;
 	let results: IosLabResults | null = null;
 	let raw = "";
@@ -278,13 +301,15 @@ export async function iosGesturesOnce(session: IosSession, names: string[], time
 	}
 	// Only the test this launch started: its shell's children (xcodebuild), then the shell.
 	if (Number.isFinite(testPid)) await remote(mac, `pkill -TERM -P ${testPid} 2>/dev/null; kill ${testPid} 2>/dev/null; true`);
+	const traceLines = options.trace ? await readTrace(target, logPath, outFile, mac) : [];
 	try {
 		await terminateApp(target, pid);
 	} catch {
 		// The app already ended (a finished lab or a crash).
 	}
 	const testText = (await remote(mac, `cat ${shellQuote(outFile)} 2>/dev/null; rm -f ${shellQuote(outFile)}`)).stdout;
-	await writeFile(logPath, `${raw || "no results were written\n"}\n--- xcodebuild test-without-building ---\n${testText}`);
+	await writeFile(logPath, `${raw || "no results were written\n"}\n--- xcodebuild test-without-building ---\n${testText}${traceLines.length ? `\n--- recognizer trace ---\n${traceLines.join("\n")}\n` : ""}`);
+	for (const line of traceLines) console.log(`  ${line}`);
 	const launch = launchFromIos({
 		asked: names, results, startedAt, durationMs: Date.now() - startedAt.getTime(), died, pid, output: testText === "" ? null : parseUiTestOutput(testText), testText, logFile: logPath.slice(qaDir.length + 1),
 	});
@@ -293,7 +318,7 @@ export async function iosGesturesOnce(session: IosSession, names: string[], time
 
 /** `native-qa gestures --platform ios`. */
 export async function iosGestures(argv: string[]): Promise<void> {
-	const { values } = parseFlags(argv, { ...iosOptions, run: { type: "string" }, repeat: { type: "string" }, timeout: { type: "string" }, team: { type: "string" }, rebuild: { type: "boolean" }, input: { type: "string" } });
+	const { values } = parseFlags(argv, { ...iosOptions, run: { type: "string" }, repeat: { type: "string" }, timeout: { type: "string" }, team: { type: "string" }, rebuild: { type: "boolean" }, input: { type: "string" }, trace: { type: "boolean" } });
 	const input = flagString(values.input) ?? "xctest";
 	if (input !== "xctest") throw new Error("--input is xctest on iOS (touches cannot be synthesized from inside the app)");
 	const session = await startIosSuite("gestures", argv, values);
@@ -309,7 +334,7 @@ export async function iosGestures(argv: string[]): Promise<void> {
 	for (let index = 1; index <= repeat; index++) {
 		console.log(`gestures xctest ${index}/${repeat}: ${names.map((name) => name.slice("gestures-".length)).join(", ")}`);
 		const logPath = join(runsDir, `gestures-${slug(session.device.serial)}-${stamp(session.startedAt)}-xctest-${index}.log`);
-		const { launch, results } = await iosGesturesOnce(session, names, timeoutMs, logPath);
+		const { launch, results } = await iosGesturesOnce(session, names, timeoutMs, logPath, { trace: values.trace === true });
 		launches.push(launch);
 		// A run that did not finish measured nothing to compare. Every one that did must be the recorded build.
 		if (launch.complete && results) reports.push(results.build);

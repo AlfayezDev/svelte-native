@@ -2,12 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildScript, inBackground, injectionsFrom, launchFromIos, launchesWithCrashes, parseUiTestOutput, sourcesDigest, testCommand, uiTestsLocal } from "../lib/iphone/gestures.ts";
+import { describeStories, storiesFrom, type TraceFile } from "../lib/iphone/gesture-trace.ts";
 import type { IosLabResults } from "../lib/iphone/lab-results.ts";
 import type { CrashReport, GestureLaunch } from "../lib/types.ts";
 
 const output = [
 	"Test Suite 'GesturesUITests' started at 2026-10-28 13:00:00.000.",
-	'GESTURES-ACTION {"scenario":"gestures-box","round":0,"step":0,"kind":"drag"}',
+	'GESTURES-ACTION {"scenario":"gestures-box","round":0,"step":0,"kind":"drag","beganMs":1000,"endedMs":1500}',
 	'GESTURES-ACTION {"scenario":"gestures-row","round":0,"step":0,"kind":"drag","error":"no element with the identifier gesture.row-3"}',
 	"/tmp/x/GesturesUITests.swift:41: error: -[GesturesUITests.GesturesUITests testDrive] : failed - gesture.row-3 not found",
 	"Test Case '-[GesturesUITests.GesturesUITests testDrive]' failed (31.2 seconds).",
@@ -64,8 +65,8 @@ describe("what the test printed", () => {
 	test("actions, failures and the test case's verdict", () => {
 		const parsed = parseUiTestOutput(output);
 		expect(parsed.actions).toEqual([
-			{ scenario: "gestures-box", round: 0, step: 0, kind: "drag", error: null },
-			{ scenario: "gestures-row", round: 0, step: 0, kind: "drag", error: "no element with the identifier gesture.row-3" },
+			{ scenario: "gestures-box", round: 0, step: 0, kind: "drag", error: null, beganMs: 1_000, endedMs: 1_500 },
+			{ scenario: "gestures-row", round: 0, step: 0, kind: "drag", error: "no element with the identifier gesture.row-3", beganMs: null, endedMs: null },
 		]);
 		expect(parsed.failures).toEqual(["failed - gesture.row-3 not found"]);
 		expect(parsed.ended).toBe("failed");
@@ -128,5 +129,66 @@ describe("crash reports on the launches", () => {
 		expect(launches[1]?.complete).toBe(false);
 		expect(launches[1]?.crashes[0]).toMatch(/the app aborted: boom/);
 		expect(reports.map((entry) => entry.attributedTo)).toEqual(["gestures 2", "unattributed"]);
+	});
+});
+
+describe("the recognizer recording against the test's actions", () => {
+	const trace: TraceFile = {
+		meta: [
+			{ id: 0, class: "RNBetterPanGestureRecognizer", delegate: "RNPanGestureHandler", view: "RCTViewComponentView", handlerTag: 7 },
+			{ id: 1, class: "_UIParallaxTransitionPanGestureRecognizer", delegate: "SvelteStackView", view: "UILayoutContainerView" },
+		],
+		// [t, id, state, touches, tx, ty]: the pan has the touch from t = 10_000, begins 96 ms later at 10 points, the edge recognizer fails on the first frame.
+		rows: [
+			[10_000, 0, 0, 1, 0, 0],
+			[10_000, 1, 0, 1, 0, 0],
+			[10_016, 1, 5, 1, 0, 0],
+			[10_050, 0, 0, 1, 6, 0],
+			[10_096, 0, 1, 1, 10, 0.5],
+			[10_112, 0, 2, 1, 14, 0.5],
+			[10_300, 0, 3, 0, 220, 1],
+			[12_000, 0, 0, 1, 0, 0],
+		],
+		context: [
+			[9_000, JSON.stringify({ navigation: [{ depth: 2, transitioning: false }] })],
+			[10_300, JSON.stringify({ navigation: [{ depth: 2, transitioning: false }], sheet: { detent: "medium", y: 400, visualY: 400 } })],
+			[10_400, JSON.stringify({ navigation: [{ depth: 2, transitioning: false }], sheet: { detent: "large", y: 200, visualY: 250 } })],
+		],
+	};
+	const action = { scenario: "gestures-pushed-edge", round: 1, step: 0, kind: "drag", beganMs: 9_900, endedMs: 10_400 };
+
+	test("when the touch came down, and when each recognizer began, ended or failed, relative to it", () => {
+		const [story] = storiesFrom(trace, [action]);
+		expect(story?.touchDownMs).toBe(10_000);
+		const pan = story?.recognizers.find((entry) => entry.handlerTag === 7);
+		expect([pan?.downAfterMs, pan?.beganAfterMs, pan?.endedAfterMs, pan?.endedAs, pan?.updates, pan?.translationAtBegan]).toEqual([0, 96, 300, "ended", 1, [10, 0.5]]);
+		const pop = story?.recognizers.find((entry) => entry.class.startsWith("_UIParallax"));
+		expect([pop?.beganAfterMs, pop?.endedAs, pop?.endedAfterMs]).toEqual([null, "failed", 16]);
+		// Ordered by when they began: the pan first, the one that never began after it.
+		expect(story?.recognizers.map((entry) => entry.id)).toEqual([0, 1]);
+	});
+
+	test("the context at the start and the end, and how far the sheet travelled", () => {
+		const [story] = storiesFrom(trace, [action]);
+		expect([story?.contextAtStart?.depth, story?.contextAtStart?.detent]).toEqual([[2], null]);
+		expect([story?.contextAtEnd?.detent, story?.contextAtEnd?.y]).toEqual(["large", 200]);
+		// No sheet when the action began: nothing to measure a travel against.
+		expect(story?.sheetTravel).toBeNull();
+		const [moved] = storiesFrom(trace, [{ ...action, beganMs: 10_320 }]);
+		expect(moved?.contextAtStart?.detent).toBe("medium");
+		expect(moved?.sheetTravel).toBe(150);
+	});
+
+	test("a row outside every action's window belongs to none", () => {
+		const [story] = storiesFrom(trace, [{ ...action, beganMs: 13_000, endedMs: 13_100 }]);
+		expect(story?.touchDownMs).toBeNull();
+		expect(story?.recognizers).toEqual([]);
+	});
+
+	test("the lines name the recognizers and the times", () => {
+		const text = describeStories(storiesFrom(trace, [action])).join("\n");
+		expect(text).toContain("gestures-pushed-edge round 1 step 1 (drag), touch down 10000; stack depth 2");
+		expect(text).toContain("RNBetterPanGestureRecognizer #7 (RNPanGestureHandler): touch +0 ms, began +96 ms at (10, 0.5), ended +300 ms, 1 updates");
+		expect(text).toContain("_UIParallaxTransitionPanGestureRecognizer (SvelteStackView): touch +0 ms, never began, failed +16 ms");
 	});
 });

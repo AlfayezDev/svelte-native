@@ -316,6 +316,35 @@ const foreignKinds: Record<string, Kind> = {
     colorStructs: { colorFilters: "color" },
     events: "topAnimationFailure topAnimationFinish topAnimationLoaded",
   },
+  // react-native-pdf 7: a codegen component on both platforms; one bubbling event, `topChange`, whose message is a string (`foreign-pdf.ts`)
+  RNPDFPdfView: {
+    plain: `
+      enableAnnotationRendering enableAntialiasing enableDoubleTapZoom enablePaging enableRTL fitPolicy horizontal maxScale
+      minScale page password path scale scrollEnabled showsHorizontalScrollIndicator showsVerticalScrollIndicator singlePage spacing
+    `,
+  },
+  // rive-react-native 9.7: a legacy view manager like RCTVideo; its events are the manager's direct events (`onPlay` reaches JavaScript as `topPlay`)
+  RiveReactNativeView: {
+    plain: `
+      alignment animationName artboardName autoplay dataBinding fit isUserHandlingErrors layoutScaleFactor referencedAssets
+      resourceName stateMachineName url
+    `,
+    events: "topError topLoopEnd topPause topPlay topRiveEventReceived topStateChanged topStop",
+  },
+  // react-native-fast-shadow 0.1 (Android): a `ReactViewManager` whose view draws a blurred shadow behind its own background; the shadow props are top-level here
+  FastShadowView: {
+    plain: "cornerRadii shadowOffset shadowOpacity shadowRadius",
+  },
+  // react-native-animateable-text 0.19: a `Text` whose string is the `text` prop (the library's own view config, `AnimateableText.tsx`)
+  JBAnimatedText: {
+    plain: `
+      adjustsFontSizeToFit allowFontScaling android_hyphenationFrequency dataDetectorType disabled dynamicTypeRamp ellipsizeMode
+      isHighlighted isPressable lineBreakStrategyIOS maxFontSizeMultiplier minimumFontScale numberOfLines onInlineViewLayout
+      onTextLayout selectable text textBreakStrategy
+    `,
+    colors: "selectionColor",
+    events: "topInlineViewLayout topTextLayout",
+  },
 };
 
 const kinds: Record<Platform, Record<string, Kind>> = {

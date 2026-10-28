@@ -60,6 +60,12 @@ export function listenToWebView(name: string, sink: WebViewSink): () => void {
   return () => { if (sinks.get(name) === sink) sinks.delete(name); };
 }
 
+/** A TurboModule by name (`TurboModuleRegistry.getEnforcing`), from React Native's own module, not the package's index. */
+export function turboModule<Module>(name: string): Module {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return (require("react-native/Libraries/TurboModule/TurboModuleRegistry") as { getEnforcing<T>(name: string): T }).getEnforcing<Module>(name);
+}
+
 type WebViewModule = { shouldStartLoadWithLockIdentifier(shouldStart: boolean, lockIdentifier: number): void };
 let webViewModule: WebViewModule | undefined;
 

@@ -25,7 +25,7 @@ export function labPage(version: string): string {
 /** The commands of the sets that are mounted, by source (the scenario reads it when it needs it, outside any effect). */
 export const foreignHandles = new SvelteMap<string, SetHandles>();
 
-/** The same for the sets of the six native-view libraries (`LibrarySet.svelte`): the video's and the animation's functions, the Android date dialog. */
+/** The same for the sets of the twelve native-view libraries (`LibrarySet.svelte`): the video's, animation's, PDF's and Rive's functions, the capture, the animated text's number and the Android date dialog. */
 export const libraryHandles = new SvelteMap<string, LibraryHandles>();
 
 /** What the lab page reports: one entry per event of a view, by the set (`inline`, `row-2`, `sheet`, `cycle`) that raised it. */

@@ -10,8 +10,9 @@
    * The foreign-views lab (SPEC.md, "Foreign views"), opened by the `foreign-views` stress scenario: `?mode=` picks what
    * the views sit in. `inline` is a plain column, `list` the windowed List (one view per row), `sheet` a native sheet,
    * `cycle` mounts and unmounts one view on the scenario's command. `libraries`, `libraries-list` and `libraries-sheet` are the
-   * same three places for the six native-view libraries (expo-image, expo-blur, expo-linear-gradient, react-native-video,
-   * datetimepicker, lottie-react-native): a section per library, one library per list row, all six in a sheet.
+   * same three places for the twelve native-view libraries (expo-image, expo-blur, expo-linear-gradient, react-native-video,
+   * datetimepicker, lottie-react-native, react-native-pdf, react-native-view-shot, rive-react-native, expo-conic-gradient,
+   * react-native-fast-shadow, react-native-animateable-text): a section per library, one library per list row, all twelve in a sheet.
    */
   let { url }: { url?: URL } = $props();
   const router = useRouter();

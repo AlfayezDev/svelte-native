@@ -6,12 +6,7 @@
  * `content` and spans, `Stop` and `FeMergeNode` register with their parent). `tests/svg.test.ts` runs the library's own functions
  * on the same inputs and compares.
  */
-import extractLengthList from "react-native-svg/src/lib/extract/extractLengthList";
-import extractOpacity from "react-native-svg/src/lib/extract/extractOpacity";
-import extractTransform from "react-native-svg/src/lib/extract/extractTransform";
-import extractBrush from "react-native-svg/src/lib/extract/extractBrush";
-import units from "react-native-svg/src/lib/units";
-import { pickNotNil } from "react-native-svg/src/lib/util";
+import { extractBrush, extractLengthList, extractOpacity, extractTransform, pickNotNil, units } from "./svg-library.js";
 import { Platform } from "./deps-rn.ts";
 import { processColorValue } from "./view-configs.ts";
 

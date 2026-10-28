@@ -1,9 +1,10 @@
 <script lang="ts" module>
   import type { SharedValue } from "@rasheed/svelte-native/animation";
   import type { LottieHandle, PdfHandle, RiveHandle, VideoHandle } from "@rasheed/svelte-native/foreign";
-  export type LibraryKind = "image" | "blur" | "gradient" | "video" | "datetime" | "lottie" | "pdf" | "capture" | "rive" | "conic" | "shadow" | "text";
-  export const libraryKinds: readonly LibraryKind[] = ["image", "blur", "gradient", "video", "datetime", "lottie", "pdf", "capture", "rive", "conic", "shadow", "text"];
-  /** What a set hands to whoever drives it: the video's, the animation's, the PDF's and Rive's functions, the Android date dialog, the capture and the shared value the text shows. */
+  import type { SvgHandle, SvgRootHandle } from "@rasheed/svelte-native/svg";
+  export type LibraryKind = "image" | "blur" | "gradient" | "video" | "datetime" | "lottie" | "pdf" | "capture" | "rive" | "conic" | "shadow" | "text" | "svg";
+  export const libraryKinds: readonly LibraryKind[] = ["image", "blur", "gradient", "video", "datetime", "lottie", "pdf", "capture", "rive", "conic", "shadow", "text", "svg"];
+  /** What a set hands to whoever drives it: the video's, the animation's, the PDF's and Rive's functions, the Android date dialog, the capture, the shared value the text shows and the SVG's handles and progress. */
   export type LibraryHandles = {
     video: (VideoHandle & { host: unknown }) | null;
     lottie: (LottieHandle & { host: unknown }) | null;
@@ -13,11 +14,16 @@
     capture(): Promise<string>;
     /** The number the animated text shows on the UI thread; null until the text section is mounted. */
     count: SharedValue<number> | null;
+    /** The first static icon's `Path` and the gradient card's `Svg`: `getTotalLength`, `getBBox`, `toDataURL`, ...; null until the SVG section is mounted. */
+    svg: { path: SvgHandle | null; root: SvgRootHandle | null };
+    /** The progress (0 to 1) the animated ring and dot of the SVG section follow on the UI thread; null until the section is mounted. */
+    ring: SharedValue<number> | null;
     pickDate(): Promise<Date | null>;
   };
   const titles: Record<LibraryKind, string> = {
     image: "expo-image", blur: "expo-blur", gradient: "expo-linear-gradient", video: "react-native-video", datetime: "datetimepicker", lottie: "lottie-react-native",
     pdf: "react-native-pdf", capture: "react-native-view-shot", rive: "rive-react-native", conic: "expo-conic-gradient", shadow: "react-native-fast-shadow", text: "react-native-animateable-text",
+    svg: "react-native-svg",
   };
 </script>
 <script lang="ts">
@@ -29,18 +35,20 @@
     captureRef, openDatePicker, shadowStyle,
   } from "@rasheed/svelte-native/foreign";
   import Platform from "react-native/Libraries/Utilities/Platform";
+  import { Circle, Defs, LinearGradient as SvgLinearGradient, Path, Rect, Stop, Svg, SvgXml, Text as SvgText } from "@rasheed/svelte-native/svg";
   import labImage from "../../../../assets/native/lab/lab-image.png";
   import { theme } from "../state.svelte.ts";
   import { labVideo, libraryHandles, record } from "./foreign.svelte.ts";
   import { labLottie } from "./lab-lottie.ts";
   import { labPdf } from "./lab-pdf.ts";
+  import { labSvgIcons } from "./lab-svg.ts";
 
   /**
    * One box per library (expo-image, expo-blur, expo-linear-gradient, react-native-video, datetimepicker, lottie-react-native,
    * react-native-pdf, react-native-view-shot, rive-react-native, expo-conic-gradient, react-native-fast-shadow,
-   * react-native-animateable-text), each a fixed `height`, the way the foreign-views lab (SPEC.md, "Foreign views") mounts the older
+   * react-native-animateable-text, react-native-svg), each a fixed `height`, the way the foreign-views lab (SPEC.md, "Foreign views") mounts the older
    * three: inline, in a list row and in a sheet. Every event is recorded under `source` (`record`), and the video's, the animation's,
-   * the PDF's and Rive's functions, the capture and the date dialog are in `libraryHandles` under the same name while the set is mounted.
+   * the PDF's and Rive's functions, the capture, the date dialog and the SVG's handles are in `libraryHandles` under the same name while the set is mounted.
    * Rive loads its file from Rive's CDN: it needs the network.
    */
   let { source, kinds = libraryKinds, height = 96 }: { source: string; kinds?: readonly LibraryKind[]; height?: number } = $props();
@@ -83,10 +91,25 @@
     "worklet";
     return { text: `count ${Math.round(count ? count.value : 0)}` };
   };
+  // The SVG section's ring: a shared value that runs 0 to 1 and back on the UI thread; the ring's dash offset and the dot's radius follow it without JavaScript
+  // (`animatedProps`: the native props `strokeDashoffset` and `r`).
+  // svelte-ignore state_referenced_locally
+  const progress = kinds.includes("svg") ? createSharedValue(0) : null;
+  const circumference = 2 * Math.PI * 14;
+  const ringProps = () => {
+    "worklet";
+    return { strokeDashoffset: circumference * (1 - (progress ? progress.value : 0)) };
+  };
+  const dotProps = () => {
+    "worklet";
+    return { r: 3 + 3 * (progress ? progress.value : 0) };
+  };
+  const svgHandles: LibraryHandles["svg"] = { path: null, root: null };
   onMount(() => {
     if (count) count.value = withRepeat(withTiming(100, { duration: 5000, reduceMotion: ReduceMotion.Never }), -1);
+    if (progress) progress.value = withRepeat(withTiming(1, { duration: 1800, reduceMotion: ReduceMotion.Never }), -1, true);
   });
-  libraryHandles.set(own, { get video() { return video; }, get lottie() { return lottie; }, get pdf() { return pdf; }, get rive() { return rive; }, get count() { return count; }, capture, pickDate });
+  libraryHandles.set(own, { get video() { return video; }, get lottie() { return lottie; }, get pdf() { return pdf; }, get rive() { return rive; }, get count() { return count; }, get svg() { return svgHandles; }, get ring() { return progress; }, capture, pickDate });
   onDestroy(() => { libraryHandles.delete(own); });
 
   const stripes = ["#e5484d", "#f5d90a", "#30a46c", "#0091ff", "#8e4ec6"];
@@ -168,6 +191,30 @@
                 <Text style={{ color: theme.foreground, fontSize: 15 }}>Shadowed</Text>
               </Pressable>
             </ShadowedView>
+          </View>
+        {:else if kind === "svg"}
+          <View style={{ flex: 1, padding: 6, justifyContent: "space-around" }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-around" }}>
+              <Svg width={34} height={34} viewBox="0 0 24 24" fill="none" stroke={theme.foreground} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" accessibilityLabel="Check icon">
+                <Path d="M20 6 9 17l-5-5" ref={(handle) => { svgHandles.path = handle; }} />
+              </Svg>
+              <Svg width={34} height={34} viewBox="0 0 24 24" accessibilityLabel="Heart icon">
+                <Path d="M12 21s-7-4.5-9.5-9A5.5 5.5 0 0 1 12 6a5.5 5.5 0 0 1 9.5 6c-2.5 4.5-9.5 9-9.5 9z" fill="#e5484d" />
+              </Svg>
+              <Svg width={58} height={34} pointerEvents="box-only" onPress={() => report("svg-press")} ref={(handle) => { svgHandles.root = handle; }} accessibilityLabel="Gradient card">
+                <Defs><SvgLinearGradient id={`${own}-card`} x1="0" y1="0" x2="1" y2="1"><Stop offset="0" stopColor="#ff7a18" /><Stop offset="1" stopColor="#319197" /></SvgLinearGradient></Defs>
+                <Rect width="100%" height="100%" rx={8} fill={`url(#${own}-card)`} />
+                <SvgText x="29" y="22" fill="#ffffff" fontSize={13} fontWeight="bold" textAnchor="middle">SVG</SvgText>
+              </Svg>
+              <Svg width={34} height={34} viewBox="0 0 36 36" accessibilityLabel="Progress ring">
+                <Circle cx={18} cy={18} r={14} fill="none" stroke={theme.border} strokeWidth={4} />
+                <Circle cx={18} cy={18} r={14} fill="none" stroke="#0091ff" strokeWidth={4} strokeLinecap="round" strokeDasharray={[circumference]} strokeDashoffset={circumference} transform="rotate(-90 18 18)" animatedProps={ringProps} />
+                <Circle cx={18} cy={18} r={3} fill="#0091ff" animatedProps={dotProps} />
+              </Svg>
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-around" }}>
+              {#each Object.entries(labSvgIcons) as [name, xml] (name)}<SvgXml {xml} width={36} height={36} />{/each}
+            </View>
           </View>
         {:else}
           <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>

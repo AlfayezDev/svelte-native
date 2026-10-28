@@ -1,20 +1,11 @@
 /**
- * react-native-svg on the Svelte host (SPEC.md, "react-native-svg"): the view configs of its 29 Fabric components, the props each
- * element class of the library hands its native component, and the handles that call its native module. The extraction is the
- * library's own (`src/lib/extract/*`, imported by deep path: no React, no component class), so an element here sends what the
- * library's element sends for the same props. What the library does with React children is in `foreign-svg-extract.ts`, the text
- * and the stops are collected by the Svelte components and the host (`setForeignText`).
+ * react-native-svg on the Svelte host (SPEC.md, "react-native-svg"): the props each element class of the library hands its native component, and the
+ * handles that call its native module. The extraction is the library's own (`src/lib/extract/*`, imported by deep path through `svg-library.js`: no React,
+ * no component class), so an element here sends what the library's element sends for the same props. What the library does with React children is in
+ * `foreign-svg-extract.ts`; the text and the stops are collected by the Svelte components and the host (`setForeignText`). The view configs of the
+ * library's Fabric components are in `foreign-svg-kinds.ts`.
  */
-import extractProps, { extract, propsAndStyles, withoutXY } from "react-native-svg/src/lib/extract/extractProps";
-import extractResponder from "react-native-svg/src/lib/extract/extractResponder";
-import extractTransform, { extractTransformSvgView } from "react-native-svg/src/lib/extract/extractTransform";
-import extractViewBox, { alignEnum, meetOrSliceTypes } from "react-native-svg/src/lib/extract/extractViewBox";
-import extractOpacity from "react-native-svg/src/lib/extract/extractOpacity";
-import extractBrush from "react-native-svg/src/lib/extract/extractBrush";
-import extractPolyPoints from "react-native-svg/src/lib/extract/extractPolyPoints";
-import units from "react-native-svg/src/lib/units";
-import { maskType } from "react-native-svg/src/lib/maskType";
-import { idPattern } from "react-native-svg/src/lib/util";
+import { alignEnum, extract, extractBrush, extractOpacity, extractPolyPoints, extractProps, extractResponder, extractTransform, extractTransformSvgView, extractViewBox, idPattern, maskType, meetOrSliceTypes, propsAndStyles, units, withoutXY } from "./svg-library.js";
 import { Platform, resolveAssetSource } from "./deps-rn.ts";
 import { flattenStyle, turboModule, type Commandable } from "./foreign.ts";
 import { setForeignText } from "./foreign-text.ts";

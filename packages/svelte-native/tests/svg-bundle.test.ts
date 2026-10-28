@@ -121,14 +121,17 @@ test("React Native is reached by deep paths only: the lite shim's modules and th
 });
 
 test("no source of the svg entry imports React, the library's index or one of its components", () => {
-  const sources = ["src/svg.ts", "src/fabric/foreign-svg.ts", "src/fabric/foreign-svg-kinds.ts", "src/fabric/foreign-svg-extract.ts", "src/fabric/foreign-svg-xml.ts", "src/fabric/foreign-text.ts"];
+  const sources = ["src/svg.ts", "src/fabric/svg-library.js", "src/fabric/foreign-svg.ts", "src/fabric/foreign-svg-kinds.ts", "src/fabric/foreign-svg-extract.ts", "src/fabric/foreign-svg-xml.ts", "src/fabric/foreign-text.ts"];
   for (const file of sources) {
     const text = readFileSync(resolve(import.meta.dirname, "..", file), "utf8");
     for (const specifier of text.matchAll(/(?:from|require\()\s*["']([^"']+)["']/g)) {
       const path = specifier[1] ?? "";
       expect(/^(react|react\/.*|react-dom.*)$/.test(path), `${file} imports ${path}`).toBe(false);
-      // The library only by deep path into `src/lib`.
-      if (path.startsWith("react-native-svg")) expect(path.startsWith("react-native-svg/src/lib/"), `${file} imports ${path}`).toBe(true);
+      // The library only by deep path into `src/lib`, and only from `svg-library.js`.
+      if (path.startsWith("react-native-svg")) {
+        expect(path.startsWith("react-native-svg/src/lib/"), `${file} imports ${path}`).toBe(true);
+        expect(file, `${file} imports ${path}`).toBe("src/fabric/svg-library.js");
+      }
     }
   }
 });

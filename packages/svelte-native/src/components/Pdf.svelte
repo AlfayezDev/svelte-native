@@ -4,7 +4,7 @@
   import { createNativeProps } from "../native-props.ts";
   import { Platform, resolveAssetSource } from "../fabric/deps-rn.ts";
   import type { Commandable } from "../fabric/foreign.ts";
-  import { openPdf, parsePdfMessage, pdfHandle, type PdfHandle, type PdfSource } from "../fabric/foreign-pdf.ts";
+  import { openPdf, parsePdfMessage, pdfHandle, type PdfFile, type PdfHandle, type PdfSource } from "../fabric/foreign-pdf.ts";
   import View from "./View.svelte";
   import type { ViewProps } from "react-native";
 
@@ -69,7 +69,14 @@
     const current = untrack(() => source);
     path = null;
     let live = true;
-    const opened = openPdf(current, { resolveAsset: asset, trustAllCerts: untrack(() => trustAllCerts) });
+    let opened: PdfFile;
+    try {
+      opened = openPdf(current, { resolveAsset: asset, trustAllCerts: untrack(() => trustAllCerts) });
+    } catch (error) {
+      // react-native-blob-util is not linked: the library's component fails the same way, through `onError`.
+      untrack(() => onError)?.(error instanceof Error ? error : new Error(String(error)));
+      return;
+    }
     opened.path.then(
       (local) => { if (live) path = local; },
       (error: unknown) => { if (live) untrack(() => onError)?.(error instanceof Error ? error : new Error(String(error))); },

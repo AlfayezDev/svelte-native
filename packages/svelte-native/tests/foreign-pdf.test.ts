@@ -220,3 +220,12 @@ test("messages without a name, a short load and an unknown one are read as the l
   expect(parsePdfMessage("loadComplete|1|2|3")).toEqual({ type: "loadComplete", pages: 1, size: { width: 2, height: 3 }, tableContents: undefined });
   expect(parsePdfMessage("pageChanged|x|y")).toEqual({ type: "pageChanged", page: Number.NaN, pages: Number.NaN });
 });
+
+test("without react-native-blob-util the error reaches onError and nothing is mounted", async () => {
+  const harness = createHarness("android");
+  const loaded = await harness.load("foreign-pdf-fixture.svelte");
+  const app = loaded.startSurface(105, loaded.Fixture, {}) as App;
+  await settle(loaded);
+  expect(app.eventLog()).toEqual([["error", "no TurboModule ReactNativeBlobUtil"]]);
+  expect(find(harness.roots()[105], "RNPDFPdfView")).toEqual([]);
+});

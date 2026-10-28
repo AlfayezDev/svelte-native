@@ -21,3 +21,7 @@ java -cp "$work/check.jar" expo.modules.svelteengine.AnimatedWireCheckKt "$work/
 kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/CaptureRules.kt" \
   "$here/kotlin/expo/modules/svelteengine/CaptureCheck.kt" -include-runtime -d "$work/capture-check.jar"
 java -cp "$work/capture-check.jar" expo.modules.svelteengine.CaptureCheckKt
+
+kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/CaptureFiles.kt" \
+  "$here/kotlin/expo/modules/svelteengine/CaptureFilesCheck.kt" -include-runtime -d "$work/capture-files-check.jar"
+java -cp "$work/capture-files-check.jar" expo.modules.svelteengine.CaptureFilesCheckKt

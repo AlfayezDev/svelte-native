@@ -27,7 +27,7 @@ class SvelteEngineModule : Module() {
 
     Events("insets")
 
-    OnDestroy { setAnimatedUpdater(null); AnimatedBridge.uninstall(); onMain { insets?.uninstall(); mountingManager?.foreign?.uninstall() } }
+    OnDestroy { setAnimatedUpdater(null); AnimatedBridge.uninstall(); Capture.deleteTemporaryFiles(); onMain { insets?.uninstall(); mountingManager?.foreign?.uninstall() } }
 
     Function("install") { reanimatedReady: Boolean? ->
       if (native != null) return@Function true

@@ -9,7 +9,6 @@ import android.util.Base64
 import expo.modules.kotlin.Promise
 import expo.modules.svelteengine.views.EngineForeign
 import java.io.ByteArrayOutputStream
-import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.Executors
 
@@ -24,7 +23,9 @@ import java.util.concurrent.Executors
  * Supported: the formats `png`, `jpg` and `webm`; the results `tmpfile`, `base64` and `data-uri`; `width` and `height` (both),
  * `quality`, `fileName`. Rejected, for an engine view: the `raw` format, the `zip-base64` result, `snapshotContentContainer` and
  * `handleGLSurfaceViewOnAndroid`.
- * The temporary files are named as the library names its own, so its `releaseCapture` deletes these too.
+ * The temporary files are named as the library names its own, so its `releaseCapture` deletes these too. The library's clean-up on
+ * exit runs only if its module was ever instantiated (its `invalidate()`), which an app that captures only engine views may not
+ * have done, so the engine deletes the files it made when its own module is destroyed ([deleteTemporaryFiles], [CaptureFiles]).
  */
 @Suppress("DEPRECATION")
 private val WEBP = Bitmap.CompressFormat.WEBP
@@ -35,6 +36,12 @@ object Capture {
   private const val TEMP_FILE_PREFIX = "ReactNative-snapshot-image"
   private val encoder = Executors.newCachedThreadPool()
   private val main = Handler(Looper.getMainLooper())
+  private val files = CaptureFiles()
+
+  /** Deletes the `tmpfile` results this process made; the module calls it when it is destroyed. */
+  fun deleteTemporaryFiles() {
+    files.deleteAll()
+  }
 
   fun capture(manager: MountingManager, tag: Int, options: Map<String, Any?>, promise: Promise) {
     val format = (options["format"] as? String) ?: "png"
@@ -82,7 +89,7 @@ object Capture {
           val percent = (100.0 * quality).toInt()
           when (result) {
             "tmpfile" -> {
-              val file = File.createTempFile(fileName ?: TEMP_FILE_PREFIX, ".$format", cacheDir)
+              val file = files.create(fileName ?: TEMP_FILE_PREFIX, ".$format", cacheDir)
               FileOutputStream(file).use { scaled.compress(compress, percent, it) }
               promise.resolve(Uri.fromFile(file).toString())
             }

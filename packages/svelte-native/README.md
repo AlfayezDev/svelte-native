@@ -125,6 +125,35 @@ On 25 October 2026 the physical Samsung SM-A165F (90 Hz) passed all 28 functiona
 
 Every library is an app dependency (`npx expo install`) and a native rebuild. `animatedProps` works on any element, next to `animatedStyle`, for props that are not style. The config plugin's `androidOnDemandViewManagers` option keeps a package's view managers off the host's start (`{ "com.brentvatne.react.ReactVideoPackage": ["RCTVideo"] }`: the package's class name and the Fabric names it provides); it also works for packages that still build their native modules with `createNativeModules`. A view inside a list row or a sheet follows the platform's touch rules. Run `bun test tests/foreign*.test.ts` for the component, view-config and bundle checks; devices are needed for rendering.
 
+### react-native-svg
+
+`@rasheed/svelte-native/svg` is [react-native-svg](https://github.com/software-mansion/react-native-svg) 15.15.4 (`npx expo install react-native-svg`, a native rebuild) as Svelte components: `Svg`, `G`, `Path`, `Rect`, `Circle`, `Ellipse`, `Line`, `Polygon`, `Polyline`, `Text`, `TSpan`, `TextPath`, `Use`, `Image`, `Defs`, `ClipPath`, `LinearGradient`, `RadialGradient`, `Stop`, `Pattern`, `Mask`, `Marker`, `Symbol`, `ForeignObject`, the filters `Filter`, `FeBlend`, `FeColorMatrix`, `FeComposite`, `FeDropShadow`, `FeFlood`, `FeGaussianBlur`, `FeMerge`, `FeMergeNode`, `FeOffset`, and `SvgXml` and `SvgUri`. The props are the library's (its own prop extraction runs, imported by deep path; no React is bundled: `tests/svg-bundle.test.ts`), and so is what each element sends the native view (`tests/svg-elements.test.ts` compares every element with the library's own class). `Text` and `Image` here are the SVG elements: import them under another name beside the primitives (`import { Text as SvgText } from "@rasheed/svelte-native/svg"`); the primitive lowering leaves this entry alone.
+
+```svelte
+<script lang="ts">
+  import { Svg, Defs, LinearGradient, Stop, Rect, Circle, Text as SvgText, SvgXml } from "@rasheed/svelte-native/svg";
+  import { createSharedValue, withRepeat, withTiming } from "@rasheed/svelte-native/animation";
+  const radius = createSharedValue(6);
+  radius.value = withRepeat(withTiming(12, { duration: 800 }), -1, true);
+  const pulse = () => { "worklet"; return { r: radius.value }; };
+</script>
+
+<Svg width={96} height={64} viewBox="0 0 96 64">
+  <Defs><LinearGradient id="card" x1="0" y1="0" x2="1" y2="1"><Stop offset="0" stopColor="#ff7a18" /><Stop offset="1" stopColor="#319197" /></LinearGradient></Defs>
+  <Rect width="96" height="64" rx="12" fill="url(#card)" />
+  <Circle cx="24" cy="32" r="6" fill="#fff" animatedProps={pulse} />
+  <SvgText x="48" y="38" fill="#fff" fontSize="14" fontWeight="bold">SVG</SvgText>
+</Svg>
+<SvgXml xml={`<svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" fill="none" stroke="#191b1e" stroke-width="2"/></svg>`} width={24} height={24} />
+```
+
+- On Android the `Svg` is a foreign view (SPEC.md, "react-native-svg"): everything inside it is mounted by React Native, in the frame the engine keeps for it; on iOS the same nodes are ordinary Fabric components. The 29 Android view managers are created on first use (`com.horcrux.svg.SvgPackage` in the config plugin's `androidOnDemandViewManagers`).
+- Text: a string between the tags of a `Text` or `TextPath` is a `TSpan` of its own and the only string in a `TSpan` is its `content`. Whitespace between elements is text, as in HTML. A `Stop` or an `FeMergeNode` tells its parent its props and draws nothing.
+- `ref` gives the handle with `tag`, `measure`, `dispatchCommand`, `setNativeProps` and the library's `getBBox(options)`, `getTotalLength()`, `getPointAtLength(length)`, `isPointInFill({ x, y })`, `isPointInStroke`, `getCTM`, `getScreenCTM`; the `Svg`'s adds `toDataURL(callback, options)`. Results are plain objects.
+- Touch: `onPress`, `onLongPress` and the responder handlers are the library's props, answered by the host's Pressability and responder system. On Android a touch inside a foreign view never reaches JavaScript, so a shape's `onPress` does not run there; `pointerEvents="box-only"` on the `Svg` keeps the touches of its frame for JavaScript, and the `Svg`'s own `onPress` works. iOS follows React Native's touch path (not run).
+- Animation: `animatedProps` on any element is a worklet returning native props (`{ r }`, `{ cx }`, `{ d }`, `{ strokeDashoffset }`, `{ opacity }`; a colour as `{ type: 0, payload: <ARGB integer> }`), written on the UI thread by Reanimated.
+- `SvgXml xml` and `SvgUri uri` (network, file or SVG data URI) draw a document with the library's parser; `onError`, a `fallback` snippet, `onLoad`. Not ported: `SvgCss` and the other style-sheet forms, `SvgFromXml`/`SvgFromUri`/`SvgAst`, `FilterImage`, the filter elements the library leaves to the web, the `SVGMatrix` and `SVGPoint` classes. `bun test tests/svg*.test.ts` runs the element, view-config, XML, bundle, touch and animation checks; devices are needed for rendering.
+
 ## Renderer
 
 Mounting is not free: Svelte's runtime (component, effects, host nodes) runs before the host builds the Fabric payload, so 300 lowered `View`/`Text` rows mount in 75–80 ms on the Samsung SM-A165F against 61–65 ms for plain React Native (25 October 2026; details below). Keep unvirtualized lists short, paginate, or use `List`.
@@ -139,7 +168,7 @@ Press handling in the Fabric host: any node with `onPress`, `onPressIn`, `onPres
 
 ### Primitive lowering
 
-Metro's transformer runs `src/lower.ts` over every `.svelte` file before the Svelte compile. A file that imports `View`, `Text`, `ScrollView`, `Image`, `ActivityIndicator` or `Pressable` from `@rasheed/svelte-native` (or a subpath, with or without `as` aliases) has those tags rewritten to the host tags `native-view`, `native-text`, `native-scroll`, `native-image`, `native-spinner` and `native-pressable`, so a row costs host nodes only, with no component instance per primitive. Attributes, spreads, `bind:this`, `ref`, `class`, `id` and children are carried over unchanged; self-closing tags become paired tags. Nothing else in the file changes, so line numbers are stable (columns shift on lines holding a lowered tag; no source map is produced).
+Metro's transformer runs `src/lower.ts` over every `.svelte` file before the Svelte compile. A file that imports `View`, `Text`, `ScrollView`, `Image`, `ActivityIndicator` or `Pressable` from `@rasheed/svelte-native` (or a subpath, with or without `as` aliases) has those tags rewritten to the host tags `native-view`, `native-text`, `native-scroll`, `native-image`, `native-spinner` and `native-pressable`, so a row costs host nodes only, with no component instance per primitive. Attributes, spreads, `bind:this`, `ref`, `class`, `id` and children are carried over unchanged; self-closing tags become paired tags. Nothing else in the file changes, so line numbers are stable (columns shift on lines holding a lowered tag; no source map is produced). Imports from `@rasheed/svelte-native/svg` are never lowered: its `Text` and `Image` are SVG elements.
 
 Left as components: `TextInput`, `SafeAreaView` (padding from the insets store), `Switch`, `Modal`, `AnimatedView`, `KeyboardAvoidingView`, `<svelte:component>`, local components that share a name, and any primitive tag using `let:`, a `bind:` other than `bind:this`, a `children` attribute, a snippet declared inside the tag, or (for `Pressable`) a `style` that is not an object literal or plain text. `use:`, `transition:` and `animate:` on a lowered tag are passed through and reported with a warning. Files that do not mention the package are not parsed, and files that fail to parse are returned unchanged for the compiler to report. The same transform is exported as a Svelte preprocessor: `import { lower } from "@rasheed/svelte-native/lower"` and add it to `preprocess` for tooling such as svelte-check.
 

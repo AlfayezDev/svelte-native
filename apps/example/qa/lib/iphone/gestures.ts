@@ -221,7 +221,8 @@ export async function prepareUiTests(session: IosSession, options: { team: strin
 
 const pollMs = 10_000;
 const aliveEveryMs = 30_000;
-const readyWaitMs = 180_000;
+/** How long the harness waits for the test to say it is ready: the runner's start on the phone can wait for a person (UI Automation asks the phone's owner to authenticate). */
+const readyWaitMs = Number(process.env.NATIVE_QA_IOS_READY_WAIT_S ?? 180) * 1000;
 
 /** The line the test prints when it is running on the phone and waits for the lab. */
 export const testReadyLine = "GESTURES-READY";

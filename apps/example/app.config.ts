@@ -48,6 +48,8 @@ export default {
         "com.rivereactnative.RiveReactNativePackage": ["RiveReactNativeView"],
         "com.reactnativefastshadow.FastShadowPackage": ["FastShadowView"],
         "com.reactnativereanimatedtext.ReanimatedTextPackage": ["JBAnimatedText"],
+        // react-native-svg: a `BaseReactPackage` (its TurboModules, `RNSVGRenderableModule` and `RNSVGSvgViewModule`, stay with it) that announces all 29 view managers at start unless wrapped.
+        "com.horcrux.svg.SvgPackage": ["RNSVGSvgViewAndroid", "RNSVGGroup", "RNSVGPath", "RNSVGText", "RNSVGTSpan", "RNSVGTextPath", "RNSVGImage", "RNSVGCircle", "RNSVGEllipse", "RNSVGLine", "RNSVGRect", "RNSVGClipPath", "RNSVGDefs", "RNSVGUse", "RNSVGSymbol", "RNSVGPattern", "RNSVGMask", "RNSVGForeignObject", "RNSVGMarker", "RNSVGLinearGradient", "RNSVGRadialGradient", "RNSVGFilter", "RNSVGFeBlend", "RNSVGFeColorMatrix", "RNSVGFeComposite", "RNSVGFeFlood", "RNSVGFeGaussianBlur", "RNSVGFeMerge", "RNSVGFeOffset"],
       },
     }],
     "expo-secure-store",

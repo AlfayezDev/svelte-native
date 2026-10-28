@@ -327,7 +327,7 @@ test("the on-demand view manager names are the ones the packages register", asyn
   const entry = config.plugins.find((plugin): plugin is [string, { androidOnDemandViewManagers: Record<string, string[]> }] => Array.isArray(plugin) && plugin[0] === "@rasheed/svelte-native/expo");
   const listed = entry?.[1].androidOnDemandViewManagers ?? {};
   expect(Object.keys(listed).sort()).toEqual([
-    "com.airbnb.android.react.lottie.LottiePackage", "com.brentvatne.react.ReactVideoPackage", "com.reactnativecommunity.webview.RNCWebViewPackage", "com.reactnativefastshadow.FastShadowPackage",
+    "com.airbnb.android.react.lottie.LottiePackage", "com.brentvatne.react.ReactVideoPackage", "com.horcrux.svg.SvgPackage", "com.reactnativecommunity.webview.RNCWebViewPackage", "com.reactnativefastshadow.FastShadowPackage",
     "com.reactnativereanimatedtext.ReanimatedTextPackage", "com.rivereactnative.RiveReactNativePackage", "com.rnmaps.maps.MapsPackage", "org.wonday.pdf.RNPDFPackage",
   ]);
 
@@ -371,6 +371,13 @@ test("the on-demand view manager names are the ones the packages register", asyn
   const text = resolve(modules, "react-native-animateable-text/android/src/main/java/com/reactnativereanimatedtext");
   expect(listed["com.reactnativereanimatedtext.ReanimatedTextPackage"]).toEqual([/REACT_CLASS = "(\w+)"/.exec(ts.sys.readFile(resolve(text, "JBAnimatedTextViewManager.java")) ?? "")?.[1]]);
   expect(ts.sys.readFile(resolve(text, "ReanimatedTextPackage.kt"))).toMatch(/class ReanimatedTextPackage : ReactPackage\b/);
+  // react-native-svg: a `BaseReactPackage` (the wrapper serves its two TurboModules as before) with one view manager per Fabric component; the names are the
+  // `REACT_CLASS` of each manager in `RenderableViewManager` and `SvgViewManager`.
+  const svg = resolve(modules, "react-native-svg/android/src/main/java/com/horcrux/svg");
+  const svgManagers = [...(ts.sys.readFile(resolve(svg, "RenderableViewManager.java")) ?? "").matchAll(/REACT_CLASS = "(\w+)"/g), ...(ts.sys.readFile(resolve(svg, "SvgViewManager.java")) ?? "").matchAll(/REACT_CLASS = "(\w+)"/g)].map((match) => match[1]);
+  expect(svgManagers.length).toBe(29);
+  expect([...listed["com.horcrux.svg.SvgPackage"]].sort()).toEqual([...svgManagers].sort());
+  expect(ts.sys.readFile(resolve(svg, "SvgPackage.java"))).toMatch(/class SvgPackage extends BaseReactPackage implements ViewManagerOnDemandReactPackage/);
   // react-native-view-shot and react-native-blob-util have no view, so nothing of theirs is deferred.
   for (const key of Object.keys(listed)) expect(key).not.toMatch(/viewshot|ReactNativeBlobUtil/);
 });

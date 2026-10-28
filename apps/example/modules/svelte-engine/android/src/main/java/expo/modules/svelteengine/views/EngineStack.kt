@@ -586,6 +586,10 @@ class EngineStack(context: Context) : EngineView(context) {
       if (p is EngineRoot) { p.cancelActiveTouch(); break }
       p = p.parent
     }
+    // The touch lock, like a scroll view's drag and the sheet's: it cancels every gesture handler of the root (a pan under the
+    // swipe would otherwise stay alive next to it) and keeps an ancestor scroll view from taking the gesture. Given back
+    // when the drag ends.
+    parent?.requestDisallowInterceptTouchEvent(true)
     dragging = true
     dragX = 0f
     top()?.let { holdGesture(it) }
@@ -611,6 +615,7 @@ class EngineStack(context: Context) : EngineView(context) {
         tracker = null
         dragging = false
         edgeCandidate = false
+        parent?.requestDisallowInterceptTouchEvent(false)
         if (top != null && event.actionMasked == MotionEvent.ACTION_UP && (dragX > width / 3f || velocity > FLING_DP)) {
           dismissTop()
         } else if (top != null) {

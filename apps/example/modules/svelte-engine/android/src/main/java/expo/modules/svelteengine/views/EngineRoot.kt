@@ -1,10 +1,29 @@
 package expo.modules.svelteengine.views
 
 import android.content.Context
+import android.os.Trace
 import android.view.MotionEvent
 import android.view.View
 import android.widget.FrameLayout
+import com.facebook.react.bridge.ReactContext
+import com.facebook.react.uimanager.RootView
+import expo.modules.svelteengine.GestureRules
 import expo.modules.svelteengine.SvelteEngineNative
+
+/**
+ * What the root asks of react-native-gesture-handler's `RNGestureHandlerRootHelper` once gestures are enabled
+ * (`SvelteEngine.enableGestures`, see `EngineGestures.kt`). An interface of the engine's own so that this class, which every
+ * app loads, names no class of the library.
+ */
+internal interface GestureRoot {
+  /** Runs the library's orchestrator on [ev]; true when a handler has taken the gesture over and the children get nothing more of it. */
+  fun dispatchTouchEvent(ev: MotionEvent): Boolean
+
+  /** A native view took the touch lock: every handler is cancelled. */
+  fun requestDisallowInterceptTouchEvent()
+
+  fun tearDown()
+}
 
 /**
  * Overlay root: lays out the engine tree by frames, hit-tests touches and forwards them to C++ like React Native's
@@ -17,11 +36,27 @@ import expo.modules.svelteengine.SvelteEngineNative
  * the root. They come after every node of the Fabric tree, so the mutation stream's insert indexes (which count the nodes
  * only) never land behind one, and they are hit tested, drawn and heard by accessibility first. A gesture that starts on
  * a layer's own area (not on one of its engine views) is claimed and reported to nobody.
+ *
+ * Gestures (SPEC.md, "Gestures", Android contract): the root is a React Native `RootView`, which is what the gesture
+ * handler's root helper looks for above the view it wraps, and its id is [GestureRules.ROOT_ID]. Until `enableGestures`
+ * installs the helper ([gestures]) nothing of the library is touched. With it, every touch event goes to JavaScript first
+ * (as React Native's root view does), then through the library's orchestrator, and the children get it only when no handler
+ * has taken the gesture over.
  */
-class EngineRoot(context: Context) : FrameLayout(context) {
+class EngineRoot(context: Context) : FrameLayout(context), RootView {
   var native: SvelteEngineNative? = null
   var surfaceId = 0
   private val density = resources.displayMetrics.density
+
+  /** The gesture handler's root helper; null until [MountingManager.enableGestures]. */
+  internal var gestures: GestureRoot? = null
+
+  init {
+    // RNGH keys its root handler and the handlers' view lookup on the id, and asserts it is positive.
+    id = GestureRules.ROOT_ID
+    // An id makes Android save and restore the view hierarchy through it; the engine's tree is rebuilt by JavaScript.
+    isSaveEnabled = false
+  }
 
   // Pointers of the active gesture, in the order they went down (compact arrays).
   private var count = 0
@@ -164,10 +199,54 @@ class EngineRoot(context: Context) : FrameLayout(context) {
         }
       }
     }
+    // The gesture handlers see the event after JavaScript did (a Pressable and a Tap gesture both fire for one tap, as in
+    // React Native), before the children. A handler that activates inside this call cancels its root handler, which comes
+    // back as [onChildStartedNativeGesture]: JavaScript gets its one cancel.
+    val gestureRoot = gestures
+    if (gestureRoot != null) {
+      Trace.beginSection("SvelteEngine.gesture")
+      val intercept = try { gestureRoot.dispatchTouchEvent(ev) } finally { Trace.endSection() }
+      // A handler owns the gesture: the children get nothing more of it (the next DOWN's reset cancels their touch target).
+      if (intercept) return true
+    }
     // Let Android dispatch continue so scroll views can scroll; the gesture is ours either way.
     super.dispatchTouchEvent(ev)
     return true
   }
+
+  /** Hover events (a stylus or mouse) are the library's to read, as in its own root view; the engine has no use for them. */
+  override fun dispatchGenericMotionEvent(ev: MotionEvent): Boolean {
+    val gestureRoot = gestures
+    if (gestureRoot != null && isHover(ev.actionMasked) && gestureRoot.dispatchTouchEvent(ev)) return true
+    return super.dispatchGenericMotionEvent(ev)
+  }
+
+  /**
+   * A native view (a scroll view that started to drag, the stack's edge swipe, a sheet) took the touch lock: every gesture
+   * handler is cancelled, as in the library's own root view. Only the request to take it counts; giving it back is nothing.
+   */
+  override fun requestDisallowInterceptTouchEvent(disallowIntercept: Boolean) {
+    if (disallowIntercept) gestures?.requestDisallowInterceptTouchEvent()
+    super.requestDisallowInterceptTouchEvent(disallowIntercept)
+  }
+
+  // RootView ----------------------------------------------------------------------------------------------------------
+
+  /**
+   * A native gesture started below (a handler activated, a native view took the lock): JavaScript gets its one cancel and
+   * hears nothing more of the gesture until the next DOWN. That is React Native's contract for the call.
+   */
+  override fun onChildStartedNativeGesture(childView: View?, ev: MotionEvent) = cancelActiveTouch()
+
+  override fun onChildEndedNativeGesture(childView: View, ev: MotionEvent) {}
+
+  override fun handleException(t: Throwable) {
+    val reactContext = context as? ReactContext ?: throw t
+    reactContext.handleException(if (t is Exception) t else RuntimeException(t))
+  }
+
+  private fun isHover(action: Int) =
+    action == MotionEvent.ACTION_HOVER_MOVE || action == MotionEvent.ACTION_HOVER_ENTER || action == MotionEvent.ACTION_HOVER_EXIT
 
   private fun tagOf(view: View): Int = (view as? EngineNode)?.node?.tag ?: 0
 

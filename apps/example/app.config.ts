@@ -40,6 +40,9 @@ export default {
       androidOnDemandViewManagers: {
         "com.rnmaps.maps.MapsPackage": ["RNMapsMapView", "RNMapsMarker", "RNMapsCallout", "RNMapsGooglePolygon", "RNMapsPolyline", "RNMapsCircle", "RNMapsOverlay", "RNMapsUrlTile", "RNMapsWMSTile"],
         "com.reactnativecommunity.webview.RNCWebViewPackage": ["RNCWebView"],
+        // Gestures (SPEC.md, "Gestures"): the package's module (RNGestureHandlerModule) is served as before; its two view managers
+        // are for React Native's own mounting, which the engine does not use.
+        "com.swmansion.gesturehandler.RNGestureHandlerPackage": ["RNGestureHandlerRootView", "RNGestureHandlerButton"],
       },
     }],
     "expo-secure-store",

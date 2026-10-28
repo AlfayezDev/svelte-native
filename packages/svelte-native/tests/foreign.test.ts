@@ -344,7 +344,7 @@ test("the on-demand view manager names are the ones the packages register", asyn
   const { default: config } = await import("../../../apps/platform/app.config.ts");
   const entry = config.plugins.find((plugin): plugin is [string, { androidOnDemandViewManagers: Record<string, string[]> }] => Array.isArray(plugin) && plugin[0] === "@rasheed/svelte-native/expo");
   const listed = entry?.[1].androidOnDemandViewManagers ?? {};
-  expect(Object.keys(listed).sort()).toEqual(["com.reactnativecommunity.webview.RNCWebViewPackage", "com.rnmaps.maps.MapsPackage"]);
+  expect(Object.keys(listed).sort()).toEqual(["com.reactnativecommunity.webview.RNCWebViewPackage", "com.rnmaps.maps.MapsPackage", "com.swmansion.gesturehandler.RNGestureHandlerPackage"]);
 
   const maps = resolve(modules, "react-native-maps/android/src/main/java/com/rnmaps");
   const mapsSource = ts.sys.readFile(resolve(maps, "maps/MapsPackage.java")) ?? "";
@@ -359,4 +359,11 @@ test("the on-demand view manager names are the ones the packages register", asyn
 
   const webview = ts.sys.readFile(resolve(modules, "react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt")) ?? "";
   expect(listed["com.reactnativecommunity.webview.RNCWebViewPackage"]).toEqual([/const val NAME = "(\w+)"/.exec(webview)?.[1]]);
+
+  // The gesture handler's package creates both of its managers as a set (`createViewManagers`); the names are the ones its sources declare.
+  const handler = resolve(modules, "react-native-gesture-handler/android/src/main/java/com/swmansion/gesturehandler");
+  const handlerManagers = ["RNGestureHandlerRootViewManager", "RNGestureHandlerButtonViewManager"].map((manager) => /const val REACT_CLASS = "(\w+)"/.exec(ts.sys.readFile(resolve(handler, `react/${manager}.kt`)) ?? "")?.[1]);
+  expect(handlerManagers.every((name) => name !== undefined)).toBe(true);
+  expect([...listed["com.swmansion.gesturehandler.RNGestureHandlerPackage"]].sort()).toEqual([...handlerManagers].sort());
+  expect(ts.sys.readFile(resolve(handler, "RNGestureHandlerPackage.kt")) ?? "").toContain("RNGestureHandlerRootViewManager(), RNGestureHandlerButtonViewManager()");
 });

@@ -12,6 +12,7 @@ import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.widget.HorizontalScrollView
 import android.widget.ScrollView
+import com.swmansion.gesturehandler.core.NativeViewGestureHandler.NativeViewGestureHandlerHook
 import expo.modules.svelteengine.SvelteEngineNative
 import kotlin.math.abs
 import kotlin.math.ceil
@@ -442,7 +443,7 @@ class ScrollBridge(private val view: ViewGroup, private val node: NodeState) {
   }
 }
 
-class EngineScroll(context: Context) : ScrollView(context), EngineNode, EngineScrollable {
+class EngineScroll(context: Context) : ScrollView(context), EngineNode, EngineScrollable, NativeViewGestureHandlerHook {
   override val node = NodeState()
   val bridge = ScrollBridge(this, node)
 
@@ -513,6 +514,16 @@ class EngineScroll(context: Context) : ScrollView(context), EngineNode, EngineSc
     return super.onTouchEvent(ev)
   }
 
+  // react-native-gesture-handler's `Gesture.Native()` on this view (SPEC.md, "Gestures", Android contract item 7): what its
+  // `ScrollViewHook` says for a React Native scroll view, and the touch the handler feeds the view goes the way a dispatched
+  // touch does, through the bridge's velocity tracker (the handler calls `onTouchEvent` itself).
+  override fun shouldCancelRootViewGestureHandlerIfNecessary() = true
+
+  override fun sendTouchEvent(view: View?, event: MotionEvent): Boolean {
+    bridge.onDispatch(event)
+    return onTouchEvent(event)
+  }
+
   override fun fling(velocityY: Int) {
     if (bridge.snapping) bridge.flingAndSnap(velocityY) else super.fling(velocityY)
   }
@@ -537,7 +548,7 @@ class EngineScroll(context: Context) : ScrollView(context), EngineNode, EngineSc
   }
 }
 
-class EngineHScroll(context: Context) : HorizontalScrollView(context), EngineNode, EngineScrollable {
+class EngineHScroll(context: Context) : HorizontalScrollView(context), EngineNode, EngineScrollable, NativeViewGestureHandlerHook {
   override val node = NodeState()
   val bridge = ScrollBridge(this, node)
 
@@ -605,6 +616,16 @@ class EngineHScroll(context: Context) : HorizontalScrollView(context), EngineNod
     if (!bridge.scrollEnabled || !bridge.canBeTouchTarget) return false
     bridge.onTouch(ev)
     return super.onTouchEvent(ev)
+  }
+
+  // react-native-gesture-handler's `Gesture.Native()` on this view (SPEC.md, "Gestures", Android contract item 7): what its
+  // `ScrollViewHook` says for a React Native scroll view, and the touch the handler feeds the view goes the way a dispatched
+  // touch does, through the bridge's velocity tracker (the handler calls `onTouchEvent` itself).
+  override fun shouldCancelRootViewGestureHandlerIfNecessary() = true
+
+  override fun sendTouchEvent(view: View?, event: MotionEvent): Boolean {
+    bridge.onDispatch(event)
+    return onTouchEvent(event)
   }
 
   override fun fling(velocityX: Int) {

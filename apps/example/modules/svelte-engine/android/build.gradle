@@ -82,6 +82,9 @@ android {
 
 dependencies {
   implementation 'com.facebook.react:react-android'
+  // The gesture handler's root helper and scroll hook (SPEC.md, "Gestures"). Compile time only: the library is in the app, and
+  // the engine loads its classes when gestures are first enabled (`EngineGestures`; `EngineScroll` names one interface).
+  compileOnly project(':react-native-gesture-handler')
   compileOnly 'com.facebook.fbjni:fbjni:0.5.1'
   implementation "androidx.core:core-ktx:1.17.0"
   implementation "androidx.annotation:annotation:1.9.1"

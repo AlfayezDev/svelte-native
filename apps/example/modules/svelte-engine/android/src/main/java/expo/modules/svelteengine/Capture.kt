@@ -18,13 +18,13 @@ import java.util.concurrent.Executors
  * React Native's mounting manager, and that has never seen an engine view (the C++ delegate returns no mutations for them), so
  * `captureRef` fails with "No view found" for every engine tag. The JavaScript side (`fabric/foreign-capture.ts`) asks this first:
  * the view of the engine's registry is drawn here, with the options the library takes, and a tag that is not an engine view of its
- * own (a foreign view's frame, what is inside a foreign view, an unknown tag) answers null, so the library's module draws it.
+ * own (a foreign view's frame, what is inside a foreign view, an unknown tag) answers null, so the library's module draws it, with
+ * every option. The view is looked up first and the options are judged only for an engine view ([CaptureRules.plan]).
  *
  * Supported: the formats `png`, `jpg` and `webm`; the results `tmpfile`, `base64` and `data-uri`; `width` and `height` (both),
- * `quality`, `fileName`. Rejected: the `raw` format, the `zip-base64` result, `snapshotContentContainer` and
- * `handleGLSurfaceViewOnAndroid` (the engine's views are plain views, and a `SurfaceView` in one is a foreign view, which the library's
- * own module captures). The temporary files are named as the library names its own, so its `releaseCapture` and its clean-up on
- * exit delete these too.
+ * `quality`, `fileName`. Rejected, for an engine view: the `raw` format, the `zip-base64` result, `snapshotContentContainer` and
+ * `handleGLSurfaceViewOnAndroid`.
+ * The temporary files are named as the library names its own, so its `releaseCapture` deletes these too.
  */
 @Suppress("DEPRECATION")
 private val WEBP = Bitmap.CompressFormat.WEBP
@@ -43,17 +43,16 @@ object Capture {
     val height = (options["height"] as? Number)?.toInt()
     val quality = (options["quality"] as? Number)?.toDouble() ?: 1.0
     val fileName = options["fileName"] as? String
-    if (format == "raw" || result == "zip-base64" || options["snapshotContentContainer"] == true || options["handleGLSurfaceViewOnAndroid"] == true) {
-      promise.reject(ERROR, "Unsupported option for an engine view: format raw, result zip-base64, snapshotContentContainer and handleGLSurfaceViewOnAndroid are not captured here", null)
-      return
-    }
     val draw = Runnable {
       // The mounting manager is main thread only, so the lookup and the draw (which reads the view tree) run there.
-      val view = manager.viewFor(tag)
-      if (view == null || view is EngineForeign) {
-        promise.resolve(null)
-        return@Runnable
+      val found = manager.viewFor(tag)
+      val view = if (found is EngineForeign) null else found
+      when (val plan = CaptureRules.plan(view != null, options)) {
+        CaptureRules.Plan.NotEngine -> { promise.resolve(null); return@Runnable }
+        is CaptureRules.Plan.Reject -> { promise.reject(ERROR, plan.message, null); return@Runnable }
+        CaptureRules.Plan.Draw -> Unit
       }
+      if (view == null) return@Runnable
       val viewWidth = view.width
       val viewHeight = view.height
       if (viewWidth <= 0 || viewHeight <= 0) {

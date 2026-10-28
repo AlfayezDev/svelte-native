@@ -18,13 +18,17 @@ export type FakeNode = { tag: number; name: string; props: Record<string, unknow
 export type ExpoViewConfig = { validAttributes: Record<string, unknown>; directEventTypes?: Record<string, { registrationName: string }> | null };
 
 /** What the stubbed React Native modules answer: assets by number, TurboModules and legacy native modules by name. */
+export type EngineCaptureAnswer = string | null | Error;
 export type Natives = {
   assets: Record<number, { uri: string; width?: number; height?: number; scale?: number }>;
   turbo: Record<string, object>;
   modules: Record<string, object>;
   opened: string[];
-  /** What the engine's `captureView` answers: a URI or data, or null for a tag that is not an engine view of its own. */
-  engineCapture?: string | null;
+  /**
+   * What the engine's `captureView` answers: a URI or data, null for a tag that is not an engine view of its own, or an `Error` it rejects with
+   * (what `Capture.kt` does for an option it does not capture). A function answers per call, as the engine does per tag and options.
+   */
+  engineCapture?: EngineCaptureAnswer | ((tag: number, options: Record<string, unknown>) => EngineCaptureAnswer);
   /** `I18nManager.isRTL`. */
   rtl?: boolean;
 };
@@ -113,7 +117,11 @@ export function createHarness(platform: Platform, options: {
     dispatchCommand: (tag: number, name: string, args: unknown[]) => { calls.push(`engine.dispatchCommand ${tag} ${name} ${JSON.stringify(args)}`); },
     setNativeProps: () => {},
     registerForeign: (name: string) => { calls.push(`engine.registerForeign ${name}`); return true; },
-    captureView: (tag: number, options: object) => { calls.push(`engine.captureView ${tag} ${JSON.stringify(options)}`); return Promise.resolve(natives.engineCapture ?? null); },
+    captureView: (tag: number, options: Record<string, unknown>) => {
+      calls.push(`engine.captureView ${tag} ${JSON.stringify(options)}`);
+      const answer = typeof natives.engineCapture === "function" ? natives.engineCapture(tag, options) : natives.engineCapture ?? null;
+      return answer instanceof Error ? Promise.reject(answer) : Promise.resolve(answer);
+    },
   };
   const scope = globalThis as Record<string, unknown>;
   scope.nativeFabricUIManager = fake;

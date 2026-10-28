@@ -29,11 +29,11 @@ function fakeViewShot(answers: { fail?: string } = {}) {
 }
 const base = { format: "png", quality: 1, result: "base64", snapshotContentContainer: false, handleGLSurfaceViewOnAndroid: false };
 
-async function mount(platform: Platform, root: number, natives: Parameters<typeof createHarness>[1] = {}, mode?: string) {
+async function mount(platform: Platform, root: number, natives: Parameters<typeof createHarness>[1] = {}, mode?: string, options?: CaptureOptions) {
   const viewShot = fakeViewShot();
   const harness = createHarness(platform, { natives: { turbo: { RNViewShot: viewShot.module }, ...natives?.natives } });
   const loaded = await harness.load("foreign-capture-fixture.svelte");
-  const app = loaded.startSurface(root, loaded.Fixture, { mode }) as App;
+  const app = loaded.startSurface(root, loaded.Fixture, { mode, ...(options ? { options } : null) }) as App;
   const shot = find(harness.roots()[root], "RCTView").find((node) => node.props.collapsable === false && node.props.width === 100) as ReturnType<typeof find>[number];
   return { harness, loaded, app, shot, viewShot };
 }
@@ -78,6 +78,36 @@ test("Android: a tag the engine does not own goes to the library's module with t
   }
   expect(viewShot.log).toEqual([`captureRef ${app.plainHandle().tag} ${JSON.stringify({ format: "png", quality: 0.5, result: "data-uri", snapshotContentContainer: false, handleGLSurfaceViewOnAndroid: false, width: 20, height: 10 })}`]);
   expect(warnings).toEqual(["react-native-view-shot: bad options:\n- option format 'gif' is not in valid formats: png | jpg | webm | raw"]);
+});
+
+test("Android: every option reaches the library's module for a view the engine does not own; only an engine view is refused one it does not capture", async () => {
+  // The engine's contract (`Capture.kt`, `CaptureRules.plan`): the view is looked up first, null for a foreign or unknown tag, a rejection for an engine view with an option it does not capture.
+  const foreignTags = new Set<number>();
+  const engine = (tag: number, options: Record<string, unknown>) => {
+    if (foreignTags.has(tag)) return null;
+    if (options.format === "raw" || options.result === "zip-base64" || options.snapshotContentContainer === true || options.handleGLSurfaceViewOnAndroid === true) return new Error("Unsupported option for an engine view");
+    return "data:image/png;base64,ENGINE";
+  };
+  const odd = { format: "raw", result: "zip-base64", snapshotContentContainer: true, handleGLSurfaceViewOnAndroid: true } as const;
+  const { harness, app, shot, viewShot } = await mount("android", 118, { natives: { engineCapture: engine } }, undefined, odd);
+  const map = app.plainHandle();
+  foreignTags.add(map.tag);
+  // A map, a video: the engine answers null and the module gets the options as given (the library draws its SurfaceView with the flag).
+  expect(await app.captureHandle(map, odd)).toBe("file:///module-1.png");
+  expect(viewShot.log).toEqual([`captureRef ${map.tag} ${JSON.stringify({ ...base, ...odd, result: "zip-base64" })}`]);
+  // An unknown tag is the module's as well.
+  viewShot.log.length = 0;
+  foreignTags.add(999_999);
+  expect(await app.captureHandle({ tag: 999_999 }, { handleGLSurfaceViewOnAndroid: true })).toBe("file:///module-2.png");
+  expect(viewShot.log).toEqual([`captureRef 999999 ${JSON.stringify({ ...base, result: "tmpfile", handleGLSurfaceViewOnAndroid: true })}`]);
+
+  // An engine view is refused: the rejection reaches the caller and ViewShot's onCaptureFailure, and the module is not asked.
+  viewShot.log.length = 0;
+  harness.emit(shot.target, "topLayout", layout);
+  await expect(app.captureHandle(app.shotHandle().host, { format: "raw" })).rejects.toThrow("Unsupported option for an engine view");
+  await expect(app.capture()).rejects.toThrow("Unsupported option for an engine view");
+  expect(app.eventLog()).toEqual([["failure", "Unsupported option for an engine view"]]);
+  expect(viewShot.log).toEqual([]);
 });
 
 test("iOS: React Native mounts every view, so the module takes the handle's tag and the engine is not asked", async () => {

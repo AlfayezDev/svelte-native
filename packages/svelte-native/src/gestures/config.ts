@@ -67,15 +67,21 @@ function extractValidHandlerTags(group: GestureRef[] | undefined): number[] {
   return Array.from(new Set(group?.map(convertToHandlerTag)?.filter((tag) => tag > 0) ?? []));
 }
 
-/** Rewrites the relation lists of a gesture's config to tag arrays (as RNGH does, in place) and returns them under the native names. */
+/**
+ * The relation lists of a gesture's config as native tag arrays, under the native names; a gesture that has no tag yet resolves to
+ * nothing. RNGH rewrites the config's lists in place to the tags, which forgets a gesture that had none; here the lists keep
+ * what the app named (duplicates removed, as `ComposedGesture.prepare` adds the same gestures each time it runs), so the detector can
+ * send the relations again when that gesture mounts.
+ */
 export function extractGestureRelations(gesture: GestureType): { waitFor: number[]; simultaneousHandlers: number[]; blocksHandlers: number[] } {
-  gesture.config.requireToFail = extractValidHandlerTags(gesture.config.requireToFail);
-  gesture.config.simultaneousWith = extractValidHandlerTags(gesture.config.simultaneousWith);
-  gesture.config.blocksHandlers = extractValidHandlerTags(gesture.config.blocksHandlers);
+  const { requireToFail, simultaneousWith, blocksHandlers } = gesture.config;
+  gesture.config.requireToFail = requireToFail && [...new Set(requireToFail)];
+  gesture.config.simultaneousWith = simultaneousWith && [...new Set(simultaneousWith)];
+  gesture.config.blocksHandlers = blocksHandlers && [...new Set(blocksHandlers)];
   return {
-    waitFor: gesture.config.requireToFail as number[],
-    simultaneousHandlers: gesture.config.simultaneousWith as number[],
-    blocksHandlers: gesture.config.blocksHandlers as number[],
+    waitFor: extractValidHandlerTags(requireToFail),
+    simultaneousHandlers: extractValidHandlerTags(simultaneousWith),
+    blocksHandlers: extractValidHandlerTags(blocksHandlers),
   };
 }
 

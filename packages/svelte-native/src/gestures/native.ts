@@ -25,12 +25,13 @@ let enabled = false;
 /**
  * Android: `SvelteEngine.enableGestures()` installs RNGH's root helper on the engine's root view (and gives every engine view the id and
  * context RNGH reads); it runs once, before the first `attachGestureHandler`. Without the engine module (iOS, where RNGH adds its own
- * root recogniser to the surface at the first attach) there is nothing to do. The engine answers `false` when RNGH is not in the build.
+ * root recogniser to the surface at the first attach) there is nothing to do. The engine answers `false` when RNGH is not in the build or
+ * the engine itself is not installed, and throws when its main thread does not answer.
  */
 export function enableNative(): void {
   if (enabled) return;
   const engine = requireOptionalNativeModule<{ enableGestures?: () => boolean | void }>("SvelteEngine");
-  if (engine?.enableGestures?.() === false) throw new Error("[svelte-native gestures] SvelteEngine.enableGestures() failed: react-native-gesture-handler is not part of this build (is the package autolinked?)");
+  if (engine?.enableGestures?.() === false) throw new Error("[svelte-native gestures] SvelteEngine.enableGestures() answered false: react-native-gesture-handler is not part of this build (is the package autolinked?) or the engine is not installed.");
   enabled = true;
 }
 

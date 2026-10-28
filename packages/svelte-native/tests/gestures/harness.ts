@@ -10,6 +10,7 @@ import { resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { compile } from "svelte/compiler";
+import { lowerPrimitives } from "../../src/lower.ts";
 import { reanimatedStubs, type AnimLog } from "../reanimated-stubs.ts";
 
 export type FakeNode = { tag: number; name: string; props: Record<string, unknown>; children: FakeNode[]; target?: unknown };
@@ -33,7 +34,7 @@ export const anim = (): AnimLog => (globalThis as unknown as { __anim: AnimLog }
 /** Every call a test can see on the module, JSON-cloned so later mutation of the arguments cannot change history. */
 const recorderSource = `
 const W = () => globalThis.__gh;
-const record = (name) => (...args) => { W().calls.push(JSON.parse(JSON.stringify([name, ...args]))); };
+const record = (name) => (...args) => { W().calls.push(JSON.parse(JSON.stringify([name, ...args]))); W().log.push('native ' + name); };
 export const get = () => null;
 export const getEnforcing = (name) => {
   if (name !== 'RNGestureHandlerModule') throw new Error('unexpected native module ' + name);
@@ -58,6 +59,7 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/Components/ScrollView/ScrollViewNativeComponent": "export {};",
   "react-native/Libraries/TurboModule/TurboModuleRegistry": recorderSource,
   "react-native/Libraries/EventEmitter/RCTDeviceEventEmitter": emitterSource,
+  primitives: "export const View = null, Text = null, Pressable = null, ScrollView = null, Image = null;",
   "expo-modules-core": "export const requireOptionalNativeModule = (name) => (name === 'SvelteEngine' ? globalThis.__gh.engine : null);",
   "react-native": "export const AppRegistry = { registerRunnable() {} };",
 };
@@ -127,8 +129,11 @@ export async function load(options: LoadOptions): Promise<Loaded> {
         builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? "export {};", loader: "js" }));
         builder.onResolve({ filter: /^@rasheed\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../../src/renderer.ts") }));
         builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../../src/environment.ts") }));
+        // A fixture that imports primitives from the package is lowered as the transformer does; the import itself is then unused.
+        builder.onResolve({ filter: /^@rasheed\/svelte-native$/ }, () => ({ path: "primitives", namespace: "stub" }));
+        builder.onResolve({ filter: /^@rasheed\/svelte-native\/gestures$/ }, () => ({ path: resolve(import.meta.dirname, "../../src/gestures/index.ts") }));
         builder.onLoad({ filter: /\.svelte$/ }, async ({ path }) => ({
-          contents: compile(await readFile(path, "utf8"), { filename: path, css: "external", dev: false, experimental: { customRenderer: "@rasheed/svelte-native/renderer" } }).js.code,
+          contents: compile(lowerPrimitives(await readFile(path, "utf8"), { filename: path, warn: () => {} }), { filename: path, css: "external", dev: false, experimental: { customRenderer: "@rasheed/svelte-native/renderer" } }).js.code,
           loader: "js",
         }));
       },

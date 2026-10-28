@@ -96,6 +96,33 @@ The lab's **stress** panel is a scenario runner. Every scenario samples UI-runti
 
 On 25 October 2026 the physical Samsung SM-A165F (90 Hz) passed all 28 functional checks on the final build, and Perfetto plus gfxinfo traced the stress-test "scroll lag" to React Native Android itself rather than scrolling or this renderer: scrolling the lab without the stress runs at p50 7.9 ms with no frame over 17 ms, while the 48-tile animated churn costs 13–14 ms per frame whether or not the page scrolls (Reanimated's synchronous Java prop path ≈ 3.3 ms per frame for 48 views, Fabric view creation ≈ 0.5 ms per view, RenderThread drawing of rounded semi-transparent views, 3–5 ms of GPU). React Native's experimental Android view recycling halved view creation but did not change frame times, so it stays off. In the lab's own scenarios, idle, square or single-property animation of 48 tiles, keyboard typing and the cleanup checks pass at 90 Hz; animated churn, the first draw of 300 unvirtualized rows, JavaScript-driven text values and Android dialog creation exceed the budget on this device. The same build on the physical iPhone SE (3rd generation, iOS 26.6, 60 Hz) passed all 28 checks and every quick scenario, driven by the `rasheed-svelte:///__dev?run=checks,quick` deep link and read back from `Documents/lab-results.json` with `devicectl`. Details, traces and the measurement tools are in `.rasheed/native-qa/2026-10-25/` (not committed).
 
+## Gestures
+
+`@rasheed/svelte-native/gestures` puts react-native-gesture-handler (RNGH 2.32, the version Expo SDK 57 pins) on Svelte views: its native recognisers and arbitration unchanged, its `Gesture.Pan()`/`Tap()`/`Pinch()`/`Rotation()`/`Fling()`/`LongPress()`/`Native()`/`Manual()` builders and `Race`/`Simultaneous`/`Exclusive` reused as they are, and the React `GestureDetector` replaced by a host module (`src/fabric/gestures.ts`, the way `animatedStyle` is handled). The app wraps nothing. Gestures need a native host rebuild (the package is autolinked); the lab and device acceptance are `apps/platform/modules/svelte-engine/SPEC.md`, "Gestures (react-native-gesture-handler)".
+
+```svelte
+<script lang="ts">
+  import { AnimatedView, createSharedValue, withSpring } from "@rasheed/svelte-native/animation";
+  import { Gesture } from "@rasheed/svelte-native/gestures";
+
+  const x = createSharedValue(0); // first: it loads Reanimated, so the worklets below capture the real withSpring
+  const pan = Gesture.Pan()
+    .onUpdate((e) => { x.value = e.translationX; }) // UI thread: an inline callback of a Gesture.X().onY(...) chain is a worklet
+    .onEnd(() => { x.value = withSpring(0); });
+</script>
+
+<AnimatedView gesture={pan} style={{ width: 96, height: 96 }} animatedStyle={() => { "worklet"; return { transform: [{ translateX: x.value }] }; }} />
+```
+
+- **Where.** `gesture={g}` on `View`, `Pressable`, `ScrollView`, `AnimatedView`, `Image`, `Text` and the `native-*` host tags; removing it (or `undefined`) detaches. `<GestureDetector gesture={g}>` is a `View` that carries it (one extra view, for React Native code and for children that do not forward attributes), and `use:gesture={g}` is the same attribute as an action on a host tag or a lowered primitive. The view keeps its own native view: `collapsable` is forced to `false` (`collapsable={true}` warns in development).
+- **Threads.** A gesture whose callbacks are all worklets, without `.runOnJS(true)`, runs on the UI thread: Reanimated runs the callbacks (`WorkletEventHandler`, keyed by the view's tag) on the frame of the touch, so a busy JavaScript thread does not stall them. Any plain callback, or `.runOnJS(true)`, puts the whole gesture on the JavaScript thread (events through `RCTDeviceEventEmitter`), where callbacks read live Svelte state. Mixing is an error in development, as in RNGH. `GestureStateManager` (the second argument of `onTouches*`) works in worklet callbacks only. `runOnJS` and `scheduleOnRN` are exported from the entry and from `/animation`.
+- **What a UI callback can capture.** SharedValues, numbers, strings, plain objects, other worklets and functions (called through `runOnJS`). **Not `$state`, `$derived` or `$props`**: Svelte compiles those reads into `$.get(signal)` and `$$props.x`, so the closure holds Svelte's namespace and the signal. Development builds check `__closure` of every UI callback when a gesture attaches or updates and throw naming the callback, the variable and the fix (copy it into a `createSharedValue`, or `.runOnJS(true)`). Release builds do not check. `import { Gesture as G }` or a callback held in a variable is not marked as a worklet by the Babel plugin; development warns that none of the callbacks are worklets.
+- **Relations** (`simultaneousWithExternalGesture`, `requireExternalGestureToFail`, `blocksExternalGesture`, the compositions) work across components by handler tag: a gesture that mounts later sends the relations of the handlers that name it again. One gesture object drives one view; a second view that uses it throws RNGH's message (`Handler with tag N already exists. ...`).
+- **Load order.** A worklet that captures `withSpring`, `runOnJS` and the like from `/animation` before Reanimated loads captures a stub; the first `Gesture` property read loads Reanimated and the builders, so a chain is safe, and a helper worklet above the first `Gesture` or `createSharedValue` call is not.
+- Not supported: RNGH's components (`PanGestureHandler`, `Swipeable`, `ReanimatedSwipeable`, `DrawerLayout`, the buttons and touchables, `GestureHandlerRootView`), `Animated.event` with the native driver, `Gesture.ForceTouch`, the web, and `GestureStateManager` on the JS thread. A view that only carries a gesture is not an accessibility action: things that activate must be a `Pressable` or declare accessibility actions.
+
+`bun test tests/gestures` covers it without a device: the native call sequences of RNGH's own detector for twelve gesture shapes (`tests/gestures/golden`, captured by `capture-golden.mjs`) against the host's, the JS receiver and the ported UI worklet against RNGH's `onGestureHandlerEvent` on the same event sequences, lifecycle (mount, update, reattach, detach, hot remount, 200-round churn), the guards, the real Babel transform on `.svelte` fixtures, the import graph and `svelte-check` on every builder method.
+
 ## Renderer
 
 Mounting is not free: Svelte's runtime (component, effects, host nodes) runs before the host builds the Fabric payload, so 300 lowered `View`/`Text` rows mount in 75–80 ms on the Samsung SM-A165F against 61–65 ms for plain React Native (25 October 2026; details below). Keep unvirtualized lists short, paginate, or use `List`.
@@ -143,6 +170,10 @@ Routes load lazily. `.svelte-native/routes.ts` exports `tree` (the route tree `b
 ### Animation API loading
 
 `@rasheed/svelte-native/animation` and the Fabric host both load Reanimated and worklets on first use (≈ 90 ms of boot on a mid-range phone, including a second Hermes runtime): the host on the first node with `animatedStyle`, `entering`/`exiting`/`layout` or CSS animation keys, the module on its first call (`createSharedValue`, `withTiming`, `runOnUISync`, …). Until then the module's exports are loading stubs; after the load they are Reanimated's own functions (live bindings, re-assigned by the shared loader in `src/fabric/reanimated-load.ts`). One rule follows: a worklet that calls `withTiming`/`cancelAnimation` or reads `ReduceMotion`/`Easing` on the UI runtime must be created after some animation call ran on the JavaScript thread (creating the shared value it animates is enough); a worklet created before that captures a stub, which the UI runtime rejects as a remote function.
+
+### Gesture API loading
+
+The gesture host loads on the first node with a `gesture` attribute (the host `require`s `fabric/gestures.ts` there, after Reanimated); `@rasheed/svelte-native/gestures` loads no builder and no Reanimated when it is imported, only on the first read of a `Gesture` property, and an app that never imports it pays nothing at boot (`tests/gestures/isolation.test.ts` checks the import graph: nothing of the host is reached through an ES `import`). On Android the first attach calls `SvelteEngine.enableGestures()`, which installs RNGH's root helper on the engine's root view.
 
 ### Fabric entry dev loop
 

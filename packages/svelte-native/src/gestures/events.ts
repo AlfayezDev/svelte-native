@@ -10,7 +10,7 @@ import { findHandler, State, TouchEventType, type BaseGesture } from "./rngh.js"
 /* eslint-disable @typescript-eslint/no-explicit-any -- the native payloads are untyped here as in RNGH */
 type NativeEvent = { handlerTag: number; state?: number; oldState?: number; eventType?: number; [key: string]: any };
 type Handler = BaseGesture<Record<string, unknown>>;
-export type StateManager = { begin(): void; activate(): void; fail(): void; end(): void; handlerTag: number };
+type StateManager = { begin(): void; activate(): void; fail(): void; end(): void; handlerTag: number };
 
 const dev = () => typeof __DEV__ !== "undefined" && __DEV__;
 const stateManagers = new Map<number, StateManager>();
@@ -25,7 +25,7 @@ function jsStateManager(handlerTag: number): StateManager {
   return { handlerTag, begin: refuse("begin"), activate: refuse("activate"), fail: refuse("fail"), end: refuse("end") };
 }
 
-export function onGestureHandlerEvent(event: NativeEvent): void {
+function onGestureHandlerEvent(event: NativeEvent): void {
   const handler = findHandler(event.handlerTag) as Handler | undefined;
   if (!handler) return;
   const callbacks = handler.handlers as any;
@@ -75,11 +75,6 @@ export function startListening(): void {
     emitter.addListener("onGestureHandlerEvent", onGestureHandlerEvent as (event: never) => void),
     emitter.addListener("onGestureHandlerStateChange", onGestureHandlerEvent as (event: never) => void),
   ];
-}
-
-export function stopListening(): void {
-  for (const subscription of subscriptions) subscription.remove();
-  subscriptions = [];
 }
 
 /** Drops what the receiver remembers of a handler (its state manager and last update) when the handler is dropped. */

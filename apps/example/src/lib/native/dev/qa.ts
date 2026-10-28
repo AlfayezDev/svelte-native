@@ -20,6 +20,8 @@ export type SvelteQA = {
   escape(): Promise<boolean>;
   focusTextInput(): Promise<{ focused: boolean; fieldFrame: number[]; keyboardFrame: number[]; overlap: number }>;
   blur(): Promise<void>;
+  /** The gesture recognizers on the view with React Native tag `tag` and on every view above it (JSON text); what the `gestures-*` probes read. */
+  gestureRecognizers(tag: number): Promise<string>;
   /** Forces the interface style of the app's windows (the native chrome follows it); `unspecified` gives control back to the system. */
   setInterfaceStyle(style: "light" | "dark" | "unspecified"): Promise<void>;
 };

@@ -1,6 +1,7 @@
 import { Directory, File, Paths } from "expo-file-system";
 import type { Presentation } from "@rasheed/svelte-native";
 import { qaModule, type SvelteQA, type BuildIdentity } from "./qa.ts";
+import { attachHandler, dropHandler, gestureProbe, updateHandler } from "./gesture-probe.ts";
 
 /**
  * Device probes for the native screens on iOS (`run=probe:<names>`): each puts a screen in a state, does what a user would
@@ -18,6 +19,7 @@ type Router = {
 const pause = (milliseconds: number) => new Promise<void>((resolve) => { setTimeout(resolve, milliseconds); });
 const plain = (uri: string) => uri.replace(/^file:\/\//, "");
 const screens = "/__dev/screens";
+const gesturePage = "/__dev/gesture-probe";
 
 type Step = { name: string; [key: string]: unknown };
 
@@ -63,6 +65,12 @@ async function takeAway(context: Context, name: string, goto: string, presentati
     const after = await state(context);
     context.log({ name: `${name} ${how} +${wait}`, presentedBefore, entries: context.router.entries.length, presentedAfter: presentedCount(after), stacks: (after as { stacks?: unknown }).stacks });
   }
+}
+
+/** What `SvelteQA.gestureRecognizers` says of the view with `tag`: the recognizers on it, the touch handler's host above it and the root recognizer on that host and on the surface. */
+async function recognizersOf(context: Context, tag: number | undefined): Promise<unknown> {
+  if (tag === undefined) return { error: "the page reported no tag" };
+  return JSON.parse(await context.qa.gestureRecognizers(tag));
 }
 
 const probes: Record<string, (context: Context) => Promise<void>> = {
@@ -169,6 +177,68 @@ const probes: Record<string, (context: Context) => Promise<void>> = {
     await pause(800);
     context.log({ name: "focused", focus, state: await state(context), shot: await shot(context, "keyboard-sheet-focused") });
     await context.qa.blur();
+  },
+
+  /**
+   * react-native-gesture-handler on a screen of the stack. The first handler of the process attaches as the page mounts, before UIKit gives the screen its place (no
+   * superview yet): the root recognizer must still end up on the surface. A second handler attaches once the screen is in place, is disabled, then dropped.
+   * Run first in a fresh process: `surfaceRoot` is absent before the first handler anywhere.
+   */
+  async "gestures-surface"(context) {
+    gestureProbe.tags = {};
+    await open(context, "/__dev", `${gesturePage}?attach=early`);
+    await pause(700);
+    const { box, inScroll } = gestureProbe.tags;
+    context.log({ name: "pushed, attached as the page mounted", handler: gestureProbe.tags.handler, view: await recognizersOf(context, box), shot: await shot(context, "gestures-surface-early") });
+    const late = attachHandler(inScroll as number);
+    await pause(700);
+    context.log({ name: "attached after mount (a view in a scroll view)", handler: late, view: await recognizersOf(context, inScroll) });
+    updateHandler(late, { enabled: false });
+    await pause(400);
+    context.log({ name: "disabled", view: await recognizersOf(context, inScroll) });
+    dropHandler(late);
+    await pause(400);
+    context.log({ name: "dropped", view: await recognizersOf(context, inScroll) });
+  },
+
+  /**
+   * The same on a sheet, whose views are outside the surface: a handler attached as the sheet mounts (UIKit presents the screen after that), and one attached to a
+   * sheet that was presented without any. The recognizers the system installs for the sheet's own drag are listed with the view's.
+   */
+  async "gestures-sheet"(context) {
+    gestureProbe.tags = {};
+    await open(context, "/__dev", `${gesturePage}?mode=sheet&attach=early`, "sheet");
+    await pause(700);
+    context.log({ name: "sheet, attached as the page mounted", handler: gestureProbe.tags.handler, view: await recognizersOf(context, gestureProbe.tags.box), shot: await shot(context, "gestures-sheet-early") });
+    context.router.back();
+    await pause(1500);
+    gestureProbe.tags = {};
+    await open(context, "/__dev", `${gesturePage}?mode=sheet`, "sheet");
+    await pause(500);
+    const { box, inScroll } = gestureProbe.tags;
+    context.log({ name: "sheet presented without a handler", view: await recognizersOf(context, box) });
+    const late = attachHandler(box as number);
+    await pause(700);
+    context.log({ name: "attached to the presented sheet", handler: late, view: await recognizersOf(context, box), shot: await shot(context, "gestures-sheet-late") });
+    const inside = attachHandler(inScroll as number);
+    await pause(700);
+    context.log({ name: "attached to a view in the sheet's scroll view", handler: inside, view: await recognizersOf(context, inScroll) });
+    context.router.back();
+  },
+
+  /** The edge swipe of a pushed screen and a handler's pan: what the stack's delegate answers with one screen (no swipe can begin) and with two. */
+  async "gestures-pop"(context) {
+    gestureProbe.tags = {};
+    context.router.goto(gesturePage, { reset: true });
+    await pause(1500);
+    const { box } = gestureProbe.tags;
+    attachHandler(box as number);
+    await pause(700);
+    context.log({ name: "root screen, one handler", view: await recognizersOf(context, box) });
+    gestureProbe.tags = {};
+    await open(context, "/__dev", `${gesturePage}?attach=early`);
+    await pause(700);
+    context.log({ name: "pushed screen, one handler", view: await recognizersOf(context, gestureProbe.tags.box), shot: await shot(context, "gestures-pop") });
   },
 };
 

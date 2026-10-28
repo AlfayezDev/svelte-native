@@ -88,6 +88,12 @@ public final class SvelteQAModule: Module {
       SvelteQAUIKit.blur()
     }.runOnQueue(.main)
 
+    // The gesture recognizers on the view with a React Native tag and on the views above it (JSON text): what the `gestures-*` probes check.
+    AsyncFunction("gestureRecognizers") { (tag: Int) -> String in
+      try SvelteQA.requireEnabled()
+      return try SvelteQAGestures.recognizers(tag: tag)
+    }.runOnQueue(.main)
+
     // The accessibility elements of the key window as VoiceOver finds them (JSON text).
     AsyncFunction("accessibilityTree") { () -> String in
       try SvelteQA.requireEnabled()

@@ -454,6 +454,21 @@ const needsSession =
  */
 export const notCovered: NotCovered[] = [
 	{
+		route: "/__dev/gestures",
+		reason:
+			"the gesture lab (`native-qa gestures`): every page draws boxes, rows and sheets that move under injected touches and report counters, which the lab's own checks and the gestures gates judge; a frozen frame of one would only record where a drag stopped",
+	},
+	{
+		route: "/__dev/gesture-probe",
+		reason:
+			"the iOS gesture probe page (`native-qa probe`): it exists to be inspected through UIKit's recogniser list, with views whose only content is a handler attached by hand, so there is no screen to freeze",
+	},
+	{
+		route: "/__dev/gesture-smoke",
+		reason:
+			"the Android engine's gesture smoke page (one box with a Pan, aimed at by a driver that reads its `[Svelte gesture] ready` line): a harness fixture, not a screen of the product",
+	},
+	{
 		route: "/__dev/foreign",
 		reason:
 			"the foreign-views lab (WebView, map, video) draws third-party content that is not ours to freeze: remote pages, map tiles and video frames change between runs and need the network; the foreign-views stress scenario of the lab checks these views functionally",

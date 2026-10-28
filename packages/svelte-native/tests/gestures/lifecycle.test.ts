@@ -299,3 +299,18 @@ test("200 mounts of a view with three gestures, half on each thread, leave nothi
 });
 
 export type { Loaded };
+
+test("a node that animates and has a gesture is served by both layers; Reanimated is loaded once and the engine told once", async () => {
+  const m = await load({ fixture: "animated-fixture.svelte" });
+  const reanimated: string[] = [];
+  world().engine = { install: () => true, enableGestures: () => true, reanimatedLoaded: () => { reanimated.push("loaded"); } } as never;
+  const pan = m.gestures.Gesture.Pan().onUpdate(w());
+  m.startSurface(66, m.Fixture, { gesture: pan });
+  await settle(m);
+  const node = byId(66, "both");
+  expect(node?.props).toEqual({ testID: "both", padding: 1, opacity: 0.5, collapsable: false });
+  expect(anim().mappers).toHaveLength(1);
+  expect(callsOf("attachGestureHandler")[0]?.[2]).toBe(node?.tag);
+  expect(m.fabricStats()).toMatchObject({ animationLoaded: true, gesturesLoaded: true });
+  expect(reanimated).toEqual(["loaded"]);
+});

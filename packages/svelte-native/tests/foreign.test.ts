@@ -355,16 +355,3 @@ test("the on-demand view manager names are the ones the packages register", asyn
   expect(listed["com.airbnb.android.react.lottie.LottiePackage"]).toEqual([/REACT_CLASS = "(\w+)"/.exec(ts.sys.readFile(resolve(lottie, "LottieAnimationViewManagerImpl.kt")) ?? "")?.[1]]);
   expect(ts.sys.readFile(resolve(lottie, "LottiePackage.kt"))).toMatch(/class LottiePackage : ReactPackage\b/);
 });
-
-test("the wrapper keeps the modules of a package that builds them with createNativeModules", async () => {
-  const { onDemandPackageSource } = await import("../src/expo.ts");
-  const source = onDemandPackageSource("com.example.app");
-  expect(source).toContain("class SvelteNativeOnDemandLegacyPackage(private val delegate: ReactPackage, private val names: Collection<String>) : ReactPackage, ViewManagerOnDemandReactPackage");
-  expect(source).toContain("override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> = delegate.createNativeModules(reactContext)");
-  expect(source).toContain("if (delegate is BaseReactPackage) SvelteNativeOnDemandPackage(delegate, names) else SvelteNativeOnDemandLegacyPackage(delegate, names)");
-  const { applyHeadlessApplication } = await import("../src/expo.ts");
-  const application = "class MainApplication {\n  val packages = PackageList(this).packages.apply {\n          // add(MyReactNativePackage())\n  }\n  fun onCreate() {\n    ApplicationLifecycleDispatcher.onApplicationCreate(this)\n  }\n}\n";
-  const patched = applyHeadlessApplication(application, { "com.brentvatne.react.ReactVideoPackage": ["RCTVideo"] });
-  expect(patched).toContain('if (this[index] is com.brentvatne.react.ReactVideoPackage) this[index] = svelteNativeOnDemand(this[index], listOf("RCTVideo"))');
-  expect(applyHeadlessApplication(patched, { "com.brentvatne.react.ReactVideoPackage": ["RCTVideo"] })).toBe(patched);
-});

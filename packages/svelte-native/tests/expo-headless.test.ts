@@ -71,8 +71,8 @@ describe("headless Android config", () => {
   test("packages whose view managers are on demand are wrapped, and unwrapped again when the option goes", () => {
     const onDemand = { "com.rnmaps.maps.MapsPackage": ["RNMapsMapView", "RNMapsMarker"], "com.reactnativecommunity.webview.RNCWebViewPackage": ["RNCWebView"] };
     const once = applyHeadlessApplication(application, onDemand);
-    expect(once).toContain('if (this[index] is com.rnmaps.maps.MapsPackage) this[index] = SvelteNativeOnDemandPackage(this[index], listOf("RNMapsMapView", "RNMapsMarker"))');
-    expect(once).toContain('if (this[index] is com.reactnativecommunity.webview.RNCWebViewPackage) this[index] = SvelteNativeOnDemandPackage(this[index], listOf("RNCWebView"))');
+    expect(once).toContain('if (this[index] is com.rnmaps.maps.MapsPackage) this[index] = svelteNativeOnDemand(this[index], listOf("RNMapsMapView", "RNMapsMarker"))');
+    expect(once).toContain('if (this[index] is com.reactnativecommunity.webview.RNCWebViewPackage) this[index] = svelteNativeOnDemand(this[index], listOf("RNCWebView"))');
     expect(applyHeadlessApplication(once, onDemand)).toBe(once);
     expect(applyHeadlessApplication(once)).toBe(applyHeadlessApplication(application));
   });
@@ -84,6 +84,15 @@ describe("headless Android config", () => {
     expect(source).toContain("if (viewManagerName !in names) return null");
     // Announced names would each be read (and so created) by React Native's UIManager when JavaScript starts.
     expect(source).toContain("getViewManagerNames(reactContext: ReactApplicationContext): Collection<String> = emptyList()");
+  });
+  test("a package that builds its native modules with createNativeModules keeps them: the wrapper follows the package's kind", () => {
+    const source = onDemandPackageSource("io.example.app");
+    // react-native-video's `VideoManager` comes from `createNativeModules`; a `BaseReactPackage` wrapper would hide it from React Native.
+    expect(source).toContain("class SvelteNativeOnDemandLegacyPackage(private val delegate: ReactPackage, private val names: Collection<String>) : ReactPackage, ViewManagerOnDemandReactPackage");
+    expect(source).toContain("override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> = delegate.createNativeModules(reactContext)");
+    expect(source).toContain("if (delegate is BaseReactPackage) SvelteNativeOnDemandPackage(delegate, names) else SvelteNativeOnDemandLegacyPackage(delegate, names)");
+    // Both wrappers create the package's managers once and only for the names it was given.
+    expect(source.match(/if \(viewManagerName !in names\) return null/g)).toHaveLength(2);
   });
   test("MainActivity keeps the navigation in its saved state and hands it back as launch options, idempotently", () => {
     const once = applyMainActivity(activity);

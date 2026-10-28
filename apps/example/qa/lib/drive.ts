@@ -7,7 +7,7 @@ import {
 	type DeviceSession,
 	type Direction,
 } from "./device.ts";
-import { shellQuote } from "./exec.ts";
+import { amStartCommand } from "./adb.ts";
 import { diffImages, type Image, type Rect } from "./png.ts";
 import { selectorFor, type Selector, type ScreenCase, type Step } from "./screens.ts";
 import { center, type UiNode, type UiTree } from "./uia.ts";
@@ -140,9 +140,7 @@ async function launchOnce(
 	const { serial, packageName } = session;
 	// Before the app is launched: a device whose proxy is not the case's would show a screen the case does not mean.
 	await session.networkMode(screen.network);
-	const start = screen.deepLink
-		? `am start -W -a android.intent.action.VIEW -d ${shellQuote(screen.deepLink)} ${packageName}`
-		: `am start -W -n ${packageName}/.MainActivity`;
+	const start = amStartCommand(packageName, screen.deepLink);
 	await session.run(serial, ["shell", `am force-stop ${packageName}; sleep 0.3; ${start}`], {
 		timeoutMs: 90_000,
 	});
@@ -175,7 +173,7 @@ async function runStep(session: DeviceSession, step: Step, direction: Direction)
 		// The activity is not stopped: the running app is told of the link (`singleTask`) and its router goes to it like any later link.
 		await session.run(
 			serial,
-			["shell", `am start -W -a android.intent.action.VIEW -d ${shellQuote(step.open)} ${packageName}`],
+			["shell", amStartCommand(packageName, step.open)],
 			{ timeoutMs: 90_000 },
 		);
 	} else if ("wait" in step) {

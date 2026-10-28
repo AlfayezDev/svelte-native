@@ -85,9 +85,33 @@ function installWorld(): void {
   };
 }
 
+/** Resolves the world the host runs in: `react-native*` and `expo-modules-core` to the fakes above (RNGH's own sources are real), Svelte fixtures compiled for the custom renderer. */
+export function hostPlugin(options: { openStubs?: boolean } = {}): Plugin {
+  return {
+    name: "gesture-fixture",
+    setup(builder) {
+      builder.onResolve({ filter: /^(react-native|expo-modules-core)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
+      // `openStubs` (the import-graph tests) lets any module import any name from a stub, as a CommonJS module does.
+      builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: options.openStubs ? "module.exports = new Proxy({}, { get: () => () => {} });" : stubs[args.path] ?? "export {};", loader: "js" }));
+      builder.onResolve({ filter: /^@rasheed\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../../src/renderer.ts") }));
+      builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../../src/environment.ts") }));
+      // A fixture that imports primitives from the package is lowered as the transformer does; the import itself is then unused.
+      builder.onResolve({ filter: /^@rasheed\/svelte-native$/ }, () => ({ path: "primitives", namespace: "stub" }));
+      builder.onResolve({ filter: /^@rasheed\/svelte-native\/gestures$/ }, () => ({ path: resolve(import.meta.dirname, "../../src/gestures/index.ts") }));
+      builder.onLoad({ filter: /\.svelte$/ }, async ({ path }) => ({
+        contents: compile(lowerPrimitives(await readFile(path, "utf8"), { filename: path, warn: () => {} }), { filename: path, css: "external", dev: false, experimental: { customRenderer: "@rasheed/svelte-native/renderer" } }).js.code,
+        loader: "js",
+      }));
+    },
+  };
+}
+
 export type Loaded = {
   startSurface(rootTag: number, App: unknown, props: Record<string, unknown>): Record<string, (...args: never[]) => unknown>;
   stopSurface(rootTag: number): void;
+  /** The host's commit, now: a test that expects it to throw calls it itself instead of leaving it to a microtask. */
+  flush(): void;
+  flushSync(run?: () => void): void;
   fabricStats(): { gesturesLoaded: boolean; animationLoaded: boolean; gestures: { records: number; handlers: number; eventHandlers: number } | null };
   tick(): Promise<void>;
   Fixture: unknown;
@@ -113,31 +137,16 @@ export async function load(options: LoadOptions): Promise<Loaded> {
   const bundle = await build({
     stdin: {
       contents: `import Fixture from ${JSON.stringify(`./${options.fixture}`)};
-        import { startSurface, stopSurface, fabricStats } from '../../src/fabric/host.ts';
+        import { startSurface, stopSurface, fabricStats, flush } from '../../src/fabric/host.ts';
         import { bootSummary } from '../../src/boot-marks.ts';
         import * as gestures from '../../src/gestures/index.ts';
-        import { tick } from 'svelte';
-        export { startSurface, stopSurface, fabricStats, tick, Fixture, gestures, bootSummary };`,
+        import { tick, flushSync } from 'svelte';
+        export { startSurface, stopSurface, fabricStats, flush, tick, flushSync, Fixture, gestures, bootSummary };`,
       resolveDir: import.meta.dirname,
     },
     bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], mainFields: ["main"], write: false,
     define: { __DEV__: options.dev === false ? "false" : "true" },
-    plugins: [...(options.plugins ?? []), {
-      name: "gesture-fixture",
-      setup(builder) {
-        builder.onResolve({ filter: /^(react-native|expo-modules-core)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
-        builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? "export {};", loader: "js" }));
-        builder.onResolve({ filter: /^@rasheed\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../../src/renderer.ts") }));
-        builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../../src/environment.ts") }));
-        // A fixture that imports primitives from the package is lowered as the transformer does; the import itself is then unused.
-        builder.onResolve({ filter: /^@rasheed\/svelte-native$/ }, () => ({ path: "primitives", namespace: "stub" }));
-        builder.onResolve({ filter: /^@rasheed\/svelte-native\/gestures$/ }, () => ({ path: resolve(import.meta.dirname, "../../src/gestures/index.ts") }));
-        builder.onLoad({ filter: /\.svelte$/ }, async ({ path }) => ({
-          contents: compile(lowerPrimitives(await readFile(path, "utf8"), { filename: path, warn: () => {} }), { filename: path, css: "external", dev: false, experimental: { customRenderer: "@rasheed/svelte-native/renderer" } }).js.code,
-          loader: "js",
-        }));
-      },
-    }],
+    plugins: [...(options.plugins ?? []), hostPlugin()],
   });
   const directory = await mkdtemp(resolve(tmpdir(), "svelte-native-gestures-"));
   const file = resolve(directory, "bundle.mjs");

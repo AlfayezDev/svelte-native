@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { buildScript, inBackground, injectionsFrom, launchFromIos, launchesWithCrashes, parseUiTestOutput, sourcesDigest, testCommand, uiTestsLocal } from "../lib/iphone/gestures.ts";
+import { buildScript, inBackground, onUsb, injectionsFrom, launchFromIos, launchesWithCrashes, parseUiTestOutput, sourcesDigest, testCommand, uiTestsLocal } from "../lib/iphone/gestures.ts";
 import { describeStories, storiesFrom, type TraceFile } from "../lib/iphone/gesture-trace.ts";
 import type { IosLabResults } from "../lib/iphone/lab-results.ts";
 import type { CrashReport, GestureLaunch } from "../lib/types.ts";
@@ -190,5 +190,14 @@ describe("the recognizer recording against the test's actions", () => {
 		expect(text).toContain("gestures-pushed-edge round 1 step 1 (drag), touch down 10000; stack depth 2");
 		expect(text).toContain("RNBetterPanGestureRecognizer #7 (RNPanGestureHandler): touch +0 ms, began +96 ms at (10, 0.5), ended +300 ms, 1 updates");
 		expect(text).toContain("_UIParallaxTransitionPanGestureRecognizer (SvelteStackView): touch +0 ms, never began, failed +16 ms");
+	});
+});
+
+describe("the phone on USB", () => {
+	test("idevice_id -l names the phones on USB, one per line", () => {
+		expect(onUsb("00008110-001E10593410401E\n", "00008110-001E10593410401E")).toBe(true);
+		expect(onUsb("00008110-AAAAAAAAAAAAAAAA\n00008110-001E10593410401E\n", "00008110-001E10593410401E")).toBe(true);
+		expect(onUsb("", "00008110-001E10593410401E")).toBe(false);
+		expect(onUsb("00008110-001E10593410401E-extra\n", "00008110-001E10593410401E")).toBe(false);
 	});
 });

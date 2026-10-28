@@ -74,6 +74,20 @@ export function testCommand(options: TestRun): string {
 	].join(" && ");
 }
 
+/** Whether `idevice_id -l` (the phones on USB; `-n` lists the ones on the network) names the phone. */
+export const onUsb = (listing: string, udid: string): boolean => listing.split("\n").some((line) => line.trim() === udid);
+
+/**
+ * XCUITest needs the phone on USB: over the local network (devicectl reaches it either way) the runner's automation mode times out after 60 s
+ * ("Timed out while enabling automation mode"), and the crash-report pull needs USB too. Fails at once, saying so, instead of after that timeout.
+ */
+export async function requireUsb(mac: Mac, udid: string): Promise<void> {
+	const result = await remote(mac, "export PATH=/opt/homebrew/bin:/usr/local/bin:$PATH; command -v idevice_id > /dev/null && idevice_id -l");
+	if (result.code !== 0) throw new Error(`cannot list the phones on USB: idevice_id is not installed on the Mac or failed (${(result.stderr || result.stdout).trim().slice(0, 200)})`);
+	if (!onUsb(result.stdout, udid))
+		throw new Error(`the iPhone (${udid}) is not on USB: it is reachable over the local network only, where XCUITest's automation mode times out after 60 s and the crash reports cannot be pulled. Plug it in, unlock it, and run again`);
+}
+
 /** Starts a command in the background on the Mac and prints its process id. */
 export const inBackground = (command: string): string => `nohup sh -c ${shellQuote(command)} > /dev/null 2>&1 & echo $!`;
 
@@ -326,6 +340,7 @@ export async function iosGestures(argv: string[]): Promise<void> {
 	const repeat = integerFlag(values.repeat, "repeat", 1);
 	if (repeat < 1) throw new Error("--repeat must be at least 1");
 	const timeoutMs = integerFlag(values.timeout, "timeout", 900) * 1000;
+	await requireUsb(session.target.mac, session.udid);
 	await prepareUiTests(session, { team: flagString(values.team), rebuild: values.rebuild === true });
 
 	await mkdir(runsDir, { recursive: true });

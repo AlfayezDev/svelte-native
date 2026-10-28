@@ -30,3 +30,10 @@ export class InlinePropManager {
 export function maybeBuild(config: unknown): unknown;
 export function updateLayoutAnimations(viewTag: number, type: number, config?: unknown, isUnmounting?: boolean, sharedTransitionTag?: string): void;
 export const LayoutAnimationType: { readonly ENTERING: 1; readonly EXITING: 2; readonly LAYOUT: 3 };
+/** `useEvent` without the hook: registers a worklet for native events of the given names on a view tag (the gesture detector's UI-thread route). */
+export class WorkletEventHandler<Event extends object = object> {
+  constructor(worklet: (event: Event) => void, eventNames: string[]);
+  updateEventHandler(newWorklet: (event: Event) => void, newEvents: string[]): void;
+  registerForEvents(viewTag: number, fallbackEventName?: string): void;
+  unregisterFromEvents(viewTag: number): void;
+}

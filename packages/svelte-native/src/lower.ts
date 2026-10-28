@@ -1,6 +1,7 @@
 import { parse } from "svelte/compiler";
 
 const PACKAGE = "@rasheed/svelte-native";
+const GESTURES = `${PACKAGE}/gestures`;
 
 // Lowered call sites never run the component (`<ScrollView>` becomes `<native-scroll>` here): behaviour every scroll view
 // needs, such as React Native's base scroll style, belongs to the host (`fabric/host.ts`, `splitProps`), not to the
@@ -26,13 +27,15 @@ function fromPackage(source: unknown): boolean {
   return typeof source === "string" && (source === PACKAGE || source.startsWith(`${PACKAGE}/`));
 }
 
-function collectImports(program: Node | null | undefined, locals: Map<string, string>) {
+function collectImports(program: Node | null | undefined, locals: Map<string, string>, actions: Set<string>) {
   for (const statement of program?.body ?? []) {
     if (statement.type !== "ImportDeclaration" || statement.importKind === "type" || !fromPackage(statement.source?.value)) continue;
     for (const specifier of statement.specifiers) {
       if (specifier.type !== "ImportSpecifier" || specifier.importKind === "type") continue;
       const imported = specifier.imported.name ?? specifier.imported.value;
       if (Object.hasOwn(LOWERED_TAGS, imported)) locals.set(specifier.local.name, imported);
+      // `use:gesture` (from `@rasheed/svelte-native/gestures`) is an action the host tag does run: it sets the `gesture` attribute.
+      if (imported === "gesture" && statement.source?.value === GESTURES) actions.add(specifier.local.name);
     }
   }
 }
@@ -80,8 +83,9 @@ export function lowerPrimitives(content: string, options: LowerOptions = {}): st
     return content;
   }
   const locals = new Map<string, string>();
-  collectImports(ast.instance?.content, locals);
-  collectImports(ast.module?.content, locals);
+  const actions = new Set<string>();
+  collectImports(ast.instance?.content, locals, actions);
+  collectImports(ast.module?.content, locals, actions);
   if (!locals.size) return content;
   const warn = options.warn ?? ((message: string) => console.warn(message));
   const edits: Edit[] = [];
@@ -102,7 +106,7 @@ export function lowerPrimitives(content: string, options: LowerOptions = {}): st
       if (attribute.type === "Attribute" && attribute.value === true) {
         edits.push({ start: attribute.end, end: attribute.end, text: "={true}" });
       }
-      if (WARN_DIRECTIVES.has(attribute.type)) {
+      if (WARN_DIRECTIVES.has(attribute.type) && !(attribute.type === "UseDirective" && actions.has(attribute.name))) {
         warn(`${options.filename ?? "component"}: ${attribute.type === "UseDirective" ? "use:" : attribute.type === "AnimateDirective" ? "animate:" : "transition:"}${attribute.name} on <${node.name}> is passed to <${tag}> unchanged; native elements do not run DOM directives`);
       }
     }

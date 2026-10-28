@@ -35,14 +35,31 @@ function wantsAnimation(attributes: Record<string, unknown>): boolean {
   for (const key in attributes) if (ANIMATION_ATTRIBUTES.has(key)) return true;
   return styleWantsAnimation(attributes.style);
 }
-function loadAnimation(): AnimationModule {
-  if (animation) return animation;
-  loadReanimated(); // also upgrades the public `animation` module's exports to Reanimated's own functions
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  animation = require("./animation.ts") as AnimationModule;
+/** Loads Reanimated (also upgrading the public `animation` module's exports to its own functions) and tells the engine once. */
+function ensureReanimated(): void {
+  loadReanimated();
+  if (reanimatedAnnounced) return;
+  reanimatedAnnounced = true;
   // The engine's mounting delegate must sit behind Reanimated's layout-animation proxy; the engine re-orders itself.
   if (engineInstalled && !reanimatedAtInstall) engineModule?.reanimatedLoaded?.();
+}
+function loadAnimation(): AnimationModule {
+  if (animation) return animation;
+  ensureReanimated();
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  animation = require("./animation.ts") as AnimationModule;
   return animation;
+}
+// The gesture host (react-native-gesture-handler's detector, `fabric/gestures.ts`) loads on the first node with a `gesture`
+// attribute, after Reanimated: UI-thread callbacks are worklets, which must be created against the real functions.
+type GesturesModule = typeof import("./gestures.ts");
+let gestures: GesturesModule | null = null;
+function loadGestures(): GesturesModule {
+  if (gestures) return gestures;
+  ensureReanimated();
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  gestures = require("./gestures.ts") as GesturesModule;
+  return gestures;
 }
 import { navigationProps, navigationTags } from "./navigation.ts";
 import { iosNavigationViewName } from "./navigation.ios.ts";
@@ -160,6 +177,7 @@ let flushScheduled = false;
 let childrenInvalidated = false;
 let engineInstalled = false;
 let reanimatedAtInstall = false;
+let reanimatedAnnounced = false;
 let engineModule: { reanimatedLoaded?: () => void; dispatchCommand?: (tag: number, name: string, args: unknown[]) => void; setNativeProps?: (tag: number, props: Record<string, unknown>) => void; registerForeign?: (name: string) => boolean; saveNavigation?: (json: string) => void; finishing?: () => boolean } | null = null;
 /** The foreign components the engine was told about: its mounting delegate must know a component's name before the first node of it is committed. */
 const foreignNames = new Set<string>();
@@ -180,7 +198,7 @@ const now = () => performance.now();
 export function saveNavigation(json: string): void { engineModule?.saveNavigation?.(json); }
 /** Whether the host's window went away because the user left (Back, a swipe from Recents) and not because it is being recreated: Android's `Activity.isFinishing`. */
 export function hostFinishing(): boolean { return engineModule?.finishing?.() === true; }
-export function fabricStats() { return { ...stats, engineInstalled, animationLoaded: animation !== null }; }
+export function fabricStats() { return { ...stats, engineInstalled, animationLoaded: animation !== null, gesturesLoaded: gestures !== null, gestures: gestures?.stats() ?? null }; }
 /**
  * Spike instrumentation: the cost of the Fabric binding itself, per call, measured without Svelte.
  * Nodes created here are never committed; they are released when garbage collected.
@@ -357,7 +375,9 @@ function build(node: NativeNode, rootTag: number, insideText: boolean, insideFor
   const config = viewConfig(viewName);
   // `animatedStyle` and the CSS keys never reach the payload; once loaded, the animation layer sees every node so it can detach.
   const animated = animation || wantsAnimation(attributes) ? loadAnimation().animationProps(node, current, attributes) : attributes;
-  const rnProps = splitProps(node.name === "native-image" ? imageProps(animated) : navigationTags.has(node.name) ? navigationProps(node.name, animated) : animated, current, navigationTags.has(node.name));
+  // `gesture` never reaches the payload either; the gesture host forces `collapsable: false` so the view keeps its tag.
+  const gestured = gestures || attributes.gesture !== undefined ? loadGestures().gestureProps(node, current, animated) : animated;
+  const rnProps = splitProps(node.name === "native-image" ? imageProps(gestured) : navigationTags.has(node.name) ? navigationProps(node.name, gestured) : gestured, current, navigationTags.has(node.name));
   const scroll = viewName === "RCTScrollView";
   const childrenHost = (parent: FabricNode) => {
     for (let child = node.firstChild; child; child = child.nextSibling) {
@@ -449,11 +469,18 @@ function onInvalidate(node: NativeNode, reason: Invalidation): void {
   if (!flushScheduled) { flushScheduled = true; queueMicrotask(flush); }
 }
 
-/** Nodes that left the tree are not reported by the renderer (a move unlinks and relinks), so after a commit that changed children, animated nodes no longer under a live root are detached. */
+/** Whether a node is still under a mounted surface. */
+function isLive(node: NativeNode): boolean {
+  let top = node;
+  while (top.parent) top = top.parent;
+  for (const root of roots.values()) if (root.node === top) return true;
+  return false;
+}
+
+/** Nodes that left the tree are not reported by the renderer (a move unlinks and relinks), so after a commit that changed children, animated and gesture nodes no longer under a live root are detached. */
 function detachRemovedAnimations(): void {
-  const live = new Set<NativeNode>();
-  for (const root of roots.values()) live.add(root.node);
-  animation?.sweepAnimations((node: NativeNode) => { let top = node; while (top.parent) top = top.parent; return live.has(top); });
+  animation?.sweepAnimations(isLive);
+  gestures?.sweepGestures(isLive);
 }
 
 /** Commits every pending change in one Fabric transaction per root. */
@@ -484,6 +511,7 @@ export function flush(): void {
     stats.lastCompleted++;
   }
   animation?.commitAnimations();
+  gestures?.commitGestures(isLive);
   if (childrenInvalidated) { childrenInvalidated = false; detachRemovedAnimations(); }
   stats.flushes++;
   stats.lastFlushMs = performance.now() - started;

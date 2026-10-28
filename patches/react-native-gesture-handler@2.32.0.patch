@@ -1,0 +1,35 @@
+diff --git a/apple/RNGestureHandlerManager.mm b/apple/RNGestureHandlerManager.mm
+index d9799b31cb862742395a97fd990b11dfaff44069..7ebb08a9d1f0392d5ef54bdd34c92f35a2885eb9 100644
+--- a/apple/RNGestureHandlerManager.mm
++++ b/apple/RNGestureHandlerManager.mm
+@@ -43,6 +43,20 @@
+ 
+ constexpr int NEW_ARCH_NUMBER_OF_ATTACH_RETRIES = 25;
+ 
++#if defined(RCT_NEW_ARCH_ENABLED) && !TARGET_OS_OSX
++// A view that holds React Native's touch handler is where the root recognizer goes, wherever the view is: a sheet or a modal
++// that an app presents itself holds its own touch handler outside every surface view.
++static BOOL RNGHViewHasSurfaceTouchHandler(RNGHUIView *view)
++{
++  for (UIGestureRecognizer *recognizer in view.gestureRecognizers) {
++    if ([recognizer isKindOfClass:[RCTSurfaceTouchHandler class]]) {
++      return YES;
++    }
++  }
++  return NO;
++}
++#endif
++
+ @interface RNGestureHandlerManager () <RNGestureHandlerEventEmitter, RNRootViewGestureRecognizerDelegate>
+ 
+ @end
+@@ -288,7 +302,8 @@ constexpr int NEW_ARCH_NUMBER_OF_ATTACH_RETRIES = 25;
+   } else {
+     while (
+         touchHandlerView != nil && ![touchHandlerView isKindOfClass:[RCTSurfaceView class]] &&
+-        (fullWindowOverlayContainerClass == nil || ![touchHandlerView isKindOfClass:fullWindowOverlayContainerClass])) {
++        (fullWindowOverlayContainerClass == nil || ![touchHandlerView isKindOfClass:fullWindowOverlayContainerClass]) &&
++        !RNGHViewHasSurfaceTouchHandler(touchHandlerView)) {
+       touchHandlerView = touchHandlerView.superview;
+     }
+   }

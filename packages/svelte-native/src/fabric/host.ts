@@ -47,6 +47,7 @@ function loadAnimation(): AnimationModule {
 import { navigationProps, navigationTags } from "./navigation.ts";
 import { iosNavigationViewName } from "./navigation.ios.ts";
 import { mergeHostProps } from "../native-props.ts";
+import { foreignText, type ForeignText } from "./foreign-text.ts";
 import renderer, { NativeNode, setInvalidationSink, type Invalidation } from "../renderer.ts";
 import { Pressability, type PressabilityConfig, type ResponderHandlers } from "./pressability.ts";
 import { createResponder } from "./responder.ts";
@@ -328,6 +329,44 @@ const isTextInputView = (viewName: string) => viewName === "AndroidTextInput" ||
 
 function isText(node: NativeNode): boolean { return node.name === "native-text"; }
 
+/**
+ * The text that is all of [node]'s content, when it is: what a span of a foreign text component takes as its `content` (`foreign-text.ts`). Comments
+ * and the empty strings Svelte leaves where a block starts are not content; an empty string alone is (`<TSpan>{""}</TSpan>` has an empty `content`).
+ */
+function loneText(node: NativeNode): NativeNode | null {
+  let only: NativeNode | null = null;
+  let empty: NativeNode | null = null;
+  for (let child = node.firstChild; child; child = child.nextSibling) {
+    if (child.kind === "comment") continue;
+    if (child.kind === "text" && child.textValue === "") { empty ??= child; continue; }
+    if (only) return null;
+    only = child;
+  }
+  if (only) return only.kind === "text" ? only : null;
+  return empty;
+}
+
+/** A string inside a foreign text component, built as the span the library makes of it (`foreign-text.ts`). */
+function buildSpan(child: NativeNode, rootTag: number, text: ForeignText): FabricNode {
+  if (!binding) throw new Error("nativeFabricUIManager is not installed");
+  const { viewName, props } = text.span(child.textValue);
+  registerForeign(viewName);
+  const current = state(child, viewName);
+  current.foreign = true;
+  const config = viewConfig(viewName);
+  if (!current.node) {
+    current.node = binding.createNode(current.tag, viewName, rootTag, createPayload(props, config), child);
+    stats.lastCreated++;
+  } else if (current.propsDirty) {
+    const payload = diffPayload(current.props, props, config);
+    if (payload) { current.node = binding.cloneNodeWithNewProps(current.node, payload); stats.lastCloned++; }
+  }
+  current.props = props;
+  current.propsDirty = false;
+  current.childrenDirty = false;
+  return current.node;
+}
+
 /** Builds (or rebuilds) the Fabric node for a Svelte element and returns the handle to append into its parent. */
 function build(node: NativeNode, rootTag: number, insideText: boolean, insideForeign = false): FabricNode | null {
   if (!binding) throw new Error("nativeFabricUIManager is not installed");
@@ -346,12 +385,17 @@ function build(node: NativeNode, rootTag: number, insideText: boolean, insideFor
     current.propsDirty = false;
     return current.node;
   }
-  const attributes = nativeProps(node);
+  let attributes = nativeProps(node);
   const entry = viewNames[node.name];
   if (!entry) throw new Error(`Svelte Native (Fabric) has no mapping for ${node.name}`);
   const viewName = insideText && isText(node) ? "RCTVirtualText" : typeof entry === "function" ? entry(attributes) : entry;
   const foreign = insideForeign || node.name === "native-foreign";
   if (node.name === "native-foreign") registerForeign(viewName);
+  // A foreign library's text component takes the strings between its tags itself (`foreign-text.ts`): as the `content` of the span it is, or as spans of their own.
+  const text = foreignText.handler;
+  const textMode = text && node.name === "native-foreign" ? text.mode(viewName) : null;
+  const lone = textMode === "span" ? loneText(node) : null;
+  if (lone) attributes = { ...attributes, content: lone.textValue };
   const current = state(node, viewName);
   current.foreign = foreign;
   const config = viewConfig(viewName);
@@ -361,6 +405,11 @@ function build(node: NativeNode, rootTag: number, insideText: boolean, insideFor
   const scroll = viewName === "RCTScrollView";
   const childrenHost = (parent: FabricNode) => {
     for (let child = node.firstChild; child; child = child.nextSibling) {
+      if (textMode && child.kind === "text" && text) {
+        if (child === lone || child.textValue === "") continue; // the text of `lone` is the `content` above
+        binding.appendChild(parent, buildSpan(child, rootTag, text));
+        continue;
+      }
       const handle = build(child, rootTag, insideText || isText(node), foreign);
       if (!handle) continue;
       const t0 = profile ? now() : 0;
@@ -385,7 +434,8 @@ function build(node: NativeNode, rootTag: number, insideText: boolean, insideFor
       current.content = content.node;
     } else childrenHost(current.node);
   } else {
-    const payload = current.propsDirty ? diffPayload(current.props, rnProps, config) : null;
+    // The text of a span is one of its props: a change of it alone (the node's children changed, its attributes did not) still has to reach the payload.
+    const payload = current.propsDirty || lone ? diffPayload(current.props, rnProps, config) : null;
     if (scroll && current.content && (current.childrenDirty || current.propsDirty)) {
       // The content container follows the scroll view's own attributes (`contentContainerStyle`, `horizontal`), which
       // `splitProps` keeps out of the scroll view's payload: a change of them alone (a direction switch, a padding) is a

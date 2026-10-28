@@ -614,6 +614,8 @@ static void SvelteSetBottomInset(UIScrollView *scroll, CGFloat content, CGFloat 
     [_touch attachToView:presented.view offset:CGPointMake(_layoutMetrics.frame.origin.x, _layoutMetrics.frame.origin.y)];
   } else {
     [_touch detach];
+    // The handlers of a gesture library that attached to this screen's views before UIKit gave the screen its place found no touch handler above them.
+    if (self.window != nil) SvelteEnsureGestureRoot(self);
   }
 }
 

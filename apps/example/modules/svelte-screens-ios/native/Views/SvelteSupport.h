@@ -60,9 +60,18 @@ void SvelteAfterNextFrame(dispatch_block_t block);
 /// Holds React Native's touch handler for a view that is presented outside the surface's root view (a modal or a sheet).
 @interface SvelteTouchHost : NSObject
 /// `offset` is the position, in surface coordinates, of the top left corner of `view`: JavaScript measures in those.
+/// A presented view that carries react-native-gesture-handler handlers gets the handler library's root recognizer (`SvelteEnsureGestureRoot`).
 - (void)attachToView:(UIView *)view offset:(CGPoint)offset;
 - (void)detach;
 @end
+
+/// react-native-gesture-handler (RNGH) adds its root recognizer, the one that cancels React Native's touches when a handler activates, to the view that
+/// holds the touch handler, when the first handler attaches to a view below it. A screen's views are not below it then: UIKit places a screen's view
+/// (staged for a push, presented for a sheet) after the commit that mounted it, and RNGH finds no touch handler above a view that has no superview yet.
+/// Called when `content` joins its window or the view that holds the touch handler starts listening: when something in `content` holds an RNGH handler
+/// and the nearest view above it that holds the touch handler (the surface, or a presented screen's view) has no root recognizer, adds one. Does nothing
+/// when the handler library is not in the app.
+void SvelteEnsureGestureRoot(UIView *content);
 
 /// A custom view for a bar item, sized by what Yoga computed for the slot it carries.
 @interface SvelteBarContainer : UIView

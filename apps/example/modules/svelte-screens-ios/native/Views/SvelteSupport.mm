@@ -122,6 +122,68 @@ void SvelteAfterNextFrame(dispatch_block_t block) {
 
 @end
 
+#pragma mark - react-native-gesture-handler
+
+// The recognizer's delegate: what RNGH's own manager does when a handler activates (`RNGestureHandlerManager.mm`,
+// `gestureRecognizer:didActivateInViewWithTouchHandler:`). The touch handler cancels what JavaScript's responders hold when it is turned off
+// and on again.
+@interface SvelteGestureRootDelegate : NSObject <UIGestureRecognizerDelegate>
+- (void)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer didActivateInViewWithTouchHandler:(UIView *)viewWithTouchHandler;
+@end
+
+@implementation SvelteGestureRootDelegate
+
+- (void)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer didActivateInViewWithTouchHandler:(UIView *)viewWithTouchHandler {
+  // React Native's responder treats scrolling as its own: a scroll recognizer that activates does not cancel the touches (RNGH's note).
+  if ([gestureRecognizer.view isKindOfClass:[UIScrollView class]]) return;
+  for (UIGestureRecognizer *recognizer in viewWithTouchHandler.gestureRecognizers) {
+    if ([recognizer isKindOfClass:[RCTSurfaceTouchHandler class]]) {
+      recognizer.enabled = NO;
+      recognizer.enabled = YES;
+      return;
+    }
+  }
+}
+
+@end
+
+static BOOL SvelteHoldsGestureHandler(UIView *view, Class handlerClass) {
+  for (UIGestureRecognizer *recognizer in view.gestureRecognizers) {
+    if ([recognizer.delegate isKindOfClass:handlerClass]) return YES;
+  }
+  for (UIView *subview in view.subviews) {
+    if (SvelteHoldsGestureHandler(subview, handlerClass)) return YES;
+  }
+  return NO;
+}
+
+void SvelteEnsureGestureRoot(UIView *content) {
+  static Class handlerClass;
+  static Class rootClass;
+  static SvelteGestureRootDelegate *delegate;
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    handlerClass = NSClassFromString(@"RNGestureHandler");
+    rootClass = NSClassFromString(@"RNRootViewGestureRecognizer");
+    delegate = [SvelteGestureRootDelegate new];
+  });
+  if (handlerClass == nil || rootClass == nil) return;
+  UIView *host = content;
+  while (host != nil) {
+    BOOL listening = NO;
+    for (UIGestureRecognizer *recognizer in host.gestureRecognizers) {
+      if ([recognizer isKindOfClass:rootClass]) return;
+      if ([recognizer isKindOfClass:[RCTSurfaceTouchHandler class]]) listening = YES;
+    }
+    if (listening) break;
+    host = host.superview;
+  }
+  if (host == nil || !SvelteHoldsGestureHandler(content, handlerClass)) return;
+  UIGestureRecognizer *root = [rootClass new];
+  root.delegate = delegate;
+  [host addGestureRecognizer:root];
+}
+
 @implementation SvelteTouchHost {
   RCTSurfaceTouchHandler *_handler;
   __weak UIView *_view;
@@ -135,6 +197,7 @@ void SvelteAfterNextFrame(dispatch_block_t block) {
     _view = view;
   }
   _handler.viewOriginOffset = offset;
+  SvelteEnsureGestureRoot(view);
 }
 
 - (void)detach {

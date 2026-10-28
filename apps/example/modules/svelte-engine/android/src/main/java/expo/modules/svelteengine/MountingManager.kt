@@ -247,6 +247,7 @@ class MountingManager(context: Context) {
 
   private fun apply(surfaceId: Int, ops: IntArray, strings: Array<String>, objects: Array<Any?>) {
     if (pool.hasHeld) pool.sweep()
+    BootBoost.release() // the first screen is being mounted: the start-up threads get their cores back
     Trace.beginSection("SvelteEngine.mount")
     val t0 = System.nanoTime()
     var decodeNs = 0L

@@ -66,6 +66,9 @@ describe("headless Android config", () => {
     expect(once).toContain("SvelteNativeHeadlessMainPackage()");
     expect(once).toContain("add(expo.modules.svelteengine.ExpoViewsPackage())");
     expect(once.indexOf("reactHost.start()")).toBeGreaterThan(once.indexOf("onApplicationCreate(this)"));
+    // The start-up threads are pinned to the big cores around the host start: begin before it, hand the main thread back after it.
+    expect(once.indexOf("BootBoost.begin()")).toBeLessThan(once.indexOf("reactHost.start()"));
+    expect(once.indexOf("BootBoost.handOver()")).toBeGreaterThan(once.indexOf("reactHost.start()"));
     expect(applyHeadlessApplication(once)).toBe(once);
   });
   test("packages whose view managers are on demand are wrapped, and unwrapped again when the option goes", () => {

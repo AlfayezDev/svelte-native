@@ -73,12 +73,13 @@ class SvelteEngineModule : Module() {
 
     // Installs react-native-gesture-handler's root helper on the overlay (SPEC.md, "Gestures", Android contract item 4):
     // called by the gesture host before its first `attachGestureHandler`, so an app that never uses a gesture loads none of
-    // the library. True once installed (also when it already was); false when the library is not in the app, the engine
-    // is not installed, or the main thread did not answer within 500 ms (the install still runs when it gets to it: call
-    // again). Throws when the library's module is not registered with React Native.
+    // the library. True once installed (also when it already was); false when the library is not in the app or the engine is
+    // not installed. Throws when the library's module is not registered with React Native, or when the main thread did not
+    // answer within 5 s (the install still runs when it gets to it, and a second call finds it done).
     Function("enableGestures") {
       val manager = mountingManager ?: return@Function false
-      onMainBlocking { manager.enableGestures() } ?: false
+      onMainBlocking(5000) { manager.enableGestures() }
+        ?: throw IllegalStateException("SvelteEngine.enableGestures: the main thread did not answer within 5 s")
     }
 
     // Called once by the Fabric host when it loads Reanimated lazily (SPEC.md, "Animation": delegate order). Its library
@@ -219,14 +220,14 @@ class SvelteEngineModule : Module() {
     if (Looper.myLooper() == Looper.getMainLooper()) block() else mainHandler.post(block)
   }
 
-  private fun <T> onMainBlocking(block: () -> T?): T? {
+  private fun <T> onMainBlocking(waitMs: Long = 500, block: () -> T?): T? {
     if (Looper.myLooper() == Looper.getMainLooper()) return block()
     val latch = java.util.concurrent.CountDownLatch(1)
     var result: T? = null
     mainHandler.post {
       try { result = block() } finally { latch.countDown() }
     }
-    return if (latch.await(500, java.util.concurrent.TimeUnit.MILLISECONDS)) result else null
+    return if (latch.await(waitMs, java.util.concurrent.TimeUnit.MILLISECONDS)) result else null
   }
 
   private fun attachRoot(reactContext: ReactApplicationContext, root: EngineRoot) {

@@ -20,7 +20,8 @@ export type SvelteNativeOptions = {
    * Packages whose view managers React Native creates on first use instead of at host start: the package's class name
    * (as autolinking lists it in `PackageList`) to the Fabric component names it provides. React Native builds the view
    * managers of every package that does not offer them on demand when the host starts (the JavaScript thread, before the
-   * first commit); a package such as react-native-maps creates a dozen. The package keeps providing its TurboModules.
+   * first commit); a package such as react-native-maps creates a dozen. The package keeps providing its modules: TurboModules
+   * through `getModule`, and the legacy modules of a package that still uses `createNativeModules` (react-native-video).
    */
   androidOnDemandViewManagers?: Record<string, string[]>;
 };
@@ -54,6 +55,8 @@ const flagsBegin = "    // Svelte native: React Native feature flags (generated,
 const flagsEnd = "    // Svelte native: end of React Native feature flags";
 const headlessPackageName = "SvelteNativeHeadlessMainPackage";
 const onDemandPackageName = "SvelteNativeOnDemandPackage";
+const onDemandLegacyPackageName = "SvelteNativeOnDemandLegacyPackage";
+const onDemandFactoryName = "svelteNativeOnDemand";
 const packagesBegin = "          // Svelte native: headless package list (generated, do not edit)";
 const packagesEnd = "          // Svelte native: end of headless package list";
 const startBegin = "    // Svelte native: headless host start (generated, do not edit)";
@@ -112,7 +115,7 @@ export function applyHeadlessApplication(contents: string, onDemand: Record<stri
     packagesBegin,
     "          for (index in indices) {",
     `            if (this[index] is com.facebook.react.shell.MainReactPackage) this[index] = ${headlessPackageName}()`,
-    ...Object.entries(onDemand).map(([packageClass, names]) => `            if (this[index] is ${packageClass}) this[index] = ${onDemandPackageName}(this[index], listOf(${names.map((name) => `"${name}"`).join(", ")}))`),
+    ...Object.entries(onDemand).map(([packageClass, names]) => `            if (this[index] is ${packageClass}) this[index] = ${onDemandFactoryName}(this[index], listOf(${names.map((name) => `"${name}"`).join(", ")}))`),
     "          }",
     "          // Views of Expo modules registered lazily are served on demand (see ExpoViews.kt in the engine module).",
     "          add(expo.modules.svelteengine.ExpoViewsPackage())",
@@ -271,6 +274,32 @@ class ${onDemandPackageName}(private val delegate: ReactPackage, private val nam
     return created[viewManagerName]
   }
 }
+
+// The same for a package that still builds its native modules with \`createNativeModules\` (react-native-video's \`VideoManager\`,
+// which the library's functions call with the view's tag): React Native reads such a package's modules from that method, and a
+// \`BaseReactPackage\` would hide them.
+@OptIn(UnstableReactNativeAPI::class)
+class ${onDemandLegacyPackageName}(private val delegate: ReactPackage, private val names: Collection<String>) : ReactPackage, ViewManagerOnDemandReactPackage {
+  private var managers: Map<String, ViewManager<*, *>>? = null
+
+  @Suppress("DEPRECATION")
+  override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> = delegate.createNativeModules(reactContext)
+
+  override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> = emptyList()
+
+  override fun getViewManagerNames(reactContext: ReactApplicationContext): Collection<String> = emptyList()
+
+  @Synchronized
+  override fun createViewManager(reactContext: ReactApplicationContext, viewManagerName: String): ViewManager<*, *>? {
+    if (viewManagerName !in names) return null
+    val created = managers ?: delegate.createViewManagers(reactContext).associateBy { it.name }.also { managers = it }
+    return created[viewManagerName]
+  }
+}
+
+/** The wrapper that keeps the kind of package it wraps: modules through \`getModule\` for a \`BaseReactPackage\`, through \`createNativeModules\` for any other. */
+fun ${onDemandFactoryName}(delegate: ReactPackage, names: Collection<String>): ReactPackage =
+  if (delegate is BaseReactPackage) ${onDemandPackageName}(delegate, names) else ${onDemandLegacyPackageName}(delegate, names)
 `;
 }
 

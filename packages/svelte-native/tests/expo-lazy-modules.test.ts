@@ -74,8 +74,17 @@ describe("lazy Expo module registry", () => {
   }
 
   test("the modules with views served on demand are the ones the engine's ExpoViews builds", () => {
-    expect(readFileSync(join(root, "apps/platform/modules/svelte-engine/android/src/main/java/expo/modules/svelteengine/ExpoViews.kt"), "utf8")).toContain("class ExpoViews(");
+    const views = readFileSync(join(root, "apps/platform/modules/svelte-engine/android/src/main/java/expo/modules/svelteengine/ExpoViews.kt"), "utf8");
+    expect(views).toContain("class ExpoViews(");
     for (const name of viewsOnDemand) expect(lazyEntries.map(([, lazyName]) => lazyName)).toContain(name);
+    // The engine builds views only for those modules: Expo exports the views of every module that is not lazy (expo-image, expo-blur,
+    // expo-linear-gradient) when the host starts, so `prepare` leaves them alone.
+    expect(strings(/ON_DEMAND_MODULES = setOf\(([^)]*)\)/.exec(views)?.[1] ?? "").sort()).toEqual([...viewsOnDemand].sort());
+  });
+
+  test("the modules whose views the foreign components mount and that stay eager have no lazy entry", () => {
+    // `ViewManagerAdapter_ExpoImage`, `_ExpoBlur_*`, `_ExpoLinearGradient`: built at start by Expo, as in any app.
+    for (const name of ["ExpoImage", "ExpoBlur", "ExpoLinearGradient"]) expect(lazyEntries.some(([, lazyName]) => lazyName === name), name).toBe(false);
   });
 
   test("core modules registered lazily keep their names", () => {

@@ -40,6 +40,9 @@ export default {
       androidOnDemandViewManagers: {
         "com.rnmaps.maps.MapsPackage": ["RNMapsMapView", "RNMapsMarker", "RNMapsCallout", "RNMapsGooglePolygon", "RNMapsPolyline", "RNMapsCircle", "RNMapsOverlay", "RNMapsUrlTile", "RNMapsWMSTile"],
         "com.reactnativecommunity.webview.RNCWebViewPackage": ["RNCWebView"],
+        // react-native-video builds its `VideoManager` module with createNativeModules: the wrapper for such packages keeps it.
+        "com.brentvatne.react.ReactVideoPackage": ["RCTVideo"],
+        "com.airbnb.android.react.lottie.LottiePackage": ["LottieAnimationView"],
       },
     }],
     "expo-secure-store",

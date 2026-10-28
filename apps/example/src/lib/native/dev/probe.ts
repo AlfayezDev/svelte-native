@@ -199,6 +199,8 @@ const probes: Record<string, (context: Context) => Promise<void>> = {
     dropHandler(late);
     await pause(400);
     context.log({ name: "dropped", view: await recognizersOf(context, inScroll) });
+    dropHandler(gestureProbe.tags.handler as number);
+    await pause(300);
   },
 
   /**
@@ -210,6 +212,9 @@ const probes: Record<string, (context: Context) => Promise<void>> = {
     await open(context, "/__dev", `${gesturePage}?mode=sheet&attach=early`, "sheet");
     await pause(700);
     context.log({ name: "sheet, attached as the page mounted", handler: gestureProbe.tags.handler, view: await recognizersOf(context, gestureProbe.tags.box), shot: await shot(context, "gestures-sheet-early") });
+    // A handler that is not dropped keeps its recognizer on the view when React Native recycles it into the next sheet.
+    dropHandler(gestureProbe.tags.handler as number);
+    await pause(300);
     context.router.back();
     await pause(1500);
     gestureProbe.tags = {};
@@ -223,6 +228,9 @@ const probes: Record<string, (context: Context) => Promise<void>> = {
     const inside = attachHandler(inScroll as number);
     await pause(700);
     context.log({ name: "attached to a view in the sheet's scroll view", handler: inside, view: await recognizersOf(context, inScroll) });
+    dropHandler(late);
+    dropHandler(inside);
+    await pause(300);
     context.router.back();
   },
 
@@ -232,13 +240,17 @@ const probes: Record<string, (context: Context) => Promise<void>> = {
     context.router.goto(gesturePage, { reset: true });
     await pause(1500);
     const { box } = gestureProbe.tags;
-    attachHandler(box as number);
+    const only = attachHandler(box as number);
     await pause(700);
     context.log({ name: "root screen, one handler", view: await recognizersOf(context, box) });
+    dropHandler(only);
+    await pause(300);
     gestureProbe.tags = {};
     await open(context, "/__dev", `${gesturePage}?attach=early`);
     await pause(700);
     context.log({ name: "pushed screen, one handler", view: await recognizersOf(context, gestureProbe.tags.box), shot: await shot(context, "gestures-pop") });
+    dropHandler(gestureProbe.tags.handler as number);
+    await pause(300);
   },
 };
 

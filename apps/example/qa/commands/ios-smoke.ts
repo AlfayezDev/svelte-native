@@ -7,6 +7,7 @@ import { qaDir, runsDir } from "../lib/paths.ts";
 import { slug, stamp, writeRun } from "../lib/runs.ts";
 import { describeSmoke, pinnedModules } from "../lib/smoke.ts";
 import type { SmokeFile, SmokeModuleResult } from "../lib/types.ts";
+import { schemeOf } from "../lib/variant.ts";
 import { sleep } from "../lib/wait.ts";
 
 const pollMs = 3_000;
@@ -33,19 +34,19 @@ export function moduleResults(file: ResultsFile): SmokeModuleResult[] {
 }
 
 /**
- * The smoke test on the iPhone: the lab is started by its URL with a token, the app writes `Documents/smoke-results.json` when its
+ * The smoke test on the iPhone, in the smoke app (`io.rasheed.svelteqa.smoke`, built by `build --platform ios --variant smoke`): the lab is started by its URL with a token, the app writes `Documents/smoke-results.json` when its
  * last module reported (an iPhone run cannot follow a log), and the harness reads the file that carries its token. Same run file
  * as Android's, `smoke-<device>-<stamp>.json`.
  */
 export async function iosSmoke(argv: string[]): Promise<void> {
 	const { values } = parseFlags(argv, { ...iosOptions, timeout: { type: "string" } });
-	const session = await startIosSuite("smoke", argv, values);
+	const session = await startIosSuite("smoke", argv, values, "smoke");
 	const timeoutMs = integerFlag(values.timeout, "timeout", 180) * 1000;
 	const pinned = await pinnedModules("ios");
 	const { target } = session;
 	const token = newToken();
 	const launched = Date.now();
-	const { pid } = await launchApp(target, { payloadUrl: `rasheed-svelte:///__dev?run=smoke&token=${token}` });
+	const { pid } = await launchApp(target, { payloadUrl: `${schemeOf.smoke}:///__dev?run=smoke&token=${token}` });
 	const deadline = launched + timeoutMs;
 	let found: ResultsFile | null = null;
 	let raw = "";

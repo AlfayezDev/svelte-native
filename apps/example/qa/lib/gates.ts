@@ -89,6 +89,16 @@ export function gateKinds(gate: Gate): RunKind[] | null {
 	}
 }
 
+/**
+ * The smoke gates (`smoke.*`) judge the smoke app's run and nothing else, and the QA gates leave them out: `gates` judges the first
+ * list, `gates --smoke` the second. The smoke app is another app (`io.rasheed.svelteqa.smoke`), so its run neither adds to nor
+ * fails the lane that measures the QA app.
+ */
+export function splitGates(gates: Gate[]): { standard: Gate[]; smoke: Gate[] } {
+	const isSmoke = (gate: Gate) => gateKinds(gate)?.every((kind) => kind === "smoke") ?? false;
+	return { standard: gates.filter((gate) => !isSmoke(gate)), smoke: gates.filter(isSmoke) };
+}
+
 /** A malformed table is an error, not a silent exemption: an unknown role in `roles` would make every device informational. */
 export function checkGatesFile(file: GatesFile): void {
 	const known = new Set<string>(roles);

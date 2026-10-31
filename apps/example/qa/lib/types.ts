@@ -160,6 +160,8 @@ export type Metrics = Record<string, Metric>;
 export type BuildFile = {
 	schema: 1;
 	kind: "build";
+	/** The app built: absent in files written before the smoke app existed (the QA app). */
+	variant?: "qa" | "smoke";
 	abi: string;
 	finishedAt: string;
 	durationMs: number;

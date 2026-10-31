@@ -93,10 +93,13 @@ export async function readJson<T>(path: string): Promise<T> {
 	return JSON.parse(await readFile(path, "utf8")) as T;
 }
 
+/** The key of a build in the report: the ABI for the QA app (as before), `smoke-<abi>` for the smoke app. */
+export const buildFileKey = (build: Pick<BuildFile, "abi" | "variant">): string => (build.variant === "smoke" ? `smoke-${build.abi}` : build.abi);
+
 export async function writeBuild(build: BuildFile): Promise<void> {
 	await mkdir(outDir, { recursive: true });
 	await writeFile(
-		join(outDir, `build-${build.abi}.json`),
+		join(outDir, `build-${buildFileKey(build)}.json`),
 		`${JSON.stringify(build, null, "\t")}\n`,
 	);
 }
@@ -106,7 +109,7 @@ export async function readBuilds(): Promise<Record<string, BuildFile>> {
 	for (const file of await listDir(outDir)) {
 		if (!/^build-.+\.json$/.test(file)) continue;
 		const build = await readJson<BuildFile>(join(outDir, file));
-		builds[build.abi] = build;
+		builds[buildFileKey(build)] = build;
 	}
 	return builds;
 }

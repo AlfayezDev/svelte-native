@@ -1,8 +1,8 @@
 import { stat } from "node:fs/promises";
 import { flagString, parseFlags } from "../lib/flags.ts";
-import { evaluate } from "../lib/gates.ts";
+import { evaluate, splitGates } from "../lib/gates.ts";
 import { reportPath } from "../lib/paths.ts";
-import { latestRunFiles, readJson, runKinds, slug } from "../lib/runs.ts";
+import { latestRunFiles, readJson, runKinds, slug, type RunKind } from "../lib/runs.ts";
 import type { Platform } from "../lib/types.ts";
 import { loadGates, printVerdict, reportDevices, type ReportFile } from "./report.ts";
 
@@ -30,12 +30,13 @@ function concerns(report: ReportFile, warning: string, platform: Platform): bool
 	return owner === undefined || owner[1].platform === platform;
 }
 
-/** The newest run file of each kind for each device, with its modification time: the files `report` would read now. */
-async function newestRunFiles(report: ReportFile): Promise<RunFileState[]> {
+/** The newest run file of each kind (the smoke lane: of the smoke kind only) for each device, with its modification time: the files `report` would read now. */
+async function newestRunFiles(report: ReportFile, smoke: boolean): Promise<RunFileState[]> {
 	const platforms = new Map(Object.entries(report.devices).map(([serial, entry]) => [slug(serial), entry.platform]));
 	const states: RunFileState[] = [];
 	const latest = await latestRunFiles();
-	for (const kind of runKinds) {
+	const kinds: readonly RunKind[] = smoke ? ["smoke"] : runKinds.filter((kind) => kind !== "smoke");
+	for (const kind of kinds) {
 		for (const [device, path] of latest[kind]) {
 			// A device the report does not list is read for its platform: a new phone's first run is newer than the report too.
 			const platform = platforms.get(device) ?? (await readJson<{ device: { platform: Platform } }>(path)).device.platform;
@@ -52,10 +53,12 @@ const age = (since: Date): string => {
 
 /**
  * Evaluates gates.json against the measurements in report.json and sets the exit code: 0 only if every gate passed, the report is
- * newer than every run file it reads, and it has no warnings.
+ * newer than every run file it reads, and it has no warnings. The QA gates and the smoke gates are two lanes: `gates` judges the
+ * first (the QA app's boot, frames, parity, accessibility, crashes), `gates --smoke` the second (the smoke app's native modules).
  */
 export async function gates(argv: string[]): Promise<void> {
-	const { values } = parseFlags(argv, { platform: { type: "string" }, all: { type: "boolean" } });
+	const { values } = parseFlags(argv, { platform: { type: "string" }, all: { type: "boolean" }, smoke: { type: "boolean" } });
+	const smoke = values.smoke === true;
 	const platform = flagString(values.platform);
 	if (platform !== undefined && platform !== "android" && platform !== "ios")
 		throw new Error("--platform must be android or ios");
@@ -64,11 +67,13 @@ export async function gates(argv: string[]): Promise<void> {
 			`cannot read qa/report.json (run \`native-qa report\` first): ${error instanceof Error ? error.message : String(error)}`,
 		);
 	});
-	const problems = reportProblems(reportFile, await newestRunFiles(reportFile), platform);
+	const problems = reportProblems(reportFile, await newestRunFiles(reportFile, smoke), platform);
 	console.log(`report generated ${reportFile.generatedAt} (${age(new Date(reportFile.generatedAt))} ago)`);
 	for (const problem of problems) console.log(`FAIL: ${problem}`);
 	const gatesFile = await loadGates();
-	const rows = evaluate(gatesFile.gates, reportDevices(reportFile, gatesFile), platform);
+	const lanes = splitGates(gatesFile.gates);
+	console.log(smoke ? "lane: the smoke app's native modules (smoke.* gates)" : "lane: the QA app (every gate but smoke.*; `--smoke` judges the smoke app)");
+	const rows = evaluate(smoke ? lanes.smoke : lanes.standard, reportDevices(reportFile, gatesFile), platform);
 	const ok = printVerdict(rows, values.all === true);
 	if (problems.length > 0) console.log(`\n${problems.length} problem(s) with the report itself: the verdict above is not one that can pass`);
 	process.exitCode = ok && problems.length === 0 ? 0 : 1;

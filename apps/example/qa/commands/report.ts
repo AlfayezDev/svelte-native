@@ -4,6 +4,7 @@ import {
 	checkGatesFile,
 	evaluate,
 	renderTable,
+	splitGates,
 	tally,
 	tallyByDevice,
 	type GatesFile,
@@ -140,8 +141,12 @@ export type ReportFile = {
 	warnings: string[];
 	/** What a report shows without failing a gate: settings an earlier run left on a device, which a suite cleared before it measured. Absent in reports written before. */
 	notes?: string[];
+	/** The QA gates (everything but `smoke.*`), which `gates` judges. */
 	gates: GateRow[];
 	verdict: ReturnType<typeof tally>;
+	/** The smoke gates, which `gates --smoke` judges on their own. Absent in reports written before the smoke app existed. */
+	smokeGates?: GateRow[];
+	smokeVerdict?: ReturnType<typeof tally>;
 };
 
 type ReportDeviceEntry = {
@@ -365,6 +370,7 @@ export async function report(): Promise<void> {
 		if (!reference) continue;
 		const serial = reference.device.serial;
 		const platform: Platform = reference.device.platform;
+		// The smoke run measured another app (`io.rasheed.svelteqa.smoke`), so it is not compared with the others' builds.
 		const measured: [string, Measured | null][] = [
 			["lab", lab],
 			["boot", boot],
@@ -373,9 +379,8 @@ export async function report(): Promise<void> {
 			["parity", suites.parity],
 			["accessibility", suites.a11y],
 			["resilience", suites.resilience],
-			["smoke", smoke],
 		];
-		warnings.push(...buildWarnings(serial, measured));
+		warnings.push(...buildWarnings(serial, measured), ...buildWarnings(serial, [["smoke", smoke]]));
 		notes.push(...buildNotes(serial, measured));
 		const found = sessionFindings(serial, [
 			["parity", suites.parity],
@@ -470,15 +475,15 @@ export async function report(): Promise<void> {
 		};
 	}
 
-	const rows = evaluate(
-		gates.gates,
-		Object.fromEntries(
-			Object.entries(devices).map(([serial, entry]) => [
-				serial,
-				{ platform: entry.platform, role: entry.role, runs: entry.runs, metrics: entry.metrics },
-			]),
-		),
+	const lanes = splitGates(gates.gates);
+	const judged = Object.fromEntries(
+		Object.entries(devices).map(([serial, entry]) => [
+			serial,
+			{ platform: entry.platform, role: entry.role, runs: entry.runs, metrics: entry.metrics },
+		]),
 	);
+	const rows = evaluate(lanes.standard, judged);
+	const smokeRows = evaluate(lanes.smoke, judged);
 	const output: ReportFile = {
 		schema: 1,
 		generatedAt: new Date().toISOString(),
@@ -488,6 +493,8 @@ export async function report(): Promise<void> {
 		notes,
 		gates: rows,
 		verdict: tally(rows),
+		smokeGates: smokeRows,
+		smokeVerdict: tally(smokeRows),
 	};
 	await writeFile(reportPath, `${JSON.stringify(output, null, "\t")}\n`);
 
@@ -551,5 +558,10 @@ export async function report(): Promise<void> {
 	for (const warning of warnings) console.log(`warning: ${warning}`);
 	console.log("");
 	printVerdict(rows, false);
+	// The smoke app's gates are their own lane (`gates --smoke`); they are shown when a smoke run exists.
+	if (Object.values(devices).some((entry) => entry.smoke)) {
+		console.log("\nnative module smoke gates (the smoke app; `gates --smoke` judges them):");
+		printVerdict(smokeRows, false);
+	}
 	console.log("\nwrote qa/report.json");
 }

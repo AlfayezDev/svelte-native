@@ -13,10 +13,11 @@ import { dexoptFlag, prepareApp } from "../lib/app.ts";
 import { flagString, integerFlag, parseFlags, platformOf, requireString } from "../lib/flags.ts";
 import { currentSource } from "../lib/git.ts";
 import { lockFor, reexecUnderLock } from "../lib/lock.ts";
-import { defaultPackage, qaDir, runsDir } from "../lib/paths.ts";
+import { qaDir, runsDir } from "../lib/paths.ts";
 import { slug, stamp, writeRun } from "../lib/runs.ts";
 import { describeSmoke, pinnedModules } from "../lib/smoke.ts";
 import type { SmokeFile } from "../lib/types.ts";
+import { packageOf, schemeOf } from "../lib/variant.ts";
 import { findFaults, findInterruption } from "../parse/logcat.ts";
 import { parseSmokeCompletion, parseSmokeResults } from "../parse/smoke.ts";
 import { iosSmoke } from "./ios-smoke.ts";
@@ -25,9 +26,11 @@ import { iosSmoke } from "./ios-smoke.ts";
 const labComplete = /\[Svelte stress\] complete/;
 
 /**
- * Launches the lab's `smoke` scenario (`rasheed-svelte:///__dev?run=smoke`) on an Android device, follows logcat until the lab
- * says it is done, and writes `qa/runs/smoke-<device>-<stamp>.json` with the module lines it parsed. The libraries are linked in
- * the QA app only (`io.rasheed.svelteqa`); nothing here prompts, and the app is force-stopped afterwards.
+ * Installs the smoke app (`io.rasheed.svelteqa.smoke`, `qa/out/app-smoke-<abi>.apk` from `native-qa build --variant smoke`), launches
+ * its lab's `smoke` scenario (`rasheed-svelte-smoke:///__dev?run=smoke`) on an Android device, follows logcat until the lab says it
+ * is done, and writes `qa/runs/smoke-<device>-<stamp>.json` with the module lines it parsed. The libraries are linked in the smoke
+ * app only; the QA app, which every other command measures, is neither installed nor started. Nothing here prompts, and the smoke
+ * app is force-stopped afterwards.
  */
 export async function smoke(argv: string[]): Promise<void> {
 	if (platformOf(argv) === "ios") return iosSmoke(argv);
@@ -44,7 +47,7 @@ export async function smoke(argv: string[]): Promise<void> {
 	if (lock) reexecUnderLock(lock, ["smoke", ...argv]);
 
 	const timeoutMs = integerFlag(values.timeout, "timeout", 180) * 1000;
-	const packageName = flagString(values.package) ?? defaultPackage;
+	const packageName = flagString(values.package) ?? packageOf.smoke;
 	const pinned = await pinnedModules("android");
 
 	await assertOnline(serial);
@@ -55,6 +58,7 @@ export async function smoke(argv: string[]): Promise<void> {
 		noInstall: values["no-install"] === true,
 		packageName,
 		dexopt: dexoptFlag(values.dexopt),
+		variant: "smoke",
 	});
 	console.log(
 		`${device.kind} ${device.model} (${serial}), Android ${device.osVersion}, ${device.abi}; app ${app.versionName} installed ${app.lastUpdateTime}`,
@@ -65,7 +69,7 @@ export async function smoke(argv: string[]): Promise<void> {
 	await forceStop(serial, packageName);
 	await clearLogcat(serial);
 	const launched = new Date();
-	await startApp(serial, packageName, "rasheed-svelte:///__dev?run=smoke");
+	await startApp(serial, packageName, `${schemeOf.smoke}:///__dev?run=smoke`);
 	const stream = await followLogcat(serial, labComplete, timeoutMs, 2000);
 	await forceStop(serial, packageName);
 	const logPath = join(runsDir, `smoke-${slug(serial)}-${stamp(startedAt)}.log`);

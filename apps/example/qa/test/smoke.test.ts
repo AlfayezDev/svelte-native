@@ -2,8 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
-import { checkGatesFile, evaluate, gateKinds, type GatesFile } from "../lib/gates.ts";
+import { generatedFor, selectVariantProject } from "../commands/build.ts";
+import { checkGatesFile, evaluate, gateKinds, splitGates, type GatesFile } from "../lib/gates.ts";
+import { defaultApkPath } from "../lib/app.ts";
+import { buildFileKey } from "../lib/runs.ts";
+import { apkPath, appVariantOf, buildLogName, iosBuildName, packageOf, schemeOf, variantFlag } from "../lib/variant.ts";
 import { deviceMetrics } from "../lib/metrics.ts";
 import { platformDir } from "../lib/paths.ts";
 import { describeSmoke, missingModules, smokeMetrics, unpinnedModules } from "../lib/smoke.ts";
@@ -14,7 +20,7 @@ import { ascii, decodeBase64, encodeBase64, hex, looksRandom } from "../../src/l
 import { formatSmokeLine as format, formatSmokeSummary as summarize, oneLine, type SmokePath } from "../../src/lib/native/dev/smoke-log.ts";
 
 /** The packages only the QA app links: the CommonJS file app.config.ts and react-native.config.js read. */
-const { qaOnlyPackages } = createRequire(import.meta.url)("../smoke-packages.cjs") as { qaOnlyPackages: string[] };
+const { smokeOnlyPackages } = createRequire(import.meta.url)("../smoke-packages.cjs") as { smokeOnlyPackages: string[] };
 const gatesFile = JSON.parse(readFileSync(join(platformDir, "qa/gates.json"), "utf8")) as GatesFile;
 /** The app's formatter takes a path of its own type; the harness's results carry the text the log had. */
 const formatSmokeLine = (entry: SmokeModuleResult): string => format({ ...entry, path: entry.path as SmokePath, ms: entry.ms ?? 0 });
@@ -229,9 +235,9 @@ describe("the pinned list, the module table and the checks agree", () => {
 		expect(used["react-native-live-direction"]).toBe("0.1.1");
 	});
 	test("the packages the product already links are not in the exclusion list; a module on one platform says so", () => {
-		for (const shared of ["expo-secure-store", "expo-localization", "expo-constants", "expo-asset", "expo-system-ui", "expo-splash-screen"]) expect(qaOnlyPackages).not.toContain(shared);
-		expect(qaOnlyPackages).not.toContain("@statsig/react-native-bindings");
-		for (const name of ["react-native-mmkv", "@sentry/react-native", "@react-native-firebase/app", "expo-haptics", "expo-samsung-pay", "@hmscore/react-native-hms-location"]) expect(qaOnlyPackages).toContain(name);
+		for (const shared of ["expo-secure-store", "expo-localization", "expo-constants", "expo-asset", "expo-system-ui", "expo-splash-screen"]) expect(smokeOnlyPackages).not.toContain(shared);
+		expect(smokeOnlyPackages).not.toContain("@statsig/react-native-bindings");
+		for (const name of ["react-native-mmkv", "@sentry/react-native", "@react-native-firebase/app", "expo-haptics", "expo-samsung-pay", "@hmscore/react-native-hms-location"]) expect(smokeOnlyPackages).toContain(name);
 		expect(table.modules.find((entry) => entry.id === "hms")?.platforms).toEqual(["android"]);
 		expect(table.modules.find((entry) => entry.id === "samsung-pay")?.platforms).toEqual(["android"]);
 		expect(smokeSource).toContain('only: "android"');
@@ -245,45 +251,194 @@ function run(command: string, args: string[], env: Record<string, string> = {}):
 	return done.stdout;
 }
 
-describe("the product leaves the smoke test's libraries out of both autolinkers", () => {
+type Evaluated = { name: string; scheme: string; ios: { bundleIdentifier: string; googleServicesFile?: string }; android: { package: string; googleServicesFile?: string }; plugins: unknown[] };
+const pluginName = (entry: unknown): string => (Array.isArray(entry) ? String(entry[0]) : String(entry));
+
+describe("three apps: the product and the QA app link the product's native modules, the smoke app adds the smoke test's", () => {
 	const autolinking = join(platformDir, "../../node_modules/expo-modules-autolinking/bin/expo-modules-autolinking.js");
+	/** The variants of app.config.ts as an `APP_VARIANT`: the product, the QA app (none) and the smoke app. */
+	const variantEnv = { production: "production", qa: "", smoke: "smoke" } as const;
+	const evaluated = new Map<string, Evaluated>();
+	function config(variant: keyof typeof variantEnv): Evaluated {
+		let cached = evaluated.get(variant);
+		if (!cached) {
+			cached = JSON.parse(run("pnpm", ["exec", "expo", "config", "--json", "--type", "introspect"], { APP_VARIANT: variantEnv[variant], EXPO_NO_TELEMETRY: "1", CI: "1" })) as Evaluated;
+			evaluated.set(variant, cached);
+		}
+		return cached;
+	}
 	/** The `autolinkingExclude` the Svelte native plugin gets from app.config.ts for a variant: what it writes into settings.gradle and the Podfile. */
-	function configuredExclude(variant: string): string[] {
-		const config = JSON.parse(run("pnpm", ["exec", "expo", "config", "--json", "--type", "introspect"], { APP_VARIANT: variant, EXPO_NO_TELEMETRY: "1", CI: "1" })) as { plugins: unknown[] };
-		const plugin = config.plugins.find((entry) => Array.isArray(entry) && entry[0] === "@rasheed/svelte-native/expo") as [string, { autolinkingExclude: string[] }];
+	function configuredExclude(variant: keyof typeof variantEnv): string[] {
+		const plugin = config(variant).plugins.find((entry) => pluginName(entry) === "@rasheed/svelte-native/expo") as [string, { autolinkingExclude: string[] }];
 		return plugin[1].autolinkingExclude;
 	}
 	/** The packages each autolinker would link for a platform, given the excludes the build passes both (settings.gradle's `--exclude` list / the Podfile's). */
-	function linked(platform: "android" | "ios", exclude: string[], variant: string): { rn: string[]; expo: string[] } {
-		const flags = exclude.flatMap((name) => ["--exclude", name]);
-		const env = { APP_VARIANT: variant, EXPO_NO_TELEMETRY: "1", CI: "1" };
+	function linked(platform: "android" | "ios", variant: keyof typeof variantEnv): { rn: string[]; expo: string[]; all: Set<string> } {
+		const flags = configuredExclude(variant).flatMap((name) => ["--exclude", name]);
+		const env = { APP_VARIANT: variantEnv[variant], EXPO_NO_TELEMETRY: "1", CI: "1" };
 		const rn = JSON.parse(run("node", [autolinking, "react-native-config", "--json", "--platform", platform, ...flags], env)) as { dependencies: Record<string, unknown> };
 		const expo = JSON.parse(run("node", [autolinking, "resolve", "--json", "--platform", platform === "ios" ? "apple" : "android", ...flags], env)) as { modules: { packageName: string }[] };
-		return { rn: Object.keys(rn.dependencies), expo: expo.modules.map((entry) => entry.packageName) };
+		const names = { rn: Object.keys(rn.dependencies), expo: expo.modules.map((entry) => entry.packageName) };
+		return { ...names, all: new Set([...names.rn, ...names.expo]) };
 	}
-	test("the production variant excludes every QA-only package; the QA variant excludes none of them", () => {
-		expect(configuredExclude("production").toSorted()).toEqual([...qaOnlyPackages].toSorted());
-		expect(configuredExclude("")).toEqual([]);
+	const smokeOnlyFor = (platform: "android" | "ios") => table.modules.filter((entry) => entry.link !== "js" && !entry.shared && entry.platforms.includes(platform)).flatMap((entry) => entry.packages);
+
+	test("the product and the QA app exclude every smoke-only package; the smoke app excludes none", () => {
+		expect(configuredExclude("production").toSorted()).toEqual([...smokeOnlyPackages].toSorted());
+		expect(configuredExclude("qa").toSorted()).toEqual([...smokeOnlyPackages].toSorted());
+		expect(configuredExclude("smoke")).toEqual([]);
 	});
 	for (const platform of ["android", "ios"] as const) {
-		test(`${platform}: the product's autolinking output has none of them, the QA app's has every one that has ${platform} code`, () => {
-			const product = linked(platform, configuredExclude("production"), "production");
-			const qa = linked(platform, configuredExclude(""), "");
-			const both = [...product.rn, ...product.expo];
-			expect(both.filter((name) => qaOnlyPackages.includes(name))).toEqual([]);
-			const qaBoth = new Set([...qa.rn, ...qa.expo]);
-			const missing = table.modules.filter((entry) => entry.link !== "js" && !entry.shared && entry.platforms.includes(platform)).flatMap((entry) => entry.packages).filter((name) => !qaBoth.has(name));
-			expect(missing).toEqual([]);
-			// The product keeps what it had: Expo's own modules and the shared packages, and the native modules the app ships.
+		test(`${platform}: the QA app links exactly what the product links; the smoke app links that and the smoke-only packages with ${platform} code`, () => {
+			const product = linked(platform, "production");
+			const qa = linked(platform, "qa");
+			const smoke = linked(platform, "smoke");
+			expect([...product.all].filter((name) => smokeOnlyPackages.includes(name))).toEqual([]);
+			expect([...qa.all].filter((name) => smokeOnlyPackages.includes(name))).toEqual([]);
+			// The QA app is the build every gate measures: its autolinked set is the product's, package for package (what it was before the smoke test).
+			expect([...qa.all].toSorted()).toEqual([...product.all].toSorted());
+			expect([...qa.rn].toSorted()).toEqual([...product.rn].toSorted());
+			expect([...smoke.all].filter((name) => !qa.all.has(name)).toSorted()).toEqual(smokeOnlyFor(platform).toSorted());
+			expect([...qa.all].filter((name) => !smoke.all.has(name))).toEqual([]);
+			// What the product (and so the QA app) keeps: Expo's own modules, the shared packages, and the native modules the app ships.
 			const kept = ["expo-secure-store", "expo-localization", "expo-constants", "expo-asset", "expo-splash-screen", "expo-system-ui", platform === "android" ? "svelte-engine" : "svelte-screens-ios"];
-			for (const name of kept) expect([name, product.expo.includes(name)]).toEqual([name, true]);
-			for (const name of ["react-native-reanimated", "react-native-webview", "react-native-maps"]) expect([name, product.rn.includes(name)]).toEqual([name, true]);
+			for (const name of kept) expect([name, qa.expo.includes(name)]).toEqual([name, true]);
+			for (const name of ["react-native-reanimated", "react-native-webview", "react-native-maps"]) expect([name, qa.rn.includes(name)]).toEqual([name, true]);
 		});
 	}
-	test("react-native.config.js, which the React Native community CLI reads, disables the same packages for the product only", () => {
-		const read = (variant: string) => JSON.parse(run("node", ["--input-type=module", "-e", "import('./react-native.config.js').then((config) => console.log(JSON.stringify(config.default)))"], { APP_VARIANT: variant })) as { dependencies: Record<string, { platforms: Record<string, null> }> };
-		expect(Object.keys(read("production").dependencies).toSorted()).toEqual([...qaOnlyPackages].toSorted());
-		expect(read("production").dependencies["react-native-mmkv"]).toEqual({ platforms: { android: null, ios: null } });
-		expect(read("").dependencies).toEqual({});
+	test("react-native.config.js, which the React Native community CLI reads, disables the same packages for every app but the smoke app", () => {
+		const read = (variant: keyof typeof variantEnv) => JSON.parse(run("node", ["--input-type=module", "-e", "import('./react-native.config.js').then((config) => console.log(JSON.stringify(config.default)))"], { APP_VARIANT: variantEnv[variant] })) as { dependencies: Record<string, { platforms: Record<string, null> }> };
+		for (const variant of ["production", "qa"] as const) {
+			expect(Object.keys(read(variant).dependencies).toSorted()).toEqual([...smokeOnlyPackages].toSorted());
+			expect(read(variant).dependencies["react-native-mmkv"]).toEqual({ platforms: { android: null, ios: null } });
+		}
+		expect(read("smoke").dependencies).toEqual({});
+	});
+	test("each app has its own id, name and scheme; the smoke app alone has the smoke test's plugins and the fake Firebase files", () => {
+		expect(config("production").android.package).toBe("io.rasheed.app");
+		expect(config("production").ios.bundleIdentifier).toBe("io.rasheed.app");
+		expect(config("qa").android.package).toBe(packageOf.qa);
+		expect(config("qa").ios.bundleIdentifier).toBe(packageOf.qa);
+		expect(config("smoke").android.package).toBe(packageOf.smoke);
+		expect(config("smoke").ios.bundleIdentifier).toBe(packageOf.smoke);
+		expect([config("production").name, config("qa").name, config("smoke").name]).toEqual(["Rasheed", "Rasheed Svelte QA", "Svelte smoke"]);
+		expect([config("production").scheme, config("qa").scheme, config("smoke").scheme]).toEqual(["rasheed", schemeOf.qa, schemeOf.smoke]);
+		const smokePlugins = ["@react-native-firebase/app", "@react-native-firebase/messaging", "react-native-quick-crypto", "expo-samsung-pay", "@intercom/intercom-react-native", "expo-build-properties", "expo-notifications", "expo-location", "@config-plugins/react-native-adjust"];
+		for (const variant of ["production", "qa"] as const) {
+			const plugins = config(variant).plugins.map(pluginName);
+			expect(smokePlugins.filter((name) => plugins.includes(name))).toEqual([]);
+			expect(config(variant).android.googleServicesFile).toBeUndefined();
+			expect(config(variant).ios.googleServicesFile).toBeUndefined();
+		}
+		const plugins = config("smoke").plugins.map(pluginName);
+		expect(smokePlugins.filter((name) => !plugins.includes(name))).toEqual([]);
+		expect(config("smoke").android.googleServicesFile).toBe("./qa/firebase-fake/google-services.json");
+		expect(config("smoke").ios.googleServicesFile).toBe("./qa/firebase-fake/GoogleService-Info.plist");
+	});
+	test("Expo's own prebuild plugins (location and biometric permissions, notifications, screen orientation) do not run for the product and the QA app", () => {
+		const script = `require("@expo/prebuild-config").getPrebuildConfigAsync(process.cwd(), { platforms: ["android", "ios"] }).then(({ exp }) => console.log(JSON.stringify(Object.fromEntries(["expo-location", "expo-local-authentication", "expo-notifications", "expo-screen-orientation"].map((name) => [name, exp._internal.pluginHistory[name]?.version ?? null])))))`;
+		const history = (variant: keyof typeof variantEnv) => JSON.parse(run("node", ["-e", script], { APP_VARIANT: variantEnv[variant], EXPO_NO_TELEMETRY: "1", CI: "1" }).trim().split("\n").at(-1) as string) as Record<string, string | null>;
+		// They would add ACCESS_FINE_LOCATION, USE_BIOMETRIC and the like to a manifest whose app does not link the module: a QA app that is not the product's.
+		for (const variant of ["production", "qa"] as const)
+			for (const [name, version] of Object.entries(history(variant))) expect([name, version]).toEqual([name, "left out of autolinking"]);
+		for (const [name, version] of Object.entries(history("smoke"))) expect([name, version === null || version === "left out of autolinking"]).toEqual([name, false]);
+	});
+	test("the fake Firebase files are for the smoke app's id and hold no real key", () => {
+		const android = JSON.parse(readFileSync(join(platformDir, "qa/firebase-fake/google-services.json"), "utf8")) as { client: { client_info: { android_client_info: { package_name: string } }; api_key: { current_key: string }[] }[] };
+		expect(android.client[0]?.client_info.android_client_info.package_name).toBe(packageOf.smoke);
+		expect(android.client[0]?.api_key[0]?.current_key).toContain("fake");
+		const plist = readFileSync(join(platformDir, "qa/firebase-fake/GoogleService-Info.plist"), "utf8");
+		expect(plist).toContain(`<string>${packageOf.smoke}</string>`);
+		expect(plist).not.toMatch(/AIza/);
+	});
+});
+
+describe("the variants of the harness", () => {
+	test("--variant: absent is the QA app, qa and smoke are accepted, anything else is refused", () => {
+		expect(variantFlag(undefined)).toBe("qa");
+		expect(variantFlag("qa")).toBe("qa");
+		expect(variantFlag("smoke")).toBe("smoke");
+		expect(() => variantFlag("production")).toThrow(/--variant must be qa or smoke/);
+	});
+	test("the QA app keeps the file names every other command reads; the smoke app's carry the variant", () => {
+		expect(apkPath("qa", "x86_64").endsWith("/qa/out/app-x86_64.apk")).toBe(true);
+		expect(apkPath("smoke", "x86_64").endsWith("/qa/out/app-smoke-x86_64.apk")).toBe(true);
+		expect(buildLogName("qa", "arm64-v8a")).toBe("build-arm64-v8a.log");
+		expect(buildLogName("smoke", "arm64-v8a")).toBe("build-smoke-arm64-v8a.log");
+		expect(iosBuildName("qa")).toBe("ios-build.json");
+		expect(iosBuildName("smoke")).toBe("ios-build-smoke.json");
+		expect(buildFileKey({ abi: "x86_64" })).toBe("x86_64");
+		expect(buildFileKey({ abi: "x86_64", variant: "qa" })).toBe("x86_64");
+		expect(buildFileKey({ abi: "x86_64", variant: "smoke" })).toBe("smoke-x86_64");
+	});
+	test("android/ holds one variant; building the other parks it as android-<variant> and brings the other back", async () => {
+		const base = mkdtempSync(join(tmpdir(), "native-qa-variant-"));
+		const dir = join(base, "android");
+		const project = (variant: string, content: string) => {
+			mkdirSync(join(dir, "app"), { recursive: true });
+			writeFileSync(join(dir, "app/build.gradle"), content);
+			writeFileSync(join(dir, ".native-qa-variant"), `${variant}\n`);
+		};
+		const entries = () => readdirSync(base).toSorted();
+		// Nothing there: the caller prebuilds.
+		expect(await generatedFor(dir)).toBeNull();
+		expect(await selectVariantProject("qa", dir)).toMatch(/is missing/);
+		// A project made before variants existed (no marker) is the QA app.
+		mkdirSync(join(dir, "app"), { recursive: true });
+		writeFileSync(join(dir, "app/build.gradle"), "qa 1");
+		expect(await generatedFor(dir)).toBe("qa");
+		expect(await selectVariantProject("qa", dir)).toBeNull();
+		expect(entries()).toEqual(["android"]);
+		// The smoke app is asked for: the QA project is parked and the caller prebuilds the smoke one.
+		expect(await selectVariantProject("smoke", dir)).toMatch(/was generated for the qa app, and none is parked for smoke/);
+		expect(entries()).toEqual(["android-qa"]);
+		project("smoke", "smoke 1");
+		expect(await generatedFor(dir)).toBe("smoke");
+		// Back to the QA app: its own project returns, with its own files, and the smoke one is parked.
+		expect(await selectVariantProject("qa", dir)).toBeNull();
+		expect(entries()).toEqual(["android", "android-smoke"]);
+		expect(await generatedFor(dir)).toBe("qa");
+		expect(await generatedFor(`${dir}-smoke`)).toBe("smoke");
+		// And forth again.
+		expect(await selectVariantProject("smoke", dir)).toBeNull();
+		expect(await generatedFor(dir)).toBe("smoke");
+		expect(entries()).toEqual(["android", "android-qa"]);
+	});
+	test("build.ts sets APP_VARIANT itself, so the shell's cannot change which app is built", () => {
+		expect(appVariantOf).toEqual({ qa: "", smoke: "smoke" });
+		const source = readFileSync(join(platformDir, "qa/commands/build.ts"), "utf8");
+		expect(source).toContain("APP_VARIANT: appVariantOf[variant]");
+	});
+	test("the iOS build prebuilds the variant on the Mac, into its own record", () => {
+		const source = readFileSync(join(platformDir, "qa/commands/ios-build.ts"), "utf8");
+		expect(source).toContain("APP_VARIANT=${appVariantOf[variant]}`");
+		expect(source).toContain("writeIosBuild(");
+		expect(source).toContain("}, variant);");
+	});
+	test("the smoke command installs and launches the smoke app, not the QA app", () => {
+		const source = readFileSync(join(platformDir, "qa/commands/smoke.ts"), "utf8");
+		expect(source).toContain("packageOf.smoke");
+		expect(source).toContain('variant: "smoke"');
+		expect(source).toContain("schemeOf.smoke");
+		expect(source).not.toContain("defaultPackage");
+		expect(defaultApkPath("x86_64", "smoke")).toBe(apkPath("smoke", "x86_64"));
+		expect(defaultApkPath("x86_64")).toBe(apkPath("qa", "x86_64"));
+	});
+	test("the QA lanes do not run the smoke test; the smoke lane builds the smoke app first", () => {
+		const scripts = (JSON.parse(readFileSync(join(platformDir, "package.json"), "utf8")) as { scripts: Record<string, string> }).scripts;
+		expect(scripts["native-qa:emulator"]).not.toContain("smoke");
+		expect(scripts["native-qa:suites"]).not.toContain("smoke");
+		expect(scripts["native-qa:smoke"]).toContain("build --abi x86_64 --variant smoke && node qa/native-qa.ts smoke");
+		expect(scripts["native-qa:smoke"]).toContain("gates --platform android --smoke");
+	});
+	test("the smoke gates are their own lane: the QA lane has none of them, the smoke lane only them", () => {
+		const lanes = splitGates(gatesFile.gates);
+		expect(lanes.smoke.map((gate) => gate.id)).toEqual(["smoke.failed", "smoke.missing"]);
+		expect(lanes.standard.some((gate) => gate.metric.startsWith("smoke."))).toBe(false);
+		expect(lanes.standard.length + lanes.smoke.length).toBe(gatesFile.gates.length);
+		// A QA report with no smoke run passes the QA lane's smoke part by not having it, and the smoke lane reads not measured.
+		const device = { "localhost:5555": { platform: "android" as const, role: "lab" as const, runs: gatesFile.devices["localhost:5555"]?.runs ?? null, metrics: {} } };
+		expect(evaluate(lanes.standard, device, "android").some((row) => row.id.startsWith("smoke"))).toBe(false);
+		expect(evaluate(lanes.smoke, device, "android").map((row) => row.verdict)).toEqual(["not measured", "not measured"]);
 	});
 });

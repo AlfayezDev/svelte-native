@@ -3,8 +3,9 @@ import { join } from "node:path";
 import { exec, shellQuote } from "../lib/exec.ts";
 import { flagString, parseFlags, requireString } from "../lib/flags.ts";
 import { macFrom, remote, remoteOk } from "../lib/iphone/mac.ts";
-import { currentSource, iosBuildPath, writeIosBuild } from "../lib/iphone/session.ts";
+import { currentSource, iosBuildPathOf, writeIosBuild } from "../lib/iphone/session.ts";
 import { outDir, qaDir, repoRoot } from "../lib/paths.ts";
+import { appVariantOf, variantFlag } from "../lib/variant.ts";
 import { sleep } from "../lib/wait.ts";
 
 /**
@@ -15,6 +16,12 @@ import { sleep } from "../lib/wait.ts";
  */
 
 const defaultScript = "/tmp/rasheed-ios-lab-20261025.command";
+/**
+ * The smoke app (`--variant smoke`) is another Xcode project (Expo names it from the display name, `Sveltesmoke`) with its own GUI
+ * Terminal script, made like the lab one for that project; the lab script builds `RasheedSvelteQA` and cannot be reused.
+ */
+const defaultSmokeScript = "/tmp/rasheed-ios-smoke.command";
+const productNames = { qa: "RasheedSvelteQA", smoke: "Sveltesmoke" } as const;
 const excludes = ["node_modules", ".git", "apps/platform/android/", "apps/platform/ios/", "build", "dist", ".svelte-kit", ".svelte-native", ".rasheed", ".env", ".expo", "*.log"];
 const buildWaitMs = 30 * 60_000;
 
@@ -24,15 +31,17 @@ export async function iosBuild(argv: string[]): Promise<void> {
 		mac: { type: "string" },
 		"mac-checkout": { type: "string" },
 		"build-script": { type: "string" },
+		variant: { type: "string" },
 	});
+	const variant = variantFlag(values.variant);
 	const mac = macFrom(flagString(values.mac));
 	const checkout = requireString(values["mac-checkout"] ?? process.env.NATIVE_QA_MAC_CHECKOUT, "mac-checkout");
-	const script = flagString(values["build-script"]) ?? defaultScript;
+	const script = flagString(values["build-script"]) ?? (variant === "smoke" ? defaultSmokeScript : defaultScript);
 	const done = script.replace(/\.command$/, ".exit");
 	const buildLog = script.replace(/\.command$/, ".log");
 	const began = Date.now();
 	await mkdir(outDir, { recursive: true });
-	const logFile = join(outDir, "ios-build.log");
+	const logFile = join(outDir, variant === "smoke" ? "ios-build-smoke.log" : "ios-build.log");
 	const log: string[] = [];
 	const note = (line: string) => {
 		console.log(line);
@@ -57,7 +66,7 @@ export async function iosBuild(argv: string[]): Promise<void> {
 			`cd ${shellQuote(checkout)}`,
 			"pnpm install --frozen-lockfile --ignore-scripts --prefer-offline 2>&1 | tail -n 1",
 			"cd apps/platform",
-			"export PATH=/opt/homebrew/bin:/usr/local/bin:$PATH LANG=en_US.UTF-8 CI=1 EXPO_NO_TELEMETRY=1",
+			`export PATH=/opt/homebrew/bin:/usr/local/bin:$PATH LANG=en_US.UTF-8 CI=1 EXPO_NO_TELEMETRY=1 APP_VARIANT=${appVariantOf[variant]}`,
 			"npx expo prebuild --platform ios > /tmp/native-qa-prebuild.log 2>&1 || { tail -n 20 /tmp/native-qa-prebuild.log; exit 1; }",
 			"(cd ios && pod install > /tmp/native-qa-pods.log 2>&1) || { tail -n 20 /tmp/native-qa-pods.log; exit 1; }",
 			"node ../../packages/svelte-native/src/cli.ts sync",
@@ -83,7 +92,7 @@ export async function iosBuild(argv: string[]): Promise<void> {
 	note(`build exit ${exitCode}: ${tail.stdout.trim().replaceAll("\n", " | ")}`);
 	if (exitCode !== "0") throw new Error(`the signed build failed (exit ${exitCode}); see ${buildLog} on the Mac`);
 
-	const app = `${checkout}/DerivedData/Build/Products/Release-iphoneos/RasheedSvelteQA.app`;
+	const app = `${checkout}/DerivedData/Build/Products/Release-iphoneos/${productNames[variant]}.app`;
 	const digest = (await remoteOk(mac, `shasum -a 256 ${shellQuote(`${app}/main.jsbundle`)} && stat -f %z ${shellQuote(`${app}/main.jsbundle`)}`)).trim().split("\n");
 	const sha = /^([0-9a-f]{64})/.exec(digest[0] ?? "")?.[1];
 	if (!sha) throw new Error(`cannot read the bundle's digest: ${digest.join(" ")}`);
@@ -106,6 +115,6 @@ export async function iosBuild(argv: string[]): Promise<void> {
 		cdHash,
 		bundleBytes: Number(digest[1] ?? 0),
 		logFile: logFile.slice(qaDir.length + 1),
-	});
-	note(`wrote ${iosBuildPath.slice(qaDir.length + 1)} (main.jsbundle ${sha.slice(0, 12)}, CDHash ${cdHash.slice(0, 12)}, ${Math.round((Date.now() - began) / 1000)} s)`);
+	}, variant);
+	note(`wrote ${iosBuildPathOf(variant).slice(qaDir.length + 1)} (main.jsbundle ${sha.slice(0, 12)}, CDHash ${cdHash.slice(0, 12)}, ${Math.round((Date.now() - began) / 1000)} s)`);
 }

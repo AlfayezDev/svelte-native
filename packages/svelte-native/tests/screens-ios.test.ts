@@ -53,6 +53,7 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/NativeComponent/ViewConfig": "export const createViewConfig = (partial) => ({ ...partial, base: true });",
   "react-native/Libraries/Utilities/Platform": "export default { get OS() { return globalThis.__navigationOS ?? 'android'; }, Version: 34 };",
   "react-native/Libraries/Utilities/BackHandler": "export default { addEventListener: () => ({ remove() {} }) };",
+  "react-native/Libraries/Components/Keyboard/Keyboard": "export default { isVisible: () => false, dismiss() {} };",
   "react-native/Libraries/Linking/Linking": "export default { addEventListener: () => ({ remove() {} }), getInitialURL: () => Promise.resolve(null) };",
   "react-native/Libraries/Image/resolveAssetSource": "export default (source) => source && typeof source === 'object' && 'uri' in source ? { scale: 1, ...source } : null;",
   "expo-modules-core": "export const EventEmitter = class {}; export const requireOptionalNativeModule = () => null;",
@@ -114,6 +115,42 @@ async function mount(fixture: string, platform: "android" | "ios", surface: numb
     return { pairs: nodes.map((node) => [parseNativeID(String(node.props.nativeID))?.kind, node.name] as const), ids: nodes.map((node) => node.props.nativeID) };
   } finally { delete environment.__navigationOS; }
 }
+
+test("a hidden Modal mounts no host on iOS (a hidden RCTModalHostView would take every touch), stays until onDismiss after hiding; Android keeps its host", async () => {
+  const emit = (target: unknown, type: string) => (fake as unknown as { handler: (t: unknown, type: string, e: object) => void }).handler(target, type, {});
+  const modals = (surface: number) => flatten(roots[surface] ?? []).filter((node) => node.name === "RCTModalHostView" || node.name === "ModalHostView");
+  for (const platform of ["ios", "android"] as const) {
+    environment.__navigationOS = platform;
+    environment.__registeredViewConfigs = new Map();
+    try {
+      const surface = platform === "ios" ? 66 : 67;
+      const m = await load("modal-visible-fixture.svelte");
+      roots = {};
+      const app = m.startSurface(surface, m.Fixture, {}) as { setOpen(value: boolean): void; dismissed(): number };
+      await settle(m);
+      if (platform === "android") {
+        // The engine's host takes no touches and animates its layer from `visible`: it stays mounted, hidden.
+        expect(modals(surface).map((node) => node.props.visible)).toEqual([false]);
+        continue;
+      }
+      expect(modals(surface)).toHaveLength(0);
+      app.setOpen(true);
+      await settle(m);
+      expect(modals(surface).map((node) => node.props.visible)).toEqual([true]);
+      app.setOpen(false);
+      await settle(m);
+      // Still there with visible false while UIKit animates the dismissal; gone once it reports onDismiss.
+      expect(modals(surface).map((node) => node.props.visible)).toEqual([false]);
+      emit(modals(surface)[0]?.target, "topDismiss");
+      await settle(m);
+      expect(modals(surface)).toHaveLength(0);
+      expect(app.dismissed()).toBe(1);
+      app.setOpen(true);
+      await settle(m);
+      expect(modals(surface)).toHaveLength(1);
+    } finally { delete environment.__navigationOS; }
+  }
+});
 
 test("the host mounts the screen tags as the Svelte components on iOS and as RCTView on Android, with the same nativeIDs", async () => {
   const android = await mount("screen-fixture.svelte", "android", 61);

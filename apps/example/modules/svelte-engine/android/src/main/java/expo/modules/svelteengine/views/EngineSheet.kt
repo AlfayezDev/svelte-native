@@ -17,6 +17,7 @@ import android.view.ViewOutlineProvider
 import android.view.ViewTreeObserver
 import android.view.animation.DecelerateInterpolator
 import android.widget.ScrollView
+import expo.modules.svelteengine.GestureRules
 import expo.modules.svelteengine.NavEvents
 import expo.modules.svelteengine.NavProps
 import kotlin.math.abs
@@ -35,7 +36,7 @@ import kotlin.math.roundToInt
  * sheet first). Release snaps to the nearest detent, a fling over 1000 dp/s goes to the next one in its direction; past
  * a quarter of the lowest detent below it, or a fling down from it, the sheet is dismissed when it is dismissible.
  */
-class EngineSheet(context: Context) : EngineScreen(context) {
+class EngineSheet(context: Context) : EngineScreen(context), NativeClaim {
   private val density = resources.displayMetrics.density
   private val slop = ViewConfiguration.get(context).scaledTouchSlop
   private val interpolator = DecelerateInterpolator(1.5f)
@@ -304,9 +305,18 @@ class EngineSheet(context: Context) : EngineScreen(context) {
     return null
   }
 
+  /** A finger that went [dx], [dy] from the touch-down starts the sheet's drag: mostly vertical, a touch slop far (a default Pan's `minDist`, so that the two reach it on the same move), and not for a scroll view that can still move. */
+  private fun dragsSheet(dx: Float, dy: Float) = GestureRules.sheetDrag(dx, dy, slop.toFloat()) && shouldTake(dy > 0f)
+
+  override fun claims(dx: Float, dy: Float) = !transitioning && !leaving && !dragging && dragsSheet(dx, dy)
+
+  override fun claim(ev: MotionEvent) = startDrag(ev)
+
   override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
     // The stack's own transition owns the translation while it runs.
     if (transitioning || leaving) return false
+    // A drag that the root claimed before the gesture handlers saw the move: Android cancels the child now.
+    if (dragging && ev.actionMasked != MotionEvent.ACTION_DOWN) return true
     when (ev.actionMasked) {
       MotionEvent.ACTION_DOWN -> {
         downX = ev.rawX; downY = ev.rawY
@@ -317,7 +327,9 @@ class EngineSheet(context: Context) : EngineScreen(context) {
       MotionEvent.ACTION_MOVE -> if (!dragging) {
         val dx = ev.rawX - downX
         val dy = ev.rawY - downY
-        if (abs(dy) > slop && abs(dy) > abs(dx) && shouldTake(dy > 0f)) {
+        GestureTrace.log { "sheet move: dy=${dy / density} dp (slop ${slop / density}), scroll under finger=${scrollUnderFinger != null}" }
+        if (dragsSheet(dx, dy)) {
+          GestureTrace.log { "sheet takes the drag at translation ${translationY / density} dp" }
           startDrag(ev)
           return true
         }
@@ -419,6 +431,7 @@ class EngineSheet(context: Context) : EngineScreen(context) {
     } else if (y - lowest > lowestVisible * DISMISS_FRACTION) {
       dismiss = true
     }
+    GestureTrace.log { "sheet release: y=${y / density} dp, offsets=${offsets.joinToString { "%.0f".format(it / density) }} dp, velocity=${velocity / density} dp/s, target=${target / density} dp, dismiss=$dismiss" }
     if (dismiss && dismissibleFlag) {
       stack.dismissTop()
       return

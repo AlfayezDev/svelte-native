@@ -26,6 +26,21 @@ internal interface GestureRoot {
 }
 
 /**
+ * A view of the touched path that takes a gesture over with a drag of its own: the stack's edge swipe, a sheet's drag (SPEC.md,
+ * "Gestures", "Android arbitration"). Android asks such a view (`onInterceptTouchEvent`) only after the event went through the
+ * gesture handlers, which activate on the same event that crosses the view's slop: the handler would always win a tie. With
+ * gestures enabled the root therefore asks these views first, on every move of the gesture, and a view that [claims] the movement
+ * [claim]s the gesture before the handlers see the event; the handlers are cancelled through the touch lock the claim takes.
+ */
+internal interface NativeClaim {
+  /** True when a finger that has moved ([dx], [dy]) from where it went down would be taken over by this view's own interception. */
+  fun claims(dx: Float, dy: Float): Boolean
+
+  /** Takes the gesture over now, as if `onInterceptTouchEvent` had answered true for [ev]: the touch lock and the drag state. */
+  fun claim(ev: MotionEvent)
+}
+
+/**
  * Overlay root: lays out the engine tree by frames, hit-tests touches and forwards them to C++ like React Native's
  * JSTouchDispatcher (all pointers, target fixed per pointer at its DOWN).
  *
@@ -72,6 +87,17 @@ class EngineRoot(context: Context) : FrameLayout(context), RootView {
   private var onEngine = false
   /** Set when a native scroll took the gesture over: JavaScript got its cancel and hears nothing more until the next DOWN. */
   private var cancelled = false
+
+  // Arbitration with the gesture handlers (see [NativeClaim]); reset at every DOWN.
+  /** The views of the touched path that can claim the gesture, outermost first. */
+  private val claimers = arrayOfNulls<NativeClaim>(MAX_CLAIMERS)
+  private var claimerCount = 0
+  private var downX = 0f
+  private var downY = 0f
+  /** A handler activated: the gesture is theirs and the children get nothing more of it. */
+  private var handlerOwns = false
+  /** A native view took the touch lock (a claim, a scroll view that started to drag): nothing claims any more. */
+  private var lockTaken = false
 
   // Arrays handed to JNI, reused.
   private val oTags = IntArray(MAX)
@@ -159,11 +185,19 @@ class EngineRoot(context: Context) : FrameLayout(context), RootView {
   override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
     val action = ev.actionMasked
     lastTime = ev.eventTime.toDouble()
+    if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) releaseClaimers()
     if (action == MotionEvent.ACTION_DOWN) {
       count = 0
       cancelled = false
+      GestureTrace.refresh()
       val target = HitTest.find(this, ev.x, ev.y)
       onEngine = target != null
+      GestureTrace.log { "down x=${ev.x / density} y=${ev.y / density} dp, target=${target?.javaClass?.simpleName}" }
+      handlerOwns = false
+      lockTaken = false
+      downX = ev.x
+      downY = ev.y
+      collectClaimers(target)
       if (target == null) return false
       // A modal layer's own area has no node: the gesture is held, JavaScript hears nothing of it.
       if (tagOf(target) != 0) {
@@ -205,14 +239,83 @@ class EngineRoot(context: Context) : FrameLayout(context), RootView {
     val gestureRoot = gestures
     if (gestureRoot != null) {
       Trace.beginSection("SvelteEngine.gesture")
-      val intercept = try { gestureRoot.dispatchTouchEvent(ev) } finally { Trace.endSection() }
+      val intercept = try {
+        if (action == MotionEvent.ACTION_MOVE && claimerCount > 0 && !handlerOwns && !lockTaken && ev.pointerCount == 1) claimBeforeHandlers(ev, gestureRoot)
+        gestureRoot.dispatchTouchEvent(ev)
+      } finally { Trace.endSection() }
+      GestureTrace.log { "${ev.describe()} -> gesture handlers: ${if (intercept) "a handler owns the gesture" else "no handler active"}" }
       // A handler owns the gesture: the children get nothing more of it (the next DOWN's reset cancels their touch target).
-      if (intercept) return true
+      if (intercept) { handlerOwns = true; return true }
     }
     // Let Android dispatch continue so scroll views can scroll; the gesture is ours either way.
     super.dispatchTouchEvent(ev)
     return true
   }
+
+  private fun releaseClaimers() {
+    for (i in 0 until claimerCount) claimers[i] = null
+    claimerCount = 0
+  }
+
+  /** The views of [target]'s ancestors that can claim a gesture, outermost first. */
+  private fun collectClaimers(target: View?) {
+    releaseClaimers()
+    if (gestures == null) return
+    var v: View? = target
+    while (v != null && v !== this) {
+      if (v is NativeClaim && claimerCount < MAX_CLAIMERS) claimers[claimerCount++] = v
+      v = v.parent as? View
+    }
+    // Collected from the innermost out; Android asks the outermost first.
+    var i = 0
+    var j = claimerCount - 1
+    while (i < j) { val t = claimers[i]; claimers[i] = claimers[j]; claimers[j] = t; i++; j-- }
+  }
+
+  /**
+   * The order inside one event: a view that takes the gesture over with its own drag (the stack's edge swipe, a sheet) is asked
+   * before the gesture handlers see the move, so when one move crosses both the view's slop and a handler's activation the view
+   * wins. A move carries the samples taken since the last one ([MotionEvent.getHistoricalX]); the first of them to cross the
+   * view's slop decides, and the handlers see the sample before it first, so a handler that would have activated on an earlier
+   * sample (a pan with a smaller `activeOffsetY`) still wins. A claim takes the touch lock, which cancels every handler.
+   */
+  private fun claimBeforeHandlers(ev: MotionEvent, gestureRoot: GestureRoot) {
+    val samples = ev.historySize
+    for (i in 0..samples) {
+      val x = if (i < samples) ev.getHistoricalX(0, i) else ev.getX(0)
+      val y = if (i < samples) ev.getHistoricalY(0, i) else ev.getY(0)
+      val dx = x - downX
+      val dy = y - downY
+      var claimer: NativeClaim? = null
+      for (k in 0 until claimerCount) {
+        val candidate = claimers[k] ?: continue
+        if (candidate.claims(dx, dy)) { claimer = candidate; break }
+      }
+      if (claimer == null) continue
+      if (i > 0) {
+        val probe = historicalMove(ev, i - 1)
+        val owned = try { gestureRoot.dispatchTouchEvent(probe) } finally { probe.recycle() }
+        GestureTrace.log { "sample ${i - 1} of $samples before the claim -> gesture handlers: ${if (owned) "a handler activated first" else "none active"}" }
+        if (owned) return
+      }
+      GestureTrace.log { "${claimer.javaClass.simpleName} claims the gesture at sample $i of $samples (dx=${dx / density}, dy=${dy / density} dp)" }
+      claimer.claim(ev)
+      return
+    }
+  }
+
+  /** A single pointer MOVE with the position and time of history sample [index] of [ev]. */
+  private fun historicalMove(ev: MotionEvent, index: Int): MotionEvent {
+    val properties = MotionEvent.PointerProperties().also { ev.getPointerProperties(0, it) }
+    val coords = MotionEvent.PointerCoords().also { ev.getHistoricalPointerCoords(0, index, it) }
+    return MotionEvent.obtain(
+      ev.downTime, ev.getHistoricalEventTime(index), MotionEvent.ACTION_MOVE, 1, arrayOf(properties), arrayOf(coords),
+      ev.metaState, ev.buttonState, ev.xPrecision, ev.yPrecision, ev.deviceId, ev.edgeFlags, ev.source, ev.flags,
+    )
+  }
+
+  private fun MotionEvent.describe(): String =
+    "${MotionEvent.actionToString(actionMasked)} t=${eventTime - downTime} ms x=${"%.1f".format(x / density)} y=${"%.1f".format(y / density)} dp history=$historySize pointers=$pointerCount"
 
   /** Hover events (a stylus or mouse) are the library's to read, as in its own root view; the engine has no use for them. */
   override fun dispatchGenericMotionEvent(ev: MotionEvent): Boolean {
@@ -226,7 +329,10 @@ class EngineRoot(context: Context) : FrameLayout(context), RootView {
    * handler is cancelled, as in the library's own root view. Only the request to take it counts; giving it back is nothing.
    */
   override fun requestDisallowInterceptTouchEvent(disallowIntercept: Boolean) {
-    if (disallowIntercept) gestures?.requestDisallowInterceptTouchEvent()
+    if (disallowIntercept) {
+      lockTaken = true
+      gestures?.requestDisallowInterceptTouchEvent()
+    }
     super.requestDisallowInterceptTouchEvent(disallowIntercept)
   }
 
@@ -300,6 +406,7 @@ class EngineRoot(context: Context) : FrameLayout(context), RootView {
 
   private companion object {
     const val MAX = 16
+    const val MAX_CLAIMERS = 4
     const val TYPE_START = 0
     const val TYPE_MOVE = 1
     const val TYPE_END = 2

@@ -80,5 +80,37 @@ fun main(args: Array<String>) {
   }
   equal("first internal id", seen.min(), GestureRules.INTERNAL_ID_BASE)
 
+  // Arbitration with RNGH's default Pan (SPEC.md, "Gestures", "Android arbitration"): its `minDist` is `getScaledTouchSlop`
+  // and it activates on `dx * dx + dy * dy >= minDist * minDist` (`PanGestureHandler.shouldActivate`, 2.32.0). The edge swipe and
+  // a sheet's drag use the same distance, so whenever one of them is claimed at a move a default Pan activates there too: the
+  // two tie on that move and the root asks the native view first, never later.
+  fun defaultPanActivates(dx: Float, dy: Float, slop: Float) = dx * dx + dy * dy >= slop * slop
+  for (slop in floatArrayOf(8f, 21f, 24f, 40f)) {
+    var swipes = 0
+    var drags = 0
+    var x = -60f
+    while (x <= 60f) {
+      var y = -60f
+      while (y <= 60f) {
+        if (GestureRules.edgeSwipe(x, y, slop)) { swipes++; check("edge swipe $x,$y slop $slop is a default pan's activation", defaultPanActivates(x, y, slop)) }
+        if (GestureRules.sheetDrag(x, y, slop)) { drags++; check("sheet drag $x,$y slop $slop is a default pan's activation", defaultPanActivates(x, y, slop)) }
+        y += 0.5f
+      }
+      x += 0.5f
+    }
+    check("some edge swipes at slop $slop", swipes > 0)
+    check("some sheet drags at slop $slop", drags > 0)
+  }
+  // A vertical drag reaches a vertical Pan from the edge zone and a horizontal drag reaches a horizontal Pan in a sheet.
+  check("a vertical drag is not the edge swipe", !GestureRules.edgeSwipe(2f, 30f, 8f) && !GestureRules.edgeSwipe(0f, -30f, 8f))
+  check("a leftward drag is not the edge swipe", !GestureRules.edgeSwipe(-30f, 1f, 8f))
+  check("a horizontal drag is not the sheet's", !GestureRules.sheetDrag(30f, 2f, 8f))
+  // Exactly a slop away on the axis, with no drift: the claim and the pan's activation are on the same move, the claim comes first.
+  check("edge swipe at exactly a slop", GestureRules.edgeSwipe(8f, 0f, 8f))
+  check("sheet drag at exactly a slop", GestureRules.sheetDrag(0f, 8f, 8f) && GestureRules.sheetDrag(0f, -8f, 8f))
+  check("just under a slop is neither", !GestureRules.edgeSwipe(7.9f, 0f, 8f) && !GestureRules.sheetDrag(0f, 7.9f, 8f))
+  // A drift of 2.6 dp across 7.6 dp along: a default Pan activates (8.03 >= 8), and the sheet claims the same move.
+  check("drift: the Pan's activation is also the sheet's", defaultPanActivates(2.6f, 7.6f, 8f) && GestureRules.sheetDrag(2.6f, 7.6f, 8f))
+
   println("gesture rules ok: $checks checks")
 }

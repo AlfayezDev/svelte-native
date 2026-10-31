@@ -1,6 +1,8 @@
 package expo.modules.svelteengine
 
 import com.facebook.react.uimanager.PointerEvents
+import kotlin.math.abs
+import kotlin.math.hypot
 
 /**
  * What `react-native-gesture-handler` reads from the engine's views, as rules without an Android type, so the host check
@@ -53,4 +55,15 @@ object GestureRules {
       else -> PointerEvents.AUTO
     }
   }
+
+  /**
+   * The edge swipe back of a stack: a finger that went ([dx], [dy]) from where it came down in the edge zone has covered a touch
+   * [slop] and goes mostly to the right. The distance is the Euclidean one RNGH's `PanGestureHandler` uses for its default
+   * `minDist` (`dx * dx + dy * dy >= slop * slop`, the same `ViewConfiguration.getScaledTouchSlop`), so on any move the swipe is
+   * claimed no later than a default Pan activates; a Pan that is activated earlier (a smaller `activeOffsetX`) keeps the gesture.
+   */
+  fun edgeSwipe(dx: Float, dy: Float, slop: Float): Boolean = hypot(dx, dy) >= slop && dx > abs(dy)
+
+  /** The drag of a sheet: the same distance rule as [edgeSwipe], going mostly up or down. */
+  fun sheetDrag(dx: Float, dy: Float, slop: Float): Boolean = hypot(dx, dy) >= slop && abs(dy) > abs(dx)
 }

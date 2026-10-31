@@ -13,6 +13,7 @@ import android.animation.AnimatorListenerAdapter
 import androidx.activity.BackEventCompat
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.findViewTreeOnBackPressedDispatcherOwner
+import expo.modules.svelteengine.GestureRules
 import expo.modules.svelteengine.NavEvents
 import kotlin.math.abs
 import kotlin.math.max
@@ -28,7 +29,7 @@ import kotlin.math.min
  * back, edge swipe, sheet drag or scrim) plays the exit first, then sends `onDismissed`; the removal JavaScript performs
  * next finds the screen marked `dismissed` and detaches it. A sheet's scrim is a view of the stack just below the sheet.
  */
-class EngineStack(context: Context) : EngineView(context) {
+class EngineStack(context: Context) : EngineView(context), NativeClaim {
   private val density = resources.displayMetrics.density
   private val slop = ViewConfiguration.get(context).scaledTouchSlop
   private val edge = EDGE_DP * density
@@ -562,15 +563,30 @@ class EngineStack(context: Context) : EngineView(context) {
     return top.gestureEnabled && top.presentation == 0 && top.backDismissal && !top.transitioning && canDismiss()
   }
 
+  /**
+   * A drag that went [dx], [dy] from the touch-down is the edge swipe when it started in the edge zone, has covered a touch slop
+   * (as far as a default Pan's `minDist`, so that the two reach it on the same move) and goes mostly to the right.
+   */
+  private fun swipesBack(dx: Float, dy: Float) = edgeCandidate && !dragging && GestureRules.edgeSwipe(dx, dy, slop.toFloat())
+
+  override fun claims(dx: Float, dy: Float) = swipesBack(dx, dy)
+
+  override fun claim(ev: MotionEvent) = startDrag(ev)
+
   override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
+    // A drag that the root claimed before the gesture handlers saw the move: Android cancels the child now.
+    if (dragging && ev.actionMasked != MotionEvent.ACTION_DOWN) return true
     when (ev.actionMasked) {
       MotionEvent.ACTION_DOWN -> {
         downX = ev.x; downY = ev.y
         edgeCandidate = ev.x <= edge && canDrag()
+        GestureTrace.log { "stack down: edge candidate=$edgeCandidate" }
       }
       MotionEvent.ACTION_MOVE -> if (edgeCandidate && !dragging) {
         val dx = ev.x - downX
-        if (dx > slop && dx > abs(ev.y - downY)) {
+        GestureTrace.log { "stack move: dx=${dx / density} dp (slop ${slop / density})" }
+        if (swipesBack(dx, ev.y - downY)) {
+          GestureTrace.log { "stack takes the edge swipe" }
           startDrag(ev)
           return true
         }

@@ -1593,6 +1593,91 @@ Frames, same run: p50 17 ms, p95 79 ms, 18.6 % dropped over 81.6 s: the scenario
 
 **Not verified**: the Samsung A16, the iPhone and iOS in general (the host and the view configs are shared, nothing of this was compiled or run there), map tiles and the Google map's own gestures and events (need a Maps key), TalkBack on a foreign view, a WebView with a file or `content://` source, expo-video's fullscreen and picture-in-picture (`setPictureInPictureParams: Current activity does not support picture-in-picture` is logged by the system when the player is released, the activity does not declare it), `AnimatedRegion`-style map animation from JavaScript.
 
+## Native modules (smoke test)
+
+WP3 of the Svelte Native program: the native libraries of the production app (`~/Documents/git/mobile`, Expo SDK 57 like this one) load, and each answers one core call, under Svelte Native (Svelte 5 on React Native Fabric without React; Android on this engine, iOS on React Native's mounting). Only the native side is tested: no production screen, no network, no prompt. View libraries (moyasar-apple-pay, nano-icons) are WP2.
+
+### Where it lives
+
+| | |
+|---|---|
+| `apps/platform/src/lib/native/dev/smoke.ts` | the 36 checks, each requiring its library when it runs; `runSmoke` logs one line per module |
+| `apps/platform/src/lib/native/dev/smoke-log.ts`, `smoke-bytes.ts` | the line format and the byte helpers (no React Native import, so the harness's tests load them) |
+| `apps/platform/src/routes/__dev/smoke/+mobile.svelte` | the lab page `/__dev/smoke` (`?run=1` starts it; not on the lab menu, so the parity references stay) |
+| `apps/platform/src/lib/native/dev/Stress.svelte` | the stress scenario `smoke` (`rasheed-svelte:///__dev?run=smoke`; not part of `quick`) |
+| `packages/svelte-native/src/native-modules.ts` | `turboModule(name)` and `nativeModule(name)`: how the checks reach a module without its library's JavaScript (the foreign wrappers use the same lookup) |
+| `apps/platform/qa/smoke-modules.json`, `qa/smoke-packages.cjs` | the module table and the packages only the QA app links, read by `app.config.ts` and `react-native.config.js` |
+| `apps/platform/qa/commands/smoke.ts`, `ios-smoke.ts`, `qa/parse/smoke.ts`, `qa/lib/smoke.ts` | `native-qa smoke` |
+| `apps/platform/qa/gates.json` | `smoke.modules` (the pinned list per platform), the gates `smoke.failed` and `smoke.missing`, the run kind `smoke` of each device |
+
+Each line is `[Svelte smoke] <module> ok|fail|skip path=js|direct|js+direct|none ms=<n> <detail>`, then `[Svelte smoke] complete {"os":…,"total":…,"ok":…,"fail":…,"skip":…}`. The path is how the call was made: `js` is the library's own JavaScript API; `direct` is its TurboModule or NativeModule looked up by name, used where the library's JavaScript reaches another module than the one under test or needs React. A check that never settles fails after 10 s. A platform-specific module logs `skip` with the reason on the other platform.
+
+### Linked in the QA app only
+
+The product (`APP_VARIANT=production`, `io.rasheed.app`) links and initializes none of the 31 packages in `qaOnlyPackages` (`qa/smoke-packages.cjs`: every package of the table except the six the product already has (secure store, localization, constants, asset, system UI, splash screen) and Statsig, which is JavaScript only). Three things carry that:
+
+- **Expo's autolinker.** `app.config.ts` gives the Svelte native plugin `autolinkingExclude: qaOnlyPackages` for the product. The plugin writes the list into `settings.gradle` (`expoAutolinking.exclude`, and `--exclude` on the React Native config command, next to the headless excludes) and into the `Podfile` (`use_expo_modules!(exclude:)` and the same `--exclude` on `expo-modules-autolinking react-native-config`). Expo modules (haptics, location, notifications, …) are only excluded this way.
+- **React Native's community autolinker.** `react-native.config.js` (an ES module, like the package) disables the same packages on both platforms when `APP_VARIANT=production`. It covers `EXPO_USE_COMMUNITY_AUTOLINKING=1` and `react-native config`, and alone already empties the product's React Native list of the 17 non-Expo libraries. The production app does the same for the Huawei library per variant.
+- **Config plugins.** `smokePlugins` in `app.config.ts` is empty for the product; the plugins below apply to the QA variant only.
+
+`qa/test/smoke.test.ts` evaluates `app.config.ts` for both variants and runs both autolinkers with the excludes the plugin gets: for Android and iOS the product's output has none of the packages, the QA app's has every one that has code for the platform. The generated files of a real product build confirm it (`APP_VARIANT=production expo prebuild --platform android`, then `./gradlew :app:generateAutolinkingPackageList :expo:generatePackagesList`): `PackageList.java` lists seven packages (`MainReactPackage`, `ExpoModulesPackage`, hermes-intl, react-native-maps, Reanimated, react-native-webview, Worklets), `ExpoModulesPackageList.kt` twenty-one modules (application, asset, constants, crypto and its AES module, EAS client, fetch, file system and its legacy module, the two font modules, image picker, keep awake, localization, secure store, splash screen, the engine, the updates module, system UI, video, view bench) and `settings.gradle` carries the 31 excludes; the QA build's `PackageList.java` has twenty-five packages and its Expo list the modules of the table. On iOS the product's Podfile carries `use_expo_modules!(exclude: svelte_native_exclude)` and the `--exclude` extension of the config command, no `ios.useFrameworks`, and its AppDelegate no Firebase call; the QA variant's has `FirebaseApp.configure()`, the fake `GoogleService-Info.plist` and static frameworks (prebuild only: no pods were installed).
+
+`native-qa build` builds the QA variant whatever `APP_VARIANT` the shell has, records the variant it prebuilt (`android/.native-qa-variant`) and prebuilds again when `android/` was made for another, and sets `SENTRY_DISABLE_AUTO_UPLOAD`. `expo-samsung-pay` does not compile without the proprietary Samsung Pay SDK: copy `libs/samsungpay.jar` of the production app to `apps/platform/libs/` (ignored by git); the build says so when it is missing.
+
+### What each module needed
+
+| module | package (installed; specifier) | path | call | Android | iOS | needed, and notes |
+|---|---|---|---|---|---|---|
+| `async-storage` | `@react-native-async-storage/async-storage` 2.2.0 | js | `setItem`, `getItem`, `removeItem` of one key | ok | ok | nothing |
+| `mmkv` | `react-native-mmkv` 4.3.1 | js | `createMMKV`, `set`, `getString`, `remove` | ok | ok | a Nitro hybrid object; needs `react-native-nitro-modules` |
+| `secure-store` | `expo-secure-store` 57.0.4 (shared) | js | `setItemAsync`, `getItemAsync`, `deleteItemAsync` | ok | ok | already in the product |
+| `netinfo` | `@react-native-community/netinfo` 12.0.1 | js | `configure({ reachabilityShouldRun: () => false })`, `fetch()` | ok | ok | the default configuration probes `clients3.google.com` with a `fetch`; off, `fetch()` reads only the platform's connection state |
+| `device-info` | `react-native-device-info` 15.0.2 | js | `getVersion`, `getModel`, `getBundleId`, `getDeviceName` | ok | ok | nothing |
+| `expo-device` | `expo-device` 57.0.2 | js | `modelName`, `osName`, `isDevice`, `getDeviceTypeAsync` | ok | ok | nothing |
+| `get-random-values` | `react-native-get-random-values` 2.0.0 (`~2.0.0`, nested under `apps/platform`: another package pins 1.11.0) | js+direct | the import installs `crypto.getRandomValues`, filled for a `Uint8Array(16)`; `RNGetRandomValues.getRandomBase64(16)` by name | ok | ok | 2.x's JavaScript prefers `ExpoCrypto` when `expo` is present, so its own API alone would not reach its module; the module is called by name |
+| `quick-crypto` | `react-native-quick-crypto` 1.1.3 | js | `randomBytes(16)`, `createHash("sha256")` of `abc` compared with `ba7816bf…15ad` | ok | ok | plugin `{ sodiumEnabled: true }` as in production (libsodium on both platforms); needs Nitro, `@craftzdog/react-native-buffer`, `readable-stream` |
+| `quick-base64` | `react-native-quick-base64` 2.2.2 | js | `fromByteArray` of `Svelte Native` = `U3ZlbHRlIE5hdGl2ZQ==`, `toByteArray`, `atob(btoa())` | ok | ok | nothing |
+| `nitro` | `react-native-nitro-modules` 0.35.10 (`^0.35.6`) | js | `NitroModules.version`, `buildType`, `getAllHybridObjectNames()` | ok | ok | nothing; MMKV and quick-crypto register their objects |
+| `launch-arguments` | `react-native-launch-arguments` 4.1.1 | js | `LaunchArguments.value()` | ok | ok | nothing (an empty object without launch extras) |
+| `localization` | `expo-localization` 57.0.2 (shared) | js | `getLocales()`, `getCalendars()` | ok | ok | already in the product |
+| `constants` | `expo-constants` 57.0.22 (shared) | js | `Constants.expoConfig` (`slug`, `name`, `version`) | ok | ok | already in the product |
+| `asset` | `expo-asset` 57.0.20 (shared) | js | `Asset.fromURI` (no download); module `ExpoAsset` registered | ok | ok | already in the product (a dependency of `expo`) |
+| `haptics` | `expo-haptics` 57.0.3 | js | `impactAsync(Light)` | ok | ok | nothing |
+| `screen-orientation` | `expo-screen-orientation` 57.0.3 | js | `getOrientationAsync()` | ok | ok | plugin without options (the app is not locked to portrait, unlike production's `initialOrientation`) |
+| `store-review` | `expo-store-review` 57.0.3 | js | `isAvailableAsync()` | ok | ok | `requestReview` is not called |
+| `system-ui` | `expo-system-ui` 57.0.4 (shared) | js | `getBackgroundColorAsync()`, `setBackgroundColorAsync(same color)` | ok | ok | already in the product; set to what it already is |
+| `tracking-transparency` | `expo-tracking-transparency` 57.0.2 | js | `getTrackingPermissionsAsync()` | ok | ok | plugin with a usage text; reads the state, never asks |
+| `local-authentication` | `expo-local-authentication` 57.0.3 | js | `hasHardwareAsync()` | ok | ok | `authenticateAsync` is not called |
+| `notifications` | `expo-notifications` 57.0.24 | js | `getPermissionsAsync()` | ok | ok | plugin without options (production's icon and colour need its assets); no token is fetched |
+| `location` | `expo-location` 57.0.22 | js | `getForegroundPermissionsAsync()` | ok | ok | plugin with the foreground service off (production enables it for one variant); no fix is requested |
+| `sharing` | `expo-sharing` 57.0.24 | js | `isAvailableAsync()` | ok | ok | `shareAsync` is not called |
+| `web-browser` | `expo-web-browser` 57.0.3 | js | Android: `getCustomTabsSupportingBrowsersAsync()`, `warmUpAsync()`, `coolDownAsync()` | ok, or skip when no browser has Custom Tabs | skip (Android only) | warm-up binds the browser's Custom Tabs service; no tab opens |
+| `splash-screen` | `expo-splash-screen` 57.0.10 (shared) | js | `hideAsync()` | ok | ok | already in the product; the engine already hid it after the first commit |
+| `ssl-pinning` | `react-native-ssl-public-key-pinning` 1.2.6 | js | `isSslPinningAvailable()` | ok | ok | `initializeSslPinning` is not called (it would change React Native's HTTP client) |
+| `firebase` | `@react-native-firebase/{app,analytics,messaging}` 24.1.1 | js | `getApp().name`, `setAnalyticsCollectionEnabled(false)`, `isDeviceRegisteredForRemoteMessages()` | ok | ok | see "Firebase" below |
+| `sentry` | `@sentry/react-native` 7.11.0 | direct | `RNSentry.initNativeSdk` (dummy DSN, `enabled: false`), `fetchNativeRelease`, `captureEnvelope` of a message | ok | ok | see "Sentry" below |
+| `hms` | `@hmscore/react-native-hms-location` 6.16.0-302 (`^6.16.0-301`; production's lock has `-301-beta1`) | js+direct | loads the library, reads which `HMS*` native modules are registered | skip: loaded (HMS Core is Huawei-only) | skip (Android only) | Huawei's Maven repository through `expo-build-properties` (`extraMavenRepos`); production's `@armanatz/expo-hms-location` plugin needs a real `agconnect-services.json` and is not applied |
+| `samsung-pay` | `expo-samsung-pay` 0.1.18 | js | loads the package; module `ExpoSamsungPay` registered (`canMakePayments` is not called) | ok | skip (Android only) | plugin `{ aarPath: "./libs/samsungpay.jar" }`; the proprietary SDK jar is copied from the production app and ignored by git |
+| `intercom` | `@intercom/intercom-react-native` 10.7.0 | js+direct | loads the library; the native module's constants (`IntercomEvents`) answered | ok | ok | plugin with dummy keys and `useManualInit: true`; `initialize` is not called (see below) |
+| `statsig` | `@statsig/react-native-bindings` 3.33.7 | js | `StatsigClientRN` with `preventAllNetworkTraffic`, `initializeSync()`, `checkGate()` | ok | ok | no native code of its own; uses async storage and the device libraries |
+| `mixpanel` | `mixpanel-react-native` 3.8.1 | js | `init(true)` (opted out), `hasOptedOutTracking()`, `getDistinctId()` | ok | ok | checks the native module is registered (the library falls back to JavaScript without it) |
+| `adjust` | `react-native-adjust` 5.8.0 | js | `Adjust.getSdkVersion()` | ok | ok | plugin `@config-plugins/react-native-adjust` as in production; `initSdk` is not called (it sends the install) |
+| `check-installed-apps` | `expo-check-installed-apps` 0.2.14 | js | `checkInstalledApps(["com.android.vending", "com.huawei.appmarket"])`; iOS `["mailto", "https"]` | ok | ok | plugin with the same package names as production |
+| `live-direction` | `react-native-live-direction` 0.1.1 | js | `require("react-native-live-direction/auto")` (what the production app loads), `getDirection()`, `I18nManager.subscribe` installed | ok | ok | the production app's pnpm patch (`patches/react-native-live-direction@0.1.1.patch`); plugin `{ locales: ["ar", "en"] }` |
+
+**Firebase.** The Firebase files linked into this checkout (the SDK examples' `google-services.json` and `GoogleService-Info.plist`) and the one in the secrets directory do not cover `io.rasheed.svelteqa` (checked by looking for the id, nothing printed). The QA variant therefore carries `qa/firebase-fake/google-services.json` and `GoogleService-Info.plist`: well-formed, `io.rasheed.svelteqa`, project `svelte-native-smoke-fake`, every key fake, so they are committed. `apps/platform/firebase.json` turns off data collection by default, analytics collection (hard-deactivated) and messaging auto-init, and the iOS auto-registration for remote messages: the app never fetches an installation id or a token. The three libraries load, `getApp()` answers from the native constants, and the two offline calls resolve.
+
+**Sentry.** The Expo plugin `@sentry/react-native/expo` is not applied: it only adds the source map and debug-symbol upload step (`sentry.gradle`, the Xcode build phases), and `SENTRY_DISABLE_AUTO_UPLOAD` is set in the build anyway. The JavaScript client needs React-side integrations, so the check calls the native half it drives: `initNativeSdk` with a dummy DSN on `sentry.invalid` and `enabled: false` (a disabled SDK has no transport, nothing leaves the device), `fetchNativeRelease` (answered by the native module, the package id and version), and `captureEnvelope` with a message event (resolves, and is dropped by the disabled SDK).
+
+**Intercom, Statsig, Mixpanel, Adjust.** Statsig and Mixpanel initialize with dummy keys because both can be made silent: Statsig's `networkConfig.preventAllNetworkTraffic` with logging disabled, Mixpanel opted out from the start. Intercom's and Adjust's SDKs send on initialization (a session or install request) and have no switch for it, so they are loaded and called with a pure call: Intercom's native constants, Adjust's `getSdkVersion`. The Intercom plugin is applied with `useManualInit: true`, so the SDK is not initialized at launch either.
+
+### Platform notes and limits
+
+- iOS: the Podfile edit and the plugin options are written for the Podfile Expo's template generates (a test pins the shape), but nothing was compiled or run on iOS. Firebase's pods need static frameworks, so the QA variant sets `ios.useFrameworks = "static"` through `expo-build-properties` (the production app does the same); how the engine's local pods build that way is untested. The iOS run reads `Documents/smoke-results.json`.
+- Boot: the QA app now links 31 more packages and registers their Expo modules (they are not in the lazy list of `patches/expo-modules-core@57.0.23.patch`), so its boot time is not the baseline of `gates.json` any more; the product is unchanged.
+- The libraries' JavaScript runs on the real `react-native` index (its exports are lazy getters), not the lite shim the engine uses for Expo's own packages. A library that reads a component at import time would fail its check; that is a finding.
+- Not verified: nothing was run on a device. What was: the Android build (`:app:assembleRelease`, no `e:` line), the type check of every check against the libraries' own types, the harness against logcat text, and the autolinker output.
+
 ## Android wave 4 (26-27 October 2026, OVH emulator)
 
 Measured on `localhost:5555` (x86_64, API 36, software GL), release builds, the harness commands of `apps/platform/qa`. Frame numbers on this emulator are not the bar; the results below are correctness, memory and JavaScript time.

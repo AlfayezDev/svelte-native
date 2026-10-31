@@ -313,7 +313,24 @@ class ${onDemandPackageName}(private val delegate: ReactPackage, private val nam
 `;
 }
 
+/**
+ * Expo's prebuild applies a built-in plugin for every installed package it thinks is autolinked (expo-location's location
+ * permissions, expo-local-authentication's biometric ones, …), and it asks the autolinker with `package.json`'s options only, so
+ * it never sees the excludes this plugin passes on the command line: a package left out of the build would still add its manifest
+ * permissions and Info.plist texts. Every Expo plugin runs once per config (`createRunOncePlugin`, keyed by package name), so the
+ * excluded packages are entered in the config's plugin history here, before the prebuild applies its own, and those plugins
+ * do nothing.
+ */
+export function leaveOutOfAutoPlugins<Config extends { _internal?: Record<string, unknown> }>(config: Config, names: readonly string[]): Config {
+  if (names.length === 0) return config;
+  const internal = (config._internal ??= {});
+  const history = (internal.pluginHistory ??= {}) as Record<string, { name: string; version: string }>;
+  for (const name of names) history[name] ??= { name, version: "left out of autolinking" };
+  return config;
+}
+
 const withSvelteNative: ConfigPlugin<SvelteNativeOptions | undefined> = (config, options) => {
+  config = leaveOutOfAutoPlugins(config, options?.autolinkingExclude ?? []);
   for (const platform of ["android", "ios"] as const) {
     config = withDangerousMod(config, [platform, async (config) => {
       await syncNative(config.modRequest.projectRoot);

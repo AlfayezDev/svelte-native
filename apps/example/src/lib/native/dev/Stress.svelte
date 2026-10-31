@@ -6,7 +6,7 @@
   import { List, Modal, ScrollView, Tabs, Text, TextInput, View, useRouter, type TabHandle, type TabItem } from "@rasheed/svelte-native";
   import { createSharedValue, runOnUIAsync, type SharedValue } from "@rasheed/svelte-native/animation";
   import { requireOptionalNativeModule } from "expo-modules-core";
-  import { theme } from "../state.svelte.ts";
+  import { nativeSmokeEnabled, theme } from "../state.svelte.ts";
   import Button from "../components/Button.svelte";
   import StressTile from "./StressTile.svelte";
   import { screenLab } from "./model.svelte.ts";
@@ -441,7 +441,8 @@
       return { verdict: value.passed ? "pass" : "fail", summary: `${value.summary} · ${describe(frames)}`, frames, detail: value.detail };
     } },
     { name: "smoke", label: "Native modules (smoke test) · one core call for each library the production app links, from Svelte Native without React (`run=smoke`, SPEC.md \"Native modules (smoke test)\")", async run(signal) {
-      // Required here, not at the top: the libraries load when the scenario runs, and only the QA app links them.
+      // Required here, not at the top: the libraries load when the scenario runs, and only the smoke app links them.
+      if (!nativeSmokeEnabled) return { verdict: "info", summary: "Not linked in this build: the native module smoke test runs in the smoke app (io.rasheed.svelteqa.smoke)." };
       const { runSmoke } = await import("./smoke.ts");
       const results = await runSmoke(undefined, signal);
       const failed = results.filter((result) => result.status === "fail");

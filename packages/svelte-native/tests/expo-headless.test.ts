@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { applyHeadlessApplication, applyHeadlessSettings, applyMainActivity, applyPodfileAutolinkingExclude, headlessExcludedPackages, headlessPackageSource, onDemandPackageSource } from "../src/expo.ts";
+import { createRunOncePlugin } from "expo/config-plugins";
+import { applyHeadlessApplication, applyHeadlessSettings, applyMainActivity, applyPodfileAutolinkingExclude, leaveOutOfAutoPlugins, headlessExcludedPackages, headlessPackageSource, onDemandPackageSource } from "../src/expo.ts";
 
 const application = `class MainApplication {
   override val reactHost: ReactHost by lazy {
@@ -59,6 +60,8 @@ extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
 }
 expoAutolinking.useExpoModules()
 `;
+
+type ConfigLike = Parameters<ReturnType<typeof createRunOncePlugin>>[0];
 
 /** The relevant lines of the Podfile Expo's template generates (SDK 57). */
 const podfile = `target 'RasheedSvelteQA' do
@@ -152,6 +155,28 @@ describe("headless Android config", () => {
   });
   test("Podfile: a template without the expected lines fails with a message", () => {
     expect(() => applyPodfileAutolinkingExclude("target 'App' do\nend\n", ["react-native-mmkv"])).toThrow("could not find use_expo_modules! and use_native_modules!(config_command) in the Podfile");
+  });
+  test("Expo's auto plugins skip the excluded packages: they are in the plugin history before the prebuild applies its own", () => {
+    const config: { _internal?: Record<string, unknown> } = { _internal: { projectRoot: "/app" } };
+    leaveOutOfAutoPlugins(config, ["expo-location", "expo-local-authentication"]);
+    const history = config._internal?.pluginHistory as Record<string, { name: string }>;
+    expect(Object.keys(history)).toEqual(["expo-location", "expo-local-authentication"]);
+    expect(history["expo-location"]?.name).toBe("expo-location");
+    expect(config._internal?.projectRoot).toBe("/app");
+    // `withRunOnce` looks a plugin up by name in this history and returns the config as it is.
+    let ran = false;
+    const runOnce = createRunOncePlugin((config: ConfigLike) => { ran = true; return config; }, "expo-location", "57.0.0");
+    runOnce(config as ConfigLike);
+    expect(ran).toBe(false);
+    // A package that is not excluded still runs its plugin, and an entry already there stays.
+    createRunOncePlugin((config: ConfigLike) => { ran = true; return config; }, "expo-haptics", "57.0.0")(config as ConfigLike);
+    expect(ran).toBe(true);
+    const early: { _internal?: Record<string, unknown> } = { _internal: { pluginHistory: { a: { name: "a", version: "1" } } } };
+    leaveOutOfAutoPlugins(early, ["a", "b"]);
+    expect((early._internal?.pluginHistory as Record<string, { version: string }>).a?.version).toBe("1");
+    const untouched: { _internal?: Record<string, unknown> } = {};
+    expect(leaveOutOfAutoPlugins(untouched, [])).toBe(untouched);
+    expect(untouched._internal).toBeUndefined();
   });
   test("package source targets the application id", () => {
     expect(headlessPackageSource("io.example.app")).toStartWith("package io.example.app\n");

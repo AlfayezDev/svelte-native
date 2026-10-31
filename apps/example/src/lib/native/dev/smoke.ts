@@ -12,8 +12,9 @@ import { formatSmokeLine, formatSmokeSummary, smokeLaunch, type SmokePath, type 
  * for a permission, prompts, or touches the network: permission checks read the state, Firebase's collection and token fetches
  * are off (`firebase.json`), Sentry and Statsig run disabled, Intercom and Adjust are not initialized.
  *
- * Only the QA app (`io.rasheed.svelteqa`) links these libraries. The product leaves them out of autolinking (app.config.ts), and
- * the lab that runs this is off there (`nativeLabEnabled`), so this file is never evaluated in the product.
+ * Only the smoke app (`io.rasheed.svelteqa.smoke`) links these libraries. The product and the QA app leave them out of autolinking
+ * (app.config.ts), and the lab that runs this is off in the product (`nativeLabEnabled`) and refuses to in the QA app
+ * (`nativeSmokeEnabled`), so this file is never evaluated there.
  */
 export type Os = "android" | "ios";
 

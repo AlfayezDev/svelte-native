@@ -1,14 +1,20 @@
 import type { ExpoConfig } from "expo/config";
 import { createRequire } from "node:module";
 
-// The native module smoke test (qa/smoke-modules.json; SPEC.md, "Native modules (smoke test)") links the production app's native
-// libraries into the QA app only. `qaOnlyPackages` are the ones the product does not have: it excludes them from both autolinkers
-// below (and from React Native's in react-native.config.js), and none of the config plugins in `smokePlugins` runs for it.
-const { qaOnlyPackages } = createRequire(import.meta.url)("./qa/smoke-packages.cjs") as { qaOnlyPackages: string[] };
+// Three apps come out of this file. The product (`APP_VARIANT=production`, `io.rasheed.app`); the QA app (no variant, `io.rasheed.svelteqa`),
+// which every gate of qa/gates.json measures and so carries exactly the product's native modules; and the smoke app
+// (`APP_VARIANT=smoke`, `io.rasheed.svelteqa.smoke`), the QA app plus the production app's native libraries for the native module
+// smoke test (qa/smoke-modules.json; SPEC.md, "Native modules (smoke test)"). `smokeOnlyPackages` are the libraries the product does not
+// have: the product and the QA app exclude them from both autolinkers (and from React Native's, in react-native.config.js); only the
+// smoke app links them, and only it gets the config plugins in `smokePlugins`, the fake Firebase files, the Huawei repository and
+// needs libs/samsungpay.jar.
+const { smokeOnlyPackages } = createRequire(import.meta.url)("./qa/smoke-packages.cjs") as { smokeOnlyPackages: string[] };
 const production = process.env.APP_VARIANT === "production";
-// A clearly fake Firebase app for `io.rasheed.svelteqa` (no key in it is real); the smoke test only loads Firebase and makes offline calls.
+const smoke = process.env.APP_VARIANT === "smoke";
+const applicationId = production ? "io.rasheed.app" : smoke ? "io.rasheed.svelteqa.smoke" : "io.rasheed.svelteqa";
+// A clearly fake Firebase app for `io.rasheed.svelteqa.smoke` (no key in it is real); the smoke test only loads Firebase and makes offline calls.
 const fakeFirebase = { android: "./qa/firebase-fake/google-services.json", ios: "./qa/firebase-fake/GoogleService-Info.plist" };
-const smokePlugins: NonNullable<ExpoConfig["plugins"]> = production ? [] : [
+const smokePlugins: NonNullable<ExpoConfig["plugins"]> = !smoke ? [] : [
   // The production app's plugins and options (its app.config.ts), minus what needs its secrets: Sentry's plugin only adds the source map
   // upload step, so it is left out; the Huawei plugin needs a real agconnect-services.json (the HMS library is only loaded).
   "@react-native-firebase/app",
@@ -34,10 +40,10 @@ const smokePlugins: NonNullable<ExpoConfig["plugins"]> = production ? [] : [
 // evaluate this file without it: they publish and run without a channel, and the app does not check for updates.
 const channel = process.env.UPDATES_CHANNEL;
 export default {
-  name: production ? "Rasheed" : "Rasheed Svelte QA",
+  name: production ? "Rasheed" : smoke ? "Svelte smoke" : "Rasheed Svelte QA",
   owner: "alfayez",
   slug: "rasheed",
-  scheme: production ? "rasheed" : "rasheed-svelte",
+  scheme: production ? "rasheed" : smoke ? "rasheed-svelte-smoke" : "rasheed-svelte",
   version: "0.1.0",
   // Updates apply only to builds with the same native code; the app version stands for it, so bump `version` with any native change.
   runtimeVersion: { policy: "appVersion" },
@@ -45,17 +51,17 @@ export default {
   userInterfaceStyle: "automatic",
   icon: "./assets/native/images/icon.png",
   ios: {
-    bundleIdentifier: production ? "io.rasheed.app" : "io.rasheed.svelteqa",
+    bundleIdentifier: applicationId,
     supportsTablet: true,
     config: { usesNonExemptEncryption: false },
-    ...(production ? {} : { googleServicesFile: fakeFirebase.ios }),
+    ...(smoke ? { googleServicesFile: fakeFirebase.ios } : {}),
     // Let ProMotion iPhones run above 60 Hz; the iPhone SE used for QA is a 60 Hz panel regardless.
     infoPlist: { CADisableMinimumFrameDurationOnPhone: true },
   },
   android: {
-    package: production ? "io.rasheed.app" : "io.rasheed.svelteqa",
+    package: applicationId,
     predictiveBackGestureEnabled: true,
-    ...(production ? {} : { googleServicesFile: fakeFirebase.android }),
+    ...(smoke ? { googleServicesFile: fakeFirebase.android } : {}),
     adaptiveIcon: {
       backgroundColor: "#f6f6f7",
       foregroundImage: "./assets/native/images/adaptive-foreground.png",
@@ -68,7 +74,7 @@ export default {
       androidFeatureFlags: { disableViewPreallocationAndroid: true, enablePreparedTextLayout: true },
       // Foreign views (SPEC.md, "Foreign views"): the packages' view managers are created when a component is first mounted,
       // not when the host starts. `packages/svelte-native/tests/foreign.test.ts` checks the names against the packages' sources.
-      autolinkingExclude: production ? qaOnlyPackages : [],
+      autolinkingExclude: smoke ? [] : smokeOnlyPackages,
       androidOnDemandViewManagers: {
         "com.rnmaps.maps.MapsPackage": ["RNMapsMapView", "RNMapsMarker", "RNMapsCallout", "RNMapsGooglePolygon", "RNMapsPolyline", "RNMapsCircle", "RNMapsOverlay", "RNMapsUrlTile", "RNMapsWMSTile"],
         "com.reactnativecommunity.webview.RNCWebViewPackage": ["RNCWebView"],

@@ -1,0 +1,25 @@
+diff --git a/src/auto.js b/src/auto.js
+index 771461cc60c8c1d4a7983fd63f690c5a218c8a55..cdb5b291cdc0feb1d1e5df9b9b748ab0e822a04e 100644
+--- a/src/auto.js
++++ b/src/auto.js
+@@ -26,8 +26,9 @@ if (typeof I18nManager.subscribe !== 'function') {
+     get: () => currentDirection === 'rtl',
+   });
+ 
++  const getConstants = I18nManager.getConstants.bind(I18nManager);
+   I18nManager.getConstants = () => ({
+-    ...I18nManager.getConstants(),
++    ...getConstants(),
+     isRTL: currentDirection === 'rtl',
+   });
+ 
+diff --git a/src/shims/I18nManager.js b/src/shims/I18nManager.js
+index 4400719669494cc12ff31212b0e179b20fdce4be..91b0b6dfe089fcdead5efcf280ff67beca0e417f 100644
+--- a/src/shims/I18nManager.js
++++ b/src/shims/I18nManager.js
+@@ -101,4 +101,4 @@ const I18nManager = {
+ };
+ 
+ module.exports = I18nManager;
+-module.exports.default = I18nManager;
++Object.defineProperty(module.exports, 'default', { value: I18nManager });

@@ -99,6 +99,8 @@ type State = {
   eventCount: number;
   /** A foreign view or a node inside one: React Native's own mounting owns its view, so commands and props go through React Native, not the engine. */
   foreign: boolean;
+  /** The last build gave the node a lone string as its `content` (`loneText`): when that stops being true the prop has to go, though no attribute changed. */
+  lone: boolean;
 };
 type Root = { rootTag: number; node: NativeNode; instance: Record<string, unknown> };
 
@@ -227,7 +229,7 @@ function allocateTag(): number {
 function state(node: NativeNode, viewName: string): State {
   let current = stateOf(node);
   if (!current) {
-    current = { tag: allocateTag(), viewName, node: null, props: {}, handlers: {}, propsDirty: true, childrenDirty: true, content: null, ref: undefined, eventCount: 0, foreign: false };
+    current = { tag: allocateTag(), viewName, node: null, props: {}, handlers: {}, propsDirty: true, childrenDirty: true, content: null, ref: undefined, eventCount: 0, foreign: false, lone: false };
     node.hostState = current;
   }
   return current;
@@ -435,8 +437,9 @@ function build(node: NativeNode, rootTag: number, insideText: boolean, insideFor
       current.content = content.node;
     } else childrenHost(current.node);
   } else {
-    // The text of a span is one of its props: a change of it alone (the node's children changed, its attributes did not) still has to reach the payload.
-    const payload = current.propsDirty || lone ? diffPayload(current.props, rnProps, config) : null;
+    // The text of a span is one of its props: a change of it alone (the node's children changed, its attributes did not) still has to reach the payload,
+    // and so does the lone string turning into mixed content, which takes `content` away.
+    const payload = current.propsDirty || lone || current.lone ? diffPayload(current.props, rnProps, config) : null;
     if (scroll && current.content && (current.childrenDirty || current.propsDirty)) {
       // The content container follows the scroll view's own attributes (`contentContainerStyle`, `horizontal`), which
       // `splitProps` keeps out of the scroll view's payload: a change of them alone (a direction switch, a padding) is a
@@ -469,6 +472,7 @@ function build(node: NativeNode, rootTag: number, insideText: boolean, insideFor
     }
   }
   current.props = rnProps;
+  current.lone = lone !== null;
   current.propsDirty = false;
   current.childrenDirty = false;
   if (attributes.ref !== current.ref) {

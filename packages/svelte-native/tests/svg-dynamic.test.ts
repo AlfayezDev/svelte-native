@@ -40,7 +40,7 @@ test("a changed prop is a clone of the same node", async () => {
 });
 
 /** The fixture draws text with the components themselves, as an app writes it: `<TSpan>{lone}</TSpan>`, `<Text>...</Text>`. */
-type Words = { set(values: { lone?: string; word?: string; more?: boolean; name?: string }): void };
+type Words = { set(values: { lone?: string; word?: string; more?: boolean; name?: string; nested?: boolean }): void };
 async function words(): Promise<{ app: Words; roots: () => FakeNode[]; calls: string[]; loaded: SvgLoaded }> {
   const harness = await svgHarness("android");
   const text = await harness.load("svg-text-fixture.svelte") as SvgLoaded;
@@ -88,6 +88,26 @@ test("a string in a text is a span of its own: updated in place, added and remov
   text.app.set({ more: false });
   await settle(loaded);
   expect(contents(container())).toEqual(["b"]);
+});
+
+test("a span whose lone string becomes mixed content loses its `content`, and gets it back", async () => {
+  const text = await words();
+  const outer = () => text.roots()[5] as FakeNode;
+  const oracle = await loadOracle("android");
+  expect(outer().props.content).toBe("a");
+  expect(outer().children).toEqual([]);
+  const tag = outer().tag;
+  // `<TSpan>a{#if more}<TSpan>b</TSpan>{/if}</TSpan>` with `more` on: the "a" is a span of its own next to the inner `TSpan`, and the outer one has no `content` of its own (it drew "a" twice).
+  text.app.set({ nested: true });
+  await settle(loaded);
+  expect(outer().tag).toBe(tag);
+  expect(outer().props.content ?? null).toBeNull();
+  expect(contents(outer())).toEqual(["a", "b"]);
+  expect([describeOurs(outer())]).toEqual(describeTheirs([oracle.mount(oracle.create(oracle.tags.tspan, null, "a", oracle.create(oracle.tags.tspan, null, "b"))) as never], text.loaded, "android"));
+  text.app.set({ nested: false });
+  await settle(loaded);
+  expect(outer().props.content).toBe("a");
+  expect(outer().children).toEqual([]);
 });
 
 test("one text node is one span: `Hello {name}!` is a single string", async () => {

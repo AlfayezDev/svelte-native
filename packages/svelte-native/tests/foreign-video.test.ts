@@ -58,6 +58,11 @@ test("the component mounts RCTVideo with the library's native props, the engine 
   harness.emit(native.target, "topVideoError", { error: { errorString: "boom" } });
   harness.emit(native.target, "topVideoEnd", {});
   expect(app.eventLog()).toEqual([["loadStart"], ["load", 3.5], ["progress", 1.25], ["error", "boom"], ["end"]]);
+  // The text track data loses the `target` the native event carries (Video.tsx deletes it from a copy).
+  const trackEvent = { subtitleTracks: [{ text: "hello" }], target: 61 };
+  harness.emit(native.target, "topTextTrackDataChanged", trackEvent);
+  expect(app.eventLog().at(-1)).toEqual(["trackData", { subtitleTracks: [{ text: "hello" }] }]);
+  expect(trackEvent.target).toBe(61);
   harness.emit(native.target, "topReadyForDisplay", {});
   await settle(loaded);
   expect(app.eventLog().at(-1)).toEqual(["ready"]);

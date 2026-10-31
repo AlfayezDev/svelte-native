@@ -186,6 +186,14 @@ export const videoEvents: readonly (readonly [callback: string, native: string, 
 type Callbacks = Record<string, ((...args: never[]) => void) | undefined>;
 type Event = { nativeEvent: unknown };
 
+/** What the library's wrapper hands a callback: the payload as it is, except the text track data, which loses the `target` the native event carries (`Video.tsx` deletes it from a copy). */
+function shaped(callback: string, payload: unknown): unknown {
+  if (callback !== "onTextTrackDataChanged" || typeof payload !== "object" || payload === null) return payload;
+  const { target: _target, ...rest } = payload as Record<string, unknown>;
+  void _target;
+  return rest;
+}
+
 /** The native event handlers for the callbacks that were given (`onLoad` becomes `onVideoLoad` and receives the event's payload). */
 export function videoHandlers(callbacks: Callbacks, extra: { readyForDisplay?: () => void; loadStart?: () => void } = {}): Record<string, (event: Event) => void> {
   const handlers: Record<string, (event: Event) => void> = {};
@@ -193,7 +201,7 @@ export function videoHandlers(callbacks: Callbacks, extra: { readyForDisplay?: (
     const user = callbacks[callback] as ((value?: unknown) => void) | undefined;
     const before = callback === "onReadyForDisplay" ? extra.readyForDisplay : callback === "onLoadStart" ? extra.loadStart : undefined;
     if (!user && !before) continue;
-    handlers[native] = (event) => { before?.(); user?.(payload ? event.nativeEvent : undefined); };
+    handlers[native] = (event) => { before?.(); user?.(payload ? shaped(callback, event.nativeEvent) : undefined); };
   }
   return handlers;
 }

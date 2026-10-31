@@ -17,4 +17,5 @@
   onProgress={(data) => log.push(["progress", data.currentTime])}
   onEnd={() => log.push(["end"])}
   onError={(data) => log.push(["error", data.error.errorString])}
+  onTextTrackDataChanged={(data) => log.push(["trackData", { ...data }])}
   onReadyForDisplay={() => log.push(["ready"])} />

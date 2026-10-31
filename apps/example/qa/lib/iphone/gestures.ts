@@ -62,14 +62,14 @@ export function buildScript(options: BuildScript): string {
 	].join("\n");
 }
 
-export type TestRun = { dir: string; udid: string; bundleId: string; seconds: number; outFile: string; url: string; trace?: boolean };
+export type TestRun = { dir: string; udid: string; bundleId: string; seconds: number; outFile: string; url: string; trace?: boolean; calibrate?: string };
 
 /** The command line of the test run: the runner already built; the test opens the lab's link itself (the lab app must not be started by anything else). */
 export function testCommand(options: TestRun): string {
-	const { dir, udid, bundleId, seconds, outFile, url, trace } = options;
+	const { dir, udid, bundleId, seconds, outFile, url, trace, calibrate } = options;
 	return [
 		`cd ${shellQuote(dir)}`,
-		`export TEST_RUNNER_GESTURES_SECONDS=${seconds} TEST_RUNNER_GESTURES_BUNDLE_ID=${shellQuote(bundleId)} TEST_RUNNER_GESTURES_URL=${shellQuote(url)} TEST_RUNNER_GESTURES_TRACE=${trace ? 1 : 0}`,
+		`export TEST_RUNNER_GESTURES_SECONDS=${seconds} TEST_RUNNER_GESTURES_BUNDLE_ID=${shellQuote(bundleId)} TEST_RUNNER_GESTURES_URL=${shellQuote(url)} TEST_RUNNER_GESTURES_TRACE=${trace ? 1 : 0} TEST_RUNNER_GESTURES_CALIBRATE=${shellQuote(calibrate ?? "")}`,
 		`xcodebuild test-without-building -xctestrun "$(ls DerivedData/Build/Products/*.xctestrun | head -n 1)" -destination ${shellQuote(`id=${udid}`)} -only-testing:GesturesUITests/GesturesUITests/testDrive > ${shellQuote(outFile)} 2>&1`,
 	].join(" && ");
 }
@@ -279,7 +279,7 @@ async function testAlive(mac: Mac, pid: number): Promise<boolean> {
 }
 
 /** One launch of the lab with the given scenarios on the iPhone, an XCUITest injecting while the app writes its results. */
-export async function iosGesturesOnce(session: IosSession, names: string[], timeoutMs: number, logPath: string, options: { trace?: boolean } = {}): Promise<{ launch: GestureLaunch; results: IosLabResults | null }> {
+export async function iosGesturesOnce(session: IosSession, names: string[], timeoutMs: number, logPath: string, options: { trace?: boolean; calibrate?: string } = {}): Promise<{ launch: GestureLaunch; results: IosLabResults | null }> {
 	const { target } = session;
 	const { mac } = target;
 	const token = newToken();
@@ -289,7 +289,7 @@ export async function iosGesturesOnce(session: IosSession, names: string[], time
 	// The test opens the lab's link itself: XCUITest observes only an app it launched, and a step's input has to find the test already there.
 	await setTraceFlag(target, options.trace === true);
 	const url = `rasheed-svelte:///__dev?run=${runValue(names, "xctest")}&token=${token}`;
-	const started = await remoteOk(mac, inBackground(testCommand({ dir: uiTestsRemote, udid: session.udid, bundleId: target.bundleId, seconds, outFile, url, trace: options.trace === true })));
+	const started = await remoteOk(mac, inBackground(testCommand({ dir: uiTestsRemote, udid: session.udid, bundleId: target.bundleId, seconds, outFile, url, trace: options.trace === true, calibrate: options.calibrate })));
 	const testPid = Number(started.trim().split("\n").pop());
 	const deadline = Date.now() + timeoutMs;
 	let results: IosLabResults | null = null;
@@ -343,7 +343,7 @@ export async function iosGesturesOnce(session: IosSession, names: string[], time
 
 /** `native-qa gestures --platform ios`. */
 export async function iosGestures(argv: string[]): Promise<void> {
-	const { values } = parseFlags(argv, { ...iosOptions, run: { type: "string" }, repeat: { type: "string" }, timeout: { type: "string" }, team: { type: "string" }, rebuild: { type: "boolean" }, input: { type: "string" }, trace: { type: "boolean" }, "build-only": { type: "boolean" } });
+	const { values } = parseFlags(argv, { ...iosOptions, run: { type: "string" }, repeat: { type: "string" }, timeout: { type: "string" }, team: { type: "string" }, rebuild: { type: "boolean" }, input: { type: "string" }, trace: { type: "boolean" }, calibrate: { type: "string" }, "build-only": { type: "boolean" } });
 	const input = flagString(values.input) ?? "xctest";
 	if (input !== "xctest") throw new Error("--input is xctest on iOS (touches cannot be synthesized from inside the app)");
 	const session = await startIosSuite("gestures", argv, values);
@@ -364,7 +364,7 @@ export async function iosGestures(argv: string[]): Promise<void> {
 	for (let index = 1; index <= repeat; index++) {
 		console.log(`gestures xctest ${index}/${repeat}: ${names.map((name) => name.slice("gestures-".length)).join(", ")}`);
 		const logPath = join(runsDir, `gestures-${slug(session.device.serial)}-${stamp(session.startedAt)}-xctest-${index}.log`);
-		const { launch, results } = await iosGesturesOnce(session, names, timeoutMs, logPath, { trace: values.trace === true });
+		const { launch, results } = await iosGesturesOnce(session, names, timeoutMs, logPath, { trace: values.trace === true, calibrate: flagString(values.calibrate) });
 		launches.push(launch);
 		// A run that did not finish measured nothing to compare. Every one that did must be the recorded build.
 		if (launch.complete && results) reports.push(results.build);

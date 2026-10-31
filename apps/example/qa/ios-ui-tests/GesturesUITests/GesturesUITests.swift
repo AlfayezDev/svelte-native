@@ -56,6 +56,9 @@ final class GesturesUITests: XCTestCase {
                 continue
             }
             performed.insert(key)
+            // `GESTURES_CALIBRATE=edge`: before the first input of a page that is pushed, short drags from several points along the leading edge, which the
+            // navigation's edge swipe may take and let go of; the recognizer trace says from which of them it began.
+            if ProcessInfo.processInfo.environment["GESTURES_CALIBRATE"] == "edge", key.hasPrefix("gestures-pushed-edge#0#") { calibrateEdge(in: app) }
             var failure: String? = nil
             let began = Date()
             aimed = [:]
@@ -74,6 +77,18 @@ final class GesturesUITests: XCTestCase {
     private static func emit(_ line: String) {
         print(line)
         fflush(stdout)
+    }
+
+    /// A 60 point drag to the right, 0.4 s, from x = each of the points below at mid height; every one is announced as `GESTURES-CALIBRATE {x}` with the phone's clock.
+    private func calibrateEdge(in app: XCUIApplication) {
+        let origin = app.coordinate(withNormalizedOffset: .zero)
+        for x in [1.0, 2.0, 4.0, 6.0, 8.0, 10.0, 12.0, 16.0, 20.0, 24.0, 32.0] {
+            let start = origin.withOffset(CGVector(dx: x, dy: 380))
+            let end = origin.withOffset(CGVector(dx: x + 60, dy: 380))
+            Self.emit("GESTURES-CALIBRATE {\"x\":\(x),\"atMs\":\((Date().timeIntervalSince1970 * 1000).rounded())}")
+            start.press(forDuration: 0.05, thenDragTo: end, withVelocity: XCUIGestureVelocity(rawValue: 150), thenHoldForDuration: 0)
+            Thread.sleep(forTimeInterval: 1.0)
+        }
     }
 
     // MARK: the lab's line

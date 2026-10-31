@@ -24,11 +24,20 @@ import org.json.JSONObject
  * It is a module of its own (`SvelteQaTouch`, listed in `expo-module.config.json`), not a function of `SvelteEngine`, and it does
  * nothing but refuse unless the app is the QA variant (`io.rasheed.svelteqa`): the production package never injects a touch.
  *
+ * What a finger does in the real pipeline, and what this reproduces. A touch panel samples at 120 to 240 Hz and the app receives
+ * one `MotionEvent` per frame whose history holds the samples in between; the injector sends one MOVE per frame, with history
+ * samples every [SAMPLE_MS] (4.17 ms, a 240 Hz panel) between this event and the last. When a frame comes late (the emulator's
+ * software GL makes the main thread miss frames) the finger has still moved: the moves of the frames that were missed are sent
+ * too, one per nominal period, back to back, so no event carries more than one period of travel and the arbitration of a gesture
+ * does not depend on how late the frame was. `eventsMs` in the result are the times of the MOVE events (the model of a pinch needs
+ * them), `lateFrames` how many frames came late.
+ *
  * `run(plan)` takes JSON, `{"durationMs": 600, "pointers": [{"waypoints": [[t, x, y], ...]}, ...]}`, with `t` in milliseconds from
  * the start and `x`, `y` in window pixels (what `measureInWindow` times the density gives). A pointer goes down at its first waypoint's
  * time, follows the waypoints (straight lines, clamped at both ends) and goes up at its last waypoint's time. It resolves, after the
- * last pointer is up, with `{"frames": n, "frameTimesMs": [...], "touchSlopPx": s, "density": d, "dispatched": n}`: the frame times
- * are what the lab reproduces to say what a pinch should have read (`expectedTwoFinger` in `gestures-lab.ts`).
+ * last pointer is up, with `{"frames": n, "frameTimesMs": [...], "touchSlopPx": s, "density": d, "dispatched": n, "lateFrames": n}`:
+ * `frameTimesMs` are the times of every event (the DOWN, the moves, the catch-up moves) that the lab replays to say what a pinch
+ * should have read (`expectedTwoFinger` in `gestures-lab.ts`).
  */
 internal const val QA_PACKAGE = "io.rasheed.svelteqa"
 
@@ -86,12 +95,18 @@ internal class QaInjector(private val root: View, private val plan: QaPlan, priv
   private val density = root.resources.displayMetrics.density
   private val slop = ViewConfiguration.get(root.context).scaledTouchSlop
   private val offset = IntArray(2)
+  /** The nominal time between two frames, ms. */
+  private val period = (1000f / (root.display?.refreshRate ?: 60f)).toDouble().coerceIn(8.0, 34.0)
+  /** When the last event of any kind was sent, ms from the start. */
+  private var lastSent = 0.0
+  private var lateFrames = 0
   private var startNanos = -1L
   private var downTime = 0L
   private val down = BooleanArray(plan.pointers.size)
   private val up = BooleanArray(plan.pointers.size)
   /** The pointers that are down, in the order they went down: their index here is the pointer index of the events. */
   private val active = ArrayList<Int>(plan.pointers.size)
+  private val eventTimes = ArrayList<Double>()
   private val frameTimes = ArrayList<Double>()
   private var dispatched = 0
   private var finished = false
@@ -117,8 +132,12 @@ internal class QaInjector(private val root: View, private val plan: QaPlan, priv
         active.add(id)
         send(if (active.size == 1) MotionEvent.ACTION_DOWN else MotionEvent.ACTION_POINTER_DOWN or ((active.size - 1) shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), eventTime, elapsed)
       }
-      // The pointers that were already down move, all in one event.
-      if (moved) send(MotionEvent.ACTION_MOVE, eventTime, elapsed)
+      // The pointers that were already down move, all in one event; a late frame is caught up with the moves it missed.
+      if (moved) {
+        if (elapsed - lastSent > period * 1.5) lateFrames++
+        while (elapsed - lastSent > period * 1.5) send(MotionEvent.ACTION_MOVE, downTime + Math.round(lastSent + period), lastSent + period)
+        send(MotionEvent.ACTION_MOVE, eventTime, elapsed)
+      }
       // Pointers whose time is over go up, the last of them with ACTION_UP.
       for (id in plan.pointers.indices) {
         if (!down[id] || up[id] || plan.pointers[id].endMs > elapsed) continue
@@ -133,19 +152,31 @@ internal class QaInjector(private val root: View, private val plan: QaPlan, priv
     }
   }
 
+  private fun coordsAt(elapsed: Double): Array<MotionEvent.PointerCoords> = Array(active.size) { slot ->
+    val pointer = plan.pointers[active[slot]]
+    MotionEvent.PointerCoords().also { it.x = pointer.x(elapsed); it.y = pointer.y(elapsed); it.pressure = 1f; it.size = 1f }
+  }
+
+  /** One event at [elapsed] ms; a MOVE carries the panel's samples since the last event as its history, the last sample being the event's own. */
   private fun send(action: Int, eventTime: Long, elapsed: Double) {
     val count = active.size
     val properties = Array(count) { slot -> MotionEvent.PointerProperties().also { it.id = active[slot]; it.toolType = MotionEvent.TOOL_TYPE_FINGER } }
-    val coords = Array(count) { slot ->
-      val pointer = plan.pointers[active[slot]]
-      MotionEvent.PointerCoords().also { it.x = pointer.x(elapsed); it.y = pointer.y(elapsed); it.pressure = 1f; it.size = 1f }
+    val total = if (action == MotionEvent.ACTION_MOVE) ((elapsed - lastSent) / SAMPLE_MS).toInt().coerceIn(1, MAX_SAMPLES) else 1
+    fun sampleAt(index: Double) = elapsed - (total - 1 - index) * SAMPLE_MS
+    val first = sampleAt(0.0)
+    val event = MotionEvent.obtain(downTime, if (total > 1) downTime + Math.round(first) else eventTime, action, count, properties, coordsAt(first), 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
+    for (index in 1 until total) {
+      val at = sampleAt(index.toDouble())
+      event.addBatch(if (index == total - 1) eventTime else downTime + Math.round(at), coordsAt(at), 0)
     }
-    val event = MotionEvent.obtain(downTime, eventTime, action, count, properties, coords, 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
     // The plan is in window pixels, which is what `rawX` reports; the view wants its own coordinates.
     event.offsetLocation(-offset[0].toFloat(), -offset[1].toFloat())
     try {
       root.dispatchTouchEvent(event)
       dispatched++
+      lastSent = elapsed
+      // What a pinch's model replays: the events that put a pointer down or moved one.
+      if (action != MotionEvent.ACTION_UP && (action and MotionEvent.ACTION_MASK) != MotionEvent.ACTION_POINTER_UP) eventTimes.add(elapsed)
     } finally {
       event.recycle()
     }
@@ -155,12 +186,15 @@ internal class QaInjector(private val root: View, private val plan: QaPlan, priv
     if (finished) return
     finished = true
     if (error != null) { onDone(null, error); return }
-    val times = frameTimes.joinToString(",") { "%.2f".format(java.util.Locale.ROOT, it) }
-    onDone("""{"frames":${frameTimes.size},"frameTimesMs":[$times],"touchSlopPx":$slop,"density":$density,"dispatched":$dispatched}""", null)
+    val times = eventTimes.joinToString(",") { "%.2f".format(java.util.Locale.ROOT, it) }
+    onDone("""{"frames":${frameTimes.size},"frameTimesMs":[$times],"touchSlopPx":$slop,"density":$density,"dispatched":$dispatched,"lateFrames":$lateFrames}""", null)
   }
 
   private companion object {
     const val TIMEOUT_MS = 3000
+    /** The panel's sampling interval (240 Hz) and how many samples one event holds at most. */
+    const val SAMPLE_MS = 1000.0 / 240.0
+    const val MAX_SAMPLES = 8
   }
 }
 

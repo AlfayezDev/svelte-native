@@ -9,7 +9,7 @@ path = File.join(dir, 'GesturesUITests.xcodeproj')
 FileUtils.rm_rf(path)
 
 project = Xcodeproj::Project.new(path)
-target = project.new_target(:ui_test_bundle, 'GesturesUITests', :ios, '16.0')
+target = project.new_target(:ui_test_bundle, 'GesturesUITests', :ios, '16.4')
 group = project.main_group.new_group('GesturesUITests', 'GesturesUITests')
 target.add_file_references([group.new_file('GesturesUITests.swift')])
 
@@ -20,7 +20,7 @@ target.build_configurations.each do |config|
   settings['SWIFT_VERSION'] = '5.0'
   settings['GENERATE_INFOPLIST_FILE'] = 'YES'
   settings['TARGETED_DEVICE_FAMILY'] = '1'
-  settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
+  settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.4'
   settings['CODE_SIGN_STYLE'] = 'Automatic'
   settings['DEVELOPMENT_TEAM'] = ENV['DEVELOPMENT_TEAM'] if ENV['DEVELOPMENT_TEAM']
 end

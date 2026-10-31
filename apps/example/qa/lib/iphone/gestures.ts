@@ -8,7 +8,7 @@ import { currentSource } from "../git.ts";
 import { qaDir, runsDir } from "../paths.ts";
 import { slug, stamp, writeRun } from "../runs.ts";
 import { sleep } from "../wait.ts";
-import { launchApp, appProcesses, readAppFile, terminateApp } from "./device.ts";
+import { appProcesses, readAppFile, terminateApp } from "./device.ts";
 import { describeStories, storiesFrom, type TraceAction, type TraceFile } from "./gesture-trace.ts";
 import { attribute, describeCrash, describeCrashReports, finishCrashWatch, keepCrashFiles, withReports } from "./crash-reports.ts";
 import { notReported, reportedIdentity, withIdentity } from "./identity.ts";
@@ -62,14 +62,14 @@ export function buildScript(options: BuildScript): string {
 	].join("\n");
 }
 
-export type TestRun = { dir: string; udid: string; bundleId: string; seconds: number; outFile: string };
+export type TestRun = { dir: string; udid: string; bundleId: string; seconds: number; outFile: string; url: string; trace?: boolean };
 
-/** The command line of the test run: the runner already built, the app already started by `devicectl` with the lab's URL. */
+/** The command line of the test run: the runner already built; the test opens the lab's link itself (the lab app must not be started by anything else). */
 export function testCommand(options: TestRun): string {
-	const { dir, udid, bundleId, seconds, outFile } = options;
+	const { dir, udid, bundleId, seconds, outFile, url, trace } = options;
 	return [
 		`cd ${shellQuote(dir)}`,
-		`export TEST_RUNNER_GESTURES_SECONDS=${seconds} TEST_RUNNER_GESTURES_BUNDLE_ID=${shellQuote(bundleId)}`,
+		`export TEST_RUNNER_GESTURES_SECONDS=${seconds} TEST_RUNNER_GESTURES_BUNDLE_ID=${shellQuote(bundleId)} TEST_RUNNER_GESTURES_URL=${shellQuote(url)} TEST_RUNNER_GESTURES_TRACE=${trace ? 1 : 0}`,
 		`xcodebuild test-without-building -xctestrun "$(ls DerivedData/Build/Products/*.xctestrun | head -n 1)" -destination ${shellQuote(`id=${udid}`)} -only-testing:GesturesUITests/GesturesUITests/testDrive > ${shellQuote(outFile)} 2>&1`,
 	].join(" && ");
 }
@@ -159,6 +159,8 @@ export function launchFromIos(capture: {
 	startedAt: Date;
 	durationMs: number;
 	died: string | null;
+	/** Set when the test ended before the lab did. */
+	ended?: string | null;
 	pid: number;
 	output: UiTestOutput | null;
 	testText: string;
@@ -168,7 +170,7 @@ export function launchFromIos(capture: {
 	const injections = output ? injectionsFrom(output) : {};
 	const scenarios = results ? labScenarios(results).filter((scenario) => scenario.name.startsWith("gestures-")).map((scenario) => resultFrom(scenario, injections[scenario.name] ?? [])) : [];
 	const finished = results !== null && labFinished(results, true);
-	const harnessErrors: string[] = [];
+	const harnessErrors: string[] = capture.ended ? [capture.ended] : [];
 	if (output === null) harnessErrors.push("the test run produced no output");
 	else {
 		harnessErrors.push(...output.failures);
@@ -238,23 +240,6 @@ export async function prepareUiTests(session: IosSession, options: { team: strin
 
 const pollMs = 10_000;
 const aliveEveryMs = 30_000;
-/** How long the harness waits for the test to say it is ready: the runner's start on the phone can wait for a person (UI Automation asks the phone's owner to authenticate). */
-const readyWaitMs = Number(process.env.NATIVE_QA_IOS_READY_WAIT_S ?? 180) * 1000;
-
-/** The line the test prints when it is running on the phone and waits for the lab. */
-export const testReadyLine = "GESTURES-READY";
-
-/** Waits until the test's output has its ready line; false when it did not come (the run goes on and records the harness error). */
-async function waitForTestReady(mac: Mac, outFile: string, maxMs: number): Promise<boolean> {
-	const deadline = Date.now() + maxMs;
-	while (Date.now() < deadline) {
-		const result = await remote(mac, `grep -c ${shellQuote(testReadyLine)} ${shellQuote(outFile)} 2>/dev/null`);
-		if (result.stdout.trim() !== "" && result.stdout.trim() !== "0") return true;
-		await sleep(1500);
-	}
-	return false;
-}
-
 /** The app's recognizer recording (`--trace`), kept beside the log as `<log>.trace.json`, and what it says about each action the test performed. */
 async function readTrace(target: IosSession["target"], logPath: string, outFile: string, mac: Mac): Promise<string[]> {
 	// The app writes the recording about every 0.4 s while it changes: the last rows are in the file a moment after the last action.
@@ -275,6 +260,12 @@ async function readTrace(target: IosSession["target"], logPath: string, outFile:
 	return [`trace: ${trace.rows.length} rows, ${trace.meta.length} recognizers, ${trace.context.length} context samples; ${actions.length} actions`, ...describeStories(storiesFrom(trace, actions))];
 }
 
+/** Whether the process the test was started as (the shell that runs xcodebuild) still exists. */
+async function testAlive(mac: Mac, pid: number): Promise<boolean> {
+	const result = await remote(mac, `kill -0 ${pid} 2>/dev/null && echo alive`);
+	return result.stdout.includes("alive");
+}
+
 /** One launch of the lab with the given scenarios on the iPhone, an XCUITest injecting while the app writes its results. */
 export async function iosGesturesOnce(session: IosSession, names: string[], timeoutMs: number, logPath: string, options: { trace?: boolean } = {}): Promise<{ launch: GestureLaunch; results: IosLabResults | null }> {
 	const { target } = session;
@@ -283,16 +274,16 @@ export async function iosGesturesOnce(session: IosSession, names: string[], time
 	const startedAt = new Date();
 	const outFile = `${uiTestsRemote}/test-output-${token}.log`;
 	const seconds = Math.ceil(timeoutMs / 1000);
-	// The test starts first and says when it waits for the lab: a page gives its input up after a few seconds, and xcodebuild needs longer than that to get a runner going on the phone.
-	const started = await remoteOk(mac, inBackground(testCommand({ dir: uiTestsRemote, udid: session.udid, bundleId: target.bundleId, seconds, outFile })));
+	// The test opens the lab's link itself: XCUITest observes only an app it launched, and a step's input has to find the test already there.
+	const url = `rasheed-svelte:///__dev?run=${runValue(names, "xctest")}&token=${token}`;
+	const started = await remoteOk(mac, inBackground(testCommand({ dir: uiTestsRemote, udid: session.udid, bundleId: target.bundleId, seconds, outFile, url, trace: options.trace === true })));
 	const testPid = Number(started.trim().split("\n").pop());
-	const testReady = await waitForTestReady(mac, outFile, readyWaitMs);
-	if (!testReady) console.log(`warning: the test did not say ${testReadyLine} within ${readyWaitMs / 1000} s; the lab starts anyway`);
-	const { pid } = await launchApp(target, { payloadUrl: `rasheed-svelte:///__dev?run=${runValue(names, "xctest")}&token=${token}`, ...(options.trace ? { args: ["-SvelteQAGestureTrace", "YES"] } : {}) });
 	const deadline = Date.now() + timeoutMs;
 	let results: IosLabResults | null = null;
 	let raw = "";
 	let died: string | null = null;
+	let testEnded: string | null = null;
+	let pid = -1;
 	let nextAliveCheck = Date.now() + aliveEveryMs;
 	while (Date.now() < deadline) {
 		await sleep(pollMs);
@@ -310,22 +301,29 @@ export async function iosGesturesOnce(session: IosSession, names: string[], time
 		}
 		if (Date.now() >= nextAliveCheck) {
 			nextAliveCheck = Date.now() + aliveEveryMs;
-			if (!(await appProcesses(target, session.installed)).includes(pid)) { died = `the app (pid ${pid}) was not running before the scenarios finished`; break; }
+			const running = await appProcesses(target, session.installed);
+			if (pid < 0) pid = running[0] ?? -1;
+			else if (!running.includes(pid)) { died = `the app (pid ${pid}) was not running before the scenarios finished`; break; }
+			// A test that ended (it failed to start, or gave up) will not touch the screen again: waiting out the timeout would only waste the phone's time.
+			if (Number.isFinite(testPid) && !(await testAlive(mac, testPid))) { testEnded = "the XCUITest run ended before the lab finished"; break; }
 		}
 	}
 	// Only the test this launch started: its shell's children (xcodebuild), then the shell.
 	if (Number.isFinite(testPid)) await remote(mac, `pkill -TERM -P ${testPid} 2>/dev/null; kill ${testPid} 2>/dev/null; true`);
 	const traceLines = options.trace ? await readTrace(target, logPath, outFile, mac) : [];
-	try {
-		await terminateApp(target, pid);
-	} catch {
-		// The app already ended (a finished lab or a crash).
+	if (pid < 0) pid = (await appProcesses(target, session.installed))[0] ?? -1;
+	if (pid >= 0) {
+		try {
+			await terminateApp(target, pid);
+		} catch {
+			// The app already ended (a finished lab or a crash).
+		}
 	}
 	const testText = (await remote(mac, `cat ${shellQuote(outFile)} 2>/dev/null; rm -f ${shellQuote(outFile)}`)).stdout;
 	await writeFile(logPath, `${raw || "no results were written\n"}\n--- xcodebuild test-without-building ---\n${testText}${traceLines.length ? `\n--- recognizer trace ---\n${traceLines.join("\n")}\n` : ""}`);
 	for (const line of traceLines) console.log(`  ${line}`);
 	const launch = launchFromIos({
-		asked: names, results, startedAt, durationMs: Date.now() - startedAt.getTime(), died, pid, output: testText === "" ? null : parseUiTestOutput(testText), testText, logFile: logPath.slice(qaDir.length + 1),
+		asked: names, results, startedAt, durationMs: Date.now() - startedAt.getTime(), died, ended: testEnded, pid, output: testText === "" ? null : parseUiTestOutput(testText), testText, logFile: logPath.slice(qaDir.length + 1),
 	});
 	return { launch, results };
 }

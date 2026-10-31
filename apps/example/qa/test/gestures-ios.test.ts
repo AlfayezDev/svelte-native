@@ -31,12 +31,14 @@ describe("the XCUITest bundle on the Mac", () => {
 		expect(script).toContain("echo $status > '/tmp/b.exit'");
 	});
 
-	test("the test command runs the built runner against the phone with the app and the time handed in", () => {
-		const command = testCommand({ dir: "/tmp/t", udid: "UDID", bundleId: "io.rasheed.svelteqa", seconds: 900, outFile: "/tmp/t/out.log" });
+	test("the test command runs the built runner against the phone with the app, the lab's link and the time handed in", () => {
+		const url = "rasheed-svelte:///__dev?run=gestures-box,drive:xctest&token=abc";
+		const command = testCommand({ dir: "/tmp/t", udid: "UDID", bundleId: "io.rasheed.svelteqa", seconds: 900, outFile: "/tmp/t/out.log", url, trace: true });
 		expect(command).toContain("cd '/tmp/t'");
-		expect(command).toContain("TEST_RUNNER_GESTURES_SECONDS=900 TEST_RUNNER_GESTURES_BUNDLE_ID='io.rasheed.svelteqa'");
+		expect(command).toContain(`TEST_RUNNER_GESTURES_SECONDS=900 TEST_RUNNER_GESTURES_BUNDLE_ID='io.rasheed.svelteqa' TEST_RUNNER_GESTURES_URL='${url}' TEST_RUNNER_GESTURES_TRACE=1`);
 		expect(command).toContain("xcodebuild test-without-building -xctestrun");
 		expect(command).toContain("-destination 'id=UDID' -only-testing:GesturesUITests/GesturesUITests/testDrive > '/tmp/t/out.log' 2>&1");
+		expect(testCommand({ dir: "/tmp/t", udid: "UDID", bundleId: "b", seconds: 1, outFile: "/o", url }).includes("GESTURES_TRACE=0")).toBe(true);
 	});
 
 	test("a background command is quoted whole and prints its process id", () => {

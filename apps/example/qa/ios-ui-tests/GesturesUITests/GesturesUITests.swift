@@ -1,13 +1,12 @@
 import XCTest
 
-/// Drives the gesture lab (`/__dev/gestures`, SPEC.md "Gestures") on the iPhone the way a person would. The harness has already started
-/// the lab app with `rasheed-svelte:///__dev?run=gestures-...,drive:xctest`; this test brings it to the front without restarting it and
+/// Drives the gesture lab (`/__dev/gestures`, SPEC.md "Gestures") on the iPhone the way a person would. The harness gives it the lab's link `rasheed-svelte:///__dev?run=gestures-...,drive:xctest`; this test opens it (which launches the app) and
 /// loops: read the lab's `ready` line from the element `gestures.status` (its accessibility label is the line's JSON), find the view the
 /// step aims at by its accessibility identifier (`gesture.<name>`, the page's `testID`), perform the input with XCUITest's own gestures,
 /// and wait for the next line. The verdicts are the lab's: it counts what its recognisers report and writes `Documents/lab-results.json`,
 /// which the harness reads. Every action is printed as `GESTURES-ACTION {json}` so the harness can record what was injected.
 ///
-/// Environment (as `TEST_RUNNER_*` variables of the xcodebuild call): `GESTURES_BUNDLE_ID` (the lab app), `GESTURES_SECONDS` (give up after).
+/// Environment (as `TEST_RUNNER_*` variables of the xcodebuild call): `GESTURES_BUNDLE_ID` (the lab app), `GESTURES_URL` (the lab's link, which the test opens), `GESTURES_TRACE` (1: the app records its gesture recognizers), `GESTURES_SECONDS` (give up after).
 ///
 /// What XCUITest cannot do is two fingers on two axes at once: a `twoFinger` input that both spreads and turns is performed as a pinch and
 /// then a rotation, which the lab's pinch scenario expects on iOS (it keeps what the first left and judges the end state, with a
@@ -23,9 +22,16 @@ final class GesturesUITests: XCTestCase {
     func testDrive() throws {
         let app = XCUIApplication(bundleIdentifier: bundleId)
         let deadline = Date().addingTimeInterval(seconds)
-        // The harness starts the lab when it reads this line, so every input a page waits for finds the test already here.
-        Self.emit("GESTURES-READY")
-        while Date() < deadline, app.state != .runningForeground { Thread.sleep(forTimeInterval: 0.25) }
+        // The test opens the lab itself: an app that something else launched is not one XCUITest observes (its state stays "not running"), and
+        // the lab's pages give a step's input up after a few seconds, so nothing may start before the test is here to touch the screen.
+        if ProcessInfo.processInfo.environment["GESTURES_TRACE"] == "1" { app.launchArguments = ["-SvelteQAGestureTrace", "YES"] }
+        if let text = ProcessInfo.processInfo.environment["GESTURES_URL"], let url = URL(string: text) {
+            Self.emit("GESTURES-OPEN \(text)")
+            app.open(url)
+        } else {
+            app.activate()
+        }
+        Self.emit("GESTURES-STARTED state \(app.state.rawValue)")
         let status = app.staticTexts["gestures.status"]
         var performed = Set<String>()
         var lastBeat = Date()

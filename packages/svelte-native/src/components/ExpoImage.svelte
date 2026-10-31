@@ -3,7 +3,8 @@
   import { createNativeProps } from "../native-props.ts";
   import { resolveAssetSource } from "../fabric/deps-rn.ts";
   import { expoViewName } from "../fabric/foreign.ts";
-  import { expoImageProps, type ExpoImageProps } from "../fabric/foreign-image.ts";
+  import { expoImageHandlers, expoImageProps, type ExpoImageProps } from "../fabric/foreign-image.ts";
+  import { Platform } from "../fabric/deps-rn.ts";
   import type { ViewProps } from "react-native";
 
   type LoadEvent = { cacheType: "none" | "disk" | "memory"; source: { url: string; width: number; height: number; mediaType: string | null; isAnimated?: boolean } };
@@ -33,17 +34,10 @@
   const resolveProps = createNativeProps();
   // The view's only view: `ViewManagerAdapter_ExpoImage`, with the colour props the module's config does not tell from plain ones.
   const component = expoViewName("ExpoImage", undefined, { colors: "tintColor" });
-  type Event<Native> = { nativeEvent: Native };
-  const handlers = {
-    onLoadStart: () => onLoadStart?.(),
-    onLoad: (event: Event<LoadEvent>) => { onLoad?.(event.nativeEvent); onLoadEnd?.(); },
-    onProgress: (event: Event<{ loaded: number; total: number }>) => onProgress?.(event.nativeEvent),
-    onError: (event: Event<{ error: string }>) => { onError?.(event.nativeEvent); onLoadEnd?.(); },
-    onDisplay: () => onDisplay?.(),
-  };
+  const handlers = $derived(expoImageHandlers({ onLoadStart, onLoad, onProgress, onError, onLoadEnd, onDisplay }));
 </script>
 <native-foreign {component} nativeProps={resolveProps({
-  ...expoImageProps(attributes, (asset) => resolveAssetSource(asset as never) as never),
+  ...expoImageProps(attributes, (asset) => resolveAssetSource(asset as never) as never, Platform.OS === "android" ? "android" : "ios"),
   ...handlers,
   ref,
 })}></native-foreign>

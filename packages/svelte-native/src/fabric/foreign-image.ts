@@ -167,11 +167,15 @@ export type ExpoImageProps = {
 /**
  * The props of the native `ExpoImage` view for a set of component props. The style's `resizeMode`, `fontWeight`, `color` and
  * `fontSize` are read here and do not reach the view (they stand for `contentFit` and the SF symbol's weight, colour and size); its
- * `tintColor` is the view's `tintColor` prop (the host converts both colours; the explicit prop wins, as in the library).
+ * `tintColor` is the view's `tintColor` prop (the host converts both colours; the explicit prop wins, as in the library). The style keeps the shadow of
+ * its platform only: `elevation` on Android, `shadow...` on iOS.
  */
-export function expoImageProps(props: ExpoImageProps, resolveAsset: ResolveAsset): Record<string, unknown> {
+export function expoImageProps(props: ExpoImageProps, resolveAsset: ResolveAsset, platform: "android" | "ios" = currentPlatform()): Record<string, unknown> {
   const { style, source, placeholder, contentFit, contentPosition, transition, fadeDuration, resizeMode: resizeModeProp, defaultSource, loadingIndicatorSource, sfEffect, tintColor, accessibilityLabel, alt, ...rest } = props;
   const { resizeMode: resizeModeStyle, fontWeight, color, fontSize, tintColor: styleTint, ...restStyle } = flattenStyle(style);
+  // Shadows behave differently on each platform (`ExpoImage.render`): Android draws `elevation`, iOS the `shadow...` props, and each loses the other's.
+  if (platform === "android") for (const key of ["shadowColor", "shadowOffset", "shadowOpacity", "shadowRadius"]) delete restStyle[key];
+  else delete restStyle.elevation;
   const resolvedSource = resolveSources(source, resolveAsset);
   const isSFSymbol = Array.isArray(resolvedSource) && resolvedSource.some((item) => item?.uri?.startsWith("sf:/"));
   // An SF symbol's font size sets its point size and the size of the view that holds it.
@@ -189,5 +193,34 @@ export function expoImageProps(props: ExpoImageProps, resolveAsset: ResolveAsset
     tintColor: (isSFSymbol && color && !tintColor ? color : tintColor) || styleTint,
     symbolWeight: isSFSymbol ? (typeof fontWeight === "number" ? String(fontWeight) : fontWeight) : null,
     symbolSize: isSFSymbol && fontSize ? fontSize : null,
+  };
+}
+
+const currentPlatform = (): "android" | "ios" =>
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  (require("react-native/Libraries/Utilities/Platform") as { default: { OS: string } }).default.OS === "ios" ? "ios" : "android";
+
+type ImageCallbacks = {
+  onLoadStart?: () => void;
+  onLoad?: (event: never) => void;
+  onProgress?: (event: never) => void;
+  onError?: (event: never) => void;
+  onLoadEnd?: () => void;
+  onDisplay?: () => void;
+};
+type NativeImageEvent = { nativeEvent: unknown };
+
+/**
+ * The native event handlers of the view: the load, progress and error ones always (the library's wrapper hands them to the view whatever the caller gave, `onLoad` and
+ * `onError` also tell `onLoadEnd`), `onDisplay` only when the caller gave one, as the wrapper passes it through `...props`.
+ */
+export function expoImageHandlers(callbacks: ImageCallbacks): Record<string, (event: NativeImageEvent) => void> {
+  const { onLoadStart, onLoad, onProgress, onError, onLoadEnd, onDisplay } = callbacks;
+  return {
+    onLoadStart: () => onLoadStart?.(),
+    onLoad: (event) => { onLoad?.(event.nativeEvent as never); onLoadEnd?.(); },
+    onProgress: (event) => onProgress?.(event.nativeEvent as never),
+    onError: (event) => { onError?.(event.nativeEvent as never); onLoadEnd?.(); },
+    ...(onDisplay ? { onDisplay: () => onDisplay() } : null),
   };
 }

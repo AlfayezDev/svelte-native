@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { createHarness, expoViewConfigs, find, settle } from "./foreign-harness.ts";
-import { expoImageProps, resolveContentFit, resolveContentPosition, resolveSfEffect, resolveSource, resolveSources, resolveTransition } from "../src/fabric/foreign-image.ts";
+import { expoImageHandlers, expoImageProps, resolveContentFit, resolveContentPosition, resolveSfEffect, resolveSource, resolveSources, resolveTransition } from "../src/fabric/foreign-image.ts";
 
 /**
  * expo-image (SPEC.md, "Foreign views"): the Svelte component mounts the module's `ExpoImage` view by the name the Expo
@@ -139,15 +139,15 @@ test("sources resolve as expo-image's own resolveSources does", async () => {
 });
 
 test("a deprecated React Native prop maps to the current one, and an SF symbol's font style becomes its weight and size", () => {
-  expect(expoImageProps({ source: "x", resizeMode: "stretch" }, asset).contentFit).toBe("fill");
-  expect(expoImageProps({ source: "x", style: { resizeMode: "center" } }, asset).contentFit).toBe("scale-down");
-  expect(expoImageProps({ source: "x", style: { resizeMode: "center" }, resizeMode: "cover" }, asset).contentFit).toBe("cover");
-  expect(expoImageProps({ source: "x", fadeDuration: 90 }, asset).transition).toEqual({ duration: 90 });
-  expect(expoImageProps({ source: "x", defaultSource: { uri: "d" } }, asset).placeholder).toEqual([{ uri: "d" }]);
-  expect(expoImageProps({ source: "x", alt: "alt text", accessibilityLabel: "label" }, asset).accessibilityLabel).toBe("label");
-  expect(expoImageProps({ source: "x", style: { tintColor: "blue" } }, asset).tintColor).toBe("blue");
-  expect(expoImageProps({ source: "x", tintColor: "red", style: { tintColor: "blue" } }, asset).tintColor).toBe("red");
-  const symbol = expoImageProps({ source: "sf:star", style: [{ fontSize: 20, fontWeight: 600, color: "orange" }, { margin: 2 }] }, asset);
+  expect(expoImageProps({ source: "x", resizeMode: "stretch" }, asset, "android").contentFit).toBe("fill");
+  expect(expoImageProps({ source: "x", style: { resizeMode: "center" } }, asset, "android").contentFit).toBe("scale-down");
+  expect(expoImageProps({ source: "x", style: { resizeMode: "center" }, resizeMode: "cover" }, asset, "android").contentFit).toBe("cover");
+  expect(expoImageProps({ source: "x", fadeDuration: 90 }, asset, "android").transition).toEqual({ duration: 90 });
+  expect(expoImageProps({ source: "x", defaultSource: { uri: "d" } }, asset, "android").placeholder).toEqual([{ uri: "d" }]);
+  expect(expoImageProps({ source: "x", alt: "alt text", accessibilityLabel: "label" }, asset, "android").accessibilityLabel).toBe("label");
+  expect(expoImageProps({ source: "x", style: { tintColor: "blue" } }, asset, "android").tintColor).toBe("blue");
+  expect(expoImageProps({ source: "x", tintColor: "red", style: { tintColor: "blue" } }, asset, "android").tintColor).toBe("red");
+  const symbol = expoImageProps({ source: "sf:star", style: [{ fontSize: 20, fontWeight: 600, color: "orange" }, { margin: 2 }] }, asset, "android");
   expect(symbol).toMatchObject({ contentFit: "contain", symbolWeight: "600", symbolSize: 20, tintColor: "orange", style: { width: 20, height: 20, margin: 2 } });
   expect(symbol.style).not.toHaveProperty("fontSize");
   expect(resolveSfEffect("bounce")).toEqual([{ effect: "bounce" }]);
@@ -156,6 +156,27 @@ test("a deprecated React Native prop maps to the current one, and an SF symbol's
 });
 
 test("an image the native module loaded is given to the view as its shared object id", () => {
-  expect(expoImageProps({ source: { nativeRefType: "image", __expo_shared_object_id__: 9 } }, asset).source).toBe(9);
-  expect(expoImageProps({ source: [{ uri: "a" }, "b"] }, asset).source).toEqual([{ uri: "a" }, { uri: "b" }]);
+  expect(expoImageProps({ source: { nativeRefType: "image", __expo_shared_object_id__: 9 } }, asset, "android").source).toBe(9);
+  expect(expoImageProps({ source: [{ uri: "a" }, "b"] }, asset, "android").source).toEqual([{ uri: "a" }, { uri: "b" }]);
+});
+
+test("shadows follow the platform as ExpoImage.render does: Android keeps elevation and loses the shadow props, iOS the other way", () => {
+  const style = [{ width: 10, shadowColor: "#000", shadowOffset: { width: 1, height: 2 }, shadowOpacity: 0.5, shadowRadius: 4, elevation: 6, borderRadius: 3 }];
+  const asset = () => null;
+  expect((expoImageProps({ style }, asset, "android").style as Record<string, unknown>)).toEqual({ width: 10, elevation: 6, borderRadius: 3 });
+  expect((expoImageProps({ style }, asset, "ios").style as Record<string, unknown>)).toEqual({
+    width: 10, shadowColor: "#000", shadowOffset: { width: 1, height: 2 }, shadowOpacity: 0.5, shadowRadius: 4, borderRadius: 3,
+  });
+  // The caller's style is not changed.
+  expect((style[0] as Record<string, unknown>).elevation).toBe(6);
+});
+
+test("the native event handlers: load, progress and error always, display only when the caller asks for it", () => {
+  const log: string[] = [];
+  expect(Object.keys(expoImageHandlers({}))).toEqual(["onLoadStart", "onLoad", "onProgress", "onError"]);
+  const handlers = expoImageHandlers({ onLoad: () => log.push("load"), onLoadEnd: () => log.push("end"), onDisplay: () => log.push("display") });
+  expect(Object.keys(handlers)).toEqual(["onLoadStart", "onLoad", "onProgress", "onError", "onDisplay"]);
+  handlers.onLoad?.({ nativeEvent: {} });
+  handlers.onDisplay?.({ nativeEvent: {} });
+  expect(log).toEqual(["load", "end", "display"]);
 });

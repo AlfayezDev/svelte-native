@@ -20,10 +20,39 @@ test("compiled acceptance fixture has host tags and no component calls", () => {
   expect(code(source)).toMatch(/\bView\(/);
 });
 
-test("nested, self-closing, aliases, spreads, bind:this, class and id", () => {
+test("nested, self-closing, aliases, bind:this, class and id", () => {
   const header = `<script>\n  import { View as V, Image, ActivityIndicator } from "@rasheed/svelte-native";\n</script>\n`;
-  expect(run(`<V {...rest} bind:this={el} class="a" id="b" testID="c" ref={fn}><V /></V>\n<Image source={s} />\n<ActivityIndicator\n  size="large"\n/>`, header))
-    .toBe(`<native-view {...rest} bind:this={el} class="a" id="b" testID="c" ref={fn}><native-view ></native-view></native-view>\n<native-image source={s} ></native-image>\n<native-spinner\n  size="large"\n></native-spinner>`);
+  expect(run(`<V bind:this={el} class="a" id="b" testID="c" ref={fn}><V /></V>\n<Image source={s} />\n<ActivityIndicator\n  size="large"\n/>`, header))
+    .toBe(`<native-view bind:this={el} class="a" id="b" testID="c" ref={fn}><native-view ></native-view></native-view>\n<native-image source={s} ></native-image>\n<native-spinner\n  size="large"\n></native-spinner>`);
+});
+
+const helperImport = (names: string) => `import { ${names} } from "@rasheed/svelte-native/renderer";`;
+
+test("spreads: the spread and the attributes beside it are wrapped, so a function-valued ref survives Svelte's set_attributes", () => {
+  const source = `${imp}<View {...rest} bind:this={el} class="a" id="b" testID="c" ref={fn} onLayout={go} style={s} width={3} animated={a.b} {shorthand} {...(on ? p : q)}><View /></View>\n<Image source={s} />`;
+  const out = lowerPrimitives(source, { filename: "s.svelte", warn: () => {} });
+  // One import, on the line of the opening tag: no line below moves.
+  expect(out.startsWith(`<script> ${helperImport("hostSpread as __svelteNativeSpread, hostValue as __svelteNativeValue")}\n`)).toBe(true);
+  expect(out.split("\n")).toHaveLength(source.split("\n").length);
+  expect(out.slice(out.indexOf("<native-view"))).toBe(
+    `<native-view {...__svelteNativeSpread(rest)} bind:this={el} class="a" id="b" testID="c" ref={__svelteNativeValue(fn)} onLayout={go} nativeStyle={s} width={3} animated={__svelteNativeValue(a.b)} shorthand={__svelteNativeValue(shorthand)} {...(__svelteNativeSpread(on ? p : q))}><native-view ></native-view></native-view>\n<native-image source={s} ></native-image>`,
+  );
+});
+
+test("no spread, no helper and no import; a component that stays a component keeps its spread", () => {
+  const plain = run(`<View ref={fn} {x} testID="a" />`);
+  expect(plain).toBe(`<native-view ref={fn} {x} testID="a" ></native-view>`);
+  expect(lowerPrimitives(`${imp}<View ref={fn} />`, { warn: () => {} })).not.toContain("renderer");
+  const stays = run(`<TextInput {...rest} />`);
+  expect(stays).toBe(`<TextInput {...rest} />`);
+  expect(lowerPrimitives(`${imp}<TextInput {...rest} />`, { warn: () => {} })).toBe(`${imp}<TextInput {...rest} />`);
+});
+
+test("the helper import goes into a module script when the file has no instance script", () => {
+  const source = `<script module lang="ts">\n  import { View } from "@rasheed/svelte-native";\n  export const probe = () => ({ ref: () => {} });\n</script>\n<View {...probe()} />`;
+  const out = lowerPrimitives(source, { warn: () => {} });
+  expect(out.startsWith(`<script module lang="ts"> ${helperImport("hostSpread as __svelteNativeSpread")}\n`)).toBe(true);
+  expect(out).toContain("<native-view {...__svelteNativeSpread(probe())} ></native-view>");
 });
 
 test("every mapped primitive", () => {

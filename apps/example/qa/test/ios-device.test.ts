@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { execFile } from "node:child_process";
 import type { ExecOptions, ExecResult } from "../lib/exec.ts";
 import { appProcesses, launchApp, readAppFile } from "../lib/iphone/device.ts";
-import { macFrom, sshArgs, words, type Run } from "../lib/iphone/mac.ts";
+import { macFrom, remote, remoteOk, sshArgs, words, type Run } from "../lib/iphone/mac.ts";
 import { launchArguments } from "../lib/iphone/capture.ts";
 
 type Call = { command: string; args: string[]; options?: ExecOptions };
@@ -10,7 +11,9 @@ function recorder(answers: ExecResult[]): { run: Run; calls: Call[] } {
 	const calls: Call[] = [];
 	const run: Run = async (command, args, options) => {
 		calls.push({ command, args, ...(options ? { options } : {}) });
-		return answers.shift() ?? { code: 0, stdout: "", stderr: "" };
+		// As the Mac answers: ssh exits 0 whatever happened, the command's status is the line the wrapper prints last.
+		const answer = answers.shift() ?? { code: 0, stdout: "", stderr: "" };
+		return { code: 0, stdout: `${answer.stdout}\n__native_qa_status=${answer.code}\n`, stderr: answer.stderr };
 	};
 	return { run, calls };
 }
@@ -25,7 +28,33 @@ describe("the Mac transport", () => {
 		expect(args).toContain("BatchMode=yes");
 		expect(args).toContain("ControlMaster=auto");
 		expect(args[args.length - 2]).toBe("me@mac");
-		expect(args[args.length - 1]).toBe("export PATH=/usr/bin:/bin:/usr/sbin:/sbin:$PATH; echo hi");
+		expect(args[args.length - 1]).toBe("export PATH=/usr/bin:/bin:/usr/sbin:/sbin:$PATH; (\necho hi\n); printf '\\n__native_qa_status=%d\\n' $?");
+	});
+
+	test("the exit status comes from the status line, because the Mac's ssh answers 0 for a failed command", async () => {
+		const answering = (stdout: string, code = 0) => macFrom("me@mac", async () => ({ code, stdout, stderr: "" }));
+		const failed = await remote(answering("partial\n\n__native_qa_status=3\n"), "false");
+		expect(failed.code).toBe(3);
+		expect(failed.stdout).toBe("partial\n");
+		const passed = await remote(answering("out\n__native_qa_status=0\n"), "true");
+		expect(passed).toEqual({ code: 0, stdout: "out", stderr: "" });
+		await expect(remoteOk(answering("\n__native_qa_status=1\n"), "false")).rejects.toThrow("exited with 1");
+		// No status line: ssh failed (its own code stands) or the run was cut off (a 0 is not believed).
+		expect((await remote(answering("", 255), "true")).code).toBe(255);
+		expect((await remote(answering("cut off"), "true")).code).toBe(255);
+	});
+
+	test("the wrapped command reports its real status through a real shell, an exit inside it included", async () => {
+		const shell = macFrom("me@mac", (_command, args) =>
+			new Promise((resolve) =>
+				execFile("/bin/sh", ["-c", args[args.length - 1] ?? ""], (error, stdout, stderr) =>
+					resolve({ code: error ? (typeof error.code === "number" ? error.code : 1) : 0, stdout, stderr }),
+				),
+			),
+		);
+		expect((await remote(shell, "echo a; exit 3")).code).toBe(3);
+		expect(await remote(shell, "printf done")).toEqual({ code: 0, stdout: "done", stderr: "" });
+		expect((await remote(shell, "false && echo no")).code).toBe(1);
 	});
 
 	test("the Mac must be named, by flag or environment", () => {

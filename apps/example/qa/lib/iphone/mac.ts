@@ -36,15 +36,30 @@ const sshOptions = [
 
 const remotePath = "export PATH=/usr/bin:/bin:/usr/sbin:/sbin:$PATH";
 
+/**
+ * The line the remote shell prints last, with the command's exit status. ssh's own status cannot be trusted: the Mac's sshd runs
+ * commands under `/usr/bin/login`, which exits 0 whatever the command did, so `ssh mac 'exit 3'` answers 0 there.
+ */
+const statusMarker = "__native_qa_status=";
+
+/** The command runs in a subshell, so an `exit` in it ends only the subshell and the status line still follows. */
 export function sshArgs(mac: Mac, command: string): string[] {
-	return [...sshOptions, mac.target, `${remotePath}; ${command}`];
+	return [...sshOptions, mac.target, `${remotePath}; (\n${command}\n); printf '\\n${statusMarker}%d\\n' $?`];
 }
 
 /** A command line for the remote shell: each word quoted. */
 export const words = (parts: readonly string[]): string => parts.map(shellQuote).join(" ");
 
-export function remote(mac: Mac, command: string, options: ExecOptions = {}): Promise<ExecResult> {
-	return mac.run("ssh", sshArgs(mac, command), options);
+/** The command's own status from the status line, which is removed from the output. Without the line (ssh failed, or the run was cut off), a 0 from ssh is not believed. */
+export function remoteStatus(result: ExecResult): ExecResult {
+	const at = result.stdout.lastIndexOf(`\n${statusMarker}`);
+	if (at < 0) return result.code === 0 ? { ...result, code: 255, stderr: `${result.stderr}${result.stderr ? "\n" : ""}the Mac sent no exit status` } : result;
+	const code = Number.parseInt(result.stdout.slice(at + 1 + statusMarker.length), 10);
+	return { ...result, code: Number.isNaN(code) ? 255 : code, stdout: result.stdout.slice(0, at) };
+}
+
+export async function remote(mac: Mac, command: string, options: ExecOptions = {}): Promise<ExecResult> {
+	return remoteStatus(await mac.run("ssh", sshArgs(mac, command), options));
 }
 
 export async function remoteOk(mac: Mac, command: string, options: ExecOptions = {}): Promise<string> {

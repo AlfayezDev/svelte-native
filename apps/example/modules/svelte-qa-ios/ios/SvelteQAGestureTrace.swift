@@ -130,6 +130,11 @@ final class SvelteQAGestureTrace {
         current = item.superview
       }
       hit = parts.joined(separator: " < ")
+      // Where the hit view is and whether it takes touches: a view that covers the screen shows here.
+      if view.window != nil {
+        let frame = view.convert(view.bounds, to: nil)
+        hit += " @\([frame.minX, frame.minY, frame.width, frame.height].map { Int($0.rounded()) }) interaction=\(view.isUserInteractionEnabled) alpha=\(view.alpha) hidden=\(view.isHidden)"
+      }
     }
     touches.append([Self.wallMs(), phase, (location.x * 10).rounded() / 10, (location.y * 10).rounded() / 10, hit])
     dirty = true

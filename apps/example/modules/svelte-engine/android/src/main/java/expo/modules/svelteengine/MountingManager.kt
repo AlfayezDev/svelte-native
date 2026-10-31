@@ -249,7 +249,6 @@ class MountingManager(context: Context) {
   private fun apply(surfaceId: Int, ops: IntArray, strings: Array<String>, objects: Array<Any?>) {
     if (pool.hasHeld) pool.sweep()
     BootBoost.release() // the first screen is being mounted: the start-up threads get their cores back
-    boost.begin(ops.size) // a large batch (a push) and the frames that draw it run on the big cores
     Trace.beginSection("SvelteEngine.mount")
     val t0 = System.nanoTime()
     var decodeNs = 0L
@@ -478,7 +477,10 @@ class MountingManager(context: Context) {
       KIND_PROGRESS -> EngineSpinner(appContext, p.views.spinnerStyle)
       KIND_IMAGE -> EngineImage(appContext)
       KIND_STACK -> EngineStack(appContext)
-      KIND_SCREEN -> if (p.nav.presentation >= 3) EngineSheet(appContext) else EngineScreen(appContext)
+      KIND_SCREEN -> {
+        boost.begin() // a screen is pushed: its mount and the frames that draw it run on the big cores
+        if (p.nav.presentation >= 3) EngineSheet(appContext) else EngineScreen(appContext)
+      }
       KIND_HEADER -> EngineHeader(appContext)
       KIND_HEADER_SLOT -> EngineHeaderSlot(appContext)
       KIND_TABS -> EngineTabs(appContext)

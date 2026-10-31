@@ -95,25 +95,51 @@ describe("anchors and paths", () => {
 describe("what a pinch and a rotation report", () => {
 	const input: Input = { kind: "twoFinger", at: { target: "box", fx: 0.5, fy: 0.5 }, distance: [80, 240], angle: [0, 40], durationMs: 600 };
 	const path = pxPath(input, rects, 2.625);
-	const frames = (periodMs: number) => Array.from({ length: Math.floor(600 / periodMs) + 1 }, (_, index) => index * periodMs).concat([600]);
+	const slop = 8 * 2.625;
+	// Event times of the in-app injector: one per frame from the first pointer's DOWN at 0; the second pointer goes down at the first frame from SECOND_POINTER_MS on.
+	const frames = (periodMs: number) => [...Array.from({ length: Math.ceil(600 / periodMs) }, (_, index) => index * periodMs), 600];
 
-	test("the span slop is not counted: 3x injected reads below 3", () => {
-		const slop = 8 * 2.625;
+	// react-native-gesture-handler 2.32.0 counts from where each handler activates, not from where the fingers went down:
+	// `ScaleGestureDetector` begins after the span moved 2 touch slops, `PinchGestureHandler` activates one more slop later and
+	// `activate()` resets `scale` to 1; `RotationGestureHandler` activates at 5 degrees and resets `rotation` to 0. Measured on the
+	// OVH emulator (frames of 16.7 ms, 8 dp slop at 2.625): scale 2.211 and rotation 34 degrees for a 3x spread through 40 degrees.
+	test("scale counts from the pinch's activation (two slops to begin, one more to activate), rotation from 5 degrees", () => {
 		const expected = expectedTwoFinger(path, frames(16.67), slop);
-		expect(expected.scale).toBeGreaterThan(2.0);
-		expect(expected.scale < 2.8).toBe(true);
-		expect(expected.spanBegin > 80 * 2.625 + 2 * slop).toBe(true);
-		expect(expected.rotationDeg).toBeCloseTo(40, 1);
+		expect(Math.abs(expected.scale / 2.211 - 1) < 0.05).toBe(true);
+		expect(Math.abs(expected.rotationDeg - 34) < 3).toBe(true);
+		// The pinch activated three slops (21 px each) after the fingers' first span of 210 px, give or take a frame of travel.
+		expect(expected.pinchSpan).toBeGreaterThan(80 * 2.625 + 3 * slop);
+		expect(expected.pinchSpan < 80 * 2.625 + 3 * slop + 2 * 12.4).toBe(true);
+		expect(expected.rotationFromDeg >= 5).toBe(true);
+		expect(expected.rotationFromDeg < 5 + 1.3).toBe(true);
 	});
 
-	test("without a slop the whole spread counts", () => {
+	test("finer or coarser frames move the activation by a frame and nothing else", () => {
+		for (const period of [8, 33.3]) {
+			const expected = expectedTwoFinger(path, frames(period), slop);
+			expect(expected.scale).toBeGreaterThan(2.0);
+			expect(expected.scale < 2.6).toBe(true);
+			expect(expected.rotationDeg).toBeGreaterThan(30);
+			expect(expected.rotationDeg < 38).toBe(true);
+		}
+	});
+
+	test("without a slop the pinch activates on the second move; the rotation still waits for its 5 degrees", () => {
 		const expected = expectedTwoFinger(path, frames(16.67), 0);
-		expect(expected.scale).toBeCloseTo(2.97, 1);
-		expect(expected.rotationDeg).toBeCloseTo(40, 1);
+		expect(expected.scale).toBeGreaterThan(2.5);
+		expect(expected.scale < 2.9).toBe(true);
+		expect(expected.rotationDeg).toBeGreaterThan(32);
+		expect(expected.rotationDeg < 36).toBe(true);
 	});
 
-	test("a slop larger than the spread means no scaling began", () => {
-		expect(expectedTwoFinger(path, frames(16.67), 10_000).scale).toBe(1);
+	test("a slop larger than the spread means no pinch activated", () => {
+		const expected = expectedTwoFinger(path, frames(16.67), 10_000);
+		expect(expected.scale).toBe(1);
+	});
+
+	test("a rotation under 5 degrees never activates", () => {
+		const small = pxPath({ ...input, angle: [0, 4] }, rects, 2.625);
+		expect(expectedTwoFinger(small, frames(16.67), slop).rotationDeg).toBe(0);
 	});
 });
 

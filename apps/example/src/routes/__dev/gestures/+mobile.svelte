@@ -64,14 +64,22 @@
       target.measureInWindow((x, y, width, height) => { clearTimeout(timer); resolve({ x: x * density, y: y * density, w: width * density, h: height * density }); });
     });
   }
+  /** The part of [rect] that is on the screen: a step aims at its centre or a fraction of it, and a view taller than the screen (a sheet's list at its lower detent) must not be aimed below it. */
+  function onScreen(rect: Rect, screen: Rect): Rect {
+    const left = Math.max(rect.x, screen.x);
+    const top = Math.max(rect.y, screen.y);
+    const right = Math.min(rect.x + rect.w, screen.x + screen.w);
+    const bottom = Math.min(rect.y + rect.h, screen.y + screen.h);
+    return right > left && bottom > top ? { x: left, y: top, w: right - left, h: bottom - top } : rect;
+  }
   async function measure(): Promise<{ rects: Rects; screen: Rect }> {
     const measured = await Promise.all(Object.entries(handles).map(async ([name, handle]) => [name, await measureOne(handle)] as const));
     const shift = sheetShift();
-    const rects: Rects = {};
-    for (const [name, rect] of measured) if (rect) rects[name] = { ...rect, y: rect.y + shift };
     const frame = insets.frame;
     const window = Dimensions.get("window");
     const screen = frame.width > 0 ? { x: frame.x * density, y: frame.y * density, w: frame.width * density, h: frame.height * density } : { x: 0, y: 0, w: window.width * density, h: window.height * density };
+    const rects: Rects = {};
+    for (const [name, rect] of measured) if (rect) rects[name] = onScreen({ ...rect, y: rect.y + shift }, screen);
     return { rects, screen };
   }
 

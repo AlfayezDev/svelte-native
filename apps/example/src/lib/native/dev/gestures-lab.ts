@@ -110,27 +110,62 @@ export function sampleAt(waypoints: readonly [number, number, number][], t: numb
   return { x: last[1], y: last[2] };
 }
 
+/** `RotationGestureHandler.ROTATION_RECOGNITION_THRESHOLD`: 5 degrees. */
+const ROTATION_ACTIVATION_DEG = 5;
+
 /**
- * What a pinch and a rotation report for a two finger input that was delivered at `frameTimesMs`. Android's `ScaleGestureDetector`
- * (react-native-gesture-handler's `PinchGestureHandler` multiplies its factors) starts counting when the span has moved more than twice the
- * touch slop from where the second pointer went down, so a spread from `a` to `b` reads `b / (a + 2 slop)`, not `b / a`; the rotation
- * detector counts from the first move. `touchSlopPx` comes from the injector (`ViewConfiguration.getScaledTouchSlop`).
+ * What a pinch and a rotation report for a two finger input that was delivered as one event per entry of `frameTimesMs` (the
+ * injector's event times: the first pointer goes down at the first, the second at the first from `SECOND_POINTER_MS` on, and every
+ * later event is a MOVE of both). The model is react-native-gesture-handler 2.32.0's Android handlers, which count from where they
+ * activate, not from where the fingers went down:
+ *
+ * - `ScaleGestureDetector` takes the span at the second pointer's DOWN as its initial span and begins at the first MOVE whose span
+ *   differs from it by more than twice the touch slop (`mSpanSlop`); the begin event reports a factor of 1.
+ * - `PinchGestureHandler.onScale` activates at the first later MOVE whose span is a touch slop (`spanSlop`) away from the span at
+ *   the begin, and `activate()` calls `resetProgress()`: `scale` is 1 again there, so the reported scale is the end span over the
+ *   span at activation.
+ * - `RotationGestureDetector` takes the angle of the first MOVE after the second DOWN as its zero (its `previousAngle` is NaN
+ *   until then); `RotationGestureHandler.onRotation` activates once the accumulated rotation reaches 5 degrees and `activate()`
+ *   resets `rotation` to 0, so the reported rotation is the end angle minus the angle at activation.
+ *
+ * A handler that never activates reports nothing: scale 1, rotation 0. `touchSlopPx` comes from the injector
+ * (`ViewConfiguration.getScaledTouchSlop`). `pinchSpan` is the span the pinch activated at, `rotationFromDeg` the rotation
+ * accumulated when the rotation activated (both for tests and for the log).
  */
-export function expectedTwoFinger(path: PxPath, frameTimesMs: readonly number[], touchSlopPx: number): { scale: number; rotationDeg: number; spanBegin: number } {
+export function expectedTwoFinger(path: PxPath, frameTimesMs: readonly number[], touchSlopPx: number): { scale: number; rotationDeg: number; pinchSpan: number; rotationFromDeg: number } {
   const [a, b] = path.pointers;
   if (!a || !b) throw new Error("a two finger input has two pointers");
-  const times = frameTimesMs.filter((t) => t >= SECOND_POINTER_MS);
   const spanAndAngle = (t: number) => {
     const p = sampleAt(a.waypoints, t);
     const q = sampleAt(b.waypoints, t);
     return { span: Math.hypot(q.x - p.x, q.y - p.y), angle: (Math.atan2(q.y - p.y, q.x - p.x) * 180) / Math.PI };
   };
-  const start = spanAndAngle(SECOND_POINTER_MS);
-  const samples = times.map(spanAndAngle);
-  const end = samples[samples.length - 1] ?? spanAndAngle(path.durationMs);
-  const begin = samples.find((sample) => Math.abs(sample.span - start.span) > 2 * touchSlopPx);
-  const spanBegin = begin?.span ?? end.span;
-  return { scale: end.span / spanBegin, rotationDeg: end.angle - start.angle, spanBegin };
+  const secondDown = frameTimesMs.findIndex((t) => t >= SECOND_POINTER_MS);
+  const moves = secondDown < 0 ? [] : frameTimesMs.slice(secondDown + 1).map(spanAndAngle);
+  const initialSpan = spanAndAngle(frameTimesMs[secondDown] ?? SECOND_POINTER_MS).span;
+  const end = moves[moves.length - 1] ?? spanAndAngle(path.durationMs);
+
+  let began: number | null = null;
+  let pinchSpan: number | null = null;
+  for (const { span } of moves) {
+    if (began === null) { if (Math.abs(span - initialSpan) > 2 * touchSlopPx) began = span; continue; }
+    if (Math.abs(span - began) >= touchSlopPx) { pinchSpan = span; break; }
+  }
+
+  const baseline = moves[0]?.angle;
+  let rotationFrom: number | null = null;
+  let rotationAngle = 0;
+  if (baseline !== undefined) {
+    for (const { angle } of moves.slice(1)) {
+      if (Math.abs(angle - baseline) >= ROTATION_ACTIVATION_DEG) { rotationFrom = angle - baseline; rotationAngle = angle; break; }
+    }
+  }
+  return {
+    scale: pinchSpan === null ? 1 : end.span / pinchSpan,
+    rotationDeg: rotationFrom === null ? 0 : end.angle - rotationAngle,
+    pinchSpan: pinchSpan ?? 0,
+    rotationFromDeg: rotationFrom ?? 0,
+  };
 }
 
 /* ---- counters, marks and the session ---- */
@@ -211,6 +246,24 @@ const check = (name: string, ok: boolean, value?: string | number): Check => ({ 
 /* ---- the scenarios ---- */
 
 const BOX_DRAG: [number, number] = [160, 96];
+
+/**
+ * A drag that moves the sheet from one of its detents to the other. The sheet settles at the detent nearest to where the finger
+ * lets go (a fling over 1000 dp/s goes one further), and its drag starts after a touch slop, so the finger has to cover more than
+ * half the distance between the detents plus the slop. The detents are 0.4 and 0.9 of the height below the status bar: 433 dp on
+ * the emulator's 914 dp screen and 308 dp on a 640 dp phone. 330 dp is past half of the first and short of a fling in 400 ms
+ * (825 dp/s); the sheet ignores the part of the drag beyond its top.
+ */
+const SHEET_DRAG = 330;
+
+/**
+ * The 30 degree swipe of the carousel. The pager's Pan has `activeOffsetX(10)` and `failOffsetY(10)`; RNGH's `PanGestureHandler`
+ * checks `shouldFail` before `shouldActivate`, so a single move that carries the finger past both (more than 17.3 dp across at
+ * 30 degrees, when the vertical travel passes 10) fails the pan and the list scrolls. Between the two the finger needs one event
+ * in 10 to 17.3 dp across: a flick of 190 dp in 300 ms moves 10.6 dp across per frame and misses that window one time in three.
+ * 600 ms (5.3 dp across per 16.7 ms frame) always lands an event in it, and is still a swipe, not a drag.
+ */
+const DIAGONAL_MS = 600;
 
 function boxRound(): Round {
   return {
@@ -419,7 +472,7 @@ export const scenarios: ScenarioSpec[] = [
       id: "carousel",
       steps: [
         step("horizontal swipe", drag(at("pager", 0.85, 0.5), [-220, 0], 300), (s) => counterOf(s, "pager").finalize >= 1, 700),
-        step("diagonal swipe, 30 degrees", drag(at("pager", 0.85, 0.5), [-190, -110], 300), (s) => counterOf(s, "pager").finalize >= 2, 700),
+        step("diagonal swipe, 30 degrees", drag(at("pager", 0.85, 0.5), [-190, -110], DIAGONAL_MS), (s) => counterOf(s, "pager").finalize >= 2, 700),
         step("vertical swipe", drag(at("pager"), [0, -240], 400), (s) => counterOf(s, "pager").finalize >= 3, 1000),
       ],
     }],
@@ -438,9 +491,9 @@ export const scenarios: ScenarioSpec[] = [
     rounds: [{
       id: "sheet",
       steps: [
-        step("drag the grabber up", drag(at("grabber"), [0, -220], 400), marked("detentChanges", 1), 900),
+        step("drag the grabber up", drag(at("grabber"), [0, -SHEET_DRAG], 400), marked("detentChanges", 1), 900),
         step("scroll the content", drag(at("scroll", 0.5, 0.7), [0, -260], 400), (s) => (s.marks.scrollY ?? 0) > 100, 900, 5000),
-        step("drag the default pan down", drag(at("boxDefault"), [0, 180], 400), marked("detentChanges", 2), 900, 5000),
+        step("drag the default pan down", drag(at("boxDefault"), [0, SHEET_DRAG], 400), marked("detentChanges", 2), 900, 5000),
         step("drag the [-4, 4] pan up", drag(at("boxFast"), [0, -120], 400), finalized("boxFast"), 900, 5000),
       ],
     }],

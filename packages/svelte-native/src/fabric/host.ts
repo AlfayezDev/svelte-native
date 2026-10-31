@@ -74,6 +74,12 @@ export type HostHandle = {
   measure(callback: (x: number, y: number, width: number, height: number, pageX: number, pageY: number) => void): void;
   measureInWindow(callback: (x: number, y: number, width: number, height: number) => void): void;
   dispatchCommand(name: string, args?: unknown[]): void;
+  /**
+   * Where the element is in the document: the index among the siblings at each level, from the root down. Two positions compare as the
+   * elements do in the document (the first index that differs decides), which is how a component that has no native view tells which of
+   * its kind comes first (`components/svg/registry.ts`). Read when asked, from the tree as it is then.
+   */
+  position(): number[];
   /** `scrollTo`, `scrollToEnd`, `focus`, `blur` and `setNativeProps` keep React Native's instance signatures. */
   scrollTo(options?: { x?: number; y?: number; animated?: boolean } | number, deprecatedY?: number, deprecatedAnimated?: boolean): void;
   scrollToEnd(options?: { animated?: boolean }): void;
@@ -243,9 +249,18 @@ function nativeProps(node: NativeNode): Record<string, unknown> {
 }
 
 /** `ref` for a Fabric element: the shadow node handle is read at call time, so it is always the latest committed clone. */
-function handleFor(current: State): HostHandle {
+function handleFor(current: State, node: NativeNode | null = null): HostHandle {
   return {
     tag: current.tag,
+    position: () => {
+      const path: number[] = [];
+      for (let at = node; at?.parent; at = at.parent) {
+        let index = 0;
+        for (let before = at.previousSibling; before; before = before.previousSibling) index++;
+        path.push(index);
+      }
+      return path.reverse();
+    },
     measure: (callback) => { if (current.node) binding?.measure?.(current.node, callback); },
     measureInWindow: (callback) => { if (current.node) binding?.measureInWindow?.(current.node, callback); },
     // Engine views take their commands from the engine; a foreign view's view is React Native's, so its commands go through Fabric.
@@ -373,6 +388,14 @@ function buildSpan(child: NativeNode, rootTag: number, text: ForeignText): Fabri
 function build(node: NativeNode, rootTag: number, insideText: boolean, insideForeign = false): FabricNode | null {
   if (!binding) throw new Error("nativeFabricUIManager is not installed");
   if (node.kind === "comment" || node.kind === "fragment") return null;
+  // A place in the tree with no view (`Stop`, `FeMergeNode`): only its `ref` is served.
+  if (node.name === "native-anchor") {
+    const current = state(node, node.name);
+    current.propsDirty = false;
+    current.childrenDirty = false;
+    callRef(current, node, node.getProp("ref"));
+    return null;
+  }
   if (node.kind === "text") {
     const text = node.textValue;
     if (!insideText) return null; // bare text outside a Text is not renderable, as in React Native
@@ -475,11 +498,15 @@ function build(node: NativeNode, rootTag: number, insideText: boolean, insideFor
   current.lone = lone !== null;
   current.propsDirty = false;
   current.childrenDirty = false;
-  if (attributes.ref !== current.ref) {
-    current.ref = attributes.ref;
-    if (typeof attributes.ref === "function") (attributes.ref as (handle: HostHandle) => void)(handleFor(current));
-  }
+  callRef(current, node, attributes.ref);
   return current.node;
+}
+
+/** Hands the `ref` callback its handle when the attribute is new. */
+function callRef(current: State, node: NativeNode, ref: unknown): void {
+  if (ref === current.ref) return;
+  current.ref = ref;
+  if (typeof ref === "function") (ref as (handle: HostHandle) => void)(handleFor(current, node));
 }
 
 /** The scroll content container keeps `collapsable: false`, as React Native's ScrollView does, so Fabric never flattens it into the ScrollView. */
@@ -564,7 +591,7 @@ function pressabilityFor(node: NativeNode): ResponderHandlers | undefined {
     if (press) { press.reset(); pressabilities.delete(node); }
     return undefined;
   }
-  if (!press) { press = new Pressability({}, (callback) => handleFor(own).measure(callback)); pressabilities.set(node, press); }
+  if (!press) { press = new Pressability({}, (callback) => handleFor(own, node).measure(callback)); pressabilities.set(node, press); }
   const { handlers, props } = own;
   press.configure({
     ...(props as PressabilityConfig),

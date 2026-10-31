@@ -158,6 +158,38 @@ test("the nodes of a merge are read again as well", async () => {
   expect(nodes("RNSVGFeMerge")[0]?.props.nodes).toEqual(["a", "b"]);
 });
 
+test("a merge node or a stop that arrives late lands at its place in the document, not last", async () => {
+  const harness = await svgHarness("android");
+  const order = await harness.load("svg-order-fixture.svelte") as SvgLoaded;
+  const surface = order.startSurface(142, order.Fixture, {}) as { set(values: { middle?: boolean; first?: boolean }): void };
+  const tree = () => harness.roots()[142] ?? [];
+  const merge = () => find(tree(), "RNSVGFeMerge")[0]?.props.nodes;
+  const line = () => find(tree(), "RNSVGLinearGradient")[0]?.props.gradient;
+  const round = () => find(tree(), "RNSVGRadialGradient")[0]?.props.gradient;
+  const [red, green, blue] = [-65536, -16711936, -16776961];
+  expect(merge()).toEqual(["a", "c"]);
+  expect(line()).toEqual([0, red, 0, blue]);
+  expect(round()).toEqual([1, red, 1, blue]);
+  // In the middle of the merge, and between two stops of one offset (the sort by offset keeps the document order of equal ones).
+  surface.set({ middle: true });
+  await settle(order);
+  await settle(order);
+  expect(merge()).toEqual(["a", "b", "c"]);
+  expect(line()).toEqual([0, red, 0, green, 0, blue]);
+  // At the front of both.
+  surface.set({ first: true });
+  await settle(order);
+  await settle(order);
+  expect(merge()).toEqual(["z", "a", "b", "c"]);
+  expect(round()).toEqual([1, green, 1, red, 1, blue]);
+  surface.set({ middle: false, first: false });
+  await settle(order);
+  await settle(order);
+  expect(merge()).toEqual(["a", "c"]);
+  expect(line()).toEqual([0, red, 0, blue]);
+  expect(round()).toEqual([1, red, 1, blue]);
+});
+
 test("a tag that changes in place replaces the component", async () => {
   await show({ tag: "rect", props: { width: 3, height: 3 } });
   expect(nodes("RNSVGRect").length).toBe(1);

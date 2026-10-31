@@ -204,15 +204,20 @@ describe("metrics and gates", () => {
 	});
 });
 
-/** The module ids smoke.ts reports, from its source: the file needs React Native to load, so the test reads it. */
-const smokeSource = readFileSync(join(platformDir, "src/lib/native/dev/smoke.ts"), "utf8");
+/** The module ids the checks report, from their source: the file needs React Native to load, so the test reads it. */
+const smokeSource = readFileSync(join(platformDir, "src/lib/native/dev/smoke-checks.ts"), "utf8");
 const checked = [...smokeSource.matchAll(/^\t\tmodule: "([a-z0-9-]+)"/gm)].map((match) => match[1] as string);
+/** The ids the runner and the page list (`smokeModules` in smoke.ts). */
+const runnerSource = readFileSync(join(platformDir, "src/lib/native/dev/smoke.ts"), "utf8");
+const listed = [...(/export const smokeModules: readonly string\[\] = \[([^\]]*)\]/.exec(runnerSource)?.[1] ?? "").matchAll(/"([a-z0-9-]+)"/g)].map((match) => match[1] as string);
 const table = JSON.parse(readFileSync(join(platformDir, "qa/smoke-modules.json"), "utf8")) as { modules: { id: string; packages: string[]; link: string; shared: boolean; platforms: string[] }[] };
 const packageJson = JSON.parse(readFileSync(join(platformDir, "package.json"), "utf8")) as { dependencies: Record<string, string>; devDependencies: Record<string, string> };
 
 describe("the pinned list, the module table and the checks agree", () => {
 	test("gates.json pins exactly the modules the page checks, for both platforms, in the order they run", () => {
 		expect(checked).toHaveLength(36);
+		// The runner lists the ids itself, so the page can show them without carrying the checks (Metro stubs smoke-checks.ts outside the smoke app).
+		expect(listed).toEqual(checked);
 		expect(gatesFile.smoke.modules.android).toEqual(checked);
 		expect(gatesFile.smoke.modules.ios).toEqual(checked);
 	});

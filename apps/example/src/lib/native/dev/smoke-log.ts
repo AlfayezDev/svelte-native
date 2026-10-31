@@ -5,6 +5,9 @@
  * the harness's tests load this file.
  */
 export type SmokeStatus = "ok" | "fail" | "skip";
+export type Os = "android" | "ios";
+/** The name of the error a check throws to say it does not apply (`skip` in smoke-checks.ts): tagged by name, not by class, because `instanceof` on a transpiled Error subclass is not dependable. */
+export const skipName = "SmokeSkip";
 /** `js`: the library's own JavaScript API. `direct`: its TurboModule or NativeModule by name, because its JavaScript needs React or reaches another module. `js+direct`: both. `none`: nothing ran (a skip). */
 export type SmokePath = "js" | "direct" | "js+direct" | "none";
 

@@ -5,4 +5,11 @@ const { modules } = require("./smoke-modules.json");
 
 const smokeOnlyPackages = [...new Set(modules.filter((entry) => !entry.shared && entry.link !== "js").flatMap((entry) => entry.packages))];
 
-module.exports = { modules, smokeOnlyPackages };
+/**
+ * The packages the product and the QA app's JavaScript bundles must not carry: the ones above, and the JavaScript-only ones (Statsig:
+ * no native code to leave out of autolinking, but 87 modules of its own and the whole `react-native` index its imports reach).
+ * Metro resolves them to a stub (metro.config.cjs).
+ */
+const smokeOnlyBundlePackages = [...new Set(modules.filter((entry) => !entry.shared).flatMap((entry) => entry.packages))];
+
+module.exports = { modules, smokeOnlyPackages, smokeOnlyBundlePackages };

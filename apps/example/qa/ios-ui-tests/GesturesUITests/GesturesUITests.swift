@@ -58,13 +58,14 @@ final class GesturesUITests: XCTestCase {
             performed.insert(key)
             var failure: String? = nil
             let began = Date()
+            aimed = [:]
             do {
                 try perform(input, in: app)
             } catch {
                 failure = "\(error)"
                 XCTFail("\(key): \(error)")
             }
-            Self.report(ready, input: input, error: failure, from: began, to: Date())
+            Self.report(ready, input: input, error: failure, from: began, to: Date(), aimedLast: aimed)
         }
         XCTAssertLessThan(Date(), deadline, "the lab did not finish within \(seconds) s")
     }
@@ -84,7 +85,7 @@ final class GesturesUITests: XCTestCase {
         return object
     }
 
-    private static func report(_ ready: [String: Any], input: [String: Any], error: String?, from began: Date, to ended: Date) {
+    private static func report(_ ready: [String: Any], input: [String: Any], error: String?, from began: Date, to ended: Date, aimedLast: [String: Any]) {
         var line: [String: Any] = [
             "scenario": ready["scenario"] ?? "", "round": ready["round"] ?? 0, "step": ready["step"] ?? 0,
             "kind": input["kind"] ?? "",
@@ -92,6 +93,7 @@ final class GesturesUITests: XCTestCase {
             "beganMs": (began.timeIntervalSince1970 * 1000).rounded(), "endedMs": (ended.timeIntervalSince1970 * 1000).rounded(),
         ]
         if let error = error { line["error"] = error }
+        if !aimedLast.isEmpty { line["aimed"] = aimedLast }
         if let data = try? JSONSerialization.data(withJSONObject: line), let text = String(data: data, encoding: .utf8) {
             emit("GESTURES-ACTION \(text)")
         }
@@ -102,6 +104,9 @@ final class GesturesUITests: XCTestCase {
     private struct DriveError: Error, CustomStringConvertible {
         let description: String
     }
+
+    /// What the last input aimed at, for the action line: the element's frame, whether a view covers it, how many views have the identifier, and the screen points the finger went to.
+    private var aimed: [String: Any] = [:]
 
     private func number(_ value: Any?) -> CGFloat {
         if let n = value as? NSNumber { return CGFloat(truncating: n) }
@@ -116,8 +121,11 @@ final class GesturesUITests: XCTestCase {
     /// The coordinate of an anchor: a fraction of the named view's frame, then extra points.
     private func coordinate(_ anchor: Any?, in app: XCUIApplication) throws -> XCUICoordinate {
         guard let anchor = anchor as? [String: Any], let target = anchor["target"] as? String else { throw DriveError(description: "an input without an anchor") }
-        let element = app.descendants(matching: .any).matching(identifier: "gesture.\(target)").firstMatch
+        let matches = app.descendants(matching: .any).matching(identifier: "gesture.\(target)")
+        let element = matches.firstMatch
         guard element.waitForExistence(timeout: 5) else { throw DriveError(description: "no element with the identifier gesture.\(target)") }
+        let frame = element.frame
+        aimed = ["target": target, "matches": matches.count, "frame": [frame.minX, frame.minY, frame.width, frame.height].map { ($0 * 10).rounded() / 10 }, "hittable": element.isHittable, "window": [app.windows.firstMatch.frame.width, app.windows.firstMatch.frame.height]]
         let base = element.coordinate(withNormalizedOffset: CGVector(dx: number(anchor["fx"]), dy: number(anchor["fy"])))
         return base.withOffset(CGVector(dx: number(anchor["dx"]), dy: number(anchor["dy"])))
     }
@@ -132,6 +140,8 @@ final class GesturesUITests: XCTestCase {
             let duration = max(number(input["durationMs"]) / 1000, 0.05)
             let end = start.withOffset(CGVector(dx: dx, dy: dy))
             let speed = hypot(dx, dy) / duration
+            aimed["from"] = [start.screenPoint.x, start.screenPoint.y]
+            aimed["to"] = [end.screenPoint.x, end.screenPoint.y]
             start.press(forDuration: 0.05, thenDragTo: end, withVelocity: XCUIGestureVelocity(rawValue: speed), thenHoldForDuration: 0)
         case "hold":
             let start = try coordinate(input["at"], in: app)

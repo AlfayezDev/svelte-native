@@ -440,6 +440,14 @@
       const { frames, value } = await measure(() => runForeignViews(router, signal));
       return { verdict: value.passed ? "pass" : "fail", summary: `${value.summary} · ${describe(frames)}`, frames, detail: value.detail };
     } },
+    { name: "smoke", label: "Native modules (smoke test) · one core call for each library the production app links, from Svelte Native without React (`run=smoke`, SPEC.md \"Native modules (smoke test)\")", async run(signal) {
+      // Required here, not at the top: the libraries load when the scenario runs, and only the QA app links them.
+      const { runSmoke } = await import("./smoke.ts");
+      const results = await runSmoke(undefined, signal);
+      const failed = results.filter((result) => result.status === "fail");
+      const count = (status: string) => results.filter((result) => result.status === status).length;
+      return { verdict: failed.length === 0 ? "pass" : "fail", summary: `${count("ok")} ok · ${failed.length} fail · ${count("skip")} skip of ${results.length}${failed.length ? ` · failed: ${failed.map((result) => result.module).join(", ")}` : ""}`, detail: { results: results.map(({ module, status, path }) => ({ module, status, path })) } };
+    } },
     { name: "churn-60s", label: "Cleanup stress · 60 s animated churn", run: (signal) => animatedChurn(signal, 60000) },
     { name: "soak-120s", label: "Soak · 120 s animated churn with heap sampling", async run(signal) {
       const before = heapBytes();
@@ -523,7 +531,7 @@
       return { verdict: clean ? "info" : "fail", summary: `${cycle} cycles in ${((Date.now() - since) / 1000).toFixed(0)} s · ${created} tiles mounted / ${destroyed} destroyed · ${changesAfterDestroy} values changed after destruction · stack depth ${router.entries.length} (expected ${depth}) · cleanup ${clean ? "ok" : "FAILED"}`, detail: { cycles: cycle, created, destroyed, changesAfterDestroy, lateCompletions, cleanupFailures } };
     } },
   ];
-  const quick = scenarios.filter((scenario) => !["warm-up", "input-typing", "foreign-views", "churn-60s", "soak-120s", "soak-mix", "crash-js", "list-300-virtual-profile", "list-mount-loop"].includes(scenario.name));
+  const quick = scenarios.filter((scenario) => !["warm-up", "input-typing", "foreign-views", "smoke", "churn-60s", "soak-120s", "soak-mix", "crash-js", "list-300-virtual-profile", "list-mount-loop"].includes(scenario.name));
   const ordered = $derived(scenarios.flatMap((scenario) => results.filter((result) => result.name === scenario.name)));
 
   function record(result: Result) {

@@ -11,6 +11,7 @@
     "./elements": "./src/elements.d.ts",
     "./fabric": "./src/fabric/index.ts",
     "./foreign": "./src/foreign.ts",
+    "./native-modules": "./src/native-modules.ts",
     "./polyfills": "./src/polyfills.ts",
     "./metro": "./src/metro.ts",
     "./transformer": "./src/transformer.ts",

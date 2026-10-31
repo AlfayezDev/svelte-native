@@ -3,16 +3,21 @@ import UIKit
 /// A recording of what UIKit's gesture recognizers do while a person (or XCUITest) touches the screen: once per display frame, every recognizer
 /// in the app's windows that has a touch down or is not idle gets a row with its state, the number of touches it tracks, its pan translation and
 /// the touch's window position, and the context that decides arbitration is sampled beside it (the navigation controllers' depth and transition,
-/// the presented sheet's detent and where its view is). The harness (`native-qa gestures --platform ios --trace`) starts it with the launch
-/// argument `-SvelteQAGestureTrace YES`, reads `Documents/gesture-trace.json` after the run and answers questions that need a time line: how
+/// the presented sheet's detent and where its view is), and a passive recognizer on each window notes where every touch lands and which view the
+/// system hit-tested. The harness (`native-qa gestures --platform ios --trace`) starts it by writing `1` to `Documents/gesture-trace.on` before the
+/// launch (an app that XCUITest opens by link takes no launch arguments), or by the launch argument `-SvelteQAGestureTrace YES`; it reads `Documents/gesture-trace.json` after the run and answers questions that need a time line: how
 /// long a pan on a pushed screen waits for the edge swipe, and which of a sheet's drag and a handler's pan moves first. It only reads public
 /// state, never touches the screen, and exists in the QA bundle only. Sampling per frame is what it costs: runs that judge frame times do not use it.
 final class SvelteQAGestureTrace {
   static var shared: SvelteQAGestureTrace?
 
-  /// Whether this launch asked for the recording (the QA bundle and the argument).
+  /// Whether this launch asked for the recording (the QA bundle and the flag file or the argument).
   static var requested: Bool {
-    SvelteQA.enabled && UserDefaults.standard.bool(forKey: "SvelteQAGestureTrace")
+    guard SvelteQA.enabled else { return false }
+    if UserDefaults.standard.bool(forKey: "SvelteQAGestureTrace") { return true }
+    guard let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return false }
+    let flag = try? String(contentsOf: documents.appendingPathComponent("gesture-trace.on"), encoding: .utf8)
+    return flag?.trimmingCharacters(in: .whitespacesAndNewlines) == "1"
   }
 
   static func startIfRequested() {
@@ -33,6 +38,8 @@ final class SvelteQAGestureTrace {
   private var meta: [[String: Any]] = []
   private var rows: [[Any]] = []
   private var context: [[Any]] = []
+  private var touches: [[Any]] = []
+  private let startedMs = SvelteQAGestureTrace.wallMs()
   private var lastContext: String = ""
   private var dirty = false
   private var lastWrite = CACurrentMediaTime()
@@ -73,11 +80,67 @@ final class SvelteQAGestureTrace {
     return number
   }
 
+  /// A recognizer that fails every touch it sees and prevents nothing: it only reports where touches land and what the system hit-tested.
+  private final class TouchProbe: UIGestureRecognizer {
+    var report: ((String, UITouch) -> Void)?
+
+    override init(target: Any?, action: Selector?) {
+      super.init(target: target, action: action)
+      cancelsTouchesInView = false
+      delaysTouchesBegan = false
+      delaysTouchesEnded = false
+    }
+
+    override func canBePrevented(by preventingGestureRecognizer: UIGestureRecognizer) -> Bool { false }
+    override func canPrevent(_ preventedGestureRecognizer: UIGestureRecognizer) -> Bool { false }
+    override func shouldRequireFailure(of otherGestureRecognizer: UIGestureRecognizer) -> Bool { false }
+    override func shouldBeRequiredToFail(by otherGestureRecognizer: UIGestureRecognizer) -> Bool { false }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) { for touch in touches { report?("began", touch) } }
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) { for touch in touches { report?("moved", touch) } }
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+      for touch in touches { report?("ended", touch) }
+      state = .failed
+    }
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+      for touch in touches { report?("cancelled", touch) }
+      state = .failed
+    }
+  }
+
+  private func probe(_ window: UIWindow) {
+    if window.gestureRecognizers?.contains(where: { $0 is TouchProbe }) == true { return }
+    let probe = TouchProbe(target: nil, action: nil)
+    probe.report = { [weak self] phase, touch in self?.noteTouch(phase, touch) }
+    window.addGestureRecognizer(probe)
+  }
+
+  private func noteTouch(_ phase: String, _ touch: UITouch) {
+    guard touches.count < maxRows else { return }
+    let location = touch.location(in: nil)
+    var hit = "-"
+    if let view = touch.view {
+      var parts: [String] = []
+      var current: UIView? = view
+      // The hit view and the first ancestors that carry an identifier (React Native's testID) or are a component view.
+      while let item = current, parts.count < 4 {
+        let name = NSStringFromClass(type(of: item))
+        let identifier = item.accessibilityIdentifier ?? ""
+        parts.append(identifier.isEmpty ? name : "\(name)#\(identifier)")
+        current = item.superview
+      }
+      hit = parts.joined(separator: " < ")
+    }
+    touches.append([Self.wallMs(), phase, (location.x * 10).rounded() / 10, (location.y * 10).rounded() / 10, hit])
+    dirty = true
+  }
+
   @objc private func tick(_ link: CADisplayLink) {
     let now = Self.wallMs()
     var anyTouch = false
     var windows: [UIWindow] = []
     for scene in UIApplication.shared.connectedScenes { windows += (scene as? UIWindowScene)?.windows ?? [] }
+    for window in windows { probe(window) }
     for window in windows { sample(view: window, at: now, touching: &anyTouch) }
     sampleContext(windows: windows, at: now, touching: anyTouch)
     if dirty, CACurrentMediaTime() - lastWrite > 0.4 { flush() }
@@ -157,7 +220,7 @@ final class SvelteQAGestureTrace {
   private func flush() {
     dirty = false
     lastWrite = CACurrentMediaTime()
-    let payload: [String: Any] = ["meta": meta, "rows": rows, "context": context, "columns": ["t", "id", "state", "touches", "tx", "ty", "x", "y"]]
+    let payload: [String: Any] = ["startedMs": startedMs, "meta": meta, "rows": rows, "context": context, "touches": touches, "columns": ["t", "id", "state", "touches", "tx", "ty", "x", "y"]]
     guard let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
     writer.async {
       guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]) else { return }

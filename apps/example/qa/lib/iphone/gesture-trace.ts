@@ -12,7 +12,10 @@ export type TraceMeta = { id: number; class: string; delegate: string | null; vi
 /** `[t, id, state, touches, tx, ty, x?, y?]`: state is `UIGestureRecognizer.State`'s raw value. */
 export type TraceRow = (number | null)[];
 
-export type TraceFile = { meta: TraceMeta[]; rows: TraceRow[]; context: [number, string][] };
+/** `[t, phase, x, y, hit]`: where a touch was, in window points, and the view the system hit-tested with its first ancestors (`Class#identifier < ...`). */
+export type TraceTouch = [number, string, number, number, string];
+
+export type TraceFile = { startedMs?: number; meta: TraceMeta[]; rows: TraceRow[]; context: [number, string][]; touches?: TraceTouch[] };
 
 export type TraceAction = { scenario: string; round: number; step: number; kind: string; beganMs: number; endedMs: number };
 
@@ -35,8 +38,12 @@ export type Context = { depth: number[]; transitioning: boolean; detent: string 
 
 export type StepStory = {
 	action: TraceAction;
-	/** The phone's clock when a touch first reached any recognizer. */
+	/** The phone's clock when a touch first reached the window (the touch probe), else any recognizer. */
 	touchDownMs: number | null;
+	/** The first touch of the action: where it landed and what it hit; null when the app saw none. */
+	firstTouch: { x: number; y: number; hit: string } | null;
+	/** Touch events the window saw inside the action's window: began, moved, ended or cancelled. */
+	touchEvents: Record<string, number>;
 	recognizers: RecognizerStory[];
 	contextAtStart: Context | null;
 	contextAtEnd: Context | null;
@@ -74,7 +81,13 @@ export function storiesFrom(trace: TraceFile, actions: readonly TraceAction[]): 
 		const from = action.beganMs - before;
 		const to = action.endedMs + after;
 		const rows = trace.rows.filter((row) => (row[0] as number) >= from && (row[0] as number) <= to);
-		const touchDown = rows.reduce<number | null>((first, row) => ((row[3] as number) > 0 && (first === null || (row[0] as number) < first) ? (row[0] as number) : first), null);
+		const seen = (trace.touches ?? []).filter((touch) => touch[0] >= from && touch[0] <= to);
+		const began = seen.find((touch) => touch[1] === "began");
+		const touchEvents: Record<string, number> = {};
+		for (const touch of seen) touchEvents[touch[1]] = (touchEvents[touch[1]] ?? 0) + 1;
+		const touchDown = began
+			? began[0]
+			: rows.reduce<number | null>((first, row) => ((row[3] as number) > 0 && (first === null || (row[0] as number) < first) ? (row[0] as number) : first), null);
 		const byId = new Map<number, TraceRow[]>();
 		for (const row of rows) byId.set(row[1] as number, [...(byId.get(row[1] as number) ?? []), row]);
 		const recognizers: RecognizerStory[] = [];
@@ -107,7 +120,7 @@ export function storiesFrom(trace: TraceFile, actions: readonly TraceAction[]): 
 		const atEnd = inside.at(-1)?.value ?? atStart;
 		const start = atStart?.visualY ?? atStart?.y ?? null;
 		const travel = start === null ? null : Math.max(0, ...inside.map((entry) => Math.abs((entry.value?.visualY ?? entry.value?.y ?? start) - start)));
-		return { action, touchDownMs: touchDown, recognizers, contextAtStart: atStart, contextAtEnd: atEnd, sheetTravel: travel === null ? null : Math.round(travel * 10) / 10 };
+		return { action, touchDownMs: touchDown, firstTouch: began ? { x: began[2], y: began[3], hit: began[4] } : null, touchEvents, recognizers, contextAtStart: atStart, contextAtEnd: atEnd, sheetTravel: travel === null ? null : Math.round(travel * 10) / 10 };
 	});
 }
 
@@ -124,6 +137,7 @@ export function describeStories(stories: readonly StepStory[]): string[] {
 		const depth = context && end ? `stack depth ${context.depth.join("/")}${end.depth.join("/") !== context.depth.join("/") ? ` -> ${end.depth.join("/")}` : ""}` : "no stack";
 		const sheet = context?.detent !== null && context?.detent !== undefined ? `, sheet ${context.detent}${end && end.detent !== context.detent ? ` -> ${end.detent}` : ""}, travelled ${story.sheetTravel} pt` : "";
 		lines.push(`${action.scenario} round ${action.round} step ${action.step + 1} (${action.kind}), touch down ${story.touchDownMs ?? "not seen"}; ${depth}${sheet}`);
+		if (story.firstTouch) lines.push(`    first touch at (${story.firstTouch.x}, ${story.firstTouch.y}) hit ${story.firstTouch.hit}; events ${Object.entries(story.touchEvents).map(([phase, count]) => `${phase} ${count}`).join(", ")}`);
 		for (const entry of story.recognizers) {
 			const began = entry.beganAfterMs === null ? "never began" : `began +${entry.beganAfterMs} ms at ${at(entry.translationAtBegan)}`;
 			const done = entry.endedAs ? `, ${entry.endedAs} +${entry.endedAfterMs} ms` : "";

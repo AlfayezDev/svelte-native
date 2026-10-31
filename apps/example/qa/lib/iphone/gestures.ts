@@ -13,7 +13,7 @@ import { describeStories, storiesFrom, type TraceAction, type TraceFile } from "
 import { attribute, describeCrash, describeCrashReports, finishCrashWatch, keepCrashFiles, withReports } from "./crash-reports.ts";
 import { notReported, reportedIdentity, withIdentity } from "./identity.ts";
 import { labFinished, labScenarios, parseIosLabResults, type IosLabResults } from "./lab-results.ts";
-import { remote, remoteOk, type Mac } from "./mac.ts";
+import { remote, remoteOk, words, type Mac } from "./mac.ts";
 import { iosOptions, newToken, startIosSuite, type IosSession } from "./session.ts";
 import type { BuildIdentity, CrashReport, GestureInjection, GestureLaunch, GesturesFile } from "../types.ts";
 
@@ -240,8 +240,18 @@ export async function prepareUiTests(session: IosSession, options: { team: strin
 
 const pollMs = 10_000;
 const aliveEveryMs = 30_000;
+/** Writes `1` or `0` to the app's `Documents/gesture-trace.on`: the QA app records its recognizers at its next launch when it reads `1` (an app that XCUITest opens by link takes no launch argument). */
+async function setTraceFlag(target: IosSession["target"], on: boolean): Promise<void> {
+	const file = "/tmp/native-qa-ios/trace-flag";
+	await remoteOk(
+		target.mac,
+		`mkdir -p /tmp/native-qa-ios && printf ${on ? "1" : "0"} > ${file} && ${words(["xcrun", "devicectl", "device", "copy", "to", "--device", target.id, "--source", file, "--destination", "Documents/gesture-trace.on", "--domain-type", "appDataContainer", "--domain-identifier", target.bundleId])} > /dev/null 2>&1`,
+		{ timeoutMs: 90_000 },
+	);
+}
+
 /** The app's recognizer recording (`--trace`), kept beside the log as `<log>.trace.json`, and what it says about each action the test performed. */
-async function readTrace(target: IosSession["target"], logPath: string, outFile: string, mac: Mac): Promise<string[]> {
+async function readTrace(target: IosSession["target"], logPath: string, outFile: string, mac: Mac, launchedAfterMs: number): Promise<string[]> {
 	// The app writes the recording about every 0.4 s while it changes: the last rows are in the file a moment after the last action.
 	await sleep(1500);
 	const text = await readAppFile(target, "Documents/gesture-trace.json");
@@ -257,7 +267,9 @@ async function readTrace(target: IosSession["target"], logPath: string, outFile:
 	const actions: TraceAction[] = parseUiTestOutput(out).actions.flatMap((action) =>
 		action.beganMs !== null && action.endedMs !== null ? [{ scenario: action.scenario, round: action.round, step: action.step, kind: action.kind, beganMs: action.beganMs, endedMs: action.endedMs }] : [],
 	);
-	return [`trace: ${trace.rows.length} rows, ${trace.meta.length} recognizers, ${trace.context.length} context samples; ${actions.length} actions`, ...describeStories(storiesFrom(trace, actions))];
+	// The phone's clock and this machine's agree to a few seconds; a recording from before this launch is minutes old at least.
+	if ((trace.startedMs ?? 0) < launchedAfterMs - 30_000) return ["trace: Documents/gesture-trace.json is from an earlier launch of the app (the app did not start recording this time)"];
+	return [`trace: ${trace.rows.length} rows, ${trace.touches?.length ?? 0} touch events, ${trace.meta.length} recognizers, ${trace.context.length} context samples; ${actions.length} actions`, ...describeStories(storiesFrom(trace, actions))];
 }
 
 /** Whether the process the test was started as (the shell that runs xcodebuild) still exists. */
@@ -275,6 +287,7 @@ export async function iosGesturesOnce(session: IosSession, names: string[], time
 	const outFile = `${uiTestsRemote}/test-output-${token}.log`;
 	const seconds = Math.ceil(timeoutMs / 1000);
 	// The test opens the lab's link itself: XCUITest observes only an app it launched, and a step's input has to find the test already there.
+	await setTraceFlag(target, options.trace === true);
 	const url = `rasheed-svelte:///__dev?run=${runValue(names, "xctest")}&token=${token}`;
 	const started = await remoteOk(mac, inBackground(testCommand({ dir: uiTestsRemote, udid: session.udid, bundleId: target.bundleId, seconds, outFile, url, trace: options.trace === true })));
 	const testPid = Number(started.trim().split("\n").pop());
@@ -310,7 +323,7 @@ export async function iosGesturesOnce(session: IosSession, names: string[], time
 	}
 	// Only the test this launch started: its shell's children (xcodebuild), then the shell.
 	if (Number.isFinite(testPid)) await remote(mac, `pkill -TERM -P ${testPid} 2>/dev/null; kill ${testPid} 2>/dev/null; true`);
-	const traceLines = options.trace ? await readTrace(target, logPath, outFile, mac) : [];
+	const traceLines = options.trace ? await readTrace(target, logPath, outFile, mac, startedAt.getTime()) : [];
 	if (pid < 0) pid = (await appProcesses(target, session.installed))[0] ?? -1;
 	if (pid >= 0) {
 		try {

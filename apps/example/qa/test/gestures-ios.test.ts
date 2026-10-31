@@ -181,6 +181,23 @@ describe("the recognizer recording against the test's actions", () => {
 		expect(moved?.sheetTravel).toBe(150);
 	});
 
+	test("the window's touch probe says where the first touch landed and what it hit, and dates the touch down", () => {
+		const withTouches: TraceFile = {
+			...trace,
+			touches: [
+				[9_000, "began", 40, 200, "UIView#gesture.other"],
+				[10_005, "began", 88, 203, "RCTViewComponentView#gesture.box < RCTViewComponentView < UIView"],
+				[10_030, "moved", 90, 203, "-"],
+				[10_300, "ended", 248, 299, "-"],
+			],
+		};
+		const [story] = storiesFrom(withTouches, [{ ...action, beganMs: 9_995 }]);
+		expect(story?.touchDownMs).toBe(10_005);
+		expect(story?.firstTouch).toEqual({ x: 88, y: 203, hit: "RCTViewComponentView#gesture.box < RCTViewComponentView < UIView" });
+		expect(story?.touchEvents).toEqual({ began: 1, moved: 1, ended: 1 });
+		expect(describeStories([story as NonNullable<typeof story>]).join("\n")).toContain("first touch at (88, 203) hit RCTViewComponentView#gesture.box");
+	});
+
 	test("a row outside every action's window belongs to none", () => {
 		const [story] = storiesFrom(trace, [{ ...action, beganMs: 13_000, endedMs: 13_100 }]);
 		expect(story?.touchDownMs).toBeNull();

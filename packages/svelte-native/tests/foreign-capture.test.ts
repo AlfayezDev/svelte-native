@@ -85,7 +85,7 @@ test("Android: every option reaches the library's module for a view the engine d
   const foreignTags = new Set<number>();
   const engine = (tag: number, options: Record<string, unknown>) => {
     if (foreignTags.has(tag)) return null;
-    if (options.format === "raw" || options.result === "zip-base64" || options.snapshotContentContainer === true || options.handleGLSurfaceViewOnAndroid === true) return new Error("Unsupported option for an engine view");
+    if (options.format === "raw" || options.result === "zip-base64" || options.snapshotContentContainer === true) return new Error("Unsupported option for an engine view");
     return "data:image/png;base64,ENGINE";
   };
   const odd = { format: "raw", result: "zip-base64", snapshotContentContainer: true, handleGLSurfaceViewOnAndroid: true } as const;
@@ -107,6 +107,9 @@ test("Android: every option reaches the library's module for a view the engine d
   await expect(app.captureHandle(app.shotHandle().host, { format: "raw" })).rejects.toThrow("Unsupported option for an engine view");
   await expect(app.capture()).rejects.toThrow("Unsupported option for an engine view");
   expect(app.eventLog()).toEqual([["failure", "Unsupported option for an engine view"]]);
+  expect(viewShot.log).toEqual([]);
+  // The SurfaceView overlay is accepted for an engine view (PixelCopy of the surfaces, `Capture.kt`).
+  expect(await app.captureHandle(app.shotHandle().host, { handleGLSurfaceViewOnAndroid: true })).toBe("data:image/png;base64,ENGINE");
   expect(viewShot.log).toEqual([]);
 });
 

@@ -24,17 +24,17 @@ fun main() {
     mapOf<String, Any?>("format" to "raw"),
     mapOf<String, Any?>("result" to "zip-base64"),
     mapOf<String, Any?>("snapshotContentContainer" to true),
-    mapOf<String, Any?>("handleGLSurfaceViewOnAndroid" to true),
   )
 
   // A foreign or unknown tag answers null whatever the options are: the library's module owns that view and takes them all.
-  for (options in unsupported + listOf(plain)) {
+  for (options in unsupported + listOf(plain, mapOf<String, Any?>("handleGLSurfaceViewOnAndroid" to true))) {
     expect("a view the engine does not own, $options", CaptureRules.plan(false, options), CaptureRules.Plan.NotEngine)
   }
 
   // An engine view is drawn, or refused an option it does not capture.
   expect("engine view, no options", CaptureRules.plan(true, plain), CaptureRules.Plan.Draw)
   expect("engine view, png base64", CaptureRules.plan(true, mapOf("format" to "png", "result" to "base64")), CaptureRules.Plan.Draw)
+  expect("engine view, SurfaceView overlay", CaptureRules.plan(true, mapOf("handleGLSurfaceViewOnAndroid" to true)), CaptureRules.Plan.Draw)
   for (options in unsupported) {
     expect("engine view, $options", CaptureRules.plan(true, options) is CaptureRules.Plan.Reject, true)
   }

@@ -17,8 +17,8 @@ object CaptureRules {
   fun unsupported(options: Map<String, Any?>): String? {
     val format = options["format"] as? String
     val result = options["result"] as? String
-    if (format == "raw" || result == "zip-base64" || options["snapshotContentContainer"] == true || options["handleGLSurfaceViewOnAndroid"] == true) {
-      return "Unsupported option for an engine view: format raw, result zip-base64, snapshotContentContainer and handleGLSurfaceViewOnAndroid are not captured here"
+    if (format == "raw" || result == "zip-base64" || options["snapshotContentContainer"] == true) {
+      return "Unsupported option for an engine view: format raw, result zip-base64 and snapshotContentContainer are not captured here"
     }
     return null
   }

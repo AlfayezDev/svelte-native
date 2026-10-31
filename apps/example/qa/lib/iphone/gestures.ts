@@ -332,7 +332,7 @@ export async function iosGesturesOnce(session: IosSession, names: string[], time
 
 /** `native-qa gestures --platform ios`. */
 export async function iosGestures(argv: string[]): Promise<void> {
-	const { values } = parseFlags(argv, { ...iosOptions, run: { type: "string" }, repeat: { type: "string" }, timeout: { type: "string" }, team: { type: "string" }, rebuild: { type: "boolean" }, input: { type: "string" }, trace: { type: "boolean" } });
+	const { values } = parseFlags(argv, { ...iosOptions, run: { type: "string" }, repeat: { type: "string" }, timeout: { type: "string" }, team: { type: "string" }, rebuild: { type: "boolean" }, input: { type: "string" }, trace: { type: "boolean" }, "build-only": { type: "boolean" } });
 	const input = flagString(values.input) ?? "xctest";
 	if (input !== "xctest") throw new Error("--input is xctest on iOS (touches cannot be synthesized from inside the app)");
 	const session = await startIosSuite("gestures", argv, values);
@@ -342,6 +342,10 @@ export async function iosGestures(argv: string[]): Promise<void> {
 	const timeoutMs = integerFlag(values.timeout, "timeout", 900) * 1000;
 	await requireUsb(session.target.mac, session.udid);
 	await prepareUiTests(session, { team: flagString(values.team), rebuild: values.rebuild === true });
+	if (values["build-only"] === true) {
+		console.log("--build-only: the runner is ready, no scenario was run");
+		return;
+	}
 
 	await mkdir(runsDir, { recursive: true });
 	let launches: GestureLaunch[] = [];

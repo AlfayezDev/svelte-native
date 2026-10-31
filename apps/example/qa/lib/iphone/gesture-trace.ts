@@ -31,6 +31,8 @@ export type RecognizerStory = {
 	endedAs: "ended" | "cancelled" | "failed" | null;
 	updates: number;
 	translationAtBegan: [number, number] | null;
+	/** The pan translation in the last frame before it began: a pan that began in the first frame its finger was past the threshold waited for nothing. */
+	translationBeforeBegan: [number, number] | null;
 	translationAtEnd: [number, number] | null;
 };
 
@@ -111,6 +113,7 @@ export function storiesFrom(trace: TraceFile, actions: readonly TraceAction[]): 
 				endedAs: end ? (end[2] === states.ended ? "ended" : end[2] === states.cancelled ? "cancelled" : "failed") : null,
 				updates: own.filter((row) => row[2] === states.changed).length,
 				translationAtBegan: began ? pair(began[4], began[5]) : null,
+				translationBeforeBegan: began ? pair(...(own.filter((row) => (row[0] as number) < (began[0] as number)).at(-1)?.slice(4, 6) ?? [null, null]) as [number | null, number | null]) : null,
 				translationAtEnd: last ? pair(last[4], last[5]) : null,
 			});
 		}
@@ -142,7 +145,7 @@ export function describeStories(stories: readonly StepStory[]): string[] {
 		lines.push(`${action.scenario} round ${action.round} step ${action.step + 1} (${action.kind}), touch down ${story.touchDownMs ?? "not seen"}; ${depth}${sheet}`);
 		if (story.firstTouch) lines.push(`    first touch at (${story.firstTouch.x}, ${story.firstTouch.y}) hit ${story.firstTouch.hit}; events ${Object.entries(story.touchEvents).map(([phase, count]) => `${phase} ${count}`).join(", ")}`);
 		for (const entry of story.recognizers) {
-			const began = entry.beganAfterMs === null ? "never began" : `began +${entry.beganAfterMs} ms at ${at(entry.translationAtBegan)}`;
+			const began = entry.beganAfterMs === null ? "never began" : `began +${entry.beganAfterMs} ms at ${at(entry.translationAtBegan)} (the frame before: ${at(entry.translationBeforeBegan)})`;
 			const done = entry.endedAs ? `, ${entry.endedAs} +${entry.endedAfterMs} ms` : "";
 			lines.push(`    ${tag(entry)}: touch +${entry.downAfterMs} ms, ${began}${done}, ${entry.updates} updates, translation at the end ${at(entry.translationAtEnd)}`);
 		}

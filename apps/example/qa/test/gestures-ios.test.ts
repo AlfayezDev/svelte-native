@@ -163,7 +163,7 @@ describe("the recognizer recording against the test's actions", () => {
 		const [story] = storiesFrom(trace, [action]);
 		expect(story?.touchDownMs).toBe(10_000);
 		const pan = story?.recognizers.find((entry) => entry.handlerTag === 7);
-		expect([pan?.downAfterMs, pan?.beganAfterMs, pan?.endedAfterMs, pan?.endedAs, pan?.updates, pan?.translationAtBegan]).toEqual([0, 96, 300, "ended", 1, [10, 0.5]]);
+		expect([pan?.downAfterMs, pan?.beganAfterMs, pan?.endedAfterMs, pan?.endedAs, pan?.updates, pan?.translationAtBegan, pan?.translationBeforeBegan]).toEqual([0, 96, 300, "ended", 1, [10, 0.5], [6, 0]]);
 		const pop = story?.recognizers.find((entry) => entry.class.startsWith("_UIParallax"));
 		expect([pop?.beganAfterMs, pop?.endedAs, pop?.endedAfterMs]).toEqual([null, "failed", 16]);
 		// Ordered by when they began: the pan first, the one that never began after it.
@@ -207,7 +207,7 @@ describe("the recognizer recording against the test's actions", () => {
 	test("the lines name the recognizers and the times", () => {
 		const text = describeStories(storiesFrom(trace, [action])).join("\n");
 		expect(text).toContain("gestures-pushed-edge round 1 step 1 (drag), touch down 10000; stack depth 2");
-		expect(text).toContain("RNBetterPanGestureRecognizer #7 (RNPanGestureHandler): touch +0 ms, began +96 ms at (10, 0.5), ended +300 ms, 1 updates");
+		expect(text).toContain("RNBetterPanGestureRecognizer #7 (RNPanGestureHandler): touch +0 ms, began +96 ms at (10, 0.5) (the frame before: (6, 0)), ended +300 ms, 1 updates");
 		expect(text).toContain("_UIParallaxTransitionPanGestureRecognizer (SvelteStackView): touch +0 ms, never began, failed +16 ms");
 	});
 });

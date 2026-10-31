@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { expect, test } from "bun:test";
 import { find, type FakeNode } from "./foreign-harness.ts";
-import { settle, svgHarness, type SvgLoaded } from "./svg-harness.ts";
+import { svgHarness, type SvgLoaded } from "./svg-harness.ts";
 import type { AnimLog } from "./reanimated-stubs.ts";
 import { importWithReactNative, type Platform } from "./rn-reference.ts";
 
@@ -32,7 +32,7 @@ async function mount(platform: Platform, root: number) {
 
 for (const platform of ["android", "ios"] as const) {
   test(`${platform}: the first values and every write carry the integer the library's own brush would (processColor's), not the string the worklet returned`, async () => {
-    const { fill, flood, loaded, harness, processColor, node } = await mount(platform, platform === "android" ? 160 : 161);
+    const { fill, flood, processColor, node } = await mount(platform, platform === "android" ? 160 : 161);
     // What the library sends for the same colour: `fill={{ type: 0, payload: processColor(c) }}` (extractBrush), whose `payload` is the integer the native view takes.
     const payloadOf = (color: string) => processColor(color);
     expect(node("RNSVGCircle").props.fill).toBe(payloadOf("red"));
@@ -54,7 +54,6 @@ for (const platform of ["android", "ios"] as const) {
     }
     // The signed integer Android's `Dynamic.asInt()` reads; the unsigned one on iOS (`RNSVGColor:`).
     expect(payloadOf("red")).toBe(platform === "android" ? -65536 : 0xffff0000);
-    void harness; void loaded;
   });
 }
 

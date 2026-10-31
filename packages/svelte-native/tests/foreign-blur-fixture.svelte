@@ -6,14 +6,18 @@
   let target = $state(null);
   let method = $state("dimezisBlurView");
   let wrapper = null;
+  let showTarget = $state(true);
   export function setMethod(next) { method = next; }
   export function targetHandle() { return target; }
   export function wrapperHandle() { return wrapper; }
+  export function removeTarget() { showTarget = false; }
 </script>
 <View style={{ flex: 1 }}>
-  <BlurTargetView ref={(h) => { target = h; }} style={{ height: 120 }}>
-    <View style={{ width: 10, height: 10 }} />
-  </BlurTargetView>
+  {#if showTarget}
+    <BlurTargetView ref={(h) => { target = h; }} style={{ height: 120 }}>
+      <View style={{ width: 10, height: 10 }} />
+    </BlurTargetView>
+  {/if}
   <BlurView blurTarget={target} intensity={80} tint="dark" blurReductionFactor={6} blurMethod={method} ref={(h) => { wrapper = h; }} style={{ height: 60, borderRadius: 12 }}>
     <Text>over the blur</Text>
   </BlurView>

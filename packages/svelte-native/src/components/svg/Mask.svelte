@@ -9,7 +9,7 @@
   /** `react-native-svg`'s `Mask`: its children's luminance (or alpha, `maskType="alpha"`) hides what `mask="url(#id)"` names. */
   let { children, ref, animatedProps, ...props }: Omit<MaskProps, "children"> & { children?: Snippet } & SvgExtras = $props();
   const resolveProps = createNativeProps();
-  const hostRef = handleRef(() => ref);
+  const hostRef = $derived(handleRef(ref));
   const native = $derived(maskNativeProps(props));
 </script>
 <native-foreign component="RNSVGMask" nativeProps={resolveProps({ ...native, ...(animatedProps ? { animatedProps } : null), ref: hostRef })}>{@render children?.()}</native-foreign>

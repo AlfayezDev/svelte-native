@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { forwardRef } from "./forward-ref.ts";
   import type {} from "../elements.d.ts";
   import { createNativeProps } from "../native-props.ts";
   import { Platform, resolveAssetSource } from "../fabric/deps-rn.ts";
@@ -56,10 +57,11 @@
   const hasPoster = $derived(typeof poster === "string" ? poster !== "" : !!poster?.source);
   let posterShown = $state(true);
   let host: Commandable | null = null;
-  const hostRef = (handle: unknown) => {
-    host = handle as Commandable | null;
-    ref?.(host ? { ...videoHandle(host, (next) => videoSource(next, asset, platform, attributes as VideoSourceDefaults), platform), host } : null);
-  };
+  const hostRef = $derived(forwardRef(
+    ref,
+    (given: Commandable) => ({ ...videoHandle(given, (next) => videoSource(next, asset, platform, attributes as VideoSourceDefaults), platform), host: given }),
+    (given) => { host = given; },
+  ));
   const native = $derived(videoNativeProps({ ...attributes, source }, asset, platform));
   const handlers = $derived(videoHandlers(attributes as never, { readyForDisplay: () => { posterShown = false; }, loadStart: () => { if (hasPoster) posterShown = true; } }));
   const fill = { position: "absolute", left: 0, top: 0, right: 0, bottom: 0 } as const;

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { forwardRef } from "./forward-ref.ts";
   import { untrack, type Snippet } from "svelte";
   import type {} from "../elements.d.ts";
   import { createNativeProps } from "../native-props.ts";
@@ -94,10 +95,7 @@
     else if (message.type === "scaleChanged") onScaleChanged?.(message.scale);
     else onPressLink?.(message.url);
   };
-  const hostRef = (handle: unknown) => {
-    const host = handle as Commandable | null;
-    ref?.(host ? { ...pdfHandle(host), host } : null);
-  };
+  const hostRef = $derived(forwardRef(ref, (host: Commandable) => ({ ...pdfHandle(host), host })));
   const nativeStyle = $derived([android ? { flex: 1, backgroundColor: "#EEE" } : { backgroundColor: "#EEE", overflow: "hidden" }, style]);
 </script>
 <View style={[style, { overflow: "hidden" }]}>

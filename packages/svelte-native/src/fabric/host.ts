@@ -48,7 +48,7 @@ import { navigationProps, navigationTags } from "./navigation.ts";
 import { iosNavigationViewName } from "./navigation.ios.ts";
 import { mergeHostProps } from "../native-props.ts";
 import { foreignText, type ForeignText } from "./foreign-text.ts";
-import renderer, { NativeNode, setInvalidationSink, type Invalidation } from "../renderer.ts";
+import renderer, { NativeNode, setInvalidationSink, setUnlinkSink, type Invalidation } from "../renderer.ts";
 import { Pressability, type PressabilityConfig, type ResponderHandlers } from "./pressability.ts";
 import { createResponder } from "./responder.ts";
 
@@ -502,11 +502,48 @@ function build(node: NativeNode, rootTag: number, insideText: boolean, insideFor
   return current.node;
 }
 
-/** Hands the `ref` callback its handle when the attribute is new. */
+/**
+ * React's contract for a callback `ref`: it gets the handle when the element is built; when the attribute changes the old callback hears `null`
+ * before the new one gets the handle (and one that is taken away hears `null`); `releaseRefs` gives it `null` when the element is destroyed.
+ */
 function callRef(current: State, node: NativeNode, ref: unknown): void {
-  if (ref === current.ref) return;
+  const previous = current.ref;
+  if (ref === previous) return;
   current.ref = ref;
-  if (typeof ref === "function") (ref as (handle: HostHandle) => void)(handleFor(current, node));
+  if (typeof previous === "function") { refCount--; (previous as (handle: null) => void)(null); }
+  if (typeof ref === "function") { refCount++; (ref as (handle: HostHandle) => void)(handleFor(current, node)); }
+}
+
+/** Nodes with a function `ref` that are alive: while there are none, a removal costs the host nothing. */
+let refCount = 0;
+/** Nodes taken out of their parent since the last flush ended (`setUnlinkSink`): destroyed unless they were moved. */
+const unlinked = new Set<NativeNode>();
+function onUnlink(node: NativeNode): void { if (refCount > 0) unlinked.add(node); }
+
+/** `ref(null)` for the node and everything below it, parents first (as React detaches): the subtree is gone. */
+function releaseRefs(node: NativeNode): void {
+  const own = stateOf(node);
+  if (own && typeof own.ref === "function") {
+    const ref = own.ref as (handle: null) => void;
+    own.ref = undefined;
+    refCount--;
+    ref(null);
+  }
+  for (let child = node.firstChild; child; child = child.nextSibling) releaseRefs(child);
+}
+
+/** After a flush: the nodes that were unlinked and are not under a live root any more were destroyed (the others were moved). */
+function sweepRefs(): void {
+  if (unlinked.size === 0) return;
+  const candidates = [...unlinked];
+  unlinked.clear();
+  const live = new Set<NativeNode>();
+  for (const root of roots.values()) live.add(root.node);
+  for (const node of candidates) {
+    let top = node;
+    while (top.parent) top = top.parent;
+    if (!live.has(top)) releaseRefs(node);
+  }
 }
 
 /** The scroll content container keeps `collapsable: false`, as React Native's ScrollView does, so Fabric never flattens it into the ScrollView. */
@@ -567,6 +604,7 @@ export function flush(): void {
   }
   animation?.commitAnimations();
   if (childrenInvalidated) { childrenInvalidated = false; detachRemovedAnimations(); }
+  sweepRefs();
   stats.flushes++;
   stats.lastFlushMs = performance.now() - started;
   if (profile) {
@@ -639,6 +677,7 @@ export function startSurface<Props extends Record<string, unknown>>(rootTag: num
   if (!binding) throw new Error("nativeFabricUIManager is not installed; the Fabric host needs the new architecture");
   if (!handlerRegistered) { binding.registerEventHandler(dispatchEvent); handlerRegistered = true; }
   setInvalidationSink(onInvalidate);
+  setUnlinkSink(onUnlink);
   if (!engineTried) {
     engineTried = true;
     const engine = requireOptionalNativeModule<{ install: (reanimatedReady: boolean) => boolean; dispatchCommand?: (tag: number, name: string, args: unknown[]) => void }>("SvelteEngine");
@@ -670,6 +709,8 @@ export function stopSurface(rootTag: number): void {
   void unmount(root.instance);
   roots.delete(rootTag);
   detachRemovedAnimations();
+  sweepRefs();
+  releaseRefs(root.node);
   binding.completeRoot(rootTag, binding.createChildSet(rootTag));
 }
 mark("host");

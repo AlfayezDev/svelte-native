@@ -8,7 +8,7 @@
   /** `react-native-svg`'s `Image`: `href` is a URI or an asset number (`require`), drawn into `x`, `y`, `width`, `height` by `preserveAspectRatio`. `onLoad` is the native image's. */
   let { ref, animatedProps, ...props }: ImageProps & SvgExtras = $props();
   const resolveProps = createNativeProps();
-  const hostRef = handleRef(() => ref);
+  const hostRef = $derived(handleRef(ref));
   const native = $derived(imageNativeProps(props));
 </script>
 <native-foreign component="RNSVGImage" nativeProps={resolveProps({ ...native, ...(animatedProps ? { animatedProps } : null), ref: hostRef })}></native-foreign>

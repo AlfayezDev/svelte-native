@@ -8,7 +8,7 @@
   /** `react-native-svg`'s `FeOffset`: moves `in` by `dx`, `dy`. */
   let { ref, animatedProps, ...props }: FeOffsetProps & FilterPrimitiveCommonProps & SvgExtras = $props();
   const resolveProps = createNativeProps();
-  const hostRef = handleRef(() => ref);
+  const hostRef = $derived(handleRef(ref));
   const native = $derived(feOffsetNativeProps(props));
 </script>
 <native-foreign component="RNSVGFeOffset" nativeProps={resolveProps({ ...native, ...(animatedProps ? { animatedProps } : null), ref: hostRef })}></native-foreign>

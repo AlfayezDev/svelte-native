@@ -9,7 +9,7 @@
   /** `react-native-svg`'s `Use`: draws the definition `href="#id"` (a `Symbol`, a shape or a group) at `x`, `y`; its children are drawn as the library draws them. */
   let { children, ref, animatedProps, ...props }: Omit<UseProps, "children"> & { children?: Snippet } & SvgExtras = $props();
   const resolveProps = createNativeProps();
-  const hostRef = handleRef(() => ref);
+  const hostRef = $derived(handleRef(ref));
   const native = $derived(useNativeProps(props));
 </script>
 <native-foreign component="RNSVGUse" nativeProps={resolveProps({ ...native, ...(animatedProps ? { animatedProps } : null), ref: hostRef })}>{@render children?.()}</native-foreign>

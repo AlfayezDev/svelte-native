@@ -7,7 +7,7 @@ import { createHarness, expoViewConfigs, find, settle } from "./foreign-harness.
  * the native view needs after both views exist, so it arrives with the update that follows the first commit.
  */
 const configs = expoViewConfigs("expo-blur/android/src/main/java/expo/modules/blur/BlurModule.kt");
-type App = { setMethod(method: string): void; targetHandle(): { tag: number } | null; wrapperHandle(): { tag: number } | null };
+type App = { setMethod(method: string): void; removeTarget(): void; targetHandle(): { tag: number } | null; wrapperHandle(): { tag: number } | null };
 
 test("the module declares two named views and the props the component sends", () => {
   expect(Object.keys(configs).sort()).toEqual(["ExpoBlurTargetView", "ExpoBlurView"]);
@@ -48,6 +48,23 @@ test("Android: the blur view fills a container that holds the children, and the 
   app.setMethod("none");
   await settle(loaded);
   expect(find(roots(), "ViewManagerAdapter_ExpoBlur_ExpoBlurView")[0].props.blurMethod).toBe("none");
+});
+
+test("Android: when the target goes away its ref hears null and the blur view loses the id", async () => {
+  const harness = createHarness("android", { expo: { ExpoBlur: configs } });
+  const loaded = await harness.load("foreign-blur-fixture.svelte");
+  const app = loaded.startSurface(44, loaded.Fixture, {}) as App;
+  const roots = () => harness.roots()[44];
+  const target = find(roots(), "ViewManagerAdapter_ExpoBlur_ExpoBlurTargetView")[0];
+  await settle(loaded);
+  expect(find(roots(), "ViewManagerAdapter_ExpoBlur_ExpoBlurView")[0].props.blurTargetId).toBe(target.tag);
+  app.removeTarget();
+  await settle(loaded);
+  await settle(loaded);
+  expect(app.targetHandle()).toBeNull();
+  expect(find(roots(), "ViewManagerAdapter_ExpoBlur_ExpoBlurTargetView")).toEqual([]);
+  // A tag of a view that no longer exists is not sent on (the clone takes the prop away).
+  expect(find(roots(), "ViewManagerAdapter_ExpoBlur_ExpoBlurView")[0].props.blurTargetId ?? null).toBeNull();
 });
 
 test("iOS: the blur needs no target, which is a plain view there", async () => {

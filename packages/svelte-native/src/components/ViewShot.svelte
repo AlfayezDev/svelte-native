@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { forwardRef } from "./forward-ref.ts";
   import { onMount, untrack, type Snippet } from "svelte";
   import type {} from "../elements.d.ts";
   import { captureRef, releaseCapture, type CaptureOptions } from "../fabric/foreign-capture.ts";
@@ -49,10 +50,7 @@
       );
   }
 
-  const hostRef = (handle: unknown) => {
-    host = handle as typeof host;
-    ref?.(host ? { capture, host } : null);
-  };
+  const hostRef = $derived(forwardRef(ref, (given: { tag: number }) => ({ capture, host: given }), (given) => { host = given; }));
   const layout = (event: unknown) => { laid(); (onLayout as ((event: unknown) => void) | undefined)?.(event); };
 
   onMount(() => {

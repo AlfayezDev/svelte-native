@@ -9,7 +9,7 @@
   /** `react-native-svg`'s `Marker`: a shape drawn at the vertices of a `Path` or `Line` that names it in `markerStart`, `markerMid`, `markerEnd` or `marker`. */
   let { children, ref, animatedProps, ...props }: Omit<MarkerProps, "children"> & { children?: Snippet } & SvgExtras = $props();
   const resolveProps = createNativeProps();
-  const hostRef = handleRef(() => ref);
+  const hostRef = $derived(handleRef(ref));
   const native = $derived(markerNativeProps(props));
 </script>
 <native-foreign component="RNSVGMarker" nativeProps={resolveProps({ ...native, ...(animatedProps ? { animatedProps } : null), ref: hostRef })}>{@render children?.()}</native-foreign>

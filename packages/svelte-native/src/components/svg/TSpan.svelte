@@ -16,7 +16,7 @@
     childrenAsArray?: boolean;
   } & SvgExtras = $props();
   const resolveProps = createNativeProps();
-  const hostRef = handleRef(() => ref, { matrix: true });
+  const hostRef = $derived(handleRef(ref, { matrix: true }));
   const native = $derived(tspanProps(props));
 </script>
 <native-foreign component="RNSVGTSpan" nativeProps={resolveProps({ ...native, ...(animatedProps ? { animatedProps } : null), childrenAsArray, ref: hostRef })}>{@render children?.()}</native-foreign>

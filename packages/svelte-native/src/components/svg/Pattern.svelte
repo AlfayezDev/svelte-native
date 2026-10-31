@@ -9,7 +9,7 @@
   /** `react-native-svg`'s `Pattern`: a tile (`width` x `height` at `x`, `y`) of its children, named by `fill="url(#id)"`. */
   let { children, ref, animatedProps, ...props }: Omit<PatternProps, "children"> & { children?: Snippet } & SvgExtras = $props();
   const resolveProps = createNativeProps();
-  const hostRef = handleRef(() => ref);
+  const hostRef = $derived(handleRef(ref));
   const native = $derived(patternNativeProps(props));
 </script>
 <native-foreign component="RNSVGPattern" nativeProps={resolveProps({ ...native, ...(animatedProps ? { animatedProps } : null), ref: hostRef })}>{@render children?.()}</native-foreign>

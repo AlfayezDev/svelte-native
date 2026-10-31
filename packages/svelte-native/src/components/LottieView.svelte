@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { forwardRef } from "./forward-ref.ts";
   import type {} from "../elements.d.ts";
   import { createNativeProps } from "../native-props.ts";
   import { resolveAssetSource } from "../fabric/deps-rn.ts";
@@ -45,13 +46,8 @@
   } = $props();
   const resolveProps = createNativeProps();
   const sources = $derived(source === null || source === undefined ? undefined : lottieSources(source, (asset) => resolveAssetSource(asset as never) as { uri: string } | null));
-  const hostRef = (handle: unknown) => {
-    const host = handle as Commandable | null;
-    const commands = host ? lottieHandle(host) : null;
-    ref?.(commands && host ? { ...commands, host } : null);
-    // The library plays from its ref callback too: an animation that is ready before the first `autoPlay` update still starts.
-    if (commands && autoPlay === true) commands.play();
-  };
+  // The library plays from its ref callback too: an animation that is ready before the first `autoPlay` update still starts.
+  const hostRef = $derived(forwardRef(ref, (host: Commandable) => ({ ...lottieHandle(host), host }), (host) => { if (host && autoPlay === true) lottieHandle(host).play(); }));
   type Event<Native> = { nativeEvent: Native };
   const handlers = {
     onAnimationFinish: (event: Event<{ isCancelled: boolean }>) => onAnimationFinish?.(event.nativeEvent.isCancelled),

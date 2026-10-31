@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { forwardRef } from "./forward-ref.ts";
   import { onDestroy } from "svelte";
   import type {} from "../elements.d.ts";
   import { createNativeProps } from "../native-props.ts";
@@ -66,10 +67,7 @@
     Linking.openURL(url).catch((error: unknown) => console.warn("WebView could not open", url, error));
   }
 
-  const hostRef = (handle: unknown) => {
-    host = handle as typeof host;
-    ref?.(host ? { ...webViewHandle(host), host } : null);
-  };
+  const hostRef = $derived(forwardRef(ref, (given: Commandable) => ({ ...webViewHandle(given), host: given }), (given) => { host = given; }));
   const navigation = (event: Event) => onNavigationStateChange?.(event.nativeEvent);
   const handlers = {
     onLoadingStart: (event: Event) => { onLoadStart?.(event); navigation(event); },

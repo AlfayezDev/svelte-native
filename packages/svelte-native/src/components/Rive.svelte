@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { forwardRef } from "./forward-ref.ts";
   import type { Snippet } from "svelte";
   import type {} from "../elements.d.ts";
   import { createNativeProps } from "../native-props.ts";
@@ -60,10 +61,7 @@
     return found;
   });
   const assets = $derived(riveReferencedAssets(referencedAssets, asset));
-  const hostRef = (handle: unknown) => {
-    const host = handle as Commandable | null;
-    ref?.(host ? { ...riveHandle(host), host } : null);
-  };
+  const hostRef = $derived(forwardRef(ref, (host: Commandable) => ({ ...riveHandle(host), host })));
   const handlers = {
     onPlay: (event: Event<{ animationName: string; isStateMachine: boolean }>) => onPlay?.(event.nativeEvent.animationName, event.nativeEvent.isStateMachine),
     onPause: (event: Event<{ animationName: string; isStateMachine: boolean }>) => onPause?.(event.nativeEvent.animationName, event.nativeEvent.isStateMachine),

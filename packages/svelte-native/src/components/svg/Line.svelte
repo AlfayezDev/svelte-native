@@ -8,7 +8,7 @@
   /** `react-native-svg`'s `Line`: `x1`, `y1`, `x2`, `y2`. */
   let { ref, animatedProps, ...props }: LineProps & SvgExtras = $props();
   const resolveProps = createNativeProps();
-  const hostRef = handleRef(() => ref);
+  const hostRef = $derived(handleRef(ref));
   const native = $derived(lineNativeProps(props));
 </script>
 <native-foreign component="RNSVGLine" nativeProps={resolveProps({ ...native, ...(animatedProps ? { animatedProps } : null), ref: hostRef })}></native-foreign>

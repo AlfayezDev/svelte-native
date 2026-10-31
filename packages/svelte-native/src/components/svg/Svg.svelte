@@ -21,7 +21,7 @@
     animatedProps?: (() => Record<string, unknown>) | ReadonlyArray<() => Record<string, unknown>>;
   } = $props();
   const resolveProps = createNativeProps();
-  const hostRef = rootRef(() => ref);
+  const hostRef = $derived(rootRef(ref));
   const parts = $derived(svgNativeProps(props));
   const component = svgRootName();
 </script>

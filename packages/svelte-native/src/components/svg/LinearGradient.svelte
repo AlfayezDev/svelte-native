@@ -14,7 +14,7 @@
    */
   let { children, ref, animatedProps, ...props }: Omit<LinearGradientProps, "children"> & { children?: Snippet } & SvgExtras = $props();
   const resolveProps = createNativeProps();
-  const hostRef = handleRef(() => ref);
+  const hostRef = $derived(handleRef(ref));
   let version = $state(0);
   const stops = createRegistry<StopProps>(() => { untrack(() => { version++; }); });
   setContext(stopsKey, stops);

@@ -8,7 +8,7 @@
   /** `react-native-svg`'s `Rect`: `x`, `y`, `width`, `height`, `rx`, `ry`. */
   let { ref, animatedProps, ...props }: RectProps & SvgExtras = $props();
   const resolveProps = createNativeProps();
-  const hostRef = handleRef(() => ref);
+  const hostRef = $derived(handleRef(ref));
   const native = $derived(rectNativeProps(props));
 </script>
 <native-foreign component="RNSVGRect" nativeProps={resolveProps({ ...native, ...(animatedProps ? { animatedProps } : null), ref: hostRef })}></native-foreign>

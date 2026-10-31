@@ -9,7 +9,7 @@
   /** `react-native-svg`'s `Filter`: its primitives (`FeGaussianBlur`, `FeOffset`, `FeColorMatrix`, ...) are its children; `filter="url(#id)"` applies it. */
   let { children, ref, animatedProps, ...props }: Omit<FilterProps, "children"> & { children?: Snippet } & SvgExtras = $props();
   const resolveProps = createNativeProps();
-  const hostRef = handleRef(() => ref);
+  const hostRef = $derived(handleRef(ref));
   const native = $derived(filterNativeProps(props));
 </script>
 <native-foreign component="RNSVGFilter" nativeProps={resolveProps({ ...native, ...(animatedProps ? { animatedProps } : null), ref: hostRef })}>{@render children?.()}</native-foreign>

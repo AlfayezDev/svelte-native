@@ -8,7 +8,7 @@
   /** `react-native-svg`'s `FeBlend`: blends `in` with `in2` by `mode` (`normal`, `multiply`, `screen`, `darken`, `lighten`). */
   let { ref, animatedProps, ...props }: FeBlendProps & FilterPrimitiveCommonProps & SvgExtras = $props();
   const resolveProps = createNativeProps();
-  const hostRef = handleRef(() => ref);
+  const hostRef = $derived(handleRef(ref));
   const native = $derived(feBlendNativeProps(props));
 </script>
 <native-foreign component="RNSVGFeBlend" nativeProps={resolveProps({ ...native, ...(animatedProps ? { animatedProps } : null), ref: hostRef })}></native-foreign>

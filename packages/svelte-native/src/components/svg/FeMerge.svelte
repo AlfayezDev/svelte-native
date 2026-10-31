@@ -10,7 +10,7 @@
   /** `react-native-svg`'s `FeMerge`: layers the results its `FeMergeNode` children name (`in`), first at the bottom. */
   let { children, ref, animatedProps, ...props }: Omit<FeMergeProps, "children"> & { children?: Snippet } & FilterPrimitiveCommonProps & SvgExtras = $props();
   const resolveProps = createNativeProps();
-  const hostRef = handleRef(() => ref);
+  const hostRef = $derived(handleRef(ref));
   let version = $state(0);
   const nodes = createRegistry<string | undefined>(() => { untrack(() => { version++; }); });
   setContext(mergeNodesKey, nodes);

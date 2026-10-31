@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { forwardRef } from "./forward-ref.ts";
   import type { Snippet } from "svelte";
   import type {} from "../elements.d.ts";
   import { createNativeProps } from "../native-props.ts";
@@ -32,9 +33,6 @@
   const resolveProps = createNativeProps();
   let ready = $state(false);
   const mapReady = (event: Event) => { ready = true; onMapReady?.(event); };
-  const hostRef = (handle: unknown) => {
-    const host = handle as Commandable | null;
-    ref?.(host ? { ...mapHandle(host), host } : null);
-  };
+  const hostRef = $derived(forwardRef(ref, (host: Commandable) => ({ ...mapHandle(host), host })));
 </script>
 <native-foreign component="RNMapsMapView" nativeProps={resolveProps({ ...attributes, onMapReady: mapReady, onPanDrag, handlePanDrag: onPanDrag !== undefined, ref: hostRef })}>{#if ready}{@render children?.()}{/if}</native-foreign>

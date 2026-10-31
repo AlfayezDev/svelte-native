@@ -8,7 +8,7 @@
   /** The outline `d` (SVG path data) of `react-native-svg`'s `Path`, drawn with the library's `fill`, `stroke` and transform props. */
   let { ref, animatedProps, ...props }: PathProps & SvgExtras = $props();
   const resolveProps = createNativeProps();
-  const hostRef = handleRef(() => ref);
+  const hostRef = $derived(handleRef(ref));
   const native = $derived(pathNativeProps(props));
 </script>
 <native-foreign component="RNSVGPath" nativeProps={resolveProps({ ...native, ...(animatedProps ? { animatedProps } : null), ref: hostRef })}></native-foreign>

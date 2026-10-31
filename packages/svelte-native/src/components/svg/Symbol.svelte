@@ -9,7 +9,7 @@
   /** `react-native-svg`'s `Symbol`: a reusable drawing with its own `viewBox`, drawn by a `Use` that names its `id`. */
   let { children, ref, animatedProps, ...props }: Omit<SymbolProps, "children"> & { children?: Snippet } & SvgExtras = $props();
   const resolveProps = createNativeProps();
-  const hostRef = handleRef(() => ref);
+  const hostRef = $derived(handleRef(ref));
   const native = $derived(symbolNativeProps(props));
 </script>
 <native-foreign component="RNSVGSymbol" nativeProps={resolveProps({ ...native, ...(animatedProps ? { animatedProps } : null), ref: hostRef })}>{@render children?.()}</native-foreign>

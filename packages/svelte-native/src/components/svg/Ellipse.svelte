@@ -8,7 +8,7 @@
   /** `react-native-svg`'s `Ellipse`: `cx`, `cy`, `rx`, `ry`. */
   let { ref, animatedProps, ...props }: EllipseProps & SvgExtras = $props();
   const resolveProps = createNativeProps();
-  const hostRef = handleRef(() => ref);
+  const hostRef = $derived(handleRef(ref));
   const native = $derived(ellipseNativeProps(props));
 </script>
 <native-foreign component="RNSVGEllipse" nativeProps={resolveProps({ ...native, ...(animatedProps ? { animatedProps } : null), ref: hostRef })}></native-foreign>

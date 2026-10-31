@@ -11,7 +11,7 @@
   /** `react-native-svg`'s `RadialGradient`: `cx`, `cy`, `r` (or `rx`, `ry`) and the focal point `fx`, `fy`; its `Stop`s are its children. */
   let { children, ref, animatedProps, ...props }: Omit<RadialGradientProps, "children"> & { children?: Snippet } & SvgExtras = $props();
   const resolveProps = createNativeProps();
-  const hostRef = handleRef(() => ref);
+  const hostRef = $derived(handleRef(ref));
   let version = $state(0);
   const stops = createRegistry<StopProps>(() => { untrack(() => { version++; }); });
   setContext(stopsKey, stops);

@@ -14,7 +14,7 @@ import { validateCaptureOptions, type CaptureOptions } from "../src/fabric/forei
  * it). The options are the library's own (`validateOptions` of `index.tsx`, run below), and `ViewShot` is its container.
  */
 type Handle = { capture(): Promise<string>; host: { tag: number } };
-type App = { eventLog(): unknown[][]; capture(): Promise<string>; shotHandle(): Handle; plainHandle(): { tag: number }; captureHandle(handle: unknown, options?: CaptureOptions): Promise<string> };
+type App = { hide(): void; shotRef(): Handle | null; eventLog(): unknown[][]; capture(): Promise<string>; shotHandle(): Handle; plainHandle(): { tag: number }; captureHandle(handle: unknown, options?: CaptureOptions): Promise<string> };
 const layout = { layout: { x: 0, y: 0, width: 100, height: 50 } };
 
 function fakeViewShot(answers: { fail?: string } = {}) {
@@ -141,6 +141,62 @@ test("a failed capture is reported to onCaptureFailure and rejects; the previous
   await new Promise((resolveWait) => setTimeout(resolveWait, 600));
   expect(viewShot.log.filter((line) => line.startsWith("release"))).toEqual(["release file:///module-1.png"]);
   await expect(app.captureHandle(null)).rejects.toThrow("no view to capture");
+});
+
+/** Unmounting a `ViewShot` cancels its frame loop, which the test runtime has no function for. */
+const withFrames = async (run: () => Promise<void>) => {
+  const scope = globalThis as { cancelAnimationFrame?: unknown };
+  const saved = scope.cancelAnimationFrame;
+  scope.cancelAnimationFrame = () => {};
+  try { await run(); } finally { scope.cancelAnimationFrame = saved; }
+};
+
+test("a capture that outlives its ViewShot never settles, calls no callback, and does not reach the module before the layout", async () => {
+  await withFrames(async () => {
+  const { harness, loaded, app, shot, viewShot } = await mount("ios", 119);
+  let settled = false;
+  void app.capture().then(() => { settled = true; }, () => { settled = true; });
+  await settle(loaded);
+  app.hide();
+  await settle(loaded);
+  await settle(loaded);
+  // The ref heard null: the component drops its handle (and the caller's ref gets null).
+  expect(app.shotRef()).toBeNull();
+  // The layout of a view that is gone still arrives: the pending capture finds no view and waits for ever.
+  harness.emit(shot.target, "topLayout", layout);
+  await settle(loaded);
+  await new Promise((resolveWait) => setTimeout(resolveWait, 20));
+  expect(settled).toBe(false);
+  expect(viewShot.log).toEqual([]);
+  expect(app.eventLog()).toEqual([]);
+  });
+});
+
+test("a capture in flight when its ViewShot goes away still answers its caller, but tells no callback and releases nothing", async () => {
+  await withFrames(async () => {
+  const { harness, loaded, app, shot, viewShot } = await mount("ios", 120);
+  let answer: ((uri: string) => void) | null = null;
+  let refuse: ((error: Error) => void) | null = null;
+  harness.natives.turbo.RNViewShot = {
+    captureRef: () => new Promise<string>((resolveCapture, rejectCapture) => { if (!answer) answer = resolveCapture; else refuse = rejectCapture; }),
+    captureScreen: () => Promise.resolve(""),
+    releaseCapture: (uri: string) => { viewShot.log.push(`release ${uri}`); },
+  };
+  harness.emit(shot.target, "topLayout", layout);
+  const first = app.capture();
+  const second = app.capture();
+  await new Promise((resolveWait) => setTimeout(resolveWait, 10));
+  app.hide();
+  await settle(loaded);
+  await settle(loaded);
+  (answer as unknown as (uri: string) => void)("file:///late.png");
+  await expect(first).resolves.toBe("file:///late.png");
+  (refuse as unknown as (error: Error) => void)(new Error("gone"));
+  await expect(second).rejects.toThrow("gone");
+  await new Promise((resolveWait) => setTimeout(resolveWait, 600));
+  expect(app.eventLog()).toEqual([]);
+  expect(viewShot.log).toEqual([]);
+  });
 });
 
 test("captureMode mount captures once after the first layout; continuous captures again whenever the last capture is new", async () => {

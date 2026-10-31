@@ -8,7 +8,7 @@
   /** `react-native-svg`'s `FeFlood`: fills the filter region with `floodColor` at `floodOpacity`. */
   let { ref, animatedProps, ...props }: FeFloodProps & FilterPrimitiveCommonProps & SvgExtras = $props();
   const resolveProps = createNativeProps();
-  const hostRef = handleRef(() => ref);
+  const hostRef = $derived(handleRef(ref));
   const native = $derived(feFloodNativeProps(props));
 </script>
 <native-foreign component="RNSVGFeFlood" nativeProps={resolveProps({ ...native, ...(animatedProps ? { animatedProps } : null), ref: hostRef })}></native-foreign>

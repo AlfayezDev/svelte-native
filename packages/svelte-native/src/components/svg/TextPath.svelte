@@ -17,7 +17,7 @@
     childrenAsArray?: boolean;
   } & SvgExtras = $props();
   const resolveProps = createNativeProps();
-  const hostRef = handleRef(() => ref, { matrix: true });
+  const hostRef = $derived(handleRef(ref, { matrix: true }));
   const native = $derived(textPathNativeProps(props));
 </script>
 {#if native}

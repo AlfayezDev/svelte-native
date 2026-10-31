@@ -19,11 +19,22 @@ function libraryFile(path: string): string | undefined {
 export type Spec = { tag: string; props?: Record<string, unknown>; children?: (Spec | string)[] };
 export type Described = { name: string; props: Record<string, unknown>; children: (Described | string)[] };
 
-export async function svgHarness(platform: Platform, options: { natives?: Partial<Natives> } = {}) {
+/**
+ * `colors`: Reanimated's own `processColorsInProps` instead of the stub, applied by the stubbed `updateProps` as the real one does for animated props
+ * (`updateProps.ts`: `if (isAnimatedProps) processColorsInProps(updates)`), and exported as `colors`.
+ */
+export async function svgHarness(platform: Platform, options: { natives?: Partial<Natives>; colors?: boolean } = {}) {
   const keys = await panResponderKeys();
   const harness = createHarness(platform, {
     natives: options.natives,
     stubs: {
+      ...(options.colors ? {
+        "react-native": `export const AppRegistry = { registerRunnable() {} }; export const Platform = { OS: ${JSON.stringify(platform)} };`,
+        "react-native-reanimated/src/updateProps": `
+          import { processColorsInProps } from "react-native-reanimated/src/common/style/processors/colors";
+          const A = (globalThis.__anim ??= { descriptors: [], mappers: [], updates: [], css: [], removable: [] });
+          export const updateProps = (descriptors, values, isAnimatedProps) => { const updates = { ...values }; if (isAnimatedProps) processColorsInProps(updates); A.updates.push({ descriptors, values: updates, animatedProps: isAnimatedProps === true }); };`,
+      } : null),
       // React Native returns an object source as it is; a number is an asset.
       "react-native/Libraries/Image/resolveAssetSource": "export default (source) => (typeof source === 'number' ? (globalThis.__harness.natives.assets[source] ?? null) : source && typeof source === 'object' ? source : null);",
       "svg-react-native": `
@@ -31,14 +42,19 @@ export async function svgHarness(platform: Platform, options: { natives?: Partia
         export { processColor };
         export const PanResponder = { create: () => ({ panHandlers: Object.fromEntries(${JSON.stringify(keys)}.map((key) => [key, () => undefined])) }) };`,
     },
-    plugins: [{
+    plugins: [...(options.colors ? [{
+      name: "reanimated-colors",
+      setup(builder: import("esbuild").PluginBuild) {
+        builder.onResolve({ filter: /^react-native-reanimated\/src\/common\/style\/processors\/colors$/ }, (args) => ({ path: resolve(modules, `${args.path}.ts`) }));
+      },
+    }] : []), {
       name: "svg-library-react-native",
       setup(builder) {
         builder.onResolve({ filter: /^react-native$/ }, (args) => (/[\\/]react-native-svg[\\/]/.test(args.importer) ? { path: "svg-react-native", namespace: "stub" } : undefined));
         builder.onResolve({ filter: /^react-native-svg\// }, (args) => ({ path: libraryFile(args.path) }));
       },
     }],
-    exports: "export * as svg from '../src/fabric/foreign-svg.ts'; export * as extract from '../src/fabric/foreign-svg-extract.ts'; export * as xml from '../src/fabric/foreign-svg-xml.ts';",
+    exports: `export * as svg from '../src/fabric/foreign-svg.ts'; export * as extract from '../src/fabric/foreign-svg-extract.ts'; export * as xml from '../src/fabric/foreign-svg-xml.ts';${options.colors ? " export * as colors from 'react-native-reanimated/src/common/style/processors/colors';" : ""}`,
   });
   return harness;
 }
@@ -47,6 +63,8 @@ export type SvgLoaded = Awaited<ReturnType<ReturnType<typeof createHarness>["loa
   svg: typeof import("../src/fabric/foreign-svg.ts");
   extract: typeof import("../src/fabric/foreign-svg-extract.ts");
   xml: typeof import("../src/fabric/foreign-svg-xml.ts");
+  /** Only from `svgHarness(platform, { colors: true })`. */
+  colors: { processColorsInProps(props: Record<string, unknown>): void };
 };
 
 /**

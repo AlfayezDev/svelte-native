@@ -27,7 +27,7 @@
 import { mark } from "../boot-marks.ts";
 import { makeMutable, startMapper, stopMapper, type SharedValue } from "react-native-reanimated";
 import { makeShareable } from "react-native-worklets";
-import { CSSManager, filterCSSAndStyleProperties, getInlineStyle, hasInlineStyles, initialUpdaterRun, InlinePropManager, isAnimated, LayoutAnimationType, makeViewDescriptorsSet, markNodeAsRemovable, maybeBuild, shallowEqual, updateLayoutAnimations, updateProps, validateAnimatedStyles, type ViewDescriptorsSet } from "./reanimated-internals.js";
+import { CSSManager, filterCSSAndStyleProperties, getInlineStyle, hasInlineStyles, initialUpdaterRun, InlinePropManager, isAnimated, LayoutAnimationType, makeViewDescriptorsSet, markNodeAsRemovable, maybeBuild, processColorsInProps, shallowEqual, updateLayoutAnimations, updateProps, validateAnimatedStyles, type ViewDescriptorsSet } from "./reanimated-internals.js";
 
 /** What the host keeps per element that the animation layer reads: its tag, Fabric component name and current shadow node handle. */
 export type AnimationTarget = { tag: number; viewName: string; node: object | null; propsDirty: boolean };
@@ -245,12 +245,16 @@ function styleUpdater(viewDescriptors: SharedValue<any>, updater: Updater, state
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 function createStyleRuntime(updaters: Updater[], animatedProps = false): StyleRuntime {
-  const initial = { ...initialUpdaterRun(combine(updaters)) } as Values;
-  validateAnimatedStyles(initial);
+  const returned = { ...initialUpdaterRun(combine(updaters)) } as Values;
+  validateAnimatedStyles(returned);
+  // `updateProps(..., true)` turns the colours of animated props (`fill`, `stroke`, `floodColor`, `backgroundColor`, ...) into the platform's integer before the native view
+  // gets them; the first values reach it in the node's props, so they are given the same treatment (a colour the worklet returns as `{ type: 0, payload }` throws, as it does there).
+  const initial = animatedProps ? { ...returned } : returned;
+  if (animatedProps) processColorsInProps(initial);
   return {
     animatedProps,
     descriptors: makeViewDescriptorsSet(),
-    remoteState: makeShareable({ last: initial, animations: {}, isAnimationCancelled: false, isAnimationRunning: false }) as unknown as SharedValue<unknown>,
+    remoteState: makeShareable({ last: returned, animations: {}, isAnimationCancelled: false, isAnimationRunning: false }) as unknown as SharedValue<unknown>,
     active: makeMutable(true),
     initial,
     updaters,

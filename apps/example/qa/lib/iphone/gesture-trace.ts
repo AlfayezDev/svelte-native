@@ -115,8 +115,11 @@ export function storiesFrom(trace: TraceFile, actions: readonly TraceAction[]): 
 			});
 		}
 		recognizers.sort((a, b) => (a.beganAfterMs ?? Infinity) - (b.beganAfterMs ?? Infinity) || a.id - b.id);
-		const inside = contexts.filter((entry) => entry.t >= from && entry.t <= to && entry.value);
-		const atStart = contexts.filter((entry) => entry.t <= from + before && entry.value).at(-1)?.value ?? inside[0]?.value ?? null;
+		// What the finger did to the navigation and the sheet is between the first touch and a moment after the last one: the lab pops the page or dismisses the sheet after the step.
+		const spanFrom = began ? began[0] - 100 : from;
+		const spanTo = seen.length > 0 ? (seen.at(-1) as TraceTouch)[0] + 400 : to;
+		const inside = contexts.filter((entry) => entry.t >= spanFrom && entry.t <= spanTo && entry.value);
+		const atStart = contexts.filter((entry) => entry.t <= (began ? spanFrom : from + before) && entry.value).at(-1)?.value ?? inside[0]?.value ?? null;
 		const atEnd = inside.at(-1)?.value ?? atStart;
 		const start = atStart?.visualY ?? atStart?.y ?? null;
 		const travel = start === null ? null : Math.max(0, ...inside.map((entry) => Math.abs((entry.value?.visualY ?? entry.value?.y ?? start) - start)));

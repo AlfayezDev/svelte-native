@@ -282,7 +282,8 @@ let counter = 0;
  * log: the crash log also holds sysdiagnose archives of hundreds of megabytes (a failed UI-testing start on the phone writes one), and
  * copying those takes minutes. A report of the app is named by its process (`<process>-<date>.ips`). The PATH adds Homebrew's, where
  * libimobiledevice lives. The pull counts as done only when both runs exit 0 and say `Done.`: a tool that found no phone must never read
- * as a phone with no reports.
+ * as a phone with no reports. A failure prints the tool's words on stderr (a locked phone says `Password protected`) and exits 1; the
+ * Mac's ssh drops the remote exit status (the command runs under `login`), so the caller tells a failed pull by its stderr and the missing `ours=` line.
  */
 export function pullScript(options: { udid: string; bundleId: string; processName?: string; directory: string }): string {
 	const processName = options.processName ?? qaProcessName;
@@ -301,7 +302,7 @@ export function pullScript(options: { udid: string; bundleId: string; processNam
 		`idevicecrashreport -u ${shellQuote(options.udid)} -k -f JetsamEvent ${dir} >> ${log} 2>&1`,
 		"second=$?",
 		"if [ $code -eq 0 ]; then code=$second; fi",
-		`if [ $code -ne 0 ] || [ "$(grep -c '^Done\\.' ${log})" -ne 2 ]; then tail -n 6 ${log} >&2; rm -rf ${dir} ${gathered} ${log}; if [ $code -eq 0 ]; then code=1; fi; exit $code; fi`,
+		`if [ $code -ne 0 ] || [ "$(grep -c '^Done\\.' ${log})" -ne 2 ]; then tail -n 6 ${log} >&2; rm -rf ${dir} ${gathered} ${log}; exit 1; fi`,
 		`find ${dir} -type f -name '*.ips' | while IFS= read -r file; do`,
 		`  name=$(basename "$file")`,
 		`  if head -n 1 "$file" | grep -qF ${header}; then cp "$file" ${gathered}/; else case "$name" in JetsamEvent-*|${processName}-*) cp "$file" ${gathered}/;; esac; fi`,
@@ -327,7 +328,7 @@ export async function pullCrashReports(mac: Mac, udid: string, bundleId: string)
 		throw new Error(`reading the crash log of ${udid} through ${mac.target} failed (exit ${result.code}): ${(result.stderr || result.stdout).trim().slice(0, 400) || "no output"}`);
 	}
 	const gathered = /^ours=(\d+)$/m.exec(result.stdout);
-	if (!gathered) throw new Error(`reading the crash log of ${udid} through ${mac.target}: the pull did not say how many files it found: ${result.stdout.trim().slice(-200)}`);
+	if (!gathered) throw new Error(`reading the crash log of ${udid} through ${mac.target}: the pull did not say how many files it found: ${(result.stderr || result.stdout).trim().slice(-300)}`);
 	const local = await mkdtemp(join(tmpdir(), "native-qa-crashes-"));
 	try {
 		if (Number(gathered[1]) > 0) await scpFrom(mac, `${directory}.ours/.`, local, { timeoutMs: 300_000 });

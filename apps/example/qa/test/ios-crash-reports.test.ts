@@ -420,6 +420,11 @@ describe("pulling the crash log through the Mac", () => {
 		}
 	});
 
+	test("a locked phone: the Mac's ssh reports success (it drops the remote exit status), so the pull's words on stderr are the error", async () => {
+		const locked = macFrom("me@mac", async () => ({ code: 0, stdout: "", stderr: "ERROR: Could not start service com.apple.crashreportmover: Password protected\n" }));
+		await expect(pullCrashReports(locked, udid, bundleId)).rejects.toThrow("Password protected");
+	});
+
 	test("a Mac without idevicecrashreport says so", async () => {
 		const fake = await fakeMac();
 		try {

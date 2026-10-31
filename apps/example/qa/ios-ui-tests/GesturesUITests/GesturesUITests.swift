@@ -82,7 +82,7 @@ final class GesturesUITests: XCTestCase {
     /// A 60 point drag to the right, 0.4 s, from x = each of the points below at mid height; every one is announced as `GESTURES-CALIBRATE {x}` with the phone's clock.
     private func calibrateEdge(in app: XCUIApplication) {
         let origin = app.coordinate(withNormalizedOffset: .zero)
-        for x in [1.0, 2.0, 4.0, 6.0, 8.0, 10.0, 12.0, 16.0, 20.0, 24.0, 32.0] {
+        for x in [1.0, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0, 16.0, 24.0, 32.0, 48.0, 64.0, 100.0] {
             let start = origin.withOffset(CGVector(dx: x, dy: 380))
             let end = origin.withOffset(CGVector(dx: x + 60, dy: 380))
             Self.emit("GESTURES-CALIBRATE {\"x\":\(x),\"atMs\":\((Date().timeIntervalSince1970 * 1000).rounded())}")

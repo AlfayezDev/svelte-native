@@ -272,14 +272,22 @@ function boxRound(): Round {
   };
 }
 
-function boxChecks(s: Snapshot): Check[] {
+/**
+ * How much of the drag the box's peak must reach. A Pan's translation starts where it activated (a touch slop along the path, 7 of
+ * 160 dp), and `adb shell input swipe` sends its last MOVE before the end of its path (the UP carries the end point): complete
+ * drags read 138 to 148 dp there. The injector delivers the whole path, so the bar is higher.
+ */
+const peakReach = (drive: Drive): number => (drive === "adb" ? 0.8 : 0.9);
+
+function boxChecks(s: Snapshot, context: EvalContext): Check[] {
   const pan = counterOf(s, "pan");
+  const reach = peakReach(context.drive);
   return [
     check("begin, start", pan.begin >= 1 && pan.start >= 1, `${pan.begin}, ${pan.start}`),
     check("one end, success", pan.end === 1 && pan.endOk === 1, `${pan.end}, ${pan.endOk}`),
     check("one finalize", pan.finalize === 1, pan.finalize),
     check("at least 10 updates", pan.update >= 10, pan.update),
-    check("peak reaches the drag", (s.marks.peakX ?? 0) >= BOX_DRAG[0] * 0.9 && (s.marks.peakY ?? 0) >= BOX_DRAG[1] * 0.9, `${fixed(s.marks.peakX)}, ${fixed(s.marks.peakY)}`),
+    check("peak reaches the drag", (s.marks.peakX ?? 0) >= BOX_DRAG[0] * reach && (s.marks.peakY ?? 0) >= BOX_DRAG[1] * reach, `${fixed(s.marks.peakX)}, ${fixed(s.marks.peakY)}`),
     check("rests at 0", near(s.marks.restX, 0, 0.5) && near(s.marks.restY, 0, 0.5), `${fixed(s.marks.restX, 2)}, ${fixed(s.marks.restY, 2)}`),
   ];
 }
@@ -442,7 +450,7 @@ function spec(fields: Partial<ScenarioSpec> & Pick<ScenarioSpec, "name" | "mode"
 
 const step = (name: string, input: Input | null, done: Step["done"], settleMs = 600, maxMs = 8000): Step => ({ name, input, done, settleMs, maxMs });
 
-const boxEvaluate = (rounds: Snapshot[]) => boxChecks(rounds[0] as Snapshot);
+const boxEvaluate = (rounds: Snapshot[], _steps: Snapshot[][], context: EvalContext) => boxChecks(rounds[0] as Snapshot, context);
 const boxLabel = "A draggable box: Pan on the UI thread, a spring on release";
 
 export const scenarios: ScenarioSpec[] = [

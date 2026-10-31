@@ -387,6 +387,16 @@ describe("verdicts", () => {
 		expect(failing(evaluate("gestures-box", [s]))).toEqual(["one end, success", "one finalize", "at least 10 updates", "peak reaches the drag", "rests at 0"]);
 	});
 
+	test("box: adb input's drag stops short of its path, the injector's does not", () => {
+		// `input swipe` sends its last MOVE before the end of the path (the UP carries the end point) and a Pan's translation starts where it
+		// activated: 139 of 160 dp is what a complete drag reads there. The injector delivers the whole path.
+		const short = snapshot({ pan: [1, 1, 24, 1, 1, 1, 1] }, { peakX: 139, peakY: 83.5, restX: 0, restY: 0 });
+		expect(failing(evaluate("gestures-box", [short]))).toEqual([]);
+		expect(failing(evaluate("gestures-box", [short], [], { ...context, drive: "qa" }))).toEqual(["peak reaches the drag"]);
+		const half = snapshot({ pan: [1, 1, 24, 1, 1, 1, 1] }, { peakX: 100, peakY: 60, restX: 0, restY: 0 });
+		expect(failing(evaluate("gestures-box", [half]))).toEqual(["peak reaches the drag"]);
+	});
+
 	test("pinch-rotate: judged against what the injector delivered, and by the commanded values without it", () => {
 		const s = snapshot({ pinch: [1, 1, 30, 1, 1, 1, 1], rotation: [1, 1, 30, 1, 1, 1, 1] }, { scale: 2.5, rotationDeg: 40.5, maxActive: 2, expectedScale: 2.52, expectedRotation: 40 });
 		expect(failing(evaluate("gestures-pinch-rotate", [s]))).toEqual([]);

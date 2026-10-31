@@ -33,10 +33,10 @@
 
   // Only the rows a step aims at are measured: every rectangle is a line of the handshake.
   // svelte-ignore state_referenced_locally
-  const measured = aimed ? probe(name) : { ref: undefined, testID: undefined };
+  const measured = aimed ? probe(name) : { collapsable: false as const };
 </script>
 
-<View ref={measured.ref} testID={measured.testID} collapsable={false} style={{ height: 56, marginBottom: 6, borderRadius: 10, overflow: "hidden", backgroundColor: "#d9534f", justifyContent: "center", alignItems: "flex-end", paddingRight: 16 }}>
+<View {...measured} style={{ height: 56, marginBottom: 6, borderRadius: 10, overflow: "hidden", backgroundColor: "#d9534f", justifyContent: "center", alignItems: "flex-end", paddingRight: 16 }}>
   <Text style={{ color: "white", fontSize: 13, position: "absolute", right: 16 }}>Delete</Text>
   <AnimatedView collapsable={false} gesture={pan}
     style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, borderRadius: 10, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.surface, justifyContent: "center", paddingHorizontal: 14 }}

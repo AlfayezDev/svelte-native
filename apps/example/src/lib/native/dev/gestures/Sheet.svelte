@@ -15,10 +15,10 @@
 </script>
 
 <View style={{ flex: 1, paddingHorizontal: 16, gap: 10 }}>
-  <View ref={probe("grabber").ref} testID={probe("grabber").testID} collapsable={false} style={{ height: 28 }} />
+  <View {...probe("grabber")} style={{ height: 28 }} />
   <PanBox name="boxDefault" {session} {probe} label="Pan, default offsets" />
   <PanBox name="boxFast" {session} {probe} activeY={[-4, 4]} label="Pan, activeOffsetY [-4, 4]" />
-  <ScrollView ref={probe("scroll").ref} testID={probe("scroll").testID} collapsable={false} scrollEventThrottle={16} onScroll={(event) => { session.mark("scrollY", event.nativeEvent.contentOffset.y); }} style={{ flex: 1 }} contentContainerStyle={{ gap: 8, paddingBottom: 24 }}>
+  <ScrollView {...probe("scroll")} scrollEventThrottle={16} onScroll={(event) => { session.mark("scrollY", event.nativeEvent.contentOffset.y); }} style={{ flex: 1 }} contentContainerStyle={{ gap: 8, paddingBottom: 24 }}>
     <Text style={{ color: theme.muted, fontSize: 13 }}>Scrolls when the sheet is at its top detent</Text>
     {#each Array.from({ length: 30 }, (_, index) => index + 1) as row (row)}
       <View style={{ height: 48, borderRadius: 10, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.background, justifyContent: "center", paddingHorizontal: 14 }}>

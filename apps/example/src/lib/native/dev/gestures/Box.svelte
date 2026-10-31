@@ -65,8 +65,8 @@
 
 <View style={{ gap: 12, padding: 16 }}>
   <Text style={{ color: theme.foreground, fontSize: 15 }}>Drag the box ({onJs ? "JavaScript thread" : "UI thread"})</Text>
-  <View ref={probe("area").ref} testID={probe("area").testID} collapsable={false} style={{ height: 200 }}>
-    <View ref={probe("box").ref} testID={probe("box").testID} collapsable={false} style={{ position: "absolute", left: 24, top: 24, width: 96, height: 96 }}>
+  <View {...probe("area")} style={{ height: 200 }}>
+    <View {...probe("box")} style={{ position: "absolute", left: 24, top: 24, width: 96, height: 96 }}>
       <AnimatedView collapsable={false} gesture={pan} testID="gesture.box.moving"
         style={{ width: 96, height: 96, borderRadius: 12, backgroundColor: "#3685ff" }}
         animatedStyle={() => { "worklet"; return { transform: [{ translateX: tx.value }, { translateY: ty.value }] }; }} />

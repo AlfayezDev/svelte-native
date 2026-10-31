@@ -35,6 +35,19 @@ test("the text mounts with the worklet's first value, announced to the engine fi
   expect(A.mappers).toHaveLength(1);
 });
 
+test("a text without animatedProps does not load the animation layer", async () => {
+  delete (globalThis as { __anim?: unknown }).__anim;
+  const harness = createHarness("android");
+  const loaded = await harness.load("foreign-text-static-fixture.svelte");
+  loaded.startSurface(152, loaded.Fixture, {});
+  const [text] = find(harness.roots()[152], name);
+  expect(text.props).toMatchObject({ text: "static", numberOfLines: 1 });
+  expect("animatedProps" in text.props).toBe(false);
+  // Reanimated's modules (the stubs) are evaluated only when the first node that wants them is built.
+  expect((globalThis as { __anim?: unknown }).__anim).toBeUndefined();
+  expect((globalThis as { __svelteFabric?: { stats(): { animationLoaded: boolean } } }).__svelteFabric?.stats().animationLoaded).toBe(false);
+});
+
 test("the mapper writes the shared value's text as animated props, only when it changed; a clone keeps the mapper and the text; removal stops it", async () => {
   delete (globalThis as { __anim?: unknown }).__anim;
   const harness = createHarness("android");

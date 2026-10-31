@@ -10,7 +10,7 @@
    * attaches it like `animatedStyle` (SPEC.md, "Animated write path") and the shared values it reads write the node's `text` without the
    * JavaScript thread; `text` is the string of the first commit and the one shown without `animatedProps`. The props are the `Text`
    * ones (`style`, `numberOfLines`, `ellipsizeMode`, `selectable`, `selectionColor`, `allowFontScaling`, `onTextLayout`, ...);
-   * there are no children and no nested text. Not ported: `onPress`, `onLongPress` and the touchable highlight of the library's text.
+   * there are no children and no nested text. Without `animatedProps` the key is not sent at all (the host loads Reanimated for a node that has it). Not ported: `onPress`, `onLongPress` and the touchable highlight of the library's text.
    */
   let { text, animatedProps, style, ref, ...attributes }: Omit<TextProps, "children" | "onPress" | "onLongPress"> & {
     text?: string;
@@ -21,4 +21,4 @@
   } = $props();
   const resolveProps = createNativeProps();
 </script>
-<native-foreign component="JBAnimatedText" nativeProps={resolveProps({ ...attributes, text, animatedProps, style, ref })}></native-foreign>
+<native-foreign component="JBAnimatedText" nativeProps={resolveProps({ ...attributes, text, ...(animatedProps ? { animatedProps } : null), style, ref })}></native-foreign>

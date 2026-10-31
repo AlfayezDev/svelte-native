@@ -443,9 +443,26 @@ class ScrollBridge(private val view: ViewGroup, private val node: NodeState) {
   }
 }
 
+/**
+ * Puts a scroll view back at the origin before it is pooled. `ScrollView.scrollTo` does nothing while the view has no child, and
+ * a dead tree can arrive content first (the order of the mutation stream's deletes): the offset would outlive the view and show
+ * on its next owner, whose content is laid out from its own origin (a gesture aimed at a laid-out rectangle found another row).
+ * With no child, an empty stand-in child is attached just long enough for the move.
+ */
+private fun resetOffset(view: ViewGroup, standIn: View, offset: Boolean, scrollTo: (Int, Int) -> Unit) {
+  if (view.childCount > 0 || !offset) {
+    scrollTo(0, 0)
+    return
+  }
+  view.addView(standIn)
+  scrollTo(0, 0)
+  view.removeView(standIn)
+}
+
 class EngineScroll(context: Context) : ScrollView(context), EngineNode, EngineScrollable, NativeViewGestureHandlerHook {
   override val node = NodeState()
   val bridge = ScrollBridge(this, node)
+  private val standIn by lazy(LazyThreadSafetyMode.NONE) { View(context) }
 
   init {
     overScrollMode = OVER_SCROLL_IF_CONTENT_SCROLLS
@@ -483,7 +500,7 @@ class EngineScroll(context: Context) : ScrollView(context), EngineNode, EngineSc
   /** Back to the scroll position and event state of a new view ([ViewPool]); the content child is detached afterwards. */
   fun resetForReuse() {
     bridge.native = null
-    scrollTo(0, 0)
+    resetOffset(this, standIn, scrollX != 0 || scrollY != 0, ::scrollTo)
     bridge.resetForReuse()
     // Edge glows of the previous owner would otherwise keep animating on the next one.
     overScrollMode = OVER_SCROLL_NEVER
@@ -551,6 +568,7 @@ class EngineScroll(context: Context) : ScrollView(context), EngineNode, EngineSc
 class EngineHScroll(context: Context) : HorizontalScrollView(context), EngineNode, EngineScrollable, NativeViewGestureHandlerHook {
   override val node = NodeState()
   val bridge = ScrollBridge(this, node)
+  private val standIn by lazy(LazyThreadSafetyMode.NONE) { View(context) }
 
   init {
     overScrollMode = OVER_SCROLL_IF_CONTENT_SCROLLS
@@ -587,7 +605,7 @@ class EngineHScroll(context: Context) : HorizontalScrollView(context), EngineNod
   /** Back to the scroll position and event state of a new view ([ViewPool]); the content child is detached afterwards. */
   fun resetForReuse() {
     bridge.native = null
-    scrollTo(0, 0)
+    resetOffset(this, standIn, scrollX != 0 || scrollY != 0, ::scrollTo)
     bridge.resetForReuse()
     // Edge glows of the previous owner would otherwise keep animating on the next one.
     overScrollMode = OVER_SCROLL_NEVER

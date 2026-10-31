@@ -3,7 +3,6 @@ package expo.modules.svelteengine
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import java.io.File
 
 /**
  * Keeps the host's start-up threads on the big cores until the first screen is mounted.
@@ -23,11 +22,6 @@ import java.io.File
 object BootBoost {
   private const val TIMEOUT_MS = 3000L
 
-  init { System.loadLibrary("svelteboot") }
-
-  @JvmStatic private external fun affinityOf(tid: Int): Long
-  @JvmStatic private external fun setAffinity(tid: Int, mask: Long): Boolean
-
   private val lock = Any()
   @Volatile private var released = true
   private var big = 0L
@@ -40,14 +34,14 @@ object BootBoost {
    */
   @JvmStatic fun begin() {
     Thread({ preload() }, "svelte-boot-load").apply { isDaemon = true }.start()
-    val mask = bigCores() ?: return
+    val mask = Affinity.bigCores() ?: return
     synchronized(lock) {
-      val before = affinityOf(0)
+      val before = Affinity.affinityOf(0)
       if (before <= 0 || before == mask) return
       big = mask
       open = before
       released = false
-      callerPinned = setAffinity(0, mask)
+      callerPinned = Affinity.setAffinity(0, mask)
     }
     Handler(Looper.getMainLooper()).postDelayed({ release() }, TIMEOUT_MS)
   }
@@ -55,7 +49,7 @@ object BootBoost {
   /** The calling thread (the one that called [begin]) gets its own mask back; the threads it started keep the big mask until [release]. */
   @JvmStatic fun handOver() {
     synchronized(lock) {
-      if (callerPinned) setAffinity(0, open)
+      if (callerPinned) Affinity.setAffinity(0, open)
       callerPinned = false
     }
   }
@@ -66,10 +60,10 @@ object BootBoost {
     synchronized(lock) {
       if (released) return
       released = true
-      if (callerPinned) setAffinity(0, open)
+      if (callerPinned) Affinity.setAffinity(0, open)
       callerPinned = false
       // A thread inherits its creator's mask: every thread the pinned ones started in the meantime is narrowed too.
-      for (tid in tasks()) if (affinityOf(tid) == big) setAffinity(tid, open)
+      for (tid in Affinity.tasks()) if (Affinity.affinityOf(tid) == big) Affinity.setAffinity(tid, open)
     }
   }
 
@@ -86,28 +80,4 @@ object BootBoost {
       Log.w("SvelteEngine", "BootBoost: could not preload expo-modules-core", error)
     }
   }
-
-  private fun capacity(cpu: Int): Long {
-    val base = "/sys/devices/system/cpu/cpu$cpu"
-    return try {
-      (File("$base/cpu_capacity").takeIf { it.canRead() }?.readText() ?: File("$base/cpufreq/cpuinfo_max_freq").takeIf { it.canRead() }?.readText())?.trim()?.toLongOrNull() ?: 0L
-    } catch (_: Exception) {
-      0L
-    }
-  }
-
-  /** The cores whose capacity is at least half of the largest, as a mask; null when the cores are alike or unreadable. */
-  private fun bigCores(): Long? {
-    val cpus = Runtime.getRuntime().availableProcessors().coerceAtMost(62)
-    val capacities = LongArray(cpus) { capacity(it) }
-    val known = capacities.filter { it > 0 }
-    if (known.size < 2) return null
-    val top = known.max()
-    if (known.min() * 2 > top) return null
-    var mask = 0L
-    for (cpu in 0 until cpus) if (capacities[cpu] * 2 >= top) mask = mask or (1L shl cpu)
-    return mask.takeIf { it != 0L }
-  }
-
-  private fun tasks(): List<Int> = File("/proc/self/task").list()?.mapNotNull { it.toIntOrNull() } ?: emptyList()
 }

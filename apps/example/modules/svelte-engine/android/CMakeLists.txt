@@ -14,9 +14,9 @@ file(GLOB SVELTE_ENGINE_SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/src/main/
 
 add_library(svelteengine SHARED ${SVELTE_ENGINE_SOURCES})
 
-# The start-up thread boost (BootBoost.kt) needs one syscall and nothing else, so it does not load with the engine.
-add_library(svelteboot SHARED "${CMAKE_SOURCE_DIR}/src/main/boot/BootBoost.cpp")
-target_compile_options(svelteboot PRIVATE -O2 -Wall)
+# The thread boosts (BootBoost.kt, MountBoost.kt) need one syscall and nothing else, so they do not load with the engine.
+add_library(svelteaffinity SHARED "${CMAKE_SOURCE_DIR}/src/main/boot/Affinity.cpp")
+target_compile_options(svelteaffinity PRIVATE -O2 -Wall)
 
 target_compile_options(svelteengine PRIVATE
   -std=c++20

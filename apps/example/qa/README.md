@@ -51,6 +51,8 @@ Both are processes started from nothing: `am force-stop` kills the app first, so
 
 The number gated is `Displayed` minus `Start proc`, both timestamps from the activity manager's lines in `logcat -v threadtime`, so it contains the zygote fork, the native host and the JavaScript. `am start -W` `TotalTime`, the system's own `Displayed ... +NNNms`, `Start proc` to `Running "main"` and the `[Svelte boot]` JavaScript total are recorded next to it (`boot.<kind>.totalTime.p90`, `.runningMain.p90`, `.jsTotal.p90`). p90 is nearest rank: with 30 samples it is the 27th smallest.
 
+On a phone with a little/big core split (the Samsung A16: two big cores) the launch is sensitive to which cores the start-up threads get: `am start -W` runs a JVM that holds a big core for 200 to 460 ms of the launch, and `system_server`'s garbage collector takes the other one in about one launch in four. The app pins its start-up threads to the big cores until the first mount (`BootBoost`, SPEC "Boot on the phone"), so a collector run costs a few milliseconds instead of doubling the JavaScript time. `cmd activity start-activity -W` has no JVM; 30 interleaved pairs against `am start -W` showed the same distribution, so the harness keeps `am`.
+
 ## Where every number comes from
 
 | Metric              | logcat line                                                                                                                                                                | Parser                 |

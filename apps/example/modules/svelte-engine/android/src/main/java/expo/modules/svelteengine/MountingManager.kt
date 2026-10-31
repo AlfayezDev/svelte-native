@@ -73,6 +73,7 @@ private const val KIND_FOREIGN = 19
 class MountingManager(context: Context) {
   private val appContext = context.applicationContext
   private val handler = Handler(Looper.getMainLooper())
+  private val boost = MountBoost(handler)
   private val registry = SparseArray<View>(512)
   private val scratch = PropSet()
   private val dirtyTexts = ArrayList<EngineText>()
@@ -248,6 +249,7 @@ class MountingManager(context: Context) {
   private fun apply(surfaceId: Int, ops: IntArray, strings: Array<String>, objects: Array<Any?>) {
     if (pool.hasHeld) pool.sweep()
     BootBoost.release() // the first screen is being mounted: the start-up threads get their cores back
+    boost.begin(ops.size) // a large batch (a push) and the frames that draw it run on the big cores
     Trace.beginSection("SvelteEngine.mount")
     val t0 = System.nanoTime()
     var decodeNs = 0L

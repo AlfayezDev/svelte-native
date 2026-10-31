@@ -26,11 +26,10 @@
   const resolveProps = createNativeProps();
   const android = Platform.OS === "android";
   const parts = $derived(android ? shadowedParts(style, isRightToLeft()) : null);
-  const fill = { position: "absolute", left: 0, top: 0, right: 0, bottom: 0 } as const;
 </script>
 {#if parts}
   <View {...attributes} style={parts.content} {ref}>
-    <native-foreign component="FastShadowView" nativeProps={resolveProps({ ...parts.shadow, cornerRadii: parts.cornerRadii, pointerEvents: "none", style: [fill, parts.box] })}></native-foreign>
+    <native-foreign component="FastShadowView" nativeProps={resolveProps({ ...parts.shadow, cornerRadii: parts.cornerRadii, pointerEvents: "none", style: [{ position: "absolute", ...parts.inset }, parts.box] })}></native-foreign>
     {@render children?.()}
   </View>
 {:else}

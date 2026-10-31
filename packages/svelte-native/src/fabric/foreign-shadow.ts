@@ -47,19 +47,39 @@ const boxKeys = new Set([
   "borderColor", "borderTopColor", "borderRightColor", "borderBottomColor", "borderLeftColor", "borderStartColor", "borderEndColor",
   "borderBlockColor", "borderBlockStartColor", "borderBlockEndColor",
 ]);
-// The container keeps the widths too (they take room in the layout); the native view draws the borders.
+// The container keeps the widths too (they take room in the layout); the native view draws the borders, and is placed outside the container's padding box by them (`borderInsets`).
 const widthKeys = new Set([
   "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderStartWidth", "borderEndWidth",
   "borderBlockWidth", "borderBlockStartWidth", "borderBlockEndWidth",
 ]);
 
+export type Insets = { left: number; top: number; right: number; bottom: number };
+
+/**
+ * Where the native view sits in the container: Yoga positions an absolute child from the container's padding box, inside the border, so a container that keeps
+ * its border widths would leave the border to a ring the native view does not cover. The insets are the widths, negative, so the view fills the border box
+ * and paints the border where the style puts it. The widths are resolved as Yoga resolves a border edge (`Style::computeLeftEdge`): a side beats `borderWidth`;
+ * for the left and right edges the start and end widths beat the side ones, by the layout direction. Only the widths that take room count: the block ones are
+ * painted and not laid out (`YogaStylableProps` has no `borderBlock*Width`).
+ */
+export function borderInsets(style: Style, rtl: boolean): Insets {
+  const width = (key: string): number | undefined => (typeof style[key] === "number" && style[key] >= 0 ? style[key] : undefined);
+  const all = width("borderWidth");
+  const left = (rtl ? width("borderEndWidth") : width("borderStartWidth")) ?? width("borderLeftWidth") ?? all ?? 0;
+  const right = (rtl ? width("borderStartWidth") : width("borderEndWidth")) ?? width("borderRightWidth") ?? all ?? 0;
+  const top = width("borderTopWidth") ?? all ?? 0;
+  const bottom = width("borderBottomWidth") ?? all ?? 0;
+  const inset = (value: number) => (value ? -value : 0);
+  return { left: inset(left), top: inset(top), right: inset(right), bottom: inset(bottom) };
+}
+
 /**
  * What Android's `ShadowedView` hands to its two views. The library's native view is the box itself, so its children are mounted by React
  * Native and hear no touches in JavaScript; here the box is a container of the engine's views and the native view (shadow, background,
- * border and corner radii, no children) fills it behind them. `content` is the container's style, `box` the native view's, `shadow` its
- * shadow props (the wrapper's native props are top-level) and `cornerRadii` what the wrapper computes from the style.
+ * border and corner radii, no children) fills it behind them. `content` is the container's style, `box` the native view's, `inset` where it sits
+ * in the container (`borderInsets`), `shadow` its shadow props (the wrapper's native props are top-level) and `cornerRadii` what the wrapper computes from the style.
  */
-export function shadowedParts(style: unknown, rtl: boolean): { content: Style; box: Style; shadow: Style; cornerRadii: CornerRadii } {
+export function shadowedParts(style: unknown, rtl: boolean): { content: Style; box: Style; inset: Insets; shadow: Style; cornerRadii: CornerRadii } {
   const flat = flattenStyle(style);
   const content: Style = {};
   const box: Style = {};
@@ -74,7 +94,7 @@ export function shadowedParts(style: unknown, rtl: boolean): { content: Style; b
       if (widthKeys.has(key)) box[key] = value;
     }
   }
-  return { content, box, shadow, cornerRadii: cornerRadiiFromStyle(flat, rtl) ?? { topLeft: 0, topRight: 0, bottomLeft: 0, bottomRight: 0 } };
+  return { content, box, inset: borderInsets(flat, rtl), shadow, cornerRadii: cornerRadiiFromStyle(flat, rtl) ?? { topLeft: 0, topRight: 0, bottomLeft: 0, bottomRight: 0 } };
 }
 
 const currentPlatform = (): "android" | "ios" =>

@@ -13,6 +13,7 @@ import {
 } from "../lib/gates.ts";
 import { reachPct } from "../lib/a11y.ts";
 import { deviceMetrics, missingScenarios, runFatals } from "../lib/metrics.ts";
+import { missingModules, unpinnedModules } from "../lib/smoke.ts";
 import type { SuiteFiles } from "../lib/suite-metrics.ts";
 import { gatesPath, reportPath } from "../lib/paths.ts";
 import { latestRunFiles, readBuilds, readJson, runKinds, type RunKind } from "../lib/runs.ts";
@@ -32,6 +33,7 @@ import type {
 	Platform,
 	ResilienceFile,
 	SessionRecord,
+	SmokeFile,
 	SoakFile,
 	Source,
 } from "../lib/types.ts";
@@ -111,6 +113,19 @@ type A11yScreenSummary = {
 /** What one iOS run file recorded of the phone's crash log: the reports, or why there are none to count (`error`: the pull failed, or the file was recorded before it existed). */
 type CrashReportsSummary = { run: "lab" | "boot" | "parity" | "a11y"; file: string; error: string | null; reports: CrashReport[] };
 
+type SmokeSummary = {
+	file: string;
+	source: Source;
+	complete: boolean;
+	ok: number;
+	failed: string[];
+	skipped: string[];
+	/** Pinned modules (`smoke.modules` in `gates.json`) no line of the run reported. */
+	missing: string[];
+	/** Modules the run reported that `gates.json` does not pin. */
+	unpinned: string[];
+};
+
 type SuitesSummary = {
 	parity: { file: string; mode: "check" | "update"; deviceKind: string } | null;
 	a11y: { file: string; oracle: string; screens: A11yScreenSummary[] } | null;
@@ -142,6 +157,7 @@ type ReportDeviceEntry = {
 	boot: BootSummary | null;
 	soak: SoakSummary | null;
 	crashes: CrashesSummary | null;
+	smoke: SmokeSummary | null;
 	/** iOS only: the crash reports of the phone each run file recorded. */
 	crashReports: CrashReportsSummary[];
 	suites: SuitesSummary;
@@ -338,12 +354,14 @@ export async function report(): Promise<void> {
 		const parityPath = files.parity.get(key);
 		const a11yPath = files.a11y.get(key);
 		const resiliencePath = files.resilience.get(key);
+		const smokePath = files.smoke.get(key);
+		const smoke = smokePath ? await readJson<SmokeFile>(smokePath) : null;
 		const suites: SuiteFiles = {
 			parity: parityPath ? await readJson<ParityFile>(parityPath) : null,
 			a11y: a11yPath ? await readJson<A11yFile>(a11yPath) : null,
 			resilience: resiliencePath ? await readJson<ResilienceFile>(resiliencePath) : null,
 		};
-		const reference = lab ?? boot ?? soak ?? crashes ?? suites.parity ?? suites.a11y ?? suites.resilience;
+		const reference = lab ?? boot ?? soak ?? crashes ?? suites.parity ?? suites.a11y ?? suites.resilience ?? smoke;
 		if (!reference) continue;
 		const serial = reference.device.serial;
 		const platform: Platform = reference.device.platform;
@@ -355,6 +373,7 @@ export async function report(): Promise<void> {
 			["parity", suites.parity],
 			["accessibility", suites.a11y],
 			["resilience", suites.resilience],
+			["smoke", smoke],
 		];
 		warnings.push(...buildWarnings(serial, measured));
 		notes.push(...buildNotes(serial, measured));
@@ -366,6 +385,7 @@ export async function report(): Promise<void> {
 		warnings.push(...found.warnings);
 		notes.push(...found.notes);
 		const pinned = gates.scenarios[platform];
+		const pinnedSmoke = gates.smoke.modules[platform];
 		devices[serial] = {
 			platform,
 			role: gates.devices[serial]?.role ?? null,
@@ -406,6 +426,19 @@ export async function report(): Promise<void> {
 							signatures: crashes.signatures,
 						}
 					: null,
+			smoke:
+				smoke && smokePath
+					? {
+							file: smokePath.slice(smokePath.lastIndexOf("runs/")),
+							source: smoke.source,
+							complete: smoke.complete,
+							ok: smoke.results.filter((result) => result.status === "ok").length,
+							failed: smoke.results.filter((result) => result.status === "fail").map((result) => result.module),
+							skipped: smoke.results.filter((result) => result.status === "skip").map((result) => result.module),
+							missing: missingModules(smoke.results, pinnedSmoke),
+							unpinned: unpinnedModules(smoke.results, pinnedSmoke),
+						}
+					: null,
 			crashReports: crashReportSummaries(platform, [
 				["lab", labPath, lab],
 				["boot", bootPath, boot],
@@ -433,7 +466,7 @@ export async function report(): Promise<void> {
 						: null,
 				resilience: suites.resilience && resiliencePath ? { file: resiliencePath.slice(resiliencePath.lastIndexOf("runs/")), screen: suites.resilience.screen } : null,
 			},
-			metrics: deviceMetrics(lab, boot, pinned, soak, crashes, suites),
+			metrics: deviceMetrics(lab, boot, pinned, soak, crashes, suites, smoke ? { file: smoke, pinned: pinnedSmoke } : null),
 		};
 	}
 
@@ -504,6 +537,10 @@ export async function report(): Promise<void> {
 		if (entry.suites.resilience)
 			console.log(
 				`  resilience ${m["resilience.steps"] ?? 0} steps, ${m["resilience.failures"] ?? "-"} failed`,
+			);
+		if (entry.smoke)
+			console.log(
+				`  smoke ${m["smoke.ok"] ?? 0} ok, ${m["smoke.failed"] ?? "-"} failed${entry.smoke.failed.length ? ` (${entry.smoke.failed.join(", ")})` : ""}, ${m["smoke.skipped"] ?? 0} skipped, ${m["smoke.missing"] ?? "-"} missing${entry.smoke.missing.length ? ` (${entry.smoke.missing.join(", ")})` : ""} of ${m["smoke.modules"] ?? "-"} pinned${entry.smoke.complete ? "" : ", the run did not complete"}${entry.smoke.unpinned.length ? `; not pinned: ${entry.smoke.unpinned.join(", ")}` : ""}`,
 			);
 		if (entry.crashes)
 			console.log(

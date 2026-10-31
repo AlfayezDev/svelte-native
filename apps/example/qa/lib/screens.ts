@@ -458,6 +458,11 @@ export const notCovered: NotCovered[] = [
 		reason:
 			"the foreign-views lab (WebView, map, video) draws third-party content that is not ours to freeze: remote pages, map tiles and video frames change between runs and need the network; the foreign-views stress scenario of the lab checks these views functionally",
 	},
+	{
+		route: "/__dev/smoke",
+		reason:
+			"the native module smoke test page lists what each native library answered on this device (model, locale, connection state, versions): the text differs between devices and runs by design; the smoke scenario of the lab (`native-qa smoke`) checks the calls themselves",
+	},
 	{ route: "/(account)/account", reason: needsSession },
 	{ route: "/onboarding/profile", reason: needsSession },
 	{ route: "/workspaces", reason: needsSession },

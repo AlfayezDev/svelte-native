@@ -24,6 +24,7 @@ export type Gate = {
 export type DeviceRole = { role: Role; name: string; runs: RunKind[] };
 /**
  * `scenarios` is the fixed list of scenarios a full `checks,quick` lab run produces, per platform: a run missing any is not that run.
+ * `smoke.modules` is the fixed list of native modules the smoke test reports, per platform.
  * `devices` maps a serial to its role and the run kinds it provides; a serial not listed has no role, provides every kind, and
  * every gate judges it.
  */
@@ -31,6 +32,8 @@ export type GatesFile = {
 	version: 1;
 	devices: Record<string, DeviceRole>;
 	scenarios: Record<Platform, string[]>;
+	/** `smoke.modules`: per platform, the native modules every smoke run must report (a pinned module no line reports is `smoke.missing`). */
+	smoke: { modules: Record<Platform, string[]> };
 	gates: Gate[];
 };
 
@@ -79,6 +82,7 @@ export function gateKinds(gate: Gate): RunKind[] | null {
 		case "parity":
 		case "a11y":
 		case "resilience":
+		case "smoke":
 			return [prefix];
 		default:
 			return null;
@@ -95,6 +99,11 @@ export function checkGatesFile(file: GatesFile): void {
 		if (entry.runs.length === 0) throw new Error(`gates.json: device ${serial} has an empty runs list (every gate would be informational)`);
 		for (const kind of entry.runs)
 			if (!kinds.has(kind)) throw new Error(`gates.json: device ${serial} has the unknown run kind ${JSON.stringify(kind)}`);
+	}
+	for (const platform of ["android", "ios"] as const) {
+		const modules = file.smoke?.modules?.[platform];
+		if (!modules || modules.length === 0) throw new Error(`gates.json: smoke.modules pins no module for ${platform}`);
+		if (new Set(modules).size !== modules.length) throw new Error(`gates.json: smoke.modules names a module twice for ${platform}`);
 	}
 	for (const gate of file.gates) {
 		if (gate.roles === undefined) continue;

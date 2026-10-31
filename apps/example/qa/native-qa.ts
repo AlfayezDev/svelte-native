@@ -7,6 +7,7 @@ import { lab } from "./commands/lab.ts";
 import { parity } from "./commands/parity.ts";
 import { report } from "./commands/report.ts";
 import { resilience } from "./commands/resilience.ts";
+import { smoke } from "./commands/smoke.ts";
 import { crashes } from "./soak/crashes.ts";
 import { soak } from "./soak/soak.ts";
 import { symbolicate } from "./soak/symbolicate.ts";
@@ -24,6 +25,8 @@ const usage = `usage: native-qa <command> [flags]
   parity --device <serial> [--apk <path> | --no-install] [--update | --missing] [--quick] [--filter <screen>]
   a11y   --device <serial> [--apk <path> | --no-install] [--quick] [--filter <screen>]
   resilience --device <serial> [--apk <path> | --no-install] [--rotations <n>] [--cycles <n>] [--rounds <n>]
+  smoke  --device <serial> [--apk <path> | --no-install] [--timeout <s>]
+  smoke  --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--app <.app on the Mac> | --no-install] [--timeout <s>]
   probe  --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--probes <names>] [--direction ltr|rtl]
   report
   gates  [--platform android|ios] [--all]`;
@@ -40,6 +43,7 @@ const commands: Record<string, (argv: string[]) => Promise<void>> = {
 	parity,
 	a11y,
 	resilience,
+	smoke,
 	probe: iosProbe,
 	report: async () => report(),
 	gates,

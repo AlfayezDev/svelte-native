@@ -83,8 +83,8 @@ final class GesturesUITests: XCTestCase {
     private func calibrateEdge(in app: XCUIApplication) {
         let origin = app.coordinate(withNormalizedOffset: .zero)
         for x in [1.0, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0, 16.0, 24.0, 32.0, 48.0, 64.0, 100.0] {
-            let start = origin.withOffset(CGVector(dx: x, dy: 380))
-            let end = origin.withOffset(CGVector(dx: x + 60, dy: 380))
+            let start = origin.withOffset(CGVector(dx: x, dy: 250))
+            let end = origin.withOffset(CGVector(dx: x + 60, dy: 250))
             Self.emit("GESTURES-CALIBRATE {\"x\":\(x),\"atMs\":\((Date().timeIntervalSince1970 * 1000).rounded())}")
             start.press(forDuration: 0.05, thenDragTo: end, withVelocity: XCUIGestureVelocity(rawValue: 150), thenHoldForDuration: 0)
             Thread.sleep(forTimeInterval: 1.0)

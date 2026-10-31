@@ -24,7 +24,7 @@
 
 <View style={{ gap: 8, padding: 16 }}>
   <Text style={{ color: theme.foreground, fontSize: 15 }}>Swipe a row left to delete it; drag up to scroll</Text>
-  <ScrollView {...probe("list")} scrollEventThrottle={16} onScroll={(event) => { session.mark("scrollY", event.nativeEvent.contentOffset.y); }}
+  <ScrollView ref={probe("list").ref} testID={probe("list").testID} collapsable={false} scrollEventThrottle={16} onScroll={(event) => { session.mark("scrollY", event.nativeEvent.contentOffset.y); }}
     style={{ height: 420, borderRadius: 12, borderWidth: 1, borderColor: theme.border }} contentContainerStyle={{ padding: 8 }}>
     {#each visible as id (id)}
       <SwipeRow {id} {session} {probe} aimed={id === 3 || id === 5} {remove} />

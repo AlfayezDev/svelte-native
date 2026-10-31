@@ -24,7 +24,7 @@
 <View style={{ gap: 12, padding: 16 }}>
   <Text style={{ color: theme.foreground, fontSize: 15 }}>Drag the list: the Pan and the scroll run together</Text>
   <PanBox name="pan" {session} {probe} activeY={[-10, 10]} simultaneous={native} height={420}>
-    <ScrollView {...probe("scroll")} gesture={native} scrollEventThrottle={16} onScroll={(event) => { session.mark("scrollY", event.nativeEvent.contentOffset.y); }} style={{ flex: 1 }} contentContainerStyle={{ gap: 6 }}>
+    <ScrollView ref={probe("scroll").ref} testID={probe("scroll").testID} collapsable={false} gesture={native} scrollEventThrottle={16} onScroll={(event) => { session.mark("scrollY", event.nativeEvent.contentOffset.y); }} style={{ flex: 1 }} contentContainerStyle={{ gap: 6 }}>
       {#each Array.from({ length: 40 }, (_, index) => index + 1) as row (row)}
         <View style={{ height: 44, borderRadius: 8, backgroundColor: theme.background, justifyContent: "center", paddingHorizontal: 12 }}>
           <Text style={{ color: theme.foreground, fontSize: 14 }}>Row {row}</Text>

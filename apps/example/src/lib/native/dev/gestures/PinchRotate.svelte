@@ -40,7 +40,7 @@
 
 <View style={{ gap: 12, padding: 16 }}>
   <Text style={{ color: theme.foreground, fontSize: 15 }}>Pinch and rotate the square</Text>
-  <View {...probe("target")} style={{ height: 320, alignItems: "center", justifyContent: "center" }}>
+  <View ref={probe("target").ref} testID={probe("target").testID} collapsable={false} style={{ height: 320, alignItems: "center", justifyContent: "center" }}>
     <AnimatedView collapsable={false} gesture={both} testID="gesture.target.moving"
       style={{ width: 120, height: 120, borderRadius: 14, backgroundColor: "#3685ff" }}
       animatedStyle={() => { "worklet"; return { transform: [{ scale: scale.value }, { rotate: `${rotation.value}rad` }] }; }} />

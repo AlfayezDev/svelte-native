@@ -40,10 +40,10 @@
   session.mark("scrollY", 0);
 </script>
 
-<ScrollView {...probe("scroll")} scrollEventThrottle={16} onScroll={(event) => { session.mark("scrollY", event.nativeEvent.contentOffset.y); }}
+<ScrollView ref={probe("scroll").ref} testID={probe("scroll").testID} collapsable={false} scrollEventThrottle={16} onScroll={(event) => { session.mark("scrollY", event.nativeEvent.contentOffset.y); }}
   style={{ height: 560 }} contentContainerStyle={{ padding: 16, gap: 12 }}>
   <Text style={{ color: theme.foreground, fontSize: 15 }}>Swipe the pager sideways; drag up to scroll the page</Text>
-  <View {...probe("pager")} gesture={pan} onLayout={(event) => { width.value = event.nativeEvent.layout.width; }} style={{ height: 160, borderRadius: 12, overflow: "hidden" }}>
+  <View ref={probe("pager").ref} testID={probe("pager").testID} collapsable={false} gesture={pan} onLayout={(event) => { width.value = event.nativeEvent.layout.width; }} style={{ height: 160, borderRadius: 12, overflow: "hidden" }}>
     <AnimatedView collapsable={false} style={{ flexDirection: "row", width: "300%", height: 160 }} animatedStyle={() => { "worklet"; return { transform: [{ translateX: x.value }] }; }}>
       {#each pages as color, index (color)}
         <View style={{ width: "33.3333%", height: 160, backgroundColor: color, alignItems: "center", justifyContent: "center" }}>

@@ -48,6 +48,6 @@
   const attribute: GestureAttribute = pan;
 </script>
 
-<View {...probe(rectName)} gesture={attribute} style={{ height, borderRadius: 10, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.surface, justifyContent: "center", padding: 10 }}>
+<View ref={probe(rectName).ref} testID={probe(rectName).testID} collapsable={false} gesture={attribute} style={{ height, borderRadius: 10, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.surface, justifyContent: "center", padding: 10 }}>
   {#if children}{@render children()}{:else}<Text style={{ color: theme.foreground, fontSize: 14 }}>{label ?? name}</Text>{/if}
 </View>

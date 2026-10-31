@@ -36,7 +36,7 @@
 </script>
 
 {#snippet box(name: "exclusive" | "race", label: string, gesture: typeof exclusive)}
-  <View {...probe(name)} {gesture} style={{ height: 120, borderRadius: 12, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.surface, padding: 12, gap: 8 }}>
+  <View ref={probe(name).ref} testID={probe(name).testID} collapsable={false} {gesture} style={{ height: 120, borderRadius: 12, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.surface, padding: 12, gap: 8 }}>
     <Text style={{ color: theme.foreground, fontSize: 14 }}>{label}</Text>
     <Pressable accessibilityRole="button" accessibilityLabel={`Press ${name}`} onPress={() => { session.press(`${name}.press`); }} style={{ flex: 1, borderRadius: 8, backgroundColor: "#3685ff", alignItems: "center", justifyContent: "center" }}>
       <Text style={{ color: "white", fontSize: 14 }}>Pressable</Text>

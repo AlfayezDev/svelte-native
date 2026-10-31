@@ -69,6 +69,13 @@ final class SvelteQAGestureTrace {
       "delegate": recognizer.delegate.map { NSStringFromClass(type(of: $0 as AnyObject)) } ?? NSNull(),
       "view": recognizer.view.map { NSStringFromClass(type(of: $0)) } ?? NSNull(),
     ]
+    // What kind of recognizer it is: a screen edge recognizer fails a touch that starts away from its edge, and a navigation controller's edge follows the layout direction.
+    entry["superclass"] = class_getSuperclass(type(of: recognizer)).map { NSStringFromClass($0) } ?? NSNull()
+    if let edge = recognizer as? UIScreenEdgePanGestureRecognizer { entry["edges"] = edge.edges.rawValue }
+    if let view = recognizer.view {
+      entry["direction"] = UIView.userInterfaceLayoutDirection(for: view.semanticContentAttribute) == .rightToLeft ? "rtl" : "ltr"
+      entry["windowWidth"] = view.window.map { $0.bounds.width } ?? NSNull()
+    }
     if let handler = recognizer.delegate as? NSObject, NSStringFromClass(type(of: handler)).hasPrefix("RN"), handler.responds(to: NSSelectorFromString("tag")) {
       entry["handlerTag"] = handler.value(forKey: "tag") ?? NSNull()
     }

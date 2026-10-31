@@ -112,6 +112,8 @@ export function sampleAt(waypoints: readonly [number, number, number][], t: numb
 
 /** `RotationGestureHandler.ROTATION_RECOGNITION_THRESHOLD`: 5 degrees. */
 const ROTATION_ACTIVATION_DEG = 5;
+/** What the rotation recogniser spends beginning, when nothing says exactly (see `pinchChecks`): the 5 degrees and the move that crosses them. */
+const ROTATION_BEGIN_LOSS_DEG = 6;
 
 /**
  * What a pinch and a rotation report for a two finger input that was delivered as one event per entry of `frameTimesMs` (the
@@ -299,12 +301,16 @@ function pinchChecks(rounds: Snapshot[], _steps: Snapshot[][], context: EvalCont
   const pinch = counterOf(s, "pinch");
   const rotation = counterOf(s, "rotation");
   // On Android the injector reports what it delivered, and the expected values follow from that (see `expectedTwoFinger`). Without it
-  // (iOS: an XCUITest pinches, then rotates) the expected values are the commanded ones, with the tolerance of a velocity based gesture.
+  // (iOS: an XCUITest pinches, then rotates) the expected values are the commanded ones less what the recogniser spent beginning, with the
+  // tolerance of a velocity based gesture. RNGH zeroes both when the recogniser begins (Android: `PinchGestureHandler.activate` and
+  // `RotationGestureHandler.activate` call `resetProgress`; iOS: `RNPinchHandler.m` sets `scale = 1` and `RNBetterRotationRecognizer.handleGesture`
+  // sets `rotation = 0` at `Began`), so the angle before the begin is lost: 5 degrees and the move that crosses them on Android (34.0 measured),
+  // UIKit's own threshold on the iPhone (32.5 measured with XCUITest). The pinch's loss is a few percent of 3x and inside its tolerance.
   const exact = context.platform === "android" && s.marks.expectedScale !== undefined;
   const expectedScale = exact ? (s.marks.expectedScale as number) : PINCH.distance[1] / PINCH.distance[0];
-  const expectedRotation = exact ? (s.marks.expectedRotation as number) : PINCH.angle[1] - PINCH.angle[0];
+  const expectedRotation = exact ? (s.marks.expectedRotation as number) : PINCH.angle[1] - PINCH.angle[0] - ROTATION_BEGIN_LOSS_DEG;
   const scaleTolerance = exact ? 0.05 : 0.1;
-  const rotationTolerance = exact ? 3 : 5;
+  const rotationTolerance = exact ? 3 : 6;
   const scale = s.marks.scale;
   const rotationDeg = s.marks.rotationDeg;
   const checks = [

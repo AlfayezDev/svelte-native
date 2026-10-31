@@ -406,6 +406,16 @@ describe("verdicts", () => {
 		expect(failing(evaluate("gestures-pinch-rotate", [ios], [], { ...context, platform: "ios" }))).toEqual([]);
 	});
 
+	// Both platforms' handlers zero the rotation when the recogniser begins (Android: `RotationGestureHandler.activate` -> `resetProgress` at
+	// 5 degrees; iOS: `RNBetterRotationRecognizer.handleGesture` sets `rotation = 0` at `Began`), so a commanded 40 reads about 34: the
+	// injector's 34.0 on the OVH emulator, the iPhone's XCUITest 32.5. Without the injector's report the expected rotation is 34 +- 6.
+	test("pinch-rotate: a rotation that lost the angle the recogniser needed to begin passes without the injector's report; one that did not rotate does not", () => {
+		const ios = (rotationDeg: number) => snapshot({ pinch: [1, 1, 30, 1, 1, 1, 1], rotation: [1, 1, 30, 1, 1, 1, 1] }, { scale: 3, rotationDeg });
+		const ctx = { ...context, platform: "ios" as const };
+		for (const reading of [32.5, 34, 40]) expect(failing(evaluate("gestures-pinch-rotate", [ios(reading)], [], ctx))).toEqual([]);
+		for (const reading of [20, 27.5]) expect(failing(evaluate("gestures-pinch-rotate", [ios(reading)], [], ctx)).length).toBe(1);
+	});
+
 	test("row: the first row goes, the second pan fails, the list scrolls", () => {
 		const first = snapshot({ "row-3": [1, 1, 20, 1, 1, 0, 0] }, { scrollY: 0, "removed.3": 1, removedTotal: 1 });
 		const last = snapshot({ "row-3": [1, 1, 20, 1, 1, 0, 0], "row-5": [1, 0, 0, 0, 0, 1, 0] }, { scrollY: 190, "removed.3": 1, removedTotal: 1 });

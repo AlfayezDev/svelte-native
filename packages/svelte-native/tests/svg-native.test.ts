@@ -39,8 +39,12 @@ const anim = () => (globalThis as { __anim: AnimLog }).__anim;
 const named = (name: string) => find(roots()[rootTag] ?? [], name);
 const path = () => named("RNSVGPath")[0] as FakeNode;
 
+/** Where this file's entries start in the animation stub's log, which test files run earlier in the same process share. */
+let ownFrom = { descriptors: 0, mappers: 0 };
+
 beforeAll(async () => {
   const harness = await svgHarness("android", { natives: { turbo } });
+  ownFrom = { descriptors: anim()?.descriptors.length ?? 0, mappers: anim()?.mappers.length ?? 0 };
   loaded = await harness.load("svg-native-fixture.svelte") as SvgLoaded;
   app = loaded.startSurface(rootTag, loaded.Fixture, { log: (entry: string) => events.push(entry), radius, cx, dash }) as App;
   roots = harness.roots;
@@ -155,7 +159,7 @@ test("animatedProps: the first values are in the nodes' props, a mapper of its o
   expect(own(circle)).toHaveLength(1);
   expect(own(outline)).toHaveLength(1);
   // Every animated node of the drawing has a mapper; the shape's `r`/`cx` and the path's `d` are separate ones.
-  const mapperOf = (node: FakeNode) => A.mappers.filter((entry) => !entry.stopped)[A.descriptors.indexOf(own(node)[0] as never)];
+  const mapperOf = (node: FakeNode) => A.mappers.slice(ownFrom.mappers).filter((entry) => !entry.stopped)[A.descriptors.slice(ownFrom.descriptors).indexOf(own(node)[0] as never)];
   A.updates.length = 0;
   radius.value = 12;
   cx.value = 30;

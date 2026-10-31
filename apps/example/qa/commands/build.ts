@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readdir, rm, stat } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describeApk } from "../lib/app.ts";
 import { execToFile } from "../lib/exec.ts";
@@ -22,7 +22,16 @@ const buildEnv = {
 	CI: "1",
 	EXPO_NO_TELEMETRY: "1",
 	EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL ?? "https://dev.qarnos.com",
+	// This is the QA build: an APP_VARIANT=production in the shell must not turn it into the product (its autolinking leaves the
+	// smoke test's libraries out), and nothing of the build uploads to Sentry (its Expo plugin, which adds the upload step, is not applied).
+	APP_VARIANT: "",
+	SENTRY_DISABLE_AUTO_UPLOAD: "true",
 };
+/** What `expo prebuild` was run for: written next to the generated project, so a prebuild of the product is not mistaken for the QA one. */
+const variantMarker = join(androidDir, ".native-qa-variant");
+const variantName = "qa";
+/** The Samsung Pay SDK of the smoke test's `expo-samsung-pay`: proprietary, kept out of git, copied from the production app's `libs/`. */
+const samsungPayJar = join(platformDir, "libs/samsungpay.jar");
 const gradleJvm = "-Dorg.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=1g";
 
 async function modifiedTime(path: string): Promise<number | null> {
@@ -38,9 +47,15 @@ async function modifiedTime(path: string): Promise<number | null> {
 async function prebuildReason(): Promise<string | null> {
 	const generated = await modifiedTime(join(androidDir, "app/build.gradle"));
 	if (generated === null) return "apps/platform/android is missing";
+	const marker = await readFile(variantMarker, "utf8").catch(() => null);
+	if (marker?.trim() !== variantName)
+		return `android/ was generated for ${marker === null ? "an unknown variant" : `the ${marker.trim()} variant`}, not ${variantName}`;
 	const inputs = [
 		join(platformDir, "app.config.ts"),
 		join(platformDir, "package.json"),
+		join(platformDir, "react-native.config.js"),
+		join(platformDir, "qa/smoke-modules.json"),
+		join(platformDir, "qa/firebase-fake/google-services.json"),
 		join(repoRoot, "packages/svelte-native/src/expo.ts"),
 	];
 	for (const module of await readdir(join(platformDir, "modules")))
@@ -123,6 +138,10 @@ export async function build(argv: string[]): Promise<void> {
 		platformDir,
 		logPath,
 	);
+	if ((await modifiedTime(samsungPayJar)) === null)
+		throw new Error(
+			`${samsungPayJar} is missing: expo-samsung-pay (native module smoke test) does not compile without the Samsung Pay SDK. Copy libs/samsungpay.jar from the production app (it is proprietary and ignored by git).`,
+		);
 	const reason = values.prebuild ? "--prebuild" : await prebuildReason();
 	if (reason) {
 		console.log(`prebuild: ${reason}`);
@@ -133,6 +152,7 @@ export async function build(argv: string[]): Promise<void> {
 			platformDir,
 			logPath,
 		);
+		await writeFile(variantMarker, `${variantName}\n`);
 	}
 	await step(
 		`gradle assembleRelease (${abi})`,

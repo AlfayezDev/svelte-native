@@ -48,7 +48,7 @@ const possible: [string, string, number][] = [
 
 test.skipIf(!tools)("the CPU indexes come from the possible list, not from the cores that are online", () => {
   const out = run(possible.map(([, text]) => `possible ${text.replace("\n", "")}`));
-  possible.forEach(([description, , expected], i) => expect(Number(out[i]), description).toBe(expected));
+  possible.forEach(([description, , expected], i) => { expect(Number(out[i]), description).toBe(expected); });
 });
 
 const masks: [string, number[], string][] = [
@@ -68,7 +68,7 @@ const masks: [string, number[], string][] = [
 
 test.skipIf(!tools)("the big cores of phones with one, two or three clusters, with cores offline, and with more cores than a mask holds", () => {
   const out = run(masks.map(([, capacities]) => `mask ${capacities.join(" ")}`));
-  masks.forEach(([description, , expected], i) => expect(out[i], description).toBe(expected));
+  masks.forEach(([description, , expected], i) => { expect(out[i], description).toBe(expected); });
 });
 
 const subsets: [string, string, string, boolean][] = [
@@ -81,5 +81,5 @@ const subsets: [string, string, string, boolean][] = [
 
 test.skipIf(!tools)("a thread whose mask lies inside the pinned one inherited it", () => {
   const out = run(subsets.map(([, mask, of]) => `subset ${mask} ${of}`));
-  subsets.forEach(([description, , , expected], i) => expect(out[i], description).toBe(String(expected)));
+  subsets.forEach(([description, , , expected], i) => { expect(out[i], description).toBe(String(expected)); });
 });

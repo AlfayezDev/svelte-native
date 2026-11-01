@@ -81,8 +81,8 @@ for (const platform of platforms) {
     test("the filter primitives' extractors are the library's", () => {
       for (const [name, inputs] of Object.entries(filterInputs)) {
         for (const props of inputs) {
-          const theirs = quiet(() => (oracle.filters as unknown as Record<string, (props: Props) => unknown>)[name]!(props));
-          const ours = quiet(() => (loaded.extract as unknown as Record<string, (props: Props) => unknown>)[name]!(props));
+          const theirs = quiet(() => (oracle.filters as unknown as Record<string, (props: Props) => unknown>)[name](props));
+          const ours = quiet(() => (loaded.extract as unknown as Record<string, (props: Props) => unknown>)[name](props));
           expect(ours, `${name} ${JSON.stringify(props)}`).toEqual(theirs);
         }
       }

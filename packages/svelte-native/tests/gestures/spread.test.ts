@@ -6,11 +6,11 @@ test("a function-valued ref in a spread (and next to one) reaches the host, as a
   const m = await load({ fixture: "spread-fixture.svelte" });
   const handles: Record<string, unknown[]> = {};
   const probe = (name: string) => ({
-    ref: (handle: unknown) => { (handles[name] ??= []).push(handle); },
+    ref: (handle: unknown) => { handles[name] ??= []; handles[name].push(handle); },
     testID: `probe.${name}`,
     collapsable: false,
   });
-  const explicit = (handle: unknown) => { (handles.explicit ??= []).push(handle); };
+  const explicit = (handle: unknown) => { handles.explicit ??= []; handles.explicit.push(handle); };
   m.startSurface(81, m.Fixture, { probe, explicit, clicked: () => {} });
   await settle(m);
   for (const name of ["spread", "scroll", "text"]) {

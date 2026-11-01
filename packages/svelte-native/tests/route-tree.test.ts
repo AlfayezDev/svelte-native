@@ -59,7 +59,7 @@ describe("the tree the generator writes", () => {
       ],
     });
     expect(inbox?.layoutFile).toBe("(workspace)/[slug]/(tabs)/inbox/+layout.mobile.svelte");
-    expect(inbox && inbox.routes.map((route) => [route.path, route.kind === "page" ? route.presentation : route.kind])).toEqual([["/[slug]/inbox/compose", "sheet"], ["/[slug]/inbox", "push"]]);
+    expect(inbox?.routes.map((route) => [route.path, route.kind === "page" ? route.presentation : route.kind])).toEqual([["/[slug]/inbox/compose", "sheet"], ["/[slug]/inbox", "push"]]);
   });
 
   test("a content layout wraps the pages below it, outermost first; the root layout is the shell, not a layout of the pages", () => {

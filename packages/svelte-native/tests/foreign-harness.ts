@@ -192,4 +192,4 @@ export function createHarness(platform: Platform, options: {
 
 export const find = (nodes: FakeNode[], name: string): FakeNode[] => nodes.flatMap((node) => [...(node.name === name ? [node] : []), ...find(node.children, name)]);
 export const settle = async (loaded: { tick: () => Promise<void> }) => { await loaded.tick(); await Promise.resolve(); await Promise.resolve(); };
-export { type Platform };
+export type { Platform };

@@ -29,14 +29,17 @@ const sequences: Record<string, (tag: number) => object[]> = {
   "two gestures in a row on one handler": (t) => [change(t, 0, 2), change(t, 2, 4), update(t, 4, 4), change(t, 4, 5, 4, 4), change(t, 0, 2), change(t, 2, 4), update(t, 9, 9), change(t, 4, 5, 9, 9)],
 };
 
+const callbackNames = ["onBegin", "onStart", "onUpdate", "onChange", "onEnd", "onFinalize", "onTouchesDown", "onTouchesMove", "onTouchesUp", "onTouchesCancelled"] as const;
+/** The part of RNGH's `PanGesture` builder this file chains. */
+type Pan = { handlerTag: number; initialize(): void; runOnJS(value: boolean): Pan } & Record<(typeof callbackNames)[number], (callback: (...args: unknown[]) => void) => Pan>;
+
 /** One pan that logs every callback it has; `thread` decides whether the callbacks are worklets. */
-function logged<G extends { Pan(): never }>(Gesture: G, log: Entry[], thread: "js" | "ui") {
+function logged(Gesture: { Pan(): unknown }, log: Entry[], thread: "js" | "ui"): Pan {
   const mark = <T extends (...args: never[]) => void>(fn: T) => (thread === "ui" ? worklet(fn) : fn);
   const record = (name: string) => mark((...args: unknown[]) => { log.push([name, ...args.map(clone)]); });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let pan: any = (Gesture as any).Pan();
+  let pan = Gesture.Pan() as Pan;
   if (thread === "js") pan = pan.runOnJS(true);
-  for (const name of ["onBegin", "onStart", "onUpdate", "onChange", "onEnd", "onFinalize", "onTouchesDown", "onTouchesMove", "onTouchesUp", "onTouchesCancelled"]) pan = pan[name](record(name));
+  for (const name of callbackNames) pan = pan[name](record(name));
   return pan;
 }
 

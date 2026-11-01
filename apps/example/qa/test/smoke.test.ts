@@ -112,6 +112,13 @@ describe("the log lines", () => {
 		expect(parseSmokeResultsFile("{\"results\":")).toBeNull();
 		expect(parseSmokeResultsFile("{\"os\":\"ios\"}")).toBeNull();
 	});
+	test("the iPhone's results file carries the build the app reports, which a run judges against the build record; an app that reports none leaves null", () => {
+		const build = { jsbundleSha256: "a".repeat(64), cdHash: "b".repeat(40) };
+		const text = (extra: Record<string, unknown>) => JSON.stringify({ token: "t1", finishedAt: "2026-11-01T12:00:00Z", os: "ios", results: [result("a")], ...extra });
+		expect(parseSmokeResultsFile(text({ build }))?.build).toEqual(build);
+		expect(parseSmokeResultsFile(text({}))?.build).toBeNull();
+		expect(parseSmokeResultsFile(text({ build: { jsbundleSha256: "short" } }))?.build).toBeNull();
+	});
 });
 
 describe("the byte helpers", () => {
@@ -416,6 +423,8 @@ describe("three apps: the product and the QA app link the product's native modul
 		const plist = readFileSync(join(platformDir, "qa/firebase-fake/GoogleService-Info.plist"), "utf8");
 		expect(plist).toContain(`<string>${packageOf.smoke}</string>`);
 		expect(plist).not.toMatch(/AIza/);
+		// FirebaseInstallations raises in `FIRApp configure`, at launch, unless the key is 39 url-safe characters that start with `A`: the first iOS smoke app aborted there on a key that was only fake.
+		expect(plist).toMatch(/<key>API_KEY<\/key>\s*<string>A[A-Za-z0-9_-]{38}<\/string>/);
 	});
 });
 

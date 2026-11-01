@@ -42,4 +42,11 @@ export function formatSmokeSummary(results: readonly SmokeResult[], os: string):
 export const smokeLaunch: { token: string | null } = { token: null };
 
 /** `Documents/smoke-results.json`, written when a run ends. */
-export type SmokeResultsFile = { token: string | null; finishedAt: string; os: string; results: SmokeResult[] };
+export type SmokeResultsFile = {
+  token: string | null;
+  finishedAt: string;
+  os: string;
+  /** What is installed (the SHA-256 of `main.jsbundle` and the executable's CDHash), so that the harness knows which build the run measured; null where the app cannot say (Android reads the APK). */
+  build: Record<string, string> | null;
+  results: SmokeResult[];
+};

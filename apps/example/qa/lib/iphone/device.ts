@@ -12,7 +12,13 @@ import { parseDeviceDetails, parseInstalledApp, parseLaunch, parseProcesses, typ
 export type IosTarget = { mac: Mac; id: string; bundleId: string };
 
 const scratch = "/tmp/native-qa-ios";
-const devicectl = (args: readonly string[]): string => words(["xcrun", "devicectl", ...args]);
+/**
+ * The command, ended by the Mac itself after `limitSeconds` (`perl`'s `alarm`): ssh's timeout ends only this side, and a `devicectl` call that
+ * hangs (they do, now and then, around a UI test) would go on holding the phone on the Mac, orphaned, with the next calls queued behind it.
+ */
+const devicectl = (args: readonly string[], limitSeconds: number): string => words(["perl", "-e", "alarm shift; exec @ARGV", String(limitSeconds), "xcrun", "devicectl", ...args]);
+/** A little under the time ssh gives the call, so that the Mac ends it first and its words come back. */
+const limitOf = (timeoutMs: number): number => Math.max(10, Math.floor(timeoutMs / 1000) - 5);
 
 let counter = 0;
 const unique = (name: string): string => `${scratch}/${name}-${process.pid}-${++counter}`;
@@ -22,7 +28,7 @@ async function jsonCommand(target: IosTarget, args: string[], options: ExecOptio
 	const file = `${unique("out")}.json`;
 	const result = await remote(
 		target.mac,
-		`mkdir -p ${scratch}; ${devicectl(["--json-output", file, ...args])} > ${file}.log 2>&1; code=$?; if [ $code -ne 0 ]; then tail -n 6 ${file}.log >&2; fi; cat ${file} 2>/dev/null; rm -f ${file} ${file}.log; exit $code`,
+		`mkdir -p ${scratch}; ${devicectl(["--json-output", file, ...args], limitOf(options.timeoutMs ?? 120_000))} > ${file}.log 2>&1; code=$?; if [ $code -ne 0 ]; then tail -n 6 ${file}.log >&2; fi; cat ${file} 2>/dev/null; rm -f ${file} ${file}.log; exit $code`,
 		options,
 	);
 	if (result.code !== 0)
@@ -75,7 +81,7 @@ export async function readAppFile(target: IosTarget, source: string): Promise<st
 	const file = unique("copy");
 	const result = await remote(
 		target.mac,
-		`mkdir -p ${scratch}; ${devicectl(["device", "copy", "from", "--device", target.id, "--domain-type", "appDataContainer", "--domain-identifier", target.bundleId, "--source", source, "--destination", file])} > ${file}.log 2>&1; code=$?; if [ $code -eq 0 ]; then cat ${file}; fi; rm -rf ${file} ${file}.log; exit $code`,
+		`mkdir -p ${scratch}; ${devicectl(["device", "copy", "from", "--device", target.id, "--domain-type", "appDataContainer", "--domain-identifier", target.bundleId, "--source", source, "--destination", file], limitOf(90_000))} > ${file}.log 2>&1; code=$?; if [ $code -eq 0 ]; then cat ${file}; fi; rm -rf ${file} ${file}.log; exit $code`,
 		{ timeoutMs: 90_000 },
 	);
 	if (result.code === 0) return result.stdout;
@@ -88,7 +94,7 @@ export async function fetchAppPath(target: IosTarget, source: string, destinatio
 	await mkdir(destination, { recursive: true });
 	await remoteOk(
 		target.mac,
-		`mkdir -p ${staging}; ${devicectl(["device", "copy", "from", "--device", target.id, "--domain-type", "appDataContainer", "--domain-identifier", target.bundleId, "--source", source, "--destination", staging])} > ${staging}.log 2>&1 || { tail -n 6 ${staging}.log >&2; exit 1; }`,
+		`mkdir -p ${staging}; ${devicectl(["device", "copy", "from", "--device", target.id, "--domain-type", "appDataContainer", "--domain-identifier", target.bundleId, "--source", source, "--destination", staging], limitOf(300_000))} > ${staging}.log 2>&1 || { tail -n 6 ${staging}.log >&2; exit 1; }`,
 		{ timeoutMs: 300_000 },
 	);
 	try {

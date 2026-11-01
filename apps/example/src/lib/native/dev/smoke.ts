@@ -1,5 +1,6 @@
 import Platform from "react-native/Libraries/Utilities/Platform";
 import { formatSmokeLine, formatSmokeSummary, skipName, smokeLaunch, type Os, type SmokePath, type SmokeResult, type SmokeResultsFile } from "./smoke-log.ts";
+import { qaModule } from "./qa.ts";
 import { smokeModules } from "./smoke-rules.ts";
 import type { Check } from "./smoke-checks.ts";
 
@@ -50,11 +51,12 @@ async function runCheck(check: Check, os: Os): Promise<SmokeResult> {
 }
 
 /** `Documents/smoke-results.json`: what an iPhone harness reads, since it cannot follow a log. The Android harness reads logcat and ignores it. */
-function saveResults(results: readonly SmokeResult[], os: Os): void {
+async function saveResults(results: readonly SmokeResult[], os: Os): Promise<void> {
 	try {
 		// eslint-disable-next-line @typescript-eslint/no-require-imports
 		const { File, Paths } = require("expo-file-system") as typeof import("expo-file-system");
-		const file: SmokeResultsFile = { token: smokeLaunch.token, finishedAt: new Date().toISOString(), os, results: [...results] };
+		const build = await qaModule?.buildIdentity().catch(() => null);
+		const file: SmokeResultsFile = { token: smokeLaunch.token, finishedAt: new Date().toISOString(), os, build: build ?? null, results: [...results] };
 		new File(Paths.document, "smoke-results.json").write(JSON.stringify(file));
 	} catch (error) {
 		console.error("[Svelte smoke] results file", error);
@@ -79,7 +81,7 @@ export async function runSmoke(onResult?: (result: SmokeResult, all: readonly Sm
 		onResult?.(result, results);
 		await pause(0);
 	}
-	saveResults(results, os);
+	await saveResults(results, os);
 	console.info(formatSmokeSummary(results, os));
 	return results;
 }

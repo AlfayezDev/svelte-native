@@ -12,10 +12,13 @@ import {
 	keepCrashFiles,
 	labRunsWithCrashes,
 	launchesWithCrashes,
+	listCrashLog,
+	parseCrashLogListing,
 	parsePhoneTime,
-	pullCrashReports,
+	pullCrashFiles,
 	readCrashReport,
 	readCrashReports,
+	reportFiles,
 	reportsSince,
 	startCrashWatch,
 	unattributed,
@@ -280,56 +283,74 @@ describe("attributing a report to a run", () => {
 	});
 });
 
-/* ---- the pull: the Mac's shell runs for real, with a stand-in for idevicecrashreport ---- */
+/* ---- reading the crash log: the Mac's shell runs for real, with a stand-in for `xcrun devicectl` ---- */
 
 type Call = { command: string; args: string[] };
 
 /**
- * Runs what `ssh` would run on the Mac, here in `sh`, with `path` as the whole PATH: the script's own PATH lines (the Mac's Homebrew
- * directories) are taken out so that nothing but the stand-in can answer as `idevicecrashreport`, whatever is installed on this machine.
+ * Runs what `ssh` would run on the Mac, here in `sh`, with `path` as the whole PATH: nothing but the stand-in can answer as `xcrun`,
+ * whatever is installed on this machine.
  */
 function runHere(script: string, path: string, env: Record<string, string>): Promise<ExecResult> {
-	const here = script.replace("export PATH=/usr/bin:/bin:/usr/sbin:/sbin:$PATH; ", "").replace("export PATH=/opt/homebrew/bin:/usr/local/bin:$PATH", ":");
+	const here = script.replace("export PATH=/usr/bin:/bin:/usr/sbin:/sbin:$PATH; ", "");
 	return new Promise<ExecResult>((resolve) =>
 		execFile("/bin/sh", ["-c", here], { env: { PATH: path, ...env } }, (error, stdout, stderr) => resolve({ code: error ? (typeof error.code === "number" ? error.code : 1) : 0, stdout, stderr })),
 	);
 }
 
 /**
- * A Mac that is this machine: `ssh` runs the pull script in `sh` with a stand-in `idevicecrashreport` (it copies the fixture's crash
- * log, or fails as the mode says), `scp` copies from a path. Nothing here reaches a phone.
+ * A Mac that is this machine: `ssh` runs the script in `sh` with a stand-in `xcrun` whose `devicectl` lists and copies the fixture's
+ * crash log (the shapes `devicectl device info files --domain-type systemCrashLogs` and `device copy from` have on the lab phone), or
+ * fails or hangs as the mode says; `scp` copies from a path. Nothing here reaches a phone.
  */
-async function fakeMac(): Promise<{ mac: ReturnType<typeof macFrom>; log: Call[]; phone: string; mode: { value: string }; toolCalls: () => Promise<string>; bare: ReturnType<typeof macFrom>; cleanup: () => Promise<void> }> {
+async function fakeMac(): Promise<{ mac: ReturnType<typeof macFrom>; log: Call[]; phone: string; mode: { value: string }; toolCalls: () => Promise<string>; cleanup: () => Promise<void> }> {
 	const root = await mkdtemp(join(tmpdir(), "crash-pull-test-"));
 	const bin = join(root, "bin");
-	const empty = join(root, "empty");
 	const phone = join(root, "phone");
 	await mkdir(bin);
-	await mkdir(empty);
 	await mkdir(phone);
 	await writeFile(
-		join(bin, "idevicecrashreport"),
+		join(bin, "xcrun"),
 		`#!/bin/sh
 echo "$@" >> "$STUB_LOG"
 case "$STUB_MODE" in
-  nodevice) echo "No device found with udid $2, is it plugged in?"; exit 255;;
-  silent) echo "No device found"; exit 0;;
+  nodevice) echo "ERROR: The device was not found (com.apple.dt.CoreDeviceError error 4000)." >&2; exit 1;;
+  hang) sleep 30; exit 0;;
+  notjson) json=""; while [ $# -gt 0 ]; do case "$1" in --json-output) json="$2"; shift 2;; *) shift;; esac; done; [ -n "$json" ] && echo 'not json' > "$json"; exit 0;;
 esac
-filter=""
+# xcrun devicectl [--json-output FILE] device info files|copy from --device ID --domain-type systemCrashLogs [--source P --destination D]
+shift
+json=""; source=""; destination=""; verb=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    -f) filter="$2"; shift 2;;
-    -u) shift 2;;
-    -k) shift;;
-    *) last="$1"; shift;;
+    --json-output) json="$2"; shift 2;;
+    --source) source="$2"; shift 2;;
+    --destination) destination="$2"; shift 2;;
+    --device|--domain-type) shift 2;;
+    info) verb=info; shift;;
+    copy) verb=copy; shift;;
+    *) shift;;
   esac
 done
-# The real tool copies the files whose names contain the filter, and every file without one.
-(cd "$STUB_REPORTS" && find . -type f) | while IFS= read -r file; do
-  case "$file" in *"$filter"*) mkdir -p "$last/$(dirname "$file")"; cp "$STUB_REPORTS/$file" "$last/$file";; esac
-done
-echo "Copy: /fake.ips"
-echo "Done."
+if [ "$verb" = copy ]; then
+  [ -f "$STUB_REPORTS/$source" ] || { echo "ERROR: no such file $source" >&2; exit 1; }
+  cp "$STUB_REPORTS/$source" "$destination"
+  echo "File received from Device"
+  exit 0
+fi
+# The listing: every directory and file, recursively, as devicectl writes it.
+{
+  printf '{"info":{"outcome":"success"},"result":{"deviceIdentifier":"ID","domain":"systemCrashLogs","files":['
+  first=1
+  (cd "$STUB_REPORTS" && find . -mindepth 1 | sed 's|^\\./||' | sort) | while IFS= read -r path; do
+    [ $first = 1 ] || printf ','
+    first=0
+    if [ -d "$STUB_REPORTS/$path" ]; then dir=true; size=96; else dir=false; size=$(wc -c < "$STUB_REPORTS/$path" | tr -d ' '); fi
+    printf '{"metadata":{"size":%s},"name":"%s","relativePath":"%s","resources":{"isDirectory":%s}}' "$size" "$(basename "$path")" "$path" "$dir"
+  done
+  printf ']}}'
+} > "$json"
+echo "listing"
 `,
 		{ mode: 0o755 },
 	);
@@ -345,10 +366,8 @@ echo "Done."
 		if (command !== "ssh") return copy(args);
 		return runHere(args[args.length - 1] ?? "", `${bin}:/usr/bin:/bin`, { STUB_REPORTS: phone, STUB_MODE: mode.value, STUB_LOG: calls });
 	};
-	const withoutTool: Run = (command, args) => (command === "ssh" ? runHere(args[args.length - 1] ?? "", empty, {}) : copy(args));
 	return {
 		mac: macFrom("me@mac", run),
-		bare: macFrom("me@mac", withoutTool),
 		log,
 		phone,
 		mode,
@@ -364,11 +383,12 @@ async function putOnPhone(phone: string, files: Record<string, string>): Promise
 	}
 }
 
-const udid = "00008110-001E10593410401E";
+const deviceId = "E74A5608-BF8E-5806-8699-1605F82ADED9";
 const otherBundle = objc.replace('"bundleID":"io.rasheed.svelteqa"', '"bundleID":"com.apple.mobilesafari"');
+const watchOptions = (fake: { mac: ReturnType<typeof macFrom> }, extra: { limitSeconds?: number } = {}) => ({ mac: fake.mac, deviceId, bundleId, ...extra });
 
-describe("pulling the crash log through the Mac", () => {
-	test("keeps the phone's reports (-k), names the phone by its hardware UDID and finds the app's reports, retired ones too", async () => {
+describe("listing the crash log of the phone", () => {
+	test("lists files, not directories, retired ones too, and never reads a file", async () => {
 		const fake = await fakeMac();
 		try {
 			await putOnPhone(fake.phone, {
@@ -376,72 +396,113 @@ describe("pulling the crash log through the Mac", () => {
 				[`Retired/${asiName}`]: asiOnly,
 				[jetsamName]: jetsam,
 				"Safari-2026-10-27-000000.ips": otherBundle,
-				"Analytics-2026-10-27-030006.0005.ips.ca": "x",
+				"DiagnosticLogs/sysdiagnose/sysdiagnose_2026.10.28_14-16-37+0300_iPhone-OS_iPhone_23G71.tar.gz": "x".repeat(64),
 			});
-			const pulled = await pullCrashReports(fake.mac, udid, bundleId);
-			try {
-				expect(pulled.reports.map((report) => report.file)).toEqual([asiName, objcName]);
-				expect((await readdir(pulled.directory)).sort()).toEqual([jetsamName, asiName, objcName].sort());
-			} finally {
-				await rm(pulled.directory, { recursive: true, force: true });
-			}
+			const listing = await listCrashLog(fake.mac, deviceId);
+			expect(listing.files.map((file) => file.path).sort()).toEqual(
+				[`Retired/${asiName}`, "DiagnosticLogs/sysdiagnose/sysdiagnose_2026.10.28_14-16-37+0300_iPhone-OS_iPhone_23G71.tar.gz", jetsamName, "Safari-2026-10-27-000000.ips", objcName].sort(),
+			);
+			expect(listing.files.find((file) => file.name === asiName)).toEqual({ path: `Retired/${asiName}`, name: asiName, bytes: asiOnly.length });
+			expect(reportFiles(listing.files).map((file) => file.name).sort()).toEqual([jetsamName, asiName, objcName].sort());
+			// One bounded call to the phone: nothing is copied, whatever the log holds (a sysdiagnose archive is 270 MB).
 			const script = fake.log.find((call) => call.command === "ssh")?.args.at(-1) ?? "";
-			expect(script).toContain(`idevicecrashreport -u '${udid}' -k -f 'RasheedSvelteQA' '/tmp/native-qa-ios/crashes-`);
-			expect(script).toContain(`idevicecrashreport -u '${udid}' -k -f JetsamEvent '/tmp/native-qa-ios/crashes-`);
-			expect(script).toContain("/opt/homebrew/bin");
-			// Two pulls, and each has a filter: the crash log's sysdiagnose archives are never copied, and the phone keeps everything (-k).
+			expect(script).toContain(`'perl' '-e' 'alarm shift; exec @ARGV' '40' 'xcrun' 'devicectl' '--json-output'`);
+			expect(script).toContain(`'--device' '${deviceId}' '--domain-type' 'systemCrashLogs'`);
+			expect(fake.log.filter((call) => call.command === "scp")).toHaveLength(0);
 			const calls = (await fake.toolCalls()).trim().split("\n");
-			expect(calls).toHaveLength(2);
-			expect(calls[0]).toMatch(new RegExp(`^-u ${udid} -k -f RasheedSvelteQA /tmp/native-qa-ios/crashes-`));
-			expect(calls[1]).toMatch(new RegExp(`^-u ${udid} -k -f JetsamEvent /tmp/native-qa-ios/crashes-`));
-			for (const call of calls) expect(call).toContain(" -k ");
+			expect(calls).toHaveLength(1);
+			expect(calls[0]).toContain("devicectl --json-output");
+			expect(calls[0]).toContain("device info files");
 		} finally {
 			await fake.cleanup();
 		}
 	});
 
-	test("a phone usbmuxd does not know is an error with the tool's words, not an empty list", async () => {
+	test("a phone devicectl does not know is an error with the tool's words, not an empty list, after two tries", async () => {
 		const fake = await fakeMac();
 		try {
 			fake.mode.value = "nodevice";
-			await expect(pullCrashReports(fake.mac, udid, bundleId)).rejects.toThrow("No device found");
+			await expect(listCrashLog(fake.mac, deviceId)).rejects.toThrow("The device was not found");
+			expect((await fake.toolCalls()).trim().split("\n")).toHaveLength(2);
 		} finally {
 			await fake.cleanup();
 		}
 	});
 
-	test("a tool that exits 0 without saying Done. has not pulled anything", async () => {
+	test("an answer that is not a listing is an error, never a phone with no reports", async () => {
 		const fake = await fakeMac();
 		try {
-			fake.mode.value = "silent";
-			await expect(pullCrashReports(fake.mac, udid, bundleId)).rejects.toThrow("failed (exit 1)");
+			fake.mode.value = "notjson";
+			await expect(listCrashLog(fake.mac, deviceId)).rejects.toThrow("not a listing of the crash log");
 		} finally {
 			await fake.cleanup();
 		}
 	});
 
-	test("a locked phone: the Mac's ssh reports success (it drops the remote exit status), so the pull's words on stderr are the error", async () => {
-		const locked = macFrom("me@mac", async () => ({ code: 0, stdout: "", stderr: "ERROR: Could not start service com.apple.crashreportmover: Password protected\n" }));
-		await expect(pullCrashReports(locked, udid, bundleId)).rejects.toThrow("Password protected");
-	});
-
-	test("a Mac without idevicecrashreport says so", async () => {
+	test("a call that hangs is ended by the Mac after the limit, so it does not go on holding the phone", async () => {
 		const fake = await fakeMac();
 		try {
-			await expect(pullCrashReports(fake.bare, udid, bundleId)).rejects.toThrow("idevicecrashreport is not installed");
+			fake.mode.value = "hang";
+			const began = Date.now();
+			await expect(listCrashLog(fake.mac, deviceId, { limitSeconds: 1 })).rejects.toThrow("devicectl did not answer in 1 s");
+			expect(Date.now() - began).toBeLessThan(10_000);
 		} finally {
 			await fake.cleanup();
 		}
 	});
 
-	test("a phone with no reports of the app is an empty list", async () => {
+	test("the listing of an empty log is an empty list", () => {
+		expect(parseCrashLogListing('{"info":{"outcome":"success"},"result":{"files":[]}}')).toEqual([]);
+		expect(() => parseCrashLogListing("{}")).toThrow("no result.files");
+		expect(() => parseCrashLogListing("nope")).toThrow("no result.files");
+	});
+
+	test("which files can be reports of the app: its own by process name, and every jetsam event; the smoke app's by its own process name", () => {
+		const file = (name: string) => ({ path: name, name, bytes: 1 });
+		const files = [file("RasheedSvelteQA-2026-10-27-090359.ips"), file("Sveltesmoke-2026-11-01-171503.ips"), file("JetsamEvent-2026-10-26-232518.ips"), file("Safari-2026-10-27-000000.ips"), file("RasheedSvelteQA-notes.txt")];
+		expect(reportFiles(files).map((entry) => entry.name)).toEqual(["RasheedSvelteQA-2026-10-27-090359.ips", "JetsamEvent-2026-10-26-232518.ips"]);
+		expect(reportFiles(files, "Sveltesmoke").map((entry) => entry.name)).toEqual(["Sveltesmoke-2026-11-01-171503.ips", "JetsamEvent-2026-10-26-232518.ips"]);
+	});
+});
+
+describe("copying reports of the crash log", () => {
+	test("copies only the named files, one bounded call each, and reads them", async () => {
 		const fake = await fakeMac();
 		try {
-			await putOnPhone(fake.phone, { "Safari-2026-10-27-000000.ips": otherBundle });
-			const pulled = await pullCrashReports(fake.mac, udid, bundleId);
+			await putOnPhone(fake.phone, { [objcName]: objc, [`Retired/${asiName}`]: asiOnly, [jetsamName]: jetsam });
+			const pulled = await pullCrashFiles(fake.mac, deviceId, [{ path: objcName, name: objcName, bytes: null }, { path: `Retired/${asiName}`, name: asiName, bytes: null }], { bundleId });
+			try {
+				expect(pulled.reports.map((report) => report.file)).toEqual([asiName, objcName]);
+				expect((await readdir(pulled.directory)).sort()).toEqual([asiName, objcName].sort());
+			} finally {
+				await rm(pulled.directory, { recursive: true, force: true });
+			}
+			const calls = (await fake.toolCalls()).trim().split("\n");
+			expect(calls).toHaveLength(2);
+			expect(calls[0]).toContain(`device copy from --device ${deviceId} --domain-type systemCrashLogs --source ${objcName}`);
+			expect(calls[1]).toContain(`--source Retired/${asiName}`);
+		} finally {
+			await fake.cleanup();
+		}
+	});
+
+	test("a file that does not arrive fails the pull with devicectl's words", async () => {
+		const fake = await fakeMac();
+		try {
+			await expect(pullCrashFiles(fake.mac, deviceId, [{ path: objcName, name: objcName, bytes: null }], { bundleId })).rejects.toThrow("copying RasheedSvelteQA-2026-10-27-090359.ips failed");
+		} finally {
+			await fake.cleanup();
+		}
+	});
+
+	test("no file to copy is no call to the phone and no copy of files", async () => {
+		const fake = await fakeMac();
+		try {
+			const pulled = await pullCrashFiles(fake.mac, deviceId, [], { bundleId });
 			await rm(pulled.directory, { recursive: true, force: true });
 			expect(pulled.reports).toEqual([]);
 			expect(fake.log.filter((call) => call.command === "scp")).toHaveLength(0);
+			expect(await fake.toolCalls()).toBe("");
 		} finally {
 			await fake.cleanup();
 		}
@@ -453,13 +514,19 @@ describe("watching the crash log across a command", () => {
 		const fake = await fakeMac();
 		const runs = await mkdtemp(join(tmpdir(), "crash-runs-test-"));
 		try {
-			await putOnPhone(fake.phone, { [`Retired/${asiName}`]: asiOnly });
-			const watch = await startCrashWatch(fake.mac, udid, bundleId);
-			expect([...(watch.known ?? [])]).toEqual([asiName]);
+			await putOnPhone(fake.phone, { [`Retired/${asiName}`]: asiOnly, [jetsamName]: jetsam });
+			const watch = await startCrashWatch(watchOptions(fake));
+			expect([...(watch.known ?? [])].sort()).toEqual([jetsamName, asiName].sort());
+			expect(watch.listedMs).not.toBeNull();
 			await putOnPhone(fake.phone, { [objcName]: objc });
 			const found = await finishCrashWatch(watch, { settleMs: 0 });
 			expect(found.record.crashReportsError).toBeUndefined();
 			expect(found.record.crashReports?.map((report) => report.file)).toEqual([objcName]);
+			// Two listings and one copy: the log is listed twice and only the new report is copied.
+			const calls = (await fake.toolCalls()).trim().split("\n");
+			expect(calls.filter((call) => call.includes("device info files"))).toHaveLength(2);
+			expect(calls.filter((call) => call.includes("device copy from"))).toHaveLength(1);
+			expect(calls.at(-1)).toContain(`--source ${objcName}`);
 			const kept = await keepCrashFiles(found, "lab-E74A-20261027T060000Z", runs);
 			expect(kept).toBe(join(runs, "lab-E74A-20261027T060000Z-crashes"));
 			expect(await readdir(kept ?? "")).toEqual([objcName]);
@@ -470,45 +537,89 @@ describe("watching the crash log across a command", () => {
 		}
 	});
 
-	test("a run that added nothing records an empty list, and keeps no directory", async () => {
+	test("a jetsam event that did not kill the app is not a report, and its file is not kept", async () => {
 		const fake = await fakeMac();
 		try {
-			await putOnPhone(fake.phone, { [objcName]: objc });
-			const watch = await startCrashWatch(fake.mac, udid, bundleId);
+			const watch = await startCrashWatch(watchOptions(fake));
+			const quiet = edited(jetsam, (body) => {
+				body.processes = [{ name: "SpringBoard", pid: 33, reason: "highwater" }];
+			});
+			await putOnPhone(fake.phone, { "JetsamEvent-2026-11-01-120000.ips": quiet });
 			const found = await finishCrashWatch(watch, { settleMs: 0 });
 			expect(found.record).toEqual({ crashReports: [] });
 			expect(found.directory).toBeNull();
-			expect(await keepCrashFiles(found, "lab-x")).toBeNull();
 		} finally {
 			await fake.cleanup();
 		}
 	});
 
-	test("a pull that failed at the start leaves nothing to tell new from old: not measured, and no second pull is tried", async () => {
+	test("a run that added nothing records an empty list, copies nothing and keeps no directory", async () => {
+		const fake = await fakeMac();
+		try {
+			await putOnPhone(fake.phone, { [objcName]: objc });
+			const watch = await startCrashWatch(watchOptions(fake));
+			const found = await finishCrashWatch(watch, { settleMs: 0 });
+			expect(found.record).toEqual({ crashReports: [] });
+			expect(found.directory).toBeNull();
+			expect(await keepCrashFiles(found, "lab-x")).toBeNull();
+			expect((await fake.toolCalls()).includes("copy from")).toBe(false);
+		} finally {
+			await fake.cleanup();
+		}
+	});
+
+	test("a listing that failed at the start leaves nothing to tell new from old: not measured, and no second listing is tried", async () => {
 		const fake = await fakeMac();
 		try {
 			fake.mode.value = "nodevice";
-			const watch = await startCrashWatch(fake.mac, udid, bundleId);
+			const watch = await startCrashWatch(watchOptions(fake));
 			expect(watch.known).toBeNull();
 			fake.mode.value = "ok";
 			const before = fake.log.length;
 			const found = await finishCrashWatch(watch, { settleMs: 0 });
 			expect(found.record.crashReports).toBeUndefined();
-			expect(found.record.crashReportsError).toMatch(/^before the run: .*No device found/);
+			expect(found.record.crashReportsError).toMatch(/^before the run: .*The device was not found/);
 			expect(fake.log).toHaveLength(before);
 		} finally {
 			await fake.cleanup();
 		}
 	});
 
-	test("a pull that failed at the end is not measured, never an empty list", async () => {
+	test("a listing that failed at the end is not measured, never an empty list", async () => {
 		const fake = await fakeMac();
 		try {
-			const watch = await startCrashWatch(fake.mac, udid, bundleId);
+			const watch = await startCrashWatch(watchOptions(fake));
 			fake.mode.value = "nodevice";
 			const found = await finishCrashWatch(watch, { settleMs: 0 });
 			expect(found.record.crashReports).toBeUndefined();
-			expect(found.record.crashReportsError).toMatch(/^after the run: .*No device found/);
+			expect(found.record.crashReportsError).toMatch(/^after the run: .*The device was not found/);
+		} finally {
+			await fake.cleanup();
+		}
+	});
+
+	test("a phone that hangs at the end is not measured within the limit, instead of holding the run", async () => {
+		const fake = await fakeMac();
+		try {
+			const watch = await startCrashWatch(watchOptions(fake, { limitSeconds: 1 }));
+			fake.mode.value = "hang";
+			const began = Date.now();
+			const found = await finishCrashWatch(watch, { settleMs: 0 });
+			expect(found.record.crashReportsError).toMatch(/^after the run: .*devicectl did not answer in 1 s/);
+			expect(Date.now() - began).toBeLessThan(15_000);
+		} finally {
+			await fake.cleanup();
+		}
+	});
+
+	test("the smoke app's reports are named by its own process", async () => {
+		const fake = await fakeMac();
+		try {
+			await putOnPhone(fake.phone, { "Sveltesmoke-2026-11-01-171503.ips": objc.replace('"app_name":"RasheedSvelteQA"', '"app_name":"Sveltesmoke"').replace('"bundleID":"io.rasheed.svelteqa"', '"bundleID":"io.rasheed.svelteqa.smoke"') });
+			const watch = await startCrashWatch({ ...watchOptions(fake), bundleId: "io.rasheed.svelteqa.smoke", processName: "Sveltesmoke" });
+			expect([...(watch.known ?? [])]).toEqual(["Sveltesmoke-2026-11-01-171503.ips"]);
+			const qa = await startCrashWatch(watchOptions(fake));
+			expect([...(qa.known ?? [])]).toEqual([]);
 		} finally {
 			await fake.cleanup();
 		}

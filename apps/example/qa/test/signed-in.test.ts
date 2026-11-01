@@ -117,6 +117,16 @@ describe("selecting the node that shows the address", () => {
 		expect(message).not.toContain("example.test");
 	});
 
+	test("under a modal the covered screen's address is not masked: only a node the tree a service walks lists counts", () => {
+		useAccount(address);
+		const workspaces = cases.find((screen) => screen.id === "app-workspaces") as ScreenCase;
+		const plain = tree(node({ text: address, bounds: "[60,300][700,360]" }), node({ text: "Close", bounds: "[0,100][100,200]" }));
+		const covered = tree(node({ text: "Close", bounds: "[0,100][100,200]" }));
+		expect(() => maskRects(plain, workspaces, "ltr", covered)).toThrow("matches no node");
+		expect(maskRects(plain, workspaces, "ltr", plain)).toEqual([{ x: 60, y: 300, width: 640, height: 60 }]);
+		expect(maskRects(plain, workspaces, "ltr")).toEqual([{ x: 60, y: 300, width: 640, height: 60 }]);
+	});
+
 	test("a reference is only frozen when no node shows the address outside the masks", () => {
 		useAccount(address);
 		expect(exposedAccount(shown, [{ x: 58, y: 298, width: 644, height: 64 }])).toEqual([]);

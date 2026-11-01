@@ -9,7 +9,8 @@ const { smokeOnlyBundlePackages } = require("./qa/smoke-packages.cjs");
 // The checks themselves (smoke-checks.ts) go the same way: the page and the runner stay, the 36 checks are the smoke app's.
 // The product (APP_VARIANT=production) does not carry the development lab either: `svelte-native sync` leaves the `/__dev` routes out of
 // the route table (route discovery, `routeFiles`), and what still imports a lab module (the root layout's two hooks, a stale table) gets the
-// directory's stub. `qa/test/bundle.test.ts` lists the product bundle's modules.
+// directory's stub. `withSvelteNative` writes the route table for this variant when this file loads and refuses a table synced for another.
+// `qa/test/bundle.test.ts` lists the product bundle's modules.
 const variant = process.env.APP_VARIANT || "qa";
 const smoke = variant === "smoke";
 const product = variant === "production";

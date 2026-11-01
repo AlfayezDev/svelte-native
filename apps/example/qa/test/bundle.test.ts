@@ -53,14 +53,15 @@ afterAll(() => {
 });
 
 type Bundle = { text: string; bytes: number; modules: string[] };
-function bundle(variant: string): Bundle {
+/** `syncedFor`: the variant `svelte-native sync` ran for before the bundle was made (the variant's own by default). */
+function bundle(variant: string, syncedFor = variant): Bundle {
 	const directory = temporary(`native-qa-bundle-${variant || "qa"}-`);
 	const output = join(directory, "index.android.bundle");
 	const sourceMap = join(directory, "index.android.bundle.map");
 	// `bun test` sets NODE_ENV=test. Metro's transform cache is not keyed by it and survives `--reset-cache`, so a bundle made after a
 	// run with another NODE_ENV carries Reanimated's and Worklets' debug information (+6 %): production, and a cache of its own (TMPDIR).
 	const env = { ...process.env, APP_VARIANT: variant, CI: "1", EXPO_NO_TELEMETRY: "1", NODE_ENV: "production", TMPDIR: temporary("native-qa-metro-") };
-	const sync = spawnSync("node", [join(repoRoot, "packages/svelte-native/src/cli.ts"), "sync"], { cwd: platformDir, env, encoding: "utf8" });
+	const sync = spawnSync("node", [join(repoRoot, "packages/svelte-native/src/cli.ts"), "sync"], { cwd: platformDir, env: { ...env, APP_VARIANT: syncedFor }, encoding: "utf8" });
 	if (sync.status !== 0) throw new Error(`svelte-native sync failed: ${sync.stderr.slice(0, 400)}`);
 	const done = spawnSync(
 		"pnpm",
@@ -74,11 +75,12 @@ function bundle(variant: string): Bundle {
 }
 
 const bundles = new Map<string, Bundle>();
-const bundled = (variant: string) => {
-	let found = bundles.get(variant);
+const bundled = (variant: string, syncedFor = variant) => {
+	const key = `${variant}<${syncedFor}`;
+	let found = bundles.get(key);
 	if (!found) {
-		found = bundle(variant);
-		bundles.set(variant, found);
+		found = bundle(variant, syncedFor);
+		bundles.set(key, found);
 	}
 	return found;
 };
@@ -156,6 +158,19 @@ describe("the development lab", () => {
 			expect([library, [...product].some((module) => module.includes(library))]).toEqual([library, false]);
 		}
 		expect(lab.length).toBeGreaterThan(100);
+	}, 120_000);
+	test("the route table follows the bundle's variant, not the last sync: a table synced for the other variant changes nothing", () => {
+		// `svelte-native sync` for the QA app, then the product is bundled without a sync of its own (a forgotten one before `eas update`):
+		// Metro writes the product's table when its config loads, so the product still has no lab route, and no module of the lab but the stub.
+		const forgotten = bundled("production", "");
+		expect(forgotten.modules.filter((module) => labModule.test(module))).toEqual([]);
+		expect(forgotten.modules.filter((module) => /\/__dev\//.test(module))).toEqual([]);
+		expect(forgotten.text.split("\n").filter((line) => line.includes("__dev")).length).toBe(1);
+		expect(forgotten.bytes).toBe(bundled("production").bytes);
+		// And the product's table before a QA bundle: the QA app has every route of the lab.
+		const leftover = bundled("", "production");
+		expect(leftover.modules.filter((module) => /apps\/platform\/src\/routes\/__dev\/.*\+mobile\.svelte$/.test(module)).length).toBeGreaterThan(8);
+		expect(leftover.bytes).toBe(bundled("").bytes);
 	}, 120_000);
 	test("the product is smaller than the QA app by the lab, and the smoke app has the QA app's", () => {
 		const qa = bundled("").bytes;

@@ -22,7 +22,8 @@ test("the patch adds the manager's current-manager accessor and the registration
   const patch = await read(patchPath);
   expect(patch).toContain("+ (nullable RNGestureHandlerManager *)currentManager;");
   expect(patch).toContain("+- (void)registerRootViewGestureRecognizerIfAttachedBelow:(nonnull RNGHUIView *)view;");
-  expect(patch).toContain("+- (void)registerRootViewGestureRecognizerIfAttachedBelow:(RNGHUIView *)view");
+  expect(patch).toContain("+- (void)registerRootViewGestureRecognizerIfAttachedBelow:(nonnull RNGHUIView *)view\n+{");
+  expect(patch).toContain("++ (nullable RNGestureHandlerManager *)currentManager\n+{");
   // The registration reuses the library's own, which also adds the recognizer to `_rootViewGestureRecognizers` and makes the manager its delegate.
   expect(patch).toMatch(/\+\s+\[self registerViewWithGestureRecognizerAttachedIfNeeded:view\];/);
   expect(patch).toContain("RNGHViewHasSurfaceTouchHandler(touchHandlerView)");

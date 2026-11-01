@@ -18,7 +18,7 @@ index d9cf93d3657ee8187ca0554fceb59259484ae0cb..5269edcc8d5623750a3755e8e8b57e3a
  
  - (void)handleClearJSResponder;
 diff --git a/apple/RNGestureHandlerManager.mm b/apple/RNGestureHandlerManager.mm
-index d9799b31cb862742395a97fd990b11dfaff44069..66e0e73d56a38b90a434d014f88fec873ea87f8e 100644
+index d9799b31cb862742395a97fd990b11dfaff44069..40e8fdb9427325eb48d4f9e691bea9b8aed6d925 100644
 --- a/apple/RNGestureHandlerManager.mm
 +++ b/apple/RNGestureHandlerManager.mm
 @@ -43,6 +43,20 @@
@@ -49,7 +49,7 @@ index d9799b31cb862742395a97fd990b11dfaff44069..66e0e73d56a38b90a434d014f88fec87
 +// The manager of the running module, for code outside the library that has to ask it something (see `registerRootViewGestureRecognizerIfAttachedBelow:`).
 +static __weak RNGestureHandlerManager *RNGHCurrentManager;
 +
-++ (RNGestureHandlerManager *)currentManager
+++ (nullable RNGestureHandlerManager *)currentManager
 +{
 +  return RNGHCurrentManager;
 +}
@@ -74,7 +74,7 @@ index d9799b31cb862742395a97fd990b11dfaff44069..66e0e73d56a38b90a434d014f88fec87
    [_rootViewGestureRecognizers addObject:recognizer];
  }
  
-+- (void)registerRootViewGestureRecognizerIfAttachedBelow:(RNGHUIView *)view
++- (void)registerRootViewGestureRecognizerIfAttachedBelow:(nonnull RNGHUIView *)view
 +{
 +  // Only a view with a handler attached below it needs the root recognizer; a screen that joins its window with none (every screen of an app
 +  // that has no gesture) costs a loop over the handlers there are.

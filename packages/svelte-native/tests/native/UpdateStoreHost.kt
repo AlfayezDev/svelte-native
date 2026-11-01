@@ -81,6 +81,7 @@ fun main() {
           val token = QaReset.requested(words[1]) { read = true; words[2].takeIf { it != "-" } }
           "token=${token ?: "-"} read=$read"
         }
+        "qa-setting" -> "setting=${QaReset.SETTING} package=${QaReset.PACKAGE}"
         "qa-throws" -> {
           val token = QaReset.requested(QaReset.PACKAGE) { throw SecurityException("denied") }
           "token=${token ?: "-"}"

@@ -185,6 +185,13 @@ describe.skipIf(!tools)("QaReset", () => {
   });
 });
 
+describe.skipIf(!tools)("QaReset names", () => {
+  test("the setting and package the compiled code honours are the ones the harness sets and the QA app has", () => {
+    // qa/lib/reset.ts sets this setting; the harness test compares both ends.
+    expect(run(["qa-setting"])).toEqual(["setting=svelte_qa_reset_updates package=io.rasheed.svelteqa"]);
+  });
+});
+
 describe.skipIf(!tools)("a damaged index", () => {
   test("no index is an empty store and the first select writes one", () => {
     const out = run(["index-exists", select(), "index-exists", "corrupt-file"]);

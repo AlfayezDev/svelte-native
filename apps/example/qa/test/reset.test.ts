@@ -102,8 +102,7 @@ describe("the app-level reset, which a phone gets instead", () => {
 		expect(resetMode("data")).toBe("data");
 		expect(() => resetMode("wipe")).toThrow("--reset must be app or data");
 	});
-	test("the flag the harness sets is the one the app reads (the decision itself is tested on the host, in packages/svelte-native/tests/updates-store-native.test.ts)", () => {
-		const kotlin = readFileSync(join(qaRoot, "..", "modules", "svelte-updates", "android", "src", "main", "java", "expo", "modules", "svelteupdates", "QaReset.kt"), "utf8");
-		expect(kotlin).toContain(`const val SETTING = "${qaResetSetting}"`);
+	test("the setting the harness sets is the one the compiled app code reads (packages/svelte-native/tests/updates-store-native.test.ts runs the Kotlin and pins the same name)", () => {
+		expect(qaResetSetting).toBe("svelte_qa_reset_updates");
 	});
 });

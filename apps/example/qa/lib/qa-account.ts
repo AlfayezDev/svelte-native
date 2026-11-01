@@ -9,24 +9,20 @@ import { repoRoot } from "./paths.ts";
  * file are how it stays that way (`redact`, `assertClean`), and `native-qa leakcheck` looks for it in what is about to be committed.
  *
  * The one-time code of a development database is public (it is in AGENTS.md); the address is not. A database that is not in
- * development mode emails its codes, which no harness can read: `RASHEED_QA_CODE` names a fixed code for a deployment that has one.
+ * development mode emails its codes, which no harness can read: it can instead be published with a fixed code for one dedicated QA address
+ * (`QA_SIGNIN_EMAIL` and `QA_SIGNIN_CODE`, apps/database/module/src/identity.rs). That code is a credential of the account like the address is:
+ * `RASHEED_QA_CODE`, read the same way (environment, else `.env.local`), is kept out of every message and file the same way, and is
+ * `000000` only when none is set.
  */
 export const developmentCode = "000000";
 export const variable = "RASHEED_QA_EMAIL";
 export const codeVariable = "RASHEED_QA_CODE";
-
-/** The code the sign-in types: `RASHEED_QA_CODE` when it is set (six digits), else the development database's. */
-export function qaCode(): string {
-	const code = process.env[codeVariable]?.trim();
-	if (code === undefined || code === "") return developmentCode;
-	if (!/^\d{6}$/.test(code)) throw new Error(`${codeVariable} must be six digits`);
-	return code;
-}
 /** What stands for the address wherever a message, a label of the accessibility tree or a finding would have carried it. */
 export const placeholder = "<qa-account>";
 
-let override: { email: string | null } | null = null;
+let override: { email: string | null; code: string | null } | null = null;
 let cached: string | null | undefined;
+let cachedCode: string | null | undefined;
 
 /** The value of one key of a dotenv file, or null: only that key is looked at, the rest of the file is never read into the process. */
 export function envFileValue(text: string, key: string): string | null {
@@ -41,15 +37,37 @@ export function envFileValue(text: string, key: string): string | null {
 	return null;
 }
 
-function read(): string | null {
-	const fromEnvironment = process.env[variable]?.trim();
-	if (fromEnvironment) return fromEnvironment.toLowerCase();
+/** One setting, from the environment, else from that one key of `.env.local`; trimmed, null when it is not there. */
+function setting(name: string): string | null {
+	const fromEnvironment = process.env[name]?.trim();
+	if (fromEnvironment) return fromEnvironment;
 	try {
-		const fromFile = envFileValue(readFileSync(join(repoRoot, ".env.local"), "utf8"), variable)?.trim();
-		return fromFile ? fromFile.toLowerCase() : null;
+		return envFileValue(readFileSync(join(repoRoot, ".env.local"), "utf8"), name)?.trim() || null;
 	} catch {
 		return null;
 	}
+}
+
+function read(): string | null {
+	return setting(variable)?.toLowerCase() ?? null;
+}
+
+const sixDigits = /^\d{6}$/;
+
+/** The fixed code configured for the account (`RASHEED_QA_CODE`, six digits), or null when none is set. A value that is not six digits is an error that never quotes it. */
+export function configuredCode(): string | null {
+	if (override) return override.code;
+	if (cachedCode === undefined) {
+		const value = setting(codeVariable);
+		if (value !== null && !sixDigits.test(value)) throw new Error(`${codeVariable} must be six digits`);
+		cachedCode = value;
+	}
+	return cachedCode;
+}
+
+/** The code the sign-in types: the configured one, else the development database's. */
+export function qaCode(): string {
+	return configuredCode() ?? developmentCode;
 }
 
 /** The account's address (lower case, as the server keeps it), or null when none is configured. Tests set one with `useAccount`. */
@@ -59,9 +77,15 @@ export function accountEmail(): string | null {
 	return cached;
 }
 
-/** Tests: use this address (or none) instead of the environment's until `useAccount(undefined)`. */
-export function useAccount(email: string | null | undefined): void {
-	override = email === undefined ? null : { email: email === null ? null : email.toLowerCase() };
+/** Tests: use this address (and fixed code, or none) instead of the environment's until `useAccount(undefined)`. */
+export function useAccount(email: string | null | undefined, code: string | null = null): void {
+	override = email === undefined ? null : { email: email === null ? null : email.toLowerCase(), code };
+}
+
+/** The fixed code as a pattern that matches it only as a whole number (six digits inside a longer number are not it); null when there is none worth hiding (the public development code). */
+function codePattern(): RegExp | null {
+	const code = configuredCode();
+	return code === null || code === developmentCode ? null : new RegExp(`(?<!\\d)${code}(?!\\d)`, "g");
 }
 
 /** What the address looks like once it has gone through a URL, a shell or an XML attribute: all of them are looked for. */
@@ -70,18 +94,20 @@ function needles(email: string, extra: readonly string[] = []): string[] {
 	return [...forms].filter((form) => form.length > 0);
 }
 
-/** `text` with the address (any case, any of its encodings) and every extra needle replaced by the placeholder. */
+/** `text` with the address (any case, any of its encodings), the fixed code and every extra needle replaced by the placeholder. */
 export function redact(text: string, extra: readonly string[] = []): string {
 	const email = accountEmail();
 	let result = text;
 	for (const needle of email === null ? extra.filter((form) => form.length > 0) : needles(email, extra))
 		result = result.replace(new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), placeholder);
-	return result;
+	const code = codePattern();
+	return code === null ? result : result.replace(code, placeholder);
 }
 
-/** Whether the text contains the address (any case, any of its encodings). */
+/** Whether the text contains the address (any case, any of its encodings) or the fixed code (as a whole number). */
 export function containsAccount(text: string): boolean {
 	const email = accountEmail();
+	if (codePattern()?.test(text)) return true;
 	if (email === null) return false;
 	const lower = text.toLowerCase();
 	return needles(email).some((form) => lower.includes(form.toLowerCase()));
@@ -102,7 +128,7 @@ export function redactDeep<T>(value: T): T {
  */
 export function assertClean(text: string, what: string): void {
 	if (containsAccount(text))
-		throw new Error(`refusing to write ${what}: it contains the QA account's address (${variable}); the harness must redact it first`);
+		throw new Error(`refusing to write ${what}: it contains the QA account's address (${variable}) or its sign-in code (${codeVariable}); the harness must redact it first`);
 }
 
 /** The address, or an error that names the variable and where it is looked for (never its value). */

@@ -3,7 +3,7 @@ import { copy } from "./copy.ts";
 import { findNode } from "./drive.ts";
 import { dumpUi, endsRun, key, tap, type DeviceSession } from "./device.ts";
 import { shellQuote } from "./exec.ts";
-import { accountEmail, codeVariable, placeholder, qaCode, redact, requireAccount, variable } from "./qa-account.ts";
+import { accountEmail, codeVariable, configuredCode, placeholder, qaCode, redact, requireAccount, variable } from "./qa-account.ts";
 import type { Selector } from "./screens.ts";
 import { center } from "./uia.ts";
 import { sleep } from "./wait.ts";
@@ -148,12 +148,16 @@ export async function signIn(session: DeviceSession): Promise<void> {
 			throw new SignInError(`signing in landed on the onboarding screen: the QA account has no profile yet, and the harness writes none (finish its profile once by hand)`);
 		if (landed === 2)
 			throw new SignInError(
-				`the database rejected the code ${code} (${JSON.stringify(labels.wrongCode)}): this database is not in development mode (DEV), so it emails its codes and the harness cannot read them; use a database that signs in with 000000 or give ${codeVariable} a code it accepts`,
+				`the database rejected the sign-in code (${JSON.stringify(labels.wrongCode)}): ${
+					configuredCode() === null
+						? `no ${codeVariable} is set, so the harness typed 000000, which only a database in development mode (DEV) accepts; this one emails its codes. Publish it with QA_SIGNIN_EMAIL and QA_SIGNIN_CODE for the QA address and put that code in ${codeVariable}`
+						: `the code in ${codeVariable} is not the one the database was published with (QA_SIGNIN_CODE), or the address in ${variable} is not its QA_SIGNIN_EMAIL`
+				}`,
 			);
-		if (landed > 2) throw new SignInError(`the database refused the code ${code} (${JSON.stringify([labels.wrongCode, labels.tooManyAttempts, labels.expired][landed - 2])})`);
+		if (landed > 2) throw new SignInError(`the database refused the sign-in code (${JSON.stringify([labels.wrongCode, labels.tooManyAttempts, labels.expired][landed - 2])})`);
 	} catch (error) {
 		if (endsRun(error)) throw error;
-		throw scrub(error, [email]);
+		throw scrub(error, [email, qaCode()]);
 	}
 }
 

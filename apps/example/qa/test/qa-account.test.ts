@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { assertClean, containsAccount, envFileValue, placeholder, redact, redactDeep, requireAccount, useAccount } from "../lib/qa-account.ts";
+import { assertClean, configuredCode, containsAccount, developmentCode, envFileValue, placeholder, qaCode, redact, redactDeep, requireAccount, useAccount } from "../lib/qa-account.ts";
 
 // A made-up address: the real one is never written in a test either.
 const address = "qa.person+tests@example.test";
@@ -55,5 +55,38 @@ describe("keeping the address out of what is written", () => {
 		expect(containsAccount(address)).toBe(false);
 		expect(redact(address)).toBe(address);
 		expect(() => requireAccount()).toThrow("RASHEED_QA_EMAIL");
+	});
+});
+
+describe("the sign-in code of the QA account", () => {
+	test("it is the development code only when no code is configured, and the configured one otherwise", () => {
+		useAccount(address);
+		expect(configuredCode()).toBeNull();
+		expect(qaCode()).toBe(developmentCode);
+		useAccount(address, "135790");
+		expect(configuredCode()).toBe("135790");
+		expect(qaCode()).toBe("135790");
+	});
+
+	test("a configured code is hidden like the address, as a whole number only", () => {
+		useAccount(address, "135790");
+		expect(redact("typed 135790 into the field")).toBe(`typed ${placeholder} into the field`);
+		expect(redact("a count of 1357901 and 2135790")).toBe("a count of 1357901 and 2135790");
+		expect(containsAccount("code 135790.")).toBe(true);
+		expect(containsAccount("code 1357901")).toBe(false);
+		expect(() => assertClean('{"detail":"135790"}', "the parity run file")).toThrow("refusing to write the parity run file");
+		let message = "";
+		try {
+			assertClean("135790", "a file");
+		} catch (error) {
+			message = error instanceof Error ? error.message : "";
+		}
+		expect(message).not.toContain("135790");
+	});
+
+	test("the public development code is not a secret and is left alone", () => {
+		useAccount(address, developmentCode);
+		expect(redact("the code 000000 was typed")).toBe("the code 000000 was typed");
+		expect(containsAccount("000000")).toBe(false);
 	});
 });

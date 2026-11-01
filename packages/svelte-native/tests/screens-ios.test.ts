@@ -137,6 +137,9 @@ test("a hidden Modal mounts no host on iOS (a hidden RCTModalHostView would take
       app.setOpen(true);
       await settle(m);
       expect(modals(surface).map((node) => node.props.visible)).toEqual([true]);
+      // UIKit presented the controller (a window, a finished transition): onShow.
+      emit(modals(surface)[0]?.target, "topShow");
+      await settle(m);
       app.setOpen(false);
       await settle(m);
       // Still there with visible false while UIKit animates the dismissal; gone once it reports onDismiss.
@@ -148,6 +151,32 @@ test("a hidden Modal mounts no host on iOS (a hidden RCTModalHostView would take
       app.setOpen(true);
       await settle(m);
       expect(modals(surface)).toHaveLength(1);
+      // A Modal toggled true to false while its host has no window (a hidden eager tab pane) is never presented: RN emits onDismiss only
+      // for a presented controller, so nothing would unmount the hidden host, and it would swallow the pane's touches. No onShow came:
+      // it goes away with `visible`, and no dismissal is reported for a modal that was never shown.
+      app.setOpen(false);
+      await settle(m);
+      expect(modals(surface)).toHaveLength(0);
+      expect(app.dismissed()).toBe(1);
+      // Presented again, after an onShow of the earlier round; the stale onShow does not count for this one.
+      app.setOpen(true);
+      await settle(m);
+      expect(modals(surface).map((node) => node.props.visible)).toEqual([true]);
+      app.setOpen(false);
+      await settle(m);
+      expect(modals(surface)).toHaveLength(0);
+      // The sequence of a window that appears late: visible, still no onShow, then onShow, then hidden: the dismissal animates as usual.
+      app.setOpen(true);
+      await settle(m);
+      emit(modals(surface)[0]?.target, "topShow");
+      await settle(m);
+      app.setOpen(false);
+      await settle(m);
+      expect(modals(surface).map((node) => node.props.visible)).toEqual([false]);
+      emit(modals(surface)[0]?.target, "topDismiss");
+      await settle(m);
+      expect(modals(surface)).toHaveLength(0);
+      expect(app.dismissed()).toBe(2);
     } finally { delete environment.__navigationOS; }
   }
 });

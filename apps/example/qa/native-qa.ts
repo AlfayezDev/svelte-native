@@ -4,6 +4,7 @@ import { build } from "./commands/build.ts";
 import { gates } from "./commands/gates.ts";
 import { gestures } from "./commands/gestures.ts";
 import { iosProbe } from "./commands/ios-probe.ts";
+import { leakcheck } from "./commands/leakcheck.ts";
 import { lab } from "./commands/lab.ts";
 import { parity } from "./commands/parity.ts";
 import { report } from "./commands/report.ts";
@@ -32,7 +33,8 @@ const usage = `usage: native-qa <command> [flags]
   gestures --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--team <id>] [--rebuild] [--run ...] [--repeat <n>] [--timeout <s>]
   probe  --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--probes <names>] [--direction ltr|rtl]
   report
-  gates  [--platform android|ios] [--all] [--smoke]`;
+  gates  [--platform android|ios] [--all] [--smoke]
+  leakcheck [--staged] [--all]      (the QA account's address, RASHEED_QA_EMAIL, in what is about to be committed and in the run files)`;
 
 const [command, ...rest] = process.argv.slice(2);
 
@@ -51,6 +53,7 @@ const commands: Record<string, (argv: string[]) => Promise<void>> = {
 	probe: iosProbe,
 	report: async () => report(),
 	gates,
+	leakcheck,
 };
 
 const run = command ? commands[command] : undefined;

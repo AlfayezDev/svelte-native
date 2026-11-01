@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { diffImages, decodePng, encodePng, maskBitmap, type Image, type Rect } from "./png.ts";
 import { qaDir } from "./paths.ts";
+import { assertClean } from "./qa-account.ts";
 import type { ParityCase, Source } from "./types.ts";
 import type { ScreenCase, Variant } from "./screens.ts";
 
@@ -67,10 +68,9 @@ export async function writeManifest(
 	const sorted = Object.fromEntries(
 		Object.entries(manifest.references).sort(([a], [b]) => a.localeCompare(b)),
 	);
-	await writeFile(
-		join(dir, "manifest.json"),
-		`${JSON.stringify({ ...manifest, references: sorted }, null, "\t")}\n`,
-	);
+	const text = `${JSON.stringify({ ...manifest, references: sorted }, null, "\t")}\n`;
+	assertClean(text, "the references' manifest");
+	await writeFile(join(dir, "manifest.json"), text);
 }
 
 export async function readReference(

@@ -60,21 +60,21 @@ final class GesturesUITests: XCTestCase {
             // navigation's edge swipe may take and let go of; the recognizer trace says from which of them it began.
             if ProcessInfo.processInfo.environment["GESTURES_CALIBRATE"] == "edge", key.hasPrefix("gestures-pushed-edge#0#") { calibrateEdge(in: app) }
             // `GESTURES_EDGE_X`: the pushed-edge swipe of the first round starts that many points from the edge (the lab asks for 8; UIKit's edge zone is smaller).
-            var input = input
+            var sent = input
             if let text = ProcessInfo.processInfo.environment["GESTURES_EDGE_X"], let x = Double(text), key.hasPrefix("gestures-pushed-edge#0#"), var from = input["from"] as? [String: Any] {
                 from["dx"] = x
-                input["from"] = from
+                sent["from"] = from
             }
             var failure: String? = nil
             let began = Date()
             aimed = [:]
             do {
-                try perform(input, in: app)
+                try perform(sent, in: app)
             } catch {
                 failure = "\(error)"
                 XCTFail("\(key): \(error)")
             }
-            Self.report(ready, input: input, error: failure, from: began, to: Date(), aimedLast: aimed)
+            Self.report(ready, input: sent, error: failure, from: began, to: Date(), aimedLast: aimed)
         }
         XCTAssertLessThan(Date(), deadline, "the lab did not finish within \(seconds) s")
     }

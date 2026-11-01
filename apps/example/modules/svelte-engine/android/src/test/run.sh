@@ -3,7 +3,7 @@
 # command streams, then the Kotlin decoder against the buffers the C++ test verified; and the foreign-view ownership
 # rules (SPEC.md, "Foreign views"); what the view-shot capture decides before it draws (CaptureRules); the pointer-events mapping and
 # the ids react-native-gesture-handler reads from an engine view, and who may claim a touch (SPEC.md, "Gestures"). No device, no Android SDK.
-# Needs g++ (C++20) and kotlinc. Usage: src/test/run.sh
+# Needs g++ (C++20), kotlinc and java; from any directory. CI: the unit job (qa/ci/host-tools.sh installs the pinned kotlinc). Usage: src/test/run.sh
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 work="$(mktemp -d)"
@@ -28,7 +28,7 @@ kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/CaptureFiles.kt" \
 java -cp "$work/capture-files-check.jar" expo.modules.svelteengine.CaptureFilesCheckKt
 
 # RNGH's own Pan source: the distance rule the edge swipe and the sheet's drag are tied to is read from it, not copied.
-rngh="$(cd "$here" && node -p "require('path').dirname(require.resolve('react-native-gesture-handler/package.json', { paths: [process.cwd()] }))")"
+rngh="$(node -p "require('path').dirname(require.resolve('react-native-gesture-handler/package.json', { paths: [process.argv[1]] }))" "$here")"
 views="$here/../main/java/expo/modules/svelteengine/views"
 kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/GestureRules.kt" \
   "$here/../main/java/expo/modules/svelteengine/ClaimRules.kt" \

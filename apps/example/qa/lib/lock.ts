@@ -5,9 +5,9 @@ import { emulatorLock } from "./paths.ts";
 const heldVariable = "NATIVE_QA_LOCK_HELD";
 
 /**
- * Where the lock of the OVH emulator lives when more than one machine uses the emulator. The OVH host owns it: its own jobs
- * take it with `flock`, a machine that reaches the emulator through an SSH tunnel takes the same file over `ssh`. It is in a
- * directory of its own because `/tmp` is sticky and `fs.protected_regular` would refuse a second user the file.
+ * Where the locks of the OVH emulator and of the EAS channels live when more than one machine uses them. The OVH host owns them: its
+ * own jobs take them with `flock`, a machine that reaches the emulator through an SSH tunnel (or publishes to a channel) takes the same
+ * file over `ssh`. They are in a directory of its own because `/tmp` is sticky and `fs.protected_regular` would refuse a second user the file.
  */
 export const sharedLockDir = "/run/svelte-qa";
 export const sharedLockFile = `${sharedLockDir}/emulator.lock`;
@@ -249,7 +249,7 @@ async function runUnderRemoteLock(
 				new Error(
 					status === waitExit
 						? `gave up waiting for ${describeLock(lock)} after ${wait} s`
-						: `ssh to ${lock.host} ended (${status}) before the lock on ${lock.file} was taken`,
+						: `ssh to ${lock.host} ended (${status}) before the lock on ${lock.file} was taken; NATIVE_QA_LOCK_HOST=<ssh destination> names another host, =local takes the lock on this machine`,
 				),
 			),
 		);
@@ -299,10 +299,50 @@ export async function reexecUnderLock(lock: Lock | string, argv: string[]): Prom
 }
 
 /**
- * One lock per EAS channel, taken for every device: two runs publishing to the same channel at once would each see the other's
- * updates as the channel's head and could leave it on a bad one. The name is a validated QA channel (`qaChannel`), so it is a safe file name.
+ * The name of the lock file of an EAS channel. A channel is one thing for every machine (two runs publishing to it at once would each
+ * see the other's updates as the channel's head and could leave it on a bad one), so its lock is a lock of the OVH host, like the
+ * emulator's. The name is a validated QA channel (`qaChannel`), so it is a safe file name.
  */
-export function channelLock(channel: string): string {
+export function channelLockName(channel: string): string {
 	if (!/^qa(-[a-z0-9]+)*$/.test(channel)) throw new Error(`not a QA channel: ${JSON.stringify(channel)}`);
-	return `/tmp/svelte-qa-channel-${channel}.lock`;
+	return `channel-${channel}.lock`;
+}
+
+/** The host a machine with no tunnel and no `NATIVE_QA_LOCK_HOST` takes a channel's lock on (`QA_EMULATOR_HOST`, as `qa/ci/emulator-remote.sh` reads it). */
+export const defaultLockHost = "ovh-root";
+
+/** The port of the emulator's tunnel: the tunnel that says which host the emulator, and so the lock, is on. */
+const emulatorPort = 5555;
+
+/**
+ * Which lock publishing to the EAS channel `channel` takes. It does not depend on the device (a phone and the emulator publish to the same
+ * channel), so a machine without an emulator tunnel still takes it on the OVH host:
+ *
+ * - `NATIVE_QA_LOCK_HOST=<ssh destination>`: the file `/run/svelte-qa/channel-<name>.lock` on that host, over ssh.
+ * - `NATIVE_QA_LOCK_HOST=local`: a local `flock` (the shared directory if there is one, else `/tmp/svelte-qa-channel-<name>.lock`).
+ * - unset: the host of the `ssh -L 5555:...` tunnel to the emulator, if one is up; else this machine, when it is the OVH host (it has the
+ *   shared directory); else `QA_EMULATOR_HOST`, `ovh-root` when that is not set either.
+ *
+ * The file is in the directory of the emulator lock, so the host's CI jobs take it with a local `flock` and every other machine over ssh
+ * with the same held session and heartbeat.
+ */
+export function resolveChannelLock(
+	channel: string,
+	env: LockEnvironment = process.env,
+	findTunnel: (port: number) => string | null = tunnelHost,
+	sharedDirExists: boolean = existsSync(sharedLockDir),
+): Lock {
+	const name = channelLockName(channel);
+	const shared = `${sharedLockDir}/${name}`;
+	const configured = env.NATIVE_QA_LOCK_HOST?.trim();
+	if (configured === "local") return { kind: "local", file: sharedDirExists ? shared : `/tmp/svelte-qa-${name}` };
+	if (configured) return { kind: "remote", host: configured, file: shared };
+	const tunnel = findTunnel(emulatorPort);
+	if (tunnel !== null) return { kind: "remote", host: tunnel, file: shared };
+	if (sharedDirExists) return { kind: "local", file: shared };
+	return { kind: "remote", host: env.QA_EMULATOR_HOST?.trim() || defaultLockHost, file: shared };
+}
+
+export function channelLock(channel: string): Lock {
+	return resolveChannelLock(channel);
 }

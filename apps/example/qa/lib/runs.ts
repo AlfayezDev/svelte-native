@@ -100,8 +100,13 @@ export async function readJson<T>(path: string): Promise<T> {
 	return JSON.parse(await readFile(path, "utf8")) as T;
 }
 
-/** The key of a build in the report: the ABI for the QA app (as before), `smoke-<abi>` for the smoke app. */
-export const buildFileKey = (build: Pick<BuildFile, "abi" | "variant">): string => (build.variant === "smoke" ? `smoke-${build.abi}` : build.abi);
+/**
+ * The key of a build in the report, and of its record `build-<key>.json`: the ABI for the QA app (as before), `smoke-<abi>` for the smoke
+ * app, `production-<abi>` for the product (the same stem as the APK's, `stemOf`). The product's build record must not be the QA app's:
+ * the lane builds both, and the report reads the QA app's to say which build its runs measured.
+ */
+export const buildFileKey = (build: Pick<BuildFile, "abi" | "variant">): string =>
+	build.variant === undefined || build.variant === "qa" ? build.abi : `${build.variant}-${build.abi}`;
 
 export async function writeBuild(build: BuildFile, directory: string = outDir): Promise<void> {
 	await mkdir(directory, { recursive: true });

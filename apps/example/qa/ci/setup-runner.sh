@@ -10,7 +10,8 @@
 #
 # What it sets up, each step only when it is not already so (run it again whenever something changed):
 #   user      svelte-qa (system user, home /var/lib/svelte-qa, group kvm). Runs the runner, the emulator and the watchdog.
-#   packages  apt: git curl jq unzip xz-utils tmux util-linux acl openjdk-17-jdk-headless
+#   packages  apt: git curl jq unzip xz-utils tmux util-linux acl openjdk-17-jdk-headless g++ (g++: the engine's C++ host checks, when the unit job runs on this
+#             runner; kotlinc is a pinned download of the job itself, qa/ci/host-tools.sh)
 #   toolchain /opt/svelte-qa/toolchain: node (the repo's version), pnpm (the repo's packageManager), bun $BUN_VERSION
 #   sdk       $ANDROID_HOME (default /opt/android-sdk, shared with the existing emulator): platform-tools, emulator, platform 36,
 #             build-tools 36.0.0, NDK 27.1.12297006, CMake 3.22.1, the x86_64 API 36 image. dl.google.com answers 404 to this host's
@@ -148,7 +149,7 @@ preflight() {
 install_packages() {
   say "packages"
   local missing=()
-  for pkg in ca-certificates git curl jq unzip xz-utils tmux util-linux acl openjdk-17-jdk-headless; do
+  for pkg in ca-certificates git curl jq unzip xz-utils tmux util-linux acl openjdk-17-jdk-headless g++; do
     dpkg -s "$pkg" >/dev/null 2>&1 || missing+=("$pkg")
   done
   if [ "${#missing[@]}" = 0 ]; then note "all installed"; return; fi

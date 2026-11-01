@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { channelLock } from "../lib/lock.ts";
+import { channelLockName } from "../lib/lock.ts";
 import { easCommand, easEnvironment, easName, redact, tail } from "../lib/eas.ts";
 import { assertManifestMatches, parseManifestUpdates } from "../lib/manifest.ts";
 import { parseChannelView } from "../lib/updates.ts";
@@ -71,9 +71,9 @@ describe("the channel", () => {
 
 describe("the lock per channel", () => {
 	test("a QA channel has its own lock file; anything else has none", () => {
-		expect(channelLock("qa")).toBe("/tmp/svelte-qa-channel-qa.lock");
-		expect(channelLock("qa-nightly")).toBe("/tmp/svelte-qa-channel-qa-nightly.lock");
-		for (const refused of ["production", "preview", "../etc/x", "qa/x", ""]) expect(() => channelLock(refused)).toThrow("not a QA channel");
+		expect(channelLockName("qa")).toBe("channel-qa.lock");
+		expect(channelLockName("qa-nightly")).toBe("channel-qa-nightly.lock");
+		for (const refused of ["production", "preview", "../etc/x", "qa/x", ""]) expect(() => channelLockName(refused)).toThrow("not a QA channel");
 	});
 });
 

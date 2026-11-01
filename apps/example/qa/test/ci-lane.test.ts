@@ -67,7 +67,7 @@ esac
 const harness = (calls: string[]): string[] => calls.filter((line) => line.startsWith("cli ")).map((line) => line.slice(4));
 
 describe("lane.sh emulator on a push", () => {
-	test("a fresh emulator, then the quick lane, report and the gates of what ran", () => {
+	test("a fresh emulator, then the quick lane, the product boot check, report and the gates of what ran", () => {
 		const machine = lane();
 		const result = machine.run("emulator", { QA_REPEAT: "3" });
 		expect(result.status).toBe(0);
@@ -77,12 +77,13 @@ describe("lane.sh emulator on a push", () => {
 			"parity --device localhost:5555 --quick",
 			"a11y --device localhost:5555 --no-install --quick",
 			"gestures --device localhost:5555 --no-install --input both",
+			"product --device localhost:5555",
 			"report",
-			"gates --platform android --runs lab,parity,a11y,gestures --except lab.runs,parity.signedIn.missing,a11y.signedIn.missing --markdown qa/out/gates.md",
+			"gates --platform android --runs lab,parity,a11y,gestures,product --except lab.runs,parity.signedIn.missing,a11y.signedIn.missing --markdown qa/out/gates.md",
 		]);
 		expect(machine.stages().every((row) => row[1] === "pass")).toBe(true);
 		expect(machine.stages().map((row) => row[0])).toEqual([
-			"emulator-restart", "lab", "guard-parity", "parity", "guard-a11y", "a11y", "guard-gestures", "gestures", "report", "gates",
+			"emulator-restart", "lab", "guard-parity", "parity", "guard-a11y", "a11y", "guard-gestures", "gestures", "guard-product", "product", "report", "gates",
 		]);
 	});
 	test("the emulator is checked before every stage that follows the first", () => {
@@ -90,17 +91,28 @@ describe("lane.sh emulator on a push", () => {
 		machine.run("emulator");
 		const sequence = machine.lines().map((line) => line.split(" ").slice(0, 2).join(" "));
 		expect(sequence.indexOf("emulator guard")).toBeGreaterThan(sequence.indexOf("cli lab"));
-		expect(sequence.filter((entry) => entry === "emulator guard")).toHaveLength(3);
+		expect(sequence.filter((entry) => entry === "emulator guard")).toHaveLength(4);
 	});
 	test("a stage that fails does not stop the others, and the lane fails", () => {
 		const machine = lane();
 		const result = machine.run("emulator", { FAIL_ON: "parity" });
 		expect(result.status).toBe(1);
-		expect(harness(machine.lines()).map((line) => line.split(" ")[0])).toEqual(["lab", "parity", "a11y", "gestures", "report", "gates"]);
+		expect(harness(machine.lines()).map((line) => line.split(" ")[0])).toEqual(["lab", "parity", "a11y", "gestures", "product", "report", "gates"]);
 		expect(machine.stages().find((row) => row[0] === "parity")?.[1]).toBe("fail(1)");
 		expect(machine.stages().find((row) => row[0] === "gates")?.[1]).toBe("pass");
 		expect(result.stdout).toContain("::error title=parity failed::");
 		expect(machine.read("qa/out/lane-parity.log")).toContain("parity broke");
+	});
+	test("a product that does not boot fails the lane, after every stage of the QA app and before the report", () => {
+		const machine = lane();
+		const result = machine.run("emulator", { FAIL_ON: "product" });
+		expect(result.status).toBe(1);
+		expect(machine.stages().find((row) => row[0] === "product")?.[1]).toBe("fail(1)");
+		expect(machine.stages().filter((row) => row[1] === "pass").map((row) => row[0])).toContain("gestures");
+		expect(machine.stages().find((row) => row[0] === "gates")?.[1]).toBe("pass");
+		expect(harness(machine.lines()).slice(-2)[0]).toBe("report");
+		expect(result.stdout).toContain("::error title=product failed::");
+		expect(machine.read("qa/out/lane-product.log")).toContain("product broke");
 	});
 	test("failing gates fail the lane", () => {
 		const machine = lane();
@@ -128,8 +140,9 @@ describe("lane.sh emulator on a dispatch", () => {
 			"resilience --device localhost:5555 --no-install",
 			"gestures --device localhost:5555 --no-install --input both",
 			"smoke --device localhost:5555",
+			"product --device localhost:5555",
 			"report",
-			"gates --platform android --runs lab,boot,parity,a11y,resilience,gestures --except parity.signedIn.missing,a11y.signedIn.missing --markdown qa/out/gates.md",
+			"gates --platform android --runs lab,boot,parity,a11y,resilience,gestures,product --except parity.signedIn.missing,a11y.signedIn.missing --markdown qa/out/gates.md",
 			"gates --smoke --platform android --runs smoke --markdown qa/out/gates-smoke.md",
 		]);
 	});
@@ -142,22 +155,23 @@ describe("lane.sh emulator on a dispatch", () => {
 		const judged = withAccount.run("emulator", { QA_MODE: "full", RASHEED_QA_EMAIL: "qa-account-stand-in" });
 		expect(judged.stdout).not.toContain("no QA account");
 		expect(judged.stdout).not.toContain("qa-account-stand-in");
-		expect(harness(withAccount.lines()).at(-1)).toBe("gates --platform android --runs lab,boot,parity,a11y,resilience,gestures --markdown qa/out/gates.md");
+		expect(harness(withAccount.lines()).at(-1)).toBe("gates --platform android --runs lab,boot,parity,a11y,resilience,gestures,product --markdown qa/out/gates.md");
 	});
 	test("without QA_SMOKE the smoke app is neither run nor judged", () => {
 		const machine = lane();
 		machine.run("emulator", { QA_MODE: "full" });
 		expect(harness(machine.lines()).some((line) => line.includes("smoke"))).toBe(false);
 	});
-	test("the update scenario runs last, on the channel, and its run kind is judged", () => {
+	test("the update scenario runs after the others, on the channel, then the product boot check, and the run kinds are judged", () => {
 		const machine = lane();
 		const result = machine.run("emulator", { QA_MODE: "full", QA_REPEAT: "10", QA_WARM: "30", QA_COLD: "30", QA_SMOKE: "1", QA_UPDATES: "1" });
 		expect(result.status).toBe(0);
-		expect(harness(machine.lines()).slice(-5)).toEqual([
+		expect(harness(machine.lines()).slice(-6)).toEqual([
 			"smoke --device localhost:5555",
 			"updates --device localhost:5555 --channel qa --warm 30",
+			"product --device localhost:5555",
 			"report",
-			"gates --platform android --runs lab,boot,parity,a11y,resilience,gestures,updates --except parity.signedIn.missing,a11y.signedIn.missing --markdown qa/out/gates.md",
+			"gates --platform android --runs lab,boot,parity,a11y,resilience,gestures,updates,product --except parity.signedIn.missing,a11y.signedIn.missing --markdown qa/out/gates.md",
 			"gates --smoke --platform android --runs smoke --markdown qa/out/gates-smoke.md",
 		]);
 		expect(machine.stages().map((row) => row[0])).toContain("guard-updates");
@@ -173,7 +187,7 @@ describe("lane.sh emulator on a dispatch", () => {
 		expect(harness(machine.lines()).some((line) => line.includes("updates"))).toBe(false);
 		const build = lane();
 		build.run("build", { QA_UPDATES: "1" });
-		expect(harness(build.lines())).toEqual(["build --abi x86_64"]);
+		expect(harness(build.lines())).toEqual(["build --abi x86_64", "build --abi x86_64 --variant production"]);
 	});
 	test("a failed update scenario fails the lane and the others still ran", () => {
 		const machine = lane();
@@ -184,23 +198,63 @@ describe("lane.sh emulator on a dispatch", () => {
 	});
 });
 
+describe("lane.sh with QA_ONLY (one kind of stage, from a terminal)", () => {
+	test("the product boot check alone: its build, a fresh emulator, its stage, and only its gates", () => {
+		const machine = lane();
+		expect(machine.run("build", { QA_ONLY: "product" }).status).toBe(0);
+		expect(harness(machine.lines())).toEqual(["build --abi x86_64 --variant production"]);
+		const result = machine.run("emulator", { QA_ONLY: "product" });
+		expect(result.status).toBe(0);
+		expect(harness(machine.lines()).slice(1)).toEqual([
+			"product --device localhost:5555",
+			"report",
+			"gates --platform android --runs product --except lab.runs,parity.signedIn.missing,a11y.signedIn.missing --markdown qa/out/gates.md",
+		]);
+		expect(machine.lines()).toContain("emulator restart fresh instance for the lane");
+	});
+	test("kinds the mode does not have are not run, and a list with none of the mode's is an error", () => {
+		const push = lane();
+		push.run("emulator", { QA_ONLY: "lab,boot,smoke" });
+		expect(harness(push.lines()).map((line) => line.split(" ")[0])).toEqual(["lab", "report", "gates"]);
+		expect(harness(push.lines()).at(-1)).toContain("--runs lab ");
+		const none = lane();
+		const result = none.run("emulator", { QA_ONLY: "boot" });
+		expect(result.status).toBe(1);
+		expect(result.stdout).toContain("::error title=nothing to run::");
+		expect(harness(none.lines())).toEqual([]);
+	});
+	test("a build for the QA app's kinds (the crash volume's too) leaves the product's out", () => {
+		const machine = lane();
+		machine.run("build", { QA_ONLY: "lab,parity" });
+		expect(harness(machine.lines())).toEqual(["build --abi x86_64"]);
+		const crashes = lane();
+		crashes.run("build", { QA_ONLY: "crashes" });
+		expect(harness(crashes.lines())).toEqual(["build --abi x86_64"]);
+	});
+});
+
 describe("lane.sh build, reset and summary", () => {
-	test("build makes the QA app, and the smoke app only in full mode when asked", () => {
+	test("build makes the QA app and the product for x86_64 only, and the smoke app only in full mode when asked", () => {
 		const push = lane();
 		expect(push.run("build", { QA_SMOKE: "1" }).status).toBe(0);
-		expect(harness(push.lines())).toEqual(["build --abi x86_64"]);
+		expect(harness(push.lines())).toEqual(["build --abi x86_64", "build --abi x86_64 --variant production"]);
+		expect(push.stages().map((row) => row[0])).toEqual(["build-qa", "build-product"]);
 		const full = lane();
 		full.run("build", { QA_MODE: "full", QA_SMOKE: "1", QA_SAMSUNGPAY_JAR: "/nonexistent" });
-		expect(harness(full.lines())).toEqual(["build --abi x86_64", "build --abi x86_64 --variant smoke"]);
+		expect(harness(full.lines())).toEqual(["build --abi x86_64", "build --abi x86_64 --variant production", "build --abi x86_64 --variant smoke"]);
+		for (const call of [...harness(push.lines()), ...harness(full.lines())]) expect(call).not.toContain("arm64");
 	});
 	test("the channel build follows the others in full mode when the update scenario is asked for", () => {
 		const machine = lane();
 		expect(machine.run("build", { QA_MODE: "full", QA_UPDATES: "1", QA_CHANNEL: "qa" }).status).toBe(0);
-		expect(harness(machine.lines())).toEqual(["build --abi x86_64", "build --abi x86_64 --updates-channel qa"]);
-		expect(machine.stages().map((row) => row[0])).toEqual(["build-qa", "build-updates"]);
+		expect(harness(machine.lines())).toEqual(["build --abi x86_64", "build --abi x86_64 --variant production", "build --abi x86_64 --updates-channel qa"]);
+		expect(machine.stages().map((row) => row[0])).toEqual(["build-qa", "build-product", "build-updates"]);
 	});
-	test("a failed build is a failed step", () => {
+	test("a failed build is a failed step, and a failed QA build does not hide the product's", () => {
 		expect(lane().run("build", { FAIL_ON: "build" }).status).toBe(1);
+		const machine = lane();
+		machine.run("build", { FAIL_ON: "build" });
+		expect(machine.stages().map((row) => row[0])).toEqual(["build-qa", "build-product"]);
 	});
 	test("reset forgets the last lane", () => {
 		const machine = lane();

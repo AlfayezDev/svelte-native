@@ -114,6 +114,7 @@ export async function updates(argv: string[]): Promise<void> {
 	const dexopt = dexoptFlag(values.dexopt);
 
 	// One run per device and one per channel: two runs publishing to a channel at once would each find the other's updates at its head.
+	// The channel's lock is a lock of the OVH host, whatever the device and whichever machine this is.
 	const deviceLock = lockFor(serial);
 	if (deviceLock) await reexecUnderLock(deviceLock, ["updates", ...argv]);
 	await reexecUnderLock(channelLock(channel), ["updates", ...argv]);

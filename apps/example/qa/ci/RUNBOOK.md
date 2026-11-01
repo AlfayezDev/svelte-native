@@ -37,7 +37,7 @@ Changes: nothing. Every `+` line is a command it would run, every `would write` 
 ssh ovh-root 'bash /srv/svelte-qa-setup/apps/platform/qa/ci/setup-runner.sh --no-register'
 ```
 
-Changes: apt packages (git curl jq unzip xz-utils tmux acl openjdk-17-jdk-headless); user `svelte-qa`; `/opt/svelte-qa/toolchain` (node, pnpm,
+Changes: apt packages (git curl jq unzip xz-utils tmux acl openjdk-17-jdk-headless g++); user `svelte-qa`; `/opt/svelte-qa/toolchain` (node, pnpm,
 bun 1.3.14); the missing Android SDK packages in `/opt/android-sdk` (build-tools 36.0.0, NDK 27.1.12297006, CMake 3.22.1; downloads go over IPv4
 because dl.google.com answers 404 to this host's IPv6 address); the AVD `svelte-qa` in `/var/lib/svelte-qa/avd`; the units
 `svelte-qa-emulator.service` and `svelte-qa-emulator-watchdog.service`; `/etc/sudoers.d/svelte-qa` (the runner may start, stop and restart that
@@ -97,7 +97,7 @@ node apps/platform/qa/native-qa.ts hold --device localhost:5555 -- echo "lock ta
 - The smoke app (dispatch only) needs the proprietary Samsung Pay SDK: `scp apps/platform/libs/samsungpay.jar ovh-root:/var/lib/svelte-qa/secrets/ && ssh ovh-root chown svelte-qa: /var/lib/svelte-qa/secrets/samsungpay.jar`. Without it the smoke stage fails with the harness's own message; turn the `smoke` input off for a dispatch without it.
 - The update scenario (dispatch only, the `updates` input, off by default) publishes to an EAS Update channel (`qa`, or `updates_channel`) and needs an Expo access token with write access to that project in the repository secret `EXPO_TOKEN`; the workflow gives it to the lane step only. eas-cli is fetched by `npx` at run time, so the host needs network access to npm and EAS. A push never runs it.
 - The signed-in phase of `parity` and `a11y` (dispatch only) signs in as the QA account of the development database, which is published with a fixed code for one dedicated address (`apps/database/module/src/identity.rs`): put the address and the code in the repository secrets `RASHEED_QA_EMAIL` and `RASHEED_QA_CODE`. The harness keeps both out of every message and file. Without them the phase does not run, the lane says so (`no QA account`) and the two gates that count its screens (`parity.signedIn.missing`, `a11y.signedIn.missing`) are not judged; a push never signs in and never judges them, because the quick lane compares the pinned screens in fewer variants than the pin lists.
-- Run the unit job on this runner instead of a GitHub-hosted one: `gh variable set QA_UNIT_RUNS_ON --body '["self-hosted","svelte-qa-emulator"]'`.
+- Run the unit job on this runner instead of a GitHub-hosted one: `gh variable set QA_UNIT_RUNS_ON --body '["self-hosted","svelte-qa-emulator"]'`. It needs g++ (step 3 installs it) and downloads two things itself: a JDK 17 (`actions/setup-java`, into the runner's tool cache) and, with `qa/ci/host-tools.sh`, kotlinc 2.1.20 and the `org.json` jar, each against a pinned sha256, into `~svelte-qa/.cache/native-qa-host-tools` (kept between runs, so once). Both need network access to github.com and repo1.maven.org; the Kotlin and C++ host checks (`run.sh`, the package tests that compile `*Host.kt`) fail, not skip, without them.
 - Make the checks block merges: Settings > Branches > the rule > require the status checks `Unit tests, typecheck, lint` and `Android emulator lane`.
 - A first run: push, or after the workflow is on the default branch, `gh workflow run native-qa.yml --ref <branch>`. The first build on the new runner takes 15 to 30 minutes.
 

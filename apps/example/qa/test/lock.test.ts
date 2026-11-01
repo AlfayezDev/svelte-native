@@ -4,10 +4,11 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-	channelLock,
+	channelLockName,
 	forwardHost,
 	isHeld,
 	remoteArguments,
+	resolveChannelLock,
 	resolveEmulatorLock,
 	runPlain,
 	runUnderLock,
@@ -18,7 +19,6 @@ import {
 const dir = mkdtempSync(join(tmpdir(), "native-qa-lock-"));
 afterAll(() => {
 	rmSync(dir, { recursive: true, force: true });
-	rmSync(channelLock("qa-locktest"), { force: true });
 });
 
 /** A stand-in for `ssh`: the last argument is the remote command and the "remote" host is this machine. */
@@ -136,37 +136,114 @@ describe("a local lock", () => {
 	});
 });
 
+describe("which lock a channel takes", () => {
+	const noTunnel = () => null;
+	const shared = "/run/svelte-qa/channel-qa.lock";
+	test("a channel has one lock file, whatever the device, and a name that is validated", () => {
+		expect(channelLockName("qa")).toBe("channel-qa.lock");
+		expect(channelLockName("qa-nightly")).toBe("channel-qa-nightly.lock");
+		for (const refused of ["production", "preview", "../etc/x", "qa/x", ""]) {
+			expect(() => channelLockName(refused)).toThrow("not a QA channel");
+			expect(() => resolveChannelLock(refused, {}, noTunnel, false)).toThrow("not a QA channel");
+		}
+	});
+	test("a machine with no tunnel and no setting takes it on the OVH host, over ssh", () => {
+		expect(resolveChannelLock("qa", {}, noTunnel, false)).toEqual({ kind: "remote", host: "ovh-root", file: shared });
+		expect(resolveChannelLock("qa-nightly", {}, noTunnel, false)).toEqual({ kind: "remote", host: "ovh-root", file: "/run/svelte-qa/channel-qa-nightly.lock" });
+		expect(resolveChannelLock("qa", { QA_EMULATOR_HOST: "qa@host" }, noTunnel, false)).toEqual({ kind: "remote", host: "qa@host", file: shared });
+	});
+	test("the tunnel to the emulator names the host, the same one the emulator lock is on", () => {
+		const asked: number[] = [];
+		const tunnel = (port: number) => (asked.push(port), "root@51.1.2.3");
+		expect(resolveChannelLock("qa", { QA_EMULATOR_HOST: "other" }, tunnel, false)).toEqual({ kind: "remote", host: "root@51.1.2.3", file: shared });
+		expect(asked).toEqual([5555]);
+		expect(resolveEmulatorLock("localhost:5555", {}, tunnel, false)).toEqual({ kind: "remote", host: "root@51.1.2.3", file: "/run/svelte-qa/emulator.lock" });
+	});
+	test("on the OVH host (the shared directory exists) it is a local flock of the same file", () => {
+		expect(resolveChannelLock("qa", {}, noTunnel, true)).toEqual(local(shared));
+	});
+	test("NATIVE_QA_LOCK_HOST decides, and local turns the host off", () => {
+		expect(resolveChannelLock("qa", { NATIVE_QA_LOCK_HOST: "qa@host" }, () => "ovh-root", true)).toEqual({ kind: "remote", host: "qa@host", file: shared });
+		expect(resolveChannelLock("qa", { NATIVE_QA_LOCK_HOST: "local" }, () => "ovh-root", false)).toEqual(local("/tmp/svelte-qa-channel-qa.lock"));
+		expect(resolveChannelLock("qa", { NATIVE_QA_LOCK_HOST: "local" }, () => "ovh-root", true)).toEqual(local(shared));
+	});
+});
+
 describe("the emulator lock and a channel lock together (native-qa updates)", () => {
-	test("the channel lock is a local lock of its own, taken inside the emulator lock, and both are marked held", async () => {
+	test("both are locks of the host, taken over ssh one inside the other, and both are marked held", async () => {
 		const emulator = { kind: "remote" as const, host: "ovh-root", file: fresh("emulator.lock") };
-		const channel = local(channelLock("qa-locktest"));
+		const channel = { kind: "remote" as const, host: "ovh-root", file: fresh("channel-qa.lock") };
 		const out = fresh("out");
 		// What `updates` does after the emulator lock re-ran it: take the channel's lock in the process the first one started.
 		const script = fresh("inner.ts");
 		writeFileSync(
 			script,
 			`import { runUnderLock } from ${JSON.stringify(join(import.meta.dirname, "../lib/lock.ts"))};
-process.exit(await runUnderLock(${JSON.stringify(channel)}, ["bash", "-c", 'echo "$NATIVE_QA_LOCK_HELD" > ${out}']));
+process.exit(await runUnderLock(${JSON.stringify(channel)}, ["bash", "-c", 'echo "$NATIVE_QA_LOCK_HELD" > ${out}; ! flock -n ${emulator.file} true; ! flock -n ${channel.file} true']));
 `,
 		);
 		const code = await runUnderLock(emulator, [process.execPath, script]);
 		expect(code).toBe(0);
 		const held = readFileSync(out, "utf8").trim();
-		expect(held).toBe(`${emulator.host}:${emulator.file}|${channel.file}`);
+		expect(held).toBe(`${emulator.host}:${emulator.file}|${channel.host}:${channel.file}`);
 		expect(isHeld(emulator, { NATIVE_QA_LOCK_HELD: held })).toBe(true);
 		expect(isHeld(channel, { NATIVE_QA_LOCK_HELD: held })).toBe(true);
 		expect(free(emulator.file)).toBe(true);
 		expect(free(channel.file)).toBe(true);
 	}, 20_000);
 	test("a run that holds the channel lock does not hold the emulator's, and the other way round", async () => {
-		const channel = local(fresh("channel.lock"));
-		const emulator = local(fresh("emulator.lock"));
+		const channel = remote(fresh("channel-qa.lock"));
+		const emulator = remote(fresh("emulator.lock"));
 		const marker = fresh("marker");
 		const holder = runUnderLock(channel, holding(marker, 1));
 		await until(marker);
 		expect(free(emulator.file)).toBe(true);
 		expect(await runUnderLock(emulator, ["true"])).toBe(0);
 		await holder;
+	});
+	test("a channel lock that is lost stops the command inside it, and lets go of both locks", async () => {
+		const emulator = remote(fresh("emulator.lock"));
+		const channel = remote(fresh("channel-qa.lock"));
+		const script = fresh("inner.ts");
+		writeFileSync(
+			script,
+			`import { runUnderLock } from ${JSON.stringify(join(import.meta.dirname, "../lib/lock.ts"))};
+process.exit(await runUnderLock(${JSON.stringify(channel)}, ["bash", "-c", "sleep 30"], { deadmanSeconds: 1, heartbeatMs: 600_000 }));
+`,
+		);
+		const started = Date.now();
+		const code = await runUnderLock(emulator, [process.execPath, script]);
+		expect(code).toBe(1);
+		expect(Date.now() - started).toBeLessThan(15_000);
+		expect(free(emulator.file)).toBe(true);
+		expect(free(channel.file)).toBe(true);
+	}, 25_000);
+});
+
+describe("one channel, two machines", () => {
+	test("a run over ssh and a job of the host wait for each other on the channel's file, and another channel is not held", async () => {
+		const qa = fresh("channel-qa.lock");
+		const other = fresh("channel-qa-other.lock");
+		const log = fresh("log");
+		const marker = fresh("marker");
+		const pc = runUnderLock(remote(qa), ["bash", "-c", `echo pc-start >> ${log}; touch ${marker}; sleep 1; echo pc-end >> ${log}`]);
+		await until(marker);
+		expect(free(other)).toBe(true);
+		expect(await runUnderLock(remote(other), ["true"])).toBe(0);
+		const host = runUnderLock(local(qa), ["bash", "-c", `echo host >> ${log}`]);
+		const second = runUnderLock(remote(qa), ["bash", "-c", `echo pc-2 >> ${log}`]);
+		expect(await pc).toBe(0);
+		expect(await host).toBe(0);
+		expect(await second).toBe(0);
+		const lines = readFileSync(log, "utf8").trim().split("\n");
+		expect(lines.slice(0, 2)).toEqual(["pc-start", "pc-end"]);
+		expect(lines.slice(2).sort()).toEqual(["host", "pc-2"]);
+		expect(free(qa)).toBe(true);
+	}, 20_000);
+	test("the directory of the lock is made when the host has none (a file name from channelLockName is all it needs)", async () => {
+		const file = join(dir, `made-${++counter}`, channelLockName("qa"));
+		expect(await runUnderLock(remote(file), ["bash", "-c", `! flock -n ${file} true`])).toBe(0);
+		expect(free(file)).toBe(true);
 	});
 });
 

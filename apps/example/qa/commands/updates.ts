@@ -211,6 +211,8 @@ export async function updates(argv: string[]): Promise<void> {
 			if (state.finalBuild === "plain" && reset === "app") {
 				try {
 					const token = `${runTag}-restore`;
+					// Installing the build ran the profile installer's broadcast, which started its process; only a new process reads the token.
+					await forceStop(serial, packageName);
 					await shell(serial, resetRequest(token));
 					await clearLogcat(serial);
 					await startApp(serial, packageName);

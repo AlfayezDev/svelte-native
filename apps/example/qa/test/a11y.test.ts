@@ -730,3 +730,24 @@ describe("touch targets", () => {
 		expect(analyze([button("Short", [100, 600, 700, 700])]).smallTargets).toBeUndefined();
 	});
 });
+
+describe("a control below the fold of a scroll view", () => {
+	const dense = { ...display, densityDpi: 420 };
+	// The button's visible slice ends where the scroll view does, under the bottom of the display.
+	const page = (label: string, bounds: N["bounds"]): N[] => [
+		{ cls: "android.widget.ScrollView", scrollable: true, bounds: [0, 300, 1080, 2400], children: [button(label, bounds)] },
+	];
+
+	test("a button that names its row is the control the screen declares below the fold", () => {
+		const r = analyze(page("Delete workspace, Acme", [105, 2383, 975, 2337]), { display: dense, scrolled: ["Delete workspace"] });
+		expect([r.clipped, r.unreachable]).toEqual([1, 0]);
+		const undeclared = analyze(page("Delete workspace, Acme", [105, 2383, 975, 2337]), { display: dense });
+		expect([undeclared.clipped, undeclared.unreachable]).toEqual([0, 1]);
+	});
+
+	test("the slice of a control a scroll view cuts is not a small touch target, the same control whole is", () => {
+		expect(analyze(page("Sign out", [63, 2360, 1017, 2400]), { display: dense, scrolled: ["Sign out"] }).smallTargets).toBe(0);
+		const whole: N = { cls: "android.widget.ScrollView", scrollable: true, bounds: [0, 300, 1080, 2400], children: [button("Sign out", [63, 1000, 1017, 1040])] };
+		expect(analyze([whole], { display: dense }).smallTargets).toBe(1);
+	});
+});

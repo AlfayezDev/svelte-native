@@ -153,6 +153,20 @@ function sameLabel(node: UiNode, label: string): boolean {
 	return node.text.trim() === label || node.contentDesc.trim() === label;
 }
 
+/** A declared label, or that label followed by what it is for ("Delete workspace, Acme": a button that repeats in a list names its row). */
+function sameLabelOrQualified(node: UiNode, label: string): boolean {
+	return sameLabel(node, label) || node.contentDesc.trim().startsWith(`${label}, `);
+}
+
+/** Whether a scroll container the node sits in cuts it: its visible part ends where the container's does, so its bounds are a slice, not its size. */
+function cutByScroll(node: UiNode): boolean {
+	for (let ancestor = node.parent; ancestor; ancestor = ancestor.parent) {
+		if (!isScrollContainer(ancestor)) continue;
+		return node.bounds.y <= ancestor.bounds.y + 1 || bottom(node.bounds) >= bottom(ancestor.bounds) - 1;
+	}
+	return false;
+}
+
 /**
  * What a service speaks for a group that says nothing itself: the labels of what it holds, in tree order, leaving out the
  * controls inside it (stops of their own). A `Pressable` around a `Text` is a clickable view with no text and a child with
@@ -319,17 +333,17 @@ export function analyzeScreen(input: A11yInput): A11yScreen {
 	const elements: Element[] = tree.nodes
 		.filter(isInteractive)
 		.map((node) => ({ node, label: spokenLabel(node) }));
-	const present = scrolled.filter((label) => tree.nodes.some((node) => sameLabel(node, label)));
+	const present = scrolled.filter((label) => tree.nodes.some((node) => sameLabelOrQualified(node, label)));
 	for (const label of [...controls, ...present]) {
 		const plain = tree.nodes.find(
-			(node) => sameLabel(node, label) && (node.bounds.width !== 0 || node.bounds.height !== 0),
+			(node) => sameLabelOrQualified(node, label) && (node.bounds.width !== 0 || node.bounds.height !== 0),
 		);
 		// A declared control is accounted for by an interactive node that carries its label, or that visibly contains the
 		// node that does (a button whose text sits beside it in the tree is still that control, with a defect of its own).
 		const covered = elements.some(
 			({ node }) =>
 				node !== null &&
-				(sameLabel(node, label) ||
+				(sameLabelOrQualified(node, label) ||
 					descendants(node).some((child) => sameLabel(child, label)) ||
 					(plain !== undefined && containsCenter(node.bounds, plain.bounds))),
 		);
@@ -365,7 +379,7 @@ export function analyzeScreen(input: A11yInput): A11yScreen {
 		if (
 			(isOffScreen(node, display) || hasNoVisibleSize(node)) &&
 			inScrollContainer(node) &&
-			scrolled.some((label) => sameLabel(node, label))
+			scrolled.some((label) => sameLabelOrQualified(node, label))
 		) {
 			clipped++;
 			continue;
@@ -380,7 +394,7 @@ export function analyzeScreen(input: A11yInput): A11yScreen {
 			reachable++;
 			const scale = (display.densityDpi ?? 160) / 160;
 			const edge = node.bounds.y <= 0 || bottom(node.bounds) >= display.height || node.bounds.x <= 0 || right(node.bounds) >= display.width;
-			if (smallTargets !== undefined && !edge && Math.min(node.bounds.width, node.bounds.height) / scale < minimumTargetDp - 0.5) {
+			if (smallTargets !== undefined && !edge && !cutByScroll(node) && Math.min(node.bounds.width, node.bounds.height) / scale < minimumTargetDp - 0.5) {
 				smallTargets++;
 				findings.push({
 					kind: "target",

@@ -557,7 +557,7 @@ const sectionControls: Record<SectionId, Localized[]> = {
 	profile: [words.firstName, words.lastName, words.save, words.changeEmail, words.signOut],
 	preferences: [copy("common.english"), copy("common.arabic"), copy("workspaceSettings.personalPage.themeSystem"), copy("workspaceSettings.personalPage.themeLight"), copy("workspaceSettings.personalPage.themeDark"), words.signOut],
 	devices: [words.signOutOthers, words.signOut],
-	workspaces: [words.createWorkspace, words.signOut],
+	workspaces: [words.deleteWorkspace, words.createWorkspace, words.signOut],
 	danger: [words.signOut],
 };
 

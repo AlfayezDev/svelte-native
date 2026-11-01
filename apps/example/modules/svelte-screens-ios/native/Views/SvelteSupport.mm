@@ -122,6 +122,32 @@ void SvelteAfterNextFrame(dispatch_block_t block) {
 
 @end
 
+#pragma mark - react-native-gesture-handler
+
+// What this file asks of RNGH's manager (`RNGestureHandlerManager`), declared here so that the module has no pod dependency on the library: the two
+// methods are the ones `patches/react-native-gesture-handler@2.32.0.patch` adds to it.
+@protocol SvelteGestureHandlerManager <NSObject>
++ (id<SvelteGestureHandlerManager> _Nullable)currentManager;
+- (void)registerRootViewGestureRecognizerIfAttachedBelow:(UIView *)view;
+@end
+
+void SvelteEnsureGestureRoot(UIView *view) {
+  static Class<SvelteGestureHandlerManager> managerClass;
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    Class found = NSClassFromString(@"RNGestureHandlerManager");
+    // A library without the patch has neither method, and is left alone.
+    if (found != nil && [found respondsToSelector:@selector(currentManager)]) managerClass = (Class<SvelteGestureHandlerManager>)found;
+  });
+  if (managerClass == nil) return;
+  // Nil until the library's module exists, which is when its first handler is created: an app that has no gesture stops here, on every call.
+  id<SvelteGestureHandlerManager> manager = [managerClass currentManager];
+  if (manager == nil) return;
+  // The manager looks at its own handlers (not at the views below `view`), adds the recognizer as it does for any view, and keeps it in the set
+  // that `handleSetJSResponder` and the activation callback reach.
+  [manager registerRootViewGestureRecognizerIfAttachedBelow:view];
+}
+
 @implementation SvelteTouchHost {
   RCTSurfaceTouchHandler *_handler;
   __weak UIView *_view;
@@ -135,6 +161,7 @@ void SvelteAfterNextFrame(dispatch_block_t block) {
     _view = view;
   }
   _handler.viewOriginOffset = offset;
+  SvelteEnsureGestureRoot(view);
 }
 
 - (void)detach {

@@ -2,19 +2,21 @@ import { a11y } from "./commands/a11y.ts";
 import { boot } from "./commands/boot.ts";
 import { build } from "./commands/build.ts";
 import { gates } from "./commands/gates.ts";
+import { gestures } from "./commands/gestures.ts";
 import { iosProbe } from "./commands/ios-probe.ts";
 import { lab } from "./commands/lab.ts";
 import { parity } from "./commands/parity.ts";
 import { report } from "./commands/report.ts";
 import { resilience } from "./commands/resilience.ts";
+import { smoke } from "./commands/smoke.ts";
 import { crashes } from "./soak/crashes.ts";
 import { soak } from "./soak/soak.ts";
 import { symbolicate } from "./soak/symbolicate.ts";
 
 const usage = `usage: native-qa <command> [flags]
 
-  build  [--abi x86_64|arm64-v8a] [--prebuild]
-  build  --platform ios --mac <user@host> --mac-checkout <dir> [--build-script <path on the Mac>]
+  build  [--abi x86_64|arm64-v8a] [--prebuild] [--variant qa|smoke]
+  build  --platform ios --mac <user@host> --mac-checkout <dir> [--build-script <path on the Mac>] [--variant qa|smoke]
   lab    --device <serial> [--apk <path> | --no-install] [--repeat <n>] [--run checks,quick] [--timeout <s>]
   boot   --device <serial> [--apk <path> | --no-install] [--warm <n>] [--cold <n>] [--idle <s>]
   lab | boot | parity | a11y  --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--app <.app on the Mac> | --no-install] [--package <bundle id>]   (NATIVE_QA_MAC replaces --mac; --udid defaults to the lab phone's, for its crash log)
@@ -24,9 +26,13 @@ const usage = `usage: native-qa <command> [flags]
   parity --device <serial> [--apk <path> | --no-install] [--update | --missing] [--quick] [--filter <screen>]
   a11y   --device <serial> [--apk <path> | --no-install] [--quick] [--filter <screen>]
   resilience --device <serial> [--apk <path> | --no-install] [--rotations <n>] [--cycles <n>] [--rounds <n>]
+  smoke  --device <serial> [--apk <path> | --no-install] [--timeout <s>]      (the smoke app: build --variant smoke first)
+  smoke  --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--app <.app on the Mac> | --no-install] [--timeout <s>]
+  gestures --device <serial> [--apk <path> | --no-install] [--input adb|qa|both] [--run box,row,...] [--repeat <n>] [--timeout <s>]
+  gestures --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--team <id>] [--rebuild] [--run ...] [--repeat <n>] [--timeout <s>]
   probe  --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--probes <names>] [--direction ltr|rtl]
   report
-  gates  [--platform android|ios] [--all]`;
+  gates  [--platform android|ios] [--all] [--smoke]`;
 
 const [command, ...rest] = process.argv.slice(2);
 
@@ -40,6 +46,8 @@ const commands: Record<string, (argv: string[]) => Promise<void>> = {
 	parity,
 	a11y,
 	resilience,
+	smoke,
+	gestures,
 	probe: iosProbe,
 	report: async () => report(),
 	gates,

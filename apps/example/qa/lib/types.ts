@@ -1,6 +1,6 @@
 import type { A11yFinding } from "./a11y.ts";
 import type { Rect } from "./png.ts";
-import type { BootMarks, LabChecks, Scenario } from "../parse/logcat.ts";
+import type { BootMarks, FrameStats, LabChecks, Scenario } from "../parse/logcat.ts";
 
 export type Platform = "android" | "ios";
 
@@ -160,6 +160,8 @@ export type Metrics = Record<string, Metric>;
 export type BuildFile = {
 	schema: 1;
 	kind: "build";
+	/** The app built: absent in files written before the smoke app existed (the QA app). */
+	variant?: "qa" | "smoke";
 	abi: string;
 	finishedAt: string;
 	durationMs: number;
@@ -456,3 +458,105 @@ export type ResilienceFile = {
 	logFile: string;	/** Why the run stopped before the end of its matrix (the device went away), or null. The cases it did not reach count as missing. */
 	aborted: string | null;
 } & SessionRecord;
+
+/* ---- native module smoke test ---- */
+
+/** One module's `[Svelte smoke]` line: what the call did, which path it took (`js`, `direct`, `js+direct`, `none`), how long it took, and what it said. */
+export type SmokeModuleResult = {
+	module: string;
+	status: "ok" | "fail" | "skip";
+	path: string;
+	ms: number | null;
+	detail: string;
+};
+
+/** The `[Svelte smoke] complete {...}` line the app logs when its last module reported. */
+export type SmokeCompletion = { os: string; total: number; ok: number; fail: number; skip: number };
+
+export type SmokeFile = {
+	schema: 1;
+	kind: "smoke";
+	startedAt: string;
+	finishedAt: string;
+	source: Source;
+	device: DeviceInfo;
+	app: AppInfo;
+	/** The `--run` the lab was launched with (`smoke`). */
+	run: string;
+	/** Whether the app logged its completion line and nothing interrupted or crashed it. */
+	complete: boolean;
+	/** The modules that reported, the last line of each (the order they ran in). */
+	results: SmokeModuleResult[];
+	completion: SmokeCompletion | null;
+	crashes: string[];
+	/** Android: JavaScript errors (`E ReactNativeJS`) the run logged; null where the app does not report them. */
+	jsErrorCount: number | null;
+	durationMs: number;
+	logFile: string;
+} & CrashReportsRecord;
+
+/* ---- gestures ---- */
+
+/** Who injected the input of a gestures launch: `adb input` from the harness, the app's own injector (Android's QA variant), or an XCUITest on the iPhone. */
+export type GestureInput = "adb" | "qa" | "xctest";
+
+/** One check of a scenario (`gestures-lab.ts`, `Check`): its name, whether it held, and the value it read. */
+export type GestureCheck = { name: string; ok: boolean; value: string | null };
+
+/** What the injecting side of a step did (adb: the command it ran; xctest: the actions the test reported), by step. */
+export type GestureInjection = { round: number; step: number; stepName: string; command: string; problems: string[]; error: string | null };
+
+/** One `gestures-*` scenario as the lab reported it in its `[Svelte stress]` line. */
+export type GestureResult = {
+	name: string;
+	verdict: string;
+	summary: string;
+	/** The frames of the window the scenario judges (the box, the busy box, the pinch); null for the others, whose frames are in `observedFrames`. */
+	frames: FrameStats | null;
+	observedFrames: { periodMs: number; p50: number; p95: number; max: number; droppedPct: number } | null;
+	checks: GestureCheck[];
+	/** Counters per round, `[begin, start, update, end, endOk, finalize, finalizeOk]` by handler; null when the lab dropped them to fit its line. */
+	counters: Record<string, number[]>[] | null;
+	marks: Record<string, number>[] | null;
+	/** The scenario ran out of time (its round was given up on). */
+	timedOut: boolean;
+	/** The lab's own error text when the scenario threw before it could judge anything. */
+	error: string | null;
+	injections: GestureInjection[];
+};
+
+/** One launch of the lab app with a list of gestures scenarios and one way of driving them. */
+export type GestureLaunch = {
+	input: GestureInput;
+	/** The scenarios the launch asked for, by name, in order. */
+	asked: string[];
+	startedAt: string;
+	durationMs: number;
+	/** The lab reached its completion line with every asked scenario in it, and nothing else came to the front. */
+	complete: boolean;
+	scenarios: GestureResult[];
+	crashes: string[];
+	jsErrors: string[];
+	engineWarnings: string[];
+	/** Lines of the handshake the harness could not read, and injections that failed: both leave a scenario to time out. */
+	harnessErrors: string[];
+	/** iOS: the process the launch started, which the phone's crash reports are matched to. */
+	pid?: number | null;
+	interrupted?: { at: string; by: string };
+	logFile: string;
+};
+
+export type GesturesFile = {
+	schema: 1;
+	kind: "gestures";
+	startedAt: string;
+	finishedAt: string;
+	source: Source;
+	device: DeviceInfo;
+	app: AppInfo;
+	/** The `--run` list and the `--input` value the command was given. */
+	run: string[];
+	inputs: GestureInput[];
+	launches: GestureLaunch[];
+} & CrashReportsRecord &
+	SessionRecord;

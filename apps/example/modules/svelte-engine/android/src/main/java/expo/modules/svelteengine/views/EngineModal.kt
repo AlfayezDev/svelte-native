@@ -68,7 +68,8 @@ class EngineModal(context: Context, root: EngineRoot) : ViewGroup(context), Engi
  * says it is translucent under them (and by the keyboard).
  *
  * It is not a node of the Fabric tree (tag 0): a touch that lands on the layer itself (the scrim, empty space) is held
- * by [EngineRoot] and reported to nobody, so nothing below the modal can be reached while it is up. The back key sends
+ * by [EngineRoot] and reported to nobody, so nothing below the modal can be reached while it is up (a gesture handler's
+ * traversal agrees: the layer has a background). The back key sends
  * `onRequestClose`; a tap on the scrim does nothing (React Native's Dialog behaves the same on Android), only the back key
  * and `visible = false` close a modal. Shows and hides animate with the stack's time and curve ([EngineStack.DURATION],
  * [EngineStack.DECELERATION]): slide moves the content up from the bottom edge while the dim fades in, fade fades the whole layer, none
@@ -117,6 +118,9 @@ internal class ModalLayer(context: Context, private val owner: EngineModal, priv
   }
 
   init {
+    // react-native-gesture-handler treats a view group without a background as see-through (it passes a touch on to what is
+    // below, like iOS's transparent regions); the layer's own area holds every touch, so a gesture cannot start under it.
+    setBackgroundColor(Color.TRANSPARENT)
     addView(scrim)
     addView(content)
     // A named pane: the accessibility service announces it and moves focus into it when it appears.

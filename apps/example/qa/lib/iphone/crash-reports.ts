@@ -276,10 +276,14 @@ const macScratch = "/tmp/native-qa-ios";
 let counter = 0;
 
 /**
- * The shell the Mac runs for one pull: `idevicecrashreport` copies the whole crash log of the phone (`-k`: the phone keeps its
- * reports; without it the tool deletes them) into a scratch directory, and the files that are the app's or jetsam events (which
- * name no bundle) are gathered in a second one for `scp`. The PATH adds Homebrew's, where libimobiledevice lives. The pull counts as
- * done only when the tool exits 0 and says `Done.`: a tool that found no phone must never read as a phone with no reports.
+ * The shell the Mac runs for one pull: `idevicecrashreport` copies the app's reports and the jetsam events (which name no bundle) of the
+ * phone's crash log into a scratch directory, and the files that are the app's or jetsam events are gathered in a second one for `scp`
+ * (`-k`: the phone keeps its reports; without it the tool deletes them). Two pulls, each filtered by name (`-f`), not one of the whole
+ * log: the crash log also holds sysdiagnose archives of hundreds of megabytes (a failed UI-testing start on the phone writes one), and
+ * copying those takes minutes. A report of the app is named by its process (`<process>-<date>.ips`). The PATH adds Homebrew's, where
+ * libimobiledevice lives. The pull counts as done only when both runs exit 0 and say `Done.`: a tool that found no phone must never read
+ * as a phone with no reports. A failure prints the tool's words on stderr (a locked phone says `Password protected`) and exits 1; the
+ * Mac's ssh drops the remote exit status (the command runs under `login`), so the caller tells a failed pull by its stderr and the missing `ours=` line.
  */
 export function pullScript(options: { udid: string; bundleId: string; processName?: string; directory: string }): string {
 	const processName = options.processName ?? qaProcessName;
@@ -293,9 +297,12 @@ export function pullScript(options: { udid: string; bundleId: string; processNam
 		`mkdir -p ${shellQuote(macScratch)}`,
 		`rm -rf ${dir} ${gathered} ${log}`,
 		`mkdir -p ${dir} ${gathered}`,
-		`idevicecrashreport -u ${shellQuote(options.udid)} -k ${dir} > ${log} 2>&1`,
+		`idevicecrashreport -u ${shellQuote(options.udid)} -k -f ${shellQuote(processName)} ${dir} > ${log} 2>&1`,
 		"code=$?",
-		`if [ $code -ne 0 ] || ! grep -q '^Done\\.' ${log}; then tail -n 6 ${log} >&2; rm -rf ${dir} ${gathered} ${log}; if [ $code -eq 0 ]; then code=1; fi; exit $code; fi`,
+		`idevicecrashreport -u ${shellQuote(options.udid)} -k -f JetsamEvent ${dir} >> ${log} 2>&1`,
+		"second=$?",
+		"if [ $code -eq 0 ]; then code=$second; fi",
+		`if [ $code -ne 0 ] || [ "$(grep -c '^Done\\.' ${log})" -ne 2 ]; then tail -n 6 ${log} >&2; rm -rf ${dir} ${gathered} ${log}; exit 1; fi`,
 		`find ${dir} -type f -name '*.ips' | while IFS= read -r file; do`,
 		`  name=$(basename "$file")`,
 		`  if head -n 1 "$file" | grep -qF ${header}; then cp "$file" ${gathered}/; else case "$name" in JetsamEvent-*|${processName}-*) cp "$file" ${gathered}/;; esac; fi`,
@@ -321,7 +328,7 @@ export async function pullCrashReports(mac: Mac, udid: string, bundleId: string)
 		throw new Error(`reading the crash log of ${udid} through ${mac.target} failed (exit ${result.code}): ${(result.stderr || result.stdout).trim().slice(0, 400) || "no output"}`);
 	}
 	const gathered = /^ours=(\d+)$/m.exec(result.stdout);
-	if (!gathered) throw new Error(`reading the crash log of ${udid} through ${mac.target}: the pull did not say how many files it found: ${result.stdout.trim().slice(-200)}`);
+	if (!gathered) throw new Error(`reading the crash log of ${udid} through ${mac.target}: the pull did not say how many files it found: ${(result.stderr || result.stdout).trim().slice(-300)}`);
 	const local = await mkdtemp(join(tmpdir(), "native-qa-crashes-"));
 	try {
 		if (Number(gathered[1]) > 0) await scpFrom(mac, `${directory}.ours/.`, local, { timeoutMs: 300_000 });

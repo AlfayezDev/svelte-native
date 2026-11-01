@@ -4,6 +4,7 @@ import {
 	checkGatesFile,
 	evaluate,
 	renderTable,
+	splitGates,
 	tally,
 	tallyByDevice,
 	type GatesFile,
@@ -13,6 +14,8 @@ import {
 } from "../lib/gates.ts";
 import { reachPct } from "../lib/a11y.ts";
 import { deviceMetrics, missingScenarios, runFatals } from "../lib/metrics.ts";
+import { missingModules, unexpectedSkips, unpinnedModules } from "../lib/smoke.ts";
+import { allScenarios, failedChecks } from "../lib/gestures.ts";
 import type { SuiteFiles } from "../lib/suite-metrics.ts";
 import { gatesPath, reportPath } from "../lib/paths.ts";
 import { latestRunFiles, readBuilds, readJson, runKinds, type RunKind } from "../lib/runs.ts";
@@ -26,12 +29,14 @@ import type {
 	CrashReportsRecord,
 	CrashSignature,
 	DeviceInfo,
+	GesturesFile,
 	LabFile,
 	Metrics,
 	ParityFile,
 	Platform,
 	ResilienceFile,
 	SessionRecord,
+	SmokeFile,
 	SoakFile,
 	Source,
 } from "../lib/types.ts";
@@ -110,7 +115,30 @@ type A11yScreenSummary = {
 };
 
 /** What one iOS run file recorded of the phone's crash log: the reports, or why there are none to count (`error`: the pull failed, or the file was recorded before it existed). */
-type CrashReportsSummary = { run: "lab" | "boot" | "parity" | "a11y"; file: string; error: string | null; reports: CrashReport[] };
+type CrashReportsSummary = { run: "lab" | "boot" | "parity" | "a11y" | "gestures"; file: string; error: string | null; reports: CrashReport[] };
+
+/** One gestures run file: how each launch was driven and what each scenario came to. */
+type GesturesSummary = {
+	file: string;
+	inputs: string[];
+	launches: { input: string; complete: boolean; scenarios: { name: string; verdict: string; failedChecks: number }[] }[];
+};
+
+type SmokeSummary = {
+	file: string;
+	source: Source;
+	complete: boolean;
+	ok: number;
+	failed: string[];
+	skipped: string[];
+	/** Pinned modules (`smoke.modules` in `gates.json`) no line of the run reported. */
+	missing: string[];
+	/** Skips the platform does not list (`smoke.skips` in `gates.json`). */
+	unexpectedSkips: string[];
+	fatals: number;
+	/** Modules the run reported that `gates.json` does not pin. */
+	unpinned: string[];
+};
 
 type SuitesSummary = {
 	parity: { file: string; mode: "check" | "update"; deviceKind: string } | null;
@@ -124,10 +152,16 @@ export type ReportFile = {
 	builds: Record<string, BuildFile>;
 	devices: Record<string, ReportDeviceEntry>;
 	warnings: string[];
+	/** The warnings of the smoke run (it is another app: it does not identify itself the way the QA runs do), which only the smoke lane reads. Absent in reports written before. */
+	smokeWarnings?: string[];
 	/** What a report shows without failing a gate: settings an earlier run left on a device, which a suite cleared before it measured. Absent in reports written before. */
 	notes?: string[];
+	/** The QA gates (everything but `smoke.*`), which `gates` judges. */
 	gates: GateRow[];
 	verdict: ReturnType<typeof tally>;
+	/** The smoke gates, which `gates --smoke` judges on their own. Absent in reports written before the smoke app existed. */
+	smokeGates?: GateRow[];
+	smokeVerdict?: ReturnType<typeof tally>;
 };
 
 type ReportDeviceEntry = {
@@ -143,6 +177,8 @@ type ReportDeviceEntry = {
 	boot: BootSummary | null;
 	soak: SoakSummary | null;
 	crashes: CrashesSummary | null;
+	smoke: SmokeSummary | null;
+	gestures: GesturesSummary | null;
 	/** iOS only: the crash reports of the phone each run file recorded. */
 	crashReports: CrashReportsSummary[];
 	suites: SuitesSummary;
@@ -327,6 +363,7 @@ export async function report(): Promise<void> {
 	const slugs = new Set(runKinds.flatMap((kind) => [...files[kind].keys()]));
 	const devices: Record<string, ReportDeviceEntry> = {};
 	const warnings: string[] = [];
+	const smokeWarnings: string[] = [];
 	const notes: string[] = [];
 	for (const key of slugs) {
 		const labPath = labFiles.get(key);
@@ -340,15 +377,20 @@ export async function report(): Promise<void> {
 		const parityPath = files.parity.get(key);
 		const a11yPath = files.a11y.get(key);
 		const resiliencePath = files.resilience.get(key);
+		const smokePath = files.smoke.get(key);
+		const smoke = smokePath ? await readJson<SmokeFile>(smokePath) : null;
+		const gesturesPath = files.gestures.get(key);
+		const gestures = gesturesPath ? await readJson<GesturesFile>(gesturesPath) : null;
 		const suites: SuiteFiles = {
 			parity: parityPath ? await readJson<ParityFile>(parityPath) : null,
 			a11y: a11yPath ? await readJson<A11yFile>(a11yPath) : null,
 			resilience: resiliencePath ? await readJson<ResilienceFile>(resiliencePath) : null,
 		};
-		const reference = lab ?? boot ?? soak ?? crashes ?? suites.parity ?? suites.a11y ?? suites.resilience;
+		const reference = lab ?? boot ?? soak ?? crashes ?? suites.parity ?? suites.a11y ?? suites.resilience ?? gestures ?? smoke;
 		if (!reference) continue;
 		const serial = reference.device.serial;
 		const platform: Platform = reference.device.platform;
+		// The smoke run measured another app (`io.rasheed.svelteqa.smoke`), so it is not compared with the others' builds.
 		const measured: [string, Measured | null][] = [
 			["lab", lab],
 			["boot", boot],
@@ -357,8 +399,10 @@ export async function report(): Promise<void> {
 			["parity", suites.parity],
 			["accessibility", suites.a11y],
 			["resilience", suites.resilience],
+			["gestures", gestures],
 		];
 		warnings.push(...buildWarnings(serial, measured));
+		smokeWarnings.push(...buildWarnings(serial, [["smoke", smoke]]));
 		notes.push(...buildNotes(serial, measured));
 		const found = sessionFindings(serial, [
 			["parity", suites.parity],
@@ -368,6 +412,8 @@ export async function report(): Promise<void> {
 		warnings.push(...found.warnings);
 		notes.push(...found.notes);
 		const pinned = gates.scenarios[platform];
+		const pins = { modules: gates.smoke.modules[platform], skips: gates.smoke.skips[platform] };
+		const pinnedGestures = gates.gestures?.[platform] ?? allScenarios;
 		devices[serial] = {
 			platform,
 			role: gates.devices[serial]?.role ?? null,
@@ -408,11 +454,39 @@ export async function report(): Promise<void> {
 							signatures: crashes.signatures,
 						}
 					: null,
+			smoke:
+				smoke && smokePath
+					? {
+							file: smokePath.slice(smokePath.lastIndexOf("runs/")),
+							source: smoke.source,
+							complete: smoke.complete,
+							ok: smoke.results.filter((result) => result.status === "ok").length,
+							failed: smoke.results.filter((result) => result.status === "fail").map((result) => result.module),
+							skipped: smoke.results.filter((result) => result.status === "skip").map((result) => result.module),
+							missing: missingModules(smoke.results, pins.modules),
+							unexpectedSkips: unexpectedSkips(smoke.results, pins),
+							fatals: smoke.crashes.length,
+							unpinned: unpinnedModules(smoke.results, pins.modules),
+						}
+					: null,
+			gestures:
+				gestures && gesturesPath
+					? {
+							file: gesturesPath.slice(gesturesPath.lastIndexOf("runs/")),
+							inputs: gestures.inputs,
+							launches: gestures.launches.map((launch) => ({
+								input: launch.input,
+								complete: launch.complete,
+								scenarios: launch.scenarios.map((result) => ({ name: result.name, verdict: result.verdict, failedChecks: failedChecks(result) })),
+							})),
+						}
+					: null,
 			crashReports: crashReportSummaries(platform, [
 				["lab", labPath, lab],
 				["boot", bootPath, boot],
 				["parity", parityPath, suites.parity],
 				["a11y", a11yPath, suites.a11y],
+				["gestures", gesturesPath, gestures],
 			]),
 			suites: {
 				parity: suites.parity && parityPath ? { file: parityPath.slice(parityPath.lastIndexOf("runs/")), mode: suites.parity.mode, deviceKind: suites.parity.deviceKind } : null,
@@ -435,28 +509,31 @@ export async function report(): Promise<void> {
 						: null,
 				resilience: suites.resilience && resiliencePath ? { file: resiliencePath.slice(resiliencePath.lastIndexOf("runs/")), screen: suites.resilience.screen } : null,
 			},
-			metrics: deviceMetrics(lab, boot, pinned, soak, crashes, suites),
+			metrics: deviceMetrics(lab, boot, pinned, soak, crashes, suites, smoke ? { file: smoke, pins } : null, gestures, pinnedGestures),
 		};
 	}
 
-	const rows = evaluate(
-		gates.gates,
-		Object.fromEntries(
-			Object.entries(devices).map(([serial, entry]) => [
-				serial,
-				{ platform: entry.platform, role: entry.role, runs: entry.runs, metrics: entry.metrics },
-			]),
-		),
+	const lanes = splitGates(gates.gates);
+	const judged = Object.fromEntries(
+		Object.entries(devices).map(([serial, entry]) => [
+			serial,
+			{ platform: entry.platform, role: entry.role, runs: entry.runs, metrics: entry.metrics },
+		]),
 	);
+	const rows = evaluate(lanes.standard, judged);
+	const smokeRows = evaluate(lanes.smoke, judged);
 	const output: ReportFile = {
 		schema: 1,
 		generatedAt: new Date().toISOString(),
 		builds: await readBuilds(),
 		devices,
 		warnings,
+		smokeWarnings,
 		notes,
 		gates: rows,
 		verdict: tally(rows),
+		smokeGates: smokeRows,
+		smokeVerdict: tally(smokeRows),
 	};
 	await writeFile(reportPath, `${JSON.stringify(output, null, "\t")}\n`);
 
@@ -507,6 +584,14 @@ export async function report(): Promise<void> {
 			console.log(
 				`  resilience ${m["resilience.steps"] ?? 0} steps, ${m["resilience.failures"] ?? "-"} failed`,
 			);
+		if (entry.smoke)
+			console.log(
+				`  smoke ${m["smoke.ok"] ?? 0} ok, ${m["smoke.failed"] ?? "-"} failed${entry.smoke.failed.length ? ` (${entry.smoke.failed.join(", ")})` : ""}, ${m["smoke.skipped"] ?? 0} skipped${entry.smoke.unexpectedSkips.length ? ` (unexpected: ${entry.smoke.unexpectedSkips.join(", ")})` : ""}, ${m["smoke.missing"] ?? "-"} missing${entry.smoke.missing.length ? ` (${entry.smoke.missing.join(", ")})` : ""} of ${m["smoke.modules"] ?? "-"} pinned, ${entry.smoke.fatals} fatals${entry.smoke.complete ? "" : ", the run did not complete"}${entry.smoke.unpinned.length ? `; not pinned: ${entry.smoke.unpinned.join(", ")}` : ""}`,
+			);
+		if (entry.gestures)
+			console.log(
+				`  gestures ${m["gestures.launches"] ?? 0} complete launch(es) (${entry.gestures.inputs.join(", ")}), ${m["gestures.scenarios.missing"] ?? "-"} scenarios missing, agreement mismatches ${m["gestures.agreement.mismatches"] ?? "not measured"}, fatals ${m["gestures.fatals"] ?? "-"}, engine warnings ${m["gestures.engineWarnings"] ?? "-"}; checks failed: ${entry.gestures.launches.flatMap((launch) => launch.scenarios.filter((result) => result.failedChecks > 0).map((result) => `${result.name} (${launch.input})`)).join(", ") || "none"}`,
+			);
 		if (entry.crashes)
 			console.log(
 				`  crashes ${m["crashes.coldStarts"] ?? 0} cold starts (${m["crashes.coldStartCrashes"] ?? "-"} crashed, ${m["crashes.coldStartsNoBoot"] ?? "-"} without boot), ${m["crashes.suites"] ?? 0} suites (${m["crashes.suiteCrashes"] ?? "-"} crashed, ${m["crashes.suitesIncomplete"] ?? "-"} incomplete), ANRs ${m["crashes.anrs"] ?? "-"}`,
@@ -514,7 +599,13 @@ export async function report(): Promise<void> {
 	}
 	for (const note of notes) console.log(`note: ${note}`);
 	for (const warning of warnings) console.log(`warning: ${warning}`);
+	for (const warning of smokeWarnings) console.log(`warning (smoke): ${warning}`);
 	console.log("");
 	printVerdict(rows, false);
+	// The smoke app's gates are their own lane (`gates --smoke`); they are shown when a smoke run exists.
+	if (Object.values(devices).some((entry) => entry.smoke)) {
+		console.log("\nnative module smoke gates (the smoke app; `gates --smoke` judges them):");
+		printVerdict(smokeRows, false);
+	}
 	console.log("\nwrote qa/report.json");
 }

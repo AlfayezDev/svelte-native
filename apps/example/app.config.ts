@@ -1,14 +1,58 @@
 import type { ExpoConfig } from "expo/config";
+import { createRequire } from "node:module";
 
+// Three apps come out of this file. The product (`APP_VARIANT=production`, `io.rasheed.app`); the QA app (no variant, `io.rasheed.svelteqa`),
+// which every gate of qa/gates.json measures and so carries exactly the product's native modules; and the smoke app
+// (`APP_VARIANT=smoke`, `io.rasheed.svelteqa.smoke`), the QA app plus the production app's native libraries for the native module
+// smoke test (qa/smoke-modules.json; SPEC.md, "Native modules (smoke test)"). `smokeOnlyPackages` are the libraries the product does not
+// have: the product and the QA app exclude them from both autolinkers (and from React Native's, in react-native.config.js); only the
+// smoke app links them, and only it gets the config plugins in `smokePlugins`, the fake Firebase files, the Huawei repository and
+// needs libs/samsungpay.jar.
+const { smokeOnlyPackages } = createRequire(import.meta.url)("./qa/smoke-packages.cjs") as { smokeOnlyPackages: string[] };
 const production = process.env.APP_VARIANT === "production";
+const smoke = process.env.APP_VARIANT === "smoke";
+const applicationId = production ? "io.rasheed.app" : smoke ? "io.rasheed.svelteqa.smoke" : "io.rasheed.svelteqa";
+// A clearly fake Firebase app for `io.rasheed.svelteqa.smoke` (no key in it is real); the smoke test only loads Firebase and makes offline calls.
+const fakeFirebase = { android: "./qa/firebase-fake/google-services.json", ios: "./qa/firebase-fake/GoogleService-Info.plist" };
+const smokePlugins: NonNullable<ExpoConfig["plugins"]> = !smoke ? [] : [
+  // The production app's plugins and options (its app.config.ts), minus what needs its secrets: Sentry's plugin only adds the source map
+  // upload step, so it is left out; the Huawei plugin needs a real agconnect-services.json (the HMS library is only loaded).
+  "@react-native-firebase/app",
+  "@react-native-firebase/messaging",
+  ["react-native-quick-crypto", { sodiumEnabled: true }],
+  ["expo-check-installed-apps", { android: ["com.android.vending", "com.huawei.appmarket"] }],
+  ["expo-location", { locationWhenInUsePermission: "The native module smoke test only reads the permission state.", isAndroidForegroundServiceEnabled: false }],
+  ["expo-tracking-transparency", { userTrackingPermission: "The native module smoke test only reads the permission state." }],
+  // Dummy keys, and no native initialization at launch: the smoke test calls Intercom itself.
+  ["@intercom/intercom-react-native", { appId: "smoke0000", androidApiKey: "android_sdk-0000000000000000000000000000000000000000", iosApiKey: "ios_sdk-0000000000000000000000000000000000000000", useManualInit: true }],
+  "expo-screen-orientation",
+  "expo-sharing",
+  "expo-web-browser",
+  "expo-notifications",
+  "@config-plugins/react-native-adjust",
+  ["expo-samsung-pay", { aarPath: "./libs/samsungpay.jar" }],
+  ["react-native-live-direction", { locales: ["ar", "en"] }],
+  // Firebase's iOS pods build as static frameworks (RNFirebase's requirement; the production app does the same). The HMS library resolves
+  // `com.huawei.hms:location` from Huawei's repository, which only the production app's Huawei plugin (not used here) adds to the project.
+  ["expo-build-properties", { ios: { useFrameworks: "static" }, android: { extraMavenRepos: [{ url: "https://developer.huawei.com/repo/" }] } }],
+];
+// Local Expo modules (directories of `modules/`) that exist for the QA lab and must not ship: the in-app touch injector (Android), the QA
+// inspection and gesture trace module (iOS) and the view-creation bench (Android). The product build leaves them out of autolinking
+// (the svelte-native plugin writes the names into settings.gradle and the Podfile), so their classes are not compiled into the app.
+// `qa/test/product-modules.test.ts` resolves the module list with this exclusion.
+const qaOnlyModules = ["svelte-qa-android", "svelte-qa-ios", "view-bench"];
+// What the svelte-native plugin leaves out of both autolinkers, one list for both reasons: the product has neither the smoke test's libraries
+// nor the QA modules; the QA app has the QA modules but not the libraries; the smoke app is the QA app plus the libraries, so it excludes none
+// of them (its QA modules stay). `qa/test/product-modules.test.ts` and `qa/test/smoke.test.ts` resolve the module list with this.
+const autolinkingExclude = smoke ? [] : production ? [...smokeOnlyPackages, ...qaOnlyModules] : smokeOnlyPackages;
 // The EAS Update channel of this build comes from its build profile (`UPDATES_CHANNEL` in eas.json). `eas update` and local builds
 // evaluate this file without it: they publish and run without a channel, and the app does not check for updates.
 const channel = process.env.UPDATES_CHANNEL;
 export default {
-  name: production ? "Rasheed" : "Rasheed Svelte QA",
+  name: production ? "Rasheed" : smoke ? "Svelte smoke" : "Rasheed Svelte QA",
   owner: "alfayez",
   slug: "rasheed",
-  scheme: production ? "rasheed" : "rasheed-svelte",
+  scheme: production ? "rasheed" : smoke ? "rasheed-svelte-smoke" : "rasheed-svelte",
   version: "0.1.0",
   // Updates apply only to builds with the same native code; the app version stands for it, so bump `version` with any native change.
   runtimeVersion: { policy: "appVersion" },
@@ -16,15 +60,17 @@ export default {
   userInterfaceStyle: "automatic",
   icon: "./assets/native/images/icon.png",
   ios: {
-    bundleIdentifier: production ? "io.rasheed.app" : "io.rasheed.svelteqa",
+    bundleIdentifier: applicationId,
     supportsTablet: true,
     config: { usesNonExemptEncryption: false },
+    ...(smoke ? { googleServicesFile: fakeFirebase.ios } : {}),
     // Let ProMotion iPhones run above 60 Hz; the iPhone SE used for QA is a 60 Hz panel regardless.
     infoPlist: { CADisableMinimumFrameDurationOnPhone: true },
   },
   android: {
-    package: production ? "io.rasheed.app" : "io.rasheed.svelteqa",
+    package: applicationId,
     predictiveBackGestureEnabled: true,
+    ...(smoke ? { googleServicesFile: fakeFirebase.android } : {}),
     adaptiveIcon: {
       backgroundColor: "#f6f6f7",
       foregroundImage: "./assets/native/images/adaptive-foreground.png",
@@ -34,12 +80,26 @@ export default {
   plugins: [
     ["@rasheed/svelte-native/expo", {
       androidProfileable: !production,
+      autolinkingExclude,
       androidFeatureFlags: { disableViewPreallocationAndroid: true, enablePreparedTextLayout: true },
       // Foreign views (SPEC.md, "Foreign views"): the packages' view managers are created when a component is first mounted,
       // not when the host starts. `packages/svelte-native/tests/foreign.test.ts` checks the names against the packages' sources.
       androidOnDemandViewManagers: {
         "com.rnmaps.maps.MapsPackage": ["RNMapsMapView", "RNMapsMarker", "RNMapsCallout", "RNMapsGooglePolygon", "RNMapsPolyline", "RNMapsCircle", "RNMapsOverlay", "RNMapsUrlTile", "RNMapsWMSTile"],
         "com.reactnativecommunity.webview.RNCWebViewPackage": ["RNCWebView"],
+        // react-native-video builds its `VideoManager` module with createNativeModules: the wrapper for such packages keeps it.
+        "com.brentvatne.react.ReactVideoPackage": ["RCTVideo"],
+        "com.airbnb.android.react.lottie.LottiePackage": ["LottieAnimationView"],
+        // Four more legacy packages (view managers made with `createViewManagers`; Rive's modules stay with it): the PDF view, Rive, the Android shadow and the animateable text.
+        "org.wonday.pdf.RNPDFPackage": ["RNPDFPdfView"],
+        "com.rivereactnative.RiveReactNativePackage": ["RiveReactNativeView"],
+        "com.reactnativefastshadow.FastShadowPackage": ["FastShadowView"],
+        "com.reactnativereanimatedtext.ReanimatedTextPackage": ["JBAnimatedText"],
+        // react-native-svg: a `BaseReactPackage` (its TurboModules, `RNSVGRenderableModule` and `RNSVGSvgViewModule`, stay with it) that announces all 29 view managers at start unless wrapped.
+        "com.horcrux.svg.SvgPackage": ["RNSVGSvgViewAndroid", "RNSVGGroup", "RNSVGPath", "RNSVGText", "RNSVGTSpan", "RNSVGTextPath", "RNSVGImage", "RNSVGCircle", "RNSVGEllipse", "RNSVGLine", "RNSVGRect", "RNSVGClipPath", "RNSVGDefs", "RNSVGUse", "RNSVGSymbol", "RNSVGPattern", "RNSVGMask", "RNSVGForeignObject", "RNSVGMarker", "RNSVGLinearGradient", "RNSVGRadialGradient", "RNSVGFilter", "RNSVGFeBlend", "RNSVGFeColorMatrix", "RNSVGFeComposite", "RNSVGFeFlood", "RNSVGFeGaussianBlur", "RNSVGFeMerge", "RNSVGFeOffset"],
+        // Gestures (SPEC.md, "Gestures"): the package's module (RNGestureHandlerModule) is served as before; its two view managers
+        // are for React Native's own mounting, which the engine does not use.
+        "com.swmansion.gesturehandler.RNGestureHandlerPackage": ["RNGestureHandlerRootView", "RNGestureHandlerButton"],
       },
     }],
     "expo-secure-store",
@@ -58,6 +118,7 @@ export default {
       "./assets/native/fonts/IBMPlexSansArabic-SemiBold.ttf",
       "./assets/native/fonts/JetBrainsMono-Regular.ttf",
     ] }],
+    ...smokePlugins,
   ],
   ...(production ? { locales: { en: "./locales/en.json", ar: "./locales/ar.json" } } : {}),
   // Read by the `svelte-updates` module from AndroidManifest.xml / Expo.plist; Expo's own config plugin writes them.

@@ -6,7 +6,11 @@ import { applicationId } from "expo-application";
 import { ar, en, arCounts, enCounts, createTranslator, type Locale, type Translate } from "@rasheed/client/messages";
 
 export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "https://dev.qarnos.com";
-export const nativeLabEnabled = __DEV__ || applicationId === "io.rasheed.svelteqa";
+/** The QA app `io.rasheed.svelteqa` measures the engine; the smoke app `io.rasheed.svelteqa.smoke` is the same app plus the production app's native libraries (SPEC.md, "Native modules (smoke test)"). */
+export const smokeApplicationId = "io.rasheed.svelteqa.smoke";
+export const nativeLabEnabled = __DEV__ || applicationId === "io.rasheed.svelteqa" || applicationId === smokeApplicationId;
+/** Only the smoke app links the libraries the smoke test calls: in the QA app they are not there, and every check would fail. */
+export const nativeSmokeEnabled = applicationId === smokeApplicationId;
 const storedLanguage = SecureStore.getItem("interface_language");
 let locale = $state<Locale>(storedLanguage === "ar" || storedLanguage === "en" ? storedLanguage : getLocales()[0]?.languageCode === "ar" ? "ar" : "en");
 let appearance = $state<"system" | "light" | "dark">("system");

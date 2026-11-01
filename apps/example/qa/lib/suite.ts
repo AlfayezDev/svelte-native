@@ -1,17 +1,18 @@
-import { assertOnline, deviceInfo } from "./adb.ts";
+import { assertOnline, deviceInfo, launchWithGestures } from "./adb.ts";
 import { dexoptFlag, prepareApp } from "./app.ts";
 import { flagString, requireString } from "./flags.ts";
 import { lockFor, reexecUnderLock } from "./lock.ts";
 import { defaultPackage } from "./paths.ts";
 import type { AppInfo, DeviceInfo } from "./types.ts";
 
-/** The flags every suite takes: which device, and which build to install on it (or none). */
+/** The flags every suite takes: which device, which build to install on it (or none), and `--gestures` (the gesture handler root installed at every launch, see `launchWithGestures`). */
 export const commonOptions = {
 	device: { type: "string" },
 	apk: { type: "string" },
 	"no-install": { type: "boolean" },
 	dexopt: { type: "string" },
 	package: { type: "string" },
+	gestures: { type: "boolean" },
 } as const;
 
 export type CommonValues = {
@@ -20,6 +21,7 @@ export type CommonValues = {
 	"no-install"?: string | boolean | undefined;
 	dexopt?: string | boolean | undefined;
 	package?: string | boolean | undefined;
+	gestures?: string | boolean | undefined;
 };
 
 export type SuiteDevice = {
@@ -43,6 +45,8 @@ export async function startSuite(
 	const lock = lockFor(serial);
 	if (lock) reexecUnderLock(lock, [command, ...argv]);
 	const packageName = flagString(values.package) ?? defaultPackage;
+	launchWithGestures(values.gestures === true);
+	if (values.gestures === true) console.log("gestures: the gesture handler root is installed at every launch (--gestures)");
 	await assertOnline(serial);
 	const startedAt = new Date();
 	const device = await deviceInfo(serial);

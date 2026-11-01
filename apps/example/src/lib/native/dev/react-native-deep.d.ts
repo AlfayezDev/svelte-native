@@ -32,3 +32,7 @@ declare module "react-native/Libraries/Image/resolveAssetSource" {
   const resolveAssetSource: (source: unknown) => { uri: string; width?: number; height?: number; scale: number } | null | undefined;
   export default resolveAssetSource;
 }
+declare module "react-native/Libraries/TurboModule/TurboModuleRegistry" {
+  export function get<T>(name: string): T | null;
+  export function getEnforcing<T>(name: string): T;
+}

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { applyHeadlessApplication, applyHeadlessSettings, applyMainActivity, headlessExcludedPackages, headlessPackageSource, onDemandPackageSource } from "../src/expo.ts";
+import { createRunOncePlugin } from "expo/config-plugins";
+import { applyHeadlessApplication, applyHeadlessSettings, applyMainActivity, applyPodfileAutolinkingExclude, leaveOutOfAutoPlugins, headlessExcludedPackages, headlessPackageSource, onDemandPackageSource } from "../src/expo.ts";
 
 const application = `class MainApplication {
   override val reactHost: ReactHost by lazy {
@@ -60,19 +61,45 @@ extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
 expoAutolinking.useExpoModules()
 `;
 
+type ConfigLike = Parameters<ReturnType<typeof createRunOncePlugin>>[0];
+
+/** The relevant lines of the Podfile Expo's template generates (SDK 57). */
+const podfile = `target 'RasheedSvelteQA' do
+  use_expo_modules!
+
+  if ENV['EXPO_USE_COMMUNITY_AUTOLINKING'] == '1'
+    config_command = ['node', '-e', "process.argv=['', '', 'config'];require('@react-native-community/cli').run()"];
+  else
+    config_command = [
+      'node',
+      'expo-modules-autolinking',
+      'react-native-config',
+      '--json',
+      '--platform',
+      'ios'
+    ]
+  end
+
+  config = use_native_modules!(config_command)
+end
+`;
+
 describe("headless Android config", () => {
   test("MainApplication is idempotent", () => {
     const once = applyHeadlessApplication(application);
     expect(once).toContain("SvelteNativeHeadlessMainPackage()");
     expect(once).toContain("add(expo.modules.svelteengine.ExpoViewsPackage())");
     expect(once.indexOf("reactHost.start()")).toBeGreaterThan(once.indexOf("onApplicationCreate(this)"));
+    // The start-up threads are pinned to the big cores around the host start: begin before it, hand the main thread back after it.
+    expect(once.indexOf("BootBoost.begin()")).toBeLessThan(once.indexOf("reactHost.start()"));
+    expect(once.indexOf("BootBoost.handOver()")).toBeGreaterThan(once.indexOf("reactHost.start()"));
     expect(applyHeadlessApplication(once)).toBe(once);
   });
   test("packages whose view managers are on demand are wrapped, and unwrapped again when the option goes", () => {
     const onDemand = { "com.rnmaps.maps.MapsPackage": ["RNMapsMapView", "RNMapsMarker"], "com.reactnativecommunity.webview.RNCWebViewPackage": ["RNCWebView"] };
     const once = applyHeadlessApplication(application, onDemand);
-    expect(once).toContain('if (this[index] is com.rnmaps.maps.MapsPackage) this[index] = SvelteNativeOnDemandPackage(this[index], listOf("RNMapsMapView", "RNMapsMarker"))');
-    expect(once).toContain('if (this[index] is com.reactnativecommunity.webview.RNCWebViewPackage) this[index] = SvelteNativeOnDemandPackage(this[index], listOf("RNCWebView"))');
+    expect(once).toContain('if (this[index] is com.rnmaps.maps.MapsPackage) this[index] = svelteNativeOnDemand(this[index], listOf("RNMapsMapView", "RNMapsMarker"))');
+    expect(once).toContain('if (this[index] is com.reactnativecommunity.webview.RNCWebViewPackage) this[index] = svelteNativeOnDemand(this[index], listOf("RNCWebView"))');
     expect(applyHeadlessApplication(once, onDemand)).toBe(once);
     expect(applyHeadlessApplication(once)).toBe(applyHeadlessApplication(application));
   });
@@ -84,6 +111,15 @@ describe("headless Android config", () => {
     expect(source).toContain("if (viewManagerName !in names) return null");
     // Announced names would each be read (and so created) by React Native's UIManager when JavaScript starts.
     expect(source).toContain("getViewManagerNames(reactContext: ReactApplicationContext): Collection<String> = emptyList()");
+  });
+  test("a package that builds its native modules with createNativeModules keeps them: the wrapper follows the package's kind", () => {
+    const source = onDemandPackageSource("io.example.app");
+    // react-native-video's `VideoManager` comes from `createNativeModules`; a `BaseReactPackage` wrapper would hide it from React Native.
+    expect(source).toContain("class SvelteNativeOnDemandLegacyPackage(private val delegate: ReactPackage, private val names: Collection<String>) : ReactPackage, ViewManagerOnDemandReactPackage");
+    expect(source).toContain("override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> = delegate.createNativeModules(reactContext)");
+    expect(source).toContain("if (delegate is BaseReactPackage) SvelteNativeOnDemandPackage(delegate, names) else SvelteNativeOnDemandLegacyPackage(delegate, names)");
+    // Both wrappers create the package's managers once and only for the names it was given.
+    expect(source.match(/if \(viewManagerName !in names\) return null/g)).toHaveLength(2);
   });
   test("MainActivity keeps the navigation in its saved state and hands it back as launch options, idempotently", () => {
     const once = applyMainActivity(activity);
@@ -104,6 +140,83 @@ describe("headless Android config", () => {
     for (const name of headlessExcludedPackages) expect(once).toContain(`"${name}"`);
     expect(once).toContain("rnConfigCommand + svelteNativeExcludeArgs");
     expect(applyHeadlessSettings(once)).toBe(once);
+  });
+  test("settings.gradle: extra packages join the headless ones in both lists, and go again with the option", () => {
+    const extra = ["react-native-mmkv", "@sentry/react-native", "expo-haptics"];
+    const once = applyHeadlessSettings(settings, extra);
+    for (const name of [...headlessExcludedPackages, ...extra]) expect(once).toContain(`"${name}"`);
+    expect(once.match(/def svelteNativeExclude = \[(.*)\]/)?.[1]?.split(", ")).toHaveLength(headlessExcludedPackages.length + extra.length);
+    expect(applyHeadlessSettings(once, extra)).toBe(once);
+    expect(applyHeadlessSettings(once)).toBe(applyHeadlessSettings(settings));
+    // A package named twice (the product list and the headless list) is excluded once.
+    expect(applyHeadlessSettings(settings, ["expo-updates"]).match(/"expo-updates"/g)).toHaveLength(1);
+  });
+  test("Podfile: Expo's use_expo_modules! and the React Native config command both get the excludes", () => {
+    const names = ["react-native-mmkv", "@react-native-firebase/app"];
+    const once = applyPodfileAutolinkingExclude(podfile, names);
+    expect(once).toContain('svelte_native_exclude = ["react-native-mmkv", "@react-native-firebase/app"]');
+    expect(once).toContain("use_expo_modules!(exclude: svelte_native_exclude)");
+    expect(once).toContain("config_command += svelte_native_exclude.flat_map { |name| ['--exclude', name] }");
+    // The list is defined before both uses, and the command is extended before the config is read from it.
+    expect(once.indexOf("svelte_native_exclude = [")).toBeLessThan(once.indexOf("use_expo_modules!(exclude"));
+    expect(once.indexOf("config_command +=")).toBeLessThan(once.indexOf("config = use_native_modules!(config_command)"));
+    expect(once.indexOf("config_command +=")).toBeGreaterThan(once.indexOf("config_command = ["));
+    expect(applyPodfileAutolinkingExclude(once, names)).toBe(once);
+    expect(applyPodfileAutolinkingExclude(once, [])).toBe(podfile);
+    expect(applyPodfileAutolinkingExclude(podfile, [])).toBe(podfile);
+  });
+  test("Podfile: a template without the expected lines fails with a message", () => {
+    expect(() => applyPodfileAutolinkingExclude("target 'App' do\nend\n", ["react-native-mmkv"])).toThrow("could not find use_expo_modules! and use_native_modules!(config_command) in the Podfile");
+  });
+  test("Expo's auto plugins skip the excluded packages: they are in the plugin history before the prebuild applies its own", () => {
+    const config: { _internal?: Record<string, unknown> } = { _internal: { projectRoot: "/app" } };
+    leaveOutOfAutoPlugins(config, ["expo-location", "expo-local-authentication"]);
+    const history = config._internal?.pluginHistory as Record<string, { name: string }>;
+    expect(Object.keys(history)).toEqual(["expo-location", "expo-local-authentication"]);
+    expect(history["expo-location"]?.name).toBe("expo-location");
+    expect(config._internal?.projectRoot).toBe("/app");
+    // `withRunOnce` looks a plugin up by name in this history and returns the config as it is.
+    let ran = false;
+    const runOnce = createRunOncePlugin((config: ConfigLike) => { ran = true; return config; }, "expo-location", "57.0.0");
+    runOnce(config as ConfigLike);
+    expect(ran).toBe(false);
+    // A package that is not excluded still runs its plugin, and an entry already there stays.
+    createRunOncePlugin((config: ConfigLike) => { ran = true; return config; }, "expo-haptics", "57.0.0")(config as ConfigLike);
+    expect(ran).toBe(true);
+    const early: { _internal?: Record<string, unknown> } = { _internal: { pluginHistory: { a: { name: "a", version: "1" } } } };
+    leaveOutOfAutoPlugins(early, ["a", "b"]);
+    expect((early._internal?.pluginHistory as Record<string, { version: string }>).a?.version).toBe("1");
+    const untouched: { _internal?: Record<string, unknown> } = {};
+    expect(leaveOutOfAutoPlugins(untouched, [])).toBe(untouched);
+    expect(untouched._internal).toBeUndefined();
+  });
+  test("settings.gradle excludes the local modules the variant leaves out, for Expo and React Native autolinking, and replaces them on the next prebuild", () => {
+    const product = applyHeadlessSettings(settings, ["svelte-qa-android", "svelte-qa-ios"]);
+    expect(product).toContain('def svelteNativeExclude = ["react-native-screens"');
+    const list = /def svelteNativeExclude = \[([^\]]*)\]/.exec(product)?.[1] ?? "";
+    for (const name of [...headlessExcludedPackages, "svelte-qa-android", "svelte-qa-ios"]) expect(list).toContain(`"${name}"`);
+    // Both autolinkers read the same list.
+    expect(product).toContain("expoAutolinking.exclude = svelteNativeExclude");
+    expect(product).toContain("rnConfigCommand + svelteNativeExcludeArgs");
+    expect(applyHeadlessSettings(product, ["svelte-qa-android", "svelte-qa-ios"])).toBe(product);
+    // The QA variant after a product prebuild on the same directory: the exclusion is gone.
+    const qa = applyHeadlessSettings(product, []);
+    expect(qa).not.toContain("svelte-qa");
+    expect(qa).toBe(applyHeadlessSettings(settings));
+  });
+  test("the Podfile carries the product's exclusion (smoke libraries and QA modules) for both autolinkers, idempotently, and loses it for the next variant", () => {
+    const qaModules = ["svelte-qa-ios", "view-bench"];
+    const product = applyPodfileAutolinkingExclude(podfile, ["react-native-mmkv", ...qaModules]);
+    expect(product).toContain('svelte_native_exclude = ["react-native-mmkv", "svelte-qa-ios", "view-bench"]');
+    expect(product).toContain("use_expo_modules!(exclude: svelte_native_exclude)");
+    expect(product).toContain("config_command += svelte_native_exclude.flat_map");
+    expect(applyPodfileAutolinkingExclude(product, ["react-native-mmkv", ...qaModules])).toBe(product);
+    // The QA variant after a product prebuild on the same directory: the QA modules are gone, the smoke libraries stay out.
+    const qa = applyPodfileAutolinkingExclude(product, ["react-native-mmkv"]);
+    expect(qa).not.toContain("svelte-qa-ios");
+    expect(qa).toContain('svelte_native_exclude = ["react-native-mmkv"]');
+    // The smoke variant excludes nothing smoke-related, and the template is back.
+    expect(applyPodfileAutolinkingExclude(product, [])).toBe(podfile);
   });
   test("package source targets the application id", () => {
     expect(headlessPackageSource("io.example.app")).toStartWith("package io.example.app\n");

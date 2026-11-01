@@ -5,7 +5,7 @@ import type { Metric, Metrics, Platform } from "./types.ts";
 export type Bar = { max?: number; min?: number; round?: number; equals?: string };
 /**
  * What a device is for. A `phone` is real hardware: its frame, boot and list timings are the production numbers. A `lab` is a
- * device that exists for the engine checks, crash volume, soak, parity pixels, accessibility and resilience (the OVH emulator
+ * device that exists for the engine checks, crash volume, soak, parity pixels, accessibility, resilience and gesture counters (the OVH emulator
  * under software GL): its timings say nothing about production.
  */
 export type Role = "phone" | "lab";
@@ -24,6 +24,7 @@ export type Gate = {
 export type DeviceRole = { role: Role; name: string; runs: RunKind[] };
 /**
  * `scenarios` is the fixed list of scenarios a full `checks,quick` lab run produces, per platform: a run missing any is not that run.
+ * `smoke.modules` is the fixed list of native modules the smoke test reports, per platform, and `smoke.skips` the ones that may skip.
  * `devices` maps a serial to its role and the run kinds it provides; a serial not listed has no role, provides every kind, and
  * every gate judges it.
  */
@@ -31,6 +32,13 @@ export type GatesFile = {
 	version: 1;
 	devices: Record<string, DeviceRole>;
 	scenarios: Record<Platform, string[]>;
+	/**
+	 * `smoke.modules`: per platform, the native modules every smoke run must report (a pinned module no line reports is `smoke.missing`).
+	 * `smoke.skips`: the ones that may `skip` there; any other skip is `smoke.unexpectedSkips`, and `smoke.ok` is gated at the rest.
+	 */
+	smoke: { modules: Record<Platform, string[]>; skips: Record<Platform, string[]> };
+	/** The `gestures-*` scenarios a full `native-qa gestures` run contains, per platform; absent: every scenario the lab has. */
+	gestures?: Partial<Record<Platform, string[]>>;
 	gates: Gate[];
 };
 
@@ -79,10 +87,23 @@ export function gateKinds(gate: Gate): RunKind[] | null {
 		case "parity":
 		case "a11y":
 		case "resilience":
+		case "smoke":
+		case "gestures":
 			return [prefix];
 		default:
 			return null;
 	}
+}
+
+/**
+ * The smoke gates (`smoke.*`) judge the smoke app's run and nothing else, and the QA gates leave them out: `gates` judges the first
+ * list, `gates --smoke` the second. The smoke app is another app (`io.rasheed.svelteqa.smoke`), so its run neither adds to nor
+ * fails the lane that measures the QA app: its gates, its run files (`gates.ts` command: only smoke run files can make the smoke
+ * report stale) and its report warnings (`smokeWarnings`) are the smoke lane's, the QA runs' the other's.
+ */
+export function splitGates(gates: Gate[]): { standard: Gate[]; smoke: Gate[] } {
+	const isSmoke = (gate: Gate) => gateKinds(gate)?.every((kind) => kind === "smoke") ?? false;
+	return { standard: gates.filter((gate) => !isSmoke(gate)), smoke: gates.filter(isSmoke) };
 }
 
 /** A malformed table is an error, not a silent exemption: an unknown role in `roles` would make every device informational. */
@@ -95,6 +116,15 @@ export function checkGatesFile(file: GatesFile): void {
 		if (entry.runs.length === 0) throw new Error(`gates.json: device ${serial} has an empty runs list (every gate would be informational)`);
 		for (const kind of entry.runs)
 			if (!kinds.has(kind)) throw new Error(`gates.json: device ${serial} has the unknown run kind ${JSON.stringify(kind)}`);
+	}
+	for (const platform of ["android", "ios"] as const) {
+		const modules = file.smoke?.modules?.[platform];
+		if (!modules || modules.length === 0) throw new Error(`gates.json: smoke.modules pins no module for ${platform}`);
+		if (new Set(modules).size !== modules.length) throw new Error(`gates.json: smoke.modules names a module twice for ${platform}`);
+		const skips = file.smoke.skips?.[platform];
+		if (!skips) throw new Error(`gates.json: smoke.skips lists no skips (an empty list is fine) for ${platform}`);
+		const unknown = skips.filter((module) => !modules.includes(module));
+		if (unknown.length > 0) throw new Error(`gates.json: smoke.skips names ${unknown.join(", ")}, which smoke.modules does not pin for ${platform}`);
 	}
 	for (const gate of file.gates) {
 		if (gate.roles === undefined) continue;

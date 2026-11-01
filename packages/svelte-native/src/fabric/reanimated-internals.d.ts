@@ -30,3 +30,12 @@ export class InlinePropManager {
 export function maybeBuild(config: unknown): unknown;
 export function updateLayoutAnimations(viewTag: number, type: number, config?: unknown, isUnmounting?: boolean, sharedTransitionTag?: string): void;
 export const LayoutAnimationType: { readonly ENTERING: 1; readonly EXITING: 2; readonly LAYOUT: 3 };
+/** What `updateProps` does to the colours of animated props (`fill`, `stroke`, `backgroundColor`, ...) before they reach the native view: a CSS string or an RGBA number becomes the platform's ARGB integer; anything else throws "Invalid color value". */
+export function processColorsInProps(props: Record<string, unknown>): void;
+/** `useEvent` without the hook: registers a worklet for native events of the given names on a view tag (the gesture detector's UI-thread route). */
+export class WorkletEventHandler<Event extends object = object> {
+  constructor(worklet: (event: Event) => void, eventNames: string[]);
+  updateEventHandler(newWorklet: (event: Event) => void, newEvents: string[]): void;
+  registerForEvents(viewTag: number, fallbackEventName?: string): void;
+  unregisterFromEvents(viewTag: number): void;
+}

@@ -11,6 +11,8 @@ import android.util.Log
 import android.util.SparseArray
 import android.view.View
 import android.view.ViewGroup
+import com.facebook.react.bridge.ReactApplicationContext
+import com.facebook.react.uimanager.ThemedReactContext
 import expo.modules.svelteengine.views.EngineForeign
 import expo.modules.svelteengine.views.EngineHScroll
 import expo.modules.svelteengine.views.EngineHeader
@@ -70,9 +72,10 @@ private const val KIND_TOOLBAR_ITEM = 18
 private const val KIND_FOREIGN = 19
 
 /** Applies C++ mounting batches to the engine view tree. Main thread only. */
-class MountingManager(context: Context) {
-  private val appContext = context.applicationContext
+class MountingManager(private val reactContext: ReactApplicationContext) {
+  private val appContext = reactContext.applicationContext
   private val handler = Handler(Looper.getMainLooper())
+  private val boost = MountBoost(handler)
   private val registry = SparseArray<View>(512)
   private val scratch = PropSet()
   private val dirtyTexts = ArrayList<EngineText>()
@@ -94,10 +97,23 @@ class MountingManager(context: Context) {
   private val deletedAt = LongArray(DELETED_TAGS)
   private var deletedNext = 0
 
-  val root: EngineRoot = EngineRoot(context)
+  val root: EngineRoot = EngineRoot(reactContext)
+
+  /**
+   * The context of every engine view, built when it is first needed (the first batch, which knows the surface, or
+   * [enableGestures]). Not the bare Application context: react-native-gesture-handler reads the surface id of an event's view
+   * from a `ThemedReactContext` (`UIManagerHelper.getSurfaceId`, otherwise a soft exception per event) and the Activity of its
+   * handlers from a `ReactContext` (the window offset of the touch payloads). It wraps the same Application context, so
+   * resources, theme and system services are what they were. The surface id inside is read by nobody that matters, so a surface
+   * that replaces the first (a recreated Activity) keeps these views.
+   */
+  private var themed: ThemedReactContext? = null
+
+  private fun viewContext(): Context =
+    themed ?: ThemedReactContext(reactContext, reactContext, "SvelteEngine", root.surfaceId).also { themed = it }
 
   init {
-    TextLayouts.init(context.assets)
+    TextLayouts.init(reactContext.assets)
     appContext.registerComponentCallbacks(object : ComponentCallbacks2 {
       override fun onTrimMemory(level: Int) {
         if (level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) {
@@ -119,6 +135,33 @@ class MountingManager(context: Context) {
 
   /** The mounted view for a React tag (main thread only), or null. Used by Commands. */
   fun viewFor(tag: Int): View? = registry.get(tag)
+
+  /**
+   * Installs react-native-gesture-handler's root helper on [root] (SPEC.md, "Gestures", Android contract item 4); true once
+   * it is installed (also when it already was), false when the library is not in the app. Nothing of the library loads
+   * before the first call, so an app that never uses a gesture pays nothing. Main thread only.
+   */
+  fun enableGestures(): Boolean {
+    if (root.gestures != null) return true
+    return try {
+      root.gestures = EngineGestures.install(viewContext() as ThemedReactContext, root)
+      true
+    } catch (e: NoClassDefFoundError) {
+      Log.w("SvelteEngine", "gestures not available: ${e.message}")
+      false
+    }
+  }
+
+  /** Takes the root helper off again (the module is being destroyed); the library's module may be gone already. */
+  fun disableGestures() {
+    val installed = root.gestures ?: return
+    root.gestures = null
+    try {
+      installed.tearDown()
+    } catch (e: Exception) {
+      Log.w("SvelteEngine", "gesture handler root teardown: ${e.javaClass.simpleName}: ${e.message}")
+    }
+  }
 
   private var loggedUnknownAnimated = 0
 
@@ -247,6 +290,7 @@ class MountingManager(context: Context) {
 
   private fun apply(surfaceId: Int, ops: IntArray, strings: Array<String>, objects: Array<Any?>) {
     if (pool.hasHeld) pool.sweep()
+    BootBoost.release() // the first screen is being mounted: the start-up threads get their cores back
     Trace.beginSection("SvelteEngine.mount")
     val t0 = System.nanoTime()
     var decodeNs = 0L
@@ -463,31 +507,41 @@ class MountingManager(context: Context) {
   }
 
   private fun createView(tag: Int, kind: Int, p: PropSet) {
+    val context = viewContext()
     val view: View = when (kind) {
-      KIND_TEXT -> pooled(ViewPool.TEXT) { EngineText(appContext) }
+      KIND_TEXT -> pooled(ViewPool.TEXT) { EngineText(context) }
       KIND_SCROLL -> if (p.horizontal == 1) {
-        (pooled(ViewPool.HSCROLL) { EngineHScroll(appContext) } as EngineHScroll).also { it.bridge.native = native }
+        (pooled(ViewPool.HSCROLL) { EngineHScroll(context) } as EngineHScroll).also { it.bridge.native = native }
       } else {
-        (pooled(ViewPool.SCROLL) { EngineScroll(appContext) } as EngineScroll).also { it.bridge.native = native }
+        (pooled(ViewPool.SCROLL) { EngineScroll(context) } as EngineScroll).also { it.bridge.native = native }
       }
-      KIND_INPUT -> EngineInput(appContext)
-      KIND_SWITCH -> EngineSwitch(appContext)
-      KIND_PROGRESS -> EngineSpinner(appContext, p.views.spinnerStyle)
-      KIND_IMAGE -> EngineImage(appContext)
-      KIND_STACK -> EngineStack(appContext)
-      KIND_SCREEN -> if (p.nav.presentation >= 3) EngineSheet(appContext) else EngineScreen(appContext)
-      KIND_HEADER -> EngineHeader(appContext)
-      KIND_HEADER_SLOT -> EngineHeaderSlot(appContext)
-      KIND_TABS -> EngineTabs(appContext)
-      KIND_TAB -> EngineTab(appContext)
-      KIND_TAB_ICON -> EngineTabIcon(appContext)
-      KIND_TOOLBAR -> EngineToolbar(appContext)
-      KIND_TOOLBAR_ITEM -> EngineToolbarItem(appContext)
-      KIND_FOREIGN -> EngineForeign(appContext)
-      KIND_MODAL -> EngineModal(appContext, root)
-      else -> pooled(ViewPool.VIEW) { EngineView(appContext) }
+      KIND_INPUT -> EngineInput(context)
+      KIND_SWITCH -> EngineSwitch(context)
+      KIND_PROGRESS -> EngineSpinner(context, p.views.spinnerStyle)
+      KIND_IMAGE -> EngineImage(context)
+      KIND_STACK -> EngineStack(context)
+      KIND_SCREEN -> {
+        boost.begin() // a screen is pushed: its mount and the frames that draw it run on the big cores
+        if (p.nav.presentation >= 3) EngineSheet(context) else EngineScreen(context)
+      }
+      KIND_HEADER -> EngineHeader(context)
+      KIND_HEADER_SLOT -> EngineHeaderSlot(context)
+      KIND_TABS -> EngineTabs(context)
+      KIND_TAB -> EngineTab(context)
+      KIND_TAB_ICON -> EngineTabIcon(context)
+      KIND_TOOLBAR -> EngineToolbar(context)
+      KIND_TOOLBAR_ITEM -> EngineToolbarItem(context)
+      KIND_FOREIGN -> EngineForeign(context)
+      KIND_MODAL -> EngineModal(context, root)
+      else -> pooled(ViewPool.VIEW) { EngineView(context) }
     }
     (view as EngineNode).node.tag = tag
+    // The id is the tag: react-native-gesture-handler finds the handlers of a view, and Reanimated and the events name it,
+    // by `View.id`. A foreign frame has none; the view inside carries the tag (React Native set it). The id would also make
+    // Android save and restore the view's state (an input's text, a scroll offset) across a recreation, which the tree
+    // rebuilt by JavaScript does not want.
+    if (view !is EngineForeign) view.id = GestureRules.viewId(tag)
+    if (view.isSaveEnabled) view.isSaveEnabled = false
     viewsCreated++
     registry.put(tag, view)
     applyProps(view, kind, p, true)

@@ -9,4 +9,10 @@ type ResolveAssetSource = typeof import("react-native/Libraries/Image/resolveAss
 const resolveAssetSource: ResolveAssetSource = (source) =>
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   (require("react-native/Libraries/Image/resolveAssetSource") as { default: ResolveAssetSource }).default(source);
-export { resolveAssetSource, Platform };
+// Modules only the gesture host reads; they load with the first gesture, never at boot.
+/* eslint-disable @typescript-eslint/no-require-imports */
+const turboModuleRegistry = () => require("react-native/Libraries/TurboModule/TurboModuleRegistry") as typeof import("react-native/Libraries/TurboModule/TurboModuleRegistry");
+type DeviceEventEmitter = { addListener(name: string, listener: (event: never) => void): { remove(): void } };
+const deviceEventEmitter = () => (require("react-native/Libraries/EventEmitter/RCTDeviceEventEmitter") as { default: DeviceEventEmitter }).default;
+/* eslint-enable @typescript-eslint/no-require-imports */
+export { resolveAssetSource, Platform, turboModuleRegistry, deviceEventEmitter };

@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { withAndroidManifest, withAppBuildGradle, withDangerousMod, withMainActivity, withMainApplication, withSettingsGradle, type ConfigPlugin } from "expo/config-plugins";
+import { withAndroidManifest, withAppBuildGradle, withDangerousMod, withMainActivity, withMainApplication, withPodfile, withSettingsGradle, type ConfigPlugin } from "expo/config-plugins";
 import { syncNative } from "./build.ts";
 
 export type ViewRecycling = { view?: boolean; text?: boolean; image?: boolean; scrollView?: boolean };
@@ -20,9 +20,19 @@ export type SvelteNativeOptions = {
    * Packages whose view managers React Native creates on first use instead of at host start: the package's class name
    * (as autolinking lists it in `PackageList`) to the Fabric component names it provides. React Native builds the view
    * managers of every package that does not offer them on demand when the host starts (the JavaScript thread, before the
-   * first commit); a package such as react-native-maps creates a dozen. The package keeps providing its TurboModules.
+   * first commit); a package such as react-native-maps creates a dozen. The package keeps providing its modules: TurboModules
+   * through `getModule`, and the legacy modules of a package that still uses `createNativeModules` (react-native-video).
    */
   androidOnDemandViewManagers?: Record<string, string[]>;
+  /**
+   * Packages and local Expo modules (directories of `modules/`, or packages) both autolinkers leave out of this build, by name,
+   * on top of the headless ones: Expo's (`expoAutolinking.exclude` in `settings.gradle`, `use_expo_modules!(exclude:)` in the
+   * Podfile) and React Native's (`--exclude` on the config command both pass). One list serves two purposes: the libraries of the
+   * native module smoke test, which only the smoke app links, and code that only a QA build needs (the touch injector, the iOS QA
+   * modules, the view bench), which the product leaves out so the class is not compiled into the app at all. Prebuild writes the
+   * list every time, so one directory can be prebuilt for one variant and then for the other.
+   */
+  autolinkingExclude?: string[];
 };
 
 /**
@@ -54,6 +64,8 @@ const flagsBegin = "    // Svelte native: React Native feature flags (generated,
 const flagsEnd = "    // Svelte native: end of React Native feature flags";
 const headlessPackageName = "SvelteNativeHeadlessMainPackage";
 const onDemandPackageName = "SvelteNativeOnDemandPackage";
+const onDemandLegacyPackageName = "SvelteNativeOnDemandLegacyPackage";
+const onDemandFactoryName = "svelteNativeOnDemand";
 const packagesBegin = "          // Svelte native: headless package list (generated, do not edit)";
 const packagesEnd = "          // Svelte native: end of headless package list";
 const startBegin = "    // Svelte native: headless host start (generated, do not edit)";
@@ -112,7 +124,7 @@ export function applyHeadlessApplication(contents: string, onDemand: Record<stri
     packagesBegin,
     "          for (index in indices) {",
     `            if (this[index] is com.facebook.react.shell.MainReactPackage) this[index] = ${headlessPackageName}()`,
-    ...Object.entries(onDemand).map(([packageClass, names]) => `            if (this[index] is ${packageClass}) this[index] = ${onDemandPackageName}(this[index], listOf(${names.map((name) => `"${name}"`).join(", ")}))`),
+    ...Object.entries(onDemand).map(([packageClass, names]) => `            if (this[index] is ${packageClass}) this[index] = ${onDemandFactoryName}(this[index], listOf(${names.map((name) => `"${name}"`).join(", ")}))`),
     "          }",
     "          // Views of Expo modules registered lazily are served on demand (see ExpoViews.kt in the engine module).",
     "          add(expo.modules.svelteengine.ExpoViewsPackage())",
@@ -124,8 +136,12 @@ export function applyHeadlessApplication(contents: string, onDemand: Record<stri
     "    System.setProperty(\"expo.modules.lazy\", \"true\")",
     "    // The patch's prewarm thread (app context and boot-time modules built off the pool thread) stays off until a phone A/B and a cold-start soak clear it.",
     "    System.setProperty(\"expo.modules.prewarm\", \"false\")",
+    "    // This thread stays on the big cores while the host starts: the pool thread that initializes Hermes and the TurboModules, and the",
+    "    // JavaScript thread it creates, inherit that and keep them until the first mount (BootBoost in the engine module).",
+    "    expo.modules.svelteengine.BootBoost.begin()",
     "    // Hermes and TurboModule setup run on a pool thread; beginning now overlaps them with activity creation.",
     "    reactHost.start()",
+    "    expo.modules.svelteengine.BootBoost.handOver()",
     startEnd,
   ].join("\n");
   const packagesAt = packagesAnchor.index + packagesAnchor[0].length;
@@ -176,12 +192,12 @@ export function applyMainActivity(contents: string): string {
   return `${stripped.slice(0, classEnd)}\n${members}${stripped.slice(classEnd, createAnchor.index)}${saved}${stripped.slice(createAnchor.index, delegateAnchor.index)}${launch}${stripped.slice(delegateEnd)}`;
 }
 
-/** `settings.gradle`: excludes packages from Expo and React Native autolinking. Idempotent. */
-export function applyHeadlessSettings(contents: string): string {
+/** `settings.gradle`: excludes packages from Expo and React Native autolinking, the headless ones and `extra`. Idempotent. */
+export function applyHeadlessSettings(contents: string, extra: readonly string[] = []): string {
   const stripped = contents.replace(blockPattern(gradleBegin, gradleEnd), "").replace(/autolinkLibrariesFromCommand\(expoAutolinking\.rnConfigCommand \+ svelteNativeExcludeArgs\)/, "autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)");
   const anchor = /^extensions\.configure\(com\.facebook\.react\.ReactSettingsExtension\)/m.exec(stripped);
   if (!anchor || !stripped.includes("autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)")) throw new Error("Svelte native could not find the autolinking block in settings.gradle");
-  const list = headlessExcludedPackages.map((name) => `"${name}"`).join(", ");
+  const list = [...new Set([...headlessExcludedPackages, ...extra])].map((name) => `"${name}"`).join(", ");
   const block = [
     gradleBegin,
     `def svelteNativeExclude = [${list}]`,
@@ -191,6 +207,39 @@ export function applyHeadlessSettings(contents: string): string {
     "",
   ].join("\n");
   return `${stripped.slice(0, anchor.index)}${block}${stripped.slice(anchor.index)}`.replace("autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)", "autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand + svelteNativeExcludeArgs)");
+}
+
+const podfileBegin = "  # Svelte native: autolinking excludes (generated, do not edit)";
+const podfileEnd = "  # Svelte native: end of autolinking excludes";
+const podfileCommandBegin = "  # Svelte native: autolinking excludes for React Native's config command (generated, do not edit)";
+const podfileCommandEnd = "  # Svelte native: end of config command excludes";
+
+/**
+ * `Podfile`: the packages Expo's `use_expo_modules!` and the React Native config command (`expo-modules-autolinking
+ * react-native-config`) leave out. With `EXPO_USE_COMMUNITY_AUTOLINKING=1` the command is the community CLI's own, which
+ * reads `react-native.config.js` instead. Idempotent; an empty list restores the template.
+ */
+export function applyPodfileAutolinkingExclude(contents: string, names: readonly string[]): string {
+  const stripped = contents
+    .replace(blockPattern(podfileBegin, podfileEnd), "")
+    .replace(blockPattern(podfileCommandBegin, podfileCommandEnd), "")
+    .replace(/use_expo_modules!\(exclude: svelte_native_exclude\)/, "use_expo_modules!");
+  if (names.length === 0) return stripped;
+  const useAnchor = /^[ \t]*use_expo_modules!(?!\()[ \t]*$/m.exec(stripped);
+  const commandAnchor = /^[ \t]*config = use_native_modules!\(config_command\)[ \t]*$/m.exec(stripped);
+  if (!useAnchor || !commandAnchor || useAnchor.index > commandAnchor.index) throw new Error("Svelte native could not find use_expo_modules! and use_native_modules!(config_command) in the Podfile");
+  const list = [
+    podfileBegin,
+    `  svelte_native_exclude = [${[...new Set(names)].map((name) => `"${name}"`).join(", ")}]`,
+    podfileEnd,
+  ].join("\n");
+  const command = [
+    podfileCommandBegin,
+    "  config_command += svelte_native_exclude.flat_map { |name| ['--exclude', name] } if ENV['EXPO_USE_COMMUNITY_AUTOLINKING'] != '1'",
+    podfileCommandEnd,
+  ].join("\n");
+  const useEnd = useAnchor.index + useAnchor[0].length;
+  return `${stripped.slice(0, useAnchor.index)}${list}\n${stripped.slice(useAnchor.index, useEnd).replace("use_expo_modules!", "use_expo_modules!(exclude: svelte_native_exclude)")}${stripped.slice(useEnd, commandAnchor.index)}${command}\n${stripped.slice(commandAnchor.index)}`;
 }
 
 /** Kotlin source for the package that replaces `MainReactPackage` in headless builds. */
@@ -271,10 +320,53 @@ class ${onDemandPackageName}(private val delegate: ReactPackage, private val nam
     return created[viewManagerName]
   }
 }
+
+// The same for a package that still builds its native modules with \`createNativeModules\` (react-native-video's \`VideoManager\`,
+// which the library's functions call with the view's tag): React Native reads such a package's modules from that method, and a
+// \`BaseReactPackage\` would hide them.
+@OptIn(UnstableReactNativeAPI::class)
+class ${onDemandLegacyPackageName}(private val delegate: ReactPackage, private val names: Collection<String>) : ReactPackage, ViewManagerOnDemandReactPackage {
+  private var managers: Map<String, ViewManager<*, *>>? = null
+
+  @Suppress("DEPRECATION")
+  override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> = delegate.createNativeModules(reactContext)
+
+  override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> = emptyList()
+
+  override fun getViewManagerNames(reactContext: ReactApplicationContext): Collection<String> = emptyList()
+
+  @Synchronized
+  override fun createViewManager(reactContext: ReactApplicationContext, viewManagerName: String): ViewManager<*, *>? {
+    if (viewManagerName !in names) return null
+    val created = managers ?: delegate.createViewManagers(reactContext).associateBy { it.name }.also { managers = it }
+    return created[viewManagerName]
+  }
+}
+
+/** The wrapper that keeps the kind of package it wraps: modules through \`getModule\` for a \`BaseReactPackage\`, through \`createNativeModules\` for any other. */
+fun ${onDemandFactoryName}(delegate: ReactPackage, names: Collection<String>): ReactPackage =
+  if (delegate is BaseReactPackage) ${onDemandPackageName}(delegate, names) else ${onDemandLegacyPackageName}(delegate, names)
 `;
 }
 
+/**
+ * Expo's prebuild applies a built-in plugin for every installed package it thinks is autolinked (expo-location's location
+ * permissions, expo-local-authentication's biometric ones, …), and it asks the autolinker with `package.json`'s options only, so
+ * it never sees the excludes this plugin passes on the command line: a package left out of the build would still add its manifest
+ * permissions and Info.plist texts. Every Expo plugin runs once per config (`createRunOncePlugin`, keyed by package name), so the
+ * excluded packages are entered in the config's plugin history here, before the prebuild applies its own, and those plugins
+ * do nothing.
+ */
+export function leaveOutOfAutoPlugins<Config extends { _internal?: Record<string, unknown> }>(config: Config, names: readonly string[]): Config {
+  if (names.length === 0) return config;
+  const internal = (config._internal ??= {});
+  const history = (internal.pluginHistory ??= {}) as Record<string, { name: string; version: string }>;
+  for (const name of names) history[name] ??= { name, version: "left out of autolinking" };
+  return config;
+}
+
 const withSvelteNative: ConfigPlugin<SvelteNativeOptions | undefined> = (config, options) => {
+  config = leaveOutOfAutoPlugins(config, options?.autolinkingExclude ?? []);
   for (const platform of ["android", "ios"] as const) {
     config = withDangerousMod(config, [platform, async (config) => {
       await syncNative(config.modRequest.projectRoot);
@@ -307,7 +399,11 @@ const withSvelteNative: ConfigPlugin<SvelteNativeOptions | undefined> = (config,
     return config;
   });
   config = withSettingsGradle(config, (config) => {
-    config.modResults.contents = applyHeadlessSettings(config.modResults.contents);
+    config.modResults.contents = applyHeadlessSettings(config.modResults.contents, options?.autolinkingExclude);
+    return config;
+  });
+  config = withPodfile(config, (config) => {
+    config.modResults.contents = applyPodfileAutolinkingExclude(config.modResults.contents, options?.autolinkingExclude ?? []);
     return config;
   });
   if (options?.androidProfileable) {

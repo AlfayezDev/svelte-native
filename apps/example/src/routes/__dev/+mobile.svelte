@@ -21,6 +21,7 @@
   import { runProbes } from "#lib/native/dev/probe.ts";
   import { jsErrorCount } from "#lib/native/dev/errors.ts";
   import { qaModule, type BuildIdentity } from "#lib/native/dev/qa.ts";
+  import { smokeLaunch } from "#lib/native/dev/smoke-log.ts";
 
   /**
    * `?run=checks,quick` (or scenario names) drives the lab without touching the screen; results land in Documents/lab-results.json.
@@ -35,6 +36,7 @@
   const captureThemes = untrack(() => (pageUrl?.searchParams.get("themes") ?? "light").split(".").filter((theme): theme is "light" | "dark" => theme === "light" || theme === "dark"));
   /** `&token=<text>` is echoed into every file the run writes, so the harness knows a file belongs to the launch it made. */
   const token = untrack(() => pageUrl?.searchParams.get("token") ?? null);
+  smokeLaunch.token = token;
   const initialPanel = untrack(() => pageUrl?.searchParams.get("panel"));
   const headerVariant = untrack(() => pageUrl?.searchParams.get("hv"));
   if (headerVariant === "title" || headerVariant === "plain") screenLab.header = headerVariant;

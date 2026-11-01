@@ -15,6 +15,7 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.findViewTreeOnBackPressedDispatcherOwner
 import androidx.core.view.ViewCompat
 import expo.modules.svelteengine.Fragment
+import expo.modules.svelteengine.GestureRules
 import expo.modules.svelteengine.NavEvents
 import expo.modules.svelteengine.NavProps
 import expo.modules.svelteengine.TextLayouts
@@ -289,7 +290,7 @@ class EngineHeader(context: Context) : EngineView(context) {
   private fun updateTraversal() {
     val all = readingOrder()
     val shown = all.filter { it.visibility == VISIBLE }
-    for (v in shown) if (v.id == NO_ID) v.id = View.generateViewId()
+    for (v in shown) if (v.id == NO_ID) v.id = GestureRules.nextInternalId()
     // What is not in the order (the title that does not show, a closed field) is in no chain.
     titleView.accessibilityTraversalBefore = NO_ID
     largeView.accessibilityTraversalBefore = NO_ID

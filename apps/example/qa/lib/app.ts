@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import { appInfo, compileWithProfile, install } from "./adb.ts";
-import { outDir } from "./paths.ts";
+import { apkPath, type Variant } from "./variant.ts";
 import type { ApkInfo, AppInfo, DeviceInfo } from "./types.ts";
 
-export function defaultApkPath(abi: string): string {
-	return join(outDir, `app-${abi}.apk`);
+export function defaultApkPath(abi: string, variant: Variant = "qa"): string {
+	return apkPath(variant, abi);
 }
 
 export async function describeApk(path: string): Promise<ApkInfo> {
@@ -28,7 +28,7 @@ async function exists(path: string): Promise<boolean> {
 	}
 }
 
-export type AppChoice = { apk?: string; noInstall: boolean; packageName: string; dexopt?: "profile" | "none" };
+export type AppChoice = { apk?: string; noInstall: boolean; packageName: string; dexopt?: "profile" | "none"; variant?: Variant };
 
 /**
  * Puts the build under test on the device and describes what is installed. An explicit `--apk`
@@ -43,7 +43,7 @@ export async function prepareApp(
 ): Promise<AppInfo> {
 	let apk: ApkInfo | null = null;
 	if (!choice.noInstall) {
-		const path = choice.apk ? resolve(choice.apk) : defaultApkPath(device.abi);
+		const path = choice.apk ? resolve(choice.apk) : defaultApkPath(device.abi, choice.variant);
 		if (choice.apk && !(await exists(path))) throw new Error(`--apk ${path} does not exist`);
 		if (await exists(path)) {
 			apk = await describeApk(path);

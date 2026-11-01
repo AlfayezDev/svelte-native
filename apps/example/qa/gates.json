@@ -6,7 +6,9 @@
       "name": "Samsung A16",
       "runs": [
         "lab",
-        "boot"
+        "boot",
+        "smoke",
+        "gestures"
       ]
     },
     "E74A5608-BF8E-5806-8699-1605F82ADED9": {
@@ -16,7 +18,9 @@
         "lab",
         "boot",
         "parity",
-        "a11y"
+        "a11y",
+        "smoke",
+        "gestures"
       ]
     },
     "localhost:5555": {
@@ -28,7 +32,9 @@
         "crashes",
         "parity",
         "a11y",
-        "resilience"
+        "resilience",
+        "smoke",
+        "gestures"
       ]
     }
   },
@@ -70,6 +76,127 @@
       "header-8",
       "sheet-8",
       "tabs-8"
+    ]
+  },
+  "smoke": {
+    "modules": {
+      "android": [
+        "async-storage",
+        "mmkv",
+        "secure-store",
+        "netinfo",
+        "device-info",
+        "expo-device",
+        "get-random-values",
+        "quick-crypto",
+        "quick-base64",
+        "nitro",
+        "launch-arguments",
+        "localization",
+        "constants",
+        "asset",
+        "haptics",
+        "screen-orientation",
+        "store-review",
+        "system-ui",
+        "tracking-transparency",
+        "local-authentication",
+        "notifications",
+        "location",
+        "sharing",
+        "web-browser",
+        "splash-screen",
+        "ssl-pinning",
+        "firebase",
+        "sentry",
+        "hms",
+        "samsung-pay",
+        "intercom",
+        "statsig",
+        "mixpanel",
+        "adjust",
+        "check-installed-apps",
+        "live-direction"
+      ],
+      "ios": [
+        "async-storage",
+        "mmkv",
+        "secure-store",
+        "netinfo",
+        "device-info",
+        "expo-device",
+        "get-random-values",
+        "quick-crypto",
+        "quick-base64",
+        "nitro",
+        "launch-arguments",
+        "localization",
+        "constants",
+        "asset",
+        "haptics",
+        "screen-orientation",
+        "store-review",
+        "system-ui",
+        "tracking-transparency",
+        "local-authentication",
+        "notifications",
+        "location",
+        "sharing",
+        "web-browser",
+        "splash-screen",
+        "ssl-pinning",
+        "firebase",
+        "sentry",
+        "hms",
+        "samsung-pay",
+        "intercom",
+        "statsig",
+        "mixpanel",
+        "adjust",
+        "check-installed-apps",
+        "live-direction"
+      ]
+    },
+    "skips": {
+      "android": [
+        "hms",
+        "web-browser"
+      ],
+      "ios": [
+        "web-browser",
+        "hms",
+        "samsung-pay"
+      ]
+    }
+  },
+  "gestures": {
+    "android": [
+      "gestures-box",
+      "gestures-box-busy",
+      "gestures-box-js",
+      "gestures-box-js-busy",
+      "gestures-pinch-rotate",
+      "gestures-row",
+      "gestures-carousel",
+      "gestures-pushed-edge",
+      "gestures-sheet",
+      "gestures-longpress-tap",
+      "gestures-scroll-native",
+      "gestures-churn"
+    ],
+    "ios": [
+      "gestures-box",
+      "gestures-box-busy",
+      "gestures-box-js",
+      "gestures-box-js-busy",
+      "gestures-pinch-rotate",
+      "gestures-row",
+      "gestures-carousel",
+      "gestures-pushed-edge",
+      "gestures-sheet",
+      "gestures-longpress-tap",
+      "gestures-scroll-native",
+      "gestures-churn"
     ]
   },
   "gates": [
@@ -752,6 +879,266 @@
         },
         "ios": {
           "max": 0
+        }
+      }
+    },
+    {
+      "id": "gestures.checks",
+      "title": "Gestures: failed checks of a scenario (counters, rests, scroll offsets, leaks), a timeout counting as one",
+      "unit": "checks",
+      "metric": "gestures.*.failedChecks",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "gestures.frames.droppedPct",
+      "title": "Gestures: frames dropped while a gesture drives an animation (box, busy-JS box, pinch)",
+      "unit": "%",
+      "metric": "gestures.*.droppedPct",
+      "roles": [
+        "phone"
+      ],
+      "bar": {
+        "android": {
+          "max": 0,
+          "round": 1
+        },
+        "ios": {
+          "max": 0,
+          "round": 1
+        }
+      }
+    },
+    {
+      "id": "gestures.frames.maxPeriodRatio",
+      "title": "Gestures: longest frame over the frame period while a gesture drives an animation",
+      "unit": "x period",
+      "metric": "gestures.*.maxPeriodRatio",
+      "roles": [
+        "phone"
+      ],
+      "bar": {
+        "android": {
+          "max": 1.5
+        },
+        "ios": {
+          "max": 1.5
+        }
+      }
+    },
+    {
+      "id": "gestures.frames.maxMs",
+      "title": "Gestures: longest frame while a gesture drives an animation",
+      "unit": "ms",
+      "metric": "gestures.*.maxMs",
+      "roles": [
+        "phone"
+      ],
+      "bar": {
+        "android": {
+          "max": 33
+        },
+        "ios": {
+          "max": 33
+        }
+      }
+    },
+    {
+      "id": "gestures.churn.leaked",
+      "title": "Gestures: handlers, records, UI registrations and engine views left after 200 mounts and unmounts",
+      "unit": "left",
+      "metric": "gestures.churn.leaked",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "gestures.agreement",
+      "title": "Gestures: counters that differ between adb input and the in-app injector for one scenario",
+      "unit": "counters",
+      "metric": "gestures.agreement.mismatches",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "gestures.scenarios.missing",
+      "title": "Gestures: scenarios of the full run that some launch lacks",
+      "unit": "scenarios",
+      "metric": "gestures.scenarios.missing",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "gestures.launches",
+      "title": "Gestures: complete launches",
+      "unit": "launches",
+      "metric": "gestures.launches",
+      "bar": {
+        "android": {
+          "min": 2
+        },
+        "ios": {
+          "min": 1
+        }
+      }
+    },
+    {
+      "id": "gestures.incomplete",
+      "title": "Gestures: launches that did not reach the end of their scenarios",
+      "unit": "launches",
+      "metric": "gestures.incompleteLaunches",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "gestures.fatals",
+      "title": "Gestures: crashes and JavaScript errors during the run",
+      "unit": "fatals",
+      "metric": "gestures.fatals",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "gestures.engineWarnings",
+      "title": "Gestures: engine warnings and errors during the run",
+      "unit": "warnings",
+      "metric": "gestures.engineWarnings",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "gestures.harnessErrors",
+      "title": "Gestures: handshake lines the harness could not read and injections that failed",
+      "unit": "errors",
+      "metric": "gestures.harnessErrors",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "smoke.complete",
+      "title": "The smoke run logged its completion line, was not interrupted and did not crash",
+      "unit": "run",
+      "metric": "smoke.complete",
+      "bar": {
+        "android": {
+          "min": 1
+        },
+        "ios": {
+          "min": 1
+        }
+      }
+    },
+    {
+      "id": "smoke.fatals",
+      "title": "Crashes, ANRs and interruptions during the smoke run",
+      "unit": "fatals",
+      "metric": "smoke.fatals",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "smoke.failed",
+      "title": "Native modules whose smoke call failed",
+      "unit": "modules",
+      "metric": "smoke.failed",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "smoke.missing",
+      "title": "Pinned native modules the smoke run never reported",
+      "unit": "modules",
+      "metric": "smoke.missing",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "smoke.unexpectedSkips",
+      "title": "Native modules that skipped where the platform does not list a skip (gates.json smoke.skips)",
+      "unit": "modules",
+      "metric": "smoke.unexpectedSkips",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "smoke.ok",
+      "title": "Native modules whose smoke call answered (the pinned modules less the listed skips)",
+      "unit": "modules",
+      "metric": "smoke.ok",
+      "bar": {
+        "android": {
+          "min": 34
+        },
+        "ios": {
+          "min": 33
         }
       }
     }

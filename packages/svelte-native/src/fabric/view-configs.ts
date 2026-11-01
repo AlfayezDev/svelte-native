@@ -113,6 +113,18 @@ const transformOrigin = arrayOr(reactNativeTransformOrigin);
 const aspectRatio: Converter = (value) => (typeof value === "number" ? value : reactNativeAspectRatio(value));
 const fontVariant: Converter = (value) => (Array.isArray(value) ? value : reactNativeFontVariant(value));
 
+/** An array of colours, each converted as a colour attribute is; anything else passes (a native view rejects it itself). */
+const colorList = (color: Converter): Converter => (value) => (Array.isArray(value) ? value.map((item: unknown) => color(item)) : value);
+/** An array of structs whose [field] is a colour. */
+const colorStructs = (color: Converter, field: string): Converter => (value) =>
+  Array.isArray(value) ? value.map((item: unknown) => (item !== null && typeof item === "object" ? { ...(item as Props), [field]: color((item as Props)[field]) } : item)) : value;
+
+/** `processColor` for a platform: the ARGB integer a native view takes for a colour prop (an Android integer is signed). */
+export function processColorValue(color: unknown, platform: Platform): unknown {
+  return (colorConverters[platform] ??= colorFor(platform))(color);
+}
+const colorConverters: Partial<Record<Platform, Converter>> = {};
+
 const table = (): Table => Object.create(null) as Table;
 function fill(into: Table, names: string, attribute: Attribute): void {
   for (const name of names.split(/\s+/)) if (name) into[name] = attribute;
@@ -196,8 +208,12 @@ const iosEvents = `
     topTouchStart
   `;
 
-/** What a view adds to `RCTView`'s attributes and events. `assetSources` are attributes React Native resolves through `resolveAssetSource`. */
-export type Kind = { plain?: string; colors?: string; events?: string; assetSources?: string };
+/**
+ * What a view adds to `RCTView`'s attributes and events. `assetSources` are attributes React Native resolves through
+ * `resolveAssetSource`; `colorLists` hold an array of colours (a gradient's `colors`, converted one by one); `colorStructs`
+ * name the colour field of each struct in an array attribute (Lottie's `colorFilters` are `{ keypath, color }`).
+ */
+export type Kind = { plain?: string; colors?: string; events?: string; assetSources?: string; colorLists?: string; colorStructs?: Record<string, string> };
 
 /**
  * Third-party native components the engine mounts through React Native's own mounting (SPEC.md, "Foreign views"). `plain`
@@ -261,6 +277,73 @@ const foreignKinds: Record<string, Kind> = {
     colors: "pinColor",
     assetSources: "image",
     events: "topCalloutPress topDeselect topDrag topDragEnd topDragStart topPress topSelect",
+  },
+  // react-native-video 6.19: a legacy view manager (`requireNativeComponent("RCTVideo")`, no codegen), mounted through React Native's Fabric interop
+  RCTVideo: {
+    plain: `
+      allowsExternalPlayback audioOutput automaticallyWaitsToMinimizeStalling bufferingStrategy controls controlsStyles
+      currentPlaybackTime debug disableAudioSessionManagement disableDisconnectError disableFocus
+      enterPictureInPictureOnLeave filter filterEnabled focusable fullscreen fullscreenAutorotate fullscreenOrientation
+      hideShutterView ignoreSilentSwitch maxBitRate mixWithOthers muted paused playInBackground playWhenInactive
+      preferredForwardBufferDuration preventsDisplaySleepDuringVideoPlayback progressUpdateInterval rate repeat
+      reportBandwidth resizeMode restoreUserInterfaceForPIPStopCompletionHandler selectedAudioTrack selectedTextTrack
+      selectedVideoTrack showNotificationControls src subtitleStyle viewType volume
+    `,
+    colors: "shutterColor",
+    events: `
+      topAudioFocusChanged topAudioTracks topControlsVisibilityChange topGetLicense topPictureInPictureStatusChanged
+      topPlaybackRateChange topReadyForDisplay topReceiveAdEvent topRestoreUserInterfaceForPictureInPictureStop
+      topTextTrackDataChanged topTextTracks topTimedMetadata topVideoAspectRatio topVideoAudioBecomingNoisy
+      topVideoBandwidthUpdate topVideoBuffer topVideoEnd topVideoError topVideoExternalPlaybackChange
+      topVideoFullscreenPlayerDidDismiss topVideoFullscreenPlayerDidPresent topVideoFullscreenPlayerWillDismiss
+      topVideoFullscreenPlayerWillPresent topVideoIdle topVideoLoad topVideoLoadStart topVideoPlaybackStateChanged
+      topVideoProgress topVideoSeek topVideoTracks topVolumeChange
+    `,
+  },
+  // @react-native-community/datetimepicker 9.1: a Fabric component on iOS only (the Android pickers are dialogs opened through TurboModules)
+  RNDateTimePicker: {
+    plain: "date displayIOS enabled locale maximumDate minimumDate minuteInterval mode themeVariant timeZoneName timeZoneOffsetInMinutes",
+    colors: "accentColor textColor",
+    events: "topChange topPickerDismiss",
+  },
+  // lottie-react-native 7.3
+  LottieAnimationView: {
+    plain: `
+      autoPlay cacheComposition dummy enableMergePathsAndroidForKitKatAndAbove enableSafeModeAndroid
+      hardwareAccelerationAndroid imageAssetsFolder loop progress renderMode resizeMode sourceDotLottieURI sourceJson
+      sourceName sourceURL speed textFiltersAndroid textFiltersIOS
+    `,
+    colorStructs: { colorFilters: "color" },
+    events: "topAnimationFailure topAnimationFinish topAnimationLoaded",
+  },
+  // react-native-pdf 7: a codegen component on both platforms; one bubbling event, `topChange`, whose message is a string (`foreign-pdf.ts`)
+  RNPDFPdfView: {
+    plain: `
+      enableAnnotationRendering enableAntialiasing enableDoubleTapZoom enablePaging enableRTL fitPolicy horizontal maxScale
+      minScale page password path scale scrollEnabled showsHorizontalScrollIndicator showsVerticalScrollIndicator singlePage spacing
+    `,
+  },
+  // rive-react-native 9.7: a legacy view manager like RCTVideo; its events are the manager's direct events (`onPlay` reaches JavaScript as `topPlay`)
+  RiveReactNativeView: {
+    plain: `
+      alignment animationName artboardName autoplay dataBinding fit isUserHandlingErrors layoutScaleFactor referencedAssets
+      resourceName stateMachineName url
+    `,
+    events: "topError topLoopEnd topPause topPlay topRiveEventReceived topStateChanged topStop",
+  },
+  // react-native-fast-shadow 0.1 (Android): a `ReactViewManager` whose view draws a blurred shadow behind its own background; the shadow props are top-level here
+  FastShadowView: {
+    plain: "cornerRadii shadowOffset shadowOpacity shadowRadius",
+  },
+  // react-native-animateable-text 0.19: a `Text` whose string is the `text` prop (the library's own view config, `AnimateableText.tsx`)
+  JBAnimatedText: {
+    plain: `
+      adjustsFontSizeToFit allowFontScaling android_hyphenationFrequency dataDetectorType disabled dynamicTypeRamp ellipsizeMode
+      isHighlighted isPressable lineBreakStrategyIOS maxFontSizeMultiplier minimumFontScale numberOfLines onInlineViewLayout
+      onTextLayout selectable text textBreakStrategy
+    `,
+    colors: "selectionColor",
+    events: "topInlineViewLayout topTextLayout",
   },
 };
 
@@ -461,6 +544,8 @@ function attributesFor(platform: Platform, kind: Kind): Table {
   fill(attributes, kind.plain ?? "", true);
   fill(attributes, kind.colors ?? "", color);
   fill(attributes, kind.assetSources ?? "", assetSource);
+  fill(attributes, kind.colorLists ?? "", colorList(color));
+  for (const [name, field] of Object.entries(kind.colorStructs ?? {})) attributes[name] = colorStructs(color, field);
   attributes.style = styles[platform] ??= styleFor(platform);
   return attributes;
 }

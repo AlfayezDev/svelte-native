@@ -6,7 +6,10 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.accessibility.AccessibilityNodeInfo
+import com.facebook.react.uimanager.PointerEvents
+import com.facebook.react.uimanager.ReactPointerEventsView
 import expo.modules.svelteengine.A11y
+import expo.modules.svelteengine.GestureRules
 
 /** Per-view state the mounting layer keeps outside of View ids and tags. */
 class NodeState {
@@ -69,8 +72,15 @@ class NodeState {
   }
 }
 
-interface EngineNode {
+/**
+ * A view the mounting layer owns. It is a `ReactPointerEventsView` so that react-native-gesture-handler's orchestrator, which
+ * walks the view tree itself and never asks [HitTest], skips what JavaScript's touches skip (SPEC.md, "Gestures", Android
+ * contract item 3): a view with `pointerEvents` none or box-only hides its subtree, one with none or box-none is no target.
+ */
+interface EngineNode : ReactPointerEventsView {
   val node: NodeState
+
+  override val pointerEvents: PointerEvents get() = GestureRules.pointerEvents(node.pointer)
 }
 
 /** Frame placement shared by the container views: children sit at the frames Yoga gave them. */

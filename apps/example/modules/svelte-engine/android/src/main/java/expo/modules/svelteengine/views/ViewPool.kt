@@ -133,6 +133,8 @@ class ViewPool(private val capacity: Int = DEFAULT_CAPACITY) {
     st.viewFlags = 0
     A11y.setClickable(view, false)
     view.tag = null
+    // The id is the node tag (MountingManager.createView): a pooled view has no node, and no gesture handler is found on it.
+    view.id = View.NO_ID
     view.contentDescription = null
     val focusable = view is EngineScrollable
     if (view.isFocusable != focusable) view.isFocusable = focusable

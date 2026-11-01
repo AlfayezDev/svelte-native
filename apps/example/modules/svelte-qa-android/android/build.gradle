@@ -1,0 +1,20 @@
+apply plugin: 'com.android.library'
+apply plugin: 'expo-module-gradle-plugin'
+
+group = 'expo.modules.svelteqa'
+version = '0.1.0'
+
+android {
+  namespace "expo.modules.svelteqa"
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+  }
+  lintOptions { abortOnError false }
+}
+
+dependencies {
+  // The QA touch injector dispatches to the engine's root view (`EngineRoot`) and nothing else of it. The engine is in every app
+  // that has this module, so the dependency is compile time only.
+  compileOnly project(':svelte-engine')
+}

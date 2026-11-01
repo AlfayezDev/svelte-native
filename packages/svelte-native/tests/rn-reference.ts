@@ -119,13 +119,13 @@ export function withReactNativeGlobals<T>(run: () => T): T {
 }
 
 /** Bundles `entry` (source text) with React Native's real modules for `platform` and imports the result. */
-export async function importWithReactNative<T>(platform: Platform, entry: string): Promise<T> {
+export async function importWithReactNative<T>(platform: Platform, entry: string, plugins: Plugin[] = []): Promise<T> {
   const bundle = await build({
     stdin: { contents: entry, resolveDir: import.meta.dirname },
     bundle: true, format: "esm", platform: "neutral", write: false, keepNames: true, mainFields: ["main"],
     resolveExtensions: resolveExtensions(platform),
     define: { __DEV__: "false", "process.env.NODE_ENV": '"production"' },
-    plugins: [reactNativeSources(platform)],
+    plugins: [reactNativeSources(platform), ...plugins],
     logLevel: "error",
   });
   const directory = await mkdtemp(resolve(tmpdir(), "svelte-native-reference-"));

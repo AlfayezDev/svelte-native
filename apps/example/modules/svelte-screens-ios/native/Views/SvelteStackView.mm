@@ -582,4 +582,19 @@ using namespace facebook::react;
   return _controller.viewControllers.count > 1;
 }
 
+// The edge swipe wins in its zone, content pans win elsewhere. react-native-gesture-handler's handlers only coordinate with the recognizers of other
+// handlers, so a pan inside a pushed screen and the swipe back would both run for a touch that starts at the edge. The edge recognizer fails at once
+// for a touch outside its zone, so this adds no wait anywhere else; and when no swipe can begin (the root screen, a screen without `gestureEnabled`,
+// a transition that runs) no pan waits for it.
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldBeRequiredToFailByGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
+  if (gestureRecognizer != _controller.interactivePopGestureRecognizer) return NO;
+  static Class handlerClass;
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    handlerClass = NSClassFromString(@"RNGestureHandler");
+  });
+  if (handlerClass == nil || ![otherGestureRecognizer isKindOfClass:[UIPanGestureRecognizer class]] || ![otherGestureRecognizer.delegate isKindOfClass:handlerClass]) return NO;
+  return [self gestureRecognizerShouldBegin:gestureRecognizer];
+}
+
 @end

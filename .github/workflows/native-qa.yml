@@ -32,7 +32,7 @@ on:
         type: boolean
         default: false
       updates_channel:
-        description: The EAS Update channel of the update scenario (qa, or qa-<suffix>). A run from another machine on the same channel waits for this one: the channel lock is a lock of the OVH host, like the emulator's
+        description: The EAS Update channel of the update scenario (qa, or qa-<suffix>). A run from another machine on the same channel waits for this one (the channel lock is a lock of the OVH host, like the emulator's)
         default: qa
       crashes:
         description: Also run the crash volume, 1,000 cold starts and 100 suites (8 to 15 hours of the emulator)
@@ -148,12 +148,13 @@ jobs:
       - name: Forget the previous lane
         run: bash qa/ci/lane.sh reset
 
-      # Without the emulator lock: the build overlaps whatever else is using the emulator.
-      - name: Build the release APK (x86_64)
+      # Without the emulator lock: the build overlaps whatever else is using the emulator. x86_64 only, the QA app and then the product
+      # (io.rasheed.app, no development lab: the app the product boot check starts), on the runner's Gradle caches (GRADLE_USER_HOME).
+      - name: Build the release APKs (x86_64)
         run: bash qa/ci/lane.sh build
 
       # The whole lane holds the emulator lock (the same file the agents' runs take over ssh): a fresh emulator instance, the
-      # stages, the report and the gates. Waits at most QA_LOCK_WAIT seconds for the lock.
+      # stages (the product boot check after those of the QA app), the report and the gates. Waits at most QA_LOCK_WAIT seconds for the lock.
       - name: Emulator lane
         run: node qa/native-qa.ts hold --device "$QA_DEVICE" --wait "$QA_LOCK_WAIT" -- bash qa/ci/lane.sh emulator
         env:
@@ -216,8 +217,11 @@ jobs:
       - name: Forget the previous lane
         run: bash qa/ci/lane.sh reset
 
+      # The crash volume starts the QA app only, so the product is not built (QA_ONLY narrows the lane's build to it).
       - name: Build the release APK (x86_64)
         run: bash qa/ci/lane.sh build
+        env:
+          QA_ONLY: crashes
 
       # No lock held across the volume: every chunk takes it, so the host's watchdog can restart the emulator between chunks.
       - name: 1,000 cold starts and 100 suites

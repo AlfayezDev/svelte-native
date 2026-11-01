@@ -122,6 +122,8 @@ type State = {
   eventCount: number;
   /** A foreign view or a node inside one: React Native's own mounting owns its view, so commands and props go through React Native, not the engine. */
   foreign: boolean;
+  /** Whether the node's view config declares a prop as an attribute of the view (the animation layer leaves those to the view: `fabric/animation.ts`, `AnimationTarget.declares`). */
+  declares?: (key: string) => boolean;
   /** The last build gave the node a lone string as its `content` (`loneText`): when that stops being true the prop has to go, though no attribute changed. */
   lone: boolean;
 };
@@ -443,6 +445,7 @@ function build(node: NativeNode, rootTag: number, insideText: boolean, insideFor
   const current = state(node, viewName);
   current.foreign = foreign;
   const config = viewConfig(viewName);
+  current.declares = (key) => Object.hasOwn(config.attributes, key);
   // `animatedStyle`, `animatedProps` and the CSS keys never reach the payload; once loaded, the animation layer sees every node so it can detach.
   const animated = animation || wantsAnimation(attributes) ? loadAnimation().animationProps(node, current, attributes) : attributes;
   // `gesture` never reaches the payload either; the gesture host forces `collapsable: false` so the view keeps its tag.

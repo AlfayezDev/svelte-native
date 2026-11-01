@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { applyHeadlessApplication, applyHeadlessSettings, applyMainActivity, headlessExcludedPackages, headlessPackageSource, onDemandPackageSource } from "../src/expo.ts";
+import { applyAutolinkingExcludePodfile, applyHeadlessApplication, applyHeadlessSettings, applyMainActivity, headlessExcludedPackages, headlessPackageSource, onDemandPackageSource } from "../src/expo.ts";
 
 const application = `class MainApplication {
   override val reactHost: ReactHost by lazy {
@@ -104,6 +104,31 @@ describe("headless Android config", () => {
     for (const name of headlessExcludedPackages) expect(once).toContain(`"${name}"`);
     expect(once).toContain("rnConfigCommand + svelteNativeExcludeArgs");
     expect(applyHeadlessSettings(once)).toBe(once);
+  });
+  test("settings.gradle excludes the local modules the variant leaves out, for Expo and React Native autolinking, and replaces them on the next prebuild", () => {
+    const product = applyHeadlessSettings(settings, ["svelte-qa-android", "svelte-qa-ios"]);
+    expect(product).toContain('def svelteNativeExclude = ["react-native-screens"');
+    const list = /def svelteNativeExclude = \[([^\]]*)\]/.exec(product)?.[1] ?? "";
+    for (const name of [...headlessExcludedPackages, "svelte-qa-android", "svelte-qa-ios"]) expect(list).toContain(`"${name}"`);
+    // Both autolinkers read the same list.
+    expect(product).toContain("expoAutolinking.exclude = svelteNativeExclude");
+    expect(product).toContain("rnConfigCommand + svelteNativeExcludeArgs");
+    expect(applyHeadlessSettings(product, ["svelte-qa-android", "svelte-qa-ios"])).toBe(product);
+    // The QA variant after a product prebuild on the same directory: the exclusion is gone.
+    const qa = applyHeadlessSettings(product, []);
+    expect(qa).not.toContain("svelte-qa");
+    expect(qa).toBe(applyHeadlessSettings(settings));
+  });
+  test("the Podfile's use_expo_modules! carries the exclusion, idempotently, and loses it for the next variant", () => {
+    const podfile = "target 'App' do\n  use_expo_modules!\n\n  config_command = ['npx']\nend\n";
+    const product = applyAutolinkingExcludePodfile(podfile, ["svelte-qa-ios"]);
+    expect(product).toContain("use_expo_modules!(exclude: ['svelte-qa-ios'])");
+    expect(product).toContain("config_command = ['npx']");
+    expect(applyAutolinkingExcludePodfile(product, ["svelte-qa-ios"])).toBe(product);
+    expect(applyAutolinkingExcludePodfile(product, ["svelte-qa-ios", "view-bench"])).toContain("use_expo_modules!(exclude: ['svelte-qa-ios', 'view-bench'])");
+    expect(applyAutolinkingExcludePodfile(product, [])).toBe(podfile);
+    expect(applyAutolinkingExcludePodfile(podfile, [])).toBe(podfile);
+    expect(() => applyAutolinkingExcludePodfile("target 'App' do\nend\n", ["svelte-qa-ios"])).toThrow("could not find use_expo_modules! in the Podfile");
   });
   test("package source targets the application id", () => {
     expect(headlessPackageSource("io.example.app")).toStartWith("package io.example.app\n");

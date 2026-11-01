@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { withAndroidManifest, withAppBuildGradle, withDangerousMod, withMainActivity, withMainApplication, withSettingsGradle, type ConfigPlugin } from "expo/config-plugins";
+import { withAndroidManifest, withAppBuildGradle, withDangerousMod, withMainActivity, withMainApplication, withPodfile, withSettingsGradle, type ConfigPlugin } from "expo/config-plugins";
 import { syncNative } from "./build.ts";
 
 export type ViewRecycling = { view?: boolean; text?: boolean; image?: boolean; scrollView?: boolean };
@@ -23,6 +23,13 @@ export type SvelteNativeOptions = {
    * first commit); a package such as react-native-maps creates a dozen. The package keeps providing its TurboModules.
    */
   androidOnDemandViewManagers?: Record<string, string[]>;
+  /**
+   * Local Expo modules (directories of `modules/`, or packages) this build leaves out of autolinking on both platforms, by name.
+   * For code that only a QA build needs: the product build lists it, and the class is not compiled into the app at all.
+   * Android gets the names in `settings.gradle` (`expoAutolinking.exclude`), iOS in the Podfile's `use_expo_modules!(exclude: ...)`.
+   * Prebuild writes the list every time, so one directory can be prebuilt for one variant and then for the other.
+   */
+  autolinkingExclude?: string[];
 };
 
 /**
@@ -176,12 +183,12 @@ export function applyMainActivity(contents: string): string {
   return `${stripped.slice(0, classEnd)}\n${members}${stripped.slice(classEnd, createAnchor.index)}${saved}${stripped.slice(createAnchor.index, delegateAnchor.index)}${launch}${stripped.slice(delegateEnd)}`;
 }
 
-/** `settings.gradle`: excludes packages from Expo and React Native autolinking. Idempotent. */
-export function applyHeadlessSettings(contents: string): string {
+/** `settings.gradle`: excludes packages from Expo and React Native autolinking, the headless set and the build's own [exclude]. Idempotent. */
+export function applyHeadlessSettings(contents: string, exclude: string[] = []): string {
   const stripped = contents.replace(blockPattern(gradleBegin, gradleEnd), "").replace(/autolinkLibrariesFromCommand\(expoAutolinking\.rnConfigCommand \+ svelteNativeExcludeArgs\)/, "autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)");
   const anchor = /^extensions\.configure\(com\.facebook\.react\.ReactSettingsExtension\)/m.exec(stripped);
   if (!anchor || !stripped.includes("autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)")) throw new Error("Svelte native could not find the autolinking block in settings.gradle");
-  const list = headlessExcludedPackages.map((name) => `"${name}"`).join(", ");
+  const list = [...new Set([...headlessExcludedPackages, ...exclude])].map((name) => `"${name}"`).join(", ");
   const block = [
     gradleBegin,
     `def svelteNativeExclude = [${list}]`,
@@ -191,6 +198,15 @@ export function applyHeadlessSettings(contents: string): string {
     "",
   ].join("\n");
   return `${stripped.slice(0, anchor.index)}${block}${stripped.slice(anchor.index)}`.replace("autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand)", "autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand + svelteNativeExcludeArgs)");
+}
+
+/** `Podfile`: the Expo modules autolinking leaves out (`use_expo_modules!(exclude: [...])`); none restores the plain call. Idempotent. */
+export function applyAutolinkingExcludePodfile(contents: string, exclude: string[]): string {
+  const call = /^([ \t]*)use_expo_modules!(?:\(exclude: \[[^\]]*\]\))?[ \t]*$/m;
+  const found = call.exec(contents);
+  if (!found) throw new Error("Svelte native could not find use_expo_modules! in the Podfile");
+  const names = [...new Set(exclude)].map((name) => `'${name}'`).join(", ");
+  return contents.replace(call, `${found[1]}use_expo_modules!${names ? `(exclude: [${names}])` : ""}`);
 }
 
 /** Kotlin source for the package that replaces `MainReactPackage` in headless builds. */
@@ -307,7 +323,11 @@ const withSvelteNative: ConfigPlugin<SvelteNativeOptions | undefined> = (config,
     return config;
   });
   config = withSettingsGradle(config, (config) => {
-    config.modResults.contents = applyHeadlessSettings(config.modResults.contents);
+    config.modResults.contents = applyHeadlessSettings(config.modResults.contents, options?.autolinkingExclude);
+    return config;
+  });
+  config = withPodfile(config, (config) => {
+    config.modResults.contents = applyAutolinkingExcludePodfile(config.modResults.contents, options?.autolinkingExclude ?? []);
     return config;
   });
   if (options?.androidProfileable) {

@@ -1,6 +1,11 @@
 import type { ExpoConfig } from "expo/config";
 
 const production = process.env.APP_VARIANT === "production";
+// Local Expo modules (directories of `modules/`) that exist for the QA lab and must not ship: the in-app touch injector (Android), the QA
+// inspection and gesture trace module (iOS) and the view-creation bench (Android). The product build leaves them out of autolinking
+// (the svelte-native plugin writes the names into settings.gradle and the Podfile), so their classes are not compiled into the app.
+// `qa/test/product-modules.test.ts` resolves the module list with this exclusion.
+const qaOnlyModules = ["svelte-qa-android", "svelte-qa-ios", "view-bench"];
 // The EAS Update channel of this build comes from its build profile (`UPDATES_CHANNEL` in eas.json). `eas update` and local builds
 // evaluate this file without it: they publish and run without a channel, and the app does not check for updates.
 const channel = process.env.UPDATES_CHANNEL;
@@ -34,6 +39,7 @@ export default {
   plugins: [
     ["@rasheed/svelte-native/expo", {
       androidProfileable: !production,
+      autolinkingExclude: production ? qaOnlyModules : [],
       androidFeatureFlags: { disableViewPreallocationAndroid: true, enablePreparedTextLayout: true },
       // Foreign views (SPEC.md, "Foreign views"): the packages' view managers are created when a component is first mounted,
       // not when the host starts. `packages/svelte-native/tests/foreign.test.ts` checks the names against the packages' sources.

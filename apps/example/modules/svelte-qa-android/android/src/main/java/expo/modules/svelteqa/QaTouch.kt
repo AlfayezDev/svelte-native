@@ -1,4 +1,4 @@
-package expo.modules.svelteengine.views
+package expo.modules.svelteqa
 
 import android.os.Handler
 import android.os.Looper
@@ -11,6 +11,8 @@ import android.view.ViewGroup
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import expo.modules.svelteengine.LabSwitches
+import expo.modules.svelteengine.views.EngineRoot
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -21,8 +23,10 @@ import org.json.JSONObject
  * gesture-driven animation is not skewed by the shell's own timing. It skips `InputDispatcher` and `ViewRootImpl`, which is why every
  * single-pointer scenario also runs once through `adb input` and the counters must agree.
  *
- * It is a module of its own (`SvelteQaTouch`, listed in `expo-module.config.json`), not a function of `SvelteEngine`, and it does
- * nothing but refuse unless the app is the QA variant (`io.rasheed.svelteqa`): the production package never injects a touch.
+ * It is a module of its own (`SvelteQaTouch`, in the Expo module `svelte-qa-android`), not a function of `SvelteEngine`. The product
+ * build leaves it out: `app.config.ts` passes it to the svelte-native plugin's `autolinkingExclude` when `APP_VARIANT=production`,
+ * which writes the exclusion into `settings.gradle`, so the class is not even compiled into that app. Should it be linked, it still
+ * refuses unless the app is the QA variant (`io.rasheed.svelteqa`).
  *
  * What a finger does in the real pipeline, and what this reproduces. A touch panel samples at 120 to 240 Hz and the app receives
  * one `MotionEvent` per frame whose history holds the samples in between; the injector sends one MOVE per frame, with history
@@ -39,7 +43,7 @@ import org.json.JSONObject
  * `frameTimesMs` are the times of every event (the DOWN, the moves, the catch-up moves) that the lab replays to say what a pinch
  * should have read (`expectedTwoFinger` in `gestures-lab.ts`).
  */
-internal const val QA_PACKAGE = "io.rasheed.svelteqa"
+internal const val QA_PACKAGE = LabSwitches.QA_PACKAGE
 
 /** One pointer's path: times in milliseconds from the start of the gesture, positions in window pixels. */
 internal class QaPointer(private val times: DoubleArray, private val xs: FloatArray, private val ys: FloatArray) {

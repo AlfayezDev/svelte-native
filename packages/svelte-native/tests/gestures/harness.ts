@@ -123,8 +123,8 @@ export type Loaded = {
   /** The bundle's own copies of what a test inspects: the JS receiver's memory, RNGH's mount registry and handler registry. */
   probe: {
     receiverSize(): { stateManagers: number; lastUpdates: number };
-    /** The numbers `src/gestures/animated.ts` copies, by RNGH's names. */
-    copiedConstants: { State: Record<string, number>; TouchEventType: Record<string, number>; CALLBACK_TYPE: Record<string, number> };
+    /** The numbers `src/gestures/animated.ts` copies, by RNGH's names; the module is evaluated by this call and not before. */
+    copiedConstants(): Promise<{ State: Record<string, number>; TouchEventType: Record<string, number>; CALLBACK_TYPE: Record<string, number> }>;
     MountRegistry: typeof import("../../src/gestures/rngh.js").MountRegistry;
     findHandler: typeof import("../../src/gestures/rngh.js").findHandler;
     findHandlerByTestID(testID: string): { handlerTag: number } | null;
@@ -152,10 +152,11 @@ export async function load(options: LoadOptions): Promise<Loaded> {
         import { bootSummary } from '../../src/boot-marks.ts';
         import * as gestures from '../../src/gestures/index.ts';
         import { receiverSize } from '../../src/gestures/events.ts';
-        import { copiedConstants } from '../../src/gestures/animated.ts';
         import { MountRegistry, findHandler } from '../../src/gestures/rngh.js';
         import { findHandlerByTestID } from 'react-native-gesture-handler/src/handlers/handlersRegistry';
         import { tick, flushSync } from 'svelte';
+        // animated.ts evaluates Reanimated, which a test about the app that never uses a gesture must not see: it is read on demand.
+        const copiedConstants = async () => (await import('../../src/gestures/animated.ts')).copiedConstants;
         const probe = { receiverSize, copiedConstants, MountRegistry, findHandler, findHandlerByTestID };
         export { startSurface, stopSurface, fabricStats, flush, tick, flushSync, Fixture, gestures, bootSummary, probe };`,
       resolveDir: import.meta.dirname,

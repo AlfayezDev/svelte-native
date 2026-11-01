@@ -69,7 +69,7 @@ test("the constants the UI worklet copies are RNGH's, every one of them", async 
   // `State`, `TouchEventType` and `CALLBACK_TYPE` of `src/gestures/rngh.js` are RNGH's own modules, so comparing them with the
   // oracle's would compare RNGH with itself. The copies are the numbers in `animated.ts`: the worklet reads those.
   const { probe } = await load({ fixture: "gesture-fixture.svelte" });
-  const copies = probe.copiedConstants;
+  const copies = await probe.copiedConstants();
   expect(copies.State).toEqual(oracle.State);
   expect(copies.TouchEventType).toEqual(oracle.TouchEventType);
   expect(copies.CALLBACK_TYPE).toEqual(oracle.CALLBACK_TYPE);

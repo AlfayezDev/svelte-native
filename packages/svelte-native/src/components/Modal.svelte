@@ -17,7 +17,7 @@
   // host stays until UIKit has dismissed the controller (`onDismiss`), so the dismissal animates. Android's engine keeps the host
   // and shows or hides its overlay layer from `visible` (`EngineModal`, whose frame takes no touches).
   const ios = Platform.OS === "ios";
-  let presented = $state(attributes.visible === true);
+  let presented = $state(false);
   $effect.pre(() => {
     if (attributes.visible === true) presented = true;
   });

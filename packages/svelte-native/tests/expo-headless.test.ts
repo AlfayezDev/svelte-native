@@ -129,7 +129,7 @@ describe("headless Android config", () => {
     expect(once.indexOf("NavigationState.restoredFrom(savedInstanceState)")).toBeLessThan(once.indexOf("super.onCreate(null)"));
     expect(once.indexOf("NavigationState.restoredFrom(savedInstanceState)")).toBeGreaterThan(once.indexOf("expo-splashscreen"));
     expect(once).toContain('putString("navigation", json)');
-    expect(once).toMatch(/fabricEnabled\n {10}\) \{\n[^]*override fun getLaunchOptions\(\): android\.os\.Bundle\? =[^]*\n {10}\}\)\n/);
+    expect(once).toMatch(/fabricEnabled\n {10}\) \{\n[\s\S]*override fun getLaunchOptions\(\): android\.os\.Bundle\? =[\s\S]*\n {10}\}\)\n/);
     expect(applyMainActivity(once)).toBe(once);
   });
   test("MainActivity: a template without the expected shape fails with a message", () => {
@@ -185,7 +185,7 @@ describe("headless Android config", () => {
     expect(ran).toBe(true);
     const early: { _internal?: Record<string, unknown> } = { _internal: { pluginHistory: { a: { name: "a", version: "1" } } } };
     leaveOutOfAutoPlugins(early, ["a", "b"]);
-    expect((early._internal?.pluginHistory as Record<string, { version: string }>).a?.version).toBe("1");
+    expect((early._internal?.pluginHistory as Record<string, { version: string }> | undefined)?.a?.version).toBe("1");
     const untouched: { _internal?: Record<string, unknown> } = {};
     expect(leaveOutOfAutoPlugins(untouched, [])).toBe(untouched);
     expect(untouched._internal).toBeUndefined();

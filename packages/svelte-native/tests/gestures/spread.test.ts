@@ -15,13 +15,13 @@ test("a function-valued ref in a spread (and next to one) reaches the host, as a
   await settle(m);
   for (const name of ["spread", "scroll", "text"]) {
     expect(handles[name], name).toHaveLength(1);
-    expect((handles[name]?.[0] as { tag: number }).tag, name).toBe(byId(81, `probe.${name}`)?.tag as number);
+    expect((handles[name]?.[0] as { tag: number } | undefined)?.tag, name).toBe(byId(81, `probe.${name}`)?.tag as number);
   }
   // The explicit `ref` after the spread wins over the spread's own for "mixed" and loses to it for "after": Svelte's spread order.
   expect(handles.mixed).toBeUndefined();
   expect(handles.after).toHaveLength(1);
   expect(handles.explicit).toHaveLength(1);
-  expect((handles.explicit?.[0] as { tag: number }).tag).toBe(byId(81, "mixed")?.tag as number);
+  expect((handles.explicit?.[0] as { tag: number } | undefined)?.tag).toBe(byId(81, "mixed")?.tag as number);
   // `collapsable` and `testID` from the spread are ordinary props; the ref function is not a native prop.
   expect(byId(81, "probe.spread")?.props.collapsable).toBe(false);
   expect("ref" in (byId(81, "probe.spread")?.props ?? {})).toBe(false);

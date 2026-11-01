@@ -170,8 +170,8 @@ test("animatedProps: the first values are in the nodes' props, a mapper of its o
     { values: { r: 12, cx: 30 }, animatedProps: true },
     { values: { d: "M0 0L20 20" }, animatedProps: true },
   ]);
-  expect((A.updates[0]?.descriptors as { id: number }).id).toBe(own(circle)[0]?.id);
-  expect((A.updates[1]?.descriptors as { id: number }).id).toBe(own(outline)[0]?.id);
+  expect((A.updates[0]?.descriptors as { id: number } | undefined)?.id).toBe(own(circle)[0]?.id);
+  expect((A.updates[1]?.descriptors as { id: number } | undefined)?.id).toBe(own(outline)[0]?.id);
 });
 
 test("an animated node's mapper and descriptors go with the node", async () => {

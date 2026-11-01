@@ -169,8 +169,8 @@ test("animatedProps: first-run values in the node's props, a descriptor set and 
   const byFlag = (animatedProps: boolean) => A.updates.find((update) => update.animatedProps === animatedProps);
   expect(byFlag(true)?.values).toEqual({ accessibilityLabel: "count 3" });
   expect(byFlag(false)?.values).toEqual({ opacity: 0.5, transform: [{ scale: 2 }] });
-  expect(own.map((entry) => entry.id)).toContain((byFlag(true)?.descriptors as { id: number }).id);
-  expect((byFlag(true)?.descriptors as { id: number }).id).not.toBe((byFlag(false)?.descriptors as { id: number }).id);
+  expect(own.map((entry) => entry.id)).toContain((byFlag(true)?.descriptors as { id: number } | undefined)?.id);
+  expect((byFlag(true)?.descriptors as { id: number } | undefined)?.id).not.toBe((byFlag(false)?.descriptors as { id: number } | undefined)?.id);
 
   // A clone of the node points both sets at the new shadow node; the mappers stay.
   app.pad(2);

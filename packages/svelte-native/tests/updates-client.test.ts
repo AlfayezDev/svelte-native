@@ -264,6 +264,28 @@ describe("reload and launch check", () => {
     expect(fake.commits).toHaveLength(1);
     expect(messages[0]).toContain(UPDATE_ID);
   });
+  test("every outcome of the launch check is logged, so a finished check differs from one that never ran", async () => {
+    const run = async (response: Response, store: Partial<StoreSnapshot> = {}) => {
+      const messages: string[] = [];
+      await createUpdates({ native: fakeNative({}, store).native, fetch: respond(response).fetch, log: (message) => messages.push(message) }).checkOnLaunch();
+      return messages;
+    };
+    expect(await run(manifestResponse())).toEqual([`Update ${UPDATE_ID} downloaded; it launches on the next start`]);
+    expect(await run(directiveResponse(noUpdateDirective))).toEqual(["No update to download (noUpdateAvailableOnServer)"]);
+    expect(await run(directiveResponse(rollBackDirective))).toEqual(["Rolled back to the embedded bundle; it launches on the next start"]);
+    // A newer update that failed to launch is named as such: the proof that the blocklist, not the server, kept it out.
+    expect(await run(manifestResponse(), { failedIds: [UPDATE_ID] })).toEqual(["No update to download (updatePreviouslyFailed)"]);
+  });
+  test("a bad update stays out across launches: it is neither downloaded nor committed again", async () => {
+    const fake = fakeNative({}, { failedIds: [UPDATE_ID] });
+    const { fetch, requests } = respond(manifestResponse(), manifestResponse(), manifestResponse());
+    const updates = createUpdates({ native: fake.native, fetch });
+    for (let launch = 0; launch < 3; launch++) await updates.checkOnLaunch();
+    expect(requests).toHaveLength(3);
+    expect(requests.every((request) => request.headers["expo-recent-failed-update-ids"] === `"${UPDATE_ID}"`)).toBe(true);
+    expect(fake.downloads).toEqual([]);
+    expect(fake.commits).toEqual([]);
+  });
   test("a failing launch check is logged, not thrown", async () => {
     const logged: unknown[] = [];
     await createUpdates({ native: fakeNative().native, fetch: async () => { throw new Error("offline"); }, log: (_message, error) => logged.push(error) }).checkOnLaunch();

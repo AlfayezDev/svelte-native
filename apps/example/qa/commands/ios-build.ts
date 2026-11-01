@@ -23,6 +23,7 @@ const defaultScript = "/tmp/rasheed-ios-lab-20261025.command";
  */
 const defaultSmokeScript = "/tmp/rasheed-ios-smoke.command";
 const productNames = { qa: "RasheedSvelteQA", smoke: "Sveltesmoke" } as const;
+const smokeBundleMarker = "RNFBAppModule";
 // DerivedData is the signed build's own cache on the Mac: `--delete` would wipe it and make every build a full ~6 min rebuild.
 const excludes = ["DerivedData", "node_modules", ".git", "apps/platform/android/", "apps/platform/ios/", "build", "dist", ".svelte-kit", ".svelte-native", ".rasheed", ".env", ".expo", "*.log"];
 const buildWaitMs = 30 * 60_000;
@@ -98,6 +99,12 @@ export async function iosBuild(argv: string[]): Promise<void> {
 	const digest = (await remoteOk(mac, `shasum -a 256 ${shellQuote(`${app}/main.jsbundle`)} && stat -f %z ${shellQuote(`${app}/main.jsbundle`)}`)).trim().split("\n");
 	const sha = /^([0-9a-f]{64})/.exec(digest[0] ?? "")?.[1];
 	if (!sha) throw new Error(`cannot read the bundle's digest: ${digest.join(" ")}`);
+	// Xcode's bundle phase reads `APP_VARIANT` from the environment of the GUI Terminal script, not of this command. A smoke build whose script
+	// lacks `export APP_VARIANT=smoke` is the QA app's JavaScript in the smoke app (the same main.jsbundle, none of the smoke libraries), and the
+	// smoke run would only fail much later. `RNFBAppModule` is a string of React Native Firebase's JavaScript, a smoke-only library.
+	const withSmokeLibraries = Number((await remoteOk(mac, `{ strings -a ${shellQuote(`${app}/main.jsbundle`)} | grep -c ${smokeBundleMarker}; } || true`)).trim().split("\n").pop());
+	if ((variant === "smoke") !== withSmokeLibraries > 0)
+		throw new Error(`${productNames[variant]}'s main.jsbundle ${withSmokeLibraries > 0 ? "carries" : "lacks"} the smoke libraries (${smokeBundleMarker}): the build script ${script} ${variant === "smoke" ? "must export APP_VARIANT=smoke" : "must not export APP_VARIANT"}`);
 	// The code directory hash of the signed executable: what the app reads from its own signature (`SvelteQA.buildIdentity`).
 	const signature = (await remoteOk(mac, `codesign -dvvv ${shellQuote(app)} 2>&1`)).trim();
 	const cdHash = /^CDHash=([0-9a-f]{40})$/m.exec(signature)?.[1];

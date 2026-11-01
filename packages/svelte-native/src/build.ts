@@ -1,9 +1,11 @@
 import { spawn } from "node:child_process";
+import { mkdirSync, readFileSync, readdirSync, watch, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { relative, resolve, sep } from "node:path";
 import type { parse as parseSvelte } from "svelte/compiler";
 import { buildTree, type PageRoute, type RouteFile, type RouteNode, type StackNode } from "./route-tree.ts";
+import { labIncludedFor, routesHeader, variantName } from "./variant.ts";
 
 const require = createRequire(import.meta.url);
 const posix = (path: string) => path.split(sep).join("/");
@@ -35,7 +37,7 @@ const NAVIGATORS = ["stack", "tabs"] as const;
  * `metro.config.cjs` and `eas.json` share). The lab is the routes under a `__dev` directory and any route whose module script exports
  * `lab = true`; the product's route tree, route table and module graph never name them.
  */
-export const labIncluded = (env: NodeJS.ProcessEnv = process.env): boolean => env.APP_VARIANT !== "production";
+export const labIncluded = (env: NodeJS.ProcessEnv = process.env): boolean => labIncludedFor(variantName(env));
 const LAB_DIRECTORY = "__dev";
 
 export type RouteFilesOptions = {
@@ -48,25 +50,25 @@ export type RouteFilesOptions = {
  * Without the lab, a file in a `__dev` directory is not read at all, a page that exports `lab = true` is left out, and a layout that does takes
  * its whole directory with it.
  */
-export async function routeFiles(routesRoot: string, { lab = labIncluded() }: RouteFilesOptions = {}): Promise<RouteFile[]> {
+export function routeFilesSync(routesRoot: string, { lab = labIncluded() }: RouteFilesOptions = {}): RouteFile[] {
   const paths: string[] = [];
-  async function walk(directory: string) {
-    for (const item of await readdir(directory, { withFileTypes: true })) {
+  function walk(directory: string) {
+    for (const item of readdirSync(directory, { withFileTypes: true })) {
       const path = resolve(directory, item.name);
       if (item.isDirectory()) {
-        if (lab || item.name !== LAB_DIRECTORY) await walk(path);
+        if (lab || item.name !== LAB_DIRECTORY) walk(path);
       } else paths.push(posix(relative(routesRoot, path)));
     }
   }
-  await walk(routesRoot);
-  // The compiler is large; every Expo command that reads the app's config loads this module, so it is imported only here.
-  const { parse } = await import("svelte/compiler");
+  walk(routesRoot);
+  // The compiler is large; every Expo command that reads the app's config loads this module, so it is loaded only here.
+  const { parse } = require("svelte/compiler") as { parse: typeof parseSvelte };
   const files: RouteFile[] = [];
   const labDirectories: string[] = [];
   for (const path of paths.sort((a, b) => a.localeCompare(b))) {
     const name = path.slice(path.lastIndexOf("/") + 1);
     if (name !== "+mobile.svelte" && name !== "+layout.mobile.svelte") continue;
-    const source = await readFile(resolve(routesRoot, path), "utf8");
+    const source = readFileSync(resolve(routesRoot, path), "utf8");
     // Read in every variant, so a marker the product's sync could not read fails the lab builds' as well.
     const labOnly = exportedLiteral(parse, path, source, "lab", [true] as const) === true;
     if (labOnly && path === name && name === "+layout.mobile.svelte") throw new Error(`${path}: the root layout is the app shell and cannot be lab-only`);
@@ -83,6 +85,9 @@ export async function routeFiles(routesRoot: string, { lab = labIncluded() }: Ro
   }
   return labDirectories.length === 0 ? files : files.filter((file) => !labDirectories.some((directory) => file.path.startsWith(directory)));
 }
+
+/** `routeFilesSync` for the callers that wait (the tests and the generator's older callers). */
+export const routeFiles = async (routesRoot: string, options: RouteFilesOptions = {}): Promise<RouteFile[]> => routeFilesSync(routesRoot, options);
 
 /** The tree as the module `.svelte-native/routes.ts`: `buildTree`'s data with a loader per page and per navigator layout. */
 function treeModule(tree: StackNode, routesRoot: string, output: string): string {
@@ -122,11 +127,22 @@ ${indent}}`;
   return `import type { StackNode } from '@rasheed/svelte-native/router';\n\nexport const tree: StackNode = ${nodeOf(tree, "").trimStart()};\n`;
 }
 
-export async function syncNative(root: string, options: RouteFilesOptions = {}): Promise<void> {
+export type SyncOptions = RouteFilesOptions & {
+  /** The variant the table is synced for, recorded in its first line; `variantName()` (`APP_VARIANT`) by default. `lab` follows it unless given. */
+  variant?: string;
+};
+
+/**
+ * Writes `.svelte-native/routes.ts` (the route table, whose first line records the variant and whether it names the lab) and `entry.ts`
+ * for the variant, synchronously: the Metro integration runs it while the config loads, before Metro's file map is built.
+ */
+export function syncRoutes(root: string, options: SyncOptions = {}): void {
+  const variant = options.variant ?? variantName();
+  const lab = options.lab ?? labIncludedFor(variant);
   const routesRoot = resolve(root, "src/routes");
   const output = resolve(root, ".svelte-native");
-  await mkdir(output, { recursive: true });
-  const manifest = treeModule(buildTree(await routeFiles(routesRoot, options)), routesRoot, output);
+  mkdirSync(output, { recursive: true });
+  const manifest = routesHeader(variant, lab) + treeModule(buildTree(routeFilesSync(routesRoot, { lab })), routesRoot, output);
   // The entry boots the app layout, the shell around the generated tree's root navigator; SVELTE_NATIVE_ROOT=<path> renders that
   // component as the root instead (the lab's spike roots).
   const customRoot = process.env.SVELTE_NATIVE_ROOT;
@@ -139,9 +155,32 @@ export async function syncNative(root: string, options: RouteFilesOptions = {}):
     : `${prelude}import App from '../src/routes/+layout.mobile.svelte';\nimport { tree } from './routes';\ncreateFabricApp(App, { tree });\n${hot}`;
   for (const [file, content] of [["routes.ts", manifest], ["entry.ts", entry]]) {
     const destination = resolve(output, file);
-    const current = await readFile(destination, "utf8").catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return ""; throw error; });
-    if (current !== content) await writeFile(destination, content);
+    let current = "";
+    try { current = readFileSync(destination, "utf8"); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    if (current !== content) writeFileSync(destination, content);
   }
+}
+
+export async function syncNative(root: string, options: SyncOptions = {}): Promise<void> {
+  syncRoutes(root, options);
+}
+
+/**
+ * Syncs again when anything under `src/routes` changes (a route added, removed or renamed, a `presentation` or `navigator` edited), so a
+ * development server's table follows the files. Debounced, never keeps the process alive, and a route tree the build rejects is logged
+ * and waits for the next change. Close it to stop.
+ */
+export function watchRoutes(root: string, options: SyncOptions = {}, debounceMs = 50): { close(): void } {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const watcher = watch(resolve(root, "src/routes"), { recursive: true }, () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      try { syncRoutes(root, options); } catch (error) { console.error(error); }
+    }, debounceMs);
+    timer.unref();
+  });
+  watcher.unref();
+  return { close() { clearTimeout(timer); watcher.close(); } };
 }
 
 export function runExpo(root: string, args: string[]) {

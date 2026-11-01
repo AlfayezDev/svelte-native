@@ -1,7 +1,9 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve, sep } from "node:path";
 import type { ConfigT } from "@expo/metro/metro-config";
+import { syncRoutes, watchRoutes } from "./build.ts";
+import { labIncludedFor, routesHeaderOf } from "./variant.ts";
 
 const require = createRequire(import.meta.url);
 const nativeSvelte = dirname(require.resolve("svelte/package.json"));
@@ -40,8 +42,15 @@ export type SvelteNativeMetroOptions = {
    * out at the source (`routeFiles`); this is the backstop for what is still imported.
    */
   stubbedDirectories?: readonly string[];
-  /** Named in the stubs' message. */
+  /** Named in the stubs' message, and the variant the route table is synced for and must have been synced for (`APP_VARIANT`, `qa` for none). */
   variant?: string;
+  /**
+   * Whether Metro writes the app's route table (`.svelte-native/routes.ts`) and entry for `variant` when the config loads, before its file
+   * map is built, and in development (`NODE_ENV=development`, `expo start`) again whenever a file under `src/routes` changes. On when
+   * the project has a `src/routes` directory. The table records its variant in its first line, and resolving it for another variant
+   * is a resolve error, so a bundle can never carry the routes of a variant it is not (the product's would carry the lab's).
+   */
+  syncRoutes?: boolean;
 };
 
 /** The code every stub shares: a module that throws `<name> is not in this app (APP_VARIANT=…)` on anything but `__esModule`, a call or a construction. */
@@ -104,6 +113,19 @@ export function withSvelteNative(config: ConfigT, options: SvelteNativeMetroOpti
     const directory = path.replace(/[\\/]+$/, "");
     directories.set(directory + sep, writeStub(`${nameOf(directory)}/`));
   }
+  // The route table is the app's, per variant: this config writes it for its variant now, and refuses to resolve one written for another.
+  const lab = labIncludedFor(variant);
+  const routesTable = join(config.projectRoot, ".svelte-native", "routes.ts");
+  if (options.syncRoutes ?? existsSync(join(config.projectRoot, "src/routes"))) {
+    syncRoutes(config.projectRoot, { variant, lab });
+    if (process.env.NODE_ENV === "development") watchRoutes(config.projectRoot, { variant, lab });
+  }
+  const checkRoutesTable = () => {
+    const found = routesHeaderOf(readFileSync(routesTable, "utf8"));
+    if (found?.variant === variant && found.lab === lab) return;
+    const was = found ? `the ${found.variant} app (lab routes ${found.lab ? "in" : "out"})` : "no variant";
+    throw new Error(`${routesTable} was synced for ${was}, and this bundle is the ${variant} app (lab routes ${lab ? "in" : "out"}): run svelte-native sync with APP_VARIANT=${variant === "qa" ? "" : variant}, or start Metro again, so the route table matches the variant`);
+  };
   const stubFor = (moduleName: string, origin: string): string | null => {
     const name = stubbed.find((candidate) => isInPackage(moduleName, candidate));
     if (name !== undefined) return stubs.get(name) ?? null;
@@ -141,6 +163,7 @@ export function withSvelteNative(config: ConfigT, options: SvelteNativeMetroOpti
     }
     const result = resolveRequest ? resolveRequest(context, moduleName, platform) : context.resolveRequest(context, moduleName, platform);
     if (result.type === "sourceFile") {
+      if (result.filePath === routesTable) checkRoutesTable();
       const stubbedFile = stubForFile(result.filePath);
       if (stubbedFile !== null) return { type: "sourceFile", filePath: stubbedFile };
       const stub = Object.entries(RENDERER_STUBS).find(([suffix]) => result.filePath.endsWith(suffix));

@@ -18,11 +18,11 @@ function configuredExclude(variant: "production" | "qa"): string[] {
 	delete env.APP_VARIANT;
 	if (variant === "production") env.APP_VARIANT = "production";
 	const run = spawnSync(process.execPath, ["-e", "import('./app.config.ts').then((m) => console.log(JSON.stringify(m.default.plugins)))"], { cwd: app, env, encoding: "utf8" });
-	expect(run.status, run.stderr).toBe(0);
+	if (run.status !== 0) throw new Error(`app.config.ts did not evaluate: ${run.stderr}`);
 	const plugins = JSON.parse(run.stdout) as (string | [string, { autolinkingExclude?: string[] }])[];
 	const entry = plugins.find((plugin): plugin is [string, { autolinkingExclude?: string[] }] => Array.isArray(plugin) && plugin[0] === "@rasheed/svelte-native/expo");
-	expect(entry, "app.config.ts configures the svelte-native plugin").toBeDefined();
-	return entry?.[1].autolinkingExclude ?? [];
+	if (!entry) throw new Error("app.config.ts does not configure the svelte-native plugin");
+	return entry[1].autolinkingExclude ?? [];
 }
 
 type Resolved = { modules: { packageName: string; projects?: { name: string; modules?: { classifier: string }[] }[] }[] };
@@ -31,7 +31,7 @@ type Resolved = { modules: { packageName: string; projects?: { name: string; mod
 function resolved(platform: "android" | "apple", exclude: string[]): Resolved {
 	const args = [autolinking, "resolve", "--platform", platform, "--json", ...exclude.flatMap((name) => ["--exclude", name])];
 	const run = spawnSync(process.execPath, args, { cwd: app, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
-	expect(run.status, run.stderr).toBe(0);
+	if (run.status !== 0) throw new Error(`expo-modules-autolinking resolve failed: ${run.stderr}`);
 	return JSON.parse(run.stdout) as Resolved;
 }
 

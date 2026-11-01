@@ -6,8 +6,7 @@
       "name": "Samsung A16",
       "runs": [
         "lab",
-        "boot",
-        "updates"
+        "boot"
       ]
     },
     "E74A5608-BF8E-5806-8699-1605F82ADED9": {

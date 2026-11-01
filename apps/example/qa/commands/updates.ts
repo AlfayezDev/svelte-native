@@ -16,6 +16,8 @@ import { exec } from "../lib/exec.ts";
 import { flagString, integerFlag, parseFlags, platformOf, requireString } from "../lib/flags.ts";
 import { currentSource } from "../lib/git.ts";
 import { lockFor, reexecUnderLock } from "../lib/lock.ts";
+import { assertClearable, clearAppData } from "../lib/reset.ts";
+import { deviceRoles } from "../lib/gates.ts";
 import { defaultPackage, platformDir, qaDir, runsDir, svelteNativeCli } from "../lib/paths.ts";
 import { slug, stamp, writeRun } from "../lib/runs.ts";
 import type { BuildFile, Launch } from "../lib/types.ts";
@@ -35,6 +37,7 @@ import {
 import { defaultSettle, launchSettled, parseUpdateObservation } from "../lib/updates-log.ts";
 import { sleep } from "../lib/wait.ts";
 import { launchSlot } from "./boot.ts";
+import { loadGates } from "./report.ts";
 
 /** Pinned: the version eas.json asks for is `>= 24.14.0`, and what `eas` on a machine is varies. `NATIVE_QA_EAS` replaces the whole command. */
 const defaultEas = "npx -y eas-cli@27.2.0";
@@ -105,6 +108,9 @@ export async function updates(argv: string[]): Promise<void> {
 	const dexopt = dexoptFlag(values.dexopt);
 
 	await assertOnline(serial);
+	// A phone is shared and is never cleared: say so before anything is installed or published.
+	const role = deviceRoles(await loadGates(), [serial])[serial] ?? null;
+	assertClearable(serial, role);
 	const startedAt = new Date();
 	const device = await deviceInfo(serial);
 	const channelDir = channelOutDir(channel);
@@ -146,8 +152,7 @@ export async function updates(argv: string[]): Promise<void> {
 	// 2. The channel build, with an empty updates store: its first start runs the embedded bundle.
 	const app = await prepareApp(serial, device, { apk, noInstall: false, packageName, dexopt });
 	await forceStop(serial, packageName);
-	const cleared = await shell(serial, `pm clear ${packageName}`);
-	if (!cleared.stdout.includes("Success")) throw new Error(`pm clear ${packageName} failed: ${cleared.stdout.trim()} ${cleared.stderr.trim()}`);
+	await clearAppData((command) => shell(serial, command), serial, role, packageName);
 
 	const sync = await exec(process.execPath, [svelteNativeCli, "sync"], { cwd: platformDir, timeoutMs: 600_000 });
 	if (sync.code !== 0) throw new Error(`svelte-native sync failed: ${(sync.stderr || sync.stdout).trim().slice(0, 400)}`);

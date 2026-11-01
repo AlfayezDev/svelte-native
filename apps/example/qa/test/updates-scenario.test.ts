@@ -286,9 +286,10 @@ describe("metrics and gates", () => {
 		expect(notRun.every((row) => row.verdict === "not measured")).toBe(true);
 	});
 
-	test("the Android devices of gates.json provide the updates run, the iPhone is not judged by it", () => {
+	test("the OVH emulator provides the updates run; the Samsung does not yet, and the iPhone is never judged by it", () => {
 		const devices = gatesJson.devices;
-		expect(devices.R58Y90KNGRP?.runs).toContain("updates");
+		// The shared phone is never cleared, so it cannot start the run from an empty store until the app resets itself on a flag.
+		expect(devices.R58Y90KNGRP?.runs).not.toContain("updates");
 		expect(devices["localhost:5555"]?.runs).toContain("updates");
 		expect(devices["E74A5608-BF8E-5806-8699-1605F82ADED9"]?.runs).not.toContain("updates");
 		// The gates name Android only: an iOS device is never a row of them.

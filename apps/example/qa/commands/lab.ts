@@ -76,7 +76,7 @@ export async function lab(argv: string[]): Promise<void> {
 	});
 	const serial = requireString(values.device, "device");
 	const lock = lockFor(serial);
-	if (lock) reexecUnderLock(lock, ["lab", ...argv]);
+	if (lock) await reexecUnderLock(lock, ["lab", ...argv]);
 	launchWithGestures(values.gestures === true);
 	if (values.gestures === true) console.log("gestures: the gesture handler root is installed at every launch (--gestures)");
 

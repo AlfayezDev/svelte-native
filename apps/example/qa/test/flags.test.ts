@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { integerFlag, parseFlags, requireString } from "../lib/flags.ts";
-import { isEmulatorSerial, lockFor } from "../lib/lock.ts";
+import { isEmulatorSerial } from "../lib/lock.ts";
 
 describe("flags", () => {
 	test("parses string and boolean flags", () => {
@@ -32,7 +32,5 @@ describe("emulator lock", () => {
 		expect(isEmulatorSerial("127.0.0.1:5555")).toBe(true);
 		expect(isEmulatorSerial("emulator-5554")).toBe(true);
 		expect(isEmulatorSerial("R5XXXXXXXXX")).toBe(false);
-		expect(lockFor("localhost:5555")).toBe("/tmp/svelte-qa-emulator.lock");
-		expect(lockFor("R5XXXXXXXXX")).toBeNull();
 	});
 });

@@ -148,7 +148,7 @@ export async function build(argv: string[]): Promise<void> {
 	const channel = qaChannel(values["updates-channel"]);
 	// The update scenario runs in the QA app (`io.rasheed.svelteqa`, the one the channel's builds and `native-qa updates` are about); the smoke app never checks for updates.
 	if (channel !== null && variant !== "qa") throw new Error(`--updates-channel builds the QA app, not the ${variant} app`);
-	reexecUnderLock(gradleLock, ["build", ...argv]);
+	await reexecUnderLock(gradleLock, ["build", ...argv]);
 
 	// A build for a channel is kept apart (qa/out/channel-<channel>), so the plain QA build the gates measure is never replaced by it.
 	const outDir = channelOutDir(channel);

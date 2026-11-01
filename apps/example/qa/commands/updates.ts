@@ -115,8 +115,8 @@ export async function updates(argv: string[]): Promise<void> {
 
 	// One run per device and one per channel: two runs publishing to a channel at once would each find the other's updates at its head.
 	const deviceLock = lockFor(serial);
-	if (deviceLock) reexecUnderLock(deviceLock, ["updates", ...argv]);
-	reexecUnderLock(channelLock(channel), ["updates", ...argv]);
+	if (deviceLock) await reexecUnderLock(deviceLock, ["updates", ...argv]);
+	await reexecUnderLock(channelLock(channel), ["updates", ...argv]);
 
 	await assertOnline(serial);
 	// Who the device is, from what it says about itself: a phone reached by a wireless or forwarded serial is still the phone.

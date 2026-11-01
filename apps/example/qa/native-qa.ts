@@ -3,6 +3,7 @@ import { boot } from "./commands/boot.ts";
 import { build } from "./commands/build.ts";
 import { gates } from "./commands/gates.ts";
 import { gestures } from "./commands/gestures.ts";
+import { hold } from "./commands/hold.ts";
 import { iosProbe } from "./commands/ios-probe.ts";
 import { lab } from "./commands/lab.ts";
 import { parity } from "./commands/parity.ts";
@@ -33,8 +34,9 @@ const usage = `usage: native-qa <command> [flags]
   gestures --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--team <id>] [--rebuild] [--run ...] [--repeat <n>] [--timeout <s>]
   probe  --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--probes <names>] [--direction ltr|rtl]
   updates --device <serial> [--apk <channel build>] [--baseline-apk <path> | --no-baseline] [--channel qa] [--warm <n>] [--max-launches <n>] [--settle <n>] [--faults boot,mount,effect] [--eas "<command>"] [--environment <eas environment>] [--reset app|data] [--dexopt profile|none] [--package <id>]
+  hold   --device <serial> [--wait <seconds>] -- <command...>   (the emulator lock held across the commands: a CI lane, a sequence of runs)
   report
-  gates  [--platform android|ios] [--all] [--smoke]`;
+  gates  [--platform android|ios] [--all] [--smoke] [--runs lab,parity,...] [--except lab.runs,...] [--markdown <file>]`;
 
 const [command, ...rest] = process.argv.slice(2);
 
@@ -51,6 +53,7 @@ const commands: Record<string, (argv: string[]) => Promise<void>> = {
 	smoke,
 	gestures,
 	updates,
+	hold,
 	probe: iosProbe,
 	report: async () => report(),
 	gates,

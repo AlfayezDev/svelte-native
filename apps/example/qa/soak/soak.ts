@@ -103,7 +103,7 @@ export async function soak(argv: string[]): Promise<void> {
 	});
 	const serial = requireString(values.device, "device");
 	const lock = lockFor(serial);
-	if (lock) reexecUnderLock(lock, ["soak", ...argv]);
+	if (lock) await reexecUnderLock(lock, ["soak", ...argv]);
 
 	const minutes = minutesFlag(values.minutes);
 	const parts = partsFlag(values.parts);

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { runsFlag } from "../commands/gates.ts";
 import { join } from "node:path";
 import {
 	checkGatesFile,
@@ -10,7 +11,10 @@ import {
 	gateKinds,
 	groupRows,
 	judge,
+	exceptGates,
+	renderMarkdown,
 	renderTable,
+	restrictRuns,
 	tally,
 	tallyByDevice,
 	type Gate,
@@ -355,6 +359,70 @@ describe("run kinds", () => {
 		const frames: Gate = { ...gate("frames.*.maxMs"), roles: ["phone"] };
 		const rows = evaluate([frames], { x: { platform: "android", role: "lab", runs: ["lab"], metrics: { "frames.idle.maxMs": 90 } } });
 		expect(rows.map((row) => row.verdict)).toEqual(["informational"]);
+	});
+});
+
+describe("a lane that ran some run kinds", () => {
+	const gate = (metric: string): Gate => ({ id: metric, title: metric, unit: "", metric, bar: { android: { min: 1 } } });
+	const lab = { role: "lab", platform: "android" } as const;
+	test("--runs limits the kinds a device provides, so the others are informational and not 'not measured'", () => {
+		expect(restrictRuns(["lab", "soak", "crashes", "parity"], ["lab", "parity"])).toEqual(["lab", "parity"]);
+		expect(restrictRuns(null, ["lab"])).toEqual(["lab"]);
+		expect(restrictRuns(["lab"], undefined)).toEqual(["lab"]);
+		const gates = [gate("lab.checks.passed"), gate("crashes.coldStarts"), gate("soak.minutes")];
+		const device = (runs: ReportDevice["runs"]): Record<string, ReportDevice> => ({ "localhost:5555": { ...lab, runs, metrics: { "lab.checks.passed": 28 } } });
+		const everything = evaluate(gates, device(["lab", "soak", "crashes"]));
+		expect(everything.map((row) => row.verdict)).toEqual(["pass", "not measured", "not measured"]);
+		expect(tally(everything).ok).toBe(false);
+		const lane = evaluate(gates, device(restrictRuns(["lab", "soak", "crashes"], ["lab"])));
+		expect(lane.map((row) => row.verdict)).toEqual(["pass", "informational", "informational"]);
+		expect(tally(lane).ok).toBe(true);
+	});
+	test("a gate of a kind the lane did run still fails when it was not measured", () => {
+		const rows = evaluate([gate("lab.checks.passed")], { x: { ...lab, runs: restrictRuns(["lab", "soak"], ["lab"]), metrics: {} } });
+		expect(rows.map((row) => row.verdict)).toEqual(["not measured"]);
+	});
+	test("--except turns the gate of a smaller sample into an informational row, and refuses a gate that does not exist", () => {
+		const file = { gates: [gate("lab.runs"), gate("lab.checks.passed")] };
+		const rows = evaluate(file.gates, { x: { ...lab, runs: ["lab"], metrics: { "lab.runs": 0, "lab.checks.passed": 28 } } });
+		expect(rows.map((row) => row.verdict)).toEqual(["fail", "pass"]);
+		const lane = exceptGates(rows, ["lab.runs"], file);
+		expect(lane.map((row) => row.verdict)).toEqual(["informational", "pass"]);
+		expect(tally(lane).ok).toBe(true);
+		expect(() => exceptGates(rows, ["lab.run"], file)).toThrow("lab.run");
+	});
+	test("the flag names run kinds and nothing else", () => {
+		expect(runsFlag(undefined)).toBeUndefined();
+		expect(runsFlag("lab, parity,a11y")).toEqual(["lab", "parity", "a11y"]);
+		expect(() => runsFlag("lab,pairty")).toThrow("pairty");
+		expect(() => runsFlag(",")).toThrow("--runs");
+	});
+});
+
+describe("the Markdown table of a job summary", () => {
+	const gate = (id: string, metric: string, bar: { max?: number; min?: number }): Gate => ({ id, title: id, unit: "x", metric, bar: { android: bar } });
+	const rows = evaluate(
+		[gate("checks.passed", "lab.checks.passed", { min: 28 }), gate("lab.runs", "lab.runs", { min: 3 }), gate("crashes.coldStarts", "crashes.coldStarts", { min: 1000 }), gate("parity.a|b", "parity.x", { max: 0 })],
+		{ "localhost:5555": { platform: "android", role: "lab", runs: ["lab", "parity"], metrics: { "lab.checks.passed": 27, "lab.runs": 3, "crashes.coldStarts": 4 } } },
+	);
+	const markdown = renderMarkdown(rows, "Gates, android");
+	test("headline counts, then what failed first, passes and informational rows folded", () => {
+		const lines = markdown.split("\n");
+		expect(lines[0]).toBe("### Gates, android");
+		expect(lines[2]).toBe("FAIL: 1 gates pass, 1 fail, 1 not measured, 1 informational (not counted)");
+		expect(markdown).toContain("**Failed or not measured (2)**");
+		expect(markdown).toContain("| checks.passed | localhost:5555 (lab) | >= 28 x | 27 | **FAIL** |");
+		expect(markdown).toContain("| parity.a\\|b | localhost:5555 (lab) | <= 0 x | - | **NOT MEASURED** |");
+		expect(markdown).toContain("<details><summary>Passing (1)</summary>");
+		expect(markdown.indexOf("Failed or not measured")).toBeLessThan(markdown.indexOf("Passing"));
+		expect(markdown).toContain("<details><summary>Informational (1)");
+		expect(markdown).toContain("| crashes.coldStarts | localhost:5555 (lab) | >= 1000 x | 4 | informational |");
+	});
+	test("a table of passes says PASS and has no failure section", () => {
+		const passing = evaluate([gate("lab.runs", "lab.runs", { min: 3 })], { x: { platform: "android", role: "lab", runs: ["lab"], metrics: { "lab.runs": 3 } } });
+		const text = renderMarkdown(passing, "Gates");
+		expect(text).toContain("PASS: 1 gates pass, 0 fail, 0 not measured");
+		expect(text).not.toContain("Failed or not measured");
 	});
 });
 

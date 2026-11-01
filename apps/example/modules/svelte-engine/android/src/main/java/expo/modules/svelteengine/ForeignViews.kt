@@ -95,6 +95,9 @@ class ForeignViews : UIManagerListener {
   /** The view React Native created for [tag], or null while it has not. */
   private fun resolve(tag: Int): View? = fabric?.resolveView(tag)
 
+  /** The view React Native made for foreign node [tag] or for a node inside a foreign view, for the lab's readback ([Inspect]); null for an engine node. */
+  fun viewFor(tag: Int): View? = live.get(tag)?.content ?: resolve(tag)
+
   override fun didMountItems(uiManager: UIManager) {
     if (waiting.isNotEmpty()) {
       var i = waiting.size - 1

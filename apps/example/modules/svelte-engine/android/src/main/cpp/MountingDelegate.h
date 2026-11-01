@@ -12,6 +12,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include <react/renderer/componentregistry/componentNameByReactViewName.h>
+
 #include "ForeignSplit.h"
 
 namespace expo::svelteengine {
@@ -68,7 +70,7 @@ class MountingDelegate : public facebook::react::MountingOverrideDelegate {
   mutable std::unordered_map<facebook::react::Tag, facebook::react::State::Shared> scrollStates_;
   mutable float lastScale_{1.f};
   mutable std::mutex foreignMutex_;
-  std::unordered_set<std::string> foreignNames_;
+  foreign::Names foreignNames_{facebook::react::componentNameByReactViewName};
   mutable foreign::Ownership foreign_;
   // Foreign roots React Native created and has not inserted yet. Only the thread that pulls transactions touches it.
   mutable std::unordered_set<facebook::react::Tag> foreignAwaitingInsert_;

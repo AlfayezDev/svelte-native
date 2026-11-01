@@ -9,6 +9,7 @@ import type {
 	BootFile,
 	BuildFile,
 	CrashesFile,
+	ForeignFile,
 	GesturesFile,
 	LabFile,
 	ParityFile,
@@ -38,14 +39,14 @@ export function slug(serial: string): string {
 }
 
 /** The kinds of run file `report` merges, one newest file per device of each. */
-export const runKinds = ["lab", "boot", "soak", "crashes", "parity", "a11y", "resilience", "smoke", "gestures", "updates", "product"] as const;
+export const runKinds = ["lab", "boot", "soak", "crashes", "parity", "a11y", "resilience", "smoke", "gestures", "foreign", "updates", "product"] as const;
 export type RunKind = (typeof runKinds)[number];
 
 export async function writeRun(
 	kind: RunKind,
 	serial: string,
 	startedAt: Date,
-	data: LabFile | BootFile | SoakFile | CrashesFile | ParityFile | A11yFile | ResilienceFile | SmokeFile | GesturesFile | UpdatesFile | ProductFile,
+	data: LabFile | BootFile | SoakFile | CrashesFile | ParityFile | A11yFile | ResilienceFile | SmokeFile | GesturesFile | ForeignFile | UpdatesFile | ProductFile,
 ): Promise<string> {
 	await mkdir(runsDir, { recursive: true });
 	const name = `${kind}-${slug(serial)}-${stamp(startedAt)}`;

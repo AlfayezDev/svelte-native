@@ -1,6 +1,7 @@
 package expo.modules.svelteengine.views
 
 import android.content.Context
+import android.graphics.Canvas
 import android.graphics.drawable.GradientDrawable
 import android.view.MotionEvent
 import android.view.View
@@ -170,6 +171,35 @@ open class EngineView(context: Context) : ViewGroup(context), EngineNode {
   // gesture over through onInterceptTouchEvent (and EngineRoot sends cancel). pointerEvents none / box-none views are
   // never touch targets themselves.
   override fun onTouchEvent(event: MotionEvent): Boolean = node.pointer == 0 || node.pointer == 3
+
+  /**
+   * `overflow: hidden` as React Native has it (`ReactViewGroup.dispatchDraw`, `clipToPaddingBox`): the canvas is clipped to the padding box, the view's size less its border
+   * widths, whatever its children are. Android's own spelling of it, `clipChildren`, cuts each child off at the child's own bounds instead: a child that draws outside its
+   * bounds on purpose (react-native-fast-shadow's shadow, a glow, a scaled view) lost the part outside, and a child outside the parent was not clipped at all. The
+   * clip does not depend on what the view holds, so a sibling is clipped the same before and after a foreign view mounts next to it. A rounded view also clips to its outline
+   * (`Props`, `RoundedOutline`). `clipChildren` stays off for every engine view.
+   */
+  var hidesOverflow = false
+    set(value) {
+      if (field == value) return
+      field = value
+      invalidate()
+    }
+
+  /** How the view clips what it draws: `canvas` (overflow hidden, the padding box), `none`. What the lab's `inspect` reports. */
+  val clipMode: String get() = if (hidesOverflow) "canvas" else "none"
+
+  override fun dispatchDraw(canvas: Canvas) {
+    if (!hidesOverflow) {
+      super.dispatchDraw(canvas)
+      return
+    }
+    val widths = node.border
+    val saved = canvas.save()
+    canvas.clipRect(widths[0], widths[1], width - widths[2], height - widths[3])
+    super.dispatchDraw(canvas)
+    canvas.restoreToCount(saved)
+  }
 
   override fun onViewAdded(child: View) {
     super.onViewAdded(child)

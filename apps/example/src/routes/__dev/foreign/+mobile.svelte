@@ -2,7 +2,7 @@
   import { List, Screen, ScrollView, Text, View, useRouter } from "@rasheed/svelte-native";
   import { nativeLabEnabled, theme } from "#lib/native/state.svelte.ts";
   import ForeignSet, { type Kind } from "#lib/native/dev/ForeignSet.svelte";
-  import LibrarySet, { libraryKinds } from "#lib/native/dev/LibrarySet.svelte";
+  import LibrarySet, { libraryKinds, type LibraryKind } from "#lib/native/dev/LibrarySet.svelte";
   import { foreignLab } from "#lib/native/dev/foreign.svelte.ts";
   import Button from "#lib/native/components/Button.svelte";
 
@@ -17,9 +17,13 @@
   let { url }: { url?: URL } = $props();
   const router = useRouter();
   const mode = $derived(url?.searchParams.get("mode") ?? "inline");
+  /** `&kind=<library>` shows one library's section in `libraries` and `libraries-sheet` (what the checks of `foreign-libraries-lab.ts` open); none shows all thirteen. */
+  const only = $derived(url?.searchParams.get("kind") as LibraryKind | null);
+  const shownKinds = $derived<readonly LibraryKind[]>(only && libraryKinds.includes(only) ? [only] : libraryKinds);
   const kinds: Kind[] = Array.from({ length: 24 }, (_, index) => (["web", "map", "video"] as const)[index % 3]);
   let list: { scrollToIndex: (index: number, animated?: boolean) => void } | undefined = $state();
-  $effect(() => { if (foreignLab.scrollIndex >= 0) list?.scrollToIndex(foreignLab.scrollIndex, true); });
+  // `scrollIndex` is the row to scroll to (-1: none); `scrollAnimated` false makes the library checks scroll without animation (an animated scroll to a row far down was not always followed by the rows it passes).
+  $effect(() => { if (foreignLab.scrollIndex >= 0) list?.scrollToIndex(foreignLab.scrollIndex, foreignLab.scrollAnimated); });
 </script>
 
 {#if nativeLabEnabled}
@@ -27,7 +31,7 @@
     <Screen sheet={{ detents: [0.9], grabber: true }} style={{ backgroundColor: theme.surface }}>
       <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 28, gap: 10 }}>
         <Text accessibilityRole="header" style={{ color: theme.foreground, fontSize: 18, fontWeight: "600" }}>Native-view libraries in a sheet</Text>
-        <LibrarySet source="libraries-sheet" height={90} />
+        <LibrarySet source="libraries-sheet" kinds={shownKinds} height={90} />
         <Button label="Close" onPress={() => router.back()} />
       </ScrollView>
     </Screen>
@@ -42,9 +46,9 @@
   {:else}
     <Screen title="Foreign views" style={{ backgroundColor: theme.background }}>
       {#if mode === "libraries"}
-        <ScrollView contentContainerStyle={{ padding: 8 }}><LibrarySet source="libraries" /></ScrollView>
+        <ScrollView contentContainerStyle={{ padding: 8 }}><LibrarySet source="libraries" kinds={shownKinds} /></ScrollView>
       {:else if mode === "libraries-list"}
-        <List items={[...libraryKinds]} rowHeight={150} keyOf={(_, index) => index} style={{ flex: 1 }} contentContainerStyle={{ padding: 8 }}>
+        <List bind:this={list} items={[...libraryKinds]} rowHeight={150} keyOf={(_, index) => index} style={{ flex: 1 }} contentContainerStyle={{ padding: 8 }}>
           {#snippet row(kind, index)}
             <View style={{ height: 146 }}><LibrarySet source={`libraries-row-${index}`} kinds={[kind]} height={100} /></View>
           {/snippet}

@@ -582,3 +582,63 @@ export type GesturesFile = {
 	launches: GestureLaunch[];
 } & CrashReportsRecord &
 	SessionRecord;
+
+/* ---- foreign: the native-view libraries ---- */
+
+/** The place of a check: the three places the lab mounts a library in, and the release bundle (the harness's own checks of what it holds). */
+export type ForeignPlace = "inline" | "row" | "sheet" | "bundle";
+
+/** One check of a native-view library (`foreign-libraries-lab.ts`, `[Svelte foreign library]`, or the harness's own `bundle` checks). */
+export type ForeignCheck = { library: string; where: ForeignPlace; name: string; passed: boolean; detail: string };
+
+/** A check the platform cannot run yet (no native inspection, no pixel reader): reported, never counted as a pass. */
+export type ForeignSkip = { library: string; where: string; name: string; why: string };
+
+/** One launch of the lab for the `foreign` run: `libraries` (the checks) or `leftovers` (the launch after it). */
+export type ForeignLaunch = {
+	name: "libraries" | "leftovers";
+	run: string;
+	startedAt: string;
+	durationMs: number;
+	/** The lab reached its completion line and nothing else came to the front. */
+	complete: boolean;
+	crashes: string[];
+	jsErrors: string[];
+	engineWarnings: string[];
+	interrupted?: { at: string; by: string };
+	/** How many times the lab was launched for this (another app came to the front during the earlier ones); absent: once. */
+	attempts?: number;
+	logFile: string;
+};
+
+/** What the release bundle's source map says of the libraries: the modules of each that it holds, and the files of React it holds at all. */
+export type ForeignBundle = {
+	map: string;
+	sources: number;
+	/** Files of `react` itself (`node_modules/react/`), reported: the app's other dependencies (Reanimated, expo-modules-core) import them. */
+	reactFiles: string[];
+	/** The library of the lab each module belongs to, for the modules of a library's own JavaScript that the wrappers must not pull in. */
+	forbidden: { library: string; module: string }[];
+	/** Whether the APK the run measured is the one the map belongs to (the build record's digest). */
+	matchesBuild: boolean;
+};
+
+export type ForeignFile = {
+	schema: 1;
+	kind: "foreign";
+	startedAt: string;
+	finishedAt: string;
+	source: Source;
+	device: DeviceInfo;
+	app: AppInfo;
+	/** The libraries the run asked for (all of the pinned ones unless `--only` narrowed it). */
+	asked: string[];
+	checks: ForeignCheck[];
+	skips: ForeignSkip[];
+	/** The checks of the `foreign-leftovers` launch. */
+	leftovers: ForeignCheck[];
+	/** The lines of either launch that carried a check's tag and could not be read as one: each is a failure of the run (`foreign.unparsedLines`). */
+	unparsed?: string[];
+	launches: ForeignLaunch[];
+	bundle: ForeignBundle | null;
+} & CrashReportsRecord;

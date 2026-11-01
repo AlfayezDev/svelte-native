@@ -205,7 +205,7 @@ const now = () => performance.now();
 
 /** Timings of the most recent flush, for the lab; also published on `globalThis.__svelteFabric` so app code needs no import. */
 /** iOS's navigation module (`modules/svelte-navigation-ios`): keeps the router's state for the next start of the process and gives it back once. Android has the engine module's `saveNavigation` and `initialProps` instead. */
-type NavigationHost = { save?: (json: string) => void; restore?: () => unknown };
+type NavigationHost = { save?: (json: string) => void; restore?: () => unknown; restored?: () => void };
 let navigationHost: NavigationHost | null | undefined;
 const navigationModule = (): NavigationHost | null => navigationHost === undefined ? (navigationHost = requireOptionalNativeModule<NavigationHost>("SvelteNavigation")) : navigationHost;
 /** Hands the root router's navigation state to the host, which keeps it for a restart of the process (Android: the Activity's saved instance state; iOS: a file it writes when the app goes to the background). Nothing happens without either module. */
@@ -213,7 +213,8 @@ export function saveNavigation(json: string): void { engineModule?.saveNavigatio
 /**
  * The state the previous process left, when the host keeps it in its own way (iOS) and not in `initialProps.navigation` (Android): the JSON of a
  * record that is fresh and that the router can read (`freshNavigation`), once. The host decides whether the system ended the process (it keeps
- * nothing after the user left); the age is judged here. Restoring is best effort: a host that throws leaves the app on its first screen.
+ * nothing after the user left); the age is judged here. A record that is not used is cleared at once, the host being told it is of no use; one that
+ * is used is cleared by `navigationRestored` when the surface has started. Restoring is best effort: a host that throws leaves the app on its first screen.
  */
 export function hostNavigation(): string | undefined {
   try {
@@ -221,11 +222,17 @@ export function hostNavigation(): string | undefined {
     if (!module?.restore) return undefined;
     const verdict = freshNavigation(module.restore(), Date.now());
     if ("json" in verdict) return verdict.json;
-    if (verdict.dropped !== "none") console.info(`[Svelte navigation] the saved state was not restored: ${verdict.dropped}`);
+    if (verdict.dropped === "none") return undefined;
+    console.info(`[Svelte navigation] the saved state was not restored: ${verdict.dropped}`);
+    module.restored?.();
   } catch (error) {
     console.warn("[Svelte navigation] the host could not give the saved state back", error);
   }
   return undefined;
+}
+/** The surface started with the state `hostNavigation` gave it: the host can forget it (a start that dies before this is counted, and a state that failed twice is dropped). */
+export function navigationRestored(): void {
+  try { navigationModule()?.restored?.(); } catch (error) { console.warn("[Svelte navigation] the host could not forget the restored state", error); }
 }
 /** Whether the host's window went away because the user left (Back, a swipe from Recents) and not because it is being recreated: Android's `Activity.isFinishing`. */
 export function hostFinishing(): boolean { return engineModule?.finishing?.() === true; }

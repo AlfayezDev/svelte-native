@@ -430,8 +430,8 @@ test("process death: the router writes its state through the engine module after
 
 /** iOS's navigation module (`modules/svelte-navigation-ios`) as far as JavaScript sees it: `save` after every change, `restore` once with a record or null. */
 function navigationModule(record: unknown = null) {
-  const module = { saved: [] as string[], restores: 0 };
-  environment.__nativeModules = { SvelteNavigation: { save: (json: string) => module.saved.push(json), restore: () => { module.restores++; return module.restores === 1 ? record : null; } } };
+  const module = { saved: [] as string[], restores: 0, forgotten: 0 };
+  environment.__nativeModules = { SvelteNavigation: { save: (json: string) => module.saved.push(json), restore: () => { module.restores++; return module.restores === 1 ? record : null; }, restored: () => { module.forgotten++; } } };
   return module;
 }
 
@@ -444,6 +444,7 @@ test("iOS: the router writes its state through the navigation module, and a new 
     roots = {}; commits.length = 0;
     await openApp(m, 60);
     expect(host.restores).toBe(1); // asked once, at the first surface: nothing was kept
+    expect(host.forgotten).toBe(0); // and nothing to forget
     expect(hrefs(treeScope.__shellRouter)).toEqual(["/acme"]);
     await wander(m);
     expect(host.saved.length).toBe(3); // the same writes as Android's: one per batch of changes
@@ -459,6 +460,7 @@ test("iOS: the router writes its state through the navigation module, and a new 
     roots = {}; commits.length = 0;
     await openApp(m, 61);
     expect(record.restores).toBe(1);
+    expect(record.forgotten).toBe(1); // the surface started with the state: the host clears what it kept
     expect(hrefs(treeScope.__shellRouter)).toEqual(["/acme", "/account"]);
     expect(arrows(treeScope.__shellRouter)).toEqual([false, true]);
     expect(texts(61)).toEqual(["page /acme/inbox", "page /acme/inbox/compose", "page /account"]);
@@ -468,7 +470,7 @@ test("iOS: the router writes its state through the navigation module, and a new 
     expect(JSON.parse(record.saved.at(-1) as string)).toEqual(hmrState().navigation?.());
     m.remountSurfaces();
     await turns(m);
-    expect(record.restores).toBe(1);
+    expect([record.restores, record.forgotten]).toEqual([1, 1]);
     expect(hrefs(treeScope.__shellRouter)).toEqual(["/acme", "/account"]);
   } finally { delete environment.__nativeModules; }
 });
@@ -499,7 +501,7 @@ test("iOS: a record that is old, from the future, malformed or no state starts t
       const m = await load("hmr-tree-shell.svelte");
       roots = {}; commits.length = 0;
       await openApp(m, 63);
-      expect([name, host.restores]).toEqual([name, 1]);
+      expect([name, host.restores, host.forgotten]).toEqual([name, 1, 1]); // a record the app cannot use is of no use to the host either
       expect([name, hrefs(treeScope.__shellRouter)]).toEqual([name, ["/acme"]]);
       expect([name, texts(63)]).toEqual([name, ["page /acme/home"]]);
     } finally { delete environment.__nativeModules; }
@@ -512,7 +514,7 @@ test("iOS: a record that is old, from the future, malformed or no state starts t
     const m = await load("hmr-tree-shell.svelte");
     roots = {}; commits.length = 0;
     await openApp(m, 64, { navigation: JSON.stringify({ stack: { entries: [{ href: "/workspaces", presentation: "push" }] } }) });
-    expect(host.restores).toBe(0);
+    expect([host.restores, host.forgotten]).toEqual([0, 0]);
     expect(hrefs(treeScope.__shellRouter)).toEqual(["/workspaces"]);
   } finally { delete environment.__nativeModules; }
 

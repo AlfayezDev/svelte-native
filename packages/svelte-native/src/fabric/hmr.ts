@@ -7,7 +7,7 @@
  * every running surface is unmounted and started again on the same root tag with the same props and navigation state.
  */
 import { hmrState } from "../hmr-state.ts";
-import { hostFinishing, hostNavigation, startSurface, stopSurface } from "./host.ts";
+import { hostFinishing, hostNavigation, navigationRestored, startSurface, stopSurface } from "./host.ts";
 import ErrorScreen from "./ErrorScreen.svelte";
 
 const dev = () => typeof __DEV__ !== "undefined" && __DEV__;
@@ -15,12 +15,13 @@ const dev = () => typeof __DEV__ !== "undefined" && __DEV__;
 /**
  * The launch props with the navigation state of the process that died. Android's host passes it as `initialProps.navigation`; iOS's gives it
  * to the navigation module, which hands it over once (a surface that starts again in the same runtime, in development, has it in its props
- * already). From here on the two are one path: `Root.svelte` reads `navigation`, `createRouter` adopts it.
+ * already). From here on the two are one path: `Root.svelte` reads `navigation`, `createRouter` adopts it. `hosted` is true when the iOS host
+ * gave a state, which it forgets once the surface has started.
  */
-function withHostNavigation(initialProps?: Record<string, unknown>): Record<string, unknown> | undefined {
-  if (initialProps?.navigation !== undefined) return initialProps;
+function withHostNavigation(initialProps?: Record<string, unknown>): { props: Record<string, unknown> | undefined; hosted: boolean } {
+  if (initialProps?.navigation !== undefined) return { props: initialProps, hosted: false };
   const navigation = hostNavigation();
-  return navigation === undefined ? initialProps : { ...initialProps, navigation };
+  return navigation === undefined ? { props: initialProps, hosted: false } : { props: { ...initialProps, navigation }, hosted: true };
 }
 
 /** Starts the registered app on a surface. In development a throw during mount or the first flush becomes the error screen; in release it propagates. */
@@ -29,10 +30,11 @@ export function launchSurface(rootTag: number, initialProps?: Record<string, unk
   if (!state.app) throw new Error("No Fabric app is registered: createFabricApp has not run");
   // A surface that starts while another still runs (a recreated Activity whose old surface stops after the new one starts): the new root router takes the running one's navigation, as it does after a stop.
   if ([...state.surfaces.keys()].some((running) => running !== rootTag)) state.restore ??= state.navigation?.();
-  const props = withHostNavigation(initialProps);
+  const { props, hosted } = withHostNavigation(initialProps);
   state.surfaces.set(rootTag, props);
   try {
     startSurface(rootTag, state.app.App, { ...state.app.props, ...props });
+    if (hosted) navigationRestored();
   } catch (error) {
     if (!dev()) throw error;
     console.error(error);

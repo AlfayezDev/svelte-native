@@ -14,6 +14,7 @@ import com.facebook.react.fabric.FabricUIManager
 import com.facebook.react.uimanager.UIManagerHelper
 import com.facebook.react.uimanager.common.UIManagerType
 import expo.modules.kotlin.Promise
+import expo.modules.kotlin.exception.CodedException
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.svelteengine.views.EngineRoot
@@ -28,7 +29,7 @@ class SvelteEngineModule : Module() {
 
     Events("insets")
 
-    OnCreate { Capture.deleteLeftovers(appContext.reactContext?.cacheDir) }
+    OnCreate { appContext.reactContext?.let { Capture.deleteLeftovers(listOf(it.cacheDir, it.externalCacheDir)) } }
 
     OnDestroy { setAnimatedUpdater(null); AnimatedBridge.uninstall(); Capture.deleteTemporaryFiles(); onMain { insets?.uninstall(); mountingManager?.foreign?.uninstall(); mountingManager?.disableGestures() } }
 
@@ -164,10 +165,14 @@ class SvelteEngineModule : Module() {
 
     // What the platform made of a tag (class, size, screen position, attached, shown, text, inner views and surfaces), for the lab's checks
     // of the native-view libraries (`Inspect`); null for an unknown tag or while the main thread is busy.
-    Function("inspect") { tag: Int -> onMainBlocking { mountingManager?.let { Inspect.of(it, tag) } } }
+    Function("inspect") { tag: Int ->
+      requireLab("inspect")
+      onMainBlocking { mountingManager?.let { Inspect.of(it, tag) } }
+    }
 
     // A tap at (x, y) dp of the overlay through EngineRoot.dispatchTouchEvent, for the lab (it cannot press the screen).
     Function("tap") { x: Double, y: Double ->
+      requireLab("tap")
       val manager = mountingManager ?: return@Function false
       onMain { ForeignViews.tap(manager.root, x.toFloat(), y.toFloat()) }
       true
@@ -175,6 +180,7 @@ class SvelteEngineModule : Module() {
 
     // A drag through EngineRoot.dispatchTouchEvent, for the lab: from (x0, y0) to (x1, y1) dp over durationMs.
     Function("drag") { x0: Double, y0: Double, x1: Double, y1: Double, durationMs: Int ->
+      requireLab("drag")
       val manager = mountingManager ?: return@Function false
       onMain { ForeignViews.drag(manager.root, x0.toFloat(), y0.toFloat(), x1.toFloat(), y1.toFloat(), durationMs.toLong(), 12) }
       true
@@ -195,6 +201,7 @@ class SvelteEngineModule : Module() {
     // trace (Chrome's .cpuprofile) to the app's external files directory, which `adb pull` can read on a release build. Returns the
     // path, or null when the profiler is not in this build.
     Function("profileJs") { start: Boolean ->
+      requireLab("profileJs")
       try {
         if (start) {
           com.facebook.hermes.instrumentation.HermesSamplingProfiler.enable()
@@ -231,6 +238,18 @@ class SvelteEngineModule : Module() {
   }
 
   private val mainHandler = Handler(Looper.getMainLooper())
+
+  /**
+   * The hooks of the lab that read what a view holds (`inspect`: the text of any view, a password field's included), press the screen (`tap`, `drag`) or write a profile to
+   * the app's files (`profileJs`) answer the QA app and debuggable builds only (`LabSwitches.allowed`, the rule that lets the lab read the launch intent): a product build
+   * has the module and not these. `qa/test/product-modules.test.ts` reads this file to see each of them starts with this check.
+   */
+  private fun requireLab(hook: String) {
+    val context = appContext.reactContext
+    val debuggable = context != null && (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+    if (context == null || !LabSwitches.allowed(context.packageName, debuggable))
+      throw CodedException("ERR_LAB_ONLY", "SvelteEngine.$hook is a hook of the lab: the QA app (${LabSwitches.QA_PACKAGE}) and debuggable builds only", null)
+  }
 
   // Reanimated is a soft dependency: its patched NativeProxy exposes `SvelteEngineHook.updater` and a native sink
   // (patches/react-native-reanimated@4.5.1.patch). Without the patch or the library both are no-ops. The sink takes the

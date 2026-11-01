@@ -74,15 +74,17 @@ object Capture {
   private val callbacks: Handler by lazy { Handler(HandlerThread("svelte-capture").also { it.start() }.looper) }
 
   /**
-   * Deletes the `tmpfile` results a process of the app that was killed left in [directory] ([CaptureFiles.sweep]): everything of the library's name
-   * that is older than this process. Off the main thread, once, when the module is created, so no capture of this process can be in the way.
+   * Deletes the `tmpfile` results a process of the app that was killed left ([CaptureFiles.sweep]): everything of the library's name that is older than this process, in
+   * both cache directories (a result goes to the one with more free space, the external one when the card has it). Off the main thread, once, when the module is
+   * created, so no capture of this process can be in the way.
    */
-  fun deleteLeftovers(directory: java.io.File?) {
-    if (directory == null) return
+  fun deleteLeftovers(directories: List<java.io.File?>) {
+    val existing = directories.filterNotNull().distinct()
+    if (existing.isEmpty()) return
     Thread {
       try {
         val started = System.currentTimeMillis() - (SystemClock.elapsedRealtime() - android.os.Process.getStartElapsedRealtime())
-        val deleted = files.sweep(directory, TEMP_FILE_PREFIX, started)
+        val deleted = existing.sumOf { files.sweep(it, TEMP_FILE_PREFIX, started) }
         if (deleted > 0) Log.i(TAG, "capture: deleted $deleted leftover file(s) of an earlier process")
       } catch (error: Throwable) {
         Log.w(TAG, "capture: could not clear the leftovers: ${error.message}")

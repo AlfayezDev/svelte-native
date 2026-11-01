@@ -50,7 +50,7 @@ export type PlanRun = {
 };
 
 /** Starts the test on the Mac, waits for it, and reads what the phone holds afterwards. */
-export async function runPlan(session: IosSession, steps: IosStep[], token: string, timeoutMs: number, options: IosPlanOptions): Promise<PlanRun> {
+export async function runPlan(session: IosSession, steps: IosStep[], token: string, timeoutMs: number, options: IosPlanOptions, pollMs = 5000): Promise<PlanRun> {
 	const { target } = session;
 	const { mac } = target;
 	const outFile = `${uiTestsRemote}/resilience-output-${token}.log`;
@@ -65,7 +65,7 @@ export async function runPlan(session: IosSession, steps: IosStep[], token: stri
 	let nextProgress = Date.now() + progressEveryMs;
 	let reached = 0;
 	while (Date.now() < deadline) {
-		await sleep(5000);
+		await sleep(pollMs);
 		if (Number.isFinite(testPid) && !(await testAlive(mac, testPid))) break;
 		if (Date.now() >= nextProgress) {
 			nextProgress = Date.now() + progressEveryMs;

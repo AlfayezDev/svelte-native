@@ -44,7 +44,7 @@ const kinds = (step: IosStep | undefined) => movesOf(step).map((move) => move.do
 describe("the iPhone's resilience plan", () => {
 	test("the full plan has the Android plan's shape: rotation, text size, language, the Home button 100 times, the process ended twice", () => {
 		expect(group("rotation")).toHaveLength(1 + 1 + 2 * 5);
-		expect(group("fontScale")).toHaveLength(1 + 3);
+		expect(group("fontScale")).toHaveLength(4);
 		expect(group("locale")).toHaveLength(2);
 		expect(group("appearance")).toHaveLength(2);
 		expect(group("background")).toHaveLength(100);
@@ -108,18 +108,22 @@ describe("the iPhone's resilience plan", () => {
 		expect(kinds(foreground)).toEqual(["terminate", "wait", "launch", "wait"]);
 	});
 
-	test("the text size and the language are launch arguments of a restart, and the size is judged on the pixels", () => {
-		const sizes = group("fontScale").slice(1);
+	test("the text size and the language are launch arguments of a restart, and the size is judged on the pixels against a reference set by name", () => {
+		const sizes = group("fontScale");
 		const base = [...restorationArgs];
 		expect(sizes.map((step) => movesOf(step).find((move) => move.do === "args"))).toEqual([
+			{ do: "args", args: [...base, "-UIPreferredContentSizeCategoryName", contentSizes.standard] },
 			{ do: "args", args: [...base, "-UIPreferredContentSizeCategoryName", contentSizes.largest] },
 			{ do: "args", args: [...base, "-UIPreferredContentSizeCategoryName", contentSizes.smallest] },
 			{ do: "args", args: [...base, "-UIPreferredContentSizeCategoryName", contentSizes.standard] },
 		]);
 		expect(contentSizes.largest).toBe("UICTContentSizeCategoryAccessibilityXXXL");
-		expect(group("fontScale")[0]?.check.scale).toEqual({ label: headerRow, record: "standard" });
-		expect(sizes[0]?.check.scale).toEqual({ label: headerRow, against: "standard", min: 1.5 });
-		expect(sizes[1]?.check.scale?.max).toBeLessThan(1);
+		expect(sizes.map((step) => step.check.scale)).toEqual([
+			{ label: headerRow, record: "standard" },
+			{ label: headerRow, against: "standard", min: 1.5 },
+			{ label: headerRow, against: "standard", max: 0.97 },
+			{ label: headerRow, against: "standard", min: 0.95, max: 1.05 },
+		]);
 		const languages = group("locale").map((step) => movesOf(step).find((move) => move.do === "args"));
 		expect(languages).toEqual([{ do: "args", args: [...base, "-AppleLanguages", "(ar)", "-AppleLocale", "ar_SA"] }, { do: "args", args: base }]);
 		// Each restart is the process ended after a trip to the background, then a launch: the restore under that size and language.

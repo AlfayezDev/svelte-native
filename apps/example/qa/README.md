@@ -265,7 +265,7 @@ What the run does (126 steps; the lab page opens first, with `run=resilience&tok
 | Group | Steps | What each does, and what it checks |
 | ----- | ----- | ---------------------------------- |
 | `rotation` | 12 | launch and open the menu; push the header screen; landscape and portrait 5 times (`XCUIDevice.orientation`). The header's navigation bar, its first row and its back button are on screen |
-| `fontScale` | 4 | measure the first row's height; then, for the largest (`UICTContentSizeCategoryAccessibilityXXXL`), the smallest (`...XS`) and the default size: Home, end the process, launch with `-UIPreferredContentSizeCategoryName <category>`. The screens come back (the restore) and the row is at least 1.5 times as high (largest), at most 0.97 (smallest), within 5 % (default) |
+| `fontScale` | 4 | for the default size asked for by name (`UICTContentSizeCategoryL`, the reference whose first-row height is recorded), the largest (`UICTContentSizeCategoryAccessibilityXXXL`), the smallest (`...XS`) and the default again: Home, end the process, launch with `-UIPreferredContentSizeCategoryName <category>`. The screens come back (the restore) and the row is at least 1.5 times as high as the reference (largest), at most 0.97 (smallest), within 5 % (default again) |
 | `locale` | 2 | the same restart with `-AppleLanguages (ar) -AppleLocale ar_SA`, then without |
 | `appearance` | 2 | dark, then light, while running (`XCUIDevice.appearance`, looked up at run time: where the runner's SDK has none, both steps are `skipped` and the gate allows 2) |
 | `background` | 100 | Home, 0.3 s, activate; the app is in the foreground, and every tenth time (and the last) the header screen is on screen |

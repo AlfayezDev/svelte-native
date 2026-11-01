@@ -165,23 +165,18 @@ export function buildIosPlan(options: IosPlanOptions, token: string): IosStep[] 
 			{ group: "rotation", name: `portrait ${of}`, moves: [{ do: "orient", to: "portrait" }, { do: "wait", seconds: 1.5 }], check: foreground(onHeader), recover: true },
 		);
 	}
-	steps.push({
-		group: "fontScale",
-		name: "measure the default text size",
-		moves: [],
-		check: { state: "foreground", present: onHeader, absent: [], scale: { label: headerRow, record: "standard" } },
-		recover: true,
-	});
+	// The reference is the default size asked for by name (`L`), not whatever the phone is set to: the others are measured against it.
 	for (const [name, category, scale] of [
-		["largest text (accessibility XXXL), after a restart", contentSizes.largest, { min: 1.5 }],
-		["small text (extra small), after a restart", contentSizes.smallest, { max: 0.97 }],
-		["default text, after a restart", contentSizes.standard, { min: 0.95, max: 1.05 }],
+		["default text (the reference), after a restart", contentSizes.standard, { record: "standard" }],
+		["largest text (accessibility XXXL), after a restart", contentSizes.largest, { against: "standard", min: 1.5 }],
+		["small text (extra small), after a restart", contentSizes.smallest, { against: "standard", max: 0.97 }],
+		["default text again, after a restart", contentSizes.standard, { against: "standard", min: 0.95, max: 1.05 }],
 	] as const)
 		steps.push({
 			group: "fontScale",
 			name,
 			moves: endAndReturn([...base, ...sizeArgs(category)]),
-			check: { state: "foreground", present: onHeader, absent: [], scale: { label: headerRow, against: "standard", ...scale } },
+			check: { state: "foreground", present: onHeader, absent: [], scale: { label: headerRow, ...scale } },
 			recover: true,
 		});
 	for (const [name, direction] of [["Arabic after a restart", "rtl"], ["English after a restart", "ltr"]] as const)

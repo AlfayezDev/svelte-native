@@ -243,11 +243,10 @@ const aliveEveryMs = 30_000;
 /** Writes `1` or `0` to the app's `Documents/gesture-trace.on`: the QA app records its recognizers at its next launch when it reads `1` (an app that XCUITest opens by link takes no launch argument). */
 async function setTraceFlag(target: IosSession["target"], on: boolean): Promise<void> {
 	const file = "/tmp/native-qa-ios/trace-flag";
-	await remoteOk(
-		target.mac,
-		`mkdir -p /tmp/native-qa-ios && printf ${on ? "1" : "0"} > ${file} && ${words(["xcrun", "devicectl", "device", "copy", "to", "--device", target.id, "--source", file, "--destination", "Documents/gesture-trace.on", "--domain-type", "appDataContainer", "--domain-identifier", target.bundleId])} > /dev/null 2>&1`,
-		{ timeoutMs: 90_000 },
-	);
+	const copy = words(["xcrun", "devicectl", "device", "copy", "to", "--device", target.id, "--source", file, "--destination", "Documents/gesture-trace.on", "--domain-type", "appDataContainer", "--domain-identifier", target.bundleId]);
+	// devicectl's first copy to a phone that was just used fails now and then; the tool's own words are kept, and one more try is made.
+	const command = `mkdir -p /tmp/native-qa-ios && printf ${on ? "1" : "0"} > ${file} && { out=$(${copy} 2>&1) || { sleep 3; out=$(${copy} 2>&1); } || { echo "$out" | tail -n 6 >&2; exit 1; }; }`;
+	await remoteOk(target.mac, command, { timeoutMs: 120_000 });
 }
 
 /** The app's recognizer recording (`--trace`), kept beside the log as `<log>.trace.json`, and what it says about each action the test performed. */

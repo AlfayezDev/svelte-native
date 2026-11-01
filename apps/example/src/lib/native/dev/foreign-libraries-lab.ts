@@ -148,17 +148,17 @@ export async function runForeignLibraries(router: Router, signal: AbortSignal, o
 
       try {
         router.goto(opened.href, opened.sheet ? { presentation: "sheet" } : undefined);
-        // A row far down the list: scroll to it (not animated: the rows it passes are not mounted on the way) and, when its section is not up after a while, ask again.
-        foreignLab.scrollAnimated = false;
-        if (where === "row") foreignLab.scrollIndex = opened.index;
-        // The section is up when its box has a handle: its set is registered as it is made, and a list mounts its first ten rows before it knows its size, so a row in
-        // that window is registered for a frame and gone when the layout trims the window (the box has no handle in that frame, and nothing then mounts the row again
-        // until the list is scrolled to it). The section is judged after the settle, and a row that went is asked for again.
+        // The section is up when its box has a handle: its set is registered as it is made, and the windowed list mounts its first ten rows before it knows its
+        // size, so a row of that window is registered for a frame and gone when the layout trims the window (the box has no handle in that frame, and nothing
+        // mounts the row again until the list is scrolled to it). The section is judged after the settle.
         const sectionUp = () => !!libraryHandles.get(opened.source)?.boxes[kind];
         const settle = where === "sheet" ? 900 : 500;
-        let mounted = await until(sectionUp, where === "row" ? 6000 : 10000, signal);
+        foreignLab.scrollAnimated = false;
+        let mounted = await until(sectionUp, where === "row" ? 1500 : 10000, signal);
         if (mounted) { await pause(settle, signal); mounted = sectionUp(); }
-        for (let attempt = 0; where === "row" && !mounted && attempt < 3 && !signal.aborted; attempt++) {
+        // A row that is not up after the settle (outside the list's window, or in the first window that the layout trimmed) is scrolled to (not animated: the rows it
+        // passes are not mounted on the way) and, when it is still not up after a while, asked for again. A row the list mounts anyway is checked where it is.
+        for (let attempt = 0; where === "row" && !mounted && attempt < 4 && !signal.aborted; attempt++) {
           foreignLab.scrollIndex = -1;
           await pause(200, signal);
           foreignLab.scrollIndex = opened.index;

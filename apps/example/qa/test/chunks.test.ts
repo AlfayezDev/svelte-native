@@ -85,17 +85,22 @@ describe("runChunks", () => {
 	test("goes on while a chunk ends with the limit status and stops at 0, counting the chunks", () => {
 		const seen: string[][] = [];
 		const statuses = [limitReached, limitReached, 0];
-		const count = quiet(() => runChunks("parity", { device: "x" }, 7, (args, index) => { seen.push(args); return statuses[index] as number; }));
+		const count = quiet(() => runChunks("parity", { device: "x" }, 7, (args, index) => { seen.push(args); return statuses[index] as number; }, { restartable: true }));
 		expect(count).toBe(3);
 		expect(seen[0]).toEqual(["parity", "--limit", "7", "--device", "x"]);
 		expect(seen[1]).toContain("--resume");
 		expect(seen[2]).toContain("--fresh");
 	});
 	test("a chunk that fails stops the run with the command to continue it", () => {
-		expect(() => quiet(() => runChunks("a11y", { device: "x" }, 7, (_, index) => (index === 0 ? limitReached : 1)))).toThrow("chunk 2 ended with status 1; continue with the same command plus --resume");
+		expect(() => quiet(() => runChunks("a11y", { device: "x" }, 7, (_, index) => (index === 0 ? limitReached : 1), { restartable: true }))).toThrow("chunk 2 ended with status 1; continue with the same command plus --resume");
+	});
+	test("a phone has nothing to restart: its chunks only continue the file", () => {
+		const seen: string[][] = [];
+		quiet(() => runChunks("a11y", { device: "R58Y90KNGRP" }, 7, (args, index) => { seen.push(args); return index === 0 ? limitReached : 0; }, { restartable: false }));
+		expect(seen[1]).toEqual(["a11y", "--limit", "7", "--resume", "--no-install", "--device", "R58Y90KNGRP"]);
 	});
 	test("a loop that never finishes is bounded", () => {
-		expect(() => quiet(() => runChunks("parity", { device: "x" }, 1, () => limitReached, 4))).toThrow("4 chunks and the matrix is not done");
+		expect(() => quiet(() => runChunks("parity", { device: "x" }, 1, () => limitReached, { maxChunks: 4, restartable: true }))).toThrow("4 chunks and the matrix is not done");
 	});
 });
 

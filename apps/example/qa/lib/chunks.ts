@@ -64,11 +64,11 @@ export type ChunkFlags = Record<string, string | boolean | undefined>;
  * after the first continues the file (`--resume`) on a fresh emulator (`--fresh`) and does not install the build again: the emulator keeps
  * its userdata, and a file continued with another build is refused.
  */
-export function chunkArgs(command: string, values: ChunkFlags, chunk: number, index: number): string[] {
+export function chunkArgs(command: string, values: ChunkFlags, chunk: number, index: number, restartable = true): string[] {
 	const skipped = new Set(["chunk", "limit", "resume", "fresh", ...(index > 0 ? ["apk", "no-install"] : [])]);
 	const args = [command, "--limit", String(chunk)];
 	if (index > 0 || values.resume === true) args.push("--resume");
-	if (index > 0 || values.fresh === true) args.push("--fresh");
+	if ((index > 0 && restartable) || values.fresh === true) args.push("--fresh");
 	if (index > 0) args.push("--no-install");
 	for (const [name, value] of Object.entries(values)) {
 		if (skipped.has(name) || value === undefined || value === false) continue;
@@ -84,10 +84,19 @@ export type ChunkStep = (args: string[], index: number) => number;
 /**
  * Runs chunks until one ends with status 0 (the matrix is done) and returns how many it took. A chunk that ends with [limitReached] is followed
  * by the next; any other status stops the run with the command to continue it. [maxChunks] bounds a loop whose chunks stop making progress.
+ * The chunks after the first restart the emulator; a phone has nothing to restart, and its chunks only continue the file.
  */
-export function runChunks(command: string, values: ChunkFlags, chunk: number, step: ChunkStep, maxChunks = 10_000): number {
+export function runChunks(
+	command: string,
+	values: ChunkFlags,
+	chunk: number,
+	step: ChunkStep,
+	options: { restartable?: boolean; maxChunks?: number } = {},
+): number {
+	const maxChunks = options.maxChunks ?? 10_000;
+	const restartable = options.restartable ?? emulatorScript(String(values.device ?? "")) !== null;
 	for (let index = 0; index < maxChunks; index++) {
-		const args = chunkArgs(command, values, chunk, index);
+		const args = chunkArgs(command, values, chunk, index, restartable);
 		console.log(`chunk ${index + 1}: ${args.slice(1).join(" ")}`);
 		const status = step(args, index);
 		if (status === 0) return index + 1;

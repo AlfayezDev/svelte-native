@@ -21,7 +21,11 @@ async function bundleSvgEntry(): Promise<Bundle> {
     name: "metro",
     setup(builder) {
       // Metro: the library's own `react-native` import goes to the lite shim (`LITE_ORIGINS` in `metro.ts`).
-      builder.onResolve({ filter: /^react-native$/ }, (args) => (args.importer.startsWith(library) ? { path: lite } : (externals.add(args.path), { path: args.path, external: true })));
+      builder.onResolve({ filter: /^react-native$/ }, (args) => {
+        if (args.importer.startsWith(library)) return { path: lite };
+        externals.add(args.path);
+        return { path: args.path, external: true };
+      });
       builder.onResolve({ filter: /^react-native-svg\// }, async (args) => {
         if (args.pluginData?.skip) return undefined;
         return builder.resolve(args.path, { kind: args.kind, resolveDir: args.resolveDir, importer: args.importer, pluginData: { skip: true } });

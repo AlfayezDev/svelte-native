@@ -78,7 +78,7 @@ for (const platform of platforms) {
         expect(got).toEqual(theirs(xml));
         // Every drawn node is a Fabric component of the library, and the root is the platform's view.
         const names = new Set<string>();
-        const walk = (node: Described) => { names.add(node.name); node.children.forEach((child) => typeof child !== "string" && walk(child)); };
+        const walk = (node: Described) => { names.add(node.name); for (const child of node.children) if (typeof child !== "string") walk(child); };
         got.forEach(walk);
         expect(got[0]?.name).toBe(platform === "android" ? "RNSVGSvgViewAndroid" : "RNSVGSvgView");
         expect([...names].every((component) => component.startsWith("RNSVG"))).toBe(true);
@@ -90,7 +90,7 @@ for (const platform of platforms) {
       for (const xml of Object.values(icons)) {
         app.showXml(xml);
         await settle(loaded);
-        const walk = (node: Described) => { seen.add(node.name); node.children.forEach((child) => typeof child !== "string" && walk(child)); };
+        const walk = (node: Described) => { seen.add(node.name); for (const child of node.children) if (typeof child !== "string") walk(child); };
         ours().forEach(walk);
       }
       for (const name of ["RNSVGPath", "RNSVGLinearGradient", "RNSVGRadialGradient", "RNSVGClipPath", "RNSVGText", "RNSVGTSpan", "RNSVGUse", "RNSVGSymbol", "RNSVGDefs", "RNSVGGroup", "RNSVGMask", "RNSVGRect", "RNSVGCircle", "RNSVGEllipse"]) expect(seen.has(name), name).toBe(true);
@@ -98,14 +98,14 @@ for (const platform of platforms) {
 
     test("the props of the component replace the root element's, and a new document replaces the nodes", async () => {
       const override = { width: 96, height: 96, color: "#ff0000", fill: "currentColor" };
-      app.showXml(icons.paths!, override);
+      app.showXml(icons.paths, override);
       await settle(loaded);
-      expect(ours()).toEqual(theirs(icons.paths!, override));
-      const root = ours()[0]!;
+      expect(ours()).toEqual(theirs(icons.paths, override));
+      const root = ours()[0];
       expect(root.props).toMatchObject({ bbWidth: 96, bbHeight: 96 });
-      app.showXml(icons.mask!);
+      app.showXml(icons.mask);
       await settle(loaded);
-      expect(ours()).toEqual(theirs(icons.mask!));
+      expect(ours()).toEqual(theirs(icons.mask));
       app.showXml(null);
       await settle(loaded);
       expect(ours()).toEqual([]);
@@ -136,7 +136,7 @@ for (const platform of platforms) {
       const names = (roots()[rootTag] ?? []).map((node) => node.name);
       expect(names).toEqual(["RCTView"]);
       // A document that parses again takes the fallback's place.
-      app.showXml(icons.paths!);
+      app.showXml(icons.paths);
       await settle(loaded);
       expect(ours()[0]?.name).toBe(platform === "android" ? "RNSVGSvgViewAndroid" : "RNSVGSvgView");
     });
@@ -150,7 +150,7 @@ describe("SvgUri", () => {
   let roots: () => Record<number, FakeNode[]>;
   const rootTag = 121;
   const requested: string[] = [];
-  const documents: Record<string, string | number> = { "https://example.com/paths.svg": icons.paths!, "https://example.com/mask.svg": icons.mask!, "https://example.com/gone.svg": 404 };
+  const documents: Record<string, string | number> = { "https://example.com/paths.svg": icons.paths, "https://example.com/mask.svg": icons.mask, "https://example.com/gone.svg": 404 };
   const fetched = globalThis.fetch;
   beforeAll(async () => {
     (globalThis as { fetch: unknown }).fetch = async (uri: string) => {
@@ -171,8 +171,12 @@ describe("SvgUri", () => {
     app.showUri("https://example.com/paths.svg", { width: 50, height: 50 });
     await settleAll();
     expect(rootNames()).toEqual(["RNSVGSvgViewAndroid"]);
-    const expected = (xml: string, override: object) => { const ast = oracle.parse(xml)!; return describeTheirs([oracle.mount(oracle.create(oracle.tags.svg, { ...ast.props, ...override }, ...ast.children)) as never], loaded, "android"); };
-    expect((roots()[rootTag] ?? []).map((node) => describeOurs(node))).toEqual(expected(icons.paths!, { width: 50, height: 50 }));
+    const expected = (xml: string, override: object) => {
+      const ast = oracle.parse(xml);
+      if (!ast) throw new Error("the document has no root element");
+      return describeTheirs([oracle.mount(oracle.create(oracle.tags.svg, { ...ast.props, ...override }, ...ast.children)) as never], loaded, "android");
+    };
+    expect((roots()[rootTag] ?? []).map((node) => describeOurs(node))).toEqual(expected(icons.paths, { width: 50, height: 50 }));
     expect(app.loadCount()).toBe(1);
     app.showUri("https://example.com/mask.svg", { width: 50, height: 50 });
     await settleAll();
@@ -182,7 +186,7 @@ describe("SvgUri", () => {
       for (const key in props) if (props[key] === null && !(key in (reference[index]?.props ?? {}))) delete props[key];
       return { ...node, props, children: dropRemoved(node.children as Described[], (reference[index]?.children ?? []) as Described[]) };
     });
-    const wanted = expected(icons.mask!, { width: 50, height: 50 });
+    const wanted = expected(icons.mask, { width: 50, height: 50 });
     expect(dropRemoved((roots()[rootTag] ?? []).map((node) => describeOurs(node)), wanted)).toEqual(wanted);
     expect(requested).toEqual(["https://example.com/paths.svg", "https://example.com/mask.svg"]);
     expect(app.loadCount()).toBe(2);

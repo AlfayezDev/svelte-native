@@ -28,7 +28,8 @@ function readBuilders(): Builders {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const supported: Partial<typeof GestureObjects> = { ...(require("./rngh.js") as typeof import("./rngh.js")).GestureObjects };
   delete supported.ForceTouch;
-  return builders = supported as Builders;
+  builders = supported as Builders;
+  return builders;
 }
 
 /** `Gesture.Tap()`, `Pan()`, `Pinch()`, `Rotation()`, `Fling()`, `LongPress()`, `Native()`, `Manual()`, `Hover()` and the compositions `Race`, `Simultaneous`, `Exclusive`: RNGH's builders, unchanged. */

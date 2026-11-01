@@ -21,7 +21,8 @@ export type GestureHandlerModule = {
 let module_: GestureHandlerModule | null = null;
 /** RNGH's TurboModule, resolved on first use; on iOS and Android alike `flushOperations` is what runs the queued calls. */
 export function nativeModule(): GestureHandlerModule {
-  return module_ ??= turboModuleRegistry().getEnforcing<GestureHandlerModule>("RNGestureHandlerModule");
+  module_ ??= turboModuleRegistry().getEnforcing<GestureHandlerModule>("RNGestureHandlerModule");
+  return module_;
 }
 
 let enabled = false;
@@ -33,7 +34,7 @@ let enabled = false;
  */
 export function enableNative(): void {
   if (enabled) return;
-  const engine = requireOptionalNativeModule<{ enableGestures?: () => boolean | void }>("SvelteEngine");
+  const engine = requireOptionalNativeModule<{ enableGestures?: () => boolean }>("SvelteEngine");
   if (engine?.enableGestures?.() === false) throw new Error("[svelte-native gestures] SvelteEngine.enableGestures() answered false: react-native-gesture-handler is not part of this build (is the package autolinked?) or the engine is not installed.");
   enabled = true;
 }

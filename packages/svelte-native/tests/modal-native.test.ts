@@ -50,7 +50,7 @@ const insetCases: [string, number[], number[]][] = [
 
 test.skipIf(!tools)("content insets follow React Native's translucency rules and the keyboard", () => {
   const out = run(insetCases.map(([, input]) => `insets ${input.join(" ")}`));
-  insetCases.forEach(([description, , expected], i) => expect(numbers(out[i]), description).toEqual(expected));
+  insetCases.forEach(([description, , expected], i) => { expect(numbers(out[i]), description).toEqual(expected); });
 });
 
 // [animation type, progress, height, dim] -> [layer alpha, content offset, scrim alpha]
@@ -71,7 +71,7 @@ test.skipIf(!tools)("the poses of fade, slide and none", () => {
   const out = run(poseCases.map(([, input]) => `pose ${input.join(" ")}`));
   poseCases.forEach(([description, , expected], i) => {
     const got = numbers(out[i]);
-    expected.forEach((value, k) => expect(got[k], `${description} [${k}]`).toBeCloseTo(value, 4));
+    expected.forEach((value, k) => { expect(got[k], `${description} [${k}]`).toBeCloseTo(value, 4); });
   });
 });
 
@@ -91,7 +91,7 @@ const phaseCases: [string, string[], string[]][] = [
 
 test.skipIf(!tools)("the phases of a modal layer", () => {
   const out = run(phaseCases.map(([, steps]) => `phase ${steps.join(" ")}`));
-  phaseCases.forEach(([description, , expected], i) => expect(out[i].split(" "), description).toEqual(expected));
+  phaseCases.forEach(([description, , expected], i) => { expect(out[i].split(" "), description).toEqual(expected); });
 });
 
 test.skipIf(!tools)("modal-8: eight shows attach and detach eight times", () => {

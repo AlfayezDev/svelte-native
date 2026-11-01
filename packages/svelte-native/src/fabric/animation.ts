@@ -443,7 +443,7 @@ function remark(): void {
 function markRemovable(wrapper: unknown): void {
   markNodeAsRemovable(wrapper as never);
   remarks.push({ wrapper, due: Date.now() + REMARK_AFTER_MS });
-  remarkTimer ??= setTimeout(remark, REMARK_AFTER_MS);
+  if (remarkTimer === undefined) remarkTimer = setTimeout(remark, REMARK_AFTER_MS);
 }
 
 /** Stops the mapper, drops the view descriptors, cleans up CSS animations and transitions, and forgets the node. */

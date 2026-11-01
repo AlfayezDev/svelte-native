@@ -636,8 +636,9 @@ export function flush(): void {
   stats.flushes++;
   stats.lastFlushMs = performance.now() - started;
   if (profile) {
-    const log = ((globalThis as { __svelteFlushLog?: unknown[] }).__svelteFlushLog ??= []);
-    log.push({ at: started, ms: stats.lastFlushMs, created: stats.lastCreated, cloned: stats.lastCloned, payloadMs: stats.payloadMs, createMs: stats.createMs, appendMs: stats.appendMs, completeMs: stats.completeMs });
+    const scope = globalThis as { __svelteFlushLog?: unknown[] };
+    scope.__svelteFlushLog ??= [];
+    scope.__svelteFlushLog.push({ at: started, ms: stats.lastFlushMs, created: stats.lastCreated, cloned: stats.lastCloned, payloadMs: stats.payloadMs, createMs: stats.createMs, appendMs: stats.appendMs, completeMs: stats.completeMs });
   }
 }
 

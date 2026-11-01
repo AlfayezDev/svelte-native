@@ -29,12 +29,12 @@ const created = () => calls.filter((call) => call.startsWith("create"));
 
 test("a changed prop is a clone of the same node", async () => {
   await show({ tag: "circle", props: { cx: 1, cy: 2, r: 5, fill: "red" } });
-  const before = nodes("RNSVGCircle")[0]!;
+  const before = nodes("RNSVGCircle")[0];
   expect(before.props).toMatchObject({ cx: 1, cy: 2, r: 5 });
   await update({ tag: "circle", props: { cx: 1, cy: 2, r: 9, fill: "red" } });
   expect(created()).toEqual([]);
   expect(calls).toEqual(["cloneProps RNSVGCircle"]);
-  const after = nodes("RNSVGCircle")[0]!;
+  const after = nodes("RNSVGCircle")[0];
   expect(after.tag).toBe(before.tag);
   expect(after.props.r).toBe(9);
 });

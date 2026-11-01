@@ -12,7 +12,8 @@ let loaded: KeyboardModule | undefined;
  */
 export function keyboard(): KeyboardModule {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  return (loaded ??= (require("react-native/Libraries/Components/Keyboard/Keyboard") as { default: KeyboardModule }).default);
+  loaded ??= (require("react-native/Libraries/Components/Keyboard/Keyboard") as { default: KeyboardModule }).default;
+  return loaded;
 }
 
 whenBooted(keyboard);

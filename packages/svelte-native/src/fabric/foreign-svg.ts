@@ -14,8 +14,7 @@ import {
   extractFeBlend, extractFeColorMatrix, extractFeComposite, extractFeFlood, extractFeGaussianBlur, extractFeMerge, extractFilter, extractFont, extractGradient, extractIn, extractText, type StopProps,
 } from "./foreign-svg-extract.ts";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- the props of a component are an interface, which `Record<string, unknown>` does not take
-export type Props = Record<string, any>;
+export type Props = Record<string, unknown>;
 
 /** The Fabric name of the `Svg` root: its own view on each platform. */
 export const svgRootName = (): string => (Platform.OS === "android" ? "RNSVGSvgViewAndroid" : "RNSVGSvgView");
@@ -105,8 +104,7 @@ export const tspanProps = (props: Props, content?: string): Props => ({ ...textN
 /** `TextPath`: `null` when `href` is not an `#id`, in which case the library warns and renders a `TSpan` with the children. */
 export function textPathNativeProps(props: Props): Props | null {
   const { xlinkHref, href = xlinkHref, startOffset = 0, method, spacing, side, alignmentBaseline, midLine, ...prop } = props as Props & { href?: string; xlinkHref?: string };
-  const matched = href && href.match(idPattern);
-  const match = matched && matched[1];
+  const match = href?.match(idPattern)?.[1];
   if (!match) {
     console.warn(`Invalid \`href\` prop for \`TextPath\` element, expected a href like "#id", but got: "${String(href)}"`);
     return null;
@@ -117,8 +115,7 @@ export function textPathNativeProps(props: Props): Props | null {
 /** `Use`: `href` is an `#id`; anything else is a warning and a `Use` of nothing, as in the library. */
 export function useNativeProps(props: Props): Props {
   const { x = 0, y = 0, width = 0, height = 0, xlinkHref, href = xlinkHref } = props as Props & { href?: string; xlinkHref?: string };
-  const matched = href && href.match(idPattern);
-  const match = matched && matched[1];
+  const match = href ? href.match(idPattern)?.[1] : href; // an empty `href` stays empty, as in the library
   if (!match) console.warn(`Invalid \`href\` prop for \`Use\` element, expected a href like "#id", but got: "${String(href)}"`);
   return { ...withoutXY(noTouchable, props), href: match ?? undefined, x, y, width, height, ...pressProps(props) };
 }
@@ -245,7 +242,7 @@ export function svgNativeProps(given: Props): { root: Props; group: Props } {
   let override = false;
   const overrideStyles: Props = {};
   const o = opacity != null ? extractOpacity(opacity as string | number) : NaN;
-  if (!isNaN(o)) {
+  if (!Number.isNaN(o)) {
     override = true;
     overrideStyles.opacity = o;
   }
@@ -253,8 +250,8 @@ export function svgNativeProps(given: Props): { root: Props; group: Props } {
     override = true;
     const w = parseInt(width as string, 10);
     const h = parseInt(height as string, 10);
-    const doNotParseWidth = isNaN(w) || (width as string)[(width as string).length - 1] === "%";
-    const doNotParseHeight = isNaN(h) || (height as string)[(height as string).length - 1] === "%";
+    const doNotParseWidth = Number.isNaN(w) || (width as string)[(width as string).length - 1] === "%";
+    const doNotParseHeight = Number.isNaN(h) || (height as string)[(height as string).length - 1] === "%";
     overrideStyles.width = doNotParseWidth ? width : w;
     overrideStyles.height = doNotParseHeight ? height : h;
     overrideStyles.flex = 0;
@@ -285,9 +282,9 @@ let warnedUnimplemented = false;
 export function warnUnimplementedFilter(): void {
   if (warnedUnimplemented) return;
   warnedUnimplemented = true;
-  console.warn("Some of the used filters are not yet supported on native platforms. Please check the USAGE.md for more info. Not implemented filters:\n" + JSON.stringify([
+  console.warn(`Some of the used filters are not yet supported on native platforms. Please check the USAGE.md for more info. Not implemented filters:\n${JSON.stringify([
     "FeComponentTransfer", "FeConvolveMatrix", "FeDiffuseLighting", "FeDisplacementMap", "FeFuncA", "FeFuncB", "FeFuncG", "FeFuncR", "FeImage", "FeMorphology", "FePointLight", "FeSpecularLighting", "FeSpotLight", "FeTile", "FeTurbulence",
-  ], null, 2));
+  ], null, 2)}`);
 }
 
 /** The brush props `setNativeProps` converts (`BrushProperties` of `lib/extract/colors.ts`). */
@@ -365,11 +362,12 @@ export function svgHandle(host: HostHandle, options: { matrix?: boolean } = {}):
 }
 
 export function svgRootHandle(host: HostHandle): SvgRootHandle {
+  const module = (): ViewModule => (viewModule ??= turboModule<ViewModule>("RNSVGSvgViewModule"));
   return {
     ...svgHandle(host),
     toDataURL: (callback, options) => {
       if (!callback) return;
-      (viewModule ??= turboModule<ViewModule>("RNSVGSvgViewModule")).toDataURL(host.tag, options, callback);
+      module().toDataURL(host.tag, options, callback);
     },
   };
 }

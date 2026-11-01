@@ -21,7 +21,10 @@ class FunctionBox {
 const boxes = new WeakMap<object, FunctionBox>();
 function boxOf(fn: (...args: never[]) => unknown): FunctionBox {
   let box = boxes.get(fn);
-  if (!box) boxes.set(fn, box = new FunctionBox(fn));
+  if (!box) {
+    box = new FunctionBox(fn);
+    boxes.set(fn, box);
+  }
   return box;
 }
 /** Keys Svelte handles itself: any `on...` key is an event listener, `$$...` are internals, `children` is a snippet the host never reads as an attribute. */

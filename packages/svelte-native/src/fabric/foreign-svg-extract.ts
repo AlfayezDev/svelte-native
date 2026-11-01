@@ -23,25 +23,25 @@ const cachedFontObjectsFromString: Record<string, ParsedFont> = {};
 
 function extractSingleFontFamily(fontFamilyString?: string) {
   // SVG on the web allows for multiple font-families to be specified. For compatibility, we extract the first font-family, hoping we'll get a match.
-  return fontFamilyString ? fontFamilyString.split(commaReg)[0]!.replace(fontFamilyPrefix, "").replace(fontFamilySuffix, "") : null;
+  return fontFamilyString ? fontFamilyString.split(commaReg)[0].replace(fontFamilyPrefix, "").replace(fontFamilySuffix, "") : null;
 }
 
 function parseFontString(font: string): ParsedFont {
-  if (Object.prototype.hasOwnProperty.call(cachedFontObjectsFromString, font)) return cachedFontObjectsFromString[font]!;
+  if (Object.hasOwn(cachedFontObjectsFromString, font)) return cachedFontObjectsFromString[font];
   const match = fontRegExp.exec(font);
   if (!match) {
     cachedFontObjectsFromString[font] = null;
     return null;
   }
-  const isBold = /bold/.exec(match[1]!);
-  const isItalic = /italic/.exec(match[1]!);
+  const isBold = /bold/.exec(match[1]);
+  const isItalic = /italic/.exec(match[1]);
   cachedFontObjectsFromString[font] = {
     fontSize: match[2] || 12,
     fontWeight: isBold ? "bold" : "normal",
     fontStyle: isItalic ? "italic" : "normal",
     fontFamily: extractSingleFontFamily(match[3]),
   };
-  return cachedFontObjectsFromString[font]!;
+  return cachedFontObjectsFromString[font];
 }
 
 /** `extractFont` of `extractText.tsx`: the font props of an element as the one `font` object the native text views take. */
@@ -89,19 +89,19 @@ function percentToFloat(percent: NumberProp | { __getAnimatedValue: () => number
     console.warn(`"${percent}" is not a valid number or percentage string.`);
     return 0;
   }
-  return matched[2] ? +matched[1]! / 100 : +matched[1]!;
+  return matched[2] ? +matched[1] / 100 : +matched[1];
 }
-const offsetComparator = (object: number[], other: number[]) => object[0]! - other[0]!;
+const offsetComparator = (object: number[], other: number[]) => object[0] - other[0];
 
 /** `extractGradient` of `extractGradient.ts`, with the stops in place of the React children; `null` without an `id`, as there. */
 export function extractGradient(props: Props, stops: readonly StopProps[]): Props | null {
   const { id, gradientTransform, transform, gradientUnits } = props as { id?: string; gradientTransform?: unknown; transform?: unknown; gradientUnits?: keyof typeof units };
   if (!id) return null;
   const sorted: number[][] = [];
-  for (const { style, offset = style && (style.offset as NumberProp), stopColor = (style && style.stopColor) || "#000", stopOpacity = style && (style.stopOpacity as NumberProp) } of stops) {
+  for (const { style, offset = style?.offset as NumberProp | undefined, stopColor = style?.stopColor || "#000", stopOpacity = style?.stopOpacity as NumberProp | undefined } of stops) {
     const offsetNumber = percentToFloat(offset || 0);
     const color = stopColor && processColorValue(stopColor, Platform.OS === "android" ? "android" : "ios");
-    if (typeof color !== "number" || isNaN(offsetNumber)) {
+    if (typeof color !== "number" || Number.isNaN(offsetNumber)) {
       console.warn(`"${String(stopColor)}" is not a valid color or "${String(offset)}" is not a valid offset`);
       continue;
     }
@@ -110,7 +110,7 @@ export function extractGradient(props: Props, stops: readonly StopProps[]): Prop
   }
   sorted.sort(offsetComparator);
   const gradient: number[] = [];
-  for (const stop of sorted) gradient.push(stop[0]!, stop[1]!);
+  for (const stop of sorted) gradient.push(stop[0], stop[1]);
   return {
     name: id,
     gradient,
@@ -142,7 +142,7 @@ export const extractFeColorMatrix = (props: Props): Props => {
   if (values !== undefined) {
     if (Array.isArray(values)) extracted.values = values.map((num: unknown) => (typeof num === "number" ? num : parseFloat(num as string)));
     else if (typeof values === "number") extracted.values = [values];
-    else if (typeof values === "string") extracted.values = values.split(spaceReg).map(parseFloat).filter((element: number) => !isNaN(element));
+    else if (typeof values === "string") extracted.values = values.split(spaceReg).map(parseFloat).filter((element: number) => !Number.isNaN(element));
     else console.warn("Invalid value for FeColorMatrix `values` prop");
   }
   if (props.type) extracted.type = props.type;

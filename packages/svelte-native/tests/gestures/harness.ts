@@ -23,7 +23,7 @@ export type World = {
   roots: Record<number, FakeNode[]>;
   listeners: Map<string, ((event: object) => void)[]>;
   /** What `SvelteEngine.enableGestures()` returns; `undefined` stands for the engine module being absent (iOS). */
-  engine: { install(): boolean; enableGestures?: () => boolean | void } | null;
+  engine: { install(): boolean; enableGestures?: () => boolean } | null;
   /** The platform `Platform.OS` reports. */
   os: "android" | "ios";
   /** The host's event handler (`registerEventHandler`): what Fabric calls with a touch for a node's `target`. */

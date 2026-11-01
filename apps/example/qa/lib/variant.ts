@@ -12,6 +12,8 @@ export const variants: readonly Variant[] = ["qa", "smoke"];
 
 /** The application id (Android package, iOS bundle id) of each variant; `app.config.ts` sets the same ones. */
 export const packageOf: Record<Variant, string> = { qa: qaApplicationId, smoke: smokeApplicationId };
+/** The executable of each iOS app, which names its crash reports (`<process>-<date>.ips`) in the phone's crash log. */
+export const processNameOf: Record<Variant, string> = { qa: "RasheedSvelteQA", smoke: "Sveltesmoke" };
 /** The URL scheme of each variant: two apps on one device must not both answer `rasheed-svelte://`. */
 export const schemeOf: Record<Variant, string> = { qa: "rasheed-svelte", smoke: "rasheed-svelte-smoke" };
 /** The `APP_VARIANT` a build of the variant runs with (empty: the QA app, whatever the shell has). */

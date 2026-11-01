@@ -60,7 +60,7 @@ export type SessionRecord = { leftovers?: string[]; restoreFailures?: string[]; 
 export type CrashFrame = { image: string | null; offset: number; symbol: string | null };
 
 /**
- * One report of the iPhone's crash log for the app (`idevicecrashreport`, `lib/iphone/crash-reports.ts`): a crash (`EXC_CRASH` and the
+ * One report of the iPhone's crash log for the app (`devicectl`, `lib/iphone/crash-reports.ts`): a crash (`EXC_CRASH` and the
  * other `EXC_` types), a kill the system's memory manager logged for the app (`JETSAM`), or a report of the app that could not be read
  * (`exceptionType` null). Times are the phone's own, as the report carries them (an instant: the report names its UTC offset).
  */

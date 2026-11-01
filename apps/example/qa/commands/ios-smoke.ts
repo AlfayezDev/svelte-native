@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { integerFlag, parseFlags } from "../lib/flags.ts";
+import { describeCrash, describeCrashReports, finishCrashWatch, keepCrashFiles } from "../lib/iphone/crash-reports.ts";
 import { appProcesses, launchApp, readAppFile, terminateApp } from "../lib/iphone/device.ts";
 import { currentSource, iosOptions, newToken, startIosSuite } from "../lib/iphone/session.ts";
 import { qaDir, runsDir } from "../lib/paths.ts";
@@ -72,6 +73,10 @@ export async function iosSmoke(argv: string[]): Promise<void> {
 	} catch {
 		// The app already ended (a finished run or a crash); there is nothing left to stop.
 	}
+	// The app is ended: a report the phone's crash log gained since the start is this run's (the app aborted after it wrote its results, say).
+	const crashLog = await finishCrashWatch(session.crashes);
+	for (const line of describeCrashReports(crashLog.record)) console.log(line);
+	const aborted = (crashLog.record.crashReports ?? []).map((report) => `the app aborted: ${describeCrash(report)}`);
 	await mkdir(runsDir, { recursive: true });
 	const logPath = join(runsDir, `smoke-${slug(session.device.serial)}-${stamp(session.startedAt)}.log`);
 	await writeFile(logPath, raw || `no results were written${died ? `: ${died}` : ""}\n`);
@@ -86,16 +91,18 @@ export async function iosSmoke(argv: string[]): Promise<void> {
 		device: session.device,
 		app: session.app,
 		run: "smoke",
-		complete: found !== null,
+		complete: found !== null && aborted.length === 0,
 		results,
 		completion: found ? { os: found.os, total: results.length, ok: count("ok"), fail: count("fail"), skip: count("skip") } : null,
-		crashes: died ? [died] : [],
+		crashes: [...(died ? [died] : []), ...aborted],
 		jsErrorCount: null,
 		durationMs: Date.now() - launched,
 		logFile: logPath.slice(qaDir.length + 1),
 	};
 	for (const line of describeSmoke(file, pins)) console.log(line);
 	const name = await writeRun("smoke", session.device.serial, session.startedAt, file);
+	const kept = await keepCrashFiles(crashLog, name);
+	if (kept) console.log(`kept the crash reports in ${kept.slice(qaDir.length + 1)}`);
 	console.log(`wrote qa/runs/${name}.json`);
 	await reportVerdict(file);
 }

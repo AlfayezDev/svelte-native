@@ -20,7 +20,7 @@ const usage = `usage: native-qa <command> [flags]
   build  --platform ios --mac <user@host> --mac-checkout <dir> [--build-script <path on the Mac>] [--variant qa|smoke]
   lab    --device <serial> [--apk <path> | --no-install] [--repeat <n>] [--run checks,quick] [--timeout <s>]
   boot   --device <serial> [--apk <path> | --no-install] [--warm <n>] [--cold <n>] [--idle <s>]
-  lab | boot | parity | a11y  --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--app <.app on the Mac> | --no-install] [--package <bundle id>]   (NATIVE_QA_MAC replaces --mac; --udid defaults to the lab phone's, for its crash log)
+  lab | boot | parity | a11y  --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--app <.app on the Mac> | --no-install] [--package <bundle id>]   (NATIVE_QA_MAC replaces --mac; --udid defaults to the lab phone's, for xcodebuild and the USB check)
   soak   --device <serial> [--apk <path> | --no-install] [--minutes 10] [--interval <s>] [--parts <names>]
   crashes --device <serial> [--apk <path> | --no-install] [--starts 1000] [--suites 100] [--idle <s>] [--map <file>] [--symbols <dir>] [--chunk <n>] [--resume] [--inject-crash]
   symbolicate [--input <logcat file>] [--map <file>] [--symbols <dir>] [--abi x86_64] [--all]

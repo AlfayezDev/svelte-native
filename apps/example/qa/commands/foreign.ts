@@ -20,7 +20,7 @@ import { labOnce } from "./lab.ts";
  *
  * `--only image,video` narrows the libraries (the run file then does not cover the others, and their gates read not measured).
  */
-export function launchOf(name: ForeignLaunch["name"], run: string, result: LabRun): ForeignLaunch {
+export function launchOf(name: ForeignLaunch["name"], run: string, result: LabRun, attempts = 1): ForeignLaunch {
 	return {
 		name,
 		run,
@@ -32,13 +32,30 @@ export function launchOf(name: ForeignLaunch["name"], run: string, result: LabRu
 		engineWarnings: result.engineWarnings,
 		...(result.interrupted ? { interrupted: result.interrupted } : {}),
 		logFile: result.logFile,
+		...(attempts > 1 ? { attempts } : {}),
 	};
+}
+
+/**
+ * One launch of the lab, again when another app came to the front during it (`interrupted`: the app was paused, its views and its checks with it, and the
+ * run says so): the emulator is shared, and another agent's own app launches on it. The last attempt is the launch; its `attempts` is how many it took.
+ */
+async function launchUntilUninterrupted(attempts: number, once: (attempt: number) => Promise<LabRun>): Promise<{ result: LabRun; attempts: number }> {
+	let result = await once(1);
+	let made = 1;
+	while (result.interrupted && made < attempts) {
+		console.log(`  interrupted by ${result.interrupted.by}; launching again (${made + 1} of ${attempts})`);
+		result = await once(++made);
+	}
+	return { result, attempts: made };
 }
 
 export async function foreign(argv: string[]): Promise<void> {
 	if (platformOf(argv) === "ios") throw new Error("native-qa foreign: the iPhone lane is not built yet (the lab runs there through `lab --platform ios`; its checks need the QA module's readbacks, see SPEC.md, \"Device verification of the libraries\")");
-	const { values } = parseFlags(argv, { ...commonOptions, platform: { type: "string" }, only: { type: "string" }, timeout: { type: "string" } });
+	const { values } = parseFlags(argv, { ...commonOptions, platform: { type: "string" }, only: { type: "string" }, timeout: { type: "string" }, attempts: { type: "string" } });
 	const timeoutMs = integerFlag(values.timeout, "timeout", 1500) * 1000;
+	const attempts = integerFlag(values.attempts, "attempts", 3);
+	if (attempts < 1) throw new Error("--attempts must be at least 1");
 	const { serial, packageName, device, app, startedAt } = await startSuite("foreign", argv, values);
 	const pins = await foreignPins(device.platform);
 	const only = flagString(values.only)?.split(",").map((name) => name.trim()).filter(Boolean);
@@ -53,13 +70,20 @@ export async function foreign(argv: string[]): Promise<void> {
 	console.log(`foreign: ${librariesRun}`);
 	const first = join(runsDir, `foreign-${slug(serial)}-${stamp(startedAt)}-libraries.log`);
 	const presses = pressDriver(serial);
+	let parsedText = "";
 	try {
-		launches.push(launchOf("libraries", librariesRun, await labOnce(serial, packageName, librariesRun, timeoutMs, first)));
+		const launched = await launchUntilUninterrupted(attempts, async (attempt) => {
+			const result = await labOnce(serial, packageName, librariesRun, timeoutMs, first);
+			parsedText = await readFile(first, "utf8");
+			if (attempt > 1) console.log(`  attempt ${attempt}: ${result.complete ? "complete" : "incomplete"}`);
+			return result;
+		});
+		launches.push(launchOf("libraries", librariesRun, launched.result, launched.attempts));
 	} finally {
 		presses.stop();
 	}
 	for (const line of presses.log) console.log(`  ${line}`);
-	const parsed = parseForeignChecks(await readFile(first, "utf8"));
+	const parsed = parseForeignChecks(parsedText);
 	console.log(`  ${parsed.checks.length} checks logged, ${parsed.checks.filter((entry) => !entry.passed).length} failed, ${parsed.skips.length} skipped`);
 	console.log("foreign: foreign-leftovers (the launch after it)");
 	const second = join(runsDir, `foreign-${slug(serial)}-${stamp(startedAt)}-leftovers.log`);

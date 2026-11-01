@@ -31,7 +31,7 @@ const usage = `usage: native-qa <command> [flags]
   smoke  --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--app <.app on the Mac> | --no-install] [--timeout <s>]
   gestures --device <serial> [--apk <path> | --no-install] [--input adb|qa|both] [--run box,row,...] [--repeat <n>] [--timeout <s>]
   gestures --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--team <id>] [--rebuild] [--run ...] [--repeat <n>] [--timeout <s>]
-  foreign --device <serial> [--apk <path> | --no-install] [--only <libraries>] [--timeout <s>]
+  foreign --device <serial> [--apk <path> | --no-install] [--only <libraries>] [--attempts <n>] [--timeout <s>]
   probe  --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--probes <names>] [--direction ltr|rtl]
   report
   gates  [--platform android|ios] [--all] [--smoke]`;

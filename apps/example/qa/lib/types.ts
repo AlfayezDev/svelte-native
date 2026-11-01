@@ -584,6 +584,8 @@ export type ForeignLaunch = {
 	jsErrors: string[];
 	engineWarnings: string[];
 	interrupted?: { at: string; by: string };
+	/** How many times the lab was launched for this (another app came to the front during the earlier ones); absent: once. */
+	attempts?: number;
 	logFile: string;
 };
 

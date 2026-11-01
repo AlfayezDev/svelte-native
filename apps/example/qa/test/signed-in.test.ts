@@ -166,14 +166,17 @@ describe("starting the phase", () => {
 });
 
 describe("the gates over the pinned screens", () => {
-	const ids = ["app-workspaces", "app-account-devices"];
+	const ids = ["app-workspaces", "app-account-preferences"];
 	const names = pinnedNames(ids, variants);
 
 	test("a pinned screen is expected in every variant and in the layouts of the accessibility run", () => {
 		expect(names).toHaveLength(ids.length * variants.length);
 		expect(pinnedNames(ids, layoutVariants)).toHaveLength(ids.length * layoutVariants.length);
 		expect(pinnedNames(["gone"], variants)).toHaveLength(variants.length);
-		expect(matrix(signedIn, variants).length).toBe(signedIn.length * variants.length);
+		// A screen left out of the largest text is left out of the pinned names too.
+		expect(pinnedNames(["app-account-devices"], variants)).toHaveLength(variants.length / 2);
+		expect(pinnedNames(["app-account-devices"], layoutVariants)).toHaveLength(layoutVariants.length / 2);
+		expect(matrix(signedIn, variants).length).toBe(signedIn.length * variants.length - 2 * (variants.length / 2));
 	});
 
 	const caseOf = (name: string, verdict: "pass" | "skipped") => ({ name, verdict, differingPixels: 0, maskedPixels: 100 });

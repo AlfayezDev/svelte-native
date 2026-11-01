@@ -210,6 +210,12 @@ async function runStep(session: DeviceSession, step: Step, direction: Direction)
 			["shell", amStartCommand(packageName, step.open)],
 			{ timeoutMs: 90_000 },
 		);
+	} else if ("scrollToEnd" in step) {
+		// Two swipes of most of the screen's height, 400 ms each: the page ends under the second whatever its length.
+		for (let swipe = 0; swipe < 2; swipe++) {
+			await session.run(serial, ["shell", "input", "swipe", "540", "2000", "540", "500", "400"]);
+			await sleep(500);
+		}
 	} else if ("wait" in step) {
 		await waitForNode(serial, step.wait, direction, step.timeoutMs);
 	} else {

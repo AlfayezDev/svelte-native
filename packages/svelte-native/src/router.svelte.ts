@@ -210,7 +210,7 @@ function createStore(tree: StackNode) {
     const slot = slots.get(route);
     if (slot && !("error" in slot)) return;
     const loader = route.kind === "page" ? route.load : route.layout;
-    if (!loader) throw new Error(`Route ${route.id} has no loader: a tree is linked to its code by the generated .svelte-native/routes.ts`);
+    if (!loader) throw new Error(`Route ${route.id} has no loader: a tree is linked to its code by the generated .svelte-native/routes.<variant>.ts`);
     const pending = loader(); // a route whose load failed tries again on its next navigation
     slots.set(route, { pending: true });
     pending.then((modules) => slots.set(route, { modules }), (error: unknown) => slots.set(route, { error }));
@@ -470,7 +470,7 @@ export function connectHost(router: Router): () => void {
  */
 export function createRouter(tree: StackNode, initial = "/auth/login", options: RouterScopeOptions = {}): Router {
   if (!tree || typeof tree !== "object" || tree.kind !== "stack" || !Array.isArray(tree.routes)) {
-    throw new Error(`createRouter takes the route tree, a root stack node ({ kind: "stack", id, path, routes }) such as the \`tree\` .svelte-native/routes.ts exports, not ${Array.isArray(tree) ? "an array of routes (the form before the route tree)" : typeof tree}`);
+    throw new Error(`createRouter takes the route tree, a root stack node ({ kind: "stack", id, path, routes }) such as the \`tree\` .svelte-native/routes.<variant>.ts exports, not ${Array.isArray(tree) ? "an array of routes (the form before the route tree)" : typeof tree}`);
   }
   const above = getContext<RouterContext | undefined>(contextKey);
   const scope = options.scope ?? (above ? undefined : "root");

@@ -1060,7 +1060,7 @@ test("createRouter takes the route tree: the array of routes it took before fail
   const message = (globalThis as { __routerError?: string }).__routerError ?? "";
   expect(message).toContain("createRouter takes the route tree");
   expect(message).toContain("kind: \"stack\"");
-  expect(message).toContain(".svelte-native/routes.ts");
+  expect(message).toContain(".svelte-native/routes.<variant>.ts");
   expect(message).not.toContain("iterable");
 });
 

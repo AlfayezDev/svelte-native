@@ -1,11 +1,11 @@
 import { spawn } from "node:child_process";
-import { mkdirSync, readFileSync, readdirSync, watch, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, watch, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { mkdir } from "node:fs/promises";
 import { relative, resolve, sep } from "node:path";
-import type { parse as parseSvelte } from "svelte/compiler";
+import type { AST, parse as parseSvelte } from "svelte/compiler";
 import { buildTree, type PageRoute, type RouteFile, type RouteNode, type StackNode } from "./route-tree.ts";
-import { labIncludedFor, routesHeader, variantName } from "./variant.ts";
+import { labIncludedFor, routesTableFile, variantName } from "./variant.ts";
 
 const require = createRequire(import.meta.url);
 const posix = (path: string) => path.split(sep).join("/");
@@ -15,9 +15,8 @@ const posix = (path: string) => path.split(sep).join("/");
  * so a screen's container and a layout's role are known before any module loads, which makes both a literal read here. `lab` (a route
  * only the development lab has) is read the same way, so the product's discovery can leave the route out without loading it.
  */
-function exportedLiteral<Value extends string | boolean>(parse: typeof parseSvelte, file: string, source: string, name: string, values: readonly Value[]): Value | undefined {
-  const { module } = parse(source, { modern: true, filename: file });
-  for (const statement of module?.content.body ?? []) {
+function exportedLiteral<Value extends string | boolean>(ast: AST.Root, file: string, name: string, values: readonly Value[]): Value | undefined {
+  for (const statement of ast.module?.content.body ?? []) {
     if (statement.type !== "ExportNamedDeclaration") continue;
     const declarations = statement.declaration?.type === "VariableDeclaration" ? statement.declaration.declarations : [];
     const declared = declarations.find((declaration) => declaration.id.type === "Identifier" && declaration.id.name === name);
@@ -28,6 +27,16 @@ function exportedLiteral<Value extends string | boolean>(parse: typeof parseSvel
     if (declared || aliased) throw new Error(`${file}: export \`${name}\` as one of the literals ${values.map((value) => JSON.stringify(value)).join(", ")}; the route table reads it at build time`);
   }
   return undefined;
+}
+
+/** Whether the instance script (`<script>`, not `<script module>`) exports `name`: the table does not read it there, so it would be ignored. */
+function exportedInInstance(ast: AST.Root, name: string): boolean {
+  return (ast.instance?.content.body ?? []).some((statement) => {
+    if (statement.type !== "ExportNamedDeclaration") return false;
+    const declarations = statement.declaration?.type === "VariableDeclaration" ? statement.declaration.declarations : [];
+    return declarations.some((declaration) => declaration.id.type === "Identifier" && declaration.id.name === name)
+      || statement.specifiers.some((specifier) => specifier.exported.type === "Identifier" && specifier.exported.name === name);
+  });
 }
 const PRESENTATIONS = ["push", "modal", "transparentModal", "sheet", "formSheet"] as const;
 const NAVIGATORS = ["stack", "tabs"] as const;
@@ -68,18 +77,19 @@ export function routeFilesSync(routesRoot: string, { lab = labIncluded() }: Rout
   for (const path of paths.sort((a, b) => a.localeCompare(b))) {
     const name = path.slice(path.lastIndexOf("/") + 1);
     if (name !== "+mobile.svelte" && name !== "+layout.mobile.svelte") continue;
-    const source = readFileSync(resolve(routesRoot, path), "utf8");
+    const ast = parse(readFileSync(resolve(routesRoot, path), "utf8"), { modern: true, filename: path });
     // Read in every variant, so a marker the product's sync could not read fails the lab builds' as well.
-    const labOnly = exportedLiteral(parse, path, source, "lab", [true] as const) === true;
+    if (exportedInInstance(ast, "lab")) throw new Error(`${path}: export \`lab\` is ignored in the instance script; move \`lab\` to \`<script module>\`, which the route table reads at build time`);
+    const labOnly = exportedLiteral(ast, path, "lab", [true] as const) === true;
     if (labOnly && path === name && name === "+layout.mobile.svelte") throw new Error(`${path}: the root layout is the app shell and cannot be lab-only`);
     const marked = labOnly && !lab;
     if (name === "+mobile.svelte") {
       if (marked) continue;
-      const presentation = exportedLiteral(parse, path, source, "presentation", PRESENTATIONS);
+      const presentation = exportedLiteral(ast, path, "presentation", PRESENTATIONS);
       files.push({ path, exports: presentation ? { presentation } : {} });
     } else {
       if (marked) { labDirectories.push(path.slice(0, path.length - name.length)); continue; }
-      const navigator = exportedLiteral(parse, path, source, "navigator", NAVIGATORS);
+      const navigator = exportedLiteral(ast, path, "navigator", NAVIGATORS);
       files.push({ path, exports: navigator ? { navigator } : {} });
     }
   }
@@ -89,8 +99,11 @@ export function routeFilesSync(routesRoot: string, { lab = labIncluded() }: Rout
 /** `routeFilesSync` for the callers that wait (the tests and the generator's older callers). */
 export const routeFiles = async (routesRoot: string, options: RouteFilesOptions = {}): Promise<RouteFile[]> => routeFilesSync(routesRoot, options);
 
-/** The tree as the module `.svelte-native/routes.ts`: `buildTree`'s data with a loader per page and per navigator layout. */
-function treeModule(tree: StackNode, routesRoot: string, output: string): string {
+/**
+ * The tree as the module `.svelte-native/routes.<variant>.ts`: `buildTree`'s data with a loader per page and per navigator layout, and
+ * the `variant` and `lab` the table was made for, which the app reads as the one source of what its bundle carries.
+ */
+function treeModule(tree: StackNode, routesRoot: string, output: string, variant: string, lab: boolean): string {
   const json = (value: unknown) => JSON.stringify(value);
   const code = (file: string) => `require(${json(posix(relative(output, resolve(routesRoot, file))))}).default`;
   const loader = (file: string, layouts: readonly string[] = []) => `async () => ({ component: ${code(file)}, layouts: [${layouts.map(code).join(", ")}] })`;
@@ -124,17 +137,25 @@ ${indent}}`;
   // screen is first needed, not at boot. A `require` rather than `import()` keeps the page in the entry's module graph, which is
   // what lets a hot update of a page reach the entry's accept handler; `import()` would make Metro's development server serve it as a
   // separate bundle with no importer to accept the update. Metro's release export has a single bundle either way.
-  return `import type { StackNode } from '@rasheed/svelte-native/router';\n\nexport const tree: StackNode = ${nodeOf(tree, "").trimStart()};\n`;
+  return `// Generated by svelte-native sync for the ${variant} app${lab ? "" : " (the development lab's routes are left out)"}.\nimport type { StackNode } from '@rasheed/svelte-native/router';\n\nexport const variant = ${json(variant)};\nexport const lab = ${lab};\nexport const tree: StackNode = ${nodeOf(tree, "").trimStart()};\n`;
 }
 
 export type SyncOptions = RouteFilesOptions & {
-  /** The variant the table is synced for, recorded in its first line; `variantName()` (`APP_VARIANT`) by default. `lab` follows it unless given. */
+  /** The variant the table is synced for; `variantName()` (`APP_VARIANT`) by default. `lab` follows it unless given. */
   variant?: string;
+  /**
+   * `write` (the default, `svelte-native sync` and the prebuild plugin) writes `.svelte-native/entry.ts` for `SVELTE_NATIVE_ROOT` as the
+   * environment has it. `keep` (the Metro integration) writes it only when it is missing or the environment names a root: a Metro that starts
+   * without `SVELTE_NATIVE_ROOT` does not revert the entry a sync with it wrote, and the entry is the one file the variants share
+   * (it does not depend on the variant: `./routes` is the bundling variant's table).
+   */
+  entry?: "write" | "keep";
 };
 
 /**
- * Writes `.svelte-native/routes.ts` (the route table, whose first line records the variant and whether it names the lab) and `entry.ts`
- * for the variant, synchronously: the Metro integration runs it while the config loads, before Metro's file map is built.
+ * Writes `.svelte-native/routes.<variant>.ts` (the variant's route table, which exports `variant`, `lab` and `tree`) and `entry.ts`,
+ * synchronously: the Metro integration runs it while the config loads, before Metro's file map is built. Each variant has a table of its
+ * own, so syncing one never changes another's.
  */
 export function syncRoutes(root: string, options: SyncOptions = {}): void {
   const variant = options.variant ?? variantName();
@@ -142,7 +163,7 @@ export function syncRoutes(root: string, options: SyncOptions = {}): void {
   const routesRoot = resolve(root, "src/routes");
   const output = resolve(root, ".svelte-native");
   mkdirSync(output, { recursive: true });
-  const manifest = routesHeader(variant, lab) + treeModule(buildTree(routeFilesSync(routesRoot, { lab })), routesRoot, output);
+  const manifest = treeModule(buildTree(routeFilesSync(routesRoot, { lab })), routesRoot, output, variant, lab);
   // The entry boots the app layout, the shell around the generated tree's root navigator; SVELTE_NATIVE_ROOT=<path> renders that
   // component as the root instead (the lab's spike roots).
   const customRoot = process.env.SVELTE_NATIVE_ROOT;
@@ -150,15 +171,20 @@ export function syncRoutes(root: string, options: SyncOptions = {}): void {
   // In development the entry accepts every hot update itself (see `fabric/hmr.ts`): Metro re-runs the edited module and its importers up to
   // here, which re-registers the app, and the handler remounts the running surfaces.
   const hot = "declare const module: { hot?: { accept(callback?: () => void): void } };\nif (__DEV__) module.hot?.accept(() => remountSurfaces());\n";
+  // `./routes` is not a file: the Metro integration resolves it to the bundling variant's table.
   const entry = customRoot
     ? `${prelude}import App from ${JSON.stringify(posix(relative(output, resolve(root, customRoot))))};\ncreateFabricApp(App, {});\n${hot}`
     : `${prelude}import App from '../src/routes/+layout.mobile.svelte';\nimport { tree } from './routes';\ncreateFabricApp(App, { tree });\n${hot}`;
-  for (const [file, content] of [["routes.ts", manifest], ["entry.ts", entry]]) {
+  const files: [string, string][] = [[routesTableFile(variant), manifest]];
+  if (options.entry !== "keep" || customRoot !== undefined || !existsSync(resolve(output, "entry.ts"))) files.push(["entry.ts", entry]);
+  for (const [file, content] of files) {
     const destination = resolve(output, file);
     let current = "";
     try { current = readFileSync(destination, "utf8"); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
     if (current !== content) writeFileSync(destination, content);
   }
+  // The table the variants used to share.
+  rmSync(resolve(output, "routes.ts"), { force: true });
 }
 
 export async function syncNative(root: string, options: SyncOptions = {}): Promise<void> {

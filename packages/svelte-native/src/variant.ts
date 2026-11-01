@@ -1,6 +1,6 @@
 /**
- * The variant of a build and what the generated route table records of it. Pure (no file system), so the generator, the Metro
- * integration and the tests share one reading of both.
+ * The variant of a build and the file its route table is. Pure (no file system), so the generator, the Metro integration and the tests
+ * share one reading of both.
  */
 
 /** The variant a build is: `APP_VARIANT`, or `qa` when it is empty (the QA app, whatever the shell has). */
@@ -9,11 +9,8 @@ export const variantName = (env: NodeJS.ProcessEnv = process.env): string => env
 /** Whether the variant carries the development lab: every variant but the product (`production`). */
 export const labIncludedFor = (variant: string): boolean => variant !== "production";
 
-/** The first line of `.svelte-native/routes.ts`: the variant the table was synced for and whether it names the lab's routes. */
-export const routesHeader = (variant: string, lab: boolean): string => `// svelte-native routes: variant=${variant} lab=${lab ? "yes" : "no"}\n`;
-
-/** What the first line of a route table records, or `null` for a table that records nothing (one made by an older sync, or by hand). */
-export function routesHeaderOf(table: string): { variant: string; lab: boolean } | null {
-  const match = /^\/\/ svelte-native routes: variant=(\S+) lab=(yes|no)\n/.exec(table);
-  return match ? { variant: match[1], lab: match[2] === "yes" } : null;
-}
+/**
+ * The route table of a variant, under `.svelte-native/`: `routes.production.ts`, `routes.qa.ts`, `routes.smoke.ts`. There is no table the
+ * variants share, so a sync for one variant cannot change what a running Metro (or a warm graph) of another serves.
+ */
+export const routesTableFile = (variant: string): string => `routes.${variant.replace(/[^A-Za-z0-9_-]/g, "_")}.ts`;

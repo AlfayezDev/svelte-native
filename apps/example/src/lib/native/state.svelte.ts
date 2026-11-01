@@ -5,7 +5,7 @@ import { getLocales } from "expo-localization";
 import { applicationId } from "expo-application";
 import { ar, en, arCounts, enCounts, createTranslator, type Locale, type Translate } from "@rasheed/client/messages";
 import { lab as bundleLab, variant as bundleVariant } from "@rasheed/svelte-native/routes";
-import { smokeApplicationId } from "./app-ids.ts";
+import { qaApplicationId, smokeApplicationId } from "./app-ids.ts";
 import { labDecision } from "./lab-flag.ts";
 
 export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "https://dev.qarnos.com";
@@ -15,6 +15,12 @@ export const nativeLabEnabled = labDecided.enabled;
 if (labDecided.refused) console.error(`[Svelte lab] this ${bundleVariant} bundle carries the development lab, which the ${applicationId} app does not run (publish with APP_VARIANT=production): the lab is off`);
 /** Only the smoke app links the libraries the smoke test calls: in the QA app they are not there, and every check would fail. */
 export const nativeSmokeEnabled = nativeLabEnabled && applicationId === smokeApplicationId;
+/**
+ * Whether the signed-in account's language sets the interface language (session.svelte.ts). It does everywhere but the QA app: the QA harness
+ * runs the same signed-in screens in English and in Arabic under one account (`native-qa parity` and `a11y`, the signed-in phase), so there the
+ * language is the device's, which the harness sets per app, and the account's is neither applied nor stored.
+ */
+export const languageFollowsAccount = applicationId !== qaApplicationId;
 const storedLanguage = SecureStore.getItem("interface_language");
 let locale = $state<Locale>(storedLanguage === "ar" || storedLanguage === "en" ? storedLanguage : getLocales()[0]?.languageCode === "ar" ? "ar" : "en");
 let appearance = $state<"system" | "light" | "dark">("system");

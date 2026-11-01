@@ -4,6 +4,7 @@ import { unattributedCount } from "./iphone/crash-reports.ts";
 import { smokeMetrics, type SmokePins } from "./smoke.ts";
 import { allScenarios, gesturesMetrics } from "./gestures.ts";
 import { suiteMetrics, type SuiteFiles } from "./suite-metrics.ts";
+import { updatesMetrics, type UpdatesFile } from "./updates.ts";
 import type {
 	BootFile,
 	CrashesFile,
@@ -190,6 +191,7 @@ export function deviceMetrics(
 	smoke: { file: SmokeFile; pins: SmokePins } | null = null,
 	gestures: GesturesFile | null = null,
 	pinnedGestures: readonly string[] = allScenarios,
+	updates: UpdatesFile | null = null,
 ): Metrics {
 	const metrics: Metrics = {
 		...(lab ? labMetrics(lab, pinned) : {}),
@@ -199,6 +201,7 @@ export function deviceMetrics(
 		...suiteMetrics(suites),
 		...(smoke ? smokeMetrics(smoke.file, smoke.pins) : {}),
 		...(gestures ? gesturesMetrics(gestures, pinnedGestures) : {}),
+		...(updates ? updatesMetrics(updates) : {}),
 		...crashReportMetrics([lab, boot, suites.parity, suites.a11y, gestures].filter((file) => file !== null)),
 	};
 	// A run that was made but measured nothing (null) leaves the sum unmeasured; a run that was not made adds nothing.

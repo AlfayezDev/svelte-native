@@ -3,7 +3,8 @@ import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildEnv, prebuildInputs } from "../commands/build.ts";
+import { build, buildEnv, prebuildInputs } from "../commands/build.ts";
+import { generatedChannel, recordGeneratedChannel } from "../lib/channel.ts";
 import { generatedFor, interruptedPath, prebuildProject, selectVariantProject, staleReason } from "../lib/project.ts";
 import { iosPrebuildLines } from "../lib/ios-project.ts";
 import { repoRoot } from "../lib/paths.ts";
@@ -151,6 +152,47 @@ describe("builds", () => {
 			if (before === undefined) delete process.env.APP_VARIANT;
 			else process.env.APP_VARIANT = before;
 		}
+	});
+
+	test("the channel is always set, empty for a build without one whatever the shell exports, and composes with the variant", () => {
+		const before = process.env.UPDATES_CHANNEL;
+		process.env.UPDATES_CHANNEL = "production";
+		try {
+			expect(buildEnv("qa").UPDATES_CHANNEL).toBe("");
+			expect(buildEnv("smoke").UPDATES_CHANNEL).toBe("");
+			expect(buildEnv("qa", "qa")).toMatchObject({ UPDATES_CHANNEL: "qa", APP_VARIANT: "", SENTRY_DISABLE_AUTO_UPLOAD: "true" });
+		} finally {
+			if (before === undefined) delete process.env.UPDATES_CHANNEL;
+			else process.env.UPDATES_CHANNEL = before;
+		}
+	});
+
+	test("a channel build is the QA app: the smoke app, which never checks for updates, is refused before anything runs", async () => {
+		await expect(build(["--variant", "smoke", "--updates-channel", "qa"])).rejects.toThrow("--updates-channel builds the QA app, not the smoke app");
+		await expect(build(["--updates-channel", "production"])).rejects.toThrow("must name a QA channel");
+	});
+
+	test("the channel a project was generated for is written inside it, so parking the project parks the channel with it", async () => {
+		const base = temporary("native-qa-project-");
+		const dir = join(base, "android");
+		await prebuildProject("qa", dir, async () => {
+			project(dir, null, "qa for the channel");
+			await recordGeneratedChannel("qa", dir);
+		});
+		expect(await generatedChannel(dir)).toBe("qa");
+		// The smoke app is generated beside it, without a channel; the QA project returns with its channel.
+		expect(await selectVariantProject("smoke", dir)).toMatch(/none is parked for smoke/);
+		await prebuildProject("smoke", dir, async () => {
+			project(dir, null, "smoke");
+			await recordGeneratedChannel(null, dir);
+		});
+		expect(await generatedChannel(dir)).toBe("");
+		expect(await selectVariantProject("qa", dir)).toBeNull();
+		expect(read(dir)).toBe("qa for the channel");
+		expect(await generatedChannel(dir)).toBe("qa");
+		// A prebuild that dies after it wrote the channel leaves no finished project, so the channel it wrote is never read as a current one.
+		await expect(prebuildProject("qa", join(base, "other"), async () => { await recordGeneratedChannel("qa", join(base, "other")); throw new Error("killed"); })).rejects.toThrow("killed");
+		expect(existsSync(join(base, "other"))).toBe(false);
 	});
 });
 

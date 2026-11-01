@@ -29,6 +29,6 @@ export function variantFlag(value: string | boolean | undefined): Variant {
  * `ios-build.json`); the smoke app's carry the variant (`app-smoke-x86_64.apk`).
  */
 export const stemOf = (variant: Variant, abi: string): string => (variant === "qa" ? abi : `smoke-${abi}`);
-export const apkPath = (variant: Variant, abi: string): string => join(outDir, `app-${stemOf(variant, abi)}.apk`);
+export const apkPath = (variant: Variant, abi: string, directory: string = outDir): string => join(directory, `app-${stemOf(variant, abi)}.apk`);
 export const buildLogName = (variant: Variant, abi: string): string => `build-${stemOf(variant, abi)}.log`;
 export const iosBuildName = (variant: Variant): string => (variant === "qa" ? "ios-build.json" : "ios-build-smoke.json");

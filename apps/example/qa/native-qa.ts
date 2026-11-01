@@ -9,13 +9,14 @@ import { parity } from "./commands/parity.ts";
 import { report } from "./commands/report.ts";
 import { resilience } from "./commands/resilience.ts";
 import { smoke } from "./commands/smoke.ts";
+import { updates } from "./commands/updates.ts";
 import { crashes } from "./soak/crashes.ts";
 import { soak } from "./soak/soak.ts";
 import { symbolicate } from "./soak/symbolicate.ts";
 
 const usage = `usage: native-qa <command> [flags]
 
-  build  [--abi x86_64|arm64-v8a] [--prebuild] [--variant qa|smoke]
+  build  [--abi x86_64|arm64-v8a] [--prebuild] [--variant qa|smoke] [--updates-channel qa]   (a channel build is the QA app)
   build  --platform ios --mac <user@host> --mac-checkout <dir> [--build-script <path on the Mac>] [--variant qa|smoke]
   lab    --device <serial> [--apk <path> | --no-install] [--repeat <n>] [--run checks,quick] [--timeout <s>]
   boot   --device <serial> [--apk <path> | --no-install] [--warm <n>] [--cold <n>] [--idle <s>]
@@ -31,6 +32,7 @@ const usage = `usage: native-qa <command> [flags]
   gestures --device <serial> [--apk <path> | --no-install] [--input adb|qa|both] [--run box,row,...] [--repeat <n>] [--timeout <s>]
   gestures --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--team <id>] [--rebuild] [--run ...] [--repeat <n>] [--timeout <s>]
   probe  --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--probes <names>] [--direction ltr|rtl]
+  updates --device <serial> [--apk <channel build>] [--baseline-apk <path> | --no-baseline] [--channel qa] [--warm <n>] [--max-launches <n>] [--settle <n>] [--faults boot,mount,effect] [--eas "<command>"] [--environment <eas environment>] [--reset app|data] [--dexopt profile|none] [--package <id>]
   report
   gates  [--platform android|ios] [--all] [--smoke]`;
 
@@ -48,6 +50,7 @@ const commands: Record<string, (argv: string[]) => Promise<void>> = {
 	resilience,
 	smoke,
 	gestures,
+	updates,
 	probe: iosProbe,
 	report: async () => report(),
 	gates,

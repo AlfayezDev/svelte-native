@@ -139,7 +139,7 @@ describe("the development lab", () => {
 		const { modules, text } = bundled("production");
 		expect(modules.filter((module) => labModule.test(module))).toEqual([]);
 		expect(modules.filter((module) => /\/__dev\//.test(module) || module.includes("assets/native/lab"))).toEqual([]);
-		// The root layout's two hooks name modules of the lab behind `nativeLabEnabled`: both resolve to the directory's stub.
+		// The root layout's hooks (the error counter, the update harness's faults and report, the QA module) name modules of the lab behind `nativeLabEnabled`: all resolve to the directory's stub.
 		expect(modules.filter((module) => stubModule.test(module)).toSorted()).toEqual(["apps/platform/.svelte-native/stubs/production/_core.js", "apps/platform/.svelte-native/stubs/production/src_lib_native_dev_.js"]);
 		expect(text).not.toContain("Mobile development lab");
 		// The route table does not name the lab, and the one place that knows its path is the session guard, which sends a link to it away (defence in depth).
@@ -152,7 +152,7 @@ describe("the development lab", () => {
 		const routes = readdirSync(join(platformDir, "src/routes/__dev"), { recursive: true, encoding: "utf8" }).filter((path) => /(?:^|\/)\+(?:layout\.)?mobile\.svelte$/.test(path));
 		expect(routes.length).toBeGreaterThan(8);
 		for (const route of routes) expect(qa).toContain(`apps/platform/src/routes/__dev/${route}`);
-		for (const hook of ["errors.ts", "qa.ts", "LabLink.svelte", "launch.ts"]) expect(qa).toContain(`apps/platform/src/lib/native/dev/${hook}`);
+		for (const hook of ["errors.ts", "qa.ts", "update-probe.ts", "LabLink.svelte", "launch.ts"]) expect(qa).toContain(`apps/platform/src/lib/native/dev/${hook}`);
 	}, 120_000);
 	test("the QA app is the product plus the lab: whatever the product has, the QA app has, and the rest is the lab or a library only it imports", () => {
 		const qa = new Set(bundled("").modules);

@@ -1,15 +1,23 @@
-import { copyFile, mkdir, readdir, rm, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { copyFile, mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
+import { join, relative } from "node:path";
 import { describeApk } from "../lib/app.ts";
+import {
+	channelOutDir,
+	channelPrebuildReason,
+	generatedChannel,
+	qaChannel,
+	recordGeneratedChannel,
+} from "../lib/channel.ts";
 import { execToFile } from "../lib/exec.ts";
+import { assertManifestMatches, mergedManifestPath, parseManifestUpdates } from "../lib/manifest.ts";
 import { flagString, parseFlags, platformOf } from "../lib/flags.ts";
 import { currentSource } from "../lib/git.ts";
 import { reexecUnderLock } from "../lib/lock.ts";
 import {
 	androidDir,
 	gradleLock,
-	outDir,
 	platformDir,
+	qaDir,
 	repoRoot,
 	svelteNativeCli,
 } from "../lib/paths.ts";
@@ -20,13 +28,18 @@ import type { BuildFile } from "../lib/types.ts";
 import { iosBuild } from "./ios-build.ts";
 
 const abis = ["x86_64", "arm64-v8a"];
-/** The environment of a build. The variant is set explicitly, so an `APP_VARIANT` in the shell cannot turn one app into another. */
-export function buildEnv(variant: Variant): Record<string, string> {
+/**
+ * The environment of a build. The variant is set explicitly, so an `APP_VARIANT` in the shell cannot turn one app into another.
+ * `UPDATES_CHANNEL` is always set, empty for a build without a channel: app.config.ts then turns update checks off, whatever the calling
+ * shell exports. A build for a channel (the QA app only) is the only one that checks for updates on launch.
+ */
+export function buildEnv(variant: Variant, channel: string | null = null): Record<string, string> {
 	return {
 		CI: "1",
 		EXPO_NO_TELEMETRY: "1",
 		EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL ?? "https://dev.qarnos.com",
 		APP_VARIANT: appVariantOf[variant],
+		UPDATES_CHANNEL: channel ?? "",
 		// Nothing of a build uploads to Sentry (its Expo plugin, which adds the upload step, is not applied).
 		SENTRY_DISABLE_AUTO_UPLOAD: "true",
 	};
@@ -60,9 +73,13 @@ export async function prebuildInputs(): Promise<string[]> {
 	return inputs;
 }
 
-/** Why `expo prebuild` has to run again, or null when the generated android/ project is current. */
-async function prebuildReason(): Promise<string | null> {
-	return staleReason(join(androidDir, "app/build.gradle"), await prebuildInputs());
+/**
+ * Why `expo prebuild` has to run again, or null when the generated android/ project is current: an input is newer than it, or it was
+ * generated for another updates channel (the channel is read from the app config when the project is generated, it ends up in
+ * AndroidManifest.xml, and a change of environment touches no input).
+ */
+async function prebuildReason(channel: string | null): Promise<string | null> {
+	return (await staleReason(join(androidDir, "app/build.gradle"), await prebuildInputs())) ?? channelPrebuildReason(await generatedChannel(), channel);
 }
 
 /** Our own native code: the engine, and Reanimated with the engine's write sink. The rest of the native libraries are React Native's and Hermes's, symbolized from their own packages. */
@@ -73,7 +90,7 @@ const symbolLibraries = ["libsvelteengine.so", "libreanimated.so"];
  * bytecode bundle (React Native's Gradle plugin writes it at `build/generated/sourcemaps/react/release`, composing
  * Metro's map with Hermes's), and the unstripped native libraries from before Gradle's strip step.
  */
-async function keepDebugArtifacts(abi: string, variant: Variant): Promise<Pick<BuildFile, "sourceMap" | "symbols">> {
+async function keepDebugArtifacts(abi: string, variant: Variant, outDir: string): Promise<Pick<BuildFile, "sourceMap" | "symbols">> {
 	const mapSource = join(
 		androidDir,
 		"app/build/generated/sourcemaps/react/release/index.android.bundle.map",
@@ -110,21 +127,32 @@ async function step(
 	args: string[],
 	cwd: string,
 	logPath: string,
-	variant: Variant,
+	env: Record<string, string>,
 ): Promise<void> {
 	console.log(`== ${title}`);
-	const code = await execToFile(command, args, logPath, { cwd, env: buildEnv(variant) });
+	const code = await execToFile(command, args, logPath, { cwd, env });
 	if (code !== 0) throw new Error(`${title} failed with exit code ${code}; see ${logPath}`);
 }
 
 export async function build(argv: string[]): Promise<void> {
 	if (platformOf(argv) === "ios") return iosBuild(argv);
-	const { values } = parseFlags(argv, { abi: { type: "string" }, prebuild: { type: "boolean" }, variant: { type: "string" } });
+	const { values } = parseFlags(argv, {
+		abi: { type: "string" },
+		prebuild: { type: "boolean" },
+		variant: { type: "string" },
+		"updates-channel": { type: "string" },
+	});
 	const abi = flagString(values.abi) ?? "x86_64";
 	if (!abis.includes(abi)) throw new Error(`--abi must be one of ${abis.join(", ")}`);
 	const variant = variantFlag(values.variant);
+	const channel = qaChannel(values["updates-channel"]);
+	// The update scenario runs in the QA app (`io.rasheed.svelteqa`, the one the channel's builds and `native-qa updates` are about); the smoke app never checks for updates.
+	if (channel !== null && variant !== "qa") throw new Error(`--updates-channel builds the QA app, not the ${variant} app`);
 	reexecUnderLock(gradleLock, ["build", ...argv]);
 
+	// A build for a channel is kept apart (qa/out/channel-<channel>), so the plain QA build the gates measure is never replaced by it.
+	const outDir = channelOutDir(channel);
+	const env = buildEnv(variant, channel);
 	await mkdir(outDir, { recursive: true });
 	const logPath = join(outDir, buildLogName(variant, abi));
 	await rm(logPath, { force: true });
@@ -135,21 +163,23 @@ export async function build(argv: string[]): Promise<void> {
 		throw new Error(
 			`${samsungPayJar} is missing: expo-samsung-pay (native module smoke test) does not compile without the Samsung Pay SDK. Copy libs/samsungpay.jar from the production app (it is proprietary and ignored by git).`,
 		);
-	await step("svelte-native sync", process.execPath, [svelteNativeCli, "sync"], platformDir, logPath, variant);
+	await step("svelte-native sync", process.execPath, [svelteNativeCli, "sync"], platformDir, logPath, env);
 	const switched = await selectVariantProject(variant, androidDir);
-	const reason = values.prebuild ? "--prebuild" : (switched ?? (await prebuildReason()));
+	const reason = values.prebuild ? "--prebuild" : (switched ?? (await prebuildReason(channel)));
 	if (reason) {
 		console.log(`prebuild: ${reason}`);
-		await prebuildProject(variant, androidDir, () =>
-			step(
+		// The channel is written down inside the prebuild, so a project is only ever finished together with the channel it was generated for.
+		await prebuildProject(variant, androidDir, async () => {
+			await step(
 				`expo prebuild (android, ${variant})`,
 				"pnpm",
 				["exec", "expo", "prebuild", "--platform", "android", "--no-install"],
 				platformDir,
 				logPath,
-				variant,
-			),
-		);
+				env,
+			);
+			await recordGeneratedChannel(channel);
+		});
 	}
 	await step(
 		`gradle assembleRelease (${variant}, ${abi})`,
@@ -157,28 +187,35 @@ export async function build(argv: string[]): Promise<void> {
 		[":app:assembleRelease", `-PreactNativeArchitectures=${abi}`, "--console=plain", gradleJvm],
 		androidDir,
 		logPath,
-		variant,
+		env,
 	);
 
+	// What Gradle merged is what the APK carries: the build must be the one that was asked for, in both directions, or it fails here.
+	assertManifestMatches(parseManifestUpdates(await readFile(mergedManifestPath(androidDir), "utf8")), channel);
+
 	const built = join(androidDir, "app/build/outputs/apk/release/app-release.apk");
-	const target = apkPath(variant, abi);
+	const target = apkPath(variant, abi, outDir);
 	await copyFile(built, target);
 	const apk = await describeApk(target);
-	const debug = await keepDebugArtifacts(abi, variant);
-	await writeBuild({
-		schema: 1,
-		kind: "build",
-		variant,
-		abi,
-		finishedAt: new Date().toISOString(),
-		durationMs: Date.now() - started,
-		prebuilt: reason !== null,
-		source: await currentSource(),
-		apk,
-		...debug,
-		logFile: `out/${buildLogName(variant, abi)}`,
-	});
+	const debug = await keepDebugArtifacts(abi, variant, outDir);
+	await writeBuild(
+		{
+			schema: 1,
+			kind: "build",
+			variant,
+			abi,
+			finishedAt: new Date().toISOString(),
+			durationMs: Date.now() - started,
+			prebuilt: reason !== null,
+			...(channel ? { updatesChannel: channel } : {}),
+			source: await currentSource(),
+			apk,
+			...debug,
+			logFile: relative(qaDir, logPath),
+		},
+		outDir,
+	);
 	console.log(
-		`built ${target} (${(apk.sizeBytes / 1e6).toFixed(1)} MB, sha256 ${apk.sha256.slice(0, 12)}) in ${((Date.now() - started) / 1000).toFixed(0)} s`,
+		`built ${target}${channel ? ` for the ${channel} channel` : ""} (${(apk.sizeBytes / 1e6).toFixed(1)} MB, sha256 ${apk.sha256.slice(0, 12)}) in ${((Date.now() - started) / 1000).toFixed(0)} s`,
 	);
 }

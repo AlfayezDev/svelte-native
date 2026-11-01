@@ -388,7 +388,7 @@ describe("gates.json", () => {
 		expect(file.devices).toEqual({
 			R58Y90KNGRP: { role: "phone", name: "Samsung A16", runs: ["lab", "boot", "smoke", "gestures"] },
 			"E74A5608-BF8E-5806-8699-1605F82ADED9": { role: "phone", name: "iPhone SE 3", runs: ["lab", "boot", "parity", "a11y", "smoke", "gestures"] },
-			"localhost:5555": { role: "lab", name: "OVH emulator, software GL", runs: ["lab", "soak", "crashes", "parity", "a11y", "resilience", "smoke", "gestures"] },
+			"localhost:5555": { role: "lab", name: "OVH emulator, software GL", runs: ["lab", "soak", "crashes", "parity", "a11y", "resilience", "smoke", "gestures", "updates"] },
 		});
 		expect(() => checkGatesFile(file)).not.toThrow();
 	});

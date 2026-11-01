@@ -4,6 +4,7 @@ declare module "bun:test" {
 		rejects: Matchers;
 		toBe(expected: unknown): void;
 		toEqual(expected: unknown): void;
+		toMatchObject(expected: Record<string, unknown>): void;
 		toBeNull(): void;
 		toBeUndefined(): void;
 		toMatch(pattern: RegExp): void;

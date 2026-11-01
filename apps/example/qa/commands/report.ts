@@ -17,6 +17,7 @@ import { deviceMetrics, missingScenarios, runFatals } from "../lib/metrics.ts";
 import { missingModules, unexpectedSkips, unpinnedModules } from "../lib/smoke.ts";
 import { allScenarios, failedChecks } from "../lib/gestures.ts";
 import type { SuiteFiles } from "../lib/suite-metrics.ts";
+import type { UpdatesFile } from "../lib/updates.ts";
 import { gatesPath, reportPath } from "../lib/paths.ts";
 import { latestRunFiles, readBuilds, readJson, runKinds, type RunKind } from "../lib/runs.ts";
 import type {
@@ -139,6 +140,24 @@ type SmokeSummary = {
 	unpinned: string[];
 };
 
+/** The updates run on the channel build: what it showed of the update flow, and the boot it measured next to the same app without a channel. */
+type UpdatesSummary = {
+	file: string;
+	source: Source;
+	channel: string;
+	applied: boolean;
+	launchesToApply: number | null;
+	rolledBack: boolean;
+	rolledBackTo: string | null;
+	failedIdReported: string | null;
+	badRetried: number;
+	channelHealthy: boolean;
+	problems: string[];
+	bootDelta: UpdatesFile["boot"]["delta"];
+	/** The build the run left on the device: `channel` means the plain QA build was not put back. */
+	finalBuild: "plain" | "channel";
+};
+
 type SuitesSummary = {
 	parity: { file: string; mode: "check" | "update"; deviceKind: string } | null;
 	a11y: { file: string; oracle: string; screens: A11yScreenSummary[] } | null;
@@ -178,6 +197,8 @@ type ReportDeviceEntry = {
 	crashes: CrashesSummary | null;
 	smoke: SmokeSummary | null;
 	gestures: GesturesSummary | null;
+	/** Android: the updates run. It installs its own build (the channel one), so it is left out of the cross-build comparison of the other runs. */
+	updates: UpdatesSummary | null;
 	/** iOS only: the crash reports of the phone each run file recorded. */
 	crashReports: CrashReportsSummary[];
 	suites: SuitesSummary;
@@ -219,6 +240,25 @@ function summarizeLab(file: LabFile, fileName: string, pinned: readonly string[]
 				mountMs: typeof scenario.detail?.mountMs === "number" ? scenario.detail.mountMs : null,
 			})),
 		})),
+	};
+}
+
+function summarizeUpdates(file: UpdatesFile, fileName: string): UpdatesSummary {
+	const { good, bads, cleanup } = file.scenario;
+	return {
+		file: fileName,
+		source: file.source,
+		channel: file.channel,
+		applied: good.applied,
+		launchesToApply: good.launchesToApply,
+		rolledBack: bads.length > 0 && bads.every((bad) => bad.rolledBack),
+		rolledBackTo: bads.map((bad) => `${bad.fault}: ${bad.rolledBackTo ?? "-"}`).join(", ") || null,
+		failedIdReported: bads.map((bad) => bad.failedIdReported).filter(Boolean).join(", ") || null,
+		badRetried: bads.reduce((sum, bad) => sum + bad.retried, 0),
+		channelHealthy: cleanup.healthy,
+		problems: file.scenario.errors,
+		bootDelta: file.boot.delta,
+		finalBuild: file.deviceState?.finalBuild ?? "plain",
 	};
 }
 
@@ -384,7 +424,9 @@ export async function report(): Promise<void> {
 			a11y: a11yPath ? await readJson<A11yFile>(a11yPath) : null,
 			resilience: resiliencePath ? await readJson<ResilienceFile>(resiliencePath) : null,
 		};
-		const reference = lab ?? boot ?? soak ?? crashes ?? suites.parity ?? suites.a11y ?? suites.resilience ?? gestures ?? smoke;
+		const updatesPath = files.updates.get(key);
+		const updates = updatesPath ? await readJson<UpdatesFile>(updatesPath) : null;
+		const reference = lab ?? boot ?? soak ?? crashes ?? suites.parity ?? suites.a11y ?? suites.resilience ?? gestures ?? updates ?? smoke;
 		if (!reference) continue;
 		const serial = reference.device.serial;
 		const platform: Platform = reference.device.platform;
@@ -479,6 +521,7 @@ export async function report(): Promise<void> {
 							})),
 						}
 					: null,
+			updates: updates && updatesPath ? summarizeUpdates(updates, updatesPath.slice(updatesPath.lastIndexOf("runs/"))) : null,
 			crashReports: crashReportSummaries(platform, [
 				["lab", labPath, lab],
 				["boot", bootPath, boot],
@@ -507,7 +550,7 @@ export async function report(): Promise<void> {
 						: null,
 				resilience: suites.resilience && resiliencePath ? { file: resiliencePath.slice(resiliencePath.lastIndexOf("runs/")), screen: suites.resilience.screen } : null,
 			},
-			metrics: deviceMetrics(lab, boot, pinned, soak, crashes, suites, smoke ? { file: smoke, pins } : null, gestures, pinnedGestures),
+			metrics: deviceMetrics(lab, boot, pinned, soak, crashes, suites, smoke ? { file: smoke, pins } : null, gestures, pinnedGestures, updates),
 		};
 	}
 
@@ -590,6 +633,17 @@ export async function report(): Promise<void> {
 			console.log(
 				`  gestures ${m["gestures.launches"] ?? 0} complete launch(es) (${entry.gestures.inputs.join(", ")}), ${m["gestures.scenarios.missing"] ?? "-"} scenarios missing, agreement mismatches ${m["gestures.agreement.mismatches"] ?? "not measured"}, fatals ${m["gestures.fatals"] ?? "-"}, engine warnings ${m["gestures.engineWarnings"] ?? "-"}; checks failed: ${entry.gestures.launches.flatMap((launch) => launch.scenarios.filter((result) => result.failedChecks > 0).map((result) => `${result.name} (${launch.input})`)).join(", ") || "none"}`,
 			);
+		if (entry.updates) {
+			const u = entry.updates;
+			console.log(
+				`  updates (${u.channel}) applied ${u.applied} in ${u.launchesToApply ?? "-"} launches, rolled back ${u.rolledBack} (to ${u.rolledBackTo ?? "-"}, failed id ${u.failedIdReported ?? "-"}), bad retried ${u.badRetried}, unexpected faults ${m["updates.unexpectedFaults"] ?? "-"}, channel healthy ${u.channelHealthy}`,
+			);
+			console.log(
+				`    warm boot with updates p50 ${m["updates.boot.warm.p50"] ?? "-"} / p90 ${m["updates.boot.warm.p90"] ?? "-"} ms against ${m["updates.boot.baseline.warm.p50"] ?? "-"} / ${m["updates.boot.baseline.warm.p90"] ?? "-"} without a channel (delta ${m["updates.boot.warm.p50Delta"] ?? "-"} / ${m["updates.boot.warm.p90Delta"] ?? "-"}, informational)`,
+			);
+			if (u.finalBuild === "channel") console.log("    the run left the channel build on the device; install the plain QA build before another run measures it");
+			for (const problem of u.problems) console.log(`    problem: ${problem}`);
+		}
 		if (entry.crashes)
 			console.log(
 				`  crashes ${m["crashes.coldStarts"] ?? 0} cold starts (${m["crashes.coldStartCrashes"] ?? "-"} crashed, ${m["crashes.coldStartsNoBoot"] ?? "-"} without boot), ${m["crashes.suites"] ?? 0} suites (${m["crashes.suiteCrashes"] ?? "-"} crashed, ${m["crashes.suitesIncomplete"] ?? "-"} incomplete), ANRs ${m["crashes.anrs"] ?? "-"}`,

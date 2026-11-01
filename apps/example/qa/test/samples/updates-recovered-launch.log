@@ -1,0 +1,5 @@
+11-01 13:06:30.267  5873  5894 W SvelteUpdates: Update 01a19692-6f07-76ea-b454-69a0b2e78ada did not reach its first commit; launching the previous update or the embedded bundle
+11-01 13:06:30.267  5873  5894 I SvelteUpdates: Launching update 01a19688-6ec1-7357-a10e-89ef0ba5fa07 (created 1793526886081)
+11-01 13:06:30.410  5873  5898 I ReactNativeJS: [Svelte boot] init 3 · polyfills 5 · rn 3 · updates 25 · expo-core 0 · svelte 0 · host 0 · fabric 0 · app 25 · first commit 13 · total 75 ms
+11-01 13:06:30.422  5873  5898 I ReactNativeJS: [Svelte QA updates] {"enabled":true,"updateId":"01a19688-6ec1-7357-a10e-89ef0ba5fa07","embedded":false,"createdAt":1793526886081,"runtimeVersion":"0.1.0","channel":"qa","checkOnLaunch":"ALWAYS","marker":"qa-smoke-1"}
+11-01 13:06:31.136  5873  5898 I ReactNativeJS: [Svelte updates] No update to download (updatePreviouslyFailed)

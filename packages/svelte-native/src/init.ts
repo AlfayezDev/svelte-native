@@ -78,6 +78,8 @@ if (!globals.__fbDisableExceptionsManager) {
         shown = (require("./fabric/hmr.ts") as typeof import("./fabric/hmr.ts")).showError(e);
       } catch (inner) { console.error("Svelte Native could not show the error screen", inner); }
     }
+    // The updates host (`updates/launch.ts`) does not confirm a launch that saw a fatal error.
+    if (isFatal) (globalThis as { __svelteFatalSeen?: boolean }).__svelteFatalSeen = true;
     if (isFatal && !shown) {
       if (globals.RN$hasHandledFatalException?.()) return;
       globals.RN$notifyOfFatalException?.();

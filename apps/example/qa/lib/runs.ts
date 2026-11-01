@@ -1,6 +1,7 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { outDir, runsDir } from "./paths.ts";
+import type { UpdatesFile } from "./updates.ts";
 import type {
 	A11yFile,
 	BootFile,
@@ -35,14 +36,14 @@ export function slug(serial: string): string {
 }
 
 /** The kinds of run file `report` merges, one newest file per device of each. */
-export const runKinds = ["lab", "boot", "soak", "crashes", "parity", "a11y", "resilience", "smoke", "gestures"] as const;
+export const runKinds = ["lab", "boot", "soak", "crashes", "parity", "a11y", "resilience", "smoke", "gestures", "updates"] as const;
 export type RunKind = (typeof runKinds)[number];
 
 export async function writeRun(
 	kind: RunKind,
 	serial: string,
 	startedAt: Date,
-	data: LabFile | BootFile | SoakFile | CrashesFile | ParityFile | A11yFile | ResilienceFile | SmokeFile | GesturesFile,
+	data: LabFile | BootFile | SoakFile | CrashesFile | ParityFile | A11yFile | ResilienceFile | SmokeFile | GesturesFile | UpdatesFile,
 ): Promise<string> {
 	await mkdir(runsDir, { recursive: true });
 	const name = `${kind}-${slug(serial)}-${stamp(startedAt)}`;
@@ -97,10 +98,10 @@ export async function readJson<T>(path: string): Promise<T> {
 /** The key of a build in the report: the ABI for the QA app (as before), `smoke-<abi>` for the smoke app. */
 export const buildFileKey = (build: Pick<BuildFile, "abi" | "variant">): string => (build.variant === "smoke" ? `smoke-${build.abi}` : build.abi);
 
-export async function writeBuild(build: BuildFile): Promise<void> {
-	await mkdir(outDir, { recursive: true });
+export async function writeBuild(build: BuildFile, directory: string = outDir): Promise<void> {
+	await mkdir(directory, { recursive: true });
 	await writeFile(
-		join(outDir, `build-${buildFileKey(build)}.json`),
+		join(directory, `build-${buildFileKey(build)}.json`),
 		`${JSON.stringify(build, null, "\t")}\n`,
 	);
 }

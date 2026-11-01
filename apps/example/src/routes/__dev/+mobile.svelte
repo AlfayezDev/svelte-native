@@ -22,6 +22,7 @@
   import { jsErrorCount } from "#lib/native/dev/errors.ts";
   import { qaModule, type BuildIdentity } from "#lib/native/dev/qa.ts";
   import { smokeLaunch } from "#lib/native/dev/smoke-log.ts";
+  import { updateReport } from "#lib/native/dev/update-probe.ts";
 
   /**
    * `?run=checks,quick` (or scenario names) drives the lab without touching the screen; results land in Documents/lab-results.json.
@@ -50,7 +51,7 @@
   let build: BuildIdentity | null = null;
   if (qaModule?.enabled) void qaModule.buildIdentity().then((identity) => { build = identity; });
   function saveResults(phase: string) {
-    const report = { phase, token, finishedAt: new Date().toISOString(), platform: Platform.OS, osVersion: String(Platform.Version), appVersion: nativeApplicationVersion, build, jsErrors: jsErrorCount(), checks: $state.snapshot(checks), stress: stressResults, stressDone };
+    const report = { phase, token, finishedAt: new Date().toISOString(), platform: Platform.OS, osVersion: String(Platform.Version), appVersion: nativeApplicationVersion, build, jsErrors: jsErrorCount(), checks: $state.snapshot(checks), stress: stressResults, stressDone, updates: updateReport() };
     console.info("[native lab results]", JSON.stringify(report));
     try { new File(Paths.document, "lab-results.json").write(JSON.stringify(report)); }
     catch (error) { console.error("[native lab results]", error); }

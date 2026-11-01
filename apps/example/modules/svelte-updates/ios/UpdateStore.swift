@@ -70,6 +70,8 @@ struct StoreError: Error, CustomStringConvertible {
 /// to a temporary name and renamed.
 final class UpdateStore {
   static let bundleName = "main.jsbundle"
+  /// Launches of one update in a row that were never confirmed before it fails (a recorded fatal fails it at once).
+  private static let maxUnconfirmed = 2
   private static let maxFailedIds = 5
   private static let maxFailedRecords = 20
   private static let orphanAge: TimeInterval = 60 * 60
@@ -86,8 +88,12 @@ final class UpdateStore {
     var clientId: String
     var buildTime: Int64
     var embeddedCreatedAt: Int64?
-    /// The update a start is launching, until its first commit is reported. A marker found at the next start is a failed launch.
+    /// The update a start is launching, until the app confirms the launch (`markLaunched`, after its healthy window). A marker found at the next start is an unconfirmed launch.
     var pending: String?
+    /// The pending launch recorded a fatal error (`markFatal`): it fails at the next start. Nothing records one on iOS yet.
+    var pendingFatal: Bool
+    /// Consecutive launches of an update that were never confirmed and recorded no fatal; two fail it.
+    var unconfirmed: [String: Int]
     var failedIds: [String]
     var serverDefinedHeaders: [String: Any]?
     var manifestFilters: [String: Any]?
@@ -102,7 +108,7 @@ final class UpdateStore {
       let stored = json["updates"] as? [String: [String: Any]]
     else {
       // No index yet, or one that cannot be read: start empty. The files of lost updates are removed by the next clean-up.
-      return Index(clientId: UUID().uuidString.lowercased(), buildTime: 0, embeddedCreatedAt: nil, pending: nil, failedIds: [], serverDefinedHeaders: nil, manifestFilters: nil, updates: [:])
+      return Index(clientId: UUID().uuidString.lowercased(), buildTime: 0, embeddedCreatedAt: nil, pending: nil, pendingFatal: false, unconfirmed: [:], failedIds: [], serverDefinedHeaders: nil, manifestFilters: nil, updates: [:])
     }
     var updates: [String: StoredUpdate] = [:]
     for (id, entry) in stored { if let update = StoredUpdate(json: entry) { updates[id] = update } }
@@ -111,6 +117,8 @@ final class UpdateStore {
       buildTime: (json["buildTime"] as? NSNumber)?.int64Value ?? 0,
       embeddedCreatedAt: (json["embeddedCreatedAt"] as? NSNumber)?.int64Value,
       pending: (json["pending"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+      pendingFatal: json["pendingFatal"] as? Bool ?? false,
+      unconfirmed: json["unconfirmed"] as? [String: Int] ?? [:],
       failedIds: json["failedIds"] as? [String] ?? [],
       serverDefinedHeaders: json["serverDefinedHeaders"] as? [String: Any],
       manifestFilters: json["manifestFilters"] as? [String: Any],
@@ -125,6 +133,8 @@ final class UpdateStore {
     ]
     if let value = index.embeddedCreatedAt { json["embeddedCreatedAt"] = value }
     if let value = index.pending { json["pending"] = value }
+    if index.pendingFatal { json["pendingFatal"] = true }
+    if !index.unconfirmed.isEmpty { json["unconfirmed"] = index.unconfirmed }
     if let value = index.serverDefinedHeaders { json["serverDefinedHeaders"] = value }
     if let value = index.manifestFilters { json["manifestFilters"] = value }
     try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
@@ -155,8 +165,10 @@ final class UpdateStore {
   }
 
   /// Picks what this start launches: the newest ready update for the build's runtime version, update URL and channel that passes the
-  /// server's filters and is newer than the embedded bundle; otherwise the embedded bundle. An update still marked as launching never
-  /// reached its first commit, so it is marked failed first (`markFailure`; a reload within a run does not mark).
+  /// server's filters and is newer than the embedded bundle; otherwise the embedded bundle. An update still marked as launching was
+  /// never confirmed by the app (`markLaunched`, after its healthy window): it fails when that launch recorded a fatal (`markFatal`),
+  /// or when it is the second launch in a row that was never confirmed, so a kill with no fatal does not blacklist a good update the
+  /// first time. `markFailure` is false for a reload within a run, which leaves the marker alone.
   func select(config: UpdatesConfig, buildTime: Int64, markFailure: Bool) throws -> Selection {
     lock.lock(); defer { lock.unlock() }
     var index = read()
@@ -169,11 +181,22 @@ final class UpdateStore {
     }
     var reason: String?
     if markFailure, let pending = index.pending {
-      markFailed(&index, id: pending)
-      reason = "Update \(pending) did not reach its first commit"
+      let count = (index.unconfirmed[pending] ?? 0) + 1
+      if index.pendingFatal {
+        markFailed(&index, id: pending)
+        reason = "Update \(pending) recorded a fatal error before its launch was confirmed"
+      } else if count >= Self.maxUnconfirmed {
+        markFailed(&index, id: pending)
+        reason = "Update \(pending) did not confirm its launch \(count) times in a row"
+      } else {
+        index.unconfirmed[pending] = count
+        reason = "Update \(pending) did not confirm its launch (launch \(count) of \(Self.maxUnconfirmed); it fails at the next one)"
+      }
+      if index.updates[pending]?.status == "failed" { index.unconfirmed[pending] = nil }
+      index.pending = nil
+      index.pendingFatal = false
       changed = true
     }
-    if index.pending != nil { index.pending = nil; changed = true }
     let embeddedCreatedAt = index.embeddedCreatedAt ?? buildTime
     let newest = index.updates.values
       .filter {
@@ -182,7 +205,7 @@ final class UpdateStore {
       }
       .max { $0.createdAt < $1.createdAt }
     let chosen = newest.flatMap { $0.createdAt > embeddedCreatedAt ? $0 : nil }
-    if let chosen { index.pending = chosen.id; changed = true }
+    if index.pending != chosen?.id { index.pending = chosen?.id; index.pendingFatal = false; changed = true }
     if changed || !fileManager.fileExists(atPath: indexURL.path) { try write(index) }
     return Selection(update: chosen, embeddedCreatedAt: embeddedCreatedAt, emergencyReason: reason)
   }
@@ -254,12 +277,24 @@ final class UpdateStore {
     return String(decoding: try JSONSerialization.data(withJSONObject: json), as: UTF8.self)
   }
 
-  /// The launch reached its first commit.
+  /// The app confirmed the launch, after its healthy window. A launch that recorded a fatal stays pending: it fails at the next start.
   func markLaunched(id: String) throws {
     lock.lock(); defer { lock.unlock() }
     var index = read()
-    if index.pending == id {
+    if index.pending == id && !index.pendingFatal {
       index.pending = nil
+      index.unconfirmed[id] = nil
+      try write(index)
+    }
+  }
+
+  /// A fatal error happened while `id` was the pending launch. Nothing calls this on iOS yet (no host hook reports one), so a failing
+  /// update there needs two unconfirmed launches in a row.
+  func markFatal(id: String) throws {
+    lock.lock(); defer { lock.unlock() }
+    var index = read()
+    if index.pending == id && !index.pendingFatal {
+      index.pendingFatal = true
       try write(index)
     }
   }

@@ -314,3 +314,90 @@ test("a node that animates and has a gesture is served by both layers; Reanimate
   expect(m.fabricStats()).toMatchObject({ animationLoaded: true, gesturesLoaded: true });
   expect(reanimated).toEqual(["loaded"]);
 });
+
+// What a drop and an update leave in RNGH's registries and in the JS receiver. Each test below fails when the line of
+// `src/fabric/gestures.ts` it names is removed (checked by mutation on 1 Nov 2026).
+
+const emit = (channel: "onGestureHandlerEvent" | "onGestureHandlerStateChange", event: object) => { for (const listener of world().listeners.get(channel) ?? []) listener(event); };
+const touchDown = (handlerTag: number) => ({ handlerTag, numberOfPointers: 1, pointerType: 0, state: 2, eventType: 1, numberOfTouches: 1, allTouches: [], changedTouches: [] });
+const activate = (handlerTag: number) => ({ handlerTag, numberOfPointers: 1, pointerType: 0, oldState: 2, state: 4 });
+
+test("dropping a handler clears the receiver's state manager and last update, the registry entry and tells the mount registry", async () => {
+  const { m, app, G } = await mount();
+  const mounted: unknown[] = [];
+  const unmounted: unknown[] = [];
+  const removeMount = m.probe.MountRegistry.addMountListener((gesture) => { mounted.push(gesture); });
+  const removeUnmount = m.probe.MountRegistry.addUnmountListener((gesture) => { unmounted.push(gesture); });
+  const pan = G.Pan().runOnJS(true).onStart(j()).onTouchesDown(j());
+  const tap = G.Tap().onEnd(j());
+  app.set([{ id: "a", gesture: G.Race(pan, tap) }]);
+  await settle(m);
+  const tags = callsOf("createGestureHandler").map((call) => call[2] as number);
+  expect(tags).toHaveLength(2);
+  expect(mounted).toEqual([pan, tap]);
+  expect(unmounted).toEqual([]);
+  // A touch event makes the receiver keep a state manager for the handler; the activation keeps its last update.
+  expect(m.probe.receiverSize()).toEqual({ stateManagers: 0, lastUpdates: 0 });
+  emit("onGestureHandlerEvent", touchDown(tags[0] as number));
+  emit("onGestureHandlerStateChange", activate(tags[0] as number));
+  expect(m.probe.receiverSize()).toEqual({ stateManagers: 1, lastUpdates: 1 });
+  expect(tags.map((tag) => m.probe.findHandler(tag))).toEqual([pan, tap]);
+
+  app.set([]);
+  await settle(m);
+  expect(m.probe.receiverSize()).toEqual({ stateManagers: 0, lastUpdates: 0 });
+  expect(tags.map((tag) => m.probe.findHandler(tag))).toEqual([undefined, undefined]);
+  expect(unmounted).toEqual([pan, tap]);
+  removeMount();
+  removeUnmount();
+});
+
+test("an update that changes the test id registers the handler under the new id", async () => {
+  const { m, app, G } = await mount();
+  expect(process.env.NODE_ENV).toBe("test"); // RNGH keeps test ids in a test environment only
+  app.set([{ id: "a", gesture: G.Pan().onUpdate(w()).withTestId("first") }]);
+  await settle(m);
+  const tag = tagOf();
+  expect(m.probe.findHandlerByTestID("first")?.handlerTag).toBe(tag);
+  expect(m.probe.findHandlerByTestID("second")).toBeNull();
+  app.set([{ id: "a", gesture: G.Pan().onUpdate(w()).withTestId("second") }]);
+  await settle(m);
+  expect(callsOf("createGestureHandler")).toHaveLength(1); // an update, not a reattach
+  expect(m.probe.findHandlerByTestID("second")?.handlerTag).toBe(tag);
+});
+
+test("a gesture object handed from a node that dropped its attribute to a node earlier in the tree is free in the same commit", async () => {
+  const { m, app, G } = await mount({ initial: [{ id: "b" }, { id: "a", gesture: undefined }] });
+  const gesture = G.Pan().onUpdate(w());
+  app.set([{ id: "b" }, { id: "a", gesture }]);
+  await settle(m);
+  const first = tagOf();
+  take();
+  // `b` comes first in the tree and takes the object `a` held until this commit: the removal must run before the attach.
+  app.set([{ id: "b", gesture }, { id: "a", gesture: undefined }]);
+  await settle(m);
+  const calls = take();
+  expect(names(calls)).toEqual(["dropGestureHandler", "createGestureHandler", "attachGestureHandler", "updateGestureHandler", "flushOperations"]);
+  expect(calls[0]).toEqual(["dropGestureHandler", first]);
+  expect(calls[2]?.[2]).toBe(byId(61, "b")?.tag);
+  expect(m.fabricStats().gestures).toEqual({ records: 1, handlers: 1, eventHandlers: 1 });
+});
+
+test("attaching again a composition that keeps its gesture objects sends each handler's config once: no handler reacts to its own mount", async () => {
+  const { m, app, G } = await mount();
+  const pan = G.Pan().onEnd(j());
+  const tap = G.Tap().onEnd(j());
+  app.set([{ id: "a", gesture: G.Simultaneous(pan, tap) }]);
+  await settle(m);
+  take();
+  // Another count is a reattach; the objects that stay get new tags, and the old configs still name them.
+  app.set([{ id: "a", gesture: G.Simultaneous(pan, tap, G.Fling().onEnd(j())) }]);
+  await settle(m);
+  const calls = take();
+  expect(names(calls)).toEqual(["dropGestureHandler", "dropGestureHandler", "createGestureHandler", "createGestureHandler", "createGestureHandler", "attachGestureHandler", "attachGestureHandler", "attachGestureHandler", "updateGestureHandler", "updateGestureHandler", "updateGestureHandler", "flushOperations"]);
+  const tags = calls.filter((call) => call[0] === "createGestureHandler").map((call) => call[2] as number);
+  for (const call of calls.filter((entry) => entry[0] === "updateGestureHandler")) {
+    const others = tags.filter((tag) => tag !== call[1]);
+    expect((call[2] as { simultaneousHandlers?: number[] }).simultaneousHandlers?.slice().sort()).toEqual(others.slice().sort());
+  }
+});

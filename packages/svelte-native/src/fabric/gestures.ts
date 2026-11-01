@@ -156,13 +156,10 @@ function syncUi(record: GestureRecord, gestures: readonly GestureType[], rebuild
   }
 }
 
-let attaching: GestureRecord | null = null;
-
 /** RNGH's `attachHandlers`: tags, then `createGestureHandler` for each, then `attachGestureHandler` for each with its action type. */
 function attachHandlers(record: GestureRecord, gesture: Gesture, live: Live): void {
   const gestures = gesture.toGestureArray();
   claim(record, gestures, live);
-  attaching = record;
   const rebuild = record.ui !== null;
   try {
     for (const handler of gestures) { checkGestureCallbacksForWorklets(handler); checkUiClosures(handler); }
@@ -183,8 +180,6 @@ function attachHandlers(record: GestureRecord, gesture: Gesture, live: Live): vo
     for (const handler of gestures) if (owners.get(handler) === record) owners.delete(handler);
     if (record.ui && !record.mounted) { disposeUiPath(record.ui); record.ui = null; }
     throw error;
-  } finally {
-    attaching = null;
   }
   record.attached = gestures;
   record.mounted = true;
@@ -302,12 +297,14 @@ function step(record: GestureRecord): void {
 }
 
 // When a gesture mounts that another detector's gestures name in a relation (`simultaneousWithExternalGesture`, ...), that detector
-// sends its relations again: RNGH's `useMountReactions`. Until the other gesture has a tag the relation resolves to nothing.
+// sends its relations again: RNGH's `useMountReactions`. Until the other gesture has a tag the relation resolves to nothing. A record
+// does not react to its own gestures: `attached` is empty while it attaches (nothing yet on a first attach, `dropHandlers` emptied it
+// on a new one), so there is nothing for the loop to compare; the last test of `tests/gestures/lifecycle.test.ts` pins that.
 const names = (relation: GestureRef[] | undefined, gesture: GestureType) => relation !== undefined && relation.some((entry) => (typeof entry === "number" ? entry : (entry as GestureType).handlerTag ?? (entry as { current?: { handlerTag?: number } }).current?.handlerTag) === gesture.handlerTag);
 MountRegistry.addMountListener((mounted) => {
   const gesture = mounted as GestureType;
   for (const record of records.values()) {
-    if (!record.mounted || record === attaching || !record.gesture) continue;
+    if (!record.mounted || !record.gesture) continue;
     for (const attached of record.attached) {
       const { blocksHandlers, requireToFail, simultaneousWith } = attached.config;
       if (names(blocksHandlers, gesture) || names(requireToFail, gesture) || names(simultaneousWith, gesture)) {

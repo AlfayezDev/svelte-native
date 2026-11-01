@@ -118,6 +118,13 @@ export type Loaded = {
   /** The bundle's own copy of `@rasheed/svelte-native/gestures`. */
   gestures: typeof import("../../src/gestures/index.ts");
   bootSummary(): string;
+  /** The bundle's own copies of what a test inspects: the JS receiver's memory, RNGH's mount registry and handler registry. */
+  probe: {
+    receiverSize(): { stateManagers: number; lastUpdates: number };
+    MountRegistry: typeof import("../../src/gestures/rngh.js").MountRegistry;
+    findHandler: typeof import("../../src/gestures/rngh.js").findHandler;
+    findHandlerByTestID(testID: string): { handlerTag: number } | null;
+  };
 };
 
 type LoadOptions = {
@@ -140,8 +147,12 @@ export async function load(options: LoadOptions): Promise<Loaded> {
         import { startSurface, stopSurface, fabricStats, flush } from '../../src/fabric/host.ts';
         import { bootSummary } from '../../src/boot-marks.ts';
         import * as gestures from '../../src/gestures/index.ts';
+        import { receiverSize } from '../../src/gestures/events.ts';
+        import { MountRegistry, findHandler } from '../../src/gestures/rngh.js';
+        import { findHandlerByTestID } from 'react-native-gesture-handler/src/handlers/handlersRegistry';
         import { tick, flushSync } from 'svelte';
-        export { startSurface, stopSurface, fabricStats, flush, tick, flushSync, Fixture, gestures, bootSummary };`,
+        const probe = { receiverSize, MountRegistry, findHandler, findHandlerByTestID };
+        export { startSurface, stopSurface, fabricStats, flush, tick, flushSync, Fixture, gestures, bootSummary, probe };`,
       resolveDir: import.meta.dirname,
     },
     bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], mainFields: ["main"], write: false,

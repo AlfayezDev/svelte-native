@@ -82,3 +82,8 @@ export function forgetHandler(handlerTag: number): void {
   stateManagers.delete(handlerTag);
   lastUpdateEvent.delete(handlerTag);
 }
+
+/** What the receiver remembers, for the leak checks: a dropped handler leaves no state manager and no last update behind. */
+export function receiverSize(): { stateManagers: number; lastUpdates: number } {
+  return { stateManagers: stateManagers.size, lastUpdates: lastUpdateEvent.size };
+}

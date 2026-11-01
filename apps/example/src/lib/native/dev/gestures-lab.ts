@@ -267,6 +267,16 @@ const SHEET_DRAG = 330;
  */
 const DIAGONAL_MS = 600;
 
+/**
+ * The sheet's tie between its own drag and a pan with `activeOffsetY([-4, 4])`: the sheet claims at its 8 dp slop and the pan wins only if
+ * it activated on an earlier sample (SPEC.md, "Android arbitration"), so the finger must give a sample between 4 and 8 dp. `adb input swipe`
+ * delivers a sample every 12 to 18 ms (the injection and the 60 Hz frame batching decide which): 120 dp in 400 ms moved 5.4 dp between two of
+ * them, which skipped that 4 dp window in 2 of 8 runs on a fresh emulator (`ACTION_MOVE t=12 ms dy=-3.6 dp`, then `t=30 ms dy=-9.0 dp, history=0`:
+ * "EngineSheet claims the gesture at sample 0 of 0"), and no engine can keep a gesture for a pan that never saw its distance. At 1200 ms the finger
+ * moves 1.8 dp per 18 ms, so a sample lands in the window unless the injection stalls for 40 ms.
+ */
+const TIE_MS = 1200;
+
 function boxRound(): Round {
   return {
     id: "box",
@@ -520,7 +530,7 @@ export const scenarios: ScenarioSpec[] = [
         step("drag the grabber up", drag(at("grabber"), [0, -SHEET_DRAG], 400), marked("detentChanges", 1), 900),
         step("scroll the content", drag(at("scroll", 0.5, 0.7), [0, -260], 400), (s) => (s.marks.scrollY ?? 0) > 100, 900, 5000),
         step("drag the default pan down", drag(at("boxDefault"), [0, SHEET_DRAG], 400), marked("detentChanges", 2), 900, 5000),
-        step("drag the [-4, 4] pan up", drag(at("boxFast"), [0, -120], 400), finalized("boxFast"), 900, 5000),
+        step("drag the [-4, 4] pan up", drag(at("boxFast"), [0, -120], TIE_MS), finalized("boxFast"), 900, 5000),
       ],
     }],
     evaluate: sheetChecks,

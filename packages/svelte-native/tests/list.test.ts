@@ -221,3 +221,31 @@ test("a list that says its height mounts the rows that fill it first, the oversc
   await result.tick();
   expect(rows()).toBe(12); // the viewport's rows (0-7) and 4 of overscan
 });
+
+test("a list that fills mounts the rows that show first and the overscan a frame later", async () => {
+  const frames: (() => void)[] = [];
+  const scope = globalThis as { requestAnimationFrame?: (callback: () => void) => number; cancelAnimationFrame?: (handle: number) => void };
+  const saved = [scope.requestAnimationFrame, scope.cancelAnimationFrame];
+  scope.requestAnimationFrame = (callback) => frames.push(callback);
+  scope.cancelAnimationFrame = () => {};
+  try {
+    const result = await load();
+    const root: NativeNode = result.root;
+    const app = result.start({ count: 0, height: 360, rowHeight: 46 }) as { setCount: (count: number) => void };
+    await result.tick();
+    const rows = () => nodes(root).filter((node) => String(node.getSnapshot().props["data-id"] ?? "").startsWith("r")).length;
+    const scroll = nodes(root).find((node) => node.name === "native-scroll") as NativeNode;
+    (scroll.getSnapshot().props.nativeProps as { onLayout: (event: unknown) => void }).onLayout({ nativeEvent: { layout: { height: 360, width: 300, x: 0, y: 0 } } });
+    await result.tick();
+    expect(rows()).toBe(0);
+    app.setCount(300);
+    await result.tick();
+    // The viewport is known (the list was laid out empty): the rows that show, and nothing around them yet.
+    expect(rows()).toBe(8);
+    for (const frame of frames.splice(0)) frame();
+    await result.tick();
+    expect(rows()).toBe(12);
+  } finally {
+    [scope.requestAnimationFrame, scope.cancelAnimationFrame] = saved;
+  }
+});

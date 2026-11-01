@@ -154,11 +154,23 @@
   }
 
   const count = $derived(items.length);
+  // The overscan rows are not what the user sees first. A list that fills (or fills again after it was empty) mounts the rows that
+  // show, and the overscan follows in the next frame: the screen's rows reach the layout before the rows around them do.
+  let overscanFrom = $state(false);
+  const reach = $derived(overscanFrom ? overscan : 0);
+  $effect(() => {
+    if (count === 0) { overscanFrom = false; return; }
+    if (overscanFrom) return;
+    const frameRequest = (globalThis as { requestAnimationFrame?: (callback: () => void) => number }).requestAnimationFrame;
+    if (!frameRequest) { overscanFrom = true; return; }
+    const handle = frameRequest(() => { overscanFrom = true; });
+    return () => (globalThis as { cancelAnimationFrame?: (handle: number) => void }).cancelAnimationFrame?.(handle);
+  });
   const start = $derived(initialScrollIndex ?? 0);
   const first = $derived.by(() => {
     if (!viewport) return Math.max(0, Math.min(count - 1, start));
     const top = Math.max(0, scroll - headerSize);
-    return Math.max(0, Math.min(count - 1, layout.indexAt(top) - overscan));
+    return Math.max(0, Math.min(count - 1, layout.indexAt(top) - reach));
   });
   // Before the first layout the viewport is unknown. A list that says its size in its style gets the rows that fill it (the
   // rows below the fold arrive with the overscan once the layout is known); any other list gets `initialNumToRender` or 10.
@@ -176,7 +188,7 @@
   const last = $derived.by(() => {
     if (!viewport) return Math.min(count - 1, first + firstWindow - 1);
     const bottom = Math.max(0, scroll - headerSize) + viewport;
-    return Math.min(count - 1, layout.endIndex(bottom) + overscan);
+    return Math.min(count - 1, layout.endIndex(bottom) + reach);
   });
   const indices = $derived.by(() => {
     const out: number[] = [];

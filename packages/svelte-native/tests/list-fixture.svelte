@@ -4,7 +4,10 @@
     count?: number; onEnd?: () => void; rowHeight?: number | null; horizontal?: boolean; recycle?: boolean;
     initialScrollIndex?: number; onViewable?: (info: never) => void; heightOf?: (item: unknown, index: number) => number; none?: boolean; height?: number;
   } = $props();
-  const items = $derived(none ? [] : Array.from({ length: count }, (_, index) => ({ id: `r${index}`, label: `Row ${index}` })));
+  let override = $state<number | null>(null);
+  const total = $derived(override ?? count);
+  export function setCount(next: number) { override = next; }
+  const items = $derived(none ? [] : Array.from({ length: total }, (_, index) => ({ id: `r${index}`, label: `Row ${index}` })));
   let list: { scrollToIndex: (index: number, animated?: boolean) => void } | undefined = $state();
   export function jump(index: number) { list?.scrollToIndex(index, false); }
 </script>

@@ -44,6 +44,13 @@ object A11yRules {
     return if (parts.isEmpty()) null else parts.joinToString(", ")
   }
 
+  /**
+   * Whether the content description has to be built again after a props update: it is made of the label, the state's busy and mixed bits and the value's text, and
+   * of nothing else (the hint, the mode and the role are not in it). A node's props are applied on every update that touches it, most of which change none of these.
+   */
+  fun descriptionChanged(oldLabel: String?, newLabel: String?, before: A11yRecords, after: A11yRecords): Boolean =
+    oldLabel != newLabel || before.hasState != after.hasState || before.state != after.state || before.valueText != after.valueText
+
   /** `ReactAccessibilityDelegate`: a range is exposed when min, now and max are all numbers and `max > min && now >= min && max >= now`. */
   fun hasRange(r: A11yRecords): Boolean {
     val all = VALUE_MIN or VALUE_MAX or VALUE_NOW

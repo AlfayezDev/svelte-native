@@ -248,6 +248,22 @@
   }
 
   /**
+   * The windowed list's mount again, after 200 ms in which nothing ran, so the JavaScript thread's core has clocked down (the
+   * mount of a tap after a pause). Informational: `quiet()` explains why the gated mount does not wait like this.
+   */
+  async function coldMount(signal: AbortSignal): Promise<number> {
+    await mountFrames(signal); await mountFrames(signal);
+    const laidOut = waitFor(signal, (resolve) => { rowsLaidOut = resolve; }, 8000, "Row layout");
+    const start = performance.now();
+    rows = Array.from({ length: 300 }, (_, index) => index);
+    await tick(); await laidOut;
+    const ms = performance.now() - start;
+    await mountFrames(signal);
+    rows = []; await settle();
+    return ms;
+  }
+
+  /**
    * Empties the list the way a screen that clears its rows does, and reports what the unmount cost: `unmountMs` is the JavaScript
    * flush, `teardown` the UI-runtime frame intervals from the clear until the main thread has applied it (its `max` is the longest
    * time the main thread was away from drawing, 35 to 50 ms for 300 rows on the iPhone SE 3). Informational: no bar judges it.
@@ -293,8 +309,9 @@
       }
     });
     const { unmountMs, teardown } = await tearDown(signal);
+    const coldMountMs = await coldMount(signal);
     view = "none"; await settle();
-    return { verdict: verdict(frames), summary: `${describe(frames)} · mount to layout ${mountMs.toFixed(0)} ms (Svelte flush ${svelteMs.toFixed(0)} ms) · unmount ${unmountMs.toFixed(0)} ms · teardown longest frame ${teardown.max.toFixed(0)} ms`, frames, detail: { mountMs, svelteMs, unmountMs, teardownMaxMs: teardown.max, teardownDroppedPct: teardown.droppedPct, clipped: false, raw: false, virtual: true, collected, flushes } };
+    return { verdict: verdict(frames), summary: `${describe(frames)} · mount to layout ${mountMs.toFixed(0)} ms (Svelte flush ${svelteMs.toFixed(0)} ms) · unmount ${unmountMs.toFixed(0)} ms · teardown longest frame ${teardown.max.toFixed(0)} ms · after idle ${coldMountMs.toFixed(0)} ms`, frames, detail: { mountMs, svelteMs, unmountMs, teardownMaxMs: teardown.max, teardownDroppedPct: teardown.droppedPct, coldMountMs, clipped: false, raw: false, virtual: true, collected, flushes } };
   }
 
   const scenarios: Scenario[] = [

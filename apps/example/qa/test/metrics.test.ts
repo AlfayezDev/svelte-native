@@ -172,6 +172,17 @@ describe("labMetrics", () => {
 	test("the virtual list's mount to layout", () => {
 		expect(metrics["list.virtual300.mountMs"]).toBeCloseTo(20.7593, 3);
 	});
+	test("the cold mount is null until a run reports it, then the worst of the runs", () => {
+		expect(metrics["list.virtual300.coldMountMs"]).toBeNull();
+		const first = run();
+		const second = run();
+		for (const [file, value] of [[first, 17.2], [second, 19.9]] as const) {
+			const list = file.scenarios.find((scenario) => scenario.name === "list-300-virtual");
+			if (!list) throw new Error("sample has no list-300-virtual");
+			list.detail = { ...list.detail, coldMountMs: value };
+		}
+		expect(labMetrics(labFile(first, second), pinned)["list.virtual300.coldMountMs"]).toBe(19.9);
+	});
 	test("the teardown of a list is reported per scenario, as the worst of the runs", () => {
 		const first = run();
 		const second = run();

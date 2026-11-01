@@ -153,7 +153,10 @@ echo LOCKED
 while IFS= read -r -t "$dead" _; do :; done
 `;
 
-/** `ssh` arguments that give the lock a session of its own, so nothing multiplexed outlives the command. */
+/**
+ * `ssh` arguments for the session that holds a remote lock. The user's ssh configuration applies as it is, a multiplexed
+ * connection included (the channel closes with the command, and a master that dies takes the lock with it, which the harness notices).
+ */
 export function remoteArguments(lock: Extract<Lock, { kind: "remote" }>, wait: number, deadmanSeconds: number): string[] {
 	const remote = ["bash", "-c", shellQuote(remoteHolder), "bash", shellQuote(lock.file), String(wait), String(deadmanSeconds)].join(" ");
 	return [
@@ -162,8 +165,6 @@ export function remoteArguments(lock: Extract<Lock, { kind: "remote" }>, wait: n
 		"-o", "ConnectTimeout=15",
 		"-o", "ServerAliveInterval=15",
 		"-o", "ServerAliveCountMax=4",
-		"-o", "ControlMaster=no",
-		"-o", "ControlPath=none",
 		lock.host,
 		remote,
 	];

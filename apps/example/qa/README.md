@@ -40,6 +40,8 @@ Node 25 runs the TypeScript directly (`node qa/native-qa.ts`). Bun is only neede
 | any other machine with an emulator of its own | nothing | `/tmp/svelte-qa-emulator.lock` |
 | anywhere, explicitly | `NATIVE_QA_LOCK_HOST=<ssh destination>` / `=local`, `NATIVE_QA_LOCK_FILE=<path>`, `NATIVE_QA_LOCK_WAIT=<seconds, default: until free>` | as set |
 
+Worktrees that predate this change still take `/tmp/svelte-qa-emulator.lock` on the PC, and so does the PC-side `emu_watchdog.sh`: nothing makes them wait for a run that took the host's lock. Rebase them, and move the watchdog to the host (`qa/ci/RUNBOOK.md`, step 6).
+
 `native-qa hold --device localhost:5555 [--wait <s>] -- <command...>` holds the lock across several harness calls (they see it as held and do not take it again): the CI lane runs under it, and so can an agent's own sequence of runs. `ssh ovh-root fuser -v /run/svelte-qa/emulator.lock` shows who holds it. The host's watchdog and the CI jobs take the same file ("CI", below).
 
 ## Dexopt

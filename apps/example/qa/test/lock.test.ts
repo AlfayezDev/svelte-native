@@ -173,10 +173,10 @@ describe("a remote lock", () => {
 		await expect(runUnderLock(remote(file), ["/nonexistent/program"])).rejects.toThrow();
 		expect(free(file)).toBe(true);
 	});
-	test("the ssh invocation is one session without multiplexing", () => {
+	test("the ssh invocation never asks a question and leaves multiplexing to the user's configuration", () => {
 		const args = remoteArguments({ kind: "remote", host: "ovh-root", file: "/run/svelte-qa/emulator.lock" }, 0, 300);
-		expect(args).toContain("ControlPath=none");
 		expect(args).toContain("BatchMode=yes");
+		expect(args.join(" ")).not.toContain("Control");
 		expect(args[args.length - 2]).toBe("ovh-root");
 		expect(args[args.length - 1]).toMatch(/^bash -c '.*' bash '\/run\/svelte-qa\/emulator.lock' 0 300$/s);
 	});

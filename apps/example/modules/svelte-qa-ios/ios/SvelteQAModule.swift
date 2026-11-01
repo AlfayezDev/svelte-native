@@ -8,8 +8,10 @@ struct QAError: Error, CustomStringConvertible {
 }
 
 /// What the lab app can ask of itself on iOS, where nothing outside the process can take its screenshot or read its accessibility
-/// tree (`apps/platform/qa`, "iOS"): the pixels of its window, the elements VoiceOver walks, and the launch times. Every function but
-/// the boot recorder refuses to run outside the QA bundle, so the module that ships in a production build does nothing there.
+/// tree (`apps/platform/qa`, "iOS"): the pixels of its window, the elements VoiceOver walks, and the launch times. The production
+/// build does not link this module at all: `app.config.ts` gives the svelte-native plugin `autolinkingExclude`, which the plugin
+/// writes into the Podfile as `use_expo_modules!(exclude: [...])`, so the pod, its boot subscriber and the gesture trace are not in that
+/// app. Should it be linked, every function but the boot recorder still refuses to run outside the QA bundle.
 public final class SvelteQAModule: Module {
   public func definition() -> ModuleDefinition {
     Name("SvelteQA")
@@ -86,6 +88,12 @@ public final class SvelteQAModule: Module {
     AsyncFunction("blur") { () in
       try SvelteQA.requireEnabled()
       SvelteQAUIKit.blur()
+    }.runOnQueue(.main)
+
+    // The gesture recognizers on the view with a React Native tag and on the views above it (JSON text): what the `gestures-*` probes check.
+    AsyncFunction("gestureRecognizers") { (tag: Int) -> String in
+      try SvelteQA.requireEnabled()
+      return try SvelteQAGestures.recognizers(tag: tag)
     }.runOnQueue(.main)
 
     // The accessibility elements of the key window as VoiceOver finds them (JSON text).
@@ -290,6 +298,8 @@ final class BootRecorder {
 public final class SvelteQABootSubscriber: ExpoAppDelegateSubscriber {
   public func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
     if SvelteQA.enabled { SvelteQA.boot = BootRecorder() }
+    // `-SvelteQAGestureTrace YES` among the launch arguments: the recognizers' time line (SvelteQAGestureTrace.swift).
+    SvelteQAGestureTrace.startIfRequested()
     return true
   }
 }

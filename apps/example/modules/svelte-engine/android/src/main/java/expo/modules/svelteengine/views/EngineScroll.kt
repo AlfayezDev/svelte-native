@@ -12,6 +12,7 @@ import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.widget.HorizontalScrollView
 import android.widget.ScrollView
+import com.swmansion.gesturehandler.core.NativeViewGestureHandler.NativeViewGestureHandlerHook
 import expo.modules.svelteengine.SvelteEngineNative
 import kotlin.math.abs
 import kotlin.math.ceil
@@ -442,9 +443,26 @@ class ScrollBridge(private val view: ViewGroup, private val node: NodeState) {
   }
 }
 
-class EngineScroll(context: Context) : ScrollView(context), EngineNode, EngineScrollable {
+/**
+ * Puts a scroll view back at the origin before it is pooled. `ScrollView.scrollTo` does nothing while the view has no child, and
+ * a dead tree can arrive content first (the order of the mutation stream's deletes): the offset would outlive the view and show
+ * on its next owner, whose content is laid out from its own origin (a gesture aimed at a laid-out rectangle found another row).
+ * With no child, an empty stand-in child is attached just long enough for the move.
+ */
+private fun resetOffset(view: ViewGroup, standIn: View, offset: Boolean, scrollTo: (Int, Int) -> Unit) {
+  if (view.childCount > 0 || !offset) {
+    scrollTo(0, 0)
+    return
+  }
+  view.addView(standIn)
+  scrollTo(0, 0)
+  view.removeView(standIn)
+}
+
+class EngineScroll(context: Context) : ScrollView(context), EngineNode, EngineScrollable, NativeViewGestureHandlerHook {
   override val node = NodeState()
   val bridge = ScrollBridge(this, node)
+  private val standIn by lazy(LazyThreadSafetyMode.NONE) { View(context) }
 
   init {
     overScrollMode = OVER_SCROLL_IF_CONTENT_SCROLLS
@@ -482,7 +500,7 @@ class EngineScroll(context: Context) : ScrollView(context), EngineNode, EngineSc
   /** Back to the scroll position and event state of a new view ([ViewPool]); the content child is detached afterwards. */
   fun resetForReuse() {
     bridge.native = null
-    scrollTo(0, 0)
+    resetOffset(this, standIn, scrollX != 0 || scrollY != 0, ::scrollTo)
     bridge.resetForReuse()
     // Edge glows of the previous owner would otherwise keep animating on the next one.
     overScrollMode = OVER_SCROLL_NEVER
@@ -513,6 +531,16 @@ class EngineScroll(context: Context) : ScrollView(context), EngineNode, EngineSc
     return super.onTouchEvent(ev)
   }
 
+  // react-native-gesture-handler's `Gesture.Native()` on this view (SPEC.md, "Gestures", Android contract item 7): what its
+  // `ScrollViewHook` says for a React Native scroll view, and the touch the handler feeds the view goes the way a dispatched
+  // touch does, through the bridge's velocity tracker (the handler calls `onTouchEvent` itself).
+  override fun shouldCancelRootViewGestureHandlerIfNecessary() = true
+
+  override fun sendTouchEvent(view: View?, event: MotionEvent): Boolean {
+    bridge.onDispatch(event)
+    return onTouchEvent(event)
+  }
+
   override fun fling(velocityY: Int) {
     if (bridge.snapping) bridge.flingAndSnap(velocityY) else super.fling(velocityY)
   }
@@ -537,9 +565,10 @@ class EngineScroll(context: Context) : ScrollView(context), EngineNode, EngineSc
   }
 }
 
-class EngineHScroll(context: Context) : HorizontalScrollView(context), EngineNode, EngineScrollable {
+class EngineHScroll(context: Context) : HorizontalScrollView(context), EngineNode, EngineScrollable, NativeViewGestureHandlerHook {
   override val node = NodeState()
   val bridge = ScrollBridge(this, node)
+  private val standIn by lazy(LazyThreadSafetyMode.NONE) { View(context) }
 
   init {
     overScrollMode = OVER_SCROLL_IF_CONTENT_SCROLLS
@@ -576,7 +605,7 @@ class EngineHScroll(context: Context) : HorizontalScrollView(context), EngineNod
   /** Back to the scroll position and event state of a new view ([ViewPool]); the content child is detached afterwards. */
   fun resetForReuse() {
     bridge.native = null
-    scrollTo(0, 0)
+    resetOffset(this, standIn, scrollX != 0 || scrollY != 0, ::scrollTo)
     bridge.resetForReuse()
     // Edge glows of the previous owner would otherwise keep animating on the next one.
     overScrollMode = OVER_SCROLL_NEVER
@@ -605,6 +634,16 @@ class EngineHScroll(context: Context) : HorizontalScrollView(context), EngineNod
     if (!bridge.scrollEnabled || !bridge.canBeTouchTarget) return false
     bridge.onTouch(ev)
     return super.onTouchEvent(ev)
+  }
+
+  // react-native-gesture-handler's `Gesture.Native()` on this view (SPEC.md, "Gestures", Android contract item 7): what its
+  // `ScrollViewHook` says for a React Native scroll view, and the touch the handler feeds the view goes the way a dispatched
+  // touch does, through the bridge's velocity tracker (the handler calls `onTouchEvent` itself).
+  override fun shouldCancelRootViewGestureHandlerIfNecessary() = true
+
+  override fun sendTouchEvent(view: View?, event: MotionEvent): Boolean {
+    bridge.onDispatch(event)
+    return onTouchEvent(event)
   }
 
   override fun fling(velocityX: Int) {

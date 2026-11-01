@@ -18,6 +18,9 @@ import { formatSmokeLine as format, formatSmokeSummary as summarize, oneLine, ty
 
 /** The packages only the QA app links: the CommonJS file app.config.ts and react-native.config.js read. */
 const { smokeOnlyPackages } = createRequire(import.meta.url)("../smoke-packages.cjs") as { smokeOnlyPackages: string[] };
+/** The local Expo modules for the QA lab only (`qaOnlyModules` in app.config.ts), and the ones of them each platform links: the touch injector and the view bench are Android's, SvelteQA is iOS's. */
+const qaOnlyModules = ["svelte-qa-android", "svelte-qa-ios", "view-bench"];
+const qaOnlyLinked = { android: ["svelte-qa-android", "view-bench"], ios: ["svelte-qa-ios"] };
 const gatesFile = JSON.parse(readFileSync(join(platformDir, "qa/gates.json"), "utf8")) as GatesFile;
 /** The app's formatter takes a path of its own type; the harness's results carry the text the log had. */
 const formatSmokeLine = (entry: SmokeModuleResult): string => format({ ...entry, path: entry.path as SmokePath, ms: entry.ms ?? 0 });
@@ -343,8 +346,9 @@ describe("three apps: the product and the QA app link the product's native modul
 	}
 	const smokeOnlyFor = (platform: "android" | "ios") => table.modules.filter((entry) => entry.link !== "js" && !entry.shared && entry.platforms.includes(platform)).flatMap((entry) => entry.packages);
 
-	test("the product and the QA app exclude every smoke-only package; the smoke app excludes none", () => {
-		expect(configuredExclude("production").toSorted()).toEqual([...smokeOnlyPackages].toSorted());
+	// One exclusion list serves the smoke test's libraries and the QA-only modules (product-modules.test.ts checks the second half).
+	test("the product and the QA app exclude every smoke-only package, the product the QA-only modules as well; the smoke app excludes none", () => {
+		expect(configuredExclude("production").toSorted()).toEqual([...smokeOnlyPackages, ...qaOnlyModules].toSorted());
 		expect(configuredExclude("qa").toSorted()).toEqual([...smokeOnlyPackages].toSorted());
 		expect(configuredExclude("smoke")).toEqual([]);
 	});
@@ -355,8 +359,10 @@ describe("three apps: the product and the QA app link the product's native modul
 			const smoke = linked(platform, "smoke");
 			expect([...product.all].filter((name) => smokeOnlyPackages.includes(name))).toEqual([]);
 			expect([...qa.all].filter((name) => smokeOnlyPackages.includes(name))).toEqual([]);
-			// The QA app is the build every gate measures: its autolinked set is the product's, package for package (what it was before the smoke test).
-			expect([...qa.all].toSorted()).toEqual([...product.all].toSorted());
+			// The QA app is the build every gate measures: its autolinked set is the product's, package for package (what it was before the smoke test),
+			// plus the QA-only modules the product leaves out (the touch injector, the iOS inspection module, the view bench).
+			expect([...qa.all].filter((name) => !qaOnlyModules.includes(name)).toSorted()).toEqual([...product.all].toSorted());
+			expect([...qa.all].filter((name) => !product.all.has(name)).toSorted()).toEqual(qaOnlyLinked[platform].toSorted());
 			expect([...qa.rn].toSorted()).toEqual([...product.rn].toSorted());
 			expect([...smoke.all].filter((name) => !qa.all.has(name)).toSorted()).toEqual(smokeOnlyFor(platform).toSorted());
 			expect([...qa.all].filter((name) => !smoke.all.has(name))).toEqual([]);

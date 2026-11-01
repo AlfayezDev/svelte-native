@@ -36,6 +36,15 @@ const smokePlugins: NonNullable<ExpoConfig["plugins"]> = !smoke ? [] : [
   // `com.huawei.hms:location` from Huawei's repository, which only the production app's Huawei plugin (not used here) adds to the project.
   ["expo-build-properties", { ios: { useFrameworks: "static" }, android: { extraMavenRepos: [{ url: "https://developer.huawei.com/repo/" }] } }],
 ];
+// Local Expo modules (directories of `modules/`) that exist for the QA lab and must not ship: the in-app touch injector (Android), the QA
+// inspection and gesture trace module (iOS) and the view-creation bench (Android). The product build leaves them out of autolinking
+// (the svelte-native plugin writes the names into settings.gradle and the Podfile), so their classes are not compiled into the app.
+// `qa/test/product-modules.test.ts` resolves the module list with this exclusion.
+const qaOnlyModules = ["svelte-qa-android", "svelte-qa-ios", "view-bench"];
+// What the svelte-native plugin leaves out of both autolinkers, one list for both reasons: the product has neither the smoke test's libraries
+// nor the QA modules; the QA app has the QA modules but not the libraries; the smoke app is the QA app plus the libraries, so it excludes none
+// of them (its QA modules stay). `qa/test/product-modules.test.ts` and `qa/test/smoke.test.ts` resolve the module list with this.
+const autolinkingExclude = smoke ? [] : production ? [...smokeOnlyPackages, ...qaOnlyModules] : smokeOnlyPackages;
 // The EAS Update channel of this build comes from its build profile (`UPDATES_CHANNEL` in eas.json). `eas update` and local builds
 // evaluate this file without it: they publish and run without a channel, and the app does not check for updates.
 const channel = process.env.UPDATES_CHANNEL;
@@ -71,10 +80,10 @@ export default {
   plugins: [
     ["@rasheed/svelte-native/expo", {
       androidProfileable: !production,
+      autolinkingExclude,
       androidFeatureFlags: { disableViewPreallocationAndroid: true, enablePreparedTextLayout: true },
       // Foreign views (SPEC.md, "Foreign views"): the packages' view managers are created when a component is first mounted,
       // not when the host starts. `packages/svelte-native/tests/foreign.test.ts` checks the names against the packages' sources.
-      autolinkingExclude: smoke ? [] : smokeOnlyPackages,
       androidOnDemandViewManagers: {
         "com.rnmaps.maps.MapsPackage": ["RNMapsMapView", "RNMapsMarker", "RNMapsCallout", "RNMapsGooglePolygon", "RNMapsPolyline", "RNMapsCircle", "RNMapsOverlay", "RNMapsUrlTile", "RNMapsWMSTile"],
         "com.reactnativecommunity.webview.RNCWebViewPackage": ["RNCWebView"],
@@ -88,6 +97,9 @@ export default {
         "com.reactnativereanimatedtext.ReanimatedTextPackage": ["JBAnimatedText"],
         // react-native-svg: a `BaseReactPackage` (its TurboModules, `RNSVGRenderableModule` and `RNSVGSvgViewModule`, stay with it) that announces all 29 view managers at start unless wrapped.
         "com.horcrux.svg.SvgPackage": ["RNSVGSvgViewAndroid", "RNSVGGroup", "RNSVGPath", "RNSVGText", "RNSVGTSpan", "RNSVGTextPath", "RNSVGImage", "RNSVGCircle", "RNSVGEllipse", "RNSVGLine", "RNSVGRect", "RNSVGClipPath", "RNSVGDefs", "RNSVGUse", "RNSVGSymbol", "RNSVGPattern", "RNSVGMask", "RNSVGForeignObject", "RNSVGMarker", "RNSVGLinearGradient", "RNSVGRadialGradient", "RNSVGFilter", "RNSVGFeBlend", "RNSVGFeColorMatrix", "RNSVGFeComposite", "RNSVGFeFlood", "RNSVGFeGaussianBlur", "RNSVGFeMerge", "RNSVGFeOffset"],
+        // Gestures (SPEC.md, "Gestures"): the package's module (RNGestureHandlerModule) is served as before; its two view managers
+        // are for React Native's own mounting, which the engine does not use.
+        "com.swmansion.gesturehandler.RNGestureHandlerPackage": ["RNGestureHandlerRootView", "RNGestureHandlerButton"],
       },
     }],
     "expo-secure-store",

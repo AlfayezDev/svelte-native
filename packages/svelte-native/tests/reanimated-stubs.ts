@@ -7,14 +7,29 @@ export type AnimLog = {
   removable: object[];
   layoutConfigs?: { viewTag: number; type: number; config: unknown }[];
   inline?: unknown[];
+  /** Every `makeMutable` value, in creation order; a test sets `onWrite` to make a write fail, as Reanimated's serialiser can. */
+  mutables?: { value: unknown; writes: unknown[] }[];
+  onWrite?: (mutable: { value: unknown }, next: unknown) => void;
+  /** Every `new WorkletEventHandler`: the registrations a detector made, in order. */
+  eventHandlers?: FakeEventHandler[];
+  /** `setGestureState(tag, state)` calls. */
+  gestureStates?: [tag: number, state: number][];
 };
+export type FakeEventHandler = { worklet: (event: object) => void; eventNames: string[]; tags: Set<number>; log: (readonly [string, ...unknown[]])[] };
 
 const head = "const A = (globalThis.__anim ??= { descriptors: [], mappers: [], updates: [], css: [], removable: [] });";
 const cssKey = "(k) => k.startsWith('animation') || k.startsWith('transition')";
 
 export const reanimatedStubs: Record<string, string> = {
   "react-native-reanimated": `${head}
-    export const makeMutable = (value) => ({ value, _isReanimatedSharedValue: true });
+    export const makeMutable = (initial) => {
+      const m = { _value: initial, writes: [], _isReanimatedSharedValue: true,
+        get value() { return this._value; },
+        set value(next) { A.onWrite?.(m, next); m.writes.push(next); m._value = next; } };
+      (A.mutables ??= []).push(m);
+      return m;
+    };
+    export const setGestureState = (tag, state) => { (A.gestureStates ??= []).push([tag, state]); };
     export const isSharedValue = (v) => v?._isReanimatedSharedValue === true;
     export const startMapper = (worklet, inputs) => { const id = A.mappers.length + 1; A.mappers.push({ id, worklet, inputs, stopped: false }); return id; };
     export const stopMapper = (id) => { A.mappers.find((m) => m.id === id).stopped = true; };`,
@@ -23,7 +38,14 @@ export const reanimatedStubs: Record<string, string> = {
   "react-native-reanimated/src/common/style/processors/colors": "export const processColorsInProps = () => {};",
   "react-native-reanimated/src/animationBuilder": "export const maybeBuild = (c) => (typeof c?.build === 'function' ? c.build() : c);",
   "react-native-reanimated/src/UpdateLayoutAnimations": `${head} export const updateLayoutAnimations = (viewTag, type, config) => { (A.layoutConfigs ??= []).push({ viewTag, type, config }); };`,
-  "react-native-worklets": "export const makeShareable = (value) => value;",
+  "react-native-worklets": "export const makeShareable = (value) => value; export const runOnJS = (fn) => fn; export const scheduleOnRN = (fn, ...args) => fn(...args);",
+  "react-native-reanimated/src/WorkletEventHandler": `${head}
+    export class WorkletEventHandler {
+      constructor(worklet, eventNames) { this.worklet = worklet; this.eventNames = eventNames; this.tags = new Set(); this.log = [['new', eventNames]]; (A.eventHandlers ??= []).push(this); }
+      registerForEvents(tag) { this.tags.add(tag); this.log.push(['register', tag]); }
+      updateEventHandler(worklet, eventNames) { this.worklet = worklet; this.eventNames = eventNames; this.log.push(['update', eventNames]); }
+      unregisterFromEvents(tag) { this.tags.delete(tag); this.log.push(['unregister', tag]); }
+    }`,
   "react-native-reanimated/src/animation/util": "export const initialUpdaterRun = (updater) => updater();",
   "react-native-reanimated/src/updateProps": `${head} export const updateProps = (descriptors, values, isAnimatedProps) => { A.updates.push({ descriptors, values: { ...values }, animatedProps: isAnimatedProps === true }); };`,
   "react-native-reanimated/src/ViewDescriptorsSet": `${head}
@@ -60,3 +82,4 @@ export const reanimatedStubs: Record<string, string> = {
       detachInlineProps() { (globalThis.__anim.inline ??= []).push("detached"); }
     }`,
 };
+

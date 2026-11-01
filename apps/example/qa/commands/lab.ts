@@ -6,6 +6,7 @@ import {
 	deviceInfo,
 	followLogcat,
 	forceStop,
+	launchWithGestures,
 	startApp,
 	wake,
 } from "../lib/adb.ts";
@@ -71,10 +72,13 @@ export async function lab(argv: string[]): Promise<void> {
 		timeout: { type: "string" },
 		run: { type: "string" },
 		package: { type: "string" },
+		gestures: { type: "boolean" },
 	});
 	const serial = requireString(values.device, "device");
 	const lock = lockFor(serial);
 	if (lock) reexecUnderLock(lock, ["lab", ...argv]);
+	launchWithGestures(values.gestures === true);
+	if (values.gestures === true) console.log("gestures: the gesture handler root is installed at every launch (--gestures)");
 
 	const repeat = integerFlag(values.repeat, "repeat", 1);
 	const timeoutMs = integerFlag(values.timeout, "timeout", 360) * 1000;

@@ -84,7 +84,7 @@ async function load() {
     plugins: [...reactNativeConverters("android"), {
       name: "foreign-fixture",
       setup(builder) {
-        builder.onResolve({ filter: /^(react-native|expo-modules-core)/ }, (args) => ({ path: args.path, namespace: "stub" }));
+        builder.onResolve({ filter: /^(react-native|expo-modules-core)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
         builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? "export {};", loader: "js" }));
         builder.onResolve({ filter: /^@rasheed\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
         builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../src/environment.ts") }));
@@ -328,7 +328,7 @@ test("the on-demand view manager names are the ones the packages register", asyn
   const listed = entry?.[1].androidOnDemandViewManagers ?? {};
   expect(Object.keys(listed).sort()).toEqual([
     "com.airbnb.android.react.lottie.LottiePackage", "com.brentvatne.react.ReactVideoPackage", "com.horcrux.svg.SvgPackage", "com.reactnativecommunity.webview.RNCWebViewPackage", "com.reactnativefastshadow.FastShadowPackage",
-    "com.reactnativereanimatedtext.ReanimatedTextPackage", "com.rivereactnative.RiveReactNativePackage", "com.rnmaps.maps.MapsPackage", "org.wonday.pdf.RNPDFPackage",
+    "com.reactnativereanimatedtext.ReanimatedTextPackage", "com.rivereactnative.RiveReactNativePackage", "com.rnmaps.maps.MapsPackage", "com.swmansion.gesturehandler.RNGestureHandlerPackage", "org.wonday.pdf.RNPDFPackage",
   ]);
 
   const maps = resolve(modules, "react-native-maps/android/src/main/java/com/rnmaps");
@@ -378,6 +378,12 @@ test("the on-demand view manager names are the ones the packages register", asyn
   expect(svgManagers.length).toBe(29);
   expect([...listed["com.horcrux.svg.SvgPackage"]].sort()).toEqual([...svgManagers].sort());
   expect(ts.sys.readFile(resolve(svg, "SvgPackage.java"))).toMatch(/class SvgPackage extends BaseReactPackage implements ViewManagerOnDemandReactPackage/);
+  // The gesture handler's package creates both of its managers as a set (`createViewManagers`); the names are the ones its sources declare.
+  const handler = resolve(modules, "react-native-gesture-handler/android/src/main/java/com/swmansion/gesturehandler");
+  const handlerManagers = ["RNGestureHandlerRootViewManager", "RNGestureHandlerButtonViewManager"].map((manager) => /const val REACT_CLASS = "(\w+)"/.exec(ts.sys.readFile(resolve(handler, `react/${manager}.kt`)) ?? "")?.[1]);
+  expect(handlerManagers.every((name) => name !== undefined)).toBe(true);
+  expect([...listed["com.swmansion.gesturehandler.RNGestureHandlerPackage"]].sort()).toEqual([...handlerManagers].sort());
+  expect(ts.sys.readFile(resolve(handler, "RNGestureHandlerPackage.kt")) ?? "").toContain("RNGestureHandlerRootViewManager(), RNGestureHandlerButtonViewManager()");
   // react-native-view-shot and react-native-blob-util have no view, so nothing of theirs is deferred.
   for (const key of Object.keys(listed)) expect(key).not.toMatch(/viewshot|ReactNativeBlobUtil/);
 });

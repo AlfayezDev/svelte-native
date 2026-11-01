@@ -187,6 +187,34 @@ describe("headless Android config", () => {
     expect(leaveOutOfAutoPlugins(untouched, [])).toBe(untouched);
     expect(untouched._internal).toBeUndefined();
   });
+  test("settings.gradle excludes the local modules the variant leaves out, for Expo and React Native autolinking, and replaces them on the next prebuild", () => {
+    const product = applyHeadlessSettings(settings, ["svelte-qa-android", "svelte-qa-ios"]);
+    expect(product).toContain('def svelteNativeExclude = ["react-native-screens"');
+    const list = /def svelteNativeExclude = \[([^\]]*)\]/.exec(product)?.[1] ?? "";
+    for (const name of [...headlessExcludedPackages, "svelte-qa-android", "svelte-qa-ios"]) expect(list).toContain(`"${name}"`);
+    // Both autolinkers read the same list.
+    expect(product).toContain("expoAutolinking.exclude = svelteNativeExclude");
+    expect(product).toContain("rnConfigCommand + svelteNativeExcludeArgs");
+    expect(applyHeadlessSettings(product, ["svelte-qa-android", "svelte-qa-ios"])).toBe(product);
+    // The QA variant after a product prebuild on the same directory: the exclusion is gone.
+    const qa = applyHeadlessSettings(product, []);
+    expect(qa).not.toContain("svelte-qa");
+    expect(qa).toBe(applyHeadlessSettings(settings));
+  });
+  test("the Podfile carries the product's exclusion (smoke libraries and QA modules) for both autolinkers, idempotently, and loses it for the next variant", () => {
+    const qaModules = ["svelte-qa-ios", "view-bench"];
+    const product = applyPodfileAutolinkingExclude(podfile, ["react-native-mmkv", ...qaModules]);
+    expect(product).toContain('svelte_native_exclude = ["react-native-mmkv", "svelte-qa-ios", "view-bench"]');
+    expect(product).toContain("use_expo_modules!(exclude: svelte_native_exclude)");
+    expect(product).toContain("config_command += svelte_native_exclude.flat_map");
+    expect(applyPodfileAutolinkingExclude(product, ["react-native-mmkv", ...qaModules])).toBe(product);
+    // The QA variant after a product prebuild on the same directory: the QA modules are gone, the smoke libraries stay out.
+    const qa = applyPodfileAutolinkingExclude(product, ["react-native-mmkv"]);
+    expect(qa).not.toContain("svelte-qa-ios");
+    expect(qa).toContain('svelte_native_exclude = ["react-native-mmkv"]');
+    // The smoke variant excludes nothing smoke-related, and the template is back.
+    expect(applyPodfileAutolinkingExclude(product, [])).toBe(podfile);
+  });
   test("package source targets the application id", () => {
     expect(headlessPackageSource("io.example.app")).toStartWith("package io.example.app\n");
   });

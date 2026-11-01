@@ -4,6 +4,7 @@ import type { ActivityIndicatorProps, ImageProps, KeyboardAvoidingViewProps, Mod
 import type Animated from "react-native-reanimated";
 import type { BaseAnimationBuilder, EntryExitAnimationFunction, LayoutAnimationFunction } from "react-native-reanimated";
 import type { BarStyle, Detent, DetentChange, HeaderMetrics, Presentation, ScreenAnimation } from "./fabric/navigation.ts";
+import type { GestureProps } from "./gestures/types.ts";
 
 /** What a `ref` attribute on a host element receives: the host's handle for the element (see `fabric/host.ts`), or null on unmount. */
 // biome-ignore lint/suspicious/noExplicitAny: the handle type depends on the element
@@ -14,7 +15,7 @@ type HostRef = (handle: any) => void; // eslint-disable-line @typescript-eslint/
  * `entering`, `exiting` and `layout` are Reanimated's layout animations (`FadeIn`, `FadeOut`, `LinearTransition`, ...), run by
  * Reanimated's C++ proxy (`entering` is read once, at mount).
  */
-export type NativeAnimatedViewProps = ComponentPropsWithRef<typeof Animated.View> & {
+export type NativeAnimatedViewProps = ComponentPropsWithRef<typeof Animated.View> & GestureProps & {
   animatedStyle?: () => ViewStyle;
   entering?: BaseAnimationBuilder | typeof BaseAnimationBuilder | EntryExitAnimationFunction;
   exiting?: BaseAnimationBuilder | typeof BaseAnimationBuilder | EntryExitAnimationFunction;
@@ -25,8 +26,10 @@ export type NativeAnimatedViewProps = ComponentPropsWithRef<typeof Animated.View
  * A native element takes the React Native props of its primitive directly as attributes.
  * `nativeProps` is the legacy object form; attributes win over its keys.
  * `nativeStyle` carries a style object where Svelte would stringify a `style` attribute.
+ * `gesture` takes a gesture from `@rasheed/svelte-native/gestures` (react-native-gesture-handler's builders): the host attaches
+ * native recognisers to the element's view, which then keeps its own native view (`collapsable` is forced to `false`).
  */
-type NativeElementAttributes<Props> = Omit<Props, "children" | "ref"> & { nativeProps?: Record<string, unknown>; nativeStyle?: Props extends { style?: infer Style } ? Style : unknown; ref?: HostRef };
+type NativeElementAttributes<Props> = Omit<Props, "children" | "ref"> & GestureProps & { nativeProps?: Record<string, unknown>; nativeStyle?: Props extends { style?: infer Style } ? Style : unknown; ref?: HostRef };
 type ElementProps = NativeElementAttributes<Record<string, unknown>>;
 /**
  * What the engine's navigation container reads from a `native-screen` (see `fabric/navigation.ts`, SPEC.md "Navigation"

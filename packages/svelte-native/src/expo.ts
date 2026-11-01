@@ -25,9 +25,12 @@ export type SvelteNativeOptions = {
    */
   androidOnDemandViewManagers?: Record<string, string[]>;
   /**
-   * Packages both autolinkers leave out of this build, on top of the headless ones: Expo's (`expoAutolinking.exclude` in
-   * `settings.gradle`, `use_expo_modules!(exclude:)` in the Podfile) and React Native's (`--exclude` on the config command both
-   * pass). The platform app gives the product the packages of the native module smoke test, so only the QA app links them.
+   * Packages and local Expo modules (directories of `modules/`, or packages) both autolinkers leave out of this build, by name,
+   * on top of the headless ones: Expo's (`expoAutolinking.exclude` in `settings.gradle`, `use_expo_modules!(exclude:)` in the
+   * Podfile) and React Native's (`--exclude` on the config command both pass). One list serves two purposes: the libraries of the
+   * native module smoke test, which only the smoke app links, and code that only a QA build needs (the touch injector, the iOS QA
+   * modules, the view bench), which the product leaves out so the class is not compiled into the app at all. Prebuild writes the
+   * list every time, so one directory can be prebuilt for one variant and then for the other.
    */
   autolinkingExclude?: string[];
 };

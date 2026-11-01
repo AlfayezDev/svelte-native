@@ -6,6 +6,8 @@
   import { List, Modal, ScrollView, Tabs, Text, TextInput, View, useRouter, type TabHandle, type TabItem } from "@rasheed/svelte-native";
   import { createSharedValue, runOnUIAsync, type SharedValue } from "@rasheed/svelte-native/animation";
   import { requireOptionalNativeModule } from "expo-modules-core";
+  import Dimensions from "react-native/Libraries/Utilities/Dimensions";
+  import Platform from "react-native/Libraries/Utilities/Platform";
   import { nativeSmokeEnabled, theme } from "../state.svelte.ts";
   import Button from "../components/Button.svelte";
   import StressTile from "./StressTile.svelte";
@@ -13,6 +15,7 @@
   import { runForeignViews } from "./foreign-lab.ts";
   import { smokeScenarioOutcome } from "./smoke-rules.ts";
   import { estimatePeriod, startFrameMonitor, stopFrameMonitor, summarizeFrames, type FrameStats, type FrameSummary } from "./frames.ts";
+  import { detailOf, lab as gestureLab, outcomeOf, scenarios as gestureSpecs, type Drive, type ScenarioSpec, type Snapshot } from "./gestures-lab.ts";
 
   type Verdict = "pass" | "fail" | "info";
   type Result = { name: string; verdict: Verdict; summary: string; frames?: FrameSummary; detail?: Record<string, unknown> };
@@ -132,6 +135,51 @@
       return { collected, allocated: stats.js_allocatedBytes ?? -1, heapSize: stats.js_heapSize ?? -1, malloc: stats.js_mallocSizeEstimate ?? -1, va: stats.js_vaSize ?? -1, gcs: stats.js_numGCs ?? -1 };
     });
   }
+  /** Who injects the input of the `gestures-*` scenarios: `run=...,drive:adb` (the harness, from the lines of the handshake), `drive:qa` (the app's own injector, Android's QA variant), `drive:xctest`; none: a person. */
+  let gestureDrive: Drive = "none";
+  /**
+   * A `gestures-*` scenario (SPEC.md, "Gestures", "On a device, in the lab"): opens the lab page of each round of the scenario, starts it with
+   * the frame monitor armed (the page logs `[Svelte gesture] ready` and whoever drives injects), waits for the round to end or for its budget
+   * (20 s, more for a scenario with many steps), judges the counters with the scenario's own checks, and closes the page. The frames of the
+   * window count in the verdict only where the scenario says so (the box and the pinch drive an animation on the UI thread); the others record them.
+   */
+  async function gestureScenario(spec: ScenarioSpec, signal: AbortSignal): Promise<Omit<Result, "name">> {
+    const depth = router.entries.length;
+    const snapshots: Snapshot[] = [];
+    const steps: Snapshot[][] = [];
+    let timedOut: string | null = null;
+    let frames: FrameSummary | undefined;
+    try {
+      for (let round = 0; round < spec.rounds.length && !signal.aborted; round++) {
+        const query = `?mode=${spec.mode}${spec.busy ? "&js=busy" : ""}&drive=${gestureDrive}&managed=1&round=${round}`;
+        router.goto(`/__dev/gestures${query}`, spec.presentation ? { presentation: spec.presentation } : undefined);
+        // The push (or the sheet's rise) has to be over: the page measures the views where they are, and the harness aims at them.
+        await pause(1000, signal);
+        const session = await gestureLab.wait(spec.name, round, 8000);
+        const budget = Math.max(20_000, 6_000 * (spec.rounds[round]?.steps.length ?? 0) + 4_000);
+        const limit = new AbortController();
+        signal.addEventListener("abort", () => { limit.abort(); }, { once: true });
+        void pause(budget, limit.signal).then(() => { session.abort(signal.aborted ? "stopped" : `${budget / 1000} s`); });
+        const measured = await measure(async () => { await session.start(); return session.finished; });
+        limit.abort();
+        frames = measured.frames;
+        snapshots.push(measured.value);
+        steps.push(session.steps);
+        if (session.timedOut) timedOut = session.timedOut;
+        if (router.entries.length > depth) { router.back(); await pause(800, signal); }
+      }
+    } finally {
+      // A round that threw leaves its page on the stack: take it off, so the next scenario does not start under it.
+      for (let attempt = 0; attempt < 3 && router.entries.length > depth; attempt++) { router.back(); await pause(800); }
+    }
+    const checks = spec.evaluate(snapshots, steps, { platform: Platform.OS, drive: gestureDrive, density: Dimensions.get("window").scale });
+    // Every round's page was pushed and has to be gone: a screen left on the stack would sit under the next scenario.
+    checks.push({ name: "stack back where it began", ok: router.entries.length === depth, value: String(router.entries.length - depth) });
+    const outcome = outcomeOf(spec, checks, frames ?? null, timedOut);
+    const observed = frames ? { frames: { periodMs: Number(frames.periodMs.toFixed(2)), p50: frames.p50, p95: frames.p95, max: Math.round(frames.max), droppedPct: Number(frames.droppedPct.toFixed(1)) } } : {};
+    return { verdict: outcome.verdict, summary: outcome.summary, ...(spec.judgesFrames && frames ? { frames } : {}), detail: detailOf(spec, outcome, snapshots, gestureDrive, { observed }) };
+  }
+
   let soakSeconds = 600;
   /** The parts of one soak cycle. `run=soak-mix-<seconds>s` runs the default ones, `.static.churn` and the like only those named (to bisect a growth); `static` is plain view churn, off by default. */
   const soakPartNames: readonly string[] = ["churn", "static", "nav", "modal", "sheet", "header", "list", "tabs"];
@@ -531,8 +579,9 @@
       const clean = cleanupFailures === 0 && created === destroyed && router.entries.length === depth;
       return { verdict: clean ? "info" : "fail", summary: `${cycle} cycles in ${((Date.now() - since) / 1000).toFixed(0)} s · ${created} tiles mounted / ${destroyed} destroyed · ${changesAfterDestroy} values changed after destruction · stack depth ${router.entries.length} (expected ${depth}) · cleanup ${clean ? "ok" : "FAILED"}`, detail: { cycles: cycle, created, destroyed, changesAfterDestroy, lateCompletions, cleanupFailures } };
     } },
+    ...gestureSpecs.map((spec): Scenario => ({ name: spec.name, label: `Gestures · ${spec.label} (\`run=${spec.name}\`, with \`drive:adb\`, \`drive:qa\` or \`drive:xctest\` after it in the run list)`, run: (signal) => gestureScenario(spec, signal) })),
   ];
-  const quick = scenarios.filter((scenario) => !["warm-up", "input-typing", "foreign-views", "smoke", "churn-60s", "soak-120s", "soak-mix", "crash-js", "list-300-virtual-profile", "list-mount-loop"].includes(scenario.name));
+  const quick = scenarios.filter((scenario) => !["warm-up", "input-typing", "foreign-views", "smoke", "churn-60s", "soak-120s", "soak-mix", "crash-js", "list-300-virtual-profile", "list-mount-loop"].includes(scenario.name) && !scenario.name.startsWith("gestures-"));
   const ordered = $derived(scenarios.flatMap((scenario) => results.filter((result) => result.name === scenario.name)));
 
   function record(result: Result) {
@@ -572,7 +621,10 @@
   onMount(() => {
     const requested = untrack(() => autorun);
     if (!requested) return;
-    const names = requested.split(",").map((name) => name.trim()).filter(Boolean).map((name) => {
+    const parts = requested.split(",").map((name) => name.trim()).filter(Boolean);
+    const drive = parts.find((name) => name.startsWith("drive:"))?.slice("drive:".length);
+    gestureDrive = drive === "adb" || drive === "qa" || drive === "xctest" ? drive : "none";
+    const names = parts.filter((name) => !name.startsWith("drive:")).map((name) => {
       const soak = /^soak-mix-(\d+)s((?:\.[a-z]+)*)$/.exec(name);
       if (!soak) return name;
       soakSeconds = Number(soak[1]);

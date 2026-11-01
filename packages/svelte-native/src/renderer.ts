@@ -9,6 +9,39 @@ export type Snapshot = {
 
 let nextId = 0;
 
+/**
+ * A function that has to cross Svelte's attribute spread. `set_attributes` (an element with `{...spread}` sends every one of its
+ * attributes through it) skips a function value unless the key starts with `on`, so a spread's `ref`, and any other function the host
+ * reads as a plain attribute, never reached `setAttribute`. The lowering (`lower.ts`) wraps the spreads, and the attributes next to
+ * them, in `hostSpread` and `hostValue`, which hand Svelte this object instead; `setAttribute` unwraps it.
+ */
+class FunctionBox {
+  constructor(readonly fn: (...args: never[]) => unknown) {}
+}
+const boxes = new WeakMap<object, FunctionBox>();
+function boxOf(fn: (...args: never[]) => unknown): FunctionBox {
+  let box = boxes.get(fn);
+  if (!box) boxes.set(fn, box = new FunctionBox(fn));
+  return box;
+}
+/** Keys Svelte handles itself: any `on...` key is an event listener, `$$...` are internals, `children` is a snippet the host never reads as an attribute. */
+const handledBySvelte = (key: string): boolean => key.startsWith("on") || key.startsWith("$$") || key === "children";
+
+/** An attribute value on an element that also has a spread: a function is boxed, anything else passes. The same function always gives the same box, so an unchanged ref is not set again. */
+export function hostValue<T>(value: T): T {
+  return (typeof value === "function" ? boxOf(value as never) : value) as T;
+}
+
+/** What `{...props}` sends to Svelte: a copy in which every function Svelte would drop is boxed. */
+export function hostSpread<T extends object>(props: T): T {
+  const copy = { ...props } as Record<string, unknown>;
+  for (const key in copy) {
+    const value = copy[key];
+    if (typeof value === "function" && !handledBySvelte(key)) copy[key] = boxOf(value as never);
+  }
+  return copy as T;
+}
+
 export type Invalidation = "props" | "children" | "text";
 let invalidationSink: ((node: NativeNode, reason: Invalidation) => void) | null = null;
 /** The host (see `fabric/`) hears every change through this sink. */
@@ -181,7 +214,7 @@ const renderer = createRenderer<{
     const value = node.getProp(name);
     return value == null ? null : String(value);
   },
-  setAttribute: (node, key, value: unknown) => node.setProp(key, value),
+  setAttribute: (node, key, value: unknown) => node.setProp(key, value instanceof FunctionBox ? value.fn : value),
   removeAttribute: (node, key) => node.removeProp(key),
   hasAttribute: (node, key) => node.hasProp(key),
   setText: (node, text) => {

@@ -115,10 +115,26 @@ export async function startApp(
 	packageName: string,
 	deepLink?: string,
 ): Promise<string> {
-	const command = deepLink
-		? `am start -W -a android.intent.action.VIEW -d ${shellQuote(deepLink)} ${packageName}`
-		: `am start -W -n ${packageName}/.MainActivity`;
-	return adbOk(serial, ["shell", command], { timeoutMs: 90_000 });
+	return adbOk(serial, ["shell", amStartCommand(packageName, deepLink)], { timeoutMs: 90_000 });
+}
+
+let launchExtras = "";
+
+/**
+ * `--gestures` of `lab`, `parity`, `a11y` and `resilience`: every launch of the app from here on carries the intent extra
+ * `svelteGestures`, which makes the engine install react-native-gesture-handler's root helper at start (SvelteEngineModule), as
+ * the first gesture would, so the suites measure the engine with it in place and no page has to ask for it. A link with
+ * `?gestures=1` does the same for one launch.
+ */
+export function launchWithGestures(on: boolean): void {
+	launchExtras = on ? " --ez svelteGestures true" : "";
+}
+
+/** The `am start -W` command line of the app: a deep link, or its launcher activity. */
+export function amStartCommand(packageName: string, deepLink?: string | null): string {
+	return deepLink
+		? `am start -W -a android.intent.action.VIEW -d ${shellQuote(deepLink)}${launchExtras} ${packageName}`
+		: `am start -W -n ${packageName}/.MainActivity${launchExtras}`;
 }
 
 /** Puts the system Settings app in front, so the app under test is in the background when it is killed. */

@@ -2,6 +2,7 @@ import { a11y } from "./commands/a11y.ts";
 import { boot } from "./commands/boot.ts";
 import { build } from "./commands/build.ts";
 import { gates } from "./commands/gates.ts";
+import { gestures } from "./commands/gestures.ts";
 import { iosProbe } from "./commands/ios-probe.ts";
 import { lab } from "./commands/lab.ts";
 import { parity } from "./commands/parity.ts";
@@ -27,6 +28,8 @@ const usage = `usage: native-qa <command> [flags]
   resilience --device <serial> [--apk <path> | --no-install] [--rotations <n>] [--cycles <n>] [--rounds <n>]
   smoke  --device <serial> [--apk <path> | --no-install] [--timeout <s>]      (the smoke app: build --variant smoke first)
   smoke  --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--app <.app on the Mac> | --no-install] [--timeout <s>]
+  gestures --device <serial> [--apk <path> | --no-install] [--input adb|qa|both] [--run box,row,...] [--repeat <n>] [--timeout <s>]
+  gestures --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--team <id>] [--rebuild] [--run ...] [--repeat <n>] [--timeout <s>]
   probe  --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--probes <names>] [--direction ltr|rtl]
   report
   gates  [--platform android|ios] [--all] [--smoke]`;
@@ -44,6 +47,7 @@ const commands: Record<string, (argv: string[]) => Promise<void>> = {
 	a11y,
 	resilience,
 	smoke,
+	gestures,
 	probe: iosProbe,
 	report: async () => report(),
 	gates,

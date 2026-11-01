@@ -13,6 +13,8 @@ import android.animation.AnimatorListenerAdapter
 import androidx.activity.BackEventCompat
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.findViewTreeOnBackPressedDispatcherOwner
+import expo.modules.svelteengine.DownPointer
+import expo.modules.svelteengine.GestureRules
 import expo.modules.svelteengine.NavEvents
 import kotlin.math.abs
 import kotlin.math.max
@@ -28,7 +30,7 @@ import kotlin.math.min
  * back, edge swipe, sheet drag or scrim) plays the exit first, then sends `onDismissed`; the removal JavaScript performs
  * next finds the screen marked `dismissed` and detaches it. A sheet's scrim is a view of the stack just below the sheet.
  */
-class EngineStack(context: Context) : EngineView(context) {
+class EngineStack(context: Context) : EngineView(context), NativeClaim {
   private val density = resources.displayMetrics.density
   private val slop = ViewConfiguration.get(context).scaledTouchSlop
   private val edge = EDGE_DP * density
@@ -38,6 +40,8 @@ class EngineStack(context: Context) : EngineView(context) {
   private var edgeCandidate = false
   private var downX = 0f
   private var downY = 0f
+  /** The pointer of the touch's DOWN: the swipe is measured on it, not on whichever pointer is first once it has lifted (`ClaimRules.kt`). */
+  private val downPointer = DownPointer()
   private var dragX = 0f
   private var tracker: VelocityTracker? = null
   private var predictive = false
@@ -562,20 +566,43 @@ class EngineStack(context: Context) : EngineView(context) {
     return top.gestureEnabled && top.presentation == 0 && top.backDismissal && !top.transitioning && canDismiss()
   }
 
+  /**
+   * A drag that went [dx], [dy] from the touch-down is the edge swipe when it started in the edge zone, has covered a touch slop
+   * (as far as a default Pan's `minDist`, so that the two reach it on the same move) and goes mostly to the right.
+   */
+  private fun swipesBack(dx: Float, dy: Float) = edgeCandidate && !dragging && GestureRules.edgeSwipe(dx, dy, slop.toFloat())
+
+  override fun claims(dx: Float, dy: Float) = swipesBack(dx, dy)
+
+  override fun claim(ev: MotionEvent) = startDrag(ev)
+
   override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
+    // A drag that the root claimed before the gesture handlers saw the move: Android cancels the child now.
+    if (dragging && ev.actionMasked != MotionEvent.ACTION_DOWN) return true
     when (ev.actionMasked) {
       MotionEvent.ACTION_DOWN -> {
+        downPointer.down(ev.getPointerId(0))
         downX = ev.x; downY = ev.y
         edgeCandidate = ev.x <= edge && canDrag()
+        GestureTrace.log { "stack down: edge candidate=$edgeCandidate" }
       }
       MotionEvent.ACTION_MOVE -> if (edgeCandidate && !dragging) {
-        val dx = ev.x - downX
-        if (dx > slop && dx > abs(ev.y - downY)) {
+        // The finger that went down in the edge zone, wherever it is in this event; once it has lifted there is no swipe to measure.
+        val index = ev.findPointerIndex(downPointer.id)
+        if (index < 0) return false
+        val dx = ev.getX(index) - downX
+        GestureTrace.log { "stack move: dx=${dx / density} dp (slop ${slop / density})" }
+        if (swipesBack(dx, ev.getY(index) - downY)) {
+          GestureTrace.log { "stack takes the edge swipe" }
           startDrag(ev)
           return true
         }
       }
-      MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> edgeCandidate = false
+      MotionEvent.ACTION_POINTER_UP -> {
+        downPointer.up(ev.getPointerId(ev.actionIndex))
+        if (!downPointer.present) edgeCandidate = false
+      }
+      MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { edgeCandidate = false; downPointer.clear() }
     }
     return false
   }
@@ -586,6 +613,10 @@ class EngineStack(context: Context) : EngineView(context) {
       if (p is EngineRoot) { p.cancelActiveTouch(); break }
       p = p.parent
     }
+    // The touch lock, like a scroll view's drag and the sheet's: it cancels every gesture handler of the root (a pan under the
+    // swipe would otherwise stay alive next to it) and keeps an ancestor scroll view from taking the gesture. Given back
+    // when the drag ends.
+    parent?.requestDisallowInterceptTouchEvent(true)
     dragging = true
     dragX = 0f
     top()?.let { holdGesture(it) }
@@ -599,9 +630,14 @@ class EngineStack(context: Context) : EngineView(context) {
     tracker?.addMovement(event)
     val top = top()
     when (event.actionMasked) {
+      MotionEvent.ACTION_POINTER_UP -> downPointer.up(event.getPointerId(event.actionIndex))
       MotionEvent.ACTION_MOVE -> {
-        dragX = (event.x - downX).coerceIn(0f, width.toFloat())
-        top?.translationX = dragX
+        // The drag follows the finger that started it; while that finger is up the screen stays where it was left.
+        val index = event.findPointerIndex(downPointer.id)
+        if (index >= 0) {
+          dragX = (event.getX(index) - downX).coerceIn(0f, width.toFloat())
+          top?.translationX = dragX
+        }
       }
       MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
         val t = tracker
@@ -611,6 +647,8 @@ class EngineStack(context: Context) : EngineView(context) {
         tracker = null
         dragging = false
         edgeCandidate = false
+        downPointer.clear()
+        parent?.requestDisallowInterceptTouchEvent(false)
         if (top != null && event.actionMasked == MotionEvent.ACTION_UP && (dragX > width / 3f || velocity > FLING_DP)) {
           dismissTop()
         } else if (top != null) {

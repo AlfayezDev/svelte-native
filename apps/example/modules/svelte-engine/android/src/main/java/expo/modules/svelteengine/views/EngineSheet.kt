@@ -17,6 +17,8 @@ import android.view.ViewOutlineProvider
 import android.view.ViewTreeObserver
 import android.view.animation.DecelerateInterpolator
 import android.widget.ScrollView
+import expo.modules.svelteengine.DownPointer
+import expo.modules.svelteengine.GestureRules
 import expo.modules.svelteengine.NavEvents
 import expo.modules.svelteengine.NavProps
 import kotlin.math.abs
@@ -35,7 +37,7 @@ import kotlin.math.roundToInt
  * sheet first). Release snaps to the nearest detent, a fling over 1000 dp/s goes to the next one in its direction; past
  * a quarter of the lowest detent below it, or a fling down from it, the sheet is dismissed when it is dismissible.
  */
-class EngineSheet(context: Context) : EngineScreen(context) {
+class EngineSheet(context: Context) : EngineScreen(context), NativeClaim {
   private val density = resources.displayMetrics.density
   private val slop = ViewConfiguration.get(context).scaledTouchSlop
   private val interpolator = DecelerateInterpolator(1.5f)
@@ -74,6 +76,8 @@ class EngineSheet(context: Context) : EngineScreen(context) {
   private var dragLayer = false
   private var downX = 0f
   private var downY = 0f
+  /** The pointer of the touch's DOWN: the drag is measured on it, not on whichever pointer is first once it has lifted (`ClaimRules.kt`). */
+  private val downPointer = DownPointer()
   private var startTranslation = 0f
   private var scrollUnderFinger: ScrollView? = null
   // Recent finger positions (screen px) for the release velocity: translation moves the view, so view coordinates would cancel out.
@@ -304,24 +308,41 @@ class EngineSheet(context: Context) : EngineScreen(context) {
     return null
   }
 
+  /** A finger that went [dx], [dy] from the touch-down starts the sheet's drag: mostly vertical, a touch slop far (a default Pan's `minDist`, so that the two reach it on the same move), and not for a scroll view that can still move. */
+  private fun dragsSheet(dx: Float, dy: Float) = GestureRules.sheetDrag(dx, dy, slop.toFloat()) && shouldTake(dy > 0f)
+
+  override fun claims(dx: Float, dy: Float) = !transitioning && !leaving && !dragging && dragsSheet(dx, dy)
+
+  override fun claim(ev: MotionEvent) = startDrag(ev)
+
   override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
     // The stack's own transition owns the translation while it runs.
     if (transitioning || leaving) return false
+    // A drag that the root claimed before the gesture handlers saw the move: Android cancels the child now.
+    if (dragging && ev.actionMasked != MotionEvent.ACTION_DOWN) return true
     when (ev.actionMasked) {
       MotionEvent.ACTION_DOWN -> {
+        downPointer.down(ev.getPointerId(0))
         downX = ev.rawX; downY = ev.rawY
         scrollUnderFinger = scrollAt(ev.x, ev.y)
         samples = 0
         addSample(ev)
       }
       MotionEvent.ACTION_MOVE -> if (!dragging) {
-        val dx = ev.rawX - downX
-        val dy = ev.rawY - downY
-        if (abs(dy) > slop && abs(dy) > abs(dx) && shouldTake(dy > 0f)) {
+        // The finger that went down, wherever it is in this event; once it has lifted there is no drag to measure.
+        val index = ev.findPointerIndex(downPointer.id)
+        if (index < 0) return false
+        val dx = rawX(ev, index) - downX
+        val dy = rawY(ev, index) - downY
+        GestureTrace.log { "sheet move: dy=${dy / density} dp (slop ${slop / density}), scroll under finger=${scrollUnderFinger != null}" }
+        if (dragsSheet(dx, dy)) {
+          GestureTrace.log { "sheet takes the drag at translation ${translationY / density} dp" }
           startDrag(ev)
           return true
         }
       }
+      MotionEvent.ACTION_POINTER_UP -> downPointer.up(ev.getPointerId(ev.actionIndex))
+      MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> downPointer.clear()
     }
     return false
   }
@@ -347,22 +368,33 @@ class EngineSheet(context: Context) : EngineScreen(context) {
     dragging = true
     if (!dragLayer) { dragLayer = true; holdLayer() }
     startTranslation = translationY
-    downY = ev.rawY
+    downY = rawY(ev, max(ev.findPointerIndex(downPointer.id), 0))
   }
+
+  /** Screen position of pointer [index]: `rawX`/`rawY` are pointer 0's, and every pointer of an event is offset by the same amount (`getRawX(int)` is API 29). */
+  private fun rawX(ev: MotionEvent, index: Int) = ev.rawX + (ev.getX(index) - ev.getX(0))
+
+  private fun rawY(ev: MotionEvent, index: Int) = ev.rawY + (ev.getY(index) - ev.getY(0))
 
   override fun onTouchEvent(event: MotionEvent): Boolean {
     if (!dragging) return super.onTouchEvent(event)
     addSample(event)
     when (event.actionMasked) {
+      MotionEvent.ACTION_POINTER_UP -> downPointer.up(event.getPointerId(event.actionIndex))
       MotionEvent.ACTION_MOVE -> {
-        val offsets = sortedOffsets()
-        val top = offsets.first()
-        var y = startTranslation + (event.rawY - downY)
-        // Resistance above the top detent; the box never goes below its own bottom.
-        if (y < top) y = top - (top - y) * RESISTANCE
-        translationY = min(y, node.h.toFloat())
+        // The drag follows the finger that started it; while that finger is up the sheet stays where it was left.
+        val index = event.findPointerIndex(downPointer.id)
+        if (index >= 0) {
+          val offsets = sortedOffsets()
+          val top = offsets.first()
+          var y = startTranslation + (rawY(event, index) - downY)
+          // Resistance above the top detent; the box never goes below its own bottom.
+          if (y < top) y = top - (top - y) * RESISTANCE
+          translationY = min(y, node.h.toFloat())
+        }
       }
       MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+        downPointer.clear()
         dragging = false
         stack?.parent?.requestDisallowInterceptTouchEvent(false)
         settle(if (event.actionMasked == MotionEvent.ACTION_UP) velocity() else 0f)
@@ -379,9 +411,11 @@ class EngineSheet(context: Context) : EngineScreen(context) {
   }
 
   private fun addSample(ev: MotionEvent) {
+    val index = ev.findPointerIndex(downPointer.id)
+    if (index < 0) return
     val i = samples % SAMPLES
     sampleTime[i] = ev.eventTime
-    sampleY[i] = ev.rawY
+    sampleY[i] = rawY(ev, index)
     samples++
   }
 
@@ -419,6 +453,7 @@ class EngineSheet(context: Context) : EngineScreen(context) {
     } else if (y - lowest > lowestVisible * DISMISS_FRACTION) {
       dismiss = true
     }
+    GestureTrace.log { "sheet release: y=${y / density} dp, offsets=${offsets.joinToString { "%.0f".format(it / density) }} dp, velocity=${velocity / density} dp/s, target=${target / density} dp, dismiss=$dismiss" }
     if (dismiss && dismissibleFlag) {
       stack.dismissTop()
       return

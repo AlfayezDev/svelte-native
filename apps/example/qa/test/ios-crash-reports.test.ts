@@ -315,8 +315,19 @@ case "$STUB_MODE" in
   nodevice) echo "No device found with udid $2, is it plugged in?"; exit 255;;
   silent) echo "No device found"; exit 0;;
 esac
-for last; do :; done
-cp -R "$STUB_REPORTS"/. "$last"/
+filter=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -f) filter="$2"; shift 2;;
+    -u) shift 2;;
+    -k) shift;;
+    *) last="$1"; shift;;
+  esac
+done
+# The real tool copies the files whose names contain the filter, and every file without one.
+(cd "$STUB_REPORTS" && find . -type f) | while IFS= read -r file; do
+  case "$file" in *"$filter"*) mkdir -p "$last/$(dirname "$file")"; cp "$STUB_REPORTS/$file" "$last/$file";; esac
+done
 echo "Copy: /fake.ips"
 echo "Done."
 `,
@@ -375,9 +386,15 @@ describe("pulling the crash log through the Mac", () => {
 				await rm(pulled.directory, { recursive: true, force: true });
 			}
 			const script = fake.log.find((call) => call.command === "ssh")?.args.at(-1) ?? "";
-			expect(script).toContain(`idevicecrashreport -u '${udid}' -k '/tmp/native-qa-ios/crashes-`);
+			expect(script).toContain(`idevicecrashreport -u '${udid}' -k -f 'RasheedSvelteQA' '/tmp/native-qa-ios/crashes-`);
+			expect(script).toContain(`idevicecrashreport -u '${udid}' -k -f JetsamEvent '/tmp/native-qa-ios/crashes-`);
 			expect(script).toContain("/opt/homebrew/bin");
-			expect(await fake.toolCalls()).toMatch(new RegExp(`^-u ${udid} -k /tmp/native-qa-ios/crashes-`));
+			// Two pulls, and each has a filter: the crash log's sysdiagnose archives are never copied, and the phone keeps everything (-k).
+			const calls = (await fake.toolCalls()).trim().split("\n");
+			expect(calls).toHaveLength(2);
+			expect(calls[0]).toMatch(new RegExp(`^-u ${udid} -k -f RasheedSvelteQA /tmp/native-qa-ios/crashes-`));
+			expect(calls[1]).toMatch(new RegExp(`^-u ${udid} -k -f JetsamEvent /tmp/native-qa-ios/crashes-`));
+			for (const call of calls) expect(call).toContain(" -k ");
 		} finally {
 			await fake.cleanup();
 		}
@@ -401,6 +418,11 @@ describe("pulling the crash log through the Mac", () => {
 		} finally {
 			await fake.cleanup();
 		}
+	});
+
+	test("a locked phone: the Mac's ssh reports success (it drops the remote exit status), so the pull's words on stderr are the error", async () => {
+		const locked = macFrom("me@mac", async () => ({ code: 0, stdout: "", stderr: "ERROR: Could not start service com.apple.crashreportmover: Password protected\n" }));
+		await expect(pullCrashReports(locked, udid, bundleId)).rejects.toThrow("Password protected");
 	});
 
 	test("a Mac without idevicecrashreport says so", async () => {

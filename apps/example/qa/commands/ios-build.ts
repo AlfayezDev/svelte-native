@@ -23,7 +23,8 @@ const defaultScript = "/tmp/rasheed-ios-lab-20261025.command";
  */
 const defaultSmokeScript = "/tmp/rasheed-ios-smoke.command";
 const productNames = { qa: "RasheedSvelteQA", smoke: "Sveltesmoke" } as const;
-const excludes = ["node_modules", ".git", "apps/platform/android/", "apps/platform/ios/", "build", "dist", ".svelte-kit", ".svelte-native", ".rasheed", ".env", ".expo", "*.log"];
+// DerivedData is the signed build's own cache on the Mac: `--delete` would wipe it and make every build a full ~6 min rebuild.
+const excludes = ["DerivedData", "node_modules", ".git", "apps/platform/android/", "apps/platform/ios/", "build", "dist", ".svelte-kit", ".svelte-native", ".rasheed", ".env", ".expo", "*.log"];
 const buildWaitMs = 30 * 60_000;
 
 export async function iosBuild(argv: string[]): Promise<void> {

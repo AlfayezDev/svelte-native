@@ -5,7 +5,7 @@ import type { Metric, Metrics, Platform } from "./types.ts";
 export type Bar = { max?: number; min?: number; round?: number; equals?: string };
 /**
  * What a device is for. A `phone` is real hardware: its frame, boot and list timings are the production numbers. A `lab` is a
- * device that exists for the engine checks, crash volume, soak, parity pixels, accessibility and resilience (the OVH emulator
+ * device that exists for the engine checks, crash volume, soak, parity pixels, accessibility, resilience and gesture counters (the OVH emulator
  * under software GL): its timings say nothing about production.
  */
 export type Role = "phone" | "lab";
@@ -37,6 +37,8 @@ export type GatesFile = {
 	 * `smoke.skips`: the ones that may `skip` there; any other skip is `smoke.unexpectedSkips`, and `smoke.ok` is gated at the rest.
 	 */
 	smoke: { modules: Record<Platform, string[]>; skips: Record<Platform, string[]> };
+	/** The `gestures-*` scenarios a full `native-qa gestures` run contains, per platform; absent: every scenario the lab has. */
+	gestures?: Partial<Record<Platform, string[]>>;
 	gates: Gate[];
 };
 
@@ -86,6 +88,7 @@ export function gateKinds(gate: Gate): RunKind[] | null {
 		case "a11y":
 		case "resilience":
 		case "smoke":
+		case "gestures":
 			return [prefix];
 		default:
 			return null;

@@ -53,6 +53,7 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/NativeComponent/ViewConfig": "export const createViewConfig = (partial) => ({ ...partial, base: true });",
   "react-native/Libraries/Utilities/Platform": "export default { get OS() { return globalThis.__navigationOS ?? 'android'; }, Version: 34 };",
   "react-native/Libraries/Utilities/BackHandler": "export default { addEventListener: () => ({ remove() {} }) };",
+  "react-native/Libraries/Components/Keyboard/Keyboard": "export default { isVisible: () => false, dismiss() {} };",
   "react-native/Libraries/Linking/Linking": "export default { addEventListener: () => ({ remove() {} }), getInitialURL: () => Promise.resolve(null) };",
   "react-native/Libraries/Image/resolveAssetSource": "export default (source) => source && typeof source === 'object' && 'uri' in source ? { scale: 1, ...source } : null;",
   "expo-modules-core": "export const EventEmitter = class {}; export const requireOptionalNativeModule = () => null;",
@@ -72,7 +73,7 @@ async function load(fixture: string) {
     plugins: [{
       name: "screens-ios-fixture",
       setup(builder) {
-        builder.onResolve({ filter: /^(react-native|expo-modules-core)/ }, (args) => ({ path: args.path, namespace: "stub" }));
+        builder.onResolve({ filter: /^(react-native|expo-modules-core)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
         builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? "export {};", loader: "js" }));
         builder.onResolve({ filter: /\/view-configs\.ts$/ }, () => ({ path: resolve(import.meta.dirname, "view-configs-stub.ts") }));
         builder.onResolve({ filter: /^@rasheed\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
@@ -114,6 +115,71 @@ async function mount(fixture: string, platform: "android" | "ios", surface: numb
     return { pairs: nodes.map((node) => [parseNativeID(String(node.props.nativeID))?.kind, node.name] as const), ids: nodes.map((node) => node.props.nativeID) };
   } finally { delete environment.__navigationOS; }
 }
+
+test("a hidden Modal mounts no host on iOS (a hidden RCTModalHostView would take every touch), stays until onDismiss after hiding; Android keeps its host", async () => {
+  const emit = (target: unknown, type: string) => (fake as unknown as { handler: (t: unknown, type: string, e: object) => void }).handler(target, type, {});
+  const modals = (surface: number) => flatten(roots[surface] ?? []).filter((node) => node.name === "RCTModalHostView" || node.name === "ModalHostView");
+  for (const platform of ["ios", "android"] as const) {
+    environment.__navigationOS = platform;
+    environment.__registeredViewConfigs = new Map();
+    try {
+      const surface = platform === "ios" ? 66 : 67;
+      const m = await load("modal-visible-fixture.svelte");
+      roots = {};
+      const app = m.startSurface(surface, m.Fixture, {}) as { setOpen(value: boolean): void; dismissed(): number };
+      await settle(m);
+      if (platform === "android") {
+        // The engine's host takes no touches and animates its layer from `visible`: it stays mounted, hidden.
+        expect(modals(surface).map((node) => node.props.visible)).toEqual([false]);
+        continue;
+      }
+      expect(modals(surface)).toHaveLength(0);
+      app.setOpen(true);
+      await settle(m);
+      expect(modals(surface).map((node) => node.props.visible)).toEqual([true]);
+      // UIKit presented the controller (a window, a finished transition): onShow.
+      emit(modals(surface)[0]?.target, "topShow");
+      await settle(m);
+      app.setOpen(false);
+      await settle(m);
+      // Still there with visible false while UIKit animates the dismissal; gone once it reports onDismiss.
+      expect(modals(surface).map((node) => node.props.visible)).toEqual([false]);
+      emit(modals(surface)[0]?.target, "topDismiss");
+      await settle(m);
+      expect(modals(surface)).toHaveLength(0);
+      expect(app.dismissed()).toBe(1);
+      app.setOpen(true);
+      await settle(m);
+      expect(modals(surface)).toHaveLength(1);
+      // A Modal toggled true to false while its host has no window (a hidden eager tab pane) is never presented: RN emits onDismiss only
+      // for a presented controller, so nothing would unmount the hidden host, and it would swallow the pane's touches. No onShow came:
+      // it goes away with `visible`, and no dismissal is reported for a modal that was never shown.
+      app.setOpen(false);
+      await settle(m);
+      expect(modals(surface)).toHaveLength(0);
+      expect(app.dismissed()).toBe(1);
+      // Presented again, after an onShow of the earlier round; the stale onShow does not count for this one.
+      app.setOpen(true);
+      await settle(m);
+      expect(modals(surface).map((node) => node.props.visible)).toEqual([true]);
+      app.setOpen(false);
+      await settle(m);
+      expect(modals(surface)).toHaveLength(0);
+      // The sequence of a window that appears late: visible, still no onShow, then onShow, then hidden: the dismissal animates as usual.
+      app.setOpen(true);
+      await settle(m);
+      emit(modals(surface)[0]?.target, "topShow");
+      await settle(m);
+      app.setOpen(false);
+      await settle(m);
+      expect(modals(surface).map((node) => node.props.visible)).toEqual([false]);
+      emit(modals(surface)[0]?.target, "topDismiss");
+      await settle(m);
+      expect(modals(surface)).toHaveLength(0);
+      expect(app.dismissed()).toBe(2);
+    } finally { delete environment.__navigationOS; }
+  }
+});
 
 test("the host mounts the screen tags as the Svelte components on iOS and as RCTView on Android, with the same nativeIDs", async () => {
   const android = await mount("screen-fixture.svelte", "android", 61);

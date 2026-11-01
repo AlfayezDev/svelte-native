@@ -14,6 +14,14 @@ export type ResponderTree<Node> = {
   handler(node: Node, name: string): Fn | undefined;
   /** Default responder handlers for nodes that carry press handlers. */
   pressability(node: Node): ResponderHandlers | undefined;
+  /**
+   * A responder whose `onResponderGrant` answered `true` blocks the native responders: React Native tells its UIManager
+   * (`setJSResponder(tag, true)`), and react-native-gesture-handler, which patches that call, makes its recognisers wait. The host wires it to
+   * the gesture handler's module once the gesture host is loaded; without it a grant is only JavaScript's.
+   */
+  blockNativeResponder?(node: Node): void;
+  /** The responder that blocked them was released or terminated, or the next one does not block (`UIManager.clearJSResponder()`). */
+  releaseNativeResponder?(): void;
 };
 
 type NativeTouchEvent = { touches?: unknown[]; changedTouches?: { identifier?: number }[]; identifier?: number; target?: unknown; timestamp?: number };
@@ -21,6 +29,8 @@ const changedIds = (event: NativeTouchEvent): number[] => event.changedTouches?.
 
 export function createResponder<Node extends object>(tree: ResponderTree<Node>) {
   let responder: Node | null = null;
+  /** The responder's grant blocked the native responders, and they have not been given back. */
+  let blocking = false;
   /** Identifiers of the fingers down, as React Native's touch history tracks them: the gesture ends when the last one lifts. */
   const active = new Set<number>();
 
@@ -66,7 +76,9 @@ export function createResponder<Node extends object>(tree: ResponderTree<Node>) 
     responder = node;
     const event = makeEvent(node, target, nativeEvent);
     if (previous && previous !== node) call(previous, "onResponderTerminate", makeEvent(previous, target, nativeEvent));
-    call(node, "onResponderGrant", event);
+    const block = call(node, "onResponderGrant", event) === true;
+    if (block) { blocking = true; tree.blockNativeResponder?.(node); }
+    else if (blocking) { blocking = false; tree.releaseNativeResponder?.(); }
   }
 
   function commonAncestor(a: Node, b: Node): Node | null {
@@ -80,6 +92,7 @@ export function createResponder<Node extends object>(tree: ResponderTree<Node>) 
     if (!current) return;
     responder = null;
     call(current, name, makeEvent(current, current, nativeEvent));
+    if (blocking) { blocking = false; tree.releaseNativeResponder?.(); }
   }
 
   return {

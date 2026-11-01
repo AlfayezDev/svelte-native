@@ -1,6 +1,7 @@
 import { onDestroy } from "svelte";
 import type * as Reanimated from "react-native-reanimated";
 import type * as Worklets from "react-native-worklets";
+import { lazyObject } from "./lazy-object.ts";
 import { loadReanimated, onReanimatedLoaded } from "./fabric/reanimated-load.ts";
 
 export { default as AnimatedView } from "./components/AnimatedView.svelte";
@@ -25,23 +26,18 @@ export let withDelay = ((...args: Parameters<typeof Reanimated.withDelay>) => re
 export let cancelAnimation = ((...args: Parameters<typeof Reanimated.cancelAnimation>) => rea().cancelAnimation(...args)) as typeof Reanimated.cancelAnimation;
 export let runOnUISync = ((...args: Parameters<typeof Worklets.runOnUISync>) => wk().runOnUISync(...args)) as typeof Worklets.runOnUISync;
 export let runOnUIAsync = ((...args: Parameters<typeof Worklets.runOnUIAsync>) => wk().runOnUIAsync(...args)) as typeof Worklets.runOnUIAsync;
+/** Worklets' own: `runOnJS(fn)(...args)` from a UI-thread callback, and the same call from either thread. Gesture callbacks use them to reach Svelte state. */
+export let runOnJS = ((...args: Parameters<typeof Worklets.runOnJS>) => wk().runOnJS(...args)) as typeof Worklets.runOnJS;
+export let scheduleOnRN = ((...args: Parameters<typeof Worklets.scheduleOnRN>) => wk().scheduleOnRN(...args)) as typeof Worklets.scheduleOnRN;
 
 /** Property reads resolve on first use (`Easing.inOut(Easing.ease)`, `ReduceMotion.System`); after the load these are Reanimated's objects. */
-function lazyObject<T extends object>(read: () => T): T {
-  return new Proxy({} as T, {
-    get: (_target, key) => (read() as Record<PropertyKey, unknown>)[key],
-    has: (_target, key) => key in read(),
-    ownKeys: () => Reflect.ownKeys(read()),
-    getOwnPropertyDescriptor: (_target, key) => { const descriptor = Reflect.getOwnPropertyDescriptor(read(), key); return descriptor && { ...descriptor, configurable: true }; },
-  });
-}
 export let Easing: typeof Reanimated.Easing = lazyObject(() => rea().Easing);
 export let ReduceMotion: typeof Reanimated.ReduceMotion = lazyObject(() => rea().ReduceMotion);
 
 onReanimatedLoaded(({ reanimated, worklets }) => {
   withTiming = reanimated.withTiming; withSpring = reanimated.withSpring; withRepeat = reanimated.withRepeat; withSequence = reanimated.withSequence;
   withDelay = reanimated.withDelay; cancelAnimation = reanimated.cancelAnimation; Easing = reanimated.Easing; ReduceMotion = reanimated.ReduceMotion;
-  runOnUISync = worklets.runOnUISync; runOnUIAsync = worklets.runOnUIAsync;
+  runOnUISync = worklets.runOnUISync; runOnUIAsync = worklets.runOnUIAsync; runOnJS = worklets.runOnJS; scheduleOnRN = worklets.scheduleOnRN;
 });
 
 export function createSharedValue<Value>(initial: Value): Reanimated.SharedValue<Value> {

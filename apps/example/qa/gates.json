@@ -7,7 +7,8 @@
       "runs": [
         "lab",
         "boot",
-        "smoke"
+        "smoke",
+        "gestures"
       ]
     },
     "E74A5608-BF8E-5806-8699-1605F82ADED9": {
@@ -18,7 +19,8 @@
         "boot",
         "parity",
         "a11y",
-        "smoke"
+        "smoke",
+        "gestures"
       ]
     },
     "localhost:5555": {
@@ -31,7 +33,8 @@
         "parity",
         "a11y",
         "resilience",
-        "smoke"
+        "smoke",
+        "gestures"
       ]
     }
   },
@@ -165,6 +168,36 @@
         "samsung-pay"
       ]
     }
+  },
+  "gestures": {
+    "android": [
+      "gestures-box",
+      "gestures-box-busy",
+      "gestures-box-js",
+      "gestures-box-js-busy",
+      "gestures-pinch-rotate",
+      "gestures-row",
+      "gestures-carousel",
+      "gestures-pushed-edge",
+      "gestures-sheet",
+      "gestures-longpress-tap",
+      "gestures-scroll-native",
+      "gestures-churn"
+    ],
+    "ios": [
+      "gestures-box",
+      "gestures-box-busy",
+      "gestures-box-js",
+      "gestures-box-js-busy",
+      "gestures-pinch-rotate",
+      "gestures-row",
+      "gestures-carousel",
+      "gestures-pushed-edge",
+      "gestures-sheet",
+      "gestures-longpress-tap",
+      "gestures-scroll-native",
+      "gestures-churn"
+    ]
   },
   "gates": [
     {
@@ -840,6 +873,182 @@
       "title": "Resilience: steps of the full plan not run",
       "unit": "steps",
       "metric": "resilience.stepsMissing",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "gestures.checks",
+      "title": "Gestures: failed checks of a scenario (counters, rests, scroll offsets, leaks), a timeout counting as one",
+      "unit": "checks",
+      "metric": "gestures.*.failedChecks",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "gestures.frames.droppedPct",
+      "title": "Gestures: frames dropped while a gesture drives an animation (box, busy-JS box, pinch)",
+      "unit": "%",
+      "metric": "gestures.*.droppedPct",
+      "roles": [
+        "phone"
+      ],
+      "bar": {
+        "android": {
+          "max": 0,
+          "round": 1
+        },
+        "ios": {
+          "max": 0,
+          "round": 1
+        }
+      }
+    },
+    {
+      "id": "gestures.frames.maxPeriodRatio",
+      "title": "Gestures: longest frame over the frame period while a gesture drives an animation",
+      "unit": "x period",
+      "metric": "gestures.*.maxPeriodRatio",
+      "roles": [
+        "phone"
+      ],
+      "bar": {
+        "android": {
+          "max": 1.5
+        },
+        "ios": {
+          "max": 1.5
+        }
+      }
+    },
+    {
+      "id": "gestures.frames.maxMs",
+      "title": "Gestures: longest frame while a gesture drives an animation",
+      "unit": "ms",
+      "metric": "gestures.*.maxMs",
+      "roles": [
+        "phone"
+      ],
+      "bar": {
+        "android": {
+          "max": 33
+        },
+        "ios": {
+          "max": 33
+        }
+      }
+    },
+    {
+      "id": "gestures.churn.leaked",
+      "title": "Gestures: handlers, records, UI registrations and engine views left after 200 mounts and unmounts",
+      "unit": "left",
+      "metric": "gestures.churn.leaked",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "gestures.agreement",
+      "title": "Gestures: counters that differ between adb input and the in-app injector for one scenario",
+      "unit": "counters",
+      "metric": "gestures.agreement.mismatches",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "gestures.scenarios.missing",
+      "title": "Gestures: scenarios of the full run that some launch lacks",
+      "unit": "scenarios",
+      "metric": "gestures.scenarios.missing",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "gestures.launches",
+      "title": "Gestures: complete launches",
+      "unit": "launches",
+      "metric": "gestures.launches",
+      "bar": {
+        "android": {
+          "min": 2
+        },
+        "ios": {
+          "min": 1
+        }
+      }
+    },
+    {
+      "id": "gestures.incomplete",
+      "title": "Gestures: launches that did not reach the end of their scenarios",
+      "unit": "launches",
+      "metric": "gestures.incompleteLaunches",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "gestures.fatals",
+      "title": "Gestures: crashes and JavaScript errors during the run",
+      "unit": "fatals",
+      "metric": "gestures.fatals",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "gestures.engineWarnings",
+      "title": "Gestures: engine warnings and errors during the run",
+      "unit": "warnings",
+      "metric": "gestures.engineWarnings",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "gestures.harnessErrors",
+      "title": "Gestures: handshake lines the harness could not read and injections that failed",
+      "unit": "errors",
+      "metric": "gestures.harnessErrors",
       "bar": {
         "android": {
           "max": 0

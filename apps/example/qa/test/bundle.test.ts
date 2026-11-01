@@ -18,9 +18,14 @@ const { smokeOnlyBundlePackages } = createRequire(import.meta.url)("../smoke-pac
  * The size of the same bundle at a reference commit (JavaScript before Hermes, bytes), built with this recipe: the QA app may grow by
  * 1 % over it before a test says so; a legitimate feature that does it moves this number, with the commit that explains why.
  * c75c31491 (before the smoke test): 10,944,737. The merge of the native-view libraries and the react-native-svg port: +4.4 %, all of
- * it the `/__dev/foreign` lab page's imports of the thirteen wrappers and the svg components (the lab ships in every variant).
+ * it the `/__dev/foreign` lab page's imports of the thirteen wrappers and the svg components (the lab ships in every variant): 11,429,553.
+ * The merge of the gestures branch: +305,350 bytes (+2.7 %) to 11,734,903, the QA bundle of the merge commit (the product's is within 0.1 % of
+ * it). About 250 KB is the gesture code: react-native-gesture-handler's JavaScript (about 100 KB), the host and detector ports in
+ * `packages/svelte-native/src/gestures` and `src/fabric/gestures.ts` (about 120 KB) and the `/__dev/gestures` lab page with its scenarios
+ * (about 30 KB, in every variant like the rest of the lab); the remainder is the gesture props on the primitives and Reanimated's
+ * `WorkletEventHandler`, which the UI-thread route now loads.
  */
-const baseline = { commit: "merge of feat/svelte-native-svg and feat/svelte-native-smoke", bytes: 11_429_553 };
+const baseline = { commit: "merge of feat/svelte-native-gestures", bytes: 11_734_903 };
 
 /** What this run made: the bundle directories (about 15 to 34 MB each) and the Metro caches of their own. All removed when the tests end. */
 const made: string[] = [];

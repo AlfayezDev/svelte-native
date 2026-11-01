@@ -13,3 +13,4 @@ export { maybeBuild } from "react-native-reanimated/src/animationBuilder";
 export { updateLayoutAnimations } from "react-native-reanimated/src/UpdateLayoutAnimations";
 export { LayoutAnimationType } from "react-native-reanimated/src/commonTypes";
 export { processColorsInProps } from "react-native-reanimated/src/common/style/processors/colors";
+export { WorkletEventHandler } from "react-native-reanimated/src/WorkletEventHandler";

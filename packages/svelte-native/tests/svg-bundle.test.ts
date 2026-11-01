@@ -90,6 +90,8 @@ test("React Native is reached by deep paths only: the lite shim's modules and th
     "react-native/Libraries/AppState/AppState",
     "react-native/Libraries/BatchedBridge/NativeModules",
     "react-native/Libraries/EventEmitter/NativeEventEmitter",
+    // The gesture host's JS receiver (`deviceEventEmitter` in `deps-rn.ts`): required with the first gesture, never at boot, and no component.
+    "react-native/Libraries/EventEmitter/RCTDeviceEventEmitter",
     "react-native/Libraries/Interaction/PanResponder",
     "react-native/Libraries/Components/StatusBar/StatusBar",
     "react-native/Libraries/Network/RCTNetworking",

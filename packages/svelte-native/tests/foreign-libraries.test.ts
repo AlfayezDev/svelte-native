@@ -58,6 +58,8 @@ test("the foreign entry bundles no React and none of the libraries' JavaScript, 
   // The deep modules are native module accessors, `Platform`, the converters and the host's own registry code: no component that renders through React.
   const allowed = new Set([
     "react-native/Libraries/BatchedBridge/NativeModules",
+    // The gesture host's JS receiver (`deviceEventEmitter` in `deps-rn.ts`): required with the first gesture, never at boot.
+    "react-native/Libraries/EventEmitter/RCTDeviceEventEmitter",
     "react-native/Libraries/Image/resolveAssetSource",
     "react-native/Libraries/Linking/Linking",
     // Right-to-left layouts (`ShadowedView`'s corner radii).

@@ -10,6 +10,8 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.facebook.react.uimanager.PointerEvents
+import expo.modules.svelteengine.GestureRules
 import expo.modules.svelteengine.NavProps
 import kotlin.math.max
 
@@ -46,6 +48,9 @@ open class EngineScreen(context: Context) : EngineView(context) {
   var transitioning = false
   /** Only the top active screen takes touches ([HitTest]). */
   var touchable = true
+
+  /** The same rule for react-native-gesture-handler, which does not ask [HitTest]: a screen that takes no touches is none. */
+  override val pointerEvents: PointerEvents get() = GestureRules.pointerEvents(node.pointer, touchable)
   /** `topAppear` was sent and `topDisappear` has not followed ([EngineStack.syncAppearance]). */
   var appeared = false
   /** A screen above holds focus for accessibility services: this one is hidden from them. */

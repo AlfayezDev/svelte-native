@@ -4,12 +4,11 @@
   import { createNativeProps } from "../native-props.ts";
   import { IN_STACK_CONTEXT, PANE_CONTEXT, SCREEN_CONTEXT } from "../fabric/navigation.ts";
   import type { ModalProps } from "react-native";
-  import KeyboardModule from "react-native/Libraries/Components/Keyboard/Keyboard";
   import Platform from "react-native/Libraries/Utilities/Platform";
-  const Keyboard = KeyboardModule as unknown as { isVisible(): boolean; dismiss(): void };
+  import { keyboard } from "../keyboard.ts";
   let { children, onRequestClose, onDismiss, onShow, ...attributes }: Omit<ModalProps, "children"> & { children?: Snippet } = $props();
   function close(event: Parameters<NonNullable<ModalProps["onRequestClose"]>>[0]) {
-    if (Keyboard.isVisible()) Keyboard.dismiss();
+    if (keyboard().isVisible()) keyboard().dismiss();
     else onRequestClose?.(event);
   }
   // iOS mounts the host only while it is shown, as React Native's `Modal.js` does: a hidden `RCTModalHostView` is still a

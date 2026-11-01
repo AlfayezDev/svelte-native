@@ -75,6 +75,7 @@ private const val KIND_FOREIGN = 19
 class MountingManager(private val reactContext: ReactApplicationContext) {
   private val appContext = reactContext.applicationContext
   private val handler = Handler(Looper.getMainLooper())
+  private val boost = MountBoost(handler)
   private val registry = SparseArray<View>(512)
   private val scratch = PropSet()
   private val dirtyTexts = ArrayList<EngineText>()
@@ -289,6 +290,7 @@ class MountingManager(private val reactContext: ReactApplicationContext) {
 
   private fun apply(surfaceId: Int, ops: IntArray, strings: Array<String>, objects: Array<Any?>) {
     if (pool.hasHeld) pool.sweep()
+    BootBoost.release() // the first screen is being mounted: the start-up threads get their cores back
     Trace.beginSection("SvelteEngine.mount")
     val t0 = System.nanoTime()
     var decodeNs = 0L
@@ -518,7 +520,10 @@ class MountingManager(private val reactContext: ReactApplicationContext) {
       KIND_PROGRESS -> EngineSpinner(context, p.views.spinnerStyle)
       KIND_IMAGE -> EngineImage(context)
       KIND_STACK -> EngineStack(context)
-      KIND_SCREEN -> if (p.nav.presentation >= 3) EngineSheet(context) else EngineScreen(context)
+      KIND_SCREEN -> {
+        boost.begin() // a screen is pushed: its mount and the frames that draw it run on the big cores
+        if (p.nav.presentation >= 3) EngineSheet(context) else EngineScreen(context)
+      }
       KIND_HEADER -> EngineHeader(context)
       KIND_HEADER_SLOT -> EngineHeaderSlot(context)
       KIND_TABS -> EngineTabs(context)

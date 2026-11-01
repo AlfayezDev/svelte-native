@@ -8,7 +8,7 @@
  * Props go through the host's own payload builder and static view configs (`view-configs.ts`: style
  * flattening, colours, transforms), and events arrive through `registerEventHandler` with the Svelte node as target.
  */
-import { bootSummary, mark } from "../boot-marks.ts";
+import { bootSummary, mark, runBootTasks } from "../boot-marks.ts";
 import { loadReanimated } from "./reanimated-load.ts";
 import { onFirstCommit } from "../updates/launch.ts";
 import { resolveAssetSource, Platform } from "./deps-rn.ts";
@@ -744,6 +744,7 @@ export function startSurface<Props extends Record<string, unknown>>(rootTag: num
     mark("first commit");
     console.log(`[Svelte boot] ${bootSummary()}`);
     onFirstCommit(); // the updates store records a successful launch and starts the background check the build asked for
+    setTimeout(runBootTasks, 0); // what waits for the first commit (React Native's Keyboard), after what the first screen started
   }
   // React Native's Java mounting never reports content for engine surfaces, so Expo's splash screen would wait forever.
   if (engineInstalled) requireOptionalNativeModule<{ hide: () => void }>("ExpoSplashScreen")?.hide();

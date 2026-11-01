@@ -33,3 +33,18 @@ export function bootSummary(): string {
   parts.push(`total ${Math.round(previous - zero)} ms`);
   return parts.join(" · ");
 }
+
+let booted = false;
+const bootTasks: (() => void)[] = [];
+
+/** Runs [task] once the first commit is out, off the way to the first frame; at once when that has happened already. */
+export function whenBooted(task: () => void): void {
+  if (booted) task();
+  else bootTasks.push(task);
+}
+
+/** The host calls this after the first commit (from a timer, so that what the first screen started goes first). */
+export function runBootTasks(): void {
+  booted = true;
+  for (const task of bootTasks.splice(0)) task();
+}

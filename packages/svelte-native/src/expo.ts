@@ -136,8 +136,12 @@ export function applyHeadlessApplication(contents: string, onDemand: Record<stri
     "    System.setProperty(\"expo.modules.lazy\", \"true\")",
     "    // The patch's prewarm thread (app context and boot-time modules built off the pool thread) stays off until a phone A/B and a cold-start soak clear it.",
     "    System.setProperty(\"expo.modules.prewarm\", \"false\")",
+    "    // This thread stays on the big cores while the host starts: the pool thread that initializes Hermes and the TurboModules, and the",
+    "    // JavaScript thread it creates, inherit that and keep them until the first mount (BootBoost in the engine module).",
+    "    expo.modules.svelteengine.BootBoost.begin()",
     "    // Hermes and TurboModule setup run on a pool thread; beginning now overlaps them with activity creation.",
     "    reactHost.start()",
+    "    expo.modules.svelteengine.BootBoost.handOver()",
     startEnd,
   ].join("\n");
   const packagesAt = packagesAnchor.index + packagesAnchor[0].length;

@@ -26,6 +26,8 @@ export type World = {
   engine: { install(): boolean; enableGestures?: () => boolean | void } | null;
   /** The platform `Platform.OS` reports. */
   os: "android" | "ios";
+  /** The host's event handler (`registerEventHandler`): what Fabric calls with a touch for a node's `target`. */
+  dispatch: ((target: unknown, type: string, event: object) => void) | null;
 };
 
 export const world = (): World => (globalThis as unknown as { __gh: World }).__gh;
@@ -38,7 +40,7 @@ const record = (name) => (...args) => { W().calls.push(JSON.parse(JSON.stringify
 export const get = () => null;
 export const getEnforcing = (name) => {
   if (name !== 'RNGestureHandlerModule') throw new Error('unexpected native module ' + name);
-  return { createGestureHandler: record('createGestureHandler'), attachGestureHandler: record('attachGestureHandler'), updateGestureHandler: record('updateGestureHandler'), dropGestureHandler: record('dropGestureHandler'), flushOperations: record('flushOperations') };
+  return { createGestureHandler: record('createGestureHandler'), attachGestureHandler: record('attachGestureHandler'), updateGestureHandler: record('updateGestureHandler'), dropGestureHandler: record('dropGestureHandler'), flushOperations: record('flushOperations'), handleSetJSResponder: record('handleSetJSResponder'), handleClearJSResponder: record('handleClearJSResponder') };
 };`;
 const emitterSource = `
 export default {
@@ -68,7 +70,7 @@ function installWorld(): void {
   const roots: Record<number, FakeNode[]> = {};
   const g = globalThis as unknown as { __gh: World; __anim?: unknown; RN$Bridgeless?: boolean; nativeFabricUIManager?: unknown; global?: unknown };
   const previous = g.__gh;
-  g.__gh = { calls: [], log: [], roots, listeners: new Map(), engine: { install: () => false, enableGestures: () => { g.__gh.log.push("enableGestures"); return true; } }, os: previous?.os ?? "android" };
+  g.__gh = { calls: [], log: [], roots, listeners: new Map(), engine: { install: () => false, enableGestures: () => { g.__gh.log.push("enableGestures"); return true; } }, os: previous?.os ?? "android", dispatch: null };
   delete g.__anim;
   g.RN$Bridgeless = true; // RNGH's remote-debugging check, which turns worklets off, reads this
   g.global ??= globalThis;
@@ -81,7 +83,7 @@ function installWorld(): void {
     createChildSet: (root: number) => ({ root, children: [] as FakeNode[] }),
     appendChildToSet: (set: { children: FakeNode[] }, child: FakeNode) => { set.children.push(child); },
     completeRoot: (root: number, set: { children: FakeNode[] }) => { g.__gh.log.push("completeRoot"); roots[root] = set.children; },
-    registerEventHandler: () => {},
+    registerEventHandler: (handler: (target: unknown, type: string, event: object) => void) => { g.__gh.dispatch = handler; },
   };
 }
 

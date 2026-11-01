@@ -30,7 +30,17 @@ import { makeShareable } from "react-native-worklets";
 import { CSSManager, filterCSSAndStyleProperties, getInlineStyle, hasInlineStyles, initialUpdaterRun, InlinePropManager, isAnimated, LayoutAnimationType, makeViewDescriptorsSet, markNodeAsRemovable, maybeBuild, processColorsInProps, shallowEqual, updateLayoutAnimations, updateProps, validateAnimatedStyles, type ViewDescriptorsSet } from "./reanimated-internals.js";
 
 /** What the host keeps per element that the animation layer reads: its tag, Fabric component name and current shadow node handle. */
-export type AnimationTarget = { tag: number; viewName: string; node: object | null; propsDirty: boolean };
+export type AnimationTarget = {
+  tag: number;
+  viewName: string;
+  node: object | null;
+  propsDirty: boolean;
+  /**
+   * A foreign view, or a node inside one (SPEC.md, "Foreign views"): its top-level props are its library's own. `transition` is expo-image's, `animationName` is
+   * Rive's, and neither is one of Reanimated's CSS keys; only the `style` of such a node can carry those.
+   */
+  foreign?: boolean;
+};
 type Values = Record<string, unknown>;
 type Updater = (() => Values) & { __closure?: Values };
 type StyleRuntime = {
@@ -276,8 +286,9 @@ export function animationProps(node: object, target: AnimationTarget, props: Rec
   const propUpdaters = updatersOf(props.animatedProps);
   const styles = flatten(props.style);
   let cssTop: Values | null = null;
+  const own = target.foreign === true;
   for (const key in props) {
-    if (!isCssKey(key) || props[key] === undefined) continue;
+    if (own || !isCssKey(key) || props[key] === undefined) continue;
     cssTop ??= {};
     cssTop[key] = props[key];
   }
@@ -318,7 +329,7 @@ export function animationProps(node: object, target: AnimationTarget, props: Rec
   delete out.exiting;
   delete out.layout;
   if (record.enteringId !== null) out.nativeID = String(record.enteringId);
-  for (const key in props) if (isCssKey(key)) delete out[key];
+  if (!own) for (const key in props) if (isCssKey(key)) delete out[key];
   let style: unknown = props.style;
   if (cssTop || cssInStyle || record.cssManager) {
     const merged: Values = Object.assign({}, ...mapped, cssTop);

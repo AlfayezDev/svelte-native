@@ -30,7 +30,18 @@ import { makeShareable } from "react-native-worklets";
 import { CSSManager, filterCSSAndStyleProperties, getInlineStyle, hasInlineStyles, initialUpdaterRun, InlinePropManager, isAnimated, LayoutAnimationType, makeViewDescriptorsSet, markNodeAsRemovable, maybeBuild, processColorsInProps, shallowEqual, updateLayoutAnimations, updateProps, validateAnimatedStyles, type ViewDescriptorsSet } from "./reanimated-internals.js";
 
 /** What the host keeps per element that the animation layer reads: its tag, Fabric component name and current shadow node handle. */
-export type AnimationTarget = { tag: number; viewName: string; node: object | null; propsDirty: boolean };
+export type AnimationTarget = {
+  tag: number;
+  viewName: string;
+  node: object | null;
+  propsDirty: boolean;
+  /**
+   * Whether the node's view config declares [key] as an attribute of its own. A top-level prop that is one (expo-image's `transition`, Rive's `animationName`, the
+   * Modal's `animationType`) belongs to the view and goes to it; only a key the view does not declare is one of Reanimated's CSS keys. Without it (a test's
+   * bare target) nothing is declared.
+   */
+  declares?: (key: string) => boolean;
+};
 type Values = Record<string, unknown>;
 type Updater = (() => Values) & { __closure?: Values };
 type StyleRuntime = {
@@ -74,6 +85,8 @@ const records = new Map<object, Record_>();
 const pending = new Set<object>();
 
 const isCssKey = (key: string) => key.startsWith("animation") || key.startsWith("transition");
+/** Reanimated's CSS properties (`animationName`, `transitionDuration`, ...) and their two shorthands, as a top-level prop of a node that does not declare them itself. */
+const CSS_PROP = /^(?:animation|transition)(?:[A-Z]|$)/;
 const flatten = (style: unknown, into: unknown[] = []): unknown[] => {
   if (Array.isArray(style)) for (const item of style) flatten(item, into);
   else if (style && typeof style === "object") into.push(style);
@@ -276,8 +289,9 @@ export function animationProps(node: object, target: AnimationTarget, props: Rec
   const propUpdaters = updatersOf(props.animatedProps);
   const styles = flatten(props.style);
   let cssTop: Values | null = null;
+  const topCss = (key: string) => CSS_PROP.test(key) && target.declares?.(key) !== true;
   for (const key in props) {
-    if (!isCssKey(key) || props[key] === undefined) continue;
+    if (!topCss(key) || props[key] === undefined) continue;
     cssTop ??= {};
     cssTop[key] = props[key];
   }
@@ -318,7 +332,7 @@ export function animationProps(node: object, target: AnimationTarget, props: Rec
   delete out.exiting;
   delete out.layout;
   if (record.enteringId !== null) out.nativeID = String(record.enteringId);
-  for (const key in props) if (isCssKey(key)) delete out[key];
+  for (const key in props) if (topCss(key)) delete out[key];
   let style: unknown = props.style;
   if (cssTop || cssInStyle || record.cssManager) {
     const merged: Values = Object.assign({}, ...mapped, cssTop);

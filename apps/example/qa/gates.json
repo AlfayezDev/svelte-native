@@ -8,7 +8,8 @@
         "lab",
         "boot",
         "smoke",
-        "gestures"
+        "gestures",
+        "foreign"
       ]
     },
     "E74A5608-BF8E-5806-8699-1605F82ADED9": {
@@ -36,6 +37,7 @@
         "resilience",
         "smoke",
         "gestures",
+        "foreign",
         "updates",
         "product"
       ]
@@ -1291,6 +1293,546 @@
           "min": 33
         }
       }
+    },
+    {
+      "id": "foreign.image.failedChecks",
+      "title": "Foreign: failed checks of expo-image (mounts, prop updates, events, commands, pixels; inline, in a list row and in a sheet; React out of the bundle)",
+      "unit": "checks",
+      "metric": "foreign.image.failedChecks",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.image.checks",
+      "title": "Foreign: checks expo-image made (all three places; fewer means a check stopped running, which a failed-checks count cannot show)",
+      "unit": "checks",
+      "metric": "foreign.image.checks",
+      "bar": {
+        "android": {
+          "min": 36
+        }
+      }
+    },
+    {
+      "id": "foreign.image.skipped",
+      "title": "Foreign: checks of expo-image skipped on Android (every check runs there)",
+      "unit": "checks",
+      "metric": "foreign.image.skipped",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.blur.failedChecks",
+      "title": "Foreign: failed checks of expo-blur (mounts, prop updates, events, commands, pixels; inline, in a list row and in a sheet; React out of the bundle)",
+      "unit": "checks",
+      "metric": "foreign.blur.failedChecks",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.blur.checks",
+      "title": "Foreign: checks expo-blur made (all three places; fewer means a check stopped running, which a failed-checks count cannot show)",
+      "unit": "checks",
+      "metric": "foreign.blur.checks",
+      "bar": {
+        "android": {
+          "min": 21
+        }
+      }
+    },
+    {
+      "id": "foreign.blur.skipped",
+      "title": "Foreign: checks of expo-blur skipped on Android (every check runs there)",
+      "unit": "checks",
+      "metric": "foreign.blur.skipped",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.gradient.failedChecks",
+      "title": "Foreign: failed checks of expo-linear-gradient (mounts, prop updates, events, commands, pixels; inline, in a list row and in a sheet; React out of the bundle)",
+      "unit": "checks",
+      "metric": "foreign.gradient.failedChecks",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.gradient.checks",
+      "title": "Foreign: checks expo-linear-gradient made (all three places; fewer means a check stopped running, which a failed-checks count cannot show)",
+      "unit": "checks",
+      "metric": "foreign.gradient.checks",
+      "bar": {
+        "android": {
+          "min": 21
+        }
+      }
+    },
+    {
+      "id": "foreign.gradient.skipped",
+      "title": "Foreign: checks of expo-linear-gradient skipped on Android (every check runs there)",
+      "unit": "checks",
+      "metric": "foreign.gradient.skipped",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.video.failedChecks",
+      "title": "Foreign: failed checks of react-native-video (mounts, prop updates, events, commands, pixels; inline, in a list row and in a sheet; React out of the bundle)",
+      "unit": "checks",
+      "metric": "foreign.video.failedChecks",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.video.checks",
+      "title": "Foreign: checks react-native-video made (all three places; fewer means a check stopped running, which a failed-checks count cannot show)",
+      "unit": "checks",
+      "metric": "foreign.video.checks",
+      "bar": {
+        "android": {
+          "min": 63
+        }
+      }
+    },
+    {
+      "id": "foreign.video.skipped",
+      "title": "Foreign: checks of react-native-video skipped on Android (every check runs there)",
+      "unit": "checks",
+      "metric": "foreign.video.skipped",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.datetime.failedChecks",
+      "title": "Foreign: failed checks of datetimepicker (mounts, prop updates, events, commands, pixels; inline, in a list row and in a sheet; React out of the bundle)",
+      "unit": "checks",
+      "metric": "foreign.datetime.failedChecks",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.datetime.checks",
+      "title": "Foreign: checks @react-native-community/datetimepicker made (all three places; fewer means a check stopped running, which a failed-checks count cannot show)",
+      "unit": "checks",
+      "metric": "foreign.datetime.checks",
+      "bar": {
+        "android": {
+          "min": 27
+        }
+      }
+    },
+    {
+      "id": "foreign.datetime.skipped",
+      "title": "Foreign: checks of @react-native-community/datetimepicker skipped on Android (every check runs there)",
+      "unit": "checks",
+      "metric": "foreign.datetime.skipped",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.lottie.failedChecks",
+      "title": "Foreign: failed checks of lottie-react-native (mounts, prop updates, events, commands, pixels; inline, in a list row and in a sheet; React out of the bundle)",
+      "unit": "checks",
+      "metric": "foreign.lottie.failedChecks",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.lottie.checks",
+      "title": "Foreign: checks lottie-react-native made (all three places; fewer means a check stopped running, which a failed-checks count cannot show)",
+      "unit": "checks",
+      "metric": "foreign.lottie.checks",
+      "bar": {
+        "android": {
+          "min": 33
+        }
+      }
+    },
+    {
+      "id": "foreign.lottie.skipped",
+      "title": "Foreign: checks of lottie-react-native skipped on Android (every check runs there)",
+      "unit": "checks",
+      "metric": "foreign.lottie.skipped",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.pdf.failedChecks",
+      "title": "Foreign: failed checks of react-native-pdf (mounts, prop updates, events, commands, pixels; inline, in a list row and in a sheet; React out of the bundle)",
+      "unit": "checks",
+      "metric": "foreign.pdf.failedChecks",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.pdf.checks",
+      "title": "Foreign: checks react-native-pdf made (all three places; fewer means a check stopped running, which a failed-checks count cannot show)",
+      "unit": "checks",
+      "metric": "foreign.pdf.checks",
+      "bar": {
+        "android": {
+          "min": 39
+        }
+      }
+    },
+    {
+      "id": "foreign.pdf.skipped",
+      "title": "Foreign: checks of react-native-pdf skipped on Android (every check runs there)",
+      "unit": "checks",
+      "metric": "foreign.pdf.skipped",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.capture.failedChecks",
+      "title": "Foreign: failed checks of react-native-view-shot (mounts, prop updates, events, commands, pixels; inline, in a list row and in a sheet; React out of the bundle)",
+      "unit": "checks",
+      "metric": "foreign.capture.failedChecks",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.capture.checks",
+      "title": "Foreign: checks react-native-view-shot made (all three places; fewer means a check stopped running, which a failed-checks count cannot show)",
+      "unit": "checks",
+      "metric": "foreign.capture.checks",
+      "bar": {
+        "android": {
+          "min": 51
+        }
+      }
+    },
+    {
+      "id": "foreign.capture.skipped",
+      "title": "Foreign: checks of react-native-view-shot skipped on Android (every check runs there)",
+      "unit": "checks",
+      "metric": "foreign.capture.skipped",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.rive.failedChecks",
+      "title": "Foreign: failed checks of rive-react-native (mounts, prop updates, events, commands, pixels; inline, in a list row and in a sheet; React out of the bundle)",
+      "unit": "checks",
+      "metric": "foreign.rive.failedChecks",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.rive.checks",
+      "title": "Foreign: checks rive-react-native made (all three places; fewer means a check stopped running, which a failed-checks count cannot show)",
+      "unit": "checks",
+      "metric": "foreign.rive.checks",
+      "bar": {
+        "android": {
+          "min": 33
+        }
+      }
+    },
+    {
+      "id": "foreign.rive.skipped",
+      "title": "Foreign: checks of rive-react-native skipped on Android (every check runs there)",
+      "unit": "checks",
+      "metric": "foreign.rive.skipped",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.conic.failedChecks",
+      "title": "Foreign: failed checks of expo-conic-gradient (mounts, prop updates, events, commands, pixels; inline, in a list row and in a sheet; React out of the bundle)",
+      "unit": "checks",
+      "metric": "foreign.conic.failedChecks",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.conic.checks",
+      "title": "Foreign: checks expo-conic-gradient made (all three places; fewer means a check stopped running, which a failed-checks count cannot show)",
+      "unit": "checks",
+      "metric": "foreign.conic.checks",
+      "bar": {
+        "android": {
+          "min": 21
+        }
+      }
+    },
+    {
+      "id": "foreign.conic.skipped",
+      "title": "Foreign: checks of expo-conic-gradient skipped on Android (every check runs there)",
+      "unit": "checks",
+      "metric": "foreign.conic.skipped",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.shadow.failedChecks",
+      "title": "Foreign: failed checks of react-native-fast-shadow (mounts, prop updates, events, commands, pixels; inline, in a list row and in a sheet; React out of the bundle)",
+      "unit": "checks",
+      "metric": "foreign.shadow.failedChecks",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.shadow.checks",
+      "title": "Foreign: checks react-native-fast-shadow made (all three places; fewer means a check stopped running, which a failed-checks count cannot show)",
+      "unit": "checks",
+      "metric": "foreign.shadow.checks",
+      "bar": {
+        "android": {
+          "min": 36
+        }
+      }
+    },
+    {
+      "id": "foreign.shadow.skipped",
+      "title": "Foreign: checks of react-native-fast-shadow skipped on Android (every check runs there)",
+      "unit": "checks",
+      "metric": "foreign.shadow.skipped",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.text.failedChecks",
+      "title": "Foreign: failed checks of react-native-animateable-text (mounts, prop updates, events, commands, pixels; inline, in a list row and in a sheet; React out of the bundle)",
+      "unit": "checks",
+      "metric": "foreign.text.failedChecks",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.text.checks",
+      "title": "Foreign: checks react-native-animateable-text made (all three places; fewer means a check stopped running, which a failed-checks count cannot show)",
+      "unit": "checks",
+      "metric": "foreign.text.checks",
+      "bar": {
+        "android": {
+          "min": 33
+        }
+      }
+    },
+    {
+      "id": "foreign.text.skipped",
+      "title": "Foreign: checks of react-native-animateable-text skipped on Android (every check runs there)",
+      "unit": "checks",
+      "metric": "foreign.text.skipped",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.svg.failedChecks",
+      "title": "Foreign: failed checks of react-native-svg (mounts, prop updates, events, commands, pixels; inline, in a list row and in a sheet; React out of the bundle)",
+      "unit": "checks",
+      "metric": "foreign.svg.failedChecks",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.svg.checks",
+      "title": "Foreign: checks react-native-svg made (all three places; fewer means a check stopped running, which a failed-checks count cannot show)",
+      "unit": "checks",
+      "metric": "foreign.svg.checks",
+      "bar": {
+        "android": {
+          "min": 36
+        }
+      }
+    },
+    {
+      "id": "foreign.svg.skipped",
+      "title": "Foreign: checks of react-native-svg skipped on Android (every check runs there)",
+      "unit": "checks",
+      "metric": "foreign.svg.skipped",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.libraries.missing",
+      "title": "Foreign: pinned libraries that logged no check",
+      "unit": "libraries",
+      "metric": "foreign.libraries.missing",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.unparsedLines",
+      "title": "Foreign: tagged log lines that could not be read as a check",
+      "unit": "lines",
+      "metric": "foreign.unparsedLines",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.leftovers",
+      "title": "Foreign: capture files of the previous launch still there after its process died",
+      "unit": "files",
+      "metric": "foreign.leftovers.failed",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.launches",
+      "title": "Foreign: complete launches (the checks, then the leftovers)",
+      "unit": "launches",
+      "metric": "foreign.launches",
+      "bar": {
+        "android": {
+          "min": 2
+        }
+      }
+    },
+    {
+      "id": "foreign.incomplete",
+      "title": "Foreign: launches that did not reach the end of their scenario",
+      "unit": "launches",
+      "metric": "foreign.incompleteLaunches",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.fatals",
+      "title": "Foreign: crashes and JavaScript errors during the run",
+      "unit": "fatals",
+      "metric": "foreign.fatals",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.engineWarnings",
+      "title": "Foreign: engine warnings and errors during the run",
+      "unit": "warnings",
+      "metric": "foreign.engineWarnings",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
     }
-  ]
+  ],
+  "foreign": {
+    "libraries": {
+      "android": [
+        "image",
+        "blur",
+        "gradient",
+        "video",
+        "datetime",
+        "lottie",
+        "pdf",
+        "capture",
+        "rive",
+        "conic",
+        "shadow",
+        "text",
+        "svg"
+      ],
+      "ios": [
+        "image",
+        "blur",
+        "gradient",
+        "video",
+        "datetime",
+        "lottie",
+        "pdf",
+        "capture",
+        "rive",
+        "conic",
+        "shadow",
+        "text",
+        "svg"
+      ]
+    }
+  }
 }

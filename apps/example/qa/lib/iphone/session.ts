@@ -4,11 +4,11 @@ import { flagString, requireString } from "../flags.ts";
 import { currentSource } from "../git.ts";
 import { reexecUnderLock } from "../lock.ts";
 import { outDir } from "../paths.ts";
-import { iosBuildName, packageOf, type Variant } from "../variant.ts";
+import { iosBuildName, packageOf, processNameOf, type Variant } from "../variant.ts";
 import type { AppInfo, BuildRecord, DeviceInfo, Source } from "../types.ts";
 import { defaultHardwareUdid, startCrashWatch, type CrashWatch } from "./crash-reports.ts";
 import { deviceDetails, installedApp, type IosTarget } from "./device.ts";
-import { macFrom, remoteOk, words } from "./mac.ts";
+import { boundedWords, macFrom, remoteOk } from "./mac.ts";
 import type { InstalledApp } from "../../parse/ios.ts";
 
 /** The lock one run of the harness holds on the iPhone: two runs at once would fight over the app and its data container. */
@@ -18,7 +18,7 @@ export const iphoneLock = "/tmp/svelte-qa-iphone.lock";
 export const iosOptions = {
 	platform: { type: "string" },
 	device: { type: "string" },
-	/** The phone's hardware UDID (`idevice_id -l` on the Mac), which the crash log is read by; `--device` is the CoreDevice id `devicectl` takes. */
+	/** The phone's hardware UDID (`idevice_id -l` on the Mac), which `xcodebuild` and the USB check name it by; `--device` is the CoreDevice id `devicectl` takes. */
 	udid: { type: "string" },
 	mac: { type: "string" },
 	package: { type: "string" },
@@ -86,7 +86,7 @@ export const newToken = (): string => `${Date.now().toString(36)}${Math.random()
 
 export type IosSession = {
 	target: IosTarget;
-	/** The hardware UDID the crash log is read by: `--udid`, else the lab phone's (`defaultHardwareUdid`). */
+	/** The hardware UDID (`--udid`, else the lab phone's, `defaultHardwareUdid`): what `xcodebuild` and the USB check name the phone by. */
 	udid: string;
 	device: DeviceInfo;
 	installed: InstalledApp;
@@ -120,7 +120,7 @@ export async function startIosSuite(command: string, argv: string[], values: Ios
 	const installing = values["no-install"] !== true && appPath;
 	if (installing) {
 		console.log(`installing ${appPath} on ${device.model} (${id})`);
-		await remoteOk(mac, words(["xcrun", "devicectl", "device", "install", "app", "--device", id, appPath]), { timeoutMs: 600_000 });
+		await remoteOk(mac, boundedWords(590, ["xcrun", "devicectl", "device", "install", "app", "--device", id, appPath]), { timeoutMs: 600_000 });
 	} else console.log(`no build to install; measuring the app already on ${id}`);
 	// The record describes the app it names: another `--app` has none, so what that app reports is recorded and not compared.
 	const build = record && (!installing || appPath === record.appPath) ? buildRecordOf(record) : null;
@@ -139,9 +139,9 @@ export async function startIosSuite(command: string, argv: string[], values: Ios
 	};
 	console.log(`${device.model} (${id}), iOS ${device.osVersion}; app ${installed.version ?? "?"} (${installed.bundleVersion ?? "?"})`);
 	// After the install, before anything runs: the reports that are on the phone now are not this run's.
-	const crashes = await startCrashWatch(mac, udid, bundleId);
-	if (crashes.known) console.log(`crash log of ${udid}: ${crashes.known.size} report(s) of the app already on the phone`);
-	else console.log(`warning: the crash log of ${udid} cannot be read (${crashes.startError}); this run will say so and log.crashReports will read not measured`);
+	const crashes = await startCrashWatch({ mac, deviceId: id, bundleId, processName: processNameOf[variant] });
+	if (crashes.known) console.log(`crash log of ${device.model}: ${crashes.known.size} report file(s) of ${crashes.processName} and jetsam events already on the phone (listed in ${((crashes.listedMs ?? 0) / 1000).toFixed(1)} s)`);
+	else console.log(`warning: the crash log of ${device.model} cannot be read (${crashes.startError}); this run will say so and log.crashReports will read not measured`);
 	return { target, udid, device, installed, app, build, crashes, startedAt };
 }
 

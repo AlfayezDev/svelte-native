@@ -29,6 +29,9 @@ const smokePlugins: NonNullable<ExpoConfig["plugins"]> = !smoke ? [] : [
   "expo-screen-orientation",
   "expo-sharing",
   "expo-web-browser",
+  // Before `expo-notifications` and Adjust (mods run last-listed first): takes out the push entitlement and the StoreKit link they add, which
+  // the Personal Team that signs the QA iPhone's builds cannot sign.
+  "./qa/smoke-personal-team.cjs",
   "expo-notifications",
   "@config-plugins/react-native-adjust",
   ["expo-samsung-pay", { aarPath: "./libs/samsungpay.jar" }],

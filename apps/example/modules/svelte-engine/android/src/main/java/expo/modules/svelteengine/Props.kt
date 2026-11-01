@@ -311,7 +311,10 @@ object Props {
     // overflow and outline clip
     st.overflow = p.overflow
     val hidden = p.overflow == 1
-    if (view is ViewGroup) view.clipChildren = hidden
+    if (view is EngineView) {
+      view.hidesOverflow = hidden
+      view.clipChildren = false
+    } else if (view is ViewGroup) view.clipChildren = hidden
     val maxRadius = max(max(p.radii[0], p.radii[1]), max(p.radii[2], p.radii[3]))
     if (hidden && maxRadius > 0f) {
       if (!st.outlineClip) {

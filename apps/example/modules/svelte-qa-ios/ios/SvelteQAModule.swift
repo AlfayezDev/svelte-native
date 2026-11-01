@@ -26,7 +26,7 @@ public final class SvelteQAModule: Module {
     // What is installed, for the harness to compare with its build record: the SHA-256 of `main.jsbundle` and the executable's
     // code directory hash (what `codesign -dvvv` prints as CDHash: the signature identifies the binary without hashing 30 MB).
     AsyncFunction("buildIdentity") { () -> [String: String] in
-      try SvelteQA.requireEnabled()
+      try SvelteQA.requireIdentity()
       return try SvelteQA.buildIdentity()
     }
 
@@ -96,6 +96,18 @@ public final class SvelteQAModule: Module {
       return try SvelteQAGestures.recognizers(tag: tag)
     }.runOnQueue(.main)
 
+    // What the checks of the native-view libraries read back (`foreign-libraries-checks.ts`): the view UIKit built for a React tag, and the colours of an image
+    // the app made of itself (a `captureRef` result), at fractions of it.
+    Function("inspect") { (tag: Int) -> [String: Any]? in
+      try SvelteQA.requireEnabled()
+      return SvelteQAViews.inspect(tag: tag)
+    }
+
+    Function("samplePixels") { (source: String, points: [[Double]], radius: Int?) -> [String: Any] in
+      try SvelteQA.requireEnabled()
+      return try SvelteQAViews.samplePixels(source: source, points: points, radius: radius ?? 1)
+    }
+
     // The accessibility elements of the key window as VoiceOver finds them (JSON text).
     AsyncFunction("accessibilityTree") { () -> String in
       try SvelteQA.requireEnabled()
@@ -106,8 +118,16 @@ public final class SvelteQAModule: Module {
 
 enum SvelteQA {
   static let bundleIdentifier = "io.rasheed.svelteqa"
+  /// The smoke app (`io.rasheed.svelteqa.smoke`) links this module too, and reports which build it is, like the QA app; nothing else of the module runs there.
+  static let smokeBundleIdentifier = "io.rasheed.svelteqa.smoke"
   static var enabled: Bool { Bundle.main.bundleIdentifier == bundleIdentifier }
   static var boot: BootRecorder?
+
+  static func requireIdentity() throws {
+    guard enabled || Bundle.main.bundleIdentifier == smokeBundleIdentifier else {
+      throw QAError("SvelteQA only reports a build in the QA and smoke apps (\(bundleIdentifier), \(smokeBundleIdentifier))")
+    }
+  }
 
   static func requireEnabled() throws {
     guard enabled else { throw QAError("SvelteQA only runs in the QA app (\(bundleIdentifier))") }

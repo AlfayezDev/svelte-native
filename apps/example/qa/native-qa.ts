@@ -2,6 +2,7 @@ import { a11y } from "./commands/a11y.ts";
 import { boot } from "./commands/boot.ts";
 import { build } from "./commands/build.ts";
 import { gates } from "./commands/gates.ts";
+import { foreign } from "./commands/foreign.ts";
 import { gestures } from "./commands/gestures.ts";
 import { hold } from "./commands/hold.ts";
 import { iosProbe } from "./commands/ios-probe.ts";
@@ -23,7 +24,7 @@ const usage = `usage: native-qa <command> [flags]
   build  --platform ios --mac <user@host> --mac-checkout <dir> [--build-script <path on the Mac>] [--variant qa|smoke]
   lab    --device <serial> [--apk <path> | --no-install] [--repeat <n>] [--run checks,quick] [--timeout <s>]
   boot   --device <serial> [--apk <path> | --no-install] [--warm <n>] [--cold <n>] [--idle <s>]
-  lab | boot | parity | a11y  --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--app <.app on the Mac> | --no-install] [--package <bundle id>]   (NATIVE_QA_MAC replaces --mac; --udid defaults to the lab phone's, for its crash log)
+  lab | boot | parity | a11y  --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--app <.app on the Mac> | --no-install] [--package <bundle id>]   (NATIVE_QA_MAC replaces --mac; --udid defaults to the lab phone's, for xcodebuild and the USB check)
   soak   --device <serial> [--apk <path> | --no-install] [--minutes 10] [--interval <s>] [--parts <names>]
   crashes --device <serial> [--apk <path> | --no-install] [--starts 1000] [--suites 100] [--idle <s>] [--map <file>] [--symbols <dir>] [--chunk <n>] [--resume] [--inject-crash]
   symbolicate [--input <logcat file>] [--map <file>] [--symbols <dir>] [--abi x86_64] [--all]
@@ -34,7 +35,8 @@ const usage = `usage: native-qa <command> [flags]
   smoke  --device <serial> [--apk <path> | --no-install] [--timeout <s>]      (the smoke app: build --variant smoke first)
   smoke  --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--app <.app on the Mac> | --no-install] [--timeout <s>]
   gestures --device <serial> [--apk <path> | --no-install] [--input adb|qa|both] [--run box,row,...] [--repeat <n>] [--timeout <s>]
-  gestures --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--team <id>] [--rebuild] [--run ...] [--repeat <n>] [--timeout <s>]
+  gestures --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--team <id>] [--rebuild] [--run ...] [--repeat <n>] [--timeout <s>] [--trace] [--collect <token of a test that ran>]
+  foreign --device <serial> [--apk <path> | --no-install] [--only <libraries>] [--attempts <n>] [--timeout <s>]
   probe  --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--probes <names>] [--direction ltr|rtl]
   updates --device <serial> [--apk <channel build>] [--baseline-apk <path> | --no-baseline] [--channel qa] [--warm <n>] [--max-launches <n>] [--settle <n>] [--faults boot,mount,effect] [--eas "<command>"] [--environment <eas environment>] [--reset app|data] [--dexopt profile|none] [--package <id>]
   product --device <serial> [--apk <path> | --no-install] [--dexopt profile|none]      (the product boot check on the lab emulator: build --variant production first)
@@ -57,6 +59,7 @@ const commands: Record<string, (argv: string[]) => Promise<void>> = {
 	resilience,
 	smoke,
 	gestures,
+	foreign,
 	updates,
 	product,
 	hold,

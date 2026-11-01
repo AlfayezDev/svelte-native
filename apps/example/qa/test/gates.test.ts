@@ -333,7 +333,8 @@ describe("run kinds", () => {
 		expect(kinds("log.fatals")).toEqual(["lab", "boot"]);
 		expect(kinds("memory.leakedViews")).toEqual(["soak"]);
 		expect(kinds("soak.minutes")).toEqual(["soak"]);
-		for (const kind of ["crashes", "parity", "a11y", "resilience"]) expect(kinds(`${kind}.x`)).toEqual([kind]);
+		for (const kind of ["crashes", "parity", "a11y", "resilience", "gestures", "foreign"]) expect(kinds(`${kind}.x`)).toEqual([kind]);
+		expect(kinds("foreign.image.failedChecks")).toEqual(["foreign"]);
 		expect(kinds("something.else")).toBeNull();
 	});
 	test("a kind the device does not provide is informational, with its value or a dash; one it provides but never measured is not measured", () => {
@@ -454,9 +455,9 @@ describe("gates.json", () => {
 	});
 	test("devices: the Samsung and the iPhone are phones, the OVH emulator is the lab", () => {
 		expect(file.devices).toEqual({
-			R58Y90KNGRP: { role: "phone", name: "Samsung A16", runs: ["lab", "boot", "smoke", "gestures"] },
+			R58Y90KNGRP: { role: "phone", name: "Samsung A16", runs: ["lab", "boot", "smoke", "gestures", "foreign"] },
 			"E74A5608-BF8E-5806-8699-1605F82ADED9": { role: "phone", name: "iPhone SE 3", runs: ["lab", "boot", "parity", "a11y", "resilience", "smoke", "gestures"] },
-			"localhost:5555": { role: "lab", name: "OVH emulator, software GL", runs: ["lab", "soak", "crashes", "parity", "a11y", "resilience", "smoke", "gestures", "updates", "product"] },
+			"localhost:5555": { role: "lab", name: "OVH emulator, software GL", runs: ["lab", "soak", "crashes", "parity", "a11y", "resilience", "smoke", "gestures", "foreign", "updates", "product"] },
 		});
 		expect(() => checkGatesFile(file)).not.toThrow();
 	});

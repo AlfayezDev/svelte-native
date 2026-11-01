@@ -5,16 +5,16 @@ import { shellQuote } from "../exec.ts";
 import { runsDir } from "../paths.ts";
 import type { CrashFrame, CrashReport, CrashReportsRecord, LabRun, Launch } from "../types.ts";
 import { sleep } from "../wait.ts";
-import { remote, scpFrom, type Mac } from "./mac.ts";
+import { remote, scpFrom, words, type Mac } from "./mac.ts";
 
 /**
- * The iPhone's crash log, read through the Mac the phone is paired with (`idevicecrashreport`, libimobiledevice). An app that
+ * The iPhone's crash log, read through the Mac the phone is paired with (`xcrun devicectl`, see "reading the crash log" below). An app that
  * aborts after it wrote its results, at the end of the last scenario or while the harness ends it, leaves nothing in the files
  * the harness reads: only the system's crash report says so. Every iOS command lists the app's reports before and after its run;
  * the reports that were not there before are the run's.
  */
 
-/** The hardware UDID of the lab's iPhone (the id `idevice_id -l` prints, not the CoreDevice id `devicectl` uses); `--udid` names another. */
+/** The hardware UDID of the lab's iPhone (the id `idevice_id -l` prints, not the CoreDevice id `devicectl` uses); `--udid` names another. `xcodebuild` and the USB check take it. */
 export const defaultHardwareUdid = "00008110-001E10593410401E";
 
 /** The QA app's executable: its reports are named after it, and a jetsam event names the processes it lists by it. */
@@ -270,97 +270,177 @@ export function describeCrashReports(record: CrashReportsRecord): string[] {
 	return lines;
 }
 
-/* ---- the pull ---- */
+/* ---- reading the crash log ---- */
+
+/*
+ * The crash log of the phone holds more than reports: sysdiagnose archives of 270 MB each, one for every UI-testing start that timed out
+ * (seven of them, 1.6 GB, on the lab phone on 1 Nov 2026). `idevicecrashreport` reaches the log through the phone's crash-report mover and
+ * a copy service, and copied all of it: a pull took more than the 180 s the harness allowed (the Mac's script went on, orphaned, for
+ * seven minutes, and the next pull queued behind it). Filtering its copy by name (`-f`) made one pull 2 s, but left the cost tied to
+ * what the phone happens to hold and to a tool that cannot say what it has before it copies. So the harness no longer copies the log:
+ * it LISTS it (`devicectl device info files --domain-type systemCrashLogs`: names, sizes and dates, 1 s on the lab phone, the report of
+ * a deliberate SIGABRT in the listing 4.5 s after the signal, with no mover) and copies only the reports that appeared during the run
+ * (`devicectl device copy from`, 1 s each). Every phone command runs under an `alarm` on the Mac, so the Mac ends it and nothing outlives
+ * the harness's wait.
+ */
 
 const macScratch = "/tmp/native-qa-ios";
 let counter = 0;
 
+/** What one phone command may take on the Mac before the Mac ends it (a listing is 1 s; `devicectl` calls hang for 90 s now and then, around UI tests). */
+export const defaultLimitSeconds = 40;
+/** A listing that failed is tried once more: the hang above is not a state of the phone but of one `devicectl` call. */
+const listAttempts = 2;
+
+/** The command prefixed so that the Mac kills it after `seconds` (`perl` is on every Mac; `timeout` is not). */
+const bounded = (seconds: number, command: readonly string[]): string => words(["perl", "-e", "alarm shift; exec @ARGV", String(seconds), ...command]);
+const devicectlFiles = (deviceId: string, args: readonly string[]): string[] => ["xcrun", "devicectl", ...args, "--device", deviceId, "--domain-type", "systemCrashLogs"];
+/** The shell's status for a command the alarm ended (128 + SIGALRM). */
+const killedByAlarm = 142;
+
+/** A file of the crash log, as `devicectl device info files` lists it. */
+export type CrashLogFile = {
+	/** Relative to the crash log: `RasheedSvelteQA-2026-11-01-171503.ips`, or `Retired/RasheedSvelteQA-...` once the phone retired it. */
+	path: string;
+	name: string;
+	bytes: number | null;
+};
+
 /**
- * The shell the Mac runs for one pull: `idevicecrashreport` copies the app's reports and the jetsam events (which name no bundle) of the
- * phone's crash log into a scratch directory, and the files that are the app's or jetsam events are gathered in a second one for `scp`
- * (`-k`: the phone keeps its reports; without it the tool deletes them). Two pulls, each filtered by name (`-f`), not one of the whole
- * log: the crash log also holds sysdiagnose archives of hundreds of megabytes (a failed UI-testing start on the phone writes one), and
- * copying those takes minutes. A report of the app is named by its process (`<process>-<date>.ips`). The PATH adds Homebrew's, where
- * libimobiledevice lives. The pull counts as done only when both runs exit 0 and say `Done.`: a tool that found no phone must never read
- * as a phone with no reports. A failure prints the tool's words on stderr (a locked phone says `Password protected`) and exits 1; the
- * Mac's ssh drops the remote exit status (the command runs under `login`), so the caller tells a failed pull by its stderr and the missing `ours=` line.
+ * The files (not the directories) in the JSON `devicectl device info files` writes. A document that is not devicectl's listing throws:
+ * a listing of no files has an empty `files` array, and anything else is a tool that failed, never a phone with nothing on it.
  */
-export function pullScript(options: { udid: string; bundleId: string; processName?: string; directory: string }): string {
-	const processName = options.processName ?? qaProcessName;
-	const dir = shellQuote(options.directory);
-	const gathered = shellQuote(`${options.directory}.ours`);
-	const log = shellQuote(`${options.directory}.log`);
-	const header = shellQuote(`"bundleID":"${options.bundleId}"`);
+export function parseCrashLogListing(document: string): CrashLogFile[] {
+	const parsed = parseObject(document);
+	const result = parsed && isRecord(parsed.result) ? parsed.result : null;
+	if (!result || !Array.isArray(result.files)) throw new Error("devicectl's answer is not a listing of the crash log (no result.files)");
+	return result.files.filter(isRecord).flatMap((entry) => {
+		const path = text(entry.relativePath) ?? text(entry.name);
+		const resources = isRecord(entry.resources) ? entry.resources : {};
+		if (path === null || resources.isDirectory === true) return [];
+		const metadata = isRecord(entry.metadata) ? entry.metadata : {};
+		return [{ path, name: path.slice(path.lastIndexOf("/") + 1), bytes: count(metadata.size) }];
+	});
+}
+
+
+/** The files that can be reports of the app or that killed it: its crash reports (`<process>-<date>.ips`) and the jetsam events (which name no bundle). */
+export function reportFiles(files: readonly CrashLogFile[], processName: string = qaProcessName): CrashLogFile[] {
+	return files.filter((file) => file.name.endsWith(".ips") && (file.name.startsWith(`${processName}-`) || file.name.startsWith("JetsamEvent-")));
+}
+
+/** The shell the Mac runs to list the crash log: devicectl writes its JSON to a file (the only interface it supports for scripts), which is printed. */
+export function listScript(options: { deviceId: string; file: string; limitSeconds: number }): string {
+	const file = shellQuote(options.file);
+	const log = shellQuote(`${options.file}.log`);
 	return [
-		"export PATH=/opt/homebrew/bin:/usr/local/bin:$PATH",
-		"command -v idevicecrashreport >/dev/null 2>&1 || { echo 'idevicecrashreport is not installed on the Mac (it comes with libimobiledevice)' >&2; exit 127; }",
 		`mkdir -p ${shellQuote(macScratch)}`,
-		`rm -rf ${dir} ${gathered} ${log}`,
-		`mkdir -p ${dir} ${gathered}`,
-		`idevicecrashreport -u ${shellQuote(options.udid)} -k -f ${shellQuote(processName)} ${dir} > ${log} 2>&1`,
+		`${bounded(options.limitSeconds, [...devicectlFiles(options.deviceId, ["--json-output", options.file, "device", "info", "files"])])} > ${log} 2>&1`,
 		"code=$?",
-		`idevicecrashreport -u ${shellQuote(options.udid)} -k -f JetsamEvent ${dir} >> ${log} 2>&1`,
-		"second=$?",
-		"if [ $code -eq 0 ]; then code=$second; fi",
-		`if [ $code -ne 0 ] || [ "$(grep -c '^Done\\.' ${log})" -ne 2 ]; then tail -n 6 ${log} >&2; rm -rf ${dir} ${gathered} ${log}; exit 1; fi`,
-		`find ${dir} -type f -name '*.ips' | while IFS= read -r file; do`,
-		`  name=$(basename "$file")`,
-		`  if head -n 1 "$file" | grep -qF ${header}; then cp "$file" ${gathered}/; else case "$name" in JetsamEvent-*|${processName}-*) cp "$file" ${gathered}/;; esac; fi`,
-		"done",
-		`echo "ours=$(ls ${gathered} | wc -l | tr -d ' ')"`,
-		`rm -rf ${dir} ${log}`,
+		`if [ $code -ne 0 ]; then if [ $code -eq ${killedByAlarm} ]; then echo 'devicectl did not answer in ${options.limitSeconds} s' >&2; fi; tail -n 6 ${log} >&2; rm -f ${file} ${log}; exit $code; fi`,
+		`cat ${file}`,
+		`rm -f ${file} ${log}`,
 	].join("\n");
 }
 
+/** The shell that copies the named files of the crash log into `directory` on the Mac, one bounded `devicectl` call each; it fails if any file did not arrive. */
+export function fetchScript(options: { deviceId: string; directory: string; files: readonly CrashLogFile[]; limitSeconds: number }): string {
+	const dir = shellQuote(options.directory);
+	return [
+		`rm -rf ${dir}`,
+		`mkdir -p ${dir}`,
+		"failed=0",
+		...options.files.map((file) => {
+			const log = shellQuote(`${options.directory}/${file.name}.log`);
+			const copy = bounded(options.limitSeconds, [...devicectlFiles(options.deviceId, ["device", "copy", "from"]), "--source", file.path, "--destination", `${options.directory}/${file.name}`]);
+			return `${copy} > ${log} 2>&1 || { echo ${shellQuote(`copying ${file.path} failed:`)} >&2; tail -n 4 ${log} >&2; failed=1; }`;
+		}),
+		`if [ $failed -ne 0 ]; then rm -rf ${dir}; exit 1; fi`,
+		`rm -f ${dir}/*.log`,
+		`echo "copied=$(ls ${dir} | wc -l | tr -d ' ')"`,
+	].join("\n");
+}
+
+/** What a failed phone command said: the Mac's words, never an empty message. */
+const said = (result: { stderr: string; stdout: string }): string => (result.stderr || result.stdout).trim().slice(0, 400) || "no output";
+
+export type CrashLogListing = { files: CrashLogFile[]; ms: number };
+
+/** Lists the crash log of the phone (CoreDevice id `deviceId`), trying twice; throws with the tool's own words, never returns a list it could not read. */
+export async function listCrashLog(mac: Mac, deviceId: string, options: { limitSeconds?: number } = {}): Promise<CrashLogListing> {
+	const limitSeconds = options.limitSeconds ?? defaultLimitSeconds;
+	const began = Date.now();
+	let failure = "";
+	for (let attempt = 1; attempt <= listAttempts; attempt++) {
+		const result = await remote(mac, listScript({ deviceId, file: `${macScratch}/crashlog-${process.pid}-${++counter}.json`, limitSeconds }), { timeoutMs: (limitSeconds + 20) * 1000 });
+		if (result.code === 0) {
+			try {
+				return { files: parseCrashLogListing(result.stdout), ms: Date.now() - began };
+			} catch (error) {
+				failure = messageOf(error);
+			}
+		} else failure = said(result);
+	}
+	throw new Error(`listing the crash log of ${deviceId} through ${mac.target} failed${listAttempts > 1 ? ` (${listAttempts} tries)` : ""}: ${failure}`);
+}
+
 export type CrashPull = {
-	/** Every report of the app on the phone, oldest first. */
+	/** The reports among the files that were copied, oldest first. */
 	reports: CrashReport[];
-	/** A local directory holding the `.ips` files of those reports; the caller removes it. */
+	/** A local directory holding the copied `.ips` files; the caller removes it. */
 	directory: string;
 };
 
-/** Copies the phone's crash log to the Mac, brings the app's files here and reads them. Throws, with the tool's own words, when any step fails. */
-export async function pullCrashReports(mac: Mac, udid: string, bundleId: string): Promise<CrashPull> {
+/** Copies `files` of the crash log to the Mac, brings them here and reads them. Throws, with the tool's own words, when any step fails. */
+export async function pullCrashFiles(mac: Mac, deviceId: string, files: readonly CrashLogFile[], options: { bundleId: string; processName?: string; limitSeconds?: number }): Promise<CrashPull> {
+	const limitSeconds = options.limitSeconds ?? defaultLimitSeconds;
 	const directory = `${macScratch}/crashes-${process.pid}-${++counter}`;
-	const result = await remote(mac, pullScript({ udid, bundleId, directory }), { timeoutMs: 180_000 });
-	if (result.code !== 0) {
-		await remote(mac, `rm -rf ${shellQuote(`${directory}.ours`)}`).catch(() => undefined);
-		throw new Error(`reading the crash log of ${udid} through ${mac.target} failed (exit ${result.code}): ${(result.stderr || result.stdout).trim().slice(0, 400) || "no output"}`);
-	}
-	const gathered = /^ours=(\d+)$/m.exec(result.stdout);
-	if (!gathered) throw new Error(`reading the crash log of ${udid} through ${mac.target}: the pull did not say how many files it found: ${(result.stderr || result.stdout).trim().slice(-300)}`);
 	const local = await mkdtemp(join(tmpdir(), "native-qa-crashes-"));
 	try {
-		if (Number(gathered[1]) > 0) await scpFrom(mac, `${directory}.ours/.`, local, { timeoutMs: 300_000 });
-		const files = await Promise.all((await readdir(local)).map(async (name) => ({ name, content: await readFile(join(local, name), "utf8") })));
-		return { reports: readCrashReports(files, { bundleId }), directory: local };
+		if (files.length > 0) {
+			const result = await remote(mac, fetchScript({ deviceId, directory, files, limitSeconds }), { timeoutMs: (limitSeconds * files.length + 20) * 1000 });
+			if (result.code !== 0 || !/^copied=\d+$/m.test(result.stdout)) throw new Error(`reading the crash log of ${deviceId} through ${mac.target} failed (exit ${result.code}): ${said(result)}`);
+			await scpFrom(mac, `${directory}/.`, local, { timeoutMs: 300_000 });
+		}
+		const names = await readdir(local);
+		const contents = await Promise.all(names.map(async (name) => ({ name, content: await readFile(join(local, name), "utf8") })));
+		return { reports: readCrashReports(contents, { bundleId: options.bundleId, ...(options.processName ? { processName: options.processName } : {}) }), directory: local };
 	} catch (error) {
 		await rm(local, { recursive: true, force: true });
 		throw error;
 	} finally {
-		await remote(mac, `rm -rf ${shellQuote(`${directory}.ours`)}`).catch(() => undefined);
+		await remote(mac, `rm -rf ${shellQuote(directory)}`).catch(() => undefined);
 	}
 }
 
-/** What the command knew of the phone's crash log when it started: the file names of the app's reports, or why it could not tell. */
+/** What the command knew of the phone's crash log when it started: the names of the files that can be reports of the app, or why it could not tell. */
 export type CrashWatch = {
 	mac: Mac;
-	udid: string;
+	/** The CoreDevice id `devicectl` takes (`--device`). */
+	deviceId: string;
 	bundleId: string;
+	/** The executable's name, which names the app's reports. */
+	processName: string;
 	known: ReadonlySet<string> | null;
 	startError: string | null;
+	/** How long the first listing took, in ms (null when it failed). */
+	listedMs: number | null;
+	/** What one phone command may take on the Mac; the default is `defaultLimitSeconds`. */
+	limitSeconds?: number;
 };
 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
-/** The first pull, when the command starts. A failure is recorded, not thrown: the command goes on and says at its end that it could not measure. */
-export async function startCrashWatch(mac: Mac, udid: string, bundleId: string): Promise<CrashWatch> {
+/** The first listing, when the command starts. A failure is recorded, not thrown: the command goes on and says at its end that it could not measure. */
+export async function startCrashWatch(options: { mac: Mac; deviceId: string; bundleId: string; processName?: string; limitSeconds?: number }): Promise<CrashWatch> {
+	const { mac, deviceId, bundleId } = options;
+	const processName = options.processName ?? qaProcessName;
+	const limit = options.limitSeconds === undefined ? {} : { limitSeconds: options.limitSeconds };
 	try {
-		const pulled = await pullCrashReports(mac, udid, bundleId);
-		await rm(pulled.directory, { recursive: true, force: true });
-		return { mac, udid, bundleId, known: new Set(pulled.reports.map((report) => report.file)), startError: null };
+		const listing = await listCrashLog(mac, deviceId, limit);
+		return { mac, deviceId, bundleId, processName, known: new Set(reportFiles(listing.files, processName).map((file) => file.name)), startError: null, listedMs: listing.ms, ...limit };
 	} catch (error) {
-		return { mac, udid, bundleId, known: null, startError: `before the run: ${messageOf(error)}` };
+		return { mac, deviceId, bundleId, processName, known: null, startError: `before the run: ${messageOf(error)}`, listedMs: null, ...limit };
 	}
 }
 
@@ -372,24 +452,27 @@ export type CrashFinding = {
 };
 
 /**
- * The second pull, after the app was ended: the reports that were not there when the command started. Without the first pull there is
- * nothing to tell new from old, and a failing pull has seen nothing: either way the answer is an error, never an empty list.
+ * The second listing, after the app was ended: the reports that were not there when the command started, copied and read. Without the
+ * first listing there is nothing to tell new from old, and a failing listing or copy has seen nothing: either way the answer is an error,
+ * never an empty list.
  */
 export async function finishCrashWatch(watch: CrashWatch, options: { settleMs?: number } = {}): Promise<CrashFinding> {
 	if (watch.known === null) return { record: { crashReportsError: watch.startError ?? "the crash log was not read before the run" }, directory: null };
 	await sleep(options.settleMs ?? settleMs);
+	const limit = watch.limitSeconds === undefined ? {} : { limitSeconds: watch.limitSeconds };
 	let pulled: CrashPull;
 	try {
-		pulled = await pullCrashReports(watch.mac, watch.udid, watch.bundleId);
+		const listing = await listCrashLog(watch.mac, watch.deviceId, limit);
+		const fresh = reportFiles(listing.files, watch.processName).filter((file) => !watch.known?.has(file.name));
+		pulled = await pullCrashFiles(watch.mac, watch.deviceId, fresh, { bundleId: watch.bundleId, processName: watch.processName, ...limit });
 	} catch (error) {
 		return { record: { crashReportsError: `after the run: ${messageOf(error)}` }, directory: null };
 	}
-	const fresh = reportsSince(pulled.reports, watch.known);
-	if (fresh.length === 0) {
+	if (pulled.reports.length === 0) {
 		await rm(pulled.directory, { recursive: true, force: true });
 		return { record: { crashReports: [] }, directory: null };
 	}
-	return { record: { crashReports: fresh }, directory: pulled.directory };
+	return { record: { crashReports: pulled.reports }, directory: pulled.directory };
 }
 
 /** The record with its reports replaced (attribution adds `attributedTo`); an error record stays as it is. */

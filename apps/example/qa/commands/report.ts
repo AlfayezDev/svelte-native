@@ -16,6 +16,7 @@ import {
 import { reachPct } from "../lib/a11y.ts";
 import { deviceMetrics, missingScenarios, runFatals } from "../lib/metrics.ts";
 import { missingModules, unexpectedSkips, unpinnedModules } from "../lib/smoke.ts";
+import { checksOf, missingPlaces, skippedBy } from "../lib/foreign.ts";
 import { allScenarios, failedChecks } from "../lib/gestures.ts";
 import type { SuiteFiles } from "../lib/suite-metrics.ts";
 import { productProblems, type ProductFile } from "../lib/product.ts";
@@ -32,6 +33,7 @@ import type {
 	CrashReportsRecord,
 	CrashSignature,
 	DeviceInfo,
+	ForeignFile,
 	GesturesFile,
 	LabFile,
 	Metrics,
@@ -128,6 +130,16 @@ type GesturesSummary = {
 	launches: { input: string; complete: boolean; scenarios: { name: string; verdict: string; failedChecks: number }[] }[];
 };
 
+/** One foreign run file: what each native-view library came to, and what the platform could not check yet. */
+type ForeignSummary = {
+	file: string;
+	source: Source;
+	launches: { name: string; complete: boolean }[];
+	libraries: { library: string; checks: number; failed: number; neverOpened: string[] }[];
+	skipped: Record<string, string[]>;
+	reactFiles: number | null;
+};
+
 type SmokeSummary = {
 	file: string;
 	source: Source;
@@ -211,6 +223,7 @@ type ReportDeviceEntry = {
 	crashes: CrashesSummary | null;
 	smoke: SmokeSummary | null;
 	gestures: GesturesSummary | null;
+	foreign: ForeignSummary | null;
 	/** Android: the updates run. It installs its own build (the channel one), so it is left out of the cross-build comparison of the other runs. */
 	updates: UpdatesSummary | null;
 	/** Android: the product boot check. It starts another app (`io.rasheed.app`), so it is left out of the cross-build comparison of the others. */
@@ -440,6 +453,8 @@ export async function report(): Promise<void> {
 		const smoke = smokePath ? await readJson<SmokeFile>(smokePath) : null;
 		const gesturesPath = files.gestures.get(key);
 		const gestures = gesturesPath ? await readJson<GesturesFile>(gesturesPath) : null;
+		const foreignPath = files.foreign.get(key);
+		const foreign = foreignPath ? await readJson<ForeignFile>(foreignPath) : null;
 		const suites: SuiteFiles = {
 			parity: parityPath ? await readJson<ParityFile>(parityPath) : null,
 			a11y: a11yPath ? await readJson<A11yFile>(a11yPath) : null,
@@ -449,7 +464,7 @@ export async function report(): Promise<void> {
 		const updates = updatesPath ? await readJson<UpdatesFile>(updatesPath) : null;
 		const productPath = files.product.get(key);
 		const product = productPath ? await readJson<ProductFile>(productPath) : null;
-		const reference = lab ?? boot ?? soak ?? crashes ?? suites.parity ?? suites.a11y ?? suites.resilience ?? gestures ?? updates ?? product ?? smoke;
+		const reference = lab ?? boot ?? soak ?? crashes ?? suites.parity ?? suites.a11y ?? suites.resilience ?? gestures ?? foreign ?? updates ?? product ?? smoke;
 		if (!reference) continue;
 		const serial = reference.device.serial;
 		const platform: Platform = reference.device.platform;
@@ -463,6 +478,7 @@ export async function report(): Promise<void> {
 			["accessibility", suites.a11y],
 			["resilience", suites.resilience],
 			["gestures", gestures],
+			["foreign", foreign],
 		];
 		warnings.push(...buildWarnings(serial, measured));
 		smokeWarnings.push(...buildWarnings(serial, [["smoke", smoke]]));
@@ -477,6 +493,7 @@ export async function report(): Promise<void> {
 		const pinned = gates.scenarios[platform];
 		const pins = { modules: gates.smoke.modules[platform], skips: gates.smoke.skips[platform] };
 		const pinnedGestures = gates.gestures?.[platform] ?? allScenarios;
+		const pinnedLibraries = gates.foreign?.libraries[platform] ?? [];
 		devices[serial] = {
 			platform,
 			role: gates.devices[serial]?.role ?? null,
@@ -544,6 +561,20 @@ export async function report(): Promise<void> {
 							})),
 						}
 					: null,
+			foreign:
+				foreign && foreignPath
+					? {
+							file: foreignPath.slice(foreignPath.lastIndexOf("runs/")),
+							source: foreign.source,
+							launches: foreign.launches.map((launch) => ({ name: launch.name, complete: launch.complete })),
+							libraries: pinnedLibraries.map((library) => {
+								const own = checksOf(foreign, library);
+								return { library, checks: own.length, failed: own.filter((entry) => !entry.passed).length, neverOpened: missingPlaces(foreign, library) };
+							}),
+							skipped: skippedBy(foreign.skips),
+							reactFiles: foreign.bundle?.reactFiles.length ?? null,
+						}
+					: null,
 			updates: updates && updatesPath ? summarizeUpdates(updates, updatesPath.slice(updatesPath.lastIndexOf("runs/"))) : null,
 			product:
 				product && productPath
@@ -585,7 +616,7 @@ export async function report(): Promise<void> {
 						: null,
 				resilience: suites.resilience && resiliencePath ? { file: resiliencePath.slice(resiliencePath.lastIndexOf("runs/")), screen: suites.resilience.screen } : null,
 			},
-			metrics: deviceMetrics(lab, boot, pinned, soak, crashes, suites, smoke ? { file: smoke, pins } : null, gestures, pinnedGestures, updates, gates.signedIn?.[platform] ?? [], product),
+			metrics: deviceMetrics(lab, boot, pinned, soak, crashes, suites, smoke ? { file: smoke, pins } : null, gestures, pinnedGestures, updates, gates.signedIn?.[platform] ?? [], product, foreign ? { file: foreign, pins: { libraries: pinnedLibraries } } : null),
 		};
 	}
 
@@ -667,6 +698,10 @@ export async function report(): Promise<void> {
 		if (entry.gestures)
 			console.log(
 				`  gestures ${m["gestures.launches"] ?? 0} complete launch(es) (${entry.gestures.inputs.join(", ")}), ${m["gestures.scenarios.missing"] ?? "-"} scenarios missing, agreement mismatches ${m["gestures.agreement.mismatches"] ?? "not measured"}, fatals ${m["gestures.fatals"] ?? "-"}, engine warnings ${m["gestures.engineWarnings"] ?? "-"}; checks failed: ${entry.gestures.launches.flatMap((launch) => launch.scenarios.filter((result) => result.failedChecks > 0).map((result) => `${result.name} (${launch.input})`)).join(", ") || "none"}`,
+			);
+		if (entry.foreign)
+			console.log(
+				`  foreign ${m["foreign.launches"] ?? 0} complete launch(es), ${m["foreign.libraries.missing"] ?? "-"} libraries missing, fatals ${m["foreign.fatals"] ?? "-"}, leftovers failed ${m["foreign.leftovers.failed"] ?? "not measured"}; failed checks: ${entry.foreign.libraries.filter((library) => library.failed > 0 || library.neverOpened.length > 0).map((library) => `${library.library} ${library.failed}`).join(", ") || "none"}${Object.keys(entry.foreign.skipped).length ? `; skipped on this platform: ${Object.entries(entry.foreign.skipped).map(([library, names]) => `${library} ${names.length}`).join(", ")}` : ""}`,
 			);
 		if (entry.updates) {
 			const u = entry.updates;

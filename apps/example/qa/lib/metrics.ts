@@ -2,6 +2,7 @@ import { summarize } from "../parse/stats.ts";
 import { crashMetrics, soakMetrics } from "../soak/metrics.ts";
 import { unattributedCount } from "./iphone/crash-reports.ts";
 import { smokeMetrics, type SmokePins } from "./smoke.ts";
+import { foreignMetrics, type ForeignPins } from "./foreign.ts";
 import { allScenarios, gesturesMetrics } from "./gestures.ts";
 import { suiteMetrics, type SuiteFiles } from "./suite-metrics.ts";
 import { productMetrics, type ProductFile } from "./product.ts";
@@ -11,6 +12,7 @@ import type {
 	CrashesFile,
 	CrashReportsRecord,
 	DeviceInfo,
+	ForeignFile,
 	GesturesFile,
 	LabFile,
 	LabRun,
@@ -222,6 +224,7 @@ export function deviceMetrics(
 	updates: UpdatesFile | null = null,
 	pinnedSignedIn: readonly string[] = [],
 	product: ProductFile | null = null,
+	foreign: { file: ForeignFile; pins: ForeignPins } | null = null,
 ): Metrics {
 	const metrics: Metrics = {
 		...(lab ? labMetrics(lab, pinned) : {}),
@@ -231,6 +234,7 @@ export function deviceMetrics(
 		...suiteMetrics(suites, pinnedSignedIn),
 		...(smoke ? smokeMetrics(smoke.file, smoke.pins) : {}),
 		...(gestures ? gesturesMetrics(gestures, pinnedGestures) : {}),
+		...(foreign ? foreignMetrics(foreign.file, foreign.pins) : {}),
 		...(updates ? updatesMetrics(updates) : {}),
 		...(product ? productMetrics(product) : {}),
 		...crashReportMetrics([lab, boot, suites.parity, suites.a11y, suites.resilience, gestures].filter((file) => file !== null)),

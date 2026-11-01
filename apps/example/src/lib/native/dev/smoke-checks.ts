@@ -433,7 +433,13 @@ export const checks: Check[] = [
 			const mixpanel = new Mixpanel("smoke00000000000000000000000000", false);
 			// Opted out from the start: the SDK tracks and sends nothing.
 			await mixpanel.init(true);
-			const optedOut = await mixpanel.hasOptedOutTracking();
+			// The iOS SDK applies the opt-out default on its tracking queue after `initialize` returns (MixpanelInstance.swift: "optOutTracking() runs
+			// async on trackingQueue, so hasOptedOutTracking() may not reflect the default yet"), so the first answer can still be false: ask again, for up to two seconds.
+			let optedOut = await mixpanel.hasOptedOutTracking();
+			for (let attempt = 0; attempt < 20 && optedOut !== true; attempt++) {
+				await new Promise<void>((resolve) => setTimeout(resolve, 100));
+				optedOut = await mixpanel.hasOptedOutTracking();
+			}
 			const distinctId = await mixpanel.getDistinctId();
 			expect(optedOut === true && typeof distinctId === "string" && distinctId.length > 0, `optedOut ${String(optedOut)}, distinctId ${String(distinctId)}`);
 			return "native init with the opt-out default on, hasOptedOutTracking true, getDistinctId answered";

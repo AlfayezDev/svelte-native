@@ -12,6 +12,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -19,6 +20,22 @@
 namespace expo::svelteengine::foreign {
 
 using Tag = int32_t;
+
+// The foreign components the host registered, held as Fabric names them. A shadow view says the name Fabric gives a component, which is not always its React view
+// name (`componentNameByReactViewName`: "RCTVideo" is "Video"), so a registered name goes through that function (React Native's own, handed in: the host test links
+// the same source) when it is added, and a component is looked up by the name its shadow view carries.
+class Names {
+ public:
+  using FabricName = std::string (*)(std::string);
+  explicit Names(FabricName fabric) : fabric_(fabric) {}
+  void add(const std::string &reactViewName) { names_.insert(fabric_(reactViewName)); }
+  bool contains(const char *fabricName) const { return fabricName != nullptr && names_.count(fabricName) != 0; }
+  bool empty() const { return names_.empty(); }
+
+ private:
+  FabricName fabric_;
+  std::unordered_set<std::string> names_;
+};
 
 enum class Type : uint8_t { Create, Delete, Insert, Remove, Update };
 enum class Owner : uint8_t { Engine, Root, Descendant };

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 
@@ -53,9 +53,11 @@ describe("the product build leaves the QA-only modules out of autolinking", () =
 	test("Android: the QA build links the injector and the bench, the product's module list has neither, and keeps the engine and the updates module", () => {
 		const qa = classes(resolved("android", configuredExclude("qa")));
 		expect(qa).toContain("expo.modules.svelteqa.SvelteQaTouchModule");
+		expect(qa).toContain("expo.modules.svelteqa.SvelteQaPixelsModule");
 		expect(qa).toContain("expo.modules.viewbench.ViewBenchModule");
 		const product = classes(resolved("android", configuredExclude("production")));
 		expect(product.filter((name) => /Qa|QA|ViewBench/.test(name))).toEqual([]);
+		expect(product).not.toContain("expo.modules.svelteqa.SvelteQaPixelsModule");
 		expect(product).toContain("expo.modules.svelteengine.SvelteEngineModule");
 		expect(product).toContain("expo.modules.svelteupdates.SvelteUpdatesModule");
 	});
@@ -72,6 +74,35 @@ describe("the product build leaves the QA-only modules out of autolinking", () =
 		expect(engine.android.modules).toEqual(["expo.modules.svelteengine.SvelteEngineModule"]);
 		expect(existsSync(resolve(app, "modules/svelte-engine/android/src/main/java/expo/modules/svelteengine/views/QaTouch.kt"))).toBe(false);
 		const qa = JSON.parse(readFileSync(resolve(app, "modules/svelte-qa-android/expo-module.config.json"), "utf8")) as { android: { modules: string[] } };
-		expect(qa.android.modules).toEqual(["expo.modules.svelteqa.SvelteQaTouchModule"]);
+		expect(qa.android.modules).toEqual(["expo.modules.svelteqa.SvelteQaTouchModule", "expo.modules.svelteqa.SvelteQaPixelsModule"]);
+		// every module the QA package lists is a class one of its files defines (a name no file defines links nothing and fails at run time)
+		const directory = resolve(app, "modules/svelte-qa-android/android/src/main/java/expo/modules/svelteqa");
+		const defined = readdirSync(directory).filter((file) => file.endsWith(".kt")).map((file) => readFileSync(resolve(directory, file), "utf8")).join("\n");
+		for (const name of qa.android.modules) expect(defined).toContain(`class ${name.split(".").pop()} : Module()`);
+	});
+
+	// The product ships the engine module. What reads the text of a view (a password field's included), presses the screen or writes a profile to the app's files is the
+	// lab's, and the module answers it in the QA app and in debuggable builds only (`LabSwitches.allowed`): each of these functions starts with the check.
+	test("the engine module's lab hooks (inspect, tap, drag, profileJs) refuse outside the QA app and debuggable builds", () => {
+		const source = readFileSync(resolve(app, "modules/svelte-engine/android/src/main/java/expo/modules/svelteengine/SvelteEngineModule.kt"), "utf8");
+		for (const hook of ["inspect", "tap", "drag", "profileJs"]) {
+			const start = source.indexOf(`Function("${hook}")`);
+			expect(start).toBeGreaterThan(-1);
+			const body = source.slice(start, source.indexOf("\n    }\n", start));
+			expect(body.split("\n").slice(0, 3).join("\n")).toContain(`requireLab("${hook}")`);
+		}
+		const rule = readFileSync(resolve(app, "modules/svelte-engine/android/src/main/java/expo/modules/svelteengine/LabSwitches.kt"), "utf8");
+		expect(rule).toContain("fun allowed(packageName: String, debuggable: Boolean): Boolean = debuggable || packageName == QA_PACKAGE");
+		expect(source).toContain("LabSwitches.allowed(context.packageName, debuggable)");
+	});
+
+	test("the iOS QA module's readbacks (inspect, samplePixels) refuse outside the QA bundle, which the product does not link at all", () => {
+		const source = readFileSync(resolve(app, "modules/svelte-qa-ios/ios/SvelteQAModule.swift"), "utf8");
+		for (const hook of ["inspect", "samplePixels"]) {
+			const start = source.indexOf(`Function("${hook}")`);
+			expect(start).toBeGreaterThan(-1);
+			expect(source.slice(start, start + 220)).toContain("try SvelteQA.requireEnabled()");
+		}
+		expect(packages(resolved("apple", configuredExclude("production")))).not.toContain("svelte-qa-ios");
 	});
 });

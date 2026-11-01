@@ -13,7 +13,7 @@ import { describeStories, storiesFrom, type TraceAction, type TraceFile } from "
 import { attribute, describeCrash, describeCrashReports, finishCrashWatch, keepCrashFiles, withReports } from "./crash-reports.ts";
 import { notReported, reportedIdentity, withIdentity } from "./identity.ts";
 import { labFinished, labScenarios, parseIosLabResults, type IosLabResults } from "./lab-results.ts";
-import { remote, remoteOk, words, type Mac } from "./mac.ts";
+import { boundedWords, remote, remoteOk, type Mac } from "./mac.ts";
 import { iosOptions, newToken, startIosSuite, type IosSession } from "./session.ts";
 import type { BuildIdentity, CrashReport, GestureInjection, GestureLaunch, GesturesFile } from "../types.ts";
 
@@ -248,7 +248,7 @@ export const defaultEdgeX = "2";
 /** Writes `1` or `0` to the app's `Documents/gesture-trace.on`: the QA app records its recognizers at its next launch when it reads `1` (an app that XCUITest opens by link takes no launch argument). */
 async function setTraceFlag(target: IosSession["target"], on: boolean): Promise<void> {
 	const file = "/tmp/native-qa-ios/trace-flag";
-	const copy = words(["xcrun", "devicectl", "device", "copy", "to", "--device", target.id, "--source", file, "--destination", "Documents/gesture-trace.on", "--domain-type", "appDataContainer", "--domain-identifier", target.bundleId]);
+	const copy = boundedWords(50, ["xcrun", "devicectl", "device", "copy", "to", "--device", target.id, "--source", file, "--destination", "Documents/gesture-trace.on", "--domain-type", "appDataContainer", "--domain-identifier", target.bundleId]);
 	// devicectl's first copy to a phone that was just used fails now and then; the tool's own words are kept, and one more try is made.
 	const command = `mkdir -p /tmp/native-qa-ios && printf ${on ? "1" : "0"} > ${file} && { out=$(${copy} 2>&1) || { sleep 3; out=$(${copy} 2>&1); } || { echo "$out" | tail -n 6 >&2; exit 1; }; }`;
 	await remoteOk(target.mac, command, { timeoutMs: 120_000 });
@@ -300,31 +300,40 @@ export async function testAlive(mac: Mac, pid: number): Promise<boolean> {
 }
 
 /** One launch of the lab with the given scenarios on the iPhone, an XCUITest injecting while the app writes its results. */
-export async function iosGesturesOnce(session: IosSession, names: string[], timeoutMs: number, logPath: string, options: { trace?: boolean; calibrate?: string; edgeX?: string; edgeRelease?: string; edgeBy?: string; link?: string } = {}): Promise<{ launch: GestureLaunch; results: IosLabResults | null }> {
+export async function iosGesturesOnce(session: IosSession, names: string[], timeoutMs: number, logPath: string, options: { trace?: boolean; calibrate?: string; edgeX?: string; edgeRelease?: string; edgeBy?: string; link?: string; collect?: string } = {}): Promise<{ launch: GestureLaunch; results: IosLabResults | null }> {
 	const { target } = session;
 	const { mac } = target;
-	const token = newToken();
-	const startedAt = new Date();
+	// `collect` is the token of a launch whose test already ran and whose results were not read (a `devicectl` call that hung after the test, say): the test is not
+	// started again (a failed UI-testing start costs the phone a sysdiagnose of 270 MB), only what it left on the phone and on the Mac is read.
+	const token = options.collect ?? newToken();
+	let startedAt = new Date();
 	const outFile = `${uiTestsRemote}/test-output-${token}.log`;
 	const seconds = Math.ceil(timeoutMs / 1000);
-	// The test opens the lab's link itself: XCUITest observes only an app it launched, and a step's input has to find the test already there.
-	await setTraceFlag(target, options.trace === true);
-	// `--link` opens a page by itself instead of the lab's run (a diagnostic: a page at the root of the stack, with no scenario around it).
-	const url = options.link ?? `rasheed-svelte:///__dev?run=${runValue(names, "xctest")}&token=${token}`;
-	const started = await remoteOk(mac, inBackground(testCommand({ dir: uiTestsRemote, udid: session.udid, bundleId: target.bundleId, seconds, outFile, url, trace: options.trace === true, calibrate: options.calibrate, edgeX: options.edgeX ?? defaultEdgeX, edgeRelease: options.edgeRelease, edgeBy: options.edgeBy })));
-	const testPid = Number(started.trim().split("\n").pop());
-	// While the test runs the phone is asked nothing: devicectl calls made then hang for a minute and a half now and then (CoreDevice shares the phone with the
-	// runner), so the harness only watches the Mac's side, and reads the phone's files once the test has ended. The test ends when the lab says "Done." or gives up.
-	if (!(await waitForTestStarted(mac, outFile, 150_000))) console.log(`warning: the test did not say ${testStartedLine} within 150 s`);
-	const deadline = Date.now() + timeoutMs;
 	let testEnded: string | null = null;
-	while (Date.now() < deadline) {
-		await sleep(5000);
-		if (Number.isFinite(testPid) && !(await testAlive(mac, testPid))) break;
+	if (options.collect !== undefined) {
+		const born = Number((await remote(mac, `stat -f %B ${shellQuote(outFile)} 2>/dev/null`)).stdout.trim());
+		if (!Number.isFinite(born) || born <= 0) throw new Error(`--collect ${token}: there is no ${outFile} on the Mac, so no test of that token ran here`);
+		startedAt = new Date(born * 1000);
+		console.log(`collecting the results of the test ${token} (started ${startedAt.toISOString()}); no test is started`);
+	} else {
+		// The test opens the lab's link itself: XCUITest observes only an app it launched, and a step's input has to find the test already there.
+		await setTraceFlag(target, options.trace === true);
+		// `--link` opens a page by itself instead of the lab's run (a diagnostic: a page at the root of the stack, with no scenario around it).
+		const url = options.link ?? `rasheed-svelte:///__dev?run=${runValue(names, "xctest")}&token=${token}`;
+		const started = await remoteOk(mac, inBackground(testCommand({ dir: uiTestsRemote, udid: session.udid, bundleId: target.bundleId, seconds, outFile, url, trace: options.trace === true, calibrate: options.calibrate, edgeX: options.edgeX ?? defaultEdgeX, edgeRelease: options.edgeRelease, edgeBy: options.edgeBy })));
+		const testPid = Number(started.trim().split("\n").pop());
+		// While the test runs the phone is asked nothing: devicectl calls made then hang for a minute and a half now and then (CoreDevice shares the phone with the
+		// runner), so the harness only watches the Mac's side, and reads the phone's files once the test has ended. The test ends when the lab says "Done." or gives up.
+		if (!(await waitForTestStarted(mac, outFile, 150_000))) console.log(`warning: the test did not say ${testStartedLine} within 150 s`);
+		const deadline = Date.now() + timeoutMs;
+		while (Date.now() < deadline) {
+			await sleep(5000);
+			if (Number.isFinite(testPid) && !(await testAlive(mac, testPid))) break;
+		}
+		if (Date.now() >= deadline) testEnded = "the XCUITest run did not end within the timeout";
+		// Only the test this launch started: its shell's children (xcodebuild), then the shell.
+		if (Number.isFinite(testPid)) await remote(mac, `pkill -TERM -P ${testPid} 2>/dev/null; kill ${testPid} 2>/dev/null; true`);
 	}
-	if (Date.now() >= deadline) testEnded = "the XCUITest run did not end within the timeout";
-	// Only the test this launch started: its shell's children (xcodebuild), then the shell.
-	if (Number.isFinite(testPid)) await remote(mac, `pkill -TERM -P ${testPid} 2>/dev/null; kill ${testPid} 2>/dev/null; true`);
 	// The test is over: the phone answers again.
 	let results: IosLabResults | null = null;
 	let raw = "";
@@ -365,13 +374,14 @@ export async function iosGesturesOnce(session: IosSession, names: string[], time
 
 /** `native-qa gestures --platform ios`. */
 export async function iosGestures(argv: string[]): Promise<void> {
-	const { values } = parseFlags(argv, { ...iosOptions, run: { type: "string" }, repeat: { type: "string" }, timeout: { type: "string" }, team: { type: "string" }, rebuild: { type: "boolean" }, input: { type: "string" }, trace: { type: "boolean" }, calibrate: { type: "string" }, "edge-x": { type: "string" }, "edge-release": { type: "string" }, "edge-by": { type: "string" }, link: { type: "string" }, "build-only": { type: "boolean" } });
+	const { values } = parseFlags(argv, { ...iosOptions, run: { type: "string" }, repeat: { type: "string" }, timeout: { type: "string" }, team: { type: "string" }, rebuild: { type: "boolean" }, input: { type: "string" }, trace: { type: "boolean" }, calibrate: { type: "string" }, "edge-x": { type: "string" }, "edge-release": { type: "string" }, "edge-by": { type: "string" }, link: { type: "string" }, collect: { type: "string" }, "build-only": { type: "boolean" } });
 	const input = flagString(values.input) ?? "xctest";
 	if (input !== "xctest") throw new Error("--input is xctest on iOS (touches cannot be synthesized from inside the app)");
 	const session = await startIosSuite("gestures", argv, values);
 	const names = namesFor(scenarioNamesFrom(flagString(values.run)), "xctest");
 	const repeat = integerFlag(values.repeat, "repeat", 1);
 	if (repeat < 1) throw new Error("--repeat must be at least 1");
+	if (values.collect !== undefined && repeat !== 1) throw new Error("--collect reads the results of one test: --repeat must be 1");
 	const timeoutMs = integerFlag(values.timeout, "timeout", 900) * 1000;
 	await requireUsb(session.target.mac, session.udid);
 	await prepareUiTests(session, { team: flagString(values.team), rebuild: values.rebuild === true });
@@ -386,7 +396,7 @@ export async function iosGestures(argv: string[]): Promise<void> {
 	for (let index = 1; index <= repeat; index++) {
 		console.log(`gestures xctest ${index}/${repeat}: ${names.map((name) => name.slice("gestures-".length)).join(", ")}`);
 		const logPath = join(runsDir, `gestures-${slug(session.device.serial)}-${stamp(session.startedAt)}-xctest-${index}.log`);
-		const { launch, results } = await iosGesturesOnce(session, names, timeoutMs, logPath, { trace: values.trace === true, calibrate: flagString(values.calibrate), edgeX: flagString(values["edge-x"]), edgeRelease: flagString(values["edge-release"]), edgeBy: flagString(values["edge-by"]), link: flagString(values.link) });
+		const { launch, results } = await iosGesturesOnce(session, names, timeoutMs, logPath, { trace: values.trace === true, calibrate: flagString(values.calibrate), edgeX: flagString(values["edge-x"]), edgeRelease: flagString(values["edge-release"]), edgeBy: flagString(values["edge-by"]), link: flagString(values.link), collect: flagString(values.collect) });
 		launches.push(launch);
 		// A run that did not finish measured nothing to compare. Every one that did must be the recorded build.
 		if (launch.complete && results) reports.push(results.build);

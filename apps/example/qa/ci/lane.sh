@@ -21,7 +21,9 @@
 #   QA_WARM, QA_COLD   boot launches in full mode (30, 30)
 #   QA_DEVICE    the serial (localhost:5555)
 #   QA_SMOKE     1: build and run the smoke app in full mode; needs apps/platform/libs/samsungpay.jar or $QA_SAMSUNGPAY_JAR
-#   QA_CLI       the harness command (node qa/native-qa.ts); QA_EMULATOR_SH the emulator script (qa/ci/emulator.sh)
+#   QA_STARTS, QA_SUITES, QA_CHUNK   the crash volume (1000, 100, 100)
+#   QA_CLI       the harness command (node qa/native-qa.ts); QA_EMULATOR_SH the emulator script (qa/ci/emulator.sh; from another
+#                machine qa/ci/emulator-remote.sh, which runs it on the host over ssh)
 set -u
 
 CI_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)

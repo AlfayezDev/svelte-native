@@ -67,7 +67,13 @@ rss_gb() {
   echo $(( ${kb:-0} / 1048576 ))
 }
 
-boot_flag() { timeout 20 "$ADB" -s "$SERIAL" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r'; }
+boot_flag() {
+  local flag
+  flag=$(timeout 20 "$ADB" -s "$SERIAL" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+  # the adb server may know the emulator only under the name it was connected as
+  [ -n "$flag" ] || flag=$(timeout 20 "$ADB" -s "$DEVICE" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+  printf '%s' "$flag"
+}
 adb_state() { timeout 20 "$ADB" -s "$DEVICE" get-state 2>/dev/null | tr -d '\r'; }
 
 # The guest booted, and adb answers under the name the harness uses.
@@ -77,6 +83,7 @@ wait_boot() {
   while [ "$(boot_flag)" != 1 ]; do
     [ $((SECONDS - start)) -ge "$BOOT_WAIT" ] && { log "no boot within ${BOOT_WAIT} s"; return 1; }
     sleep "$POLL"
+    "$ADB" connect "$DEVICE" >/dev/null 2>&1
   done
   "$ADB" connect "$DEVICE" >/dev/null 2>&1
   while [ "$(adb_state)" != device ]; do

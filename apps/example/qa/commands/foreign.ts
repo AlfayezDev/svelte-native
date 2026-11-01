@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { flagString, integerFlag, parseFlags, platformOf } from "../lib/flags.ts";
 import { currentSource } from "../lib/git.ts";
 import { describeForeign, foreignPins, readBundle } from "../lib/foreign.ts";
+import { pressDriver } from "../lib/foreign-press.ts";
 import { runsDir } from "../lib/paths.ts";
 import { readBuilds, slug, stamp, writeRun } from "../lib/runs.ts";
 import { commonOptions, startSuite } from "../lib/suite.ts";
@@ -47,10 +48,17 @@ export async function foreign(argv: string[]): Promise<void> {
 
 	await mkdir(runsDir, { recursive: true });
 	const launches: ForeignLaunch[] = [];
-	const librariesRun = `foreign-libraries${only && only.length > 0 ? `,only:${only.join(".")}` : ""}`;
+	// `drive:adb`: the lab asks the harness to press the buttons of the date dialog, a native window it cannot touch itself.
+	const librariesRun = `foreign-libraries${only && only.length > 0 ? `,only:${only.join(".")}` : ""},drive:adb`;
 	console.log(`foreign: ${librariesRun}`);
 	const first = join(runsDir, `foreign-${slug(serial)}-${stamp(startedAt)}-libraries.log`);
-	launches.push(launchOf("libraries", librariesRun, await labOnce(serial, packageName, librariesRun, timeoutMs, first)));
+	const presses = pressDriver(serial);
+	try {
+		launches.push(launchOf("libraries", librariesRun, await labOnce(serial, packageName, librariesRun, timeoutMs, first)));
+	} finally {
+		presses.stop();
+	}
+	for (const line of presses.log) console.log(`  ${line}`);
 	const parsed = parseForeignChecks(await readFile(first, "utf8"));
 	console.log(`  ${parsed.checks.length} checks logged, ${parsed.checks.filter((entry) => !entry.passed).length} failed, ${parsed.skips.length} skipped`);
 	console.log("foreign: foreign-leftovers (the launch after it)");

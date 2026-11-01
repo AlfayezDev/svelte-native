@@ -70,7 +70,7 @@ function place(kind: LibraryKind, where: Where): { href: string; sheet: boolean;
   return { href: `/__dev/foreign?mode=libraries-sheet&kind=${kind}`, sheet: true, source: "libraries-sheet", index };
 }
 
-export async function runForeignLibraries(router: Router, signal: AbortSignal, only?: readonly LibraryKind[]): Promise<LibrariesOutcome> {
+export async function runForeignLibraries(router: Router, signal: AbortSignal, only?: readonly LibraryKind[], driven = false): Promise<LibrariesOutcome> {
   const checks: LibraryCheck[] = [];
   const skips: LibrarySkip[] = [];
   const depth = router.entries.length;
@@ -100,6 +100,8 @@ export async function runForeignLibraries(router: Router, signal: AbortSignal, o
         kind, where, source: opened.source, android,
         canInspect: android ? typeof engine?.inspect === "function" : typeof qaIos?.inspect === "function",
         canLook: !!pixels,
+        driven,
+        press: (id, resourceId) => { console.info("[Svelte foreign press]", JSON.stringify({ id, resourceId })); },
         lab: libraryLab,
         handles: () => { handlesNow = libraryHandles.get(opened.source) ?? handlesNow; if (!handlesNow) throw new Error(`the ${kind} section is not mounted in ${where}`); return handlesNow; },
         host: () => libraryHandles.get(opened.source)?.hosts[kind],

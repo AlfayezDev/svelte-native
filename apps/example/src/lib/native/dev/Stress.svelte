@@ -515,7 +515,7 @@
       return { verdict: value.passed ? "pass" : "fail", summary: `${value.summary} · ${describe(frames)}`, frames, detail: value.detail };
     } },
     { name: "foreign-libraries", label: "Native-view libraries (thirteen) inline, in a list row and in a sheet: mounts, prop updates, events, commands, pixels of a capture (`run=foreign-libraries`, `only:<library>.<library>` after it narrows it)", async run(signal) {
-      const value = await runForeignLibraries(router, signal, foreignOnly);
+      const value = await runForeignLibraries(router, signal, foreignOnly, gestureDrive === "adb");
       return { verdict: value.passed ? "pass" : "fail", summary: value.summary, detail: value.detail };
     } },
     { name: "foreign-leftovers", label: "Capture files of the previous launch are gone (`run=foreign-leftovers`, the launch after `foreign-libraries`)", async run() {

@@ -45,6 +45,8 @@ export type Ctx = {
   /** The platform can say what it built (`inspect`) and read the pixels of a capture (`SvelteQaPixels`). */
   readonly canInspect: boolean;
   readonly canLook: boolean;
+  /** The run was opened with `drive:adb`: the harness presses what `press` asks for. */
+  readonly driven: boolean;
   readonly lab: typeof libraryLab;
   handles(): LibraryHandles;
   host(): Host | undefined;
@@ -59,6 +61,8 @@ export type Ctx = {
   rect(host?: Host): Promise<Rect | null>;
   /** The point ([fx], [fy], fractions of [host]'s own box) as a point of the section's box, for `look`; null while a layout is missing. */
   point(host: Host, fx: number, fy: number): Promise<[number, number] | null>;
+  /** Asks the harness to tap the button with this resource id on the screen (`foreign-press.ts`): a native dialog the page cannot press. */
+  press(id: string, resourceId: string): void;
   /** A tap through the engine's root at the middle of [host] (the section's view by default). */
   tap(host?: Host): Promise<boolean>;
   /** Captures [target] (the section's box by default) and reads the colours at [points]. */
@@ -259,12 +263,32 @@ async function datetime(c: Ctx): Promise<void> {
   c.check("commands: dismissDatePicker finds the dialog the module opened", wasShowing === true, String(wasShowing));
   const result: Date | null | string = await Promise.race([pending, new Promise<string>((resolve) => setTimeout(resolve, 4000, "timeout"))]).catch((error: unknown) => String(error));
   c.check("commands: the dismissed dialog resolves the promise with null", result === null, String(result));
+  if (c.driven) await pressed(c);
+  else c.skip("events: pressing OK, Cancel and the time dialog's OK end the dialog with a date or null", "the harness did not drive the run (drive:adb)");
   const time = openDatePicker({ value: new Date(Date.UTC(2026, 9, 28, 12, 0, 0)), mode: "time" });
   void time.catch(() => undefined);
   await c.pause(1200);
   const timeShowing: boolean | string = await dismissDatePicker("time").catch((error: unknown) => String(error));
   c.check("commands: the time dialog opens and closes the same way", timeShowing === true, String(timeShowing));
   await Promise.race([time, new Promise((resolve) => setTimeout(resolve, 2000))]).catch(() => undefined);
+}
+
+/** The dialog pressed by the harness: OK answers a date, Cancel answers null, and the time dialog answers the time of day it was given. */
+async function pressed(c: Ctx): Promise<void> {
+  const value = new Date(Date.UTC(2026, 9, 28, 12, 30, 0));
+  const answer = async (mode: "date" | "time", resourceId: string, id: string): Promise<Date | null | string> => {
+    const open = openDatePicker({ value, mode });
+    void open.catch(() => undefined);
+    await c.pause(1200);
+    c.press(id, resourceId);
+    return Promise.race([open, new Promise<string>((resolve) => setTimeout(resolve, 8000, "timeout"))]).catch((error: unknown) => String(error));
+  };
+  const ok = await answer("date", "android:id/button1", "date-ok");
+  c.check("events: OK in the date dialog resolves openDatePicker with the date", ok instanceof Date && Math.abs(ok.getTime() - value.getTime()) < 24 * 3600 * 1000, String(ok));
+  const cancel = await answer("date", "android:id/button2", "date-cancel");
+  c.check("events: Cancel resolves it with null", cancel === null, String(cancel));
+  const time = await answer("time", "android:id/button1", "time-ok");
+  c.check("events: OK in the time dialog resolves it with a time of day", time instanceof Date, String(time));
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------------

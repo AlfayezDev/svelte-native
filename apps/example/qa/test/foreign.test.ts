@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { analyseSources, bundleChecks, describeForeign, failedChecks, foreignMetrics, libraryModules, missingPlaces } from "../lib/foreign.ts";
 import { checkGatesFile, evaluate, type GatesFile } from "../lib/gates.ts";
 import { platformDir } from "../lib/paths.ts";
+import { findButton, parsePress } from "../lib/foreign-press.ts";
 import { parseForeignChecks } from "../parse/foreign.ts";
 import { argb, clear, distance, hex, near, numberIn, show, solid } from "../../src/lib/native/dev/foreign-pixels.ts";
 import type { ForeignCheck, ForeignFile, ForeignLaunch } from "../lib/types.ts";
@@ -198,5 +199,29 @@ describe("the colour helpers the lab's pixel checks use", () => {
 		expect(numberIn("count 23")).toBe(23);
 		expect(numberIn("hello")).toBeNull();
 		expect(numberIn(undefined)).toBeNull();
+	});
+});
+
+describe("what the lab asks the harness to press", () => {
+	const dump = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0">
+<node index="0" text="" resource-id="" class="android.widget.FrameLayout" package="io.rasheed.svelteqa" bounds="[0,0][1080,2400]">
+<node index="1" text="Cancel" resource-id="android:id/button2" class="android.widget.Button" package="io.rasheed.svelteqa" bounds="[500,1700][740,1830]" />
+<node index="2" text="OK" resource-id="android:id/button1" class="android.widget.Button" package="io.rasheed.svelteqa" bounds="[760,1700][900,1830]" />
+<node index="3" text="" resource-id="android:id/button3" class="android.widget.Button" package="io.rasheed.svelteqa" bounds="[0,0][0,0]" />
+</node></hierarchy>`;
+
+	test("a press request is read from the lab's line, and any other line is not one", () => {
+		const request = line(`'[Svelte foreign press]', '{"id":"date-ok","resourceId":"android:id/button1"}'`);
+		expect(parsePress(request)).toEqual({ id: "date-ok", resourceId: "android:id/button1" });
+		expect(parsePress(line("'[Svelte foreign press]', '{\"id\":3}'"))).toBeNull();
+		expect(parsePress(line("'[Svelte stress]', '{}'"))).toBeNull();
+		expect(parsePress("not a logcat line")).toBeNull();
+	});
+
+	test("the middle of the button is found by its resource id, and an empty box is not a button", () => {
+		expect(findButton(dump, "android:id/button1")).toEqual({ x: 830, y: 1765 });
+		expect(findButton(dump, "android:id/button2")).toEqual({ x: 620, y: 1765 });
+		expect(findButton(dump, "android:id/button3")).toBeNull();
+		expect(findButton(dump, "android:id/nothing")).toBeNull();
 	});
 });

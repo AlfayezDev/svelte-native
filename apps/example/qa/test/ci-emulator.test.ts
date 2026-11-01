@@ -64,6 +64,18 @@ exit 0`,
 	return { dir, env, run, calls, rss, put };
 }
 
+
+/** Holds the emulator lock of `machine` for `seconds` and returns once it does. */
+async function holdLock(machine: { dir: string }, seconds: number) {
+	const marker = join(machine.dir, "holding");
+	const holder = spawn("flock", [join(machine.dir, "lock"), "bash", "-c", `touch ${marker}; sleep ${seconds}`]);
+	for (let waited = 0; !existsSync(marker); waited += 25) {
+		if (waited > 10_000) throw new Error("the lock holder never started");
+		await new Promise((resolve) => setTimeout(resolve, 25));
+	}
+	return holder;
+}
+
 describe("emulator.sh", () => {
 	test("rss is qemu's resident set in whole GB", () => {
 		expect(host({ rssGb: 12 }).run(["rss"]).stdout.trim()).toBe("12");
@@ -125,16 +137,14 @@ describe("emulator.sh watchdog", () => {
 	});
 	test("restarts at once above the hard limit, lock or no lock", async () => {
 		const machine = host({ rssGb: 19 });
-		const holder = spawn("flock", [join(machine.dir, "lock"), "sleep", "5"]);
-		await new Promise((resolve) => setTimeout(resolve, 300));
+		const holder = await holdLock(machine, 5);
 		machine.run(["watchdog"], { ...watch, LOCK_WAIT: "1" });
 		holder.kill();
 		expect(machine.calls()).toContain("systemctl restart");
 	});
 	test("above the soft limit it waits for the lock and restarts once it has it", async () => {
 		const machine = host({ rssGb: 12 });
-		const holder = spawn("flock", [join(machine.dir, "lock"), "sleep", "1"]);
-		await new Promise((resolve) => setTimeout(resolve, 300));
+		const holder = await holdLock(machine, 1);
 		const result = machine.run(["watchdog"], { ...watch, LOCK_WAIT: "10" });
 		holder.kill();
 		expect(result.stdout).toContain("waiting for");
@@ -142,8 +152,7 @@ describe("emulator.sh watchdog", () => {
 	}, 20_000);
 	test("above the soft limit with the lock held too long it defers", async () => {
 		const machine = host({ rssGb: 12 });
-		const holder = spawn("flock", [join(machine.dir, "lock"), "sleep", "5"]);
-		await new Promise((resolve) => setTimeout(resolve, 300));
+		const holder = await holdLock(machine, 5);
 		const result = machine.run(["watchdog"], { ...watch, LOCK_WAIT: "1" });
 		holder.kill();
 		expect(result.stdout).toContain("deferring");

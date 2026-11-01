@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -30,6 +30,14 @@ const free = (file: string): boolean => spawnSync("flock", ["-n", file, "true"])
 const local = (file: string): Lock => ({ kind: "local", file });
 const remote = (file: string): Lock => ({ kind: "remote", host: "ovh-root", file });
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+/** A command that says (by creating `marker`) that it holds the lock, then keeps it for `seconds`. */
+const holding = (marker: string, seconds: number): string[] => ["bash", "-c", `touch ${marker}; sleep ${seconds}`];
+async function until(path: string): Promise<void> {
+	for (let waited = 0; !existsSync(path); waited += 25) {
+		if (waited > 10_000) throw new Error(`${path} never appeared`);
+		await sleep(25);
+	}
+}
 
 describe("which lock a serial takes", () => {
 	const noTunnel = () => null;
@@ -103,8 +111,9 @@ describe("a local lock", () => {
 	test("a second command waits for the first", async () => {
 		const file = fresh("local.lock");
 		const log = fresh("log");
-		const first = runUnderLock(local(file), ["bash", "-c", `echo a-start >> ${log}; sleep 1; echo a-end >> ${log}`]);
-		await sleep(300);
+		const marker = fresh("marker");
+		const first = runUnderLock(local(file), ["bash", "-c", `echo a-start >> ${log}; touch ${marker}; sleep 1; echo a-end >> ${log}`]);
+		await until(marker);
 		const second = runUnderLock(local(file), ["bash", "-c", `echo b >> ${log}`]);
 		expect(await first).toBe(0);
 		expect(await second).toBe(0);
@@ -112,8 +121,9 @@ describe("a local lock", () => {
 	});
 	test("gives up after the wait", async () => {
 		const file = fresh("local.lock");
-		const holder = runUnderLock(local(file), ["sleep", "3"]);
-		await sleep(300);
+		const marker = fresh("marker");
+		const holder = runUnderLock(local(file), holding(marker, 3));
+		await until(marker);
 		await expect(runUnderLock(local(file), ["true"], { wait: 1 })).rejects.toThrow("gave up waiting");
 		await holder;
 	}, 15_000);
@@ -134,8 +144,9 @@ describe("a remote lock", () => {
 	test("excludes a local flock on the same file, which is how the host's own jobs take it", async () => {
 		const file = fresh("remote.lock");
 		const log = fresh("log");
-		const remoteRun = runUnderLock(remote(file), ["bash", "-c", `echo r-start >> ${log}; sleep 1; echo r-end >> ${log}`]);
-		await sleep(500);
+		const marker = fresh("marker");
+		const remoteRun = runUnderLock(remote(file), ["bash", "-c", `echo r-start >> ${log}; touch ${marker}; sleep 1; echo r-end >> ${log}`]);
+		await until(marker);
 		const localRun = runUnderLock(local(file), ["bash", "-c", `echo l >> ${log}`]);
 		expect(await remoteRun).toBe(0);
 		expect(await localRun).toBe(0);
@@ -143,15 +154,17 @@ describe("a remote lock", () => {
 	});
 	test("waits for a local holder and says so", async () => {
 		const file = fresh("remote.lock");
-		const holder = runUnderLock(local(file), ["sleep", "1"]);
-		await sleep(300);
+		const marker = fresh("marker");
+		const holder = runUnderLock(local(file), holding(marker, 1));
+		await until(marker);
 		expect(await runUnderLock(remote(file), ["true"])).toBe(0);
 		await holder;
 	});
 	test("gives up after the wait", async () => {
 		const file = fresh("remote.lock");
-		const holder = runUnderLock(local(file), ["sleep", "3"]);
-		await sleep(300);
+		const marker = fresh("marker");
+		const holder = runUnderLock(local(file), holding(marker, 3));
+		await until(marker);
 		await expect(runUnderLock(remote(file), ["true"], { wait: 1 })).rejects.toThrow("gave up waiting");
 		await holder;
 	}, 15_000);

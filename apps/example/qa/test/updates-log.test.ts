@@ -91,6 +91,15 @@ describe("parseUpdateObservation", () => {
 		expect(parseUpdateObservation(twice, pkg).running).toEqual({ kind: "embedded", builtAt: 5 });
 	});
 
+	test("the failure wording of the launch marker: a recorded fatal and two unconfirmed launches fail the update, one unconfirmed launch is forgiven", () => {
+		const fatal = line("W", "SvelteUpdates", `Update ${B} recorded a fatal error before its launch was confirmed; launching the previous update or the embedded bundle`);
+		const twice = line("W", "SvelteUpdates", `Update ${B} did not confirm its launch 2 times in a row; launching the previous update or the embedded bundle`);
+		const once = line("W", "SvelteUpdates", `Update ${B} did not confirm its launch (launch 1 of 2; it fails at the next one); launching the previous update or the embedded bundle`);
+		expect(parseUpdateObservation(fatal, pkg)).toMatchObject({ failedIds: [B], unconfirmedIds: [] });
+		expect(parseUpdateObservation(twice, pkg)).toMatchObject({ failedIds: [B], unconfirmedIds: [] });
+		expect(parseUpdateObservation(once, pkg)).toMatchObject({ failedIds: [], unconfirmedIds: [B] });
+	});
+
 	test("a start that honoured the QA reset reports the token and what it forgot; one that did not reports none", () => {
 		const text = [
 			startProc,
@@ -111,7 +120,7 @@ describe("parseUpdateObservation", () => {
 
 describe("launchSettled", () => {
 	const observation = (overrides: Partial<UpdateObservation>): UpdateObservation => ({
-		running: null, booted: false, probe: null, check: null, failedIds: [], reset: null, crashes: 0, jsErrors: 0, displayMs: null, ...overrides,
+		running: null, booted: false, probe: null, check: null, failedIds: [], unconfirmedIds: [], reset: null, crashes: 0, jsErrors: 0, displayMs: null, ...overrides,
 	});
 	const probeOf = (checkOnLaunch: string) => ({ enabled: true, updateId: null, embedded: true, createdAt: null, runtimeVersion: "0.1.0", channel: "qa", checkOnLaunch, marker: null });
 
@@ -184,5 +193,28 @@ describe("launches captured from the QA app built for the qa channel", () => {
 		expect(seen.failedIds).toEqual([]);
 		expect(seen.check).toEqual({ outcome: "none", reason: "updatePreviouslyFailed" });
 		expect(seen.displayMs).toBeNull();
+	});
+});
+
+describe("launches of an update that boots and then throws, from the OVH emulator", () => {
+	const MOUNT = "01a196e1-af1a-72e6-a0e5-8355eb3f73d5";
+	const GOOD = "01a196de-d2f3-7e15-a392-b63d46d37039";
+
+	test("it boots, its host dies after the first commit before the check: a fatal, no check, settled by the fault", () => {
+		const seen = parseUpdateObservation(sample("updates-late-fault-launch.log"), pkg);
+		expect(runningId(seen)).toBe(MOUNT);
+		expect(seen.booted).toBe(true);
+		expect(seen.crashes).toBe(1);
+		expect(seen.check).toBeNull();
+		expect(launchSettled(seen, 1_000)).toBeNull();
+		expect(launchSettled(seen, 6_000)).toBe("fault");
+	});
+	test("the start after it: the recorded fatal fails the update, the previous one runs, the failed one is refused", () => {
+		const seen = parseUpdateObservation(sample("updates-recovered-by-fatal.log"), pkg);
+		expect(seen.failedIds).toEqual([MOUNT]);
+		expect(runningId(seen)).toBe(GOOD);
+		expect(seen.booted).toBe(true);
+		expect(seen.check).toEqual({ outcome: "none", reason: "updatePreviouslyFailed" });
+		expect(seen.probe?.marker).toBe("qa-20261101T112336Z-good");
 	});
 });

@@ -176,7 +176,7 @@ export async function updates(argv: string[]): Promise<void> {
 	} else note("no baseline build (qa/out/app-<abi>.apk): the boot comparison is skipped");
 
 	const runTag = `qa-${stamp(startedAt)}`;
-	const state: DeviceState = { finalBuild: "channel", resetSettingRemoved: false, note: null };
+	const state: DeviceState = { finalBuild: "channel", resetSettingRemoved: false, storeCleared: false, note: null };
 	let launchCount = 0;
 	let live: UpdatesScenario | null = null;
 	let publishing: Promise<unknown> = Promise.resolve();
@@ -206,6 +206,24 @@ export async function updates(argv: string[]): Promise<void> {
 				state.finalBuild = "plain";
 			} catch (error) {
 				state.note = `the plain QA build could not be put back: ${redact(error instanceof Error ? error.message : String(error))}`;
+			}
+			// The plain build starts with an empty store, so its starts (the boot gates') have nothing to forget and never ask for the reset token.
+			if (state.finalBuild === "plain" && reset === "app") {
+				try {
+					const token = `${runTag}-restore`;
+					await shell(serial, resetRequest(token));
+					await clearLogcat(serial);
+					await startApp(serial, packageName);
+					for (let waited = 0; waited < 20 && !state.storeCleared; waited++) {
+						await sleep(1000);
+						state.storeCleared = parseUpdateObservation(await dumpLogcat(serial), packageName).reset?.token === token;
+					}
+					await shell(serial, resetRelease);
+					await forceStop(serial, packageName);
+					if (!state.storeCleared) state.note = "the plain QA build did not report the reset: its update store still holds the channel build's updates (it never launches them: their request headers differ)";
+				} catch (error) {
+					state.note = `could not empty the update store with the plain build: ${redact(error instanceof Error ? error.message : String(error))}`;
+				}
 			}
 		} else state.note = "there was no plain QA build to put back";
 		if (state.finalBuild === "channel") console.error(`WARNING: the channel build is left installed on ${serial} (${state.note}); install the plain QA build before any other run measures it`);

@@ -78,7 +78,7 @@ describe("the updates run in the report", () => {
 			schema: 1, kind: "updates", startedAt: "", finishedAt: "", source: { commit: "a", dirty: false },
 			device: { serial: "s", platform: "android", kind: "device", model: "m", osVersion: "16", sdk: 36, abi: "x86_64", refreshHz: null },
 			app: { package: "p", versionName: null, versionCode: null, lastUpdateTime: null, installedSha256: null, apk: null },
-			channel: "qa", runtimeVersion: null, build: null, eas: { command: "npx", version: null, environment: "development" }, channelInfo: null, deviceState: { finalBuild: "plain", resetSettingRemoved: true, note: null },
+			channel: "qa", runtimeVersion: null, build: null, eas: { command: "npx", version: null, environment: "development" }, channelInfo: null, deviceState: { finalBuild: "plain", resetSettingRemoved: true, storeCleared: true, note: null },
 			options: { maxLaunches: 2, settleLaunches: 1 }, scenario, notes: [], boot: { enabled: null, baseline: null, baselineBuild: null, delta: null, enabledLaunches: [], baselineLaunches: [] }, logFile: "",
 		});
 		expect(metrics["updates.applied"]).toBe(0);

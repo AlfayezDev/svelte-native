@@ -334,6 +334,8 @@ export type DeviceState = {
 	finalBuild: "plain" | "channel";
 	/** The reset setting was removed from the device (it is also removed as soon as the first launch reports the reset). */
 	resetSettingRemoved: boolean;
+	/** The plain build, once installed back, started with a reset token and emptied the updates store the channel build filled: its later starts have nothing to forget and so do not ask for the token. */
+	storeCleared: boolean;
 	note: string | null;
 };
 

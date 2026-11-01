@@ -86,8 +86,8 @@ class ClientWorld implements UpdatesDriver {
 		const chosen = ready[0]?.[0] ?? null;
 		const running = chosen ? ({ kind: "update", id: chosen, createdAt: this.store.get(chosen)?.at ?? 0 } as const) : ({ kind: "embedded", builtAt: this.embeddedAt } as const);
 		if (chosen) this.pending = chosen;
-		const base = { index, phase, failedIds, reset: index === 1 ? { token: "qa-test", forgotten: 0 } : null, crashes: 0, jsErrors: 0, displayMs: 600 };
-		if (this.silentLaunch === index) return { ...base, running: null, booted: false, probe: null, check: null, failedIds: [], settledBy: "timeout" };
+		const base = { index, phase, failedIds, unconfirmedIds: [] as string[], reset: index === 1 ? { token: "qa-test", forgotten: 0 } : null, crashes: 0, jsErrors: 0, displayMs: 600 };
+		if (this.silentLaunch === index) return { ...base, running: null, booted: false, probe: null, check: null, failedIds: [], unconfirmedIds: [], settledBy: "timeout" };
 		const fault = chosen && !this.faultNeverFires ? (this.channel.find((update) => update.id === chosen)?.fault ?? null) : null;
 		if (fault) {
 			if (!this.fatalNotRecorded) this.pendingFatal = true;
@@ -402,7 +402,7 @@ function file(scenario: Awaited<ReturnType<typeof runUpdatesScenario>>, boot = b
 		build: null,
 		eas: { command: "npx", version: "eas-cli/27.2.0", environment: "development" },
 		channelInfo: null,
-		deviceState: { finalBuild: "plain", resetSettingRemoved: true, note: null },
+		deviceState: { finalBuild: "plain", resetSettingRemoved: true, storeCleared: true, note: null },
 		options: { ...options, ...override },
 		scenario,
 		boot,

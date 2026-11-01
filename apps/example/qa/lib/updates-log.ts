@@ -33,6 +33,8 @@ export type UpdateObservation = {
 	check: UpdateCheck | null;
 	/** Updates this start found marked as never having reached their first commit: the failed launch it recovered from. */
 	failedIds: string[];
+	/** Updates whose previous launch was never confirmed and recorded no fatal: forgiven once, they fail at the next such launch. */
+	unconfirmedIds: string[];
 	/** The QA app honoured a reset request at this start (`QaReset.kt`): the token, and how many downloaded updates it forgot. */
 	reset: { token: string; forgotten: number } | null;
 	crashes: number;
@@ -44,7 +46,10 @@ const updateId = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const launchingUpdate = new RegExp(`^Launching update (${updateId}) \\(created (\\d+)\\)`);
 const launchingEmbedded = /^Launching the embedded bundle \(built (\d+)\)/;
 const qaReset = /^QA reset \(([^)]+)\): forgot (\d+) update\(s\)/;
-const failedLaunch = new RegExp(`^Update (${updateId}) did not reach its first commit`);
+// A failed update: the launch recorded a fatal error, or was the second in a row nobody confirmed (and, from builds before the healthy window, one that never reached its first commit).
+const failedLaunch = new RegExp(`^Update (${updateId}) (?:recorded a fatal error before its launch was confirmed|did not confirm its launch \\d+ times in a row|did not reach its first commit)`);
+// A launch nobody confirmed that is forgiven once: the update is launched again and fails at the next unconfirmed launch.
+const unconfirmedLaunch = new RegExp(`^Update (${updateId}) did not confirm its launch \\(launch (\\d+) of (\\d+)`);
 const downloaded = new RegExp(`^\\[Svelte updates\\] Update (${updateId}) downloaded; it launches on the next start`);
 const noUpdate = /^\[Svelte updates\] No update to download \((\w+)\)/;
 const rolledBack = /^\[Svelte updates\] Rolled back to the embedded bundle/;
@@ -88,12 +93,15 @@ export function parseUpdateObservation(text: string, packageName: string): Updat
 	let booted = false;
 	let reset: UpdateObservation["reset"] = null;
 	const failedIds: string[] = [];
+	const unconfirmedIds: string[] = [];
 	for (const line of parseLines(text)) {
 		if (line.tag === "SvelteUpdates") {
 			const update = launchingUpdate.exec(line.message);
 			const embedded = launchingEmbedded.exec(line.message);
 			const failed = failedLaunch.exec(line.message);
 			const forgot = qaReset.exec(line.message);
+			const forgiven = unconfirmedLaunch.exec(line.message);
+			if (forgiven?.[1] && !unconfirmedIds.includes(forgiven[1])) unconfirmedIds.push(forgiven[1]);
 			if (forgot?.[1] && forgot[2] && reset === null) reset = { token: forgot[1], forgotten: Number(forgot[2]) };
 			if (running === null && update?.[1] && update[2]) running = { kind: "update", id: update[1], createdAt: Number(update[2]) };
 			else if (running === null && embedded?.[1]) running = { kind: "embedded", builtAt: Number(embedded[1]) };
@@ -118,6 +126,7 @@ export function parseUpdateObservation(text: string, packageName: string): Updat
 		probe,
 		check,
 		failedIds,
+		unconfirmedIds,
 		reset,
 		crashes: faults.crashes.length,
 		jsErrors: faults.jsErrors.length,

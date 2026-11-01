@@ -10,9 +10,10 @@ const posix = (path: string) => path.split(sep).join("/");
 
 /**
  * What a route module's script exports as a literal. The route table carries `presentation` (a page) and `navigator` (a layout)
- * so a screen's container and a layout's role are known before any module loads, which makes both a literal read here.
+ * so a screen's container and a layout's role are known before any module loads, which makes both a literal read here. `lab` (a route
+ * only the development lab has) is read the same way, so the product's discovery can leave the route out without loading it.
  */
-function exportedLiteral<Value extends string>(parse: typeof parseSvelte, file: string, source: string, name: string, values: readonly Value[]): Value | undefined {
+function exportedLiteral<Value extends string | boolean>(parse: typeof parseSvelte, file: string, source: string, name: string, values: readonly Value[]): Value | undefined {
   const { module } = parse(source, { modern: true, filename: file });
   for (const statement of module?.content.body ?? []) {
     if (statement.type !== "ExportNamedDeclaration") continue;
@@ -29,33 +30,58 @@ function exportedLiteral<Value extends string>(parse: typeof parseSvelte, file: 
 const PRESENTATIONS = ["push", "modal", "transparentModal", "sheet", "formSheet"] as const;
 const NAVIGATORS = ["stack", "tabs"] as const;
 
-/** The route files under `src/routes` (`+mobile.svelte` pages and `+layout.mobile.svelte` layouts) with the literals they export, in a stable order. */
-export async function routeFiles(routesRoot: string): Promise<RouteFile[]> {
+/**
+ * Whether the app carries its development lab: every variant but the product (`APP_VARIANT=production`, the variable `app.config.ts`,
+ * `metro.config.cjs` and `eas.json` share). The lab is the routes under a `__dev` directory and any route whose module script exports
+ * `lab = true`; the product's route tree, route table and module graph never name them.
+ */
+export const labIncluded = (env: NodeJS.ProcessEnv = process.env): boolean => env.APP_VARIANT !== "production";
+const LAB_DIRECTORY = "__dev";
+
+export type RouteFilesOptions = {
+  /** Whether the lab's routes are discovered; `labIncluded()` by default. */
+  lab?: boolean;
+};
+
+/**
+ * The route files under `src/routes` (`+mobile.svelte` pages and `+layout.mobile.svelte` layouts) with the literals they export, in a stable order.
+ * Without the lab, a file in a `__dev` directory is not read at all, a page that exports `lab = true` is left out, and a layout that does takes
+ * its whole directory with it.
+ */
+export async function routeFiles(routesRoot: string, { lab = labIncluded() }: RouteFilesOptions = {}): Promise<RouteFile[]> {
   const paths: string[] = [];
   async function walk(directory: string) {
     for (const item of await readdir(directory, { withFileTypes: true })) {
       const path = resolve(directory, item.name);
-      if (item.isDirectory()) await walk(path);
-      else paths.push(posix(relative(routesRoot, path)));
+      if (item.isDirectory()) {
+        if (lab || item.name !== LAB_DIRECTORY) await walk(path);
+      } else paths.push(posix(relative(routesRoot, path)));
     }
   }
   await walk(routesRoot);
   // The compiler is large; every Expo command that reads the app's config loads this module, so it is imported only here.
   const { parse } = await import("svelte/compiler");
   const files: RouteFile[] = [];
+  const labDirectories: string[] = [];
   for (const path of paths.sort((a, b) => a.localeCompare(b))) {
     const name = path.slice(path.lastIndexOf("/") + 1);
     if (name !== "+mobile.svelte" && name !== "+layout.mobile.svelte") continue;
     const source = await readFile(resolve(routesRoot, path), "utf8");
+    // Read in every variant, so a marker the product's sync could not read fails the lab builds' as well.
+    const labOnly = exportedLiteral(parse, path, source, "lab", [true] as const) === true;
+    if (labOnly && path === name && name === "+layout.mobile.svelte") throw new Error(`${path}: the root layout is the app shell and cannot be lab-only`);
+    const marked = labOnly && !lab;
     if (name === "+mobile.svelte") {
+      if (marked) continue;
       const presentation = exportedLiteral(parse, path, source, "presentation", PRESENTATIONS);
       files.push({ path, exports: presentation ? { presentation } : {} });
     } else {
+      if (marked) { labDirectories.push(path.slice(0, path.length - name.length)); continue; }
       const navigator = exportedLiteral(parse, path, source, "navigator", NAVIGATORS);
       files.push({ path, exports: navigator ? { navigator } : {} });
     }
   }
-  return files;
+  return labDirectories.length === 0 ? files : files.filter((file) => !labDirectories.some((directory) => file.path.startsWith(directory)));
 }
 
 /** The tree as the module `.svelte-native/routes.ts`: `buildTree`'s data with a loader per page and per navigator layout. */
@@ -96,11 +122,11 @@ ${indent}}`;
   return `import type { StackNode } from '@rasheed/svelte-native/router';\n\nexport const tree: StackNode = ${nodeOf(tree, "").trimStart()};\n`;
 }
 
-export async function syncNative(root: string): Promise<void> {
+export async function syncNative(root: string, options: RouteFilesOptions = {}): Promise<void> {
   const routesRoot = resolve(root, "src/routes");
   const output = resolve(root, ".svelte-native");
   await mkdir(output, { recursive: true });
-  const manifest = treeModule(buildTree(await routeFiles(routesRoot)), routesRoot, output);
+  const manifest = treeModule(buildTree(await routeFiles(routesRoot, options)), routesRoot, output);
   // The entry boots the app layout, the shell around the generated tree's root navigator; SVELTE_NATIVE_ROOT=<path> renders that
   // component as the root instead (the lab's spike roots).
   const customRoot = process.env.SVELTE_NATIVE_ROOT;

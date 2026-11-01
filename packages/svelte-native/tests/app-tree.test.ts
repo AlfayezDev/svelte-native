@@ -135,7 +135,9 @@ async function mountTree(surface: number, props: Record<string, unknown> = {}) {
 }
 
 const appRoutes = resolve(import.meta.dirname, "../../../apps/platform/src/routes");
-const appFiles = () => routeFiles(appRoutes);
+const appFiles = () => routeFiles(appRoutes, { lab: true });
+/** The product's route files (`APP_VARIANT=production`): discovery leaves the lab out. */
+const productFiles = () => routeFiles(appRoutes, { lab: false });
 const outline = (route: PageRoute | RouteNode, depth = 0): string[] => {
   const pad = "  ".repeat(depth);
   if (route.kind === "page") return [`${pad}page ${route.path}${route.presentation === "push" ? "" : ` (${route.presentation})`}`];
@@ -431,4 +433,68 @@ test("replaceBase on the root router replaces the first screen with a root page 
     expect(arrows(router)).toEqual([false, true]);
     expect(() => router.replaceBase("/acme")).toThrow(); // the workspace is a navigator's screen, not a page of the root stack
   } finally { reset(); }
+});
+
+const labPaths = (route: PageRoute | RouteNode): string[] => [
+  route.path, ...(route.kind === "page" ? [] : route.kind === "stack" ? route.routes.flatMap(labPaths) : route.panes.flatMap((pane) => labPaths(pane.stack))),
+];
+
+test("the product's tree is the app's tree without the lab: no /__dev route, the same screens otherwise", async () => {
+  const files = await productFiles();
+  expect(files.filter((file) => file.path.includes("__dev"))).toEqual([]);
+  const product = buildTree(files);
+  expect(labPaths(product).filter((path) => path.includes("__dev"))).toEqual([]);
+  // The lab's tree is the product's plus the /__dev routes.
+  const full = buildTree(await appFiles());
+  expect(labPaths(full).filter((path) => path.includes("__dev")).length).toBeGreaterThan(8);
+  expect(full.routes.filter((route) => !route.path.startsWith("/__dev")).flatMap((route) => outline(route))).toEqual(product.routes.flatMap((route) => outline(route)));
+  expect(product.shellFile).toBe(full.shellFile);
+  expect(outline(product).filter((line) => line.trim().startsWith("tabs")).map((line) => line.trim())).toEqual(["tabs /[slug] [home, settings]"]);
+  // The lab's own pages are not found; /__dev alone reads as a workspace slug (a single segment names a workspace), which the session guard sends back.
+  for (const href of ["/__dev/screen", "/__dev/screens", "/__dev/tree/inbox", "/__dev/foreign", "/__dev/smoke", "/__dev/gestures"]) expect([href, resolveHref(product, href)]).toEqual([href, null]);
+  expect(resolveHref(product, "/__dev")?.params).toEqual({ slug: "__dev" });
+  expect(resolveHref(full, "/__dev")?.page.path).toBe("/__dev");
+});
+
+test("in the product a deep link to the lab ends where an unknown workspace does: the workspaces for a user, the login for nobody", async () => {
+  withInsets(24);
+  const launch = globalThis as { __initialURL?: string };
+  try {
+    const mountProduct = async (surface: number, initial: string) => mountTree(surface, { initial, files: await productFiles(), tabs: workspaceTabs });
+    // A link while the app runs (`rasheed://__dev`): the lab's pages are not in the tree, so the screens of the lab are ignored,
+    const running = await mountProduct(140, "/workspaces");
+    for (const link of ["rasheed://__dev/screens", "rasheed://__dev/tree/inbox", "rasheed://__dev/smoke", "rasheed-svelte://__dev/foreign"]) expect([link, running.router.openURL(link)]).toEqual([link, false]);
+    expect(pathsOf(running.router)).toEqual(["/workspaces"]);
+    // and the bare /__dev is a workspace that is not the user's, which the guard (a lab branch for a build without a lab) turns into the list.
+    expect(running.router.openURL("rasheed://__dev")).toBe(true);
+    await running.settled();
+    expect(pathsOf(running.router)).toEqual(["/workspaces", "/__dev"]);
+    guard(running.router, signedIn(), false);
+    await running.settled();
+    expect(pathsOf(running.router)).toEqual(["/workspaces"]);
+
+    // The link the app was launched with (the QA matrix opens the lab this way): the same end for a signed-in user, the login for nobody.
+    launch.__initialURL = "rasheed://__dev";
+    const user = await mountProduct(141, "/auth/login");
+    await user.settled();
+    expect(pathsOf(user.router)).toEqual(["/__dev"]); // opened with reset: the base of the root stack
+    expect(user.router.current.url.pathname).toBe("/__dev/home");
+    guard(user.router, signedIn(), false);
+    await user.settled();
+    expect(pathsOf(user.router)).toEqual(["/workspaces"]);
+    const nobody = await mountProduct(142, "/auth/login");
+    await nobody.settled();
+    expect(pathsOf(nobody.router)).toEqual(["/__dev"]);
+    guard(nobody.router, signedIn({ user: null }), false);
+    await nobody.settled();
+    expect(pathsOf(nobody.router)).toEqual(["/auth/login"]);
+
+    // A lab link of a build that has the lab opens the lab (the contrast).
+    launch.__initialURL = "rasheed-svelte://__dev/screens";
+    const lab = await mountTree(143, { initial: "/auth/login", files: await appFiles(), tabs: workspaceTabs });
+    await lab.settled();
+    expect(pathsOf(lab.router)).toEqual(["/__dev/screens"]);
+    guard(lab.router, signedIn(), true);
+    expect(pathsOf(lab.router)).toEqual(["/__dev/screens"]);
+  } finally { delete launch.__initialURL; reset(); }
 });

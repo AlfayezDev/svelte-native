@@ -957,7 +957,7 @@ Over-the-air JavaScript updates, compatible with `eas update` (PLAN.md, producti
 
 1. Process start, before the React host reads its bundle: `SvelteUpdatesPackage` (Android) / `SvelteUpdatesReactDelegateHandler` (iOS) ask `Launch.get()`, which reads the build configuration and `UpdateStore.select`, and answer with the launch bundle's path, or nothing (the embedded bundle).
 2. First commit (`startSurface`, right after `mark("first commit")`): the host calls `onFirstCommit()` from `src/updates/launch.ts`. It calls `markLaunched()` and, when the build says `checkOnLaunch: ALWAYS`, schedules `checkOnLaunch()` for idle time.
-3. `checkOnLaunch()` = `fetchUpdateAsync()`: `readStore()` → one manifest request → decision → asset downloads (4 at a time) → `commitUpdate()` → `saveMetadata()`. The update launches on the next cold start.
+3. `checkOnLaunch()` = `fetchUpdateAsync()`: `readStore()` → one manifest request → decision → asset downloads (4 at a time) → `commitUpdate()` → `saveMetadata()`. The update launches on the next cold start. Every outcome is logged (downloaded, rollback directive, `No update to download (<reason>)`, failure), so a log tells a finished check from one that never ran.
 4. `reloadAsync()` → `reload()`: the native side selects again (the committed update now wins) and calls `ReactHost.reload` (Android) / `RCTTriggerReloadCommandListeners` (iOS); the host asks for the bundle path again.
 
 ### Native module contract (`SvelteUpdates`)
@@ -1039,13 +1039,15 @@ updates: {
 },
 ```
 
-`apps/platform/eas.json`: `"channel": "preview"` and `"env": { "UPDATES_CHANNEL": "preview" }` in `preview` (inherited by `preview-store`); `"channel": "production"` and `"UPDATES_CHANNEL": "production"` in `production`. eas-cli configures the channel natively only for projects that have `expo-updates` installed, which this one does not, so the app config carries it; `eas build` warns that the package is missing, which is expected.
+`apps/platform/eas.json`: `"channel": "preview"` and `"env": { "UPDATES_CHANNEL": "preview" }` in `preview` (inherited by `preview-store`); `"channel": "production"` and `"UPDATES_CHANNEL": "production"` in `production`; `"channel": "qa"` and `"UPDATES_CHANNEL": "qa"` in `qa` (the QA app, `io.rasheed.svelteqa`: `APP_VARIANT` is unset in that profile, which is what selects the QA variant in `app.config.ts`). eas-cli configures the channel natively only for projects that have `expo-updates` installed, which this one does not, so the app config carries it; `eas build` warns that the package is missing, which is expected.
 
 ### Host integration (the two lines the host owns)
 
 `packages/svelte-native/src/fabric/host.ts`: `import { onFirstCommit } from "../updates/launch.ts";` with the other imports, and `onFirstCommit();` after `console.log(`[Svelte boot] ...`)` in `startSurface`. Importing `launch.ts` is what installs the asset transformer, before the first image resolves; the boot line gains an `updates` phase.
 
 ### Device verification (integration lane)
+
+The manual steps for the `preview` channel. The QA channel's harness ("End to end on a QA channel" below) automates steps 1 to 5 on `qa` and is what the production bar uses; these stay as the checklist for a store-profile build.
 
 1. `eas build -p android --profile preview` (APK, channel `preview`), install. `adb logcat -s SvelteUpdates ReactNativeJS`: `Launching the embedded bundle (built …)`; the boot line has an `updates` phase.
 2. Change visible text, run `pnpm exec svelte-native sync` in `apps/platform` (`expo export` does not run the config plugin that generates `.svelte-native/entry.ts`), then `eas update --branch preview --channel preview --platform android --environment preview --message probe` (SDK ≥ 55 needs `--environment`; see the open item on `expo-updates` below). First start after publishing: log `[Svelte updates] Update <id> downloaded; it launches on the next start`. Kill and start again: `Launching update <id>`, new text visible.
@@ -1055,9 +1057,38 @@ updates: {
 6. `reloadAsync()` (temporary button in `__dev`): after a download, the app restarts on the new bundle without a process restart; confirm the engine reinstalls (`SvelteEngine.install`) and a surface mounts.
 7. Channel: a `production` build must not launch updates published to `preview` (different `requestHeaders`).
 
+### End to end on a QA channel
+
+The channel is `qa` (EAS channel `qa` on branch `qa`, created with `eas channel:create qa`); nothing here touches the `preview` or `production` channels or profiles. The build under test is the QA app built for the channel:
+
+```
+pnpm native-qa build --updates-channel qa --abi <x86_64|arm64-v8a>     # qa/out/channel-qa/app-<abi>.apk, checkAutomatically ON_LOAD, expo-channel-name qa
+pnpm native-qa build --abi <abi>                                       # the plain QA build (UPDATES_CHANNEL empty): never checks, what the boot gates measure
+pnpm native-qa updates --device <serial>                               # the whole scenario below, Android
+```
+
+`native-qa build` always sets `UPDATES_CHANNEL` (empty for a plain build), regenerates `android/` when the channel it was generated for differs, and accepts only `qa` or `qa-<suffix>`. `eas build --profile qa` produces the same configuration.
+
+**Policy, as observed (1 November 2026, Android 14 emulator, hand-driven; the harness has not run on a device yet).** A start whose build checks (`checkOnLaunch: ALWAYS`) asks the server once after its first commit. An update the server has and the store does not is downloaded then, and the process keeps running its own bundle: the update launches on the next start. So after a publish the first start downloads and the second runs: two launches. A start that finds nothing newer logs `No update to download (<reason>)`. The server answers 204 when `expo-current-update-id` is already its newest, and it ignores `expo-recent-failed-update-ids` (the same request with only that header still gets the failed update's manifest): what keeps a bad update from being downloaded again is the client's own failed list, which the check names as `updatePreviouslyFailed`.
+
+A bundle that throws while it loads never reaches its first commit (`handleHostException`, the process stays alive and blank, no `FATAL EXCEPTION`), so the launch marker is still set at the next start: that start logs `Update <id> did not reach its first commit`, marks it failed, and runs the newest other ready update newer than the embedded bundle, else the embedded bundle. Later starts run the same bundle, check, and log `updatePreviouslyFailed`; the bad update is neither launched nor downloaded again until a newer update is published.
+
+Logs the harness reads (one launch's `logcat`, cleared before it): `SvelteUpdates` (`Launching update <id> (created <ms>)`, `Launching the embedded bundle (built <ms>)`, `Update <id> did not reach its first commit`), `ReactNativeJS` (`[Svelte updates] Update <id> downloaded; it launches on the next start`, `... No update to download (<reason>)`, `... Rolled back to the embedded bundle; ...`, `... Update check failed`, `[Svelte boot]`, and the QA app's `[Svelte QA updates] {enabled, updateId, embedded, createdAt, runtimeVersion, channel, checkOnLaunch, marker}`). The last line comes from `apps/platform/src/lib/native/dev/update-probe.ts`, which is also what makes a published bundle recognizable: `native-qa updates` sets `EXPO_PUBLIC_QA_UPDATE_MARKER` (a label per publish; Metro inlines it, so the line shows which bundle runs, and the lab results carry it as `updates`) and, for the bad update, `EXPO_PUBLIC_QA_UPDATE_FAULT=boot` (a throw at bundle load, only in the QA app). A good bundle contains neither the fault nor its message. Publishes use `--clear-cache`, because Metro's cache is keyed by file content, not by the `EXPO_PUBLIC_*` values it inlines.
+
+**`native-qa updates`** (`qa/commands/updates.ts`, the scenario in `qa/lib/updates.ts`, tested against a model of the client in `qa/test/updates-scenario.test.ts`):
+
+1. Baseline boot: installs the plain QA build (`qa/out/app-<abi>.apk`, `--no-baseline` skips it) and runs `--warm` (30) warm launches.
+2. Installs the channel build, `pm clear`s it, cold-starts it: the embedded bundle must run, and the probe must say the build checks (`ALWAYS`) on a channel.
+3. Publishes a marked update (`eas update --channel qa --platform android --environment development --clear-cache --json`, the id from its output) and cold-starts until the app reports that id with that marker: `updates.applied`, `updates.launchesToApply` (2 by the policy; up to `--max-launches` 4 are allowed).
+4. Publishes the bad update and cold-starts until it runs (it must not boot), then once more: the start after it must report the failed id, boot, and run the previous update or the embedded bundle (`updates.rolledBack`); then `--settle` (3) more starts, none of which may run or download the bad update (`updates.badRetried <= 0`; `updates.badBlockedChecks` counts the checks that named `updatePreviouslyFailed`).
+5. Runs the warm series with updates enabled, in the state steps 3 and 4 left the build in (running a downloaded update, a failed update on record, a check every launch), and compares its p50 and p90 with step 1: `updates.boot.warm.p50Delta` and `.p90Delta`, informational (no gate).
+6. Publishes a good update again and starts until it runs, so the channel ends on a healthy update (`updates.channelHealthy`). This runs even when step 3 or 4 failed or threw.
+
+Any launch other than the one that ran the bad update that crashed or logged a JavaScript error counts in `updates.unexpectedFaults` (gated at 0). The run file is `qa/runs/updates-<device>-<stamp>.json` with the log next to it; `report` merges it (it installs its own build, so it is left out of the cross-build comparison) and `gates.json` judges the Android devices on it. iOS: not wired. The iPhone path needs the channel build on the Mac (`Expo.plist` carries the same keys) and a reader for the module's log lines or the probe; the iOS module is still uncompiled here.
+
 ### Open items
 
-- `eas update` (eas-cli 18.6) runs `expo install expo-updates` when the package is absent from `dependencies`, and uses its `runtimeversion:resolve` CLI when present. The fix is `expo-updates` as an autolink-excluded tooling `devDependency` (eas-cli then only warns that it is a dev dependency): add `expo-updates` to `headlessExcludedPackages` and to `expo.autolinking.exclude` in the same change, or its own `UpdatesPackage` handler would also answer for the bundle. Not done here: it needs an install and a lockfile change.
+- `eas update` runs `expo install expo-updates` when the package is absent, so `expo-updates ~29` is a devDependency of `apps/platform` that is listed in `expo.autolinking.exclude` and in `headlessExcludedPackages` (its own `UpdatesPackage` handler would otherwise answer for the bundle). Done; `eas update` publishes from this tree (see "End to end on a QA channel"). eas-cli must satisfy `cli.version >= 24.14.0` of `eas.json`: the `eas` on a machine may be older (18.6 refuses), so the harness runs `npx -y eas-cli@27.2.0`.
 - `SvelteUpdatesModule` is not in the lazy module list of `patches/expo-modules-core@57.0.23.patch`, so it registers eagerly (one `definition()` at startup). It has no foreground, view or intent hooks, so it qualifies; adding it needs a patch edit and `pnpm install`.
 - Every manifest asset is downloaded (there is no embedded manifest to tell which assets are already in the app binary).
 - iOS is written but was not compiled or run here (no Mac, no Swift toolchain on the build host).

@@ -228,6 +228,7 @@ function file(scenario: Awaited<ReturnType<typeof runUpdatesScenario>>, boot = b
 		options,
 		scenario,
 		boot,
+		notes: [],
 		logFile: "runs/x.log",
 	};
 }

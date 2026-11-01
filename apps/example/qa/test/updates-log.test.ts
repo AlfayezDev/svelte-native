@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { sample } from "./sample.ts";
 import { defaultSettle, launchSettled, parseUpdateObservation, runningId, type UpdateObservation } from "../lib/updates-log.ts";
 
 const pkg = "io.rasheed.svelteqa";
@@ -119,5 +120,53 @@ describe("launchSettled", () => {
 	test("a launch that shows nothing ends at the timeout", () => {
 		expect(launchSettled(observation({}), defaultSettle.timeoutMs - 1)).toBeNull();
 		expect(launchSettled(observation({}), defaultSettle.timeoutMs)).toBe("timeout");
+	});
+});
+
+describe("launches captured from the QA app built for the qa channel", () => {
+	const SMOKE = "01a19688-6ec1-7357-a10e-89ef0ba5fa07";
+	const GOOD = "01a19694-d84b-75f6-8727-26a4f2c91df4";
+	const BAD = "01a19692-6f07-76ea-b454-69a0b2e78ada";
+
+	test("the first start after a clean install: the embedded bundle, the app's report, and the update the check downloaded", () => {
+		const seen = parseUpdateObservation(sample("updates-embedded-download.log"), pkg);
+		expect(seen.running).toEqual({ kind: "embedded", builtAt: 1793526761514 });
+		expect(seen.booted).toBe(true);
+		expect(seen.probe).toEqual({ enabled: true, updateId: null, embedded: true, createdAt: 1793526761514, runtimeVersion: "0.1.0", channel: "qa", checkOnLaunch: "ALWAYS", marker: null });
+		expect(seen.check).toEqual({ outcome: "downloaded", id: GOOD });
+		expect(seen.displayMs).toBeNull(); // no Start proc line in this capture, so no pair
+		expect(launchSettled(seen, 2_000)).toBe("check");
+	});
+	test("the start after it runs the update, and its bundle reports the update id", () => {
+		const seen = parseUpdateObservation(sample("updates-update-run.log"), pkg);
+		expect(runningId(seen)).toBe(GOOD);
+		expect(seen.probe?.updateId).toBe(GOOD);
+		expect(seen.probe?.embedded).toBe(false);
+		expect(seen.check).toEqual({ outcome: "none", reason: "noUpdateAvailableOnServer" });
+	});
+	test("the bad update: launched, a JavaScript fatal, no first commit, nothing after it", () => {
+		const seen = parseUpdateObservation(sample("updates-bad-launch.log"), pkg);
+		expect(runningId(seen)).toBe(BAD);
+		expect(seen.booted).toBe(false);
+		expect(seen.crashes).toBe(1);
+		expect(seen.jsErrors).toBe(1);
+		expect(seen.check).toBeNull();
+		expect(launchSettled(seen, 5_000)).toBeNull();
+		expect(launchSettled(seen, 6_000)).toBe("fault");
+	});
+	test("the start after it: the failed id, the previous update, and the bad one refused by the client", () => {
+		const seen = parseUpdateObservation(sample("updates-recovered-launch.log"), pkg);
+		expect(seen.failedIds).toEqual([BAD]);
+		expect(runningId(seen)).toBe(SMOKE);
+		expect(seen.booted).toBe(true);
+		expect(seen.probe?.marker).toBe("qa-smoke-1");
+		expect(seen.check).toEqual({ outcome: "none", reason: "updatePreviouslyFailed" });
+	});
+	test("a later start does not try the bad update again", () => {
+		const seen = parseUpdateObservation(sample("updates-blocked-check.log"), pkg);
+		expect(runningId(seen)).toBe(SMOKE);
+		expect(seen.failedIds).toEqual([]);
+		expect(seen.check).toEqual({ outcome: "none", reason: "updatePreviouslyFailed" });
+		expect(seen.displayMs).toBeNull();
 	});
 });

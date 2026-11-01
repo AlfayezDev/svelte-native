@@ -7,7 +7,7 @@ import { latestRunFiles, runKinds } from "../lib/runs.ts";
 import { deviceMetrics } from "../lib/metrics.ts";
 import { readFileSync } from "node:fs";
 import { checkGatesFile, type GatesFile } from "../lib/gates.ts";
-import { runUpdatesScenario, type UpdatesDriver } from "../lib/updates.ts";
+import { comparisonNotes, runUpdatesScenario, type UpdatesDriver } from "../lib/updates.ts";
 
 describe("the channel of a QA build", () => {
 	test("only QA channels are accepted: preview and production can never be built for or published to", () => {
@@ -79,10 +79,20 @@ describe("the updates run in the report", () => {
 			device: { serial: "s", platform: "android", kind: "device", model: "m", osVersion: "16", sdk: 36, abi: "x86_64", refreshHz: null },
 			app: { package: "p", versionName: null, versionCode: null, lastUpdateTime: null, installedSha256: null, apk: null },
 			channel: "qa", runtimeVersion: null, build: null, eas: { command: "eas", environment: "development" },
-			options: { maxLaunches: 2, settleLaunches: 1 }, scenario, boot: { enabled: null, baseline: null, baselineBuild: null, delta: null, enabledLaunches: [], baselineLaunches: [] }, logFile: "",
+			options: { maxLaunches: 2, settleLaunches: 1 }, scenario, notes: [], boot: { enabled: null, baseline: null, baselineBuild: null, delta: null, enabledLaunches: [], baselineLaunches: [] }, logFile: "",
 		});
 		expect(metrics["updates.applied"]).toBe(0);
 		expect(metrics["updates.badRetried"]).toBe(0);
 		expect("log.fatals" in metrics).toBe(false);
+	});
+});
+
+describe("the boot comparison's builds", () => {
+	test("one source tree, clean: nothing to say; different commits or a dirty tree are noted, a missing build says nothing", () => {
+		expect(comparisonNotes({ commit: "abc", dirty: false }, { commit: "abc", dirty: false })).toEqual([]);
+		expect(comparisonNotes({ commit: "abc", dirty: false }, { commit: "def", dirty: false })[0]).toContain("at abc and the build without a channel at def");
+		expect(comparisonNotes({ commit: "abc", dirty: true }, { commit: "abc", dirty: false })[0]).toContain("the channel build came from a tree with uncommitted changes");
+		expect(comparisonNotes({ commit: "abc", dirty: true }, { commit: "abc", dirty: true })[0]).toContain("the channel build and the build without a channel");
+		expect(comparisonNotes(null, { commit: "abc", dirty: false })).toEqual([]);
 	});
 });

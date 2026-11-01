@@ -231,6 +231,8 @@ export type UpdatesFile = {
 	options: ScenarioOptions;
 	scenario: UpdatesScenario;
 	boot: UpdatesBoot;
+	/** What a reader of the numbers should know that is not a failure: the two builds compared were not made from the same source. */
+	notes: string[];
 	/** Everything the scenario and the boot series reported, in order. */
 	logFile: string;
 };
@@ -345,4 +347,15 @@ export function publishEnvironment(kind: UpdateKind, marker: string, channel: st
 /** The arguments of `eas update` for one publish. `--clear-cache`: Metro's cache is keyed by file content, not by the `EXPO_PUBLIC_*` values it inlines. */
 export function publishArguments(channel: string, environment: string, message: string): string[] {
 	return ["update", "--channel", channel, "--platform", "android", "--environment", environment, "--message", message, "--clear-cache", "--non-interactive", "--json"];
+}
+
+/** The two builds of the boot comparison should be one source tree; if they are not, or either was made from a dirty tree, the delta says less. */
+export function comparisonNotes(channelBuild: { commit: string; dirty: boolean } | null, baselineBuild: { commit: string; dirty: boolean } | null): string[] {
+	if (channelBuild === null || baselineBuild === null) return [];
+	const notes: string[] = [];
+	if (channelBuild.commit !== baselineBuild.commit)
+		notes.push(`the channel build was made at ${channelBuild.commit} and the build without a channel at ${baselineBuild.commit}: the boot delta may include a change of the app`);
+	else if (channelBuild.dirty || baselineBuild.dirty)
+		notes.push(`the builds share commit ${channelBuild.commit}, but ${[channelBuild.dirty ? "the channel build" : null, baselineBuild.dirty ? "the build without a channel" : null].filter(Boolean).join(" and ")} came from a tree with uncommitted changes`);
+	return notes;
 }

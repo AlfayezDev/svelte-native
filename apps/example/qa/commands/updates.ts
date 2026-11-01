@@ -21,6 +21,7 @@ import { slug, stamp, writeRun } from "../lib/runs.ts";
 import type { BuildFile, Launch } from "../lib/types.ts";
 import {
 	bootComparison,
+	comparisonNotes,
 	parsePublished,
 	publishArguments,
 	publishEnvironment,
@@ -222,6 +223,7 @@ export async function updates(argv: string[]): Promise<void> {
 		eas: { command: [eas.command, ...eas.args].join(" "), environment },
 		options,
 		scenario,
+		notes: comparisonNotes(build ? { commit: build.source.commit, dirty: build.source.dirty } : null, baselineBuild ? { commit: baselineBuild.source.commit, dirty: baselineBuild.source.dirty } : null),
 		boot: bootComparison(
 			scenario.bootEnabled,
 			baselineLaunches,
@@ -240,6 +242,7 @@ export async function updates(argv: string[]): Promise<void> {
 	);
 	if (file.boot.delta)
 		note(`warm boot p50 ${file.boot.enabled?.p50 ?? "-"} ms against ${file.boot.baseline?.p50 ?? "-"} (${signed(file.boot.delta.p50)}), p90 ${file.boot.enabled?.p90 ?? "-"} against ${file.boot.baseline?.p90 ?? "-"} (${signed(file.boot.delta.p90)}), informational`);
+	for (const line of file.notes) console.log(`note: ${line}`);
 	for (const error of scenario.errors) console.error(`problem: ${error}`);
 	console.log(`wrote qa/runs/${name}.json`);
 }

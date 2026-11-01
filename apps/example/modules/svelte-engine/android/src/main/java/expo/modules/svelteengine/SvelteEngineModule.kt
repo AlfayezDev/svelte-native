@@ -161,6 +161,27 @@ class SvelteEngineModule : Module() {
       true
     }
 
+    // Hermes' sampling profiler on the running JavaScript runtime, for the lab: `true` starts it, `false` stops it and writes the
+    // trace (Chrome's .cpuprofile) to the app's external files directory, which `adb pull` can read on a release build. Returns the
+    // path, or null when the profiler is not in this build.
+    Function("profileJs") { start: Boolean ->
+      try {
+        if (start) {
+          com.facebook.hermes.instrumentation.HermesSamplingProfiler.enable()
+          null
+        } else {
+          com.facebook.hermes.instrumentation.HermesSamplingProfiler.disable()
+          val directory = appContext.reactContext?.getExternalFilesDir(null) ?: return@Function null
+          val path = java.io.File(directory, "hermes.cpuprofile").path
+          com.facebook.hermes.instrumentation.HermesSamplingProfiler.dumpSampledTraceToFile(path)
+          path
+        }
+      } catch (error: Throwable) {
+        android.util.Log.w("SvelteEngine", "Hermes sampling profiler: ${error.javaClass.simpleName} ${error.message}")
+        null
+      }
+    }
+
     // Live counts for the soak runner (MountingManager.stats); null while the main thread is busy for over 500 ms or before install.
     Function("stats") { onMainBlocking { mountingManager?.stats() } }
 

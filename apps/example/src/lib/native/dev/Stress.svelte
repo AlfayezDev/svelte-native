@@ -326,6 +326,27 @@
       const median = sorted[Math.floor(sorted.length / 2)] ?? 0;
       return { verdict: "info", summary: `${times.length} mounts to layout: median ${median.toFixed(1)} ms, min ${(sorted[0] ?? 0).toFixed(1)}, max ${(sorted.at(-1) ?? 0).toFixed(1)} · first ${times.slice(0, 3).map((t) => t.toFixed(1)).join(", ")}`, detail: { times } };
     } },
+    { name: "list-mount-hermes", label: "Mount the windowed List 200 times under Hermes' sampling profiler (trace in the app's external files directory: `adb pull /sdcard/Android/data/<package>/files/hermes.cpuprofile`)", async run(signal) {
+      const profiler = requireOptionalNativeModule<{ profileJs?: (start: boolean) => string | null }>("SvelteEngine");
+      view = "virtual-list"; rows = []; await settle();
+      const times: number[] = [];
+      profiler?.profileJs?.(true);
+      for (let round = 0; round < 200 && !signal.aborted; round++) {
+        const laidOut = waitFor(signal, (resolve) => { rowsLaidOut = resolve; }, 8000, "Row layout");
+        const start = performance.now();
+        rows = Array.from({ length: 300 }, (_, index) => index);
+        await tick();
+        await laidOut;
+        times.push(performance.now() - start);
+        await pause(60, signal);
+        rows = []; await settle();
+        await pause(60, signal);
+      }
+      const path = profiler?.profileJs?.(false) ?? null;
+      view = "none"; await settle();
+      const sorted = [...times].sort((a, b) => a - b);
+      return { verdict: "info", summary: `${times.length} mounts to layout under the profiler: median ${(sorted[Math.floor(sorted.length / 2)] ?? 0).toFixed(1)} ms · trace ${path ?? "not written"}` };
+    } },
     { name: "list-300-virtual-profile", label: "The windowed List again, with the host timing every flush (`detail.flushes`)", run: (signal) => virtualList300(signal, true) },
     { name: "input-120", label: "Push 120 characters through bind:value", async run(signal) {
       view = "input"; typed = ""; await settle();
@@ -523,7 +544,7 @@
       return { verdict: clean ? "info" : "fail", summary: `${cycle} cycles in ${((Date.now() - since) / 1000).toFixed(0)} s · ${created} tiles mounted / ${destroyed} destroyed · ${changesAfterDestroy} values changed after destruction · stack depth ${router.entries.length} (expected ${depth}) · cleanup ${clean ? "ok" : "FAILED"}`, detail: { cycles: cycle, created, destroyed, changesAfterDestroy, lateCompletions, cleanupFailures } };
     } },
   ];
-  const quick = scenarios.filter((scenario) => !["warm-up", "input-typing", "foreign-views", "churn-60s", "soak-120s", "soak-mix", "crash-js", "list-300-virtual-profile", "list-mount-loop"].includes(scenario.name));
+  const quick = scenarios.filter((scenario) => !["warm-up", "input-typing", "foreign-views", "churn-60s", "soak-120s", "soak-mix", "crash-js", "list-300-virtual-profile", "list-mount-loop", "list-mount-hermes"].includes(scenario.name));
   const ordered = $derived(scenarios.flatMap((scenario) => results.filter((result) => result.name === scenario.name)));
 
   function record(result: Result) {

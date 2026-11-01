@@ -984,7 +984,7 @@ Names, types and the constants/functions lists are checked across `native.ts`, `
 `filesDir/svelte-updates` (Android), `Application Support/svelte-updates` (iOS):
 
 ```
-index.json                     { version: 1, clientId, buildTime, embeddedCreatedAt?, pending?, failedIds[], serverDefinedHeaders?, manifestFilters?, updates: { id: StoredUpdate } }
+index.json                     { version: 1, clientId, buildTime, embeddedCreatedAt?, pending?, failedIds[], serverDefinedHeaders?, manifestFilters?, resetToken?, updates: { id: StoredUpdate } }
 updates/<update id>/<bundle>   index.android.bundle | main.jsbundle: the launch asset of a committed update
 assets/<key><extension>        every other asset, named by the manifest's `key`, shared between updates
 ```

@@ -13,7 +13,9 @@ import {
 	layoutVariants,
 	matrix,
 	notCovered,
+	notCoveredStates,
 	pinnedNames,
+	referenceName,
 	selectorFor,
 	variants,
 	type ScreenCase,
@@ -263,6 +265,19 @@ describe("the gates over the pinned screens", () => {
 		expect(pinnedNames(["app-account-devices"], variants)).toHaveLength(variants.length / 2);
 		expect(pinnedNames(["app-account-devices"], layoutVariants)).toHaveLength(layoutVariants.length / 2);
 		expect(matrix(signedIn, variants).length).toBe(signedIn.length * variants.length - 2 * (variants.length / 2));
+	});
+
+	test("the pin is what a full emulator run captures: every signed-in screen in all eight variants, less the states documented as not covered at the largest text", () => {
+		const pinned = pinnedNames(gatesFile.signedIn?.android ?? [], variants);
+		const left = signedIn.filter((screen) => !screen.largestText);
+		expect(signedIn).toHaveLength(16);
+		expect(variants).toHaveLength(8);
+		// 16 screens x 8 variants, less the 2 screens that the 4 largest-text variants leave out
+		expect(pinned).toHaveLength(16 * 8 - left.length * (variants.length / 2));
+		expect(pinned).toHaveLength(120);
+		expect(new Set(pinned)).toEqual(new Set(matrix(signedIn, variants).map(({ screen, variant }) => referenceName(screen, variant))));
+		// and each of those states is told as not covered, by its route: no screen is left out silently
+		for (const screen of left) expect(notCoveredStates.map((state) => state.route)).toContain(`${screen.route} at the largest text size`);
 	});
 
 	const caseOf = (name: string, verdict: "pass" | "skipped") => ({ name, verdict, differingPixels: 0, maskedPixels: 100 });

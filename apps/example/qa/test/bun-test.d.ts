@@ -12,6 +12,9 @@ declare module "bun:test" {
 		toBeGreaterThan(expected: number): void;
 		toBeLessThan(expected: number): void;
 		toContain(expected: unknown): void;
+		toContainEqual(expected: unknown): void;
+		toBeDefined(): void;
+		toStartWith(expected: string): void;
 		toHaveLength(expected: number): void;
 		toThrow(expected?: string | RegExp | (new (...args: never[]) => Error)): void;
 		toBeGreaterThanOrEqual(expected: number): void;

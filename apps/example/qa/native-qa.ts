@@ -30,6 +30,7 @@ const usage = `usage: native-qa <command> [flags]
   parity --device <serial> [--apk <path> | --no-install] [--update | --missing] [--quick] [--filter <screen>]
   a11y   --device <serial> [--apk <path> | --no-install] [--quick] [--filter <screen>]
   resilience --device <serial> [--apk <path> | --no-install] [--rotations <n>] [--cycles <n>] [--rounds <n>]
+  resilience --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--team <id>] [--rebuild] [--build-only] [--rotations <n>] [--cycles <n>] [--rounds <n>] [--timeout <s>]
   smoke  --device <serial> [--apk <path> | --no-install] [--timeout <s>]      (the smoke app: build --variant smoke first)
   smoke  --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--app <.app on the Mac> | --no-install] [--timeout <s>]
   gestures --device <serial> [--apk <path> | --no-install] [--input adb|qa|both] [--run box,row,...] [--repeat <n>] [--timeout <s>]

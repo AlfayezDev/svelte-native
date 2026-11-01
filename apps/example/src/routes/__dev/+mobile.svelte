@@ -19,6 +19,7 @@
   import Button from "#lib/native/components/Button.svelte";
   import { runCapture } from "#lib/native/dev/capture.ts";
   import { runProbes } from "#lib/native/dev/probe.ts";
+  import { writeResilienceIdentity } from "#lib/native/dev/resilience.ts";
   import { jsErrorCount } from "#lib/native/dev/errors.ts";
   import { qaModule, type BuildIdentity } from "#lib/native/dev/qa.ts";
   import { smokeLaunch } from "#lib/native/dev/smoke-log.ts";
@@ -28,6 +29,7 @@
    * `?run=checks,quick` (or scenario names) drives the lab without touching the screen; results land in Documents/lab-results.json.
    * `?run=probe:<names>` (iOS) runs device probes of the native screens (`lib/native/dev/probe.ts`) into Documents/probe.
    * `?run=capture:<ids>&themes=light.dark` (iOS) screenshots and dumps the accessibility tree of the named screens into Documents/capture,
+   * `?run=resilience&token=<text>` (iOS) writes the build identity to Documents/resilience.json and runs nothing (`native-qa resilience --platform ios`, `lib/native/dev/resilience.ts`),
    * `?panel=<name>` opens a panel of this page and `&state=pending|error` puts the async panel in that state (the parity and accessibility suites).
    */
   let { url: pageUrl }: { url?: URL } = $props();
@@ -44,7 +46,8 @@
   const rowVariant = untrack(() => pageUrl?.searchParams.get("rv"));
   if (rowVariant === "plain" || rowVariant === "image") screenLab.rows = rowVariant;
   const initialState = untrack(() => pageUrl?.searchParams.get("state"));
-  const stressAutorun = $derived(capture || probes ? "" : autorun.split(",").filter((part) => part && part !== "checks").join(","));
+  const resilience = autorun === "resilience";
+  const stressAutorun = $derived(capture || probes || resilience ? "" : autorun.split(",").filter((part) => part && part !== "checks").join(","));
   let stressResults: unknown[] = [];
   let stressDone = false;
   /** What is installed, from the QA module (iOS); Android's harness knows its APK by its own hash. */
@@ -68,7 +71,11 @@
     return () => clearTimeout(timer);
   });
   onMount(() => {
-    if (!nativeLabEnabled || !autorun || capture || probes) return;
+    if (!nativeLabEnabled || !resilience) return;
+    void writeResilienceIdentity(token, jsErrorCount()).catch((error: unknown) => console.error("[native lab resilience]", error));
+  });
+  onMount(() => {
+    if (!nativeLabEnabled || !autorun || capture || probes || resilience) return;
     const timer = setTimeout(() => { void (async () => {
       if (autorun.includes("checks")) { await runChecks(); saveResults("checks"); }
       if (stressAutorun) panel = "stress";

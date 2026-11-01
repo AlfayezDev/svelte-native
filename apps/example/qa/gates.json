@@ -19,6 +19,7 @@
         "boot",
         "parity",
         "a11y",
+        "resilience",
         "smoke",
         "gestures"
       ]
@@ -923,6 +924,20 @@
         },
         "ios": {
           "max": 0
+        }
+      }
+    },
+    {
+      "id": "resilience.skipped",
+      "title": "Resilience: steps the device could not perform (neither a pass nor a failure; the iPhone's appearance pair when the XCUITest SDK cannot switch it)",
+      "unit": "steps",
+      "metric": "resilience.skipped",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 2
         }
       }
     },

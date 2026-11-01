@@ -271,6 +271,7 @@ describe("resilience metrics", () => {
 		expect(resilienceMetrics(resilienceFile(steps))).toEqual({
 			"resilience.steps": fullPlanSize,
 			"resilience.failures": 1,
+			"resilience.skipped": 0,
 			"resilience.stepsMissing": 0,
 		});
 		expect(resilienceMetrics(resilienceFile(steps.slice(0, 20)))["resilience.stepsMissing"]).toBe(

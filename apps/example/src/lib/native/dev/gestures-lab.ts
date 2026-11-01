@@ -438,15 +438,27 @@ function scrollNativeChecks(rounds: Snapshot[], _steps: Snapshot[][], context: E
 
 export const CHURN_ROUNDS = 200;
 
-function churnChecks(rounds: Snapshot[]): Check[] {
+/**
+ * How many engine views the churn left above its baseline (negative: fewer than at the start), or null when the count was not taken.
+ * Android's engine counts its live views (`SvelteEngine.stats().alive`, read before and after), so a missing count there is a lost
+ * measurement and not a pass; iOS mounts through React Native and has no engine to ask, so it has none to leave.
+ */
+export function viewsLeft(marks: Record<string, number | undefined>, platform: Platform): number | null {
+  const { alive, aliveBaseline } = marks;
+  if (typeof alive !== "number" || typeof aliveBaseline !== "number") return platform === "android" ? null : 0;
+  return alive - aliveBaseline;
+}
+
+function churnChecks(rounds: Snapshot[], _steps: Snapshot[][], context: EvalContext): Check[] {
   const s = rounds[0] as Snapshot;
   const m = s.marks;
+  const views = viewsLeft(m, context.platform);
   return [
     check(`${CHURN_ROUNDS} mounted and unmounted`, m.mounted === CHURN_ROUNDS && m.unmounted === CHURN_ROUNDS, `${m.mounted}, ${m.unmounted}`),
     check("no record left", m.records === 0, m.records),
     check("no native handler left", m.handlers === 0, m.handlers),
     check("no UI-thread registration left", m.eventHandlers === 0, m.eventHandlers),
-    check("engine views back to baseline", m.alive === undefined || m.alive <= (m.aliveBaseline ?? 0), `${m.alive} of ${m.aliveBaseline}`),
+    check("engine views back to baseline", views !== null && views <= 0, views === null ? "not counted" : `${m.alive} of ${m.aliveBaseline}`),
   ];
 }
 

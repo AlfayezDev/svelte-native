@@ -26,6 +26,7 @@
 
   const frame = () => new Promise<void>((resolve) => { requestAnimationFrame(() => { resolve(); }); });
   const pause = (ms: number) => new Promise<void>((resolve) => { setTimeout(resolve, ms); });
+  /** The engine's live views, read for the baseline and for the end. No count is no mark: the lab's check (`viewsLeft`) fails that on Android, where the engine counts, and accepts it on iOS, which has no engine. */
   async function alive(): Promise<number | undefined> {
     for (let attempt = 0; attempt < 3; attempt++) {
       const stats = engine?.stats?.() ?? null;

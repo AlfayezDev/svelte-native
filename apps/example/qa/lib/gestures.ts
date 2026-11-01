@@ -6,7 +6,7 @@ import {
 	parseStressScenarios,
 	type Scenario,
 } from "../parse/logcat.ts";
-import { findScenario, scenarioNames, scenarios, type ScenarioSpec } from "../../src/lib/native/dev/gestures-lab.ts";
+import { findScenario, scenarioNames, scenarios, viewsLeft, type ScenarioSpec } from "../../src/lib/native/dev/gestures-lab.ts";
 import { unattributedCount } from "./iphone/crash-reports.ts";
 import type {
 	GestureCheck,
@@ -16,6 +16,7 @@ import type {
 	GestureResult,
 	GesturesFile,
 	Metrics,
+	Platform,
 } from "./types.ts";
 
 /**
@@ -208,14 +209,18 @@ function worst(values: (number | null)[]): number | null {
 	return largest(values as number[]);
 }
 
-/** What the churn scenario left behind: records, native handlers, UI registrations and engine views above the baseline; null when it did not report. */
-export function leaked(result: GestureResult): number | null {
+/**
+ * What the churn scenario left behind: records, native handlers, UI registrations and engine views above the baseline; null when it did
+ * not report, and on Android when it did not count the engine's views (`viewsLeft`).
+ */
+export function leaked(result: GestureResult, platform: Platform): number | null {
 	const marks = result.marks?.[0];
 	if (!marks) return null;
 	const left = [marks.records, marks.handlers, marks.eventHandlers];
 	if (left.some((value) => typeof value !== "number")) return null;
-	const views = typeof marks.alive === "number" && typeof marks.aliveBaseline === "number" ? Math.max(0, marks.alive - marks.aliveBaseline) : 0;
-	return total((left as number[]).map((value) => (value < 0 ? 1 : value))) + views;
+	const views = viewsLeft(marks, platform);
+	if (views === null) return null;
+	return total((left as number[]).map((value) => (value < 0 ? 1 : value))) + Math.max(0, views);
 }
 
 /**
@@ -261,7 +266,7 @@ export function gesturesMetrics(file: GesturesFile, pinned: readonly string[]): 
 				return f.periodMs > 0 ? f.max / f.periodMs : Number.POSITIVE_INFINITY;
 			});
 		}
-		if (name === "gestures-churn") metrics["gestures.churn.leaked"] = missingSomewhere ? null : worst(judged.map(leaked));
+		if (name === "gestures-churn") metrics["gestures.churn.leaked"] = missingSomewhere ? null : worst(judged.map((result) => leaked(result, file.device.platform)));
 	}
 	// Two ways of driving agree only when two ways were run; on a platform with one (the iPhone's XCUITest) the gate is not asked for.
 	const inputs = new Set(launches.filter((launch) => launch.complete).map((launch) => launch.input));

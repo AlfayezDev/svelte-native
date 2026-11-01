@@ -24,6 +24,7 @@ import {
 	type Ready,
 	type Rects,
 	type Snapshot,
+	viewsLeft,
 } from "../../src/lib/native/dev/gestures-lab.ts";
 import { platformDir } from "../lib/paths.ts";
 
@@ -486,7 +487,24 @@ describe("verdicts", () => {
 		const left = { mounted: CHURN_ROUNDS, unmounted: CHURN_ROUNDS, records: 0, handlers: 0, eventHandlers: 0, alive: 40, aliveBaseline: 40 };
 		expect(failing(evaluate("gestures-churn", [snapshot({}, left)]))).toEqual([]);
 		expect(failing(evaluate("gestures-churn", [snapshot({}, { ...left, handlers: 3, eventHandlers: 1, alive: 55 })]))).toEqual(["no native handler left", "no UI-thread registration left", "engine views back to baseline"]);
-		expect(failing(evaluate("gestures-churn", [snapshot({}, { ...left, alive: undefined as unknown as number })]))).toEqual([]);
+	});
+
+	test("churn: on Android a count of engine views that was not taken is a failed check; iOS has no engine and counts none", () => {
+		const left = { mounted: CHURN_ROUNDS, unmounted: CHURN_ROUNDS, records: 0, handlers: 0, eventHandlers: 0, alive: 40, aliveBaseline: 40 };
+		const without = (...keys: string[]) => Object.fromEntries(Object.entries(left).filter(([key]) => !keys.includes(key)));
+		const noAlive = without("alive");
+		const noBaseline = without("aliveBaseline");
+		const neither = without("alive", "aliveBaseline");
+		for (const marks of [noAlive, noBaseline, neither]) {
+			expect(failing(evaluate("gestures-churn", [snapshot({}, marks)]))).toEqual(["engine views back to baseline"]);
+			expect(failing(evaluate("gestures-churn", [snapshot({}, marks)], [], { ...context, platform: "ios" }))).toEqual([]);
+		}
+		expect(viewsLeft(left, "android")).toBe(0);
+		expect(viewsLeft({ ...left, alive: 52 }, "android")).toBe(12);
+		expect(viewsLeft({ ...left, alive: 31 }, "ios")).toBe(-9);
+		expect(viewsLeft(neither, "android")).toBeNull();
+		expect(viewsLeft(noBaseline, "android")).toBeNull();
+		expect(viewsLeft(neither, "ios")).toBe(0);
 	});
 });
 

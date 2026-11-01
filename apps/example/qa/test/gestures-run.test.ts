@@ -301,11 +301,22 @@ describe("metrics", () => {
 	});
 
 	test("what the churn left is the sum of what it counts, an unknown count as one, and the views above the baseline", () => {
-		expect(leaked(result("gestures-churn"))).toBe(0);
-		expect(leaked(result("gestures-churn", { marks: [{ records: 2, handlers: 4, eventHandlers: 1, alive: 52, aliveBaseline: 40 }] }))).toBe(19);
-		expect(leaked(result("gestures-churn", { marks: [{ records: -1, handlers: 0, eventHandlers: 0 }] }))).toBe(1);
-		expect(leaked(result("gestures-churn", { marks: [{ mounted: 200 }] }))).toBeNull();
-		expect(leaked(result("gestures-churn", { marks: null }))).toBeNull();
+		expect(leaked(result("gestures-churn"), "android")).toBe(0);
+		expect(leaked(result("gestures-churn", { marks: [{ records: 2, handlers: 4, eventHandlers: 1, alive: 52, aliveBaseline: 40 }] }), "android")).toBe(19);
+		expect(leaked(result("gestures-churn", { marks: [{ records: -1, handlers: 0, eventHandlers: 0, alive: 40, aliveBaseline: 40 }] }), "android")).toBe(1);
+		expect(leaked(result("gestures-churn", { marks: [{ mounted: 200 }] }), "android")).toBeNull();
+		expect(leaked(result("gestures-churn", { marks: null }), "android")).toBeNull();
+	});
+
+	test("on Android a churn that did not count the engine's views is not measured; iOS has none to count", () => {
+		const counted = { records: 0, handlers: 0, eventHandlers: 0 };
+		for (const marks of [counted, { ...counted, alive: 40 }, { ...counted, aliveBaseline: 40 }]) {
+			expect(leaked(result("gestures-churn", { marks: [marks] }), "android")).toBeNull();
+			expect(leaked(result("gestures-churn", { marks: [marks] }), "ios")).toBe(0);
+			const metrics = gesturesMetrics(file([launch("adb", {}, (name) => (name === "gestures-churn" ? { marks: [marks] } : {})), launch("qa")]), scenarioNames);
+			expect(metrics["gestures.churn.leaked"]).toBeNull();
+			expect(gesturesMetrics({ ...file([launch("adb", {}, (name) => (name === "gestures-churn" ? { marks: [marks] } : {}))]), device: { ...device, platform: "ios" } }, scenarioNames)["gestures.churn.leaked"]).toBe(0);
+		}
 	});
 });
 

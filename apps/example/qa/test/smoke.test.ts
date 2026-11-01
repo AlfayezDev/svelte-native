@@ -438,6 +438,14 @@ describe("the variants of the harness", () => {
 		expect(buildFileKey({ abi: "x86_64", variant: "qa" })).toBe("x86_64");
 		expect(buildFileKey({ abi: "x86_64", variant: "smoke" })).toBe("smoke-x86_64");
 	});
+	test("each app's build record has a file of its own, named like its APK, so the product's never replaces the QA app's", () => {
+		for (const variant of ["qa", "smoke", "production"] as const) {
+			const stem = apkPath(variant, "x86_64").replace(/^.*\/app-/, "").replace(/\.apk$/, "");
+			expect(buildFileKey({ abi: "x86_64", variant })).toBe(stem);
+			expect(buildLogName(variant, "x86_64")).toBe(`build-${stem}.log`);
+		}
+		expect(buildFileKey({ abi: "x86_64", variant: "production" })).toBe("production-x86_64");
+	});
 	test("the QA lanes do not run the smoke test; the smoke lane builds the smoke app first", () => {
 		const scripts = (JSON.parse(readFileSync(join(platformDir, "package.json"), "utf8")) as { scripts: Record<string, string> }).scripts;
 		expect(scripts["native-qa:emulator"]).not.toContain("smoke");

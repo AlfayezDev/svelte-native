@@ -47,6 +47,7 @@
     { key: "three", title: "Three", icon: tabGlyph, badge: true },
   ];
   let rowsLaidOut: (() => void) | undefined;
+  let windowLaidOut: (() => void) | undefined;
   let modalShown: (() => void) | undefined;
   let scroller: NativeScrollView | null = null;
   let virtualList: { scrollToIndex: (index: number, animated?: boolean) => void } | undefined = $state();
@@ -263,32 +264,25 @@
    * right after `laidOut` would hold that apply and the first draw of the new rows as one frame interval (70 ms for 300 rows on the A16:
    * 43 ms of view creation, then a 29 ms frame recording them) instead of the scrolling it is meant to measure. Six frames are enough
    * for the rows to be on screen and the renderer to have caught up.
+   *
+   * It is also how a list mount starts from a quiet main thread. On iOS the layout event reaches JavaScript only when the main run
+   * loop is about to wait (React Native's `AppleEventBeat` is a `kCFRunLoopBeforeWaiting` observer), so a commit JavaScript has
+   * finished is still ahead of that event in the main thread's queue. The 300-row list's teardown (600 views, about 40 ms of
+   * `-[RCTViewComponentView unmountChildComponentView:index:]`, whose assertions copy the parent's `subviews` for every child)
+   * sat in front of the next scenario's first layout event and was counted as that scenario's mount (`list.virtual300.mountMs`
+   * 49 to 52 ms on the iPhone SE 3 after `list-300-raw`, 9 to 13 ms alone). A real navigation's previous screen is long gone.
    */
   async function mountFrames(signal: AbortSignal) {
     for (let frame = 0; frame < 6 && !signal.aborted; frame++) await new Promise<void>((resolve) => { requestAnimationFrame(() => resolve()); });
   }
 
   /**
-   * Starts a list mount from a quiet main thread and a collected heap, with the JavaScript thread's core still at full clock, so
-   * that what the mount reports is the mount.
-   *
-   * Main thread: on iOS the layout event reaches JavaScript only when the main run loop is about to wait (React Native's
-   * `AppleEventBeat` is a `kCFRunLoopBeforeWaiting` observer), so a commit JavaScript has finished is still ahead of that event
-   * in the main thread's queue. The 300-row list's teardown (600 views, about 40 ms of `-[RCTViewComponentView
-   * unmountChildComponentView:index:]`, whose assertions copy the parent's `subviews` for every child) sat in front of the next
-   * scenario's first layout event and was counted as that scenario's mount (`list.virtual300.mountMs` 49 to 52 ms on the iPhone
-   * SE 3 after `list-300-raw`, 9 to 13 ms alone).
-   *
-   * Heap: the earlier list scenarios leave thousands of dead shadow nodes; Hermes' young-generation collection, with the
-   * finalizers that release them, then ran inside the next mount (half of its JavaScript thread's samples). It happens here.
-   *
-   * Clock: waiting by frames (`mountFrames`) lets the core idle, and a mount that starts after 100 ms of idle runs its JavaScript
-   * 1.5 to 3 times slower while the clock climbs (the virtual list's Svelte flush: 5 ms back to back, 8 to 11 after six idle
-   * frames, 15 after twelve). Real mounts follow idle too, but the bar was set back to back, and a measurement that depends on
-   * how long the lab slept says nothing about the list. So the JavaScript thread spins while the main thread finishes: the
-   * teardown is over within 60 ms, and the core is warm when the mount starts.
+   * For the informational hot mount only: the JavaScript thread spins for 160 ms while the main thread finishes, then the heap is
+   * collected. Waiting by frames lets the core clock down (the virtual list's Svelte flush: 5 ms back to back, 8 to 11 after six
+   * idle frames, 15 after twelve, 2 on a warm core), and Hermes' young-generation collection of the earlier lists' dead shadow nodes
+   * can land inside a mount. The gated mount does neither: it is what a tap after a pause gets.
    */
-  function quiet(): boolean {
+  function warm(): boolean {
     const until = performance.now() + 160;
     while (performance.now() < until) { /* the main thread drains meanwhile; this thread keeps its clock */ }
     const gc = (globalThis as { gc?: () => void }).gc;
@@ -296,20 +290,47 @@
     return typeof gc === "function";
   }
 
+  /** The windowed list is 360 dp tall with 46 dp rows: its eighth row is the last one that shows. The tenth is the old first window's last. */
+  const fillRow = Math.ceil(360 / 46) - 1;
+
   /**
-   * The windowed list's mount again, after 200 ms in which nothing ran, so the JavaScript thread's core has clocked down (the
-   * mount of a tap after a pause). Informational: `quiet()` explains why the gated mount does not wait like this.
+   * Mounts the 300 rows of the windowed list and times the layout events: `mountMs` is when the last row that shows has reported
+   * its layout (the number gated), `windowMs` when row 9 has (the end of the first window of ten rows that came before the
+   * window was sized by what fills the list), `svelteMs` the Svelte flush and the host's. `profile` turns on the host's per-flush
+   * timings (`__svelteFabricProfile`) for the gated part and returns them as `flushes`.
    */
-  async function coldMount(signal: AbortSignal): Promise<number> {
-    await mountFrames(signal); await mountFrames(signal);
+  async function mountVirtual(signal: AbortSignal, profile = false) {
+    const scope = globalThis as { __svelteFabricProfile?: boolean; __svelteFlushLog?: unknown[] };
     const laidOut = waitFor(signal, (resolve) => { rowsLaidOut = resolve; }, 8000, "Row layout");
+    const windowed = waitFor(signal, (resolve) => { windowLaidOut = resolve; }, 8000, "Window layout");
+    scope.__svelteFlushLog = [];
+    scope.__svelteFabricProfile = profile;
     const start = performance.now();
-    rows = Array.from({ length: 300 }, (_, index) => index);
-    await tick(); await laidOut;
-    const ms = performance.now() - start;
+    let svelteMs: number;
+    try {
+      rows = Array.from({ length: 300 }, (_, index) => index);
+      await tick();
+      svelteMs = performance.now() - start;
+      await laidOut;
+    } finally {
+      scope.__svelteFabricProfile = false;
+    }
+    const mountMs = performance.now() - start;
+    const flushes = profile ? (scope.__svelteFlushLog ?? []).map((flush) => ({ ...(flush as Record<string, number>), at: (flush as { at: number }).at - start })) : undefined;
+    await windowed;
+    return { mountMs, windowMs: performance.now() - start, svelteMs, flushes };
+  }
+
+  /**
+   * The windowed list's mount again on a warm core and a collected heap (`warm()`): the best the thread can do, informational. The
+   * gated mount follows the six idle frames of `mountFrames` and is what a tap after a pause gets.
+   */
+  async function hotMount(signal: AbortSignal) {
+    const collected = warm();
+    const { mountMs } = await mountVirtual(signal);
     await mountFrames(signal);
     rows = []; await settle();
-    return ms;
+    return { hotMountMs: mountMs, collected };
   }
 
   /**
@@ -330,25 +351,9 @@
 
   /** `profile` turns on the host's per-flush timings (`__svelteFabricProfile`) and returns every flush of the mount in `detail.flushes`. */
   async function virtualList300(signal: AbortSignal, profile: boolean): Promise<Omit<Result, "name">> {
-    const scope = globalThis as { __svelteFabricProfile?: boolean; __svelteFlushLog?: unknown[] };
-    view = "virtual-list"; rows = []; await settle(); const collected = quiet();
-    // The first window holds rows 0-9; the last of them reports the layout.
-    const laidOut = waitFor(signal, (resolve) => { rowsLaidOut = resolve; }, 8000, "Row layout");
-    scope.__svelteFlushLog = [];
-    scope.__svelteFabricProfile = profile;
-    const mountStart = performance.now();
-    let svelteMs: number;
-    try {
-      rows = Array.from({ length: 300 }, (_, index) => index);
-      await tick();
-      svelteMs = performance.now() - mountStart;
-      await laidOut;
-    } finally {
-      scope.__svelteFabricProfile = false;
-    }
-    const mountMs = performance.now() - mountStart;
+    view = "virtual-list"; rows = []; await settle(); await mountFrames(signal);
+    const { mountMs, windowMs, svelteMs, flushes } = await mountVirtual(signal, profile);
     await mountFrames(signal);
-    const flushes = profile ? (scope.__svelteFlushLog ?? []).map((flush) => ({ ...(flush as Record<string, number>), at: (flush as { at: number }).at - mountStart })) : undefined;
     const { frames } = await measure(async () => {
       for (let leg = 0; leg < 3 && !signal.aborted; leg++) {
         virtualList?.scrollToIndex(299, true);
@@ -358,9 +363,9 @@
       }
     });
     const { unmountMs, teardown } = await tearDown(signal);
-    const coldMountMs = await coldMount(signal);
+    const { hotMountMs, collected } = await hotMount(signal);
     view = "none"; await settle();
-    return { verdict: verdict(frames), summary: `${describe(frames)} · mount to layout ${mountMs.toFixed(0)} ms (Svelte flush ${svelteMs.toFixed(0)} ms) · unmount ${unmountMs.toFixed(0)} ms · teardown longest frame ${teardown.max.toFixed(0)} ms · after idle ${coldMountMs.toFixed(0)} ms`, frames, detail: { mountMs, svelteMs, unmountMs, teardownMaxMs: teardown.max, teardownDroppedPct: teardown.droppedPct, coldMountMs, clipped: false, raw: false, virtual: true, collected, flushes } };
+    return { verdict: verdict(frames), summary: `${describe(frames)} · mount to layout ${mountMs.toFixed(0)} ms (window of ten ${windowMs.toFixed(0)} ms, Svelte flush ${svelteMs.toFixed(0)} ms, warm core ${hotMountMs.toFixed(0)} ms) · unmount ${unmountMs.toFixed(0)} ms · teardown longest frame ${teardown.max.toFixed(0)} ms`, frames, detail: { mountMs, windowMs, svelteMs, unmountMs, teardownMaxMs: teardown.max, teardownDroppedPct: teardown.droppedPct, hotMountMs, clipped: false, raw: false, virtual: true, collected, flushes } };
   }
 
   const scenarios: Scenario[] = [
@@ -391,7 +396,7 @@
     } },
     { name: "churn-animated", label: "Replace 32 animated views every 250 ms · 8 s", run: (signal) => animatedChurn(signal, 8000, false) },
     ...([["list-300", false, false], ["list-300-clipped", true, false], ["list-300-raw", false, true]] as const).map(([name, clipped, raw]): Scenario => ({ name, label: `Mount, scroll and unmount 300 rows${clipped ? " with removeClippedSubviews" : raw ? " as raw host tags (no primitive components)" : ""}`, async run(signal) {
-      listClipped = clipped; listRaw = raw; view = "list"; rows = []; await settle(); quiet();
+      listClipped = clipped; listRaw = raw; view = "list"; rows = []; await settle(); await mountFrames(signal);
       const laidOut = waitFor(signal, (resolve) => { rowsLaidOut = resolve; }, 8000, "Row layout");
       const mountStart = performance.now();
       rows = Array.from({ length: 300 }, (_, index) => index);
@@ -413,7 +418,7 @@
       return { verdict: verdict(frames), summary: `${describe(frames)} · mount to layout ${mountMs.toFixed(0)} ms (Svelte flush ${svelteMs.toFixed(0)} ms) · unmount ${unmountMs.toFixed(0)} ms · teardown longest frame ${teardown.max.toFixed(0)} ms`, frames, detail: { mountMs, svelteMs, unmountMs, teardownMaxMs: teardown.max, teardownDroppedPct: teardown.droppedPct, clipped, raw } };
     } })),
     ...([["list-300-teardown", false], ["list-300-teardown-clipped", true]] as const).map(([name, clipped]): Scenario => ({ name, label: `Remove a screen that still holds 300 mounted rows${clipped ? " with removeClippedSubviews" : ""} (the teardown a user causes by leaving it; the rows are not emptied first)`, async run(signal) {
-      listClipped = clipped; listRaw = false; view = "list"; rows = []; await settle(); quiet();
+      listClipped = clipped; listRaw = false; view = "list"; rows = []; await settle(); await mountFrames(signal);
       const laidOut = waitFor(signal, (resolve) => { rowsLaidOut = resolve; }, 8000, "Row layout");
       rows = Array.from({ length: 300 }, (_, index) => index);
       await tick(); await laidOut; await mountFrames(signal);
@@ -429,7 +434,7 @@
     } })),
     { name: "list-300-virtual", label: "Mount, scroll and unmount 300 rows in the windowed List", run: (signal) => virtualList300(signal, false) },
     { name: "list-mount-loop", label: "Mount the windowed List 40 times (for a CPU profile of the mount: `simpleperf record -t <JS thread>` while it runs)", async run(signal) {
-      view = "virtual-list"; rows = []; await settle(); quiet();
+      view = "virtual-list"; rows = []; await settle(); await mountFrames(signal);
       const times: number[] = [];
       for (let round = 0; round < 40 && !signal.aborted; round++) {
         const laidOut = waitFor(signal, (resolve) => { rowsLaidOut = resolve; }, 8000, "Row layout");
@@ -782,7 +787,7 @@
 {:else if view === "virtual-list"}
   <List bind:this={virtualList} items={rows} rowHeight={46} keyOf={(row) => row} nestedScrollEnabled style={{ height: 360, borderRadius: 12, borderWidth: 1, borderColor: theme.border }} contentContainerStyle={{ padding: 8 }}>
     {#snippet row(row)}
-      <View style={{ height: 40, padding: 10, borderRadius: 8, backgroundColor: theme.surface }} onLayout={row === 9 ? () => rowsLaidOut?.() : undefined}>
+      <View style={{ height: 40, padding: 10, borderRadius: 8, backgroundColor: theme.surface }} onLayout={row === fillRow ? () => rowsLaidOut?.() : row === 9 ? () => windowLaidOut?.() : undefined}>
         <Text style={{ color: theme.foreground, fontSize: 14 }}>Row {row + 1}</Text>
       </View>
     {/snippet}

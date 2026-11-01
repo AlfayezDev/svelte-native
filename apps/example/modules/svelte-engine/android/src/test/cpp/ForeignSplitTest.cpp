@@ -128,7 +128,23 @@ void selfParentIsHarmless() {
 
 } // namespace
 
+// A shadow view says the name Fabric gives a component (`componentNameByReactViewName`): a registered "RCTVideo" has to match "Video".
+void fabricNames() {
+  const struct { const char *registered; const char *fabric; } cases[] = {
+    {"RCTVideo", "Video"}, {"RNCWebView", "RNCWebView"}, {"RNMapsMapView", "RNMapsMapView"}, {"ViewManagerAdapter_ExpoImage", "ViewManagerAdapter_ExpoImage"},
+    {"RiveReactNativeView", "RiveReactNativeView"}, {"RC", "RC"}, {"", ""}, {"RCT", ""}, {"MyRCTView", "MyRCTView"},
+  };
+  for (const auto &entry : cases) {
+    const std::string got = fabricComponentName(entry.registered);
+    if (got != entry.fabric) {
+      std::fprintf(stderr, "FAIL fabric name of %s: got %s, wanted %s\n", entry.registered, got.c_str(), entry.fabric);
+      failures++;
+    }
+  }
+}
+
 int main() {
+  fabricNames();
   engineOnly();
   rootUnderEngineParent();
   descendantsByParent();

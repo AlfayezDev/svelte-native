@@ -12,6 +12,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -19,6 +20,13 @@
 namespace expo::svelteengine::foreign {
 
 using Tag = int32_t;
+
+// The name Fabric gives a component whose React view name is `name`: without the "RCT" prefix (`componentNameByReactViewName`: "RCTVideo" is
+// "Video", and a shadow view says "Video"), so a registered name is compared as Fabric names it. The function's other renames (Text, ImageView,
+// VirtualText, ...) are core components' and no foreign library has one of those names.
+inline std::string fabricComponentName(const std::string &name) {
+  return name.compare(0, 3, "RCT") == 0 ? name.substr(3) : name;
+}
 
 enum class Type : uint8_t { Create, Delete, Insert, Remove, Update };
 enum class Owner : uint8_t { Engine, Root, Descendant };

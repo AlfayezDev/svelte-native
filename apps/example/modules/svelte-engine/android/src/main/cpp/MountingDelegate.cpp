@@ -50,7 +50,7 @@ bool sameForReactNative(const ShadowView &a, const ShadowView &b) {
 
 void MountingDelegate::registerForeignComponent(const std::string &name) {
   std::lock_guard<std::mutex> lock(foreignMutex_);
-  foreignNames_.insert(name);
+  foreignNames_.insert(foreign::fabricComponentName(name));
 }
 
 bool MountingDelegate::isForeignTag(Tag tag) const {

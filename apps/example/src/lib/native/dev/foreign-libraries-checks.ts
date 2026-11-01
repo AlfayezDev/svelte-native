@@ -77,6 +77,10 @@ export type Ctx = {
   read(source: string, points?: readonly (readonly [number, number])[], radius?: number): { colors: number[]; width: number; height: number; format: string } | null;
 };
 
+/** A command's promise, or "timeout" after [milliseconds]: a native module that cannot find its view never answers, and a check must say so instead of waiting for it. */
+const within = <T>(promise: Promise<T> | undefined, milliseconds = 5000): Promise<T | "timeout" | undefined> =>
+  promise === undefined ? Promise.resolve(undefined) : Promise.race([promise, new Promise<"timeout">((resolve) => setTimeout(resolve, milliseconds, "timeout"))]);
+
 const describe = (info: Native | null): string => (info ? `${info.class.split(".").pop()} ${info.width}x${info.height}px at ${info.x},${info.y}${info.attached ? "" : " detached"}${info.shown ? "" : " hidden"}` : "no native view");
 
 /**
@@ -84,10 +88,10 @@ const describe = (info: Native | null): string => (info ? `${info.class.split(".
  * it (a view appears after the engine's frame). [pattern] is matched against the view's class and the classes inside it (a library whose native
  * view sits behind children is reached through its container).
  */
-async function mounts(c: Ctx, pattern: RegExp, host: Host | undefined = c.host()): Promise<Native | null> {
+async function mounts(c: Ctx, pattern: RegExp, host: Host | undefined = c.host(), measured: Host | undefined = host): Promise<Native | null> {
   if (!host) { c.check("mounts: the section handed out its host handle", false, "no handle"); return null; }
   if (!c.canInspect) {
-    const rect = await c.rect(host);
+    const rect = await c.rect(measured);
     c.check("mounts: the engine measured a layout for it", !!rect && rect.width > 0 && rect.height > 0, JSON.stringify(rect));
     c.skip("mounts: the platform built a view of the library's class", "no native inspection on this platform yet");
     return null;
@@ -100,10 +104,14 @@ async function mounts(c: Ctx, pattern: RegExp, host: Host | undefined = c.host()
   // The Android class names are the libraries' own (read from their sources); the iOS ones are recorded in the detail for the first iPhone run to pin.
   if (c.android) c.check(`mounts: it is the library's view (${pattern.source})`, pattern.test(`${info.class} ${info.views.join(" ")}`), `${info.class}; inside: ${info.views.slice(0, 4).join(" | ")}`);
   else c.skip("mounts: it is the library's view", `iOS class names not pinned yet (this run saw ${info.class}; inside: ${info.views.slice(0, 3).join(" | ")})`);
-  const rect = await c.rect(host);
-  const wide = rect ? Math.abs(info.width / info.density - rect.width) : Infinity;
-  const high = rect ? Math.abs(info.height / info.density - rect.height) : Infinity;
-  c.check("layout: the native view has the size the engine measured", wide <= 1 && high <= 1, `native ${(info.width / info.density).toFixed(1)}x${(info.height / info.density).toFixed(1)} dp, measured ${rect ? `${rect.width.toFixed(1)}x${rect.height.toFixed(1)}` : "none"}`);
+  // A library whose native view sits behind children is reached through a view that holds it: the size compared is the first inner view of its class.
+  const inner = host === measured ? null : info.views.map((entry) => /(\d+)x(\d+)\s*(?:clip=\w+)?\s*$/.exec(entry)).find((match, index) => match && pattern.test(info.views[index] ?? ""));
+  const nativeWidth = inner ? Number(inner[1]) : info.width;
+  const nativeHeight = inner ? Number(inner[2]) : info.height;
+  const rect = await c.rect(measured);
+  const wide = rect ? Math.abs(nativeWidth / info.density - rect.width) : Infinity;
+  const high = rect ? Math.abs(nativeHeight / info.density - rect.height) : Infinity;
+  c.check("layout: the native view has the size the engine measured", wide <= 1 && high <= 1, `native ${(nativeWidth / info.density).toFixed(1)}x${(nativeHeight / info.density).toFixed(1)} dp, measured ${rect ? `${rect.width.toFixed(1)}x${rect.height.toFixed(1)}` : "none"}`);
   return info;
 }
 
@@ -182,9 +190,11 @@ async function blur(c: Ctx): Promise<void> {
 // expo-linear-gradient
 
 async function gradient(c: Ctx): Promise<void> {
-  await mounts(c, /LinearGradientView/);
+  // The container is flattened away when it only lays its children out: the section's box holds the native gradient (a View with only layout props has no native view).
+  await mounts(c, /LinearGradientView/, c.box(), c.host());
   await colours(c, "the gradient runs from its first colour at the start to its last at the end", [[0.02, 0.12], [0.98, 0.88]], ["#ff7a18", "#319197"], 45);
-  c.lab.gradientColors = ["#00c853", "#2962ff"];
+  // expo-linear-gradient on Android cannot unset `locations` (its prop setter ignores null), so a new list keeps the length.
+  c.lab.gradientColors = ["#00c853", "#ffd600", "#2962ff"];
   await c.pause(400);
   await colours(c, "prop update: new colours reach the native view", [[0.02, 0.12], [0.98, 0.88]], ["#00c853", "#2962ff"], 45);
 }
@@ -211,12 +221,14 @@ async function video(c: Ctx): Promise<void> {
   c.check("prop update: and resuming starts them again", await c.until(() => c.events("video-progress") > frozen + 1, 5000));
   // commands: pause and resume stop and restart the progress events the same way the prop does
   try {
-    await c.handles().video?.pause();
+    const paused = await within(c.handles().video?.pause());
+    c.check("command: pause() answers", paused !== "timeout", String(paused));
     await c.pause(900);
     const stopped = c.events("video-progress");
     await c.pause(1200);
     c.check("command: pause() stops the progress events", c.events("video-progress") === stopped, `${stopped} -> ${c.events("video-progress")}`);
-    await c.handles().video?.resume();
+    const resumed = await within(c.handles().video?.resume());
+    c.check("command: resume() answers", resumed !== "timeout", String(resumed));
     c.check("command: resume() starts them again", await c.until(() => c.events("video-progress") > stopped + 1, 5000));
   } catch (error) {
     c.check("command: pause() and resume()", false, String(error));
@@ -226,7 +238,7 @@ async function video(c: Ctx): Promise<void> {
   c.handles().video?.seek(1.2);
   c.check("command: seek raises onSeek", await c.until(() => c.events("video-seek") > seeks, 6000));
   try {
-    const position = await c.handles().video?.getCurrentPosition();
+    const position = await within(c.handles().video?.getCurrentPosition());
     c.check("command: getCurrentPosition answers a position near the seek", typeof position === "number" && position >= 0.5 && position <= 3.2, `position ${String(position)}`);
   } catch (error) {
     c.check("command: getCurrentPosition answers a position near the seek", false, String(error));
@@ -472,7 +484,7 @@ async function rive(c: Ctx): Promise<void> {
 // expo-conic-gradient: hard stops make the right half of the turn red and the left half blue; a quarter turn... a half turn swaps them
 
 async function conic(c: Ctx): Promise<void> {
-  await mounts(c, /ConicGradientView/);
+  await mounts(c, /ConicGradientView/, c.box(), c.host());
   c.lab.conicHard = true;
   c.lab.conicAngle = 0;
   await c.pause(500);
@@ -486,7 +498,7 @@ async function conic(c: Ctx): Promise<void> {
 // react-native-fast-shadow: the card is centred in a 96 dp box, 38 dp high, and its shadow (12 dp blur, 5 dp down) reaches 17 dp below it
 
 async function shadow(c: Ctx): Promise<void> {
-  await mounts(c, /FastShadowView/);
+  await mounts(c, /FastShadowView/, c.box(), c.host());
   const below: [number, number][] = [[0.5, 0.78], [0.5, 0.74]];
   if (!c.canLook) { c.skip("capture: the shadow is drawn outside the card (not clipped to its frame)", "no pixel reader on this platform yet"); }
   else {

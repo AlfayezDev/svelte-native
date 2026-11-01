@@ -68,8 +68,22 @@ export const killRounds = 2;
 /** Every Nth background/foreground cycle (and the last) also looks for the anchors; the rest check that the app is in the foreground. */
 export const anchorEvery = 10;
 
-export type IosPlanOptions = { rotationCycles: number; backgroundCycles: number; killRounds: number };
+export type IosPlanOptions = {
+	rotationCycles: number;
+	backgroundCycles: number;
+	killRounds: number;
+	/**
+	 * Every launch carries `-SvelteNavigationAssumeSystemKill YES`, which the QA app's navigation module reads as "the system kept its state": the restore is judged
+	 * without the system's say. It is for telling a fault of the module from the system counting the harness's kill as the user's (`last.json` says which); a run
+	 * made with it is no evidence for the product, and `resilience.gateBypassed` fails it.
+	 */
+	assumeSystemKill?: boolean;
+};
 export const fullPlan: IosPlanOptions = { rotationCycles, backgroundCycles, killRounds };
+
+/** Launch arguments of every run: XCUITest starts an app with `-ApplePersistenceIgnoreState YES` (a clean state for each test), which switches UIKit's state restoration off; the restore under test needs it on. */
+export const restorationArgs = ["-ApplePersistenceIgnoreState", "NO"] as const;
+export const assumeSystemKillArgs = ["-SvelteNavigationAssumeSystemKill", "YES"] as const;
 
 /* ---- the screens the plan stands on (`apps/platform/src/routes/__dev/screens/+mobile.svelte`) ---- */
 
@@ -109,9 +123,12 @@ const endAndReturn = (args: string[]): Move[] => [
 const foreground = (present: Anchor[], absent: Anchor[] = []): IosCheck => ({ state: "foreground", present, absent });
 const resting: IosCheck = { state: "foreground", present: [], absent: [] };
 
+/** The launch arguments every launch of a plan carries, before the ones a step adds. */
+export const baseArgs = (options: Pick<IosPlanOptions, "assumeSystemKill">): string[] => [...restorationArgs, ...(options.assumeSystemKill ? assumeSystemKillArgs : [])];
+
 /** The moves that start from nothing and stand on the pushed header screen: the lab (which writes the build identity), the menu over it, the push. */
-export const standOnHeader = (token: string): Move[] => [
-	{ do: "args", args: [] },
+export const standOnHeader = (token: string, base: string[]): Move[] => [
+	{ do: "args", args: base },
 	{ do: "open", url: labUrl(token) },
 	{ do: "await", label: "Run all checks" },
 	{ do: "open", url: menuUrl },
@@ -121,15 +138,16 @@ export const standOnHeader = (token: string): Move[] => [
 ];
 
 /** After a failed step: the settings the plan changed are put back and the header screen is stood on again. */
-export const recovery = (token: string): Move[] => [{ do: "orient", to: "portrait" }, { do: "appearance", to: "light" }, { do: "terminate" }, { do: "wait", seconds: 1.2 }, ...standOnHeader(token)];
+export const recovery = (token: string, base: string[]): Move[] => [{ do: "orient", to: "portrait" }, { do: "appearance", to: "light" }, { do: "terminate" }, { do: "wait", seconds: 1.2 }, ...standOnHeader(token, base)];
 
 /** The steps of a plan. The full plan is what the gate expects; a smaller one is for working on the loop itself. */
 export function buildIosPlan(options: IosPlanOptions, token: string): IosStep[] {
+	const base = baseArgs(options);
 	const steps: IosStep[] = [
 		{
 			group: "rotation",
 			name: "launch the lab and open the menu",
-			moves: [{ do: "args", args: [] }, { do: "open", url: labUrl(token) }, { do: "await", label: "Run all checks" }, { do: "open", url: menuUrl }, { do: "await", label: menuText }],
+			moves: [{ do: "args", args: base }, { do: "open", url: labUrl(token) }, { do: "await", label: "Run all checks" }, { do: "open", url: menuUrl }, { do: "await", label: menuText }],
 			check: foreground([menuBody, menuBar, backButton]),
 			recover: true,
 		},
@@ -163,12 +181,12 @@ export function buildIosPlan(options: IosPlanOptions, token: string): IosStep[] 
 		steps.push({
 			group: "fontScale",
 			name,
-			moves: endAndReturn(sizeArgs(category)),
+			moves: endAndReturn([...base, ...sizeArgs(category)]),
 			check: { state: "foreground", present: onHeader, absent: [], scale: { label: headerRow, against: "standard", ...scale } },
 			recover: true,
 		});
 	for (const [name, direction] of [["Arabic after a restart", "rtl"], ["English after a restart", "ltr"]] as const)
-		steps.push({ group: "locale", name, moves: endAndReturn(launchArguments[direction]), check: foreground(onHeader), recover: true });
+		steps.push({ group: "locale", name, moves: endAndReturn([...base, ...launchArguments[direction]]), check: foreground(onHeader), recover: true });
 	steps.push(
 		{ group: "appearance", name: "dark appearance while running", moves: [{ do: "appearance", to: "dark" }, { do: "wait", seconds: 2 }], check: foreground(onHeader), recover: true },
 		{ group: "appearance", name: "light appearance while running", moves: [{ do: "appearance", to: "light" }, { do: "wait", seconds: 2 }], check: foreground(onHeader), recover: true },
@@ -224,8 +242,8 @@ export function buildIosPlan(options: IosPlanOptions, token: string): IosStep[] 
 export const fullIosPlanSize = buildIosPlan(fullPlan, "x").length;
 
 /** What the plan hands the XCUITest: the steps without their names (the harness keeps those), and the moves that put the phone right after a failure. */
-export function testPlan(steps: IosStep[], token: string): { recovery: Move[]; steps: { index: number; moves: Move[]; check: IosCheck; recover: boolean }[] } {
-	return { recovery: recovery(token), steps: steps.map((step, at) => ({ index: at + 1, moves: step.moves, check: step.check, recover: step.recover })) };
+export function testPlan(steps: IosStep[], token: string, options: Pick<IosPlanOptions, "assumeSystemKill"> = {}): { recovery: Move[]; steps: { index: number; moves: Move[]; check: IosCheck; recover: boolean }[] } {
+	return { recovery: recovery(token, baseArgs(options)), steps: steps.map((step, at) => ({ index: at + 1, moves: step.moves, check: step.check, recover: step.recover })) };
 }
 
 /* ---- what the test printed ---- */

@@ -942,6 +942,20 @@
       }
     },
     {
+      "id": "resilience.gateBypassed",
+      "title": "Resilience: the run bypassed the system's say in the iOS restore (a diagnostic, not evidence for the product)",
+      "unit": "runs",
+      "metric": "resilience.gateBypassed",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
       "id": "gestures.checks",
       "title": "Gestures: failed checks of a scenario (counters, rests, scroll offsets, leaks), a timeout counting as one",
       "unit": "checks",

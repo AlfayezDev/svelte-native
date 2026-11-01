@@ -6,6 +6,8 @@ import { evaluate, type GatesFile, type ReportDevice } from "../lib/gates.ts";
 import { sourceFiles } from "../lib/iphone/gestures.ts";
 import {
 	anchorEvery,
+	assumeSystemKillArgs,
+	baseArgs,
 	buildIosPlan,
 	contentSizes,
 	describeOutcome,
@@ -18,6 +20,7 @@ import {
 	parseTestOutput,
 	recovery,
 	resilienceCommand,
+	restorationArgs,
 	resultsFor,
 	testPlan,
 	whyStopped,
@@ -107,19 +110,41 @@ describe("the iPhone's resilience plan", () => {
 
 	test("the text size and the language are launch arguments of a restart, and the size is judged on the pixels", () => {
 		const sizes = group("fontScale").slice(1);
+		const base = [...restorationArgs];
 		expect(sizes.map((step) => movesOf(step).find((move) => move.do === "args"))).toEqual([
-			{ do: "args", args: ["-UIPreferredContentSizeCategoryName", contentSizes.largest] },
-			{ do: "args", args: ["-UIPreferredContentSizeCategoryName", contentSizes.smallest] },
-			{ do: "args", args: ["-UIPreferredContentSizeCategoryName", contentSizes.standard] },
+			{ do: "args", args: [...base, "-UIPreferredContentSizeCategoryName", contentSizes.largest] },
+			{ do: "args", args: [...base, "-UIPreferredContentSizeCategoryName", contentSizes.smallest] },
+			{ do: "args", args: [...base, "-UIPreferredContentSizeCategoryName", contentSizes.standard] },
 		]);
 		expect(contentSizes.largest).toBe("UICTContentSizeCategoryAccessibilityXXXL");
 		expect(group("fontScale")[0]?.check.scale).toEqual({ label: headerRow, record: "standard" });
 		expect(sizes[0]?.check.scale).toEqual({ label: headerRow, against: "standard", min: 1.5 });
 		expect(sizes[1]?.check.scale?.max).toBeLessThan(1);
 		const languages = group("locale").map((step) => movesOf(step).find((move) => move.do === "args"));
-		expect(languages).toEqual([{ do: "args", args: ["-AppleLanguages", "(ar)", "-AppleLocale", "ar_SA"] }, { do: "args", args: [] }]);
+		expect(languages).toEqual([{ do: "args", args: [...base, "-AppleLanguages", "(ar)", "-AppleLocale", "ar_SA"] }, { do: "args", args: base }]);
 		// Each restart is the process ended after a trip to the background, then a launch: the restore under that size and language.
 		for (const step of [...sizes, ...group("locale")]) expect(kinds(step)).toEqual(["args", "home", "wait", "terminate", "wait", "launch", "wait"]);
+	});
+
+	test("every launch of the plan turns UIKit's state restoration on, which XCUITest turns off for the apps it starts", () => {
+		expect(restorationArgs).toEqual(["-ApplePersistenceIgnoreState", "NO"]);
+		const argsMoves = plan.flatMap((step) => step.moves.filter((move) => move.do === "args")) as { do: "args"; args: string[] }[];
+		expect(argsMoves.length).toBeGreaterThan(5);
+		for (const move of argsMoves) expect(move.args.slice(0, 2)).toEqual(["-ApplePersistenceIgnoreState", "NO"]);
+		for (const move of recovery(token, baseArgs({})).filter((entry) => entry.do === "args")) expect((move as { args: string[] }).args.slice(0, 2)).toEqual(["-ApplePersistenceIgnoreState", "NO"]);
+	});
+
+	test("--assume-system-kill adds the QA app's override to every launch, and nothing else changes", () => {
+		const bypass = buildIosPlan({ ...fullPlan, assumeSystemKill: true }, token);
+		expect(bypass.map((step) => step.name)).toEqual(plan.map((step) => step.name));
+		const argsOf = (steps: IosStep[]) => steps.flatMap((step) => step.moves.filter((move) => move.do === "args")) as { do: "args"; args: string[] }[];
+		for (const move of argsOf(bypass)) expect(move.args).toContain("-SvelteNavigationAssumeSystemKill");
+		for (const move of argsOf(plan)) expect(move.args).not.toContain("-SvelteNavigationAssumeSystemKill");
+		expect(baseArgs({ assumeSystemKill: true })).toEqual([...restorationArgs, ...assumeSystemKillArgs]);
+		expect(testPlan(bypass, token, { assumeSystemKill: true }).recovery.find((move) => move.do === "args")).toEqual({ do: "args", args: baseArgs({ assumeSystemKill: true }) });
+		// Nothing but the launch arguments differs.
+		const strip = (steps: IosStep[]) => JSON.stringify(steps).replaceAll(',"-SvelteNavigationAssumeSystemKill","YES"', "");
+		expect(strip(bypass)).toBe(JSON.stringify(plan));
 	});
 
 	test("only every tenth background cycle and the last look for the anchors; the rest check that the app is in the foreground", () => {
@@ -136,7 +161,7 @@ describe("the iPhone's resilience plan", () => {
 	});
 
 	test("the recovery puts the phone upright and light and stands on the header screen again", () => {
-		const moves = recovery(token);
+		const moves = recovery(token, baseArgs({}));
 		expect(moves.slice(0, 2)).toEqual([{ do: "orient", to: "portrait" }, { do: "appearance", to: "light" }]);
 		expect(moves).toContainEqual({ do: "tap", label: "Push eight screens with headers" });
 		expect(moves.at(-1)).toEqual({ do: "await", label: headerRow });
@@ -147,7 +172,7 @@ describe("the iPhone's resilience plan", () => {
 		expect(sent.steps.map((step) => step.index)).toEqual(plan.map((_, at) => at + 1));
 		expect(JSON.stringify(sent)).not.toContain("background and foreground 1/100");
 		expect(JSON.stringify(sent).length).toBeLessThan(60_000);
-		expect(sent.recovery).toEqual(recovery(token));
+		expect(sent.recovery).toEqual(recovery(token, baseArgs({})));
 	});
 });
 
@@ -155,7 +180,7 @@ describe("the XCUITest and the plan agree", () => {
 	test("every move and anchor the plan can contain is one the Swift test performs", () => {
 		const moves = new Set<string>();
 		const anchors = new Set<string>();
-		for (const step of [...plan, { moves: recovery(token), check: { present: [], absent: [] } } as unknown as IosStep]) {
+		for (const step of [...plan, { moves: recovery(token, baseArgs({})), check: { present: [], absent: [] } } as unknown as IosStep]) {
 			for (const move of step.moves) moves.add(move.do);
 			for (const anchor of [...step.check.present, ...step.check.absent]) anchors.add(anchor.kind);
 		}
@@ -285,7 +310,7 @@ describe("the run file and the gates", () => {
 		plan.map((step, at) => ({ index: at + 1, group: step.group, name: step.name, ok: true, failures: [], recovered: false, durationMs: 1, ...override(at + 1) }));
 
 	test("the iPhone's steps missing are counted against the iPhone's plan, Android's against Android's", () => {
-		expect(resilienceMetrics(file(results()))).toEqual({ "resilience.steps": fullIosPlanSize, "resilience.failures": 0, "resilience.skipped": 0, "resilience.stepsMissing": 0 });
+		expect(resilienceMetrics(file(results()))).toEqual({ "resilience.steps": fullIosPlanSize, "resilience.failures": 0, "resilience.skipped": 0, "resilience.stepsMissing": 0, "resilience.gateBypassed": 0 });
 		expect(resilienceMetrics(file(results().slice(0, 20)))["resilience.stepsMissing"]).toBe(fullIosPlanSize - 20);
 		const android: DeviceInfo = { ...phone, serial: "localhost:5555", platform: "android", kind: "emulator" };
 		expect(resilienceMetrics(file(results().slice(0, 20), android))["resilience.stepsMissing"]).toBe(fullPlanSize - 20);
@@ -313,6 +338,15 @@ describe("the run file and the gates", () => {
 		// The appearance pair is the one gap the runner may have: two skipped steps on the iPhone, none on Android.
 		expect(bar("resilience.skipped")).toEqual({ android: { max: 0 }, ios: { max: 2 } });
 		expect(group("appearance")).toHaveLength(2);
+		expect(bar("resilience.gateBypassed")).toEqual({ android: { max: 0 }, ios: { max: 0 } });
+	});
+
+	test("a run made with --assume-system-kill is a diagnostic: it measures, and the gate refuses it as evidence", () => {
+		const metrics = resilienceMetrics(file(results(), phone, { assumeSystemKill: true }));
+		expect(metrics["resilience.gateBypassed"]).toBe(1);
+		const devices: Record<string, ReportDevice> = { [phone.serial]: { platform: "ios", metrics } };
+		const rows = evaluate(gates.gates.filter((gate) => gate.id === "resilience.gateBypassed"), devices, "ios");
+		expect(rows.map((row) => row.verdict)).toEqual(["fail"]);
 	});
 
 	test("a clean iPhone run passes the three; a failed step, a third skipped step or a missing step fails its own", () => {

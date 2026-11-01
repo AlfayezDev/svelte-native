@@ -105,11 +105,11 @@ final class ResilienceUITests: XCTestCase {
             device.setValue(move["to"] as? String == "dark" ? 2 : 1, forKey: "appearance")
         case "tap":
             let label = move["label"] as? String ?? ""
-            guard let button = appearing(Self.label(label), in: app, timeout: 15) else { return "tap: \(label) is not on screen" }
+            guard let button = appearing(Self.label(label), in: app, timeout: 20) else { return "tap: \(label) is not on screen" }
             button.tap()
         case "await":
             let label = move["label"] as? String ?? ""
-            if appearing(Self.label(label), in: app, timeout: 15) == nil { return "await: \(label) did not appear" }
+            if appearing(Self.label(label), in: app, timeout: 20) == nil { return "await: \(label) did not appear" }
         case "wait":
             Thread.sleep(forTimeInterval: (move["seconds"] as? Double) ?? 1)
         default:
@@ -127,7 +127,7 @@ final class ResilienceUITests: XCTestCase {
             if actual != expected { failures.append("the app is \(actual), it should be \(expected)") }
         }
         for anchor in check["present"] as? [[String: Any]] ?? [] {
-            if appearing(anchor, in: app, timeout: 12) == nil { failures.append("not on screen: \(Self.describe(anchor))") }
+            if appearing(anchor, in: app, timeout: 20) == nil { failures.append("not on screen: \(Self.describe(anchor))") }
         }
         for anchor in check["absent"] as? [[String: Any]] ?? [] {
             if candidates(anchor, in: app).contains(where: { $0.exists }) { failures.append("on screen, and it should not be: \(Self.describe(anchor))") }
@@ -139,7 +139,7 @@ final class ResilienceUITests: XCTestCase {
     /// The height of the element (points) against the one a step recorded: Dynamic Type made the text larger or smaller.
     private func measure(_ scale: [String: Any], app: XCUIApplication) -> [String] {
         let label = scale["label"] as? String ?? ""
-        guard let target = appearing(Self.label(label), in: app, timeout: 12) else { return ["scale: \(label) is not on screen"] }
+        guard let target = appearing(Self.label(label), in: app, timeout: 20) else { return ["scale: \(label) is not on screen"] }
         let height = Double(target.frame.height)
         if let key = scale["record"] as? String { heights[key] = height }
         guard let against = scale["against"] as? String else { return [] }

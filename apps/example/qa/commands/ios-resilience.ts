@@ -50,12 +50,12 @@ export type PlanRun = {
 };
 
 /** Starts the test on the Mac, waits for it, and reads what the phone holds afterwards. */
-export async function runPlan(session: IosSession, steps: IosStep[], token: string, timeoutMs: number): Promise<PlanRun> {
+export async function runPlan(session: IosSession, steps: IosStep[], token: string, timeoutMs: number, options: IosPlanOptions): Promise<PlanRun> {
 	const { target } = session;
 	const { mac } = target;
 	const outFile = `${uiTestsRemote}/resilience-output-${token}.log`;
 	const seconds = Math.ceil(timeoutMs / 1000);
-	const plan = JSON.stringify(testPlan(steps, token));
+	const plan = JSON.stringify(testPlan(steps, token, options));
 	const started = await remoteOk(mac, inBackground(resilienceCommand({ dir: uiTestsRemote, udid: session.udid, bundleId: target.bundleId, seconds, outFile, plan })));
 	const testPid = Number(started.trim().split("\n").pop());
 	// The phone is not asked anything while the test runs: devicectl calls made then hang now and then, so the harness only watches the Mac's side.
@@ -121,13 +121,16 @@ export async function iosResilience(argv: string[]): Promise<void> {
 		team: { type: "string" },
 		rebuild: { type: "boolean" },
 		"build-only": { type: "boolean" },
+		"assume-system-kill": { type: "boolean" },
 	});
 	const session = await startIosSuite("resilience", argv, values);
 	const options: IosPlanOptions = {
 		rotationCycles: integerFlag(values.rotations, "rotations", fullPlan.rotationCycles),
 		backgroundCycles: integerFlag(values.cycles, "cycles", fullPlan.backgroundCycles),
 		killRounds: integerFlag(values.rounds, "rounds", fullPlan.killRounds),
+		...(values["assume-system-kill"] === true ? { assumeSystemKill: true } : {}),
 	};
+	if (options.assumeSystemKill) console.log("--assume-system-kill: the navigation module hands its state over without the system's signal; this run is a diagnostic, and resilience.gateBypassed fails it");
 	const timeoutMs = integerFlag(values.timeout, "timeout", 1800) * 1000;
 	await requireUsb(session.target.mac, session.udid);
 	await prepareUiTests(session, { team: flagString(values.team), rebuild: values.rebuild === true });
@@ -141,7 +144,7 @@ export async function iosResilience(argv: string[]): Promise<void> {
 
 	await mkdir(runsDir, { recursive: true });
 	const logPath = join(runsDir, `resilience-${slug(session.device.serial)}-${stamp(session.startedAt)}.log`);
-	const run = await runPlan(session, steps, token, timeoutMs);
+	const run = await runPlan(session, steps, token, timeoutMs, options);
 	const results = resultsFor(steps, run.output, whyStopped(run.output, run.ended));
 	for (const result of results) {
 		if (!result.ok || result.skipped !== undefined || result.index % 10 === 0)
@@ -179,6 +182,7 @@ export async function iosResilience(argv: string[]): Promise<void> {
 		logFile: logPath.slice(qaDir.length + 1),
 		aborted: results.some((step) => step.failures.some((failure) => failure.startsWith("the step did not run"))) ? whyStopped(run.output, run.ended) : null,
 		navigation: run.navigation,
+		...(options.assumeSystemKill ? { assumeSystemKill: true } : {}),
 		// The test puts the phone upright and light as its last act: a run that did not get there may have left it changed.
 		...(unfinished ? { restoreFailures: ["the test ended before RESILIENCE-DONE: the phone may be left in landscape or in the dark appearance, and the app running"] } : {}),
 		...found.record,

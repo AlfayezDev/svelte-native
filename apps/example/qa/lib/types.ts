@@ -486,6 +486,8 @@ export type ResilienceFile = {
 	aborted: string | null;
 	/** iOS: what the navigation module did with the state at the last start of the app (null: it wrote nothing). Absent on Android. */
 	navigation?: NavigationOutcome | null;
+	/** iOS: the run was made with `--assume-system-kill` (a diagnostic of the restore without the system's say: `resilience.gateBypassed`). */
+	assumeSystemKill?: true;
 } & CrashReportsRecord &
 	SessionRecord;
 

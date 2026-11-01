@@ -273,6 +273,7 @@ describe("resilience metrics", () => {
 			"resilience.failures": 1,
 			"resilience.skipped": 0,
 			"resilience.stepsMissing": 0,
+			"resilience.gateBypassed": 0,
 		});
 		expect(resilienceMetrics(resilienceFile(steps.slice(0, 20)))["resilience.stepsMissing"]).toBe(
 			fullPlanSize - 20,

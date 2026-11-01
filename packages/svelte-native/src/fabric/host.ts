@@ -552,7 +552,26 @@ function userHandler(node: NativeNode, name: string): ((...args: unknown[]) => u
   if (raw) for (const listener of raw) return listener;
   return stateOf(node)?.handlers[name] as never;
 }
-const responder = createResponder<NativeNode>({ parent: (node) => node.parent, handler: userHandler, pressability: pressabilityFor });
+/** RNGH's TurboModule, for the responder hooks below (the gesture host is loaded when they call it). */
+function nativeGestureModule() {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return (require("../gestures/native.ts") as typeof import("../gestures/native.ts")).nativeModule();
+}
+const responder = createResponder<NativeNode>({
+  parent: (node) => node.parent,
+  handler: userHandler,
+  pressability: pressabilityFor,
+  // A responder that blocks the native ones (its `onResponderGrant` answered true): react-native-gesture-handler hears of it through React
+  // Native's `UIManager.setJSResponder`, which it patches and this host does not have, so the host tells its module. Only once the gesture host
+  // is loaded: an app with no gesture never touches the module.
+  blockNativeResponder: (node) => {
+    const own = stateOf(node);
+    if (gestures && own) nativeGestureModule().handleSetJSResponder(own.tag, true);
+  },
+  releaseNativeResponder: () => {
+    if (gestures) nativeGestureModule().handleClearJSResponder();
+  },
+});
 
 function dispatchEvent(target: unknown, topLevelType: string, nativeEvent: object): void {
   if (target) {

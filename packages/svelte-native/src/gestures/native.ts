@@ -13,6 +13,9 @@ export type GestureHandlerModule = {
   updateGestureHandler(handlerTag: number, config: object): void;
   dropGestureHandler(handlerTag: number): void;
   flushOperations(): void;
+  /** React Native's JS responder that blocks the native ones (iOS: the root recognisers wait; Android: a no-op for an engine root, see SPEC.md "Gestures"). */
+  handleSetJSResponder(viewTag: number, blockNativeResponder: boolean): void;
+  handleClearJSResponder(): void;
 };
 
 let module_: GestureHandlerModule | null = null;

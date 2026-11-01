@@ -68,6 +68,8 @@ internal class UpdateStore(private val root: File) {
     var serverDefinedHeaders: JSONObject?,
     var manifestFilters: JSONObject?,
     val updates: LinkedHashMap<String, StoredUpdate>,
+    /** QA only: the last reset request this store honoured (`reset`). */
+    var resetToken: String? = null,
   )
 
   private fun read(): Index {
@@ -85,6 +87,7 @@ internal class UpdateStore(private val root: File) {
         serverDefinedHeaders = json.optJSONObject("serverDefinedHeaders"),
         manifestFilters = json.optJSONObject("manifestFilters"),
         updates = updates,
+        resetToken = json.optString("resetToken").takeIf { it.isNotEmpty() },
       )
     } catch (_: Exception) {
       // No index yet, or one that cannot be read: start empty. The files of lost updates are removed by the next clean-up.
@@ -102,6 +105,7 @@ internal class UpdateStore(private val root: File) {
     index.pending?.let { json.put("pending", it) }
     index.serverDefinedHeaders?.let { json.put("serverDefinedHeaders", it) }
     index.manifestFilters?.let { json.put("manifestFilters", it) }
+    index.resetToken?.let { json.put("resetToken", it) }
     root.mkdirs()
     val temporary = File(root, "index.json.tmp")
     temporary.writeText(json.toString())
@@ -161,6 +165,28 @@ internal class UpdateStore(private val root: File) {
     if (chosen != null) { index.pending = chosen.id; changed = true }
     if (changed || !indexFile.exists()) write(index)
     Selection(chosen, embeddedCreatedAt, reason)
+  }
+
+  /**
+   * QA only (`QaReset`): puts the store back to what a fresh install has, once per `token`: no downloaded update (files included), no
+   * failed list, no launch marker, no rollback override, no stored server headers or filters. The client id and the build time stay.
+   * Returns how many updates were forgotten, or null when this token was already honoured.
+   */
+  fun reset(token: String): Int? = synchronized(lock) {
+    val index = read()
+    if (index.resetToken == token) return@synchronized null
+    val forgotten = index.updates.size
+    index.updates.clear()
+    index.failedIds.clear()
+    index.pending = null
+    index.embeddedCreatedAt = null
+    index.serverDefinedHeaders = null
+    index.manifestFilters = null
+    index.resetToken = token
+    File(root, "updates").deleteRecursively()
+    File(root, "assets").deleteRecursively()
+    write(index)
+    forgotten
   }
 
   private fun markFailed(index: Index, id: String) {

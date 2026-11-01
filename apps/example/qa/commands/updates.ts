@@ -16,7 +16,7 @@ import { exec } from "../lib/exec.ts";
 import { flagString, integerFlag, parseFlags, platformOf, requireString } from "../lib/flags.ts";
 import { currentSource } from "../lib/git.ts";
 import { lockFor, reexecUnderLock } from "../lib/lock.ts";
-import { assertClearable, clearAppData } from "../lib/reset.ts";
+import { assertClearable, clearAppData, resetMode, resetRelease, resetRequest } from "../lib/reset.ts";
 import { deviceRoles } from "../lib/gates.ts";
 import { defaultPackage, platformDir, qaDir, runsDir, svelteNativeCli } from "../lib/paths.ts";
 import { slug, stamp, writeRun } from "../lib/runs.ts";
@@ -92,6 +92,7 @@ export async function updates(argv: string[]): Promise<void> {
 		environment: { type: "string" },
 		dexopt: { type: "string" },
 		package: { type: "string" },
+		reset: { type: "string" },
 	});
 	const serial = requireString(values.device, "device");
 	const lock = lockFor(serial);
@@ -99,7 +100,8 @@ export async function updates(argv: string[]): Promise<void> {
 
 	const channel = qaChannel(values.channel ?? "qa", "channel") as string;
 	const warmCount = integerFlag(values.warm, "warm", 30);
-	const options = { maxLaunches: integerFlag(values["max-launches"], "max-launches", 4), settleLaunches: integerFlag(values.settle, "settle", 3) };
+	const reset = resetMode(values.reset);
+	const options = { maxLaunches: integerFlag(values["max-launches"], "max-launches", 4), settleLaunches: integerFlag(values.settle, "settle", 3), expectReset: reset === "app" };
 	if (options.maxLaunches < 2) throw new Error("--max-launches must be at least 2: one start downloads an update and the next runs it");
 	const packageName = flagString(values.package) ?? defaultPackage;
 	const environment = flagString(values.environment) ?? "development";
@@ -108,9 +110,9 @@ export async function updates(argv: string[]): Promise<void> {
 	const dexopt = dexoptFlag(values.dexopt);
 
 	await assertOnline(serial);
-	// A phone is shared and is never cleared: say so before anything is installed or published.
+	// A phone is shared and is never cleared: say so before anything is installed or published. The default reset goes through the app.
 	const role = deviceRoles(await loadGates(), [serial])[serial] ?? null;
-	assertClearable(serial, role);
+	if (reset === "data") assertClearable(serial, role);
 	const startedAt = new Date();
 	const device = await deviceInfo(serial);
 	const channelDir = channelOutDir(channel);
@@ -133,7 +135,6 @@ export async function updates(argv: string[]): Promise<void> {
 		console.log(line);
 		logs.push(line);
 	};
-	const runTag = `qa-${stamp(startedAt)}`;
 	note(`${device.kind} ${device.model} (${serial}) ${device.abi}; channel ${channel}; ${apk}; ${baseline ? `baseline ${baseline}` : "no baseline build"}`);
 
 	// 1. The same app without a channel, warm: the boot the channel build is compared with.
@@ -152,7 +153,13 @@ export async function updates(argv: string[]): Promise<void> {
 	// 2. The channel build, with an empty updates store: its first start runs the embedded bundle.
 	const app = await prepareApp(serial, device, { apk, noInstall: false, packageName, dexopt });
 	await forceStop(serial, packageName);
-	await clearAppData((command) => shell(serial, command), serial, role, packageName);
+	const runTag = `qa-${stamp(startedAt)}`;
+	if (reset === "data") await clearAppData((command) => shell(serial, command), serial, role, packageName);
+	else {
+		// The first start of the channel build forgets its updates and failed list, wherever it was installed over.
+		const requested = await shell(serial, resetRequest(runTag));
+		if (requested.code !== 0) throw new Error(`could not set the reset flag: ${(requested.stderr || requested.stdout).trim()}`);
+	}
 
 	const sync = await exec(process.execPath, [svelteNativeCli, "sync"], { cwd: platformDir, timeoutMs: 600_000 });
 	if (sync.code !== 0) throw new Error(`svelte-native sync failed: ${(sync.stderr || sync.stdout).trim().slice(0, 400)}`);
@@ -210,8 +217,14 @@ export async function updates(argv: string[]): Promise<void> {
 		},
 	};
 
-	const scenario = await runUpdatesScenario(driver, options);
-	await forceStop(serial, packageName);
+	let scenario;
+	try {
+		scenario = await runUpdatesScenario(driver, options);
+	} finally {
+		// The flag is honoured once per token, so leaving it would only be untidy; remove it so the device has nothing of the run in its settings.
+		if (reset === "app") await shell(serial, resetRelease);
+		await forceStop(serial, packageName);
+	}
 
 	const source = await currentSource();
 	const file: UpdatesFile = {

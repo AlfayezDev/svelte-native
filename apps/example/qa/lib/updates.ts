@@ -38,6 +38,8 @@ export type ScenarioOptions = {
 	maxLaunches: number;
 	/** Launches after the recovery, to see the bad update is not tried again. */
 	settleLaunches: number;
+	/** The first start must report that the QA app honoured a reset request (the run reset the store through the app, not by clearing data). */
+	expectReset?: boolean;
 };
 
 export type GoodPhase = {
@@ -183,6 +185,8 @@ export async function runUpdatesScenario(driver: UpdatesDriver, options: Scenari
 		result.baseline = await driver.launch("baseline");
 		result.baselineEmbedded = result.baseline.running?.kind === "embedded";
 		if (!result.baselineEmbedded) result.errors.push("the first start after a clean install did not run the embedded bundle");
+		if (options.expectReset && result.baseline.reset === null)
+			result.errors.push("the first start did not report a QA reset: the installed build does not honour the reset flag (build it again), or the setting did not reach the app");
 		const probe = result.baseline.probe;
 		if (probe === null) result.errors.push("the app did not report its updates setup ([Svelte QA updates]): this is not the QA build");
 		else if (!probe.enabled || probe.checkOnLaunch !== "ALWAYS" || probe.channel === null)

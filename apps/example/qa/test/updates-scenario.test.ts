@@ -39,6 +39,8 @@ class ClientWorld implements UpdatesDriver {
 	forgetFailed = false;
 	markerMissing = false;
 	checksThatSeeNothing = 0;
+	/** The first start reports a QA reset, as a build that honours the flag does. */
+	reportsReset = true;
 	bootLaunches: Launch[] = [];
 
 	async publish(kind: UpdateKind): Promise<PublishedUpdate> {
@@ -65,7 +67,7 @@ class ClientWorld implements UpdatesDriver {
 		const running = chosen ? ({ kind: "update", id: chosen, createdAt: this.store.get(chosen)?.at ?? 0 } as const) : ({ kind: "embedded", builtAt: this.embeddedAt } as const);
 		if (chosen) this.pending = chosen;
 		const throws = chosen !== null && this.channel.find((update) => update.id === chosen)?.bad === true && !this.faultNeverFires;
-		const base = { index, phase, failedIds, crashes: throws ? 1 : 0, jsErrors: 0, displayMs: throws ? null : 600 };
+		const base = { index, phase, failedIds, reset: index === 1 && this.reportsReset ? { token: "qa-test", forgotten: 0 } : null, crashes: throws ? 1 : 0, jsErrors: 0, displayMs: throws ? null : 600 };
 		if (throws) return { ...base, running, booted: false, probe: null, check: null, settledBy: "fault" };
 		this.pending = null; // the first commit
 		const marker = chosen && !this.markerMissing ? (this.channel.find((update) => update.id === chosen)?.marker ?? null) : null;
@@ -187,6 +189,18 @@ describe("the scenario against the client's policy", () => {
 		expect(scenario.errors.filter((error) => error.includes("eas update failed")).length).toBe(2);
 		expect(world.published).toEqual([]);
 		expect(scenario.cleanup.published).toBeNull();
+	});
+
+	test("a run that expects the app to reset itself fails when the first start reports no reset", async () => {
+		const honoured = await runUpdatesScenario(new ClientWorld(), { ...options, expectReset: true });
+		expect(honoured.errors).toEqual([]);
+		const world = new ClientWorld();
+		world.reportsReset = false;
+		const ignored = await runUpdatesScenario(world, { ...options, expectReset: true });
+		expect(ignored.errors[0]).toContain("did not report a QA reset");
+		// A run that cleared the data itself does not look for the report.
+		const cleared = await runUpdatesScenario(world, options);
+		expect(cleared.errors.some((error) => error.includes("QA reset"))).toBe(false);
 	});
 
 	test("a build without a channel is reported as such", async () => {

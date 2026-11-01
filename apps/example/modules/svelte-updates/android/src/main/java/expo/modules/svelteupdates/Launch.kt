@@ -33,6 +33,11 @@ internal object Launch {
     val buildTime = BuildConfig.BUILD_TIME_MS
     if (!config.enabled) return LaunchState(config, null, null, null, buildTime, emptyMap(), "")
     val store = UpdateStore(File(application.filesDir, "svelte-updates"))
+    val resetToken = QaReset.requested(application)
+    if (resetToken != null) {
+      val forgotten = store.reset(resetToken)
+      if (forgotten != null) android.util.Log.w("SvelteUpdates", "QA reset ($resetToken): forgot $forgotten update(s), the failed list and the launch marker")
+    }
     val selection = store.select(config, buildTime, markFailure)
     selection.emergencyReason?.let { android.util.Log.w("SvelteUpdates", "$it; launching the previous update or the embedded bundle") }
     val update = selection.update

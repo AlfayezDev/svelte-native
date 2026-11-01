@@ -33,6 +33,8 @@ export type UpdateObservation = {
 	check: UpdateCheck | null;
 	/** Updates this start found marked as never having reached their first commit: the failed launch it recovered from. */
 	failedIds: string[];
+	/** The QA app honoured a reset request at this start (`QaReset.kt`): the token, and how many downloaded updates it forgot. */
+	reset: { token: string; forgotten: number } | null;
 	crashes: number;
 	jsErrors: number;
 	displayMs: number | null;
@@ -41,6 +43,7 @@ export type UpdateObservation = {
 const updateId = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const launchingUpdate = new RegExp(`^Launching update (${updateId}) \\(created (\\d+)\\)`);
 const launchingEmbedded = /^Launching the embedded bundle \(built (\d+)\)/;
+const qaReset = /^QA reset \(([^)]+)\): forgot (\d+) update\(s\)/;
 const failedLaunch = new RegExp(`^Update (${updateId}) did not reach its first commit`);
 const downloaded = new RegExp(`^\\[Svelte updates\\] Update (${updateId}) downloaded; it launches on the next start`);
 const noUpdate = /^\[Svelte updates\] No update to download \((\w+)\)/;
@@ -83,12 +86,15 @@ export function parseUpdateObservation(text: string, packageName: string): Updat
 	let probe: UpdateProbe | null = null;
 	let check: UpdateCheck | null = null;
 	let booted = false;
+	let reset: UpdateObservation["reset"] = null;
 	const failedIds: string[] = [];
 	for (const line of parseLines(text)) {
 		if (line.tag === "SvelteUpdates") {
 			const update = launchingUpdate.exec(line.message);
 			const embedded = launchingEmbedded.exec(line.message);
 			const failed = failedLaunch.exec(line.message);
+			const forgot = qaReset.exec(line.message);
+			if (forgot?.[1] && forgot[2] && reset === null) reset = { token: forgot[1], forgotten: Number(forgot[2]) };
 			if (running === null && update?.[1] && update[2]) running = { kind: "update", id: update[1], createdAt: Number(update[2]) };
 			else if (running === null && embedded?.[1]) running = { kind: "embedded", builtAt: Number(embedded[1]) };
 			if (failed?.[1] && !failedIds.includes(failed[1])) failedIds.push(failed[1]);
@@ -112,6 +118,7 @@ export function parseUpdateObservation(text: string, packageName: string): Updat
 		probe,
 		check,
 		failedIds,
+		reset,
 		crashes: faults.crashes.length,
 		jsErrors: faults.jsErrors.length,
 		displayMs: parseLaunchMarkers(text, packageName).displayMs,

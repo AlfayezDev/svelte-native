@@ -91,6 +91,16 @@ describe("parseUpdateObservation", () => {
 		expect(parseUpdateObservation(twice, pkg).running).toEqual({ kind: "embedded", builtAt: 5 });
 	});
 
+	test("a start that honoured the QA reset reports the token and what it forgot; one that did not reports none", () => {
+		const text = [
+			startProc,
+			line("W", "SvelteUpdates", "QA reset (qa-20261101T102000Z): forgot 3 update(s), the failed list and the launch marker"),
+			line("I", "SvelteUpdates", "Launching the embedded bundle (built 1761990000000)"),
+		].join("\n");
+		expect(parseUpdateObservation(text, pkg)).toMatchObject({ reset: { token: "qa-20261101T102000Z", forgotten: 3 }, running: { kind: "embedded", builtAt: 1761990000000 } });
+		expect(parseUpdateObservation(embeddedLaunch, pkg).reset).toBeNull();
+	});
+
 	test("a malformed probe line is no probe, and a launch with no SvelteUpdates line runs nothing known", () => {
 		const text = line("I", "ReactNativeJS", "[Svelte QA updates] {not json");
 		const seen = parseUpdateObservation(text, pkg);
@@ -101,7 +111,7 @@ describe("parseUpdateObservation", () => {
 
 describe("launchSettled", () => {
 	const observation = (overrides: Partial<UpdateObservation>): UpdateObservation => ({
-		running: null, booted: false, probe: null, check: null, failedIds: [], crashes: 0, jsErrors: 0, displayMs: null, ...overrides,
+		running: null, booted: false, probe: null, check: null, failedIds: [], reset: null, crashes: 0, jsErrors: 0, displayMs: null, ...overrides,
 	});
 	const probeOf = (checkOnLaunch: string) => ({ enabled: true, updateId: null, embedded: true, createdAt: null, runtimeVersion: "0.1.0", channel: "qa", checkOnLaunch, marker: null });
 

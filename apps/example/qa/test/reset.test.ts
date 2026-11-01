@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { deviceRoles, type GatesFile } from "../lib/gates.ts";
-import { assertMayClear, clearAppData } from "../lib/reset.ts";
+import { assertMayClear, clearAppData, qaResetSetting, resetMode, resetRelease, resetRequest } from "../lib/reset.ts";
 
 const qaRoot = join(import.meta.dirname, "..");
 const gates = JSON.parse(readFileSync(join(qaRoot, "gates.json"), "utf8")) as GatesFile;
@@ -58,5 +58,26 @@ describe("a phone is never cleared or uninstalled", () => {
 		};
 		visit(qaRoot);
 		expect(offenders).toEqual([]);
+	});
+});
+
+describe("the app-level reset, which a phone gets instead", () => {
+	test("the request is one settings write and the release one settings delete: neither touches the app", () => {
+		expect(resetRequest("qa-20261101T102000Z")).toBe(`settings put global ${qaResetSetting} qa-20261101T102000Z`);
+		expect(resetRelease).toBe(`settings delete global ${qaResetSetting}`);
+		for (const command of [resetRequest("qa-1"), resetRelease]) expect(/pm\s|uninstall|clear/.test(command)).toBe(false);
+	});
+	test("a token that is not shell-safe is refused, and the mode is app unless data is asked for", () => {
+		expect(() => resetRequest("a; pm clear x")).toThrow("not shell-safe");
+		expect(resetMode(undefined)).toBe("app");
+		expect(resetMode("app")).toBe("app");
+		expect(resetMode("data")).toBe("data");
+		expect(() => resetMode("wipe")).toThrow("--reset must be app or data");
+	});
+	test("the flag the harness sets is the one the app reads", () => {
+		const kotlin = readFileSync(join(qaRoot, "..", "modules", "svelte-updates", "android", "src", "main", "java", "expo", "modules", "svelteupdates", "QaReset.kt"), "utf8");
+		expect(kotlin).toContain(`const val SETTING = "${qaResetSetting}"`);
+		expect(kotlin).toContain('const val PACKAGE = "io.rasheed.svelteqa"');
+		expect(kotlin).toContain("context.packageName != PACKAGE");
 	});
 });

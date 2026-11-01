@@ -27,3 +27,24 @@ export async function clearAppData(shell: Shell, serial: string, role: Role | nu
 	const cleared = await shell(`pm clear ${packageName}`);
 	if (!cleared.stdout.includes("Success")) throw new Error(`pm clear ${packageName} failed: ${cleared.stdout.trim()} ${cleared.stderr.trim()}`);
 }
+
+/**
+ * The app-level reset (`QaReset.kt`): a token in the global setting the QA app reads when it starts. The first start that sees a token it
+ * has not honoured forgets its downloaded updates and failed list before it picks a bundle. `settings put global` is something the
+ * shell may do on any device, a shared phone included, and deletes nothing of the app's.
+ */
+export const qaResetSetting = "svelte_qa_reset_updates";
+
+export type ResetMode = "app" | "data";
+
+export function resetMode(value: string | boolean | undefined): ResetMode {
+	if (value === undefined || value === "app") return "app";
+	if (value === "data") return "data";
+	throw new Error(`--reset must be app or data, not ${String(value)}`);
+}
+
+export const resetRequest = (token: string): string => {
+	if (!/^[A-Za-z0-9._-]+$/.test(token)) throw new Error(`reset token ${JSON.stringify(token)} is not shell-safe`);
+	return `settings put global ${qaResetSetting} ${token}`;
+};
+export const resetRelease = `settings delete global ${qaResetSetting}`;

@@ -1,4 +1,5 @@
 import { requireOptionalNativeModule } from "expo-modules-core";
+import { applicationId } from "expo-application";
 import { Directory, File, Paths } from "expo-file-system";
 import { captureRef, releaseCapture, type CaptureOptions } from "@rasheed/svelte-native/foreign";
 import Platform from "react-native/Libraries/Utilities/Platform";
@@ -171,9 +172,15 @@ export async function runForeignLibraries(router: Router, signal: AbortSignal, o
       foreignLab.scrollIndex = -1;
       foreignLab.scrollAnimated = true;
       await until(() => !libraryHandles.has(opened.source) && router.entries.length === depth, 6000, signal);
-      await pause(400, signal);
-      const stats = engine?.foreignStats?.(true) ?? null;
-      if (stats && baseline) record(`${where}: leaving drops every frame and node`, stats.frames === baseline.frames && stats.nodes === baseline.nodes && stats.waiting === 0 && stats.registryLeaks === 0, JSON.stringify(stats));
+      // The page leaves with a transition (a screen that has not reported its exit stays mounted for up to 2.5 s): the frames and nodes are counted until they are back to
+      // the baseline, and what the last count says is the check. A section that never opened leaves with the page too, so it is judged the same way.
+      let stats: Stats | null = null;
+      const settled = () => {
+        stats = engine?.foreignStats?.(true) ?? null;
+        return !!stats && !!baseline && stats.frames === baseline.frames && stats.nodes === baseline.nodes && stats.waiting === 0 && stats.registryLeaks === 0;
+      };
+      const dropped = await until(settled, 6000, signal);
+      if (stats && baseline) record(`${where}: leaving drops every frame and node`, dropped, JSON.stringify(stats));
     }
   }
 
@@ -192,23 +199,44 @@ export async function runForeignLibraries(router: Router, signal: AbortSignal, o
 }
 
 /**
- * The launch after `foreign-libraries`: the files its capture checks left in the cache directory ("`tmpfile`: a file that lasts until the app exits")
- * were made by a process that is gone, so none of them (and no `ReactNative-snapshot-image*` file at all) may be there now. The first launch on a
- * device has nothing to find; a launch that finds files was not cleaned after.
+ * The launch after `foreign-libraries`: the files its capture checks left in the cache directories ("`tmpfile`: a file that lasts until the app exits") were made by a process
+ * that is gone, so none of them (and no `ReactNative-snapshot-image` file at all) may be there now. A result goes to the internal or the external cache directory, whichever
+ * has more free space: both are listed. The check proves nothing unless the earlier launch left files: the capture section leaves two in each of the three places, and
+ * [expected] (`expect:<n>` in the run, six when the capture library ran) is how many it must have recorded; a list that cannot be read, or a directory that cannot be
+ * listed, fails the check instead of reading as empty.
  */
-export async function runForeignLeftovers(): Promise<LibrariesOutcome> {
+export async function runForeignLeftovers(expected = 0): Promise<LibrariesOutcome> {
   const checks: LibraryCheck[] = [];
   const record = (name: string, passed: boolean, detail = "") => {
-    const entry: LibraryCheck = { library: "capture", where: "inline", name, passed, detail };
+    const entry: LibraryCheck = { library: "capture", where: "inline", name, passed, detail: detail.slice(0, 300) };
     checks.push(entry);
     console.info("[Svelte foreign library]", JSON.stringify(entry));
   };
   let known: string[] = [];
-  try { const file = leftoverFile(); if (file.exists) known = JSON.parse(file.textSync()) as string[]; } catch { known = []; }
-  const alive = known.filter((uri) => { try { return new File(uri).exists; } catch { return false; } });
+  let readable = true;
+  let why = "";
+  try {
+    const file = leftoverFile();
+    if (file.exists) {
+      const value: unknown = JSON.parse(file.textSync());
+      if (Array.isArray(value) && value.every((item) => typeof item === "string")) known = value as string[];
+      else { readable = false; why = "not a list of strings"; }
+    } else if (expected > 0) { readable = false; why = "the previous launch wrote no list"; }
+  } catch (error) { readable = false; why = String(error); }
+  record("the list of files the previous launch left is readable", readable, why);
+  record(`the previous launch recorded at least ${expected} tmpfile captures it left behind`, known.length >= expected, `${known.length} recorded`);
+  const alive = known.filter((uri) => { try { return new File(uri).exists; } catch { return true; } });
   record("a previous launch's tmpfile captures are gone after its process died", alive.length === 0, `${known.length} left by the last launch, ${alive.length} still there`);
-  const others = (() => { try { return new Directory(Paths.cache).list().map((item) => item.name).filter((name) => name.startsWith("ReactNative-snapshot-image")); } catch { return []; } })();
-  record("no ReactNative-snapshot-image file is in the cache directory at the start of a launch", others.length === 0, `${others.length} found: ${others.slice(0, 3).join(", ")}`);
+  const directories = [Paths.cache.uri, android ? `file:///storage/emulated/0/Android/data/${applicationId}/cache` : ""].filter(Boolean);
+  const found: string[] = [];
+  const unlisted: string[] = [];
+  for (const uri of directories) {
+    try {
+      const directory = new Directory(uri);
+      if (directory.exists) found.push(...directory.list().map((item) => item.name).filter((name) => name.startsWith("ReactNative-snapshot-image")));
+    } catch (error) { unlisted.push(`${uri}: ${String(error)}`); }
+  }
+  record("no ReactNative-snapshot-image file is in either cache directory at the start of a launch", unlisted.length === 0 && found.length === 0, unlisted.length ? `could not list ${unlisted.join("; ")}` : `${found.length} found: ${found.slice(0, 3).join(", ")}`);
   try { leftoverFile().write("[]"); } catch { /* nothing to clear */ }
   const failed = checks.filter((entry) => !entry.passed);
   return { passed: failed.length === 0, summary: `${checks.length - failed.length} / ${checks.length} checks`, detail: { libraries: { capture: { checks: checks.length, failed: failed.length, skipped: 0 } }, failed: failed.map((entry) => entry.name) } };

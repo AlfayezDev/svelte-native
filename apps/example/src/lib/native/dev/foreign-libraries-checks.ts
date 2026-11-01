@@ -32,6 +32,8 @@ export type Native = {
   surfaces: string[];
   /** The view's parent and whether it clips its children to their bounds. */
   parent: string;
+  /** How the view clips what it draws: `canvas` (an engine view with `overflow: hidden`: the padding box), `none`; `children` (Android's `clipChildren`) for a view of a library. */
+  clip: string;
 };
 /** What a capture of a view holds at the points asked for (fractions of the image). */
 export type Look = { colors: number[]; width: number; height: number; format: string; uri: string };
@@ -84,11 +86,17 @@ const within = <T>(promise: Promise<T> | undefined, milliseconds = 5000): Promis
 const describe = (info: Native | null): string => (info ? `${info.class.split(".").pop()} ${info.width}x${info.height}px at ${info.x},${info.y}${info.attached ? "" : " detached"}${info.shown ? "" : " hidden"}` : "no native view");
 
 /**
- * The common part: a native view of the library's class is attached, shown and sized, and its size is the layout the engine measured. Waits for
- * it (a view appears after the engine's frame). [pattern] is matched against the view's class and the classes inside it (a library whose native
- * view sits behind children is reached through its container).
+ * The native class a library's view must have on Android, as its own source names it (never a pattern that more than one class could match): `host` is the full class name
+ * of the view the section's handle names, `inside` the simple class name of a view in the tree below the handle's (a library whose native view sits behind children is
+ * reached through the section's box, and its size is that of this view).
  */
-async function mounts(c: Ctx, pattern: RegExp, host: Host | undefined = c.host(), measured: Host | undefined = host): Promise<Native | null> {
+export type Pinned = { host: string } | { inside: string };
+
+/**
+ * The common part: a native view of the library's class is attached, shown and sized, and its size is the layout the engine measured. Waits for
+ * it (a view appears after the engine's frame).
+ */
+async function mounts(c: Ctx, pinned: Pinned, host: Host | undefined = c.host(), measured: Host | undefined = host): Promise<Native | null> {
   if (!host) { c.check("mounts: the section handed out its host handle", false, "no handle"); return null; }
   if (!c.canInspect) {
     const rect = await c.rect(measured);
@@ -101,11 +109,14 @@ async function mounts(c: Ctx, pattern: RegExp, host: Host | undefined = c.host()
   const info = c.inspect(host);
   c.check("mounts: a native view is attached, shown and sized", up, describe(info));
   if (!info) return null;
+  const innerEntry = "inside" in pinned ? info.views.find((entry) => entry.trim().startsWith(`${pinned.inside} `)) : undefined;
+  const name = "inside" in pinned ? pinned.inside : pinned.host;
+  const there = "inside" in pinned ? innerEntry !== undefined : info.class === pinned.host;
   // The Android class names are the libraries' own (read from their sources); the iOS ones are recorded in the detail for the first iPhone run to pin.
-  if (c.android) c.check(`mounts: it is the library's view (${pattern.source})`, pattern.test(`${info.class} ${info.views.join(" ")}`), `${info.class}; inside: ${info.views.slice(0, 4).join(" | ")}`);
+  if (c.android) c.check(`mounts: it is the library's view (${name})`, there, `${info.class}; inside: ${info.views.slice(0, 4).join(" | ")}`);
   else c.skip("mounts: it is the library's view", `iOS class names not pinned yet (this run saw ${info.class}; inside: ${info.views.slice(0, 3).join(" | ")})`);
-  // A library whose native view sits behind children is reached through a view that holds it: the size compared is the first inner view of its class.
-  const inner = host === measured ? null : info.views.map((entry) => /(\d+)x(\d+)\s*(?:clip=\w+)?\s*$/.exec(entry)).find((match, index) => match && pattern.test(info.views[index] ?? ""));
+  // The size compared is the view's own, or that of the pinned view inside the section's box.
+  const inner = innerEntry ? /(\d+)x(\d+)\s*(?:clip=\w+)?\s*$/.exec(innerEntry) : null;
   const nativeWidth = inner ? Number(inner[1]) : info.width;
   const nativeHeight = inner ? Number(inner[2]) : info.height;
   const rect = await c.rect(measured);
@@ -141,7 +152,7 @@ async function colours(c: Ctx, name: string, points: readonly (readonly [number,
 // expo-image
 
 async function image(c: Ctx): Promise<void> {
-  await mounts(c, /ExpoImageView/);
+  await mounts(c, { host: "expo.modules.image.ExpoImageViewWrapper" });
   c.check("events: onLoad arrives for the bundled image, with its url", await c.until(() => c.events("image-load") >= 1, 12000), `${c.events("image-load")} onLoad, ${c.events("image-error")} onError`);
   c.check("events: onDisplay arrives after onLoad", await c.until(() => c.events("image-display") >= 1, 4000));
   c.check("events: no onError for it", c.events("image-error") === 0);
@@ -163,7 +174,7 @@ async function image(c: Ctx): Promise<void> {
 const redYellow = (y: number): [number, number][] => [[0.2 - 0.012, y], [0.2 + 0.012, y]];
 
 async function blur(c: Ctx): Promise<void> {
-  await mounts(c, /ExpoBlurView/);
+  await mounts(c, { inside: "ExpoBlurView" });
   if (!c.canLook) { c.skip("prop update: the blur smears a stripe edge in proportion to its intensity", "no pixel reader on this platform yet"); return; }
   const gap = async (intensity: number, y: number): Promise<{ spread: number; text: string } | null> => {
     c.lab.blurIntensity = intensity;
@@ -191,7 +202,7 @@ async function blur(c: Ctx): Promise<void> {
 
 async function gradient(c: Ctx): Promise<void> {
   // The container is flattened away when it only lays its children out: the section's box holds the native gradient (a View with only layout props has no native view).
-  await mounts(c, /LinearGradientView/, c.box(), c.host());
+  await mounts(c, { inside: "LinearGradientView" }, c.box(), c.host());
   await colours(c, "the gradient runs from its first colour at the start to its last at the end", [[0.02, 0.12], [0.98, 0.88]], ["#ff7a18", "#319197"], 45);
   // expo-linear-gradient on Android cannot unset `locations` (its prop setter ignores null), so a new list keeps the length.
   c.lab.gradientColors = ["#00c853", "#ffd600", "#2962ff"];
@@ -203,7 +214,7 @@ async function gradient(c: Ctx): Promise<void> {
 // react-native-video
 
 async function video(c: Ctx): Promise<void> {
-  await mounts(c, /ReactExoplayerView/);
+  await mounts(c, { host: "com.brentvatne.exoplayer.ReactExoplayerView" });
   c.check("events: onLoadStart, onLoad (with a duration) and onReadyForDisplay arrive", (await c.until(() => c.events("video-load") >= 1 && c.events("video-ready") >= 1, 15000)) && c.events("video-load-start") >= 1, `${foreignSummary(c, ["video-load-start", "video-load", "video-ready", "video-progress", "video-error"])}`);
   c.check("events: no onError", c.events("video-error") === 0);
   c.check("events: onProgress keeps arriving while it plays", await progresses(c, 1200));
@@ -272,7 +283,7 @@ async function progresses(c: Ctx, milliseconds: number): Promise<boolean> {
 
 async function datetime(c: Ctx): Promise<void> {
   if (!c.android) {
-    await mounts(c, /RNDateTimePicker|DatePicker/);
+    await mounts(c, { host: "" });
     c.skip("events: onValueChange for a pick, onDismiss", "a pick needs a finger on the picker: the iPhone");
     return;
   }
@@ -323,7 +334,7 @@ async function pressed(c: Ctx): Promise<void> {
 const dotAt = (distance: number): [number, number] => [0.5 + distance, 0.5];
 
 async function lottie(c: Ctx): Promise<void> {
-  await mounts(c, /LottieAnimationView/);
+  await mounts(c, { host: "com.airbnb.lottie.LottieAnimationView" });
   c.check("events: onAnimationLoaded arrives", await c.until(() => c.events("lottie-loaded") >= 1, 10000), `${foreignSummary(c, ["lottie-loaded", "lottie-failure"])}`);
   c.check("events: no onAnimationFailure", c.events("lottie-failure") === 0);
   const handle = c.handles().lottie;
@@ -367,7 +378,7 @@ async function lottie(c: Ctx): Promise<void> {
 // react-native-pdf: page 1 is blue, page 2 green
 
 async function pdf(c: Ctx): Promise<void> {
-  await mounts(c, /PdfView/);
+  await mounts(c, { host: "org.wonday.pdf.PdfView" });
   c.check("events: onLoadComplete arrives with two pages", await c.until(() => c.events("pdf-load", 2) >= 1, 15000), foreignSummary(c, ["pdf-load", "pdf-page", "pdf-error"]));
   c.check("events: onPageChanged reports page 1 of 2", await c.until(() => c.events("pdf-page", "1/2") >= 1, 5000));
   c.check("events: no onError", c.events("pdf-error") === 0);
@@ -389,7 +400,7 @@ async function pdf(c: Ctx): Promise<void> {
 async function capture(c: Ctx): Promise<void> {
   const shot = c.handles().hosts.capture;
   if (!shot) { c.check("mounts: the ViewShot handed out its host handle", false, "no handle"); return; }
-  await mounts(c, /ReactViewGroup|EngineView/, shot);
+  await mounts(c, { host: "expo.modules.svelteengine.views.EngineView" }, shot);
   if (!c.canLook) { c.skip("capture: the rounded card keeps its corners, scale, jpg, base64 and data-uri results", "no pixel reader on this platform yet"); return; }
   const card = shot;
   // 1. the card (a 16 dp radius, overflow hidden, five stripes that reach the corners): transparent rounded corners, the stripes clipped to them
@@ -459,7 +470,7 @@ async function capture(c: Ctx): Promise<void> {
 // rive-react-native: the vehicles file is fetched from Rive's CDN (the lab needs the network for it)
 
 async function rive(c: Ctx): Promise<void> {
-  await mounts(c, /RiveReactNativeView/);
+  await mounts(c, { host: "com.rivereactnative.RiveReactNativeView" });
   c.check("events: onPlay arrives for the file's animation (the file needs the network)", await c.until(() => c.events("rive-play") >= 1, 20000), foreignSummary(c, ["rive-play", "rive-pause", "rive-stop", "rive-error"]));
   await c.pause(800);
   const middle = await colours(c, "capture: the animation is in the image (its middle is painted, not a hole)", [[0.5, 0.5], [0.45, 0.4], [0.55, 0.6]], ["#d62a5c", "#d62a5c", "#d62a5c"], 255, undefined);
@@ -490,7 +501,7 @@ async function rive(c: Ctx): Promise<void> {
 // expo-conic-gradient: hard stops make the right half of the turn red and the left half blue; a quarter turn... a half turn swaps them
 
 async function conic(c: Ctx): Promise<void> {
-  await mounts(c, /ConicGradientView/, c.box(), c.host());
+  await mounts(c, { inside: "ConicGradientView" }, c.box(), c.host());
   c.lab.conicHard = true;
   c.lab.conicAngle = 0;
   await c.pause(500);
@@ -504,17 +515,37 @@ async function conic(c: Ctx): Promise<void> {
 // react-native-fast-shadow: the card is centred in a 96 dp box, 38 dp high, and its shadow (12 dp blur, 5 dp down) reaches 17 dp below it
 
 async function shadow(c: Ctx): Promise<void> {
-  await mounts(c, /FastShadowView/, c.box(), c.host());
-  const below: [number, number][] = [[0.5, 0.78], [0.5, 0.74]];
-  if (!c.canLook) { c.skip("capture: the shadow is drawn outside the card (not clipped to its frame)", "no pixel reader on this platform yet"); }
+  await mounts(c, { inside: "FastShadowView" }, c.box(), c.host());
+  const wrapped = c.handles().extras.wrapped;
+  // React Native makes the second card's view a little after the first one's: wait for it.
+  c.check("the second card, in an unflattened wrapper, has its own native view", !!wrapped && await c.until(() => !!c.inspect(wrapped), 5000), wrapped ? `tag ${wrapped.tag}` : "no handle");
+  if (c.canInspect) {
+    // `overflow: hidden` clips the canvas to the padding box (not each child to its own bounds) for the box and for the wrapper inside it.
+    const box = c.inspect(c.box());
+    c.check("the rounded overflow-hidden box clips its canvas (padding box)", box?.clip === "canvas", `box clip=${box?.clip}`);
+    c.check("so does the wrapper with overflow hidden between the box and the second card", !!box?.views.some((entry) => /^\s*EngineView \d+x\d+ clip=canvas/.test(entry)), (box?.views ?? []).join(" | "));
+  }
+  if (!c.canLook) { c.skip("capture: the shadows are drawn outside their cards (not clipped to the card's frame)", "no pixel reader on this platform yet"); }
   else {
-    const withShadow = await c.look(below);
-    c.check("the shadow is drawn below the card, outside its frame", !!withShadow && withShadow.colors.some((value) => argb(value).a > 20), withShadow ? withShadow.colors.map(show).join(" ") : "no capture");
-    c.lab.shadowOpacity = 0;
-    await c.pause(500);
-    const without = await c.look(below);
-    c.check("prop update: opacity 0 takes it away", !!without && without.colors.every(clear), without ? without.colors.map(show).join(" ") : "no capture");
-    c.lab.shadowOpacity = 0.45;
+    const rect = await c.rect(c.box());
+    const edge = async (host: Host | undefined, dp: number): Promise<[number, number] | null> => {
+      const bottom = host ? await c.point(host, 0.5, 1) : null;
+      return bottom && rect ? [bottom[0], bottom[1] + dp / rect.height] : null;
+    };
+    const near = await Promise.all([edge(c.host(), 5), edge(wrapped, 5)]);
+    const far = await Promise.all([edge(c.host(), 9), edge(wrapped, 9)]);
+    const points = [...near, ...far].filter((point): point is [number, number] => point !== null);
+    if (points.length !== 4) c.check("the cards have a layout", false, JSON.stringify([near, far]));
+    else {
+      const withShadow = await c.look(points, { radius: 0 });
+      // The shadow of a card, below it by 5 dp and by 9 dp: the card directly in the box, then the card in the wrapper.
+      c.check("the shadow is drawn below each card, outside its frame, in the box and in the wrapper", !!withShadow && [0, 1, 2, 3].every((index) => argb(pixel(withShadow, index)).a > 20), withShadow ? withShadow.colors.map(show).join(" ") : "no capture");
+      c.lab.shadowOpacity = 0;
+      await c.pause(500);
+      const without = await c.look(points, { radius: 0 });
+      c.check("prop update: opacity 0 takes both away", !!without && without.colors.every(clear), without ? without.colors.map(show).join(" ") : "no capture");
+      c.lab.shadowOpacity = 0.45;
+    }
   }
   const presses = c.events("shadow-press");
   await c.tap(c.host());
@@ -525,7 +556,7 @@ async function shadow(c: Ctx): Promise<void> {
 // react-native-animateable-text: the number the shared value holds, written to the native text on the UI thread
 
 async function text(c: Ctx): Promise<void> {
-  await mounts(c, /Text/);
+  await mounts(c, { host: "com.facebook.react.views.text.ReactTextView" });
   if (!c.canInspect) { c.skip("the native text follows the shared value", "no native inspection on this platform yet"); return; }
   const read = (): number | null => numberIn(c.inspect(c.host())?.text);
   c.check("the first string is `count N`", await c.until(() => (c.inspect(c.host())?.text ?? "").startsWith("count"), 6000), c.inspect(c.host())?.text ?? "none");
@@ -559,7 +590,7 @@ async function svg(c: Ctx): Promise<void> {
   const heart = handles.heart;
   const ring = handles.ringSvg;
   if (!root || !path || !heart || !ring) { c.check("mounts: the section handed out its SVG handles", false, `root ${!!root}, path ${!!path}, heart ${!!heart}, ring ${!!ring}`); return; }
-  await mounts(c, /SvgView/, root as unknown as Host);
+  await mounts(c, { host: "com.horcrux.svg.SvgView" }, root as unknown as Host);
   // commands: the library's own TurboModule answers for the native shape
   const length = (await c.until(() => typeof path.getTotalLength() === "number", 4000)) ? path.getTotalLength() : undefined;
   c.check("commands: getTotalLength reads the path from the native view (the check mark is 22.6 units long)", typeof length === "number" && length > 20 && length < 60, `length ${String(length)}`);

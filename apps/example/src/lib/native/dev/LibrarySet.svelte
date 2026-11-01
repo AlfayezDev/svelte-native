@@ -27,6 +27,8 @@
     hosts: Partial<Record<LibraryKind, Host>>;
     /** The host handle of each section's box (the view a capture of the section draws), by kind. */
     boxes: Partial<Record<LibraryKind, Host>>;
+    /** Views of a section the checks reach besides its main one (the shadow section's card in an unflattened wrapper), by name. */
+    extras: Record<string, Host>;
     /** The text the animated text shows now, as the shared value holds it (JavaScript's own view of the number). */
     shown: () => number | null;
   };
@@ -77,6 +79,14 @@
   let picked = $state(new Date(Date.UTC(2026, 9, 28, 12, 0, 0)));
   const hosts: LibraryHandles["hosts"] = {};
   const boxes: LibraryHandles["boxes"] = {};
+  const extras: LibraryHandles["extras"] = {};
+  const keepExtra = (name: string) => {
+    let mine: Host | null = null;
+    return (handle: unknown) => {
+      if (handle) { mine = handle as Host; extras[name] = mine; }
+      else if (extras[name] === mine) delete extras[name];
+    };
+  };
   /** `ref` callback that keeps a section's host handle in `hosts` (or `boxes`) while the view is mounted. */
   const keep = (into: LibraryHandles["hosts"], kind: LibraryKind) => {
     let mine: Host | null = null;
@@ -130,7 +140,7 @@
     if (count) count.value = withRepeat(withTiming(100, { duration: 5000, reduceMotion: ReduceMotion.Never }), -1);
     if (progress) progress.value = withRepeat(withTiming(1, { duration: 1800, reduceMotion: ReduceMotion.Never }), -1, true);
   });
-  libraryHandles.set(own, { get video() { return video; }, get lottie() { return lottie; }, get pdf() { return pdf; }, get rive() { return rive; }, get viewShot() { return viewShot; }, get count() { return count; }, get svg() { return svgHandles; }, get ring() { return progress; }, hosts, boxes, shown: () => (count ? Math.round(count.value) : null), capture, pickDate });
+  libraryHandles.set(own, { get video() { return video; }, get lottie() { return lottie; }, get pdf() { return pdf; }, get rive() { return rive; }, get viewShot() { return viewShot; }, get count() { return count; }, get svg() { return svgHandles; }, get ring() { return progress; }, hosts, boxes, extras, shown: () => (count ? Math.round(count.value) : null), capture, pickDate });
   onDestroy(() => { libraryHandles.delete(own); });
 
   const stripes = ["#e5484d", "#f5d90a", "#30a46c", "#0091ff", "#8e4ec6"];
@@ -213,12 +223,19 @@
             <Text style={{ color: "#ffffff", fontSize: 16, fontWeight: "600" }}>Conic</Text>
           </ConicGradient>
         {:else if kind === "shadow"}
-          <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+          <!-- Two cards in the rounded `overflow: hidden` box: one is a direct child of it (the layout-only views between are flattened away), the other sits in an unflattened wrapper
+               (`collapsable={false}`, a `testID`, an `overflow: hidden` of its own with room for the shadow): the shadow must reach its edge in both. -->
+          <View style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-around" }}>
             <ShadowedView ref={keep(hosts, kind)} style={{ borderRadius: 14, backgroundColor: theme.background, paddingHorizontal: 18, paddingVertical: 10, ...shadowStyle({ color: "#000000", opacity: libraryLab.shadowOpacity, radius: 12, offset: [0, 5] }) }}>
               <Pressable accessibilityRole="button" accessibilityLabel="Shadowed button" onPress={() => report("shadow-press")}>
                 <Text style={{ color: theme.foreground, fontSize: 15 }}>Shadowed</Text>
               </Pressable>
             </ShadowedView>
+            <View collapsable={false} testID="shadow-wrapper" style={{ overflow: "hidden", padding: 18 }}>
+              <ShadowedView ref={keepExtra("wrapped")} style={{ borderRadius: 14, backgroundColor: theme.background, paddingHorizontal: 18, paddingVertical: 10, ...shadowStyle({ color: "#000000", opacity: libraryLab.shadowOpacity, radius: 12, offset: [0, 5] }) }}>
+                <Text style={{ color: theme.foreground, fontSize: 15 }}>Wrapped</Text>
+              </ShadowedView>
+            </View>
           </View>
         {:else if kind === "svg"}
           <View style={{ flex: 1, padding: 6, justifyContent: "space-around" }}>

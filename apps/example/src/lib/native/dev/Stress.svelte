@@ -139,6 +139,8 @@
   }
   /** `run=foreign-libraries,only:image.blur`: the libraries `foreign-libraries` checks (the thirteen when absent). */
   let foreignOnly: LibraryKind[] | undefined;
+  /** `run=foreign-leftovers,expect:6`: how many capture files the earlier launch must have left for this one to find gone (0 without the capture library). */
+  let leftoverFiles = 0;
   /** Who injects the input of the `gestures-*` scenarios: `run=...,drive:adb` (the harness, from the lines of the handshake), `drive:qa` (the app's own injector, Android's QA variant), `drive:xctest`; none: a person. */
   let gestureDrive: Drive = "none";
   /**
@@ -519,7 +521,7 @@
       return { verdict: value.passed ? "pass" : "fail", summary: value.summary, detail: value.detail };
     } },
     { name: "foreign-leftovers", label: "Capture files of the previous launch are gone (`run=foreign-leftovers`, the launch after `foreign-libraries`)", async run() {
-      const value = await runForeignLeftovers();
+      const value = await runForeignLeftovers(leftoverFiles);
       return { verdict: value.passed ? "pass" : "fail", summary: value.summary, detail: value.detail };
     } },
     { name: "smoke", label: "Native modules (smoke test) · one core call for each library the production app links, from Svelte Native without React (`run=smoke`, SPEC.md \"Native modules (smoke test)\")", async run(signal) {
@@ -658,8 +660,9 @@
     const drive = parts.find((name) => name.startsWith("drive:"))?.slice("drive:".length);
     const only = parts.find((name) => name.startsWith("only:"))?.slice("only:".length).split(".").filter((name): name is LibraryKind => (libraryKinds as readonly string[]).includes(name));
     if (only && only.length > 0) foreignOnly = only;
+    leftoverFiles = Number(parts.find((name) => name.startsWith("expect:"))?.slice("expect:".length)) || 0;
     gestureDrive = drive === "adb" || drive === "qa" || drive === "xctest" ? drive : "none";
-    const names = parts.filter((name) => !name.startsWith("drive:") && !name.startsWith("only:")).map((name) => {
+    const names = parts.filter((name) => !name.startsWith("drive:") && !name.startsWith("only:") && !name.startsWith("expect:")).map((name) => {
       const soak = /^soak-mix-(\d+)s((?:\.[a-z]+)*)$/.exec(name);
       if (!soak) return name;
       soakSeconds = Number(soak[1]);

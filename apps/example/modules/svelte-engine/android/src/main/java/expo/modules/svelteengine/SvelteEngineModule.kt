@@ -12,6 +12,7 @@ import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.fabric.FabricUIManager
 import com.facebook.react.uimanager.UIManagerHelper
 import com.facebook.react.uimanager.common.UIManagerType
+import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.svelteengine.views.EngineRoot
@@ -26,7 +27,7 @@ class SvelteEngineModule : Module() {
 
     Events("insets")
 
-    OnDestroy { setAnimatedUpdater(null); AnimatedBridge.uninstall(); onMain { insets?.uninstall(); mountingManager?.foreign?.uninstall() } }
+    OnDestroy { setAnimatedUpdater(null); AnimatedBridge.uninstall(); Capture.deleteTemporaryFiles(); onMain { insets?.uninstall(); mountingManager?.foreign?.uninstall() } }
 
     Function("install") { reanimatedReady: Boolean? ->
       if (native != null) return@Function true
@@ -163,6 +164,14 @@ class SvelteEngineModule : Module() {
 
     // Live counts for the soak runner (MountingManager.stats); null while the main thread is busy for over 500 ms or before install.
     Function("stats") { onMainBlocking { mountingManager?.stats() } }
+
+    // `react-native-view-shot` for engine views (Capture.kt): the library's own module resolves a tag through React Native's mounting
+    // manager, which has no engine view. Resolves with the image's URI or data, or null for a tag that is not an engine view of its
+    // own (the JavaScript side then asks the library's module).
+    AsyncFunction("captureView") { tag: Int, options: Map<String, Any?>, promise: Promise ->
+      val manager = mountingManager
+      if (manager == null) promise.resolve(null) else Capture.capture(manager, tag, options, promise)
+    }
 
     // Synchronous: waits (up to 500 ms) for the main thread. null when the tag is unknown or the engine is not installed.
     Function("measure") { tag: Int ->

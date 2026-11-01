@@ -40,6 +40,16 @@ export default {
       androidOnDemandViewManagers: {
         "com.rnmaps.maps.MapsPackage": ["RNMapsMapView", "RNMapsMarker", "RNMapsCallout", "RNMapsGooglePolygon", "RNMapsPolyline", "RNMapsCircle", "RNMapsOverlay", "RNMapsUrlTile", "RNMapsWMSTile"],
         "com.reactnativecommunity.webview.RNCWebViewPackage": ["RNCWebView"],
+        // react-native-video builds its `VideoManager` module with createNativeModules: the wrapper for such packages keeps it.
+        "com.brentvatne.react.ReactVideoPackage": ["RCTVideo"],
+        "com.airbnb.android.react.lottie.LottiePackage": ["LottieAnimationView"],
+        // Four more legacy packages (view managers made with `createViewManagers`; Rive's modules stay with it): the PDF view, Rive, the Android shadow and the animateable text.
+        "org.wonday.pdf.RNPDFPackage": ["RNPDFPdfView"],
+        "com.rivereactnative.RiveReactNativePackage": ["RiveReactNativeView"],
+        "com.reactnativefastshadow.FastShadowPackage": ["FastShadowView"],
+        "com.reactnativereanimatedtext.ReanimatedTextPackage": ["JBAnimatedText"],
+        // react-native-svg: a `BaseReactPackage` (its TurboModules, `RNSVGRenderableModule` and `RNSVGSvgViewModule`, stay with it) that announces all 29 view managers at start unless wrapped.
+        "com.horcrux.svg.SvgPackage": ["RNSVGSvgViewAndroid", "RNSVGGroup", "RNSVGPath", "RNSVGText", "RNSVGTSpan", "RNSVGTextPath", "RNSVGImage", "RNSVGCircle", "RNSVGEllipse", "RNSVGLine", "RNSVGRect", "RNSVGClipPath", "RNSVGDefs", "RNSVGUse", "RNSVGSymbol", "RNSVGPattern", "RNSVGMask", "RNSVGForeignObject", "RNSVGMarker", "RNSVGLinearGradient", "RNSVGRadialGradient", "RNSVGFilter", "RNSVGFeBlend", "RNSVGFeColorMatrix", "RNSVGFeComposite", "RNSVGFeFlood", "RNSVGFeGaussianBlur", "RNSVGFeMerge", "RNSVGFeOffset"],
       },
     }],
     "expo-secure-store",

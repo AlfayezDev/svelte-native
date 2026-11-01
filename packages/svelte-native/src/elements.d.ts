@@ -200,5 +200,7 @@ declare module "svelte/elements" {
     "native-toolbar-center": NativeElementAttributes<ViewProps>;
     "native-animated-view": ElementProps;
     "native-foreign": NativeForeignProps;
+    /** Draws nothing and has no native view: a place in the tree. Its `ref` gets a handle whose `position()` says where it is among its siblings (react-native-svg's `Stop` and `FeMergeNode`). */
+    "native-anchor": { ref?: HostRef };
   }
 }

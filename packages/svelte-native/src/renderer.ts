@@ -14,6 +14,13 @@ let invalidationSink: ((node: NativeNode, reason: Invalidation) => void) | null 
 /** The host (see `fabric/`) hears every change through this sink. */
 export function setInvalidationSink(sink: ((node: NativeNode, reason: Invalidation) => void) | null): void { invalidationSink = sink; }
 
+let unlinkSink: ((node: NativeNode) => void) | null = null;
+/**
+ * The host hears every node taken out of its parent. Svelte removes the top node of a destroyed block this way and moves a node by unlinking and linking it
+ * again, so a node that is unlinked is only a candidate for being gone: the host looks again when its flush has run.
+ */
+export function setUnlinkSink(sink: ((node: NativeNode) => void) | null): void { unlinkSink = sink; }
+
 /**
  * One node of the Svelte host tree. Children form a doubly linked list, so the renderer's
  * sibling queries, inserts and keyed moves are O(1). The host reads an immutable snapshot
@@ -123,6 +130,7 @@ function unlink(node: NativeNode): void {
   else parent.lastChild = previousSibling;
   node.parent = node.previousSibling = node.nextSibling = null;
   parent.childrenChanged();
+  unlinkSink?.(node);
 }
 
 function link(parent: NativeNode, node: NativeNode, anchor: NativeNode | null): void {

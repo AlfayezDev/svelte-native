@@ -456,7 +456,7 @@ export const notCovered: NotCovered[] = [
 	{
 		route: "/__dev/foreign",
 		reason:
-			"the foreign-views lab (WebView, map, video) draws third-party content that is not ours to freeze: remote pages, map tiles and video frames change between runs and need the network; the foreign-views stress scenario of the lab checks these views functionally",
+			"the foreign-views lab (WebView, map, video, and the sections for expo-image, expo-blur, expo-linear-gradient, react-native-video, datetimepicker, lottie-react-native, react-native-pdf, react-native-view-shot, rive-react-native, expo-conic-gradient, react-native-fast-shadow, react-native-animateable-text and react-native-svg) draws third-party content that is not ours to freeze: remote pages and Rive's file, map tiles, video frames, the looping animations, the counting text and the SVG section's progress ring change between runs (the ring is animated by a shared value, so no frame of the screen is stable), and the blur, date picker, PDF renderer, shadow, image decoders and the SVG rasteriser are the libraries' own rendering that a pixel reference would pin to one device and library version; the foreign-views stress scenario of the lab checks these views functionally",
 	},
 	{ route: "/(account)/account", reason: needsSession },
 	{ route: "/onboarding/profile", reason: needsSession },

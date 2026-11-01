@@ -8,6 +8,7 @@ import { compile } from "svelte/compiler";
 import ts from "typescript";
 import { reanimatedStubs } from "./reanimated-stubs.ts";
 import { reactNativeConverters } from "./rn-reference.ts";
+import { specOf } from "./foreign-harness.ts";
 
 /**
  * Foreign views on the JavaScript side (SPEC.md, "Foreign views"): the host mounts a component by its Fabric name,
@@ -288,31 +289,12 @@ test("origin whitelist and source conversion follow react-native-webview", () =>
 // The attribute tables are what each library's codegen spec declares: every prop of the spec that is not an event handler
 // is an attribute, every handler is an event of the same name, and nothing else is in the table.
 const modules = resolve(import.meta.dirname, "../../../node_modules");
-function specOf(file: string, interfaceName: string): { props: string[]; handlers: string[]; viewProps: boolean } {
-  const path = resolve(modules, file);
-  const source = ts.createSourceFile(path, ts.sys.readFile(path) ?? "", ts.ScriptTarget.Latest, true);
-  const props: string[] = [];
-  const handlers: string[] = [];
-  let viewProps = false;
-  const visit = (node: ts.Node) => {
-    if (ts.isInterfaceDeclaration(node) && node.name.text === interfaceName) {
-      viewProps = node.heritageClauses?.some((clause) => clause.types.some((type) => type.getText(source) === "ViewProps")) ?? false;
-      for (const member of node.members) {
-        if (!ts.isPropertySignature(member)) continue;
-        const name = member.name.getText(source).replace(/['"]/g, "");
-        const type = member.type?.getText(source) ?? "";
-        (/EventHandler|Event$/.test(type) || /^on[A-Z]/.test(name) ? handlers : props).push(name);
-      }
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(source);
-  return { props, handlers, viewProps };
-}
 const kinds: [string, string, string, string][] = [
   ["RNCWebView", "react-native-webview/src/RNCWebViewNativeComponent.ts", "NativeProps", "react-native-webview"],
   ["RNMapsMapView", "react-native-maps/src/specs/NativeComponentMapView.ts", "MapFabricNativeProps", "react-native-maps"],
   ["RNMapsMarker", "react-native-maps/src/specs/NativeComponentMarker.ts", "MarkerFabricNativeProps", "react-native-maps"],
+  ["RCTVideo", "react-native-video/src/specs/VideoNativeComponent.ts", "VideoNativeProps", "react-native-video"],
+  ["LottieAnimationView", "lottie-react-native/src/specs/LottieAnimationViewNativeComponent.ts", "NativeProps", "lottie-react-native"],
 ];
 for (const [name, file, interfaceName] of kinds) {
   test(`the static config of ${name} lists exactly the props and events its spec declares`, () => {
@@ -344,7 +326,10 @@ test("the on-demand view manager names are the ones the packages register", asyn
   const { default: config } = await import("../../../apps/platform/app.config.ts");
   const entry = config.plugins.find((plugin): plugin is [string, { androidOnDemandViewManagers: Record<string, string[]> }] => Array.isArray(plugin) && plugin[0] === "@rasheed/svelte-native/expo");
   const listed = entry?.[1].androidOnDemandViewManagers ?? {};
-  expect(Object.keys(listed).sort()).toEqual(["com.reactnativecommunity.webview.RNCWebViewPackage", "com.rnmaps.maps.MapsPackage"]);
+  expect(Object.keys(listed).sort()).toEqual([
+    "com.airbnb.android.react.lottie.LottiePackage", "com.brentvatne.react.ReactVideoPackage", "com.horcrux.svg.SvgPackage", "com.reactnativecommunity.webview.RNCWebViewPackage", "com.reactnativefastshadow.FastShadowPackage",
+    "com.reactnativereanimatedtext.ReanimatedTextPackage", "com.rivereactnative.RiveReactNativePackage", "com.rnmaps.maps.MapsPackage", "org.wonday.pdf.RNPDFPackage",
+  ]);
 
   const maps = resolve(modules, "react-native-maps/android/src/main/java/com/rnmaps");
   const mapsSource = ts.sys.readFile(resolve(maps, "maps/MapsPackage.java")) ?? "";
@@ -359,4 +344,40 @@ test("the on-demand view manager names are the ones the packages register", asyn
 
   const webview = ts.sys.readFile(resolve(modules, "react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt")) ?? "";
   expect(listed["com.reactnativecommunity.webview.RNCWebViewPackage"]).toEqual([/const val NAME = "(\w+)"/.exec(webview)?.[1]]);
+
+  // react-native-video and lottie-react-native: one view manager each, and the package kind decides which wrapper React Native gets.
+  const video = resolve(modules, "react-native-video/android/src/main/java/com/brentvatne");
+  expect(listed["com.brentvatne.react.ReactVideoPackage"]).toEqual([/REACT_CLASS = "(\w+)"/.exec(ts.sys.readFile(resolve(video, "exoplayer/ReactExoplayerViewManager.kt")) ?? "")?.[1]]);
+  // Plain packages (`ReactPackage`), whose modules come from `createNativeModules`: the video package's `VideoManager` is one of them.
+  const videoPackage = ts.sys.readFile(resolve(video, "react/ReactVideoPackage.kt")) ?? "";
+  expect(videoPackage).toMatch(/class ReactVideoPackage\([^)]*\) : ReactPackage\b/);
+  expect(videoPackage).toContain("VideoManagerModule(reactContext)");
+  const lottie = resolve(modules, "lottie-react-native/android/src/main/java/com/airbnb/android/react/lottie");
+  expect(listed["com.airbnb.android.react.lottie.LottiePackage"]).toEqual([/REACT_CLASS = "(\w+)"/.exec(ts.sys.readFile(resolve(lottie, "LottieAnimationViewManagerImpl.kt")) ?? "")?.[1]]);
+  expect(ts.sys.readFile(resolve(lottie, "LottiePackage.kt"))).toMatch(/class LottiePackage : ReactPackage\b/);
+  expect(ts.sys.readFile(resolve(modules, "react-native-pdf/android/src/main/java/org/wonday/pdf/RNPDFPackage.java"))).toMatch(/class RNPDFPackage implements ReactPackage\b/);
+
+  // The four packages after them: plain `ReactPackage`s too (Rive's native modules come from `createNativeModules`), one view manager each.
+  const pdf = ts.sys.readFile(resolve(modules, "react-native-pdf/android/src/main/java/org/wonday/pdf/PdfManager.java")) ?? "";
+  expect(listed["org.wonday.pdf.RNPDFPackage"]).toEqual([/REACT_CLASS = "(\w+)"/.exec(pdf)?.[1]]);
+  const rive = resolve(modules, "rive-react-native/android/src/main/java/com/rivereactnative");
+  expect(listed["com.rivereactnative.RiveReactNativePackage"]).toEqual([/override fun getName\(\) = "(\w+)"/.exec(ts.sys.readFile(resolve(rive, "RiveReactNativeViewManager.kt")) ?? "")?.[1]]);
+  const rivePackage = ts.sys.readFile(resolve(rive, "RiveReactNativePackage.kt")) ?? "";
+  expect(rivePackage).toMatch(/class RiveReactNativePackage : ReactPackage\b/);
+  expect(rivePackage).toContain("RiveReactNativeRendererModule(reactContext), RiveReactNativeModule(reactContext)");
+  const shadow = resolve(modules, "react-native-fast-shadow/android/src/main/java/com/reactnativefastshadow");
+  expect(listed["com.reactnativefastshadow.FastShadowPackage"]).toEqual([/REACT_CLASS = "(\w+)"/.exec(ts.sys.readFile(resolve(shadow, "FastShadowViewManager.java")) ?? "")?.[1]]);
+  expect(ts.sys.readFile(resolve(shadow, "FastShadowPackage.java"))).toMatch(/class FastShadowPackage implements ReactPackage\b/);
+  const text = resolve(modules, "react-native-animateable-text/android/src/main/java/com/reactnativereanimatedtext");
+  expect(listed["com.reactnativereanimatedtext.ReanimatedTextPackage"]).toEqual([/REACT_CLASS = "(\w+)"/.exec(ts.sys.readFile(resolve(text, "JBAnimatedTextViewManager.java")) ?? "")?.[1]]);
+  expect(ts.sys.readFile(resolve(text, "ReanimatedTextPackage.kt"))).toMatch(/class ReanimatedTextPackage : ReactPackage\b/);
+  // react-native-svg: a `BaseReactPackage` (the wrapper serves its two TurboModules as before) with one view manager per Fabric component; the names are the
+  // `REACT_CLASS` of each manager in `RenderableViewManager` and `SvgViewManager`.
+  const svg = resolve(modules, "react-native-svg/android/src/main/java/com/horcrux/svg");
+  const svgManagers = [...(ts.sys.readFile(resolve(svg, "RenderableViewManager.java")) ?? "").matchAll(/REACT_CLASS = "(\w+)"/g), ...(ts.sys.readFile(resolve(svg, "SvgViewManager.java")) ?? "").matchAll(/REACT_CLASS = "(\w+)"/g)].map((match) => match[1]);
+  expect(svgManagers.length).toBe(29);
+  expect([...listed["com.horcrux.svg.SvgPackage"]].sort()).toEqual([...svgManagers].sort());
+  expect(ts.sys.readFile(resolve(svg, "SvgPackage.java"))).toMatch(/class SvgPackage extends BaseReactPackage implements ViewManagerOnDemandReactPackage/);
+  // react-native-view-shot and react-native-blob-util have no view, so nothing of theirs is deferred.
+  for (const key of Object.keys(listed)) expect(key).not.toMatch(/viewshot|ReactNativeBlobUtil/);
 });

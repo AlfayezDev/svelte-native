@@ -22,8 +22,11 @@ type Edit = { start: number; end: number; text: string };
 
 const WARN_DIRECTIVES = new Set(["UseDirective", "TransitionDirective", "AnimateDirective"]);
 
+// The entry of react-native-svg exports a `Text` and an `Image` of its own (SVG elements, not the primitives): nothing imported from it is lowered.
+const NOT_PRIMITIVES = `${PACKAGE}/svg`;
+
 function fromPackage(source: unknown): boolean {
-  return typeof source === "string" && (source === PACKAGE || source.startsWith(`${PACKAGE}/`));
+  return typeof source === "string" && (source === PACKAGE || (source.startsWith(`${PACKAGE}/`) && source !== NOT_PRIMITIVES));
 }
 
 function collectImports(program: Node | null | undefined, locals: Map<string, string>) {

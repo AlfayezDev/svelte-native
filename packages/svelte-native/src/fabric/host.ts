@@ -19,7 +19,7 @@ import { mount, unmount, type Component } from "./deps-svelte.ts";
 // phone) loads on the first node that needs it; a plain first screen boots without it.
 type AnimationModule = typeof import("./animation.ts");
 let animation: AnimationModule | null = null;
-const ANIMATION_ATTRIBUTES = new Set(["animatedStyle", "entering", "exiting", "layout"]);
+const ANIMATION_ATTRIBUTES = new Set(["animatedStyle", "animatedProps", "entering", "exiting", "layout"]);
 const CSS_ANIMATION_KEY = /^(?:animation|transition)[A-Z]/;
 function styleWantsAnimation(style: unknown): boolean {
   if (Array.isArray(style)) { for (let index = 0; index < style.length; index++) if (styleWantsAnimation(style[index])) return true; return false; }
@@ -47,7 +47,8 @@ function loadAnimation(): AnimationModule {
 import { navigationProps, navigationTags } from "./navigation.ts";
 import { iosNavigationViewName } from "./navigation.ios.ts";
 import { mergeHostProps } from "../native-props.ts";
-import renderer, { NativeNode, setInvalidationSink, type Invalidation } from "../renderer.ts";
+import { foreignText, type ForeignText } from "./foreign-text.ts";
+import renderer, { NativeNode, setInvalidationSink, setUnlinkSink, type Invalidation } from "../renderer.ts";
 import { Pressability, type PressabilityConfig, type ResponderHandlers } from "./pressability.ts";
 import { createResponder } from "./responder.ts";
 
@@ -73,6 +74,12 @@ export type HostHandle = {
   measure(callback: (x: number, y: number, width: number, height: number, pageX: number, pageY: number) => void): void;
   measureInWindow(callback: (x: number, y: number, width: number, height: number) => void): void;
   dispatchCommand(name: string, args?: unknown[]): void;
+  /**
+   * Where the element is in the document: the index among the siblings at each level, from the root down. Two positions compare as the
+   * elements do in the document (the first index that differs decides), which is how a component that has no native view tells which of
+   * its kind comes first (`components/svg/registry.ts`). Read when asked, from the tree as it is then.
+   */
+  position(): number[];
   /** `scrollTo`, `scrollToEnd`, `focus`, `blur` and `setNativeProps` keep React Native's instance signatures. */
   scrollTo(options?: { x?: number; y?: number; animated?: boolean } | number, deprecatedY?: number, deprecatedAnimated?: boolean): void;
   scrollToEnd(options?: { animated?: boolean }): void;
@@ -98,6 +105,8 @@ type State = {
   eventCount: number;
   /** A foreign view or a node inside one: React Native's own mounting owns its view, so commands and props go through React Native, not the engine. */
   foreign: boolean;
+  /** The last build gave the node a lone string as its `content` (`loneText`): when that stops being true the prop has to go, though no attribute changed. */
+  lone: boolean;
 };
 type Root = { rootTag: number; node: NativeNode; instance: Record<string, unknown> };
 
@@ -226,7 +235,7 @@ function allocateTag(): number {
 function state(node: NativeNode, viewName: string): State {
   let current = stateOf(node);
   if (!current) {
-    current = { tag: allocateTag(), viewName, node: null, props: {}, handlers: {}, propsDirty: true, childrenDirty: true, content: null, ref: undefined, eventCount: 0, foreign: false };
+    current = { tag: allocateTag(), viewName, node: null, props: {}, handlers: {}, propsDirty: true, childrenDirty: true, content: null, ref: undefined, eventCount: 0, foreign: false, lone: false };
     node.hostState = current;
   }
   return current;
@@ -240,9 +249,18 @@ function nativeProps(node: NativeNode): Record<string, unknown> {
 }
 
 /** `ref` for a Fabric element: the shadow node handle is read at call time, so it is always the latest committed clone. */
-function handleFor(current: State): HostHandle {
+function handleFor(current: State, node: NativeNode | null = null): HostHandle {
   return {
     tag: current.tag,
+    position: () => {
+      const path: number[] = [];
+      for (let at = node; at?.parent; at = at.parent) {
+        let index = 0;
+        for (let before = at.previousSibling; before; before = before.previousSibling) index++;
+        path.push(index);
+      }
+      return path.reverse();
+    },
     measure: (callback) => { if (current.node) binding?.measure?.(current.node, callback); },
     measureInWindow: (callback) => { if (current.node) binding?.measureInWindow?.(current.node, callback); },
     // Engine views take their commands from the engine; a foreign view's view is React Native's, so its commands go through Fabric.
@@ -328,10 +346,56 @@ const isTextInputView = (viewName: string) => viewName === "AndroidTextInput" ||
 
 function isText(node: NativeNode): boolean { return node.name === "native-text"; }
 
+/**
+ * The text that is all of [node]'s content, when it is: what a span of a foreign text component takes as its `content` (`foreign-text.ts`). Comments
+ * and the empty strings Svelte leaves where a block starts are not content; an empty string alone is (`<TSpan>{""}</TSpan>` has an empty `content`).
+ */
+function loneText(node: NativeNode): NativeNode | null {
+  let only: NativeNode | null = null;
+  let empty: NativeNode | null = null;
+  for (let child = node.firstChild; child; child = child.nextSibling) {
+    if (child.kind === "comment") continue;
+    if (child.kind === "text" && child.textValue === "") { empty ??= child; continue; }
+    if (only) return null;
+    only = child;
+  }
+  if (only) return only.kind === "text" ? only : null;
+  return empty;
+}
+
+/** A string inside a foreign text component, built as the span the library makes of it (`foreign-text.ts`). */
+function buildSpan(child: NativeNode, rootTag: number, text: ForeignText): FabricNode {
+  if (!binding) throw new Error("nativeFabricUIManager is not installed");
+  const { viewName, props } = text.span(child.textValue);
+  registerForeign(viewName);
+  const current = state(child, viewName);
+  current.foreign = true;
+  const config = viewConfig(viewName);
+  if (!current.node) {
+    current.node = binding.createNode(current.tag, viewName, rootTag, createPayload(props, config), child);
+    stats.lastCreated++;
+  } else if (current.propsDirty) {
+    const payload = diffPayload(current.props, props, config);
+    if (payload) { current.node = binding.cloneNodeWithNewProps(current.node, payload); stats.lastCloned++; }
+  }
+  current.props = props;
+  current.propsDirty = false;
+  current.childrenDirty = false;
+  return current.node;
+}
+
 /** Builds (or rebuilds) the Fabric node for a Svelte element and returns the handle to append into its parent. */
 function build(node: NativeNode, rootTag: number, insideText: boolean, insideForeign = false): FabricNode | null {
   if (!binding) throw new Error("nativeFabricUIManager is not installed");
   if (node.kind === "comment" || node.kind === "fragment") return null;
+  // A place in the tree with no view (`Stop`, `FeMergeNode`): only its `ref` is served.
+  if (node.name === "native-anchor") {
+    const current = state(node, node.name);
+    current.propsDirty = false;
+    current.childrenDirty = false;
+    callRef(current, node, node.getProp("ref"));
+    return null;
+  }
   if (node.kind === "text") {
     const text = node.textValue;
     if (!insideText) return null; // bare text outside a Text is not renderable, as in React Native
@@ -346,21 +410,32 @@ function build(node: NativeNode, rootTag: number, insideText: boolean, insideFor
     current.propsDirty = false;
     return current.node;
   }
-  const attributes = nativeProps(node);
+  let attributes = nativeProps(node);
   const entry = viewNames[node.name];
   if (!entry) throw new Error(`Svelte Native (Fabric) has no mapping for ${node.name}`);
   const viewName = insideText && isText(node) ? "RCTVirtualText" : typeof entry === "function" ? entry(attributes) : entry;
   const foreign = insideForeign || node.name === "native-foreign";
   if (node.name === "native-foreign") registerForeign(viewName);
+  // A foreign library's text component takes the strings between its tags itself (`foreign-text.ts`): as the `content` of the span it is, or as spans of their own.
+  const text = foreignText.handler;
+  const textMode = text && node.name === "native-foreign" ? text.mode(viewName) : null;
+  // `childrenAsArray`: the library's XML renderer hands its elements an array of children even for one string, which makes a span of it rather than its `content`.
+  const lone = textMode === "span" && attributes.childrenAsArray !== true ? loneText(node) : null;
+  if (lone) attributes = { ...attributes, content: lone.textValue };
   const current = state(node, viewName);
   current.foreign = foreign;
   const config = viewConfig(viewName);
-  // `animatedStyle` and the CSS keys never reach the payload; once loaded, the animation layer sees every node so it can detach.
+  // `animatedStyle`, `animatedProps` and the CSS keys never reach the payload; once loaded, the animation layer sees every node so it can detach.
   const animated = animation || wantsAnimation(attributes) ? loadAnimation().animationProps(node, current, attributes) : attributes;
   const rnProps = splitProps(node.name === "native-image" ? imageProps(animated) : navigationTags.has(node.name) ? navigationProps(node.name, animated) : animated, current, navigationTags.has(node.name));
   const scroll = viewName === "RCTScrollView";
   const childrenHost = (parent: FabricNode) => {
     for (let child = node.firstChild; child; child = child.nextSibling) {
+      if (textMode && child.kind === "text" && text) {
+        if (child === lone || child.textValue === "") continue; // the text of `lone` is the `content` above
+        binding.appendChild(parent, buildSpan(child, rootTag, text));
+        continue;
+      }
       const handle = build(child, rootTag, insideText || isText(node), foreign);
       if (!handle) continue;
       const t0 = profile ? now() : 0;
@@ -385,7 +460,9 @@ function build(node: NativeNode, rootTag: number, insideText: boolean, insideFor
       current.content = content.node;
     } else childrenHost(current.node);
   } else {
-    const payload = current.propsDirty ? diffPayload(current.props, rnProps, config) : null;
+    // The text of a span is one of its props: a change of it alone (the node's children changed, its attributes did not) still has to reach the payload,
+    // and so does the lone string turning into mixed content, which takes `content` away.
+    const payload = current.propsDirty || lone || current.lone ? diffPayload(current.props, rnProps, config) : null;
     if (scroll && current.content && (current.childrenDirty || current.propsDirty)) {
       // The content container follows the scroll view's own attributes (`contentContainerStyle`, `horizontal`), which
       // `splitProps` keeps out of the scroll view's payload: a change of them alone (a direction switch, a padding) is a
@@ -418,13 +495,55 @@ function build(node: NativeNode, rootTag: number, insideText: boolean, insideFor
     }
   }
   current.props = rnProps;
+  current.lone = lone !== null;
   current.propsDirty = false;
   current.childrenDirty = false;
-  if (attributes.ref !== current.ref) {
-    current.ref = attributes.ref;
-    if (typeof attributes.ref === "function") (attributes.ref as (handle: HostHandle) => void)(handleFor(current));
-  }
+  callRef(current, node, attributes.ref);
   return current.node;
+}
+
+/**
+ * React's contract for a callback `ref`: it gets the handle when the element is built; when the attribute changes the old callback hears `null`
+ * before the new one gets the handle (and one that is taken away hears `null`); `releaseRefs` gives it `null` when the element is destroyed.
+ */
+function callRef(current: State, node: NativeNode, ref: unknown): void {
+  const previous = current.ref;
+  if (ref === previous) return;
+  current.ref = ref;
+  if (typeof previous === "function") { refCount--; (previous as (handle: null) => void)(null); }
+  if (typeof ref === "function") { refCount++; (ref as (handle: HostHandle) => void)(handleFor(current, node)); }
+}
+
+/** Nodes with a function `ref` that are alive: while there are none, a removal costs the host nothing. */
+let refCount = 0;
+/** Nodes taken out of their parent since the last flush ended (`setUnlinkSink`): destroyed unless they were moved. */
+const unlinked = new Set<NativeNode>();
+function onUnlink(node: NativeNode): void { if (refCount > 0) unlinked.add(node); }
+
+/** `ref(null)` for the node and everything below it, parents first (as React detaches): the subtree is gone. */
+function releaseRefs(node: NativeNode): void {
+  const own = stateOf(node);
+  if (own && typeof own.ref === "function") {
+    const ref = own.ref as (handle: null) => void;
+    own.ref = undefined;
+    refCount--;
+    ref(null);
+  }
+  for (let child = node.firstChild; child; child = child.nextSibling) releaseRefs(child);
+}
+
+/** After a flush: the nodes that were unlinked and are not under a live root any more were destroyed (the others were moved). */
+function sweepRefs(): void {
+  if (unlinked.size === 0) return;
+  const candidates = [...unlinked];
+  unlinked.clear();
+  const live = new Set<NativeNode>();
+  for (const root of roots.values()) live.add(root.node);
+  for (const node of candidates) {
+    let top = node;
+    while (top.parent) top = top.parent;
+    if (!live.has(top)) releaseRefs(node);
+  }
 }
 
 /** The scroll content container keeps `collapsable: false`, as React Native's ScrollView does, so Fabric never flattens it into the ScrollView. */
@@ -485,6 +604,7 @@ export function flush(): void {
   }
   animation?.commitAnimations();
   if (childrenInvalidated) { childrenInvalidated = false; detachRemovedAnimations(); }
+  sweepRefs();
   stats.flushes++;
   stats.lastFlushMs = performance.now() - started;
   if (profile) {
@@ -509,7 +629,7 @@ function pressabilityFor(node: NativeNode): ResponderHandlers | undefined {
     if (press) { press.reset(); pressabilities.delete(node); }
     return undefined;
   }
-  if (!press) { press = new Pressability({}, (callback) => handleFor(own).measure(callback)); pressabilities.set(node, press); }
+  if (!press) { press = new Pressability({}, (callback) => handleFor(own, node).measure(callback)); pressabilities.set(node, press); }
   const { handlers, props } = own;
   press.configure({
     ...(props as PressabilityConfig),
@@ -557,6 +677,7 @@ export function startSurface<Props extends Record<string, unknown>>(rootTag: num
   if (!binding) throw new Error("nativeFabricUIManager is not installed; the Fabric host needs the new architecture");
   if (!handlerRegistered) { binding.registerEventHandler(dispatchEvent); handlerRegistered = true; }
   setInvalidationSink(onInvalidate);
+  setUnlinkSink(onUnlink);
   if (!engineTried) {
     engineTried = true;
     const engine = requireOptionalNativeModule<{ install: (reanimatedReady: boolean) => boolean; dispatchCommand?: (tag: number, name: string, args: unknown[]) => void }>("SvelteEngine");
@@ -588,6 +709,8 @@ export function stopSurface(rootTag: number): void {
   void unmount(root.instance);
   roots.delete(rootTag);
   detachRemovedAnimations();
+  sweepRefs();
+  releaseRefs(root.node);
   binding.completeRoot(rootTag, binding.createChildSet(rootTag));
 }
 mark("host");

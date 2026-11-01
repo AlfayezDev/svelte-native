@@ -64,6 +64,8 @@ export const findNodeHandle = (): null => null;
 
 // Names the shimmed packages import at load time but never render through: cheap stubs and the small real modules.
 export const processColor = lazyFunction<(color: unknown) => unknown>(() => require("react-native/Libraries/StyleSheet/processColor").default);
+/** react-native-svg's `extractResponder` lists `PanResponder`'s handler names when it loads; the module is plain JavaScript (no React). */
+export const PanResponder = lazyObject<{ create(config: object): { panHandlers: Record<string, unknown> } }>(() => require("react-native/Libraries/Interaction/PanResponder").default);
 /** Reanimated reads `Animated.View` and friends at import time to wrap them; nothing renders through them on the Svelte host. */
 export const Animated = {
   View, Text, Image, ScrollView, FlatList, SectionList,

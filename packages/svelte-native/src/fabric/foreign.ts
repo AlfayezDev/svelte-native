@@ -4,7 +4,7 @@
  * Expo modules' views. No React: the components that use these (`WebView.svelte`, `VideoView.svelte`) mount the Fabric
  * component by name, and the native side is the library's own.
  */
-import { defineViewKind } from "./view-configs.ts";
+import { defineViewKind, type Kind } from "./view-configs.ts";
 
 type Globals = {
   RN$registerCallableModule?: (name: string, factory: () => object) => void;
@@ -60,6 +60,12 @@ export function listenToWebView(name: string, sink: WebViewSink): () => void {
   return () => { if (sinks.get(name) === sink) sinks.delete(name); };
 }
 
+/** A TurboModule by name (`TurboModuleRegistry.getEnforcing`), from React Native's own module, not the package's index. */
+export function turboModule<Module>(name: string): Module {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return (require("react-native/Libraries/TurboModule/TurboModuleRegistry") as { getEnforcing<T>(name: string): T }).getEnforcing<Module>(name);
+}
+
 type WebViewModule = { shouldStartLoadWithLockIdentifier(shouldStart: boolean, lockIdentifier: number): void };
 let webViewModule: WebViewModule | undefined;
 
@@ -72,18 +78,23 @@ export function answerRequest(shouldStart: boolean, lockIdentifier: number): voi
 
 const defined = new Set<string>();
 
+/** What a caller knows about an Expo view's props that the module's own config does not say: which are colours, lists of colours or images. */
+export type ExpoViewKind = Pick<Kind, "colors" | "colorLists" | "assetSources">;
+
 /**
  * The Fabric component name of an Expo module's view, with its view config defined from what the native module reports
  * (`expo.getViewConfig`: the props and the events the view declares). `NativeViewManagerAdapter` registers the same
- * configuration with React Native's registry for the React components; the host reads its own tables.
+ * configuration with React Native's registry for the React components; the host reads its own tables. A module's only
+ * view has no view name (`ViewManagerAdapter_ExpoImage`); the props that take colours or images are named in [kind], which
+ * the module's config does not distinguish from plain props (the React wrappers convert them before they reach the view).
  */
-export function expoViewName(moduleName: string, viewName: string): string {
+export function expoViewName(moduleName: string, viewName?: string, kind: ExpoViewKind = {}): string {
   const expo = (globalThis as Globals).expo;
-  const name = `ViewManagerAdapter_${moduleName}_${viewName}${expo?.__expo_app_identifier__ ? `_${expo.__expo_app_identifier__}` : ""}`;
+  const name = `ViewManagerAdapter_${moduleName}${viewName ? `_${viewName}` : ""}${expo?.__expo_app_identifier__ ? `_${expo.__expo_app_identifier__}` : ""}`;
   if (defined.has(name)) return name;
   const config = expo?.getViewConfig?.(moduleName, viewName);
-  if (!config) throw new Error(`Expo module ${moduleName} has no view ${viewName}`);
-  defineViewKind(name, { plain: Object.keys(config.validAttributes).join(" "), events: Object.keys(config.directEventTypes ?? {}).join(" ") });
+  if (!config) throw new Error(viewName ? `Expo module ${moduleName} has no view ${viewName}` : `Expo module ${moduleName} has no view`);
+  defineViewKind(name, { ...kind, plain: Object.keys(config.validAttributes).join(" "), events: Object.keys(config.directEventTypes ?? {}).join(" ") });
   defined.add(name);
   return name;
 }
@@ -96,6 +107,15 @@ export function sharedObjectId(value: unknown): number | null {
     if (typeof id === "number") return id;
   }
   return null;
+}
+
+/** `StyleSheet.flatten`: a style given as nested arrays with falsy entries, as one object (a later entry wins). */
+export function flattenStyle(style: unknown): Record<string, unknown> {
+  if (!style) return {};
+  if (!Array.isArray(style)) return typeof style === "object" ? { ...(style as Record<string, unknown>) } : {};
+  const flat: Record<string, unknown> = {};
+  for (const item of style) Object.assign(flat, flattenStyle(item));
+  return flat;
 }
 
 /** The part of the host's element handle (`HostHandle` in `host.ts`) the command wrappers below need. */

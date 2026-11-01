@@ -33,6 +33,9 @@ class ExpoViews(private val appContext: AppContext) {
     // Module names may contain underscores themselves: the longest name that prefixes the component's is the owner.
     val owner = registry.moduleNames().filter { componentName == "$PREFIX$it" || componentName.startsWith("$PREFIX${it}_") }.maxByOrNull { it.length }
       ?: throw IllegalArgumentException("No Expo module owns the component $componentName")
+    // Every other module (expo-image, expo-blur, expo-linear-gradient) is built when the host starts, and Expo's own
+    // `ModuleRegistryAdapter.createViewManagers` has registered its components and view managers then.
+    if (owner !in ON_DEMAND_MODULES) return
     val holder = checkNotNull(registry.getModuleHolder(owner)) { "Expo module $owner could not be built" }
     val created = holder.definition.viewManagerDefinitions.map { (view, definition) ->
       ViewManagerWrapperDelegate(holder, definition, if (view == DEFAULT_MODULE_VIEW) holder.name else null)
@@ -51,6 +54,9 @@ class ExpoViews(private val appContext: AppContext) {
 
   companion object {
     private const val PREFIX = "ViewManagerAdapter_"
+
+    /** The modules with views that the expo-modules-core patch registers lazily (`LAZY_MODULE_NAMES`), so Expo exports no view of theirs at start. */
+    private val ON_DEMAND_MODULES = setOf("ExpoVideo")
 
     /** The instance of the running engine; React Native creates [ExpoViewsPackage] before the engine module exists. */
     @Volatile

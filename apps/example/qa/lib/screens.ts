@@ -21,13 +21,15 @@ export type Selector = { label?: Localized; className?: string; account?: "email
 
 /**
  * `open` is a link opened into the running app (`am start` of a deep link without stopping it): the router treats it as a
- * plain goto, so it pushes the screen onto the stack the launch link made. `tap` pushes from a screen's own button.
+ * plain goto, so it pushes the screen onto the stack the launch link made. `tap` pushes from a screen's own button. `scrollToEnd` swipes the
+ * page up twice, for a control the largest text pushes below the first screen (the tree lists only what is on screen).
  */
 export type Step =
 	| { wait: Selector; timeoutMs?: number }
 	| { tap: Selector }
 	| { open: string }
-	| { pause: number };
+	| { pause: number }
+	| { scrollToEnd: true };
 
 /** How the screen's chrome is built, which decides the reading order the accessibility suite expects. */
 export type Layout = "page" | "header" | "sheet" | "tabs" | "modal";
@@ -597,15 +599,21 @@ const toAccount: Step[] = [slowWait(words.chooseWorkspace), { tap: { label: word
 const addressMask: Selector = { account: "email" };
 /** The photo of the profile, from the network. */
 const photoMask: Selector = { label: words.photo };
-/** One card per device the account is signed in on (AccountSettings.svelte, `testID="device-card"`): their number and their user agents are the account's, not the screen's. */
-const deviceMask: Selector = { resourceId: "device-card" };
+/**
+ * The user agent line of each device the account is signed in on (AccountSettings.svelte, `testID="device-agent"`): the account's own text. The cards
+ * themselves are not masked (together they cover half the screen, over the 25 % the maskedPct gate allows), so the screen is only as stable as the
+ * number of devices the account has: a device that signs in or out between two runs moves everything under it.
+ */
+const deviceMask: Selector = { resourceId: "device-agent" };
 
 /** What one section of the account settings shows, whether it is a page of the workspace settings or a section of the account modal. */
 const sectionAnchors = {
-	profile: { label: words.changeEmail },
+	// The first thing under the photo; at the largest text the change-email button is far below the fold, where the tree does not list it.
+	profile: { label: words.firstName },
 	preferences: { label: words.language },
 	devices: { label: words.devicesHint },
-	workspaces: { label: words.createWorkspace },
+	// One card per workspace (AccountSettings.svelte, `testID="workspace-card"`), the first thing the section shows; its create button is below all of them.
+	workspaces: { resourceId: "workspace-card" },
 	danger: { label: words.deleteHint },
 } as const satisfies Record<string, Selector>;
 type SectionId = keyof typeof sectionAnchors;
@@ -620,12 +628,6 @@ const sectionMasks: Record<SectionId, Pick<ScreenCase, "masks" | "masksWhenShown
 	danger: { masks: [], masksWhenShown: [] },
 };
 
-/** The header of the base page of a tab pane reads "<tab>, <page>" (`EngineHeader`: title and subtitle joined with ", "); a page pushed in the pane reads its own title. */
-const paneTitle = (tab: Localized, page: Localized): Localized => {
-	const both = (language: "en" | "ar") => `${localize(tab, language === "ar" ? "rtl" : "ltr")}, ${localize(page, language === "ar" ? "rtl" : "ltr")}`;
-	return { en: both("en"), ar: both("ar") };
-};
-
 /**
  * The controls of each section: buttons and fields only (a text is not a control, and a declared control that is only a text would count as
  * one that does nothing). They go in `scrolled`, which is checked where the tree has them and never reported missing: the page of every
@@ -635,7 +637,7 @@ const sectionControls: Record<SectionId, Localized[]> = {
 	profile: [words.firstName, words.lastName, words.save, words.changeEmail, words.signOut],
 	preferences: [copy("common.english"), copy("common.arabic"), copy("workspaceSettings.personalPage.themeSystem"), copy("workspaceSettings.personalPage.themeLight"), copy("workspaceSettings.personalPage.themeDark"), words.signOut],
 	devices: [words.signOutOthers, words.signOut],
-	workspaces: [words.createWorkspace, words.signOut],
+	workspaces: [words.deleteWorkspace, words.createWorkspace, words.signOut],
 	danger: [words.signOut],
 };
 
@@ -661,7 +663,7 @@ const signedInCases: ScreenCase[] = [
 	appCase("app-workspace-settings", "/(workspace)/[slug]/settings", { label: words.danger }, {
 		steps: toSettings,
 		layout: "tabs",
-		title: paneTitle(words.settings, words.manageWorkspace),
+		title: words.manageWorkspace,
 		controls: [words.home, words.settings],
 		scrolled: sectionIds.map(sectionTitle),
 	}),
@@ -672,6 +674,7 @@ const signedInCases: ScreenCase[] = [
 			title: sectionTitle(section),
 			controls: ["Navigate up", words.home, words.settings],
 			scrolled: sectionControls[section],
+			largestText: section !== "devices",
 			...sectionMasks[section],
 		}),
 	),
@@ -683,12 +686,13 @@ const signedInCases: ScreenCase[] = [
 			controls: [words.close],
 			scrolled: [...sectionIds.map(sectionTitle), ...sectionControls[section]],
 			hidden: [words.createNew],
+			largestText: section !== "devices",
 			...sectionMasks[section],
 		}),
 	),
 	// A window of its own (React Native's Modal): the tree of the dialog holds nothing of the screen under it.
 	appCase("app-account-change-email", "/(account)/account (profile, change email)", { label: words.newEmail }, {
-		steps: [...toAccount, { tap: { label: words.changeEmail } }, { wait: { label: words.newEmail } }, { pause: 600 }],
+		steps: [...toAccount, { scrollToEnd: true }, { tap: { label: words.changeEmail } }, { wait: { label: words.newEmail } }, { pause: 600 }],
 		layout: "modal",
 		title: words.changeEmail,
 		controls: [words.close, words.newEmail],
@@ -765,9 +769,14 @@ const pageDoesNotScroll =
 	"at 200 % text the button that sets this state (Start async, Trip error boundary) is below the first screen of the page, and the page cannot be scrolled: the ScrollView of Page.svelte reports scrollable=false with 2272 px of height and a 900 px swipe moves nothing (the same on /__dev/screen with its 60 rows), so neither a user nor the harness can reach the control";
 
 /** Screen states left out of the largest-text variants, with why: they count as not covered, not as missing. */
+const devicesWrap =
+	"at 200 % text every device's user agent line wraps to six or more lines, and the masks that hide them (the lines are the account's own text) cover over 30 % of the screen with the bars, more than the 25 % the parity.maskedPct gate allows; the page scrolls, the devices below the first screen are not in the tree, and the section is the same list of cards and buttons at the other text size";
+
 export const notCoveredStates: NotCovered[] = [
 	{ route: "/__dev (async, pending) at the largest text size", reason: pageDoesNotScroll },
 	{ route: "/__dev (async, error boundary) at the largest text size", reason: pageDoesNotScroll },
+	{ route: "/(workspace)/[slug]/settings/devices at the largest text size", reason: devicesWrap },
+	{ route: "/(account)/account (devices, modal) at the largest text size", reason: devicesWrap },
 ];
 
 export type Variant = {

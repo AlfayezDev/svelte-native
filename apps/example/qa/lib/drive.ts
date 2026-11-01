@@ -210,6 +210,12 @@ async function runStep(session: DeviceSession, step: Step, direction: Direction)
 			["shell", amStartCommand(packageName, step.open)],
 			{ timeoutMs: 90_000 },
 		);
+	} else if ("scrollToEnd" in step) {
+		// Two swipes of most of the screen's height, 400 ms each: the page ends under the second whatever its length.
+		for (let swipe = 0; swipe < 2; swipe++) {
+			await session.run(serial, ["shell", "input", "swipe", "540", "2000", "540", "500", "400"]);
+			await sleep(500);
+		}
 	} else if ("wait" in step) {
 		await waitForNode(serial, step.wait, direction, step.timeoutMs);
 	} else {
@@ -219,13 +225,23 @@ async function runStep(session: DeviceSession, step: Step, direction: Direction)
 	}
 }
 
+/**
+ * Whether the node is on screen and not under a sheet or modal: `visible` is the tree a service walks (it leaves the covered screen out), absent for a
+ * screen with nothing over it. The plain tree lists the covered screen's views, whose rectangles would mask the modal's own content.
+ */
+function onScreen(node: UiNode, visible: UiTree | undefined): boolean {
+	if (visible === undefined) return true;
+	const { x, y, width, height } = node.bounds;
+	return visible.nodes.some((other) => other.text === node.text && other.contentDesc === node.contentDesc && other.bounds.x === x && other.bounds.y === y && other.bounds.width === width && other.bounds.height === height);
+}
+
 /** The rectangles of the nodes a case masks (spinners), from the tree on screen. */
-export function maskRects(tree: UiTree, screen: ScreenCase, direction: Direction): Rect[] {
+export function maskRects(tree: UiTree, screen: ScreenCase, direction: Direction, visible?: UiTree): Rect[] {
 	const rects: Rect[] = [];
 	for (const selector of screen.masks) {
 		const wanted = selectorFor(selector, direction);
 		const found = tree.nodes.filter(
-			(node) => node.bounds.width > 0 && node.bounds.height > 0 && matches(node, wanted),
+			(node) => node.bounds.width > 0 && node.bounds.height > 0 && matches(node, wanted) && (selector.account === undefined || onScreen(node, visible)),
 		);
 		// A mask that matches nothing would freeze a reference with the moving node unmasked: refuse instead.
 		if (found.length === 0)

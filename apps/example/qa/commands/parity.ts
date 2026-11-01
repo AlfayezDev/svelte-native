@@ -202,9 +202,12 @@ async function captureCase(
 	let nodeMasks: Rect[] = [];
 	if (screen.masks.length > 0 || screen.masksWhenShown.length > 0 || screen.signedIn) {
 		const opened = await waitForNode(context.serial, screen.anchor, variant.direction, screen.needsBackend ? 30_000 : 15_000);
-		nodeMasks = maskRects(opened.tree, screen, variant.direction);
+		// Under a sheet or modal the screen underneath is still in the view hierarchy the plain dump lists, covered: what is looked at for the
+		// account's address, in the masks and in the check below, is the tree a service walks, which leaves it out.
+		const walked = screen.hidden.length > 0 ? await dumpUi(context.serial, { important: true }) : undefined;
+		nodeMasks = maskRects(opened.tree, screen, variant.direction, walked);
 		// A reference keeps every pixel outside the masks: a signed-in screen that shows the account's address in the open is not frozen.
-		const exposed = exposedAccount(opened.tree, nodeMasks);
+		const exposed = exposedAccount(walked ?? opened.tree, nodeMasks);
 		if (exposed.length > 0)
 			return caseRecord(screen, variant, {
 				verdict: "error",

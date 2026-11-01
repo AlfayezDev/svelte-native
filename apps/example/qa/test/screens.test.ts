@@ -50,16 +50,16 @@ describe("the screen matrix", () => {
 			).toBe(true);
 	});
 
-	test("the matrix leaves out the two states that cannot be reached at the largest text, and says so", () => {
+	test("the matrix leaves out the states that cannot be reached or masked at the largest text, and says so", () => {
 		const all = matrix(cases, variants);
-		expect(all.length).toBe(cases.length * variants.length - 2 * 4);
 		const left = cases.filter((screen) => !screen.largestText).map((screen) => screen.id);
-		expect(left).toEqual(["dev-async-loading", "dev-async-error"]);
+		expect(left).toEqual(["dev-async-loading", "dev-async-error", "app-settings-devices", "app-account-devices"]);
+		expect(all.length).toBe(cases.length * variants.length - left.length * 4);
 		expect(
 			all.some((entry) => left.includes(entry.screen.id) && entry.variant.fontScale === 2),
 		).toBe(false);
-		expect(all.filter((entry) => left.includes(entry.screen.id)).length).toBe(8);
-		expect(notCoveredStates.length).toBe(2);
+		expect(all.filter((entry) => left.includes(entry.screen.id)).length).toBe(left.length * 4);
+		expect(notCoveredStates.length).toBe(left.length);
 		for (const entry of notCoveredStates) expect(entry.reason.includes("scroll")).toBe(true);
 		expect(matrix(cases, [variants[0] as (typeof variants)[number]]).length).toBe(cases.length);
 	});

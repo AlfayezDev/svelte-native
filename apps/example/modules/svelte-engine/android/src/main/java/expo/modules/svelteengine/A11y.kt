@@ -5,7 +5,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.Message
-import android.view.Choreographer
+import android.os.SystemClock
 import android.view.View
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityManager
@@ -198,11 +198,15 @@ object A11y {
   private fun accessibilityManager(context: Context): AccessibilityManager? =
     context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager
 
+  private const val FRAME_MS = 16L
   private val listeningInFrame = FrameFlag()
 
-  /** Whether a service is listening, so a text that changes is worth asking the live regions above it about. Asked of the platform once per frame (main thread). */
+  /**
+   * Whether a service is listening, so a text that changes is worth asking the live regions above it about. Asked of the platform once per frame: the frame
+   * is a 16 ms window of the uptime clock (`Choreographer`'s frame time is not public API), long enough for every rebuild of one layout pass to share the answer.
+   */
   fun listening(context: Context): Boolean {
-    val frame = Choreographer.getInstance().frameTimeNanos
+    val frame = SystemClock.uptimeMillis() / FRAME_MS
     return listeningInFrame.cached(frame) ?: listeningInFrame.store(frame, accessibilityManager(context)?.isEnabled == true)
   }
 

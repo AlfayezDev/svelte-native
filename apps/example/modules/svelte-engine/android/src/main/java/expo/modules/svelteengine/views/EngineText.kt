@@ -8,6 +8,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import expo.modules.svelteengine.A11y
 import expo.modules.svelteengine.TextLayouts
 import expo.modules.svelteengine.TextSpec
+import expo.modules.svelteengine.TextTold
 
 /** Draws an android.text.Layout at the padding offset. Never a TextView. */
 class EngineText(context: Context) : View(context), EngineNode {

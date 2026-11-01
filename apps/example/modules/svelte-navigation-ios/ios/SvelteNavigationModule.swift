@@ -7,26 +7,31 @@ import UIKit
 /// signal from the system. It stores and reports; what to do with it is decided in JavaScript (`packages/svelte-native/src/navigation-restore.ts`,
 /// host-tested), so that none of the policy is in code that cannot run on the machines the tests run on.
 ///
-/// - `save(json)`: JavaScript hands over the latest state after every change (kept in memory). When the app enters the background it is written
-///   to `Library/Application Support/svelte-navigation/state.json` with the time (`{ savedAt, json, attempts }`), not above 100,000 bytes (Android's
-///   bound), and the file is removed when the app comes back to the foreground: a process that dies in the foreground (a crash) restores nothing,
-///   as on Android.
-/// - `restore()`: at the next start of the process, once: `{ json, savedAt, attempts, systemKept }` or null. `attempts` counts the times the file was
-///   handed over (this one included) without a start that finished; `systemKept` is the one thing only this side knows: whether UIKit offered its
-///   own restoration state at this launch (`application(_:shouldRestoreSecureApplicationState:)`, wired to `SvelteNavigationRestoration` by the config
-///   plugin's AppDelegate patch). The system keeps that state for a process it ended and deletes it when the user swipes the app away.
-/// - `restored(outcome, reason)`: JavaScript used the state or refused it: the file is removed and `last.json` records what happened (`outcome`
-///   `restored` or `dropped`, and why), for the QA harness to read after a run.
+/// - `save(json, update)`: JavaScript hands over the latest state after every change (kept in memory), with the id of the OTA update its process runs
+///   (null: the embedded bundle). When the app enters the background it is written to `Library/Application Support/svelte-navigation/state.json` with
+///   the time and the build that saved it (`{ savedAt, json, attempts, build, update }`; `build` is `CFBundleVersion`), not above 100,000 bytes
+///   (Android's bound), and the file is removed when the app comes back to the foreground: a process that dies in the foreground (a crash) restores
+///   nothing, as on Android.
+/// - `restore()`: at the next start of the process, once: `{ json, savedAt, attempts, systemKept, build, runningBuild, update }` or null. `attempts` counts
+///   the times the file was handed over (this one included) without a start that finished; `systemKept` is the one thing only this side knows: whether
+///   UIKit offered its own restoration state at this launch (`application(_:shouldRestoreSecureApplicationState:)`, wired to `SvelteNavigationRestoration`
+///   by the config plugin's AppDelegate patch). The system keeps that state for a process it ended and deletes it when the user swipes the app away.
+///   `build` and `update` are what the file says saved it and `runningBuild` the `CFBundleVersion` of this process; JavaScript compares them
+///   (`freshNavigation`, the reason `updated`) and compares `update` with the one its own process runs. A launch in the background (a silent push, a
+///   background fetch) is not the user coming back: it hands nothing over and consumes nothing, so the first launch in the foreground still finds the state.
+/// - `restored(outcome, reason)`: JavaScript used the state or refused it (the router adopted it, or rejected it): the file is removed and `last.json`
+///   records what happened (`outcome` `restored` or `dropped`, and why), for the QA harness to read after a run. A start with no file writes `last.json` in
+///   the QA app only (`none`), so the product writes nothing on a cold start.
 public final class SvelteNavigationModule: Module {
   public func definition() -> ModuleDefinition {
     Name("SvelteNavigation")
 
-    // The latest state the root router wrote (JSON text). Called after every navigation change, on the JavaScript thread.
-    Function("save") { (json: String) in
-      NavigationStore.shared.update(json)
+    // The latest state the root router wrote (JSON text) and the id of the OTA update its process runs (null: the embedded bundle). Called after every navigation change, on the JavaScript thread.
+    Function("save") { (json: String, update: String?) in
+      NavigationStore.shared.update(json, update: update)
     }
 
-    // What the process before this one left, once: `{ json, savedAt (ms since the epoch), attempts, systemKept }`, or null.
+    // What the process before this one left, once: `{ json, savedAt (ms since the epoch), attempts, systemKept, build, runningBuild, update }`, or null (also in a launch in the background).
     Function("restore") { () -> [String: Any]? in
       NavigationStore.shared.takeRestored()
     }
@@ -80,6 +85,7 @@ final class NavigationStore: @unchecked Sendable {
   private let lock = NSLock()
   private let directory: URL
   private var latest: String?
+  private var latestUpdate: String?
   private var systemKept = false
   private var handedOver = false
   private var handOver: HandOver?
@@ -112,9 +118,10 @@ final class NavigationStore: @unchecked Sendable {
     observers.append(center.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: nil) { [weak self] _ in self?.clear() })
   }
 
-  func update(_ json: String) {
+  func update(_ json: String, update: String?) {
     lock.lock()
     latest = json
+    latestUpdate = update
     lock.unlock()
   }
 
@@ -132,24 +139,44 @@ final class NavigationStore: @unchecked Sendable {
       removeState()
       return
     }
-    write(["savedAt": Self.nowMilliseconds(), "json": json, "attempts": 0], to: stateURL)
+    // `build` and `update` say which code wrote the state: JavaScript refuses it in a build or an OTA update that is not this one (`freshNavigation`).
+    var update: Any = NSNull()
+    if let id = latestUpdate { update = id }
+    write(["savedAt": Self.nowMilliseconds(), "json": json, "attempts": 0, "build": Self.build, "update": update], to: stateURL)
   }
 
   /// `restore()`: the state of the process before this one, once, with what JavaScript needs to judge it.
   func takeRestored() -> [String: Any]? {
+    // Read before the lock: the main thread takes it too (the lifecycle observers), and this waits for the main thread.
+    let background = Self.launchedInBackground()
     lock.lock()
     defer { lock.unlock() }
     guard !handedOver else { return nil }
+    // A process the system started in the background (a silent push, a background fetch) is not the user coming back. Nothing is handed over, counted or
+    // forgotten, so the first launch in the foreground finds the state as the system left it.
+    if background { return nil }
     handedOver = true
+    let existed = FileManager.default.fileExists(atPath: stateURL.path)
     guard let stored = read(), let json = stored["json"] as? String, let savedAt = stored["savedAt"] as? Double else {
-      record(outcome: "none", reason: "no state was kept", attempts: 0)
+      // Nothing kept is the ordinary cold start: it is written down in the QA app, for the harness, and in the product only when there was a file that could not be used.
+      if existed {
+        removeState()
+        record(outcome: "none", reason: "the kept state could not be read", attempts: 0)
+      } else if Self.isQaBundle {
+        record(outcome: "none", reason: "no state was kept", attempts: 0)
+      }
       return nil
     }
     let attempts = (stored["attempts"] as? Int ?? 0) + 1
-    // Counted before JavaScript sees it: a start that dies on the way is the next start's second attempt.
-    write(["savedAt": savedAt, "json": json, "attempts": attempts], to: stateURL)
+    // Counted before JavaScript sees it: a start that dies on the way is the next start's second attempt. The rest of the file (the build, the update) stays as it was written.
+    var counted = stored
+    counted["attempts"] = attempts
+    write(counted, to: stateURL)
     handOver = HandOver(savedAt: savedAt, bytes: json.utf8.count, attempts: attempts)
-    return ["json": json, "savedAt": savedAt, "attempts": attempts, "systemKept": systemKept || Self.assumeSystemKill]
+    var handed: [String: Any] = ["json": json, "savedAt": savedAt, "attempts": attempts, "systemKept": systemKept || Self.assumeSystemKill, "runningBuild": Self.build]
+    if let build = stored["build"] as? String { handed["build"] = build }
+    if let update = stored["update"] { handed["update"] = update }
+    return handed
   }
 
   /// `restored(outcome, reason)`: the state is no longer needed, and what became of it is written down.
@@ -170,8 +197,26 @@ final class NavigationStore: @unchecked Sendable {
     lock.unlock()
   }
 
+  private static var isQaBundle: Bool { Bundle.main.bundleIdentifier == qaBundleIdentifier }
+
   private static var assumeSystemKill: Bool {
-    Bundle.main.bundleIdentifier == qaBundleIdentifier && UserDefaults.standard.bool(forKey: "SvelteNavigationAssumeSystemKill")
+    isQaBundle && UserDefaults.standard.bool(forKey: "SvelteNavigationAssumeSystemKill")
+  }
+
+  /// The bundle version (`CFBundleVersion`) of the running app: the build that wrote a state is the build that may restore it.
+  private static var build: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "" }
+
+  /// Whether the system started this process in the background. UIKit answers on the main thread; the JavaScript thread waits for it for at most half a second
+  /// (as the insets module does) and takes a main thread that does not answer for a foreground launch, the one that matters to the user.
+  private static func launchedInBackground() -> Bool {
+    if Thread.isMainThread { return UIApplication.shared.applicationState == .background }
+    var background = false
+    let done = DispatchSemaphore(value: 0)
+    DispatchQueue.main.async {
+      background = UIApplication.shared.applicationState == .background
+      done.signal()
+    }
+    return done.wait(timeout: .now() + 0.5) == .success && background
   }
 
   private static func nowMilliseconds() -> Double { (Date().timeIntervalSince1970 * 1000).rounded() }

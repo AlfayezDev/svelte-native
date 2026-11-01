@@ -417,7 +417,8 @@ The view is touched only when the state changes it: `setEnabled` is called when 
 - An `accessibilityRole` React Native would reject (it throws) is ignored.
 - A hint, a value or a state on a view with none of role, state, actions or `testID` is published (React Native installs its delegate only for those, so such a hint is silent there).
 - The checked-state announcement is sent when the state changes, not on every props update that carries it; the mixed/busy order in the content description is busy first (React Native's follows the order of the keys of the map).
-- Not ported: `accessibilityLabelledBy`, `accessibilityCollection` and `accessibilityCollectionItem`, `screenReaderFocusable`, and the description React Native builds from the children of a role view that has no text (`getTalkbackDescription`; TalkBack builds the same from the children itself).
+- `accessibilityLabelledBy` (and so `aria-labelledby`) is **ignored on the engine**: React Native's Android view manager points the node's labeled-by at the views it names, the engine does not, so such an element has no label from them. In development the host warns once when the prop reaches an installed engine (`splitProps` in `fabric/host.ts`); `aria-label` / `accessibilityLabel` is the way to label it. (React Native's own mounting, with the engine switched off in the lab, still reads it.)
+- Not ported: `accessibilityCollection` and `accessibilityCollectionItem`, `screenReaderFocusable`, and the description React Native builds from the children of a role view that has no text (`getTalkbackDescription`; TalkBack builds the same from the children itself).
 - `accessibilityElementsHidden` and `accessibilityViewIsModal` (and `aria-modal`) are iOS-only in React Native and are not mapped on Android; `aria-hidden` reaches Android as `importantForAccessibility`.
 
 ### Tests

@@ -140,6 +140,27 @@ test("the Fabric host mounts, updates and clears a scroll list with one content 
   expect(scroll[0].children[0].children).toHaveLength(5);
 });
 
+test("a node's `declares` is made once for its view name, not again on every rebuild", async () => {
+  const m = await load();
+  calls.length = 0; roots = {};
+  const app = m.startSurface(15, m.Fixture, {}) as { rename: (s: string) => void; fill: (n: number) => void };
+  const declares = () => {
+    const text = find(roots[15], "RCTText")[0];
+    return (text?.target as { hostState?: { declares?: (key: string) => boolean } } | undefined)?.hostState?.declares;
+  };
+  const first = declares();
+  expect(typeof first).toBe("function");
+  expect(first?.("notAProp")).toBe(false);
+  // The text is rebuilt with its new string: its view name has not changed, so its `declares` is the one it had.
+  app.rename("again");
+  await settle(m);
+  expect(find(roots[15], "RCTRawText")[0].props.text).toBe("again");
+  expect(declares()).toBe(first);
+  app.fill(3);
+  await settle(m);
+  expect(declares()).toBe(first);
+});
+
 type Handle = { tag: number; measure: (cb: (...a: number[]) => void) => void; measureInWindow: (cb: (...a: number[]) => void) => void; dispatchCommand: (name: string, args?: unknown[]) => void };
 type DirectApp = { fillDirect: (n: number) => void; layoutLog: () => unknown[][]; handleOf: () => Handle | null };
 const emit = (target: unknown, type: string, event: object) => (fake as unknown as { handler: (t: unknown, type: string, e: object) => void }).handler(target, type, event);

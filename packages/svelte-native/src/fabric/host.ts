@@ -127,6 +127,8 @@ type State = {
   foreign: boolean;
   /** Whether the node's view config declares a prop as an attribute of the view (the animation layer leaves those to the view: `fabric/animation.ts`, `AnimationTarget.declares`). */
   declares?: (key: string) => boolean;
+  /** The view name `declares` was made for: it is made again only when that changes, not on every build of the node. */
+  declaredFor?: string;
   /** The last build gave the node a lone string as its `content` (`loneText`): when that stops being true the prop has to go, though no attribute changed. */
   lone: boolean;
 };
@@ -368,6 +370,13 @@ function imageProps(props: Record<string, unknown>): Record<string, unknown> {
   return next;
 }
 
+let labelledByWarned = false;
+/** The Android engine does not read `accessibilityLabelledBy` (SPEC.md, "Accessibility props": not ported), so `aria-labelledby` gives its element no label there: development says so, once. */
+function warnLabelledBy(): void {
+  labelledByWarned = true;
+  if (typeof __DEV__ !== "undefined" && __DEV__) console.warn("[Svelte accessibility] `aria-labelledby` / `accessibilityLabelledBy` is ignored by the Android engine: the element gets no label from the nodes it names. Give it an `aria-label` (or `accessibilityLabel`).");
+}
+
 /** Splits a primitive's attributes into React Native props (functions become `true`, as React does) and event handlers. */
 const scrollBaseVertical = { flexGrow: 1, flexShrink: 1, flexDirection: "column", overflow: "scroll" };
 const scrollBaseHorizontal = { flexGrow: 1, flexShrink: 1, flexDirection: "row", overflow: "scroll" };
@@ -387,6 +396,7 @@ function splitProps(attributes: Record<string, unknown>, into: State, navigation
   }
   // `aria-*` is an alias React Native resolves in `View.js`, which a Svelte host has no part of (accessibility.ts); a foreign view's props are its own.
   if (aria && !into.foreign) applyAriaProps(props);
+  if (!labelledByWarned && engineInstalled && !into.foreign && props.accessibilityLabelledBy !== undefined) warnLabelledBy();
   if (textInput) props.mostRecentEventCount = into.eventCount;
   // React Native's ScrollView merges this under the caller's style. `overflow: scroll` is what makes Yoga lay the content
   // out at its own height; without it a `flexGrow: 1` content container took the viewport's height and nothing scrolled.
@@ -505,7 +515,10 @@ function build(node: NativeNode, rootTag: number, insideText: boolean, insideFor
   const current = state(node, viewName);
   current.foreign = foreign;
   const config = viewConfig(viewName);
-  current.declares = (key) => Object.hasOwn(config.attributes, key);
+  if (current.declaredFor !== viewName) {
+    current.declaredFor = viewName;
+    current.declares = (key) => Object.hasOwn(config.attributes, key);
+  }
   // `animatedStyle`, `animatedProps` and the CSS keys never reach the payload; once loaded, the animation layer sees every node so it can detach.
   const animated = animation || wantsAnimation(attributes) ? loadAnimation().animationProps(node, current, attributes) : attributes;
   // `gesture` never reaches the payload either; the gesture host forces `collapsable: false` so the view keeps its tag.

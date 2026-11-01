@@ -43,8 +43,34 @@ describe("freshNavigation: whether the state an iOS host kept for a dead process
   });
 
   test("every reason a record is dropped for is one the host can write down", () => {
-    for (const reason of ["malformed", "user", "attempts", "expired", "future", "unreadable"] as const) expect(droppedReasons[reason].length).toBeGreaterThan(10);
-    expect(Object.keys(droppedReasons).sort()).toEqual(["attempts", "expired", "future", "malformed", "unreadable", "user"]);
+    for (const reason of ["malformed", "user", "updated", "attempts", "expired", "future", "unreadable"] as const) expect(droppedReasons[reason].length).toBeGreaterThan(10);
+    expect(Object.keys(droppedReasons).sort()).toEqual(["attempts", "expired", "future", "malformed", "unreadable", "updated", "user"]);
+  });
+
+  describe("the build that saved the state is the build that restores it", () => {
+    const saved = { json: state, savedAt: now, systemKept: true };
+
+    test("the same build and the same OTA update restore, embedded or not", () => {
+      expect(freshNavigation({ ...saved, build: "41", runningBuild: "41", update: null }, now)).toEqual({ json: state });
+      expect(freshNavigation({ ...saved, build: "41", runningBuild: "41", update: "ab12" }, now, undefined, "ab12")).toEqual({ json: state });
+    });
+
+    test("another build (the store installed a new version) drops the state as updated", () => {
+      expect(freshNavigation({ ...saved, build: "41", runningBuild: "42", update: null }, now)).toEqual({ dropped: "updated" });
+      // a record written before the host stored the build cannot be told from another build's: the build is the host's to vouch for
+      expect(freshNavigation({ ...saved, runningBuild: "42" }, now)).toEqual({ dropped: "updated" });
+    });
+
+    test("another OTA update (the app was updated over the air since) drops it, to or from the embedded bundle too", () => {
+      expect(freshNavigation({ ...saved, build: "41", runningBuild: "41", update: "ab12" }, now, undefined, "cd34")).toEqual({ dropped: "updated" });
+      expect(freshNavigation({ ...saved, build: "41", runningBuild: "41", update: "ab12" }, now, undefined, null)).toEqual({ dropped: "updated" });
+      expect(freshNavigation({ ...saved, build: "41", runningBuild: "41", update: null }, now, undefined, "cd34")).toEqual({ dropped: "updated" });
+    });
+
+    test("the user's say comes first, and a host that reports no build identity is not asked for one", () => {
+      expect(freshNavigation({ ...saved, systemKept: false, build: "41", runningBuild: "42" }, now)).toEqual({ dropped: "user" });
+      expect(freshNavigation({ ...saved }, now)).toEqual({ json: state });
+    });
   });
 
   test("the host having nothing is not a fault: a cold start, the user leaving, a state that was used", () => {

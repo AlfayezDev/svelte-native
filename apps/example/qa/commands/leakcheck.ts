@@ -7,8 +7,8 @@ import { containsAccount, requireAccount, variable } from "../lib/qa-account.ts"
 import { qaDir, repoRoot, runsDir } from "../lib/paths.ts";
 
 /**
- * Looks for the QA account's address (`RASHEED_QA_EMAIL`) where it must never be: in what is about to be committed (the staged diff,
- * and with `--all` the changes and the files git does not track yet), in the run files and report the suites wrote, and in the
+ * Looks for the QA account's address (`RASHEED_QA_EMAIL`) where it must never be: in what is about to be committed (the lines the staged diff
+ * adds, and with `--all` the changes and the files git does not track yet), in the run files and report the suites wrote, and in the
  * references' manifests. It prints file names and counts, never the address or the line it was found on, and exits 1 on a hit.
  * Run it before every commit that touches the harness, its references or its docs. It reads text: a reference image is kept clean by
  * the masks the suites paint over (`paintOver`), which no text search can check.
@@ -43,12 +43,16 @@ async function fileHits(paths: string[]): Promise<string[]> {
 	return hits;
 }
 
-/** The files of a unified diff whose added or removed lines contain the address. */
-function diffHits(diff: string): string[] {
+/**
+ * The files of a unified diff whose added lines contain the address. A removed line is not a hit: it was committed once, and a check that refuses the
+ * commit taking it out would leave the leak where it is.
+ */
+export function diffHits(diff: string): string[] {
 	const hits: string[] = [];
 	for (const part of diff.split(/^diff --git /m).slice(1)) {
 		const name = /^a\/(.+?) b\//.exec(part)?.[1] ?? "(unknown file)";
-		if (containsAccount(part)) hits.push(name);
+		const added = part.split("\n").filter((line) => line.startsWith("+") && !line.startsWith("+++"));
+		if (containsAccount(added.join("\n"))) hits.push(name);
 	}
 	return hits;
 }

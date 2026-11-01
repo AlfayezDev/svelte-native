@@ -31,6 +31,13 @@ java -cp "$work/a11y-check.jar" expo.modules.svelteengine.A11yRulesCheckKt "$wor
   "$rn/ReactAndroid/src/main/java/com/facebook/react/uimanager/BaseViewManager.java" \
   "$rn/ReactCommon/react/renderer/components/view/AccessibilityPrimitives.h"
 
+# What the accessibility hot path decides without asking Android: when a content description is built again, what an EngineText has told the live regions, the answer read once per frame.
+kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/A11yWire.kt" \
+  "$here/../main/java/expo/modules/svelteengine/A11yRules.kt" \
+  "$here/../main/java/expo/modules/svelteengine/A11yLive.kt" \
+  "$here/kotlin/expo/modules/svelteengine/A11yLiveCheck.kt" -include-runtime -d "$work/a11y-live-check.jar"
+java -cp "$work/a11y-live-check.jar" expo.modules.svelteengine.A11yLiveCheckKt
+
 kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/AnimatedWire.kt" \
   "$here/kotlin/expo/modules/svelteengine/AnimatedWireCheck.kt" -include-runtime -d "$work/check.jar"
 java -cp "$work/check.jar" expo.modules.svelteengine.AnimatedWireCheckKt "$work/fixture.tsv"

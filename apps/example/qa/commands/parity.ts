@@ -14,11 +14,13 @@ import {
 	type DeviceSession,
 } from "../lib/device.ts";
 import {
+	accountRects,
 	assertDeviceState,
 	exposedAccount,
 	findNode,
 	guardAnchorFailure,
 	launchCase,
+	maskedChrome,
 	maskRects,
 	settledScreenshot,
 	waitForNode,
@@ -32,6 +34,7 @@ import {
 	maskRefusal,
 	readManifest,
 	readReference,
+	redactedFailure,
 	referenceMasks,
 	writeManifest,
 	writeReference,
@@ -99,11 +102,9 @@ async function saveFailure(
 	actual: Image,
 	diff: Image,
 	record: ParityCase,
-	hidden: Rect[],
 ): Promise<void> {
 	await mkdir(context.artifacts, { recursive: true });
-	// What the device drew inside the masks of a signed-in screen is the account's own (its address, its devices): not kept.
-	await writeFile(join(context.artifacts, `${name}.actual.png`), encodePng(hidden.length > 0 ? paintOver(actual, hidden) : actual));
+	await writeFile(join(context.artifacts, `${name}.actual.png`), encodePng(actual));
 	await writeFile(join(context.artifacts, `${name}.diff.png`), encodePng(diff));
 	record.actual = join(context.artifacts, `${name}.actual.png`).slice(qaDir.length + 1);
 	record.diff = join(context.artifacts, `${name}.diff.png`).slice(qaDir.length + 1);
@@ -131,14 +132,18 @@ async function checkCase(
 		last = await screenshot(context.serial);
 		attempts++;
 		const result = compare(reference, last, previous.masks);
-		if (result.verdict === "pass")
-			return caseRecord(screen, variant, {
+		if (result.verdict === "pass") {
+			const passed = caseRecord(screen, variant, {
 				verdict: "pass",
 				differingPixels: 0,
 				maskedPixels: result.maskedPixels,
 				differingMaskedPixels: result.differingMaskedPixels,
 				attempts,
 			});
+			// A pass that a mask over the screen's own chrome made possible is no pass: the reference is stale and is retaken.
+			const stale = await staleMasks(context.serial, screen, variant, previous);
+			return stale === null ? passed : { ...passed, verdict: "error", detail: stale };
+		}
 		if (Date.now() >= deadline) break;
 		await sleep(400);
 	}
@@ -163,9 +168,56 @@ async function checkCase(
 		attempts,
 		detail: result.verdict === "fail" ? anchor.detail : null,
 	});
-	if (result.diffImage)
-		await saveFailure(context, name, again, result.diffImage, record, screen.signedIn ? previous.masks : []);
+	if (result.diffImage) {
+		if (!screen.signedIn) await saveFailure(context, name, again, result.diffImage, record);
+		else {
+			// What the device drew on a signed-in screen is the account's own (its address, its devices), and a node may have moved out of the reference's masks: the
+			// regions painted over are the reference's and the ones the live tree gives. Without the live tree neither image is kept.
+			const live = await liveRedactions(context.serial, screen, variant);
+			if (live === null) record.detail = `${record.detail ?? ""}${record.detail ? "; " : ""}no images kept: the live screen's masks could not be worked out`;
+			else {
+				const kept = redactedFailure(reference, again, previous.masks, live);
+				await saveFailure(context, name, kept.actual, kept.diff, record);
+			}
+		}
+	}
 	return record;
+}
+
+/**
+ * The regions of a signed-in screen's failure picture to paint over besides the reference's masks: the screen's masks recomputed from the tree it shows now, and every
+ * node that shows the account's address (under a modal, the covered screen's too). Null when the tree cannot be read.
+ */
+async function liveRedactions(serial: string, screen: ScreenCase, variant: Variant): Promise<Rect[] | null> {
+	try {
+		const tree = await dumpUi(serial);
+		const walked = screen.hidden.length > 0 ? await dumpUi(serial, { important: true }) : undefined;
+		const rects = [...accountRects(tree), ...(walked ? accountRects(walked) : [])];
+		try {
+			rects.push(...maskRects(tree, screen, variant.direction, walked));
+		} catch {
+			// a mask that matches no node has nothing to paint; the nodes with the address are covered above
+		}
+		return rects;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Why a reference's moving-node masks cannot be trusted, or null: one of them covers the screen's own chrome in the tree on screen (a mask the covered screen's
+ * address left at the height of the modal's tab strip). Read after the comparison, since the screenshots are taken without a tree query before them; a tree that
+ * cannot be read says nothing.
+ */
+async function staleMasks(serial: string, screen: ScreenCase, variant: Variant, previous: ReferenceEntry): Promise<string | null> {
+	const moving = previous.masks.filter((mask) => mask.name.startsWith("moving node"));
+	if (moving.length === 0) return null;
+	try {
+		const covered = maskedChrome(await dumpUi(serial), screen, variant.direction, moving);
+		return covered.length === 0 ? null : `the reference's masks cover the screen's own chrome (${covered.join(", ")}): it was taken with a mask that is not on a moving node; retake it with --update`;
+	} catch {
+		return null;
+	}
 }
 
 /** Whether the case's anchor is on screen, for the failure report; a failed dump is part of the answer, not an error. */
@@ -206,6 +258,13 @@ async function captureCase(
 		// account's address, in the masks and in the check below, is the tree a service walks, which leaves it out.
 		const walked = screen.hidden.length > 0 ? await dumpUi(context.serial, { important: true }) : undefined;
 		nodeMasks = maskRects(opened.tree, screen, variant.direction, walked);
+		// A mask is for a node that moves: one over the title, a control or the tab strip would freeze a reference that hides them.
+		const covered = maskedChrome(opened.tree, screen, variant.direction, nodeMasks);
+		if (covered.length > 0)
+			return caseRecord(screen, variant, {
+				verdict: "error",
+				detail: `no reference written: a mask covers the screen's own chrome (${covered.join(", ")}); the masks must be on nodes that move`,
+			});
 		// A reference keeps every pixel outside the masks: a signed-in screen that shows the account's address in the open is not frozen.
 		const exposed = exposedAccount(walked ?? opened.tree, nodeMasks);
 		if (exposed.length > 0)

@@ -45,10 +45,24 @@ describe("what the dump must show of a control", () => {
 		expect(judgeNodes(tree({ id: "a11y.hint", desc: "Archive thread", hint: "Moves the thread" }), [{ id: "a11y.hint", hint: "" }], 1)).toHaveLength(1);
 	});
 
-	test("a node missing from the tree is a finding at the normal text size and not at a larger one, where it may be below the fold", () => {
+	test("a node missing from the tree is a finding at the normal text size, and at a larger one only while another expected node is there to show the screen was judged", () => {
 		expect(judgeNodes(tree(), [{ id: "a11y.terms", checked: true }], 1)).toEqual([{ kind: "state", element: "a11y.terms", detail: "not in the tree a service walks" }]);
-		expect(judgeNodes(tree(), [{ id: "a11y.terms", checked: true }], 2)).toEqual([]);
 		expect(judgeNodes(tree({ ...checkbox, checked: false }), [{ id: "a11y.terms", checked: true }], 2)).toHaveLength(1);
+		// below the fold at the larger size: the nodes that are there are judged, the others are not reported
+		const first = [{ id: "a11y.terms", says: "Accept terms" }, { id: "a11y.below", says: "Below the fold" }];
+		expect(judgeNodes(tree(checkbox), first, 2)).toEqual([]);
+		expect(judgeNodes(tree(checkbox), first, 1)).toEqual([{ kind: "state", element: "a11y.below", detail: "not in the tree a service walks" }]);
+	});
+
+	test("at a larger text size a screen none of whose expected nodes is in the tree is a finding, not a pass by skipping them all", () => {
+		const expected = [{ id: "a11y.terms", checked: true }, { id: "a11y.below", says: "Below the fold" }];
+		const findings = judgeNodes(tree({ id: "other", text: "Another screen" }), expected, 2);
+		expect(findings).toHaveLength(1);
+		expect(findings[0]?.kind).toBe("state");
+		expect(findings[0]?.detail).toContain("none of the 2 expected nodes");
+		// only the nodes to be hidden are not expectations of presence: a screen of those alone has nothing to require
+		expect(judgeNodes(tree(), [{ id: "a11y.hidden", absent: true }], 2)).toEqual([]);
+		expect(judgeNodes(tree(), [], 2)).toEqual([]);
 	});
 
 	test("a hidden node is absent, and so is what it says", () => {

@@ -36,6 +36,8 @@ class NodeState {
   var role: String? = null
   /** `accessibilityLabel` as the prop gave it (the view's content description may carry more: "busy", the value's text). */
   var label: String? = null
+  /** The content description built for [label] and the state and value in [a11y] (`A11y.apply` builds it again only when they change). */
+  var description: String? = null
   /** The accessibility records applied (state, value, hint, actions, mode, role), null when none is set: what the delegate publishes. */
   var a11y: A11yRecords? = null
   /** Expanded (2) or collapsed (1) by an accessibility action since the last props: React Native flips the node's expand action until JavaScript answers. */
@@ -73,6 +75,7 @@ class NodeState {
     testID = null
     role = null
     label = null
+    description = null
     a11y = null
     expandedLocal = 0
     transformed = false

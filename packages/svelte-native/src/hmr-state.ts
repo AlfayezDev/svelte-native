@@ -21,6 +21,9 @@ export type StackSnapshot = {
  */
 export type NavigationState = { stack: StackSnapshot; launch?: string };
 
+/** What the root router did with the navigation state its surface was started with (`Root.svelte` gave it `options.restore`): it adopted it, or it refused it and why. */
+export type Adoption = { restored: true } | { rejected: string };
+
 /**
  * State that outlives a surface. Metro re-runs the modules on the path from an edited file to the entry, so anything held in
  * those modules' own variables is lost; a recreated Android Activity stops its surface and starts another in the same JavaScript
@@ -35,6 +38,8 @@ export type HmrState = {
   navigation?: () => NavigationState;
   /** Navigation state to adopt in the next root `createRouter` call: set when surfaces are remounted and whenever the last surface stops, taken by the router that adopts it. */
   restore?: NavigationState;
+  /** Set by the root router that was started with a saved state, read by `launchSurface` once the surface has started (the iOS host is told then, not when the router decided: a start that dies on the way is counted). */
+  adoption?: Adoption;
   /** Where the root router writes its state as JSON after every change (the host sets it; Android keeps it for the Activity's saved instance state, iOS writes it to a file when the app goes to the background, see SPEC.md "Navigation state across recreation and process death"). */
   save?: (json: string) => void;
   /** The named routers outside the root's tree (a tab pane's own router in the lab) by scope: the live state of each, and what the root adopting `restore` collected for them. */

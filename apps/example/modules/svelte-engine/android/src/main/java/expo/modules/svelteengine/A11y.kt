@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.Message
+import android.os.SystemClock
 import android.view.View
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityManager
@@ -73,9 +74,12 @@ object A11y {
     if (view.tag != p.testID) view.tag = p.testID
     val a = if (p.a11y.touched) p.a11y else NONE
     val before = st.a11y ?: NONE
+    // The description is built again only when its inputs changed (the label, the busy and mixed state, the value's text); the view is still compared with it, since
+    // the tab bar takes the description off the view it reads it from.
+    val rebuild = A11yRules.descriptionChanged(st.label, p.label, before, a) || (TEST_ID_AS_CONTENT_DESCRIPTION && p.testID != st.testID)
     st.label = p.label
-
-    val desc = describe(view.context, p.label, a) ?: if (TEST_ID_AS_CONTENT_DESCRIPTION) p.testID else null
+    if (rebuild) st.description = describe(view.context, p.label, a) ?: if (TEST_ID_AS_CONTENT_DESCRIPTION) p.testID else null
+    val desc = st.description
     if (view.contentDescription != desc) view.contentDescription = desc
 
     val accessible = p.accessible == 1
@@ -194,8 +198,17 @@ object A11y {
   private fun accessibilityManager(context: Context): AccessibilityManager? =
     context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager
 
-  /** Whether a service is listening, so a text that changes is worth asking the live regions above it about. */
-  fun listening(context: Context): Boolean = accessibilityManager(context)?.isEnabled == true
+  private const val FRAME_MS = 16L
+  private val listeningInFrame = FrameFlag()
+
+  /**
+   * Whether a service is listening, so a text that changes is worth asking the live regions above it about. Asked of the platform once per frame: the frame
+   * is a 16 ms window of the uptime clock (`Choreographer`'s frame time is not public API), long enough for every rebuild of one layout pass to share the answer.
+   */
+  fun listening(context: Context): Boolean {
+    val frame = SystemClock.uptimeMillis() / FRAME_MS
+    return listeningInFrame.cached(frame) ?: listeningInFrame.store(frame, accessibilityManager(context)?.isEnabled == true)
+  }
 
   /**
    * The text of [view] changed. A `TextView` tells the platform, which sends the change up to the nearest live region; an `EngineText` is

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { diffImages, decodePng, encodePng, maskBitmap, type Image, type Rect } from "./png.ts";
+import { diffImages, decodePng, encodePng, maskBitmap, paintOver, type Image, type Rect } from "./png.ts";
 import { qaDir } from "./paths.ts";
 import { assertClean } from "./qa-account.ts";
 import type { ParityCase, Source } from "./types.ts";
@@ -164,4 +164,15 @@ export function compare(reference: Image, actual: Image, masks: Rect[]): Compari
 		bounds: diff.bounds,
 		diffImage: diff.differing === 0 ? null : diff.image,
 	};
+}
+
+/**
+ * What is kept of a failed comparison on a signed-in screen: the screenshot with the regions painted over, and the diff drawn with the same regions masked. The
+ * regions are the reference's masks and `redact`, what the live screen needs: its masks recomputed from the tree it has now and every node that shows the account's
+ * address. A node that moved since the reference was taken is outside the reference's masks, and its pixels would otherwise be kept in the screenshot and show
+ * as a red shape of its text in the diff.
+ */
+export function redactedFailure(reference: Image, actual: Image, masks: Rect[], redact: Rect[]): { actual: Image; diff: Image } {
+	const covered = [...masks, ...redact];
+	return { actual: paintOver(actual, covered), diff: diffImages(reference, actual, covered).image };
 }

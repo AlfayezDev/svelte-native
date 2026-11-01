@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "bun:test";
-import { exposedAccount, findNode, matches, maskRects } from "../lib/drive.ts";
+import { accountRects, exposedAccount, findNode, maskedChrome, matches, maskRects } from "../lib/drive.ts";
+import { compare, redactedFailure } from "../lib/parity.ts";
 import { copy } from "../lib/copy.ts";
 import { enterSignedIn } from "../lib/signin.ts";
 import { splitPhases } from "../lib/phases.ts";
@@ -12,7 +13,9 @@ import {
 	layoutVariants,
 	matrix,
 	notCovered,
+	notCoveredStates,
 	pinnedNames,
+	referenceName,
 	selectorFor,
 	variants,
 	type ScreenCase,
@@ -160,6 +163,81 @@ describe("painting over what must not be stored", () => {
 	});
 });
 
+describe("a reference's masks stay off the screen's own chrome", () => {
+	const profileModal = cases.find((screen) => screen.id === "app-account-profile") as ScreenCase;
+	// The account modal in English: its title, the Close button, the tab strip of the sections, and the address (the one thing the profile masks) further down.
+	const modal = tree(
+		node({ text: "Account settings", bounds: "[61,150][1019,230]" }),
+		node({ desc: "Close", bounds: "[900,150][1019,230]" }),
+		node({ text: "Profile", bounds: "[61,336][300,397]" }),
+		node({ text: "Preferences", bounds: "[320,336][600,397]" }),
+		node({ text: address, bounds: "[61,2071][1019,2136]" }),
+	);
+
+	test("a mask over the tab strip, as the covered screen's address left one, is found; the address's own mask is not", () => {
+		useAccount(address);
+		expect(maskedChrome(modal, profileModal, "ltr", [{ x: 61, y: 2071, width: 958, height: 65 }])).toEqual([]);
+		// the stale one: the address of the list of workspaces under the modal sat at the height of the strip
+		expect(maskedChrome(modal, profileModal, "ltr", [{ x: 61, y: 336, width: 958, height: 61 }])).toEqual(["Profile", "Preferences"]);
+		expect(maskedChrome(modal, profileModal, "ltr", [{ x: 0, y: 140, width: 1080, height: 100 }])).toEqual(["Account settings", "Close"]);
+		// touching is not covering
+		expect(maskedChrome(modal, profileModal, "ltr", [{ x: 61, y: 397, width: 958, height: 61 }])).toEqual([]);
+		useAccount(undefined);
+	});
+
+	test("every signed-in case's own chrome is named by its title, controls and the controls further down, in the language of the variant", () => {
+		const arabic = tree(node({ text: "الملف الشخصي", bounds: "[61,336][300,397]" }));
+		const rtl = maskedChrome(arabic, profileModal, "rtl", [{ x: 61, y: 336, width: 958, height: 61 }]);
+		expect(rtl).toHaveLength(1);
+		expect(maskedChrome(arabic, profileModal, "ltr", [{ x: 61, y: 336, width: 958, height: 61 }])).toEqual([]);
+	});
+});
+
+describe("keeping a failed signed-in comparison", () => {
+	const flat = (value: number): Image => {
+		const data = Buffer.alloc(12 * 6 * 4, value);
+		for (let pixel = 0; pixel < 12 * 6; pixel++) data[pixel * 4 + 3] = 255;
+		return { width: 12, height: 6, data };
+	};
+	/** The screen with a lighter "address" at the rectangle, as it is drawn where the node has moved to. */
+	function withAddressAt(rect: { x: number; y: number; width: number; height: number }): Image {
+		const image = flat(40);
+		for (let y = rect.y; y < rect.y + rect.height; y++) for (let x = rect.x; x < rect.x + rect.width; x++) image.data.fill(250, (y * 12 + x) * 4, (y * 12 + x) * 4 + 3);
+		return image;
+	}
+	const at = (image: Image, x: number, y: number) => [...image.data.subarray((y * 12 + x) * 4, (y * 12 + x) * 4 + 4)];
+	const referenceMask = { x: 0, y: 0, width: 4, height: 2 };
+	const moved = { x: 6, y: 3, width: 4, height: 2 };
+
+	test("an address that moved out of the reference's masks is painted over in the picture and is no red shape in the diff", () => {
+		const actual = withAddressAt(moved);
+		const reference = flat(40);
+		const failed = compare(reference, actual, [referenceMask]);
+		expect(failed.verdict).toBe("fail");
+		// the reference's masks alone would keep it: the pixels of the address are in the open, and the diff paints them red
+		expect(at(paintOver(actual, [referenceMask]), 7, 3)).toEqual([250, 250, 250, 255]);
+		expect(at(failed.diffImage as Image, 7, 3).slice(0, 3)).toEqual([255, 0, 0]);
+		const kept = redactedFailure(reference, actual, [referenceMask], [moved]);
+		expect(at(kept.actual, 7, 3)).toEqual([...redactedColor]);
+		expect(at(kept.actual, 11, 5)).toEqual([40, 40, 40, 255]);
+		expect(at(kept.diff, 7, 3).slice(0, 3)).not.toEqual([255, 0, 0]);
+		// the reference's own masks are still painted
+		expect(at(kept.actual, 1, 1)).toEqual([...redactedColor]);
+	});
+
+	test("the rectangles of every node that shows the address are taken from the tree, covered or not, and none without an account", () => {
+		useAccount(address);
+		const shown = tree(node({ text: `Signed in as ${address}`, bounds: "[60,300][700,360]" }), node({ desc: address.toUpperCase(), bounds: "[10,10][50,30]" }), node({ text: "Sign out", bounds: "[60,500][700,560]" }), node({ text: address, bounds: "[0,0][0,0]" }));
+		expect(accountRects(shown)).toEqual([
+			{ x: 60, y: 300, width: 640, height: 60 },
+			{ x: 10, y: 10, width: 40, height: 20 },
+		]);
+		useAccount(null);
+		expect(accountRects(shown)).toEqual([]);
+		useAccount(undefined);
+	});
+});
+
 describe("starting the phase", () => {
 	const session = {} as never;
 
@@ -187,6 +265,19 @@ describe("the gates over the pinned screens", () => {
 		expect(pinnedNames(["app-account-devices"], variants)).toHaveLength(variants.length / 2);
 		expect(pinnedNames(["app-account-devices"], layoutVariants)).toHaveLength(layoutVariants.length / 2);
 		expect(matrix(signedIn, variants).length).toBe(signedIn.length * variants.length - 2 * (variants.length / 2));
+	});
+
+	test("the pin is what a full emulator run captures: every signed-in screen in all eight variants, less the states documented as not covered at the largest text", () => {
+		const pinned = pinnedNames(gatesFile.signedIn?.android ?? [], variants);
+		const left = signedIn.filter((screen) => !screen.largestText);
+		expect(signedIn).toHaveLength(16);
+		expect(variants).toHaveLength(8);
+		// 16 screens x 8 variants, less the 2 screens that the 4 largest-text variants leave out
+		expect(pinned).toHaveLength(16 * 8 - left.length * (variants.length / 2));
+		expect(pinned).toHaveLength(120);
+		expect(new Set(pinned)).toEqual(new Set(matrix(signedIn, variants).map(({ screen, variant }) => referenceName(screen, variant))));
+		// and each of those states is told as not covered, by its route: no screen is left out silently
+		for (const screen of left) expect(notCoveredStates.map((state) => state.route)).toContain(`${screen.route} at the largest text size`);
 	});
 
 	const caseOf = (name: string, verdict: "pass" | "skipped") => ({ name, verdict, differingPixels: 0, maskedPixels: 100 });

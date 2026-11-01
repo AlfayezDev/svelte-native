@@ -15,6 +15,7 @@ import { resolveAssetSource, Platform } from "./deps-rn.ts";
 import { createPayload, diffPayload, viewConfigFor } from "./view-configs.ts";
 import { requireOptionalNativeModule } from "./deps-expo.ts";
 import { droppedReasons, freshNavigation } from "../navigation-restore.ts";
+import type { Adoption } from "../hmr-state.ts";
 import { mount, unmount, type Component } from "./deps-svelte.ts";
 // The animation layer (Reanimated + worklets, ≈ 90 ms of bundle evaluation and a second Hermes runtime on a mid-range
 // phone) loads on the first node that needs it; a plain first screen boots without it.
@@ -126,6 +127,8 @@ type State = {
   foreign: boolean;
   /** Whether the node's view config declares a prop as an attribute of the view (the animation layer leaves those to the view: `fabric/animation.ts`, `AnimationTarget.declares`). */
   declares?: (key: string) => boolean;
+  /** The view name `declares` was made for: it is made again only when that changes, not on every build of the node. */
+  declaredFor?: string;
   /** The last build gave the node a lone string as its `content` (`loneText`): when that stops being true the prop has to go, though no attribute changed. */
   lone: boolean;
 };
@@ -208,7 +211,7 @@ const now = () => performance.now();
 
 /** Timings of the most recent flush, for the lab; also published on `globalThis.__svelteFabric` so app code needs no import. */
 /** iOS's navigation module (`modules/svelte-navigation-ios`): keeps the router's state for the next start of the process and gives it back once. Android has the engine module's `saveNavigation` and `initialProps` instead. */
-type NavigationHost = { save?: (json: string) => void; restore?: () => unknown; restored?: (outcome: string, reason: string) => void };
+type NavigationHost = { save?: (json: string, update: string | null) => void; restore?: () => unknown; restored?: (outcome: string, reason: string) => void };
 let navigationHost: NavigationHost | null | undefined;
 /** `SvelteEngine` is Android's: it is looked up once, by `startSurface` and before it by `navigationModule`, which asks nobody else on a phone that has it (a lookup of a module that is not there goes through the lazy registry, on the way to the first commit). */
 let engineProbe: object | null | undefined;
@@ -221,18 +224,27 @@ function navigationModule(): NavigationHost | null {
   return navigationHost;
 }
 /** Hands the root router's navigation state to the host, which keeps it for a restart of the process (Android: the Activity's saved instance state; iOS: a file it writes when the app goes to the background). Nothing happens without either module. */
-export function saveNavigation(json: string): void { engineModule?.saveNavigation?.(json); navigationModule()?.save?.(json); }
+export function saveNavigation(json: string): void { engineModule?.saveNavigation?.(json); navigationModule()?.save?.(json, runningUpdate()); }
+/** The id of the OTA update this process runs, lowercase, as `updateId` of the updates module reads it; null for the embedded bundle and for a build without that module. Kept with every saved state: a state of another update is not restored. */
+let updateIdOfProcess: string | null | undefined;
+function runningUpdate(): string | null {
+  if (updateIdOfProcess === undefined) {
+    const id = requireOptionalNativeModule<{ updateId?: string | null }>("SvelteUpdates")?.updateId;
+    updateIdOfProcess = typeof id === "string" && id !== "" ? id.toLowerCase() : null;
+  }
+  return updateIdOfProcess;
+}
 /**
  * The state the previous process left, when the host keeps it in its own way (iOS) and not in `initialProps.navigation` (Android): the JSON of a
- * record that is fresh and that the router can read (`freshNavigation`: the system's say, the attempts, the age), once. A record that is not used is
- * cleared at once, the host being told why; one that is used is cleared by `navigationRestored` when the surface has started. Restoring is best effort:
- * a host that throws leaves the app on its first screen.
+ * record that is fresh and that the router can read (`freshNavigation`: the system's say, the build, the attempts, the age), once. A record that is not used is
+ * cleared at once, the host being told why; one that is used is cleared by `navigationAdopted` when the surface has started, with what the router did with it.
+ * Restoring is best effort: a host that throws leaves the app on its first screen.
  */
 export function hostNavigation(): string | undefined {
   try {
     const module = navigationModule();
     if (!module?.restore) return undefined;
-    const verdict = freshNavigation(module.restore(), Date.now());
+    const verdict = freshNavigation(module.restore(), Date.now(), undefined, runningUpdate());
     if ("json" in verdict) return verdict.json;
     if (verdict.dropped === "none") return undefined;
     console.info(`[Svelte navigation] the saved state was not restored: ${verdict.dropped}`);
@@ -242,9 +254,17 @@ export function hostNavigation(): string | undefined {
   }
   return undefined;
 }
-/** The surface started with the state `hostNavigation` gave it: the host can forget it (a start that dies before this is counted, and a state that failed twice is dropped). */
-export function navigationRestored(): void {
-  try { navigationModule()?.restored?.("restored", "the surface started with the saved state"); } catch (error) { console.warn("[Svelte navigation] the host could not forget the restored state", error); }
+/**
+ * The surface started with the state `hostNavigation` gave it: the host can forget it (a start that dies before this is counted, and a state that failed twice is
+ * dropped) and write down what the root router made of it (`adoption`, which it left in `hmrState()`): `restored` when it took the state, `dropped` with its reason
+ * when it refused it (a route that is gone) or when no router asked for it.
+ */
+export function navigationAdopted(adoption: Adoption | undefined): void {
+  const [outcome, reason] = adoption === undefined ? ["dropped", "no router took the saved state"]
+    : "restored" in adoption ? ["restored", "the router adopted the saved state"]
+    : ["dropped", `the router rejected the saved state: ${adoption.rejected}`];
+  if (outcome === "dropped") console.info(`[Svelte navigation] ${reason}`);
+  try { navigationModule()?.restored?.(outcome, reason); } catch (error) { console.warn("[Svelte navigation] the host could not forget the saved state", error); }
 }
 /** Whether the host's window went away because the user left (Back, a swipe from Recents) and not because it is being recreated: Android's `Activity.isFinishing`. */
 export function hostFinishing(): boolean { return engineModule?.finishing?.() === true; }
@@ -350,6 +370,13 @@ function imageProps(props: Record<string, unknown>): Record<string, unknown> {
   return next;
 }
 
+let labelledByWarned = false;
+/** The Android engine does not read `accessibilityLabelledBy` (SPEC.md, "Accessibility props": not ported), so `aria-labelledby` gives its element no label there: development says so, once. */
+function warnLabelledBy(): void {
+  labelledByWarned = true;
+  if (typeof __DEV__ !== "undefined" && __DEV__) console.warn("[Svelte accessibility] `aria-labelledby` / `accessibilityLabelledBy` is ignored by the Android engine: the element gets no label from the nodes it names. Give it an `aria-label` (or `accessibilityLabel`).");
+}
+
 /** Splits a primitive's attributes into React Native props (functions become `true`, as React does) and event handlers. */
 const scrollBaseVertical = { flexGrow: 1, flexShrink: 1, flexDirection: "column", overflow: "scroll" };
 const scrollBaseHorizontal = { flexGrow: 1, flexShrink: 1, flexDirection: "row", overflow: "scroll" };
@@ -369,6 +396,7 @@ function splitProps(attributes: Record<string, unknown>, into: State, navigation
   }
   // `aria-*` is an alias React Native resolves in `View.js`, which a Svelte host has no part of (accessibility.ts); a foreign view's props are its own.
   if (aria && !into.foreign) applyAriaProps(props);
+  if (!labelledByWarned && engineInstalled && !into.foreign && props.accessibilityLabelledBy !== undefined) warnLabelledBy();
   if (textInput) props.mostRecentEventCount = into.eventCount;
   // React Native's ScrollView merges this under the caller's style. `overflow: scroll` is what makes Yoga lay the content
   // out at its own height; without it a `flexGrow: 1` content container took the viewport's height and nothing scrolled.
@@ -487,7 +515,10 @@ function build(node: NativeNode, rootTag: number, insideText: boolean, insideFor
   const current = state(node, viewName);
   current.foreign = foreign;
   const config = viewConfig(viewName);
-  current.declares = (key) => Object.hasOwn(config.attributes, key);
+  if (current.declaredFor !== viewName) {
+    current.declaredFor = viewName;
+    current.declares = (key) => Object.hasOwn(config.attributes, key);
+  }
   // `animatedStyle`, `animatedProps` and the CSS keys never reach the payload; once loaded, the animation layer sees every node so it can detach.
   const animated = animation || wantsAnimation(attributes) ? loadAnimation().animationProps(node, current, attributes) : attributes;
   // `gesture` never reaches the payload either; the gesture host forces `collapsable: false` so the view keeps its tag.

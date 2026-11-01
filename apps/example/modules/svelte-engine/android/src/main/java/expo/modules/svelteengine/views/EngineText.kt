@@ -8,6 +8,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import expo.modules.svelteengine.A11y
 import expo.modules.svelteengine.TextLayouts
 import expo.modules.svelteengine.TextSpec
+import expo.modules.svelteengine.TextTold
 
 /** Draws an android.text.Layout at the padding offset. Never a TextView. */
 class EngineText(context: Context) : View(context), EngineNode {
@@ -30,7 +31,7 @@ class EngineText(context: Context) : View(context), EngineNode {
   }
 
   /** The text a service was last told of, so that only a change of it is announced to a live region (see [A11y.textChanged]). */
-  private var told: String? = null
+  private val told = TextTold()
 
   /** Rebuilds the layout for the current spec and frame width. */
   fun rebuild() {
@@ -43,15 +44,9 @@ class EngineText(context: Context) : View(context), EngineNode {
     builtWidth = width
     builtHeight = height
     invalidate()
-    // `TextView.setText` tells the platform, which sends the change up to a live region; this view is a plain `View`.
-    if (A11y.listening(context)) {
-      val now = plainText()?.toString()
-      if (now != told) {
-        val first = told == null
-        told = now
-        if (!first) A11y.textChanged(this)
-      }
-    }
+    // `TextView.setText` tells the platform, which sends the change up to a live region; this view is a plain `View`. The text is remembered on every rebuild and only the
+    // announcement is gated on a service listening (asked once per frame, and only for a text that changed).
+    if (told.changed(plainText()) && A11y.listening(context)) A11y.textChanged(this)
   }
 
   /** Drops the content so the view can serve another tag ([ViewPool]). */
@@ -61,7 +56,7 @@ class EngineText(context: Context) : View(context), EngineNode {
     verticalOffset = 0f
     builtWidth = -1
     builtHeight = -1
-    told = null
+    told.clear()
   }
 
   /** As React Native's `ReactTextView`: glyphs do not overlap, so alpha is applied per draw, never through a layer. */

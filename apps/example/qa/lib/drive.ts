@@ -10,7 +10,7 @@ import {
 import { amStartCommand } from "./adb.ts";
 import { accountEmail, placeholder } from "./qa-account.ts";
 import { diffImages, type Image, type Rect } from "./png.ts";
-import { selectorFor, type Selector, type ScreenCase, type Step } from "./screens.ts";
+import { localize, selectorFor, type Selector, type ScreenCase, type Step } from "./screens.ts";
 import { center, type UiNode, type UiTree } from "./uia.ts";
 import { sleep } from "./wait.ts";
 
@@ -57,6 +57,32 @@ export function exposedAccount(tree: UiTree, masks: Rect[]): UiNode[] {
 				mask.y + mask.height >= node.bounds.y + node.bounds.height,
 		);
 	});
+}
+
+/**
+ * The labels of the screen's own chrome that a mask covers: its title, its declared controls and the controls further down (the tab strip of the account modal is among
+ * them), found in the tree on screen. A mask is there for a node that moves (the address, the photo); one over a control hides what the comparison is for, as a mask the
+ * covered screen's address left at the height of the modal's tab strip did. Rectangles that only touch do not cover.
+ */
+export function maskedChrome(tree: UiTree, screen: ScreenCase, direction: Direction, masks: Rect[]): string[] {
+	const labels = [...(screen.title === null ? [] : [screen.title]), ...screen.controls, ...screen.scrolled].map((label) => localize(label, direction));
+	const covers = (mask: Rect, node: Rect) => mask.x < node.x + node.width && node.x < mask.x + mask.width && mask.y < node.y + node.height && node.y < mask.y + mask.height;
+	const found = new Set<string>();
+	for (const node of tree.nodes) {
+		if (node.bounds.width <= 0 || node.bounds.height <= 0) continue;
+		const label = labels.find((candidate) => node.text.trim() === candidate || node.contentDesc.trim() === candidate);
+		if (label !== undefined && masks.some((mask) => covers(mask, node.bounds))) found.add(label);
+	}
+	return [...found];
+}
+
+/** The rectangles of every node that shows the QA account's address anywhere in its text or description, whether a mask covers it or not. */
+export function accountRects(tree: UiTree): Rect[] {
+	const email = accountEmail();
+	if (email === null) return [];
+	return tree.nodes
+		.filter((node) => node.bounds.width > 0 && node.bounds.height > 0 && `${node.text}\n${node.contentDesc}`.toLowerCase().includes(email))
+		.map((node) => node.bounds);
 }
 
 export function describeSelector(selector: Selector, direction: Direction): string {

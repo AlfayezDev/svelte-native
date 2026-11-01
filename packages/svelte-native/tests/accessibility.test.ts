@@ -124,7 +124,7 @@ const scope = globalThis as { nativeFabricUIManager?: unknown };
 scope.nativeFabricUIManager = fake;
 afterAll(() => { delete scope.nativeFabricUIManager; });
 
-async function load(platform: Platform) {
+async function load(platform: Platform, engine = false) {
   const stubs: Record<string, string> = {
     ...reanimatedStubs,
     "react-native/Libraries/Utilities/Platform": `export default { OS: '${platform}', Version: 34 };`,
@@ -132,7 +132,10 @@ async function load(platform: Platform) {
     "react-native/Libraries/Components/View/ViewNativeComponent": "export {};",
     "react-native/Libraries/Text/TextNativeComponent": "export {};",
     "react-native/Libraries/Components/ScrollView/ScrollViewNativeComponent": "export {};",
-    "expo-modules-core": "export const requireOptionalNativeModule = () => null;",
+    // The Android engine installed (`SvelteEngine.install` answers true), or no native module at all.
+    "expo-modules-core": engine
+      ? "export const requireOptionalNativeModule = (name) => name === 'SvelteEngine' ? { install: () => true, addListener: () => ({ remove() {} }), getInsets: () => null } : null;"
+      : "export const requireOptionalNativeModule = () => null;",
     "react-native": "export const AppRegistry = { registerRunnable() {} };",
   };
   const bundle = await build({
@@ -171,6 +174,37 @@ const byId = (root: number, testID: string) => views(roots[root] ?? []).find((n)
 const settle = async (m: { tick: () => Promise<void> }) => { await m.tick(); await Promise.resolve(); await Promise.resolve(); };
 const emit = (target: unknown, type: string, event: object) => (handler as NonNullable<typeof handler>)(target, type, event);
 type App = { setChecked(next: boolean): void; setLabel(next: string): void; setHidden(next: boolean): void; actionLog(): string[] };
+
+describe("accessibilityLabelledBy on the Android engine", () => {
+  const dev = globalThis as { __DEV__?: boolean };
+  async function warnings(engine: boolean, development: boolean): Promise<string[]> {
+    const warned: string[] = [];
+    const warn = console.warn;
+    console.warn = (...args: unknown[]) => { warned.push(args.map(String).join(" ")); };
+    dev.__DEV__ = development;
+    try {
+      const m = await load("android", engine);
+      roots = {};
+      const app = m.startSurface(26, m.Fixture, {}) as App;
+      app.setLabel("Again");
+      await settle(m);
+      expect(byId(26, "named").props.accessibilityLabelledBy).toEqual(["terms", "other"]); // the prop still reaches the shadow tree: React Native's own mounting reads it
+    } finally { console.warn = warn; delete dev.__DEV__; }
+    return warned.filter((line) => line.includes("accessibilityLabelledBy"));
+  }
+
+  test("the engine ignores it, so development says so, once", async () => {
+    const lines = await warnings(true, true);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("aria-labelledby");
+    expect(lines[0]).toContain("Android");
+  });
+
+  test("it says nothing in a release build, nor when React Native's own mounting reads the prop", async () => {
+    expect(await warnings(true, false)).toEqual([]);
+    expect(await warnings(false, true)).toEqual([]);
+  });
+});
 
 describe("the host on Android", () => {
   test("aria props reach the shadow tree as the accessibility props the engine encodes, and follow their updates", async () => {

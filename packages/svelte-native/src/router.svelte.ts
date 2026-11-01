@@ -327,17 +327,23 @@ function createStore(tree: StackNode) {
       // A navigation passes through the navigators of its chain: the layout of each is loaded if it is not, and again if its load failed (a pane's layout is no route of any stack, so nothing else would).
       for (const { node } of target.chain) if (node.layout) load(node);
     },
-    /** Puts the first screen on the root stack (it loads when it renders, not here), from a saved state when there is one. */
-    start(initial: string, saved?: NavigationState) {
-      if (saved?.stack.entries.length) {
+    /**
+     * Puts the first screen on the root stack (it loads when it renders, not here), from a saved state when there is one. Returns why the saved state was
+     * refused (the app starts from `initial` then), or undefined when there was none or it was used.
+     */
+    start(initial: string, saved?: NavigationState): string | undefined {
+      let rejected: string | undefined;
+      if (saved && !saved.stack.entries.length) rejected = "the saved state has no screens";
+      else if (saved) {
         try {
           root.set(restoreEntries(tree, saved.stack), false);
           launched = saved.launch;
-          return;
-        } catch { /* a route that no longer exists: start from the initial screen */ }
+          return undefined;
+        } catch (error) { rejected = `the saved state names a route that no longer exists (${error instanceof Error ? error.message : String(error)})`; }
       }
       const target = resolved(initial);
       apply(plan({}, target, {}), target, false);
+      return rejected;
     },
     replaceBase(stack: StackState, node: StackNode, href: string) {
       const target = resolved(href);
@@ -486,6 +492,7 @@ export function createRouter(tree: StackNode, initial = "/auth/login", options: 
   hot.scopeRestore ??= new SvelteMap();
   const { scopes, scopeRestore } = hot as Required<typeof hot>;
   let restored: NavigationState | undefined;
+  const superseded = scope === "root" && hot.restore !== undefined;
   if (scope === "root") {
     restored = hot.restore ?? options.restore;
     if (hot.restore) for (const [name, saved] of scopes) scopeRestore.set(name, saved());
@@ -495,7 +502,9 @@ export function createRouter(tree: StackNode, initial = "/auth/login", options: 
     restored = named && { stack: named };
     scopeRestore.delete(scope);
   }
-  store.start(initial, restored);
+  const rejected = store.start(initial, restored);
+  // The state the host started the surface with: used, refused (a route that is gone), or never looked at because a stopped surface left a fresher one. `launchSurface` tells the host once the surface has started.
+  if (scope === "root" && options.restore !== undefined) hot.adoption = superseded ? { rejected: "a stopped surface left a fresher state" } : rejected === undefined ? { restored: true } : { rejected };
   if (scope === "root") {
     hot.navigation = store.state;
     // Every change of the stacks writes the state for the host to keep (a settled navigation: effects run once per batch of changes, after the flush that made them).

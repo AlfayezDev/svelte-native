@@ -7,13 +7,14 @@ import { lab } from "./commands/lab.ts";
 import { parity } from "./commands/parity.ts";
 import { report } from "./commands/report.ts";
 import { resilience } from "./commands/resilience.ts";
+import { updates } from "./commands/updates.ts";
 import { crashes } from "./soak/crashes.ts";
 import { soak } from "./soak/soak.ts";
 import { symbolicate } from "./soak/symbolicate.ts";
 
 const usage = `usage: native-qa <command> [flags]
 
-  build  [--abi x86_64|arm64-v8a] [--prebuild]
+  build  [--abi x86_64|arm64-v8a] [--prebuild] [--updates-channel qa]
   build  --platform ios --mac <user@host> --mac-checkout <dir> [--build-script <path on the Mac>]
   lab    --device <serial> [--apk <path> | --no-install] [--repeat <n>] [--run checks,quick] [--timeout <s>]
   boot   --device <serial> [--apk <path> | --no-install] [--warm <n>] [--cold <n>] [--idle <s>]
@@ -25,6 +26,7 @@ const usage = `usage: native-qa <command> [flags]
   a11y   --device <serial> [--apk <path> | --no-install] [--quick] [--filter <screen>]
   resilience --device <serial> [--apk <path> | --no-install] [--rotations <n>] [--cycles <n>] [--rounds <n>]
   probe  --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--probes <names>] [--direction ltr|rtl]
+  updates --device <serial> [--apk <channel build>] [--baseline-apk <path> | --no-baseline] [--channel qa] [--warm <n>] [--max-launches <n>] [--settle <n>] [--eas "<command>"] [--environment <eas environment>]
   report
   gates  [--platform android|ios] [--all]`;
 
@@ -40,6 +42,7 @@ const commands: Record<string, (argv: string[]) => Promise<void>> = {
 	parity,
 	a11y,
 	resilience,
+	updates,
 	probe: iosProbe,
 	report: async () => report(),
 	gates,

@@ -79,7 +79,7 @@ async function launchOnce(
 }
 
 /** One slot of the series: a launch, and when its logcat pair is missing with the app alive, one more launch at once. */
-async function launchSlot(
+export async function launchSlot(
 	serial: string,
 	packageName: string,
 	kind: "warm" | "cold",

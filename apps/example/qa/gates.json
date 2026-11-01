@@ -6,7 +6,8 @@
       "name": "Samsung A16",
       "runs": [
         "lab",
-        "boot"
+        "boot",
+        "updates"
       ]
     },
     "E74A5608-BF8E-5806-8699-1605F82ADED9": {
@@ -28,7 +29,8 @@
         "crashes",
         "parity",
         "a11y",
-        "resilience"
+        "resilience",
+        "updates"
       ]
     }
   },
@@ -752,6 +754,61 @@
         },
         "ios": {
           "max": 0
+        }
+      }
+    },
+    {
+      "id": "updates.applied",
+      "title": "Updates: a published update runs after the start that downloads it",
+      "unit": "",
+      "metric": "updates.applied",
+      "bar": {
+        "android": {
+          "min": 1
+        }
+      }
+    },
+    {
+      "id": "updates.rolledBack",
+      "title": "Updates: a bad update is recovered from on the next start",
+      "unit": "",
+      "metric": "updates.rolledBack",
+      "bar": {
+        "android": {
+          "min": 1
+        }
+      }
+    },
+    {
+      "id": "updates.badRetried",
+      "title": "Updates: launches that ran or downloaded the bad update again",
+      "unit": "launches",
+      "metric": "updates.badRetried",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "updates.unexpectedFaults",
+      "title": "Updates: launches other than the bad one that crashed or logged a JavaScript error",
+      "unit": "launches",
+      "metric": "updates.unexpectedFaults",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "updates.channelHealthy",
+      "title": "Updates: the channel ends on an update that runs",
+      "unit": "",
+      "metric": "updates.channelHealthy",
+      "bar": {
+        "android": {
+          "min": 1
         }
       }
     }

@@ -79,6 +79,7 @@ export function gateKinds(gate: Gate): RunKind[] | null {
 		case "parity":
 		case "a11y":
 		case "resilience":
+		case "updates":
 			return [prefix];
 		default:
 			return null;

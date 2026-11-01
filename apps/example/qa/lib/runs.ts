@@ -1,6 +1,7 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { outDir, runsDir } from "./paths.ts";
+import type { UpdatesFile } from "./updates.ts";
 import type {
 	A11yFile,
 	BootFile,
@@ -33,14 +34,14 @@ export function slug(serial: string): string {
 }
 
 /** The kinds of run file `report` merges, one newest file per device of each. */
-export const runKinds = ["lab", "boot", "soak", "crashes", "parity", "a11y", "resilience"] as const;
+export const runKinds = ["lab", "boot", "soak", "crashes", "parity", "a11y", "resilience", "updates"] as const;
 export type RunKind = (typeof runKinds)[number];
 
 export async function writeRun(
 	kind: RunKind,
 	serial: string,
 	startedAt: Date,
-	data: LabFile | BootFile | SoakFile | CrashesFile | ParityFile | A11yFile | ResilienceFile,
+	data: LabFile | BootFile | SoakFile | CrashesFile | ParityFile | A11yFile | ResilienceFile | UpdatesFile,
 ): Promise<string> {
 	await mkdir(runsDir, { recursive: true });
 	const name = `${kind}-${slug(serial)}-${stamp(startedAt)}`;

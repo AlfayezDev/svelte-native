@@ -286,6 +286,30 @@ describe("reload and launch check", () => {
     expect(fake.downloads).toEqual([]);
     expect(fake.commits).toEqual([]);
   });
+  test("the failed list changes between launches: an update is fetched until the store fails it, never after, and a newer one still is", async () => {
+    const fake = fakeNative();
+    const launch = async (response: Response) => {
+      const messages: string[] = [];
+      // Every launch is a new process: a new client over whatever the store holds by then.
+      await createUpdates({ native: fake.native, fetch: respond(response).fetch, log: (message) => messages.push(message) }).checkOnLaunch();
+      return messages;
+    };
+    const newer = "33333333-3333-3333-3333-333333333333";
+    const newerManifest = { ...manifest, id: newer, createdAt: "2026-10-23T00:00:00.000Z" };
+    expect(await launch(manifestResponse())).toEqual([`Update ${UPDATE_ID} downloaded; it launches on the next start`]);
+    // The next start found it unconfirmed with a fatal: the store fails it and lists it.
+    Object.assign(fake.store, { failedIds: [UPDATE_ID], updates: { [UPDATE_ID]: { id: UPDATE_ID, createdAt: Date.parse(CREATED_AT), runtimeVersion: "0.1.0", status: "failed" as const, metadata: {} } } });
+    expect(await launch(manifestResponse())).toEqual(["No update to download (updatePreviouslyFailed)"]);
+    // The list keeps the newest five ids; the record stays failed after its id has scrolled out of it.
+    fake.store.failedIds = ["a", "b", "c", "d", "e"];
+    expect(await launch(manifestResponse())).toEqual(["No update to download (updatePreviouslyFailed)"]);
+    // A newer update is a different id and is fetched.
+    expect(await launch(manifestResponse(newerManifest))).toEqual([`Update ${newer} downloaded; it launches on the next start`]);
+    // The same store without the record at all (a reset) offers the old one again.
+    Object.assign(fake.store, { failedIds: [], updates: {} });
+    expect(await launch(manifestResponse())).toEqual([`Update ${UPDATE_ID} downloaded; it launches on the next start`]);
+    expect(fake.commits.map((committed) => committed.id)).toEqual([UPDATE_ID, newer, UPDATE_ID]);
+  });
   test("a failing launch check is logged, not thrown", async () => {
     const logged: unknown[] = [];
     await createUpdates({ native: fakeNative().native, fetch: async () => { throw new Error("offline"); }, log: (_message, error) => logged.push(error) }).checkOnLaunch();

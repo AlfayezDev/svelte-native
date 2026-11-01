@@ -11,7 +11,7 @@
   import Notice from "#lib/native/components/Notice.svelte";
   import { API_URL, nativeLabEnabled, theme, t, watchAppearance, syncStatusBar } from "#lib/native/state.svelte.ts";
   import { installErrorCounter, jsErrorCount } from "#lib/native/dev/errors.ts";
-  import { logUpdateReport } from "#lib/native/dev/update-probe.ts";
+  import { logUpdateReport, lateFault, lateFaultMessage } from "#lib/native/dev/update-probe.ts";
   import type { NativeConfiguration } from "#lib/native/session.svelte.ts";
   /** The app shell: `children` is the root navigator, and the router above this layout is `useRouter("root")`. */
   let { children }: { children: Snippet } = $props();
@@ -42,7 +42,10 @@
     }
   }
   if (nativeLabEnabled) installErrorCounter();
+  // QA update harness (SPEC "End to end on a QA channel"): bundles that boot and then throw, to check the launch is not confirmed too early.
+  if (lateFault === "effect") $effect(() => { throw new Error(lateFaultMessage); });
   onMount(() => {
+    if (lateFault === "mount") throw new Error(lateFaultMessage);
     const controller = new AbortController();
     const unwatch = watchAppearance();
     void load(controller.signal);

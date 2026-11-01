@@ -15,6 +15,12 @@ class SvelteUpdatesPackage : Package {
     object : ReactNativeHostHandler {
       override fun getJSBundleFile(useDeveloperSupport: Boolean): String? =
         if (useDeveloperSupport) null else Launch.get(context).bundlePath
+
+      // The host reports every fatal JavaScript exception and every failure to load the bundle here (and, with any handler present,
+      // does not rethrow). A launch of a downloaded update that has not been confirmed yet fails at the next start.
+      override fun onReactInstanceException(useDeveloperSupport: Boolean, exception: Exception) {
+        Launch.recordFatal(context)
+      }
     },
   )
 }

@@ -8,8 +8,18 @@ import { nativeLabEnabled } from "#lib/native/state.svelte.ts";
  */
 export const updateMarker: string | null = nativeLabEnabled ? (process.env.EXPO_PUBLIC_QA_UPDATE_MARKER || null) : null;
 
-// A bundle that cannot boot: the throw happens while the bundle loads, before the first commit, so the updates store never sees the launch succeed.
-if (nativeLabEnabled && process.env.EXPO_PUBLIC_QA_UPDATE_FAULT === "boot") throw new Error(`QA update fault: bundle ${updateMarker ?? "unmarked"} throws while it loads`);
+const fault: string | null = nativeLabEnabled ? (process.env.EXPO_PUBLIC_QA_UPDATE_FAULT || null) : null;
+
+// `boot`: a bundle that cannot load. The throw happens while the bundle loads, before the first commit, so the updates store never sees the launch succeed.
+if (fault === "boot") throw new Error(`QA update fault: bundle ${updateMarker ?? "unmarked"} throws while it loads`);
+
+/**
+ * The faults of a bundle that boots and then fails, planted in the root layout, outside its error boundary, so they are fatal:
+ * `mount` throws in the layout's `onMount`, `effect` in an `$effect` of the layout. Both run after the first commit (Svelte defers
+ * them to a microtask), which is the window the updates host must not confirm the launch in.
+ */
+export const lateFault: "mount" | "effect" | null = fault === "mount" || fault === "effect" ? fault : null;
+export const lateFaultMessage = `QA update fault: bundle ${updateMarker ?? "unmarked"} throws after its first commit`;
 
 type UpdatesModule = {
   isEnabled: boolean;

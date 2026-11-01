@@ -118,7 +118,7 @@ class SvelteUpdatesModule : Module() {
       background(promise) { store().rollBackToEmbedded(commitTime.toLong()); null }
     }
 
-    // The first commit happened: the launch did not fail, and clean-up can run.
+    // The launch is confirmed (the host reached its first commit and stayed healthy for the window): the update did not fail, and clean-up can run.
     AsyncFunction("markLaunched") { promise: Promise ->
       background(promise) {
         val launched = state()

@@ -1,9 +1,12 @@
 package expo.modules.svelteupdates
 
 import org.json.JSONArray
+import org.json.JSONException
 import org.json.JSONObject
 import java.io.File
+import java.io.FileOutputStream
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 /** One downloaded update. `status` is "ready" or "failed"; a failed update keeps its record (so it is never fetched again) but not its files. */
 internal data class StoredUpdate(
@@ -43,7 +46,13 @@ internal data class StoredUpdate(
 }
 
 /** What the next start launches: an update, or (null) the bundle embedded in the app. */
-internal data class Selection(val update: StoredUpdate?, val embeddedCreatedAt: Long, val emergencyReason: String?)
+internal data class Selection(
+  val update: StoredUpdate?,
+  val embeddedCreatedAt: Long,
+  val emergencyReason: String?,
+  /** QA only: how many updates a reset request forgot at this start; null when none was honoured. */
+  val resetForgotten: Int? = null,
+)
 
 /**
  * The on-disk store, `filesDir/svelte-updates`:
@@ -52,18 +61,23 @@ internal data class Selection(val update: StoredUpdate?, val embeddedCreatedAt: 
  *     updates/<update id>/<bundle>     the launch asset of a committed update
  *     assets/<key><extension>          every other asset, shared between updates, written only after its hash matched
  *
- * Every public method takes the store lock; files are written to a temporary name and renamed.
+ * Every public method takes the store lock, which is one per directory (a process makes several `UpdateStore`s for the same
+ * directory: the launch decision, the module's calls); files are written to a temporary name, synced, and renamed.
  */
 internal class UpdateStore(private val root: File) {
-  private val lock = Any()
+  private val lock = lockFor(root)
   private val indexFile = File(root, "index.json")
 
   private class Index(
     var clientId: String,
     var buildTime: Long,
     var embeddedCreatedAt: Long?,
-    /** The update a start is launching, until its first commit is reported. A marker found at the next start is a failed launch. */
+    /** The update a start is launching, until the app confirms the launch (`markLaunched`, after its healthy window). A marker found at the next start is an unconfirmed launch. */
     var pending: String?,
+    /** The pending launch recorded a fatal JavaScript or host exception (`markFatal`): it fails at the next start. */
+    var pendingFatal: Boolean,
+    /** Consecutive launches of an update that were never confirmed and recorded no fatal; two fail it. */
+    val unconfirmed: MutableMap<String, Int>,
     var failedIds: MutableList<String>,
     var serverDefinedHeaders: JSONObject?,
     var manifestFilters: JSONObject?,
@@ -72,26 +86,39 @@ internal class UpdateStore(private val root: File) {
     var resetToken: String? = null,
   )
 
+  /** A fresh store: what a first start finds, and what an index that cannot be read (kept as `index.json.corrupt`) is replaced by. */
+  private fun empty() = Index(UUID.randomUUID().toString(), 0, null, null, false, mutableMapOf(), mutableListOf(), null, null, LinkedHashMap())
+
+  /**
+   * No index file is an empty store. A file that cannot be parsed is set aside as `index.json.corrupt` (the newest one is kept) and
+   * the store starts empty; any other failure to read it (permissions, I/O) is thrown: it says nothing about the contents.
+   */
   private fun read(): Index {
+    if (!indexFile.exists()) return empty()
+    val text = indexFile.readText()
     try {
-      val json = JSONObject(indexFile.readText())
+      val json = JSONObject(text)
       val updates = LinkedHashMap<String, StoredUpdate>()
       val stored = json.getJSONObject("updates")
       for (id in stored.keys()) updates[id] = StoredUpdate.fromJson(stored.getJSONObject(id))
+      val counts = mutableMapOf<String, Int>()
+      json.optJSONObject("unconfirmed")?.let { launches -> for (id in launches.keys()) counts[id] = launches.getInt(id) }
       return Index(
         clientId = json.getString("clientId"),
         buildTime = json.optLong("buildTime", 0),
         embeddedCreatedAt = if (json.has("embeddedCreatedAt")) json.getLong("embeddedCreatedAt") else null,
         pending = json.optString("pending").takeIf { it.isNotEmpty() },
+        pendingFatal = json.optBoolean("pendingFatal", false),
+        unconfirmed = counts,
         failedIds = json.getJSONArray("failedIds").let { ids -> (0 until ids.length()).mapTo(mutableListOf()) { ids.getString(it) } },
         serverDefinedHeaders = json.optJSONObject("serverDefinedHeaders"),
         manifestFilters = json.optJSONObject("manifestFilters"),
         updates = updates,
         resetToken = json.optString("resetToken").takeIf { it.isNotEmpty() },
       )
-    } catch (_: Exception) {
-      // No index yet, or one that cannot be read: start empty. The files of lost updates are removed by the next clean-up.
-      return Index(UUID.randomUUID().toString(), 0, null, null, mutableListOf(), null, null, LinkedHashMap())
+    } catch (_: JSONException) {
+      File(root, "index.json.corrupt").writeText(text)
+      return empty()
     }
   }
 
@@ -103,12 +130,18 @@ internal class UpdateStore(private val root: File) {
       .put("failedIds", JSONArray(index.failedIds)).put("updates", updates)
     index.embeddedCreatedAt?.let { json.put("embeddedCreatedAt", it) }
     index.pending?.let { json.put("pending", it) }
+    if (index.pendingFatal) json.put("pendingFatal", true)
+    if (index.unconfirmed.isNotEmpty()) json.put("unconfirmed", JSONObject().also { counts -> for ((id, count) in index.unconfirmed) counts.put(id, count) })
     index.serverDefinedHeaders?.let { json.put("serverDefinedHeaders", it) }
     index.manifestFilters?.let { json.put("manifestFilters", it) }
     index.resetToken?.let { json.put("resetToken", it) }
     root.mkdirs()
     val temporary = File(root, "index.json.tmp")
-    temporary.writeText(json.toString())
+    // The bytes are on disk before the rename makes them the index: a power loss leaves the old index or the new one, never a torn file.
+    FileOutputStream(temporary).use { stream ->
+      stream.write(json.toString().toByteArray(Charsets.UTF_8))
+      stream.fd.sync()
+    }
     // `rename` replaces the old index in one step; copying is the fallback for a rename the file system refuses.
     if (!temporary.renameTo(indexFile)) {
       temporary.copyTo(indexFile, true)
@@ -134,12 +167,27 @@ internal class UpdateStore(private val root: File) {
 
   /**
    * Picks what this start launches: the newest ready update for the build's runtime version, update URL and channel that passes the
-   * server's filters and is newer than the embedded bundle; otherwise the embedded bundle. An update still marked as launching
-   * never reached its first commit, so it is marked failed first (`markFailure`; a reload within a run does not mark).
+   * server's filters and is newer than the embedded bundle; otherwise the embedded bundle.
+   *
+   * An update still marked as launching (`pending`) was never confirmed by the app (`markLaunched`, after its healthy window). It fails
+   * when the launch recorded a fatal JavaScript or host exception (`markFatal`), or when it is the second launch in a row that was
+   * never confirmed: a kill with no fatal (the user swiping the app away, the system reclaiming it) must not blacklist a good update
+   * the first time. `markFailure` is false for a reload within a run, which leaves the marker alone.
+   *
+   * `resetRequest` is the QA reset (`QaReset`). It is asked only when the store has something to forget, so a build that never
+   * downloaded anything never reads it.
    */
-  fun select(config: UpdatesConfig, buildTime: Long, markFailure: Boolean): Selection = synchronized(lock) {
+  fun select(config: UpdatesConfig, buildTime: Long, markFailure: Boolean, resetRequest: () -> String? = { null }): Selection = synchronized(lock) {
     val index = read()
     var changed = false
+    var forgotten: Int? = null
+    if (hasState(index)) {
+      val token = resetRequest()
+      if (token != null && token != index.resetToken) {
+        forgotten = applyReset(index, token)
+        changed = true
+      }
+    }
     // A new binary has a new embedded bundle; a rollback directive applied to the old one says nothing about it.
     if (index.buildTime != buildTime) {
       index.buildTime = buildTime
@@ -149,11 +197,22 @@ internal class UpdateStore(private val root: File) {
     var reason: String? = null
     val pending = index.pending
     if (markFailure && pending != null) {
-      markFailed(index, pending)
-      reason = "Update $pending did not reach its first commit"
+      val count = (index.unconfirmed[pending] ?: 0) + 1
+      if (index.pendingFatal) {
+        markFailed(index, pending)
+        reason = "Update $pending recorded a fatal error before its launch was confirmed"
+      } else if (count >= MAX_UNCONFIRMED) {
+        markFailed(index, pending)
+        reason = "Update $pending did not confirm its launch $count times in a row"
+      } else {
+        index.unconfirmed[pending] = count
+        reason = "Update $pending did not confirm its launch (launch $count of $MAX_UNCONFIRMED; it fails at the next one)"
+      }
+      if (index.updates[pending]?.status == "failed") index.unconfirmed.remove(pending)
+      index.pending = null
+      index.pendingFatal = false
       changed = true
     }
-    if (index.pending != null) { index.pending = null; changed = true }
     val embeddedCreatedAt = index.embeddedCreatedAt ?: buildTime
     val newest = index.updates.values
       .filter {
@@ -162,9 +221,33 @@ internal class UpdateStore(private val root: File) {
       }
       .maxByOrNull { it.createdAt }
     val chosen = newest?.takeIf { it.createdAt > embeddedCreatedAt }
-    if (chosen != null) { index.pending = chosen.id; changed = true }
+    if (index.pending != chosen?.id) {
+      index.pending = chosen?.id
+      index.pendingFatal = false
+      changed = true
+    }
     if (changed || !indexFile.exists()) write(index)
-    Selection(chosen, embeddedCreatedAt, reason)
+    Selection(chosen, embeddedCreatedAt, reason, forgotten)
+  }
+
+  private fun hasState(index: Index): Boolean =
+    index.updates.isNotEmpty() || index.failedIds.isNotEmpty() || index.pending != null || index.unconfirmed.isNotEmpty() ||
+      index.embeddedCreatedAt != null || index.serverDefinedHeaders != null || index.manifestFilters != null
+
+  private fun applyReset(index: Index, token: String): Int {
+    val forgotten = index.updates.size
+    index.updates.clear()
+    index.failedIds.clear()
+    index.pending = null
+    index.pendingFatal = false
+    index.unconfirmed.clear()
+    index.embeddedCreatedAt = null
+    index.serverDefinedHeaders = null
+    index.manifestFilters = null
+    index.resetToken = token
+    File(root, "updates").deleteRecursively()
+    File(root, "assets").deleteRecursively()
+    return forgotten
   }
 
   /**
@@ -175,16 +258,7 @@ internal class UpdateStore(private val root: File) {
   fun reset(token: String): Int? = synchronized(lock) {
     val index = read()
     if (index.resetToken == token) return@synchronized null
-    val forgotten = index.updates.size
-    index.updates.clear()
-    index.failedIds.clear()
-    index.pending = null
-    index.embeddedCreatedAt = null
-    index.serverDefinedHeaders = null
-    index.manifestFilters = null
-    index.resetToken = token
-    File(root, "updates").deleteRecursively()
-    File(root, "assets").deleteRecursively()
+    val forgotten = applyReset(index, token)
     write(index)
     forgotten
   }
@@ -246,11 +320,21 @@ internal class UpdateStore(private val root: File) {
       .toString()
   }
 
-  /** The launch reached its first commit. */
+  /** The app confirmed the launch, after its healthy window. A launch that recorded a fatal stays pending: it fails at the next start. */
   fun markLaunched(id: String) = synchronized(lock) {
     val index = read()
-    if (index.pending == id) {
+    if (index.pending == id && !index.pendingFatal) {
       index.pending = null
+      index.unconfirmed.remove(id)
+      write(index)
+    }
+  }
+
+  /** A fatal JavaScript or host exception happened while `id` was the pending launch (`SvelteUpdatesPackage`). */
+  fun markFatal(id: String) = synchronized(lock) {
+    val index = read()
+    if (index.pending == id && !index.pendingFatal) {
+      index.pendingFatal = true
       write(index)
     }
   }
@@ -281,6 +365,12 @@ internal class UpdateStore(private val root: File) {
   }
 
   companion object {
+    /** One lock per store directory, shared by every `UpdateStore` made for it in the process. */
+    private val locks = ConcurrentHashMap<String, Any>()
+    private fun lockFor(root: File): Any = locks.computeIfAbsent(root.canonicalPath) { Any() }
+
+    /** Launches of one update in a row that were never confirmed before it fails (a recorded fatal fails it at once). */
+    const val MAX_UNCONFIRMED = 2
     const val BUNDLE_NAME = "index.android.bundle"
     private val SAFE_ID = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
     private const val MAX_FAILED_IDS = 5

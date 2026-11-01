@@ -173,42 +173,42 @@ open class EngineView(context: Context) : ViewGroup(context), EngineNode {
   override fun onTouchEvent(event: MotionEvent): Boolean = node.pointer == 0 || node.pointer == 3
 
   /**
-   * `overflow: hidden`, as Android has it, is `clipChildren`: each child is cut off at its own bounds. A view another library owns may draw outside its bounds on
-   * purpose (react-native-fast-shadow's shadow, a glow): for a parent that holds a foreign frame the clip is the parent's own bounds instead, as React Native's
-   * `ReactViewGroup` clips (`hidesOverflow`, [dispatchDraw]), so the shadow of a card inside a rounded `overflow: hidden` box is drawn up to the box's edge.
+   * `overflow: hidden` as React Native has it (`ReactViewGroup.dispatchDraw`, `clipToPaddingBox`): the canvas is clipped to the padding box, the view's size less its border
+   * widths, whatever its children are. Android's own spelling of it, `clipChildren`, cuts each child off at the child's own bounds instead: a child that draws outside its
+   * bounds on purpose (react-native-fast-shadow's shadow, a glow, a scaled view) lost the part outside, and a child outside the parent was not clipped at all. The
+   * clip does not depend on what the view holds, so a sibling is clipped the same before and after a foreign view mounts next to it. A rounded view also clips to its outline
+   * (`Props`, `RoundedOutline`). `clipChildren` stays off for every engine view.
    */
   var hidesOverflow = false
     set(value) {
+      if (field == value) return
       field = value
-      applyChildClip()
+      invalidate()
     }
-  private var foreignChildren = 0
 
-  private fun applyChildClip() {
-    clipChildren = hidesOverflow && foreignChildren == 0
-  }
+  /** How the view clips what it draws: `canvas` (overflow hidden, the padding box), `none`. What the lab's `inspect` reports. */
+  val clipMode: String get() = if (hidesOverflow) "canvas" else "none"
 
   override fun dispatchDraw(canvas: Canvas) {
-    if (!hidesOverflow || foreignChildren == 0) {
+    if (!hidesOverflow) {
       super.dispatchDraw(canvas)
       return
     }
+    val widths = node.border
     val saved = canvas.save()
-    canvas.clipRect(0f, 0f, width.toFloat(), height.toFloat())
+    canvas.clipRect(widths[0], widths[1], width - widths[2], height - widths[3])
     super.dispatchDraw(canvas)
     canvas.restoreToCount(saved)
   }
 
   override fun onViewAdded(child: View) {
     super.onViewAdded(child)
-    if (child is EngineForeign) { foreignChildren++; applyChildClip() }
     orderDirty = true
     if (isStacked(child)) stackingChanged(false, true, countOnly = true)
   }
 
   override fun onViewRemoved(child: View) {
     super.onViewRemoved(child)
-    if (child is EngineForeign) { foreignChildren--; applyChildClip() }
     orderDirty = true
     if (isStacked(child)) stackingChanged(true, false, countOnly = true)
   }

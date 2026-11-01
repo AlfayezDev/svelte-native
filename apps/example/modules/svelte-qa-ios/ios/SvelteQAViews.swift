@@ -38,13 +38,19 @@ enum SvelteQAViews {
     return nil
   }
 
+  /// How a view clips what it draws, in the words the Android readback uses: `bounds` when UIKit cuts its subviews at its bounds (`clipsToBounds`, or a layer that masks to
+  /// them), `none` otherwise. UIKit has one mode; Android's `canvas` (the padding box of an engine view with `overflow: hidden`) and `children` are its own.
+  private static func clipMode(of view: UIView) -> String {
+    view.clipsToBounds || view.layer.masksToBounds ? "bounds" : "none"
+  }
+
   private static func collect(_ view: UIView, depth: Int, views: inout [String], texts: inout [String]) {
     if let text = ownText(view), !text.isEmpty, !texts.contains(text) { texts.append(text) }
     if depth >= 6 { return }
     for child in view.subviews {
       if views.count < 40 {
         let size = child.bounds.size
-        views.append(String(repeating: "  ", count: depth) + String(describing: type(of: child)) + " \(Int(size.width))x\(Int(size.height))")
+        views.append(String(repeating: "  ", count: depth) + String(describing: type(of: child)) + " \(Int(size.width))x\(Int(size.height)) clip=\(clipMode(of: child))")
       }
       collect(child, depth: depth + 1, views: &views, texts: &texts)
     }
@@ -70,7 +76,8 @@ enum SvelteQAViews {
       "visibility": view.isHidden ? 4 : 0,
       "alpha": Double(view.alpha),
       "density": scale,
-      "parent": view.superview.map { NSStringFromClass(type(of: $0)) } ?? "none",
+      "clip": clipMode(of: view),
+      "parent": view.superview.map { NSStringFromClass(type(of: $0)) + " clip=" + clipMode(of: $0) } ?? "none",
       "text": texts.joined(separator: "\n"),
       "views": views,
       "surfaces": [String](),

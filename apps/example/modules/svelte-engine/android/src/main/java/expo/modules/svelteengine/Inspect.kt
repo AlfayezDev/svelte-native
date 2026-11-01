@@ -6,6 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.TextView
+import expo.modules.svelteengine.views.EngineView
 
 /**
  * What the lab reads back from the platform's own view of a tag (SPEC.md, "Foreign views", "Device verification of the
@@ -42,11 +43,19 @@ object Inspect {
       "alpha" to view.alpha.toDouble(),
       "density" to view.resources.displayMetrics.density.toDouble(),
       // Whether the parent lets the view draw outside its bounds (a view's own render node follows its parent's `clipChildren`): a shadow or a glow needs it.
-      "parent" to ((view.parent as? ViewGroup)?.let { "${it.javaClass.simpleName} clipChildren=${it.clipChildren}" } ?: "none"),
+      "clip" to clipOf(view).trim().removePrefix("clip="),
+      "parent" to ((view.parent as? ViewGroup)?.let { "${it.javaClass.simpleName}${clipOf(it)}" } ?: "none"),
       "text" to texts.joinToString("\n"),
       "views" to inside,
       "surfaces" to surfaces,
     )
+  }
+
+  /** How a view clips what it draws: `clip=canvas` for an engine view with `overflow: hidden` (the padding box), `clip=children` when `clipChildren` cuts each child at its bounds, `clip=none`. */
+  private fun clipOf(view: View): String {
+    if (view !is ViewGroup) return ""
+    val mode = if (view is EngineView) view.clipMode else if (view.clipChildren) "children" else "none"
+    return " clip=$mode"
   }
 
   /** The class and box of each view below [view] (depth first, in draw order of the children), its text, and its surfaces. */
@@ -60,7 +69,7 @@ object Inspect {
     if (view !is ViewGroup || depth >= MAX_DEPTH) return
     for (i in 0 until view.childCount) {
       val child = view.getChildAt(i)
-      if (views.size < MAX_DESCENDANTS) views.add("${"  ".repeat(depth)}${child.javaClass.simpleName} ${child.width}x${child.height}${if (child is ViewGroup) " clip=${child.clipChildren}" else ""}")
+      if (views.size < MAX_DESCENDANTS) views.add("${"  ".repeat(depth)}${child.javaClass.simpleName} ${child.width}x${child.height}${clipOf(child)}")
       collect(child, depth + 1, views, texts, surfaces, origin)
     }
   }

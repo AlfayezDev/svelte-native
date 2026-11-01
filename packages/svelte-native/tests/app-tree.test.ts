@@ -1,13 +1,14 @@
 import { test, expect, jest } from "bun:test";
-import { build, transform } from "esbuild";
-import { readFile, mkdtemp, writeFile, rm } from "node:fs/promises";
+import { build, transform, type Loader, type Plugin } from "esbuild";
+import { readFile, mkdtemp, mkdir, writeFile, rm, symlink } from "node:fs/promises";
 import { resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { compile, compileModule } from "svelte/compiler";
 import { reanimatedStubs } from "./reanimated-stubs.ts";
 import { parseNativeID } from "../src/fabric/navigation.ts";
-import { routeFiles } from "../src/build.ts";
+import { routeFiles, syncNative } from "../src/build.ts";
+import { stubCoreSource, stubSource } from "../src/metro.ts";
 import { buildTree, resolve as resolveHref, type PageRoute, type RouteNode } from "../src/route-tree.ts";
 import { enforceSession, type GuardedAccount } from "../../../apps/platform/src/lib/native/session-guard.ts";
 
@@ -62,7 +63,8 @@ const stubs: Record<string, string> = {
   "react-native": "export const AppRegistry = { registerRunnable() {} };",
 };
 
-async function load(fixture = "navigation-fixture.svelte") {
+type LoadOptions = { plugins?: Plugin[]; loader?: Record<string, Loader>; define?: Record<string, string> };
+async function load(fixture = "navigation-fixture.svelte", options: LoadOptions = {}) {
   const bundle = await build({
     stdin: {
       contents: `import Fixture from './${fixture}';
@@ -71,8 +73,8 @@ async function load(fixture = "navigation-fixture.svelte") {
         export { startSurface, flush, fabricStats, tick, Fixture };`,
       resolveDir: import.meta.dirname,
     },
-    bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], write: false,
-    plugins: [{
+    bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], write: false, loader: options.loader, define: options.define,
+    plugins: [...(options.plugins ?? []), {
       name: "fabric-fixture",
       setup(builder) {
         builder.onResolve({ filter: /^(react-native|expo-modules-core)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
@@ -113,13 +115,13 @@ type TreeRouter = {
   replaceBase: (href: string) => void; openURL: (href: string) => boolean; screens: { leaving: boolean; canGoBack: boolean }[];
   node: { kind: string; panes?: { key: string; stack: object }[] }; modules: (node: object) => unknown;
 };
-type TreeApp = { root: () => TreeRouter; show: (shown: boolean) => void };
+type TreeApp = { root?: () => TreeRouter; show: (shown: boolean) => void };
 const treeGlobals = globalThis as { __treeRoots?: Record<string, TreeRouter>; __treeRouters?: Record<string, TreeRouter>; __treeOptions?: Record<string, object>; __treeTabs?: object[]; __treeSelections?: string[]; __treePanes?: unknown; __treeTabsRouter?: TreeRouter; __treeLayouts?: { path?: string; params?: object }[] };
 const pathsOf = (router: TreeRouter) => router.entries.map((entry) => `${entry.url.pathname}${entry.url.search}`);
 const selectedIndex = (surface: number) => parseNativeID(String(ofKind(roots[surface], "tabs")[0].props.nativeID))?.pairs.sel;
 const paneRouter = (path: string): TreeRouter => { const router = treeGlobals.__treeRouters?.[path]; if (!router) throw new Error(`no page rendered at ${path}`); return router; };
-async function mountTree(surface: number, props: Record<string, unknown> = {}) {
-  const m = await load("tree-fixture.svelte");
+async function mountTree(surface: number, props: Record<string, unknown> = {}, fixture = "tree-fixture.svelte", options: LoadOptions = {}) {
+  const m = await load(fixture, options);
   jest.useFakeTimers(); // a popped screen's exit timer must not fire into whichever test runs after this one
   calls.length = 0; roots = {};
   treeGlobals.__treeRouters = {}; treeGlobals.__treeRoots = {}; delete treeGlobals.__treeOptions; delete treeGlobals.__treeTabs; delete treeGlobals.__treeSelections; delete treeGlobals.__treeLayouts;
@@ -131,7 +133,7 @@ async function mountTree(surface: number, props: Record<string, unknown> = {}) {
   // React Native asks the handlers newest first and stops at the first `true`.
   const hardwareBack = () => [...handlersOf("__backHandlers")].reverse().some((handler) => (handler as () => boolean)());
   const settled = () => turns(m);
-  return { m, app, router: app.root(), hardwareBack, settled, texts: () => texts(surface), tree: () => roots[surface] };
+  return { m, app, router: app.root?.() as TreeRouter, hardwareBack, settled, texts: () => texts(surface), tree: () => roots[surface] };
 }
 
 const appRoutes = resolve(import.meta.dirname, "../../../apps/platform/src/routes");
@@ -497,4 +499,135 @@ test("in the product a deep link to the lab ends where an unknown workspace does
     guard(lab.router, signedIn(), true);
     expect(pathsOf(lab.router)).toEqual(["/__dev/screens"]);
   } finally { delete launch.__initialURL; reset(); }
+});
+
+// The shared app with the lab off.
+//
+// The product's Metro resolves everything in the lab's directories to a stub that throws when it is used, and the shared code (the root layout,
+// the session, three screens) may call the lab only behind `nativeLabEnabled`. This mounts the platform app's real root layout, session and
+// pages the way the product runs them: the route table the Metro integration generates for the variant, the lab's directories replaced by the
+// real stub core (the plugin below does what `stubbedDirectories` does after resolution), the account and the Expo modules faked. A lab call
+// that is not behind the flag then fails the test instead of a phone.
+const platformRoot = resolve(import.meta.dirname, "../../../apps/platform");
+const packageRoot = resolve(import.meta.dirname, "..");
+const labDirectories = [resolve(platformRoot, "src/lib/native/dev") + "/", resolve(platformRoot, "src/routes/__dev") + "/"];
+
+async function platformApp(variant: string, applicationId: string | null): Promise<{ plugins: Plugin[]; loader: Record<string, Loader>; define: Record<string, string>; clean: () => Promise<void> }> {
+  const directory = await mkdtemp(resolve(tmpdir(), "svelte-native-platform-app-"));
+  // A project whose `src` is the platform app's, so the generated table requires the real pages.
+  await symlink(resolve(platformRoot, "src"), resolve(directory, "src"));
+  await syncNative(directory, { variant });
+  const table = resolve(directory, ".svelte-native", `routes.${variant}.ts`);
+  await mkdir(resolve(directory, "stubs"), { recursive: true });
+  await writeFile(resolve(directory, "stubs/_core.js"), stubCoreSource);
+  await writeFile(resolve(directory, "stubs/lab.js"), stubSource("src/lib/native/dev/", variant));
+  const expo: Record<string, string> = {
+    "expo-font": "export const loadAsync = async () => {};",
+    "expo-secure-store": "const store = new Map(); export const getItem = (key) => store.get(key) ?? null; export const setItem = (key, value) => { store.set(key, value); }; export const deleteItemAsync = async (key) => { store.delete(key); };",
+    "expo-localization": "export const getLocales = () => [{ languageCode: 'en' }];",
+    "expo-application": `export const applicationId = ${JSON.stringify(applicationId)}; export const nativeApplicationVersion = '1';`,
+    "expo-status-bar": "export const setStatusBarStyle = () => {};",
+    "expo-crypto": "export const randomUUID = () => 'uuid';",
+    "expo-file-system": "export class File { constructor(...parts) { this.uri = parts.join('/'); } } export class Directory { constructor(...parts) { this.uri = parts.join('/'); } } export const Paths = { cache: 'cache', document: 'document' };",
+    "expo/fetch": "export const fetch = (...args) => globalThis.fetch(...args);",
+    "expo-image-picker": "export const launchImageLibraryAsync = async () => ({ canceled: true, assets: null });",
+    "react-native/Libraries/Utilities/Appearance": "export const getColorScheme = () => 'light'; export const addChangeListener = () => ({ remove() {} });",
+  };
+  const plugin: Plugin = {
+    name: "platform-app",
+    setup(builder) {
+      const resolving = { platformApp: true };
+      // Everything of the app's that imports `svelte` gets the package's (the renderer's), as Metro does.
+      builder.onResolve({ filter: /^svelte(\/|$)/ }, async (args) => (args.pluginData?.platformApp || args.importer.startsWith(packageRoot) ? undefined : builder.resolve(args.path, { resolveDir: packageRoot, kind: args.kind, pluginData: resolving })));
+      builder.onResolve({ filter: /^@rasheed\/svelte-native\/routes$/ }, () => ({ path: table }));
+      builder.onResolve({ filter: new RegExp(`^(${Object.keys(expo).join("|")})$`) }, (args) => ({ path: args.path, namespace: "platform-expo" }));
+      builder.onLoad({ filter: /.*/, namespace: "platform-expo" }, (args) => ({ contents: expo[args.path], loader: "js" }));
+      builder.onResolve({ filter: /^[.#]/ }, async (args) => {
+        if (args.pluginData?.platformApp) return undefined;
+        const found = await builder.resolve(args.path, { resolveDir: args.resolveDir, importer: args.importer, kind: args.kind, namespace: args.namespace, pluginData: resolving });
+        if (found.errors.length > 0) return undefined;
+        if (labDirectories.some((lab) => found.path.startsWith(lab))) return { path: resolve(directory, "stubs/lab.js") };
+        if (found.path === resolve(platformRoot, "src/lib/native/session.svelte.ts")) return { path: resolve(import.meta.dirname, "lab-off-session.svelte.ts") };
+        return undefined;
+      });
+    },
+  };
+  return { plugins: [plugin], loader: { ".ttf": "empty" }, define: { __DEV__: "false" }, clean: () => rm(directory, { recursive: true, force: true }) };
+}
+
+const labOff = globalThis as { __labOffRouter?: TreeRouter; __labOffUser?: null; fetch: typeof fetch };
+async function mountPlatform(surface: number, options: { variant: string; applicationId: string | null; initial: string; signedIn?: boolean }) {
+  const app = await platformApp(options.variant, options.applicationId);
+  const realFetch = labOff.fetch;
+  labOff.fetch = (async () => new Response(JSON.stringify({ uri: "wss://example.test", databaseName: "rasheed" }))) as typeof fetch;
+  if (options.signedIn === false) labOff.__labOffUser = null; else delete labOff.__labOffUser;
+  const errors: string[] = [];
+  const logged = console.error;
+  console.error = (...args: unknown[]) => { errors.push(args.map(String).join(" ")); };
+  try {
+    const mounted = await mountTree(surface, { initial: options.initial }, "lab-off-fixture.svelte", app);
+    await mounted.settled();
+    await mounted.settled();
+    return { ...mounted, errors, router: labOff.__labOffRouter as TreeRouter, close: () => { console.error = logged; labOff.fetch = realFetch; delete labOff.__labOffUser; return app.clean(); } };
+  } catch (error) {
+    console.error = logged;
+    labOff.fetch = realFetch;
+    delete labOff.__labOffUser;
+    await app.clean();
+    throw error;
+  }
+}
+/** What went wrong in an app that should be fine: a stub that threw, a call to a lab export that is not there, the shell's failure page. */
+const trouble = (texts: string[], errors: string[]) => [...texts, ...errors].filter((line) => /not in this app|is not a function|is not a constructor|went wrong|\[native startup\]/i.test(line));
+
+test("the shared app with the lab off: the root layout, the session and the screens that offer the lab run without calling it", async () => {
+  withInsets(24);
+  const launch = globalThis as { __initialURL?: string };
+  const checks: [number, string, string, boolean | undefined, string[]][] = [
+    [150, "/workspaces", "io.rasheed.app", true, ["Sign out"]],
+    [151, "/acme/home", "io.rasheed.app", true, ["Sign out"]],
+    [152, "/auth/login", "io.rasheed.app", false, ["Continue with email"]],
+  ];
+  try {
+    for (const [surface, initial, applicationId, signedIn, expected] of checks) {
+      const app = await mountPlatform(surface, { variant: "production", applicationId, initial, signedIn });
+      try {
+        const shown = app.texts();
+        expect([initial, trouble(shown, app.errors)]).toEqual([initial, []]);
+        for (const text of expected) expect([initial, text, shown.some((line) => line.includes(text))]).toEqual([initial, text, true]);
+        expect(shown.filter((line) => /development lab/i.test(line))).toEqual([]);
+        expect(app.router.current.url.pathname.startsWith("/__dev")).toBe(false);
+      } finally { await app.close(); reset(); }
+    }
+    // The launch link of the lab reaches a product with no lab as it reaches any workspace that is not the user's: the list, and no call into the lab.
+    launch.__initialURL = "rasheed://__dev";
+    const linked = await mountPlatform(153, { variant: "production", applicationId: "io.rasheed.app", initial: "/auth/login" });
+    try {
+      for (let turn = 0; turn < 4; turn++) await linked.settled();
+      expect(trouble(linked.texts(), linked.errors)).toEqual([]);
+      expect(pathsOf(linked.router)).toEqual(["/workspaces"]);
+    } finally { await linked.close(); reset(); }
+  } finally { delete launch.__initialURL; reset(); }
+});
+
+test("the same harness sees a lab call that is not behind the flag: with the flag on and the lab stubbed, the call fails the app", async () => {
+  withInsets(24);
+  // The QA app's table (it has the lab) but the product's stubs: every lab call is a call into a stub, which is what an unguarded call in the product is.
+  try {
+    await expect(mountPlatform(154, { variant: "qa", applicationId: "io.rasheed.svelteqa", initial: "/workspaces" })).rejects.toThrow(/installErrorCounter|not in this app/);
+  } finally { reset(); }
+  // And a bundle that has the lab in a product shell: the shell refuses it, says so, and calls nothing.
+  const refused = await mountPlatform(155, { variant: "qa", applicationId: "io.rasheed.app", initial: "/workspaces" });
+  try {
+    expect(trouble(refused.texts(), refused.errors.filter((line) => !line.includes("[Svelte lab]")))).toEqual([]);
+    expect(refused.errors.filter((line) => line.includes("[Svelte lab]"))).toEqual(["[Svelte lab] this qa bundle carries the development lab, which the io.rasheed.app app does not run (publish with APP_VARIANT=production): the lab is off"]);
+    expect(refused.texts().some((line) => line.includes("Sign out"))).toBe(true);
+    expect(refused.texts().filter((line) => /development lab/i.test(line))).toEqual([]);
+  } finally { await refused.close(); reset(); }
+  // A QA dev client (the QA app id) with a product-variant Metro: the bundle has no lab, so none of it runs although the id would allow it.
+  const mismatched = await mountPlatform(156, { variant: "production", applicationId: "io.rasheed.svelteqa", initial: "/workspaces" });
+  try {
+    expect(trouble(mismatched.texts(), mismatched.errors)).toEqual([]);
+    expect(mismatched.texts().some((line) => line.includes("Sign out"))).toBe(true);
+  } finally { await mismatched.close(); reset(); }
 });

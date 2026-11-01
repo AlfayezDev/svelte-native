@@ -416,6 +416,8 @@ describe("three apps: the product and the QA app link the product's native modul
 		const plist = readFileSync(join(platformDir, "qa/firebase-fake/GoogleService-Info.plist"), "utf8");
 		expect(plist).toContain(`<string>${packageOf.smoke}</string>`);
 		expect(plist).not.toMatch(/AIza/);
+		// FirebaseInstallations raises in `FIRApp configure`, at launch, unless the key is 39 url-safe characters that start with `A`: the first iOS smoke app aborted there on a key that was only fake.
+		expect(plist).toMatch(/<key>API_KEY<\/key>\s*<string>A[A-Za-z0-9_-]{38}<\/string>/);
 	});
 });
 

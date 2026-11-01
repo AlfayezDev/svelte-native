@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "bun:test";
-import { accountRects, exposedAccount, findNode, matches, maskRects } from "../lib/drive.ts";
+import { accountRects, exposedAccount, findNode, maskedChrome, matches, maskRects } from "../lib/drive.ts";
 import { compare, redactedFailure } from "../lib/parity.ts";
 import { copy } from "../lib/copy.ts";
 import { enterSignedIn } from "../lib/signin.ts";
@@ -158,6 +158,36 @@ describe("painting over what must not be stored", () => {
 		expect(at(5, 2)).toEqual([7, 7, 7, 7]);
 		expect(at(2, 0)).toEqual([7, 7, 7, 7]);
 		expect(picture.data[(1 * 8 + 2) * 4]).toBe(7);
+	});
+});
+
+describe("a reference's masks stay off the screen's own chrome", () => {
+	const profileModal = cases.find((screen) => screen.id === "app-account-profile") as ScreenCase;
+	// The account modal in English: its title, the Close button, the tab strip of the sections, and the address (the one thing the profile masks) further down.
+	const modal = tree(
+		node({ text: "Account settings", bounds: "[61,150][1019,230]" }),
+		node({ desc: "Close", bounds: "[900,150][1019,230]" }),
+		node({ text: "Profile", bounds: "[61,336][300,397]" }),
+		node({ text: "Preferences", bounds: "[320,336][600,397]" }),
+		node({ text: address, bounds: "[61,2071][1019,2136]" }),
+	);
+
+	test("a mask over the tab strip, as the covered screen's address left one, is found; the address's own mask is not", () => {
+		useAccount(address);
+		expect(maskedChrome(modal, profileModal, "ltr", [{ x: 61, y: 2071, width: 958, height: 65 }])).toEqual([]);
+		// the stale one: the address of the list of workspaces under the modal sat at the height of the strip
+		expect(maskedChrome(modal, profileModal, "ltr", [{ x: 61, y: 336, width: 958, height: 61 }])).toEqual(["Profile", "Preferences"]);
+		expect(maskedChrome(modal, profileModal, "ltr", [{ x: 0, y: 140, width: 1080, height: 100 }])).toEqual(["Account settings", "Close"]);
+		// touching is not covering
+		expect(maskedChrome(modal, profileModal, "ltr", [{ x: 61, y: 397, width: 958, height: 61 }])).toEqual([]);
+		useAccount(undefined);
+	});
+
+	test("every signed-in case's own chrome is named by its title, controls and the controls further down, in the language of the variant", () => {
+		const arabic = tree(node({ text: "الملف الشخصي", bounds: "[61,336][300,397]" }));
+		const rtl = maskedChrome(arabic, profileModal, "rtl", [{ x: 61, y: 336, width: 958, height: 61 }]);
+		expect(rtl).toHaveLength(1);
+		expect(maskedChrome(arabic, profileModal, "ltr", [{ x: 61, y: 336, width: 958, height: 61 }])).toEqual([]);
 	});
 });
 

@@ -11,6 +11,7 @@
   import Notice from "#lib/native/components/Notice.svelte";
   import { API_URL, nativeLabEnabled, theme, t, watchAppearance, syncStatusBar } from "#lib/native/state.svelte.ts";
   import { installErrorCounter, jsErrorCount } from "#lib/native/dev/errors.ts";
+  import { logUpdateReport } from "#lib/native/dev/update-probe.ts";
   import type { NativeConfiguration } from "#lib/native/session.svelte.ts";
   /** The app shell: `children` is the root navigator, and the router above this layout is `useRouter("root")`. */
   let { children }: { children: Snippet } = $props();
@@ -45,8 +46,8 @@
     const controller = new AbortController();
     const unwatch = watchAppearance();
     void load(controller.signal);
-    // The QA app hands the native recorder its boot phases; after the host's first commit, which logs the line they come from.
-    if (nativeLabEnabled) setTimeout(() => { void import("#lib/native/dev/qa.ts").then(({ qaModule }) => qaModule?.recordBoot(bootSummary(), jsErrorCount())); }, 0);
+    // The QA app hands the native recorder its boot phases, and the update harness the bundle that runs; after the host's first commit, which logs the line they come from.
+    if (nativeLabEnabled) setTimeout(() => { logUpdateReport(); void import("#lib/native/dev/qa.ts").then(({ qaModule }) => qaModule?.recordBoot(bootSummary(), jsErrorCount())); }, 0);
     return () => { controller.abort(); unwatch(); };
   });
 </script>

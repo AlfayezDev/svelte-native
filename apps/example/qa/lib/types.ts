@@ -164,6 +164,8 @@ export type BuildFile = {
 	finishedAt: string;
 	durationMs: number;
 	prebuilt: boolean;
+	/** The EAS Update channel the build checks (`--updates-channel`); absent: a plain QA build, which never checks for updates. */
+	updatesChannel?: string;
 	source: Source;
 	apk: ApkInfo;
 	/** The composed source map of the Hermes bytecode bundle, and the unstripped engine libraries, kept next to the APK for `soak/symbolicate.ts`. */

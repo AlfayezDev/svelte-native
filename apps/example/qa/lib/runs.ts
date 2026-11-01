@@ -92,10 +92,10 @@ export async function readJson<T>(path: string): Promise<T> {
 	return JSON.parse(await readFile(path, "utf8")) as T;
 }
 
-export async function writeBuild(build: BuildFile): Promise<void> {
-	await mkdir(outDir, { recursive: true });
+export async function writeBuild(build: BuildFile, directory: string = outDir): Promise<void> {
+	await mkdir(directory, { recursive: true });
 	await writeFile(
-		join(outDir, `build-${build.abi}.json`),
+		join(directory, `build-${build.abi}.json`),
 		`${JSON.stringify(build, null, "\t")}\n`,
 	);
 }

@@ -315,7 +315,7 @@ export async function crashes(argv: string[]): Promise<void> {
 		return;
 	}
 	const lock = lockFor(serial);
-	if (lock) reexecUnderLock(lock, ["crashes", ...argv]);
+	if (lock) await reexecUnderLock(lock, ["crashes", ...argv]);
 
 	const startCount = integerFlag(values.starts, "starts", 1000);
 	const suiteCount = integerFlag(values.suites, "suites", 100);

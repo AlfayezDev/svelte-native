@@ -107,7 +107,7 @@ export const suiteBundleId = (values: IosValues, variant: Variant): string => fl
  * `flock`), find the phone through the Mac, install the build under test unless told not to, and describe the phone and the app.
  */
 export async function startIosSuite(command: string, argv: string[], values: IosValues, variant: Variant = "qa"): Promise<IosSession> {
-	reexecUnderLock(iphoneLock, [command, ...argv]);
+	await reexecUnderLock(iphoneLock, [command, ...argv]);
 	const id = requireString(values.device, "device");
 	const mac = macFrom(flagString(values.mac));
 	const bundleId = suiteBundleId(values, variant);

@@ -60,7 +60,7 @@ export async function smoke(argv: string[]): Promise<void> {
 	});
 	const serial = requireString(values.device, "device");
 	const lock = lockFor(serial);
-	if (lock) reexecUnderLock(lock, ["smoke", ...argv]);
+	if (lock) await reexecUnderLock(lock, ["smoke", ...argv]);
 
 	const timeoutMs = integerFlag(values.timeout, "timeout", 180) * 1000;
 	const packageName = flagString(values.package) ?? packageOf.smoke;

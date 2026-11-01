@@ -112,7 +112,7 @@ export async function boot(argv: string[]): Promise<void> {
 	});
 	const serial = requireString(values.device, "device");
 	const lock = lockFor(serial);
-	if (lock) reexecUnderLock(lock, ["boot", ...argv]);
+	if (lock) await reexecUnderLock(lock, ["boot", ...argv]);
 
 	const warmCount = integerFlag(values.warm, "warm", 30);
 	const coldCount = integerFlag(values.cold, "cold", 30);

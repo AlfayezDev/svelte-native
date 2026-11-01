@@ -24,11 +24,22 @@ pnpm native-qa:test         # bun test qa
 pnpm native-qa:typecheck    # tsc -p qa
 ```
 
-Node 25 runs the TypeScript directly (`node qa/native-qa.ts`). Bun is only needed for the tests. Prerequisites for `build` are the Android SDK, JDK 17 and the repo's `pnpm install`; `build --variant smoke` also needs `apps/platform/libs/samsungpay.jar` (the Samsung Pay SDK the smoke app's `expo-samsung-pay` needs: proprietary, copied from the production app's `libs/`, ignored by git; `build` says so when it is missing); `lab` and `boot` need `adb` and `flock`.
+Node 25 runs the TypeScript directly (`node qa/native-qa.ts`). Bun is only needed for the tests. Prerequisites for `build` are the Android SDK, JDK 17 and the repo's `pnpm install`; `build --variant smoke` also needs `apps/platform/libs/samsungpay.jar` (the Samsung Pay SDK the smoke app's `expo-samsung-pay` needs: proprietary, copied from the production app's `libs/`, ignored by git; `build` says so when it is missing); `lab` and `boot` need `adb` and `flock` (a machine that reaches the emulator through a tunnel also needs `ssh` to the host).
 
 ## Devices and locks
 
-`--device` is required for `lab` and `boot`; nothing defaults to a phone or a Mac. Serials that reach the shared OVH emulator (`localhost:<port>`, `127.0.0.1:<port>`, `emulator-<n>`) make the command re-run itself under `flock /tmp/svelte-qa-emulator.lock`, so it waits while another agent or job holds the emulator. `build` always runs under `flock /tmp/svelte-qa-gradle.lock`. If the tunnel is down: `ssh -f -N -L 5555:127.0.0.1:5555 ovh-root && adb connect localhost:5555`.
+`--device` is required for `lab` and `boot`; nothing defaults to a phone or a Mac. Serials that reach the shared OVH emulator (`localhost:<port>`, `127.0.0.1:<port>`, `emulator-<n>`) make the command re-run itself under the emulator lock, so it waits while another agent or job holds the emulator. `build` always runs under `flock /tmp/svelte-qa-gradle.lock`. If the tunnel is down: `ssh -f -N -L 5555:127.0.0.1:5555 ovh-root && adb connect localhost:5555`.
+
+**One lock for every machine that uses the OVH emulator.** The emulator is one device that this PC reaches through the tunnel and the OVH host's own CI runner reaches directly (`localhost:5555` on both), so a lock file on each machine would not exclude anyone. The lock file lives on the OVH host, `/run/svelte-qa/emulator.lock` (its own directory: `/tmp` is sticky and `fs.protected_regular` refuses a second user a file the first one created). On the host a command takes it with `flock`. On any other machine it takes the same file over `ssh <host> flock ...`: a held `ssh` session, one per command, that keeps the lock for as long as the command runs and that the host lets go of when the session ends or goes silent for 5 minutes (a heartbeat line every 30 s). If that session ends while the command runs, the lock is lost and the command is stopped (exit 1). Which host:
+
+| Where | Setting | Lock |
+| ----- | ------- | ---- |
+| a machine with `ssh -L 5555:127.0.0.1:... <host>` listening on the port of the serial | nothing: found from `ss` and the ssh command line | `<host>:/run/svelte-qa/emulator.lock` |
+| the OVH host (the directory `/run/svelte-qa` exists) | nothing | `/run/svelte-qa/emulator.lock` |
+| any other machine with an emulator of its own | nothing | `/tmp/svelte-qa-emulator.lock` |
+| anywhere, explicitly | `NATIVE_QA_LOCK_HOST=<ssh destination>` / `=local`, `NATIVE_QA_LOCK_FILE=<path>`, `NATIVE_QA_LOCK_WAIT=<seconds, default: until free>` | as set |
+
+`native-qa hold --device localhost:5555 [--wait <s>] -- <command...>` holds the lock across several harness calls (they see it as held and do not take it again): the CI lane runs under it, and so can an agent's own sequence of runs. `ssh ovh-root fuser -v /run/svelte-qa/emulator.lock` shows who holds it. The host's watchdog and the CI jobs take the same file ("CI", below).
 
 ## Dexopt
 

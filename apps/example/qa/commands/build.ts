@@ -123,7 +123,7 @@ export async function build(argv: string[]): Promise<void> {
 	const abi = flagString(values.abi) ?? "x86_64";
 	if (!abis.includes(abi)) throw new Error(`--abi must be one of ${abis.join(", ")}`);
 	const variant = variantFlag(values.variant);
-	reexecUnderLock(gradleLock, ["build", ...argv]);
+	await reexecUnderLock(gradleLock, ["build", ...argv]);
 
 	await mkdir(outDir, { recursive: true });
 	const logPath = join(outDir, buildLogName(variant, abi));

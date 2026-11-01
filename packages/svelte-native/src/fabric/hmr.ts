@@ -7,7 +7,7 @@
  * every running surface is unmounted and started again on the same root tag with the same props and navigation state.
  */
 import { hmrState } from "../hmr-state.ts";
-import { hostFinishing, hostNavigation, navigationRestored, startSurface, stopSurface } from "./host.ts";
+import { hostFinishing, hostNavigation, navigationAdopted, startSurface, stopSurface } from "./host.ts";
 import ErrorScreen from "./ErrorScreen.svelte";
 
 const dev = () => typeof __DEV__ !== "undefined" && __DEV__;
@@ -16,7 +16,7 @@ const dev = () => typeof __DEV__ !== "undefined" && __DEV__;
  * The launch props with the navigation state of the process that died. Android's host passes it as `initialProps.navigation`; iOS's gives it
  * to the navigation module, which hands it over once (a surface that starts again in the same runtime, in development, has it in its props
  * already). From here on the two are one path: `Root.svelte` reads `navigation`, `createRouter` adopts it. `hosted` is true when the iOS host
- * gave a state, which it forgets once the surface has started.
+ * gave a state, which it forgets once the surface has started (and is told whether the router adopted it).
  */
 function withHostNavigation(initialProps?: Record<string, unknown>): { props: Record<string, unknown> | undefined; hosted: boolean } {
   if (initialProps?.navigation !== undefined) return { props: initialProps, hosted: false };
@@ -32,9 +32,12 @@ export function launchSurface(rootTag: number, initialProps?: Record<string, unk
   if ([...state.surfaces.keys()].some((running) => running !== rootTag)) state.restore ??= state.navigation?.();
   const { props, hosted } = withHostNavigation(initialProps);
   state.surfaces.set(rootTag, props);
+  state.adoption = undefined;
   try {
     startSurface(rootTag, state.app.App, { ...state.app.props, ...props });
-    if (hosted) navigationRestored();
+    // The root router left in `adoption` what it did with the state the surface started with; the host that gave the state hears it now, once the first commit is done.
+    if (hosted) navigationAdopted(state.adoption);
+    state.adoption = undefined;
   } catch (error) {
     if (!dev()) throw error;
     console.error(error);

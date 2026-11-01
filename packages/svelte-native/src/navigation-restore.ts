@@ -21,10 +21,14 @@ export const navigationAttemptsAllowed = 2;
  * What the iOS host returns from `SvelteNavigation.restore()`: the JSON the router wrote, the time (ms since the epoch) the app went to the background
  * with it, how many times it has been handed over (this one included) and whether UIKit offered its own restoration state at this launch, which it
  * does for a process the system ended and not for one the user swiped away.
+ *
+ * The build identity: `build` is the bundle version (`CFBundleVersion`) of the app that saved the state and `runningBuild` that of the app reading it
+ * (both the host's to say), `update` the id of the OTA update the saving process ran (`null`: the embedded bundle; the router's host gave it with the
+ * state). A state saved by another build or another update was written by other code: its routes and its shape are not the running app's.
  */
-export type NavigationRecord = { json: string; savedAt: number; attempts?: number; systemKept?: boolean };
+export type NavigationRecord = { json: string; savedAt: number; attempts?: number; systemKept?: boolean; build?: string; runningBuild?: string; update?: string | null };
 
-export type Dropped = "none" | "malformed" | "user" | "attempts" | "expired" | "future" | "unreadable";
+export type Dropped = "none" | "malformed" | "user" | "updated" | "attempts" | "expired" | "future" | "unreadable";
 
 export type RestoreVerdict =
   | { json: string }
@@ -35,20 +39,26 @@ export type RestoreVerdict =
 export const droppedReasons: Record<Exclude<Dropped, "none">, string> = {
   malformed: "the host's record is not a JSON text and a time",
   user: "the system kept no state of its own (the user left the app)",
+  updated: "saved by another build or another OTA update than the one running",
   attempts: `handed over ${navigationAttemptsAllowed} times without a start that finished`,
   expired: "older than the restore window",
   future: "written by a clock that is ahead of this one",
   unreadable: "the JSON is not a navigation state",
 };
 
-/** Judges the host's record: the JSON the router can restore from, or the reason it is not used. `now` is `Date.now()`. */
-export function freshNavigation(record: unknown, now: number, windowMs: number = navigationRestoreWindowMs): RestoreVerdict {
+/**
+ * Judges the host's record: the JSON the router can restore from, or the reason it is not used. `now` is `Date.now()`; `runningUpdate` the id of the OTA
+ * update this process runs (`null`: the embedded bundle). The build is compared when the host reports the one it runs (`runningBuild`), the update when the
+ * record carries one: a host older than the identity is believed, as one that does not say whether the system kept its state is.
+ */
+export function freshNavigation(record: unknown, now: number, windowMs: number = navigationRestoreWindowMs, runningUpdate: string | null = null): RestoreVerdict {
   if (record === null || record === undefined) return { dropped: "none" };
   if (typeof record !== "object") return { dropped: "malformed" };
-  const { json, savedAt, attempts, systemKept } = record as { json?: unknown; savedAt?: unknown; attempts?: unknown; systemKept?: unknown };
+  const { json, savedAt, attempts, systemKept, build, runningBuild, update } = record as { json?: unknown; savedAt?: unknown; attempts?: unknown; systemKept?: unknown; build?: unknown; runningBuild?: unknown; update?: unknown };
   if (typeof json !== "string" || typeof savedAt !== "number" || !Number.isFinite(savedAt)) return { dropped: "malformed" };
   // The user ended the process, or the system never saved: Android drops the state of a task the user removed, so does this.
   if (systemKept === false) return { dropped: "user" };
+  if ((typeof runningBuild === "string" && build !== runningBuild) || (update !== undefined && (update ?? null) !== runningUpdate)) return { dropped: "updated" };
   if (typeof attempts === "number" && attempts > navigationAttemptsAllowed) return { dropped: "attempts" };
   const age = now - savedAt;
   if (age < -navigationClockSkewMs) return { dropped: "future" };

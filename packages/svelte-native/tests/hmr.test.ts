@@ -429,9 +429,9 @@ test("process death: the router writes its state through the engine module after
 });
 
 /** iOS's navigation module (`modules/svelte-navigation-ios`) as far as JavaScript sees it: `save` after every change, `restore` once with a record or null. */
-function navigationModule(record: unknown = null) {
-  const module = { saved: [] as string[], restores: 0, forgotten: 0, told: [] as [string, string][] };
-  environment.__nativeModules = { SvelteNavigation: { save: (json: string) => module.saved.push(json), restore: () => { module.restores++; return module.restores === 1 ? record : null; }, restored: (outcome: string, reason: string) => { module.forgotten++; module.told.push([outcome, reason]); } } };
+function navigationModule(record: unknown = null, updates?: { updateId: string | null }) {
+  const module = { saved: [] as string[], updates: [] as (string | null | undefined)[], restores: 0, forgotten: 0, told: [] as [string, string][] };
+  environment.__nativeModules = { ...(updates ? { SvelteUpdates: updates } : {}), SvelteNavigation: { save: (json: string, update?: string | null) => { module.saved.push(json); module.updates.push(update); }, restore: () => { module.restores++; return module.restores === 1 ? record : null; }, restored: (outcome: string, reason: string) => { module.forgotten++; module.told.push([outcome, reason]); } } };
   return module;
 }
 
@@ -460,7 +460,7 @@ test("iOS: the router writes its state through the navigation module, and a new 
     roots = {}; commits.length = 0;
     await openApp(m, 61);
     expect(record.restores).toBe(1);
-    expect(record.told).toEqual([["restored", "the surface started with the saved state"]]); // the surface started with the state: the host clears what it kept
+    expect(record.told).toEqual([["restored", "the router adopted the saved state"]]); // the router took the state and the surface started: the host clears what it kept
     expect(hrefs(treeScope.__shellRouter)).toEqual(["/acme", "/account"]);
     expect(arrows(treeScope.__shellRouter)).toEqual([false, true]);
     expect(texts(61)).toEqual(["page /acme/inbox", "page /acme/inbox/compose", "page /account"]);
@@ -542,6 +542,83 @@ test("iOS: a record that is old, from the future, malformed or no state starts t
     await openApp(m, 65);
     expect(hrefs(treeScope.__shellRouter)).toEqual(["/acme"]);
   } finally { delete environment.__nativeModules; }
+});
+
+test("iOS: the router tells the host whether it adopted the state, and the host hears it once the surface has started", async () => {
+  freshRuntime();
+  const first = navigationModule();
+  let saved: string;
+  try {
+    const m = await load("hmr-tree-shell.svelte");
+    roots = {}; commits.length = 0;
+    await openApp(m, 70);
+    await wander(m);
+    saved = first.saved.at(-1) as string;
+  } finally { delete environment.__nativeModules; }
+
+  // A state whose routes are gone (an update shipped between the save and the restore) is read and refused by the router: the host is told so, not that it was restored.
+  const gone = JSON.stringify({ stack: { entries: [{ href: "/gone/for/good", presentation: "push" }] } });
+  freshRuntime();
+  const refused = navigationModule({ json: gone, savedAt: Date.now(), attempts: 1, systemKept: true });
+  try {
+    const m = await load("hmr-tree-shell.svelte");
+    roots = {}; commits.length = 0;
+    await openApp(m, 71);
+    expect(hrefs(treeScope.__shellRouter)).toEqual(["/acme"]);
+    expect(refused.told).toHaveLength(1);
+    expect(refused.told[0]?.[0]).toBe("dropped");
+    expect(refused.told[0]?.[1]).toContain("the router rejected the saved state");
+    expect(refused.told[0]?.[1]).toContain("route");
+  } finally { delete environment.__nativeModules; }
+
+  // The router adopting the state is what the host hears, once, also when the adoption came from a development remount.
+  freshRuntime();
+  const adopted = navigationModule({ json: saved, savedAt: Date.now(), attempts: 1, systemKept: true });
+  try {
+    const m = await load("hmr-tree-shell.svelte");
+    roots = {}; commits.length = 0;
+    await openApp(m, 72);
+    expect(adopted.told).toEqual([["restored", "the router adopted the saved state"]]);
+    m.remountSurfaces();
+    await turns(m);
+    expect(adopted.told).toHaveLength(1);
+  } finally { delete environment.__nativeModules; }
+});
+
+test("iOS: the OTA update id goes to the host with every state, and a state of another update is dropped as updated", async () => {
+  freshRuntime();
+  const first = navigationModule(null, { updateId: "AB12" });
+  let saved: string;
+  try {
+    const m = await load("hmr-tree-shell.svelte");
+    roots = {}; commits.length = 0;
+    await openApp(m, 73);
+    await wander(m);
+    saved = first.saved.at(-1) as string;
+    expect(new Set(first.updates)).toEqual(new Set(["ab12"])); // lowercase, as `updateId` of the updates module is
+  } finally { delete environment.__nativeModules; }
+  freshRuntime();
+  const embedded = navigationModule();
+  try {
+    const m = await load("hmr-tree-shell.svelte");
+    roots = {}; commits.length = 0;
+    await openApp(m, 74);
+    await wander(m);
+    expect(new Set(embedded.updates)).toEqual(new Set([null])); // no updates module, or the embedded bundle: null
+  } finally { delete environment.__nativeModules; }
+
+  // The same update restores, another one (or the embedded bundle) does not.
+  for (const [name, running, expected] of [["same", { updateId: "AB12" }, ["restored"]], ["newer", { updateId: "CD34" }, ["dropped"]], ["embedded", undefined, ["dropped"]]] as const) {
+    freshRuntime();
+    const host = navigationModule({ json: saved, savedAt: Date.now(), attempts: 1, systemKept: true, build: "41", runningBuild: "41", update: "ab12" }, running);
+    try {
+      const m = await load("hmr-tree-shell.svelte");
+      roots = {}; commits.length = 0;
+      await openApp(m, 75);
+      expect([name, host.told.map((entry) => entry[0])]).toEqual([name, expected]);
+      expect([name, hrefs(treeScope.__shellRouter)]).toEqual([name, name === "same" ? ["/acme", "/account"] : ["/acme"]]);
+    } finally { delete environment.__nativeModules; }
+  }
 });
 
 test("the launch link: a state restored with the intent that opened it is not opened again, a different link wins", async () => {

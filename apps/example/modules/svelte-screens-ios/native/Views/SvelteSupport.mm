@@ -124,64 +124,28 @@ void SvelteAfterNextFrame(dispatch_block_t block) {
 
 #pragma mark - react-native-gesture-handler
 
-// The recognizer's delegate: what RNGH's own manager does when a handler activates (`RNGestureHandlerManager.mm`,
-// `gestureRecognizer:didActivateInViewWithTouchHandler:`). The touch handler cancels what JavaScript's responders hold when it is turned off
-// and on again.
-@interface SvelteGestureRootDelegate : NSObject <UIGestureRecognizerDelegate>
-- (void)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer didActivateInViewWithTouchHandler:(UIView *)viewWithTouchHandler;
+// What this file asks of RNGH's manager (`RNGestureHandlerManager`), declared here so that the module has no pod dependency on the library: the two
+// methods are the ones `patches/react-native-gesture-handler@2.32.0.patch` adds to it.
+@protocol SvelteGestureHandlerManager <NSObject>
++ (id<SvelteGestureHandlerManager> _Nullable)currentManager;
+- (void)registerRootViewGestureRecognizerIfAttachedBelow:(UIView *)view;
 @end
 
-@implementation SvelteGestureRootDelegate
-
-- (void)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer didActivateInViewWithTouchHandler:(UIView *)viewWithTouchHandler {
-  // React Native's responder treats scrolling as its own: a scroll recognizer that activates does not cancel the touches (RNGH's note).
-  if ([gestureRecognizer.view isKindOfClass:[UIScrollView class]]) return;
-  for (UIGestureRecognizer *recognizer in viewWithTouchHandler.gestureRecognizers) {
-    if ([recognizer isKindOfClass:[RCTSurfaceTouchHandler class]]) {
-      recognizer.enabled = NO;
-      recognizer.enabled = YES;
-      return;
-    }
-  }
-}
-
-@end
-
-static BOOL SvelteHoldsGestureHandler(UIView *view, Class handlerClass) {
-  for (UIGestureRecognizer *recognizer in view.gestureRecognizers) {
-    if ([recognizer.delegate isKindOfClass:handlerClass]) return YES;
-  }
-  for (UIView *subview in view.subviews) {
-    if (SvelteHoldsGestureHandler(subview, handlerClass)) return YES;
-  }
-  return NO;
-}
-
-void SvelteEnsureGestureRoot(UIView *content) {
-  static Class handlerClass;
-  static Class rootClass;
-  static SvelteGestureRootDelegate *delegate;
+void SvelteEnsureGestureRoot(UIView *view) {
+  static Class<SvelteGestureHandlerManager> managerClass;
   static dispatch_once_t once;
   dispatch_once(&once, ^{
-    handlerClass = NSClassFromString(@"RNGestureHandler");
-    rootClass = NSClassFromString(@"RNRootViewGestureRecognizer");
-    delegate = [SvelteGestureRootDelegate new];
+    Class found = NSClassFromString(@"RNGestureHandlerManager");
+    // A library without the patch has neither method, and is left alone.
+    if (found != nil && [found respondsToSelector:@selector(currentManager)]) managerClass = (Class<SvelteGestureHandlerManager>)found;
   });
-  if (handlerClass == nil || rootClass == nil) return;
-  UIView *host = content;
-  while (host != nil) {
-    BOOL listening = NO;
-    for (UIGestureRecognizer *recognizer in host.gestureRecognizers) {
-      if ([recognizer isKindOfClass:rootClass]) return;
-      if ([recognizer isKindOfClass:[RCTSurfaceTouchHandler class]]) listening = YES;
-    }
-    if (listening) break;
-    host = host.superview;
-  }
-  if (host == nil || !SvelteHoldsGestureHandler(content, handlerClass)) return;
-  UIGestureRecognizer *root = [rootClass new];
-  root.delegate = delegate;
-  [host addGestureRecognizer:root];
+  if (managerClass == nil) return;
+  // Nil until the library's module exists, which is when its first handler is created: an app that has no gesture stops here, on every call.
+  id<SvelteGestureHandlerManager> manager = [managerClass currentManager];
+  if (manager == nil) return;
+  // The manager looks at its own handlers (not at the views below `view`), adds the recognizer as it does for any view, and keeps it in the set
+  // that `handleSetJSResponder` and the activation callback reach.
+  [manager registerRootViewGestureRecognizerIfAttachedBelow:view];
 }
 
 @implementation SvelteTouchHost {

@@ -28,8 +28,12 @@ import type { BuildIdentity, CrashReport, GestureInjection, GestureLaunch, Gestu
  *
  * Signing needs the login keychain of the logged-in user, so the runner is built the way the app is (`commands/ios-build.ts`): by a
  * script the GUI Terminal opens (`build-for-testing`, once per change of the test sources); the tests then run over `ssh`.
- * What is not verified, because there was no Mac and no iPhone when this was written: that the project `make-project.rb` generates
- * builds, that the runner installs and starts, and that every XCUITest call below has the signature this Xcode's SDK has.
+ * Run on the iPhone SE 3 (iOS 26.6, 28 Oct to 1 Nov 2026; SPEC.md, "iOS status (lane G5)"): the project `make-project.rb` generates builds, the
+ * runner installs and starts, and the scenarios run (12 scenarios, 23 touch actions per full run, three full runs). What the phone needs is in
+ * the SPEC: on USB, unlocked and awake, with Settings > Developer > Enable UI Automation on, and no `devicectl` call while the
+ * test runs (it hangs; the results, the trace and the process list are read once the test has ended). What is not verified: a person's finger
+ * (the edge zone and the release of a swipe are measured with synthesized touches only), a pinch and a rotation at the same moment (XCUITest does
+ * one after the other), a touch on a gesture in a tab pane.
  */
 
 export const uiTestsLocal = join(qaDir, "ios-ui-tests");

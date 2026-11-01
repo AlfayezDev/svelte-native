@@ -399,7 +399,11 @@ async function capture(c: Ctx): Promise<void> {
   }
   // 2. the formats and results
   try {
-    // the section's own capture(): a view that has just been laid out
+    // the ViewShot's own capture(): a view that has just been laid out, and its onCapture hears it
+    const heard = c.events("viewshot-capture");
+    const viaShot = (await c.handles().viewShot?.capture()) ?? "";
+    c.check("capture: ViewShot.capture() answers a file and onCapture hears it", viaShot.startsWith("file://") && c.exists(viaShot) && (await c.until(() => c.events("viewshot-capture") > heard, 2000)), `${viaShot.slice(-40)}, ${c.events("viewshot-capture")} onCapture, ${c.events("viewshot-failure")} onCaptureFailure`);
+    if (viaShot) releaseCapture(viaShot);
     const own = await c.handles().capture();
     c.check("capture: the section's capture() answers a file that exists", own.startsWith("file://") && c.exists(own), own.slice(-48));
     releaseCapture(own);

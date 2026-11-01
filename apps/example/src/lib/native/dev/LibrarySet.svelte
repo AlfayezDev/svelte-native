@@ -12,6 +12,8 @@
     lottie: (LottieHandle & { host: unknown }) | null;
     pdf: (PdfHandle & { host: unknown }) | null;
     rive: (RiveHandle & { host: unknown }) | null;
+    /** The `ViewShot` of the capture section: its own `capture()`, which draws it once it is laid out and tells `onCapture`. */
+    viewShot: { capture(): Promise<string> } | null;
     /** The image of the capture section's view, as the URI `captureRef` answers. */
     capture(): Promise<string>;
     /** The number the animated text shows on the UI thread; null until the text section is mounted. */
@@ -68,6 +70,7 @@
   let lottie: LibraryHandles["lottie"] = null;
   let pdf: LibraryHandles["pdf"] = null;
   let rive: LibraryHandles["rive"] = null;
+  let viewShot: LibraryHandles["viewShot"] = null;
   let captured: string | null = $state(null);
   let captureHost: { tag: number } | null = null;
   let blurTarget: { tag: number } | null = $state(null);
@@ -123,7 +126,7 @@
     if (count) count.value = withRepeat(withTiming(100, { duration: 5000, reduceMotion: ReduceMotion.Never }), -1);
     if (progress) progress.value = withRepeat(withTiming(1, { duration: 1800, reduceMotion: ReduceMotion.Never }), -1, true);
   });
-  libraryHandles.set(own, { get video() { return video; }, get lottie() { return lottie; }, get pdf() { return pdf; }, get rive() { return rive; }, get count() { return count; }, get svg() { return svgHandles; }, get ring() { return progress; }, hosts, boxes, shown: () => (count ? Math.round(count.value) : null), capture, pickDate });
+  libraryHandles.set(own, { get video() { return video; }, get lottie() { return lottie; }, get pdf() { return pdf; }, get rive() { return rive; }, get viewShot() { return viewShot; }, get count() { return count; }, get svg() { return svgHandles; }, get ring() { return progress; }, hosts, boxes, shown: () => (count ? Math.round(count.value) : null), capture, pickDate });
   onDestroy(() => { libraryHandles.delete(own); });
 
   const stripes = ["#e5484d", "#f5d90a", "#30a46c", "#0091ff", "#8e4ec6"];
@@ -186,7 +189,7 @@
           </Pdf>
         {:else if kind === "capture"}
           <View style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-around", padding: 8 }}>
-            <ViewShot options={{ format: "png", result: "tmpfile" }} ref={(handle) => { captureHost = handle ? handle.host : null; keep(hosts, kind)(captureHost); }} style={{ width: 80, height: 60, flexDirection: "row", borderRadius: 16, overflow: "hidden" }}>
+            <ViewShot options={{ format: "png", result: "tmpfile" }} onCapture={(uri) => report("viewshot-capture", uri.slice(-40))} onCaptureFailure={(error) => report("viewshot-failure", String(error))} ref={(handle) => { viewShot = handle; captureHost = handle ? handle.host : null; keep(hosts, kind)(captureHost); }} style={{ width: 80, height: 60, flexDirection: "row", borderRadius: 16, overflow: "hidden" }}>
               {#each stripes as color (color)}<View style={{ flex: 1, backgroundColor: color }} />{/each}
               <View style={{ position: "absolute", left: 30, top: 14, width: 20, height: 20, backgroundColor: "#ffffff", elevation: libraryLab.captureElevation }} />
             </ViewShot>

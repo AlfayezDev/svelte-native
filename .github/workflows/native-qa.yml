@@ -92,7 +92,7 @@ jobs:
     name: Android emulator lane
     needs: unit
     runs-on: [self-hosted, svelte-qa-emulator]
-    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && 420 || 120 }}
+    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && 480 || 180 }}
     # One emulator: runs queue instead of cancelling each other. GitHub keeps one running and the newest pending run in a group,
     # so a run that a newer push replaced before it started shows as cancelled: nothing ran, nothing failed.
     concurrency:
@@ -105,6 +105,8 @@ jobs:
       QA_WARM: ${{ inputs.warm || '30' }}
       QA_COLD: ${{ inputs.cold || '30' }}
       QA_SMOKE: ${{ inputs.smoke && '1' || '0' }}
+      # Seconds to wait for the emulator lock before the lane gives up (the job timeout counts this wait).
+      QA_LOCK_WAIT: ${{ github.event_name == 'workflow_dispatch' && '10800' || '5400' }}
     defaults:
       run:
         working-directory: apps/platform
@@ -133,9 +135,9 @@ jobs:
         run: bash qa/ci/lane.sh build
 
       # The whole lane holds the emulator lock (the same file the agents' runs take over ssh): a fresh emulator instance, the
-      # stages, the report and the gates. Waits at most 3 hours for the lock.
+      # stages, the report and the gates. Waits at most QA_LOCK_WAIT seconds for the lock.
       - name: Emulator lane
-        run: node qa/native-qa.ts hold --device "$QA_DEVICE" --wait 10800 -- bash qa/ci/lane.sh emulator
+        run: node qa/native-qa.ts hold --device "$QA_DEVICE" --wait "$QA_LOCK_WAIT" -- bash qa/ci/lane.sh emulator
 
       - name: Job summary
         if: ${{ always() }}

@@ -115,6 +115,15 @@ NODE_VERSION=${NODE_VERSION:-25.0.0}
 PNPM_VERSION=${PNPM_VERSION:-$(json_get packageManager 2>/dev/null | sed 's/^pnpm@//; s/+.*//' || true)}
 PNPM_VERSION=${PNPM_VERSION:-12.3.4}
 
+# The token comes from RUNNER_TOKEN, or is typed at a hidden prompt: never an argument, never written down.
+ask_token() {
+  [ -n "${RUNNER_TOKEN:-}" ] && return
+  [ "$DRY_RUN" = 1 ] && return
+  [ -t 0 ] || die "set RUNNER_TOKEN, or run on a terminal (ssh -t) to type it"
+  read -rsp "$1: " RUNNER_TOKEN; echo
+  export RUNNER_TOKEN
+}
+
 preflight() {
   say "preflight"
   [ "$DRY_RUN" = 1 ] || [ "$(id -u)" = 0 ] || die "run as root (sudo -E ...)"
@@ -132,11 +141,7 @@ preflight() {
   note "node $NODE_VERSION, pnpm $PNPM_VERSION, bun $BUN_VERSION; user $RUNNER_USER; state $STATE_DIR"
   if [ "$UNINSTALL" = 0 ] && [ "$REGISTER" = 1 ] && { [ ! -f "$STATE_DIR/runner/.runner" ] || [ "$RECONFIGURE" = 1 ]; }; then
     : "${RUNNER_URL:?set RUNNER_URL=https://github.com/<owner>/<repo>}"
-    if [ -z "${RUNNER_TOKEN:-}" ] && [ "$DRY_RUN" = 0 ]; then
-      [ -t 0 ] || die "set RUNNER_TOKEN (a registration token, valid for an hour), or run on a terminal to type it"
-      read -rsp "registration token: " RUNNER_TOKEN; echo
-      export RUNNER_TOKEN
-    fi
+    ask_token "registration token (valid for an hour)"
   fi
 }
 
@@ -398,7 +403,7 @@ uninstall() {
     run bash -c "cd '$dir' && ./svc.sh stop; ./svc.sh uninstall"
   fi
   if [ -f "$dir/.runner" ]; then
-    [ "$DRY_RUN" = 1 ] || : "${RUNNER_TOKEN:?a removal token is needed to unregister the runner (Settings > Actions > Runners > the runner > Remove)}"
+    ask_token "removal token (Settings > Actions > Runners > the runner > Remove)"
     ACTIONS_RUNNER_INPUT_TOKEN=${RUNNER_TOKEN:-} run runuser --preserve-environment -u "$RUNNER_USER" -- bash -c "cd '$dir' && ./config.sh remove --unattended"
   fi
   run systemctl disable --now svelte-qa-emulator-watchdog.service svelte-qa-emulator.service || true

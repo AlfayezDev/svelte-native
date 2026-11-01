@@ -17,7 +17,7 @@ import {
  * One pointer goes through the real input pipeline: `adb shell input tap | swipe` with exact pixel coordinates from the lab's
  * `[Svelte gesture] ready` line (`input swipe` moves as fast as the shell can, not frame by frame, so it proves counters, not latency;
  * a zero length swipe of 700 ms is a long press). Two pointers, and drags paced by the frame, are the app's own injector
- * (`SvelteQaTouch`, `views/QaTouch.kt`): the page calls it itself when it is opened with `drive:qa`, from the same `Input` and the same
+ * (`SvelteQaTouch`, `modules/svelte-qa-android`): the page calls it itself when it is opened with `drive:qa`, from the same `Input` and the same
  * `pxPath`, so there is nothing to send from here; `qaPlan` is only what such a call would carry, for a person to read or replay.
  * `sendevent` on the emulator's touch device would be the end-to-end path for a pinch and is not built: it takes one process per event.
  */

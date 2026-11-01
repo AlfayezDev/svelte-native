@@ -260,8 +260,7 @@ async function progresses(c: Ctx, milliseconds: number): Promise<boolean> {
 
 async function datetime(c: Ctx): Promise<void> {
   if (!c.android) {
-    const host = c.host();
-    c.check("mounts: the section handed out a view", !!host);
+    await mounts(c, /RNDateTimePicker|DatePicker/);
     c.skip("events: onValueChange for a pick, onDismiss", "a pick needs a finger on the picker: the iPhone");
     return;
   }

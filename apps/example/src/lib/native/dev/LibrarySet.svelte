@@ -72,7 +72,6 @@
   let captureHost: { tag: number } | null = null;
   let blurTarget: { tag: number } | null = $state(null);
   let picked = $state(new Date(Date.UTC(2026, 9, 28, 12, 0, 0)));
-  let progressReported = false;
   const hosts: LibraryHandles["hosts"] = {};
   const boxes: LibraryHandles["boxes"] = {};
   /** `ref` callback that keeps a section's host handle in `hosts` (or `boxes`) while the view is mounted. */
@@ -159,13 +158,13 @@
             onPlaybackStateChanged={(data) => report("video-state", (data as { isPlaying?: boolean }).isPlaying)}
             onLoad={(data) => report("video-load", (data as { duration?: number }).duration)}
             onReadyForDisplay={() => report("video-ready")}
-            onProgress={() => { if (!progressReported) { progressReported = true; report("video-progress"); } }}
+            onProgress={() => report("video-progress")}
             onEnd={() => report("video-end")}
             onError={(data) => report("video-error", data)} />
         {:else if kind === "datetime"}
           <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: theme.surface }}>
             {#if Platform.OS === "ios"}
-              <DateTimePicker value={picked} mode="date" display="compact" onValueChange={(_, date) => { picked = date; report("date-picked", date.toISOString()); }} />
+              <DateTimePicker value={picked} mode="date" display="compact" ref={keep(hosts, kind)} onValueChange={(_, date) => { picked = date; report("date-picked", date.toISOString()); }} />
             {:else}
               <Pressable accessibilityRole="button" accessibilityLabel="Pick a date" onPress={pickDate} style={{ minHeight: 44, paddingHorizontal: 16, borderRadius: 10, borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}>
                 <Text style={{ color: theme.foreground, fontSize: 15 }}>{picked.toISOString().slice(0, 10)}</Text>

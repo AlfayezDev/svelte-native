@@ -241,8 +241,6 @@ export async function prepareUiTests(session: IosSession, options: { team: strin
 /** Where the pushed-edge swipe starts on the iPhone, in points from the edge: the lab asks for 8 (Android's zone is 24 dp), UIKit's edge swipe takes touches within about 3 (SPEC.md, iOS contract item 3). `--edge-x` overrides it. */
 export const defaultEdgeX = "2";
 
-const pollMs = 10_000;
-const aliveEveryMs = 30_000;
 /** Writes `1` or `0` to the app's `Documents/gesture-trace.on`: the QA app records its recognizers at its next launch when it reads `1` (an app that XCUITest opens by link takes no launch argument). */
 async function setTraceFlag(target: IosSession["target"], on: boolean): Promise<void> {
 	const file = "/tmp/native-qa-ios/trace-flag";
@@ -311,57 +309,40 @@ export async function iosGesturesOnce(session: IosSession, names: string[], time
 	const url = options.link ?? `rasheed-svelte:///__dev?run=${runValue(names, "xctest")}&token=${token}`;
 	const started = await remoteOk(mac, inBackground(testCommand({ dir: uiTestsRemote, udid: session.udid, bundleId: target.bundleId, seconds, outFile, url, trace: options.trace === true, calibrate: options.calibrate, edgeX: options.edgeX ?? defaultEdgeX, edgeRelease: options.edgeRelease })));
 	const testPid = Number(started.trim().split("\n").pop());
+	// While the test runs the phone is asked nothing: devicectl calls made then hang for a minute and a half now and then (CoreDevice shares the phone with the
+	// runner), so the harness only watches the Mac's side, and reads the phone's files once the test has ended. The test ends when the lab says "Done." or gives up.
 	if (!(await waitForTestStarted(mac, outFile, 150_000))) console.log(`warning: the test did not say ${testStartedLine} within 150 s`);
 	const deadline = Date.now() + timeoutMs;
-	let results: IosLabResults | null = null;
-	let raw = "";
-	let died: string | null = null;
 	let testEnded: string | null = null;
-	let pid = -1;
-	let readFailures = 0;
-	let nextAliveCheck = Date.now() + aliveEveryMs;
 	while (Date.now() < deadline) {
-		await sleep(pollMs);
-		// A read of the phone's files that hangs (CoreDevice is busy while the runner starts) costs this poll, not the run; three in a row end it.
-		let text: string | null = null;
-		try {
-			text = await readAppFile(target, "Documents/lab-results.json");
-			readFailures = 0;
-		} catch (error) {
-			if (++readFailures >= 3) throw error;
-			console.log(`  reading lab-results.json failed (${readFailures}/3): ${String(error instanceof Error ? error.message : error).slice(0, 160)}`);
-		}
-		let parsed: IosLabResults | null = null;
-		try {
-			parsed = text === null ? null : parseIosLabResults(text);
-		} catch {
-			// The app writes the file while it is copied: a half written copy is read again on the next poll.
-		}
-		if (text !== null && parsed && parsed.token === token) {
-			results = parsed;
-			raw = text;
-			if (labFinished(parsed, true)) break;
-		}
-		if (Date.now() >= nextAliveCheck) {
-			nextAliveCheck = Date.now() + aliveEveryMs;
-			let running: number[] | null = null;
-			try {
-				running = await appProcesses(target, session.installed);
-			} catch (error) {
-				console.log(`  listing the phone's processes failed: ${String(error instanceof Error ? error.message : error).slice(0, 120)}`);
-			}
-			if (running !== null) {
-				if (pid < 0) pid = running[0] ?? -1;
-				else if (!running.includes(pid)) { died = `the app (pid ${pid}) was not running before the scenarios finished`; break; }
-			}
-			// A test that ended (it failed to start, or gave up) will not touch the screen again: waiting out the timeout would only waste the phone's time.
-			if (Number.isFinite(testPid) && !(await testAlive(mac, testPid))) { testEnded = "the XCUITest run ended before the lab finished"; break; }
-		}
+		await sleep(5000);
+		if (Number.isFinite(testPid) && !(await testAlive(mac, testPid))) break;
 	}
+	if (Date.now() >= deadline) testEnded = "the XCUITest run did not end within the timeout";
 	// Only the test this launch started: its shell's children (xcodebuild), then the shell.
 	if (Number.isFinite(testPid)) await remote(mac, `pkill -TERM -P ${testPid} 2>/dev/null; kill ${testPid} 2>/dev/null; true`);
+	// The test is over: the phone answers again.
+	let results: IosLabResults | null = null;
+	let raw = "";
+	for (let attempt = 1; attempt <= 3 && results === null; attempt++) {
+		try {
+			const text = await readAppFile(target, "Documents/lab-results.json");
+			const parsed = text === null ? null : parseIosLabResults(text);
+			if (text !== null && parsed && parsed.token === token) {
+				results = parsed;
+				raw = text;
+			} else break;
+		} catch (error) {
+			console.log(`  reading lab-results.json failed (${attempt}/3): ${String(error instanceof Error ? error.message : error).slice(0, 160)}`);
+		}
+	}
 	const traceLines = options.trace ? await readTrace(target, logPath, outFile, mac, startedAt.getTime()) : [];
-	if (pid < 0) pid = (await appProcesses(target, session.installed))[0] ?? -1;
+	let pid = -1;
+	try {
+		pid = (await appProcesses(target, session.installed))[0] ?? -1;
+	} catch (error) {
+		console.log(`  listing the phone's processes failed: ${String(error instanceof Error ? error.message : error).slice(0, 120)}`);
+	}
 	if (pid >= 0) {
 		try {
 			await terminateApp(target, pid);
@@ -373,7 +354,7 @@ export async function iosGesturesOnce(session: IosSession, names: string[], time
 	await writeFile(logPath, `${raw || "no results were written\n"}\n--- xcodebuild test-without-building ---\n${testText}${traceLines.length ? `\n--- recognizer trace ---\n${traceLines.join("\n")}\n` : ""}`);
 	for (const line of traceLines) console.log(`  ${line}`);
 	const launch = launchFromIos({
-		asked: names, results, startedAt, durationMs: Date.now() - startedAt.getTime(), died, ended: testEnded, pid, output: testText === "" ? null : parseUiTestOutput(testText), testText, logFile: logPath.slice(qaDir.length + 1),
+		asked: names, results, startedAt, durationMs: Date.now() - startedAt.getTime(), died: null, ended: testEnded, pid, output: testText === "" ? null : parseUiTestOutput(testText), testText, logFile: logPath.slice(qaDir.length + 1),
 	});
 	return { launch, results };
 }

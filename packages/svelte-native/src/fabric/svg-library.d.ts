@@ -11,7 +11,7 @@ export function extractTransformSvgView(props: Props): unknown;
 export function extractViewBox(props: { viewBox?: string | (string | number)[]; preserveAspectRatio?: string }): { minX: number; minY: number; vbWidth: number; vbHeight: number; align: string; meetOrSlice: number } | null;
 export const alignEnum: Record<string, string>;
 export const meetOrSliceTypes: Record<string, number>;
-export function extractOpacity(opacity: string | number | void): number;
+export function extractOpacity(opacity?: string | number): number;
 export function extractBrush(color: unknown): { type: number; payload?: unknown; brushRef?: string } | null;
 export function extractLengthList(lengthList?: readonly (string | number)[] | string | number): readonly (string | number)[];
 export function extractPolyPoints(points: string | readonly (string | number)[]): string;

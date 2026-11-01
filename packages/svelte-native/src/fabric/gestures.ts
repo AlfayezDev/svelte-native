@@ -300,7 +300,7 @@ function step(record: GestureRecord): void {
 // sends its relations again: RNGH's `useMountReactions`. Until the other gesture has a tag the relation resolves to nothing. A record
 // does not react to its own gestures: `attached` is empty while it attaches (nothing yet on a first attach, `dropHandlers` emptied it
 // on a new one), so there is nothing for the loop to compare; the last test of `tests/gestures/lifecycle.test.ts` pins that.
-const names = (relation: GestureRef[] | undefined, gesture: GestureType) => relation !== undefined && relation.some((entry) => (typeof entry === "number" ? entry : (entry as GestureType).handlerTag ?? (entry as { current?: { handlerTag?: number } }).current?.handlerTag) === gesture.handlerTag);
+const names = (relation: GestureRef[] | undefined, gesture: GestureType) => relation?.some((entry) => (typeof entry === "number" ? entry : (entry as GestureType).handlerTag ?? (entry as { current?: { handlerTag?: number } }).current?.handlerTag) === gesture.handlerTag);
 MountRegistry.addMountListener((mounted) => {
   const gesture = mounted as GestureType;
   for (const record of records.values()) {

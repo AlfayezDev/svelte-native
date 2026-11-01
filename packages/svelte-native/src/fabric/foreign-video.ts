@@ -86,7 +86,7 @@ export function videoSource(source: VideoSource | number | undefined, resolveAss
   const resolved: VideoSource = assetNumber === undefined ? object : { ...object, uri: resolveAsset(assetNumber)?.uri };
   if (assetNumber !== undefined && resolved.uri === undefined) console.warn("cannot resolve item ", assetNumber);
   let uri = typeof resolved.uri === "string" ? resolved.uri : "";
-  if (uri && uri.startsWith("/")) uri = `file://${uri}`;
+  if (uri.startsWith("/")) uri = `file://${uri}`;
   const isNetwork = !!(uri && /^(rtp|rtsp|http|https):/.test(uri));
   const isAsset = !!(uri && /^(assets-library|ipod-library|file|content|ms-appx|ms-appdata|asset):/.test(uri));
 

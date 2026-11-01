@@ -19,11 +19,11 @@ export function getStyle(string: string): Styles {
   const declarations = string.split(";").filter((value) => value.trim());
   const { length } = declarations;
   for (let index = 0; index < length; index++) {
-    const declaration = declarations[index]!;
+    const declaration = declarations[index];
     if (declaration.length !== 0) {
       const split = declaration.split(":");
-      const property = split[0]!;
-      const value = split[1]!;
+      const property = split[0];
+      const value = split[1];
       style[camelCase(property.trim())] = value.trim();
     }
   }
@@ -46,16 +46,16 @@ function locate(source: string, position: number) {
   let column = position;
   let line = 0;
   for (; line < lineCount; line++) {
-    const { length } = lines[line]!;
+    const { length } = lines[line];
     if (column >= length) column -= length;
     else break;
   }
   const before = source.slice(0, position).replace(/^\t+/, toSpaces);
   const beforeExec = /(^|\n).*$/.exec(before);
-  const beforeLine = (beforeExec && beforeExec[0]) || "";
+  const beforeLine = beforeExec?.[0] || "";
   const after = source.slice(position);
   const afterExec = /.*(\n|$)/.exec(after);
-  const afterLine = afterExec && afterExec[0];
+  const afterLine = afterExec?.[0];
   const pad = repeat(" ", beforeLine.length);
   const snippet = `${beforeLine}${afterLine}\n${pad}^`;
   return { line, column, snippet };
@@ -84,17 +84,14 @@ export function parse(source: string): SvgNode | null {
   }
 
   function metadata() {
-    while (i + 1 < length && (source[i] !== "<" || !(validNameCharacters.test(source[i + 1]!) || commentStart.test(source.slice(i, i + 4))))) i++;
+    while (i + 1 < length && (source[i] !== "<" || !(validNameCharacters.test(source[i + 1]) || commentStart.test(source.slice(i, i + 4))))) i++;
     return neutral();
   }
 
   function neutral(): (() => unknown) | undefined {
-    let text = "";
-    let char;
-    while (i < length && (char = source[i]) !== "<") {
-      text += char;
-      i += 1;
-    }
+    const start = i;
+    while (i < length && source[i] !== "<") i += 1;
+    const text = source.slice(start, i);
     if (/\S/.test(text)) children.push(text);
     if (source[i] === "<") return openingTag;
     return neutral;
@@ -175,18 +172,14 @@ export function parse(source: string): SvgNode | null {
   }
 
   function getName() {
-    let name = "";
-    let char;
-    while (i < length && validNameCharacters.test((char = source[i]!))) {
-      name += char;
-      i += 1;
-    }
-    return name;
+    const start = i;
+    while (i < length && validNameCharacters.test(source[i])) i += 1;
+    return source.slice(start, i);
   }
 
   function getAttributes(props: Record<string, Styles | string | number | boolean | undefined>) {
     while (i < length) {
-      if (!whitespace.test(source[i]!)) return;
+      if (!whitespace.test(source[i])) return;
       allowSpaces();
       const name = getName();
       if (!name) return;
@@ -196,14 +189,14 @@ export function parse(source: string): SvgNode | null {
         i += 1;
         allowSpaces();
         value = getAttributeValue();
-        if (name !== "id" && !isNaN(+value) && value.trim() !== "") value = +value;
+        if (name !== "id" && !Number.isNaN(+value) && value.trim() !== "") value = +value;
       }
       props[camelCase(name)] = value;
     }
   }
 
   function getAttributeValue(): string {
-    return quotemarks.test(source[i]!) ? getQuotedAttributeValue() : getUnquotedAttributeValue();
+    return quotemarks.test(source[i]) ? getQuotedAttributeValue() : getUnquotedAttributeValue();
   }
 
   function getUnquotedAttributeValue() {
@@ -232,7 +225,7 @@ export function parse(source: string): SvgNode | null {
   }
 
   function allowSpaces() {
-    while (i < length && whitespace.test(source[i]!)) i += 1;
+    while (i < length && whitespace.test(source[i])) i += 1;
   }
 
   let i = 0;
@@ -248,7 +241,7 @@ export function parse(source: string): SvgNode | null {
 
 function decodeBase64Image(uri: string): string {
   const decoded = decodeURIComponent(uri);
-  const splitContent = decoded.split(";")[1]!.split(",");
+  const splitContent = decoded.split(";")[1].split(",");
   return atob(splitContent.slice(1).join(","));
 }
 

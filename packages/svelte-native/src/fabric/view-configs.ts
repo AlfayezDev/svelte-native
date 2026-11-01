@@ -121,7 +121,8 @@ const colorStructs = (color: Converter, field: string): Converter => (value) =>
 
 /** `processColor` for a platform: the ARGB integer a native view takes for a colour prop (an Android integer is signed). */
 export function processColorValue(color: unknown, platform: Platform): unknown {
-  return (colorConverters[platform] ??= colorFor(platform))(color);
+  colorConverters[platform] ??= colorFor(platform);
+  return colorConverters[platform](color);
 }
 const colorConverters: Partial<Record<Platform, Converter>> = {};
 

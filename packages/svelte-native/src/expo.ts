@@ -359,8 +359,10 @@ fun ${onDemandFactoryName}(delegate: ReactPackage, names: Collection<String>): R
  */
 export function leaveOutOfAutoPlugins<Config extends { _internal?: Record<string, unknown> }>(config: Config, names: readonly string[]): Config {
   if (names.length === 0) return config;
-  const internal = (config._internal ??= {});
-  const history = (internal.pluginHistory ??= {}) as Record<string, { name: string; version: string }>;
+  config._internal ??= {};
+  const internal = config._internal;
+  internal.pluginHistory ??= {};
+  const history = internal.pluginHistory as Record<string, { name: string; version: string }>;
   for (const name of names) history[name] ??= { name, version: "left out of autolinking" };
   return config;
 }

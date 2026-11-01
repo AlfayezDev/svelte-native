@@ -134,8 +134,8 @@ export function openPdf(source: PdfSource, { resolveAsset, trustAllCerts = true,
         let actual: number | undefined;
         try {
           const stat = await call<{ size: string | number }>((done) => module.stat(temporary, done));
-          if (!stat || !parseInt(String(stat.size))) throw new Error(`FileNotFound:${uri}`);
-          actual = parseInt(String(stat.size));
+          if (!stat || !parseInt(String(stat.size), 10)) throw new Error(`FileNotFound:${uri}`);
+          actual = parseInt(String(stat.size), 10);
         } catch {
           throw new Error(`DownloadFailed:${uri}`);
         }
@@ -182,7 +182,7 @@ export function openPdf(source: PdfSource, { resolveAsset, trustAllCerts = true,
       try {
         const stat = await call<{ lastModified: string | number }>((done) => module.stat(cacheFile, done));
         if (!stat) throw new Error("no stat");
-        if (!spec.expiration || spec.expiration * 1000 + parseInt(String(stat.lastModified)) > Date.now()) return cacheFile;
+        if (!spec.expiration || spec.expiration * 1000 + parseInt(String(stat.lastModified), 10) > Date.now()) return cacheFile;
       } catch {
         // Not cached, or the cache expired: fetch it again.
       }
@@ -237,7 +237,7 @@ export type PdfHandle = { setPage(page: number): void };
 export function pdfHandle(host: Commandable): PdfHandle {
   return {
     setPage(page) {
-      if (page === null || isNaN(page)) throw new Error("Specified pageNumber is not a number");
+      if (page === null || Number.isNaN(page)) throw new Error("Specified pageNumber is not a number");
       host.dispatchCommand("setNativePage", [page]);
     },
   };

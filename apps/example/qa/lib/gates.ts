@@ -39,6 +39,8 @@ export type GatesFile = {
 	smoke: { modules: Record<Platform, string[]>; skips: Record<Platform, string[]> };
 	/** The `gestures-*` scenarios a full `native-qa gestures` run contains, per platform; absent: every scenario the lab has. */
 	gestures?: Partial<Record<Platform, string[]>>;
+	/** The native-view libraries a full `native-qa foreign` run reports, per platform (`foreign.<library>.failedChecks` is gated for each). */
+	foreign?: { libraries: Record<Platform, string[]> };
 	gates: Gate[];
 };
 
@@ -89,6 +91,7 @@ export function gateKinds(gate: Gate): RunKind[] | null {
 		case "resilience":
 		case "smoke":
 		case "gestures":
+		case "foreign":
 			return [prefix];
 		default:
 			return null;
@@ -125,6 +128,11 @@ export function checkGatesFile(file: GatesFile): void {
 		if (!skips) throw new Error(`gates.json: smoke.skips lists no skips (an empty list is fine) for ${platform}`);
 		const unknown = skips.filter((module) => !modules.includes(module));
 		if (unknown.length > 0) throw new Error(`gates.json: smoke.skips names ${unknown.join(", ")}, which smoke.modules does not pin for ${platform}`);
+	}
+	for (const platform of ["android", "ios"] as const) {
+		const libraries = file.foreign?.libraries[platform];
+		if (file.foreign && (!libraries || libraries.length === 0)) throw new Error(`gates.json: foreign.libraries pins no library for ${platform}`);
+		if (libraries && new Set(libraries).size !== libraries.length) throw new Error(`gates.json: foreign.libraries names a library twice for ${platform}`);
 	}
 	for (const gate of file.gates) {
 		if (gate.roles === undefined) continue;

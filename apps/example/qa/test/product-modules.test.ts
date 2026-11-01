@@ -72,6 +72,6 @@ describe("the product build leaves the QA-only modules out of autolinking", () =
 		expect(engine.android.modules).toEqual(["expo.modules.svelteengine.SvelteEngineModule"]);
 		expect(existsSync(resolve(app, "modules/svelte-engine/android/src/main/java/expo/modules/svelteengine/views/QaTouch.kt"))).toBe(false);
 		const qa = JSON.parse(readFileSync(resolve(app, "modules/svelte-qa-android/expo-module.config.json"), "utf8")) as { android: { modules: string[] } };
-		expect(qa.android.modules).toEqual(["expo.modules.svelteqa.SvelteQaTouchModule"]);
+		expect(qa.android.modules).toEqual(["expo.modules.svelteqa.SvelteQaTouchModule", "expo.modules.svelteqa.SvelteQaPixelsModule"]);
 	});
 });

@@ -1,0 +1,202 @@
+import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { analyseSources, bundleChecks, describeForeign, failedChecks, foreignMetrics, libraryModules, missingPlaces } from "../lib/foreign.ts";
+import { checkGatesFile, evaluate, type GatesFile } from "../lib/gates.ts";
+import { platformDir } from "../lib/paths.ts";
+import { parseForeignChecks } from "../parse/foreign.ts";
+import { argb, clear, distance, hex, near, numberIn, show, solid } from "../../src/lib/native/dev/foreign-pixels.ts";
+import type { ForeignCheck, ForeignFile, ForeignLaunch } from "../lib/types.ts";
+
+const gates = JSON.parse(readFileSync(join(platformDir, "qa/gates.json"), "utf8")) as GatesFile;
+const libraries = gates.foreign?.libraries.android ?? [];
+
+const line = (message: string) => `11-01 12:00:00.123  4242  4290 I ReactNativeJS: ${message}`;
+const entry = (library: string, where: string, name: string, passed: boolean, detail = "") => line(`'[Svelte foreign library]', '${JSON.stringify({ library, where, name, passed, detail })}'`);
+
+const launch = (name: ForeignLaunch["name"], overrides: Partial<ForeignLaunch> = {}): ForeignLaunch => ({
+	name, run: name, startedAt: "2026-11-01T12:00:00Z", durationMs: 1000, complete: true, crashes: [], jsErrors: [], engineWarnings: [], logFile: `runs/${name}.log`, ...overrides,
+});
+const check = (library: string, where: ForeignCheck["where"], passed = true): ForeignCheck => ({ library, where, name: `${where}: a check`, passed, detail: "" });
+const everywhere = (library: string, passed = true): ForeignCheck[] => (["inline", "row", "sheet"] as const).map((where) => check(library, where, passed));
+const cleanBundle = { map: "m", sources: 1330, reactFiles: ["/node_modules/react/index.js"], forbidden: [], matchesBuild: true };
+function file(overrides: Partial<ForeignFile> = {}): ForeignFile {
+	return {
+		schema: 1, kind: "foreign", startedAt: "2026-11-01T12:00:00Z", finishedAt: "2026-11-01T12:10:00Z", source: { commit: "abc", dirty: false },
+		device: { serial: "localhost:5555", platform: "android" } as ForeignFile["device"], app: { package: "io.rasheed.svelteqa", installedSha256: "x" } as ForeignFile["app"],
+		asked: libraries, checks: libraries.flatMap((library) => everywhere(library)), skips: [], leftovers: [check("capture", "inline")],
+		launches: [launch("libraries"), launch("leftovers")], bundle: cleanBundle, ...overrides,
+	};
+}
+
+describe("the foreign run's log", () => {
+	test("reads every check line and every skipped one, and nothing else", () => {
+		const text = [
+			line("'[Svelte stress]', '{\"name\":\"foreign-libraries\"}'"),
+			entry("image", "inline", "inline: mounts", true, "ExpoImageView"),
+			entry("image", "row", "row: onLoad arrives", false, "0 onLoad, it's quoted"),
+			line(`'[Svelte foreign library skipped]', '${JSON.stringify({ library: "datetime", where: "inline", name: "inline: events", why: "the iPhone" })}'`),
+			line("'[Svelte foreign library]', '{\"library\":\"image\",\"where\":\"sheet\",\"na"),
+		].join("\n");
+		const { checks, skips } = parseForeignChecks(text);
+		expect(checks.map((value) => [value.library, value.where, value.passed])).toEqual([["image", "inline", true], ["image", "row", false]]);
+		expect(checks[1]?.detail).toBe("0 onLoad, it's quoted");
+		expect(skips).toEqual([{ library: "datetime", where: "inline", name: "inline: events", why: "the iPhone" }]);
+	});
+
+	test("a check at a place the lab does not have is not a check", () => {
+		expect(parseForeignChecks(entry("image", "attic", "x", true)).checks).toEqual([]);
+	});
+});
+
+describe("foreign metrics", () => {
+	test("a clean run has no failed check anywhere and every launch complete", () => {
+		const metrics = foreignMetrics(file(), { libraries });
+		for (const library of libraries) expect(metrics[`foreign.${library}.failedChecks`]).toBe(0);
+		expect(metrics["foreign.launches"]).toBe(2);
+		expect(metrics["foreign.incompleteLaunches"]).toBe(0);
+		expect(metrics["foreign.fatals"]).toBe(0);
+		expect(metrics["foreign.leftovers.failed"]).toBe(0);
+		expect(metrics["foreign.libraries.missing"]).toBe(0);
+		expect(metrics["foreign.react.files"]).toBe(1);
+	});
+
+	test("a failed check counts for its library only", () => {
+		const checks = libraries.flatMap((library) => everywhere(library, library !== "video"));
+		const metrics = foreignMetrics(file({ checks }), { libraries });
+		expect(metrics["foreign.video.failedChecks"]).toBe(3);
+		expect(metrics["foreign.image.failedChecks"]).toBe(0);
+	});
+
+	test("a library with no check is not measured, and a place that never opened is a failure", () => {
+		const checks = libraries.filter((library) => library !== "pdf").flatMap((library) => (library === "rive" ? [check("rive", "inline"), check("rive", "row")] : everywhere(library)));
+		const run = file({ checks });
+		const metrics = foreignMetrics(run, { libraries });
+		expect(metrics["foreign.pdf.failedChecks"]).toBeNull();
+		expect(metrics["foreign.rive.failedChecks"]).toBe(1);
+		expect(missingPlaces(run, "rive")).toEqual(["sheet"]);
+		expect(metrics["foreign.libraries.missing"]).toBe(1);
+	});
+
+	test("the bundle's checks belong to their library, and no source map is a failure for every one", () => {
+		const held = { ...cleanBundle, forbidden: [{ library: "video", module: "/node_modules/react-native-video/src/Video.tsx" }] };
+		const metrics = foreignMetrics(file({ bundle: held }), { libraries });
+		expect(metrics["foreign.video.failedChecks"]).toBe(1);
+		expect(metrics["foreign.lottie.failedChecks"]).toBe(0);
+		const none = foreignMetrics(file({ bundle: null }), { libraries });
+		expect(none["foreign.image.failedChecks"]).toBe(1);
+		expect(none["foreign.react.files"]).toBeNull();
+		expect(bundleChecks(null, ["image"])[0]?.detail).toContain("no source map");
+	});
+
+	test("an incomplete launch, a crash and a leftover launch that did not run are what the gates see", () => {
+		const metrics = foreignMetrics(file({ launches: [launch("libraries", { complete: false, crashes: ["FATAL EXCEPTION"], jsErrors: ["E ReactNativeJS"] })], leftovers: [] }), { libraries });
+		expect(metrics["foreign.launches"]).toBe(0);
+		expect(metrics["foreign.incompleteLaunches"]).toBe(1);
+		expect(metrics["foreign.fatals"]).toBe(2);
+		expect(metrics["foreign.leftovers.failed"]).toBeNull();
+		const failed = foreignMetrics(file({ leftovers: [check("capture", "inline", false)] }), { libraries });
+		expect(failed["foreign.leftovers.failed"]).toBe(1);
+	});
+
+	test("failedChecks is null for a library the run never reported", () => {
+		expect(failedChecks(file({ checks: [] }), "image")).toBeNull();
+	});
+
+	test("the printed lines name every failed check", () => {
+		const lines = describeForeign(file({ checks: [...libraries.flatMap((library) => everywhere(library)), { library: "blur", where: "row", name: "row: blurred", passed: false, detail: "#e5484d | #f5d90a" }] }), { libraries });
+		expect(lines.some((value) => value.includes("FAIL blur row: row: blurred"))).toBe(true);
+		expect(lines.some((value) => value.startsWith("  blur") && value.includes("1 failed"))).toBe(true);
+	});
+});
+
+describe("what the release bundle may hold", () => {
+	const sources = [
+		"/node_modules/react/index.js", "/node_modules/react/cjs/react.production.js", "/node_modules/react-native/Libraries/Core/setUpGlobals.js",
+		"/node_modules/react-native-svg/src/lib/extract/extractProps.ts", "/node_modules/expo-image-picker/src/ImagePicker.ts", "/node_modules/react-native-reanimated/src/hook/useSharedValue.ts",
+	];
+	test("react's own files are counted, the library extractors of react-native-svg and unrelated packages are not forbidden", () => {
+		const result = analyseSources(sources);
+		expect(result.reactFiles).toEqual(["/node_modules/react/index.js", "/node_modules/react/cjs/react.production.js"]);
+		expect(result.forbidden).toEqual([]);
+	});
+
+	test("a library's own modules are forbidden, react-native-svg's elements too, a pnpm path as well", () => {
+		const result = analyseSources([
+			"/node_modules/react-native-video/src/Video.tsx", "/node_modules/react-native-svg/src/elements/Svg.tsx", "/node_modules/.pnpm/rive-react-native@9.7.1/node_modules/rive-react-native/src/Rive.tsx",
+			"/node_modules/@react-native-community/datetimepicker/src/datetimepicker.android.js", "/node_modules/react-native-blob-util/index.js",
+		]);
+		expect(result.forbidden.map((value) => value.library).sort()).toEqual(["datetime", "pdf", "rive", "svg", "video"]);
+	});
+
+	test("every pinned library has a module pattern, and expo-image does not match expo-image-picker", () => {
+		for (const library of libraries) expect(libraryModules[library]?.length ?? 0).toBeGreaterThan(0);
+		expect(analyseSources(["/node_modules/expo-image-picker/src/ImagePicker.ts"]).forbidden).toEqual([]);
+		expect(analyseSources(["/node_modules/expo-image/src/ExpoImage.tsx"]).forbidden.map((value) => value.library)).toEqual(["image"]);
+	});
+});
+
+describe("gates.json", () => {
+	test("pins the thirteen libraries for both platforms and keeps the file valid", () => {
+		expect(() => checkGatesFile(gates)).not.toThrow();
+		expect(libraries).toHaveLength(13);
+		expect(gates.foreign?.libraries.ios).toEqual(libraries);
+	});
+
+	test("has a failedChecks gate per library, judged for the emulator and the Samsung and measured by a clean run", () => {
+		for (const library of libraries) expect(gates.gates.some((gate) => gate.metric === `foreign.${library}.failedChecks` && gate.bar.android?.max === 0)).toBe(true);
+		const metrics = foreignMetrics(file(), { libraries });
+		const rows = evaluate(gates.gates.filter((gate) => gate.metric.startsWith("foreign.")), { "localhost:5555": { platform: "android", role: "lab", runs: gates.devices["localhost:5555"]?.runs ?? null, metrics } }, "android");
+		const bad = rows.filter((row) => row.verdict !== "pass");
+		expect(bad.map((row) => `${row.id} ${row.verdict}`)).toEqual([]);
+		expect(rows.length).toBeGreaterThan(13);
+	});
+
+	test("a failed library fails its own gate and a missing one is not measured", () => {
+		const checks = libraries.filter((library) => library !== "pdf").flatMap((library) => everywhere(library, library !== "video"));
+		const metrics = foreignMetrics(file({ checks }), { libraries });
+		const rows = evaluate(gates.gates.filter((gate) => gate.metric.startsWith("foreign.")), { "localhost:5555": { platform: "android", role: "lab", runs: ["foreign"], metrics } }, "android");
+		const verdict = (id: string) => rows.find((row) => row.id === id)?.verdict;
+		expect(verdict("foreign.video.failedChecks")).toBe("fail");
+		expect(verdict("foreign.pdf.failedChecks")).toBe("not measured");
+		expect(verdict("foreign.image.failedChecks")).toBe("pass");
+	});
+
+	test("both phones and the emulator provide the foreign run kind; the iPhone does not yet", () => {
+		expect(gates.devices["R58Y90KNGRP"]?.runs).toContain("foreign");
+		expect(gates.devices["localhost:5555"]?.runs).toContain("foreign");
+		expect(gates.devices["E74A5608-BF8E-5806-8699-1605F82ADED9"]?.runs).not.toContain("foreign");
+	});
+});
+
+describe("the colour helpers the lab's pixel checks use", () => {
+	test("an ARGB integer, signed or not, reads as its channels", () => {
+		expect(argb(0xffe5484d)).toEqual({ a: 255, r: 229, g: 72, b: 77 });
+		expect(argb(0xffe5484d | 0)).toEqual({ a: 255, r: 229, g: 72, b: 77 });
+		expect(argb(0)).toEqual({ a: 0, r: 0, g: 0, b: 0 });
+	});
+
+	test("near compares opaque pixels within a tolerance, and a transparent pixel is near nothing", () => {
+		expect(near(0xffe5484d, "#e5484d", 0)).toBe(true);
+		expect(near(0xffe0504a, "#e5484d", 10)).toBe(true);
+		expect(near(0xffe0504a, "#e5484d", 5)).toBe(false);
+		expect(near(0x00e5484d, "#e5484d", 255)).toBe(false);
+		expect(distance(hex("#000000"), hex("#ffffff"))).toBe(255);
+	});
+
+	test("clear and solid tell a hole from a drawn pixel, show names both", () => {
+		expect(clear(0x00000000)).toBe(true);
+		expect(clear(0x14000000)).toBe(false);
+		expect(solid(0xff102030)).toBe(true);
+		expect(solid(0x80102030)).toBe(false);
+		expect(show(0xff102030)).toBe("#102030");
+		expect(show(0x80102030)).toBe("#102030/128");
+		expect(() => hex("red")).toThrow();
+	});
+
+	test("numberIn reads the count out of the animated text", () => {
+		expect(numberIn("count 23")).toBe(23);
+		expect(numberIn("hello")).toBeNull();
+		expect(numberIn(undefined)).toBeNull();
+	});
+});

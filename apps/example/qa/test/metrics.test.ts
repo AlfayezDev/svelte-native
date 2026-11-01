@@ -172,6 +172,33 @@ describe("labMetrics", () => {
 	test("the virtual list's mount to layout", () => {
 		expect(metrics["list.virtual300.mountMs"]).toBeCloseTo(20.7593, 3);
 	});
+	test("the window and hot mounts are null until a run reports them, then the worst of the runs", () => {
+		expect(metrics["list.virtual300.windowMs"]).toBeNull();
+		expect(metrics["list.virtual300.hotMountMs"]).toBeNull();
+		const first = run();
+		const second = run();
+		for (const [file, window, hot] of [[first, 17.2, 2.4], [second, 19.9, 3.1]] as const) {
+			const list = file.scenarios.find((scenario) => scenario.name === "list-300-virtual");
+			if (!list) throw new Error("sample has no list-300-virtual");
+			list.detail = { ...list.detail, windowMs: window, hotMountMs: hot };
+		}
+		const combined = labMetrics(labFile(first, second), pinned);
+		expect(combined["list.virtual300.windowMs"]).toBe(19.9);
+		expect(combined["list.virtual300.hotMountMs"]).toBe(3.1);
+		expect(combined["list.virtual300.coldMountMs"]).toBeNull();
+	});
+	test("the teardown of a list is reported per scenario, as the worst of the runs", () => {
+		const first = run();
+		const second = run();
+		for (const [file, value] of [[first, 38], [second, 52]] as const) {
+			const list = file.scenarios.find((scenario) => scenario.name === "list-300");
+			if (!list) throw new Error("sample has no list-300");
+			list.detail = { ...list.detail, teardownMaxMs: value };
+		}
+		const combined = labMetrics(labFile(first, second), pinned);
+		expect(combined["teardown.list-300.maxFrameMs"]).toBe(52);
+		expect(Object.keys(combined).filter((key) => key.startsWith("teardown."))).toEqual(["teardown.list-300.maxFrameMs"]);
+	});
 	test("repeated runs report the worst of each", () => {
 		const worse = run();
 		const idle = worse.scenarios.find((scenario) => scenario.name === "idle");

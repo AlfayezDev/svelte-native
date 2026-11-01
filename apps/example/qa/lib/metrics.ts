@@ -120,6 +120,33 @@ export function labMetrics(file: LabFile, pinned: readonly string[]): Metrics {
 		return typeof value === "number" ? value : null;
 	});
 	metrics["list.virtual300.mountMs"] = worst(mount, largest);
+	// Informational, no bar: when row 9 (the end of the first window of ten rows, before the window was sized by what fills the
+	// list) had reported its layout; the mount again on a warm core with a collected heap, and after 200 ms of idle.
+	for (const [key, field] of [["windowMs", "windowMs"], ["hotMountMs", "hotMountMs"], ["coldMountMs", "coldMountMs"]] as const) {
+		metrics[`list.virtual300.${key}`] = worst(
+			runs.map((run) => {
+				const value = run.scenarios.find((scenario) => scenario.name === listScenario)?.detail?.[field];
+				return typeof value === "number" ? value : null;
+			}),
+			largest,
+		);
+	}
+	// Informational, no bar: the longest UI-runtime frame interval while a list was torn down (the main thread's time away from
+	// drawing), for every scenario whose detail carries `teardownMaxMs`; the worst of the runs, like the frame metrics.
+	const tornDown = new Set(
+		runs.flatMap((run) =>
+			run.scenarios.filter((scenario) => typeof scenario.detail?.teardownMaxMs === "number").map((scenario) => scenario.name),
+		),
+	);
+	for (const name of tornDown) {
+		metrics[`teardown.${name}.maxFrameMs`] = worst(
+			runs.map((run) => {
+				const value = run.scenarios.find((scenario) => scenario.name === name)?.detail?.teardownMaxMs;
+				return typeof value === "number" ? value : null;
+			}),
+			largest,
+		);
+	}
 	return metrics;
 }
 

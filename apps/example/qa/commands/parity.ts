@@ -15,6 +15,7 @@ import {
 } from "../lib/device.ts";
 import {
 	assertDeviceState,
+	exposedAccount,
 	findNode,
 	guardAnchorFailure,
 	launchCase,
@@ -37,7 +38,8 @@ import {
 	type Manifest,
 	type ReferenceEntry,
 } from "../lib/parity.ts";
-import { diffImages, encodePng, type Image, type Rect } from "../lib/png.ts";
+import { diffImages, encodePng, paintOver, type Image, type Rect } from "../lib/png.ts";
+import { inSignedInPhase, splitPhases, startSignedOut } from "../lib/phases.ts";
 import { slug, stamp, writeRun } from "../lib/runs.ts";
 import {
 	cases,
@@ -51,7 +53,7 @@ import {
 	type Variant,
 } from "../lib/screens.ts";
 import { backendStatus, commonOptions, startSuite, type BackendStatus } from "../lib/suite.ts";
-import type { ParityCase, ParityFile, Source } from "../lib/types.ts";
+import type { ParityCase, ParityFile, SignedInRecord, Source } from "../lib/types.ts";
 import { iosParity } from "./ios-parity.ts";
 import { sleep } from "../lib/wait.ts";
 import { deviceKindName } from "../parse/device-state.ts";
@@ -97,9 +99,11 @@ async function saveFailure(
 	actual: Image,
 	diff: Image,
 	record: ParityCase,
+	hidden: Rect[],
 ): Promise<void> {
 	await mkdir(context.artifacts, { recursive: true });
-	await writeFile(join(context.artifacts, `${name}.actual.png`), encodePng(actual));
+	// What the device drew inside the masks of a signed-in screen is the account's own (its address, its devices): not kept.
+	await writeFile(join(context.artifacts, `${name}.actual.png`), encodePng(hidden.length > 0 ? paintOver(actual, hidden) : actual));
 	await writeFile(join(context.artifacts, `${name}.diff.png`), encodePng(diff));
 	record.actual = join(context.artifacts, `${name}.actual.png`).slice(qaDir.length + 1);
 	record.diff = join(context.artifacts, `${name}.diff.png`).slice(qaDir.length + 1);
@@ -159,7 +163,8 @@ async function checkCase(
 		attempts,
 		detail: result.verdict === "fail" ? anchor.detail : null,
 	});
-	if (result.diffImage) await saveFailure(context, name, again, result.diffImage, record);
+	if (result.diffImage)
+		await saveFailure(context, name, again, result.diffImage, record, screen.signedIn ? previous.masks : []);
 	return record;
 }
 
@@ -195,9 +200,16 @@ async function captureCase(
 	// was frozen is the screen the case names.
 	await launchCase(context.session, screen, variant.direction);
 	let nodeMasks: Rect[] = [];
-	if (screen.masks.length > 0 || screen.masksWhenShown.length > 0) {
-		const opened = await waitForNode(context.serial, screen.anchor, variant.direction, 15_000);
+	if (screen.masks.length > 0 || screen.masksWhenShown.length > 0 || screen.signedIn) {
+		const opened = await waitForNode(context.serial, screen.anchor, variant.direction, screen.needsBackend ? 30_000 : 15_000);
 		nodeMasks = maskRects(opened.tree, screen, variant.direction);
+		// A reference keeps every pixel outside the masks: a signed-in screen that shows the account's address in the open is not frozen.
+		const exposed = exposedAccount(opened.tree, nodeMasks);
+		if (exposed.length > 0)
+			return caseRecord(screen, variant, {
+				verdict: "error",
+				detail: `no reference written: the screen shows the QA account's address outside the case's masks (${exposed.length} node${exposed.length === 1 ? "" : "s"}); the case must mask it`,
+			});
 	} else {
 		await sleep(900);
 	}
@@ -225,7 +237,11 @@ async function captureCase(
 		shot.image,
 	);
 	if (refusal) return caseRecord(screen, variant, { verdict: "error", detail: `no reference written: ${refusal}` });
-	const written = await writeReference(context.deviceKind, name, shot.image);
+	// The pixels under a signed-in screen's masks (the address, the devices, avatars from the network) are never stored: the
+	// comparison ignores them, and the reference must not carry the account.
+	const masks = referenceMasks(context.statusBar, nodeMasks, shot.image, context.navigationBar);
+	const stored = screen.signedIn && nodeMasks.length > 0 ? paintOver(shot.image, masks.filter((mask) => mask.name.startsWith("moving node"))) : shot.image;
+	const written = await writeReference(context.deviceKind, name, stored);
 	let changed: number | null = null;
 	let detail = "new";
 	if (previous) {
@@ -242,7 +258,7 @@ async function captureCase(
 	}
 	context.manifest.references[name] = {
 		...written,
-		masks: referenceMasks(context.statusBar, nodeMasks, shot.image, context.navigationBar),
+		masks,
 		screen: screen.id,
 		route: screen.route,
 		state: screen.state,
@@ -345,7 +361,9 @@ export async function parity(argv: string[]): Promise<void> {
 	const artifacts = join(runsDir, `parity-${slug(serial)}-${stamp(startedAt)}`);
 	const results: ParityCase[] = [];
 	let aborted: string | null = null;
+	let signedInPhase: SignedInRecord | null = null;
 	const notes = newSessionNotes();
+	const phases = splitPhases(chosenCases);
 	try {
 		await withSession(serial, packageName, async (session) => {
 			await wake(serial);
@@ -364,12 +382,13 @@ export async function parity(argv: string[]): Promise<void> {
 				artifacts,
 				source,
 			};
-			try {
+			/** Every variant of one phase: the settings of the variant, then its screens in the order that changes the proxy least. */
+			const runPhase = async (phaseCases: ScreenCase[]) => {
 				for (const variant of chosenVariants) {
 					await session.theme(variant.theme);
 					await session.fontScale(variant.fontScale);
 					await session.direction(variant.direction);
-					const screens = matrix(chosenCases, [variant]).map((entry) => entry.screen);
+					const screens = matrix(phaseCases, [variant]).map((entry) => entry.screen);
 					for (const screen of ordered(screens)) {
 						if (missingOnly && manifest.references[referenceName(screen, variant)]) continue;
 						const began = Date.now();
@@ -384,6 +403,23 @@ export async function parity(argv: string[]): Promise<void> {
 							`  ${record.verdict.padEnd(17)} ${record.name}${diff}${masked} (${((Date.now() - began) / 1000).toFixed(1)} s)${record.detail && record.verdict !== "updated" ? `: ${record.detail.slice(0, 160)}` : ""}`,
 						);
 					}
+				}
+			};
+			try {
+				if (phases.signedOut.length > 0) {
+					await startSignedOut(session, backend, phases.signedOut);
+					await runPhase(phases.signedOut);
+				}
+				if (phases.signedIn.length > 0) {
+					console.log("signed-in phase: signing in as the QA account");
+					const outcome = await inSignedInPhase(session, backend, matrix(phases.signedIn, chosenVariants).length, () => runPhase(phases.signedIn));
+					signedInPhase = outcome.record;
+					if (!outcome.entered) {
+						console.log(`  signed-in phase did not run: ${outcome.record.detail}`);
+						for (const variant of chosenVariants)
+							for (const { screen } of matrix(phases.signedIn, [variant]))
+								results.push(caseRecord(screen, variant, { verdict: "skipped", detail: outcome.record.detail }));
+					} else if (outcome.record.detail) console.log(`  signed-in phase: ${outcome.record.detail}`);
 				}
 			} finally {
 				if (update) await writeManifest(manifest);
@@ -412,6 +448,7 @@ export async function parity(argv: string[]): Promise<void> {
 		cases: results,
 		notCovered: [...notCovered, ...notCoveredStates],
 		aborted,
+		signedInPhase,
 		leftovers: notes.leftovers,
 		restoreFailures: notes.restoreFailures,
 		deviceRestarts: notes.deviceRestarts,

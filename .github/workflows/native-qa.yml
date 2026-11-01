@@ -159,6 +159,10 @@ jobs:
         env:
           # Only the step that publishes gets the token, and only when the dispatch asked for the update scenario.
           EXPO_TOKEN: ${{ github.event_name == 'workflow_dispatch' && inputs.updates && secrets.EXPO_TOKEN || '' }}
+          # The QA account of the signed-in phase (parity and a11y): a dispatch only, so a push neither signs in nor needs the secrets.
+          # Without them the phase does not run and lane.sh leaves the two gates that count its screens out of the verdict.
+          RASHEED_QA_EMAIL: ${{ github.event_name == 'workflow_dispatch' && secrets.RASHEED_QA_EMAIL || '' }}
+          RASHEED_QA_CODE: ${{ github.event_name == 'workflow_dispatch' && secrets.RASHEED_QA_CODE || '' }}
 
       - name: Job summary
         if: ${{ always() }}

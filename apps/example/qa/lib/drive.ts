@@ -8,14 +8,23 @@ import {
 	type Direction,
 } from "./device.ts";
 import { amStartCommand } from "./adb.ts";
+import { accountEmail, placeholder } from "./qa-account.ts";
 import { diffImages, type Image, type Rect } from "./png.ts";
 import { selectorFor, type Selector, type ScreenCase, type Step } from "./screens.ts";
 import { center, type UiNode, type UiTree } from "./uia.ts";
 import { sleep } from "./wait.ts";
 
-/** Whether a node answers to the selector: its text or content description equals the label, its class equals the class. */
-export function matches(node: UiNode, selector: { label?: string; className?: string }): boolean {
+/**
+ * Whether a node answers to the selector: its text or content description equals the label, its class equals the class. The
+ * `account` selector is the node that shows the QA account's address; with no account configured it matches nothing.
+ */
+export function matches(node: UiNode, selector: { label?: string; className?: string; account?: "email"; resourceId?: string }): boolean {
 	if (selector.className !== undefined && node.className !== selector.className) return false;
+	if (selector.resourceId !== undefined && node.resourceId !== selector.resourceId) return false;
+	if (selector.account === "email") {
+		const email = accountEmail();
+		if (email === null || (node.text.trim().toLowerCase() !== email && node.contentDesc.trim().toLowerCase() !== email)) return false;
+	}
 	if (selector.label === undefined) return true;
 	return node.text.trim() === selector.label || node.contentDesc.trim() === selector.label;
 }
@@ -30,9 +39,34 @@ export function findNode(tree: UiTree, selector: Selector, direction: Direction)
 	);
 }
 
+/**
+ * The visible nodes of the tree that show the QA account's address and that no rectangle covers: a signed-in screen is only frozen
+ * into a reference when this is empty, because the reference keeps the pixels outside the masks.
+ */
+export function exposedAccount(tree: UiTree, masks: Rect[]): UiNode[] {
+	const email = accountEmail();
+	if (email === null) return [];
+	return tree.nodes.filter((node) => {
+		if (node.bounds.width <= 0 || node.bounds.height <= 0) return false;
+		if (!`${node.text}\n${node.contentDesc}`.toLowerCase().includes(email)) return false;
+		return !masks.some(
+			(mask) =>
+				mask.x <= node.bounds.x &&
+				mask.y <= node.bounds.y &&
+				mask.x + mask.width >= node.bounds.x + node.bounds.width &&
+				mask.y + mask.height >= node.bounds.y + node.bounds.height,
+		);
+	});
+}
+
 export function describeSelector(selector: Selector, direction: Direction): string {
 	const wanted = selectorFor(selector, direction);
-	return [wanted.className, wanted.label === undefined ? undefined : JSON.stringify(wanted.label)]
+	return [
+		wanted.className,
+		wanted.resourceId === undefined ? undefined : `#${wanted.resourceId}`,
+		wanted.label === undefined ? undefined : JSON.stringify(wanted.label),
+		wanted.account === undefined ? undefined : `the QA account's ${wanted.account} (${placeholder})`,
+	]
 		.filter(Boolean)
 		.join(" ");
 }

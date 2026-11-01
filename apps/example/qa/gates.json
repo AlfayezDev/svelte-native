@@ -200,6 +200,26 @@
       "gestures-churn"
     ]
   },
+  "signedIn": {
+    "android": [
+      "app-workspaces",
+      "app-workspace-create",
+      "app-workspace-home",
+      "app-workspace-settings",
+      "app-settings-profile",
+      "app-settings-preferences",
+      "app-settings-devices",
+      "app-settings-workspaces",
+      "app-settings-danger",
+      "app-account-profile",
+      "app-account-preferences",
+      "app-account-devices",
+      "app-account-workspaces",
+      "app-account-danger",
+      "app-account-change-email",
+      "app-account-delete-workspace"
+    ]
+  },
   "gates": [
     {
       "id": "checks.passed",
@@ -758,6 +778,17 @@
       }
     },
     {
+      "id": "parity.signedIn.missing",
+      "title": "Screenshot parity: pinned signed-in screens (gates.json signedIn) not compared in every variant",
+      "unit": "cases",
+      "metric": "parity.signedIn.missing",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
       "id": "a11y.unreachable",
       "title": "Accessibility: interactive elements not reachable",
       "unit": "elements",
@@ -851,6 +882,17 @@
           "max": 0
         },
         "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "a11y.signedIn.missing",
+      "title": "Accessibility: pinned signed-in screens (gates.json signedIn) not dumped in every layout",
+      "unit": "screens",
+      "metric": "a11y.signedIn.missing",
+      "bar": {
+        "android": {
           "max": 0
         }
       }

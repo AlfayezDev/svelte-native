@@ -336,6 +336,20 @@ export type NotCoveredRoute = { route: string; reason: string };
 export type ParityVerdict =
 	"pass" | "fail" | "missing-reference" | "unstable" | "error" | "skipped" | "updated";
 
+/**
+ * The signed-in phase of a parity or accessibility run (`lib/signin.ts`): the cases that ran under the QA account's session. `detail`
+ * says why the phase did not run or end cleanly; it never carries the account's address.
+ */
+export type SignedInRecord = {
+	/** Signed-in cases the run selected. */
+	cases: number;
+	/** The harness signed in as the QA account. */
+	signedIn: boolean;
+	/** The session was ended again afterwards (null: nothing to end, the phase never started). */
+	signedOut: boolean | null;
+	detail: string | null;
+};
+
 export type ParityCase = {
 	/** The reference's name: `<screen>--<theme>-<direction>-<text size>`. */
 	name: string;
@@ -383,6 +397,8 @@ export type ParityFile = {
 	cases: ParityCase[];
 	notCovered: NotCoveredRoute[];	/** Why the run stopped before the end of its matrix (the device went away), or null. The cases it did not reach count as missing. */
 	aborted: string | null;
+	/** The signed-in phase; absent on the iPhone and in runs from before it existed. */
+	signedInPhase?: SignedInRecord | null;
 } & CrashReportsRecord &
 	SessionRecord;
 
@@ -401,6 +417,8 @@ export type A11yScreenResult = {
 	unreachable: number;
 	unlabeled: number;
 	notActionable: number;
+	/** Enabled controls fully on screen under 48 dp in a direction; not gated. Absent in runs from before it was measured and on the iPhone. */
+	smallTargets?: number;
 	orderViolations: number;
 	titleFirst: boolean | null;
 	/** Declared controls of the screen underneath that a sheet or modal leaves in the tree. */
@@ -429,6 +447,8 @@ export type A11yFile = {
 	screens: A11yScreenResult[];
 	notCovered: NotCoveredRoute[];	/** Why the run stopped before the end of its matrix (the device went away), or null. The cases it did not reach count as missing. */
 	aborted: string | null;
+	/** The signed-in phase; absent on the iPhone and in runs from before it existed. */
+	signedInPhase?: SignedInRecord | null;
 } & CrashReportsRecord &
 	SessionRecord;
 

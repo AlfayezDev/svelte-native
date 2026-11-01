@@ -5,6 +5,7 @@ import { gates } from "./commands/gates.ts";
 import { gestures } from "./commands/gestures.ts";
 import { hold } from "./commands/hold.ts";
 import { iosProbe } from "./commands/ios-probe.ts";
+import { leakcheck } from "./commands/leakcheck.ts";
 import { lab } from "./commands/lab.ts";
 import { parity } from "./commands/parity.ts";
 import { report } from "./commands/report.ts";
@@ -36,7 +37,8 @@ const usage = `usage: native-qa <command> [flags]
   updates --device <serial> [--apk <channel build>] [--baseline-apk <path> | --no-baseline] [--channel qa] [--warm <n>] [--max-launches <n>] [--settle <n>] [--faults boot,mount,effect] [--eas "<command>"] [--environment <eas environment>] [--reset app|data] [--dexopt profile|none] [--package <id>]
   hold   --device <serial> [--wait <seconds>] -- <command...>   (the emulator lock held across the commands: a CI lane, a sequence of runs)
   report
-  gates  [--platform android|ios] [--all] [--smoke] [--runs lab,parity,...] [--except lab.runs,...] [--markdown <file>]`;
+  gates  [--platform android|ios] [--all] [--smoke] [--runs lab,parity,...] [--except lab.runs,...] [--markdown <file>]
+  leakcheck [--staged] [--all]      (the QA account's address, RASHEED_QA_EMAIL, in what is about to be committed and in the run files)`;
 
 const [command, ...rest] = process.argv.slice(2);
 
@@ -57,6 +59,7 @@ const commands: Record<string, (argv: string[]) => Promise<void>> = {
 	probe: iosProbe,
 	report: async () => report(),
 	gates,
+	leakcheck,
 };
 
 const run = command ? commands[command] : undefined;

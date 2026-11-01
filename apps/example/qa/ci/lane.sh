@@ -24,6 +24,11 @@
 #                It PUBLISHES updates to the channel, so the workflow sets it on dispatch only, never on a push; it needs
 #                EXPO_TOKEN (or an eas login) on the runner. QA_CHANNEL is the channel (qa)
 #   QA_SMOKE     1: build and run the smoke app in full mode; needs apps/platform/libs/samsungpay.jar or $QA_SAMSUNGPAY_JAR
+#   RASHEED_QA_EMAIL, RASHEED_QA_CODE   the QA account of the signed-in phase of parity and a11y (secrets of the runner, from the
+#                environment or the repository's .env.local; the harness never prints or writes them). Without RASHEED_QA_EMAIL
+#                that phase does not run, and the two gates that count its screens (parity.signedIn.missing, a11y.signedIn.missing)
+#                are not judged. They are not judged on a push either: the quick lane compares the pinned screens in fewer
+#                variants than the pin lists
 #   QA_STARTS, QA_SUITES, QA_CHUNK   the crash volume (1000, 100, 100)
 #   QA_CLI       the harness command (node qa/native-qa.ts); QA_EMULATOR_SH the emulator script (qa/ci/emulator.sh; from another
 #                machine qa/ci/emulator-remote.sh, which runs it on the host over ssh)
@@ -43,6 +48,12 @@ EMULATOR=${QA_EMULATOR_SH:-$CI_DIR/emulator.sh}
 # shellcheck disable=SC2206  # a command line, split on purpose
 QA=(${QA_CLI:-node qa/native-qa.ts})
 FAILED=0
+
+# Whether the harness will find the QA account: the environment, else the one key of the repository's .env.local (the way qa/lib/qa-account.ts
+# looks). Nothing is printed.
+qa_account() {
+  [ -n "${RASHEED_QA_EMAIL:-}" ] || grep -qsE '^[[:space:]]*(export[[:space:]]+)?RASHEED_QA_EMAIL[[:space:]]*=[[:space:]]*[^[:space:]#]' "$CI_DIR/../../../../.env.local"
+}
 
 emulator_rss() { bash "$EMULATOR" rss 2>/dev/null || echo "?"; }
 
@@ -99,12 +110,17 @@ emulator() {
   mkdir -p "$OUT"
   trap cancelled TERM INT
   local quick=--quick kinds=lab,parity,a11y,gestures except=()
+  local signed_in_gates=parity.signedIn.missing,a11y.signedIn.missing
   if [ "$MODE" = full ]; then
     quick=""
     kinds=lab,boot,parity,a11y,resilience,gestures
     if [ "${QA_UPDATES:-0}" = 1 ]; then kinds=$kinds,updates; fi
+    if ! qa_account; then
+      echo "::warning title=no QA account::RASHEED_QA_EMAIL is not set, so parity and a11y skip their signed-in phase and the gates that count its screens are not judged"
+      except=(--except "$signed_in_gates")
+    fi
   else
-    except=(--except lab.runs)
+    except=(--except "lab.runs,$signed_in_gates")
   fi
 
   # A fresh instance before anything is measured: the host leaks memory with every app launch, and frame timings and the

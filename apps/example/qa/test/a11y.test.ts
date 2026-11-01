@@ -702,3 +702,31 @@ describe("the toolbar band", () => {
 		]);
 	});
 });
+
+describe("touch targets", () => {
+	// 420 dpi: 2.625 px per dp, so 48 dp is 126 px.
+	const dense = { ...display, densityDpi: 420 };
+
+	test("an enabled control under 48 dp in either direction is counted, with its size in dp", () => {
+		const r = analyze(
+			[
+				button("Big", [100, 400, 700, 540]),
+				button("Short", [100, 600, 700, 700]),
+				button("Narrow", [100, 800, 200, 940]),
+				button("Off", [100, 1000, 700, 1100], { enabled: false }),
+				button("Edge", [100, 0, 700, 60]),
+			],
+			{ display: dense },
+		);
+		expect(r.smallTargets).toBe(2);
+		expect(r.findings.filter((finding) => finding.kind === "target").map((finding) => finding.element)).toEqual([
+			'Button "Short" [100,600 600x100]',
+			'Button "Narrow" [100,800 100x140]',
+		]);
+		expect(r.findings.find((finding) => finding.kind === "target")?.detail).toBe("229 x 38 dp, under the 48 dp touch target");
+	});
+
+	test("without a density nothing is measured, and a result from before the measurement has no count", () => {
+		expect(analyze([button("Short", [100, 600, 700, 700])]).smallTargets).toBeUndefined();
+	});
+});

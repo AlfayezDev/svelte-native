@@ -52,7 +52,7 @@ esac
 	const run = (phase: string, env: Record<string, string> = {}) =>
 		spawnSync("bash", [join(platform, "qa", "ci", "lane.sh"), phase], {
 			cwd: platform,
-			env: { ...process.env, QA_CLI: `bash ${cli}`, QA_EMULATOR_SH: emulator, GITHUB_STEP_SUMMARY: summary, GITHUB_SHA: "0123456789abcdef", ...env },
+			env: { ...process.env, QA_CLI: `bash ${cli}`, QA_EMULATOR_SH: emulator, GITHUB_STEP_SUMMARY: summary, GITHUB_SHA: "0123456789abcdef", RASHEED_QA_EMAIL: "", ...env },
 			encoding: "utf8",
 		});
 	const lines = (): string[] => (existsSync(calls) ? readFileSync(calls, "utf8").trim().split("\n") : []);
@@ -78,7 +78,7 @@ describe("lane.sh emulator on a push", () => {
 			"a11y --device localhost:5555 --no-install --quick",
 			"gestures --device localhost:5555 --no-install --input both",
 			"report",
-			"gates --platform android --runs lab,parity,a11y,gestures --except lab.runs --markdown qa/out/gates.md",
+			"gates --platform android --runs lab,parity,a11y,gestures --except lab.runs,parity.signedIn.missing,a11y.signedIn.missing --markdown qa/out/gates.md",
 		]);
 		expect(machine.stages().every((row) => row[1] === "pass")).toBe(true);
 		expect(machine.stages().map((row) => row[0])).toEqual([
@@ -129,9 +129,20 @@ describe("lane.sh emulator on a dispatch", () => {
 			"gestures --device localhost:5555 --no-install --input both",
 			"smoke --device localhost:5555",
 			"report",
-			"gates --platform android --runs lab,boot,parity,a11y,resilience,gestures --markdown qa/out/gates.md",
+			"gates --platform android --runs lab,boot,parity,a11y,resilience,gestures --except parity.signedIn.missing,a11y.signedIn.missing --markdown qa/out/gates.md",
 			"gates --smoke --platform android --runs smoke --markdown qa/out/gates-smoke.md",
 		]);
+	});
+	test("with the QA account the signed-in gates are judged on a dispatch, and without it the lane says they are not", () => {
+		const without = lane();
+		const warned = without.run("emulator", { QA_MODE: "full", RASHEED_QA_EMAIL: "" });
+		expect(warned.stdout).toContain("::warning title=no QA account::");
+		expect(harness(without.lines()).at(-1)).toContain("--except parity.signedIn.missing,a11y.signedIn.missing");
+		const withAccount = lane();
+		const judged = withAccount.run("emulator", { QA_MODE: "full", RASHEED_QA_EMAIL: "qa-account-stand-in" });
+		expect(judged.stdout).not.toContain("no QA account");
+		expect(judged.stdout).not.toContain("qa-account-stand-in");
+		expect(harness(withAccount.lines()).at(-1)).toBe("gates --platform android --runs lab,boot,parity,a11y,resilience,gestures --markdown qa/out/gates.md");
 	});
 	test("without QA_SMOKE the smoke app is neither run nor judged", () => {
 		const machine = lane();
@@ -146,7 +157,7 @@ describe("lane.sh emulator on a dispatch", () => {
 			"smoke --device localhost:5555",
 			"updates --device localhost:5555 --channel qa --warm 30",
 			"report",
-			"gates --platform android --runs lab,boot,parity,a11y,resilience,gestures,updates --markdown qa/out/gates.md",
+			"gates --platform android --runs lab,boot,parity,a11y,resilience,gestures,updates --except parity.signedIn.missing,a11y.signedIn.missing --markdown qa/out/gates.md",
 			"gates --smoke --platform android --runs smoke --markdown qa/out/gates-smoke.md",
 		]);
 		expect(machine.stages().map((row) => row[0])).toContain("guard-updates");

@@ -2,6 +2,8 @@ import { wake } from "../lib/adb.ts";
 import { analyzeScreen, reachPct } from "../lib/a11y.ts";
 import { dumpUi, endsRun, newSessionNotes, readDisplay, reportRestore, withSession } from "../lib/device.ts";
 import { dumpWithOwnControls, openCase, retryCase, settledTree } from "../lib/drive.ts";
+import { inSignedInPhase, splitPhases, startSignedOut } from "../lib/phases.ts";
+import { redactDeep } from "../lib/qa-account.ts";
 import { flagString, parseFlags, platformOf } from "../lib/flags.ts";
 import { currentSource } from "../lib/git.ts";
 import { writeRun } from "../lib/runs.ts";
@@ -18,7 +20,7 @@ import {
 	type Variant,
 } from "../lib/screens.ts";
 import { backendStatus, commonOptions, startSuite, type BackendStatus } from "../lib/suite.ts";
-import type { A11yFile, A11yScreenResult } from "../lib/types.ts";
+import type { A11yFile, A11yScreenResult, SignedInRecord } from "../lib/types.ts";
 import { iosA11y } from "./ios-a11y.ts";
 
 /** What the checks read, stated in every run file. */
@@ -76,69 +78,91 @@ export async function a11y(argv: string[]): Promise<void> {
 
 	const results: A11yScreenResult[] = [];
 	let aborted: string | null = null;
+	let signedInPhase: SignedInRecord | null = null;
 	const notes = newSessionNotes();
+	const phases = splitPhases(chosenCases);
 	try {
 		await withSession(serial, packageName, async (session) => {
 			await session.rotation(0);
 			await wake(serial);
 			await session.theme("light");
-			for (const variant of chosenVariants) {
-				await session.fontScale(variant.fontScale);
-				await session.direction(variant.direction);
-				for (const { screen } of matrix(chosenCases, [variant])) {
-					const began = Date.now();
-					if (screen.needsBackend && !backend.ok) {
-						results.push(emptyResult(screen, variant, `needs the dev backend: ${backend.detail}`));
-						console.log(`  skipped  ${referenceName(screen, variant)}: backend`);
-						continue;
-					}
-					try {
-						// Every check reads what a screen reader walks (`--compressed`); the plain dump only drives the launch (anchor, taps).
-						// Under a sheet or modal that dump is taken until it holds the screen's own controls, which one taken mid-draw lacks; on
-						// any other screen a declared control that is missing is a finding, not a half-built dump. One more try after a failure
-						// that is not the device going away: the first dump after the emulator was restarted can come back empty.
-						const own = screen.hidden.length > 0 ? ownLabels(screen, variant.direction) : [];
-						const { tree, stable } = await retryCase(
-							session,
-							screen,
-							variant.fontScale,
-							referenceName(screen, variant),
-							async () => {
-								await openCase(session, screen, variant.direction);
-								const first = await dumpWithOwnControls(() => dumpUi(serial, { important: true }), own);
-								return settledTree(serial, first, undefined, { important: true });
-							},
-						);
-						const analysis = analyzeScreen({
-							tree,
-							direction: variant.direction,
-							display,
-							title: screen.title === null ? null : localize(screen.title, variant.direction),
-							scrolled: screen.scrolled.map((control) => localize(control, variant.direction)),
-							controls: screen.controls.map((control) => localize(control, variant.direction)),
-							hidden: screen.hidden.map((label) => localize(label, variant.direction)),
-							layout: screen.layout,
-						});
-						results.push({
-							name: referenceName(screen, variant),
-							screen: screen.id,
-							route: screen.route,
-							direction: variant.direction,
-							fontScale: variant.fontScale,
-							...analysis,
-							stable,
-							error: null,
-						});
-						console.log(
-							`  ${referenceName(screen, variant).padEnd(44)} interactive ${analysis.interactive} (reach ${reachPct(analysis)}, clipped ${analysis.clipped}), unreachable ${analysis.unreachable}, unlabeled ${analysis.unlabeled}, not actionable ${analysis.notActionable}, order ${analysis.orderViolations}, title ${analysis.titleFirst === null ? "-" : analysis.titleFirst ? "first" : "NOT first"}, leaks ${analysis.focusLeaks}${stable ? "" : ", tree NOT settled"} (${((Date.now() - began) / 1000).toFixed(1)} s)`,
-						);
-					} catch (error) {
-						if (endsRun(error)) throw error;
-						const message = error instanceof Error ? error.message : String(error);
-						results.push(emptyResult(screen, variant, message));
-						console.log(`  error    ${referenceName(screen, variant)}: ${message.slice(0, 160)}`);
+			/** Every layout of one phase: the settings of the layout, then its screens. */
+			const runPhase = async (phaseCases: ScreenCase[]) => {
+				for (const variant of chosenVariants) {
+					await session.fontScale(variant.fontScale);
+					await session.direction(variant.direction);
+					for (const { screen } of matrix(phaseCases, [variant])) {
+						const began = Date.now();
+						if (screen.needsBackend && !backend.ok) {
+							results.push(emptyResult(screen, variant, `needs the dev backend: ${backend.detail}`));
+							console.log(`  skipped  ${referenceName(screen, variant)}: backend`);
+							continue;
+						}
+						try {
+							// Every check reads what a screen reader walks (`--compressed`); the plain dump only drives the launch (anchor, taps).
+							// Under a sheet or modal that dump is taken until it holds the screen's own controls, which one taken mid-draw lacks; on
+							// any other screen a declared control that is missing is a finding, not a half-built dump. One more try after a failure
+							// that is not the device going away: the first dump after the emulator was restarted can come back empty.
+							const own = screen.hidden.length > 0 ? ownLabels(screen, variant.direction) : [];
+							const { tree, stable } = await retryCase(
+								session,
+								screen,
+								variant.fontScale,
+								referenceName(screen, variant),
+								async () => {
+									await openCase(session, screen, variant.direction);
+									const first = await dumpWithOwnControls(() => dumpUi(serial, { important: true }), own);
+									return settledTree(serial, first, undefined, { important: true });
+								},
+							);
+							const analysis = analyzeScreen({
+								tree,
+								direction: variant.direction,
+								display,
+								title: screen.title === null ? null : localize(screen.title, variant.direction),
+								scrolled: screen.scrolled.map((control) => localize(control, variant.direction)),
+								controls: screen.controls.map((control) => localize(control, variant.direction)),
+								hidden: screen.hidden.map((label) => localize(label, variant.direction)),
+								layout: screen.layout,
+							});
+							// The tree of a signed-in screen holds the account's own text (its address, its devices): what is kept of it is redacted.
+							const kept = screen.signedIn ? redactDeep(analysis) : analysis;
+							results.push({
+								name: referenceName(screen, variant),
+								screen: screen.id,
+								route: screen.route,
+								direction: variant.direction,
+								fontScale: variant.fontScale,
+								...kept,
+								stable,
+								error: null,
+							});
+							console.log(
+								`  ${referenceName(screen, variant).padEnd(44)} interactive ${analysis.interactive} (reach ${reachPct(analysis)}, clipped ${analysis.clipped}), unreachable ${analysis.unreachable}, unlabeled ${analysis.unlabeled}, not actionable ${analysis.notActionable}, small targets ${analysis.smallTargets ?? "-"}, order ${analysis.orderViolations}, title ${analysis.titleFirst === null ? "-" : analysis.titleFirst ? "first" : "NOT first"}, leaks ${analysis.focusLeaks}${stable ? "" : ", tree NOT settled"} (${((Date.now() - began) / 1000).toFixed(1)} s)`,
+							);
+						} catch (error) {
+							if (endsRun(error)) throw error;
+							const message = error instanceof Error ? error.message : String(error);
+							results.push(emptyResult(screen, variant, redactDeep(message)));
+							console.log(`  error    ${referenceName(screen, variant)}: ${redactDeep(message).slice(0, 160)}`);
+						}
 					}
 				}
+			};
+			if (phases.signedOut.length > 0) {
+				await startSignedOut(session, backend, phases.signedOut);
+				await runPhase(phases.signedOut);
+			}
+			if (phases.signedIn.length > 0) {
+				console.log("signed-in phase: signing in as the QA account");
+				const outcome = await inSignedInPhase(session, backend, matrix(phases.signedIn, chosenVariants).length, () => runPhase(phases.signedIn));
+				signedInPhase = outcome.record;
+				if (!outcome.entered) {
+					console.log(`  signed-in phase did not run: ${outcome.record.detail}`);
+					for (const variant of chosenVariants)
+						for (const { screen } of matrix(phases.signedIn, [variant]))
+							results.push(emptyResult(screen, variant, outcome.record.detail ?? "the signed-in phase did not run"));
+				} else if (outcome.record.detail) console.log(`  signed-in phase: ${outcome.record.detail}`);
 			}
 		}, { notes });
 	} catch (error) {
@@ -160,6 +184,7 @@ export async function a11y(argv: string[]): Promise<void> {
 		screens: results,
 		notCovered: [...notCovered, ...notCoveredStates],
 		aborted,
+		signedInPhase,
 		leftovers: notes.leftovers,
 		restoreFailures: notes.restoreFailures,
 		deviceRestarts: notes.deviceRestarts,
@@ -168,7 +193,7 @@ export async function a11y(argv: string[]): Promise<void> {
 	const total = (pick: (screen: A11yScreenResult) => number) =>
 		results.reduce((sum, screen) => sum + pick(screen), 0);
 	console.log(
-		`a11y: ${results.length} screens, ${total((s) => s.interactive)} interactive elements, ${total((s) => s.unreachable)} unreachable, ${total((s) => s.unlabeled)} unlabeled, ${total((s) => s.notActionable)} not actionable, ${total((s) => s.orderViolations)} order violations, ${results.filter((s) => s.titleFirst === false).length} titles not first, ${total((s) => s.focusLeaks)} focus leaks, ${results.filter((s) => s.error !== null).length} errors`,
+		`a11y: ${results.length} screens, ${total((s) => s.interactive)} interactive elements, ${total((s) => s.unreachable)} unreachable, ${total((s) => s.unlabeled)} unlabeled, ${total((s) => s.notActionable)} not actionable, ${total((s) => s.smallTargets ?? 0)} small touch targets (not gated), ${total((s) => s.orderViolations)} order violations, ${results.filter((s) => s.titleFirst === false).length} titles not first, ${total((s) => s.focusLeaks)} focus leaks, ${results.filter((s) => s.error !== null).length} errors`,
 	);
 	console.log(`wrote qa/runs/${name}.json`);
 	reportRestore(notes);

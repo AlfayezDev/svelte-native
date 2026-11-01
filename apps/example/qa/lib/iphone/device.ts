@@ -88,6 +88,47 @@ export async function readAppFile(target: IosTarget, source: string): Promise<st
 	return null;
 }
 
+/**
+ * Whether the phone answers `devicectl` at all (the cheapest call, `info lockState`, ended by the Mac after `limitSeconds`). Around a UI test CoreDevice
+ * can stay wedged for many minutes: every other `devicectl` call then costs its whole limit, so a run asks once before it reads the phone.
+ */
+export async function phoneAnswers(target: IosTarget, limitSeconds = 25): Promise<boolean> {
+	try {
+		await jsonCommand(target, ["device", "info", "lockState", "--device", target.id], { timeoutMs: (limitSeconds + 5) * 1000 });
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/** Waits for the phone to answer `devicectl` again (a few bounded probes, not a loop on one hung call); false when it never did. */
+export async function waitForPhone(target: IosTarget, probes = 3, limitSeconds = 25): Promise<boolean> {
+	for (let probe = 1; probe <= probes; probe++) {
+		if (await phoneAnswers(target, limitSeconds)) return true;
+		console.log(`  devicectl does not answer (probe ${probe}/${probes}, ${limitSeconds} s each)`);
+	}
+	return false;
+}
+
+/** The commands of one `afcclient` session (house_arrest into the app's container), one per line. */
+export const afcSession = (commands: readonly string[]): string => `${commands.join("\n")}\nexit\n`;
+
+/**
+ * A file of the app's data container through house_arrest (`afcclient --container`, libimobiledevice on the Mac), which answers when CoreDevice is
+ * wedged (the iOS campaign recovered a run's results this way). Text, or null when the file is not there or the Mac ended the call after
+ * `limitSeconds`. The path is relative to the container, as `readAppFile`'s is.
+ */
+export async function readAppFileAfc(target: IosTarget, udid: string, source: string, limitSeconds = 30): Promise<string | null> {
+	const directory = unique("afc");
+	const session = afcSession([`get ${JSON.stringify(source)} out`]);
+	const result = await remote(
+		target.mac,
+		`export PATH=/opt/homebrew/bin:/usr/local/bin:$PATH; mkdir -p ${directory} && cd ${directory} && printf %s ${words([session])} | ${words(["perl", "-e", "alarm shift; exec @ARGV", String(limitSeconds), "afcclient", "--udid", udid, "--container", target.bundleId])} > /dev/null 2>&1; code=1; if [ -f out ]; then cat out; code=0; fi; cd /; rm -rf ${directory}; exit $code`,
+		{ timeoutMs: (limitSeconds + 15) * 1000 },
+	);
+	return result.code === 0 ? result.stdout : null;
+}
+
 /** Copies a file or directory of the app's data container to `destination` on this machine (a directory arrives as `<destination>/<name>`). */
 export async function fetchAppPath(target: IosTarget, source: string, destination: string): Promise<void> {
 	const staging = unique("fetch");

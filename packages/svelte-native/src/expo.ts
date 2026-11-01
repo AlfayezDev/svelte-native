@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { withAndroidManifest, withAppBuildGradle, withDangerousMod, withMainActivity, withMainApplication, withPodfile, withSettingsGradle, type ConfigPlugin } from "expo/config-plugins";
+import { withAndroidManifest, withAppBuildGradle, withAppDelegate, withDangerousMod, withMainActivity, withMainApplication, withPodfile, withSettingsGradle, type ConfigPlugin } from "expo/config-plugins";
 import { syncNative } from "./build.ts";
 
 export type ViewRecycling = { view?: boolean; text?: boolean; image?: boolean; scrollView?: boolean };
@@ -76,6 +76,10 @@ const savedBegin = "    // Svelte native: the navigation this Activity was saved
 const savedEnd = "    // Svelte native: end of saved navigation";
 const launchBegin = "            // Svelte native: the saved navigation reaches JavaScript as initialProps.navigation (generated, do not edit)";
 const launchEnd = "            // Svelte native: end of launch options";
+const delegateBegin = "  // Svelte native: navigation state restoration (generated, do not edit)";
+const delegateEnd = "  // Svelte native: end of navigation state restoration";
+// `internal`: Expo's generated ExpoModulesProvider imports every module as `internal import`, and Swift refuses a plain import of the same module in the app target as ambiguous ("ambiguous implicit access level").
+const delegateImport = "internal import SvelteNavigation // Svelte native: navigation state restoration (generated, do not edit)";
 const gradleBegin = "// Svelte native: headless autolinking excludes (generated, do not edit)";
 const gradleEnd = "// Svelte native: end of headless autolinking excludes";
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -190,6 +194,51 @@ export function applyMainActivity(contents: string): string {
   const classEnd = classAnchor.index + classAnchor[0].length;
   const delegateEnd = delegateAnchor.index + delegateAnchor[0].length;
   return `${stripped.slice(0, classEnd)}\n${members}${stripped.slice(classEnd, createAnchor.index)}${saved}${stripped.slice(createAnchor.index, delegateAnchor.index)}${launch}${stripped.slice(delegateEnd)}`;
+}
+
+/**
+ * `AppDelegate.swift` (iOS): the four state restoration callbacks of `UIApplicationDelegate`, which Expo's `ExpoAppDelegate` does not forward, call
+ * `SvelteNavigationRestoration` (`modules/svelte-navigation-ios`). UIKit saves the application's restorable state when the app enters the background,
+ * asks `shouldRestore` at the next launch only if it still has that state, and has deleted it when the user swiped the app away: that call is how the
+ * navigation module tells a process the system ended (restore) from one the user ended (start from the first screen), as Android's saved instance
+ * state does. The methods keep the protocol's Objective-C selectors under names of their own, so a later `ExpoAppDelegate` that forwards them is a
+ * compile error to read, not a silent override. Idempotent (prebuild re-runs on the same file).
+ */
+export function applyAppDelegate(contents: string): string {
+  const stripped = contents
+    .replace(blockPattern(delegateBegin, delegateEnd), "")
+    .replace(new RegExp(`^${escapeRegExp(delegateImport)}\\n`, "m"), "");
+  const imports = [...stripped.matchAll(/^(?:(?:internal|public|package|private|fileprivate) |@_exported |@preconcurrency )*import [\w.]+[ \t]*$/gm)];
+  const lastImport = imports.at(-1);
+  const property = /^[ \t]*var reactNativeFactory: RCTReactNativeFactory\?[ \t]*$/m.exec(stripped);
+  if (!lastImport || !property) throw new Error("Svelte native could not find the imports and `var reactNativeFactory: RCTReactNativeFactory?` in AppDelegate.swift");
+  const block = [
+    delegateBegin,
+    "  @objc(application:shouldSaveSecureApplicationState:)",
+    "  func svelteNavigationShouldSave(_ application: UIApplication, _ coder: NSCoder) -> Bool {",
+    "    SvelteNavigationRestoration.shouldSave(coder)",
+    "  }",
+    "",
+    "  @objc(application:willEncodeRestorableStateWithCoder:)",
+    "  func svelteNavigationEncode(_ application: UIApplication, _ coder: NSCoder) {",
+    "    SvelteNavigationRestoration.encode(coder)",
+    "  }",
+    "",
+    "  @objc(application:shouldRestoreSecureApplicationState:)",
+    "  func svelteNavigationShouldRestore(_ application: UIApplication, _ coder: NSCoder) -> Bool {",
+    "    SvelteNavigationRestoration.shouldRestore(coder)",
+    "  }",
+    "",
+    "  @objc(application:didDecodeRestorableStateWithCoder:)",
+    "  func svelteNavigationDidDecode(_ application: UIApplication, _ coder: NSCoder) {",
+    "    SvelteNavigationRestoration.didDecode(coder)",
+    "  }",
+    delegateEnd,
+  ].join("\n");
+  // The later position first, so the earlier one is still where it was found.
+  const propertyEnd = property.index + property[0].length;
+  const importEnd = lastImport.index + lastImport[0].length;
+  return `${stripped.slice(0, importEnd)}\n${delegateImport}${stripped.slice(importEnd, propertyEnd)}\n${block}${stripped.slice(propertyEnd)}`;
 }
 
 /** `settings.gradle`: excludes packages from Expo and React Native autolinking, the headless ones and `extra`. Idempotent. */
@@ -429,6 +478,11 @@ const withSvelteNative: ConfigPlugin<SvelteNativeOptions | undefined> = (config,
   config = withMainActivity(config, (config) => {
     if (config.modResults.language !== "kt") throw new Error("Svelte native requires Expo's Kotlin MainActivity");
     config.modResults.contents = applyMainActivity(config.modResults.contents);
+    return config;
+  });
+  config = withAppDelegate(config, (config) => {
+    if (config.modResults.language !== "swift") throw new Error("Svelte native requires Expo's Swift AppDelegate");
+    config.modResults.contents = applyAppDelegate(config.modResults.contents);
     return config;
   });
   config = withMainApplication(config, (config) => {

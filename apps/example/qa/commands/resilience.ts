@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { clearLogcat, shell, startApp, wake } from "../lib/adb.ts";
 import { endsRun, key, newSessionNotes, reportRestore, withSession, type DeviceSession } from "../lib/device.ts";
 import { launchCase, openCase, waitForNode } from "../lib/drive.ts";
-import { integerFlag, parseFlags } from "../lib/flags.ts";
+import { integerFlag, parseFlags, platformOf } from "../lib/flags.ts";
 import { currentSource } from "../lib/git.ts";
 import { qaDir, runsDir } from "../lib/paths.ts";
 import {
@@ -22,6 +22,7 @@ import { cases } from "../lib/screens.ts";
 import { commonOptions, startSuite } from "../lib/suite.ts";
 import type { ResilienceFile, ResilienceStep } from "../lib/types.ts";
 import { sleep } from "../lib/wait.ts";
+import { iosResilience } from "./ios-resilience.ts";
 
 const logFilter =
 	"AndroidRuntime:E ActivityManager:E SvelteEngine:W libc:F DEBUG:F ReactNativeJS:E '*:S'";
@@ -153,8 +154,10 @@ async function runStep(
 }
 
 export async function resilience(argv: string[]): Promise<void> {
+	if (platformOf(argv) === "ios") return iosResilience(argv);
 	const { values } = parseFlags(argv, {
 		...commonOptions,
+		platform: { type: "string" },
 		rotations: { type: "string" },
 		cycles: { type: "string" },
 		rounds: { type: "string" },

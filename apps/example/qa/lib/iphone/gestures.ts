@@ -38,7 +38,7 @@ import type { BuildIdentity, CrashReport, GestureInjection, GestureLaunch, Gestu
 
 export const uiTestsLocal = join(qaDir, "ios-ui-tests");
 export const uiTestsRemote = "/tmp/native-qa-ios/gestures-ui-tests";
-const sourceFiles = ["make-project.rb", "GesturesUITests/GesturesUITests.swift"];
+export const sourceFiles = ["make-project.rb", "GesturesUITests/GesturesUITests.swift", "GesturesUITests/ResilienceUITests.swift"];
 
 /** The digest of the test sources: the runner is built again only when it changes. */
 export function sourcesDigest(contents: readonly string[]): string {
@@ -283,10 +283,10 @@ export const testStartedLine = "GESTURES-STARTED";
  * Waits for the test to say it opened the lab, before the harness asks the phone anything: devicectl calls made while the runner is starting up
  * (automation mode, the app's launch) hang for a minute and a half now and then. False when the line did not come in time (the run goes on and says why).
  */
-async function waitForTestStarted(mac: Mac, outFile: string, maxMs: number): Promise<boolean> {
+export async function waitForTestStarted(mac: Mac, outFile: string, maxMs: number, line: string = testStartedLine): Promise<boolean> {
 	const deadline = Date.now() + maxMs;
 	while (Date.now() < deadline) {
-		const result = await remote(mac, `grep -c ${shellQuote(testStartedLine)} ${shellQuote(outFile)} 2>/dev/null`);
+		const result = await remote(mac, `grep -c ${shellQuote(line)} ${shellQuote(outFile)} 2>/dev/null`);
 		if (result.stdout.trim() !== "" && result.stdout.trim() !== "0") return true;
 		await sleep(2000);
 	}
@@ -294,7 +294,7 @@ async function waitForTestStarted(mac: Mac, outFile: string, maxMs: number): Pro
 }
 
 /** Whether the process the test was started as (the shell that runs xcodebuild) still exists. */
-async function testAlive(mac: Mac, pid: number): Promise<boolean> {
+export async function testAlive(mac: Mac, pid: number): Promise<boolean> {
 	const result = await remote(mac, `kill -0 ${pid} 2>/dev/null && echo alive`);
 	return result.stdout.includes("alive");
 }

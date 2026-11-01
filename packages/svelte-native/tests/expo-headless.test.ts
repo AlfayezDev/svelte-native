@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createRunOncePlugin } from "expo/config-plugins";
-import { applyHeadlessApplication, applyHeadlessSettings, applyMainActivity, applyPodfileAutolinkingExclude, leaveOutOfAutoPlugins, headlessExcludedPackages, headlessPackageSource, onDemandPackageSource } from "../src/expo.ts";
+import { applyAppDelegate, applyHeadlessApplication, applyHeadlessSettings, applyMainActivity, applyPodfileAutolinkingExclude, leaveOutOfAutoPlugins, headlessExcludedPackages, headlessPackageSource, onDemandPackageSource } from "../src/expo.ts";
 
 const application = `class MainApplication {
   override val reactHost: ReactHost by lazy {
@@ -15,6 +15,77 @@ const application = `class MainApplication {
   override fun onCreate() {
     loadReactNative(this)
     ApplicationLifecycleDispatcher.onApplicationCreate(this)
+  }
+}
+`;
+/** The `AppDelegate.swift` Expo's template generates (SDK 57, `expo/template.tgz`). */
+const appDelegate = `internal import Expo
+import React
+import ReactAppDependencyProvider
+
+@main
+class AppDelegate: ExpoAppDelegate {
+  var window: UIWindow?
+
+  var reactNativeDelegate: ExpoReactNativeFactoryDelegate?
+  var reactNativeFactory: RCTReactNativeFactory?
+
+  public override func application(
+    _ application: UIApplication,
+    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+  ) -> Bool {
+    let delegate = ReactNativeDelegate()
+    let factory = ExpoReactNativeFactory(delegate: delegate)
+    delegate.dependencyProvider = RCTAppDependencyProvider()
+
+    reactNativeDelegate = delegate
+    reactNativeFactory = factory
+
+#if os(iOS) || os(tvOS)
+    window = UIWindow(frame: UIScreen.main.bounds)
+    factory.startReactNative(
+      withModuleName: "main",
+      in: window,
+      launchOptions: launchOptions)
+#endif
+
+    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  // Linking API
+  public override func application(
+    _ app: UIApplication,
+    open url: URL,
+    options: [UIApplication.OpenURLOptionsKey: Any] = [:]
+  ) -> Bool {
+    return super.application(app, open: url, options: options) || RCTLinkingManager.application(app, open: url, options: options)
+  }
+
+  // Universal Links
+  public override func application(
+    _ application: UIApplication,
+    continue userActivity: NSUserActivity,
+    restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void
+  ) -> Bool {
+    let result = RCTLinkingManager.application(application, continue: userActivity, restorationHandler: restorationHandler)
+    return super.application(application, continue: userActivity, restorationHandler: restorationHandler) || result
+  }
+}
+
+class ReactNativeDelegate: ExpoReactNativeFactoryDelegate {
+  // Extension point for config-plugins
+
+  override func sourceURL(for bridge: RCTBridge) -> URL? {
+    // needed to return the correct URL for expo-dev-client.
+    bridge.bundleURL ?? bundleURL()
+  }
+
+  override func bundleURL() -> URL? {
+#if DEBUG
+    return RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: ".expo/.virtual-metro-entry")
+#else
+    return Bundle.main.url(forResource: "main", withExtension: "jsbundle")
+#endif
   }
 }
 `;
@@ -134,6 +205,33 @@ describe("headless Android config", () => {
   });
   test("MainActivity: a template without the expected shape fails with a message", () => {
     expect(() => applyMainActivity("class MainActivity : AppCompatActivity() {}")).toThrow("could not find the class, super.onCreate(null) and the ReactActivityDelegate in MainActivity.kt");
+  });
+  test("AppDelegate forwards the four state restoration callbacks of UIKit to the navigation module, idempotently", () => {
+    const once = applyAppDelegate(appDelegate);
+    // The selectors UIKit calls (UIApplicationDelegate, iOS 13.2 and later), under Swift names of their own.
+    for (const selector of ["application:shouldSaveSecureApplicationState:", "application:willEncodeRestorableStateWithCoder:", "application:shouldRestoreSecureApplicationState:", "application:didDecodeRestorableStateWithCoder:"])
+      expect(once).toContain(`@objc(${selector})`);
+    expect(once).toContain("SvelteNavigationRestoration.shouldSave(coder)");
+    expect(once).toContain("SvelteNavigationRestoration.encode(coder)");
+    expect(once).toContain("SvelteNavigationRestoration.shouldRestore(coder)");
+    expect(once).toContain("SvelteNavigationRestoration.didDecode(coder)");
+    // Every method has as many parameters as its selector has colons.
+    for (const [, selector, parameters] of once.matchAll(/@objc\(([^)]+)\)\n {2}func \w+\(([^)]*)\)/g)) expect([selector, (parameters as string).split(",").length]).toEqual([selector, (selector as string).split(":").length - 1]);
+    // The import follows the others, the methods are inside AppDelegate (before `class ReactNativeDelegate`), after the stored properties.
+    // Expo's generated ExpoModulesProvider imports the module as `internal import`; a plain import in the app target is "ambiguous" to the compiler (the first iPhone build said so).
+    expect(once).toContain("\ninternal import SvelteNavigation //");
+    expect(once.indexOf("import SvelteNavigation")).toBeGreaterThan(once.indexOf("import ReactAppDependencyProvider"));
+    expect(once.indexOf("import SvelteNavigation")).toBeLessThan(once.indexOf("@main"));
+    expect(once.indexOf("var reactNativeFactory")).toBeLessThan(once.indexOf("@objc(application:shouldSaveSecureApplicationState:)"));
+    expect(once.indexOf("@objc(application:didDecodeRestorableStateWithCoder:)")).toBeLessThan(once.indexOf("didFinishLaunchingWithOptions"));
+    expect(once.indexOf("@objc(application:didDecodeRestorableStateWithCoder:)")).toBeLessThan(once.indexOf("class ReactNativeDelegate"));
+    // What was there is still there, once, and applying again changes nothing.
+    expect(once.replace(/\n {2}\/\/ Svelte native: navigation state restoration[\s\S]*?end of navigation state restoration/, "").replace(/^internal import SvelteNavigation.*\n/m, "")).toBe(appDelegate);
+    expect(applyAppDelegate(once)).toBe(once);
+    expect(once.match(/import SvelteNavigation/g)).toHaveLength(1);
+  });
+  test("AppDelegate: a template without the expected shape fails with a message", () => {
+    expect(() => applyAppDelegate("import UIKit\n@main class AppDelegate: UIResponder {}")).toThrow("could not find the imports and `var reactNativeFactory: RCTReactNativeFactory?` in AppDelegate.swift");
   });
   test("settings.gradle is idempotent", () => {
     const once = applyHeadlessSettings(settings);

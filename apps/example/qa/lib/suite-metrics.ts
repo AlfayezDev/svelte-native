@@ -1,3 +1,4 @@
+import { fullIosPlanSize } from "./iphone/resilience.ts";
 import { fullPlanSize } from "./resilience.ts";
 import { layoutVariants, pinnedNames, variants } from "./screens.ts";
 import type { A11yFile, Metrics, ParityFile, ResilienceFile } from "./types.ts";
@@ -72,12 +73,19 @@ export function a11yMetrics(file: A11yFile, signedIn: readonly string[] = []): M
 	};
 }
 
-/** The resilience loop: steps run, steps that failed a check, and steps of the full plan that were never run. */
+/**
+ * The resilience loop: steps run, steps that failed a check, steps the device could not perform (`skipped`: neither a pass nor a failure, and
+ * gated on its own so a plan cannot shrink unnoticed), steps of the platform's full plan that were never run (the iPhone's plan is its own), and
+ * whether the run was a diagnostic that bypassed the system's say in the iOS restore (no evidence for the product).
+ */
 export function resilienceMetrics(file: ResilienceFile): Metrics {
+	const full = file.device.platform === "ios" ? fullIosPlanSize : fullPlanSize;
 	return {
 		"resilience.steps": file.steps.length,
 		"resilience.failures": file.steps.filter((step) => !step.ok).length,
-		"resilience.stepsMissing": Math.max(0, fullPlanSize - file.steps.length),
+		"resilience.skipped": file.steps.filter((step) => step.skipped !== undefined).length,
+		"resilience.stepsMissing": Math.max(0, full - file.steps.length),
+		"resilience.gateBypassed": file.assumeSystemKill === true ? 1 : 0,
 	};
 }
 

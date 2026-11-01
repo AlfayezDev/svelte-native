@@ -35,7 +35,7 @@ export type HmrState = {
   navigation?: () => NavigationState;
   /** Navigation state to adopt in the next root `createRouter` call: set when surfaces are remounted and whenever the last surface stops, taken by the router that adopts it. */
   restore?: NavigationState;
-  /** Where the root router writes its state as JSON after every change (the host sets it; Android keeps it for the Activity's saved instance state, see SPEC.md "Navigation state across recreation and process death"). */
+  /** Where the root router writes its state as JSON after every change (the host sets it; Android keeps it for the Activity's saved instance state, iOS writes it to a file when the app goes to the background, see SPEC.md "Navigation state across recreation and process death"). */
   save?: (json: string) => void;
   /** The named routers outside the root's tree (a tab pane's own router in the lab) by scope: the live state of each, and what the root adopting `restore` collected for them. */
   scopes?: Map<string, () => StackSnapshot>;
@@ -49,7 +49,8 @@ export function hmrState(): HmrState {
 }
 
 /**
- * The navigation state a previous process left (`initialProps.navigation`, the JSON the router wrote through `save`). Anything
+ * The navigation state a previous process left (`initialProps.navigation`, the JSON the router wrote through `save`; on iOS `launchSurface` puts the
+ * host's record there after judging its age, `freshNavigation`). Anything
  * that is not such a state is ignored; a state of routes that no longer exist is dropped when the router restores it.
  */
 export function parseNavigation(value: unknown): NavigationState | undefined {

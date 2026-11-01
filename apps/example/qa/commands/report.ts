@@ -121,7 +121,7 @@ type A11yScreenSummary = {
 };
 
 /** What one iOS run file recorded of the phone's crash log: the reports, or why there are none to count (`error`: the pull failed, or the file was recorded before it existed). */
-type CrashReportsSummary = { run: "lab" | "boot" | "parity" | "a11y" | "gestures"; file: string; error: string | null; reports: CrashReport[] };
+type CrashReportsSummary = { run: "lab" | "boot" | "parity" | "a11y" | "resilience" | "gestures"; file: string; error: string | null; reports: CrashReport[] };
 
 /** One gestures run file: how each launch was driven and what each scenario came to. */
 type GesturesSummary = {
@@ -592,6 +592,7 @@ export async function report(): Promise<void> {
 				["boot", bootPath, boot],
 				["parity", parityPath, suites.parity],
 				["a11y", a11yPath, suites.a11y],
+				["resilience", resiliencePath, suites.resilience],
 				["gestures", gesturesPath, gestures],
 			]),
 			suites: {
@@ -688,7 +689,7 @@ export async function report(): Promise<void> {
 		}
 		if (entry.suites.resilience)
 			console.log(
-				`  resilience ${m["resilience.steps"] ?? 0} steps, ${m["resilience.failures"] ?? "-"} failed`,
+				`  resilience ${m["resilience.steps"] ?? 0} steps, ${m["resilience.failures"] ?? "-"} failed, ${m["resilience.skipped"] ?? 0} skipped`,
 			);
 		if (entry.smoke)
 			console.log(

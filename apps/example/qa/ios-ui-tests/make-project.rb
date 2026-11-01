@@ -1,5 +1,6 @@
-# Generates GesturesUITests.xcodeproj next to this file: one UI testing bundle with no target application (the test starts the lab app by
-# its bundle id), and a scheme that tests it. `native-qa gestures --platform ios` runs it on the Mac (the `xcodeproj` gem comes with
+# Generates GesturesUITests.xcodeproj next to this file: one UI testing bundle with no target application (the tests start the lab app by
+# its bundle id), and a scheme that tests it. The bundle holds two test classes: GesturesUITests (`native-qa gestures --platform ios`) and
+# ResilienceUITests (`native-qa resilience --platform ios`). Both run on the Mac (the `xcodeproj` gem comes with
 # CocoaPods, which the Mac already has for the app's pods). The development team comes from DEVELOPMENT_TEAM.
 require 'fileutils'
 require 'xcodeproj'
@@ -11,7 +12,7 @@ FileUtils.rm_rf(path)
 project = Xcodeproj::Project.new(path)
 target = project.new_target(:ui_test_bundle, 'GesturesUITests', :ios, '16.4')
 group = project.main_group.new_group('GesturesUITests', 'GesturesUITests')
-target.add_file_references([group.new_file('GesturesUITests.swift')])
+target.add_file_references([group.new_file('GesturesUITests.swift'), group.new_file('ResilienceUITests.swift')])
 
 target.build_configurations.each do |config|
   settings = config.build_settings

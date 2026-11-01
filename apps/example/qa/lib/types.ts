@@ -456,7 +456,7 @@ export type A11yFile = {
 
 export type ResilienceStep = {
 	index: number;
-	group: "rotation" | "fontScale" | "locale" | "background" | "lowMemory";
+	group: "rotation" | "fontScale" | "locale" | "appearance" | "background" | "lowMemory";
 	name: string;
 	ok: boolean;
 	/** What failed: the process died, a fatal or an engine warning appeared, the anchor was not on screen. */
@@ -464,7 +464,12 @@ export type ResilienceStep = {
 	/** True when the loop restarted the app after this step failed, so the next step starts from a working screen. */
 	recovered: boolean;
 	durationMs: number;
+	/** A step the device could not perform, and why (iOS: the XCUITest runner's SDK has no `XCUIDevice.appearance`). It is neither a pass nor a failure: `ok` is true and `resilience.skipped` counts it. */
+	skipped?: string;
 };
+
+/** `Library/Application Support/svelte-navigation/last.json` on the iPhone: what the navigation module did with the state it found at the last start of the app. */
+export type NavigationOutcome = { at: number; outcome: string; reason: string; attempts: number; systemKept: boolean; savedAt?: number; bytes?: number };
 
 export type ResilienceFile = {
 	schema: 1;
@@ -481,7 +486,12 @@ export type ResilienceFile = {
 	planned: number;
 	logFile: string;	/** Why the run stopped before the end of its matrix (the device went away), or null. The cases it did not reach count as missing. */
 	aborted: string | null;
-} & SessionRecord;
+	/** iOS: what the navigation module did with the state at the last start of the app (null: it wrote nothing). Absent on Android. */
+	navigation?: NavigationOutcome | null;
+	/** iOS: the run was made with `--assume-system-kill` (a diagnostic of the restore without the system's say: `resilience.gateBypassed`). */
+	assumeSystemKill?: true;
+} & CrashReportsRecord &
+	SessionRecord;
 
 /* ---- native module smoke test ---- */
 

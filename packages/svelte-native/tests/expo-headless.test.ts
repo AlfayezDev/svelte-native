@@ -218,13 +218,15 @@ describe("headless Android config", () => {
     // Every method has as many parameters as its selector has colons.
     for (const [, selector, parameters] of once.matchAll(/@objc\(([^)]+)\)\n {2}func \w+\(([^)]*)\)/g)) expect([selector, (parameters as string).split(",").length]).toEqual([selector, (selector as string).split(":").length - 1]);
     // The import follows the others, the methods are inside AppDelegate (before `class ReactNativeDelegate`), after the stored properties.
+    // Expo's generated ExpoModulesProvider imports the module as `internal import`; a plain import in the app target is "ambiguous" to the compiler (the first iPhone build said so).
+    expect(once).toContain("\ninternal import SvelteNavigation //");
     expect(once.indexOf("import SvelteNavigation")).toBeGreaterThan(once.indexOf("import ReactAppDependencyProvider"));
     expect(once.indexOf("import SvelteNavigation")).toBeLessThan(once.indexOf("@main"));
     expect(once.indexOf("var reactNativeFactory")).toBeLessThan(once.indexOf("@objc(application:shouldSaveSecureApplicationState:)"));
     expect(once.indexOf("@objc(application:didDecodeRestorableStateWithCoder:)")).toBeLessThan(once.indexOf("didFinishLaunchingWithOptions"));
     expect(once.indexOf("@objc(application:didDecodeRestorableStateWithCoder:)")).toBeLessThan(once.indexOf("class ReactNativeDelegate"));
     // What was there is still there, once, and applying again changes nothing.
-    expect(once.replace(/\n {2}\/\/ Svelte native: navigation state restoration[\s\S]*?end of navigation state restoration/, "").replace(/^import SvelteNavigation.*\n/m, "")).toBe(appDelegate);
+    expect(once.replace(/\n {2}\/\/ Svelte native: navigation state restoration[\s\S]*?end of navigation state restoration/, "").replace(/^internal import SvelteNavigation.*\n/m, "")).toBe(appDelegate);
     expect(applyAppDelegate(once)).toBe(once);
     expect(once.match(/import SvelteNavigation/g)).toHaveLength(1);
   });

@@ -78,7 +78,8 @@ const launchBegin = "            // Svelte native: the saved navigation reaches 
 const launchEnd = "            // Svelte native: end of launch options";
 const delegateBegin = "  // Svelte native: navigation state restoration (generated, do not edit)";
 const delegateEnd = "  // Svelte native: end of navigation state restoration";
-const delegateImport = "import SvelteNavigation // Svelte native: navigation state restoration (generated, do not edit)";
+// `internal`: Expo's generated ExpoModulesProvider imports every module as `internal import`, and Swift refuses a plain import of the same module in the app target as ambiguous ("ambiguous implicit access level").
+const delegateImport = "internal import SvelteNavigation // Svelte native: navigation state restoration (generated, do not edit)";
 const gradleBegin = "// Svelte native: headless autolinking excludes (generated, do not edit)";
 const gradleEnd = "// Svelte native: end of headless autolinking excludes";
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

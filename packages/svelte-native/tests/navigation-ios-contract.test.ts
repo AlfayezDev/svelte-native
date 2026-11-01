@@ -28,7 +28,7 @@ describe("the iOS navigation module's sources agree with each other", () => {
       expect(enumBody).toMatch(new RegExp(`public static func ${name}\\(_ coder: NSCoder\\)`));
       expect(delegate).toContain(`SvelteNavigationRestoration.${name}(coder)`);
     }
-    expect(delegate).toContain("import SvelteNavigation");
+    expect(delegate).toContain("internal import SvelteNavigation");
     expect(swift.match(/public static func /g)).toHaveLength(4);
   });
 

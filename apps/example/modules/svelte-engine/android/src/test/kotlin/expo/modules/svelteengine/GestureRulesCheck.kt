@@ -6,8 +6,9 @@ import kotlin.system.exitProcess
 
 /**
  * Plain-JVM check of what the gesture handler reads from an engine view (SPEC.md, "Gestures", Android contract items 1 and 3):
- * the pointer-events mapping and the id rules of `GestureRules`, compiled as they are in the engine. Usage:
- * GestureRulesCheck <path of views/HitTest.kt> (src/test/run.sh compiles and runs it). Exits non-zero on the first miss.
+ * the pointer-events mapping, the id rules and the arbitration rules of `GestureRules` and `ClaimRules`, compiled as they are
+ * in the engine. Usage: GestureRulesCheck <views/HitTest.kt> <views/EngineRoot.kt> <views/EngineStack.kt> <views/EngineSheet.kt>
+ * <RNGH's core/PanGestureHandler.kt> (src/test/run.sh compiles and runs it). Exits non-zero on the first miss.
  */
 private var checks = 0
 
@@ -80,11 +81,13 @@ fun main(args: Array<String>) {
   }
   equal("first internal id", seen.min(), GestureRules.INTERNAL_ID_BASE)
 
-  // Arbitration with RNGH's default Pan (SPEC.md, "Gestures", "Android arbitration"): its `minDist` is `getScaledTouchSlop`
-  // and it activates on `dx * dx + dy * dy >= minDist * minDist` (`PanGestureHandler.shouldActivate`, 2.32.0). The edge swipe and
-  // a sheet's drag use the same distance, so whenever one of them is claimed at a move a default Pan activates there too: the
-  // two tie on that move and the root asks the native view first, never later.
-  fun defaultPanActivates(dx: Float, dy: Float, slop: Float) = dx * dx + dy * dy >= slop * slop
+  // Arbitration with RNGH's default Pan (SPEC.md, "Gestures", "Android arbitration"): its `minDist` is `getScaledTouchSlop` and it
+  // activates on the distance rule of `PanGestureHandler.shouldActivate`, which is read from the library's own source here (2.32.0:
+  // `dx * dx + dy * dy >= minDist * minDist`), not retyped. The edge swipe and a sheet's drag use the same distance, so whenever one
+  // of them is claimed at a move a default Pan activates there too: the two tie on that move and the root asks the native view
+  // first, never later.
+  val pan = PanSource(File(args[4]).readText())
+  fun defaultPanActivates(dx: Float, dy: Float, slop: Float) = pan.activates(dx, dy, slop)
   for (slop in floatArrayOf(8f, 21f, 24f, 40f)) {
     var swipes = 0
     var drags = 0
@@ -94,6 +97,8 @@ fun main(args: Array<String>) {
       while (y <= 60f) {
         if (GestureRules.edgeSwipe(x, y, slop)) { swipes++; check("edge swipe $x,$y slop $slop is a default pan's activation", defaultPanActivates(x, y, slop)) }
         if (GestureRules.sheetDrag(x, y, slop)) { drags++; check("sheet drag $x,$y slop $slop is a default pan's activation", defaultPanActivates(x, y, slop)) }
+        // And the other way round at the claim's own distance: wherever a default Pan has not activated, the claim has not either.
+        if (!defaultPanActivates(x, y, slop)) check("no claim before a default pan at $x,$y slop $slop", !GestureRules.edgeSwipe(x, y, slop) && !GestureRules.sheetDrag(x, y, slop))
         y += 0.5f
       }
       x += 0.5f
@@ -112,5 +117,155 @@ fun main(args: Array<String>) {
   // A drift of 2.6 dp across 7.6 dp along: a default Pan activates (8.03 >= 8), and the sheet claims the same move.
   check("drift: the Pan's activation is also the sheet's", defaultPanActivates(2.6f, 7.6f, 8f) && GestureRules.sheetDrag(2.6f, 7.6f, 8f))
 
+  claimChecks()
+  wiringChecks(File(args[1]).readText(), File(args[2]).readText(), File(args[3]).readText())
+
   println("gesture rules ok: $checks checks")
+}
+
+/**
+ * The distance rule of RNGH's `PanGestureHandler.shouldActivate`, read from the library's source: the check fails when the
+ * source no longer says what the claim distances were derived from (a library upgrade), instead of comparing with a copy.
+ */
+private class PanSource(source: String) {
+  init {
+    val body = Regex("""private fun shouldActivate\(\): Boolean \{([\s\S]*?)\n  \}""").find(source)?.groupValues?.get(1)
+      ?: error("PanGestureHandler.kt has no shouldActivate()")
+    val flat = body.replace(Regex("\\s+"), " ")
+    for (expected in listOf("val dx = lastX - startX + offsetX", "val dy = lastY - startY + offsetY", "val distSq = dx * dx + dy * dy", "distSq >= minDist * minDist")) {
+      check("shouldActivate still reads: $expected", flat.contains(expected))
+    }
+    // The default minDist is the touch slop.
+    val flatSource = source.replace(Regex("\\s+"), " ")
+    check("defaultMinDist is the scaled touch slop", flatSource.contains("defaultMinDist = vc.scaledTouchSlop.toFloat()"))
+    check("minDist starts as defaultMinDist", flatSource.contains("minDist = defaultMinDist"))
+  }
+
+  fun activates(dx: Float, dy: Float, slop: Float): Boolean = dx * dx + dy * dy >= slop * slop
+}
+
+/** What the arbitration decides, with the events of a touch fed to it the way the root feeds them (`ClaimRules.kt`). */
+private fun claimChecks() {
+  val slop = 8f
+  // A claimer that wants a rightward drag of a slop or more, and one that never does.
+  val right = { _: Int, dx: Float, dy: Float -> GestureRules.edgeSwipe(dx, dy, slop) }
+  val never = { _: Int, _: Float, _: Float -> false }
+
+  // The history of one MOVE, positions along x on a line at y = 100, starting at x = 10 where the finger went down.
+  fun decide(arbiter: ClaimArbiter, xs: FloatArray, pointerCount: Int = 1, move: Boolean = true, claimers: Int = 1, claims: (Int, Float, Float) -> Boolean = right, owns: (Int) -> Boolean = { false }): ClaimOutcome =
+    arbiter.decide(move, pointerCount, claimers, xs.size - 1, { xs[it] }, { 100f }, claims, owns)
+
+  fun fresh(): ClaimArbiter = ClaimArbiter().also { it.down(0, 10f, 100f) }
+
+  // The plain claim: the first sample at a slop decides, and when it is the event's own position nothing is asked of the handlers.
+  var probes = 0
+  var outcome = decide(fresh(), floatArrayOf(11f, 14f, 19f), owns = { probes++; false })
+  equal("claim kind", outcome.kind, ClaimOutcome.Kind.CLAIM)
+  equal("claim sample", outcome.sample, 2)
+  equal("the handlers saw the sample before it", probes, 1)
+  probes = 0
+  outcome = decide(fresh(), floatArrayOf(20f), owns = { probes++; false })
+  equal("claim on the only sample", Pair(outcome.kind, outcome.sample), Pair(ClaimOutcome.Kind.CLAIM, 0))
+  equal("no probe for the first sample", probes, 0)
+  // A handler that activates on the sample before the claim keeps the gesture; the one asked is the sample before the claim's.
+  val asked = ArrayList<Int>()
+  outcome = decide(fresh(), floatArrayOf(11f, 14f, 19f, 25f), owns = { asked.add(it); it == 1 })
+  equal("handler first", Pair(outcome.kind, outcome.sample), Pair(ClaimOutcome.Kind.HANDLER_FIRST, 2))
+  equal("asked about the sample before the claim", asked, listOf(1))
+  // Nothing crosses: nothing happens. A leftward or vertical drag is no claim of the edge swipe.
+  equal("no claim", decide(fresh(), floatArrayOf(11f, 12f, 13f)).kind, ClaimOutcome.Kind.NONE)
+  equal("no claimers", decide(fresh(), floatArrayOf(40f), claimers = 0).kind, ClaimOutcome.Kind.NONE)
+  // The outermost claimer that wants the gesture is the one that takes it.
+  equal("outermost first", decide(fresh(), floatArrayOf(40f), claimers = 3, claims = { k, _, _ -> k >= 1 }).claimer, 1)
+  equal("a claimer that never claims", decide(fresh(), floatArrayOf(40f), claimers = 2, claims = never).kind, ClaimOutcome.Kind.NONE)
+  // Only a MOVE decides.
+  equal("not a move", decide(fresh(), floatArrayOf(40f), move = false).kind, ClaimOutcome.Kind.NONE)
+
+  // Ineligible events ask nobody: neither a claimer nor the handlers.
+  fun silent(arbiter: ClaimArbiter, pointerCount: Int = 1): Boolean {
+    var asks = 0
+    val result = arbiter.decide(true, pointerCount, 1, 2, { asks++; 40f }, { asks++; 100f }, { _, _, _ -> asks++; true }, { asks++; false })
+    return result.kind == ClaimOutcome.Kind.NONE && asks == 0
+  }
+
+  // Async activation: a handler activated between two events (a LongPress's timer, `Pan.activateAfterLongPress`). The library
+  // tells the root only by cancelling its root handler, which calls `onChildStartedNativeGesture`: the next move must not be
+  // claimed, or the view's touch lock cancels nothing (the root handler is no longer BEGAN) and the drag never ends.
+  val asynchronous = fresh()
+  equal("before the handler activates the swipe would be claimed", decide(asynchronous, floatArrayOf(40f)).kind, ClaimOutcome.Kind.CLAIM)
+  asynchronous.handlerTookOver()
+  check("after an asynchronous activation nothing is claimed or asked", silent(asynchronous))
+  equal("the handler owns", asynchronous.handlerOwns, true)
+  // The next DOWN is a new gesture.
+  asynchronous.down(0, 10f, 100f)
+  equal("a new touch is claimable again", decide(asynchronous, floatArrayOf(40f)).kind, ClaimOutcome.Kind.CLAIM)
+
+  // The touch lock: after a view took it (a scroll view that started to drag, a claim) nothing else claims.
+  val locked = fresh()
+  locked.lockRequested()
+  check("after the lock nothing is claimed or asked", silent(locked))
+
+  // Multi-pointer: A (id 0) goes down in the edge zone, B (id 1) at the centre, A lifts, B moves. The position at pointer index 0 is
+  // B's, hundreds of pixels from where A went down: a distance, not a swipe.
+  val two = fresh()
+  check("a second finger down: not the root's to decide", silent(two, pointerCount = 2))
+  two.pointerUp(0)
+  equal("A lifted", two.pointer.present, false)
+  check("A lifted, B moves alone: nothing is claimed or asked", silent(two, pointerCount = 1))
+  // Android hands A's id out again to a finger C that goes down later; the arbiter is told of a DOWN only at ACTION_DOWN, so C is not A.
+  check("a finger that reuses A's id is not the DOWN pointer", silent(two, pointerCount = 1))
+  two.pointerUp(1)
+  check("B lifted too", silent(two, pointerCount = 1))
+  // B lifting first leaves A as the DOWN pointer, alone and claimable.
+  val other = fresh()
+  other.pointerUp(1)
+  equal("another pointer lifting does not matter", decide(other, floatArrayOf(40f)).kind, ClaimOutcome.Kind.CLAIM)
+  // The touch ended: the next one starts with its own pointer id, which need not be 0.
+  other.end()
+  check("an ended touch decides nothing", silent(other))
+  other.down(3, 10f, 100f)
+  equal("a later touch with pointer id 3", decide(other, floatArrayOf(40f)).kind, ClaimOutcome.Kind.CLAIM)
+
+  // DownPointer on its own.
+  val pointer = DownPointer()
+  check("no pointer yet", !pointer.present)
+  pointer.down(2)
+  pointer.up(1)
+  equal("another pointer lifting leaves it", pointer.id, 2)
+  pointer.up(2)
+  equal("the pointer lifted", pointer.id, DownPointer.GONE)
+  pointer.up(2)
+  equal("lifting twice is harmless", pointer.id, DownPointer.GONE)
+}
+
+/**
+ * The views are Android classes, so what the host cannot run is read from their source: that the root tells the arbiter what it
+ * learns, and that the stack and the sheet measure on the DOWN pointer. Each line is the fix of a bug found in review.
+ */
+private fun wiringChecks(root: String, stack: String, sheet: String) {
+  fun body(source: String, signature: String): String {
+    val at = source.indexOf(signature)
+    check("source has $signature", at >= 0)
+    var depth = 0
+    var i = source.indexOf('{', at)
+    val begin = i
+    while (i < source.length) {
+      if (source[i] == '{') depth++ else if (source[i] == '}') { depth--; if (depth == 0) return source.substring(begin, i + 1) }
+      i++
+    }
+    error("unbalanced braces after $signature")
+  }
+  check("the root learns of an asynchronous activation (onChildStartedNativeGesture)", body(root, "override fun onChildStartedNativeGesture").contains("arbiter.handlerTookOver()"))
+  check("the root learns of the touch lock", body(root, "override fun requestDisallowInterceptTouchEvent").contains("arbiter.lockRequested()"))
+  check("the root learns of the handlers' dispatch", body(root, "override fun dispatchTouchEvent").contains("arbiter.handlerTookOver()"))
+  check("the root forgets a pointer that lifted", body(root, "override fun dispatchTouchEvent").contains("arbiter.pointerUp("))
+  check("the root records the DOWN pointer", body(root, "override fun dispatchTouchEvent").contains("arbiter.down(ev.getPointerId(0)"))
+  check("the root claims on the DOWN pointer's index", body(root, "private fun claimBeforeHandlers").contains("findPointerIndex(arbiter.pointer.id)"))
+  check("no claim reads pointer 0", !Regex("""getHistorical[XY]\(0,|getX\(0\)|getY\(0\)""").containsMatchIn(body(root, "private fun claimBeforeHandlers")))
+  for ((name, source, intercept) in listOf(Triple("stack", stack, "override fun onInterceptTouchEvent"), Triple("sheet", sheet, "override fun onInterceptTouchEvent"))) {
+    val text = body(source, intercept)
+    check("the $name measures on the DOWN pointer", text.contains("findPointerIndex(downPointer.id)"))
+    check("the $name forgets a pointer that lifted", text.contains("downPointer.up("))
+    check("the $name does not read pointer 0 for the move", !Regex("""ev\.(rawX|rawY|x|y)\b\s*-\s*down[XY]""").containsMatchIn(text))
+  }
 }

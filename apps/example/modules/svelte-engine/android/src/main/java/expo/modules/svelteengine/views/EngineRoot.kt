@@ -7,6 +7,8 @@ import android.view.View
 import android.widget.FrameLayout
 import com.facebook.react.bridge.ReactContext
 import com.facebook.react.uimanager.RootView
+import expo.modules.svelteengine.ClaimArbiter
+import expo.modules.svelteengine.ClaimOutcome
 import expo.modules.svelteengine.GestureRules
 import expo.modules.svelteengine.SvelteEngineNative
 
@@ -92,12 +94,8 @@ class EngineRoot(context: Context) : FrameLayout(context), RootView {
   /** The views of the touched path that can claim the gesture, outermost first. */
   private val claimers = arrayOfNulls<NativeClaim>(MAX_CLAIMERS)
   private var claimerCount = 0
-  private var downX = 0f
-  private var downY = 0f
-  /** A handler activated: the gesture is theirs and the children get nothing more of it. */
-  private var handlerOwns = false
-  /** A native view took the touch lock (a claim, a scroll view that started to drag): nothing claims any more. */
-  private var lockTaken = false
+  /** Who may take the touch over: the DOWN position and pointer, whether a handler owns the gesture, whether a native view holds the lock (`ClaimRules.kt`, host checked). */
+  private val arbiter = ClaimArbiter()
 
   // Arrays handed to JNI, reused.
   private val oTags = IntArray(MAX)
@@ -185,7 +183,9 @@ class EngineRoot(context: Context) : FrameLayout(context), RootView {
   override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
     val action = ev.actionMasked
     lastTime = ev.eventTime.toDouble()
-    if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) releaseClaimers()
+    if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) { releaseClaimers(); arbiter.end() }
+    // Android hands a pointer id out again as soon as it is free: the DOWN pointer is forgotten when it lifts.
+    if (action == MotionEvent.ACTION_POINTER_UP) arbiter.pointerUp(ev.getPointerId(ev.actionIndex))
     if (action == MotionEvent.ACTION_DOWN) {
       count = 0
       cancelled = false
@@ -193,10 +193,7 @@ class EngineRoot(context: Context) : FrameLayout(context), RootView {
       val target = HitTest.find(this, ev.x, ev.y)
       onEngine = target != null
       GestureTrace.log { "down x=${ev.x / density} y=${ev.y / density} dp, target=${target?.javaClass?.simpleName}" }
-      handlerOwns = false
-      lockTaken = false
-      downX = ev.x
-      downY = ev.y
+      arbiter.down(ev.getPointerId(0), ev.x, ev.y)
       collectClaimers(target)
       if (target == null) return false
       // A modal layer's own area has no node: the gesture is held, JavaScript hears nothing of it.
@@ -240,12 +237,12 @@ class EngineRoot(context: Context) : FrameLayout(context), RootView {
     if (gestureRoot != null) {
       Trace.beginSection("SvelteEngine.gesture")
       val intercept = try {
-        if (action == MotionEvent.ACTION_MOVE && claimerCount > 0 && !handlerOwns && !lockTaken && ev.pointerCount == 1) claimBeforeHandlers(ev, gestureRoot)
+        if (action == MotionEvent.ACTION_MOVE && claimerCount > 0) claimBeforeHandlers(ev, gestureRoot)
         gestureRoot.dispatchTouchEvent(ev)
       } finally { Trace.endSection() }
       GestureTrace.log { "${ev.describe()} -> gesture handlers: ${if (intercept) "a handler owns the gesture" else "no handler active"}" }
       // A handler owns the gesture: the children get nothing more of it (the next DOWN's reset cancels their touch target).
-      if (intercept) { handlerOwns = true; return true }
+      if (intercept) { arbiter.handlerTookOver(); return true }
     }
     // Let Android dispatch continue so scroll views can scroll; the gesture is ours either way.
     super.dispatchTouchEvent(ev)
@@ -277,39 +274,41 @@ class EngineRoot(context: Context) : FrameLayout(context), RootView {
    * before the gesture handlers see the move, so when one move crosses both the view's slop and a handler's activation the view
    * wins. A move carries the samples taken since the last one ([MotionEvent.getHistoricalX]); the first of them to cross the
    * view's slop decides, and the handlers see the sample before it first, so a handler that would have activated on an earlier
-   * sample (a pan with a smaller `activeOffsetY`) still wins. A claim takes the touch lock, which cancels every handler.
+   * sample (a pan with a smaller `activeOffsetY`) still wins. A claim takes the touch lock, which cancels every handler. Nothing
+   * is claimed once a handler owns the gesture, however it came to (`ClaimArbiter`), and the positions are those of the pointer
+   * that went down, never of whichever pointer is first in the event.
    */
   private fun claimBeforeHandlers(ev: MotionEvent, gestureRoot: GestureRoot) {
+    val index = ev.findPointerIndex(arbiter.pointer.id)
     val samples = ev.historySize
-    for (i in 0..samples) {
-      val x = if (i < samples) ev.getHistoricalX(0, i) else ev.getX(0)
-      val y = if (i < samples) ev.getHistoricalY(0, i) else ev.getY(0)
-      val dx = x - downX
-      val dy = y - downY
-      var claimer: NativeClaim? = null
-      for (k in 0 until claimerCount) {
-        val candidate = claimers[k] ?: continue
-        if (candidate.claims(dx, dy)) { claimer = candidate; break }
-      }
-      if (claimer == null) continue
-      if (i > 0) {
-        val probe = historicalMove(ev, i - 1)
+    val outcome = arbiter.decide(
+      isMove = ev.actionMasked == MotionEvent.ACTION_MOVE,
+      pointerCount = ev.pointerCount,
+      claimers = claimerCount,
+      samples = samples,
+      x = { i -> if (i < samples) ev.getHistoricalX(index, i) else ev.getX(index) },
+      y = { i -> if (i < samples) ev.getHistoricalY(index, i) else ev.getY(index) },
+      claims = { k, dx, dy -> claimers[k]?.claims(dx, dy) == true },
+      handlersOwnAt = { sample ->
+        val probe = historicalMove(ev, index, sample)
         val owned = try { gestureRoot.dispatchTouchEvent(probe) } finally { probe.recycle() }
-        GestureTrace.log { "sample ${i - 1} of $samples before the claim -> gesture handlers: ${if (owned) "a handler activated first" else "none active"}" }
-        if (owned) return
-      }
-      GestureTrace.log { "${claimer.javaClass.simpleName} claims the gesture at sample $i of $samples (dx=${dx / density}, dy=${dy / density} dp)" }
-      claimer.claim(ev)
-      return
-    }
+        GestureTrace.log { "sample $sample of $samples before the claim -> gesture handlers: ${if (owned) "a handler activated first" else "none active"}" }
+        if (owned) arbiter.handlerTookOver()
+        owned
+      },
+    )
+    if (outcome.kind != ClaimOutcome.Kind.CLAIM) return
+    val claimer = claimers[outcome.claimer] ?: return
+    GestureTrace.log { "${claimer.javaClass.simpleName} claims the gesture at sample ${outcome.sample} of $samples" }
+    claimer.claim(ev)
   }
 
-  /** A single pointer MOVE with the position and time of history sample [index] of [ev]. */
-  private fun historicalMove(ev: MotionEvent, index: Int): MotionEvent {
-    val properties = MotionEvent.PointerProperties().also { ev.getPointerProperties(0, it) }
-    val coords = MotionEvent.PointerCoords().also { ev.getHistoricalPointerCoords(0, index, it) }
+  /** A single pointer MOVE with the position and time of history sample [sample] of pointer [pointer] of [ev]. */
+  private fun historicalMove(ev: MotionEvent, pointer: Int, sample: Int): MotionEvent {
+    val properties = MotionEvent.PointerProperties().also { ev.getPointerProperties(pointer, it) }
+    val coords = MotionEvent.PointerCoords().also { ev.getHistoricalPointerCoords(pointer, sample, it) }
     return MotionEvent.obtain(
-      ev.downTime, ev.getHistoricalEventTime(index), MotionEvent.ACTION_MOVE, 1, arrayOf(properties), arrayOf(coords),
+      ev.downTime, ev.getHistoricalEventTime(sample), MotionEvent.ACTION_MOVE, 1, arrayOf(properties), arrayOf(coords),
       ev.metaState, ev.buttonState, ev.xPrecision, ev.yPrecision, ev.deviceId, ev.edgeFlags, ev.source, ev.flags,
     )
   }
@@ -330,7 +329,7 @@ class EngineRoot(context: Context) : FrameLayout(context), RootView {
    */
   override fun requestDisallowInterceptTouchEvent(disallowIntercept: Boolean) {
     if (disallowIntercept) {
-      lockTaken = true
+      arbiter.lockRequested()
       gestures?.requestDisallowInterceptTouchEvent()
     }
     super.requestDisallowInterceptTouchEvent(disallowIntercept)
@@ -340,9 +339,15 @@ class EngineRoot(context: Context) : FrameLayout(context), RootView {
 
   /**
    * A native gesture started below (a handler activated, a native view took the lock): JavaScript gets its one cancel and
-   * hears nothing more of the gesture until the next DOWN. That is React Native's contract for the call.
+   * hears nothing more of the gesture until the next DOWN. That is React Native's contract for the call. It is also how the
+   * library's root helper says that a handler activated: it cancels its root handler, which calls this, and it can do so between
+   * two events (a LongPress's timer, `Pan.activateAfterLongPress`), when no dispatch returns the news. The gesture is theirs
+   * from then on, and a view that would claim the next move must not (its touch lock would not cancel an active handler).
    */
-  override fun onChildStartedNativeGesture(childView: View?, ev: MotionEvent) = cancelActiveTouch()
+  override fun onChildStartedNativeGesture(childView: View?, ev: MotionEvent) {
+    arbiter.handlerTookOver()
+    cancelActiveTouch()
+  }
 
   override fun onChildEndedNativeGesture(childView: View, ev: MotionEvent) {}
 

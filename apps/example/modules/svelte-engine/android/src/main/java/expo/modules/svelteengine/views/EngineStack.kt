@@ -13,6 +13,7 @@ import android.animation.AnimatorListenerAdapter
 import androidx.activity.BackEventCompat
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.findViewTreeOnBackPressedDispatcherOwner
+import expo.modules.svelteengine.DownPointer
 import expo.modules.svelteengine.GestureRules
 import expo.modules.svelteengine.NavEvents
 import kotlin.math.abs
@@ -39,6 +40,8 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
   private var edgeCandidate = false
   private var downX = 0f
   private var downY = 0f
+  /** The pointer of the touch's DOWN: the swipe is measured on it, not on whichever pointer is first once it has lifted (`ClaimRules.kt`). */
+  private val downPointer = DownPointer()
   private var dragX = 0f
   private var tracker: VelocityTracker? = null
   private var predictive = false
@@ -578,20 +581,28 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
     if (dragging && ev.actionMasked != MotionEvent.ACTION_DOWN) return true
     when (ev.actionMasked) {
       MotionEvent.ACTION_DOWN -> {
+        downPointer.down(ev.getPointerId(0))
         downX = ev.x; downY = ev.y
         edgeCandidate = ev.x <= edge && canDrag()
         GestureTrace.log { "stack down: edge candidate=$edgeCandidate" }
       }
       MotionEvent.ACTION_MOVE -> if (edgeCandidate && !dragging) {
-        val dx = ev.x - downX
+        // The finger that went down in the edge zone, wherever it is in this event; once it has lifted there is no swipe to measure.
+        val index = ev.findPointerIndex(downPointer.id)
+        if (index < 0) return false
+        val dx = ev.getX(index) - downX
         GestureTrace.log { "stack move: dx=${dx / density} dp (slop ${slop / density})" }
-        if (swipesBack(dx, ev.y - downY)) {
+        if (swipesBack(dx, ev.getY(index) - downY)) {
           GestureTrace.log { "stack takes the edge swipe" }
           startDrag(ev)
           return true
         }
       }
-      MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> edgeCandidate = false
+      MotionEvent.ACTION_POINTER_UP -> {
+        downPointer.up(ev.getPointerId(ev.actionIndex))
+        if (!downPointer.present) edgeCandidate = false
+      }
+      MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { edgeCandidate = false; downPointer.clear() }
     }
     return false
   }
@@ -619,9 +630,14 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
     tracker?.addMovement(event)
     val top = top()
     when (event.actionMasked) {
+      MotionEvent.ACTION_POINTER_UP -> downPointer.up(event.getPointerId(event.actionIndex))
       MotionEvent.ACTION_MOVE -> {
-        dragX = (event.x - downX).coerceIn(0f, width.toFloat())
-        top?.translationX = dragX
+        // The drag follows the finger that started it; while that finger is up the screen stays where it was left.
+        val index = event.findPointerIndex(downPointer.id)
+        if (index >= 0) {
+          dragX = (event.getX(index) - downX).coerceIn(0f, width.toFloat())
+          top?.translationX = dragX
+        }
       }
       MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
         val t = tracker
@@ -631,6 +647,7 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
         tracker = null
         dragging = false
         edgeCandidate = false
+        downPointer.clear()
         parent?.requestDisallowInterceptTouchEvent(false)
         if (top != null && event.actionMasked == MotionEvent.ACTION_UP && (dragX > width / 3f || velocity > FLING_DP)) {
           dismissTop()

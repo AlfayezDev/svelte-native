@@ -13,6 +13,10 @@ Notable changes to `@rasheed/svelte-native`, newest first. The format follows [K
 
 - A text under a live region tells it when its text changes (an engine text is a plain view); a role description is React Native's string ("Link", "Tab") instead of the engine's own lowercase one; a `button`, `imagebutton` or `togglebutton` role makes the node clickable.
 
+### Fixed
+
+- `List`: `scrollToIndex` and `scrollToOffset` called before the scroll view is bound and has its first layout (a page that scrolls its list in the effect that runs as the list mounts) sent the command to no view and the list stayed at the top. The last such request is kept and sent when both are there. The two commands no longer subscribe the effect that calls them to the list's window, row sizes and header.
+
 ## 0.2.0 - 2026-11-01
 
 Built from `48d746e54`. Device results behind this release are in [PLAN.md](PLAN.md), "Production plan"; the gates of the final build are still to be filled in there.

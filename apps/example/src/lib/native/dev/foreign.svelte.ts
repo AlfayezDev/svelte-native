@@ -89,4 +89,4 @@ export function resetLibraryLab(): void {
 }
 
 /** What the lab page shows next, set by the scenario: the page's version, the one view the cycle mounts and unmounts, the row the list scrolls to (-1: none). */
-export const foreignLab = $state<{ version: string; cycleKind: "web" | "map" | "map-bare" | "video"; cycleVisible: boolean; scrollIndex: number }>({ version: "v1", cycleKind: "web", cycleVisible: false, scrollIndex: -1 });
+export const foreignLab = $state<{ version: string; cycleKind: "web" | "map" | "map-bare" | "video"; cycleVisible: boolean; scrollIndex: number; scrollAnimated: boolean }>({ version: "v1", cycleKind: "web", cycleVisible: false, scrollIndex: -1, scrollAnimated: true });

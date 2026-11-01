@@ -304,7 +304,10 @@ async function pressed(c: Ctx): Promise<void> {
     void open.catch(() => undefined);
     await c.pause(1200);
     c.press(id, resourceId);
-    return Promise.race([open, new Promise<string>((resolve) => setTimeout(resolve, 8000, "timeout"))]).catch((error: unknown) => String(error));
+    const result = await Promise.race([open, new Promise<string>((resolve) => setTimeout(resolve, 12000, "timeout"))]).catch((error: unknown) => String(error));
+    // The harness looks at the screen once more to see its tap closed the dialog: the next one opens after that look.
+    await c.pause(3000);
+    return result;
   };
   const ok = await answer("date", "android:id/button1", "date-ok");
   c.check("events: OK in the date dialog resolves openDatePicker with the date", ok instanceof Date && Math.abs(ok.getTime() - value.getTime()) < 24 * 3600 * 1000, String(ok));

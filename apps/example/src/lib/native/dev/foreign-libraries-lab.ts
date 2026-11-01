@@ -108,7 +108,8 @@ export async function runForeignLibraries(router: Router, signal: AbortSignal, o
         box: () => libraryHandles.get(opened.source)?.boxes[kind],
         check: (name, passed, detail) => record(`${where}: ${name}`, passed, detail),
         skip: (name, why) => skip(`${where}: ${name}`, why),
-        until: (test, milliseconds) => until(test, milliseconds, signal),
+        // A row has its neighbours mounted too (a video, an animation, a PDF at once on a software-GL emulator): what waits for a native load waits longer there.
+        until: (test, milliseconds) => until(test, where === "row" ? milliseconds * 2.5 : milliseconds, signal),
         pause: (milliseconds) => pause(milliseconds, signal),
         events: (event, detail) => count(opened.source, event, detail),
         inspect: (host) => {
@@ -146,8 +147,16 @@ export async function runForeignLibraries(router: Router, signal: AbortSignal, o
 
       try {
         router.goto(opened.href, opened.sheet ? { presentation: "sheet" } : undefined);
+        // A row far down the list: scroll to it (not animated: the rows it passes are not mounted on the way) and, when its section is not up after a while, ask again.
+        foreignLab.scrollAnimated = false;
         if (where === "row") foreignLab.scrollIndex = opened.index;
-        const mounted = await until(() => libraryHandles.has(opened.source), 10000, signal);
+        let mounted = await until(() => libraryHandles.has(opened.source), where === "row" ? 6000 : 10000, signal);
+        for (let attempt = 0; where === "row" && !mounted && attempt < 3 && !signal.aborted; attempt++) {
+          foreignLab.scrollIndex = -1;
+          await pause(200, signal);
+          foreignLab.scrollIndex = opened.index;
+          mounted = await until(() => libraryHandles.has(opened.source), 6000, signal);
+        }
         record(`${where}: the section opens`, mounted);
         if (mounted) {
           await pause(where === "sheet" ? 900 : 500, signal);
@@ -160,6 +169,7 @@ export async function runForeignLibraries(router: Router, signal: AbortSignal, o
       resetLibraryLab();
       if (router.entries.length > depth) router.back();
       foreignLab.scrollIndex = -1;
+      foreignLab.scrollAnimated = true;
       await until(() => !libraryHandles.has(opened.source) && router.entries.length === depth, 6000, signal);
       await pause(400, signal);
       const stats = engine?.foreignStats?.(true) ?? null;

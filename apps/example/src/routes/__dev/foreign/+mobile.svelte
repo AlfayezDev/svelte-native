@@ -22,7 +22,8 @@
   const shownKinds = $derived<readonly LibraryKind[]>(only && libraryKinds.includes(only) ? [only] : libraryKinds);
   const kinds: Kind[] = Array.from({ length: 24 }, (_, index) => (["web", "map", "video"] as const)[index % 3]);
   let list: { scrollToIndex: (index: number, animated?: boolean) => void } | undefined = $state();
-  $effect(() => { if (foreignLab.scrollIndex >= 0) list?.scrollToIndex(foreignLab.scrollIndex, true); });
+  // `scrollIndex` -2 is "scroll without animation" for the library checks (an animated scroll to a row far down was not always followed by the rows it passes).
+  $effect(() => { if (foreignLab.scrollIndex >= 0) list?.scrollToIndex(foreignLab.scrollIndex, foreignLab.scrollAnimated); });
 </script>
 
 {#if nativeLabEnabled}

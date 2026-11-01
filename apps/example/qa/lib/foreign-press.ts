@@ -39,32 +39,44 @@ export function findButton(xml: string, resourceId: string): { x: number; y: num
 	return null;
 }
 
-/** Dumps the screen's UI tree and taps the button; answers what it did. */
-export async function pressButton(serial: string, request: PressRequest): Promise<string> {
-	for (let attempt = 0; attempt < 5; attempt++) {
-		await shell(serial, "uiautomator dump /sdcard/foreign-ui.xml");
-		const xml = await adbOk(serial, ["shell", "cat", "/sdcard/foreign-ui.xml"]);
-		const at = findButton(xml, request.resourceId);
-		if (at) {
-			await shell(serial, `input tap ${at.x} ${at.y}`);
-			return `pressed ${request.id} (${request.resourceId}) at ${at.x},${at.y}`;
-		}
-		await new Promise((resolve) => setTimeout(resolve, 400));
-	}
-	return `no ${request.resourceId} on the screen for ${request.id}`;
+const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+/** The XML of the screen's UI tree now. */
+async function dump(serial: string): Promise<string> {
+	await shell(serial, "uiautomator dump /sdcard/foreign-ui.xml");
+	return adbOk(serial, ["shell", "cat", "/sdcard/foreign-ui.xml"]);
 }
 
-/** Follows logcat while the lab runs and presses what it asks for; `stop` ends it and `errors` are the presses that found nothing. */
+/**
+ * Taps the button and checks it went. A date dialog changes height while it settles (a month of five weeks, then of six), which moves its buttons by
+ * more than a button's height between the dump and the tap, so a tap that did not close the dialog is made again at the button's new place.
+ */
+export async function pressButton(serial: string, request: PressRequest): Promise<string> {
+	let last = "";
+	for (let attempt = 0; attempt < 6; attempt++) {
+		const at = findButton(await dump(serial), request.resourceId);
+		if (!at) return attempt === 0 ? `no ${request.resourceId} on the screen for ${request.id}` : `pressed ${request.id} (${request.resourceId}) ${last}`;
+		await shell(serial, `input tap ${at.x} ${at.y}`);
+		last = `at ${at.x},${at.y} (try ${attempt + 1})`;
+		await sleep(900);
+	}
+	return `no ${request.resourceId} on the screen went away for ${request.id}: still there after ${last}`;
+}
+
+/** Follows logcat while the lab runs and presses what it asks for, one at a time; `stop` ends it and `errors` are the presses that found nothing. */
 export function pressDriver(serial: string): { stop(): void; log: string[]; errors: string[] } {
 	const log: string[] = [];
 	const errors: string[] = [];
+	let chain: Promise<unknown> = Promise.resolve();
 	const tail = tailLogcat(serial, (line) => {
 		const request = parsePress(line);
 		if (!request) return;
-		void pressButton(serial, request).then((message) => {
-			log.push(message);
-			if (message.startsWith("no ")) errors.push(message);
-		}, (error: unknown) => errors.push(`${request.id}: ${String(error)}`));
+		chain = chain.then(() =>
+			pressButton(serial, request).then((message) => {
+				log.push(message);
+				if (message.startsWith("no ")) errors.push(message);
+			}, (error: unknown) => { errors.push(`${request.id}: ${String(error)}`); }),
+		);
 	});
 	return { stop: () => tail.stop(), log, errors };
 }

@@ -25,6 +25,18 @@
 				"buildType": "apk"
 			}
 		},
+		"qa": {
+			"extends": "base",
+			"distribution": "internal",
+			"channel": "qa",
+			"env": {
+				"UPDATES_CHANNEL": "qa",
+				"EXPO_PUBLIC_API_URL": "https://dev.qarnos.com"
+			},
+			"android": {
+				"buildType": "apk"
+			}
+		},
 		"production": {
 			"extends": "base",
 			"autoIncrement": true,

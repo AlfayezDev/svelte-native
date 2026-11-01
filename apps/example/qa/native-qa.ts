@@ -4,19 +4,23 @@ import { build } from "./commands/build.ts";
 import { gates } from "./commands/gates.ts";
 import { foreign } from "./commands/foreign.ts";
 import { gestures } from "./commands/gestures.ts";
+import { hold } from "./commands/hold.ts";
 import { iosProbe } from "./commands/ios-probe.ts";
+import { leakcheck } from "./commands/leakcheck.ts";
 import { lab } from "./commands/lab.ts";
 import { parity } from "./commands/parity.ts";
+import { product } from "./commands/product.ts";
 import { report } from "./commands/report.ts";
 import { resilience } from "./commands/resilience.ts";
 import { smoke } from "./commands/smoke.ts";
+import { updates } from "./commands/updates.ts";
 import { crashes } from "./soak/crashes.ts";
 import { soak } from "./soak/soak.ts";
 import { symbolicate } from "./soak/symbolicate.ts";
 
 const usage = `usage: native-qa <command> [flags]
 
-  build  [--abi x86_64|arm64-v8a] [--prebuild] [--variant qa|smoke]
+  build  [--abi x86_64|arm64-v8a] [--prebuild] [--variant qa|smoke] [--updates-channel qa]   (a channel build is the QA app)
   build  --platform ios --mac <user@host> --mac-checkout <dir> [--build-script <path on the Mac>] [--variant qa|smoke]
   lab    --device <serial> [--apk <path> | --no-install] [--repeat <n>] [--run checks,quick] [--timeout <s>]
   boot   --device <serial> [--apk <path> | --no-install] [--warm <n>] [--cold <n>] [--idle <s>]
@@ -33,8 +37,12 @@ const usage = `usage: native-qa <command> [flags]
   gestures --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--team <id>] [--rebuild] [--run ...] [--repeat <n>] [--timeout <s>]
   foreign --device <serial> [--apk <path> | --no-install] [--only <libraries>] [--attempts <n>] [--timeout <s>]
   probe  --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--probes <names>] [--direction ltr|rtl]
+  updates --device <serial> [--apk <channel build>] [--baseline-apk <path> | --no-baseline] [--channel qa] [--warm <n>] [--max-launches <n>] [--settle <n>] [--faults boot,mount,effect] [--eas "<command>"] [--environment <eas environment>] [--reset app|data] [--dexopt profile|none] [--package <id>]
+  product --device <serial> [--apk <path> | --no-install] [--dexopt profile|none]      (the product boot check on the lab emulator: build --variant production first)
+  hold   --device <serial> [--wait <seconds>] -- <command...>   (the emulator lock held across the commands: a CI lane, a sequence of runs)
   report
-  gates  [--platform android|ios] [--all] [--smoke]`;
+  gates  [--platform android|ios] [--all] [--smoke] [--runs lab,parity,...] [--except lab.runs,...] [--markdown <file>]
+  leakcheck [--staged] [--all]      (the QA account's address, RASHEED_QA_EMAIL, in what is about to be committed and in the run files)`;
 
 const [command, ...rest] = process.argv.slice(2);
 
@@ -51,9 +59,13 @@ const commands: Record<string, (argv: string[]) => Promise<void>> = {
 	smoke,
 	gestures,
 	foreign,
+	updates,
+	product,
+	hold,
 	probe: iosProbe,
 	report: async () => report(),
 	gates,
+	leakcheck,
 };
 
 const run = command ? commands[command] : undefined;

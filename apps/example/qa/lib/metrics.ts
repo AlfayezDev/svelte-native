@@ -5,6 +5,8 @@ import { smokeMetrics, type SmokePins } from "./smoke.ts";
 import { foreignMetrics, type ForeignPins } from "./foreign.ts";
 import { allScenarios, gesturesMetrics } from "./gestures.ts";
 import { suiteMetrics, type SuiteFiles } from "./suite-metrics.ts";
+import { productMetrics, type ProductFile } from "./product.ts";
+import { updatesMetrics, type UpdatesFile } from "./updates.ts";
 import type {
 	BootFile,
 	CrashesFile,
@@ -121,6 +123,33 @@ export function labMetrics(file: LabFile, pinned: readonly string[]): Metrics {
 		return typeof value === "number" ? value : null;
 	});
 	metrics["list.virtual300.mountMs"] = worst(mount, largest);
+	// Informational, no bar: when row 9 (the end of the first window of ten rows, before the window was sized by what fills the
+	// list) had reported its layout; the mount again on a warm core with a collected heap, and after 200 ms of idle.
+	for (const [key, field] of [["windowMs", "windowMs"], ["hotMountMs", "hotMountMs"], ["coldMountMs", "coldMountMs"]] as const) {
+		metrics[`list.virtual300.${key}`] = worst(
+			runs.map((run) => {
+				const value = run.scenarios.find((scenario) => scenario.name === listScenario)?.detail?.[field];
+				return typeof value === "number" ? value : null;
+			}),
+			largest,
+		);
+	}
+	// Informational, no bar: the longest UI-runtime frame interval while a list was torn down (the main thread's time away from
+	// drawing), for every scenario whose detail carries `teardownMaxMs`; the worst of the runs, like the frame metrics.
+	const tornDown = new Set(
+		runs.flatMap((run) =>
+			run.scenarios.filter((scenario) => typeof scenario.detail?.teardownMaxMs === "number").map((scenario) => scenario.name),
+		),
+	);
+	for (const name of tornDown) {
+		metrics[`teardown.${name}.maxFrameMs`] = worst(
+			runs.map((run) => {
+				const value = run.scenarios.find((scenario) => scenario.name === name)?.detail?.teardownMaxMs;
+				return typeof value === "number" ? value : null;
+			}),
+			largest,
+		);
+	}
 	return metrics;
 }
 
@@ -192,6 +221,9 @@ export function deviceMetrics(
 	smoke: { file: SmokeFile; pins: SmokePins } | null = null,
 	gestures: GesturesFile | null = null,
 	pinnedGestures: readonly string[] = allScenarios,
+	updates: UpdatesFile | null = null,
+	pinnedSignedIn: readonly string[] = [],
+	product: ProductFile | null = null,
 	foreign: { file: ForeignFile; pins: ForeignPins } | null = null,
 ): Metrics {
 	const metrics: Metrics = {
@@ -199,10 +231,12 @@ export function deviceMetrics(
 		...(boot ? bootMetrics(boot) : {}),
 		...(soak ? soakMetrics(soak) : {}),
 		...(crashes ? crashMetrics(crashes) : {}),
-		...suiteMetrics(suites),
+		...suiteMetrics(suites, pinnedSignedIn),
 		...(smoke ? smokeMetrics(smoke.file, smoke.pins) : {}),
 		...(gestures ? gesturesMetrics(gestures, pinnedGestures) : {}),
 		...(foreign ? foreignMetrics(foreign.file, foreign.pins) : {}),
+		...(updates ? updatesMetrics(updates) : {}),
+		...(product ? productMetrics(product) : {}),
 		...crashReportMetrics([lab, boot, suites.parity, suites.a11y, gestures].filter((file) => file !== null)),
 	};
 	// A run that was made but measured nothing (null) leaves the sum unmeasured; a run that was not made adds nothing.

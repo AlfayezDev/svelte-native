@@ -420,11 +420,12 @@ describe("three apps: the product and the QA app link the product's native modul
 });
 
 describe("the variants of the harness", () => {
-	test("--variant: absent is the QA app, qa and smoke are accepted, anything else is refused", () => {
+	test("--variant: absent is the QA app, qa, smoke and production are accepted, anything else is refused", () => {
 		expect(variantFlag(undefined)).toBe("qa");
 		expect(variantFlag("qa")).toBe("qa");
 		expect(variantFlag("smoke")).toBe("smoke");
-		expect(() => variantFlag("production")).toThrow(/--variant must be qa or smoke/);
+		expect(variantFlag("production")).toBe("production");
+		expect(() => variantFlag("release")).toThrow(/--variant must be qa, smoke or production/);
 	});
 	test("the QA app keeps the file names every other command reads; the smoke app's carry the variant", () => {
 		expect(apkPath("qa", "x86_64").endsWith("/qa/out/app-x86_64.apk")).toBe(true);

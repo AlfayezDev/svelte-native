@@ -144,9 +144,11 @@ export function createUpdates({ native, fetch, log = () => undefined, concurrenc
     await active.commitUpdate(JSON.stringify(committed));
   }
 
-  let fetching: Promise<UpdateFetchResult> | null = null;
+  /** A fetch's result and, when it brought nothing, why (the evaluation's reason); the launch check logs the reason. */
+  type FetchOutcome = { result: UpdateFetchResult; reason: NotAvailableReason | null };
+  let fetching: Promise<FetchOutcome> | null = null;
 
-  async function fetchOnce(active: SvelteUpdatesNative): Promise<UpdateFetchResult> {
+  async function fetchOnce(active: SvelteUpdatesNative): Promise<FetchOutcome> {
     const { evaluation, response } = await evaluate(active);
     let result: UpdateFetchResult = { isNew: false, manifest: undefined, isRollBackToEmbedded: false };
     if (evaluation.kind === "rollback") {
@@ -159,26 +161,36 @@ export function createUpdates({ native, fetch, log = () => undefined, concurrenc
     // Even a response that only says "no update" can carry new filters or server-defined headers; a header it lacks keeps the stored value.
     const metadata: StoredMetadata = { serverDefinedHeaders: response.headers.serverDefinedHeaders, manifestFilters: response.headers.manifestFilters };
     if (metadata.serverDefinedHeaders || metadata.manifestFilters) await active.saveMetadata(JSON.stringify(metadata));
-    return result;
+    return { result, reason: evaluation.kind === "none" ? evaluation.reason : null };
+  }
+
+  /** Concurrent calls share one run. */
+  function fetchShared(): Promise<FetchOutcome> {
+    if (!enabled) return Promise.resolve({ result: { isNew: false, manifest: undefined, isRollBackToEmbedded: false }, reason: "updatesDisabled" });
+    fetching ??= fetchOnce(enabled).finally(() => { fetching = null; });
+    return fetching;
   }
 
   /** Downloads the newest update that passes selection. It launches on the next start, or at once after `reloadAsync`. Concurrent calls share one run. */
   function fetchUpdateAsync(): Promise<UpdateFetchResult> {
-    if (!enabled) return Promise.resolve({ isNew: false, manifest: undefined, isRollBackToEmbedded: false });
-    fetching ??= fetchOnce(enabled).finally(() => { fetching = null; });
-    return fetching;
+    return fetchShared().then((outcome) => outcome.result);
   }
 
   async function reloadAsync(): Promise<void> {
     if (enabled) await enabled.reload();
   }
 
-  /** The check that runs after the first commit when the build says `checkOnLaunch: ALWAYS`; failures are logged, never thrown. */
+  /**
+   * The check that runs after the first commit when the build says `checkOnLaunch: ALWAYS`; failures are logged, never thrown. Every
+   * outcome is logged, so a log (and the QA harness reading it) can tell a finished check that found nothing from one that never ran.
+   */
   async function checkOnLaunch(): Promise<void> {
     if (enabled?.checkOnLaunch !== "ALWAYS") return;
     try {
-      const result = await fetchUpdateAsync();
+      const { result, reason } = await fetchShared();
       if (result.isNew) log(`Update ${String(result.manifest.id)} downloaded; it launches on the next start`);
+      else if (result.isRollBackToEmbedded) log("Rolled back to the embedded bundle; it launches on the next start");
+      else log(`No update to download (${reason ?? "none"})`);
     } catch (error) {
       log("Update check failed", error);
     }

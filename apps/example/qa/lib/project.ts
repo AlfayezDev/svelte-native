@@ -4,7 +4,7 @@ import type { Variant } from "./variant.ts";
 
 /**
  * The generated Android project (`android/`) holds one variant at a time; the other is parked beside it as `android-<variant>/`, with
- * its Gradle outputs, so switching between the QA app and the smoke app renames directories. Only a finished project counts:
+ * its Gradle outputs, so switching between the QA app, the smoke app and the product renames directories. Only a finished project counts:
  *
  * - `.native-qa-variant` inside the project says which variant a finished prebuild made. A project without it, or with a name that is
  *   none of the variants, is of unknown origin (a prebuild that failed or was killed, one made by hand): it is never assembled as
@@ -34,7 +34,7 @@ export async function generatedFor(dir: string): Promise<Generated> {
 	if (!(await exists(dir))) return null;
 	if (!(await exists(join(dir, "app/build.gradle")))) return "unknown";
 	const marker = (await readFile(join(dir, markerName), "utf8").catch(() => "")).trim();
-	return marker === "qa" || marker === "smoke" ? marker : "unknown";
+	return marker === "qa" || marker === "smoke" || marker === "production" ? marker : "unknown";
 }
 
 /**

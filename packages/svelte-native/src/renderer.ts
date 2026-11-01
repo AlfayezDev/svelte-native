@@ -8,6 +8,7 @@ export type Snapshot = {
 };
 
 let nextId = 0;
+const noListeners = new Map<string, Set<Listener>>();
 
 /**
  * A function that has to cross Svelte's attribute spread. `set_attributes` (an element with `{...spread}` sends every one of its
@@ -69,8 +70,9 @@ export class NativeNode {
   lastChild: NativeNode | null = null;
   previousSibling: NativeNode | null = null;
   nextSibling: NativeNode | null = null;
-  readonly listeners = new Map<string, Set<Listener>>();
-  private readonly dispatchers = new Map<string, Listener>();
+  /** Created with the first listener (`addEventListener`): most nodes, every text and every static view, never get one. */
+  listeners: Map<string, Set<Listener>> = noListeners;
+  private dispatchers: Map<string, Listener> | null = null;
   private props: Record<string, unknown> = {};
   /** The current `props` object went out in a snapshot or was handed in whole: the next change copies it first. */
   private propsShared = false;
@@ -86,7 +88,7 @@ export class NativeNode {
   }
 
   /** The current state as one object; a new object appears only after a change. */
-  getSnapshot = (): Snapshot => {
+  getSnapshot(): Snapshot {
     if (this.snapshot) return this.snapshot;
     if (this.childrenStale) {
       const children: NativeNode[] = [];
@@ -97,7 +99,7 @@ export class NativeNode {
     this.snapshot = { props: this.props, children: this.children, text: this.text };
     this.propsShared = true;
     return this.snapshot;
-  };
+  }
 
   /** The attributes as they are now, for a reader that copies what it needs and keeps no reference (no snapshot is built). */
   peekProps(): Readonly<Record<string, unknown>> { return this.props; }
@@ -122,13 +124,15 @@ export class NativeNode {
 
   /** A stable function per event type, so host props keep their identity between flushes. */
   dispatcher(type: string): Listener {
-    let dispatcher = this.dispatchers.get(type);
+    this.dispatchers ??= new Map<string, Listener>();
+    const dispatchers = this.dispatchers;
+    let dispatcher = dispatchers.get(type);
     if (!dispatcher) {
       dispatcher = (...args) => {
         const handlers = this.listeners.get(type);
         if (handlers) for (const handler of [...handlers]) handler(...args);
       };
-      this.dispatchers.set(type, dispatcher);
+      dispatchers.set(type, dispatcher);
     }
     return dispatcher;
   }
@@ -237,6 +241,7 @@ const renderer = createRenderer<{
     const handlers = node.listeners.get(type);
     if (handlers) handlers.add(handler);
     else {
+      if (node.listeners === noListeners) node.listeners = new Map();
       node.listeners.set(type, new Set([handler]));
       node.invalidate();
     }

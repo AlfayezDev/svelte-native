@@ -36,7 +36,9 @@
         "resilience",
         "smoke",
         "gestures",
-        "foreign"
+        "foreign",
+        "updates",
+        "product"
       ]
     }
   },
@@ -199,6 +201,26 @@
       "gestures-longpress-tap",
       "gestures-scroll-native",
       "gestures-churn"
+    ]
+  },
+  "signedIn": {
+    "android": [
+      "app-workspaces",
+      "app-workspace-create",
+      "app-workspace-home",
+      "app-workspace-settings",
+      "app-settings-profile",
+      "app-settings-preferences",
+      "app-settings-devices",
+      "app-settings-workspaces",
+      "app-settings-danger",
+      "app-account-profile",
+      "app-account-preferences",
+      "app-account-devices",
+      "app-account-workspaces",
+      "app-account-danger",
+      "app-account-change-email",
+      "app-account-delete-workspace"
     ]
   },
   "gates": [
@@ -759,6 +781,17 @@
       }
     },
     {
+      "id": "parity.signedIn.missing",
+      "title": "Screenshot parity: pinned signed-in screens (gates.json signedIn) not compared in every variant",
+      "unit": "cases",
+      "metric": "parity.signedIn.missing",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
       "id": "a11y.unreachable",
       "title": "Accessibility: interactive elements not reachable",
       "unit": "elements",
@@ -852,6 +885,17 @@
           "max": 0
         },
         "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "a11y.signedIn.missing",
+      "title": "Accessibility: pinned signed-in screens (gates.json signedIn) not dumped in every layout",
+      "unit": "screens",
+      "metric": "a11y.signedIn.missing",
+      "bar": {
+        "android": {
           "max": 0
         }
       }
@@ -1057,6 +1101,83 @@
         },
         "ios": {
           "max": 0
+        }
+      }
+    },
+    {
+      "id": "updates.applied",
+      "title": "Updates: a published update runs after the start that downloads it",
+      "unit": "",
+      "metric": "updates.applied",
+      "bar": {
+        "android": {
+          "min": 1
+        }
+      }
+    },
+    {
+      "id": "updates.rolledBack",
+      "title": "Updates: a bad update is recovered from on the next start",
+      "unit": "",
+      "metric": "updates.rolledBack",
+      "bar": {
+        "android": {
+          "min": 1
+        }
+      }
+    },
+    {
+      "id": "updates.badRetried",
+      "title": "Updates: launches that ran or downloaded the bad update again",
+      "unit": "launches",
+      "metric": "updates.badRetried",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "updates.unexpectedFaults",
+      "title": "Updates: launches other than the bad one that crashed or logged a JavaScript error",
+      "unit": "launches",
+      "metric": "updates.unexpectedFaults",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "updates.channelHealthy",
+      "title": "Updates: the channel ends on an update that runs",
+      "unit": "",
+      "metric": "updates.channelHealthy",
+      "bar": {
+        "android": {
+          "min": 1
+        }
+      }
+    },
+    {
+      "id": "product.boot.fatals",
+      "title": "Product boot: JavaScript fatals and native crashes while it starts (the product app, no development lab)",
+      "unit": "fatals",
+      "metric": "product.boot.fatals",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "product.boot.firstScreen",
+      "title": "Product boot: the signed-out login screen is reached within 15 s of a cold start",
+      "unit": "",
+      "metric": "product.boot.firstScreen",
+      "bar": {
+        "android": {
+          "min": 1
         }
       }
     },

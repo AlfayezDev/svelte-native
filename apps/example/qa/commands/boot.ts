@@ -79,7 +79,7 @@ async function launchOnce(
 }
 
 /** One slot of the series: a launch, and when its logcat pair is missing with the app alive, one more launch at once. */
-async function launchSlot(
+export async function launchSlot(
 	serial: string,
 	packageName: string,
 	kind: "warm" | "cold",
@@ -112,7 +112,7 @@ export async function boot(argv: string[]): Promise<void> {
 	});
 	const serial = requireString(values.device, "device");
 	const lock = lockFor(serial);
-	if (lock) reexecUnderLock(lock, ["boot", ...argv]);
+	if (lock) await reexecUnderLock(lock, ["boot", ...argv]);
 
 	const warmCount = integerFlag(values.warm, "warm", 30);
 	const coldCount = integerFlag(values.cold, "cold", 30);

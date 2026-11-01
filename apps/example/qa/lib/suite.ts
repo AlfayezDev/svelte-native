@@ -43,7 +43,7 @@ export async function startSuite(
 ): Promise<SuiteDevice> {
 	const serial = requireString(values.device, "device");
 	const lock = lockFor(serial);
-	if (lock) reexecUnderLock(lock, [command, ...argv]);
+	if (lock) await reexecUnderLock(lock, [command, ...argv]);
 	const packageName = flagString(values.package) ?? defaultPackage;
 	launchWithGestures(values.gestures === true);
 	if (values.gestures === true) console.log("gestures: the gesture handler root is installed at every launch (--gestures)");

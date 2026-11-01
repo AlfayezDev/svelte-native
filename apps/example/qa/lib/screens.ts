@@ -1,4 +1,5 @@
 import type { Direction, NetworkMode, Theme } from "./device.ts";
+import { copy } from "./copy.ts";
 
 /**
  * The screens the suites drive and the settings they drive them under. A screen is a route in one state; the parity suite
@@ -9,8 +10,13 @@ import type { Direction, NetworkMode, Theme } from "./device.ts";
 /** Text that differs by language: the text for the app in English and in Arabic. */
 export type Localized = string | { en: string; ar: string };
 
-/** A node of the accessibility tree: by its text or content description, by its class, or both. */
-export type Selector = { label?: Localized; className?: string };
+/**
+ * A node of the accessibility tree: by its text or content description, by its class, by its resource id (the `testID` of a view), or
+ * a combination. `account: "email"` is the node that
+ * shows the QA account's address (`lib/qa-account.ts`): the address cannot be written in a case, so the selector names it and the
+ * harness compares the node's text with the address it read from the environment.
+ */
+export type Selector = { label?: Localized; className?: string; account?: "email"; resourceId?: string };
 
 /**
  * `open` is a link opened into the running app (`am start` of a deep link without stopping it): the router treats it as a
@@ -40,6 +46,11 @@ export type ScreenCase = {
 	network: NetworkMode;
 	/** True when the screen only exists while the dev backend answers; an unreachable backend skips the case, it does not fail it. */
 	needsBackend: boolean;
+	/**
+	 * True for a screen of the signed-in phase: the suites sign in as the QA account once (`lib/signin.ts`), run these cases under that
+	 * session, and sign out. They need the backend and the account, and are skipped (parity) or errors (a11y) without them.
+	 */
+	signedIn: boolean;
 	/** Taps and waits after the launch, in order. */
 	steps: Step[];
 	/** What must be on screen when the case is ready (the anchor the resilience suite also looks for). */
@@ -79,6 +90,7 @@ function screenCase(
 		deepLink,
 		network: "normal",
 		needsBackend: false,
+		signedIn: false,
 		steps: [],
 		anchor,
 		title: null,
@@ -99,9 +111,9 @@ export function ownLabels(screen: ScreenCase, direction: Direction): string[] {
 	return screen.title === null ? [] : [localize(screen.title, direction)];
 }
 
-const label = (text: string): Selector => ({ label: text });
-const tapLabel = (text: string): Step => ({ tap: label(text) });
-const waitFor = (text: string): Step => ({ wait: label(text) });
+const label = (text: Localized): Selector => ({ label: text });
+const tapLabel = (text: Localized): Step => ({ tap: label(text) });
+const waitFor = (text: Localized): Step => ({ wait: label(text) });
 
 /** The menu's own button for a screen it pushes: the lab menu is the base (the launch link), the tap pushes the screen onto it. */
 const pushFromMenu = (button: string): Step[] => [tapLabel(button), { pause: 600 }];
@@ -134,7 +146,7 @@ const devCommon: Localized[] = [
 ];
 const asyncButtons = ["Start async", "Resolve async", "Reject async", "Trip error boundary"];
 
-export const cases: ScreenCase[] = [
+const signedOutCases: ScreenCase[] = [
 	screenCase(
 		"startup-loading",
 		"/ (platform configuration pending)",
@@ -443,10 +455,183 @@ export const cases: ScreenCase[] = [
 	),
 ];
 
+/* ---- the signed-in screens: the QA account's session (lib/signin.ts), the product's own routes ---- */
+
+/** Where a signed-in device opens: the list of workspaces. The harness has signed in before any of these cases starts. */
+const appLink = "rasheed-svelte:///workspaces";
+
+const words = {
+	chooseWorkspace: copy("onboarding.selectWorkspaceTitle"),
+	createNew: copy("onboarding.selectWorkspaceCreateNew"),
+	manageAccount: copy("workspaceSettings.manageAccount"),
+	manageWorkspace: copy("workspaceSettings.manageWorkspace"),
+	signOut: copy("auth.signOut"),
+	close: copy("common.close"),
+	home: copy("mobile.home"),
+	settings: copy("shell.modules.settings"),
+	createTitle: copy("onboarding.createWorkspaceTitle"),
+	workspaceName: copy("onboarding.workspaceName"),
+	workspaceSlug: copy("onboarding.workspaceSlug"),
+	createWorkspace: copy("onboarding.createWorkspace"),
+	profile: copy("workspaceSettings.personalPage.title"),
+	preferences: copy("workspaceSettings.personalPage.preferences"),
+	devices: copy("workspaceSettings.personalPage.devices"),
+	workspaces: copy("workspaceSettings.manageWorkspaces"),
+	danger: copy("workspaceSettings.personalPage.dangerZone"),
+	photo: copy("workspaceSettings.personalPage.photo"),
+	firstName: copy("workspaceSettings.personalPage.firstName"),
+	lastName: copy("workspaceSettings.personalPage.lastName"),
+	save: copy("common.save"),
+	changeEmail: copy("workspaceSettings.personalPage.changeEmailTitle"),
+	language: copy("workspaceSettings.personalPage.languageAria"),
+	appearance: copy("workspaceSettings.personalPage.appearance"),
+	devicesHint: copy("workspaceSettings.personalPage.devicesHint"),
+	signOutOthers: copy("workspaceSettings.personalPage.signOutOthers"),
+	deleteHint: copy("workspaceSettings.personalPage.deleteAccountHint"),
+	newEmail: copy("workspaceSettings.personalPage.newEmail"),
+	sendCode: copy("workspaceSettings.personalPage.sendCode"),
+	deleteWorkspace: copy("workspaceSettings.deleteWorkspace"),
+	deleteDescription: copy("workspaceSettings.deleteWorkspaceDescription"),
+	cancel: copy("common.cancel"),
+};
+
+/** The first screen of a signed-in device takes the connection, the subscription and the first rows: longer than a screen that needs no backend. */
+const slowWait = (text: Localized): Step => ({ wait: { label: text }, timeoutMs: 45_000 });
+
+/** A signed-in case: it opens the list of workspaces and the steps take it from there, by the buttons a user presses. */
+function appCase(id: string, route: string, anchor: Selector, fields: Partial<ScreenCase> = {}): ScreenCase {
+	return screenCase(id, route, appLink, anchor, { needsBackend: true, signedIn: true, layout: "header", ...fields });
+}
+
+/** The list of workspaces, then the first workspace (the first button of the list: the account's workspaces come before the create button). */
+const toWorkspace: Step[] = [
+	slowWait(words.chooseWorkspace),
+	{ tap: { className: "android.widget.Button" } },
+	{ wait: { label: words.manageWorkspace }, timeoutMs: 30_000 },
+	{ pause: 600 },
+];
+const toSettings: Step[] = [...toWorkspace, { tap: { label: words.settings } }, waitFor(words.danger), { pause: 600 }];
+const toAccount: Step[] = [slowWait(words.chooseWorkspace), { tap: { label: words.manageAccount } }, { wait: { label: words.close } }, { pause: 600 }];
+
+/** The account's address is on the list of workspaces and in the profile; the masks hide it, and the reference is stored without it. */
+const addressMask: Selector = { account: "email" };
+/** The photo of the profile, from the network. */
+const photoMask: Selector = { label: words.photo };
+/** One card per device the account is signed in on (AccountSettings.svelte, `testID="device-card"`): their number and their user agents are the account's, not the screen's. */
+const deviceMask: Selector = { resourceId: "device-card" };
+
+/** What one section of the account settings shows, whether it is a page of the workspace settings or a section of the account modal. */
+const sectionAnchors = {
+	profile: { label: words.changeEmail },
+	preferences: { label: words.language },
+	devices: { label: words.devicesHint },
+	workspaces: { label: words.createWorkspace },
+	danger: { label: words.deleteHint },
+} as const satisfies Record<string, Selector>;
+type SectionId = keyof typeof sectionAnchors;
+const sectionIds = Object.keys(sectionAnchors) as SectionId[];
+const sectionTitle = (section: SectionId): Localized => words[section];
+
+const sectionMasks: Record<SectionId, Pick<ScreenCase, "masks" | "masksWhenShown">> = {
+	profile: { masks: [addressMask], masksWhenShown: [photoMask] },
+	preferences: { masks: [], masksWhenShown: [] },
+	devices: { masks: [], masksWhenShown: [deviceMask] },
+	workspaces: { masks: [], masksWhenShown: [] },
+	danger: { masks: [], masksWhenShown: [] },
+};
+
+/** The header of the base page of a tab pane reads "<tab>, <page>" (`EngineHeader`: title and subtitle joined with ", "); a page pushed in the pane reads its own title. */
+const paneTitle = (tab: Localized, page: Localized): Localized => {
+	const both = (language: "en" | "ar") => `${localize(tab, language === "ar" ? "rtl" : "ltr")}, ${localize(page, language === "ar" ? "rtl" : "ltr")}`;
+	return { en: both("en"), ar: both("ar") };
+};
+
+/**
+ * The controls of each section: buttons and fields only (a text is not a control, and a declared control that is only a text would count as
+ * one that does nothing). They go in `scrolled`, which is checked where the tree has them and never reported missing: the page of every
+ * section is a scroll view, and the largest text pushes the lower ones below the fold, where a screen reader reaches them by scrolling.
+ */
+const sectionControls: Record<SectionId, Localized[]> = {
+	profile: [words.firstName, words.lastName, words.save, words.changeEmail, words.signOut],
+	preferences: [copy("common.english"), copy("common.arabic"), copy("workspaceSettings.personalPage.themeSystem"), copy("workspaceSettings.personalPage.themeLight"), copy("workspaceSettings.personalPage.themeDark"), words.signOut],
+	devices: [words.signOutOthers, words.signOut],
+	workspaces: [words.createWorkspace, words.signOut],
+	danger: [words.signOut],
+};
+
+const signedInCases: ScreenCase[] = [
+	appCase("app-workspaces", "/workspaces", { label: words.chooseWorkspace }, {
+		steps: [slowWait(words.chooseWorkspace), { pause: 600 }],
+		title: words.chooseWorkspace,
+		scrolled: [words.createNew, words.manageAccount, words.signOut],
+		masks: [addressMask],
+	}),
+	appCase("app-workspace-create", "/workspaces/create", { label: words.createTitle }, {
+		steps: [slowWait(words.chooseWorkspace), { tap: { label: words.createNew } }, waitFor(words.createTitle), { pause: 600 }],
+		title: words.createTitle,
+		controls: ["Navigate up", words.workspaceName],
+		scrolled: [words.workspaceSlug, words.createWorkspace],
+	}),
+	appCase("app-workspace-home", "/(workspace)/[slug]/home", { label: words.manageWorkspace }, {
+		steps: toWorkspace,
+		layout: "tabs",
+		controls: [words.home, words.settings],
+		scrolled: [words.manageAccount, words.manageWorkspace, words.chooseWorkspace, words.signOut],
+	}),
+	appCase("app-workspace-settings", "/(workspace)/[slug]/settings", { label: words.danger }, {
+		steps: toSettings,
+		layout: "tabs",
+		title: paneTitle(words.settings, words.manageWorkspace),
+		controls: [words.home, words.settings],
+		scrolled: sectionIds.map(sectionTitle),
+	}),
+	...sectionIds.map((section) =>
+		appCase(`app-settings-${section}`, `/(workspace)/[slug]/settings/${section}`, sectionAnchors[section], {
+			steps: [...toSettings, { tap: { label: sectionTitle(section) } }, { wait: sectionAnchors[section] }, { pause: 600 }],
+			layout: "tabs",
+			title: sectionTitle(section),
+			controls: ["Navigate up", words.home, words.settings],
+			scrolled: sectionControls[section],
+			...sectionMasks[section],
+		}),
+	),
+	...sectionIds.map((section) =>
+		appCase(`app-account-${section}`, `/(account)/account (${section}, modal)`, sectionAnchors[section], {
+			steps: [...toAccount, ...(section === "profile" ? [] : [{ tap: { label: sectionTitle(section) } } as Step]), { wait: sectionAnchors[section] }, { pause: 600 }],
+			layout: "modal",
+			title: words.manageAccount,
+			controls: [words.close],
+			scrolled: [...sectionIds.map(sectionTitle), ...sectionControls[section]],
+			hidden: [words.createNew],
+			...sectionMasks[section],
+		}),
+	),
+	// A window of its own (React Native's Modal): the tree of the dialog holds nothing of the screen under it.
+	appCase("app-account-change-email", "/(account)/account (profile, change email)", { label: words.newEmail }, {
+		steps: [...toAccount, { tap: { label: words.changeEmail } }, { wait: { label: words.newEmail } }, { pause: 600 }],
+		layout: "modal",
+		title: words.changeEmail,
+		controls: [words.close, words.newEmail],
+		scrolled: [words.sendCode],
+		hidden: [words.createNew],
+	}),
+	// Opens the confirmation and stops there: the button that deletes stays disabled until the workspace's slug is typed, which no case does.
+	// The account must own a workspace (the section shows the button only to an owner); without one the case fails on the missing button.
+	appCase("app-account-delete-workspace", "/(account)/account (workspaces, delete confirmation)", { label: words.deleteDescription }, {
+		steps: [...toAccount, { tap: { label: words.workspaces } }, { wait: sectionAnchors.workspaces }, { tap: { label: words.deleteWorkspace } }, { wait: { label: words.deleteDescription } }, { pause: 600 }],
+		layout: "modal",
+		controls: [words.cancel],
+		scrolled: [words.deleteWorkspace],
+		hidden: [words.createWorkspace],
+	}),
+];
+
+export const cases: ScreenCase[] = [...signedOutCases, ...signedInCases];
+
 export type NotCovered = { route: string; reason: string };
 
-const needsSession =
-	"needs a signed-in session (email code login) and the workspace data behind it; the harness has no credential, and the router sends every route but /auth/login and /__dev to /auth/login without one";
+const needsProfile =
+	"only an account that has not finished its profile is shown this screen (the router sends a signed-in user with a profile on to the workspaces), and the QA account has one: reaching it would mean writing a profile, which the signed-in phase never does (it signs in, reads and signs out)";
 
 /**
  * Every route with a `+mobile.svelte` page that no case reaches, with why. `routes.test.ts` checks this list and the cases
@@ -473,13 +658,7 @@ export const notCovered: NotCovered[] = [
 		reason:
 			"the native module smoke test page lists what each native library answered on this device (model, locale, connection state, versions): the text differs between devices and runs by design; the smoke scenario of the lab (`native-qa smoke`) checks the calls themselves",
 	},
-	{ route: "/(account)/account", reason: needsSession },
-	{ route: "/onboarding/profile", reason: needsSession },
-	{ route: "/workspaces", reason: needsSession },
-	{ route: "/workspaces/create", reason: needsSession },
-	{ route: "/(workspace)/[slug]/home", reason: needsSession },
-	{ route: "/(workspace)/[slug]/settings", reason: needsSession },
-	{ route: "/(workspace)/[slug]/settings/[section]", reason: needsSession },
+	{ route: "/onboarding/profile", reason: needsProfile },
 ];
 
 /** The route directories (relative to `src/routes`) of the screens the cases reach, for the completeness check. */
@@ -492,6 +671,13 @@ export const coveredRouteDirectories = [
 	"__dev/tree/inbox",
 	"__dev/tree/inbox/compose",
 	"(public)/auth/login",
+	// The signed-in phase (`signedIn` cases): the QA account's session.
+	"(account)/account",
+	"workspaces",
+	"workspaces/create",
+	"(workspace)/[slug]/home",
+	"(workspace)/[slug]/settings",
+	"(workspace)/[slug]/settings/[section]",
 ];
 
 const pageDoesNotScroll =
@@ -552,16 +738,31 @@ export function localize(value: Localized, direction: Direction): string {
 export function selectorFor(
 	selector: Selector,
 	direction: Direction,
-): { label?: string; className?: string } {
+): { label?: string; className?: string; account?: "email"; resourceId?: string } {
 	return {
 		...(selector.label === undefined ? {} : { label: localize(selector.label, direction) }),
 		...(selector.className === undefined ? {} : { className: selector.className }),
+		...(selector.account === undefined ? {} : { account: selector.account }),
+		...(selector.resourceId === undefined ? {} : { resourceId: selector.resourceId }),
 	};
 }
 
 /** The id of one case in one variant, which names its reference image. */
 export function referenceName(screen: ScreenCase, variantOf: Variant): string {
 	return `${screen.id}--${variantOf.id}`;
+}
+
+/**
+ * The reference names of the pinned screens in the variants: every pair except the states left out at the largest text size. A pinned
+ * id the matrix no longer has still gets all its names, so it shows as missing instead of vanishing.
+ */
+export function pinnedNames(ids: readonly string[], chosen: Variant[]): string[] {
+	return ids.flatMap((id) => {
+		const known = cases.find((screen) => screen.id === id);
+		return chosen
+			.filter((variant) => known === undefined || known.largestText || variant.fontScale !== largestFontScale)
+			.map((variant) => `${id}--${variant.id}`);
+	});
 }
 
 /** The screens and variants that make up a matrix: every pair except the states left out at the largest text size. */

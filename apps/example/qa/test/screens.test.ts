@@ -93,7 +93,8 @@ describe("the screen matrix", () => {
 describe("the way a screen is reached decides whether it has a back button", () => {
 	// The router makes the launch link the base of the stack (no back arrow): a screen declared with "Navigate up" is one the lab
 	// pushes, so the launch link is the screen under it and a step pushes it.
-	const wantsBack = cases.filter((screen) => screen.controls.some((control) => localize(control, "ltr") === "Navigate up"));
+	// The lab's cases: the signed-in screens are pushed by the product's own buttons (`signed-in.test.ts`).
+	const wantsBack = cases.filter((screen) => !screen.signedIn && screen.controls.some((control) => localize(control, "ltr") === "Navigate up"));
 
 	test("the cases that declare the back button", () => {
 		expect(wantsBack.map((screen) => screen.id)).toEqual([

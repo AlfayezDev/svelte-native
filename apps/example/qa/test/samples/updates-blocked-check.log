@@ -1,0 +1,6 @@
+11-01 13:06:54.752  5968  5990 I SvelteUpdates: Launching update 01a19688-6ec1-7357-a10e-89ef0ba5fa07 (created 1793526886081)
+11-01 13:06:54.868  5968  5994 I ReactNativeJS: Running "main"
+11-01 13:06:54.893  5968  5994 I ReactNativeJS: [Svelte boot] init 5 · polyfills 6 · rn 2 · updates 20 · expo-core 0 · svelte 0 · host 0 · fabric 0 · app 20 · first commit 25 · total 78 ms
+11-01 13:06:54.904  5968  5994 I ReactNativeJS: [Svelte QA updates] {"enabled":true,"updateId":"01a19688-6ec1-7357-a10e-89ef0ba5fa07","embedded":false,"createdAt":1793526886081,"runtimeVersion":"0.1.0","channel":"qa","checkOnLaunch":"ALWAYS","marker":"qa-smoke-1"}
+11-01 13:06:54.961   550   568 I ActivityTaskManager: Displayed io.rasheed.svelteqa/.MainActivity for user 0: +362ms
+11-01 13:06:55.881  5968  5994 I ReactNativeJS: [Svelte updates] No update to download (updatePreviouslyFailed)

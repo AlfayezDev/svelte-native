@@ -34,6 +34,11 @@ export async function assertOnline(serial: string): Promise<void> {
 	if (device.state !== "device") throw new Error(`${serial} is ${device.state}, not online`);
 }
 
+/** The system properties of a device (`getprop`). */
+export async function deviceProps(serial: string): Promise<Record<string, string>> {
+	return parseGetprop(await adbOk(serial, ["shell", "getprop"]));
+}
+
 export async function deviceInfo(serial: string): Promise<DeviceInfo> {
 	const props = parseGetprop(await adbOk(serial, ["shell", "getprop"]));
 	const sdk = Number(props["ro.build.version.sdk"]);

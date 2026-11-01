@@ -93,21 +93,23 @@ const fatalsOf = (launches: readonly ForeignLaunch[]) => launches.reduce((sum, l
 
 /**
  * What the gates read of a run. `foreign.<library>.failedChecks` for each pinned library (null when it reported nothing); `.checks` and `.skipped`
- * are counts. `foreign.launches` is the complete launches (two: the checks and the leftovers), `foreign.incompleteLaunches` the others,
+ * are counts (null for a library `--only` left out). `foreign.launches` is the complete launches (two: the checks and the leftovers), `foreign.incompleteLaunches` the others,
  * `foreign.fatals` the crashes and JavaScript errors of both, `foreign.leftovers.failed` the leftover launch's failures (null when it did not run), and
- * `foreign.libraries.missing` the pinned libraries that logged no check. `foreign.react.files` (files of `react` in the bundle, the app's other
+ * `foreign.libraries.missing` the libraries the run was asked for (`--only` narrows them) that logged no check. `foreign.react.files` (files of `react` in the bundle, the app's other
  * dependencies bring them) is reported, not gated.
  */
 export function foreignMetrics(file: ForeignFile, pins: ForeignPins): Metrics {
 	const metrics: Metrics = {};
+	// `--only` leaves libraries out: theirs is not measured (null), not a count of zero that would fail a minimum.
+	const asked = (library: string) => file.asked.includes(library);
 	for (const library of pins.libraries) {
 		metrics[`foreign.${library}.failedChecks`] = failedChecks(file, library);
-		metrics[`foreign.${library}.checks`] = checksOf(file, library).length;
-		metrics[`foreign.${library}.skipped`] = file.skips.filter((entry) => entry.library === library).length;
+		metrics[`foreign.${library}.checks`] = asked(library) ? checksOf(file, library).length : null;
+		metrics[`foreign.${library}.skipped`] = asked(library) ? file.skips.filter((entry) => entry.library === library).length : null;
 	}
 	const leftoverLaunch = file.launches.find((launch) => launch.name === "leftovers");
 	metrics["foreign.libraries"] = pins.libraries.length;
-	metrics["foreign.libraries.missing"] = pins.libraries.filter((library) => checksOf(file, library).length === 0).length;
+	metrics["foreign.libraries.missing"] = pins.libraries.filter((library) => asked(library) && checksOf(file, library).length === 0).length;
 	metrics["foreign.launches"] = file.launches.filter((launch) => launch.complete).length;
 	metrics["foreign.incompleteLaunches"] = file.launches.filter((launch) => !launch.complete).length;
 	metrics["foreign.fatals"] = fatalsOf(file.launches);
@@ -128,6 +130,7 @@ export function describeForeign(file: ForeignFile, pins: ForeignPins): string[] 
 	}
 	for (const entry of [...file.checks, ...bundleChecks(file.bundle, pins.libraries), ...file.leftovers].filter((check) => !check.passed))
 		lines.push(`  FAIL ${entry.library} ${entry.where}: ${entry.name}${entry.detail ? ` (${entry.detail.slice(0, 160)})` : ""}`);
+	for (const line of (file.unparsed ?? []).slice(0, 5)) lines.push(`  UNREADABLE LINE ${line.slice(0, 160)}`);
 	for (const launch of file.launches) {
 		lines.push(`  ${launch.name}: complete ${launch.complete} in ${(launch.durationMs / 1000).toFixed(0)} s, fatals ${launch.crashes.length + launch.jsErrors.length}, engine warnings ${launch.engineWarnings.length}`);
 		if (launch.interrupted) lines.push(`  interrupted by ${launch.interrupted.by} at ${launch.interrupted.at} (device clock)`);

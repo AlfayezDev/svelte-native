@@ -21,13 +21,17 @@ const launch = (name: ForeignLaunch["name"], overrides: Partial<ForeignLaunch> =
 	name, run: name, startedAt: "2026-11-01T12:00:00Z", durationMs: 1000, complete: true, crashes: [], jsErrors: [], engineWarnings: [], logFile: `runs/${name}.log`, ...overrides,
 });
 const check = (library: string, where: ForeignCheck["where"], passed = true): ForeignCheck => ({ library, where, name: `${where}: a check`, passed, detail: "" });
-const everywhere = (library: string, passed = true): ForeignCheck[] => (["inline", "row", "sheet"] as const).map((where) => check(library, where, passed));
+/** What `foreign.<library>.checks` must reach, as gates.json pins it (null when it pins nothing). */
+const pinnedChecks = (library: string): number | null => gates.gates.find((gate) => gate.metric === `foreign.${library}.checks`)?.bar.android?.min ?? null;
+/** The checks of a library in the three places: [perPlace] each, one by default; a clean run makes as many as the gates expect. */
+const everywhere = (library: string, passed = true, perPlace = 1): ForeignCheck[] => (["inline", "row", "sheet"] as const).flatMap((where) => Array.from({ length: perPlace }, (_, index) => ({ ...check(library, where, passed), name: `${where}: check ${index}` })));
+const cleanChecks = (): ForeignCheck[] => libraries.flatMap((library) => everywhere(library, true, (pinnedChecks(library) ?? 3) / 3));
 const cleanBundle = { map: "m", sources: 1330, reactFiles: ["/node_modules/react/index.js"], forbidden: [], matchesBuild: true };
 function file(overrides: Partial<ForeignFile> = {}): ForeignFile {
 	return {
 		schema: 1, kind: "foreign", startedAt: "2026-11-01T12:00:00Z", finishedAt: "2026-11-01T12:10:00Z", source: { commit: "abc", dirty: false },
 		device: { serial: "localhost:5555", platform: "android" } as ForeignFile["device"], app: { package: "io.rasheed.svelteqa", installedSha256: "x" } as ForeignFile["app"],
-		asked: libraries, checks: libraries.flatMap((library) => everywhere(library)), skips: [], leftovers: [check("capture", "inline")],
+		asked: libraries, checks: cleanChecks(), skips: [], leftovers: [check("capture", "inline")],
 		launches: [launch("libraries"), launch("leftovers")], bundle: cleanBundle, ...overrides,
 	};
 }
@@ -138,6 +142,20 @@ describe("foreign metrics", () => {
 		expect(failed["foreign.leftovers.failed"]).toBe(1);
 	});
 
+	test("--only: the libraries not asked for are not measured, not missing, and an asked one that logged nothing is missing", () => {
+		const asked = ["image", "video"];
+		const checks = cleanChecks().filter((entry) => asked.includes(entry.library) && entry.library !== "video");
+		const metrics = foreignMetrics(file({ asked, checks }), { libraries });
+		for (const library of libraries.filter((name) => !asked.includes(name))) {
+			expect(metrics[`foreign.${library}.failedChecks`]).toBeNull();
+			expect(metrics[`foreign.${library}.checks`]).toBeNull();
+			expect(metrics[`foreign.${library}.skipped`]).toBeNull();
+		}
+		expect(metrics["foreign.image.checks"]).toBe(pinnedChecks("image"));
+		expect(metrics["foreign.video.checks"]).toBe(0);
+		expect(metrics["foreign.libraries.missing"]).toBe(1);
+	});
+
 	test("failedChecks is null for a library the run never reported", () => {
 		expect(failedChecks(file({ checks: [] }), "image")).toBeNull();
 	});
@@ -191,8 +209,31 @@ describe("gates.json", () => {
 		expect(rows.length).toBeGreaterThan(13);
 	});
 
+	test("pins how many checks each library makes and that none is skipped or unreadable, so a check that stops running is a failure, not a pass", () => {
+		for (const library of libraries) {
+			const expected = pinnedChecks(library);
+			expect([library, expected]).not.toEqual([library, null]);
+			expect((expected ?? 0) % 3).toBe(0);
+			expect(expected ?? 0).toBeGreaterThanOrEqual(21);
+			expect(gates.gates.some((gate) => gate.metric === `foreign.${library}.skipped` && gate.bar.android?.max === 0)).toBe(true);
+		}
+		expect(gates.gates.some((gate) => gate.metric === "foreign.unparsedLines" && gate.bar.android?.max === 0)).toBe(true);
+		const ask = (run: ForeignFile) => evaluate(gates.gates.filter((gate) => gate.metric.startsWith("foreign.")), { "localhost:5555": { platform: "android", role: "lab", runs: ["foreign"], metrics: foreignMetrics(run, { libraries }) } }, "android");
+		const verdict = (rows: ReturnType<typeof ask>, id: string) => rows.find((row) => row.id === id)?.verdict;
+		const clean = ask(file());
+		expect(verdict(clean, "foreign.video.checks")).toBe("pass");
+		expect(verdict(clean, "foreign.video.skipped")).toBe("pass");
+		expect(verdict(clean, "foreign.unparsedLines")).toBe("pass");
+		const dropped = [...cleanChecks()];
+		dropped.splice(dropped.findIndex((entry) => entry.library === "video"), 1);
+		expect(verdict(ask(file({ checks: dropped })), "foreign.video.checks")).toBe("fail");
+		expect(verdict(ask(file({ checks: dropped })), "foreign.video.failedChecks")).toBe("pass");
+		expect(verdict(ask(file({ skips: [{ library: "datetime", where: "inline", name: "inline: events", why: "no finger" }] })), "foreign.datetime.skipped")).toBe("fail");
+		expect(verdict(ask(file({ unparsed: ["'[Svelte foreign library]', '{\"library\""] })), "foreign.unparsedLines")).toBe("fail");
+	});
+
 	test("a failed library fails its own gate and a missing one is not measured", () => {
-		const checks = libraries.filter((library) => library !== "pdf").flatMap((library) => everywhere(library, library !== "video"));
+		const checks = libraries.filter((library) => library !== "pdf").flatMap((library) => everywhere(library, library !== "video", (pinnedChecks(library) ?? 3) / 3));
 		const metrics = foreignMetrics(file({ checks }), { libraries });
 		const rows = evaluate(gates.gates.filter((gate) => gate.metric.startsWith("foreign.")), { "localhost:5555": { platform: "android", role: "lab", runs: ["foreign"], metrics } }, "android");
 		const verdict = (id: string) => rows.find((row) => row.id === id)?.verdict;

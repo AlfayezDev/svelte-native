@@ -20,6 +20,9 @@ import { labOnce } from "./lab.ts";
  *
  * `--only image,video` narrows the libraries (the run file then does not cover the others, and their gates read not measured).
  */
+/** What the capture checks leave for the next launch: two `tmpfile` results in each of the three places. */
+export const leftoverFilesPerRun = 6;
+
 export function launchOf(name: ForeignLaunch["name"], run: string, result: LabRun, attempts = 1): ForeignLaunch {
 	return {
 		name,
@@ -87,7 +90,9 @@ export async function foreign(argv: string[]): Promise<void> {
 	console.log(`  ${parsed.checks.length} checks logged, ${parsed.checks.filter((entry) => !entry.passed).length} failed, ${parsed.skips.length} skipped, ${parsed.unparsed.length} lines unreadable`);
 	console.log("foreign: foreign-leftovers (the launch after it)");
 	const second = join(runsDir, `foreign-${slug(serial)}-${stamp(startedAt)}-leftovers.log`);
-	launches.push(launchOf("leftovers", "foreign-leftovers", await labOnce(serial, packageName, "foreign-leftovers", 300_000, second)));
+	// The capture section leaves two files in each of the three places: a leftovers launch that has none to find proves nothing.
+	const leftoversRun = `foreign-leftovers,expect:${asked.includes("capture") ? leftoverFilesPerRun : 0}`;
+	launches.push(launchOf("leftovers", leftoversRun, await labOnce(serial, packageName, leftoversRun, 300_000, second)));
 	const leftoverLines = parseForeignChecks(await readFile(second, "utf8"));
 	const leftovers = leftoverLines.checks;
 

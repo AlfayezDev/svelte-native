@@ -510,7 +510,7 @@ test("in the product a deep link to the lab ends where an unknown workspace does
 // that is not behind the flag then fails the test instead of a phone.
 const platformRoot = resolve(import.meta.dirname, "../../../apps/platform");
 const packageRoot = resolve(import.meta.dirname, "..");
-const labDirectories = [resolve(platformRoot, "src/lib/native/dev") + "/", resolve(platformRoot, "src/routes/__dev") + "/"];
+const labDirectories = [`${resolve(platformRoot, "src/lib/native/dev")}/`, `${resolve(platformRoot, "src/routes/__dev")}/`];
 
 async function platformApp(variant: string, applicationId: string | null): Promise<{ plugins: Plugin[]; loader: Record<string, Loader>; define: Record<string, string>; clean: () => Promise<void> }> {
   const directory = await mkdtemp(resolve(tmpdir(), "svelte-native-platform-app-"));

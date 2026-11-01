@@ -15,6 +15,7 @@ pnpm native-qa resilience --device <serial> [--apk <path> | --no-install] [--rot
 pnpm native-qa smoke      --device <serial> [--apk <path> | --no-install] [--timeout <s>]   # the smoke app; build --variant smoke first
 pnpm native-qa gestures   --device <serial> [--apk <path> | --no-install] [--input adb|qa|both] [--run box,row,...] [--repeat <n>] [--timeout <s>]
 pnpm native-qa gestures   --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--team <id>] [--rebuild] [--run ...] [--repeat <n>] [--timeout <s>]
+pnpm native-qa foreign    --device <serial> [--apk <path> | --no-install] [--only <libraries>] [--timeout <s>]
 pnpm native-qa report
 pnpm native-qa gates  [--platform android|ios] [--all] [--smoke]
 pnpm native-qa:emulator     # build, lab x10, boot 30 warm + 30 cold, report, gates (android) on localhost:5555
@@ -146,6 +147,23 @@ Three apps come out of `app.config.ts`: the product (`io.rasheed.app`), the QA a
 
 The smoke run is an explicit step (`pnpm native-qa:smoke` builds the smoke app, runs it, reports and runs `gates --smoke`); `native-qa:emulator` does not run it, because it would mean installing a second app on every pass. The two apps can be installed side by side.
 
+
+## Foreign: the native-view libraries
+
+`native-qa foreign` checks the thirteen native-view libraries (expo-image, expo-blur, expo-linear-gradient, react-native-video, datetimepicker, lottie-react-native, react-native-pdf, react-native-view-shot, rive-react-native, expo-conic-gradient, react-native-fast-shadow, react-native-animateable-text, react-native-svg: SPEC.md, "Foreign views", "Device verification of the libraries") on a device. It opens the lab twice, `run=foreign-libraries,drive:adb` (each library mounted inline, in a row of the windowed List and in a native sheet, and checked there) and then `run=foreign-leftovers` (the capture files the first launch's dead process left in the cache directory are gone), reads the release bundle's source map for the libraries' own JavaScript (`React stays out`), and writes `qa/runs/foreign-<device>-<stamp>.json`.
+
+Every check is a line of its own in logcat (`[Svelte foreign library] {"library","where","name","passed","detail"}`), so a failure names what was read and what was expected. A check reads the platform where it can: the class Android built for the view and its size (`SvelteEngine.inspect`), the colours of a capture of the section against what a prop says they are (`captureRef`, then `SvelteQaPixels.sample`), an event the library raised, a command's own answer, the string the native text holds, and the pressed date dialog's answer (the harness taps its buttons with `adb input` when the lab asks, `drive:adb`). A check the platform cannot make yet is `skipped` and reported, never passed.
+
+| Metric | Meaning |
+| --- | --- |
+| `foreign.<library>.failedChecks` | failed checks of the library in the three places, the places that never opened, and its bundle check; `not measured` when the run reported nothing of it. Gated `<= 0` per library (`foreign.<library>.failedChecks`) |
+| `foreign.<library>.{checks,skipped}` | checks logged and checks the platform could not make |
+| `foreign.libraries.missing` | pinned libraries (`foreign.libraries` in `gates.json`) that logged no check |
+| `foreign.leftovers.failed` | failed checks of the `foreign-leftovers` launch; `not measured` when it did not run |
+| `foreign.launches`, `foreign.incompleteLaunches`, `foreign.fatals`, `foreign.engineWarnings` | the two launches' own health |
+| `foreign.react.files` | files of `react` in the release bundle (the app's other dependencies bring them), reported, not gated |
+
+`--only image,video` narrows the libraries (the others' gates then read `not measured`). The lab alone: `lab --run foreign-libraries,only:image.video` (a scenario of the lab, outside `quick`). Only Android is judged today (`bar` names `android`); the iPhone lane needs the QA module's `inspect` and `samplePixels`, written and not yet compiled, and the date picker's finger.
 
 ## Gestures
 

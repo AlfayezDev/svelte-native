@@ -363,8 +363,25 @@ async function capture(c: Ctx): Promise<void> {
     c.check("capture: its stripes are drawn inside (green middle, red and purple ends)", near(pixel(look, 4), "#30a46c", 30) && near(pixel(look, 5), "#e5484d", 30) && near(pixel(look, 6), "#8e4ec6", 30), look.colors.slice(4).map(show).join(" "));
     c.check("capture: the file is the card's size in pixels", look.width > 0 && look.height > 0, `${look.width}x${look.height}`);
   }
+  // an elevated child casts its shadow in the image: the green stripe just below a white square is darker with elevation than without
+  try {
+    const under: [number, number][] = [[0.5, 0.7], [0.5, 0.64]];
+    const flat = await c.look(under, { target: card, radius: 0 });
+    c.lab.captureElevation = 10;
+    await c.pause(500);
+    const raised = await c.look(under, { target: card, radius: 0 });
+    c.lab.captureElevation = 0;
+    const darker = !!flat && !!raised && under.some((_, index) => argb(pixel(flat, index)).g - argb(pixel(raised, index)).g >= 12);
+    c.check("capture: an elevated child casts a shadow in the image", darker, `flat ${flat?.colors.map(show).join(" ")}, elevated ${raised?.colors.map(show).join(" ")}`);
+  } catch (error) {
+    c.check("capture: an elevated child casts a shadow in the image", false, String(error));
+  }
   // 2. the formats and results
   try {
+    // the section's own capture(): a view that has just been laid out
+    const own = await c.handles().capture();
+    c.check("capture: the section's capture() answers a file that exists", own.startsWith("file://") && c.exists(own), own.slice(-48));
+    releaseCapture(own);
     const rectCard = await c.rect(card);
     const jpg = await c.shot({ format: "jpg", quality: 0.9 }, card);
     const jpgLook = c.read(jpg, [[0.5, 0.5]], 1);

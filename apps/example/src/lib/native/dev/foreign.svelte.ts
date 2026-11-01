@@ -80,6 +80,8 @@ export const libraryLabDefaults = {
   /** A string: the animated text takes `text` as a plain prop and no `animatedProps`. */
   textStatic: null as string | null,
   svgHeart: "#e5484d",
+  /** The elevation of the white square inside the capture section's card (its shadow must be in the image). */
+  captureElevation: 0,
 };
 export const libraryLab = $state({ ...libraryLabDefaults, gradientColors: [...libraryLabDefaults.gradientColors] });
 export function resetLibraryLab(): void {

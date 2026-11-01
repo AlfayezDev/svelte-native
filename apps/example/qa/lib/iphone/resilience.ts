@@ -98,6 +98,8 @@ export const headerBar: Anchor = { kind: "bar", value: "Screen 1" };
 export const headerRow = "Screen 1 · row 1";
 const headerText: Anchor = { kind: "label", value: headerRow };
 const backButton: Anchor = { kind: "back" };
+/** What a start with nothing to restore shows: the first screen of the QA app signed out is the login, which a lab build gives the link into the lab (`src/lib/native/dev/LabLink.svelte`). */
+export const firstScreen = { kind: "label", value: "Mobile development lab" } as const satisfies Anchor;
 const onHeader: Anchor[] = [headerBar, headerText, backButton];
 
 /** The categories `-UIPreferredContentSizeCategoryName` takes: the largest the system offers, the smallest, and the default. */
@@ -226,7 +228,7 @@ export function buildIosPlan(options: IosPlanOptions, token: string): IosStep[] 
 			group: "lowMemory",
 			name: "a process that ends in the foreground restores nothing",
 			moves: [{ do: "terminate" }, { do: "wait", seconds: 1.2 }, { do: "launch" }, { do: "wait", seconds: 4 }],
-			check: foreground([], [headerText, menuBody]),
+			check: foreground([firstScreen], [headerText, menuBody]),
 			recover: false,
 		},
 	);

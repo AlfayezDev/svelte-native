@@ -81,19 +81,43 @@ describe("the product build leaves the QA-only modules out of autolinking", () =
 		for (const name of qa.android.modules) expect(defined).toContain(`class ${name.split(".").pop()} : Module()`);
 	});
 
-	// The product ships the engine module. What reads the text of a view (a password field's included), presses the screen or writes a profile to the app's files is the
-	// lab's, and the module answers it in the QA app and in debuggable builds only (`LabSwitches.allowed`): each of these functions starts with the check.
-	test("the engine module's lab hooks (inspect, tap, drag, profileJs) refuse outside the QA app and debuggable builds", () => {
-		const source = readFileSync(resolve(app, "modules/svelte-engine/android/src/main/java/expo/modules/svelteengine/SvelteEngineModule.kt"), "utf8");
-		for (const hook of ["inspect", "tap", "drag", "profileJs"]) {
-			const start = source.indexOf(`Function("${hook}")`);
-			expect(start).toBeGreaterThan(-1);
-			const body = source.slice(start, source.indexOf("\n    }\n", start));
-			expect(body.split("\n").slice(0, 3).join("\n")).toContain(`requireLab("${hook}")`);
-		}
+	// The product ships the engine module. What reads the text of a view (a password field's included), what a service would read of the accessibility tree, what presses
+	// the screen or performs an action, and what writes a profile to the app's files is the lab's: the module answers it in the QA app and in debuggable builds only
+	// (`LabSwitches.allowed`), and each of those functions starts with the check. The functions are found by scanning the module, so a new one cannot be missed: every
+	// function either starts with `requireLab(<its own name>)` or is one of the product's, named here.
+	const productFunctions = [
+		"install", "enableGestures", "reanimatedLoaded", "saveNavigation", "finishing", "getInsets", "dispatchCommand", "setNativeProps", "registerForeign", "captureView", "measure",
+		// counters and microbenchmarks: they read and write no content of the app's
+		"benchAnimated", "foreignStats", "collectJava", "stats",
+	];
+	const engineSource = () => readFileSync(resolve(app, "modules/svelte-engine/android/src/main/java/expo/modules/svelteengine/SvelteEngineModule.kt"), "utf8");
+	/** Every `Function(...)` and `AsyncFunction(...)` the module defines, and the lab check it opens with (the first statement after the lambda's parameters), if any. */
+	function engineFunctions(source: string): { name: string; guard: string | null }[] {
+		const head = /\b(?:Async)?Function\("(\w+)"\)\s*\{\s*(?:[\w\s:,?<>.]+->\s*)?(?:requireLab\("(\w+)"\))?/g;
+		return [...source.matchAll(head)].map((match) => ({ name: match[1] ?? "", guard: match[2] ?? null }));
+	}
+
+	test("every function of the engine module is the product's or a lab hook that opens with requireLab for itself", () => {
+		const functions = engineFunctions(engineSource());
+		// the scan sees them all: as many heads as `Function(` declarations in the file
+		expect(functions.length).toBe((engineSource().match(/\b(?:Async)?Function\("/g) ?? []).length);
+		expect(functions.length).toBeGreaterThanOrEqual(productFunctions.length + 6);
+		const unguarded = functions.filter((entry) => entry.guard === null).map((entry) => entry.name);
+		// a function that is neither guarded nor listed as the product's is a lab hook that forgot the check (or a product function to list)
+		expect(unguarded.filter((name) => !productFunctions.includes(name))).toEqual([]);
+		// the list does not carry names the module no longer defines, nor a product function that is guarded
+		expect(productFunctions.filter((name) => !functions.some((entry) => entry.name === name && entry.guard === null))).toEqual([]);
+		// a guard names its own function (a copied line would otherwise pass for another hook's check)
+		expect(functions.filter((entry) => entry.guard !== null && entry.guard !== entry.name)).toEqual([]);
+		// the hooks known to be the lab's are among the guarded ones
+		const guarded = functions.filter((entry) => entry.guard !== null).map((entry) => entry.name);
+		for (const hook of ["inspect", "tap", "drag", "profileJs", "accessibilityNodes", "performAccessibilityAction"]) expect(guarded).toContain(hook);
+	});
+
+	test("the lab rule is the QA package or a debuggable build, and the module applies it", () => {
 		const rule = readFileSync(resolve(app, "modules/svelte-engine/android/src/main/java/expo/modules/svelteengine/LabSwitches.kt"), "utf8");
 		expect(rule).toContain("fun allowed(packageName: String, debuggable: Boolean): Boolean = debuggable || packageName == QA_PACKAGE");
-		expect(source).toContain("LabSwitches.allowed(context.packageName, debuggable)");
+		expect(engineSource()).toContain("LabSwitches.allowed(context.packageName, debuggable)");
 	});
 
 	test("the iOS QA module's readbacks (inspect, samplePixels) refuse outside the QA bundle, which the product does not link at all", () => {

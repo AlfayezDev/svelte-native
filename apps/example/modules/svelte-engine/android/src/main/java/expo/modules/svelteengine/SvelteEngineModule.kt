@@ -222,8 +222,14 @@ class SvelteEngineModule : Module() {
     // Live counts for the soak runner (MountingManager.stats); null while the main thread is busy for over 500 ms or before install.
     Function("stats") { onMainBlocking { mountingManager?.stats() } }
     // Accessibility lab (`/__dev/a11y`, A11yDump.kt): the node info the views with a testID publish, and an action performed the way a service does.
-    Function("accessibilityNodes") { onMainBlocking { mountingManager?.root?.let { A11yDump.nodes(it) } } }
-    Function("performAccessibilityAction") { testID: String, name: String -> onMainBlocking { mountingManager?.root?.let { A11yDump.perform(it, testID, name) } } }
+    Function("accessibilityNodes") {
+      requireLab("accessibilityNodes")
+      onMainBlocking { mountingManager?.root?.let { A11yDump.nodes(it) } }
+    }
+    Function("performAccessibilityAction") { testID: String, name: String ->
+      requireLab("performAccessibilityAction")
+      onMainBlocking { mountingManager?.root?.let { A11yDump.perform(it, testID, name) } }
+    }
 
     // `react-native-view-shot` for engine views (Capture.kt): the library's own module resolves a tag through React Native's mounting
     // manager, which has no engine view. Resolves with the image's URI or data, or null for a tag that is not an engine view of its
@@ -243,9 +249,10 @@ class SvelteEngineModule : Module() {
   private val mainHandler = Handler(Looper.getMainLooper())
 
   /**
-   * The hooks of the lab that read what a view holds (`inspect`: the text of any view, a password field's included), press the screen (`tap`, `drag`) or write a profile to
-   * the app's files (`profileJs`) answer the QA app and debuggable builds only (`LabSwitches.allowed`, the rule that lets the lab read the launch intent): a product build
-   * has the module and not these. `qa/test/product-modules.test.ts` reads this file to see each of them starts with this check.
+   * The hooks of the lab that read what a view holds (`inspect`: the text of any view, a password field's included; `accessibilityNodes`: what a service would read of the
+   * tree), press the screen or perform an action (`tap`, `drag`, `performAccessibilityAction`) or write a profile to the app's files (`profileJs`) answer the QA app and
+   * debuggable builds only (`LabSwitches.allowed`, the rule that lets the lab read the launch intent): a product build has the module and not these.
+   * `qa/test/product-modules.test.ts` scans this file for every function and sees each is the product's or starts with this check.
    */
   private fun requireLab(hook: String) {
     val context = appContext.reactContext

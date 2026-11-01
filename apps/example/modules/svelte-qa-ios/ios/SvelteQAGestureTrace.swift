@@ -5,7 +5,7 @@ import UIKit
 /// the touch's window position, and the context that decides arbitration is sampled beside it (the navigation controllers' depth and transition,
 /// the presented sheet's detent and where its view is), and a passive recognizer on each window notes where every touch lands and which view the
 /// system hit-tested. The harness (`native-qa gestures --platform ios --trace`) starts it by writing `1` to `Documents/gesture-trace.on` before the
-/// launch (an app that XCUITest opens by link takes no launch arguments), or by the launch argument `-SvelteQAGestureTrace YES`; it reads `Documents/gesture-trace.json` after the run and answers questions that need a time line: how
+/// launch (the app turns the flag off as it reads it: one launch per request) (an app that XCUITest opens by link takes no launch arguments), or by the launch argument `-SvelteQAGestureTrace YES`; it reads `Documents/gesture-trace.json` after the run and answers questions that need a time line: how
 /// long a pan on a pushed screen waits for the edge swipe, and which of a sheet's drag and a handler's pan moves first. It only reads public
 /// state, never touches the screen, and exists in the QA bundle only. Sampling per frame is what it costs: runs that judge frame times do not use it.
 final class SvelteQAGestureTrace {
@@ -16,8 +16,12 @@ final class SvelteQAGestureTrace {
     guard SvelteQA.enabled else { return false }
     if UserDefaults.standard.bool(forKey: "SvelteQAGestureTrace") { return true }
     guard let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return false }
-    let flag = try? String(contentsOf: documents.appendingPathComponent("gesture-trace.on"), encoding: .utf8)
-    return flag?.trimmingCharacters(in: .whitespacesAndNewlines) == "1"
+    let file = documents.appendingPathComponent("gesture-trace.on")
+    let flag = try? String(contentsOf: file, encoding: .utf8)
+    guard flag?.trimmingCharacters(in: .whitespacesAndNewlines) == "1" else { return false }
+    // One launch only: the recording samples every frame, and a flag that stayed on would sit under the next lab's frame times.
+    try? "0".write(to: file, atomically: true, encoding: .utf8)
+    return true
   }
 
   static func startIfRequested() {

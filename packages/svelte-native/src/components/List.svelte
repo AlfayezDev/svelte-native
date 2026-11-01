@@ -160,8 +160,21 @@
     const top = Math.max(0, scroll - headerSize);
     return Math.max(0, Math.min(count - 1, layout.indexAt(top) - overscan));
   });
+  // Before the first layout the viewport is unknown. A list that says its size in its style gets the rows that fill it (the
+  // rows below the fold arrive with the overscan once the layout is known); any other list gets `initialNumToRender` or 10.
+  const styleSize = $derived.by(() => {
+    const key = horizontal ? "width" : "height";
+    let size: number | null = null;
+    const visit = (style: unknown) => {
+      if (Array.isArray(style)) for (const item of style) visit(item);
+      else if (style && typeof style === "object" && typeof (style as Record<string, unknown>)[key] === "number") size = (style as Record<string, number>)[key];
+    };
+    visit(rest.style);
+    return size;
+  });
+  const firstWindow = $derived(initialNumToRender ?? (styleSize ? Math.max(1, Math.ceil(styleSize / (fixed ? (rowHeight as number) : estimatedRowHeight))) : 10));
   const last = $derived.by(() => {
-    if (!viewport) return Math.min(count - 1, first + (initialNumToRender ?? 10) - 1);
+    if (!viewport) return Math.min(count - 1, first + firstWindow - 1);
     const bottom = Math.max(0, scroll - headerSize) + viewport;
     return Math.min(count - 1, layout.endIndex(bottom) + overscan);
   });
@@ -314,11 +327,20 @@
         </native-view>
       {/each}
     {:else}
-      {#each indices as index (keyAt(index))}
-        <native-view nativeStyle={wrapperStyle(index)} nativeProps={measured ? rowProps(index, keyAt(index)) : undefined}>
-          {@render row(items[index], index)}
-        </native-view>
-      {/each}
+      {#if measured}
+        {#each indices as index (keyAt(index))}
+          <native-view nativeStyle={wrapperStyle(index)} nativeProps={rowProps(index, keyAt(index))}>
+            {@render row(items[index], index)}
+          </native-view>
+        {/each}
+      {:else}
+        <!-- Rows of known size need no layout report, and a wrapper without `nativeProps` is one attribute effect cheaper. -->
+        {#each indices as index (keyAt(index))}
+          <native-view nativeStyle={wrapperStyle(index)}>
+            {@render row(items[index], index)}
+          </native-view>
+        {/each}
+      {/if}
     {/if}
   </native-view>
   {#if count === 0 && empty}<native-view>{@render empty()}</native-view>{/if}

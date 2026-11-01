@@ -24,7 +24,7 @@ export type Gate = {
 export type DeviceRole = { role: Role; name: string; runs: RunKind[] };
 /**
  * `scenarios` is the fixed list of scenarios a full `checks,quick` lab run produces, per platform: a run missing any is not that run.
- * `smoke.modules` is the fixed list of native modules the smoke test reports, per platform.
+ * `smoke.modules` is the fixed list of native modules the smoke test reports, per platform, and `smoke.skips` the ones that may skip.
  * `devices` maps a serial to its role and the run kinds it provides; a serial not listed has no role, provides every kind, and
  * every gate judges it.
  */
@@ -32,8 +32,11 @@ export type GatesFile = {
 	version: 1;
 	devices: Record<string, DeviceRole>;
 	scenarios: Record<Platform, string[]>;
-	/** `smoke.modules`: per platform, the native modules every smoke run must report (a pinned module no line reports is `smoke.missing`). */
-	smoke: { modules: Record<Platform, string[]> };
+	/**
+	 * `smoke.modules`: per platform, the native modules every smoke run must report (a pinned module no line reports is `smoke.missing`).
+	 * `smoke.skips`: the ones that may `skip` there; any other skip is `smoke.unexpectedSkips`, and `smoke.ok` is gated at the rest.
+	 */
+	smoke: { modules: Record<Platform, string[]>; skips: Record<Platform, string[]> };
 	gates: Gate[];
 };
 
@@ -92,7 +95,8 @@ export function gateKinds(gate: Gate): RunKind[] | null {
 /**
  * The smoke gates (`smoke.*`) judge the smoke app's run and nothing else, and the QA gates leave them out: `gates` judges the first
  * list, `gates --smoke` the second. The smoke app is another app (`io.rasheed.svelteqa.smoke`), so its run neither adds to nor
- * fails the lane that measures the QA app.
+ * fails the lane that measures the QA app: its gates, its run files (`gates.ts` command: only smoke run files can make the smoke
+ * report stale) and its report warnings (`smokeWarnings`) are the smoke lane's, the QA runs' the other's.
  */
 export function splitGates(gates: Gate[]): { standard: Gate[]; smoke: Gate[] } {
 	const isSmoke = (gate: Gate) => gateKinds(gate)?.every((kind) => kind === "smoke") ?? false;
@@ -114,6 +118,10 @@ export function checkGatesFile(file: GatesFile): void {
 		const modules = file.smoke?.modules?.[platform];
 		if (!modules || modules.length === 0) throw new Error(`gates.json: smoke.modules pins no module for ${platform}`);
 		if (new Set(modules).size !== modules.length) throw new Error(`gates.json: smoke.modules names a module twice for ${platform}`);
+		const skips = file.smoke.skips?.[platform];
+		if (!skips) throw new Error(`gates.json: smoke.skips lists no skips (an empty list is fine) for ${platform}`);
+		const unknown = skips.filter((module) => !modules.includes(module));
+		if (unknown.length > 0) throw new Error(`gates.json: smoke.skips names ${unknown.join(", ")}, which smoke.modules does not pin for ${platform}`);
 	}
 	for (const gate of file.gates) {
 		if (gate.roles === undefined) continue;

@@ -2,21 +2,18 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
-import { generatedFor, selectVariantProject } from "../commands/build.ts";
 import { checkGatesFile, evaluate, gateKinds, splitGates, type GatesFile } from "../lib/gates.ts";
-import { defaultApkPath } from "../lib/app.ts";
 import { buildFileKey } from "../lib/runs.ts";
-import { apkPath, appVariantOf, buildLogName, iosBuildName, packageOf, schemeOf, variantFlag } from "../lib/variant.ts";
+import { apkPath, buildLogName, iosBuildName, packageOf, schemeOf, variantFlag } from "../lib/variant.ts";
 import { deviceMetrics } from "../lib/metrics.ts";
 import { platformDir } from "../lib/paths.ts";
-import { describeSmoke, missingModules, smokeMetrics, unpinnedModules } from "../lib/smoke.ts";
+import { describeSmoke, judgeSmoke, missingModules, smokeMetrics, unexpectedSkips, unpinnedModules } from "../lib/smoke.ts";
 import type { SmokeFile, SmokeModuleResult } from "../lib/types.ts";
 import { parseSmokeBody, parseSmokeCompletion, parseSmokeResults } from "../parse/smoke.ts";
 import { moduleResults, parseSmokeResultsFile } from "../commands/ios-smoke.ts";
 import { ascii, decodeBase64, encodeBase64, hex, looksRandom } from "../../src/lib/native/dev/smoke-bytes.ts";
+import { smokeModules } from "../../src/lib/native/dev/smoke-rules.ts";
 import { formatSmokeLine as format, formatSmokeSummary as summarize, oneLine, type SmokePath } from "../../src/lib/native/dev/smoke-log.ts";
 
 /** The packages only the QA app links: the CommonJS file app.config.ts and react-native.config.js read. */
@@ -135,64 +132,115 @@ describe("the byte helpers", () => {
 });
 
 describe("metrics and gates", () => {
-	const pinned = ["a", "b", "c", "d"];
-	test("a clean run: all pinned modules reported, none failed", () => {
-		const metrics = smokeMetrics(smokeFile([result("a"), result("b"), result("c", "skip"), result("d")]), pinned);
-		expect(metrics).toEqual({ "smoke.modules": 4, "smoke.ok": 3, "smoke.failed": 0, "smoke.skipped": 1, "smoke.missing": 0, "smoke.unpinned": 0, "smoke.complete": 1 });
+	const pins = { modules: ["a", "b", "c", "d"], skips: ["c"] };
+	const pinned = pins.modules;
+	test("a clean run: all pinned modules reported, none failed, the listed skip skipped", () => {
+		const metrics = smokeMetrics(smokeFile([result("a"), result("b"), result("c", "skip"), result("d")]), pins);
+		expect(metrics).toEqual({ "smoke.modules": 4, "smoke.ok": 3, "smoke.failed": 0, "smoke.skipped": 1, "smoke.unexpectedSkips": 0, "smoke.missing": 0, "smoke.unpinned": 0, "smoke.fatals": 0, "smoke.jsErrors": 0, "smoke.complete": 1 });
 	});
 	test("a failure counts as failed and as reported; a module that never logged is missing", () => {
 		const file = smokeFile([result("a"), result("b", "fail")], { complete: false });
 		expect(missingModules(file.results, pinned)).toEqual(["c", "d"]);
-		const metrics = smokeMetrics(file, pinned);
+		const metrics = smokeMetrics(file, pins);
 		expect(metrics["smoke.failed"]).toBe(1);
 		expect(metrics["smoke.missing"]).toBe(2);
 		expect(metrics["smoke.complete"]).toBe(0);
 	});
+	test("a skip the platform does not list is unexpected; the listed one is not", () => {
+		const file = smokeFile([result("a", "skip"), result("b"), result("c", "skip"), result("d")]);
+		expect(unexpectedSkips(file.results, pins)).toEqual(["a"]);
+		expect(smokeMetrics(file, pins)["smoke.unexpectedSkips"]).toBe(1);
+		// A skip of a module the list does not pin is not this metric's (it is `smoke.unpinned`).
+		expect(unexpectedSkips([result("x", "skip")], pins)).toEqual([]);
+	});
+	test("crashes and an interruption are fatals, whatever the run logged before", () => {
+		const file = smokeFile([result("a"), result("b"), result("c", "skip"), result("d")], { crashes: ["FATAL EXCEPTION Process: io.rasheed.svelteqa.smoke", "interrupted by com.android.settings at 12:00:00.000"], complete: false, jsErrorCount: 3 });
+		const metrics = smokeMetrics(file, pins);
+		expect(metrics["smoke.fatals"]).toBe(2);
+		expect(metrics["smoke.complete"]).toBe(0);
+		expect(metrics["smoke.jsErrors"]).toBe(3);
+		expect(metrics["smoke.ok"]).toBe(3);
+	});
 	test("a module the list does not pin is reported, not counted as ok or failed", () => {
 		const file = smokeFile([result("a"), result("x", "fail"), result("b"), result("c"), result("d")]);
 		expect(unpinnedModules(file.results, pinned)).toEqual(["x"]);
-		const metrics = smokeMetrics(file, pinned);
+		const metrics = smokeMetrics(file, pins);
 		expect(metrics["smoke.failed"]).toBe(0);
 		expect(metrics["smoke.unpinned"]).toBe(1);
 	});
-	test("describeSmoke names every failure, skip and missing module", () => {
-		const lines = describeSmoke(smokeFile([result("a"), result("b", "fail", "boom"), result("c", "skip", "Huawei only")], { crashes: ["FATAL EXCEPTION Process: io.rasheed.svelteqa"] }), pinned);
-		expect(lines.join("\n")).toContain("FAIL b (js): boom");
-		expect(lines.join("\n")).toContain("skip c: Huawei only");
-		expect(lines.join("\n")).toContain("MISSING d");
-		expect(lines.join("\n")).toContain("fatal: FATAL EXCEPTION");
-		expect(lines[0]).toContain("1 ok, 1 failed, 1 skipped, 1 missing of 4 pinned");
+	test("describeSmoke names every failure, skip (unexpected ones marked), missing module and an incomplete run", () => {
+		const lines = describeSmoke(smokeFile([result("a", "skip", "why"), result("b", "fail", "boom"), result("c", "skip", "Huawei only")], { crashes: ["FATAL EXCEPTION Process: io.rasheed.svelteqa"], complete: false }), pins).join("\n");
+		expect(lines).toContain("FAIL b (js): boom");
+		expect(lines).toContain("UNEXPECTED SKIP a: why");
+		expect(lines).toContain("skip c: Huawei only");
+		expect(lines).not.toContain("UNEXPECTED SKIP c");
+		expect(lines).toContain("MISSING d");
+		expect(lines).toContain("fatal: FATAL EXCEPTION");
+		expect(lines).toContain("the run did not complete");
+		expect(lines).toContain("0 ok, 1 failed, 2 skipped, 1 missing of 4 pinned");
 	});
 	test("the run kind is smoke, and its gates belong to it", () => {
 		expect(gateKinds({ id: "x", title: "", unit: "", metric: "smoke.failed", bar: {} })).toEqual(["smoke"]);
 	});
-	test("smoke.failed and smoke.missing are gated at zero for every platform and every role", () => {
-		const bar = (id: string) => gatesFile.gates.find((gate) => gate.id === id);
-		for (const id of ["smoke.failed", "smoke.missing"]) {
-			expect(bar(id)?.bar).toEqual({ android: { max: 0 }, ios: { max: 0 } });
-			expect(bar(id)?.roles).toBeUndefined();
-		}
+	test("the smoke gates: complete, no fatals, no failure, none missing, no unexpected skip, enough answers; every platform, every role", () => {
+		const gate = (id: string) => gatesFile.gates.find((entry) => entry.id === id);
+		expect(gate("smoke.complete")?.bar).toEqual({ android: { min: 1 }, ios: { min: 1 } });
+		for (const id of ["smoke.fatals", "smoke.failed", "smoke.missing", "smoke.unexpectedSkips"]) expect([id, gate(id)?.bar]).toEqual([id, { android: { max: 0 }, ios: { max: 0 } }]);
+		for (const id of ["smoke.complete", "smoke.fatals", "smoke.failed", "smoke.missing", "smoke.unexpectedSkips", "smoke.ok"]) expect([id, gate(id)?.roles]).toEqual([id, undefined]);
 		expect(() => checkGatesFile(gatesFile)).not.toThrow();
 	});
-	const rows = (serial: string, metrics: Record<string, number | null>) =>
-		evaluate(gatesFile.gates.filter((gate) => gate.metric.startsWith("smoke.")), { [serial]: { platform: "android", role: gatesFile.devices[serial]?.role ?? null, runs: gatesFile.devices[serial]?.runs ?? null, metrics } }, "android");
-	test("the Samsung (phone) and the emulator (lab) both pass a clean run and fail a failure or a missing module", () => {
-		for (const serial of ["R58Y90KNGRP", "localhost:5555"]) {
-			expect(rows(serial, { "smoke.failed": 0, "smoke.missing": 0 }).map((row) => row.verdict)).toEqual(["pass", "pass"]);
-			expect(rows(serial, { "smoke.failed": 1, "smoke.missing": 0 }).map((row) => row.verdict)).toEqual(["fail", "pass"]);
-			expect(rows(serial, { "smoke.failed": 0, "smoke.missing": 2 }).map((row) => row.verdict)).toEqual(["pass", "fail"]);
+	test("smoke.ok is every pinned module but the skips listed for the platform", () => {
+		for (const platform of ["android", "ios"] as const) {
+			const skips = gatesFile.smoke.skips[platform];
+			for (const module of skips) expect([module, gatesFile.smoke.modules[platform].includes(module)]).toEqual([module, true]);
+			expect(gatesFile.gates.find((entry) => entry.id === "smoke.ok")?.bar[platform]).toEqual({ min: gatesFile.smoke.modules[platform].length - skips.length });
 		}
+		// Only libraries that have no code, or no service to call, on the platform may skip.
+		expect(gatesFile.smoke.skips.android).toEqual(["hms", "web-browser"]);
+		expect(gatesFile.smoke.skips.ios).toEqual(["web-browser", "hms", "samsung-pay"]);
+	});
+	const clean = { "smoke.complete": 1, "smoke.fatals": 0, "smoke.failed": 0, "smoke.missing": 0, "smoke.unexpectedSkips": 0, "smoke.ok": 34 };
+	const verdicts = (serial: string, metrics: Record<string, number | null>) =>
+		Object.fromEntries(evaluate(splitGates(gatesFile.gates).smoke, { [serial]: { platform: "android", role: gatesFile.devices[serial]?.role ?? null, runs: gatesFile.devices[serial]?.runs ?? null, metrics } }, "android").map((row) => [row.id, row.verdict]));
+	test("the Samsung (phone) and the emulator (lab) pass a clean run, and each deviation fails its own gate and no other", () => {
+		const gates = ["smoke.complete", "smoke.fatals", "smoke.failed", "smoke.missing", "smoke.unexpectedSkips", "smoke.ok"];
+		for (const serial of ["R58Y90KNGRP", "localhost:5555"]) {
+			expect(Object.values(verdicts(serial, clean))).toEqual(gates.map(() => "pass"));
+			for (const [metric, value, gate] of [["smoke.complete", 0, "smoke.complete"], ["smoke.fatals", 1, "smoke.fatals"], ["smoke.failed", 1, "smoke.failed"], ["smoke.missing", 2, "smoke.missing"], ["smoke.unexpectedSkips", 1, "smoke.unexpectedSkips"], ["smoke.ok", 33, "smoke.ok"]] as const) {
+				const deviated = verdicts(serial, { ...clean, [metric]: value });
+				expect([serial, metric, gates.filter((id) => deviated[id] === "fail")]).toEqual([serial, metric, [gate]]);
+			}
+		}
+		// 35 answers (web-browser answered too) is still a pass.
+		expect(verdicts("R58Y90KNGRP", { ...clean, "smoke.ok": 35 })["smoke.ok"]).toBe("pass");
 	});
 	test("a device that never ran the smoke test fails the gates (not measured) rather than skipping them", () => {
-		expect(rows("localhost:5555", {}).map((row) => row.verdict)).toEqual(["not measured", "not measured"]);
+		expect(Object.values(verdicts("localhost:5555", {}))).toEqual(["not measured", "not measured", "not measured", "not measured", "not measured", "not measured"]);
+	});
+	test("a run that did not complete, or crashed, or has too few answers fails the gates the smoke command judges, whatever else it logged", async () => {
+		const modules = gatesFile.smoke.modules.android;
+		const answered = modules.map((module) => result(module, gatesFile.smoke.skips.android.includes(module) ? "skip" : "ok"));
+		expect((await judgeSmoke(smokeFile(answered), gatesFile)).ok).toBe(true);
+		const incomplete = await judgeSmoke(smokeFile(answered, { complete: false }), gatesFile);
+		expect(incomplete.ok).toBe(false);
+		expect(incomplete.lines.join("\n")).toContain("smoke.complete fail");
+		const crashed = await judgeSmoke(smokeFile(answered, { complete: false, crashes: ["FATAL EXCEPTION"] }), gatesFile);
+		expect(crashed.lines.join("\n")).toContain("smoke.fatals fail");
+		const wrongSkip = await judgeSmoke(smokeFile(modules.map((module) => result(module, module === "samsung-pay" || module === "hms" ? "skip" : "ok"))), gatesFile);
+		expect(wrongSkip.lines.join("\n")).toContain("smoke.unexpectedSkips fail");
+		// A run with no results at all (the lab never reached the scenario) fails everything that counts them.
+		const nothing = await judgeSmoke(smokeFile([]), gatesFile);
+		expect(nothing.ok).toBe(false);
+		expect(nothing.lines.join("\n")).toContain("smoke.missing fail");
+		expect(nothing.lines.join("\n")).toContain("smoke.ok fail");
 	});
 	test("deviceMetrics carries the smoke metrics next to the others", () => {
-		const metrics = deviceMetrics(null, null, [], null, null, { parity: null, a11y: null, resilience: null }, { file: smokeFile([result("a")]), pinned: ["a"] });
+		const metrics = deviceMetrics(null, null, [], null, null, { parity: null, a11y: null, resilience: null }, { file: smokeFile([result("a")]), pins: { modules: ["a"], skips: [] } });
 		expect(metrics["smoke.failed"]).toBe(0);
 		expect(metrics["smoke.missing"]).toBe(0);
 		expect(metrics["smoke.ok"]).toBe(1);
 	});
-	test("checkGatesFile refuses a missing, empty or repeating module list", () => {
+	test("checkGatesFile refuses a missing, empty or repeating module list, and skips that are not pinned modules", () => {
 		const good = JSON.parse(JSON.stringify(gatesFile)) as GatesFile;
 		const without = JSON.parse(JSON.stringify(gatesFile)) as Partial<GatesFile>;
 		delete without.smoke;
@@ -201,15 +249,20 @@ describe("metrics and gates", () => {
 		expect(() => checkGatesFile(good)).toThrow(/pins no module for ios/);
 		good.smoke.modules.ios = ["a", "a"];
 		expect(() => checkGatesFile(good)).toThrow(/names a module twice for ios/);
+		const other = JSON.parse(JSON.stringify(gatesFile)) as GatesFile;
+		other.smoke.skips.android = ["hms", "nope"];
+		expect(() => checkGatesFile(other)).toThrow(/smoke.skips names nope/);
+		delete (other.smoke as Partial<GatesFile["smoke"]>).skips;
+		expect(() => checkGatesFile(other)).toThrow(/smoke.skips lists no skips/);
 	});
 });
 
-/** The module ids the checks report, from their source: the file needs React Native to load, so the test reads it. */
-const smokeSource = readFileSync(join(platformDir, "src/lib/native/dev/smoke-checks.ts"), "utf8");
-const checked = [...smokeSource.matchAll(/^\t\tmodule: "([a-z0-9-]+)"/gm)].map((match) => match[1] as string);
-/** The ids the runner and the page list (`smokeModules` in smoke.ts). */
-const runnerSource = readFileSync(join(platformDir, "src/lib/native/dev/smoke.ts"), "utf8");
-const listed = [...(/export const smokeModules: readonly string\[\] = \[([^\]]*)\]/.exec(runnerSource)?.[1] ?? "").matchAll(/"([a-z0-9-]+)"/g)].map((match) => match[1] as string);
+/** The ids the checks report (smoke-checks.ts loads without React Native: each check requires its library when it runs), and the ids the runner and the page list. */
+// Loaded by path, not imported: its imports reach the app's own types, which `tsc -p qa` should not take on.
+type Check = { module: string; path: string; only?: "android" | "ios" };
+const { checks } = (await import(join(platformDir, "src/lib/native/dev/smoke-checks.ts"))) as { checks: Check[] };
+const checked = checks.map((check) => check.module);
+const listed = [...smokeModules];
 const table = JSON.parse(readFileSync(join(platformDir, "qa/smoke-modules.json"), "utf8")) as { modules: { id: string; packages: string[]; link: string; shared: boolean; platforms: string[] }[] };
 const packageJson = JSON.parse(readFileSync(join(platformDir, "package.json"), "utf8")) as { dependencies: Record<string, string>; devDependencies: Record<string, string> };
 
@@ -245,7 +298,9 @@ describe("the pinned list, the module table and the checks agree", () => {
 		for (const name of ["react-native-mmkv", "@sentry/react-native", "@react-native-firebase/app", "expo-haptics", "expo-samsung-pay", "@hmscore/react-native-hms-location"]) expect(smokeOnlyPackages).toContain(name);
 		expect(table.modules.find((entry) => entry.id === "hms")?.platforms).toEqual(["android"]);
 		expect(table.modules.find((entry) => entry.id === "samsung-pay")?.platforms).toEqual(["android"]);
-		expect(smokeSource).toContain('only: "android"');
+		// The libraries with code for one platform say so in their check, which then skips on the other.
+		expect(checks.filter((check) => check.only !== undefined).map((check) => [check.module, check.only])).toEqual([["web-browser", "android"], ["hms", "android"], ["samsung-pay", "android"]]);
+		for (const entry of table.modules.filter((module) => module.platforms.length === 1)) expect([entry.id, checks.find((check) => check.module === entry.id)?.only]).toEqual([entry.id, entry.platforms[0]]);
 	});
 });
 
@@ -376,59 +431,6 @@ describe("the variants of the harness", () => {
 		expect(buildFileKey({ abi: "x86_64", variant: "qa" })).toBe("x86_64");
 		expect(buildFileKey({ abi: "x86_64", variant: "smoke" })).toBe("smoke-x86_64");
 	});
-	test("android/ holds one variant; building the other parks it as android-<variant> and brings the other back", async () => {
-		const base = mkdtempSync(join(tmpdir(), "native-qa-variant-"));
-		const dir = join(base, "android");
-		const project = (variant: string, content: string) => {
-			mkdirSync(join(dir, "app"), { recursive: true });
-			writeFileSync(join(dir, "app/build.gradle"), content);
-			writeFileSync(join(dir, ".native-qa-variant"), `${variant}\n`);
-		};
-		const entries = () => readdirSync(base).toSorted();
-		// Nothing there: the caller prebuilds.
-		expect(await generatedFor(dir)).toBeNull();
-		expect(await selectVariantProject("qa", dir)).toMatch(/is missing/);
-		// A project made before variants existed (no marker) is the QA app.
-		mkdirSync(join(dir, "app"), { recursive: true });
-		writeFileSync(join(dir, "app/build.gradle"), "qa 1");
-		expect(await generatedFor(dir)).toBe("qa");
-		expect(await selectVariantProject("qa", dir)).toBeNull();
-		expect(entries()).toEqual(["android"]);
-		// The smoke app is asked for: the QA project is parked and the caller prebuilds the smoke one.
-		expect(await selectVariantProject("smoke", dir)).toMatch(/was generated for the qa app, and none is parked for smoke/);
-		expect(entries()).toEqual(["android-qa"]);
-		project("smoke", "smoke 1");
-		expect(await generatedFor(dir)).toBe("smoke");
-		// Back to the QA app: its own project returns, with its own files, and the smoke one is parked.
-		expect(await selectVariantProject("qa", dir)).toBeNull();
-		expect(entries()).toEqual(["android", "android-smoke"]);
-		expect(await generatedFor(dir)).toBe("qa");
-		expect(await generatedFor(`${dir}-smoke`)).toBe("smoke");
-		// And forth again.
-		expect(await selectVariantProject("smoke", dir)).toBeNull();
-		expect(await generatedFor(dir)).toBe("smoke");
-		expect(entries()).toEqual(["android", "android-qa"]);
-	});
-	test("build.ts sets APP_VARIANT itself, so the shell's cannot change which app is built", () => {
-		expect(appVariantOf).toEqual({ qa: "", smoke: "smoke" });
-		const source = readFileSync(join(platformDir, "qa/commands/build.ts"), "utf8");
-		expect(source).toContain("APP_VARIANT: appVariantOf[variant]");
-	});
-	test("the iOS build prebuilds the variant on the Mac, into its own record", () => {
-		const source = readFileSync(join(platformDir, "qa/commands/ios-build.ts"), "utf8");
-		expect(source).toContain("APP_VARIANT=${appVariantOf[variant]}`");
-		expect(source).toContain("writeIosBuild(");
-		expect(source).toContain("}, variant);");
-	});
-	test("the smoke command installs and launches the smoke app, not the QA app", () => {
-		const source = readFileSync(join(platformDir, "qa/commands/smoke.ts"), "utf8");
-		expect(source).toContain("packageOf.smoke");
-		expect(source).toContain('variant: "smoke"');
-		expect(source).toContain("schemeOf.smoke");
-		expect(source).not.toContain("defaultPackage");
-		expect(defaultApkPath("x86_64", "smoke")).toBe(apkPath("smoke", "x86_64"));
-		expect(defaultApkPath("x86_64")).toBe(apkPath("qa", "x86_64"));
-	});
 	test("the QA lanes do not run the smoke test; the smoke lane builds the smoke app first", () => {
 		const scripts = (JSON.parse(readFileSync(join(platformDir, "package.json"), "utf8")) as { scripts: Record<string, string> }).scripts;
 		expect(scripts["native-qa:emulator"]).not.toContain("smoke");
@@ -438,12 +440,12 @@ describe("the variants of the harness", () => {
 	});
 	test("the smoke gates are their own lane: the QA lane has none of them, the smoke lane only them", () => {
 		const lanes = splitGates(gatesFile.gates);
-		expect(lanes.smoke.map((gate) => gate.id)).toEqual(["smoke.failed", "smoke.missing"]);
+		expect(lanes.smoke.map((gate) => gate.id)).toEqual(["smoke.complete", "smoke.fatals", "smoke.failed", "smoke.missing", "smoke.unexpectedSkips", "smoke.ok"]);
 		expect(lanes.standard.some((gate) => gate.metric.startsWith("smoke."))).toBe(false);
 		expect(lanes.standard.length + lanes.smoke.length).toBe(gatesFile.gates.length);
 		// A QA report with no smoke run passes the QA lane's smoke part by not having it, and the smoke lane reads not measured.
 		const device = { "localhost:5555": { platform: "android" as const, role: "lab" as const, runs: gatesFile.devices["localhost:5555"]?.runs ?? null, metrics: {} } };
 		expect(evaluate(lanes.standard, device, "android").some((row) => row.id.startsWith("smoke"))).toBe(false);
-		expect(evaluate(lanes.smoke, device, "android").map((row) => row.verdict)).toEqual(["not measured", "not measured"]);
+		expect(evaluate(lanes.smoke, device, "android").map((row) => row.verdict)).toEqual(lanes.smoke.map(() => "not measured"));
 	});
 });

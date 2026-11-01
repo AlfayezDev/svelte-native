@@ -13,7 +13,9 @@ declare module "bun:test" {
 		toContain(expected: unknown): void;
 		toHaveLength(expected: number): void;
 		toThrow(expected?: string | RegExp | (new (...args: never[]) => Error)): void;
+		toBeGreaterThanOrEqual(expected: number): void;
 	}
+	export function afterAll(body: () => void | Promise<void>): void;
 	export function describe(name: string, body: () => void): void;
 	export function test(name: string, body: () => void | Promise<void>, timeoutMs?: number): void;
 	export const expect: ((actual: unknown) => Matchers) & {

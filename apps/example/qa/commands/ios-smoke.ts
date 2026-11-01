@@ -5,12 +5,16 @@ import { appProcesses, launchApp, readAppFile, terminateApp } from "../lib/iphon
 import { currentSource, iosOptions, newToken, startIosSuite } from "../lib/iphone/session.ts";
 import { qaDir, runsDir } from "../lib/paths.ts";
 import { slug, stamp, writeRun } from "../lib/runs.ts";
-import { describeSmoke, pinnedModules } from "../lib/smoke.ts";
+import { describeSmoke, smokePins } from "../lib/smoke.ts";
+import { reportVerdict } from "./smoke.ts";
 import type { SmokeFile, SmokeModuleResult } from "../lib/types.ts";
 import { schemeOf } from "../lib/variant.ts";
 import { sleep } from "../lib/wait.ts";
 
 const pollMs = 3_000;
+
+/** The URL that starts the smoke scenario in the smoke app; the token comes back in the results file. */
+export const smokeLaunchUrl = (token: string): string => `${schemeOf.smoke}:///__dev?run=smoke&token=${token}`;
 
 type ResultsFile = { token: string | null; finishedAt: string; os: string; results: { module: string; status: string; path: string; ms: number; detail: string }[] };
 
@@ -42,11 +46,11 @@ export async function iosSmoke(argv: string[]): Promise<void> {
 	const { values } = parseFlags(argv, { ...iosOptions, timeout: { type: "string" } });
 	const session = await startIosSuite("smoke", argv, values, "smoke");
 	const timeoutMs = integerFlag(values.timeout, "timeout", 180) * 1000;
-	const pinned = await pinnedModules("ios");
+	const pins = await smokePins("ios");
 	const { target } = session;
 	const token = newToken();
 	const launched = Date.now();
-	const { pid } = await launchApp(target, { payloadUrl: `${schemeOf.smoke}:///__dev?run=smoke&token=${token}` });
+	const { pid } = await launchApp(target, { payloadUrl: smokeLaunchUrl(token) });
 	const deadline = launched + timeoutMs;
 	let found: ResultsFile | null = null;
 	let raw = "";
@@ -90,7 +94,8 @@ export async function iosSmoke(argv: string[]): Promise<void> {
 		durationMs: Date.now() - launched,
 		logFile: logPath.slice(qaDir.length + 1),
 	};
-	for (const line of describeSmoke(file, pinned)) console.log(line);
+	for (const line of describeSmoke(file, pins)) console.log(line);
 	const name = await writeRun("smoke", session.device.serial, session.startedAt, file);
 	console.log(`wrote qa/runs/${name}.json`);
+	await reportVerdict(file);
 }

@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { describeApk } from "../lib/app.ts";
 import { execToFile } from "../lib/exec.ts";
@@ -13,6 +13,7 @@ import {
 	repoRoot,
 	svelteNativeCli,
 } from "../lib/paths.ts";
+import { prebuildProject, selectVariantProject, staleReason } from "../lib/project.ts";
 import { writeBuild } from "../lib/runs.ts";
 import { apkPath, appVariantOf, buildLogName, packageOf, stemOf, variantFlag, type Variant } from "../lib/variant.ts";
 import type { BuildFile } from "../lib/types.ts";
@@ -20,7 +21,7 @@ import { iosBuild } from "./ios-build.ts";
 
 const abis = ["x86_64", "arm64-v8a"];
 /** The environment of a build. The variant is set explicitly, so an `APP_VARIANT` in the shell cannot turn one app into another. */
-function buildEnv(variant: Variant): Record<string, string> {
+export function buildEnv(variant: Variant): Record<string, string> {
 	return {
 		CI: "1",
 		EXPO_NO_TELEMETRY: "1",
@@ -31,12 +32,6 @@ function buildEnv(variant: Variant): Record<string, string> {
 	};
 }
 const gradleJvm = "-Dorg.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=1g";
-/**
- * What `expo prebuild` was run for is written next to the generated project. `android/` holds one variant at a time; the other is
- * parked as `android-<variant>/` (its Gradle outputs with it), so switching between the QA and the smoke app renames directories
- * instead of generating a project over the other's files.
- */
-const variantMarker = join(androidDir, ".native-qa-variant");
 /** The Samsung Pay SDK of the smoke app's `expo-samsung-pay`: proprietary, kept out of git, copied from the production app's `libs/`. Only the smoke build needs it. */
 const samsungPayJar = join(platformDir, "libs/samsungpay.jar");
 
@@ -49,52 +44,25 @@ async function modifiedTime(path: string): Promise<number | null> {
 	}
 }
 
-/** Why `expo prebuild` has to run again, or null when the generated android/ project is current. */
-async function prebuildReason(): Promise<string | null> {
-	const generated = await modifiedTime(join(androidDir, "app/build.gradle"));
-	if (generated === null) return "apps/platform/android is missing";
+/** Everything that changes what `expo prebuild` generates: the Expo config and what it reads (the smoke modules and packages, the Firebase files), the packages, the Svelte native plugin and the local modules. */
+export async function prebuildInputs(): Promise<string[]> {
 	const inputs = [
 		join(platformDir, "app.config.ts"),
 		join(platformDir, "package.json"),
 		join(platformDir, "react-native.config.js"),
 		join(platformDir, "qa/smoke-modules.json"),
+		join(platformDir, "qa/smoke-packages.cjs"),
 		join(platformDir, "qa/firebase-fake/google-services.json"),
 		join(repoRoot, "packages/svelte-native/src/expo.ts"),
 	];
 	for (const module of await readdir(join(platformDir, "modules")))
 		inputs.push(join(platformDir, "modules", module, "expo-module.config.json"));
-	for (const input of inputs) {
-		const changed = await modifiedTime(input);
-		if (changed !== null && changed > generated)
-			return `${input.slice(repoRoot.length + 1)} is newer than android/app/build.gradle`;
-	}
-	return null;
+	return inputs;
 }
 
-/** The variant the project in `dir` was generated for; null when there is none. A project made before variants existed is the QA app. */
-export async function generatedFor(dir: string = androidDir): Promise<Variant | null> {
-	if ((await modifiedTime(join(dir, "app/build.gradle"))) === null) return null;
-	const marker = (await readFile(join(dir, ".native-qa-variant"), "utf8").catch(() => "qa")).trim();
-	return marker === "smoke" ? "smoke" : "qa";
-}
-
-/**
- * Makes `dir` (`android/`) the variant's project: the one already there, or the one parked for it as `<dir>-<variant>` (the one in
- * the way is parked in its place), or none, in which case the reason to prebuild is returned.
- */
-export async function selectVariantProject(variant: Variant, dir: string = androidDir): Promise<string | null> {
-	const parked = (name: Variant) => `${dir}-${name}`;
-	const current = await generatedFor(dir);
-	if (current === variant) return null;
-	if (current !== null) {
-		await rm(parked(current), { recursive: true, force: true });
-		await rename(dir, parked(current));
-	}
-	if ((await modifiedTime(parked(variant))) !== null) {
-		await rename(parked(variant), dir);
-		return null;
-	}
-	return current === null ? `${dir} is missing` : `${dir} was generated for the ${current} app, and none is parked for ${variant}`;
+/** Why `expo prebuild` has to run again, or null when the generated android/ project is current. */
+async function prebuildReason(): Promise<string | null> {
+	return staleReason(join(androidDir, "app/build.gradle"), await prebuildInputs());
 }
 
 /** Our own native code: the engine, and Reanimated with the engine's write sink. The rest of the native libraries are React Native's and Hermes's, symbolized from their own packages. */
@@ -168,19 +136,20 @@ export async function build(argv: string[]): Promise<void> {
 			`${samsungPayJar} is missing: expo-samsung-pay (native module smoke test) does not compile without the Samsung Pay SDK. Copy libs/samsungpay.jar from the production app (it is proprietary and ignored by git).`,
 		);
 	await step("svelte-native sync", process.execPath, [svelteNativeCli, "sync"], platformDir, logPath, variant);
-	const switched = await selectVariantProject(variant);
+	const switched = await selectVariantProject(variant, androidDir);
 	const reason = values.prebuild ? "--prebuild" : (switched ?? (await prebuildReason()));
 	if (reason) {
 		console.log(`prebuild: ${reason}`);
-		await step(
-			`expo prebuild (android, ${variant})`,
-			"pnpm",
-			["exec", "expo", "prebuild", "--platform", "android", "--no-install"],
-			platformDir,
-			logPath,
-			variant,
+		await prebuildProject(variant, androidDir, () =>
+			step(
+				`expo prebuild (android, ${variant})`,
+				"pnpm",
+				["exec", "expo", "prebuild", "--platform", "android", "--no-install"],
+				platformDir,
+				logPath,
+				variant,
+			),
 		);
-		await writeFile(variantMarker, `${variant}\n`);
 	}
 	await step(
 		`gradle assembleRelease (${variant}, ${abi})`,

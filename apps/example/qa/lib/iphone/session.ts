@@ -99,6 +99,9 @@ export type IosSession = {
 	startedAt: Date;
 };
 
+/** The bundle id a suite works on: `--package`, else the variant's own (the smoke app's is not the QA app's). */
+export const suiteBundleId = (values: IosValues, variant: Variant): string => flagString(values.package) ?? packageOf[variant];
+
 /**
  * What every iOS command does first: take the iPhone lock the way the emulator commands take theirs (re-running itself under
  * `flock`), find the phone through the Mac, install the build under test unless told not to, and describe the phone and the app.
@@ -107,7 +110,7 @@ export async function startIosSuite(command: string, argv: string[], values: Ios
 	reexecUnderLock(iphoneLock, [command, ...argv]);
 	const id = requireString(values.device, "device");
 	const mac = macFrom(flagString(values.mac));
-	const bundleId = flagString(values.package) ?? packageOf[variant];
+	const bundleId = suiteBundleId(values, variant);
 	const udid = flagString(values.udid) ?? defaultHardwareUdid;
 	const target: IosTarget = { mac, id, bundleId };
 	const startedAt = new Date();

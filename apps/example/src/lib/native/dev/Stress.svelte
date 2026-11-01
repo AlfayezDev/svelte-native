@@ -11,6 +11,7 @@
   import StressTile from "./StressTile.svelte";
   import { screenLab } from "./model.svelte.ts";
   import { runForeignViews } from "./foreign-lab.ts";
+  import { smokeScenarioOutcome } from "./smoke-rules.ts";
   import { estimatePeriod, startFrameMonitor, stopFrameMonitor, summarizeFrames, type FrameStats, type FrameSummary } from "./frames.ts";
 
   type Verdict = "pass" | "fail" | "info";
@@ -443,11 +444,10 @@
     { name: "smoke", label: "Native modules (smoke test) · one core call for each library the production app links, from Svelte Native without React (`run=smoke`, SPEC.md \"Native modules (smoke test)\")", async run(signal) {
       // Required here, not at the top: the libraries load when the scenario runs, and only the smoke app links them.
       if (!nativeSmokeEnabled) return { verdict: "info", summary: "Not linked in this build: the native module smoke test runs in the smoke app (io.rasheed.svelteqa.smoke)." };
-      const { runSmoke } = await import("./smoke.ts");
+      const { runSmoke, smokeModules } = await import("./smoke.ts");
       const results = await runSmoke(undefined, signal);
-      const failed = results.filter((result) => result.status === "fail");
-      const count = (status: string) => results.filter((result) => result.status === status).length;
-      return { verdict: failed.length === 0 ? "pass" : "fail", summary: `${count("ok")} ok · ${failed.length} fail · ${count("skip")} skip of ${results.length}${failed.length ? ` · failed: ${failed.map((result) => result.module).join(", ")}` : ""}`, detail: { results: results.map(({ module, status, path }) => ({ module, status, path })) } };
+      const { verdict, summary } = smokeScenarioOutcome(results, smokeModules.length);
+      return { verdict, summary, detail: { results: results.map(({ module, status, path }) => ({ module, status, path })) } };
     } },
     { name: "churn-60s", label: "Cleanup stress · 60 s animated churn", run: (signal) => animatedChurn(signal, 60000) },
     { name: "soak-120s", label: "Soak · 120 s animated churn with heap sampling", async run(signal) {

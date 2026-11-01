@@ -1,13 +1,25 @@
 import { readFile } from "node:fs/promises";
+import { checkGatesFile, evaluate, splitGates, type GateRow, type GatesFile } from "./gates.ts";
 import { gatesPath } from "./paths.ts";
 import type { Metrics, Platform, SmokeFile, SmokeModuleResult } from "./types.ts";
 
+/** What `gates.json` pins for a platform: the modules a run must report, and the ones that may legitimately `skip` there (Huawei's library on a Samsung, an Android-only library on the iPhone). */
+export type SmokePins = { modules: readonly string[]; skips: readonly string[] };
+
+export async function loadGatesFile(): Promise<GatesFile> {
+	const file = JSON.parse(await readFile(gatesPath, "utf8")) as GatesFile;
+	checkGatesFile(file);
+	return file;
+}
+
+export async function smokePins(platform: Platform): Promise<SmokePins> {
+	const file = await loadGatesFile();
+	return { modules: file.smoke.modules[platform], skips: file.smoke.skips[platform] };
+}
+
 /** The modules `gates.json` pins for a platform (`smoke.modules`): the ones a run must report. */
 export async function pinnedModules(platform: Platform): Promise<string[]> {
-	const file = JSON.parse(await readFile(gatesPath, "utf8")) as { smoke?: { modules?: Partial<Record<Platform, string[]>> } };
-	const modules = file.smoke?.modules?.[platform];
-	if (!modules || modules.length === 0) throw new Error(`gates.json pins no smoke modules for ${platform}`);
-	return modules;
+	return [...(await smokePins(platform)).modules];
 }
 
 /**
@@ -25,33 +37,61 @@ export function unpinnedModules(results: readonly SmokeModuleResult[], pinned: r
 	return results.map((result) => result.module).filter((module) => !known.has(module));
 }
 
+/** Pinned modules that skipped although the platform does not list them as skips: a library that should have answered and did not. */
+export function unexpectedSkips(results: readonly SmokeModuleResult[], pins: SmokePins): string[] {
+	return results.filter((result) => result.status === "skip" && pins.modules.includes(result.module) && !pins.skips.includes(result.module)).map((result) => result.module);
+}
+
 /**
- * `smoke.failed` counts the modules that logged `fail`, `smoke.missing` the pinned ones that logged nothing. A run that did not
- * complete still counts what it saw: its missing modules are what fail the gate. `smoke.unpinned` is not gated (it is reported).
+ * What the gates read of a run. `smoke.failed` counts the modules that logged `fail`, `smoke.missing` the pinned ones that logged
+ * nothing, `smoke.unexpectedSkips` the skips the platform does not list, `smoke.fatals` the crashes, ANRs and interruptions, and
+ * `smoke.complete` is 1 for a run that logged its completion line, was not interrupted and did not crash. A run that did not complete
+ * still counts what it saw. `smoke.unpinned` and `smoke.jsErrors` are reported, not gated.
  */
-export function smokeMetrics(file: SmokeFile, pinned: readonly string[]): Metrics {
-	const count = (status: SmokeModuleResult["status"]) => file.results.filter((result) => result.status === status && pinned.includes(result.module)).length;
+export function smokeMetrics(file: SmokeFile, pins: SmokePins): Metrics {
+	const count = (status: SmokeModuleResult["status"]) => file.results.filter((result) => result.status === status && pins.modules.includes(result.module)).length;
 	return {
-		"smoke.modules": pinned.length,
+		"smoke.modules": pins.modules.length,
 		"smoke.ok": count("ok"),
 		"smoke.failed": count("fail"),
 		"smoke.skipped": count("skip"),
-		"smoke.missing": missingModules(file.results, pinned).length,
-		"smoke.unpinned": unpinnedModules(file.results, pinned).length,
+		"smoke.unexpectedSkips": unexpectedSkips(file.results, pins).length,
+		"smoke.missing": missingModules(file.results, pins.modules).length,
+		"smoke.unpinned": unpinnedModules(file.results, pins.modules).length,
+		"smoke.fatals": file.crashes.length,
+		"smoke.jsErrors": file.jsErrorCount,
 		"smoke.complete": file.complete ? 1 : 0,
 	};
 }
 
-/** The lines `smoke` prints for a run: the counts, then every module that did not pass or skip. */
-export function describeSmoke(file: SmokeFile, pinned: readonly string[]): string[] {
-	const missing = missingModules(file.results, pinned);
+/** The lines `smoke` prints for a run: the counts, then every module that did not pass or skip as it should. */
+export function describeSmoke(file: SmokeFile, pins: SmokePins): string[] {
+	const missing = missingModules(file.results, pins.modules);
+	const unexpected = new Set(unexpectedSkips(file.results, pins));
 	const count = (status: SmokeModuleResult["status"]) => file.results.filter((result) => result.status === status).length;
 	const lines = [
-		`  complete ${file.complete} in ${(file.durationMs / 1000).toFixed(0)} s: ${count("ok")} ok, ${count("fail")} failed, ${count("skip")} skipped, ${missing.length} missing of ${pinned.length} pinned`,
+		`  complete ${file.complete} in ${(file.durationMs / 1000).toFixed(0)} s: ${count("ok")} ok, ${count("fail")} failed, ${count("skip")} skipped, ${missing.length} missing of ${pins.modules.length} pinned`,
 	];
 	for (const result of file.results.filter((entry) => entry.status === "fail")) lines.push(`  FAIL ${result.module} (${result.path}): ${result.detail}`);
-	for (const result of file.results.filter((entry) => entry.status === "skip")) lines.push(`  skip ${result.module}: ${result.detail}`);
+	for (const result of file.results.filter((entry) => entry.status === "skip"))
+		lines.push(`  ${unexpected.has(result.module) ? "UNEXPECTED SKIP" : "skip"} ${result.module}: ${result.detail}`);
 	for (const module of missing) lines.push(`  MISSING ${module}`);
 	for (const crash of file.crashes.slice(0, 5)) lines.push(`  fatal: ${crash.slice(0, 200)}`);
+	if (!file.complete) lines.push("  the run did not complete (no completion line, a crash, or another app took the screen)");
 	return lines;
+}
+
+/** The smoke gates of `gates.json` against this run, for the device it ran on: the verdict `gates --smoke` would give, so the command can fail the way the lane does. */
+export async function judgeSmoke(file: SmokeFile, gatesFile?: GatesFile): Promise<{ rows: GateRow[]; ok: boolean; lines: string[] }> {
+	const gates = gatesFile ?? (await loadGatesFile());
+	const platform = file.device.platform;
+	const serial = file.device.serial;
+	const metrics = smokeMetrics(file, { modules: gates.smoke.modules[platform], skips: gates.smoke.skips[platform] });
+	const rows = evaluate(splitGates(gates.gates).smoke, { [serial]: { platform, role: gates.devices[serial]?.role ?? null, runs: gates.devices[serial]?.runs ?? null, metrics } }, platform);
+	const bad = rows.filter((row) => row.verdict === "fail" || row.verdict === "not measured");
+	return {
+		rows,
+		ok: bad.length === 0,
+		lines: bad.map((row) => `  gate ${row.id} ${row.verdict}: ${row.measured ?? "-"} (bar ${JSON.stringify(row.bar)})`),
+	};
 }

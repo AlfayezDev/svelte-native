@@ -1,6 +1,9 @@
 import Platform from "react-native/Libraries/Utilities/Platform";
 import { formatSmokeLine, formatSmokeSummary, skipName, smokeLaunch, type Os, type SmokePath, type SmokeResult, type SmokeResultsFile } from "./smoke-log.ts";
+import { smokeModules } from "./smoke-rules.ts";
 import type { Check } from "./smoke-checks.ts";
+
+export { smokeModules };
 
 /**
  * The native module smoke test's runner (SPEC.md, "Native modules (smoke test)"). The checks are in `smoke-checks.ts`, which only
@@ -11,45 +14,6 @@ import type { Check } from "./smoke-checks.ts";
  */
 export type { Os };
 
-/** Every module id the test reports, in run order. */
-export const smokeModules: readonly string[] = [
-	"async-storage",
-	"mmkv",
-	"secure-store",
-	"netinfo",
-	"device-info",
-	"expo-device",
-	"get-random-values",
-	"quick-crypto",
-	"quick-base64",
-	"nitro",
-	"launch-arguments",
-	"localization",
-	"constants",
-	"asset",
-	"haptics",
-	"screen-orientation",
-	"store-review",
-	"system-ui",
-	"tracking-transparency",
-	"local-authentication",
-	"notifications",
-	"location",
-	"sharing",
-	"web-browser",
-	"splash-screen",
-	"ssl-pinning",
-	"firebase",
-	"sentry",
-	"hms",
-	"samsung-pay",
-	"intercom",
-	"statsig",
-	"mixpanel",
-	"adjust",
-	"check-installed-apps",
-	"live-direction",
-];
 
 const timeoutMs = 10_000;
 

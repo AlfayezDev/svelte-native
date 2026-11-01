@@ -304,7 +304,7 @@ describe("device roles", () => {
 		expect(tally(rows).ok).toBe(false);
 	});
 	test("checkGatesFile refuses a role that would silently exempt a device", () => {
-		const file = (patch: Partial<GatesFile> & { gates?: Gate[] }): GatesFile => ({ version: 1, devices: {}, scenarios: { android: [], ios: [] }, smoke: { modules: { android: ["a"], ios: ["a"] } }, gates: [], ...patch });
+		const file = (patch: Partial<GatesFile> & { gates?: Gate[] }): GatesFile => ({ version: 1, devices: {}, scenarios: { android: [], ios: [] }, smoke: { modules: { android: ["a"], ios: ["a"] }, skips: { android: [], ios: [] } }, gates: [], ...patch });
 		expect(() => checkGatesFile(file({ gates: [{ ...frames, roles: ["phones" as "phone"] }] }))).toThrow(/unknown role "phones"/);
 		expect(() => checkGatesFile(file({ gates: [{ ...frames, roles: [] }] }))).toThrow(/empty roles list/);
 		expect(() => checkGatesFile(file({ devices: { x: { role: "emulator" as "lab", name: "x", runs: ["lab"] } } }))).toThrow(/unknown role "emulator"/);

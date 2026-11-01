@@ -153,6 +153,17 @@
         "check-installed-apps",
         "live-direction"
       ]
+    },
+    "skips": {
+      "android": [
+        "hms",
+        "web-browser"
+      ],
+      "ios": [
+        "web-browser",
+        "hms",
+        "samsung-pay"
+      ]
     }
   },
   "gates": [
@@ -839,6 +850,34 @@
       }
     },
     {
+      "id": "smoke.complete",
+      "title": "The smoke run logged its completion line, was not interrupted and did not crash",
+      "unit": "run",
+      "metric": "smoke.complete",
+      "bar": {
+        "android": {
+          "min": 1
+        },
+        "ios": {
+          "min": 1
+        }
+      }
+    },
+    {
+      "id": "smoke.fatals",
+      "title": "Crashes, ANRs and interruptions during the smoke run",
+      "unit": "fatals",
+      "metric": "smoke.fatals",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
       "id": "smoke.failed",
       "title": "Native modules whose smoke call failed",
       "unit": "modules",
@@ -863,6 +902,34 @@
         },
         "ios": {
           "max": 0
+        }
+      }
+    },
+    {
+      "id": "smoke.unexpectedSkips",
+      "title": "Native modules that skipped where the platform does not list a skip (gates.json smoke.skips)",
+      "unit": "modules",
+      "metric": "smoke.unexpectedSkips",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "smoke.ok",
+      "title": "Native modules whose smoke call answered (the pinned modules less the listed skips)",
+      "unit": "modules",
+      "metric": "smoke.ok",
+      "bar": {
+        "android": {
+          "min": 34
+        },
+        "ios": {
+          "min": 33
         }
       }
     }

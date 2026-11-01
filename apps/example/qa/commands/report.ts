@@ -14,7 +14,7 @@ import {
 } from "../lib/gates.ts";
 import { reachPct } from "../lib/a11y.ts";
 import { deviceMetrics, missingScenarios, runFatals } from "../lib/metrics.ts";
-import { missingModules, unpinnedModules } from "../lib/smoke.ts";
+import { missingModules, unexpectedSkips, unpinnedModules } from "../lib/smoke.ts";
 import type { SuiteFiles } from "../lib/suite-metrics.ts";
 import { gatesPath, reportPath } from "../lib/paths.ts";
 import { latestRunFiles, readBuilds, readJson, runKinds, type RunKind } from "../lib/runs.ts";
@@ -123,6 +123,9 @@ type SmokeSummary = {
 	skipped: string[];
 	/** Pinned modules (`smoke.modules` in `gates.json`) no line of the run reported. */
 	missing: string[];
+	/** Skips the platform does not list (`smoke.skips` in `gates.json`). */
+	unexpectedSkips: string[];
+	fatals: number;
 	/** Modules the run reported that `gates.json` does not pin. */
 	unpinned: string[];
 };
@@ -139,6 +142,8 @@ export type ReportFile = {
 	builds: Record<string, BuildFile>;
 	devices: Record<string, ReportDeviceEntry>;
 	warnings: string[];
+	/** The warnings of the smoke run (it is another app: it does not identify itself the way the QA runs do), which only the smoke lane reads. Absent in reports written before. */
+	smokeWarnings?: string[];
 	/** What a report shows without failing a gate: settings an earlier run left on a device, which a suite cleared before it measured. Absent in reports written before. */
 	notes?: string[];
 	/** The QA gates (everything but `smoke.*`), which `gates` judges. */
@@ -346,6 +351,7 @@ export async function report(): Promise<void> {
 	const slugs = new Set(runKinds.flatMap((kind) => [...files[kind].keys()]));
 	const devices: Record<string, ReportDeviceEntry> = {};
 	const warnings: string[] = [];
+	const smokeWarnings: string[] = [];
 	const notes: string[] = [];
 	for (const key of slugs) {
 		const labPath = labFiles.get(key);
@@ -380,7 +386,8 @@ export async function report(): Promise<void> {
 			["accessibility", suites.a11y],
 			["resilience", suites.resilience],
 		];
-		warnings.push(...buildWarnings(serial, measured), ...buildWarnings(serial, [["smoke", smoke]]));
+		warnings.push(...buildWarnings(serial, measured));
+		smokeWarnings.push(...buildWarnings(serial, [["smoke", smoke]]));
 		notes.push(...buildNotes(serial, measured));
 		const found = sessionFindings(serial, [
 			["parity", suites.parity],
@@ -390,7 +397,7 @@ export async function report(): Promise<void> {
 		warnings.push(...found.warnings);
 		notes.push(...found.notes);
 		const pinned = gates.scenarios[platform];
-		const pinnedSmoke = gates.smoke.modules[platform];
+		const pins = { modules: gates.smoke.modules[platform], skips: gates.smoke.skips[platform] };
 		devices[serial] = {
 			platform,
 			role: gates.devices[serial]?.role ?? null,
@@ -440,8 +447,10 @@ export async function report(): Promise<void> {
 							ok: smoke.results.filter((result) => result.status === "ok").length,
 							failed: smoke.results.filter((result) => result.status === "fail").map((result) => result.module),
 							skipped: smoke.results.filter((result) => result.status === "skip").map((result) => result.module),
-							missing: missingModules(smoke.results, pinnedSmoke),
-							unpinned: unpinnedModules(smoke.results, pinnedSmoke),
+							missing: missingModules(smoke.results, pins.modules),
+							unexpectedSkips: unexpectedSkips(smoke.results, pins),
+							fatals: smoke.crashes.length,
+							unpinned: unpinnedModules(smoke.results, pins.modules),
 						}
 					: null,
 			crashReports: crashReportSummaries(platform, [
@@ -471,7 +480,7 @@ export async function report(): Promise<void> {
 						: null,
 				resilience: suites.resilience && resiliencePath ? { file: resiliencePath.slice(resiliencePath.lastIndexOf("runs/")), screen: suites.resilience.screen } : null,
 			},
-			metrics: deviceMetrics(lab, boot, pinned, soak, crashes, suites, smoke ? { file: smoke, pinned: pinnedSmoke } : null),
+			metrics: deviceMetrics(lab, boot, pinned, soak, crashes, suites, smoke ? { file: smoke, pins } : null),
 		};
 	}
 
@@ -490,6 +499,7 @@ export async function report(): Promise<void> {
 		builds: await readBuilds(),
 		devices,
 		warnings,
+		smokeWarnings,
 		notes,
 		gates: rows,
 		verdict: tally(rows),
@@ -547,7 +557,7 @@ export async function report(): Promise<void> {
 			);
 		if (entry.smoke)
 			console.log(
-				`  smoke ${m["smoke.ok"] ?? 0} ok, ${m["smoke.failed"] ?? "-"} failed${entry.smoke.failed.length ? ` (${entry.smoke.failed.join(", ")})` : ""}, ${m["smoke.skipped"] ?? 0} skipped, ${m["smoke.missing"] ?? "-"} missing${entry.smoke.missing.length ? ` (${entry.smoke.missing.join(", ")})` : ""} of ${m["smoke.modules"] ?? "-"} pinned${entry.smoke.complete ? "" : ", the run did not complete"}${entry.smoke.unpinned.length ? `; not pinned: ${entry.smoke.unpinned.join(", ")}` : ""}`,
+				`  smoke ${m["smoke.ok"] ?? 0} ok, ${m["smoke.failed"] ?? "-"} failed${entry.smoke.failed.length ? ` (${entry.smoke.failed.join(", ")})` : ""}, ${m["smoke.skipped"] ?? 0} skipped${entry.smoke.unexpectedSkips.length ? ` (unexpected: ${entry.smoke.unexpectedSkips.join(", ")})` : ""}, ${m["smoke.missing"] ?? "-"} missing${entry.smoke.missing.length ? ` (${entry.smoke.missing.join(", ")})` : ""} of ${m["smoke.modules"] ?? "-"} pinned, ${entry.smoke.fatals} fatals${entry.smoke.complete ? "" : ", the run did not complete"}${entry.smoke.unpinned.length ? `; not pinned: ${entry.smoke.unpinned.join(", ")}` : ""}`,
 			);
 		if (entry.crashes)
 			console.log(
@@ -556,6 +566,7 @@ export async function report(): Promise<void> {
 	}
 	for (const note of notes) console.log(`note: ${note}`);
 	for (const warning of warnings) console.log(`warning: ${warning}`);
+	for (const warning of smokeWarnings) console.log(`warning (smoke): ${warning}`);
 	console.log("");
 	printVerdict(rows, false);
 	// The smoke app's gates are their own lane (`gates --smoke`); they are shown when a smoke run exists.

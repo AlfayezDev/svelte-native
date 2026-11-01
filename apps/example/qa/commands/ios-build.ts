@@ -5,6 +5,7 @@ import { flagString, parseFlags, requireString } from "../lib/flags.ts";
 import { macFrom, remote, remoteOk } from "../lib/iphone/mac.ts";
 import { currentSource, iosBuildPathOf, writeIosBuild } from "../lib/iphone/session.ts";
 import { outDir, qaDir, repoRoot } from "../lib/paths.ts";
+import { iosPrebuildLines } from "../lib/ios-project.ts";
 import { appVariantOf, variantFlag } from "../lib/variant.ts";
 import { sleep } from "../lib/wait.ts";
 
@@ -67,7 +68,7 @@ export async function iosBuild(argv: string[]): Promise<void> {
 			"pnpm install --frozen-lockfile --ignore-scripts --prefer-offline 2>&1 | tail -n 1",
 			"cd apps/platform",
 			`export PATH=/opt/homebrew/bin:/usr/local/bin:$PATH LANG=en_US.UTF-8 CI=1 EXPO_NO_TELEMETRY=1 APP_VARIANT=${appVariantOf[variant]}`,
-			"npx expo prebuild --platform ios > /tmp/native-qa-prebuild.log 2>&1 || { tail -n 20 /tmp/native-qa-prebuild.log; exit 1; }",
+			...iosPrebuildLines(variant, "/tmp/native-qa-prebuild.log"),
 			"(cd ios && pod install > /tmp/native-qa-pods.log 2>&1) || { tail -n 20 /tmp/native-qa-pods.log; exit 1; }",
 			"node ../../packages/svelte-native/src/cli.ts sync",
 			`rm -f ${shellQuote(done)}`,

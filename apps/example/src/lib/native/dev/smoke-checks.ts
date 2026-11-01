@@ -2,6 +2,7 @@
 import { nativeModule, turboModule } from "@rasheed/svelte-native/native-modules";
 import { ascii, decodeBase64, encodeBase64, hex, looksRandom } from "./smoke-bytes.ts";
 import { skipName, type Os, type SmokePath } from "./smoke-log.ts";
+import { hmsNativeModules, hmsOutcome } from "./smoke-rules.ts";
 
 /**
  * The 36 checks of the native module smoke test (SPEC.md, "Native modules (smoke test)"): one core call for each native library the
@@ -372,9 +373,12 @@ export const checks: Check[] = [
 		only: "android",
 		run: () => {
 			const hms = require("@hmscore/react-native-hms-location") as Record<string, unknown>;
-			const natives = ["HMSFusedLocation", "HMSLocationKit", "HMSGeofence", "HMSGeocoder", "HMSActivityIdentification"].filter((name) => nativeModule(name) !== undefined);
-			expect(natives.length > 0, `loaded (${Object.keys(hms).join(", ")}) but no HMS native module is registered`);
-			return skip(`loaded, ${natives.length} native modules registered (${natives.join(", ")}); the calls need HMS Core, which only Huawei devices have`);
+			const Device = require("expo-device") as typeof import("expo-device");
+			const registered = hmsNativeModules.filter((name) => nativeModule(name) !== undefined);
+			const outcome = hmsOutcome(Device.manufacturer, registered);
+			if (outcome.status === "fail") throw new Error(`${outcome.detail} (exports: ${Object.keys(hms).join(", ")})`);
+			// Success only where HMS Core is: elsewhere the library is linked and its calls cannot be made, which `gates.json` lists as an expected skip.
+			return outcome.status === "ok" ? outcome.detail : skip(outcome.detail);
 		},
 	},
 	{

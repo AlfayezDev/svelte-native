@@ -1,7 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { mkdtempSync, readFileSync, statSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { platformDir, repoRoot } from "../lib/paths.ts";
@@ -21,12 +21,23 @@ const { smokeOnlyBundlePackages } = createRequire(import.meta.url)("../smoke-pac
  */
 const baseline = { commit: "c75c31491", bytes: 10_944_737 };
 
+/** What this run made: the bundle directories (about 15 to 34 MB each) and the Metro caches of their own. All removed when the tests end. */
+const made: string[] = [];
+const temporary = (prefix: string): string => {
+	const directory = mkdtempSync(join(tmpdir(), prefix));
+	made.push(directory);
+	return directory;
+};
+afterAll(() => {
+	for (const directory of made) rmSync(directory, { recursive: true, force: true });
+});
+
 function bundle(variant: string): { text: string; bytes: number } {
-	const directory = mkdtempSync(join(tmpdir(), `native-qa-bundle-${variant || "qa"}-`));
+	const directory = temporary(`native-qa-bundle-${variant || "qa"}-`);
 	const output = join(directory, "index.android.bundle");
 	// `bun test` sets NODE_ENV=test. Metro's transform cache is not keyed by it and survives `--reset-cache`, so a bundle made after a
 	// run with another NODE_ENV carries Reanimated's and Worklets' debug information (+6 %): production, and a cache of its own (TMPDIR).
-	const env = { ...process.env, APP_VARIANT: variant, CI: "1", EXPO_NO_TELEMETRY: "1", NODE_ENV: "production", TMPDIR: mkdtempSync(join(tmpdir(), "native-qa-metro-")) };
+	const env = { ...process.env, APP_VARIANT: variant, CI: "1", EXPO_NO_TELEMETRY: "1", NODE_ENV: "production", TMPDIR: temporary("native-qa-metro-") };
 	const sync = spawnSync("node", [join(repoRoot, "packages/svelte-native/src/cli.ts"), "sync"], { cwd: platformDir, env, encoding: "utf8" });
 	if (sync.status !== 0) throw new Error(`svelte-native sync failed: ${sync.stderr.slice(0, 400)}`);
 	const done = spawnSync(

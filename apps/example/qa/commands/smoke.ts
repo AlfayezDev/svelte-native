@@ -15,7 +15,7 @@ import { currentSource } from "../lib/git.ts";
 import { lockFor, reexecUnderLock } from "../lib/lock.ts";
 import { qaDir, runsDir } from "../lib/paths.ts";
 import { slug, stamp, writeRun } from "../lib/runs.ts";
-import { describeSmoke, pinnedModules } from "../lib/smoke.ts";
+import { describeSmoke, judgeSmoke, smokePins } from "../lib/smoke.ts";
 import type { SmokeFile } from "../lib/types.ts";
 import { packageOf, schemeOf } from "../lib/variant.ts";
 import { findFaults, findInterruption } from "../parse/logcat.ts";
@@ -24,6 +24,22 @@ import { iosSmoke } from "./ios-smoke.ts";
 
 /** The stress scenario `smoke` ends the lab the way every scenario does; the run is complete when that line came and the app logged its own. */
 const labComplete = /\[Svelte stress\] complete/;
+
+/**
+ * The smoke gates of `gates.json` against this run, the verdict `gates --smoke` gives for it: a failed gate (a failed or missing module,
+ * a skip the platform does not list, a crash, an incomplete run, too few answers) is printed and makes the command exit 1, so a script
+ * or CI step that only runs `smoke` cannot pass a run the gates would fail.
+ */
+export async function reportVerdict(file: SmokeFile): Promise<void> {
+	const verdict = await judgeSmoke(file);
+	if (verdict.ok) {
+		console.log("smoke gates: pass");
+		return;
+	}
+	console.log("smoke gates: FAIL");
+	for (const line of verdict.lines) console.log(line);
+	process.exitCode = 1;
+}
 
 /**
  * Installs the smoke app (`io.rasheed.svelteqa.smoke`, `qa/out/app-smoke-<abi>.apk` from `native-qa build --variant smoke`), launches
@@ -48,7 +64,7 @@ export async function smoke(argv: string[]): Promise<void> {
 
 	const timeoutMs = integerFlag(values.timeout, "timeout", 180) * 1000;
 	const packageName = flagString(values.package) ?? packageOf.smoke;
-	const pinned = await pinnedModules("android");
+	const pins = await smokePins("android");
 
 	await assertOnline(serial);
 	const startedAt = new Date();
@@ -95,7 +111,8 @@ export async function smoke(argv: string[]): Promise<void> {
 		durationMs: Date.now() - launched.getTime(),
 		logFile: logPath.slice(qaDir.length + 1),
 	};
-	for (const line of describeSmoke(file, pinned)) console.log(line);
+	for (const line of describeSmoke(file, pins)) console.log(line);
 	const name = await writeRun("smoke", serial, startedAt, file);
 	console.log(`wrote qa/runs/${name}.json`);
+	await reportVerdict(file);
 }

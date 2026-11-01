@@ -12,14 +12,17 @@ export type RunFileState = { file: string; modifiedAt: Date; platform: Platform 
 /**
  * Why a report cannot be judged, or nothing: a run file of a device of this platform was written after the report was, so the
  * verdict would not be about the newest measurements, or the report itself warns (runs of different builds, of a
- * build nobody identified, or a suite that could not put its device back), so its numbers do not describe one build.
+ * build nobody identified, or a suite that could not put its device back), so its numbers do not describe one build. The QA lane reads
+ * `warnings`, the smoke lane (`smoke`) `smokeWarnings`.
  */
-export function reportProblems(report: ReportFile, runs: RunFileState[], platform?: Platform): string[] {
+export function reportProblems(report: ReportFile, runs: RunFileState[], platform?: Platform, smoke = false): string[] {
 	const generatedAt = new Date(report.generatedAt);
 	const problems = runs
 		.filter((run) => (platform === undefined || run.platform === platform) && run.modifiedAt > generatedAt)
 		.map((run) => `${run.file} was written ${run.modifiedAt.toISOString()}, after the report (${report.generatedAt}): run \`native-qa report\` again`);
-	const warnings = platform === undefined ? report.warnings : report.warnings.filter((warning) => concerns(report, warning, platform));
+	// Each lane reads the warnings of its own runs: the smoke run is another app, so the QA lane does not fail on it nor the smoke lane on the QA runs.
+	const laneWarnings = smoke ? (report.smokeWarnings ?? []) : report.warnings;
+	const warnings = platform === undefined ? laneWarnings : laneWarnings.filter((warning) => concerns(report, warning, platform));
 	for (const warning of warnings) problems.push(`the report warns: ${warning}`);
 	return problems;
 }
@@ -67,7 +70,7 @@ export async function gates(argv: string[]): Promise<void> {
 			`cannot read qa/report.json (run \`native-qa report\` first): ${error instanceof Error ? error.message : String(error)}`,
 		);
 	});
-	const problems = reportProblems(reportFile, await newestRunFiles(reportFile, smoke), platform);
+	const problems = reportProblems(reportFile, await newestRunFiles(reportFile, smoke), platform, smoke);
 	console.log(`report generated ${reportFile.generatedAt} (${age(new Date(reportFile.generatedAt))} ago)`);
 	for (const problem of problems) console.log(`FAIL: ${problem}`);
 	const gatesFile = await loadGates();

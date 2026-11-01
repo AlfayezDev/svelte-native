@@ -3,6 +3,8 @@
 
 #include "../../main/cpp/ForeignSplit.h"
 
+#include <react/renderer/componentregistry/componentNameByReactViewName.h>
+
 #include <cstdio>
 #include <vector>
 
@@ -128,19 +130,21 @@ void selfParentIsHarmless() {
 
 } // namespace
 
-// A shadow view says the name Fabric gives a component (`componentNameByReactViewName`): a registered "RCTVideo" has to match "Video".
+// A shadow view says the name Fabric gives a component, which is not its React view name for every component: a registered "RCTVideo" has to match "Video".
+// The function is React Native's own (the test links its source), handed to `Names` as the delegate hands it.
 void fabricNames() {
-  const struct { const char *registered; const char *fabric; } cases[] = {
-    {"RCTVideo", "Video"}, {"RNCWebView", "RNCWebView"}, {"RNMapsMapView", "RNMapsMapView"}, {"ViewManagerAdapter_ExpoImage", "ViewManagerAdapter_ExpoImage"},
-    {"RiveReactNativeView", "RiveReactNativeView"}, {"RC", "RC"}, {"", ""}, {"RCT", ""}, {"MyRCTView", "MyRCTView"},
-  };
-  for (const auto &entry : cases) {
-    const std::string got = fabricComponentName(entry.registered);
-    if (got != entry.fabric) {
-      std::fprintf(stderr, "FAIL fabric name of %s: got %s, wanted %s\n", entry.registered, got.c_str(), entry.fabric);
-      failures++;
-    }
-  }
+  Names names(facebook::react::componentNameByReactViewName);
+  for (const char *registered : {"RCTVideo", "RNCWebView", "RNMapsMapView", "ViewManagerAdapter_ExpoImage", "RiveReactNativeView", "RCTSomethingElse"}) names.add(registered);
+  CHECK(!names.empty(), "names were added");
+  CHECK(names.contains("Video"), "RCTVideo is Video to a shadow view");
+  CHECK(!names.contains("RCTVideo"), "no shadow view says RCTVideo");
+  CHECK(names.contains("SomethingElse"), "any RCT prefix goes");
+  for (const char *same : {"RNCWebView", "RNMapsMapView", "ViewManagerAdapter_ExpoImage", "RiveReactNativeView"}) CHECK(names.contains(same), "%s keeps its name", same);
+  CHECK(!names.contains("View"), "a plain View is not a foreign component");
+  CHECK(!names.contains("Text") && !names.contains("Paragraph"), "text is not either");
+  CHECK(!names.contains(nullptr), "a null name is nothing");
+  Names empty(facebook::react::componentNameByReactViewName);
+  CHECK(empty.empty() && !empty.contains("Video"), "nothing registered, nothing matches");
 }
 
 int main() {

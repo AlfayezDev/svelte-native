@@ -50,7 +50,7 @@ bool sameForReactNative(const ShadowView &a, const ShadowView &b) {
 
 void MountingDelegate::registerForeignComponent(const std::string &name) {
   std::lock_guard<std::mutex> lock(foreignMutex_);
-  foreignNames_.insert(foreign::fabricComponentName(name));
+  foreignNames_.add(name);
 }
 
 bool MountingDelegate::isForeignTag(Tag tag) const {
@@ -376,7 +376,7 @@ std::vector<foreign::Owner> MountingDelegate::classifyForeign(const ShadowViewMu
 }
 
 bool MountingDelegate::isForeignName(const char *componentName) const {
-  return componentName != nullptr && foreignNames_.count(componentName) != 0;
+  return foreignNames_.contains(componentName);
 }
 
 } // namespace expo::svelteengine

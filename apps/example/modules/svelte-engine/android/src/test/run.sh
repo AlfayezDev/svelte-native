@@ -9,7 +9,9 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
-g++ -std=c++20 -O1 -Wall -Wextra -Werror -fsanitize=address,undefined "$here/cpp/ForeignSplitTest.cpp" -o "$work/foreign-test"
+# React Native's own `componentNameByReactViewName` (a pure function of std::string) is compiled in: the delegate registers foreign names through it.
+rn="$(cd "$here" && node -p "require('path').dirname(require.resolve('react-native/package.json', { paths: [process.cwd()] }))")"
+g++ -std=c++20 -O1 -Wall -Wextra -Werror -fsanitize=address,undefined -I"$rn/ReactCommon" "$here/cpp/ForeignSplitTest.cpp" "$rn/ReactCommon/react/renderer/componentregistry/componentNameByReactViewName.cpp" -o "$work/foreign-test"
 "$work/foreign-test"
 
 g++ -std=c++20 -O1 -Wall -Wextra -Werror -fsanitize=address,undefined "$here/cpp/AnimatedWireTest.cpp" -o "$work/wire-test"

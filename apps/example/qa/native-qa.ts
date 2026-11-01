@@ -34,7 +34,7 @@ const usage = `usage: native-qa <command> [flags]
   probe  --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--probes <names>] [--direction ltr|rtl]
   hold   --device <serial> [--wait <seconds>] -- <command...>   (the emulator lock held across the commands: a CI lane, a sequence of runs)
   report
-  gates  [--platform android|ios] [--all] [--smoke]`;
+  gates  [--platform android|ios] [--all] [--smoke] [--runs lab,parity,...] [--except lab.runs,...] [--markdown <file>]`;
 
 const [command, ...rest] = process.argv.slice(2);
 

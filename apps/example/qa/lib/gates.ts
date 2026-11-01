@@ -139,6 +139,27 @@ export function deviceRoles(file: GatesFile, serials: string[]): Record<string, 
 	return Object.fromEntries(serials.map((serial) => [serial, file.devices[serial]?.role ?? null]));
 }
 
+/**
+ * The run kinds a lane judges: the ones a device provides, limited to `only` (a lane that did not run the soak does not fail
+ * the soak gates); with `only` and no list for the device, `only` itself. A gate of a kind outside the result is informational.
+ */
+export function restrictRuns(runs: RunKind[] | null, only?: readonly RunKind[]): RunKind[] | null {
+	if (only === undefined) return runs;
+	return runs === null ? [...only] : runs.filter((kind) => only.includes(kind));
+}
+
+/**
+ * `--except lab.runs`: gates a lane does not judge because it ran them at a smaller sample than the bar's (a push lane's 3 lab
+ * repeats against the production 10). Their rows stay in the table as `informational`. A gate id the file does not have is an
+ * error, so a renamed gate cannot silently stop being judged.
+ */
+export function exceptGates(rows: GateRow[], ids: readonly string[], file: Pick<GatesFile, "gates">): GateRow[] {
+	const known = new Set(file.gates.map((gate) => gate.id));
+	const unknown = ids.filter((id) => !known.has(id));
+	if (unknown.length > 0) throw new Error(`--except names no gate of gates.json: ${unknown.join(", ")}`);
+	return rows.map((row) => (ids.includes(row.id) ? { ...row, verdict: "informational" as const } : row));
+}
+
 /** The run kinds each device of a gates file provides; null for a serial it does not list (every kind). */
 export function deviceRuns(file: GatesFile, serials: string[]): Record<string, RunKind[] | null> {
 	return Object.fromEntries(serials.map((serial) => [serial, file.devices[serial]?.runs ?? null]));
@@ -359,6 +380,33 @@ export function renderTable(rows: GateRow[], all: boolean): string {
 				.trimEnd(),
 		)
 		.join("\n");
+}
+
+const markdownEscape = (cell: string): string => cell.replaceAll("|", "\\|");
+
+const verdictMark: Record<Verdict, string> = { pass: "pass", fail: "**FAIL**", "not measured": "**NOT MEASURED**", informational: "informational" };
+
+/**
+ * The gate table as GitHub Markdown, for a job summary: the headline counts, then the gates that failed or were not measured,
+ * then the passing ones, then the informational ones folded away. `title` heads it.
+ */
+export function renderMarkdown(rows: GateRow[], title: string): string {
+	const { gates, informational, ok } = tally(rows);
+	const groups = groupRows(rows);
+	const line = (group: RowGroup): string => {
+		const measured = formatValue(group.measured, group.bar) + (group.worst ? ` (${group.worst})` : "");
+		const verdict = group.total > 1 && group.verdict !== "informational" ? `${verdictMark[group.verdict]} ${group.ok}/${group.total}` : verdictMark[group.verdict];
+		return `| ${[group.id, deviceCell(group.device, group.role), formatBar(group.bar, group.unit), measured, verdict].map(markdownEscape).join(" | ")} |`;
+	};
+	const table = (members: RowGroup[]): string[] => ["| gate | device | bar | measured | verdict |", "| --- | --- | --- | --- | --- |", ...members.map(line)];
+	const bad = groups.filter((group) => group.verdict === "fail" || group.verdict === "not measured");
+	const good = groups.filter((group) => group.verdict === "pass");
+	const info = groups.filter((group) => group.verdict === "informational");
+	const out = [`### ${title}`, "", `${ok ? "PASS" : "FAIL"}: ${gates.pass} gates pass, ${gates.fail} fail, ${gates.notMeasured} not measured${informational > 0 ? `, ${informational} informational (not counted)` : ""}`, ""];
+	if (bad.length > 0) out.push(`**Failed or not measured (${bad.length})**`, "", ...table(bad), "");
+	if (good.length > 0) out.push(`<details><summary>Passing (${good.length})</summary>`, "", ...table(good), "", "</details>", "");
+	if (info.length > 0) out.push(`<details><summary>Informational (${info.length}): the gate is not for this device's role or run kind</summary>`, "", ...table(info), "", "</details>", "");
+	return out.join("\n");
 }
 
 export type Tally = { pass: number; fail: number; notMeasured: number };

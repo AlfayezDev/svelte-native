@@ -4,6 +4,7 @@ import {
 	checkGatesFile,
 	evaluate,
 	renderTable,
+	restrictRuns,
 	splitGates,
 	tally,
 	tallyByDevice,
@@ -331,12 +332,12 @@ export async function loadGates(): Promise<GatesFile> {
 	return file;
 }
 
-/** The devices of a report as the gates see them. Roles come from `gates.json` as it is now, so editing them needs no new measurement. */
-export function reportDevices(report: ReportFile, gates: GatesFile): Record<string, ReportDevice> {
+/** The devices of a report as the gates see them. Roles come from `gates.json` as it is now, so editing them needs no new measurement. `only`: the run kinds a lane ran (`gates --runs`). */
+export function reportDevices(report: ReportFile, gates: GatesFile, only?: readonly RunKind[]): Record<string, ReportDevice> {
 	return Object.fromEntries(
 		Object.entries(report.devices).map(([serial, entry]) => [
 			serial,
-			{ platform: entry.platform, role: gates.devices[serial]?.role ?? null, runs: gates.devices[serial]?.runs ?? null, metrics: entry.metrics },
+			{ platform: entry.platform, role: gates.devices[serial]?.role ?? null, runs: restrictRuns(gates.devices[serial]?.runs ?? null, only), metrics: entry.metrics },
 		]),
 	);
 }

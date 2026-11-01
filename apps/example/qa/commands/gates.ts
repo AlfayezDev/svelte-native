@@ -1,6 +1,6 @@
-import { stat } from "node:fs/promises";
+import { stat, writeFile } from "node:fs/promises";
 import { flagString, parseFlags } from "../lib/flags.ts";
-import { evaluate, splitGates } from "../lib/gates.ts";
+import { evaluate, exceptGates, renderMarkdown, splitGates } from "../lib/gates.ts";
 import { reportPath } from "../lib/paths.ts";
 import { latestRunFiles, readJson, runKinds, slug, type RunKind } from "../lib/runs.ts";
 import type { Platform } from "../lib/types.ts";
@@ -49,6 +49,16 @@ async function newestRunFiles(report: ReportFile, smoke: boolean): Promise<RunFi
 	return states;
 }
 
+/** `--runs lab,parity`: the run kinds a lane ran, so the gates of the others are informational instead of "not measured". */
+export function runsFlag(value: string | boolean | undefined): RunKind[] | undefined {
+	if (typeof value !== "string") return undefined;
+	const kinds = value.split(",").map((kind) => kind.trim()).filter(Boolean);
+	const unknown = kinds.filter((kind) => !(runKinds as readonly string[]).includes(kind));
+	if (kinds.length === 0 || unknown.length > 0)
+		throw new Error(`--runs must list run kinds (${runKinds.join(", ")}); not ${unknown.length > 0 ? unknown.join(", ") : "an empty list"}`);
+	return kinds as RunKind[];
+}
+
 const age = (since: Date): string => {
 	const minutes = Math.round((Date.now() - since.getTime()) / 60_000);
 	return minutes < 90 ? `${minutes} min` : `${(minutes / 60).toFixed(1)} h`;
@@ -60,7 +70,14 @@ const age = (since: Date): string => {
  * first (the QA app's boot, frames, parity, accessibility, crashes), `gates --smoke` the second (the smoke app's native modules).
  */
 export async function gates(argv: string[]): Promise<void> {
-	const { values } = parseFlags(argv, { platform: { type: "string" }, all: { type: "boolean" }, smoke: { type: "boolean" } });
+	const { values } = parseFlags(argv, {
+		platform: { type: "string" },
+		all: { type: "boolean" },
+		smoke: { type: "boolean" },
+		runs: { type: "string" },
+		except: { type: "string" },
+		markdown: { type: "string" },
+	});
 	const smoke = values.smoke === true;
 	const platform = flagString(values.platform);
 	if (platform !== undefined && platform !== "android" && platform !== "ios")
@@ -76,8 +93,18 @@ export async function gates(argv: string[]): Promise<void> {
 	const gatesFile = await loadGates();
 	const lanes = splitGates(gatesFile.gates);
 	console.log(smoke ? "lane: the smoke app's native modules (smoke.* gates)" : "lane: the QA app (every gate but smoke.*; `--smoke` judges the smoke app)");
-	const rows = evaluate(smoke ? lanes.smoke : lanes.standard, reportDevices(reportFile, gatesFile), platform);
+	const only = runsFlag(values.runs);
+	if (only) console.log(`run kinds judged: ${only.join(", ")} (the gates of the others are informational)`);
+	const except = (flagString(values.except) ?? "").split(",").map((id) => id.trim()).filter(Boolean);
+	if (except.length > 0) console.log(`gates not judged by this lane (run at a smaller sample than the bar's): ${except.join(", ")}`);
+	const rows = exceptGates(evaluate(smoke ? lanes.smoke : lanes.standard, reportDevices(reportFile, gatesFile, only), platform), except, gatesFile);
 	const ok = printVerdict(rows, values.all === true);
 	if (problems.length > 0) console.log(`\n${problems.length} problem(s) with the report itself: the verdict above is not one that can pass`);
+	const markdown = flagString(values.markdown);
+	if (markdown !== undefined) {
+		const title = `${smoke ? "Smoke gates" : "Gates"}${platform ? `, ${platform}` : ""}`;
+		const problemLines = problems.length > 0 ? ["**Problems with the report itself** (the verdict cannot pass):", "", ...problems.map((problem) => `- ${problem}`), ""] : [];
+		await writeFile(markdown, `${[renderMarkdown(rows, title), ...problemLines].join("\n")}\n`);
+	}
 	process.exitCode = ok && problems.length === 0 ? 0 : 1;
 }

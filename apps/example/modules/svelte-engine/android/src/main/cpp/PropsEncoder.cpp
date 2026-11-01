@@ -1,5 +1,6 @@
 #include "PropsEncoder.h"
 
+#include "A11yWire.h"
 #include "PropsEncoderNav.h"
 #include "PropsEncoderViews.h"
 
@@ -184,6 +185,15 @@ void encodeCommon(Records &r, const ShadowView &view, float scale) {
     r.begin(kAccessibilityRole);
     b.putInt(b.addString(p.accessibilityRole));
   }
+  // State, value, hint, actions, live region, importantForAccessibility and `role`: records 16..19, 25 and 26 (A11yWire.h).
+  struct Out {
+    Records &r;
+    void begin(int32_t id) { r.begin(id); }
+    void putInt(int32_t v) { r.batch.putInt(v); }
+    int32_t addString(const std::string &s) { return r.batch.addString(s); }
+  } out{r};
+  a11y::encode(out, a11y::Fields{p.accessibilityState, p.accessibilityValue, p.accessibilityHint, p.accessibilityActions,
+      p.accessibilityLiveRegion, p.importantForAccessibility, p.role});
   if (!p.testId.empty()) {
     r.begin(kTestId);
     b.putInt(b.addString(p.testId));

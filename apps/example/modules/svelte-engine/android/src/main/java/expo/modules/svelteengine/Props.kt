@@ -97,6 +97,8 @@ class PropSet {
   var role: String? = null
   var testID: String? = null
   var label: String? = null
+  /** Records 16..19, 25 and 26 (A11yWire.kt). */
+  val a11y = A11yRecords()
 
   var textSeen = false
   var align = 0
@@ -156,6 +158,7 @@ class PropSet {
     radii.fill(0f); border.fill(0f); borderColor = 0
     transform[0] = 0f; transform[1] = 0f; transform[2] = 1f; transform[3] = 1f; transform[4] = 0f
     overflow = 0; pointer = 0; zIndex = 0f; elevation = 0f; accessible = 0; viewFlags = 0; role = null; testID = null; label = null
+    if (a11y.touched) a11y.reset()
     hitSlop = null
     if (textSeen) {
       textSeen = false; align = 0; maxLines = 0; ellipsize = 0; fragments = null; prepared = null
@@ -195,6 +198,7 @@ object Props {
         12 -> out.accessible = ops[i++]
         15 -> out.viewFlags = ops[i++]
         13 -> out.role = strings[ops[i++]]
+        16, 17, 18, 19, 25, 26 -> i = out.a11y.decode(id, ops, i, strings)
         14 -> {
           val slop = out.hitSlop ?: FloatArray(4).also { out.hitSlop = it }
           for (k in 0..3) slop[k] = f(ops, i + k)

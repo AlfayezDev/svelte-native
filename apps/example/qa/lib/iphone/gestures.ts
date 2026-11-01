@@ -274,6 +274,23 @@ async function readTrace(target: IosSession["target"], logPath: string, outFile:
 	return [`trace: ${trace.rows.length} rows, ${trace.touches?.length ?? 0} touch events, ${trace.meta.length} recognizers, ${trace.context.length} context samples; ${actions.length} actions`, ...describeStories(storiesFrom(trace, actions))];
 }
 
+/** The line the test prints once it has opened the lab's link. */
+export const testStartedLine = "GESTURES-STARTED";
+
+/**
+ * Waits for the test to say it opened the lab, before the harness asks the phone anything: devicectl calls made while the runner is starting up
+ * (automation mode, the app's launch) hang for a minute and a half now and then. False when the line did not come in time (the run goes on and says why).
+ */
+async function waitForTestStarted(mac: Mac, outFile: string, maxMs: number): Promise<boolean> {
+	const deadline = Date.now() + maxMs;
+	while (Date.now() < deadline) {
+		const result = await remote(mac, `grep -c ${shellQuote(testStartedLine)} ${shellQuote(outFile)} 2>/dev/null`);
+		if (result.stdout.trim() !== "" && result.stdout.trim() !== "0") return true;
+		await sleep(2000);
+	}
+	return false;
+}
+
 /** Whether the process the test was started as (the shell that runs xcodebuild) still exists. */
 async function testAlive(mac: Mac, pid: number): Promise<boolean> {
 	const result = await remote(mac, `kill -0 ${pid} 2>/dev/null && echo alive`);
@@ -294,6 +311,7 @@ export async function iosGesturesOnce(session: IosSession, names: string[], time
 	const url = options.link ?? `rasheed-svelte:///__dev?run=${runValue(names, "xctest")}&token=${token}`;
 	const started = await remoteOk(mac, inBackground(testCommand({ dir: uiTestsRemote, udid: session.udid, bundleId: target.bundleId, seconds, outFile, url, trace: options.trace === true, calibrate: options.calibrate, edgeX: options.edgeX ?? defaultEdgeX, edgeRelease: options.edgeRelease })));
 	const testPid = Number(started.trim().split("\n").pop());
+	if (!(await waitForTestStarted(mac, outFile, 150_000))) console.log(`warning: the test did not say ${testStartedLine} within 150 s`);
 	const deadline = Date.now() + timeoutMs;
 	let results: IosLabResults | null = null;
 	let raw = "";
@@ -326,9 +344,16 @@ export async function iosGesturesOnce(session: IosSession, names: string[], time
 		}
 		if (Date.now() >= nextAliveCheck) {
 			nextAliveCheck = Date.now() + aliveEveryMs;
-			const running = await appProcesses(target, session.installed);
-			if (pid < 0) pid = running[0] ?? -1;
-			else if (!running.includes(pid)) { died = `the app (pid ${pid}) was not running before the scenarios finished`; break; }
+			let running: number[] | null = null;
+			try {
+				running = await appProcesses(target, session.installed);
+			} catch (error) {
+				console.log(`  listing the phone's processes failed: ${String(error instanceof Error ? error.message : error).slice(0, 120)}`);
+			}
+			if (running !== null) {
+				if (pid < 0) pid = running[0] ?? -1;
+				else if (!running.includes(pid)) { died = `the app (pid ${pid}) was not running before the scenarios finished`; break; }
+			}
 			// A test that ended (it failed to start, or gave up) will not touch the screen again: waiting out the timeout would only waste the phone's time.
 			if (Number.isFinite(testPid) && !(await testAlive(mac, testPid))) { testEnded = "the XCUITest run ended before the lab finished"; break; }
 		}

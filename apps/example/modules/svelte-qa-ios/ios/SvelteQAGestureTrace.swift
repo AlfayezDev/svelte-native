@@ -39,6 +39,8 @@ final class SvelteQAGestureTrace {
   private var rows: [[Any]] = []
   private var context: [[Any]] = []
   private var touches: [[Any]] = []
+  /// `[t, id, state, vx, vy]`: what each recognizer's own target-action saw, which the per-frame samples cannot tell apart (ended and cancelled both read as idle by the next frame).
+  private var events: [[Any]] = []
   private let startedMs = SvelteQAGestureTrace.wallMs()
   private var lastContext: String = ""
   private var dirty = false
@@ -84,6 +86,8 @@ final class SvelteQAGestureTrace {
       entry["frame"] = [frame.minX, frame.minY, frame.width, frame.height].map { ($0 * 10).rounded() / 10 }
     }
     meta.append(entry)
+    // A target of our own sees every state change the recognizer makes, ended and cancelled included, with the pan's velocity at that moment.
+    recognizer.addTarget(self, action: #selector(recognizerChanged(_:)))
     return number
   }
 
@@ -147,6 +151,17 @@ final class SvelteQAGestureTrace {
     dirty = true
   }
 
+  @objc private func recognizerChanged(_ recognizer: UIGestureRecognizer) {
+    guard let number = ids[ObjectIdentifier(recognizer)], events.count < maxRows else { return }
+    var row: [Any] = [Self.wallMs(), number, Self.stateNumber(recognizer.state)]
+    if let pan = recognizer as? UIPanGestureRecognizer, let view = pan.view {
+      let velocity = pan.velocity(in: view)
+      row += [(velocity.x * 10).rounded() / 10, (velocity.y * 10).rounded() / 10]
+    }
+    events.append(row)
+    dirty = true
+  }
+
   @objc private func tick(_ link: CADisplayLink) {
     let now = Self.wallMs()
     var anyTouch = false
@@ -207,8 +222,19 @@ final class SvelteQAGestureTrace {
       while let next = presented?.presentedViewController { presented = next }
       if let candidate = presented?.presentationController as? UISheetPresentationController { sheet = candidate }
     }
+    // The transition UIKit runs (a pop under the finger, or its cancel): how far it is, whether the finger drives it, and the speed it finishes at.
+    func transition(_ navigation: UINavigationController) -> [String: Any] {
+      var out: [String: Any] = ["depth": navigation.viewControllers.count, "transitioning": navigation.transitionCoordinator != nil]
+      if let coordinator = navigation.transitionCoordinator {
+        out["interactive"] = coordinator.isInteractive
+        out["cancelled"] = coordinator.isCancelled
+        out["percent"] = (coordinator.percentComplete * 1000).rounded() / 1000
+        out["velocity"] = (coordinator.completionVelocity * 1000).rounded() / 1000
+      }
+      return out
+    }
     var entry: [String: Any] = [
-      "navigation": navigations.map { ["depth": $0.viewControllers.count, "transitioning": $0.transitionCoordinator != nil] as [String: Any] },
+      "navigation": navigations.map { transition($0) },
     ]
     if let sheet {
       var info: [String: Any] = ["detent": sheet.selectedDetentIdentifier?.rawValue ?? NSNull()]
@@ -232,7 +258,7 @@ final class SvelteQAGestureTrace {
   private func flush() {
     dirty = false
     lastWrite = CACurrentMediaTime()
-    let payload: [String: Any] = ["startedMs": startedMs, "meta": meta, "rows": rows, "context": context, "touches": touches, "columns": ["t", "id", "state", "touches", "tx", "ty", "x", "y"]]
+    let payload: [String: Any] = ["startedMs": startedMs, "meta": meta, "rows": rows, "context": context, "touches": touches, "events": events, "columns": ["t", "id", "state", "touches", "tx", "ty", "x", "y"]]
     guard let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
     writer.async {
       guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]) else { return }

@@ -207,6 +207,34 @@ describe("the recognizer recording against the test's actions", () => {
 		expect(describeStories([story as NonNullable<typeof story>]).join("\n")).toContain("first touch at (88, 203) hit RCTViewComponentView#gesture.box");
 	});
 
+	test("how a recognizer ended by its own target, and what UIKit's transition did after the finger let go", () => {
+		const withPop: TraceFile = {
+			...trace,
+			touches: [[10_000, "began", 2, 231, "-"], [10_300, "ended", 250, 231, "-"]],
+			events: [[10_096, 1, 1, 80, 0], [10_300, 1, 3, 210.5, 0], [10_096, 0, 1, 0, 0], [10_310, 0, 4, 0, 0]],
+			context: [
+				[9_000, JSON.stringify({ navigation: [{ depth: 2, transitioning: false }] })],
+				[10_250, JSON.stringify({ navigation: [{ depth: 1, transitioning: true, interactive: true, cancelled: false, percent: 0.66, velocity: 0 }] })],
+				[10_320, JSON.stringify({ navigation: [{ depth: 1, transitioning: true, interactive: false, cancelled: true, percent: 0.62, velocity: -0.4 }] })],
+				[10_900, JSON.stringify({ navigation: [{ depth: 2, transitioning: false }] })],
+			],
+		};
+		const [story] = storiesFrom(withPop, [{ ...action, beganMs: 9_995 }]);
+		const pan = story?.recognizers.find((entry) => entry.handlerTag === 7);
+		const pop = story?.recognizers.find((entry) => entry.class.startsWith("_UIParallax"));
+		expect(pop?.terminal).toEqual({ as: "ended", velocity: [210.5, 0] });
+		expect(pan?.terminal).toEqual({ as: "cancelled", velocity: [0, 0] });
+		expect(story?.pop).toEqual({ percentAtRelease: 0.66, cancelled: true, completionVelocity: -0.4 });
+		expect(describeStories([story as NonNullable<typeof story>]).join("\n")).toContain("66 % when the finger let go, CANCELLED by UIKit");
+	});
+
+	test("the recogniser's own target tells ended from cancelled", () => {
+		const withEvents: TraceFile = { ...trace, touches: [[10_000, "began", 88, 203, "-"]], events: [[10_300, 0, 4, 0, 0], [10_300, 1, 3, 210.5, 1]] };
+		const [story] = storiesFrom(withEvents, [action]);
+		expect(story?.recognizers.find((entry) => entry.id === 0)?.terminal).toEqual({ as: "cancelled", velocity: [0, 0] });
+		expect(story?.recognizers.find((entry) => entry.id === 1)?.terminal).toEqual({ as: "ended", velocity: [210.5, 1] });
+	});
+
 	test("a row outside every action's window belongs to none", () => {
 		const [story] = storiesFrom(trace, [{ ...action, beganMs: 13_000, endedMs: 13_100 }]);
 		expect(story?.touchDownMs).toBeNull();

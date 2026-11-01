@@ -67,6 +67,8 @@ final class GesturesUITests: XCTestCase {
                 // UIKit completes an interactive pop on progress and the finger's velocity when it lifts, and XCUITest's finger arrives at rest: a swipe that stops at
                 // about half the width is cancelled one run in two (205 pt of 375 was), so the swipe goes to 300 pt.
                 sent["by"] = [300, 0]
+                // `GESTURES_EDGE_RELEASE`: `fling` (the default) lifts the finger at the end of a fast drag, `rest` holds it there for 0.4 s first.
+                sent["release"] = ProcessInfo.processInfo.environment["GESTURES_EDGE_RELEASE"] == "rest" ? "rest" : "fling"
             }
             var failure: String? = nil
             let began = Date()
@@ -173,7 +175,14 @@ final class GesturesUITests: XCTestCase {
             let speed = hypot(dx, dy) / duration
             aimed["from"] = [start.screenPoint.x, start.screenPoint.y]
             aimed["to"] = [end.screenPoint.x, end.screenPoint.y]
-            start.press(forDuration: 0.05, thenDragTo: end, withVelocity: XCUIGestureVelocity(rawValue: speed), thenHoldForDuration: 0)
+            switch input["release"] as? String {
+            case "fling":
+                start.press(forDuration: 0, thenDragTo: end, withVelocity: .fast, thenHoldForDuration: 0)
+            case "rest":
+                start.press(forDuration: 0.05, thenDragTo: end, withVelocity: XCUIGestureVelocity(rawValue: speed), thenHoldForDuration: 0.4)
+            default:
+                start.press(forDuration: 0.05, thenDragTo: end, withVelocity: XCUIGestureVelocity(rawValue: speed), thenHoldForDuration: 0)
+            }
         case "hold":
             let start = try coordinate(input["at"], in: app)
             let duration = number(input["durationMs"]) / 1000

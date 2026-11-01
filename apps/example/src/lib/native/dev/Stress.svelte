@@ -13,6 +13,8 @@
   import StressTile from "./StressTile.svelte";
   import { screenLab } from "./model.svelte.ts";
   import { runForeignViews } from "./foreign-lab.ts";
+  import { runForeignLeftovers, runForeignLibraries } from "./foreign-libraries-lab.ts";
+  import { libraryKinds, type LibraryKind } from "./LibrarySet.svelte";
   import { smokeScenarioOutcome } from "./smoke-rules.ts";
   import { estimatePeriod, startFrameMonitor, stopFrameMonitor, summarizeFrames, type FrameStats, type FrameSummary } from "./frames.ts";
   import { detailOf, lab as gestureLab, outcomeOf, scenarios as gestureSpecs, type Drive, type ScenarioSpec, type Snapshot } from "./gestures-lab.ts";
@@ -135,6 +137,8 @@
       return { collected, allocated: stats.js_allocatedBytes ?? -1, heapSize: stats.js_heapSize ?? -1, malloc: stats.js_mallocSizeEstimate ?? -1, va: stats.js_vaSize ?? -1, gcs: stats.js_numGCs ?? -1 };
     });
   }
+  /** `run=foreign-libraries,only:image.blur`: the libraries `foreign-libraries` checks (the thirteen when absent). */
+  let foreignOnly: LibraryKind[] | undefined;
   /** Who injects the input of the `gestures-*` scenarios: `run=...,drive:adb` (the harness, from the lines of the handshake), `drive:qa` (the app's own injector, Android's QA variant), `drive:xctest`; none: a person. */
   let gestureDrive: Drive = "none";
   /**
@@ -510,6 +514,14 @@
       const { frames, value } = await measure(() => runForeignViews(router, signal));
       return { verdict: value.passed ? "pass" : "fail", summary: `${value.summary} · ${describe(frames)}`, frames, detail: value.detail };
     } },
+    { name: "foreign-libraries", label: "Native-view libraries (thirteen) inline, in a list row and in a sheet: mounts, prop updates, events, commands, pixels of a capture (`run=foreign-libraries`, `only:<library>.<library>` after it narrows it)", async run(signal) {
+      const value = await runForeignLibraries(router, signal, foreignOnly);
+      return { verdict: value.passed ? "pass" : "fail", summary: value.summary, detail: value.detail };
+    } },
+    { name: "foreign-leftovers", label: "Capture files of the previous launch are gone (`run=foreign-leftovers`, the launch after `foreign-libraries`)", async run() {
+      const value = await runForeignLeftovers();
+      return { verdict: value.passed ? "pass" : "fail", summary: value.summary, detail: value.detail };
+    } },
     { name: "smoke", label: "Native modules (smoke test) · one core call for each library the production app links, from Svelte Native without React (`run=smoke`, SPEC.md \"Native modules (smoke test)\")", async run(signal) {
       // Required here, not at the top: the libraries load when the scenario runs, and only the smoke app links them.
       if (!nativeSmokeEnabled) return { verdict: "info", summary: "Not linked in this build: the native module smoke test runs in the smoke app (io.rasheed.svelteqa.smoke)." };
@@ -602,7 +614,7 @@
     } },
     ...gestureSpecs.map((spec): Scenario => ({ name: spec.name, label: `Gestures · ${spec.label} (\`run=${spec.name}\`, with \`drive:adb\`, \`drive:qa\` or \`drive:xctest\` after it in the run list)`, run: (signal) => gestureScenario(spec, signal) })),
   ];
-  const quick = scenarios.filter((scenario) => !["warm-up", "input-typing", "foreign-views", "smoke", "churn-60s", "soak-120s", "soak-mix", "crash-js", "list-300-virtual-profile", "list-mount-loop", "list-mount-hermes"].includes(scenario.name) && !scenario.name.startsWith("gestures-"));
+  const quick = scenarios.filter((scenario) => !["warm-up", "input-typing", "foreign-views", "foreign-libraries", "foreign-leftovers", "smoke", "churn-60s", "soak-120s", "soak-mix", "crash-js", "list-300-virtual-profile", "list-mount-loop", "list-mount-hermes"].includes(scenario.name) && !scenario.name.startsWith("gestures-"));
   const ordered = $derived(scenarios.flatMap((scenario) => results.filter((result) => result.name === scenario.name)));
 
   function record(result: Result) {
@@ -644,8 +656,10 @@
     if (!requested) return;
     const parts = requested.split(",").map((name) => name.trim()).filter(Boolean);
     const drive = parts.find((name) => name.startsWith("drive:"))?.slice("drive:".length);
+    const only = parts.find((name) => name.startsWith("only:"))?.slice("only:".length).split(".").filter((name): name is LibraryKind => (libraryKinds as readonly string[]).includes(name));
+    if (only && only.length > 0) foreignOnly = only;
     gestureDrive = drive === "adb" || drive === "qa" || drive === "xctest" ? drive : "none";
-    const names = parts.filter((name) => !name.startsWith("drive:")).map((name) => {
+    const names = parts.filter((name) => !name.startsWith("drive:") && !name.startsWith("only:")).map((name) => {
       const soak = /^soak-mix-(\d+)s((?:\.[a-z]+)*)$/.exec(name);
       if (!soak) return name;
       soakSeconds = Number(soak[1]);

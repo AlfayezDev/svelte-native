@@ -208,6 +208,9 @@ class SvelteEngineModule : Module() {
 
     // Live counts for the soak runner (MountingManager.stats); null while the main thread is busy for over 500 ms or before install.
     Function("stats") { onMainBlocking { mountingManager?.stats() } }
+    // Accessibility lab (`/__dev/a11y`, A11yDump.kt): the node info the views with a testID publish, and an action performed the way a service does.
+    Function("accessibilityNodes") { onMainBlocking { mountingManager?.root?.let { A11yDump.nodes(it) } } }
+    Function("performAccessibilityAction") { testID: String, name: String -> onMainBlocking { mountingManager?.root?.let { A11yDump.perform(it, testID, name) } } }
 
     // `react-native-view-shot` for engine views (Capture.kt): the library's own module resolves a tag through React Native's mounting
     // manager, which has no engine view. Resolves with the image's URI or data, or null for a tag that is not an engine view of its

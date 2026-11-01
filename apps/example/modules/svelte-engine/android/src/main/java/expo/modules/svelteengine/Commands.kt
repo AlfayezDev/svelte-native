@@ -158,7 +158,8 @@ object Commands {
     p.accessible = if (view.isFocusable) 1 else 0
     p.role = node.role
     p.testID = node.testID
-    p.label = view.contentDescription?.toString()
+    p.label = node.label
+    node.a11y?.let { p.a11y.copyFrom(it); p.a11y.touched = true }
   }
 
   @Suppress("UNCHECKED_CAST")

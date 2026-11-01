@@ -9,6 +9,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import com.facebook.react.uimanager.PointerEvents
 import com.facebook.react.uimanager.ReactPointerEventsView
 import expo.modules.svelteengine.A11y
+import expo.modules.svelteengine.A11yRecords
 import expo.modules.svelteengine.GestureRules
 
 /** Per-view state the mounting layer keeps outside of View ids and tags. */
@@ -32,6 +33,12 @@ class NodeState {
   var zIndex = 0f
   var testID: String? = null
   var role: String? = null
+  /** `accessibilityLabel` as the prop gave it (the view's content description may carry more: "busy", the value's text). */
+  var label: String? = null
+  /** The accessibility records applied (state, value, hint, actions, mode, role), null when none is set: what the delegate publishes. */
+  var a11y: A11yRecords? = null
+  /** Expanded (2) or collapsed (1) by an accessibility action since the last props: React Native flips the node's expand action until JavaScript answers. */
+  var expandedLocal = 0
   var a11yDelegate = false
   var transformed = false
   var outlineClip = false
@@ -49,7 +56,7 @@ class NodeState {
 
   /**
    * Back to the state of a new view for [ViewPool]. The background drawable and the a11y delegate stay installed
-   * (the delegate reads `testID` and `role` from here, the drawable is rewritten by the next full prop record);
+   * (the delegate reads `testID`, `role` and `a11y` from here, the drawable is rewritten by the next full prop record);
    * `outlineClip` stays because it mirrors the view's own outline provider.
    */
   fun reset() {
@@ -64,6 +71,9 @@ class NodeState {
     zIndex = 0f
     testID = null
     role = null
+    label = null
+    a11y = null
+    expandedLocal = 0
     transformed = false
     bg = 0
     radii.fill(0f)

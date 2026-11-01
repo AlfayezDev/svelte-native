@@ -120,8 +120,9 @@ export function labMetrics(file: LabFile, pinned: readonly string[]): Metrics {
 	});
 	metrics["list.virtual300.mountMs"] = worst(mount, largest);
 	// Informational, no bar: when row 9 (the end of the first window of ten rows, before the window was sized by what fills the
-	// list) had reported its layout, and the mount again on a warm core with a collected heap.
-	for (const [key, field] of [["windowMs", "windowMs"], ["hotMountMs", "hotMountMs"]] as const) {
+	// list) had reported its layout; the mount again on a warm core with a collected heap, after 200 ms of idle, and with the old
+	// first window of ten rows after 100 and 200 ms of idle.
+	for (const [key, field] of [["windowMs", "windowMs"], ["hotMountMs", "hotMountMs"], ["coldMountMs", "coldMountMs"], ["legacyMountMs", "legacyMountMs"], ["legacyColdMountMs", "legacyColdMountMs"]] as const) {
 		metrics[`list.virtual300.${key}`] = worst(
 			runs.map((run) => {
 				const value = run.scenarios.find((scenario) => scenario.name === listScenario)?.detail?.[field];

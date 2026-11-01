@@ -185,6 +185,7 @@ describe("labMetrics", () => {
 		const combined = labMetrics(labFile(first, second), pinned);
 		expect(combined["list.virtual300.windowMs"]).toBe(19.9);
 		expect(combined["list.virtual300.hotMountMs"]).toBe(3.1);
+		expect(combined["list.virtual300.coldMountMs"]).toBeNull();
 	});
 	test("the teardown of a list is reported per scenario, as the worst of the runs", () => {
 		const first = run();

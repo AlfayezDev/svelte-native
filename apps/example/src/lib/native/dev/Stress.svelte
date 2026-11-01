@@ -48,6 +48,8 @@
   ];
   let rowsLaidOut: (() => void) | undefined;
   let windowLaidOut: (() => void) | undefined;
+  /** Informational mounts of the old first window (`initialNumToRender` 10) beside the one that is sized by what fills the list. */
+  let legacyWindow = $state(false);
   let modalShown: (() => void) | undefined;
   let scroller: NativeScrollView | null = null;
   let virtualList: { scrollToIndex: (index: number, animated?: boolean) => void } | undefined = $state();
@@ -272,8 +274,8 @@
    * sat in front of the next scenario's first layout event and was counted as that scenario's mount (`list.virtual300.mountMs`
    * 49 to 52 ms on the iPhone SE 3 after `list-300-raw`, 9 to 13 ms alone). A real navigation's previous screen is long gone.
    */
-  async function mountFrames(signal: AbortSignal) {
-    for (let frame = 0; frame < 6 && !signal.aborted; frame++) await new Promise<void>((resolve) => { requestAnimationFrame(() => resolve()); });
+  async function mountFrames(signal: AbortSignal, frames = 6) {
+    for (let frame = 0; frame < frames && !signal.aborted; frame++) await new Promise<void>((resolve) => { requestAnimationFrame(() => resolve()); });
   }
 
   /**
@@ -334,6 +336,22 @@
   }
 
   /**
+   * A fresh windowed list (a new instance, so its first window is sized again) mounted after `idleFrames` idle frames, with the old
+   * first window of ten rows when `legacy`. Informational: the same mount under other conditions than the gated one, in one run, so
+   * that before and after are measured on the same phone in the same minute.
+   */
+  async function freshMount(signal: AbortSignal, idleFrames: number, legacy: boolean): Promise<number> {
+    legacyWindow = legacy;
+    view = "none"; rows = []; await settle();
+    view = "virtual-list"; await settle(); await mountFrames(signal, idleFrames);
+    const { mountMs } = await mountVirtual(signal);
+    await mountFrames(signal);
+    rows = []; await settle();
+    legacyWindow = false;
+    return mountMs;
+  }
+
+  /**
    * Empties the list the way a screen that clears its rows does, and reports what the unmount cost: `unmountMs` is the JavaScript
    * flush, `teardown` the UI-runtime frame intervals from the clear until the main thread has applied it (its `max` is the longest
    * time the main thread was away from drawing, 35 to 50 ms for 300 rows on the iPhone SE 3). Informational: no bar judges it.
@@ -364,8 +382,11 @@
     });
     const { unmountMs, teardown } = await tearDown(signal);
     const { hotMountMs, collected } = await hotMount(signal);
+    const coldMountMs = await freshMount(signal, 12, false);
+    const legacyMountMs = await freshMount(signal, 6, true);
+    const legacyColdMountMs = await freshMount(signal, 12, true);
     view = "none"; await settle();
-    return { verdict: verdict(frames), summary: `${describe(frames)} · mount to layout ${mountMs.toFixed(0)} ms (window of ten ${windowMs.toFixed(0)} ms, Svelte flush ${svelteMs.toFixed(0)} ms, warm core ${hotMountMs.toFixed(0)} ms) · unmount ${unmountMs.toFixed(0)} ms · teardown longest frame ${teardown.max.toFixed(0)} ms`, frames, detail: { mountMs, windowMs, svelteMs, unmountMs, teardownMaxMs: teardown.max, teardownDroppedPct: teardown.droppedPct, hotMountMs, clipped: false, raw: false, virtual: true, collected, flushes } };
+    return { verdict: verdict(frames), summary: `${describe(frames)} · mount to layout ${mountMs.toFixed(0)} ms (window of ten ${windowMs.toFixed(0)} ms, Svelte flush ${svelteMs.toFixed(0)} ms, warm core ${hotMountMs.toFixed(0)} ms, 200 ms idle ${coldMountMs.toFixed(0)} ms, old window ${legacyMountMs.toFixed(0)} / ${legacyColdMountMs.toFixed(0)} ms) · unmount ${unmountMs.toFixed(0)} ms · teardown longest frame ${teardown.max.toFixed(0)} ms`, frames, detail: { mountMs, windowMs, svelteMs, unmountMs, teardownMaxMs: teardown.max, teardownDroppedPct: teardown.droppedPct, hotMountMs, coldMountMs, legacyMountMs, legacyColdMountMs, clipped: false, raw: false, virtual: true, collected, flushes } };
   }
 
   const scenarios: Scenario[] = [
@@ -785,7 +806,7 @@
     {/each}
   </ScrollView>
 {:else if view === "virtual-list"}
-  <List bind:this={virtualList} items={rows} rowHeight={46} keyOf={(row) => row} nestedScrollEnabled style={{ height: 360, borderRadius: 12, borderWidth: 1, borderColor: theme.border }} contentContainerStyle={{ padding: 8 }}>
+  <List bind:this={virtualList} items={rows} rowHeight={46} initialNumToRender={legacyWindow ? 10 : undefined} keyOf={(row) => row} nestedScrollEnabled style={{ height: 360, borderRadius: 12, borderWidth: 1, borderColor: theme.border }} contentContainerStyle={{ padding: 8 }}>
     {#snippet row(row)}
       <View style={{ height: 40, padding: 10, borderRadius: 8, backgroundColor: theme.surface }} onLayout={row === fillRow ? () => rowsLaidOut?.() : row === 9 ? () => windowLaidOut?.() : undefined}>
         <Text style={{ color: theme.foreground, fontSize: 14 }}>Row {row + 1}</Text>

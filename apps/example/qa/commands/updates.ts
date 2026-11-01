@@ -135,6 +135,10 @@ export async function updates(argv: string[]): Promise<void> {
 		console.log(line);
 		logs.push(line);
 	};
+	/** A warm launch is quiet on its own; a line every fifth keeps a half-hour run readable. */
+	const progress = (series: string, launch: Launch) => {
+		if (launch.index % 5 === 0 || launch.error) note(`  ${series} warm ${String(launch.index).padStart(2)}: ${launch.displayMs ?? "-"} ms${launch.error ? `  [${launch.error}]` : ""}`);
+	};
 	note(`${device.kind} ${device.model} (${serial}) ${device.abi}; channel ${channel}; ${apk}; ${baseline ? `baseline ${baseline}` : "no baseline build"}`);
 
 	// 1. The same app without a channel, warm: the boot the channel build is compared with.
@@ -147,6 +151,7 @@ export async function updates(argv: string[]): Promise<void> {
 		for (let index = 1; index <= warmCount; index++) {
 			const { launch } = await launchSlot(serial, packageName, "warm", index, 0);
 			baselineLaunches.push(launch);
+			progress("baseline", launch);
 		}
 	} else note("no baseline build (qa/out/app-<abi>.apk): the boot comparison is skipped");
 
@@ -212,6 +217,7 @@ export async function updates(argv: string[]): Promise<void> {
 			for (let index = 1; index <= warmCount; index++) {
 				const { launch } = await launchSlot(serial, packageName, "warm", index, 0);
 				launches.push(launch);
+				progress("updates", launch);
 			}
 			return launches;
 		},

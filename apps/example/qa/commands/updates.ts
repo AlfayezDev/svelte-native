@@ -214,13 +214,16 @@ export async function updates(argv: string[]): Promise<void> {
 					await shell(serial, resetRequest(token));
 					await clearLogcat(serial);
 					await startApp(serial, packageName);
-					for (let waited = 0; waited < 20 && !state.storeCleared; waited++) {
+					let text = "";
+					for (let waited = 0; waited < 30 && !state.storeCleared; waited++) {
 						await sleep(1000);
-						state.storeCleared = parseUpdateObservation(await dumpLogcat(serial), packageName).reset?.token === token;
+						text = await dumpLogcat(serial);
+						state.storeCleared = parseUpdateObservation(text, packageName).reset?.token === token;
 					}
+					logs.push("=== restore (the plain build starts with a reset token) ===", ...text.split("\n").filter((line) => relevant.test(line)));
 					await shell(serial, resetRelease);
 					await forceStop(serial, packageName);
-					if (!state.storeCleared) state.note = "the plain QA build did not report the reset: its update store still holds the channel build's updates (it never launches them: their request headers differ)";
+					if (!state.storeCleared) state.note = `the plain QA build did not report the reset within 30 s (${text.split("\n").filter((line) => line.includes("SvelteUpdates")).length} SvelteUpdates log lines): its update store still holds the channel build's updates (it never launches them: their request headers differ)`;
 				} catch (error) {
 					state.note = `could not empty the update store with the plain build: ${redact(error instanceof Error ? error.message : String(error))}`;
 				}

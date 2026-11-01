@@ -3,7 +3,7 @@
 #include <jni.h>
 #include <sched.h>
 
-extern "C" JNIEXPORT jlong JNICALL Java_expo_modules_svelteengine_Affinity_affinityOf(JNIEnv *, jclass, jint tid) {
+extern "C" JNIEXPORT jlong JNICALL Java_expo_modules_svelteengine_Affinity_nativeAffinityOf(JNIEnv *, jclass, jint tid) {
   cpu_set_t set;
   CPU_ZERO(&set);
   if (sched_getaffinity(tid, sizeof(set), &set) != 0) return -1;
@@ -14,7 +14,7 @@ extern "C" JNIEXPORT jlong JNICALL Java_expo_modules_svelteengine_Affinity_affin
   return mask;
 }
 
-extern "C" JNIEXPORT jboolean JNICALL Java_expo_modules_svelteengine_Affinity_setAffinity(JNIEnv *, jclass, jint tid, jlong mask) {
+extern "C" JNIEXPORT jboolean JNICALL Java_expo_modules_svelteengine_Affinity_nativeSetAffinity(JNIEnv *, jclass, jint tid, jlong mask) {
   cpu_set_t set;
   CPU_ZERO(&set);
   for (int cpu = 0; cpu < 63; cpu++) {

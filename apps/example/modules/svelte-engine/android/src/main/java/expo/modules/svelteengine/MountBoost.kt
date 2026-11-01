@@ -1,6 +1,7 @@
 package expo.modules.svelteengine
 
 import android.os.Handler
+import android.os.Process
 
 /**
  * Keeps the main thread and the RenderThread on the big cores while a large batch is applied and its first frames are drawn.
@@ -21,10 +22,13 @@ import android.os.Handler
  * Main thread only.
  */
 internal class MountBoost(private val handler: Handler) {
-  private var big: Long? = null
   private var probed = false
   private var held = false
+  /** The main thread, by id, so that [release] puts back the mask of the thread it took it from. */
+  private var mainTid = 0
   private var mainBefore = 0L
+  /** What the kernel kept of the request after the cpuset; threads that inherited it are put back by [release]. */
+  private var pinned = 0L
   @Volatile private var renderTid = 0
   private var looking = false
   private var renderBefore = 0L
@@ -34,20 +38,28 @@ internal class MountBoost(private val handler: Handler) {
   fun begin() {
     if (!probed) {
       probed = true
-      big = Affinity.bigCores()
+      mainTid = Process.myTid()
     }
-    val mask = big ?: return
+    val mask = Affinity.bigCores() ?: return
     if (!held) {
       val before = Affinity.affinityOf(0)
       if (before <= 0 || before == mask) return
+      if (!Affinity.setAffinity(0, mask)) return
+      pinned = Affinity.affinityOf(0)
+      if (pinned <= 0 || pinned == before) {
+        Affinity.setAffinity(0, before)
+        return
+      }
       held = true
       mainBefore = before
-      Affinity.setAffinity(0, mask)
       val render = renderTid
       if (render == 0 && !looking) {
         // Finding the thread reads every thread's name: not on the main thread, in the middle of a batch. The first push goes without it.
         looking = true
-        Thread({ renderTid = Affinity.threadNamed("RenderThread") }, "svelte-render-id").apply { isDaemon = true }.start()
+        Thread({
+          renderTid = Affinity.threadNamed("RenderThread")
+          looking = false // a lookup that found nothing is tried again at the next screen
+        }, "svelte-render-id").apply { isDaemon = true }.start()
       }
       renderBefore = if (render != 0) Affinity.affinityOf(render) else 0L
       if (renderBefore > 0 && renderBefore != mask) Affinity.setAffinity(render, mask) else renderBefore = 0L
@@ -56,14 +68,16 @@ internal class MountBoost(private val handler: Handler) {
     handler.postDelayed(release, HOLD_MS)
   }
 
-  /** Gives both threads their masks back. Main thread. */
+  /** Gives the threads their masks back, and every thread that inherited the pinned mask. Main thread. */
   fun release() {
     handler.removeCallbacks(release)
     if (!held) return
     held = false
-    Affinity.setAffinity(0, mainBefore)
+    Affinity.setAffinity(mainTid, mainBefore)
     if (renderBefore > 0) Affinity.setAffinity(renderTid, renderBefore)
     renderBefore = 0L
+    // Threads the pinned main thread started during the window (an image loader's pool, a handler thread) inherited the big mask.
+    Affinity.reopen(pinned, mainBefore)
   }
 
   private companion object {

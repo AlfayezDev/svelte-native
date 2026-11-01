@@ -17,6 +17,7 @@ The state of the code this was written against is `48d746e54`. Where reading the
 | title first | the title is a stop and the first after the back button and left slot | `a11y.titleNotFirst` |
 | focus trap | while a sheet or modal is up, no label of the screen underneath is in the tree | `a11y.focusLeaks` |
 | completeness | every screen of the matrix was dumped, signed-in screens included | `a11y.incomplete`, `a11y.signedIn.missing` |
+| state (Android) | the accessibility lab's controls publish the state, value, hint, actions, live region and role React Native's views would, read from the dump and from the app's own node info | `a11y.stateMismatches` |
 | touch targets | an enabled control under 48 dp (Android only) is counted | `a11y.smallTargets`, not gated |
 
 Last results (pre-final, see PLAN.md): OVH emulator 100 screens, 460 interactive elements, 0 findings (`86a2de13e`, 27 Oct); iPhone SE 3 48 screens, 0 findings (`86a2de13e`). Related automation: the parity suite compares screenshots at font scale 2.0 and in Arabic with 0 differing pixels (it freezes what is drawn, it does not judge legibility), and the resilience suite changes font scale, locale and rotation under a running app and fails on a crash or ANR.
@@ -27,11 +28,11 @@ Last results (pre-final, see PLAN.md): OVH emulator 100 screens, 460 interactive
 
 Read from the source at `48d746e54`; the steps below test each one.
 
-- **Android engine props.** For views the engine mounts, the Android props record carries `testID`, `accessibilityLabel`, `accessible` and `accessibilityRole` (and a click action for `Pressable`); `accessibilityState` (the product's `Button` sends `disabled` and `busy`), `accessibilityValue`, `accessibilityHint`, `accessibilityActions` and `accessibilityLiveRegion` are not encoded (`modules/svelte-engine/android/src/main/cpp/PropsEncoder.cpp` records 10 to 13, `A11y.kt`). Native widgets (`Switch`, `TextInput`) speak their own state. Expect: a disabled button not announced as dimmed or disabled, no custom actions in TalkBack's actions menu, no announcement from a live region.
+- **Android engine props (closed in code, to confirm with TalkBack).** The engine used to drop `accessibilityState`, `accessibilityValue`, `accessibilityHint`, `accessibilityActions`, `accessibilityLiveRegion`, `importantForAccessibility` and the `aria-*` aliases. It now publishes them the way React Native's Android views do (SPEC "Accessibility props"), and the `a11y` suite reads them back from the accessibility lab (`/__dev/a11y`, `qa/README.md` "Accessibility") on the emulator. What it cannot do is hear TalkBack, so the steps below that said "Known gap" now ask you to confirm: a disabled button is announced as disabled (dimmed), a checkbox as checked, unchecked or "mixed", a selected tab as selected, a slider with its value and "increment" and "decrement" in the actions menu, a hint after the label, custom actions in the actions menu, a live region when it changes, a `no-hide-descendants` view and what is in it skipped. `/__dev/a11y?mode=states` and `?mode=actions` have each of them. Native widgets (`Switch`, `TextInput`) speak their own state.
 - **No announcement API.** The package exports nothing like `AccessibilityInfo.announceForAccessibility`. Error text uses `accessibilityRole="alert"`, which sets a role, not a live announcement; expect nothing to be spoken when an error appears until the user moves focus to it.
 - **iOS.** React Native's iOS mounting handles `accessibilityState`, `accessibilityValue`, `accessibilityHint` and `accessibilityActions`, so these should work; `accessibilityLiveRegion` is Android-only in React Native and does nothing on iOS.
-- **Selected state by color only.** In the account settings the section strip and the choices in Preferences (language, appearance) are `Button`s whose selected one is drawn as the primary variant; no `accessibilityState.selected` and no radio role is set (`AccountSettings.svelte`). Expect neither platform to say which option is selected.
-- **Device cards.** Every card's button reads "Sign out device"; only the user-agent text above it names the device. Expect the buttons to be indistinguishable when the cards are walked by their buttons alone (the rotor or TalkBack's control navigation).
+- **Selected state by color only (closed in code, to confirm).** In the account settings the section strip and the choices in Preferences (language, appearance) are `Button`s whose selected one is drawn as the primary variant. They now carry `accessibilityState.selected`, and a role: the strip's buttons are tabs, the choices radios (`Button.svelte`, `AccountSettings.svelte`). Expect both platforms to say which one is selected.
+- **Device cards.** Every card's button read "Sign out device", and only the user-agent text above it named the device. The signed-in branch (`feat/svelte-native-signedin2`, commit "a screen reader can tell the repeated Sign out and Delete workspace buttons apart") labels each "Sign out device, <user agent>"; until that branch is merged this gap stays open.
 - **Product screens have no swipe rows, carousels or date pickers.** Those exist in the lab (`/__dev/gestures`, `/__dev/foreign`); the checklist uses them to test the package, not the product.
 
 ## Setup (both platforms)
@@ -73,8 +74,8 @@ Open a workspace (home tab).
 - [ ] Switch to Settings by double-tapping its tab: the selected state changes in speech; focus is on the new pane (record where). Switch back.
 - [ ] Open `rasheed-svelte:///__dev/screens?mode=tabs`: the tab items read "Home, new items" and "Inbox, 99+" (dot badge and number badge).
 - [ ] In Settings open each of the five sections (profile, preferences, devices, workspaces, danger): the title is the first stop after "Navigate up"; the back arrow works; focus moves to the new title when the transition ends.
-- [ ] Preferences: the current language and the current appearance are announced as selected (Known gap: color only). Choosing another one speaks the change or the new selection.
-- [ ] Devices: with several devices listed, each "Sign out device" can be told apart by what is spoken before it (Known gap: the button label is the same on every card).
+- [ ] Preferences: the current language and the current appearance are announced as selected, as radio buttons (the strip's buttons as tabs; they were drawn by color only). Choosing another one speaks the change or the new selection.
+- [ ] Devices: with several devices listed, each "Sign out device" can be told apart by what is spoken before it (Known gap until the signed-in branch's labels are merged: the button label is the same on every card).
 
 ### T4. Account modal and confirmations (3 min)
 
@@ -95,18 +96,18 @@ Open `/__dev/screens`.
 - [ ] "Form sheet": the field is labeled, the keyboard opens above the sheet, Save and Close are reachable; "Sheet that fits its content" reads title first.
 - [ ] "Modal" (full-screen): title first, "Navigate up" absent or labeled, back closes it.
 - [ ] "Translucent header over content": the title is still the first stop although content runs under the bar.
-- [ ] Toolbar screens (`?mode=toolbar`): the toolbar items are read after the content, each with its label and a badge announced; disabled items sound disabled (Known gap).
+- [ ] Toolbar screens (`?mode=toolbar`): the toolbar items are read after the content, each with its label and a badge announced; disabled items sound disabled (the toolbar's items are native views of their own, untouched by the accessibility props).
 
 ### T6. Gesture alternatives (4 min)
 
-- [ ] `/__dev/gestures?mode=row` (swipe-to-delete rows): with TalkBack, delete a row without a swipe. Known gap: no `accessibilityActions` reach the engine, so the actions menu has nothing; record what TalkBack offers. This is the test for every swipe action the app adds.
+- [ ] `/__dev/gestures?mode=row` (swipe-to-delete rows): with TalkBack, delete a row without a swipe. Expect "Archive" and "Delete" in the actions menu (swipe up then right) on `/__dev/a11y?mode=actions` (the swipe row), and "Last action: archive" on the screen after choosing Archive; `accessibilityActions` used to be dropped, so confirm it; record what TalkBack offers on the gesture lab's rows, which declare none. This is the test for every swipe action the app adds.
 - [ ] `/__dev/gestures?mode=carousel`: reach every page of the pager without a swipe gesture (a button, or TalkBack scroll forward and backward: swipe up then right then "Scroll forward").
 - [ ] `/__dev/gestures?mode=pushed-edge` (a pushed screen whose body is a horizontal pan): the header's "Navigate up" pops it; the system back gesture (swipe down then left) pops it; the edge swipe is not needed.
 - [ ] Any sheet drag: dismiss with back or the scrim (double-tap the scrim if it is focusable) instead.
 
 ### T7. Live regions and announcements (2 min)
 
-- [ ] `/__dev`: tap "Run all checks". The result line ("N functional checks passed") has `accessibilityLiveRegion="polite"`. Expect: spoken when it changes. Known gap: the engine drops the prop; record whether anything is spoken.
+- [ ] `/__dev`: tap "Run all checks". The result line ("N functional checks passed") has `accessibilityLiveRegion="polite"`. Expect: spoken when it changes. The engine used to drop the prop; it now sends the content change from the live region when its text changes (`/__dev/a11y?mode=actions`: "Add one" changes "Count: N", which should be spoken without moving focus). Record whether it is.
 - [ ] Push and pop a screen (`/__dev/screens` > "Push eight screens with headers"): on each transition TalkBack speaks the new screen's title; after a pop it speaks the previous screen's.
 - [ ] Open and close a modal: the open is announced; the close is announced and the opener is focused.
 
@@ -132,6 +133,17 @@ Settings > Apps > the QA app > Language > Arabic (Samsung: Settings > General ma
 
 - [ ] `/__dev/foreign?mode=libraries`, date picker section: on Android the button opens the system date dialog; TalkBack reads the dialog natively; select a day and OK: the chosen date is spoken and focus returns to the button.
 - [ ] Video section (a muted, looping video with no controls): the video is either skipped or labeled as media; it does not trap focus or spam announcements. To check real controls, add `controls` to the `<Video>` in `apps/platform/src/lib/native/dev/LibrarySet.svelte` in a Metro dev build (do not commit it): play or pause, the seek bar (adjustable, announces position) and full screen are labeled and operable by double-tap.
+
+### T11. Accessibility lab: state, value, hint, actions (4 min)
+
+Open `rasheed-svelte:///__dev/a11y` (the states) and `rasheed-svelte:///__dev/a11y?mode=actions`. The suite has already checked what the engine publishes for each control (`qa/README.md` "Accessibility"); this is what TalkBack says of it. Compare with any React Native app's controls with the same props if in doubt: the engine does what React Native's views do.
+
+- [ ] "Accept terms": checkbox, checked; double-tap unchecks it and TalkBack says "not checked". "Select all, mixed": checkbox, and "mixed" is spoken.
+- [ ] "Plan": a radio group of three radio buttons; the chosen one is selected. "Inbox" and "Archive": tabs, the current one selected.
+- [ ] "Pay now": disabled (dimmed, not actionable). "Saving, busy": busy. "Details": expandable (the actions menu offers Expand; choosing it does nothing, as in React Native: it has no `expand` action of its own).
+- [ ] "Hidden note" is skipped, "Visible note" is read.
+- [ ] Actions: "Volume": a slider, "4 of 10"; swipe up and down adjusts it (the actions menu has Increase and Decrease) and the new value is spoken. "Archive thread": the hint is spoken after the button ("Moves the thread out of the inbox"), after TalkBack's usual delay. "Invoice 1042": the actions menu has Archive and Delete; choosing one sets "Last action: ..." on the screen.
+- [ ] "Count: 0": double-tap "Add one" and the count is spoken without moving focus (a polite live region).
 
 ## VoiceOver (iOS), about 30 minutes
 

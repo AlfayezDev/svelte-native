@@ -1,7 +1,7 @@
 import type { Direction } from "./device.ts";
 import type { Rect } from "./png.ts";
 import type { Layout } from "./screens.ts";
-import { judgeNodeInfo, judgeNodes, type InfoExpectation, type NodeExpectation, type NodeInfo } from "./a11y-state.ts";
+import { judgeNodeInfo, judgeNodes, offersActions, type InfoExpectation, type NodeExpectation, type NodeInfo } from "./a11y-state.ts";
 import { bottom, descendants, right, spokenLabel, type UiNode, type UiTree } from "./uia.ts";
 
 /**
@@ -18,7 +18,8 @@ import { bottom, descendants, right, spokenLabel, type UiNode, type UiTree } fro
  *   on it (it is focusable or actionable or says something). A control the screen's source declares that the tree does not
  *   contain at all is unreachable.
  * - labeled: it has text, a content description or a hint of its own, or a descendant that does.
- * - actionable: it advertises an action (clickable, long-clickable, checkable, or a text field).
+ * - actionable: it advertises an action (clickable, long-clickable, checkable, or a text field). The dump has no action list, so a lab
+ *   control whose node info (the app's own, `nodeInfo`) offers a slider's scroll action or a custom one counts as well.
  * - order: the focus stops, in tree order, run top to bottom and, within a row, from the start edge to the end (left to
  *   right, right to left in RTL). A header reads back button, left slot, title (or center slot), right slot, search: that is
  *   start to end, so it needs no exemption; its large title, the bar's second row, is the one step that goes up.
@@ -352,6 +353,8 @@ export function analyzeScreen(input: A11yInput): A11yScreen {
 		elements.push({ node: plain ?? null, label });
 	}
 
+	// A node the dump shows no action for (a slider's increment, a swipe row's custom actions) but whose node info offers one.
+	const operable = new Set((input.nodeInfo ?? []).filter(offersActions).map((info) => info.id));
 	let reachable = 0;
 	let labeled = 0;
 	let actionable = 0;
@@ -428,7 +431,7 @@ export function analyzeScreen(input: A11yInput): A11yScreen {
 				detail: "no text, content description or hint, and no labeled descendant",
 			});
 		}
-		if (isActionable(node)) {
+		if (isActionable(node) || (node.resourceId !== "" && operable.has(node.resourceId))) {
 			actionable++;
 		} else {
 			notActionable++;
@@ -501,8 +504,8 @@ export function analyzeScreen(input: A11yInput): A11yScreen {
 	}
 
 	const state: A11yFinding[] = [
-		...judgeNodes(tree, input.expect ?? [], input.fontScale ?? 1),
-		...(input.info === undefined ? [] : judgeNodeInfo(input.nodeInfo ?? null, input.info)),
+		...judgeNodes(tree, input.expect ?? [], input.fontScale ?? 1, direction),
+		...(input.info === undefined ? [] : judgeNodeInfo(input.nodeInfo ?? null, input.info, direction)),
 	];
 	findings.push(...state);
 

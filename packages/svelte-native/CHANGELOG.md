@@ -2,6 +2,17 @@
 
 Notable changes to `@rasheed/svelte-native`, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are `0.x` while the package is private and its Svelte compiler is pinned to an unmerged pull request, so a minor version may break. Each line is what an app that uses the package gets.
 
+## Unreleased
+
+### Added
+
+- Android: a screen reader now gets `accessibilityState` (selected, disabled, checked including mixed, busy, expanded), `accessibilityValue` (a slider's range and text), `accessibilityHint`, `accessibilityActions` with `onAccessibilityAction` (`{ nativeEvent: { actionName } }`), `accessibilityLiveRegion`, `importantForAccessibility` and `role` from the engine's views, the way React Native's Android views publish them (same TalkBack announcements, same node info, React Native's own role strings in the device's language). The engine dropped all of them before.
+- `aria-*` props (`aria-label`, `aria-checked`, `aria-selected`, `aria-disabled`, `aria-expanded`, `aria-busy`, `aria-hidden`, `aria-live`, `aria-labelledby`, `aria-valuemin|max|now|text`) work on both platforms: React Native resolves them in `View.js`, which a Svelte host has none of, so they were ignored on iOS and on the Android engine alike.
+
+### Changed
+
+- A text under a live region tells it when its text changes (an engine text is a plain view); a role description is React Native's string ("Link", "Tab") instead of the engine's own lowercase one; a `button`, `imagebutton` or `togglebutton` role makes the node clickable.
+
 ## 0.2.0 - 2026-11-01
 
 Built from `48d746e54`. Device results behind this release are in [PLAN.md](PLAN.md), "Production plan"; the gates of the final build are still to be filled in there.

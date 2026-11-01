@@ -1,4 +1,6 @@
 import type { A11yFinding } from "./a11y.ts";
+import type { Direction } from "./device.ts";
+import { localize, type Localized } from "./screens.ts";
 import { spokenLabel, type UiNode, type UiTree } from "./uia.ts";
 
 /**
@@ -26,8 +28,8 @@ export type NodeExpectation = {
 	absent?: boolean;
 	label?: string;
 	className?: string;
-	/** The label a service speaks for the node: its content description, else its text, exactly. */
-	says?: string;
+	/** The label a service speaks for the node: its content description, else its text, exactly. The words React Native appends ("mixed", "busy") are its own strings, in the app's language. */
+	says?: Localized;
 	checkable?: boolean;
 	checked?: boolean;
 	selected?: boolean;
@@ -71,14 +73,15 @@ export type ActionExpectation = { name: string; label: string };
 export type InfoExpectation = {
 	id: string;
 	className?: string;
-	desc?: string;
+	desc?: Localized;
 	text?: string;
 	/** The tooltip text: where React Native puts `accessibilityHint`. */
 	tooltip?: string;
 	/** Always judged as empty unless given: React Native writes no state description and no hint text. */
 	stateDescription?: string;
 	hintText?: string;
-	roleDescription?: string;
+	/** React Native's string for the role, in the app's language ("Tab", "Radio Group"). */
+	roleDescription?: Localized;
 	heading?: boolean;
 	checkable?: boolean;
 	checked?: boolean;
@@ -106,6 +109,11 @@ export const standardActions: Record<string, number> = {
 };
 export const customActionStart = 0x3f000000;
 
+/** Whether the node offers an action the dump has no flag for: a custom one, or the scroll actions `increment` and `decrement` stand for. */
+export function offersActions(info: NodeInfo): boolean {
+	return info.actions.some((action) => action.id >= customActionStart || action.id === standardActions.increment || action.id === standardActions.decrement);
+}
+
 function describe(node: UiNode): string {
 	const { x, y, width, height } = node.bounds;
 	return `${node.className.replace(/^android\.(widget|view)\./, "")} ${JSON.stringify(spokenLabel(node))} [${x},${y} ${width}x${height}]`;
@@ -119,7 +127,7 @@ function fail(element: string, detail: string): A11yFinding {
  * Judges the dump against the expectations. At the normal text size (`fontScale` up to 1) every expected node must be in the tree; at a larger
  * one a node that is not there is below the fold of the page and is not judged, while one that is there is judged all the same.
  */
-export function judgeNodes(tree: UiTree, expectations: readonly NodeExpectation[], fontScale: number): A11yFinding[] {
+export function judgeNodes(tree: UiTree, expectations: readonly NodeExpectation[], fontScale: number, direction: Direction = "ltr"): A11yFinding[] {
 	const findings: A11yFinding[] = [];
 	for (const wanted of expectations) {
 		const node = tree.nodes.find((candidate) => candidate.resourceId === wanted.id);
@@ -139,7 +147,7 @@ export function judgeNodes(tree: UiTree, expectations: readonly NodeExpectation[
 			if (expected !== undefined && actual !== expected) differences.push(`${name} is ${JSON.stringify(actual)}, expected ${JSON.stringify(expected)}`);
 		};
 		compare("class", node.className, wanted.className);
-		compare("says", spokenLabel(node), wanted.says);
+		compare("says", spokenLabel(node), wanted.says === undefined ? undefined : localize(wanted.says, direction));
 		compare("checkable", node.checkable, wanted.checkable);
 		compare("checked", node.checked, wanted.checked);
 		compare("selected", node.selected, wanted.selected);
@@ -188,7 +196,7 @@ export function parseNodeInfo(logcat: string): NodeInfo[] | null {
 }
 
 /** Judges what the app publishes against the expectations. A node the app did not publish is a finding; `infos` null (nothing was read) is one too. */
-export function judgeNodeInfo(infos: readonly NodeInfo[] | null, expectations: readonly InfoExpectation[]): A11yFinding[] {
+export function judgeNodeInfo(infos: readonly NodeInfo[] | null, expectations: readonly InfoExpectation[], direction: Direction = "ltr"): A11yFinding[] {
 	if (infos === null) return [fail("the app's node info", "the lab did not log its nodes (no `[Svelte a11y] done` line)")];
 	const findings: A11yFinding[] = [];
 	for (const wanted of expectations) {
@@ -202,12 +210,12 @@ export function judgeNodeInfo(infos: readonly NodeInfo[] | null, expectations: r
 			if (expected !== undefined && actual !== expected) differences.push(`${name} is ${JSON.stringify(actual)}, expected ${JSON.stringify(expected)}`);
 		};
 		compare("class", info.class, wanted.className);
-		compare("content description", info.desc, wanted.desc);
+		compare("content description", info.desc, wanted.desc === undefined ? undefined : localize(wanted.desc, direction));
 		compare("text", info.text, wanted.text);
 		compare("tooltip", info.tooltip, wanted.tooltip);
 		compare("state description", info.stateDescription, wanted.stateDescription ?? "");
 		compare("hint text", info.hintText, wanted.hintText ?? "");
-		compare("role description", info.roleDescription, wanted.roleDescription);
+		compare("role description", info.roleDescription, wanted.roleDescription === undefined ? undefined : localize(wanted.roleDescription, direction));
 		compare("heading", info.heading, wanted.heading);
 		compare("checkable", info.checkable, wanted.checkable);
 		compare("checked", info.checked, wanted.checked);

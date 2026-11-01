@@ -39,9 +39,9 @@
 
   const text = $derived({ color: theme.foreground, fontSize: 16 });
   const card = $derived({ gap: 6, padding: 12, borderRadius: 12, backgroundColor: theme.surface });
-  const row = $derived({ flexDirection: "row" as const, alignItems: "center" as const, gap: 10, minHeight: 44 });
+  const row = $derived({ flexDirection: "row" as const, alignItems: "center" as const, gap: 10, minHeight: 48 });
   const mark = (on: boolean | "mixed", round = false) => ({ width: 22, height: 22, borderRadius: round ? 11 : 5, borderWidth: 2, borderColor: theme.foreground, backgroundColor: on === true ? theme.accent : on === "mixed" ? theme.muted : "transparent" });
-  const button = $derived({ minHeight: 44, paddingHorizontal: 16, borderRadius: 12, justifyContent: "center" as const, backgroundColor: theme.background, borderWidth: 1, borderColor: theme.border });
+  const button = $derived({ minHeight: 48, paddingHorizontal: 16, borderRadius: 12, justifyContent: "center" as const, backgroundColor: theme.background, borderWidth: 1, borderColor: theme.border });
 
   function log(line: string): void { console.info(`[Svelte a11y] ${line}`); }
 

@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 import { analyzeScreen } from "../lib/a11y.ts";
 import { judgeNodeInfo, judgeNodes, parseNodeInfo, standardActions, type InfoExpectation, type NodeInfo } from "../lib/a11y-state.ts";
 import { a11yMetrics } from "../lib/suite-metrics.ts";
 import { platformDir } from "../lib/paths.ts";
-import { cases } from "../lib/screens.ts";
+import { cases, rn } from "../lib/screens.ts";
 import { parseHierarchy } from "../lib/uia.ts";
 import type { A11yFile, A11yScreenResult } from "../lib/types.ts";
 
@@ -129,6 +130,27 @@ describe("analyzeScreen with expectations", () => {
 	});
 });
 
+describe("a node that offers an action the dump cannot show", () => {
+	const base = { direction: "ltr" as const, display: { width: 1080, height: 2400 }, title: null, controls: [], scrolled: [], hidden: [], layout: "page" as const };
+	const slider: N = { id: "a11y.slider", cls: "android.widget.SeekBar", desc: "Volume", focusable: true };
+	const info = (actions: number[]): NodeInfo[] => [{
+		id: "a11y.slider", class: "android.widget.SeekBar", text: "", desc: "Volume", tooltip: "", stateDescription: "", hintText: "", roleDescription: "", heading: false,
+		checkable: false, checked: false, selected: false, enabled: true, clickable: false, longClickable: false, focusable: true, liveRegion: 0, important: 1,
+		actions: actions.map((id) => ({ id, label: "" })),
+	}];
+
+	test("a slider with increment and decrement, or a node with a custom action, is actionable; one with only the platform's own actions is not", () => {
+		expect(analyzeScreen({ ...base, tree: tree(slider) }).notActionable).toBe(1);
+		expect(analyzeScreen({ ...base, tree: tree(slider), nodeInfo: info([0x1000, 0x2000]) }).notActionable).toBe(0);
+		expect(analyzeScreen({ ...base, tree: tree(slider), nodeInfo: info([0x3f000000]) }).notActionable).toBe(0);
+		expect(analyzeScreen({ ...base, tree: tree(slider), nodeInfo: info([4, 8, 64, 16908342]) }).notActionable).toBe(1);
+	});
+
+	test("it takes the node info of that node only", () => {
+		expect(analyzeScreen({ ...base, tree: tree({ ...slider, id: "other" }), nodeInfo: info([0x1000]) }).notActionable).toBe(1);
+	});
+});
+
 describe("the lab's cases", () => {
 	const lab = readFileSync(join(platformDir, "src/routes/__dev/a11y/+mobile.svelte"), "utf8");
 	const labCases = cases.filter((screen) => screen.id.startsWith("lab-a11y"));
@@ -162,6 +184,34 @@ describe("the lab's cases", () => {
 		const actions = labCases[1];
 		expect(actions?.info?.find((entry) => entry.id === "a11y.slider")?.range).toEqual({ min: 0, max: 10, current: 5 }); // 4 at the start, one increment
 		expect(lab).toContain("let level = $state(4)");
+	});
+});
+
+describe("React Native's words in the expectations", () => {
+	const resources = join(dirname(createRequire(join(platformDir, "package.json")).resolve("react-native/package.json")), "ReactAndroid/src/main/res/views/uimanager");
+	const string = (directory: string, name: string): string => {
+		const xml = readFileSync(join(resources, directory, "strings.xml"), "utf8");
+		const match = new RegExp(`<string[^>]*name="${name}"[^>]*>([^<]*)</string>`).exec(xml);
+		if (!match) throw new Error(`${name} is not in ${directory}/strings.xml`);
+		return match[1] as string;
+	};
+
+	test("the English and Arabic ones are the strings of the resources the engine takes them from", () => {
+		for (const [word, name] of [["mixed", "state_mixed_description"], ["busy", "state_busy_description"], ["tab", "rn_tab_description"], ["radioGroup", "radiogroup_description"]] as const) {
+			expect(rn[word].en.toLowerCase()).toBe(string("values", name).toLowerCase());
+			expect(rn[word].ar).toBe(string("values-ar", name));
+		}
+		expect(string("values", "radiogroup_description")).toBe("Radio Group");
+		expect(string("values", "rn_tab_description")).toBe("Tab");
+	});
+
+	test("an expectation with them is in the language of the layout", () => {
+		const states = cases.find((screen) => screen.id === "lab-a11y-states");
+		const mixed = states?.expect?.find((entry) => entry.id === "a11y.all")?.says;
+		expect(mixed).toEqual({ en: "Select all, mixed", ar: "Select all, مختلط" });
+		const tree = parseHierarchy(`<?xml version='1.0' ?><hierarchy rotation="0"><node index="0" text="" resource-id="a11y.all" class="android.widget.CheckBox" package="p" content-desc="Select all, مختلط" checkable="false" checked="false" clickable="true" enabled="true" focusable="true" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" bounds="[0,0][100,100]"/></hierarchy>`);
+		expect(judgeNodes(tree, [{ id: "a11y.all", says: mixed as never }], 1, "rtl")).toEqual([]);
+		expect(judgeNodes(tree, [{ id: "a11y.all", says: mixed as never }], 1, "ltr")).toHaveLength(1);
 	});
 });
 

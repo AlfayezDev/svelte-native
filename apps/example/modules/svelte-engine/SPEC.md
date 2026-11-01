@@ -54,6 +54,12 @@ Prop records: `propId, values…`
 | 11 | accessibilityLabel: string | all |
 | 14 | hitSlop: left, top, right, bottom: 4 floats (px); absent = 0 | all |
 | 15 | Android view flags: 1 int, bit 1 `needsOffscreenAlphaCompositing`, bit 2 `renderToHardwareTextureAndroid`; absent = 0 | all |
+| 16 | accessibilityState: 1 int of bits, see "Accessibility props"; present when the prop is | all |
+| 17 | accessibilityValue: a mask, then the fields it names; present when any of min, max, now, text is | all |
+| 18 | accessibilityHint: string | all |
+| 19 | accessibilityActions: count, then (name string, label string or -1) per action | all |
+| 25 | live region (bits 0-1) and importantForAccessibility (bits 2-3): 1 int; present when either is not the default | all |
+| 26 | role (the ARIA `role` prop): the ordinal of `facebook::react::Role`; absent for none | all |
 | 20 | paragraph: textAlign (0 auto/left, 1 center, 2 right, 3 justify), numberOfLines (0 = unlimited), ellipsize (0 tail, 1 head, 2 middle, 3 clip) | Text |
 | 21 | fragment: string, fontSize: float (px), color: int, fontWeight: int (100–900), fontStyle: int (0 normal, 1 italic), fontFamily: string or -1, letterSpacing: float, lineHeight: float (px, 0 = default). Repeats once per fragment of the attributed string, in order | Text |
 | 22 | preparedLayout: object index, when React Native's prepared text layout (an `android.text.Layout`) is available in the paragraph state; Kotlin draws it directly | Text |
@@ -346,6 +352,8 @@ runs (full-record semantics preserved). Fabric still owns the props: the next co
 
 ### Accessibility (A11y.kt)
 
+The first set of accessibility props (label, `accessible`, `accessibilityRole`, `testID`); state, value, hint, actions, live region, `importantForAccessibility` and `role` were added later and are in "Accessibility props" below, which also replaces the role handling described here.
+
 - `accessibilityLabel` (11) -> `contentDescription`.
 - New prop 12 `accessible: int` -> `isFocusable`, and `importantForAccessibility = YES` (otherwise AUTO).
 - New prop 13 `accessibilityRole: string` -> an `AccessibilityDelegateCompat` that sets the node class (`button` Button, `imagebutton`, `image`, `checkbox`, `radio`, `switch`),
@@ -361,6 +369,60 @@ New: `cpp/TouchDispatch.cpp`, `cpp/Commands.cpp`, `java/.../Commands.kt`, `java/
 Rewritten: `views/EngineRoot.kt`, `views/EngineScroll.kt`. Edited (small): `views/EngineView.kt` (stacking, onTouchEvent, NodeState fields), `views/EngineText.kt` (accessibility),
 `Props.kt` (prop 9, 12, 13, 33, stacking, a11y call), `MountingManager.kt` (`viewFor`, `scrollThrottle`), `SvelteEngineModule.kt` (functions), `SvelteEngineNative.kt/.h/.cpp`
 (signatures, `updateScrollState`), `PropsEncoder.cpp` (props), `MountingDelegate.h/.cpp` (scroll state registry).
+
+## Accessibility props
+
+The Android engine publishes what React Native's own views publish for the accessibility props, so TalkBack announces the same state, value, hint and actions. The reference is React Native 0.86.3: `BaseViewManager.java` (what is set on the view), `ReactAccessibilityDelegate.kt` (what the node info carries) and `AccessibilityProps` in C++ (what the shadow node parses). iOS uses React Native's own views, which read the same props.
+
+### JavaScript: `aria-*` and `role`
+
+React Native resolves the aliases in `View.js`; its C++ does it only behind `enableNativeViewPropTransformations`, which is off. A Svelte host has no `View.js`, so `fabric/accessibility.ts` applies `View.js`'s rules while `splitProps` builds a node's props, for both platforms: `aria-label` is `accessibilityLabel` (and wins), `aria-live` is `accessibilityLiveRegion` (`off` is `none`), `aria-hidden` is `accessibilityElementsHidden` (and `true` also `importantForAccessibility: "no-hide-descendants"`), `aria-labelledby` is the list `accessibilityLabelledBy`, `aria-busy|checked|disabled|expanded|selected` are laid over `accessibilityState`, `aria-valuemin|max|now|text` over `accessibilityValue`. Foreign views are left alone. `role` is not touched: C++ parses it. Before this, `aria-*` reached the shadow tree as unknown props on both platforms. `tests/accessibility.test.ts` pins the rules, the payloads on both platforms and the `onAccessibilityAction` event, and reads React Native's `View.js` and flag so an upgrade that changes either shows.
+
+### Wire (`cpp/A11yWire.h`, `A11yWire.kt`)
+
+Records of the common set, each present only when its prop is set (a plain view costs nothing). Ids 20 to 24 are the text records, so these take the free 16 to 19 and 25, 26.
+
+| id | values |
+|---|---|
+| 16 state | 1 int: bit 0 disabled, bit 1 selected, bit 2 busy, bits 3-4 checked (0 not set, 1 unchecked, 2 checked, 3 mixed), bits 5-6 expanded (0 not set, 1 collapsed, 2 expanded). The record exists when the prop does, even with every bit 0 |
+| 17 value | mask (bit 0 min, 1 max, 2 now, 3 text), then the ints and the text string index the mask names, in that order |
+| 18 hint | string |
+| 19 actions | n, then n x (name string, label string or -1) |
+| 25 mode | bits 0-1 `accessibilityLiveRegion` (0 none, 1 polite, 2 assertive), bits 2-3 `importantForAccessibility` (0 auto, 1 yes, 2 no, 3 no-hide-descendants) |
+| 26 role | ordinal of `facebook::react::Role` (alert 0, button 5, slider 49, treeitem 64), `none` not sent |
+
+`accessibilityRole` stays record 13 as a string. `role` wins over it whenever it is set, as in `AccessibilityRole.fromViewTag`, even when it stands for no accessibility role. The values come from the typed C++ props, so an absent state key reads as false and `aria-*` has already been resolved in JavaScript.
+
+### What the views and the node carry (`A11y.kt`, `A11yRules.kt`)
+
+| prop | on the view | on the node (the delegate, from `NodeState.a11y`) |
+|---|---|---|
+| `accessibilityLabel`, state, value | `contentDescription` = label, then "busy" if busy, "mixed" if checked is mixed, then the value's text, joined by ", " (`updateViewContentDescription`; React Native's strings, so localized) | |
+| `accessibilityState` | `setSelected`, `setEnabled(!disabled)`; a service that has focus is told: unselected is announced, a change of checked or selected sends `TYPE_VIEW_CLICKED` | `isSelected`, `isEnabled` false when disabled, `isCheckable` + `isChecked` when checked is true or false (not mixed), `ACTION_EXPAND` when collapsed or `ACTION_COLLAPSE` when expanded |
+| `accessibilityValue` | | `RangeInfo(int, min, max, now)` when min, now and max are all given and `max > min && now >= min && max >= now`; the events from the view carry `itemCount = max - min` and `currentItemIndex = now` |
+| `accessibilityHint` | | `tooltipText` (React Native writes no hint text) |
+| `accessibilityActions` | | one `AccessibilityActionCompat` per action: `activate`, `longpress`, `increment`, `decrement`, `expand`, `collapse` are the standard ids, any other name an id counted up from `0x3f000000` per name for the life of the process; the label is `""` when none |
+| `accessibilityRole` / `role` | | class name, `isClickable` (button, imagebutton, togglebutton), `isCheckable` (togglebutton), `isHeading` (header), role description from React Native's resources ("Link", "Image", "Button, Image", "Tab", "Radio Group", ...) |
+| `accessibilityLiveRegion` | `ViewCompat.setAccessibilityLiveRegion` | |
+| `importantForAccessibility` | `setImportantForAccessibility`; auto keeps the engine's rule (an `accessible` view is yes) | |
+| `testID` | `view.tag` | `viewIdResourceName` |
+
+Choosing an action in the actions menu calls `ViewEvents.accessibilityAction(tag, name)`, which sends React Native's event, `topAccessibilityAction { actionName }`, to the node's emitter (`onAccessibilityAction`). An action named `activate` replaces the click (`performClick` is not reached), as in React Native. A slider (`accessibilityRole="adjustable"`) that gets `increment` or `decrement` also sends `TYPE_VIEW_SELECTED` 200 ms later when its value has no text, so TalkBack announces the new value; that rule reads `accessibilityRole` only, as React Native's does, so `role="slider"` does not get it. A text under a live region tells it when its text changes (`A11y.textChanged`): `EngineText` is a plain `View`, and `TextView.setText` is what makes the platform send the change up to a live region.
+
+The view is touched only when the state changes it: `setEnabled` is called when `disabled` flips, so the kinds that decide `enabled` themselves (input, switch) keep it. `ViewPool` resets selected, enabled, the live region, important for accessibility and the records the delegate reads. `setNativeProps` keeps the node's records (it cannot set them).
+
+### Where this differs from React Native
+
+- `role="none"` is not told from no `role` (the C++ default is `Role::None`); an `accessibilityRole` then counts.
+- An `accessibilityRole` React Native would reject (it throws) is ignored.
+- A hint, a value or a state on a view with none of role, state, actions or `testID` is published (React Native installs its delegate only for those, so such a hint is silent there).
+- The checked-state announcement is sent when the state changes, not on every props update that carries it; the mixed/busy order in the content description is busy first (React Native's follows the order of the keys of the map).
+- Not ported: `accessibilityLabelledBy`, `accessibilityCollection` and `accessibilityCollectionItem`, `screenReaderFocusable`, and the description React Native builds from the children of a role view that has no text (`getTalkbackDescription`; TalkBack builds the same from the children itself).
+- `accessibilityElementsHidden` and `accessibilityViewIsModal` (and `aria-modal`) are iOS-only in React Native and are not mapped on Android; `aria-hidden` reaches Android as `importantForAccessibility`.
+
+### Tests
+
+`android/src/test/run.sh` runs `A11yWireTest.cpp` (the C++ encoder on React Native's structs) and `A11yRulesCheck.kt` (the Kotlin decoder on the same bytes, the rules, and the tables against React Native's `ReactAccessibilityDelegate.kt`, `BaseViewManager.java` and `AccessibilityPrimitives.h`). The accessibility lab (`/__dev/a11y`) and the `a11y` suite's two lab cases check the rest on a device ("Accessibility" in `qa/README.md`): the uiautomator dump carries class, checkable, checked, selected, enabled, clickable, the label and a hidden view being gone; it does not carry the range, the tooltip (hint), the role description, the actions with ids and labels, the live region or the expand state, so the lab logs the node info of its controls (`A11yDump`, `SvelteEngine.accessibilityNodes()`) and performs an action on two of them the way a service does (`SvelteEngine.performAccessibilityAction`). Neither is TalkBack: what TalkBack says is the manual checklist (`qa/A11Y-MANUAL.md`).
 
 ## Animation (phase 3, Android)
 

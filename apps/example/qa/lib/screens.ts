@@ -86,6 +86,17 @@ const dev = "rasheed-svelte:///__dev";
 const screens = `${dev}/screens`;
 const tree = `${dev}/tree`;
 const a11yLab = `${dev}/a11y`;
+/**
+ * The words React Native's Android views add to a label or give a role (its `values-<language>/strings.xml`: "mixed", "busy", "Tab", "Radio Group"): the engine
+ * uses the same resources, so they are in the app's language, which the Arabic layouts set. `qa/test/a11y-state.test.ts` compares them with the files.
+ */
+export const rn = {
+	mixed: { en: "mixed", ar: "مختلط" },
+	busy: { en: "busy", ar: "مشغول" },
+	tab: { en: "Tab", ar: "علامة التبويب" },
+	radioGroup: { en: "Radio Group", ar: "مجموعة أزرار اختيار" },
+};
+const and = (label: string, word: { en: string; ar: string }): Localized => ({ en: `${label}, ${word.en}`, ar: `${label}, ${word.ar}` });
 
 function screenCase(
 	id: string,
@@ -308,30 +319,30 @@ const signedOutCases: ScreenCase[] = [
 		layout: "header",
 		title: "Accessibility lab",
 		controls: ["Accept terms"],
-		scrolled: ["Select all, mixed", "Free", "Pro", "Team", "Inbox", "Archive", "Pay now", "Saving, busy", "Details"],
+		scrolled: [and("Select all", rn.mixed), "Free", "Pro", "Team", "Inbox", "Archive", "Pay now", and("Saving", rn.busy), "Details"],
 		expect: [
 			{ id: "a11y.terms", className: "android.widget.CheckBox", says: "Accept terms", checkable: true, checked: true, selected: false, enabled: true, clickable: true },
-			{ id: "a11y.all", className: "android.widget.CheckBox", says: "Select all, mixed", checkable: false, checked: false, clickable: true },
+			{ id: "a11y.all", className: "android.widget.CheckBox", says: and("Select all", rn.mixed), checkable: false, checked: false, clickable: true },
 			{ id: "a11y.plan.free", className: "android.widget.RadioButton", says: "Free", checkable: true, checked: false, clickable: true },
 			{ id: "a11y.plan.pro", className: "android.widget.RadioButton", says: "Pro", checkable: true, checked: true, clickable: true },
 			{ id: "a11y.plan.team", className: "android.widget.RadioButton", says: "Team", checkable: true, checked: false, clickable: true },
 			{ id: "a11y.tab.inbox", says: "Inbox", selected: true, clickable: true },
 			{ id: "a11y.tab.archive", says: "Archive", selected: false, clickable: true },
 			{ id: "a11y.disabled", className: "android.widget.Button", says: "Pay now", enabled: false },
-			{ id: "a11y.busy", className: "android.widget.Button", says: "Saving, busy", enabled: true, clickable: true },
+			{ id: "a11y.busy", className: "android.widget.Button", says: and("Saving", rn.busy), enabled: true, clickable: true },
 			{ id: "a11y.details", className: "android.widget.Button", says: "Details", clickable: true },
 			{ id: "a11y.hidden", absent: true, label: "Hidden note" },
 		],
 		info: [
 			{ id: "a11y.terms", className: "android.widget.CheckBox", desc: "Accept terms", checkable: true, checked: true, selected: false, enabled: true, clickable: true, roleDescription: "", important: 0 },
-			{ id: "a11y.all", className: "android.widget.CheckBox", desc: "Select all, mixed", checkable: false, checked: false },
-			{ id: "a11y.plans", className: "android.view.View", desc: "Plan", roleDescription: "Radio Group" },
+			{ id: "a11y.all", className: "android.widget.CheckBox", desc: and("Select all", rn.mixed), checkable: false, checked: false },
+			{ id: "a11y.plans", className: "android.view.View", desc: "Plan", roleDescription: rn.radioGroup },
 			{ id: "a11y.plan.pro", className: "android.widget.RadioButton", checkable: true, checked: true },
 			{ id: "a11y.plan.free", className: "android.widget.RadioButton", checkable: true, checked: false },
-			{ id: "a11y.tab.inbox", className: "android.view.View", roleDescription: "Tab", selected: true },
-			{ id: "a11y.tab.archive", roleDescription: "Tab", selected: false },
+			{ id: "a11y.tab.inbox", className: "android.view.View", roleDescription: rn.tab, selected: true },
+			{ id: "a11y.tab.archive", roleDescription: rn.tab, selected: false },
 			{ id: "a11y.disabled", className: "android.widget.Button", enabled: false, clickable: true },
-			{ id: "a11y.busy", desc: "Saving, busy", enabled: true },
+			{ id: "a11y.busy", desc: and("Saving", rn.busy), enabled: true },
 			{ id: "a11y.details", desc: "Details", actions: [{ name: "expand", label: "" }], without: ["collapse"] },
 			{ id: "a11y.hidden", important: 4 },
 		],

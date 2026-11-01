@@ -3,12 +3,14 @@ import { join } from "node:path";
 import { integerFlag, parseFlags } from "../lib/flags.ts";
 import { describeCrash, describeCrashReports, finishCrashWatch, keepCrashFiles } from "../lib/iphone/crash-reports.ts";
 import { appProcesses, launchApp, readAppFile, terminateApp } from "../lib/iphone/device.ts";
+import { notReported, reportedIdentity, withIdentity } from "../lib/iphone/identity.ts";
 import { currentSource, iosOptions, newToken, startIosSuite } from "../lib/iphone/session.ts";
 import { qaDir, runsDir } from "../lib/paths.ts";
 import { slug, stamp, writeRun } from "../lib/runs.ts";
 import { describeSmoke, smokePins } from "../lib/smoke.ts";
 import { reportVerdict } from "./smoke.ts";
-import type { SmokeFile, SmokeModuleResult } from "../lib/types.ts";
+import { parseIdentity } from "../parse/ios.ts";
+import type { BuildIdentity, SmokeFile, SmokeModuleResult } from "../lib/types.ts";
 import { schemeOf } from "../lib/variant.ts";
 import { sleep } from "../lib/wait.ts";
 
@@ -17,14 +19,14 @@ const pollMs = 3_000;
 /** The URL that starts the smoke scenario in the smoke app; the token comes back in the results file. */
 export const smokeLaunchUrl = (token: string): string => `${schemeOf.smoke}:///__dev?run=smoke&token=${token}`;
 
-type ResultsFile = { token: string | null; finishedAt: string; os: string; results: { module: string; status: string; path: string; ms: number; detail: string }[] };
+type ResultsFile = { token: string | null; finishedAt: string; os: string; build: BuildIdentity | null; results: { module: string; status: string; path: string; ms: number; detail: string }[] };
 
 /** `Documents/smoke-results.json`, as the app wrote it; null for text that is not the file (the app was writing it while it was copied). */
 export function parseSmokeResultsFile(text: string): ResultsFile | null {
 	try {
 		const value = JSON.parse(text) as Partial<ResultsFile>;
 		if (!Array.isArray(value.results) || typeof value.os !== "string") return null;
-		return { token: typeof value.token === "string" ? value.token : null, finishedAt: String(value.finishedAt), os: value.os, results: value.results };
+		return { token: typeof value.token === "string" ? value.token : null, finishedAt: String(value.finishedAt), os: value.os, build: parseIdentity(value.build), results: value.results };
 	} catch {
 		return null;
 	}
@@ -80,6 +82,9 @@ export async function iosSmoke(argv: string[]): Promise<void> {
 	await mkdir(runsDir, { recursive: true });
 	const logPath = join(runsDir, `smoke-${slug(session.device.serial)}-${stamp(session.startedAt)}.log`);
 	await writeFile(logPath, raw || `no results were written${died ? `: ${died}` : ""}\n`);
+	// The app says which build it is (the QA module's identity, which the smoke app may ask for): it must be the recorded smoke build.
+	const installed = reportedIdentity([found?.build ?? null], session.build, "smoke");
+	if (found && installed === null) console.log(`warning: ${notReported}`);
 	const results = found ? moduleResults(found) : [];
 	const count = (status: SmokeModuleResult["status"]) => results.filter((result) => result.status === status).length;
 	const file: SmokeFile = {
@@ -89,7 +94,7 @@ export async function iosSmoke(argv: string[]): Promise<void> {
 		finishedAt: new Date().toISOString(),
 		source: await currentSource(),
 		device: session.device,
-		app: session.app,
+		app: withIdentity(session.app, installed),
 		run: "smoke",
 		complete: found !== null && aborted.length === 0,
 		results,

@@ -112,6 +112,13 @@ describe("the log lines", () => {
 		expect(parseSmokeResultsFile("{\"results\":")).toBeNull();
 		expect(parseSmokeResultsFile("{\"os\":\"ios\"}")).toBeNull();
 	});
+	test("the iPhone's results file carries the build the app reports, which a run judges against the build record; an app that reports none leaves null", () => {
+		const build = { jsbundleSha256: "a".repeat(64), cdHash: "b".repeat(40) };
+		const text = (extra: Record<string, unknown>) => JSON.stringify({ token: "t1", finishedAt: "2026-11-01T12:00:00Z", os: "ios", results: [result("a")], ...extra });
+		expect(parseSmokeResultsFile(text({ build }))?.build).toEqual(build);
+		expect(parseSmokeResultsFile(text({}))?.build).toBeNull();
+		expect(parseSmokeResultsFile(text({ build: { jsbundleSha256: "short" } }))?.build).toBeNull();
+	});
 });
 
 describe("the byte helpers", () => {

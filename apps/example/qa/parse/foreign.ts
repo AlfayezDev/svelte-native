@@ -15,6 +15,15 @@ export function unescapeLogcat(text: string): string {
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
+/** The JSON a string holds; null when it is not JSON. */
+function readJson(text: string): unknown {
+	try {
+		return JSON.parse(text);
+	} catch {
+		return null;
+	}
+}
+
 /**
  * Every check the library lab logged (`[Svelte foreign library] {"library":...,"where":...,"name":...,"passed":...,"detail":...}`) and every one it skipped.
  * A line that carries one of the two tags and is not a record of it (cut by logcat, escaped in a way nobody expected, a place the lab does not have) is in
@@ -29,12 +38,7 @@ export function parseForeignChecks(text: string): { checks: ForeignCheck[]; skip
 		const isCheck = message.startsWith(checkPrefix);
 		const isSkip = message.startsWith(skipPrefix);
 		if (!isCheck && !isSkip) continue;
-		let value: unknown = null;
-		try {
-			value = JSON.parse(unescapeLogcat(message.slice((isCheck ? checkPrefix : skipPrefix).length).replace(/'\s*$/, "")));
-		} catch {
-			value = null;
-		}
+		const value = readJson(unescapeLogcat(message.slice((isCheck ? checkPrefix : skipPrefix).length).replace(/'\s*$/, "")));
 		if (isCheck && isRecord(value) && typeof value.library === "string" && typeof value.name === "string" && typeof value.passed === "boolean" && places.includes(value.where as ForeignPlace)) {
 			checks.push({ library: value.library, where: value.where as ForeignPlace, name: value.name, passed: value.passed, detail: typeof value.detail === "string" ? value.detail : "" });
 		} else if (isSkip && isRecord(value) && typeof value.library === "string" && typeof value.name === "string") {

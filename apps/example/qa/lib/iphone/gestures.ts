@@ -238,6 +238,9 @@ export async function prepareUiTests(session: IosSession, options: { team: strin
 	console.log(`built the XCUITest runner (${digest})`);
 }
 
+/** Where the pushed-edge swipe starts on the iPhone, in points from the edge: the lab asks for 8 (Android's zone is 24 dp), UIKit's edge swipe takes touches within about 3 (SPEC.md, iOS contract item 3). `--edge-x` overrides it. */
+export const defaultEdgeX = "2";
+
 const pollMs = 10_000;
 const aliveEveryMs = 30_000;
 /** Writes `1` or `0` to the app's `Documents/gesture-trace.on`: the QA app records its recognizers at its next launch when it reads `1` (an app that XCUITest opens by link takes no launch argument). */
@@ -289,7 +292,7 @@ export async function iosGesturesOnce(session: IosSession, names: string[], time
 	await setTraceFlag(target, options.trace === true);
 	// `--link` opens a page by itself instead of the lab's run (a diagnostic: a page at the root of the stack, with no scenario around it).
 	const url = options.link ?? `rasheed-svelte:///__dev?run=${runValue(names, "xctest")}&token=${token}`;
-	const started = await remoteOk(mac, inBackground(testCommand({ dir: uiTestsRemote, udid: session.udid, bundleId: target.bundleId, seconds, outFile, url, trace: options.trace === true, calibrate: options.calibrate, edgeX: options.edgeX })));
+	const started = await remoteOk(mac, inBackground(testCommand({ dir: uiTestsRemote, udid: session.udid, bundleId: target.bundleId, seconds, outFile, url, trace: options.trace === true, calibrate: options.calibrate, edgeX: options.edgeX ?? defaultEdgeX })));
 	const testPid = Number(started.trim().split("\n").pop());
 	const deadline = Date.now() + timeoutMs;
 	let results: IosLabResults | null = null;

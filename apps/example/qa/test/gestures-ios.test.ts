@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { buildScript, inBackground, onUsb, injectionsFrom, launchFromIos, launchesWithCrashes, parseUiTestOutput, sourcesDigest, testCommand, uiTestsLocal } from "../lib/iphone/gestures.ts";
+import { buildScript, defaultEdgeX, inBackground, onUsb, injectionsFrom, launchFromIos, launchesWithCrashes, parseUiTestOutput, sourcesDigest, testCommand, uiTestsLocal } from "../lib/iphone/gestures.ts";
 import { describeStories, storiesFrom, type TraceFile } from "../lib/iphone/gesture-trace.ts";
 import type { IosLabResults } from "../lib/iphone/lab-results.ts";
 import type { CrashReport, GestureLaunch } from "../lib/types.ts";
@@ -39,6 +39,15 @@ describe("the XCUITest bundle on the Mac", () => {
 		expect(command).toContain("xcodebuild test-without-building -xctestrun");
 		expect(command).toContain("-destination 'id=UDID' -only-testing:GesturesUITests/GesturesUITests/testDrive > '/tmp/t/out.log' 2>&1");
 		expect(testCommand({ dir: "/tmp/t", udid: "UDID", bundleId: "b", seconds: 1, outFile: "/o", url }).includes("GESTURES_TRACE=0")).toBe(true);
+	});
+
+	test("the pushed-edge swipe starts inside UIKit's edge zone unless told otherwise, and the test reads it from the environment", () => {
+		expect(defaultEdgeX).toBe("2");
+		expect(Number(defaultEdgeX) <= 3).toBe(true);
+		const command = testCommand({ dir: "/tmp/t", udid: "U", bundleId: "b", seconds: 1, outFile: "/o", url: "u", edgeX: defaultEdgeX });
+		expect(command).toContain("TEST_RUNNER_GESTURES_EDGE_X='2'");
+		const swift = readFileSync(join(uiTestsLocal, "GesturesUITests/GesturesUITests.swift"), "utf8");
+		expect(swift).toContain('"GESTURES_EDGE_X"');
 	});
 
 	test("a background command is quoted whole and prints its process id", () => {

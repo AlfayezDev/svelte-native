@@ -30,6 +30,8 @@ export type Native = {
   text: string;
   views: string[];
   surfaces: string[];
+  /** The view's parent and whether it clips its children to their bounds. */
+  parent: string;
 };
 /** What a capture of a view holds at the points asked for (fractions of the image). */
 export type Look = { colors: number[]; width: number; height: number; format: string; uri: string };
@@ -91,7 +93,9 @@ async function mounts(c: Ctx, pattern: RegExp, host: Host | undefined = c.host()
   const info = c.inspect(host);
   c.check("mounts: a native view is attached, shown and sized", up, describe(info));
   if (!info) return null;
-  c.check(`mounts: it is the library's view (${pattern.source})`, pattern.test(`${info.class} ${info.views.join(" ")}`), `${info.class}; inside: ${info.views.slice(0, 4).join(" | ")}`);
+  // The Android class names are the libraries' own (read from their sources); the iOS ones are recorded in the detail for the first iPhone run to pin.
+  if (c.android) c.check(`mounts: it is the library's view (${pattern.source})`, pattern.test(`${info.class} ${info.views.join(" ")}`), `${info.class}; inside: ${info.views.slice(0, 4).join(" | ")}`);
+  else c.skip("mounts: it is the library's view", `iOS class names not pinned yet (this run saw ${info.class}; inside: ${info.views.slice(0, 3).join(" | ")})`);
   const rect = await c.rect(host);
   const wide = rect ? Math.abs(info.width / info.density - rect.width) : Infinity;
   const high = rect ? Math.abs(info.height / info.density - rect.height) : Infinity;

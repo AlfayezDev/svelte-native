@@ -41,6 +41,8 @@ object Inspect {
       "visibility" to view.visibility,
       "alpha" to view.alpha.toDouble(),
       "density" to view.resources.displayMetrics.density.toDouble(),
+      // Whether the parent lets the view draw outside its bounds (a view's own render node follows its parent's `clipChildren`): a shadow or a glow needs it.
+      "parent" to ((view.parent as? ViewGroup)?.let { "${it.javaClass.simpleName} clipChildren=${it.clipChildren}" } ?: "none"),
       "text" to texts.joinToString("\n"),
       "views" to inside,
       "surfaces" to surfaces,
@@ -58,7 +60,7 @@ object Inspect {
     if (view !is ViewGroup || depth >= MAX_DEPTH) return
     for (i in 0 until view.childCount) {
       val child = view.getChildAt(i)
-      if (views.size < MAX_DESCENDANTS) views.add("${"  ".repeat(depth)}${child.javaClass.simpleName} ${child.width}x${child.height}")
+      if (views.size < MAX_DESCENDANTS) views.add("${"  ".repeat(depth)}${child.javaClass.simpleName} ${child.width}x${child.height}${if (child is ViewGroup) " clip=${child.clipChildren}" else ""}")
       collect(child, depth + 1, views, texts, surfaces, origin)
     }
   }

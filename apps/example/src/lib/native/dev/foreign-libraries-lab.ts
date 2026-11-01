@@ -22,15 +22,20 @@ type Engine = {
   inspect?: (tag: number) => Native | null;
   tap?: (x: number, y: number) => boolean;
 };
-type Pixels = { sample(source: string, points: readonly (readonly [number, number])[], radius?: number): { colors: number[]; width: number; height: number; format: string } };
+type Sampled = { colors: number[]; width: number; height: number; format: string };
+type Pixels = { sample(source: string, points: readonly (readonly [number, number])[], radius?: number): Sampled };
+/** iOS: `SvelteQA` (`modules/svelte-qa-ios`) reads the same two things, under other names. */
+type QaIos = { inspect?(tag: number): Native | null; samplePixels?(source: string, points: readonly (readonly [number, number])[], radius?: number): Sampled };
 type Router = { goto(href: string, options?: { presentation?: "sheet" }): void; back(): boolean; entries: readonly unknown[] };
 export type LibraryCheck = { library: LibraryKind; where: Where; name: string; passed: boolean; detail: string };
 export type LibrarySkip = { library: LibraryKind; where: Where; name: string; why: string };
 export type LibrariesOutcome = { passed: boolean; summary: string; detail: Record<string, unknown> };
 
 const engine = requireOptionalNativeModule<Engine>("SvelteEngine");
-const pixels = requireOptionalNativeModule<Pixels>("SvelteQaPixels");
 const android = Platform.OS === "android";
+const qaIos = android ? null : requireOptionalNativeModule<QaIos>("SvelteQA");
+const pixels: Pixels | null = android ? requireOptionalNativeModule<Pixels>("SvelteQaPixels") : qaIos?.samplePixels ? { sample: (source, points, radius) => qaIos.samplePixels?.(source, points, radius) as Sampled } : null;
+const inspectTag = (tag: number): Native | null => (android ? engine?.inspect?.(tag) : qaIos?.inspect?.(tag)) ?? null;
 const places: readonly Where[] = ["inline", "row", "sheet"];
 /** The file of the captures a launch leaves for the next one to find gone. */
 const leftoverFile = () => new File(Paths.document, "foreign-leftovers.json");
@@ -78,7 +83,8 @@ export async function runForeignLibraries(router: Router, signal: AbortSignal, o
       if (signal.aborted) break;
       const opened = place(kind, where);
       const record = (name: string, passed: boolean, detail = "") => {
-        const entry: LibraryCheck = { library: kind, where, name, passed, detail };
+        // One logcat line is cut near 4 KB: a check's own line stays far under it.
+        const entry: LibraryCheck = { library: kind, where, name: name.slice(0, 200), passed, detail: detail.slice(0, 300) };
         checks.push(entry);
         console.info("[Svelte foreign library]", JSON.stringify(entry));
       };
@@ -92,8 +98,8 @@ export async function runForeignLibraries(router: Router, signal: AbortSignal, o
       let handlesNow: LibraryHandles | undefined;
       const ctx: Ctx = {
         kind, where, source: opened.source, android,
-        canInspect: android && typeof engine?.inspect === "function",
-        canLook: android && !!pixels,
+        canInspect: android ? typeof engine?.inspect === "function" : typeof qaIos?.inspect === "function",
+        canLook: !!pixels,
         lab: libraryLab,
         handles: () => { handlesNow = libraryHandles.get(opened.source) ?? handlesNow; if (!handlesNow) throw new Error(`the ${kind} section is not mounted in ${where}`); return handlesNow; },
         host: () => libraryHandles.get(opened.source)?.hosts[kind],
@@ -105,8 +111,8 @@ export async function runForeignLibraries(router: Router, signal: AbortSignal, o
         events: (event, detail) => count(opened.source, event, detail),
         inspect: (host) => {
           const target = host ?? libraryHandles.get(opened.source)?.hosts[kind];
-          if (!target || !engine?.inspect) return null;
-          for (let attempt = 0; attempt < 3; attempt++) { const found = engine.inspect(target.tag); if (found) return found; }
+          if (!target) return null;
+          for (let attempt = 0; attempt < 3; attempt++) { const found = inspectTag(target.tag); if (found) return found; }
           return null;
         },
         rect: (host) => rectOf(host ?? libraryHandles.get(opened.source)?.hosts[kind]),
@@ -150,7 +156,7 @@ export async function runForeignLibraries(router: Router, signal: AbortSignal, o
       }
       for (const uri of released) { try { releaseCapture(uri); } catch { /* already gone */ } }
       resetLibraryLab();
-      router.back();
+      if (router.entries.length > depth) router.back();
       foreignLab.scrollIndex = -1;
       await until(() => !libraryHandles.has(opened.source) && router.entries.length === depth, 6000, signal);
       await pause(400, signal);

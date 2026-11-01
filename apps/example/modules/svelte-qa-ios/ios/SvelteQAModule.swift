@@ -96,6 +96,18 @@ public final class SvelteQAModule: Module {
       return try SvelteQAGestures.recognizers(tag: tag)
     }.runOnQueue(.main)
 
+    // What the checks of the native-view libraries read back (`foreign-libraries-checks.ts`): the view UIKit built for a React tag, and the colours of an image
+    // the app made of itself (a `captureRef` result), at fractions of it.
+    Function("inspect") { (tag: Int) -> [String: Any]? in
+      try SvelteQA.requireEnabled()
+      return SvelteQAViews.inspect(tag: tag)
+    }
+
+    Function("samplePixels") { (source: String, points: [[Double]], radius: Int?) -> [String: Any] in
+      try SvelteQA.requireEnabled()
+      return try SvelteQAViews.samplePixels(source: source, points: points, radius: radius ?? 1)
+    }
+
     // The accessibility elements of the key window as VoiceOver finds them (JSON text).
     AsyncFunction("accessibilityTree") { () -> String in
       try SvelteQA.requireEnabled()

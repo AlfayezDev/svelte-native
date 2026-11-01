@@ -187,7 +187,7 @@
           </Pdf>
         {:else if kind === "capture"}
           <View style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-around", padding: 8 }}>
-            <ViewShot options={{ format: "png", result: "tmpfile" }} ref={(handle) => { captureHost = handle ? handle.host : null; keep(hosts, kind)(captureHost); }} style={{ width: 80, height: 60, flexDirection: "row", borderRadius: 8 }}>
+            <ViewShot options={{ format: "png", result: "tmpfile" }} ref={(handle) => { captureHost = handle ? handle.host : null; keep(hosts, kind)(captureHost); }} style={{ width: 80, height: 60, flexDirection: "row", borderRadius: 16, overflow: "hidden" }}>
               {#each stripes as color (color)}<View style={{ flex: 1, backgroundColor: color }} />{/each}
             </ViewShot>
             <Pressable accessibilityRole="button" accessibilityLabel="Capture the stripes" onPress={() => { capture().catch(() => undefined); }} style={{ minHeight: 44, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}>

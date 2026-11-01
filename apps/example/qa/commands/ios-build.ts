@@ -36,6 +36,7 @@ export async function iosBuild(argv: string[]): Promise<void> {
 		variant: { type: "string" },
 	});
 	const variant = variantFlag(values.variant);
+	if (variant === "production") throw new Error("--variant production is the Android emulator's product boot check; the product's iOS app is built by EAS, not by the harness");
 	const mac = macFrom(flagString(values.mac));
 	const checkout = requireString(values["mac-checkout"] ?? process.env.NATIVE_QA_MAC_CHECKOUT, "mac-checkout");
 	const script = flagString(values["build-script"]) ?? (variant === "smoke" ? defaultSmokeScript : defaultScript);

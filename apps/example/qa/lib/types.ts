@@ -161,7 +161,7 @@ export type BuildFile = {
 	schema: 1;
 	kind: "build";
 	/** The app built: absent in files written before the smoke app existed (the QA app). */
-	variant?: "qa" | "smoke";
+	variant?: "qa" | "smoke" | "production";
 	abi: string;
 	finishedAt: string;
 	durationMs: number;

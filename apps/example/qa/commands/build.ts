@@ -39,6 +39,9 @@ export function buildEnv(variant: Variant, channel: string | null = null): Recor
 		EXPO_NO_TELEMETRY: "1",
 		EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL ?? "https://dev.qarnos.com",
 		APP_VARIANT: appVariantOf[variant],
+		// The product reads its Maps key from the environment (an EAS secret) and the Maps SDK throws at the first map when the manifest has
+		// none. This build is only ever started on the OVH emulator for the boot check and shows no map, so it gets the placeholder the QA app has.
+		...(variant === "production" ? { GOOGLE_MAPS_API_KEY: process.env.GOOGLE_MAPS_API_KEY ?? "svelte-qa-placeholder-key" } : {}),
 		UPDATES_CHANNEL: channel ?? "",
 		// Nothing of a build uploads to Sentry (its Expo plugin, which adds the upload step, is not applied).
 		SENTRY_DISABLE_AUTO_UPLOAD: "true",
@@ -157,7 +160,7 @@ export async function build(argv: string[]): Promise<void> {
 	const logPath = join(outDir, buildLogName(variant, abi));
 	await rm(logPath, { force: true });
 	const started = Date.now();
-	console.log(`building the ${variant} app (${packageOf[variant]})`);
+	console.log(`building the ${variant} app (${packageOf[variant]})${variant === "production" ? " for the product boot check (native-qa product); never for a phone" : ""}`);
 
 	if (variant === "smoke" && (await modifiedTime(samsungPayJar)) === null)
 		throw new Error(

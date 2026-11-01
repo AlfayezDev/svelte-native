@@ -1,7 +1,7 @@
 import { test, expect, jest } from "bun:test";
 import { build, transform, type Loader, type Plugin } from "esbuild";
 import { readFile, mkdtemp, mkdir, writeFile, rm, symlink } from "node:fs/promises";
-import { resolve } from "node:path";
+import { relative, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { compile, compileModule } from "svelte/compiler";
@@ -506,11 +506,44 @@ test("in the product a deep link to the lab ends where an unknown workspace does
 // The product's Metro resolves everything in the lab's directories to a stub that throws when it is used, and the shared code (the root layout,
 // the session, three screens) may call the lab only behind `nativeLabEnabled`. This mounts the platform app's real root layout, session and
 // pages the way the product runs them: the route table the Metro integration generates for the variant, the lab's directories replaced by the
-// real stub core (the plugin below does what `stubbedDirectories` does after resolution), the account and the Expo modules faked. A lab call
-// that is not behind the flag then fails the test instead of a phone.
+// real stub (the file `stubSource` writes, over `stubCoreSource`: a Proxy that throws on any property read and on a call), the account and the
+// Expo modules faked. A lab call that is not behind the flag then fails the test instead of a phone.
+//
+// The stub throws on a READ of a binding as much as on a call, because Metro's transform reads a named import where it is used
+// (`_probe.lateFault`, a property read on the stub), while esbuild copies the exports of a CommonJS module into a namespace object when it
+// is imported, and the stub has none to copy (`ownKeys` is empty): `lateFault === "mount"` was `undefined === "mount"` here, and a read of a
+// lab binding that was not behind the flag passed this test and crashed the product's root layout. So each import of a stubbed directory
+// goes through a module that names the bindings the importer imports from it (`ownKeys`), and esbuild's copy then reads them through the
+// stub's `get` when they are used, which throws.
 const platformRoot = resolve(import.meta.dirname, "../../../apps/platform");
 const packageRoot = resolve(import.meta.dirname, "..");
 const labDirectories = [`${resolve(platformRoot, "src/lib/native/dev")}/`, `${resolve(platformRoot, "src/routes/__dev")}/`];
+
+/**
+ * The names `importer` imports from `specifier` as bindings (`import { a, b as c } from`, `export { a } from`): the ones a bundler reads on the
+ * module where they are used. A default import, a namespace import and a type-only import read no named binding. Reads the importer's source,
+ * so a statement it cannot read is an error and not a binding the test would never check.
+ */
+function importedNames(source: string, specifier: string, importer = "the importer"): string[] {
+  const escaped = specifier.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const names = new Set<string>();
+  const statement = new RegExp(`\\b(?:import|export)\\s+(type\\s+)?([^;'"]*?)\\bfrom\\s*(["'])${escaped}\\3`, "g");
+  let found = 0;
+  for (const match of source.matchAll(statement)) {
+    found++;
+    if (match[1] !== undefined) continue;
+    const braces = /\{([^}]*)\}/.exec(match[2] ?? "");
+    for (const entry of (braces?.[1] ?? "").replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, "").split(",")) {
+      const name = entry.trim().split(/\s+as\s+/)[0]?.trim() ?? "";
+      if (name === "" || /^type\s/.test(name)) continue;
+      if (!/^[A-Za-z_$][\w$]*$/.test(name)) throw new Error(`cannot read the binding ${JSON.stringify(name)} that ${importer} imports from ${specifier}`);
+      names.add(name);
+    }
+  }
+  // A mention that is no import statement we read (a dynamic import, a side-effect import) reads no named binding, as Metro's interop does.
+  if (found === 0 && new RegExp(`\\bfrom\\s*["']${escaped}["']`).test(source)) throw new Error(`cannot read how ${importer} imports ${specifier}`);
+  return [...names];
+}
 
 async function platformApp(variant: string, applicationId: string | null): Promise<{ plugins: Plugin[]; loader: Record<string, Loader>; define: Record<string, string>; clean: () => Promise<void> }> {
   const directory = await mkdtemp(resolve(tmpdir(), "svelte-native-platform-app-"));
@@ -520,7 +553,15 @@ async function platformApp(variant: string, applicationId: string | null): Promi
   const table = resolve(directory, ".svelte-native", `routes.${variant}.ts`);
   await mkdir(resolve(directory, "stubs"), { recursive: true });
   await writeFile(resolve(directory, "stubs/_core.js"), stubCoreSource);
-  await writeFile(resolve(directory, "stubs/lab.js"), stubSource("src/lib/native/dev/", variant));
+  // One stub per stubbed directory, as `withSvelteNative` writes them: its name is the directory relative to the project, and the stub reads
+  // `./_core.js` next to it.
+  const stubFiles = new Map<string, string>();
+  for (const lab of labDirectories) {
+    const name = `${relative(platformRoot, lab)}/`.replaceAll("\\", "/");
+    const file = resolve(directory, "stubs", `${name.replace(/[^A-Za-z0-9_.-]/g, "_")}.js`);
+    await writeFile(file, stubSource(name, variant));
+    stubFiles.set(lab, file);
+  }
   const expo: Record<string, string> = {
     "expo-font": "export const loadAsync = async () => {};",
     "expo-secure-store": "const store = new Map(); export const getItem = (key) => store.get(key) ?? null; export const setItem = (key, value) => { store.set(key, value); }; export const deleteItemAsync = async (key) => { store.delete(key); };",
@@ -542,11 +583,22 @@ async function platformApp(variant: string, applicationId: string | null): Promi
       builder.onResolve({ filter: /^@rasheed\/svelte-native\/routes$/ }, () => ({ path: table }));
       builder.onResolve({ filter: new RegExp(`^(${Object.keys(expo).join("|")})$`) }, (args) => ({ path: args.path, namespace: "platform-expo" }));
       builder.onLoad({ filter: /.*/, namespace: "platform-expo" }, (args) => ({ contents: expo[args.path], loader: "js" }));
+      // The stub of the product, byte for byte, behind a Proxy that lists the bindings this importer names, so that esbuild's namespace copy
+      // reads each one through the stub's `get` (which throws) where it is used, as Metro's `_stub.name` does. Everything else is the stub's:
+      // a read of any other property, a call and a construction throw, `has` and `getOwnPropertyDescriptor` answer nothing.
+      builder.onLoad({ filter: /.*/, namespace: "lab-stub" }, (args) => {
+        const { stub, names } = args.pluginData as { stub: string; names: string[] };
+        return { contents: `const stub = require(${JSON.stringify(stub)});\nmodule.exports = new Proxy(stub, { ownKeys: () => ${JSON.stringify(names)} });\n`, resolveDir: directory, loader: "js" };
+      });
       builder.onResolve({ filter: /^[.#]/ }, async (args) => {
         if (args.pluginData?.platformApp) return undefined;
         const found = await builder.resolve(args.path, { resolveDir: args.resolveDir, importer: args.importer, kind: args.kind, namespace: args.namespace, pluginData: resolving });
         if (found.errors.length > 0) return undefined;
-        if (labDirectories.some((lab) => found.path.startsWith(lab))) return { path: resolve(directory, "stubs/lab.js") };
+        const lab = labDirectories.find((candidate) => found.path.startsWith(candidate));
+        if (lab !== undefined) {
+          const names = importedNames(await readFile(args.importer, "utf8"), args.path, args.importer);
+          return { path: `${args.importer} > ${args.path}`, namespace: "lab-stub", pluginData: { stub: stubFiles.get(lab), names } };
+        }
         if (found.path === resolve(platformRoot, "src/lib/native/session.svelte.ts")) return { path: resolve(import.meta.dirname, "lab-off-session.svelte.ts") };
         return undefined;
       });
@@ -630,4 +682,34 @@ test("the same harness sees a lab call that is not behind the flag: with the fla
     expect(trouble(mismatched.texts(), mismatched.errors)).toEqual([]);
     expect(mismatched.texts().some((line) => line.includes("Sign out"))).toBe(true);
   } finally { await mismatched.close(); reset(); }
+});
+
+test("the product's lab stub fails an unguarded read of a binding, a call and a component, and nothing that stays behind the flag", async () => {
+  withInsets(24);
+  // Each is one way the shared code can use the lab's directories without the flag; the product's Metro answers every one with the stub's error.
+  const unguarded = ["read", "call", "component"];
+  try {
+    for (const [index, mode] of unguarded.entries()) {
+      const app = await platformApp("production", "io.rasheed.app");
+      try { await expect(mountTree(160 + index, { mode }, "lab-stub-probe.svelte", app)).rejects.toThrow("src/lib/native/dev/ is not in this app (APP_VARIANT=production)"); }
+      finally { await app.clean(); reset(); }
+    }
+    const app = await platformApp("production", "io.rasheed.app");
+    try {
+      const behind = await mountTree(163, { mode: "off" }, "lab-stub-probe.svelte", app);
+      expect(behind.texts()).toEqual(["behind the flag"]);
+    } finally { await app.clean(); reset(); }
+  } finally { reset(); }
+});
+
+test("which bindings an importer reads from a module, for the stub that has to throw on them", () => {
+  const from = "#lib/native/dev/update-probe.ts";
+  const read = (source: string) => importedNames(source, from);
+  expect(read(`import { logUpdateReport, lateFault as fault, type Shape, lateFaultMessage } from "${from}";`)).toEqual(["logUpdateReport", "lateFault", "lateFaultMessage"]);
+  expect(read(`import {\n  a, // why\n  /* b */ c,\n} from '${from}'\nimport { z } from "./other.ts"`)).toEqual(["a", "c"]);
+  expect(read(`import type { Shape } from "${from}"; import Thing from "${from}"; import * as all from "${from}"; import "${from}";`)).toEqual([]);
+  expect(read(`import Thing, { b } from "${from}"; export { c } from "${from}";`)).toEqual(["b", "c"]);
+  expect(read(`const later = import("${from}");`)).toEqual([]);
+  expect(read(`import { a } from "${from}.other";`)).toEqual([]);
+  expect(() => read(`import { a b } from "${from}";`)).toThrow("cannot read the binding");
 });

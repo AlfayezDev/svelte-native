@@ -67,17 +67,18 @@ export function screenshot(serial: string): Promise<Image> {
  */
 export async function dumpUi(
 	serial: string,
-	options: { important?: boolean } = {},
+	options: { important?: boolean; attempts?: number; timeoutMs?: number } = {},
 ): Promise<UiTree> {
 	let last = "";
+	const attempts = options.attempts ?? 5;
 	// `--compressed` drops the nodes a service that does not ask for flagIncludeNotImportantViews never receives: views that
 	// are `importantForAccessibility=no` and everything under a `no-hide-descendants` view (uiautomator asks for all of them).
 	const flags = options.important ? "--compressed " : "";
-	for (let attempt = 1; attempt <= 5; attempt++) {
+	for (let attempt = 1; attempt <= attempts; attempt++) {
 		const result = await shell(
 			serial,
 			`rm -f ${dumpFile}; uiautomator dump ${flags}${dumpFile} >/dev/null 2>&1; cat ${dumpFile}`,
-			{ timeoutMs: 60_000 },
+			{ timeoutMs: options.timeoutMs ?? 60_000 },
 		);
 		const start = result.stdout.indexOf("<?xml");
 		if (start >= 0 && result.stdout.includes("</hierarchy>"))
@@ -86,7 +87,7 @@ export async function dumpUi(
 		await sleep(600);
 	}
 	throw new Error(
-		`uiautomator dump on ${serial} produced no tree after 5 attempts (${last || "no output"})`,
+		`uiautomator dump on ${serial} produced no tree after ${attempts} attempt${attempts === 1 ? "" : "s"} (${last || "no output"})`,
 	);
 }
 

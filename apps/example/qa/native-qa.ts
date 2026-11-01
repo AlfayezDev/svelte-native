@@ -8,6 +8,7 @@ import { iosProbe } from "./commands/ios-probe.ts";
 import { leakcheck } from "./commands/leakcheck.ts";
 import { lab } from "./commands/lab.ts";
 import { parity } from "./commands/parity.ts";
+import { product } from "./commands/product.ts";
 import { report } from "./commands/report.ts";
 import { resilience } from "./commands/resilience.ts";
 import { smoke } from "./commands/smoke.ts";
@@ -35,6 +36,7 @@ const usage = `usage: native-qa <command> [flags]
   gestures --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--team <id>] [--rebuild] [--run ...] [--repeat <n>] [--timeout <s>]
   probe  --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--probes <names>] [--direction ltr|rtl]
   updates --device <serial> [--apk <channel build>] [--baseline-apk <path> | --no-baseline] [--channel qa] [--warm <n>] [--max-launches <n>] [--settle <n>] [--faults boot,mount,effect] [--eas "<command>"] [--environment <eas environment>] [--reset app|data] [--dexopt profile|none] [--package <id>]
+  product --device <serial> [--apk <path> | --no-install] [--dexopt profile|none]      (the product boot check on the lab emulator: build --variant production first)
   hold   --device <serial> [--wait <seconds>] -- <command...>   (the emulator lock held across the commands: a CI lane, a sequence of runs)
   report
   gates  [--platform android|ios] [--all] [--smoke] [--runs lab,parity,...] [--except lab.runs,...] [--markdown <file>]
@@ -55,6 +57,7 @@ const commands: Record<string, (argv: string[]) => Promise<void>> = {
 	smoke,
 	gestures,
 	updates,
+	product,
 	hold,
 	probe: iosProbe,
 	report: async () => report(),

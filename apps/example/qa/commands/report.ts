@@ -18,6 +18,7 @@ import { deviceMetrics, missingScenarios, runFatals } from "../lib/metrics.ts";
 import { missingModules, unexpectedSkips, unpinnedModules } from "../lib/smoke.ts";
 import { allScenarios, failedChecks } from "../lib/gestures.ts";
 import type { SuiteFiles } from "../lib/suite-metrics.ts";
+import { productProblems, type ProductFile } from "../lib/product.ts";
 import type { UpdatesFile } from "../lib/updates.ts";
 import { gatesPath, reportPath } from "../lib/paths.ts";
 import { latestRunFiles, readBuilds, readJson, runKinds, type RunKind } from "../lib/runs.ts";
@@ -161,6 +162,16 @@ type UpdatesSummary = {
 	finalBuild: "plain" | "channel";
 };
 
+/** The product boot check: the product app started cold on the lab emulator, and whether it reached its login screen without a fatal. */
+type ProductSummary = {
+	file: string;
+	source: Source;
+	package: string;
+	firstScreenMs: number | null;
+	fatals: string[];
+	problems: string[];
+};
+
 type SuitesSummary = {
 	parity: { file: string; mode: "check" | "update"; deviceKind: string } | null;
 	a11y: { file: string; oracle: string; screens: A11yScreenSummary[] } | null;
@@ -202,6 +213,8 @@ type ReportDeviceEntry = {
 	gestures: GesturesSummary | null;
 	/** Android: the updates run. It installs its own build (the channel one), so it is left out of the cross-build comparison of the other runs. */
 	updates: UpdatesSummary | null;
+	/** Android: the product boot check. It starts another app (`io.rasheed.app`), so it is left out of the cross-build comparison of the others. */
+	product: ProductSummary | null;
 	/** iOS only: the crash reports of the phone each run file recorded. */
 	crashReports: CrashReportsSummary[];
 	suites: SuitesSummary;
@@ -434,7 +447,9 @@ export async function report(): Promise<void> {
 		};
 		const updatesPath = files.updates.get(key);
 		const updates = updatesPath ? await readJson<UpdatesFile>(updatesPath) : null;
-		const reference = lab ?? boot ?? soak ?? crashes ?? suites.parity ?? suites.a11y ?? suites.resilience ?? gestures ?? updates ?? smoke;
+		const productPath = files.product.get(key);
+		const product = productPath ? await readJson<ProductFile>(productPath) : null;
+		const reference = lab ?? boot ?? soak ?? crashes ?? suites.parity ?? suites.a11y ?? suites.resilience ?? gestures ?? updates ?? product ?? smoke;
 		if (!reference) continue;
 		const serial = reference.device.serial;
 		const platform: Platform = reference.device.platform;
@@ -530,6 +545,17 @@ export async function report(): Promise<void> {
 						}
 					: null,
 			updates: updates && updatesPath ? summarizeUpdates(updates, updatesPath.slice(updatesPath.lastIndexOf("runs/"))) : null,
+			product:
+				product && productPath
+					? {
+							file: productPath.slice(productPath.lastIndexOf("runs/")),
+							source: product.source,
+							package: product.app.package,
+							firstScreenMs: product.firstScreen.atMs,
+							fatals: product.fatals,
+							problems: productProblems(product),
+						}
+					: null,
 			crashReports: crashReportSummaries(platform, [
 				["lab", labPath, lab],
 				["boot", bootPath, boot],
@@ -558,7 +584,7 @@ export async function report(): Promise<void> {
 						: null,
 				resilience: suites.resilience && resiliencePath ? { file: resiliencePath.slice(resiliencePath.lastIndexOf("runs/")), screen: suites.resilience.screen } : null,
 			},
-			metrics: deviceMetrics(lab, boot, pinned, soak, crashes, suites, smoke ? { file: smoke, pins } : null, gestures, pinnedGestures, updates, gates.signedIn?.[platform] ?? []),
+			metrics: deviceMetrics(lab, boot, pinned, soak, crashes, suites, smoke ? { file: smoke, pins } : null, gestures, pinnedGestures, updates, gates.signedIn?.[platform] ?? [], product),
 		};
 	}
 
@@ -651,6 +677,13 @@ export async function report(): Promise<void> {
 			);
 			if (u.finalBuild === "channel") console.log("    the run left the channel build on the device; install the plain QA build before another run measures it");
 			for (const problem of u.problems) console.log(`    problem: ${problem}`);
+		}
+		if (entry.product) {
+			const p = entry.product;
+			console.log(
+				`  product (${p.package}) login screen ${p.firstScreenMs === null ? "not reached" : `after ${p.firstScreenMs} ms`}, fatals ${m["product.boot.fatals"] ?? "-"}, JavaScript error lines ${m["product.boot.jsErrors"] ?? "-"} (not judged)`,
+			);
+			for (const problem of p.problems) console.log(`    problem: ${problem}`);
 		}
 		if (entry.crashes)
 			console.log(

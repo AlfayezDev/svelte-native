@@ -35,7 +35,8 @@
         "resilience",
         "smoke",
         "gestures",
-        "updates"
+        "updates",
+        "product"
       ]
     }
   },
@@ -1150,6 +1151,28 @@
       "title": "Updates: the channel ends on an update that runs",
       "unit": "",
       "metric": "updates.channelHealthy",
+      "bar": {
+        "android": {
+          "min": 1
+        }
+      }
+    },
+    {
+      "id": "product.boot.fatals",
+      "title": "Product boot: JavaScript fatals and native crashes while it starts (the product app, no development lab)",
+      "unit": "fatals",
+      "metric": "product.boot.fatals",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "product.boot.firstScreen",
+      "title": "Product boot: the signed-out login screen is reached within 15 s of a cold start",
+      "unit": "",
+      "metric": "product.boot.firstScreen",
       "bar": {
         "android": {
           "min": 1

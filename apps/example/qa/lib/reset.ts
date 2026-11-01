@@ -38,6 +38,28 @@ export function assertMayClear(identity: Identity, action: Destructive): void {
 		throw new Error(`refusing to ${action} on ${serial}: it is not a lab device in qa/gates.json (role ${role ?? "none"}), and only a lab emulator may be cleared or uninstalled. Reset the update state through the app instead`);
 }
 
+/**
+ * The product app (`io.rasheed.app`) is the one the stores ship, and a shared phone has it, or may have: the harness never installs,
+ * starts, clears or touches it there. Refuses a device that gates.json lists as a phone under any name it answers to. Checked from the
+ * serial alone (`identify(serial, {}, gates)`) before the first adb command, and again from what the device says about itself.
+ */
+export function refusePhone(identity: Identity, what: string): void {
+	if (identity.role === "phone")
+		throw new Error(
+			`refusing to ${what} on ${identity.serial}: it is a phone in qa/gates.json, a shared device on which the harness never touches the product app (io.rasheed.app). The product boot check is for the lab emulator (localhost:5555) only`,
+		);
+}
+
+/** The product boot check puts the product on a device that says it is an emulator and that gates.json lists as the lab, and on no other. */
+export function assertProductDevice(identity: Identity): void {
+	const what = "install or start the product app";
+	refusePhone(identity, what);
+	if (!identity.emulator)
+		throw new Error(`refusing to ${what} on ${identity.serial}: it does not say it is an emulator (ro.kernel.qemu and ro.boot.qemu are not 1)`);
+	if (identity.role !== "lab")
+		throw new Error(`refusing to ${what} on ${identity.serial}: it is not a lab device in qa/gates.json (role ${identity.role ?? "none"})`);
+}
+
 /** The check a command makes before it installs anything, when the run will have to clear the app. */
 export function assertClearable(identity: Identity): void {
 	assertMayClear(identity, "pm clear");

@@ -40,7 +40,7 @@ describe("the three application ids", () => {
   test("the registry of the operator app, the QA harness and the flag read the ones app.config.ts makes the apps with", () => {
     expect(OPERATOR_APP_ID).toBe(productApplicationId);
     expect(defaultPackage).toBe(qaApplicationId);
-    expect(packageOf).toEqual({ qa: qaApplicationId, smoke: smokeApplicationId });
+    expect(packageOf).toEqual({ qa: qaApplicationId, smoke: smokeApplicationId, production: productApplicationId });
     expect(new Set([productApplicationId, qaApplicationId, smokeApplicationId]).size).toBe(3);
   });
 });

@@ -32,7 +32,7 @@ on:
         type: boolean
         default: false
       updates_channel:
-        description: The EAS Update channel of the update scenario (qa, or qa-<suffix>). A run from another machine on the same channel is not excluded by the channel lock, which is per machine
+        description: The EAS Update channel of the update scenario (qa, or qa-<suffix>). A run from another machine on the same channel waits for this one: the channel lock is a lock of the OVH host, like the emulator's
         default: qa
       crashes:
         description: Also run the crash volume, 1,000 cold starts and 100 suites (8 to 15 hours of the emulator)

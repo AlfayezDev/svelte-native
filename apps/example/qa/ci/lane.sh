@@ -153,7 +153,7 @@ emulator() {
     stage smoke "${QA[@]}" smoke --device "$DEVICE"
   fi
   # Last of the stages that measure the QA app: it installs the plain build, the channel build and, at its end, the plain build
-  # again, and it takes the channel's lock (a lock of this host) after the emulator lock the lane holds.
+  # again, and it takes the channel's lock (a lock of this host, like the emulator's, that a machine over ssh takes too) after the emulator lock the lane holds.
   if [ "$MODE" = full ] && [ "${QA_UPDATES:-0}" = 1 ]; then
     fresh_enough updates
     stage updates "${QA[@]}" updates --device "$DEVICE" --channel "$CHANNEL" --warm "$WARM"

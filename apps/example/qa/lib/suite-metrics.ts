@@ -56,6 +56,7 @@ export function a11yMetrics(file: A11yFile, signedIn: readonly string[] = []): M
 		"a11y.unlabeled": total((screen) => screen.unlabeled),
 		"a11y.notActionable": total((screen) => screen.notActionable),
 		"a11y.smallTargets": total((screen) => screen.smallTargets ?? 0),
+		"a11y.stateMismatches": total((screen) => screen.stateMismatches ?? 0),
 		"a11y.orderViolations": total((screen) => screen.orderViolations),
 		"a11y.titleNotFirst": measured.filter((screen) => screen.titleFirst === false).length,
 		"a11y.focusLeaks": total((screen) => screen.focusLeaks),

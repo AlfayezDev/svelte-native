@@ -1,12 +1,14 @@
 <script lang="ts">
   import { Pressable, Text, ActivityIndicator, View } from "@rasheed/svelte-native";
   import { theme } from "../state.svelte.ts";
-  let { label, onPress, disabled = false, busy = false, variant = "primary" }: {
+  /** `selected` is for a button that is one of a set of choices (a tab, a radio): it is said to a screen reader, which the primary colour alone does not, and the choice has the role of its set. */
+  let { label, onPress, disabled = false, busy = false, variant = "primary", selected, role = "button" }: {
     label: string; onPress: () => unknown; disabled?: boolean; busy?: boolean; variant?: "primary" | "secondary" | "danger";
+    selected?: boolean; role?: "button" | "tab" | "radio";
   } = $props();
   const color = $derived(variant === "secondary" ? theme.foreground : variant === "danger" ? "#ffffff" : theme.onAccent);
 </script>
-<Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: disabled || busy, busy }} disabled={disabled || busy} onPress={onPress}
+<Pressable accessibilityRole={role} accessibilityLabel={label} accessibilityState={{ disabled: disabled || busy, busy, ...(selected === undefined ? {} : { selected }) }} disabled={disabled || busy} onPress={onPress}
   style={{ minHeight: 52, padding: 14, borderRadius: 12, justifyContent: "center", opacity: disabled || busy ? 0.5 : 1, backgroundColor: variant === "secondary" ? theme.surface : variant === "danger" ? theme.danger : theme.accent, borderWidth: variant === "secondary" ? 1 : 0, borderColor: theme.border, overflow: "hidden" }}>
   <View style={{ flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center", direction: theme.direction }}>
     {#if busy}<ActivityIndicator {color} />{/if}

@@ -679,7 +679,7 @@ export async function report(): Promise<void> {
 			);
 		if (entry.suites.a11y) {
 			console.log(
-				`  a11y ${m["a11y.screens"] ?? 0}/${m["a11y.screensExpected"] ?? "-"} screens, ${m["a11y.interactive"] ?? 0} interactive elements: unreachable ${m["a11y.unreachable"] ?? "-"}, unlabeled ${m["a11y.unlabeled"] ?? "-"}, not actionable ${m["a11y.notActionable"] ?? "-"}, order violations ${m["a11y.orderViolations"] ?? "-"}, titles not first ${m["a11y.titleNotFirst"] ?? "-"}, focus leaks ${m["a11y.focusLeaks"] ?? "-"}`,
+				`  a11y ${m["a11y.screens"] ?? 0}/${m["a11y.screensExpected"] ?? "-"} screens, ${m["a11y.interactive"] ?? 0} interactive elements: unreachable ${m["a11y.unreachable"] ?? "-"}, unlabeled ${m["a11y.unlabeled"] ?? "-"}, not actionable ${m["a11y.notActionable"] ?? "-"}, state mismatches ${m["a11y.stateMismatches"] ?? "-"}, order violations ${m["a11y.orderViolations"] ?? "-"}, titles not first ${m["a11y.titleNotFirst"] ?? "-"}, focus leaks ${m["a11y.focusLeaks"] ?? "-"}`,
 			);
 			for (const screen of entry.suites.a11y.screens)
 				console.log(

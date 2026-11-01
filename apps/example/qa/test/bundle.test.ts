@@ -32,7 +32,10 @@ const { smokeOnlyBundlePackages } = createRequire(import.meta.url)("../smoke-pac
  * `WorkletEventHandler`, which the UI-thread route now loads. (These are the QA app's bundle; the product has not carried the lab since, see
  * `productBaseline`.)
  */
-const baseline = { commit: "merge of feat/svelte-native-gestures", bytes: 11_734_903 };
+// The merge of the device-verified native-view libraries and the engine's accessibility props: +119,195 bytes (+1.0 %) to 11,854,098,
+// nearly all of it lab code (the self-checking foreign-libraries lab and its checks, the /__dev/a11y states and actions page), plus
+// `fabric/accessibility.ts` (RN's aria-* and role rules), which the product carries too.
+const baseline = { commit: "merge of feat/svelte-native-wp2dev and feat/svelte-native-a11y", bytes: 11_854_098 };
 
 /**
  * The product's bundle without the lab, built with the same recipe: 10,760,249 bytes (1,188 modules) at the commit that left the lab out,

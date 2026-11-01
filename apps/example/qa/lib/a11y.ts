@@ -1,6 +1,7 @@
 import type { Direction } from "./device.ts";
 import type { Rect } from "./png.ts";
 import type { Layout } from "./screens.ts";
+import { judgeNodeInfo, judgeNodes, offersActions, type InfoExpectation, type NodeExpectation, type NodeInfo } from "./a11y-state.ts";
 import { bottom, descendants, right, spokenLabel, type UiNode, type UiTree } from "./uia.ts";
 
 /**
@@ -17,7 +18,8 @@ import { bottom, descendants, right, spokenLabel, type UiNode, type UiTree } fro
  *   on it (it is focusable or actionable or says something). A control the screen's source declares that the tree does not
  *   contain at all is unreachable.
  * - labeled: it has text, a content description or a hint of its own, or a descendant that does.
- * - actionable: it advertises an action (clickable, long-clickable, checkable, or a text field).
+ * - actionable: it advertises an action (clickable, long-clickable, checkable, or a text field). The dump has no action list, so a lab
+ *   control whose node info (the app's own, `nodeInfo`) offers a slider's scroll action or a custom one counts as well.
  * - order: the focus stops, in tree order, run top to bottom and, within a row, from the start edge to the end (left to
  *   right, right to left in RTL). A header reads back button, left slot, title (or center slot), right slot, search: that is
  *   start to end, so it needs no exemption; its large title, the bar's second row, is the one step that goes up.
@@ -31,12 +33,16 @@ import { bottom, descendants, right, spokenLabel, type UiNode, type UiTree } fro
  * - focus trap: while a sheet or modal is up, nothing of the screen underneath is in the tree (a service must not be able to
  *   reach it).
  *
+ * A screen that declares expectations (the accessibility lab, `ScreenCase.expect` and `.info`) gets a seventh check, `state`: the node a control
+ * publishes for its state, value, hint and actions is what React Native's views publish for the same props (`a11y-state.ts`, which also says what
+ * the dump cannot show and where the rest is read from). Counted per mismatch in `stateMismatches`.
+ *
  * And one measurement that no gate judges (`smallTargets`, a finding of kind `target`): an enabled control that is fully on screen and
  * smaller than 48 dp in either direction (`minimumTargetDp`), when the display's density is known. It is reported per screen and
  * summed in `a11y.smallTargets`, so a product screen's small controls show up in the run files and the report.
  */
 
-export type A11yKind = "unreachable" | "unlabeled" | "notActionable" | "order" | "title" | "leak" | "target";
+export type A11yKind = "unreachable" | "unlabeled" | "notActionable" | "order" | "title" | "leak" | "target" | "state";
 
 /** The smallest touch target Android's accessibility guidance asks for, in dp, in each dimension. */
 export const minimumTargetDp = 48;
@@ -49,6 +55,8 @@ export type A11yFinding = {
 };
 
 export type A11yScreen = {
+	/** Mismatches between a control's published state, value, hint and actions and the expectations of the screen (`a11y-state.ts`). Absent where the screen declares none. */
+	stateMismatches?: number;
 	/** Interactive nodes in the tree plus declared controls the tree does not expose. */
 	interactive: number;
 	reachable: number;
@@ -94,6 +102,13 @@ export type A11yInput = {
 	/** Labels that must not be in the tree: the covered screen's, while a sheet or modal is up. */
 	hidden: string[];
 	layout: Layout;
+	/** The text size the screen was dumped at: at the normal one every node of `expect` must be in the tree, at a larger one those below the fold are left out. */
+	fontScale?: number;
+	/** What the dump must show of the screen's lab controls, by `testID` (`NodeExpectation`). */
+	expect?: readonly NodeExpectation[];
+	/** What the app must publish for them (`InfoExpectation`), and the node infos it logged (null: it logged none). Judged when `info` is given. */
+	info?: readonly InfoExpectation[];
+	nodeInfo?: readonly NodeInfo[] | null;
 };
 
 const interactiveClasses = new Set([
@@ -314,6 +329,7 @@ type Element = { node: UiNode | null; label: string };
 export function analyzeScreen(input: A11yInput): A11yScreen {
 	const { tree, direction, display, title, controls, scrolled, hidden, layout } = input;
 	const findings: A11yFinding[] = [];
+	const judgesState = input.expect !== undefined || input.info !== undefined;
 
 	/* Elements: every interactive node, plus each declared control, matched to a node (an interactive one if there is one). */
 	const elements: Element[] = tree.nodes
@@ -337,6 +353,8 @@ export function analyzeScreen(input: A11yInput): A11yScreen {
 		elements.push({ node: plain ?? null, label });
 	}
 
+	// A node the dump shows no action for (a slider's increment, a swipe row's custom actions) but whose node info offers one.
+	const operable = new Set((input.nodeInfo ?? []).filter(offersActions).map((info) => info.id));
 	let reachable = 0;
 	let labeled = 0;
 	let actionable = 0;
@@ -413,7 +431,7 @@ export function analyzeScreen(input: A11yInput): A11yScreen {
 				detail: "no text, content description or hint, and no labeled descendant",
 			});
 		}
-		if (isActionable(node)) {
+		if (isActionable(node) || (node.resourceId !== "" && operable.has(node.resourceId))) {
 			actionable++;
 		} else {
 			notActionable++;
@@ -485,6 +503,12 @@ export function analyzeScreen(input: A11yInput): A11yScreen {
 		});
 	}
 
+	const state: A11yFinding[] = [
+		...judgeNodes(tree, input.expect ?? [], input.fontScale ?? 1, direction),
+		...(input.info === undefined ? [] : judgeNodeInfo(input.nodeInfo ?? null, input.info, direction)),
+	];
+	findings.push(...state);
+
 	return {
 		interactive: elements.length,
 		reachable,
@@ -496,6 +520,7 @@ export function analyzeScreen(input: A11yInput): A11yScreen {
 		unlabeled,
 		notActionable,
 		...(smallTargets === undefined ? {} : { smallTargets }),
+		...(judgesState ? { stateMismatches: state.length } : {}),
 		stops: stops.map((stop) => spokenLabel(stop) || heldLabel(stop) || describe(stop)),
 		orderViolations,
 		titleFirst,

@@ -1,5 +1,6 @@
-import { wake } from "../lib/adb.ts";
+import { clearLogcat, dumpLogcat, wake } from "../lib/adb.ts";
 import { analyzeScreen, reachPct } from "../lib/a11y.ts";
+import { parseNodeInfo, type NodeInfo } from "../lib/a11y-state.ts";
 import { dumpUi, endsRun, newSessionNotes, readDisplay, reportRestore, withSession } from "../lib/device.ts";
 import { dumpWithOwnControls, openCase, retryCase, settledTree } from "../lib/drive.ts";
 import { inSignedInPhase, splitPhases, startSignedOut } from "../lib/phases.ts";
@@ -25,7 +26,18 @@ import { iosA11y } from "./ios-a11y.ts";
 
 /** What the checks read, stated in every run file. */
 export const oracle =
-	"uiautomator dump --compressed of the foreground window: the accessibility node info the engine publishes (A11y.kt, EngineText, EngineHeader, EngineTabs) for the views that are important for accessibility, without what the engine hides from services (a screen under a sheet or modal, a scrim), which is the tree a service that does not ask for the other views, TalkBack among them, walks. Every check reads that tree; the plain dump, which lists all views, only drives the app (anchor, taps). The suite does not run TalkBack itself.";
+	"uiautomator dump --compressed of the foreground window: the accessibility node info the engine publishes (A11y.kt, EngineText, EngineHeader, EngineTabs) for the views that are important for accessibility, without what the engine hides from services (a screen under a sheet or modal, a scrim), which is the tree a service that does not ask for the other views, TalkBack among them, walks. Every check reads that tree; the plain dump, which lists all views, only drives the app (anchor, taps). The dump has no range, tooltip (the hint), role description, action list, live region or expand state, so the accessibility lab's controls are also read from the node info the app logs for them (A11yDump.kt, `[Svelte a11y]` lines in logcat; the lab's controls only, and the app's word for what it publishes). The suite does not run TalkBack itself.";
+
+/** The node infos the accessibility lab logged after the screen opened (the screen's link has `probe=`): its `[Svelte a11y] node` lines up to `done`, null when it logged none within the time. */
+async function readNodeInfo(serial: string, timeoutMs = 20_000): Promise<NodeInfo[] | null> {
+	const deadline = Date.now() + timeoutMs;
+	for (;;) {
+		const found = parseNodeInfo(await dumpLogcat(serial));
+		if (found !== null) return found;
+		if (Date.now() >= deadline) return null;
+		await new Promise((resolve) => setTimeout(resolve, 500));
+	}
+}
 
 function emptyResult(screen: ScreenCase, variant: Variant, error: string): A11yScreenResult {
 	return {
@@ -110,11 +122,14 @@ export async function a11y(argv: string[]): Promise<void> {
 								variant.fontScale,
 								referenceName(screen, variant),
 								async () => {
+									// The lab logs its node info once after it opens; what the previous screen left in the log is not this open's.
+									if (screen.info) await clearLogcat(serial);
 									await openCase(session, screen, variant.direction);
 									const first = await dumpWithOwnControls(() => dumpUi(serial, { important: true }), own);
 									return settledTree(serial, first, undefined, { important: true });
 								},
 							);
+							const nodeInfo = screen.info ? await readNodeInfo(serial) : undefined;
 							const analysis = analyzeScreen({
 								tree,
 								direction: variant.direction,
@@ -124,6 +139,9 @@ export async function a11y(argv: string[]): Promise<void> {
 								controls: screen.controls.map((control) => localize(control, variant.direction)),
 								hidden: screen.hidden.map((label) => localize(label, variant.direction)),
 								layout: screen.layout,
+								fontScale: variant.fontScale,
+								...(screen.expect ? { expect: screen.expect } : {}),
+								...(screen.info ? { info: screen.info, nodeInfo: nodeInfo ?? null } : {}),
 							});
 							// The tree of a signed-in screen holds the account's own text (its address, its devices): what is kept of it is redacted.
 							const kept = screen.signedIn ? redactDeep(analysis) : analysis;
@@ -138,7 +156,7 @@ export async function a11y(argv: string[]): Promise<void> {
 								error: null,
 							});
 							console.log(
-								`  ${referenceName(screen, variant).padEnd(44)} interactive ${analysis.interactive} (reach ${reachPct(analysis)}, clipped ${analysis.clipped}), unreachable ${analysis.unreachable}, unlabeled ${analysis.unlabeled}, not actionable ${analysis.notActionable}, small targets ${analysis.smallTargets ?? "-"}, order ${analysis.orderViolations}, title ${analysis.titleFirst === null ? "-" : analysis.titleFirst ? "first" : "NOT first"}, leaks ${analysis.focusLeaks}${stable ? "" : ", tree NOT settled"} (${((Date.now() - began) / 1000).toFixed(1)} s)`,
+								`  ${referenceName(screen, variant).padEnd(44)} interactive ${analysis.interactive} (reach ${reachPct(analysis)}, clipped ${analysis.clipped}), unreachable ${analysis.unreachable}, unlabeled ${analysis.unlabeled}, not actionable ${analysis.notActionable}, small targets ${analysis.smallTargets ?? "-"}, state ${analysis.stateMismatches ?? "-"}, order ${analysis.orderViolations}, title ${analysis.titleFirst === null ? "-" : analysis.titleFirst ? "first" : "NOT first"}, leaks ${analysis.focusLeaks}${stable ? "" : ", tree NOT settled"} (${((Date.now() - began) / 1000).toFixed(1)} s)`,
 							);
 						} catch (error) {
 							if (endsRun(error)) throw error;
@@ -193,7 +211,7 @@ export async function a11y(argv: string[]): Promise<void> {
 	const total = (pick: (screen: A11yScreenResult) => number) =>
 		results.reduce((sum, screen) => sum + pick(screen), 0);
 	console.log(
-		`a11y: ${results.length} screens, ${total((s) => s.interactive)} interactive elements, ${total((s) => s.unreachable)} unreachable, ${total((s) => s.unlabeled)} unlabeled, ${total((s) => s.notActionable)} not actionable, ${total((s) => s.smallTargets ?? 0)} small touch targets (not gated), ${total((s) => s.orderViolations)} order violations, ${results.filter((s) => s.titleFirst === false).length} titles not first, ${total((s) => s.focusLeaks)} focus leaks, ${results.filter((s) => s.error !== null).length} errors`,
+		`a11y: ${results.length} screens, ${total((s) => s.interactive)} interactive elements, ${total((s) => s.unreachable)} unreachable, ${total((s) => s.unlabeled)} unlabeled, ${total((s) => s.notActionable)} not actionable, ${total((s) => s.smallTargets ?? 0)} small touch targets (not gated), ${total((s) => s.stateMismatches ?? 0)} state mismatches, ${total((s) => s.orderViolations)} order violations, ${results.filter((s) => s.titleFirst === false).length} titles not first, ${total((s) => s.focusLeaks)} focus leaks, ${results.filter((s) => s.error !== null).length} errors`,
 	);
 	console.log(`wrote qa/runs/${name}.json`);
 	reportRestore(notes);

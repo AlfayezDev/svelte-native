@@ -4,6 +4,7 @@ import expo.modules.svelteengine.A11y
 
 import android.view.View
 import android.view.ViewGroup
+import androidx.core.view.ViewCompat
 
 /**
  * Free lists of deleted engine views, one per kind: the plain container ([EngineView] itself, not its subclasses),
@@ -138,8 +139,14 @@ class ViewPool(private val capacity: Int = DEFAULT_CAPACITY) {
     view.contentDescription = null
     val focusable = view is EngineScrollable
     if (view.isFocusable != focusable) view.isFocusable = focusable
-    if (view !is EngineText && view.importantForAccessibility != View.IMPORTANT_FOR_ACCESSIBILITY_AUTO) {
-      view.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+    // A text is always read (what EngineText sets when it is made); the other kinds are automatic.
+    val important = if (view is EngineText) View.IMPORTANT_FOR_ACCESSIBILITY_YES else View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+    if (view.importantForAccessibility != important) view.importantForAccessibility = important
+    // The accessibility props: state, live region and the node publication (`st.reset()` below drops the records the delegate reads).
+    if (view.isSelected) view.isSelected = false
+    if (!view.isEnabled) view.isEnabled = true
+    if (ViewCompat.getAccessibilityLiveRegion(view) != ViewCompat.ACCESSIBILITY_LIVE_REGION_NONE) {
+      ViewCompat.setAccessibilityLiveRegion(view, ViewCompat.ACCESSIBILITY_LIVE_REGION_NONE)
     }
     st.reset()
     // The next measure and layout pass must run in full, whatever size this view had in its previous life.

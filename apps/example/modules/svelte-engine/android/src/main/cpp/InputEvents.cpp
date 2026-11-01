@@ -132,6 +132,13 @@ void modal(jni::alias_ref<jclass>, jint tag, jint kind) {
   }
 }
 
+// An accessibility action the user chose (`accessibilityActions`): React Native's AccessibilityActionEvent, `topAccessibilityAction { actionName }`.
+void accessibilityAction(jni::alias_ref<jclass>, jint tag, jni::alias_ref<jstring> name) {
+  auto emitter = emitterFor(tag);
+  if (!emitter) return;
+  send(*emitter, "accessibilityAction", folly::dynamic::object("actionName", toStd(name)));
+}
+
 void modalSize(jni::alias_ref<jclass>, jint tag, jfloat widthDp, jfloat heightDp) {
   if (!updateModalSize(tag, widthDp, heightDp)) {
     __android_log_print(ANDROID_LOG_WARN, kTag, "modalSize: no state for tag %d", tag);
@@ -156,6 +163,7 @@ void registerViewEventNatives() {
           makeNativeMethod("switchChange", switchChange),
           makeNativeMethod("image", image),
           makeNativeMethod("modal", modal),
+          makeNativeMethod("accessibilityAction", accessibilityAction),
           makeNativeMethod("modalSize", modalSize),
       });
 }

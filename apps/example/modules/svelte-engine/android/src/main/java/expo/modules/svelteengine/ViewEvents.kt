@@ -32,6 +32,9 @@ object ViewEvents {
 
   @JvmStatic external fun modal(tag: Int, kind: Int)
 
+  /** An accessibility action the user chose from the actions menu (`onAccessibilityAction`): `{actionName}`, as React Native's. */
+  @JvmStatic external fun accessibilityAction(tag: Int, name: String)
+
   /** The modal's content size in dp, written into ModalHostViewState so Yoga lays the children out. */
   @JvmStatic external fun modalSize(tag: Int, widthDp: Float, heightDp: Float)
 

@@ -2,7 +2,8 @@
 # Host checks of the typed animated path (SPEC.md, "Animated write path"): the C++ encoder against Reanimated-shaped
 # command streams, then the Kotlin decoder against the buffers the C++ test verified; and the foreign-view ownership
 # rules (SPEC.md, "Foreign views"); what the view-shot capture decides before it draws (CaptureRules); the pointer-events mapping and
-# the ids react-native-gesture-handler reads from an engine view, and who may claim a touch (SPEC.md, "Gestures"). No device, no Android SDK.
+# the ids react-native-gesture-handler reads from an engine view, and who may claim a touch (SPEC.md, "Gestures"); the accessibility records,
+# C++ encoder against the Kotlin decoder, and the Kotlin tables against React Native's own sources (SPEC.md, "Accessibility props"). No device, no Android SDK.
 # Needs g++ (C++20), kotlinc and java; from any directory. CI: the unit job (qa/ci/host-tools.sh installs the pinned kotlinc). Usage: src/test/run.sh
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,6 +17,19 @@ g++ -std=c++20 -O1 -Wall -Wextra -Werror -fsanitize=address,undefined -I"$rn/Rea
 
 g++ -std=c++20 -O1 -Wall -Wextra -Werror -fsanitize=address,undefined "$here/cpp/AnimatedWireTest.cpp" -o "$work/wire-test"
 "$work/wire-test" "$work/fixture.tsv"
+
+# The accessibility records: React Native's plain structs (AccessibilityPrimitives.h) are the only header the encoder includes.
+rn="$(node -p "require('path').dirname(require.resolve('react-native/package.json', { paths: [process.argv[1]] }))" "$here")"
+g++ -std=c++20 -O1 -Wall -Wextra -Werror -fsanitize=address,undefined -I"$rn/ReactCommon" "$here/cpp/A11yWireTest.cpp" -o "$work/a11y-wire-test"
+"$work/a11y-wire-test" "$work/a11y.tsv"
+
+kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/A11yWire.kt" \
+  "$here/../main/java/expo/modules/svelteengine/A11yRules.kt" \
+  "$here/kotlin/expo/modules/svelteengine/A11yRulesCheck.kt" -include-runtime -d "$work/a11y-check.jar"
+java -cp "$work/a11y-check.jar" expo.modules.svelteengine.A11yRulesCheckKt "$work/a11y.tsv" \
+  "$rn/ReactAndroid/src/main/java/com/facebook/react/uimanager/ReactAccessibilityDelegate.kt" \
+  "$rn/ReactAndroid/src/main/java/com/facebook/react/uimanager/BaseViewManager.java" \
+  "$rn/ReactCommon/react/renderer/components/view/AccessibilityPrimitives.h"
 
 kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/AnimatedWire.kt" \
   "$here/kotlin/expo/modules/svelteengine/AnimatedWireCheck.kt" -include-runtime -d "$work/check.jar"

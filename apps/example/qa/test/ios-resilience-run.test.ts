@@ -107,3 +107,23 @@ describe("restoreHints", () => {
 		expect(restoreHints(resultsFor(plan, null, "x").map((step) => ({ ...step, ok: true })), null)).toEqual([]);
 	});
 });
+
+describe("the post-run reads when CoreDevice is wedged", () => {
+	test("the build the app reported and the module's account come through house_arrest, with no devicectl call at all", async () => {
+		const last = JSON.stringify({ at: 5, outcome: "none", reason: "no state was kept", attempts: 0, systemKept: false });
+		const { mac, scripts } = fakeMac({ output: printed(plan.length), resilience: JSON.stringify({ schema: 1, token, build: identity }), last });
+		const run = await runPlan(sessionOn(mac), plan, token, 60_000, { rotationCycles: 1, backgroundCycles: 2, killRounds: 1 }, 1);
+		expect(run.identity).toEqual(identity);
+		expect(run.navigation?.outcome).toBe("none");
+		const afc = scripts.filter((script) => script.includes("afcclient"));
+		expect(afc).toHaveLength(2);
+		expect(afc[0]).toContain("io.rasheed.svelteqa");
+		expect(afc[0]).toContain("alarm shift; exec @ARGV");
+		expect(afc[0]).toContain("Documents/resilience.json");
+		expect(afc[1]).toContain("Library/Application Support/svelte-navigation/last.json");
+		// The phone is asked once, for the process to end, after the files were read.
+		const devicectl = scripts.filter((script) => script.includes("devicectl"));
+		expect(devicectl.length).toBeGreaterThan(0);
+		expect(scripts.findIndex((script) => script.includes("devicectl"))).toBeGreaterThan(scripts.findIndex((script) => script.includes("afcclient")));
+	});
+});

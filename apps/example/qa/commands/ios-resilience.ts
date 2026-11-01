@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { shellQuote } from "../lib/exec.ts";
 import { flagString, integerFlag, parseFlags } from "../lib/flags.ts";
-import { appProcesses, readAppFile, terminateApp } from "../lib/iphone/device.ts";
+import { appProcesses, phoneAnswers, readAppFile, readAppFileAfc, terminateApp, waitForPhone } from "../lib/iphone/device.ts";
 import { describeCrashReports, finishCrashWatch, keepCrashFiles } from "../lib/iphone/crash-reports.ts";
 import { inBackground, prepareUiTests, requireUsb, testAlive, uiTestsRemote, waitForTestStarted } from "../lib/iphone/gestures.ts";
 import { notReported, reportedIdentity, withIdentity } from "../lib/iphone/identity.ts";
@@ -81,10 +81,19 @@ export async function runPlan(session: IosSession, steps: IosStep[], token: stri
 	if (Number.isFinite(testPid)) await remote(mac, `pkill -TERM -P ${testPid} 2>/dev/null; kill ${testPid} 2>/dev/null; true`);
 	// The test is over: the phone answers again.
 	const text = (await remote(mac, `cat ${shellQuote(outFile)} 2>/dev/null; rm -f ${shellQuote(outFile)}`)).stdout;
+	// The two small files come through house_arrest first: CoreDevice is often wedged for minutes after a UI test, and then every `devicectl` call costs its whole limit.
+	// `devicectl` is asked only when the file did not come that way and the phone answers it.
+	let answering: boolean | null = null;
+	const readFile = async (source: string): Promise<string | null> => {
+		const viaAfc = await readAppFileAfc(target, session.udid, source).catch(() => null);
+		if (viaAfc !== null) return viaAfc;
+		answering ??= await phoneAnswers(target);
+		return answering ? await readAppFile(target, source) : null;
+	};
 	let identity: BuildIdentity | null = null;
 	let navigation: NavigationOutcome | null = null;
 	try {
-		const reported = await readAppFile(target, "Documents/resilience.json");
+		const reported = await readFile("Documents/resilience.json");
 		const parsed = reported === null ? null : (JSON.parse(reported) as { token?: unknown; build?: unknown });
 		// A file of an earlier run (another token) says nothing about this one.
 		if (parsed && parsed.token === token) identity = parseIdentity(parsed.build);
@@ -92,12 +101,14 @@ export async function runPlan(session: IosSession, steps: IosStep[], token: stri
 		console.log(`  reading Documents/resilience.json failed: ${String(error instanceof Error ? error.message : error).slice(0, 160)}`);
 	}
 	try {
-		navigation = parseNavigationOutcome(await readAppFile(target, "Library/Application Support/svelte-navigation/last.json"));
+		navigation = parseNavigationOutcome(await readFile("Library/Application Support/svelte-navigation/last.json"));
 	} catch (error) {
 		console.log(`  reading the navigation module's last.json failed: ${String(error instanceof Error ? error.message : error).slice(0, 160)}`);
 	}
+	// The test ends the app as its last act; only a phone that answers is asked to end a process that is still there.
 	try {
-		for (const pid of await appProcesses(target, session.installed)) await terminateApp(target, pid).catch(() => undefined);
+		answering ??= await phoneAnswers(target);
+		if (answering) for (const pid of await appProcesses(target, session.installed)) await terminateApp(target, pid).catch(() => undefined);
 	} catch {
 		// The app already ended, as the test leaves it.
 	}
@@ -163,6 +174,8 @@ export async function iosResilience(argv: string[]): Promise<void> {
 		throw error;
 	}
 	if (installed === null) console.log(`warning: ${notReported}`);
+	// The crash log is listed through devicectl, which can stay wedged for minutes after a UI test: ask a few times (bounded) before the listing's own tries.
+	await waitForPhone(session.target);
 	const found = await finishCrashWatch(session.crashes);
 	for (const line of describeCrashReports(found.record)) console.log(line);
 	const failed = results.filter((step) => !step.ok).length;

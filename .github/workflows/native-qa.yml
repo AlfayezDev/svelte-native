@@ -82,8 +82,11 @@ jobs:
       - name: Typecheck the harness
         run: pnpm --dir apps/platform native-qa:typecheck
 
+      # The package suite (route discovery, Metro stubs, gestures, svg, the updates client) ran in no workflow before.
+      # Some of its tests start Metro or esbuild, so the default 5 s per test is too short on a hosted runner.
       - name: Svelte Native package tests
-        run: pnpm --dir packages/svelte-native test
+        working-directory: packages/svelte-native
+        run: bun test --timeout 60000
 
       - name: Harness tests
         run: pnpm --dir apps/platform native-qa:test

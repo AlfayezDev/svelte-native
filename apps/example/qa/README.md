@@ -191,7 +191,7 @@ The smoke run is an explicit step (`pnpm native-qa:smoke` builds the smoke app, 
 
 | Job | Runs on | When | What | Time |
 | --- | ------- | ---- | ---- | ---- |
-| `unit` | GitHub-hosted (`QA_UNIT_RUNS_ON` moves it to the OVH runner) | every push, dispatch | eslint of the platform app and of `packages/svelte-native`; `svelte-check` of both and `tsc -p qa`; `bun test` of `packages/svelte-native` (811 tests) and of `qa/test` (744) | 6 to 8 min |
+| `unit` | GitHub-hosted (`QA_UNIT_RUNS_ON` moves it to the OVH runner) | every push, dispatch | eslint of the platform app and of `packages/svelte-native`; `svelte-check` of both and `tsc -p qa`; `bun test --timeout 60000` of `packages/svelte-native` (811 tests: route discovery, Metro stubs, gestures, svg, the updates client) and of `qa/test` (744) | 6 to 8 min |
 | `emulator` | OVH runner, after `unit` | every push (the quick lane), dispatch (the full lane) | the stages below, under the emulator lock | push 45 to 60 min, dispatch 2 to 3 h |
 | `crashes` | OVH runner | dispatch with `crashes: true` | 1,000 cold starts and 100 suites in chunks of 100, resumed up to 5 times after an outage | 8 to 15 h |
 

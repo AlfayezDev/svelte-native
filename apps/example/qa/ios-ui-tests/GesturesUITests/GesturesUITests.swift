@@ -59,6 +59,12 @@ final class GesturesUITests: XCTestCase {
             // `GESTURES_CALIBRATE=edge`: before the first input of a page that is pushed, short drags from several points along the leading edge, which the
             // navigation's edge swipe may take and let go of; the recognizer trace says from which of them it began.
             if ProcessInfo.processInfo.environment["GESTURES_CALIBRATE"] == "edge", key.hasPrefix("gestures-pushed-edge#0#") { calibrateEdge(in: app) }
+            // `GESTURES_EDGE_X`: the pushed-edge swipe of the first round starts that many points from the edge (the lab asks for 8; UIKit's edge zone is smaller).
+            var input = input
+            if let text = ProcessInfo.processInfo.environment["GESTURES_EDGE_X"], let x = Double(text), key.hasPrefix("gestures-pushed-edge#0#"), var from = input["from"] as? [String: Any] {
+                from["dx"] = x
+                input["from"] = from
+            }
             var failure: String? = nil
             let began = Date()
             aimed = [:]

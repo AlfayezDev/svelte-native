@@ -14,6 +14,7 @@ import {
 	type DeviceSession,
 } from "../lib/device.ts";
 import {
+	accountRects,
 	assertDeviceState,
 	exposedAccount,
 	findNode,
@@ -32,6 +33,7 @@ import {
 	maskRefusal,
 	readManifest,
 	readReference,
+	redactedFailure,
 	referenceMasks,
 	writeManifest,
 	writeReference,
@@ -99,11 +101,9 @@ async function saveFailure(
 	actual: Image,
 	diff: Image,
 	record: ParityCase,
-	hidden: Rect[],
 ): Promise<void> {
 	await mkdir(context.artifacts, { recursive: true });
-	// What the device drew inside the masks of a signed-in screen is the account's own (its address, its devices): not kept.
-	await writeFile(join(context.artifacts, `${name}.actual.png`), encodePng(hidden.length > 0 ? paintOver(actual, hidden) : actual));
+	await writeFile(join(context.artifacts, `${name}.actual.png`), encodePng(actual));
 	await writeFile(join(context.artifacts, `${name}.diff.png`), encodePng(diff));
 	record.actual = join(context.artifacts, `${name}.actual.png`).slice(qaDir.length + 1);
 	record.diff = join(context.artifacts, `${name}.diff.png`).slice(qaDir.length + 1);
@@ -163,9 +163,40 @@ async function checkCase(
 		attempts,
 		detail: result.verdict === "fail" ? anchor.detail : null,
 	});
-	if (result.diffImage)
-		await saveFailure(context, name, again, result.diffImage, record, screen.signedIn ? previous.masks : []);
+	if (result.diffImage) {
+		if (!screen.signedIn) await saveFailure(context, name, again, result.diffImage, record);
+		else {
+			// What the device drew on a signed-in screen is the account's own (its address, its devices), and a node may have moved out of the reference's masks: the
+			// regions painted over are the reference's and the ones the live tree gives. Without the live tree neither image is kept.
+			const live = await liveRedactions(context.serial, screen, variant);
+			if (live === null) record.detail = `${record.detail ?? ""}${record.detail ? "; " : ""}no images kept: the live screen's masks could not be worked out`;
+			else {
+				const kept = redactedFailure(reference, again, previous.masks, live);
+				await saveFailure(context, name, kept.actual, kept.diff, record);
+			}
+		}
+	}
 	return record;
+}
+
+/**
+ * The regions of a signed-in screen's failure picture to paint over besides the reference's masks: the screen's masks recomputed from the tree it shows now, and every
+ * node that shows the account's address (under a modal, the covered screen's too). Null when the tree cannot be read.
+ */
+async function liveRedactions(serial: string, screen: ScreenCase, variant: Variant): Promise<Rect[] | null> {
+	try {
+		const tree = await dumpUi(serial);
+		const walked = screen.hidden.length > 0 ? await dumpUi(serial, { important: true }) : undefined;
+		const rects = [...accountRects(tree), ...(walked ? accountRects(walked) : [])];
+		try {
+			rects.push(...maskRects(tree, screen, variant.direction, walked));
+		} catch {
+			// a mask that matches no node has nothing to paint; the nodes with the address are covered above
+		}
+		return rects;
+	} catch {
+		return null;
+	}
 }
 
 /** Whether the case's anchor is on screen, for the failure report; a failed dump is part of the answer, not an error. */

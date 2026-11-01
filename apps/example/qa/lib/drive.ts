@@ -59,6 +59,15 @@ export function exposedAccount(tree: UiTree, masks: Rect[]): UiNode[] {
 	});
 }
 
+/** The rectangles of every node that shows the QA account's address anywhere in its text or description, whether a mask covers it or not. */
+export function accountRects(tree: UiTree): Rect[] {
+	const email = accountEmail();
+	if (email === null) return [];
+	return tree.nodes
+		.filter((node) => node.bounds.width > 0 && node.bounds.height > 0 && `${node.text}\n${node.contentDesc}`.toLowerCase().includes(email))
+		.map((node) => node.bounds);
+}
+
 export function describeSelector(selector: Selector, direction: Direction): string {
 	const wanted = selectorFor(selector, direction);
 	return [

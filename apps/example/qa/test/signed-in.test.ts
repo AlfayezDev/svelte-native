@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "bun:test";
-import { exposedAccount, findNode, matches, maskRects } from "../lib/drive.ts";
+import { accountRects, exposedAccount, findNode, matches, maskRects } from "../lib/drive.ts";
+import { compare, redactedFailure } from "../lib/parity.ts";
 import { copy } from "../lib/copy.ts";
 import { enterSignedIn } from "../lib/signin.ts";
 import { splitPhases } from "../lib/phases.ts";
@@ -157,6 +158,51 @@ describe("painting over what must not be stored", () => {
 		expect(at(5, 2)).toEqual([7, 7, 7, 7]);
 		expect(at(2, 0)).toEqual([7, 7, 7, 7]);
 		expect(picture.data[(1 * 8 + 2) * 4]).toBe(7);
+	});
+});
+
+describe("keeping a failed signed-in comparison", () => {
+	const flat = (value: number): Image => {
+		const data = Buffer.alloc(12 * 6 * 4, value);
+		for (let pixel = 0; pixel < 12 * 6; pixel++) data[pixel * 4 + 3] = 255;
+		return { width: 12, height: 6, data };
+	};
+	/** The screen with a lighter "address" at the rectangle, as it is drawn where the node has moved to. */
+	function withAddressAt(rect: { x: number; y: number; width: number; height: number }): Image {
+		const image = flat(40);
+		for (let y = rect.y; y < rect.y + rect.height; y++) for (let x = rect.x; x < rect.x + rect.width; x++) image.data.fill(250, (y * 12 + x) * 4, (y * 12 + x) * 4 + 3);
+		return image;
+	}
+	const at = (image: Image, x: number, y: number) => [...image.data.subarray((y * 12 + x) * 4, (y * 12 + x) * 4 + 4)];
+	const referenceMask = { x: 0, y: 0, width: 4, height: 2 };
+	const moved = { x: 6, y: 3, width: 4, height: 2 };
+
+	test("an address that moved out of the reference's masks is painted over in the picture and is no red shape in the diff", () => {
+		const actual = withAddressAt(moved);
+		const reference = flat(40);
+		const failed = compare(reference, actual, [referenceMask]);
+		expect(failed.verdict).toBe("fail");
+		// the reference's masks alone would keep it: the pixels of the address are in the open, and the diff paints them red
+		expect(at(paintOver(actual, [referenceMask]), 7, 3)).toEqual([250, 250, 250, 255]);
+		expect(at(failed.diffImage as Image, 7, 3).slice(0, 3)).toEqual([255, 0, 0]);
+		const kept = redactedFailure(reference, actual, [referenceMask], [moved]);
+		expect(at(kept.actual, 7, 3)).toEqual([...redactedColor]);
+		expect(at(kept.actual, 11, 5)).toEqual([40, 40, 40, 255]);
+		expect(at(kept.diff, 7, 3).slice(0, 3)).not.toEqual([255, 0, 0]);
+		// the reference's own masks are still painted
+		expect(at(kept.actual, 1, 1)).toEqual([...redactedColor]);
+	});
+
+	test("the rectangles of every node that shows the address are taken from the tree, covered or not, and none without an account", () => {
+		useAccount(address);
+		const shown = tree(node({ text: `Signed in as ${address}`, bounds: "[60,300][700,360]" }), node({ desc: address.toUpperCase(), bounds: "[10,10][50,30]" }), node({ text: "Sign out", bounds: "[60,500][700,560]" }), node({ text: address, bounds: "[0,0][0,0]" }));
+		expect(accountRects(shown)).toEqual([
+			{ x: 60, y: 300, width: 640, height: 60 },
+			{ x: 10, y: 10, width: 40, height: 20 },
+		]);
+		useAccount(null);
+		expect(accountRects(shown)).toEqual([]);
+		useAccount(undefined);
 	});
 });
 

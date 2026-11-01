@@ -399,10 +399,13 @@ export const checks: Check[] = [
 		run: () => {
 			// Not initialized: the SDK's network behavior is not ours to turn off. Loading the library reads the native module's constants.
 			const intercom = require("@intercom/intercom-react-native") as typeof import("@intercom/intercom-react-native");
-			const events = Object.values(intercom.IntercomEvents);
-			expect(events.length > 0 && events.every((name) => typeof name === "string" && name.length > 0), `IntercomEvents ${JSON.stringify(intercom.IntercomEvents)}`);
+			// The unread-count event is the one both native modules export; the window show/hide names are iOS-only constants and
+			// read undefined on Android (the library's `IntercomEvents` maps them anyway).
+			const unread = intercom.IntercomEvents.IntercomUnreadCountDidChange;
+			expect(typeof unread === "string" && unread.length > 0, `IntercomEvents ${JSON.stringify(intercom.IntercomEvents)}`);
 			expect(typeof intercom.default.initialize === "function", "the JavaScript API has no initialize");
-			return `loaded, native constants answered: ${events.length} event names (${events[0]}, …); initialize not called`;
+			const named = Object.values(intercom.IntercomEvents).filter((name) => typeof name === "string" && name.length > 0);
+			return `loaded, native constants answered: ${named.length} event names (${unread}, …); initialize not called`;
 		},
 	},
 	{

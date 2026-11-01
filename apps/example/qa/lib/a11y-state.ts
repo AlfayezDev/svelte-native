@@ -125,10 +125,13 @@ function fail(element: string, detail: string): A11yFinding {
 
 /**
  * Judges the dump against the expectations. At the normal text size (`fontScale` up to 1) every expected node must be in the tree; at a larger
- * one a node that is not there is below the fold of the page and is not judged, while one that is there is judged all the same.
+ * one a node that is not there is below the fold of the page and is not judged, while one that is there is judged all the same. Not all of
+ * them may be below the fold: a screen none of whose expected nodes is in the tree was not judged at all (the wrong screen, or a tree that holds
+ * nothing of it), which is a finding of its own.
  */
 export function judgeNodes(tree: UiTree, expectations: readonly NodeExpectation[], fontScale: number, direction: Direction = "ltr"): A11yFinding[] {
 	const findings: A11yFinding[] = [];
+	let present = 0;
 	for (const wanted of expectations) {
 		const node = tree.nodes.find((candidate) => candidate.resourceId === wanted.id);
 		if (wanted.absent) {
@@ -141,6 +144,7 @@ export function judgeNodes(tree: UiTree, expectations: readonly NodeExpectation[
 			if (fontScale <= 1) findings.push(fail(wanted.id, "not in the tree a service walks"));
 			continue;
 		}
+		present++;
 		const where = `${wanted.id} ${describe(node)}`;
 		const differences: string[] = [];
 		const compare = (name: string, actual: unknown, expected: unknown): void => {
@@ -158,6 +162,9 @@ export function judgeNodes(tree: UiTree, expectations: readonly NodeExpectation[
 		compare("hint", node.hint, wanted.hint);
 		if (differences.length > 0) findings.push(fail(where, differences.join("; ")));
 	}
+	const wantedPresent = expectations.filter((wanted) => !wanted.absent).length;
+	if (fontScale > 1 && wantedPresent > 0 && present === 0)
+		findings.push(fail(expectations.filter((wanted) => !wanted.absent).map((wanted) => wanted.id).join(", "), `none of the ${wantedPresent} expected nodes is in the tree a service walks at this text size (all below the fold, or not this screen): nothing was judged`));
 	return findings;
 }
 

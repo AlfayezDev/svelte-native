@@ -28,6 +28,8 @@ class SvelteEngineModule : Module() {
 
     Events("insets")
 
+    OnCreate { Capture.deleteLeftovers(appContext.reactContext?.cacheDir) }
+
     OnDestroy { setAnimatedUpdater(null); AnimatedBridge.uninstall(); Capture.deleteTemporaryFiles(); onMain { insets?.uninstall(); mountingManager?.foreign?.uninstall(); mountingManager?.disableGestures() } }
 
     Function("install") { reanimatedReady: Boolean? ->

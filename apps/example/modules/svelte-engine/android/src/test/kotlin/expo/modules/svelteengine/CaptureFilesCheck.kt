@@ -38,6 +38,25 @@ fun main() {
     directory.deleteRecursively()
   }
 
+  // What a killed process left: files of the library's name older than the new process are swept; younger ones, other names and directories are not.
+  val cache = Files.createTempDirectory("capture-sweep").toFile()
+  try {
+    val old = File(cache, "ReactNative-snapshot-image123.png").also { it.writeText("x"); it.setLastModified(1_000) }
+    val oldJpg = File(cache, "ReactNative-snapshot-image9.jpg").also { it.writeText("x"); it.setLastModified(2_000) }
+    val young = File(cache, "ReactNative-snapshot-image456.png").also { it.writeText("x"); it.setLastModified(9_000) }
+    val other = File(cache, "avatar1.png").also { it.writeText("x"); it.setLastModified(1_000) }
+    val folder = File(cache, "ReactNative-snapshot-images").also { it.mkdir(); it.setLastModified(1_000) }
+    expect("sweep counts the old files of the library's name", CaptureFiles().sweep(cache, "ReactNative-snapshot-image", 5_000), 2)
+    expect("an old png is gone", old.exists(), false)
+    expect("an old jpg is gone", oldJpg.exists(), false)
+    expect("a file written after the process started stays", young.exists(), true)
+    expect("a file of another name stays", other.exists(), true)
+    expect("a directory of the same prefix stays", folder.exists(), true)
+    expect("a missing directory has nothing to sweep", CaptureFiles().sweep(File(cache, "none"), "x", Long.MAX_VALUE), 0)
+  } finally {
+    cache.deleteRecursively()
+  }
+
   if (failures > 0) {
     System.err.println("$failures of $checks check(s) failed")
     exitProcess(1)

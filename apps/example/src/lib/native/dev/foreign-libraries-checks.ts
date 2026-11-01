@@ -209,6 +209,18 @@ async function video(c: Ctx): Promise<void> {
   c.check("prop update: paused stops the progress events", c.events("video-progress") === frozen, `${frozen} -> ${c.events("video-progress")}`);
   c.lab.videoPaused = false;
   c.check("prop update: and resuming starts them again", await c.until(() => c.events("video-progress") > frozen + 1, 5000));
+  // commands: pause and resume stop and restart the progress events the same way the prop does
+  try {
+    await c.handles().video?.pause();
+    await c.pause(900);
+    const stopped = c.events("video-progress");
+    await c.pause(1200);
+    c.check("command: pause() stops the progress events", c.events("video-progress") === stopped, `${stopped} -> ${c.events("video-progress")}`);
+    await c.handles().video?.resume();
+    c.check("command: resume() starts them again", await c.until(() => c.events("video-progress") > stopped + 1, 5000));
+  } catch (error) {
+    c.check("command: pause() and resume()", false, String(error));
+  }
   // command: seek, read back through onSeek and the library's own position
   const seeks = c.events("video-seek");
   c.handles().video?.seek(1.2);
@@ -323,6 +335,16 @@ async function lottie(c: Ctx): Promise<void> {
   c.check("commands: play raises onAnimationFinish when a non-looping animation ends", await c.until(() => c.events("lottie-finish") > finishes, 6000), `${c.events("lottie-finish")} finish events`);
   const lastFinish = c.events("lottie-finish", false);
   c.check("commands: and it ended, not cancelled", lastFinish >= 1, `${lastFinish} with isCancelled false`);
+  // pause holds an animation half way (no end for longer than it needs), resume lets it finish
+  const ends = c.events("lottie-finish");
+  handle?.reset();
+  handle?.play(0, 60);
+  await c.pause(700);
+  handle?.pause();
+  await c.pause(2600);
+  c.check("commands: pause holds a running animation (it does not finish while paused)", c.events("lottie-finish") === ends, `${ends} -> ${c.events("lottie-finish")} finish events`);
+  handle?.resume();
+  c.check("commands: resume lets it finish", await c.until(() => c.events("lottie-finish") > ends, 5000), `${c.events("lottie-finish")} finish events`);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------------

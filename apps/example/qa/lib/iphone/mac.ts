@@ -50,6 +50,9 @@ export function sshArgs(mac: Mac, command: string): string[] {
 /** A command line for the remote shell: each word quoted. */
 export const words = (parts: readonly string[]): string => parts.map(shellQuote).join(" ");
 
+/** A command line for the remote shell that the Mac itself ends after `seconds` (`perl`'s `alarm`; ssh's timeout ends only this side, and a hung call would go on holding the phone). */
+export const boundedWords = (seconds: number, parts: readonly string[]): string => words(["perl", "-e", "alarm shift; exec @ARGV", String(Math.max(1, Math.floor(seconds))), ...parts]);
+
 /** The command's own status from the status line, which is removed from the output. Without the line (ssh failed, or the run was cut off), a 0 from ssh is not believed. */
 export function remoteStatus(result: ExecResult): ExecResult {
 	const at = result.stdout.lastIndexOf(`\n${statusMarker}`);

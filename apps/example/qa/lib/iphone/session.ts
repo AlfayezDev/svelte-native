@@ -8,7 +8,7 @@ import { iosBuildName, packageOf, processNameOf, type Variant } from "../variant
 import type { AppInfo, BuildRecord, DeviceInfo, Source } from "../types.ts";
 import { defaultHardwareUdid, startCrashWatch, type CrashWatch } from "./crash-reports.ts";
 import { deviceDetails, installedApp, type IosTarget } from "./device.ts";
-import { macFrom, remoteOk, words } from "./mac.ts";
+import { boundedWords, macFrom, remoteOk } from "./mac.ts";
 import type { InstalledApp } from "../../parse/ios.ts";
 
 /** The lock one run of the harness holds on the iPhone: two runs at once would fight over the app and its data container. */
@@ -120,7 +120,7 @@ export async function startIosSuite(command: string, argv: string[], values: Ios
 	const installing = values["no-install"] !== true && appPath;
 	if (installing) {
 		console.log(`installing ${appPath} on ${device.model} (${id})`);
-		await remoteOk(mac, words(["xcrun", "devicectl", "device", "install", "app", "--device", id, appPath]), { timeoutMs: 600_000 });
+		await remoteOk(mac, boundedWords(590, ["xcrun", "devicectl", "device", "install", "app", "--device", id, appPath]), { timeoutMs: 600_000 });
 	} else console.log(`no build to install; measuring the app already on ${id}`);
 	// The record describes the app it names: another `--app` has none, so what that app reports is recorded and not compared.
 	const build = record && (!installing || appPath === record.appPath) ? buildRecordOf(record) : null;

@@ -30,7 +30,7 @@ const usage = `usage: native-qa <command> [flags]
   smoke  --device <serial> [--apk <path> | --no-install] [--timeout <s>]      (the smoke app: build --variant smoke first)
   smoke  --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--app <.app on the Mac> | --no-install] [--timeout <s>]
   gestures --device <serial> [--apk <path> | --no-install] [--input adb|qa|both] [--run box,row,...] [--repeat <n>] [--timeout <s>]
-  gestures --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--team <id>] [--rebuild] [--run ...] [--repeat <n>] [--timeout <s>]
+  gestures --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--team <id>] [--rebuild] [--run ...] [--repeat <n>] [--timeout <s>] [--trace] [--collect <token of a test that ran>]
   probe  --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--probes <names>] [--direction ltr|rtl]
   updates --device <serial> [--apk <channel build>] [--baseline-apk <path> | --no-baseline] [--channel qa] [--warm <n>] [--max-launches <n>] [--settle <n>] [--faults boot,mount,effect] [--eas "<command>"] [--environment <eas environment>] [--reset app|data] [--dexopt profile|none] [--package <id>]
   report

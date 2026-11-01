@@ -1613,7 +1613,7 @@
       "metric": "foreign.shadow.checks",
       "bar": {
         "android": {
-          "min": 33
+          "min": 36
         }
       }
     },

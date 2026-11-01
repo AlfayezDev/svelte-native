@@ -33,3 +33,12 @@ export function reexecUnderLock(lockfile: string, argv: string[]): void {
 	if (result.error) throw result.error;
 	process.exit(result.status ?? 1);
 }
+
+/**
+ * One lock per EAS channel, taken for every device: two runs publishing to the same channel at once would each see the other's
+ * updates as the channel's head and could leave it on a bad one. The name is a validated QA channel (`qaChannel`), so it is a safe file name.
+ */
+export function channelLock(channel: string): string {
+	if (!/^qa(-[a-z0-9]+)*$/.test(channel)) throw new Error(`not a QA channel: ${JSON.stringify(channel)}`);
+	return `/tmp/svelte-qa-channel-${channel}.lock`;
+}

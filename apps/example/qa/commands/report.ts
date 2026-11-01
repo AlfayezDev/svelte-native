@@ -126,6 +126,8 @@ type UpdatesSummary = {
 	channelHealthy: boolean;
 	problems: string[];
 	bootDelta: UpdatesFile["boot"]["delta"];
+	/** The build the run left on the device: `channel` means the plain QA build was not put back. */
+	finalBuild: "plain" | "channel";
 };
 
 type SuitesSummary = {
@@ -206,20 +208,21 @@ function summarizeLab(file: LabFile, fileName: string, pinned: readonly string[]
 }
 
 function summarizeUpdates(file: UpdatesFile, fileName: string): UpdatesSummary {
-	const { good, bad, cleanup } = file.scenario;
+	const { good, bads, cleanup } = file.scenario;
 	return {
 		file: fileName,
 		source: file.source,
 		channel: file.channel,
 		applied: good.applied,
 		launchesToApply: good.launchesToApply,
-		rolledBack: bad.rolledBack,
-		rolledBackTo: bad.rolledBackTo,
-		failedIdReported: bad.failedIdReported,
-		badRetried: bad.retried,
+		rolledBack: bads.length > 0 && bads.every((bad) => bad.rolledBack),
+		rolledBackTo: bads.map((bad) => `${bad.fault}: ${bad.rolledBackTo ?? "-"}`).join(", ") || null,
+		failedIdReported: bads.map((bad) => bad.failedIdReported).filter(Boolean).join(", ") || null,
+		badRetried: bads.reduce((sum, bad) => sum + bad.retried, 0),
 		channelHealthy: cleanup.healthy,
 		problems: file.scenario.errors,
 		bootDelta: file.boot.delta,
+		finalBuild: file.deviceState?.finalBuild ?? "plain",
 	};
 }
 
@@ -553,6 +556,7 @@ export async function report(): Promise<void> {
 			console.log(
 				`    warm boot with updates p50 ${m["updates.boot.warm.p50"] ?? "-"} / p90 ${m["updates.boot.warm.p90"] ?? "-"} ms against ${m["updates.boot.baseline.warm.p50"] ?? "-"} / ${m["updates.boot.baseline.warm.p90"] ?? "-"} without a channel (delta ${m["updates.boot.warm.p50Delta"] ?? "-"} / ${m["updates.boot.warm.p90Delta"] ?? "-"}, informational)`,
 			);
+			if (u.finalBuild === "channel") console.log("    the run left the channel build on the device; install the plain QA build before another run measures it");
 			for (const problem of u.problems) console.log(`    problem: ${problem}`);
 		}
 		if (entry.crashes)

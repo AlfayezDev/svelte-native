@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readdir, rm, stat } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { describeApk } from "../lib/app.ts";
 import {
@@ -9,6 +9,7 @@ import {
 	recordGeneratedChannel,
 } from "../lib/channel.ts";
 import { execToFile } from "../lib/exec.ts";
+import { assertManifestMatches, mergedManifestPath, parseManifestUpdates } from "../lib/manifest.ts";
 import { flagString, parseFlags, platformOf } from "../lib/flags.ts";
 import { currentSource } from "../lib/git.ts";
 import { reexecUnderLock } from "../lib/lock.ts";
@@ -168,6 +169,9 @@ export async function build(argv: string[]): Promise<void> {
 		logPath,
 		env,
 	);
+
+	// What Gradle merged is what the APK carries: the build must be the one that was asked for, in both directions, or it fails here.
+	assertManifestMatches(parseManifestUpdates(await readFile(mergedManifestPath(androidDir), "utf8")), channel);
 
 	const built = join(androidDir, "app/build/outputs/apk/release/app-release.apk");
 	const target = join(outDir, `app-${abi}.apk`);

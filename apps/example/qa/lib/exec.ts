@@ -2,7 +2,8 @@ import { execFile, spawn } from "node:child_process";
 import { closeSync, openSync } from "node:fs";
 
 export type ExecResult = { code: number; stdout: string; stderr: string };
-export type ExecOptions = { cwd?: string; env?: Record<string, string>; timeoutMs?: number };
+/** `env` is added to the caller's environment, or with `exactEnv` it is the child's whole environment. */
+export type ExecOptions = { cwd?: string; env?: Record<string, string>; timeoutMs?: number; exactEnv?: boolean };
 
 const maxBuffer = 512 * 1024 * 1024;
 
@@ -19,7 +20,7 @@ export function exec(
 			args,
 			{
 				cwd: options.cwd,
-				env: { ...process.env, ...options.env },
+				env: options.exactEnv ? options.env : { ...process.env, ...options.env },
 				timeout: timeoutMs,
 				maxBuffer,
 				encoding: "utf8",

@@ -127,6 +127,12 @@ describe("launchSettled", () => {
 		expect(launchSettled(observation({ crashes: 1 }), 1_000)).toBeNull();
 		expect(launchSettled(observation({ crashes: 1 }), defaultSettle.faultGraceMs)).toBe("fault");
 	});
+	test("a bundle that threw after its first commit did boot, and its host died before the check: done a moment after the fatal too", () => {
+		expect(launchSettled(observation({ booted: true, crashes: 1 }), 1_000)).toBeNull();
+		expect(launchSettled(observation({ booted: true, crashes: 1 }), defaultSettle.faultGraceMs)).toBe("fault");
+		// The check ending first is the healthy case, whatever else was logged.
+		expect(launchSettled(observation({ booted: true, crashes: 1, check: { outcome: "none", reason: "x" } }), 100)).toBe("check");
+	});
 	test("a launch that shows nothing ends at the timeout", () => {
 		expect(launchSettled(observation({}), defaultSettle.timeoutMs - 1)).toBeNull();
 		expect(launchSettled(observation({}), defaultSettle.timeoutMs)).toBe("timeout");

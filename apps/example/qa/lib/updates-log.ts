@@ -146,7 +146,8 @@ export const defaultSettle: SettleOptions = { timeoutMs: 90_000, faultGraceMs: 6
 export function launchSettled(observation: UpdateObservation, elapsedMs: number, options: SettleOptions = defaultSettle): SettledBy | null {
 	if (observation.booted && observation.check !== null) return "check";
 	if (observation.booted && observation.probe !== null && observation.probe.checkOnLaunch !== "ALWAYS" && elapsedMs >= options.bootGraceMs) return "boot";
-	if (!observation.booted && observation.crashes > 0 && elapsedMs >= options.faultGraceMs) return "fault";
+	// A bundle that threw before its first commit never boots; one that threw after it did boot, and its host died before the check.
+	if (observation.crashes > 0 && observation.check === null && elapsedMs >= options.faultGraceMs) return "fault";
 	return elapsedMs >= options.timeoutMs ? "timeout" : null;
 }
 

@@ -24,7 +24,8 @@ rngh="$(cd "$here" && node -p "require('path').dirname(require.resolve('react-na
 views="$here/../main/java/expo/modules/svelteengine/views"
 kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/GestureRules.kt" \
   "$here/../main/java/expo/modules/svelteengine/ClaimRules.kt" \
+  "$here/../main/java/expo/modules/svelteengine/LabSwitches.kt" \
   "$here/kotlin/com/facebook/react/uimanager/PointerEvents.kt" \
   "$here/kotlin/expo/modules/svelteengine/GestureRulesCheck.kt" -include-runtime -d "$work/rules.jar"
 java -cp "$work/rules.jar" expo.modules.svelteengine.GestureRulesCheckKt "$views/HitTest.kt" "$views/EngineRoot.kt" "$views/EngineStack.kt" "$views/EngineSheet.kt" \
-  "$rngh/android/src/main/java/com/swmansion/gesturehandler/core/PanGestureHandler.kt"
+  "$rngh/android/src/main/java/com/swmansion/gesturehandler/core/PanGestureHandler.kt" "$here/../main/java/expo/modules/svelteengine/SvelteEngineModule.kt"

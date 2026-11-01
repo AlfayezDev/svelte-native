@@ -7,8 +7,9 @@ import kotlin.system.exitProcess
 /**
  * Plain-JVM check of what the gesture handler reads from an engine view (SPEC.md, "Gestures", Android contract items 1 and 3):
  * the pointer-events mapping, the id rules and the arbitration rules of `GestureRules` and `ClaimRules`, compiled as they are
- * in the engine. Usage: GestureRulesCheck <views/HitTest.kt> <views/EngineRoot.kt> <views/EngineStack.kt> <views/EngineSheet.kt>
- * <RNGH's core/PanGestureHandler.kt> (src/test/run.sh compiles and runs it). Exits non-zero on the first miss.
+ * in the engine, and the rule for the QA lab's launch switches (`LabSwitches`). Usage: GestureRulesCheck <views/HitTest.kt>
+ * <views/EngineRoot.kt> <views/EngineStack.kt> <views/EngineSheet.kt> <RNGH's core/PanGestureHandler.kt> <SvelteEngineModule.kt>
+ * (src/test/run.sh compiles and runs it). Exits non-zero on the first miss.
  */
 private var checks = 0
 
@@ -119,6 +120,7 @@ fun main(args: Array<String>) {
 
   claimChecks()
   wiringChecks(File(args[1]).readText(), File(args[2]).readText(), File(args[3]).readText())
+  labSwitchChecks(File(args[5]).readText())
 
   println("gesture rules ok: $checks checks")
 }
@@ -267,5 +269,54 @@ private fun wiringChecks(root: String, stack: String, sheet: String) {
     check("the $name measures on the DOWN pointer", text.contains("findPointerIndex(downPointer.id)"))
     check("the $name forgets a pointer that lifted", text.contains("downPointer.up("))
     check("the $name does not read pointer 0 for the move", !Regex("""ev\.(rawX|rawY|x|y)\b\s*-\s*down[XY]""").containsMatchIn(text))
+  }
+}
+
+/** The launch switches of the QA lab change what the engine does: a release build must not read them (`LabSwitches`). */
+private fun labSwitchChecks(module: String) {
+  val qa = LabSwitches.QA_PACKAGE
+  equal("the QA package is the QA variant's", qa, "io.rasheed.svelteqa")
+  check("the QA app reads the switches", LabSwitches.allowed(qa, debuggable = false))
+  check("a debuggable build reads the switches", LabSwitches.allowed("io.rasheed.app", debuggable = true))
+  check("the product does not", !LabSwitches.allowed("io.rasheed.app", debuggable = false))
+  // The package must be the QA one, not one that begins with it or contains it.
+  for (other in listOf("io.rasheed.svelteqa.evil", "evil.io.rasheed.svelteqa", "io.rasheed.svelteqa2", "IO.RASHEED.SVELTEQA", "")) {
+    check("$other is not the QA app", !LabSwitches.allowed(other, debuggable = false))
+  }
+
+  // What a launch asks for, as the module reads it: the providers stand for the intent.
+  fun read(packageName: String, debuggable: Boolean = false, engine: Boolean? = null, gestures: Boolean? = null, query: String? = null): Pair<LabSwitches, Int> {
+    var reads = 0
+    val switches = LabSwitches.read(packageName, debuggable, { reads++; engine }, { reads++; gestures }, { reads++; query })
+    return switches to reads
+  }
+  // The QA app: the engine can be switched off, the gesture root asked for at start by an extra or by `?gestures=1`.
+  equal("no switches in the QA app", read(qa).first.let { Pair(it.engineEnabled, it.gesturesAtStart) }, Pair(true, false))
+  equal("svelteEngine false in the QA app", read(qa, engine = false).first.engineEnabled, false)
+  equal("svelteEngine true in the QA app", read(qa, engine = true).first.engineEnabled, true)
+  equal("svelteGestures in the QA app", read(qa, gestures = true).first.gesturesAtStart, true)
+  equal("svelteGestures false in the QA app", read(qa, gestures = false).first.gesturesAtStart, false)
+  equal("?gestures=1 in the QA app", read(qa, query = "1").first.gesturesAtStart, true)
+  equal("?gestures=0 in the QA app", read(qa, query = "0").first.gesturesAtStart, false)
+  equal("a debuggable build reads them too", read("io.rasheed.app", debuggable = true, engine = false, gestures = true).first.let { Pair(it.engineEnabled, it.gesturesAtStart) }, Pair(false, true))
+  // The product: whatever the intent says, the engine is on, the gesture root waits for the first gesture, and no extra is even read.
+  for ((engine, gestures, query) in listOf(Triple(false, true, "1"), Triple(false, false, "0"), Triple(true, true, null))) {
+    val (switches, reads) = read("io.rasheed.app", engine = engine, gestures = gestures, query = query)
+    equal("the product ignores svelteEngine=$engine svelteGestures=$gestures gestures=$query", Pair(switches.engineEnabled, switches.gesturesAtStart), Pair(true, false))
+    equal("the product reads no extra", reads, 0)
+  }
+
+  // The module reads the intent only through `LabSwitches.read`: no extra or query parameter is read anywhere else in it.
+  val at = module.indexOf("LabSwitches.read(")
+  check("SvelteEngineModule reads the switches through LabSwitches", at >= 0)
+  var depth = 0
+  var end = module.indexOf('(', at)
+  while (end < module.length) {
+    if (module[end] == '(') depth++ else if (module[end] == ')') { depth--; if (depth == 0) break }
+    end++
+  }
+  val outside = module.removeRange(at, end + 1)
+  for (read in listOf("getBooleanExtra", "getStringExtra", "getIntExtra", "getQueryParameter", "\"svelteEngine\"", "\"svelteGestures\"")) {
+    check("SvelteEngineModule reads $read only inside LabSwitches.read", !outside.contains(read))
   }
 }

@@ -1,5 +1,6 @@
 package expo.modules.svelteengine
 
+import android.content.pm.ApplicationInfo
 import android.os.Handler
 import android.os.Looper
 import android.os.Trace
@@ -32,10 +33,19 @@ class SvelteEngineModule : Module() {
       if (native != null) return@Function true
       val reactContext = appContext.reactContext as? ReactApplicationContext
         ?: throw IllegalStateException("SvelteEngine: no ReactApplicationContext")
-      // Lab switch: `am start ... --ez svelteEngine false` runs the same build on React Native's own mounting layer.
+      // Lab switches (`LabSwitches`): the QA app and debuggable builds read the launch intent, a release build never does.
+      // `am start ... --ez svelteEngine false` runs the same build on React Native's own mounting layer; `--ez svelteGestures true`
+      // (or a link with `?gestures=1`) installs the gesture handler root at start, as the first gesture would, so the lab and
+      // the parity suites can measure the engine with it in place.
       val launch = (appContext.currentActivity ?: reactContext.currentActivity)?.intent
-      val enabled = launch?.getBooleanExtra("svelteEngine", true) ?: true
-      if (!enabled) {
+      val lab = LabSwitches.read(
+        reactContext.packageName,
+        (reactContext.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0,
+        engineExtra = { launch?.takeIf { it.hasExtra("svelteEngine") }?.getBooleanExtra("svelteEngine", true) },
+        gesturesExtra = { launch?.getBooleanExtra("svelteGestures", false) },
+        gesturesQuery = { launch?.data?.takeIf { it.isHierarchical }?.getQueryParameter("gestures") },
+      )
+      if (!lab.engineEnabled) {
         android.util.Log.i("SvelteEngine", "disabled by intent extra; React Native mounting stays active")
         return@Function false
       }
@@ -59,14 +69,11 @@ class SvelteEngineModule : Module() {
         override fun onHostPause() {}
         override fun onHostDestroy() {}
       })
-      // Lab switch: `am start ... --ez svelteGestures true` (or a link with `?gestures=1`) installs the gesture handler root at
-      // start, as the first gesture would, so the lab and the parity suites can measure the engine with it in place.
-      val gesturesAtStart = launch?.getBooleanExtra("svelteGestures", false) == true || launch?.data?.takeIf { it.isHierarchical }?.getQueryParameter("gestures") == "1"
       onMain {
         val tracker = Insets(manager.root) { sendEvent("insets", it) }
         insets = tracker
         tracker.install()
-        if (gesturesAtStart) manager.enableGestures()
+        if (lab.gesturesAtStart) manager.enableGestures()
       }
       true
     }

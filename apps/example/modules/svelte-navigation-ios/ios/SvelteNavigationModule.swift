@@ -4,21 +4,19 @@ import UIKit
 /// The root router's navigation state across the death of the process on iOS (`apps/platform/modules/svelte-engine/SPEC.md`, "Navigation state
 /// across recreation and process death"). Android keeps the state in the Activity's saved instance state, which the system holds for a process it
 /// killed in the background and drops when the user removes the task. iOS has no such bundle, so the module does the same with a file and one
-/// signal from the system:
+/// signal from the system. It stores and reports; what to do with it is decided in JavaScript (`packages/svelte-native/src/navigation-restore.ts`,
+/// host-tested), so that none of the policy is in code that cannot run on the machines the tests run on.
 ///
 /// - `save(json)`: JavaScript hands over the latest state after every change (kept in memory). When the app enters the background it is written
 ///   to `Library/Application Support/svelte-navigation/state.json` with the time (`{ savedAt, json, attempts }`), not above 100,000 bytes (Android's
 ///   bound), and the file is removed when the app comes back to the foreground: a process that dies in the foreground (a crash) restores nothing,
 ///   as on Android.
-/// - `restore()`: at the next start of the process, once: `{ json, savedAt }` or null. Whether the state is still worth restoring (its age) is judged
-///   in JavaScript (`navigation-restore.ts`, host-tested). What only this side knows is whether the user ended the process: the system keeps the
-///   state of its own restoration (UIKit's `application(_:shouldSaveSecureApplicationState:)`, wired to `SvelteNavigationRestoration` by the config
-///   plugin's AppDelegate patch) for a process it killed, and deletes it when the user swipes the app away. UIKit asks `shouldRestore` only when it
-///   has that state, so the file is handed over only after that call; otherwise it is removed and nothing is restored.
-/// - `restored()`: JavaScript started the surface with the state (or found it of no use): the file is removed. A start that dies before this is
-///   counted, and a state that has been handed over twice without a start that finished is dropped (a restore that crashes cannot loop).
-///
-/// `last.json` beside the state records what the last start did with it (`outcome`, `reason`), for the QA harness to read after a run.
+/// - `restore()`: at the next start of the process, once: `{ json, savedAt, attempts, systemKept }` or null. `attempts` counts the times the file was
+///   handed over (this one included) without a start that finished; `systemKept` is the one thing only this side knows: whether UIKit offered its
+///   own restoration state at this launch (`application(_:shouldRestoreSecureApplicationState:)`, wired to `SvelteNavigationRestoration` by the config
+///   plugin's AppDelegate patch). The system keeps that state for a process it ended and deletes it when the user swipes the app away.
+/// - `restored(outcome, reason)`: JavaScript used the state or refused it: the file is removed and `last.json` records what happened (`outcome`
+///   `restored` or `dropped`, and why), for the QA harness to read after a run.
 public final class SvelteNavigationModule: Module {
   public func definition() -> ModuleDefinition {
     Name("SvelteNavigation")
@@ -28,14 +26,14 @@ public final class SvelteNavigationModule: Module {
       NavigationStore.shared.update(json)
     }
 
-    // What the process before this one left, once: `{ json, savedAt }` (ms since the epoch), or null.
+    // What the process before this one left, once: `{ json, savedAt (ms since the epoch), attempts, systemKept }`, or null.
     Function("restore") { () -> [String: Any]? in
       NavigationStore.shared.takeRestored()
     }
 
-    // The state was used, or refused: forget it.
-    Function("restored") { () -> Void in
-      NavigationStore.shared.clear()
+    // The state was used (`restored`) or refused (`dropped`, with the reason): forget it.
+    Function("restored") { (outcome: String, reason: String) -> Void in
+      NavigationStore.shared.finish(outcome: outcome, reason: reason)
     }
   }
 }
@@ -75,8 +73,6 @@ final class NavigationStore: @unchecked Sendable {
   static let archiveVersion = 1
   /// The largest state kept, in bytes: Android's bound (a Bundle travels through a Binder transaction), kept so that both platforms refuse the same states.
   static let limit = 100_000
-  /// A state handed over this many times without a start that finished (`restored()`) is dropped.
-  static let attemptsAllowed = 2
   /// The QA app only: `-SvelteNavigationAssumeSystemKill YES` among the launch arguments hands the state over without the system's signal, to tell a fault
   /// of this module from the system's keeping of the state (the harness kills the app from outside; the system may or may not count that as its own kill).
   private static let qaBundleIdentifier = "io.rasheed.svelteqa"
@@ -86,8 +82,15 @@ final class NavigationStore: @unchecked Sendable {
   private var latest: String?
   private var systemKept = false
   private var handedOver = false
+  private var handOver: HandOver?
   private var observing = false
   private var observers: [NSObjectProtocol] = []
+
+  private struct HandOver {
+    let savedAt: Double
+    let bytes: Int
+    let attempts: Int
+  }
 
   private var stateURL: URL { directory.appendingPathComponent("state.json") }
   private var lastURL: URL { directory.appendingPathComponent("last.json") }
@@ -132,7 +135,7 @@ final class NavigationStore: @unchecked Sendable {
     write(["savedAt": Self.nowMilliseconds(), "json": json, "attempts": 0], to: stateURL)
   }
 
-  /// `restore()`: the state of the process before this one, once.
+  /// `restore()`: the state of the process before this one, once, with what JavaScript needs to judge it.
   func takeRestored() -> [String: Any]? {
     lock.lock()
     defer { lock.unlock() }
@@ -143,21 +146,24 @@ final class NavigationStore: @unchecked Sendable {
       return nil
     }
     let attempts = (stored["attempts"] as? Int ?? 0) + 1
-    guard systemKept || Self.assumeSystemKill else {
-      removeState()
-      record(outcome: "dropped", reason: "the system kept no state of its own (the user left the app)", attempts: attempts, savedAt: savedAt, bytes: json.utf8.count)
-      return nil
-    }
-    guard attempts <= Self.attemptsAllowed else {
-      removeState()
-      record(outcome: "dropped", reason: "handed over \(Self.attemptsAllowed) times without a start that finished", attempts: attempts, savedAt: savedAt, bytes: json.utf8.count)
-      return nil
-    }
+    // Counted before JavaScript sees it: a start that dies on the way is the next start's second attempt.
     write(["savedAt": savedAt, "json": json, "attempts": attempts], to: stateURL)
-    record(outcome: "handed-over", reason: systemKept ? "the system kept its state" : "assumed (QA launch argument)", attempts: attempts, savedAt: savedAt, bytes: json.utf8.count)
-    return ["json": json, "savedAt": savedAt]
+    handOver = HandOver(savedAt: savedAt, bytes: json.utf8.count, attempts: attempts)
+    return ["json": json, "savedAt": savedAt, "attempts": attempts, "systemKept": systemKept || Self.assumeSystemKill]
   }
 
+  /// `restored(outcome, reason)`: the state is no longer needed, and what became of it is written down.
+  func finish(outcome: String, reason: String) {
+    lock.lock()
+    defer { lock.unlock() }
+    removeState()
+    if let handOver = handOver {
+      record(outcome: outcome, reason: reason, attempts: handOver.attempts, savedAt: handOver.savedAt, bytes: handOver.bytes)
+      self.handOver = nil
+    }
+  }
+
+  /// The app came back to the foreground (a process that dies there restores nothing): the file goes.
   func clear() {
     lock.lock()
     removeState()
@@ -180,7 +186,7 @@ final class NavigationStore: @unchecked Sendable {
   }
 
   private func record(outcome: String, reason: String, attempts: Int, savedAt: Double? = nil, bytes: Int? = nil) {
-    var entry: [String: Any] = ["at": Self.nowMilliseconds(), "outcome": outcome, "reason": reason, "attempts": attempts, "systemKept": systemKept]
+    var entry: [String: Any] = ["at": Self.nowMilliseconds(), "outcome": outcome, "reason": reason, "attempts": attempts, "systemKept": systemKept || Self.assumeSystemKill]
     if let savedAt = savedAt { entry["savedAt"] = savedAt }
     if let bytes = bytes { entry["bytes"] = bytes }
     write(entry, to: lastURL)

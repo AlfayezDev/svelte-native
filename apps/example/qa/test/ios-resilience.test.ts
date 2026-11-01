@@ -274,7 +274,7 @@ describe("the navigation module's account of the last start", () => {
 		const outcome = parseNavigationOutcome(text);
 		expect(outcome).toEqual({ at: 1, outcome: "dropped", reason: "the system kept no state of its own (the user left the app)", attempts: 1, systemKept: false, savedAt: 5, bytes: 321 });
 		expect(describeOutcome(outcome)).toBe("navigation module, the last start: dropped (the system kept no state of its own (the user left the app)); the system offered no state; attempts 1");
-		expect(describeOutcome(parseNavigationOutcome(JSON.stringify({ at: 2, outcome: "handed-over", reason: "the system kept its state", attempts: 1, systemKept: true })))).toContain("handed-over (the system kept its state); the system offered its state");
+		expect(describeOutcome(parseNavigationOutcome(JSON.stringify({ at: 2, outcome: "restored", reason: "the surface started with the saved state", attempts: 1, systemKept: true })))).toContain("restored (the surface started with the saved state); the system offered its state");
 		expect(describeOutcome(null)).toContain("no last.json");
 		for (const bad of [null, "", "not json", "[]", "{}", JSON.stringify({ outcome: 1, reason: "x" })]) expect(parseNavigationOutcome(bad)).toBeNull();
 	});

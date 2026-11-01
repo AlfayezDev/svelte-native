@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { freshNavigation, navigationClockSkewMs, navigationRestoreWindowMs } from "../src/navigation-restore.ts";
+import { droppedReasons, freshNavigation, navigationAttemptsAllowed, navigationClockSkewMs, navigationRestoreWindowMs } from "../src/navigation-restore.ts";
 
 const state = JSON.stringify({ stack: { entries: [{ route: "r1", href: "/acme", presentation: "push" }, { href: "/account", presentation: "modal" }] }, launch: "rasheed://acme" });
 const now = Date.UTC(2026, 10, 1, 12, 0, 0);
@@ -26,6 +26,25 @@ describe("freshNavigation: whether the state an iOS host kept for a dead process
   test("a clock that was set back cannot age a record: more than a minute in the future is dropped, a little is skew", () => {
     expect(freshNavigation({ json: state, savedAt: now + navigationClockSkewMs }, now)).toEqual({ json: state });
     expect(freshNavigation({ json: state, savedAt: now + navigationClockSkewMs + 1 }, now)).toEqual({ dropped: "future" });
+  });
+
+  test("the system's say: a process the user ended is not restored, one it ended is; a host that does not say is believed", () => {
+    expect(freshNavigation({ json: state, savedAt: now, systemKept: true }, now)).toEqual({ json: state });
+    expect(freshNavigation({ json: state, savedAt: now, systemKept: false }, now)).toEqual({ dropped: "user" });
+    expect(freshNavigation({ json: state, savedAt: now }, now)).toEqual({ json: state });
+    // The user's say outranks the age, as it does for a task removed from Recents.
+    expect(freshNavigation({ json: state, savedAt: now - 2 * navigationRestoreWindowMs, systemKept: false }, now)).toEqual({ dropped: "user" });
+  });
+
+  test("a restore that dies on the way is tried twice and then dropped, so it cannot loop", () => {
+    expect(navigationAttemptsAllowed).toBe(2);
+    for (const attempts of [0, 1, 2]) expect(freshNavigation({ json: state, savedAt: now, attempts, systemKept: true }, now)).toEqual({ json: state });
+    expect(freshNavigation({ json: state, savedAt: now, attempts: 3, systemKept: true }, now)).toEqual({ dropped: "attempts" });
+  });
+
+  test("every reason a record is dropped for is one the host can write down", () => {
+    for (const reason of ["malformed", "user", "attempts", "expired", "future", "unreadable"] as const) expect(droppedReasons[reason].length).toBeGreaterThan(10);
+    expect(Object.keys(droppedReasons).sort()).toEqual(["attempts", "expired", "future", "malformed", "unreadable", "user"]);
   });
 
   test("the host having nothing is not a fault: a cold start, the user leaving, a state that was used", () => {

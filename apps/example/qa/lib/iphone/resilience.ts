@@ -89,7 +89,6 @@ export const assumeSystemKillArgs = ["-SvelteNavigationAssumeSystemKill", "YES"]
 
 export const menuUrl = "rasheed-svelte:///__dev/screens";
 export const labUrl = (token: string): string => `rasheed-svelte:///__dev?run=resilience&token=${token}`;
-const labAnchor: Anchor = { kind: "label", value: "Run all checks" };
 const menuText = "Each page below is a real screen: the engine draws its header, sheet and tab bar.";
 export const menuBody: Anchor = { kind: "label", value: menuText };
 export const menuBar: Anchor = { kind: "bar", value: "Native screens" };

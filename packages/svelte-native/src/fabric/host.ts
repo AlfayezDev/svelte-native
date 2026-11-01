@@ -14,7 +14,7 @@ import { onFirstCommit } from "../updates/launch.ts";
 import { resolveAssetSource, Platform } from "./deps-rn.ts";
 import { createPayload, diffPayload, viewConfigFor } from "./view-configs.ts";
 import { requireOptionalNativeModule } from "./deps-expo.ts";
-import { freshNavigation } from "../navigation-restore.ts";
+import { droppedReasons, freshNavigation } from "../navigation-restore.ts";
 import { mount, unmount, type Component } from "./deps-svelte.ts";
 // The animation layer (Reanimated + worklets, ≈ 90 ms of bundle evaluation and a second Hermes runtime on a mid-range
 // phone) loads on the first node that needs it; a plain first screen boots without it.
@@ -205,16 +205,25 @@ const now = () => performance.now();
 
 /** Timings of the most recent flush, for the lab; also published on `globalThis.__svelteFabric` so app code needs no import. */
 /** iOS's navigation module (`modules/svelte-navigation-ios`): keeps the router's state for the next start of the process and gives it back once. Android has the engine module's `saveNavigation` and `initialProps` instead. */
-type NavigationHost = { save?: (json: string) => void; restore?: () => unknown; restored?: () => void };
+type NavigationHost = { save?: (json: string) => void; restore?: () => unknown; restored?: (outcome: string, reason: string) => void };
 let navigationHost: NavigationHost | null | undefined;
-const navigationModule = (): NavigationHost | null => navigationHost === undefined ? (navigationHost = requireOptionalNativeModule<NavigationHost>("SvelteNavigation")) : navigationHost;
+/** `SvelteEngine` is Android's: it is looked up once, by `startSurface` and before it by `navigationModule`, which asks nobody else on a phone that has it (a lookup of a module that is not there goes through the lazy registry, on the way to the first commit). */
+let engineProbe: object | null | undefined;
+function probeEngine(): object | null {
+  if (engineProbe === undefined) engineProbe = requireOptionalNativeModule<object>("SvelteEngine");
+  return engineProbe;
+}
+function navigationModule(): NavigationHost | null {
+  if (navigationHost === undefined) navigationHost = probeEngine() ? null : requireOptionalNativeModule<NavigationHost>("SvelteNavigation");
+  return navigationHost;
+}
 /** Hands the root router's navigation state to the host, which keeps it for a restart of the process (Android: the Activity's saved instance state; iOS: a file it writes when the app goes to the background). Nothing happens without either module. */
 export function saveNavigation(json: string): void { engineModule?.saveNavigation?.(json); navigationModule()?.save?.(json); }
 /**
  * The state the previous process left, when the host keeps it in its own way (iOS) and not in `initialProps.navigation` (Android): the JSON of a
- * record that is fresh and that the router can read (`freshNavigation`), once. The host decides whether the system ended the process (it keeps
- * nothing after the user left); the age is judged here. A record that is not used is cleared at once, the host being told it is of no use; one that
- * is used is cleared by `navigationRestored` when the surface has started. Restoring is best effort: a host that throws leaves the app on its first screen.
+ * record that is fresh and that the router can read (`freshNavigation`: the system's say, the attempts, the age), once. A record that is not used is
+ * cleared at once, the host being told why; one that is used is cleared by `navigationRestored` when the surface has started. Restoring is best effort:
+ * a host that throws leaves the app on its first screen.
  */
 export function hostNavigation(): string | undefined {
   try {
@@ -224,7 +233,7 @@ export function hostNavigation(): string | undefined {
     if ("json" in verdict) return verdict.json;
     if (verdict.dropped === "none") return undefined;
     console.info(`[Svelte navigation] the saved state was not restored: ${verdict.dropped}`);
-    module.restored?.();
+    module.restored?.("dropped", droppedReasons[verdict.dropped]);
   } catch (error) {
     console.warn("[Svelte navigation] the host could not give the saved state back", error);
   }
@@ -232,7 +241,7 @@ export function hostNavigation(): string | undefined {
 }
 /** The surface started with the state `hostNavigation` gave it: the host can forget it (a start that dies before this is counted, and a state that failed twice is dropped). */
 export function navigationRestored(): void {
-  try { navigationModule()?.restored?.(); } catch (error) { console.warn("[Svelte navigation] the host could not forget the restored state", error); }
+  try { navigationModule()?.restored?.("restored", "the surface started with the saved state"); } catch (error) { console.warn("[Svelte navigation] the host could not forget the restored state", error); }
 }
 /** Whether the host's window went away because the user left (Back, a swipe from Recents) and not because it is being recreated: Android's `Activity.isFinishing`. */
 export function hostFinishing(): boolean { return engineModule?.finishing?.() === true; }
@@ -757,7 +766,7 @@ export function startSurface<Props extends Record<string, unknown>>(rootTag: num
   setUnlinkSink(onUnlink);
   if (!engineTried) {
     engineTried = true;
-    const engine = requireOptionalNativeModule<{ install: (reanimatedReady: boolean) => boolean; dispatchCommand?: (tag: number, name: string, args: unknown[]) => void }>("SvelteEngine");
+    const engine = probeEngine() as { install: (reanimatedReady: boolean) => boolean; dispatchCommand?: (tag: number, name: string, args: unknown[]) => void } | null;
     reanimatedAtInstall = typeof (globalThis as { __reanimatedModuleProxy?: unknown }).__reanimatedModuleProxy !== "undefined";
     engineInstalled = engine ? engine.install(reanimatedAtInstall) : false;
     engineModule = engine as typeof engineModule;

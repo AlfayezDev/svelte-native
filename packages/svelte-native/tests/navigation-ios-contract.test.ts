@@ -8,6 +8,8 @@ import { applyAppDelegate } from "../src/expo.ts";
 const modules = resolve(import.meta.dirname, "../../../apps/platform/modules/svelte-navigation-ios");
 const swift = readFileSync(resolve(modules, "ios/SvelteNavigationModule.swift"), "utf8");
 const host = readFileSync(resolve(import.meta.dirname, "../src/fabric/host.ts"), "utf8");
+/** The Swift without its comments: the policy is in JavaScript, and the comments are free to say so. */
+const code = swift.split("\n").filter((line) => !line.trim().startsWith("//")).join("\n");
 const delegate = applyAppDelegate("import Expo\nclass AppDelegate {\n  var reactNativeFactory: RCTReactNativeFactory?\n}\n");
 
 describe("the iOS navigation module's sources agree with each other", () => {
@@ -38,10 +40,19 @@ describe("the iOS navigation module's sources agree with each other", () => {
     expect(swift).toContain("public final class SvelteNavigationModule: Module");
   });
 
+  test("what restore() returns carries the keys JavaScript judges, and restored() the two strings it passes", () => {
+    for (const key of ["json", "savedAt", "attempts", "systemKept"]) expect(swift).toContain(`"${key}": ${key === "systemKept" ? "systemKept ||" : key}`);
+    expect(swift).toContain('Function("restored") { (outcome: String, reason: String)');
+    expect(host).toContain('restored?.("dropped", droppedReasons[verdict.dropped])');
+    expect(host).toContain('restored?.("restored",');
+    // The rules are JavaScript's: the module keeps no copy of the attempt limit, the window or the system's say.
+    expect(code).not.toMatch(/attemptsAllowed|Allowed|expire|window|86_?400|dropped/i);
+  });
+
   test("the bounds and the age of a state are the same on both sides of the module", () => {
     expect(swift).toContain("static let limit = 100_000"); // Android's NavigationState.LIMIT
     expect(readFileSync(resolve(modules, "../svelte-engine/android/src/main/java/expo/modules/svelteengine/NavigationState.kt"), "utf8")).toContain("private const val LIMIT = 100_000");
     // The age is not judged in Swift: the module hands the time over and JavaScript decides (navigation-restore.ts).
-    expect(swift).not.toMatch(/expire|window/i);
+    expect(code).not.toMatch(/expire|window/i);
   });
 });

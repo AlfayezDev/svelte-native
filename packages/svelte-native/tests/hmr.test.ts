@@ -430,8 +430,8 @@ test("process death: the router writes its state through the engine module after
 
 /** iOS's navigation module (`modules/svelte-navigation-ios`) as far as JavaScript sees it: `save` after every change, `restore` once with a record or null. */
 function navigationModule(record: unknown = null) {
-  const module = { saved: [] as string[], restores: 0, forgotten: 0 };
-  environment.__nativeModules = { SvelteNavigation: { save: (json: string) => module.saved.push(json), restore: () => { module.restores++; return module.restores === 1 ? record : null; }, restored: () => { module.forgotten++; } } };
+  const module = { saved: [] as string[], restores: 0, forgotten: 0, told: [] as [string, string][] };
+  environment.__nativeModules = { SvelteNavigation: { save: (json: string) => module.saved.push(json), restore: () => { module.restores++; return module.restores === 1 ? record : null; }, restored: (outcome: string, reason: string) => { module.forgotten++; module.told.push([outcome, reason]); } } };
   return module;
 }
 
@@ -454,13 +454,13 @@ test("iOS: the router writes its state through the navigation module, and a new 
 
   // The process was killed in the background; the host kept the state and the time the app went there.
   freshRuntime();
-  const record = navigationModule({ json: saved, savedAt: Date.now() - 20 * 60_000 });
+  const record = navigationModule({ json: saved, savedAt: Date.now() - 20 * 60_000, attempts: 1, systemKept: true });
   try {
     const m = await load("hmr-tree-shell.svelte");
     roots = {}; commits.length = 0;
     await openApp(m, 61);
     expect(record.restores).toBe(1);
-    expect(record.forgotten).toBe(1); // the surface started with the state: the host clears what it kept
+    expect(record.told).toEqual([["restored", "the surface started with the saved state"]]); // the surface started with the state: the host clears what it kept
     expect(hrefs(treeScope.__shellRouter)).toEqual(["/acme", "/account"]);
     expect(arrows(treeScope.__shellRouter)).toEqual([false, true]);
     expect(texts(61)).toEqual(["page /acme/inbox", "page /acme/inbox/compose", "page /account"]);
@@ -490,6 +490,8 @@ test("iOS: a record that is old, from the future, malformed or no state starts t
   const day = 24 * 60 * 60 * 1000;
   const refused: [string, unknown][] = [
     ["expired", { json: saved, savedAt: Date.now() - day - 60_000 }],
+    ["the user ended the process", { json: saved, savedAt: Date.now(), attempts: 1, systemKept: false }],
+    ["restored twice already", { json: saved, savedAt: Date.now(), attempts: 3, systemKept: true }],
     ["from the future", { json: saved, savedAt: Date.now() + 10 * 60_000 }],
     ["malformed", { json: saved }],
     ["not a state", { json: "not json", savedAt: Date.now() }],
@@ -502,6 +504,7 @@ test("iOS: a record that is old, from the future, malformed or no state starts t
       roots = {}; commits.length = 0;
       await openApp(m, 63);
       expect([name, host.restores, host.forgotten]).toEqual([name, 1, 1]); // a record the app cannot use is of no use to the host either
+      expect([name, host.told[0]?.[0]]).toEqual([name, "dropped"]);
       expect([name, hrefs(treeScope.__shellRouter)]).toEqual([name, ["/acme"]]);
       expect([name, texts(63)]).toEqual([name, ["page /acme/home"]]);
     } finally { delete environment.__nativeModules; }
@@ -516,6 +519,18 @@ test("iOS: a record that is old, from the future, malformed or no state starts t
     await openApp(m, 64, { navigation: JSON.stringify({ stack: { entries: [{ href: "/workspaces", presentation: "push" }] } }) });
     expect([host.restores, host.forgotten]).toEqual([0, 0]);
     expect(hrefs(treeScope.__shellRouter)).toEqual(["/workspaces"]);
+  } finally { delete environment.__nativeModules; }
+
+  // Android has the engine module: the navigation module is not asked for at all (a lookup of what is not there is on the way to its first commit).
+  freshRuntime();
+  const android = navigationModule({ json: saved, savedAt: Date.now() });
+  (environment.__nativeModules as Record<string, object>).SvelteEngine = { install: () => false, addListener: () => ({ remove() {} }), getInsets: () => null, saveNavigation: () => undefined, finishing: () => false };
+  try {
+    const m = await load("hmr-tree-shell.svelte");
+    roots = {}; commits.length = 0;
+    await openApp(m, 66);
+    expect([android.restores, android.saved.length]).toEqual([0, 0]);
+    expect(hrefs(treeScope.__shellRouter)).toEqual(["/acme"]);
   } finally { delete environment.__nativeModules; }
 
   // A host that throws leaves the app on its first screen.

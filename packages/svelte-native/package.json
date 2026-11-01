@@ -18,6 +18,7 @@
     "./lower": "./src/lower.ts",
     "./vite": "./src/vite.ts",
     "./router": "./src/router.svelte.ts",
+    "./routes": "./src/routes-table.ts",
     "./animation": "./src/animation.ts",
     "./gestures": "./src/gestures/index.ts",
     "./expo": "./src/expo.ts",

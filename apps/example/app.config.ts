@@ -1,5 +1,6 @@
 import type { ExpoConfig } from "expo/config";
 import { createRequire } from "node:module";
+import { productApplicationId, qaApplicationId, smokeApplicationId } from "./src/lib/native/app-ids.ts";
 
 // Three apps come out of this file. The product (`APP_VARIANT=production`, `io.rasheed.app`); the QA app (no variant, `io.rasheed.svelteqa`),
 // which every gate of qa/gates.json measures and so carries exactly the product's native modules; and the smoke app
@@ -11,7 +12,7 @@ import { createRequire } from "node:module";
 const { smokeOnlyPackages } = createRequire(import.meta.url)("./qa/smoke-packages.cjs") as { smokeOnlyPackages: string[] };
 const production = process.env.APP_VARIANT === "production";
 const smoke = process.env.APP_VARIANT === "smoke";
-const applicationId = production ? "io.rasheed.app" : smoke ? "io.rasheed.svelteqa.smoke" : "io.rasheed.svelteqa";
+const applicationId = production ? productApplicationId : smoke ? smokeApplicationId : qaApplicationId;
 // A clearly fake Firebase app for `io.rasheed.svelteqa.smoke` (no key in it is real); the smoke test only loads Firebase and makes offline calls.
 const fakeFirebase = { android: "./qa/firebase-fake/google-services.json", ios: "./qa/firebase-fake/GoogleService-Info.plist" };
 const smokePlugins: NonNullable<ExpoConfig["plugins"]> = !smoke ? [] : [

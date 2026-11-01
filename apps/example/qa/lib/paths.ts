@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { qaApplicationId } from "../../src/lib/native/app-ids.ts";
 
 export const qaDir = resolve(import.meta.dirname, "..");
 export const platformDir = resolve(qaDir, "..");
@@ -13,4 +14,4 @@ export const svelteNativeCli = resolve(repoRoot, "packages/svelte-native/src/cli
 export const emulatorLock = "/tmp/svelte-qa-emulator.lock";
 export const gradleLock = "/tmp/svelte-qa-gradle.lock";
 /** The QA app. The smoke app's id is `packageOf.smoke` (variant.ts). */
-export const defaultPackage = "io.rasheed.svelteqa";
+export const defaultPackage = qaApplicationId;

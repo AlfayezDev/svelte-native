@@ -4,13 +4,17 @@ import * as SecureStore from "expo-secure-store";
 import { getLocales } from "expo-localization";
 import { applicationId } from "expo-application";
 import { ar, en, arCounts, enCounts, createTranslator, type Locale, type Translate } from "@rasheed/client/messages";
+import { lab as bundleLab, variant as bundleVariant } from "@rasheed/svelte-native/routes";
+import { smokeApplicationId } from "./app-ids.ts";
+import { labDecision } from "./lab-flag.ts";
 
 export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "https://dev.qarnos.com";
-/** The QA app `io.rasheed.svelteqa` measures the engine; the smoke app `io.rasheed.svelteqa.smoke` is the same app plus the production app's native libraries (SPEC.md, "Native modules (smoke test)"). */
-export const smokeApplicationId = "io.rasheed.svelteqa.smoke";
-export const nativeLabEnabled = __DEV__ || applicationId === "io.rasheed.svelteqa" || applicationId === smokeApplicationId;
+// What the bundle carries of the development lab is its route table's `lab` (the variant Metro bundled); the application id only adds to it (lab-flag.ts).
+const labDecided = labDecision({ bundleLab: bundleLab === true, applicationId, dev: __DEV__ });
+export const nativeLabEnabled = labDecided.enabled;
+if (labDecided.refused) console.error(`[Svelte lab] this ${bundleVariant} bundle carries the development lab, which the ${applicationId} app does not run (publish with APP_VARIANT=production): the lab is off`);
 /** Only the smoke app links the libraries the smoke test calls: in the QA app they are not there, and every check would fail. */
-export const nativeSmokeEnabled = applicationId === smokeApplicationId;
+export const nativeSmokeEnabled = nativeLabEnabled && applicationId === smokeApplicationId;
 const storedLanguage = SecureStore.getItem("interface_language");
 let locale = $state<Locale>(storedLanguage === "ar" || storedLanguage === "en" ? storedLanguage : getLocales()[0]?.languageCode === "ar" ? "ar" : "en");
 let appearance = $state<"system" | "light" | "dark">("system");

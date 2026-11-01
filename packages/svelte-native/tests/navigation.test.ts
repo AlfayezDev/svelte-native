@@ -1060,7 +1060,7 @@ test("createRouter takes the route tree: the array of routes it took before fail
   const message = (globalThis as { __routerError?: string }).__routerError ?? "";
   expect(message).toContain("createRouter takes the route tree");
   expect(message).toContain("kind: \"stack\"");
-  expect(message).toContain(".svelte-native/routes.ts");
+  expect(message).toContain(".svelte-native/routes.<variant>.ts");
   expect(message).not.toContain("iterable");
 });
 
@@ -1976,7 +1976,7 @@ test("the launch link is the stack's base: no back arrow on /__dev; later links 
   withInsets(24);
   const launch = globalThis as { __initialURL?: string };
   try {
-    const files = await routeFiles(resolve(import.meta.dirname, "../../../apps/platform/src/routes"));
+    const files = await routeFiles(resolve(import.meta.dirname, "../../../apps/platform/src/routes"), { lab: true });
     const arrows = (router: TreeRouter) => router.screens.filter((screen) => !screen.leaving).map((screen) => screen.canGoBack);
     const backOf = (surface: number) => Object.fromEntries(ofKind(roots[surface], "header").map((node) => {
       const pairs = parseNativeID(String(node.props.nativeID))?.pairs ?? {};

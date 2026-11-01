@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { build } from "esbuild";
 import { syncNative } from "../src/build.ts";
+import { routesTableFile } from "../src/variant.ts";
 
 const saved = process.env.SVELTE_NATIVE_ROOT;
 afterEach(() => {
@@ -49,8 +50,8 @@ async function withRoutes<T>(files: Record<string, string>, check: (directory: s
       await writeFile(resolve(directory, "src/routes", path), source);
     }
     delete process.env.SVELTE_NATIVE_ROOT;
-    await syncNative(directory);
-    return await check(directory, await readFile(resolve(directory, ".svelte-native/routes.ts"), "utf8"));
+    await syncNative(directory, { variant: "qa" });
+    return await check(directory, await readFile(resolve(directory, ".svelte-native", routesTableFile("qa")), "utf8"));
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -83,7 +84,7 @@ test("the route table loads no page up front: every route is a loader", async ()
 test("a loader requires its page and layouts when called and not before", async () => {
   await withRoutes(tree, async (directory) => {
     const bundle = await build({
-      entryPoints: [resolve(directory, ".svelte-native/routes.ts")],
+      entryPoints: [resolve(directory, ".svelte-native", routesTableFile("qa"))],
       bundle: true, format: "esm", platform: "neutral", write: false,
       plugins: [{
         name: "route-pages",
@@ -157,7 +158,7 @@ test("navigator layouts and panes are in the table with a loader per layout; not
     expect(table).toContain('layout: async () => ({ component: require("../src/routes/(workspace)/[slug]/(tabs)/+layout.mobile.svelte").default, layouts: [require("../src/routes/(workspace)/+layout.mobile.svelte").default] }),');
     expect(table).toContain('shellFile: "+layout.mobile.svelte",');
     const bundle = await build({
-      entryPoints: [resolve(directory, ".svelte-native/routes.ts")],
+      entryPoints: [resolve(directory, ".svelte-native", routesTableFile("qa"))],
       bundle: true, format: "esm", platform: "neutral", write: false,
       plugins: [{
         name: "route-pages",

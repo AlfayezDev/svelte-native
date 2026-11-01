@@ -160,6 +160,8 @@ export type Metrics = Record<string, Metric>;
 export type BuildFile = {
 	schema: 1;
 	kind: "build";
+	/** The app built: absent in files written before the smoke app existed (the QA app). */
+	variant?: "qa" | "smoke";
 	abi: string;
 	finishedAt: string;
 	durationMs: number;
@@ -456,3 +458,39 @@ export type ResilienceFile = {
 	logFile: string;	/** Why the run stopped before the end of its matrix (the device went away), or null. The cases it did not reach count as missing. */
 	aborted: string | null;
 } & SessionRecord;
+
+/* ---- native module smoke test ---- */
+
+/** One module's `[Svelte smoke]` line: what the call did, which path it took (`js`, `direct`, `js+direct`, `none`), how long it took, and what it said. */
+export type SmokeModuleResult = {
+	module: string;
+	status: "ok" | "fail" | "skip";
+	path: string;
+	ms: number | null;
+	detail: string;
+};
+
+/** The `[Svelte smoke] complete {...}` line the app logs when its last module reported. */
+export type SmokeCompletion = { os: string; total: number; ok: number; fail: number; skip: number };
+
+export type SmokeFile = {
+	schema: 1;
+	kind: "smoke";
+	startedAt: string;
+	finishedAt: string;
+	source: Source;
+	device: DeviceInfo;
+	app: AppInfo;
+	/** The `--run` the lab was launched with (`smoke`). */
+	run: string;
+	/** Whether the app logged its completion line and nothing interrupted or crashed it. */
+	complete: boolean;
+	/** The modules that reported, the last line of each (the order they ran in). */
+	results: SmokeModuleResult[];
+	completion: SmokeCompletion | null;
+	crashes: string[];
+	/** Android: JavaScript errors (`E ReactNativeJS`) the run logged; null where the app does not report them. */
+	jsErrorCount: number | null;
+	durationMs: number;
+	logFile: string;
+} & CrashReportsRecord;

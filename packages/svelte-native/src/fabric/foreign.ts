@@ -4,7 +4,11 @@
  * Expo modules' views. No React: the components that use these (`WebView.svelte`, `VideoView.svelte`) mount the Fabric
  * component by name, and the native side is the library's own.
  */
+import { turboModule } from "../native-modules.ts";
 import { defineViewKind, type Kind } from "./view-configs.ts";
+
+// The wrappers in `foreign-*.ts` take it from here.
+export { turboModule };
 
 type Globals = {
   RN$registerCallableModule?: (name: string, factory: () => object) => void;
@@ -60,19 +64,12 @@ export function listenToWebView(name: string, sink: WebViewSink): () => void {
   return () => { if (sinks.get(name) === sink) sinks.delete(name); };
 }
 
-/** A TurboModule by name (`TurboModuleRegistry.getEnforcing`), from React Native's own module, not the package's index. */
-export function turboModule<Module>(name: string): Module {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  return (require("react-native/Libraries/TurboModule/TurboModuleRegistry") as { getEnforcing<T>(name: string): T }).getEnforcing<Module>(name);
-}
-
 type WebViewModule = { shouldStartLoadWithLockIdentifier(shouldStart: boolean, lockIdentifier: number): void };
 let webViewModule: WebViewModule | undefined;
 
 /** Answers a navigation request: the native WebView holds the navigation (up to 250 ms) until JavaScript says whether it may go on. */
 export function answerRequest(shouldStart: boolean, lockIdentifier: number): void {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  webViewModule ??= (require("react-native/Libraries/TurboModule/TurboModuleRegistry") as { getEnforcing<T>(name: string): T }).getEnforcing<WebViewModule>("RNCWebViewModule");
+  webViewModule ??= turboModule<WebViewModule>("RNCWebViewModule");
   webViewModule.shouldStartLoadWithLockIdentifier(shouldStart, lockIdentifier);
 }
 
@@ -208,8 +205,7 @@ export function mapHandle(host: Commandable): MapHandle {
     fitToCoordinates: (coordinates, edgePadding, animated = true) => host.dispatchCommand("fitToCoordinates", [JSON.stringify(coordinates), padding(edgePadding), animated]),
     setIndoorActiveLevelIndex: (index) => host.dispatchCommand("setIndoorActiveLevelIndex", [index]),
     getCamera: () => {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      mapModule ??= (require("react-native/Libraries/TurboModule/TurboModuleRegistry") as { getEnforcing<T>(name: string): T }).getEnforcing<MapModule>("RNMapsAirModule");
+      mapModule ??= turboModule<MapModule>("RNMapsAirModule");
       return mapModule.getCamera(host.tag);
     },
   };

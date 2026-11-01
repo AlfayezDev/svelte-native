@@ -155,7 +155,7 @@ test("animatedProps: the first values are in the nodes' props, a mapper of its o
   expect("animatedProps" in circle.props).toBe(false);
 
   const A = anim();
-  const own = (node: FakeNode) => A.descriptors.filter((entry) => entry.adds.some((add) => add.tag === node.tag));
+  const own = (node: FakeNode) => A.descriptors.slice(ownFrom.descriptors).filter((entry) => entry.adds.some((add) => add.tag === node.tag));
   expect(own(circle)).toHaveLength(1);
   expect(own(outline)).toHaveLength(1);
   // Every animated node of the drawing has a mapper; the shape's `r`/`cx` and the path's `d` are separate ones.
@@ -178,5 +178,5 @@ test("an animated node's mapper and descriptors go with the node", async () => {
   const A = anim();
   app.hide();
   await settle(loaded);
-  expect(A.mappers.filter((entry) => !entry.stopped)).toHaveLength(0);
+  expect(A.mappers.slice(ownFrom.mappers).filter((entry) => !entry.stopped)).toHaveLength(0);
 });

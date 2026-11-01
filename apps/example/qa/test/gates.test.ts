@@ -304,7 +304,7 @@ describe("device roles", () => {
 		expect(tally(rows).ok).toBe(false);
 	});
 	test("checkGatesFile refuses a role that would silently exempt a device", () => {
-		const file = (patch: Partial<GatesFile> & { gates?: Gate[] }): GatesFile => ({ version: 1, devices: {}, scenarios: { android: [], ios: [] }, gates: [], ...patch });
+		const file = (patch: Partial<GatesFile> & { gates?: Gate[] }): GatesFile => ({ version: 1, devices: {}, scenarios: { android: [], ios: [] }, smoke: { modules: { android: ["a"], ios: ["a"] }, skips: { android: [], ios: [] } }, gates: [], ...patch });
 		expect(() => checkGatesFile(file({ gates: [{ ...frames, roles: ["phones" as "phone"] }] }))).toThrow(/unknown role "phones"/);
 		expect(() => checkGatesFile(file({ gates: [{ ...frames, roles: [] }] }))).toThrow(/empty roles list/);
 		expect(() => checkGatesFile(file({ devices: { x: { role: "emulator" as "lab", name: "x", runs: ["lab"] } } }))).toThrow(/unknown role "emulator"/);
@@ -386,9 +386,9 @@ describe("gates.json", () => {
 	});
 	test("devices: the Samsung and the iPhone are phones, the OVH emulator is the lab", () => {
 		expect(file.devices).toEqual({
-			R58Y90KNGRP: { role: "phone", name: "Samsung A16", runs: ["lab", "boot"] },
-			"E74A5608-BF8E-5806-8699-1605F82ADED9": { role: "phone", name: "iPhone SE 3", runs: ["lab", "boot", "parity", "a11y"] },
-			"localhost:5555": { role: "lab", name: "OVH emulator, software GL", runs: ["lab", "soak", "crashes", "parity", "a11y", "resilience"] },
+			R58Y90KNGRP: { role: "phone", name: "Samsung A16", runs: ["lab", "boot", "smoke"] },
+			"E74A5608-BF8E-5806-8699-1605F82ADED9": { role: "phone", name: "iPhone SE 3", runs: ["lab", "boot", "parity", "a11y", "smoke"] },
+			"localhost:5555": { role: "lab", name: "OVH emulator, software GL", runs: ["lab", "soak", "crashes", "parity", "a11y", "resilience", "smoke"] },
 		});
 		expect(() => checkGatesFile(file)).not.toThrow();
 	});

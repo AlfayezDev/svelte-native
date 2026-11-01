@@ -6,11 +6,12 @@
   import { List, Modal, ScrollView, Tabs, Text, TextInput, View, useRouter, type TabHandle, type TabItem } from "@rasheed/svelte-native";
   import { createSharedValue, runOnUIAsync, type SharedValue } from "@rasheed/svelte-native/animation";
   import { requireOptionalNativeModule } from "expo-modules-core";
-  import { theme } from "../state.svelte.ts";
+  import { nativeSmokeEnabled, theme } from "../state.svelte.ts";
   import Button from "../components/Button.svelte";
   import StressTile from "./StressTile.svelte";
   import { screenLab } from "./model.svelte.ts";
   import { runForeignViews } from "./foreign-lab.ts";
+  import { smokeScenarioOutcome } from "./smoke-rules.ts";
   import { estimatePeriod, startFrameMonitor, stopFrameMonitor, summarizeFrames, type FrameStats, type FrameSummary } from "./frames.ts";
 
   type Verdict = "pass" | "fail" | "info";
@@ -440,6 +441,14 @@
       const { frames, value } = await measure(() => runForeignViews(router, signal));
       return { verdict: value.passed ? "pass" : "fail", summary: `${value.summary} · ${describe(frames)}`, frames, detail: value.detail };
     } },
+    { name: "smoke", label: "Native modules (smoke test) · one core call for each library the production app links, from Svelte Native without React (`run=smoke`, SPEC.md \"Native modules (smoke test)\")", async run(signal) {
+      // Required here, not at the top: the libraries load when the scenario runs, and only the smoke app links them.
+      if (!nativeSmokeEnabled) return { verdict: "info", summary: "Not linked in this build: the native module smoke test runs in the smoke app (io.rasheed.svelteqa.smoke)." };
+      const { runSmoke, smokeModules } = await import("./smoke.ts");
+      const results = await runSmoke(undefined, signal);
+      const { verdict, summary } = smokeScenarioOutcome(results, smokeModules.length);
+      return { verdict, summary, detail: { results: results.map(({ module, status, path }) => ({ module, status, path })) } };
+    } },
     { name: "churn-60s", label: "Cleanup stress · 60 s animated churn", run: (signal) => animatedChurn(signal, 60000) },
     { name: "soak-120s", label: "Soak · 120 s animated churn with heap sampling", async run(signal) {
       const before = heapBytes();
@@ -523,7 +532,7 @@
       return { verdict: clean ? "info" : "fail", summary: `${cycle} cycles in ${((Date.now() - since) / 1000).toFixed(0)} s · ${created} tiles mounted / ${destroyed} destroyed · ${changesAfterDestroy} values changed after destruction · stack depth ${router.entries.length} (expected ${depth}) · cleanup ${clean ? "ok" : "FAILED"}`, detail: { cycles: cycle, created, destroyed, changesAfterDestroy, lateCompletions, cleanupFailures } };
     } },
   ];
-  const quick = scenarios.filter((scenario) => !["warm-up", "input-typing", "foreign-views", "churn-60s", "soak-120s", "soak-mix", "crash-js", "list-300-virtual-profile", "list-mount-loop"].includes(scenario.name));
+  const quick = scenarios.filter((scenario) => !["warm-up", "input-typing", "foreign-views", "smoke", "churn-60s", "soak-120s", "soak-mix", "crash-js", "list-300-virtual-profile", "list-mount-loop"].includes(scenario.name));
   const ordered = $derived(scenarios.flatMap((scenario) => results.filter((result) => result.name === scenario.name)));
 
   function record(result: Result) {

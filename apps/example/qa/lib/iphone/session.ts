@@ -3,7 +3,8 @@ import { join } from "node:path";
 import { flagString, requireString } from "../flags.ts";
 import { currentSource } from "../git.ts";
 import { reexecUnderLock } from "../lock.ts";
-import { defaultPackage, outDir } from "../paths.ts";
+import { outDir } from "../paths.ts";
+import { iosBuildName, packageOf, type Variant } from "../variant.ts";
 import type { AppInfo, BuildRecord, DeviceInfo, Source } from "../types.ts";
 import { defaultHardwareUdid, startCrashWatch, type CrashWatch } from "./crash-reports.ts";
 import { deviceDetails, installedApp, type IosTarget } from "./device.ts";
@@ -62,20 +63,22 @@ export function buildRecordOf(file: IosBuildFile): BuildRecord {
 	};
 }
 
-export const iosBuildPath = join(outDir, "ios-build.json");
+export const iosBuildPathOf = (variant: Variant): string => join(outDir, iosBuildName(variant));
+/** The QA app's record, which every command but the smoke test reads. */
+export const iosBuildPath = iosBuildPathOf("qa");
 
-export async function readIosBuild(): Promise<IosBuildFile | null> {
+export async function readIosBuild(variant: Variant = "qa"): Promise<IosBuildFile | null> {
 	try {
-		return JSON.parse(await readFile(iosBuildPath, "utf8")) as IosBuildFile;
+		return JSON.parse(await readFile(iosBuildPathOf(variant), "utf8")) as IosBuildFile;
 	} catch (error) {
 		if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
 		throw error;
 	}
 }
 
-export async function writeIosBuild(build: IosBuildFile): Promise<void> {
+export async function writeIosBuild(build: IosBuildFile, variant: Variant = "qa"): Promise<void> {
 	await mkdir(outDir, { recursive: true });
-	await writeFile(iosBuildPath, `${JSON.stringify(build, null, "\t")}\n`);
+	await writeFile(iosBuildPathOf(variant), `${JSON.stringify(build, null, "\t")}\n`);
 }
 
 /** A text the launch URL carries and the app echoes into the files it writes, so a file can be told from an older launch's. */
@@ -96,20 +99,23 @@ export type IosSession = {
 	startedAt: Date;
 };
 
+/** The bundle id a suite works on: `--package`, else the variant's own (the smoke app's is not the QA app's). */
+export const suiteBundleId = (values: IosValues, variant: Variant): string => flagString(values.package) ?? packageOf[variant];
+
 /**
  * What every iOS command does first: take the iPhone lock the way the emulator commands take theirs (re-running itself under
  * `flock`), find the phone through the Mac, install the build under test unless told not to, and describe the phone and the app.
  */
-export async function startIosSuite(command: string, argv: string[], values: IosValues): Promise<IosSession> {
+export async function startIosSuite(command: string, argv: string[], values: IosValues, variant: Variant = "qa"): Promise<IosSession> {
 	reexecUnderLock(iphoneLock, [command, ...argv]);
 	const id = requireString(values.device, "device");
 	const mac = macFrom(flagString(values.mac));
-	const bundleId = flagString(values.package) ?? defaultPackage;
+	const bundleId = suiteBundleId(values, variant);
 	const udid = flagString(values.udid) ?? defaultHardwareUdid;
 	const target: IosTarget = { mac, id, bundleId };
 	const startedAt = new Date();
 	const device = await deviceDetails(target);
-	const record = await readIosBuild();
+	const record = await readIosBuild(variant);
 	const appPath = flagString(values.app) ?? record?.appPath;
 	const installing = values["no-install"] !== true && appPath;
 	if (installing) {

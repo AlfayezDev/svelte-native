@@ -6,7 +6,8 @@
       "name": "Samsung A16",
       "runs": [
         "lab",
-        "boot"
+        "boot",
+        "smoke"
       ]
     },
     "E74A5608-BF8E-5806-8699-1605F82ADED9": {
@@ -16,7 +17,8 @@
         "lab",
         "boot",
         "parity",
-        "a11y"
+        "a11y",
+        "smoke"
       ]
     },
     "localhost:5555": {
@@ -28,7 +30,8 @@
         "crashes",
         "parity",
         "a11y",
-        "resilience"
+        "resilience",
+        "smoke"
       ]
     }
   },
@@ -71,6 +74,97 @@
       "sheet-8",
       "tabs-8"
     ]
+  },
+  "smoke": {
+    "modules": {
+      "android": [
+        "async-storage",
+        "mmkv",
+        "secure-store",
+        "netinfo",
+        "device-info",
+        "expo-device",
+        "get-random-values",
+        "quick-crypto",
+        "quick-base64",
+        "nitro",
+        "launch-arguments",
+        "localization",
+        "constants",
+        "asset",
+        "haptics",
+        "screen-orientation",
+        "store-review",
+        "system-ui",
+        "tracking-transparency",
+        "local-authentication",
+        "notifications",
+        "location",
+        "sharing",
+        "web-browser",
+        "splash-screen",
+        "ssl-pinning",
+        "firebase",
+        "sentry",
+        "hms",
+        "samsung-pay",
+        "intercom",
+        "statsig",
+        "mixpanel",
+        "adjust",
+        "check-installed-apps",
+        "live-direction"
+      ],
+      "ios": [
+        "async-storage",
+        "mmkv",
+        "secure-store",
+        "netinfo",
+        "device-info",
+        "expo-device",
+        "get-random-values",
+        "quick-crypto",
+        "quick-base64",
+        "nitro",
+        "launch-arguments",
+        "localization",
+        "constants",
+        "asset",
+        "haptics",
+        "screen-orientation",
+        "store-review",
+        "system-ui",
+        "tracking-transparency",
+        "local-authentication",
+        "notifications",
+        "location",
+        "sharing",
+        "web-browser",
+        "splash-screen",
+        "ssl-pinning",
+        "firebase",
+        "sentry",
+        "hms",
+        "samsung-pay",
+        "intercom",
+        "statsig",
+        "mixpanel",
+        "adjust",
+        "check-installed-apps",
+        "live-direction"
+      ]
+    },
+    "skips": {
+      "android": [
+        "hms",
+        "web-browser"
+      ],
+      "ios": [
+        "web-browser",
+        "hms",
+        "samsung-pay"
+      ]
+    }
   },
   "gates": [
     {
@@ -752,6 +846,90 @@
         },
         "ios": {
           "max": 0
+        }
+      }
+    },
+    {
+      "id": "smoke.complete",
+      "title": "The smoke run logged its completion line, was not interrupted and did not crash",
+      "unit": "run",
+      "metric": "smoke.complete",
+      "bar": {
+        "android": {
+          "min": 1
+        },
+        "ios": {
+          "min": 1
+        }
+      }
+    },
+    {
+      "id": "smoke.fatals",
+      "title": "Crashes, ANRs and interruptions during the smoke run",
+      "unit": "fatals",
+      "metric": "smoke.fatals",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "smoke.failed",
+      "title": "Native modules whose smoke call failed",
+      "unit": "modules",
+      "metric": "smoke.failed",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "smoke.missing",
+      "title": "Pinned native modules the smoke run never reported",
+      "unit": "modules",
+      "metric": "smoke.missing",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "smoke.unexpectedSkips",
+      "title": "Native modules that skipped where the platform does not list a skip (gates.json smoke.skips)",
+      "unit": "modules",
+      "metric": "smoke.unexpectedSkips",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "smoke.ok",
+      "title": "Native modules whose smoke call answered (the pinned modules less the listed skips)",
+      "unit": "modules",
+      "metric": "smoke.ok",
+      "bar": {
+        "android": {
+          "min": 34
+        },
+        "ios": {
+          "min": 33
         }
       }
     }

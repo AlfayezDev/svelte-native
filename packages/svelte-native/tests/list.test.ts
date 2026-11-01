@@ -172,6 +172,49 @@ test("initialScrollIndex mounts and scrolls to that row on first layout", async 
   void app;
 });
 
+test("a scroll asked for before the scroll view is bound and laid out is sent when both are, the last one asked for", async () => {
+  const result = await load();
+  const root: NativeNode = result.root;
+  const app = result.start({ count: 300 });
+  await result.tick();
+  const scroll = () => nodes(root).find((node) => node.name === "native-scroll") as NativeNode;
+  const sp = () => scroll().getSnapshot().props.nativeProps as Record<string, (event: unknown) => void>;
+  const commands: unknown[] = [];
+  const view = { dispatchCommand: (name: string, args: unknown[]) => commands.push([name, args]) };
+  const layoutEvent = { nativeEvent: { layout: { height: 400, width: 300, x: 0, y: 0 } } };
+
+  // Neither the view nor its layout yet: nothing is sent, and the page's call is not lost.
+  app.jump(50);
+  app.jump(60);
+  expect(commands).toEqual([]);
+  // The view alone is not enough (it has no content to scroll before its first layout).
+  sp().ref(view);
+  expect(commands).toEqual([]);
+  sp().onLayout(layoutEvent);
+  await result.tick();
+  expect(commands).toEqual([["scrollTo", [0, 2400, false]]]);
+  // It is sent once, and a request made now goes at once.
+  sp().onLayout(layoutEvent);
+  app.jump(2);
+  expect(commands).toEqual([["scrollTo", [0, 2400, false]], ["scrollTo", [0, 80, false]]]);
+});
+
+test("a scroll asked for before the layout is sent by the ref when the layout came first", async () => {
+  const result = await load();
+  const root: NativeNode = result.root;
+  const app = result.start({ count: 300 });
+  await result.tick();
+  const scroll = () => nodes(root).find((node) => node.name === "native-scroll") as NativeNode;
+  const sp = () => scroll().getSnapshot().props.nativeProps as Record<string, (event: unknown) => void>;
+  const commands: unknown[] = [];
+  app.jump(10);
+  sp().onLayout({ nativeEvent: { layout: { height: 400, width: 300, x: 0, y: 0 } } });
+  await result.tick();
+  expect(commands).toEqual([]);
+  sp().ref({ dispatchCommand: (name: string, args: unknown[]) => commands.push([name, args]) });
+  expect(commands).toEqual([["scrollTo", [0, 400, false]]]);
+});
+
 test("onViewableItemsChanged reports visible keys, debounced", async () => {
   const events: { viewableItems: { key: string }[]; changed: { key: string; isViewable: boolean }[] }[] = [];
   const t = await setup({ count: 300, onViewable: (info: never) => events.push(info) });

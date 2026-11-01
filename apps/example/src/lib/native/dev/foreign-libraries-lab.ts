@@ -151,18 +151,22 @@ export async function runForeignLibraries(router: Router, signal: AbortSignal, o
         // A row far down the list: scroll to it (not animated: the rows it passes are not mounted on the way) and, when its section is not up after a while, ask again.
         foreignLab.scrollAnimated = false;
         if (where === "row") foreignLab.scrollIndex = opened.index;
-        let mounted = await until(() => libraryHandles.has(opened.source), where === "row" ? 6000 : 10000, signal);
+        // The section is up when its box has a handle: its set is registered as it is made, and a list mounts its first ten rows before it knows its size, so a row in
+        // that window is registered for a frame and gone when the layout trims the window (the box has no handle in that frame, and nothing then mounts the row again
+        // until the list is scrolled to it). The section is judged after the settle, and a row that went is asked for again.
+        const sectionUp = () => !!libraryHandles.get(opened.source)?.boxes[kind];
+        const settle = where === "sheet" ? 900 : 500;
+        let mounted = await until(sectionUp, where === "row" ? 6000 : 10000, signal);
+        if (mounted) { await pause(settle, signal); mounted = sectionUp(); }
         for (let attempt = 0; where === "row" && !mounted && attempt < 3 && !signal.aborted; attempt++) {
           foreignLab.scrollIndex = -1;
           await pause(200, signal);
           foreignLab.scrollIndex = opened.index;
-          mounted = await until(() => libraryHandles.has(opened.source), 6000, signal);
+          mounted = await until(sectionUp, 6000, signal);
+          if (mounted) { await pause(settle, signal); mounted = sectionUp(); }
         }
         record(`${where}: the section opens`, mounted);
-        if (mounted) {
-          await pause(where === "sheet" ? 900 : 500, signal);
-          await libraryChecks[kind](ctx);
-        }
+        if (mounted) await libraryChecks[kind](ctx);
       } catch (error) {
         record(`${where}: the checks ran to the end`, false, error instanceof Error ? `${error.message}` : String(error));
       }

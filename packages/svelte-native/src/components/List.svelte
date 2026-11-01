@@ -298,6 +298,7 @@
         scroll = target;
         scrollToOffset(target, false);
       }
+      sendPendingScroll();
     }
     checkEnd();
     scheduleViewable();
@@ -313,18 +314,36 @@
 
   function handleRef(instance: NativeScrollView | null) {
     scroller = instance as unknown as Scroller | null;
+    sendPendingScroll();
     ref?.(instance);
   }
 
-  export function scrollToOffset(offset: number, animated = true) {
-    const position = Math.max(0, offset);
+  // A scroll asked for before the scroll view is bound and has its first layout (a page that scrolls its list in the effect that runs as the list
+  // mounts) reaches nothing: the command goes to no view, or to one with no content to scroll. The last such request is kept and sent when both are there.
+  let pendingScroll: (() => void) | null = null;
+  function whenReady(send: () => void) {
+    if (scroller && laidOut) send();
+    else pendingScroll = send;
+  }
+  function sendPendingScroll() {
+    if (!pendingScroll || !scroller || !laidOut) return;
+    const send = pendingScroll;
+    pendingScroll = null;
+    send();
+  }
+  function scrollTo(position: number, animated: boolean) {
     const x = horizontal ? position : 0;
     const y = horizontal ? 0 : position;
     scroller?.dispatchCommand("scrollTo", [x, y, animated]);
   }
 
+  // Commands, not reads: called from an effect they must not subscribe it to the list's own state (the window, the row sizes, the header).
+  export function scrollToOffset(offset: number, animated = true) {
+    untrack(() => whenReady(() => scrollTo(Math.max(0, offset), animated)));
+  }
+
   export function scrollToIndex(index: number, animated = true) {
-    scrollToOffset(headerSize + layout.offsetOf(Math.max(0, Math.min(count - 1, index))), animated);
+    untrack(() => whenReady(() => scrollTo(headerSize + layout.offsetOf(Math.max(0, Math.min(count - 1, index))), animated)));
   }
 </script>
 

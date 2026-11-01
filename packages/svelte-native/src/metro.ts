@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import type { ConfigT } from "@expo/metro/metro-config";
 
 const require = createRequire(import.meta.url);
@@ -29,9 +29,17 @@ export type SvelteNativeMetroOptions = {
   stubbedPackages?: readonly string[];
   /**
    * Source files (absolute paths, with or without the extension) this app does not carry, resolved to a stub the same way: the
-   * smoke test's checks, which only the smoke app needs.
+   * smoke test's checks, which only the smoke app needs. A relative import of one is stubbed before it is resolved, any other import
+   * (`#lib/…`, a package export) once it has resolved to the file.
    */
   stubbedFiles?: readonly string[];
+  /**
+   * Directories (absolute paths) this app does not carry: every import that resolves to a file inside one gets the directory's stub
+   * (one per directory, whatever the file), so the module graph of an app without its development lab holds a line of stub where code
+   * outside the lab still names a lab module, and not the module and everything it imports. The route table leaves the lab's routes
+   * out at the source (`routeFiles`); this is the backstop for what is still imported.
+   */
+  stubbedDirectories?: readonly string[];
   /** Named in the stubs' message. */
   variant?: string;
 };
@@ -81,19 +89,35 @@ export function withSvelteNative(config: ConfigT, options: SvelteNativeMetroOpti
     stubs.set(name, file);
   }
   const withoutExtension = (path: string) => path.replace(/\.[cm]?[jt]sx?$/, "");
-  const files = new Map<string, string>();
-  for (const path of options.stubbedFiles ?? []) {
-    const name = withoutExtension(path).slice(config.projectRoot.length + 1);
+  const nameOf = (path: string) => withoutExtension(path).slice(config.projectRoot.length + 1);
+  const writeStub = (name: string) => {
     const file = join(stubDirectory, `${name.replace(/[^A-Za-z0-9_.-]/g, "_")}.js`);
     mkdirSync(stubDirectory, { recursive: true });
     writeFileSync(join(stubDirectory, "_core.js"), stubCoreSource);
     writeFileSync(file, stubSource(name, variant));
-    files.set(withoutExtension(path), file);
+    return file;
+  };
+  const files = new Map<string, string>();
+  for (const path of options.stubbedFiles ?? []) files.set(withoutExtension(path), writeStub(nameOf(path)));
+  const directories = new Map<string, string>();
+  for (const path of options.stubbedDirectories ?? []) {
+    const directory = path.replace(/[\\/]+$/, "");
+    directories.set(directory + sep, writeStub(`${nameOf(directory)}/`));
   }
   const stubFor = (moduleName: string, origin: string): string | null => {
     const name = stubbed.find((candidate) => isInPackage(moduleName, candidate));
     if (name !== undefined) return stubs.get(name) ?? null;
     if (files.size > 0 && (moduleName.startsWith("./") || moduleName.startsWith("../"))) return files.get(withoutExtension(resolve(dirname(origin), moduleName))) ?? null;
+    return null;
+  };
+  /** The stub of a resolved file: its own, or its directory's. */
+  const stubForFile = (filePath: string): string | null => {
+    if (files.size > 0) {
+      const own = files.get(withoutExtension(filePath));
+      if (own !== undefined) return own;
+    }
+    if (directories.size === 0) return null;
+    for (const [directory, stub] of directories) if (filePath.startsWith(directory)) return stub;
     return null;
   };
   const resolver: ConfigT["resolver"] = {
@@ -117,6 +141,8 @@ export function withSvelteNative(config: ConfigT, options: SvelteNativeMetroOpti
     }
     const result = resolveRequest ? resolveRequest(context, moduleName, platform) : context.resolveRequest(context, moduleName, platform);
     if (result.type === "sourceFile") {
+      const stubbedFile = stubForFile(result.filePath);
+      if (stubbedFile !== null) return { type: "sourceFile", filePath: stubbedFile };
       const stub = Object.entries(RENDERER_STUBS).find(([suffix]) => result.filePath.endsWith(suffix));
       if (stub) return { type: "sourceFile", filePath: require.resolve(stub[1]) };
       // `init.ts` is the Fabric entry's InitializeCore. `expo/src/winter` (run before main) imports InitializeCore for the
@@ -140,5 +166,5 @@ export function withSvelteNative(config: ConfigT, options: SvelteNativeMetroOpti
     return modules.filter((module) => !/react-native[\\/]Libraries[\\/]Core[\\/]InitializeCore(\.js)?$/.test(module));
   };
   // Keep Metro's transform cache apart per mode: the same file resolves differently.
-  return { ...config, cacheVersion: `${config.cacheVersion ?? ""}+svelte-native-2${stubbed.length + files.size > 0 ? `+stubs-${variant}` : ""}`, resolver, serializer, transformer: { ...config.transformer, babelTransformerPath: require.resolve("@rasheed/svelte-native/transformer") } };
+  return { ...config, cacheVersion: `${config.cacheVersion ?? ""}+svelte-native-2${stubbed.length + files.size + directories.size > 0 ? `+stubs-${variant}` : ""}`, resolver, serializer, transformer: { ...config.transformer, babelTransformerPath: require.resolve("@rasheed/svelte-native/transformer") } };
 }

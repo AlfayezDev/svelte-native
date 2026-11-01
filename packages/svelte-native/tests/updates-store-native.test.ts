@@ -1,31 +1,21 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, renameSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { findHostJars } from "./native/host-tools.ts";
 
 /**
  * The Android updates store (`UpdateStore.kt`) and the QA reset decision (`QaReset.kt`) compiled for the host and driven by scripted
  * commands against a real directory: launch selection, the launch marker and its failure rules, clean-up, reset, a corrupt index, and
  * the per-directory lock. Skipped when `kotlinc`, `java`, an Android SDK `android.jar` (compile-time types only) or the `org.json`
- * jar (the real implementation Android provides) is not found.
+ * jar (the real implementation Android provides) is not found (`native/host-tools.ts` says where they are looked for; under CI=1
+ * `native-tools.test.ts` fails instead of letting this skip).
  */
 const module = resolve(import.meta.dirname, "../../../apps/platform/modules/svelte-updates/android/src/main/java/expo/modules/svelteupdates");
 const sources = ["UpdateStore.kt", "UpdatesConfig.kt", "QaReset.kt"].map((file) => join(module, file)).concat(resolve(import.meta.dirname, "native/UpdateStoreHost.kt"));
 
-function find(directory: string, match: (path: string) => boolean): string | null {
-  if (!existsSync(directory)) return null;
-  for (const entry of readdirSync(directory, { withFileTypes: true })) {
-    const path = join(directory, entry.name);
-    if (entry.isDirectory()) { const found = find(path, match); if (found) return found; }
-    else if (match(path)) return path;
-  }
-  return null;
-}
-const androidHome = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT ?? join(homedir(), "Android/sdk");
-const androidJar = readdirSyncSafe(join(androidHome, "platforms")).sort().reverse().map((platform) => join(androidHome, "platforms", platform, "android.jar")).find(existsSync) ?? null;
-const jsonJar = find(join(homedir(), ".gradle/caches/modules-2/files-2.1/org.json"), (path) => /json-\d+\.jar$/.test(path));
-function readdirSyncSafe(path: string): string[] { try { return readdirSync(path); } catch { return []; } }
+const { androidJar, jsonJar } = findHostJars();
 // The first test compiles the host (about ten seconds).
 setDefaultTimeout(120_000);
 const tools = Bun.which("kotlinc") && Bun.which("java") && androidJar && jsonJar;

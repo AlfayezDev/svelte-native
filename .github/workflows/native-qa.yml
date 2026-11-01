@@ -74,6 +74,19 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # The Kotlin and C++ host checks (the engine's run.sh, and the package tests that compile *Host.kt) need a JDK and kotlinc, and skip
+      # themselves without them, so packages/svelte-native/tests/native-tools.test.ts fails under CI=1 when one is missing. g++ and the Android
+      # SDK's android.jar come with the hosted image; on the OVH runner (QA_UNIT_RUNS_ON) qa/ci/setup-runner.sh installs g++.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # A pinned kotlinc (2.1.20, the Kotlin the Android build compiles with) and the org.json jar, each checked against a sha256 and
+      # kept in ~/.cache/native-qa-host-tools, so a runner that keeps its home downloads once. It puts kotlinc on PATH and sets ORG_JSON_JAR.
+      - name: Install kotlinc and the org.json jar
+        run: bash apps/platform/qa/ci/host-tools.sh
+
       - name: Lint the platform app
         run: pnpm --dir apps/platform lint
 
@@ -89,8 +102,14 @@ jobs:
       - name: Typecheck the harness
         run: pnpm --dir apps/platform native-qa:typecheck
 
+      # Kotlin and C++ host checks of the engine, no device: the animated wire (C++ encoder against the Kotlin decoder), the foreign-view
+      # ownership rules, what the view-shot capture decides before it draws, and the gesture rules (pointer events, who may claim a touch,
+      # the distances read from react-native-gesture-handler's own Pan source). About 20 s.
+      - name: Engine host checks (gesture rules, capture, animated wire)
+        run: bash apps/platform/modules/svelte-engine/android/src/test/run.sh
+
       # The package suite (route discovery, Metro stubs, gestures, svg, the app-tree mounts with the product's stubs, and the updates
-      # client, launch and store tests: the store's one is skipped where there is no kotlinc and Android SDK) ran in no workflow before.
+      # client, launch and store tests: the Kotlin ones skip themselves without kotlinc, which native-tools.test.ts turns into a failure here) ran in no workflow before.
       # Some of its tests start Metro or esbuild, so the default 5 s per test is too short on a hosted runner.
       - name: Svelte Native package tests
         working-directory: packages/svelte-native

@@ -44,9 +44,35 @@ describe("the iOS navigation module's sources agree with each other", () => {
     for (const key of ["json", "savedAt", "attempts", "systemKept"]) expect(swift).toContain(`"${key}": ${key === "systemKept" ? "systemKept ||" : key}`);
     expect(swift).toContain('Function("restored") { (outcome: String, reason: String)');
     expect(host).toContain('restored?.("dropped", droppedReasons[verdict.dropped])');
-    expect(host).toContain('restored?.("restored",');
+    expect(host).toContain("restored?.(outcome, reason)"); // the router's account of what it did with the state (navigationAdopted)
+    expect(host).toContain('"the router adopted the saved state"');
     // The rules are JavaScript's: the module keeps no copy of the attempt limit, the window or the system's say.
     expect(code).not.toMatch(/attemptsAllowed|Allowed|expire|window|86_?400|dropped/i);
+  });
+
+  test("the build identity travels the way navigation-restore.ts reads it: save() takes the update id, restore() returns the build, the running build and the update", () => {
+    expect(swift).toContain('Function("save") { (json: String, update: String?)');
+    expect(host).toContain("save?: (json: string, update: string | null) => void");
+    expect(host).toContain("?.save?.(json, runningUpdate())");
+    for (const key of ["build", "runningBuild", "update"]) expect(swift).toContain(`"${key}"`);
+    expect(swift).toContain('Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion")');
+    // freshNavigation reads the same three names, and the running update is the one this process runs
+    const restore = readFileSync(resolve(import.meta.dirname, "../src/navigation-restore.ts"), "utf8");
+    for (const key of ["build", "runningBuild", "update"]) expect(restore).toContain(key);
+    expect(host).toContain("freshNavigation(module.restore(), Date.now(), undefined, runningUpdate())");
+  });
+
+  test("a launch in the background hands nothing over and consumes nothing, and a cold start writes last.json in the QA app only", () => {
+    const take = code.slice(code.indexOf("func takeRestored()"), code.indexOf("func finish("));
+    expect(take).toContain("let background = Self.launchedInBackground()");
+    expect(take.indexOf("let background")).toBeLessThan(take.indexOf("lock.lock()")); // read before the lock: the main thread takes it too
+    expect(code).toContain("UIApplication.shared.applicationState == .background");
+    // the background check comes before anything is marked handed over, counted or recorded
+    expect(take.indexOf("if background { return nil }")).toBeGreaterThan(-1);
+    expect(take.indexOf("if background { return nil }")).toBeLessThan(take.indexOf("handedOver = true"));
+    expect(take.indexOf("if background { return nil }")).toBeLessThan(take.indexOf("record(outcome"));
+    expect(take).toContain("Self.isQaBundle");
+    expect(take).toMatch(/if existed \{[\s\S]*?\} else if Self\.isQaBundle \{/);
   });
 
   test("the bounds and the age of a state are the same on both sides of the module", () => {

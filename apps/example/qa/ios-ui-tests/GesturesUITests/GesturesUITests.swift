@@ -64,6 +64,9 @@ final class GesturesUITests: XCTestCase {
             if let text = ProcessInfo.processInfo.environment["GESTURES_EDGE_X"], let x = Double(text), key.hasPrefix("gestures-pushed-edge#0#"), var from = input["from"] as? [String: Any] {
                 from["dx"] = x
                 sent["from"] = from
+                // UIKit completes an interactive pop on progress and the finger's velocity when it lifts, and XCUITest's finger arrives at rest: a swipe that stops at
+                // about half the width is cancelled one run in two (205 pt of 375 was), so the swipe goes to 300 pt.
+                sent["by"] = [300, 0]
             }
             var failure: String? = nil
             let began = Date()
@@ -126,6 +129,8 @@ final class GesturesUITests: XCTestCase {
         let description: String
     }
 
+    private static let activationSlop: CGFloat = 10
+
     /// What the last input aimed at, for the action line: the element's frame, whether a view covers it, how many views have the identifier, and the screen points the finger went to.
     private var aimed: [String: Any] = [:]
 
@@ -157,8 +162,13 @@ final class GesturesUITests: XCTestCase {
             try coordinate(input["at"], in: app).tap()
         case "drag":
             let start = try coordinate(input["from"], in: app)
-            let (dx, dy) = pair(input["by"])
+            let (commandedX, commandedY) = pair(input["by"])
             let duration = max(number(input["durationMs"]) / 1000, 0.05)
+            // The finger goes past the commanded distance by the slop a Pan spends before it activates: a Pan counts its translation from where it activated, so the lab's
+            // "the drag was reached" reads the commanded distance, as the Android injector's paths do.
+            let length = hypot(commandedX, commandedY)
+            let scale = length > 0 ? (length + Self.activationSlop) / length : 1
+            let (dx, dy) = (commandedX * scale, commandedY * scale)
             let end = start.withOffset(CGVector(dx: dx, dy: dy))
             let speed = hypot(dx, dy) / duration
             aimed["from"] = [start.screenPoint.x, start.screenPoint.y]

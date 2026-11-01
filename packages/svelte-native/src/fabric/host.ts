@@ -64,6 +64,7 @@ function loadGestures(): GesturesModule {
 import { navigationProps, navigationTags } from "./navigation.ts";
 import { iosNavigationViewName } from "./navigation.ios.ts";
 import { mergeHostProps } from "../native-props.ts";
+import { applyAriaProps, isAriaKey } from "./accessibility.ts";
 import { foreignText, type ForeignText } from "./foreign-text.ts";
 import renderer, { NativeNode, setInvalidationSink, setUnlinkSink, type Invalidation } from "../renderer.ts";
 import { Pressability, type PressabilityConfig, type ResponderHandlers } from "./pressability.ts";
@@ -317,14 +318,17 @@ function splitProps(attributes: Record<string, unknown>, into: State, navigation
   const props: Record<string, unknown> = {};
   const handlers: Record<string, Handler> = {};
   const textInput = isTextInputView(into.viewName);
+  let aria = false;
   for (const key in attributes) {
     const value = attributes[key];
     if (key === "ref" || key === "contentContainerStyle") continue;
     if (value === undefined) continue;
     if (typeof value === "function" && key.startsWith("on")) { handlers[key] = value as Handler; props[key] = true; }
     else if (textInput && key === "value") props.text = value; // the native text input prop is `text`, as React Native's TextInput passes it
-    else props[key] = value;
+    else { props[key] = value; if (isAriaKey(key)) aria = true; }
   }
+  // `aria-*` is an alias React Native resolves in `View.js`, which a Svelte host has no part of (accessibility.ts); a foreign view's props are its own.
+  if (aria && !into.foreign) applyAriaProps(props);
   if (textInput) props.mostRecentEventCount = into.eventCount;
   // React Native's ScrollView merges this under the caller's style. `overflow: scroll` is what makes Yoga lay the content
   // out at its own height; without it a `flexGrow: 1` content container took the viewport's height and nothing scrolled.

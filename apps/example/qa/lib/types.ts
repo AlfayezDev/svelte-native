@@ -615,6 +615,8 @@ export type ForeignFile = {
 	skips: ForeignSkip[];
 	/** The checks of the `foreign-leftovers` launch. */
 	leftovers: ForeignCheck[];
+	/** The lines of either launch that carried a check's tag and could not be read as one: each is a failure of the run (`foreign.unparsedLines`). */
+	unparsed?: string[];
 	launches: ForeignLaunch[];
 	bundle: ForeignBundle | null;
 } & CrashReportsRecord;

@@ -114,6 +114,7 @@ export function foreignMetrics(file: ForeignFile, pins: ForeignPins): Metrics {
 	metrics["foreign.engineWarnings"] = file.launches.reduce((sum, launch) => sum + launch.engineWarnings.length, 0);
 	metrics["foreign.leftovers.failed"] = leftoverLaunch?.complete ? file.leftovers.filter((entry) => !entry.passed).length + (file.leftovers.length === 0 ? 1 : 0) : null;
 	metrics["foreign.react.files"] = file.bundle?.reactFiles.length ?? null;
+	metrics["foreign.unparsedLines"] = file.unparsed?.length ?? 0;
 	return metrics;
 }
 

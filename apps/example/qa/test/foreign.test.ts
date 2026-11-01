@@ -13,7 +13,9 @@ const gates = JSON.parse(readFileSync(join(platformDir, "qa/gates.json"), "utf8"
 const libraries = gates.foreign?.libraries.android ?? [];
 
 const line = (message: string) => `11-01 12:00:00.123  4242  4290 I ReactNativeJS: ${message}`;
-const entry = (library: string, where: string, name: string, passed: boolean, detail = "") => line(`'[Svelte foreign library]', '${JSON.stringify({ library, where, name, passed, detail })}'`);
+/** A string argument of `console.info` as Hermes prints it to logcat: in single quotes, a quote as `\\'` and a backslash as `\\\\` (so a JSON `\\"` is `\\\\"` there). */
+const logcatString = (text: string) => `'${text.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
+const entry = (library: string, where: string, name: string, passed: boolean, detail = "") => line(`'[Svelte foreign library]', ${logcatString(JSON.stringify({ library, where, name, passed, detail }))}`);
 
 const launch = (name: ForeignLaunch["name"], overrides: Partial<ForeignLaunch> = {}): ForeignLaunch => ({
 	name, run: name, startedAt: "2026-11-01T12:00:00Z", durationMs: 1000, complete: true, crashes: [], jsErrors: [], engineWarnings: [], logFile: `runs/${name}.log`, ...overrides,
@@ -36,17 +38,53 @@ describe("the foreign run's log", () => {
 			line("'[Svelte stress]', '{\"name\":\"foreign-libraries\"}'"),
 			entry("image", "inline", "inline: mounts", true, "ExpoImageView"),
 			entry("image", "row", "row: onLoad arrives", false, "0 onLoad, it's quoted"),
-			line(`'[Svelte foreign library skipped]', '${JSON.stringify({ library: "datetime", where: "inline", name: "inline: events", why: "the iPhone" })}'`),
-			line("'[Svelte foreign library]', '{\"library\":\"image\",\"where\":\"sheet\",\"na"),
+			line(`'[Svelte foreign library skipped]', ${logcatString(JSON.stringify({ library: "datetime", where: "inline", name: "inline: events", why: "the iPhone's finger" }))}`),
 		].join("\n");
-		const { checks, skips } = parseForeignChecks(text);
+		const { checks, skips, unparsed } = parseForeignChecks(text);
+		expect(unparsed).toEqual([]);
 		expect(checks.map((value) => [value.library, value.where, value.passed])).toEqual([["image", "inline", true], ["image", "row", false]]);
 		expect(checks[1]?.detail).toBe("0 onLoad, it's quoted");
-		expect(skips).toEqual([{ library: "datetime", where: "inline", name: "inline: events", why: "the iPhone" }]);
+		expect(skips).toEqual([{ library: "datetime", where: "inline", name: "inline: events", why: "the iPhone's finger" }]);
+	});
+
+	test("a line as Hermes prints it parses: an apostrophe, a backslash, and a detail that is JSON itself", () => {
+		const stats = JSON.stringify({ frames: 0, registryLeaks: 0, nodes: 0 });
+		const lines = [
+			// copied from `qa/runs/foreign-localhost_5555-20261101T134713Z-libraries.log`
+			`11-01 13:47:40.407 11714 11736 I ReactNativeJS: '[Svelte foreign library]', '{"library":"image","where":"inline","name":"inline: mounts: it is the library\\'s view (ExpoImageView)","passed":true,"detail":"expo.modules.image.ExpoImageViewWrapper; inside: FrameLayout 1032x247 clip=true"}'`,
+			`11-01 13:47:42.372 11714 11736 I ReactNativeJS: '[Svelte foreign library]', '{"library":"image","where":"inline","name":"inline: leaving drops every frame and node","passed":true,"detail":"{\\\\"frames\\\\":0,\\\\"registryLeaks\\\\":0,\\\\"nodes\\\\":0}"}'`,
+			entry("blur", "row", "row: leaving drops every frame and node", false, stats),
+			entry("text", "sheet", "sheet: a path C:\\temp and a 'quoted' word", true, "it's \\n"),
+		].join("\n");
+		const { checks, unparsed } = parseForeignChecks(lines);
+		expect(unparsed).toEqual([]);
+		expect(checks.map((value) => value.name)).toEqual([
+			"inline: mounts: it is the library's view (ExpoImageView)",
+			"inline: leaving drops every frame and node",
+			"row: leaving drops every frame and node",
+			"sheet: a path C:\\temp and a 'quoted' word",
+		]);
+		expect(JSON.parse(checks[1]?.detail ?? "")).toEqual({ frames: 0, registryLeaks: 0, nodes: 0 });
+		expect(JSON.parse(checks[2]?.detail ?? "")).toEqual({ frames: 0, registryLeaks: 0, nodes: 0 });
+		expect(checks[3]?.detail).toBe("it's \\n");
+	});
+
+	test("a tagged line that does not parse is reported, never dropped, and fails the run's metric", () => {
+		const cut = line("'[Svelte foreign library]', '{\"library\":\"image\",\"where\":\"sheet\",\"na");
+		const broken = line("'[Svelte foreign library skipped]', 'not json'");
+		const { checks, unparsed } = parseForeignChecks([entry("image", "inline", "x", true), cut, broken].join("\n"));
+		expect(checks).toHaveLength(1);
+		expect(unparsed).toHaveLength(2);
+		expect(unparsed[0]).toContain('"na');
+		const metrics = foreignMetrics(file({ unparsed }), { libraries });
+		expect(metrics["foreign.unparsedLines"]).toBe(2);
+		expect(foreignMetrics(file(), { libraries })["foreign.unparsedLines"]).toBe(0);
 	});
 
 	test("a check at a place the lab does not have is not a check", () => {
-		expect(parseForeignChecks(entry("image", "attic", "x", true)).checks).toEqual([]);
+		const result = parseForeignChecks(entry("image", "attic", "x", true));
+		expect(result.checks).toEqual([]);
+		expect(result.unparsed).toHaveLength(1);
 	});
 });
 

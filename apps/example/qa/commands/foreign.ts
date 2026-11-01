@@ -84,11 +84,12 @@ export async function foreign(argv: string[]): Promise<void> {
 	}
 	for (const line of presses.log) console.log(`  ${line}`);
 	const parsed = parseForeignChecks(parsedText);
-	console.log(`  ${parsed.checks.length} checks logged, ${parsed.checks.filter((entry) => !entry.passed).length} failed, ${parsed.skips.length} skipped`);
+	console.log(`  ${parsed.checks.length} checks logged, ${parsed.checks.filter((entry) => !entry.passed).length} failed, ${parsed.skips.length} skipped, ${parsed.unparsed.length} lines unreadable`);
 	console.log("foreign: foreign-leftovers (the launch after it)");
 	const second = join(runsDir, `foreign-${slug(serial)}-${stamp(startedAt)}-leftovers.log`);
 	launches.push(launchOf("leftovers", "foreign-leftovers", await labOnce(serial, packageName, "foreign-leftovers", 300_000, second)));
-	const leftovers = parseForeignChecks(await readFile(second, "utf8")).checks;
+	const leftoverLines = parseForeignChecks(await readFile(second, "utf8"));
+	const leftovers = leftoverLines.checks;
 
 	const file: ForeignFile = {
 		schema: 1,
@@ -102,6 +103,7 @@ export async function foreign(argv: string[]): Promise<void> {
 		checks: parsed.checks,
 		skips: parsed.skips,
 		leftovers,
+		unparsed: [...parsed.unparsed, ...leftoverLines.unparsed],
 		launches,
 		bundle: await readBundle(app, await readBuilds()),
 	};

@@ -231,7 +231,7 @@
                 <Text style={{ color: theme.foreground, fontSize: 15 }}>Shadowed</Text>
               </Pressable>
             </ShadowedView>
-            <View collapsable={false} testID="shadow-wrapper" style={{ overflow: "hidden", padding: 18 }}>
+            <View collapsable={false} testID="shadow-wrapper" ref={keepExtra("wrapper")} style={{ overflow: "hidden", padding: 18 }}>
               <ShadowedView ref={keepExtra("wrapped")} style={{ borderRadius: 14, backgroundColor: theme.background, paddingHorizontal: 18, paddingVertical: 10, ...shadowStyle({ color: "#000000", opacity: libraryLab.shadowOpacity, radius: 12, offset: [0, 5] }) }}>
                 <Text style={{ color: theme.foreground, fontSize: 15 }}>Wrapped</Text>
               </ShadowedView>

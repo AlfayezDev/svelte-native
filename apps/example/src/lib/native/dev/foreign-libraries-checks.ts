@@ -133,19 +133,25 @@ const pixel = (look: Look, index: number): number => look.colors[index] ?? 0;
 /**
  * [expected] colours at [points] of a capture of the box: one check for all, naming each point that missed. Skipped when the platform cannot read pixels.
  */
-async function colours(c: Ctx, name: string, points: readonly (readonly [number, number])[], expected: readonly string[], tolerance = 40, options?: Parameters<Ctx["look"]>[1]): Promise<Look | null> {
+async function colours(c: Ctx, name: string, points: readonly (readonly [number, number])[], expected: readonly string[], tolerance = 40, options?: Parameters<Ctx["look"]>[1], settle?: { ms: number; explain: () => string }): Promise<Look | null> {
   if (!c.canLook) { c.skip(name, "no pixel reader on this platform yet"); return null; }
-  let look: Look | null = null;
-  try {
-    look = await c.look(points, options);
-  } catch (error) {
-    c.check(name, false, `the capture failed: ${String(error)}`);
-    return null;
+  // With [settle] the capture is taken again every 400 ms until it shows the colours or the time is up (a slower phone draws a new image later than onLoad says it has it): what the last one shows is the check.
+  const deadline = Date.now() + (settle?.ms ?? 0);
+  for (;;) {
+    let look: Look | null;
+    try {
+      look = await c.look(points, options);
+    } catch (error) {
+      c.check(name, false, `the capture failed: ${String(error)}`);
+      return null;
+    }
+    if (!look) { c.check(name, false, "the capture gave no pixels"); return null; }
+    const seen = look;
+    const missed = expected.flatMap((colour, index) => (near(pixel(seen, index), colour, tolerance) ? [] : [`${points[index]?.join(",")} is ${at(seen, index)}, wanted ${colour}`]));
+    if (missed.length > 0 && Date.now() < deadline) { await c.pause(400); continue; }
+    c.check(name, missed.length === 0, missed.length === 0 ? expected.map((_, index) => at(seen, index)).join(" ") : `${missed.join("; ")}${settle ? ` | ${settle.explain()}` : ""}`);
+    return seen;
   }
-  if (!look) { c.check(name, false, "the capture gave no pixels"); return null; }
-  const missed = expected.flatMap((colour, index) => (near(pixel(look, index), colour, tolerance) ? [] : [`${points[index]?.join(",")} is ${at(look, index)}, wanted ${colour}`]));
-  c.check(name, missed.length === 0, missed.length === 0 ? expected.map((_, index) => at(look, index)).join(" ") : missed.join("; "));
-  return look;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------------
@@ -156,16 +162,22 @@ async function image(c: Ctx): Promise<void> {
   c.check("events: onLoad arrives for the bundled image, with its url", await c.until(() => c.events("image-load") >= 1, 12000), `${c.events("image-load")} onLoad, ${c.events("image-error")} onError`);
   c.check("events: onDisplay arrives after onLoad", await c.until(() => c.events("image-display") >= 1, 4000));
   c.check("events: no onError for it", c.events("image-error") === 0);
-  const loads = c.events("image-load");
-  c.lab.image = "red";
-  c.check("prop update: a new source loads (onLoad again)", await c.until(() => c.events("image-load") > loads, 8000));
-  await c.pause(300);
-  await colours(c, "prop update: the native view shows the red source", [[0.5, 0.5], [0.2, 0.3], [0.8, 0.7]], ["#e5484d", "#e5484d", "#e5484d"], 12);
-  const second = c.events("image-load");
-  c.lab.image = "blue";
-  c.check("prop update: and the next source loads too", await c.until(() => c.events("image-load") > second, 8000));
-  await c.pause(300);
-  await colours(c, "prop update: the native view shows the blue source", [[0.5, 0.5], [0.2, 0.3], [0.8, 0.7]], ["#0091ff", "#0091ff", "#0091ff"], 12);
+  // A new source: onLoad says it is decoded, onDisplay that it is drawn (after its transition, which a slower phone takes longer over); the capture is asked again until it shows
+  // the colour, and a miss says what the platform has (the view, whether it is shown and how opaque, the events) to tell a view that never drew from a late one.
+  const explain = () => {
+    const native = c.inspect(c.host());
+    return `${native ? `${native.class} ${native.width}x${native.height} attached=${native.attached} shown=${native.shown} alpha=${native.alpha}` : "no native view"}; ${c.events("image-load")} onLoad, ${c.events("image-display")} onDisplay, ${c.events("image-error")} onError`;
+  };
+  const switchTo = async (source: "red" | "blue", name: string, check: string): Promise<void> => {
+    const loads = c.events("image-load");
+    const displays = c.events("image-display");
+    c.lab.image = source;
+    c.check(name, await c.until(() => c.events("image-load") > loads, 8000));
+    await c.until(() => c.events("image-display") > displays, 4000);
+    await colours(c, check, [[0.5, 0.5], [0.2, 0.3], [0.8, 0.7]], source === "red" ? ["#e5484d", "#e5484d", "#e5484d"] : ["#0091ff", "#0091ff", "#0091ff"], 12, undefined, { ms: 5000, explain });
+  };
+  await switchTo("red", "prop update: a new source loads (onLoad again)", "prop update: the native view shows the red source");
+  await switchTo("blue", "prop update: and the next source loads too", "prop update: the native view shows the blue source");
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------------
@@ -517,9 +529,13 @@ async function conic(c: Ctx): Promise<void> {
 async function shadow(c: Ctx): Promise<void> {
   await mounts(c, { inside: "FastShadowView" }, c.box(), c.host());
   const wrapped = c.handles().extras.wrapped;
-  // React Native makes the second card's view a little after the first one's: wait for it.
-  c.check("the second card, in an unflattened wrapper, has its own native view", !!wrapped && await c.until(() => !!c.inspect(wrapped), 5000), wrapped ? `tag ${wrapped.tag}` : "no handle");
   if (c.canInspect) {
+    // The wrapper is a view of its own (`collapsable={false}`, a `testID`, `overflow: hidden`: Fabric does not flatten it away), clips its canvas, and holds the second card's native shadow view.
+    // (The card's own container, `wrapped`, is a layout-only view that Fabric flattens: it has no native view to read, only a layout to measure.)
+    const wrapper = c.handles().extras.wrapper;
+    const inner = wrapper && (await c.until(() => !!c.inspect(wrapper), 5000)) ? c.inspect(wrapper) : null;
+    c.check("the unflattened wrapper has a native view of its own that holds the second card's FastShadowView", !!inner && inner.views.some((entry) => entry.includes("FastShadowView")), inner ? `${inner.class} ${inner.width}x${inner.height} clip=${inner.clip}; ${inner.views.join(" | ")}` : wrapper ? `no native view for tag ${wrapper.tag}` : "no handle");
+    c.check("the wrapper clips its canvas (overflow hidden, padding box)", inner?.clip === "canvas", `clip=${inner?.clip}`);
     // `overflow: hidden` clips the canvas to the padding box (not each child to its own bounds) for the box and for the wrapper inside it.
     const box = c.inspect(c.box());
     c.check("the rounded overflow-hidden box clips its canvas (padding box)", box?.clip === "canvas", `box clip=${box?.clip}`);

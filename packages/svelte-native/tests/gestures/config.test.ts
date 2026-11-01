@@ -1,7 +1,10 @@
 import { test, expect } from "bun:test";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { loadOracle } from "./oracle.ts";
+import { load } from "./harness.ts";
 import { ALLOWED_PROPS, extractGestureRelations, filterConfig, needsToReattach } from "../../src/gestures/config.ts";
-import { BaseGesture, CALLBACK_TYPE, GestureObjects, State, TouchEventType } from "../../src/gestures/rngh.js";
+import { BaseGesture, GestureObjects } from "../../src/gestures/rngh.js";
 
 // The detector's pure helpers are copies of RNGH's (it cannot be imported: `GestureDetector/utils` loads `react-native` and the
 // `*GestureHandler` components). Each is run against RNGH's own, bundled as the oracle, so an upgrade that changes one fails here.
@@ -62,8 +65,18 @@ test("needsToReattach: a different count, handlerName or thread, as RNGH decides
   expect(needsToReattach(mine.pan, mine.panAgain)).toBe(false);
 });
 
-test("the constants the UI worklet and the receivers copy are RNGH's", () => {
-  expect({ ...State }).toEqual(oracle.State);
-  expect({ ...TouchEventType }).toEqual(oracle.TouchEventType);
-  expect({ ...CALLBACK_TYPE }).toEqual(oracle.CALLBACK_TYPE);
+test("the constants the UI worklet copies are RNGH's, every one of them", async () => {
+  // `State`, `TouchEventType` and `CALLBACK_TYPE` of `src/gestures/rngh.js` are RNGH's own modules, so comparing them with the
+  // oracle's would compare RNGH with itself. The copies are the numbers in `animated.ts`: the worklet reads those.
+  const { probe } = await load({ fixture: "gesture-fixture.svelte" });
+  const copies = probe.copiedConstants;
+  expect(copies.State).toEqual(oracle.State);
+  expect(copies.TouchEventType).toEqual(oracle.TouchEventType);
+  expect(copies.CALLBACK_TYPE).toEqual(oracle.CALLBACK_TYPE);
+  // ... and the three objects hold every numeric constant the file declares: a constant added to the worklet and left out of them is a miss.
+  const source = await readFile(resolve(import.meta.dirname, "../../src/gestures/animated.ts"), "utf8");
+  const declared = [...source.matchAll(/^const ([A-Z_]+) = (\d+);$/gm)].map(([, name, value]) => `${name}=${value}`);
+  const copied = [...Object.values(copies).flatMap((group) => Object.values(group))];
+  expect(declared).toHaveLength(copied.length);
+  expect(declared.map((entry) => Number(entry.split("=")[1])).sort((a, b) => a - b)).toEqual([...copied].sort((a, b) => a - b));
 });

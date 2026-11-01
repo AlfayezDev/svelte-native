@@ -6,7 +6,8 @@
  * `new WorkletEventHandler(...)` plus a ref, so the registration here is the same code.
  *
  * The constants below are copies (`State`, `TouchEventType`, `CALLBACK_TYPE`): a worklet captures its closure by value, and
- * a re-exported module object is a poor thing to serialise; `tests/gestures/animated.test.ts` compares them with RNGH's.
+ * a re-exported module object is a poor thing to serialise; `copiedConstants` below lists them by RNGH's names, and the last test of
+ * `tests/gestures/config.test.ts` compares that list with RNGH's own modules, bundled apart from this file.
  * Loaded after Reanimated (the host loads both on the first gesture), so the imports below are Reanimated's own functions.
  */
 import { makeMutable, setGestureState, type SharedValue } from "react-native-reanimated";
@@ -42,6 +43,16 @@ const CALLBACK_TOUCHES_DOWN = 7;
 const CALLBACK_TOUCHES_MOVE = 8;
 const CALLBACK_TOUCHES_UP = 9;
 const CALLBACK_TOUCHES_CANCELLED = 10;
+
+/** The numbers above by the names RNGH's `State`, `TouchEventType` and `CALLBACK_TYPE` give them: what the test that pins them reads. */
+export const copiedConstants = {
+  State: { UNDETERMINED: STATE_UNDETERMINED, FAILED: STATE_FAILED, BEGAN: STATE_BEGAN, CANCELLED: STATE_CANCELLED, ACTIVE: STATE_ACTIVE, END: STATE_END },
+  TouchEventType: { UNDETERMINED: TOUCH_UNDETERMINED, TOUCHES_DOWN: TOUCH_DOWN, TOUCHES_MOVE: TOUCH_MOVE, TOUCHES_UP: TOUCH_UP, TOUCHES_CANCELLED: TOUCH_CANCELLED },
+  CALLBACK_TYPE: {
+    UNDEFINED: CALLBACK_UNDEFINED, BEGAN: CALLBACK_BEGAN, START: CALLBACK_START, UPDATE: CALLBACK_UPDATE, CHANGE: CALLBACK_CHANGE, END: CALLBACK_END,
+    FINALIZE: CALLBACK_FINALIZE, TOUCHES_DOWN: CALLBACK_TOUCHES_DOWN, TOUCHES_MOVE: CALLBACK_TOUCHES_MOVE, TOUCHES_UP: CALLBACK_TOUCHES_UP, TOUCHES_CANCELLED: CALLBACK_TOUCHES_CANCELLED,
+  },
+};
 
 function getHandler(type: number, gesture: Callbacks) {
   "worklet";

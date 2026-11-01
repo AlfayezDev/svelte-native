@@ -1,4 +1,4 @@
 {
   "platforms": ["android"],
-  "android": { "modules": ["expo.modules.svelteqa.SvelteQaTouchModule"] }
+  "android": { "modules": ["expo.modules.svelteqa.SvelteQaTouchModule", "expo.modules.svelteqa.SvelteQaPixelsModule"] }
 }

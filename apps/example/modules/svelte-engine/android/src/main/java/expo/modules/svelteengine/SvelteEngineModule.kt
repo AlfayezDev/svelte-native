@@ -160,6 +160,10 @@ class SvelteEngineModule : Module() {
     // 500 ms or before install.
     Function("foreignStats") { collect: Boolean? -> onMainBlocking { mountingManager?.foreign?.stats(collect == true)?.plus("nodes" to (native?.foreignCount() ?: 0)) } }
 
+    // What the platform made of a tag (class, size, screen position, attached, shown, text, inner views and surfaces), for the lab's checks
+    // of the native-view libraries (`Inspect`); null for an unknown tag or while the main thread is busy.
+    Function("inspect") { tag: Int -> onMainBlocking { mountingManager?.let { Inspect.of(it, tag) } } }
+
     // A tap at (x, y) dp of the overlay through EngineRoot.dispatchTouchEvent, for the lab (it cannot press the screen).
     Function("tap") { x: Double, y: Double ->
       val manager = mountingManager ?: return@Function false

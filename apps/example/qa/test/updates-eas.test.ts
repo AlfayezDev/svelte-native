@@ -100,6 +100,17 @@ describe("the merged manifest of a build", () => {
 		expect(() => assertManifestMatches(parseManifestUpdates(plain), null)).not.toThrow();
 	});
 
+	test("the manifests Gradle merged for the channel build and the plain build are what the check expects", () => {
+		const channelBuild = parseManifestUpdates(sample("merged-manifest-qa.xml"));
+		expect(channelBuild).toMatchObject({ enabled: "true", checkOnLaunch: "ALWAYS", requestHeaders: { "expo-channel-name": "qa" } });
+		expect(() => assertManifestMatches(channelBuild, "qa")).not.toThrow();
+		expect(() => assertManifestMatches(channelBuild, null)).toThrow("plain QA build must not check");
+		const plainBuild = parseManifestUpdates(sample("merged-manifest-plain.xml"));
+		expect(plainBuild).toMatchObject({ enabled: "true", checkOnLaunch: "NEVER", requestHeaders: null });
+		expect(() => assertManifestMatches(plainBuild, null)).not.toThrow();
+		expect(() => assertManifestMatches(plainBuild, "qa")).toThrow("must check on launch");
+	});
+
 	test("a mismatch fails in both directions", () => {
 		// A plain build that checks, or names a channel, would make the boot gates measure update checks.
 		expect(() => assertManifestMatches(parseManifestUpdates(qa), null)).toThrow("plain QA build must not check");

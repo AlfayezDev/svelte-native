@@ -67,8 +67,10 @@ final class GesturesUITests: XCTestCase {
                 // UIKit completes an interactive pop on progress and the finger's velocity when it lifts, and XCUITest's finger arrives at rest: a swipe that stops at
                 // about half the width is cancelled one run in two (205 pt of 375 was), so the swipe goes to 300 pt.
                 sent["by"] = [300, 0]
-                // `GESTURES_EDGE_RELEASE`: `fling` (the default) lifts the finger at the end of a fast drag, `rest` holds it there for 0.4 s first.
-                sent["release"] = ProcessInfo.processInfo.environment["GESTURES_EDGE_RELEASE"] == "rest" ? "rest" : "fling"
+                // `GESTURES_EDGE_RELEASE`: `rest` holds the finger at the end for 0.4 s, `fling` drags without the 50 ms press first and lifts at the end of a fast drag (UIKit's
+                // edge swipe failed such a touch at touch-down, from 2 pt); anything else is the plain drag.
+                let release = ProcessInfo.processInfo.environment["GESTURES_EDGE_RELEASE"] ?? ""
+                if release == "rest" || release == "fling" { sent["release"] = release }
             }
             var failure: String? = nil
             let began = Date()

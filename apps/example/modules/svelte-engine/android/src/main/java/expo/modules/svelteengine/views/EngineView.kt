@@ -1,6 +1,7 @@
 package expo.modules.svelteengine.views
 
 import android.content.Context
+import android.graphics.Canvas
 import android.graphics.drawable.GradientDrawable
 import android.view.MotionEvent
 import android.view.View
@@ -171,14 +172,43 @@ open class EngineView(context: Context) : ViewGroup(context), EngineNode {
   // never touch targets themselves.
   override fun onTouchEvent(event: MotionEvent): Boolean = node.pointer == 0 || node.pointer == 3
 
+  /**
+   * `overflow: hidden`, as Android has it, is `clipChildren`: each child is cut off at its own bounds. A view another library owns may draw outside its bounds on
+   * purpose (react-native-fast-shadow's shadow, a glow): for a parent that holds a foreign frame the clip is the parent's own bounds instead, as React Native's
+   * `ReactViewGroup` clips (`hidesOverflow`, [dispatchDraw]), so the shadow of a card inside a rounded `overflow: hidden` box is drawn up to the box's edge.
+   */
+  var hidesOverflow = false
+    set(value) {
+      field = value
+      applyChildClip()
+    }
+  private var foreignChildren = 0
+
+  private fun applyChildClip() {
+    clipChildren = hidesOverflow && foreignChildren == 0
+  }
+
+  override fun dispatchDraw(canvas: Canvas) {
+    if (!hidesOverflow || foreignChildren == 0) {
+      super.dispatchDraw(canvas)
+      return
+    }
+    val saved = canvas.save()
+    canvas.clipRect(0f, 0f, width.toFloat(), height.toFloat())
+    super.dispatchDraw(canvas)
+    canvas.restoreToCount(saved)
+  }
+
   override fun onViewAdded(child: View) {
     super.onViewAdded(child)
+    if (child is EngineForeign) { foreignChildren++; applyChildClip() }
     orderDirty = true
     if (isStacked(child)) stackingChanged(false, true, countOnly = true)
   }
 
   override fun onViewRemoved(child: View) {
     super.onViewRemoved(child)
+    if (child is EngineForeign) { foreignChildren--; applyChildClip() }
     orderDirty = true
     if (isStacked(child)) stackingChanged(true, false, countOnly = true)
   }

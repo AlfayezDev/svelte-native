@@ -47,7 +47,7 @@
       {#if mode === "libraries"}
         <ScrollView contentContainerStyle={{ padding: 8 }}><LibrarySet source="libraries" kinds={shownKinds} /></ScrollView>
       {:else if mode === "libraries-list"}
-        <List items={[...libraryKinds]} rowHeight={150} keyOf={(_, index) => index} style={{ flex: 1 }} contentContainerStyle={{ padding: 8 }}>
+        <List bind:this={list} items={[...libraryKinds]} rowHeight={150} keyOf={(_, index) => index} style={{ flex: 1 }} contentContainerStyle={{ padding: 8 }}>
           {#snippet row(kind, index)}
             <View style={{ height: 146 }}><LibrarySet source={`libraries-row-${index}`} kinds={[kind]} height={100} /></View>
           {/snippet}

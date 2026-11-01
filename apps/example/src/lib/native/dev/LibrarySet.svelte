@@ -78,9 +78,13 @@
   const hosts: LibraryHandles["hosts"] = {};
   const boxes: LibraryHandles["boxes"] = {};
   /** `ref` callback that keeps a section's host handle in `hosts` (or `boxes`) while the view is mounted. */
-  const keep = (into: LibraryHandles["hosts"], kind: LibraryKind) => (handle: unknown) => {
-    if (handle) into[kind] = handle as Host;
-    else delete into[kind];
+  const keep = (into: LibraryHandles["hosts"], kind: LibraryKind) => {
+    let mine: Host | null = null;
+    // Each element has its own callback: when an {#if} swaps one for another the host tells the old one about its end after the new one began, and that must not delete the new one's handle.
+    return (handle: unknown) => {
+      if (handle) { mine = handle as Host; into[kind] = mine; }
+      else if (into[kind] === mine) delete into[kind];
+    };
   };
 
   async function pickDate(): Promise<Date | null> {

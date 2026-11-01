@@ -159,7 +159,9 @@ std::optional<MountingTransaction> MountingDelegate::pullTransaction(
           batch.putInt(kind);
           encodeProps(batch, kind, newView, scale);
           if (isRoot) {
-            // The view itself is React Native's: it creates it with the props, state and event emitter of the node.
+            // The view itself is React Native's: it creates it with the props, state and event emitter of the node. The engine keeps the emitter too:
+            // a frame with `pointerEvents` box-only keeps its touches for JavaScript, which hears them on the frame's tag (`dispatchTouch`).
+            setEmitter(newView.tag, newView.eventEmitter);
             forwarded.push_back(mutation);
             foreignAwaitingInsert_.insert(newView.tag);
             ++foreignCreated;
@@ -218,6 +220,7 @@ std::optional<MountingTransaction> MountingDelegate::pullTransaction(
             if (foreignAwaitingInsert_.erase(newView.tag) != 0) {
               forwarded.push_back(ShadowViewMutation::InsertMutation(surfaceId, inEngineFrame(newView), 0));
             }
+            setEmitter(newView.tag, newView.eventEmitter);
             break;
           }
           setEmitter(newView.tag, newView.eventEmitter);
@@ -243,6 +246,7 @@ std::optional<MountingTransaction> MountingDelegate::pullTransaction(
             if (!sameForReactNative(before, after)) {
               forwarded.push_back(ShadowViewMutation::UpdateMutation(before, after, surfaceId));
             }
+            if (oldView.eventEmitter != newView.eventEmitter) setEmitter(newView.tag, newView.eventEmitter);
           } else {
             if (oldView.eventEmitter != newView.eventEmitter) {
               setEmitter(newView.tag, newView.eventEmitter);

@@ -39,6 +39,13 @@ export type GatesFile = {
 	smoke: { modules: Record<Platform, string[]>; skips: Record<Platform, string[]> };
 	/** The `gestures-*` scenarios a full `native-qa gestures` run contains, per platform; absent: every scenario the lab has. */
 	gestures?: Partial<Record<Platform, string[]>>;
+	/**
+	 * The signed-in screens (the `app-*` cases of `lib/screens.ts`) a parity run must compare and an accessibility run must dump, in
+	 * every variant, per platform: a pinned screen the run lacks is `parity.signedIn.missing` / `a11y.signedIn.missing`, so a case
+	 * removed from the matrix is a failing gate, not a smaller matrix. A platform without a list has none (the iPhone's lab does not
+	 * sign in yet).
+	 */
+	signedIn?: Partial<Record<Platform, string[]>>;
 	gates: Gate[];
 };
 
@@ -126,6 +133,8 @@ export function checkGatesFile(file: GatesFile): void {
 		const unknown = skips.filter((module) => !modules.includes(module));
 		if (unknown.length > 0) throw new Error(`gates.json: smoke.skips names ${unknown.join(", ")}, which smoke.modules does not pin for ${platform}`);
 	}
+	for (const [platform, ids] of Object.entries(file.signedIn ?? {}))
+		if (new Set(ids).size !== ids.length) throw new Error(`gates.json: signedIn names a screen twice for ${platform}`);
 	for (const gate of file.gates) {
 		if (gate.roles === undefined) continue;
 		if (gate.roles.length === 0) throw new Error(`gates.json: gate ${gate.id} has an empty roles list (omit it to judge every role)`);

@@ -30,9 +30,16 @@ import { bottom, descendants, right, spokenLabel, type UiNode, type UiTree } fro
  *   its row or at its start side, and no content does. `judgeReadingOrder` is that rule and the order rule for both platforms.
  * - focus trap: while a sheet or modal is up, nothing of the screen underneath is in the tree (a service must not be able to
  *   reach it).
+ *
+ * And one measurement that no gate judges (`smallTargets`, a finding of kind `target`): an enabled control that is fully on screen and
+ * smaller than 48 dp in either direction (`minimumTargetDp`), when the display's density is known. It is reported per screen and
+ * summed in `a11y.smallTargets`, so a product screen's small controls show up in the run files and the report.
  */
 
-export type A11yKind = "unreachable" | "unlabeled" | "notActionable" | "order" | "title" | "leak";
+export type A11yKind = "unreachable" | "unlabeled" | "notActionable" | "order" | "title" | "leak" | "target";
+
+/** The smallest touch target Android's accessibility guidance asks for, in dp, in each dimension. */
+export const minimumTargetDp = 48;
 
 export type A11yFinding = {
 	kind: A11yKind;
@@ -54,6 +61,8 @@ export type A11yScreen = {
 	unreachable: number;
 	unlabeled: number;
 	notActionable: number;
+	/** Enabled controls fully on screen smaller than `minimumTargetDp` in either direction (not judged by a gate). Absent where the density is unknown (the iPhone). */
+	smallTargets?: number;
 	/** Focus stops in tree order, as labels, the order a linear screen reader walk visits them. */
 	stops: string[];
 	orderViolations: number;
@@ -74,7 +83,8 @@ export type A11yInput = {
 	/** What a service walks: the dump taken with `--compressed` (see the top of this file). */
 	tree: UiTree;
 	direction: Direction;
-	display: { width: number; height: number };
+	/** `densityDpi` turns pixels into dp for the touch-target size; without it that measurement is not made. */
+	display: { width: number; height: number; densityDpi?: number };
 	/** The localized title the screen should lead with (after the bar's back button and left slot), or null for a screen without one. */
 	title: string | null;
 	/** The localized labels of the controls the screen's source declares. */
@@ -335,6 +345,7 @@ export function analyzeScreen(input: A11yInput): A11yScreen {
 	let unreachable = 0;
 	let unlabeled = 0;
 	let notActionable = 0;
+	let smallTargets = display.densityDpi === undefined ? undefined : 0;
 	for (const element of elements) {
 		const { node } = element;
 		if (!node) {
@@ -367,6 +378,16 @@ export function analyzeScreen(input: A11yInput): A11yScreen {
 			(node.focusable || isActionable(node) || spokenLabel(node).trim() !== "");
 		if (sees) {
 			reachable++;
+			const scale = (display.densityDpi ?? 160) / 160;
+			const edge = node.bounds.y <= 0 || bottom(node.bounds) >= display.height || node.bounds.x <= 0 || right(node.bounds) >= display.width;
+			if (smallTargets !== undefined && !edge && Math.min(node.bounds.width, node.bounds.height) / scale < minimumTargetDp - 0.5) {
+				smallTargets++;
+				findings.push({
+					kind: "target",
+					element: where,
+					detail: `${(node.bounds.width / scale).toFixed(0)} x ${(node.bounds.height / scale).toFixed(0)} dp, under the ${minimumTargetDp} dp touch target`,
+				});
+			}
 		} else {
 			unreachable++;
 			findings.push({
@@ -474,6 +495,7 @@ export function analyzeScreen(input: A11yInput): A11yScreen {
 		unreachable,
 		unlabeled,
 		notActionable,
+		...(smallTargets === undefined ? {} : { smallTargets }),
 		stops: stops.map((stop) => spokenLabel(stop) || heldLabel(stop) || describe(stop)),
 		orderViolations,
 		titleFirst,

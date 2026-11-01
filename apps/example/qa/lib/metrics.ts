@@ -190,13 +190,14 @@ export function deviceMetrics(
 	smoke: { file: SmokeFile; pins: SmokePins } | null = null,
 	gestures: GesturesFile | null = null,
 	pinnedGestures: readonly string[] = allScenarios,
+	pinnedSignedIn: readonly string[] = [],
 ): Metrics {
 	const metrics: Metrics = {
 		...(lab ? labMetrics(lab, pinned) : {}),
 		...(boot ? bootMetrics(boot) : {}),
 		...(soak ? soakMetrics(soak) : {}),
 		...(crashes ? crashMetrics(crashes) : {}),
-		...suiteMetrics(suites),
+		...suiteMetrics(suites, pinnedSignedIn),
 		...(smoke ? smokeMetrics(smoke.file, smoke.pins) : {}),
 		...(gestures ? gesturesMetrics(gestures, pinnedGestures) : {}),
 		...crashReportMetrics([lab, boot, suites.parity, suites.a11y, gestures].filter((file) => file !== null)),

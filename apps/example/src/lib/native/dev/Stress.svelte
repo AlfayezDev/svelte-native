@@ -226,6 +226,22 @@
     for (let frame = 0; frame < 6 && !signal.aborted; frame++) await new Promise<void>((resolve) => { requestAnimationFrame(() => resolve()); });
   }
 
+  /**
+   * Empties the list the way a screen that clears its rows does, and reports what the unmount cost: `unmountMs` is the JavaScript
+   * flush, `teardown` the UI-runtime frame intervals from the clear until the main thread has applied it (its `max` is the longest
+   * time the main thread was away from drawing, 35 to 50 ms for 300 rows on the iPhone SE 3). Informational: no bar judges it.
+   */
+  async function tearDown(signal: AbortSignal) {
+    const { frames: teardown, value: unmountMs } = await measure(async () => {
+      const start = performance.now();
+      rows = []; await settle();
+      const flushed = performance.now() - start;
+      await mountFrames(signal);
+      return flushed;
+    });
+    return { unmountMs, teardown };
+  }
+
   /** `profile` turns on the host's per-flush timings (`__svelteFabricProfile`) and returns every flush of the mount in `detail.flushes`. */
   async function virtualList300(signal: AbortSignal, profile: boolean): Promise<Omit<Result, "name">> {
     const scope = globalThis as { __svelteFabricProfile?: boolean; __svelteFlushLog?: unknown[] };
@@ -255,11 +271,9 @@
         await pause(800, signal);
       }
     });
-    const unmountStart = performance.now();
-    rows = []; await settle();
-    const unmountMs = performance.now() - unmountStart;
+    const { unmountMs, teardown } = await tearDown(signal);
     view = "none"; await settle();
-    return { verdict: verdict(frames), summary: `${describe(frames)} · mount to layout ${mountMs.toFixed(0)} ms (Svelte flush ${svelteMs.toFixed(0)} ms) · unmount ${unmountMs.toFixed(0)} ms`, frames, detail: { mountMs, svelteMs, unmountMs, clipped: false, raw: false, virtual: true, flushes } };
+    return { verdict: verdict(frames), summary: `${describe(frames)} · mount to layout ${mountMs.toFixed(0)} ms (Svelte flush ${svelteMs.toFixed(0)} ms) · unmount ${unmountMs.toFixed(0)} ms · teardown longest frame ${teardown.max.toFixed(0)} ms`, frames, detail: { mountMs, svelteMs, unmountMs, teardownMaxMs: teardown.max, teardownDroppedPct: teardown.droppedPct, clipped: false, raw: false, virtual: true, flushes } };
   }
 
   const scenarios: Scenario[] = [
@@ -307,11 +321,24 @@
           await pause(800, signal);
         }
       });
-      const unmountStart = performance.now();
-      rows = []; await settle();
-      const unmountMs = performance.now() - unmountStart;
+      const { unmountMs, teardown } = await tearDown(signal);
       view = "none"; await settle();
-      return { verdict: verdict(frames), summary: `${describe(frames)} · mount to layout ${mountMs.toFixed(0)} ms (Svelte flush ${svelteMs.toFixed(0)} ms) · unmount ${unmountMs.toFixed(0)} ms`, frames, detail: { mountMs, svelteMs, unmountMs, clipped, raw } };
+      return { verdict: verdict(frames), summary: `${describe(frames)} · mount to layout ${mountMs.toFixed(0)} ms (Svelte flush ${svelteMs.toFixed(0)} ms) · unmount ${unmountMs.toFixed(0)} ms · teardown longest frame ${teardown.max.toFixed(0)} ms`, frames, detail: { mountMs, svelteMs, unmountMs, teardownMaxMs: teardown.max, teardownDroppedPct: teardown.droppedPct, clipped, raw } };
+    } })),
+    ...([["list-300-teardown", false], ["list-300-teardown-clipped", true]] as const).map(([name, clipped]): Scenario => ({ name, label: `Remove a screen that still holds 300 mounted rows${clipped ? " with removeClippedSubviews" : ""} (the teardown a user causes by leaving it; the rows are not emptied first)`, async run(signal) {
+      listClipped = clipped; listRaw = false; view = "list"; rows = []; await settle(); await mountFrames(signal);
+      const laidOut = waitFor(signal, (resolve) => { rowsLaidOut = resolve; }, 8000, "Row layout");
+      rows = Array.from({ length: 300 }, (_, index) => index);
+      await tick(); await laidOut; await mountFrames(signal);
+      const { frames: teardown, value: removeMs } = await measure(async () => {
+        const start = performance.now();
+        view = "none"; await settle();
+        const flushed = performance.now() - start;
+        await mountFrames(signal);
+        return flushed;
+      });
+      rows = []; await settle();
+      return { verdict: "info", summary: `300 rows left mounted, the container removed: JavaScript ${removeMs.toFixed(0)} ms · longest frame ${teardown.max.toFixed(0)} ms · ${teardown.droppedPct.toFixed(1)}% dropped · ${teardown.count} intervals`, frames: teardown, detail: { removeMs, teardownMaxMs: teardown.max, teardownDroppedPct: teardown.droppedPct, clipped } };
     } })),
     { name: "list-300-virtual", label: "Mount, scroll and unmount 300 rows in the windowed List", run: (signal) => virtualList300(signal, false) },
     { name: "list-mount-loop", label: "Mount the windowed List 40 times (for a CPU profile of the mount: `simpleperf record -t <JS thread>` while it runs)", async run(signal) {
@@ -530,7 +557,7 @@
       return { verdict: clean ? "info" : "fail", summary: `${cycle} cycles in ${((Date.now() - since) / 1000).toFixed(0)} s · ${created} tiles mounted / ${destroyed} destroyed · ${changesAfterDestroy} values changed after destruction · stack depth ${router.entries.length} (expected ${depth}) · cleanup ${clean ? "ok" : "FAILED"}`, detail: { cycles: cycle, created, destroyed, changesAfterDestroy, lateCompletions, cleanupFailures } };
     } },
   ];
-  const quick = scenarios.filter((scenario) => !["warm-up", "input-typing", "foreign-views", "churn-60s", "soak-120s", "soak-mix", "crash-js", "list-300-virtual-profile", "list-mount-loop"].includes(scenario.name));
+  const quick = scenarios.filter((scenario) => !["warm-up", "input-typing", "foreign-views", "churn-60s", "soak-120s", "soak-mix", "crash-js", "list-300-virtual-profile", "list-mount-loop", "list-300-teardown", "list-300-teardown-clipped"].includes(scenario.name));
   const ordered = $derived(scenarios.flatMap((scenario) => results.filter((result) => result.name === scenario.name)));
 
   function record(result: Result) {

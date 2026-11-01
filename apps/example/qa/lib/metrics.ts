@@ -115,6 +115,22 @@ export function labMetrics(file: LabFile, pinned: readonly string[]): Metrics {
 		return typeof value === "number" ? value : null;
 	});
 	metrics["list.virtual300.mountMs"] = worst(mount, largest);
+	// Informational, no bar: the longest UI-runtime frame interval while a list was torn down (the main thread's time away from
+	// drawing), for every scenario whose detail carries `teardownMaxMs`; the worst of the runs, like the frame metrics.
+	const tornDown = new Set(
+		runs.flatMap((run) =>
+			run.scenarios.filter((scenario) => typeof scenario.detail?.teardownMaxMs === "number").map((scenario) => scenario.name),
+		),
+	);
+	for (const name of tornDown) {
+		metrics[`teardown.${name}.maxFrameMs`] = worst(
+			runs.map((run) => {
+				const value = run.scenarios.find((scenario) => scenario.name === name)?.detail?.teardownMaxMs;
+				return typeof value === "number" ? value : null;
+			}),
+			largest,
+		);
+	}
 	return metrics;
 }
 

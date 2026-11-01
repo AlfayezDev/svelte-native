@@ -62,6 +62,7 @@ type LabSummary = {
 			p95: number | null;
 			maxMs: number | null;
 			mountMs: number | null;
+			teardownMaxMs: number | null;
 		}[];
 	}[];
 };
@@ -181,6 +182,7 @@ function summarizeLab(file: LabFile, fileName: string, pinned: readonly string[]
 				p95: scenario.frames?.p95 ?? null,
 				maxMs: scenario.frames?.max ?? null,
 				mountMs: typeof scenario.detail?.mountMs === "number" ? scenario.detail.mountMs : null,
+				teardownMaxMs: typeof scenario.detail?.teardownMaxMs === "number" ? scenario.detail.teardownMaxMs : null,
 			})),
 		})),
 	};

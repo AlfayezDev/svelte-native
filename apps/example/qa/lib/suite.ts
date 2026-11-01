@@ -1,5 +1,6 @@
 import { assertOnline, deviceInfo, launchWithGestures } from "./adb.ts";
 import { dexoptFlag, prepareApp } from "./app.ts";
+import { restartEmulator } from "./chunks.ts";
 import { flagString, requireString } from "./flags.ts";
 import { lockFor, reexecUnderLock } from "./lock.ts";
 import { defaultPackage } from "./paths.ts";
@@ -33,17 +34,20 @@ export type SuiteDevice = {
 };
 
 /**
- * What every suite does first: take the emulator lock the way `lab` and `boot` do (re-running itself under `flock`), check
- * the device is online, install the build under test as a store install would be, and describe the device and the app.
+ * What every suite does first: take the emulator lock the way `lab` and `boot` do (re-running itself under `flock`), restart the
+ * emulator when asked (`fresh`: the lock is held, so nobody is hurt), check the device is online, install the build under test as a
+ * store install would be, and describe the device and the app.
  */
 export async function startSuite(
 	command: string,
 	argv: string[],
 	values: CommonValues,
+	options: { fresh?: boolean } = {},
 ): Promise<SuiteDevice> {
 	const serial = requireString(values.device, "device");
 	const lock = lockFor(serial);
 	if (lock) await reexecUnderLock(lock, [command, ...argv]);
+	if (options.fresh) await restartEmulator(serial, `a fresh emulator for ${command}`);
 	const packageName = flagString(values.package) ?? defaultPackage;
 	launchWithGestures(values.gestures === true);
 	if (values.gestures === true) console.log("gestures: the gesture handler root is installed at every launch (--gestures)");

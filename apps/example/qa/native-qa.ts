@@ -28,8 +28,9 @@ const usage = `usage: native-qa <command> [flags]
   soak   --device <serial> [--apk <path> | --no-install] [--minutes 10] [--interval <s>] [--parts <names>]
   crashes --device <serial> [--apk <path> | --no-install] [--starts 1000] [--suites 100] [--idle <s>] [--map <file>] [--symbols <dir>] [--chunk <n>] [--resume] [--inject-crash]
   symbolicate [--input <logcat file>] [--map <file>] [--symbols <dir>] [--abi x86_64] [--all]
-  parity --device <serial> [--apk <path> | --no-install] [--update | --missing] [--quick] [--filter <screen>]
-  a11y   --device <serial> [--apk <path> | --no-install] [--quick] [--filter <screen>]
+  parity --device <serial> [--apk <path> | --no-install] [--update | --missing] [--quick] [--filter <screen>] [--chunk <n> | --limit <n>] [--resume] [--fresh]
+  a11y   --device <serial> [--apk <path> | --no-install] [--quick] [--filter <screen>] [--chunk <n> | --limit <n>] [--resume] [--fresh]
+         (--chunk <n>: the run as commands of --limit n cases, each on a fresh emulator (--fresh) continuing the run file (--resume); --limit ends with status 3 when cases are left)
   resilience --device <serial> [--apk <path> | --no-install] [--rotations <n>] [--cycles <n>] [--rounds <n>]
   resilience --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--team <id>] [--rebuild] [--build-only] [--rotations <n>] [--cycles <n>] [--rounds <n>] [--timeout <s>] [--assume-system-kill]
   smoke  --device <serial> [--apk <path> | --no-install] [--timeout <s>]      (the smoke app: build --variant smoke first)

@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { wake } from "../lib/adb.ts";
+import { chunkOptions, limitReached, planCases, resumeMismatch, runChunks, spawnChunk } from "../lib/chunks.ts";
 import { join } from "node:path";
 import {
 	dumpUi,
@@ -23,7 +24,7 @@ import {
 	settledScreenshot,
 	waitForNode,
 } from "../lib/drive.ts";
-import { flagString, parseFlags, platformOf } from "../lib/flags.ts";
+import { flagString, integerFlag, parseFlags, platformOf } from "../lib/flags.ts";
 import { currentSource } from "../lib/git.ts";
 import { qaDir, runsDir } from "../lib/paths.ts";
 import {
@@ -40,7 +41,7 @@ import {
 } from "../lib/parity.ts";
 import { diffImages, encodePng, paintOver, type Image, type Rect } from "../lib/png.ts";
 import { inSignedInPhase, splitPhases, startSignedOut } from "../lib/phases.ts";
-import { slug, stamp, writeRun } from "../lib/runs.ts";
+import { latestRunFiles, readJson, slug, stamp, writeRun } from "../lib/runs.ts";
 import {
 	cases,
 	matrix,
@@ -325,13 +326,21 @@ export async function parity(argv: string[]): Promise<void> {
 	if (platformOf(argv) === "ios") return iosParity(argv);
 	const { values } = parseFlags(argv, {
 		...commonOptions,
+		...chunkOptions,
 		update: { type: "boolean" },
 		missing: { type: "boolean" },
 		quick: { type: "boolean" },
 		filter: { type: "string" },
 	});
-	const suite = await startSuite("parity", argv, values);
-	const { serial, packageName, device, app, startedAt } = suite;
+	// `--chunk <n>`: several commands of `--limit n`, each on a fresh emulator and continuing the run file (lib/chunks.ts).
+	const chunk = integerFlag(values.chunk, "chunk", 0);
+	if (chunk > 0) {
+		runChunks("parity", values, chunk, spawnChunk);
+		return;
+	}
+	const limit = integerFlag(values.limit, "limit", 0);
+	const suite = await startSuite("parity", argv, values, { fresh: values.fresh === true });
+	const { serial, packageName, device, app } = suite;
 	const missingOnly = values.missing === true;
 	const update = values.update === true || missingOnly;
 	const filter = flagString(values.filter);
@@ -361,12 +370,35 @@ export async function parity(argv: string[]): Promise<void> {
 		`${update ? "updating" : "comparing"} ${matrix(chosenCases, chosenVariants).length} cases against screenshots/${deviceKind}; backend: ${backend.detail}`,
 	);
 
-	const artifacts = join(runsDir, `parity-${slug(serial)}-${stamp(startedAt)}`);
-	const results: ParityCase[] = [];
-	let aborted: string | null = null;
-	let signedInPhase: SignedInRecord | null = null;
-	const notes = newSessionNotes();
 	const phases = splitPhases(chosenCases);
+	/** The cases of one phase in the order the run takes them: the settings of the variant, then its screens in the order that changes the proxy least. */
+	const orderOf = (phaseCases: ScreenCase[]) =>
+		chosenVariants.flatMap((variant) => ordered(matrix(phaseCases, [variant]).map((entry) => entry.screen)).map((screen) => ({ screen, variant })));
+	const nameOf = (entry: { screen: ScreenCase; variant: Variant }) => referenceName(entry.screen, entry.variant);
+	const wanted = [...orderOf(phases.signedOut), ...orderOf(phases.signedIn)].map(nameOf).filter((name) => !(missingOnly && manifest.references[name]));
+	// `--resume` continues the device's newest parity file (its cases are done); `--limit` takes at most that many of the others.
+	const resumePath = values.resume ? (await latestRunFiles()).parity.get(slug(serial)) : undefined;
+	if (values.resume && !resumePath) throw new Error(`--resume: no parity run file for ${serial} in qa/runs`);
+	const resumed = resumePath ? await readJson<ParityFile>(resumePath) : null;
+	const mismatch = resumed
+		? resumeMismatch(
+				{ names: resumed.cases.map((record) => record.name), mode: resumed.mode, installedSha256: resumed.app.installedSha256 },
+				{ selected: new Set(matrix(chosenCases, chosenVariants).map(nameOf)), mode: update ? "update" : "check", installedSha256: app.installedSha256 },
+			)
+		: null;
+	if (mismatch) throw new Error(`--resume: this is not the run being resumed (${mismatch}); pass the same flags and install the same build with --apk`);
+	const startedAt = resumed ? new Date(resumed.startedAt) : suite.startedAt;
+	const plan = planCases(wanted, new Set(resumed?.cases.map((record) => record.name)), limit);
+	if (resumed || limit > 0)
+		console.log(`${resumed ? `resuming parity-${slug(serial)}-${stamp(startedAt)}: ${resumed.cases.length} cases already measured; ` : ""}${plan.run.size} to run${plan.left > 0 ? `, ${plan.left} left for the next` : ""}`);
+	/** Whether the run takes any case of a phase: a phase it takes none of is not even started (no sign-in for a chunk of signed-out screens). */
+	const takes = (phaseCases: ScreenCase[]) => orderOf(phaseCases).some((entry) => plan.run.has(nameOf(entry)));
+
+	const artifacts = join(runsDir, `parity-${slug(serial)}-${stamp(startedAt)}`);
+	const results: ParityCase[] = resumed ? [...resumed.cases] : [];
+	let aborted: string | null = null;
+	let signedInPhase: SignedInRecord | null = resumed?.signedInPhase ?? null;
+	const notes = newSessionNotes();
 	try {
 		await withSession(serial, packageName, async (session) => {
 			await wake(serial);
@@ -388,12 +420,12 @@ export async function parity(argv: string[]): Promise<void> {
 			/** Every variant of one phase: the settings of the variant, then its screens in the order that changes the proxy least. */
 			const runPhase = async (phaseCases: ScreenCase[]) => {
 				for (const variant of chosenVariants) {
+					const screens = ordered(matrix(phaseCases, [variant]).map((entry) => entry.screen)).filter((screen) => plan.run.has(referenceName(screen, variant)));
+					if (screens.length === 0) continue;
 					await session.theme(variant.theme);
 					await session.fontScale(variant.fontScale);
 					await session.direction(variant.direction);
-					const screens = matrix(phaseCases, [variant]).map((entry) => entry.screen);
-					for (const screen of ordered(screens)) {
-						if (missingOnly && manifest.references[referenceName(screen, variant)]) continue;
+					for (const screen of screens) {
 						const began = Date.now();
 						const record = await runCase(context, screen, variant);
 						results.push(record);
@@ -409,18 +441,18 @@ export async function parity(argv: string[]): Promise<void> {
 				}
 			};
 			try {
-				if (phases.signedOut.length > 0) {
+				if (phases.signedOut.length > 0 && takes(phases.signedOut)) {
 					await startSignedOut(session, backend, phases.signedOut);
 					await runPhase(phases.signedOut);
 				}
-				if (phases.signedIn.length > 0) {
+				if (phases.signedIn.length > 0 && takes(phases.signedIn)) {
 					console.log("signed-in phase: signing in as the QA account");
 					const outcome = await inSignedInPhase(session, backend, matrix(phases.signedIn, chosenVariants).length, () => runPhase(phases.signedIn));
 					signedInPhase = outcome.record;
 					if (!outcome.entered) {
 						console.log(`  signed-in phase did not run: ${outcome.record.detail}`);
-						for (const variant of chosenVariants)
-							for (const { screen } of matrix(phases.signedIn, [variant]))
+						for (const { screen, variant } of orderOf(phases.signedIn))
+							if (plan.run.has(referenceName(screen, variant)))
 								results.push(caseRecord(screen, variant, { verdict: "skipped", detail: outcome.record.detail }));
 					} else if (outcome.record.detail) console.log(`  signed-in phase: ${outcome.record.detail}`);
 				}
@@ -452,9 +484,9 @@ export async function parity(argv: string[]): Promise<void> {
 		notCovered: [...notCovered, ...notCoveredStates],
 		aborted,
 		signedInPhase,
-		leftovers: notes.leftovers,
-		restoreFailures: notes.restoreFailures,
-		deviceRestarts: notes.deviceRestarts,
+		leftovers: [...(resumed?.leftovers ?? []), ...notes.leftovers],
+		restoreFailures: [...(resumed?.restoreFailures ?? []), ...notes.restoreFailures],
+		deviceRestarts: [...(resumed?.deviceRestarts ?? []), ...notes.deviceRestarts],
 	};
 	const name = await writeRun("parity", serial, startedAt, file);
 	const count = (verdict: ParityCase["verdict"]) =>
@@ -464,4 +496,7 @@ export async function parity(argv: string[]): Promise<void> {
 	);
 	console.log(`wrote qa/runs/${name}.json`);
 	reportRestore(notes);
+	// A run with a limit says how it ended to the command that chunks it: stopped by the device (a failure to continue from), or by the limit with cases left.
+	if (limit > 0 && aborted !== null) process.exitCode ||= 1;
+	else if (plan.left > 0 && !process.exitCode) process.exitCode = limitReached;
 }

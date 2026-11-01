@@ -9,8 +9,8 @@ pnpm native-qa boot   --device <serial> [--apk <path> | --no-install] [--dexopt 
 pnpm native-qa soak   --device <serial> [--apk <path> | --no-install] [--minutes 10] [--interval <s>] [--parts <names>]
 pnpm native-qa crashes --device <serial> [--apk <path> | --no-install] [--starts 1000] [--suites 100] [--idle <s>] [--map <file>] [--symbols <dir>]
 pnpm native-qa symbolicate [--input <logcat file>] [--map <file>] [--symbols <dir>] [--abi x86_64] [--all]
-pnpm native-qa parity     --device <serial> [--apk <path> | --no-install] [--update | --missing] [--quick] [--filter <screen>]
-pnpm native-qa a11y       --device <serial> [--apk <path> | --no-install] [--quick] [--filter <screen>]
+pnpm native-qa parity     --device <serial> [--apk <path> | --no-install] [--update | --missing] [--quick] [--filter <screen>] [--chunk <n> | --limit <n>] [--resume] [--fresh]
+pnpm native-qa a11y       --device <serial> [--apk <path> | --no-install] [--quick] [--filter <screen>] [--chunk <n> | --limit <n>] [--resume] [--fresh]
 pnpm native-qa resilience --device <serial> [--apk <path> | --no-install] [--rotations <n>] [--cycles <n>] [--rounds <n>]
 pnpm native-qa resilience --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--team <id>] [--rebuild] [--build-only] [--rotations <n>] [--cycles <n>] [--rounds <n>] [--timeout <s>] [--assume-system-kill]
 pnpm native-qa smoke      --device <serial> [--apk <path> | --no-install] [--timeout <s>]   # the smoke app; build --variant smoke first
@@ -324,13 +324,15 @@ Faults found on the way, both visible only through this runner. A JavaScript fat
 Production step 7. Three suites drive the QA app on a device through adb, each writes one run file, and `report` merges the newest of each per device into the metrics `gates.json` judges.
 
 ```
-pnpm native-qa parity     --device <serial> [--apk <path> | --no-install] [--update | --missing] [--quick] [--filter <screen>]
-pnpm native-qa a11y       --device <serial> [--apk <path> | --no-install] [--quick] [--filter <screen>]
+pnpm native-qa parity     --device <serial> [--apk <path> | --no-install] [--update | --missing] [--quick] [--filter <screen>] [--chunk <n> | --limit <n>] [--resume] [--fresh]
+pnpm native-qa a11y       --device <serial> [--apk <path> | --no-install] [--quick] [--filter <screen>] [--chunk <n> | --limit <n>] [--resume] [--fresh]
 pnpm native-qa resilience --device <serial> [--apk <path> | --no-install] [--rotations 5] [--cycles 100] [--rounds 2]
 pnpm native-qa:suites     # all three on localhost:5555 (parity compares, it never updates), then report
 ```
 
 None of them exits non-zero for a failed check; `gates` judges, as for `lab` and `boot`. They take the device flags and the emulator lock of `lab` and `boot` (`--device`, `--apk`, `--no-install`, `--dexopt`, `--package`; `flock /tmp/svelte-qa-emulator.lock` for the shared emulator, so install the build you mean with `--apk qa/out/<your copy>.apk` when other agents overwrite `qa/out/app-<abi>.apk`). `--quick` runs four variants (parity) or two (a11y), `--filter` selects the screens whose id contains the text, `--rotations`, `--cycles` and `--rounds` shorten the resilience plan; a partial run leaves the rest of the matrix counted as missing, so it cannot pass a gate.
+
+**Long matrices in chunks** (Android; `lib/chunks.ts`, the design of `crashes --chunk`). The OVH emulator's graphics stack leaks host memory with every app launch, so the full parity matrix (200 cases, about 33 minutes) and a11y matrix (100 screens, about 21 minutes) can outgrow one emulator instance: the host's watchdog restarts it under the run at 18 GB and the cases it was in are lost. `--chunk 50` runs the matrix as several commands of `--limit 50`, one after the other: each takes the emulator lock on its own and releases it at its end (the other agents get the device between chunks), every chunk after the first first restarts the emulator (`--fresh`, with the lock held) and continues the run file of the one before (`--resume`: the cases the file holds are done, the others are taken in the order of the matrix, and the file keeps its name and its start time), and does not install the build again (`--no-install`: the emulator keeps its userdata, and a file is only continued by the build it measured). The same file comes out, with the same fields; the settings, the signed-in phase and the device restarts of each chunk are recorded as for any run. `--limit n` alone is one chunk: it takes at most `n` cases that the file lacks, writes the file and ends with status 3 when cases are left (status 0 when the matrix is done, 1 when the device went away or a setting could not be restored, which stops `--chunk` with the command to continue). `--resume` alone continues the device's newest file of the kind (a run the device interrupted, a Ctrl-C); a file of another `--filter`, `--quick` or mode (`--update`), or of another installed build, is refused. `--fresh` alone restarts the emulator once the lock is held, before the run. The restart is `bash $QA_EMULATOR_SH restart <reason>`, the contract of `ci/emulator.sh`: `qa/ci/emulator-remote.sh` for an emulator behind an ssh tunnel, `qa/ci/emulator.sh` on the host; `QA_EMULATOR_SH` names another script (a host that runs its emulator by hand has its own). A phone has nothing to restart: `--fresh` on it is an error. A chunk that stops before its cases are done leaves the run file with what it measured, and the cases it did not reach count as missing like any other.
 
 ### What the suites drive
 

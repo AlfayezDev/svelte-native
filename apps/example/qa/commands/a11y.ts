@@ -1,13 +1,14 @@
 import { clearLogcat, dumpLogcat, wake } from "../lib/adb.ts";
+import { chunkOptions, limitReached, planCases, resumeMismatch, runChunks, spawnChunk } from "../lib/chunks.ts";
 import { analyzeScreen, reachPct } from "../lib/a11y.ts";
 import { parseNodeInfo, type NodeInfo } from "../lib/a11y-state.ts";
 import { dumpUi, endsRun, newSessionNotes, readDisplay, reportRestore, withSession } from "../lib/device.ts";
 import { dumpWithOwnControls, openCase, retryCase, settledTree } from "../lib/drive.ts";
 import { inSignedInPhase, splitPhases, startSignedOut } from "../lib/phases.ts";
 import { redactDeep } from "../lib/qa-account.ts";
-import { flagString, parseFlags, platformOf } from "../lib/flags.ts";
+import { flagString, integerFlag, parseFlags, platformOf } from "../lib/flags.ts";
 import { currentSource } from "../lib/git.ts";
-import { writeRun } from "../lib/runs.ts";
+import { latestRunFiles, readJson, slug, stamp, writeRun } from "../lib/runs.ts";
 import {
 	cases,
 	layoutVariants,
@@ -70,11 +71,19 @@ export async function a11y(argv: string[]): Promise<void> {
 	if (platformOf(argv) === "ios") return iosA11y(argv);
 	const { values } = parseFlags(argv, {
 		...commonOptions,
+		...chunkOptions,
 		quick: { type: "boolean" },
 		filter: { type: "string" },
 	});
-	const suite = await startSuite("a11y", argv, values);
-	const { serial, packageName, device, app, startedAt } = suite;
+	// `--chunk <n>`: several commands of `--limit n`, each on a fresh emulator and continuing the run file (lib/chunks.ts).
+	const chunk = integerFlag(values.chunk, "chunk", 0);
+	if (chunk > 0) {
+		runChunks("a11y", values, chunk, spawnChunk);
+		return;
+	}
+	const limit = integerFlag(values.limit, "limit", 0);
+	const suite = await startSuite("a11y", argv, values, { fresh: values.fresh === true });
+	const { serial, packageName, device, app } = suite;
 	const filter = flagString(values.filter);
 	const chosenVariants = values.quick === true ? layoutVariants.slice(0, 2) : layoutVariants;
 	const chosenCases = cases.filter((screen) => !filter || screen.id.includes(filter));
@@ -88,11 +97,31 @@ export async function a11y(argv: string[]): Promise<void> {
 		`checking ${matrix(chosenCases, chosenVariants).length} screens in ${chosenVariants.length} layouts; backend: ${backend.detail}`,
 	);
 
-	const results: A11yScreenResult[] = [];
-	let aborted: string | null = null;
-	let signedInPhase: SignedInRecord | null = null;
-	const notes = newSessionNotes();
 	const phases = splitPhases(chosenCases);
+	const orderOf = (phaseCases: ScreenCase[]) => chosenVariants.flatMap((variant) => matrix(phaseCases, [variant]));
+	const nameOf = (entry: { screen: ScreenCase; variant: Variant }) => referenceName(entry.screen, entry.variant);
+	// `--resume` continues the device's newest a11y file (its screens are done); `--limit` takes at most that many of the others.
+	const resumePath = values.resume ? (await latestRunFiles()).a11y.get(slug(serial)) : undefined;
+	if (values.resume && !resumePath) throw new Error(`--resume: no a11y run file for ${serial} in qa/runs`);
+	const resumed = resumePath ? await readJson<A11yFile>(resumePath) : null;
+	const mismatch = resumed
+		? resumeMismatch(
+				{ names: resumed.screens.map((screen) => screen.name), installedSha256: resumed.app.installedSha256 },
+				{ selected: new Set(matrix(chosenCases, chosenVariants).map(nameOf)), installedSha256: app.installedSha256 },
+			)
+		: null;
+	if (mismatch) throw new Error(`--resume: this is not the run being resumed (${mismatch}); pass the same flags and install the same build with --apk`);
+	const startedAt = resumed ? new Date(resumed.startedAt) : suite.startedAt;
+	const plan = planCases([...orderOf(phases.signedOut), ...orderOf(phases.signedIn)].map(nameOf), new Set(resumed?.screens.map((screen) => screen.name)), limit);
+	if (resumed || limit > 0)
+		console.log(`${resumed ? `resuming a11y-${slug(serial)}-${stamp(startedAt)}: ${resumed.screens.length} screens already measured; ` : ""}${plan.run.size} to run${plan.left > 0 ? `, ${plan.left} left for the next` : ""}`);
+	/** Whether the run takes any screen of a phase: a phase it takes none of is not even started (no sign-in for a chunk of signed-out screens). */
+	const takes = (phaseCases: ScreenCase[]) => orderOf(phaseCases).some((entry) => plan.run.has(nameOf(entry)));
+
+	const results: A11yScreenResult[] = resumed ? [...resumed.screens] : [];
+	let aborted: string | null = null;
+	let signedInPhase: SignedInRecord | null = resumed?.signedInPhase ?? null;
+	const notes = newSessionNotes();
 	try {
 		await withSession(serial, packageName, async (session) => {
 			await session.rotation(0);
@@ -101,9 +130,11 @@ export async function a11y(argv: string[]): Promise<void> {
 			/** Every layout of one phase: the settings of the layout, then its screens. */
 			const runPhase = async (phaseCases: ScreenCase[]) => {
 				for (const variant of chosenVariants) {
+					const screens = matrix(phaseCases, [variant]).filter((entry) => plan.run.has(nameOf(entry)));
+					if (screens.length === 0) continue;
 					await session.fontScale(variant.fontScale);
 					await session.direction(variant.direction);
-					for (const { screen } of matrix(phaseCases, [variant])) {
+					for (const { screen } of screens) {
 						const began = Date.now();
 						if (screen.needsBackend && !backend.ok) {
 							results.push(emptyResult(screen, variant, `needs the dev backend: ${backend.detail}`));
@@ -167,19 +198,19 @@ export async function a11y(argv: string[]): Promise<void> {
 					}
 				}
 			};
-			if (phases.signedOut.length > 0) {
+			if (phases.signedOut.length > 0 && takes(phases.signedOut)) {
 				await startSignedOut(session, backend, phases.signedOut);
 				await runPhase(phases.signedOut);
 			}
-			if (phases.signedIn.length > 0) {
+			if (phases.signedIn.length > 0 && takes(phases.signedIn)) {
 				console.log("signed-in phase: signing in as the QA account");
 				const outcome = await inSignedInPhase(session, backend, matrix(phases.signedIn, chosenVariants).length, () => runPhase(phases.signedIn));
 				signedInPhase = outcome.record;
 				if (!outcome.entered) {
 					console.log(`  signed-in phase did not run: ${outcome.record.detail}`);
-					for (const variant of chosenVariants)
-						for (const { screen } of matrix(phases.signedIn, [variant]))
-							results.push(emptyResult(screen, variant, outcome.record.detail ?? "the signed-in phase did not run"));
+					for (const entry of orderOf(phases.signedIn))
+						if (plan.run.has(nameOf(entry)))
+							results.push(emptyResult(entry.screen, entry.variant, outcome.record.detail ?? "the signed-in phase did not run"));
 				} else if (outcome.record.detail) console.log(`  signed-in phase: ${outcome.record.detail}`);
 			}
 		}, { notes });
@@ -203,9 +234,9 @@ export async function a11y(argv: string[]): Promise<void> {
 		notCovered: [...notCovered, ...notCoveredStates],
 		aborted,
 		signedInPhase,
-		leftovers: notes.leftovers,
-		restoreFailures: notes.restoreFailures,
-		deviceRestarts: notes.deviceRestarts,
+		leftovers: [...(resumed?.leftovers ?? []), ...notes.leftovers],
+		restoreFailures: [...(resumed?.restoreFailures ?? []), ...notes.restoreFailures],
+		deviceRestarts: [...(resumed?.deviceRestarts ?? []), ...notes.deviceRestarts],
 	};
 	const name = await writeRun("a11y", serial, startedAt, file);
 	const total = (pick: (screen: A11yScreenResult) => number) =>
@@ -215,4 +246,7 @@ export async function a11y(argv: string[]): Promise<void> {
 	);
 	console.log(`wrote qa/runs/${name}.json`);
 	reportRestore(notes);
+	// A run with a limit says how it ended to the command that chunks it: stopped by the device (a failure to continue from), or by the limit with screens left.
+	if (limit > 0 && aborted !== null) process.exitCode ||= 1;
+	else if (plan.left > 0 && !process.exitCode) process.exitCode = limitReached;
 }

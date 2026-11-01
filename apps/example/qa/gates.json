@@ -874,6 +874,17 @@
       }
     },
     {
+      "id": "a11y.stateMismatches",
+      "title": "Accessibility: published state, value, hint or actions differing from the lab's expectations",
+      "unit": "controls",
+      "metric": "a11y.stateMismatches",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
       "id": "a11y.incomplete",
       "title": "Accessibility: screens not dumped",
       "unit": "screens",

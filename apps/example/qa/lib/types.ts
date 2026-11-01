@@ -419,6 +419,8 @@ export type A11yScreenResult = {
 	notActionable: number;
 	/** Enabled controls fully on screen under 48 dp in a direction; not gated. Absent in runs from before it was measured and on the iPhone. */
 	smallTargets?: number;
+	/** Published state, value, hint and actions that differ from the screen's expectations (the accessibility lab); absent on a screen with none, and in runs from before. */
+	stateMismatches?: number;
 	orderViolations: number;
 	titleFirst: boolean | null;
 	/** Declared controls of the screen underneath that a sheet or modal leaves in the tree. */

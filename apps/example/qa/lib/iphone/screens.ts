@@ -21,7 +21,7 @@ import type { Direction } from "../device.ts";
 /** Screens that need the app's network to be held back or refused: an iOS app cannot be told to see a proxy from outside. */
 const needsNetworkControl = new Set(["startup-loading", "startup-error"]);
 
-export const iosCases: ScreenCase[] = cases.filter((screen) => !needsNetworkControl.has(screen.id) && !screen.signedIn);
+export const iosCases: ScreenCase[] = cases.filter((screen) => !needsNetworkControl.has(screen.id) && !screen.signedIn && screen.androidOnly !== true);
 
 /** Theme x direction at the standard text size: the app cannot change the system's text size from inside. */
 export const iosVariants: Variant[] = variants.filter((variant) => variant.fontScale === 1);

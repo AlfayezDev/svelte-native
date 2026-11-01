@@ -1,5 +1,6 @@
 import type { Direction, NetworkMode, Theme } from "./device.ts";
 import { copy } from "./copy.ts";
+import type { InfoExpectation, NodeExpectation } from "./a11y-state.ts";
 
 /**
  * The screens the suites drive and the settings they drive them under. A screen is a route in one state; the parity suite
@@ -66,6 +67,15 @@ export type ScreenCase = {
 	hidden: Localized[];
 	/** False when the state cannot be reached at the largest text size (see `notCoveredStates`): the screen is left out of those variants. */
 	largestText: boolean;
+	/** True for a case that reads Android's own node info (the accessibility lab's `info`): the iPhone's matrix leaves it out. */
+	androidOnly?: boolean;
+	/** What the accessibility dump must show of the controls of the accessibility lab, by `testID` (the accessibility suite only; `lib/a11y-state.ts`). */
+	expect?: NodeExpectation[];
+	/**
+	 * What the app must publish for them, which the dump cannot show (tooltip, range, actions, live region): the lab logs the node info of its controls when the
+	 * link has `probe=` and the suite reads it from logcat. Judged when given.
+	 */
+	info?: InfoExpectation[];
 	/** Nodes whose area is masked because they move on their own (spinners). */
 	masks: Selector[];
 	/** Like `masks`, for nodes that are only on screen at some text sizes (the largest text pushes them below the fold): masked when the tree has them. */
@@ -75,6 +85,7 @@ export type ScreenCase = {
 const dev = "rasheed-svelte:///__dev";
 const screens = `${dev}/screens`;
 const tree = `${dev}/tree`;
+const a11yLab = `${dev}/a11y`;
 
 function screenCase(
 	id: string,
@@ -288,6 +299,64 @@ const signedOutCases: ScreenCase[] = [
 	screenCase("lab-screen", "/__dev/screen", `${dev}/screen`, label("Lab screen"), {
 		layout: "header",
 		title: "Lab screen",
+	}),
+	// The accessibility lab (SPEC.md "Accessibility props"): the state, value, hint and actions of each control are checked against the dump
+	// (`expect`) and, for what the dump cannot show, against the node info the lab logs (`info`). Labels are what React Native's views would
+	// say for the same props: "mixed", "busy" and the value's text follow the label, joined by ", ".
+	screenCase("lab-a11y-states", "/__dev/a11y?mode=states", `${a11yLab}?mode=states&probe=nodes`, label("Accept terms"), {
+		androidOnly: true,
+		layout: "header",
+		title: "Accessibility lab",
+		controls: ["Accept terms"],
+		scrolled: ["Select all, mixed", "Free", "Pro", "Team", "Inbox", "Archive", "Pay now", "Saving, busy", "Details"],
+		expect: [
+			{ id: "a11y.terms", className: "android.widget.CheckBox", says: "Accept terms", checkable: true, checked: true, selected: false, enabled: true, clickable: true },
+			{ id: "a11y.all", className: "android.widget.CheckBox", says: "Select all, mixed", checkable: false, checked: false, clickable: true },
+			{ id: "a11y.plan.free", className: "android.widget.RadioButton", says: "Free", checkable: true, checked: false, clickable: true },
+			{ id: "a11y.plan.pro", className: "android.widget.RadioButton", says: "Pro", checkable: true, checked: true, clickable: true },
+			{ id: "a11y.plan.team", className: "android.widget.RadioButton", says: "Team", checkable: true, checked: false, clickable: true },
+			{ id: "a11y.tab.inbox", says: "Inbox", selected: true, clickable: true },
+			{ id: "a11y.tab.archive", says: "Archive", selected: false, clickable: true },
+			{ id: "a11y.disabled", className: "android.widget.Button", says: "Pay now", enabled: false },
+			{ id: "a11y.busy", className: "android.widget.Button", says: "Saving, busy", enabled: true, clickable: true },
+			{ id: "a11y.details", className: "android.widget.Button", says: "Details", clickable: true },
+			{ id: "a11y.hidden", absent: true, label: "Hidden note" },
+		],
+		info: [
+			{ id: "a11y.terms", className: "android.widget.CheckBox", desc: "Accept terms", checkable: true, checked: true, selected: false, enabled: true, clickable: true, roleDescription: "", important: 0 },
+			{ id: "a11y.all", className: "android.widget.CheckBox", desc: "Select all, mixed", checkable: false, checked: false },
+			{ id: "a11y.plans", className: "android.view.View", desc: "Plan", roleDescription: "Radio Group" },
+			{ id: "a11y.plan.pro", className: "android.widget.RadioButton", checkable: true, checked: true },
+			{ id: "a11y.plan.free", className: "android.widget.RadioButton", checkable: true, checked: false },
+			{ id: "a11y.tab.inbox", className: "android.view.View", roleDescription: "Tab", selected: true },
+			{ id: "a11y.tab.archive", roleDescription: "Tab", selected: false },
+			{ id: "a11y.disabled", className: "android.widget.Button", enabled: false, clickable: true },
+			{ id: "a11y.busy", desc: "Saving, busy", enabled: true },
+			{ id: "a11y.details", desc: "Details", actions: [{ name: "expand", label: "" }], without: ["collapse"] },
+			{ id: "a11y.hidden", important: 4 },
+		],
+	}),
+	screenCase("lab-a11y-actions", "/__dev/a11y?mode=actions", `${a11yLab}?mode=actions&probe=actions`, label("Last action: archive"), {
+		androidOnly: true,
+		layout: "header",
+		title: "Accessibility lab",
+		controls: ["Volume, 5 of 10", "Archive thread"],
+		scrolled: ["Invoice 1042", "Add one"],
+		// The lab performed "archive" on the row and "increment" on the slider through the node's own actions before the dump: what JavaScript received shows on the screen.
+		expect: [
+			{ id: "a11y.slider", className: "android.widget.SeekBar", says: "Volume, 5 of 10", focusable: true },
+			{ id: "a11y.hint", className: "android.widget.Button", says: "Archive thread", hint: "", clickable: true },
+			{ id: "a11y.row", says: "Invoice 1042", focusable: true },
+			{ id: "a11y.last", says: "Last action: archive" },
+			{ id: "a11y.add", className: "android.widget.Button", says: "Add one", clickable: true },
+		],
+		info: [
+			{ id: "a11y.slider", className: "android.widget.SeekBar", desc: "Volume, 5 of 10", range: { min: 0, max: 10, current: 5 }, actions: [{ name: "increment", label: "" }, { name: "decrement", label: "" }] },
+			{ id: "a11y.hint", className: "android.widget.Button", desc: "Archive thread", tooltip: "Moves the thread out of the inbox" },
+			{ id: "a11y.row", desc: "Invoice 1042", range: null, actions: [{ name: "archive", label: "Archive" }, { name: "delete", label: "Delete" }] },
+			{ id: "a11y.counter", liveRegion: 1 },
+			{ id: "a11y.last", text: "Last action: archive" },
+		],
 	}),
 	// The lab's menu is only linked to, never pushed by a button: the lab's own screen is the base and the link is opened onto it.
 	screenCase("screens-menu", "/__dev/screens", dev, label("Push eight screens with headers"), {
@@ -664,6 +733,7 @@ export const notCovered: NotCovered[] = [
 /** The route directories (relative to `src/routes`) of the screens the cases reach, for the completeness check. */
 export const coveredRouteDirectories = [
 	"__dev",
+	"__dev/a11y",
 	"__dev/screen",
 	"__dev/screens",
 	"__dev/tree/home",

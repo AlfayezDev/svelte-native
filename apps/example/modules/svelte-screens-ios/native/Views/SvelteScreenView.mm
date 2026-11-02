@@ -446,10 +446,16 @@ static std::string WithoutActivityState(const std::string &nativeId) {
   [self applyBarConfigurationTo:navigationController animated:animated];
 }
 
+- (BOOL)changesBarVisibilityOf:(UINavigationController *)navigation {
+  return navigation.isNavigationBarHidden != (_header == nil);
+}
+
 - (void)applyBarConfigurationTo:(UINavigationController *)navigation animated:(BOOL)animated {
   [self applyToolbarTo:navigation animated:animated];
   SvelteHeaderView *header = _header;
-  [navigation setNavigationBarHidden:header == nil animated:animated];
+  // UIKit does the work of a change (the bar's items laid out again and re-attached) even when asked for the state it is in.
+  const BOOL hide = header == nil;
+  if (navigation.isNavigationBarHidden != hide) [navigation setNavigationBarHidden:hide animated:animated];
   if (header == nil) return;
   navigation.navigationBar.tintColor = SvelteColor([header spec].tint);
   // The back button shows the title of the screen below, unless this screen names it.
@@ -471,7 +477,7 @@ static std::string WithoutActivityState(const std::string &nativeId) {
     [toolbar applyAppearanceTo:bar];
     if (bar.semanticContentAttribute != self.semanticContentAttribute) bar.semanticContentAttribute = self.semanticContentAttribute;
   }
-  [navigation setToolbarHidden:!shown animated:animated];
+  if (navigation.isToolbarHidden == shown) [navigation setToolbarHidden:!shown animated:animated];
 }
 
 - (void)update {

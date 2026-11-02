@@ -55,6 +55,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)markPresentationModal;
 /// The navigation bar's visibility and tint, and the toolbar's, for this screen being shown in `navigation`.
 - (void)applyBarConfigurationTo:(UINavigationController *)navigation animated:(BOOL)animated;
+/// Whether showing this screen in `navigation` shows or hides the navigation bar.
+- (BOOL)changesBarVisibilityOf:(UINavigationController *)navigation;
 - (void)markUnmounted;
 - (void)markUserDismissed;
 /// A screen removed while it is still live (not through `activityState` 0, which the stack takes away first) keeps drawing as a picture, so UIKit's transition has something to move.

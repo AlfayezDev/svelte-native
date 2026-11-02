@@ -17,7 +17,7 @@ import {
 	parseNightMode,
 	parsePids,
 	parseSetting,
-	parseNavigationBarFrame, parseStatusBarFrame,
+	parseCutoutTop, parseNavigationBarFrame, parseStatusBarFrame, parseUptimeSeconds,
 	type DisplayInfo,
 } from "../parse/device-state.ts";
 
@@ -122,10 +122,44 @@ export function deviceGone(error: unknown): boolean {
 	);
 }
 
-/** The status bar band of the display (its inset frame from the window manager), the region whose clock and icons vary. */
-export async function statusBarRect(serial: string): Promise<Rect> {
-	const result = await shell(serial, "dumpsys window", { timeoutMs: 60_000 });
-	return parseStatusBarFrame(result.stdout);
+/**
+ * How long a device must have been up before the window manager's answer about its bars is the one it keeps. After a boot the status bar is laid
+ * out in steps: 63 px (no camera cutout known), then the cutout (128 px) while the bar is still 63, then 128 (measured on the OVH emulator, 2 Nov: the
+ * whole sequence takes 5 to 9 s after the system says it has booted). A reference frozen from the first answer masks half of the band the clock is drawn in.
+ */
+export const barsSettleUptimeS = 60;
+
+export type StatusBarDeps = {
+	run?: AdbRun;
+	wait?: (ms: number) => Promise<void>;
+	now?: () => number;
+	/** How long to wait for two consistent answers in a row, once the device has been up long enough. */
+	timeoutMs?: number;
+};
+
+/**
+ * The status bar band of the display (its inset frame from the window manager), the region whose clock and icons vary. It is read only once the bars are
+ * settled: the device has been up `barsSettleUptimeS`, the band reaches at least the display cutout's inset, and two answers a second apart agree. A band
+ * that does not settle in `timeoutMs` is an error, not a guess: a mask frozen from a half-laid-out bar leaves the clock outside it.
+ */
+export async function statusBarRect(serial: string, deps: StatusBarDeps = {}): Promise<Rect> {
+	const run = deps.run ?? realAdb;
+	const wait = deps.wait ?? sleep;
+	const now = deps.now ?? Date.now;
+	const uptime = parseUptimeSeconds(await run(serial, ["shell", "cat", "/proc/uptime"]));
+	if (uptime !== null && uptime < barsSettleUptimeS) await wait(Math.ceil((barsSettleUptimeS - uptime) * 1000));
+	const deadline = now() + (deps.timeoutMs ?? 60_000);
+	let previous: Rect | null = null;
+	for (;;) {
+		const dump = await run(serial, ["shell", "dumpsys", "window"], { timeoutMs: 60_000 });
+		const band = parseStatusBarFrame(dump);
+		const cutout = parseCutoutTop(dump);
+		const consistent = band.height >= cutout;
+		if (consistent && previous !== null && previous.x === band.x && previous.y === band.y && previous.width === band.width && previous.height === band.height) return band;
+		previous = consistent ? band : null;
+		if (now() >= deadline) throw new Error(`the status bar band did not settle: the window manager says ${band.width}x${band.height} at ${band.x},${band.y} with a display cutout of ${cutout} px`);
+		await wait(1000);
+	}
 }
 
 /** The navigation bar's band: the gesture pill is drawn a level differently from one launch to the next, like the status bar's icons. */
@@ -325,11 +359,13 @@ async function setProxy(serial: string, value: string | null, run: AdbRun): Prom
 	}
 }
 
-/** The settings in which two captured states differ, as `name: was -> is`. */
+/** The settings in which two captured states differ, as `name: was -> is`. A text size is a number: "1.00" (what a variant writes) and "1.0" (what the settings provider keeps) are the same size. */
 export function stateDifferences(was: DeviceState, now: DeviceState): string[] {
 	const names = Object.keys(was) as (keyof DeviceState)[];
+	const same = (name: keyof DeviceState) =>
+		was[name] === now[name] || (name === "fontScale" && was.fontScale !== null && now.fontScale !== null && Number(was.fontScale) === Number(now.fontScale));
 	return names
-		.filter((name) => was[name] !== now[name])
+		.filter((name) => !same(name))
 		.map((name) => `${name}: ${JSON.stringify(was[name])} -> ${JSON.stringify(now[name])}`);
 }
 

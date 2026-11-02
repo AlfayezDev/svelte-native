@@ -92,6 +92,21 @@ export function parseStatusBarFrame(stdout: string): Rect {
 	return { x: left, y: top, width: right - left, height: bottom - top };
 }
 
+/**
+ * `dumpsys window`: the top inset of the display cutout (`mDisplayCutout=DisplayCutout{insets=Rect(0, 128 - 0, 0)`, the camera hole's band), 0 when the
+ * display has none or the window manager has not worked it out yet. The status bar's own band reaches at least that far once the system bars are laid out.
+ */
+export function parseCutoutTop(stdout: string): number {
+	const inset = /mDisplayCutout=DisplayCutout\{insets=Rect\((\d+), (\d+) - (\d+), (\d+)\)/.exec(stdout);
+	return inset?.[2] === undefined ? 0 : Number(inset[2]);
+}
+
+/** `/proc/uptime`: seconds since the device booted, null when it cannot be read. */
+export function parseUptimeSeconds(stdout: string): number | null {
+	const seconds = Number.parseFloat(stdout.trim().split(/\s+/)[0] ?? "");
+	return Number.isFinite(seconds) && seconds >= 0 ? seconds : null;
+}
+
 /** The navigation bar's band (the gesture pill or the three buttons), or null on a device that reports none. */
 export function parseNavigationBarFrame(stdout: string): Rect | null {
 	const frame = /type=navigationBars frame=\[(\d+),(\d+)\]\[(\d+),(\d+)\]/.exec(stdout);

@@ -37,6 +37,7 @@ import {
 	readReference,
 	redactedFailure,
 	referenceMasks,
+	statusBarMaskProblem,
 	writeManifest,
 	writeReference,
 	type Manifest,
@@ -362,6 +363,9 @@ async function runCase(
 				verdict: "missing-reference",
 				detail: `no reference in screenshots/${context.deviceKind}; run with --update to create it`,
 			});
+		// A reference whose status bar mask is not the device's band compares the clock and the icons: no screenshot decides that.
+		const barProblem = statusBarMaskProblem(previous.masks, context.statusBar);
+		if (barProblem) return caseRecord(screen, variant, { verdict: "error", detail: barProblem });
 		return await context.session.guarded(() => checkCase(context, screen, variant, previous));
 	} catch (error) {
 		// A device that went away, or one left with a proxy or text size the case does not need, fails every case after

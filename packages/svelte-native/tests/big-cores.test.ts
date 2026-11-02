@@ -83,3 +83,17 @@ test.skipIf(!tools)("a thread whose mask lies inside the pinned one inherited it
   const out = run(subsets.map(([, mask, of]) => `subset ${mask} ${of}`));
   subsets.forEach(([description, , , expected], i) => { expect(out[i], description).toBe(String(expected)); });
 });
+
+const others: [string, number, string, string][] = [
+  ["Galaxy A16: the six little cores", 8, "c0", "3f"],
+  ["tri-cluster: the four little and the three mid cores", 8, "f0", "f"],
+  ["a core offline keeps its index", 8, "40", "bf"],
+  ["the big cores are all there are: nowhere to move to", 2, "3", "0"],
+  ["more cores than a mask holds: the first 63", 70, "c0", "7fffffffffffff3f"],
+  ["no cores known", 0, "c0", "0"],
+];
+
+test.skipIf(!tools)("work that nothing waits for gets the cores the big ones leave", () => {
+  const out = run(others.map(([, cpus, big]) => `others ${cpus} ${big}`));
+  others.forEach(([description, , , expected], i) => { expect(out[i], description).toBe(expected); });
+});

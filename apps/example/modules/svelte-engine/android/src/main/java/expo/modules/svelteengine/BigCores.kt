@@ -39,6 +39,15 @@ internal object BigCores {
     return mask.takeIf { it != 0L }
   }
 
+  /**
+   * The cores among the first [cpus] indexes (at most [MAX_CPUS]) that are not in [big]: where work that nothing waits for goes while the big
+   * cores are held for the start. 0 when [big] covers them all.
+   */
+  fun others(cpus: Int, big: Long): Long {
+    val all = (1L shl cpus.coerceIn(0, MAX_CPUS)) - 1
+    return all and big.inv()
+  }
+
   /** Whether every core of [mask] is in [of]. */
   fun isSubset(mask: Long, of: Long): Boolean = mask != 0L && (mask and of.inv()) == 0L
 }

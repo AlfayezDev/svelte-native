@@ -34,9 +34,11 @@ internal object Affinity {
     return (read("$base/cpu_capacity") ?: read("$base/cpufreq/cpuinfo_max_freq"))?.trim()?.toLongOrNull() ?: 0L
   }
 
+  /** The number of CPU indexes of the device (`/sys/devices/system/cpu/possible`; a core that is offline still has its index). Read once. */
+  private val cpus: Int by lazy { BigCores.possibleCount(read("/sys/devices/system/cpu/possible") ?: "") }
+
   private val big: Long? by lazy {
     if (!available) return@lazy null
-    val cpus = BigCores.possibleCount(read("/sys/devices/system/cpu/possible") ?: "")
     if (cpus == 0) null else BigCores.mask(LongArray(cpus) { capacity(it) })
   }
 
@@ -51,9 +53,8 @@ internal object Affinity {
    */
   fun keepOffBigCores() {
     val big = bigCores() ?: return
-    val all = (1L shl Runtime.getRuntime().availableProcessors()) - 1
-    val little = all and big.inv()
-    if (little != 0L) setAffinity(0, little)
+    val others = BigCores.others(cpus, big)
+    if (others != 0L) setAffinity(0, others)
   }
 
   /** The thread ids of this process. */

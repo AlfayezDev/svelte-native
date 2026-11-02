@@ -13,6 +13,7 @@ import {
 } from "../lib/adb.ts";
 import { dexoptFlag, defaultApkPath, describeApk, prepareApp } from "../lib/app.ts";
 import { channelOutDir, qaChannel } from "../lib/channel.ts";
+import { readBootId } from "../lib/device.ts";
 import { exec } from "../lib/exec.ts";
 import { flagString, integerFlag, parseFlags, platformOf, requireString } from "../lib/flags.ts";
 import { currentSource } from "../lib/git.ts";
@@ -31,6 +32,7 @@ import {
 	parsePublished,
 	publishArguments,
 	publishEnvironment,
+	restartProblem,
 	runUpdatesScenario,
 	type BadFault,
 	type DeviceState,
@@ -182,6 +184,18 @@ export async function updates(argv: string[]): Promise<void> {
 	let live: UpdatesScenario | null = null;
 	let publishing: Promise<unknown> = Promise.resolve();
 	let driver: UpdatesDriver | null = null;
+	// The device's boot id as the run saw it last: a change means the device restarted under the run (the problem is recorded once per restart).
+	let bootId: string | null = null;
+	const restartProblems: string[] = [];
+	const checkRestart = async (where: string) => {
+		const now = await readBootId(serial);
+		const problem = restartProblem(bootId, now, where);
+		if (problem !== null) {
+			restartProblems.push(problem);
+			note(`problem: ${problem}`);
+		}
+		bootId = now ?? bootId;
+	};
 
 	/** Whatever the run did to the device settings, undone; the plain QA build put back. Safe to run more than once. */
 	let restored = false;
@@ -257,6 +271,7 @@ export async function updates(argv: string[]): Promise<void> {
 		// 2. The channel build, installed over what is there. It resets its own update state on the first start (--reset app), or
 		// the data is cleared (--reset data, a lab emulator only).
 		app = await prepareApp(serial, device, { apk, noInstall: false, packageName, dexopt });
+		bootId = await readBootId(serial);
 		await forceStop(serial, packageName);
 		if (reset === "data") await clearAppData((command) => shell(serial, command), identity, packageName);
 		else {
@@ -283,6 +298,7 @@ export async function updates(argv: string[]): Promise<void> {
 		driver = {
 			async launch(phase): Promise<UpdateLaunch> {
 				const index = ++launchCount;
+				await checkRestart(`before launch ${index} (${phase})`);
 				await wake(serial);
 				await forceStop(serial, packageName);
 				await sleep(1000);
@@ -334,6 +350,8 @@ export async function updates(argv: string[]): Promise<void> {
 		};
 
 		scenario = await runUpdatesScenario(driver, options, (observed) => { live = observed; });
+		await checkRestart("during the run");
+		scenario.errors.push(...restartProblems);
 		// A run that failed in a way the scenario could not recover from still owes the channel its clean-up.
 		if (scenario.attempts.length > 0 && !scenario.cleanup.healthy && scenario.cleanup.published === null) await ensureHealthyChannel(driver, scenario);
 	} finally {

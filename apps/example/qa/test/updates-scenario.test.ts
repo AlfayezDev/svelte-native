@@ -10,6 +10,7 @@ import {
 	parsePublished,
 	publishArguments,
 	publishEnvironment,
+	restartProblem,
 	runUpdatesScenario,
 	updatesMetrics,
 	type BadFault,
@@ -429,6 +430,17 @@ describe("boot comparison", () => {
 		expect(boot.enabled).toMatchObject({ samples: 1, failed: 1 });
 		expect(boot.baseline).toBeNull();
 		expect(boot.delta).toBeNull();
+	});
+});
+
+describe("a device that restarts under the run", () => {
+	test("a changed boot id is a problem that says where it was noticed; the same id, or one that could not be read, is not", () => {
+		expect(restartProblem("aaaa", "aaaa", "before launch 2")).toBeNull();
+		expect(restartProblem("aaaa", null, "before launch 2")).toBeNull();
+		expect(restartProblem(null, "bbbb", "before launch 2")).toBeNull();
+		const problem = restartProblem("aaaa", "bbbb", "before launch 2 (baseline)");
+		expect(problem).toContain("restarted before launch 2 (baseline)");
+		expect(problem).toContain("from aaaa to bbbb");
 	});
 });
 

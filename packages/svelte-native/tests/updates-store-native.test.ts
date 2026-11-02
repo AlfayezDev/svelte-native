@@ -6,14 +6,14 @@ import { join, resolve } from "node:path";
 import { findHostJars } from "./native/host-tools.ts";
 
 /**
- * The Android updates store (`UpdateStore.kt`) and the QA reset decision (`QaReset.kt`) compiled for the host and driven by scripted
- * commands against a real directory: launch selection, the launch marker and its failure rules, clean-up, reset, a corrupt index, and
- * the per-directory lock. Skipped when `kotlinc`, `java`, an Android SDK `android.jar` (compile-time types only) or the `org.json`
+ * The Android updates store (`UpdateStore.kt`), the QA reset decision (`QaReset.kt`) and the asset download (`Http.kt`) compiled for the
+ * host and driven by scripted commands against a real directory (the download against a local HTTP server): launch selection, the
+ * launch marker and its failure rules, clean-up, reset, a corrupt index, the per-directory lock, and which asset file is trusted. Skipped when `kotlinc`, `java`, an Android SDK `android.jar` (compile-time types only) or the `org.json`
  * jar (the real implementation Android provides) is not found (`native/host-tools.ts` says where they are looked for; under CI=1
  * `native-tools.test.ts` fails instead of letting this skip).
  */
 const module = resolve(import.meta.dirname, "../../../apps/platform/modules/svelte-updates/android/src/main/java/expo/modules/svelteupdates");
-const sources = ["UpdateStore.kt", "UpdatesConfig.kt", "QaReset.kt"].map((file) => join(module, file)).concat(resolve(import.meta.dirname, "native/UpdateStoreHost.kt"));
+const sources = ["UpdateStore.kt", "UpdatesConfig.kt", "QaReset.kt", "Http.kt"].map((file) => join(module, file)).concat(resolve(import.meta.dirname, "native/UpdateStoreHost.kt"));
 
 const { androidJar, jsonJar } = findHostJars();
 // The first test compiles the host (about ten seconds).
@@ -202,5 +202,57 @@ describe.skipIf(!tools)("the lock", () => {
   test("store objects for one directory share a lock: concurrent commits through different objects are not lost", () => {
     const out = run(["race 8", "state"]);
     expect(out[0]).toBe("updates=40");
+  });
+});
+
+const sha256 = (text: string) => createHash("sha256").update(text).digest("base64url");
+const EMPTY = sha256("");
+const answer = (value: string | undefined) => Object.fromEntries((value ?? "").split(" ").map((pair) => pair.split("=") as [string, string]));
+
+describe.skipIf(!tools)("the hash encoding", () => {
+  test("base64url without padding is the same as java.util.Base64's for every length up to 70, and Node's for the empty file", () => {
+    const out = run(["base64 70", "hash ", "hash hello world"]);
+    expect(out[0]).toBe("different=-");
+    expect(out[1]).toBe(EMPTY);
+    expect(out[2]).toBe(sha256("hello world"));
+  });
+});
+
+describe.skipIf(!tools)("which asset file is trusted", () => {
+  test("an asset that is not in place is downloaded, checked against the manifest's hash, and left with no temporary file", () => {
+    const out = run(["serve font the font bytes", "ensure assets/a.ttf font 1 the font bytes", "look assets/a.ttf"]);
+    expect(answer(out[1])).toEqual({ hash: sha256("the font bytes"), requests: "1", damaged: "-" });
+    expect(out[2]).toBe("content=the font bytes tmp=false");
+  });
+  test("an asset in place that hashes to the manifest's is kept without a request", () => {
+    const out = run(["serve font the font bytes", "put assets/a.ttf the font bytes", "ensure assets/a.ttf font 1 the font bytes"]);
+    expect(answer(out[2])).toEqual({ hash: sha256("the font bytes"), requests: "0", damaged: "-" });
+  });
+  test("an empty file in place (a download whose data a crash cut off) is not trusted: it is reported, downloaded again and replaced", () => {
+    const out = run(["serve font the font bytes", "put assets/a.ttf", "ensure assets/a.ttf font 1 the font bytes", "look assets/a.ttf"]);
+    expect(answer(out[2])).toEqual({ hash: sha256("the font bytes"), requests: "1", damaged: EMPTY });
+    expect(out[3]).toBe("content=the font bytes tmp=false");
+  });
+  test("a file in place with other bytes is replaced the same way", () => {
+    const out = run(["serve font the font bytes", "put assets/a.ttf torn", "ensure assets/a.ttf font 1 the font bytes", "look assets/a.ttf"]);
+    expect(answer(out[2])).toEqual({ hash: sha256("the font bytes"), requests: "1", damaged: sha256("torn") });
+    expect(out[3]).toBe("content=the font bytes tmp=false");
+  });
+  test("bytes from the server that are not the manifest's are rejected, whether or not a file was in place, and never take its place", () => {
+    const out = run(["serve font other bytes", "ensure assets/a.ttf font 1 the font bytes", "look assets/a.ttf", "put assets/b.ttf torn", "ensure assets/b.ttf font 1 the font bytes", "look assets/b.ttf"]);
+    expect(out[1]).toContain(`error IOException: Download of http://127.0.0.1:`);
+    expect(out[1]).toContain(`has SHA-256 ${sha256("other bytes")}, expected ${sha256("the font bytes")}`);
+    expect(out[2]).toBe("content=- tmp=false");
+    expect(out[4]).toContain("has SHA-256");
+    expect(out[5]).toBe("content=torn tmp=false");
+  });
+  test("a file that belongs to one update (the bundle, reuse off) is downloaded even when an intact one is in place", () => {
+    const out = run(["serve bundle new bundle", "put updates/b.bundle new bundle", "ensure updates/b.bundle bundle 0 new bundle"]);
+    expect(answer(out[2])).toEqual({ hash: sha256("new bundle"), requests: "1", damaged: "-" });
+  });
+  test("a server error is an error that names the status, and leaves nothing behind", () => {
+    const out = run(["ensure assets/a.ttf missing 1 the font bytes", "look assets/a.ttf"]);
+    expect(out[0]).toContain("failed with status 404");
+    expect(out[1]).toBe("content=- tmp=false");
   });
 });

@@ -38,6 +38,19 @@ describe("native module contract", () => {
     expect(kotlin("UpdateStore.kt")).toContain('"index.android.bundle"');
     expect(read("ios/UpdateStore.swift")).toContain('"main.jsbundle"');
   });
+  test("both platforms sync a download before it gets its name, and trust an asset in place only after it hashes to the manifest's", () => {
+    const android = kotlin("Http.kt");
+    const swift = read("ios/Http.swift");
+    // The Kotlin side is run by `updates-store-native.test.ts`; the Swift side is compiled only on the Mac, so its order is pinned here.
+    expect(android.indexOf("fd.sync()")).toBeGreaterThan(-1);
+    expect(android.indexOf("fd.sync()")).toBeLessThan(android.indexOf("renameTo"));
+    expect(swift.indexOf("synchronize()")).toBeGreaterThan(-1);
+    expect(swift.indexOf("synchronize()")).toBeLessThan(swift.indexOf(".moveItem(at: temporary"));
+    expect(kotlin("SvelteUpdatesModule.kt")).toContain("Http.ensure(");
+    expect(read("ios/SvelteUpdatesModule.swift")).toContain("Http.ensure(");
+    expect(kotlin("SvelteUpdatesModule.kt")).not.toContain("Http.sha256(");
+    expect(read("ios/SvelteUpdatesModule.swift")).not.toContain("Http.sha256(");
+  });
   test("the config keys are the ones Expo's config plugin writes", () => {
     const keys = ["ENABLED", "EXPO_UPDATE_URL", "EXPO_RUNTIME_VERSION", "UPDATES_CONFIGURATION_REQUEST_HEADERS_KEY", "EXPO_UPDATES_CHECK_ON_LAUNCH", "EXPO_UPDATES_LAUNCH_WAIT_MS", "HAS_EMBEDDED_UPDATE"];
     const android = kotlin("UpdatesConfig.kt");

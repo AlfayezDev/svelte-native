@@ -311,6 +311,9 @@ test("rows of one size keep the style objects of their wrappers when the list gr
   await t.result.tick();
   expect(wrapperStyle("r3")).toBe(before); // the same object: its effect did not run for a longer list
   expect(t.ids()).toContain("r8");
+  (t.app as unknown as { setRowHeight: (size: number) => void }).setRowHeight(50);
+  await t.result.tick();
+  expect(wrapperStyle("r3")).toEqual({ position: "absolute", top: 150, left: 0, right: 0, height: 50 });
 });
 
 test("a list that waits for its overscan lets go of the wait when it empties", async () => {

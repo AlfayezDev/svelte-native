@@ -211,6 +211,28 @@
     return out;
   });
 
+  // The rows of a list whose rows all have one size, each with its key and the style of its wrapper made once and kept while the key and the
+  // placement hold: the block that renders them reads a member of its item where it called `keyAt` and `wrapperStyle` for every row (a derived
+  // and its bookkeeping per row), and a row whose index did not move keeps the style object its effect already set. Plain bookkeeping, never rendered.
+  type Described = { index: number; key: string | number; style: ViewStyle; place: unknown };
+  let described = new Map<number, Described>();
+  const fixedRows = $derived.by(() => {
+    const place = placeFixed;
+    if (!place) return [];
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- bookkeeping of this derived, read and written only here, never rendered
+    const next = new Map<number, Described>();
+    const out: Described[] = [];
+    for (const index of indices) {
+      const key = keyAt(index);
+      let row = described.get(index);
+      if (!row || row.key !== key || row.place !== place) row = { index, key, style: place(index), place };
+      next.set(index, row);
+      out.push(row);
+    }
+    described = next;
+    return out;
+  });
+
   // Recycle pool: sized for a full window up front for fixed rows, grown to the high-water mark otherwise.
   const windowSize = $derived(Math.max(0, last - first + 1));
   const poolSize = $derived(Math.max(pool, fixed && viewport ? Math.min(count, Math.ceil(viewport / (rowHeight as number)) + 1 + 2 * overscan) : 0, windowSize));
@@ -388,6 +410,13 @@
         {#each indices as index (keyAt(index))}
           <native-view nativeStyle={wrapperStyle(index)} nativeProps={rowProps(index, keyAt(index))}>
             {@render row(items[index], index)}
+          </native-view>
+        {/each}
+      {:else if fixed}
+        <!-- Rows of one size are described once (key and wrapper style), so the block reads a member of its item where it used to call. -->
+        {#each fixedRows as described (described.key)}
+          <native-view nativeStyle={described.style}>
+            {@render row(items[described.index], described.index)}
           </native-view>
         {/each}
       {:else}

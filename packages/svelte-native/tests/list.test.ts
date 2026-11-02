@@ -332,3 +332,16 @@ test("a list that waits for its overscan lets go of the wait when it empties", a
     [scope.requestAnimationFrame, scope.cancelAnimationFrame] = saved;
   }
 });
+
+test("rows of one size keep their wrappers when rows arrive in front of them, and move to their new places", async () => {
+  const t = await setup({ count: 20, rowHeight: 40 });
+  const app = t.app as unknown as { prepend: (count: number) => void };
+  const wrapperBefore = t.wrapper("r3");
+  expect(t.style("r3").top).toBe(120);
+  app.prepend(2);
+  await t.result.tick();
+  expect(t.wrapper("r3")).toBe(wrapperBefore); // the key kept its row
+  expect(t.style("r3").top).toBe(200); // 2 + 3 rows above it now
+  expect(t.style("r-2").top).toBe(0);
+  expect(t.ids().slice(0, 3)).toEqual(["r-2", "r-1", "r0"]);
+});

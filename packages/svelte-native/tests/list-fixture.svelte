@@ -7,7 +7,10 @@
   let override = $state<number | null>(null);
   const total = $derived(override ?? count);
   export function setCount(next: number) { override = next; }
-  const items = $derived(none ? [] : Array.from({ length: total }, (_, index) => ({ id: `r${index}`, label: `Row ${index}` })));
+  // Rows that arrive in front of the ones there are: the keys keep their rows and their indexes move.
+  let base = $state(0);
+  export function prepend(n: number) { base -= n; override = total + n; }
+  const items = $derived(none ? [] : Array.from({ length: total }, (_, index) => ({ id: `r${index + base}`, label: `Row ${index + base}` })));
   let list: { scrollToIndex: (index: number, animated?: boolean) => void } | undefined = $state();
   export function jump(index: number) { list?.scrollToIndex(index, false); }
 </script>

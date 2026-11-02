@@ -128,6 +128,11 @@ export function applyHeadlessApplication(contents: string, onDemand: Record<stri
     .replace(blockPattern(packagesBegin, packagesEnd), "")
     .replace(blockPattern(startBegin, startEnd), "")
     .replace(blockPattern(attachBegin, attachEnd), "");
+  // The plugin adds `attachBaseContext` (the native libraries load while the Application is set up). A consumer's own override is theirs: it must make the call itself.
+  const ownAttach = /\boverride\s+fun\s+attachBaseContext\s*\(/.test(stripped);
+  if (ownAttach && !stripped.includes("BootBoost.preloadLibraries(")) {
+    throw new Error("Svelte native: MainApplication.kt already overrides attachBaseContext. Call expo.modules.svelteengine.BootBoost.preloadLibraries(base) in it, after super.attachBaseContext(base); the plugin adds its own override only where there is none.");
+  }
   const packagesAnchor = /^[ \t]*\/\/ add\(MyReactNativePackage\(\)\)[ \t]*$/m.exec(stripped);
   const startAnchor = /^[ \t]*ApplicationLifecycleDispatcher\.onApplicationCreate\(this\)[ \t]*$/m.exec(stripped);
   if (!packagesAnchor || !startAnchor) throw new Error("Svelte native could not find the package list or onApplicationCreate in MainApplication.kt");
@@ -170,7 +175,7 @@ export function applyHeadlessApplication(contents: string, onDemand: Record<stri
   const startAt = startAnchor.index + startAnchor[0].length;
   // The anchors come in file order: the package list (the host's lazy initializer sits above onCreate), onCreate, the application hook.
   if (packagesAt > createAnchor.index || createAnchor.index > startAt) throw new Error("Svelte native expected the package list, onCreate and onApplicationCreate in that order in MainApplication.kt");
-  return `${stripped.slice(0, packagesAt)}\n${packages}${stripped.slice(packagesAt, createAnchor.index)}${attach}${stripped.slice(createAnchor.index, startAt)}\n${start}${stripped.slice(startAt)}`;
+  return `${stripped.slice(0, packagesAt)}\n${packages}${stripped.slice(packagesAt, createAnchor.index)}${ownAttach ? "" : attach}${stripped.slice(createAnchor.index, startAt)}\n${start}${stripped.slice(startAt)}`;
 }
 
 /**

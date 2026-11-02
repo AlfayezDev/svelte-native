@@ -70,10 +70,16 @@
     ref?: (instance: NativeScrollView | null) => void;
   } = $props();
 
+  /** Frames between the rows that show and the overscan rows around them. */
+  const OVERSCAN_FRAMES = 4;
+
   const fixed = $derived(rowHeight !== undefined);
   const measured = $derived(rowHeight === undefined && !rowHeights);
   const keyFn = $derived(keyOf ?? keyExtractor);
-  const keyAt = (index: number) => (keyFn ? keyFn(items[index], index) : index);
+  const keyAt = (index: number) => {
+    const key = keyFn;
+    return key ? key(items[index], index) : index;
+  };
 
   let scroller: Scroller | null = null;
   let scroll = $state(0);
@@ -155,16 +161,25 @@
 
   const count = $derived(items.length);
   // The overscan rows are not what the user sees first. A list that fills (or fills again after it was empty) mounts the rows that
-  // show, and the overscan follows in the next frame: the screen's rows reach the layout before the rows around them do.
+  // show, and the overscan follows a few frames later: the screen's rows reach the layout before the rows around them do. One frame
+  // was not enough on a phone whose cores have clocked down: the overscan's flush (3 ms, 16 nodes) started as soon as the first one
+  // ended, ahead of the layout event of the rows that show in the JavaScript thread's queue, and the user's rows waited for it.
   let overscanFrom = $state(false);
   const reach = $derived(overscanFrom ? overscan : 0);
   $effect(() => {
     if (count === 0) { overscanFrom = false; return; }
     if (overscanFrom) return;
-    const frameRequest = (globalThis as { requestAnimationFrame?: (callback: () => void) => number }).requestAnimationFrame;
+    const scope = globalThis as { requestAnimationFrame?: (callback: () => void) => number; cancelAnimationFrame?: (handle: number) => void };
+    const frameRequest = scope.requestAnimationFrame;
     if (!frameRequest) { overscanFrom = true; return; }
-    const handle = frameRequest(() => { overscanFrom = true; });
-    return () => (globalThis as { cancelAnimationFrame?: (handle: number) => void }).cancelAnimationFrame?.(handle);
+    let remaining = OVERSCAN_FRAMES;
+    let handle = 0;
+    const step = () => {
+      if (--remaining > 0) handle = frameRequest(step);
+      else overscanFrom = true;
+    };
+    handle = frameRequest(step);
+    return () => scope.cancelAnimationFrame?.(handle);
   });
   const start = $derived(initialScrollIndex ?? 0);
   const first = $derived.by(() => {
@@ -212,7 +227,18 @@
     return index <= last ? index : -1;
   }
 
+  // Rows that all have one size are placed by index times that size, which needs nothing of the item table: one derived for the list that
+  // every row asks once (a row used to read six signals for the same answer), and a list that grows leaves the rows it has alone.
+  const placeFixed = $derived.by(() => {
+    if (rowHeight === undefined) return null;
+    const size = rowHeight;
+    return horizontal
+      ? (index: number): ViewStyle => ({ position: "absolute", left: index * size, top: 0, bottom: 0, width: size })
+      : (index: number): ViewStyle => ({ position: "absolute", top: index * size, left: 0, right: 0, height: size });
+  });
   function wrapperStyle(index: number): ViewStyle {
+    const place = placeFixed;
+    if (place) return place(index);
     const size = fixed || !measured ? sizeAt(index) : undefined;
     return horizontal
       ? { position: "absolute", left: layout.offsetOf(index), top: 0, bottom: 0, width: size }

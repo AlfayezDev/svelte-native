@@ -42,9 +42,22 @@ const remotePath = "export PATH=/usr/bin:/bin:/usr/sbin:/sbin:$PATH";
  */
 const statusMarker = "__native_qa_status=";
 
-/** The command runs in a subshell, so an `exit` in it ends only the subshell and the status line still follows. */
+const shellPrefix = "/bin/sh -c ";
+
+/**
+ * The command runs in a subshell, so an `exit` in it ends only the subshell and the status line still follows. The Mac's login shell is zsh,
+ * which sshd hands the command line to: the script runs under an explicit `/bin/sh -c '<script>'`, so no special variable of zsh (`path` is tied to
+ * `$PATH`, `status` is read-only) can reach it, whatever a script names its variables.
+ */
 export function sshArgs(mac: Mac, command: string): string[] {
-	return [...sshOptions, mac.target, `${remotePath}; (\n${command}\n); printf '\\n${statusMarker}%d\\n' $?`];
+	const script = `${remotePath}; (\n${command}\n); printf '\\n${statusMarker}%d\\n' $?`;
+	return [...sshOptions, mac.target, `${shellPrefix}${shellQuote(script)}`];
+}
+
+/** The script inside the last argument `sshArgs` made (what the Mac's `/bin/sh` is given): for tests and logs that read what a call asked the Mac to run. */
+export function scriptOf(remoteCommand: string): string {
+	if (!remoteCommand.startsWith(`${shellPrefix}'`) || !remoteCommand.endsWith("'")) return remoteCommand;
+	return remoteCommand.slice(shellPrefix.length + 1, -1).replaceAll("'\\''", "'");
 }
 
 /** A command line for the remote shell: each word quoted. */

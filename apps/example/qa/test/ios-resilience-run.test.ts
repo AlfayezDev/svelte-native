@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { runPlan, restoreHints } from "../commands/ios-resilience.ts";
 import type { ExecResult } from "../lib/exec.ts";
-import { macFrom, type Run } from "../lib/iphone/mac.ts";
+import { macFrom, scriptOf, type Run } from "../lib/iphone/mac.ts";
 import type { IosSession } from "../lib/iphone/session.ts";
 import { buildIosPlan, fullPlan, resultsFor, startedLine, whyStopped } from "../lib/iphone/resilience.ts";
 
@@ -24,7 +24,7 @@ function fakeMac(answers: { output: string; resilience?: string | null; last?: s
 	const scripts: string[] = [];
 	let alive = true;
 	const run: Run = async (_command, args): Promise<ExecResult> => {
-		const script = args.at(-1) ?? "";
+		const script = scriptOf(args.at(-1) ?? "");
 		scripts.push(script);
 		let stdout = "";
 		if (script.includes("nohup sh -c")) stdout = "4242\n";

@@ -135,7 +135,7 @@ export async function iosResilience(argv: string[]): Promise<void> {
 		"build-only": { type: "boolean" },
 		"assume-system-kill": { type: "boolean" },
 	});
-	const session = await startIosSuite("resilience", argv, values);
+	const session = await startIosSuite("resilience", argv, values, "qa", { uiTest: true });
 	const options: IosPlanOptions = {
 		rotationCycles: integerFlag(values.rotations, "rotations", fullPlan.rotationCycles),
 		backgroundCycles: integerFlag(values.cycles, "cycles", fullPlan.backgroundCycles),

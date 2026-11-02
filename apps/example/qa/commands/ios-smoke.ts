@@ -103,6 +103,8 @@ export async function iosSmoke(argv: string[]): Promise<void> {
 		jsErrorCount: null,
 		durationMs: Date.now() - launched,
 		logFile: logPath.slice(qaDir.length + 1),
+		// The crash log's reading goes into the file: an unreadable log (`crashReportsError`) leaves `smoke.fatals` not measured.
+		...crashLog.record,
 	};
 	for (const line of describeSmoke(file, pins)) console.log(line);
 	const name = await writeRun("smoke", session.device.serial, session.startedAt, file);

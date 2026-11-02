@@ -171,6 +171,13 @@ describe("metrics and gates", () => {
 		expect(metrics["smoke.jsErrors"]).toBe(3);
 		expect(metrics["smoke.ok"]).toBe(3);
 	});
+	test("a phone's crash log that could not be read leaves the fatals not measured, unless a crash is already counted", () => {
+		const unread = { crashReportsError: "after the run: over USB: no phone; through devicectl: the device was not found" };
+		expect(smokeMetrics(smokeFile([result("a")], unread), pins)["smoke.fatals"]).toBeNull();
+		// A dead app is a fatal whatever the log says; a log that was read (an empty list) is a measured zero.
+		expect(smokeMetrics(smokeFile([result("a")], { ...unread, crashes: ["the app (pid 12) was not running before the smoke test finished"] }), pins)["smoke.fatals"]).toBe(1);
+		expect(smokeMetrics(smokeFile([result("a")], { crashReports: [] }), pins)["smoke.fatals"]).toBe(0);
+	});
 	test("a module the list does not pin is reported, not counted as ok or failed", () => {
 		const file = smokeFile([result("a"), result("x", "fail"), result("b"), result("c"), result("d")]);
 		expect(unpinnedModules(file.results, pinned)).toEqual(["x"]);

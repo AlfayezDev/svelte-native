@@ -44,7 +44,7 @@ export function unexpectedSkips(results: readonly SmokeModuleResult[], pins: Smo
 
 /**
  * What the gates read of a run. `smoke.failed` counts the modules that logged `fail`, `smoke.missing` the pinned ones that logged
- * nothing, `smoke.unexpectedSkips` the skips the platform does not list, `smoke.fatals` the crashes, ANRs and interruptions, and
+ * nothing, `smoke.unexpectedSkips` the skips the platform does not list, `smoke.fatals` the crashes, ANRs and interruptions (not measured on iOS when the phone's crash log could not be read and no crash is counted already), and
  * `smoke.complete` is 1 for a run that logged its completion line, was not interrupted and did not crash. A run that did not complete
  * still counts what it saw. `smoke.unpinned` and `smoke.jsErrors` are reported, not gated.
  */
@@ -58,7 +58,8 @@ export function smokeMetrics(file: SmokeFile, pins: SmokePins): Metrics {
 		"smoke.unexpectedSkips": unexpectedSkips(file.results, pins).length,
 		"smoke.missing": missingModules(file.results, pins.modules).length,
 		"smoke.unpinned": unpinnedModules(file.results, pins.modules).length,
-		"smoke.fatals": file.crashes.length,
+		// An app that aborted after it wrote its results leaves only a crash report: a log that could not be read cannot say it did not, unless a crash is already counted.
+		"smoke.fatals": file.crashReportsError !== undefined && file.crashes.length === 0 ? null : file.crashes.length,
 		"smoke.jsErrors": file.jsErrorCount,
 		"smoke.complete": file.complete ? 1 : 0,
 	};

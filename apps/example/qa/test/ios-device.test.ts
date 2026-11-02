@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { execFile } from "node:child_process";
 import type { ExecOptions, ExecResult } from "../lib/exec.ts";
 import { appProcesses, launchApp, readAppFile } from "../lib/iphone/device.ts";
-import { macFrom, remote, remoteOk, sshArgs, words, type Run } from "../lib/iphone/mac.ts";
+import { macFrom, remote, remoteOk, scriptOf, sshArgs, words, type Run } from "../lib/iphone/mac.ts";
 import { launchArguments } from "../lib/iphone/capture.ts";
 
 type Call = { command: string; args: string[]; options?: ExecOptions };
@@ -19,7 +20,7 @@ function recorder(answers: ExecResult[]): { run: Run; calls: Call[] } {
 }
 
 const ok = (stdout: string): ExecResult => ({ code: 0, stdout, stderr: "" });
-const remoteLine = (call: Call | undefined): string => call?.args[call.args.length - 1] ?? "";
+const remoteLine = (call: Call | undefined): string => scriptOf(call?.args[call.args.length - 1] ?? "");
 
 describe("the Mac transport", () => {
 	test("commands run through one shared ssh connection with the system tools on the PATH", () => {
@@ -28,7 +29,20 @@ describe("the Mac transport", () => {
 		expect(args).toContain("BatchMode=yes");
 		expect(args).toContain("ControlMaster=auto");
 		expect(args[args.length - 2]).toBe("me@mac");
-		expect(args[args.length - 1]).toBe("export PATH=/usr/bin:/bin:/usr/sbin:/sbin:$PATH; (\necho hi\n); printf '\\n__native_qa_status=%d\\n' $?");
+		// The whole script is one argument of an explicit `/bin/sh -c`: the Mac's login shell (zsh) only starts that.
+		expect(args[args.length - 1]).toBe("/bin/sh -c 'export PATH=/usr/bin:/bin:/usr/sbin:/sbin:$PATH; (\necho hi\n); printf '\\''\\n__native_qa_status=%d\\n'\\'' $?'");
+		expect(scriptOf(args[args.length - 1] ?? "")).toBe("export PATH=/usr/bin:/bin:/usr/sbin:/sbin:$PATH; (\necho hi\n); printf '\\n__native_qa_status=%d\\n' $?");
+	});
+
+	test("a script with quotes, dollars and a variable zsh ties to its PATH reaches the Mac's shell as it was written, under sh and under zsh", async () => {
+		const script = `echo "it's $HOME" | wc -c > /dev/null; printf '%s\\n' "a'b"; while IFS= read -r path; do echo "$path"; done <<EOF\nx\nEOF\ncode=$?; echo "$PATH" | grep -q . && echo pathkept`;
+		expect(scriptOf(sshArgs(macFrom("me@mac", async () => ({ code: 0, stdout: "", stderr: "" })), script).at(-1) ?? "")).toContain(script);
+		for (const shell of ["/bin/sh", ...(existsSync("/usr/bin/zsh") ? ["/usr/bin/zsh"] : [])]) {
+			const mac = macFrom("me@mac", (_command, args) => new Promise((resolve) => execFile(shell, ["-c", args[args.length - 1] ?? ""], (error, stdout, stderr) => resolve({ code: error ? (typeof error.code === "number" ? error.code : 1) : 0, stdout, stderr }))));
+			const result = await remote(mac, script);
+			// Whatever shell receives the line, the script runs under `/bin/sh`: `path` is a plain variable there, and PATH is still there afterwards.
+			expect(result).toEqual({ code: 0, stdout: "a'b\nx\npathkept\n", stderr: "" });
+		}
 	});
 
 	test("the exit status comes from the status line, because the Mac's ssh answers 0 for a failed command", async () => {

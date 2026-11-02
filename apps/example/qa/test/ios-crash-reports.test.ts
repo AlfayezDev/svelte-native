@@ -1,18 +1,22 @@
 import { describe, expect, test } from "bun:test";
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ExecResult } from "../lib/exec.ts";
 import {
 	attribute,
 	clockSkewMs,
 	describeCrashReports,
+	fetchScript,
 	finishCrashWatch,
 	keepCrashFiles,
 	labRunsWithCrashes,
 	launchesWithCrashes,
 	listCrashLog,
+	listScript,
 	parseCrashLogListing,
 	parsePhoneTime,
 	parseUsbListing,
@@ -25,11 +29,12 @@ import {
 	startCrashWatch,
 	unattributed,
 	usbFilters,
+	usbGatherScript,
 	usbListScript,
 	withReports,
 } from "../lib/iphone/crash-reports.ts";
 import { parseIosLabResults, labRunFromIos } from "../lib/iphone/lab-results.ts";
-import { macFrom, type Run } from "../lib/iphone/mac.ts";
+import { macFrom, scriptOf, type Run } from "../lib/iphone/mac.ts";
 import type { CrashReport, Launch } from "../lib/types.ts";
 import { sample } from "./sample.ts";
 
@@ -295,19 +300,22 @@ type Call = { command: string; args: string[] };
  * Runs what `ssh` would run on the Mac, here in `sh`, with `path` as the whole PATH: nothing but the stand-in can answer as `xcrun`,
  * whatever is installed on this machine.
  */
-function runHere(script: string, path: string, env: Record<string, string>): Promise<ExecResult> {
+function runHere(script: string, path: string, env: Record<string, string>, shell = "/bin/sh"): Promise<ExecResult> {
 	const here = script.replace("export PATH=/usr/bin:/bin:/usr/sbin:/sbin:$PATH; ", "");
 	return new Promise<ExecResult>((resolve) =>
-		execFile("/bin/sh", ["-c", here], { env: { PATH: path, ...env } }, (error, stdout, stderr) => resolve({ code: error ? (typeof error.code === "number" ? error.code : 1) : 0, stdout, stderr })),
+		execFile(shell, ["-c", here], { env: { PATH: path, ...env } }, (error, stdout, stderr) => resolve({ code: error ? (typeof error.code === "number" ? error.code : 1) : 0, stdout, stderr })),
 	);
 }
+
+/** zsh is the login shell of the Mac (sshd hands every command line to it); where this machine has it, the scripts run under it too. */
+const zsh = existsSync("/usr/bin/zsh") ? "/usr/bin/zsh" : existsSync("/bin/zsh") ? "/bin/zsh" : null;
 
 /**
  * A Mac that is this machine: `ssh` runs the script in `sh` with a stand-in `xcrun` whose `devicectl` lists and copies the fixture's
  * crash log (the shapes `devicectl device info files --domain-type systemCrashLogs` and `device copy from` have on the lab phone), or
  * fails or hangs as the mode says; `scp` copies from a path. Nothing here reaches a phone.
  */
-async function fakeMac(): Promise<{ mac: ReturnType<typeof macFrom>; log: Call[]; phone: string; mode: { value: string }; usbMode: { value: string }; toolCalls: () => Promise<string>; cleanup: () => Promise<void> }> {
+async function fakeMac(shell = "/bin/sh"): Promise<{ mac: ReturnType<typeof macFrom>; log: Call[]; phone: string; mode: { value: string }; usbMode: { value: string }; here: (script: string, shell?: string) => Promise<ExecResult>; toolCalls: () => Promise<string>; cleanup: () => Promise<void> }> {
 	const root = await mkdtemp(join(tmpdir(), "crash-pull-test-"));
 	const bin = join(root, "bin");
 	const phone = join(root, "phone");
@@ -378,10 +386,19 @@ case "$STUB_USB_MODE" in
   hang) sleep 30; exit 0;;
 esac
 # Copies the files whose name contains the filter, with their directory, the way the tool does; a sysdiagnose archive is never copied by these filters.
-(cd "$STUB_REPORTS" && find . -type f -name "*$filter*" | sed 's|^\\./||') | while IFS= read -r path; do
-  mkdir -p "$dir/$(dirname "$path")"
-  cp "$STUB_REPORTS/$path" "$dir/$path"
-  echo "Copy: /$path"
+# failone: the first file cannot be opened on the phone ("Skipping..." and the tool goes on); losefile: it says it copied the first file and did not;
+# emptyone: it copied the first file as an empty one. All three still end with Done. and exit 0, which is what the real tool does.
+n=0
+(cd "$STUB_REPORTS" && find . -type f -name "*$filter*" | sed 's|^\\./||' | sort) | while IFS= read -r entry; do
+  n=$((n+1))
+  mkdir -p "$dir/$(dirname "$entry")"
+  case "$STUB_USB_MODE:$n" in
+    failone:1) echo "Copy: /$entry"; echo "Unable to open device file '/$entry' (2). Skipping..."; continue;;
+    losefile:1) echo "Copy: /$entry"; continue;;
+    emptyone:1) echo "Copy: /$entry"; : > "$dir/$entry"; continue;;
+  esac
+  cp "$STUB_REPORTS/$entry" "$dir/$entry"
+  echo "Copy: /$entry"
 done
 echo "Done."
 `,
@@ -398,7 +415,7 @@ echo "Done."
 	const run: Run = (command, args) => {
 		log.push({ command, args });
 		if (command !== "ssh") return copy(args);
-		return runHere(args[args.length - 1] ?? "", `${bin}:/usr/bin:/bin`, { STUB_REPORTS: phone, STUB_MODE: mode.value, STUB_USB_MODE: usbMode.value, STUB_LOG: calls });
+		return runHere(args[args.length - 1] ?? "", `${bin}:/usr/bin:/bin`, { STUB_REPORTS: phone, STUB_MODE: mode.value, STUB_USB_MODE: usbMode.value, STUB_LOG: calls }, shell);
 	};
 	return {
 		mac: macFrom("me@mac", run),
@@ -406,6 +423,7 @@ echo "Done."
 		phone,
 		mode,
 		usbMode,
+		here: (script, otherShell = shell) => runHere(script, `${bin}:/usr/bin:/bin`, { STUB_REPORTS: phone, STUB_MODE: mode.value, STUB_USB_MODE: usbMode.value, STUB_LOG: calls }, otherShell),
 		toolCalls: () => readFile(calls, "utf8").catch(() => ""),
 		cleanup: () => rm(root, { recursive: true, force: true }),
 	};
@@ -440,7 +458,7 @@ describe("listing the crash log of the phone", () => {
 			expect(listing.files.find((file) => file.name === asiName)).toEqual({ path: `Retired/${asiName}`, name: asiName, bytes: asiOnly.length });
 			expect(reportFiles(listing.files).map((file) => file.name).sort()).toEqual([jetsamName, asiName, objcName].sort());
 			// One bounded call to the phone: nothing is copied, whatever the log holds (a sysdiagnose archive is 270 MB).
-			const script = fake.log.find((call) => call.command === "ssh")?.args.at(-1) ?? "";
+			const script = scriptOf(fake.log.find((call) => call.command === "ssh")?.args.at(-1) ?? "");
 			expect(script).toContain(`'perl' '-e' 'alarm shift; exec @ARGV' '40' 'xcrun' 'devicectl' '--json-output'`);
 			expect(script).toContain(`'--device' '${deviceId}' '--domain-type' 'systemCrashLogs'`);
 			expect(fake.log.filter((call) => call.command === "scp")).toHaveLength(0);
@@ -581,7 +599,7 @@ describe("watching the crash log across a command", () => {
 			});
 			await putOnPhone(fake.phone, { "JetsamEvent-2026-11-01-120000.ips": quiet });
 			const found = await finishCrashWatch(watch, { settleMs: 0 });
-			expect(found.record).toEqual({ crashReports: [], crashLogRead: "devicectl" });
+			expect(found.record).toEqual({ crashReports: [], crashLogRead: "devicectl", crashLogStart: "devicectl" });
 			expect(found.directory).toBeNull();
 		} finally {
 			await fake.cleanup();
@@ -594,7 +612,7 @@ describe("watching the crash log across a command", () => {
 			await putOnPhone(fake.phone, { [objcName]: objc });
 			const watch = await startCrashWatch(watchOptions(fake));
 			const found = await finishCrashWatch(watch, { settleMs: 0 });
-			expect(found.record).toEqual({ crashReports: [], crashLogRead: "devicectl" });
+			expect(found.record).toEqual({ crashReports: [], crashLogRead: "devicectl", crashLogStart: "devicectl" });
 			expect(found.directory).toBeNull();
 			expect(await keepCrashFiles(found, "lab-x")).toBeNull();
 			expect((await fake.toolCalls()).includes("copy from")).toBe(false);
@@ -759,6 +777,8 @@ describe("watching the crash log across a UI test", () => {
 			expect(Date.now() - began).toBeLessThan(10_000);
 			expect(found.record.crashReportsError).toBeUndefined();
 			expect(found.record.crashLogRead).toBe("usb");
+			// The baseline came from the door the start asked first, and the record says so next to the end's.
+			expect(found.record.crashLogStart).toBe("devicectl");
 			expect(found.record.crashReports?.map((report) => report.file)).toEqual([objcName]);
 			// devicectl was not asked at all: only the USB tool ran after the start's listing.
 			const after = (await fake.toolCalls()).trim().split("\n").slice(asked);
@@ -779,7 +799,7 @@ describe("watching the crash log across a UI test", () => {
 			const watch = await startCrashWatch(usbOptions(fake));
 			fake.mode.value = "hang";
 			const found = await finishCrashWatch(watch, { settleMs: 0, afterUiTest: true });
-			expect(found.record).toEqual({ crashReports: [], crashLogRead: "usb" });
+			expect(found.record).toEqual({ crashReports: [], crashLogRead: "usb", crashLogStart: "devicectl" });
 			expect(found.directory).toBeNull();
 		} finally {
 			await fake.cleanup();
@@ -883,5 +903,185 @@ describe("watching the crash log across a UI test", () => {
 	test("what a command prints says when the log was read over USB", () => {
 		expect(describeCrashReports({ crashReports: [], crashLogRead: "usb" })).toEqual(["crash reports: none new on the phone (read over USB)"]);
 		expect(describeCrashReports({ crashReports: [], crashLogRead: "devicectl" })).toEqual(["crash reports: none new on the phone"]);
+	});
+});
+
+const named = (shell: string | null) => (shell === null ? "(no zsh on this machine)" : "under zsh");
+
+describe("the Mac's shell is zsh: no script of the crash log depends on it", () => {
+	const options = { udid, directory: "/tmp/native-qa-ios/zsh-1", filters: usbFilters("RasheedSvelteQA"), limitSeconds: 20 };
+
+	test("no script assigns a variable zsh ties to something (path to PATH, status read-only, argv, pipestatus)", () => {
+		const scripts = [
+			usbListScript(options),
+			usbGatherScript({ from: "/tmp/a", into: "/tmp/b", files: [{ path: "Retired/x.ips", name: "x.ips", bytes: 1 }] }),
+			listScript({ deviceId, file: "/tmp/l.json", limitSeconds: 20 }),
+			fetchScript({ deviceId, directory: "/tmp/f", files: [{ path: "x.ips", name: "x.ips", bytes: 1 }], limitSeconds: 20 }),
+		];
+		// Nor does one lean on what this machine's /bin/sh forgives: the Mac's is bash 3.2, which reads the `)` of a `case` pattern inside `$( )` as the end of the substitution
+		// (found on the Mac itself: the first version of the copy check died with a syntax error there).
+		for (const script of scripts) expect(script).not.toMatch(/\$\([^\n]*\bcase\b/);
+		for (const script of scripts) expect(script).not.toMatch(/\b(path|status|argv|pipestatus|cdpath|fpath|manpath|signals|options|commands|functions)=|read (-r )?(path|status|argv)\b|for (path|status) in/);
+	});
+
+	test(`the USB copy lists the log through the Mac's login shell, ${named(zsh)}`, async () => {
+		if (zsh === null) return;
+		const fake = await fakeMac(zsh);
+		try {
+			await putOnPhone(fake.phone, { [objcName]: objc, [`Retired/${asiName}`]: asiOnly, [jetsamName]: jetsam });
+			// The whole remote command line, as sshd hands it to zsh: `/bin/sh -c '<script>'`.
+			const copy = await readUsbCrashLog(fake.mac, udid);
+			try {
+				expect(copy.files.map((file) => file.path).sort()).toEqual([`Retired/${asiName}`, jetsamName, objcName].sort());
+				expect(copy.files.every((file) => (file.bytes ?? 0) > 0)).toBe(true);
+			} finally {
+				await copy.release();
+			}
+		} finally {
+			await fake.cleanup();
+		}
+	});
+
+	test(`the scripts themselves run ${named(zsh)}, as zsh would run them if it were handed them bare (the bug: a loop variable \`path\` emptied PATH)`, async () => {
+		if (zsh === null) return;
+		const fake = await fakeMac();
+		try {
+			await putOnPhone(fake.phone, { [objcName]: objc, [`Retired/${asiName}`]: asiOnly, [jetsamName]: jetsam });
+			const listed = await fake.here(usbListScript(options), zsh);
+			expect(listed.code).toBe(0);
+			const files = parseUsbListing(listed.stdout);
+			expect(files.map((file) => file.name).sort()).toEqual([asiName, jetsamName, objcName].sort());
+			expect(files.every((file) => (file.bytes ?? 0) > 0)).toBe(true);
+			const gathered = await fake.here(usbGatherScript({ from: options.directory, into: `${options.directory}-new`, files: files.slice(0, 2) }), zsh);
+			expect(gathered.stdout.trim()).toBe("copied=2");
+			const devicectl = await fake.here(listScript({ deviceId, file: "/tmp/native-qa-ios/zsh-list.json", limitSeconds: 20 }), zsh);
+			expect(devicectl.code).toBe(0);
+			expect(parseCrashLogListing(devicectl.stdout).length).toBeGreaterThan(0);
+			await fake.here(`rm -rf ${options.directory} ${options.directory}-new`, zsh);
+		} finally {
+			await fake.cleanup();
+		}
+	});
+});
+
+describe("a USB copy that lost a file is not a copy", () => {
+	// The tool skips what it cannot open ("Skipping...") and still ends with Done. and exit 0; its `Copy:` line is printed before the file is written.
+	const lose = async (mode: string) => {
+		const fake = await fakeMac();
+		try {
+			await putOnPhone(fake.phone, { [objcName]: objc, [jetsamName]: jetsam });
+			fake.usbMode.value = mode;
+			return await readUsbCrashLog(fake.mac, udid).then(
+				async (copy) => {
+					await copy.release();
+					return { files: copy.files.map((file) => file.name), error: null as string | null };
+				},
+				(error: unknown) => ({ files: [] as string[], error: error instanceof Error ? error.message : String(error) }),
+			);
+		} finally {
+			await fake.cleanup();
+		}
+	};
+
+	test("a file the tool says it skipped fails the read, with the tool's words", async () => {
+		const outcome = await lose("failone");
+		expect(outcome.error).toMatch(/failed \(exit 1\)/);
+		expect(outcome.error).toMatch(/Unable to open device file .* Skipping\.\.\./);
+	});
+
+	test("a file the tool says it copied that is not on disk fails the read, though no line says why", async () => {
+		const outcome = await lose("losefile");
+		expect(outcome.error).toMatch(/copied but not on disk: \/?RasheedSvelteQA-/);
+	});
+
+	test("a file that arrived empty fails the read", async () => {
+		const outcome = await lose("emptyone");
+		expect(outcome.error).toMatch(/copied but not on disk/);
+	});
+
+	test("the same files, copied whole, are a listing (the control)", async () => {
+		const outcome = await lose("ok");
+		expect(outcome.error).toBeNull();
+		expect(outcome.files.sort()).toEqual([jetsamName, objcName].sort());
+	});
+
+	test("the crash a lost copy would have hidden is not measured, never 'none new'; the other door is the way out", async () => {
+		const fake = await fakeMac();
+		try {
+			await putOnPhone(fake.phone, { [jetsamName]: jetsam });
+			const watch = await startCrashWatch(usbOptions(fake));
+			await putOnPhone(fake.phone, { [objcName]: objc });
+			// USB only: devicectl is gone, and the tool loses the one new report.
+			fake.mode.value = "nodevice";
+			fake.usbMode.value = "failone";
+			const lost = await finishCrashWatch(watch, { settleMs: 0, afterUiTest: true });
+			expect(lost.record.crashReports).toBeUndefined();
+			expect(lost.record.crashReportsError).toMatch(/^after the run: over USB: .*Skipping\.\.\./s);
+			// With devicectl back, the same report is found the other way.
+			fake.mode.value = "ok";
+			const found = await finishCrashWatch(watch, { settleMs: 0, afterUiTest: true });
+			expect(found.record.crashLogRead).toBe("devicectl");
+			expect(found.record.crashReports?.map((report) => report.file)).toEqual([objcName]);
+		} finally {
+			await fake.cleanup();
+		}
+	});
+});
+
+describe("a UI-test command reads the crash log over USB at its start as well", () => {
+	test("the baseline comes from USB without asking devicectl, and the record names both doors", async () => {
+		const fake = await fakeMac();
+		try {
+			await putOnPhone(fake.phone, { [`Retired/${asiName}`]: asiOnly, [jetsamName]: jetsam });
+			const watch = await startCrashWatch({ ...usbOptions(fake), usbFirst: true });
+			expect(watch.listedBy).toBe("usb");
+			expect([...(watch.known ?? [])].sort()).toEqual([jetsamName, asiName].sort());
+			expect((await fake.toolCalls()).includes("devicectl")).toBe(false);
+			await putOnPhone(fake.phone, { [objcName]: objc });
+			fake.mode.value = "hang";
+			const found = await finishCrashWatch(watch, { settleMs: 0, afterUiTest: true });
+			expect(found.record.crashLogStart).toBe("usb");
+			expect(found.record.crashLogRead).toBe("usb");
+			expect(found.record.crashReports?.map((report) => report.file)).toEqual([objcName]);
+			expect(describeCrashReports(found.record)[0]).toBe("crash reports: 1 new on the phone (read over USB)");
+		} finally {
+			await fake.cleanup();
+		}
+	});
+
+	test("when USB does not answer at the start, devicectl gives the baseline, and the record shows the two doors differ", async () => {
+		const fake = await fakeMac();
+		try {
+			fake.usbMode.value = "nodevice";
+			const watch = await startCrashWatch({ ...usbOptions(fake), usbFirst: true });
+			expect(watch.listedBy).toBe("devicectl");
+			fake.usbMode.value = "ok";
+			const found = await finishCrashWatch(watch, { settleMs: 0, afterUiTest: true });
+			expect(found.record).toEqual({ crashReports: [], crashLogRead: "usb", crashLogStart: "devicectl" });
+			expect(describeCrashReports(found.record)).toEqual(["crash reports: none new on the phone (read over USB, baseline through devicectl)"]);
+		} finally {
+			await fake.cleanup();
+		}
+	});
+
+	test("an error record still says which door gave the baseline", async () => {
+		const fake = await fakeMac();
+		try {
+			const watch = await startCrashWatch({ ...usbOptions(fake), usbFirst: true });
+			fake.mode.value = "nodevice";
+			fake.usbMode.value = "nodevice";
+			const found = await finishCrashWatch(watch, { settleMs: 0, afterUiTest: true });
+			expect(found.record.crashReports).toBeUndefined();
+			expect(found.record.crashLogStart).toBe("usb");
+			expect(found.record.crashReportsError).toMatch(/^after the run: /);
+		} finally {
+			await fake.cleanup();
+		}
+	});
+
+	test("the command's session asks for USB first only for a UI test", async () => {
+		const sessionSource = await readFile(fileURLToPath(new URL("../lib/iphone/session.ts", import.meta.url)), "utf8");
+		expect(sessionSource).toContain("usbFirst: options.uiTest === true");
+		for (const file of ["../lib/iphone/gestures.ts", "../commands/ios-resilience.ts"]) expect(await readFile(fileURLToPath(new URL(file, import.meta.url)), "utf8")).toContain("{ uiTest: true }");
 	});
 });

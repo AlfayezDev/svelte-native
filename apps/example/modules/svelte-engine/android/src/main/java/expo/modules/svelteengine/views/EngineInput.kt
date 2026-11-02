@@ -34,6 +34,41 @@ import kotlin.math.min
 class EngineInput(context: Context) : EditText(context), EngineNode {
   override val node = NodeState()
 
+  companion object {
+    /** An input built ahead of time on another thread for [spareContext], or null. */
+    private val spare = java.util.concurrent.atomic.AtomicReference<EngineInput?>()
+    @Volatile private var spareContext: Context? = null
+
+    /**
+     * An input for [context], the one built ahead of time when there is one (the constructor of an `EditText` is 5 to 19 ms of the main
+     * thread on the A16, whatever the cache holds: it runs on a cold core), else a new one. Main thread. The next one is built ahead
+     * after this one, for the next screen with an input.
+     */
+    fun obtain(context: Context): EngineInput {
+      val ready = spare.getAndSet(null)
+      if (ready != null && spareContext === context) {
+        InputWarmup.stock(context, RESTOCK_MS)
+        return ready
+      }
+      return EngineInput(context)
+    }
+
+    /** Called off the main thread by [InputWarmup]: builds the input [obtain] hands out next. */
+    internal fun stockSpare(context: Context) {
+      if (spare.get() != null && spareContext === context) return
+      val built = EngineInput(context)
+      spareContext = context
+      spare.set(built)
+    }
+
+    /** The configuration the spare was built for is gone (font scale, locale, night mode). */
+    fun discardSpare() {
+      spare.set(null)
+    }
+
+    private const val RESTOCK_MS = 300L
+  }
+
   var nativeEventCount = 0
     private set
 

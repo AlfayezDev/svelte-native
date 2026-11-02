@@ -123,6 +123,7 @@ class MountingManager(private val reactContext: ReactApplicationContext, private
 
       // Font scale, locale and layout direction all change what a text layout looks like.
       override fun onConfigurationChanged(newConfig: Configuration) {
+        EngineInput.discardSpare() // built for the configuration that is gone
         handler.post { TextLayouts.clearCache() }
       }
 
@@ -524,7 +525,7 @@ class MountingManager(private val reactContext: ReactApplicationContext, private
       } else {
         (pooled(ViewPool.SCROLL) { EngineScroll(context) } as EngineScroll).also { it.bridge.native = native }
       }
-      KIND_INPUT -> EngineInput(context)
+      KIND_INPUT -> if (lab.inputSpare) EngineInput.obtain(context) else EngineInput(context)
       KIND_SWITCH -> EngineSwitch(context)
       KIND_PROGRESS -> EngineSpinner(context, p.views.spinnerStyle)
       KIND_IMAGE -> EngineImage(context)

@@ -48,14 +48,14 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/Components/View/ViewNativeComponent": "export {};",
   "react-native/Libraries/Text/TextNativeComponent": "export {};",
   "react-native/Libraries/Components/ScrollView/ScrollViewNativeComponent": "export {};",
-  "expo-modules-core": "export const requireOptionalNativeModule = () => null;",
+  "expo-modules-core": "export const requireOptionalNativeModule = (name) => (name === 'SvelteEngine' ? (globalThis.__testEngine ?? null) : null);",
   "react-native": "export const AppRegistry = { registerRunnable() {} };",
 };
 
-async function load() {
+async function load(fixture = "animation-fixture.svelte") {
   const bundle = await build({
     stdin: {
-      contents: `import Fixture from './animation-fixture.svelte';
+      contents: `import Fixture from './${fixture}';
         import { startSurface, flush, fabricStats } from '../src/fabric/host.ts';
         import { tick } from 'svelte';
         export { startSurface, flush, fabricStats, tick, Fixture };`,
@@ -89,7 +89,7 @@ const byId = (root: number, id: string) => find(roots[root] ?? [], "RCTView").fi
 const settle = async (m: { tick: () => Promise<void> }) => { await m.tick(); await Promise.resolve(); await Promise.resolve(); };
 type App = { hide: () => void; show: () => void; pad: (n: number) => void; dropCss: () => void; useInline: () => void; two: () => void; useProps: () => void };
 const animationKeys = ["animationName", "animationDuration", "transitionProperty", "transitionDuration", "animatedStyle", "animatedProps"];
-const fresh = async () => { delete (globalThis as { __anim?: unknown }).__anim; roots = {}; return load(); };
+const fresh = async (fixture?: string) => { delete (globalThis as { __anim?: unknown }).__anim; roots = {}; return load(fixture); };
 
 test("animatedStyle: initial values in the first payload, one descriptor and one mapper, re-pointed after a clone, stopped on removal", async () => {
   const m = await fresh();
@@ -235,4 +235,31 @@ test("every payload the host builds for these fixture trees is identical to Reac
   expect(tap.checks.length).toBeGreaterThan(5);
   expect(new Set(tap.checks.map((check) => check.kind))).toEqual(new Set(["create", "diff"]));
   expect(tap.checks.filter((check) => check.mine !== check.reactNative)).toEqual([]);
+});
+
+test("a commit that attaches eight animated nodes for the first time tells the engine; fewer, and the nodes that only refresh, do not", async () => {
+  const told: string[] = [];
+  (globalThis as { __testEngine?: unknown }).__testEngine = { install: () => true, reanimatedLoaded: () => {}, animatedBatch: () => told.push("batch") };
+  try {
+    const m = await fresh("animation-many-fixture.svelte");
+    const app = m.startSurface(36, m.Fixture, {}) as { keep: (n: number) => void };
+    expect(find(roots[36] ?? [], "RCTView")).toHaveLength(20);
+    expect(log().mappers).toHaveLength(20);
+    expect(told).toEqual(["batch"]); // twenty new nodes in one commit
+
+    app.keep(19); // a commit that leaves: nothing new
+    await settle(m);
+    app.keep(0);
+    await settle(m);
+    app.keep(7); // seven new nodes: below the bulk
+    await settle(m);
+    expect(told).toEqual(["batch"]);
+    app.keep(0);
+    await settle(m);
+    app.keep(8); // eight: the bulk
+    await settle(m);
+    expect(told).toEqual(["batch", "batch"]);
+  } finally {
+    delete (globalThis as { __testEngine?: unknown }).__testEngine;
+  }
 });

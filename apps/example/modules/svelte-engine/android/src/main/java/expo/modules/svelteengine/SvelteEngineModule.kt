@@ -47,7 +47,7 @@ class SvelteEngineModule : Module() {
         (reactContext.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0,
         engineExtra = { launch?.takeIf { it.hasExtra("svelteEngine") }?.getBooleanExtra("svelteEngine", true) },
         gesturesExtra = { launch?.getBooleanExtra("svelteGestures", false) },
-        gesturesQuery = { launch?.data?.takeIf { it.isHierarchical }?.getQueryParameter("gestures") },
+        query = { name -> launch?.data?.takeIf { it.isHierarchical }?.getQueryParameter(name) },
       )
       if (!lab.engineEnabled) {
         android.util.Log.i("SvelteEngine", "disabled by intent extra; React Native mounting stays active")
@@ -55,7 +55,7 @@ class SvelteEngineModule : Module() {
       }
       val fabric = UIManagerHelper.getUIManager(reactContext, UIManagerType.FABRIC) as? FabricUIManager
         ?: throw IllegalStateException("SvelteEngine: no FabricUIManager")
-      val manager = MountingManager(reactContext)
+      val manager = MountingManager(reactContext, lab)
       val engine = SvelteEngineNative(fabric, manager)
       manager.attach(engine)
       ExpoViews.current = ExpoViews(appContext)
@@ -96,6 +96,11 @@ class SvelteEngineModule : Module() {
     // Called once by the Fabric host when it loads Reanimated lazily (SPEC.md, "Animation": delegate order). Its library
     // is loaded now, so the typed animated path (SPEC.md, "Animated write path") can register with it.
     Function("reanimatedLoaded") { native?.reanimatedLoaded(); AnimatedBridge.attach() }
+
+    // A commit attached many animated nodes at once: the engine puts the main thread and the RenderThread on the big cores for the
+    // message Worklets takes to register them and the frames that draw them (`MountingManager.animatedBatch`). No effect on when or
+    // how any animation starts.
+    Function("animatedBatch") { mountingManager?.animatedBatch() }
 
     // The root router's navigation state as JSON, after every change (SPEC.md, "Navigation state across recreation and process
     // death"); MainActivity keeps it in the Activity's saved instance state. `finishing` is read when a surface stops: true when the

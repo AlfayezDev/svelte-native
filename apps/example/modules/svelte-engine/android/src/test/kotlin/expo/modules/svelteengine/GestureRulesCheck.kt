@@ -285,9 +285,9 @@ private fun labSwitchChecks(module: String) {
   }
 
   // What a launch asks for, as the module reads it: the providers stand for the intent.
-  fun read(packageName: String, debuggable: Boolean = false, engine: Boolean? = null, gestures: Boolean? = null, query: String? = null): Pair<LabSwitches, Int> {
+  fun read(packageName: String, debuggable: Boolean = false, engine: Boolean? = null, gestures: Boolean? = null, query: String? = null, boost: String? = null, spare: String? = null): Pair<LabSwitches, Int> {
     var reads = 0
-    val switches = LabSwitches.read(packageName, debuggable, { reads++; engine }, { reads++; gestures }, { reads++; query })
+    val switches = LabSwitches.read(packageName, debuggable, { reads++; engine }, { reads++; gestures }, { name -> reads++; when (name) { "gestures" -> query; "boost" -> boost; "spare" -> spare; else -> null } })
     return switches to reads
   }
   // The QA app: the engine can be switched off, the gesture root asked for at start by an extra or by `?gestures=1`.
@@ -299,6 +299,15 @@ private fun labSwitchChecks(module: String) {
   equal("?gestures=1 in the QA app", read(qa, query = "1").first.gesturesAtStart, true)
   equal("?gestures=0 in the QA app", read(qa, query = "0").first.gesturesAtStart, false)
   equal("a debuggable build reads them too", read("io.rasheed.app", debuggable = true, engine = false, gestures = true).first.let { Pair(it.engineEnabled, it.gesturesAtStart) }, Pair(false, true))
+  // The A/B switches of the lab: on unless the launch link says `0`, and only the QA app and a debuggable build ask.
+  equal("boost and spare are on in the QA app", read(qa).first.let { Pair(it.animatedBoost, it.inputSpare) }, Pair(true, true))
+  equal("?boost=0 in the QA app", read(qa, boost = "0").first.let { Pair(it.animatedBoost, it.inputSpare) }, Pair(false, true))
+  equal("?spare=0 in the QA app", read(qa, spare = "0").first.let { Pair(it.animatedBoost, it.inputSpare) }, Pair(true, false))
+  equal("?boost=1 in the QA app", read(qa, boost = "1").first.animatedBoost, true)
+  equal("a debuggable build reads boost and spare", read("io.rasheed.app", debuggable = true, boost = "0", spare = "0").first.let { Pair(it.animatedBoost, it.inputSpare) }, Pair(false, false))
+  val product = read("io.rasheed.app", boost = "0", spare = "0")
+  equal("the product ignores ?boost=0 and ?spare=0", product.first.let { Pair(it.animatedBoost, it.inputSpare) }, Pair(true, true))
+  equal("the product reads no parameter for them", product.second, 0)
   // The product: whatever the intent says, the engine is on, the gesture root waits for the first gesture, and no extra is even read.
   for ((engine, gestures, query) in listOf(Triple(false, true, "1"), Triple(false, false, "0"), Triple(true, true, null))) {
     val (switches, reads) = read("io.rasheed.app", engine = engine, gestures = gestures, query = query)

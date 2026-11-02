@@ -15,8 +15,10 @@ import android.os.Process
  * to the big cores for the batch and the frames that follow it moves them at once, and the big cores' own clocks step up
  * within a few milliseconds of work arriving.
  *
- * Only the creation of a screen (a push, a sheet) starts it, and it ends [HOLD_MS] after the last one (a transition is 250 ms):
- * a batch of the same size that creates no screen (a windowed list's first rows: 6 600 ops, a 300-row list) is not boosted. The
+ * Two things start it. The creation of a screen (a push, a sheet) does, and it ends [HOLD_MS] after the last one (a transition is 250 ms).
+ * JavaScript's word that one commit attached many animated nodes does too (`MountingManager.animatedBatch`): Worklets registers them in
+ * one main-thread message and the RenderThread draws their first frames on the same cold cores. The size of a batch does not: a batch
+ * that creates no screen (a windowed list's first rows: 6 600 ops, a 300-row list) is not boosted. The
  * first version started at any batch of 2 500 ops or more; it held the two threads on the big cores while the JavaScript thread
  * mounted the next scenario's list in the lab, which then took 14 to 24 ms instead of 12. A device whose cores are alike is left alone.
  * Main thread only.

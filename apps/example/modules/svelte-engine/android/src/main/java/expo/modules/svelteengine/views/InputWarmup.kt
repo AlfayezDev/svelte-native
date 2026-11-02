@@ -34,18 +34,31 @@ internal object InputWarmup {
   /** Called by every text view when it is built; only the first call of the process does anything. */
   fun schedule(context: Context) {
     if (!scheduled.compareAndSet(false, true)) return
+    run(context, DELAY_MS, retain = true)
+  }
+
+  /** Builds the next input ahead of time, [delayMs] from now, on a thread of its own ([EngineInput.obtain]). */
+  fun stock(context: Context, delayMs: Long) = run(context, delayMs, retain = false)
+
+  private fun run(context: Context, delayMs: Long, retain: Boolean) {
     val thread = HandlerThread("svelte-input-warmup", Process.THREAD_PRIORITY_BACKGROUND)
     thread.start()
     Handler(thread.looper).postDelayed({
       try {
-        warm(context)
+        if (retain) warm(context)
+        Trace.beginSection("SvelteEngine.inputStock")
+        try {
+          EngineInput.stockSpare(context)
+        } finally {
+          Trace.endSection()
+        }
       } catch (e: RuntimeException) {
         // A framework that refuses to build an editor off the main thread costs the optimisation, not the app.
         Log.w(TAG, "input warm-up failed", e)
       } finally {
         thread.quitSafely()
       }
-    }, DELAY_MS)
+    }, delayMs)
   }
 
   private fun warm(context: Context) {

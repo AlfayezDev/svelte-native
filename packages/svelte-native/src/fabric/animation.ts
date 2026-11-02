@@ -352,10 +352,23 @@ export function animationProps(node: object, target: AnimationTarget, props: Rec
   return out;
 }
 
-/** Starts or refreshes the native side of every node `animationProps` touched; call after `completeRoot`, when their shadow nodes are committed. */
-export function commitAnimations(): void {
-  for (const node of pending) attachAnimation(node);
+/** Whether the node has a style or props runtime that has not started its mapper yet: its first attach costs the UI runtime a descriptor update and a mapper registration. */
+const unattached = (record: Record_) => (record.style !== null && record.style.mapperId === null) || (record.props !== null && record.props.mapperId === null);
+
+/**
+ * Starts or refreshes the native side of every node `animationProps` touched; call after `completeRoot`, when their shadow nodes are committed.
+ * Returns how many of them were attached for the first time with an `animatedStyle` or `animatedProps` (the host passes a bulk of them on to
+ * the engine: `BULK_ANIMATED_NODES`).
+ */
+export function commitAnimations(): number {
+  let fresh = 0;
+  for (const node of pending) {
+    const record = records.get(node);
+    if (record && unattached(record)) fresh++;
+    attachAnimation(node);
+  }
   pending.clear();
+  return fresh;
 }
 
 /**

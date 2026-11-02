@@ -63,6 +63,13 @@ export function mayAnimate(attributes: Record<string, unknown>): boolean {
   }
   return !plainStyle(attributes.style);
 }
+/**
+ * How many nodes a commit has to attach to the animation layer for the first time for the engine to be told (`animatedBatch`). Registering a node costs
+ * the UI runtime about 0.8 ms on the A16's coldest core (0.6 for the animation the app starts on its shared value, 0.17 for the descriptor and the mapper),
+ * the whole commit is one UI-thread message, and a message over about half a frame period (6 ms at 90 Hz) delays the frame behind it: eight nodes is the
+ * first commit that can. One animated button, a row's icon or a handful of badges stay below it.
+ */
+export const BULK_ANIMATED_NODES = 8;
 /** Loads Reanimated (also upgrading the public `animation` module's exports to its own functions) and tells the engine once. */
 function ensureReanimated(): void {
   loadReanimated();
@@ -222,7 +229,7 @@ let childrenInvalidated = false;
 let engineInstalled = false;
 let reanimatedAtInstall = false;
 let reanimatedAnnounced = false;
-let engineModule: { reanimatedLoaded?: () => void; dispatchCommand?: (tag: number, name: string, args: unknown[]) => void; setNativeProps?: (tag: number, props: Record<string, unknown>) => void; registerForeign?: (name: string) => boolean; saveNavigation?: (json: string) => void; finishing?: () => boolean } | null = null;
+let engineModule: { reanimatedLoaded?: () => void; animatedBatch?: () => void; dispatchCommand?: (tag: number, name: string, args: unknown[]) => void; setNativeProps?: (tag: number, props: Record<string, unknown>) => void; registerForeign?: (name: string) => boolean; saveNavigation?: (json: string) => void; finishing?: () => boolean } | null = null;
 /** The foreign components the engine was told about: its mounting delegate must know a component's name before the first node of it is committed. */
 const foreignNames = new Set<string>();
 function registerForeign(viewName: string): void {
@@ -755,7 +762,8 @@ export function flush(): void {
     if (profile) stats.completeMs += now() - t0;
     stats.lastCompleted++;
   }
-  animation?.commitAnimations();
+  // Tens of animated nodes attached at once are one long message on the UI thread and a cold RenderThread: the engine puts both on the big cores.
+  if ((animation?.commitAnimations() ?? 0) >= BULK_ANIMATED_NODES && engineInstalled) engineModule?.animatedBatch?.();
   gestures?.commitGestures(isLive);
   if (childrenInvalidated) { childrenInvalidated = false; detachRemovedAnimations(); }
   sweepRefs();

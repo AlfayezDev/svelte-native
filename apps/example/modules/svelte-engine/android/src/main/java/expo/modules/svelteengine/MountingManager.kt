@@ -72,7 +72,7 @@ private const val KIND_TOOLBAR_ITEM = 18
 private const val KIND_FOREIGN = 19
 
 /** Applies C++ mounting batches to the engine view tree. Main thread only. */
-class MountingManager(private val reactContext: ReactApplicationContext) {
+class MountingManager(private val reactContext: ReactApplicationContext, private val lab: LabSwitches = LabSwitches(engineEnabled = true, gesturesAtStart = false)) {
   private val appContext = reactContext.applicationContext
   private val handler = Handler(Looper.getMainLooper())
   private val boost = MountBoost(handler)
@@ -123,6 +123,7 @@ class MountingManager(private val reactContext: ReactApplicationContext) {
 
       // Font scale, locale and layout direction all change what a text layout looks like.
       override fun onConfigurationChanged(newConfig: Configuration) {
+        EngineInput.discardSpare() // built for the configuration that is gone
         handler.post { TextLayouts.clearCache() }
       }
 
@@ -131,6 +132,15 @@ class MountingManager(private val reactContext: ReactApplicationContext) {
         handler.post { pool.clear(); TextLayouts.clearCache() }
       }
     })
+  }
+
+  /**
+   * JavaScript attached many animated nodes in one commit (`commitAnimations`; SPEC "The first interval of the animation scenarios"):
+   * Worklets takes a message of tens of milliseconds on the main thread to register them, and the RenderThread draws their first frames
+   * a moment later, both on whatever core the phone left them on. Any thread; the boost itself starts on the main thread.
+   */
+  fun animatedBatch() {
+    if (lab.animatedBoost) handler.post { boost.begin() }
   }
 
   /** The mounted view for a React tag (main thread only), or null. Used by Commands. */
@@ -515,7 +525,7 @@ class MountingManager(private val reactContext: ReactApplicationContext) {
       } else {
         (pooled(ViewPool.SCROLL) { EngineScroll(context) } as EngineScroll).also { it.bridge.native = native }
       }
-      KIND_INPUT -> EngineInput(context)
+      KIND_INPUT -> if (lab.inputSpare) EngineInput.obtain(context) else EngineInput(context)
       KIND_SWITCH -> EngineSwitch(context)
       KIND_PROGRESS -> EngineSpinner(context, p.views.spinnerStyle)
       KIND_IMAGE -> EngineImage(context)

@@ -3,6 +3,7 @@ import type * as Reanimated from "react-native-reanimated";
 import type * as Worklets from "react-native-worklets";
 import { lazyObject } from "./lazy-object.ts";
 import { loadReanimated, onReanimatedLoaded } from "./fabric/reanimated-load.ts";
+import { BULK_BATCH, Pacer, paceAssignments } from "./fabric/pacer.ts";
 
 export { default as AnimatedView } from "./components/AnimatedView.svelte";
 export type { SharedValue } from "react-native-reanimated";
@@ -40,8 +41,16 @@ onReanimatedLoaded(({ reanimated, worklets }) => {
   runOnUISync = worklets.runOnUISync; runOnUIAsync = worklets.runOnUIAsync; runOnJS = worklets.runOnJS; scheduleOnRN = worklets.scheduleOnRN;
 });
 
+/** The animations that views started together at mount begin four to a frame: see [Pacer]. */
+const starts = new Pacer(BULK_BATCH, (callback) => { requestAnimationFrame(callback); });
+const isAnimation = (next: unknown) => typeof next === "function" && (next as { __isAnimationDefinition?: boolean }).__isAnimationDefinition === true;
+
 export function createSharedValue<Value>(initial: Value): Reanimated.SharedValue<Value> {
   const value = rea().makeMutable(initial);
-  onDestroy(() => cancelAnimation(value));
+  paceAssignments(value, starts, isAnimation);
+  onDestroy(() => {
+    starts.drop(value); // a start that is still waiting never happens
+    cancelAnimation(value);
+  });
   return value;
 }

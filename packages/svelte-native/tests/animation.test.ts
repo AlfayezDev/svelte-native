@@ -52,10 +52,10 @@ const stubs: Record<string, string> = {
   "react-native": "export const AppRegistry = { registerRunnable() {} };",
 };
 
-async function load() {
+async function load(fixture = "animation-fixture.svelte") {
   const bundle = await build({
     stdin: {
-      contents: `import Fixture from './animation-fixture.svelte';
+      contents: `import Fixture from './${fixture}';
         import { startSurface, flush, fabricStats } from '../src/fabric/host.ts';
         import { tick } from 'svelte';
         export { startSurface, flush, fabricStats, tick, Fixture };`,
@@ -89,7 +89,7 @@ const byId = (root: number, id: string) => find(roots[root] ?? [], "RCTView").fi
 const settle = async (m: { tick: () => Promise<void> }) => { await m.tick(); await Promise.resolve(); await Promise.resolve(); };
 type App = { hide: () => void; show: () => void; pad: (n: number) => void; dropCss: () => void; useInline: () => void; two: () => void; useProps: () => void };
 const animationKeys = ["animationName", "animationDuration", "transitionProperty", "transitionDuration", "animatedStyle", "animatedProps"];
-const fresh = async () => { delete (globalThis as { __anim?: unknown }).__anim; roots = {}; return load(); };
+const fresh = async (fixture?: string) => { delete (globalThis as { __anim?: unknown }).__anim; roots = {}; return load(fixture); };
 
 test("animatedStyle: initial values in the first payload, one descriptor and one mapper, re-pointed after a clone, stopped on removal", async () => {
   const m = await fresh();
@@ -235,4 +235,48 @@ test("every payload the host builds for these fixture trees is identical to Reac
   expect(tap.checks.length).toBeGreaterThan(5);
   expect(new Set(tap.checks.map((check) => check.kind))).toEqual(new Set(["create", "diff"]));
   expect(tap.checks.filter((check) => check.mine !== check.reactNative)).toEqual([]);
+});
+
+test("a commit attaches four animated nodes and the rest four for each frame; a node that leaves meanwhile is never attached", async () => {
+  const frames: (() => void)[] = [];
+  const scope = globalThis as { requestAnimationFrame?: (callback: () => void) => number };
+  const previous = scope.requestAnimationFrame;
+  scope.requestAnimationFrame = (callback) => frames.push(callback);
+  try {
+    const m = await fresh("animation-many-fixture.svelte");
+    const app = m.startSurface(35, m.Fixture, {}) as { keep: (n: number) => void };
+    const A = log();
+    // Twenty nodes in one commit: four have their descriptor and mapper at once, and all twenty have their first-run values in the payload.
+    expect(find(roots[35] ?? [], "RCTView")).toHaveLength(20);
+    expect(find(roots[35] ?? [], "RCTView").every((node) => node.props.opacity === 0.5)).toBe(true);
+    expect(A.mappers).toHaveLength(4);
+    expect(frames).toHaveLength(1);
+
+    frames.shift()?.();
+    expect(A.mappers).toHaveLength(8);
+    expect(frames).toHaveLength(1);
+
+    // A commit that touches the tree: the waiting nodes keep their turn, one frame attaches four more.
+    app.keep(19);
+    await settle(m);
+    expect(A.mappers).toHaveLength(8);
+    frames.shift()?.();
+    expect(A.mappers).toHaveLength(12);
+
+    // Nodes 12 to 18 are still waiting when they leave: they are never attached, and the frame already asked for finds nothing to do.
+    app.keep(12);
+    await settle(m);
+    expect(A.mappers).toHaveLength(12);
+    while (frames.length > 0) frames.shift()?.();
+    expect(A.mappers).toHaveLength(12);
+    expect(A.mappers.some((mapper) => mapper.stopped)).toBe(false);
+
+    // Four new nodes fit in the budget of their commit.
+    app.keep(16);
+    await settle(m);
+    expect(A.mappers).toHaveLength(16);
+    expect(frames).toHaveLength(0);
+  } finally {
+    scope.requestAnimationFrame = previous;
+  }
 });

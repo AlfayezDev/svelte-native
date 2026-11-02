@@ -359,11 +359,13 @@ async function setProxy(serial: string, value: string | null, run: AdbRun): Prom
 	}
 }
 
-/** The settings in which two captured states differ, as `name: was -> is`. */
+/** The settings in which two captured states differ, as `name: was -> is`. A text size is a number: "1.00" (what a variant writes) and "1.0" (what the settings provider keeps) are the same size. */
 export function stateDifferences(was: DeviceState, now: DeviceState): string[] {
 	const names = Object.keys(was) as (keyof DeviceState)[];
+	const same = (name: keyof DeviceState) =>
+		was[name] === now[name] || (name === "fontScale" && was.fontScale !== null && now.fontScale !== null && Number(was.fontScale) === Number(now.fontScale));
 	return names
-		.filter((name) => was[name] !== now[name])
+		.filter((name) => !same(name))
 		.map((name) => `${name}: ${JSON.stringify(was[name])} -> ${JSON.stringify(now[name])}`);
 }
 

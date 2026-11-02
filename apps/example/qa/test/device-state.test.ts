@@ -110,6 +110,13 @@ describe("device state parsers", () => {
 			'proxy: null -> "localhost:1"',
 		]);
 	});
+
+	test("a text size is compared as a number: the same size written two ways is no difference, another size or none is", () => {
+		const was: DeviceState = { night: "no", fontScale: "1.00", appLocales: "", accelerometerRotation: "1", userRotation: "0", proxy: null };
+		expect(stateDifferences(was, { ...was, fontScale: "1.0" })).toEqual([]);
+		expect(stateDifferences(was, { ...was, fontScale: "1.5" })).toEqual(['fontScale: "1.00" -> "1.5"']);
+		expect(stateDifferences(was, { ...was, fontScale: null })).toEqual(['fontScale: "1.00" -> null']);
+	});
 });
 
 describe("what an earlier run left on the device", () => {

@@ -11,6 +11,7 @@ Notable changes to `@rasheed/svelte-native`, newest first. The format follows [K
 
 ### Changed
 
+- The windowed `List` mounts its overscan four frames after the rows that show, not one (the one-frame flush went ahead of the layout event of the visible rows on a phone with slow cores), and the wrapper of a row of a list whose rows have one size is described once per row. Once the animation layer is loaded only the nodes that can need it go through it, and a node the host has not built no longer reports its changes.
 - A text under a live region tells it when its text changes (an engine text is a plain view); a role description is React Native's string ("Link", "Tab") instead of the engine's own lowercase one; a `button`, `imagebutton` or `togglebutton` role makes the node clickable.
 
 ### Fixed

@@ -38,6 +38,12 @@ kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/A11yWire.kt" \
   "$here/kotlin/expo/modules/svelteengine/A11yLiveCheck.kt" -include-runtime -d "$work/a11y-live-check.jar"
 java -cp "$work/a11y-live-check.jar" expo.modules.svelteengine.A11yLiveCheckKt
 
+# The text input's autoCorrect tri-state, against React Native's own setAutoCorrect.
+kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/InputRules.kt" \
+  "$here/kotlin/expo/modules/svelteengine/InputRulesCheck.kt" -include-runtime -d "$work/input-rules-check.jar"
+java -cp "$work/input-rules-check.jar" expo.modules.svelteengine.InputRulesCheckKt \
+  "$rn/ReactAndroid/src/main/java/com/facebook/react/views/textinput/ReactTextInputManager.kt"
+
 kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/AnimatedWire.kt" \
   "$here/kotlin/expo/modules/svelteengine/AnimatedWireCheck.kt" -include-runtime -d "$work/check.jar"
 java -cp "$work/check.jar" expo.modules.svelteengine.AnimatedWireCheckKt "$work/fixture.tsv"

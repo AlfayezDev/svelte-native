@@ -114,6 +114,16 @@ int32_t spinnerStyleCode(const std::string &s) {
   return 0;  // Normal
 }
 
+// React Native's `setAutoCorrect` takes a nullable Boolean: unset leaves the keyboard alone, false turns suggestions (and the platform's spell
+// checker) off. The typed prop is false until set, so what this commit's raw props carried says which it was (InputRules.kt: 1 on, 2 off,
+// 0 removed, -1 not part of this update, the view keeps what it had).
+int32_t autoCorrectCode(const AndroidTextInputProps &p) {
+  const folly::dynamic *raw = p.rawProps.isObject() ? p.rawProps.get_ptr("autoCorrect") : nullptr;
+  if (raw == nullptr) return -1;
+  if (raw->isBool()) return raw->getBool() ? 1 : 2;
+  return 0;
+}
+
 void encodeInput(Out &o, const ShadowView &view, float scale) {
   const auto &p = static_cast<const AndroidTextInputProps &>(*view.props);
   auto &b = o.b;
@@ -151,7 +161,7 @@ void encodeInput(Out &o, const ShadowView &view, float scale) {
   o.begin(kInputKeyboard);
   b.putInt(keyboardCode(p.keyboardType));
   b.putInt(capitalizeCode(p.autoCapitalize));
-  b.putInt(p.autoCorrect ? 1 : -1);  // false is indistinguishable from "not set" in the C++ props
+  b.putInt(autoCorrectCode(p));
 
   int32_t submit = 0;
   switch (p.getNonDefaultSubmitBehavior()) {

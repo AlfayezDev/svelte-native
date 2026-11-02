@@ -82,7 +82,10 @@ class EngineInput(context: Context) : EditText(context), EngineNode {
         val now = state.get()
         if (now.generation != before.generation) return false
         if (now.spare != null) return true // filled meanwhile
-        if (state.compareAndSet(now, State(now.generation, Spare(context, view)))) return true
+        if (state.compareAndSet(now, State(now.generation, Spare(context, view)))) {
+          Log.d(TAG, "input spare built (generation ${now.generation})")
+          return true
+        }
       }
     }
 
@@ -90,7 +93,10 @@ class EngineInput(context: Context) : EditText(context), EngineNode {
     fun discardSpare() {
       while (true) {
         val now = state.get()
-        if (state.compareAndSet(now, State(now.generation + 1, null))) return
+        if (state.compareAndSet(now, State(now.generation + 1, null))) {
+          Log.d(TAG, "input spare discarded (generation ${now.generation + 1})")
+          return
+        }
       }
     }
 

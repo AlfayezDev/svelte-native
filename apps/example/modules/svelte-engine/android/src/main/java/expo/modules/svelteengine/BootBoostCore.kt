@@ -24,9 +24,6 @@ internal interface BootEnvironment {
   fun released()
 }
 
-/** A library the start loads ahead, and whether its loader thread is held to the big cores. */
-internal class PreloadedLibrary(val name: String, val pinned: Boolean)
-
 /**
  * The rules of the boot boost; [BootBoost] gives them the platform. See there for why.
  *
@@ -34,7 +31,7 @@ internal class PreloadedLibrary(val name: String, val pinned: Boolean)
  * (no [activityCreated] by then: the process was started for something that is not on screen). [release] is idempotent and may be called from
  * any thread; it gives the pinned threads their masks back and tells the platform once.
  */
-internal class BootBoostCore(private val env: BootEnvironment, private val libraries: List<PreloadedLibrary>) {
+internal class BootBoostCore(private val env: BootEnvironment, private val libraries: List<String>) {
   private val lock = Any()
   @Volatile private var released = true
   @Volatile private var activityCreated = false
@@ -48,8 +45,13 @@ internal class BootBoostCore(private val env: BootEnvironment, private val libra
   private var callerPinned = false
 
   /**
-   * Initializes the loader and loads [libraries] on a thread each. A loader that cannot start, or a library that cannot load, is logged and
-   * the host fails again, with its cause, where it needs the library; nothing is thrown from here.
+   * Initializes the loader and loads [libraries], in order, on one thread of its own that is held to the big cores. A loader that cannot start,
+   * or a library that cannot load, is logged and the host fails again, with its cause, where it needs the library; nothing is thrown from here.
+   *
+   * One thread, not one per library: `dlopen` holds the linker's single lock for the whole of a load, so loads on several threads run one
+   * after the other anyway, and the extra threads only compete with the main thread (which needs the first two libraries itself, right after
+   * the content providers) and the pool thread for the two big cores. Interleaved on the Galaxy A16 (20 warm launches each, one build, a system
+   * property chose the variant): a thread per library with the first two pinned 324 ms, one pinned thread 314 ms (median `Displayed`).
    */
   fun preloadLibraries() {
     if (preloading) return
@@ -61,14 +63,13 @@ internal class BootBoostCore(private val env: BootEnvironment, private val libra
       return
     }
     val cores = env.bigCores()
-    for ((index, library) in libraries.withIndex()) {
-      env.startThread("svelte-boot-$index") {
-        // A loader thread that starts on a little core loads in twice the time; the ones off the critical path are left where they start.
-        if (library.pinned && cores != null) env.setAffinity(0, cores)
+    env.startThread("svelte-boot-load") {
+      if (cores != null) env.setAffinity(0, cores)
+      for (name in libraries) {
         try {
-          env.loadLibrary(library.name)
+          env.loadLibrary(name)
         } catch (error: Throwable) {
-          env.warn("BootBoost: could not preload ${library.name}", error)
+          env.warn("BootBoost: could not preload $name", error)
         }
       }
     }

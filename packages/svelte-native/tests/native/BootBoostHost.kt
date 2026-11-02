@@ -1,6 +1,5 @@
 import expo.modules.svelteengine.BootBoostCore
 import expo.modules.svelteengine.BootEnvironment
-import expo.modules.svelteengine.PreloadedLibrary
 
 // Host-side check of the boot boost's rules (BootBoostCore.kt, no Android types) against a fake platform. One scenario name per line on
 // stdin, one line of events per scenario on stdout; tests/boot-boost.test.ts holds the expectations.
@@ -18,7 +17,6 @@ internal class FakePlatform(
   private val timers = ArrayList<Pair<Long, () -> Unit>>()
   private var clock = 1000L
   private var currentThread = 7
-  private var threadsRun = 0
 
   fun advance(ms: Long) { clock += ms }
   /** Runs every timer due within [ms], in order of delay. */
@@ -40,7 +38,6 @@ internal class FakePlatform(
   override fun postToMain(delayMs: Long, task: () -> Unit) { timers.add(delayMs to task) }
   override fun startThread(name: String, task: () -> Unit) {
     events.add("thread $name")
-    threadsRun++
     task()
   }
   override fun initLoader() {
@@ -57,7 +54,7 @@ internal class FakePlatform(
   override fun released() { events.add("released") }
 }
 
-internal val libraries = listOf(PreloadedLibrary("a", pinned = true), PreloadedLibrary("b", pinned = true), PreloadedLibrary("c", pinned = false))
+internal val libraries = listOf("a", "b", "c")
 
 internal fun run(name: String): List<String> {
   when (name) {

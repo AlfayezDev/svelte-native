@@ -51,7 +51,12 @@ internal object InputWarmup {
     ScheduledThreadPoolExecutor(1) { task ->
       Thread({
         Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND)
-        offBigCores()
+        try {
+          Affinity.keepOffBigCores()
+        } catch (e: Throwable) {
+          // A refused affinity costs the placement, not the build: the task still runs, wherever the thread is.
+          Log.w(TAG, "input warm-up could not keep its thread off the big cores", e)
+        }
         task.run()
       }, "svelte-input-warmup").apply { isDaemon = true }
     }.apply {
@@ -100,14 +105,6 @@ internal object InputWarmup {
     }
     // A discard came while the input was being built (a configuration change): the one for the current generation is built now.
     if (stale) enqueue(context, 0L, retain = false)
-  }
-
-  /** The thread works on the little cores: the big ones are the main thread's and the RenderThread's. */
-  private fun offBigCores() {
-    val big = Affinity.bigCores() ?: return
-    val all = (1L shl Runtime.getRuntime().availableProcessors()) - 1
-    val little = all and big.inv()
-    if (little != 0L) Affinity.setAffinity(0, little)
   }
 
   private fun retainCaches(context: Context) {

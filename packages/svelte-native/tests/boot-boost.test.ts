@@ -74,13 +74,13 @@ test.skipIf(!tools)("the boot boost's rules", () => {
 test.skipIf(!tools)("the library preload", () => {
   const out = run(scenarios.slice(7));
   const [preload, twice, alike, loaderFails, libraryFails] = out;
-  // One thread per library, in order; the ones on the critical path pin themselves to the big cores first, the others start where they are.
-  expect(preload).toBe("init | thread svelte-boot-0 | set self c0 | load a | thread svelte-boot-1 | set self c0 | load b | thread svelte-boot-2 | load c");
+  // One thread for all of them, held to the big cores, loading in order (the linker lets one load at a time anyway): the main thread waits for the first two.
+  expect(preload).toBe("init | thread svelte-boot-load | set self c0 | load a | load b | load c");
   expect(twice).toBe("init");
-  expect(alike).toBe("init | thread svelte-boot-0 | load a | thread svelte-boot-1 | load b | thread svelte-boot-2 | load c");
+  expect(alike).toBe("init | thread svelte-boot-load | load a | load b | load c");
   // A loader that cannot start is logged and nothing else happens; a library that cannot load is logged and the next one loads.
   expect(loaderFails).toBe("init | warn BootBoost: could not initialize SoLoader ahead of React Native, no library preload (IOException)");
-  expect(libraryFails).toBe("init | thread svelte-boot-0 | set self c0 | load a | thread svelte-boot-1 | set self c0 | load b | warn BootBoost: could not preload b (UnsatisfiedLinkError) | thread svelte-boot-2 | load c");
+  expect(libraryFails).toBe("init | thread svelte-boot-load | set self c0 | load a | load b | warn BootBoost: could not preload b (UnsatisfiedLinkError) | load c");
 });
 
 test.skipIf(!tools)("only the process the screen lives in boosts", () => {

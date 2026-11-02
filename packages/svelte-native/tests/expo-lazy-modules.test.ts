@@ -90,7 +90,7 @@ describe("lazy Expo module registry", () => {
 
   test("the lookup of a view's module searches the built modules before it builds the pending ones", () => {
     // `getModuleHolder(viewClass)` used to build every pending module first: the first view event paid for about twenty module definitions on its thread.
-    const lookup = /fun <T : View> getModuleHolder\(viewClass: Class<T>\): ModuleHolder<\*>\? \{([\s\S]*?)\n  \}/.exec(readFileSync(installed, "utf8"))?.[1] ?? "";
+    const lookup = /fun <T : View> getModuleHolder\(viewClass: Class<T>\): ModuleHolder<\*>\? \{([\s\S]*?)\n {2}\}/.exec(readFileSync(installed, "utf8"))?.[1] ?? "";
     expect(lookup).toContain("materializeAllPending()");
     expect(lookup.indexOf("viewHolder(viewClass)")).toBeGreaterThanOrEqual(0);
     expect(lookup.indexOf("viewHolder(viewClass)")).toBeLessThan(lookup.indexOf("materializeAllPending()"));

@@ -22,7 +22,8 @@ import { mount, unmount, type Component } from "./deps-svelte.ts";
 type AnimationModule = typeof import("./animation.ts");
 let animation: AnimationModule | null = null;
 const ANIMATION_ATTRIBUTES = new Set(["animatedStyle", "animatedProps", "entering", "exiting", "layout"]);
-const CSS_ANIMATION_KEY = /^(?:animation|transition)[A-Z]/;
+// Reanimated's CSS keys: `animationName`, `animationDuration`, ... and `transitionProperty`, ... and the `transition` shorthand (it has no `animation` shorthand yet).
+const CSS_ANIMATION_KEY = /^(?:animation[A-Z]|transition(?:[A-Z]|$))/;
 function styleWantsAnimation(style: unknown): boolean {
   if (Array.isArray(style)) { for (let index = 0; index < style.length; index++) if (styleWantsAnimation(style[index])) return true; return false; }
   if (!style || typeof style !== "object") return false;
@@ -152,8 +153,8 @@ type State = {
   foreign: boolean;
   /** Whether the node's view config declares a prop as an attribute of the view (the animation layer leaves those to the view: `fabric/animation.ts`, `AnimationTarget.declares`). */
   declares?: (key: string) => boolean;
-  /** The view name `declares` was made for: it is made again only when that changes, not on every build of the node. */
-  declaredFor?: string;
+  /** The view config `declares` was made for: it is made again only when that changes (a kind defined anew gives a new config), not on every build of the node. */
+  declaredFor?: object;
   /** The last build gave the node a lone string as its `content` (`loneText`): when that stops being true the prop has to go, though no attribute changed. */
   lone: boolean;
   /** The node has been through the animation layer, which keeps a record of it: every later build goes through it too, so that it can detach. */
@@ -501,12 +502,15 @@ function buildSpan(child: NativeNode, rootTag: number, text: ForeignText): Fabri
   return current.node;
 }
 
-/** One `declares` per view name, not one closure per node: the config it answers for is the same for all of them. */
-const declaresByView = new Map<string, (key: string) => boolean>();
+/** One `declares` per view config, not one closure per node: the config it answers for is the same for all of them. A kind defined anew (`defineViewKind`) gives its name a new config, and the entry is made again. */
+const declaresByView = new Map<string, { config: object; declares: (key: string) => boolean }>();
 function declaresOf(viewName: string, config: ReturnType<typeof viewConfig>): (key: string) => boolean {
-  let declares = declaresByView.get(viewName);
-  if (!declares) { declares = (key) => Object.hasOwn(config.attributes, key); declaresByView.set(viewName, declares); }
-  return declares;
+  let entry = declaresByView.get(viewName);
+  if (entry?.config !== config) {
+    entry = { config, declares: (key) => Object.hasOwn(config.attributes, key) };
+    declaresByView.set(viewName, entry);
+  }
+  return entry.declares;
 }
 
 /** Builds (or rebuilds) the Fabric node for a Svelte element and returns the handle to append into its parent. */
@@ -550,11 +554,12 @@ function build(node: NativeNode, rootTag: number, insideText: boolean, insideFor
   const current = state(node, viewName);
   current.foreign = foreign;
   const config = viewConfig(viewName);
-  if (current.declaredFor !== viewName) {
-    current.declaredFor = viewName;
+  if (current.declaredFor !== config) {
+    current.declaredFor = config;
     current.declares = declaresOf(viewName, config);
   }
-  // `animatedStyle`, `animatedProps` and the CSS keys never reach the payload; once loaded, the animation layer sees every node so it can detach.
+  // `animatedStyle`, `animatedProps` and the CSS keys never reach the payload. The animation layer is loaded by the first node that wants it; from then on a node
+  // goes through it when it can need it (`mayAnimate`) or has been through it before (`current.animated`: the layer keeps a record of the node, and detaches it only here).
   let animated = attributes;
   if (animation ? current.animated || mayAnimate(attributes) : wantsAnimation(attributes)) {
     current.animated = true;

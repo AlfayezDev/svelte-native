@@ -10,16 +10,18 @@ import { reactNativeConverters } from "./rn-reference.ts";
 
 // What the host does around a flush that no payload shows: the work it skips for nodes it has not built, and who it sends through the
 // animation layer once that is loaded.
-type FakeNode = { tag: number; name: string; props: Record<string, unknown>; children: FakeNode[] };
+type FakeNode = { tag: number; name: string; props: Record<string, unknown>; children: FakeNode[]; target?: unknown };
+let roots: Record<number, FakeNode[]> = {};
+const find = (nodes: FakeNode[], name: string): FakeNode[] => nodes.flatMap((node) => [...(node.name === name ? [node] : []), ...find(node.children, name)]);
 const fake = {
-  createNode(tag: number, name: string, _root: number, props: Record<string, unknown>) { return { tag, name, props: { ...props }, children: [] } as FakeNode; },
+  createNode(tag: number, name: string, _root: number, props: Record<string, unknown>, target: unknown) { return { tag, name, props: { ...props }, children: [], target } as FakeNode; },
   cloneNodeWithNewChildren(node: FakeNode) { return { ...node, children: [] }; },
   cloneNodeWithNewProps(node: FakeNode, props: Record<string, unknown>) { return { ...node, props: { ...node.props, ...props }, children: [...node.children] }; },
   cloneNodeWithNewChildrenAndProps(node: FakeNode, props: Record<string, unknown>) { return { ...node, props: { ...node.props, ...props }, children: [] }; },
   appendChild(parent: FakeNode, child: FakeNode) { parent.children.push(child); },
   createChildSet(root: number) { return { root, children: [] as FakeNode[] }; },
   appendChildToSet(set: { children: FakeNode[] }, child: FakeNode) { set.children.push(child); },
-  completeRoot() {},
+  completeRoot(root: number, set: { children: FakeNode[] }) { roots[root] = set.children; },
   registerEventHandler() {},
 };
 (globalThis as { nativeFabricUIManager?: unknown }).nativeFabricUIManager = fake;
@@ -39,10 +41,12 @@ async function load() {
   const bundle = await build({
     stdin: {
       contents: `import Fixture from './fabric-fixture.svelte';
+        import Shorthand from './host-hints-fixture.svelte';
         import renderer, { NativeNode } from '../src/renderer.ts';
         import { startSurface, fabricStats, mayAnimate, plainStyle } from '../src/fabric/host.ts';
+        import { defineViewKind } from '../src/fabric/view-configs.ts';
         import { tick } from 'svelte';
-        export { startSurface, fabricStats, mayAnimate, plainStyle, tick, Fixture, renderer, NativeNode };`,
+        export { startSurface, fabricStats, mayAnimate, plainStyle, defineViewKind, tick, Fixture, Shorthand, renderer, NativeNode };`,
       resolveDir: import.meta.dirname,
     },
     bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], mainFields: ["main"], write: false,
@@ -105,12 +109,46 @@ test("mayAnimate: plain nodes stay out of the animation layer, the ones it needs
   expect(m.mayAnimate({ layout: {} })).toBe(true);
   expect(m.mayAnimate({ animationName: {} })).toBe(true);
   expect(m.mayAnimate({ transitionProperty: "opacity" })).toBe(true);
+  expect(m.mayAnimate({ transition: "opacity 300ms" })).toBe(true); // Reanimated's shorthand
   expect(m.mayAnimate({ style: { animationDuration: "1s" } })).toBe(true);
   expect(m.mayAnimate({ style: [{ padding: 1 }, { transitionDuration: "1s" }] })).toBe(true);
+  expect(m.mayAnimate({ style: { transition: "opacity 300ms" } })).toBe(true);
+  expect(m.mayAnimate({ style: [{ padding: 1 }, { transition: "opacity 300ms" }] })).toBe(true);
   expect(m.mayAnimate({ style: { opacity: shared } })).toBe(true);
   expect(m.mayAnimate({ style: { transform: [{ translateX: shared }] } })).toBe(true);
   expect(m.mayAnimate({ style: [{ padding: 1 }, { opacity: shared }] })).toBe(true);
   expect(m.plainStyle(undefined)).toBe(true);
   expect(m.plainStyle("padding: 1")).toBe(true);
-  expect(m.plainStyle({ animation: 1 })).toBe(true); // `animation` alone is no CSS key (`animationName`, `transition…` are)
+  expect(m.plainStyle({ animation: 1 })).toBe(true); // Reanimated has no `animation` shorthand (yet): `animationName` and the like are CSS keys, a bare `animation` is not
+  expect(m.plainStyle({ transition: "opacity 300ms" })).toBe(false); // the `transition` shorthand is
+});
+
+test("a node whose only animation is the `transition` shorthand loads the animation layer", async () => {
+  const m = await load();
+  roots = {};
+  const app = m.startSurface(21, m.Shorthand, {}) as { useShorthand: () => void };
+  expect(m.fabricStats().animationLoaded).toBe(false); // a plain first screen boots without the layer
+  app.useShorthand();
+  await settle(m);
+  expect(m.fabricStats().animationLoaded).toBe(true);
+  const node = find(roots[21] ?? [], "RCTView").find((view) => view.props.testID === "shorthand");
+  expect(node?.props).toEqual({ testID: "shorthand", padding: 2 }); // the shorthand is for the layer, not the native view
+});
+
+test("a node's `declares` follows its view config when the kind is defined anew", async () => {
+  const m = await load();
+  roots = {};
+  const app = m.startSurface(22, m.Fixture, {}) as { rename: (s: string) => void };
+  await settle(m);
+  const state = (name: string) => (find(roots[22] ?? [], name)[0]?.target as { hostState?: { declares?: (key: string) => boolean } } | undefined)?.hostState;
+  const before = state("RCTText")?.declares;
+  const view = state("RCTView")?.declares;
+  expect(before?.("customProp")).toBe(false);
+  m.defineViewKind("RCTText", { plain: "customProp" });
+  app.rename("again");
+  await settle(m);
+  const after = state("RCTText")?.declares;
+  expect(after).not.toBe(before);
+  expect(after?.("customProp")).toBe(true);
+  expect(state("RCTView")?.declares).toBe(view); // a view name that was not defined anew keeps its function
 });

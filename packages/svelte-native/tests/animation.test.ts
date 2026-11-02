@@ -70,6 +70,11 @@ async function load() {
         builder.onResolve({ filter: /\/view-configs\.ts$/ }, (args) => (args.importer.endsWith("/fabric/host.ts") ? { path: resolve(import.meta.dirname, "payload-tap.ts") } : undefined));
         builder.onResolve({ filter: /^@rasheed\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
         builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../src/environment.ts") }));
+        // A spy on the animation layer's entry: which nodes the host sent through it.
+        builder.onLoad({ filter: /fabric\/animation\.ts$/ }, async ({ path }) => ({
+          contents: (await readFile(path, "utf8")).replace("export function animationProps(node: object, target: AnimationTarget, props: Record<string, unknown>): Record<string, unknown> {", "$&\n  ((globalThis as { __animationPropsCalls?: unknown[] }).__animationPropsCalls ??= []).push(props.testID);"),
+          loader: "ts",
+        }));
         builder.onLoad({ filter: /\.svelte$/ }, async ({ path }) => ({
           contents: compile(await readFile(path, "utf8"), { filename: path, css: "external", dev: false, experimental: { customRenderer: "@rasheed/svelte-native/renderer" } }).js.code,
           loader: "js",
@@ -87,9 +92,10 @@ async function load() {
 const find = (nodes: FakeNode[], name: string): FakeNode[] => nodes.flatMap((n) => [...(n.name === name ? [n] : []), ...find(n.children, name)]);
 const byId = (root: number, id: string) => find(roots[root] ?? [], "RCTView").find((n) => n.props.testID === id) as FakeNode;
 const settle = async (m: { tick: () => Promise<void> }) => { await m.tick(); await Promise.resolve(); await Promise.resolve(); };
-type App = { hide: () => void; show: () => void; pad: (n: number) => void; dropCss: () => void; useInline: () => void; two: () => void; useProps: () => void };
+type App = { hide: () => void; show: () => void; pad: (n: number) => void; dropCss: () => void; useInline: () => void; two: () => void; useProps: () => void; stopAnim: () => void; useShorthand: () => void };
+const sentThroughLayer = () => ((globalThis as { __animationPropsCalls?: unknown[] }).__animationPropsCalls ?? []) as unknown[];
 const animationKeys = ["animationName", "animationDuration", "transitionProperty", "transitionDuration", "animatedStyle", "animatedProps"];
-const fresh = async () => { delete (globalThis as { __anim?: unknown }).__anim; roots = {}; return load(); };
+const fresh = async () => { delete (globalThis as { __anim?: unknown }).__anim; (globalThis as { __animationPropsCalls?: unknown[] }).__animationPropsCalls = []; roots = {}; return load(); };
 
 test("animatedStyle: initial values in the first payload, one descriptor and one mapper, re-pointed after a clone, stopped on removal", async () => {
   const m = await fresh();
@@ -235,4 +241,58 @@ test("every payload the host builds for these fixture trees is identical to Reac
   expect(tap.checks.length).toBeGreaterThan(5);
   expect(new Set(tap.checks.map((check) => check.kind))).toEqual(new Set(["create", "diff"]));
   expect(tap.checks.filter((check) => check.mine !== check.reactNative)).toEqual([]);
+});
+
+test("a node that went through the animation layer keeps going through it, so the layer detaches it when its animated prop goes", async () => {
+  const m = await fresh();
+  const app = m.startSurface(35, m.Fixture, {}) as App;
+  const anim = byId(35, "anim");
+  const A = log();
+  expect(A.mappers).toHaveLength(1);
+  expect(A.mappers[0].stopped).toBe(false);
+  expect(sentThroughLayer()).toContain("anim");
+  app.stopAnim(); // the node stays, with no animated attribute: nothing about its attributes asks for the layer any more
+  await settle(m);
+  const stopped = byId(35, "anim");
+  expect(stopped).toBeDefined();
+  expect("animatedStyle" in stopped.props).toBe(false);
+  expect(A.mappers[0].stopped).toBe(true); // the layer was told: the latch sent the node through it once more
+  expect(A.descriptors[0].removes).toEqual([anim.tag]);
+  // and the node that is back to plain stays with the layer, so a later animatedStyle would be seen there too
+  app.pad(3);
+  await settle(m);
+  expect(byId(35, "anim").props.padding).toBe(3);
+  expect(sentThroughLayer().filter((id) => id === "anim").length).toBeGreaterThanOrEqual(3);
+});
+
+test("once the animation layer is loaded, plain nodes are not sent through it", async () => {
+  const m = await fresh();
+  const app = m.startSurface(36, m.Fixture, {}) as App;
+  expect(m.fabricStats().animationLoaded).toBe(true);
+  const seen = new Set(sentThroughLayer());
+  expect(seen.has("anim")).toBe(true);
+  expect(seen.has("css")).toBe(true);
+  expect(seen.has("plain")).toBe(false);
+  expect(seen.has("plain2")).toBe(false);
+  // a plain node that is built again (its padding changes) still stays out
+  app.pad(5);
+  await settle(m);
+  expect(byId(36, "plain2").props.padding).toBe(5);
+  expect(sentThroughLayer()).not.toContain("plain");
+  expect(sentThroughLayer()).not.toContain("plain2");
+});
+
+test("the CSS `transition` shorthand reaches a CSSManager like the longhand keys, and never the native payload", async () => {
+  const m = await fresh();
+  const app = m.startSurface(37, m.Fixture, {}) as App;
+  const A = log();
+  const before = A.css.length;
+  app.useShorthand();
+  await settle(m);
+  expect(A.css).toHaveLength(before + 1);
+  const entry = A.css.at(-1);
+  expect(entry?.updates[0]).toMatchObject({ padding: 2, transition: "opacity 300ms" });
+  const node = byId(37, "shorthand");
+  expect(entry?.viewTag).toBe(node.tag);
+  expect(node.props).toEqual({ testID: "shorthand", padding: 2 });
 });

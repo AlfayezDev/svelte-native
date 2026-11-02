@@ -142,50 +142,45 @@ Where each step stands, with the evidence: the run (device, build, date) and the
 
 ### Final build gates
 
-**PLACEHOLDER: to be filled after the final proofs.** One row per device and gate. "Pre-final" is the last value the run log recorded (date, build) and is there so that the final value can be compared with it; it is not a result. "Final value" and "Pass / exception" stay empty until the final build has run on the device. A miss that is accepted is written as `exception` with the decision (D1 or a new one) and where it is recorded.
+The final proofs, one row per device and gate. "Pre-final" is the last value the run log recorded (date, build), for comparison only. A miss that is accepted is written as `exception` with the decision and where it is recorded; `exception proposed` waits for the user's decision. Raw gate tables: `native-qa gates` of each device's run set; the run log (`.rasheed/native-qa/2026-10-25/WAVES.md`, 2 Nov) has the commands and run files.
 
-Final build: ______ (source commit, APK digest and CDHash) · date: ______
+Final build: `4b8f77ad5` (source). Samsung A16: QA APK `b711324016ea`, smoke APK `e42ecab93f22`. iPhone SE 3: QA CDHash `c8cb9a24e08a` (main.jsbundle `b112d241e6a0`), smoke CDHash `fd377a340fb7`. Dates: Samsung 1–2 Nov 22:12–07:50, iPhone 2 Nov 06:16–07:37 (Mac local time +3 h).
 
 | Device | Gate | Bar | Pre-final (date, build) | Final value | Pass / exception |
 |---|---|---|---|---|---|
-| Samsung A16 | `checks.passed` / `checks.failed` | 28 / 0 | 28 / 0 (27 Oct, `86a2de13e`) | | |
-| Samsung A16 | `lab.runs` | 10 | 10 (27 Oct, `86a2de13e`) | | |
-| Samsung A16 | `boot.warm.p90` | ≤ 350 ms | 438 (27 Oct, `86a2de13e`); 387 (1 Nov, `ab94fc0814a3`, quiet phone) | | |
-| Samsung A16 | `boot.cold.p90` | ≤ 350 ms | 438 (27 Oct, `86a2de13e`); 290 (1 Nov, `ab94fc0814a3`) | | |
-| Samsung A16 | `boot.warm.jsTotal.p90` | ≤ 100 ms | 172 (27 Oct, `86a2de13e`); 89 (1 Nov, `ab94fc0814a3`) | | |
-| Samsung A16 | `boot.warm.samples` / `boot.cold.samples` | ≥ 30 | 30 / 30 (27 Oct, `86a2de13e`) | | |
-| Samsung A16 | `frames.droppedPct`, `churn-animated` | 0.0 % | 3.5 % (27 Oct, `86a2de13e`) | | |
-| Samsung A16 | `frames.droppedPct`, `navigation-8` | 0.0 % | 0.69 % (27 Oct, `86a2de13e`) | | |
-| Samsung A16 | `frames.droppedPct`, `header-8` | 0.0 % | 0.73 % (27 Oct, `86a2de13e`) | | |
-| Samsung A16 | `frames.droppedPct`, `tabs-8` | 0.0 % | 0.03 % (27 Oct, `86a2de13e`) | | |
-| Samsung A16 | `frames.maxMs` | ≤ 33 ms | over 33 ms once in 11 of 17 scenarios (27 Oct, `0b1eac79bbcd`) | | |
-| Samsung A16 | `list.virtual300.mountMs` | ≤ 10 ms | 13.5 (27 Oct, `86a2de13e`); 15.1 (1 Nov, `ab94fc0814a3`) | | |
-| Samsung A16 | `gestures.*` | checks 0 failed; frames 0.0 % | all checks pass, 6 launches; `box` 0.7–1.3 % (1 Nov, `9f3eeb58e`, QA `25e7f97ae3fd`) | | |
-| Samsung A16 | `smoke.*` | 0 failed, 0 missing | 35 ok, 1 expected skip, 0 failed (1 Nov, `9f3eeb58e`, smoke `a7dd75691c78`) | | |
-| Samsung A16 | `log.fatals` / `log.engineWarnings` | 0 / 0 | not among the 8 failing gates (27 Oct, `86a2de13e`) | | |
-| iPhone SE 3 | `checks.passed` / `checks.failed` | 28 / 0 | 28 / 0 (27 Oct, `86a2de13e`, CDHash `3c85c9ee51fb`) | | |
-| iPhone SE 3 | `lab.runs` | 10 | 10 (27 Oct, `86a2de13e`) | | |
-| iPhone SE 3 | `boot.warm.p90` / `boot.cold.p90` | ≤ 250 ms | 153 / 214 (27 Oct, `343c65744171`) | | |
-| iPhone SE 3 | `boot.warm.jsTotal.p90` | ≤ 100 ms | 33 (27 Oct, `343c65744171`) | | |
-| iPhone SE 3 | `frames.droppedPct`, `header-8` | 0.0 % | 3.8 % (27 Oct, `343c65744171`); 3.6–4.0 % (`99d977716`) | | |
-| iPhone SE 3 | `frames.droppedPct`, `navigation-8` | 0.0 % | 0.3 % (27 Oct, `343c65744171`); 1.0 % (1 Nov, build 14) | | |
-| iPhone SE 3 | `list.virtual300.mountMs` | ≤ 15 ms | 5.5 median, 6.2 worst (1 Nov, `848314b91`); 49–52 (27 Oct, `99d977716`) | | |
-| iPhone SE 3 | `parity.diffPixels` | 0 | 0 of 96 (27 Oct, `86a2de13e`) | | |
-| iPhone SE 3 | `a11y.*` | 0 | 0 findings, 48 screens (27 Oct, `86a2de13e`) | | |
-| iPhone SE 3 | `log.crashReports` | 0 | not measured (phone not on USB, 27 Oct, `86a2de13e`) | | |
-| iPhone SE 3 | `gestures.*` | checks 0 failed | all scenarios pass with real touches, `pushed-edge` 5/5 in 4 of 6 runs (1 Nov, `b4ed53c24`) | | |
-| iPhone SE 3 | `smoke.*` | 0 failed, 0 missing | not run | | |
-| OVH emulator | `checks.passed` / `checks.failed` | 28 / 0 | 28 / 0 ×10 (27 Oct, `86a2de13e`) | | |
-| OVH emulator | `parity.diffPixels` | 0 | 0 of 200 (27 Oct, `86a2de13e`) | | |
-| OVH emulator | `a11y.*` | 0 | 0 findings, 100 screens, 460 elements (27 Oct, `86a2de13e`) | | |
-| OVH emulator | `resilience.failures` | 0 | 0 of 126 steps (27 Oct, `86a2de13e`) | | |
-| OVH emulator | `memory.heapGrowthPct` | ≤ 5 | JS +0.06, native −4.6 (10 min, 27 Oct, `86a2de13e`); 0.14 (30 min, Android wave 4 build) | | |
-| OVH emulator | `crashes.coldStarts` / `crashes.coldStartCrashes` | 1,000 / 0 | 1,000 / 0, 0 ANRs (27–28 Oct, `86a2de13e`) | | |
-| OVH emulator | `crashes.suites` / `crashes.suiteCrashes` | 100 / 0 | not run on this build (84 of 90 earlier, 0 crashes) | | |
-| OVH emulator | `updates.*` | applied ≥ 1, rolledBack ≥ 1, badRetried 0, unexpectedFaults 0, channelHealthy ≥ 1 | 5 of 5 gates, twice (1 Nov, `e872541a4`) | | |
-| OVH emulator | `product.boot.fatals` / `product.boot.firstScreen` | 0 / ≥ 1 | 0 fatals, login screen in 7 s (1 Nov, `81e4f5535`) | | |
-| OVH emulator | `gestures.*` | checks 0 failed | all nine scenarios pass with both drivers ×3 (1 Nov, `8aeccc37f..4d001f53e`) | | |
-| Samsung A16, iPhone SE 3 | crash volume per phone (D3) | 1,000 cold starts, 100 suites | not run | | |
+| Samsung A16 | `checks.passed` / `checks.failed` | 28 / 0 | 28 / 0 (27 Oct, `86a2de13e`) | 28 / 0 in each of 10 runs | pass |
+| Samsung A16 | `lab.runs` / `lab.incomplete` | 10 / 0 | 10 (27 Oct, `86a2de13e`) | 10 / 0 | pass |
+| Samsung A16 | `boot.warm.p90` | ≤ 350 ms | 438 (27 Oct, `86a2de13e`); 387 (1 Nov, `ab94fc0814a3`, quiet phone) | 303 (after the 10 lab runs); 361 (rested phone); medians 295 / 298 | exception proposed: the p90 sits on the bar within ±30 ms run to run |
+| Samsung A16 | `boot.cold.p90` | ≤ 350 ms | 438 (27 Oct, `86a2de13e`); 290 (1 Nov, `ab94fc0814a3`) | 357 (after the 10 lab runs); 346 (rested phone); medians 304 / 302 | exception proposed (as warm) |
+| Samsung A16 | `boot.warm.jsTotal.p90` | ≤ 100 ms | 172 (27 Oct, `86a2de13e`); 89 (1 Nov, `ab94fc0814a3`) | 53 | pass |
+| Samsung A16 | `boot.warm.samples` / `boot.cold.samples` | ≥ 30 | 30 / 30 (27 Oct, `86a2de13e`) | 30 / 30, 0 failed launches (both runs) | pass |
+| Samsung A16 | `frames.droppedPct`, `churn-animated` | 0.0 % | 3.5 % (27 Oct, `86a2de13e`) | 3.10–3.51 %, 10 of 10 runs | exception (D1: Reanimated's worklet runtime on the UI thread) |
+| Samsung A16 | `frames.droppedPct`, `animation-48` / `input-120` | 0.0 % | one late frame per run (1 Nov, `ab94fc0814a3`) | 0.14–0.28 % in 4 of 10 runs / 0.41–1.66 % in 4 of 10 runs | exception proposed |
+| Samsung A16 | `frames.droppedPct`, `navigation-8` / `header-8` / `tabs-8` / `sheet-8` / `modal-8` | 0.0 % | 0.69 / 0.73 / 0.03 % (27 Oct, `86a2de13e`) | 0.0 % in each of 10 runs | pass |
+| Samsung A16 | `frames.maxMs` | ≤ 33 ms | over 33 ms once in 11 of 17 scenarios (27 Oct, `0b1eac79bbcd`) | 54 (`churn-animated`); over 33 ms in 13 of 17 scenarios | exception proposed (single long frames of the phone's frequency scaling) |
+| Samsung A16 | `list.virtual300.mountMs` | ≤ 10 ms | 13.5 (27 Oct, `86a2de13e`); 15.1 (1 Nov, `ab94fc0814a3`) | 32.1 (six idle frames before the mount, so the cores have clocked down; 8.8–12.2 when the cores are busy) | exception proposed |
+| Samsung A16 | `gestures.*` | checks 0 failed; frames 0.0 % | all checks pass; `box` 0.7–1.3 % (1 Nov, `9f3eeb58e`) | all checks pass, 6 launches, both drivers agree, 0 fatals; `box` 1.3 % in 1 of 3 launches (the first touch of the process) | exception (the first touch of a process: RNGH's first worklet run and class initialisation, decided 1 Nov) |
+| Samsung A16 | `foreign.*` | 0 failed, 0 skipped | 447 checks, 4 failed (1 Nov, `e1e28c3be`) | 450 checks over 13 libraries, 0 failed, 0 skipped | pass |
+| Samsung A16 | `smoke.*` | 0 failed, 0 missing | 35 ok, 1 expected skip, 0 failed (1 Nov, `9f3eeb58e`) | 35 ok, 1 expected skip (hms), 0 failed, 0 missing | pass |
+| Samsung A16 | `log.fatals` / `log.engineWarnings` | 0 / 0 | 0 / 0 (27 Oct, `86a2de13e`) | 0 / 0 | pass |
+| Samsung A16 | crash volume (D3): `crashes.coldStarts` / `coldStartCrashes` / `coldStartsNoBoot` | 1,000 / 0 / 0 | not run | 1,000 / 0 / 0 | pass |
+| Samsung A16 | crash volume (D3): `crashes.suites` / `suiteCrashes` / `suitesIncomplete` / `anrs` | 100 / 0 / 0 / 0 | not run | 100 / 0 / 0 / 0 | pass |
+| iPhone SE 3 | `checks.passed` / `checks.failed` | 28 / 0 | 28 / 0 (27 Oct, `86a2de13e`) | 28 / 0 in each of 10 runs | pass |
+| iPhone SE 3 | `lab.runs` | 10 | 10 (27 Oct, `86a2de13e`) | 10, 0 fatals | pass |
+| iPhone SE 3 | `boot.warm.p90` / `boot.cold.p90` | ≤ 250 ms | 153 / 214 (27 Oct, `343c65744171`) | 160 / 164 | pass |
+| iPhone SE 3 | `boot.warm.jsTotal.p90` | ≤ 100 ms | 33 (27 Oct, `343c65744171`) | 34 | pass |
+| iPhone SE 3 | `frames.droppedPct`, `header-8` | 0.0 % | 3.8 % (27 Oct, `343c65744171`) | 3.00–3.95 %, 10 of 10 runs | exception (D1: `UINavigationBar`'s re-layout) |
+| iPhone SE 3 | `frames.droppedPct`, `navigation-8` | 0.0 % | 0.3 % (27 Oct); 1.0 % (1 Nov, build 14, equal on its parent commit) | 0.89–1.02 % in 8 of 10 runs | exception proposed |
+| iPhone SE 3 | `frames.maxMs`, `churn-static` | ≤ 33 ms | no late frame (1 Nov, `848314b91`) | one 158 ms frame in 1 of 10 runs (0.2 %) | exception proposed (single hitch) |
+| iPhone SE 3 | `list.virtual300.mountMs` | ≤ 15 ms | 5.5 median, 6.2 worst (1 Nov, `848314b91`) | 6.6 | pass |
+| iPhone SE 3 | `parity.diffPixels` / `parity.incomplete` | 0 / 0 | 0 of 96 (27 Oct, `86a2de13e`) | 0 / 0, twice | pass |
+| iPhone SE 3 | `a11y.*` | 0 | 0 findings, 48 screens (27 Oct, `86a2de13e`) | 0 findings | pass |
+| iPhone SE 3 | `smoke.*` | 0 failed, 0 missing | not run | 33 ok, 3 expected skips, 0 failed, 0 missing | pass |
+| iPhone SE 3 | `gestures.*` | checks 0 failed | all scenarios pass with real touches (1 Nov, `b4ed53c24`) | not measured: XCUITest "Timed out while enabling automation mode" twice; waits for a replug | open |
+| iPhone SE 3 | `resilience.*` | 0 failed of 126 | 126 / 0 (1 Nov, `98dbebc78`) | waits for a replug (XCUITest) | open |
+| iPhone SE 3 | `log.crashReports` | 0 | not measured (27 Oct) | none new after the smoke, lab, boot, parity and a11y runs; not measured after an XCUITest run (CoreDevice stops answering until a replug) | exception proposed |
+| OVH emulator | every lab-role gate (lab, boot, parity incl. signed-in, a11y, resilience, gestures, foreign, smoke, product, updates) | gates.json | see the status above (27 Oct – 1 Nov) | waits for the OVH host (1Password) | open |
+| OVH emulator | signed-in parity / accessibility | 0 missing | 70 references (1 Nov, `feat/svelte-native-signedin2`) | waits for the dedicated QA account and its code on dev | open |
 
 ### Task split for concurrent agents
 

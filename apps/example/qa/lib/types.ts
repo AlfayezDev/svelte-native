@@ -42,7 +42,7 @@ export type Source = { commit: string; dirty: boolean };
  * What an iOS command records of the phone's crash log: the reports that are new since the command started, or why they could not be
  * read (the pull failed: the count is then not measured, never 0). Runs of other platforms and runs recorded before the pull have neither.
  */
-export type CrashReportsRecord = { crashReports?: CrashReport[]; crashReportsError?: string };
+export type CrashReportsRecord = { crashReports?: CrashReport[]; crashReportsError?: string; /** Which service read the crash log at the end of the command: `devicectl` (CoreDevice) or `usb` (the phone's crash-report service over USB, which still answers after a UI test). */ crashLogRead?: "devicectl" | "usb" };
 
 /**
  * What an Android suite's device session found and could not do (`DeviceSession`), in the run file of parity, a11y and resilience.

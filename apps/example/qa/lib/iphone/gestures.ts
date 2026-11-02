@@ -293,6 +293,29 @@ export async function waitForTestStarted(mac: Mac, outFile: string, maxMs: numbe
 	return false;
 }
 
+/** The names of the Mac processes a UI test leaves behind that hold the phone (CoreDevice stays wedged until they are gone or the phone is plugged in again). */
+const uiTestProcess = /xcodebuild|xctest|XCTRunner|testmanagerd|xcresulttool|xcdevice|CoreDeviceService/;
+
+/** The `ps -axo pid,ppid,etime,command` lines of `output` that name such a process (the listing's own command and its `grep` are not among them). */
+export function uiTestLeftovers(output: string): string[] {
+	return output
+		.split("\n")
+		.map((line) => line.trim())
+		.filter((line) => uiTestProcess.test(line) && !/ps -axo/.test(line))
+		.map((line) => line.slice(0, 220));
+}
+
+/**
+ * What a finished UI test left running on the Mac, printed by the commands that ran one: when CoreDevice stays wedged afterwards, the run says which
+ * process was still there. Nothing is ended here (the harness ends only the test it started); a `ps` that failed says so, it does not read as none.
+ */
+export async function describeUiTestLeftovers(mac: Mac): Promise<string[]> {
+	const result = await remote(mac, "ps -axo pid,ppid,etime,command");
+	if (result.code !== 0) return [`after the test: the process list of the Mac could not be read (exit ${result.code})`];
+	const left = uiTestLeftovers(result.stdout);
+	return left.length === 0 ? ["after the test: no xcodebuild, xctest or testmanagerd process is left on the Mac"] : [`after the test: ${left.length} process(es) of UI testing on the Mac:`, ...left.map((line) => `  ${line}`)];
+}
+
 /** Whether the process the test was started as (the shell that runs xcodebuild) still exists. */
 export async function testAlive(mac: Mac, pid: number): Promise<boolean> {
 	const result = await remote(mac, `kill -0 ${pid} 2>/dev/null && echo alive`);
@@ -333,6 +356,7 @@ export async function iosGesturesOnce(session: IosSession, names: string[], time
 		if (Date.now() >= deadline) testEnded = "the XCUITest run did not end within the timeout";
 		// Only the test this launch started: its shell's children (xcodebuild), then the shell.
 		if (Number.isFinite(testPid)) await remote(mac, `pkill -TERM -P ${testPid} 2>/dev/null; kill ${testPid} 2>/dev/null; true`);
+		for (const line of await describeUiTestLeftovers(mac)) console.log(`  ${line}`);
 	}
 	// The test is over: the phone answers again.
 	let results: IosLabResults | null = null;
@@ -405,7 +429,8 @@ export async function iosGestures(argv: string[]): Promise<void> {
 	}
 	const installed = reportedIdentity(reports, session.build, "gestures");
 	if (reports.length > 0 && installed === null) console.log(`warning: ${notReported}`);
-	const found = await finishCrashWatch(session.crashes);
+	// An XCUITest run leaves CoreDevice wedged until the phone is plugged in again: the crash log is read over USB first.
+	const found = await finishCrashWatch(session.crashes, { afterUiTest: true });
 	const attributed = found.record.crashReports ? launchesWithCrashes(launches, found.record.crashReports) : null;
 	if (attributed) launches = attributed.launches;
 	const crashRecord = attributed ? withReports(found.record, attributed.reports) : found.record;

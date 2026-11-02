@@ -39,6 +39,11 @@ using namespace facebook::react;
   return self;
 }
 
+- (void)viewWillAppear:(BOOL)animated {
+  [super viewWillAppear:animated];
+  [self.screenView uncover];
+}
+
 - (void)viewDidAppear:(BOOL)animated {
   [super viewDidAppear:animated];
   [self.screenView controllerDidAppear];
@@ -96,6 +101,9 @@ static std::string WithoutActivityState(const std::string &nativeId) {
   BOOL _needsToolbarUpdate;
   BOOL _initialDetentApplied;
   BOOL _visible;
+  /// While a push has covered the screen: its content (what JavaScript mounted into it), kept in a view that is in no window, and the picture of it drawn in its place.
+  UIView *_parkedContent;
+  UIView *_coverPicture;
   std::vector<double> _appliedDetents;
   SvelteTouchHost *_touch;
   __weak RCTScrollViewComponentView *_adjustedScroll;
@@ -199,7 +207,12 @@ static std::string WithoutActivityState(const std::string &nativeId) {
     _toolbar = toolbar;
     _needsToolbarUpdate = YES;
   }
-  [super mountChildComponentView:childComponentView index:index];
+  if (_parkedContent != nil) {
+    // What JavaScript mounts into a covered screen goes where the rest of its content is, at the index it counts in.
+    [_parkedContent insertSubview:childComponentView atIndex:MIN(index, (NSInteger)_parkedContent.subviews.count)];
+  } else {
+    [super mountChildComponentView:childComponentView index:index];
+  }
   [self setNeedsUpdate];
 }
 
@@ -215,7 +228,11 @@ static std::string WithoutActivityState(const std::string &nativeId) {
     _toolbar = nil;
     _needsToolbarUpdate = YES;
   }
-  [super unmountChildComponentView:childComponentView index:index];
+  if (_parkedContent != nil) {
+    [childComponentView removeFromSuperview];
+  } else {
+    [super unmountChildComponentView:childComponentView index:index];
+  }
   [self setNeedsUpdate];
 }
 
@@ -513,7 +530,7 @@ static void SvelteSetBottomInset(UIScrollView *scroll, CGFloat content, CGFloat 
 - (void)configureScrollView {
   SvelteHeaderView *header = _header;
   const BOOL underBar = header != nil && ([header spec].large || [header spec].translucent);
-  RCTScrollViewComponentView *scroll = underBar ? FirstScrollView(self) : nil;
+  RCTScrollViewComponentView *scroll = underBar ? FirstScrollView(_parkedContent ?: self) : nil;
   RCTScrollViewComponentView *adjusted = _adjustedScroll;
   if (scroll != adjusted) {
     if (adjusted != nil) {
@@ -620,6 +637,35 @@ static void SvelteSetBottomInset(UIScrollView *scroll, CGFloat content, CGFloat 
 }
 
 #pragma mark - Removal
+
+// UIKit ends a push by taking the covered screen's view out of the hierarchy and putting the new screen's view back where it belongs, and
+// each of the two walks every view below it (traits, window, layout engine): for a 60-row screen of 180 views that is 17 ms on the
+// iPhone SE 3 in one turn of the run loop, which holds the next frame back by 26 to 28 ms (a Time Profiler run of navigation-8: the
+// end of every push, never the pop, whose leaving screen is a picture already). The stack covers the screen a few frames into the push,
+// when nothing else is due: its content moves to a view in no window (the walk that costs is then ours, in a quiet frame, and UIKit's
+// takes out a view with a picture in it) and a picture of what was drawn takes its place. The content comes back, still in no window and
+// so for the price of moving its direct children, before UIKit shows the screen again (`uncover`: the stack's staging of a pop, the
+// controller's `viewWillAppear` for a back swipe, any update of the stack that makes the screen its top).
+- (void)coverWithPicture {
+  if (_parkedContent != nil || _unmounted || self.window == nil || _controller == nil || _controller.view != self) return;
+  UIView *picture = [self snapshotViewAfterScreenUpdates:NO];
+  if (picture == nil) return;
+  UIView *parked = [[UIView alloc] initWithFrame:self.bounds];
+  for (UIView *child in [self.subviews copy]) [parked addSubview:child];
+  _parkedContent = parked;
+  picture.frame = self.bounds;
+  _coverPicture = picture;
+  [self addSubview:picture];
+}
+
+- (void)uncover {
+  UIView *parked = _parkedContent;
+  if (parked == nil) return;
+  _parkedContent = nil;
+  [_coverPicture removeFromSuperview];
+  _coverPicture = nil;
+  for (UIView *child in [parked.subviews copy]) [self addSubview:child];
+}
 
 - (void)replaceViewWithSnapshot {
   if (self.window == nil || _controller == nil || _controller.view != self) return;

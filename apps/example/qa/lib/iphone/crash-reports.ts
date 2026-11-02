@@ -258,8 +258,9 @@ export function describeCrashReports(record: CrashReportsRecord): string[] {
 	if (record.crashReportsError !== undefined)
 		return [`crash reports NOT MEASURED: ${record.crashReportsError}`, "  the run file records crashReportsError; log.crashReports reads not measured and its gate fails"];
 	const reports = record.crashReports ?? [];
-	if (reports.length === 0) return ["crash reports: none new on the phone"];
-	const lines = [`crash reports: ${reports.length} new on the phone`];
+	const through = record.crashLogRead === "usb" ? " (read over USB)" : "";
+	if (reports.length === 0) return [`crash reports: none new on the phone${through}`];
+	const lines = [`crash reports: ${reports.length} new on the phone${through}`];
 	for (const report of reports) {
 		lines.push(
 			`  ${report.file}  ${report.capturedAt ?? "no capture time"}  pid ${report.pid ?? "?"}  ${report.exceptionType ?? "unreadable"}${report.signal ? ` ${report.signal}` : ""}${report.attributedTo ? `  [${report.attributedTo}]` : ""}`,
@@ -413,11 +414,127 @@ export async function pullCrashFiles(mac: Mac, deviceId: string, files: readonly
 	}
 }
 
+/* ---- reading the crash log over USB ---- */
+
+/*
+ * CoreDevice stops answering after a UI test (the runner's `testmanagerd` session leaves it wedged until the phone is plugged in again), so a
+ * crash log that can be read only through `devicectl` cannot be read after the one run that most needs it. The phone's own crash-report
+ * service is another door: `idevicecrashreport` (libimobiledevice, on the Mac) asks the phone's `crash_mover` to flush the reports and
+ * copies them through lockdown, over USB, without CoreDevice. `-f` copies the files whose names contain the filter, `-k` keeps them on the
+ * phone (without it the tool removes what it copied). The two filters below are the app's reports and the jetsam events; a sysdiagnose
+ * archive (270 MB each) is never copied. The copy is of everything that matches (about 50 files, 1.4 s on the lab phone), the new ones
+ * are told apart by name afterwards, exactly as with the listing, and only those are brought here.
+ */
+
+/** The names the USB copy asks for: the app's reports and the jetsam events (`reportFiles` is the same two). */
+export const usbFilters = (processName: string): string[] => [processName, "JetsamEvent"];
+const usbPath = "export PATH=/opt/homebrew/bin:/usr/local/bin:$PATH";
+
+/**
+ * The shell the Mac runs to copy the crash log's reports into `directory` and print what it holds: `<bytes><TAB><path>` per `.ips` file.
+ * Each tool call is ended by the Mac after `limitSeconds`; a call that did not say `Done.` (no phone on USB, the service refusing) fails the script.
+ */
+export function usbListScript(options: { udid: string; directory: string; filters: readonly string[]; limitSeconds: number }): string {
+	const dir = shellQuote(options.directory);
+	const log = shellQuote(`${options.directory}.log`);
+	return [
+		usbPath,
+		`rm -rf ${dir}`,
+		`mkdir -p ${dir}`,
+		"failed=0",
+		...options.filters.map((filter) => {
+			const copy = bounded(options.limitSeconds, ["idevicecrashreport", "-k", "-u", options.udid, "-f", filter, options.directory]);
+			return `${copy} > ${log} 2>&1; code=$?; if [ $code -ne 0 ] || ! grep -q '^Done\\.' ${log}; then echo ${shellQuote(`idevicecrashreport -f ${filter} failed:`)} >&2; if [ $code -eq ${killedByAlarm} ]; then echo 'no answer in ${options.limitSeconds} s' >&2; fi; tail -n 4 ${log} >&2; failed=1; fi`;
+		}),
+		`rm -f ${log}`,
+		`if [ $failed -ne 0 ]; then rm -rf ${dir}; exit 1; fi`,
+		`cd ${dir} && find . -type f -name '*.ips' | sed 's|^\\./||' | while IFS= read -r path; do printf '%s\\t%s\\n' "$(wc -c < "$path" | tr -d ' ')" "$path"; done`,
+	].join("\n");
+}
+
+/** The files `usbListScript` printed. A line that is not `<bytes><TAB><path>` throws: a listing is read whole or not at all. */
+export function parseUsbListing(output: string): CrashLogFile[] {
+	return output
+		.split("\n")
+		.filter((line) => line.trim() !== "")
+		.map((line) => {
+			const match = /^(\d+)\t(.+\.ips)$/.exec(line.trimEnd());
+			if (!match) throw new Error(`the USB copy printed a line that is not a file of the crash log: ${line.slice(0, 120)}`);
+			const path = match[2] as string;
+			return { path, name: path.slice(path.lastIndexOf("/") + 1), bytes: Number(match[1]) };
+		});
+}
+
+/** The shell that gathers the named files of a USB copy into `into` (flat: the names are unique in the crash log) so that one `scp` brings them. */
+export function usbGatherScript(options: { from: string; into: string; files: readonly CrashLogFile[] }): string {
+	return [
+		`rm -rf ${shellQuote(options.into)}`,
+		`mkdir -p ${shellQuote(options.into)}`,
+		...options.files.map((file) => `cp ${shellQuote(`${options.from}/${file.path}`)} ${shellQuote(`${options.into}/${file.name}`)} || exit 1`),
+		`echo "copied=$(ls ${shellQuote(options.into)} | wc -l | tr -d ' ')"`,
+	].join("\n");
+}
+
+/** A copy of the crash log's reports on the Mac, made over USB: what it holds, and the way to bring some of it here and to throw it away. */
+export type UsbCrashLog = {
+	files: CrashLogFile[];
+	ms: number;
+	/** Brings `files` (a subset of `files`) here and reads them; throws with the tool's words when any step fails. */
+	pull(files: readonly CrashLogFile[], options: { bundleId: string; processName?: string }): Promise<CrashPull>;
+	/** Removes the copy from the Mac. Always called. */
+	release(): Promise<void>;
+};
+
+/** Copies the reports of the crash log over USB to a scratch directory on the Mac (one bounded call per filter). Throws with the tool's own words when the phone does not answer. */
+export async function readUsbCrashLog(mac: Mac, udid: string, options: { processName?: string; limitSeconds?: number } = {}): Promise<UsbCrashLog> {
+	const limitSeconds = options.limitSeconds ?? defaultLimitSeconds;
+	const processName = options.processName ?? qaProcessName;
+	const filters = usbFilters(processName);
+	const directory = `${macScratch}/usb-${process.pid}-${++counter}`;
+	const began = Date.now();
+	const release = async () => {
+		await remote(mac, `rm -rf ${shellQuote(directory)} ${shellQuote(`${directory}.log`)} ${shellQuote(`${directory}-new`)}`).catch(() => undefined);
+	};
+	let files: CrashLogFile[];
+	try {
+		const result = await remote(mac, usbListScript({ udid, directory, filters, limitSeconds }), { timeoutMs: (limitSeconds * filters.length + 20) * 1000 });
+		if (result.code !== 0) throw new Error(`copying the crash log of ${udid} over USB through ${mac.target} failed (exit ${result.code}): ${said(result)}`);
+		files = parseUsbListing(result.stdout);
+	} catch (error) {
+		await release();
+		throw error;
+	}
+	return {
+		files,
+		ms: Date.now() - began,
+		release,
+		pull: async (wanted, pullOptions) => {
+			const gathered = `${directory}-new`;
+			const local = await mkdtemp(join(tmpdir(), "native-qa-crashes-"));
+			try {
+				if (wanted.length > 0) {
+					const result = await remote(mac, usbGatherScript({ from: directory, into: gathered, files: wanted }), { timeoutMs: 60_000 });
+					if (result.code !== 0 || !/^copied=\d+$/m.test(result.stdout)) throw new Error(`gathering the crash reports on ${mac.target} failed (exit ${result.code}): ${said(result)}`);
+					await scpFrom(mac, `${gathered}/.`, local, { timeoutMs: 300_000 });
+				}
+				const names = await readdir(local);
+				const contents = await Promise.all(names.map(async (name) => ({ name, content: await readFile(join(local, name), "utf8") })));
+				return { reports: readCrashReports(contents, { bundleId: pullOptions.bundleId, ...(pullOptions.processName ? { processName: pullOptions.processName } : {}) }), directory: local };
+			} catch (error) {
+				await rm(local, { recursive: true, force: true });
+				throw error;
+			}
+		},
+	};
+}
+
 /** What the command knew of the phone's crash log when it started: the names of the files that can be reports of the app, or why it could not tell. */
 export type CrashWatch = {
 	mac: Mac;
 	/** The CoreDevice id `devicectl` takes (`--device`). */
 	deviceId: string;
+	/** The hardware UDID the USB copy names the phone by; null when the command does not know it (only `devicectl` is then tried). */
+	udid: string | null;
 	bundleId: string;
 	/** The executable's name, which names the app's reports. */
 	processName: string;
@@ -425,23 +542,44 @@ export type CrashWatch = {
 	startError: string | null;
 	/** How long the first listing took, in ms (null when it failed). */
 	listedMs: number | null;
+	/** Which service gave the first listing. */
+	listedBy: CrashLogSource | null;
 	/** What one phone command may take on the Mac; the default is `defaultLimitSeconds`. */
 	limitSeconds?: number;
 };
 
+/** The two ways to the phone's crash log: CoreDevice (`devicectl`, a listing and one copy per report) and the crash-report service over USB (`idevicecrashreport`). */
+export type CrashLogSource = "devicectl" | "usb";
+
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
-/** The first listing, when the command starts. A failure is recorded, not thrown: the command goes on and says at its end that it could not measure. */
-export async function startCrashWatch(options: { mac: Mac; deviceId: string; bundleId: string; processName?: string; limitSeconds?: number }): Promise<CrashWatch> {
+/**
+ * The first listing, when the command starts: through `devicectl`, and when CoreDevice does not answer, over USB. A failure of both is recorded, not thrown:
+ * the command goes on and says at its end that it could not measure.
+ */
+export async function startCrashWatch(options: { mac: Mac; deviceId: string; udid?: string | null; bundleId: string; processName?: string; limitSeconds?: number }): Promise<CrashWatch> {
 	const { mac, deviceId, bundleId } = options;
+	const udid = options.udid ?? null;
 	const processName = options.processName ?? qaProcessName;
 	const limit = options.limitSeconds === undefined ? {} : { limitSeconds: options.limitSeconds };
+	const base = { mac, deviceId, udid, bundleId, processName, ...limit };
+	let failure: string;
 	try {
 		const listing = await listCrashLog(mac, deviceId, limit);
-		return { mac, deviceId, bundleId, processName, known: new Set(reportFiles(listing.files, processName).map((file) => file.name)), startError: null, listedMs: listing.ms, ...limit };
+		return { ...base, known: new Set(reportFiles(listing.files, processName).map((file) => file.name)), startError: null, listedMs: listing.ms, listedBy: "devicectl" };
 	} catch (error) {
-		return { mac, deviceId, bundleId, processName, known: null, startError: `before the run: ${messageOf(error)}`, listedMs: null, ...limit };
+		failure = messageOf(error);
 	}
+	if (udid !== null) {
+		try {
+			const copy = await readUsbCrashLog(mac, udid, { processName, ...limit });
+			await copy.release();
+			return { ...base, known: new Set(reportFiles(copy.files, processName).map((file) => file.name)), startError: null, listedMs: copy.ms, listedBy: "usb" };
+		} catch (error) {
+			failure = `${failure}; over USB: ${messageOf(error)}`;
+		}
+	}
+	return { ...base, known: null, startError: `before the run: ${failure}`, listedMs: null, listedBy: null };
 }
 
 export type CrashFinding = {
@@ -451,28 +589,51 @@ export type CrashFinding = {
 	directory: string | null;
 };
 
+/** The reports of one listing that were not known at the start, brought here. */
+async function pullNewReports(watch: CrashWatch, source: CrashLogSource): Promise<CrashPull> {
+	const limit = watch.limitSeconds === undefined ? {} : { limitSeconds: watch.limitSeconds };
+	const isNew = (file: CrashLogFile) => !watch.known?.has(file.name);
+	if (source === "devicectl") {
+		const listing = await listCrashLog(watch.mac, watch.deviceId, limit);
+		return pullCrashFiles(watch.mac, watch.deviceId, reportFiles(listing.files, watch.processName).filter(isNew), { bundleId: watch.bundleId, processName: watch.processName, ...limit });
+	}
+	if (watch.udid === null) throw new Error("the hardware UDID of the phone is not known, so the USB copy cannot name it");
+	const copy = await readUsbCrashLog(watch.mac, watch.udid, { processName: watch.processName, ...limit });
+	try {
+		return await copy.pull(reportFiles(copy.files, watch.processName).filter(isNew), { bundleId: watch.bundleId, processName: watch.processName });
+	} finally {
+		await copy.release();
+	}
+}
+
 /**
  * The second listing, after the app was ended: the reports that were not there when the command started, copied and read. Without the
  * first listing there is nothing to tell new from old, and a failing listing or copy has seen nothing: either way the answer is an error,
- * never an empty list.
+ * never an empty list. CoreDevice is tried first and the crash-report service over USB second; after a UI test, which leaves CoreDevice
+ * wedged until the phone is plugged in again, `afterUiTest` asks USB first, so the wedged service costs nothing. A source that failed is
+ * named in the error if the other fails too; the record says which one read the log.
  */
-export async function finishCrashWatch(watch: CrashWatch, options: { settleMs?: number } = {}): Promise<CrashFinding> {
+export async function finishCrashWatch(watch: CrashWatch, options: { settleMs?: number; afterUiTest?: boolean } = {}): Promise<CrashFinding> {
 	if (watch.known === null) return { record: { crashReportsError: watch.startError ?? "the crash log was not read before the run" }, directory: null };
 	await sleep(options.settleMs ?? settleMs);
-	const limit = watch.limitSeconds === undefined ? {} : { limitSeconds: watch.limitSeconds };
-	let pulled: CrashPull;
-	try {
-		const listing = await listCrashLog(watch.mac, watch.deviceId, limit);
-		const fresh = reportFiles(listing.files, watch.processName).filter((file) => !watch.known?.has(file.name));
-		pulled = await pullCrashFiles(watch.mac, watch.deviceId, fresh, { bundleId: watch.bundleId, processName: watch.processName, ...limit });
-	} catch (error) {
-		return { record: { crashReportsError: `after the run: ${messageOf(error)}` }, directory: null };
+	const order: CrashLogSource[] = options.afterUiTest ? ["usb", "devicectl"] : ["devicectl", "usb"];
+	const failures: string[] = [];
+	for (const source of order) {
+		if (source === "usb" && watch.udid === null) continue;
+		let pulled: CrashPull;
+		try {
+			pulled = await pullNewReports(watch, source);
+		} catch (error) {
+			failures.push(`${source === "usb" ? "over USB" : "through devicectl"}: ${messageOf(error)}`);
+			continue;
+		}
+		if (pulled.reports.length === 0) {
+			await rm(pulled.directory, { recursive: true, force: true });
+			return { record: { crashReports: [], crashLogRead: source }, directory: null };
+		}
+		return { record: { crashReports: pulled.reports, crashLogRead: source }, directory: pulled.directory };
 	}
-	if (pulled.reports.length === 0) {
-		await rm(pulled.directory, { recursive: true, force: true });
-		return { record: { crashReports: [] }, directory: null };
-	}
-	return { record: { crashReports: pulled.reports }, directory: pulled.directory };
+	return { record: { crashReportsError: `after the run: ${failures.join("; ")}` }, directory: null };
 }
 
 /** The record with its reports replaced (attribution adds `attributedTo`); an error record stays as it is. */

@@ -2,6 +2,7 @@ package expo.modules.svelteengine
 
 import android.content.ComponentCallbacks2
 import android.content.Context
+import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.os.Handler
 import android.os.Looper
@@ -35,6 +36,7 @@ import expo.modules.svelteengine.views.EngineText
 import expo.modules.svelteengine.views.EngineToolbar
 import expo.modules.svelteengine.views.EngineToolbarItem
 import expo.modules.svelteengine.views.EngineView
+import expo.modules.svelteengine.views.InputWarmup
 import expo.modules.svelteengine.views.Frames
 import expo.modules.svelteengine.views.ViewPool
 import kotlin.math.roundToInt
@@ -71,9 +73,13 @@ private const val KIND_TOOLBAR = 17
 private const val KIND_TOOLBAR_ITEM = 18
 private const val KIND_FOREIGN = 19
 
+/** The changes of the configuration that a view built ahead of time would carry (an input's text size, colours, cursor and direction); rotation and a resize are not among them. */
+private const val SPARE_CONFIGURATION = ActivityInfo.CONFIG_FONT_SCALE or ActivityInfo.CONFIG_LOCALE or ActivityInfo.CONFIG_UI_MODE or ActivityInfo.CONFIG_DENSITY or ActivityInfo.CONFIG_LAYOUT_DIRECTION
+
 /** Applies C++ mounting batches to the engine view tree. Main thread only. */
 class MountingManager(private val reactContext: ReactApplicationContext, private val lab: LabSwitches = LabSwitches(engineEnabled = true, gesturesAtStart = false)) {
   private val appContext = reactContext.applicationContext
+  private var seenConfiguration = Configuration(reactContext.resources.configuration)
   private val handler = Handler(Looper.getMainLooper())
   private val boost = MountBoost(handler)
   private val registry = SparseArray<View>(512)
@@ -123,7 +129,13 @@ class MountingManager(private val reactContext: ReactApplicationContext, private
 
       // Font scale, locale and layout direction all change what a text layout looks like.
       override fun onConfigurationChanged(newConfig: Configuration) {
-        EngineInput.discardSpare() // built for the configuration that is gone
+        val changes = seenConfiguration.diff(newConfig)
+        seenConfiguration = Configuration(newConfig)
+        if (lab.inputSpare && changes and SPARE_CONFIGURATION != 0) {
+          // An input built for the font scale, locale, night mode, density or direction that is gone would carry them: it is dropped, and the next one is built now.
+          EngineInput.discardSpare()
+          handler.post { themed?.let { InputWarmup.stock(it, 0L) } }
+        }
         handler.post { TextLayouts.clearCache() }
       }
 
@@ -140,7 +152,9 @@ class MountingManager(private val reactContext: ReactApplicationContext, private
    * a moment later, both on whatever core the phone left them on. Any thread; the boost itself starts on the main thread.
    */
   fun animatedBatch() {
-    if (lab.animatedBoost) handler.post { boost.begin() }
+    if (!lab.animatedBoost) return
+    // Not for a surface nobody sees (the app in the background, the activity gone): the boost holds two threads on the big cores for nothing.
+    handler.post { if (root.isAttachedToWindow && root.windowVisibility == View.VISIBLE) boost.begin() }
   }
 
   /** The mounted view for a React tag (main thread only), or null. Used by Commands. */
@@ -519,7 +533,10 @@ class MountingManager(private val reactContext: ReactApplicationContext, private
   private fun createView(tag: Int, kind: Int, p: PropSet) {
     val context = viewContext()
     val view: View = when (kind) {
-      KIND_TEXT -> pooled(ViewPool.TEXT) { EngineText(context) }
+      KIND_TEXT -> {
+        if (lab.inputSpare) InputWarmup.schedule(context) // once per process: the first text view is the sign that screens are being built
+        pooled(ViewPool.TEXT) { EngineText(context) }
+      }
       KIND_SCROLL -> if (p.horizontal == 1) {
         (pooled(ViewPool.HSCROLL) { EngineHScroll(context) } as EngineHScroll).also { it.bridge.native = native }
       } else {

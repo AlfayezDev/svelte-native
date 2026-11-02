@@ -1,5 +1,7 @@
 #include "PropsEncoderViews.h"
 
+#include "AutoCorrectCode.h"
+
 #include <react/renderer/attributedstring/AttributedStringBox.h>
 #include <react/renderer/components/FBReactNativeSpec/Props.h>
 #include <react/renderer/components/androidtextinput/AndroidTextInputProps.h>
@@ -119,9 +121,8 @@ int32_t spinnerStyleCode(const std::string &s) {
 // 0 removed, -1 not part of this update, the view keeps what it had).
 int32_t autoCorrectCode(const AndroidTextInputProps &p) {
   const folly::dynamic *raw = p.rawProps.isObject() ? p.rawProps.get_ptr("autoCorrect") : nullptr;
-  if (raw == nullptr) return -1;
-  if (raw->isBool()) return raw->getBool() ? 1 : 2;
-  return 0;
+  const bool isBool = raw != nullptr && raw->isBool();
+  return autoCorrectOfRaw(raw != nullptr, isBool, isBool && raw->getBool());
 }
 
 void encodeInput(Out &o, const ShadowView &view, float scale) {

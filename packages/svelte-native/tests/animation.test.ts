@@ -302,10 +302,19 @@ test("a commit that attaches eight animated nodes for the first time tells the e
   (globalThis as { __testEngine?: unknown }).__testEngine = { install: () => true, reanimatedLoaded: () => {}, animatedBatch: () => told.push("batch") };
   try {
     const m = await fresh("animation-many-fixture.svelte");
-    const app = m.startSurface(36, m.Fixture, {}) as { keep: (n: number) => void };
+    const app = m.startSurface(36, m.Fixture, {}) as { keep: (n: number) => void; pad: (n: number) => void };
     expect(find(roots[36] ?? [], "RCTView")).toHaveLength(20);
     expect(log().mappers).toHaveLength(20);
     expect(told).toEqual(["batch"]); // twenty new nodes in one commit
+
+    // Twenty attached nodes that only refresh (a style change clones every one of them, and each re-points its descriptor at the clone): no new node, no word.
+    const adds = () => log().descriptors.reduce((count, entry) => count + entry.adds.length, 0);
+    const before = adds();
+    app.pad(3);
+    await settle(m);
+    expect(adds()).toBeGreaterThanOrEqual(before + 20); // the refresh really happened for all twenty
+    expect(log().mappers).toHaveLength(20); // and started no mapper
+    expect(told).toEqual(["batch"]);
 
     app.keep(19); // a commit that leaves: nothing new
     await settle(m);

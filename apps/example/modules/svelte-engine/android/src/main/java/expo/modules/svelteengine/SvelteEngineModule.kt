@@ -17,6 +17,7 @@ import expo.modules.kotlin.Promise
 import expo.modules.kotlin.exception.CodedException
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import expo.modules.svelteengine.views.EngineInput
 import expo.modules.svelteengine.views.EngineRoot
 
 class SvelteEngineModule : Module() {
@@ -31,7 +32,7 @@ class SvelteEngineModule : Module() {
 
     OnCreate { appContext.reactContext?.let { Capture.deleteLeftovers(listOf(it.cacheDir, it.externalCacheDir)) } }
 
-    OnDestroy { setAnimatedUpdater(null); AnimatedBridge.uninstall(); Capture.deleteTemporaryFiles(); onMain { insets?.uninstall(); mountingManager?.foreign?.uninstall(); mountingManager?.disableGestures() } }
+    OnDestroy { setAnimatedUpdater(null); AnimatedBridge.uninstall(); EngineInput.discardSpare(); Capture.deleteTemporaryFiles(); onMain { insets?.uninstall(); mountingManager?.foreign?.uninstall(); mountingManager?.disableGestures() } }
 
     Function("install") { reanimatedReady: Boolean? ->
       if (native != null) return@Function true

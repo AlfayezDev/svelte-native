@@ -8,6 +8,7 @@ import android.text.Editable
 import android.text.InputFilter
 import android.text.InputType
 import android.text.TextWatcher
+import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.KeyEvent
@@ -22,6 +23,7 @@ import expo.modules.svelteengine.InputRules
 import expo.modules.svelteengine.TextLayouts
 import expo.modules.svelteengine.ViewEvents
 import expo.modules.svelteengine.ViewProps
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.max
 import kotlin.math.min
 
@@ -35,37 +37,73 @@ class EngineInput(context: Context) : EditText(context), EngineNode {
   override val node = NodeState()
 
   companion object {
-    /** An input built ahead of time on another thread for [spareContext], or null. */
-    private val spare = java.util.concurrent.atomic.AtomicReference<EngineInput?>()
-    @Volatile private var spareContext: Context? = null
+    /** An input built ahead of time, and the context it was built with: the engine's views use one context for the life of a host. */
+    private class Spare(val context: Context, val view: EngineInput)
+
+    /** What [obtain] may hand out, and the generation it was built in: a discard moves the generation on, so a build that was under way during it never publishes. */
+    private class State(val generation: Int, val spare: Spare?)
+
+    private val state = AtomicReference(State(0, null))
 
     /**
      * An input for [context], the one built ahead of time when there is one (the constructor of an `EditText` is 5 to 19 ms of the main
      * thread on the A16, whatever the cache holds: it runs on a cold core), else a new one. Main thread. The next one is built ahead
-     * after this one, for the next screen with an input.
+     * after this one is taken and after a miss (no spare yet, a discard, a spare of a host that was reloaded), so the spare is back for the
+     * next screen with an input.
      */
     fun obtain(context: Context): EngineInput {
-      val ready = spare.getAndSet(null)
-      if (ready != null && spareContext === context) {
-        InputWarmup.stock(context, RESTOCK_MS)
-        return ready
+      var taken: Spare? = null
+      while (true) {
+        val now = state.get()
+        val spare = now.spare ?: break
+        if (state.compareAndSet(now, State(now.generation, null))) {
+          taken = spare
+          break
+        }
       }
+      InputWarmup.stock(context, RESTOCK_MS)
+      if (taken != null && taken.context === context) {
+        Log.d(TAG, "input taken from the spare")
+        return taken.view
+      }
+      Log.d(TAG, "input built on the main thread (${if (taken == null) "no spare" else "the spare was built for another host"})")
       return EngineInput(context)
     }
 
-    /** Called off the main thread by [InputWarmup]: builds the input [obtain] hands out next. */
-    internal fun stockSpare(context: Context) {
-      if (spare.get() != null && spareContext === context) return
-      val built = EngineInput(context)
-      spareContext = context
-      spare.set(built)
+    /**
+     * Called off the main thread by [InputWarmup]: builds the input [obtain] hands out next, unless one is there. False when a discard came while it
+     * was being built: the input is dropped, and the caller builds another for the generation that is current now.
+     */
+    internal fun stockSpare(context: Context): Boolean {
+      val before = state.get()
+      if (before.spare != null) return true
+      val view = EngineInput(context)
+      while (true) {
+        val now = state.get()
+        if (now.generation != before.generation) return false
+        if (now.spare != null) return true // filled meanwhile
+        if (state.compareAndSet(now, State(now.generation, Spare(context, view)))) {
+          Log.d(TAG, "input spare built (generation ${now.generation})")
+          return true
+        }
+      }
     }
 
-    /** The configuration the spare was built for is gone (font scale, locale, night mode). */
+    /** The spare is for a configuration or a host that is gone (font scale, locale, night mode; the module's destroy): nothing built before now is handed out. */
     fun discardSpare() {
-      spare.set(null)
+      while (true) {
+        val now = state.get()
+        if (state.compareAndSet(now, State(now.generation + 1, null))) {
+          Log.d(TAG, "input spare discarded (generation ${now.generation + 1})")
+          return
+        }
+      }
     }
 
+    /** Whether the spare is there (the lab and the tests ask). */
+    internal fun hasSpare(): Boolean = state.get().spare != null
+
+    private const val TAG = "SvelteEngine"
     private const val RESTOCK_MS = 300L
   }
 
@@ -241,11 +279,7 @@ class EngineInput(context: Context) : EditText(context), EngineNode {
       }
       // As `ReactTextInputManager.setAutoCorrect`: true asks for auto-correction, false turns suggestions off (which also keeps the
       // platform's spell checker, a main-thread binder call at attach and on every edit, from starting), unset leaves the type alone.
-      type = type or when (autoCorrect) {
-        InputRules.AUTO_CORRECT_ON -> InputType.TYPE_TEXT_FLAG_AUTO_CORRECT
-        InputRules.AUTO_CORRECT_OFF -> InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-        else -> 0
-      }
+      type = type or InputRules.suggestionFlag(autoCorrect, autoCorrectFlag = InputType.TYPE_TEXT_FLAG_AUTO_CORRECT, noSuggestionsFlag = InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS)
     }
     if (v.multiline && (type and InputType.TYPE_MASK_CLASS) == InputType.TYPE_CLASS_TEXT) {
       type = type or InputType.TYPE_TEXT_FLAG_MULTI_LINE

@@ -15,8 +15,6 @@ using namespace facebook::react;
   SvelteNavigationController *_controller;
   __weak SvelteScreenView *_staged;
   __weak SvelteScreenView *_stagedPresented;
-  /// The screen whose bar a pop already brought in or took away, in the frame before the pop starts.
-  __weak SvelteScreenView *_barPreparedFor;
   NSMutableArray<SvelteScreenView *> *_screens;
   /// The pushed screens JavaScript holds, bottom first, as of the last update.
   NSArray<SvelteScreenView *> *_desired;
@@ -329,23 +327,11 @@ using namespace facebook::react;
         [self flushAfterNextFrame];
         return;
       }
-      const BOOL animated = visible && animation != svelte::kAnimationNone;
-      // A pop that shows or hides the navigation bar (to a screen with a header from one without, or the other way) brings the bar in or takes it
-      // away a frame ahead of the pop: the frame that starts the transition holds UIKit's setup of it already, and re-attaching the bar's
-      // views is 12 of the 29 profiled milliseconds of it (navigation-8 on the iPhone SE 3 pops to the lab page, which has a header). The bar
-      // starts its own animation one frame before the page moves; the back swipe, which UIKit runs by itself, is not touched.
-      if (animated && _staged == revealed && _barPreparedFor != revealed && [revealed changesBarVisibilityOf:_controller]) {
-        _barPreparedFor = revealed;
-        [revealed applyBarConfigurationTo:_controller animated:YES];
-        [self flushAfterNextFrame];
-        return;
-      }
-      _barPreparedFor = nil;
       if (_staged != revealed) [self unstage];
       _staged = nil;
       if (visible) [leavingController.screenView replaceViewWithSnapshot];
       install();
-      [_controller popViewControllerAnimated:animated];
+      [_controller popViewControllerAnimated:visible && animation != svelte::kAnimationNone];
       break;
     }
     case svelte::StackStep::None:
@@ -386,7 +372,6 @@ using namespace facebook::react;
 - (void)unstage {
   SvelteScreenView *staged = _staged;
   _staged = nil;
-  _barPreparedFor = nil;
   UIView *view = staged.controller.view;
   if (view != nil && view.superview == _controller.view) [view removeFromSuperview];
 }

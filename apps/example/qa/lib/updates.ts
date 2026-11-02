@@ -536,3 +536,14 @@ export function comparisonNotes(channelBuild: { commit: string; dirty: boolean }
 		notes.push(`the builds share commit ${channelBuild.commit}, but ${[channelBuild.dirty ? "the channel build" : null, baselineBuild.dirty ? "the build without a channel" : null].filter(Boolean).join(" and ")} came from a tree with uncommitted changes`);
 	return notes;
 }
+
+/**
+ * What a run reports when the device's boot id (`readBootId`) is not the one it started with. A device that restarts under the run
+ * (the emulator's watchdog, a crash of the host) cuts off a download in flight and loses the data of files written moments before,
+ * so the launches after it show a broken store, not the app's updates; the run says so instead of leaving the cause to be guessed.
+ * Null when the id is the same, or either id could not be read (the restart check is off for that device).
+ */
+export function restartProblem(started: string | null, now: string | null, where: string): string | null {
+	if (started === null || now === null || started === now) return null;
+	return `the device restarted ${where} (its boot id changed from ${started} to ${now}): a download in flight was cut off and files written just before may be lost, so the launches after it do not measure the updates`;
+}

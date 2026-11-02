@@ -62,6 +62,11 @@ enum Http {
     guard (200...299).contains(response.statusCode) else { throw StoreError("Download of \(url) failed with status \(response.statusCode)") }
     let hash = try sha256(of: temporary)
     guard hash == expectedHash else { throw StoreError("Download of \(url) has SHA-256 \(hash), expected \(expectedHash)") }
+    // The bytes are on disk before the move gives them their name: without this a crash or a power cut shortly after leaves the name
+    // with no data behind it (an empty file), which the store would trust as a bundle or as an asset it had verified.
+    let written = try FileHandle(forUpdating: temporary)
+    try written.synchronize()
+    try written.close()
     try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
     // `replaceItemAt` swaps an existing file in one step; two assets with identical content share a name.
     if FileManager.default.fileExists(atPath: destination.path) {
@@ -70,6 +75,19 @@ enum Http {
       try FileManager.default.moveItem(at: temporary, to: destination)
     }
     return hash
+  }
+
+  /// The file at `destination` with SHA-256 `expectedHash`, downloaded unless it is already there. A file in place counts only if it
+  /// hashes to `expectedHash`: one that does not (data lost to a crash, damaged storage) is reported to `onDamaged` with its hash and
+  /// replaced by a download, which is itself held to `expectedHash`, so bytes that are not the manifest's are still rejected.
+  /// `reuse` is false for a file that belongs to one update (the bundle), which is always downloaded. Returns the hash of the file.
+  static func ensure(_ url: String, headers requestHeaders: [String: String], to destination: URL, expectedHash: String, reuse: Bool, onDamaged: (String) -> Void) throws -> String {
+    if reuse && FileManager.default.fileExists(atPath: destination.path) {
+      let actual = try sha256(of: destination)
+      if actual == expectedHash { return actual }
+      onDamaged(actual)
+    }
+    return try download(url, headers: requestHeaders, to: destination, expectedHash: expectedHash)
   }
 
   static func sha256(of file: URL) throws -> String {

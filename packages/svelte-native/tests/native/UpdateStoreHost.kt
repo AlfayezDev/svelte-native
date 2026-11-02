@@ -1,13 +1,17 @@
 package expo.modules.svelteupdates
 
+import com.sun.net.httpserver.HttpServer
 import java.io.File
+import java.net.InetSocketAddress
 import java.nio.file.Files
+import java.security.MessageDigest
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 
-// Host-side check of the Android updates store (UpdateStore.kt) and the QA reset decision (QaReset.kt): runs scripted commands from
-// stdin against a real directory and prints one line per command. tests/updates-store-native.test.ts scripts the cases. Lives in the
-// store's package because the classes are internal.
+// Host-side check of the Android updates store (UpdateStore.kt), the QA reset decision (QaReset.kt) and the download of an asset
+// (Http.kt, against a local HTTP server): runs scripted commands from stdin against a real directory and prints one line per command.
+// tests/updates-store-native.test.ts scripts the cases. Lives in the store's package because the classes are internal.
 
 private val config = UpdatesConfig(
   enabled = true, updateUrl = "https://u.expo.dev/p", runtimeVersion = "0.1.0", requestHeaders = mapOf("expo-channel-name" to "qa"),
@@ -25,9 +29,33 @@ private fun update(store: UpdateStore, n: String, createdAt: Long): StoredUpdate
   return stored
 }
 
+/** A local server for the downloads: `/<name>` answers with the body registered for it, 404 otherwise, and counts the requests it answered. */
+private class Server {
+  val bodies = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
+  val requests = AtomicInteger()
+  private val http: HttpServer = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).also { server ->
+    server.createContext("/") { exchange ->
+      requests.incrementAndGet()
+      val body = bodies[exchange.requestURI.path.removePrefix("/")]
+      if (body == null) {
+        exchange.sendResponseHeaders(404, -1)
+      } else {
+        exchange.sendResponseHeaders(200, if (body.isEmpty()) -1 else body.size.toLong())
+        if (body.isNotEmpty()) exchange.responseBody.use { it.write(body) }
+      }
+      exchange.close()
+    }
+    server.start()
+  }
+  fun url(name: String) = "http://127.0.0.1:${http.address.port}/$name"
+  fun stop() = http.stop(0)
+}
+
 fun main() {
   val root = File(Files.createTempDirectory("svelte-updates-host").toFile(), "svelte-updates")
   var store = UpdateStore(root)
+  val server = Server()
+  val files = root.parentFile
   val name = { s: String? -> s?.let { if (it == "embedded" || it == "-") it else it.trimStart('0', '-') } ?: "-" }
   while (true) {
     val line = readLine() ?: break
@@ -86,6 +114,30 @@ fun main() {
           val token = QaReset.requested(QaReset.PACKAGE) { throw SecurityException("denied") }
           "token=${token ?: "-"}"
         }
+        // base64 <max length>: Http.encode against java.util.Base64 (base64url, no padding) for every length up to it
+        "base64" -> {
+          val different = (0..words[1].toInt()).filter { length ->
+            val bytes = ByteArray(length) { (it * 37 + length * 11 + 5).toByte() }
+            Http.encode(bytes) != java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+          }
+          "different=${different.joinToString(",").ifEmpty { "-" }}"
+        }
+        // hash <text>: the SHA-256 of the text as the protocol writes it
+        "hash" -> Http.encode(MessageDigest.getInstance("SHA-256").digest(words.drop(1).joinToString(" ").toByteArray()))
+        // serve <name> <body>: what the server answers at /<name>
+        "serve" -> { server.bodies[words[1]] = words.drop(2).joinToString(" ").toByteArray(); "ok" }
+        // put <path> <text>: a file in place; path is relative to the scratch directory
+        "put" -> { File(files, words[1]).also { it.parentFile.mkdirs() }.writeText(words.drop(2).joinToString(" ")); "ok" }
+        // look <path>: the file's content, or - when there is none, and whether its temporary download is left over
+        "look" -> File(files, words[1]).let { file -> "content=${if (file.isFile) file.readText().ifEmpty { "<empty>" } else "-"} tmp=${File(file.path + ".tmp").exists()}" }
+        // ensure <path> <name> <reuse 0|1> <text>: Http.ensure for the file, as the module calls it, with the SHA-256 of <text> as the manifest's
+        "ensure" -> {
+          val before = server.requests.get()
+          var damaged = "-"
+          val expected = Http.encode(MessageDigest.getInstance("SHA-256").digest(words.drop(4).joinToString(" ").toByteArray()))
+          val hash = Http.ensure(server.url(words[2]), emptyMap(), File(files, words[1]), expected, words[3] == "1") { damaged = it }
+          "hash=$hash requests=${server.requests.get() - before} damaged=$damaged"
+        }
         else -> "unknown command ${words[0]}"
       }
     } catch (error: Throwable) {
@@ -93,4 +145,5 @@ fun main() {
     }
     println(out)
   }
+  server.stop()
 }

@@ -76,12 +76,9 @@ public final class SvelteUpdatesModule: Module {
         } else {
           destination = store.assetFile(key: key, fileExtension: fileExtension)
         }
-        // A file that is already in place was verified when it was written; its hash is reported again so the caller checks it.
-        let hash: String
-        if !launch && FileManager.default.fileExists(atPath: destination.path) {
-          hash = try Http.sha256(of: destination)
-        } else {
-          hash = try Http.download(url, headers: download["headers"] as? [String: String] ?? [:], to: destination, expectedHash: expected)
+        // An asset already in place is kept only if it hashes to the manifest's; one that does not is downloaded again (see `Http.ensure`).
+        let hash = try Http.ensure(url, headers: download["headers"] as? [String: String] ?? [:], to: destination, expectedHash: expected, reuse: !launch) { actual in
+          NSLog("[SvelteUpdates] Asset %@%@ in the store has SHA-256 %@, not the manifest's %@; downloading it again", key, fileExtension, actual, expected)
         }
         return ["key": key, "hash": hash]
       }

@@ -75,8 +75,10 @@ class SvelteUpdatesModule : Module() {
         val destination = if (download["launch"] == true) store.bundleDestination(download["updateId"] as String) else store.assetFile(key, extension)
         @Suppress("UNCHECKED_CAST")
         val headers = download["headers"] as Map<String, String>
-        // A file that is already in place was verified when it was written; its hash is reported again so the caller checks it.
-        val hash = if (download["launch"] != true && destination.isFile) Http.sha256(destination) else Http.download(download["url"] as String, headers, destination, expected)
+        // An asset already in place is kept only if it hashes to the manifest's; one that does not is downloaded again (see `Http.ensure`).
+        val hash = Http.ensure(download["url"] as String, headers, destination, expected, reuse = download["launch"] != true) { actual ->
+          android.util.Log.w("SvelteUpdates", "Asset $key$extension in the store has SHA-256 $actual, not the manifest's $expected; downloading it again")
+        }
         mapOf("key" to key, "hash" to hash)
       }
     }

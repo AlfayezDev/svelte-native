@@ -112,3 +112,49 @@ test("host props merge direct attributes over nativeProps and leave out Svelte i
   expect(mergeHostProps({ nativeProps: { ref: onPress }, ref: undefined }).ref).toBe(onPress);
   expect(mergeHostProps({})).toEqual({});
 });
+
+test("nodes share one read-only empty props object and one empty children array until they are written to, and a write copies", () => {
+  const first = renderer.createElement("native-view");
+  const second = renderer.createElement("native-text");
+  const text = renderer.createTextNode("hello");
+  const empty = first.getSnapshot();
+  // Nothing allocated per node: the same frozen objects, whatever the kind.
+  expect(second.getSnapshot().props).toBe(empty.props);
+  expect(text.getSnapshot().props).toBe(empty.props);
+  expect(second.getSnapshot().children).toBe(empty.children);
+  expect(Object.isFrozen(empty.props)).toBe(true);
+  expect(Object.isFrozen(empty.children)).toBe(true);
+
+  // A first attribute copies: the node has an object of its own, the shared one stays empty, and a snapshot handed out earlier is not touched.
+  first.setProp("testID", "one");
+  const own = first.peekProps();
+  expect(own).not.toBe(empty.props);
+  expect(own).toEqual({ testID: "one" });
+  expect(empty.props).toEqual({});
+  expect(second.getSnapshot().props).toBe(empty.props);
+  // The next write changes that object in place until a snapshot goes out; then a write copies again and the snapshot keeps what it saw.
+  first.setProp("nativeID", "a");
+  expect(first.peekProps()).toBe(own);
+  const out = first.getSnapshot();
+  expect(out.props).toEqual({ testID: "one", nativeID: "a" });
+  first.setProp("nativeID", "b");
+  expect(first.getSnapshot().props).not.toBe(out.props);
+  expect(out.props).toEqual({ testID: "one", nativeID: "a" });
+  // Removing what is not there neither copies nor reports.
+  const heard: unknown[] = [];
+  setInvalidationSink((node, reason) => heard.push([node, reason]));
+  try {
+    second.removeProp("never set");
+    expect(second.getSnapshot().props).toBe(empty.props);
+    expect(heard).toEqual([]);
+  } finally { setInvalidationSink(null); }
+
+  // The first child copies the children: the node gets an array of its own, the shared one stays empty.
+  const child = renderer.createElement("native-view");
+  renderer.insert(first, child, null);
+  expect(first.getSnapshot().children).toEqual([child]);
+  expect(first.getSnapshot().children).not.toBe(empty.children);
+  expect(empty.children).toEqual([]);
+  expect(second.getSnapshot().children).toBe(empty.children);
+  expect(first.getSnapshot().children).not.toBe(empty.children);
+});

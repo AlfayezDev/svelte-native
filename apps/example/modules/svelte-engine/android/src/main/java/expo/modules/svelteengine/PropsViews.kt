@@ -23,7 +23,8 @@ class ViewProps {
   var maxLength = -1
   var keyboard = 0
   var capitalize = 3
-  var autoCorrect = -1
+  /** `InputRules` code of record 44: -1 not part of the update, 0 removed, 1 on, 2 off. */
+  var autoCorrect = InputRules.AUTO_CORRECT_KEEP
   var returnKey = 0
   var submitBehavior = 0
   var hasSelectionColor = false
@@ -83,7 +84,7 @@ class ViewProps {
     letterSpacing = 0f; lineHeight = 0f; textAlign = 0
     propText = null; propCount = 0; placeholder = null; hasPlaceholderColor = false; placeholderColor = 0
     secure = false; multiline = false; editable = true; maxLength = -1
-    keyboard = 0; capitalize = 3; autoCorrect = -1; returnKey = 0; submitBehavior = 0
+    keyboard = 0; capitalize = 3; autoCorrect = InputRules.AUTO_CORRECT_KEEP; returnKey = 0; submitBehavior = 0
     hasSelectionColor = false; selectionColor = 0; hasCursorColor = false; cursorColor = 0
     autoFocus = false; selectTextOnFocus = false; caretHidden = false
     stateText = null; stateCount = 0

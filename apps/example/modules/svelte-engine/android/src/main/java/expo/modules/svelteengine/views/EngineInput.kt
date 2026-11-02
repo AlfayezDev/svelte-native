@@ -18,6 +18,7 @@ import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputConnectionWrapper
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
+import expo.modules.svelteengine.InputRules
 import expo.modules.svelteengine.TextLayouts
 import expo.modules.svelteengine.ViewEvents
 import expo.modules.svelteengine.ViewProps
@@ -42,6 +43,8 @@ class EngineInput(context: Context) : EditText(context), EngineNode {
   private var lastSelStart = -1
   private var lastSelEnd = -1
   private var inputTypeKey = Int.MIN_VALUE
+  /** The `autoCorrect` setting (`InputRules`): an update that does not carry the prop leaves it. */
+  private var autoCorrect = InputRules.AUTO_CORRECT_CLEARED
   private var family: String? = null
   private var weight = 400
   private var italic = false
@@ -124,6 +127,7 @@ class EngineInput(context: Context) : EditText(context), EngineNode {
         else -> EditorInfo.IME_ACTION_DONE
       }
     }
+    autoCorrect = InputRules.autoCorrectAfter(autoCorrect, v.autoCorrect)
     applyInputType(v)
 
     val gravityH = when (v.textAlign) {
@@ -200,7 +204,13 @@ class EngineInput(context: Context) : EditText(context), EngineNode {
         3 -> InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
         else -> 0
       }
-      if (v.autoCorrect == 1) type = type or InputType.TYPE_TEXT_FLAG_AUTO_CORRECT
+      // As `ReactTextInputManager.setAutoCorrect`: true asks for auto-correction, false turns suggestions off (which also keeps the
+      // platform's spell checker, a main-thread binder call at attach and on every edit, from starting), unset leaves the type alone.
+      type = type or when (autoCorrect) {
+        InputRules.AUTO_CORRECT_ON -> InputType.TYPE_TEXT_FLAG_AUTO_CORRECT
+        InputRules.AUTO_CORRECT_OFF -> InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        else -> 0
+      }
     }
     if (v.multiline && (type and InputType.TYPE_MASK_CLASS) == InputType.TYPE_CLASS_TEXT) {
       type = type or InputType.TYPE_TEXT_FLAG_MULTI_LINE

@@ -19,6 +19,17 @@ object InputRules {
   /** `autoCorrect={false}`: the view sets `TYPE_TEXT_FLAG_NO_SUGGESTIONS`, which also keeps the platform's spell checker from starting. */
   const val AUTO_CORRECT_OFF = 2
 
+  /**
+   * The `inputType` flag [setting] stands for: [autoCorrectFlag] when it is on, [noSuggestionsFlag] when it is off (which also keeps the platform's spell
+   * checker from starting), nothing otherwise. The flags are the caller's (`InputType.TYPE_TEXT_FLAG_AUTO_CORRECT`, `InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS`)
+   * so that this file has no Android type; `InputRulesCheck` also reads `EngineInput.applyInputType` for the call that hands them over.
+   */
+  fun suggestionFlag(setting: Int, autoCorrectFlag: Int, noSuggestionsFlag: Int): Int = when (setting) {
+    AUTO_CORRECT_ON -> autoCorrectFlag
+    AUTO_CORRECT_OFF -> noSuggestionsFlag
+    else -> 0
+  }
+
   /** The setting after an update that carried [code]; [current] is what the view had. */
   fun autoCorrectAfter(current: Int, code: Int): Int = when (code) {
     AUTO_CORRECT_ON, AUTO_CORRECT_OFF -> code

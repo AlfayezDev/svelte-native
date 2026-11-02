@@ -59,6 +59,11 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)markUserDismissed;
 /// A screen removed while it is still live (not through `activityState` 0, which the stack takes away first) keeps drawing as a picture, so UIKit's transition has something to move.
 - (void)replaceViewWithSnapshot;
+/// The screen a push has covered draws as a picture and its content waits outside every window, so that UIKit's end of the push has a
+/// view of no weight to take out of the hierarchy. A screen that is not in a window, or is already covered, is left as it is.
+- (void)coverWithPicture;
+/// The content of a covered screen returns to its view and the picture goes. A screen that is not covered is left as it is.
+- (void)uncover;
 /// The user swiped or tapped the presented screen away.
 - (void)presentationDidEndByUser;
 /// `topDismissed { dismissCount }`.

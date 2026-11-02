@@ -247,6 +247,8 @@ using namespace facebook::react;
   }
   _desired = desired;
   if (desired.count == 0) return;
+  // The screen that is to be on top shows live content, whatever the step: a covered one is a picture.
+  [desired.lastObject uncover];
 
   NSMutableArray<UIViewController *> *known = [NSMutableArray new];
   const auto identify = [known](UIViewController *controller) {
@@ -307,7 +309,10 @@ using namespace facebook::react;
       if (_staged != top) [self unstage];
       _staged = nil;
       install();
-      [_controller pushViewController:top.controller animated:visible && [top spec].animation != svelte::kAnimationNone];
+      UIViewController *below = _controller.topViewController;
+      const BOOL animated = visible && [top spec].animation != svelte::kAnimationNone;
+      [_controller pushViewController:top.controller animated:animated];
+      if (animated) [self coverScreenOf:below];
       break;
     }
     case svelte::StackStep::Pop: {
@@ -332,6 +337,23 @@ using namespace facebook::react;
     case svelte::StackStep::None:
       break;
   }
+}
+
+// The screen a push is covering becomes a picture two frames into the transition (`coverWithPicture`): the first frame after the push
+// call holds the transition's setup, and the second is the first of its animation, so the move of its content is not part of either.
+- (void)coverScreenOf:(UIViewController *)controller {
+  if (![controller isKindOfClass:[SvelteScreenController class]]) return;
+  __weak SvelteScreenView *weakScreen = ((SvelteScreenController *)controller).screenView;
+  __weak SvelteStackView *weakSelf = self;
+  SvelteAfterNextFrame(^{
+    SvelteAfterNextFrame(^{
+      SvelteStackView *stack = weakSelf;
+      SvelteScreenView *screen = weakScreen;
+      // Only while the transition that covers the screen is running: a transition that ended already took its view out of the window, a pop asked for since put it back.
+      if (stack == nil || screen == nil || stack->_controller.transitionCoordinator == nil || stack->_controller.topViewController == screen.controller) return;
+      [screen coverWithPicture];
+    });
+  });
 }
 
 // The screen's view joins the navigation controller's own view, out of sight behind the current screen, a frame before UIKit

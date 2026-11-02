@@ -623,6 +623,9 @@ static void SvelteSetBottomInset(UIScrollView *scroll, CGFloat content, CGFloat 
 
 - (void)didMoveToWindow {
   [super didMoveToWindow];
+  // UIKit takes a covered screen out of the window when the push that covered it ends: the picture has done its work (it kept the transition's walk light),
+  // and a bitmap of a whole screen is megabytes for as long as the screen stays under others. The content stays parked until `uncover`.
+  if (self.window == nil) [self dropCoverPicture];
   // A presented screen lives outside the surface's root view: React Native's touch handler is attached to it, and not to a screen
   // that is below the root (a pushed one, or a modal presented over the current context), where the root's handler already listens.
   UIViewController *presented = _wrapper != nil ? (UIViewController *)_wrapper : (UIViewController *)_controller;
@@ -645,9 +648,15 @@ static void SvelteSetBottomInset(UIScrollView *scroll, CGFloat content, CGFloat 
 // when nothing else is due: its content moves to a view in no window (the walk that costs is then ours, in a quiet frame, and UIKit's
 // takes out a view with a picture in it) and a picture of what was drawn takes its place. The content comes back, still in no window and
 // so for the price of moving its direct children, before UIKit shows the screen again (`uncover`: the stack's staging of a pop, the
-// controller's `viewWillAppear` for a back swipe, any update of the stack that makes the screen its top).
+// controller's `viewWillAppear` for a back swipe, any update of the stack that makes the screen its top). The picture itself lives as long as the screen is
+// in the window, that is until the push ends: `didMoveToWindow` drops it then, and only the parked content (the views JavaScript mounted) stays.
 - (void)coverWithPicture {
   if (_parkedContent != nil || _unmounted || self.window == nil || _controller == nil || _controller.view != self) return;
+  // Only what React Native mounted into the view moves: a view that holds anything else (the container React Native adds when a view clips and also
+  // has a shadow, an outline or a filter, a view of the system's) is left as it is, the way it was before the screen was ever covered.
+  for (UIView *child in self.subviews) {
+    if (![child conformsToProtocol:@protocol(RCTComponentViewProtocol)]) return;
+  }
   UIView *picture = [self snapshotViewAfterScreenUpdates:NO];
   if (picture == nil) return;
   UIView *parked = [[UIView alloc] initWithFrame:self.bounds];
@@ -658,12 +667,16 @@ static void SvelteSetBottomInset(UIScrollView *scroll, CGFloat content, CGFloat 
   [self addSubview:picture];
 }
 
+- (void)dropCoverPicture {
+  [_coverPicture removeFromSuperview];
+  _coverPicture = nil;
+}
+
 - (void)uncover {
   UIView *parked = _parkedContent;
   if (parked == nil) return;
   _parkedContent = nil;
-  [_coverPicture removeFromSuperview];
-  _coverPicture = nil;
+  [self dropCoverPicture];
   for (UIView *child in [parked.subviews copy]) [self addSubview:child];
 }
 

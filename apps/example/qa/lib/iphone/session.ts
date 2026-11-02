@@ -139,8 +139,8 @@ export async function startIosSuite(command: string, argv: string[], values: Ios
 	};
 	console.log(`${device.model} (${id}), iOS ${device.osVersion}; app ${installed.version ?? "?"} (${installed.bundleVersion ?? "?"})`);
 	// After the install, before anything runs: the reports that are on the phone now are not this run's.
-	const crashes = await startCrashWatch({ mac, deviceId: id, bundleId, processName: processNameOf[variant] });
-	if (crashes.known) console.log(`crash log of ${device.model}: ${crashes.known.size} report file(s) of ${crashes.processName} and jetsam events already on the phone (listed in ${((crashes.listedMs ?? 0) / 1000).toFixed(1)} s)`);
+	const crashes = await startCrashWatch({ mac, deviceId: id, udid, bundleId, processName: processNameOf[variant] });
+	if (crashes.known) console.log(`crash log of ${device.model}: ${crashes.known.size} report file(s) of ${crashes.processName} and jetsam events already on the phone (listed ${crashes.listedBy === "usb" ? "over USB, CoreDevice not answering" : "through devicectl"} in ${((crashes.listedMs ?? 0) / 1000).toFixed(1)} s)`);
 	else console.log(`warning: the crash log of ${device.model} cannot be read (${crashes.startError}); this run will say so and log.crashReports will read not measured`);
 	return { target, udid, device, installed, app, build, crashes, startedAt };
 }

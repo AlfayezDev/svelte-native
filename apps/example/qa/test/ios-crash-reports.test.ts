@@ -15,13 +15,17 @@ import {
 	listCrashLog,
 	parseCrashLogListing,
 	parsePhoneTime,
+	parseUsbListing,
 	pullCrashFiles,
 	readCrashReport,
 	readCrashReports,
+	readUsbCrashLog,
 	reportFiles,
 	reportsSince,
 	startCrashWatch,
 	unattributed,
+	usbFilters,
+	usbListScript,
 	withReports,
 } from "../lib/iphone/crash-reports.ts";
 import { parseIosLabResults, labRunFromIos } from "../lib/iphone/lab-results.ts";
@@ -303,7 +307,7 @@ function runHere(script: string, path: string, env: Record<string, string>): Pro
  * crash log (the shapes `devicectl device info files --domain-type systemCrashLogs` and `device copy from` have on the lab phone), or
  * fails or hangs as the mode says; `scp` copies from a path. Nothing here reaches a phone.
  */
-async function fakeMac(): Promise<{ mac: ReturnType<typeof macFrom>; log: Call[]; phone: string; mode: { value: string }; toolCalls: () => Promise<string>; cleanup: () => Promise<void> }> {
+async function fakeMac(): Promise<{ mac: ReturnType<typeof macFrom>; log: Call[]; phone: string; mode: { value: string }; usbMode: { value: string }; toolCalls: () => Promise<string>; cleanup: () => Promise<void> }> {
 	const root = await mkdtemp(join(tmpdir(), "crash-pull-test-"));
 	const bin = join(root, "bin");
 	const phone = join(root, "phone");
@@ -354,8 +358,38 @@ echo "listing"
 `,
 		{ mode: 0o755 },
 	);
+	await writeFile(
+		join(bin, "idevicecrashreport"),
+		`#!/bin/sh
+echo "idevicecrashreport $@" >> "$STUB_LOG"
+keep=0; udid=""; filter=""; dir=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -k) keep=1; shift;;
+    -u|-f) if [ "$1" = -u ]; then udid="$2"; else filter="$2"; fi; shift 2;;
+    *) dir="$1"; shift;;
+  esac
+done
+# Without -k the real tool removes what it copied from the phone: a harness that reads the crash log must never do that.
+[ "$keep" = 1 ] || { echo "ERROR: the reports would be removed from the phone" >&2; exit 9; }
+case "$STUB_USB_MODE" in
+  nodevice) echo "No device found with udid $udid, is it plugged in?"; exit 255;;
+  silent) exit 0;;
+  hang) sleep 30; exit 0;;
+esac
+# Copies the files whose name contains the filter, with their directory, the way the tool does; a sysdiagnose archive is never copied by these filters.
+(cd "$STUB_REPORTS" && find . -type f -name "*$filter*" | sed 's|^\\./||') | while IFS= read -r path; do
+  mkdir -p "$dir/$(dirname "$path")"
+  cp "$STUB_REPORTS/$path" "$dir/$path"
+  echo "Copy: /$path"
+done
+echo "Done."
+`,
+		{ mode: 0o755 },
+	);
 	const log: Call[] = [];
 	const mode = { value: "ok" };
+	const usbMode = { value: "ok" };
 	const calls = join(root, "calls.log");
 	const copy = (args: string[]): Promise<ExecResult> => {
 		const from = (args[args.length - 2] ?? "").replace(/^[^:]*:/, "");
@@ -364,13 +398,14 @@ echo "listing"
 	const run: Run = (command, args) => {
 		log.push({ command, args });
 		if (command !== "ssh") return copy(args);
-		return runHere(args[args.length - 1] ?? "", `${bin}:/usr/bin:/bin`, { STUB_REPORTS: phone, STUB_MODE: mode.value, STUB_LOG: calls });
+		return runHere(args[args.length - 1] ?? "", `${bin}:/usr/bin:/bin`, { STUB_REPORTS: phone, STUB_MODE: mode.value, STUB_USB_MODE: usbMode.value, STUB_LOG: calls });
 	};
 	return {
 		mac: macFrom("me@mac", run),
 		log,
 		phone,
 		mode,
+		usbMode,
 		toolCalls: () => readFile(calls, "utf8").catch(() => ""),
 		cleanup: () => rm(root, { recursive: true, force: true }),
 	};
@@ -546,7 +581,7 @@ describe("watching the crash log across a command", () => {
 			});
 			await putOnPhone(fake.phone, { "JetsamEvent-2026-11-01-120000.ips": quiet });
 			const found = await finishCrashWatch(watch, { settleMs: 0 });
-			expect(found.record).toEqual({ crashReports: [] });
+			expect(found.record).toEqual({ crashReports: [], crashLogRead: "devicectl" });
 			expect(found.directory).toBeNull();
 		} finally {
 			await fake.cleanup();
@@ -559,7 +594,7 @@ describe("watching the crash log across a command", () => {
 			await putOnPhone(fake.phone, { [objcName]: objc });
 			const watch = await startCrashWatch(watchOptions(fake));
 			const found = await finishCrashWatch(watch, { settleMs: 0 });
-			expect(found.record).toEqual({ crashReports: [] });
+			expect(found.record).toEqual({ crashReports: [], crashLogRead: "devicectl" });
 			expect(found.directory).toBeNull();
 			expect(await keepCrashFiles(found, "lab-x")).toBeNull();
 			expect((await fake.toolCalls()).includes("copy from")).toBe(false);
@@ -627,5 +662,226 @@ describe("watching the crash log across a command", () => {
 
 	test("attribution keeps an error record as it is", () => {
 		expect(withReports({ crashReportsError: "x" }, [])).toEqual({ crashReportsError: "x" });
+	});
+});
+
+const udid = "00008110-001E10593410401E";
+const usbOptions = (fake: { mac: ReturnType<typeof macFrom> }, extra: { limitSeconds?: number } = {}) => ({ ...watchOptions(fake, extra), udid });
+const sysdiagnose = "DiagnosticLogs/sysdiagnose/sysdiagnose_2026.10.28_14-16-37+0300_iPhone-OS_iPhone_23G71.tar.gz";
+
+describe("reading the crash log over USB, where CoreDevice is not needed", () => {
+	test("the copy asks for the app's reports and the jetsam events only, keeps them on the phone, and each call is ended by the Mac", () => {
+		expect(usbFilters("RasheedSvelteQA")).toEqual(["RasheedSvelteQA", "JetsamEvent"]);
+		const script = usbListScript({ udid, directory: "/tmp/native-qa-ios/usb-1-1", filters: usbFilters("RasheedSvelteQA"), limitSeconds: 40 });
+		for (const filter of ["RasheedSvelteQA", "JetsamEvent"])
+			expect(script).toContain(`'perl' '-e' 'alarm shift; exec @ARGV' '40' 'idevicecrashreport' '-k' '-u' '${udid}' '-f' '${filter}' '/tmp/native-qa-ios/usb-1-1'`);
+		// `-k` on every call: without it the tool removes the reports it copied from the phone.
+		expect(script.match(/'idevicecrashreport'/g)).toHaveLength(2);
+		expect(script.match(/'idevicecrashreport' '-k'/g)).toHaveLength(2);
+		expect(script).not.toContain("--remove-all");
+	});
+
+	test("a listing is read whole: a line that is not a file of the crash log throws", () => {
+		expect(parseUsbListing(`1204\tRasheedSvelteQA-2026-10-27-090359.ips\n88\tRetired/JetsamEvent-2026-10-26-232518.ips\n`)).toEqual([
+			{ path: "RasheedSvelteQA-2026-10-27-090359.ips", name: "RasheedSvelteQA-2026-10-27-090359.ips", bytes: 1204 },
+			{ path: "Retired/JetsamEvent-2026-10-26-232518.ips", name: "JetsamEvent-2026-10-26-232518.ips", bytes: 88 },
+		]);
+		expect(parseUsbListing("")).toEqual([]);
+		expect(() => parseUsbListing("1204\tsysdiagnose.tar.gz\n")).toThrow(/not a file of the crash log/);
+		expect(() => parseUsbListing("Done.\n")).toThrow(/not a file of the crash log/);
+	});
+
+	test("copies the reports (retired ones too), never a sysdiagnose archive, and brings only the ones asked for", async () => {
+		const fake = await fakeMac();
+		try {
+			await putOnPhone(fake.phone, { [objcName]: objc, [`Retired/${asiName}`]: asiOnly, [jetsamName]: jetsam, "Safari-2026-10-27-000000.ips": otherBundle, [sysdiagnose]: "x".repeat(64) });
+			const copy = await readUsbCrashLog(fake.mac, udid);
+			try {
+				expect(copy.files.map((file) => file.path).sort()).toEqual([`Retired/${asiName}`, jetsamName, objcName].sort());
+				const pulled = await copy.pull(copy.files.filter((file) => file.name === objcName), { bundleId });
+				try {
+					expect(pulled.reports.map((report) => report.file)).toEqual([objcName]);
+					expect(await readdir(pulled.directory)).toEqual([objcName]);
+				} finally {
+					await rm(pulled.directory, { recursive: true, force: true });
+				}
+			} finally {
+				await copy.release();
+			}
+			const calls = (await fake.toolCalls()).trim().split("\n");
+			expect(calls).toHaveLength(2);
+			expect(calls.every((call) => call.startsWith("idevicecrashreport -k -u "))).toBe(true);
+			expect(fake.log.filter((call) => call.command === "scp")).toHaveLength(1);
+		} finally {
+			await fake.cleanup();
+		}
+	});
+
+	test("a phone that is not on USB is an error with the tool's words, never an empty crash log", async () => {
+		const fake = await fakeMac();
+		try {
+			fake.usbMode.value = "nodevice";
+			await expect(readUsbCrashLog(fake.mac, udid)).rejects.toThrow(/over USB through me@mac failed \(exit 1\).*No device found with udid/s);
+			// The tool that exits 0 without saying `Done.` has not copied anything either.
+			fake.usbMode.value = "silent";
+			await expect(readUsbCrashLog(fake.mac, udid)).rejects.toThrow(/failed \(exit 1\)/);
+		} finally {
+			await fake.cleanup();
+		}
+	});
+
+	test("a call that hangs is ended by the Mac after the limit", async () => {
+		const fake = await fakeMac();
+		try {
+			fake.usbMode.value = "hang";
+			const began = Date.now();
+			await expect(readUsbCrashLog(fake.mac, udid, { limitSeconds: 1 })).rejects.toThrow(/no answer in 1 s/);
+			expect(Date.now() - began).toBeLessThan(20_000);
+		} finally {
+			await fake.cleanup();
+		}
+	});
+});
+
+describe("watching the crash log across a UI test", () => {
+	test("CoreDevice wedged after the test: the log is read over USB, without asking devicectl, and the new report is found", async () => {
+		const fake = await fakeMac();
+		try {
+			await putOnPhone(fake.phone, { [`Retired/${asiName}`]: asiOnly, [jetsamName]: jetsam });
+			const watch = await startCrashWatch(usbOptions(fake));
+			expect(watch.listedBy).toBe("devicectl");
+			// The XCUITest run: CoreDevice hangs from now on, and the app aborts while it runs.
+			fake.mode.value = "hang";
+			await putOnPhone(fake.phone, { [objcName]: objc });
+			const asked = (await fake.toolCalls()).trim().split("\n").length;
+			const began = Date.now();
+			const found = await finishCrashWatch(watch, { settleMs: 0, afterUiTest: true });
+			expect(Date.now() - began).toBeLessThan(10_000);
+			expect(found.record.crashReportsError).toBeUndefined();
+			expect(found.record.crashLogRead).toBe("usb");
+			expect(found.record.crashReports?.map((report) => report.file)).toEqual([objcName]);
+			// devicectl was not asked at all: only the USB tool ran after the start's listing.
+			const after = (await fake.toolCalls()).trim().split("\n").slice(asked);
+			expect(after.length).toBeGreaterThan(0);
+			expect(after.every((call) => call.startsWith("idevicecrashreport"))).toBe(true);
+			const kept = await keepCrashFiles(found, "gestures-x", await mkdtemp(join(tmpdir(), "crash-runs-usb-")));
+			expect(await readdir(kept ?? "")).toEqual([objcName]);
+			await rm(join(kept ?? "", ".."), { recursive: true, force: true });
+		} finally {
+			await fake.cleanup();
+		}
+	});
+
+	test("a run that added nothing over USB records an empty list from the USB read, and an old report is not counted", async () => {
+		const fake = await fakeMac();
+		try {
+			await putOnPhone(fake.phone, { [objcName]: objc });
+			const watch = await startCrashWatch(usbOptions(fake));
+			fake.mode.value = "hang";
+			const found = await finishCrashWatch(watch, { settleMs: 0, afterUiTest: true });
+			expect(found.record).toEqual({ crashReports: [], crashLogRead: "usb" });
+			expect(found.directory).toBeNull();
+		} finally {
+			await fake.cleanup();
+		}
+	});
+
+	test("neither door open: not measured, with both tools' words, never an empty list", async () => {
+		const fake = await fakeMac();
+		try {
+			const watch = await startCrashWatch(usbOptions(fake));
+			fake.mode.value = "nodevice";
+			fake.usbMode.value = "nodevice";
+			const found = await finishCrashWatch(watch, { settleMs: 0, afterUiTest: true });
+			expect(found.record.crashReports).toBeUndefined();
+			expect(found.record.crashLogRead).toBeUndefined();
+			expect(found.record.crashReportsError).toMatch(/^after the run: over USB: .*No device found.*; through devicectl: .*The device was not found/s);
+		} finally {
+			await fake.cleanup();
+		}
+	});
+
+	test("USB fails but CoreDevice answers: the listing through devicectl is the fallback, and the record says so", async () => {
+		const fake = await fakeMac();
+		try {
+			const watch = await startCrashWatch(usbOptions(fake));
+			await putOnPhone(fake.phone, { [objcName]: objc });
+			fake.usbMode.value = "nodevice";
+			const found = await finishCrashWatch(watch, { settleMs: 0, afterUiTest: true });
+			expect(found.record.crashLogRead).toBe("devicectl");
+			expect(found.record.crashReports?.map((report) => report.file)).toEqual([objcName]);
+		} finally {
+			await fake.cleanup();
+		}
+	});
+
+	test("a run without a UI test asks devicectl first and falls back to USB when it does not answer", async () => {
+		const fake = await fakeMac();
+		try {
+			const watch = await startCrashWatch(usbOptions(fake, { limitSeconds: 1 }));
+			await putOnPhone(fake.phone, { [objcName]: objc });
+			fake.mode.value = "nodevice";
+			const found = await finishCrashWatch(watch, { settleMs: 0 });
+			expect(found.record.crashLogRead).toBe("usb");
+			expect(found.record.crashReports?.map((report) => report.file)).toEqual([objcName]);
+			// It asked devicectl first (two tries), then the USB tool.
+			const calls = (await fake.toolCalls()).trim().split("\n");
+			expect(calls.filter((call) => call.includes("device info files")).length).toBeGreaterThanOrEqual(3);
+			expect(calls.at(-1)).toContain("idevicecrashreport");
+		} finally {
+			await fake.cleanup();
+		}
+	});
+
+	test("CoreDevice wedged at the start: the first listing is over USB, so the run can still tell new from old", async () => {
+		const fake = await fakeMac();
+		try {
+			await putOnPhone(fake.phone, { [`Retired/${asiName}`]: asiOnly, [jetsamName]: jetsam });
+			fake.mode.value = "nodevice";
+			const watch = await startCrashWatch(usbOptions(fake));
+			expect(watch.listedBy).toBe("usb");
+			expect([...(watch.known ?? [])].sort()).toEqual([jetsamName, asiName].sort());
+			await putOnPhone(fake.phone, { [objcName]: objc });
+			const found = await finishCrashWatch(watch, { settleMs: 0, afterUiTest: true });
+			expect(found.record.crashReports?.map((report) => report.file)).toEqual([objcName]);
+		} finally {
+			await fake.cleanup();
+		}
+	});
+
+	test("both doors shut at the start: not measured, and the end does not guess", async () => {
+		const fake = await fakeMac();
+		try {
+			fake.mode.value = "nodevice";
+			fake.usbMode.value = "nodevice";
+			const watch = await startCrashWatch(usbOptions(fake));
+			expect(watch.known).toBeNull();
+			expect(watch.startError).toMatch(/^before the run: .*The device was not found.*; over USB: .*No device found/s);
+			fake.usbMode.value = "ok";
+			const found = await finishCrashWatch(watch, { settleMs: 0, afterUiTest: true });
+			expect(found.record.crashReports).toBeUndefined();
+			expect(found.record.crashReportsError).toMatch(/^before the run: /);
+		} finally {
+			await fake.cleanup();
+		}
+	});
+
+	test("a command that does not know the phone's hardware id has only devicectl, and says what failed", async () => {
+		const fake = await fakeMac();
+		try {
+			const watch = await startCrashWatch(watchOptions(fake));
+			expect(watch.udid).toBeNull();
+			fake.mode.value = "nodevice";
+			const found = await finishCrashWatch(watch, { settleMs: 0, afterUiTest: true });
+			expect(found.record.crashReportsError).toMatch(/^after the run: through devicectl: .*The device was not found/s);
+			expect((await fake.toolCalls()).includes("idevicecrashreport")).toBe(false);
+		} finally {
+			await fake.cleanup();
+		}
+	});
+
+	test("what a command prints says when the log was read over USB", () => {
+		expect(describeCrashReports({ crashReports: [], crashLogRead: "usb" })).toEqual(["crash reports: none new on the phone (read over USB)"]);
+		expect(describeCrashReports({ crashReports: [], crashLogRead: "devicectl" })).toEqual(["crash reports: none new on the phone"]);
 	});
 });

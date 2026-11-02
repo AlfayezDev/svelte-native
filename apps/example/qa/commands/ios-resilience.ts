@@ -2,9 +2,9 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { shellQuote } from "../lib/exec.ts";
 import { flagString, integerFlag, parseFlags } from "../lib/flags.ts";
-import { appProcesses, phoneAnswers, readAppFile, readAppFileAfc, terminateApp, waitForPhone } from "../lib/iphone/device.ts";
+import { appProcesses, phoneAnswers, readAppFile, readAppFileAfc, terminateApp } from "../lib/iphone/device.ts";
 import { describeCrashReports, finishCrashWatch, keepCrashFiles } from "../lib/iphone/crash-reports.ts";
-import { inBackground, prepareUiTests, requireUsb, testAlive, uiTestsRemote, waitForTestStarted } from "../lib/iphone/gestures.ts";
+import { describeUiTestLeftovers, inBackground, prepareUiTests, requireUsb, testAlive, uiTestsRemote, waitForTestStarted } from "../lib/iphone/gestures.ts";
 import { notReported, reportedIdentity, withIdentity } from "../lib/iphone/identity.ts";
 import {
 	buildIosPlan,
@@ -79,6 +79,7 @@ export async function runPlan(session: IosSession, steps: IosStep[], token: stri
 	}
 	if (Date.now() >= deadline) ended = "the XCUITest run did not end within the timeout";
 	if (Number.isFinite(testPid)) await remote(mac, `pkill -TERM -P ${testPid} 2>/dev/null; kill ${testPid} 2>/dev/null; true`);
+	for (const line of await describeUiTestLeftovers(mac)) console.log(`  ${line}`);
 	// The test is over: the phone answers again.
 	const text = (await remote(mac, `cat ${shellQuote(outFile)} 2>/dev/null; rm -f ${shellQuote(outFile)}`)).stdout;
 	// The two small files come through house_arrest first: CoreDevice is often wedged for minutes after a UI test, and then every `devicectl` call costs its whole limit.
@@ -169,14 +170,13 @@ export async function iosResilience(argv: string[]): Promise<void> {
 		installed = reportedIdentity([run.identity], session.build, "resilience");
 	} catch (error) {
 		// A run of the wrong build measured nothing a gate could read, but the crash log still tells what the app did on the phone.
-		const found = await finishCrashWatch(session.crashes);
+		const found = await finishCrashWatch(session.crashes, { afterUiTest: true });
 		for (const line of describeCrashReports(found.record)) console.log(line);
 		throw error;
 	}
 	if (installed === null) console.log(`warning: ${notReported}`);
-	// The crash log is listed through devicectl, which can stay wedged for minutes after a UI test: ask a few times (bounded) before the listing's own tries.
-	await waitForPhone(session.target);
-	const found = await finishCrashWatch(session.crashes);
+	// CoreDevice can stay wedged for minutes after a UI test: the crash log is read over USB first.
+	const found = await finishCrashWatch(session.crashes, { afterUiTest: true });
 	for (const line of describeCrashReports(found.record)) console.log(line);
 	const failed = results.filter((step) => !step.ok).length;
 	const unfinished = run.output === null || !run.output.done;

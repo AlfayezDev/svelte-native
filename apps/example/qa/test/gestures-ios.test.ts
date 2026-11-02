@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { buildScript, defaultEdgeX, inBackground, onUsb, injectionsFrom, launchFromIos, launchesWithCrashes, parseUiTestOutput, sourcesDigest, testCommand, uiTestsLocal } from "../lib/iphone/gestures.ts";
+import { buildScript, defaultEdgeX, inBackground, onUsb, injectionsFrom, launchFromIos, launchesWithCrashes, parseUiTestOutput, sourcesDigest, testCommand, uiTestLeftovers, uiTestsLocal } from "../lib/iphone/gestures.ts";
 import { describeStories, storiesFrom, type TraceFile } from "../lib/iphone/gesture-trace.ts";
 import type { IosLabResults } from "../lib/iphone/lab-results.ts";
 import type { CrashReport, GestureLaunch } from "../lib/types.ts";
@@ -255,5 +255,29 @@ describe("the phone on USB", () => {
 		expect(onUsb("00008110-AAAAAAAAAAAAAAAA\n00008110-001E10593410401E\n", "00008110-001E10593410401E")).toBe(true);
 		expect(onUsb("", "00008110-001E10593410401E")).toBe(false);
 		expect(onUsb("00008110-001E10593410401E-extra\n", "00008110-001E10593410401E")).toBe(false);
+	});
+});
+
+describe("what a finished UI test leaves on the Mac", () => {
+	const listing = [
+		"  PID  PPID     ELAPSED COMMAND",
+		"    1     0 8-12:14:21 /sbin/launchd",
+		" 4711  4700       00:41 xcodebuild test-without-building -xctestrun DerivedData/Build/Products/GesturesUITests.xctestrun -destination id=00008110-001E10593410401E",
+		" 4733  4711       00:40 /Applications/Xcode.app/Contents/Developer/usr/libexec/testmanagerd --root",
+		" 4800  4712       00:01 ps -axo pid,ppid,etime,command",
+		" 5000     1  3-01:00:00 /usr/libexec/CoreDeviceService",
+	].join("\n");
+
+	test("names the processes of UI testing and nothing else, and not its own listing", () => {
+		expect(uiTestLeftovers(listing)).toEqual([
+			"4711  4700       00:41 xcodebuild test-without-building -xctestrun DerivedData/Build/Products/GesturesUITests.xctestrun -destination id=00008110-001E10593410401E",
+			"4733  4711       00:40 /Applications/Xcode.app/Contents/Developer/usr/libexec/testmanagerd --root",
+			"5000     1  3-01:00:00 /usr/libexec/CoreDeviceService",
+		]);
+		expect(uiTestLeftovers("  PID  PPID     ELAPSED COMMAND\n    1     0 8-12:14:21 /sbin/launchd\n")).toEqual([]);
+	});
+
+	test("a long command line is cut", () => {
+		expect(uiTestLeftovers(`1 1 00:01 xcodebuild ${"x".repeat(500)}`)[0]).toHaveLength(220);
 	});
 });

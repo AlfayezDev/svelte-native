@@ -164,10 +164,13 @@
   // show, and the overscan follows a few frames later: the screen's rows reach the layout before the rows around them do. One frame
   // was not enough on a phone whose cores have clocked down: the overscan's flush (3 ms, 16 nodes) started as soon as the first one
   // ended, ahead of the layout event of the rows that show in the JavaScript thread's queue, and the user's rows waited for it.
+  // The wait depends on whether the list has rows, not on how many: a list that keeps growing (a feed that loads more every few frames) must not
+  // start the wait again each time, or it would never get its overscan.
   let overscanFrom = $state(false);
+  const filled = $derived(count > 0);
   const reach = $derived(overscanFrom ? overscan : 0);
   $effect(() => {
-    if (count === 0) { overscanFrom = false; return; }
+    if (!filled) { overscanFrom = false; return; }
     if (overscanFrom) return;
     const scope = globalThis as { requestAnimationFrame?: (callback: () => void) => number; cancelAnimationFrame?: (handle: number) => void };
     const frameRequest = scope.requestAnimationFrame;

@@ -348,3 +348,89 @@ test("rows of one size keep their wrappers when rows arrive in front of them, an
   expect(t.style("r-2").top).toBe(0);
   expect(t.ids().slice(0, 3)).toEqual(["r-2", "r-1", "r0"]);
 });
+
+/** A frame loop the test drives: callbacks wait until `run`, a cancelled one never runs. */
+function frameLoop() {
+  const scope = globalThis as { requestAnimationFrame?: (callback: () => void) => number; cancelAnimationFrame?: (handle: number) => void };
+  const saved = [scope.requestAnimationFrame, scope.cancelAnimationFrame];
+  const pending = new Map<number, () => void>();
+  let next = 1;
+  scope.requestAnimationFrame = (callback) => { pending.set(next, callback); return next++; };
+  scope.cancelAnimationFrame = (handle) => { pending.delete(handle); };
+  return {
+    pending: () => pending.size,
+    /** The frame callbacks that are waiting now run; the ones they ask for wait for the next frame. */
+    run() { const due = [...pending]; pending.clear(); for (const [, callback] of due) callback(); },
+    restore() { [scope.requestAnimationFrame, scope.cancelAnimationFrame] = saved; },
+  };
+}
+
+test("the overscan wait counts from the fill: a list that grows during it does not start it again, one that empties and refills does", async () => {
+  const frames = frameLoop();
+  try {
+    const result = await load();
+    const root: NativeNode = result.root;
+    const app = result.start({ count: 0, height: 360, rowHeight: 46 }) as { setCount: (count: number) => void };
+    await result.tick();
+    const rows = () => nodes(root).filter((node) => String(node.getSnapshot().props["data-id"] ?? "").startsWith("r")).length;
+    const scroll = nodes(root).find((node) => node.name === "native-scroll") as NativeNode;
+    (scroll.getSnapshot().props.nativeProps as { onLayout: (event: unknown) => void }).onLayout({ nativeEvent: { layout: { height: 360, width: 300, x: 0, y: 0 } } });
+    await result.tick();
+    const frame = async () => { frames.run(); await result.tick(); };
+
+    app.setCount(100);
+    await result.tick();
+    expect(rows()).toBe(8);
+    await frame();
+    await frame();
+    expect(rows()).toBe(8);
+    // A feed loads more: the wait goes on, with two frames left, not four.
+    app.setCount(160);
+    await result.tick();
+    expect(frames.pending()).toBe(1);
+    await frame();
+    expect(rows()).toBe(8);
+    await frame();
+    expect(rows()).toBe(12); // four frames after the fill, whatever came in between
+
+    // Emptied during a wait and filled again: four frames from the refill.
+    app.setCount(0);
+    await result.tick();
+    expect(rows()).toBe(0);
+    app.setCount(100);
+    await result.tick();
+    expect(rows()).toBe(8);
+    await frame();
+    app.setCount(0);
+    await result.tick();
+    expect(frames.pending()).toBe(0); // the wait that was on is cancelled
+    app.setCount(120);
+    await result.tick();
+    for (let wait = 1; wait <= 3; wait++) { await frame(); expect(rows()).toBe(8); }
+    await frame();
+    expect(rows()).toBe(12);
+  } finally {
+    frames.restore();
+  }
+});
+
+test("rows of one size are described once: the same object across a grow, a scroll step and a new items array with the same keys", async () => {
+  const t = await setup({ count: 20, rowHeight: 40 });
+  const app = t.app as unknown as { setCount: (count: number) => void; prepend: (count: number) => void };
+  const described = (id: string) => ({ wrapper: t.wrapper(id), style: t.wrapper(id).getSnapshot().props.nativeStyle });
+  const r2 = described("r2");
+  const r5 = described("r5");
+  app.setCount(30); // a new items array, the same keys for the rows there are
+  await t.result.tick();
+  expect(described("r2").style).toBe(r2.style);
+  expect(described("r5").style).toBe(r5.style);
+  await t.scrollTo(0, 40); // one row's step: the window moves, r2 stays in it
+  expect(described("r2").style).toBe(r2.style);
+  expect(described("r2").wrapper).toBe(r2.wrapper);
+  // A key that moves to another index is described again (its style says where it is now); the others keep theirs.
+  app.prepend(1);
+  await t.result.tick();
+  expect(described("r2").wrapper).toBe(r2.wrapper);
+  expect(described("r2").style).not.toBe(r2.style);
+  expect((described("r2").style as Record<string, number>).top).toBe(120); // 1 + 2 rows above it now
+});

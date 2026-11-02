@@ -15,7 +15,7 @@ import java.io.File
 
 /**
  * Keeps the host's start-up threads on the big cores until the first screen is mounted, and loads the native libraries the start
- * needs on threads of their own while the Application is still being set up. The rules are in [BootBoostCore]; this gives them the platform.
+ * needs on a thread of its own while the Application is still being set up. The rules are in [BootBoostCore]; this gives them the platform.
  *
  * Why the pin: on a phone with a little/big split (the Galaxy A16: 2 x Cortex-A76 and 6 x Cortex-A55) the scheduler places a thread
  * that has just started on a little core unless a big one is idle, and both big cores are busy whenever the system has work
@@ -38,16 +38,11 @@ import java.io.File
  */
 object BootBoost {
   /**
-   * The libraries the start loads in this order, one thread each: React Native's (which the Application's own `loadReactNative` needs
-   * next) and the app's (`appmodules`, which links the codegen libraries) on the big cores, because the main thread waits for them; Hermes
-   * (the pool thread's first step, about 70 ms later) and the Expo modules' (the JavaScript thread's, about 170 ms later) wherever they start.
+   * The libraries the start loads, in the order it needs them, on one thread held to the big cores: React Native's (which the Application's own
+   * `loadReactNative` needs next) and the app's (`appmodules`, which links the codegen libraries) first, because the main thread waits for them;
+   * then Hermes (the pool thread's first step, about 70 ms later) and the Expo modules' (the JavaScript thread's, about 170 ms later).
    */
-  private val LIBRARIES = listOf(
-    PreloadedLibrary("react_featureflagsjni", pinned = true),
-    PreloadedLibrary("appmodules", pinned = true),
-    PreloadedLibrary("hermesinstancejni", pinned = false),
-    PreloadedLibrary("expo-modules-core", pinned = false),
-  )
+  private val LIBRARIES = listOf("react_featureflagsjni", "appmodules", "hermesinstancejni", "expo-modules-core")
 
   private class AndroidEnvironment : BootEnvironment {
     @Volatile var context: Context? = null
@@ -86,7 +81,7 @@ object BootBoost {
 
   /**
    * Call from `Application.attachBaseContext`, the first code of the app that runs: initializes SoLoader as `loadReactNative` will (a
-   * second call is a no-op) and loads the [LIBRARIES] on threads of their own. They overlap what the main thread does before the host
+   * second call is a no-op) and loads the [LIBRARIES] on a thread of its own. It overlaps what the main thread does before the host
    * starts (the content providers, 10 to 18 ms; the Application's own library loads, which find theirs done or wait for the one in
    * progress) and the pool thread's `hermesinstancejni`, which was 9 to 12 ms of its start. A load that fails is logged here and fails
    * again, with its cause, where the host needs the library. Nothing is done in a process that is not the main one.

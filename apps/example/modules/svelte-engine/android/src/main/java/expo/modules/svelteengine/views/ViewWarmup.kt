@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import expo.modules.svelteengine.Affinity
 
 /**
  * Builds the view the first screen of the app creates, once, on a thread of its own while the JavaScript thread is still starting.
@@ -32,11 +33,14 @@ object ViewWarmup {
    * Call from the Activity's `onCreate`. The engine's views are built with a context that wraps the Application's
    * (`MountingManager.viewContext`), and the drawable cache is keyed by the theme the context carries, so the indicator is built
    * with the Application's theme, not the Activity's: with the Activity's, the first screen found nothing cached. The thread is a plain
-   * one at the creator's priority: `THREAD_PRIORITY_BACKGROUND` would move it to the little cores' cpuset, where the work takes twice as long.
+   * one at the creator's priority (`THREAD_PRIORITY_BACKGROUND` is a lower scheduling group, not just other cores), held to the little cores
+   * ([Affinity.keepOffBigCores]): the first mount comes about 150 ms after this, the work takes twice as long there and is done in time,
+   * and on the big cores it competed with the pool thread and the JavaScript thread, which the start pins to the two of them.
    */
   @JvmStatic fun begin(activity: Context) {
     val context = activity.applicationContext
     Thread({
+      Affinity.keepOffBigCores()
       warming.set(true)
       try {
         val view = EngineSpinner(context, 0)

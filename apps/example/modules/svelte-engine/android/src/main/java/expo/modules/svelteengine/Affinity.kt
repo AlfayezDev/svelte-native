@@ -43,6 +43,19 @@ internal object Affinity {
   /** The cores whose capacity is at least half of the largest, as a mask; null when the cores are alike or unreadable. Read once. */
   fun bigCores(): Long? = big
 
+  /**
+   * Restricts the calling thread to the cores that are not big ones, for work that nothing waits for on the spot (a view built ahead of time):
+   * the big cores belong to the main thread, the RenderThread and the start-up threads while a boost holds them, and a thread started
+   * during a boost would inherit their mask. Nothing is done on a device whose cores are alike. [reopen] leaves such a thread alone, since its
+   * mask is not inside the big one.
+   */
+  fun keepOffBigCores() {
+    val big = bigCores() ?: return
+    val all = (1L shl Runtime.getRuntime().availableProcessors()) - 1
+    val little = all and big.inv()
+    if (little != 0L) setAffinity(0, little)
+  }
+
   /** The thread ids of this process. */
   fun tasks(): List<Int> = File("/proc/self/task").list()?.mapNotNull { it.toIntOrNull() } ?: emptyList()
 

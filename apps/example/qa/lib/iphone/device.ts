@@ -101,15 +101,6 @@ export async function phoneAnswers(target: IosTarget, limitSeconds = 25): Promis
 	}
 }
 
-/** Waits for the phone to answer `devicectl` again (a few bounded probes, not a loop on one hung call); false when it never did. */
-export async function waitForPhone(target: IosTarget, probes = 3, limitSeconds = 25): Promise<boolean> {
-	for (let probe = 1; probe <= probes; probe++) {
-		if (await phoneAnswers(target, limitSeconds)) return true;
-		console.log(`  devicectl does not answer (probe ${probe}/${probes}, ${limitSeconds} s each)`);
-	}
-	return false;
-}
-
 /** The commands of one `afcclient` session (house_arrest into the app's container), one per line. */
 export const afcSession = (commands: readonly string[]): string => `${commands.join("\n")}\nexit\n`;
 

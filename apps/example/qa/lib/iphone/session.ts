@@ -104,9 +104,9 @@ export const suiteBundleId = (values: IosValues, variant: Variant): string => fl
 
 /**
  * What every iOS command does first: take the iPhone lock the way the emulator commands take theirs (re-running itself under
- * `flock`), find the phone through the Mac, install the build under test unless told not to, and describe the phone and the app.
+ * `flock`), find the phone through the Mac, install the build under test unless told not to, and describe the phone and the app. `uiTest` is for the commands that run an XCUITest (gestures, resilience).
  */
-export async function startIosSuite(command: string, argv: string[], values: IosValues, variant: Variant = "qa"): Promise<IosSession> {
+export async function startIosSuite(command: string, argv: string[], values: IosValues, variant: Variant = "qa", options: { uiTest?: boolean } = {}): Promise<IosSession> {
 	await reexecUnderLock(iphoneLock, [command, ...argv]);
 	const id = requireString(values.device, "device");
 	const mac = macFrom(flagString(values.mac));
@@ -139,8 +139,9 @@ export async function startIosSuite(command: string, argv: string[], values: Ios
 	};
 	console.log(`${device.model} (${id}), iOS ${device.osVersion}; app ${installed.version ?? "?"} (${installed.bundleVersion ?? "?"})`);
 	// After the install, before anything runs: the reports that are on the phone now are not this run's.
-	const crashes = await startCrashWatch({ mac, deviceId: id, udid, bundleId, processName: processNameOf[variant] });
-	if (crashes.known) console.log(`crash log of ${device.model}: ${crashes.known.size} report file(s) of ${crashes.processName} and jetsam events already on the phone (listed ${crashes.listedBy === "usb" ? "over USB, CoreDevice not answering" : "through devicectl"} in ${((crashes.listedMs ?? 0) / 1000).toFixed(1)} s)`);
+	// A command that runs a UI test reads the crash log over USB first, at its start as well as at its end (CoreDevice is wedged after the test).
+	const crashes = await startCrashWatch({ mac, deviceId: id, udid, bundleId, processName: processNameOf[variant], usbFirst: options.uiTest === true });
+	if (crashes.known) console.log(`crash log of ${device.model}: ${crashes.known.size} report file(s) of ${crashes.processName} and jetsam events already on the phone (listed ${crashes.listedBy === "usb" ? "over USB" : "through devicectl"} in ${((crashes.listedMs ?? 0) / 1000).toFixed(1)} s)`);
 	else console.log(`warning: the crash log of ${device.model} cannot be read (${crashes.startError}); this run will say so and log.crashReports will read not measured`);
 	return { target, udid, device, installed, app, build, crashes, startedAt };
 }

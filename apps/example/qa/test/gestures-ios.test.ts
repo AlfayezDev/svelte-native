@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { buildScript, defaultEdgeX, inBackground, onUsb, injectionsFrom, launchFromIos, launchesWithCrashes, parseUiTestOutput, sourcesDigest, testCommand, uiTestLeftovers, uiTestsLocal } from "../lib/iphone/gestures.ts";
+import { buildScript, defaultEdgeX, inBackground, onUsb, injectionsFrom, launchFromIos, launchesWithCrashes, parseUiTestOutput, sourcesDigest, testCommand, uiTestLeftovers, uiTestsLocal, coreDeviceDaemons, describeUiTestLeftovers } from "../lib/iphone/gestures.ts";
 import { describeStories, storiesFrom, type TraceFile } from "../lib/iphone/gesture-trace.ts";
+import { macFrom } from "../lib/iphone/mac.ts";
 import type { IosLabResults } from "../lib/iphone/lab-results.ts";
 import type { CrashReport, GestureLaunch } from "../lib/types.ts";
 
@@ -272,12 +273,31 @@ describe("what a finished UI test leaves on the Mac", () => {
 		expect(uiTestLeftovers(listing)).toEqual([
 			"4711  4700       00:41 xcodebuild test-without-building -xctestrun DerivedData/Build/Products/GesturesUITests.xctestrun -destination id=00008110-001E10593410401E",
 			"4733  4711       00:40 /Applications/Xcode.app/Contents/Developer/usr/libexec/testmanagerd --root",
-			"5000     1  3-01:00:00 /usr/libexec/CoreDeviceService",
 		]);
+		// CoreDevice's daemon runs all the time: it is shown on its own, not counted as something the test left.
+		expect(coreDeviceDaemons(listing)).toEqual(["5000     1  3-01:00:00 /usr/libexec/CoreDeviceService"]);
 		expect(uiTestLeftovers("  PID  PPID     ELAPSED COMMAND\n    1     0 8-12:14:21 /sbin/launchd\n")).toEqual([]);
 	});
 
 	test("a long command line is cut", () => {
 		expect(uiTestLeftovers(`1 1 00:01 xcodebuild ${"x".repeat(500)}`)[0]).toHaveLength(220);
+	});
+
+	test("waits for the processes it was told to end before it looks, and shows the daemon apart from the leftovers", async () => {
+		const asked: number[] = [];
+		const began = Date.now();
+		const mac = macFrom("me@mac", async () => {
+			asked.push(Date.now() - began);
+			return { code: 0, stdout: `${listing}\n__native_qa_status=0\n`, stderr: "" };
+		});
+		const lines = await describeUiTestLeftovers(mac, 300);
+		expect(asked).toHaveLength(1);
+		expect(asked[0]).toBeGreaterThanOrEqual(290);
+		expect(lines[0]).toBe("after the test: 2 process(es) of UI testing on the Mac:");
+		expect(lines.filter((line) => line.includes("CoreDeviceService"))).toEqual(["  CoreDeviceService (a daemon, not a leftover): 5000 1 3-01:00:00"]);
+		const quiet = await describeUiTestLeftovers(macFrom("me@mac", async () => ({ code: 0, stdout: "  PID  PPID ELAPSED COMMAND\n    1     0 1-00:00:00 /sbin/launchd\n\n__native_qa_status=0\n", stderr: "" })), 0);
+		expect(quiet).toEqual(["after the test: no xcodebuild, xctest or testmanagerd process is left on the Mac", "  CoreDeviceService is not running"]);
+		const failed = await describeUiTestLeftovers(macFrom("me@mac", async () => ({ code: 0, stdout: "\n__native_qa_status=1\n", stderr: "" })), 0);
+		expect(failed).toEqual(["after the test: the process list of the Mac could not be read (exit 1)"]);
 	});
 });

@@ -258,7 +258,8 @@ export function describeCrashReports(record: CrashReportsRecord): string[] {
 	if (record.crashReportsError !== undefined)
 		return [`crash reports NOT MEASURED: ${record.crashReportsError}`, "  the run file records crashReportsError; log.crashReports reads not measured and its gate fails"];
 	const reports = record.crashReports ?? [];
-	const through = record.crashLogRead === "usb" ? " (read over USB)" : "";
+	const parts = [record.crashLogRead === "usb" ? "read over USB" : null, record.crashLogStart !== undefined && record.crashLogStart !== record.crashLogRead ? `baseline ${record.crashLogStart === "usb" ? "over USB" : "through devicectl"}` : null].filter((part): part is string => part !== null);
+	const through = parts.length > 0 ? ` (${parts.join(", ")})` : "";
 	if (reports.length === 0) return [`crash reports: none new on the phone${through}`];
 	const lines = [`crash reports: ${reports.length} new on the phone${through}`];
 	for (const report of reports) {
@@ -275,14 +276,14 @@ export function describeCrashReports(record: CrashReportsRecord): string[] {
 
 /*
  * The crash log of the phone holds more than reports: sysdiagnose archives of 270 MB each, one for every UI-testing start that timed out
- * (seven of them, 1.6 GB, on the lab phone on 1 Nov 2026). `idevicecrashreport` reaches the log through the phone's crash-report mover and
- * a copy service, and copied all of it: a pull took more than the 180 s the harness allowed (the Mac's script went on, orphaned, for
- * seven minutes, and the next pull queued behind it). Filtering its copy by name (`-f`) made one pull 2 s, but left the cost tied to
- * what the phone happens to hold and to a tool that cannot say what it has before it copies. So the harness no longer copies the log:
- * it LISTS it (`devicectl device info files --domain-type systemCrashLogs`: names, sizes and dates, 1 s on the lab phone, the report of
- * a deliberate SIGABRT in the listing 4.5 s after the signal, with no mover) and copies only the reports that appeared during the run
- * (`devicectl device copy from`, 1 s each). Every phone command runs under an `alarm` on the Mac, so the Mac ends it and nothing outlives
- * the harness's wait.
+ * (seven of them, 1.6 GB, on the lab phone on 1 Nov 2026). The first pull, `idevicecrashreport` with no filter, reached the log through the phone's
+ * crash-report mover and a copy service and copied all of it: it took more than the 180 s the harness allowed (the Mac's script went on, orphaned,
+ * for seven minutes, and the next pull queued behind it). The harness has two doors to the log now, and neither copies the archives.
+ * Through CoreDevice it LISTS the log (`devicectl device info files --domain-type systemCrashLogs`: names, sizes and dates, 1 s on the lab phone, the
+ * report of a deliberate SIGABRT in the listing 4.5 s after the signal, with no mover) and copies only the reports that appeared during the run
+ * (`devicectl device copy from`, 1 s each). Over USB ("reading the crash log over USB" below) it asks `idevicecrashreport` for the two name filters
+ * only, which copies the matching files (about 50, 1.4 s) and nothing else. Every phone command runs under an `alarm` on the Mac, so the Mac ends
+ * it and nothing outlives the harness's wait.
  */
 
 const macScratch = "/tmp/native-qa-ios";
@@ -428,11 +429,15 @@ export async function pullCrashFiles(mac: Mac, deviceId: string, files: readonly
 
 /** The names the USB copy asks for: the app's reports and the jetsam events (`reportFiles` is the same two). */
 export const usbFilters = (processName: string): string[] => [processName, "JetsamEvent"];
-const usbPath = "export PATH=/opt/homebrew/bin:/usr/local/bin:$PATH";
+// Appended, not prepended: a real `idevicecrashreport` on the Mac's own PATH must never stand in front of a stand-in a test puts first.
+const usbPath = "export PATH=$PATH:/opt/homebrew/bin:/usr/local/bin";
 
 /**
- * The shell the Mac runs to copy the crash log's reports into `directory` and print what it holds: `<bytes><TAB><path>` per `.ips` file.
- * Each tool call is ended by the Mac after `limitSeconds`; a call that did not say `Done.` (no phone on USB, the service refusing) fails the script.
+ * The shell the Mac runs to copy the crash log's reports into `directory` and print what it holds: `<bytes><TAB><file>` per `.ips` file.
+ * Each tool call is ended by the Mac after `limitSeconds`. A call counts only when it exited 0, said `Done.`, printed no error line, and every
+ * file it says it copied (`Copy: <path>`) is on disk and not empty: the tool skips a file it cannot read or write ("Skipping...") and still says
+ * `Done.` with exit 0, which would read as a log with nothing new in it. Anything else fails the script with the tool's own words.
+ * The variables are named so that no special variable of zsh (`path`, `status`) can be one of them: the script is a POSIX shell's, and a test runs it under zsh too.
  */
 export function usbListScript(options: { udid: string; directory: string; filters: readonly string[]; limitSeconds: number }): string {
 	const dir = shellQuote(options.directory);
@@ -444,11 +449,20 @@ export function usbListScript(options: { udid: string; directory: string; filter
 		"failed=0",
 		...options.filters.map((filter) => {
 			const copy = bounded(options.limitSeconds, ["idevicecrashreport", "-k", "-u", options.udid, "-f", filter, options.directory]);
-			return `${copy} > ${log} 2>&1; code=$?; if [ $code -ne 0 ] || ! grep -q '^Done\\.' ${log}; then echo ${shellQuote(`idevicecrashreport -f ${filter} failed:`)} >&2; if [ $code -eq ${killedByAlarm} ]; then echo 'no answer in ${options.limitSeconds} s' >&2; fi; tail -n 4 ${log} >&2; failed=1; fi`;
+			const why = shellQuote(`idevicecrashreport -f ${filter} failed:`);
+			return [
+				`${copy} > ${log} 2>&1; code=$?`,
+				`bad=0; if [ $code -ne 0 ] || ! grep -q '^Done\\.' ${log}; then bad=1; fi`,
+				`if grep -qE '^(ERROR|Failed|Unable)|Skipping' ${log}; then bad=1; fi`,
+				// No `case` inside `$( )`: the Mac's /bin/sh is bash 3.2, which reads the `)` of a pattern as the end of the substitution.
+				`lost=$(sed -n 's|^Copy: \\(.*\\.ips\\)$|\\1|p' ${log} | while IFS= read -r entry; do [ -s ${dir}"$entry" ] || echo "$entry"; done)`,
+				`if [ -n "$lost" ]; then bad=1; fi`,
+				`if [ $bad -ne 0 ]; then echo ${why} >&2; if [ $code -eq ${killedByAlarm} ]; then echo 'no answer in ${options.limitSeconds} s' >&2; fi; if [ -n "$lost" ]; then echo "copied but not on disk: $lost" >&2; fi; tail -n 6 ${log} >&2; failed=1; fi`,
+			].join("\n");
 		}),
 		`rm -f ${log}`,
 		`if [ $failed -ne 0 ]; then rm -rf ${dir}; exit 1; fi`,
-		`cd ${dir} && find . -type f -name '*.ips' | sed 's|^\\./||' | while IFS= read -r path; do printf '%s\\t%s\\n' "$(wc -c < "$path" | tr -d ' ')" "$path"; done`,
+		`cd ${dir} && find . -type f -name '*.ips' | sed 's|^\\./||' | while IFS= read -r entry; do printf '%s\\t%s\\n' "$(wc -c < "$entry" | tr -d ' ')" "$entry"; done`,
 	].join("\n");
 }
 
@@ -553,33 +567,37 @@ export type CrashLogSource = "devicectl" | "usb";
 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
+/** What a failure of each door is called in an error. */
+const doorName = (door: CrashLogSource): string => (door === "usb" ? "over USB" : "through devicectl");
+
 /**
- * The first listing, when the command starts: through `devicectl`, and when CoreDevice does not answer, over USB. A failure of both is recorded, not thrown:
- * the command goes on and says at its end that it could not measure.
+ * The first listing, when the command starts: through `devicectl`, and when CoreDevice does not answer, over USB. A command that runs a UI test
+ * (`usbFirst`) asks USB first, as its end does: the baseline and the end of such a run then come from the same door, and the one that is
+ * wedged afterwards is not asked at all. A failure of both is recorded, not thrown: the command goes on and says at its end that it could not measure.
  */
-export async function startCrashWatch(options: { mac: Mac; deviceId: string; udid?: string | null; bundleId: string; processName?: string; limitSeconds?: number }): Promise<CrashWatch> {
+export async function startCrashWatch(options: { mac: Mac; deviceId: string; udid?: string | null; bundleId: string; processName?: string; limitSeconds?: number; usbFirst?: boolean }): Promise<CrashWatch> {
 	const { mac, deviceId, bundleId } = options;
 	const udid = options.udid ?? null;
 	const processName = options.processName ?? qaProcessName;
 	const limit = options.limitSeconds === undefined ? {} : { limitSeconds: options.limitSeconds };
 	const base = { mac, deviceId, udid, bundleId, processName, ...limit };
-	let failure: string;
-	try {
-		const listing = await listCrashLog(mac, deviceId, limit);
-		return { ...base, known: new Set(reportFiles(listing.files, processName).map((file) => file.name)), startError: null, listedMs: listing.ms, listedBy: "devicectl" };
-	} catch (error) {
-		failure = messageOf(error);
-	}
-	if (udid !== null) {
+	const order: CrashLogSource[] = options.usbFirst ? ["usb", "devicectl"] : ["devicectl", "usb"];
+	const failures: string[] = [];
+	for (const door of order) {
+		if (door === "usb" && udid === null) continue;
 		try {
-			const copy = await readUsbCrashLog(mac, udid, { processName, ...limit });
+			if (door === "devicectl") {
+				const listing = await listCrashLog(mac, deviceId, limit);
+				return { ...base, known: new Set(reportFiles(listing.files, processName).map((file) => file.name)), startError: null, listedMs: listing.ms, listedBy: door };
+			}
+			const copy = await readUsbCrashLog(mac, udid as string, { processName, ...limit });
 			await copy.release();
-			return { ...base, known: new Set(reportFiles(copy.files, processName).map((file) => file.name)), startError: null, listedMs: copy.ms, listedBy: "usb" };
+			return { ...base, known: new Set(reportFiles(copy.files, processName).map((file) => file.name)), startError: null, listedMs: copy.ms, listedBy: door };
 		} catch (error) {
-			failure = `${failure}; over USB: ${messageOf(error)}`;
+			failures.push(`${doorName(door)}: ${messageOf(error)}`);
 		}
 	}
-	return { ...base, known: null, startError: `before the run: ${failure}`, listedMs: null, listedBy: null };
+	return { ...base, known: null, startError: `before the run: ${failures.join("; ")}`, listedMs: null, listedBy: null };
 }
 
 export type CrashFinding = {
@@ -617,6 +635,8 @@ export async function finishCrashWatch(watch: CrashWatch, options: { settleMs?: 
 	if (watch.known === null) return { record: { crashReportsError: watch.startError ?? "the crash log was not read before the run" }, directory: null };
 	await sleep(options.settleMs ?? settleMs);
 	const order: CrashLogSource[] = options.afterUiTest ? ["usb", "devicectl"] : ["devicectl", "usb"];
+	// The record says which door gave the baseline and which gave the end: a baseline and an end from two doors are two listings of one log, and a reader should see it.
+	const doors = (read: CrashLogSource | null): Pick<CrashReportsRecord, "crashLogStart" | "crashLogRead"> => ({ ...(watch.listedBy === null ? {} : { crashLogStart: watch.listedBy }), ...(read === null ? {} : { crashLogRead: read }) });
 	const failures: string[] = [];
 	for (const source of order) {
 		if (source === "usb" && watch.udid === null) continue;
@@ -624,16 +644,16 @@ export async function finishCrashWatch(watch: CrashWatch, options: { settleMs?: 
 		try {
 			pulled = await pullNewReports(watch, source);
 		} catch (error) {
-			failures.push(`${source === "usb" ? "over USB" : "through devicectl"}: ${messageOf(error)}`);
+			failures.push(`${doorName(source)}: ${messageOf(error)}`);
 			continue;
 		}
 		if (pulled.reports.length === 0) {
 			await rm(pulled.directory, { recursive: true, force: true });
-			return { record: { crashReports: [], crashLogRead: source }, directory: null };
+			return { record: { crashReports: [], ...doors(source) }, directory: null };
 		}
-		return { record: { crashReports: pulled.reports, crashLogRead: source }, directory: pulled.directory };
+		return { record: { crashReports: pulled.reports, ...doors(source) }, directory: pulled.directory };
 	}
-	return { record: { crashReportsError: `after the run: ${failures.join("; ")}` }, directory: null };
+	return { record: { crashReportsError: `after the run: ${failures.join("; ")}`, ...doors(null) }, directory: null };
 }
 
 /** The record with its reports replaced (attribution adds `attributedTo`); an error record stays as it is. */

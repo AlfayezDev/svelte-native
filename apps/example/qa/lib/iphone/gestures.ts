@@ -294,26 +294,48 @@ export async function waitForTestStarted(mac: Mac, outFile: string, maxMs: numbe
 }
 
 /** The names of the Mac processes a UI test leaves behind that hold the phone (CoreDevice stays wedged until they are gone or the phone is plugged in again). */
-const uiTestProcess = /xcodebuild|xctest|XCTRunner|testmanagerd|xcresulttool|xcdevice|CoreDeviceService/;
+const uiTestProcess = /xcodebuild|xctest|XCTRunner|testmanagerd|xcresulttool|xcdevice/;
+/** CoreDevice's own daemon: it runs all the time, so it is never a leftover, and it is shown on a line of its own (a restart of it is worth knowing). */
+const coreDeviceDaemon = /CoreDeviceService/;
 
-/** The `ps -axo pid,ppid,etime,command` lines of `output` that name such a process (the listing's own command and its `grep` are not among them). */
-export function uiTestLeftovers(output: string): string[] {
-	return output
+const withoutPsItself = (output: string): string[] =>
+	output
 		.split("\n")
 		.map((line) => line.trim())
-		.filter((line) => uiTestProcess.test(line) && !/ps -axo/.test(line))
+		.filter((line) => line !== "" && !/ps -axo/.test(line));
+
+/** The `ps -axo pid,ppid,etime,command` lines of `output` that name a process of UI testing (the listing's own command and its `grep` are not among them; the CoreDevice daemon is not one). */
+export function uiTestLeftovers(output: string): string[] {
+	return withoutPsItself(output)
+		.filter((line) => uiTestProcess.test(line) && !coreDeviceDaemon.test(line))
 		.map((line) => line.slice(0, 220));
 }
 
+/** The lines of `output` that name CoreDevice's daemon. */
+export function coreDeviceDaemons(output: string): string[] {
+	return withoutPsItself(output)
+		.filter((line) => coreDeviceDaemon.test(line))
+		.map((line) => line.slice(0, 220));
+}
+
+/** How long the processes the test was told to end get to go before the Mac is asked what is left. */
+export const leftoversGraceMs = 1500;
+
 /**
  * What a finished UI test left running on the Mac, printed by the commands that ran one: when CoreDevice stays wedged afterwards, the run says which
- * process was still there. Nothing is ended here (the harness ends only the test it started); a `ps` that failed says so, it does not read as none.
+ * process was still there. The commands end the test they started (`pkill -TERM`) just before this, and a process that was told to end takes a moment
+ * to go, so it waits a second and a half before it asks. Nothing is ended here; a `ps` that failed says so, it does not read as none.
  */
-export async function describeUiTestLeftovers(mac: Mac): Promise<string[]> {
+export async function describeUiTestLeftovers(mac: Mac, graceMs: number = leftoversGraceMs): Promise<string[]> {
+	await sleep(graceMs);
 	const result = await remote(mac, "ps -axo pid,ppid,etime,command");
 	if (result.code !== 0) return [`after the test: the process list of the Mac could not be read (exit ${result.code})`];
 	const left = uiTestLeftovers(result.stdout);
-	return left.length === 0 ? ["after the test: no xcodebuild, xctest or testmanagerd process is left on the Mac"] : [`after the test: ${left.length} process(es) of UI testing on the Mac:`, ...left.map((line) => `  ${line}`)];
+	const daemon = coreDeviceDaemons(result.stdout);
+	return [
+		...(left.length === 0 ? ["after the test: no xcodebuild, xctest or testmanagerd process is left on the Mac"] : [`after the test: ${left.length} process(es) of UI testing on the Mac:`, ...left.map((line) => `  ${line}`)]),
+		daemon.length === 0 ? "  CoreDeviceService is not running" : `  CoreDeviceService (a daemon, not a leftover): ${daemon.map((line) => line.split(/\s+/).slice(0, 3).join(" ")).join("; ")}`,
+	];
 }
 
 /** Whether the process the test was started as (the shell that runs xcodebuild) still exists. */
@@ -401,7 +423,7 @@ export async function iosGestures(argv: string[]): Promise<void> {
 	const { values } = parseFlags(argv, { ...iosOptions, run: { type: "string" }, repeat: { type: "string" }, timeout: { type: "string" }, team: { type: "string" }, rebuild: { type: "boolean" }, input: { type: "string" }, trace: { type: "boolean" }, calibrate: { type: "string" }, "edge-x": { type: "string" }, "edge-release": { type: "string" }, "edge-by": { type: "string" }, link: { type: "string" }, collect: { type: "string" }, "build-only": { type: "boolean" } });
 	const input = flagString(values.input) ?? "xctest";
 	if (input !== "xctest") throw new Error("--input is xctest on iOS (touches cannot be synthesized from inside the app)");
-	const session = await startIosSuite("gestures", argv, values);
+	const session = await startIosSuite("gestures", argv, values, "qa", { uiTest: true });
 	const names = namesFor(scenarioNamesFrom(flagString(values.run)), "xctest");
 	const repeat = integerFlag(values.repeat, "repeat", 1);
 	if (repeat < 1) throw new Error("--repeat must be at least 1");

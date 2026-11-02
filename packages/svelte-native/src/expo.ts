@@ -68,12 +68,16 @@ const onDemandLegacyPackageName = "SvelteNativeOnDemandLegacyPackage";
 const onDemandFactoryName = "svelteNativeOnDemand";
 const packagesBegin = "          // Svelte native: headless package list (generated, do not edit)";
 const packagesEnd = "          // Svelte native: end of headless package list";
+const attachBegin = "  // Svelte native: the native libraries the start needs load while the Application is set up (generated, do not edit)";
+const attachEnd = "  // Svelte native: end of native library preload";
 const startBegin = "    // Svelte native: headless host start (generated, do not edit)";
 const startEnd = "    // Svelte native: end of headless host start";
 const activityBegin = "  // Svelte native: navigation state across recreation and process death (generated, do not edit)";
 const activityEnd = "  // Svelte native: end of navigation state";
 const savedBegin = "    // Svelte native: the navigation this Activity was saved with (generated, do not edit)";
 const savedEnd = "    // Svelte native: end of saved navigation";
+const warmBegin = "    // Svelte native: the process was started for the screen; the view the first screen creates is built off the main thread (generated, do not edit)";
+const warmEnd = "    // Svelte native: end of view warm-up";
 const launchBegin = "            // Svelte native: the saved navigation reaches JavaScript as initialProps.navigation (generated, do not edit)";
 const launchEnd = "            // Svelte native: end of launch options";
 const delegateBegin = "  // Svelte native: navigation state restoration (generated, do not edit)";
@@ -120,7 +124,10 @@ const blockPattern = (begin: string, end: string) => new RegExp(`\\n${escapeRegE
 
 /** `MainApplication.kt`: swaps `MainReactPackage` and starts the React host in `onCreate`. Idempotent (prebuild re-runs on the same file). */
 export function applyHeadlessApplication(contents: string, onDemand: Record<string, string[]> = {}): string {
-  const stripped = contents.replace(blockPattern(packagesBegin, packagesEnd), "").replace(blockPattern(startBegin, startEnd), "");
+  const stripped = contents
+    .replace(blockPattern(packagesBegin, packagesEnd), "")
+    .replace(blockPattern(startBegin, startEnd), "")
+    .replace(blockPattern(attachBegin, attachEnd), "");
   const packagesAnchor = /^[ \t]*\/\/ add\(MyReactNativePackage\(\)\)[ \t]*$/m.exec(stripped);
   const startAnchor = /^[ \t]*ApplicationLifecycleDispatcher\.onApplicationCreate\(this\)[ \t]*$/m.exec(stripped);
   if (!packagesAnchor || !startAnchor) throw new Error("Svelte native could not find the package list or onApplicationCreate in MainApplication.kt");
@@ -148,9 +155,22 @@ export function applyHeadlessApplication(contents: string, onDemand: Record<stri
     "    expo.modules.svelteengine.BootBoost.handOver()",
     startEnd,
   ].join("\n");
+  const createAnchor = /^[ \t]*override fun onCreate\(\) \{[ \t]*$/m.exec(stripped);
+  if (!createAnchor) throw new Error("Svelte native could not find onCreate in MainApplication.kt");
+  const attach = [
+    attachBegin,
+    "  override fun attachBaseContext(base: android.content.Context) {",
+    "    super.attachBaseContext(base)",
+    "    expo.modules.svelteengine.BootBoost.preloadLibraries(base)",
+    "  }",
+    attachEnd,
+    "",
+  ].join("\n");
   const packagesAt = packagesAnchor.index + packagesAnchor[0].length;
   const startAt = startAnchor.index + startAnchor[0].length;
-  return `${stripped.slice(0, packagesAt)}\n${packages}${stripped.slice(packagesAt, startAt)}\n${start}${stripped.slice(startAt)}`;
+  // The anchors come in file order: the package list (the host's lazy initializer sits above onCreate), onCreate, the application hook.
+  if (packagesAt > createAnchor.index || createAnchor.index > startAt) throw new Error("Svelte native expected the package list, onCreate and onApplicationCreate in that order in MainApplication.kt");
+  return `${stripped.slice(0, packagesAt)}\n${packages}${stripped.slice(packagesAt, createAnchor.index)}${attach}${stripped.slice(createAnchor.index, startAt)}\n${start}${stripped.slice(startAt)}`;
 }
 
 /**
@@ -160,7 +180,11 @@ export function applyHeadlessApplication(contents: string, onDemand: Record<stri
  * in `onCreate` before that. Idempotent (prebuild re-runs on the same file).
  */
 export function applyMainActivity(contents: string): string {
-  const stripped = contents.replace(blockPattern(activityBegin, activityEnd), "").replace(blockPattern(savedBegin, savedEnd), "").replace(blockPattern(launchBegin, launchEnd), "");
+  const stripped = contents
+    .replace(blockPattern(activityBegin, activityEnd), "")
+    .replace(blockPattern(savedBegin, savedEnd), "")
+    .replace(blockPattern(warmBegin, warmEnd), "")
+    .replace(blockPattern(launchBegin, launchEnd), "");
   const classAnchor = /^class MainActivity : ReactActivity\(\) \{[ \t]*$/m.exec(stripped);
   const createAnchor = /^[ \t]*super\.onCreate\(null\)[ \t]*$/m.exec(stripped);
   const delegateAnchor = /(fabricEnabled\s*\))\s*\{\s*\}/.exec(stripped);
@@ -182,7 +206,16 @@ export function applyMainActivity(contents: string): string {
     "  }",
     activityEnd,
   ].join("\n");
-  const saved = [savedBegin, "    svelteNavigation = expo.modules.svelteengine.NavigationState.restoredFrom(savedInstanceState)", savedEnd, ""].join("\n");
+  const saved = [
+    warmBegin,
+    "    expo.modules.svelteengine.BootBoost.activityCreated()",
+    "    expo.modules.svelteengine.views.ViewWarmup.begin(this)",
+    warmEnd,
+    savedBegin,
+    "    svelteNavigation = expo.modules.svelteengine.NavigationState.restoredFrom(savedInstanceState)",
+    savedEnd,
+    "",
+  ].join("\n");
   const launch = [
     `${delegateAnchor[1]} {`,
     launchBegin,

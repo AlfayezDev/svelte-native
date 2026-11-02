@@ -13,6 +13,7 @@ const application = `class MainApplication {
     )
   }
   override fun onCreate() {
+    super.onCreate()
     loadReactNative(this)
     ApplicationLifecycleDispatcher.onApplicationCreate(this)
   }
@@ -164,6 +165,10 @@ describe("headless Android config", () => {
     // The start-up threads are pinned to the big cores around the host start: begin before it, hand the main thread back after it.
     expect(once.indexOf("BootBoost.begin()")).toBeLessThan(once.indexOf("reactHost.start()"));
     expect(once.indexOf("BootBoost.handOver()")).toBeGreaterThan(once.indexOf("reactHost.start()"));
+    // The native libraries load from attachBaseContext, the first code of the app that runs, before the content providers and onCreate.
+    expect(once).toContain("override fun attachBaseContext(base: android.content.Context) {");
+    expect(once.indexOf("BootBoost.preloadLibraries(base)")).toBeGreaterThan(once.indexOf("super.attachBaseContext(base)"));
+    expect(once.indexOf("BootBoost.preloadLibraries(base)")).toBeLessThan(once.indexOf("override fun onCreate()"));
     expect(applyHeadlessApplication(once)).toBe(once);
   });
   test("packages whose view managers are on demand are wrapped, and unwrapped again when the option goes", () => {
@@ -199,6 +204,11 @@ describe("headless Android config", () => {
     expect(once).toContain("expo.modules.svelteengine.NavigationState.destroyed(isFinishing)");
     expect(once.indexOf("NavigationState.restoredFrom(savedInstanceState)")).toBeLessThan(once.indexOf("super.onCreate(null)"));
     expect(once.indexOf("NavigationState.restoredFrom(savedInstanceState)")).toBeGreaterThan(once.indexOf("expo-splashscreen"));
+    // The process was started for the screen (the boost holds until the first mount) and the first screen's indicator is built off the main
+    // thread: both after the splash screen set the theme the indicator is built with, and before the template's super.onCreate(null).
+    expect(once.indexOf("BootBoost.activityCreated()")).toBeGreaterThan(once.indexOf("expo-splashscreen"));
+    expect(once.indexOf("ViewWarmup.begin(this)")).toBeGreaterThan(once.indexOf("BootBoost.activityCreated()"));
+    expect(once.indexOf("ViewWarmup.begin(this)")).toBeLessThan(once.indexOf("super.onCreate(null)"));
     expect(once).toContain('putString("navigation", json)');
     expect(once).toMatch(/fabricEnabled\n {10}\) \{\n[\s\S]*override fun getLaunchOptions\(\): android\.os\.Bundle\? =[\s\S]*\n {10}\}\)\n/);
     expect(applyMainActivity(once)).toBe(once);

@@ -25,7 +25,6 @@
  * shadow nodes exist, and starts or updates the native side. `detachAnimation` undoes everything for a node.
  */
 import { mark } from "../boot-marks.ts";
-import { BULK_BATCH, Pacer } from "./pacer.ts";
 import { makeMutable, startMapper, stopMapper, type SharedValue } from "react-native-reanimated";
 import { makeShareable } from "react-native-worklets";
 import { CSSManager, filterCSSAndStyleProperties, getInlineStyle, hasInlineStyles, initialUpdaterRun, InlinePropManager, isAnimated, LayoutAnimationType, makeViewDescriptorsSet, markNodeAsRemovable, maybeBuild, processColorsInProps, shallowEqual, updateLayoutAnimations, updateProps, validateAnimatedStyles, type ViewDescriptorsSet } from "./reanimated-internals.js";
@@ -353,23 +352,9 @@ export function animationProps(node: object, target: AnimationTarget, props: Rec
   return out;
 }
 
-/**
- * The first attach of a node with `animatedStyle` or `animatedProps` costs the UI runtime a descriptor update and a mapper registration, and its
- * first run costs a frame; a commit of 48 such nodes put them all in one message (see {@link Pacer}). Four nodes of a commit attach in it, the others four for
- * each frame that follows, so no frame waits for more than a batch. A node shows the values of its first run until it is attached. A node that
- * already has its mapper is never delayed: its descriptor has to follow the clone of every commit.
- */
-const attaches = new Pacer(BULK_BATCH, (callback) => { requestAnimationFrame(callback); });
-
-const unattached = (record: Record_) => (record.style !== null && record.style.mapperId === null) || (record.props !== null && record.props.mapperId === null);
-
 /** Starts or refreshes the native side of every node `animationProps` touched; call after `completeRoot`, when their shadow nodes are committed. */
 export function commitAnimations(): void {
-  for (const node of pending) {
-    const record = records.get(node);
-    // A node that waits for its turn attaches then, to the newest shadow node.
-    if (record && !attaches.has(node)) attaches.run(node, () => attachAnimation(node), unattached(record));
-  }
+  for (const node of pending) attachAnimation(node);
   pending.clear();
 }
 
@@ -481,7 +466,6 @@ export function detachAnimation(node: object): void {
   if (!record) return;
   records.delete(node);
   pending.delete(node);
-  attaches.drop(node);
   const { tag } = record.target;
   if (record.style) stopStyle(record.style, tag);
   if (record.props) stopStyle(record.props, tag);

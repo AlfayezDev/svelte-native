@@ -61,7 +61,7 @@ describe("lazy Expo module registry", () => {
   // Modules with views that are registered lazily anyway: the engine builds the module and registers its Fabric components when the
   // first component of it is mounted (`ExpoViews.kt`, SPEC.md "Foreign views"), and its foreground and background hooks only
   // act on transitions after the module exists. The intent hooks, which a late registration would miss for good, stay forbidden.
-  const viewsOnDemand = new Set(["ExpoVideo"]);
+  const viewsOnDemand = new Set(["ExpoVideo", "ExpoBlur", "ConicGradient", "ExpoImage", "ExpoLinearGradient"]);
 
   for (const [className, name] of lazyEntries) {
     test(`${name} is the name ${className.split(".").pop()} declares and it needs no foreground, view or intent hooks`, () => {
@@ -77,14 +77,18 @@ describe("lazy Expo module registry", () => {
     const views = readFileSync(join(root, "apps/platform/modules/svelte-engine/android/src/main/java/expo/modules/svelteengine/ExpoViews.kt"), "utf8");
     expect(views).toContain("class ExpoViews(");
     for (const name of viewsOnDemand) expect(lazyEntries.map(([, lazyName]) => lazyName)).toContain(name);
-    // The engine builds views only for those modules: Expo exports the views of every module that is not lazy (expo-image, expo-blur,
-    // expo-linear-gradient) when the host starts, so `prepare` leaves them alone.
+    // The engine builds views only for those modules: Expo exports the views of every module that is not lazy when the host starts, so
+    // `prepare` leaves those alone.
     expect(strings(/ON_DEMAND_MODULES = setOf\(([^)]*)\)/.exec(views)?.[1] ?? "").sort()).toEqual([...viewsOnDemand].sort());
   });
 
-  test("the modules whose views the foreign components mount and that stay eager have no lazy entry", () => {
-    // `ViewManagerAdapter_ExpoImage`, `_ExpoBlur_*`, `_ExpoLinearGradient`, `_ConicGradient`: built at start by Expo, as in any app.
-    for (const name of ["ExpoImage", "ExpoBlur", "ExpoLinearGradient", "ConicGradient"]) expect(lazyEntries.some(([, lazyName]) => lazyName === name), name).toBe(false);
+  test("the modules whose views the foreign components mount are built on demand, not at start", () => {
+    // `ViewManagerAdapter_ExpoImage`, `_ExpoBlur_*`, `_ExpoLinearGradient`, `_ConicGradient`: the first screen mounts none of them, and
+    // building them with the host cost the pool thread that initializes the TurboModules about 25 ms of the start (SPEC, "Boot on the phone", round 2).
+    for (const name of ["ExpoImage", "ExpoBlur", "ExpoLinearGradient", "ConicGradient"]) {
+      expect(lazyEntries.some(([, lazyName]) => lazyName === name), name).toBe(true);
+      expect(viewsOnDemand.has(name), name).toBe(true);
+    }
   });
 
   test("core modules registered lazily keep their names", () => {

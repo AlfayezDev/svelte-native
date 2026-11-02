@@ -162,7 +162,7 @@ index 7bb61c680027d60c4ab79d91db5169589a512353..1861a538cba2195cbe2be90d6491ed91
        },
        legacyEventEmitter,
 diff --git a/android/src/main/java/expo/modules/kotlin/ModuleRegistry.kt b/android/src/main/java/expo/modules/kotlin/ModuleRegistry.kt
-index d1e5b3952b08accb1dee87aeb5819f5427c1f325..0c394f2b4616d106782d18ea2bc1d17e38106b15 100644
+index d1e5b3952b08accb1dee87aeb5819f5427c1f325..5bb0051cc4ae89e058c1c0427e39fd0e0abc7a17 100644
 --- a/android/src/main/java/expo/modules/kotlin/ModuleRegistry.kt
 +++ b/android/src/main/java/expo/modules/kotlin/ModuleRegistry.kt
 @@ -9,16 +9,45 @@ import kotlinx.coroutines.CoroutineName
@@ -367,7 +367,7 @@ index d1e5b3952b08accb1dee87aeb5819f5427c1f325..0c394f2b4616d106782d18ea2bc1d17e
      registry.clear()
      logger.info("✅ ModuleRegistry was destroyed")
    }
-@@ -190,4 +317,111 @@ class ModuleRegistry(
+@@ -190,4 +317,116 @@ class ModuleRegistry(
        moduleHolder.post(eventName)
      }
    }
@@ -420,12 +420,17 @@ index d1e5b3952b08accb1dee87aeb5819f5427c1f325..0c394f2b4616d106782d18ea2bc1d17e
 +     * Only modules that need none of `OnActivityEntersForeground`/`OnActivityEntersBackground`/`OnNewIntent`/view
 +     * definitions belong here: `OnCreate` and `RegisterActivityContracts` are replayed on materialization, the
 +     * foreground and background rounds are not.
-+     * `ExpoVideo` is the one exception: its foreground and background hooks act on later transitions only, and its
-+     * views are built on demand by the engine (ExpoViews.kt in modules/svelte-engine).
++     * `ExpoVideo`, `ExpoBlur`, `ConicGradient`, `ExpoImage` and `ExpoLinearGradient` are the exceptions: they have views, which the
++     * engine builds on demand (ExpoViews.kt in modules/svelte-engine), and none of them acts on a foreground, background or
++     * intent round (`ExpoVideo`'s hooks act on later transitions only).
 +     * Anything not listed (dev menu, other custom modules...) stays eager.
 +     */
 +    private val LAZY_MODULE_NAMES = mapOf(
 +      "expo.modules.application.ApplicationModule" to "ExpoApplication",
++      "expo.modules.blur.BlurModule" to "ExpoBlur",
++      "expo.modules.conicgradient.ConicGradientModule" to "ConicGradient",
++      "expo.modules.image.ExpoImageModule" to "ExpoImage",
++      "expo.modules.lineargradient.LinearGradientModule" to "ExpoLinearGradient",
 +      "expo.modules.asset.AssetModule" to "ExpoAsset",
 +      "expo.modules.constants.ConstantsModule" to "ExponentConstants",
 +      "expo.modules.fetch.ExpoFetchModule" to "ExpoFetchModule",

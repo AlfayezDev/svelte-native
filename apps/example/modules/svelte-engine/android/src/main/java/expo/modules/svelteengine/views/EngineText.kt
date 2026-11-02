@@ -25,6 +25,7 @@ class EngineText(context: Context) : View(context), EngineNode {
   val heightMatters get() = spec?.let { it.prepared == null && (it.vAlign != 0 || it.fit) } == true
 
   init {
+    InputWarmup.schedule(context)
     setWillNotDraw(false)
     // Like TextView: text is read by TalkBack and listed by uiautomator even without a content description.
     importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES

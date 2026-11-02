@@ -12,6 +12,7 @@ import {
 	readManifest,
 	readReference,
 	referenceMasks,
+	statusBarMaskProblem,
 	writeManifest,
 	writeReference,
 	type Manifest,
@@ -173,5 +174,26 @@ describe("how much of the screen the masks may cover", () => {
 		const file = JSON.parse(readFileSync(join(import.meta.dirname, "..", "gates.json"), "utf8")) as GatesFile;
 		const bar = file.gates.find((gate) => gate.id === "parity.maskedPct")?.bar;
 		expect(bar).toEqual({ android: { max: maxMaskedPct }, ios: { max: maxMaskedPct } });
+	});
+});
+
+describe("a reference's status bar mask", () => {
+	const band = { x: 0, y: 0, width: 1080, height: 128 };
+	const navigation = { name: "navigation bar", x: 0, y: 2337, width: 1080, height: 63 };
+
+	test("the device's band is what the reference froze, or the check says to retake it", () => {
+		expect(statusBarMaskProblem([{ name: "status bar", ...band }, navigation], band)).toBeNull();
+		// 2 Nov: eight references were frozen with 63 px of a 128 px band, and the clock below it was compared
+		const short = statusBarMaskProblem([{ name: "status bar", ...band, height: 63 }, navigation], band);
+		expect(short).toContain("(0,0 1080x63) is not the device's status bar band (0,0 1080x128)");
+		expect(short).toContain("retake it with --update");
+		expect(statusBarMaskProblem([{ name: "status bar", ...band, width: 540 }], band)).toContain("1080x128");
+		expect(statusBarMaskProblem([navigation], band)).toContain("no status bar mask");
+	});
+
+	test("what `--update` freezes passes the same check on the same device", () => {
+		const masks = referenceMasks(band, [], image(1080, 2400), { x: 0, y: 2337, width: 1080, height: 63 });
+		expect(statusBarMaskProblem(masks, band)).toBeNull();
+		expect(statusBarMaskProblem(masks, { ...band, height: 63 })).not.toBeNull();
 	});
 });

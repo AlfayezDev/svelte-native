@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { harnessLeftovers, stateDifferences, type DeviceState } from "../lib/device.ts";
+import { barsSettleUptimeS, harnessLeftovers, stateDifferences, statusBarRect, type DeviceState } from "../lib/device.ts";
 import {
 	deviceKindName,
 	parseAppLocales,
@@ -8,8 +8,10 @@ import {
 	parseNightMode,
 	parsePids,
 	parseSetting,
+	parseCutoutTop,
 	parseNavigationBarFrame,
 	parseStatusBarFrame,
+	parseUptimeSeconds,
 } from "../parse/device-state.ts";
 import { sample } from "./sample.ts";
 
@@ -167,5 +169,84 @@ describe("what an earlier run left on the device", () => {
 			"user_rotation was 3,",
 		]);
 		expect(found.state).toEqual(clean);
+	});
+});
+
+describe("the status bar band settles after a boot", () => {
+	// What `dumpsys window` said on the OVH emulator in the seconds after a boot (2 Nov, a poll every 2 s): the bar at 63 px with no cutout known, the cutout
+	// (128 px) known while the bar is still 63, then the bar at 128 px.
+	const first = sample("dumpsys-window-bars-boot-1.txt");
+	const second = sample("dumpsys-window-bars-boot-2.txt");
+	const settled = sample("dumpsys-window-bars-settled.txt");
+	const band = (height: number) => ({ x: 0, y: 0, width: 1080, height });
+
+	/** A device that answers `cat /proc/uptime` with `uptime` and each `dumpsys window` with the next of `dumps`; time is the sum of the waits. */
+	function device(uptime: string, dumps: string[]) {
+		const waits: number[] = [];
+		let clock = 0;
+		let read = 0;
+		return {
+			waits,
+			reads: () => read,
+			deps: {
+				run: async (_serial: string, args: string[]) => (args.includes("/proc/uptime") ? uptime : (dumps[Math.min(read++, dumps.length - 1)] ?? "")),
+				wait: async (ms: number) => {
+					waits.push(ms);
+					clock += ms;
+				},
+				now: () => clock,
+				timeoutMs: 20_000,
+			},
+		};
+	}
+
+	test("the cutout's inset and the uptime are read from what the device says", () => {
+		expect(parseCutoutTop(first)).toBe(0);
+		expect(parseCutoutTop(second)).toBe(128);
+		expect(parseCutoutTop(settled)).toBe(128);
+		expect(parseCutoutTop(sample("dumpsys-window-insets.txt"))).toBe(0);
+		expect(parseStatusBarFrame(first).height).toBe(63);
+		expect(parseStatusBarFrame(second).height).toBe(63);
+		expect(parseStatusBarFrame(settled).height).toBe(128);
+		expect(parseUptimeSeconds("1234.56 4321.00\n")).toBe(1234.56);
+		expect(parseUptimeSeconds("")).toBeNull();
+		expect(parseUptimeSeconds("not a number")).toBeNull();
+	});
+
+	test("a device that has just booted is waited for before its bars are read", () => {
+		const fresh = device("12.5 40.0\n", [settled, settled]);
+		return statusBarRect("d", fresh.deps).then((rect) => {
+			expect(fresh.waits[0]).toBe(Math.ceil((barsSettleUptimeS - 12.5) * 1000));
+			expect(fresh.reads()).toBe(2);
+			expect(rect).toEqual(band(128));
+		});
+	});
+
+	test("a device that has been up long enough is not waited for, and two answers in a row make the band", async () => {
+		const up = device("5000.0 9000.0\n", [settled, settled]);
+		expect(await statusBarRect("d", up.deps)).toEqual(band(128));
+		expect(up.waits).toEqual([1000]);
+	});
+
+	test("a bar still shorter than the display cutout is not the band: the answers before it are skipped", async () => {
+		const slow = device("100.0 200.0\n", [second, second, second, settled, settled]);
+		expect(await statusBarRect("d", slow.deps)).toEqual(band(128));
+		expect(slow.reads()).toBe(5);
+	});
+
+	test("an answer that goes back to the half-laid-out bar restarts the count", async () => {
+		const flicker = device("100.0 200.0\n", [settled, second, settled, settled]);
+		expect(await statusBarRect("d", flicker.deps)).toEqual(band(128));
+		expect(flicker.reads()).toBe(4);
+	});
+
+	test("a band that never settles is an error naming what the window manager says", async () => {
+		const stuck = device("100.0 200.0\n", [second]);
+		await expect(statusBarRect("d", stuck.deps)).rejects.toThrow("did not settle: the window manager says 1080x63 at 0,0 with a display cutout of 128 px");
+	});
+
+	test("a device without a cutout settles on its own band", async () => {
+		const plain = device("100.0 200.0\n", [sample("dumpsys-window-insets.txt")]);
+		expect(await statusBarRect("d", plain.deps)).toEqual(band(128));
 	});
 });

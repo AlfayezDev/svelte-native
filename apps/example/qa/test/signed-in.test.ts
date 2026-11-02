@@ -193,6 +193,38 @@ describe("a reference's masks stay off the screen's own chrome", () => {
 	});
 });
 
+describe("a control inside a masked node moves with it", () => {
+	// The animation lab: the Reanimated test square (the moving node, which the case masks) holds the Animated touch target, which is its whole surface.
+	const animation = cases.find((screen) => screen.id === "dev-animation") as ScreenCase;
+	const nested = (square: string, target: string, card: string) =>
+		parseHierarchy(
+			`<?xml version='1.0' ?><hierarchy rotation="0"><node text="" content-desc="" bounds="[0,0][1080,2400]" class="android.widget.FrameLayout" package="p" resource-id="" index="0" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false">` +
+				`<node text="" content-desc="" bounds="${card}" class="android.view.View" package="p" resource-id="" index="0" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false">` +
+				`<node text="" content-desc="Reanimated test square" bounds="${square}" class="android.view.View" package="p" resource-id="qa-mask-square" index="0" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false">` +
+				`<node text="" content-desc="Animated touch target" bounds="${target}" class="android.widget.Button" package="p" resource-id="" index="0" checkable="false" checked="true" clickable="true" enabled="true" focusable="true" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" />` +
+				`</node></node></node></hierarchy>`,
+		);
+	// the mask a reference freezes is the node's bounds, 2 px larger each way
+	const mask = { x: 101, y: 1443, width: 145, height: 145 };
+
+	test("the touch target inside the masked square is not the chrome a mask must stay off", () => {
+		const live = nested("[103,1445][244,1586]", "[103,1445][244,1586]", "[60,1400][1020,1640]");
+		expect(maskedChrome(live, animation, "ltr", [mask])).toEqual([]);
+		expect(maskedChrome(live, animation, "ltr", [{ x: 103, y: 1445, width: 141, height: 141 }])).toEqual([]);
+	});
+
+	test("a mask that covers the control without its node being the masked one still names it", () => {
+		// the control moved out of the square (it is a sibling now), or the mask is on something else that overlaps it
+		const flat = tree(node({ desc: "Animated touch target", bounds: "[103,1445][244,1586]" }));
+		expect(maskedChrome(flat, animation, "ltr", [mask])).toEqual(["Animated touch target"]);
+		// a mask smaller than the square's node does not carry it: the square is not wholly inside, and the control is covered in part
+		const live = nested("[103,1445][244,1586]", "[103,1445][244,1586]", "[60,1400][1020,1640]");
+		expect(maskedChrome(live, animation, "ltr", [{ x: 103, y: 1445, width: 60, height: 60 }])).toEqual(["Animated touch target"]);
+		// a mask over the whole card carries the square and the control with it
+		expect(maskedChrome(live, animation, "ltr", [{ x: 40, y: 1380, width: 1000, height: 280 }])).toEqual([]);
+	});
+});
+
 describe("keeping a failed signed-in comparison", () => {
 	const flat = (value: number): Image => {
 		const data = Buffer.alloc(12 * 6 * 4, value);

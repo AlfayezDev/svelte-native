@@ -127,6 +127,19 @@ export function referenceMasks(statusBar: Rect | null, caseMasks: Rect[], image:
 	];
 }
 
+/**
+ * Why a reference's status bar mask cannot be trusted, or null. The mask is frozen with the reference and the comparison ignores nothing else of the
+ * band the clock and the notification icons are drawn in, so a mask that is not the device's band today leaves part of them compared (2 Nov: the eight
+ * `screens-tabs` references were frozen with 63 px of a 128 px band, and every check that followed saw another clock). A reference without one has none.
+ */
+export function statusBarMaskProblem(masks: ReferenceMask[], statusBar: Rect): string | null {
+	const frozen = masks.find((mask) => mask.name === "status bar");
+	const show = (rect: Rect) => `${rect.x},${rect.y} ${rect.width}x${rect.height}`;
+	if (!frozen) return `the reference has no status bar mask (the device's band is ${show(statusBar)}): retake it with --update`;
+	if (frozen.x === statusBar.x && frozen.y === statusBar.y && frozen.width === statusBar.width && frozen.height === statusBar.height) return null;
+	return `the reference's status bar mask (${show(frozen)}) is not the device's status bar band (${show(statusBar)}): it was frozen before the system bars settled, so the clock and the notification icons are compared; retake it with --update`;
+}
+
 /** The most of a screenshot its masks may cover, as a percentage: the bar of the `parity.maskedPct` gate in gates.json. A mask this wide hides what the comparison is for. */
 export const maxMaskedPct = 25;
 

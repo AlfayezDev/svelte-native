@@ -63,15 +63,24 @@ export function exposedAccount(tree: UiTree, masks: Rect[]): UiNode[] {
  * The labels of the screen's own chrome that a mask covers: its title, its declared controls and the controls further down (the tab strip of the account modal is among
  * them), found in the tree on screen. A mask is there for a node that moves (the address, the photo); one over a control hides what the comparison is for, as a mask the
  * covered screen's address left at the height of the modal's tab strip did. Rectangles that only touch do not cover.
+ *
+ * A control that is inside a masked node is not covered by the mask but carried by it: its parent, or any node above it, lies wholly within the mask, so it moves with the
+ * node the mask is for (the Reanimated test square holds the "Animated touch target" that is its whole surface). The mask is on the node that moves, and the control cannot
+ * be compared without it.
  */
 export function maskedChrome(tree: UiTree, screen: ScreenCase, direction: Direction, masks: Rect[]): string[] {
 	const labels = [...(screen.title === null ? [] : [screen.title]), ...screen.controls, ...screen.scrolled].map((label) => localize(label, direction));
 	const covers = (mask: Rect, node: Rect) => mask.x < node.x + node.width && node.x < mask.x + mask.width && mask.y < node.y + node.height && node.y < mask.y + mask.height;
+	const within = (inner: Rect, outer: Rect) => outer.x <= inner.x && outer.y <= inner.y && outer.x + outer.width >= inner.x + inner.width && outer.y + outer.height >= inner.y + inner.height;
+	const carried = (node: UiNode, mask: Rect) => {
+		for (let above = node.parent; above !== null; above = above.parent) if (above.bounds.width > 0 && above.bounds.height > 0 && within(above.bounds, mask)) return true;
+		return false;
+	};
 	const found = new Set<string>();
 	for (const node of tree.nodes) {
 		if (node.bounds.width <= 0 || node.bounds.height <= 0) continue;
 		const label = labels.find((candidate) => node.text.trim() === candidate || node.contentDesc.trim() === candidate);
-		if (label !== undefined && masks.some((mask) => covers(mask, node.bounds))) found.add(label);
+		if (label !== undefined && masks.some((mask) => covers(mask, node.bounds) && !carried(node, mask))) found.add(label);
 	}
 	return [...found];
 }

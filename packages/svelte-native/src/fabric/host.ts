@@ -37,6 +37,31 @@ function wantsAnimation(attributes: Record<string, unknown>): boolean {
   for (const key in attributes) if (ANIMATION_ATTRIBUTES.has(key)) return true;
   return styleWantsAnimation(attributes.style);
 }
+/** A style whose values are all numbers, strings and booleans: none can be a shared value, and no key is an animation or transition. */
+export function plainStyle(style: unknown): boolean {
+  if (Array.isArray(style)) { for (let index = 0; index < style.length; index++) if (!plainStyle(style[index])) return false; return true; }
+  if (!style || typeof style !== "object") return true;
+  for (const key in style as Record<string, unknown>) {
+    const value = (style as Record<string, unknown>)[key];
+    if (value !== null && (typeof value === "object" || typeof value === "function")) return false;
+    const first = key.charCodeAt(0);
+    if ((first === 97 || first === 116) && CSS_ANIMATION_KEY.test(key)) return false;
+  }
+  return true;
+}
+/**
+ * Once the animation layer is loaded: whether a node that has never been through it can need it (`animationProps` returns the attributes
+ * as they are for any other node, and building one costs a pass over them): the attributes it reads, a CSS key beside the style or in it,
+ * or a style value that could be a shared value.
+ */
+export function mayAnimate(attributes: Record<string, unknown>): boolean {
+  for (const key in attributes) {
+    if (ANIMATION_ATTRIBUTES.has(key)) return true;
+    const first = key.charCodeAt(0);
+    if ((first === 97 || first === 116) && CSS_ANIMATION_KEY.test(key)) return true;
+  }
+  return !plainStyle(attributes.style);
+}
 /** Loads Reanimated (also upgrading the public `animation` module's exports to its own functions) and tells the engine once. */
 function ensureReanimated(): void {
   loadReanimated();
@@ -131,6 +156,8 @@ type State = {
   declaredFor?: string;
   /** The last build gave the node a lone string as its `content` (`loneText`): when that stops being true the prop has to go, though no attribute changed. */
   lone: boolean;
+  /** The node has been through the animation layer, which keeps a record of it: every later build goes through it too, so that it can detach. */
+  animated: boolean;
 };
 type Root = { rootTag: number; node: NativeNode; instance: Record<string, unknown> };
 
@@ -314,7 +341,7 @@ function allocateTag(): number {
 function state(node: NativeNode, viewName: string): State {
   let current = stateOf(node);
   if (!current) {
-    current = { tag: allocateTag(), viewName, node: null, props: {}, handlers: {}, propsDirty: true, childrenDirty: true, content: null, ref: undefined, eventCount: 0, foreign: false, lone: false };
+    current = { tag: allocateTag(), viewName, node: null, props: {}, handlers: {}, propsDirty: true, childrenDirty: true, content: null, ref: undefined, eventCount: 0, foreign: false, lone: false, animated: false };
     node.hostState = current;
   }
   return current;
@@ -323,7 +350,7 @@ function state(node: NativeNode, viewName: string): State {
 /** The element's attributes as React Native props (see `mergeHostProps`), with each listener registered on the node as its `on…` handler. */
 function nativeProps(node: NativeNode): Record<string, unknown> {
   const props = mergeHostProps(node.peekProps());
-  for (const type of node.listeners.keys()) props[`on${type[0]?.toUpperCase()}${type.slice(1)}`] = node.dispatcher(type);
+  if (node.listeners.size > 0) for (const type of node.listeners.keys()) props[`on${type[0]?.toUpperCase()}${type.slice(1)}`] = node.dispatcher(type);
   return props;
 }
 
@@ -474,6 +501,14 @@ function buildSpan(child: NativeNode, rootTag: number, text: ForeignText): Fabri
   return current.node;
 }
 
+/** One `declares` per view name, not one closure per node: the config it answers for is the same for all of them. */
+const declaresByView = new Map<string, (key: string) => boolean>();
+function declaresOf(viewName: string, config: ReturnType<typeof viewConfig>): (key: string) => boolean {
+  let declares = declaresByView.get(viewName);
+  if (!declares) { declares = (key) => Object.hasOwn(config.attributes, key); declaresByView.set(viewName, declares); }
+  return declares;
+}
+
 /** Builds (or rebuilds) the Fabric node for a Svelte element and returns the handle to append into its parent. */
 function build(node: NativeNode, rootTag: number, insideText: boolean, insideForeign = false): FabricNode | null {
   if (!binding) throw new Error("nativeFabricUIManager is not installed");
@@ -517,10 +552,14 @@ function build(node: NativeNode, rootTag: number, insideText: boolean, insideFor
   const config = viewConfig(viewName);
   if (current.declaredFor !== viewName) {
     current.declaredFor = viewName;
-    current.declares = (key) => Object.hasOwn(config.attributes, key);
+    current.declares = declaresOf(viewName, config);
   }
   // `animatedStyle`, `animatedProps` and the CSS keys never reach the payload; once loaded, the animation layer sees every node so it can detach.
-  const animated = animation || wantsAnimation(attributes) ? loadAnimation().animationProps(node, current, attributes) : attributes;
+  let animated = attributes;
+  if (animation ? current.animated || mayAnimate(attributes) : wantsAnimation(attributes)) {
+    current.animated = true;
+    animated = loadAnimation().animationProps(node, current, attributes);
+  }
   // `gesture` never reaches the payload either; the gesture host forces `collapsable: false` so the view keeps its tag.
   const gestured = gestures || attributes.gesture !== undefined ? loadGestures().gestureProps(node, current, animated) : animated;
   const rnProps = splitProps(node.name === "native-image" ? imageProps(gestured) : navigationTags.has(node.name) ? navigationProps(node.name, gestured) : gestured, current, navigationTags.has(node.name));
@@ -658,6 +697,12 @@ function onInvalidate(node: NativeNode, reason: Invalidation): void {
   if (current) {
     if (reason === "children") current.childrenDirty = true;
     else current.propsDirty = true;
+  } else if (!node.surfaceRoot) {
+    // Not built yet. Under a parent that is not built either (a subtree Svelte is still putting together) there is nothing to mark: the
+    // change that attaches the subtree is reported on the parent it is attached to. Under a built parent it may matter (the lone string
+    // of a span is read by its parent without being a node of its own), and a surface's root has no state of its own and must be heard.
+    const parent = node.parent;
+    if (parent === null || stateOf(parent) === null) return;
   }
   if (reason === "children") childrenInvalidated = true;
   dirty.add(node);
@@ -812,6 +857,7 @@ export function startSurface<Props extends Record<string, unknown>>(rootTag: num
     if (published) published.engine = engineInstalled;
   }
   const node = new NativeNode("fragment");
+  node.surfaceRoot = true;
   const instance = mount(App, { target: node, renderer, props }) as Record<string, unknown>;
   roots.set(rootTag, { rootTag, node, instance });
   dirty.add(node);

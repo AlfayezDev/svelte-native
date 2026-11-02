@@ -265,7 +265,7 @@ test("a list that says its height mounts the rows that fill it first, the oversc
   expect(rows()).toBe(12); // the viewport's rows (0-7) and 4 of overscan
 });
 
-test("a list that fills mounts the rows that show first and the overscan a frame later", async () => {
+test("a list that fills mounts the rows that show first and the overscan a few frames later", async () => {
   const frames: (() => void)[] = [];
   const scope = globalThis as { requestAnimationFrame?: (callback: () => void) => number; cancelAnimationFrame?: (handle: number) => void };
   const saved = [scope.requestAnimationFrame, scope.cancelAnimationFrame];
@@ -285,10 +285,66 @@ test("a list that fills mounts the rows that show first and the overscan a frame
     await result.tick();
     // The viewport is known (the list was laid out empty): the rows that show, and nothing around them yet.
     expect(rows()).toBe(8);
-    for (const frame of frames.splice(0)) frame();
+    // The overscan waits a few frames, not the next one: the rows that show have the thread (and their layout event) first.
+    for (let frame = 1; frame <= 3; frame++) {
+      expect(frames.length).toBe(1);
+      frames.splice(0)[0]();
+      await result.tick();
+      expect(rows()).toBe(8);
+    }
+    expect(frames.length).toBe(1);
+    frames.splice(0)[0]();
     await result.tick();
     expect(rows()).toBe(12);
   } finally {
     [scope.requestAnimationFrame, scope.cancelAnimationFrame] = saved;
   }
+});
+
+test("rows of one size keep the style objects of their wrappers when the list grows, and follow a change of the size", async () => {
+  const t = await setup({ count: 20, rowHeight: 40 });
+  const app = t.app as unknown as { setCount: (count: number) => void };
+  const wrapperStyle = (id: string) => t.wrapper(id).getSnapshot().props.nativeStyle as Record<string, number>;
+  const before = wrapperStyle("r3");
+  expect(before).toEqual({ position: "absolute", top: 120, left: 0, right: 0, height: 40 });
+  app.setCount(40);
+  await t.result.tick();
+  expect(wrapperStyle("r3")).toBe(before); // the same object: its effect did not run for a longer list
+  expect(t.ids()).toContain("r8");
+  (t.app as unknown as { setRowHeight: (size: number) => void }).setRowHeight(50);
+  await t.result.tick();
+  expect(wrapperStyle("r3")).toEqual({ position: "absolute", top: 150, left: 0, right: 0, height: 50 });
+});
+
+test("a list that waits for its overscan lets go of the wait when it empties", async () => {
+  const frames: (() => void)[] = [];
+  const cancelled: number[] = [];
+  const scope = globalThis as { requestAnimationFrame?: (callback: () => void) => number; cancelAnimationFrame?: (handle: number) => void };
+  const saved = [scope.requestAnimationFrame, scope.cancelAnimationFrame];
+  scope.requestAnimationFrame = (callback) => frames.push(callback);
+  scope.cancelAnimationFrame = (handle) => { cancelled.push(handle); };
+  try {
+    const result = await load();
+    const app = result.start({ count: 300, height: 360, rowHeight: 46 }) as { setCount: (count: number) => void };
+    await result.tick();
+    expect(frames.length).toBe(1);
+    app.setCount(0);
+    await result.tick();
+    expect(cancelled).toEqual([1]); // the frame request that was waiting is cancelled, not left to turn the overscan on for an empty list
+  } finally {
+    [scope.requestAnimationFrame, scope.cancelAnimationFrame] = saved;
+  }
+});
+
+test("rows of one size keep their wrappers when rows arrive in front of them, and move to their new places", async () => {
+  const t = await setup({ count: 20, rowHeight: 40 });
+  const app = t.app as unknown as { prepend: (count: number) => void };
+  const wrapperBefore = t.wrapper("r3");
+  expect(t.style("r3").top).toBe(120);
+  app.prepend(2);
+  await t.result.tick();
+  expect(t.wrapper("r3")).toBe(wrapperBefore); // the key kept its row
+  expect(t.style("r3").top).toBe(200); // 2 + 3 rows above it now
+  expect(t.style("r-2").top).toBe(0);
+  expect(t.ids().slice(0, 3)).toEqual(["r-2", "r-1", "r0"]);
 });

@@ -9,6 +9,9 @@ export type Snapshot = {
 
 let nextId = 0;
 const noListeners = new Map<string, Set<Listener>>();
+/** What a node has until its first attribute or child: shared, read-only (the first write copies, see `propsShared`), so a text, a comment or a bare fragment allocates neither. */
+const noProps: Readonly<Record<string, unknown>> = Object.freeze({});
+const noChildren: readonly NativeNode[] = Object.freeze([]);
 
 /**
  * A function that has to cross Svelte's attribute spread. `set_attributes` (an element with `{...spread}` sends every one of its
@@ -73,13 +76,15 @@ export class NativeNode {
   /** Created with the first listener (`addEventListener`): most nodes, every text and every static view, never get one. */
   listeners: Map<string, Set<Listener>> = noListeners;
   private dispatchers: Map<string, Listener> | null = null;
-  private props: Record<string, unknown> = {};
+  private props: Record<string, unknown> = noProps as Record<string, unknown>;
   /** The current `props` object went out in a snapshot or was handed in whole: the next change copies it first. */
-  private propsShared = false;
+  private propsShared = true;
   private text: string;
   /** What the host keeps for this node (`fabric/host.ts`): a field, not a WeakMap lookup on every flush. */
   hostState: unknown = null;
-  private children: readonly NativeNode[] = [];
+  /** The host's own root of a surface: the one node it hears about before it has built anything under it. */
+  surfaceRoot = false;
+  private children: readonly NativeNode[] = noChildren;
   private childrenStale = false;
   private snapshot: Snapshot | null = null;
 

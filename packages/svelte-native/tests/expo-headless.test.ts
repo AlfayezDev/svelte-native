@@ -171,6 +171,16 @@ describe("headless Android config", () => {
     expect(once.indexOf("BootBoost.preloadLibraries(base)")).toBeLessThan(once.indexOf("override fun onCreate()"));
     expect(applyHeadlessApplication(once)).toBe(once);
   });
+  test("a MainApplication that overrides attachBaseContext fails with a message, unless the override makes the call itself", () => {
+    const override = (body: string) => application.replace("  override fun onCreate() {", `  override fun attachBaseContext(base: Context) {\n    super.attachBaseContext(base)\n${body}  }\n  override fun onCreate() {`);
+    expect(() => applyHeadlessApplication(override(""))).toThrow("already overrides attachBaseContext");
+    expect(() => applyHeadlessApplication(override(""))).toThrow("BootBoost.preloadLibraries(base)");
+    const own = applyHeadlessApplication(override("    expo.modules.svelteengine.BootBoost.preloadLibraries(base)\n"));
+    expect(own.match(/override fun attachBaseContext/g)).toHaveLength(1);
+    expect(applyHeadlessApplication(own)).toBe(own);
+    // The file the plugin generated is not a consumer's override: a second prebuild over it is fine.
+    expect(() => applyHeadlessApplication(applyHeadlessApplication(application))).not.toThrow();
+  });
   test("packages whose view managers are on demand are wrapped, and unwrapped again when the option goes", () => {
     const onDemand = { "com.rnmaps.maps.MapsPackage": ["RNMapsMapView", "RNMapsMarker"], "com.reactnativecommunity.webview.RNCWebViewPackage": ["RNCWebView"] };
     const once = applyHeadlessApplication(application, onDemand);
@@ -205,7 +215,8 @@ describe("headless Android config", () => {
     expect(once.indexOf("NavigationState.restoredFrom(savedInstanceState)")).toBeLessThan(once.indexOf("super.onCreate(null)"));
     expect(once.indexOf("NavigationState.restoredFrom(savedInstanceState)")).toBeGreaterThan(once.indexOf("expo-splashscreen"));
     // The process was started for the screen (the boost holds until the first mount) and the first screen's indicator is built off the main
-    // thread: both after the splash screen set the theme the indicator is built with, and before the template's super.onCreate(null).
+    // thread: both after the template's splash screen registration and before its super.onCreate(null). The indicator takes the
+    // Application's theme (the engine's views do), so nothing here depends on the theme the splash screen sets on the Activity.
     expect(once.indexOf("BootBoost.activityCreated()")).toBeGreaterThan(once.indexOf("expo-splashscreen"));
     expect(once.indexOf("ViewWarmup.begin(this)")).toBeGreaterThan(once.indexOf("BootBoost.activityCreated()"));
     expect(once.indexOf("ViewWarmup.begin(this)")).toBeLessThan(once.indexOf("super.onCreate(null)"));

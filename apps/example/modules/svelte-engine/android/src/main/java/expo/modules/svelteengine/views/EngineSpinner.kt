@@ -20,6 +20,7 @@ class EngineSpinner(context: Context, styleCode: Int) : ProgressBar(context, nul
 
   init {
     isIndeterminate = true
+    ViewWarmup.spinnerBuilt()
   }
 
   fun apply(v: ViewProps) {

@@ -162,7 +162,7 @@ index 7bb61c680027d60c4ab79d91db5169589a512353..1861a538cba2195cbe2be90d6491ed91
        },
        legacyEventEmitter,
 diff --git a/android/src/main/java/expo/modules/kotlin/ModuleRegistry.kt b/android/src/main/java/expo/modules/kotlin/ModuleRegistry.kt
-index d1e5b3952b08accb1dee87aeb5819f5427c1f325..5bb0051cc4ae89e058c1c0427e39fd0e0abc7a17 100644
+index d1e5b3952b08accb1dee87aeb5819f5427c1f325..d15061b0535e0065391244cd71b1ccc379d2a1e2 100644
 --- a/android/src/main/java/expo/modules/kotlin/ModuleRegistry.kt
 +++ b/android/src/main/java/expo/modules/kotlin/ModuleRegistry.kt
 @@ -9,16 +9,45 @@ import kotlinx.coroutines.CoroutineName
@@ -224,7 +224,7 @@ index d1e5b3952b08accb1dee87aeb5819f5427c1f325..5bb0051cc4ae89e058c1c0427e39fd0e
        val module = classifier.getDeclaredConstructor().newInstance()
        register(module, name)
      }
-@@ -52,21 +86,86 @@ class ModuleRegistry(
+@@ -52,25 +86,100 @@ class ModuleRegistry(
      }
    }
  
@@ -237,10 +237,10 @@ index d1e5b3952b08accb1dee87aeb5819f5427c1f325..5bb0051cc4ae89e058c1c0427e39fd0e
 +      register(classifier.getDeclaredConstructor().newInstance(), null)
 +    }
 +  }
++
++  fun hasModule(name: String): Boolean = registry.containsKey(name) || pending?.containsKey(name) == true
  
 -  fun getModule(name: String): Module? = registry[name]?.module
-+  fun hasModule(name: String): Boolean = registry.containsKey(name) || pending?.containsKey(name) == true
-+
 +  /** Names of all modules, including the ones that are registered lazily and not instantiated yet. */
 +  fun moduleNames(): Set<String> = if (pending == null) registry.keys else registry.keys + pending.keys
 +
@@ -310,12 +310,28 @@ index d1e5b3952b08accb1dee87aeb5819f5427c1f325..5bb0051cc4ae89e058c1c0427e39fd0e
 +    pending?.keys?.toList()?.forEach { materializePending(it) }
 +  }
 +
++  /**
++   * The module that defines [viewClass]. The modules built so far are searched first: a view that exists belongs to one of them (the
++   * engine builds a lazy module with views before it mounts one), and building every pending module to find it costs the first view event
++   * about twenty module definitions on the thread that raised it. The pending modules are built only when the search finds nothing.
++   */
    fun <T : View> getModuleHolder(viewClass: Class<T>): ModuleHolder<*>? {
+-    return registry.firstNotNullOfOrNull { (_, holder) ->
++    viewHolder(viewClass)?.let { return it }
++    if (pending.isNullOrEmpty()) return null
 +    materializeAllPending()
-     return registry.firstNotNullOfOrNull { (_, holder) ->
++    return viewHolder(viewClass)
++  }
++
++  private fun <T : View> viewHolder(viewClass: Class<T>): ModuleHolder<*>? =
++    registry.firstNotNullOfOrNull { (_, holder) ->
        holder.takeIf { getViewDefinition(holder, viewClass) != null }
      }
-@@ -84,11 +183,15 @@ class ModuleRegistry(
+-  }
+ 
+   fun <T : View> getViewDefinition(holder: ModuleHolder<*>, viewClass: Class<T>): ViewManagerDefinition? {
+     return holder.definition.viewManagerDefinitions.values.find { it.viewType == viewClass }
+@@ -84,11 +193,15 @@ class ModuleRegistry(
     * Post onCreate event to all modules. It has its own method to ensure that it’s called first.
     */
    fun postOnCreate() {
@@ -335,7 +351,7 @@ index d1e5b3952b08accb1dee87aeb5819f5427c1f325..5bb0051cc4ae89e058c1c0427e39fd0e
      flushTheEventQueue()
    }
  
-@@ -124,7 +227,31 @@ class ModuleRegistry(
+@@ -124,7 +237,31 @@ class ModuleRegistry(
  
    override fun iterator(): Iterator<ModuleHolder<*>> = registry.values.iterator()
  
@@ -367,7 +383,7 @@ index d1e5b3952b08accb1dee87aeb5819f5427c1f325..5bb0051cc4ae89e058c1c0427e39fd0e
      registry.clear()
      logger.info("✅ ModuleRegistry was destroyed")
    }
-@@ -190,4 +317,116 @@ class ModuleRegistry(
+@@ -190,4 +327,116 @@ class ModuleRegistry(
        moduleHolder.post(eventName)
      }
    }

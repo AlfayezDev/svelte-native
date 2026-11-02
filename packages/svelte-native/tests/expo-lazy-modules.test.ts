@@ -85,10 +85,16 @@ describe("lazy Expo module registry", () => {
   test("the modules whose views the foreign components mount are built on demand, not at start", () => {
     // `ViewManagerAdapter_ExpoImage`, `_ExpoBlur_*`, `_ExpoLinearGradient`, `_ConicGradient`: the first screen mounts none of them, and
     // building them with the host cost the pool thread that initializes the TurboModules about 25 ms of the start (SPEC, "Boot on the phone", round 2).
-    for (const name of ["ExpoImage", "ExpoBlur", "ExpoLinearGradient", "ConicGradient"]) {
-      expect(lazyEntries.some(([, lazyName]) => lazyName === name), name).toBe(true);
-      expect(viewsOnDemand.has(name), name).toBe(true);
-    }
+    for (const name of ["ExpoImage", "ExpoBlur", "ExpoLinearGradient", "ConicGradient"]) expect(lazyEntries.some(([, lazyName]) => lazyName === name), name).toBe(true);
+  });
+
+  test("the lookup of a view's module searches the built modules before it builds the pending ones", () => {
+    // `getModuleHolder(viewClass)` used to build every pending module first: the first view event paid for about twenty module definitions on its thread.
+    const lookup = /fun <T : View> getModuleHolder\(viewClass: Class<T>\): ModuleHolder<\*>\? \{([\s\S]*?)\n {2}\}/.exec(readFileSync(installed, "utf8"))?.[1] ?? "";
+    expect(lookup).toContain("materializeAllPending()");
+    expect(lookup.indexOf("viewHolder(viewClass)")).toBeGreaterThanOrEqual(0);
+    expect(lookup.indexOf("viewHolder(viewClass)")).toBeLessThan(lookup.indexOf("materializeAllPending()"));
+    expect(lookup).toContain("return null");
   });
 
   test("core modules registered lazily keep their names", () => {

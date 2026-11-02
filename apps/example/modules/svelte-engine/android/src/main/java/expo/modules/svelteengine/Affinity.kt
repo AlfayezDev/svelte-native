@@ -3,7 +3,7 @@ package expo.modules.svelteengine
 import android.util.Log
 import java.io.File
 
-/** CPU affinity of one thread (`sched_setaffinity`), and which cores are the big ones. Shared by [BootBoost] and [MountBoost]. */
+/** CPU affinity of one thread (`sched_setaffinity`), and which cores are the big ones. Shared by [BootBoost], [MountBoost], [expo.modules.svelteengine.views.InputWarmup] and [expo.modules.svelteengine.views.ViewWarmup]. */
 internal object Affinity {
   /** False when the library could not be loaded: a boost is an optimization, and a missing one must not stop the app from starting. */
   private val available: Boolean = try {
@@ -37,9 +37,12 @@ internal object Affinity {
   /** The number of CPU indexes of the device (`/sys/devices/system/cpu/possible`; a core that is offline still has its index). Read once. */
   private val cpus: Int by lazy { BigCores.possibleCount(read("/sys/devices/system/cpu/possible") ?: "") }
 
+  /** The capacity of each CPU by index, 0 for one that is offline or unreadable. Read once. */
+  private val capacities: LongArray by lazy { LongArray(cpus) { capacity(it) } }
+
   private val big: Long? by lazy {
     if (!available) return@lazy null
-    if (cpus == 0) null else BigCores.mask(LongArray(cpus) { capacity(it) })
+    if (cpus == 0) null else BigCores.mask(capacities)
   }
 
   /** The cores whose capacity is at least half of the largest, as a mask; null when the cores are alike or unreadable. Read once. */
@@ -49,13 +52,23 @@ internal object Affinity {
    * Restricts the calling thread to the cores that are not big ones, for work that nothing waits for on the spot (a view built ahead of time):
    * the big cores belong to the main thread, the RenderThread and the start-up threads while a boost holds them, and a thread started
    * during a boost would inherit their mask. Nothing is done on a device whose cores are alike. [reopen] leaves such a thread alone, since its
-   * mask is not inside the big one.
+   * mask is not inside the big one. True when the thread is held to the other cores now, false when nothing was done (alike cores, no other
+   * core is known, or the kernel refused: logged once at debug level).
    */
-  fun keepOffBigCores() {
-    val big = bigCores() ?: return
-    val others = BigCores.others(cpus, big)
-    if (others != 0L) setAffinity(0, others)
+  fun keepOffBigCores(): Boolean {
+    val big = bigCores() ?: return false
+    val others = BigCores.others(capacities, big)
+    if (others == 0L) return false
+    if (setAffinity(0, others)) return true
+    // Once: the kernel refused (a cpuset that leaves the thread none of the little cores); the thread runs where it started, as before the call.
+    if (!refusalLogged) {
+      refusalLogged = true
+      Log.d("SvelteEngine", "Affinity: could not keep a thread off the big cores (mask ${java.lang.Long.toHexString(others)})")
+    }
+    return false
   }
+
+  @Volatile private var refusalLogged = false
 
   /** The thread ids of this process. */
   fun tasks(): List<Int> = File("/proc/self/task").list()?.mapNotNull { it.toIntOrNull() } ?: emptyList()

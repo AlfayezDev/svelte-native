@@ -40,9 +40,9 @@ object ViewWarmup {
   @JvmStatic fun begin(activity: Context) {
     val context = activity.applicationContext
     Thread({
-      Affinity.keepOffBigCores()
       warming.set(true)
       try {
+        Affinity.keepOffBigCores()
         val view = EngineSpinner(context, 0)
         if (!mounted) held = view
       } catch (error: Throwable) {

@@ -51,7 +51,12 @@ internal object InputWarmup {
     ScheduledThreadPoolExecutor(1) { task ->
       Thread({
         Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND)
-        Affinity.keepOffBigCores()
+        try {
+          Affinity.keepOffBigCores()
+        } catch (e: Throwable) {
+          // A refused affinity costs the placement, not the build: the task still runs, wherever the thread is.
+          Log.w(TAG, "input warm-up could not keep its thread off the big cores", e)
+        }
         task.run()
       }, "svelte-input-warmup").apply { isDaemon = true }
     }.apply {

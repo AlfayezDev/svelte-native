@@ -17,7 +17,6 @@ internal class FakePlatform(
   private val timers = ArrayList<Pair<Long, () -> Unit>>()
   private var clock = 1000L
   private var currentThread = 7
-  private var threadsRun = 0
 
   fun advance(ms: Long) { clock += ms }
   /** Runs every timer due within [ms], in order of delay. */
@@ -39,7 +38,6 @@ internal class FakePlatform(
   override fun postToMain(delayMs: Long, task: () -> Unit) { timers.add(delayMs to task) }
   override fun startThread(name: String, task: () -> Unit) {
     events.add("thread $name")
-    threadsRun++
     task()
   }
   override fun initLoader() {

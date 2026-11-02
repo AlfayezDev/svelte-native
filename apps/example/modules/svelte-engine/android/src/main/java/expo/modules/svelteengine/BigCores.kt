@@ -40,12 +40,13 @@ internal object BigCores {
   }
 
   /**
-   * The cores among the first [cpus] indexes (at most [MAX_CPUS]) that are not in [big]: where work that nothing waits for goes while the big
-   * cores are held for the start. 0 when [big] covers them all.
+   * The cores that are known ([capacities] as in [mask]: 0 for a core that is offline or unreadable) and not in [big]: where work that nothing
+   * waits for goes while the big cores are held for the start. An offline core is not one of them. 0 when [big] covers every known core.
    */
-  fun others(cpus: Int, big: Long): Long {
-    val all = (1L shl cpus.coerceIn(0, MAX_CPUS)) - 1
-    return all and big.inv()
+  fun others(capacities: LongArray, big: Long): Long {
+    var mask = 0L
+    for (cpu in 0 until minOf(capacities.size, MAX_CPUS)) if (capacities[cpu] > 0 && ((big shr cpu) and 1L) == 0L) mask = mask or (1L shl cpu)
+    return mask
   }
 
   /** Whether every core of [mask] is in [of]. */

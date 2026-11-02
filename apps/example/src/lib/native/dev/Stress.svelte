@@ -536,8 +536,10 @@
     { name: "navigation-8", label: "Push and pop a screen without a native header 8 times, over another one", async run(signal) {
       const depth = router.entries.length;
       // The lab page's own screen has a native header: a pop that reveals it shows the navigation bar again, which is header-8's cost.
-      // The screens pushed and popped here lie over a bare one, so the scenario measures the stack alone.
-      router.goto("/__dev/screen?header=none");
+      // The screens pushed and popped here lie over a bare one, so the scenario measures the stack alone. The bare one has an href of its own:
+      // a goto to the href on top of the stack does nothing (Expo Router's `navigate`), so with one href every cycle's push was skipped and
+      // its back() popped the bare screen, revealing the lab page and its header.
+      router.goto("/__dev/screen?header=none&base=1");
       await pause(900, signal);
       const { frames } = await measure(async () => {
         for (let cycle = 0; cycle < 8 && !signal.aborted; cycle++) {

@@ -314,8 +314,9 @@
         "animation-48-square",
         "animation-48-translate"
       ],
+      "maxLateIntervals": 2,
       "decision": "D9",
-      "reason": "the first interval of the window: the scenario's own 48 withRepeat animations start in one Worklets message on the UI thread (37 to 43 ms, most of it closure deserialisation); pacing them was vetoed",
+      "reason": "the first interval of the window (19 to 27 ms in the D9 evidence): the scenario's own 48 withRepeat animations start in one Worklets message on the UI thread, pacing them was vetoed; covered up to 2 late intervals (that one plus the allowance every scenario has), no further",
       "evidence": "apps/platform/modules/svelte-engine/SPEC.md, 'The first interval of the animation scenarios, and what the UI thread takes in one message (2 November 2026)'"
     },
     {
@@ -326,20 +327,9 @@
         "animation-48-square",
         "animation-48-translate"
       ],
+      "maxLateIntervals": 2,
       "decision": "D9",
-      "reason": "the first interval of the window: the scenario's own 48 withRepeat animations start in one Worklets message on the UI thread (37 to 43 ms, most of it closure deserialisation); pacing them was vetoed",
-      "evidence": "apps/platform/modules/svelte-engine/SPEC.md, 'The first interval of the animation scenarios, and what the UI thread takes in one message (2 November 2026)'"
-    },
-    {
-      "gate": "frames.maxMs",
-      "device": "R58Y90KNGRP",
-      "scenarios": [
-        "animation-48",
-        "animation-48-square",
-        "animation-48-translate"
-      ],
-      "decision": "D9",
-      "reason": "the first interval of the window: the scenario's own 48 withRepeat animations start in one Worklets message on the UI thread (37 to 43 ms, most of it closure deserialisation); pacing them was vetoed",
+      "reason": "the first interval of the window (19 to 27 ms in the D9 evidence): the scenario's own 48 withRepeat animations start in one Worklets message on the UI thread, pacing them was vetoed; covered up to 2 late intervals (that one plus the allowance every scenario has), no further",
       "evidence": "apps/platform/modules/svelte-engine/SPEC.md, 'The first interval of the animation scenarios, and what the UI thread takes in one message (2 November 2026)'"
     },
     {
@@ -445,7 +435,15 @@
       },
       "roles": [
         "phone"
-      ]
+      ],
+      "excusing": {
+        "runs": "lab.scenarios.failedRuns",
+        "gates": [
+          "frames.droppedPct",
+          "frames.maxPeriodRatio",
+          "frames.maxMs"
+        ]
+      }
     },
     {
       "id": "lab.scenarios.missing",

@@ -1,4 +1,4 @@
-import { checkExceptions, matchException, type GateException } from "./gate-exceptions.ts";
+import { capText, checkExceptions, matchException, type GateException } from "./gate-exceptions.ts";
 import { runKinds, type RunKind } from "./runs.ts";
 import type { Metric, Metrics, Platform } from "./types.ts";
 
@@ -27,6 +27,12 @@ export type Gate = {
 	 * is judged and `frames.*.droppedPct` shown with it, in `unit`), so a row reads `3 late intervals, 3.7 %`.
 	 */
 	also?: { metric: string; unit: string };
+	/**
+	 * For a count of scenarios the lab itself marked `fail` (`lab.scenarios.failed`): the scenarios whose failure is a frame failure and whose
+	 * frame misses, on the gates in `gates`, are all covered by documented exceptions on the device are not counted. `runs` is the metric (a
+	 * JSON text, `labMetrics`) that lists, for each run, the scenarios that failed on frames and how many failed otherwise.
+	 */
+	excusing?: { runs: string; gates: string[] };
 };
 /** `runs` are the run kinds the device is meant to provide: a gate of another kind is informational for it. */
 export type DeviceRole = { role: Role; name: string; runs: RunKind[] };
@@ -171,6 +177,8 @@ export function checkGatesFile(file: GatesFile): void {
 	for (const gate of file.gates) {
 		if (gate.also && stars(gate.also.metric) !== stars(gate.metric))
 			throw new Error(`gates.json: gate ${gate.id} shows ${gate.also.metric} beside ${gate.metric}, which must have as many \`*\` to take the scenario from`);
+		for (const id of gate.excusing?.gates ?? [])
+			if (!file.gates.some((candidate) => candidate.id === id)) throw new Error(`gates.json: gate ${gate.id} excuses by ${id}, which is not a gate`);
 		if (gate.roles === undefined) continue;
 		if (gate.roles.length === 0) throw new Error(`gates.json: gate ${gate.id} has an empty roles list (omit it to judge every role)`);
 		for (const role of gate.roles)
@@ -303,7 +311,7 @@ export function evaluate(
 					const names = gate.metric.includes("*") ? (pattern.exec(key)?.slice(1) ?? []) : [];
 					const scenario = names[0];
 					const verdict = applies ? judge(bar, measured) : "informational";
-					const exception = verdict === "fail" ? matchException(exceptions, { gate: gate.id, device: serial, scenario: scenario ?? null }) : undefined;
+					const exception = verdict === "fail" ? matchException(exceptions, { gate: gate.id, device: serial, scenario: scenario ?? null, metric: key, measured }) : undefined;
 					const alongside = gate.also ? device.metrics[fill(gate.also.metric, names)] : undefined;
 					rows.push({
 						...base,
@@ -320,7 +328,48 @@ export function evaluate(
 			}
 		}
 	}
-	return rows;
+	return gates.reduce((all, gate) => (gate.excusing ? excuseCovered(all, gate, gate.excusing, devices) : all), rows);
+}
+
+type FailedRun = { frame: string[]; other: number };
+
+/** The per-run list `labMetrics` writes (`[{"frame":["churn-animated"],"other":0}, ...]`); null for a metric that is not one. */
+function parseFailedRuns(value: Metric | undefined): FailedRun[] | null {
+	if (typeof value !== "string") return null;
+	try {
+		const parsed: unknown = JSON.parse(value);
+		if (!Array.isArray(parsed)) return null;
+		const runs = parsed.map((entry: unknown): FailedRun | null => {
+			if (typeof entry !== "object" || entry === null) return null;
+			const { frame, other } = entry as { frame?: unknown; other?: unknown };
+			return Array.isArray(frame) && frame.every((name) => typeof name === "string") && typeof other === "number" ? { frame: frame as string[], other } : null;
+		});
+		return runs.every((run) => run !== null) ? (runs as FailedRun[]) : null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * The count of scenarios the lab marked `fail`, without the ones whose frame misses are all documented exceptions on this device: a
+ * scenario is covered when at least one of its rows on the frame gates is an `exception` and none is a failure or a gap. It counts the
+ * rest as before: the worst run's failures that are not frame failures plus its frame failures that are not covered. A run list the
+ * metric cannot give leaves the raw count, and the raw count shows beside the adjusted one when they differ.
+ */
+function excuseCovered(rows: GateRow[], gate: Gate, excusing: NonNullable<Gate["excusing"]>, devices: Record<string, ReportDevice>): GateRow[] {
+	return rows.map((row) => {
+		if (row.id !== gate.id || row.device === null || row.verdict === "informational" || typeof row.measured !== "number") return row;
+		const runs = parseFailedRuns(devices[row.device]?.metrics[excusing.runs]);
+		if (runs === null || runs.length === 0) return row;
+		const own = rows.filter((candidate) => candidate.device === row.device && candidate.platform === row.platform && excusing.gates.includes(candidate.id));
+		const covered = (name: string): boolean => {
+			const scenario = own.filter((candidate) => candidate.scenario === name);
+			return scenario.some((candidate) => candidate.verdict === "exception") && scenario.every((candidate) => candidate.verdict === "pass" || candidate.verdict === "exception");
+		};
+		const measured = Math.max(...runs.map((run) => run.other + run.frame.filter((name) => !covered(name)).length));
+		if (measured === row.measured) return row;
+		return { ...row, measured, verdict: judge(row.bar, measured), also: { value: row.measured, unit: "before exceptions" } };
+	});
 }
 
 export type RowGroup = {
@@ -471,6 +520,12 @@ export function renderTable(rows: GateRow[], all: boolean): string {
 		.join("\n");
 }
 
+/** The decision of an exception with the cap it is limited to: `D9 (up to 2 late intervals)`. */
+function decisionText(entry: GateException): string {
+	const cap = capText(entry);
+	return cap === "" ? entry.decision : `${entry.decision} (${cap})`;
+}
+
 /** What a row measured, for the exception lists: the value in the gate's unit, and the `also` figure. */
 function measuredText(row: GateRow): string {
 	return `${formatValue(row.measured, row.bar)} ${row.unit}`.trim() + (row.also ? `, ${trimmed(row.also.value)} ${row.also.unit}` : "");
@@ -482,7 +537,7 @@ export function renderExceptions(rows: GateRow[], devices: Record<string, string
 		.filter((row): row is GateRow & { exception: GateException } => row.verdict === "exception" && row.exception !== undefined)
 		.map((row) => {
 			const where = `${row.device === null ? "-" : (devices[row.device] ?? row.device)}${row.scenario === undefined ? "" : `, ${row.scenario}`}`;
-			return `  ${row.id} (${where}): ${measuredText(row)} against ${formatBar(row.bar, row.unit)}; ${row.exception.decision}: ${row.exception.reason} [${row.exception.evidence}]`;
+			return `  ${row.id} (${where}): ${measuredText(row)} against ${formatBar(row.bar, row.unit)}; ${decisionText(row.exception)}: ${row.exception.reason} [${row.exception.evidence}]`;
 		});
 }
 
@@ -521,7 +576,7 @@ export function renderMarkdown(rows: GateRow[], title: string, names: Record<str
 			"| --- | --- | --- | --- | --- | --- | --- | --- |",
 			...excepted.map(
 				(row) =>
-					`| ${[row.id, row.device === null ? "-" : (names[row.device] ?? row.device), row.scenario ?? "-", formatBar(row.bar, row.unit), measuredText(row), row.exception.decision, row.exception.reason, row.exception.evidence].map(markdownEscape).join(" | ")} |`,
+					`| ${[row.id, row.device === null ? "-" : (names[row.device] ?? row.device), row.scenario ?? "-", formatBar(row.bar, row.unit), measuredText(row), decisionText(row.exception), row.exception.reason, row.exception.evidence].map(markdownEscape).join(" | ")} |`,
 			),
 			"",
 		);

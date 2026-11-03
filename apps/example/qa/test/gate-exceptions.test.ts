@@ -188,8 +188,9 @@ describe("documented exceptions", () => {
 		const iphone = judge(IPHONE, "ios", { "boot.warm.p90": 405, "boot.cold.p90": 394, "list.virtual300.mountMs": 32.6 }, file.gates.filter((gate) => ["boot.warm.p90", "boot.cold.p90", "list.virtual300.mountMs"].includes(gate.id)));
 		expect(iphone.map((row) => row.verdict)).toEqual(["fail", "fail", "fail"]);
 	});
-	test("D9: the animation-48 family on the Samsung only, for the first interval; the other animation scenarios are judged", () => {
-		const rows = judge(SAMSUNG, "android", { ...frames("animation-48", 20, 38), ...frames("animation-48-square", 2, 20), ...frames("animation-48-translate", 1, 28), ...frames("animation-48-css", 2, 18) });
+	test("D9: the animation-48 family on the Samsung only, capped to the first interval; the other animation scenarios are judged", () => {
+		// the first interval (1 late) plus the allowance every scenario has (1): 2 late intervals are the cap; its 19 to 27 ms never exceeds the 33 ms bar
+		const rows = judge(SAMSUNG, "android", { ...frames("animation-48", 2, 27), ...frames("animation-48-square", 2, 30), ...frames("animation-48-translate", 1, 28), ...frames("animation-48-css", 2, 18) });
 		expect(verdicts(rows)).toEqual({
 			"frames.droppedPct:animation-48": "exception",
 			"frames.droppedPct:animation-48-css": "fail",
@@ -199,13 +200,26 @@ describe("documented exceptions", () => {
 			"frames.maxPeriodRatio:animation-48-css": "fail",
 			"frames.maxPeriodRatio:animation-48-square": "exception",
 			"frames.maxPeriodRatio:animation-48-translate": "pass",
-			"frames.maxMs:animation-48": "exception",
+			"frames.maxMs:animation-48": "pass",
 			"frames.maxMs:animation-48-css": "pass",
 			"frames.maxMs:animation-48-square": "pass",
 			"frames.maxMs:animation-48-translate": "pass",
 		});
 		const iphone = judge(IPHONE, "ios", frames("animation-48-square", 1, 70, 16.67));
 		expect(verdicts(iphone)["frames.maxMs:animation-48-square"]).toBe("fail");
+	});
+	test("the cap is real: the Samsung's animation-48 run with 20 late intervals and a 38 ms frame is not covered", () => {
+		const rows = judge(SAMSUNG, "android", frames("animation-48", 20, 38));
+		expect(verdicts(rows)).toEqual({ "frames.droppedPct:animation-48": "fail", "frames.maxPeriodRatio:animation-48": "fail", "frames.maxMs:animation-48": "fail" });
+		expect(rows.every((row) => row.exception === undefined)).toBe(true);
+		expect(tally(rows).ok).toBe(false);
+	});
+	test("a cap is inclusive: 2 late intervals are covered, 3 are not, and a 34 ms frame has no exception to hide behind", () => {
+		const of = (late: number, maxMs: number) => verdicts(judge(SAMSUNG, "android", frames("animation-48", late, maxMs)));
+		expect(of(2, 30)).toEqual({ "frames.droppedPct:animation-48": "exception", "frames.maxPeriodRatio:animation-48": "exception", "frames.maxMs:animation-48": "pass" });
+		expect(of(3, 20)["frames.droppedPct:animation-48"]).toBe("fail");
+		expect(of(3, 20)["frames.maxPeriodRatio:animation-48"]).toBe("fail");
+		expect(of(1, 34)["frames.maxMs:animation-48"]).toBe("fail");
 	});
 	test("1 Nov first touch: the Samsung's `box` gesture frames only", () => {
 		const gestureGates = file.gates.filter((gate) => gate.id.startsWith("gestures.frames."));
@@ -298,6 +312,78 @@ describe("counting and the exit status", () => {
 	});
 });
 
+describe("lab.scenarios.failed leaves out the scenarios whose frame misses the exceptions cover", () => {
+	const labGates = file.gates.filter((gate) => gate.id === "lab.scenarios.failed" || frameGates.some((frame) => frame.id === gate.id));
+	const failedRuns = (...runs: { frame: string[]; other?: number }[]) => JSON.stringify(runs.map((run) => ({ frame: run.frame, other: run.other ?? 0 })));
+	const lab = (serial: string, platform: "android" | "ios", raw: number, runs: string | null, metrics: Record<string, number>) =>
+		judge(serial, platform, { "lab.scenarios.failed": raw, ...(runs === null ? {} : { "lab.scenarios.failedRuns": runs }), ...metrics }, labGates);
+	const failed = (rows: GateRow[]) => rows.find((row) => row.id === "lab.scenarios.failed") as GateRow;
+
+	test("the Samsung: churn-animated (D1) and a first-interval animation-48 are covered, so the gate counts none of them", () => {
+		const rows = lab(SAMSUNG, "android", 2, failedRuns({ frame: ["churn-animated", "animation-48"] }), { ...frames("churn-animated", 28, 52), ...frames("animation-48", 2, 27) });
+		expect(failed(rows).measured).toBe(0);
+		expect(failed(rows).verdict).toBe("pass");
+		expect(failed(rows).also).toEqual({ value: 2, unit: "before exceptions" });
+		expect(renderTable([failed(rows)], false)).toContain("0, 2 before exceptions");
+	});
+	test("a scenario with a frame miss no exception covers still counts: the animation-48 run with 20 late intervals and 38 ms", () => {
+		const rows = lab(SAMSUNG, "android", 2, failedRuns({ frame: ["churn-animated", "animation-48"] }), { ...frames("churn-animated", 28, 52), ...frames("animation-48", 20, 38) });
+		expect(failed(rows).measured).toBe(1);
+		expect(failed(rows).verdict).toBe("fail");
+	});
+	test("a miss on one frame gate is enough to count it, even if the others are covered", () => {
+		// 2 late intervals are covered; the 38 ms frame has no exception for animation-48 (its first interval is 19 to 27 ms)
+		const rows = lab(SAMSUNG, "android", 1, failedRuns({ frame: ["animation-48"] }), frames("animation-48", 2, 38));
+		expect(verdicts(rows.filter((row) => row.id !== "lab.scenarios.failed"))["frames.maxMs:animation-48"]).toBe("fail");
+		expect(failed(rows).measured).toBe(1);
+		expect(failed(rows).verdict).toBe("fail");
+	});
+	test("a scenario that failed for another reason counts, and the worst run decides as before", () => {
+		const metrics = { ...frames("churn-animated", 28, 52), ...frames("input-120", 3, 25), ...frames("tabs-8", 0, 14) };
+		expect(failed(lab(SAMSUNG, "android", 1, failedRuns({ frame: ["churn-animated"], other: 1 }), metrics)).measured).toBe(1);
+		const twoRuns = failedRuns({ frame: ["churn-animated", "input-120"] }, { frame: ["input-120", "tabs-8"] });
+		// run 1: input-120 counts (3 late, not covered); run 2: input-120 and tabs-8 (a frame failure with no frame miss) count
+		expect(failed(lab(SAMSUNG, "android", 2, twoRuns, metrics)).measured).toBe(2);
+		expect(failed(lab(SAMSUNG, "android", 1, failedRuns({ frame: ["churn-animated"] }, { frame: ["input-120"] }), metrics)).measured).toBe(1);
+	});
+	test("a frame failure with no frame miss on the gates is not covered by anything", () => {
+		const rows = lab(SAMSUNG, "android", 1, failedRuns({ frame: ["tabs-8"] }), frames("tabs-8", 0, 14));
+		expect(failed(rows).measured).toBe(1);
+		expect(failed(rows).also).toBeUndefined();
+	});
+	test("a metric that is missing or unreadable leaves the raw count", () => {
+		for (const runs of [null, "not json", "{}", "[{\"frame\":1}]", "[]"])
+			expect(failed(lab(SAMSUNG, "android", 2, runs, frames("churn-animated", 28, 52))).measured).toBe(2);
+		expect(failed(lab(SAMSUNG, "android", 2, null, frames("churn-animated", 28, 52))).verdict).toBe("fail");
+	});
+	test("the iPhone: header-8 (D1) is covered, animation-48-square with a 70 ms frame is not", () => {
+		const header = lab(IPHONE, "ios", 1, failedRuns({ frame: ["header-8"] }), frames("header-8", 17, 37, 16.67));
+		expect(failed(header).measured).toBe(0);
+		expect(failed(header).verdict).toBe("pass");
+		const square = lab(IPHONE, "ios", 2, failedRuns({ frame: ["header-8", "animation-48-square"] }), { ...frames("header-8", 17, 37, 16.67), ...frames("animation-48-square", 1, 70, 16.67) });
+		expect(failed(square).measured).toBe(1);
+		expect(failed(square).verdict).toBe("fail");
+	});
+	test("a scenario is covered on the device the exception names: the Samsung's churn-animated still counts on the iPhone", () => {
+		const rows = lab(IPHONE, "ios", 1, failedRuns({ frame: ["churn-animated"] }), frames("churn-animated", 28, 52, 16.67));
+		expect(failed(rows).measured).toBe(1);
+		expect(failed(rows).verdict).toBe("fail");
+	});
+	test("the emulator's count is informational and stays the lab's own", () => {
+		const rows = judge(EMULATOR, "android", { "lab.scenarios.failed": 5, "lab.scenarios.failedRuns": failedRuns({ frame: ["a", "b", "c", "d", "e"] }) }, labGates);
+		expect(failed(rows).verdict).toBe("informational");
+		expect(failed(rows).measured).toBe(5);
+	});
+	test("the gate of gates.json names the frame gates and the metric that lists the runs", () => {
+		const gate = file.gates.find((candidate) => candidate.id === "lab.scenarios.failed");
+		expect(gate?.excusing).toEqual({ runs: "lab.scenarios.failedRuns", gates: ["frames.droppedPct", "frames.maxPeriodRatio", "frames.maxMs"] });
+	});
+	test("checkGatesFile refuses an excusing list naming a gate that is not there", () => {
+		const table: GatesFile = { version: 1, devices: {}, scenarios: { android: [], ios: [] }, smoke: { modules: { android: ["a"], ios: ["a"] }, skips: { android: [], ios: [] } }, gates: [{ id: "x", title: "x", unit: "n", metric: "m", bar: { android: { max: 0 } }, excusing: { runs: "m.runs", gates: ["nope"] } }] };
+		expect(() => checkGatesFile(table)).toThrow(/excuses by nope, which is not a gate/);
+	});
+});
+
 function excusedOnly(): GateRow[] {
 	return judge(SAMSUNG, "android", frames("churn-animated", 25, 52));
 }
@@ -320,19 +406,26 @@ describe("the exceptions of gates.json", () => {
 			"boot.cold.p90@samsung",
 			"frames.droppedPct@samsung:animation-48+animation-48-square+animation-48-translate",
 			"frames.maxPeriodRatio@samsung:animation-48+animation-48-square+animation-48-translate",
-			"frames.maxMs@samsung:animation-48+animation-48-square+animation-48-translate",
 		]);
 		expect(of("1 Nov first touch").map(key)).toEqual([
 			"gestures.frames.droppedPct@samsung:box",
 			"gestures.frames.maxPeriodRatio@samsung:box",
 			"gestures.frames.maxMs@samsung:box",
 		]);
-		expect(exceptions).toHaveLength(15);
+		expect(exceptions).toHaveLength(14);
 		for (const entry of exceptions) {
 			expect(entry.reason.length).toBeGreaterThan(20);
 			expect(entry.reason).not.toContain("\n");
 			expect(entry.evidence).toContain("SPEC.md");
 		}
+	});
+	test("the animation-48 family is capped to the first interval, the D1 floors are not", () => {
+		const capOfEntry = (entry: GateException) => entry.maxLateIntervals ?? entry.maxMs ?? null;
+		for (const entry of exceptions) {
+			if (entry.scenarios?.includes("animation-48")) expect([entry.gate, capOfEntry(entry)]).toEqual([entry.gate, 2]);
+			else if (entry.decision === "D1") expect([entry.gate, capOfEntry(entry)]).toEqual([entry.gate, null]);
+		}
+		expect(exceptions.some((entry) => entry.maxMs !== undefined)).toBe(false);
 	});
 	test("none is for the emulator", () => {
 		expect(exceptions.some((entry) => entry.device === EMULATOR)).toBe(false);
@@ -374,6 +467,42 @@ describe("checkExceptions refuses an exception that would excuse more than it na
 		expect(() => check([{ ...base, gate: "plain", device: "phone" }, { ...base, gate: "plain", device: "phone" }])).toThrow(/listed twice/);
 		expect(() => check([{ ...base, gate: "per.scenario", device: "phone", scenarios: ["a"] }, { ...base, gate: "per.scenario", device: "phone", scenarios: ["b", "a"] }])).toThrow(/scenario a is covered twice/);
 		expect(() => check([{ ...base, gate: "per.scenario", device: "phone", scenarios: ["a", "a"] }])).toThrow(/names a scenario twice/);
+	});
+	test("a cap fits the metric its gate reads, and is a whole number or a positive time", () => {
+		const capped: Gate[] = [
+			{ id: "late", title: "x", unit: "n", metric: "f.*.lateIntervals", bar: { android: { max: 1 } }, roles: ["phone"] },
+			{ id: "long", title: "x", unit: "ms", metric: "f.*.maxMs", bar: { android: { max: 33 } }, roles: ["phone"] },
+		];
+		const ok = (entry: Partial<GateException>) => checkExceptions({ devices, gates: capped, exceptions: [{ ...base, gate: "late", device: "phone", scenarios: ["a"], ...entry }] });
+		expect(() => ok({ maxLateIntervals: 2 })).not.toThrow();
+		expect(() => ok({ gate: "long", maxMs: 40 })).not.toThrow();
+		expect(() => ok({ maxMs: 40 })).toThrow(/maxMs caps a gate that reads \*\.maxMs/);
+		expect(() => ok({ gate: "long", maxLateIntervals: 2 })).toThrow(/maxLateIntervals caps a gate that reads \*\.lateIntervals/);
+		expect(() => ok({ maxLateIntervals: 1.5 })).toThrow(/whole number/);
+		expect(() => ok({ maxLateIntervals: -1 })).toThrow(/whole number/);
+		expect(() => ok({ gate: "long", maxMs: 0 })).toThrow(/positive/);
+		expect(() => checkExceptions({ devices, gates, exceptions: [{ ...base, gate: "plain", device: "phone", maxMs: 5 }] })).toThrow(/maxMs caps a gate that reads/);
+	});
+	test("a capped entry covers a row only while the measured value is within the cap, and a missing value is not covered", () => {
+		const entry: GateException = { ...base, gate: "late", device: "phone", scenarios: ["a"], maxLateIntervals: 2 };
+		const at = (measured: number | null, metric = "f.a.lateIntervals") => matchException([entry], { gate: "late", device: "phone", scenario: "a", metric, measured });
+		expect(at(2)).toBe(entry);
+		expect(at(3)).toBeUndefined();
+		expect(at(null)).toBeUndefined();
+		// a cap is for the metric it names: another metric of the same gate is uncapped
+		expect(at(99, "f.a.other")).toBe(entry);
+		const timed: GateException = { ...base, gate: "long", device: "phone", scenarios: ["a"], maxMs: 40 };
+		expect(matchException([timed], { gate: "long", device: "phone", scenario: "a", metric: "f.a.maxMs", measured: 40 })).toBe(timed);
+		expect(matchException([timed], { gate: "long", device: "phone", scenario: "a", metric: "f.a.maxMs", measured: 41 })).toBeUndefined();
+	});
+	test("a frame cap on the longest frame covers a miss up to it: 34 to 40 ms, not 41", () => {
+		const long: Gate = { id: "long", title: "x", unit: "ms", metric: "f.*.maxMs", bar: { android: { max: 33 } }, roles: ["phone"] };
+		const timed: GateException = { ...base, gate: "long", device: "phone", scenarios: ["a"], maxMs: 40 };
+		const at = (ms: number) => evaluate([long], { phone: { platform: "android", role: "phone", metrics: { "f.a.maxMs": ms } } }, "android", [timed]).map((row) => row.verdict);
+		expect(at(33)).toEqual(["pass"]);
+		expect(at(34)).toEqual(["exception"]);
+		expect(at(40)).toEqual(["exception"]);
+		expect(at(41)).toEqual(["fail"]);
 	});
 	test("matchException needs the gate, the device and, for a per-scenario gate, the scenario", () => {
 		const entry: GateException = { ...base, gate: "per.scenario", device: "phone", scenarios: ["a"] };

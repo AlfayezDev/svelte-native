@@ -97,6 +97,15 @@ export function labMetrics(file: LabFile, pinned: readonly string[]): Metrics {
 		"lab.scenarios.failed": largest(
 			runs.map((run) => run.scenarios.filter((scenario) => scenario.verdict === "fail").length),
 		),
+		// Which scenarios each run's lab marked `fail`, split into the ones its frames failed (the lab's own `smooth`) and the rest: the gate on
+		// `lab.scenarios.failed` leaves out a scenario whose frame misses are all documented exceptions on the device (`gates.json`, `excusing`).
+		"lab.scenarios.failedRuns": JSON.stringify(
+			runs.map((run) => {
+				const failed = run.scenarios.filter((scenario) => scenario.verdict === "fail");
+				const frame = failed.filter((scenario) => scenario.frames !== null && !scenario.frames.smooth).map((scenario) => scenario.name);
+				return { frame, other: failed.length - frame.length };
+			}),
+		),
 		"lab.scenarios.missing": missingScenarios(runs, pinned).length,
 		// The crash reports no run owns (iOS: a process the command did not launch) are fatals of the file all the same.
 		"lab.fatals": fatalCount(total(runs.map((run) => run.crashes.length)) + unattributedCount(file.crashReports), jsErrors),

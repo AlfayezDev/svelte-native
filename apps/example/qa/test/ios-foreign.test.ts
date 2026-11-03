@@ -4,12 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { iosBundle, iosLaunchOf } from "../commands/ios-foreign.ts";
 import { androidOnlyBy, describeForeign, foreignMetrics, skippedBy } from "../lib/foreign.ts";
-import { foreignRecords } from "../lib/iphone/foreign-results.ts";
+import { foreignProgress, foreignRecords } from "../lib/iphone/foreign-results.ts";
 import { parseIosLabResults, type IosLabResults } from "../lib/iphone/lab-results.ts";
 import type { IosBuildFile } from "../lib/iphone/session.ts";
 import type { ForeignCheck, ForeignFile, ForeignSkip, LabRun } from "../lib/types.ts";
 import { parseForeignChecks } from "../parse/foreign.ts";
-import { detailRecords, skipEntry } from "../../src/lib/native/dev/foreign-records.ts";
+import { detailRecords, progressRecord, skipEntry } from "../../src/lib/native/dev/foreign-records.ts";
 
 const check = (library: string, where: ForeignCheck["where"], passed = true, name = `${where}: a check`): ForeignCheck => ({ library, where, name, passed, detail: "" });
 const results = (stress: IosLabResults["stress"]): IosLabResults =>
@@ -101,6 +101,10 @@ describe("what the lab writes for the two harnesses", () => {
 		expect(JSON.stringify(skipEntry("image", "inline", "inline: n", "why", true))).toBe('{"library":"image","where":"inline","name":"inline: n","why":"why","androidOnly":true}');
 	});
 
+	test("the progress file holds the launch's token, the place just finished and both lists", () => {
+		expect(JSON.parse(progressRecord("t", "image inline", [check("image", "inline")], []))).toEqual({ token: "t", finished: "image inline", checks: [check("image", "inline")], skips: [] });
+	});
+
 	test("Android's scenario detail holds no list of checks, and the iPhone's holds both lists", () => {
 		const checks = [check("image", "inline")];
 		const skips = [skipEntry("image", "inline", "n", "w", false)];
@@ -148,5 +152,28 @@ describe("the release bundle of the iPhone build", () => {
 		expect(await iosBundle(identity, null)).toBeNull();
 		expect(await iosBundle(null, record())).toBeNull();
 		rmSync(directory, { recursive: true, force: true });
+	});
+});
+
+describe("the progress file of a launch that did not finish", () => {
+	const progress = (token: string | null, extra: object = {}) => JSON.stringify({ token, finished: "video row", checks: [check("image", "inline"), check("video", "row", false)], skips: [{ library: "video", where: "row", name: "n", why: "w", androidOnly: true }], ...extra });
+
+	test("is read like the finished scenario's records, when it is this launch's", () => {
+		const records = foreignProgress(progress("t1"), "t1");
+		expect(records?.finished).toBe("video row");
+		expect(records?.checks).toHaveLength(2);
+		expect(records?.skips).toHaveLength(1);
+		expect(records?.unparsed).toEqual([]);
+	});
+
+	test("is nothing when it is another launch's, not JSON, absent or without a place", () => {
+		expect(foreignProgress(progress("older"), "t1")).toBeNull();
+		expect(foreignProgress("{", "t1")).toBeNull();
+		expect(foreignProgress(null, "t1")).toBeNull();
+		expect(foreignProgress(JSON.stringify({ token: "t1", checks: [], skips: [] }), "t1")).toBeNull();
+	});
+
+	test("an unreadable entry in it is reported", () => {
+		expect(foreignProgress(progress("t1", { checks: [1] }), "t1")?.unparsed).toHaveLength(1);
 	});
 });

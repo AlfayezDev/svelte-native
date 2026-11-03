@@ -22,7 +22,7 @@ export type ForeignScenario = "foreign-libraries" | "foreign-leftovers";
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** The checks and skips of a scenario of the foreign lab, from the results the app wrote. */
-export function foreignRecords(results: IosLabResults | null, scenario: ForeignScenario): IosForeignRecords {
+export function foreignRecords(results: Pick<IosLabResults, "stress"> | null, scenario: ForeignScenario): IosForeignRecords {
 	const out: IosForeignRecords = { checks: [], skips: [], unparsed: [], present: false };
 	const entry = results?.stress.find((item) => item.name === scenario);
 	if (!entry) return out;
@@ -47,4 +47,21 @@ export function foreignRecords(results: IosLabResults | null, scenario: ForeignS
 		}
 	}
 	return out;
+}
+
+/**
+ * `Documents/foreign-progress.json`, which the lab rewrites after every place (`foreign-libraries-lab.ts`): what a launch that died in the middle had recorded. Null when the text is not
+ * that file or belongs to another launch (its token is not [token]). The records are read the way the finished scenario's are.
+ */
+export function foreignProgress(text: string | null, token: string): (IosForeignRecords & { finished: string }) | null {
+	if (text === null) return null;
+	let value: unknown;
+	try {
+		value = JSON.parse(text);
+	} catch {
+		return null;
+	}
+	if (!isRecord(value) || value.token !== token || typeof value.finished !== "string") return null;
+	const parsed = foreignRecords({ stress: [{ name: "foreign-libraries", verdict: "info", summary: "", detail: { checks: value.checks, skips: value.skips } }] }, "foreign-libraries");
+	return { ...parsed, finished: value.finished };
 }

@@ -2,8 +2,9 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { flagString, integerFlag, parseFlags } from "../lib/flags.ts";
 import { bundleOfMap, describeForeign, foreignPins, leftoverFilesPerRun } from "../lib/foreign.ts";
+import { readAppFile } from "../lib/iphone/device.ts";
 import { describeCrashReports, finishCrashWatch, keepCrashFiles, labRunsWithCrashes, withReports } from "../lib/iphone/crash-reports.ts";
-import { foreignRecords } from "../lib/iphone/foreign-results.ts";
+import { foreignProgress, foreignRecords } from "../lib/iphone/foreign-results.ts";
 import { notReported, reportedIdentity, withIdentity } from "../lib/iphone/identity.ts";
 import { currentSource, iosOptions, readIosBuild, startIosSuite } from "../lib/iphone/session.ts";
 import { describeRun } from "../lib/lab-run.ts";
@@ -61,7 +62,15 @@ export async function iosForeign(argv: string[]): Promise<void> {
 	console.log(`foreign: ${librariesRun}`);
 	const first = await iosLabOnce(session, librariesRun, timeoutMs, join(runsDir, `foreign-${slug(session.device.serial)}-${stamp(session.startedAt)}-libraries.log`));
 	for (const line of describeRun(first.run)) console.log(line);
-	const parsed = foreignRecords(first.results, "foreign-libraries");
+	let parsed = foreignRecords(first.results, "foreign-libraries");
+	// A launch that did not reach the end of its scenario (the app died, the time ran out) wrote no results of it: the lab's progress file tells how far it got.
+	if (!parsed.present) {
+		const progress = foreignProgress(await readAppFile(session.target, "Documents/foreign-progress.json"), first.token);
+		if (progress) {
+			console.log(`  the scenario did not finish; its progress file has the places up to ${progress.finished}`);
+			parsed = progress;
+		}
+	}
 	console.log(`  ${parsed.checks.length} checks logged, ${parsed.checks.filter((entry) => !entry.passed).length} failed, ${parsed.skips.filter((entry) => !entry.androidOnly).length} skipped, ${parsed.skips.filter((entry) => entry.androidOnly).length} Android-only, ${parsed.unparsed.length} entries unreadable`);
 
 	console.log("foreign: foreign-leftovers (the launch after it)");

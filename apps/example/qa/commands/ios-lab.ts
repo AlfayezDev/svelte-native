@@ -21,7 +21,7 @@ const aliveEveryMs = 30_000;
  * are read from `Documents/lab-results.json` until it says it has finished. The app is ended afterwards, the way the Android run
  * force-stops it. `results` is what the app last wrote for this launch, null when it wrote nothing.
  */
-export async function iosLabOnce(session: IosSession, run: string, timeoutMs: number, logPath: string): Promise<{ run: LabRun; results: IosLabResults | null }> {
+export async function iosLabOnce(session: IosSession, run: string, timeoutMs: number, logPath: string): Promise<{ run: LabRun; results: IosLabResults | null; token: string }> {
 	const { target } = session;
 	const token = newToken();
 	const startedAt = new Date();
@@ -62,7 +62,7 @@ export async function iosLabOnce(session: IosSession, run: string, timeoutMs: nu
 		// The app already ended (a finished lab or a crash); there is nothing left to stop.
 	}
 	await writeFile(logPath, raw || "no results were written\n");
-	return { run: labRunFromIos({ results, startedAt, durationMs: Date.now() - startedAt.getTime(), died, pid, logFile: logPath.slice(qaDir.length + 1) }, wanted), results };
+	return { run: labRunFromIos({ results, startedAt, durationMs: Date.now() - startedAt.getTime(), died, pid, logFile: logPath.slice(qaDir.length + 1) }, wanted), results, token };
 }
 
 export async function iosLab(argv: string[]): Promise<void> {

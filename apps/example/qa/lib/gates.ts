@@ -33,6 +33,14 @@ export type Gate = {
 	 * JSON text, `labMetrics`) that lists, for each run, the scenarios that failed on frames and how many failed otherwise.
 	 */
 	excusing?: { runs: string; gates: string[] };
+	/**
+	 * D10, for the frame gates of a lab of repeated runs: a scenario passes when all but one of its runs meet the rule, so the one worst
+	 * run is set aside and the gate is judged on the others, and the run is shown beside the value, never hidden. `runs` is the metric (a
+	 * JSON text, `labMetrics`) with each run's `lateIntervals`, `maxMs`, `droppedPct` and `maxPeriodRatio`; `late` and `long` are the
+	 * gates whose bars (`max`) say what a bad run is (more late intervals, a longer frame); `min` is how many runs earn the allowance:
+	 * fewer, or a run without an exact record, and the worst run is judged.
+	 */
+	allowance?: { runs: string; min: number; late: string; long: string };
 };
 /** `runs` are the run kinds the device is meant to provide: a gate of another kind is informational for it. */
 export type DeviceRole = { role: Role; name: string; runs: RunKind[] };
@@ -95,6 +103,8 @@ export type GateRow = {
 	also?: { value: number; unit: string };
 	/** The exception that covers this row; present exactly when the verdict is `exception`. */
 	exception?: GateException;
+	/** D10: the run that was set aside (the value above is the rest's worst); its late intervals, its longest frame and its place among the runs, from 1. */
+	worstRun?: { run: number; lateIntervals: number; maxMs: number };
 };
 
 export type ReportDevice = {
@@ -177,6 +187,7 @@ export function checkGatesFile(file: GatesFile): void {
 	for (const gate of file.gates) {
 		if (gate.also && stars(gate.also.metric) !== stars(gate.metric))
 			throw new Error(`gates.json: gate ${gate.id} shows ${gate.also.metric} beside ${gate.metric}, which must have as many \`*\` to take the scenario from`);
+		if (gate.allowance) checkAllowance(file, gate, gate.allowance);
 		for (const id of gate.excusing?.gates ?? [])
 			if (!file.gates.some((candidate) => candidate.id === id)) throw new Error(`gates.json: gate ${gate.id} excuses by ${id}, which is not a gate`);
 		if (gate.roles === undefined) continue;
@@ -188,6 +199,24 @@ export function checkGatesFile(file: GatesFile): void {
 }
 
 const stars = (metric: string): number => metric.split("*").length - 1;
+
+/** The fields of a run record (`frames.<scenario>.runs`): a gate's metric and its `also` name one by their last segment. */
+const judgedFields = ["lateIntervals", "maxMs"] as const;
+const shownFields = ["droppedPct", "maxPeriodRatio"] as const;
+const lastSegment = (metric: string): string => metric.slice(metric.lastIndexOf(".") + 1);
+
+function checkAllowance(file: Pick<GatesFile, "gates">, gate: Gate, allowance: NonNullable<Gate["allowance"]>): void {
+	const label = `gates.json: gate ${gate.id} has an allowance`;
+	if (stars(allowance.runs) !== 1 || stars(gate.metric) !== 1) throw new Error(`${label} that needs one \`*\` in the run list (${allowance.runs}) and in its metric (${gate.metric})`);
+	if (!(judgedFields as readonly string[]).includes(lastSegment(gate.metric))) throw new Error(`${label} on ${gate.metric}, which is not a late interval or longest-frame metric of a run`);
+	if (gate.also && !(shownFields as readonly string[]).includes(lastSegment(gate.also.metric))) throw new Error(`${label} but shows ${gate.also.metric}, which a run record does not hold`);
+	if (!Number.isInteger(allowance.min) || allowance.min < 2) throw new Error(`${label} that needs at least 2 runs, not ${allowance.min}`);
+	for (const id of [allowance.late, allowance.long]) {
+		const named = file.gates.find((candidate) => candidate.id === id);
+		if (!named) throw new Error(`${label} that takes its bar from ${id}, which is not a gate`);
+		if (Object.values(named.bar).some((bar) => bar.max === undefined)) throw new Error(`${label} that takes its bar from ${id}, which has no \`max\``);
+	}
+}
 
 /** The role of each device a gates file names, for the devices of a report. */
 export function deviceRoles(file: GatesFile, serials: string[]): Record<string, Role | null> {
@@ -307,12 +336,13 @@ export function evaluate(
 					continue;
 				}
 				for (const key of keys) {
-					const measured = device.metrics[key] ?? null;
 					const names = gate.metric.includes("*") ? (pattern.exec(key)?.slice(1) ?? []) : [];
 					const scenario = names[0];
+					const allowed = applies && gate.allowance ? allowWorstRun(gate, gate.allowance, gates, name, device.metrics, names, key) : null;
+					const measured = allowed?.measured ?? device.metrics[key] ?? null;
 					const verdict = applies ? judge(bar, measured) : "informational";
 					const exception = verdict === "fail" ? matchException(exceptions, { gate: gate.id, device: serial, scenario: scenario ?? null, metric: key, measured }) : undefined;
-					const alongside = gate.also ? device.metrics[fill(gate.also.metric, names)] : undefined;
+					const alongside = allowed ? allowed.also : gate.also ? device.metrics[fill(gate.also.metric, names)] : undefined;
 					rows.push({
 						...base,
 						device: serial,
@@ -323,12 +353,71 @@ export function evaluate(
 						...(scenario === undefined ? {} : { scenario }),
 						...(gate.also && typeof alongside === "number" ? { also: { value: alongside, unit: gate.also.unit } } : {}),
 						...(exception ? { exception } : {}),
+						...(allowed ? { worstRun: allowed.worstRun } : {}),
 					});
 				}
 			}
 		}
 	}
 	return gates.reduce((all, gate) => (gate.excusing ? excuseCovered(all, gate, gate.excusing, devices) : all), rows);
+}
+
+type RunRecord = Record<(typeof judgedFields)[number] | (typeof shownFields)[number], number>;
+
+/** The per-run records `labMetrics` writes for a scenario; null for a metric that is not a full list (a run without an exact count makes none of it usable). */
+function parseRunRecords(value: Metric | undefined): RunRecord[] | null {
+	if (typeof value !== "string") return null;
+	try {
+		const parsed: unknown = JSON.parse(value);
+		if (!Array.isArray(parsed)) return null;
+		const fields = [...judgedFields, ...shownFields];
+		const records = parsed.map((entry: unknown): RunRecord | null => {
+			if (typeof entry !== "object" || entry === null) return null;
+			const record = entry as Record<string, unknown>;
+			return fields.every((field) => typeof record[field] === "number" && Number.isFinite(record[field])) ? (record as RunRecord) : null;
+		});
+		return records.every((record) => record !== null) ? (records as RunRecord[]) : null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * D10 for one row of a frame gate: with at least `allowance.min` runs, every one with an exact record, the run that overshoots the rule
+ * most (more late intervals than `late`'s bar allows, or a longer frame than `long`'s) is set aside and the row is judged on the
+ * worst of the others, so a scenario passes when all but one of its runs meet the rule and a second bad run fails it. No bad run,
+ * too few runs or an unreadable record: null, the worst run is judged. The value shown beside the judged one is the run that set aside.
+ */
+function allowWorstRun(
+	gate: Gate,
+	allowance: NonNullable<Gate["allowance"]>,
+	gates: Gate[],
+	platform: Platform,
+	metrics: Metrics,
+	names: readonly string[],
+	key: string,
+): { measured: number; also: number | undefined; worstRun: NonNullable<GateRow["worstRun"]> } | null {
+	const runs = parseRunRecords(metrics[fill(allowance.runs, names)]);
+	if (runs === null || runs.length < allowance.min) return null;
+	const limit = (id: string) => gates.find((candidate) => candidate.id === id)?.bar[platform]?.max;
+	const [lateLimit, longLimit] = [limit(allowance.late), limit(allowance.long)];
+	if (lateLimit === undefined || longLimit === undefined) return null;
+	// How far a run is past the rule, in late intervals and in time over the bar together, so the run set aside is the one that missed most.
+	const overshoot = (run: RunRecord) => Math.max(0, (run.lateIntervals - lateLimit) / Math.max(lateLimit, 1)) + Math.max(0, (run.maxMs - longLimit) / longLimit);
+	let setAside = -1;
+	runs.forEach((run, index) => {
+		if (overshoot(run) > 0 && (setAside < 0 || overshoot(run) > overshoot(runs[setAside] as RunRecord))) setAside = index;
+	});
+	if (setAside < 0) return null;
+	const field = lastSegment(key) as (typeof judgedFields)[number];
+	const rest = runs.filter((_, index) => index !== setAside);
+	const judged = rest.reduce((a, b) => (b[field] > a[field] ? b : a));
+	const bad = runs[setAside] as RunRecord;
+	return {
+		measured: judged[field],
+		also: gate.also ? judged[lastSegment(gate.also.metric) as (typeof shownFields)[number]] : undefined,
+		worstRun: { run: setAside + 1, lateIntervals: bad.lateIntervals, maxMs: bad.maxMs },
+	};
 }
 
 type FailedRun = { frame: string[]; other: number };
@@ -351,9 +440,10 @@ function parseFailedRuns(value: Metric | undefined): FailedRun[] | null {
 }
 
 /**
- * The count of scenarios the lab marked `fail`, without the ones whose frame misses are all documented exceptions on this device: a
- * scenario is covered when at least one of its rows on the frame gates is an `exception` and none is a failure or a gap. It counts the
- * rest as before: the worst run's failures that are not frame failures plus its frame failures that are not covered. A run list the
+ * The count of scenarios the lab marked `fail`, without the failures the frame gates do not hold against the scenario: a scenario
+ * whose rows on the frame gates all pass or are exceptions is left out in the runs where the lab failed it when it has an exception
+ * row (every failing run is covered) or when the run is the one D10 set aside (the only run that broke the rule). It counts the rest
+ * as before: the worst run's failures that are not frame failures plus its frame failures that are not left out. A run list the
  * metric cannot give leaves the raw count, and the raw count shows beside the adjusted one when they differ.
  */
 function excuseCovered(rows: GateRow[], gate: Gate, excusing: NonNullable<Gate["excusing"]>, devices: Record<string, ReportDevice>): GateRow[] {
@@ -362,13 +452,16 @@ function excuseCovered(rows: GateRow[], gate: Gate, excusing: NonNullable<Gate["
 		const runs = parseFailedRuns(devices[row.device]?.metrics[excusing.runs]);
 		if (runs === null || runs.length === 0) return row;
 		const own = rows.filter((candidate) => candidate.device === row.device && candidate.platform === row.platform && excusing.gates.includes(candidate.id));
-		const covered = (name: string): boolean => {
+		const heldAgainst = (name: string, run: number): boolean => {
 			const scenario = own.filter((candidate) => candidate.scenario === name);
-			return scenario.some((candidate) => candidate.verdict === "exception") && scenario.every((candidate) => candidate.verdict === "pass" || candidate.verdict === "exception");
+			const passes = scenario.length > 0 && scenario.every((candidate) => candidate.verdict === "pass" || candidate.verdict === "exception");
+			const covered = scenario.some((candidate) => candidate.verdict === "exception");
+			const setAside = scenario.some((candidate) => candidate.worstRun?.run === run);
+			return !(passes && (covered || setAside));
 		};
-		const measured = Math.max(...runs.map((run) => run.other + run.frame.filter((name) => !covered(name)).length));
+		const measured = Math.max(...runs.map((run, index) => run.other + run.frame.filter((name) => heldAgainst(name, index + 1)).length));
 		if (measured === row.measured) return row;
-		return { ...row, measured, verdict: judge(row.bar, measured), also: { value: row.measured, unit: "before exceptions" } };
+		return { ...row, measured, verdict: judge(row.bar, measured), also: { value: row.measured, unit: "before exceptions and allowed runs" } };
 	});
 }
 
@@ -382,6 +475,8 @@ export type RowGroup = {
 	measured: Metric;
 	/** The gate's `also` figure of the worst row, in its unit (`3.7 %`); empty when the gate has none. */
 	also: string;
+	/** D10: the run set aside on the worst row, as `worst run: 20 late, 38 ms, run 2`; empty when none was. */
+	worstRun: string;
 	worst: string;
 	ok: number;
 	/** Rows covered by a documented exception. */
@@ -402,6 +497,11 @@ function groupVerdict(members: GateRow[]): Verdict {
 }
 
 const trimmed = (value: number): string => String(Number(value.toFixed(2)));
+
+/** The run D10 set aside, never hidden: `worst run: 20 late, 38 ms, run 2`. */
+function worstRunText(worst: NonNullable<GateRow["worstRun"]>): string {
+	return `worst run: ${worst.lateIntervals} late, ${trimmed(worst.maxMs)} ms, run ${worst.run}`;
+}
 
 /** Collapses the rows a wildcard gate expands to into one line per gate, platform and device: the worst value of the rows that decide its verdict. */
 export function groupRows(rows: GateRow[]): RowGroup[] {
@@ -438,6 +538,7 @@ export function groupRows(rows: GateRow[]): RowGroup[] {
 			unit: first.unit,
 			measured: worstRow.measured,
 			also: worstRow.also ? `${trimmed(worstRow.also.value)} ${worstRow.also.unit}` : "",
+			worstRun: worstRow.worstRun ? worstRunText(worstRow.worstRun) : "",
 			worst: members.length > 1 ? worstRow.metric.split(".").slice(1, -1).join(".") : "",
 			ok: members.filter((row) => row.verdict === "pass").length,
 			excepted: excepted.length,
@@ -471,7 +572,7 @@ function deviceCell(device: string | null, role: Role | null): string {
 
 /** The value of a group as the table prints it: the number, the scenario it is the worst of, the gate's `also` figure. */
 function measuredCell(group: RowGroup): string {
-	return formatValue(group.measured, group.bar) + (group.worst ? ` (${group.worst})` : "") + (group.also ? `, ${group.also}` : "");
+	return formatValue(group.measured, group.bar) + (group.worst ? ` (${group.worst})` : "") + (group.also ? `, ${group.also}` : "") + (group.worstRun ? `; ${group.worstRun}` : "");
 }
 
 /** The verdict of a group: the passes of a wildcard gate (`fail 3/17`), the decisions behind its exceptions (`exception (D1) 15/17`), the exceptions beside a failure (`fail 3/17 (+2 exception)`). */
@@ -493,7 +594,7 @@ export function renderTable(rows: GateRow[], all: boolean): string {
 				row.platform,
 				deviceCell(row.device, row.role),
 				formatBar(row.bar, row.unit),
-				formatValue(row.measured, row.bar) + (row.also ? `, ${trimmed(row.also.value)} ${row.also.unit}` : ""),
+				formatValue(row.measured, row.bar) + (row.also ? `, ${trimmed(row.also.value)} ${row.also.unit}` : "") + (row.worstRun ? `; ${worstRunText(row.worstRun)}` : ""),
 				row.exception ? `exception (${row.exception.decision})` : row.verdict,
 			]);
 	} else {
@@ -528,7 +629,7 @@ function decisionText(entry: GateException): string {
 
 /** What a row measured, for the exception lists: the value in the gate's unit, and the `also` figure. */
 function measuredText(row: GateRow): string {
-	return `${formatValue(row.measured, row.bar)} ${row.unit}`.trim() + (row.also ? `, ${trimmed(row.also.value)} ${row.also.unit}` : "");
+	return `${formatValue(row.measured, row.bar)} ${row.unit}`.trim() + (row.also ? `, ${trimmed(row.also.value)} ${row.also.unit}` : "") + (row.worstRun ? `; ${worstRunText(row.worstRun)}` : "");
 }
 
 /** The rows an exception covers, one line each for the console: the gate, where, the measured value against the bar, and the decision with its reason and evidence. */
@@ -539,6 +640,31 @@ export function renderExceptions(rows: GateRow[], devices: Record<string, string
 			const where = `${row.device === null ? "-" : (devices[row.device] ?? row.device)}${row.scenario === undefined ? "" : `, ${row.scenario}`}`;
 			return `  ${row.id} (${where}): ${measuredText(row)} against ${formatBar(row.bar, row.unit)}; ${decisionText(row.exception)}: ${row.exception.reason} [${row.exception.evidence}]`;
 		});
+}
+
+type SetAside = { device: string; scenario: string; worst: NonNullable<GateRow["worstRun"]>; rows: GateRow[] };
+
+/** The runs D10 set aside, once per device and scenario with the rows they were set aside for: the list that keeps a spared run in view whichever row the grouped table prints. */
+export function setAsideRuns(rows: GateRow[]): SetAside[] {
+	const found = new Map<string, SetAside>();
+	for (const row of rows) {
+		if (!row.worstRun || row.device === null || row.scenario === undefined || row.verdict === "informational") continue;
+		const key = `${row.device}\u0000${row.scenario}\u0000${row.worstRun.run}`;
+		const entry = found.get(key) ?? { device: row.device, scenario: row.scenario, worst: row.worstRun, rows: [] };
+		entry.rows.push(row);
+		found.set(key, entry);
+	}
+	return [...found.values()];
+}
+
+/** What the other runs of a set-aside scenario read: `frames.droppedPct 1 pass, frames.maxMs 20 pass`. */
+function judgedOn(entry: SetAside): string {
+	return entry.rows.map((row) => `${row.id} ${formatValue(row.measured, row.bar)} ${row.verdict === "exception" ? `exception (${row.exception?.decision})` : row.verdict}`).join(", ");
+}
+
+/** One console line per run D10 set aside: where, which run and what it measured, and what the other runs gave. */
+export function renderSetAside(rows: GateRow[], names: Record<string, string> = {}): string[] {
+	return setAsideRuns(rows).map((entry) => `  ${entry.scenario} (${names[entry.device] ?? entry.device}): run ${entry.worst.run} set aside, ${entry.worst.lateIntervals} late intervals and ${trimmed(entry.worst.maxMs)} ms; the other runs: ${judgedOn(entry)}`);
 }
 
 const markdownEscape = (cell: string): string => cell.replaceAll("|", "\\|");
@@ -581,6 +707,16 @@ export function renderMarkdown(rows: GateRow[], title: string, names: Record<str
 			"",
 		);
 	}
+	const spared = setAsideRuns(rows);
+	if (spared.length > 0)
+		out.push(
+			`**Worst runs set aside (D10, ${spared.length}): the scenario is judged on its other runs, the run is shown here and counted nowhere else**`,
+			"",
+			"| scenario | device | run | late intervals | longest frame | the other runs |",
+			"| --- | --- | --- | --- | --- | --- |",
+			...spared.map((entry) => `| ${[entry.scenario, names[entry.device] ?? entry.device, String(entry.worst.run), String(entry.worst.lateIntervals), `${trimmed(entry.worst.maxMs)} ms`, judgedOn(entry)].map(markdownEscape).join(" | ")} |`),
+			"",
+		);
 	if (good.length > 0) out.push(`<details><summary>Passing (${good.length})</summary>`, "", ...table(good), "", "</details>", "");
 	if (info.length > 0) out.push(`<details><summary>Informational (${info.length}): the gate is not for this device's role or run kind</summary>`, "", ...table(info), "", "</details>", "");
 	return out.join("\n");

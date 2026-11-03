@@ -9,7 +9,9 @@ import {
 	groupRows,
 	renderExceptions,
 	renderMarkdown,
+	renderSetAside,
 	renderTable,
+	setAsideRuns as setAsideRunsOf,
 	tally,
 	tallyByDevice,
 	type Gate,
@@ -312,6 +314,144 @@ describe("counting and the exit status", () => {
 	});
 });
 
+/**
+ * The metrics of a scenario's lab runs as `labMetrics` writes them: the worst run's figures and the per-run list D10 reads. `runs` is
+ * `[late intervals, longest frame ms]` for each run; 90 Hz (11.11 ms) and 723 intervals a window unless said.
+ */
+function labRuns(scenario: string, runs: [number, number][], periodMs = 11.11): Record<string, number | string> {
+	const records = runs.map(([late, ms]) => ({ lateIntervals: late, maxMs: ms, droppedPct: (100 * late) / 723, maxPeriodRatio: ms / periodMs }));
+	const worstLate = Math.max(...runs.map(([late]) => late));
+	const worstMs = Math.max(...runs.map(([, ms]) => ms));
+	return {
+		[`frames.${scenario}.lateIntervals`]: worstLate,
+		[`frames.${scenario}.droppedPct`]: (100 * worstLate) / 723,
+		[`frames.${scenario}.maxMs`]: worstMs,
+		[`frames.${scenario}.maxPeriodRatio`]: worstMs / periodMs,
+		[`frames.${scenario}.runs`]: JSON.stringify(records),
+	};
+}
+const tenRuns = (bad: Record<number, [number, number]> = {}, clean: [number, number] = [1, 19]): [number, number][] => Array.from({ length: 10 }, (_, index) => bad[index + 1] ?? clean);
+
+describe("D10: a phone's lab scenario passes when all but one of its ten runs meet the rule", () => {
+	test("one bad run passes, and the run is shown with its figures, never hidden", () => {
+		for (const [serial, platform] of [[SAMSUNG, "android"], [IPHONE, "ios"]] as const) {
+			const rows = judge(serial, platform, labRuns("input-120", tenRuns({ 4: [5, 27] })));
+			expect(rows.map((row) => row.verdict)).toEqual(["pass", "pass", "pass"]);
+			expect(rows.map((row) => row.measured)).toEqual([1, 1, 19]);
+			for (const row of rows) expect(row.worstRun).toEqual({ run: 4, lateIntervals: 5, maxMs: 27 });
+			expect(tally(rows).ok).toBe(true);
+			const cell = renderTable(rows.slice(0, 1), false);
+			expect(cell).toContain("1, 0.14 %; worst run: 5 late, 27 ms, run 4");
+		}
+	});
+	test("a run over 33 ms alone is one bad run too: frames.maxMs passes on the others and shows the 40 ms run", () => {
+		const rows = judge(SAMSUNG, "android", labRuns("tabs-8", tenRuns({ 7: [1, 40] })));
+		expect(verdicts(rows)).toEqual({ "frames.droppedPct:tabs-8": "pass", "frames.maxPeriodRatio:tabs-8": "pass", "frames.maxMs:tabs-8": "pass" });
+		expect(rows.find((row) => row.id === "frames.maxMs")?.worstRun).toEqual({ run: 7, lateIntervals: 1, maxMs: 40 });
+		expect(rows.find((row) => row.id === "frames.maxMs")?.measured).toBe(19);
+	});
+	test("two bad runs fail, and the worst of them is still shown", () => {
+		const rows = judge(SAMSUNG, "android", labRuns("input-120", tenRuns({ 2: [6, 30], 8: [3, 25] })));
+		expect(verdicts(rows)).toEqual({ "frames.droppedPct:input-120": "fail", "frames.maxPeriodRatio:input-120": "fail", "frames.maxMs:input-120": "pass" });
+		expect(rows[0]?.measured).toBe(3);
+		expect(rows[0]?.worstRun).toEqual({ run: 2, lateIntervals: 6, maxMs: 30 });
+		expect(tally(rows).ok).toBe(false);
+		const frameRuns = judge(SAMSUNG, "android", labRuns("input-120", tenRuns({ 2: [1, 36], 8: [1, 40] })));
+		expect(frameRuns.find((row) => row.id === "frames.maxMs")?.verdict).toBe("fail");
+		expect(frameRuns.find((row) => row.id === "frames.maxMs")?.measured).toBe(36);
+	});
+	test("two different kinds of bad run fail too: one late-interval run and one long-frame run are two bad runs", () => {
+		const rows = judge(IPHONE, "ios", labRuns("tabs-8", tenRuns({ 3: [4, 20], 9: [1, 40] }), 16.67));
+		expect(rows.some((row) => row.verdict === "fail")).toBe(true);
+	});
+	test("nine runs get no allowance: the worst run is judged", () => {
+		const nine = tenRuns({ 4: [5, 27] }).slice(0, 9);
+		expect(nine).toHaveLength(9);
+		const rows = judge(SAMSUNG, "android", labRuns("input-120", nine));
+		expect(verdicts(rows)).toEqual({ "frames.droppedPct:input-120": "fail", "frames.maxPeriodRatio:input-120": "fail", "frames.maxMs:input-120": "pass" });
+		expect(rows[0]?.measured).toBe(5);
+		expect(rows.every((row) => row.worstRun === undefined)).toBe(true);
+		const ten = judge(SAMSUNG, "android", labRuns("input-120", tenRuns({ 4: [5, 27] })));
+		expect(ten[0]?.verdict).toBe("pass");
+	});
+	test("a record that cannot be read gives no allowance: the worst run is judged", () => {
+		const metrics = labRuns("input-120", tenRuns({ 4: [5, 27] }));
+		for (const runs of [undefined, "not json", "{}", JSON.stringify(tenRuns({ 4: [5, 27] }).map(([late, ms]) => ({ lateIntervals: late, maxMs: ms, droppedPct: 0, maxPeriodRatio: null })))]) {
+			const unreadable: Record<string, number | string> = { ...metrics, "frames.input-120.runs": runs ?? "" };
+			if (runs === undefined) delete unreadable["frames.input-120.runs"];
+			const rows = judge(SAMSUNG, "android", unreadable);
+			expect(rows[0]?.verdict).toBe("fail");
+			expect(rows[0]?.worstRun).toBeUndefined();
+		}
+	});
+	test("a lab with no bad run is judged as before and shows no set-aside run", () => {
+		const rows = judge(SAMSUNG, "android", labRuns("idle", tenRuns()));
+		expect(rows.map((row) => row.verdict)).toEqual(["pass", "pass", "pass"]);
+		expect(rows.every((row) => row.worstRun === undefined)).toBe(true);
+	});
+	test("exceptions and their caps still apply to the judged value", () => {
+		// animation-48 (D9, capped at 2 late intervals): the others' worst is 2, the set-aside run had 20
+		const covered = judge(SAMSUNG, "android", labRuns("animation-48", tenRuns({ 2: [20, 38], 5: [2, 25] })));
+		expect(verdicts(covered)).toEqual({ "frames.droppedPct:animation-48": "exception", "frames.maxPeriodRatio:animation-48": "exception", "frames.maxMs:animation-48": "pass" });
+		expect(covered[0]?.worstRun).toEqual({ run: 2, lateIntervals: 20, maxMs: 38 });
+		// above the cap on the judged value: fails, whatever was set aside
+		const above = judge(SAMSUNG, "android", labRuns("animation-48", tenRuns({ 2: [20, 38], 5: [3, 25] })));
+		expect(above.find((row) => row.id === "frames.droppedPct")?.verdict).toBe("fail");
+		// the D1 floors are uncapped
+		const header = judge(IPHONE, "ios", labRuns("header-8", Array.from({ length: 10 }, (_, index): [number, number] => [16 + (index % 2), 36 + index]), 16.67));
+		expect(verdicts(header)).toEqual({ "frames.droppedPct:header-8": "exception", "frames.maxPeriodRatio:header-8": "exception", "frames.maxMs:header-8": "exception" });
+		expect(header.find((row) => row.id === "frames.maxMs")?.measured).toBe(44);
+		expect(header.find((row) => row.id === "frames.maxMs")?.worstRun?.maxMs).toBe(45);
+		// a scenario with one bad run does not need the Samsung's exception: the allowance passes it
+		const spared = judge(SAMSUNG, "android", labRuns("animation-48", tenRuns({ 2: [20, 38] })));
+		expect(spared.map((row) => row.verdict)).toEqual(["pass", "pass", "pass"]);
+	});
+	test("the gestures gates keep the D9 rule per launch: no allowance, whatever a run list says", () => {
+		const gestureGates = file.gates.filter((gate) => gate.id.startsWith("gestures.frames."));
+		expect(gestureGates.every((gate) => gate.allowance === undefined)).toBe(true);
+		const rows = judge(SAMSUNG, "android", { "gestures.pinch-rotate.lateIntervals": 2, "gestures.pinch-rotate.droppedPct": 0.8, "gestures.pinch-rotate.maxMs": 30, "gestures.pinch-rotate.maxPeriodRatio": 2.7, "gestures.pinch-rotate.runs": JSON.stringify(tenRuns()) }, gestureGates);
+		expect(rows.find((row) => row.id === "gestures.frames.droppedPct")?.verdict).toBe("fail");
+	});
+	test("the emulator's rows stay informational and show the worst run", () => {
+		const rows = judge(EMULATOR, "android", labRuns("animation-48", tenRuns({ 2: [350, 90] })));
+		expect(new Set(rows.map((row) => row.verdict))).toEqual(new Set(["informational"]));
+		expect(rows[0]?.measured).toBe(350);
+		expect(setAsideRunsOf(rows)).toEqual([]);
+	});
+	test("the list of set-aside runs names each once, with what the other runs gave", () => {
+		const rows = judge(SAMSUNG, "android", { ...labRuns("input-120", tenRuns({ 4: [5, 27] })), ...labRuns("tabs-8", tenRuns({ 7: [1, 40] })), ...labRuns("idle", tenRuns()) });
+		const lines = renderSetAside(rows, { [SAMSUNG]: "Samsung A16" });
+		expect(lines).toHaveLength(2);
+		expect(lines[0]).toBe("  input-120 (Samsung A16): run 4 set aside, 5 late intervals and 27 ms; the other runs: frames.droppedPct 1 pass, frames.maxPeriodRatio 1 pass, frames.maxMs 19 pass");
+		expect(lines[1]).toContain("tabs-8 (Samsung A16): run 7 set aside, 1 late intervals and 40 ms");
+		const markdown = renderMarkdown(rows, "Gates", { [SAMSUNG]: "Samsung A16" });
+		expect(markdown).toContain("**Worst runs set aside (D10, 2)");
+		expect(markdown).toMatch(/\| input-120 \| Samsung A16 \| 4 \| 5 \| 27 ms \|/);
+	});
+	test("the real gates.json gives the three lab frame gates the allowance of ten runs, and nothing else", () => {
+		for (const gate of file.gates)
+			expect([gate.id, gate.allowance]).toEqual([gate.id, ["frames.droppedPct", "frames.maxPeriodRatio", "frames.maxMs"].includes(gate.id) ? { runs: "frames.*.runs", min: 10, late: "frames.droppedPct", long: "frames.maxMs" } : undefined]);
+	});
+	test("checkGatesFile refuses an allowance that cannot work", () => {
+		const gate = (allowance: NonNullable<Gate["allowance"]>, metric = "f.*.lateIntervals"): GatesFile => ({
+			version: 1,
+			devices: {},
+			scenarios: { android: [], ios: [] },
+			smoke: { modules: { android: ["a"], ios: ["a"] }, skips: { android: [], ios: [] } },
+			gates: [
+				{ id: "late", title: "x", unit: "n", metric, bar: { android: { max: 1 } }, allowance },
+				{ id: "long", title: "x", unit: "ms", metric: "f.*.maxMs", bar: { android: { max: 33 } } },
+			],
+		});
+		const ok = { runs: "f.*.runs", min: 10, late: "late", long: "long" };
+		expect(() => checkGatesFile(gate(ok))).not.toThrow();
+		expect(() => checkGatesFile(gate({ ...ok, runs: "f.runs" }))).toThrow(/one `\*`/);
+		expect(() => checkGatesFile(gate(ok, "f.*.other"))).toThrow(/not a late interval or longest-frame metric/);
+		expect(() => checkGatesFile(gate({ ...ok, min: 1 }))).toThrow(/at least 2 runs/);
+		expect(() => checkGatesFile(gate({ ...ok, late: "nope" }))).toThrow(/nope, which is not a gate/);
+	});
+});
+
 describe("lab.scenarios.failed leaves out the scenarios whose frame misses the exceptions cover", () => {
 	const labGates = file.gates.filter((gate) => gate.id === "lab.scenarios.failed" || frameGates.some((frame) => frame.id === gate.id));
 	const failedRuns = (...runs: { frame: string[]; other?: number }[]) => JSON.stringify(runs.map((run) => ({ frame: run.frame, other: run.other ?? 0 })));
@@ -323,8 +463,38 @@ describe("lab.scenarios.failed leaves out the scenarios whose frame misses the e
 		const rows = lab(SAMSUNG, "android", 2, failedRuns({ frame: ["churn-animated", "animation-48"] }), { ...frames("churn-animated", 28, 52), ...frames("animation-48", 2, 27) });
 		expect(failed(rows).measured).toBe(0);
 		expect(failed(rows).verdict).toBe("pass");
-		expect(failed(rows).also).toEqual({ value: 2, unit: "before exceptions" });
-		expect(renderTable([failed(rows)], false)).toContain("0, 2 before exceptions");
+		expect(failed(rows).also).toEqual({ value: 2, unit: "before exceptions and allowed runs" });
+		expect(renderTable([failed(rows)], false)).toContain("0, 2 before exceptions and allowed runs");
+	});
+	/** The per-run list for a lab of `length` runs in which the lab failed the named scenarios in the given runs (from 1). */
+	const failedIn = (length: number, failures: Record<number, string[]>) => failedRuns(...Array.from({ length }, (_, index) => ({ frame: failures[index + 1] ?? [] })));
+
+	test("D10: a scenario whose only failing run is the one set aside is not counted", () => {
+		const rows = lab(SAMSUNG, "android", 1, failedIn(10, { 4: ["input-120"] }), labRuns("input-120", tenRuns({ 4: [5, 27] })) as Record<string, number>);
+		expect(failed(rows).measured).toBe(0);
+		expect(failed(rows).verdict).toBe("pass");
+		expect(failed(rows).also).toEqual({ value: 1, unit: "before exceptions and allowed runs" });
+		expect(renderTable([failed(rows)], false)).toContain("0, 1 before exceptions and allowed runs");
+	});
+	test("D10: two bad runs fail the scenario and both failures count, one run at a time", () => {
+		const rows = lab(SAMSUNG, "android", 1, failedIn(10, { 2: ["input-120"], 8: ["input-120"] }), labRuns("input-120", tenRuns({ 2: [6, 30], 8: [3, 25] })) as Record<string, number>);
+		expect(failed(rows).measured).toBe(1);
+		expect(failed(rows).verdict).toBe("fail");
+	});
+	test("D10: a failure in a run other than the one set aside still counts", () => {
+		// the lab failed run 5, but the run the rule set aside is run 4
+		const rows = lab(SAMSUNG, "android", 1, failedIn(10, { 5: ["input-120"] }), labRuns("input-120", tenRuns({ 4: [5, 27] })) as Record<string, number>);
+		expect(failed(rows).measured).toBe(1);
+		expect(failed(rows).verdict).toBe("fail");
+	});
+	test("D10: with nine runs nothing is set aside, so the failing run counts", () => {
+		const rows = lab(SAMSUNG, "android", 1, failedIn(9, { 4: ["input-120"] }), labRuns("input-120", tenRuns({ 4: [5, 27] }).slice(0, 9)) as Record<string, number>);
+		expect(failed(rows).measured).toBe(1);
+		expect(failed(rows).verdict).toBe("fail");
+	});
+	test("D10: a set-aside run and a failure of another kind in the same run both keep their weight", () => {
+		const rows = lab(SAMSUNG, "android", 2, failedRuns(...Array.from({ length: 10 }, (_, index) => ({ frame: index === 3 ? ["input-120"] : [], other: index === 3 ? 1 : 0 }))), labRuns("input-120", tenRuns({ 4: [5, 27] })) as Record<string, number>);
+		expect(failed(rows).measured).toBe(1);
 	});
 	test("a scenario with a frame miss no exception covers still counts: the animation-48 run with 20 late intervals and 38 ms", () => {
 		const rows = lab(SAMSUNG, "android", 2, failedRuns({ frame: ["churn-animated", "animation-48"] }), { ...frames("churn-animated", 28, 52), ...frames("animation-48", 20, 38) });

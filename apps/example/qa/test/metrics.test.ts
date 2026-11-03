@@ -224,6 +224,32 @@ describe("labMetrics", () => {
 		expect(labMetrics(labFile(withLate(1), withLate(2), withLate(0)), pinned)["frames.idle.lateIntervals"]).toBe(2);
 		expect(labMetrics(labFile(withLate(1), withLate(null)), pinned)["frames.idle.lateIntervals"]).toBeNull();
 	});
+	test("every run's figures are listed per scenario for D10, and a run the record cannot count exactly leaves the list out", () => {
+		const withLate = (late: number, max: number) => {
+			const copy = run();
+			const idle = copy.scenarios.find((scenario) => scenario.name === "idle");
+			if (!idle?.frames) throw new Error("sample has no idle frames");
+			idle.frames = { ...idle.frames, count: 183, droppedPct: (100 * late) / 183, max, periodMs: 11.11 };
+			return copy;
+		};
+		const listed = labMetrics(labFile(withLate(1, 21), withLate(0, 14), withLate(3, 40)), pinned)["frames.idle.runs"] as string;
+		expect(JSON.parse(listed)).toEqual([
+			{ lateIntervals: 1, maxMs: 21, droppedPct: 100 / 183, maxPeriodRatio: 21 / 11.11 },
+			{ lateIntervals: 0, maxMs: 14, droppedPct: 0, maxPeriodRatio: 14 / 11.11 },
+			{ lateIntervals: 3, maxMs: 40, droppedPct: 300 / 183, maxPeriodRatio: 40 / 11.11 },
+		]);
+		// the worst-run metrics stay what they were
+		expect(labMetrics(labFile(withLate(1, 21), withLate(0, 14), withLate(3, 40)), pinned)["frames.idle.lateIntervals"]).toBe(3);
+		expect(labMetrics(labFile(withLate(1, 21), withLate(0, 14), withLate(3, 40)), pinned)["frames.idle.maxMs"]).toBe(40);
+		const inexact = withLate(1, 21);
+		const idle = inexact.scenarios.find((scenario) => scenario.name === "idle");
+		if (!idle?.frames) throw new Error("sample has no idle frames");
+		idle.frames = { ...idle.frames, droppedPct: 0.5 };
+		expect(labMetrics(labFile(withLate(1, 21), inexact), pinned)["frames.idle.runs"]).toBeNull();
+		const partial = run();
+		partial.scenarios = partial.scenarios.filter((scenario) => scenario.name !== "idle");
+		expect(labMetrics(labFile(withLate(1, 21), partial), pinned)["frames.idle.runs"]).toBeNull();
+	});
 	test("which scenarios each run's lab marked failed are listed, split into frame failures and the rest", () => {
 		const base = run();
 		const failedRuns = (file: LabFile): { frame: string[]; other: number }[] => JSON.parse(labMetrics(file, pinned)["lab.scenarios.failedRuns"] as string);

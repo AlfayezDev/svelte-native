@@ -4,6 +4,7 @@ import {
 	checkGatesFile,
 	evaluate,
 	renderExceptions,
+	renderSetAside,
 	renderTable,
 	restrictRuns,
 	splitGates,
@@ -430,6 +431,8 @@ export function printVerdict(rows: GateRow[], all: boolean, names: Record<string
 	const { gates, informational, ok } = tally(rows);
 	const exceptions = renderExceptions(rows, names);
 	if (exceptions.length > 0) console.log(`\ndocumented exceptions (the bar was missed and a decision accepts it; not a pass):\n${exceptions.join("\n")}`);
+	const spared = renderSetAside(rows, names);
+	if (spared.length > 0) console.log(`\nworst runs set aside (D10: a scenario is judged on its other runs when all but one meet the rule; the run is never hidden):\n${spared.join("\n")}`);
 	console.log(
 		`\n${gates.pass} gates pass, ${gates.exception} exception, ${gates.fail} fail, ${gates.notMeasured} not measured (a gate that was not measured fails; an exception is a documented miss, not a pass)${informational > 0 ? `; ${informational} informational, not counted` : ""}`,
 	);

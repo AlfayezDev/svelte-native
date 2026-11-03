@@ -1,4 +1,4 @@
-import { lateIntervals } from "../parse/logcat.ts";
+import { lateIntervals, type FrameStats } from "../parse/logcat.ts";
 import { summarize } from "../parse/stats.ts";
 import { crashMetrics, soakMetrics } from "../soak/metrics.ts";
 import { unattributedCount } from "./iphone/crash-reports.ts";
@@ -29,6 +29,15 @@ const listScenario = "list-300-virtual";
 function worst(values: (number | null)[], pick: (numbers: number[]) => number): number | null {
 	if (values.length === 0 || values.some((value) => value === null)) return null;
 	return pick(values as number[]);
+}
+
+/** The JSON list `frames.<scenario>.runs` holds: per run its late intervals, longest frame, dropped share and longest frame over the period; null when any run lacks an exact one. */
+function runRecords(frames: (FrameStats | null)[]): string | null {
+	const records = frames.map((f) => {
+		const late = f ? lateIntervals(f) : null;
+		return f && late !== null && f.periodMs > 0 ? { lateIntervals: late, maxMs: f.max, droppedPct: f.droppedPct, maxPeriodRatio: f.max / f.periodMs } : null;
+	});
+	return records.length === 0 || records.some((record) => record === null) ? null : JSON.stringify(records);
 }
 
 const largest = (numbers: number[]) => Math.max(...numbers);
@@ -124,6 +133,9 @@ export function labMetrics(file: LabFile, pinned: readonly string[]): Metrics {
 			frames.map((f) => (f ? lateIntervals(f) : null)),
 			largest,
 		);
+		// Every run's figures for the scenario, for D10 (the frame gates are judged on all but the one worst run of a lab of ten): a run
+		// without the scenario, or whose late count is not exact, leaves the list out and the worst run is judged.
+		metrics[`frames.${name}.runs`] = runRecords(frames);
 		metrics[`frames.${name}.maxMs`] = worst(
 			frames.map((f) => f?.max ?? null),
 			largest,

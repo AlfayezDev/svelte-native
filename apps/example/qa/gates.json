@@ -597,7 +597,7 @@
     },
     {
       "id": "frames.droppedPct",
-      "title": "Dropped frames per scenario: intervals longer than 1.5 frame periods in the worst run, at most one (D9); the dropped share shows beside it",
+      "title": "Dropped frames per scenario: intervals longer than 1.5 frame periods, at most one per run (D9), in all but one run of a lab of ten (D10); the worst run shows beside the value, and the dropped share of the judged run",
       "unit": "late intervals",
       "metric": "frames.*.lateIntervals",
       "bar": {
@@ -614,11 +614,17 @@
       "also": {
         "metric": "frames.*.droppedPct",
         "unit": "%"
+      },
+      "allowance": {
+        "runs": "frames.*.runs",
+        "min": 10,
+        "late": "frames.droppedPct",
+        "long": "frames.maxMs"
       }
     },
     {
       "id": "frames.maxPeriodRatio",
-      "title": "Longest frame over the frame period, per scenario, judged as the dropped frames are (D9: at most one interval over 1.5 periods per run; no frame over 33 ms is frames.maxMs); the ratio of the longest frame shows beside it",
+      "title": "Longest frame over the frame period, per scenario, judged as the dropped frames are (D9 and D10: at most one interval over 1.5 periods per run, all but one run of a lab of ten; a frame over 33 ms is frames.maxMs); the ratio of the judged run shows beside it",
       "unit": "late intervals",
       "metric": "frames.*.lateIntervals",
       "bar": {
@@ -635,11 +641,17 @@
       "also": {
         "metric": "frames.*.maxPeriodRatio",
         "unit": "x period"
+      },
+      "allowance": {
+        "runs": "frames.*.runs",
+        "min": 10,
+        "late": "frames.droppedPct",
+        "long": "frames.maxMs"
       }
     },
     {
       "id": "frames.maxMs",
-      "title": "Longest frame, per scenario",
+      "title": "Longest frame, per scenario: at most 33 ms in the worst run, all but one run of a lab of ten (D10)",
       "unit": "ms",
       "metric": "frames.*.maxMs",
       "bar": {
@@ -652,7 +664,13 @@
       },
       "roles": [
         "phone"
-      ]
+      ],
+      "allowance": {
+        "runs": "frames.*.runs",
+        "min": 10,
+        "late": "frames.droppedPct",
+        "long": "frames.maxMs"
+      }
     },
     {
       "id": "list.virtual300.mountMs",

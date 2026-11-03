@@ -7,7 +7,7 @@ import type { Metric } from "./types.ts";
  * and `list-300-raw`: repeated short late intervals on its 90 Hz display, capped) or `1 Nov first touch` (the first touch of a process
  * on the Samsung: RNGH's first worklet run and class initialisation). The decisions are in the run log's `GOAL.md`.
  */
-export const decisions = ["D1", "D9", "D11", "1 Nov first touch"] as const;
+export const decisions = ["D1", "D9", "D11", "D13", "1 Nov first touch"] as const;
 export type Decision = (typeof decisions)[number];
 
 /**

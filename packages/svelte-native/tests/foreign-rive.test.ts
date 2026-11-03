@@ -47,6 +47,23 @@ test("the container holds the children behind the view, which carries the file, 
   expect(typeof app.riveHandle().host.tag).toBe("number");
 });
 
+test("on iOS the callbacks that were given reach the interop layer as handler props, and a view without callbacks sends none", async () => {
+  const harness = createHarness("ios", { natives: { assets } });
+  const loaded = await harness.load("foreign-rive-fixture.svelte");
+  const app = loaded.startSurface(123, loaded.Fixture, {}) as App;
+  const [first, second] = find(harness.roots()[123], name);
+  // React Native's interop makes a native event block only for an event prop that is `true`; the view's block stays nil otherwise and the event is never sent.
+  // The component gives every handler of the library, which forwards to the callbacks that exist, so the first view and the second send the same list.
+  const expected = ["onError", "onLoopEnd", "onPause", "onPlay", "onRiveEventReceived", "onStateChanged", "onStop"];
+  for (const view of [first, second]) {
+    expect(Object.keys(view.props).filter((key) => /^on[A-Z]/.test(key)).sort()).toEqual(expected);
+    for (const key of expected) expect(view.props[key], key).toBe(true);
+  }
+  harness.emit(first.target, "topPlay", { animationName: "idle", isStateMachine: false });
+  harness.emit(first.target, "topError", { type: "FileNotFound", message: "missing" });
+  expect(app.eventLog()).toEqual([["play", "idle", false], ["error", "FileNotFound", "missing"]]);
+});
+
 test("the events reach the callbacks with the library's arguments; an error of an unknown type is only warned about", async () => {
   const harness = createHarness("android", { natives: { assets } });
   const loaded = await harness.load("foreign-rive-fixture.svelte");
@@ -173,7 +190,9 @@ test("the static config lists the props the Android manager sets and the events 
   for (const platform of ["android", "ios"] as const) {
     const config = loaded.configs.viewConfigFor(name, platform);
     const base = loaded.configs.viewConfigFor("RCTView", platform);
-    expect(Object.keys(config.attributes).filter((key) => !(key in base.attributes)).sort(), platform).toEqual(props);
+    // The view manager's events are props on iOS only (the interop layer builds a native event block for each handler prop it is sent).
+    const handlers = platform === "ios" ? events.map((type) => `on${type.slice(3)}`) : [];
+    expect(Object.keys(config.attributes).filter((key) => !(key in base.attributes)).sort(), platform).toEqual([...props, ...handlers].sort());
     const viewEvents = new Set(base.events.keys());
     expect([...config.events.keys()].filter((type) => !viewEvents.has(type)).sort(), platform).toEqual(events);
   }

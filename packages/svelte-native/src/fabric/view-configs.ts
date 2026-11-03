@@ -214,13 +214,24 @@ const iosEvents = `
  * `resolveAssetSource`; `colorLists` hold an array of colours (a gradient's `colors`, converted one by one); `colorStructs`
  * name the colour field of each struct in an array attribute (Lottie's `colorFilters` are `{ keypath, color }`).
  */
-export type Kind = { plain?: string; colors?: string; events?: string; assetSources?: string; colorLists?: string; colorStructs?: Record<string, string> };
+export type Kind = {
+  plain?: string; colors?: string; events?: string; assetSources?: string; colorLists?: string; colorStructs?: Record<string, string>;
+  /**
+   * A view manager without codegen (`requireNativeComponent`), which iOS mounts through React Native's legacy interop layer. The interop gives the
+   * native view an event block only for an event prop that is sent as `true` (`RCTComponentData`'s event setter), and React Native's own config for
+   * such a view lists every event as a prop on iOS (`ViewConfigIgnore.js`, `ConditionallyIgnoredEventHandlers`); without the prop the view's
+   * block stays nil and its events are never sent. Android's managers emit their events without a prop, and a codegen component's emitter is
+   * created with the view, so on iOS only these kinds carry their events as attributes.
+   */
+  legacy?: boolean;
+};
 
 /**
  * Third-party native components the engine mounts through React Native's own mounting (SPEC.md, "Foreign views"). `plain`
  * and `colors` are the props the library's codegen spec declares (its generated view config validates exactly those, plus a
  * view's own), `events` the events its native emitter sends (`tests/foreign.test.ts` compares both with the specs). The
- * event handler props (`onPress`) are not attributes, as in the generated configs: handlers stay in JavaScript.
+ * event handler props (`onPress`) are not attributes, as in the generated configs: handlers stay in JavaScript. The exception is
+ * a `legacy` kind on iOS, whose view manager only emits an event it was given a handler prop for (`Kind.legacy`).
  */
 const foreignKinds: Record<string, Kind> = {
   // react-native-webview 13.16
@@ -281,6 +292,7 @@ const foreignKinds: Record<string, Kind> = {
   },
   // react-native-video 6.19: a legacy view manager (`requireNativeComponent("RCTVideo")`, no codegen), mounted through React Native's Fabric interop
   RCTVideo: {
+    legacy: true,
     plain: `
       allowsExternalPlayback audioOutput automaticallyWaitsToMinimizeStalling bufferingStrategy controls controlsStyles
       currentPlaybackTime debug disableAudioSessionManagement disableDisconnectError disableFocus
@@ -326,6 +338,7 @@ const foreignKinds: Record<string, Kind> = {
   },
   // rive-react-native 9.7: a legacy view manager like RCTVideo; its events are the manager's direct events (`onPlay` reaches JavaScript as `topPlay`)
   RiveReactNativeView: {
+    legacy: true,
     plain: `
       alignment animationName artboardName autoplay dataBinding fit isUserHandlingErrors layoutScaleFactor referencedAssets
       resourceName stateMachineName url
@@ -543,6 +556,7 @@ function attributesFor(platform: Platform, kind: Kind): Table {
     attributes.experimental_backgroundRepeat = backgroundRepeat;
   }
   fill(attributes, kind.plain ?? "", true);
+  if (platform === "ios" && kind.legacy) for (const registration of eventsOf(kind.events ?? "").values()) attributes[registration] = true;
   fill(attributes, kind.colors ?? "", color);
   fill(attributes, kind.assetSources ?? "", assetSource);
   fill(attributes, kind.colorLists ?? "", colorList(color));

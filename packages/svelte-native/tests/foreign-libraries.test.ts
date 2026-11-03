@@ -169,8 +169,10 @@ for (const [name, file] of legacyManagers) {
       expect(android.createPayload({ [event]: true }, android.viewConfigFor(name, "android"))).toBeNull();
     }
     // A codegen component's emitter is created with its view, so the other libraries' iOS configs do not carry their own events as props.
+    // (react-native-animateable-text's `JBAnimatedText` is codegen on iOS too, but its own hand-written view config, `AnimateableText.tsx`, lists
+    // `onTextLayout` and `onInlineViewLayout` among its props on both platforms, so its table does and is not compared here.)
     const base = ios.viewConfigFor("RCTView", "ios");
-    for (const other of ["LottieAnimationView", "RNDateTimePicker", "RNPDFPdfView", "RNCWebView"]) {
+    for (const other of ["LottieAnimationView", "RNDateTimePicker", "RNPDFPdfView", "RNCWebView", "RNMapsMapView", "RNMapsMarker"]) {
       const view = ios.viewConfigFor(other, "ios");
       for (const registration of view.events.values()) if (!base.events.has(`top${registration.slice(2)}`)) expect(registration in view.attributes, `${other} ${registration}`).toBe(false);
     }

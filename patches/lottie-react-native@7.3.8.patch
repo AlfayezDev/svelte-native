@@ -1,8 +1,8 @@
 diff --git a/ios/Fabric/LottieAnimationViewComponentView.mm b/ios/Fabric/LottieAnimationViewComponentView.mm
-index de8b54581e8d4eb21554723792265d4b617704d6..4567ba4e6f14345af5112bc9e69f648018555524 100644
+index de8b54581e8d4eb21554723792265d4b617704d6..8201753ce2a7f9360ae14f3b3172f943e06dc0e8 100644
 --- a/ios/Fabric/LottieAnimationViewComponentView.mm
 +++ b/ios/Fabric/LottieAnimationViewComponentView.mm
-@@ -15,8 +15,21 @@ using namespace facebook::react;
+@@ -15,8 +15,24 @@ using namespace facebook::react;
  @interface LottieAnimationViewComponentView () <RCTLottieAnimationViewViewProtocol>
  @end
  
@@ -16,15 +16,33 @@ index de8b54581e8d4eb21554723792265d4b617704d6..4567ba4e6f14345af5112bc9e69f6480
 +    // (`sourceJson`, `sourceName`, the first props of the view) raises `onAnimationLoaded` (or `onAnimationFailure`, when the JSON does
 +    // not parse) while the props are applied, so those events were dropped. They are sent when the emitter arrives.
 +    NSMutableArray *_eventsBeforeEmitter;
-+    // Whether the container holds a loaded animation, and whether `onAnimationLoaded` was sent for the node the view shows now. A
-+    // recycled view keeps its animation and its props: the node that gets it with the same source loads nothing, so nothing would
-+    // tell it that its animation is loaded. When its emitter arrives the view says so.
++    // Whether the container holds a loaded animation, the message of the last source that failed, and whether `onAnimationLoaded` and
++    // `onAnimationFailure` were sent for the node the view shows now. A recycled view keeps its animation and its props: the node
++    // that gets it with the same source loads nothing, so nothing would tell it that its animation is loaded (or that it failed).
++    // When its emitter arrives the view says so. All of it is read and written on the main thread.
 +    BOOL _animationLoaded;
 +    BOOL _loadedEventSent;
++    NSString *_lastFailure;
++    BOOL _failureEventSent;
  }
  
  +(void) load {
-@@ -65,6 +78,14 @@ using namespace facebook::react;
+@@ -49,6 +65,14 @@ using namespace facebook::react;
+     const auto &oldLottieProps = *std::static_pointer_cast<const LottieAnimationViewProps>(_props);
+     const auto &newLottieProps = *std::static_pointer_cast<const LottieAnimationViewProps>(props);
+ 
++    if (!_eventEmitter) {
++        // The first props of a node. What was queued before them, a source that finished loading while the view sat in the recycle pool,
++        // belongs to no node: a node with the same source hears of it from the replay in `updateEventEmitter:`, any other loads its own.
++        _eventsBeforeEmitter = nil;
++        _loadedEventSent = NO;
++        _failureEventSent = NO;
++    }
++
+     if(oldLottieProps.resizeMode != newLottieProps.resizeMode) {
+         [_view setResizeMode:RCTNSStringFromString(newLottieProps.resizeMode)];
+     }
+@@ -65,6 +89,15 @@ using namespace facebook::react;
          [_view setSpeed:newLottieProps.speed];
      }
  
@@ -32,36 +50,56 @@ index de8b54581e8d4eb21554723792265d4b617704d6..4567ba4e6f14345af5112bc9e69f6480
 +       oldLottieProps.sourceDotLottieURI != newLottieProps.sourceDotLottieURI ||
 +       oldLottieProps.sourceName != newLottieProps.sourceName ||
 +       oldLottieProps.sourceURL != newLottieProps.sourceURL) {
-+        // The animation that was loaded goes; the load of the new source (`onAnimationLoaded`) says when there is one again.
++        // The animation that was loaded and the failure that was seen go; the load of the new source says when there is an animation again.
 +        _animationLoaded = NO;
++        _lastFailure = nil;
 +    }
 +
      if(oldLottieProps.sourceJson != newLottieProps.sourceJson) {
          [_view setSourceJson:RCTNSStringFromString(newLottieProps.sourceJson.c_str())];
      }
-@@ -131,41 +152,74 @@ using namespace facebook::react;
+@@ -131,41 +164,103 @@ using namespace facebook::react;
      [_view resume];
  }
  
 -- (void)onAnimationFinishWithIsCancelled:(bool)isCancelled
-+- (void)sendEvent:(LottieEventSend)send
++// The animation's callbacks come from the thread that loaded it (a fetched source ends on the URL session's queue); the view's state is the main thread's.
++- (void)lottieOnMain:(dispatch_block_t)block
  {
 -    if(!_eventEmitter) {
-+    const auto emitter = std::dynamic_pointer_cast<const LottieAnimationViewEventEmitter>(_eventEmitter);
-+    if (emitter) {
-+        send(*emitter);
-         return;
+-        return;
++    if ([NSThread isMainThread]) {
++        block();
++    } else {
++        dispatch_async(dispatch_get_main_queue(), block);
      }
++}
  
 -    LottieAnimationViewEventEmitter::OnAnimationFinish event = {
 -        .isCancelled = isCancelled
 -    };
 -
 -    std::dynamic_pointer_cast<const LottieAnimationViewEventEmitter>(_eventEmitter)->onAnimationFinish(event);
-+    if (!_eventsBeforeEmitter) {
-+        _eventsBeforeEmitter = [NSMutableArray new];
-+    }
-+    [_eventsBeforeEmitter addObject:[send copy]];
++// Sends an event through the view's emitter. Without one (the view has its props but not yet its emitter) a loaded or failure event is kept for it
++// [keepUntilEmitter]; a finish event is dropped, as it was, which also bounds the queue.
++- (void)lottieSendEvent:(LottieEventSend)send keepUntilEmitter:(BOOL)keepUntilEmitter
++{
++    [self lottieOnMain:^{
++        const auto emitter = std::dynamic_pointer_cast<const LottieAnimationViewEventEmitter>(self->_eventEmitter);
++        if (emitter) {
++            send(*emitter);
++            return;
++        }
++
++        if (!keepUntilEmitter) {
++            return;
++        }
++
++        if (!self->_eventsBeforeEmitter) {
++            self->_eventsBeforeEmitter = [NSMutableArray new];
++        }
++        [self->_eventsBeforeEmitter addObject:[send copy]];
++    }];
  }
  
 -- (void)onAnimationFailureWithError:(NSString*)error
@@ -75,7 +113,7 @@ index de8b54581e8d4eb21554723792265d4b617704d6..4567ba4e6f14345af5112bc9e69f6480
 +    _eventsBeforeEmitter = nil;
 +    for (id item in pending) {
 +        LottieEventSend send = item;
-+        [self sendEvent:send];
++        [self lottieSendEvent:send keepUntilEmitter:YES];
      }
  
 -    LottieAnimationViewEventEmitter::OnAnimationFailure event = {
@@ -84,52 +122,63 @@ index de8b54581e8d4eb21554723792265d4b617704d6..4567ba4e6f14345af5112bc9e69f6480
 +    if (_animationLoaded && !_loadedEventSent) {
 +        [self onAnimationLoaded];
 +    }
-+}
  
 -    std::dynamic_pointer_cast<const LottieAnimationViewEventEmitter>(_eventEmitter)->onAnimationFailure(event);
-+- (void)prepareForRecycle
-+{
-+    _eventsBeforeEmitter = nil;
-+    _loadedEventSent = NO;
-+    [super prepareForRecycle];
++    if (_lastFailure && !_failureEventSent) {
++        [self onAnimationFailureWithError:_lastFailure];
++    }
  }
  
 -- (void)onAnimationLoaded
-+- (void)onAnimationFinishWithIsCancelled:(bool)isCancelled
++- (void)prepareForRecycle
  {
 -    if(!_eventEmitter) {
 -        return;
 -    }
-+    [self sendEvent:^(const LottieAnimationViewEventEmitter &emitter) {
++    _eventsBeforeEmitter = nil;
++    _loadedEventSent = NO;
++    _failureEventSent = NO;
++    [super prepareForRecycle];
++}
+ 
+-    LottieAnimationViewEventEmitter::OnAnimationLoaded event = {};
++- (void)onAnimationFinishWithIsCancelled:(bool)isCancelled
++{
++    [self lottieSendEvent:^(const LottieAnimationViewEventEmitter &emitter) {
 +        LottieAnimationViewEventEmitter::OnAnimationFinish event = {
 +            .isCancelled = isCancelled
 +        };
 +
 +        emitter.onAnimationFinish(event);
-+    }];
++    } keepUntilEmitter:NO];
 +}
-+
-+- (void)onAnimationFailureWithError:(NSString*)error
-+{
-+    [self sendEvent:^(const LottieAnimationViewEventEmitter &emitter) {
-+        LottieAnimationViewEventEmitter::OnAnimationFailure event = {
-+            .error = std::string([error UTF8String])
-+        };
-+
-+        emitter.onAnimationFailure(event);
-+    }];
-+}
- 
--    LottieAnimationViewEventEmitter::OnAnimationLoaded event = {};
-+- (void)onAnimationLoaded
-+{
-+    _animationLoaded = YES;
-+    _loadedEventSent = YES;
-+    [self sendEvent:^(const LottieAnimationViewEventEmitter &emitter) {
-+        LottieAnimationViewEventEmitter::OnAnimationLoaded event = {};
  
 -    std::dynamic_pointer_cast<const LottieAnimationViewEventEmitter>(_eventEmitter)->onAnimationLoaded(event);
-+        emitter.onAnimationLoaded(event);
++- (void)onAnimationFailureWithError:(NSString*)error
++{
++    [self lottieOnMain:^{
++        self->_lastFailure = error;
++        self->_failureEventSent = YES;
++        [self lottieSendEvent:^(const LottieAnimationViewEventEmitter &emitter) {
++            LottieAnimationViewEventEmitter::OnAnimationFailure event = {
++                .error = std::string([error UTF8String])
++            };
++
++            emitter.onAnimationFailure(event);
++        } keepUntilEmitter:YES];
++    }];
++}
++
++- (void)onAnimationLoaded
++{
++    [self lottieOnMain:^{
++        self->_animationLoaded = YES;
++        self->_loadedEventSent = YES;
++        [self lottieSendEvent:^(const LottieAnimationViewEventEmitter &emitter) {
++            LottieAnimationViewEventEmitter::OnAnimationLoaded event = {};
++
++            emitter.onAnimationLoaded(event);
++        } keepUntilEmitter:YES];
 +    }];
  }
  

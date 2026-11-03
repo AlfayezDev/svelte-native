@@ -47,7 +47,7 @@ test("the container holds the children behind the view, which carries the file, 
   expect(typeof app.riveHandle().host.tag).toBe("number");
 });
 
-test("on iOS the callbacks that were given reach the interop layer as handler props, and a view without callbacks sends none", async () => {
+test("on iOS the component gives the interop layer a handler prop for every event of the manager, whichever callbacks it was given, and the events reach the callbacks", async () => {
   const harness = createHarness("ios", { natives: { assets } });
   const loaded = await harness.load("foreign-rive-fixture.svelte");
   const app = loaded.startSurface(123, loaded.Fixture, {}) as App;

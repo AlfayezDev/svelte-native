@@ -54,9 +54,11 @@ describe("the shadowed card", () => {
 		expect(viewInside(shadowBox.views, "RCTViewComponentView")).toEqual({ width: 216, height: 76 });
 		expect(compareLayout(shadowBox, "RCTViewComponentView", false, { width: 108, height: 38 }).passed).toBe(true);
 	});
-	test("on Android the pinned FastShadowView inside the box is the card's size (the engine's lines, in the same format, at density 2.625)", () => {
-		const android: Inspected = { class: "expo.modules.svelteengine.views.EngineView", width: 960, height: 252, density: 2.625, views: ["  FastShadowView 284x100 clip=children", "  EngineView 284x100 clip=canvas"] };
-		expect(compareLayout(android, "FastShadowView", false, { width: 108.2, height: 38.1 }).passed).toBe(true);
+	test("on Android the pinned FastShadowView and ConicGradientView inside the box are the measured size (OVH emulator run foreign-localhost_5555-20261102T230816Z, density 2.625)", () => {
+		const shadowAndroid: Inspected = { class: "expo.modules.svelteengine.views.EngineView", width: 1032, height: 252, density: 2.625, views: ["EngineForeign 283x107 clip=none", "  FastShadowView 283x107 clip=none", "EngineView 188x54 clip=none", "  EngineText 188x54 clip=none"] };
+		expect(compareLayout(shadowAndroid, "FastShadowView", false, { width: 107.8, height: 40.8 })).toEqual({ passed: true, detail: "native 107.8x40.8 dp, measured 107.8x40.8" });
+		const conicAndroid: Inspected = { class: "expo.modules.svelteengine.views.EngineView", width: 1032, height: 252, density: 2.625, views: ["EngineForeign 1032x247 clip=none", "  ConicGradientView 1032x247 clip=children", "EngineText 108x57 clip=none"] };
+		expect(compareLayout(conicAndroid, "ConicGradientView", false, { width: 393.1, height: 94.1 }).passed).toBe(true);
 	});
 });
 

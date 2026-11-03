@@ -88,7 +88,7 @@ export async function judgeSmoke(file: SmokeFile, gatesFile?: GatesFile): Promis
 	const platform = file.device.platform;
 	const serial = file.device.serial;
 	const metrics = smokeMetrics(file, { modules: gates.smoke.modules[platform], skips: gates.smoke.skips[platform] });
-	const rows = evaluate(splitGates(gates.gates).smoke, { [serial]: { platform, role: gates.devices[serial]?.role ?? null, runs: gates.devices[serial]?.runs ?? null, metrics } }, platform);
+	const rows = evaluate(splitGates(gates.gates).smoke, { [serial]: { platform, role: gates.devices[serial]?.role ?? null, runs: gates.devices[serial]?.runs ?? null, metrics } }, platform, gates.exceptions);
 	const bad = rows.filter((row) => row.verdict === "fail" || row.verdict === "not measured");
 	return {
 		rows,

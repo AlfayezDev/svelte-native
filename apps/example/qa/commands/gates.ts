@@ -4,7 +4,7 @@ import { evaluate, exceptGates, renderMarkdown, splitGates } from "../lib/gates.
 import { reportPath } from "../lib/paths.ts";
 import { latestRunFiles, readJson, runKinds, slug, type RunKind } from "../lib/runs.ts";
 import type { Platform } from "../lib/types.ts";
-import { loadGates, printVerdict, reportDevices, type ReportFile } from "./report.ts";
+import { deviceNames, loadGates, printVerdict, reportDevices, type ReportFile } from "./report.ts";
 
 /** A run file the report reads, with when it was last written and which platform's device made it. */
 export type RunFileState = { file: string; modifiedAt: Date; platform: Platform };
@@ -65,8 +65,9 @@ const age = (since: Date): string => {
 };
 
 /**
- * Evaluates gates.json against the measurements in report.json and sets the exit code: 0 only if every gate passed, the report is
- * newer than every run file it reads, and it has no warnings. The QA gates and the smoke gates are two lanes: `gates` judges the
+ * Evaluates gates.json against the measurements in report.json and sets the exit code: 0 only if every gate passed or is a documented
+ * exception (a miss that gates.json's `exceptions` accepts, counted apart), the report is newer than every run file it reads, and it
+ * has no warnings. A failure or a gate that was not measured is exit 1. The QA gates and the smoke gates are two lanes: `gates` judges the
  * first (the QA app's boot, frames, parity, accessibility, crashes), `gates --smoke` the second (the smoke app's native modules).
  */
 export async function gates(argv: string[]): Promise<void> {
@@ -97,14 +98,14 @@ export async function gates(argv: string[]): Promise<void> {
 	if (only) console.log(`run kinds judged: ${only.join(", ")} (the gates of the others are informational)`);
 	const except = (flagString(values.except) ?? "").split(",").map((id) => id.trim()).filter(Boolean);
 	if (except.length > 0) console.log(`gates not judged by this lane (run at a smaller sample than the bar's): ${except.join(", ")}`);
-	const rows = exceptGates(evaluate(smoke ? lanes.smoke : lanes.standard, reportDevices(reportFile, gatesFile, only), platform), except, gatesFile);
-	const ok = printVerdict(rows, values.all === true);
+	const rows = exceptGates(evaluate(smoke ? lanes.smoke : lanes.standard, reportDevices(reportFile, gatesFile, only), platform, gatesFile.exceptions), except, gatesFile);
+	const ok = printVerdict(rows, values.all === true, deviceNames(gatesFile));
 	if (problems.length > 0) console.log(`\n${problems.length} problem(s) with the report itself: the verdict above is not one that can pass`);
 	const markdown = flagString(values.markdown);
 	if (markdown !== undefined) {
 		const title = `${smoke ? "Smoke gates" : "Gates"}${platform ? `, ${platform}` : ""}`;
 		const problemLines = problems.length > 0 ? ["**Problems with the report itself** (the verdict cannot pass):", "", ...problems.map((problem) => `- ${problem}`), ""] : [];
-		await writeFile(markdown, `${[renderMarkdown(rows, title), ...problemLines].join("\n")}\n`);
+		await writeFile(markdown, `${[renderMarkdown(rows, title, deviceNames(gatesFile)), ...problemLines].join("\n")}\n`);
 	}
 	process.exitCode = ok && problems.length === 0 ? 0 : 1;
 }

@@ -102,6 +102,20 @@ export type FrameStats = {
 	droppedPct: number;
 	smooth: boolean;
 };
+/**
+ * How many intervals of a window were late (longer than 1.5 frame periods: the lab's own `dropped`), exactly. The run record holds no
+ * count of them, only `count` (every interval) and `droppedPct`, which the lab computes as `100 * dropped / count` in full double
+ * precision and the run file keeps unrounded, so the late count is `droppedPct * count / 100` rounded to the integer it must be. A
+ * percentage no whole number of intervals reproduces (a rounded one, from an older record or a hand-made file) gives `null`: a
+ * count is never guessed from a figure rounded to a tenth. A window with no interval has none to judge, `null` too.
+ */
+export function lateIntervals(frames: Pick<FrameStats, "count" | "droppedPct">): number | null {
+	if (!Number.isInteger(frames.count) || frames.count <= 0 || !Number.isFinite(frames.droppedPct)) return null;
+	const late = Math.round((frames.droppedPct * frames.count) / 100);
+	if (late < 0 || late > frames.count) return null;
+	return Math.abs((100 * late) / frames.count - frames.droppedPct) <= 1e-9 ? late : null;
+}
+
 export type Scenario = {
 	name: string;
 	verdict: string;

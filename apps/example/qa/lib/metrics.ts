@@ -1,3 +1,4 @@
+import { lateIntervals } from "../parse/logcat.ts";
 import { summarize } from "../parse/stats.ts";
 import { crashMetrics, soakMetrics } from "../soak/metrics.ts";
 import { unattributedCount } from "./iphone/crash-reports.ts";
@@ -107,6 +108,11 @@ export function labMetrics(file: LabFile, pinned: readonly string[]): Metrics {
 		);
 		metrics[`frames.${name}.droppedPct`] = worst(
 			frames.map((f) => f?.droppedPct ?? null),
+			largest,
+		);
+		// The worst run's late intervals, which the phones' frame gates judge (D9: at most one per run); `droppedPct` is the same in percent.
+		metrics[`frames.${name}.lateIntervals`] = worst(
+			frames.map((f) => (f ? lateIntervals(f) : null)),
 			largest,
 		);
 		metrics[`frames.${name}.maxMs`] = worst(

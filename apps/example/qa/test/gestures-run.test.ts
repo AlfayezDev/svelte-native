@@ -136,8 +136,9 @@ describe("choosing scenarios", () => {
 	});
 });
 
+/** A window of 240 intervals: smooth has none late; not smooth has ten, recorded the way the lab does (`100 * late / count`, unrounded). */
 const frames = (smooth: boolean, over: Partial<NonNullable<GestureResult["frames"]>> = {}) => ({
-	periodMs: 16.67, durationMs: 4000, count: 240, p50: 17, p95: 17, p99: 18, max: smooth ? 18 : 90, droppedPct: smooth ? 0 : 4.2, smooth, ...over,
+	periodMs: 16.67, durationMs: 4000, count: 240, p50: 17, p95: 17, p99: 18, max: smooth ? 18 : 90, droppedPct: smooth ? 0 : (100 * 10) / 240, smooth, ...over,
 });
 
 function result(name: string, over: Partial<GestureResult> = {}): GestureResult {
@@ -256,6 +257,7 @@ describe("metrics", () => {
 		expect(metrics["gestures.box.failedChecks"]).toBe(0);
 		expect(metrics["gestures.pinch-rotate.failedChecks"]).toBe(0);
 		expect(metrics["gestures.box.droppedPct"]).toBe(0);
+		expect(metrics["gestures.box.lateIntervals"]).toBe(0);
 		expect(metrics["gestures.box-busy.maxMs"]).toBe(18);
 		expect(metrics["gestures.row.droppedPct"]).toBeUndefined();
 		expect(metrics["gestures.box-js-busy.failedChecks"]).toBeUndefined();
@@ -271,7 +273,8 @@ describe("metrics", () => {
 			scenarioNames,
 		);
 		expect(metrics["gestures.box.failedChecks"]).toBe(1);
-		expect(metrics["gestures.box.droppedPct"]).toBe(4.2);
+		expect(metrics["gestures.box.droppedPct"]).toBeCloseTo(4.1667, 3);
+		expect(metrics["gestures.box.lateIntervals"]).toBe(10);
 		expect(metrics["gestures.box.maxPeriodRatio"]).toBeCloseTo(90 / 16.67, 3);
 		expect(metrics["gestures.churn.leaked"]).toBe(9);
 		expect(metrics["gestures.agreement.mismatches"] as number > 0).toBe(true);
@@ -345,11 +348,11 @@ describe("the gestures gates", () => {
 	test("frames that are not smooth fail the phone and are only shown for the emulator; a failed check fails both", () => {
 		const metrics = gesturesMetrics(file([launch("adb"), launch("qa", {}, (name) => (name === "gestures-pinch-rotate" ? { frames: frames(false), checks: [{ name: "one", ok: false, value: null }] } : {}))]), scenarioNames);
 		const phone = verdicts(metrics, "R58Y90KNGRP", "phone");
-		expect(phone["gestures.frames.droppedPct:gestures.pinch-rotate.droppedPct"]).toBe("fail");
+		expect(phone["gestures.frames.droppedPct:gestures.pinch-rotate.lateIntervals"]).toBe("fail");
 		expect(phone["gestures.frames.maxMs:gestures.pinch-rotate.maxMs"]).toBe("fail");
 		expect(phone["gestures.checks:gestures.pinch-rotate.failedChecks"]).toBe("fail");
 		const emulator = verdicts(metrics, "localhost:5555", "lab");
-		expect(emulator["gestures.frames.droppedPct:gestures.pinch-rotate.droppedPct"]).toBe("informational");
+		expect(emulator["gestures.frames.droppedPct:gestures.pinch-rotate.lateIntervals"]).toBe("informational");
 		expect(emulator["gestures.checks:gestures.pinch-rotate.failedChecks"]).toBe("fail");
 	});
 

@@ -145,8 +145,8 @@ describe("tally and rendering", () => {
 	test("ok only when every row passes; not measured counts against it", () => {
 		const rows = evaluate([gates[0] as Gate], android({ "boot.warm.p90": 300 }));
 		expect(tally(rows)).toEqual({
-			rows: { pass: 1, fail: 0, notMeasured: 1 },
-			gates: { pass: 1, fail: 0, notMeasured: 1 },
+			rows: { pass: 1, exception: 0, fail: 0, notMeasured: 1 },
+			gates: { pass: 1, exception: 0, fail: 0, notMeasured: 1 },
 			informational: 0,
 			ok: false,
 		});
@@ -160,8 +160,8 @@ describe("tally and rendering", () => {
 			"android",
 		).filter((row) => row.id === "frames.droppedPct");
 		expect(tally(rows)).toEqual({
-			rows: { pass: 1, fail: 2, notMeasured: 0 },
-			gates: { pass: 0, fail: 1, notMeasured: 0 },
+			rows: { pass: 1, exception: 0, fail: 2, notMeasured: 0 },
+			gates: { pass: 0, exception: 0, fail: 1, notMeasured: 0 },
 			informational: 0,
 			ok: false,
 		});
@@ -254,8 +254,8 @@ describe("device roles", () => {
 		const table = renderTable(rows, false).split("\n");
 		expect(table[1]).toMatch(/^frames\.droppedPct\s+android\s+x \(lab\)\s+<= 0 %\s+48\.3 \(animation-48\)\s+informational$/);
 		expect(tally(rows)).toEqual({
-			rows: { pass: 0, fail: 0, notMeasured: 0 },
-			gates: { pass: 0, fail: 0, notMeasured: 0 },
+			rows: { pass: 0, exception: 0, fail: 0, notMeasured: 0 },
+			gates: { pass: 0, exception: 0, fail: 0, notMeasured: 0 },
 			informational: 1,
 			ok: false,
 		});
@@ -263,12 +263,12 @@ describe("device roles", () => {
 	test("a phone is judged by the same gate", () => {
 		const rows = evaluate([frames], device("phone"));
 		expect(rows.map((row) => row.verdict)).toEqual(["fail", "pass"]);
-		expect(tally(rows).gates).toEqual({ pass: 0, fail: 1, notMeasured: 0 });
+		expect(tally(rows).gates).toEqual({ pass: 0, exception: 0, fail: 1, notMeasured: 0 });
 	});
 	test("a metric the lab never produced is informational too, never not measured", () => {
 		const rows = evaluate([frames], { x: { platform: "android", role: "lab", metrics: {} } });
 		expect(rows).toEqual([expect.objectContaining({ metric: "frames.*.droppedPct", measured: null, verdict: "informational" })]);
-		expect(tally(rows).gates).toEqual({ pass: 0, fail: 0, notMeasured: 0 });
+		expect(tally(rows).gates).toEqual({ pass: 0, exception: 0, fail: 0, notMeasured: 0 });
 	});
 	test("a device with no role, or one the table does not list, gets every gate", () => {
 		for (const role of [null, undefined]) {
@@ -285,13 +285,13 @@ describe("device roles", () => {
 	test("a lab device's timing gates leave the summary; the others still count", () => {
 		const rows = evaluate([frames, memory], device("lab"));
 		expect(tally(rows)).toEqual({
-			rows: { pass: 0, fail: 1, notMeasured: 0 },
-			gates: { pass: 0, fail: 1, notMeasured: 0 },
+			rows: { pass: 0, exception: 0, fail: 1, notMeasured: 0 },
+			gates: { pass: 0, exception: 0, fail: 1, notMeasured: 0 },
 			informational: 1,
 			ok: false,
 		});
 		expect(tallyByDevice(rows)).toEqual([
-			{ device: "x", role: "lab", gates: { pass: 0, fail: 1, notMeasured: 0 }, informational: 1 },
+			{ device: "x", role: "lab", gates: { pass: 0, exception: 0, fail: 1, notMeasured: 0 }, informational: 1 },
 		]);
 		const clean = evaluate([frames, memory], { x: { platform: "android", role: "lab", metrics: { ...metrics, "memory.leakedViews": 0 } } });
 		expect(tally(clean).ok).toBe(true);
@@ -302,8 +302,8 @@ describe("device roles", () => {
 			R58Y90KNGRP: { platform: "android", role: "phone", metrics },
 		});
 		expect(tallyByDevice(rows)).toEqual([
-			{ device: "localhost:5555", role: "lab", gates: { pass: 0, fail: 0, notMeasured: 0 }, informational: 1 },
-			{ device: "R58Y90KNGRP", role: "phone", gates: { pass: 0, fail: 1, notMeasured: 0 }, informational: 0 },
+			{ device: "localhost:5555", role: "lab", gates: { pass: 0, exception: 0, fail: 0, notMeasured: 0 }, informational: 1 },
+			{ device: "R58Y90KNGRP", role: "phone", gates: { pass: 0, exception: 0, fail: 1, notMeasured: 0 }, informational: 0 },
 		]);
 		expect(tally(rows).ok).toBe(false);
 	});
@@ -410,7 +410,7 @@ describe("the Markdown table of a job summary", () => {
 	test("headline counts, then what failed first, passes and informational rows folded", () => {
 		const lines = markdown.split("\n");
 		expect(lines[0]).toBe("### Gates, android");
-		expect(lines[2]).toBe("FAIL: 1 gates pass, 1 fail, 1 not measured, 1 informational (not counted)");
+		expect(lines[2]).toBe("FAIL: 1 gates pass, 0 exception, 1 fail, 1 not measured, 1 informational (not counted)");
 		expect(markdown).toContain("**Failed or not measured (2)**");
 		expect(markdown).toContain("| checks.passed | localhost:5555 (lab) | >= 28 x | 27 | **FAIL** |");
 		expect(markdown).toContain("| parity.a\\|b | localhost:5555 (lab) | <= 0 x | - | **NOT MEASURED** |");
@@ -422,7 +422,7 @@ describe("the Markdown table of a job summary", () => {
 	test("a table of passes says PASS and has no failure section", () => {
 		const passing = evaluate([gate("lab.runs", "lab.runs", { min: 3 })], { x: { platform: "android", role: "lab", runs: ["lab"], metrics: { "lab.runs": 3 } } });
 		const text = renderMarkdown(passing, "Gates");
-		expect(text).toContain("PASS: 1 gates pass, 0 fail, 0 not measured");
+		expect(text).toContain("PASS: 1 gates pass, 0 exception, 0 fail, 0 not measured");
 		expect(text).not.toContain("Failed or not measured");
 	});
 });
@@ -442,11 +442,14 @@ describe("gates.json", () => {
 	test("holds the production bar of PLAN.md", () => {
 		expect(bar("boot.warm.p90")).toEqual({ android: { max: 350 }, ios: { max: 250 } });
 		expect(bar("boot.cold.p90")).toEqual({ android: { max: 350 }, ios: { max: 250 } });
-		expect(bar("frames.droppedPct")).toEqual({
-			android: { max: 0, round: 1 },
-			ios: { max: 0, round: 1 },
-		});
-		expect(bar("frames.maxPeriodRatio")).toEqual({ android: { max: 1.5 }, ios: { max: 1.5 } });
+		// D9: a scenario passes with at most one late interval per run (and no frame over 33 ms), judged on the count of late intervals.
+		expect(bar("frames.droppedPct")).toEqual({ android: { max: 1 }, ios: { max: 1 } });
+		expect(bar("frames.maxPeriodRatio")).toEqual({ android: { max: 1 }, ios: { max: 1 } });
+		for (const id of ["frames.droppedPct", "frames.maxPeriodRatio"]) expect(file.gates.find((gate) => gate.id === id)?.metric).toBe("frames.*.lateIntervals");
+		for (const id of ["gestures.frames.droppedPct", "gestures.frames.maxPeriodRatio"]) {
+			expect(bar(id)).toEqual({ android: { max: 1 }, ios: { max: 1 } });
+			expect(file.gates.find((gate) => gate.id === id)?.metric).toBe("gestures.*.lateIntervals");
+		}
 		expect(bar("frames.maxMs")).toEqual({ android: { max: 33 }, ios: { max: 33 } });
 		expect(bar("list.virtual300.mountMs")).toEqual({ android: { max: 10 }, ios: { max: 15 } });
 		expect(bar("checks.passed")).toEqual({ android: { min: 28 }, ios: { min: 28 } });
@@ -485,7 +488,7 @@ describe("gates.json", () => {
 		for (const id of timing) expect(file.gates.some((gate) => gate.id === id)).toBe(true);
 	});
 	test("the emulator's frame gate reads informational, the Samsung's fails, a device nobody listed is judged", () => {
-		const metrics = { "frames.animation-48-square.droppedPct": 48.3 };
+		const metrics = { "frames.animation-48-square.lateIntervals": 350, "frames.animation-48-square.droppedPct": 48.3 };
 		const judged = (serial: string, platform: "android" | "ios" = "android") =>
 			evaluate(
 				file.gates.filter((gate) => gate.id === "frames.droppedPct"),

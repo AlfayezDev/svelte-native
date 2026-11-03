@@ -210,10 +210,25 @@ describe("labMetrics", () => {
 		expect(combined["frames.idle.maxMs"]).toBe(41);
 		expect(combined["lab.engineWarnings"]).toBe(6);
 	});
+	test("the late intervals of a scenario are the worst run's, counted exactly from the recorded count and percentage", () => {
+		const withLate = (late: number | null) => {
+			const copy = run();
+			const idle = copy.scenarios.find((scenario) => scenario.name === "idle");
+			if (!idle?.frames) throw new Error("sample has no idle frames");
+			// The lab records 100 * dropped / count unrounded; a rounded percentage (an older record) holds no exact count.
+			idle.frames = { ...idle.frames, count: 183, droppedPct: late === null ? 0.5 : (100 * late) / 183 };
+			return copy;
+		};
+		expect(labMetrics(labFile(withLate(0)), pinned)["frames.idle.lateIntervals"]).toBe(0);
+		expect(labMetrics(labFile(withLate(1), withLate(0)), pinned)["frames.idle.lateIntervals"]).toBe(1);
+		expect(labMetrics(labFile(withLate(1), withLate(2), withLate(0)), pinned)["frames.idle.lateIntervals"]).toBe(2);
+		expect(labMetrics(labFile(withLate(1), withLate(null)), pinned)["frames.idle.lateIntervals"]).toBeNull();
+	});
 	test("a scenario missing from one run is a missing measurement", () => {
 		const partial = run();
 		partial.scenarios = partial.scenarios.filter((scenario) => scenario.name !== "modal-8");
 		expect(labMetrics(labFile(run(), partial), pinned)["frames.modal-8.droppedPct"]).toBeNull();
+		expect(labMetrics(labFile(run(), partial), pinned)["frames.modal-8.lateIntervals"]).toBeNull();
 	});
 	test("a scenario the lab announced but never measured is null", () => {
 		const crashed = run();

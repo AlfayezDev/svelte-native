@@ -280,8 +280,11 @@ async function video(c: Ctx): Promise<void> {
   const plain = await c.look([[0.5, 0.5], [0.3, 0.5], [0.7, 0.5]]);
   const full = await c.look([[0.5, 0.5], [0.3, 0.5], [0.7, 0.5]], { capture: { handleGLSurfaceViewOnAndroid: true } });
   if (c.android) c.check("capture: without handleGLSurfaceViewOnAndroid the video is a hole", !!plain && plain.colors.every(clear), plain ? plain.colors.map(show).join(" ") : "no capture");
-  else c.androidOnly("capture: without handleGLSurfaceViewOnAndroid the video is a hole", "the option and the hole belong to Android's SurfaceView; an AVPlayerLayer is drawn into a snapshot as it is");
-  c.check("capture: with handleGLSurfaceViewOnAndroid the frame is in the image", !!full && full.colors.every(solid), full ? full.colors.map(show).join(" ") : "no capture");
+  else c.androidOnly("capture: without handleGLSurfaceViewOnAndroid the video is a hole", "the option and the hole belong to Android's SurfaceView");
+  // iOS: react-native-view-shot draws the view hierarchy, and an AVPlayerLayer's decoded frames are not part of it (the first iPhone run, 4 Nov 2026: the
+  // three points read #000000/0, transparent, in every place while the video played), so the frame is in a capture on Android only.
+  if (c.android) c.check("capture: with handleGLSurfaceViewOnAndroid the frame is in the image", !!full && full.colors.every(solid), full ? full.colors.map(show).join(" ") : "no capture");
+  else c.androidOnly("capture: with handleGLSurfaceViewOnAndroid the frame is in the image", "a snapshot of the view hierarchy does not hold an AVPlayerLayer's video frames on iOS (transparent on the iPhone)");
   await c.pause(600);
   const after = c.inspect(c.host());
   c.check("capture: the video on screen did not move, resize or hide", !!before && !!after && before.x === after.x && before.y === after.y && before.width === after.width && before.height === after.height && after.shown && (!c.android || after.surfaces.length >= 1), `${describe(before)} -> ${describe(after)}; ${after?.surfaces.join(" | ")}`);

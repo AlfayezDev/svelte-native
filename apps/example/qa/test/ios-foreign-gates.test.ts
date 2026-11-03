@@ -16,13 +16,14 @@ const gateOf = (library: string, field: string): Gate | undefined => gates.gates
 /**
  * The structure of the first iPhone run (3 Nov 2026, `foreign-E74A5608-...-20261103T122249Z.json`, 393 checks, 84 skips): per library the checks it made in the three places, the ones that
  * failed, the skips a finger would have avoided and the checks that exist on Android only. Failures there were the pins of four views (fixed since) and events, captures and layouts that other
- * work owns; the counts of checks are the structure the bars pin, and do not depend on which of them pass.
+ * work owns; the counts of checks are the structure the bars pin, and do not depend on which of them pass. One change since: the video's "frame is in the
+ * image" capture check is Android-only on iOS (4 Nov 2026; an AVPlayerLayer's frames are not in a snapshot), so video's three places moved from checks to Android-only.
  */
 const first: Record<string, { checks: number; failed: number; skipped: number; androidOnly: number }> = {
 	image: { checks: 33, failed: 0, skipped: 0, androidOnly: 3 },
 	blur: { checks: 18, failed: 3, skipped: 0, androidOnly: 3 },
 	gradient: { checks: 18, failed: 0, skipped: 0, androidOnly: 3 },
-	video: { checks: 54, failed: 21, skipped: 0, androidOnly: 9 },
+	video: { checks: 51, failed: 18, skipped: 0, androidOnly: 12 },
 	datetime: { checks: 30, failed: 0, skipped: 0, androidOnly: 24 },
 	lottie: { checks: 30, failed: 6, skipped: 0, androidOnly: 3 },
 	pdf: { checks: 36, failed: 3, skipped: 0, androidOnly: 3 },

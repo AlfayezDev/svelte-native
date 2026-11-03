@@ -341,7 +341,9 @@ export function evaluate(
 					const allowed = applies && gate.allowance ? allowWorstRun(gate, gate.allowance, gates, name, device.metrics, names, key) : null;
 					const measured = allowed?.measured ?? device.metrics[key] ?? null;
 					const verdict = applies ? judge(bar, measured) : "informational";
-					const exception = verdict === "fail" ? matchException(exceptions, { gate: gate.id, device: serial, scenario: scenario ?? null, metric: key, measured }) : undefined;
+					// The longest frame of the scenario as the row is judged (the runs D10 keeps), for an exception that caps it beside the late intervals.
+					const longestMs = key.endsWith(".maxMs") ? measured : (allowed?.longestMs ?? device.metrics[`${key.slice(0, key.lastIndexOf("."))}.maxMs`]);
+					const exception = verdict === "fail" ? matchException(exceptions, { gate: gate.id, device: serial, scenario: scenario ?? null, metric: key, measured, longestMs }) : undefined;
 					const alongside = allowed ? allowed.also : gate.also ? device.metrics[fill(gate.also.metric, names)] : undefined;
 					rows.push({
 						...base,
@@ -396,7 +398,7 @@ function allowWorstRun(
 	metrics: Metrics,
 	names: readonly string[],
 	key: string,
-): { measured: number; also: number | undefined; worstRun: NonNullable<GateRow["worstRun"]> } | null {
+): { measured: number; longestMs: number; also: number | undefined; worstRun: NonNullable<GateRow["worstRun"]> } | null {
 	const runs = parseRunRecords(metrics[fill(allowance.runs, names)]);
 	if (runs === null || runs.length < allowance.min) return null;
 	const limit = (id: string) => gates.find((candidate) => candidate.id === id)?.bar[platform]?.max;
@@ -415,6 +417,7 @@ function allowWorstRun(
 	const bad = runs[setAside] as RunRecord;
 	return {
 		measured: judged[field],
+		longestMs: Math.max(...rest.map((run) => run.maxMs)),
 		also: gate.also ? judged[lastSegment(gate.also.metric) as (typeof shownFields)[number]] : undefined,
 		worstRun: { run: setAside + 1, lateIntervals: bad.lateIntervals, maxMs: bad.maxMs },
 	};

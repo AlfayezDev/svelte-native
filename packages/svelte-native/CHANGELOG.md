@@ -2,30 +2,14 @@
 
 Notable changes to `@rasheed/svelte-native`, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are `0.x` while the package is private and its Svelte compiler is pinned to an unmerged pull request, so a minor version may break. Each line is what an app that uses the package gets.
 
-## Unreleased
+## 0.2.0 - 2026-11-03
+
+Built from `e5dec30dd`, whose app code is the build the final gates measured (`fb53ab1cf` on the phones, `81bc66738` on the emulator). Device results behind this release are in [PLAN.md](PLAN.md), "Final build gates", with the documented exceptions and the open items. The package is private and has not been published; the entries that were under "Unreleased" since the first cut of this version on 1 November (`48d746e54`) are folded in.
 
 ### Added
 
 - Android: a screen reader now gets `accessibilityState` (selected, disabled, checked including mixed, busy, expanded), `accessibilityValue` (a slider's range and text), `accessibilityHint`, `accessibilityActions` with `onAccessibilityAction` (`{ nativeEvent: { actionName } }`), `accessibilityLiveRegion`, `importantForAccessibility` and `role` from the engine's views, the way React Native's Android views publish them (same TalkBack announcements, same node info, React Native's own role strings in the device's language). The engine dropped all of them before.
 - `aria-*` props (`aria-label`, `aria-checked`, `aria-selected`, `aria-disabled`, `aria-expanded`, `aria-busy`, `aria-hidden`, `aria-live`, `aria-labelledby`, `aria-valuemin|max|now|text`) work on both platforms: React Native resolves them in `View.js`, which a Svelte host has none of, so they were ignored on iOS and on the Android engine alike.
-
-### Changed
-
-- The windowed `List` mounts its overscan four frames after the rows that show, not one (the one-frame flush went ahead of the layout event of the visible rows on a phone with slow cores), and the wrapper of a row of a list whose rows have one size is described once per row. Once the animation layer is loaded only the nodes that can need it go through it, and a node the host has not built no longer reports its changes.
-- Android boot (Samsung A16, 2 November 2026; SPEC "Boot on the phone, round 2"): the Expo plugin now generates `override fun attachBaseContext(base: Context)` into `MainApplication.kt`, which calls `BootBoost.preloadLibraries(base)` (SoLoader and the start's native libraries load on a thread of its own while the Application is set up). **A `MainApplication.kt` that already overrides `attachBaseContext` clashes with it**: `prebuild` now stops with a message unless the existing override calls `expo.modules.svelteengine.BootBoost.preloadLibraries(base)` itself (then the plugin adds nothing). `MainActivity.onCreate` gets two generated calls (`BootBoost.activityCreated()`, `ViewWarmup.begin(this)`).
-- Android boot: `expo-blur`, `expo-conic-gradient`, `expo-image` and `expo-linear-gradient` are built when their first component is mounted (like `expo-video`), not with the host, so `requireNativeModule` on them builds the module on first use. The boot pin no longer asks the system whether the process is on screen: it is made in the app's main process (not in another process of the app), kept when the Activity says it exists, and dropped when no Activity came.
-- A text under a live region tells it when its text changes (an engine text is a plain view); a role description is React Native's string ("Link", "Tab") instead of the engine's own lowercase one; a `button`, `imagebutton` or `togglebutton` role makes the node clickable.
-
-### Fixed
-
-- `List`: `scrollToIndex` and `scrollToOffset` called before the scroll view is bound and has its first layout (a page that scrolls its list in the effect that runs as the list mounts) sent the command to no view and the list stayed at the top. The last such request is kept and sent when both are there. The two commands no longer subscribe the effect that calls them to the list's window, row sizes and header.
-
-## 0.2.0 - 2026-11-01
-
-Built from `48d746e54`. Device results behind this release are in [PLAN.md](PLAN.md), "Production plan"; the gates of the final build are still to be filled in there.
-
-### Added
-
 - Gestures: `@rasheed/svelte-native/gestures` runs react-native-gesture-handler 2.32 on Svelte views (`gesture={...}` on any primitive, `<GestureDetector>`, `use:gesture`), with worklet callbacks on the UI thread, relations across components and development-time checks of what a worklet captures.
 - Native-view wrappers in `@rasheed/svelte-native/foreign` for twelve libraries (expo-image, expo-blur, expo-linear-gradient, react-native-video, @react-native-community/datetimepicker, lottie-react-native, react-native-pdf, react-native-view-shot, rive-react-native, expo-conic-gradient, react-native-fast-shadow, react-native-animateable-text), next to `WebView`, `MapView`/`Marker`, `VideoView` and the generic `ForeignView`; all are optional peer dependencies.
 - `@rasheed/svelte-native/svg`: react-native-svg 15.15.4 as 36 Svelte components (every element and filter, `SvgXml`, `SvgUri`) with the library's own prop extraction, refs with `getBBox`/`getTotalLength`/`toDataURL`, and `animatedProps`.
@@ -44,6 +28,10 @@ Built from `48d746e54`. Device results behind this release are in [PLAN.md](PLAN
 
 ### Changed
 
+- The windowed `List` mounts its overscan four frames after the rows that show, not one (the one-frame flush went ahead of the layout event of the visible rows on a phone with slow cores), and the wrapper of a row of a list whose rows have one size is described once per row. Once the animation layer is loaded only the nodes that can need it go through it, and a node the host has not built no longer reports its changes.
+- Android boot (Samsung A16, 2 November 2026; SPEC "Boot on the phone, round 2"): the Expo plugin now generates `override fun attachBaseContext(base: Context)` into `MainApplication.kt`, which calls `BootBoost.preloadLibraries(base)` (SoLoader and the start's native libraries load on a thread of its own while the Application is set up). **A `MainApplication.kt` that already overrides `attachBaseContext` clashes with it**: `prebuild` now stops with a message unless the existing override calls `expo.modules.svelteengine.BootBoost.preloadLibraries(base)` itself (then the plugin adds nothing). `MainActivity.onCreate` gets two generated calls (`BootBoost.activityCreated()`, `ViewWarmup.begin(this)`).
+- Android boot: `expo-blur`, `expo-conic-gradient`, `expo-image` and `expo-linear-gradient` are built when their first component is mounted (like `expo-video`), not with the host, so `requireNativeModule` on them builds the module on first use. The boot pin no longer asks the system whether the process is on screen: it is made in the app's main process (not in another process of the app), kept when the Activity says it exists, and dropped when no Activity came.
+- A text under a live region tells it when its text changes (an engine text is a plain view); a role description is React Native's string ("Link", "Tab") instead of the engine's own lowercase one; a `button`, `imagebutton` or `togglebutton` role makes the node clickable.
 - The Android host is the package's own engine (`apps/platform/modules/svelte-engine`): Fabric's mounting is replaced by typed Kotlin views, so mounting 600 views costs about a fifth of React Native's on the Samsung A16 and the Reanimated frame path no longer builds Java maps. iOS keeps React Native's mounting.
 - There is no React in the render path: the React host, `react-native-screens`, `react-native-safe-area-context` and the dev client are gone, and Metro maps `InitializeCore` to the package's own `init.ts`.
 - `<View>`, `<Text>`, `<ScrollView>`, `<Image>`, `<ActivityIndicator>` and `<Pressable>` are lowered to host tags at compile time, so a row costs host nodes only.
@@ -65,5 +53,6 @@ Built from `48d746e54`. Device results behind this release are in [PLAN.md](PLAN
 
 ### Fixed
 
+- `List`: `scrollToIndex` and `scrollToOffset` called before the scroll view is bound and has its first layout (a page that scrolls its list in the effect that runs as the list mounts) sent the command to no view and the list stayed at the top. The last such request is kept and sent when both are there. The two commands no longer subscribe the effect that calls them to the list's window, row sizes and header.
 - iOS: a hidden `Modal` swallowed every touch on pushed screens.
 - A scroll view's content container follows `contentContainerStyle` and `horizontal` after the first render.

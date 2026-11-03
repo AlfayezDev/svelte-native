@@ -44,7 +44,14 @@ test("iOS: the same container, with the colours unsigned", async () => {
   const harness = createHarness("ios", { expo: { ConicGradient: configs } });
   const loaded = await harness.load("foreign-conic-fixture.svelte");
   loaded.startSurface(132, loaded.Fixture, {});
-  const gradient = find(harness.roots()[132], name)[0];
+  const roots = harness.roots()[132];
+  const gradient = find(roots, name)[0];
   expect(gradient.children).toEqual([]);
   expect(gradient.props).toMatchObject({ colors: colors.ios, locations: [0, 0.5, 1], center: [0.25, 0.75], angle: 45 });
+  // The SwiftUI hosting view is the container's size and no more (its content box: the iPhone's `HostingView` is the size the engine measured for the container, inside a border): it fills it from the padding box's four edges, and the children are the container's.
+  const container = find(roots, "RCTView").find((node) => node.children.includes(gradient));
+  expect(container?.children.map((node) => node.name)).toEqual([name, "RCTText"]);
+  expect(container?.props).toMatchObject({ height: 80, borderRadius: 10, overflow: "hidden", accessibilityLabel: "Sweep" });
+  expect(gradient.props).toMatchObject({ position: "absolute", left: 0, top: 0, right: 0, bottom: 0 });
+  for (const key of ["width", "height", "flex", "alignSelf", "margin", "padding"]) expect(key in gradient.props, key).toBe(false);
 });

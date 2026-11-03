@@ -11,6 +11,7 @@ import { dismissDatePicker, openDatePicker, captureRef, releaseCapture, type Cap
 import type { Host, LibraryHandles, LibraryKind } from "./LibrarySet.svelte";
 import { libraryLab } from "./foreign.svelte.ts";
 import { argb, clear, near, numberIn, show, solid } from "./foreign-pixels.ts";
+import { compareLayout } from "./foreign-layout.ts";
 
 export type Where = "inline" | "row" | "sheet";
 export type Rect = { x: number; y: number; width: number; height: number };
@@ -133,14 +134,9 @@ async function mounts(c: Ctx, pinned: Pinned, host: Host | undefined = c.host(),
   const there = (pin.host === undefined || info.class === pin.host) && (pin.inside === undefined || innerEntry !== undefined);
   if (c.android || pin.host !== undefined || pin.inside !== undefined) c.check(`mounts: it is the library's view (${name})`, there, `${info.class}; inside: ${info.views.slice(0, 4).join(" | ")}`);
   else c.skip("mounts: it is the library's view", `iOS class not pinned (this run saw ${info.class}; inside: ${info.views.slice(0, 3).join(" | ")})`);
-  // The size compared is the view's own, or that of the pinned view inside the section's box.
-  const inner = innerEntry ? /(\d+)x(\d+)\s*(?:clip=\w+)?\s*$/.exec(innerEntry) : null;
-  const nativeWidth = inner ? Number(inner[1]) : info.width;
-  const nativeHeight = inner ? Number(inner[2]) : info.height;
-  const rect = await c.rect(measured);
-  const wide = rect ? Math.abs(nativeWidth / info.density - rect.width) : Infinity;
-  const high = rect ? Math.abs(nativeHeight / info.density - rect.height) : Infinity;
-  c.check("layout: the native view has the size the engine measured", wide <= 1 && high <= 1, `native ${(nativeWidth / info.density).toFixed(1)}x${(nativeHeight / info.density).toFixed(1)} dp, measured ${rect ? `${rect.width.toFixed(1)}x${rect.height.toFixed(1)}` : "none"}`);
+  // The size compared is that of the library's view: the measured handle's own, or the pinned view inside the inspected one (`foreign-layout.ts`). Never the section's box around it.
+  const layout = compareLayout(info, pin.inside, host === measured, await c.rect(measured));
+  c.check("layout: the native view has the size the engine measured", layout.passed, layout.detail);
   return info;
 }
 
@@ -594,7 +590,8 @@ const androidShadowChecks = [
 ] as const;
 
 async function shadow(c: Ctx): Promise<void> {
-  await mounts(c, { inside: "FastShadowView", ios: { host: "RCTViewComponentView" } }, c.box(), c.host());
+  // Android's native view is inside the section's box, behind the card's children. iOS has none of its own: the card is React Native's `View` with the shadow on its layer, so it is the card's own view that is inspected, not the box around it.
+  await mounts(c, { inside: "FastShadowView", ios: { host: "RCTViewComponentView" } }, c.android ? c.box() : c.host(), c.host());
   const wrapped = c.handles().extras.wrapped;
   if (!c.android) {
     // react-native-fast-shadow has no iOS code: `ShadowedView` is React Native's `View`, and `shadowStyle` writes the layer's own shadow props. These four read Android's native view and its canvas clip.

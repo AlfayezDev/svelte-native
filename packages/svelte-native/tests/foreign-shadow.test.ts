@@ -58,6 +58,17 @@ test("iOS: a plain view that keeps the shadow in its own style, as the library's
   expect(view.props).toMatchObject({ shadowColor: 0xff112233, shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 5, height: 3 }, backgroundColor: 0xffffffff, borderRadius: 10, padding: 8, accessibilityLabel: "card" });
 });
 
+test("iOS: the view is laid out by the author's style alone, so it is as large as its content or its width, never the parent's width", async () => {
+  const harness = createHarness("ios");
+  const loaded = await harness.load("foreign-shadow-fixture.svelte");
+  loaded.startSurface(143, loaded.Fixture, {});
+  const [view] = find(harness.roots()[143], "RCTView");
+  // No absolute fill, no flex and no alignment of its own: whatever size Yoga gives the card is the size the author's style asks for (the iPhone's native view is the size the engine measured).
+  for (const key of ["position", "left", "top", "right", "bottom", "flex", "flexGrow", "flexShrink", "flexBasis", "alignSelf", "minWidth", "height"]) expect(key in view.props, key).toBe(false);
+  expect(view.props.width).toBe(120);
+  expect(view.children.map((node) => node.name)).toEqual(["RCTText"]);
+});
+
 test("the style is split between the box and the container: the box takes what it paints, both keep the border widths", () => {
   const parts = shadowedParts([{ shadowOpacity: 0.5, backgroundColor: "red", borderTopEndRadius: 3, borderBottomWidth: 2, borderBottomColor: "blue", margin: 1, flex: 1 }, undefined, { shadowRadius: 4, overflow: "hidden" }], false);
   expect(parts.shadow).toEqual({ shadowOpacity: 0.5, shadowRadius: 4 });

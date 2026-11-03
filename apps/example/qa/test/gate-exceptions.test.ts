@@ -126,7 +126,9 @@ describe("D9: a phone scenario passes with at most one late interval per run and
 			expect(of(late, 30)).toEqual({ "gestures.frames.droppedPct:pinch-rotate": "pass", "gestures.frames.maxPeriodRatio:pinch-rotate": "pass", "gestures.frames.maxMs:pinch-rotate": "pass" });
 		expect(of(2, 30)).toEqual({ "gestures.frames.droppedPct:pinch-rotate": "fail", "gestures.frames.maxPeriodRatio:pinch-rotate": "fail", "gestures.frames.maxMs:pinch-rotate": "pass" });
 		expect(of(1, 34)["gestures.frames.maxMs:pinch-rotate"]).toBe("fail");
-		expect(of(2, 30, IPHONE, "ios")["gestures.frames.droppedPct:pinch-rotate"]).toBe("fail");
+		// D13: on the iPhone the gesture frames come through XCUITest and are a documented exception, not judged
+		expect(of(2, 30, IPHONE, "ios")["gestures.frames.droppedPct:pinch-rotate"]).toBe("exception");
+		expect(judge(IPHONE, "ios", metrics(2, 30), gestureGates).find((row) => row.exception)?.exception?.decision).toBe("D13");
 	});
 });
 
@@ -237,7 +239,8 @@ describe("documented exceptions", () => {
 		});
 		expect(rows.find((row) => row.exception)?.exception?.decision).toBe("1 Nov first touch");
 		const iphone = judge(IPHONE, "ios", metrics, gestureGates);
-		expect(iphone.find((row) => row.id === "gestures.frames.maxMs" && row.scenario === "box")?.verdict).toBe("fail");
+		// the first-touch entry is the Samsung's; the iPhone's gesture frames are D13's
+		expect(iphone.find((row) => row.id === "gestures.frames.maxMs" && row.scenario === "box")?.exception?.decision).toBe("D13");
 	});
 	test("a gate that passes stays a pass, and one that was never measured is not turned into an exception", () => {
 		const rows = judge(SAMSUNG, "android", { ...frames("churn-animated", 0, 20), "frames.header-8.lateIntervals": null, "frames.header-8.droppedPct": null, "frames.header-8.maxMs": null, "frames.header-8.maxPeriodRatio": null });
@@ -645,7 +648,12 @@ describe("the exceptions of gates.json", () => {
 			"gestures.frames.maxPeriodRatio@samsung:box",
 			"gestures.frames.maxMs@samsung:box",
 		]);
-		expect(exceptions).toHaveLength(16);
+		expect(of("D13").map(key)).toEqual([
+			"gestures.frames.droppedPct@iphone:box+box-busy+pinch-rotate",
+			"gestures.frames.maxPeriodRatio@iphone:box+box-busy+pinch-rotate",
+			"gestures.frames.maxMs@iphone:box+box-busy+pinch-rotate",
+		]);
+		expect(exceptions).toHaveLength(19);
 		for (const entry of exceptions) {
 			expect(entry.reason.length).toBeGreaterThan(20);
 			expect(entry.reason).not.toContain("\n");
@@ -673,7 +681,7 @@ describe("the exceptions of gates.json", () => {
 	});
 	test("the file is well formed", () => {
 		expect(() => checkGatesFile(file)).not.toThrow();
-		expect(decisions).toEqual(["D1", "D9", "D11", "1 Nov first touch"]);
+		expect(decisions).toEqual(["D1", "D9", "D11", "D13", "1 Nov first touch"]);
 	});
 });
 

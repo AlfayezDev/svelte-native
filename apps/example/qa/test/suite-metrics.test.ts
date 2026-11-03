@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
-import { evaluate, type GatesFile, type ReportDevice } from "../lib/gates.ts";
+import { checkGatesFile, evaluate, type GatesFile, type ReportDevice } from "../lib/gates.ts";
 import { deviceMetrics } from "../lib/metrics.ts";
 import { fullPlanSize } from "../lib/resilience.ts";
 import {
@@ -342,5 +342,79 @@ describe("the gates of the three suites", () => {
 		expect(verdicts["a11y.notActionable"]).toBe("fail");
 		expect(verdicts["resilience.failures"]).toBe("fail");
 		expect(verdicts["a11y.unreachable"]).toBe("pass");
+	});
+});
+
+describe("D12: the signed-in phase is the Rasheed app's, not the library's", () => {
+	const gatesJson = JSON.parse(readFileSync(join(import.meta.dirname, "..", "gates.json"), "utf8")) as GatesFile;
+	const neverEntered = { cases: 4, signedIn: false, signedOut: null, detail: "could not sign in as the QA account" };
+	const entered = { cases: 4, signedIn: true, signedOut: true, detail: null };
+	// two signed-out cases and two signed-in ones (`app-*` screens), each in one variant
+	const parityCases = (signedInVerdict: ParityCase["verdict"], signedOutVerdict: ParityCase["verdict"] = "pass") => [
+		parityCase("home--light-ltr", { screen: "home", verdict: signedOutVerdict }),
+		parityCase("login--light-ltr", { screen: "(public)/auth/login", verdict: "pass" }),
+		parityCase("app-workspaces--light-ltr", { screen: "app-workspaces", verdict: signedInVerdict }),
+		parityCase("app-workspace-home--light-ltr", { screen: "app-workspace-home", verdict: signedInVerdict }),
+	];
+
+	test("parity: the signed-in cases skipped because the phase never started do not make the run incomplete, and are counted apart", () => {
+		const m = parityMetrics(parityFile(parityCases("skipped"), { matrixSize: 4, signedInPhase: neverEntered }));
+		expect(m["parity.casesIncomplete"]).toBe(0);
+		expect(m["parity.signedIn.skipped"]).toBe(2);
+		expect(m["parity.casesSkipped"]).toBe(2);
+		expect(m["parity.cases"]).toBe(2);
+	});
+	test("parity: a signed-out case that is incomplete still counts, whatever the signed-in phase did", () => {
+		const m = parityMetrics(parityFile(parityCases("skipped", "missing-reference"), { matrixSize: 4, signedInPhase: neverEntered }));
+		expect(m["parity.casesIncomplete"]).toBe(1);
+		const unstable = parityCases("skipped").map((entry) => (entry.screen === "home" ? { ...entry, verdict: "unstable" as const } : entry));
+		expect(parityMetrics(parityFile(unstable, { matrixSize: 4, signedInPhase: neverEntered }))["parity.casesIncomplete"]).toBe(1);
+	});
+	test("parity: a phase that signed in is held to every case, and so is a signed-in case the run never recorded", () => {
+		expect(parityMetrics(parityFile(parityCases("skipped"), { matrixSize: 4, signedInPhase: entered }))["parity.casesIncomplete"]).toBe(2);
+		expect(parityMetrics(parityFile(parityCases("error"), { matrixSize: 4, signedInPhase: entered }))["parity.casesIncomplete"]).toBe(2);
+		// no phase record (the iPhone, a run from before the phase): nothing is left out
+		expect(parityMetrics(parityFile(parityCases("skipped"), { matrixSize: 4 }))["parity.casesIncomplete"]).toBe(2);
+		// a phase that never started and cases the run never got to record: still incomplete
+		const recorded = parityCases("skipped").slice(0, 3);
+		expect(parityMetrics(parityFile(recorded, { matrixSize: 4, signedInPhase: neverEntered }))["parity.casesIncomplete"]).toBe(1);
+		// a case that is skipped but is not a signed-in screen is not the phase's
+		const signedOutSkip = parityCases("pass", "skipped");
+		expect(parityMetrics(parityFile(signedOutSkip, { matrixSize: 4, signedInPhase: neverEntered }))["parity.casesIncomplete"]).toBe(1);
+	});
+	test("a11y: the signed-in screens that could not be dumped because the phase never started are not incomplete either", () => {
+		const screens = [screen("home--ltr", { screen: "home" }), screen("app-workspaces--ltr", { screen: "app-workspaces", error: "skipped", interactive: 0, reachable: 0, labeled: 0, actionable: 0 })];
+		const m = a11yMetrics({ ...a11yFile(screens, 2), signedInPhase: neverEntered });
+		expect(m["a11y.screensIncomplete"]).toBe(0);
+		expect(m["a11y.signedIn.skipped"]).toBe(1);
+		// a signed-out screen that failed still counts
+		const broken = [screen("home--ltr", { screen: "home", error: "no tree", interactive: 0, reachable: 0, labeled: 0, actionable: 0 }), screens[1] as A11yScreenResult];
+		expect(a11yMetrics({ ...a11yFile(broken, 2), signedInPhase: neverEntered })["a11y.screensIncomplete"]).toBe(1);
+		// a phase that signed in is held to its screens, as a run with no phase record is
+		expect(a11yMetrics({ ...a11yFile(screens, 2), signedInPhase: entered })["a11y.screensIncomplete"]).toBe(1);
+		expect(a11yMetrics(a11yFile(screens, 2))["a11y.screensIncomplete"]).toBe(1);
+	});
+
+	const judged = (metrics: Record<string, number | string | null>, ids: string[]) =>
+		Object.fromEntries(evaluate(gatesJson.gates.filter((gate) => ids.includes(gate.id)), { "localhost:5555": { platform: "android", role: "lab", runs: gatesJson.devices["localhost:5555"]?.runs ?? null, metrics } }, "android").map((row) => [row.id, row.verdict]));
+
+	test("parity.signedIn.missing and a11y.signedIn.missing are informational: shown, never blocking, whatever they read", () => {
+		const verdicts = judged({ "parity.signedIn.missing": 120, "a11y.signedIn.missing": 60 }, ["parity.signedIn.missing", "a11y.signedIn.missing"]);
+		expect(verdicts).toEqual({ "parity.signedIn.missing": "informational", "a11y.signedIn.missing": "informational" });
+		const rows = evaluate(gatesJson.gates.filter((gate) => gate.id === "parity.signedIn.missing"), { "localhost:5555": { platform: "android", role: "lab", metrics: { "parity.signedIn.missing": 120 } } }, "android");
+		expect(rows[0]?.measured).toBe(120);
+		// a run that measured nothing, or no device at all, is no gap for them either
+		expect(judged({}, ["parity.signedIn.missing", "a11y.signedIn.missing"])).toEqual({ "parity.signedIn.missing": "informational", "a11y.signedIn.missing": "informational" });
+		expect(evaluate(gatesJson.gates.filter((gate) => gate.id === "a11y.signedIn.missing"), {}, "android").map((row) => row.verdict)).toEqual(["informational"]);
+		for (const id of ["parity.signedIn.missing", "a11y.signedIn.missing"]) expect(gatesJson.gates.find((gate) => gate.id === id)?.informational).toContain("D12");
+	});
+	test("the incomplete gates stay gates: a missing signed-out case still fails them", () => {
+		const verdicts = judged({ "parity.casesIncomplete": 1, "a11y.screensIncomplete": 1 }, ["parity.incomplete", "a11y.incomplete"]);
+		expect(verdicts).toEqual({ "parity.incomplete": "fail", "a11y.incomplete": "fail" });
+		expect(judged({ "parity.casesIncomplete": 0, "a11y.screensIncomplete": 0 }, ["parity.incomplete", "a11y.incomplete"])).toEqual({ "parity.incomplete": "pass", "a11y.incomplete": "pass" });
+	});
+	test("an informational gate with no reason is a malformed file", () => {
+		const file: GatesFile = { version: 1, devices: {}, scenarios: { android: [], ios: [] }, smoke: { modules: { android: ["a"], ios: ["a"] }, skips: { android: [], ios: [] } }, gates: [{ id: "x", title: "x", unit: "n", metric: "m", bar: { android: { max: 0 } }, informational: " " }] };
+		expect(() => checkGatesFile(file)).toThrow(/informational without saying why/);
 	});
 });

@@ -363,6 +363,42 @@
       "evidence": "apps/platform/modules/svelte-engine/SPEC.md, 'The first touch of a process (1 November 2026)'"
     },
     {
+      "gate": "gestures.frames.droppedPct",
+      "device": "E74A5608-BF8E-5806-8699-1605F82ADED9",
+      "scenarios": [
+        "box",
+        "box-busy",
+        "pinch-rotate"
+      ],
+      "decision": "D13",
+      "reason": "iOS can inject touches only through XCUITest, and frames measured under it are not the library's: the same box driven by a finger read 0.3 % dropped (1 late interval of 301), 33 ms worst, against 7.3 to 8.8 % and 53 to 67 ms through XCUITest, and the JavaScript-busy variant 1.5 % (synthetic touches get no touch boost; the runner loads the phone); the gesture checks stay judged",
+      "evidence": "apps/platform/qa/runs/lab-E74A5608-BF8E-5806-8699-1605F82ADED9-20261103T115915Z.json (finger, run 1) against gestures-E74A5608-BF8E-5806-8699-1605F82ADED9-20261103T103643Z.json (XCUITest); GOAL.md D13"
+    },
+    {
+      "gate": "gestures.frames.maxPeriodRatio",
+      "device": "E74A5608-BF8E-5806-8699-1605F82ADED9",
+      "scenarios": [
+        "box",
+        "box-busy",
+        "pinch-rotate"
+      ],
+      "decision": "D13",
+      "reason": "iOS can inject touches only through XCUITest, and frames measured under it are not the library's: the same box driven by a finger read 0.3 % dropped (1 late interval of 301), 33 ms worst, against 7.3 to 8.8 % and 53 to 67 ms through XCUITest, and the JavaScript-busy variant 1.5 % (synthetic touches get no touch boost; the runner loads the phone); the gesture checks stay judged",
+      "evidence": "apps/platform/qa/runs/lab-E74A5608-BF8E-5806-8699-1605F82ADED9-20261103T115915Z.json (finger, run 1) against gestures-E74A5608-BF8E-5806-8699-1605F82ADED9-20261103T103643Z.json (XCUITest); GOAL.md D13"
+    },
+    {
+      "gate": "gestures.frames.maxMs",
+      "device": "E74A5608-BF8E-5806-8699-1605F82ADED9",
+      "scenarios": [
+        "box",
+        "box-busy",
+        "pinch-rotate"
+      ],
+      "decision": "D13",
+      "reason": "iOS can inject touches only through XCUITest, and frames measured under it are not the library's: the same box driven by a finger read 0.3 % dropped (1 late interval of 301), 33 ms worst, against 7.3 to 8.8 % and 53 to 67 ms through XCUITest, and the JavaScript-busy variant 1.5 % (synthetic touches get no touch boost; the runner loads the phone); the gesture checks stay judged",
+      "evidence": "apps/platform/qa/runs/lab-E74A5608-BF8E-5806-8699-1605F82ADED9-20261103T115915Z.json (finger, run 1) against gestures-E74A5608-BF8E-5806-8699-1605F82ADED9-20261103T103643Z.json (XCUITest); GOAL.md D13"
+    },
+    {
       "gate": "frames.droppedPct",
       "device": "R58Y90KNGRP",
       "scenarios": [
@@ -952,7 +988,7 @@
     },
     {
       "id": "parity.incomplete",
-      "title": "Parity cases not compared against a reference (missing, unstable, errored, skipped, not run)",
+      "title": "Parity cases not compared against a reference (missing, unstable, errored, skipped, not run) (D12: the signed-in cases skipped because the phase never started, for lack of a QA account, are not counted)",
       "unit": "cases",
       "metric": "parity.casesIncomplete",
       "bar": {
@@ -980,14 +1016,15 @@
     },
     {
       "id": "parity.signedIn.missing",
-      "title": "Screenshot parity: pinned signed-in screens (gates.json signedIn) not compared in every variant",
+      "title": "Screenshot parity: pinned signed-in screens (gates.json signedIn) not compared in every variant (informational, D12)",
       "unit": "cases",
       "metric": "parity.signedIn.missing",
       "bar": {
         "android": {
           "max": 0
         }
-      }
+      },
+      "informational": "D12: the signed-in screens are the Rasheed app's account screens, not the library; they are shown and never block"
     },
     {
       "id": "a11y.unreachable",
@@ -1086,7 +1123,7 @@
     },
     {
       "id": "a11y.incomplete",
-      "title": "Accessibility: screens not dumped",
+      "title": "Accessibility: screens not dumped (D12: the signed-in cases skipped because the phase never started, for lack of a QA account, are not counted)",
       "unit": "screens",
       "metric": "a11y.screensIncomplete",
       "bar": {
@@ -1100,14 +1137,15 @@
     },
     {
       "id": "a11y.signedIn.missing",
-      "title": "Accessibility: pinned signed-in screens (gates.json signedIn) not dumped in every layout",
+      "title": "Accessibility: pinned signed-in screens (gates.json signedIn) not dumped in every layout (informational, D12)",
       "unit": "screens",
       "metric": "a11y.signedIn.missing",
       "bar": {
         "android": {
           "max": 0
         }
-      }
+      },
+      "informational": "D12: the signed-in screens are the Rasheed app's account screens, not the library; they are shown and never block"
     },
     {
       "id": "resilience.failures",

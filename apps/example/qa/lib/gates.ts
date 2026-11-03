@@ -41,6 +41,11 @@ export type Gate = {
 	 * fewer, or a run without an exact record, and the worst run is judged.
 	 */
 	allowance?: { runs: string; min: number; late: string; long: string };
+	/**
+	 * Why the gate is informational on every device (a decision, in one line): its value is shown and nothing counts, whoever measured it.
+	 * D12: the signed-in screens belong to the Rasheed app, not to the library, so they do not block.
+	 */
+	informational?: string;
 };
 /** `runs` are the run kinds the device is meant to provide: a gate of another kind is informational for it. */
 export type DeviceRole = { role: Role; name: string; runs: RunKind[] };
@@ -185,6 +190,7 @@ export function checkGatesFile(file: GatesFile): void {
 	for (const [platform, ids] of Object.entries(file.signedIn ?? {}))
 		if (new Set(ids).size !== ids.length) throw new Error(`gates.json: signedIn names a screen twice for ${platform}`);
 	for (const gate of file.gates) {
+		if (gate.informational !== undefined && gate.informational.trim() === "") throw new Error(`gates.json: gate ${gate.id} is informational without saying why`);
 		if (gate.also && stars(gate.also.metric) !== stars(gate.metric))
 			throw new Error(`gates.json: gate ${gate.id} shows ${gate.also.metric} beside ${gate.metric}, which must have as many \`*\` to take the scenario from`);
 		if (gate.allowance) checkAllowance(file, gate, gate.allowance);
@@ -311,13 +317,13 @@ export function evaluate(
 					role: null,
 					metric: gate.metric,
 					measured: null,
-					verdict: "not measured",
+					verdict: gate.informational === undefined ? "not measured" : "informational",
 				});
 				continue;
 			}
 			for (const [serial, device] of platformDevices) {
 				const role = device.role ?? null;
-				const applies = appliesTo(gate, role, device.runs);
+				const applies = gate.informational === undefined && appliesTo(gate, role, device.runs);
 				const pattern = matcher(gate.metric);
 				const keys = gate.metric.includes("*")
 					? Object.keys(device.metrics)

@@ -1,10 +1,20 @@
 import { fullIosPlanSize } from "./iphone/resilience.ts";
 import { fullPlanSize } from "./resilience.ts";
-import { layoutVariants, pinnedNames, variants } from "./screens.ts";
-import type { A11yFile, Metrics, ParityFile, ResilienceFile } from "./types.ts";
+import { cases as screenCases, layoutVariants, pinnedNames, variants } from "./screens.ts";
+import type { A11yFile, Metrics, ParityFile, ResilienceFile, SignedInRecord } from "./types.ts";
 
 const largest = (numbers: number[]) => Math.max(...numbers);
 const sum = (numbers: number[]) => numbers.reduce((total, value) => total + value, 0);
+
+const signedInScreens = new Set(screenCases.filter((screen) => screen.signedIn).map((screen) => screen.id));
+const screenOf = (entry: { name: string; screen?: string }): string => entry.screen ?? entry.name.split("--")[0] ?? "";
+
+/**
+ * D12: the signed-in phase covers the Rasheed app's account screens, not the library, so a phase that never started (no QA account, or the
+ * sign-in was refused: `signedIn` false in its record) does not hold the run incomplete. True when the phase's cases were skipped for that
+ * reason; a phase that did sign in, and every signed-out case, count as they always did.
+ */
+const phaseNeverEntered = (phase: SignedInRecord | null | undefined): boolean => phase?.signedIn === false;
 
 /**
  * Screenshot parity. Only a comparison against a frozen reference is a measurement: a case that was missing its reference,
@@ -19,10 +29,13 @@ export function parityMetrics(file: ParityFile, signedIn: readonly string[] = []
 	const comparedNames = new Set(compared.map((entry) => entry.name));
 	const pinned = pinnedNames(signedIn, variants);
 	const pixels = (entry: (typeof compared)[number]) => entry.differingPixels ?? 0;
+	// Signed-in cases the run recorded as skipped because its signed-in phase never started: left out of what is incomplete, and counted here.
+	const skippedSignedIn = phaseNeverEntered(file.signedInPhase) ? file.cases.filter((entry) => entry.verdict === "skipped" && signedInScreens.has(screenOf(entry))).length : 0;
 	return {
 		"parity.cases": compared.length,
 		"parity.casesExpected": file.matrixSize,
-		"parity.casesIncomplete": Math.max(0, file.matrixSize - compared.length),
+		"parity.casesIncomplete": Math.max(0, file.matrixSize - compared.length - skippedSignedIn),
+		"parity.signedIn.skipped": skippedSignedIn,
 		"parity.casesDiffering": compared.filter((entry) => entry.verdict === "fail").length,
 		"parity.casesSkipped": file.cases.filter((entry) => entry.verdict === "skipped").length,
 		"parity.diffPixelsOutsideMasks": compared.length ? largest(compared.map(pixels)) : null,
@@ -45,13 +58,15 @@ export function a11yMetrics(file: A11yFile, signedIn: readonly string[] = []): M
 	const measured = file.screens.filter((screen) => screen.error === null);
 	const measuredNames = new Set(measured.map((screen) => screen.name));
 	const pinned = pinnedNames(signedIn, layoutVariants);
+	const skippedSignedIn = phaseNeverEntered(file.signedInPhase) ? file.screens.filter((screen) => screen.error !== null && signedInScreens.has(screenOf(screen))).length : 0;
 	const total = (pick: (screen: (typeof measured)[number]) => number) => sum(measured.map(pick));
 	const interactive = total((screen) => screen.interactive);
 	const pct = (count: number) => (interactive === 0 ? null : (count / interactive) * 100);
 	return {
 		"a11y.screens": measured.length,
 		"a11y.screensExpected": file.matrixSize,
-		"a11y.screensIncomplete": Math.max(0, file.matrixSize - measured.length),
+		"a11y.screensIncomplete": Math.max(0, file.matrixSize - measured.length - skippedSignedIn),
+		"a11y.signedIn.skipped": skippedSignedIn,
 		"a11y.interactive": interactive,
 		"a11y.unreachable": total((screen) => screen.unreachable),
 		"a11y.unlabeled": total((screen) => screen.unlabeled),

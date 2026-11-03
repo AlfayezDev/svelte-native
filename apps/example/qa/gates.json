@@ -952,7 +952,7 @@
     },
     {
       "id": "parity.incomplete",
-      "title": "Parity cases not compared against a reference (missing, unstable, errored, skipped, not run)",
+      "title": "Parity cases not compared against a reference (missing, unstable, errored, skipped, not run) (D12: the signed-in cases skipped because the phase never started, for lack of a QA account, are not counted)",
       "unit": "cases",
       "metric": "parity.casesIncomplete",
       "bar": {
@@ -980,14 +980,15 @@
     },
     {
       "id": "parity.signedIn.missing",
-      "title": "Screenshot parity: pinned signed-in screens (gates.json signedIn) not compared in every variant",
+      "title": "Screenshot parity: pinned signed-in screens (gates.json signedIn) not compared in every variant (informational, D12)",
       "unit": "cases",
       "metric": "parity.signedIn.missing",
       "bar": {
         "android": {
           "max": 0
         }
-      }
+      },
+      "informational": "D12: the signed-in screens are the Rasheed app's account screens, not the library; they are shown and never block"
     },
     {
       "id": "a11y.unreachable",
@@ -1086,7 +1087,7 @@
     },
     {
       "id": "a11y.incomplete",
-      "title": "Accessibility: screens not dumped",
+      "title": "Accessibility: screens not dumped (D12: the signed-in cases skipped because the phase never started, for lack of a QA account, are not counted)",
       "unit": "screens",
       "metric": "a11y.screensIncomplete",
       "bar": {
@@ -1100,14 +1101,15 @@
     },
     {
       "id": "a11y.signedIn.missing",
-      "title": "Accessibility: pinned signed-in screens (gates.json signedIn) not dumped in every layout",
+      "title": "Accessibility: pinned signed-in screens (gates.json signedIn) not dumped in every layout (informational, D12)",
       "unit": "screens",
       "metric": "a11y.signedIn.missing",
       "bar": {
         "android": {
           "max": 0
         }
-      }
+      },
+      "informational": "D12: the signed-in screens are the Rasheed app's account screens, not the library; they are shown and never block"
     },
     {
       "id": "resilience.failures",

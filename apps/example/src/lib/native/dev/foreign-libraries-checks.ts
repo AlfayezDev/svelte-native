@@ -11,6 +11,7 @@ import { dismissDatePicker, openDatePicker, captureRef, releaseCapture, type Cap
 import type { Host, LibraryHandles, LibraryKind } from "./LibrarySet.svelte";
 import { libraryLab } from "./foreign.svelte.ts";
 import { argb, clear, near, numberIn, show, solid } from "./foreign-pixels.ts";
+import { pins, resolvePin, type Pinned } from "./foreign-pins.ts";
 
 export type Where = "inline" | "row" | "sheet";
 export type Rect = { x: number; y: number; width: number; height: number };
@@ -97,19 +98,6 @@ const within = <T>(promise: Promise<T> | undefined, milliseconds = 5000): Promis
 const describe = (info: Native | null): string => (info ? `${info.class.split(".").pop()} ${info.width}x${info.height}px at ${info.x},${info.y}${info.attached ? "" : " detached"}${info.shown ? "" : " hidden"}` : "no native view");
 
 /**
- * The native class a library's view must have on Android, as its own source names it (never a pattern that more than one class could match): `host` is the full class name
- * of the view the section's handle names, `inside` the simple class name of a view in the tree below the handle's (a library whose native view sits behind children is
- * reached through the section's box, and its size is that of this view).
- */
-export type Pinned = ({ host: string } | { inside: string }) & {
-  /**
-   * The same on iOS, from the libraries' own sources: the class UIKit shows for the section's view (`host`; React Native's own `RCTLegacyViewManagerInteropComponentView` for a library
-   * that is still a Paper view manager, with the library's view `inside` it) and/or the simple class name of a view in the tree below it (`inside`). Absent: the iOS class is recorded, not pinned.
-   */
-  ios?: { host?: string; inside?: string };
-};
-
-/**
  * The common part: a native view of the library's class is attached, shown and sized, and its size is the layout the engine measured. Waits for
  * it (a view appears after the engine's frame).
  */
@@ -126,13 +114,10 @@ async function mounts(c: Ctx, pinned: Pinned, host: Host | undefined = c.host(),
   const info = c.inspect(host);
   c.check("mounts: a native view is attached, shown and sized", up, describe(info));
   if (!info) return null;
-  // The pin of the platform: Android's classes are the libraries' own Kotlin and Java, iOS's what UIKit built for them (see `Pinned.ios`).
-  const pin: { host?: string; inside?: string } = c.android ? ("inside" in pinned ? { inside: pinned.inside } : { host: pinned.host }) : (pinned.ios ?? {});
-  const innerEntry = pin.inside !== undefined ? info.views.find((entry) => entry.trim().startsWith(`${pin.inside} `)) : undefined;
-  const name = c.android ? ("inside" in pinned ? pinned.inside : pinned.host) : [pin.host, pin.inside === undefined ? undefined : `${pin.inside} inside`].filter(Boolean).join(", ");
-  const there = (pin.host === undefined || info.class === pin.host) && (pin.inside === undefined || innerEntry !== undefined);
-  if (c.android || pin.host !== undefined || pin.inside !== undefined) c.check(`mounts: it is the library's view (${name})`, there, `${info.class}; inside: ${info.views.slice(0, 4).join(" | ")}`);
-  else c.skip("mounts: it is the library's view", `iOS class not pinned (this run saw ${info.class}; inside: ${info.views.slice(0, 3).join(" | ")})`);
+  // The pin of the platform: Android's classes are the libraries' own Kotlin and Java, iOS's what UIKit built for them (`foreign-pins.ts` says how each is spelled).
+  const pin = resolvePin(c.android, pinned, info);
+  const innerEntry = pin.entry;
+  c.check(`mounts: it is the library's view (${pin.name})`, pin.there, `${info.class}; inside: ${info.views.slice(0, 4).join(" | ")}`);
   // The size compared is the view's own, or that of the pinned view inside the section's box.
   const inner = innerEntry ? /(\d+)x(\d+)\s*(?:clip=\w+)?\s*$/.exec(innerEntry) : null;
   const nativeWidth = inner ? Number(inner[1]) : info.width;
@@ -176,7 +161,7 @@ async function colours(c: Ctx, name: string, points: readonly (readonly [number,
 // expo-image
 
 async function image(c: Ctx): Promise<void> {
-  await mounts(c, { host: "expo.modules.image.ExpoImageViewWrapper", ios: { host: "ExpoImage.ImageView" } });
+  await mounts(c, pins.image);
   c.check("events: onLoad arrives for the bundled image, with its url", await c.until(() => c.events("image-load") >= 1, 12000), `${c.events("image-load")} onLoad, ${c.events("image-error")} onError`);
   c.check("events: onDisplay arrives after onLoad", await c.until(() => c.events("image-display") >= 1, 4000));
   c.check("events: no onError for it", c.events("image-error") === 0);
@@ -204,7 +189,7 @@ async function image(c: Ctx): Promise<void> {
 const redYellow = (y: number): [number, number][] => [[0.2 - 0.012, y], [0.2 + 0.012, y]];
 
 async function blur(c: Ctx): Promise<void> {
-  await mounts(c, { inside: "ExpoBlurView", ios: { host: "ExpoBlur.ExpoBlurView" } });
+  await mounts(c, pins.blur);
   if (!c.canLook) { c.skip("prop update: the blur smears a stripe edge in proportion to its intensity", "no pixel reader on this platform yet"); return; }
   const gap = async (intensity: number, y: number): Promise<{ spread: number; text: string } | null> => {
     c.lab.blurIntensity = intensity;
@@ -232,7 +217,7 @@ async function blur(c: Ctx): Promise<void> {
 
 async function gradient(c: Ctx): Promise<void> {
   // The container is flattened away when it only lays its children out: the section's box holds the native gradient (a View with only layout props has no native view).
-  await mounts(c, { inside: "LinearGradientView", ios: { inside: "LinearGradientView" } }, c.box(), c.host());
+  await mounts(c, pins.gradient, c.box(), c.host());
   await colours(c, "the gradient runs from its first colour at the start to its last at the end", [[0.02, 0.12], [0.98, 0.88]], ["#ff7a18", "#319197"], 45);
   // expo-linear-gradient on Android cannot unset `locations` (its prop setter ignores null), so a new list keeps the length.
   c.lab.gradientColors = ["#00c853", "#ffd600", "#2962ff"];
@@ -244,7 +229,7 @@ async function gradient(c: Ctx): Promise<void> {
 // react-native-video
 
 async function video(c: Ctx): Promise<void> {
-  await mounts(c, { host: "com.brentvatne.exoplayer.ReactExoplayerView", ios: { host: "RCTLegacyViewManagerInteropComponentView", inside: "RCTVideo" } });
+  await mounts(c, pins.video);
   c.check("events: onLoadStart, onLoad (with a duration) and onReadyForDisplay arrive", (await c.until(() => c.events("video-load") >= 1 && c.events("video-ready") >= 1, 15000)) && c.events("video-load-start") >= 1, `${foreignSummary(c, ["video-load-start", "video-load", "video-ready", "video-progress", "video-error"])}`);
   c.check("events: no onError", c.events("video-error") === 0);
   c.check("events: onProgress keeps arriving while it plays", await progresses(c, 1200));
@@ -352,7 +337,7 @@ async function iosPicker(c: Ctx): Promise<void> {
 
 async function datetime(c: Ctx): Promise<void> {
   if (!c.android) {
-    await mounts(c, { host: "", ios: { host: "RNDateTimePickerComponentView" } });
+    await mounts(c, pins.datetime);
     await iosPicker(c);
     // iOS shows the picker in the view tree; the Android module opens and closes dialogs, which are the checks below.
     for (const name of androidDialogChecks) c.androidOnly(name, "Android's picker is a dialog window that the module opens, dismisses and answers; iOS has no such module call");
@@ -405,7 +390,7 @@ async function pressed(c: Ctx): Promise<void> {
 const dotAt = (distance: number): [number, number] => [0.5 + distance, 0.5];
 
 async function lottie(c: Ctx): Promise<void> {
-  await mounts(c, { host: "com.airbnb.lottie.LottieAnimationView", ios: { host: "LottieAnimationViewComponentView", inside: "LottieContainerView" } });
+  await mounts(c, pins.lottie);
   c.check("events: onAnimationLoaded arrives", await c.until(() => c.events("lottie-loaded") >= 1, 10000), `${foreignSummary(c, ["lottie-loaded", "lottie-failure"])}`);
   c.check("events: no onAnimationFailure", c.events("lottie-failure") === 0);
   const handle = c.handles().lottie;
@@ -449,7 +434,7 @@ async function lottie(c: Ctx): Promise<void> {
 // react-native-pdf: page 1 is blue, page 2 green
 
 async function pdf(c: Ctx): Promise<void> {
-  await mounts(c, { host: "org.wonday.pdf.PdfView", ios: { host: "RCTLegacyViewManagerInteropComponentView", inside: "RNPDFPdfView" } });
+  await mounts(c, pins.pdf);
   c.check("events: onLoadComplete arrives with two pages", await c.until(() => c.events("pdf-load", 2) >= 1, 15000), foreignSummary(c, ["pdf-load", "pdf-page", "pdf-error"]));
   c.check("events: onPageChanged reports page 1 of 2", await c.until(() => c.events("pdf-page", "1/2") >= 1, 5000));
   c.check("events: no onError", c.events("pdf-error") === 0);
@@ -471,7 +456,7 @@ async function pdf(c: Ctx): Promise<void> {
 async function capture(c: Ctx): Promise<void> {
   const shot = c.handles().hosts.capture;
   if (!shot) { c.check("mounts: the ViewShot handed out its host handle", false, "no handle"); return; }
-  await mounts(c, { host: "expo.modules.svelteengine.views.EngineView", ios: { host: "RCTViewComponentView" } }, shot);
+  await mounts(c, pins.capture, shot);
   if (!c.canLook) { c.skip("capture: the rounded card keeps its corners, scale, jpg, base64 and data-uri results", "no pixel reader on this platform yet"); return; }
   const card = shot;
   // 1. the card (a 16 dp radius, overflow hidden, five stripes that reach the corners): transparent rounded corners, the stripes clipped to them
@@ -541,7 +526,7 @@ async function capture(c: Ctx): Promise<void> {
 // rive-react-native: the vehicles file is fetched from Rive's CDN (the lab needs the network for it)
 
 async function rive(c: Ctx): Promise<void> {
-  await mounts(c, { host: "com.rivereactnative.RiveReactNativeView", ios: { host: "RCTLegacyViewManagerInteropComponentView", inside: "RiveReactNativeView" } });
+  await mounts(c, pins.rive);
   c.check("events: onPlay arrives for the file's animation (the file needs the network)", await c.until(() => c.events("rive-play") >= 1, 20000), foreignSummary(c, ["rive-play", "rive-pause", "rive-stop", "rive-error"]));
   await c.pause(800);
   const middle = await colours(c, "capture: the animation is in the image (its middle is painted, not a hole)", [[0.5, 0.5], [0.45, 0.4], [0.55, 0.6]], ["#d62a5c", "#d62a5c", "#d62a5c"], 255, undefined);
@@ -572,7 +557,7 @@ async function rive(c: Ctx): Promise<void> {
 // expo-conic-gradient: hard stops make the right half of the turn red and the left half blue; a quarter turn... a half turn swaps them
 
 async function conic(c: Ctx): Promise<void> {
-  await mounts(c, { inside: "ConicGradientView", ios: { inside: "ConicGradientView" } }, c.box(), c.host());
+  await mounts(c, pins.conic, c.box(), c.host());
   c.lab.conicHard = true;
   c.lab.conicAngle = 0;
   await c.pause(500);
@@ -594,7 +579,7 @@ const androidShadowChecks = [
 ] as const;
 
 async function shadow(c: Ctx): Promise<void> {
-  await mounts(c, { inside: "FastShadowView", ios: { host: "RCTViewComponentView" } }, c.box(), c.host());
+  await mounts(c, pins.shadow, c.box(), c.host());
   const wrapped = c.handles().extras.wrapped;
   if (!c.android) {
     // react-native-fast-shadow has no iOS code: `ShadowedView` is React Native's `View`, and `shadowStyle` writes the layer's own shadow props. These four read Android's native view and its canvas clip.
@@ -643,7 +628,7 @@ async function shadow(c: Ctx): Promise<void> {
 // react-native-animateable-text: the number the shared value holds, written to the native text on the UI thread
 
 async function text(c: Ctx): Promise<void> {
-  await mounts(c, { host: "com.facebook.react.views.text.ReactTextView", ios: { host: "JBAnimatedTextComponentView" } });
+  await mounts(c, pins.text);
   if (!c.canInspect) { c.skip("the native text follows the shared value", "no native inspection on this platform yet"); return; }
   const read = (): number | null => numberIn(c.inspect(c.host())?.text);
   c.check("the first string is `count N`", await c.until(() => (c.inspect(c.host())?.text ?? "").startsWith("count"), 6000), c.inspect(c.host())?.text ?? "none");
@@ -677,7 +662,7 @@ async function svg(c: Ctx): Promise<void> {
   const heart = handles.heart;
   const ring = handles.ringSvg;
   if (!root || !path || !heart || !ring) { c.check("mounts: the section handed out its SVG handles", false, `root ${!!root}, path ${!!path}, heart ${!!heart}, ring ${!!ring}`); return; }
-  await mounts(c, { host: "com.horcrux.svg.SvgView", ios: { host: "RNSVGSvgView" } }, root as unknown as Host);
+  await mounts(c, pins.svg, root as unknown as Host);
   // commands: the library's own TurboModule answers for the native shape
   const length = (await c.until(() => typeof path.getTotalLength() === "number", 4000)) ? path.getTotalLength() : undefined;
   c.check("commands: getTotalLength reads the path from the native view (the check mark is 22.6 units long)", typeof length === "number" && length > 20 && length < 60, `length ${String(length)}`);

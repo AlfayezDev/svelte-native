@@ -127,6 +127,30 @@ test("iOS: React Native mounts every view, so the module takes the handle's tag 
   });
 });
 
+test("iOS: the module's answers reach the caller as they are (a plain path, not a URI), the release is given the same string, and width and height are not scaled", async () => {
+  // What RNViewShot.mm answers on iOS: React Native's temporary path, no scheme (`capture-ios-contract.test.ts` reads that from the library's source).
+  const directory = "/var/mobile/Containers/Data/Application/6F1A2B3C-0000-4000-8000-000000000001/tmp/ReactNative";
+  const { harness, app, shot, viewShot } = await mount("ios", 121);
+  let count = 0;
+  harness.natives.turbo.RNViewShot = {
+    captureRef: (tag: number, options: object) => { viewShot.log.push(`captureRef ${tag} ${JSON.stringify(options)}`); return Promise.resolve(`${directory}/FILE-${++count}.png`); },
+    captureScreen: () => Promise.resolve(""),
+    releaseCapture: (uri: string) => { viewShot.log.push(`release ${uri}`); },
+  };
+  harness.emit(shot.target, "topLayout", layout);
+  const first = await app.capture();
+  expect(first).toBe(`${directory}/FILE-1.png`);
+  expect(app.eventLog()).toEqual([["capture", `${directory}/FILE-1.png`]]);
+  // Another capture releases the previous file with the string the module made, which is what its `hasPrefix:` compares (a `file://` prefix would turn the release into a no-op).
+  expect(await app.capture()).toBe(`${directory}/FILE-2.png`);
+  await new Promise((resolveWait) => setTimeout(resolveWait, 600));
+  expect(viewShot.log.filter((line) => line.startsWith("release"))).toEqual([`release ${directory}/FILE-1.png`]);
+  // A size is the caller's number for the module, on iOS in points; the wrapper does not multiply it by the screen's scale.
+  viewShot.log.length = 0;
+  expect(await app.captureHandle(app.plainHandle(), { result: "tmpfile", width: 40, height: 30 })).toBe(`${directory}/FILE-3.png`);
+  expect(viewShot.log).toEqual([`captureRef ${app.plainHandle().tag} ${JSON.stringify({ format: "png", quality: 1, result: "tmpfile", snapshotContentContainer: false, handleGLSurfaceViewOnAndroid: false, width: 40, height: 30 })}`]);
+});
+
 test("a failed capture is reported to onCaptureFailure and rejects; the previous file is released after the next capture; no view is an error", async () => {
   const failing = await mount("ios", 114);
   failing.harness.natives.turbo.RNViewShot = fakeViewShot({ fail: "No view found with reactTag" }).module;

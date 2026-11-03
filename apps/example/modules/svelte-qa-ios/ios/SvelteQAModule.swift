@@ -103,6 +103,11 @@ public final class SvelteQAModule: Module {
       return SvelteQAViews.inspect(tag: tag)
     }
 
+    Function("datePicker") { (tag: Int, action: String, milliseconds: Double?) -> [String: Any]? in
+      try SvelteQA.requireEnabled()
+      return SvelteQAViews.pickerState(tag: tag, action: action, milliseconds: milliseconds ?? 0)
+    }
+
     Function("samplePixels") { (source: String, points: [[Double]], radius: Int?) -> [String: Any] in
       try SvelteQA.requireEnabled()
       return try SvelteQAViews.samplePixels(source: source, points: points, radius: radius ?? 1)

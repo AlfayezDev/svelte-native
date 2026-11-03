@@ -82,6 +82,10 @@ export const libraryLabDefaults = {
   svgHeart: "#e5484d",
   /** The elevation of the white square inside the capture section's card (its shadow must be in the image). */
   captureElevation: 0,
+  /** iOS: the date (milliseconds) the date picker's `value` prop holds instead of the one the picker last reported; null: the one it reported. */
+  dateValue: null as number | null,
+  /** iOS: the date picker's `mode`. */
+  dateMode: "date" as "date" | "time",
 };
 export const libraryLab = $state({ ...libraryLabDefaults, gradientColors: [...libraryLabDefaults.gradientColors] });
 export function resetLibraryLab(): void {

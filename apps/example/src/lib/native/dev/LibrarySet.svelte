@@ -181,7 +181,7 @@
         {:else if kind === "datetime"}
           <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: theme.surface }}>
             {#if Platform.OS === "ios"}
-              <DateTimePicker value={picked} mode="date" display="compact" ref={keep(hosts, kind)} onValueChange={(_, date) => { picked = date; report("date-picked", date.toISOString()); }} />
+              <DateTimePicker value={libraryLab.dateValue === null ? picked : new Date(libraryLab.dateValue)} mode={libraryLab.dateMode} display="compact" ref={keep(hosts, kind)} onValueChange={(_, date) => { picked = date; report("date-picked", date.toISOString()); }} onDismiss={() => report("date-dismissed")} />
             {:else}
               <Pressable accessibilityRole="button" accessibilityLabel="Pick a date" onPress={pickDate} style={{ minHeight: 44, paddingHorizontal: 16, borderRadius: 10, borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}>
                 <Text style={{ color: theme.foreground, fontSize: 15 }}>{picked.toISOString().slice(0, 10)}</Text>

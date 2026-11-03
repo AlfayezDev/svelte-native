@@ -18,3 +18,8 @@ export function skipEntry<Library extends string, Place extends string>(library:
 export function detailRecords<Check, Skip>(android: boolean, checks: readonly Check[], skips: readonly Skip[]): { checks?: readonly Check[]; skips?: readonly Skip[] } {
   return android ? {} : { checks, skips };
 }
+
+/** `Documents/foreign-progress.json`: the launch's token (the one of its URL), the place that was just finished, and every check and skip recorded so far. */
+export function progressRecord<Check, Skip>(token: string | null, finished: string, checks: readonly Check[], skips: readonly Skip[]): string {
+  return JSON.stringify({ token, finished, checks, skips });
+}

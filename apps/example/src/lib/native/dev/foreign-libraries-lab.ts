@@ -5,8 +5,9 @@ import { captureRef, releaseCapture, type CaptureOptions } from "@rasheed/svelte
 import Platform from "react-native/Libraries/Utilities/Platform";
 import { libraryKinds, type Host, type LibraryHandles, type LibraryKind } from "./LibrarySet.svelte";
 import { count, foreignEvents, foreignLab, libraryHandles, libraryLab, resetLibraryLab } from "./foreign.svelte.ts";
-import { libraryChecks, type Ctx, type Look, type Native, type Rect, type Where } from "./foreign-libraries-checks.ts";
-import { detailRecords, skipEntry } from "./foreign-records.ts";
+import { libraryChecks, type Ctx, type Look, type Native, type PickerState, type Rect, type Where } from "./foreign-libraries-checks.ts";
+import { detailRecords, progressRecord, skipEntry } from "./foreign-records.ts";
+import { smokeLaunch } from "./smoke-log.ts";
 
 /**
  * The `foreign-libraries` stress scenario (SPEC.md, "Foreign views", "Device verification of the libraries"): each of the thirteen native-view
@@ -27,7 +28,11 @@ type Engine = {
 type Sampled = { colors: number[]; width: number; height: number; format: string };
 type Pixels = { sample(source: string, points: readonly (readonly [number, number])[], radius?: number): Sampled };
 /** iOS: `SvelteQA` (`modules/svelte-qa-ios`) reads the same two things, under other names. */
-type QaIos = { inspect?(tag: number): Native | null; samplePixels?(source: string, points: readonly (readonly [number, number])[], radius?: number): Sampled };
+type QaIos = {
+  inspect?(tag: number): Native | null;
+  samplePixels?(source: string, points: readonly (readonly [number, number])[], radius?: number): Sampled;
+  datePicker?(tag: number, action: string, milliseconds?: number): PickerState | null;
+};
 type Router = { goto(href: string, options?: { presentation?: "sheet" }): void; back(): boolean; entries: readonly unknown[] };
 export type LibraryCheck = { library: LibraryKind; where: Where; name: string; passed: boolean; detail: string };
 /** A check the platform cannot make. `androidOnly` marks one that reads an Android-only fact (a class, a surface, a dialog, the engine's counters): on another platform it is not a hole in the lab, it does not exist there. */
@@ -42,6 +47,8 @@ const inspectTag = (tag: number): Native | null => (android ? engine?.inspect?.(
 const places: readonly Where[] = ["inline", "row", "sheet"];
 /** The file of the captures a launch leaves for the next one to find gone. */
 const leftoverFile = () => new File(Paths.document, "foreign-leftovers.json");
+/** iOS: what the scenario has recorded so far, written after every place, so that a launch that dies in the middle still tells the harness how far it got (it reads `lab-results.json` only when the scenario ends). */
+const progressFile = () => new File(Paths.document, "foreign-progress.json");
 
 function pause(milliseconds: number, signal: AbortSignal): Promise<void> {
   return new Promise<void>((resolve) => {
@@ -105,6 +112,10 @@ export async function runForeignLibraries(router: Router, signal: AbortSignal, o
         canInspect: android ? typeof engine?.inspect === "function" : typeof qaIos?.inspect === "function",
         canLook: !!pixels,
         canTap: android && typeof engine?.tap === "function",
+        picker: (action, milliseconds) => {
+          const target = libraryHandles.get(opened.source)?.hosts[kind];
+          return target && typeof qaIos?.datePicker === "function" ? qaIos.datePicker(target.tag, action, milliseconds) : null;
+        },
         driven,
         press: (id, resourceId) => { console.info("[Svelte foreign press]", JSON.stringify({ id, resourceId })); },
         lab: libraryLab,
@@ -191,6 +202,10 @@ export async function runForeignLibraries(router: Router, signal: AbortSignal, o
       const dropped = await until(settled, 6000, signal);
       if (stats && baseline) record(`${where}: leaving drops every frame and node`, dropped, JSON.stringify(stats));
       else if (!android) skip(`${where}: leaving drops every frame and node`, "the engine's frame and node counters (SvelteEngine.foreignStats) exist on Android only", true);
+      if (!android) {
+        try { progressFile().write(progressRecord(smokeLaunch.token, `${kind} ${where}`, checks, skips)); }
+        catch (error) { console.error("[Svelte foreign library] the progress file could not be written", error); }
+      }
     }
   }
 

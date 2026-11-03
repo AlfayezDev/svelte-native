@@ -35,6 +35,8 @@ export type Native = {
   /** How the view clips what it draws: `canvas` (an engine view with `overflow: hidden`: the padding box), `none`; `children` (Android's `clipChildren`) for a view of a library. */
   clip: string;
 };
+/** What the `UIDatePicker` inside a date picker section holds (iOS, `SvelteQA.datePicker`): the date in milliseconds, its `datePickerMode` and `preferredDatePickerStyle` raw values. */
+export type PickerState = { date: number; mode: number; style: number };
 /** What a capture of a view holds at the points asked for (fractions of the image). */
 export type Look = { colors: number[]; width: number; height: number; format: string; uri: string };
 
@@ -49,6 +51,11 @@ export type Ctx = {
   readonly canLook: boolean;
   /** The platform can press the screen at a point (the engine's `tap`: Android). A press needs a finger elsewhere: the iPhone has none that the lab can use. */
   readonly canTap: boolean;
+  /**
+   * iOS: the `UIDatePicker` of the date picker section, read (`read`), given a pick the way UIKit reports one (`change` to [milliseconds]: the date, then `valueChanged`) or told its editing
+   * ended (`dismiss`: `editingDidEnd`). The answer is what the picker holds afterwards; null where the platform has no such picker.
+   */
+  picker(action: "read" | "change" | "dismiss", milliseconds?: number): PickerState | null;
   /** The run was opened with `drive:adb`: the harness presses what `press` asks for. */
   readonly driven: boolean;
   readonly lab: typeof libraryLab;
@@ -317,10 +324,36 @@ const androidDialogChecks = [
   "commands: the time dialog opens and closes the same way",
 ] as const;
 
+/**
+ * The iOS picker is a view (`RNDateTimePickerComponentView` holding a `UIDatePicker`), so its props and events are the ones to check. The lab has no finger on the phone: the QA module gives the
+ * `UIDatePicker` what a finger gives it (the new date, then UIKit's own `valueChanged` and `editingDidEnd` control events), and everything after that is the library's: the view turns the
+ * control event into `onChange` and `onPickerDismiss`, the wrapper into `onValueChange` and `onDismiss`, and a `value` or `mode` prop reaches the picker.
+ */
+async function iosPicker(c: Ctx): Promise<void> {
+  const start = Date.UTC(2026, 9, 28, 12, 0, 0);
+  const initial = c.picker("read");
+  c.check("props: the picker holds the date of the value prop", !!initial && initial.date === start, initial ? `${new Date(initial.date).toISOString()}, mode ${initial.mode}` : "no UIDatePicker");
+  const picked = Date.UTC(2026, 10, 15, 8, 30, 0);
+  const afterPick = c.picker("change", picked);
+  c.check("events: onValueChange arrives with the date the picker holds after a pick", await c.until(() => c.events("date-picked", new Date(picked).toISOString()) >= 1, 4000), `${c.events("date-picked")} picks heard; the picker holds ${afterPick ? new Date(afterPick.date).toISOString() : "nothing"}`);
+  await c.pause(400);
+  const held = c.picker("read");
+  c.check("props: the date the handler stored comes back to the picker as its value", !!held && held.date === picked, held ? new Date(held.date).toISOString() : "no UIDatePicker");
+  const changed = Date.UTC(2027, 0, 20, 12, 0, 0);
+  c.lab.dateValue = changed;
+  c.check("prop update: a new value reaches the picker", await c.until(() => c.picker("read")?.date === changed, 4000), c.picker("read") ? new Date(c.picker("read")?.date ?? 0).toISOString() : "no UIDatePicker");
+  const before = c.picker("read")?.mode;
+  c.lab.dateMode = "time";
+  c.check("prop update: mode time changes the picker's mode", await c.until(() => { const mode = c.picker("read")?.mode; return mode !== undefined && mode !== before; }, 4000), `datePickerMode ${before} -> ${c.picker("read")?.mode}`);
+  c.lab.dateMode = "date";
+  c.picker("dismiss");
+  c.check("events: onDismiss arrives when the picker ends editing", await c.until(() => c.events("date-dismissed") >= 1, 4000), `${c.events("date-dismissed")} dismissals heard`);
+}
+
 async function datetime(c: Ctx): Promise<void> {
   if (!c.android) {
     await mounts(c, { host: "", ios: { host: "RNDateTimePickerComponentView" } });
-    c.skip("events: onValueChange for a pick, onDismiss", "a pick needs a finger on the picker: the iPhone");
+    await iosPicker(c);
     // iOS shows the picker in the view tree; the Android module opens and closes dialogs, which are the checks below.
     for (const name of androidDialogChecks) c.androidOnly(name, "Android's picker is a dialog window that the module opens, dismisses and answers; iOS has no such module call");
     return;

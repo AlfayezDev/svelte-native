@@ -95,6 +95,39 @@ enum SvelteQAViews {
     return out
   }
 
+  private static func datePicker(in view: UIView) -> UIDatePicker? {
+    if let picker = view as? UIDatePicker { return picker }
+    for subview in view.subviews {
+      if let picker = datePicker(in: subview) { return picker }
+    }
+    return nil
+  }
+
+  private static func pickerAction(tag: Int, action: String, milliseconds: Double) -> [String: Any]? {
+    guard let root = view(tag: tag), let picker = datePicker(in: root) else { return nil }
+    switch action {
+    case "change":
+      // What a pick does to the control: the date changes and UIKit sends `valueChanged`, which the library's view turns into its `onChange` event.
+      picker.setDate(Date(timeIntervalSince1970: milliseconds / 1000), animated: false)
+      picker.sendActions(for: .valueChanged)
+    case "dismiss":
+      // What closing a compact picker does: `editingDidEnd`, which the library's view turns into `onPickerDismiss`.
+      picker.sendActions(for: .editingDidEnd)
+    default:
+      break
+    }
+    return ["date": picker.date.timeIntervalSince1970 * 1000, "mode": picker.datePickerMode.rawValue, "style": picker.preferredDatePickerStyle.rawValue]
+  }
+
+  /// The `UIDatePicker` inside the view with React tag `tag`: read (`read`), given a pick the way UIKit reports one (`change`: the date, then `valueChanged`) or told its editing ended
+  /// (`dismiss`: `editingDidEnd`). The lab has no finger on the iPhone; the control actions are what a finger would send. The answer is what the picker holds afterwards.
+  static func pickerState(tag: Int, action: String, milliseconds: Double) -> [String: Any]? {
+    if Thread.isMainThread { return pickerAction(tag: tag, action: action, milliseconds: milliseconds) }
+    var out: [String: Any]?
+    DispatchQueue.main.sync { out = pickerAction(tag: tag, action: action, milliseconds: milliseconds) }
+    return out
+  }
+
   private static func bytes(of source: String) throws -> Data {
     if source.hasPrefix("data:") {
       guard let comma = source.firstIndex(of: ","), let data = Data(base64Encoded: String(source[source.index(after: comma)...]), options: .ignoreUnknownCharacters) else { throw QAError("the data URI has no base64 payload") }

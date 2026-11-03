@@ -2,6 +2,7 @@ import {
 	findEngineWarnings,
 	findFaults,
 	findInterruption,
+	lateIntervals,
 	parseStressComplete,
 	parseStressScenarios,
 	type Scenario,
@@ -260,6 +261,8 @@ export function gesturesMetrics(file: GesturesFile, pinned: readonly string[]): 
 			const complete = framed.length === judged.length;
 			const frames = (pick: (result: GestureResult) => number) => (complete ? worst(framed.map((result) => pick(result))) : null);
 			metrics[`gestures.${short}.droppedPct`] = frames((result) => (result.frames as NonNullable<GestureResult["frames"]>).droppedPct);
+			// The late intervals the phones' gesture-frame gates judge (D9: at most one per launch); null when the record cannot give the exact count.
+			metrics[`gestures.${short}.lateIntervals`] = complete ? worst(framed.map((result) => lateIntervals(result.frames as NonNullable<GestureResult["frames"]>))) : null;
 			metrics[`gestures.${short}.maxMs`] = frames((result) => (result.frames as NonNullable<GestureResult["frames"]>).max);
 			metrics[`gestures.${short}.maxPeriodRatio`] = frames((result) => {
 				const f = result.frames as NonNullable<GestureResult["frames"]>;

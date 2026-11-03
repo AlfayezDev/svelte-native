@@ -224,6 +224,145 @@
       "app-account-delete-workspace"
     ]
   },
+  "exceptions": [
+    {
+      "gate": "frames.droppedPct",
+      "device": "E74A5608-BF8E-5806-8699-1605F82ADED9",
+      "scenarios": [
+        "header-8"
+      ],
+      "decision": "D1",
+      "reason": "UIKit's UINavigationBar re-lays out its items for every push and pop (about 30 ms a run, 20 to 23 ms of it layoutSubviews), which is the platform's floor, not the engine's",
+      "evidence": "apps/platform/modules/svelte-engine/SPEC.md, 'Native screens, iOS' > 'Where the time goes (iPhone SE 3, Time Profiler, 60 Hz)'"
+    },
+    {
+      "gate": "frames.maxPeriodRatio",
+      "device": "E74A5608-BF8E-5806-8699-1605F82ADED9",
+      "scenarios": [
+        "header-8"
+      ],
+      "decision": "D1",
+      "reason": "UIKit's UINavigationBar re-lays out its items for every push and pop (about 30 ms a run, 20 to 23 ms of it layoutSubviews), which is the platform's floor, not the engine's",
+      "evidence": "apps/platform/modules/svelte-engine/SPEC.md, 'Native screens, iOS' > 'Where the time goes (iPhone SE 3, Time Profiler, 60 Hz)'"
+    },
+    {
+      "gate": "frames.maxMs",
+      "device": "E74A5608-BF8E-5806-8699-1605F82ADED9",
+      "scenarios": [
+        "header-8"
+      ],
+      "decision": "D1",
+      "reason": "UIKit's UINavigationBar re-lays out its items for every push and pop (about 30 ms a run, 20 to 23 ms of it layoutSubviews), which is the platform's floor, not the engine's",
+      "evidence": "apps/platform/modules/svelte-engine/SPEC.md, 'Native screens, iOS' > 'Where the time goes (iPhone SE 3, Time Profiler, 60 Hz)'"
+    },
+    {
+      "gate": "frames.droppedPct",
+      "device": "R58Y90KNGRP",
+      "scenarios": [
+        "churn-animated"
+      ],
+      "decision": "D1",
+      "reason": "Reanimated's worklet runtime applies the animated props of the churn on the Android UI thread, which no change in the engine's write path removes",
+      "evidence": "apps/platform/modules/svelte-engine/SPEC.md, 'Animated write path' and 'Frames: recycling, text cache' (Measurements, churn-animated)"
+    },
+    {
+      "gate": "frames.maxPeriodRatio",
+      "device": "R58Y90KNGRP",
+      "scenarios": [
+        "churn-animated"
+      ],
+      "decision": "D1",
+      "reason": "Reanimated's worklet runtime applies the animated props of the churn on the Android UI thread, which no change in the engine's write path removes",
+      "evidence": "apps/platform/modules/svelte-engine/SPEC.md, 'Animated write path' and 'Frames: recycling, text cache' (Measurements, churn-animated)"
+    },
+    {
+      "gate": "frames.maxMs",
+      "device": "R58Y90KNGRP",
+      "scenarios": [
+        "churn-animated"
+      ],
+      "decision": "D1",
+      "reason": "Reanimated's worklet runtime applies the animated props of the churn on the Android UI thread, which no change in the engine's write path removes",
+      "evidence": "apps/platform/modules/svelte-engine/SPEC.md, 'Animated write path' and 'Frames: recycling, text cache' (Measurements, churn-animated)"
+    },
+    {
+      "gate": "list.virtual300.mountMs",
+      "device": "R58Y90KNGRP",
+      "decision": "D9",
+      "reason": "22 to 33 ms against 10 under the gate protocol (six idle frames before the mount); the work itself is about 9 ms on warm cores, and placement, clock and idle redraw do not explain the cold spread; pinning and ADPF had no effect",
+      "evidence": "apps/platform/modules/svelte-engine/SPEC.md, 'The windowed list's cold mount on the A16 (2 November 2026, branch feat/svelte-native-list2)'"
+    },
+    {
+      "gate": "boot.warm.p90",
+      "device": "R58Y90KNGRP",
+      "decision": "D9",
+      "reason": "the warm p90 is the phone's tail, another process's GC on a big core and the system_server window-manager lock; the phone has fast and slow days (round 2 read about 50 ms faster in the same interleaved hour, median 370 to 318 ms)",
+      "evidence": "apps/platform/modules/svelte-engine/SPEC.md, 'Boot on the phone, round 2: where the slow launches come from (2 November 2026, Samsung A16)' and 'round 3'"
+    },
+    {
+      "gate": "boot.cold.p90",
+      "device": "R58Y90KNGRP",
+      "decision": "D9",
+      "reason": "the cold p90 is the phone's tail, another process's GC on a big core and the system_server window-manager lock; the phone has fast and slow days (round 2 read about 50 ms faster in the same interleaved hour, median 370 to 318 ms)",
+      "evidence": "apps/platform/modules/svelte-engine/SPEC.md, 'Boot on the phone, round 2: where the slow launches come from (2 November 2026, Samsung A16)' and 'round 3'"
+    },
+    {
+      "gate": "frames.droppedPct",
+      "device": "R58Y90KNGRP",
+      "scenarios": [
+        "animation-48",
+        "animation-48-square",
+        "animation-48-translate"
+      ],
+      "maxLateIntervals": 2,
+      "decision": "D9",
+      "reason": "the first interval of the window (19 to 27 ms in the D9 evidence): the scenario's own 48 withRepeat animations start in one Worklets message on the UI thread, pacing them was vetoed; covered up to 2 late intervals (that one plus the allowance every scenario has), no further",
+      "evidence": "apps/platform/modules/svelte-engine/SPEC.md, 'The first interval of the animation scenarios, and what the UI thread takes in one message (2 November 2026)'"
+    },
+    {
+      "gate": "frames.maxPeriodRatio",
+      "device": "R58Y90KNGRP",
+      "scenarios": [
+        "animation-48",
+        "animation-48-square",
+        "animation-48-translate"
+      ],
+      "maxLateIntervals": 2,
+      "decision": "D9",
+      "reason": "the first interval of the window (19 to 27 ms in the D9 evidence): the scenario's own 48 withRepeat animations start in one Worklets message on the UI thread, pacing them was vetoed; covered up to 2 late intervals (that one plus the allowance every scenario has), no further",
+      "evidence": "apps/platform/modules/svelte-engine/SPEC.md, 'The first interval of the animation scenarios, and what the UI thread takes in one message (2 November 2026)'"
+    },
+    {
+      "gate": "gestures.frames.droppedPct",
+      "device": "R58Y90KNGRP",
+      "scenarios": [
+        "box"
+      ],
+      "decision": "1 Nov first touch",
+      "reason": "the first touch of a process runs react-native-gesture-handler's first worklet and class initialisation (25 ms for the first DOWN on a little core); a warm-up touch did not help",
+      "evidence": "apps/platform/modules/svelte-engine/SPEC.md, 'The first touch of a process (1 November 2026)'"
+    },
+    {
+      "gate": "gestures.frames.maxPeriodRatio",
+      "device": "R58Y90KNGRP",
+      "scenarios": [
+        "box"
+      ],
+      "decision": "1 Nov first touch",
+      "reason": "the first touch of a process runs react-native-gesture-handler's first worklet and class initialisation (25 ms for the first DOWN on a little core); a warm-up touch did not help",
+      "evidence": "apps/platform/modules/svelte-engine/SPEC.md, 'The first touch of a process (1 November 2026)'"
+    },
+    {
+      "gate": "gestures.frames.maxMs",
+      "device": "R58Y90KNGRP",
+      "scenarios": [
+        "box"
+      ],
+      "decision": "1 Nov first touch",
+      "reason": "the first touch of a process runs react-native-gesture-handler's first worklet and class initialisation (25 ms for the first DOWN on a little core); a warm-up touch did not help",
+      "evidence": "apps/platform/modules/svelte-engine/SPEC.md, 'The first touch of a process (1 November 2026)'"
+    }
+  ],
   "gates": [
     {
       "id": "checks.passed",
@@ -296,7 +435,15 @@
       },
       "roles": [
         "phone"
-      ]
+      ],
+      "excusing": {
+        "runs": "lab.scenarios.failedRuns",
+        "gates": [
+          "frames.droppedPct",
+          "frames.maxPeriodRatio",
+          "frames.maxMs"
+        ]
+      }
     },
     {
       "id": "lab.scenarios.missing",
@@ -450,39 +597,45 @@
     },
     {
       "id": "frames.droppedPct",
-      "title": "Dropped frames per scenario",
-      "unit": "%",
-      "metric": "frames.*.droppedPct",
+      "title": "Dropped frames per scenario: intervals longer than 1.5 frame periods in the worst run, at most one (D9); the dropped share shows beside it",
+      "unit": "late intervals",
+      "metric": "frames.*.lateIntervals",
       "bar": {
         "android": {
-          "max": 0,
-          "round": 1
+          "max": 1
         },
         "ios": {
-          "max": 0,
-          "round": 1
+          "max": 1
         }
       },
       "roles": [
         "phone"
-      ]
+      ],
+      "also": {
+        "metric": "frames.*.droppedPct",
+        "unit": "%"
+      }
     },
     {
       "id": "frames.maxPeriodRatio",
-      "title": "Longest frame over the frame period, per scenario",
-      "unit": "x period",
-      "metric": "frames.*.maxPeriodRatio",
+      "title": "Longest frame over the frame period, per scenario, judged as the dropped frames are (D9: at most one interval over 1.5 periods per run; no frame over 33 ms is frames.maxMs); the ratio of the longest frame shows beside it",
+      "unit": "late intervals",
+      "metric": "frames.*.lateIntervals",
       "bar": {
         "android": {
-          "max": 1.5
+          "max": 1
         },
         "ios": {
-          "max": 1.5
+          "max": 1
         }
       },
       "roles": [
         "phone"
-      ]
+      ],
+      "also": {
+        "metric": "frames.*.maxPeriodRatio",
+        "unit": "x period"
+      }
     },
     {
       "id": "frames.maxMs",
@@ -984,38 +1137,44 @@
     },
     {
       "id": "gestures.frames.droppedPct",
-      "title": "Gestures: frames dropped while a gesture drives an animation (box, busy-JS box, pinch)",
-      "unit": "%",
-      "metric": "gestures.*.droppedPct",
+      "title": "Gestures: frames dropped while a gesture drives an animation (box, busy-JS box, pinch): intervals longer than 1.5 frame periods in the worst launch, at most one (D9); the dropped share shows beside it",
+      "unit": "late intervals",
+      "metric": "gestures.*.lateIntervals",
+      "bar": {
+        "android": {
+          "max": 1
+        },
+        "ios": {
+          "max": 1
+        }
+      },
       "roles": [
         "phone"
       ],
-      "bar": {
-        "android": {
-          "max": 0,
-          "round": 1
-        },
-        "ios": {
-          "max": 0,
-          "round": 1
-        }
+      "also": {
+        "metric": "gestures.*.droppedPct",
+        "unit": "%"
       }
     },
     {
       "id": "gestures.frames.maxPeriodRatio",
-      "title": "Gestures: longest frame over the frame period while a gesture drives an animation",
-      "unit": "x period",
-      "metric": "gestures.*.maxPeriodRatio",
+      "title": "Gestures: longest frame over the frame period while a gesture drives an animation, judged as the dropped frames are (D9: at most one interval over 1.5 periods per launch); the ratio of the longest frame shows beside it",
+      "unit": "late intervals",
+      "metric": "gestures.*.lateIntervals",
+      "bar": {
+        "android": {
+          "max": 1
+        },
+        "ios": {
+          "max": 1
+        }
+      },
       "roles": [
         "phone"
       ],
-      "bar": {
-        "android": {
-          "max": 1.5
-        },
-        "ios": {
-          "max": 1.5
-        }
+      "also": {
+        "metric": "gestures.*.maxPeriodRatio",
+        "unit": "x period"
       }
     },
     {

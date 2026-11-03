@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import {
 	checkGatesFile,
 	evaluate,
+	renderExceptions,
 	renderTable,
 	restrictRuns,
 	splitGates,
@@ -415,15 +416,26 @@ export function reportDevices(report: ReportFile, gates: GatesFile, only?: reado
 	);
 }
 
-export function printVerdict(rows: GateRow[], all: boolean): boolean {
+/** The serial of each device of a gates file and its name, for the lines that say where an exception applies. */
+export function deviceNames(file: Pick<GatesFile, "devices">): Record<string, string> {
+	return Object.fromEntries(Object.entries(file.devices).map(([serial, entry]) => [serial, entry.name]));
+}
+
+/**
+ * Prints the gate table, the documented exceptions it holds (value, bar, decision, reason, evidence) and the summary: pass, exception,
+ * fail and not measured, counted apart. The result is the exit status: true unless a gate failed or was not measured.
+ */
+export function printVerdict(rows: GateRow[], all: boolean, names: Record<string, string> = {}): boolean {
 	console.log(renderTable(rows, all));
 	const { gates, informational, ok } = tally(rows);
+	const exceptions = renderExceptions(rows, names);
+	if (exceptions.length > 0) console.log(`\ndocumented exceptions (the bar was missed and a decision accepts it; not a pass):\n${exceptions.join("\n")}`);
 	console.log(
-		`\n${gates.pass} gates pass, ${gates.fail} fail, ${gates.notMeasured} not measured (a gate that was not measured fails)${informational > 0 ? `; ${informational} informational, not counted` : ""}`,
+		`\n${gates.pass} gates pass, ${gates.exception} exception, ${gates.fail} fail, ${gates.notMeasured} not measured (a gate that was not measured fails; an exception is a documented miss, not a pass)${informational > 0 ? `; ${informational} informational, not counted` : ""}`,
 	);
 	for (const entry of tallyByDevice(rows))
 		console.log(
-			`  ${entry.device}${entry.role ? ` (${entry.role})` : ""}: ${entry.gates.pass} pass, ${entry.gates.fail} fail, ${entry.gates.notMeasured} not measured${entry.informational > 0 ? `, ${entry.informational} informational` : ""}`,
+			`  ${entry.device}${entry.role ? ` (${entry.role})` : ""}: ${entry.gates.pass} pass, ${entry.gates.exception} exception, ${entry.gates.fail} fail, ${entry.gates.notMeasured} not measured${entry.informational > 0 ? `, ${entry.informational} informational` : ""}`,
 		);
 	return ok;
 }
@@ -627,8 +639,8 @@ export async function report(): Promise<void> {
 			{ platform: entry.platform, role: entry.role, runs: entry.runs, metrics: entry.metrics },
 		]),
 	);
-	const rows = evaluate(lanes.standard, judged);
-	const smokeRows = evaluate(lanes.smoke, judged);
+	const rows = evaluate(lanes.standard, judged, undefined, gates.exceptions);
+	const smokeRows = evaluate(lanes.smoke, judged, undefined, gates.exceptions);
 	const output: ReportFile = {
 		schema: 1,
 		generatedAt: new Date().toISOString(),
@@ -730,11 +742,11 @@ export async function report(): Promise<void> {
 	for (const warning of warnings) console.log(`warning: ${warning}`);
 	for (const warning of smokeWarnings) console.log(`warning (smoke): ${warning}`);
 	console.log("");
-	printVerdict(rows, false);
+	printVerdict(rows, false, deviceNames(gates));
 	// The smoke app's gates are their own lane (`gates --smoke`); they are shown when a smoke run exists.
 	if (Object.values(devices).some((entry) => entry.smoke)) {
 		console.log("\nnative module smoke gates (the smoke app; `gates --smoke` judges them):");
-		printVerdict(smokeRows, false);
+		printVerdict(smokeRows, false, deviceNames(gates));
 	}
 	console.log("\nwrote qa/report.json");
 }

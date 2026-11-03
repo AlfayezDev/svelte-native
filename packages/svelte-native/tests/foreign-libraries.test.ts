@@ -138,6 +138,45 @@ test("every prop and event the Android RCTVideo manager reads or emits is in the
   expect(typeof config.attributes.shutterColor).toBe("function");
 });
 
+// iOS mounts a view manager without codegen through React Native's interop layer, which builds the native view's event blocks from the props it is sent
+// (`RCTComponentData`'s event setter: an event prop that is `true` becomes a block that sends `topX`, any other leaves the block nil, and an event the view
+// raises with no block is dropped). React Native's own config for such a view lists each event as a `true` prop on iOS and none on Android.
+const legacyManagers: [name: string, file: string][] = [
+  ["RCTVideo", "react-native-video/ios/Video/RCTVideoManager.m"],
+  ["RiveReactNativeView", "rive-react-native/ios/RiveReactNativeViewManager.m"],
+];
+// react-native-video's iOS manager also exports `onPlaybackStalled` and `onPlaybackResume`, which neither its JavaScript spec nor its component declare: nothing in JavaScript can ask for them.
+const undeclaredEvents = new Set(["onPlaybackStalled", "onPlaybackResume"]);
+const exportedEvents = (file: string): string[] =>
+  [...readFileSync(resolve(modules, file), "utf8").matchAll(/RCT_EXPORT_VIEW_PROPERTY\(\s*(on\w+)\s*,\s*RCT(?:Direct|Bubbling)EventBlock\s*\)/g)].map((match) => match[1] as string).filter((event) => !undeclaredEvents.has(event));
+
+for (const [name, file] of legacyManagers) {
+  test(`the iOS config of ${name} sends every event its view manager exports as a handler prop, and Android's sends none`, async () => {
+    const events = exportedEvents(file);
+    expect(events.length).toBeGreaterThan(5);
+    const ios = (await createHarness("ios").load("foreign-video-fixture.svelte")).configs;
+    const android = (await createHarness("android").load("foreign-video-fixture.svelte")).configs;
+    const config = ios.viewConfigFor(name, "ios");
+    const registrations = new Set(config.events.values());
+    for (const event of events) {
+      expect(registrations.has(event), `${name} ${event} is an event of the config`).toBe(true);
+      expect(config.attributes[event], `${name} ${event} is an iOS attribute`).toBe(true);
+      // The handler a component gives is `true` in the payload; no handler leaves the prop out.
+      expect(ios.createPayload({ [event]: true }, config)).toEqual({ [event]: true });
+      expect(ios.createPayload({}, config)).toBeNull();
+      expect(ios.diffPayload({ [event]: true }, {}, config)).toEqual({ [event]: null });
+      expect(event in android.viewConfigFor(name, "android").attributes, `${name} ${event} on Android`).toBe(false);
+      expect(android.createPayload({ [event]: true }, android.viewConfigFor(name, "android"))).toBeNull();
+    }
+    // A codegen component's emitter is created with its view, so the other libraries' iOS configs do not carry their own events as props.
+    const base = ios.viewConfigFor("RCTView", "ios");
+    for (const other of ["LottieAnimationView", "RNDateTimePicker", "RNPDFPdfView", "RNCWebView"]) {
+      const view = ios.viewConfigFor(other, "ios");
+      for (const registration of view.events.values()) if (!base.events.has(`top${registration.slice(2)}`)) expect(registration in view.attributes, `${other} ${registration}`).toBe(false);
+    }
+  });
+}
+
 // react-native-pdf's spec is Flow too, with its members written `name: ?type,`.
 function pdfSpec(file: string): { props: string[]; handlers: string[] } {
   const text = readFileSync(resolve(modules, file), "utf8");

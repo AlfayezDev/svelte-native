@@ -109,6 +109,29 @@ test("a new source is a clone of the same node, and iOS has no view type or CMCD
   expect((native.props.src as Record<string, unknown>).cmcd).toBeUndefined();
 });
 
+test("on iOS the callbacks that were given reach the interop layer as handler props, and their events reach the callbacks", async () => {
+  const harness = createHarness("ios", { natives: { modules: { VideoManager: manager().module } } });
+  const loaded = await harness.load("foreign-video-fixture.svelte");
+  const app = loaded.startSurface(63, loaded.Fixture, {}) as App;
+  const native = find(harness.roots()[63], "RCTVideo")[0];
+  // React Native's interop makes a native event block only for an event prop that is `true`; the view's block stays nil otherwise and the event is never sent.
+  const handlers = Object.keys(native.props).filter((key) => /^on[A-Z]/.test(key)).sort();
+  expect(handlers).toEqual(["onReadyForDisplay", "onTextTrackDataChanged", "onVideoEnd", "onVideoError", "onVideoLoad", "onVideoLoadStart", "onVideoProgress"]);
+  for (const key of handlers) expect(native.props[key], key).toBe(true);
+  harness.emit(native.target, "topVideoLoadStart", {});
+  harness.emit(native.target, "topVideoLoad", { duration: 3.5 });
+  harness.emit(native.target, "topVideoProgress", { currentTime: 1.25 });
+  harness.emit(native.target, "topVideoError", { error: { errorString: "boom" } });
+  harness.emit(native.target, "topVideoEnd", {});
+  expect(app.eventLog()).toEqual([["loadStart"], ["load", 3.5], ["progress", 1.25], ["error", "boom"], ["end"]]);
+  // A prop update keeps them: the clone carries only what changed.
+  harness.calls.length = 0;
+  app.setPaused(true);
+  await settle(loaded);
+  expect(find(harness.roots()[63], "RCTVideo")[0].props.paused).toBe(true);
+  expect(Object.keys(find(harness.roots()[63], "RCTVideo")[0].props).filter((key) => /^on[A-Z]/.test(key)).sort()).toEqual(handlers);
+});
+
 test("the source conversion follows react-native-video's component", () => {
   const asset = (number: number) => (number === 1 ? { uri: "asset:/a.mp4" } : null);
   expect(videoSource(undefined, asset, "android")).toBeUndefined();

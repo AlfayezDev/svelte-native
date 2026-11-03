@@ -8,7 +8,7 @@ public final class SvelteCaptureSubscriber: ExpoAppDelegateSubscriber {
     let started = Date()
     DispatchQueue.global(qos: .utility).async {
       let deleted = SvelteCaptureFiles.sweep(SvelteCaptureFiles.directory(), before: started)
-      if deleted > 0 { NSLog("[SvelteCapture] deleted %d leftover capture file(s) of an earlier process", deleted) }
+      if deleted > 0 { NSLog("[SvelteCapture] deleted %ld leftover capture file(s) of an earlier process", deleted) }
     }
     return true
   }

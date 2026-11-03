@@ -1577,7 +1577,7 @@
     },
     {
       "id": "foreign.image.skipped",
-      "title": "Foreign: checks of expo-image skipped (none on Android, where every check runs; on the iPhone only a press that needs a finger, named in foreign.ios)",
+      "title": "Foreign: checks of expo-image skipped (none on Android, where every check runs; on the iPhone at most a press that needs a finger: nonzero only for fast-shadow and svg, named in foreign.ios)",
       "unit": "checks",
       "metric": "foreign.image.skipped",
       "bar": {
@@ -1619,7 +1619,7 @@
     },
     {
       "id": "foreign.blur.skipped",
-      "title": "Foreign: checks of expo-blur skipped (none on Android, where every check runs; on the iPhone only a press that needs a finger, named in foreign.ios)",
+      "title": "Foreign: checks of expo-blur skipped (none on Android, where every check runs; on the iPhone at most a press that needs a finger: nonzero only for fast-shadow and svg, named in foreign.ios)",
       "unit": "checks",
       "metric": "foreign.blur.skipped",
       "bar": {
@@ -1661,7 +1661,7 @@
     },
     {
       "id": "foreign.gradient.skipped",
-      "title": "Foreign: checks of expo-linear-gradient skipped (none on Android, where every check runs; on the iPhone only a press that needs a finger, named in foreign.ios)",
+      "title": "Foreign: checks of expo-linear-gradient skipped (none on Android, where every check runs; on the iPhone at most a press that needs a finger: nonzero only for fast-shadow and svg, named in foreign.ios)",
       "unit": "checks",
       "metric": "foreign.gradient.skipped",
       "bar": {
@@ -1703,7 +1703,7 @@
     },
     {
       "id": "foreign.video.skipped",
-      "title": "Foreign: checks of react-native-video skipped (none on Android, where every check runs; on the iPhone only a press that needs a finger, named in foreign.ios)",
+      "title": "Foreign: checks of react-native-video skipped (none on Android, where every check runs; on the iPhone at most a press that needs a finger: nonzero only for fast-shadow and svg, named in foreign.ios)",
       "unit": "checks",
       "metric": "foreign.video.skipped",
       "bar": {
@@ -1745,7 +1745,7 @@
     },
     {
       "id": "foreign.datetime.skipped",
-      "title": "Foreign: checks of @react-native-community/datetimepicker skipped (none on Android, where every check runs; on the iPhone only a press that needs a finger, named in foreign.ios)",
+      "title": "Foreign: checks of @react-native-community/datetimepicker skipped (none on Android, where every check runs; on the iPhone at most a press that needs a finger: nonzero only for fast-shadow and svg, named in foreign.ios)",
       "unit": "checks",
       "metric": "foreign.datetime.skipped",
       "bar": {
@@ -1787,7 +1787,7 @@
     },
     {
       "id": "foreign.lottie.skipped",
-      "title": "Foreign: checks of lottie-react-native skipped (none on Android, where every check runs; on the iPhone only a press that needs a finger, named in foreign.ios)",
+      "title": "Foreign: checks of lottie-react-native skipped (none on Android, where every check runs; on the iPhone at most a press that needs a finger: nonzero only for fast-shadow and svg, named in foreign.ios)",
       "unit": "checks",
       "metric": "foreign.lottie.skipped",
       "bar": {
@@ -1829,7 +1829,7 @@
     },
     {
       "id": "foreign.pdf.skipped",
-      "title": "Foreign: checks of react-native-pdf skipped (none on Android, where every check runs; on the iPhone only a press that needs a finger, named in foreign.ios)",
+      "title": "Foreign: checks of react-native-pdf skipped (none on Android, where every check runs; on the iPhone at most a press that needs a finger: nonzero only for fast-shadow and svg, named in foreign.ios)",
       "unit": "checks",
       "metric": "foreign.pdf.skipped",
       "bar": {
@@ -1871,7 +1871,7 @@
     },
     {
       "id": "foreign.capture.skipped",
-      "title": "Foreign: checks of react-native-view-shot skipped (none on Android, where every check runs; on the iPhone only a press that needs a finger, named in foreign.ios)",
+      "title": "Foreign: checks of react-native-view-shot skipped (none on Android, where every check runs; on the iPhone at most a press that needs a finger: nonzero only for fast-shadow and svg, named in foreign.ios)",
       "unit": "checks",
       "metric": "foreign.capture.skipped",
       "bar": {
@@ -1913,7 +1913,7 @@
     },
     {
       "id": "foreign.rive.skipped",
-      "title": "Foreign: checks of rive-react-native skipped (none on Android, where every check runs; on the iPhone only a press that needs a finger, named in foreign.ios)",
+      "title": "Foreign: checks of rive-react-native skipped (none on Android, where every check runs; on the iPhone at most a press that needs a finger: nonzero only for fast-shadow and svg, named in foreign.ios)",
       "unit": "checks",
       "metric": "foreign.rive.skipped",
       "bar": {
@@ -1955,7 +1955,7 @@
     },
     {
       "id": "foreign.conic.skipped",
-      "title": "Foreign: checks of expo-conic-gradient skipped (none on Android, where every check runs; on the iPhone only a press that needs a finger, named in foreign.ios)",
+      "title": "Foreign: checks of expo-conic-gradient skipped (none on Android, where every check runs; on the iPhone at most a press that needs a finger: nonzero only for fast-shadow and svg, named in foreign.ios)",
       "unit": "checks",
       "metric": "foreign.conic.skipped",
       "bar": {
@@ -1997,7 +1997,7 @@
     },
     {
       "id": "foreign.shadow.skipped",
-      "title": "Foreign: checks of react-native-fast-shadow skipped (none on Android, where every check runs; on the iPhone only a press that needs a finger, named in foreign.ios)",
+      "title": "Foreign: checks of react-native-fast-shadow skipped (none on Android, where every check runs; on the iPhone at most a press that needs a finger: nonzero only for fast-shadow and svg, named in foreign.ios)",
       "unit": "checks",
       "metric": "foreign.shadow.skipped",
       "bar": {
@@ -2039,7 +2039,7 @@
     },
     {
       "id": "foreign.text.skipped",
-      "title": "Foreign: checks of react-native-animateable-text skipped (none on Android, where every check runs; on the iPhone only a press that needs a finger, named in foreign.ios)",
+      "title": "Foreign: checks of react-native-animateable-text skipped (none on Android, where every check runs; on the iPhone at most a press that needs a finger: nonzero only for fast-shadow and svg, named in foreign.ios)",
       "unit": "checks",
       "metric": "foreign.text.skipped",
       "bar": {
@@ -2081,7 +2081,7 @@
     },
     {
       "id": "foreign.svg.skipped",
-      "title": "Foreign: checks of react-native-svg skipped (none on Android, where every check runs; on the iPhone only a press that needs a finger, named in foreign.ios)",
+      "title": "Foreign: checks of react-native-svg skipped (none on Android, where every check runs; on the iPhone at most a press that needs a finger: nonzero only for fast-shadow and svg, named in foreign.ios)",
       "unit": "checks",
       "metric": "foreign.svg.skipped",
       "bar": {

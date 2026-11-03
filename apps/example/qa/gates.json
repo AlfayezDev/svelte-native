@@ -22,7 +22,8 @@
         "a11y",
         "resilience",
         "smoke",
-        "gestures"
+        "gestures",
+        "foreign"
       ]
     },
     "localhost:5555": {
@@ -1554,6 +1555,9 @@
       "bar": {
         "android": {
           "max": 0
+        },
+        "ios": {
+          "max": 0
         }
       }
     },
@@ -1565,16 +1569,22 @@
       "bar": {
         "android": {
           "min": 36
+        },
+        "ios": {
+          "min": 33
         }
       }
     },
     {
       "id": "foreign.image.skipped",
-      "title": "Foreign: checks of expo-image skipped on Android (every check runs there)",
+      "title": "Foreign: checks of expo-image skipped (none on Android, where every check runs; on the iPhone only a press that needs a finger, named in foreign.ios)",
       "unit": "checks",
       "metric": "foreign.image.skipped",
       "bar": {
         "android": {
+          "max": 0
+        },
+        "ios": {
           "max": 0
         }
       }
@@ -1587,6 +1597,9 @@
       "bar": {
         "android": {
           "max": 0
+        },
+        "ios": {
+          "max": 0
         }
       }
     },
@@ -1598,16 +1611,22 @@
       "bar": {
         "android": {
           "min": 21
+        },
+        "ios": {
+          "min": 18
         }
       }
     },
     {
       "id": "foreign.blur.skipped",
-      "title": "Foreign: checks of expo-blur skipped on Android (every check runs there)",
+      "title": "Foreign: checks of expo-blur skipped (none on Android, where every check runs; on the iPhone only a press that needs a finger, named in foreign.ios)",
       "unit": "checks",
       "metric": "foreign.blur.skipped",
       "bar": {
         "android": {
+          "max": 0
+        },
+        "ios": {
           "max": 0
         }
       }
@@ -1620,6 +1639,9 @@
       "bar": {
         "android": {
           "max": 0
+        },
+        "ios": {
+          "max": 0
         }
       }
     },
@@ -1631,16 +1653,22 @@
       "bar": {
         "android": {
           "min": 21
+        },
+        "ios": {
+          "min": 18
         }
       }
     },
     {
       "id": "foreign.gradient.skipped",
-      "title": "Foreign: checks of expo-linear-gradient skipped on Android (every check runs there)",
+      "title": "Foreign: checks of expo-linear-gradient skipped (none on Android, where every check runs; on the iPhone only a press that needs a finger, named in foreign.ios)",
       "unit": "checks",
       "metric": "foreign.gradient.skipped",
       "bar": {
         "android": {
+          "max": 0
+        },
+        "ios": {
           "max": 0
         }
       }
@@ -1653,6 +1681,9 @@
       "bar": {
         "android": {
           "max": 0
+        },
+        "ios": {
+          "max": 0
         }
       }
     },
@@ -1664,16 +1695,22 @@
       "bar": {
         "android": {
           "min": 63
+        },
+        "ios": {
+          "min": 54
         }
       }
     },
     {
       "id": "foreign.video.skipped",
-      "title": "Foreign: checks of react-native-video skipped on Android (every check runs there)",
+      "title": "Foreign: checks of react-native-video skipped (none on Android, where every check runs; on the iPhone only a press that needs a finger, named in foreign.ios)",
       "unit": "checks",
       "metric": "foreign.video.skipped",
       "bar": {
         "android": {
+          "max": 0
+        },
+        "ios": {
           "max": 0
         }
       }
@@ -1686,6 +1723,9 @@
       "bar": {
         "android": {
           "max": 0
+        },
+        "ios": {
+          "max": 0
         }
       }
     },
@@ -1697,16 +1737,22 @@
       "bar": {
         "android": {
           "min": 27
+        },
+        "ios": {
+          "min": 30
         }
       }
     },
     {
       "id": "foreign.datetime.skipped",
-      "title": "Foreign: checks of @react-native-community/datetimepicker skipped on Android (every check runs there)",
+      "title": "Foreign: checks of @react-native-community/datetimepicker skipped (none on Android, where every check runs; on the iPhone only a press that needs a finger, named in foreign.ios)",
       "unit": "checks",
       "metric": "foreign.datetime.skipped",
       "bar": {
         "android": {
+          "max": 0
+        },
+        "ios": {
           "max": 0
         }
       }
@@ -1719,6 +1765,9 @@
       "bar": {
         "android": {
           "max": 0
+        },
+        "ios": {
+          "max": 0
         }
       }
     },
@@ -1730,16 +1779,22 @@
       "bar": {
         "android": {
           "min": 33
+        },
+        "ios": {
+          "min": 30
         }
       }
     },
     {
       "id": "foreign.lottie.skipped",
-      "title": "Foreign: checks of lottie-react-native skipped on Android (every check runs there)",
+      "title": "Foreign: checks of lottie-react-native skipped (none on Android, where every check runs; on the iPhone only a press that needs a finger, named in foreign.ios)",
       "unit": "checks",
       "metric": "foreign.lottie.skipped",
       "bar": {
         "android": {
+          "max": 0
+        },
+        "ios": {
           "max": 0
         }
       }
@@ -1752,6 +1807,9 @@
       "bar": {
         "android": {
           "max": 0
+        },
+        "ios": {
+          "max": 0
         }
       }
     },
@@ -1763,16 +1821,22 @@
       "bar": {
         "android": {
           "min": 39
+        },
+        "ios": {
+          "min": 36
         }
       }
     },
     {
       "id": "foreign.pdf.skipped",
-      "title": "Foreign: checks of react-native-pdf skipped on Android (every check runs there)",
+      "title": "Foreign: checks of react-native-pdf skipped (none on Android, where every check runs; on the iPhone only a press that needs a finger, named in foreign.ios)",
       "unit": "checks",
       "metric": "foreign.pdf.skipped",
       "bar": {
         "android": {
+          "max": 0
+        },
+        "ios": {
           "max": 0
         }
       }
@@ -1785,6 +1849,9 @@
       "bar": {
         "android": {
           "max": 0
+        },
+        "ios": {
+          "max": 0
         }
       }
     },
@@ -1796,16 +1863,22 @@
       "bar": {
         "android": {
           "min": 51
+        },
+        "ios": {
+          "min": 48
         }
       }
     },
     {
       "id": "foreign.capture.skipped",
-      "title": "Foreign: checks of react-native-view-shot skipped on Android (every check runs there)",
+      "title": "Foreign: checks of react-native-view-shot skipped (none on Android, where every check runs; on the iPhone only a press that needs a finger, named in foreign.ios)",
       "unit": "checks",
       "metric": "foreign.capture.skipped",
       "bar": {
         "android": {
+          "max": 0
+        },
+        "ios": {
           "max": 0
         }
       }
@@ -1818,6 +1891,9 @@
       "bar": {
         "android": {
           "max": 0
+        },
+        "ios": {
+          "max": 0
         }
       }
     },
@@ -1829,16 +1905,22 @@
       "bar": {
         "android": {
           "min": 33
+        },
+        "ios": {
+          "min": 30
         }
       }
     },
     {
       "id": "foreign.rive.skipped",
-      "title": "Foreign: checks of rive-react-native skipped on Android (every check runs there)",
+      "title": "Foreign: checks of rive-react-native skipped (none on Android, where every check runs; on the iPhone only a press that needs a finger, named in foreign.ios)",
       "unit": "checks",
       "metric": "foreign.rive.skipped",
       "bar": {
         "android": {
+          "max": 0
+        },
+        "ios": {
           "max": 0
         }
       }
@@ -1851,6 +1933,9 @@
       "bar": {
         "android": {
           "max": 0
+        },
+        "ios": {
+          "max": 0
         }
       }
     },
@@ -1862,16 +1947,22 @@
       "bar": {
         "android": {
           "min": 21
+        },
+        "ios": {
+          "min": 18
         }
       }
     },
     {
       "id": "foreign.conic.skipped",
-      "title": "Foreign: checks of expo-conic-gradient skipped on Android (every check runs there)",
+      "title": "Foreign: checks of expo-conic-gradient skipped (none on Android, where every check runs; on the iPhone only a press that needs a finger, named in foreign.ios)",
       "unit": "checks",
       "metric": "foreign.conic.skipped",
       "bar": {
         "android": {
+          "max": 0
+        },
+        "ios": {
           "max": 0
         }
       }
@@ -1884,6 +1975,9 @@
       "bar": {
         "android": {
           "max": 0
+        },
+        "ios": {
+          "max": 0
         }
       }
     },
@@ -1895,17 +1989,23 @@
       "bar": {
         "android": {
           "min": 36
+        },
+        "ios": {
+          "min": 18
         }
       }
     },
     {
       "id": "foreign.shadow.skipped",
-      "title": "Foreign: checks of react-native-fast-shadow skipped on Android (every check runs there)",
+      "title": "Foreign: checks of react-native-fast-shadow skipped (none on Android, where every check runs; on the iPhone only a press that needs a finger, named in foreign.ios)",
       "unit": "checks",
       "metric": "foreign.shadow.skipped",
       "bar": {
         "android": {
           "max": 0
+        },
+        "ios": {
+          "max": 3
         }
       }
     },
@@ -1916,6 +2016,9 @@
       "metric": "foreign.text.failedChecks",
       "bar": {
         "android": {
+          "max": 0
+        },
+        "ios": {
           "max": 0
         }
       }
@@ -1928,16 +2031,22 @@
       "bar": {
         "android": {
           "min": 33
+        },
+        "ios": {
+          "min": 30
         }
       }
     },
     {
       "id": "foreign.text.skipped",
-      "title": "Foreign: checks of react-native-animateable-text skipped on Android (every check runs there)",
+      "title": "Foreign: checks of react-native-animateable-text skipped (none on Android, where every check runs; on the iPhone only a press that needs a finger, named in foreign.ios)",
       "unit": "checks",
       "metric": "foreign.text.skipped",
       "bar": {
         "android": {
+          "max": 0
+        },
+        "ios": {
           "max": 0
         }
       }
@@ -1950,6 +2059,9 @@
       "bar": {
         "android": {
           "max": 0
+        },
+        "ios": {
+          "max": 0
         }
       }
     },
@@ -1961,17 +2073,23 @@
       "bar": {
         "android": {
           "min": 36
+        },
+        "ios": {
+          "min": 30
         }
       }
     },
     {
       "id": "foreign.svg.skipped",
-      "title": "Foreign: checks of react-native-svg skipped on Android (every check runs there)",
+      "title": "Foreign: checks of react-native-svg skipped (none on Android, where every check runs; on the iPhone only a press that needs a finger, named in foreign.ios)",
       "unit": "checks",
       "metric": "foreign.svg.skipped",
       "bar": {
         "android": {
           "max": 0
+        },
+        "ios": {
+          "max": 3
         }
       }
     },
@@ -1982,6 +2100,9 @@
       "metric": "foreign.libraries.missing",
       "bar": {
         "android": {
+          "max": 0
+        },
+        "ios": {
           "max": 0
         }
       }
@@ -1994,6 +2115,9 @@
       "bar": {
         "android": {
           "max": 0
+        },
+        "ios": {
+          "max": 0
         }
       }
     },
@@ -2004,6 +2128,9 @@
       "metric": "foreign.leftovers.failed",
       "bar": {
         "android": {
+          "max": 0
+        },
+        "ios": {
           "max": 0
         }
       }
@@ -2016,6 +2143,9 @@
       "bar": {
         "android": {
           "min": 2
+        },
+        "ios": {
+          "min": 2
         }
       }
     },
@@ -2026,6 +2156,9 @@
       "metric": "foreign.incompleteLaunches",
       "bar": {
         "android": {
+          "max": 0
+        },
+        "ios": {
           "max": 0
         }
       }
@@ -2038,6 +2171,9 @@
       "bar": {
         "android": {
           "max": 0
+        },
+        "ios": {
+          "max": 0
         }
       }
     },
@@ -2048,6 +2184,9 @@
       "metric": "foreign.engineWarnings",
       "bar": {
         "android": {
+          "max": 0
+        },
+        "ios": {
           "max": 0
         }
       }
@@ -2085,6 +2224,21 @@
         "text",
         "svg"
       ]
+    },
+    "ios": {
+      "image": "`leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), which exist on Android only: one check fewer in each place.",
+      "blur": "`leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), which exist on Android only: one check fewer in each place.",
+      "gradient": "`leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), which exist on Android only: one check fewer in each place.",
+      "video": "Three checks fewer in each place, all of them Android facts: the frame and node counters (`SvelteEngine.foreignStats`), the player's own `SurfaceView` or `TextureView` (an `AVPlayerLayer` is a layer of the view and has no surface to list), and the capture without `handleGLSurfaceViewOnAndroid` being a hole (an `AVPlayerLayer` is drawn into a snapshot as it is).",
+      "datetime": "Android's picker is a dialog window the module opens, dismisses and answers (`openDatePicker`, `dismissDatePicker`, the buttons the harness presses with `adb`), and the frame and node counters are Android's: those checks are Android-only on the iPhone. iOS's picker is a view (`RNDateTimePickerComponentView` holding a `UIDatePicker`) with six checks of its own in each place (the value prop, the date the handler stores, a new value, the mode, `onValueChange`, `onDismiss`), so the iPhone makes more checks than Android's bar of nine per place, which counts the dialog checks that need no press.",
+      "lottie": "`leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), which exist on Android only: one check fewer in each place.",
+      "pdf": "`leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), which exist on Android only: one check fewer in each place.",
+      "capture": "`leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), which exist on Android only: one check fewer in each place.",
+      "rive": "`leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), which exist on Android only: one check fewer in each place.",
+      "conic": "`leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), which exist on Android only: one check fewer in each place.",
+      "shadow": "react-native-fast-shadow has no iOS code (`ShadowedView` is React Native's `View` and the shadow is the layer's own), so the four checks of its Android view and of the engine's canvas clip, and the frame and node counters, are Android-only: five checks fewer in each place. The press on the shadowed child needs a finger, which the lab has none of on the iPhone (XCUITest does not run on it): it is skipped in each place, a sixth check fewer, so `skipped` is 3, not 0.",
+      "text": "`leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), which exist on Android only: one check fewer in each place.",
+      "svg": "The frame and node counters (`SvelteEngine.foreignStats`) are Android's: one check fewer in each place. The press on the `Svg` needs a finger, which the lab has none of on the iPhone (XCUITest does not run on it): it is skipped in each place, a second check fewer, so `skipped` is 3, not 0."
     }
   }
 }

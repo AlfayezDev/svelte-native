@@ -71,8 +71,12 @@ export type GatesFile = {
 	exceptions?: GateException[];
 	/** The `gestures-*` scenarios a full `native-qa gestures` run contains, per platform; absent: every scenario the lab has. */
 	gestures?: Partial<Record<Platform, string[]>>;
-	/** The native-view libraries a full `native-qa foreign` run reports, per platform (`foreign.<library>.failedChecks` is gated for each). */
-	foreign?: { libraries: Record<Platform, string[]> };
+	/**
+	 * The native-view libraries a full `native-qa foreign` run reports, per platform (`foreign.<library>.failedChecks`, `.checks` and `.skipped` are gated for each, with a `bar` of that
+	 * platform). `ios` says, for each library whose iPhone count of checks or skips is not Android's, why (`checkForeign`): the checks Android alone can make, the checks only iOS has,
+	 * the ones that need a finger.
+	 */
+	foreign?: { libraries: Record<Platform, string[]>; ios?: Record<string, string> };
 	/**
 	 * The signed-in screens (the `app-*` cases of `lib/screens.ts`) a parity run must compare and an accessibility run must dump, in
 	 * every variant, per platform: a pinned screen the run lacks is `parity.signedIn.missing` / `a11y.signedIn.missing`, so a case
@@ -187,6 +191,7 @@ export function checkGatesFile(file: GatesFile): void {
 		if (file.foreign && (!libraries || libraries.length === 0)) throw new Error(`gates.json: foreign.libraries pins no library for ${platform}`);
 		if (libraries && new Set(libraries).size !== libraries.length) throw new Error(`gates.json: foreign.libraries names a library twice for ${platform}`);
 	}
+	checkForeign(file);
 	for (const [platform, ids] of Object.entries(file.signedIn ?? {}))
 		if (new Set(ids).size !== ids.length) throw new Error(`gates.json: signedIn names a screen twice for ${platform}`);
 	for (const gate of file.gates) {
@@ -202,6 +207,30 @@ export function checkGatesFile(file: GatesFile): void {
 			if (!known.has(role)) throw new Error(`gates.json: gate ${gate.id} names the unknown role ${JSON.stringify(role)}`);
 	}
 	checkExceptions(file);
+}
+
+/**
+ * The foreign gates of each pinned library are judged on each platform that pins the library: a gate with no `bar` for a platform is never evaluated there (`evaluate` walks the bars),
+ * so a missing one would read as a clean run. Where the iPhone's bar of `checks` or `skipped` is not Android's, `foreign.ios` says why, and a reason for a library whose counts are
+ * Android's is stale.
+ */
+function checkForeign(file: GatesFile): void {
+	if (!file.foreign) return;
+	const gateOf = (library: string, field: string) => file.gates.find((gate) => gate.metric === `foreign.${library}.${field}`);
+	for (const platform of ["android", "ios"] as const)
+		for (const library of file.foreign.libraries[platform])
+			for (const field of ["failedChecks", "checks", "skipped"])
+				if (!gateOf(library, field)?.bar[platform]) throw new Error(`gates.json: foreign.${library}.${field} has no ${platform} bar, so a ${platform} run of ${library} would never be judged on it`);
+	const reasons = file.foreign.ios ?? {};
+	for (const [library, why] of Object.entries(reasons)) {
+		if (!file.foreign.libraries.ios.includes(library)) throw new Error(`gates.json: foreign.ios explains ${library}, which foreign.libraries does not pin for ios`);
+		if (why.trim() === "") throw new Error(`gates.json: foreign.ios says nothing for ${library}`);
+	}
+	for (const library of file.foreign.libraries.ios) {
+		const differs = ["checks", "skipped"].some((field) => JSON.stringify(gateOf(library, field)?.bar.ios) !== JSON.stringify(gateOf(library, field)?.bar.android));
+		if (differs && reasons[library] === undefined) throw new Error(`gates.json: the iPhone's counts of ${library} (checks or skipped) are not Android's and foreign.ios gives no reason`);
+		if (!differs && reasons[library] !== undefined) throw new Error(`gates.json: foreign.ios gives a reason for ${library}, whose counts on the iPhone are Android's`);
+	}
 }
 
 const stars = (metric: string): number => metric.split("*").length - 1;

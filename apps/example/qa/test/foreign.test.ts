@@ -242,10 +242,10 @@ describe("gates.json", () => {
 		expect(verdict("foreign.image.failedChecks")).toBe("pass");
 	});
 
-	test("both phones and the emulator provide the foreign run kind; the iPhone does not yet", () => {
+	test("both phones and the emulator provide the foreign run kind", () => {
 		expect(gates.devices["R58Y90KNGRP"]?.runs).toContain("foreign");
 		expect(gates.devices["localhost:5555"]?.runs).toContain("foreign");
-		expect(gates.devices["E74A5608-BF8E-5806-8699-1605F82ADED9"]?.runs).not.toContain("foreign");
+		expect(gates.devices["E74A5608-BF8E-5806-8699-1605F82ADED9"]?.runs).toContain("foreign");
 	});
 });
 

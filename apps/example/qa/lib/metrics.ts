@@ -225,7 +225,7 @@ export function bootMetrics(file: BootFile): Metrics {
 type CrashRecorded = { device: DeviceInfo } & CrashReportsRecord;
 
 /**
- * The reports the iPhone's crash log gained during the runs, over every iOS run file (lab, boot, parity, a11y, resilience, gestures), attributed or not. A
+ * The reports the iPhone's crash log gained during the runs, over every iOS run file (lab, boot, parity, a11y, resilience, gestures, foreign), attributed or not. A
  * file whose pull failed, or that was recorded before the pull existed, measured nothing: that is null (not measured, which fails the
  * gate), never 0, unless another file already counted a report. Other platforms have no such metric.
  */
@@ -264,7 +264,7 @@ export function deviceMetrics(
 		...(foreign ? foreignMetrics(foreign.file, foreign.pins) : {}),
 		...(updates ? updatesMetrics(updates) : {}),
 		...(product ? productMetrics(product) : {}),
-		...crashReportMetrics([lab, boot, suites.parity, suites.a11y, suites.resilience, gestures].filter((file) => file !== null)),
+		...crashReportMetrics([lab, boot, suites.parity, suites.a11y, suites.resilience, gestures, foreign?.file ?? null].filter((file) => file !== null)),
 	};
 	// A run that was made but measured nothing (null) leaves the sum unmeasured; a run that was not made adds nothing.
 	const sum = (a: string, b: string) => {

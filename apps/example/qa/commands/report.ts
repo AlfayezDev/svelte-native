@@ -123,7 +123,7 @@ type A11yScreenSummary = {
 };
 
 /** What one iOS run file recorded of the phone's crash log: the reports, or why there are none to count (`error`: the pull failed, or the file was recorded before it existed). */
-type CrashReportsSummary = { run: "lab" | "boot" | "parity" | "a11y" | "resilience" | "gestures"; file: string; error: string | null; reports: CrashReport[] };
+type CrashReportsSummary = { run: "lab" | "boot" | "parity" | "a11y" | "resilience" | "gestures" | "foreign"; file: string; error: string | null; reports: CrashReport[] };
 
 /** One gestures run file: how each launch was driven and what each scenario came to. */
 type GesturesSummary = {
@@ -609,6 +609,7 @@ export async function report(): Promise<void> {
 				["a11y", a11yPath, suites.a11y],
 				["resilience", resiliencePath, suites.resilience],
 				["gestures", gesturesPath, gestures],
+				["foreign", foreignPath, foreign],
 			]),
 			suites: {
 				parity: suites.parity && parityPath ? { file: parityPath.slice(parityPath.lastIndexOf("runs/")), mode: suites.parity.mode, deviceKind: suites.parity.deviceKind } : null,

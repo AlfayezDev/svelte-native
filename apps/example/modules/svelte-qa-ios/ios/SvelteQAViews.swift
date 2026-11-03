@@ -30,10 +30,12 @@ enum SvelteQAViews {
     return nil
   }
 
-  /// The text a view holds: a label's or a text view's string, else what it tells accessibility.
+  /// The text a view holds: a label's or a text view's string, what React Native's paragraph view says it draws (`RCTParagraphComponentView.attributedText`, "to be only used by
+  /// external introspection and debug tools": the view draws its text itself and carries an explicit `accessibilityLabel` of its own, which is not the string), else what it tells accessibility.
   private static func ownText(_ view: UIView) -> String? {
     if let label = view as? UILabel { return label.text }
     if let text = view as? UITextView { return text.text }
+    if view.responds(to: NSSelectorFromString("attributedText")), let drawn = view.value(forKey: "attributedText") as? NSAttributedString { return drawn.string }
     if let label = view.accessibilityLabel, !label.isEmpty { return label }
     return nil
   }
@@ -44,15 +46,16 @@ enum SvelteQAViews {
     view.clipsToBounds || view.layer.masksToBounds ? "bounds" : "none"
   }
 
-  private static func collect(_ view: UIView, depth: Int, views: inout [String], texts: inout [String]) {
+  /// `views` lists the subviews with their size in pixels, as Android's does (the checks divide it by `density`).
+  private static func collect(_ view: UIView, depth: Int, scale: Double, views: inout [String], texts: inout [String]) {
     if let text = ownText(view), !text.isEmpty, !texts.contains(text) { texts.append(text) }
     if depth >= 6 { return }
     for child in view.subviews {
       if views.count < 40 {
         let size = child.bounds.size
-        views.append(String(repeating: "  ", count: depth) + String(describing: type(of: child)) + " \(Int(size.width))x\(Int(size.height)) clip=\(clipMode(of: child))")
+        views.append(String(repeating: "  ", count: depth) + String(describing: type(of: child)) + " \(Int((Double(size.width) * scale).rounded()))x\(Int((Double(size.height) * scale).rounded())) clip=\(clipMode(of: child))")
       }
-      collect(child, depth: depth + 1, views: &views, texts: &texts)
+      collect(child, depth: depth + 1, scale: scale, views: &views, texts: &texts)
     }
   }
 
@@ -62,7 +65,7 @@ enum SvelteQAViews {
     let screen = view.convert(view.bounds, to: nil)
     var views: [String] = []
     var texts: [String] = []
-    collect(view, depth: 0, views: &views, texts: &texts)
+    collect(view, depth: 0, scale: scale, views: &views, texts: &texts)
     let shown = view.window != nil && !view.isHidden && view.alpha > 0.01
     return [
       "owner": "react",

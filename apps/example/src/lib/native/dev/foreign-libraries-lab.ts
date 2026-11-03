@@ -6,6 +6,7 @@ import Platform from "react-native/Libraries/Utilities/Platform";
 import { libraryKinds, type Host, type LibraryHandles, type LibraryKind } from "./LibrarySet.svelte";
 import { count, foreignEvents, foreignLab, libraryHandles, libraryLab, resetLibraryLab } from "./foreign.svelte.ts";
 import { libraryChecks, type Ctx, type Look, type Native, type Rect, type Where } from "./foreign-libraries-checks.ts";
+import { detailRecords, skipEntry } from "./foreign-records.ts";
 
 /**
  * The `foreign-libraries` stress scenario (SPEC.md, "Foreign views", "Device verification of the libraries"): each of the thirteen native-view
@@ -29,7 +30,8 @@ type Pixels = { sample(source: string, points: readonly (readonly [number, numbe
 type QaIos = { inspect?(tag: number): Native | null; samplePixels?(source: string, points: readonly (readonly [number, number])[], radius?: number): Sampled };
 type Router = { goto(href: string, options?: { presentation?: "sheet" }): void; back(): boolean; entries: readonly unknown[] };
 export type LibraryCheck = { library: LibraryKind; where: Where; name: string; passed: boolean; detail: string };
-export type LibrarySkip = { library: LibraryKind; where: Where; name: string; why: string };
+/** A check the platform cannot make. `androidOnly` marks one that reads an Android-only fact (a class, a surface, a dialog, the engine's counters): on another platform it is not a hole in the lab, it does not exist there. */
+export type LibrarySkip = { library: LibraryKind; where: Where; name: string; why: string; androidOnly?: true };
 export type LibrariesOutcome = { passed: boolean; summary: string; detail: Record<string, unknown> };
 
 const engine = requireOptionalNativeModule<Engine>("SvelteEngine");
@@ -89,9 +91,10 @@ export async function runForeignLibraries(router: Router, signal: AbortSignal, o
         checks.push(entry);
         console.info("[Svelte foreign library]", JSON.stringify(entry));
       };
-      const skip = (name: string, why: string) => {
-        skips.push({ library: kind, where, name, why });
-        console.info("[Svelte foreign library skipped]", JSON.stringify({ library: kind, where, name, why }));
+      const skip = (name: string, why: string, androidOnly = false) => {
+        const entry: LibrarySkip = skipEntry(kind, where, name, why, androidOnly);
+        skips.push(entry);
+        console.info("[Svelte foreign library skipped]", JSON.stringify(entry));
       };
       const released: string[] = [];
       resetLibraryLab();
@@ -101,6 +104,7 @@ export async function runForeignLibraries(router: Router, signal: AbortSignal, o
         kind, where, source: opened.source, android,
         canInspect: android ? typeof engine?.inspect === "function" : typeof qaIos?.inspect === "function",
         canLook: !!pixels,
+        canTap: android && typeof engine?.tap === "function",
         driven,
         press: (id, resourceId) => { console.info("[Svelte foreign press]", JSON.stringify({ id, resourceId })); },
         lab: libraryLab,
@@ -109,6 +113,7 @@ export async function runForeignLibraries(router: Router, signal: AbortSignal, o
         box: () => libraryHandles.get(opened.source)?.boxes[kind],
         check: (name, passed, detail) => record(`${where}: ${name}`, passed, detail),
         skip: (name, why) => skip(`${where}: ${name}`, why),
+        androidOnly: (name, why) => skip(`${where}: ${name}`, why, true),
         // A row has its neighbours mounted too (a video, an animation, a PDF at once on a software-GL emulator): what waits for a native load waits longer there.
         until: (test, milliseconds) => until(test, where === "row" ? milliseconds * 2.5 : milliseconds, signal),
         pause: (milliseconds) => pause(milliseconds, signal),
@@ -185,6 +190,7 @@ export async function runForeignLibraries(router: Router, signal: AbortSignal, o
       };
       const dropped = await until(settled, 6000, signal);
       if (stats && baseline) record(`${where}: leaving drops every frame and node`, dropped, JSON.stringify(stats));
+      else if (!android) skip(`${where}: leaving drops every frame and node`, "the engine's frame and node counters (SvelteEngine.foreignStats) exist on Android only", true);
     }
   }
 
@@ -198,7 +204,7 @@ export async function runForeignLibraries(router: Router, signal: AbortSignal, o
   return {
     passed: failed.length === 0,
     summary: `${checks.length - failed.length} / ${checks.length} checks, ${skips.length} skipped${failed.length ? ` · FAILED ${failed.length}: ${failed.slice(0, 6).map((entry) => `${entry.library} ${entry.name}`.slice(0, 48)).join(" | ")}` : ""}`,
-    detail: { libraries: perLibrary, failed: failed.slice(0, 12).map((entry) => `${entry.library} ${entry.name}`.slice(0, 120)), skipped: skips.length },
+    detail: { libraries: perLibrary, failed: failed.slice(0, 12).map((entry) => `${entry.library} ${entry.name}`.slice(0, 120)), skipped: skips.length, ...detailRecords(android, checks, skips) },
   };
 }
 
@@ -231,17 +237,22 @@ export async function runForeignLeftovers(expected = 0): Promise<LibrariesOutcom
   record(`the previous launch recorded at least ${expected} tmpfile captures it left behind`, known.length >= expected, `${known.length} recorded`);
   const alive = known.filter((uri) => { try { return new File(uri).exists; } catch { return true; } });
   record("a previous launch's tmpfile captures are gone after its process died", alive.length === 0, `${known.length} left by the last launch, ${alive.length} still there`);
-  const directories = [Paths.cache.uri, android ? `file:///storage/emulated/0/Android/data/${applicationId}/cache` : ""].filter(Boolean);
+  // Android's view-shot names its files `ReactNative-snapshot-image*` in the internal or the external cache directory. iOS's writes `<uuid>.<ext>` to `tmp/ReactNative` (`RCTTempFilePath`), a
+  // directory of the app's data container that the system empties when it likes and not when the process ends: every file in it is the captures' own.
+  const snapshot = (name: string) => name.startsWith("ReactNative-snapshot-image");
+  const listings: { uri: string; wanted: (name: string) => boolean }[] = android
+    ? [{ uri: Paths.cache.uri, wanted: snapshot }, { uri: `file:///storage/emulated/0/Android/data/${applicationId}/cache`, wanted: snapshot }]
+    : [{ uri: Paths.cache.uri, wanted: snapshot }, { uri: new Directory(Paths.document.parentDirectory, "tmp", "ReactNative").uri, wanted: () => true }];
   const found: string[] = [];
   const unlisted: string[] = [];
-  for (const uri of directories) {
+  for (const { uri, wanted } of listings) {
     try {
       const directory = new Directory(uri);
-      if (directory.exists) found.push(...directory.list().map((item) => item.name).filter((name) => name.startsWith("ReactNative-snapshot-image")));
+      if (directory.exists) found.push(...directory.list().map((item) => item.name).filter(wanted));
     } catch (error) { unlisted.push(`${uri}: ${String(error)}`); }
   }
-  record("no ReactNative-snapshot-image file is in either cache directory at the start of a launch", unlisted.length === 0 && found.length === 0, unlisted.length ? `could not list ${unlisted.join("; ")}` : `${found.length} found: ${found.slice(0, 3).join(", ")}`);
+  record(android ? "no ReactNative-snapshot-image file is in either cache directory at the start of a launch" : "no capture file is in the cache directory or in tmp/ReactNative at the start of a launch", unlisted.length === 0 && found.length === 0, unlisted.length ? `could not list ${unlisted.join("; ")}` : `${found.length} found: ${found.slice(0, 3).join(", ")}`);
   try { leftoverFile().write("[]"); } catch { /* nothing to clear */ }
   const failed = checks.filter((entry) => !entry.passed);
-  return { passed: failed.length === 0, summary: `${checks.length - failed.length} / ${checks.length} checks`, detail: { libraries: { capture: { checks: checks.length, failed: failed.length, skipped: 0 } }, failed: failed.map((entry) => entry.name) } };
+  return { passed: failed.length === 0, summary: `${checks.length - failed.length} / ${checks.length} checks`, detail: { libraries: { capture: { checks: checks.length, failed: failed.length, skipped: 0 } }, failed: failed.map((entry) => entry.name), ...detailRecords(android, checks, []) } };
 }

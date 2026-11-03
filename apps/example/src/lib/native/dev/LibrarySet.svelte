@@ -205,7 +205,7 @@
           <View style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-around", padding: 8 }}>
             <ViewShot options={{ format: "png", result: "tmpfile" }} onCapture={(uri) => report("viewshot-capture", uri.slice(-40))} onCaptureFailure={(error) => report("viewshot-failure", String(error))} ref={(handle) => { viewShot = handle; captureHost = handle ? handle.host : null; keep(hosts, kind)(captureHost); }} style={{ width: 80, height: 60, flexDirection: "row", borderRadius: 16, overflow: "hidden" }}>
               {#each stripes as color (color)}<View style={{ flex: 1, backgroundColor: color }} />{/each}
-              <View style={{ position: "absolute", left: 30, top: 14, width: 20, height: 20, backgroundColor: "#ffffff", elevation: libraryLab.captureElevation }} />
+              <View style={{ position: "absolute", left: 30, top: 14, width: 20, height: 20, backgroundColor: "#ffffff", elevation: libraryLab.captureElevation, ...(Platform.OS === "ios" ? { shadowColor: "#000000", shadowOpacity: libraryLab.captureElevation > 0 ? 0.6 : 0, shadowRadius: libraryLab.captureElevation / 2, shadowOffset: { width: 0, height: libraryLab.captureElevation / 2 } } : {}) }} />
             </ViewShot>
             <Pressable accessibilityRole="button" accessibilityLabel="Capture the stripes" onPress={() => { capture().catch(() => undefined); }} style={{ minHeight: 44, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, borderColor: theme.border, alignItems: "center", justifyContent: "center" }}>
               <Text style={{ color: theme.foreground, fontSize: 14 }}>Capture</Text>

@@ -85,7 +85,7 @@ export type Ctx = {
   shot(options?: CaptureOptions, target?: Host, kept?: boolean): Promise<string>;
   /** Keeps a file name for the next launch's leftover check (`foreign-leftovers`). */
   leave(uri: string): void;
-  /** Whether the file of a `file://` URI exists (JavaScript's view of the cache directory). */
+  /** Whether the file a capture answered exists (JavaScript's view of the cache or tmp directory): a `file://` URI on Android, a plain absolute path on iOS (`isCaptureFile`). */
   exists(uri: string): boolean;
   /** `SvelteQaPixels.sample` for a source that is not a capture of the section (a result that came as a string). */
   read(source: string, points?: readonly (readonly [number, number])[], radius?: number): { colors: number[]; width: number; height: number; format: string } | null;
@@ -453,6 +453,15 @@ async function pdf(c: Ctx): Promise<void> {
 // ---------------------------------------------------------------------------------------------------------------------------------------
 // react-native-view-shot
 
+/**
+ * What a `tmpfile` result is on this platform, as the library's own native code answers it. Android: a `file://` URI (`Uri.fromFile(output)` in `ViewShot.java`). iOS: the plain
+ * path React Native's `RCTTempFilePath` made, `<app container>/tmp/ReactNative/<uuid>.<ext>` (`RNViewShot.mm` resolves `path` as it is; the README says to prepend `file://` for
+ * `expo-sharing`), which is also the form its `releaseCapture` compares with `tmp/ReactNative`: a `file://` prefix would make that a no-op.
+ */
+const isCaptureFile = (c: Ctx, uri: string): boolean => (c.android ? uri.startsWith("file://") : uri.startsWith("/") && uri.includes("/tmp/ReactNative/"));
+/** The end of a path, with an ellipsis when it is cut (a detail that shows `tNative/<uuid>.png` reads as a broken path). */
+const tail = (uri: string, length = 64): string => (uri.length > length ? `…${uri.slice(-length)}` : uri);
+
 async function capture(c: Ctx): Promise<void> {
   const shot = c.handles().hosts.capture;
   if (!shot) { c.check("mounts: the ViewShot handed out its host handle", false, "no handle"); return; }
@@ -486,10 +495,10 @@ async function capture(c: Ctx): Promise<void> {
     // the ViewShot's own capture(): a view that has just been laid out, and its onCapture hears it
     const heard = c.events("viewshot-capture");
     const viaShot = (await c.handles().viewShot?.capture()) ?? "";
-    c.check("capture: ViewShot.capture() answers a file and onCapture hears it", viaShot.startsWith("file://") && c.exists(viaShot) && (await c.until(() => c.events("viewshot-capture") > heard, 2000)), `${viaShot.slice(-40)}, ${c.events("viewshot-capture")} onCapture, ${c.events("viewshot-failure")} onCaptureFailure`);
+    c.check("capture: ViewShot.capture() answers a file and onCapture hears it", isCaptureFile(c, viaShot) && c.exists(viaShot) && (await c.until(() => c.events("viewshot-capture") > heard, 2000)), `${tail(viaShot)}, ${c.events("viewshot-capture")} onCapture, ${c.events("viewshot-failure")} onCaptureFailure`);
     if (viaShot) releaseCapture(viaShot);
     const own = await c.handles().capture();
-    c.check("capture: the section's capture() answers a file that exists", own.startsWith("file://") && c.exists(own), own.slice(-48));
+    c.check("capture: the section's capture() answers a file that exists", isCaptureFile(c, own) && c.exists(own), tail(own));
     releaseCapture(own);
     const rectCard = await c.rect(card);
     const jpg = await c.shot({ format: "jpg", quality: 0.9 }, card);
@@ -497,7 +506,10 @@ async function capture(c: Ctx): Promise<void> {
     c.check("capture: format jpg gives a JPEG", jpgLook?.format === "image/jpeg", `${jpgLook?.format}`);
     const scaled = await c.shot({ width: 40, height: 30 }, card);
     const scaledLook = c.read(scaled, [[0.5, 0.5]], 0);
-    c.check("capture: width and height scale the image", scaledLook?.width === 40 && scaledLook?.height === 30, `${scaledLook?.width}x${scaledLook?.height}`);
+    // The options reach the module as given. Android's library draws exactly that many pixels; iOS's draws at the screen's scale (`UIGraphicsImageRendererFormat.scale = 0` in `RNViewShot.mm`),
+    // so 40 x 30 is 40 x 30 points and the image is that times the scale (the README's "twice/3-times bigger" is the same thing).
+    const scale = c.android ? 1 : (c.inspect(card)?.density ?? 1);
+    c.check("capture: width and height scale the image", scaledLook?.width === 40 * scale && scaledLook?.height === 30 * scale, `${scaledLook?.width}x${scaledLook?.height}, wanted ${40 * scale}x${30 * scale} (40x30 at ${scale}x)`);
     const base64 = await captureRef(card, { result: "base64", format: "png" });
     const fromBase64 = c.read(base64, [[0.5, 0.5]], 1);
     c.check("capture: result base64 is a PNG that decodes to the card's size", typeof base64 === "string" && !base64.startsWith("file:") && fromBase64?.format === "image/png" && fromBase64.width > 0, `${base64.length} characters, ${fromBase64?.width}x${fromBase64?.height} ${fromBase64?.format}`);

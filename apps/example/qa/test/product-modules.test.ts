@@ -66,7 +66,15 @@ describe("the product build leaves the QA-only modules out of autolinking", () =
 		expect(packages(resolved("apple", configuredExclude("qa")))).toContain("svelte-qa-ios");
 		const product = packages(resolved("apple", configuredExclude("production")));
 		expect(product).not.toContain("svelte-qa-ios");
-		for (const kept of ["svelte-screens-ios", "svelte-insets-ios", "svelte-navigation-ios", "svelte-updates"]) expect(product).toContain(kept);
+		for (const kept of ["svelte-screens-ios", "svelte-insets-ios", "svelte-navigation-ios", "svelte-capture-ios", "svelte-updates"]) expect(product).toContain(kept);
+	});
+
+	test("iOS: the product links the capture sweep with its launch subscriber (react-native-view-shot's tmpfile leftovers are deleted when a process starts, as Android's engine does), and the QA build does too", () => {
+		for (const variant of ["production", "qa"] as const) {
+			const sweep = resolved("apple", configuredExclude(variant)).modules.find((module) => module.packageName === "svelte-capture-ios") as { appDelegateSubscribers?: string[]; swiftModuleNames?: string[] } | undefined;
+			expect(sweep?.appDelegateSubscribers).toEqual(["SvelteCaptureSubscriber"]);
+			expect(sweep?.swiftModuleNames).toEqual(["SvelteCapture"]);
+		}
 	});
 
 	test("the engine's own module list does not carry the injector, so excluding svelte-qa-android is enough", () => {

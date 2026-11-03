@@ -2,13 +2,14 @@ import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { flagString, integerFlag, parseFlags, platformOf } from "../lib/flags.ts";
 import { currentSource } from "../lib/git.ts";
-import { describeForeign, foreignPins, readBundle } from "../lib/foreign.ts";
+import { describeForeign, foreignPins, leftoverFilesPerRun, readBundle } from "../lib/foreign.ts";
 import { pressDriver } from "../lib/foreign-press.ts";
 import { runsDir } from "../lib/paths.ts";
 import { readBuilds, slug, stamp, writeRun } from "../lib/runs.ts";
 import { commonOptions, startSuite } from "../lib/suite.ts";
 import type { ForeignFile, ForeignLaunch, LabRun } from "../lib/types.ts";
 import { parseForeignChecks } from "../parse/foreign.ts";
+import { iosForeign } from "./ios-foreign.ts";
 import { labOnce } from "./lab.ts";
 
 /**
@@ -20,9 +21,6 @@ import { labOnce } from "./lab.ts";
  *
  * `--only image,video` narrows the libraries (the run file then does not cover the others, and their gates read not measured).
  */
-/** What the capture checks leave for the next launch: two `tmpfile` results in each of the three places. */
-export const leftoverFilesPerRun = 6;
-
 export function launchOf(name: ForeignLaunch["name"], run: string, result: LabRun, attempts = 1): ForeignLaunch {
 	return {
 		name,
@@ -54,7 +52,7 @@ async function launchUntilUninterrupted(attempts: number, once: (attempt: number
 }
 
 export async function foreign(argv: string[]): Promise<void> {
-	if (platformOf(argv) === "ios") throw new Error("native-qa foreign: the iPhone lane is not built yet (the lab runs there through `lab --platform ios`; its checks need the QA module's readbacks, see SPEC.md, \"Device verification of the libraries\")");
+	if (platformOf(argv) === "ios") return iosForeign(argv);
 	const { values } = parseFlags(argv, { ...commonOptions, platform: { type: "string" }, only: { type: "string" }, timeout: { type: "string" }, attempts: { type: "string" } });
 	const timeoutMs = integerFlag(values.timeout, "timeout", 1500) * 1000;
 	const attempts = integerFlag(values.attempts, "attempts", 3);

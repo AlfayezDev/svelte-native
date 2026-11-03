@@ -5,6 +5,7 @@ import { flagString, parseFlags, requireString } from "../lib/flags.ts";
 import { macFrom, remote, remoteOk } from "../lib/iphone/mac.ts";
 import { currentSource, iosBuildPathOf, writeIosBuild } from "../lib/iphone/session.ts";
 import { outDir, qaDir, repoRoot } from "../lib/paths.ts";
+import { makeIosBundleMap } from "../lib/ios-bundle.ts";
 import { iosPrebuildLines } from "../lib/ios-project.ts";
 import { appVariantOf, variantFlag } from "../lib/variant.ts";
 import { sleep } from "../lib/wait.ts";
@@ -52,6 +53,14 @@ export async function iosBuild(argv: string[]): Promise<void> {
 		log.push(line);
 	};
 
+	// The QA app's modules, from Metro on this machine: the Xcode build keeps no source map, and `foreign` reads the module list for the libraries' own JavaScript.
+	// Made before the copy so that a bundle that does not build stops the run before the Mac spends minutes on it.
+	let sourceMap: Awaited<ReturnType<typeof makeIosBundleMap>> | undefined;
+	if (variant === "qa") {
+		note("making Metro's source map of the iOS bundle on this machine");
+		sourceMap = await makeIosBundleMap(variant);
+		note(`  ${sourceMap.sources} modules, ${Math.round(sourceMap.sizeBytes / 1024)} KB`);
+	}
 	note(`copying ${repoRoot} to ${mac.target}:${checkout}`);
 	const synced = await exec(
 		"rsync",
@@ -124,6 +133,7 @@ export async function iosBuild(argv: string[]): Promise<void> {
 		jsbundleSha256: sha,
 		cdHash,
 		bundleBytes: Number(digest[1] ?? 0),
+		...(sourceMap ? { sourceMap: { path: sourceMap.path, sizeBytes: sourceMap.sizeBytes, sha256: sourceMap.sha256, sources: sourceMap.sources } } : {}),
 		logFile: logFile.slice(qaDir.length + 1),
 	}, variant);
 	note(`wrote ${iosBuildPathOf(variant).slice(qaDir.length + 1)} (main.jsbundle ${sha.slice(0, 12)}, CDHash ${cdHash.slice(0, 12)}, ${Math.round((Date.now() - began) / 1000)} s)`);

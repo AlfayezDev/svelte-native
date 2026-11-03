@@ -603,8 +603,12 @@ export type ForeignPlace = "inline" | "row" | "sheet" | "bundle";
 /** One check of a native-view library (`foreign-libraries-lab.ts`, `[Svelte foreign library]`, or the harness's own `bundle` checks). */
 export type ForeignCheck = { library: string; where: ForeignPlace; name: string; passed: boolean; detail: string };
 
-/** A check the platform cannot run yet (no native inspection, no pixel reader): reported, never counted as a pass. */
-export type ForeignSkip = { library: string; where: string; name: string; why: string };
+/**
+ * A check the platform did not make: reported, never counted as a pass. `androidOnly` is a check that reads an Android-only fact (a class, a surface, a
+ * dialog, the engine's counters): it does not exist on the platform that reports it, so it is counted apart (`foreign.<library>.androidOnly`) and is not a skip
+ * the platform could still make (`foreign.<library>.skipped`).
+ */
+export type ForeignSkip = { library: string; where: string; name: string; why: string; androidOnly?: true };
 
 /** One launch of the lab for the `foreign` run: `libraries` (the checks) or `leftovers` (the launch after it). */
 export type ForeignLaunch = {
@@ -631,7 +635,7 @@ export type ForeignBundle = {
 	reactFiles: string[];
 	/** The library of the lab each module belongs to, for the modules of a library's own JavaScript that the wrappers must not pull in. */
 	forbidden: { library: string; module: string }[];
-	/** Whether the APK the run measured is the one the map belongs to (the build record's digest). */
+	/** Whether the build the run measured is the one the map belongs to (the APK's digest on Android; on the iPhone the build record the app's reported identity matched, whose map Metro made of the same tree on the PC). */
 	matchesBuild: boolean;
 };
 

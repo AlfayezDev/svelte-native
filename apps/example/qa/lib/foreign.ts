@@ -10,6 +10,9 @@ import { loadGatesFile } from "./smoke.ts";
  * opened, and the bundle checks), and the run's own health.
  */
 
+/** What the capture checks leave for the next launch: two `tmpfile` results in each of the three places. */
+export const leftoverFilesPerRun = 6;
+
 /** The three places the lab mounts a library in, in the order it visits them. */
 export const places: readonly ForeignPlace[] = ["inline", "row", "sheet"];
 
@@ -54,19 +57,24 @@ export function analyseSources(sources: readonly string[]): Pick<ForeignBundle, 
 	return { reactFiles: sources.filter((source) => reactFile.test(source)), forbidden };
 }
 
+/** The bundle a source map describes: its sources analysed. */
+export async function bundleOfMap(path: string): Promise<Omit<ForeignBundle, "matchesBuild">> {
+	const map = JSON.parse(await readFile(path, "utf8")) as { sources?: string[] };
+	const sources = map.sources ?? [];
+	return { map: path, sources: sources.length, ...analyseSources(sources) };
+}
+
 /** The bundle of the build the run measured: its source map's sources analysed, when the map belongs to the installed APK. */
 export async function readBundle(app: ForeignFile["app"], builds: Record<string, BuildFile>): Promise<ForeignBundle | null> {
 	const build = Object.values(builds).find((entry) => entry.variant !== "smoke" && entry.apk.sha256 === app.installedSha256 && entry.sourceMap);
 	if (!build?.sourceMap) return null;
-	const map = JSON.parse(await readFile(build.sourceMap.path, "utf8")) as { sources?: string[] };
-	const sources = map.sources ?? [];
-	return { map: build.sourceMap.path, sources: sources.length, ...analyseSources(sources), matchesBuild: true };
+	return { ...(await bundleOfMap(build.sourceMap.path)), matchesBuild: true };
 }
 
 /** The harness's own checks of the release bundle, one set per library: the library's JavaScript half is not in it. */
 export function bundleChecks(bundle: ForeignBundle | null, libraries: readonly string[]): ForeignCheck[] {
 	return libraries.map((library) => {
-		if (!bundle) return { library, where: "bundle", name: "the release bundle of the installed build was read (a build of native-qa, its source map)", passed: false, detail: "no source map belongs to the installed APK" };
+		if (!bundle?.matchesBuild) return { library, where: "bundle", name: "the release bundle of the installed build was read (a build of native-qa, its source map)", passed: false, detail: "no source map belongs to the installed build" };
 		const held = bundle.forbidden.filter((entry) => entry.library === library).map((entry) => entry.module);
 		return { library, where: "bundle", name: "React stays out: none of the library's own JavaScript modules is in the release bundle", passed: held.length === 0, detail: held.length === 0 ? `${bundle.sources} sources checked` : held.slice(0, 3).join(", ") };
 	});
@@ -92,8 +100,8 @@ export function failedChecks(file: ForeignFile, library: string): number | null 
 const fatalsOf = (launches: readonly ForeignLaunch[]) => launches.reduce((sum, launch) => sum + launch.crashes.length + launch.jsErrors.length + (launch.interrupted ? 1 : 0), 0);
 
 /**
- * What the gates read of a run. `foreign.<library>.failedChecks` for each pinned library (null when it reported nothing); `.checks` and `.skipped`
- * are counts (null for a library `--only` left out). `foreign.launches` is the complete launches (two: the checks and the leftovers), `foreign.incompleteLaunches` the others,
+ * What the gates read of a run. `foreign.<library>.failedChecks` for each pinned library (null when it reported nothing); `.checks`, `.skipped` and `.androidOnly`
+ * are counts (null for a library `--only` left out; `.skipped` leaves out the checks that exist on Android only, which `.androidOnly` counts). `foreign.launches` is the complete launches (two: the checks and the leftovers), `foreign.incompleteLaunches` the others,
  * `foreign.fatals` the crashes and JavaScript errors of both, `foreign.leftovers.failed` the leftover launch's failures (null when it did not run), and
  * `foreign.libraries.missing` the libraries the run was asked for (`--only` narrows them) that logged no check. `foreign.react.files` (files of `react` in the bundle, the app's other
  * dependencies bring them) is reported, not gated.
@@ -105,7 +113,8 @@ export function foreignMetrics(file: ForeignFile, pins: ForeignPins): Metrics {
 	for (const library of pins.libraries) {
 		metrics[`foreign.${library}.failedChecks`] = failedChecks(file, library);
 		metrics[`foreign.${library}.checks`] = asked(library) ? checksOf(file, library).length : null;
-		metrics[`foreign.${library}.skipped`] = asked(library) ? file.skips.filter((entry) => entry.library === library).length : null;
+		metrics[`foreign.${library}.skipped`] = asked(library) ? file.skips.filter((entry) => entry.library === library && !entry.androidOnly).length : null;
+		metrics[`foreign.${library}.androidOnly`] = asked(library) ? file.skips.filter((entry) => entry.library === library && entry.androidOnly).length : null;
 	}
 	const leftoverLaunch = file.launches.find((launch) => launch.name === "leftovers");
 	metrics["foreign.libraries"] = pins.libraries.length;
@@ -126,7 +135,8 @@ export function describeForeign(file: ForeignFile, pins: ForeignPins): string[] 
 	for (const library of pins.libraries) {
 		const own = checksOf(file, library);
 		const failed = failedChecks(file, library);
-		lines.push(`  ${library.padEnd(9)} ${failed === null ? "no checks" : `${own.length} checks, ${failed} failed`}, ${file.skips.filter((entry) => entry.library === library).length} skipped${missingPlaces(file, library).length ? `, never opened: ${missingPlaces(file, library).join(", ")}` : ""}`);
+		const mine = file.skips.filter((entry) => entry.library === library);
+		lines.push(`  ${library.padEnd(9)} ${failed === null ? "no checks" : `${own.length} checks, ${failed} failed`}, ${mine.filter((entry) => !entry.androidOnly).length} skipped, ${mine.filter((entry) => entry.androidOnly).length} Android-only${missingPlaces(file, library).length ? `, never opened: ${missingPlaces(file, library).join(", ")}` : ""}`);
 	}
 	for (const entry of [...file.checks, ...bundleChecks(file.bundle, pins.libraries), ...file.leftovers].filter((check) => !check.passed))
 		lines.push(`  FAIL ${entry.library} ${entry.where}: ${entry.name}${entry.detail ? ` (${entry.detail.slice(0, 160)})` : ""}`);
@@ -139,9 +149,16 @@ export function describeForeign(file: ForeignFile, pins: ForeignPins): string[] 
 	return lines;
 }
 
-/** The skipped checks of a run, by library: what the platform could not check yet. */
+/** The skipped checks of a run, by library: what the platform could not check yet. The checks that exist on Android only are `androidOnlyBy`'s. */
 export function skippedBy(skips: readonly ForeignSkip[]): Record<string, string[]> {
 	const out: Record<string, string[]> = {};
-	for (const skip of skips) (out[skip.library] ??= []).push(skip.name);
+	for (const skip of skips) if (!skip.androidOnly) (out[skip.library] ??= []).push(skip.name);
+	return out;
+}
+
+/** The checks of a run that exist on Android only, by library: not a hole of the platform that reports them. */
+export function androidOnlyBy(skips: readonly ForeignSkip[]): Record<string, string[]> {
+	const out: Record<string, string[]> = {};
+	for (const skip of skips) if (skip.androidOnly) (out[skip.library] ??= []).push(skip.name);
 	return out;
 }

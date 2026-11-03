@@ -24,6 +24,18 @@ function readJson(text: string): unknown {
 	}
 }
 
+/** A check as the lab records it (`{"library","where","name","passed","detail"}`), or null when the value is not one (a place the lab does not have, a missing field). */
+export function foreignCheckOf(value: unknown): ForeignCheck | null {
+	if (!isRecord(value) || typeof value.library !== "string" || typeof value.name !== "string" || typeof value.passed !== "boolean" || !places.includes(value.where as ForeignPlace)) return null;
+	return { library: value.library, where: value.where as ForeignPlace, name: value.name, passed: value.passed, detail: typeof value.detail === "string" ? value.detail : "" };
+}
+
+/** A skip as the lab records it; `androidOnly` marks a check that exists on Android only. */
+export function foreignSkipOf(value: unknown): ForeignSkip | null {
+	if (!isRecord(value) || typeof value.library !== "string" || typeof value.name !== "string") return null;
+	return { library: value.library, where: typeof value.where === "string" ? value.where : "", name: value.name, why: typeof value.why === "string" ? value.why : "", ...(value.androidOnly === true ? { androidOnly: true as const } : {}) };
+}
+
 /**
  * Every check the library lab logged (`[Svelte foreign library] {"library":...,"where":...,"name":...,"passed":...,"detail":...}`) and every one it skipped.
  * A line that carries one of the two tags and is not a record of it (cut by logcat, escaped in a way nobody expected, a place the lab does not have) is in
@@ -39,13 +51,11 @@ export function parseForeignChecks(text: string): { checks: ForeignCheck[]; skip
 		const isSkip = message.startsWith(skipPrefix);
 		if (!isCheck && !isSkip) continue;
 		const value = readJson(unescapeLogcat(message.slice((isCheck ? checkPrefix : skipPrefix).length).replace(/'\s*$/, "")));
-		if (isCheck && isRecord(value) && typeof value.library === "string" && typeof value.name === "string" && typeof value.passed === "boolean" && places.includes(value.where as ForeignPlace)) {
-			checks.push({ library: value.library, where: value.where as ForeignPlace, name: value.name, passed: value.passed, detail: typeof value.detail === "string" ? value.detail : "" });
-		} else if (isSkip && isRecord(value) && typeof value.library === "string" && typeof value.name === "string") {
-			skips.push({ library: value.library, where: typeof value.where === "string" ? value.where : "", name: value.name, why: typeof value.why === "string" ? value.why : "" });
-		} else {
-			unparsed.push(message.slice(0, 240));
-		}
+		const check = isCheck ? foreignCheckOf(value) : null;
+		const skip = isSkip ? foreignSkipOf(value) : null;
+		if (check) checks.push(check);
+		else if (skip) skips.push(skip);
+		else unparsed.push(message.slice(0, 240));
 	}
 	return { checks, skips, unparsed };
 }

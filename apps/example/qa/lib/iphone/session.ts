@@ -51,6 +51,11 @@ export type IosBuildFile = {
 	jsbundleSha256?: string;
 	cdHash?: string;
 	bundleBytes: number;
+	/**
+	 * The modules of the bundle: the source map Metro made of this tree on the PC (`ios-bundle.ts`), because the Xcode build keeps none. `foreign` reads it for the libraries' own
+	 * JavaScript. Absent from records written before the map was kept.
+	 */
+	sourceMap?: { path: string; sizeBytes: number; sha256: string; sources: number };
 	logFile: string;
 };
 

@@ -26,6 +26,9 @@ export const maxScreenshotBytes = 8_000_000;
 /** Lines of the app's logcat kept: its own process, the newest; and of the crash buffer, which holds the crashes of every process. */
 export const logcatLines = 400;
 export const crashLines = 100;
+/** Attempts of the plain and of the compressed dump taken after the failure: a busy screen answers `could not get idle state` more than once, and a signed-in picture needs them. */
+export const plainDumpAttempts = 3;
+export const compressedDumpAttempts = 2;
 /** The sets one run may keep, and the bytes of all of them: a backend that is down for a whole matrix does not fill the disk with a hundred sets. */
 export const defaultBudget = { sets: 40, bytes: 64_000_000 };
 
@@ -62,7 +65,7 @@ export type EvidenceDeps = {
 	/** The PNG of the display (`adb exec-out screencap -p`). */
 	png?: (serial: string) => Promise<Buffer>;
 	/** A dump taken now: for a try that read none, and (with the QA account configured) to paint the picture over from; `important` is the compressed dump a service walks. */
-	dump?: (serial: string, options?: { important?: boolean }) => Promise<UiTree>;
+	dump?: (serial: string, options?: { important?: boolean; attempts?: number }) => Promise<UiTree>;
 	/** Where the files go, and what their paths are relative to (default: `qa/`, like the failure pictures of `parity`). */
 	base?: string;
 	budget?: EvidenceBudget;
@@ -128,9 +131,9 @@ export function digest(evidence: FailureEvidence): string {
 }
 
 /** A dump taken after the failure, or null (and why, in `missing`). */
-async function freshDump(deps: EvidenceDeps, serial: string, important: boolean, missing: string[]): Promise<UiTree | null> {
+async function freshDump(deps: EvidenceDeps, serial: string, important: boolean, attempts: number, missing: string[]): Promise<UiTree | null> {
 	try {
-		return await (deps.dump ?? ((id: string, options?: { important?: boolean }) => dumpUi(id, { attempts: 1, timeoutMs: 20_000, ...options })))(serial, { important });
+		return await (deps.dump ?? ((id: string, options?: { important?: boolean; attempts?: number }) => dumpUi(id, { timeoutMs: 20_000, ...options })))(serial, { important, attempts });
 	} catch (cause) {
 		missing.push(`${important ? "compressed dump" : "dump"}: ${message(cause).slice(0, 160)}`);
 		return null;
@@ -169,11 +172,44 @@ export function pictureRedactions(target: EvidenceTarget, trees: Trees): { rects
 	return { rects };
 }
 
+/** The seconds of a logcat stamp (`MM-DD HH:MM:SS.mmm`, the device's clock, no year) from the start of its year; null for a line without one. */
+function stampSeconds(stamp: string): number | null {
+	const match = /^(\d\d)-(\d\d) (\d\d):(\d\d):(\d\d)(?:\.(\d{3}))?/.exec(stamp);
+	if (!match) return null;
+	const [, month, day, hour, minute, second, millis] = match;
+	return (Date.UTC(2001, Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second)) - Date.UTC(2001, 0, 1)) / 1000 + Number(millis ?? 0) / 1000;
+}
+
+/** logcat's own stamp for a moment of the device's clock (`MM-DD HH:MM:SS.mmm`). */
+export function logcatStamp(deviceClock: Date): string {
+	const two = (value: number) => String(value).padStart(2, "0");
+	return `${two(deviceClock.getUTCMonth() + 1)}-${two(deviceClock.getUTCDate())} ${two(deviceClock.getUTCHours())}:${two(deviceClock.getUTCMinutes())}:${two(deviceClock.getUTCSeconds())}.${String(deviceClock.getUTCMilliseconds()).padStart(3, "0")}`;
+}
+
+/**
+ * The lines of a `logcat -v threadtime` text at or after a stamp: the crash buffer holds the crashes of every process since boot, so an earlier case's crash
+ * is not filed under this try. A line without a stamp (the `--------- beginning of crash` header) goes. The stamps carry no year, so one a half year away is read as the next or the last.
+ */
+export function linesSince(text: string, since: string): string {
+	const from = stampSeconds(since);
+	if (from === null) return text;
+	const year = 366 * 24 * 3600;
+	const kept = text.split("\n").filter((line) => {
+		const at = stampSeconds(line);
+		if (at === null) return false;
+		let difference = at - from;
+		if (difference > year / 2) difference -= year;
+		else if (difference < -year / 2) difference += year;
+		return difference >= 0;
+	});
+	return kept.length === 0 ? "" : `${kept.join("\n")}\n`;
+}
+
 /**
  * Takes the evidence of a failed try and writes its files. Never throws: whatever cannot be taken is named in `missing`, because the capture
  * runs on the way to a retry or to the error record, and losing either to a failed adb command would be worse than the evidence.
  */
-export async function captureEvidence(deps: EvidenceDeps, target: EvidenceTarget, attempt: number, error: unknown): Promise<FailureEvidence> {
+export async function captureEvidence(deps: EvidenceDeps, target: EvidenceTarget, attempt: number, error: unknown, startedAt?: number): Promise<FailureEvidence> {
 	const missing: string[] = [];
 	const evidence: FailureEvidence = {
 		attempt,
@@ -188,7 +224,7 @@ export async function captureEvidence(deps: EvidenceDeps, target: EvidenceTarget
 		missing,
 	};
 	try {
-		await take(deps, target, attempt, error, evidence);
+		await take(deps, target, attempt, error, evidence, startedAt);
 	} catch (cause) {
 		missing.push(`capture: ${message(cause).slice(0, 160)}`);
 	}
@@ -197,27 +233,31 @@ export async function captureEvidence(deps: EvidenceDeps, target: EvidenceTarget
 	return evidence;
 }
 
-async function take(deps: EvidenceDeps, target: EvidenceTarget, attempt: number, error: unknown, evidence: FailureEvidence): Promise<void> {
+async function take(deps: EvidenceDeps, target: EvidenceTarget, attempt: number, error: unknown, evidence: FailureEvidence, startedAt?: number): Promise<void> {
 	const { missing } = evidence;
 	const { serial } = target;
 	const base = deps.base ?? qaDir;
 	const budget = deps.budget;
 
-	// The picture first, as bytes in memory: the screen changes while the rest is read, and whether it may be kept is decided once the dumps are in.
-	let png: Buffer | null = null;
-	try {
-		png = await (deps.png ?? screenshotPng)(serial);
-	} catch (cause) {
-		missing.push(`screenshot: ${message(cause).slice(0, 160)}`);
-	}
-
 	const observation = error instanceof ObservedError ? error.observation : null;
 	const observed = observation?.tree ?? null;
 	if (observation) evidence.waited = { ms: observation.elapsedMs, dumps: observation.dumps };
-	// With the account configured the picture is painted over from dumps taken now (the wait's own may be the compressed one); without, only a try that read none needs one.
+	// The picture is held as bytes in memory, and whether it may be kept is decided once the dumps are in. With the account configured it is painted over from dumps taken
+	// now (the wait's own may be the compressed one) and is taken between the plain dump and the compressed one, so the gap to the plain one is as short as it can be;
+	// without, it is taken first, because only a try that read no dump needs one.
 	const account = accountEmail() !== null;
-	const plain = account || observed === null ? await freshDump(deps, serial, false, missing) : null;
-	const compressed = account && target.screen.hidden.length > 0 ? await freshDump(deps, serial, true, missing) : null;
+	let png: Buffer | null = null;
+	const shoot = async () => {
+		try {
+			png = await (deps.png ?? screenshotPng)(serial);
+		} catch (cause) {
+			missing.push(`screenshot: ${message(cause).slice(0, 160)}`);
+		}
+	};
+	if (!account) await shoot();
+	const plain = account || observed === null ? await freshDump(deps, serial, false, plainDumpAttempts, missing) : null;
+	if (account) await shoot();
+	const compressed = account && target.screen.hidden.length > 0 ? await freshDump(deps, serial, true, compressedDumpAttempts, missing) : null;
 	const tree = observed ?? plain;
 	if (tree) evidence.topWindow = `${describeTopWindow(tree)}${observed === null ? " (read after the failure)" : ""}`;
 
@@ -320,11 +360,23 @@ async function take(deps: EvidenceDeps, target: EvidenceTarget, attempt: number,
 			? `logcat -d -v threadtime -t 4000 | grep -E '${target.packageName}' | tail -n ${logcatLines}`
 			: `logcat -d -v threadtime --pid=${pid} -t ${logcatLines}`;
 	const crashCommand = `logcat -b crash -d -v threadtime -t ${crashLines}`;
+	// The try's start on the device's clock: its clock now, less the time the try has run on this host's. The crash buffer and the lines that name the package of an app with
+	// no process hold earlier tries and earlier cases too, and only this try's belong in its evidence.
+	let since: string | null = null;
+	if (startedAt !== undefined) {
+		const clock = await read("date +'%m-%d %H:%M:%S'", 15_000);
+		const now = "text" in clock ? /^(\d\d)-(\d\d) (\d\d):(\d\d):(\d\d)/.exec(clock.text.trim()) : null;
+		if (now) {
+			const [, month, day, hour, minute, second] = now;
+			const device = Date.UTC(new Date().getUTCFullYear(), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second));
+			since = logcatStamp(new Date(device - (Date.now() - startedAt) - 1000));
+		} else missing.push("logcat.txt: the device's clock could not be read, so the crash buffer is not narrowed to the try");
+	}
 	const sections: string[] = [];
 	let answered = false;
-	for (const [title, command, lines] of [
-		[pid === undefined ? `lines that name ${target.packageName} (the app had no process)` : `app process ${pid} (logcat --pid=${pid} -t ${logcatLines})`, appCommand, logcatLines],
-		[`crash buffer (logcat -b crash -d -t ${crashLines})`, crashCommand, crashLines],
+	for (const [title, command, lines, narrowed] of [
+		[pid === undefined ? `lines that name ${target.packageName}${since === null ? "" : ` since ${since}`} (the app had no process)` : `app process ${pid} (logcat --pid=${pid} -t ${logcatLines})`, appCommand, logcatLines, pid === undefined],
+		[`crash buffer${since === null ? "" : ` since ${since}`} (logcat -b crash -d -t ${crashLines})`, crashCommand, crashLines, true],
 	] as const) {
 		const answer = await read(command);
 		if ("failed" in answer) {
@@ -333,7 +385,8 @@ async function take(deps: EvidenceDeps, target: EvidenceTarget, attempt: number,
 			continue;
 		}
 		answered = true;
-		sections.push(`--- ${title} ---\n${answer.text.trim() === "" ? "(no lines)\n" : capText(redact(lastLines(answer.text, lines)), maxTextBytes / 2)}`);
+		const text = narrowed && since !== null ? linesSince(answer.text, since) : answer.text;
+		sections.push(`--- ${title} ---\n${text.trim() === "" ? "(no lines)\n" : capText(redact(lastLines(text, lines)), maxTextBytes / 2)}`);
 	}
 	if (answered) {
 		try {
@@ -391,8 +444,11 @@ export async function attemptCase<T>(options: AttemptOptions<T>): Promise<Attemp
 	const log = options.log ?? console.log;
 	let tries = 0;
 	const failures: FailureEvidence[] = [];
+	// When the run that is going on began, by this host's clock: the evidence of a failed run narrows the device's logs to it.
+	let startedAt = Date.now();
 	const counted = async (): Promise<T> => {
 		tries++;
+		startedAt = Date.now();
 		return body();
 	};
 	try {
@@ -404,7 +460,7 @@ export async function attemptCase<T>(options: AttemptOptions<T>): Promise<Attemp
 			counted,
 			log,
 			async (error) => {
-				const taken = await captureEvidence(evidence.deps, evidence.target, tries, error);
+				const taken = await captureEvidence(evidence.deps, evidence.target, tries, error, startedAt);
 				failures.push(taken);
 				reportFailure(taken, evidence.target.stem, evidence.target.directory, log, evidence.deps.base);
 			},

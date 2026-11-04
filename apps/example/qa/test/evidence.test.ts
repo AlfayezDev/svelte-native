@@ -2,7 +2,7 @@ import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test as bunTest } from "bun:test";
 import { runCase, type Context } from "../commands/parity.ts";
 import { DeviceSession, DeviceStateError, DumpError, newSessionNotes, type SessionOptions } from "../lib/device.ts";
 import { dumpWithOwnControls, isWaitFailure, NodeNotFoundError, ObservedError, waitForNode } from "../lib/drive.ts";
@@ -17,9 +17,13 @@ import {
 	EvidenceBudget,
 	failedFields,
 	lastLines,
+	linesSince,
 	logcatLines,
+	logcatStamp,
 	maxDumpBytes,
 	pictureRedactions,
+	plainDumpAttempts,
+	compressedDumpAttempts,
 	retriedFields,
 	type EvidenceDeps,
 	type EvidenceTarget,
@@ -31,6 +35,20 @@ import { cases, referenceName, variants, type ScreenCase } from "../lib/screens.
 import type { FailureEvidence } from "../lib/types.ts";
 import { parseHierarchy, type UiTree } from "../lib/uia.ts";
 import { FakeDevice } from "./fake-device.ts";
+
+/**
+ * Every test starts with no QA account, whatever the environment or the repository's .env.local of the machine running it says (a developer's has one); a test
+ * that needs an account sets its own with `useAccount`, and `afterEach` gives the machine's back.
+ */
+const test = (name: string, body: () => void | Promise<void>, timeoutMs?: number): void =>
+	bunTest(
+		name,
+		() => {
+			useAccount(null);
+			return body();
+		},
+		timeoutMs,
+	);
 
 const normalScreen = cases.find((entry) => entry.network === "normal") as ScreenCase;
 /** A signed-in screen presented over another: its compressed dump leaves the covered screen out, and it masks the devices' text. */
@@ -345,6 +363,80 @@ describe("the evidence of a failed try", () => {
 		expect(JSON.stringify(evidence)).not.toContain("example.test");
 	});
 
+	test("the crash buffer is narrowed to the try: an earlier case's crash is not filed under it", async () => {
+		const { device, root, deps, target } = await setup();
+		device.clock = "11-04 11:11:30\n";
+		device.crashText = [
+			"--------- beginning of crash",
+			"11-04 11:10:20.000  3999  3999 E AndroidRuntime: FATAL EXCEPTION: main (an earlier case's process)",
+			"11-04 11:11:10.500  4000  4000 E AndroidRuntime: FATAL EXCEPTION: main (this try's first process)",
+		].join("\n");
+		// The try began 40 s ago by this host's clock, so at 11:11:30 on the device's it began at 11:10:50, less a second.
+		const evidence = await captureEvidence(deps, target, 1, notFound(), Date.now() - 40_000);
+		const log = await readFile(join(root, evidence.logcat ?? "missing"), "utf8");
+		expect(log).toMatch(/--- crash buffer since 11-04 11:10:4\d\.\d{3} \(logcat -b crash -d -t 100\) ---/);
+		expect(log).toContain("this try's first process");
+		expect(log).not.toContain("an earlier case's process");
+		expect(log).not.toContain("beginning of crash");
+		expect(device.commands("date ")).toHaveLength(1);
+	});
+
+	test("an app with no process is narrowed the same way, and the app's own process is not", async () => {
+		const { device, root, deps, target } = await setup();
+		device.pid = null;
+		device.logcatText = ["11-04 11:09:00.000  1  1 I ActivityManager: Start proc io.rasheed.svelteqa (an earlier case)", "11-04 11:11:05.000  1  1 I ActivityManager: Process io.rasheed.svelteqa has died (this try)"].join("\n");
+		const evidence = await captureEvidence(deps, target, 1, notFound(), Date.now() - 40_000);
+		const log = await readFile(join(root, evidence.logcat ?? "missing"), "utf8");
+		expect(log).toContain("has died (this try)");
+		expect(log).not.toContain("an earlier case");
+
+		device.pid = 4321;
+		device.logcatText = "11-04 11:09:00.000  4321  4321 I ReactNativeJS: the process was started for this try, whatever its stamps say\n";
+		const own = await captureEvidence(deps, { ...target, stem: "own" }, 1, notFound(), Date.now() - 40_000);
+		expect(await readFile(join(root, own.logcat ?? "missing"), "utf8")).toContain("whatever its stamps say");
+	});
+
+	test("a device whose clock cannot be read gives the whole crash buffer and says so", async () => {
+		const { device, root, deps, target } = await setup();
+		device.clock = "not a date\n";
+		device.crashText = "11-04 11:10:20.000  3999  3999 E AndroidRuntime: FATAL EXCEPTION: main (older)\n";
+		const evidence = await captureEvidence(deps, target, 1, notFound(), Date.now() - 40_000);
+		expect(await readFile(join(root, evidence.logcat ?? "missing"), "utf8")).toContain("(older)");
+		expect(evidence.missing).toEqual(["logcat.txt: the device's clock could not be read, so the crash buffer is not narrowed to the try"]);
+	});
+
+	test("the stamps: the device's moment as logcat writes it, and the lines at or after one, across the new year", () => {
+		expect(logcatStamp(new Date(Date.UTC(2026, 10, 4, 11, 10, 49, 5)))).toBe("11-04 11:10:49.005");
+		expect(linesSince("a\n11-04 11:10:48.999 x\n11-04 11:10:49.000 y\n11-04 11:12:00.000 z\n", "11-04 11:10:49.000")).toBe("11-04 11:10:49.000 y\n11-04 11:12:00.000 z\n");
+		expect(linesSince("11-04 11:10:48.999 x\n", "11-04 11:10:49.000")).toBe("");
+		expect(linesSince("12-31 23:59:58.000 a\n01-01 00:00:01.000 b\n12-31 23:00:00.000 c\n", "12-31 23:59:50.000")).toBe("12-31 23:59:58.000 a\n01-01 00:00:01.000 b\n");
+	});
+
+	test("with the account configured the plain dump gets several attempts, and the picture is taken between it and the compressed dump", async () => {
+		useAccount(address);
+		const events: string[] = [];
+		const plain = treeOf(hierarchy(box("[0,0][24,48]", { cls: "android.widget.FrameLayout" })));
+		const { deps, target } = await setup();
+		deps.dump = async (_serial, options) => {
+			events.push(`dump ${options?.important ? "compressed" : "plain"} x${options?.attempts}`);
+			return plain;
+		};
+		deps.png = async () => {
+			events.push("png");
+			return encodePng(picture());
+		};
+		await captureEvidence(deps, { ...target, screen: devicesModal, direction: "ltr" }, 1, notFound());
+		expect(events).toEqual([`dump plain x${plainDumpAttempts}`, "png", `dump compressed x${compressedDumpAttempts}`]);
+		expect(plainDumpAttempts).toBeGreaterThanOrEqual(2);
+		expect(compressedDumpAttempts).toBeGreaterThanOrEqual(2);
+
+		// Without the account nothing is painted: the picture comes first, and no dump is taken for a try that read one.
+		useAccount(null);
+		events.length = 0;
+		await captureEvidence(deps, { ...target, stem: "plain" }, 1, notFound());
+		expect(events).toEqual(["png"]);
+	});
+
 	test("every part is capped: the dump, the text, and the logcat to its newest lines", async () => {
 		const { device, root, deps, target } = await setup();
 		const huge: UiTree = { ...loading, raw: `${loadingXml}${"<!-- padding -->".repeat(100_000)}` };
@@ -438,6 +530,31 @@ describe("a case that is tried again", () => {
 			expect(lines.some((line) => line.startsWith("  evidence (try 1, waited 31.3 s over 6 dumps"))).toBe(true);
 			expect(lines.some((line) => line.startsWith("  retrying case: no node"))).toBe(true);
 			expect(await readFile(join(root, attempted.failures[0]?.logcat ?? "missing"), "utf8")).toContain("slow");
+		});
+	});
+
+	test("the evidence of a failed try is narrowed to the run that failed: the crash of the run before it stays out", async () => {
+		const device = new FakeDevice();
+		const { deps, target, root } = await setup(device);
+		device.clock = "11-04 11:11:30\n";
+		device.crashText = ["11-04 11:05:00.000  1  1 E AndroidRuntime: FATAL EXCEPTION: main (the case before)", "11-04 11:11:29.500  2  2 E AndroidRuntime: FATAL EXCEPTION: main (this run)"].join("\n");
+		await withSession(device, async (session) => {
+			let run = 0;
+			const attempted = await attemptCase({
+				session,
+				screen: normalScreen,
+				fontScale: 1,
+				label: "case",
+				evidence: { deps, target },
+				log: () => undefined,
+				body: async () => {
+					if (++run === 1) throw notFound();
+					return "second";
+				},
+			});
+			const log = await readFile(join(root, attempted.failures[0]?.logcat ?? "missing"), "utf8");
+			expect(log).toContain("(this run)");
+			expect(log).not.toContain("(the case before)");
 		});
 	});
 

@@ -28,6 +28,8 @@ export class FakeDevice {
 	windowsText = "  mCurrentFocus=Window{1a2b u0 io.rasheed.svelteqa/io.rasheed.svelteqa.MainActivity}\n";
 	windowText = "";
 	activityText = "  topResumedActivity=ActivityRecord{3c4d u0 io.rasheed.svelteqa/.MainActivity t7}\n";
+	/** The device's clock, as `date +'%m-%d %H:%M:%S'` prints it (the stamps of its logcat). */
+	clock = "11-04 11:11:30\n";
 	/** Commands that start with one of these fail the way a command that exits with 1 does. */
 	failing: string[] = [];
 
@@ -74,6 +76,7 @@ export class FakeDevice {
 		const [, first, second, third, fourth] = args;
 		if (first && this.failing.some((prefix) => first.startsWith(prefix)))
 			throw new Error(`adb -s ${serial} ${args.join(" ")} exited with 1`);
+		if (first?.startsWith("date ")) return this.clock;
 		if (first?.startsWith("pidof ")) return this.pid === null ? "" : `${this.pid}\n`;
 		if (first?.startsWith("logcat -b crash")) return this.crashText;
 		if (first?.startsWith("logcat ")) return this.logcatText;

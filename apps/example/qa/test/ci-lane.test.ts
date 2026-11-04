@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -30,6 +30,7 @@ for a in "$@"; do
   prev=$a
 done
 echo "output of $cmd"
+if [ "$cmd" = "\${HANG_ON:-}" ]; then sleep "\${HANG_SECONDS:-2}"; fi
 case ",\${FAIL_ON:-}," in *",$cmd,"*) echo "$cmd broke" >&2; exit 1 ;; esac
 if [ "$cmd" = crashes ] && [ -n "\${CRASHES_FAIL_FIRST:-}" ] && [ ! -e "${checkout}/crashed" ]; then touch "${checkout}/crashed"; exit 1; fi
 exit 0
@@ -55,13 +56,23 @@ esac
 			env: { ...process.env, QA_CLI: `bash ${cli}`, QA_EMULATOR_SH: emulator, GITHUB_STEP_SUMMARY: summary, GITHUB_SHA: "0123456789abcdef", RASHEED_QA_EMAIL: "", ...env },
 			encoding: "utf8",
 		});
+	/** The lane as a child that can be signalled: resolves with its exit status once it has exited. */
+	const start = (phase: string, env: Record<string, string> = {}) => {
+		const child = spawn("bash", [join(platform, "qa", "ci", "lane.sh"), phase], {
+			cwd: platform,
+			env: { ...process.env, QA_CLI: `bash ${cli}`, QA_EMULATOR_SH: emulator, GITHUB_STEP_SUMMARY: summary, GITHUB_SHA: "0123456789abcdef", RASHEED_QA_EMAIL: "", ...env },
+			stdio: "ignore",
+		});
+		const done = new Promise<number | null>((resolve) => child.on("close", (status) => resolve(status)));
+		return { child, done };
+	};
 	const lines = (): string[] => (existsSync(calls) ? readFileSync(calls, "utf8").trim().split("\n") : []);
 	const stages = (): string[][] => {
 		const file = join(platform, "qa", "out", "lane-stages.tsv");
 		return existsSync(file) ? readFileSync(file, "utf8").trim().split("\n").map((line) => line.split("\t")) : [];
 	};
 	const read = (path: string): string => readFileSync(join(platform, path), "utf8");
-	return { platform, run, lines, stages, read, summary: () => (existsSync(summary) ? readFileSync(summary, "utf8") : "") };
+	return { platform, run, start, lines, stages, read, summary: () => (existsSync(summary) ? readFileSync(summary, "utf8") : "") };
 }
 
 const harness = (calls: string[]): string[] => calls.filter((line) => line.startsWith("cli ")).map((line) => line.slice(4));
@@ -157,10 +168,25 @@ describe("lane.sh emulator on a dispatch", () => {
 		expect(judged.stdout).not.toContain("qa-account-stand-in");
 		const ran = harness(withAccount.lines());
 		expect(ran.at(-2)).toBe("gates --platform android --runs lab,boot,parity,a11y,resilience,gestures,product --markdown qa/out/gates.md");
-		// The run files are uploaded as an artifact: with the account in hand the lane reads them for it after the gates and deletes what holds it.
-		expect(ran.at(-1)).toBe("leakcheck --staged --purge");
+		// The run files and the lane logs are uploaded as an artifact: with the account in hand the lane reads them for it after the gates and deletes what holds it (no git).
+		expect(ran.at(-1)).toBe("leakcheck --artifacts --purge");
 		expect(harness(without.lines()).some((line) => line.startsWith("leakcheck"))).toBe(false);
 	});
+	test("a lane that is told to stop purges the files the workflow uploads before it leaves, with the account, and only with it", async () => {
+		for (const account of ["qa-account-stand-in", ""]) {
+			const machine = lane();
+			// The lab stage takes two seconds; the signal arrives during it, and bash runs the trap when the stage is over.
+			const { child, done } = machine.start("emulator", { HANG_ON: "lab", HANG_SECONDS: "2", RASHEED_QA_EMAIL: account });
+			// Not before the stage has started: the lane sets its trap before anything runs, but a signal that arrives earlier kills it outright.
+			for (let waited = 0; !machine.lines().some((line) => line.startsWith("cli lab")) && waited < 10_000; waited += 50) await new Promise((resolve) => setTimeout(resolve, 50));
+			child.kill("SIGTERM");
+			expect(await done).toBe(143);
+			const ran = harness(machine.lines());
+			expect(ran.map((line) => line.split(" ")[0])).toEqual(account === "" ? ["lab"] : ["lab", "leakcheck"]);
+			if (account !== "") expect(ran.at(-1)).toBe("leakcheck --artifacts --purge");
+			expect(machine.stages().at(-1)?.[1]).toBe("cancelled");
+		}
+	}, 20_000);
 	test("without QA_SMOKE the smoke app is neither run nor judged", () => {
 		const machine = lane();
 		machine.run("emulator", { QA_MODE: "full" });

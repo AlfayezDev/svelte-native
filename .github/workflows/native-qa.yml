@@ -184,6 +184,16 @@ jobs:
           RASHEED_QA_EMAIL: ${{ github.event_name == 'workflow_dispatch' && secrets.RASHEED_QA_EMAIL || '' }}
           RASHEED_QA_CODE: ${{ github.event_name == 'workflow_dispatch' && secrets.RASHEED_QA_CODE || '' }}
 
+      # The run files, the evidence of failed tries (raw dumps, logcat) and the lane logs are uploaded below for 14 days, and the summary quotes the logs. The lane deletes
+      # what holds the QA account's address as its last stage and when it is stopped; this step is every other way out of it (a lane that failed, a lost emulator lock, a
+      # lane that died). It reads only the files the upload ships (--artifacts: no git, so nothing else can fail it) and does nothing without the account.
+      - name: Keep the QA account's address out of the artifact
+        if: ${{ always() }}
+        run: node qa/native-qa.ts leakcheck --artifacts --purge
+        env:
+          RASHEED_QA_EMAIL: ${{ github.event_name == 'workflow_dispatch' && secrets.RASHEED_QA_EMAIL || '' }}
+          RASHEED_QA_CODE: ${{ github.event_name == 'workflow_dispatch' && secrets.RASHEED_QA_CODE || '' }}
+
       - name: Job summary
         if: ${{ always() }}
         run: bash qa/ci/lane.sh summary

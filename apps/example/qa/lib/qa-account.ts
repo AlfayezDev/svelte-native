@@ -104,13 +104,21 @@ export function redact(text: string, extra: readonly string[] = []): string {
 	return code === null ? result : result.replace(code, placeholder);
 }
 
-/** Whether the text contains the address (any case, any of its encodings) or the fixed code (as a whole number). */
-export function containsAccount(text: string): boolean {
+/**
+ * Whether the text contains the address (any case, any of its encodings), and nothing else: the fixed code is six digits that a pixel count or a duration can
+ * equal, so a file is only deleted for the address.
+ */
+export function containsAddress(text: string): boolean {
 	const email = accountEmail();
-	if (codePattern()?.test(text)) return true;
 	if (email === null) return false;
 	const lower = text.toLowerCase();
 	return needles(email).some((form) => lower.includes(form.toLowerCase()));
+}
+
+/** Whether the text contains the address (any case, any of its encodings) or the fixed code (as a whole number). */
+export function containsAccount(text: string): boolean {
+	if (codePattern()?.test(text)) return true;
+	return containsAddress(text);
 }
 
 /** A copy of any JSON value with the address redacted from every string, key and value alike. */

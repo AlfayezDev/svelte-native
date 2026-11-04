@@ -7,33 +7,26 @@
  * files; `form` is the native one (`form.svelte.ts`). Each remote function fails when it is called, not when the module is imported, if the
  * app has no host (`RemoteConfigError`) or the JavaScript environment lacks what the client needs.
  */
-import "./environment.ts";
 import { command as kitCommand } from "@sveltejs/kit/src/runtime/client/remote-functions/command.svelte.js";
 import { prerender as kitPrerender } from "@sveltejs/kit/src/runtime/client/remote-functions/prerender.svelte.js";
 import { query as kitQuery } from "@sveltejs/kit/src/runtime/client/remote-functions/query/index.js";
 import { query_batch as kitQueryBatch } from "@sveltejs/kit/src/runtime/client/remote-functions/query-batch.svelte.js";
 import { query_live as kitQueryLive } from "@sveltejs/kit/src/runtime/client/remote-functions/query-live/index.js";
-import { assertEnvironment } from "./environment.ts";
-import { requireOrigin } from "./config.ts";
 import { form as nativeForm } from "./form.svelte.ts";
-import { releaseWithOwner } from "./owned.svelte.ts";
+import { ownedQuery } from "./owned.svelte.ts";
+import { assertReady } from "./ready.ts";
 
-/** Checks what a call needs, throwing the error that names what is missing. */
-export function assertReady(): void {
-  assertEnvironment();
-  requireOrigin();
-}
+export { assertReady };
 
 /**
- * The remote function as it is, with every call checked first and, for a query, the object it returns tied to the effect that made it (`owned.svelte.ts`).
+ * The remote function as it is, with every call checked first and, for a query, the object it returns freed with the effect that made it (`owned.svelte.ts`).
  * A proxy keeps what SvelteKit hangs on the function (`pending`, the id `updates()` reads).
  */
 function guarded<T extends (...args: never[]) => unknown>(remote: T, owned = false): T {
   return new Proxy(remote, {
     apply(target, thisArg, args) {
       assertReady();
-      const result = Reflect.apply(target, thisArg, args);
-      return owned ? releaseWithOwner(result as object) : result;
+      return owned ? ownedQuery(() => Reflect.apply(target, thisArg, args) as object) : Reflect.apply(target, thisArg, args);
     },
   });
 }

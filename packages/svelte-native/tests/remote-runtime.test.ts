@@ -2,6 +2,7 @@
 // The native half of remote functions without a server: the host config, the transport (what a request looks like), the globals SvelteKit's client files are given,
 // the redirect and the screen URL, and the native form's inputs. Bundled the way Metro would bundle it (remote-harness.ts); the server round trips are in remote-e2e.test.ts.
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { stringify } from "devalue";
 import { pathToFileURL } from "node:url";
@@ -15,7 +16,8 @@ const ENTRY = `
   export { normalizeBase, normalizeAppDir, hostFromExtra } from "../src/remote/host.ts";
   export { currentHost, requireOrigin } from "../src/remote/config.ts";
   export { fetch as transportFetch, location, navigator, window, Blob } from "../src/remote/globals.ts";
-  export { linkRouter, navigate, currentUrl } from "../src/remote/link.ts";
+  export { navigate, currentUrl } from "../src/remote/link.ts";
+  export { linkRouter } from "../src/remote/router-link.ts";
   export { form, query, assertReady } from "../src/remote/runtime.ts";
   export { base, app_dir } from "../src/remote/shims/paths.ts";
   export { handle_error } from "../src/remote/shims/client.ts";
@@ -117,6 +119,12 @@ describe("the transport", () => {
     await m.transportFetch(new URL("https://a.example/y"), { method: "DELETE" });
     expect(sent.map((request) => new Headers(request.init.headers).get("origin"))).toEqual(["https://elsewhere.example", null, "https://a.example"]);
   });
+  test("a redirect is an error, not followed: the session cookie goes nowhere the server did not name", async () => {
+    const sent = record();
+    await m.transportFetch("/x");
+    await m.transportFetch("/x", { method: "POST" });
+    expect(sent.map((request) => request.init.redirect)).toEqual(["error", "error"]);
+  });
   test("without a host the request is not sent", () => {
     expect(throws(() => m.transportFetch("/x"))?.name).toBe("RemoteConfigError");
   });
@@ -193,6 +201,18 @@ describe("redirects", () => {
     expect(gone).toEqual([]);
     unlink();
   });
+  test("only an http: or https: address of another site is opened; nothing else the server names is", async () => {
+    m.configureRemote({ origin: "https://a.example" });
+    const { gone, unlink } = linked();
+    for (const location of ["javascript:alert(1)", "intent://scan/#Intent;scheme=zxing;end", "file:///etc/passwd", "rasheed://auth/login", "tel:+966500000000", "data:text/html,<b>x</b>"]) {
+      await expect(m.navigate(location)).rejects.toThrow(/not an http: or https: address/);
+    }
+    expect((globalThis as any).__opened).toEqual([]);
+    expect(gone).toEqual([]);
+    await m.navigate("http://other.example/page");
+    expect((globalThis as any).__opened).toEqual(["http://other.example/page"]);
+    unlink();
+  });
   test("a redirect with no router to follow it is an error, not silence", async () => {
     m.configureRemote({ origin: "https://a.example" });
     await expect(m.navigate("/login")).rejects.toThrow(/no router is connected/);
@@ -208,5 +228,102 @@ describe("errors", () => {
     expect(await m.handle_error(new m.SvelteKitError(404, "Not Found", "no such remote function"), {})).toEqual({ status: 404, message: "Not Found" });
     expect(await m.handle_error(new TypeError("Network request failed"), {})).toEqual({ status: 500, message: "Something broke", code: "E1" });
     expect(seen).toEqual(["app", "framework", "unknown"]);
+  });
+});
+
+describe("a query object that outlives the effect that made it", () => {
+  const entry = `
+    export * from "../src/remote/index.ts";
+    export { query, query_live, command } from "../src/remote/runtime.ts";
+    export { inOwner, sharedDerived } from "./remote-owner.svelte.ts";
+  `;
+  const settle = (ms = 30) => new Promise((resolve) => setTimeout(resolve, ms));
+  for (const hermes of [true, false]) {
+    describe(hermes ? "in an engine with no FinalizationRegistry" : "with the engine's FinalizationRegistry", () => {
+      let client: Record<string, any>;
+      let calls = 0;
+      beforeAll(async () => { client = await loadClient(entry, undefined, undefined, { hermes }); });
+      afterEach(() => { client.resetRemoteConfig(); calls = 0; });
+      const serve = (value = "v") => client.configureRemote({
+        origin: "https://a.example",
+        fetch: async (url: string) => {
+          calls++;
+          if (url.includes("/hash/command")) return Response.json({ type: "result", data: stringify({ _: 1, q: { "hash/name/": { v: "from the command" } } }) });
+          const target = new URL(url);
+          return ok(`${target.pathname.replace("/_app/remote/", "")}/${target.searchParams.get("payload") ?? ""}`, value);
+        },
+      });
+
+      test("used after the effect is torn down, it works: reading, refreshing, setting and overriding do not throw", async () => {
+        serve();
+        const owner = client.inOwner(() => client.query("hash/name")());
+        const query = owner.value;
+        expect(await query).toBe("v");
+        owner.destroy();
+        await settle();
+        // The entry went with its effect; the object makes SvelteKit's again, which asks the server again.
+        expect(() => query.current).not.toThrow();
+        expect(await query).toBe("v");
+        expect(query.current).toBe("v");
+        expect(await query.refresh()).toBeUndefined();
+        query.set("set");
+        expect(query.current).toBe("set");
+        const release = query.withOverride((value: string) => `${value}!`);
+        expect(query.current).toBe("set!");
+        release();
+        expect(await query).toBe("set");
+      });
+      test("a query made by a $derived and first read in a branch that goes away is still there for the next reader", async () => {
+        serve();
+        const scenario = client.sharedDerived(() => client.query("hash/shared")());
+        await settle(50);
+        expect(scenario.out.first).toBe("v");
+        scenario.hideFirst();
+        await settle();
+        scenario.readSecond();
+        await settle(50);
+        expect([scenario.out.error, scenario.out.second]).toEqual([undefined, "v"]);
+        scenario.destroy();
+      });
+      test("a read that continues after the screen is gone, and a command that finishes after it, find a query to read", async () => {
+        serve();
+        const owner = client.inOwner(() => client.query("hash/name")());
+        const query = owner.value;
+        await query;
+        // The command is on its way when the screen goes; the response carries the refreshed value.
+        const finishing = client.command("hash/command")().updates(query);
+        owner.destroy();
+        await settle();
+        await finishing;
+        expect(await query).toBe("from the command");
+        // An await that was in flight when the effect went.
+        const second = client.inOwner(() => client.query("hash/name")());
+        const reading = (async () => { await second.value; second.destroy(); await settle(10); return second.value.current; })();
+        expect(await reading).toBeDefined();
+      });
+      test("released objects are dropped from the cache: the next one fetches again", async () => {
+        serve();
+        const owner = client.inOwner(() => client.query("hash/other")());
+        await owner.value;
+        owner.destroy();
+        await settle();
+        const before = calls;
+        const again = client.inOwner(() => client.query("hash/other")());
+        await again.value;
+        expect(calls).toBe(before + 1);
+        again.destroy();
+      });
+    });
+  }
+});
+
+describe("the product's share of it", () => {
+  test("the router registers itself through a file of its own with no imports, and nothing else of the runtime is imported by it", () => {
+    const here = join(import.meta.dirname, "../src");
+    const link = readFileSync(join(here, "remote/router-link.ts"), "utf8");
+    expect(link).not.toMatch(/^\s*import\s/m);
+    expect(Buffer.byteLength(link)).toBeLessThan(1200);
+    const router = readFileSync(join(here, "router.svelte.ts"), "utf8");
+    expect(router.match(/from "\.\/remote\/[^"]+"/g)).toEqual(['from "./remote/router-link.ts"']);
   });
 });

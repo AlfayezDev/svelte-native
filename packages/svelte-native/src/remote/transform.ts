@@ -202,11 +202,13 @@ export function transformRemoteModule(source: string, filename: string, root: st
  * `REMOTE_GLOBALS` (an import at the end of the file, so no line moves), which makes them module-scoped names: nothing is installed on the
  * global object. `fetch` gets the configured host, the `Origin` header SvelteKit's CSRF check asks for and a streaming body; `location`,
  * `navigator` and `window` are the native router's URL, "always online" and the app's foreground/background; `Blob` takes `Uint8Array` parts;
- * `__SVELTEKIT_DEV__` is the build-time constant Vite defines for a browser app.
+ * `FinalizationRegistry` is the engine's made releasable by hand, or a stand-in where the engine has none (Hermes 0.17); `WeakRef`, `btoa` and `atob`
+ * are the engine's when it has them; `__SVELTEKIT_DEV__` is the build-time constant Vite defines for a browser app.
  */
 const SHADOWS: ReadonlyArray<{ pattern: RegExp; names: readonly string[] }> = [
-  { pattern: /\/node_modules\/@sveltejs\/kit\/src\/runtime\/client\/remote-functions\//, names: ["fetch", "location", "navigator", "window", "__SVELTEKIT_DEV__"] },
+  { pattern: /\/node_modules\/@sveltejs\/kit\/src\/runtime\/client\/remote-functions\//, names: ["fetch", "location", "navigator", "window", "FinalizationRegistry", "WeakRef", "__SVELTEKIT_DEV__"] },
   { pattern: /\/node_modules\/@sveltejs\/kit\/src\/runtime\/form-utils\.js$/, names: ["Blob"] },
+  { pattern: /\/node_modules\/@sveltejs\/kit\/src\/runtime\/utils\.js$/, names: ["btoa", "atob"] },
 ];
 
 /** The statement that gives `filename` (a SvelteKit client file) its shadowed globals, or `undefined` for a file that has none. */

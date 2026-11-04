@@ -1,8 +1,10 @@
 // biome-ignore-all lint/suspicious/noExplicitAny: the client is a bundle loaded at run time and its remote functions are not typed
 // The native form: what `fields.x.as(type)` gives a native input, what is sent, and the state around a submission. No server: a preflight schema stops
 // every submission before the request, so what the schema is given is what would have been sent (the round trips are in remote-e2e.test.ts).
-import { afterEach, beforeAll, describe, expect, test } from "bun:test";
-import { base64Decode, base64Encode, installEnvironment, missingGlobals, releaseNow, sweepRegistry } from "../src/remote/environment.ts";
+import { afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { base64Decode, base64Encode, makeFinalizationRegistry, missingGlobals, releaseNow, setSweepLifecycle, sweepRegistry, sweepTimerRunning, WeakRefFallback } from "../src/remote/environment.ts";
 import { loadClient } from "./remote-harness.ts";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -13,6 +15,8 @@ beforeAll(async () => {
     export { form } from "../src/remote/runtime.ts";
   `);
 });
+// A host, and a fetch that fails the test: every submission here stops at a preflight schema, so nothing may be sent.
+beforeEach(() => { m.configureRemote({ origin: "https://a.example", fetch: async () => { throw new Error("a request that the preflight should have stopped"); } }); });
 afterEach(() => { m.resetRemoteConfig(); });
 
 /** A form whose submissions stop at a preflight schema that records the data. */
@@ -26,7 +30,7 @@ function recording() {
 describe("fields.x.as(type)", () => {
   test("text-like types are a TextInput's props, with the keyboard the type asks for", () => {
     const { fields } = m.form("h/f");
-    expect(Object.keys(fields.a.as("text")).toSorted()).toEqual(["onBlur", "onChangeText", "value"]);
+    expect(Object.keys(fields.a.as("text")).toSorted()).toEqual(["onBlur", "onChangeText", "ref", "value"]);
     expect(fields.a.as("email")).toMatchObject({ keyboardType: "email-address", autoCapitalize: "none", autoCorrect: false, textContentType: "emailAddress" });
     expect(fields.a.as("password")).toMatchObject({ secureTextEntry: true, autoCapitalize: "none" });
     expect(fields.a.as("tel")).toMatchObject({ keyboardType: "phone-pad" });
@@ -60,15 +64,18 @@ describe("fields.x.as(type)", () => {
     expect([age.value, fields.age.value()]).toEqual(["17.5", 17.5]);
     age.onChangeText("");
     expect([age.value, fields.age.value()]).toEqual(["", undefined]);
+    // Text that is not a number is not a number (and not the number it starts with).
+    age.onChangeText("12abc");
+    expect([age.value, fields.age.value()]).toEqual(["12abc", Number.NaN]);
     age.onChangeText("abc");
-    expect(fields.age.value()).toBeUndefined();
+    expect(fields.age.value()).toBeNaN();
     fields.age.set(30);
     expect(age.value).toBe("30");
   });
   test("checkbox and radio are a Switch's props", () => {
     const { fields } = m.form("h/f");
     const agree = fields.agree.as("checkbox");
-    expect(Object.keys(agree).toSorted()).toEqual(["onBlur", "onValueChange", "value"]);
+    expect(Object.keys(agree).toSorted()).toEqual(["onBlur", "onValueChange", "ref", "value"]);
     expect(agree.value).toBe(false);
     agree.onValueChange(true);
     expect([agree.value, fields.agree.value()]).toEqual([true, true]);
@@ -196,8 +203,149 @@ describe("state around a submission", () => {
     expect(form.method).toBe("POST");
     expect([form.action, form.element]).toEqual([undefined, undefined]);
     expect(Object.getOwnPropertySymbols(form)).toEqual([]);
-    // With no host the submission fails as a request, not as the call.
-    await expect(form.submit()).rejects.toThrow(/No SvelteKit host is configured/);
+    // With no host the call itself throws, as a query or a command does: a build without one is not a failed request, and nothing is returned to be rejected.
+    m.resetRemoteConfig();
+    let thrown: any;
+    let returned: unknown;
+    try { returned = form.submit(); } catch (error) { thrown = error; }
+    expect(thrown?.message).toMatch(/No SvelteKit host is configured/);
+    expect(returned).toBeUndefined();
+  });
+});
+
+describe("what is sent is what is shown (as a browser posts the defaults of its inputs)", () => {
+  test("defaults of every kind of input are sent until the field is edited; an edit, even to empty, wins", async () => {
+    const { form, submit } = recording();
+    const { fields } = form;
+    const title = fields.title.as("text", "Dr");
+    const qty = fields.qty.as("number", 3);
+    const news = fields.news.as("checkbox", true);
+    const off = fields.off.as("checkbox");
+    const color = fields.color.as("select", "red");
+    const small = fields.size.as("radio", "s", true);
+    const large = fields.size.as("radio", "l");
+    const plain = fields.plain.as("text");
+    expect([title.value, qty.value, news.value, off.value, color.value, small.value, large.value, plain.value]).toEqual(["Dr", "3", true, false, "red", true, false, ""]);
+    const first = await submit();
+    expect(Object.keys(first).toSorted()).toEqual(["color", "news", "plain", "qty", "size", "title"]);
+    expect(first).toMatchObject({ title: "Dr", qty: 3, news: true, color: "red", size: "s", plain: "" });
+
+    // Edited: the text is empty on screen, so it is empty in the post; an unchecked box is not posted at all; the other radio wins.
+    title.onChangeText("");
+    news.onValueChange(false);
+    large.onValueChange(true);
+    color.onValueChange("blue");
+    qty.onChangeText("");
+    const second = await submit();
+    expect(second).toMatchObject({ title: "", size: "l", color: "blue", qty: undefined });
+    expect(Object.keys(second).toSorted()).toEqual(["color", "plain", "qty", "size", "title"]);
+    expect([title.value, qty.value, news.value, small.value, large.value]).toEqual(["", "", false, false, true]);
+  });
+  test("a select shows, and posts, the option it starts on: the one given, else the first of its options", async () => {
+    const { form, submit } = recording();
+    const { fields } = form;
+    expect(fields.a.as("select", "b", ["a", "b"]).value).toBe("b");
+    expect(fields.c.as("select", undefined, ["x", "y"]).value).toBe("x");
+    expect(fields.many.as("select multiple", ["p"]).value).toEqual(["p"]);
+    expect(await submit()).toMatchObject({ a: "b", c: "x", many: ["p"] });
+    // Without options there is nothing to start on.
+    const bare = recording();
+    expect(bare.form.fields.d.as("select").value).toBeUndefined();
+    expect(Object.keys(await bare.submit())).not.toContain("d");
+  });
+  test("checkboxes of a list post the checked ones, and none when none is", async () => {
+    const { form, submit } = recording();
+    const kit = form.fields.topics.as("checkbox", "kit", true);
+    const svelte = form.fields.topics.as("checkbox", "svelte");
+    expect(await submit()).toMatchObject({ topics: ["kit"] });
+    svelte.onValueChange(true);
+    expect((await submit()).topics).toEqual(["kit", "svelte"]);
+    kit.onValueChange(false);
+    svelte.onValueChange(false);
+    expect(Object.keys(await submit())).not.toContain("topics");
+  });
+  test("a field whose input is gone is not posted, and is again when the input is back; one that was never an input is", async () => {
+    const { form, submit } = recording();
+    const { fields } = form;
+    const name = fields.name.as("text");
+    const company = fields.company.as("text");
+    // The host builds the element and tells the ref; with no host (a test, a store) a field counts as there.
+    name.ref({});
+    company.ref({});
+    company.onChangeText("Acme");
+    form.fields.note.set("from code");
+    expect(await submit()).toMatchObject({ name: "", company: "Acme", note: "from code" });
+    company.ref(null);
+    const without = await submit();
+    expect(Object.keys(without).toSorted()).toEqual(["name", "note"]);
+    // Shown again: the element is new, and what was typed is still the field's value.
+    fields.company.as("text").ref({});
+    expect(await submit()).toMatchObject({ company: "Acme" });
+    // The ref of a field is one function, so the host is not told "gone, back" on every render.
+    expect(fields.company.as("text").ref).toBe(company.ref);
+  });
+  test("of inputs that share a name the field is there while one of them is", async () => {
+    const { form, submit } = recording();
+    const small = form.fields.size.as("radio", "s", true);
+    const large = form.fields.size.as("radio", "l");
+    small.ref({});
+    large.ref({});
+    small.ref(null);
+    expect(Object.keys(await submit())).not.toContain("size");
+    large.onValueChange(true);
+    expect((await submit()).size).toBe("l");
+    large.ref(null);
+    expect(Object.keys(await submit())).not.toContain("size");
+  });
+  test("the submit button that was pressed last is the only one posted", async () => {
+    const { form, sent } = recording();
+    const save = form.fields.save.as("submit", "1");
+    const remove = form.fields.delete.as("submit", "1");
+    save.onPress();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    remove.onPress();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(sent.map((data) => Object.keys(data).toSorted())).toEqual([["save"], ["delete"]]);
+    // Pressing the same one again posts it again.
+    remove.onPress();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(Object.keys(sent[2])).toEqual(["delete"]);
+  });
+});
+
+describe("a submission that fails", () => {
+  test("is handled as SvelteKit's form handles it: through handleError, shown by form.error, and the submit resolves false", async () => {
+    const hits: string[] = [];
+    m.configureRemote({ origin: "https://a.example", handleError: ({ kind }: any) => { hits.push(kind); return { message: "Offline" }; }, fetch: async () => { throw new TypeError("Network request failed"); } });
+    const form = m.form("h/i");
+    form.fields.set({ a: 1 });
+    const sending = form.submit();
+    expect(form.pending).toBe(1);
+    // (`.updates()` is still on the promise a failed one resolves.)
+    expect(await sending.updates()).toBe(false);
+    expect(hits).toEqual(["unknown"]);
+    expect(form.error).toMatchObject({ status: 500, message: "Offline" });
+    expect([form.pending, form.result]).toEqual([0, undefined]);
+    // The next submission starts with no error.
+    m.configureRemote({ fetch: async () => Response.json({ type: "result", data: "[{\"_\":1},{\"issues\":2,\"result\":3},[],\"ok\"]" }) });
+    expect(await form.submit()).toBe(true);
+    expect([form.error, form.result]).toEqual([undefined, "ok"]);
+  });
+  test("an enhance callback that throws is handled the same way", async () => {
+    const hits: string[] = [];
+    m.configureRemote({ origin: "https://a.example", handleError: ({ kind }: any) => { hits.push(kind); } });
+    const form = m.form("h/j");
+    form.enhance(async () => { throw new Error("callback failed"); });
+    expect(await form.submit()).toBe(false);
+    expect(hits).toEqual(["unknown"]);
+    expect(form.error).toMatchObject({ status: 500 });
+  });
+  test("what a button that calls form.submit() without waiting is left with is a promise that resolves: nothing to reject unhandled", async () => {
+    m.configureRemote({ origin: "https://a.example", handleError: () => {}, fetch: async () => { throw new TypeError("Network request failed"); } });
+    const form = m.form("h/k");
+    form.fields.set({ a: 1 });
+    const outcome = await form.submit().then(() => "resolved", () => "rejected");
+    expect(outcome).toBe("resolved");
   });
 });
 
@@ -214,26 +362,23 @@ describe("the environment", () => {
     expect(() => base64Decode("Zm9v*")).toThrow(/not correctly encoded/);
     expect(() => base64Decode("Z")).toThrow(/not correctly encoded/);
   });
-  test("fallbacks are installed only for what the engine does not define", () => {
-    const empty: Record<string, any> = {};
-    installEnvironment(empty);
-    expect(Object.keys(empty).toSorted()).toEqual(["FinalizationRegistry", "WeakRef", "atob", "btoa"]);
-    const target = { WeakRef, atob: () => "mine" } as Record<string, any>;
-    installEnvironment(target);
-    expect(target.WeakRef).toBe(WeakRef);
-    expect(target.atob()).toBe("mine");
-    expect(typeof target.btoa).toBe("function");
-    const strong = new empty.WeakRef({ a: 1 });
+  test("the stand-ins are values this package hands to SvelteKit's files, never installed on the global object", () => {
+    const before = Object.getOwnPropertyNames(globalThis).toSorted();
+    const strong = new WeakRefFallback({ a: 1 });
     expect(strong.deref()).toEqual({ a: 1 });
-    expect(() => new empty.FinalizationRegistry(() => {}).register({}, 1)).not.toThrow();
+    expect(Object.getOwnPropertyNames(globalThis).toSorted()).toEqual(before);
+    // (and nothing in the package writes to it)
+    const sources = [...new Bun.Glob("**/*.{ts,svelte}").scanSync({ cwd: join(import.meta.dirname, "../src/remote") })];
+    for (const file of sources) {
+      const text = readFileSync(join(import.meta.dirname, "../src/remote", file), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+      expect([file, /\b(?:globalThis|window|global)\.\w+\s*=[^=]|Object\.defineProperty\(\s*globalThis/.test(text)]).toEqual([file, false]);
+    }
   });
-  test("an engine with no FinalizationRegistry (React Native 0.86's Hermes) gets one that sweeps what its WeakRefs lost, and can be told to release a target at once", async () => {
-    const target: Record<string, any> = {};
-    installEnvironment(target);
-    target.WeakRef = WeakRef;
+  test("a registry for an engine with none (React Native 0.86's Hermes) sweeps what its WeakRefs lost, and can be told to release a target at once", async () => {
+    const Registry = makeFinalizationRegistry(undefined);
     const called: unknown[] = [];
-    const registry = new target.FinalizationRegistry((held: unknown) => { called.push(held); });
-    expect(() => new target.FinalizationRegistry("nope")).toThrow(/must be callable/);
+    const registry = new Registry((held: unknown) => { called.push(held); });
+    expect(() => new Registry("nope" as never)).toThrow(/must be callable/);
 
     const owner = {};
     registry.register(owner, "released");
@@ -252,8 +397,8 @@ describe("the environment", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     sweepRegistry();
     expect(called).toEqual(["released", "collected"]);
-    // A target that is collected after it was released is not reported twice, and a cleanup that throws does not stop the sweep.
-    const failing = new target.FinalizationRegistry(() => { throw new Error("cleanup failed"); });
+    // A cleanup that throws is reported and does not stop the sweep.
+    const failing = new Registry(() => { throw new Error("cleanup failed"); });
     (() => { failing.register({}, 1); })();
     await new Promise((resolve) => setTimeout(resolve, 0));
     Bun.gc(true);
@@ -263,6 +408,49 @@ describe("the environment", () => {
     console.error = (error: unknown) => { seen.push(error); };
     try { sweepRegistry(); } finally { console.error = log; }
     expect(seen.map((error) => (error as Error).message)).toEqual(["cleanup failed"]);
+  });
+  test("with an engine registry of its own the release still works, once: the engine's callback for that target is then ignored", () => {
+    const callbacks: Array<(held: unknown) => void> = [];
+    const registrations: Array<{ target: object; held: unknown; token?: object }> = [];
+    class NativeRegistry {
+      constructor(callback: (held: unknown) => void) { callbacks.push(callback); }
+      register(target: object, held: unknown, token?: object) { registrations.push({ target, held, token }); }
+      unregister() { return true; }
+    }
+    const Registry = makeFinalizationRegistry(NativeRegistry as never);
+    const called: unknown[] = [];
+    const registry = new Registry((held: unknown) => { called.push(held); });
+    const a = {};
+    const b = {};
+    registry.register(a, "a");
+    registry.register(b, "b");
+    expect(releaseNow(a)).toBe(true);
+    expect(called).toEqual(["a"]);
+    // The engine collects both later: `a` was released already, `b` was not.
+    for (const { held } of registrations) callbacks[0](held);
+    expect(called).toEqual(["a", "b"]);
+    expect(releaseNow(b)).toBe(false);
+  });
+  test("the sweep timer is not left running in the background (iOS keeps timers until the app is suspended) and starts again in the foreground", async () => {
+    const Registry = makeFinalizationRegistry(undefined);
+    let listener: ((state: string) => void) | undefined;
+    let removed = 0;
+    setSweepLifecycle((next) => { listener = next; return { remove() { removed++; } }; });
+    const called: unknown[] = [];
+    const registry = new Registry((held: unknown) => { called.push(held); });
+    (() => { registry.register({}, "lost"); })();
+    expect(sweepTimerRunning()).toBe(true);
+    listener?.("background");
+    expect(sweepTimerRunning()).toBe(false);
+    // Foreground: one sweep at once (what was lost while away), then the timer again.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    Bun.gc(true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    listener?.("active");
+    expect(called).toEqual(["lost"]);
+    sweepRegistry();
+    setSweepLifecycle(undefined);
+    expect(removed).toBe(1);
   });
   test("what cannot be made up is named", () => {
     expect(missingGlobals({})).toEqual(["ReadableStream", "TextEncoder", "TextDecoder", "AbortController", "Headers", "URL", "URLSearchParams"]);

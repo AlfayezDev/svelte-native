@@ -22,8 +22,9 @@ describe("the remote functions lab", () => {
     // The lab imports the module from the platform app; the server has it where the fixture can serve it, and the ids are the server's.
     m = await loadClient(`
       export { checks } from "${join(platform, "remote-lab-checks.ts")}";
+      export { applyLabOrigin } from "${join(platform, "remote-lab-host.ts")}";
       export * from "../src/remote/index.ts";
-      export { linkRouter } from "../src/remote/link.ts";
+      export { linkRouter } from "../src/remote/router-link.ts";
     `, fixtureRoot, (file) => (file === join(platform, "remote-lab.remote.ts") ? copy : file));
   }, 180_000);
   afterAll(() => {
@@ -44,4 +45,18 @@ describe("the remote functions lab", () => {
     expect(Object.entries(results).filter(([, result]) => !result.startsWith("pass"))).toEqual([]);
     expect(results.probe).toStartWith(`pass: Origin ${server.origin}, /__dev/remote`);
   }, 60_000);
+
+  test("the page's origin override (?origin=, the host field) changes the host only in a build with the lab on", () => {
+    m.resetRemoteConfig();
+    m.configureRemote({ origin: "https://app.example.com" });
+    expect(m.applyLabOrigin("http://evil.example", false)).toBe(false);
+    expect(m.applyLabOrigin(null, true)).toBe(false);
+    expect(m.applyLabOrigin("", true)).toBe(false);
+    expect(m.remoteHost().origin).toBe("https://app.example.com");
+    expect(m.applyLabOrigin("http://localhost:3000", true)).toBe(true);
+    expect(m.remoteHost().origin).toBe("http://localhost:3000");
+    // (A value that is not an origin is refused, as everywhere.)
+    expect(() => m.applyLabOrigin("not an origin", true)).toThrow(/not a URL|must be/);
+    m.resetRemoteConfig();
+  });
 });

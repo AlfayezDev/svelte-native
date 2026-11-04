@@ -15,21 +15,36 @@ export const fixtureRoot = resolve(import.meta.dirname, "fixtures/kit-app");
 
 export type Server = { origin: string; stop(): void };
 
-/** Starts the fixture's SvelteKit server (`dev`: Vite's dev server; `preview`: a production build) and resolves once it listens; a server that exits first is started once more (a busy machine). */
-export async function startServer(mode: "dev" | "preview"): Promise<Server> {
-  try {
-    return await startOnce(mode);
-  } catch (error) {
-    if (!/exited with/.test(String(error))) throw error;
-    return startOnce(mode);
+/** The error of a server that did not start in time; `pid` is the process that was started (and has been killed). */
+export class ServerStartTimeout extends Error {
+  constructor(mode: string, readonly pid: number | undefined, output: string, ms: number) {
+    super(`the fixture server (${mode}) did not start in ${ms} ms:\n${output}`);
+    this.name = "ServerStartTimeout";
   }
 }
 
-async function startOnce(mode: "dev" | "preview"): Promise<Server> {
+/**
+ * Starts the fixture's SvelteKit server (`dev`: Vite's dev server; `preview`: a production build) and resolves once it listens. A server that exits first is
+ * started once more (a busy machine); one that has not listened after `timeoutMs` is killed, not left running.
+ */
+export async function startServer(mode: "dev" | "preview", { timeoutMs = 120_000 }: { timeoutMs?: number } = {}): Promise<Server> {
+  try {
+    return await startOnce(mode, timeoutMs);
+  } catch (error) {
+    if (!/exited with/.test(String(error))) throw error;
+    return startOnce(mode, timeoutMs);
+  }
+}
+
+async function startOnce(mode: "dev" | "preview", timeoutMs: number): Promise<Server> {
   const child: ChildProcess = spawn("node", ["serve.ts", mode], { cwd: fixtureRoot, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, NODE_ENV: mode === "dev" ? "development" : "production" } });
   let output = "";
   const origin = await new Promise<string>((resolveOrigin, reject) => {
-    const timer = setTimeout(() => reject(new Error(`the fixture server (${mode}) did not start in 120 s:\n${output}`)), 120_000);
+    const timer = setTimeout(() => {
+      // Nothing may be left behind by a test that could not start its server.
+      child.kill("SIGKILL");
+      reject(new ServerStartTimeout(mode, child.pid, output, timeoutMs));
+    }, timeoutMs);
     const read = (chunk: Buffer) => {
       output += chunk.toString();
       const match = /READY (\S+)/.exec(output);
@@ -37,7 +52,10 @@ async function startOnce(mode: "dev" | "preview"): Promise<Server> {
     };
     child.stdout?.on("data", read);
     child.stderr?.on("data", (chunk: Buffer) => { output += chunk.toString(); });
-    child.once("exit", (code) => { clearTimeout(timer); reject(new Error(`the fixture server (${mode}) exited with ${code}:\n${output}`)); });
+    child.once("exit", (code, signal) => {
+      clearTimeout(timer);
+      if (signal === null) reject(new Error(`the fixture server (${mode}) exited with ${code}:\n${output}`));
+    });
   });
   return { origin, stop: () => { child.kill("SIGTERM"); } };
 }

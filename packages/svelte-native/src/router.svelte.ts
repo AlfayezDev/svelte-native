@@ -4,7 +4,7 @@ import Platform from "react-native/Libraries/Utilities/Platform";
 import BackHandler from "react-native/Libraries/Utilities/BackHandler";
 import Linking from "react-native/Libraries/Linking/Linking";
 import { hmrState, type NavigationState, type StackSnapshot } from "./hmr-state.ts";
-import { linkRouter } from "./remote/link.ts";
+import { linkRouter } from "./remote/router-link.ts";
 import { EXIT_REPORTED, EXIT_TIMEOUT_MS, type Presentation, type RouterScopeOptions } from "./fabric/navigation.ts";
 import {
   fillPath, locate, matchPath, plan, resolve,

@@ -14,15 +14,23 @@
  * - `submit()` is what pressing a submit button is on the web: preflight, then the `enhance` callback (default: send, and reset on success).
  *   There is no `element`, no attachment, no `action`, and no file fields.
  * - `reset()` returns the fields to their defaults (the web's `<form>.reset()`), and is what the default `enhance` does after a successful send.
+ * - What a submission carries is what the inputs show: SvelteKit reads it from the DOM (`new FormData(form)`: the inputs that are there, with the value
+ *   they show, an unchecked box not at all), and so does this, from the inputs `as(type)` made and the host has on screen (`variants` below).
+ * - A submission that fails is not thrown at the caller (the web's submit event has nobody to throw to): it goes through `handle_error` (the app's
+ *   `handleError`), is shown by `form.error`, and `submit()` resolves `false`.
+ * Every divergence is listed in REFERENCE.md ("The native form").
  */
 import { tick } from "svelte";
 import {
-  BINARY_FORM_CONTENT_TYPE, build_path_string, coerce_form_value, create_field_proxy, deep_get, deep_set, flatten_issues, normalize_issue, serialize_binary_form,
+  BINARY_FORM_CONTENT_TYPE, build_path_string, create_field_proxy, DELETE_KEY, deep_get, deep_set, flatten_issues, normalize_issue, serialize_binary_form,
 } from "@sveltejs/kit/src/runtime/form-utils.js";
 import { categorize_updates, fail_unhandled_refreshes, remote_request } from "@sveltejs/kit/src/runtime/client/remote-functions/shared.svelte.js";
 import { location } from "./globals.ts";
+import { currentUrl } from "./link.ts";
+import { parseLocalizedNumber } from "./number.ts";
+import { assertReady } from "./ready.ts";
 import { app_dir, base } from "./shims/paths.ts";
-import { _goto, refreshAll } from "./shims/client.ts";
+import { _goto, handle_error, refreshAll, set_nearest_error_page, type ClientError } from "./shims/client.ts";
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- the form's values are whatever the schema says; the public types live in types.ts */
 
@@ -30,6 +38,27 @@ type Path = (string | number)[];
 type Issue = { name: string; path: Path; message: string; server: boolean };
 type StandardSchema = { "~standard": { validate(value: unknown): { issues?: readonly { message: string; path?: readonly unknown[] }[] } | Promise<{ issues?: readonly { message: string; path?: readonly unknown[] }[] }> } };
 type Submission = Promise<boolean> & { updates: (...updates: unknown[]) => Promise<boolean> };
+/**
+ * One input `as(type)` made: what it shows and what it contributes to a submission. The host tells `ref` when it has the element and when it is gone
+ * (React's contract), so a field whose inputs are all gone is left out of the submission, as a browser leaves out an input that is not in the DOM. A variant the
+ * host never told (no host: a test, a store) counts as on screen.
+ */
+type Variant = {
+  name: string;
+  path: Path;
+  kind: "text" | "number" | "checkbox" | "list" | "radio" | "select" | "hidden";
+  /** The value or choice the input is written with (`as("radio", "s")`: "s"), for the kinds that have one. */
+  option: unknown;
+  /** The value the input shows until it is edited. */
+  initial: unknown;
+  options?: readonly unknown[];
+  props: Record<string, unknown>;
+  mounted: number;
+  seen: boolean;
+  /** What the input shows now. */
+  shown: () => unknown;
+};
+const onScreen = (variant: Variant) => !variant.seen || variant.mounted > 0;
 
 /** The props of `as(type)` that are the same for every text-like input: the keyboard the type asks for. */
 const KEYBOARDS: Record<string, Record<string, unknown>> = {
@@ -64,6 +93,7 @@ export function form(id: string) {
   function create_instance(key?: string | number | boolean) {
     const action_id_without_key = id;
     let input = $state<Record<string, any>>({});
+    let error = $state.raw<ClientError | undefined>(undefined);
     let raw_issues = $state.raw<Issue[]>([]);
     const issues = $derived(flatten_issues(raw_issues));
     let result = $state.raw<any>(undefined);
@@ -75,22 +105,49 @@ export function form(id: string) {
     let submitted = $state(false);
     /** The text a number field shows while it is typed ("1." is the number 1 and must stay "1."). */
     let texts = $state<Record<string, string>>({});
-    /**
-     * Fields as `as(type)` first saw them: their order, the ones rendered as a text input (sent as "" until edited, and a number as `undefined`, as a
-     * browser sends an empty input and SvelteKit reads it) and the hidden ones.
-     */
+    /** The order fields were first rendered in (issues are listed in it), and every input `as(type)` made. */
     const order: string[] = [];
     // eslint-disable-next-line svelte/prefer-svelte-reactivity
-    const texty = new Map<string, { path: Path; empty: "" | undefined }>();
-    // eslint-disable-next-line svelte/prefer-svelte-reactivity
-    const hidden = new Map<string, { path: Path; value: unknown }>();
+    const variants = new Map<string, Variant>();
+    /** The submit button pressed last: pressing another one takes this one's value out of the input, as the web form does. */
+    let submitter: { name: string; path: Path } | undefined;
     let enhance_callback: ((instance: any) => any) | undefined;
 
-    /** The data a submission sends: a copy of the input, with the rendered text fields that were never edited as "" and the hidden ones. */
+    /**
+     * The data a submission sends, as a browser would post the form: what was set or typed, less the fields whose inputs are gone, plus what the inputs on
+     * screen show where nothing was typed (a text input as its text, "" when empty; a number as its number, or `undefined` when empty; a box that is checked;
+     * the radio and the select that are chosen; the hidden values), and an unchecked box not at all.
+     */
     function convert(): Record<string, any> {
       const data = create_field_proxy(context).value() as Record<string, any>;
-      for (const { path, empty } of texty.values()) if (deep_get(data, path) === undefined) deep_set(data, path.map(String), empty);
-      for (const { path, value } of hidden.values()) deep_set(data, path.map(String), value);
+      // eslint-disable-next-line svelte/prefer-svelte-reactivity
+      const byName = new Map<string, Variant[]>();
+      for (const variant of variants.values()) byName.set(variant.name, [...(byName.get(variant.name) ?? []), variant]);
+      for (const [, group] of byName) {
+        const { path } = group[0];
+        const live = group.filter(onScreen);
+        if (live.length === 0) {
+          deep_set(data, path.map(String), DELETE_KEY);
+          continue;
+        }
+        const set = (value: unknown) => deep_set(data, path.map(String), value);
+        const shown = live.filter((variant) => variant.kind === "list" && variant.shown() === true).map((variant) => variant.option);
+        for (const variant of live) {
+          const value = variant.shown();
+          switch (variant.kind) {
+            case "text": if (deep_get(data, path) === undefined) set(value ?? ""); break;
+            case "number": if (deep_get(data, path) === undefined) set(value); break;
+            case "select": if (deep_get(data, path) === undefined && value !== undefined) set(value); break;
+            case "hidden": set(value); break;
+            case "checkbox": set(value === true ? true : DELETE_KEY); break;
+            case "radio": if (value === true) set(variant.option); break;
+            case "list": break;
+          }
+        }
+        // The boxes of a list: the checked ones, in the order they were made; none checked is no field. Radios: none chosen is no field.
+        if (live.some((variant) => variant.kind === "list")) set(shown.length > 0 ? shown : DELETE_KEY);
+        if (live.every((variant) => variant.kind === "radio") && !live.some((variant) => variant.shown() === true)) set(DELETE_KEY);
+      }
       if (key !== undefined && !("id" in data)) data.id = key;
       return data;
     }
@@ -103,6 +160,7 @@ export function form(id: string) {
       can_validate = {};
       submitted = false;
       texts = {};
+      submitter = undefined;
     }
 
     /** Sets a value from an input (SvelteKit's `handle_input`): the field is dirty, and not yet touched. */
@@ -219,70 +277,126 @@ export function form(id: string) {
       if (!order.includes(name)) order.push(name);
       /** The value, or `fallback` until the field has been edited (SvelteKit's `read`). */
       const read = (fallback?: unknown) => deep_get(input, path) ?? (fallback !== undefined && Object.hasOwn(dirty, name) ? undefined : fallback);
-      const reactive = (props: Record<string, unknown>, getters: Record<string, () => unknown>) => {
-        for (const [prop, get] of Object.entries(getters)) Object.defineProperty(props, prop, { enumerable: true, get });
+
+      /** The input of this kind that was made before, or a new one: the same props, so the host sees the same functions each time. */
+      const variant = (kind: Variant["kind"], type: string, option: unknown, initial: unknown, make: (variant: Variant) => { props: Record<string, unknown>; shown: () => unknown }, options?: readonly unknown[]): Variant => {
+        const id = `${name}\u0000${kind === "list" || kind === "radio" ? `${type}\u0000${String(option)}` : type}`;
+        let found = variants.get(id);
+        if (!found) {
+          found = { name, path, kind, option, initial, options, props: {}, mounted: 0, seen: false, shown: () => undefined };
+          const created = make(found);
+          found.shown = created.shown;
+          found.props = created.props;
+          // The host's ref for this input: one function for the life of the variant, so it is not told "gone, back" at every render.
+          const self = found;
+          found.props.ref = (handle: unknown) => {
+            self.seen = true;
+            self.mounted = Math.max(0, self.mounted + (handle ? 1 : -1));
+          };
+          variants.set(id, found);
+        }
+        found.initial = initial;
+        found.options = options;
+        return found;
+      };
+      const reactive = (props: Record<string, unknown>, shown: () => unknown, extra: Record<string, () => unknown> = {}) => {
+        for (const [prop, get] of Object.entries({ value: shown, ...extra })) Object.defineProperty(props, prop, { enumerable: true, get });
         return props;
       };
       const handlers = { onBlur: () => blur(path) };
 
-      return (type: string, option?: unknown, checked?: boolean) => {
+      return (type: string, option?: unknown, third?: unknown): Record<string, unknown> => {
         if (type === "file" || type === "file multiple" || type === "image") throw new Error(`form.fields.${name}.as('${type}'): files are not supported by native forms`);
         if (type === "submit") {
-          return reactive({ onPress: () => { deep_set(input, path.map(String), option); api.submit().catch((error: unknown) => console.error(error)); } }, { value: () => option });
+          return reactive({
+            onPress: () => {
+              // The button pressed before is not part of this submission (the web unsets the previous submitter).
+              if (submitter && submitter.name !== name) deep_set(input, submitter.path.map(String), DELETE_KEY);
+              submitter = { name, path };
+              deep_set(input, path.map(String), option);
+              api.submit();
+            },
+          }, () => option);
         }
         if (type === "hidden") {
-          hidden.set(name, { path, value: option });
-          return { value: option };
+          return variant("hidden", type, undefined, option, (self) => ({ props: reactive({}, () => self.initial), shown: () => self.initial })).props;
         }
         if (type === "select" || type === "select multiple") {
-          texty.delete(name);
-          return reactive({ multiple: type === "select multiple", onValueChange: (value: unknown) => edit(path, value), ...handlers }, { value: () => read(option) });
+          const multiple = type === "select multiple";
+          // Until a choice is made a select shows its first option, which is what a browser posts.
+          const choices = third as readonly unknown[] | undefined;
+          return variant("select", type, undefined, option, (self) => ({
+            // (A copy: the app cannot edit the field through the array it is shown.)
+            props: reactive({ multiple, onValueChange: (value: unknown) => edit(path, value), ...handlers }, () => { const value = self.shown(); return Array.isArray(value) ? [...value] : value; }),
+            shown: () => read(self.initial ?? (multiple ? undefined : self.options?.[0])),
+          }), choices).props;
         }
         if (type === "checkbox" || type === "radio") {
-          const has_option = type === "radio" || typeof option === "string";
-          const initial = has_option ? checked : (option as boolean | undefined);
-          return reactive({
-            onValueChange: (next: boolean) => {
-              if (type === "radio") { if (next) edit(path, option); return; }
-              if (!has_option) return edit(path, next);
-              const selected = (Array.isArray(read()) ? (read() as unknown[]) : []).filter((item) => item !== option);
-              edit(path, next ? [...selected, option] : selected);
-            },
-            ...handlers,
-          }, {
-            value: () => {
+          const listed = type === "radio" || typeof option === "string";
+          const checkedByDefault = listed ? Boolean(third) : Boolean(option);
+          return variant(type === "radio" ? "radio" : listed ? "list" : "checkbox", type, option, checkedByDefault, (self) => {
+            const shown = () => {
               const value = read();
-              if (value == null) return Boolean(read(initial));
+              if (value == null) return Boolean(read(self.initial));
               if (type === "radio") return value === option;
-              return has_option ? (value as unknown[]).includes(option) : Boolean(value);
-            },
-          });
+              return listed ? (Array.isArray(value) ? value : []).includes(option) : Boolean(value);
+            };
+            return {
+              props: reactive({
+                onValueChange: (next: boolean) => {
+                  if (type === "radio") { if (next) edit(path, option); return; }
+                  if (!listed) return edit(path, next);
+                  // The boxes of the list that are checked on screen (the ones that start checked included), in the order they were made.
+                  const group = [...variants.values()].filter((other) => other.name === name && other.kind === "list" && onScreen(other));
+                  edit(path, group.filter((other) => (other.option === option ? next : other.shown() === true)).map((other) => other.option));
+                },
+                ...handlers,
+              }, shown),
+              shown,
+            };
+          }).props;
         }
         if (!TEXT_TYPES.has(type)) throw new Error(`form.fields.${name}.as('${type}') is not a field type a native form knows`);
         const numeric = type === "number" || type === "range";
-        texty.set(name, { path, empty: numeric ? undefined : "" });
-        return reactive({
-          ...KEYBOARDS[type],
-          onChangeText: (text: string) => {
-            if (numeric) {
-              texts[name] = text;
-              const number = coerce_form_value("number", text) as number | undefined;
-              edit(path, Number.isNaN(number) ? undefined : number);
-            } else {
-              edit(path, text);
-            }
-          },
-          ...handlers,
-        }, {
-          value: () => {
-            const value = read(option);
-            if (numeric) {
-              const typed = texts[name];
-              return typed !== undefined && coerce_form_value("number", typed) === value ? typed : String(value ?? "");
-            }
-            return String(value ?? "");
-          },
-        });
+        return variant(numeric ? "number" : "text", type, undefined, option, (self) => {
+          // A number default may be given as text; the input then shows that text.
+          const parsedInitial = () => (typeof self.initial === "string" ? parseLocalizedNumber(self.initial) : (self.initial as number | undefined));
+          /** The number the input holds: what was typed (or set), else the default until the field is edited. */
+          const numberValue = (): number | undefined => {
+            const value = deep_get(input, path) as number | undefined;
+            if (value !== undefined) return value;
+            return self.initial !== undefined && !Object.hasOwn(dirty, name) ? parsedInitial() : undefined;
+          };
+          /** The text it shows: as typed while the typed text still says that number, else the number. */
+          const text = () => {
+            const value = numberValue();
+            const typed = texts[name];
+            if (typed !== undefined && Object.is(parseLocalizedNumber(typed), value)) return typed;
+            if (value === undefined || Number.isNaN(value)) return "";
+            return typeof self.initial === "string" && deep_get(input, path) === undefined ? self.initial : String(value);
+          };
+          const shown = () => {
+            const value = read(self.initial);
+            return value === undefined ? "" : String(value);
+          };
+          return {
+            props: reactive({
+              ...KEYBOARDS[type],
+              onChangeText: (typed: string) => {
+                if (numeric) {
+                  texts[name] = typed;
+                  // Text that is not a number is not sent as the number it starts with: it is NaN, and the server's schema says what it makes of that.
+                  edit(path, parseLocalizedNumber(typed));
+                } else {
+                  edit(path, typed);
+                }
+              },
+              ...handlers,
+            }, numeric ? text : shown),
+            // What a submission carries is the number, not its text.
+            shown: numeric ? numberValue : shown,
+          };
+        }).props;
       };
     }
 
@@ -303,22 +417,28 @@ export function form(id: string) {
     Object.defineProperties(api, {
       fields: { get: () => field([]) },
       result: { get: () => result },
+      error: { get: () => error },
       pending: { get: () => pending_count },
       submitted: { get: () => submitted },
       reset: { value: reset },
       /**
        * What pressing the submit button of a web form does: preflight, then the `enhance` callback, which by default sends the data and, when
-       * it was accepted, resets the form. Resolves to whether the data was accepted. Await it or catch it: a failed request rejects.
+       * it was accepted, resets the form. Resolves to whether the data was accepted. A submission that fails (the network, the server, a callback that
+       * throws) does not reject: it is handled as SvelteKit's form handles it, through `handleError`, and shown by `form.error`; it resolves `false`.
+       * (Only a build with no host throws, here, at the call.)
        */
       submit: {
         value: (): Submission => {
+          assertReady();
           submitted = true;
+          error = undefined;
           pending_count++;
           const data = convert();
+          let attempt: Submission;
           if (enhance_callback) {
             const callback = enhance_callback;
             let accepted = false;
-            const run = (async () => {
+            attempt = (async () => {
               if (!(await preflight(data))) return false;
               const { enhance: _enhance, ...descriptors } = Object.getOwnPropertyDescriptors(api);
               void _enhance;
@@ -329,16 +449,27 @@ export function form(id: string) {
               await callback(instance);
               return accepted;
             })() as Submission;
-            run.updates = () => { throw new Error("With an enhance callback, call .updates(...) on the submit() inside it."); };
-            void run.then(() => { pending_count--; }, () => { pending_count--; });
-            return run;
+            attempt.updates = () => { throw new Error("With an enhance callback, call .updates(...) on the submit() inside it."); };
+          } else {
+            const sent = send(data, true);
+            attempt = sent.then(async (ok) => { if (ok) { await tick(); reset(); } return ok; }) as Submission;
+            attempt.updates = (...updates) => { sent.updates(...updates); return attempt; };
           }
-          const sent = send(data, true);
-          const done = sent.then(async (ok) => { if (ok) { await tick(); reset(); } return ok; });
-          const submission = done as Submission;
-          submission.updates = (...updates) => { sent.updates(...updates); return submission; };
-          void done.then(() => { pending_count--; }, () => { pending_count--; });
-          return submission;
+          const finished = attempt;
+          const outcome = attempt.then(
+            (ok) => { pending_count--; return ok; },
+            async (caught: unknown) => {
+              // As SvelteKit's submit handler does: the app's `handleError` turns it into an `App.Error`, which is shown.
+              result = undefined;
+              raw_issues = [];
+              error = await handle_error(caught, { params: {}, route: { id: null }, url: currentUrl() });
+              await set_nearest_error_page(error);
+              pending_count--;
+              return false;
+            },
+          ) as Submission;
+          outcome.updates = (...updates) => { finished.updates(...updates); return outcome; };
+          return outcome;
         },
       },
       preflight: {

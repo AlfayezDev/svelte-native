@@ -24,6 +24,7 @@ declare module "@sveltejs/kit/src/runtime/client/remote-functions/shared.svelte.
 declare module "@sveltejs/kit/src/runtime/form-utils.js" {
   /* eslint-disable @typescript-eslint/no-explicit-any */
   export const BINARY_FORM_CONTENT_TYPE: string;
+  export const DELETE_KEY: object;
   export function build_path_string(path: (string | number)[]): string;
   export function coerce_form_value(type: "number" | "boolean" | null, value: any): any;
   export function create_field_proxy(context: any, target?: any, path?: (string | number)[]): any;

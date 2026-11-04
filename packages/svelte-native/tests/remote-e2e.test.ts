@@ -13,7 +13,7 @@ const ENTRY = `
   import * as api from "${fixtureRoot}/src/lib/api.remote.ts";
   export { api };
   export * from "../src/remote/index.ts";
-  export { linkRouter } from "../src/remote/link.ts";
+  export { linkRouter } from "../src/remote/router-link.ts";
   export { sweepRegistry } from "../src/remote/environment.ts";
   export { inOwner } from "./remote-owner.svelte.ts";
   export { Money } from "${fixtureRoot}/src/lib/money.ts";
@@ -189,37 +189,50 @@ function suite(mode: "dev" | "preview", hermes = false) {
       m.resetRemoteConfig();
     }, 30_000);
 
-    if (hermes) {
-      test("a query object made by an effect is released when the effect is torn down: the entry is dropped and a live stream closes, with no garbage collection", async () => {
-        configure();
-        await api.reset();
-        const open = async () => { const stats = api.stats(); await stats.refresh(); return stats.current.watchedOpen; };
-        const owner = m.inOwner(() => ({ counter: api.counter(), live: api.watched() }));
-        expect(await owner.value.counter).toBe(0);
-        expect(await owner.value.live).toBeGreaterThanOrEqual(1);
-        expect(await open()).toBe(1);
-        owner.destroy();
-        expect(await eventually(open, (n) => n === 0)).toBe(0);
-        // The counter's entry is gone with its owner: asking again fetches again (the server ran it twice).
-        expect(await api.counter()).toBe(0);
-        const stats = api.stats();
-        await stats.refresh();
-        expect(stats.current.counterRuns).toBe(2);
-        // An object made outside any effect has no owner and stays cached until it is collected.
-        const kept = api.counter();
-        await kept;
-        expect(await api.counter()).toBe(0);
-        const again = api.stats();
-        await again.refresh();
-        expect(again.current.counterRuns).toBe(2);
-      }, 20_000);
-    }
+    test("a query object made by an effect is released when the effect is torn down: the entry is dropped and a live stream closes, with no garbage collection", async () => {
+      configure();
+      await api.reset();
+      const open = async () => { const stats = api.stats(); await stats.refresh(); return stats.current.watchedOpen; };
+      const owner = m.inOwner(() => ({ counter: api.counter(), live: api.watched() }));
+      expect(await owner.value.counter).toBe(0);
+      expect(await owner.value.live).toBeGreaterThanOrEqual(1);
+      expect(await open()).toBe(1);
+      owner.destroy();
+      expect(await eventually(open, (n) => n === 0)).toBe(0);
+      // The counter's entry is gone with its owner: asking again fetches again (the server ran it twice).
+      expect(await api.counter()).toBe(0);
+      const stats = api.stats();
+      await stats.refresh();
+      expect(stats.current.counterRuns).toBe(2);
+    }, 20_000);
+
+    test("a command that finishes after the screen that asked for the refresh is gone, and a stream read after it, find a query to read", async () => {
+      configure();
+      await api.reset();
+      const owner = m.inOwner(() => api.counter());
+      const counter = owner.value;
+      expect(await counter).toBe(0);
+      // The function itself in .updates(): every live object of it is refreshed, and none is left.
+      const finishing = api.incrementRequested(4).updates(api.counter, counter);
+      owner.destroy();
+      expect(await finishing).toBe(4);
+      expect(await counter).toBe(4);
+      // A live query read after its owner went starts a stream again, for the one who reads it.
+      const live = m.inOwner(() => api.watched());
+      expect(await live.value).toBeGreaterThanOrEqual(1);
+      live.destroy();
+      const open = async () => { const stats = api.stats(); await stats.refresh(); return stats.current.watchedOpen; };
+      expect(await eventually(open, (n) => n === 0)).toBe(0);
+      expect(await live.value).toBeGreaterThanOrEqual(1);
+      expect(await open()).toBe(1);
+    }, 20_000);
 
     test("command: single-flight, client-requested refreshes with .updates, optimistic overrides and the pending count", async () => {
       configure();
       await api.reset();
       const counter = api.counter();
-      expect(await counter).toBe(0);
+      await counter.refresh();
+      expect(counter.current).toBe(0);
       // The server refreshed `counter` itself: the value is in the command's response.
       expect(await api.increment(5)).toBe(5);
       expect(counter.current).toBe(5);
@@ -404,7 +417,9 @@ function suite(mode: "dev" | "preview", hermes = false) {
       }
       const form = m.native(api.signup);
       form.fields.set({ name: "Ada", age: 40 });
-      await expect(form.submit()).rejects.toThrow(/No SvelteKit host is configured/);
+      let thrown: any;
+      try { form.submit(); } catch (error) { thrown = error; }
+      expect(thrown?.message).toMatch(/No SvelteKit host is configured/);
     });
 
     test("the host comes from the app config: extra.svelteNative.remote", async () => {

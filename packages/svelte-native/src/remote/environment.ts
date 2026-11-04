@@ -1,6 +1,7 @@
 /**
- * What SvelteKit's client files expect of the JavaScript environment, and fallbacks for what Hermes may lack. Importing the module installs the
- * fallbacks (only for names the engine does not define); `missingGlobals` names what cannot be made up.
+ * What SvelteKit's client files expect of the JavaScript environment, and stand-ins for what Hermes lacks or cannot do. Nothing here is installed on
+ * the global object: `globals.ts` hands these to SvelteKit's files as module-scoped names (the transformer imports them there). `missingGlobals`
+ * names what cannot be made up.
  */
 
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -39,13 +40,20 @@ export function base64Decode(encoded: string): string {
   return out;
 }
 
-type Registration = { ref: WeakRef<object>; held: unknown; cleanup: (held: unknown) => void; done: boolean; tokens: object[] };
+type Registration = { ref: WeakRef<object> | undefined; held: unknown; cleanup: (held: unknown) => void; done: boolean };
+type Engine = (new (cleanup: (held: unknown) => void) => { register(target: object, held: unknown, token?: object): void; unregister(token: object): boolean }) | undefined;
+type Lifecycle = (listener: (state: string) => void) => { remove(): void };
+
+// The registrations of the targets the engine has not collected, for the sweep; and every registration by its target, for `releaseNow`.
 const registrations = new Set<Registration>();
 const registrationOf = new WeakMap<object, Registration>();
 const tokenHolds = new WeakMap<object, Set<Registration>>();
-/** How often the registry looks for targets the engine has collected. */
+/** How often the stand-in registry looks for targets the engine has collected. */
 export const SWEEP_MS = 3000;
 let sweeper: ReturnType<typeof setTimeout> | undefined;
+let lifecycle: Lifecycle | undefined;
+let lifecycleSubscription: { remove(): void } | undefined;
+let inBackground = false;
 
 function finalize(registration: Registration): void {
   if (registration.done) return;
@@ -60,55 +68,103 @@ function finalize(registration: Registration): void {
 
 /** Calls the cleanup of every registered target the engine has collected. */
 export function sweepRegistry(): void {
-  for (const registration of [...registrations]) if (registration.ref.deref() === undefined) finalize(registration);
+  for (const registration of [...registrations]) if (registration.ref?.deref() === undefined) finalize(registration);
+}
+
+/** Whether the stand-in registry has a timer waiting. */
+export const sweepTimerRunning = (): boolean => sweeper !== undefined;
+
+function stopSweeping(): void {
+  if (sweeper !== undefined) clearTimeout(sweeper);
+  sweeper = undefined;
 }
 
 function keepSweeping(): void {
-  if (sweeper !== undefined) return;
+  if (sweeper !== undefined || inBackground) return;
   sweeper = setTimeout(function sweep() {
     sweeper = undefined;
     sweepRegistry();
-    if (registrations.size > 0) sweeper = setTimeout(sweep, SWEEP_MS);
+    if (registrations.size > 0) keepSweeping();
   }, SWEEP_MS);
 }
 
 /**
- * `FinalizationRegistry` for an engine without one (React Native 0.86's Hermes, 0.17): a registry that looks, every few seconds, for targets its
- * `WeakRef`s lost, and `releaseNow`, which SvelteKit's own cannot offer. SvelteKit's query cache lives on `FinalizationRegistry`: an entry is evicted,
- * and a live query's stream closed, when the last query object that uses it is collected.
+ * The app's foreground and background, for the sweep timer: it is not left running in the background (iOS keeps a timer until the app is suspended), and a
+ * sweep runs when the app comes back, for what was lost meanwhile. `globals.ts` passes React Native's `AppState`; `undefined` unhooks it (tests).
  */
-class SweptFinalizationRegistry {
-  readonly #cleanup: (held: unknown) => void;
-  constructor(cleanup: (held: unknown) => void) {
-    if (typeof cleanup !== "function") throw new TypeError("FinalizationRegistry cleanup callback must be callable");
-    this.#cleanup = cleanup;
-  }
-  register(target: object, held: unknown, token?: object): void {
-    const registration: Registration = { ref: new WeakRef(target), held, cleanup: this.#cleanup, done: false, tokens: token ? [token] : [] };
-    registrations.add(registration);
-    registrationOf.set(target, registration);
-    if (token) {
-      const held = tokenHolds.get(token) ?? new Set<Registration>();
-      held.add(registration);
-      tokenHolds.set(token, held);
+export function setSweepLifecycle(next: Lifecycle | undefined): void {
+  lifecycleSubscription?.remove();
+  lifecycleSubscription = undefined;
+  lifecycle = next;
+  inBackground = false;
+  if (registrations.size > 0) watchLifecycle();
+}
+
+function watchLifecycle(): void {
+  if (lifecycle === undefined || lifecycleSubscription !== undefined) return;
+  lifecycleSubscription = lifecycle((state) => {
+    if (state === "background") {
+      inBackground = true;
+      stopSweeping();
+    } else if (state === "active" && inBackground) {
+      inBackground = false;
+      sweepRegistry();
+      if (registrations.size > 0) keepSweeping();
     }
-    keepSweeping();
-  }
-  unregister(token: object): boolean {
-    const held = tokenHolds.get(token);
-    if (!held) return false;
-    for (const registration of held) {
-      registration.done = true;
-      registrations.delete(registration);
-    }
-    tokenHolds.delete(token);
-    return true;
-  }
+  });
 }
 
 /**
- * Runs the cleanup registered for `target` now, as if the engine had collected it, once. `false` when `target` is not in this package's registry: the
- * engine has a `FinalizationRegistry` of its own (it cannot be told to), or the target was never registered or was released before.
+ * The `FinalizationRegistry` SvelteKit's query cache runs on (an entry is evicted, and a live query's stream closed, when the last query object that uses
+ * it is collected), over the engine's own (`engine`) when it has one. Either way a registration can be released by hand, `releaseNow`, which SvelteKit's
+ * own cannot offer: the engine's callback for a target released by hand does nothing, so an entry is not released twice.
+ *
+ * With no `engine` (React Native 0.86's Hermes, 0.17) it is a stand-in that keeps a `WeakRef` per target and looks, every few seconds, for the ones
+ * the engine has cleared.
+ */
+export function makeFinalizationRegistry(engine: Engine) {
+  return class TrackedFinalizationRegistry {
+    readonly #cleanup: (held: unknown) => void;
+    readonly #engine: InstanceType<NonNullable<Engine>> | undefined;
+    constructor(cleanup: (held: unknown) => void) {
+      if (typeof cleanup !== "function") throw new TypeError("FinalizationRegistry cleanup callback must be callable");
+      this.#cleanup = cleanup;
+      this.#engine = engine && new engine((registration) => { finalize(registration as Registration); });
+    }
+    register(target: object, held: unknown, token?: object): void {
+      const registration: Registration = { ref: undefined, held, cleanup: this.#cleanup, done: false };
+      registrationOf.set(target, registration);
+      if (token) {
+        const holds = tokenHolds.get(token) ?? new Set<Registration>();
+        holds.add(registration);
+        tokenHolds.set(token, holds);
+      }
+      if (this.#engine) {
+        this.#engine.register(target, registration, token);
+        return;
+      }
+      registration.ref = new WeakRef(target);
+      registrations.add(registration);
+      watchLifecycle();
+      keepSweeping();
+    }
+    unregister(token: object): boolean {
+      const holds = tokenHolds.get(token);
+      if (!holds) return false;
+      for (const registration of holds) {
+        registration.done = true;
+        registrations.delete(registration);
+      }
+      tokenHolds.delete(token);
+      this.#engine?.unregister(token);
+      return true;
+    }
+  };
+}
+
+/**
+ * Runs the cleanup registered for `target` now, as if the engine had collected it, once. `false` when `target` was never registered here or was
+ * released before.
  */
 export function releaseNow(target: object): boolean {
   const registration = registrationOf.get(target);
@@ -117,18 +173,11 @@ export function releaseNow(target: object): boolean {
   return true;
 }
 
-/** Installs a fallback for each of these the engine does not define. A `WeakRef` that holds strongly only keeps what it points to from being collected. */
-export function installEnvironment(target: Record<string, unknown> = globalThis as unknown as Record<string, unknown>): void {
-  if (typeof target.btoa !== "function") target.btoa = base64Encode;
-  if (typeof target.atob !== "function") target.atob = base64Decode;
-  if (typeof target.WeakRef !== "function") {
-    target.WeakRef = class<T extends object> {
-      #target: T;
-      constructor(value: T) { this.#target = value; }
-      deref(): T { return this.#target; }
-    };
-  }
-  if (typeof target.FinalizationRegistry !== "function") target.FinalizationRegistry = SweptFinalizationRegistry;
+/** `WeakRef` for an engine without one: it holds its target, so the target is never collected through it. */
+export class WeakRefFallback<T extends object> {
+  readonly #target: T;
+  constructor(target: T) { this.#target = target; }
+  deref(): T { return this.#target; }
 }
 
 const REQUIRED = ["ReadableStream", "TextEncoder", "TextDecoder", "AbortController", "Headers", "URL", "URLSearchParams"] as const;
@@ -143,5 +192,3 @@ export function assertEnvironment(): void {
   const missing = missingGlobals();
   if (missing.length > 0) throw new Error(`Remote functions need ${missing.join(", ")}, which this JavaScript environment does not define. Expo SDK 57 installs them (expo/src/winter, and the streams polyfill Expo's Metro adds); check that the app runs through Expo's Metro config.`);
 }
-
-installEnvironment();

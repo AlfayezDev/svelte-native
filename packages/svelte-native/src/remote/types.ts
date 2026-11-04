@@ -2,7 +2,8 @@
 import type { TextInputProps } from "react-native";
 import type { RemoteForm, RemoteFormInput } from "$app/server";
 
-type Handlers = { onBlur: () => void };
+/** `ref` tells the form when the host has the input and when it is gone: a field whose inputs are all gone is not submitted. Spread the props and it is done. */
+type Handlers = { onBlur: () => void; ref: (handle: unknown) => void };
 
 /** What `fields.x.as("text" | "email" | "password" | "tel" | "url" | "search" | "number" | …)` returns: spread it onto `<TextInput>`. */
 export type NativeTextProps = Handlers & Pick<TextInputProps, "keyboardType" | "inputMode" | "secureTextEntry" | "autoCapitalize" | "autoCorrect" | "autoComplete" | "textContentType" | "returnKeyType"> & {
@@ -22,7 +23,8 @@ export interface NativeFieldProps {
   (type: "checkbox", checked?: boolean): NativeToggleProps;
   (type: "checkbox", option: string, checked?: boolean): NativeToggleProps;
   (type: "radio", option: string): NativeToggleProps;
-  (type: "select" | "select multiple", initial?: string | string[]): NativeSelectProps;
+  /** `initial` is what is chosen until the user chooses; without it, the first of `options` (what a browser's select starts on). */
+  (type: "select" | "select multiple", initial?: string | string[], options?: readonly string[]): NativeSelectProps;
   (type: "hidden", value: string | number | boolean): { readonly value: string | number | boolean };
   (type: "submit", value: string | number | boolean): { readonly value: string | number | boolean; onPress: () => void };
 }
@@ -39,6 +41,8 @@ export type NativeForm<F> = F extends RemoteForm<infer Input extends RemoteFormI
   ? Omit<RemoteForm<Input, Output>, "fields" | "action" | "element" | "enhance" | "for" | "submit" | symbol> & {
       fields: NativeFormFields<RemoteForm<Input, Output>["fields"]>;
       submit(): Promise<boolean> & { updates: (...updates: unknown[]) => Promise<boolean> };
+      /** What a submission that failed (the network, the server) became after `handleError`; `undefined` when the last one did not fail. */
+      readonly error: App.Error | undefined;
       reset(): void;
       enhance(callback: (form: Omit<NativeForm<F>, "enhance">) => void | Promise<void>): NativeForm<F>;
       for(id: Parameters<RemoteForm<Input, Output>["for"]>[0]): Omit<NativeForm<F>, "for">;

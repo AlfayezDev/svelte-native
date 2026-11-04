@@ -67,7 +67,7 @@ export const checks: Check[] = [
     await labLogin("lab-user");
     await labWhoAmI().refresh();
     same(await labWhoAmI(), "lab-user", "cookie round trip");
-    expect((await labProbe()).cookie?.includes("lab-session=lab-user"), "cookie sent");
+    same((await labProbe()).labSession, "lab-user", "cookie sent");
     return `Origin ${seen.origin}, ${seen.pathname}, cookie`;
   } },
   { id: "prerender", title: "prerender", run: async () => { same(await labBuildInfo(), { built: "remote lab", answer: 42 }, "labBuildInfo"); return "answered live"; } },

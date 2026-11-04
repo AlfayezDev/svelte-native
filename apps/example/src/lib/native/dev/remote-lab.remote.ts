@@ -1,5 +1,7 @@
 // The server half of the remote functions lab (`/__dev/remote`): one function of each kind, in memory. Development only: the web dev server loads this file
-// (`vite.config.ts`, `server.warmup`), the product has neither it nor the `remote` flag, and the lab's native page calls it exactly as a web page would.
+// (`vite.config.ts`, `server.warmup`, `remote-lab.ts`), `vite preview` and builds have neither it nor the `remote` flag, and the lab's native page calls it exactly
+// as a web page would. Nothing here is a secret or needs a login: the state is a few counters and a list of names, and the dev server listens on the LAN
+// (`host: true`) with all the routes of the app, which are as reachable as these.
 // packages/svelte-native/README.md, "Remote functions", lists what to check on a device.
 import { command, form, getRequestEvent, prerender, query, requested } from "$app/server";
 import { error, invalid, redirect } from "@sveltejs/kit";
@@ -58,10 +60,10 @@ export const labReset = command(async () => {
   batches.length = 0;
   signups.length = 0;
 });
-/** What the server saw: the Origin header (SvelteKit's CSRF check compares it with its own origin), the screen's URL and the cookie. */
+/** What the server saw: the Origin header (SvelteKit's CSRF check compares it with its own origin), the screen's URL and the lab's own cookie (not the others the origin has). */
 export const labProbe = command(async () => {
-  const { request, url } = getRequestEvent();
-  return { origin: request.headers.get("origin"), pathname: url.pathname, search: url.search, cookie: request.headers.get("cookie") };
+  const { request, url, cookies } = getRequestEvent();
+  return { origin: request.headers.get("origin"), pathname: url.pathname, search: url.search, labSession: cookies.get("lab-session") ?? null };
 });
 export const labLogin = command(v.string(), async (name) => {
   getRequestEvent().cookies.set("lab-session", name, { path: "/", httpOnly: true, sameSite: "lax", secure: false });

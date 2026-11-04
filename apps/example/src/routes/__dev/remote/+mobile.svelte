@@ -1,12 +1,13 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
   import { Switch, Text, TextInput, View } from "@rasheed/svelte-native";
-  import { configureRemote, native, refreshAll, remoteHost } from "@rasheed/svelte-native/remote";
+  import { native, refreshAll, remoteHost } from "@rasheed/svelte-native/remote";
   import { nativeLabEnabled, theme } from "#lib/native/state.svelte.ts";
   import Page from "#lib/native/components/Page.svelte";
   import Button from "#lib/native/components/Button.svelte";
   import { labClock, labSignup, labStats } from "#lib/native/dev/remote-lab.remote.ts";
   import { checks } from "#lib/native/dev/remote-lab-checks.ts";
+  import { applyLabOrigin } from "#lib/native/dev/remote-lab-host.ts";
 
   /**
    * The remote functions lab (packages/svelte-native/README.md, "Remote functions"): one of each kind of SvelteKit remote function, imported from
@@ -19,14 +20,15 @@
   let { url }: { url?: URL } = $props();
   const autorun = untrack(() => url?.searchParams.get("run") === "1");
   const initialOrigin = untrack(() => url?.searchParams.get("origin"));
-  if (initialOrigin) configureRemote({ origin: initialOrigin });
+  // (Only a build with the lab on lets a link or the field below change the host.)
+  applyLabOrigin(initialOrigin, nativeLabEnabled);
 
   let host = $state(remoteHost().origin ?? "none: set extra.svelteNative.remote or type an origin");
   let typed = $state(remoteHost().origin ?? "");
   let hostError = $state("");
   function useHost() {
     try {
-      configureRemote({ origin: typed });
+      applyLabOrigin(typed, nativeLabEnabled);
       host = remoteHost().origin ?? "none";
       hostError = "";
     } catch (error) {

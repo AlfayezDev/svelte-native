@@ -451,6 +451,27 @@ async function pdf(c: Ctx): Promise<void> {
   c.check("command: setPage(1) raises onPageChanged 1/2 again", await c.until(() => c.events("pdf-page", "1/2") >= 2, 6000));
   await c.pause(600);
   await colours(c, "command: and the first page is back", [[0.5, 0.7]], ["#3373d9"], 40);
+  await loadsWhileBusy(c);
+}
+
+/**
+ * Android's view sends every message it has (loadComplete, pageChanged, scaleChanged, error, ...) as the one Fabric event `topChange`. An event that can coalesce is dispatched
+ * as a unique one, and React Native's event queue replaces the unread unique event of the same type for the same view, so with the JavaScript thread busy `loadComplete` was
+ * overwritten by the `pageChanged` the view posts 10 ms later (`patches/react-native-pdf@7.0.3.patch` makes the event non-coalescable). Any prop update redraws the document there
+ * (`PdfManager.onAfterUpdateTransaction` calls `drawPdf`, which loads it again), so the page prop back to 1 is a reload; the thread is held from the commit on, for longer than
+ * the load takes, and the events of the load wait in the queue together. iOS has neither half: its `onChange` is a plain `dispatchEvent` (never replaced), and PDFKit's view loads
+ * again only when `path` changes, not for a page.
+ */
+async function loadsWhileBusy(c: Ctx): Promise<void> {
+  const name = "events: onLoadComplete arrives although the JS thread was busy while the document loaded";
+  if (!c.android) { c.androidOnly(name, "the loss is Android's: its one `topChange` event coalesces; iOS sends `onChange` through the codegen emitter's `dispatchEvent`, which the queue never replaces, and loads again only when `path` changes"); return; }
+  const loads = c.events("pdf-load");
+  c.lab.pdfPage = 1;
+  // The timer runs after the microtasks that carry the prop to the engine's flush, so the commit is on its way to the UI thread; the load itself needs a frame, a decode and a message back.
+  await c.pause(0);
+  const held = Date.now() + 1500;
+  while (Date.now() < held) { /* the JavaScript thread is held */ }
+  c.check(name, await c.until(() => c.events("pdf-load") > loads, 5000), `${loads} -> ${c.events("pdf-load")} onLoadComplete; ${foreignSummary(c, ["pdf-page", "pdf-error"])}`);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------------

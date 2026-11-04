@@ -1820,7 +1820,7 @@
       "metric": "foreign.pdf.checks",
       "bar": {
         "android": {
-          "min": 39
+          "min": 42
         },
         "ios": {
           "min": 36
@@ -2232,7 +2232,7 @@
       "video": "Four checks fewer in each place, all of them Android facts: the frame and node counters (`SvelteEngine.foreignStats`), the player's own `SurfaceView` or `TextureView` (an `AVPlayerLayer` is a layer of the view and has no surface to list), the capture without `handleGLSurfaceViewOnAndroid` being a hole, and the capture with it holding the frame (a snapshot of the view hierarchy does not hold an `AVPlayerLayer`'s video frames: transparent on the iPhone, 4 Nov 2026).",
       "datetime": "Android's picker is a dialog window the module opens, dismisses and answers (`openDatePicker`, `dismissDatePicker`, the buttons the harness presses with `adb`), and the frame and node counters are Android's: those checks are Android-only on the iPhone. iOS's picker is a view (`RNDateTimePickerComponentView` holding a `UIDatePicker`) with six checks of its own in each place (the value prop, the date the handler stores, a new value, the mode, `onValueChange`, `onDismiss`), so the iPhone makes more checks than Android's bar of nine per place, which counts the dialog checks that need no press.",
       "lottie": "`leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), which exist on Android only: one check fewer in each place.",
-      "pdf": "`leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), which exist on Android only: one check fewer in each place.",
+      "pdf": "Two checks fewer in each place, both Android's: `leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), and `onLoadComplete arrives although the JS thread was busy while the document loaded` guards a defect of the Android view (its one `topChange` event coalesced in React Native's event queue; `patches/react-native-pdf@7.0.3.patch`). iOS sends `onChange` through the codegen emitter's `dispatchEvent`, which the queue never replaces, and loads the document again only when `path` changes, not for the page prop that reloads it on Android.",
       "capture": "`leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), which exist on Android only: one check fewer in each place.",
       "rive": "`leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), which exist on Android only: one check fewer in each place.",
       "conic": "`leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), which exist on Android only: one check fewer in each place.",

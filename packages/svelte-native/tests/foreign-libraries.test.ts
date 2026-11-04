@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { build } from "esbuild";
 import { readFile } from "node:fs/promises";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { compile } from "svelte/compiler";
 import { createHarness } from "./foreign-harness.ts";
@@ -205,6 +205,26 @@ test("the static config of RNPDFPdfView lists the props of the library's Flow sp
   const set = [...manager.matchAll(/@ReactProp\(name = "(\w+)"\)/g)].map((match) => match[1] as string);
   for (const prop of set) expect(spec.props, prop).toContain(prop);
   expect(/REACT_CLASS = "(\w+)"/.exec(manager)?.[1]).toBe("RNPDFPdfView");
+});
+
+// Every message of react-native-pdf's Android view (loadComplete, pageChanged, scaleChanged, error, linkPressed, pageSingleTap) is the one Fabric event
+// `topChange`. An event that can coalesce is dispatched as a unique one, and React Native's C++ event queue (`EventQueue::enqueueEvent`) replaces
+// the unread unique event of the same type for the same view, so with the JavaScript thread busy the `loadComplete` of a document was overwritten by
+// the `pageChanged` the view posts 10 ms later (28 of 182 emulator row mounts, 10 of 130 Samsung row mounts lost `onLoadComplete`). The patch
+// (`patches/react-native-pdf@7.0.3.patch`) makes the event non-coalescable. iOS is not affected: its codegen emitter's `onChange` is a plain `dispatchEvent`.
+test("react-native-pdf's topChange event, which carries every message of the Android view, does not coalesce", () => {
+  const directory = resolve(modules, "react-native-pdf/android/src/main/java/org/wonday/pdf");
+  const code = (file: string) => readFileSync(resolve(directory, file), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const view = code("PdfView.java");
+  const event = code("events/TopChangeEvent.java");
+  // PdfView still puts several messages on the one event class (when the library splits them over events, this pin is to be revisited) ...
+  const messages = new Set([...view.matchAll(/putString\("message", "(\w+)\|/g)].map((match) => match[1]));
+  expect([...messages].sort()).toEqual(["error", "linkPressed", "loadComplete", "pageChanged", "pageSingleTap", "scaleChanged"]);
+  expect(view.match(/new TopChangeEvent\(/g)?.length).toBe(6);
+  expect(readdirSync(resolve(directory, "events"))).toEqual(["TopChangeEvent.java"]);
+  expect(event).toMatch(/getEventName\(\)\s*\{\s*return "topChange";\s*\}/);
+  // ... so the event must not coalesce (React Native's `Event.canCoalesce()` is `true` unless a subclass overrides it).
+  expect(event).toMatch(/@Override\s+public boolean canCoalesce\(\)\s*\{\s*return false;\s*\}/);
 });
 
 test("the static config of FastShadowView lists the props the Android manager reads, the colour converted", async () => {

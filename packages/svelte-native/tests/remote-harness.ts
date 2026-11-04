@@ -15,8 +15,17 @@ export const fixtureRoot = resolve(import.meta.dirname, "fixtures/kit-app");
 
 export type Server = { origin: string; stop(): void };
 
-/** Starts the fixture's SvelteKit server (`dev`: Vite's dev server; `preview`: a production build) and resolves once it listens. */
+/** Starts the fixture's SvelteKit server (`dev`: Vite's dev server; `preview`: a production build) and resolves once it listens; a server that exits first is started once more (a busy machine). */
 export async function startServer(mode: "dev" | "preview"): Promise<Server> {
+  try {
+    return await startOnce(mode);
+  } catch (error) {
+    if (!/exited with/.test(String(error))) throw error;
+    return startOnce(mode);
+  }
+}
+
+async function startOnce(mode: "dev" | "preview"): Promise<Server> {
   const child: ChildProcess = spawn("node", ["serve.ts", mode], { cwd: fixtureRoot, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, NODE_ENV: mode === "dev" ? "development" : "production" } });
   let output = "";
   const origin = await new Promise<string>((resolveOrigin, reject) => {

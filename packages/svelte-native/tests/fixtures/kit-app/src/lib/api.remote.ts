@@ -1,6 +1,7 @@
 import { command, form, getRequestEvent, prerender, query, requested } from "$app/server";
 import { error, invalid, redirect } from "@sveltejs/kit";
 import * as v from "valibot";
+import { Money } from "./money.ts";
 
 // A small SvelteKit server with one of each kind of remote function, for the package's end-to-end test (tests/remote-e2e.test.ts).
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -17,6 +18,10 @@ export const hello = query(v.string(), async (name) => `hello ${name}`);
 // devalue types: Date, Map, bigint and a custom class survive the round trip.
 export const types = query(async () => ({ date: new Date("2026-01-02T03:04:05Z"), map: new Map([[1, "one"]]), big: 12345678901234567890n, set: new Set(["a"]) }));
 export const echoArgument = query(v.any(), async (argument) => ({ argument }));
+
+// A type of the app's own, carried both ways by the `transport` hook.
+export const price = query(async () => new Money(1250));
+export const doubled = query(v.any(), async (money: Money) => new Money(money.cents * 2));
 
 export const teapot = query(async () => error(418, "short and stout"));
 export const bounce = query(async () => redirect(303, "/elsewhere"));

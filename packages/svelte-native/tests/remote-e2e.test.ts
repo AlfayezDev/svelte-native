@@ -16,6 +16,7 @@ const ENTRY = `
   export { linkRouter } from "../src/remote/link.ts";
   export { sweepRegistry } from "../src/remote/environment.ts";
   export { inOwner } from "./remote-owner.svelte.ts";
+  export { Money } from "${fixtureRoot}/src/lib/money.ts";
   export { tick, flushSync } from "svelte";
 `;
 
@@ -61,7 +62,7 @@ function suite(mode: "dev" | "preview", hermes = false) {
       const id = remoteHash(`${fixtureRoot}/src/lib/api.remote.ts`, fixtureRoot);
       const response = await fetch(`${server.origin}/_app/remote/${id}/buildInfo/`);
       expect(response.status).toBe(200);
-      expect(Object.keys(api).toSorted()).toEqual(["bounce", "buildInfo", "clock", "counter", "double", "echoArgument", "endless", "greeting", "hello", "increment", "incrementIgnoring", "incrementRequested", "login", "me", "probe", "redirecting", "reset", "sendMail", "signup", "stats", "teapot", "types", "watched"]);
+      expect(Object.keys(api).toSorted()).toEqual(["bounce", "buildInfo", "clock", "counter", "double", "doubled", "echoArgument", "endless", "greeting", "hello", "increment", "incrementIgnoring", "incrementRequested", "login", "me", "price", "probe", "redirecting", "reset", "sendMail", "signup", "stats", "teapot", "types", "watched"]);
       expect(await api.hello("ids")).toBe("hello ids");
     });
 
@@ -95,6 +96,17 @@ function suite(mode: "dev" | "preview", hermes = false) {
       expect(value.map.get(1)).toBe("one");
       expect(value.big).toBe(12345678901234567890n);
       expect(value.set.has("a")).toBe(true);
+    });
+
+    test("the app's transport hook carries its own types, in arguments and in results", async () => {
+      const Money = m.Money;
+      configure({ transport: { Money: { encode: (value: unknown) => value instanceof Money && [value.cents], decode: ([cents]: [number]) => new Money(cents) } } });
+      const price = await api.price();
+      expect(price).toBeInstanceOf(Money);
+      expect(price.cents).toBe(1250);
+      const doubled = await api.doubled(new Money(300));
+      expect(doubled).toBeInstanceOf(Money);
+      expect(doubled.cents).toBe(600);
     });
 
     test("query: error() from the server is the query's error; redirect() goes through goto", async () => {

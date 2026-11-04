@@ -61,6 +61,7 @@ async function load(fixture = "navigation-fixture.svelte") {
       contents: `import Fixture from './${fixture}';
         import { startSurface, flush, fabricStats } from '../src/fabric/host.ts';
         import { tick } from 'svelte';
+        export { openLaunchURL } from '../src/router.svelte.ts';
         export { startSurface, flush, fabricStats, tick, Fixture };`,
       resolveDir: import.meta.dirname,
     },
@@ -2010,6 +2011,41 @@ test("the launch link is the stack's base: no back arrow on /__dev; later links 
     const nothing = await mountTree(136, { initial: "/auth/login", files });
     await nothing.settled();
     expect(pathsOf(nothing.router)).toEqual(["/auth/login"]);
+  } finally { delete launch.__initialURL; reset(); }
+});
+
+test("the launch link can be opened before the root <Router> mounts: the first screen is never rendered, nothing waits for its exit, and the mount does not open the link again", async () => {
+  withInsets(24);
+  const launch = globalThis as { __initialURL?: string; __initialURLReads?: number };
+  try {
+    launch.__initialURL = "https://example.test/workspaces";
+    const { m, app, router, settled, texts: shown, hardwareBack } = await mountTree(190, { initial: "/acme/home", mounted: false });
+    expect(shown()).toEqual([]);
+    expect(pathsOf(router)).toEqual(["/acme"]); // the router's first screen, which a shell that decides by the link does not want rendered
+    await m.openLaunchURL(router);
+    expect(pathsOf(router)).toEqual(["/workspaces"]);
+    expect(router.screens.map((screen) => screen.leaving)).toEqual([false]); // no native stack ever showed the first screen, so none reports its exit
+    expect(launch.__initialURLReads).toBe(1);
+    expect(await m.openLaunchURL(router)).toBeUndefined(); // asked again: the same read
+    expect(launch.__initialURLReads).toBe(1);
+    expect(handlersOf("__linkHandlers")).toHaveLength(0);
+
+    app.show(true);
+    await settled();
+    expect(Object.keys(treeGlobals.__treeRouters ?? {})).toEqual(["/workspaces"]); // the first screen's page never ran
+    expect(shown()).toContain("page /workspaces");
+    expect(pathsOf(router)).toEqual(["/workspaces"]);
+    expect(launch.__initialURLReads).toBe(1); // the <Router> found the link opened
+    expect(handlersOf("__linkHandlers")).toHaveLength(1);
+    expect(hardwareBack()).toBe(false); // the launch link is the base of the stack
+
+    // From here the screens leave through the native stack as before: a replaced screen stays until its exit is reported.
+    router.goto("/acme/home");
+    await settled();
+    expect(router.screens.map((screen) => screen.leaving)).toEqual([false, false]);
+    router.goto("/workspaces", { reset: true });
+    await settled();
+    expect(router.screens.filter((screen) => screen.leaving)).toHaveLength(2);
   } finally { delete launch.__initialURL; reset(); }
 });
 

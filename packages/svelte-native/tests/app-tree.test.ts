@@ -53,6 +53,7 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/Utilities/Platform": "export default { get OS() { return globalThis.__navigationOS ?? 'android'; }, Version: 34 };",
   "react-native/Libraries/Utilities/BackHandler": "const handlers = (globalThis.__backHandlers ??= []); export default { addEventListener: (name, handler) => { handlers.push(handler); return { remove() { const at = handlers.indexOf(handler); if (at >= 0) handlers.splice(at, 1); } }; } };",
   "react-native/Libraries/Linking/Linking": "const handlers = (globalThis.__linkHandlers ??= []); export default { addEventListener: (name, handler) => { handlers.push(handler); return { remove() { const at = handlers.indexOf(handler); if (at >= 0) handlers.splice(at, 1); } }; }, getInitialURL: () => { globalThis.__initialURLReads = (globalThis.__initialURLReads ?? 0) + 1; return Promise.resolve(globalThis.__initialURL ?? null); } };",
+  "react-native/Libraries/AppState/AppState": "const handlers = (globalThis.__appStateHandlers ??= []); export default { get currentState() { return globalThis.__appState ?? 'active'; }, addEventListener: (name, handler) => { handlers.push(handler); return { remove() { const at = handlers.indexOf(handler); if (at >= 0) handlers.splice(at, 1); } }; } };",
   "react-native/Libraries/Image/resolveAssetSource": "export default (source) => source && typeof source === 'object' && 'uri' in source ? { scale: 1, ...source } : null;",
   "react-native/Libraries/Components/Keyboard/Keyboard": "export default { isVisible: () => false, dismiss() {} };",
   "react-native/Libraries/NativeComponent/ViewConfig": "export const createViewConfig = (partial) => partial;",
@@ -545,7 +546,13 @@ function importedNames(source: string, specifier: string, importer = "the import
   return [...names];
 }
 
-async function platformApp(variant: string, applicationId: string | null): Promise<{ plugins: Plugin[]; loader: Record<string, Loader>; define: Record<string, string>; clean: () => Promise<void> }> {
+/**
+ * What the startup tests leave real of the lab when the lab is on: the modules the shared code reaches (the layout's hooks, the launch link, the link
+ * the login offers). Its screens stay stubs, except the lab's first, which `lab-page.svelte` stands in for: the real one is the whole lab.
+ */
+const labShared = ["errors.ts", "update-probe.ts", "qa.ts", "launch.ts", "launch-link.ts", "LabLink.svelte"].map((file) => resolve(platformRoot, "src/lib/native/dev", file));
+const labPage = resolve(platformRoot, "src/routes/__dev/+mobile.svelte");
+async function platformApp(variant: string, applicationId: string | null, options: { lab?: boolean } = {}): Promise<{ plugins: Plugin[]; loader: Record<string, Loader>; define: Record<string, string>; clean: () => Promise<void> }> {
   const directory = await mkdtemp(resolve(tmpdir(), "svelte-native-platform-app-"));
   // A project whose `src` is the platform app's, so the generated table requires the real pages.
   await symlink(resolve(platformRoot, "src"), resolve(directory, "src"));
@@ -594,6 +601,8 @@ async function platformApp(variant: string, applicationId: string | null): Promi
         if (args.pluginData?.platformApp) return undefined;
         const found = await builder.resolve(args.path, { resolveDir: args.resolveDir, importer: args.importer, kind: args.kind, namespace: args.namespace, pluginData: resolving });
         if (found.errors.length > 0) return undefined;
+        if (options.lab && found.path === labPage) return { path: resolve(import.meta.dirname, "lab-page.svelte") };
+        if (options.lab && labShared.includes(found.path)) return undefined;
         const lab = labDirectories.find((candidate) => found.path.startsWith(candidate));
         if (lab !== undefined) {
           const names = importedNames(await readFile(args.importer, "utf8"), args.path, args.importer);
@@ -607,24 +616,28 @@ async function platformApp(variant: string, applicationId: string | null): Promi
   return { plugins: [plugin], loader: { ".ttf": "empty" }, define: { __DEV__: "false" }, clean: () => rm(directory, { recursive: true, force: true }) };
 }
 
-const labOff = globalThis as { __labOffRouter?: TreeRouter; __labOffUser?: null; fetch: typeof fetch };
-async function mountPlatform(surface: number, options: { variant: string; applicationId: string | null; initial: string; signedIn?: boolean }) {
-  const app = await platformApp(options.variant, options.applicationId);
+const labOff = globalThis as { __labOffRouter?: TreeRouter; __labOffUser?: null; __labOffAccounts?: number; fetch: typeof fetch };
+const configurationResponse = () => new Response(JSON.stringify({ uri: "wss://example.test", databaseName: "rasheed" }));
+async function mountPlatform(surface: number, options: { variant: string; applicationId: string | null; initial: string; signedIn?: boolean; lab?: boolean; fetch?: () => Promise<Response>; navigation?: string }) {
+  const app = await platformApp(options.variant, options.applicationId, { lab: options.lab });
   const realFetch = labOff.fetch;
-  labOff.fetch = (async () => new Response(JSON.stringify({ uri: "wss://example.test", databaseName: "rasheed" }))) as typeof fetch;
+  const requests: string[] = [];
+  labOff.fetch = (async (input: RequestInfo | URL) => { requests.push(String(input)); return (options.fetch ?? (async () => configurationResponse()))(); }) as typeof fetch;
   if (options.signedIn === false) labOff.__labOffUser = null; else delete labOff.__labOffUser;
+  labOff.__labOffAccounts = 0;
   const errors: string[] = [];
-  const logged = console.error;
+  const warnings: string[] = [];
+  const logged = { error: console.error, warn: console.warn };
   console.error = (...args: unknown[]) => { errors.push(args.map(String).join(" ")); };
+  console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(" ")); };
+  const restore = () => { console.error = logged.error; console.warn = logged.warn; labOff.fetch = realFetch; delete labOff.__labOffUser; delete labOff.__labOffAccounts; };
   try {
-    const mounted = await mountTree(surface, { initial: options.initial }, "lab-off-fixture.svelte", app);
+    const mounted = await mountTree(surface, { initial: options.initial, navigation: options.navigation }, "lab-off-fixture.svelte", app);
     await mounted.settled();
     await mounted.settled();
-    return { ...mounted, errors, router: labOff.__labOffRouter as TreeRouter, close: () => { console.error = logged; labOff.fetch = realFetch; delete labOff.__labOffUser; return app.clean(); } };
+    return { ...mounted, errors, warnings, requests, accounts: () => labOff.__labOffAccounts ?? 0, router: labOff.__labOffRouter as TreeRouter, close: () => { restore(); return app.clean(); } };
   } catch (error) {
-    console.error = logged;
-    labOff.fetch = realFetch;
-    delete labOff.__labOffUser;
+    restore();
     await app.clean();
     throw error;
   }
@@ -682,6 +695,190 @@ test("the same harness sees a lab call that is not behind the flag: with the fla
     expect(trouble(mismatched.texts(), mismatched.errors)).toEqual([]);
     expect(mismatched.texts().some((line) => line.includes("Sign out"))).toBe(true);
   } finally { await mismatched.close(); reset(); }
+});
+
+/** The press of a button by its label: the click the fake host sends to the pressable that holds the text. */
+function press(tree: FakeNode[], label: string): void {
+  const holds = (node: FakeNode): boolean => (node.name === "RCTRawText" && node.props.text === label) || node.children.some(holds);
+  const pressable = (nodes: FakeNode[]): FakeNode | undefined => {
+    for (const node of nodes) {
+      const inner = pressable(node.children);
+      if (inner) return inner;
+      if (node.props.accessibilityRole === "button" && holds(node)) return node;
+    }
+    return undefined;
+  };
+  const target = pressable(tree);
+  if (!target) throw new Error(`no button ${label}`);
+  (fake as unknown as { handler: (target: unknown, type: string, event: object) => void }).handler(target.target, "topClick", {});
+}
+const unavailable = "Rasheed is having trouble right now. Try again in a moment.";
+const appStates = globalThis as { __appState?: string; __appStateHandlers?: ((state: string) => void)[] };
+const moveApp = (state: string) => { appStates.__appState = state; for (const handler of [...(appStates.__appStateHandlers ?? [])]) handler(state); };
+const neverAnswers = () => new Promise<Response>(() => {});
+
+test("a launch by a lab link renders the lab at once, without the platform configuration or an account, whatever the backend does", async () => {
+  withInsets(24);
+  const launch = globalThis as { __initialURL?: string };
+  const backends: [string, () => Promise<Response>][] = [
+    ["not answering", neverAnswers],
+    ["refusing", async () => { throw new TypeError("Network request failed"); }],
+    ["up", async () => configurationResponse()],
+  ];
+  try {
+    launch.__initialURL = "rasheed-svelte:///__dev";
+    for (const [index, [backend, fetch]] of backends.entries()) {
+      const app = await mountPlatform(170 + index, { variant: "qa", applicationId: "io.rasheed.svelteqa", initial: "/auth/login", lab: true, fetch });
+      try {
+        // The lab's first screen is the only one rendered: the login (the router's first screen) needs the account and never is, and no session was opened.
+        expect([backend, app.texts()]).toEqual([backend, ["Mobile development lab"]]);
+        expect([backend, pathsOf(app.router)]).toEqual([backend, ["/__dev"]]);
+        expect([backend, app.requests]).toEqual([backend, []]);
+        expect([backend, app.accounts()]).toEqual([backend, 0]);
+        expect([backend, app.errors, app.warnings]).toEqual([backend, [], []]);
+        expect([backend, app.router.screens.map((screen) => screen.canGoBack)]).toEqual([backend, [false]]); // the launch link is the base of the stack
+        expect(app.hardwareBack()).toBe(false);
+      } finally { await app.close(); reset(); }
+    }
+  } finally { delete launch.__initialURL; reset(); }
+});
+
+test("without a lab link the QA app starts as the product does: the configuration first, then the session", async () => {
+  withInsets(24);
+  const hung = await mountPlatform(173, { variant: "qa", applicationId: "io.rasheed.svelteqa", initial: "/auth/login", lab: true, fetch: neverAnswers });
+  try {
+    expect(hung.requests).toHaveLength(1);
+    expect(new URL(hung.requests[0]).pathname).toBe("/api/configuration");
+    expect(hung.texts()).toEqual([]); // the spinner
+    expect(hung.accounts()).toBe(0);
+  } finally { await hung.close(); reset(); }
+  // A link to a product screen is no lab launch either: the session is opened (the account is the stub's) and the router is where the link says.
+  const launch = globalThis as { __initialURL?: string };
+  launch.__initialURL = "rasheed-svelte:///workspaces";
+  try {
+    const linked = await mountPlatform(174, { variant: "qa", applicationId: "io.rasheed.svelteqa", initial: "/auth/login", lab: true });
+    try {
+      for (let turn = 0; turn < 4; turn++) await linked.settled();
+      expect(linked.requests).toHaveLength(1);
+      expect(linked.texts().some((line) => line.includes("Sign out"))).toBe(true);
+      expect(pathsOf(linked.router)).toEqual(["/workspaces"]);
+    } finally { await linked.close(); reset(); }
+  } finally { delete launch.__initialURL; }
+});
+
+test("a restart that restored the lab's screens starts the lab on its own although no link came with it; one that restored the login under it does not", async () => {
+  withInsets(24);
+  const saved = (...hrefs: string[]) => JSON.stringify({ stack: { entries: hrefs.map((href) => ({ href, presentation: "push" })) } });
+  const restored = await mountPlatform(178, { variant: "qa", applicationId: "io.rasheed.svelteqa", initial: "/auth/login", lab: true, fetch: neverAnswers, navigation: saved("/__dev") });
+  try {
+    expect(restored.texts()).toEqual(["Mobile development lab"]);
+    expect(pathsOf(restored.router)).toEqual(["/__dev"]);
+    expect(restored.requests).toEqual([]);
+    expect(restored.accounts()).toBe(0);
+    expect(restored.errors).toEqual([]);
+  } finally { await restored.close(); reset(); }
+  // The user went from the login to the lab: the login is on the stack under it, and needs the account, so the product starts.
+  const below = await mountPlatform(179, { variant: "qa", applicationId: "io.rasheed.svelteqa", initial: "/auth/login", lab: true, fetch: neverAnswers, navigation: saved("/auth/login", "/__dev") });
+  try {
+    expect(below.requests).toHaveLength(1);
+    expect(below.accounts()).toBe(0);
+    expect(below.texts()).toEqual([]);
+  } finally { await below.close(); reset(); }
+});
+
+test("the product asks again by itself: 1 s, 2 s, then it starts; the notice stays up meanwhile and the failures are logged once as errors", async () => {
+  withInsets(24);
+  let answers = 0;
+  const flaky = async () => { if (++answers <= 2) throw new TypeError("Network request failed"); return configurationResponse(); };
+  const app = await mountPlatform(175, { variant: "production", applicationId: "io.rasheed.app", initial: "/workspaces", fetch: flaky });
+  const turns = async () => { await app.settled(); await app.settled(); };
+  try {
+    expect(app.texts()).toEqual([unavailable, "Retry"]);
+    expect(app.requests).toHaveLength(1);
+    expect(app.errors).toHaveLength(1);
+    expect(app.errors[0]).toContain("[native startup]");
+
+    jest.advanceTimersByTime(999);
+    await turns();
+    expect(app.requests).toHaveLength(1);
+    jest.advanceTimersByTime(1);
+    await turns();
+    expect(app.requests).toHaveLength(2);
+    expect(app.texts()).toEqual([unavailable, "Retry"]); // the attempt under way does not blank the notice
+    expect(app.errors).toHaveLength(1); // the second failure is a warning
+    expect(app.warnings).toHaveLength(1);
+    expect(app.warnings[0]).toContain("attempt 2 failed");
+
+    jest.advanceTimersByTime(1_999);
+    await turns();
+    expect(app.requests).toHaveLength(2);
+    jest.advanceTimersByTime(1);
+    await turns();
+    expect(app.requests).toHaveLength(3);
+    expect(app.accounts()).toBe(1);
+    expect(app.texts().some((line) => line.includes("Sign out"))).toBe(true);
+    expect(app.texts()).not.toContain(unavailable);
+    jest.advanceTimersByTime(120_000);
+    await turns();
+    expect(app.requests).toHaveLength(3); // it started: nothing asks again
+    expect(trouble(app.texts(), [])).toEqual([]);
+  } finally { await app.close(); reset(); }
+});
+
+test("the product keeps its pace of 15 s while the backend stays down, and the Retry button asks at once and starts the schedule over", async () => {
+  withInsets(24);
+  let up = false;
+  const backend = async () => { if (!up) throw new TypeError("Network request failed"); return configurationResponse(); };
+  const app = await mountPlatform(176, { variant: "production", applicationId: "io.rasheed.app", initial: "/workspaces", fetch: backend });
+  const turns = async () => { await app.settled(); await app.settled(); };
+  try {
+    for (const wait of [1_000, 2_000, 4_000, 8_000]) { jest.advanceTimersByTime(wait); await turns(); }
+    expect(app.requests).toHaveLength(5);
+    jest.advanceTimersByTime(14_999);
+    await turns();
+    expect(app.requests).toHaveLength(5);
+    jest.advanceTimersByTime(1);
+    await turns();
+    expect(app.requests).toHaveLength(6);
+    expect(app.texts()).toEqual([unavailable, "Retry"]);
+    expect(app.errors).toHaveLength(1);
+
+    // The button asks now, without waiting for the 15 s, and the next automatic attempt is the first of the schedule again (1 s).
+    press(app.tree(), "Retry");
+    await turns();
+    expect(app.requests).toHaveLength(7);
+    expect(app.texts()).toEqual([unavailable, "Retry"]);
+    jest.advanceTimersByTime(1_000);
+    await turns();
+    expect(app.requests).toHaveLength(8);
+
+    up = true;
+    press(app.tree(), "Retry");
+    await turns();
+    expect(app.requests).toHaveLength(9);
+    expect(app.texts().some((line) => line.includes("Sign out"))).toBe(true);
+  } finally { await app.close(); reset(); }
+});
+
+test("a product in the background does not ask, and asks at once when it comes back", async () => {
+  withInsets(24);
+  appStates.__appStateHandlers = [];
+  const app = await mountPlatform(177, { variant: "production", applicationId: "io.rasheed.app", initial: "/workspaces", fetch: async () => { throw new TypeError("Network request failed"); } });
+  const turns = async () => { await app.settled(); await app.settled(); };
+  try {
+    expect(app.requests).toHaveLength(1);
+    expect(appStates.__appStateHandlers).toHaveLength(1);
+    moveApp("background");
+    jest.advanceTimersByTime(10 * 60_000);
+    await turns();
+    expect(app.requests).toHaveLength(1);
+    moveApp("active");
+    await turns();
+    expect(app.requests).toHaveLength(2);
+    jest.advanceTimersByTime(1_000);
+    await turns();
+    expect(app.requests).toHaveLength(3); // the schedule began again at 1 s
+  } finally { await app.close(); delete appStates.__appState; delete appStates.__appStateHandlers; reset(); }
 });
 
 test("the product's lab stub fails an unguarded read of a binding, a call and a component, and nothing that stays behind the flag", async () => {

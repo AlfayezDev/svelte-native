@@ -180,7 +180,13 @@ function createStore(tree: StackNode) {
   const reportsExit = EXIT_REPORTED[Platform.OS === "ios" ? "ios" : "android"];
   const root = createStack(reportsExit);
   let disposed = false;
-  let launchRead = false;
+  /** The read of the launch link, once for the life of the router: what `openLaunchURL` returns every time it is asked. */
+  let launchRead: Promise<void> | undefined;
+  /**
+   * Whether the root `<Router>` has mounted. A screen that leaves stays on screen until the native stack reports its exit, which one that never
+   * rendered cannot: a navigation before the first mount (the launch link, opened ahead by `openLaunchURL`) drops the screens it replaces at once.
+   */
+  let shown = false;
   /** The launch link this router (or the one whose state it adopted) has acted on; reactive so that the state saved for a restart follows it. */
   let launched = $state.raw<string | undefined>(undefined);
 
@@ -247,6 +253,7 @@ function createStore(tree: StackNode) {
   }
 
   function apply(operations: readonly Operation[], target: Resolution, eager: boolean): void {
+    const retire = shown ? undefined : false;
     for (const operation of operations) {
       const at = target.chain.findIndex((step) => step.node.id === operation.node);
       const instance = instances(target)[at];
@@ -258,7 +265,7 @@ function createStore(tree: StackNode) {
       const { stack } = instance;
       if (operation.op === "popTo") {
         const index = lastIndexOfHref(stack.entries, operation.href);
-        if (index >= 0) stack.set(stack.entries.slice(0, index + 1));
+        if (index >= 0) stack.set(stack.entries.slice(0, index + 1), retire);
         continue;
       }
       const owner = at === target.chain.length - 1;
@@ -266,20 +273,20 @@ function createStore(tree: StackNode) {
       const params = owner ? target.params : matchPath(route.path, new URL(operation.href, BASE).pathname) ?? target.params;
       const base = target.chain[at - 1]?.select === undefined ? undefined : stack.entries[0];
       if (operation.op === "reset" && base && hrefOf(base) === operation.href) {
-        stack.set([base]);
+        stack.set([base], retire);
         continue;
       }
       // A reset above the owner keeps the instance of the screen it keeps (its navigator's panes and stacks stay mounted), and drops the rest.
       const present = owner || operation.op !== "reset" ? undefined : stack.entries[lastIndexOfHref(stack.entries, operation.href)];
       if (present?.route === route) {
-        stack.set(base ? [base, present] : [present]);
+        stack.set(base ? [base, present] : [present], retire);
         continue;
       }
       const kept = stack.entries;
       const index = operation.op === "push" ? kept.length : operation.op === "replace" ? kept.length - 1 : base ? 1 : 0;
       const next = entryFor(route, operation.href, params, operation.presentation, index > 0 || stack.baseBack);
       if (eager) load(route);
-      stack.set(operation.op === "push" ? [...kept, next] : operation.op === "replace" ? [...kept.slice(0, -1), next] : base ? [base, next] : [next]);
+      stack.set(operation.op === "push" ? [...kept, next] : operation.op === "replace" ? [...kept.slice(0, -1), next] : base ? [base, next] : [next], retire);
     }
   }
   const unresolved = (href: string) => new Error(`No native screen for ${new URL(href, BASE).pathname}`);
@@ -366,16 +373,18 @@ function createStore(tree: StackNode) {
      * A direct load has no history, so it is a `reset` (like SvelteKit's first page): the link's screen is the base of the stack and has no back arrow.
      * Later links are plain `goto`s. A router that adopted a saved state also adopted the link that state was opened with: an Activity that is recreated
      * or restored after its process died reports the intent it was started with again, and that is no new launch (a different link is, and wins).
+     * The promise settles once the link has been opened (or there was none); asking again returns the same one.
      */
-    openLaunchURL(router: Router): void {
-      if (launchRead) return;
-      launchRead = true;
-      void Linking.getInitialURL().then((url) => {
+    openLaunchURL(router: Router): Promise<void> {
+      launchRead ??= Linking.getInitialURL().then((url) => {
         if (!url || disposed || !router.active() || url === launched) return;
         launched = url;
         router.openURL(url, { reset: true });
       });
+      return launchRead;
     },
+    /** The root `<Router>` mounted: from here on a screen that a navigation replaces leaves through the native stack. */
+    markShown() { shown = true; },
     dispose() { disposed = true; root.dispose(); },
   };
 }
@@ -464,8 +473,20 @@ export function connectHost(router: Router): () => void {
   if (!binding || router.nested) return () => {};
   const back = BackHandler.addEventListener("hardwareBackPress", () => router.active() && innermost(router).back());
   const links = Linking.addEventListener("url", ({ url }) => { if (router.active()) router.openURL(url); });
-  binding.store.openLaunchURL(router);
+  binding.store.markShown();
+  void binding.store.openLaunchURL(router);
   return () => { back.remove(); links.remove(); };
+}
+
+/**
+ * Opens the link the app was launched with into the root router now, instead of when its `<Router>` mounts, and settles once it has (at once
+ * when there was none, or for a router that is not the root). The `<Router>` that mounts afterwards starts on the link's screen and does not
+ * open it again: a shell that decides what to show by the launch link can wait for this before it renders the navigator, so the router's
+ * first screen (the `initial` of `createRouter`, which the link replaces) is never rendered.
+ */
+export function openLaunchURL(router: Router): Promise<void> {
+  const binding = bindings.get(router);
+  return !binding || router.nested ? Promise.resolve() : binding.store.openLaunchURL(router);
 }
 
 /**

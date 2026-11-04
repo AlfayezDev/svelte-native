@@ -507,6 +507,10 @@ const hostFlushes = (): number => (globalThis as { __svelteFabric?: { stats(): {
  * thread; `tick()` resolves after both, so the continuation below runs with the commit already made. It then holds the thread at once. A timer hop between the commit and the hold
  * (the first version waited `pause(0)`) is a turn of the event loop, in which a fast phone's inline decode (about 4 ms) could already have delivered `loadComplete` to JavaScript; there is
  * no such turn now, so whatever the load raises (`loadComplete` and the `pageChanged` 10 ms after it) waits in the queue together. The check reads `flushes` to say so when the commit was not made.
+ *
+ * This holds only while Svelte's async mode is off: `tick()` is `await Promise.resolve(); flushSync()` then, and with `experimental.async` it waits for `requestAnimationFrame` or a timer
+ * instead, which is a turn of the event loop. The web build enables async mode (`vite.config.ts`, `kit.compilerOptions`); the native bundle does not (the Metro transformer compiles with
+ * `customRenderer` only), and `packages/svelte-native/tests/svelte-async-mode.test.ts` fails if that changes, or if `tick()` stops being those two steps.
  */
 async function loadsWhileBusy(c: Ctx): Promise<void> {
   const name = "events: onLoadComplete arrives although the JS thread was busy while the document loaded";
@@ -640,10 +644,13 @@ async function rive(c: Ctx): Promise<void> {
   const plays = c.events("rive-play");
   handle?.play();
   c.check("commands: play raises onPlay again", await c.until(() => c.events("rive-play") > plays, 5000), foreignSummary(c, ["rive-play"]));
-  // Two animations of the Truck artboard played in turn are two onPlay with their own names on the UI thread; held JavaScript would see one if the event could coalesce (the file is Rive's `vehicles.riv`:
-  // the artboard "Truck" has the animations idle, curves and bounce and the state machine bumpy; looping keeps both playing, so no onStop follows between).
+  // Two animations of the Truck artboard played in turn are two onPlay with their own names on the UI thread, and both must reach JavaScript while it is held (the file is Rive's `vehicles.riv`:
+  // the artboard "Truck" has the animations idle, curves and bounce and the state machine bumpy; looping keeps both playing, so no onStop follows between). Rive needs no patch: its events go
+  // through `getJSModule(RCTEventEmitter)`, React Native's `InteropEventEmitter`, which is made with the application context, so its events have surface id -1 and `Event.dispatchModern` sends
+  // them as non-coalescable (`tests/foreign-libraries.test.ts` pins each link of that in the installed React Native). This check is the guard on a device that it stays so: it fails if a React
+  // Native upgrade or a Rive release makes the events coalescable (an `Event` class of Rive's own, say, without `canCoalesce() false`).
   await bothArrive(c, "events: two animations played in turn raise both onPlay although the JS thread was busy",
-    "the loss is Android's: its events went through `getJSModule(RCTEventEmitter)`, which React Native's interop turns into a coalescable `InteropEvent`; iOS's RiveReactNativeView is a legacy view manager whose events the interop layer sends with `dispatchEvent`, which the queue never replaces",
+    "Android's guard only: Rive's events reach JavaScript through React Native's interop emitter, whose surface id -1 makes them non-coalescable, and there is nothing to lose on iOS, where RiveReactNativeView is a legacy view manager whose events React Native's interop layer sends with `dispatchEvent`, which the queue never replaces",
     [["rive-play", "curves:false"], ["rive-play", "bounce:false"]],
     () => { handle?.play("curves", "loop", "auto", false); handle?.play("bounce", "loop", "auto", false); }, 1000);
 }

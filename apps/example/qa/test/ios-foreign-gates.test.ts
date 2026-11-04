@@ -19,8 +19,8 @@ const gateOf = (library: string, field: string): Gate | undefined => gates.gates
  * work owns; the counts of checks are the structure the bars pin, and do not depend on which of them pass. One change since: the video's "frame is in the
  * image" capture check is Android-only on iOS (4 Nov 2026; an AVPlayerLayer's frames are not in a snapshot), so video's three places moved from checks to Android-only. The PDF's "onLoadComplete
  * arrives although the JS thread was busy" check is Android-only too (4 Nov 2026; the event coalescing it guards is the Android view's), so pdf has three more Android-only entries. So have
- * video, Lottie and Rive, one check each per place (the busy-JavaScript checks of their event patches: "pause() then resume() raise both onPlaybackStateChanged", "two cancelled animations
- * raise both onAnimationFinish", "two animations played in turn raise both onPlay"; iOS dispatches their events with `dispatchEvent`, which React Native's queue never replaces).
+ * video, Lottie and Rive, one check each per place (the busy-JavaScript checks of the event patches of video and Lottie and the guard on Rive's interop path: "pause() then resume() raise both
+ * onPlaybackStateChanged", "two cancelled animations raise both onAnimationFinish", "two animations played in turn raise both onPlay"; iOS dispatches their events with `dispatchEvent`, which React Native's queue never replaces).
  */
 const first: Record<string, { checks: number; failed: number; skipped: number; androidOnly: number }> = {
 	image: { checks: 33, failed: 0, skipped: 0, androidOnly: 3 },
@@ -92,7 +92,7 @@ describe("the iPhone's foreign gates", () => {
 			expect([library, gateOf(library, "skipped")?.bar.ios]).toEqual([library, { max: made?.skipped }]);
 			expect([library, gateOf(library, "failedChecks")?.bar.ios]).toEqual([library, { max: 0 }]);
 		}
-		// Android makes one more check per place for each of the four patched libraries' event guards (video, Lottie and Rive new, pdf before).
+		// Android makes one more check per place for each of the four event guards (video, Lottie and Rive new, pdf before).
 		expect([gateOf("video", "checks"), gateOf("lottie", "checks"), gateOf("rive", "checks"), gateOf("pdf", "checks")].map((gate) => gate?.bar.android?.min)).toEqual([66, 36, 36, 42]);
 		expect(foreignGates.find((gate) => gate.id === "foreign.launches")?.bar.ios).toEqual({ min: 2 });
 	});

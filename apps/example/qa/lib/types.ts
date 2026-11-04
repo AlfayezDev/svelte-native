@@ -100,6 +100,8 @@ export type LabRun = {
 	pid?: number | null;
 	/** Android: another app's activity came to the front while the lab ran (an emergency alert, a permission dialog). The run is incomplete however far it got; `at` is the device clock, `by` the component. Absent when nothing did, and in runs recorded before the field. */
 	interrupted?: { at: string; by: string };
+	/** `[Svelte stress]` lines (the `complete` line too) the harness could not read: logcat cut them near 4 KB, or they are quoted in a way it does not undo. Each is the error that says why. The scenario such a line carried is not in `scenarios`, and `lab.unparsedLines` fails the run. Absent when there were none, and in runs recorded before the field. */
+	unparsedLines?: string[];
 	logFile: string;
 };
 
@@ -624,6 +626,8 @@ export type ForeignLaunch = {
 	interrupted?: { at: string; by: string };
 	/** How many times the lab was launched for this (another app came to the front during the earlier ones); absent: once. */
 	attempts?: number;
+	/** `[Svelte stress]` lines of the launch the harness could not read (see `LabRun.unparsedLines`); each counts in `foreign.unparsedLines`. Absent when there were none. */
+	unparsedLines?: string[];
 	logFile: string;
 };
 
@@ -653,7 +657,7 @@ export type ForeignFile = {
 	skips: ForeignSkip[];
 	/** The checks of the `foreign-leftovers` launch. */
 	leftovers: ForeignCheck[];
-	/** The lines of either launch that carried a check's tag and could not be read as one: each is a failure of the run (`foreign.unparsedLines`). */
+	/** The lines of either launch that carried a check's tag and could not be read as one: each is a failure of the run (`foreign.unparsedLines`, which also counts the launches' own `unparsedLines`). */
 	unparsed?: string[];
 	launches: ForeignLaunch[];
 	bundle: ForeignBundle | null;

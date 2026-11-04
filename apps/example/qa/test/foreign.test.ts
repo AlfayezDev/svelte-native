@@ -16,7 +16,7 @@ const gates = JSON.parse(readFileSync(join(platformDir, "qa/gates.json"), "utf8"
 const libraries = gates.foreign?.libraries.android ?? [];
 
 const line = (message: string) => `11-01 12:00:00.123  4242  4290 I ReactNativeJS: ${message}`;
-/** A string argument of `console.info` as Hermes prints it to logcat: in single quotes, a quote as `\\'` and a backslash as `\\\\` (so a JSON `\\"` is `\\\\"` there). */
+/** A string argument of `console.info` as React Native's console prints it to logcat: in single quotes, a quote as `\\'` and a backslash as `\\\\` (so a JSON `\\"` is `\\\\"` there). */
 const logcatString = (text: string) => `'${text.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
 const entry = (library: string, where: string, name: string, passed: boolean, detail = "") => line(`'[Svelte foreign library]', ${logcatString(JSON.stringify({ library, where, name, passed, detail }))}`);
 
@@ -54,7 +54,7 @@ describe("the foreign run's log", () => {
 		expect(skips).toEqual([{ library: "datetime", where: "inline", name: "inline: events", why: "the iPhone's finger" }]);
 	});
 
-	test("a line as Hermes prints it parses: an apostrophe, a backslash, and a detail that is JSON itself", () => {
+	test("a line as the console prints it parses: an apostrophe, a backslash, and a detail that is JSON itself", () => {
 		const stats = JSON.stringify({ frames: 0, registryLeaks: 0, nodes: 0 });
 		const lines = [
 			// copied from `qa/runs/foreign-localhost_5555-20261101T134713Z-libraries.log`
@@ -131,6 +131,37 @@ describe("a foreign run whose failed checks have an apostrophe in their names", 
 		expect(rows.filter((row) => row.verdict === "not measured").map((row) => row.id)).toEqual([]);
 		expect(rows.filter((row) => row.verdict === "fail").map((row) => row.id)).toEqual(["foreign.rive.failedChecks"]);
 		expect(rows.find((row) => row.id === "foreign.image.failedChecks")?.verdict).toBe("pass");
+	});
+});
+
+describe("a foreign run whose summary line logcat cut", () => {
+	// Without the harness reading the summary, the run used to stop before it wrote its file. Now the launch carries the line it could not read, and the gate fails.
+	const cutSummary = sample("foreign-summary-apostrophe.log").trimEnd().slice(0, 700);
+	const log = [cutSummary, ...cleanChecks().map((value) => entry(value.library, value.where, value.name, value.passed, value.detail)), line(`'[Svelte stress] complete', '{"periodMs":16.7,"results":[{"name":"foreign-libraries","verdict":"pass"}]}'`)].join("\n");
+	const capture = { text: log, matched: true, startedAt: new Date("2026-11-04T12:30:00Z"), durationMs: 600_000, logFile: "runs/foreign-libraries.log" };
+
+	test("the launch is recorded with the unreadable line, and its checks are all read", () => {
+		const run = labRunFrom(capture, "io.rasheed.svelteqa", true);
+		expect(run.complete).toBe(true);
+		expect(run.scenarios).toEqual([]);
+		expect(run.unparsedLines).toHaveLength(1);
+		const launched = launchOf("libraries", "foreign-libraries,drive:adb", run);
+		expect(launched.unparsedLines).toEqual(run.unparsedLines);
+		expect(launchOf("libraries", "foreign-libraries,drive:adb", labRunFrom({ ...capture, text: log.split("\n").slice(1).join("\n") }, "io.rasheed.svelteqa", true)).unparsedLines).toBeUndefined();
+		expect(parseForeignChecks(log).checks).toHaveLength(cleanChecks().length);
+	});
+
+	test("foreign.unparsedLines counts it, the gate fails, and the run says so in its lines", () => {
+		const run = labRunFrom(capture, "io.rasheed.svelteqa", true);
+		const withLine = file({ launches: [launchOf("libraries", "foreign-libraries,drive:adb", run), launch("leftovers")] });
+		const rows = (value: ForeignFile) => evaluate(gates.gates.filter((gate) => gate.metric.startsWith("foreign.")), { "localhost:5555": { platform: "android", role: "lab", runs: ["foreign"], metrics: foreignMetrics(value, { libraries }) } }, "android");
+		const verdict = (value: ForeignFile) => rows(value).find((row) => row.id === "foreign.unparsedLines")?.verdict;
+		expect(foreignMetrics(withLine, { libraries })["foreign.unparsedLines"]).toBe(1);
+		expect(verdict(withLine)).toBe("fail");
+		expect(verdict(file())).toBe("pass");
+		expect(describeForeign(withLine, { libraries }).some((entry) => entry.includes("UNREADABLE LINE malformed [Svelte stress] line"))).toBe(true);
+		// the line of the launch and the lines of the checks add up
+		expect(foreignMetrics(file({ unparsed: ["x"], launches: withLine.launches }), { libraries })["foreign.unparsedLines"]).toBe(2);
 	});
 });
 

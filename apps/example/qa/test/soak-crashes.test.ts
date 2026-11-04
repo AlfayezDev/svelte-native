@@ -158,6 +158,16 @@ describe("classifySuite", () => {
 		const record = classifySuite(2, run(sample("lab-run.log"), false), "runs/suite-2.log", pkg);
 		expect([record.complete, record.crashes]).toEqual([false, 0]);
 	});
+	test("a suite with a [Svelte stress] line the harness could not read did not measure: incomplete, with the reason", () => {
+		const lines = sample("lab-run.log").split("\n");
+		const index = lines.findIndex((entry) => entry.includes("'[Svelte stress]', '") && entry.includes('"name":"modal-8"'));
+		lines[index] = (lines[index] ?? "").slice(0, 150);
+		const record = classifySuite(4, run(lines.join("\n"), true), "runs/suite-4.log", pkg);
+		expect(record.complete).toBe(false);
+		expect(record.crashes).toBe(0);
+		expect(record.error).toMatch(/^1 \[Svelte stress\] line\(s\) could not be read: malformed \[Svelte stress\] line/);
+		expect(classifySuite(1, run(sample("lab-run.log"), true), "runs/suite-1.log", pkg).error).toBeNull();
+	});
 	test("crash lines and ANR lines of a suite are counted apart", () => {
 		const text = `${sample("lab-run.log")}\n${sample("crash-js.log")}\n10-26 13:00:00.100  1000  1100 E ActivityManager: ANR in io.rasheed.svelteqa (io.rasheed.svelteqa/.MainActivity)\n`;
 		const record = classifySuite(3, run(text, true), "runs/suite-3.log", pkg);

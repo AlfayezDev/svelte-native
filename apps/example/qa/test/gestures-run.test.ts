@@ -107,7 +107,7 @@ describe("the adb driver", () => {
 		expect(failing).toHaveLength(1);
 	});
 
-	test("reads a ready line whose step name has an apostrophe, as Hermes quotes it, and performs it", async () => {
+	test("reads a ready line whose step name has an apostrophe, as the console quotes it, and performs it", async () => {
 		const { instance, commands } = driver();
 		const payload = JSON.stringify(ready(drag, { stepName: "drag the box's handle" }));
 		instance.onLine(line(`'[Svelte gesture] ready', '${payload.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`));
@@ -231,6 +231,23 @@ describe("results from the lab's lines", () => {
 		expect(launchFromLogcat(capture({ asked: ["gestures-box", "gestures-row", "gestures-carousel"] })).complete).toBe(false);
 		const lines = describeLaunch(launchFromLogcat(capture({ asked: ["gestures-box", "gestures-carousel"] })));
 		expect(lines.some((entry) => /gestures-carousel\s+no result/.test(entry))).toBe(true);
+	});
+
+	test("a scenario line logcat cut is a harness error of the launch and the scenario is absent, so the launch is incomplete and still recorded", () => {
+		const lines = text.split("\n");
+		lines[1] = (lines[1] ?? "").slice(0, 120);
+		const done = line(`'[Svelte stress] complete', '${JSON.stringify({ periodMs: 16.67, results: [{ name: "gestures-box", verdict: "fail" }, { name: "gestures-row", verdict: "fail" }] })}'`);
+		const capture: LaunchCapture = {
+			input: "adb", asked: ["gestures-box", "gestures-row"], text: `${lines.join("\n")}\n${done}`, matched: true, startedAt: new Date("2026-10-28T10:00:00Z"), durationMs: 5000, logFile: "runs/x.log",
+			packageName: "io.rasheed.svelteqa", injections: {}, harnessErrors: ["an earlier one"],
+		};
+		const out = launchFromLogcat(capture);
+		expect(out.scenarios.map((entry) => entry.name)).toEqual(["gestures-box", "gestures-sheet"]);
+		expect(out.complete).toBe(false);
+		expect(out.harnessErrors).toHaveLength(2);
+		expect(out.harnessErrors[0]).toBe("an earlier one");
+		expect(out.harnessErrors[1]).toMatch(/^malformed \[Svelte stress\] line, its payload is not JSON/);
+		expect(out.harnessErrors[1]).toContain('"name":"gestures-row"');
 	});
 
 	test("an app that crashed during the launch is on the launch", () => {

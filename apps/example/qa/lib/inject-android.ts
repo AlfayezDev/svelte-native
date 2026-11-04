@@ -109,7 +109,7 @@ export class AdbDriver {
 		if (!line) return;
 		let parsed;
 		try {
-			// The lab's own parser reads the payload as JSON, which it is only after Hermes' quoting is undone; a bare line (one string argument) was not quoted.
+			// The lab's own parser reads the payload as JSON, which it is only after the console's quoting (React Native's JS console, `'` as `\'` and `\` as `\\`) is undone; a bare line (one string argument) was not quoted.
 			parsed = parseGestureLine(line.message.startsWith("'") ? unescapeLogcat(line.message) : line.message);
 		} catch (error) {
 			this.parseErrors.push(error instanceof Error ? error.message : String(error));

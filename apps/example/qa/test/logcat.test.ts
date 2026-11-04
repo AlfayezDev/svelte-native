@@ -10,13 +10,16 @@ import {
 	parseStressComplete,
 	parseStressScenarios,
 	parseSvelteBoot,
+	quotedArgument,
+	readStressComplete,
+	readStressScenarios,
 	unescapeLogcat,
 } from "../parse/logcat.ts";
 import { sample } from "./sample.ts";
 
 const pkg = "io.rasheed.svelteqa";
 
-/** A string argument of `console.info` as Hermes prints it to logcat: in single quotes, a quote as `\'` and a backslash as `\\`. */
+/** A string argument of `console.info` as React Native's console prints it to logcat (`formatPrimitive`): in single quotes, a quote as `\'` and a backslash as `\\`. */
 const logcatString = (text: string) => `'${text.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
 const logLine = (message: string) => `11-04 12:39:40.514  2596  2652 I ReactNativeJS: ${message}`;
 
@@ -135,7 +138,7 @@ describe("parseLabChecks", () => {
 		const stress = `10-25 18:39:45.396 1 2 I ReactNativeJS: '[native lab results]', '{"phase":"stress","checks":[{"name":"A","passed":false,"detail":""}]}'`;
 		expect(parseLabChecks(stress)).toBeNull();
 	});
-	test("a failed check whose name has an apostrophe is named without Hermes' backslash", () => {
+	test("a failed check whose name has an apostrophe is named without the console's backslash", () => {
 		const names = ["the animation's background", 'it says "yes"'];
 		const checks = names.map((name) => ({ name, passed: false, detail: "" }));
 		const line = logLine(`'[native lab results]', ${logcatString(JSON.stringify({ phase: "checks", checks, finishedAt: "2026-11-04T12:00:00Z" }))}`);
@@ -237,10 +240,61 @@ describe("parseStressScenarios", () => {
 		expect(error instanceof Error).toBe(true);
 		const message = (error as Error).message;
 		expect(message).toMatch(/payload is not JSON \(.+\)/);
-		expect(message).toContain(String((error as Error & { cause: Error }).cause.message));
-		expect(message).toContain(`the line is ${line.length - line.indexOf("'[Svelte stress]'")} characters`);
-		expect(message).toContain("logcat cuts a line near 4 KB");
+		let reason = "";
+		try {
+			JSON.parse(`{"name":"idle","verdict":"pass","summary":"frame period 16.67 ms","frames":{"periodMs":16.6`);
+		} catch (caught) {
+			reason = (caught as Error).message;
+		}
+		expect(reason).not.toBe("");
+		expect(message).toContain(`(${reason})`);
+		expect(message).toContain(`the message is ${line.length - line.indexOf("'[Svelte stress]'")} characters`);
+		expect(message).toContain("logcat cuts an entry near 4 KB (bytes)");
 		expect(message).toContain("escaped some other way");
+		expect(message).toContain('the payload is {"name":"idle"');
+	});
+	test("a long payload is shown by both ends, so a cut shows where it stopped", () => {
+		const cut = logLine(`'[Svelte stress]', '{"name":"idle","verdict":"pass","detail":{"rows":[${Array.from({ length: 500 }, (_, index) => `[${index},"row ${index}"]`).join(",")}`);
+		let message = "";
+		try {
+			parseStressScenarios(cut);
+		} catch (error) {
+			message = (error as Error).message;
+		}
+		expect(message).toContain("the payload is {\"name\":\"idle\"");
+		expect(message).toContain(' [...] ');
+		expect(message.endsWith('[499,"row 499"]')).toBe(true);
+	});
+});
+
+describe("readStressScenarios, which keeps going", () => {
+	const good = logLine(`'[Svelte stress]', '{"name":"idle","verdict":"pass","summary":"ok"}'`);
+	const cut = logLine(`'[Svelte stress]', '{"name":"modal-8","verdict":"pass","summary":"frame period 16.67 ms","frames":{"periodMs":16.6`);
+	const after = logLine(`'[Svelte stress]', '{"name":"navigation-8","verdict":"pass","summary":"ok"}'`);
+
+	test("a line it cannot read is reported, and the lines around it are read", () => {
+		const { scenarios, unparsed } = readStressScenarios([good, cut, after].join("\n"));
+		expect(scenarios.map((scenario) => scenario.name)).toEqual(["idle", "navigation-8"]);
+		expect(unparsed).toHaveLength(1);
+		expect(unparsed[0]).toMatch(/^malformed \[Svelte stress\] line, its payload is not JSON/);
+		expect(unparsed[0]).toContain('"name":"modal-8"');
+	});
+	test("a log with no such line has none unparsed, and the strict reading still throws on the cut one", () => {
+		expect(readStressScenarios([good, after].join("\n")).unparsed).toEqual([]);
+		expect(() => parseStressScenarios([good, cut, after].join("\n"))).toThrow(/malformed \[Svelte stress\] line/);
+	});
+	test("a cut completion line is reported, with no completion", () => {
+		const complete = logLine(`'[Svelte stress] complete', '{"periodMs":16.7,"results":[{"name":"warm-up","verdict":"inf`);
+		const read = readStressComplete([good, complete].join("\n"));
+		expect(read.completion).toBeNull();
+		expect(read.unparsed).toHaveLength(1);
+		expect(read.unparsed[0]).toMatch(/^malformed \[Svelte stress\] complete line/);
+		expect(() => parseStressComplete(complete)).toThrow(/malformed \[Svelte stress\] complete line/);
+	});
+	test("a completion line of the wrong shape is reported, not thrown", () => {
+		const read = readStressComplete(logLine(`'[Svelte stress] complete', '{"periodMs":16.7}'`));
+		expect(read.completion).toBeNull();
+		expect(read.unparsed[0]).toMatch(/^unexpected \[Svelte stress\] complete payload/);
 	});
 });
 
@@ -346,8 +400,17 @@ describe("findInterruption", () => {
 	});
 });
 
+describe("quotedArgument", () => {
+	test("is what follows the prefix, without the closing quote, unescaped", () => {
+		expect(quotedArgument("'[tag]', '{\"a\":\"it\\'s\"}'", "'[tag]', '")).toBe('{"a":"it\'s"}');
+	});
+	test("throws for a message that does not start with the prefix, instead of returning text that is not the payload", () => {
+		expect(() => quotedArgument("'[other]', '{}'", "'[tag]', '")).toThrow(/does not start with '\[tag\]', '/);
+	});
+});
+
 describe("unescapeLogcat", () => {
-	test("undoes the two escapes Hermes adds to a quoted string argument, and only those", () => {
+	test("undoes the two escapes the console adds to a quoted string argument, and only those", () => {
 		expect(unescapeLogcat("plain")).toBe("plain");
 		expect(unescapeLogcat("animation\\'s")).toBe("animation's");
 		expect(unescapeLogcat("C:\\\\temp")).toBe("C:\\temp");

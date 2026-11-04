@@ -112,6 +112,57 @@ const verdictOf = (id: string, platform: "android" | "ios", metrics: Record<stri
 		platform,
 	)[0]?.verdict;
 
+describe("a [Svelte stress] line logcat cut", () => {
+	/** The sample log with the line of `list-300-virtual` replaced by one logcat cut at 4045 characters of the message (26 October's lab logs hold such lines). */
+	const cutLog = () => {
+		const lines = sample("lab-run.log").split("\n");
+		const index = lines.findIndex((entry) => entry.includes("'[Svelte stress]', '") && entry.includes('"name":"list-300-virtual"'));
+		const rows = Array.from({ length: 500 }, (_, row) => [`row ${row}`, row, row % 2]);
+		const whole = `10-25 18:39:47.427  4242  4290 I ReactNativeJS: '[Svelte stress]', '${JSON.stringify({ name: "list-300-virtual", verdict: "pass", summary: "300 rows", detail: { rows } })}'`;
+		lines[index] = whole.slice(0, whole.indexOf("'[Svelte stress]'") + 4045);
+		return lines.join("\n");
+	};
+
+	test("the run is still recorded: the cut line is on the run, the other scenarios are read, and nothing throws", () => {
+		const result = run(cutLog());
+		expect(result.scenarios).toHaveLength(14);
+		expect(result.scenarios.some((scenario) => scenario.name === "list-300-virtual")).toBe(false);
+		expect(result.complete).toBe(true);
+		expect(result.unparsedLines).toHaveLength(1);
+		expect(result.unparsedLines?.[0]).toContain("the message is 4045 characters");
+		expect(result.unparsedLines?.[0]).toContain('"name":"list-300-virtual"');
+		expect(result.unparsedLines?.[0]).toContain(" [...] ");
+		expect(describeRun(result).filter((entry) => entry.includes("UNREADABLE LINE"))).toHaveLength(1);
+		expect(run().unparsedLines).toBeUndefined();
+	});
+	test("a completion line that is cut leaves the run incomplete and says so", () => {
+		const lines = sample("lab-run.log").split("\n");
+		const index = lines.findIndex((entry) => entry.includes("'[Svelte stress] complete'"));
+		lines[index] = (lines[index] ?? "").slice(0, 200);
+		const result = run(lines.join("\n"));
+		expect(result.complete).toBe(false);
+		expect(result.unparsedLines).toHaveLength(1);
+		expect(result.unparsedLines?.[0]).toMatch(/^malformed \[Svelte stress\] complete line/);
+	});
+	test("the gates read fail, not a file that was never written: unread lines, and the scenario they carried missing", () => {
+		const metrics = labMetrics(labFile(run(cutLog())), pinned);
+		expect(metrics["lab.unparsedLines"]).toBe(1);
+		expect(verdictOf("lab.unparsed", "android", metrics)).toBe("fail");
+		expect(metrics["lab.scenarios.missing"]).toBe(1);
+		expect(verdictOf("lab.scenarios.missing", "android", metrics)).toBe("fail");
+		expect(metrics["frames.list-300-virtual.droppedPct"]).toBeNull();
+		const clean = labMetrics(labFile(run()), pinned);
+		expect(clean["lab.unparsedLines"]).toBe(0);
+		expect(verdictOf("lab.unparsed", "android", clean)).toBe("pass");
+		expect(verdictOf("lab.unparsed", "ios", clean)).toBe("pass");
+	});
+	test("a lab file recorded before the field has none, and the repeated runs add up", () => {
+		const old = run();
+		expect(labMetrics(labFile(old), pinned)["lab.unparsedLines"]).toBe(0);
+		expect(labMetrics(labFile(run(cutLog()), run(cutLog()), old), pinned)["lab.unparsedLines"]).toBe(2);
+	});
+});
+
 describe("the pinned scenarios of the full run", () => {
 	const only = (...names: string[]) => {
 		const partial = run();

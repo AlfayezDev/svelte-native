@@ -32,6 +32,7 @@ export function launchOf(name: ForeignLaunch["name"], run: string, result: LabRu
 		jsErrors: result.jsErrors,
 		engineWarnings: result.engineWarnings,
 		...(result.interrupted ? { interrupted: result.interrupted } : {}),
+		...(result.unparsedLines ? { unparsedLines: result.unparsedLines } : {}),
 		logFile: result.logFile,
 		...(attempts > 1 ? { attempts } : {}),
 	};

@@ -187,6 +187,78 @@ if (isEnabled && (await checkForUpdateAsync()).isAvailable) { await fetchUpdateA
 
 A build made for a channel (`UPDATES_CHANNEL`, sent as `expo-channel-name`) checks once after the first commit and downloads the newest update; it launches on the next start. A launch is confirmed only after a healthy window (the first idle callback, 3 s after the first commit, no fatal error): an update that throws in its first seconds is marked failed at the next start, which runs the previous update or the embedded bundle, and a launch that was merely killed does not blacklist a good update the first time. Development builds and builds without a channel never check. On iOS a failing update needs two unconfirmed launches. SPEC "Updates" has the protocol coverage, the store, launch selection and the end-to-end procedure on a QA channel.
 
+## Remote functions
+
+SvelteKit's remote functions (`query`, `query.batch`, `query.live`, `command`, `form`, `prerender`) work in native Svelte code the way they do on the web: import the `*.remote.ts` module and call its functions. What comes back is SvelteKit's own client API (`.current`, `.loading`, `.error`, `.refresh()`, `.set()`, `.withOverride()`, `command(...).updates(...)` and single-flight mutations, `form.fields` with `.value()`, `.set()`, `.issues()`, `.pending`, `.result`, `.for(id)`, `.preflight()`, `.enhance()`, Standard Schema validation, live streams, `error()` and `redirect()`), and the server is the SvelteKit server of the web app, unchanged: it answers `/_app/remote/…` for the browser and for the phone alike.
+
+```svelte
+<script lang="ts">
+  import { TextInput, Switch, Pressable, Text } from "@rasheed/svelte-native";
+  import { native } from "@rasheed/svelte-native/remote";
+  import { getPosts, addPost } from "#lib/posts.remote";   // the module the web page imports
+  const posts = getPosts();                               // a query: await it, or read posts.current
+  const form = native(addPost);                           // the same object, typed for native inputs
+</script>
+
+{#each posts.current ?? [] as post (post.id)}<Text>{post.title}</Text>{/each}
+<TextInput {...form.fields.title.as("text")} accessibilityLabel="Title" />
+<Switch {...form.fields.pinned.as("checkbox")} />
+<Pressable onPress={() => form.submit()}><Text>Add</Text></Pressable>
+```
+
+**Set up.** On the server, `experimental: { remoteFunctions: true }` in the SvelteKit options, and every remote module in the server's graph: a module no web page imports is not known to the server (in `vite dev` it is registered when first loaded: list it in `server.warmup.ssrFiles`; in a build, import it from `hooks.server.ts`). In the app config, the host:
+
+```ts
+// app.config.ts
+plugins: [["@rasheed/svelte-native/expo", { remote: { origin: "https://app.example.com" /*, base: "/prefix", appDir: "_app" */ } }]]
+```
+
+`base` and `appDir` are SvelteKit's `paths.base` and `appDir` when they are not the defaults. Metro needs no setting: `withSvelteNative` resolves the remote function runtime, and the transformer turns `*.remote.ts` into stubs. `configureRemote({ origin, base, appDir, transport, handleError, fetch, goto })` (from `@rasheed/svelte-native/remote`) overrides the config and sets what the web's `hooks.ts` sets: pass the same `transport` object as the browser's universal hooks for custom types, and the client `handleError`. `remoteHost()` is the host in effect and `refreshAll()` refetches every query and reconnects every live query a screen holds.
+
+### What was decided, and why
+
+- **The host is in the app config, read at run time.** `extra.svelteNative.remote` (written by the plugin's `remote` option, which validates it when the config is evaluated and, for an `http:` origin, lets the Android and iOS builds use plain HTTP to it) is embedded by `expo-constants` and read when the first remote function is called. Inlining it at bundle time would make the bundle differ per build and keep an `eas update` bundle from running against another build's host; the embedded config is per build, as the host should be, and `app.config.ts` can set it per variant (`SVELTE_NATIVE_REMOTE_ORIGIN`, the QA app; the product accepts `https:` only). A build with no host throws `RemoteConfigError` ("No SvelteKit host is configured … set `extra.svelteNative.remote.origin`") from the *call* of any remote function, not from the import and not as a failed request.
+- **The ids are SvelteKit's.** The Vite plugin names a remote module by `hash(path from the project root)` and calls `<hash>/<export>`; Metro's transformer computes the same hash (`remote/transform.ts`, a copy of `utils/hash.js`, tested against SvelteKit's own function and against a running server) from the same path, with the Metro project root as the root (`vite.config.ts` and `metro.config.cjs` in one directory, as in `apps/platform`). SvelteKit learns a module's exports and kinds by running it; Metro cannot run server code, so they are read from the source: every export must be `export const name = query(…) | query.batch(…) | query.live(…) | command(…) | form(…) | prerender(…)` with those imported from `$app/server` (an `export { x as y }` of such a constant is fine; `export *`, re-exports and helpers that build remote functions are refused with the file and line).
+- **SvelteKit's client runtime is reused, not copied.** `query`, `query.batch`, `query.live`, `command`, `prerender`, the query cache, the live stream and its reconnect rules, `remote_request`, the devalue payloads and `.updates` bookkeeping are SvelteKit's files (`@sveltejs/kit/src/runtime/client/remote-functions/*`, `runtime/shared.js`, `runtime/form-utils.js`, 3.0.0-next.27), compiled by Metro with the rest. What they import from a browser app is shimmed (`remote/shims/`): `#app/paths`, `#app/state/client` (`page.url` is the router's current URL), `$app/env`, and the router client (`client.js`: the query maps, `goto`, `refreshAll`, `handle_error`). The globals they use and a phone lacks (`fetch`, `location`, `navigator`, `window`, `Blob`) are imported by the transformer at the end of those files from `remote/globals.ts`; nothing is installed on the global object. The only port is `form` (below). `remote/transform.ts` records, in `SHADOWS` and `remoteResolution`, every place the package reaches into SvelteKit; a test fails when an update makes those files use a browser global that is not provided.
+- **Transport.** Requests go through Expo's `fetch` (it streams a response body on Android and on iOS, which React Native's does not), to the configured origin, with `credentials: "include"`: the cookie jar is the platform's (on Android the one React Native's networking and WebViews share, on iOS `HTTPCookieStorage`), so a session cookie a command sets (`cookies.set`) reaches the next call. Every request that is not a GET carries `Origin: <the configured origin>`. SvelteKit refuses a remote call whose `Origin` differs from its own origin (`is_remote_forbidden`; production only, `trusted_origins` does not apply to remote calls), so the origin in the app config must be the one the server sees (`paths.origin`, or the `Host` behind your proxy): nothing on the server is weakened. The screen's path and query go as `x-sveltekit-pathname`/`-search`, so `getRequestEvent().url` is the screen.
+- **`query.live`** is SvelteKit's `create_live_iterator` on the streaming `fetch`: Server-Sent Events, values replace each other, a stream that ends is `done`, a dropped connection reconnects with SvelteKit's backoff, and `reconnect()` works. `navigator.onLine` is always true (a phone cannot tell, and a live query would stop retrying on `undefined`), and the page lifecycle is the app's: the stream is closed when the app goes to the background and reconnected when it returns. As on the web, a stream is also closed when SvelteKit's cache evicts its entry, which it does when the query object is garbage collected: keep a live query object only while the screen needs it.
+- **Errors** are the web's. `error()` is the `HttpError` (the query's `.error` is its `App.Error`, after your `handleError`), a validation failure is the form's issues, and a transport failure is an unknown error (500, through `handleError`). `redirect()` from a query, command or form goes to `goto` in `configureRemote`, else through the root router when it is a path of the app (the web `paths.base` is removed), or opens another site with the system. `getRequestEvent().url`, cookies and headers work as written for the web.
+
+### Forms
+
+There is no `<form>` or `<input>`, so `form` is a native port of SvelteKit's client form (`remote/form.svelte.ts`, from `form.svelte.js` 3.0.0-next.27; the state, validation, issue merging, request, `.updates` and `.for(key)` are the same code paths, the DOM is replaced). `fields.x.as(type)` returns the props of a native input; spread them onto it:
+
+| `as(…)` | Spread onto | Props |
+|---|---|---|
+| `"text"`, `"email"`, `"password"`, `"tel"`, `"url"`, `"search"`, `"date"`, `"time"`, `"datetime-local"`, `"month"`, `"week"`, `"color"`, `"textarea"` | `TextInput` | `value`, `onChangeText`, `onBlur`, and the keyboard the type asks for (`keyboardType`, `secureTextEntry`, `autoCapitalize`, `textContentType`, …) |
+| `"number"`, `"range"` | `TextInput` | the same with a decimal keypad; the field holds a number (`"17."` stays on screen and is 17), empty is `undefined` |
+| `"checkbox"` (one boolean, or `"checkbox", option` for a list), `"radio", option` | `Switch` | `value: boolean`, `onValueChange`, `onBlur`; a radio turned off keeps its choice |
+| `"select"`, `"select multiple"` | your picker | `value`, `multiple`, `onValueChange(next)` |
+| `"hidden", value` | – | `value`; sent with every submission |
+| `"submit", value` | `Pressable` | `value`, `onPress`: sets the field and submits |
+| `"file"`, `"image"` | – | throws: files are not supported |
+
+`form.submit()` is the submit button: preflight, then `enhance` (default: send, and reset the form when the server accepted it); it resolves to whether the data was accepted, rejects on a failed request, and `.updates(...)` works on it. A text input that was rendered and never typed in is sent as `""` (a number as `undefined`), as a browser sends an empty input, so the server's messages are the web's. `form.reset()` is the web form's `reset`. `native(form)` is a cast for the types: SvelteKit's types describe DOM inputs.
+
+### Not supported
+
+File fields; `prerender` results are not cached across launches (no Cache API; the server answers from its prerendered files when it has them); a server-rendered payload to hydrate from (a screen is not server-rendered); `load`-function invalidation (`refreshAll()` refetches remote queries only); remote modules inside `node_modules`; `export *` and re-exports in a remote module; a Metro project root that is not the Vite root.
+
+### Checking on a device
+
+The development lab has a page for it, `/__dev/remote` (QA and smoke builds), with a host field, the lab's own checks (one per kind: query, devalue types, `error()`, batch, live, command with single-flight, `.updates` with an override, request/Origin/cookie, prerender, `redirect()`, form issues then success), a form built from `TextInput` and `Switch`, and a live clock. The checks are the ones `tests/remote-lab.test.ts` runs against the lab's server module on the host; a device adds Hermes, the platform's networking and the screen.
+
+```sh
+cd apps/platform && pnpm dev                                  # the SvelteKit dev server, port 3000, serves src/lib/native/dev/remote-lab.remote.ts
+# Android (the Samsung over USB, or the emulator): the build must allow plain HTTP to the host, so it is built with the origin
+SVELTE_NATIVE_REMOTE_ORIGIN=http://localhost:3000 pnpm native-qa build --abi arm64-v8a --prebuild
+adb reverse tcp:3000 tcp:3000
+adb shell am start -a android.intent.action.VIEW -d "rasheed-svelte:///__dev/remote?run=1" io.rasheed.svelteqa
+adb logcat -s ReactNativeJS | grep "remote lab results"      # {"origin":…,"results":{"query":"pass: …",…}}: eleven passes
+```
+
+On the iPhone the dev server must be reachable from it: use the Mac's address or tunnel (`SVELTE_NATIVE_REMOTE_ORIGIN=http://<mac>.local:3000`) and open `rasheed-svelte:///__dev/remote?run=1`. A build with no origin still has the page: type an `https:` origin of a reachable dev server and press "Use this host" (`?origin=<origin>` does it from the link). Then, by hand: type in the form and watch the issues change; leave the page while the clock runs and check on the server that its stream closed (`liveOpen` in `labStats`); send the app to the background and back and check the clock resumes; kill the dev server and check the failures are shown, not swallowed.
+
 ## Development loop
 
 ```sh
@@ -200,7 +272,7 @@ A debug build loads the bundle from Metro. A save re-runs the changed module and
 
 ```sh
 cd packages/svelte-native
-bun test                 # renderer, host against a fake Fabric binding, router, lowering, gestures, foreign libraries, updates
+bun test                 # renderer, host against a fake Fabric binding, router, lowering, gestures, foreign libraries, updates, remote functions (a real SvelteKit server)
 pnpm typecheck           # svelte-check
 pnpm lint                # eslint
 npx biome check .        # from the repository root: lint for the TypeScript packages

@@ -2,6 +2,18 @@
 
 Notable changes to `@rasheed/svelte-native`, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are `0.x` while the package is private and its Svelte compiler is pinned to an unmerged pull request, so a minor version may break. Each line is what an app that uses the package gets.
 
+## Unreleased
+
+### Added
+
+- SvelteKit remote functions. A `*.remote.ts` module is imported in native Svelte code as in the browser: Metro replaces it with the client stubs SvelteKit's Vite plugin would generate (same ids), and `query`, `query.batch`, `query.live`, `command`, `form` and `prerender` run on SvelteKit's own client files against the SvelteKit server named in the app config (`extra.svelteNative.remote`, written by the new `remote` option of the Expo plugin, or `configureRemote({ origin })`). Cookies are the platform's, requests carry the `Origin` SvelteKit's CSRF check wants, `query.live` streams through Expo's `fetch`, a `redirect()` goes through the router, and a build with no host throws at the first call. `form` is a native port: `fields.x.as(type)` returns the props of a `TextInput` or `Switch`, `submit()` is the submit button. New entries `@rasheed/svelte-native/remote`, `/remote/runtime` and `/remote/globals`; a new dependency, `@babel/parser`. See README, "Remote functions".
+- A development lab page, `/__dev/remote`, with the lab's own checks, a form and a live clock; QA and smoke builds only.
+
+### Changed
+
+- The Expo plugin's options take `remote: { origin, base?, appDir? }`; an `http:` origin also lets the Android and iOS builds use plain HTTP to it.
+- The root router tells the remote runtime which screen is on top and how to follow a server redirect (`connectHost`).
+
 ## 0.2.0 - 2026-11-03
 
 Built from `e5dec30dd`, whose app code is the build the final gates measured (`fb53ab1cf` on the phones, `81bc66738` on the emulator). Device results behind this release are in [PLAN.md](PLAN.md), "Final build gates", with the documented exceptions and the open items. The package is private and has not been published; the entries that were under "Unreleased" since the first cut of this version on 1 November (`48d746e54`) are folded in.

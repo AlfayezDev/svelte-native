@@ -186,6 +186,61 @@ Every wrapped library is an optional peer dependency of the package: install the
 
 `bun test tests/gestures` covers it without a device: the native call sequences of RNGH's own detector for twelve gesture shapes (`tests/gestures/golden`, captured by `capture-golden.mjs`) against the host's, the JS receiver and the ported UI worklet against RNGH's `onGestureHandlerEvent` on the same event sequences, lifecycle (mount, update, reattach, detach, hot remount, 200-round churn), the guards, the real Babel transform on `.svelte` fixtures, the import graph and `svelte-check` on every builder method.
 
+## Remote functions
+
+The guide is [README](README.md#remote-functions); this is the map. SvelteKit's version is 3.0.0-next.27 (`peerDependencies`); every file named `kit/…` is `node_modules/@sveltejs/kit/src/…`.
+
+### From a `*.remote.ts` to a call
+
+1. Metro bundles `src/lib/x.remote.ts`. The transformer (`transformer.ts`, `sourceOf`) does not compile it: `remote/transform.ts` reads its exports and kinds (`@babel/parser`) and returns `import * as __remote from "@rasheed/svelte-native/remote/runtime"` plus `export const name = __remote.<kind>("<hash>/<name>")` for each export (`kit/exports/vite/plugins/remote.js`, the client branch of `transform`, builds the same module; reserved-word names are aliased as `create_exported_declarations` does). The hash is `hash(posix(relative(projectRoot, file)))` (`kit/utils/hash.js`, djb2, base 36). Anything the module imports (`$app/server`, the database) is never read.
+2. `remote/runtime.ts` exports the six functions the stubs call. `query`, `query_batch`, `query_live`, `command` and `prerender` are SvelteKit's, wrapped in a `Proxy` that checks the environment and the host before each call (`RemoteConfigError`); `form` is `remote/form.svelte.ts`.
+3. SvelteKit's files make requests with `fetch` and URLs like `${base}/${app_dir}/remote/${id}`. `fetch` there is `remote/globals.ts`'s: the path becomes `<origin><path>`, `credentials: "include"`, `Origin` on non-GET requests to the origin, Expo's `fetch` (or `configureRemote({ fetch })`).
+
+### What the package reuses, shims and ports
+
+| SvelteKit | Here |
+|---|---|
+| `kit/runtime/client/remote-functions/{command,query-batch,prerender}.svelte.js`, `query/*`, `query-live/*`, `cache.svelte.js`, `shared.svelte.js` | used as they are; `fetch`, `location`, `navigator`, `window`, `__SVELTEKIT_DEV__` come from `remote/globals.ts` through an import the transformer appends (`SHADOWS` in `remote/transform.ts`) |
+| `kit/runtime/shared.js` (argument encoding, keys), `runtime/form-utils.js` (field proxy, issues, binary form), `runtime/client/{sse,stream}.js`, `utils/{functions,promise,shared-iterator}.js`, `runtime/utils.js`, `exports/internal/shared.js` (`HttpError`, `Redirect`, …) | used as they are; `form-utils.js` gets `Blob` from `remote/globals.ts` (a `Blob` of `Uint8Array` parts: React Native's refuses them) |
+| `kit/runtime/app/internal/transport.js` | used as it is; `configureRemote({ transport })` calls its `init_transport` |
+| `#app/paths` (`base`, `app_dir`) | `remote/shims/paths.ts`: live bindings set from the app config / `configureRemote` |
+| `#app/state/client` (`page`, `navigating`, `notify_version`) | `remote/shims/state.ts`: `page.url` is the root router's current URL (`remote/link.ts`) |
+| `$app/env` (`version`) | `remote/shims/env.ts` |
+| `kit/runtime/client/client.js` (`query_map`, `live_query_map`, `query_responses`, `prerender_responses`, `app`, `handle_error`, `_goto`, `refreshAll`, `set_nearest_error_page`) | `remote/shims/client.ts`: the maps are the same shape; `handle_error` is SvelteKit's, over `configureRemote({ handleError })`; `_goto` is `link.ts`'s `navigate`; `refreshAll` refreshes the query caches only |
+| `kit/runtime/client/remote-functions/form.svelte.js` | **ported**: `remote/form.svelte.ts` (below) |
+| `kit/runtime/form-utils.js` `serialize_binary_form` | used; `Blob.bytes()` is the request body |
+
+Resolution (`remoteResolution`, used by `metro.ts` and the tests): `@sveltejs/kit/src/…` (closed by SvelteKit's `exports`), `@sveltejs/kit/internal`, `#internal`, `#app/internal/transport`, and from inside SvelteKit `#app/paths`, `#app/state/client`, `$app/env` and the relative import of `client/client.js`. `esm-env` is already the package's `environment.ts`. `$app/server` is still refused anywhere else in a native bundle.
+
+### Host config
+
+`extra.svelteNative.remote = { origin, base?, appDir? }`: `origin` an `http(s)` origin without path, query or credentials; `base` `""` or `/path` (SvelteKit's `paths.base`); `appDir` a segment (default `_app`). `host.ts` validates (the plugin and the runtime share it); the plugin's `remote` option writes it and, for `http:`, adds `android:usesCleartextTraffic="true"` to `<application>` and, for a domain name (not an address, `localhost` or `.local`), an `NSExceptionDomains` entry with `NSExceptionAllowsInsecureHTTPLoads` to `Info.plist`. `configureRemote` fields replace the config's one by one; `resetRemoteConfig()` forgets them (tests).
+
+| `configureRemote` | |
+|---|---|
+| `origin`, `base`, `appDir` | the host, validated before anything is changed |
+| `transport` | the app's universal-hooks `transport` object |
+| `handleError` | the client `handleError` hook: `({ kind, error, event }) => Partial<App.Error> \| void`, kind `app`, `framework` or `unknown` |
+| `fetch` | replaces Expo's; `null` restores it |
+| `goto` | what a `redirect()` does; `null` restores the router / `Linking.openURL` |
+
+### The native form
+
+Instance: `method`, `fields`, `result`, `pending`, `submitted`, `submit()`, `reset()`, `preflight(schema)`, `validate({ all, preflightOnly })`, `enhance(callback)`, `for(key)`. Not present: `action`, `element`, the attachment symbol.
+
+- `fields` nodes: `value()`, `set(value)`, `issues()`, `allIssues()`, `touched()`, `dirty()` are SvelteKit's `create_field_proxy`; `as(type, …)` is native (README table). Typing in an input marks the field dirty; leaving it marks it touched and, if it was edited, validated from then on; `set()` marks all three (as an attached form does).
+- Submission data is a copy of the fields at the moment `submit()` is called, plus `""` for rendered text inputs that were never edited (`undefined` for numbers) and the `hidden` values. `.for(key)` adds `id: key`. The body is the binary form SvelteKit parses (`BINARY_FORM_CONTENT_TYPE`), without files.
+- `submit()` with no `enhance`: `send` (preflight, request, issues and result from the response, `redirect` to `goto`, `refreshAll` unless `.updates(...)` or the server refreshed) and, if accepted, `reset()`. With `enhance(callback)`: preflight, then `callback(form)` where `form.submit()` sends the data taken when the submission began; no reset. `pending` covers the preflight and the request.
+- Differences kept on purpose: files; DOM-only warnings (`warn_on_missing_issue_reads`, the `$` field name and enctype checks); issues are ordered by the order fields were rendered (SvelteKit's is the DOM's); `reset()` leaves `result` as the web's reset does.
+
+### Environment
+
+`remote/environment.ts` installs a `btoa`/`atob`, `WeakRef` and `FinalizationRegistry` where the engine has none (a `WeakRef` that holds strongly and a registry that never calls back only keep SvelteKit's query cache from freeing entries) and `assertEnvironment` names a missing `ReadableStream`, `TextEncoder`, `TextDecoder`, `AbortController`, `Headers`, `URL` or `URLSearchParams` (Expo SDK 57 installs them: `expo/src/winter` and the streams polyfill Expo's Metro adds).
+
+### Tests
+
+`tests/remote-transform.test.ts` (ids against SvelteKit's `hash`, exports and kinds, stubs, the browser globals SvelteKit's files use, the resolution table), `remote-transformer.test.ts` (the real transformer under Node), `remote-runtime.test.ts` (config, transport, globals, redirects, errors), `remote-form.test.ts` (the native inputs, state, base64), `remote-plugin.test.ts` (the config plugin), `remote-e2e.test.ts` (every kind against the fixture's SvelteKit dev server and production build, `tests/fixtures/kit-app`) and `remote-lab.test.ts` (the platform lab's checks against its own server module). `tests/remote-harness.ts` bundles the client the way Metro does and starts the fixture server.
+
 ## Renderer
 
 Mounting is not free: Svelte's runtime (components, effects, host nodes) runs before the host builds the Fabric payload. Lowered `View`/`Text` rows cost about the JavaScript time of raw host tags (82–83 ms against 78 ms for 300 rows on the Samsung SM-A165F, 25 October 2026, against 125–134 ms before lowering). Keep unvirtualized lists short, paginate, or use `List`, whose first window mounts in 10 to 15 ms on the A16 and 5 to 6 ms on the iPhone SE 3 (PLAN.md).

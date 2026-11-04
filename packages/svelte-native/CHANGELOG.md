@@ -2,9 +2,9 @@
 
 Notable changes to `@rasheed/svelte-native`, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are `0.x` while the package is private and its Svelte compiler is pinned to an unmerged pull request, so a minor version may break. Each line is what an app that uses the package gets.
 
-## 0.2.0 - 2026-11-03
+## 0.2.0 - 2026-11-04
 
-Built from `e5dec30dd`, whose app code is the build the final gates measured (`fb53ab1cf` on the phones, `81bc66738` on the emulator). Device results behind this release are in [PLAN.md](PLAN.md), "Final build gates", with the documented exceptions and the open items. The package is private and has not been published; the entries that were under "Unreleased" since the first cut of this version on 1 November (`48d746e54`) are folded in.
+Built from `68ae53455`, the final build that the final gates measured on the Samsung A16 and the iPhone SE 3 (the OVH emulator's re-proof of it is pending). Device results behind this release are in [PLAN.md](PLAN.md), "Final build gates", with the documented exceptions and the open items. The package is private and has not been published; the entries that were under "Unreleased" since the first cut of this version on 1 November (`48d746e54`) are folded in.
 
 ### Added
 
@@ -53,6 +53,9 @@ Built from `e5dec30dd`, whose app code is the build the final gates measured (`f
 
 ### Fixed
 
+- iOS: the events of `react-native-video` and `rive-react-native` (load, ready, progress, play, pause, stop, error) reach JavaScript. They are legacy view managers, and React Native's interop gives such a view an event block only for an event prop that is `true`; the host's static view configs now list their events as attributes on iOS (`Kind.legacy`). Before, none of them was delivered there.
+- iOS: `lottie-react-native` 7.3.8 is patched (`patches/lottie-react-native@7.3.8.patch`, through `patchedDependencies`): `onAnimationLoaded` and the failure event, which the view raised before it had an event emitter, are kept and sent when the emitter arrives, and a recycled view that gets the source it already shows says that its animation is loaded.
+- iOS: the `tmpfile` captures of `react-native-view-shot` that a process left when it ended without exiting are deleted when the next process starts (the `svelte-capture-ios` module); React Native deleted them only when the next process captured something. The wrapper passes the library's own answer on: a plain path on iOS, sizes in points.
 - `List`: `scrollToIndex` and `scrollToOffset` called before the scroll view is bound and has its first layout (a page that scrolls its list in the effect that runs as the list mounts) sent the command to no view and the list stayed at the top. The last such request is kept and sent when both are there. The two commands no longer subscribe the effect that calls them to the list's window, row sizes and header.
 - iOS: a hidden `Modal` swallowed every touch on pushed screens.
 - A scroll view's content container follows `contentContainerStyle` and `horizontal` after the first render.

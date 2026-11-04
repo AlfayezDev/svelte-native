@@ -5,7 +5,7 @@
   import { nativeLabEnabled, theme } from "#lib/native/state.svelte.ts";
   import Page from "#lib/native/components/Page.svelte";
   import Button from "#lib/native/components/Button.svelte";
-  import { labClock, labSignup } from "#lib/native/dev/remote-lab.remote.ts";
+  import { labClock, labSignup, labStats } from "#lib/native/dev/remote-lab.remote.ts";
   import { checks } from "#lib/native/dev/remote-lab-checks.ts";
 
   /**
@@ -60,6 +60,17 @@
     try { outcome = (await signup.submit()) ? "sent" : "not accepted"; }
     catch (error) { outcome = `error: ${error instanceof Error ? error.message : String(error)}`; }
   }
+  // What the server counts: the streams it has open (this page's clock is one; a second means a stream was left open by a screen that is gone).
+  let serverStats = $state("");
+  async function showStats() {
+    try {
+      const stats = labStats();
+      await stats.refresh();
+      serverStats = JSON.stringify(stats.current);
+    } catch (error) {
+      serverStats = `error: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
   // The live clock: 30 ticks, 400 ms apart.
   const clock = labClock(30);
   const field = { minHeight: 52, borderWidth: 1, borderColor: theme.border, borderRadius: 12, overflow: "hidden" as const, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: theme.surface, color: theme.foreground, fontSize: 17 };
@@ -106,6 +117,8 @@
       <Text style={{ color: theme.muted, fontSize: 13 }}>{clock.connected ? "connected" : clock.done ? "finished" : "connecting"}</Text>
       <Button label="Reconnect" variant="secondary" onPress={() => clock.reconnect()} />
       <Button label="Refresh everything" variant="secondary" onPress={() => refreshAll()} />
+      <Button label="Server stats" variant="secondary" onPress={showStats} />
+      <Text testID="remote.stats" selectable style={{ color: theme.muted, fontSize: 13 }}>{serverStats}</Text>
     </View>
   </Page>
 {/if}

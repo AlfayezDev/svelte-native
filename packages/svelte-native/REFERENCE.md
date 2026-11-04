@@ -235,7 +235,9 @@ Instance: `method`, `fields`, `result`, `pending`, `submitted`, `submit()`, `res
 
 ### Environment
 
-`remote/environment.ts` installs a `btoa`/`atob`, `WeakRef` and `FinalizationRegistry` where the engine has none (a `WeakRef` that holds strongly and a registry that never calls back only keep SvelteKit's query cache from freeing entries) and `assertEnvironment` names a missing `ReadableStream`, `TextEncoder`, `TextDecoder`, `AbortController`, `Headers`, `URL` or `URLSearchParams` (Expo SDK 57 installs them: `expo/src/winter` and the streams polyfill Expo's Metro adds).
+`remote/environment.ts` installs a `btoa`/`atob` and a `WeakRef` (one that holds strongly) where the engine has none (Hermes 0.17 has the first two and a real `WeakRef`), and `assertEnvironment` names a missing `ReadableStream`, `TextEncoder`, `TextDecoder`, `AbortController`, `Headers`, `URL` or `URLSearchParams` (Expo SDK 57 installs them: `expo/src/winter` and the streams polyfill Expo's Metro adds).
+
+Hermes 0.17 (React Native 0.86) has no `FinalizationRegistry`, which SvelteKit's query cache is built on (`kit/runtime/client/remote-functions/cache.svelte.js`: an entry is freed when its last query object is collected). The package installs `SweptFinalizationRegistry`: `register` keeps a `WeakRef` and a timer (`SWEEP_MS`, 3 s, only while something is registered) calls the cleanup of the targets that were lost; `unregister` works; `releaseNow(target)` runs a target's cleanup at once, once. `owned.svelte.ts` (`releaseWithOwner`, applied to what `query`, `query_batch` and `query_live` return) calls `releaseNow` from a `$effect.pre` teardown, so the effect that made a query object (a component, or an expression that runs again for another argument) frees its cache entry and closes its stream deterministically; with an engine registry of its own `releaseNow` is `false` and the engine decides, as on the web. A cleanup that throws is logged and does not stop the sweep.
 
 ### Tests
 

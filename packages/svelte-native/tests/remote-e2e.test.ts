@@ -14,6 +14,8 @@ const ENTRY = `
   export { api };
   export * from "../src/remote/index.ts";
   export { linkRouter } from "../src/remote/link.ts";
+  export { sweepRegistry } from "../src/remote/environment.ts";
+  export { inOwner } from "./remote-owner.svelte.ts";
   export { tick, flushSync } from "svelte";
 `;
 
@@ -32,8 +34,8 @@ const eventually = async <T>(read: () => Promise<T> | T, done: (value: T) => boo
   }
 };
 
-function suite(mode: "dev" | "preview") {
-  describe(`remote functions against the SvelteKit ${mode === "dev" ? "dev server" : "production build"}`, () => {
+function suite(mode: "dev" | "preview", hermes = false) {
+  describe(`remote functions against the SvelteKit ${mode === "dev" ? "dev server" : "production build"}${hermes ? ", in an engine with no FinalizationRegistry" : ""}`, () => {
     let server: Server;
     let m: Client;
     let api: Client;
@@ -42,7 +44,7 @@ function suite(mode: "dev" | "preview") {
 
     beforeAll(async () => {
       server = await startServer(mode);
-      m = await loadClient(ENTRY);
+      m = await loadClient(ENTRY, undefined, undefined, { hermes });
       api = m.api;
     }, 180_000);
     afterAll(() => { server?.stop(); });
@@ -59,7 +61,7 @@ function suite(mode: "dev" | "preview") {
       const id = remoteHash(`${fixtureRoot}/src/lib/api.remote.ts`, fixtureRoot);
       const response = await fetch(`${server.origin}/_app/remote/${id}/buildInfo/`);
       expect(response.status).toBe(200);
-      expect(Object.keys(api).toSorted()).toEqual(["bounce", "buildInfo", "clock", "counter", "double", "echoArgument", "endless", "greeting", "hello", "increment", "incrementIgnoring", "incrementRequested", "login", "me", "probe", "redirecting", "reset", "sendMail", "signup", "stats", "teapot", "types"]);
+      expect(Object.keys(api).toSorted()).toEqual(["bounce", "buildInfo", "clock", "counter", "double", "echoArgument", "endless", "greeting", "hello", "increment", "incrementIgnoring", "incrementRequested", "login", "me", "probe", "redirecting", "reset", "sendMail", "signup", "stats", "teapot", "types", "watched"]);
       expect(await api.hello("ids")).toBe("hello ids");
     });
 
@@ -143,7 +145,7 @@ function suite(mode: "dev" | "preview") {
       expect(values.length).toBe(3);
       expect(values).toEqual([values[0], values[0] + 1, values[0] + 2]);
       // Nothing holds it any more: once it is collected the client closes the stream and the server's generator finishes.
-      const open = async () => { Bun.gc(true); return (await eventually(async () => { await api.stats().refresh(); return api.stats().current; }, (stats) => stats.liveOpen === 0, 500)).liveOpen; };
+      const open = async () => { Bun.gc(true); m.sweepRegistry(); return (await eventually(async () => { await api.stats().refresh(); return api.stats().current; }, (stats) => stats.liveOpen === 0, 500)).liveOpen; };
       let remaining = 1;
       for (let attempt = 0; attempt < 12 && remaining !== 0; attempt++) remaining = await open();
       expect(remaining).toBe(0);
@@ -174,6 +176,32 @@ function suite(mode: "dev" | "preview") {
       expect(live.connected).toBe(true);
       m.resetRemoteConfig();
     }, 30_000);
+
+    if (hermes) {
+      test("a query object made by an effect is released when the effect is torn down: the entry is dropped and a live stream closes, with no garbage collection", async () => {
+        configure();
+        await api.reset();
+        const open = async () => { const stats = api.stats(); await stats.refresh(); return stats.current.watchedOpen; };
+        const owner = m.inOwner(() => ({ counter: api.counter(), live: api.watched() }));
+        expect(await owner.value.counter).toBe(0);
+        expect(await owner.value.live).toBeGreaterThanOrEqual(1);
+        expect(await open()).toBe(1);
+        owner.destroy();
+        expect(await eventually(open, (n) => n === 0)).toBe(0);
+        // The counter's entry is gone with its owner: asking again fetches again (the server ran it twice).
+        expect(await api.counter()).toBe(0);
+        const stats = api.stats();
+        await stats.refresh();
+        expect(stats.current.counterRuns).toBe(2);
+        // An object made outside any effect has no owner and stays cached until it is collected.
+        const kept = api.counter();
+        await kept;
+        expect(await api.counter()).toBe(0);
+        const again = api.stats();
+        await again.refresh();
+        expect(again.current.counterRuns).toBe(2);
+      }, 20_000);
+    }
 
     test("command: single-flight, client-requested refreshes with .updates, optimistic overrides and the pending count", async () => {
       configure();
@@ -386,3 +414,5 @@ function suite(mode: "dev" | "preview") {
 
 suite("dev");
 suite("preview");
+// React Native 0.86's Hermes has no FinalizationRegistry: the package supplies one (environment.ts), and the query objects of an effect are released by it.
+suite("dev", true);

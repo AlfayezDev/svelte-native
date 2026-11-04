@@ -16,6 +16,7 @@ import { query_live as kitQueryLive } from "@sveltejs/kit/src/runtime/client/rem
 import { assertEnvironment } from "./environment.ts";
 import { requireOrigin } from "./config.ts";
 import { form as nativeForm } from "./form.svelte.ts";
+import { releaseWithOwner } from "./owned.svelte.ts";
 
 /** Checks what a call needs, throwing the error that names what is missing. */
 export function assertReady(): void {
@@ -23,19 +24,23 @@ export function assertReady(): void {
   requireOrigin();
 }
 
-/** The remote function as it is, with every call checked first. A proxy keeps what SvelteKit hangs on the function (`pending`, the id `updates()` reads). */
-function guarded<T extends (...args: never[]) => unknown>(remote: T): T {
+/**
+ * The remote function as it is, with every call checked first and, for a query, the object it returns tied to the effect that made it (`owned.svelte.ts`).
+ * A proxy keeps what SvelteKit hangs on the function (`pending`, the id `updates()` reads).
+ */
+function guarded<T extends (...args: never[]) => unknown>(remote: T, owned = false): T {
   return new Proxy(remote, {
     apply(target, thisArg, args) {
       assertReady();
-      return Reflect.apply(target, thisArg, args);
+      const result = Reflect.apply(target, thisArg, args);
+      return owned ? releaseWithOwner(result as object) : result;
     },
   });
 }
 
-export const query = (id: string) => guarded(kitQuery(id));
-export const query_batch = (id: string) => guarded(kitQueryBatch(id));
-export const query_live = (id: string) => guarded(kitQueryLive(id));
+export const query = (id: string) => guarded(kitQuery(id), true);
+export const query_batch = (id: string) => guarded(kitQueryBatch(id), true);
+export const query_live = (id: string) => guarded(kitQueryLive(id), true);
 export const command = (id: string) => guarded(kitCommand(id));
 export const prerender = (id: string) => guarded(kitPrerender(id));
 export const form = nativeForm;

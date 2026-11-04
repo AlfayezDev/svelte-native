@@ -8,6 +8,7 @@ let count = 0;
 let counterRuns = 0;
 let liveOpen = 0;
 let liveStarted = 0;
+let watchedOpen = 0;
 const batches: number[] = [];
 const signups: string[] = [];
 
@@ -24,7 +25,7 @@ export const counter = query(async () => {
   counterRuns++;
   return count;
 });
-export const stats = query(async () => ({ counterRuns, liveOpen, liveStarted, batches: [...batches], signups: [...signups] }));
+export const stats = query(async () => ({ counterRuns, liveOpen, liveStarted, watchedOpen, batches: [...batches], signups: [...signups] }));
 
 export const double = query.batch(v.number(), async (numbers) => {
   batches.push(numbers.length);
@@ -55,6 +56,19 @@ export const endless = query.live(async function* () {
     }
   } finally {
     liveOpen--;
+  }
+});
+
+// Like `endless`, counted apart: the one test that watches a stream close by itself (tests/remote-e2e.test.ts, "released when the effect is torn down").
+export const watched = query.live(async function* () {
+  watchedOpen++;
+  try {
+    for (let tick = 1; ; tick++) {
+      yield tick;
+      await sleep(40);
+    }
+  } finally {
+    watchedOpen--;
   }
 });
 

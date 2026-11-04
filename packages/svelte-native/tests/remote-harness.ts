@@ -45,9 +45,10 @@ const clientOf = (path: string) => path.includes("/node_modules/@sveltejs/kit/sr
 /**
  * Bundles `entry` (a module that imports `.remote.ts` modules and `src/remote/index.ts`) as Metro would see it: remote modules replaced by their
  * stubs, SvelteKit's client files given the globals of `kitGlobalsImport` and the shims of `remoteResolution`, `.svelte.js/.ts` compiled by Svelte.
- * `serverFile` says where the server has a remote module the bundle names by another path (the id is that of the server's file). Returns the loaded module.
+ * `serverFile` says where the server has a remote module the bundle names by another path (the id is that of the server's file). `hermes` loads it in an
+ * environment like React Native 0.86's Hermes, which has no `FinalizationRegistry`. Returns the loaded module.
  */
-export async function loadClient(entry: string, root: string = fixtureRoot, serverFile: (file: string) => string = (file) => file): Promise<Record<string, any>> { // eslint-disable-line @typescript-eslint/no-explicit-any
+export async function loadClient(entry: string, root: string = fixtureRoot, serverFile: (file: string) => string = (file) => file, options: { hermes?: boolean } = {}): Promise<Record<string, any>> { // eslint-disable-line @typescript-eslint/no-explicit-any
   const bundle = await build({
     stdin: { contents: entry, resolveDir: import.meta.dirname, loader: "ts" },
     bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], write: false, logLevel: "error",
@@ -82,9 +83,13 @@ export async function loadClient(entry: string, root: string = fixtureRoot, serv
   const directory = await mkdtemp(resolve(tmpdir(), "svelte-native-remote-"));
   const file = resolve(directory, "bundle.mjs");
   await writeFile(file, bundle.outputFiles[0].contents);
+  const global = globalThis as { FinalizationRegistry?: unknown };
+  const native = global.FinalizationRegistry;
+  if (options.hermes) delete global.FinalizationRegistry;
   try {
     return await import(pathToFileURL(file).href);
   } finally {
+    if (options.hermes) global.FinalizationRegistry = native;
     await rm(directory, { recursive: true });
   }
 }

@@ -39,7 +39,85 @@ export function base64Decode(encoded: string): string {
   return out;
 }
 
-/** Installs a fallback for each of these the engine does not define. A `WeakRef` that holds strongly and a `FinalizationRegistry` that never calls back only keep SvelteKit's query cache from freeing an entry. */
+type Registration = { ref: WeakRef<object>; held: unknown; cleanup: (held: unknown) => void; done: boolean; tokens: object[] };
+const registrations = new Set<Registration>();
+const registrationOf = new WeakMap<object, Registration>();
+const tokenHolds = new WeakMap<object, Set<Registration>>();
+/** How often the registry looks for targets the engine has collected. */
+export const SWEEP_MS = 3000;
+let sweeper: ReturnType<typeof setTimeout> | undefined;
+
+function finalize(registration: Registration): void {
+  if (registration.done) return;
+  registration.done = true;
+  registrations.delete(registration);
+  try {
+    registration.cleanup(registration.held);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+/** Calls the cleanup of every registered target the engine has collected. */
+export function sweepRegistry(): void {
+  for (const registration of [...registrations]) if (registration.ref.deref() === undefined) finalize(registration);
+}
+
+function keepSweeping(): void {
+  if (sweeper !== undefined) return;
+  sweeper = setTimeout(function sweep() {
+    sweeper = undefined;
+    sweepRegistry();
+    if (registrations.size > 0) sweeper = setTimeout(sweep, SWEEP_MS);
+  }, SWEEP_MS);
+}
+
+/**
+ * `FinalizationRegistry` for an engine without one (React Native 0.86's Hermes, 0.17): a registry that looks, every few seconds, for targets its
+ * `WeakRef`s lost, and `releaseNow`, which SvelteKit's own cannot offer. SvelteKit's query cache lives on `FinalizationRegistry`: an entry is evicted,
+ * and a live query's stream closed, when the last query object that uses it is collected.
+ */
+class SweptFinalizationRegistry {
+  readonly #cleanup: (held: unknown) => void;
+  constructor(cleanup: (held: unknown) => void) {
+    if (typeof cleanup !== "function") throw new TypeError("FinalizationRegistry cleanup callback must be callable");
+    this.#cleanup = cleanup;
+  }
+  register(target: object, held: unknown, token?: object): void {
+    const registration: Registration = { ref: new WeakRef(target), held, cleanup: this.#cleanup, done: false, tokens: token ? [token] : [] };
+    registrations.add(registration);
+    registrationOf.set(target, registration);
+    if (token) {
+      const held = tokenHolds.get(token) ?? new Set<Registration>();
+      held.add(registration);
+      tokenHolds.set(token, held);
+    }
+    keepSweeping();
+  }
+  unregister(token: object): boolean {
+    const held = tokenHolds.get(token);
+    if (!held) return false;
+    for (const registration of held) {
+      registration.done = true;
+      registrations.delete(registration);
+    }
+    tokenHolds.delete(token);
+    return true;
+  }
+}
+
+/**
+ * Runs the cleanup registered for `target` now, as if the engine had collected it, once. `false` when `target` is not in this package's registry: the
+ * engine has a `FinalizationRegistry` of its own (it cannot be told to), or the target was never registered or was released before.
+ */
+export function releaseNow(target: object): boolean {
+  const registration = registrationOf.get(target);
+  if (!registration || registration.done) return false;
+  finalize(registration);
+  return true;
+}
+
+/** Installs a fallback for each of these the engine does not define. A `WeakRef` that holds strongly only keeps what it points to from being collected. */
 export function installEnvironment(target: Record<string, unknown> = globalThis as unknown as Record<string, unknown>): void {
   if (typeof target.btoa !== "function") target.btoa = base64Encode;
   if (typeof target.atob !== "function") target.atob = base64Decode;
@@ -50,12 +128,7 @@ export function installEnvironment(target: Record<string, unknown> = globalThis 
       deref(): T { return this.#target; }
     };
   }
-  if (typeof target.FinalizationRegistry !== "function") {
-    target.FinalizationRegistry = class {
-      register(): void {}
-      unregister(): boolean { return false; }
-    };
-  }
+  if (typeof target.FinalizationRegistry !== "function") target.FinalizationRegistry = SweptFinalizationRegistry;
 }
 
 const REQUIRED = ["ReadableStream", "TextEncoder", "TextDecoder", "AbortController", "Headers", "URL", "URLSearchParams"] as const;

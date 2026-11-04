@@ -2,7 +2,7 @@
 // The native form: what `fields.x.as(type)` gives a native input, what is sent, and the state around a submission. No server: a preflight schema stops
 // every submission before the request, so what the schema is given is what would have been sent (the round trips are in remote-e2e.test.ts).
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
-import { base64Decode, base64Encode, installEnvironment, missingGlobals } from "../src/remote/environment.ts";
+import { base64Decode, base64Encode, installEnvironment, missingGlobals, releaseNow, sweepRegistry } from "../src/remote/environment.ts";
 import { loadClient } from "./remote-harness.ts";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -226,6 +226,43 @@ describe("the environment", () => {
     const strong = new empty.WeakRef({ a: 1 });
     expect(strong.deref()).toEqual({ a: 1 });
     expect(() => new empty.FinalizationRegistry(() => {}).register({}, 1)).not.toThrow();
+  });
+  test("an engine with no FinalizationRegistry (React Native 0.86's Hermes) gets one that sweeps what its WeakRefs lost, and can be told to release a target at once", async () => {
+    const target: Record<string, any> = {};
+    installEnvironment(target);
+    target.WeakRef = WeakRef;
+    const called: unknown[] = [];
+    const registry = new target.FinalizationRegistry((held: unknown) => { called.push(held); });
+    expect(() => new target.FinalizationRegistry("nope")).toThrow(/must be callable/);
+
+    const owner = {};
+    registry.register(owner, "released");
+    expect(releaseNow(owner)).toBe(true);
+    expect(releaseNow(owner)).toBe(false);
+    expect(releaseNow({})).toBe(false);
+    expect(called).toEqual(["released"]);
+
+    const token = {};
+    (() => { registry.register({}, "collected"); registry.register({}, "unregistered", token); })();
+    expect(registry.unregister(token)).toBe(true);
+    expect(registry.unregister({})).toBe(false);
+    // The engine collects them in a later turn; the registry finds out at its next sweep.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    Bun.gc(true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    sweepRegistry();
+    expect(called).toEqual(["released", "collected"]);
+    // A target that is collected after it was released is not reported twice, and a cleanup that throws does not stop the sweep.
+    const failing = new target.FinalizationRegistry(() => { throw new Error("cleanup failed"); });
+    (() => { failing.register({}, 1); })();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    Bun.gc(true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const log = console.error;
+    const seen: unknown[] = [];
+    console.error = (error: unknown) => { seen.push(error); };
+    try { sweepRegistry(); } finally { console.error = log; }
+    expect(seen.map((error) => (error as Error).message)).toEqual(["cleanup failed"]);
   });
   test("what cannot be made up is named", () => {
     expect(missingGlobals({})).toEqual(["ReadableStream", "TextEncoder", "TextDecoder", "AbortController", "Headers", "URL", "URLSearchParams"]);

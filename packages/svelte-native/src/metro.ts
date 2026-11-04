@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { dirname, join, resolve, sep } from "node:path";
 import type { ConfigT } from "@expo/metro/metro-config";
 import { syncRoutes, watchRoutes } from "./build.ts";
+import { remoteResolution } from "./remote/transform.ts";
 import { labIncludedFor, routesTableFile, variantName } from "./variant.ts";
 
 const require = createRequire(import.meta.url);
@@ -161,6 +162,10 @@ export function withSvelteNative(config: ConfigT, options: SvelteNativeMetroOpti
     if (moduleName === "@rasheed/svelte-native/routes" || (moduleName === "./routes" && context.originModulePath === entryFile)) return { type: "sourceFile", filePath: routesTable };
     const stub = stubFor(moduleName, context.originModulePath);
     if (stub !== null) return { type: "sourceFile", filePath: stub };
+    // SvelteKit's remote function client files (`@sveltejs/kit/src/runtime/client/remote-functions`), which the `.remote` stubs run on, and what they import from a browser app.
+    const remote = remoteResolution(moduleName, context.originModulePath);
+    if (remote !== undefined) return { type: "sourceFile", filePath: remote };
+    // A `*.remote.ts` module is replaced by client stubs before its imports are read (the transformer), so `$app/server` is only reached by code that is not one.
     if (moduleName.startsWith("$env/") && moduleName.includes("private") || moduleName === "$app/server" || moduleName === "@rasheed/ingest") {
       throw new Error(`Server-only import in native bundle: ${moduleName}`);
     }

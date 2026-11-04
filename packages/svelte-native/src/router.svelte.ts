@@ -4,6 +4,7 @@ import Platform from "react-native/Libraries/Utilities/Platform";
 import BackHandler from "react-native/Libraries/Utilities/BackHandler";
 import Linking from "react-native/Libraries/Linking/Linking";
 import { hmrState, type NavigationState, type StackSnapshot } from "./hmr-state.ts";
+import { linkRouter } from "./remote/link.ts";
 import { EXIT_REPORTED, EXIT_TIMEOUT_MS, type Presentation, type RouterScopeOptions } from "./fabric/navigation.ts";
 import {
   fillPath, locate, matchPath, plan, resolve,
@@ -465,7 +466,9 @@ export function connectHost(router: Router): () => void {
   const back = BackHandler.addEventListener("hardwareBackPress", () => router.active() && innermost(router).back());
   const links = Linking.addEventListener("url", ({ url }) => { if (router.active()) router.openURL(url); });
   binding.store.openLaunchURL(router);
-  return () => { back.remove(); links.remove(); };
+  // Remote functions follow a server `redirect()` through this router and send its current URL as the page's (`remote/link.ts`).
+  const linked = linkRouter(router);
+  return () => { back.remove(); links.remove(); linked(); };
 }
 
 /**

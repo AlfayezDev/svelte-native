@@ -5,15 +5,26 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { traverseFast } from "@babel/types";
 import { lowerPrimitives } from "./lower.ts";
+import { isRemoteModule, kitGlobalsImport, transformRemoteModule } from "./remote/transform.ts";
 import { TraceMap, originalPositionFor } from "@jridgewell/trace-mapping";
 
 const require = createRequire(import.meta.url);
 const upstream = require("@expo/metro-config/babel-transformer");
-type TransformInput = { filename: string; src: string; options: { dev: boolean }; [key: string]: unknown };
+type TransformInput = { filename: string; src: string; options: { dev: boolean; projectRoot?: string }; [key: string]: unknown };
 
 export function transform(input: TransformInput) {
   const { filename, src } = input;
   let code = src;
+  if (isRemoteModule(filename)) {
+    // SvelteKit remote functions: the server module (it imports `$app/server` and the app's server code) is replaced by the client stubs SvelteKit's Vite plugin would generate.
+    const root = input.options.projectRoot;
+    if (!root) throw new Error(`${filename}: Metro did not pass its project root, which the ids of remote functions are relative to`);
+    code = transformRemoteModule(src, filename, root);
+  } else {
+    // The SvelteKit client files that run remote functions get the globals a browser would (an import at the end of the file, so no line moves).
+    const globals = kitGlobalsImport(filename);
+    if (globals) code += globals;
+  }
   const maps: TraceMap[] = [];
   if (filename.endsWith(".svelte")) {
     const result = compile(lowerPrimitives(src, { filename }), {
@@ -56,5 +67,5 @@ export function transform(input: TransformInput) {
 }
 
 export function getCacheKey(options?: unknown): string {
-  return createHash("sha256").update(readFileSync(import.meta.filename)).update(readFileSync(new URL("./lower.ts", import.meta.url))).update(upstream.getCacheKey(options)).digest("hex");
+  return createHash("sha256").update(readFileSync(import.meta.filename)).update(readFileSync(new URL("./lower.ts", import.meta.url))).update(readFileSync(new URL("./remote/transform.ts", import.meta.url))).update(upstream.getCacheKey(options)).digest("hex");
 }

@@ -63,6 +63,7 @@ declare module "react-native/Libraries/Linking/Linking" {
   const Linking: {
     addEventListener(type: "url", handler: (event: { url: string }) => void): { remove(): void };
     getInitialURL(): Promise<string | null>;
+    openURL(url: string): Promise<unknown>;
   };
   export default Linking;
 }

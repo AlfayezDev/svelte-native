@@ -26,6 +26,7 @@ import {
 	settledScreenshot,
 	waitForNode,
 } from "../lib/drive.ts";
+import { AttemptsFailed, attemptCase, EvidenceBudget, failedFields, retriedFields, type EvidenceDeps } from "../lib/evidence.ts";
 import { flagString, integerFlag, parseFlags, platformOf } from "../lib/flags.ts";
 import { currentSource } from "../lib/git.ts";
 import { qaDir, runsDir } from "../lib/paths.ts";
@@ -63,7 +64,7 @@ import { iosParity } from "./ios-parity.ts";
 import { sleep } from "../lib/wait.ts";
 import { deviceKindName } from "../parse/device-state.ts";
 
-type Context = {
+export type Context = {
 	session: DeviceSession;
 	serial: string;
 	deviceKind: string;
@@ -72,7 +73,9 @@ type Context = {
 	navigationBar: Rect | null;
 	update: boolean;
 	backend: BackendStatus;
+	/** The directory beside the run file: the failure pictures, and the evidence of a try that did not get its screen. */
 	artifacts: string;
+	evidence: EvidenceDeps;
 	source: Source;
 };
 
@@ -340,7 +343,28 @@ async function captureCase(
 	});
 }
 
-async function runCase(
+/**
+ * One case on the emulator, tried twice at most (`attemptCase`): a launch whose anchor never came, or whose dump could not be read, is looked at (screenshot,
+ * dump, windows, activity, logcat: `lib/evidence.ts`) and launched once more, as the accessibility suite's cases are. A case that passes its retry says so
+ * in its record (`tries`, `failures`); one that fails it is an `error` whose `attempts` are the tries made.
+ */
+async function attempt(context: Context, screen: ScreenCase, variant: Variant, body: () => Promise<ParityCase>): Promise<ParityCase> {
+	const name = referenceName(screen, variant);
+	const attempted = await attemptCase({
+		session: context.session,
+		screen,
+		fontScale: variant.fontScale,
+		label: name,
+		body,
+		evidence: {
+			deps: context.evidence,
+			target: { serial: context.serial, packageName: context.session.packageName, directory: context.artifacts, stem: name, signedIn: screen.signedIn },
+		},
+	});
+	return { ...attempted.value, ...retriedFields(attempted) };
+}
+
+export async function runCase(
 	context: Context,
 	screen: ScreenCase,
 	variant: Variant,
@@ -353,7 +377,7 @@ async function runCase(
 	const previous = context.manifest.references[referenceName(screen, variant)];
 	try {
 		if (context.update) {
-			const captured = await context.session.guarded(() => captureCase(context, screen, variant, previous));
+			const captured = await attempt(context, screen, variant, () => captureCase(context, screen, variant, previous));
 			// Written after every case, so an interrupted run keeps the references it took.
 			if (captured.verdict === "updated") await writeManifest(context.manifest);
 			return captured;
@@ -366,12 +390,13 @@ async function runCase(
 		// A reference whose status bar mask is not the device's band compares the clock and the icons: no screenshot decides that.
 		const barProblem = statusBarMaskProblem(previous.masks, context.statusBar);
 		if (barProblem) return caseRecord(screen, variant, { verdict: "error", detail: barProblem });
-		return await context.session.guarded(() => checkCase(context, screen, variant, previous));
+		return await attempt(context, screen, variant, () => checkCase(context, screen, variant, previous));
 	} catch (error) {
 		// A device that went away, or one left with a proxy or text size the case does not need, fails every case after
 		// this one the same way: stop, keep what was taken.
 		if (endsRun(error)) throw error;
-		await guardAnchorFailure(context.session, screen, variant.fontScale, error);
+		await guardAnchorFailure(context.session, screen, variant.fontScale, error instanceof AttemptsFailed ? error.cause : error);
+		if (error instanceof AttemptsFailed) return caseRecord(screen, variant, { verdict: "error", ...failedFields(error) });
 		return caseRecord(screen, variant, {
 			verdict: "error",
 			detail: error instanceof Error ? error.message : String(error),
@@ -478,6 +503,7 @@ export async function parity(argv: string[]): Promise<void> {
 				update,
 				backend,
 				artifacts,
+				evidence: { run: session.run, budget: new EvidenceBudget() },
 				source,
 			};
 			/** Every variant of one phase: the settings of the variant, then its screens in the order that changes the proxy least. */
@@ -554,8 +580,9 @@ export async function parity(argv: string[]): Promise<void> {
 	const name = await writeRun("parity", serial, startedAt, file);
 	const count = (verdict: ParityCase["verdict"]) =>
 		results.filter((record) => record.verdict === verdict).length;
+	const retried = results.filter((record) => (record.tries ?? 1) > 1).length;
 	console.log(
-		`parity: ${count("pass")} pass, ${count("fail")} fail, ${count("missing-reference")} missing reference, ${count("unstable")} unstable, ${count("error")} error, ${count("skipped")} skipped, ${count("updated")} updated; ${notCovered.length} routes not covered`,
+		`parity: ${count("pass")} pass, ${count("fail")} fail, ${count("missing-reference")} missing reference, ${count("unstable")} unstable, ${count("error")} error, ${count("skipped")} skipped, ${count("updated")} updated; ${retried} retried (their first try's evidence is in the run file's failures); ${notCovered.length} routes not covered`,
 	);
 	console.log(`wrote qa/runs/${name}.json`);
 	reportRestore(notes);

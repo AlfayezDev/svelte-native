@@ -3,11 +3,14 @@ import { chunkOptions, limitReached, planCases, resumeMismatch, runChunks, spawn
 import { analyzeScreen, reachPct } from "../lib/a11y.ts";
 import { parseNodeInfo, type NodeInfo } from "../lib/a11y-state.ts";
 import { dumpUi, endsRun, newSessionNotes, readDisplay, reportRestore, withSession } from "../lib/device.ts";
-import { dumpWithOwnControls, openCase, retryCase, settledTree } from "../lib/drive.ts";
+import { dumpWithOwnControls, openCase, settledTree } from "../lib/drive.ts";
+import { AttemptsFailed, attemptCase, EvidenceBudget, failedFields, type EvidenceDeps } from "../lib/evidence.ts";
 import { inSignedInPhase, splitPhases, startSignedOut } from "../lib/phases.ts";
+import { join } from "node:path";
 import { redactDeep } from "../lib/qa-account.ts";
 import { flagString, integerFlag, parseFlags, platformOf } from "../lib/flags.ts";
 import { currentSource } from "../lib/git.ts";
+import { runsDir } from "../lib/paths.ts";
 import { latestRunFiles, readJson, slug, stamp, writeRun } from "../lib/runs.ts";
 import {
 	cases,
@@ -118,6 +121,8 @@ export async function a11y(argv: string[]): Promise<void> {
 	/** Whether the run takes any screen of a phase: a phase it takes none of is not even started (no sign-in for a chunk of signed-out screens). */
 	const takes = (phaseCases: ScreenCase[]) => orderOf(phaseCases).some((entry) => plan.run.has(nameOf(entry)));
 
+	// Beside the run file: what a try that did not get its screen left on the device (`lib/evidence.ts`).
+	const artifacts = join(runsDir, `a11y-${slug(serial)}-${stamp(startedAt)}`);
 	const results: A11yScreenResult[] = resumed ? [...resumed.screens] : [];
 	let aborted: string | null = null;
 	let signedInPhase: SignedInRecord | null = resumed?.signedInPhase ?? null;
@@ -127,6 +132,7 @@ export async function a11y(argv: string[]): Promise<void> {
 			await session.rotation(0);
 			await wake(serial);
 			await session.theme("light");
+			const evidence: EvidenceDeps = { run: session.run, budget: new EvidenceBudget() };
 			/** Every layout of one phase: the settings of the layout, then its screens. */
 			const runPhase = async (phaseCases: ScreenCase[]) => {
 				for (const variant of chosenVariants) {
@@ -147,19 +153,22 @@ export async function a11y(argv: string[]): Promise<void> {
 							// any other screen a declared control that is missing is a finding, not a half-built dump. One more try after a failure
 							// that is not the device going away: the first dump after the emulator was restarted can come back empty.
 							const own = screen.hidden.length > 0 ? ownLabels(screen, variant.direction) : [];
-							const { tree, stable } = await retryCase(
+							const name = referenceName(screen, variant);
+							const attempted = await attemptCase({
 								session,
 								screen,
-								variant.fontScale,
-								referenceName(screen, variant),
-								async () => {
+								fontScale: variant.fontScale,
+								label: name,
+								evidence: { deps: evidence, target: { serial, packageName, directory: artifacts, stem: name, signedIn: screen.signedIn } },
+								body: async () => {
 									// The lab logs its node info once after it opens; what the previous screen left in the log is not this open's.
 									if (screen.info) await clearLogcat(serial);
 									await openCase(session, screen, variant.direction);
 									const first = await dumpWithOwnControls(() => dumpUi(serial, { important: true }), own);
 									return settledTree(serial, first, undefined, { important: true });
 								},
-							);
+							});
+							const { tree, stable } = attempted.value;
 							const nodeInfo = screen.info ? await readNodeInfo(serial) : undefined;
 							const analysis = analyzeScreen({
 								tree,
@@ -185,15 +194,22 @@ export async function a11y(argv: string[]): Promise<void> {
 								...kept,
 								stable,
 								error: null,
+								attempts: attempted.tries,
+								...(attempted.failures.length > 0 ? { failures: attempted.failures } : {}),
 							});
 							console.log(
-								`  ${referenceName(screen, variant).padEnd(44)} interactive ${analysis.interactive} (reach ${reachPct(analysis)}, clipped ${analysis.clipped}), unreachable ${analysis.unreachable}, unlabeled ${analysis.unlabeled}, not actionable ${analysis.notActionable}, small targets ${analysis.smallTargets ?? "-"}, state ${analysis.stateMismatches ?? "-"}, order ${analysis.orderViolations}, title ${analysis.titleFirst === null ? "-" : analysis.titleFirst ? "first" : "NOT first"}, leaks ${analysis.focusLeaks}${stable ? "" : ", tree NOT settled"} (${((Date.now() - began) / 1000).toFixed(1)} s)`,
+								`  ${referenceName(screen, variant).padEnd(44)}${attempted.tries > 1 ? ` (${attempted.tries} tries)` : ""} interactive ${analysis.interactive} (reach ${reachPct(analysis)}, clipped ${analysis.clipped}), unreachable ${analysis.unreachable}, unlabeled ${analysis.unlabeled}, not actionable ${analysis.notActionable}, small targets ${analysis.smallTargets ?? "-"}, state ${analysis.stateMismatches ?? "-"}, order ${analysis.orderViolations}, title ${analysis.titleFirst === null ? "-" : analysis.titleFirst ? "first" : "NOT first"}, leaks ${analysis.focusLeaks}${stable ? "" : ", tree NOT settled"} (${((Date.now() - began) / 1000).toFixed(1)} s)`,
 							);
 						} catch (error) {
 							if (endsRun(error)) throw error;
-							const message = error instanceof Error ? error.message : String(error);
-							results.push(emptyResult(screen, variant, redactDeep(message)));
-							console.log(`  error    ${referenceName(screen, variant)}: ${redactDeep(message).slice(0, 160)}`);
+							// A screen that failed every try keeps the tries and what the device showed (`lib/evidence.ts`).
+							const failed = error instanceof AttemptsFailed ? failedFields(error) : null;
+							const message = failed?.detail ?? (error instanceof Error ? error.message : String(error));
+							results.push({
+								...emptyResult(screen, variant, redactDeep(message)),
+								...(failed ? { attempts: failed.attempts, failures: failed.failures } : {}),
+							});
+							console.log(`  error    ${referenceName(screen, variant)}${failed ? ` (${failed.attempts} tries)` : ""}: ${redactDeep(message).slice(0, 240)}`);
 						}
 					}
 				}
@@ -242,7 +258,7 @@ export async function a11y(argv: string[]): Promise<void> {
 	const total = (pick: (screen: A11yScreenResult) => number) =>
 		results.reduce((sum, screen) => sum + pick(screen), 0);
 	console.log(
-		`a11y: ${results.length} screens, ${total((s) => s.interactive)} interactive elements, ${total((s) => s.unreachable)} unreachable, ${total((s) => s.unlabeled)} unlabeled, ${total((s) => s.notActionable)} not actionable, ${total((s) => s.smallTargets ?? 0)} small touch targets (not gated), ${total((s) => s.stateMismatches ?? 0)} state mismatches, ${total((s) => s.orderViolations)} order violations, ${results.filter((s) => s.titleFirst === false).length} titles not first, ${total((s) => s.focusLeaks)} focus leaks, ${results.filter((s) => s.error !== null).length} errors`,
+		`a11y: ${results.length} screens, ${total((s) => s.interactive)} interactive elements, ${total((s) => s.unreachable)} unreachable, ${total((s) => s.unlabeled)} unlabeled, ${total((s) => s.notActionable)} not actionable, ${total((s) => s.smallTargets ?? 0)} small touch targets (not gated), ${total((s) => s.stateMismatches ?? 0)} state mismatches, ${total((s) => s.orderViolations)} order violations, ${results.filter((s) => s.titleFirst === false).length} titles not first, ${total((s) => s.focusLeaks)} focus leaks, ${results.filter((s) => s.error !== null).length} errors, ${results.filter((s) => (s.attempts ?? 1) > 1).length} retried (their first try's evidence is in the run file's failures)`,
 	);
 	console.log(`wrote qa/runs/${name}.json`);
 	reportRestore(notes);

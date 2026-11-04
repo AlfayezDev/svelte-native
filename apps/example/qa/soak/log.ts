@@ -1,4 +1,4 @@
-import { parseLines } from "../parse/logcat.ts";
+import { parseLines, parseLoggedJson, quotedArgument } from "../parse/logcat.ts";
 import type { EngineStats, HermesHeap, JsSample, SoakPhase, UiHeap } from "../lib/types.ts";
 
 const phases: readonly string[] = ["start", "sample", "baseline", "checkpoint", "final"] satisfies SoakPhase[];
@@ -65,16 +65,8 @@ export function parseSoakSamples(text: string): JsSample[] {
 	const samples: JsSample[] = [];
 	for (const line of parseLines(text)) {
 		if (!line.message.startsWith(prefix)) continue;
-		const json = line.message.slice(prefix.length).replace(/'\s*$/, "");
-		let value: unknown;
-		try {
-			value = JSON.parse(json);
-		} catch (cause) {
-			throw new Error(
-				`malformed [Svelte soak] line (logcat cuts lines near 4 KB): ${json.slice(0, 160)}`,
-				{ cause },
-			);
-		}
+		const json = quotedArgument(line.message, prefix);
+		const value = parseLoggedJson(json, "[Svelte soak]", line.message.length);
 		if (
 			!isRecord(value) ||
 			typeof value.phase !== "string" ||

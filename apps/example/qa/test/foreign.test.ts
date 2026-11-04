@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { launchOf } from "../commands/foreign.ts";
+import { labRunFrom } from "../lib/lab-run.ts";
 import { analyseSources, bundleChecks, describeForeign, failedChecks, foreignMetrics, libraryModules, missingPlaces } from "../lib/foreign.ts";
 import { checkGatesFile, evaluate, type GatesFile } from "../lib/gates.ts";
 import { platformDir } from "../lib/paths.ts";
@@ -8,6 +10,7 @@ import { findButton, parsePress } from "../lib/foreign-press.ts";
 import { parseForeignChecks } from "../parse/foreign.ts";
 import { argb, clear, distance, hex, near, numberIn, show, solid } from "../../src/lib/native/dev/foreign-pixels.ts";
 import type { ForeignCheck, ForeignFile, ForeignLaunch } from "../lib/types.ts";
+import { sample } from "./sample.ts";
 
 const gates = JSON.parse(readFileSync(join(platformDir, "qa/gates.json"), "utf8")) as GatesFile;
 const libraries = gates.foreign?.libraries.android ?? [];
@@ -89,6 +92,45 @@ describe("the foreign run's log", () => {
 		const result = parseForeignChecks(entry("image", "attic", "x", true));
 		expect(result.checks).toEqual([]);
 		expect(result.unparsed).toHaveLength(1);
+	});
+});
+
+describe("a foreign run whose failed checks have an apostrophe in their names", () => {
+	// The emulator's run of 4 November: the summary line named two failed rive checks, one of them "the animation's background is there", and read as JSON as it was printed it threw.
+	const summary = sample("foreign-summary-apostrophe.log").trimEnd();
+	const failedNames = ["rive row: capture: the animation is in the image (its middle is painted, not a hole)", "rive row: capture: the animation's background is there (opaque, pink at one of three points)"];
+	/** A clean run's checks, two of rive's row checks replaced by the two that failed. */
+	const logged = (): ForeignCheck[] => {
+		let replaced = 0;
+		const kept = cleanChecks().filter((value) => value.library !== "rive" || value.where !== "row" || replaced++ >= failedNames.length);
+		return [...kept, ...failedNames.map((name): ForeignCheck => ({ library: "rive", where: "row", name, passed: false, detail: "pink at 0 of 3 points" }))];
+	};
+	const log = [summary, ...logged().map((value) => entry(value.library, value.where, value.name, value.passed, value.detail)), line(`'[Svelte stress] complete', '{"periodMs":16.7,"results":[{"name":"foreign-libraries","verdict":"fail"}]}'`)].join("\n");
+	const capture = { text: log, matched: true, startedAt: new Date("2026-11-04T12:30:00Z"), durationMs: 600_000, logFile: "runs/foreign-libraries.log" };
+
+	test("the lab run is read: the summary is its scenario, failed, and the launch is complete", () => {
+		const run = labRunFrom(capture, "io.rasheed.svelteqa", true);
+		expect(run.complete).toBe(true);
+		expect(run.scenarios.map((scenario) => [scenario.name, scenario.verdict])).toEqual([["foreign-libraries", "fail"]]);
+		const detail = run.scenarios[0]?.detail as { failed: string[] } | null | undefined;
+		expect(detail?.failed).toEqual(failedNames);
+	});
+
+	test("the failed checks are read from their own lines, apostrophes included", () => {
+		const { checks, unparsed } = parseForeignChecks(log);
+		expect(unparsed).toEqual([]);
+		expect(checks.filter((value) => !value.passed).map((value) => value.name)).toEqual(failedNames);
+	});
+
+	test("the run file's gates fail for rive and pass for the others, and nothing is not measured", () => {
+		const run = labRunFrom(capture, "io.rasheed.svelteqa", true);
+		const { checks, skips, unparsed } = parseForeignChecks(log);
+		const metrics = foreignMetrics(file({ checks, skips, unparsed, launches: [launchOf("libraries", "foreign-libraries,drive:adb", run), launch("leftovers")] }), { libraries });
+		const rows = evaluate(gates.gates.filter((gate) => gate.metric.startsWith("foreign.")), { "localhost:5555": { platform: "android", role: "lab", runs: ["foreign"], metrics } }, "android");
+		expect(metrics["foreign.rive.failedChecks"]).toBe(2);
+		expect(rows.filter((row) => row.verdict === "not measured").map((row) => row.id)).toEqual([]);
+		expect(rows.filter((row) => row.verdict === "fail").map((row) => row.id)).toEqual(["foreign.rive.failedChecks"]);
+		expect(rows.find((row) => row.id === "foreign.image.failedChecks")?.verdict).toBe("pass");
 	});
 });
 
@@ -292,6 +334,7 @@ describe("what the lab asks the harness to press", () => {
 	test("a press request is read from the lab's line, and any other line is not one", () => {
 		const request = line(`'[Svelte foreign press]', '{"id":"date-ok","resourceId":"android:id/button1"}'`);
 		expect(parsePress(request)).toEqual({ id: "date-ok", resourceId: "android:id/button1" });
+		expect(parsePress(line(`'[Svelte foreign press]', ${logcatString(JSON.stringify({ id: "date's ok", resourceId: "android:id/button1" }))}`))).toEqual({ id: "date's ok", resourceId: "android:id/button1" });
 		expect(parsePress(line("'[Svelte foreign press]', '{\"id\":3}'"))).toBeNull();
 		expect(parsePress(line("'[Svelte stress]', '{}'"))).toBeNull();
 		expect(parsePress("not a logcat line")).toBeNull();

@@ -42,18 +42,42 @@ export function elapsedMs(from: number, to: number): number {
 	return to >= from ? to - from : to + day - from;
 }
 
+/**
+ * A string argument of a `console.info` call with several arguments, as it reaches logcat: Hermes prints it in single quotes, a quote
+ * inside as `\'` and a backslash as `\\` (so the `\"` of a JSON detail that is JSON itself is `\\"`), which has to be undone before the
+ * text is JSON. A call with one string argument is printed as it is, without quotes or escapes: undo nothing there.
+ */
+export function unescapeLogcat(text: string): string {
+	return text.replace(/\\(['\\])/g, "$1");
+}
+
+/** What follows [prefix] (`'[tag]', '`) in a message, without the closing quote, as the lab wrote it: the quoting Hermes added is undone. */
+export function quotedArgument(message: string, prefix: string): string {
+	return unescapeLogcat(message.slice(prefix.length).replace(/'\s*$/, ""));
+}
+
 /** The JSON payload of a console call such as `'[tag]', '{...}'`, or null when the message has none. */
 function payload(message: string, tag: string): string | null {
 	const prefix = `'${tag}', '`;
 	if (!message.startsWith(prefix) || message[prefix.length] !== "{") return null;
-	return message.slice(prefix.length).replace(/'\s*$/, "");
+	return quotedArgument(message, prefix);
 }
 
-function parseJson(text: string, tag: string): unknown {
+/**
+ * The value of the JSON a lab line carries ([text], after Hermes' quoting was undone). When it is not JSON the error says what the parser
+ * found and how long the line was ([lineLength] characters), and names the two usual causes: logcat cut it (it cuts near 4 KB), or
+ * something in it is escaped in a way nobody expected.
+ */
+export function parseLoggedJson(text: string, tag: string, lineLength: number = text.length): unknown {
 	try {
 		return JSON.parse(text);
-	} catch {
-		throw new Error(`malformed ${tag} line (logcat cuts lines near 4 KB): ${text.slice(0, 160)}`);
+	} catch (cause) {
+		const reason = cause instanceof Error ? cause.message : String(cause);
+		throw new Error(
+			`malformed ${tag} line, its payload is not JSON (${reason}): the line is ${lineLength} characters, and logcat cuts a line near 4 KB, ` +
+				`but a quote or a backslash escaped some other way breaks it just the same: ${text.slice(0, 160)}`,
+			{ cause },
+		);
 	}
 }
 
@@ -71,7 +95,8 @@ const checkEntry = /\{"name":"((?:[^"\\]|\\.)*)","passed":(true|false)/g;
 
 /**
  * The lab's functional checks from its `"phase":"checks"` result line. logcat caps a line near
- * 4 KB, so entries are counted one by one; a cut-off line still yields every complete entry.
+ * 4 KB, so entries are counted one by one; a cut-off line still yields every complete entry. A failure is named as the JSON
+ * of the line writes it (a double quote in it is `\"`).
  */
 export function parseLabChecks(text: string): LabChecks | null {
 	const line = parseLines(text).find(
@@ -81,11 +106,13 @@ export function parseLabChecks(text: string): LabChecks | null {
 	if (!line) return null;
 	let passed = 0;
 	const failures: string[] = [];
-	for (const entry of line.message.matchAll(checkEntry)) {
+	// A quoted line went through Hermes' quoting (`'[native lab results]', '{...}'`): a quote or a backslash in a check's name is escaped a second time.
+	const message = line.message.startsWith("'") ? unescapeLogcat(line.message) : line.message;
+	for (const entry of message.matchAll(checkEntry)) {
 		if (entry[2] === "true") passed++;
 		else failures.push(entry[1] ?? "");
 	}
-	const finishedAt = /"finishedAt":"([^"]+)"/.exec(line.message)?.[1] ?? null;
+	const finishedAt = /"finishedAt":"([^"]+)"/.exec(message)?.[1] ?? null;
 	return { passed, failed: failures.length, total: passed + failures.length, failures, finishedAt };
 }
 
@@ -166,7 +193,7 @@ export function parseStressScenarios(text: string): Scenario[] {
 	for (const line of parseLines(text)) {
 		const json = payload(line.message, "[Svelte stress]");
 		if (json === null) continue;
-		const value = parseJson(json, "[Svelte stress]");
+		const value = parseLoggedJson(json, "[Svelte stress]", line.message.length);
 		if (!isRecord(value) || typeof value.name !== "string" || typeof value.verdict !== "string")
 			continue;
 		scenarios.push({
@@ -191,7 +218,7 @@ export function parseStressComplete(text: string): StressComplete | null {
 	for (const line of parseLines(text)) {
 		const json = payload(line.message, "[Svelte stress] complete");
 		if (json === null) continue;
-		const value = parseJson(json, "[Svelte stress] complete");
+		const value = parseLoggedJson(json, "[Svelte stress] complete", line.message.length);
 		if (!isRecord(value) || !Array.isArray(value.results))
 			throw new Error(`unexpected [Svelte stress] complete payload: ${json.slice(0, 160)}`);
 		const results = value.results

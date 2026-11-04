@@ -10,10 +10,15 @@ import {
 	parseStressComplete,
 	parseStressScenarios,
 	parseSvelteBoot,
+	unescapeLogcat,
 } from "../parse/logcat.ts";
 import { sample } from "./sample.ts";
 
 const pkg = "io.rasheed.svelteqa";
+
+/** A string argument of `console.info` as Hermes prints it to logcat: in single quotes, a quote as `\'` and a backslash as `\\`. */
+const logcatString = (text: string) => `'${text.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
+const logLine = (message: string) => `11-04 12:39:40.514  2596  2652 I ReactNativeJS: ${message}`;
 
 describe("parseLine", () => {
 	test("a threadtime line", () => {
@@ -130,6 +135,12 @@ describe("parseLabChecks", () => {
 		const stress = `10-25 18:39:45.396 1 2 I ReactNativeJS: '[native lab results]', '{"phase":"stress","checks":[{"name":"A","passed":false,"detail":""}]}'`;
 		expect(parseLabChecks(stress)).toBeNull();
 	});
+	test("a failed check whose name has an apostrophe is named without Hermes' backslash", () => {
+		const names = ["the animation's background", 'it says "yes"'];
+		const checks = names.map((name) => ({ name, passed: false, detail: "" }));
+		const line = logLine(`'[native lab results]', ${logcatString(JSON.stringify({ phase: "checks", checks, finishedAt: "2026-11-04T12:00:00Z" }))}`);
+		expect(parseLabChecks(line)).toEqual({ passed: 0, failed: 2, total: 2, failures: ["the animation's background", 'it says \\"yes\\"'], finishedAt: "2026-11-04T12:00:00Z" });
+	});
 });
 
 describe("parseStressScenarios", () => {
@@ -187,6 +198,50 @@ describe("parseStressScenarios", () => {
 		const line = `10-25 18:39:47.427 1 2 I ReactNativeJS: '[Svelte stress]', '{"name":"idle","verdict":"pass","summary":"frame period 16.67 ms","frames":{"periodMs":16.6`;
 		expect(() => parseStressScenarios(line)).toThrow(/malformed \[Svelte stress\] line/);
 	});
+	test("the foreign summary of 4 November, with an apostrophe in two failed checks' names, parses to its two failures", () => {
+		const [scenario, ...rest] = parseStressScenarios(sample("foreign-summary-apostrophe.log"));
+		expect(rest).toEqual([]);
+		expect(scenario?.name).toBe("foreign-libraries");
+		expect(scenario?.verdict).toBe("fail");
+		expect(scenario?.summary).toContain("the animation's background is");
+		const detail = scenario?.detail as { failed: string[]; libraries: Record<string, { checks: number; failed: number }> };
+		expect(detail.failed).toEqual([
+			"rive row: capture: the animation is in the image (its middle is painted, not a hole)",
+			"rive row: capture: the animation's background is there (opaque, pink at one of three points)",
+		]);
+		expect(detail.libraries.rive).toEqual({ checks: 33, failed: 2, skipped: 0 });
+		expect(Object.keys(detail.libraries)).toHaveLength(13);
+	});
+	test("a detail that is JSON itself, and a backslash, come back as written", () => {
+		const inner = JSON.stringify({ frames: 0, note: "it's" });
+		const line = logLine(`'[Svelte stress]', ${logcatString(JSON.stringify({ name: "x", verdict: "fail", summary: `C:\\temp: ${inner}`, detail: { inner } }))}`);
+		expect(line).toContain('\\\\"frames\\\\"');
+		const [scenario] = parseStressScenarios(line);
+		expect(scenario?.summary).toBe(`C:\\temp: ${inner}`);
+		expect(JSON.parse(String(scenario?.detail?.inner))).toEqual({ frames: 0, note: "it's" });
+	});
+	test("a line cut by logcat in the middle of an escape is still an error", () => {
+		const whole = sample("foreign-summary-apostrophe.log").trimEnd();
+		const cutAt = whole.indexOf("animation\\'s") + "animation\\".length;
+		expect(() => parseStressScenarios(whole.slice(0, cutAt))).toThrow(/malformed \[Svelte stress\] line/);
+		expect(() => parseStressScenarios(whole.slice(0, whole.length - 60))).toThrow(/malformed \[Svelte stress\] line/);
+	});
+	test("the error says the payload is not JSON, what the parser found and how long the line was, not only that logcat cuts lines", () => {
+		const line = logLine(`'[Svelte stress]', '{"name":"idle","verdict":"pass","summary":"frame period 16.67 ms","frames":{"periodMs":16.6`);
+		let error: unknown;
+		try {
+			parseStressScenarios(line);
+		} catch (caught) {
+			error = caught;
+		}
+		expect(error instanceof Error).toBe(true);
+		const message = (error as Error).message;
+		expect(message).toMatch(/payload is not JSON \(.+\)/);
+		expect(message).toContain(String((error as Error & { cause: Error }).cause.message));
+		expect(message).toContain(`the line is ${line.length - line.indexOf("'[Svelte stress]'")} characters`);
+		expect(message).toContain("logcat cuts a line near 4 KB");
+		expect(message).toContain("escaped some other way");
+	});
 });
 
 describe("parseStressComplete", () => {
@@ -200,6 +255,11 @@ describe("parseStressComplete", () => {
 	test("a completion line cut by logcat is an error", () => {
 		const line = `10-25 18:41:23.557 1 2 I ReactNativeJS: '[Svelte stress] complete', '{"periodMs":16.7,"results":[{"name":"warm-up","verdict":"inf`;
 		expect(() => parseStressComplete(line)).toThrow(/malformed \[Svelte stress\] complete line/);
+	});
+	test("a scenario name with an apostrophe or a backslash comes back as written", () => {
+		const results = [{ name: "rive's row", verdict: "fail" }, { name: "C:\\temp", verdict: "pass" }];
+		const line = logLine(`'[Svelte stress] complete', ${logcatString(JSON.stringify({ periodMs: 16.7, results }))}`);
+		expect(parseStressComplete(line)?.results).toEqual(results);
 	});
 	test("a run that never completed has none", () => {
 		expect(
@@ -283,5 +343,20 @@ describe("findInterruption", () => {
 		expect(findInterruption(withoutStart, pkg)).toBeNull();
 		const close = "10-27 14:50:02.300  3028  3082 V WindowManagerShell: Transition requested (#9): x TransitionRequestInfo { type = CLOSE, triggerTask = TaskInfo{ baseIntent=Intent { cmp=com.other/.A } }, flags = 0 }";
 		expect(findInterruption(`${upToOwnStart}\n${close}\n10-27 14:50:03.000  1000  1000 I ActivityManager: Start proc 9:com.other/u0a1 for service\n`, pkg)).toBeNull();
+	});
+});
+
+describe("unescapeLogcat", () => {
+	test("undoes the two escapes Hermes adds to a quoted string argument, and only those", () => {
+		expect(unescapeLogcat("plain")).toBe("plain");
+		expect(unescapeLogcat("animation\\'s")).toBe("animation's");
+		expect(unescapeLogcat("C:\\\\temp")).toBe("C:\\temp");
+		expect(unescapeLogcat('{\\\\"a\\\\":1}')).toBe('{\\"a\\":1}');
+		expect(unescapeLogcat("\\\\\\'")).toBe("\\'");
+		expect(unescapeLogcat("a\\nb")).toBe("a\\nb");
+	});
+	test("is the inverse of the quoting for any text without control characters", () => {
+		for (const text of ["", "it's", "\\", "\\'", "\\\\'", '"\\"', "a\\u00e9'\\\\n", JSON.stringify({ a: "it's \\ \"x\"" })])
+			expect(unescapeLogcat(logcatString(text).slice(1, -1))).toBe(text);
 	});
 });

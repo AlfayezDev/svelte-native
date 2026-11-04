@@ -107,6 +107,24 @@ describe("the adb driver", () => {
 		expect(failing).toHaveLength(1);
 	});
 
+	test("reads a ready line whose step name has an apostrophe, as Hermes quotes it, and performs it", async () => {
+		const { instance, commands } = driver();
+		const payload = JSON.stringify(ready(drag, { stepName: "drag the box's handle" }));
+		instance.onLine(line(`'[Svelte gesture] ready', '${payload.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`));
+		await instance.idle();
+		expect(instance.parseErrors).toEqual([]);
+		expect(commands).toEqual(["input swipe 220 520 640 772 400"]);
+		expect(instance.log[0]?.stepName).toBe("drag the box's handle");
+	});
+
+	test("a bare ready line (one string argument, no quoting) keeps its backslashes", async () => {
+		const { instance } = driver();
+		instance.onLine(line(`[Svelte gesture] ready ${JSON.stringify(ready(drag, { stepName: "C:\\temp" }))}`));
+		await instance.idle();
+		expect(instance.parseErrors).toEqual([]);
+		expect(instance.log[0]?.stepName).toBe("C:\\temp");
+	});
+
 	test("notes a step it cannot aim at but still performs it", async () => {
 		const { instance, commands } = driver();
 		instance.onLine(readyLine(ready(drag, { screen: { ...screen, x: 40 } })));

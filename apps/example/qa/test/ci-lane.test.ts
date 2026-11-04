@@ -155,7 +155,11 @@ describe("lane.sh emulator on a dispatch", () => {
 		const judged = withAccount.run("emulator", { QA_MODE: "full", RASHEED_QA_EMAIL: "qa-account-stand-in" });
 		expect(judged.stdout).not.toContain("no QA account");
 		expect(judged.stdout).not.toContain("qa-account-stand-in");
-		expect(harness(withAccount.lines()).at(-1)).toBe("gates --platform android --runs lab,boot,parity,a11y,resilience,gestures,product --markdown qa/out/gates.md");
+		const ran = harness(withAccount.lines());
+		expect(ran.at(-2)).toBe("gates --platform android --runs lab,boot,parity,a11y,resilience,gestures,product --markdown qa/out/gates.md");
+		// The run files are uploaded as an artifact: with the account in hand the lane reads them for it after the gates and deletes what holds it.
+		expect(ran.at(-1)).toBe("leakcheck --staged --purge");
+		expect(harness(without.lines()).some((line) => line.startsWith("leakcheck"))).toBe(false);
 	});
 	test("without QA_SMOKE the smoke app is neither run nor judged", () => {
 		const machine = lane();

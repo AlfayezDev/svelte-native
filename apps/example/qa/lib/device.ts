@@ -89,9 +89,17 @@ export async function dumpUi(
 		last = (result.stderr || result.stdout).trim().slice(0, 200);
 		await sleep(600);
 	}
-	throw new Error(
+	throw new DumpError(
 		`uiautomator dump on ${serial} produced no tree after ${attempts} attempt${attempts === 1 ? "" : "s"} (${last || "no output"})`,
 	);
+}
+
+/** `uiautomator dump` gave no tree on any attempt (`could not get idle state`, an empty file): the screen could not be read, as opposed to the device failing. */
+export class DumpError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "DumpError";
+	}
 }
 
 export async function tap(serial: string, x: number, y: number): Promise<void> {

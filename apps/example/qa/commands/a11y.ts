@@ -159,7 +159,7 @@ export async function a11y(argv: string[]): Promise<void> {
 								screen,
 								fontScale: variant.fontScale,
 								label: name,
-								evidence: { deps: evidence, target: { serial, packageName, directory: artifacts, stem: name, signedIn: screen.signedIn } },
+								evidence: { deps: evidence, target: { serial, packageName, directory: artifacts, stem: name, screen, direction: variant.direction } },
 								body: async () => {
 									// The lab logs its node info once after it opens; what the previous screen left in the log is not this open's.
 									if (screen.info) await clearLogcat(serial);

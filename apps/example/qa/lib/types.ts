@@ -368,8 +368,8 @@ export type ParityCase = {
 	differingMaskedPixels: number | null;
 	bounds: Rect | null;
 	/**
-	 * Screenshots taken until two in a row agreed. An `error` has taken none: its `attempts` is then the tries of the case (1, or 2 when the
-	 * launch failed once and was retried), so a null never stands for a retry that was made.
+	 * Screenshots taken until two in a row agreed. An `error` that came from running the case has taken none: its `attempts` is then the tries of the case
+	 * (see `tries`), so a null never stands for a retry that was made.
 	 */
 	attempts: number | null;
 	/** Why the case errored or was skipped. */
@@ -377,7 +377,10 @@ export type ParityCase = {
 	/** Failing cases keep what the device drew and the diff, relative to `qa/`. */
 	actual: string | null;
 	diff: string | null;
-	/** Tries of the case on the emulator (`lib/evidence.ts`): 2 when the launch failed once and was retried, whatever the screenshots then needed. Absent in runs from before and on the iPhone. */
+	/**
+	 * Runs of the case on the emulator (`lib/evidence.ts`): 1; 2 when a wait or a dump failed and the case was launched again, whatever the screenshots then needed.
+	 * It counts every run, so it is more than 2 only when the emulator restarted under the case and `DeviceSession.guarded` ran it again. Absent in runs from before and on the iPhone.
+	 */
 	tries?: number;
 	/** What each failed try of the case left on the device, in the order of the tries: set when a try did not get its screen (the case errored, or passed on the retry). Absent in runs from before and on the iPhone. */
 	failures?: FailureEvidence[];
@@ -390,7 +393,7 @@ export type ParityCase = {
  * null and says why in `missing`. The account's address is redacted from everything kept.
  */
 export type FailureEvidence = {
-	/** Which try of the case this is the evidence of: 1, or 2 for the retry. */
+	/** Which run of the case this is the evidence of: 1; 2 for the retry (more only when the emulator restarted under the case and it was run again). */
 	attempt: number;
 	/** The error that ended the try. */
 	error: string;
@@ -402,11 +405,11 @@ export type FailureEvidence = {
 	screenshot: string | null;
 	/** The raw `uiautomator dump` the try last read (one taken after the failure when the try read none). */
 	uiDump: string | null;
-	/** The window manager's focus (`mCurrentFocus`, `mFocusedApp`) and its window list. */
+	/** The window manager's focus (`mCurrentFocus`, `mFocusedApp`) and its window list, from `dumpsys window windows` (else `dumpsys window`, when that answers nothing). */
 	windows: string | null;
 	/** The top and resumed activity. */
 	activity: string | null;
-	/** The last lines of logcat of the app's process (of the lines that name it, when the process was gone). */
+	/** The last lines of logcat of the app's process (of the lines that name the package, when the process was gone), then the crash buffer, which is read every time. */
 	logcat: string | null;
 	/** Parts that were not kept, with the reason: a command that failed, the size cap, the budget of the run. */
 	missing: string[];
@@ -469,7 +472,10 @@ export type A11yScreenResult = {
 	stable?: boolean | null;
 	/** Set when the screen could not be dumped; the other fields are then zero and the screen counts as not measured. */
 	error: string | null;
-	/** Tries of the screen: 2 when its launch failed once and was retried (`retryCase`). Absent in runs from before. */
+	/**
+	 * Runs of the screen on the emulator (`lib/evidence.ts`): 1; 2 when its launch failed and was retried (`retryCase`); more only when the emulator restarted under it and
+	 * `DeviceSession.guarded` ran it again. Absent in runs from before.
+	 */
 	attempts?: number;
 	/** What each failed try left on the device (`FailureEvidence`), in the order of the tries: set when a try did not get its screen. Absent in runs from before. */
 	failures?: FailureEvidence[];

@@ -20,6 +20,7 @@ import {
 	exposedAccount,
 	findNode,
 	guardAnchorFailure,
+	isWaitFailure,
 	launchCase,
 	maskedChrome,
 	maskRects,
@@ -344,9 +345,11 @@ async function captureCase(
 }
 
 /**
- * One case on the emulator, tried twice at most (`attemptCase`): a launch whose anchor never came, or whose dump could not be read, is looked at (screenshot,
- * dump, windows, activity, logcat: `lib/evidence.ts`) and launched once more, as the accessibility suite's cases are. A case that passes its retry says so
- * in its record (`tries`, `failures`); one that fails it is an `error` whose `attempts` are the tries made.
+ * One case on the emulator. A launch whose wait or dump failed (`isWaitFailure`: the anchor never came, a dump held less than the screen's own controls or could
+ * not be read) is looked at (screenshot, dump, windows, activity, logcat: `lib/evidence.ts`) and launched once more, as the accessibility suite's cases are; any
+ * other failure (a reference that is not there) is the case's error at once, with no second launch and no evidence. A case that passes its retry says so in its
+ * record (`tries`, `failures`); one that fails it is an `error` whose `attempts` are the tries made. `tries` counts every run of the case: the retry, and the
+ * re-run `DeviceSession.guarded` makes when the emulator restarted under it, so it is 2 for a retry and more only after such a restart.
  */
 async function attempt(context: Context, screen: ScreenCase, variant: Variant, body: () => Promise<ParityCase>): Promise<ParityCase> {
 	const name = referenceName(screen, variant);
@@ -356,9 +359,10 @@ async function attempt(context: Context, screen: ScreenCase, variant: Variant, b
 		fontScale: variant.fontScale,
 		label: name,
 		body,
+		retryable: isWaitFailure,
 		evidence: {
 			deps: context.evidence,
-			target: { serial: context.serial, packageName: context.session.packageName, directory: context.artifacts, stem: name, signedIn: screen.signedIn },
+			target: { serial: context.serial, packageName: context.session.packageName, directory: context.artifacts, stem: name, screen, direction: variant.direction },
 		},
 	});
 	return { ...attempted.value, ...retriedFields(attempted) };
@@ -397,8 +401,11 @@ export async function runCase(
 		if (endsRun(error)) throw error;
 		await guardAnchorFailure(context.session, screen, variant.fontScale, error instanceof AttemptsFailed ? error.cause : error);
 		if (error instanceof AttemptsFailed) return caseRecord(screen, variant, { verdict: "error", ...failedFields(error) });
+		// Not a wait or a dump that failed: one run of the case, no retry, no evidence (a second launch would fail the same way).
 		return caseRecord(screen, variant, {
 			verdict: "error",
+			attempts: 1,
+			tries: 1,
 			detail: error instanceof Error ? error.message : String(error),
 		});
 	}
@@ -524,7 +531,7 @@ export async function parity(argv: string[]): Promise<void> {
 								? ""
 								: ` (masked ${((record.maskedPixels / (display.width * display.height)) * 100).toFixed(1)} %)`;
 						console.log(
-							`  ${record.verdict.padEnd(17)} ${record.name}${diff}${masked} (${((Date.now() - began) / 1000).toFixed(1)} s)${record.detail && record.verdict !== "updated" ? `: ${record.detail.slice(0, 160)}` : ""}`,
+							`  ${record.verdict.padEnd(17)} ${record.name}${(record.tries ?? 1) > 1 ? ` (${record.tries} tries)` : ""}${diff}${masked} (${((Date.now() - began) / 1000).toFixed(1)} s)${record.detail && record.verdict !== "updated" ? `: ${record.detail.slice(0, 240)}` : ""}`,
 						);
 					}
 				}

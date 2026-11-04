@@ -1,5 +1,6 @@
 import {
 	DeviceStateError,
+	DumpError,
 	dumpUi,
 	endsRun,
 	screenshot,
@@ -122,6 +123,15 @@ export class ObservedError extends Error {
 	}
 }
 
+/**
+ * Whether a failure is the screen not showing up in a wait or a dump: a node that never came, a dump that held less than the screen's own controls, a
+ * dump that could not be read. These are the failures a second launch may cure (a slow start, the first dump after an emulator restart); any other
+ * error (a reference that is not there, a bug of the harness) fails the same way again and is not retried.
+ */
+export function isWaitFailure(error: unknown): boolean {
+	return error instanceof ObservedError || error instanceof DumpError;
+}
+
 /** No node answered to the selector in time: the screen is not the one the case means, or the device is not in the state it needs (`assertDeviceState`). */
 export class NodeNotFoundError extends ObservedError {
 	constructor(message: string, observation: Observation | null = null) {
@@ -198,7 +208,8 @@ export async function guardAnchorFailure(
  * state: the first dump after the emulator was restarted can come back empty while its UI is still starting, and a slow screen
  * can miss its anchor once. An anchor that is missing is first checked against the device (`guardAnchorFailure`), so a left-behind
  * proxy or text size stops the run instead of being retried and recorded for every case. `onFailure` is awaited with the error of each failed try that does
- * not end the run, the first one before the retry launches the case again (`lib/evidence.ts` photographs the screen there).
+ * not end the run, the first one before the retry launches the case again (`lib/evidence.ts` photographs the screen there). `retryable` says which failures
+ * get the retry (`isWaitFailure`); a failure it refuses is thrown at once, with no `onFailure`.
  */
 export async function retryCase<T>(
 	session: DeviceSession,
@@ -208,11 +219,14 @@ export async function retryCase<T>(
 	attempt: () => Promise<T>,
 	log: (message: string) => void = console.log,
 	onFailure?: (error: unknown) => Promise<void>,
+	retryable?: (error: unknown) => boolean,
 ): Promise<T> {
 	try {
 		return await session.guarded(attempt, log);
 	} catch (error) {
 		if (endsRun(error)) throw error;
+		// `retryable` narrows the retry to the failures a second launch may cure (default: every failure that does not end the run).
+		if (retryable !== undefined && !retryable(error)) throw error;
 		// Before the retry launches the case again: the screen the first attempt failed on is still there to be looked at.
 		await onFailure?.(error);
 		await guardAnchorFailure(session, screen, fontScale, error);

@@ -4,13 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "bun:test";
 import { runCase, type Context } from "../commands/parity.ts";
-import { DeviceSession, DeviceStateError, newSessionNotes, type SessionOptions } from "../lib/device.ts";
-import { dumpWithOwnControls, NodeNotFoundError, ObservedError, waitForNode } from "../lib/drive.ts";
+import { DeviceSession, DeviceStateError, DumpError, newSessionNotes, type SessionOptions } from "../lib/device.ts";
+import { dumpWithOwnControls, isWaitFailure, NodeNotFoundError, ObservedError, waitForNode } from "../lib/drive.ts";
 import {
 	AttemptsFailed,
 	attemptCase,
 	capText,
 	captureEvidence,
+	crashLines,
 	describeTopWindow,
 	digest,
 	EvidenceBudget,
@@ -18,6 +19,7 @@ import {
 	lastLines,
 	logcatLines,
 	maxDumpBytes,
+	pictureRedactions,
 	retriedFields,
 	type EvidenceDeps,
 	type EvidenceTarget,
@@ -31,6 +33,9 @@ import { parseHierarchy, type UiTree } from "../lib/uia.ts";
 import { FakeDevice } from "./fake-device.ts";
 
 const normalScreen = cases.find((entry) => entry.network === "normal") as ScreenCase;
+/** A signed-in screen presented over another: its compressed dump leaves the covered screen out, and it masks the devices' text. */
+const devicesModal = cases.find((entry) => entry.id === "app-account-devices") as ScreenCase;
+const address = "qa-user@example.test";
 const pkg = "io.rasheed.svelteqa";
 
 const node = (attributes: string, children = "") => `<node index="0" text="" resource-id="" class="android.view.View" package="${pkg}" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" ${attributes}>${children}</node>`;
@@ -40,6 +45,11 @@ const loadingXml = hierarchy(
 	node('class="android.widget.FrameLayout" bounds="[0,0][1080,2400]"', node('text="Rasheed" bounds="[63,300][400,360]"') + node('content-desc="Loading" bounds="[63,360][116,414]"')),
 );
 const loading: UiTree = { ...parseHierarchy(loadingXml), raw: loadingXml };
+
+/** A node with everything explicit: its text, its resource id, where it is. */
+const box = (bounds: string, fields: { text?: string; id?: string; pkg?: string; cls?: string } = {}, children = "") =>
+	`<node index="0" text="${fields.text ?? ""}" resource-id="${fields.id ?? ""}" class="${fields.cls ?? "android.view.View"}" package="${fields.pkg ?? pkg}" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" bounds="${bounds}">${children}</node>`;
+const treeOf = (xml: string): UiTree => ({ ...parseHierarchy(xml), raw: xml });
 
 function picture(width = 24, height = 48): Image {
 	const data = Buffer.alloc(width * height * 4, 255);
@@ -62,8 +72,29 @@ async function setup(device = new FakeDevice(), budget?: EvidenceBudget) {
 	const root = await temporary("native-qa-evidence-");
 	const directory = join(root, "runs", "parity-localhost_5555-x");
 	const deps: EvidenceDeps = { run: device.run, png: async () => encodePng(picture()), dump: async () => loading, base: root, ...(budget ? { budget } : {}) };
-	const target: EvidenceTarget = { serial: device.serial, packageName: device.packageName, directory, stem: "screens-sheet-auto--light-rtl-normal", signedIn: false };
+	const target: EvidenceTarget = { serial: device.serial, packageName: device.packageName, directory, stem: "screens-sheet-auto--light-rtl-normal", screen: normalScreen, direction: "rtl" };
 	return { device, root, directory, deps, target };
+}
+
+/** An `adb` on the PATH that answers `uiautomator dump` with the file in FAKE_SCREEN. */
+async function withScreen<T>(xml: string, body: () => Promise<T>): Promise<T> {
+	const directory = await temporary("native-qa-wait-");
+	const bin = join(directory, "bin");
+	mkdirSync(bin, { recursive: true });
+	const screen = join(directory, "screen.xml");
+	writeFileSync(screen, xml);
+	writeFileSync(join(bin, "adb"), `#!/bin/bash\ncase "$*" in\n  *uiautomator*) cat "$FAKE_SCREEN";;\n  *) ;;\nesac\n`);
+	chmodSync(join(bin, "adb"), 0o755);
+	const saved = { PATH: process.env.PATH, FAKE_SCREEN: process.env.FAKE_SCREEN };
+	process.env.PATH = `${bin}:${process.env.PATH}`;
+	process.env.FAKE_SCREEN = screen;
+	try {
+		return await body();
+	} finally {
+		process.env.PATH = saved.PATH;
+		if (saved.FAKE_SCREEN === undefined) delete process.env.FAKE_SCREEN;
+		else process.env.FAKE_SCREEN = saved.FAKE_SCREEN;
+	}
 }
 
 const notFound = (tree: UiTree | null = loading) => new NodeNotFoundError('no node "Sheet that fits its content" on screen after 15000 ms', { tree, dumps: 6, elapsedMs: 31_250 });
@@ -93,6 +124,7 @@ describe("the evidence of a failed try", () => {
 		device.windowsText = "  mCurrentFocus=Window{1a2b3c u0 io.rasheed.svelteqa/io.rasheed.svelteqa.MainActivity}\n  mFocusedApp=ActivityRecord{4d5e u0 io.rasheed.svelteqa/.MainActivity t12}\n";
 		device.activityText = "  topResumedActivity=ActivityRecord{4d5e u0 io.rasheed.svelteqa/.MainActivity t12}\n";
 		device.logcatText = "11-04 11:11:00.000  4321  4390 I ReactNativeJS: [native startup] TypeError: Network request failed\n";
+		device.crashText = "11-04 11:10:58.000  4000  4000 E AndroidRuntime: FATAL EXCEPTION: main (the process the case before this launch killed)\n";
 
 		const evidence = await captureEvidence(deps, target, 1, notFound());
 
@@ -107,10 +139,14 @@ describe("the evidence of a failed try", () => {
 		expect(await readFile(join(root, `${stem}.uidump.xml`), "utf8")).toBe(loadingXml);
 		expect(await readFile(join(root, `${stem}.windows.txt`), "utf8")).toContain("mCurrentFocus=Window{1a2b3c");
 		expect(await readFile(join(root, `${stem}.activity.txt`), "utf8")).toContain("topResumedActivity");
-		expect(await readFile(join(root, `${stem}.logcat.txt`), "utf8")).toContain("Network request failed");
+		const log = await readFile(join(root, `${stem}.logcat.txt`), "utf8");
+		expect(log).toContain("Network request failed");
+		// The crash buffer is read every time: the dead process's crash is not in the new process's lines.
+		expect(log).toContain("--- crash buffer (logcat -b crash -d -t 100) ---");
+		expect(log).toContain("FATAL EXCEPTION: main");
 		expect(decodePng(await readFile(join(root, `${stem}.png`))).width).toBe(24);
-		// The app's own process, the newest 400 lines; the window and activity commands are the grep of the focus and the window list.
-		expect(device.commands("logcat")).toEqual([`shell logcat -d -v threadtime --pid=4321 -t ${logcatLines}`]);
+		// The app's own process, the newest 400 lines, then the crash buffer; the window and activity commands are the grep of the focus and the window list.
+		expect(device.commands("logcat")).toEqual([`shell logcat -d -v threadtime --pid=4321 -t ${logcatLines}`, `shell logcat -b crash -d -v threadtime -t ${crashLines}`]);
 		expect(device.commands("dumpsys window windows")[0]).toContain("mCurrentFocus|mFocusedApp|Window #");
 		expect(digest(evidence)).toBe(`try 1, waited 31.3 s over 6 dumps, top window ${describeTopWindow(loading)}`);
 	});
@@ -123,20 +159,49 @@ describe("the evidence of a failed try", () => {
 		expect(evidence.uiDump).not.toBeNull();
 	});
 
-	test("an app with no process gets the buffer's lines that name it or a crash, and the record says so", async () => {
-		const { device, deps, target } = await setup();
+	test("an app with no process gets the buffer's lines that name the package, the crash buffer all the same, and the record says so", async () => {
+		const { device, root, deps, target } = await setup();
 		device.pid = null;
 		device.logcatText = "11-04 11:11:00.000  1000  1000 I ActivityManager: Process io.rasheed.svelteqa (pid 4321) has died\n";
 		const evidence = await captureEvidence(deps, target, 1, notFound());
-		expect(device.commands("logcat")[0]).toContain("grep -E 'io.rasheed.svelteqa|FATAL EXCEPTION|AndroidRuntime");
-		expect(device.commands("logcat")[0]).not.toContain("--pid");
-		expect(evidence.logcat).not.toBeNull();
-		expect(evidence.missing).toEqual([`logcat: ${pkg} had no process; the lines that name it or a crash`]);
+		const [app, crash] = device.commands("logcat");
+		expect(app).toContain("grep -E 'io.rasheed.svelteqa' | tail -n 400");
+		expect(app).not.toContain("--pid");
+		expect(app).not.toContain("FATAL");
+		expect(crash).toContain("logcat -b crash -d");
+		const log = await readFile(join(root, evidence.logcat ?? "missing"), "utf8");
+		expect(log).toContain("--- lines that name io.rasheed.svelteqa (the app had no process) ---");
+		expect(log).toContain("has died");
+		expect(log).toContain("--- crash buffer (logcat -b crash -d -t 100) ---\n(no lines)");
+		expect(evidence.missing).toEqual([`logcat: ${pkg} had no process; the lines that name it`]);
+	});
+
+	test("an empty answer for the windows falls back to the plain `dumpsys window`, and nothing at all is a missing part, not an empty file", async () => {
+		const { device, root, deps, target } = await setup();
+		device.windowsText = "";
+		device.windowText = "  mCurrentFocus=Window{9f8e u0 io.rasheed.svelteqa/io.rasheed.svelteqa.MainActivity}\n";
+		const evidence = await captureEvidence(deps, target, 1, notFound());
+		expect(device.commands("dumpsys window windows")).toHaveLength(1);
+		expect(device.commands("dumpsys window |")).toHaveLength(1);
+		expect(await readFile(join(root, evidence.windows ?? "missing"), "utf8")).toContain("mCurrentFocus=Window{9f8e");
+		expect(evidence.missing).toEqual([]);
+
+		device.windowText = "";
+		const none = await captureEvidence(deps, { ...target, stem: "none" }, 1, notFound());
+		expect(none.windows).toBeNull();
+		expect(none.missing).toEqual(["windows.txt: dumpsys window windows: empty; dumpsys window: empty"]);
+
+		// The first command failing is no different: the second answers.
+		device.windowText = "  mFocusedApp=ActivityRecord{1 u0 io.rasheed.svelteqa/.MainActivity t3}\n";
+		device.failing = ["dumpsys window windows"];
+		const second = await captureEvidence(deps, { ...target, stem: "second" }, 1, notFound());
+		expect(second.windows).not.toBeNull();
+		expect(second.missing).toEqual([]);
 	});
 
 	test("a command that fails loses its part and nothing else, and the capture never throws", async () => {
 		const { device, deps, target } = await setup();
-		device.failing = ["dumpsys window windows", "logcat "];
+		device.failing = ["dumpsys window", "logcat "];
 		deps.png = async () => {
 			throw new Error("screencap failed (exit 1)");
 		};
@@ -144,7 +209,8 @@ describe("the evidence of a failed try", () => {
 		expect(evidence).toMatchObject({ attempt: 2, screenshot: null, windows: null, logcat: null });
 		expect(evidence.uiDump).not.toBeNull();
 		expect(evidence.activity).not.toBeNull();
-		expect(evidence.missing.map((entry) => entry.split(":")[0])).toEqual(["screenshot", "windows.txt", "logcat.txt"]);
+		// Both window commands and both logcat commands failed: one entry each, none of them an empty file.
+		expect(evidence.missing.map((entry) => entry.split(":")[0])).toEqual(["screenshot", "windows.txt", "logcat.txt", "logcat.txt"]);
 		expect(evidence.missing[0]).toContain("screencap failed");
 	});
 
@@ -180,15 +246,103 @@ describe("the evidence of a failed try", () => {
 		expect(at(20, 40)).not.toEqual([...redactedColor]);
 	});
 
-	test("a signed-in screen with no tree to paint over from keeps no screenshot", async () => {
-		useAccount("qa-user@example.test");
+	test("a signed-in screen with no dump after the failure to paint over from keeps no screenshot", async () => {
+		useAccount(address);
 		const { deps, target } = await setup();
 		deps.dump = async () => {
 			throw new Error("no dump");
 		};
-		const evidence = await captureEvidence(deps, { ...target, signedIn: true }, 1, new Error("boom"));
+		const evidence = await captureEvidence(deps, { ...target, screen: devicesModal, direction: "ltr" }, 1, notFound());
 		expect(evidence.screenshot).toBeNull();
-		expect(evidence.missing.join("\n")).toContain("the screen is the QA account's");
+		expect(evidence.missing.join("\n")).toContain("the screen is the QA account's and no dump after the failure");
+	});
+
+	test("a signed-in screen under another window (a dialog, the launcher) keeps no screenshot: the app's frame with the address is still behind it", async () => {
+		useAccount(address);
+		const launcher = treeOf(hierarchy(box("[0,0][24,48]", { pkg: "com.google.android.apps.nexuslauncher", cls: "android.widget.FrameLayout" })));
+		const { root, deps, target } = await setup();
+		deps.dump = async () => launcher;
+		const signedIn = { ...target, screen: devicesModal, direction: "ltr" as const };
+		const evidence = await captureEvidence(deps, signedIn, 1, notFound(launcher));
+		expect(evidence.screenshot).toBeNull();
+		expect(evidence.missing[0]).toBe("screenshot: the top window is com.google.android.apps.nexuslauncher, not io.rasheed.svelteqa: the app's frame with the QA account's address on it may be behind it");
+		// The texts are kept (they are redacted), and so is the window that says what was on top.
+		expect(evidence.topWindow).toStartWith("com.google.android.apps.nexuslauncher");
+		expect(evidence.uiDump).not.toBeNull();
+		expect(await readdir(join(root, "runs", "parity-localhost_5555-x"))).not.toContain("screens-sheet-auto--light-rtl-normal.attempt1.png");
+
+		// The same window over a screen that shows nothing of the account's: the picture is kept.
+		const plain = await captureEvidence(deps, { ...target, stem: "plain" }, 1, notFound(launcher));
+		expect(plain.screenshot).not.toBeNull();
+		// A dump with no root is no window of the app either.
+		const empty = treeOf(hierarchy(""));
+		deps.dump = async () => empty;
+		const rootless = await captureEvidence(deps, { ...signedIn, stem: "rootless" }, 1, notFound(empty));
+		expect(rootless.screenshot).toBeNull();
+		expect(rootless.missing[0]).toContain("not the app's");
+	});
+
+	test("the address is painted from every dump: the compressed one the wait read leaves the covered screen out, the plain one lists it; the screen's masks are painted too", async () => {
+		useAccount(address);
+		// The compressed dump of a modal over the workspace list: the modal's own nodes only.
+		const compressed = treeOf(hierarchy(box("[0,0][24,48]", { cls: "android.widget.FrameLayout" }, box("[0,40][24,46]", { text: "Close" }))));
+		// The plain dump: the covered list with the address, and the devices' text the screen masks.
+		const plain = treeOf(hierarchy(box("[0,0][24,48]", { cls: "android.widget.FrameLayout" }, box("[4,8][12,16]", { text: address }) + box("[14,20][22,28]", { id: "device-agent", text: "Pixel 9 / Android 16" }) + box("[0,40][24,46]", { text: "Close" }))));
+		const asked: boolean[] = [];
+		const { device, root, deps, target } = await setup();
+		deps.dump = async (_serial, options) => {
+			asked.push(options?.important === true);
+			return options?.important ? compressed : plain;
+		};
+		const evidence = await captureEvidence(deps, { ...target, screen: devicesModal, direction: "ltr" }, 1, notFound(compressed));
+		// Both kinds of dump were taken after the failure, whatever the wait read.
+		expect(asked.sort()).toEqual([false, true]);
+		const painted = decodePng(await readFile(join(root, evidence.screenshot ?? "missing")));
+		const at = (x: number, y: number) => [...painted.data.subarray((y * painted.width + x) * 4, (y * painted.width + x) * 4 + 4)];
+		expect(at(5, 9)).toEqual([...redactedColor]);
+		expect(at(15, 21)).toEqual([...redactedColor]);
+		expect(at(2, 44)).not.toEqual([...redactedColor]);
+		expect(JSON.stringify(evidence)).not.toContain("example.test");
+		expect(device.log.join("\n")).not.toContain("example.test");
+	});
+
+	test("what a picture needs before it is kept, without the device", () => {
+		const plain = treeOf(hierarchy(box("[0,0][24,48]", { cls: "android.widget.FrameLayout" }, box("[4,8][12,16]", { text: address }))));
+		const compressed = treeOf(hierarchy(box("[0,0][24,48]", { cls: "android.widget.FrameLayout" })));
+		const target = { serial: "s", packageName: pkg, directory: "d", stem: "x", screen: devicesModal, direction: "ltr" as const };
+		// No account configured: nothing to paint, and nothing to refuse.
+		expect(pictureRedactions(target, { observed: null, plain: null, compressed: null })).toEqual({ rects: [] });
+		useAccount(address);
+		expect(pictureRedactions(target, { observed: null, plain: null, compressed: null })).toMatchObject({ refused: expect.stringContaining("no dump after the failure") });
+		// A screen over another (`hidden`) needs the dump a service walks as well.
+		expect(pictureRedactions(target, { observed: null, plain, compressed: null })).toMatchObject({ refused: expect.stringContaining("what is on top") });
+		expect(pictureRedactions(target, { observed: compressed, plain, compressed })).toEqual({ rects: [{ x: 4, y: 8, width: 8, height: 8 }] });
+		// A screen that is not the account's is painted when it can be and kept when it cannot.
+		expect(pictureRedactions({ ...target, screen: normalScreen }, { observed: null, plain: null, compressed: null })).toEqual({ rects: [] });
+	});
+
+	test("the redaction comes before the cap: an address cut through by the cap leaves no piece of it", async () => {
+		useAccount(address);
+		// The address straddles the cap of the dump: capped first, `qa-us` would be left and no redaction would know it.
+		const raw = `${"a".repeat(maxDumpBytes - 5)}${address}zzz`;
+		const { root, deps, target } = await setup();
+		const evidence = await captureEvidence(deps, target, 1, notFound({ ...loading, raw }));
+		const dump = await readFile(join(root, evidence.uiDump ?? "missing"), "utf8");
+		expect(dump).not.toContain("qa-us");
+		expect(dump).not.toContain("example");
+		expect(Buffer.byteLength(dump)).toBeLessThan(maxDumpBytes + 100);
+	});
+
+	test("a spent budget redacts what it names too", async () => {
+		useAccount(address);
+		const { deps, target } = await setup(new FakeDevice(), new EvidenceBudget({ sets: 0, bytes: 0 }));
+		deps.dump = async () => {
+			throw new Error(`no dump for ${address}`);
+		};
+		const evidence = await captureEvidence(deps, target, 1, new Error("boom"));
+		expect(evidence.missing[0]).toBe("dump: no dump for <qa-account>");
+		expect(evidence.missing[1]).toContain("evidence budget is spent");
+		expect(JSON.stringify(evidence)).not.toContain("example.test");
 	});
 
 	test("every part is capped: the dump, the text, and the logcat to its newest lines", async () => {
@@ -199,10 +353,11 @@ describe("the evidence of a failed try", () => {
 		const dump = await readFile(join(root, evidence.uiDump ?? "missing"), "utf8");
 		expect(Buffer.byteLength(dump)).toBeLessThan(maxDumpBytes + 100);
 		expect(dump).toContain("bytes left out]");
-		const log = (await readFile(join(root, evidence.logcat ?? "missing"), "utf8")).trimEnd().split("\n");
-		expect(log).toHaveLength(logcatLines);
-		expect(log[0]).toBe("line 600");
-		expect(log.at(-1)).toBe("line 999");
+		// The app's section: its header and the newest 400 lines; the crash buffer follows it.
+		const section = (await readFile(join(root, evidence.logcat ?? "missing"), "utf8")).split("\n\n")[0]?.split("\n") ?? [];
+		expect(section).toHaveLength(logcatLines + 1);
+		expect(section[1]).toBe("line 600");
+		expect(section.at(-1)).toBe("line 999");
 		expect(capText("héllo", 2)).toContain("bytes left out");
 		expect(lastLines("a\nb\nc\n", 2)).toBe("b\nc\n");
 	});
@@ -323,6 +478,50 @@ describe("a case that is tried again", () => {
 		});
 	});
 
+	test("with `retryable`, only a failed wait or dump gets the retry: any other failure is one run, no evidence, thrown as it is", async () => {
+		const device = new FakeDevice();
+		const { deps, target, directory } = await setup(device);
+		await withSession(device, async (session) => {
+			const run = async (failure: Error) => {
+				let runs = 0;
+				const outcome = await attemptCase({
+					session,
+					screen: normalScreen,
+					fontScale: 1,
+					label: "case",
+					retryable: isWaitFailure,
+					evidence: { deps, target },
+					log: () => undefined,
+					body: async () => {
+						if (++runs === 1) throw failure;
+						return "second";
+					},
+				}).then(
+					(attempted) => attempted,
+					(error: unknown) => error,
+				);
+				return { runs, outcome };
+			};
+
+			// A reference that is not there, or a bug of the harness, fails the same way again: one run, the error as it is.
+			const corrupt = await run(new Error("ENOENT: no such file or directory, open 'missing.png'"));
+			expect(corrupt.runs).toBe(1);
+			expect(corrupt.outcome instanceof AttemptsFailed).toBe(false);
+			expect((corrupt.outcome as Error).message).toContain("ENOENT");
+			expect(device.commands("dumpsys")).toEqual([]);
+			expect(await stat(directory).catch(() => null)).toBeNull();
+
+			// The screen not showing up is what a second launch may cure: a node that never came, a dump that held less than the screen, a dump that could not be read.
+			for (const failure of [notFound(), new ObservedError("the important-views dump lacks \"Done\" of the screen itself after 3 dumps"), new DumpError("uiautomator dump on localhost:5555 produced no tree after 5 attempts (no output)")]) {
+				const retried = await run(failure);
+				expect(retried.runs).toBe(2);
+				expect((retried.outcome as { tries: number }).tries).toBe(2);
+				expect((retried.outcome as { failures: unknown[] }).failures).toHaveLength(1);
+			}
+			expect(isWaitFailure(new Error("ENOENT"))).toBe(false);
+		});
+	});
+
 	test("a device that is gone, or in the wrong state, ends the run as it always did: no wrapper, no evidence for the one that ended it", async () => {
 		const device = new FakeDevice();
 		const { deps, target } = await setup(device);
@@ -375,27 +574,6 @@ describe("what the records carry", () => {
 });
 
 describe("a wait for a node keeps what it saw", () => {
-	/** An `adb` on the PATH that answers `uiautomator dump` with the file in FAKE_SCREEN. */
-	async function withScreen<T>(xml: string, body: () => Promise<T>): Promise<T> {
-		const directory = await temporary("native-qa-wait-");
-		const bin = join(directory, "bin");
-		mkdirSync(bin, { recursive: true });
-		const screen = join(directory, "screen.xml");
-		writeFileSync(screen, xml);
-		writeFileSync(join(bin, "adb"), `#!/bin/bash\ncase "$*" in\n  *uiautomator*) cat "$FAKE_SCREEN";;\n  *) ;;\nesac\n`);
-		chmodSync(join(bin, "adb"), 0o755);
-		const saved = { PATH: process.env.PATH, FAKE_SCREEN: process.env.FAKE_SCREEN };
-		process.env.PATH = `${bin}:${process.env.PATH}`;
-		process.env.FAKE_SCREEN = screen;
-		try {
-			return await body();
-		} finally {
-			process.env.PATH = saved.PATH;
-			if (saved.FAKE_SCREEN === undefined) delete process.env.FAKE_SCREEN;
-			else process.env.FAKE_SCREEN = saved.FAKE_SCREEN;
-		}
-	}
-
 	test("a node that never comes: the error carries the last raw dump, the dumps it took and how long it ran", async () => {
 		await withScreen(loadingXml, async () => {
 			const failure = await waitForNode("localhost:5555", { label: "Sheet that fits its content" }, "rtl", 50).catch((error: unknown) => error);
@@ -442,33 +620,33 @@ describe("a wait for a node keeps what it saw", () => {
 	});
 });
 
-describe("a parity case that never gets its screen", () => {
-	test("is tried twice and recorded as an error whose attempts are 2, with the evidence of both tries and the first error", async () => {
+describe("a parity case", () => {
+	/** A parity context on a fake device, with a reference in the manifest whose image is not on disk. */
+	async function parityContext() {
 		const device = new FakeDevice();
 		const { deps, directory, root } = await setup(device);
 		const dir = await temporary("native-qa-parity-case-");
 		const session = await DeviceSession.open(device.serial, device.packageName, { run: device.run, stateDir: dir, warn: () => undefined, notes: newSessionNotes() });
-		const screen = cases.find((entry) => entry.id === "login") as ScreenCase;
 		const variant = variants[0];
 		if (!variant) throw new Error("no variants");
-		const name = referenceName(screen, variant);
 		const statusBar = { x: 0, y: 0, width: 24, height: 4 };
-		// A reference whose image is not there: the launch is fine and reading the reference throws, on every try.
 		const manifest = emptyManifest("fake-kind");
-		manifest.references[name] = {
-			file: "missing.png",
-			sha256: "0".repeat(64),
-			width: 24,
-			height: 48,
-			masks: [{ name: "status bar", ...statusBar }],
-			screen: screen.id,
-			route: screen.route,
-			state: screen.state,
-			theme: variant.theme,
-			direction: variant.direction,
-			fontScale: variant.fontScale,
-			updatedAt: "2026-11-04T00:00:00.000Z",
-			source: { commit: "abc1234", dirty: false },
+		const reference = (screen: ScreenCase) => {
+			manifest.references[referenceName(screen, variant)] = {
+				file: "missing.png",
+				sha256: "0".repeat(64),
+				width: 24,
+				height: 48,
+				masks: [{ name: "status bar", ...statusBar }],
+				screen: screen.id,
+				route: screen.route,
+				state: screen.state,
+				theme: variant.theme,
+				direction: variant.direction,
+				fontScale: variant.fontScale,
+				updatedAt: "2026-11-04T00:00:00.000Z",
+				source: { commit: "abc1234", dirty: false },
+			};
 		};
 		const context: Context = {
 			session,
@@ -483,25 +661,58 @@ describe("a parity case that never gets its screen", () => {
 			evidence: deps,
 			source: { commit: "abc1234", dirty: false },
 		};
-		const log = console.log;
-		console.log = () => undefined;
-		let record;
+		const quietly = async <T>(body: () => Promise<T>): Promise<T> => {
+			const log = console.log;
+			console.log = () => undefined;
+			try {
+				return await body();
+			} finally {
+				console.log = log;
+			}
+		};
+		return { device, root, directory, session, variant, context, reference, quietly };
+	}
+
+	test("with a reference that cannot be read is one run and an error: attempts 1, no second launch, no evidence set", async () => {
+		const { device, directory, session, variant, context, reference, quietly } = await parityContext();
+		const screen = cases.find((entry) => entry.id === "login") as ScreenCase;
+		reference(screen);
 		try {
-			record = await runCase(context, screen, variant);
+			const record = await quietly(() => runCase(context, screen, variant));
+			expect(record.verdict).toBe("error");
+			expect(record.attempts).toBe(1);
+			expect(record.tries).toBe(1);
+			expect(record.failures).toBeUndefined();
+			expect(record.detail).toContain("ENOENT");
+			expect(device.commands("am force-stop")).toHaveLength(1);
+			expect(await stat(directory).catch(() => null)).toBeNull();
 		} finally {
-			console.log = log;
 			await session.close();
 		}
-		expect(record.verdict).toBe("error");
-		expect(record.attempts).toBe(2);
-		expect(record.tries).toBe(2);
-		expect(record.failures?.map((entry) => entry.attempt)).toEqual([1, 2]);
-		expect(record.failures?.[0]?.error).toContain("ENOENT");
-		expect(record.detail).toContain("ENOENT");
-		expect(record.detail).toContain("(try 2");
-		expect(record.differingPixels).toBeNull();
-		for (const entry of record.failures ?? []) expect((await stat(join(root, entry.screenshot ?? "missing"))).size > 0).toBe(true);
-		// Both launches happened: the case was run twice, with the evidence of the first taken in between.
-		expect(device.commands("am force-stop").length).toBe(2);
+	}, 30_000);
+
+	test("whose screen never shows up is tried twice and recorded as an error whose attempts are 2, with the evidence of both tries and the first error", async () => {
+		const { device, root, session, variant, context, reference, quietly } = await parityContext();
+		// A step that waits for a node that is not on the startup screen the fake adb shows, for 50 ms.
+		const login = cases.find((entry) => entry.id === "login") as ScreenCase;
+		const screen: ScreenCase = { ...login, id: "login-never", steps: [{ wait: { label: "never there" }, timeoutMs: 50 }] };
+		reference(screen);
+		try {
+			const record = await withScreen(loadingXml, () => quietly(() => runCase(context, screen, variant)));
+			expect(record.verdict).toBe("error");
+			expect(record.attempts).toBe(2);
+			expect(record.tries).toBe(2);
+			expect(record.failures?.map((entry) => entry.attempt)).toEqual([1, 2]);
+			expect(record.failures?.[0]?.error).toBe('no node "never there" on screen after 50 ms');
+			expect(record.failures?.[0]?.topWindow).toContain('"Rasheed", "Loading"');
+			expect(record.failures?.[0]?.waited?.dumps).toBeGreaterThanOrEqual(1);
+			expect(record.detail).toStartWith('no node "never there" on screen after 50 ms (try 2');
+			expect(record.differingPixels).toBeNull();
+			for (const entry of record.failures ?? []) expect((await stat(join(root, entry.screenshot ?? "missing"))).size > 0).toBe(true);
+			// Both launches happened, with the evidence of the first taken in between.
+			expect(device.commands("am force-stop")).toHaveLength(2);
+		} finally {
+			await session.close();
+		}
 	}, 30_000);
 });

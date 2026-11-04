@@ -1028,6 +1028,18 @@
       "informational": "D12: the signed-in screens are the Rasheed app's account screens, not the library; they are shown and never block"
     },
     {
+      "id": "parity.casesRetried",
+      "title": "Screenshot parity: cases the emulator ran more than once (a failed wait or dump, retried; informational)",
+      "unit": "cases",
+      "metric": "parity.casesRetried",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      },
+      "informational": "A retry that passes is a pass, and the first try's evidence is in the run file (failures); the count is shown so a retry is never silent and never blocks"
+    },
+    {
       "id": "a11y.unreachable",
       "title": "Accessibility: interactive elements not reachable",
       "unit": "elements",
@@ -1147,6 +1159,18 @@
         }
       },
       "informational": "D12: the signed-in screens are the Rasheed app's account screens, not the library; they are shown and never block"
+    },
+    {
+      "id": "a11y.screensRetried",
+      "title": "Accessibility: screens the emulator ran more than once (a failed launch, retried; informational)",
+      "unit": "screens",
+      "metric": "a11y.screensRetried",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      },
+      "informational": "A retry that passes is a measurement, and the first try's evidence is in the run file (failures); the count is shown so a retry is never silent and never blocks"
     },
     {
       "id": "resilience.failures",

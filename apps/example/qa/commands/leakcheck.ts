@@ -1,5 +1,5 @@
 import type { Dirent } from "node:fs";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readdir, readFile, rm, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { execOk } from "../lib/exec.ts";
 import { parseFlags } from "../lib/flags.ts";
@@ -10,7 +10,8 @@ import { qaDir, repoRoot, runsDir } from "../lib/paths.ts";
  * Looks for the QA account's address (`RASHEED_QA_EMAIL`) where it must never be: in what is about to be committed (the lines the staged diff
  * adds, and with `--all` the changes and the files git does not track yet), in the run files and report the suites wrote, and in the
  * references' manifests. It prints file names and counts, never the address or the line it was found on, and exits 1 on a hit.
- * Run it before every commit that touches the harness, its references or its docs. It reads text: a reference image is kept clean by
+ * `--purge` also deletes the run files and evidence files (qa/runs only, never the report, a manifest or a tracked file) that hold it, for the CI lane to run before its
+ * artifact upload. Run it before every commit that touches the harness, its references or its docs. It reads text: a reference image is kept clean by
  * the masks the suites paint over (`paintOver`), which no text search can check.
  */
 
@@ -43,6 +44,28 @@ async function fileHits(paths: string[]): Promise<string[]> {
 	return hits;
 }
 
+/** The files of `qa/runs` that hold text: the run files and logs, and the failed tries' evidence (the raw dump is XML). */
+export const runTextFile = (name: string): boolean => /\.(json|log|txt|xml)$/.test(name);
+
+/**
+ * The text files under a run directory that contain the address, as paths relative to `relativeTo`. With `purge` they are deleted: a run directory is uploaded as a
+ * CI artifact for days, and a file that holds the address must not leave the machine; the hit is still reported.
+ */
+export async function runHits(directory: string, relativeTo: string, purge = false): Promise<string[]> {
+	const hits: string[] = [];
+	for (const path of await files(directory, runTextFile)) {
+		try {
+			if ((await stat(path)).size > 50_000_000) continue;
+			if (!containsAccount((await readFile(path)).toString("latin1"))) continue;
+			hits.push(relative(relativeTo, path));
+			if (purge) await rm(path, { force: true });
+		} catch {
+			// a file that vanished between the listing and the read has nothing to leak
+		}
+	}
+	return hits;
+}
+
 /**
  * The files of a unified diff whose added lines contain the address. A removed line is not a hit: it was committed once, and a check that refuses the
  * commit taking it out would leave the leak where it is.
@@ -58,7 +81,7 @@ export function diffHits(diff: string): string[] {
 }
 
 export async function leakcheck(argv: string[]): Promise<void> {
-	const { values } = parseFlags(argv, { staged: { type: "boolean" }, all: { type: "boolean" } });
+	const { values } = parseFlags(argv, { staged: { type: "boolean" }, all: { type: "boolean" }, purge: { type: "boolean" } });
 	requireAccount();
 	const hits = new Set<string>();
 	const scanned: string[] = [];
@@ -77,7 +100,8 @@ export async function leakcheck(argv: string[]): Promise<void> {
 		for (const hit of await fileHits(tracked.map((path) => join(repoRoot, path)))) hits.add(`tracked: ${hit}`);
 	}
 	scanned.push("the run files", "the report", "the manifests of the references");
-	for (const hit of await fileHits([...(await files(runsDir, (name) => /\.(json|log|txt)$/.test(name))), join(qaDir, "report.json")])) hits.add(`run: ${hit}`);
+	for (const hit of await runHits(runsDir, repoRoot, values.purge === true)) hits.add(`run${values.purge === true ? " (deleted)" : ""}: ${hit}`);
+	for (const hit of await fileHits([join(qaDir, "report.json")])) hits.add(`run: ${hit}`);
 	for (const hit of await fileHits(await files(join(qaDir, "screenshots"), (name) => name === "manifest.json"))) hits.add(`manifest: ${hit}`);
 
 	if (hits.size > 0) {

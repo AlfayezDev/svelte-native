@@ -6,7 +6,8 @@
 #   build      the release APKs for x86_64 only: the QA app, the product (`build --variant production`, for the product boot check; its
 #              own project directory, android-production/, and the Gradle caches of the runner, GRADLE_USER_HOME, make it incremental),
 #              and, when asked, the smoke app (QA_SMOKE=1) and the QA app for the EAS channel (QA_UPDATES=1)
-#   emulator   a fresh emulator, then the stages below, then report and gates. Run it under the emulator lock:
+#   emulator   a fresh emulator, then the stages below, then report and gates, then (with the QA account) leakcheck --purge over qa/runs, which the workflow
+#              uploads. Run it under the emulator lock:
 #                node qa/native-qa.ts hold --device "$QA_DEVICE" -- bash qa/ci/lane.sh emulator
 #   crashes    the 1,000 cold starts and 100 suites in chunks, resumed after an outage; each chunk holds the lock on its own so
 #              the host's watchdog can restart the emulator between them
@@ -203,6 +204,13 @@ emulator() {
   stage gates "${QA[@]}" gates --platform android --runs "$runs_list" "${except[@]}" --markdown "$OUT/gates.md"
   if [ "$MODE" = full ] && [ "${QA_SMOKE:-0}" = 1 ] && want smoke; then
     stage gates-smoke "${QA[@]}" gates --smoke --platform android --runs smoke --markdown "$OUT/gates-smoke.md"
+  fi
+  # qa/runs is uploaded as an artifact for 14 days, and the run files and the evidence of failed tries (the raw dumps, the logcat, the window lists) are text
+  # taken off a screen that can show the QA account's address. The harness redacts them as it writes; this reads them again with the address in hand and, with
+  # --purge, deletes any file that still holds it, so the upload step has nothing to leak. It needs the account to know what to look for, so it runs where the
+  # signed-in phase could (a leak fails the lane). It reads text only: the screenshots are kept clean by the rectangles painted over them, which it cannot check.
+  if qa_account; then
+    stage leakcheck "${QA[@]}" leakcheck --staged --purge
   fi
   [ "$FAILED" = 0 ]
 }

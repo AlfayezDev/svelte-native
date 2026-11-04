@@ -10,7 +10,7 @@
 import { dismissDatePicker, openDatePicker, captureRef, releaseCapture, type CaptureOptions } from "@rasheed/svelte-native/foreign";
 import type { Host, LibraryHandles, LibraryKind } from "./LibrarySet.svelte";
 import { libraryLab } from "./foreign.svelte.ts";
-import { argb, clear, near, numberIn, show, solid } from "./foreign-pixels.ts";
+import { argb, clear, near, numberIn, show, solid, untilTaken } from "./foreign-pixels.ts";
 import { pins, resolvePin, type Pinned } from "./foreign-pins.ts";
 
 export type Where = "inline" | "row" | "sheet";
@@ -138,23 +138,23 @@ const pixel = (look: Look, index: number): number => look.colors[index] ?? 0;
  */
 async function colours(c: Ctx, name: string, points: readonly (readonly [number, number])[], expected: readonly string[], tolerance = 40, options?: Parameters<Ctx["look"]>[1], settle?: { ms: number; explain: () => string }): Promise<Look | null> {
   if (!c.canLook) { c.skip(name, "no pixel reader on this platform yet"); return null; }
+  const missesOf = (look: Look): string[] => expected.flatMap((colour, index) => (near(pixel(look, index), colour, tolerance) ? [] : [`${points[index]?.join(",")} is ${at(look, index)}, wanted ${colour}`]));
   // With [settle] the capture is taken again every 400 ms until it shows the colours or the time is up (a slower phone draws a new image later than onLoad says it has it): what the last one shows is the check.
-  const deadline = Date.now() + (settle?.ms ?? 0);
-  for (;;) {
-    let look: Look | null;
-    try {
-      look = await c.look(points, options);
-    } catch (error) {
-      c.check(name, false, `the capture failed: ${String(error)}`);
-      return null;
-    }
-    if (!look) { c.check(name, false, "the capture gave no pixels"); return null; }
-    const seen = look;
-    const missed = expected.flatMap((colour, index) => (near(pixel(seen, index), colour, tolerance) ? [] : [`${points[index]?.join(",")} is ${at(seen, index)}, wanted ${colour}`]));
-    if (missed.length > 0 && Date.now() < deadline) { await c.pause(400); continue; }
-    c.check(name, missed.length === 0, missed.length === 0 ? expected.map((_, index) => at(seen, index)).join(" ") : `${missed.join("; ")}${settle ? ` | ${settle.explain()}` : ""}`);
-    return seen;
-  }
+  let failure = "the capture gave no pixels";
+  const { taken: seen, calls, waited } = await untilTaken(
+    async () => {
+      try { return await c.look(points, options); } catch (error) { failure = `the capture failed: ${String(error)}`; return null; }
+    },
+    (look) => missesOf(look).length === 0,
+    settle?.ms ?? 0,
+    (milliseconds) => c.pause(milliseconds),
+  );
+  if (!seen) { c.check(name, false, failure); return null; }
+  const missed = missesOf(seen);
+  // A late paint says how late (calls and time), so the lab's logs measure the distribution a fixed wait only guessed at.
+  const late = settle && calls > 1 ? ` | on capture ${calls}, ${waited} ms in` : "";
+  c.check(name, missed.length === 0, missed.length === 0 ? `${expected.map((_, index) => at(seen, index)).join(" ")}${late}` : `${missed.join("; ")}${late}${settle ? ` | ${settle.explain()}` : ""}`);
+  return seen;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------------
@@ -543,8 +543,14 @@ async function capture(c: Ctx): Promise<void> {
 async function rive(c: Ctx): Promise<void> {
   await mounts(c, pins.rive);
   c.check("events: onPlay arrives for the file's animation (the file needs the network)", await c.until(() => c.events("rive-play") >= 1, 20000), foreignSummary(c, ["rive-play", "rive-pause", "rive-stop", "rive-error"]));
-  await c.pause(800);
-  const middle = await colours(c, "capture: the animation is in the image (its middle is painted, not a hole)", [[0.5, 0.5], [0.45, 0.4], [0.55, 0.6]], ["#d62a5c", "#d62a5c", "#d62a5c"], 255, undefined);
+  // `onPlay` is raised when the file is set up and the animation starts, not when a frame has reached the TextureView and the window has latched it (a row has its neighbours mounted too, on
+  // a software-GL emulator: one capture 800 ms after `onPlay` was a hole in one run of 24). The capture is asked again every 400 ms until the middle is painted; a view that never
+  // draws still fails, and the message says what the view is and what Rive raised.
+  const explain = () => {
+    const native = c.inspect(c.host());
+    return `${native ? `${native.surfaces.join(", ") || "no texture"}, attached=${native.attached} shown=${native.shown}` : "no native view"}; ${foreignSummary(c, ["rive-play", "rive-error"])}`;
+  };
+  const middle = await colours(c, "capture: the animation is in the image (its middle is painted, not a hole)", [[0.5, 0.5], [0.45, 0.4], [0.55, 0.6]], ["#d62a5c", "#d62a5c", "#d62a5c"], 255, undefined, { ms: c.where === "row" ? 10000 : 5000, explain });
   // The artboard's own background is pink; the truck drives over the middle of it, so one of three points away from each other is enough.
   if (middle) c.check("capture: the animation's background is there (opaque, pink at one of three points)", middle.colors.every(solid) && middle.colors.some((value) => argb(value).r > 200 && argb(value).g < 110), middle.colors.map(show).join(" "));
   // prop update: `fit` fill paints the whole box, contain leaves the sides of a wide box bare

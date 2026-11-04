@@ -6,7 +6,7 @@ import { checkGatesFile, evaluate, type GatesFile } from "../lib/gates.ts";
 import { platformDir } from "../lib/paths.ts";
 import { findButton, parsePress } from "../lib/foreign-press.ts";
 import { parseForeignChecks } from "../parse/foreign.ts";
-import { argb, clear, distance, hex, near, numberIn, show, solid } from "../../src/lib/native/dev/foreign-pixels.ts";
+import { argb, clear, distance, hex, near, numberIn, show, solid, untilTaken } from "../../src/lib/native/dev/foreign-pixels.ts";
 import type { ForeignCheck, ForeignFile, ForeignLaunch } from "../lib/types.ts";
 
 const gates = JSON.parse(readFileSync(join(platformDir, "qa/gates.json"), "utf8")) as GatesFile;
@@ -278,6 +278,45 @@ describe("the colour helpers the lab's pixel checks use", () => {
 		expect(numberIn("count 23")).toBe(23);
 		expect(numberIn("hello")).toBeNull();
 		expect(numberIn(undefined)).toBeNull();
+	});
+});
+
+describe("untilTaken: the capture that is asked again until a late paint has arrived", () => {
+	/** A clock the pauses move, so that the loop runs in no time. */
+	const clock = () => {
+		let time = 0;
+		return { now: () => time, pause: async (milliseconds: number) => { time += milliseconds; } };
+	};
+	const given = (...results: (string | null)[]) => {
+		let index = 0;
+		return async () => results[Math.min(index++, results.length - 1)] ?? null;
+	};
+
+	test("a result that is wanted at once is one call and no wait", async () => {
+		const { now, pause } = clock();
+		expect(await untilTaken(given("painted"), (taken) => taken === "painted", 5000, pause, 400, now)).toEqual({ taken: "painted", calls: 1, waited: 0 });
+	});
+
+	test("an animation that paints after onPlay is waited for: holes, then the paint", async () => {
+		const { now, pause } = clock();
+		const outcome = await untilTaken(given("hole", "hole", "hole", "painted"), (taken) => taken === "painted", 5000, pause, 400, now);
+		expect(outcome).toEqual({ taken: "painted", calls: 4, waited: 1200 });
+	});
+
+	test("a view that never paints ends at the deadline with its last capture, which the check names", async () => {
+		const { now, pause } = clock();
+		const outcome = await untilTaken(given("hole"), (taken) => taken === "painted", 2000, pause, 400, now);
+		expect(outcome).toEqual({ taken: "hole", calls: 6, waited: 2000 });
+	});
+
+	test("a capture that failed or gave nothing ends it at once, whatever time is left", async () => {
+		const { now, pause } = clock();
+		expect(await untilTaken(given("hole", null, "painted"), (taken) => taken === "painted", 5000, pause, 400, now)).toEqual({ taken: null, calls: 2, waited: 400 });
+	});
+
+	test("with no time to settle it is one capture, wanted or not (every check that does not wait)", async () => {
+		const { now, pause } = clock();
+		expect(await untilTaken(given("hole", "painted"), (taken) => taken === "painted", 0, pause, 400, now)).toEqual({ taken: "hole", calls: 1, waited: 0 });
 	});
 });
 

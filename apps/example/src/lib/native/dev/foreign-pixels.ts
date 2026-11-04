@@ -51,3 +51,26 @@ export function numberIn(text: string | null | undefined): number | null {
   const match = /-?\d+(?:\.\d+)?/.exec(text ?? "");
   return match ? Number(match[0]) : null;
 }
+
+/**
+ * Takes [take] again, [every] ms apart, until [wanted] holds for what it gave or [ms] have passed since the first call, and answers the last result with how many calls it took and how long
+ * it waited. A library that says it has loaded or is playing before its first frame has reached a capture (Rive's `onPlay` comes when the file is set up, not when a frame is drawn) is
+ * waited for; a view that never draws still ends with its last result, for the check to name. A [take] that gives null (a capture that failed or gave no pixels) ends it at once: that is
+ * not lateness. With no time ([ms] 0) it is one call.
+ */
+export async function untilTaken<T>(
+  take: () => Promise<T | null>,
+  wanted: (taken: T) => boolean,
+  ms: number,
+  pause: (milliseconds: number) => Promise<void>,
+  every = 400,
+  now: () => number = Date.now,
+): Promise<{ taken: T | null; calls: number; waited: number }> {
+  const start = now();
+  for (let calls = 1; ; calls++) {
+    const taken = await take();
+    const waited = now() - start;
+    if (taken === null || wanted(taken) || waited >= ms) return { taken, calls, waited };
+    await pause(every);
+  }
+}

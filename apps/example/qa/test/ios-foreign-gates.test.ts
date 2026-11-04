@@ -18,18 +18,20 @@ const gateOf = (library: string, field: string): Gate | undefined => gates.gates
  * failed, the skips a finger would have avoided and the checks that exist on Android only. Failures there were the pins of four views (fixed since) and events, captures and layouts that other
  * work owns; the counts of checks are the structure the bars pin, and do not depend on which of them pass. One change since: the video's "frame is in the
  * image" capture check is Android-only on iOS (4 Nov 2026; an AVPlayerLayer's frames are not in a snapshot), so video's three places moved from checks to Android-only. The PDF's "onLoadComplete
- * arrives although the JS thread was busy" check is Android-only too (4 Nov 2026; the event coalescing it guards is the Android view's), so pdf has three more Android-only entries.
+ * arrives although the JS thread was busy" check is Android-only too (4 Nov 2026; the event coalescing it guards is the Android view's), so pdf has three more Android-only entries. So have
+ * video, Lottie and Rive, one check each per place (the busy-JavaScript checks of their event patches: "pause() then resume() raise both onPlaybackStateChanged", "two cancelled animations
+ * raise both onAnimationFinish", "two animations played in turn raise both onPlay"; iOS dispatches their events with `dispatchEvent`, which React Native's queue never replaces).
  */
 const first: Record<string, { checks: number; failed: number; skipped: number; androidOnly: number }> = {
 	image: { checks: 33, failed: 0, skipped: 0, androidOnly: 3 },
 	blur: { checks: 18, failed: 3, skipped: 0, androidOnly: 3 },
 	gradient: { checks: 18, failed: 0, skipped: 0, androidOnly: 3 },
-	video: { checks: 51, failed: 18, skipped: 0, androidOnly: 12 },
+	video: { checks: 51, failed: 18, skipped: 0, androidOnly: 15 },
 	datetime: { checks: 30, failed: 0, skipped: 0, androidOnly: 24 },
-	lottie: { checks: 30, failed: 6, skipped: 0, androidOnly: 3 },
+	lottie: { checks: 30, failed: 6, skipped: 0, androidOnly: 6 },
 	pdf: { checks: 36, failed: 3, skipped: 0, androidOnly: 6 },
 	capture: { checks: 48, failed: 9, skipped: 0, androidOnly: 3 },
-	rive: { checks: 30, failed: 9, skipped: 0, androidOnly: 3 },
+	rive: { checks: 30, failed: 9, skipped: 0, androidOnly: 6 },
 	conic: { checks: 18, failed: 6, skipped: 0, androidOnly: 3 },
 	shadow: { checks: 18, failed: 3, skipped: 3, androidOnly: 15 },
 	text: { checks: 30, failed: 0, skipped: 0, androidOnly: 3 },
@@ -90,7 +92,8 @@ describe("the iPhone's foreign gates", () => {
 			expect([library, gateOf(library, "skipped")?.bar.ios]).toEqual([library, { max: made?.skipped }]);
 			expect([library, gateOf(library, "failedChecks")?.bar.ios]).toEqual([library, { max: 0 }]);
 		}
-		expect(gateOf("video", "checks")?.bar.android?.min).toBe(63);
+		// Android makes one more check per place for each of the four patched libraries' event guards (video, Lottie and Rive new, pdf before).
+		expect([gateOf("video", "checks"), gateOf("lottie", "checks"), gateOf("rive", "checks"), gateOf("pdf", "checks")].map((gate) => gate?.bar.android?.min)).toEqual([66, 36, 36, 42]);
 		expect(foreignGates.find((gate) => gate.id === "foreign.launches")?.bar.ios).toEqual({ min: 2 });
 	});
 
@@ -186,7 +189,7 @@ describe("the gates file refuses a foreign table that would hide a hole", () => 
 		delete unexplained.foreign?.ios?.video;
 		expect(() => checkGatesFile(unexplained)).toThrow(/counts of video .* not Android's and foreign\.ios gives no reason/);
 		const stale = copy();
-		barOf(stale, "video", "checks").ios = { min: 63 };
+		barOf(stale, "video", "checks").ios = { min: 66 };
 		expect(() => checkGatesFile(stale)).toThrow(/reason for video, whose counts on the iPhone are Android's/);
 		const blank = copy();
 		if (blank.foreign?.ios) blank.foreign.ios.video = "  ";

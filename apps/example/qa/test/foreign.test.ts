@@ -6,7 +6,7 @@ import { checkGatesFile, evaluate, type GatesFile } from "../lib/gates.ts";
 import { platformDir } from "../lib/paths.ts";
 import { findButton, parsePress } from "../lib/foreign-press.ts";
 import { parseForeignChecks } from "../parse/foreign.ts";
-import { argb, clear, distance, hex, near, numberIn, show, solid, untilTaken } from "../../src/lib/native/dev/foreign-pixels.ts";
+import { argb, arrivedInOrder, clear, distance, hex, near, numberIn, riveBackdrop, show, solid, untilTaken } from "../../src/lib/native/dev/foreign-pixels.ts";
 import type { ForeignCheck, ForeignFile, ForeignLaunch } from "../lib/types.ts";
 
 const gates = JSON.parse(readFileSync(join(platformDir, "qa/gates.json"), "utf8")) as GatesFile;
@@ -317,6 +317,72 @@ describe("untilTaken: the capture that is asked again until a late paint has arr
 	test("with no time to settle it is one capture, wanted or not (every check that does not wait)", async () => {
 		const { now, pause } = clock();
 		expect(await untilTaken(given("hole", "painted"), (taken) => taken === "painted", 0, pause, 400, now)).toEqual({ taken: "hole", calls: 1, waited: 0 });
+	});
+});
+
+describe("riveBackdrop: what the settle loop of the Rive capture waits for is what the next check asserts", () => {
+	const truck = 0xff223344;
+	const pink = 0xffd62a5c;
+	const hole = 0x00000000;
+
+	test("opaque everywhere with the artboard's pink at one point is a painted capture", () => {
+		expect(riveBackdrop([truck, pink, truck])).toBe(true);
+		expect(riveBackdrop([pink, pink, pink])).toBe(true);
+	});
+
+	test("opaque everywhere but no pink anywhere is not painted yet (the loop must keep asking; the middle being opaque was not enough)", () => {
+		expect(riveBackdrop([truck, truck, truck])).toBe(false);
+	});
+
+	test("a hole at any point, pink or not, and a capture with no points are not painted", () => {
+		expect(riveBackdrop([pink, hole, pink])).toBe(false);
+		expect(riveBackdrop([hole, hole, hole])).toBe(false);
+		expect(riveBackdrop([])).toBe(false);
+	});
+
+	test("the loop and the check agree: a capture that ends the loop passes the check, and the deadline keeps the last capture", async () => {
+		const looks = [[truck, truck, truck], [hole, pink, pink], [truck, pink, truck]];
+		let index = 0;
+		let time = 0;
+		const outcome = await untilTaken(async () => looks[Math.min(index++, looks.length - 1)] ?? null, riveBackdrop, 5000, async (milliseconds) => { time += milliseconds; }, 400, () => time);
+		expect(outcome).toEqual({ taken: [truck, pink, truck], calls: 3, waited: 800 });
+		expect(riveBackdrop(outcome.taken ?? [])).toBe(true);
+		time = 0;
+		const never = await untilTaken(async () => [truck, truck, truck], riveBackdrop, 5000, async (milliseconds) => { time += milliseconds; }, 400, () => time);
+		expect(never).toEqual({ taken: [truck, truck, truck], calls: 14, waited: 5200 });
+	});
+});
+
+describe("arrivedInOrder: both messages of one event name reached JavaScript, in the order they were raised", () => {
+	const history = [
+		{ event: "video-progress" },
+		{ event: "video-state", detail: false },
+		{ event: "video-progress" },
+		{ event: "video-state", detail: true },
+	];
+
+	test("two messages of one name with other events between them arrive in order", () => {
+		expect(arrivedInOrder(history, 0, [["video-state", false], ["video-state", true]])).toBe(true);
+	});
+
+	test("one of the two is not both: the coalesced queue delivered the last message alone", () => {
+		expect(arrivedInOrder([{ event: "video-state", detail: true }], 0, [["video-state", false], ["video-state", true]])).toBe(false);
+		expect(arrivedInOrder([{ event: "lottie-finish", detail: true }], 0, [["lottie-finish", true], ["lottie-finish", true]])).toBe(false);
+	});
+
+	test("the same detail twice needs two events, not one counted twice", () => {
+		const twice = [{ event: "lottie-finish", detail: true }, { event: "lottie-finish", detail: true }];
+		expect(arrivedInOrder(twice, 0, [["lottie-finish", true], ["lottie-finish", true]])).toBe(true);
+	});
+
+	test("the wrong order, and events from before the check began, do not count", () => {
+		expect(arrivedInOrder(history, 0, [["video-state", true], ["video-state", false]])).toBe(false);
+		expect(arrivedInOrder(history, 2, [["video-state", false], ["video-state", true]])).toBe(false);
+		expect(arrivedInOrder(history, 1, [["video-state", false], ["video-state", true]])).toBe(true);
+	});
+
+	test("nothing wanted is trivially there", () => {
+		expect(arrivedInOrder([], 0, [])).toBe(true);
 	});
 });
 

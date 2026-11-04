@@ -8,9 +8,10 @@
  * `foreign-libraries-lab.ts` mounts the section, builds the context and calls the library's function here.
  */
 import { dismissDatePicker, openDatePicker, captureRef, releaseCapture, type CaptureOptions } from "@rasheed/svelte-native/foreign";
+import { tick } from "svelte";
 import type { Host, LibraryHandles, LibraryKind } from "./LibrarySet.svelte";
 import { libraryLab } from "./foreign.svelte.ts";
-import { argb, clear, near, numberIn, show, solid, untilTaken } from "./foreign-pixels.ts";
+import { argb, arrivedInOrder, clear, near, numberIn, riveBackdrop, show, solid, untilTaken } from "./foreign-pixels.ts";
 import { pins, resolvePin, type Pinned } from "./foreign-pins.ts";
 
 export type Where = "inline" | "row" | "sheet";
@@ -71,6 +72,8 @@ export type Ctx = {
   pause(milliseconds: number): Promise<void>;
   /** How many times the section raised [event] (with [detail], when given) since the place was opened. */
   events(event: string, detail?: unknown): number;
+  /** Every event the section raised since the place was opened, in the order it reached JavaScript. */
+  history(): readonly { event: string; detail?: unknown }[];
   inspect(host?: Host): Native | null;
   rect(host?: Host): Promise<Rect | null>;
   /** The point ([fx], [fy], fractions of [host]'s own box) as a point of the section's box, for `look`; null while a layout is missing. */
@@ -94,6 +97,30 @@ export type Ctx = {
 /** A command's promise, or "timeout" after [milliseconds]: a native module that cannot find its view never answers, and a check must say so instead of waiting for it. */
 const within = <T>(promise: Promise<T> | undefined, milliseconds = 5000): Promise<T | "timeout" | undefined> =>
   promise === undefined ? Promise.resolve(undefined) : Promise.race([promise, new Promise<"timeout">((resolve) => setTimeout(resolve, milliseconds, "timeout"))]);
+
+/**
+ * Holds the JavaScript thread for [milliseconds] without yielding to anything: no timer, no event and no microtask runs meanwhile, so whatever the native side raises waits in React Native's
+ * event queue until the hold ends. React Native's queue (`EventQueue::enqueueEvent`) replaces the unread event of a coalescable type that was queued last for a view, and only then.
+ */
+function hold(milliseconds: number): void {
+  const end = Date.now() + milliseconds;
+  while (Date.now() < end) { /* the JavaScript thread is held */ }
+}
+
+/**
+ * The checks of the Android event patches (SPEC.md, "Events on Android"): [send] makes the native side raise two messages of one event name, back to back, from commands the UI thread runs
+ * while this thread is held for [milliseconds], so that both wait in React Native's queue together; after the hold both must reach JavaScript, in the order they were raised. Without the
+ * library's `canCoalesce() false` the queue would replace the first by the second. [iosWhy] says why the iPhone cannot lose them (it is Android-only there).
+ */
+async function bothArrive(c: Ctx, name: string, iosWhy: string, wanted: readonly (readonly [event: string, detail: unknown])[], send: () => void, milliseconds: number): Promise<void> {
+  if (!c.android) { c.androidOnly(name, iosWhy); return; }
+  const from = c.history().length;
+  send();
+  hold(milliseconds);
+  const arrived = await c.until(() => arrivedInOrder(c.history(), from, wanted), 5000);
+  const names = new Set(wanted.map(([event]) => event));
+  c.check(name, arrived, `wanted ${wanted.map(([event, detail]) => `${event} ${String(detail)}`).join(", ")}; got ${c.history().slice(from).filter((entry) => names.has(entry.event)).map((entry) => `${entry.event} ${String(entry.detail)}`).join(", ") || "none"}`);
+}
 
 const describe = (info: Native | null): string => (info ? `${info.class.split(".").pop()} ${info.width}x${info.height}px at ${info.x},${info.y}${info.attached ? "" : " detached"}${info.shown ? "" : " hidden"}` : "no native view");
 
@@ -136,16 +163,17 @@ const pixel = (look: Look, index: number): number => look.colors[index] ?? 0;
 /**
  * [expected] colours at [points] of a capture of the box: one check for all, naming each point that missed. Skipped when the platform cannot read pixels.
  */
-async function colours(c: Ctx, name: string, points: readonly (readonly [number, number])[], expected: readonly string[], tolerance = 40, options?: Parameters<Ctx["look"]>[1], settle?: { ms: number; explain: () => string }): Promise<Look | null> {
+async function colours(c: Ctx, name: string, points: readonly (readonly [number, number])[], expected: readonly string[], tolerance = 40, options?: Parameters<Ctx["look"]>[1], settle?: { ms: number; explain: () => string; until?: (look: Look) => boolean }): Promise<Look | null> {
   if (!c.canLook) { c.skip(name, "no pixel reader on this platform yet"); return null; }
   const missesOf = (look: Look): string[] => expected.flatMap((colour, index) => (near(pixel(look, index), colour, tolerance) ? [] : [`${points[index]?.join(",")} is ${at(look, index)}, wanted ${colour}`]));
-  // With [settle] the capture is taken again every 400 ms until it shows the colours or the time is up (a slower phone draws a new image later than onLoad says it has it): what the last one shows is the check.
+  // With [settle] the capture is taken again every 400 ms until it shows the colours (and satisfies [settle].until, when the caller's next check asks for more than these colours) or the time is up
+  // (a slower phone draws a new image later than onLoad says it has it): what the last one shows is the check.
   let failure = "the capture gave no pixels";
   const { taken: seen, calls, waited } = await untilTaken(
     async () => {
       try { return await c.look(points, options); } catch (error) { failure = `the capture failed: ${String(error)}`; return null; }
     },
-    (look) => missesOf(look).length === 0,
+    (look) => missesOf(look).length === 0 && (settle?.until?.(look) ?? true),
     settle?.ms ?? 0,
     (milliseconds) => c.pause(milliseconds),
   );
@@ -270,6 +298,11 @@ async function video(c: Ctx): Promise<void> {
   } catch (error) {
     c.check("command: getCurrentPosition answers a position near the seek", false, String(error));
   }
+  // A pause and the resume right after it are two onPlaybackStateChanged (false, then true) on the UI thread; held JavaScript would see the second alone if the event could coalesce.
+  await bothArrive(c, "events: pause() then resume() raise both onPlaybackStateChanged although the JS thread was busy",
+    "the loss is Android's: its one `VideoCustomEvent` class coalesced in React Native's event queue; iOS's RCTVideo is a legacy view manager whose events React Native's interop layer sends with `dispatchEvent`, which the queue never replaces",
+    [["video-state", false], ["video-state", true]],
+    () => { const video = c.handles().video; void Promise.allSettled([video?.pause(), video?.resume()]); }, 1000);
   // capture: not a hole, and the video on screen undisturbed
   if (!c.canLook) {
     c.skip("capture: the surface is in the image with handleGLSurfaceViewOnAndroid, a hole without it", "no pixel reader on this platform yet");
@@ -431,6 +464,11 @@ async function lottie(c: Ctx): Promise<void> {
   c.check("commands: pause holds a running animation (it does not finish while paused)", c.events("lottie-finish", false) === ends, `${ends} -> ${c.events("lottie-finish", false)} ended`);
   handle?.resume();
   c.check("commands: resume lets it finish", await c.until(() => c.events("lottie-finish", false) > ends, 5000), `${c.events("lottie-finish", false)} ended`);
+  // Two plays cancelled by a reset each are two onAnimationFinish(true) on the UI thread; held JavaScript would see one if the event could coalesce.
+  await bothArrive(c, "events: two cancelled animations raise both onAnimationFinish although the JS thread was busy",
+    "the loss is Android's: its three event classes coalesced in React Native's event queue; iOS sends the events through the codegen emitter's `dispatchEvent`, which the queue never replaces",
+    [["lottie-finish", true], ["lottie-finish", true]],
+    () => { handle?.play(0, 60); handle?.reset(); handle?.play(0, 60); handle?.reset(); }, 1000);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------------
@@ -454,24 +492,32 @@ async function pdf(c: Ctx): Promise<void> {
   await loadsWhileBusy(c);
 }
 
+/** How many Fabric transactions the host has committed (`fabricStats().flushes`, which the host publishes on `globalThis.__svelteFabric` so that app code needs no import). */
+const hostFlushes = (): number => (globalThis as { __svelteFabric?: { stats(): { flushes: number } } }).__svelteFabric?.stats().flushes ?? 0;
+
 /**
  * Android's view sends every message it has (loadComplete, pageChanged, scaleChanged, error, ...) as the one Fabric event `topChange`. An event that can coalesce is dispatched
  * as a unique one, and React Native's event queue replaces the unread unique event of the same type for the same view, so with the JavaScript thread busy `loadComplete` was
  * overwritten by the `pageChanged` the view posts 10 ms later (`patches/react-native-pdf@7.0.3.patch` makes the event non-coalescable). Any prop update redraws the document there
- * (`PdfManager.onAfterUpdateTransaction` calls `drawPdf`, which loads it again), so the page prop back to 1 is a reload; the thread is held from the commit on, for longer than
- * the load takes, and the events of the load wait in the queue together. iOS has neither half: its `onChange` is a plain `dispatchEvent` (never replaced), and PDFKit's view loads
- * again only when `path` changes, not for a page.
+ * (`PdfManager.onAfterUpdateTransaction` calls `drawPdf`, which loads it again), so the page prop back to 1 is a reload. iOS has neither half: its `onChange` is a plain `dispatchEvent`
+ * (never replaced), and PDFKit's view loads again only when `path` changes, not for a page.
+ *
+ * The hold starts in the task that commits the prop, so the race is forced by construction instead of left to timing. Setting the prop queues Svelte's microtask, which runs the effects
+ * that carry it to the host; the host's `onInvalidate` queues its own microtask (`queueMicrotask(flush)`, `host.ts`), which runs `completeRoot` and so hands the transaction to the UI
+ * thread; `tick()` resolves after both, so the continuation below runs with the commit already made. It then holds the thread at once. A timer hop between the commit and the hold
+ * (the first version waited `pause(0)`) is a turn of the event loop, in which a fast phone's inline decode (about 4 ms) could already have delivered `loadComplete` to JavaScript; there is
+ * no such turn now, so whatever the load raises (`loadComplete` and the `pageChanged` 10 ms after it) waits in the queue together. The check reads `flushes` to say so when the commit was not made.
  */
 async function loadsWhileBusy(c: Ctx): Promise<void> {
   const name = "events: onLoadComplete arrives although the JS thread was busy while the document loaded";
   if (!c.android) { c.androidOnly(name, "the loss is Android's: its one `topChange` event coalesces; iOS sends `onChange` through the codegen emitter's `dispatchEvent`, which the queue never replaces, and loads again only when `path` changes"); return; }
   const loads = c.events("pdf-load");
+  const flushed = hostFlushes();
   c.lab.pdfPage = 1;
-  // The timer runs after the microtasks that carry the prop to the engine's flush, so the commit is on its way to the UI thread; the load itself needs a frame, a decode and a message back.
-  await c.pause(0);
-  const held = Date.now() + 1500;
-  while (Date.now() < held) { /* the JavaScript thread is held */ }
-  c.check(name, await c.until(() => c.events("pdf-load") > loads, 5000), `${loads} -> ${c.events("pdf-load")} onLoadComplete; ${foreignSummary(c, ["pdf-page", "pdf-error"])}`);
+  await tick();
+  const committed = hostFlushes() > flushed;
+  hold(1500);
+  c.check(name, committed && (await c.until(() => c.events("pdf-load") > loads, 5000)), `${loads} -> ${c.events("pdf-load")} onLoadComplete; ${foreignSummary(c, ["pdf-page", "pdf-error"])}${committed ? "" : "; the host had not committed the page prop when the hold began"}`);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------------
@@ -566,14 +612,15 @@ async function rive(c: Ctx): Promise<void> {
   c.check("events: onPlay arrives for the file's animation (the file needs the network)", await c.until(() => c.events("rive-play") >= 1, 20000), foreignSummary(c, ["rive-play", "rive-pause", "rive-stop", "rive-error"]));
   // `onPlay` is raised when the file is set up and the animation starts, not when a frame has reached the TextureView and the window has latched it (a row has its neighbours mounted too, on
   // a software-GL emulator: one capture 800 ms after `onPlay` was a hole in one run of 24). The capture is asked again every 400 ms until the middle is painted; a view that never
-  // draws still fails, and the message says what the view is and what Rive raised.
+  // draws still fails, and the message says what the view is and what Rive raised. The loop used to stop on "opaque at three points" while the next check wants the artboard's pink at one of
+  // them; it now waits for both (`riveBackdrop`), so a capture that ends the loop is one the check accepts.
   const explain = () => {
     const native = c.inspect(c.host());
     return `${native ? `${native.surfaces.join(", ") || "no texture"}, attached=${native.attached} shown=${native.shown}` : "no native view"}; ${foreignSummary(c, ["rive-play", "rive-error"])}`;
   };
-  const middle = await colours(c, "capture: the animation is in the image (its middle is painted, not a hole)", [[0.5, 0.5], [0.45, 0.4], [0.55, 0.6]], ["#d62a5c", "#d62a5c", "#d62a5c"], 255, undefined, { ms: c.where === "row" ? 10000 : 5000, explain });
+  const middle = await colours(c, "capture: the animation is in the image (its middle is painted, not a hole)", [[0.5, 0.5], [0.45, 0.4], [0.55, 0.6]], ["#d62a5c", "#d62a5c", "#d62a5c"], 255, undefined, { ms: c.where === "row" ? 10000 : 5000, explain, until: (look) => riveBackdrop(look.colors) });
   // The artboard's own background is pink; the truck drives over the middle of it, so one of three points away from each other is enough.
-  if (middle) c.check("capture: the animation's background is there (opaque, pink at one of three points)", middle.colors.every(solid) && middle.colors.some((value) => argb(value).r > 200 && argb(value).g < 110), middle.colors.map(show).join(" "));
+  if (middle) c.check("capture: the animation's background is there (opaque, pink at one of three points)", riveBackdrop(middle.colors), middle.colors.map(show).join(" "));
   // prop update: `fit` fill paints the whole box, contain leaves the sides of a wide box bare
   const edges: [number, number][] = [[0.05, 0.5], [0.95, 0.5]];
   c.lab.riveFit = "contain";
@@ -593,6 +640,12 @@ async function rive(c: Ctx): Promise<void> {
   const plays = c.events("rive-play");
   handle?.play();
   c.check("commands: play raises onPlay again", await c.until(() => c.events("rive-play") > plays, 5000), foreignSummary(c, ["rive-play"]));
+  // Two animations of the Truck artboard played in turn are two onPlay with their own names on the UI thread; held JavaScript would see one if the event could coalesce (the file is Rive's `vehicles.riv`:
+  // the artboard "Truck" has the animations idle, curves and bounce and the state machine bumpy; looping keeps both playing, so no onStop follows between).
+  await bothArrive(c, "events: two animations played in turn raise both onPlay although the JS thread was busy",
+    "the loss is Android's: its events went through `getJSModule(RCTEventEmitter)`, which React Native's interop turns into a coalescable `InteropEvent`; iOS's RiveReactNativeView is a legacy view manager whose events the interop layer sends with `dispatchEvent`, which the queue never replaces",
+    [["rive-play", "curves:false"], ["rive-play", "bounce:false"]],
+    () => { handle?.play("curves", "loop", "auto", false); handle?.play("bounce", "loop", "auto", false); }, 1000);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------------

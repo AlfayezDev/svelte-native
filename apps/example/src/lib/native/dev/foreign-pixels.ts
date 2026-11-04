@@ -74,3 +74,25 @@ export async function untilTaken<T>(
     await pause(every);
   }
 }
+
+/**
+ * What a capture of Rive's artboard must show at points away from each other: opaque at every point (the view drew there) and the artboard's own pink (`#d62a5c`, red high and
+ * green low) at one of them, because the truck drives over the middle. The settle loop of the capture check and the check that reads the capture ask this one question, so the loop
+ * waits for what the check will assert.
+ */
+export function riveBackdrop(colors: readonly number[]): boolean {
+  return colors.length > 0 && colors.every(solid) && colors.some((pixel) => argb(pixel).r > 200 && argb(pixel).g < 110);
+}
+
+/**
+ * Whether [wanted] (event name and detail) arrived in this order among the entries of [history] from index [from] on, other events lying between them as they like: how a check
+ * tells that two messages of one event name both reached JavaScript, and in the order they were sent.
+ */
+export function arrivedInOrder(history: readonly { event: string; detail?: unknown }[], from: number, wanted: readonly (readonly [event: string, detail: unknown])[]): boolean {
+  let next = 0;
+  for (const entry of history.slice(from)) {
+    const step = wanted[next];
+    if (step && entry.event === step[0] && entry.detail === step[1]) next++;
+  }
+  return next === wanted.length;
+}

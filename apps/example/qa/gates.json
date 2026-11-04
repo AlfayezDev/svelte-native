@@ -1694,7 +1694,7 @@
       "metric": "foreign.video.checks",
       "bar": {
         "android": {
-          "min": 63
+          "min": 66
         },
         "ios": {
           "min": 51
@@ -1778,7 +1778,7 @@
       "metric": "foreign.lottie.checks",
       "bar": {
         "android": {
-          "min": 33
+          "min": 36
         },
         "ios": {
           "min": 30
@@ -1904,7 +1904,7 @@
       "metric": "foreign.rive.checks",
       "bar": {
         "android": {
-          "min": 33
+          "min": 36
         },
         "ios": {
           "min": 30
@@ -2229,12 +2229,12 @@
       "image": "`leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), which exist on Android only: one check fewer in each place.",
       "blur": "`leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), which exist on Android only: one check fewer in each place.",
       "gradient": "`leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), which exist on Android only: one check fewer in each place.",
-      "video": "Four checks fewer in each place, all of them Android facts: the frame and node counters (`SvelteEngine.foreignStats`), the player's own `SurfaceView` or `TextureView` (an `AVPlayerLayer` is a layer of the view and has no surface to list), the capture without `handleGLSurfaceViewOnAndroid` being a hole, and the capture with it holding the frame (a snapshot of the view hierarchy does not hold an `AVPlayerLayer`'s video frames: transparent on the iPhone, 4 Nov 2026).",
+      "video": "Five checks fewer in each place, all of them Android facts: the frame and node counters (`SvelteEngine.foreignStats`), the player's own `SurfaceView` or `TextureView` (an `AVPlayerLayer` is a layer of the view and has no surface to list), the capture without `handleGLSurfaceViewOnAndroid` being a hole, the capture with it holding the frame (a snapshot of the view hierarchy does not hold an `AVPlayerLayer`'s video frames: transparent on the iPhone, 4 Nov 2026), and `pause() then resume() raise both onPlaybackStateChanged although the JS thread was busy`, which guards a defect of the Android event class (`VideoCustomEvent` coalesced in React Native's event queue; `patches/react-native-video@6.19.3.patch`). iOS's RCTVideo is a legacy view manager whose events React Native's interop layer sends with `dispatchEvent`, which the queue never replaces.",
       "datetime": "Android's picker is a dialog window the module opens, dismisses and answers (`openDatePicker`, `dismissDatePicker`, the buttons the harness presses with `adb`), and the frame and node counters are Android's: those checks are Android-only on the iPhone. iOS's picker is a view (`RNDateTimePickerComponentView` holding a `UIDatePicker`) with six checks of its own in each place (the value prop, the date the handler stores, a new value, the mode, `onValueChange`, `onDismiss`), so the iPhone makes more checks than Android's bar of nine per place, which counts the dialog checks that need no press.",
-      "lottie": "`leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), which exist on Android only: one check fewer in each place.",
+      "lottie": "Two checks fewer in each place, both Android's: `leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), and `two cancelled animations raise both onAnimationFinish although the JS thread was busy` guards a defect of the Android event classes (coalesced in React Native's event queue; `patches/lottie-react-native@7.3.8.patch`). iOS sends the events through the codegen emitter's `dispatchEvent`, which the queue never replaces.",
       "pdf": "Two checks fewer in each place, both Android's: `leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), and `onLoadComplete arrives although the JS thread was busy while the document loaded` guards a defect of the Android view (its one `topChange` event coalesced in React Native's event queue; `patches/react-native-pdf@7.0.3.patch`). iOS sends `onChange` through the codegen emitter's `dispatchEvent`, which the queue never replaces, and loads the document again only when `path` changes, not for the page prop that reloads it on Android.",
       "capture": "`leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), which exist on Android only: one check fewer in each place.",
-      "rive": "`leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), which exist on Android only: one check fewer in each place.",
+      "rive": "Two checks fewer in each place, both Android's: `leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), and `two animations played in turn raise both onPlay although the JS thread was busy` guards a defect of the Android view (its events went through `getJSModule(RCTEventEmitter)`, which React Native's interop turns into a coalescable event; `patches/rive-react-native@9.7.1.patch`). iOS's RiveReactNativeView is a legacy view manager whose events React Native's interop layer sends with `dispatchEvent`, which the queue never replaces.",
       "conic": "`leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), which exist on Android only: one check fewer in each place.",
       "shadow": "react-native-fast-shadow has no iOS code (`ShadowedView` is React Native's `View` and the shadow is the layer's own), so the four checks of its Android view and of the engine's canvas clip, and the frame and node counters, are Android-only: five checks fewer in each place. The press on the shadowed child needs a finger, which the lab has none of on the iPhone (XCUITest does not run on it): it is skipped in each place, a sixth check fewer, so `skipped` is 3, not 0.",
       "text": "`leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), which exist on Android only: one check fewer in each place.",

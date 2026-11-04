@@ -129,6 +129,7 @@ export async function runForeignLibraries(router: Router, signal: AbortSignal, o
         until: (test, milliseconds) => until(test, where === "row" ? milliseconds * 2.5 : milliseconds, signal),
         pause: (milliseconds) => pause(milliseconds, signal),
         events: (event, detail) => count(opened.source, event, detail),
+        history: () => foreignEvents.filter((entry) => entry.source === opened.source),
         inspect: (host) => {
           const target = host ?? libraryHandles.get(opened.source)?.hosts[kind];
           if (!target) return null;

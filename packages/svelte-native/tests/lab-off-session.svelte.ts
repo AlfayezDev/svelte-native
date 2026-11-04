@@ -25,7 +25,7 @@ export function openNativeAccount() {
     completeProfile() {},
     workspaces: [{ id: "w1", slug: "acme", name: "Acme" }],
     devices: [],
-    loaded: true,
+    get loaded() { return (globalThis as { __labOffLoaded?: boolean }).__labOffLoaded !== false; },
     ready: true,
     error: undefined,
     retry() {},

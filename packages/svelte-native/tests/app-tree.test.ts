@@ -52,7 +52,7 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/Renderer/shims/ReactNativeViewConfigRegistry": "export const register = (name) => name; export const get = (name) => ({ uiViewClassName: name, validAttributes: {}, bubblingEventTypes: { topChange: { phasedRegistrationNames: { bubbled: 'onChange', captured: 'onChangeCapture' } } }, directEventTypes: { topLayout: { registrationName: 'onLayout' }, topScroll: { registrationName: 'onScroll' } } });",
   "react-native/Libraries/Utilities/Platform": "export default { get OS() { return globalThis.__navigationOS ?? 'android'; }, Version: 34 };",
   "react-native/Libraries/Utilities/BackHandler": "const handlers = (globalThis.__backHandlers ??= []); export default { addEventListener: (name, handler) => { handlers.push(handler); return { remove() { const at = handlers.indexOf(handler); if (at >= 0) handlers.splice(at, 1); } }; } };",
-  "react-native/Libraries/Linking/Linking": "const handlers = (globalThis.__linkHandlers ??= []); export default { addEventListener: (name, handler) => { handlers.push(handler); return { remove() { const at = handlers.indexOf(handler); if (at >= 0) handlers.splice(at, 1); } }; }, getInitialURL: () => { globalThis.__initialURLReads = (globalThis.__initialURLReads ?? 0) + 1; return Promise.resolve(globalThis.__initialURL ?? null); } };",
+  "react-native/Libraries/Linking/Linking": "const handlers = (globalThis.__linkHandlers ??= []); export default { addEventListener: (name, handler) => { handlers.push(handler); return { remove() { const at = handlers.indexOf(handler); if (at >= 0) handlers.splice(at, 1); } }; }, getInitialURL: () => { globalThis.__initialURLReads = (globalThis.__initialURLReads ?? 0) + 1; if (globalThis.__initialURLMode === 'reject') return Promise.reject(new Error('the link service is down')); if (globalThis.__initialURLMode === 'hang') return new Promise(() => {}); return Promise.resolve(globalThis.__initialURL ?? null); } };",
   "react-native/Libraries/AppState/AppState": "const handlers = (globalThis.__appStateHandlers ??= []); export default { get currentState() { return globalThis.__appState ?? 'active'; }, addEventListener: (name, handler) => { handlers.push(handler); return { remove() { const at = handlers.indexOf(handler); if (at >= 0) handlers.splice(at, 1); } }; } };",
   "react-native/Libraries/Image/resolveAssetSource": "export default (source) => source && typeof source === 'object' && 'uri' in source ? { scale: 1, ...source } : null;",
   "react-native/Libraries/Components/Keyboard/Keyboard": "export default { isVisible: () => false, dismiss() {} };",
@@ -551,7 +551,7 @@ function importedNames(source: string, specifier: string, importer = "the import
  * the login offers). Its screens stay stubs, except the lab's first, which `lab-page.svelte` stands in for: the real one is the whole lab.
  */
 const labShared = ["errors.ts", "update-probe.ts", "qa.ts", "launch.ts", "launch-link.ts", "LabLink.svelte"].map((file) => resolve(platformRoot, "src/lib/native/dev", file));
-const labPage = resolve(platformRoot, "src/routes/__dev/+mobile.svelte");
+const labPages = [resolve(platformRoot, "src/routes/__dev/+mobile.svelte"), resolve(platformRoot, "src/routes/__dev/screen/+mobile.svelte"), resolve(platformRoot, "src/routes/__dev/screens/+mobile.svelte")];
 async function platformApp(variant: string, applicationId: string | null, options: { lab?: boolean } = {}): Promise<{ plugins: Plugin[]; loader: Record<string, Loader>; define: Record<string, string>; clean: () => Promise<void> }> {
   const directory = await mkdtemp(resolve(tmpdir(), "svelte-native-platform-app-"));
   // A project whose `src` is the platform app's, so the generated table requires the real pages.
@@ -601,7 +601,7 @@ async function platformApp(variant: string, applicationId: string | null, option
         if (args.pluginData?.platformApp) return undefined;
         const found = await builder.resolve(args.path, { resolveDir: args.resolveDir, importer: args.importer, kind: args.kind, namespace: args.namespace, pluginData: resolving });
         if (found.errors.length > 0) return undefined;
-        if (options.lab && found.path === labPage) return { path: resolve(import.meta.dirname, "lab-page.svelte") };
+        if (options.lab && labPages.includes(found.path)) return { path: resolve(import.meta.dirname, "lab-page.svelte") };
         if (options.lab && labShared.includes(found.path)) return undefined;
         const lab = labDirectories.find((candidate) => found.path.startsWith(candidate));
         if (lab !== undefined) {
@@ -616,7 +616,7 @@ async function platformApp(variant: string, applicationId: string | null, option
   return { plugins: [plugin], loader: { ".ttf": "empty" }, define: { __DEV__: "false" }, clean: () => rm(directory, { recursive: true, force: true }) };
 }
 
-const labOff = globalThis as { __labOffRouter?: TreeRouter; __labOffUser?: null; __labOffAccounts?: number; fetch: typeof fetch };
+const labOff = globalThis as { __labOffRouter?: TreeRouter; __labOffUser?: null; __labOffAccounts?: number; __labOffLoaded?: boolean; fetch: typeof fetch };
 const configurationResponse = () => new Response(JSON.stringify({ uri: "wss://example.test", databaseName: "rasheed" }));
 async function mountPlatform(surface: number, options: { variant: string; applicationId: string | null; initial: string; signedIn?: boolean; lab?: boolean; fetch?: () => Promise<Response>; navigation?: string }) {
   const app = await platformApp(options.variant, options.applicationId, { lab: options.lab });
@@ -786,6 +786,135 @@ test("a restart that restored the lab's screens starts the lab on its own althou
   } finally { await below.close(); reset(); }
 });
 
+/** The capture run of the iOS suites (`dev/capture.ts`) visits a screen by `goto(base ?? route, { reset })` and, for a pushed one, `goto(route)` on top. */
+const visit = (app: { router: TreeRouter }, spec: { goto: string; base?: string; presentation?: string }) => {
+  app.router.goto(spec.base ?? spec.goto, { reset: true });
+  if (spec.base) app.router.goto(spec.goto, { presentation: spec.presentation });
+};
+const labStart = (surface: number, fetch: () => Promise<Response> = async () => configurationResponse(), signedIn = false) => mountPlatform(surface, { variant: "qa", applicationId: "io.rasheed.svelteqa", initial: "/auth/login", lab: true, fetch, signedIn });
+const loginShown = (texts: string[]) => texts.includes("Continue with email");
+
+test("a lab start that goes to a product screen starts the product on demand instead of rendering the screen without its session: the iOS capture order", async () => {
+  withInsets(24);
+  const launch = globalThis as { __initialURL?: string };
+  launch.__initialURL = "rasheed-svelte:///__dev?run=capture:login.dev-checks.lab-screen.screens-menu";
+  const app = await labStart(180);
+  const turns = async () => { for (let turn = 0; turn < 3; turn++) await app.settled(); };
+  try {
+    // The run starts in the lab, with no request made.
+    expect(app.texts()).toEqual(["Mobile development lab"]);
+    expect(app.requests).toEqual([]);
+    expect(app.accounts()).toBe(0);
+
+    // `login` first: the lab waits for the product's start with the loading page, then the login is rendered with its session.
+    visit(app, { goto: "/auth/login" });
+    await turns();
+    expect(app.requests).toHaveLength(1);
+    expect(new URL(app.requests[0]).pathname).toBe("/api/configuration");
+    expect(app.accounts()).toBe(1);
+    expect(pathsOf(app.router)).toEqual(["/auth/login"]);
+    expect(loginShown(app.texts())).toBe(true);
+    expect(app.errors).toEqual([]);
+    expect(app.router.screens.map((screen) => screen.canGoBack)).toEqual([false]); // the login is the base: no back arrow in its capture
+
+    // Then the lab screens, in the product's shell now (the session stays): each renders, none waits for the account.
+    visit(app, { goto: "/__dev?panel=checks" });
+    jest.advanceTimersByTime(3_000); // the login leaves
+    await turns();
+    expect(pathsOf(app.router)).toEqual(["/__dev?panel=checks"]);
+    expect(loginShown(app.texts())).toBe(false);
+    expect(app.texts()).toContain("Mobile development lab");
+    visit(app, { base: "/__dev", goto: "/__dev/screen" });
+    await turns();
+    expect(pathsOf(app.router)).toEqual(["/__dev", "/__dev/screen"]);
+    visit(app, { base: "/__dev", goto: "/__dev/screens?mode=sheet", presentation: "sheet" });
+    await turns();
+    expect(pathsOf(app.router)).toEqual(["/__dev", "/__dev/screens?mode=sheet"]);
+    expect(app.requests).toHaveLength(1); // one configuration for the run
+    expect(app.accounts()).toBe(1);
+    expect(trouble(app.texts(), app.errors)).toEqual([]);
+  } finally { await app.close(); delete launch.__initialURL; reset(); }
+});
+
+test("a lab start that goes to the login with the backend down shows the notice and keeps asking, and back in the lab it stops asking and the lab renders", async () => {
+  withInsets(24);
+  const launch = globalThis as { __initialURL?: string };
+  launch.__initialURL = "rasheed-svelte:///__dev";
+  let up = false;
+  const backend = async () => { if (!up) throw new TypeError("Network request failed"); return configurationResponse(); };
+  const app = await labStart(181, backend);
+  const turns = async () => { for (let turn = 0; turn < 3; turn++) await app.settled(); };
+  try {
+    visit(app, { goto: "/auth/login" });
+    await turns();
+    expect(app.texts()).toEqual([unavailable, "Retry"]);
+    expect(app.requests).toHaveLength(1);
+    jest.advanceTimersByTime(1_000);
+    await turns();
+    expect(app.requests).toHaveLength(2);
+    expect(app.accounts()).toBe(0);
+    // The lab is back on top: it renders at once, and the backend is left alone from here.
+    visit(app, { goto: "/__dev" });
+    await turns();
+    expect(app.texts()).toEqual(["Mobile development lab"]);
+    const asked = app.requests.length;
+    jest.advanceTimersByTime(120_000);
+    await turns();
+    expect(app.requests).toHaveLength(asked);
+    // The login again: a new start, with the backend back this time.
+    up = true;
+    visit(app, { goto: "/auth/login" });
+    await turns();
+    expect(app.requests).toHaveLength(asked + 1);
+    expect(loginShown(app.texts())).toBe(true);
+    expect(app.accounts()).toBe(1);
+  } finally { await app.close(); delete launch.__initialURL; reset(); }
+});
+
+test("a product link opened into a lab start starts the product and shows that screen; the lab never waited for it", async () => {
+  withInsets(24);
+  const launch = globalThis as { __initialURL?: string };
+  launch.__initialURL = "rasheed-svelte:///__dev";
+  const app = await labStart(182, undefined, true);
+  const turns = async () => { for (let turn = 0; turn < 3; turn++) await app.settled(); };
+  try {
+    expect(app.texts()).toEqual(["Mobile development lab"]);
+    expect(app.requests).toEqual([]);
+    for (const handler of handlersOf("__linkHandlers")) (handler as (event: { url: string }) => void)({ url: "rasheed-svelte:///workspaces" });
+    await turns();
+    expect(app.requests).toHaveLength(1);
+    expect(app.accounts()).toBe(1);
+    expect(app.texts().some((line) => line.includes("Sign out"))).toBe(true);
+    expect(app.errors).toEqual([]);
+    expect(trouble(app.texts(), app.errors)).toEqual([]);
+    expect(pathsOf(app.router)).toEqual(["/__dev", "/workspaces"]); // a later link is a plain goto: the screen stacks on the lab
+    // The router listens for links again (its <Router> mounted anew inside the session): a lab link opens the lab's screen on top.
+    expect(handlersOf("__linkHandlers")).toHaveLength(1);
+    for (const handler of handlersOf("__linkHandlers")) (handler as (event: { url: string }) => void)({ url: "rasheed-svelte:///__dev/screens" });
+    await turns();
+    expect(pathsOf(app.router)).toEqual(["/__dev", "/workspaces", "/__dev/screens"]);
+    expect(app.requests).toHaveLength(1);
+  } finally { await app.close(); delete launch.__initialURL; reset(); }
+});
+
+test("a lab link while the product waits for the session, and the lab alone after the session is there, do not wait for the account", async () => {
+  withInsets(24);
+  const launch = globalThis as { __initialURL?: string };
+  launch.__initialURL = "rasheed-svelte:///__dev";
+  const app = await labStart(183);
+  const turns = async () => { for (let turn = 0; turn < 3; turn++) await app.settled(); };
+  try {
+    labOff.__labOffLoaded = false; // the account is not loaded when the session comes up
+    visit(app, { goto: "/auth/login" });
+    await turns();
+    expect(app.accounts()).toBe(1);
+    expect(app.texts()).toEqual([]); // the session's own loading page: the login needs the account
+    visit(app, { goto: "/__dev" });
+    await turns();
+    expect(app.texts()).toEqual(["Mobile development lab"]); // the lab does not
+  } finally { delete labOff.__labOffLoaded; await app.close(); delete launch.__initialURL; reset(); }
+});
+
 test("the product asks again by itself: 1 s, 2 s, then it starts; the notice stays up meanwhile and the failures are logged once as errors", async () => {
   withInsets(24);
   let answers = 0;
@@ -878,6 +1007,28 @@ test("a product in the background does not ask, and asks at once when it comes b
     jest.advanceTimersByTime(1_000);
     await turns();
     expect(app.requests).toHaveLength(3); // the schedule began again at 1 s
+  } finally { await app.close(); delete appStates.__appState; delete appStates.__appStateHandlers; reset(); }
+});
+
+test("iOS's inactive (Control Center, a system dialog) pauses the asking like the background does, and a phone picked up again does not log another error", async () => {
+  withInsets(24);
+  appStates.__appStateHandlers = [];
+  const app = await mountPlatform(184, { variant: "production", applicationId: "io.rasheed.app", initial: "/workspaces", fetch: async () => { throw new TypeError("Network request failed"); } });
+  const turns = async () => { await app.settled(); await app.settled(); };
+  try {
+    expect(app.requests).toHaveLength(1);
+    expect(app.errors).toHaveLength(1);
+    moveApp("inactive");
+    jest.advanceTimersByTime(10 * 60_000);
+    await turns();
+    expect(app.requests).toHaveLength(1);
+    moveApp("active");
+    await turns();
+    expect(app.requests).toHaveLength(2);
+    for (let again = 0; again < 3; again++) { moveApp("inactive"); moveApp("active"); await turns(); }
+    expect(app.requests.length).toBeGreaterThan(2);
+    expect(app.errors).toHaveLength(1); // the first failure of the streak is the only error: being picked up does not arm it again
+    expect(app.warnings.length).toBe(app.requests.length - 1);
   } finally { await app.close(); delete appStates.__appState; delete appStates.__appStateHandlers; reset(); }
 });
 

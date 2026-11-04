@@ -6,11 +6,12 @@ Notable changes to `@rasheed/svelte-native`, newest first. The format follows [K
 
 ### Added
 
-- `openLaunchURL(router)` opens the link the app was launched with into the root router before its `<Router>` mounts and settles once it has. A shell that chooses what to render by the launch link (the platform app's lab starts without its session) awaits it, so the navigator starts on the link's screen and the router's first screen is never rendered; the `<Router>` mounted afterwards does not read the link again.
+- `openLaunchURL(router)` opens the link the app was launched with into the root router before its `<Router>` mounts and settles once it has. A shell that chooses what to render by the launch link (the platform app's lab starts without its session) awaits it, so the navigator starts on the link's screen and the router's first screen is never rendered; the `<Router>` mounted afterwards does not read the link again. `readLaunchURL()` is the read it uses: the link, or `null` when there is none or when the platform does not answer within 3 s.
 
 ### Changed
 
-- A navigation before the root `<Router>` has mounted drops the screens it replaces at once. They were kept until the native stack reported their exit, which a screen that was never shown cannot do, so the router's first screen stayed rendered (and the timeout warning fired) after the launch link replaced it.
+- A navigation before the root `<Router>` has mounted drops the screens it replaces at once. They were kept until the native stack reported their exit, which a screen that was never shown cannot do, so the router's first screen stayed rendered (and the timeout warning fired) after the launch link replaced it. The same goes for a root `<Router>` that unmounts (a shell waiting for its session): the screens still leaving are dropped with it.
+- A read of the launch link that failed is no longer remembered (the next `openLaunchURL` asks again), a platform that never answers no longer holds the start, and the `<Router>` reports a failed read instead of leaving an unhandled rejection.
 
 ## 0.2.0 - 2026-11-03
 

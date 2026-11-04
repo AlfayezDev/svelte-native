@@ -44,7 +44,7 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/Renderer/shims/ReactNativeViewConfigRegistry": "export const register = (name) => name; export const get = (name) => ({ uiViewClassName: name, validAttributes: {}, bubblingEventTypes: { topChange: { phasedRegistrationNames: { bubbled: 'onChange', captured: 'onChangeCapture' } } }, directEventTypes: { topLayout: { registrationName: 'onLayout' }, topScroll: { registrationName: 'onScroll' } } });",
   "react-native/Libraries/Utilities/Platform": "export default { get OS() { return globalThis.__navigationOS ?? 'android'; }, Version: 34 };",
   "react-native/Libraries/Utilities/BackHandler": "const handlers = (globalThis.__backHandlers ??= []); export default { addEventListener: (name, handler) => { handlers.push(handler); return { remove() { const at = handlers.indexOf(handler); if (at >= 0) handlers.splice(at, 1); } }; } };",
-  "react-native/Libraries/Linking/Linking": "const handlers = (globalThis.__linkHandlers ??= []); export default { addEventListener: (name, handler) => { handlers.push(handler); return { remove() { const at = handlers.indexOf(handler); if (at >= 0) handlers.splice(at, 1); } }; }, getInitialURL: () => { globalThis.__initialURLReads = (globalThis.__initialURLReads ?? 0) + 1; return Promise.resolve(globalThis.__initialURL ?? null); } };",
+  "react-native/Libraries/Linking/Linking": "const handlers = (globalThis.__linkHandlers ??= []); export default { addEventListener: (name, handler) => { handlers.push(handler); return { remove() { const at = handlers.indexOf(handler); if (at >= 0) handlers.splice(at, 1); } }; }, getInitialURL: () => { globalThis.__initialURLReads = (globalThis.__initialURLReads ?? 0) + 1; if (globalThis.__initialURLMode === 'reject') return Promise.reject(new Error('the link service is down')); if (globalThis.__initialURLMode === 'hang') return new Promise(() => {}); return Promise.resolve(globalThis.__initialURL ?? null); } };",
   "react-native/Libraries/Image/resolveAssetSource": "export default (source) => source && typeof source === 'object' && 'uri' in source ? { scale: 1, ...source } : null;",
   "react-native/Libraries/Components/Keyboard/Keyboard": "export default { isVisible: () => false, dismiss() {} };",
   "react-native/Libraries/NativeComponent/ViewConfig": "export const createViewConfig = (partial) => partial;",
@@ -2047,6 +2047,60 @@ test("the launch link can be opened before the root <Router> mounts: the first s
     await settled();
     expect(router.screens.filter((screen) => screen.leaving)).toHaveLength(2);
   } finally { delete launch.__initialURL; reset(); }
+});
+
+test("the read of the launch link is bounded and a failed read is not remembered", async () => {
+  withInsets(24);
+  const launch = globalThis as { __initialURL?: string; __initialURLReads?: number; __initialURLMode?: string };
+  try {
+    launch.__initialURL = "https://example.test/workspaces";
+    const { m, app, router, settled } = await mountTree(191, { initial: "/acme/home", mounted: false });
+    // The platform's read fails: the caller hears of it, and the next ask reads again instead of getting the same failure.
+    launch.__initialURLMode = "reject";
+    await expect(m.openLaunchURL(router)).rejects.toThrow("the link service is down");
+    expect(pathsOf(router)).toEqual(["/acme"]);
+    delete launch.__initialURLMode;
+    await m.openLaunchURL(router);
+    expect(launch.__initialURLReads).toBe(2);
+    expect(pathsOf(router)).toEqual(["/workspaces"]);
+    app.show(true);
+    await settled();
+    expect(launch.__initialURLReads).toBe(2); // read once for good now
+
+    // A platform that never answers: the wait ends after three seconds and the app starts as if it had no link.
+    const second = await mountTree(192, { initial: "/acme/home", mounted: false });
+    launch.__initialURLMode = "hang";
+    let settledAfter = "pending";
+    void second.m.openLaunchURL(second.router).then(() => { settledAfter = "settled"; });
+    await second.settled();
+    jest.advanceTimersByTime(2_999);
+    await second.settled();
+    expect(settledAfter).toBe("pending");
+    jest.advanceTimersByTime(1);
+    await second.settled();
+    expect(settledAfter).toBe("settled");
+    expect(pathsOf(second.router)).toEqual(["/acme"]); // no link: the router stays on its first screen
+  } finally { delete launch.__initialURL; delete launch.__initialURLMode; reset(); }
+});
+
+test("a root <Router> that unmounts takes the screens still leaving with it, and a navigation while it is away drops what it replaces at once", async () => {
+  withInsets(24);
+  try {
+    const { app, router, settled } = await mountTree(193, { initial: "/workspaces" });
+    router.goto("/acme/home");
+    await settled();
+    router.goto("/workspaces", { reset: true });
+    await settled();
+    expect(router.screens.filter((screen) => screen.leaving).length).toBeGreaterThan(0); // the native stack has not reported their exit
+    app.show(false);
+    await settled();
+    expect(router.screens.filter((screen) => screen.leaving)).toHaveLength(0);
+    router.goto("/acme/home", { reset: true }); // nothing is on screen to take /workspaces away
+    expect(router.screens.map((screen) => screen.leaving)).toEqual([false]);
+    app.show(true);
+    await settled();
+    expect(pathsOf(router)).toEqual(["/acme"]);
+  } finally { reset(); }
 });
 
 test("a Screen in a router entry does not get a stack of its own: one stack per router, the pages' screens are its screens", async () => {

@@ -159,6 +159,12 @@ function createStack(reportsExit: boolean, initial: readonly NativeLocation[] = 
       const index = entries.findIndex((entry) => entry.key === key);
       if (index > 0) stack.set(entries.slice(0, index), false);
     },
+    /** The stack is not on screen (its `<Router>` unmounted): the screens still leaving have no native stack to report their exit, so they go at once. */
+    dropLeaving(): void {
+      if (!screens.some((screen) => screen.leaving)) return;
+      show(screens.filter((screen) => !screen.leaving));
+      clearTimeout(exitTimer);
+    },
     /** The native stack finished taking a popped screen away: its page unmounts now. */
     exited(key: number): void {
       if (!screens.some((screen) => screen.leaving && screen.entry.key === key)) return;
@@ -183,8 +189,9 @@ function createStore(tree: StackNode) {
   /** The read of the launch link, once for the life of the router: what `openLaunchURL` returns every time it is asked. */
   let launchRead: Promise<void> | undefined;
   /**
-   * Whether the root `<Router>` has mounted. A screen that leaves stays on screen until the native stack reports its exit, which one that never
-   * rendered cannot: a navigation before the first mount (the launch link, opened ahead by `openLaunchURL`) drops the screens it replaces at once.
+   * Whether the root `<Router>` is mounted. A screen that leaves stays on screen until the native stack reports its exit, which a screen that is
+   * not on a native stack cannot: a navigation before the first mount (the launch link, opened ahead by `openLaunchURL`) or while the
+   * `<Router>` is unmounted (a shell that waits for its session) drops the screens it replaces at once.
    */
   let shown = false;
   /** The launch link this router (or the one whose state it adopted) has acted on; reactive so that the state saved for a restart follows it. */
@@ -376,15 +383,22 @@ function createStore(tree: StackNode) {
      * The promise settles once the link has been opened (or there was none); asking again returns the same one.
      */
     openLaunchURL(router: Router): Promise<void> {
-      launchRead ??= Linking.getInitialURL().then((url) => {
+      launchRead ??= readLaunchURL().then((url) => {
         if (!url || disposed || !router.active() || url === launched) return;
         launched = url;
         router.openURL(url, { reset: true });
+      }, (error: unknown) => {
+        launchRead = undefined; // a read that failed is asked again by the next caller, not remembered
+        throw error;
       });
       return launchRead;
     },
-    /** The root `<Router>` mounted: from here on a screen that a navigation replaces leaves through the native stack. */
-    markShown() { shown = true; },
+    /** The root `<Router>` mounted or unmounted: while it is mounted a screen that a navigation replaces leaves through the native stack. */
+    markShown(value: boolean) {
+      shown = value;
+      // After the teardown that called this: the stack's state it would read there is the flush's own, not yet the navigation's.
+      if (!value) queueMicrotask(() => { if (!shown) root.dropLeaving(); });
+    },
     dispose() { disposed = true; root.dispose(); },
   };
 }
@@ -473,9 +487,23 @@ export function connectHost(router: Router): () => void {
   if (!binding || router.nested) return () => {};
   const back = BackHandler.addEventListener("hardwareBackPress", () => router.active() && innermost(router).back());
   const links = Linking.addEventListener("url", ({ url }) => { if (router.active()) router.openURL(url); });
-  binding.store.markShown();
-  void binding.store.openLaunchURL(router);
-  return () => { back.remove(); links.remove(); };
+  binding.store.markShown(true);
+  binding.store.openLaunchURL(router).catch((error: unknown) => { console.error("[Svelte router] the launch link could not be read", error); });
+  return () => { back.remove(); links.remove(); binding.store.markShown(false); };
+}
+
+/** How long the platform gets to answer for the launch link before the app starts as if it had none. */
+export const LAUNCH_URL_TIMEOUT_MS = 3000;
+
+/**
+ * The link the app was launched with, `null` when there is none or when the platform does not answer within `LAUNCH_URL_TIMEOUT_MS` (a
+ * start that waits for the link must not wait for ever). Rejects with what the platform's read threw.
+ */
+export function readLaunchURL(): Promise<string | null> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { resolve(null); }, LAUNCH_URL_TIMEOUT_MS);
+    Linking.getInitialURL().then((url) => { clearTimeout(timer); resolve(url); }, (error: unknown) => { clearTimeout(timer); reject(error); });
+  });
 }
 
 /**

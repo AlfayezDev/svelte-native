@@ -168,8 +168,45 @@ describe("trying again by itself", () => {
 
 		await clock.setActive(true);
 		expect(run.log).toHaveLength(4); // back: at once
-		expect(run.failures.at(-1)).toBe(1); // and the schedule is the first one again
-		expect(clock.pending()).toEqual([1_000]);
+		expect(run.failures.at(-1)).toBe(4); // the failures are still the same streak (the caller logs the first one loudly, once)
+		expect(clock.pending()).toEqual([1_000]); // and the waits are the first of the schedule again
+	});
+
+	test("only active is the foreground: iOS's inactive (Control Center, a system dialog) pauses the waits too, and coming back resumes without a new streak", async () => {
+		const clock = world();
+		const run = attempts(Infinity);
+		createRetrier({ attempt: run.attempt, onFailure: (_cause, failures) => { run.failures.push(failures); }, foreground: clock.foreground, schedule: clock.schedule }).start();
+		await settle();
+		await clock.advance(1_000 + 2_000);
+		expect(run.failures).toEqual([1, 2, 3]);
+		expect(clock.pending()).toEqual([4_000]);
+		// The shell maps AppState to this: `inactive` and `background` are both "not active", `active` is the only way back.
+		await clock.setActive(false);
+		expect(clock.pending()).toEqual([]);
+		await clock.advance(60_000);
+		expect(run.log).toHaveLength(3);
+		await clock.setActive(true);
+		expect(run.log).toHaveLength(4);
+		expect(run.failures.at(-1)).toBe(4); // not 1: the console.error rule is not armed again by a phone that is picked up
+		await clock.setActive(false);
+		await clock.setActive(true);
+		await clock.setActive(false);
+		await clock.setActive(true);
+		expect(run.failures.slice(-1)[0]).toBeGreaterThan(4);
+		expect(run.failures.filter((count) => count === 1)).toHaveLength(1);
+	});
+
+	test("the Retry button is what starts the streak over", async () => {
+		const clock = world();
+		const run = attempts(Infinity);
+		const retrier = createRetrier({ attempt: run.attempt, onFailure: (_cause, failures) => { run.failures.push(failures); }, foreground: clock.foreground, schedule: clock.schedule });
+		retrier.start();
+		await settle();
+		await clock.advance(1_000);
+		expect(run.failures).toEqual([1, 2]);
+		retrier.retryNow();
+		await settle();
+		expect(run.failures).toEqual([1, 2, 1]);
 	});
 
 	test("an attempt that fails in the background schedules nothing until the app is back", async () => {

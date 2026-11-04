@@ -14,17 +14,24 @@ export function retryDelay(failures: number): number {
   return delays[failures - 1] ?? steadyDelay;
 }
 
-/** Whether the app is in the foreground, and when that changes (React Native's `AppState`, which the shell adapts). */
+/**
+ * Whether the app is in the foreground, and when that changes (React Native's `AppState`, which the shell adapts). Only `active` is the
+ * foreground: iOS's `inactive` (Control Center, the app switcher, a system dialog) is not an app anybody is looking at either.
+ */
 export type Foreground = {
   active(): boolean;
-  /** Calls `listener` whenever the app moves to the foreground (`true`) or the background (`false`); returns what unsubscribes. */
+  /** Calls `listener` whenever the app becomes active (`true`) or stops being (`false`); returns what unsubscribes. */
   subscribe(listener: (active: boolean) => void): () => void;
 };
 
 export type RetrierOptions = {
   /** One try. A rejection is a failure; the signal aborts when the retrier stops or a newer attempt replaces this one. */
   attempt(signal: AbortSignal): Promise<void>;
-  /** Called after each failed attempt with the number of consecutive failures so far (not for an attempt that was aborted). */
+  /**
+   * Called after each failed attempt with the number of consecutive failures so far, since the start or the last `retryNow` (not for an attempt
+   * that was aborted). The app leaving the foreground and coming back does not start the count over: the caller logs the first one loudly and
+   * the rest quietly, and a phone that is picked up now and then must not log it again each time.
+   */
   onFailure(cause: unknown, failures: number): void;
   foreground: Foreground;
   delay?(failures: number): number;
@@ -47,12 +54,15 @@ const timeout: NonNullable<RetrierOptions["schedule"]> = (callback, ms) => {
 };
 
 /**
- * Tries until an attempt succeeds. After a failure the next attempt waits `delay(failures)`; a wait does not run while the app is in the
- * background (a background app is not retrying a request nobody is looking at), and the app coming back to the foreground tries at once with
- * the schedule started over: the network it left may not be the one it returns to. A failure that ends in the background waits for that.
+ * Tries until an attempt succeeds. After a failure the next attempt waits `delay(n)`, `n` counting the failures since the schedule began; a wait
+ * does not run while the app is not in the foreground (nobody is looking at a request it makes), and the app coming back tries at once with the
+ * schedule started over: the network it left may not be the one it returns to. A failure that ends away from the foreground waits for that.
  */
 export function createRetrier({ attempt, onFailure, foreground, delay = retryDelay, schedule = timeout }: RetrierOptions): Retrier {
-  let failures = 0;
+  /** Failures since the start or the last `retryNow`: what `onFailure` is told. */
+  let streak = 0;
+  /** Failures since the schedule began, which coming back to the foreground starts over: what the delay follows. */
+  let paced = 0;
   let cancelWait: (() => void) | undefined;
   let current: AbortController | undefined;
   let finished = false;
@@ -70,18 +80,19 @@ export function createRetrier({ attempt, onFailure, foreground, delay = retryDel
       return;
     } catch (cause) {
       if (controller.signal.aborted) return;
-      failures++;
-      onFailure(cause, failures);
+      streak++;
+      paced++;
+      onFailure(cause, streak);
     } finally {
       if (current === controller) current = undefined;
     }
-    if (!finished && foreground.active()) cancelWait = schedule(() => { cancelWait = undefined; void run(); }, delay(failures));
+    if (!finished && foreground.active()) cancelWait = schedule(() => { cancelWait = undefined; void run(); }, delay(paced));
   }
   const unsubscribe = foreground.subscribe((active) => {
     if (finished) return;
     if (!active) { unwait(); return; }
     if (current) return;
-    failures = 0;
+    paced = 0;
     void run();
   });
 
@@ -89,7 +100,8 @@ export function createRetrier({ attempt, onFailure, foreground, delay = retryDel
     start() { void run(); },
     retryNow() {
       if (finished) return;
-      failures = 0;
+      streak = 0;
+      paced = 0;
       unwait();
       current?.abort();
       current = undefined;

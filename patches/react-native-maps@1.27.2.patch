@@ -1,0 +1,342 @@
+diff --git a/android/src/main/java/com/rnmaps/fabric/event/OnCalloutPressEvent.java b/android/src/main/java/com/rnmaps/fabric/event/OnCalloutPressEvent.java
+index b0f3ad79be05ecfedf3dc640609a2d61d30de443..14a470b88240a886cf1e36c72fdd039a22c45505 100644
+--- a/android/src/main/java/com/rnmaps/fabric/event/OnCalloutPressEvent.java
++++ b/android/src/main/java/com/rnmaps/fabric/event/OnCalloutPressEvent.java
+@@ -22,4 +22,11 @@ public class OnCalloutPressEvent extends Event<OnCalloutPressEvent> {
+     public WritableMap getEventData() {
+         return payload;
+     }
++
++    // Each callout press is a user act (the map's tag and the marker's both get one). The event queue replaces the unread
++    // coalescable event of the same name for the same view, so a busy JavaScript thread would see only the last of them.
++    @Override
++    public boolean canCoalesce() {
++        return false;
++    }
+ }
+diff --git a/android/src/main/java/com/rnmaps/fabric/event/OnDeselectEvent.java b/android/src/main/java/com/rnmaps/fabric/event/OnDeselectEvent.java
+index 960c632960630dd12ac90fe4bfb5a8379c09f5ee..be4f2853a711bcdf0db955f0f5e4f358137817f7 100644
+--- a/android/src/main/java/com/rnmaps/fabric/event/OnDeselectEvent.java
++++ b/android/src/main/java/com/rnmaps/fabric/event/OnDeselectEvent.java
+@@ -25,4 +25,11 @@ public class OnDeselectEvent extends Event<OnDeselectEvent> {
+     public WritableMap getEventData() {
+         return payload;
+     }
++
++    // A marker's deselection is a state change that a handler may count. The event queue replaces the unread coalescable event
++    // of the same name for the same view, so a busy JavaScript thread would see only the last of them.
++    @Override
++    public boolean canCoalesce() {
++        return false;
++    }
+ }
+diff --git a/android/src/main/java/com/rnmaps/fabric/event/OnDoublePressEvent.java b/android/src/main/java/com/rnmaps/fabric/event/OnDoublePressEvent.java
+index 8ece4edb58d16b87b8b121995db4a6db13f79914..1ba1104940555749b0b5d8852ee681464dfc00bb 100644
+--- a/android/src/main/java/com/rnmaps/fabric/event/OnDoublePressEvent.java
++++ b/android/src/main/java/com/rnmaps/fabric/event/OnDoublePressEvent.java
+@@ -24,4 +24,11 @@ public class OnDoublePressEvent extends Event<OnDoublePressEvent> {
+     public WritableMap getEventData() {
+         return payload;
+     }
++
++    // Each double press is a user act with its own coordinate. The event queue replaces the unread coalescable event of the
++    // same name for the same view, so a busy JavaScript thread would see only the last of them.
++    @Override
++    public boolean canCoalesce() {
++        return false;
++    }
+ }
+diff --git a/android/src/main/java/com/rnmaps/fabric/event/OnDragEndEvent.java b/android/src/main/java/com/rnmaps/fabric/event/OnDragEndEvent.java
+index 80639fedeeb5b6d3dc7e03e989b8bb4354b01462..fe1983638a4738e384fb97cd10155d3e668bf778 100644
+--- a/android/src/main/java/com/rnmaps/fabric/event/OnDragEndEvent.java
++++ b/android/src/main/java/com/rnmaps/fabric/event/OnDragEndEvent.java
+@@ -25,4 +25,11 @@ public class OnDragEndEvent extends Event<OnDragEndEvent> {
+     public WritableMap getEventData() {
+         return payload;
+     }
++
++    // It ends a drag, with the coordinate the marker was dropped at, and is not one of a stream. The event queue replaces the
++    // unread coalescable event of the same name for the same view, so a busy JavaScript thread would see only the last of them.
++    @Override
++    public boolean canCoalesce() {
++        return false;
++    }
+ }
+diff --git a/android/src/main/java/com/rnmaps/fabric/event/OnDragStartEvent.java b/android/src/main/java/com/rnmaps/fabric/event/OnDragStartEvent.java
+index ccbe3210e33e2122aa2fcccdf34a509c95f00357..10ad3958f4954c558444f5ba02a8ddfbb3601e72 100644
+--- a/android/src/main/java/com/rnmaps/fabric/event/OnDragStartEvent.java
++++ b/android/src/main/java/com/rnmaps/fabric/event/OnDragStartEvent.java
+@@ -25,4 +25,12 @@ public class OnDragStartEvent extends Event<OnDragStartEvent> {
+     public WritableMap getEventData() {
+         return payload;
+     }
++
++    // It starts a drag, with the coordinate the marker was picked up at, and is not one of a stream. The event queue replaces
++    // the unread coalescable event of the same name for the same view, so a busy JavaScript thread would see only the last of
++    // them.
++    @Override
++    public boolean canCoalesce() {
++        return false;
++    }
+ }
+diff --git a/android/src/main/java/com/rnmaps/fabric/event/OnIndoorBuildingFocusedEvent.java b/android/src/main/java/com/rnmaps/fabric/event/OnIndoorBuildingFocusedEvent.java
+index cd98143ac04c5253f8382948bba31149b0fe4b83..301d26720b7c1115b7c07ff14c7ab75e8c324912 100644
+--- a/android/src/main/java/com/rnmaps/fabric/event/OnIndoorBuildingFocusedEvent.java
++++ b/android/src/main/java/com/rnmaps/fabric/event/OnIndoorBuildingFocusedEvent.java
+@@ -25,4 +25,11 @@ public class OnIndoorBuildingFocusedEvent extends Event<OnIndoorBuildingFocusedE
+     public WritableMap getEventData() {
+         return payload;
+     }
++
++    // A change of the focused building, with its levels. The event queue replaces the unread coalescable event of the same name
++    // for the same view, so a busy JavaScript thread would see only the last of them.
++    @Override
++    public boolean canCoalesce() {
++        return false;
++    }
+ }
+\ No newline at end of file
+diff --git a/android/src/main/java/com/rnmaps/fabric/event/OnIndoorLevelActivatedEvent.java b/android/src/main/java/com/rnmaps/fabric/event/OnIndoorLevelActivatedEvent.java
+index d2bdc96491475195187345b8e6c9dd9a09af9635..8e075933230458c2907bc0ee2c867d45769cdf2b 100644
+--- a/android/src/main/java/com/rnmaps/fabric/event/OnIndoorLevelActivatedEvent.java
++++ b/android/src/main/java/com/rnmaps/fabric/event/OnIndoorLevelActivatedEvent.java
+@@ -25,4 +25,11 @@ public class OnIndoorLevelActivatedEvent extends Event<OnIndoorLevelActivatedEve
+     public WritableMap getEventData() {
+         return payload;
+     }
++
++    // A change of the active level. The event queue replaces the unread coalescable event of the same name for the same view,
++    // so a busy JavaScript thread would see only the last of them.
++    @Override
++    public boolean canCoalesce() {
++        return false;
++    }
+ }
+\ No newline at end of file
+diff --git a/android/src/main/java/com/rnmaps/fabric/event/OnKmlReadyEvent.java b/android/src/main/java/com/rnmaps/fabric/event/OnKmlReadyEvent.java
+index a75509a95f57c8bbed3db56c0a15687732b457cb..d28ab433f5d64004358655579f0f269f150cb09a 100644
+--- a/android/src/main/java/com/rnmaps/fabric/event/OnKmlReadyEvent.java
++++ b/android/src/main/java/com/rnmaps/fabric/event/OnKmlReadyEvent.java
+@@ -25,4 +25,11 @@ public class OnKmlReadyEvent extends Event<OnKmlReadyEvent> {
+     public WritableMap getEventData() {
+         return payload;
+     }
++
++    // One per KML file, with the markers it holds. The event queue replaces the unread coalescable event of the same name for
++    // the same view, so a busy JavaScript thread would see only the last of them.
++    @Override
++    public boolean canCoalesce() {
++        return false;
++    }
+ }
+diff --git a/android/src/main/java/com/rnmaps/fabric/event/OnLongPressEvent.java b/android/src/main/java/com/rnmaps/fabric/event/OnLongPressEvent.java
+index c1289f57cb53eb253373e54de34b691754d9f41c..d7cf51a04a110538cff5ffc8bead89525ccb1db5 100644
+--- a/android/src/main/java/com/rnmaps/fabric/event/OnLongPressEvent.java
++++ b/android/src/main/java/com/rnmaps/fabric/event/OnLongPressEvent.java
+@@ -25,4 +25,11 @@ public class OnLongPressEvent extends Event<OnLongPressEvent> {
+     public WritableMap getEventData() {
+         return payload;
+     }
++
++    // Each long press is a user act with its own coordinate. The event queue replaces the unread coalescable event of the same
++    // name for the same view, so a busy JavaScript thread would see only the last of them.
++    @Override
++    public boolean canCoalesce() {
++        return false;
++    }
+ }
+diff --git a/android/src/main/java/com/rnmaps/fabric/event/OnMapLoadedEvent.java b/android/src/main/java/com/rnmaps/fabric/event/OnMapLoadedEvent.java
+index f4eb91fcc489452b6d58460298dfd214f0d3bcce..bce9fc2255daf6e04a32e078b7bb690cfc84f203 100644
+--- a/android/src/main/java/com/rnmaps/fabric/event/OnMapLoadedEvent.java
++++ b/android/src/main/java/com/rnmaps/fabric/event/OnMapLoadedEvent.java
+@@ -26,4 +26,11 @@ public class OnMapLoadedEvent extends Event<OnMapLoadedEvent> {
+     public WritableMap getEventData() {
+         return payload;
+     }
++
++    // Sent once, when the map has loaded. The event queue replaces the unread coalescable event of the same name for the same
++    // view, so a busy JavaScript thread would see only the last of them.
++    @Override
++    public boolean canCoalesce() {
++        return false;
++    }
+ }
+diff --git a/android/src/main/java/com/rnmaps/fabric/event/OnMapReadyEvent.java b/android/src/main/java/com/rnmaps/fabric/event/OnMapReadyEvent.java
+index afaa4489d6428b46e859b174e1216c905fffbc9f..90365b6f506ca6a4f9525e255b810b1991184b03 100644
+--- a/android/src/main/java/com/rnmaps/fabric/event/OnMapReadyEvent.java
++++ b/android/src/main/java/com/rnmaps/fabric/event/OnMapReadyEvent.java
+@@ -26,4 +26,11 @@ public class OnMapReadyEvent extends Event<OnMapReadyEvent> {
+     public WritableMap getEventData() {
+         return payload;
+     }
++
++    // Sent once, when the Google map is ready. The event queue replaces the unread coalescable event of the same name for the
++    // same view, so a busy JavaScript thread would see only the last of them.
++    @Override
++    public boolean canCoalesce() {
++        return false;
++    }
+ }
+diff --git a/android/src/main/java/com/rnmaps/fabric/event/OnMarkerDeselectEvent.java b/android/src/main/java/com/rnmaps/fabric/event/OnMarkerDeselectEvent.java
+index 7425a69b9ee1613142c61744fddcf991b36cb9ec..4c5f89c4f131ae5c0463dc5c0c3839cc7dcbb899 100644
+--- a/android/src/main/java/com/rnmaps/fabric/event/OnMarkerDeselectEvent.java
++++ b/android/src/main/java/com/rnmaps/fabric/event/OnMarkerDeselectEvent.java
+@@ -25,4 +25,12 @@ public class OnMarkerDeselectEvent extends Event<OnMarkerDeselectEvent> {
+     public WritableMap getEventData() {
+         return payload;
+     }
++
++    // The map reports every deselection with the marker's `id`: two markers deselected in a row are two messages. The event
++    // queue replaces the unread coalescable event of the same name for the same view, so a busy JavaScript thread would see
++    // only the last of them.
++    @Override
++    public boolean canCoalesce() {
++        return false;
++    }
+ }
+diff --git a/android/src/main/java/com/rnmaps/fabric/event/OnMarkerDragEndEvent.java b/android/src/main/java/com/rnmaps/fabric/event/OnMarkerDragEndEvent.java
+index fc061b54cebe3f1478155424a3c6218495ca446e..f2ef99c92f5ad62bd4538763586c583d866f0777 100644
+--- a/android/src/main/java/com/rnmaps/fabric/event/OnMarkerDragEndEvent.java
++++ b/android/src/main/java/com/rnmaps/fabric/event/OnMarkerDragEndEvent.java
+@@ -25,4 +25,12 @@ public class OnMarkerDragEndEvent extends Event<OnMarkerDragEndEvent> {
+     public WritableMap getEventData() {
+         return payload;
+     }
++
++    // It ends a drag (the map's copy, with the marker's `id`): where the marker was dropped must reach JavaScript. The event
++    // queue replaces the unread coalescable event of the same name for the same view, so a busy JavaScript thread would see
++    // only the last of them.
++    @Override
++    public boolean canCoalesce() {
++        return false;
++    }
+ }
+diff --git a/android/src/main/java/com/rnmaps/fabric/event/OnMarkerDragStartEvent.java b/android/src/main/java/com/rnmaps/fabric/event/OnMarkerDragStartEvent.java
+index 572e82f97d1ff32193464fbaae24852c25f9561d..aadb67f17cfdecb613d57a4609a65006cbde1510 100644
+--- a/android/src/main/java/com/rnmaps/fabric/event/OnMarkerDragStartEvent.java
++++ b/android/src/main/java/com/rnmaps/fabric/event/OnMarkerDragStartEvent.java
+@@ -25,4 +25,11 @@ public class OnMarkerDragStartEvent extends Event<OnMarkerDragStartEvent> {
+     public WritableMap getEventData() {
+         return payload;
+     }
++
++    // It starts a drag (the map's copy, with the marker's `id`) and is not one of a stream. The event queue replaces the unread
++    // coalescable event of the same name for the same view, so a busy JavaScript thread would see only the last of them.
++    @Override
++    public boolean canCoalesce() {
++        return false;
++    }
+ }
+diff --git a/android/src/main/java/com/rnmaps/fabric/event/OnMarkerPressEvent.java b/android/src/main/java/com/rnmaps/fabric/event/OnMarkerPressEvent.java
+index c76242657c28096fffe98b8e22521b5dfc408b53..ed721c5afb8f67152a01b2b7dbfed7c363ac6182 100644
+--- a/android/src/main/java/com/rnmaps/fabric/event/OnMarkerPressEvent.java
++++ b/android/src/main/java/com/rnmaps/fabric/event/OnMarkerPressEvent.java
+@@ -25,4 +25,12 @@ public class OnMarkerPressEvent extends Event<OnMarkerPressEvent> {
+     public WritableMap getEventData() {
+         return payload;
+     }
++
++    // The map reports every marker press with the marker's `id`: two markers pressed in a row are two messages. The event queue
++    // replaces the unread coalescable event of the same name for the same view, so a busy JavaScript thread would see only the
++    // last of them.
++    @Override
++    public boolean canCoalesce() {
++        return false;
++    }
+ }
+diff --git a/android/src/main/java/com/rnmaps/fabric/event/OnMarkerSelectEvent.java b/android/src/main/java/com/rnmaps/fabric/event/OnMarkerSelectEvent.java
+index 98775d3dc709830a79a30b6b18430bb281e973be..f5fe4f750a5ed02f6d5b0060c51bfff49b71302f 100644
+--- a/android/src/main/java/com/rnmaps/fabric/event/OnMarkerSelectEvent.java
++++ b/android/src/main/java/com/rnmaps/fabric/event/OnMarkerSelectEvent.java
+@@ -25,4 +25,12 @@ public class OnMarkerSelectEvent extends Event<OnMarkerSelectEvent> {
+     public WritableMap getEventData() {
+         return payload;
+     }
++
++    // The map reports every selection with the marker's `id`: two markers selected in a row are two messages. The event queue
++    // replaces the unread coalescable event of the same name for the same view, so a busy JavaScript thread would see only the
++    // last of them.
++    @Override
++    public boolean canCoalesce() {
++        return false;
++    }
+ }
+diff --git a/android/src/main/java/com/rnmaps/fabric/event/OnPoiClickEvent.java b/android/src/main/java/com/rnmaps/fabric/event/OnPoiClickEvent.java
+index 8393f9ace669243e419a86aecdf232fbce346554..2ad01a1a7f6c61f7deba1c927907694564d4d58c 100644
+--- a/android/src/main/java/com/rnmaps/fabric/event/OnPoiClickEvent.java
++++ b/android/src/main/java/com/rnmaps/fabric/event/OnPoiClickEvent.java
+@@ -24,4 +24,11 @@ public class OnPoiClickEvent extends Event<OnPoiClickEvent> {
+     public WritableMap getEventData() {
+         return payload;
+     }
++
++    // Each tap on a point of interest names another place (`placeId`, `name`). The event queue replaces the unread coalescable
++    // event of the same name for the same view, so a busy JavaScript thread would see only the last of them.
++    @Override
++    public boolean canCoalesce() {
++        return false;
++    }
+ }
+diff --git a/android/src/main/java/com/rnmaps/fabric/event/OnPressEvent.java b/android/src/main/java/com/rnmaps/fabric/event/OnPressEvent.java
+index b11b533051fd85167a95e7ea23e8b5d21900e778..03f8d39c4f2f3100e56441575da878f4cb49e45f 100644
+--- a/android/src/main/java/com/rnmaps/fabric/event/OnPressEvent.java
++++ b/android/src/main/java/com/rnmaps/fabric/event/OnPressEvent.java
+@@ -24,4 +24,12 @@ public class OnPressEvent extends Event<OnPressEvent> {
+     public WritableMap getEventData() {
+         return payload;
+     }
++
++    // The map's tag gets press, marker-press, polygon-press, polyline-press, overlay-press and callout-press as this one event,
++    // told apart by `action` and the coordinate, and each press is a user act. The event queue replaces the unread coalescable
++    // event of the same name for the same view, so a busy JavaScript thread would see only the last of them.
++    @Override
++    public boolean canCoalesce() {
++        return false;
++    }
+ }
+diff --git a/android/src/main/java/com/rnmaps/fabric/event/OnRegionChangeCompleteEvent.java b/android/src/main/java/com/rnmaps/fabric/event/OnRegionChangeCompleteEvent.java
+index 01483db7d3b9c533b62ade2911cb7aaa123d2ac9..8f71d66f8fdbdd562a5d03e7b6d9b12e8cf036c6 100644
+--- a/android/src/main/java/com/rnmaps/fabric/event/OnRegionChangeCompleteEvent.java
++++ b/android/src/main/java/com/rnmaps/fabric/event/OnRegionChangeCompleteEvent.java
+@@ -27,4 +27,10 @@ public class OnRegionChangeCompleteEvent extends Event<OnRegionChangeCompleteEve
+     return payload;
+   }
+ 
++  // One per camera move, with the region it ended on: the message a handler waits for. The event queue replaces the unread
++  // coalescable event of the same name for the same view, so a busy JavaScript thread would see only the last of them.
++  @Override
++  public boolean canCoalesce() {
++    return false;
++  }
+ }
+diff --git a/android/src/main/java/com/rnmaps/fabric/event/OnRegionChangeStartEvent.java b/android/src/main/java/com/rnmaps/fabric/event/OnRegionChangeStartEvent.java
+index b1e21b72a47414a36984c147c7f76bdcf4edb80c..ae21b1c36e7605fc05c8351daf9dd08e802c86c2 100644
+--- a/android/src/main/java/com/rnmaps/fabric/event/OnRegionChangeStartEvent.java
++++ b/android/src/main/java/com/rnmaps/fabric/event/OnRegionChangeStartEvent.java
+@@ -30,4 +30,10 @@ public class OnRegionChangeStartEvent extends Event<OnRegionChangeStartEvent> {
+     return payload;
+   }
+ 
++  // One per camera move, with the `isGesture` of that move. The event queue replaces the unread coalescable event of the same
++  // name for the same view, so a busy JavaScript thread would see only the last of them.
++  @Override
++  public boolean canCoalesce() {
++    return false;
++  }
+ }
+diff --git a/android/src/main/java/com/rnmaps/fabric/event/OnSelectEvent.java b/android/src/main/java/com/rnmaps/fabric/event/OnSelectEvent.java
+index 5c386b5ed84d489c22cdbc01d4d1849df1a0399e..48215064de030bbd5f6c2df2abc4c38303347965 100644
+--- a/android/src/main/java/com/rnmaps/fabric/event/OnSelectEvent.java
++++ b/android/src/main/java/com/rnmaps/fabric/event/OnSelectEvent.java
+@@ -25,4 +25,11 @@ public class OnSelectEvent extends Event<OnSelectEvent> {
+     public WritableMap getEventData() {
+         return payload;
+     }
++
++    // A marker's selection is a state change that a handler may count. The event queue replaces the unread coalescable event of
++    // the same name for the same view, so a busy JavaScript thread would see only the last of them.
++    @Override
++    public boolean canCoalesce() {
++        return false;
++    }
+ }

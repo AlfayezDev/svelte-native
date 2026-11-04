@@ -227,6 +227,86 @@ test("react-native-pdf's topChange event, which carries every message of the And
   expect(event).toMatch(/@Override\s+public boolean canCoalesce\(\)\s*\{\s*return false;\s*\}/);
 });
 
+// The same defect in four more libraries (SPEC.md, "Foreign views", "Events on Android"). `Event.canCoalesce()` is true unless a subclass overrides it, Fabric hands a
+// coalescable event to C++ as a unique one, and the event queue replaces the unread unique event of the same name for the same view: with the JavaScript thread busy, two
+// messages of one name reach JavaScript as the last one. Each library's Android events are pinned by what the library's source does now, so a version that adds an event class
+// or a sender fails here until the new one is decided. iOS cannot lose them: the codegen emitters (Lottie, maps) and React Native's legacy interop layer (RCTVideo, Rive)
+// dispatch with `dispatchEvent`, never `dispatchUniqueEvent`.
+const withoutComments = (file: string): string => readFileSync(resolve(modules, file), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+const neverCoalesces = /(?:@Override\s+public boolean canCoalesce\(\)\s*\{\s*return false;\s*\}|override fun canCoalesce\(\): Boolean = false)/;
+
+test("rive-react-native sends every event of its view as an event that does not coalesce, under the name the view config registers", async () => {
+  const view = withoutComments("rive-react-native/android/src/main/java/com/rivereactnative/RiveReactNativeView.kt");
+  // The seven direct events, each sent by `sendViewEvent` (React Native's `InteropEvent`, which `getJSModule(RCTEventEmitter)` builds under Fabric, coalesces and cannot be changed) ...
+  const enumBody = /enum class Events\(private val mName: String\) \{([\s\S]*?);/.exec(view)?.[1] ?? "";
+  const constants = [...enumBody.matchAll(/(\w+)\(\s*"(on\w+)"\s*\)/g)].map((match) => [match[1] as string, match[2] as string] as const);
+  expect(constants.map(([, name]) => name).sort()).toEqual(["onError", "onLoopEnd", "onPause", "onPlay", "onRiveEventReceived", "onStateChanged", "onStop"]);
+  for (const [constant] of constants) expect(view, constant).toContain(`sendViewEvent(Events.${constant}.toString(), `);
+  expect(view).not.toContain("RCTEventEmitter");
+  // ... as an event of its own that never coalesces and carries the name it is given, through the dispatcher the interop emitter uses.
+  const event = /class RiveReactNativeEvent\([\s\S]*?\n}\n/.exec(view)?.[0] ?? "";
+  expect(event).toMatch(/Event<RiveReactNativeEvent>\(surfaceId, viewId\)/);
+  expect(event).toMatch(/override fun getEventName\(\): String = name/);
+  expect(event).toMatch(neverCoalesces);
+  expect(view).toMatch(/UIManagerHelper\.getEventDispatcher\(context\)\s*\?\.dispatchEvent\(RiveReactNativeEvent\(UIManagerHelper\.getSurfaceId\(this\), id, name, data\)\)/);
+  // Fabric routes an event by its normalised name: C++ turns `onPlay` into `topPlay` (a name that starts with `top` stays), and the view config registers `topPlay` as `onPlay`.
+  const rule = readFileSync(resolve(modules, "react-native/ReactCommon/react/renderer/core/EventEmitter.cpp"), "utf8");
+  expect(rule).toMatch(/hasPrefix\(prefixedType, "on"\)\)\s*\{\s*return "top" \+ prefixedType\.substr\(2\);/);
+  const config = (await createHarness("android").load("foreign-video-fixture.svelte")).configs.viewConfigFor("RiveReactNativeView", "android");
+  for (const [, name] of constants) expect(config.events.get(`top${name.slice(2)}`), name).toBe(name);
+  // The view manager registers the same names as direct events.
+  const manager = withoutComments("rive-react-native/android/src/main/java/com/rivereactnative/RiveReactNativeViewManager.kt");
+  expect(manager).toMatch(/for \(event in RiveReactNativeView\.Events\.values\(\)\)\s*\{\s*builder\.put\(event\.toString\(\), MapBuilder\.of\("registrationName", event\.toString\(\)\)\)/);
+});
+
+test("react-native-maps' discrete events do not coalesce and its streams still do", () => {
+  const directory = resolve(modules, "react-native-maps/android/src/main/java/com/rnmaps/fabric/event");
+  // Streams: a position or a region per frame of a drag, a pan or a camera move, or per GPS fix, where the latest message replaces the earlier ones and coalescing is the saving.
+  const streams = ["OnDragEvent", "OnMarkerDragEvent", "OnPanDragEvent", "OnRegionChangeEvent", "OnUserLocationChangeEvent"];
+  // Everything else is one message per user act, state change or load, and keeps its own payload (an `action`, a marker `id`, a region, a coordinate).
+  const discrete = [
+    "OnCalloutPressEvent", "OnDeselectEvent", "OnDoublePressEvent", "OnDragEndEvent", "OnDragStartEvent", "OnIndoorBuildingFocusedEvent", "OnIndoorLevelActivatedEvent", "OnKmlReadyEvent",
+    "OnLongPressEvent", "OnMapLoadedEvent", "OnMapReadyEvent", "OnMarkerDeselectEvent", "OnMarkerDragEndEvent", "OnMarkerDragStartEvent", "OnMarkerPressEvent", "OnMarkerSelectEvent",
+    "OnPoiClickEvent", "OnPressEvent", "OnRegionChangeCompleteEvent", "OnRegionChangeStartEvent", "OnSelectEvent",
+  ];
+  expect(readdirSync(directory).map((file) => file.replace(/\.java$/, "")).sort()).toEqual([...discrete, ...streams].sort());
+  for (const name of discrete) expect(withoutComments(`react-native-maps/android/src/main/java/com/rnmaps/fabric/event/${name}.java`), name).toMatch(neverCoalesces);
+  for (const name of streams) expect(withoutComments(`react-native-maps/android/src/main/java/com/rnmaps/fabric/event/${name}.java`), name).not.toContain("canCoalesce");
+  // `topPress` of the map's tag is one event for several kinds of press, and the map attaches an `action` to every message of its press and selection events: these nine are what MapView.java sends.
+  const view = withoutComments("react-native-maps/android/src/main/java/com/rnmaps/maps/MapView.java");
+  const actions = new Set([...view.matchAll(/putString\("action", "([a-z-]+)"\)/g)].map((match) => match[1]));
+  expect([...actions].sort()).toEqual(["callout-press", "long-press", "marker-deselect", "marker-press", "marker-select", "overlay-press", "polygon-press", "polyline-press", "press"]);
+  expect(view.match(/OnPressEvent::new/g)?.length).toBeGreaterThan(8);
+});
+
+test("lottie-react-native's three events do not coalesce", () => {
+  const directory = resolve(modules, "lottie-react-native/android/src/main/java/com/airbnb/android/react/lottie");
+  const events = readdirSync(directory).filter((file) => /^On\w+Event\.kt$/.test(file)).sort();
+  expect(events).toEqual(["OnAnimationFailureEvent.kt", "OnAnimationFinishEvent.kt", "OnAnimationLoadedEvent.kt"]);
+  for (const file of events) {
+    const code = withoutComments(`lottie-react-native/android/src/main/java/com/airbnb/android/react/lottie/${file}`);
+    expect(code, file).toMatch(/Event<On\w+>\(surfaceId, viewId\)/);
+    expect(code, file).toMatch(neverCoalesces);
+  }
+  expect(events.map((file) => /EVENT_NAME = "(\w+)"/.exec(withoutComments(`lottie-react-native/android/src/main/java/com/airbnb/android/react/lottie/${file}`))?.[1])).toEqual(["topAnimationFailure", "topAnimationFinish", "topAnimationLoaded"]);
+});
+
+test("react-native-video's one event class does not coalesce except for the progress and the bandwidth estimate", () => {
+  const emitter = withoutComments("react-native-video/android/src/main/java/com/brentvatne/common/react/VideoEventEmitter.kt");
+  // One class carries every event, so the class decides by a flag the sender gives; a sender that says nothing is a discrete event ...
+  const custom = /private class VideoCustomEvent\([\s\S]*?\n {4}\}\n/.exec(emitter)?.[0] ?? "";
+  expect(custom).toMatch(/private val coalescable: Boolean/);
+  expect(custom).toMatch(/override fun canCoalesce\(\): Boolean = coalescable/);
+  expect(emitter).toMatch(/fun dispatch\(event: EventTypes, coalescable: Boolean = false, paramsSetter/);
+  expect(emitter.match(/: Event</g)?.length).toBe(1);
+  // ... and the two streams, whose latest message replaces the earlier ones, say so. Every other event (load, error, seek, end, playback state, buffer, ready, the track lists, ...) is discrete.
+  const streams = [...emitter.matchAll(/event\.dispatch\(EventTypes\.(\w+), coalescable = true\)/g)].map((match) => match[1]).sort();
+  expect(streams).toEqual(["EVENT_BANDWIDTH", "EVENT_PROGRESS"]);
+  const senders = [...emitter.matchAll(/event\.dispatch\(EventTypes\.(\w+)/g)].map((match) => match[1] as string);
+  expect(senders.length).toBeGreaterThan(25);
+  for (const name of ["EVENT_LOAD", "EVENT_ERROR", "EVENT_SEEK", "EVENT_END", "EVENT_PLAYBACK_STATE_CHANGED", "EVENT_BUFFER", "EVENT_READY"]) expect(senders, name).toContain(name);
+});
+
 test("the static config of FastShadowView lists the props the Android manager reads, the colour converted", async () => {
   const manager = readFileSync(resolve(modules, "react-native-fast-shadow/android/src/main/java/com/reactnativefastshadow/FastShadowViewManager.java"), "utf8");
   const props = [...manager.matchAll(/@ReactProp\(name = "(\w+)"/g)].map((match) => match[1] as string).sort();

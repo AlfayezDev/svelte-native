@@ -1,3 +1,50 @@
+diff --git a/android/src/main/java/com/airbnb/android/react/lottie/OnAnimationFailureEvent.kt b/android/src/main/java/com/airbnb/android/react/lottie/OnAnimationFailureEvent.kt
+index 0185eafc36d066c2db641df22fce6d03d6ef2976..b8b0bb0187b8b5455033be04f43f592c18701c97 100644
+--- a/android/src/main/java/com/airbnb/android/react/lottie/OnAnimationFailureEvent.kt
++++ b/android/src/main/java/com/airbnb/android/react/lottie/OnAnimationFailureEvent.kt
+@@ -20,6 +20,10 @@ constructor(surfaceId: Int, viewId: Int, private val error: Throwable) :
+         return event
+     }
+ 
++    // One per source that failed to load, with its message. The event queue replaces the unread coalescable event of the
++    // same name for the same view, so a busy JavaScript thread would see only the last of them.
++    override fun canCoalesce(): Boolean = false
++
+     companion object {
+         const val EVENT_NAME = "topAnimationFailure"
+     }
+diff --git a/android/src/main/java/com/airbnb/android/react/lottie/OnAnimationFinishEvent.kt b/android/src/main/java/com/airbnb/android/react/lottie/OnAnimationFinishEvent.kt
+index 18b16138bafb192a7fb326a6988594fd3995932e..27468a6ba1e210afdf37c8cfa7800fd9be207be4 100644
+--- a/android/src/main/java/com/airbnb/android/react/lottie/OnAnimationFinishEvent.kt
++++ b/android/src/main/java/com/airbnb/android/react/lottie/OnAnimationFinishEvent.kt
+@@ -20,6 +20,11 @@ constructor(surfaceId: Int, viewId: Int, private val isCancelled: Boolean) :
+         return event
+     }
+ 
++    // One per animation that ended or was cancelled, with `isCancelled`: two cancels, or a cancel and the end of the next
++    // play, are separate messages. The event queue replaces the unread coalescable event of the same name for the same view,
++    // so a busy JavaScript thread would see only the last of them.
++    override fun canCoalesce(): Boolean = false
++
+     companion object {
+         const val EVENT_NAME = "topAnimationFinish"
+     }
+diff --git a/android/src/main/java/com/airbnb/android/react/lottie/OnAnimationLoadedEvent.kt b/android/src/main/java/com/airbnb/android/react/lottie/OnAnimationLoadedEvent.kt
+index 4ebe3baedaacd92407a5d0d4337d43e355666bb6..a4e85ffec6b69cbd03faab55dfaed946eee9aff3 100644
+--- a/android/src/main/java/com/airbnb/android/react/lottie/OnAnimationLoadedEvent.kt
++++ b/android/src/main/java/com/airbnb/android/react/lottie/OnAnimationLoadedEvent.kt
+@@ -15,6 +15,11 @@ class OnAnimationLoadedEvent constructor(surfaceId: Int, viewId: Int) :
+         return Arguments.createMap()
+     }
+ 
++    // One per source that loaded: a handler that starts the animation when it hears of the load must hear of each one. The
++    // event queue replaces the unread coalescable event of the same name for the same view, so a busy JavaScript thread
++    // would see only the last of them.
++    override fun canCoalesce(): Boolean = false
++
+     companion object {
+         const val EVENT_NAME = "topAnimationLoaded"
+     }
 diff --git a/ios/Fabric/LottieAnimationViewComponentView.mm b/ios/Fabric/LottieAnimationViewComponentView.mm
 index de8b54581e8d4eb21554723792265d4b617704d6..8201753ce2a7f9360ae14f3b3172f943e06dc0e8 100644
 --- a/ios/Fabric/LottieAnimationViewComponentView.mm

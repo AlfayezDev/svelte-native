@@ -1,3 +1,4 @@
+// biome-ignore-all lint/suspicious/noExplicitAny: a structural walk of the Babel AST
 /**
  * What the build does with SvelteKit remote functions: turns a `*.remote.ts` module into the client stubs the browser gets, and says where the
  * SvelteKit client files this package reuses are found. Pure Node (no React Native, no Metro), so the Metro integration, the transformer and the
@@ -218,7 +219,8 @@ export function kitGlobalsImport(filename: string): string | undefined {
 let kitRootCache: string | undefined;
 /** The directory of the installed `@sveltejs/kit` package. */
 export function kitRoot(): string {
-  return (kitRootCache ??= dirname(require.resolve("@sveltejs/kit/package.json")));
+  if (kitRootCache === undefined) kitRootCache = dirname(require.resolve("@sveltejs/kit/package.json"));
+  return kitRootCache;
 }
 
 const shim = (name: string) => join(import.meta.dirname, "shims", name);

@@ -1,3 +1,6 @@
+// The ambient declarations of the SvelteKit files this module imports (a script file of `declare module`s: it cannot be imported).
+// eslint-disable-next-line @typescript-eslint/triple-slash-reference
+/// <reference path="./kit-modules.d.ts" />
 /**
  * The module the client stubs of a `*.remote.ts` file call (`__remote.query("<hash>/<name>")`), in the place of SvelteKit's
  * `client/remote-functions/index.js`: the same six functions. `query`, `query_batch`, `query_live`, `command` and `prerender` are SvelteKit's own

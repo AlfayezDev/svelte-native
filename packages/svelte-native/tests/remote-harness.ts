@@ -1,3 +1,4 @@
+// biome-ignore-all lint/suspicious/noExplicitAny: the client is a bundle loaded at run time and its remote functions are not typed
 // What the remote function tests share: the fixture's SvelteKit server in its own process, and the native client runtime (what Metro builds from
 // `src/remote`, SvelteKit's client files and a `*.remote.ts` module's stubs) bundled the way the other tests bundle the package, with the React Native and
 // Expo modules stubbed.
@@ -44,9 +45,9 @@ const clientOf = (path: string) => path.includes("/node_modules/@sveltejs/kit/sr
 /**
  * Bundles `entry` (a module that imports `.remote.ts` modules and `src/remote/index.ts`) as Metro would see it: remote modules replaced by their
  * stubs, SvelteKit's client files given the globals of `kitGlobalsImport` and the shims of `remoteResolution`, `.svelte.js/.ts` compiled by Svelte.
- * Returns the loaded module.
+ * `serverFile` says where the server has a remote module the bundle names by another path (the id is that of the server's file). Returns the loaded module.
  */
-export async function loadClient(entry: string, root: string = fixtureRoot): Promise<Record<string, any>> { // eslint-disable-line @typescript-eslint/no-explicit-any
+export async function loadClient(entry: string, root: string = fixtureRoot, serverFile: (file: string) => string = (file) => file): Promise<Record<string, any>> { // eslint-disable-line @typescript-eslint/no-explicit-any
   const bundle = await build({
     stdin: { contents: entry, resolveDir: import.meta.dirname, loader: "ts" },
     bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], write: false, logLevel: "error",
@@ -55,6 +56,7 @@ export async function loadClient(entry: string, root: string = fixtureRoot): Pro
       setup(builder) {
         builder.onResolve({ filter: /^svelte(\/|$)/ }, (args) => (args.pluginData === "inner" ? undefined : builder.resolve(args.path, { resolveDir: import.meta.dirname, kind: args.kind, pluginData: "inner" })));
         builder.onResolve({ filter: /^@rasheed\/svelte-native\/remote\/(runtime|globals)$/ }, (args) => ({ path: resolve(import.meta.dirname, `../src/remote/${args.path.split("/").pop()}.ts`) }));
+        builder.onResolve({ filter: /^@rasheed\/svelte-native\/remote$/ }, () => ({ path: resolve(import.meta.dirname, "../src/remote/index.ts") }));
         builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../src/environment.ts") }));
         builder.onResolve({ filter: /^(react-native|expo-constants|expo\/fetch)/ }, (args) => ({ path: args.path, namespace: "stub" }));
         builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? "export {};", loader: "js" }));
@@ -66,7 +68,7 @@ export async function loadClient(entry: string, root: string = fixtureRoot): Pro
         });
         builder.onLoad({ filter: /\.[cm]?[jt]s$/ }, async ({ path }) => {
           let source = await readFile(path, "utf8");
-          if (isRemoteModule(path)) return { contents: transformRemoteModule(source, path, root), loader: "js", resolveDir: dirname(path) };
+          if (isRemoteModule(path)) return { contents: transformRemoteModule(source, serverFile(path), root), loader: "js", resolveDir: dirname(path) };
           if (clientOf(path)) source += kitGlobalsImport(path) ?? "";
           if (/\.svelte\.[jt]s$/.test(path)) {
             if (path.endsWith(".ts")) source = (await transform(source, { loader: "ts" })).code;
@@ -85,4 +87,23 @@ export async function loadClient(entry: string, root: string = fixtureRoot): Pro
   } finally {
     await rm(directory, { recursive: true });
   }
+}
+
+/** A fetch that keeps cookies, as the platform's cookie jar does for Expo's fetch, and records what it was asked. */
+export function cookieFetch() {
+  const jar = new Map<string, string>();
+  const calls: { url: string; init: RequestInit }[] = [];
+  const send = async (url: string, init: RequestInit = {}) => {
+    calls.push({ url, init });
+    const headers = new Headers(init.headers);
+    if (jar.size > 0) headers.set("cookie", [...jar].map(([name, value]) => `${name}=${value}`).join("; "));
+    const response = await fetch(url, { ...init, headers });
+    for (const line of response.headers.getSetCookie()) {
+      const [pair] = line.split(";");
+      const [name, value] = pair.split("=");
+      jar.set(name.trim(), value);
+    }
+    return response;
+  };
+  return { send: send as unknown as typeof fetch, calls, jar };
 }

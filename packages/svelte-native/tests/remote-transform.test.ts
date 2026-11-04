@@ -13,7 +13,7 @@ const ROOT = "/work/apps/platform";
 describe("ids", () => {
   const paths = [
     "src/lib/api.remote.ts", "src/routes/(account)/[slug]/settings/data.remote.ts", "src/remote.js", "a.remote.ts", "src/lib/ünïcode/ラベル.remote.ts",
-    "../shared/outside.remote.ts", "src/routes/__dev/remote/lab.remote.ts", "x".repeat(300) + ".remote.ts", "",
+    "../shared/outside.remote.ts", "src/routes/__dev/remote/lab.remote.ts", `${"x".repeat(300)}.remote.ts`, "",
   ];
   test("hash is SvelteKit's hash, on the paths remote modules have", () => {
     for (const path of paths) expect([path, hash(path)]).toEqual([path, kitHash(path)]);

@@ -1,3 +1,4 @@
+// biome-ignore-all lint/suspicious/noExplicitAny: the client is a bundle loaded at run time and its remote functions are not typed
 // The native half of remote functions without a server: the host config, the transport (what a request looks like), the globals SvelteKit's client files are given,
 // the redirect and the screen URL, and the native form's inputs. Bundled the way Metro would bundle it (remote-harness.ts); the server round trips are in remote-e2e.test.ts.
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
@@ -11,7 +12,8 @@ import { loadClient } from "./remote-harness.ts";
 let m: Record<string, any>;
 const ENTRY = `
   export * from "../src/remote/index.ts";
-  export { normalizeBase, normalizeAppDir, hostFromExtra, currentHost, requireOrigin } from "../src/remote/config.ts";
+  export { normalizeBase, normalizeAppDir, hostFromExtra } from "../src/remote/host.ts";
+  export { currentHost, requireOrigin } from "../src/remote/config.ts";
   export { fetch as transportFetch, location, navigator, window, Blob } from "../src/remote/globals.ts";
   export { linkRouter, navigate, currentUrl } from "../src/remote/link.ts";
   export { form, query, assertReady } from "../src/remote/runtime.ts";

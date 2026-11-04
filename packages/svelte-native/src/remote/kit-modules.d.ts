@@ -1,3 +1,4 @@
+// biome-ignore-all lint/suspicious/noExplicitAny: declarations of untyped SvelteKit JavaScript
 // SvelteKit's `exports` map keeps `src/` closed; the Metro integration and the tests resolve these paths to the files (`transform.ts`, `remoteResolution`).
 // Only what this package uses is typed.
 declare module "@sveltejs/kit/src/runtime/client/remote-functions/command.svelte.js" {

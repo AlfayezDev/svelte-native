@@ -1,8 +1,9 @@
+// biome-ignore-all lint/suspicious/noExplicitAny: the client is a bundle loaded at run time and its remote functions are not typed
 // SvelteKit remote functions end to end: a real SvelteKit server (the fixture, tests/fixtures/kit-app: one remote function of each kind) and the native client
 // runtime (src/remote, SvelteKit's own client files with the shims) calling it over HTTP. Every kind round-trips against the Vite dev server and against a
 // production build, where SvelteKit's CSRF check for remote calls is on.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { fixtureRoot, loadClient, startServer, type Server } from "./remote-harness.ts";
+import { cookieFetch, fixtureRoot, loadClient, startServer, type Server } from "./remote-harness.ts";
 import { remoteHash } from "../src/remote/transform.ts";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -30,25 +31,6 @@ const eventually = async <T>(read: () => Promise<T> | T, done: (value: T) => boo
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
 };
-
-/** A fetch that keeps cookies, as the platform's cookie jar does for Expo's fetch, and records what it was asked. */
-function cookieFetch() {
-  const jar = new Map<string, string>();
-  const calls: { url: string; init: RequestInit }[] = [];
-  const send = async (url: string, init: RequestInit = {}) => {
-    calls.push({ url, init });
-    const headers = new Headers(init.headers);
-    if (jar.size > 0) headers.set("cookie", [...jar].map(([name, value]) => `${name}=${value}`).join("; "));
-    const response = await fetch(url, { ...init, headers });
-    for (const line of response.headers.getSetCookie()) {
-      const [pair] = line.split(";");
-      const [name, value] = pair.split("=");
-      jar.set(name.trim(), value);
-    }
-    return response;
-  };
-  return { send: send as unknown as typeof fetch, calls, jar };
-}
 
 function suite(mode: "dev" | "preview") {
   describe(`remote functions against the SvelteKit ${mode === "dev" ? "dev server" : "production build"}`, () => {
@@ -161,7 +143,7 @@ function suite(mode: "dev" | "preview") {
       expect(values.length).toBe(3);
       expect(values).toEqual([values[0], values[0] + 1, values[0] + 2]);
       // Nothing holds it any more: once it is collected the client closes the stream and the server's generator finishes.
-      const open = async () => { Bun.gc(true); return (await eventually(async () => (await api.stats().refresh(), api.stats().current), (stats) => stats.liveOpen === 0, 500)).liveOpen; };
+      const open = async () => { Bun.gc(true); return (await eventually(async () => { await api.stats().refresh(); return api.stats().current; }, (stats) => stats.liveOpen === 0, 500)).liveOpen; };
       let remaining = 1;
       for (let attempt = 0; attempt < 12 && remaining !== 0; attempt++) remaining = await open();
       expect(remaining).toBe(0);
@@ -176,7 +158,7 @@ function suite(mode: "dev" | "preview") {
       const first = live.current;
       await eventually(() => live.current, (current) => current > first);
       expect(live.current).toBeGreaterThan(first);
-      const open = async () => (await api.stats().refresh(), api.stats().current.liveOpen);
+      const open = async () => { await api.stats().refresh(); return api.stats().current.liveOpen; };
       expect(await open()).toBe(1);
       // To the background: the stream is closed and not retried.
       (globalThis as any).__appState("background");
@@ -223,7 +205,7 @@ function suite(mode: "dev" | "preview") {
       const unlink = m.linkRouter(router);
       const seen = await api.probe();
       expect(seen).toMatchObject({ origin: server.origin, pathname: "/lab/remote", search: "?tab=live" });
-      const call = jar.calls.at(-1)!;
+      const call = jar.calls[jar.calls.length - 1] as (typeof jar.calls)[number];
       expect(call.init.credentials).toBe("include");
       expect(call.url).toStartWith(`${server.origin}/_app/remote/`);
       unlink();
@@ -315,7 +297,8 @@ function suite(mode: "dev" | "preview") {
       const before = (await api.stats()).signups.length;
       await form.validate({ preflightOnly: true, all: true });
       expect(form.fields.name.issues()?.[0].message).toBe("client says no");
-      expect((await api.stats().refresh(), api.stats().current.signups.length)).toBe(before);
+      await api.stats().refresh();
+      expect(api.stats().current.signups.length).toBe(before);
 
       // Server validation without submitting.
       form.preflight({ "~standard": { version: 1, vendor: "test", validate: (value: any) => ({ value }) } });

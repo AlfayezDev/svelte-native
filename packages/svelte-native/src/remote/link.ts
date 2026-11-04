@@ -46,7 +46,8 @@ export async function navigate(location: string): Promise<void> {
   if (goto) return void (await goto(location));
   const target = new URL(location, origin ?? NATIVE_ORIGIN);
   if (origin !== undefined && target.origin !== origin) {
-    await Linking.openURL(target.href);
+    // (The app project declares `Linking` for itself, with the members the app uses: this is the one that opens a URL.)
+    await (Linking as unknown as { openURL(url: string): Promise<unknown> }).openURL(target.href);
     return;
   }
   if (!linked) throw new Error(`A remote function redirected to ${location}, and no router is connected to follow it: render <Router> or pass configureRemote({ goto }).`);

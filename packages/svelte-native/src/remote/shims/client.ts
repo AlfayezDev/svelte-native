@@ -1,3 +1,6 @@
+// The ambient declarations of the SvelteKit files this module imports (a script file of `declare module`s: it cannot be imported).
+// eslint-disable-next-line @typescript-eslint/triple-slash-reference
+/// <reference path="../kit-modules.d.ts" />
 // Stands in for SvelteKit's router client (`client/client.js`) in the client files this package reuses (`client/remote-functions/*`). It
 // holds what they share (the maps of the live queries, the `app` with the transport's encoders and the error hook) and the two things
 // they ask the router for: `_goto` (a `redirect()` from the server) and `refreshAll`. There are no `load` functions to rerun, no
@@ -9,7 +12,7 @@ import { navigate } from "../link.ts";
 export type ClientError = { status: number; message: string; [key: string]: unknown };
 export type ClientHooks = {
   /** As SvelteKit's client `handleError`: gets what was caught and returns the properties of `App.Error` to set, or nothing. */
-  handleError: (input: { kind: "app" | "framework" | "unknown"; error: unknown; event: unknown; status?: number; message?: string }) => Partial<ClientError> | void | Promise<Partial<ClientError> | void>;
+  handleError: (input: { kind: "app" | "framework" | "unknown"; error: unknown; event: unknown; status?: number; message?: string }) => Partial<ClientError> | undefined | Promise<Partial<ClientError> | undefined>;
 };
 
 const defaultHooks: ClientHooks = {

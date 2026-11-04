@@ -1,3 +1,6 @@
+// biome-ignore-all lint/suspicious/noExplicitAny: the values of a form are whatever its schema says, and SvelteKit's field proxy is untyped JavaScript
+// The ambient declarations of the SvelteKit files this module imports (a script file of `declare module`s: it cannot be imported).
+/// <reference path="./kit-modules.d.ts" />
 /**
  * `form` for a native app: the client half of SvelteKit's remote `form` without a `<form>` element.
  *
@@ -53,6 +56,8 @@ function merge_with_server_issues(order: readonly string[], current_issues: Issu
 
 /** Client-version of the `form` function from `$app/server`, for a native screen. */
 export function form(id: string) {
+  // (The maps here are bookkeeping of this module, not state a template reads.)
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity
   const instances = new Map<unknown, { count: number; instance: any }>();
   let shared_preflight_schema: StandardSchema | null = null;
 
@@ -75,7 +80,9 @@ export function form(id: string) {
      * browser sends an empty input and SvelteKit reads it) and the hidden ones.
      */
     const order: string[] = [];
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity
     const texty = new Map<string, { path: Path; empty: "" | undefined }>();
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity
     const hidden = new Map<string, { path: Path; value: unknown }>();
     let enhance_callback: ((instance: any) => any) | undefined;
 
@@ -182,7 +189,7 @@ export function form(id: string) {
           raw_issues = [];
           throw error;
         } finally {
-          overrides?.forEach((fn) => fn());
+          for (const release of overrides ?? []) release();
           void tick().then(() => {
             if (entry && --entry.count === 0) instances.delete(key);
           });

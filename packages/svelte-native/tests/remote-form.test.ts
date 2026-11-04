@@ -1,3 +1,4 @@
+// biome-ignore-all lint/suspicious/noExplicitAny: the client is a bundle loaded at run time and its remote functions are not typed
 // The native form: what `fields.x.as(type)` gives a native input, what is sent, and the state around a submission. No server: a preflight schema stops
 // every submission before the request, so what the schema is given is what would have been sent (the round trips are in remote-e2e.test.ts).
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";

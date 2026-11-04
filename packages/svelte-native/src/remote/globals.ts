@@ -59,7 +59,10 @@ function emit(type: string, event: { persisted?: boolean } = {}): void {
 export const window = {
   addEventListener(type: string, listener: Listener): void {
     let set = listeners.get(type);
-    if (!set) listeners.set(type, (set = new Set()));
+    if (!set) {
+      set = new Set();
+      listeners.set(type, set);
+    }
     set.add(listener);
     subscription ??= AppState.addEventListener("change", (state) => {
       if (state === "background") emit("pagehide");

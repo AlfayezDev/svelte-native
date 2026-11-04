@@ -1,3 +1,4 @@
+// biome-ignore-all lint/suspicious/noExplicitAny: mirrors SvelteKit's own generics
 import type { TextInputProps } from "react-native";
 import type { RemoteForm, RemoteFormInput } from "$app/server";
 
@@ -33,6 +34,7 @@ export type NativeFormFields<T> = T extends (...args: never[]) => unknown ? T : 
  * A remote form as a native screen sees it: SvelteKit's `RemoteForm` without the DOM parts (`action`, `element`, the attachment) and with the
  * native `fields.x.as(type)`, `submit()` (what pressing the submit button does: preflight, `enhance`, send, reset on success) and `reset()`.
  */
+// biome-ignore lint/suspicious/noConfusingVoidType: SvelteKit's own constraint on the input of a form (`form(handler)` with no schema has `void`)
 export type NativeForm<F> = F extends RemoteForm<infer Input extends RemoteFormInput | void, infer Output>
   ? Omit<RemoteForm<Input, Output>, "fields" | "action" | "element" | "enhance" | "for" | "submit" | symbol> & {
       fields: NativeFormFields<RemoteForm<Input, Output>["fields"]>;
@@ -47,6 +49,7 @@ export type NativeForm<F> = F extends RemoteForm<infer Input extends RemoteFormI
  * A remote form typed for the native `fields.x.as(...)`. It is the same object (a cast): in native code, `as` returns the props of a native
  * input at run time, and SvelteKit's types still describe DOM inputs.
  */
-export function native<F extends RemoteForm<never, unknown>>(form: F): NativeForm<F> {
-  return form as unknown as NativeForm<F>;
+// biome-ignore lint/suspicious/noConfusingVoidType: as above
+export function native<Input extends RemoteFormInput | void, Output>(form: RemoteForm<Input, Output>): NativeForm<RemoteForm<Input, Output>> {
+  return form as unknown as NativeForm<RemoteForm<Input, Output>>;
 }

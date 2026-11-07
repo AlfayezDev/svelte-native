@@ -1,5 +1,5 @@
 import { adbOk, shell } from "./adb.ts";
-import { parseLine } from "../parse/logcat.ts";
+import { parseLine, quotedArgument } from "../parse/logcat.ts";
 import { tailLogcat } from "./inject-android.ts";
 
 /**
@@ -16,9 +16,10 @@ const tag = "[Svelte foreign press]";
 /** The request on a logcat line, or null for any other line. */
 export function parsePress(line: string): PressRequest | null {
 	const message = parseLine(line)?.message;
-	if (!message?.startsWith(`'${tag}', '`)) return null;
+	const prefix = `'${tag}', '`;
+	if (!message?.startsWith(prefix)) return null;
 	try {
-		const value = JSON.parse(message.slice(`'${tag}', '`.length).replace(/'\s*$/, "")) as Partial<PressRequest>;
+		const value = JSON.parse(quotedArgument(message, prefix)) as Partial<PressRequest>;
 		return typeof value.id === "string" && typeof value.resourceId === "string" ? { id: value.id, resourceId: value.resourceId } : null;
 	} catch {
 		return null;

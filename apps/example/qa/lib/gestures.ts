@@ -3,8 +3,8 @@ import {
 	findFaults,
 	findInterruption,
 	lateIntervals,
-	parseStressComplete,
-	parseStressScenarios,
+	readStressComplete,
+	readStressScenarios,
 	type Scenario,
 } from "../parse/logcat.ts";
 import { findScenario, scenarioNames, scenarios, viewsLeft, type ScenarioSpec } from "../../src/lib/native/dev/gestures-lab.ts";
@@ -112,19 +112,23 @@ export type LaunchCapture = {
 };
 
 /** The scenarios the lab printed, as results; an `asked` scenario with no line is absent (and the launch is incomplete). */
-export function resultsFrom(text: string, injections: Record<string, GestureInjection[]>): GestureResult[] {
-	return parseStressScenarios(text)
+export function resultsFrom(printed: Scenario[], injections: Record<string, GestureInjection[]>): GestureResult[] {
+	return printed
 		.filter((scenario) => scenario.name.startsWith(prefix))
 		.map((scenario) => resultFrom(scenario, injections[scenario.name] ?? []));
 }
 
-/** One Android launch from its logcat. */
+/**
+ * One Android launch from its logcat. A `[Svelte stress]` line the harness cannot read (cut by logcat) is a harness error of the launch, and the
+ * scenario it carried is absent, so the launch is incomplete: the run is still recorded.
+ */
 export function launchFromLogcat(capture: LaunchCapture): GestureLaunch {
 	const { text } = capture;
-	const scenarios = resultsFrom(text, capture.injections);
+	const read = readStressScenarios(text);
+	const scenarios = resultsFrom(read.scenarios, capture.injections);
 	const faults = findFaults(text, capture.packageName);
 	const interrupted = findInterruption(text, capture.packageName);
-	const completion = parseStressComplete(text);
+	const { completion, unparsed: completionUnparsed } = readStressComplete(text);
 	const announced = new Set((completion?.results ?? []).map((result) => result.name));
 	const complete = capture.matched && capture.asked.every((name) => announced.has(name) && scenarios.some((scenario) => scenario.name === name)) && interrupted === null;
 	return {
@@ -137,7 +141,7 @@ export function launchFromLogcat(capture: LaunchCapture): GestureLaunch {
 		crashes: faults.crashes,
 		jsErrors: faults.jsErrors,
 		engineWarnings: findEngineWarnings(text),
-		harnessErrors: capture.harnessErrors,
+		harnessErrors: [...capture.harnessErrors, ...read.unparsed, ...completionUnparsed],
 		...(interrupted ? { interrupted } : {}),
 		logFile: capture.logFile,
 	};

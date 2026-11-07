@@ -155,16 +155,18 @@ export function classifySuite(
 	packageName: string,
 ): SuiteRun {
 	const { crashes, anrs } = split(run.crashes, packageName);
+	// A `[Svelte stress]` line the harness could not read is a suite that did not measure: incomplete, with the reason.
+	const unreadable = run.unparsedLines ?? [];
 	return {
 		index,
-		complete: run.complete,
+		complete: run.complete && unreadable.length === 0,
 		durationMs: run.durationMs,
 		checksPassed: run.checks?.passed ?? null,
 		crashes,
 		anrs,
 		jsErrors: run.jsErrors.length,
 		logFile,
-		error: null,
+		error: unreadable.length > 0 ? `${unreadable.length} [Svelte stress] line(s) could not be read: ${unreadable[0]}` : null,
 	};
 }
 

@@ -101,6 +101,8 @@ export function labMetrics(file: LabFile, pinned: readonly string[]): Metrics {
 		"lab.runs": runs.filter((run) => run.complete).length,
 		"lab.incompleteRuns": runs.filter((run) => !run.complete).length,
 		"lab.interruptedRuns": runs.filter((run) => run.interrupted).length,
+		// `[Svelte stress]` lines no run could read (cut by logcat, or quoted unexpectedly): the scenario each carried is missing, and the run says so.
+		"lab.unparsedLines": total(runs.map((run) => run.unparsedLines?.length ?? 0)),
 		"lab.checks.passed": smallest(runs.map((run) => run.checks?.passed ?? 0)),
 		"lab.checks.failed": largest(runs.map((run) => run.checks?.failed ?? 0)),
 		"lab.scenarios.failed": largest(

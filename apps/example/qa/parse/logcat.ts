@@ -42,18 +42,53 @@ export function elapsedMs(from: number, to: number): number {
 	return to >= from ? to - from : to + day - from;
 }
 
+/**
+ * A string argument of a `console.info` call with several arguments, as it reaches logcat. React Native's JavaScript console
+ * (`@react-native/js-polyfills/console.js`, `formatPrimitive`) prints it in single quotes: the `JSON.stringify` of the string without its
+ * outer quotes, a `'` as `\'`, and a `\"` turned back into `"`. So a backslash is `\\` and the `\"` of a JSON detail that is JSON itself is
+ * `\\"`. This undoes that, exactly, for text without control characters (a lab payload is one line; a newline that `JSON.stringify(x, null, 2)`
+ * wrote is `\n` there, and stays so). A call with a single string argument is printed as it is, without quotes or escapes: undo nothing there.
+ */
+export function unescapeLogcat(text: string): string {
+	return text.replace(/\\(['\\])/g, "$1");
+}
+
+/**
+ * What follows [prefix] (`'[tag]', '`) in a message, without the closing quote, with the console's quoting undone. A message that does not
+ * start with [prefix] is a mistake of the caller, not an empty payload: it throws.
+ */
+export function quotedArgument(message: string, prefix: string): string {
+	if (!message.startsWith(prefix)) throw new Error(`the message does not start with ${prefix}: ${message.slice(0, 80)}`);
+	return unescapeLogcat(message.slice(prefix.length).replace(/'\s*$/, ""));
+}
+
 /** The JSON payload of a console call such as `'[tag]', '{...}'`, or null when the message has none. */
 function payload(message: string, tag: string): string | null {
 	const prefix = `'${tag}', '`;
 	if (!message.startsWith(prefix) || message[prefix.length] !== "{") return null;
-	return message.slice(prefix.length).replace(/'\s*$/, "");
+	return quotedArgument(message, prefix);
 }
 
-function parseJson(text: string, tag: string): unknown {
+/** At most this many characters of each end of a payload are shown by an error. */
+const shownEnd = 160;
+
+/**
+ * The value of the JSON a lab line carries ([text], after the console's quoting was undone; [messageLength] is the length of the whole
+ * logged message). When it is not JSON the error says what the parser found, how long the message was, the start and the end of the
+ * payload, and names the two usual causes: logcat cut the entry (it holds about 4 KB, bytes), or something in it is escaped in a way
+ * nobody expected.
+ */
+export function parseLoggedJson(text: string, tag: string, messageLength: number): unknown {
 	try {
 		return JSON.parse(text);
-	} catch {
-		throw new Error(`malformed ${tag} line (logcat cuts lines near 4 KB): ${text.slice(0, 160)}`);
+	} catch (cause) {
+		const reason = cause instanceof Error ? cause.message : String(cause);
+		const shown = text.length <= 2 * shownEnd ? text : `${text.slice(0, shownEnd)} [...] ${text.slice(-shownEnd)}`;
+		throw new Error(
+			`malformed ${tag} line, its payload is not JSON (${reason}): the message is ${messageLength} characters, and logcat cuts an entry near 4 KB (bytes), ` +
+				`but a quote or a backslash escaped some other way breaks it just the same; the payload is ${shown}`,
+			{ cause },
+		);
 	}
 }
 
@@ -71,7 +106,8 @@ const checkEntry = /\{"name":"((?:[^"\\]|\\.)*)","passed":(true|false)/g;
 
 /**
  * The lab's functional checks from its `"phase":"checks"` result line. logcat caps a line near
- * 4 KB, so entries are counted one by one; a cut-off line still yields every complete entry.
+ * 4 KB, so entries are counted one by one; a cut-off line still yields every complete entry. A failure is named as the JSON
+ * of the line writes it (a double quote in it is `\"`).
  */
 export function parseLabChecks(text: string): LabChecks | null {
 	const line = parseLines(text).find(
@@ -81,11 +117,13 @@ export function parseLabChecks(text: string): LabChecks | null {
 	if (!line) return null;
 	let passed = 0;
 	const failures: string[] = [];
-	for (const entry of line.message.matchAll(checkEntry)) {
+	// A quoted line went through the console's quoting (`'[native lab results]', '{...}'`): a quote or a backslash in a check's name is escaped a second time.
+	const message = line.message.startsWith("'") ? unescapeLogcat(line.message) : line.message;
+	for (const entry of message.matchAll(checkEntry)) {
 		if (entry[2] === "true") passed++;
 		else failures.push(entry[1] ?? "");
 	}
-	const finishedAt = /"finishedAt":"([^"]+)"/.exec(line.message)?.[1] ?? null;
+	const finishedAt = /"finishedAt":"([^"]+)"/.exec(message)?.[1] ?? null;
 	return { passed, failed: failures.length, total: passed + failures.length, failures, finishedAt };
 }
 
@@ -157,16 +195,26 @@ export function frameStats(value: unknown): FrameStats | null {
 	};
 }
 
+/** What the harness read of the lab's `[Svelte stress]` lines, and the lines it could not: each is the error that says why (what the parser found, how long the message was). */
+export type StressRead = { scenarios: Scenario[]; unparsed: string[] };
+
 /**
- * Per-scenario results from the `[Svelte stress]` JSON lines, in log order. A scenario line that
- * is cut off or malformed throws: a missing scenario must never read as a passing one.
+ * Per-scenario results from the `[Svelte stress]` JSON lines, in log order. A line that is cut off or malformed is not skipped: it is in
+ * `unparsed`, for the caller to fail the run with (the run file is still written, and a missing scenario never reads as a passing one).
  */
-export function parseStressScenarios(text: string): Scenario[] {
+export function readStressScenarios(text: string): StressRead {
 	const scenarios: Scenario[] = [];
+	const unparsed: string[] = [];
 	for (const line of parseLines(text)) {
 		const json = payload(line.message, "[Svelte stress]");
 		if (json === null) continue;
-		const value = parseJson(json, "[Svelte stress]");
+		let value: unknown;
+		try {
+			value = parseLoggedJson(json, "[Svelte stress]", line.message.length);
+		} catch (error) {
+			unparsed.push(error instanceof Error ? error.message : String(error));
+			continue;
+		}
 		if (!isRecord(value) || typeof value.name !== "string" || typeof value.verdict !== "string")
 			continue;
 		scenarios.push({
@@ -178,6 +226,13 @@ export function parseStressScenarios(text: string): Scenario[] {
 			detail: isRecord(value.detail) ? value.detail : null,
 		});
 	}
+	return { scenarios, unparsed };
+}
+
+/** The scenarios of [readStressScenarios] for a caller that cannot go on with a line it could not read: it throws on the first one. */
+export function parseStressScenarios(text: string): Scenario[] {
+	const { scenarios, unparsed } = readStressScenarios(text);
+	if (unparsed[0] !== undefined) throw new Error(unparsed[0]);
 	return scenarios;
 }
 
@@ -186,14 +241,26 @@ export type StressComplete = {
 	results: { name: string; verdict: string }[];
 };
 
-/** The `[Svelte stress] complete` line the lab logs after its last scenario, or null if it never did. */
-export function parseStressComplete(text: string): StressComplete | null {
+/**
+ * The `[Svelte stress] complete` line the lab logs after its last scenario; `completion` is null if it never did, or if the line could not be
+ * read (then `unparsed` says why, and the lab did not complete as far as anyone can tell).
+ */
+export function readStressComplete(text: string): { completion: StressComplete | null; unparsed: string[] } {
+	const unparsed: string[] = [];
 	for (const line of parseLines(text)) {
 		const json = payload(line.message, "[Svelte stress] complete");
 		if (json === null) continue;
-		const value = parseJson(json, "[Svelte stress] complete");
-		if (!isRecord(value) || !Array.isArray(value.results))
-			throw new Error(`unexpected [Svelte stress] complete payload: ${json.slice(0, 160)}`);
+		let value: unknown;
+		try {
+			value = parseLoggedJson(json, "[Svelte stress] complete", line.message.length);
+		} catch (error) {
+			unparsed.push(error instanceof Error ? error.message : String(error));
+			continue;
+		}
+		if (!isRecord(value) || !Array.isArray(value.results)) {
+			unparsed.push(`unexpected [Svelte stress] complete payload: ${json.slice(0, 160)}`);
+			continue;
+		}
 		const results = value.results
 			.filter(isRecord)
 			.flatMap((entry) =>
@@ -201,9 +268,16 @@ export function parseStressComplete(text: string): StressComplete | null {
 					? [{ name: entry.name, verdict: entry.verdict }]
 					: [],
 			);
-		return { periodMs: typeof value.periodMs === "number" ? value.periodMs : null, results };
+		return { completion: { periodMs: typeof value.periodMs === "number" ? value.periodMs : null, results }, unparsed };
 	}
-	return null;
+	return { completion: null, unparsed };
+}
+
+/** The completion line of [readStressComplete] for a caller that cannot go on with a line it could not read: it throws on the first one. */
+export function parseStressComplete(text: string): StressComplete | null {
+	const { completion, unparsed } = readStressComplete(text);
+	if (unparsed[0] !== undefined) throw new Error(unparsed[0]);
+	return completion;
 }
 
 /* ---- boot ---- */

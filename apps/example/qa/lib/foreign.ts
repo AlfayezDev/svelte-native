@@ -125,7 +125,7 @@ export function foreignMetrics(file: ForeignFile, pins: ForeignPins): Metrics {
 	metrics["foreign.engineWarnings"] = file.launches.reduce((sum, launch) => sum + launch.engineWarnings.length, 0);
 	metrics["foreign.leftovers.failed"] = leftoverLaunch?.complete ? file.leftovers.filter((entry) => !entry.passed).length + (file.leftovers.length === 0 ? 1 : 0) : null;
 	metrics["foreign.react.files"] = file.bundle?.reactFiles.length ?? null;
-	metrics["foreign.unparsedLines"] = file.unparsed?.length ?? 0;
+	metrics["foreign.unparsedLines"] = (file.unparsed?.length ?? 0) + file.launches.reduce((sum, launch) => sum + (launch.unparsedLines?.length ?? 0), 0);
 	return metrics;
 }
 
@@ -144,6 +144,7 @@ export function describeForeign(file: ForeignFile, pins: ForeignPins): string[] 
 	for (const launch of file.launches) {
 		lines.push(`  ${launch.name}: complete ${launch.complete} in ${(launch.durationMs / 1000).toFixed(0)} s, fatals ${launch.crashes.length + launch.jsErrors.length}, engine warnings ${launch.engineWarnings.length}`);
 		if (launch.interrupted) lines.push(`  interrupted by ${launch.interrupted.by} at ${launch.interrupted.at} (device clock)`);
+		for (const unreadable of (launch.unparsedLines ?? []).slice(0, 3)) lines.push(`  UNREADABLE LINE ${unreadable.slice(0, 400)}`);
 		for (const fault of [...launch.crashes, ...launch.jsErrors].slice(0, 3)) lines.push(`  fatal: ${fault.slice(0, 200)}`);
 	}
 	return lines;

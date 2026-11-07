@@ -484,6 +484,20 @@
       }
     },
     {
+      "id": "lab.unparsed",
+      "title": "Lab: `[Svelte stress]` lines the harness could not read (cut by logcat near 4 KB, or quoted in a way it does not undo); the scenario each carried is missing",
+      "unit": "lines",
+      "metric": "lab.unparsedLines",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
       "id": "lab.scenarios.failed",
       "title": "Scenarios the lab itself marks failed",
       "unit": "scenarios",

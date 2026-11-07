@@ -82,6 +82,25 @@ describe("parseSoakSamples", () => {
 			"malformed [Svelte soak] line",
 		);
 	});
+	test("a sample whose text has an apostrophe or a backslash, as the console quotes it, is read as written", () => {
+		const payload = JSON.stringify({ phase: "checkpoint", cycle: 4, t: 1000, collected: "gc: the engine's \\ table", heap: null, engine: null });
+		const quoted = `'${payload.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
+		expect(quoted).toContain("engine\\'s \\\\\\\\ table");
+		const [entry] = parseSoakSamples(`10-26 08:58:33.538  4197  4219 I ReactNativeJS: '[Svelte soak]', ${quoted}`);
+		expect(entry?.collected).toBe("gc: the engine's \\ table");
+	});
+	test("a line that is not JSON says so, with the parser's reason, the length of the message and the end of the payload", () => {
+		const message = `'[Svelte soak]', '{"phase":"sample","cycle":1,"t":5,"collected":null,"heap":{"allocated":1`;
+		let error: unknown;
+		try {
+			parseSoakSamples(`10-26 08:58:33.538  4197  4219 I ReactNativeJS: ${message}`);
+		} catch (caught) {
+			error = caught;
+		}
+		expect((error as Error).message).toMatch(/malformed \[Svelte soak\] line, its payload is not JSON \(.+\)/);
+		expect((error as Error).message).toContain(`the message is ${message.length} characters`);
+		expect((error as Error).message.endsWith('"heap":{"allocated":1')).toBe(true);
+	});
 	test("a payload without the expected fields throws", () => {
 		const line = `10-26 08:58:33.538  4197  4219 I ReactNativeJS: '[Svelte soak]', '{"phase":"later","cycle":0,"t":0}'`;
 		expect(() => parseSoakSamples(line)).toThrow("unexpected [Svelte soak] payload");

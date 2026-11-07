@@ -1,17 +1,9 @@
 import type { ForeignCheck, ForeignPlace, ForeignSkip } from "../lib/types.ts";
-import { parseLines } from "./logcat.ts";
+import { parseLines, quotedArgument } from "./logcat.ts";
 
 const checkPrefix = "'[Svelte foreign library]', '";
 const skipPrefix = "'[Svelte foreign library skipped]', '";
 const places: readonly ForeignPlace[] = ["inline", "row", "sheet"];
-
-/**
- * A string argument of `console.info` as it reaches logcat: Hermes prints it in single quotes, a quote inside as `\'` and a backslash as `\\`
- * (so the `\"` of a JSON detail that is JSON itself is `\\"`), which has to be undone before the text is JSON.
- */
-export function unescapeLogcat(text: string): string {
-	return text.replace(/\\(['\\])/g, "$1");
-}
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -50,7 +42,7 @@ export function parseForeignChecks(text: string): { checks: ForeignCheck[]; skip
 		const isCheck = message.startsWith(checkPrefix);
 		const isSkip = message.startsWith(skipPrefix);
 		if (!isCheck && !isSkip) continue;
-		const value = readJson(unescapeLogcat(message.slice((isCheck ? checkPrefix : skipPrefix).length).replace(/'\s*$/, "")));
+		const value = readJson(quotedArgument(message, isCheck ? checkPrefix : skipPrefix));
 		const check = isCheck ? foreignCheckOf(value) : null;
 		const skip = isSkip ? foreignSkipOf(value) : null;
 		if (check) checks.push(check);

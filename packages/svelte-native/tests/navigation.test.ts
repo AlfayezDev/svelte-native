@@ -44,7 +44,7 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/Renderer/shims/ReactNativeViewConfigRegistry": "export const register = (name) => name; export const get = (name) => ({ uiViewClassName: name, validAttributes: {}, bubblingEventTypes: { topChange: { phasedRegistrationNames: { bubbled: 'onChange', captured: 'onChangeCapture' } } }, directEventTypes: { topLayout: { registrationName: 'onLayout' }, topScroll: { registrationName: 'onScroll' } } });",
   "react-native/Libraries/Utilities/Platform": "export default { get OS() { return globalThis.__navigationOS ?? 'android'; }, Version: 34 };",
   "react-native/Libraries/Utilities/BackHandler": "const handlers = (globalThis.__backHandlers ??= []); export default { addEventListener: (name, handler) => { handlers.push(handler); return { remove() { const at = handlers.indexOf(handler); if (at >= 0) handlers.splice(at, 1); } }; } };",
-  "react-native/Libraries/Linking/Linking": "const handlers = (globalThis.__linkHandlers ??= []); export default { addEventListener: (name, handler) => { handlers.push(handler); return { remove() { const at = handlers.indexOf(handler); if (at >= 0) handlers.splice(at, 1); } }; }, getInitialURL: () => { globalThis.__initialURLReads = (globalThis.__initialURLReads ?? 0) + 1; if (globalThis.__initialURLMode === 'reject') return Promise.reject(new Error('the link service is down')); if (globalThis.__initialURLMode === 'hang') return new Promise(() => {}); if (globalThis.__initialURLMode === 'late') return new Promise((resolve) => { globalThis.__resolveInitialURL = resolve; }); return Promise.resolve(globalThis.__initialURL ?? null); } };",
+  "react-native/Libraries/Linking/Linking": "const handlers = (globalThis.__linkHandlers ??= []); export default { addEventListener: (name, handler) => { handlers.push(handler); return { remove() { const at = handlers.indexOf(handler); if (at >= 0) handlers.splice(at, 1); } }; }, getInitialURL: () => { globalThis.__initialURLReads = (globalThis.__initialURLReads ?? 0) + 1; if (globalThis.__initialURLMode === 'throw') throw new Error('the link service threw at once'); if (globalThis.__initialURLMode === 'reject') return Promise.reject(new Error('the link service is down')); if (globalThis.__initialURLMode === 'hang') return new Promise(() => {}); if (globalThis.__initialURLMode === 'late') return new Promise((resolve) => { globalThis.__resolveInitialURL = resolve; }); return Promise.resolve(globalThis.__initialURL ?? null); } };",
   "react-native/Libraries/Image/resolveAssetSource": "export default (source) => source && typeof source === 'object' && 'uri' in source ? { scale: 1, ...source } : null;",
   "react-native/Libraries/Components/Keyboard/Keyboard": "export default { isVisible: () => false, dismiss() {} };",
   "react-native/Libraries/NativeComponent/ViewConfig": "export const createViewConfig = (partial) => partial;",
@@ -2154,6 +2154,127 @@ test("a link that is refused ahead of the <Router> is left for it, and a read th
     stale.app.show(true);
     await stale.settled();
     expect(pathsOf(stale.router)).toEqual(before);
+  } finally { delete launch.__initialURL; delete launch.__initialURLMode; reset(); }
+});
+
+/** What the root router would leave for a restart or a hot remount right now (`hmrState().navigation`). */
+const savedNavigation = () => (globalThis as { __svelteNativeHmrState?: { navigation?: () => { stack: object; launch?: string } } }).__svelteNativeHmrState?.navigation?.();
+
+test("a launch link that is dropped is recorded as the one acted on, so a restart that gets the intent again does not replay it over the restored screens", async () => {
+  withInsets(24);
+  const launch = globalThis as { __initialURL?: string; __initialURLReads?: number; __initialURLMode?: string; __resolveInitialURL?: (url: string | null) => void; __svelteNativeHmrState?: { restore?: unknown } };
+  const link = "https://example.test/workspaces";
+  try {
+    // An answer that comes after the app navigated is dropped...
+    delete launch.__svelteNativeHmrState;
+    launch.__initialURLMode = "late";
+    const first = await mountTree(198, { initial: "/acme/home", mounted: false });
+    void first.m.openLaunchURL(first.router);
+    jest.advanceTimersByTime(3_000);
+    await first.settled();
+    first.router.goto("/acme/inbox");
+    await first.settled();
+    launch.__resolveInitialURL?.(link);
+    await first.settled();
+    expect(pathsOf(first.router)).toEqual(["/acme"]);
+    // ...but remembered as the launch's: it is in the state a restart gets.
+    const saved = savedNavigation();
+    expect(saved?.launch).toBe(link);
+    // The process dies and Android delivers the same intent to the restored app: the restored screens stay.
+    delete launch.__initialURLMode;
+    launch.__initialURL = link;
+    launch.__svelteNativeHmrState!.restore = saved;
+    const restored = await mountTree(199, { initial: "/acme/home" });
+    await restored.settled();
+    expect(pathsOf(restored.router)).toEqual(["/acme"]);
+    expect(launch.__initialURLReads).toBe(1);
+
+    // A read that failed and was asked again after the app went on is dropped the same way.
+    delete launch.__svelteNativeHmrState;
+    launch.__initialURLMode = "reject";
+    const stale = await mountTree(200, { initial: "/acme/home", mounted: false });
+    await expect(stale.m.openLaunchURL(stale.router)).rejects.toThrow("the link service is down");
+    stale.router.goto("/acme/inbox");
+    await stale.settled();
+    delete launch.__initialURLMode;
+    await stale.m.openLaunchURL(stale.router);
+    expect(pathsOf(stale.router)).toEqual(["/acme"]);
+    expect(savedNavigation()?.launch).toBe(link);
+  } finally { delete launch.__initialURL; delete launch.__initialURLMode; delete launch.__resolveInitialURL; delete launch.__svelteNativeHmrState; reset(); }
+});
+
+test("a late answer is judged as a timely one is: not after a failed read and a navigation, and by the caller's accept", async () => {
+  withInsets(24);
+  const launch = globalThis as { __initialURL?: string; __initialURLReads?: number; __initialURLMode?: string; __resolveInitialURL?: (url: string | null) => void };
+  const link = "https://example.test/workspaces";
+  try {
+    // The first read fails, the app goes on, the second read is silent for three seconds and then answers: the answer is the cold start's, long stale.
+    launch.__initialURLMode = "reject";
+    const stale = await mountTree(201, { initial: "/acme/home", mounted: false });
+    await expect(stale.m.openLaunchURL(stale.router)).rejects.toThrow("the link service is down");
+    stale.router.goto("/acme/inbox");
+    await stale.settled();
+    launch.__initialURLMode = "late";
+    void stale.m.openLaunchURL(stale.router);
+    jest.advanceTimersByTime(3_000);
+    await stale.settled();
+    launch.__resolveInitialURL?.(link); // nothing navigated since the wait ended, but the app had gone on before the read
+    await stale.settled();
+    expect(pathsOf(stale.router)).toEqual(["/acme"]);
+    stale.app.show(true);
+    await stale.settled();
+    expect(pathsOf(stale.router)).toEqual(["/acme"]);
+
+    // The caller refused the link for the moment: a late answer is not opened behind its back, and waits for the next call, the <Router>'s.
+    launch.__initialURLMode = "late";
+    const refused = await mountTree(202, { initial: "/acme/home", mounted: false });
+    void refused.m.openLaunchURL(refused.router, (url: string) => !url.includes("workspaces"));
+    jest.advanceTimersByTime(3_000);
+    await refused.settled();
+    launch.__resolveInitialURL?.(link);
+    await refused.settled();
+    expect(pathsOf(refused.router)).toEqual(["/acme"]);
+    refused.app.show(true); // the <Router> mounts, asks, and finds the answer that was left for it
+    await refused.settled();
+    expect(pathsOf(refused.router)).toEqual(["/workspaces"]);
+    expect(launch.__initialURLReads).toBe(1);
+
+    // Left for the next call, but the app navigated before it came: dropped.
+    launch.__initialURLMode = "late";
+    const gone = await mountTree(203, { initial: "/acme/home", mounted: false });
+    void gone.m.openLaunchURL(gone.router, (url: string) => !url.includes("workspaces"));
+    jest.advanceTimersByTime(3_000);
+    await gone.settled();
+    launch.__resolveInitialURL?.(link);
+    await gone.settled();
+    gone.router.goto("/acme/inbox");
+    await gone.settled();
+    gone.app.show(true);
+    await gone.settled();
+    expect(pathsOf(gone.router)).toEqual(["/acme"]);
+  } finally { delete launch.__initialURLMode; delete launch.__resolveInitialURL; reset(); }
+});
+
+test("a read that throws at once is forgotten like one that rejects, and leaves no timer behind", async () => {
+  withInsets(24);
+  const launch = globalThis as { __initialURL?: string; __initialURLReads?: number; __initialURLMode?: string };
+  const timers = () => (jest as unknown as { getTimerCount(): number }).getTimerCount();
+  try {
+    launch.__initialURL = "https://example.test/workspaces";
+    const { m, app, router, settled } = await mountTree(204, { initial: "/acme/home", mounted: false });
+    const before = timers();
+    launch.__initialURLMode = "throw";
+    await expect(m.openLaunchURL(router)).rejects.toThrow("the link service threw at once");
+    expect(timers()).toBe(before); // the three seconds' wait was cleared, not left to fire
+    await expect(m.openLaunchURL(router)).rejects.toThrow("the link service threw at once"); // asked again, not the same rejection from a cache
+    expect(launch.__initialURLReads).toBe(2);
+    delete launch.__initialURLMode;
+    expect(await m.openLaunchURL(router)).toBe("https://example.test/workspaces");
+    expect(pathsOf(router)).toEqual(["/workspaces"]);
+    app.show(true);
+    await settled();
+    expect(launch.__initialURLReads).toBe(3);
+    expect(pathsOf(router)).toEqual(["/workspaces"]);
   } finally { delete launch.__initialURL; delete launch.__initialURLMode; reset(); }
 });
 

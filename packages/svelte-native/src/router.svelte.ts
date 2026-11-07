@@ -199,6 +199,8 @@ function createStore(tree: StackNode) {
   let launchDone = false;
   /** The navigation count when the first read of the launch link failed: a later read that succeeds is the launch's only while nothing has navigated since. */
   let readFailedAt: number | undefined;
+  /** An answer that came after the wait and that `accept` refused for the moment, with the navigation count it came at: the next call to `openLaunchURL` takes it up as if it had come in time. */
+  let lateLink: { url: string; at: number } | undefined;
   /**
    * Whether the root `<Router>` is mounted. A screen that leaves stays on screen until the native stack reports its exit, which a screen that is
    * not on a native stack cannot: a navigation before the first mount (the launch link, opened ahead by `openLaunchURL`) or while the
@@ -351,30 +353,56 @@ function createStore(tree: StackNode) {
     router.openURL(url, { reset: true });
   }
   /**
+   * The launch link is not opened: a read that failed was asked again after the app went on, or an answer came after it navigated. It is still
+   * the link the app was launched with, so it is recorded as the one acted on: the state saved for a restart carries it, and the intent Android
+   * delivers again after the process died (or a hot remount replays) is not taken for a new launch over the screens it restores.
+   */
+  function dropLaunch(url: string): void {
+    launchDone = true;
+    lateLink = undefined;
+    launched ??= url;
+  }
+  /** Whether a link read now is the launch's only by name: the first read failed, and the app has navigated since. */
+  const staleRead = () => readFailedAt !== undefined && navigations !== readFailedAt;
+  /**
    * The link the app was launched with, read once: the platform gets `LAUNCH_URL_TIMEOUT_MS` to answer, and after that the app goes on as if
    * there were no link (`null`), so a start that waits for it cannot wait for ever. An answer that comes later is still the launch's, and is
-   * opened if nothing has navigated since the wait ended, and then only once. A read that fails rejects and is asked again by the
-   * next call (`openLaunchURL` checks that the app has not gone on meanwhile).
+   * opened (if `accept`, the first caller's, allows it; else it waits for the next call) when nothing has navigated since the wait ended and the
+   * read was not a stale retry, and then only once. A read that fails, even by throwing at once, rejects and is asked again by the next call
+   * (`openLaunchURL` checks that the app has not gone on meanwhile).
    */
-  function readLaunch(router: Router): Promise<string | null> {
-    launchURL ??= new Promise<string | null>((resolve, reject) => {
+  function readLaunch(router: Router, accept: ((url: string) => boolean) | undefined): Promise<string | null> {
+    if (launchURL) return launchURL;
+    let failedAt: number | undefined;
+    const read = new Promise<string | null>((resolve, reject) => {
       let waiting = true;
       let gaveUpAt = -1;
       const timer = setTimeout(() => { waiting = false; gaveUpAt = navigations; resolve(null); }, LAUNCH_URL_TIMEOUT_MS);
-      Linking.getInitialURL().then((url) => {
-        clearTimeout(timer);
-        if (waiting) { waiting = false; resolve(url); return; }
-        if (url && !launchDone && navigations === gaveUpAt) openLaunch(router, url);
-      }, (error: unknown) => {
+      const failed = (error: unknown) => {
         clearTimeout(timer);
         if (!waiting) return;
         waiting = false;
-        launchURL = undefined;
-        readFailedAt ??= navigations;
+        failedAt = navigations;
         reject(error);
-      });
+      };
+      let answer: Promise<string | null>;
+      try { answer = Linking.getInitialURL(); } catch (error) { failed(error); return; }
+      answer.then((url) => {
+        clearTimeout(timer);
+        if (waiting) { waiting = false; resolve(url); return; }
+        if (!url || launchDone) return;
+        if (navigations !== gaveUpAt || staleRead()) dropLaunch(url);
+        else if (accept && !accept(url)) lateLink = { url, at: gaveUpAt };
+        else openLaunch(router, url);
+      }, failed);
     });
-    return launchURL;
+    // After the assignment below, so that a read that failed before it (a throw at once) is forgotten too.
+    read.catch(() => {
+      if (launchURL === read) launchURL = undefined;
+      if (failedAt !== undefined) readFailedAt ??= failedAt;
+    });
+    launchURL = read;
+    return read;
   }
 
   return {
@@ -428,10 +456,15 @@ function createStore(tree: StackNode) {
      * link for now (the lab shell opens only a lab link ahead of its `<Router>`): it is then left for the next call, which is the `<Router>`'s.
      */
     async openLaunchURL(router: Router, accept?: (url: string) => boolean): Promise<string | null> {
-      const url = await readLaunch(router);
+      let url = await readLaunch(router, accept);
+      if (!url && lateLink && !launchDone) {
+        const late = lateLink;
+        lateLink = undefined;
+        if (late.at === navigations) url = late.url; else dropLaunch(late.url);
+      }
       if (!url || launchDone) return url;
       // A read that failed and was asked again after the app went on (a sign-out remounts the <Router>) would open a link that is long stale.
-      if (readFailedAt !== undefined && navigations !== readFailedAt) { launchDone = true; return url; }
+      if (staleRead()) { dropLaunch(url); return url; }
       if (accept && !accept(url)) return url;
       openLaunch(router, url);
       return url;

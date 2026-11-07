@@ -333,12 +333,30 @@ describe("the iPhone capture of a screen that needs the session", () => {
 		const detail = await wait();
 		expect(detail).toContain(`within ${productWaitMs / 1000} s`);
 		expect(detail).toContain("not answering");
+		expect(detail).toContain("its start failed");
 		expect(world.elapsed()).toBeGreaterThanOrEqual(productWaitMs);
 		expect(world.elapsed()).toBeLessThan(productWaitMs + 1_000);
 		const spent = world.elapsed();
 		expect(await wait()).toBe(detail);
 		expect(await wait()).toBe(detail);
 		expect(world.elapsed()).toBe(spent);
+	});
+
+	test("the phone is kept awake while the capture waits, and let go whichever way the wait ends", async () => {
+		const events: string[] = [];
+		const hold = () => { events.push("hold"); return () => { events.push("release"); }; };
+		// Ready at once: no wait, nothing held.
+		await productWaiter({ ...clock(0), hold })();
+		expect(events).toEqual([]);
+		// Ready after a wait: held for it, then released.
+		await productWaiter({ ...clock(1_000), hold })();
+		expect(events).toEqual(["hold", "release"]);
+		// Never ready: held for the whole bound, released, and the next screen waits for nothing, so holds nothing.
+		events.length = 0;
+		const wait = productWaiter({ ...clock(null, true), hold });
+		await wait();
+		await wait();
+		expect(events).toEqual(["hold", "release"]);
 	});
 
 	test("a start that is only slow says so, and a start that comes up after the bound is believed again", async () => {

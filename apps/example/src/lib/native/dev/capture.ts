@@ -1,4 +1,5 @@
 import { Directory, File, Paths } from "expo-file-system";
+import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import type { Presentation } from "@rasheed/svelte-native";
 import { qaModule, type BuildIdentity } from "./qa.ts";
 import { needsProduct, productWaiter } from "./capture-wait.ts";
@@ -79,7 +80,17 @@ export type CaptureIndex = { schema: 1; token: string | null; build: BuildIdenti
 
 const pause = (milliseconds: number) => new Promise<void>((resolve) => { setTimeout(resolve, milliseconds); });
 /** A screen that needs the session (the login) is photographed once the product's start is ready, within a bound, once for the whole run (`capture-wait.ts`). */
-const productReady = productWaiter({ phase: () => startupStatus.phase, sleep: pause, now: Date.now });
+const productReady = productWaiter({
+  phase: () => startupStatus.phase,
+  sleep: pause,
+  now: Date.now,
+  // The lab page keeps the phone awake while it is mounted, and it is not while the product starts: the wait keeps its own.
+  hold() {
+    const tag = "svelte-native-capture-wait";
+    void activateKeepAwakeAsync(tag).catch((error: unknown) => console.error("[native lab keep awake]", error));
+    return () => { void deactivateKeepAwake(tag).catch((error: unknown) => console.error("[native lab keep awake cleanup]", error)); };
+  },
+});
 const plain = (uri: string) => uri.replace(/^file:\/\//, "");
 
 /** Visits `ids` in every theme and writes the results; resolves when `index.json` says `done`. */

@@ -13,6 +13,7 @@ import type { Host, LibraryHandles, LibraryKind } from "./LibrarySet.svelte";
 import { libraryLab } from "./foreign.svelte.ts";
 import { argb, arrivedInOrder, clear, near, numberIn, riveBackdrop, show, solid, untilTaken } from "./foreign-pixels.ts";
 import { pins, resolvePin, type Pinned } from "./foreign-pins.ts";
+import { runRace, type Race } from "./foreign-race.ts";
 
 export type Where = "inline" | "row" | "sheet";
 export type Rect = { x: number; y: number; width: number; height: number };
@@ -108,19 +109,13 @@ function hold(milliseconds: number): void {
 }
 
 /**
- * The checks of the Android event patches (SPEC.md, "Events on Android"): [send] makes the native side raise two messages of one event name, back to back, from commands the UI thread runs
- * while this thread is held for [milliseconds], so that both wait in React Native's queue together; after the hold both must reach JavaScript, in the order they were raised. Without the
- * library's `canCoalesce() false` the queue would replace the first by the second. [iosWhy] says why the iPhone cannot lose them (it is Android-only there).
+ * The checks of the Android event patches (SPEC.md, "Events on Android") force the race by construction: `runRace` (`foreign-race.ts`) with the real hold. [iosWhy] says why the iPhone cannot lose the
+ * messages (the check is Android-only there).
  */
-async function bothArrive(c: Ctx, name: string, iosWhy: string, wanted: readonly (readonly [event: string, detail: unknown])[], send: () => void, milliseconds: number): Promise<void> {
-  if (!c.android) { c.androidOnly(name, iosWhy); return; }
-  const from = c.history().length;
-  send();
-  hold(milliseconds);
-  const arrived = await c.until(() => arrivedInOrder(c.history(), from, wanted), 5000);
-  const names = new Set(wanted.map(([event]) => event));
-  c.check(name, arrived, `wanted ${wanted.map(([event, detail]) => `${event} ${String(detail)}`).join(", ")}; got ${c.history().slice(from).filter((entry) => names.has(entry.event)).map((entry) => `${entry.event} ${String(entry.detail)}`).join(", ") || "none"}`);
-}
+const forcedRace = (c: Ctx, name: string, iosWhy: string, race: Race): Promise<void> => runRace(c, hold, name, iosWhy, race);
+
+/** Whether [steps] (event name and detail) reached JavaScript in this order, from entry [from] of the history on. */
+const inOrder = (c: Ctx, from: number, steps: readonly (readonly [event: string, detail: unknown])[]): boolean => arrivedInOrder(c.history(), from, steps);
 
 const describe = (info: Native | null): string => (info ? `${info.class.split(".").pop()} ${info.width}x${info.height}px at ${info.x},${info.y}${info.attached ? "" : " detached"}${info.shown ? "" : " hidden"}` : "no native view");
 
@@ -298,11 +293,22 @@ async function video(c: Ctx): Promise<void> {
   } catch (error) {
     c.check("command: getCurrentPosition answers a position near the seek", false, String(error));
   }
-  // A pause and the resume right after it are two onPlaybackStateChanged (false, then true) on the UI thread; held JavaScript would see the second alone if the event could coalesce.
-  await bothArrive(c, "events: pause() then resume() raise both onPlaybackStateChanged although the JS thread was busy",
+  // Two volume changes in a row are two onVolumeChange on the UI thread (ExoPlayer's `onVolumeChanged` fires at once for each, and nothing else falls between them). Held JavaScript would see the second
+  // alone if the event could coalesce. A pause and the resume after it do not make the pair, although they are two onPlaybackStateChanged: the first version of this check used them and passed on the
+  // unpatched build in both device runs, because every playback state event is followed by an onReadyForDisplay (the log: state false, ready, state true, ready, progress), so the queue never holds two
+  // of them in a row; two seeks end in one onVideoSeek. The volumes are exact in a float, because the event carries the float as a double; a retry uses the next pair.
+  const volumes = [[0.5, 0.25], [0.75, 0.125], [0.375, 0.625]] as const;
+  const volumesOf = (attempt: number) => volumes[attempt % volumes.length] ?? volumes[0];
+  await forcedRace(c, "events: two volume changes raise both onVolumeChange although the JS thread was busy",
     "the loss is Android's: its one `VideoCustomEvent` class coalesced in React Native's event queue; iOS's RCTVideo is a legacy view manager whose events React Native's interop layer sends with `dispatchEvent`, which the queue never replaces",
-    [["video-state", false], ["video-state", true]],
-    () => { const video = c.handles().video; void Promise.allSettled([video?.pause(), video?.resume()]); }, 1000);
+    {
+      send: (attempt) => { const video = c.handles().video; const [first, second] = volumesOf(attempt); void Promise.allSettled([video?.setVolume(first), video?.setVolume(second)]); },
+      names: ["video-volume"],
+      arrived: (from, attempt) => inOrder(c, from, [["video-volume", volumesOf(attempt)[0]], ["video-volume", volumesOf(attempt)[1]]]),
+      milliseconds: 1000,
+    });
+  // The lab's player is muted (volume 0): back to that.
+  void c.handles().video?.setVolume(0);
   // capture: not a hole, and the video on screen undisturbed
   if (!c.canLook) {
     c.skip("capture: the surface is in the image with handleGLSurfaceViewOnAndroid, a hole without it", "no pixel reader on this platform yet");
@@ -464,11 +470,16 @@ async function lottie(c: Ctx): Promise<void> {
   c.check("commands: pause holds a running animation (it does not finish while paused)", c.events("lottie-finish", false) === ends, `${ends} -> ${c.events("lottie-finish", false)} ended`);
   handle?.resume();
   c.check("commands: resume lets it finish", await c.until(() => c.events("lottie-finish", false) > ends, 5000), `${c.events("lottie-finish", false)} ended`);
-  // Two plays cancelled by a reset each are two onAnimationFinish(true) on the UI thread; held JavaScript would see one if the event could coalesce.
-  await bothArrive(c, "events: two cancelled animations raise both onAnimationFinish although the JS thread was busy",
+  // Two plays cancelled by a reset each are two onAnimationFinish(true) on the UI thread (on the first device run of the unpatched build only one onAnimationFinish, `false`, reached JavaScript).
+  // Held JavaScript would see one if the event could coalesce. The commands reach the view after the task, which `runRace` waits for.
+  await forcedRace(c, "events: two cancelled animations raise both onAnimationFinish although the JS thread was busy",
     "the loss is Android's: its three event classes coalesced in React Native's event queue; iOS sends the events through the codegen emitter's `dispatchEvent`, which the queue never replaces",
-    [["lottie-finish", true], ["lottie-finish", true]],
-    () => { handle?.play(0, 60); handle?.reset(); handle?.play(0, 60); handle?.reset(); }, 1000);
+    {
+      send: () => { handle?.play(0, 60); handle?.reset(); handle?.play(0, 60); handle?.reset(); },
+      names: ["lottie-finish"],
+      arrived: (from) => inOrder(c, from, [["lottie-finish", true], ["lottie-finish", true]]),
+      milliseconds: 1000,
+    });
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------------
@@ -499,29 +510,37 @@ const hostFlushes = (): number => (globalThis as { __svelteFabric?: { stats(): {
  * Android's view sends every message it has (loadComplete, pageChanged, scaleChanged, error, ...) as the one Fabric event `topChange`. An event that can coalesce is dispatched
  * as a unique one, and React Native's event queue replaces the unread unique event of the same type for the same view, so with the JavaScript thread busy `loadComplete` was
  * overwritten by the `pageChanged` the view posts 10 ms later (`patches/react-native-pdf@7.0.3.patch` makes the event non-coalescable). Any prop update redraws the document there
- * (`PdfManager.onAfterUpdateTransaction` calls `drawPdf`, which loads it again), so the page prop back to 1 is a reload. iOS has neither half: its `onChange` is a plain `dispatchEvent`
+ * (`PdfManager.onAfterUpdateTransaction` calls `drawPdf`, which loads it again), so changing the page prop is a reload. iOS has neither half: its `onChange` is a plain `dispatchEvent`
  * (never replaced), and PDFKit's view loads again only when `path` changes, not for a page.
  *
- * The hold starts in the task that commits the prop, so the race is forced by construction instead of left to timing. Setting the prop queues Svelte's microtask, which runs the effects
- * that carry it to the host; the host's `onInvalidate` queues its own microtask (`queueMicrotask(flush)`, `host.ts`), which runs `completeRoot` and so hands the transaction to the UI
- * thread; `tick()` resolves after both, so the continuation below runs with the commit already made. It then holds the thread at once. A timer hop between the commit and the hold
- * (the first version waited `pause(0)`) is a turn of the event loop, in which a fast phone's inline decode (about 4 ms) could already have delivered `loadComplete` to JavaScript; there is
- * no such turn now, so whatever the load raises (`loadComplete` and the `pageChanged` 10 ms after it) waits in the queue together. The check reads `flushes` to say so when the commit was not made.
+ * The race is forced by `forcedRace`, in two tasks. The first sets the prop, and `tick()` has Svelte's effects and the host's own flush (a microtask: `queueMicrotask(flush)` in `onInvalidate`)
+ * commit it to Fabric; but React Native mounts a commit only in the rendering update that follows the task (`Scheduler::uiManagerDidFinishTransaction`), so a hold in that task starts before
+ * `drawPdf` has run and the load happens after the hold, with the thread free (the first device run of the unpatched build showed it: `drawPdf` was logged 1.5 s after the commit, as the hold
+ * ended, and the check passed or failed by the speed of the event beat). The timer hop ends the task, the rendering update mounts the prop, and the next task holds the thread: the UI thread then
+ * applies the prop (a frame), loads the document (about 100 ms on the emulator) and raises `loadComplete` and, 10 ms later, `pageChanged`, all while JavaScript cannot read the queue. If an event of
+ * the load had reached JavaScript before the hold, or the host had not committed the prop (`flushes`), the attempt does not count and is made again with the other page.
  *
- * This holds only while Svelte's async mode is off: `tick()` is `await Promise.resolve(); flushSync()` then, and with `experimental.async` it waits for `requestAnimationFrame` or a timer
- * instead, which is a turn of the event loop. The web build enables async mode (`vite.config.ts`, `kit.compilerOptions`); the native bundle does not (the Metro transformer compiles with
- * `customRenderer` only), and `packages/svelte-native/tests/svelte-async-mode.test.ts` fails if that changes, or if `tick()` stops being those two steps.
+ * `tick()` is `await Promise.resolve(); flushSync()` only while Svelte's async mode is off; the web build enables it (`vite.config.ts`, `kit.compilerOptions`), the native bundle does not (the Metro
+ * transformer compiles with `customRenderer` only), and `packages/svelte-native/tests/svelte-async-mode.test.ts` fails if that changes, or if `tick()` stops being those two steps.
  */
 async function loadsWhileBusy(c: Ctx): Promise<void> {
   const name = "events: onLoadComplete arrives although the JS thread was busy while the document loaded";
-  if (!c.android) { c.androidOnly(name, "the loss is Android's: its one `topChange` event coalesces; iOS sends `onChange` through the codegen emitter's `dispatchEvent`, which the queue never replaces, and loads again only when `path` changes"); return; }
-  const loads = c.events("pdf-load");
-  const flushed = hostFlushes();
-  c.lab.pdfPage = 1;
-  await tick();
-  const committed = hostFlushes() > flushed;
-  hold(1500);
-  c.check(name, committed && (await c.until(() => c.events("pdf-load") > loads, 5000)), `${loads} -> ${c.events("pdf-load")} onLoadComplete; ${foreignSummary(c, ["pdf-page", "pdf-error"])}${committed ? "" : "; the host had not committed the page prop when the hold began"}`);
+  const iosWhy = "the loss is Android's: its one `topChange` event coalesces; iOS sends `onChange` through the codegen emitter's `dispatchEvent`, which the queue never replaces, and loads again only when `path` changes";
+  let committed = false;
+  await forcedRace(c, name, iosWhy, {
+    // The page the lab asked for last is 2 (the prop update before); each attempt asks for the other one.
+    send: async (attempt) => {
+      const flushed = hostFlushes();
+      c.lab.pdfPage = attempt % 2 === 0 ? 1 : 2;
+      await tick();
+      committed = hostFlushes() > flushed;
+    },
+    names: ["pdf-load", "pdf-page"],
+    ready: () => committed,
+    // A load of this attempt: the history from the attempt's start, not the count of the whole place, which an earlier attempt's late load would raise.
+    arrived: (from) => c.history().slice(from).some((entry) => entry.event === "pdf-load"),
+    milliseconds: 1500,
+  });
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------------
@@ -645,14 +664,18 @@ async function rive(c: Ctx): Promise<void> {
   handle?.play();
   c.check("commands: play raises onPlay again", await c.until(() => c.events("rive-play") > plays, 5000), foreignSummary(c, ["rive-play"]));
   // Two animations of the Truck artboard played in turn are two onPlay with their own names on the UI thread, and both must reach JavaScript while it is held (the file is Rive's `vehicles.riv`:
-  // the artboard "Truck" has the animations idle, curves and bounce and the state machine bumpy; looping keeps both playing, so no onStop follows between). Rive needs no patch: its events go
-  // through `getJSModule(RCTEventEmitter)`, React Native's `InteropEventEmitter`, which is made with the application context, so its events have surface id -1 and `Event.dispatchModern` sends
-  // them as non-coalescable (`tests/foreign-libraries.test.ts` pins each link of that in the installed React Native). This check is the guard on a device that it stays so: it fails if a React
-  // Native upgrade or a Rive release makes the events coalescable (an `Event` class of Rive's own, say, without `canCoalesce() false`).
-  await bothArrive(c, "events: two animations played in turn raise both onPlay although the JS thread was busy",
+  // the artboard "Truck" has the animations idle, curves and bounce and the state machine bumpy; looping keeps both playing, so no onStop follows between; a retry stops them first). Rive needs no
+  // patch: its events go through `getJSModule(RCTEventEmitter)`, React Native's `InteropEventEmitter`, which is made with the application context, so its events have surface id -1 and
+  // `Event.dispatchModern` sends them as non-coalescable (`tests/foreign-libraries.test.ts` pins each link of that in the installed React Native). This check is the guard on a device that it stays
+  // so: it fails if a React Native upgrade or a Rive release makes the events coalescable (an `Event` class of Rive's own, say, without `canCoalesce() false`). The commands reach the view after the task, which `runRace` waits for.
+  await forcedRace(c, "events: two animations played in turn raise both onPlay although the JS thread was busy",
     "Android's guard only: Rive's events reach JavaScript through React Native's interop emitter, whose surface id -1 makes them non-coalescable, and there is nothing to lose on iOS, where RiveReactNativeView is a legacy view manager whose events React Native's interop layer sends with `dispatchEvent`, which the queue never replaces",
-    [["rive-play", "curves:false"], ["rive-play", "bounce:false"]],
-    () => { handle?.play("curves", "loop", "auto", false); handle?.play("bounce", "loop", "auto", false); }, 1000);
+    {
+      send: (attempt) => { if (attempt > 0) handle?.stop(); handle?.play("curves", "loop", "auto", false); handle?.play("bounce", "loop", "auto", false); },
+      names: ["rive-play"],
+      arrived: (from) => inOrder(c, from, [["rive-play", "curves:false"], ["rive-play", "bounce:false"]]),
+      milliseconds: 1000,
+    });
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------------

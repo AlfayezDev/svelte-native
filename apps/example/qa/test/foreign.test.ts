@@ -7,6 +7,7 @@ import { platformDir } from "../lib/paths.ts";
 import { findButton, parsePress } from "../lib/foreign-press.ts";
 import { parseForeignChecks } from "../parse/foreign.ts";
 import { argb, arrivedInOrder, clear, distance, hex, near, numberIn, riveBackdrop, show, solid, untilTaken } from "../../src/lib/native/dev/foreign-pixels.ts";
+import { raceAttempts, runRace, type Race } from "../../src/lib/native/dev/foreign-race.ts";
 import type { ForeignCheck, ForeignFile, ForeignLaunch } from "../lib/types.ts";
 
 const gates = JSON.parse(readFileSync(join(platformDir, "qa/gates.json"), "utf8")) as GatesFile;
@@ -383,6 +384,118 @@ describe("arrivedInOrder: both messages of one event name reached JavaScript, in
 
 	test("nothing wanted is trivially there", () => {
 		expect(arrivedInOrder([], 0, [])).toBe(true);
+	});
+});
+
+describe("runRace: the event checks hold the thread only once the native side has the messages, and count only the attempts that forced the race", () => {
+	type Entry = { event: string; detail?: unknown };
+	/**
+	 * A stand-in for the lab and React Native's queue. `send` raises messages: at once for a native module call, or at the end of the task (in `pause(0)`) for a commit or a view command. What was raised
+	 * reaches the history when the JavaScript thread reads the queue: one by one in a `pause(0)` listed in `slowHops` (a timer hop that took long enough for the events to be read before the hold, which
+	 * leaves the queue nothing to replace), and all at once in `until` after a hold, where `coalescing` has the queue keep only the last of a run of messages of one name.
+	 */
+	function lab(options: { android?: boolean; coalescing: boolean; slowHops?: readonly boolean[] }) {
+		const history: Entry[] = [];
+		const raised: Entry[] = [];
+		const deferred: Entry[] = [];
+		const log: string[] = [];
+		const checks: { name: string; passed: boolean; detail?: string }[] = [];
+		const only: string[] = [];
+		let hops = 0;
+		const readOneByOne = () => { history.push(...raised); raised.length = 0; };
+		const readAfterHold = () => {
+			for (const entry of raised) {
+				const last = history[history.length - 1];
+				if (options.coalescing && last && last.event === entry.event && batch.has(last)) history[history.length - 1] = entry;
+				else history.push(entry);
+				batch.add(entry);
+			}
+			raised.length = 0;
+		};
+		const batch = new Set<Entry>();
+		const world = {
+			android: options.android ?? true,
+			history: () => history,
+			pause: async (milliseconds: number) => {
+				log.push(`pause ${milliseconds}`);
+				if (milliseconds === 0) {
+					raised.push(...deferred);
+					deferred.length = 0;
+					if (options.slowHops?.[hops++]) readOneByOne();
+				}
+			},
+			until: async (test: () => boolean) => { readAfterHold(); return test(); },
+			check: (name: string, passed: boolean, detail?: string) => { checks.push({ name, passed, detail }); },
+			androidOnly: (name: string, why: string) => { only.push(`${name}: ${why}`); },
+		};
+		const hold = (milliseconds: number) => { log.push(`hold ${milliseconds}`); };
+		const raise = (afterTask: boolean, ...entries: Entry[]) => { (afterTask ? deferred : raised).push(...entries); };
+		return { world, hold, raise, log, checks, only, history: () => history };
+	}
+	const pair = (attempt: number): [Entry, Entry] => [{ event: "x-event", detail: `first ${attempt}` }, { event: "x-event", detail: `second ${attempt}` }];
+	const race = (l: ReturnType<typeof lab>, afterTask: boolean, extra: Partial<Race> = {}): Race => ({
+		send: (attempt) => { l.raise(afterTask, ...pair(attempt)); },
+		names: ["x-event"],
+		arrived: (from, attempt) => arrivedInOrder(l.history(), from, [["x-event", `first ${attempt}`], ["x-event", `second ${attempt}`]]),
+		milliseconds: 1000,
+		...extra,
+	});
+
+	test("a library whose event does not coalesce passes: the messages are raised after the task, the thread is held next, and both arrive in order", async () => {
+		const l = lab({ coalescing: false });
+		await runRace(l.world, l.hold, "name", "why", race(l, true));
+		expect(l.log).toEqual(["pause 0", "hold 1000"]);
+		expect(l.checks).toEqual([{ name: "name", passed: true, detail: "attempt 1; got x-event first 0, x-event second 0" }]);
+	});
+
+	test("a library whose event coalesces fails: held, the first message is replaced by the second and only that one arrives", async () => {
+		const l = lab({ coalescing: true });
+		await runRace(l.world, l.hold, "name", "why", race(l, true));
+		expect(l.log).toEqual(["pause 0", "hold 1000"]);
+		expect(l.checks).toEqual([{ name: "name", passed: false, detail: "attempt 1; got x-event second 0" }]);
+	});
+
+	test("a native module call raises its messages at once and the task still ends before the hold: the queue is read only after it", async () => {
+		const l = lab({ coalescing: true });
+		await runRace(l.world, l.hold, "name", "why", race(l, false));
+		expect(l.log).toEqual(["pause 0", "hold 1000"]);
+		expect(l.checks.map((entry) => entry.passed)).toEqual([false]);
+	});
+
+	test("an attempt in which the events were read before the hold began is thrown away, and the next one is the check", async () => {
+		const l = lab({ coalescing: true, slowHops: [true, false] });
+		await runRace(l.world, l.hold, "name", "why", race(l, true));
+		// attempt 1: the slow hop read both before any hold, which a pass would prove nothing by; attempt 2: forced and held, so the coalescing queue fails it
+		expect(l.log).toEqual(["pause 0", "pause 500", "pause 0", "hold 1000"]);
+		expect(l.checks).toHaveLength(1);
+		expect(l.checks[0]?.detail).toMatch(/^attempt 2;/);
+		expect(l.checks[0]?.passed).toBe(false);
+	});
+
+	test("when no attempt can be forced the check fails and says so, and the thread is never held", async () => {
+		const l = lab({ coalescing: false, slowHops: Array.from({ length: raceAttempts + 1 }, () => true) });
+		await runRace(l.world, l.hold, "name", "why", race(l, true));
+		expect(l.log.filter((line) => line.startsWith("hold"))).toEqual([]);
+		expect(l.log.filter((line) => line === "pause 0")).toHaveLength(raceAttempts);
+		expect(l.checks).toHaveLength(1);
+		expect(l.checks[0]?.passed).toBe(false);
+		expect(l.checks[0]?.detail).toContain("could not be forced");
+	});
+
+	test("a send that is not ready (a prop the host did not commit) does not count either", async () => {
+		const l = lab({ coalescing: false });
+		let ready = false;
+		await runRace(l.world, l.hold, "name", "why", race(l, true, { send: (attempt) => { ready = attempt > 0; l.raise(true, ...pair(attempt)); }, ready: () => ready }));
+		expect(l.log).toEqual(["pause 0", "pause 500", "pause 0", "hold 1000"]);
+		expect(l.checks.map((entry) => [entry.passed, entry.detail?.slice(0, 9)])).toEqual([[true, "attempt 2"]]);
+	});
+
+	test("on a platform that is not Android the check is Android-only with its reason, and nothing is sent or held", async () => {
+		const l = lab({ android: false, coalescing: true });
+		await runRace(l.world, l.hold, "name", "the iPhone cannot lose them", race(l, true));
+		expect(l.only).toEqual(["name: the iPhone cannot lose them"]);
+		expect(l.log).toEqual([]);
+		expect(l.checks).toEqual([]);
 	});
 });
 

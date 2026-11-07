@@ -173,6 +173,7 @@
             onLoadStart={() => report("video-load-start")}
             onSeek={(data) => report("video-seek", (data as { currentTime?: number }).currentTime)}
             onPlaybackStateChanged={(data) => report("video-state", (data as { isPlaying?: boolean }).isPlaying)}
+            onVolumeChange={(data: unknown) => report("video-volume", (data as { volume?: number }).volume)}
             onLoad={(data) => report("video-load", (data as { duration?: number }).duration)}
             onReadyForDisplay={() => report("video-ready")}
             onProgress={() => report("video-progress")}

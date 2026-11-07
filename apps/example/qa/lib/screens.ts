@@ -742,6 +742,11 @@ export const notCovered: NotCovered[] = [
 		reason:
 			"the native module smoke test page lists what each native library answered on this device (model, locale, connection state, versions): the text differs between devices and runs by design; the smoke scenario of the lab (`native-qa smoke`) checks the calls themselves",
 	},
+	{
+		route: "/__dev/remote",
+		reason:
+			"the SvelteKit remote functions lab calls a SvelteKit server that the build or the page names, so it shows nothing of its own without one, and with one its counters, live clock and request echo change between runs by design; its eleven checks run on the device against a dev server (README of the package, \"Remote functions\") and against its own server module in the package tests",
+	},
 	{ route: "/onboarding/profile", reason: needsProfile },
 ];
 

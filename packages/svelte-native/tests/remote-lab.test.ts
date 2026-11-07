@@ -3,7 +3,7 @@
 // checks, the ones its "Run the checks" button runs on a device, run against it through the native client runtime. What a device adds is Hermes, the platform's
 // networking and the screen.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { cpSync, mkdirSync, rmSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { cookieFetch, fixtureRoot, loadClient, startServer, type Server } from "./remote-harness.ts";
 
@@ -33,6 +33,7 @@ describe("the remote functions lab", () => {
   });
 
   test("every check the lab runs passes against the lab's server module", async () => {
+    server.assertAlive();
     // (The platform keeps cookies for Expo's fetch; this one keeps them itself.)
     m.configureRemote({ origin: server.origin, fetch: cookieFetch().send });
     const unlink = m.linkRouter({ goto: () => {}, current: { url: new URL("https://native.invalid/__dev/remote") } });
@@ -58,5 +59,17 @@ describe("the remote functions lab", () => {
     // (A value that is not an origin is refused, as everywhere.)
     expect(() => m.applyLabOrigin("not an origin", true)).toThrow(/not a URL|must be/);
     m.resetRemoteConfig();
+  });
+
+  test("the page itself calls no remote function: the form and the clock are components shown once there is a host, so a build with none still gets the page", () => {
+    const page = readFileSync(join(platform, "../../../routes/__dev/remote/+mobile.svelte"), "utf8");
+    const script = (/<script[^>]*>([\s\S]*?)<\/script>/.exec(page)?.[1] ?? "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    expect(script).not.toMatch(/remote-lab\.remote/);
+    expect(script).not.toMatch(/\bnative\(/);
+    expect(script).not.toMatch(/\blab[A-Z]\w*\(/);
+    // They are the components' business, and the markup shows them only when the app has an origin.
+    expect(page).toMatch(/\{#if origin !== undefined\}\s*<RemoteLabForm \/>\s*<RemoteLabLive \/>/);
+    expect(readFileSync(join(platform, "RemoteLabForm.svelte"), "utf8")).toMatch(/native\(labSignup\)/);
+    expect(readFileSync(join(platform, "RemoteLabLive.svelte"), "utf8")).toMatch(/labClock\(30\)/);
   });
 });

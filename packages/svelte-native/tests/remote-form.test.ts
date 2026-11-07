@@ -264,38 +264,77 @@ describe("what is sent is what is shown (as a browser posts the defaults of its 
     svelte.onValueChange(false);
     expect(Object.keys(await submit())).not.toContain("topics");
   });
-  test("a field whose input is gone is not posted, and is again when the input is back; one that was never an input is", async () => {
+  test("a field whose input is gone keeps what was typed or set, and has no default sent for it; a field never edited and gone sends nothing", async () => {
     const { form, submit } = recording();
     const { fields } = form;
     const name = fields.name.as("text");
     const company = fields.company.as("text");
+    const note = fields.note.as("text", "default note");
     // The host builds the element and tells the ref; with no host (a test, a store) a field counts as there.
     name.ref({});
     company.ref({});
+    note.ref({});
     company.onChangeText("Acme");
-    form.fields.note.set("from code");
-    expect(await submit()).toMatchObject({ name: "", company: "Acme", note: "from code" });
+    fields.code.set("from code");
+    expect(await submit()).toMatchObject({ name: "", company: "Acme", note: "default note", code: "from code" });
+    // Both inputs go (a step of a wizard, a closed modal): the typed value stays, the defaults are not sent for inputs that are not there.
     company.ref(null);
+    note.ref(null);
+    name.ref(null);
     const without = await submit();
-    expect(Object.keys(without).toSorted()).toEqual(["name", "note"]);
+    expect(Object.keys(without).toSorted()).toEqual(["code", "company"]);
+    expect(without).toMatchObject({ company: "Acme", code: "from code" });
     // Shown again: the element is new, and what was typed is still the field's value.
     fields.company.as("text").ref({});
     expect(await submit()).toMatchObject({ company: "Acme" });
     // The ref of a field is one function, so the host is not told "gone, back" on every render.
     expect(fields.company.as("text").ref).toBe(company.ref);
   });
-  test("of inputs that share a name the field is there while one of them is", async () => {
+  test("rows of a virtualized list that scrolled away keep what was typed in them", async () => {
+    const { form, submit } = recording();
+    const row0 = form.fields.items[0].qty.as("number");
+    const row1 = form.fields.items[1].qty.as("number");
+    const row2 = form.fields.items[2].qty.as("number");
+    for (const row of [row0, row1, row2]) row.ref({});
+    row0.onChangeText("5");
+    row1.onChangeText("7");
+    // Row 0 scrolls out and unmounts, and so does row 2, which was never typed in: it has no number to send, and nothing is sent for it.
+    row0.ref(null);
+    row2.ref(null);
+    const data = await submit();
+    expect(data.items[0]).toEqual({ qty: 5 });
+    expect(data.items[1]).toEqual({ qty: 7 });
+    expect(form.fields.items[0].qty.value()).toBe(5);
+    expect(data.items[2]?.qty).toBeUndefined();
+    // Typed again after it came back: the new number wins.
+    form.fields.items[0].qty.as("number").ref({});
+    row0.onChangeText("9");
+    expect((await submit()).items[0]).toEqual({ qty: 9 });
+  });
+  test("an input in a modal that was closed after typing in it still sends what was typed", async () => {
+    const { form, submit } = recording();
+    const name = form.fields.name.as("text");
+    name.ref({});
+    name.onChangeText("Ada");
+    name.ref(null);
+    expect(await submit()).toMatchObject({ name: "Ada" });
+    // And a value that only code set, for an input that was never made.
+    form.fields.nick.set("ada");
+    expect(await submit()).toMatchObject({ name: "Ada", nick: "ada" });
+  });
+  test("of inputs that share a name the field is there while one of them is; once all are gone the choice stays and the defaults do not", async () => {
     const { form, submit } = recording();
     const small = form.fields.size.as("radio", "s", true);
     const large = form.fields.size.as("radio", "l");
     small.ref({});
     large.ref({});
     small.ref(null);
+    // `small` (the default) is gone and `large` is on screen and not chosen: nothing is chosen on screen.
     expect(Object.keys(await submit())).not.toContain("size");
     large.onValueChange(true);
     expect((await submit()).size).toBe("l");
     large.ref(null);
-    expect(Object.keys(await submit())).not.toContain("size");
+    expect((await submit()).size).toBe("l");
   });
   test("the submit button that was pressed last is the only one posted", async () => {
     const { form, sent } = recording();

@@ -114,9 +114,10 @@ export function form(id: string) {
     let enhance_callback: ((instance: any) => any) | undefined;
 
     /**
-     * The data a submission sends, as a browser would post the form: what was set or typed, less the fields whose inputs are gone, plus what the inputs on
-     * screen show where nothing was typed (a text input as its text, "" when empty; a number as its number, or `undefined` when empty; a box that is checked;
-     * the radio and the select that are chosen; the hidden values), and an unchecked box not at all.
+     * The data a submission sends, as a browser would post the form: what was set or typed (also by inputs that are gone since: a native screen unmounts
+     * inputs that scroll out of a list or sit in a closed modal), plus what the inputs on screen show where nothing was typed (a text input as its text, "" when
+     * empty; a number as its number, or `undefined` when empty; a box that is checked; the radio and the select that are chosen; the hidden values), and an
+     * unchecked box not at all. A field none of whose inputs are on screen and that was never edited or set contributes nothing.
      */
     function convert(): Record<string, any> {
       const data = create_field_proxy(context).value() as Record<string, any>;
@@ -126,10 +127,9 @@ export function form(id: string) {
       for (const [, group] of byName) {
         const { path } = group[0];
         const live = group.filter(onScreen);
-        if (live.length === 0) {
-          deep_set(data, path.map(String), DELETE_KEY);
-          continue;
-        }
+        // No input of the field is on screen: what the user typed or the code set stays (a virtualized List unmounts the rows that scrolled away, a closed
+        // Modal its inputs, a step of a wizard its fields; none of that is the user taking a value back), and what the inputs would have shown is not added.
+        if (live.length === 0) continue;
         const set = (value: unknown) => deep_set(data, path.map(String), value);
         const shown = live.filter((variant) => variant.kind === "list" && variant.shown() === true).map((variant) => variant.option);
         for (const variant of live) {
@@ -433,41 +433,52 @@ export function form(id: string) {
           submitted = true;
           error = undefined;
           pending_count++;
-          const data = convert();
+          // From here on every way out undoes `pending_count` once, whatever fails: the data, the callback, the request, the app's `handleError`.
           let attempt: Submission;
-          if (enhance_callback) {
-            const callback = enhance_callback;
-            let accepted = false;
-            attempt = (async () => {
-              if (!(await preflight(data))) return false;
-              const { enhance: _enhance, ...descriptors } = Object.getOwnPropertyDescriptors(api);
-              void _enhance;
-              const instance = Object.defineProperties({}, {
-                ...descriptors,
-                submit: { value: () => { const sent = send(data, false); void sent.then((ok) => { accepted = ok; }, () => {}); return sent; } },
-              });
-              await callback(instance);
-              return accepted;
-            })() as Submission;
-            attempt.updates = () => { throw new Error("With an enhance callback, call .updates(...) on the submit() inside it."); };
-          } else {
-            const sent = send(data, true);
-            attempt = sent.then(async (ok) => { if (ok) { await tick(); reset(); } return ok; }) as Submission;
-            attempt.updates = (...updates) => { sent.updates(...updates); return attempt; };
+          try {
+            const data = convert();
+            if (enhance_callback) {
+              const callback = enhance_callback;
+              let accepted = false;
+              attempt = (async () => {
+                if (!(await preflight(data))) return false;
+                const { enhance: _enhance, ...descriptors } = Object.getOwnPropertyDescriptors(api);
+                void _enhance;
+                const instance = Object.defineProperties({}, {
+                  ...descriptors,
+                  submit: { value: () => { const sent = send(data, false); void sent.then((ok) => { accepted = ok; }, () => {}); return sent; } },
+                });
+                await callback(instance);
+                return accepted;
+              })() as Submission;
+              attempt.updates = () => { throw new Error("With an enhance callback, call .updates(...) on the submit() inside it."); };
+            } else {
+              const sent = send(data, true);
+              attempt = sent.then(async (ok) => { if (ok) { await tick(); reset(); } return ok; }) as Submission;
+              attempt.updates = (...updates) => { sent.updates(...updates); return attempt; };
+            }
+          } catch (caught) {
+            attempt = Promise.reject(caught) as Submission;
+            attempt.updates = () => attempt;
           }
           const finished = attempt;
           const outcome = attempt.then(
-            (ok) => { pending_count--; return ok; },
+            (ok) => ok,
             async (caught: unknown) => {
-              // As SvelteKit's submit handler does: the app's `handleError` turns it into an `App.Error`, which is shown.
+              // As SvelteKit's submit handler does: the app's `handleError` turns it into an `App.Error`, which is shown. A `handleError` that throws is the
+              // app's bug and is reported as such; the submission still ends, with a plain 500.
               result = undefined;
               raw_issues = [];
-              error = await handle_error(caught, { params: {}, route: { id: null }, url: currentUrl() });
-              await set_nearest_error_page(error);
-              pending_count--;
+              try {
+                error = await handle_error(caught, { params: {}, route: { id: null }, url: currentUrl() });
+                await set_nearest_error_page(error);
+              } catch (hookFailed) {
+                console.error(hookFailed);
+                error = { status: 500, message: "Internal Error" };
+              }
               return false;
             },
-          ) as Submission;
+          ).finally(() => { pending_count--; }) as Submission;
           outcome.updates = (...updates) => { finished.updates(...updates); return outcome; };
           return outcome;
         },

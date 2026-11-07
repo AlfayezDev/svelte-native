@@ -6,9 +6,11 @@
  * a leading `+`; bidirectional marks (an Arabic keyboard puts them around numbers) are ignored.
  *
  * The comma rule, for the app's locales (en, ar): `en` keyboards have a point on their decimal pad and `ar` ones a U+066B or a comma, and a comma is also
- * a thousands mark, so a comma (or the Arabic comma U+060C) that is the only mark of the number is a decimal mark (`"1,5"` is 1.5, `"1,234"` is 1.234) and
+ * a thousands mark, so a comma (or the Arabic comma U+060C) that is the only mark of the number is a decimal mark (`"1,5"` is 1.5, `"12,3456"` is 12.3456) and
  * commas that group are dropped: more than one comma (`"1,234,567"`), or a comma and a point (`"1,234.5"`). Spaces (also no-break and narrow no-break) and
- * U+066C between groups of three digits are thousands marks.
+ * U+066C between groups of three digits are thousands marks. One shape is both: one to three digits, a lone comma and exactly three digits (`"1,000"`,
+ * `"1,234"`): that is a thousand in English and 1.000 in French, and a silent 1 or 1.234 would be a wrong amount, so it is not a number (`NaN`: the schema
+ * reports it and the user rewrites it with a point). U+066B is always a decimal mark, so `"١٫٠٠٠"` is 1.
  */
 
 const BIDI = /[\u200e\u200f\u061c\u202a-\u202e\u2066-\u2069]/g;
@@ -35,6 +37,8 @@ export function parseLocalizedNumber(text: string): number | undefined {
     [whole, fraction] = rest.split(POINT);
   } else if (commas === 1 && !/[ \u00a0\u202f\u066c]/.test(rest.slice(rest.search(COMMA)))) {
     [whole, fraction] = rest.split(COMMA);
+    // One to three digits, a comma, three digits: a thousands mark or a decimal mark, and not for this code to guess.
+    if (/^\d{1,3}$/.test(whole) && /^\d{3}$/.test(fraction)) return Number.NaN;
   }
   if (!/^\d*$/.test(fraction)) return Number.NaN;
   if (!/^\d*$/.test(whole) && !GROUPED.test(whole)) return Number.NaN;

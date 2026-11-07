@@ -52,6 +52,14 @@ const autolinkingExclude = smoke ? [] : production ? [...smokeOnlyPackages, ...q
 // The EAS Update channel of this build comes from its build profile (`UPDATES_CHANNEL` in eas.json). `eas update` and local builds
 // evaluate this file without it: they publish and run without a channel, and the app does not check for updates.
 const channel = process.env.UPDATES_CHANNEL;
+// The SvelteKit server the app's remote functions (`*.remote.ts`) call, which the runtime reads from the config embedded in the build
+// (`extra.svelteNative.remote`; packages/svelte-native/README.md, "Remote functions"). The build has none unless the environment names
+// one, and then a remote function throws when it is called. The shell or a build profile (eas.json `env`) sets it: the QA app points at a
+// development server with `SVELTE_NATIVE_REMOTE_ORIGIN=http://localhost:3000` (an Android device reaches the PC through
+// `adb reverse tcp:3000 tcp:3000`), and an `http:` origin also lets the build use plain HTTP to that host. The product takes `https:` only.
+const remoteOrigin = process.env.SVELTE_NATIVE_REMOTE_ORIGIN;
+if (production && remoteOrigin && !remoteOrigin.startsWith("https://")) throw new Error(`SVELTE_NATIVE_REMOTE_ORIGIN must be an https: origin in the production app, not ${remoteOrigin}`);
+const remote = remoteOrigin ? { origin: remoteOrigin, ...(process.env.SVELTE_NATIVE_REMOTE_BASE ? { base: process.env.SVELTE_NATIVE_REMOTE_BASE } : {}) } : undefined;
 export default {
   name: production ? "Rasheed" : smoke ? "Svelte smoke" : "Rasheed Svelte QA",
   owner: "alfayez",
@@ -85,6 +93,7 @@ export default {
     ["@rasheed/svelte-native/expo", {
       androidProfileable: !production,
       autolinkingExclude,
+      ...(remote ? { remote } : {}),
       androidFeatureFlags: { disableViewPreallocationAndroid: true, enablePreparedTextLayout: true },
       // Foreign views (SPEC.md, "Foreign views"): the packages' view managers are created when a component is first mounted,
       // not when the host starts. `packages/svelte-native/tests/foreign.test.ts` checks the names against the packages' sources.

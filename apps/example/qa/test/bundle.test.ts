@@ -35,7 +35,11 @@ const { smokeOnlyBundlePackages } = createRequire(import.meta.url)("../smoke-pac
 // The merge of the device-verified native-view libraries and the engine's accessibility props: +119,195 bytes (+1.0 %) to 11,854,098,
 // nearly all of it lab code (the self-checking foreign-libraries lab and its checks, the /__dev/a11y states and actions page), plus
 // `fabric/accessibility.ts` (RN's aria-* and role rules), which the product carries too.
-const baseline = { commit: "merge of feat/svelte-native-wp2dev and feat/svelte-native-a11y", bytes: 11_854_098 };
+// The remote functions lab (`/__dev/remote`): 12,224,724 bytes. Of the +370,626 (the rest is what the other branches added since the line above), 312 KB is the lab and what
+// only it imports: SvelteKit's client files for remote functions (152 KB: query, query.batch, query.live, command, prerender, the form helpers), the devalue they parse
+// with (68 KB), `packages/svelte-native/src/remote` (60 KB) and the lab's page, checks and stubs (32 KB). The product carries none of it (its bundle has `remote/router-link.ts`
+// and nothing else of it, 0.55 KB: 10,813,791 bytes, +0.5 % over `productBaseline`).
+const baseline = { commit: "the remote functions lab", bytes: 12_224_724 };
 
 /**
  * The product's bundle without the lab, built with the same recipe: 10,760,249 bytes (1,188 modules) at the commit that left the lab out,

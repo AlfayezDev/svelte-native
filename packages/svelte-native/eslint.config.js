@@ -5,7 +5,7 @@ import globals from "globals";
 import { defineConfig } from "eslint/config";
 
 export default defineConfig(
-  { ignores: ["node_modules/**"] },
+  { ignores: ["node_modules/**", "tests/fixtures/**/.svelte-kit/**"] },
   js.configs.recommended,
   ts.configs.recommended,
   svelte.configs.recommended,

@@ -2,6 +2,8 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { withAndroidManifest, withAppBuildGradle, withAppDelegate, withDangerousMod, withMainActivity, withMainApplication, withPodfile, withSettingsGradle, type ConfigPlugin } from "expo/config-plugins";
 import { syncNative } from "./build.ts";
+import type { RemoteHostConfig } from "./remote/host.ts";
+import { withRemoteHost } from "./remote/plugin.ts";
 
 export type ViewRecycling = { view?: boolean; text?: boolean; image?: boolean; scrollView?: boolean };
 export type SvelteNativeOptions = {
@@ -33,6 +35,13 @@ export type SvelteNativeOptions = {
    * list every time, so one directory can be prebuilt for one variant and then for the other.
    */
   autolinkingExclude?: string[];
+  /**
+   * The SvelteKit server the app's remote functions (`*.remote.ts`) call: `{ origin, base?, appDir? }`. It is validated here, written to
+   * `extra.svelteNative.remote` (where the runtime reads it, from the manifest `expo-constants` embeds) and, for an `http:` origin, the
+   * Android and iOS builds are allowed to use plain HTTP to it. Leave it out and the app has no host: a remote function throws when called
+   * until `configureRemote({ origin })` sets one.
+   */
+  remote?: RemoteHostConfig;
 };
 
 /**
@@ -456,6 +465,7 @@ export function leaveOutOfAutoPlugins<Config extends { _internal?: Record<string
 
 const withSvelteNative: ConfigPlugin<SvelteNativeOptions | undefined> = (config, options) => {
   config = leaveOutOfAutoPlugins(config, options?.autolinkingExclude ?? []);
+  if (options?.remote) config = withRemoteHost(config, options.remote);
   for (const platform of ["android", "ios"] as const) {
     config = withDangerousMod(config, [platform, async (config) => {
       await syncNative(config.modRequest.projectRoot);

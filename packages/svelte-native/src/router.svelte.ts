@@ -4,6 +4,7 @@ import Platform from "react-native/Libraries/Utilities/Platform";
 import BackHandler from "react-native/Libraries/Utilities/BackHandler";
 import Linking from "react-native/Libraries/Linking/Linking";
 import { hmrState, type NavigationState, type StackSnapshot } from "./hmr-state.ts";
+import { linkRouter } from "./remote/router-link.ts";
 import { EXIT_REPORTED, EXIT_TIMEOUT_MS, type Presentation, type RouterScopeOptions } from "./fabric/navigation.ts";
 import {
   fillPath, locate, matchPath, plan, resolve,
@@ -568,7 +569,9 @@ export function connectHost(router: Router): () => void {
   const links = Linking.addEventListener("url", ({ url }) => { if (router.active()) router.openURL(url); });
   binding.store.markShown(true);
   binding.store.openLaunchURL(router).catch((error: unknown) => { console.error("[Svelte router] the launch link could not be read", error); });
-  return () => { back.remove(); links.remove(); binding.store.markShown(false); };
+  // Remote functions follow a server `redirect()` through this router and send its current URL as the page's (`remote/link.ts`).
+  const linked = linkRouter(router);
+  return () => { back.remove(); links.remove(); linked(); binding.store.markShown(false); };
 }
 
 /** How long the platform gets to answer for the launch link before the app starts as if it had none (an answer that comes later is still opened, see `readLaunch`). */

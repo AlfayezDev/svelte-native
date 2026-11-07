@@ -40,6 +40,7 @@ function suite(mode: "dev" | "preview", hermes = false) {
     let server: Server;
     let m: Client;
     let api: Client;
+    let fromConfig: Client;
     let jar: ReturnType<typeof cookieFetch>;
     let redirects: string[];
 
@@ -47,10 +48,15 @@ function suite(mode: "dev" | "preview", hermes = false) {
       server = await startServer(mode);
       m = await loadClient(ENTRY, undefined, undefined, { hermes });
       api = m.api;
+      // The client that reads its host from the app config is bundled now, not in the test that uses it: that test's time is the server's.
+      (globalThis as any).__expoConfig = { extra: { svelteNative: { remote: { origin: server.origin } } } };
+      try { fromConfig = await loadClient(ENTRY, undefined, undefined, { hermes }); } finally { delete (globalThis as any).__expoConfig; }
     }, 180_000);
     afterAll(() => { server?.stop(); });
 
     const configure = (extra: Record<string, unknown> = {}) => {
+      // (Bun kills the server along with every child process when a test times out; the tests after that say so.)
+      server.assertAlive();
       m.resetRemoteConfig();
       jar = cookieFetch();
       redirects = [];
@@ -423,18 +429,14 @@ function suite(mode: "dev" | "preview", hermes = false) {
     });
 
     test("the host comes from the app config: extra.svelteNative.remote", async () => {
-      (globalThis as any).__expoConfig = { extra: { svelteNative: { remote: { origin: server.origin } } } };
-      try {
-        const fresh = await loadClient(ENTRY);
-        expect(await fresh.api.hello("manifest")).toBe("hello manifest");
-        // configureRemote overrides it.
-        const calls: string[] = [];
-        fresh.configureRemote({ origin: "http://127.0.0.1:9", handleError: () => {}, fetch: async (url: string) => { calls.push(url); throw new TypeError("offline"); } });
-        expect(await rejection(fresh.api.hello("override"))).toBeDefined();
-        expect(calls[0]).toStartWith("http://127.0.0.1:9/_app/remote/");
-      } finally {
-        delete (globalThis as any).__expoConfig;
-      }
+      server.assertAlive();
+      expect(await fromConfig.api.hello("manifest")).toBe("hello manifest");
+      // configureRemote overrides it.
+      const calls: string[] = [];
+      fromConfig.configureRemote({ origin: "http://127.0.0.1:9", handleError: () => {}, fetch: async (url: string) => { calls.push(url); throw new TypeError("offline"); } });
+      expect(await rejection(fromConfig.api.hello("override"))).toBeDefined();
+      expect(calls[0]).toStartWith("http://127.0.0.1:9/_app/remote/");
+      fromConfig.resetRemoteConfig();
     });
   });
 }

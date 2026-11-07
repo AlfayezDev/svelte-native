@@ -1,4 +1,5 @@
 .svelte-kit
+.run-lock
 build
 node_modules
 src/lib/lab

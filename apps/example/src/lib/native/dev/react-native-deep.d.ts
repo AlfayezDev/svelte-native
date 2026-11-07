@@ -15,7 +15,7 @@ declare module "react-native/Libraries/Linking/Linking" {
   export default Linking;
 }
 declare module "react-native/Libraries/AppState/AppState" {
-  const AppState: { addEventListener(type: "change", listener: (state: string) => void): { remove(): void } };
+  const AppState: { readonly currentState: string; addEventListener(type: "change", listener: (state: string) => void): { remove(): void } };
   export default AppState;
 }
 declare module "react-native/Libraries/Utilities/Appearance" {

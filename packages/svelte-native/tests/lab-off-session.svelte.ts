@@ -15,6 +15,8 @@ export function createNativeForm(config: Parameters<typeof bindForm>[0]) {
 }
 const key = Symbol("native-account");
 export function openNativeAccount() {
+  const counted = globalThis as { __labOffAccounts?: number };
+  counted.__labOffAccounts = (counted.__labOffAccounts ?? 0) + 1;
   const signedIn = (globalThis as { __labOffUser?: unknown }).__labOffUser !== null;
   const account = {
     db() { throw new Error("offline"); },
@@ -23,7 +25,7 @@ export function openNativeAccount() {
     completeProfile() {},
     workspaces: [{ id: "w1", slug: "acme", name: "Acme" }],
     devices: [],
-    loaded: true,
+    get loaded() { return (globalThis as { __labOffLoaded?: boolean }).__labOffLoaded !== false; },
     ready: true,
     error: undefined,
     retry() {},

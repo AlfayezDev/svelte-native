@@ -2,6 +2,17 @@
 
 Notable changes to `@rasheed/svelte-native`, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are `0.x` while the package is private and its Svelte compiler is pinned to an unmerged pull request, so a minor version may break. Each line is what an app that uses the package gets.
 
+## Unreleased
+
+### Added
+
+- `openLaunchURL(router, accept?)` opens the link the app was launched with into the root router before its `<Router>` mounts and resolves with the link. A shell that chooses what to render by the launch link (the platform app's lab starts without its session) awaits it, so the navigator starts on the link's screen and the router's first screen is never rendered; the `<Router>` mounted afterwards does not read the link again, and the platform is asked once. `accept` refuses a link for the moment (it is left for the `<Router>`).
+
+### Changed
+
+- A navigation before the root `<Router>` has mounted drops the screens it replaces at once. They were kept until the native stack reported their exit, which a screen that was never shown cannot do, so the router's first screen stayed rendered (and the timeout warning fired) after the launch link replaced it. The same goes for a root `<Router>` that unmounts (a shell waiting for its session): the screens still leaving are dropped with it.
+- The read of the launch link is bounded: the platform gets three seconds, after which the app starts as if it had no link, and an answer that comes later is opened if nothing has navigated since (never after, never twice). A read that failed is no longer remembered for ever (the next `openLaunchURL` asks again, unless the app has gone on meanwhile, when the link is stale and is dropped), and the `<Router>` reports a failed read instead of leaving an unhandled rejection.
+
 ## 0.2.0 - 2026-11-03
 
 Built from `e5dec30dd`, whose app code is the build the final gates measured (`fb53ab1cf` on the phones, `81bc66738` on the emulator). Device results behind this release are in [PLAN.md](PLAN.md), "Final build gates", with the documented exceptions and the open items. The package is private and has not been published; the entries that were under "Unreleased" since the first cut of this version on 1 November (`48d746e54`) are folded in.

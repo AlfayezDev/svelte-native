@@ -90,6 +90,12 @@ function release(entry: NativeLocation): void {
 }
 
 /**
+ * Counts the changes to any stack or tab selection of the app. A read of the launch link that comes after the app went on without it compares the
+ * count with the one from when it gave up: the link is opened only if nothing has navigated since, in the root stack or in any pane below it.
+ */
+let navigations = 0;
+
+/**
  * The native stack of one navigator. A popped entry stays in it, inactive, until the stack reports that its exit transition
  * ended (SPEC.md "Screen exit"), so the unmount of the page (the whole subtree) is not part of the transition's frames.
  * Platforms whose stack animates a removal itself (`EXIT_REPORTED` false) drop the entry at once. `screens` is what the router
@@ -116,6 +122,7 @@ function createStack(reportsExit: boolean, initial: readonly NativeLocation[] = 
     get screens() { return screens; },
     /** Makes `next` the live stack. `retire` keeps what it removes on screen until it reports its exit; the user's own dismissal has happened natively already (no `retire`). */
     set(next: readonly NativeLocation[], retire = reportsExit): void {
+      navigations++;
       let retired = false;
       const list: RouterScreen[] = [];
       for (const screen of screens) {
@@ -159,6 +166,12 @@ function createStack(reportsExit: boolean, initial: readonly NativeLocation[] = 
       const index = entries.findIndex((entry) => entry.key === key);
       if (index > 0) stack.set(entries.slice(0, index), false);
     },
+    /** The stack is not on screen (its `<Router>` unmounted): the screens still leaving have no native stack to report their exit, so they go at once. */
+    dropLeaving(): void {
+      if (!screens.some((screen) => screen.leaving)) return;
+      show(screens.filter((screen) => !screen.leaving));
+      clearTimeout(exitTimer);
+    },
     /** The native stack finished taking a popped screen away: its page unmounts now. */
     exited(key: number): void {
       if (!screens.some((screen) => screen.leaving && screen.entry.key === key)) return;
@@ -180,7 +193,20 @@ function createStore(tree: StackNode) {
   const reportsExit = EXIT_REPORTED[Platform.OS === "ios" ? "ios" : "android"];
   const root = createStack(reportsExit);
   let disposed = false;
-  let launchRead = false;
+  /** The read of the launch link, once for the life of the router (`readLaunch`). */
+  let launchURL: Promise<string | null> | undefined;
+  /** The launch link is dealt with: it was opened, it was the one a restored state had opened already, or the app went on without it. It is never opened again. */
+  let launchDone = false;
+  /** The navigation count when the first read of the launch link failed: a later read that succeeds is the launch's only while nothing has navigated since. */
+  let readFailedAt: number | undefined;
+  /** An answer that came after the wait and that `accept` refused for the moment, with the navigation count it came at: the next call to `openLaunchURL` takes it up as if it had come in time. */
+  let lateLink: { url: string; at: number } | undefined;
+  /**
+   * Whether the root `<Router>` is mounted. A screen that leaves stays on screen until the native stack reports its exit, which a screen that is
+   * not on a native stack cannot: a navigation before the first mount (the launch link, opened ahead by `openLaunchURL`) or while the
+   * `<Router>` is unmounted (a shell that waits for its session) drops the screens it replaces at once.
+   */
+  let shown = false;
   /** The launch link this router (or the one whose state it adopted) has acted on; reactive so that the state saved for a restart follows it. */
   let launched = $state.raw<string | undefined>(undefined);
 
@@ -199,7 +225,7 @@ function createStore(tree: StackNode) {
       const href = fillPath(stack.path, params);
       return [key, createStack(reportsExit, page ? [entryFor(page, href, matchPath(page.path, href) ?? params, "push", false)] : [])];
     }));
-    return { kind: "tabs", get selected() { return selected; }, select(key) { if (panes.has(key)) selected = key; }, panes };
+    return { kind: "tabs", get selected() { return selected; }, select(key) { if (panes.has(key)) { selected = key; navigations++; } }, panes };
   }
 
   // A route's modules load when the route is first needed: a navigation loads what it pushes right away, a screen
@@ -247,6 +273,7 @@ function createStore(tree: StackNode) {
   }
 
   function apply(operations: readonly Operation[], target: Resolution, eager: boolean): void {
+    const retire = shown ? undefined : false;
     for (const operation of operations) {
       const at = target.chain.findIndex((step) => step.node.id === operation.node);
       const instance = instances(target)[at];
@@ -258,7 +285,7 @@ function createStore(tree: StackNode) {
       const { stack } = instance;
       if (operation.op === "popTo") {
         const index = lastIndexOfHref(stack.entries, operation.href);
-        if (index >= 0) stack.set(stack.entries.slice(0, index + 1));
+        if (index >= 0) stack.set(stack.entries.slice(0, index + 1), retire);
         continue;
       }
       const owner = at === target.chain.length - 1;
@@ -266,20 +293,20 @@ function createStore(tree: StackNode) {
       const params = owner ? target.params : matchPath(route.path, new URL(operation.href, BASE).pathname) ?? target.params;
       const base = target.chain[at - 1]?.select === undefined ? undefined : stack.entries[0];
       if (operation.op === "reset" && base && hrefOf(base) === operation.href) {
-        stack.set([base]);
+        stack.set([base], retire);
         continue;
       }
       // A reset above the owner keeps the instance of the screen it keeps (its navigator's panes and stacks stay mounted), and drops the rest.
       const present = owner || operation.op !== "reset" ? undefined : stack.entries[lastIndexOfHref(stack.entries, operation.href)];
       if (present?.route === route) {
-        stack.set(base ? [base, present] : [present]);
+        stack.set(base ? [base, present] : [present], retire);
         continue;
       }
       const kept = stack.entries;
       const index = operation.op === "push" ? kept.length : operation.op === "replace" ? kept.length - 1 : base ? 1 : 0;
       const next = entryFor(route, operation.href, params, operation.presentation, index > 0 || stack.baseBack);
       if (eager) load(route);
-      stack.set(operation.op === "push" ? [...kept, next] : operation.op === "replace" ? [...kept.slice(0, -1), next] : base ? [base, next] : [next]);
+      stack.set(operation.op === "push" ? [...kept, next] : operation.op === "replace" ? [...kept.slice(0, -1), next] : base ? [base, next] : [next], retire);
     }
   }
   const unresolved = (href: string) => new Error(`No native screen for ${new URL(href, BASE).pathname}`);
@@ -317,6 +344,65 @@ function createStore(tree: StackNode) {
       }
       return entry;
     });
+  }
+
+  function openLaunch(router: Router, url: string): void {
+    launchDone = true;
+    if (disposed || !router.active() || url === launched) return;
+    launched = url;
+    router.openURL(url, { reset: true });
+  }
+  /**
+   * The launch link is not opened: a read that failed was asked again after the app went on, or an answer came after it navigated. It is still
+   * the link the app was launched with, so it is recorded as the one acted on: the state saved for a restart carries it, and the intent Android
+   * delivers again after the process died (or a hot remount replays) is not taken for a new launch over the screens it restores.
+   */
+  function dropLaunch(url: string): void {
+    launchDone = true;
+    lateLink = undefined;
+    launched ??= url;
+  }
+  /** Whether a link read now is the launch's only by name: the first read failed, and the app has navigated since. */
+  const staleRead = () => readFailedAt !== undefined && navigations !== readFailedAt;
+  /**
+   * The link the app was launched with, read once: the platform gets `LAUNCH_URL_TIMEOUT_MS` to answer, and after that the app goes on as if
+   * there were no link (`null`), so a start that waits for it cannot wait for ever. An answer that comes later is still the launch's, and is
+   * opened (if `accept`, the first caller's, allows it; else it waits for the next call) when nothing has navigated since the wait ended and the
+   * read was not a stale retry, and then only once. A read that fails, even by throwing at once, rejects and is asked again by the next call
+   * (`openLaunchURL` checks that the app has not gone on meanwhile).
+   */
+  function readLaunch(router: Router, accept: ((url: string) => boolean) | undefined): Promise<string | null> {
+    if (launchURL) return launchURL;
+    let failedAt: number | undefined;
+    const read = new Promise<string | null>((resolve, reject) => {
+      let waiting = true;
+      let gaveUpAt = -1;
+      const timer = setTimeout(() => { waiting = false; gaveUpAt = navigations; resolve(null); }, LAUNCH_URL_TIMEOUT_MS);
+      const failed = (error: unknown) => {
+        clearTimeout(timer);
+        if (!waiting) return;
+        waiting = false;
+        failedAt = navigations;
+        reject(error);
+      };
+      let answer: Promise<string | null>;
+      try { answer = Linking.getInitialURL(); } catch (error) { failed(error); return; }
+      answer.then((url) => {
+        clearTimeout(timer);
+        if (waiting) { waiting = false; resolve(url); return; }
+        if (!url || launchDone) return;
+        if (navigations !== gaveUpAt || staleRead()) dropLaunch(url);
+        else if (accept && !accept(url)) lateLink = { url, at: gaveUpAt };
+        else openLaunch(router, url);
+      }, failed);
+    });
+    // After the assignment below, so that a read that failed before it (a throw at once) is forgotten too.
+    read.catch(() => {
+      if (launchURL === read) launchURL = undefined;
+      if (failedAt !== undefined) readFailedAt ??= failedAt;
+    });
+    launchURL = read;
+    return read;
   }
 
   return {
@@ -366,15 +452,31 @@ function createStore(tree: StackNode) {
      * A direct load has no history, so it is a `reset` (like SvelteKit's first page): the link's screen is the base of the stack and has no back arrow.
      * Later links are plain `goto`s. A router that adopted a saved state also adopted the link that state was opened with: an Activity that is recreated
      * or restored after its process died reports the intent it was started with again, and that is no new launch (a different link is, and wins).
+     * Resolves with the link once it has been opened (`null` when there is none, or the platform has not answered yet). `accept` can refuse the
+     * link for now (the lab shell opens only a lab link ahead of its `<Router>`): it is then left for the next call, which is the `<Router>`'s.
      */
-    openLaunchURL(router: Router): void {
-      if (launchRead) return;
-      launchRead = true;
-      void Linking.getInitialURL().then((url) => {
-        if (!url || disposed || !router.active() || url === launched) return;
-        launched = url;
-        router.openURL(url, { reset: true });
-      });
+    async openLaunchURL(router: Router, accept?: (url: string) => boolean): Promise<string | null> {
+      let url = await readLaunch(router, accept);
+      if (!url && lateLink && !launchDone) {
+        const late = lateLink;
+        lateLink = undefined;
+        if (late.at === navigations) url = late.url; else dropLaunch(late.url);
+      }
+      if (!url || launchDone) return url;
+      // A read that failed and was asked again after the app went on (a sign-out remounts the <Router>) would open a link that is long stale.
+      if (staleRead()) { dropLaunch(url); return url; }
+      if (accept && !accept(url)) return url;
+      openLaunch(router, url);
+      return url;
+    },
+    /** The root `<Router>` mounted or unmounted: while it is mounted a screen that a navigation replaces leaves through the native stack. */
+    markShown(value: boolean) {
+      shown = value;
+      // Not here, after the teardown that calls this. Svelte runs an effect's teardown with `is_destroying_effect` set (`execute_effect_teardown`,
+      // internal/client/reactivity/effects.js), and `get()` then answers a source written in the current flush with its value from before the write
+      // (internal/client/runtime.js, sources.js, batch.js): a navigation that unmounted this <Router> would read the stack as it was before that navigation,
+      // and the drop would put the old screens back. A microtask reads the stack as the flush left it.
+      if (!value) queueMicrotask(() => { if (!shown) root.dropLeaving(); });
     },
     dispose() { disposed = true; root.dispose(); },
   };
@@ -464,8 +566,25 @@ export function connectHost(router: Router): () => void {
   if (!binding || router.nested) return () => {};
   const back = BackHandler.addEventListener("hardwareBackPress", () => router.active() && innermost(router).back());
   const links = Linking.addEventListener("url", ({ url }) => { if (router.active()) router.openURL(url); });
-  binding.store.openLaunchURL(router);
-  return () => { back.remove(); links.remove(); };
+  binding.store.markShown(true);
+  binding.store.openLaunchURL(router).catch((error: unknown) => { console.error("[Svelte router] the launch link could not be read", error); });
+  return () => { back.remove(); links.remove(); binding.store.markShown(false); };
+}
+
+/** How long the platform gets to answer for the launch link before the app starts as if it had none (an answer that comes later is still opened, see `readLaunch`). */
+export const LAUNCH_URL_TIMEOUT_MS = 3000;
+
+/**
+ * Opens the link the app was launched with into the root router now, instead of when its `<Router>` mounts, and resolves with the link once it
+ * has (`null` when there was none, when the platform has not answered within three seconds, or for a router that is not the root). The `<Router>`
+ * that mounts afterwards starts on the link's screen and does not open it again: a shell that decides what to show by the launch link can wait
+ * for this before it renders the navigator, so the router's first screen (the `initial` of `createRouter`, which the link replaces) is never
+ * rendered. The platform is asked once, whoever asks. `accept` refuses a link for now (it stays for the `<Router>`'s own call); a read that
+ * failed rejects and is asked again by the next call.
+ */
+export function openLaunchURL(router: Router, accept?: (url: string) => boolean): Promise<string | null> {
+  const binding = bindings.get(router);
+  return !binding || router.nested ? Promise.resolve(null) : binding.store.openLaunchURL(router, accept);
 }
 
 /**

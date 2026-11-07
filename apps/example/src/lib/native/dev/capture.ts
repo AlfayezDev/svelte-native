@@ -1,6 +1,9 @@
 import { Directory, File, Paths } from "expo-file-system";
+import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import type { Presentation } from "@rasheed/svelte-native";
 import { qaModule, type BuildIdentity } from "./qa.ts";
+import { needsProduct, productWaiter } from "./capture-wait.ts";
+import { startupStatus } from "../startup.ts";
 
 /**
  * The iOS side of the parity and accessibility suites (`apps/platform/qa`, "iOS"): nothing outside the process can take an iOS
@@ -76,6 +79,18 @@ export type CaptureEntry = {
 export type CaptureIndex = { schema: 1; token: string | null; build: BuildIdentity; startedAt: string; finishedAt: string | null; done: boolean; themes: Theme[]; entries: CaptureEntry[]; error: string | null };
 
 const pause = (milliseconds: number) => new Promise<void>((resolve) => { setTimeout(resolve, milliseconds); });
+/** A screen that needs the session (the login) is photographed once the product's start is ready, within a bound, once for the whole run (`capture-wait.ts`). */
+const productReady = productWaiter({
+  phase: () => startupStatus.phase,
+  sleep: pause,
+  now: Date.now,
+  // The lab page keeps the phone awake while it is mounted, and it is not while the product starts: the wait keeps its own.
+  hold() {
+    const tag = "svelte-native-capture-wait";
+    void activateKeepAwakeAsync(tag).catch((error: unknown) => console.error("[native lab keep awake]", error));
+    return () => { void deactivateKeepAwake(tag).catch((error: unknown) => console.error("[native lab keep awake cleanup]", error)); };
+  },
+});
 const plain = (uri: string) => uri.replace(/^file:\/\//, "");
 
 /** Visits `ids` in every theme and writes the results; resolves when `index.json` says `done`. */
@@ -132,6 +147,8 @@ async function captureScreen(router: Router, qa: NonNullable<typeof qaModule>, d
   try {
     router.goto(spec.base ?? spec.goto, { reset: true });
     await pause(1300); // the previous screens leave, the new one is pushed and its content settles
+    // The lab starts without the product; a screen that needs the session starts it, and waits for it with the loading page meanwhile.
+    const unready = needsProduct(spec) ? await productReady() : null;
     if (spec.base) {
       router.goto(spec.goto, { presentation: spec.presentation });
       await pause(1300);
@@ -158,6 +175,7 @@ async function captureScreen(router: Router, qa: NonNullable<typeof qaModule>, d
     new File(directory, `${name}.uikit.json`).write(state);
     entry.uikit = `${name}.uikit.json`;
     entry.sheets = sheetFrames(JSON.parse(state));
+    if (unready) entry.error = unready;
   } catch (error) {
     entry.error = error instanceof Error ? error.message : String(error);
   }

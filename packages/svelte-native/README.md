@@ -277,7 +277,7 @@ A debug build loads the bundle from Metro. A save re-runs the changed module and
 
 ```sh
 cd packages/svelte-native
-bun test                 # renderer, host against a fake Fabric binding, router, lowering, gestures, foreign libraries, updates, remote functions (a real SvelteKit server)
+bun run test             # bun test --timeout 30000: renderer, host against a fake Fabric binding, router, lowering, gestures, foreign libraries, updates, remote functions (a real SvelteKit server); a plain `bun test` keeps Bun's 5 s default, which the server and bundling tests can exceed on a busy machine
 pnpm typecheck           # svelte-check
 pnpm lint                # eslint
 npx biome check .        # from the repository root: lint for the TypeScript packages

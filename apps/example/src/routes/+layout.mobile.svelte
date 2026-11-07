@@ -13,7 +13,7 @@
   import { installErrorCounter, jsErrorCount } from "#lib/native/dev/errors.ts";
   import { logUpdateReport, lateFault, lateFaultMessage } from "#lib/native/dev/update-probe.ts";
   import { labShown, openLabLaunch } from "#lib/native/dev/launch.ts";
-  import { createRetrier, type Foreground, type Retrier } from "#lib/native/startup.ts";
+  import { createRetrier, isForeground, startupStatus, type Foreground, type Retrier } from "#lib/native/startup.ts";
   import type { NativeConfiguration } from "#lib/native/session.svelte.ts";
   /** The app shell: `children` is the root navigator, and the router above this layout is `useRouter("root")`. */
   let { children }: { children: Snippet } = $props();
@@ -61,6 +61,7 @@
   function startProduct() {
     if (product || NativeSession || !foreground) return;
     error = undefined;
+    startupStatus.phase = "pending";
     product = createRetrier({ attempt: loadProduct, onFailure: startupFailed, foreground });
     product.start();
   }
@@ -79,14 +80,14 @@
     else startProduct();
   });
   // React Native's `AppState`, which is loaded after the first commit (the boot gates count what runs before it). Without it the app starts anyway
-  // and counts as always in the foreground. Only `active` is the foreground: `inactive` is Control Center, the app switcher, a system dialog.
+  // and counts as always in the foreground. `background` and `inactive` (Control Center, the app switcher, a system dialog) are not (`isForeground`).
   async function appForeground(): Promise<Foreground> {
     try {
       const { default: AppState } = await import("react-native/Libraries/AppState/AppState");
       return {
-        active: () => AppState.currentState === "active",
+        active: () => isForeground(AppState.currentState),
         subscribe(listener) {
-          const subscription = AppState.addEventListener("change", (state) => { listener(state === "active"); });
+          const subscription = AppState.addEventListener("change", (state) => { listener(isForeground(state)); });
           return () => subscription.remove();
         },
       };
@@ -100,6 +101,7 @@
     if (failures === 1) console.error("[native startup]", cause);
     else console.warn(`[native startup] attempt ${failures} failed`, cause);
     error = t("errors.unavailableBody");
+    startupStatus.phase = "failed";
   }
   const retry = () => { error = undefined; (product ?? starter)?.retryNow(); };
   if (nativeLabEnabled) installErrorCounter();

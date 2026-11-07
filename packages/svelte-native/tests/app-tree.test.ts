@@ -736,6 +736,7 @@ test("a launch by a lab link renders the lab at once, without the platform confi
         expect([backend, app.requests]).toEqual([backend, []]);
         expect([backend, app.accounts()]).toEqual([backend, 0]);
         expect([backend, app.errors, app.warnings]).toEqual([backend, [], []]);
+        expect([backend, (globalThis as { __initialURLReads?: number }).__initialURLReads]).toEqual([backend, 1]); // the platform is asked for the link once, by the lab start and the <Router> together
         expect([backend, app.router.screens.map((screen) => screen.canGoBack)]).toEqual([backend, [false]]); // the launch link is the base of the stack
         expect(app.hardwareBack()).toBe(false);
       } finally { await app.close(); reset(); }
@@ -793,6 +794,8 @@ const visit = (app: { router: TreeRouter }, spec: { goto: string; base?: string;
 };
 const labStart = (surface: number, fetch: () => Promise<Response> = async () => configurationResponse(), signedIn = false) => mountPlatform(surface, { variant: "qa", applicationId: "io.rasheed.svelteqa", initial: "/auth/login", lab: true, fetch, signedIn });
 const loginShown = (texts: string[]) => texts.includes("Continue with email");
+/** Where the product's start is, as the iPhone capture sees it (`startupStatus`, shared by the layout, the session and the fake lab page). */
+const startPhase = () => (globalThis as { __startupStatus?: { phase: string } }).__startupStatus?.phase;
 
 test("a lab start that goes to a product screen starts the product on demand instead of rendering the screen without its session: the iOS capture order", async () => {
   withInsets(24);
@@ -806,9 +809,11 @@ test("a lab start that goes to a product screen starts the product on demand ins
     expect(app.requests).toEqual([]);
     expect(app.accounts()).toBe(0);
 
+    expect(startPhase()).toBe("pending"); // nothing has started the product
     // `login` first: the lab waits for the product's start with the loading page, then the login is rendered with its session.
     visit(app, { goto: "/auth/login" });
     await turns();
+    expect(startPhase()).toBe("ready"); // what the capture waits for before it photographs the login
     expect(app.requests).toHaveLength(1);
     expect(new URL(app.requests[0]).pathname).toBe("/api/configuration");
     expect(app.accounts()).toBe(1);
@@ -848,6 +853,7 @@ test("a lab start that goes to the login with the backend down shows the notice 
     visit(app, { goto: "/auth/login" });
     await turns();
     expect(app.texts()).toEqual([unavailable, "Retry"]);
+    expect(startPhase()).toBe("failed"); // the capture gives up on the bound, with this noted
     expect(app.requests).toHaveLength(1);
     jest.advanceTimersByTime(1_000);
     await turns();
@@ -868,6 +874,7 @@ test("a lab start that goes to the login with the backend down shows the notice 
     expect(app.requests).toHaveLength(asked + 1);
     expect(loginShown(app.texts())).toBe(true);
     expect(app.accounts()).toBe(1);
+    expect(startPhase()).toBe("ready");
   } finally { await app.close(); delete launch.__initialURL; reset(); }
 });
 
@@ -1029,6 +1036,28 @@ test("iOS's inactive (Control Center, a system dialog) pauses the asking like th
     expect(app.requests.length).toBeGreaterThan(2);
     expect(app.errors).toHaveLength(1); // the first failure of the streak is the only error: being picked up does not arm it again
     expect(app.warnings.length).toBe(app.requests.length - 1);
+  } finally { await app.close(); delete appStates.__appState; delete appStates.__appStateHandlers; reset(); }
+});
+
+test("an AppState the app does not know is the foreground: it asks again by itself, and only background and inactive wait", async () => {
+  withInsets(24);
+  appStates.__appStateHandlers = [];
+  appStates.__appState = "unknown";
+  const app = await mountPlatform(185, { variant: "production", applicationId: "io.rasheed.app", initial: "/workspaces", fetch: async () => { throw new TypeError("Network request failed"); } });
+  const turns = async () => { await app.settled(); await app.settled(); };
+  try {
+    expect(app.requests).toHaveLength(1);
+    jest.advanceTimersByTime(1_000);
+    await turns();
+    expect(app.requests).toHaveLength(2); // `unknown` is not a reason to wait
+    appStates.__appState = undefined;
+    moveApp("inactive");
+    jest.advanceTimersByTime(60_000);
+    await turns();
+    expect(app.requests).toHaveLength(2);
+    moveApp("extension"); // anything else the platform reports is the foreground again
+    await turns();
+    expect(app.requests).toHaveLength(3);
   } finally { await app.close(); delete appStates.__appState; delete appStates.__appStateHandlers; reset(); }
 });
 

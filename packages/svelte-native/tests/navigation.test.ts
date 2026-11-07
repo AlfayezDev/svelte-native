@@ -44,7 +44,7 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/Renderer/shims/ReactNativeViewConfigRegistry": "export const register = (name) => name; export const get = (name) => ({ uiViewClassName: name, validAttributes: {}, bubblingEventTypes: { topChange: { phasedRegistrationNames: { bubbled: 'onChange', captured: 'onChangeCapture' } } }, directEventTypes: { topLayout: { registrationName: 'onLayout' }, topScroll: { registrationName: 'onScroll' } } });",
   "react-native/Libraries/Utilities/Platform": "export default { get OS() { return globalThis.__navigationOS ?? 'android'; }, Version: 34 };",
   "react-native/Libraries/Utilities/BackHandler": "const handlers = (globalThis.__backHandlers ??= []); export default { addEventListener: (name, handler) => { handlers.push(handler); return { remove() { const at = handlers.indexOf(handler); if (at >= 0) handlers.splice(at, 1); } }; } };",
-  "react-native/Libraries/Linking/Linking": "const handlers = (globalThis.__linkHandlers ??= []); export default { addEventListener: (name, handler) => { handlers.push(handler); return { remove() { const at = handlers.indexOf(handler); if (at >= 0) handlers.splice(at, 1); } }; }, getInitialURL: () => { globalThis.__initialURLReads = (globalThis.__initialURLReads ?? 0) + 1; if (globalThis.__initialURLMode === 'reject') return Promise.reject(new Error('the link service is down')); if (globalThis.__initialURLMode === 'hang') return new Promise(() => {}); return Promise.resolve(globalThis.__initialURL ?? null); } };",
+  "react-native/Libraries/Linking/Linking": "const handlers = (globalThis.__linkHandlers ??= []); export default { addEventListener: (name, handler) => { handlers.push(handler); return { remove() { const at = handlers.indexOf(handler); if (at >= 0) handlers.splice(at, 1); } }; }, getInitialURL: () => { globalThis.__initialURLReads = (globalThis.__initialURLReads ?? 0) + 1; if (globalThis.__initialURLMode === 'reject') return Promise.reject(new Error('the link service is down')); if (globalThis.__initialURLMode === 'hang') return new Promise(() => {}); if (globalThis.__initialURLMode === 'late') return new Promise((resolve) => { globalThis.__resolveInitialURL = resolve; }); return Promise.resolve(globalThis.__initialURL ?? null); } };",
   "react-native/Libraries/Image/resolveAssetSource": "export default (source) => source && typeof source === 'object' && 'uri' in source ? { scale: 1, ...source } : null;",
   "react-native/Libraries/Components/Keyboard/Keyboard": "export default { isVisible: () => false, dismiss() {} };",
   "react-native/Libraries/NativeComponent/ViewConfig": "export const createViewConfig = (partial) => partial;",
@@ -2026,7 +2026,7 @@ test("the launch link can be opened before the root <Router> mounts: the first s
     expect(pathsOf(router)).toEqual(["/workspaces"]);
     expect(router.screens.map((screen) => screen.leaving)).toEqual([false]); // no native stack ever showed the first screen, so none reports its exit
     expect(launch.__initialURLReads).toBe(1);
-    expect(await m.openLaunchURL(router)).toBeUndefined(); // asked again: the same read
+    expect(await m.openLaunchURL(router)).toBe("https://example.test/workspaces"); // asked again: the same read, and the link is not opened a second time
     expect(launch.__initialURLReads).toBe(1);
     expect(handlersOf("__linkHandlers")).toHaveLength(0);
 
@@ -2080,6 +2080,80 @@ test("the read of the launch link is bounded and a failed read is not remembered
     await second.settled();
     expect(settledAfter).toBe("settled");
     expect(pathsOf(second.router)).toEqual(["/acme"]); // no link: the router stays on its first screen
+  } finally { delete launch.__initialURL; delete launch.__initialURLMode; reset(); }
+});
+
+test("the launch link is read once, and a platform that answers after the three seconds is still heard: opened if nothing has navigated since, never twice", async () => {
+  withInsets(24);
+  const launch = globalThis as { __initialURL?: string; __initialURLReads?: number; __initialURLMode?: string; __resolveInitialURL?: (url: string | null) => void };
+  try {
+    // The answer comes late and the stack is as the app left it: the link is the launch's, and it opens (reset: its screen is the base).
+    launch.__initialURLMode = "late";
+    const first = await mountTree(194, { initial: "/acme/home", mounted: false });
+    const settledWith: (string | null)[] = [];
+    void first.m.openLaunchURL(first.router).then((url) => { settledWith.push(url); });
+    jest.advanceTimersByTime(3_000);
+    await first.settled();
+    expect(settledWith).toEqual([null]); // the app goes on without it
+    expect(pathsOf(first.router)).toEqual(["/acme"]);
+    launch.__resolveInitialURL?.("https://example.test/workspaces");
+    await first.settled();
+    expect(pathsOf(first.router)).toEqual(["/workspaces"]);
+    expect(first.router.screens.map((screen) => screen.canGoBack)).toEqual([false]);
+    first.app.show(true); // a <Router> mounting afterwards neither reads nor opens it again
+    await first.settled();
+    expect(launch.__initialURLReads).toBe(1);
+    expect(pathsOf(first.router)).toEqual(["/workspaces"]);
+    first.app.show(false);
+    await first.settled();
+    first.app.show(true);
+    await first.settled();
+    expect(launch.__initialURLReads).toBe(1);
+
+    // The user went on while the platform was silent: the late answer is dropped.
+    const second = await mountTree(195, { initial: "/acme/home", mounted: false });
+    void second.m.openLaunchURL(second.router);
+    jest.advanceTimersByTime(3_000);
+    await second.settled();
+    second.router.goto("/acme/inbox");
+    await second.settled();
+    const before = pathsOf(second.router);
+    launch.__resolveInitialURL?.("https://example.test/workspaces");
+    await second.settled();
+    expect(pathsOf(second.router)).toEqual(before);
+    second.app.show(true);
+    await second.settled();
+    expect(pathsOf(second.router)).toEqual(before); // and the <Router> that mounts does not open it either
+  } finally { delete launch.__initialURLMode; delete launch.__resolveInitialURL; reset(); }
+});
+
+test("a link that is refused ahead of the <Router> is left for it, and a read that failed is not applied once the app has gone on", async () => {
+  withInsets(24);
+  const launch = globalThis as { __initialURL?: string; __initialURLReads?: number; __initialURLMode?: string };
+  try {
+    launch.__initialURL = "https://example.test/workspaces";
+    const refused = await mountTree(196, { initial: "/acme/home", mounted: false });
+    expect(await refused.m.openLaunchURL(refused.router, (url: string) => !url.includes("workspaces"))).toBe("https://example.test/workspaces");
+    expect(pathsOf(refused.router)).toEqual(["/acme"]); // not opened here
+    refused.app.show(true);
+    await refused.settled();
+    expect(pathsOf(refused.router)).toEqual(["/workspaces"]); // the <Router>'s own call opens it
+    expect(launch.__initialURLReads).toBe(1); // from the one read
+
+    // The first read fails; the app goes on (a sign-out sends it to the login and remounts the <Router>); the read that then succeeds is the cold start's, long stale.
+    const stale = await mountTree(197, { initial: "/acme/home", mounted: false });
+    launch.__initialURLMode = "reject";
+    await expect(stale.m.openLaunchURL(stale.router)).rejects.toThrow("the link service is down");
+    stale.router.goto("/acme/inbox");
+    await stale.settled();
+    const before = pathsOf(stale.router);
+    delete launch.__initialURLMode;
+    expect(await stale.m.openLaunchURL(stale.router)).toBe("https://example.test/workspaces");
+    await stale.settled();
+    expect(pathsOf(stale.router)).toEqual(before);
+    stale.app.show(true);
+    await stale.settled();
+    expect(pathsOf(stale.router)).toEqual(before);
   } finally { delete launch.__initialURL; delete launch.__initialURLMode; reset(); }
 });
 

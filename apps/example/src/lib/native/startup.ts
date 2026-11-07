@@ -2,6 +2,12 @@
  * How the app's shell keeps trying to start. The product needs the platform configuration (`/api/configuration`) before anything else, and
  * the backend is slow or down at times: a failed attempt is tried again by itself, quickly at first and then at a steady pace, and only while
  * the app is in the foreground. Nothing here touches React Native, so the schedule and the loop are tested on their own (`qa/test/startup.test.ts`).
+ *
+ * The wait between attempts is client backoff on one HTTP request, not domain time: it happens before the app has a database connection (the
+ * request is what gives it the connection's address), it belongs to this process and dies with it, and no row could hold it. A database schedule
+ * (`jobs.rs`) is for time the data owns. The attempts are deliberately not bounded in count: a phone that is opened with the backend down is
+ * still looking at the notice the next time it is looked at, so the app keeps asking at the steady pace (15 s) for as long as it is in the
+ * foreground, and asks nothing in the background, where nobody sees the result. Unbounded in count, bounded in rate.
  */
 
 const delays = [1_000, 2_000, 4_000, 8_000] as const;
@@ -15,12 +21,24 @@ export function retryDelay(failures: number): number {
 }
 
 /**
- * Whether the app is in the foreground, and when that changes (React Native's `AppState`, which the shell adapts). Only `active` is the
- * foreground: iOS's `inactive` (Control Center, the app switcher, a system dialog) is not an app anybody is looking at either.
+ * Whether an `AppState` status is one of a foreground app. `background` and iOS's `inactive` (Control Center, the app switcher, a system dialog)
+ * are paused; `active`, and anything the platform reports that this does not know (`unknown`, `extension`, nothing at all), is not: an app that
+ * cannot tell is better off asking than waiting for an event that may never come.
+ */
+export const isForeground = (state: string | null | undefined): boolean => state !== "background" && state !== "inactive";
+
+/**
+ * Where the product's start is, for the lab (the iPhone capture waits for it before it takes the screenshot of a screen that needs the session):
+ * `pending` from the first attempt, `failed` after one failed (the notice is up, the attempts go on), `ready` once the session is up and loaded.
+ */
+export const startupStatus: { phase: "pending" | "failed" | "ready" } = { phase: "pending" };
+
+/**
+ * Whether the app is in the foreground, and when that changes (React Native's `AppState`, which the shell adapts with `isForeground`).
  */
 export type Foreground = {
   active(): boolean;
-  /** Calls `listener` whenever the app becomes active (`true`) or stops being (`false`); returns what unsubscribes. */
+  /** Calls `listener` whenever the app comes to the foreground (`true`) or leaves it (`false`); returns what unsubscribes. */
   subscribe(listener: (active: boolean) => void): () => void;
 };
 

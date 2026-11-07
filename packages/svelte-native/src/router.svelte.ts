@@ -90,6 +90,12 @@ function release(entry: NativeLocation): void {
 }
 
 /**
+ * Counts the changes to any stack or tab selection of the app. A read of the launch link that comes after the app went on without it compares the
+ * count with the one from when it gave up: the link is opened only if nothing has navigated since, in the root stack or in any pane below it.
+ */
+let navigations = 0;
+
+/**
  * The native stack of one navigator. A popped entry stays in it, inactive, until the stack reports that its exit transition
  * ended (SPEC.md "Screen exit"), so the unmount of the page (the whole subtree) is not part of the transition's frames.
  * Platforms whose stack animates a removal itself (`EXIT_REPORTED` false) drop the entry at once. `screens` is what the router
@@ -116,6 +122,7 @@ function createStack(reportsExit: boolean, initial: readonly NativeLocation[] = 
     get screens() { return screens; },
     /** Makes `next` the live stack. `retire` keeps what it removes on screen until it reports its exit; the user's own dismissal has happened natively already (no `retire`). */
     set(next: readonly NativeLocation[], retire = reportsExit): void {
+      navigations++;
       let retired = false;
       const list: RouterScreen[] = [];
       for (const screen of screens) {
@@ -186,8 +193,12 @@ function createStore(tree: StackNode) {
   const reportsExit = EXIT_REPORTED[Platform.OS === "ios" ? "ios" : "android"];
   const root = createStack(reportsExit);
   let disposed = false;
-  /** The read of the launch link, once for the life of the router: what `openLaunchURL` returns every time it is asked. */
-  let launchRead: Promise<void> | undefined;
+  /** The read of the launch link, once for the life of the router (`readLaunch`). */
+  let launchURL: Promise<string | null> | undefined;
+  /** The launch link is dealt with: it was opened, it was the one a restored state had opened already, or the app went on without it. It is never opened again. */
+  let launchDone = false;
+  /** The navigation count when the first read of the launch link failed: a later read that succeeds is the launch's only while nothing has navigated since. */
+  let readFailedAt: number | undefined;
   /**
    * Whether the root `<Router>` is mounted. A screen that leaves stays on screen until the native stack reports its exit, which a screen that is
    * not on a native stack cannot: a navigation before the first mount (the launch link, opened ahead by `openLaunchURL`) or while the
@@ -212,7 +223,7 @@ function createStore(tree: StackNode) {
       const href = fillPath(stack.path, params);
       return [key, createStack(reportsExit, page ? [entryFor(page, href, matchPath(page.path, href) ?? params, "push", false)] : [])];
     }));
-    return { kind: "tabs", get selected() { return selected; }, select(key) { if (panes.has(key)) selected = key; }, panes };
+    return { kind: "tabs", get selected() { return selected; }, select(key) { if (panes.has(key)) { selected = key; navigations++; } }, panes };
   }
 
   // A route's modules load when the route is first needed: a navigation loads what it pushes right away, a screen
@@ -333,6 +344,39 @@ function createStore(tree: StackNode) {
     });
   }
 
+  function openLaunch(router: Router, url: string): void {
+    launchDone = true;
+    if (disposed || !router.active() || url === launched) return;
+    launched = url;
+    router.openURL(url, { reset: true });
+  }
+  /**
+   * The link the app was launched with, read once: the platform gets `LAUNCH_URL_TIMEOUT_MS` to answer, and after that the app goes on as if
+   * there were no link (`null`), so a start that waits for it cannot wait for ever. An answer that comes later is still the launch's, and is
+   * opened if nothing has navigated since the wait ended, and then only once. A read that fails rejects and is asked again by the
+   * next call (`openLaunchURL` checks that the app has not gone on meanwhile).
+   */
+  function readLaunch(router: Router): Promise<string | null> {
+    launchURL ??= new Promise<string | null>((resolve, reject) => {
+      let waiting = true;
+      let gaveUpAt = -1;
+      const timer = setTimeout(() => { waiting = false; gaveUpAt = navigations; resolve(null); }, LAUNCH_URL_TIMEOUT_MS);
+      Linking.getInitialURL().then((url) => {
+        clearTimeout(timer);
+        if (waiting) { waiting = false; resolve(url); return; }
+        if (url && !launchDone && navigations === gaveUpAt) openLaunch(router, url);
+      }, (error: unknown) => {
+        clearTimeout(timer);
+        if (!waiting) return;
+        waiting = false;
+        launchURL = undefined;
+        readFailedAt ??= navigations;
+        reject(error);
+      });
+    });
+    return launchURL;
+  }
+
   return {
     tree, root, load, modules, snapshot: () => snapshot(root), state: (): NavigationState => ({ stack: snapshot(root), launch: launched }), resolved,
     navigate(href: string, navigation: Navigation) {
@@ -380,23 +424,25 @@ function createStore(tree: StackNode) {
      * A direct load has no history, so it is a `reset` (like SvelteKit's first page): the link's screen is the base of the stack and has no back arrow.
      * Later links are plain `goto`s. A router that adopted a saved state also adopted the link that state was opened with: an Activity that is recreated
      * or restored after its process died reports the intent it was started with again, and that is no new launch (a different link is, and wins).
-     * The promise settles once the link has been opened (or there was none); asking again returns the same one.
+     * Resolves with the link once it has been opened (`null` when there is none, or the platform has not answered yet). `accept` can refuse the
+     * link for now (the lab shell opens only a lab link ahead of its `<Router>`): it is then left for the next call, which is the `<Router>`'s.
      */
-    openLaunchURL(router: Router): Promise<void> {
-      launchRead ??= readLaunchURL().then((url) => {
-        if (!url || disposed || !router.active() || url === launched) return;
-        launched = url;
-        router.openURL(url, { reset: true });
-      }, (error: unknown) => {
-        launchRead = undefined; // a read that failed is asked again by the next caller, not remembered
-        throw error;
-      });
-      return launchRead;
+    async openLaunchURL(router: Router, accept?: (url: string) => boolean): Promise<string | null> {
+      const url = await readLaunch(router);
+      if (!url || launchDone) return url;
+      // A read that failed and was asked again after the app went on (a sign-out remounts the <Router>) would open a link that is long stale.
+      if (readFailedAt !== undefined && navigations !== readFailedAt) { launchDone = true; return url; }
+      if (accept && !accept(url)) return url;
+      openLaunch(router, url);
+      return url;
     },
     /** The root `<Router>` mounted or unmounted: while it is mounted a screen that a navigation replaces leaves through the native stack. */
     markShown(value: boolean) {
       shown = value;
-      // After the teardown that called this: the stack's state it would read there is the flush's own, not yet the navigation's.
+      // Not here, after the teardown that calls this. Svelte runs an effect's teardown with `is_destroying_effect` set (`execute_effect_teardown`,
+      // internal/client/reactivity/effects.js), and `get()` then answers a source written in the current flush with its value from before the write
+      // (internal/client/runtime.js, sources.js, batch.js): a navigation that unmounted this <Router> would read the stack as it was before that navigation,
+      // and the drop would put the old screens back. A microtask reads the stack as the flush left it.
       if (!value) queueMicrotask(() => { if (!shown) root.dropLeaving(); });
     },
     dispose() { disposed = true; root.dispose(); },
@@ -492,29 +538,20 @@ export function connectHost(router: Router): () => void {
   return () => { back.remove(); links.remove(); binding.store.markShown(false); };
 }
 
-/** How long the platform gets to answer for the launch link before the app starts as if it had none. */
+/** How long the platform gets to answer for the launch link before the app starts as if it had none (an answer that comes later is still opened, see `readLaunch`). */
 export const LAUNCH_URL_TIMEOUT_MS = 3000;
 
 /**
- * The link the app was launched with, `null` when there is none or when the platform does not answer within `LAUNCH_URL_TIMEOUT_MS` (a
- * start that waits for the link must not wait for ever). Rejects with what the platform's read threw.
+ * Opens the link the app was launched with into the root router now, instead of when its `<Router>` mounts, and resolves with the link once it
+ * has (`null` when there was none, when the platform has not answered within three seconds, or for a router that is not the root). The `<Router>`
+ * that mounts afterwards starts on the link's screen and does not open it again: a shell that decides what to show by the launch link can wait
+ * for this before it renders the navigator, so the router's first screen (the `initial` of `createRouter`, which the link replaces) is never
+ * rendered. The platform is asked once, whoever asks. `accept` refuses a link for now (it stays for the `<Router>`'s own call); a read that
+ * failed rejects and is asked again by the next call.
  */
-export function readLaunchURL(): Promise<string | null> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => { resolve(null); }, LAUNCH_URL_TIMEOUT_MS);
-    Linking.getInitialURL().then((url) => { clearTimeout(timer); resolve(url); }, (error: unknown) => { clearTimeout(timer); reject(error); });
-  });
-}
-
-/**
- * Opens the link the app was launched with into the root router now, instead of when its `<Router>` mounts, and settles once it has (at once
- * when there was none, or for a router that is not the root). The `<Router>` that mounts afterwards starts on the link's screen and does not
- * open it again: a shell that decides what to show by the launch link can wait for this before it renders the navigator, so the router's
- * first screen (the `initial` of `createRouter`, which the link replaces) is never rendered.
- */
-export function openLaunchURL(router: Router): Promise<void> {
+export function openLaunchURL(router: Router, accept?: (url: string) => boolean): Promise<string | null> {
   const binding = bindings.get(router);
-  return !binding || router.nested ? Promise.resolve() : binding.store.openLaunchURL(router);
+  return !binding || router.nested ? Promise.resolve(null) : binding.store.openLaunchURL(router, accept);
 }
 
 /**

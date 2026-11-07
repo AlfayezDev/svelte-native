@@ -20,6 +20,18 @@ export class FakeDevice {
 	readonly reverses = new Set<string>();
 	/** Settings the device refuses to take back after a restart (a `settings put` that reads differently). */
 	ignoreFontScaleWrites = false;
+	/** The app's process id (`pidof`); null: the app has no process. */
+	pid: number | null = 4321;
+	/** What the evidence commands answer: the app's logcat and the crash buffer, the window manager's focus and windows (`dumpsys window windows`, and the plain `dumpsys window` when that answers nothing), the resumed activity. */
+	logcatText = "";
+	crashText = "";
+	windowsText = "  mCurrentFocus=Window{1a2b u0 io.rasheed.svelteqa/io.rasheed.svelteqa.MainActivity}\n";
+	windowText = "";
+	activityText = "  topResumedActivity=ActivityRecord{3c4d u0 io.rasheed.svelteqa/.MainActivity t7}\n";
+	/** The device's clock, as `date +'%m-%d %H:%M:%S'` prints it (the stamps of its logcat). */
+	clock = "11-04 11:11:30\n";
+	/** Commands that start with one of these fail the way a command that exits with 1 does. */
+	failing: string[] = [];
 
 	readonly serial = "localhost:5555";
 	readonly packageName = "io.rasheed.svelteqa";
@@ -62,6 +74,15 @@ export class FakeDevice {
 		}
 		if (args[0] !== "shell") return "";
 		const [, first, second, third, fourth] = args;
+		if (first && this.failing.some((prefix) => first.startsWith(prefix)))
+			throw new Error(`adb -s ${serial} ${args.join(" ")} exited with 1`);
+		if (first?.startsWith("date ")) return this.clock;
+		if (first?.startsWith("pidof ")) return this.pid === null ? "" : `${this.pid}\n`;
+		if (first?.startsWith("logcat -b crash")) return this.crashText;
+		if (first?.startsWith("logcat ")) return this.logcatText;
+		if (first?.startsWith("dumpsys window windows")) return this.windowsText;
+		if (first?.startsWith("dumpsys window |")) return this.windowText;
+		if (first?.startsWith("dumpsys activity activities")) return this.activityText;
 		if (first === "cat" && second === "/proc/sys/kernel/random/boot_id") return this.bootId === null ? "" : `${this.bootId}\n`;
 		if (first === "cat" && second === "/proc/uptime") return "120.50 400.00\n";
 		if (first === "getprop" && second === "ro.boottime.init") return `${this.bootTimeInit}\n`;

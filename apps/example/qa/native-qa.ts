@@ -45,7 +45,7 @@ const usage = `usage: native-qa <command> [flags]
   hold   --device <serial> [--wait <seconds>] -- <command...>   (the emulator lock held across the commands: a CI lane, a sequence of runs)
   report
   gates  [--platform android|ios] [--all] [--smoke] [--runs lab,parity,...] [--except lab.runs,...] [--markdown <file>]
-  leakcheck [--staged] [--all]      (the QA account's address, RASHEED_QA_EMAIL, in what is about to be committed and in the run files)`;
+  leakcheck [--staged] [--all] [--purge]      (the QA account's address, RASHEED_QA_EMAIL, in what is about to be committed and in the run files; --purge deletes the run files that hold it)`;
 
 const [command, ...rest] = process.argv.slice(2);
 

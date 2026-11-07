@@ -137,6 +137,19 @@ describe("parity metrics", () => {
 		).toEqual({});
 	});
 
+	test("a retry is counted whatever the case then did, informationally; an old run file without tries counts none", () => {
+		const m = parityMetrics(
+			parityFile([
+				parityCase("a"),
+				parityCase("b", { tries: 2, failures: [] }),
+				parityCase("c", { verdict: "error", differingPixels: null, attempts: 2, tries: 2 }),
+				parityCase("d", { verdict: "error", differingPixels: null, attempts: 1, tries: 1 }),
+			]),
+		);
+		expect(m["parity.casesRetried"]).toBe(2);
+		expect(parityMetrics(parityFile([parityCase("a")]))["parity.casesRetried"]).toBe(0);
+	});
+
 	test("a partial run (--quick, --filter) leaves the rest of the matrix incomplete", () => {
 		const m = parityMetrics(
 			parityFile([parityCase("a"), parityCase("b")], { matrixSize: 160, selected: 2 }),
@@ -209,6 +222,14 @@ describe("accessibility metrics", () => {
 		expect(m["a11y.focusLeaks"]).toBe(2);
 		expect(m["a11y.reachablePct"]).toBeCloseTo((28 / 30) * 100, 5);
 		expect(m["a11y.actionablePct"]).toBeCloseTo((27 / 30) * 100, 5);
+	});
+
+	test("a screen run twice is counted as retried, measured or not", () => {
+		const m = a11yMetrics(
+			a11yFile([screen("a"), screen("b", { attempts: 2 }), screen("c", { attempts: 2, error: "no node", interactive: 0, reachable: 0, labeled: 0, actionable: 0 }), screen("d", { attempts: 1 })], 4),
+		);
+		expect(m["a11y.screensRetried"]).toBe(2);
+		expect(a11yMetrics(a11yFile([screen("a")]))["a11y.screensRetried"]).toBe(0);
 	});
 
 	test("a screen that could not be dumped is incomplete and contributes nothing else", () => {

@@ -1,5 +1,6 @@
 import {
 	DeviceStateError,
+	DumpError,
 	dumpUi,
 	endsRun,
 	screenshot,
@@ -106,10 +107,35 @@ export function describeSelector(selector: Selector, direction: Direction): stri
 		.join(" ");
 }
 
+/**
+ * What a wait for the screen saw before it gave up: the last tree it read (null when it never read one), how many dumps that took and how long
+ * it really ran (`waitForNode`'s timeout is checked between dumps, and one dump can take far longer than the timeout). A failed case keeps it as evidence.
+ */
+export type Observation = { tree: UiTree | null; dumps: number; elapsedMs: number };
+
+/** A failure of a case that carries what the device showed at the time (`Observation`), so the evidence of the failed attempt does not have to dump again. */
+export class ObservedError extends Error {
+	readonly observation: Observation | null;
+	constructor(message: string, observation: Observation | null = null, cause?: unknown) {
+		super(message, cause === undefined ? undefined : { cause });
+		this.name = "ObservedError";
+		this.observation = observation;
+	}
+}
+
+/**
+ * Whether a failure is the screen not showing up in a wait or a dump: a node that never came, a dump that held less than the screen's own controls, a
+ * dump that could not be read. These are the failures a second launch may cure (a slow start, the first dump after an emulator restart); any other
+ * error (a reference that is not there, a bug of the harness) fails the same way again and is not retried.
+ */
+export function isWaitFailure(error: unknown): boolean {
+	return error instanceof ObservedError || error instanceof DumpError;
+}
+
 /** No node answered to the selector in time: the screen is not the one the case means, or the device is not in the state it needs (`assertDeviceState`). */
-export class NodeNotFoundError extends Error {
-	constructor(message: string) {
-		super(message);
+export class NodeNotFoundError extends ObservedError {
+	constructor(message: string, observation: Observation | null = null) {
+		super(message, observation);
 		this.name = "NodeNotFoundError";
 	}
 }
@@ -121,14 +147,28 @@ export async function waitForNode(
 	direction: Direction,
 	timeoutMs = 15_000,
 ): Promise<{ tree: UiTree; node: UiNode }> {
-	const deadline = Date.now() + timeoutMs;
+	const started = Date.now();
+	const deadline = started + timeoutMs;
+	let last: UiTree | null = null;
+	let dumps = 0;
+	const seen = (): Observation => ({ tree: last, dumps, elapsedMs: Date.now() - started });
 	for (;;) {
-		const tree = await dumpUi(serial);
+		let tree: UiTree;
+		try {
+			tree = await dumpUi(serial);
+		} catch (error) {
+			// A dump that fails after earlier ones were read keeps the last tree it read (same message, so `deviceGone` and the like still see it).
+			if (last !== null && error instanceof Error) throw new ObservedError(error.message, seen(), error);
+			throw error;
+		}
+		last = tree;
+		dumps++;
 		const node = findNode(tree, selector, direction);
 		if (node) return { tree, node };
 		if (Date.now() >= deadline)
 			throw new NodeNotFoundError(
 				`no node ${describeSelector(selector, direction)} on screen after ${timeoutMs} ms`,
+				seen(),
 			);
 		await sleep(400);
 	}
@@ -167,7 +207,9 @@ export async function guardAnchorFailure(
  * Runs `attempt` for a case, and once more when it fails for a reason that is not the device going away or being in the wrong
  * state: the first dump after the emulator was restarted can come back empty while its UI is still starting, and a slow screen
  * can miss its anchor once. An anchor that is missing is first checked against the device (`guardAnchorFailure`), so a left-behind
- * proxy or text size stops the run instead of being retried and recorded for every case.
+ * proxy or text size stops the run instead of being retried and recorded for every case. `onFailure` is awaited with the error of each failed try that does
+ * not end the run, the first one before the retry launches the case again (`lib/evidence.ts` photographs the screen there). `retryable` says which failures
+ * get the retry (`isWaitFailure`); a failure it refuses is thrown at once, with no `onFailure`.
  */
 export async function retryCase<T>(
 	session: DeviceSession,
@@ -176,14 +218,25 @@ export async function retryCase<T>(
 	label: string,
 	attempt: () => Promise<T>,
 	log: (message: string) => void = console.log,
+	onFailure?: (error: unknown) => Promise<void>,
+	retryable?: (error: unknown) => boolean,
 ): Promise<T> {
 	try {
 		return await session.guarded(attempt, log);
 	} catch (error) {
 		if (endsRun(error)) throw error;
+		// `retryable` narrows the retry to the failures a second launch may cure (default: every failure that does not end the run).
+		if (retryable !== undefined && !retryable(error)) throw error;
+		// Before the retry launches the case again: the screen the first attempt failed on is still there to be looked at.
+		await onFailure?.(error);
 		await guardAnchorFailure(session, screen, fontScale, error);
 		log(`  retrying ${label}: ${error instanceof Error ? error.message.slice(0, 100) : String(error)}`);
-		return session.guarded(attempt, log);
+		try {
+			return await session.guarded(attempt, log);
+		} catch (second) {
+			if (!endsRun(second)) await onFailure?.(second);
+			throw second;
+		}
 	}
 }
 
@@ -335,8 +388,11 @@ export async function dumpWithOwnControls(
 	pauseMs = 400,
 ): Promise<UiTree> {
 	let missing = own;
+	const started = Date.now();
+	let last: UiTree | null = null;
 	for (let attempt = 1; attempt <= attempts; attempt++) {
 		const tree = await dump();
+		last = tree;
 		missing = own.filter(
 			(label) =>
 				!tree.nodes.some(
@@ -346,8 +402,9 @@ export async function dumpWithOwnControls(
 		if (missing.length === 0) return tree;
 		if (attempt < attempts) await sleep(pauseMs);
 	}
-	throw new Error(
+	throw new ObservedError(
 		`the important-views dump lacks ${missing.map((label) => JSON.stringify(label)).join(", ")} of the screen itself after ${attempts} dumps`,
+		{ tree: last, dumps: attempts, elapsedMs: Date.now() - started },
 	);
 }
 

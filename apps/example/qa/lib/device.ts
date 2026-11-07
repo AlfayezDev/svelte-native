@@ -27,7 +27,12 @@ const dumpFile = "/sdcard/native-qa-dump.xml";
 const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
 
 /** One screenshot of the whole display (status bar and navigation bar included), decoded to RGBA. */
-export function screenshot(serial: string): Promise<Image> {
+export async function screenshot(serial: string): Promise<Image> {
+	return decodePng(await screenshotPng(serial));
+}
+
+/** The PNG file `screencap` writes for the whole display, as the device made it (the evidence of a failed case keeps it as it is). */
+export function screenshotPng(serial: string): Promise<Buffer> {
 	return new Promise((resolve, reject) => {
 		const child = spawn("adb", ["-s", serial, "exec-out", "screencap", "-p"], {
 			stdio: ["ignore", "pipe", "pipe"],
@@ -52,11 +57,7 @@ export function screenshot(serial: string): Promise<Image> {
 				);
 				return;
 			}
-			try {
-				resolve(decodePng(bytes));
-			} catch (error) {
-				reject(error);
-			}
+			resolve(bytes);
 		});
 	});
 }
@@ -81,14 +82,24 @@ export async function dumpUi(
 			{ timeoutMs: options.timeoutMs ?? 60_000 },
 		);
 		const start = result.stdout.indexOf("<?xml");
-		if (start >= 0 && result.stdout.includes("</hierarchy>"))
-			return parseHierarchy(result.stdout.slice(start));
+		if (start >= 0 && result.stdout.includes("</hierarchy>")) {
+			const xml = result.stdout.slice(start);
+			return { ...parseHierarchy(xml), raw: xml };
+		}
 		last = (result.stderr || result.stdout).trim().slice(0, 200);
 		await sleep(600);
 	}
-	throw new Error(
+	throw new DumpError(
 		`uiautomator dump on ${serial} produced no tree after ${attempts} attempt${attempts === 1 ? "" : "s"} (${last || "no output"})`,
 	);
+}
+
+/** `uiautomator dump` gave no tree on any attempt (`could not get idle state`, an empty file): the screen could not be read, as opposed to the device failing. */
+export class DumpError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "DumpError";
+	}
 }
 
 export async function tap(serial: string, x: number, y: number): Promise<void> {

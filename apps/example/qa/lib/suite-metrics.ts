@@ -38,6 +38,8 @@ export function parityMetrics(file: ParityFile, signedIn: readonly string[] = []
 		"parity.signedIn.skipped": skippedSignedIn,
 		"parity.casesDiffering": compared.filter((entry) => entry.verdict === "fail").length,
 		"parity.casesSkipped": file.cases.filter((entry) => entry.verdict === "skipped").length,
+		// Cases the emulator ran more than once (a failed wait or dump, retried): whatever their verdict, a retry is never silent. Informational.
+		"parity.casesRetried": file.cases.filter((entry) => (entry.tries ?? 1) > 1).length,
 		"parity.diffPixelsOutsideMasks": compared.length ? largest(compared.map(pixels)) : null,
 		"parity.maskedPct": compared.length
 			? largest(compared.map((entry) => ((entry.maskedPixels ?? 0) / file.screenPixels) * 100))
@@ -67,6 +69,8 @@ export function a11yMetrics(file: A11yFile, signedIn: readonly string[] = []): M
 		"a11y.screensExpected": file.matrixSize,
 		"a11y.screensIncomplete": Math.max(0, file.matrixSize - measured.length - skippedSignedIn),
 		"a11y.signedIn.skipped": skippedSignedIn,
+		// Screens the emulator ran more than once (a failed launch, retried), measured or not. Informational.
+		"a11y.screensRetried": file.screens.filter((screen) => (screen.attempts ?? 1) > 1).length,
 		"a11y.interactive": interactive,
 		"a11y.unreachable": total((screen) => screen.unreachable),
 		"a11y.unlabeled": total((screen) => screen.unlabeled),

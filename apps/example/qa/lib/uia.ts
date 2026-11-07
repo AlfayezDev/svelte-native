@@ -31,6 +31,8 @@ export type UiTree = {
 	root: UiNode | null;
 	/** Every node in pre-order. */
 	nodes: UiNode[];
+	/** The XML the tree was parsed from, when a device gave it (`dumpUi`): a failed case keeps it as evidence. Absent for a tree parsed from a sample. */
+	raw?: string;
 };
 
 const entities: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };

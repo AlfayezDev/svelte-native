@@ -46,6 +46,8 @@ open class EngineScreen(context: Context) : EngineView(context) {
   var dismissed = false
   /** A transition is running on this view. */
   var transitioning = false
+  /** A gesture of the stack (predictive back, edge swipe) is moving this view, from its start until it has been handed to an animation or has ended ([EngineStack.holdGesture]). */
+  var gesturing = false
   /** Only the top active screen takes touches ([HitTest]). */
   var touchable = true
 

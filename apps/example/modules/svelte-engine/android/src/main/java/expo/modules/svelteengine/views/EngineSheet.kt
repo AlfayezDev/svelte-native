@@ -230,19 +230,17 @@ class EngineSheet(context: Context) : EngineScreen(context), NativeClaim {
     return best
   }
 
-  /** The rest the translation was last put at by a layout; NaN before the first. */
-  private var restApplied = Float.NaN
+  /** Something else moves the sheet: a drag or its settle, a transition of the stack (the animation that cancels a back gesture included), a gesture of the stack. */
+  private val busy: Boolean get() = dragging || settler != null || transitioning || leaving || running != null || gesturing
 
   override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
     super.onLayout(changed, l, t, r, b)
     refreshAvailable()
     // An idle sheet rests where the layout says, not only after its own frame changed: it is inserted (and laid out detached) before its stack has a
-    // size or the window a status bar, and the layouts that follow, with the same frame, work the rest out and found it unapplied.
+    // size or the window a status bar, and the layouts that follow, with the same frame, work the rest out and found the sheet somewhere else. Where the
+    // sheet is is read from its translation, not remembered: a settle, a snap and a move to the rest all end there.
     val rest = restY
-    if (ChromeRules.sheetMoves(restApplied, rest, changed) && !dragging && settler == null && !transitioning && !leaving) {
-      translationY = rest
-      restApplied = rest
-    }
+    if (ChromeRules.sheetMoves(translationY, rest, changed, busy)) translationY = rest
   }
 
   /** The enter transition ended: rest at the detent the sheet has by now (new detents may have arrived while it ran). */

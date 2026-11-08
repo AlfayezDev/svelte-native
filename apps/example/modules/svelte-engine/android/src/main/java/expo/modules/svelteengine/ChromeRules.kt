@@ -20,8 +20,10 @@ object ChromeRules {
   fun insetStale(used: Int, now: Int?): Boolean = now != null && now != used
 
   /**
-   * Whether a layout puts an idle sheet at its rest again: its own frame [changed], or the rest it was last put at ([applied], NaN before the first) is not
-   * the [rest] the layout works out now (the stack got its size, the window reported the status bar).
+   * Whether a layout puts a sheet at its [rest] again. Not while something else holds its translation ([busy]: the user's drag and the settle after it, a transition
+   * of the stack, the animation that cancels a back gesture, a gesture of the stack): the translation is theirs and is not the rest. Otherwise when its own
+   * frame [changed], or when it is not at the rest the layout works out now: [at] is where the sheet is (its translation), however it got there, so a rest that
+   * the sheet was put at by a settle is not mistaken for a stale one, and one that moved (the stack got its size, the window reported the status bar) is applied.
    */
-  fun sheetMoves(applied: Float, rest: Float, changed: Boolean): Boolean = changed || applied != rest
+  fun sheetMoves(at: Float, rest: Float, changed: Boolean, busy: Boolean): Boolean = !busy && (changed || at != rest)
 }

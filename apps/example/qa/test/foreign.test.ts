@@ -630,11 +630,26 @@ describe("runRace: the event checks hold the thread only once the native side ha
 		expect(l.checks).toEqual([{ name: "name", passed: false, detail: "attempt 1; got x-event second 0" }]);
 	});
 
-	test("a native module call raises its messages at once and the task still ends before the hold: the queue is read only after it", async () => {
-		const l = lab({ coalescing: true });
-		await runRace(l.world, l.hold, "name", "why", race(l, false));
-		expect(l.log).toEqual(["pause 0", "hold 1000"]);
-		expect(l.checks.map((entry) => entry.passed)).toEqual([false]);
+	test("a native module call (posted) raises its messages at once and is held in the same task, with no hop: the queue is read only after the hold", async () => {
+		const coalescing = lab({ coalescing: true });
+		await runRace(coalescing.world, coalescing.hold, "name", "why", race(coalescing, false, { posted: true }));
+		expect(coalescing.log).toEqual(["hold 1000"]);
+		expect(coalescing.checks).toEqual([{ name: "name", passed: false, detail: "attempt 1; got x-event second 0" }]);
+		const kept = lab({ coalescing: false });
+		await runRace(kept.world, kept.hold, "name", "why", race(kept, false, { posted: true }));
+		expect(kept.checks).toEqual([{ name: "name", passed: true, detail: "attempt 1; got x-event first 0, x-event second 0" }]);
+	});
+
+	test("a native module call sent through the timer hop can be read in it every time, so the race is never forced (the Samsung A16, 8 Nov 2026); posted, it is forced at once", async () => {
+		const slow = Array.from({ length: raceAttempts + 1 }, () => true);
+		const hopped = lab({ coalescing: true, slowHops: slow });
+		await runRace(hopped.world, hopped.hold, "name", "why", race(hopped, false));
+		expect(hopped.log.filter((line) => line.startsWith("hold"))).toEqual([]);
+		expect(hopped.checks[0]?.detail).toContain("could not be forced");
+		const posted = lab({ coalescing: true, slowHops: slow });
+		await runRace(posted.world, posted.hold, "name", "why", race(posted, false, { posted: true }));
+		expect(posted.log).toEqual(["hold 1000"]);
+		expect(posted.checks).toEqual([{ name: "name", passed: false, detail: "attempt 1; got x-event second 0" }]);
 	});
 
 	test("an attempt in which the events were read before the hold began is thrown away, and the next one is the check", async () => {

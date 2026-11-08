@@ -16,6 +16,7 @@ import {
 	type Role,
 } from "../lib/gates.ts";
 import { reachPct } from "../lib/a11y.ts";
+import { carriedEntry, type CarriedRuns } from "../lib/carried.ts";
 import { deviceMetrics, missingScenarios, runFatals } from "../lib/metrics.ts";
 import { missingModules, unexpectedSkips, unpinnedModules } from "../lib/smoke.ts";
 import { checksOf, missingPlaces, skippedBy } from "../lib/foreign.ts";
@@ -233,8 +234,13 @@ type ReportDeviceEntry = {
 	/** iOS only: the crash reports of the phone each run file recorded. */
 	crashReports: CrashReportsSummary[];
 	suites: SuitesSummary;
+	/** Which build each run measured, and the runs carried from an earlier one (D14, `carried` in gates.json). Absent in reports written before. */
+	measuredBuilds?: MeasuredBuild[];
 	metrics: Metrics;
 };
+
+/** One run of a device: the build it measured (`buildKey`, null when it could not tell), the commit that build came from, and the D14 entry that carries it, if any. */
+export type MeasuredBuild = { run: string; build: string | null; commit: string; carried: { decision: "D14"; reason: string } | null };
 
 function crashReportSummaries(platform: Platform, files: [CrashReportsSummary["run"], string | undefined, CrashReportsRecord | null][]): CrashReportsSummary[] {
 	if (platform !== "ios") return [];
@@ -324,14 +330,21 @@ const commitOf = (run: Measured): string => {
 	return `${commit}${dirty ? "+dirty" : ""}`;
 };
 
+/** The runs that are present, each with the D14 entry that carries it (one of `carried` for this device, the run and the build it measured) or undefined. */
+function withCarry(serial: string, runs: [string, Measured | null][], carried: readonly CarriedRuns[]) {
+	return runs.flatMap(([label, run]) => (run ? [{ label, run, entry: carriedEntry(carried, serial, label, buildKey(run.app)) }] : []));
+}
+
 /**
  * What the runs of one device must agree on: every run says which build it measured, and all of them the same build (the
  * installed artifact: the APK digest on Android, the `installed` pair on iOS). A build nobody identified cannot be told from
  * another, so it is a warning too. The commit a run was started at is not compared here: harness-only commits land between the
- * runs of one campaign, and runs of one artifact at different commits are a note (`buildNotes`).
+ * runs of one campaign, and runs of one artifact at different commits are a note (`buildNotes`). A run `carried` from an earlier
+ * build (D14: `carried` in gates.json names the run and the build it measured) is left out of the comparison; the others must agree.
  */
-export function buildWarnings(serial: string, runs: [string, Measured | null][]): string[] {
-	const present = runs.flatMap(([label, run]) => (run ? [{ label, run }] : []));
+export function buildWarnings(serial: string, runs: [string, Measured | null][], carried: readonly CarriedRuns[] = []): string[] {
+	const all = withCarry(serial, runs, carried);
+	const present = all.filter(({ entry }) => entry === undefined);
 	const warnings = present
 		.filter(({ run }) => buildKey(run.app) === null)
 		.map(({ label }) => `${serial}: the ${label} run does not identify its build (build identity not reported)`);
@@ -344,7 +357,7 @@ export function buildWarnings(serial: string, runs: [string, Measured | null][])
 		warnings.push(
 			`${serial}: the runs measured different builds (${keys.map((key) => `${keyed.filter((entry) => entry.key === key).map((entry) => entry.label).join(" and ")}: ${key}`).join("; ")})`,
 		);
-	if (present.some(({ run }) => run.app.build && run.app.build.cdHash === null))
+	if (all.some(({ run }) => run.app.build && run.app.build.cdHash === null))
 		warnings.push(`${serial}: the build record (qa/out/ios-build.json) has no CDHash: build again`);
 	return warnings;
 }
@@ -352,17 +365,40 @@ export function buildWarnings(serial: string, runs: [string, Measured | null][])
 /**
  * The commit of each run of a device, when the runs measured one artifact (every run identified, all with the same identity):
  * the runs of one campaign may be taken at different commits when only the harness changed in between, so a difference is a note.
- * A difference in the identity is `buildWarnings`' warning, and then the commits say nothing more.
+ * A difference in the identity is `buildWarnings`' warning, and then the commits say nothing more. Each D14 entry of the device is a
+ * note too: the runs it carries, with their build, commit and reason, or the runs it names that measured another build (compared as
+ * usual: the entry no longer describes them).
  */
-export function buildNotes(serial: string, runs: [string, Measured | null][]): string[] {
-	const present = runs.flatMap(([label, run]) => (run ? [{ label, run }] : []));
+export function buildNotes(serial: string, runs: [string, Measured | null][], carried: readonly CarriedRuns[] = []): string[] {
+	const all = withCarry(serial, runs, carried);
+	const present = all.filter(({ entry }) => entry === undefined);
+	const notes: string[] = [];
 	const keys = present.map(({ run }) => buildKey(run.app));
-	if (present.length === 0 || keys.includes(null) || new Set(keys).size > 1) return [];
-	const commits = new Set(present.map(({ run }) => commitOf(run)));
-	if (commits.size < 2) return [];
-	return [
-		`${serial}: the runs of one build (${keys[0]}) were taken at different commits (${present.map(({ label, run }) => `${label}: ${commitOf(run)}`).join(", ")}); the installed artifact is the same`,
-	];
+	if (present.length > 0 && !keys.includes(null) && new Set(keys).size === 1) {
+		const commits = new Set(present.map(({ run }) => commitOf(run)));
+		if (commits.size > 1)
+			notes.push(
+				`${serial}: the runs of one build (${keys[0]}) were taken at different commits (${present.map(({ label, run }) => `${label}: ${commitOf(run)}`).join(", ")}); the installed artifact is the same`,
+			);
+	}
+	for (const entry of carried.filter((candidate) => candidate.device === serial)) {
+		const used = all.filter((run) => run.entry === entry).map(({ label }) => label);
+		if (used.length > 0) notes.push(`${serial}: the ${used.join(", ")} ${used.length === 1 ? "run is" : "runs are"} carried from ${entry.build} (${entry.commit}) under ${entry.decision}: ${entry.reason}`);
+		const other = all.filter(({ label, entry: own }) => own === undefined && (entry.runs as readonly string[]).includes(label));
+		for (const { label, run } of other)
+			notes.push(`${serial}: gates.json carries the ${label} run from ${entry.build}, but it measured ${buildKey(run.app) ?? "an unidentified build"}: it is compared with the others`);
+	}
+	return notes;
+}
+
+/** Which build each present run of a device measured, its commit, and the D14 entry that carries it. */
+export function measuredBuilds(serial: string, runs: [string, Measured | null][], carried: readonly CarriedRuns[] = []): MeasuredBuild[] {
+	return withCarry(serial, runs, carried).map(({ label, run, entry }) => ({
+		run: label,
+		build: buildKey(run.app),
+		commit: commitOf(run),
+		carried: entry ? { decision: entry.decision, reason: entry.reason } : null,
+	}));
 }
 
 /**
@@ -495,9 +531,10 @@ export async function report(): Promise<void> {
 			["gestures", gestures],
 			["foreign", foreign],
 		];
-		warnings.push(...buildWarnings(serial, measured));
+		const carried = gates.carried ?? [];
+		warnings.push(...buildWarnings(serial, measured, carried));
 		smokeWarnings.push(...buildWarnings(serial, [["smoke", smoke]]));
-		notes.push(...buildNotes(serial, measured));
+		notes.push(...buildNotes(serial, measured, carried));
 		const found = sessionFindings(serial, [
 			["parity", suites.parity],
 			["accessibility", suites.a11y],
@@ -632,6 +669,7 @@ export async function report(): Promise<void> {
 						: null,
 				resilience: suites.resilience && resiliencePath ? { file: resiliencePath.slice(resiliencePath.lastIndexOf("runs/")), screen: suites.resilience.screen } : null,
 			},
+			measuredBuilds: measuredBuilds(serial, measured, carried),
 			metrics: deviceMetrics(lab, boot, pinned, soak, crashes, suites, smoke ? { file: smoke, pins } : null, gestures, pinnedGestures, updates, gates.signedIn?.[platform] ?? [], product, foreign ? { file: foreign, pins: { libraries: pinnedLibraries } } : null),
 		};
 	}

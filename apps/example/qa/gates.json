@@ -426,6 +426,33 @@
       "evidence": "apps/platform/qa/runs/lab-R58Y90KNGRP-20261102T182601Z.json (final build fb53ab1cf, 2 Nov, 10 runs): the churn-static and list-300-raw frame records; GOAL.md D11"
     }
   ],
+  "carried": [
+    {
+      "device": "E74A5608-BF8E-5806-8699-1605F82ADED9",
+      "runs": [
+        "lab",
+        "boot",
+        "parity",
+        "accessibility",
+        "resilience",
+        "gestures"
+      ],
+      "build": "main.jsbundle fbe7305271ec, CDHash 3aade46d7c70",
+      "commit": "1919e8f03",
+      "decision": "D14",
+      "reason": "from 1919e8f03 to the final source the iOS app's code differs only in the foreign lab page's checks (src/lib/native/dev/foreign-libraries-checks.ts, foreign-pixels.ts), which only the foreign run loads, and the foreign run measured the final code (c8faf5e97's build, whose app code is the final source's); every other change is the Android engine, the harness, the package tests or docs"
+    },
+    {
+      "device": "R58Y90KNGRP",
+      "runs": [
+        "crash"
+      ],
+      "build": "sha256 b61eea428e90",
+      "commit": "1919e8f03",
+      "decision": "D14",
+      "reason": "the crash volume is informational on this phone (its run kinds have no crashes; the volume is gated on the emulator, which ran it on the final build); from 1919e8f03 the app differs in the Android engine's header inset on attach and the sheet's rest and in the foreign lab page's checks, which the final build's boot, lab, gestures and foreign runs on this phone measured"
+    }
+  ],
   "gates": [
     {
       "id": "checks.passed",

@@ -1,3 +1,4 @@
+import { checkCarried, type CarriedRuns } from "./carried.ts";
 import { capText, checkExceptions, matchException, type GateException } from "./gate-exceptions.ts";
 import { runKinds, type RunKind } from "./runs.ts";
 import type { Metric, Metrics, Platform } from "./types.ts";
@@ -69,6 +70,8 @@ export type GatesFile = {
 	 * counted apart from passes and failures. Nothing else is excused, and an entry that excuses more than it names is an error.
 	 */
 	exceptions?: GateException[];
+	/** Runs carried from an earlier build (D14, `CarriedRuns`): left out of the check that a device's runs measured one build, and listed with their build and reason. */
+	carried?: CarriedRuns[];
 	/** The `gestures-*` scenarios a full `native-qa gestures` run contains, per platform; absent: every scenario the lab has. */
 	gestures?: Partial<Record<Platform, string[]>>;
 	/**
@@ -207,6 +210,7 @@ export function checkGatesFile(file: GatesFile): void {
 			if (!known.has(role)) throw new Error(`gates.json: gate ${gate.id} names the unknown role ${JSON.stringify(role)}`);
 	}
 	checkExceptions(file);
+	checkCarried(file);
 }
 
 /**

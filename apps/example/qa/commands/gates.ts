@@ -59,6 +59,27 @@ export function runsFlag(value: string | boolean | undefined): RunKind[] | undef
 	return kinds as RunKind[];
 }
 
+/**
+ * Which build measured each run of the judged devices, as Markdown: one table per device that has runs, with the run, the build key,
+ * its commit and, for a run carried from an earlier build (D14), the reason; empty when the report records none (written before).
+ */
+export function renderBuilds(report: ReportFile, platform: Platform | undefined, names: Record<string, string>): string[] {
+	const out: string[] = [];
+	for (const [serial, entry] of Object.entries(report.devices)) {
+		if ((platform !== undefined && entry.platform !== platform) || !entry.measuredBuilds || entry.measuredBuilds.length === 0) continue;
+		const carried = entry.measuredBuilds.filter((run) => run.carried !== null).length;
+		out.push(
+			`**Builds measured, ${names[serial] ?? serial}${carried > 0 ? ` (${carried} ${carried === 1 ? "run" : "runs"} carried from an earlier build under D14)` : ""}**`,
+			"",
+			"| run | build | commit | carried |",
+			"| --- | --- | --- | --- |",
+			...entry.measuredBuilds.map((run) => `| ${[run.run, run.build ?? "not identified", run.commit, run.carried ? `${run.carried.decision}: ${run.carried.reason}` : "-"].map((cell) => cell.replaceAll("|", "\\|")).join(" | ")} |`),
+			"",
+		);
+	}
+	return out;
+}
+
 const age = (since: Date): string => {
 	const minutes = Math.round((Date.now() - since.getTime()) / 60_000);
 	return minutes < 90 ? `${minutes} min` : `${(minutes / 60).toFixed(1)} h`;
@@ -100,12 +121,16 @@ export async function gates(argv: string[]): Promise<void> {
 	if (except.length > 0) console.log(`gates not judged by this lane (run at a smaller sample than the bar's): ${except.join(", ")}`);
 	const rows = exceptGates(evaluate(smoke ? lanes.smoke : lanes.standard, reportDevices(reportFile, gatesFile, only), platform, gatesFile.exceptions), except, gatesFile);
 	const ok = printVerdict(rows, values.all === true, deviceNames(gatesFile));
+	for (const [serial, entry] of Object.entries(reportFile.devices))
+		for (const run of entry.measuredBuilds ?? [])
+			if (run.carried && (platform === undefined || entry.platform === platform))
+				console.log(`carried (${run.carried.decision}): the ${run.run} run of ${deviceNames(gatesFile)[serial] ?? serial} measured ${run.build} (${run.commit}): ${run.carried.reason}`);
 	if (problems.length > 0) console.log(`\n${problems.length} problem(s) with the report itself: the verdict above is not one that can pass`);
 	const markdown = flagString(values.markdown);
 	if (markdown !== undefined) {
 		const title = `${smoke ? "Smoke gates" : "Gates"}${platform ? `, ${platform}` : ""}`;
 		const problemLines = problems.length > 0 ? ["**Problems with the report itself** (the verdict cannot pass):", "", ...problems.map((problem) => `- ${problem}`), ""] : [];
-		await writeFile(markdown, `${[renderMarkdown(rows, title, deviceNames(gatesFile)), ...problemLines].join("\n")}\n`);
+		await writeFile(markdown, `${[renderMarkdown(rows, title, deviceNames(gatesFile)), ...renderBuilds(reportFile, platform, deviceNames(gatesFile)), ...problemLines].join("\n")}\n`);
 	}
 	process.exitCode = ok && problems.length === 0 ? 0 : 1;
 }

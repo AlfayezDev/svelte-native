@@ -12,7 +12,7 @@ Notable changes to `@rasheed/svelte-native`, newest first. The format follows [K
 
 ### Fixed
 
-- Android: the first screen of the app's stack no longer keeps what its header and sheet worked out while the screen was laid out detached. With a launch link opened before the `<Router>` mounts (`openLaunchURL`), an inline header title sat 1 px high, and a sheet link under a nested stack (`/__dev/tree/inbox/compose`) rested at its top detent over the whole pane, a root screen to look at, on some launches (a warm link, pushed onto a stack that has its size, was fine). The first screen of a stack lays out its header again when it attaches, a sheet rests where its layout says whenever that moves, and a header inside a sheet keeps the padding its screen gave it. A pushed screen's header is unchanged.
+- Android: the first screen of the app's stack no longer keeps what its header and sheet worked out while the screen was laid out detached. With a launch link opened before the `<Router>` mounts (`openLaunchURL`), an inline header title sat 1 px high, and a sheet link under a nested stack (`/__dev/tree/inbox/compose`) rested at its top detent over the whole pane, a root screen to look at, on some launches (a warm link, pushed onto a stack that has its size, was fine). A header lays out again when it attaches with a window inset it did not use (pushed screens too: every title sits at the status bar's inset, not a pixel above it), a sheet rests where its layout says whenever that moves, and a header inside a sheet keeps the padding its screen gave it.
 
 ### Changed
 

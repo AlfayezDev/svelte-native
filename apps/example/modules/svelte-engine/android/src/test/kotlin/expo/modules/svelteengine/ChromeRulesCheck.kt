@@ -29,10 +29,6 @@ private fun header() {
   expect("a window that still has no inset leaves the header as it is", ChromeRules.insetStale(-1, null), false)
   expect("an inset that moved lays the header out again", ChromeRules.insetStale(128, 96), true)
   expect("a header in a sheet never has a window inset to be stale against", ChromeRules.insetStale(-1, ChromeRules.headerInset(true, 232)), false)
-  // The route-tree lab's pushed screens (tree-detail, screens-header, -translucent, -toolbar, -toolbar-center): their parity references are 1 px above the window's inset.
-  expect("the first screen of a stack lays out again on attach", ChromeRules.headerRelayoutOnAttach(true, -1, 128), true)
-  expect("a pushed screen keeps what it drew detached", ChromeRules.headerRelayoutOnAttach(false, -1, 128), false)
-  expect("the first screen does not when the window says what it used", ChromeRules.headerRelayoutOnAttach(true, 128, 128), false)
 }
 
 private fun sheet() {
@@ -51,7 +47,8 @@ private fun againstHeader(path: String) {
   expect("EngineHeader reads the window's inset through ChromeRules.headerInset", text.contains("private fun windowInset(): Int? = ChromeRules.headerInset(inSheet(), SafeArea.top(this))"), true)
   expect("EngineHeader's layout refreshes from it", text.contains("private fun refreshInset() { cachedInset = windowInset() ?: -1 }"), true)
   val attach = text.substringAfter("override fun onAttachedToWindow() {").substringBefore("override fun onDetachedFromWindow()")
-  expect("EngineHeader's first screen of a stack lays out again on attach when the window's inset is not the one it laid out with", attach.contains("if (ChromeRules.headerRelayoutOnAttach(firstOfStack(), cachedInset, windowInset())) requestLayout()"), true)
+  expect("EngineHeader lays out again on attach when the window's inset is not the one it laid out with, pushed screens included", attach.contains("if (ChromeRules.insetStale(cachedInset, windowInset())) requestLayout()"), true)
+  expect("EngineHeader no longer picks the first screen of a stack", text.contains("firstOfStack"), false)
   val apply = text.substringAfter("override fun onApplyWindowInsets(insets: WindowInsets): WindowInsets {").substringBefore("// Drawing")
   expect("EngineHeader's window dispatch asks the same question", apply.contains("if (ChromeRules.insetStale(before, cachedInset)) requestLayout()"), true)
 }

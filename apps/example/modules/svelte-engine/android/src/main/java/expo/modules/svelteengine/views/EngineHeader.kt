@@ -357,17 +357,6 @@ class EngineHeader(context: Context) : EngineView(context) {
   /** What the window says the status bar covers of this header; null while it has reported none, and always inside a sheet ([ChromeRules.headerInset]). */
   private fun windowInset(): Int? = ChromeRules.headerInset(inSheet(), SafeArea.top(this))
 
-  /** Whether this header's screen is the first screen of its stack (the screens still leaving count: they are children of it). */
-  private fun firstOfStack(): Boolean {
-    val screen = parent as? EngineScreen ?: return false
-    val stack = screen.parent as? EngineStack ?: return false
-    for (i in 0 until stack.childCount) {
-      val child = stack.getChildAt(i)
-      if (child is EngineScreen) return child === screen
-    }
-    return false
-  }
-
   private fun inSheet(): Boolean {
     var p = parent
     while (p != null) {
@@ -698,10 +687,9 @@ class EngineHeader(context: Context) : EngineView(context) {
   override fun onAttachedToWindow() {
     super.onAttachedToWindow()
     // The screen's first layout ran detached (`MountingManager.flushScreens` places its whole subtree before the stack attaches it), where the window
-    // reports no insets: the first screen of a stack lays out again with the real one. A large or translucent header is laid out again by `adopt` (it
-    // insets the screen's scroll view); an inline one adopts nothing, and kept the bar offset it drew detached for as long as no insets were dispatched.
-    // A pushed screen keeps what it drew ([ChromeRules.headerRelayoutOnAttach]).
-    if (ChromeRules.headerRelayoutOnAttach(firstOfStack(), cachedInset, windowInset())) requestLayout()
+    // reports no insets: lay out again with the real one, whether the screen is the first of its stack or pushed onto it. A large or translucent header
+    // is laid out again by `adopt` as well (it insets the screen's scroll view); an inline one adopts nothing, and kept the bar offset it drew detached.
+    if (ChromeRules.insetStale(cachedInset, windowInset())) requestLayout()
     queueAdopt()
     if (searchActive) ensureSearchBack()
   }

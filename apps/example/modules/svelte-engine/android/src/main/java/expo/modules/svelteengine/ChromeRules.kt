@@ -5,8 +5,8 @@ package expo.modules.svelteengine
  *
  * The first layout of a screen runs detached (`MountingManager.flushScreens` places the screen's whole subtree before the stack attaches it), where the
  * window reports no insets and the stack around a sheet may have no size yet. What was worked out then is wrong until a later layout works it out again,
- * and a later layout that finds the view's own frame unchanged does not run `onLayout`'s `changed` branch: a header and a sheet of a screen that is the
- * first of the app's stack (a launch link opened before the `<Router>` mounts) kept what they drew detached.
+ * and a later layout that finds the view's own frame unchanged does not run `onLayout`'s `changed` branch: a header and a sheet kept what they drew detached
+ * (a screen pushed onto a stack, and the first screen of the app's stack when a launch link is opened before the `<Router>` mounts).
  */
 object ChromeRules {
   /**
@@ -18,13 +18,6 @@ object ChromeRules {
 
   /** Whether a header that laid out with the inset [used] (negative: the window had reported none) is out of date now that the window says [now] (null: still none). */
   fun insetStale(used: Int, now: Int?): Boolean = now != null && now != used
-
-  /**
-   * Whether a header lays out again when it attaches: it is out of date ([insetStale]) and its screen is the first of its stack ([firstOfStack]). A screen
-   * pushed onto a stack keeps the inset its detached layout drew (the parity references of every pushed header of the lab are taken that way, one pixel
-   * above the window's), the first screen is the one the app starts on: it is created with its stack when a launch link is opened before the `<Router>` mounts.
-   */
-  fun headerRelayoutOnAttach(firstOfStack: Boolean, used: Int, now: Int?): Boolean = firstOfStack && insetStale(used, now)
 
   /**
    * Whether a layout puts an idle sheet at its rest again: its own frame [changed], or the rest it was last put at ([applied], NaN before the first) is not

@@ -14,6 +14,7 @@ import android.view.WindowInsets
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.findViewTreeOnBackPressedDispatcherOwner
 import androidx.core.view.ViewCompat
+import expo.modules.svelteengine.ChromeRules
 import expo.modules.svelteengine.Fragment
 import expo.modules.svelteengine.GestureRules
 import expo.modules.svelteengine.NavEvents
@@ -351,8 +352,29 @@ class EngineHeader(context: Context) : EngineView(context) {
   /** The status bar inset in px as the window last reported it, read once per layout pass; -1 until it has. */
   private var cachedInset = -1
 
-  private fun refreshInset() {
-    cachedInset = SafeArea.top(this) ?: -1
+  private fun refreshInset() { cachedInset = windowInset() ?: -1 }
+
+  /** What the window says the status bar covers of this header; null while it has reported none, and always inside a sheet ([ChromeRules.headerInset]). */
+  private fun windowInset(): Int? = ChromeRules.headerInset(inSheet(), SafeArea.top(this))
+
+  /** Whether this header's screen is the first screen of its stack (the screens still leaving count: they are children of it). */
+  private fun firstOfStack(): Boolean {
+    val screen = parent as? EngineScreen ?: return false
+    val stack = screen.parent as? EngineStack ?: return false
+    for (i in 0 until stack.childCount) {
+      val child = stack.getChildAt(i)
+      if (child is EngineScreen) return child === screen
+    }
+    return false
+  }
+
+  private fun inSheet(): Boolean {
+    var p = parent
+    while (p != null) {
+      if (p is EngineSheet) return true
+      p = p.parent
+    }
+    return false
   }
 
   /** The inset the bar is drawn with: the window's, or Yoga's padding until the window reports. */
@@ -489,7 +511,7 @@ class EngineHeader(context: Context) : EngineView(context) {
   override fun onApplyWindowInsets(insets: WindowInsets): WindowInsets {
     val before = cachedInset
     refreshInset()
-    if (cachedInset != before) requestLayout()
+    if (ChromeRules.insetStale(before, cachedInset)) requestLayout()
     return super.onApplyWindowInsets(insets)
   }
 
@@ -675,6 +697,11 @@ class EngineHeader(context: Context) : EngineView(context) {
 
   override fun onAttachedToWindow() {
     super.onAttachedToWindow()
+    // The screen's first layout ran detached (`MountingManager.flushScreens` places its whole subtree before the stack attaches it), where the window
+    // reports no insets: the first screen of a stack lays out again with the real one. A large or translucent header is laid out again by `adopt` (it
+    // insets the screen's scroll view); an inline one adopts nothing, and kept the bar offset it drew detached for as long as no insets were dispatched.
+    // A pushed screen keeps what it drew ([ChromeRules.headerRelayoutOnAttach]).
+    if (ChromeRules.headerRelayoutOnAttach(firstOfStack(), cachedInset, windowInset())) requestLayout()
     queueAdopt()
     if (searchActive) ensureSearchBack()
   }

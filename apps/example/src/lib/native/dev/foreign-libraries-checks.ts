@@ -11,7 +11,7 @@ import { dismissDatePicker, openDatePicker, captureRef, releaseCapture, type Cap
 import { tick } from "svelte";
 import type { Host, LibraryHandles, LibraryKind } from "./LibrarySet.svelte";
 import { libraryLab } from "./foreign.svelte.ts";
-import { argb, arrivedInOrder, clear, near, numberIn, riveBackdrop, show, solid, untilTaken } from "./foreign-pixels.ts";
+import { argb, arrivedInOrder, clear, near, numberIn, riveBackdrop, riveFitDetail, riveFitPainted, riveMiddle, riveSides, show, solid, tookNote, untilTaken, type RiveFit } from "./foreign-pixels.ts";
 import { pins, resolvePin, type Pinned } from "./foreign-pins.ts";
 import { runRace, type Race } from "./foreign-race.ts";
 
@@ -156,6 +156,29 @@ const at = (look: Look, index: number): string => show(look.colors[index] ?? 0);
 const pixel = (look: Look, index: number): number => look.colors[index] ?? 0;
 
 /**
+ * How long a capture waits for a view that paints on its own schedule (a TextureView or SurfaceView, a PDF page drawn on a thread of its own): the time a slower phone needs, and a row has
+ * its neighbours mounted too (a software-GL emulator draws several views at once). A view that has not drawn when the time is up still fails, and the check says what it saw.
+ */
+const paintMs = (c: Ctx): number => (c.where === "row" ? 10000 : 5000);
+
+/**
+ * Captures [points] again every 400 ms until [wanted] holds for what the capture shows or [ms] have passed (`untilTaken`): the last capture (null when one failed or gave no pixels,
+ * with [failure] saying which), how many captures it took and how long the wait was. With no time it is one capture.
+ */
+async function lookUntil(c: Ctx, points: readonly (readonly [number, number])[], options: Parameters<Ctx["look"]>[1], wanted: (look: Look) => boolean, ms: number): Promise<{ seen: Look | null; calls: number; waited: number; failure: string }> {
+  let failure = "the capture gave no pixels";
+  const { taken, calls, waited } = await untilTaken(
+    async () => {
+      try { return await c.look(points, options); } catch (error) { failure = `the capture failed: ${String(error)}`; return null; }
+    },
+    wanted,
+    ms,
+    (milliseconds) => c.pause(milliseconds),
+  );
+  return { seen: taken, calls, waited, failure };
+}
+
+/**
  * [expected] colours at [points] of a capture of the box: one check for all, naming each point that missed. Skipped when the platform cannot read pixels.
  */
 async function colours(c: Ctx, name: string, points: readonly (readonly [number, number])[], expected: readonly string[], tolerance = 40, options?: Parameters<Ctx["look"]>[1], settle?: { ms: number; explain: () => string; until?: (look: Look) => boolean }): Promise<Look | null> {
@@ -163,19 +186,11 @@ async function colours(c: Ctx, name: string, points: readonly (readonly [number,
   const missesOf = (look: Look): string[] => expected.flatMap((colour, index) => (near(pixel(look, index), colour, tolerance) ? [] : [`${points[index]?.join(",")} is ${at(look, index)}, wanted ${colour}`]));
   // With [settle] the capture is taken again every 400 ms until it shows the colours (and satisfies [settle].until, when the caller's next check asks for more than these colours) or the time is up
   // (a slower phone draws a new image later than onLoad says it has it): what the last one shows is the check.
-  let failure = "the capture gave no pixels";
-  const { taken: seen, calls, waited } = await untilTaken(
-    async () => {
-      try { return await c.look(points, options); } catch (error) { failure = `the capture failed: ${String(error)}`; return null; }
-    },
-    (look) => missesOf(look).length === 0 && (settle?.until?.(look) ?? true),
-    settle?.ms ?? 0,
-    (milliseconds) => c.pause(milliseconds),
-  );
+  const { seen, calls, waited, failure } = await lookUntil(c, points, options, (look) => missesOf(look).length === 0 && (settle?.until?.(look) ?? true), settle?.ms ?? 0);
   if (!seen) { c.check(name, false, failure); return null; }
   const missed = missesOf(seen);
   // A late paint says how late (calls and time), so the lab's logs measure the distribution a fixed wait only guessed at.
-  const late = settle && calls > 1 ? ` | on capture ${calls}, ${waited} ms in` : "";
+  const late = settle && calls > 1 ? ` | ${tookNote(calls, waited)}` : "";
   c.check(name, missed.length === 0, missed.length === 0 ? `${expected.map((_, index) => at(seen, index)).join(" ")}${late}` : `${missed.join("; ")}${late}${settle ? ` | ${settle.explain()}` : ""}`);
   return seen;
 }
@@ -317,12 +332,15 @@ async function video(c: Ctx): Promise<void> {
   const before = c.inspect(c.host());
   const ticks = c.events("video-progress");
   const plain = await c.look([[0.5, 0.5], [0.3, 0.5], [0.7, 0.5]]);
-  const full = await c.look([[0.5, 0.5], [0.3, 0.5], [0.7, 0.5]], { capture: { handleGLSurfaceViewOnAndroid: true } });
+  // The engine copies the SurfaceView with `PixelCopy`, and a copy that finds no frame on the surface, is refused or does not answer in time leaves a hole with only a warning (`Capture.kt`, `overlay`).
+  // On Android this capture is therefore asked again until the frame is in it, and the check says when it came late. `plain` is expected to be a hole, so there is nothing to wait for in it.
+  const frame = await lookUntil(c, [[0.5, 0.5], [0.3, 0.5], [0.7, 0.5]], { capture: { handleGLSurfaceViewOnAndroid: true } }, (look) => look.colors.every(solid), c.android ? paintMs(c) : 0);
+  const full = frame.seen;
   if (c.android) c.check("capture: without handleGLSurfaceViewOnAndroid the video is a hole", !!plain && plain.colors.every(clear), plain ? plain.colors.map(show).join(" ") : "no capture");
   else c.androidOnly("capture: without handleGLSurfaceViewOnAndroid the video is a hole", "the option and the hole belong to Android's SurfaceView");
   // iOS: react-native-view-shot draws the view hierarchy, and an AVPlayerLayer's decoded frames are not part of it (the first iPhone run, 4 Nov 2026: the
   // three points read #000000/0, transparent, in every place while the video played), so the frame is in a capture on Android only.
-  if (c.android) c.check("capture: with handleGLSurfaceViewOnAndroid the frame is in the image", !!full && full.colors.every(solid), full ? full.colors.map(show).join(" ") : "no capture");
+  if (c.android) c.check("capture: with handleGLSurfaceViewOnAndroid the frame is in the image", !!full && full.colors.every(solid), full ? `${full.colors.map(show).join(" ")}${frame.calls > 1 ? ` | ${tookNote(frame.calls, frame.waited)}` : ""}` : frame.failure);
   else c.androidOnly("capture: with handleGLSurfaceViewOnAndroid the frame is in the image", "a snapshot of the view hierarchy does not hold an AVPlayerLayer's video frames on iOS (transparent on the iPhone)");
   await c.pause(600);
   const after = c.inspect(c.host());
@@ -490,16 +508,15 @@ async function pdf(c: Ctx): Promise<void> {
   c.check("events: onLoadComplete arrives with two pages", await c.until(() => c.events("pdf-load", 2) >= 1, 15000), foreignSummary(c, ["pdf-load", "pdf-page", "pdf-error"]));
   c.check("events: onPageChanged reports page 1 of 2", await c.until(() => c.events("pdf-page", "1/2") >= 1, 5000));
   c.check("events: no onError", c.events("pdf-error") === 0);
-  await c.pause(600);
-  await colours(c, "the first page is drawn (its blue)", [[0.5, 0.7]], ["#3373d9"], 40);
+  // `onPageChanged` and `onLoadComplete` come when the document is open; the page's bitmap is drawn by a thread of the view's own after that, so each capture is asked again until the page is in it.
+  const explain = () => foreignSummary(c, ["pdf-load", "pdf-page", "pdf-error"]);
+  await colours(c, "the first page is drawn (its blue)", [[0.5, 0.7]], ["#3373d9"], 40, undefined, { ms: paintMs(c), explain });
   c.lab.pdfPage = 2;
   c.check("prop update: page 2 raises onPageChanged 2/2", await c.until(() => c.events("pdf-page", "2/2") >= 1, 6000));
-  await c.pause(600);
-  await colours(c, "prop update: the second page is drawn (its green)", [[0.5, 0.7]], ["#268c59"], 40);
+  await colours(c, "prop update: the second page is drawn (its green)", [[0.5, 0.7]], ["#268c59"], 40, undefined, { ms: paintMs(c), explain });
   c.handles().pdf?.setPage(1);
   c.check("command: setPage(1) raises onPageChanged 1/2 again", await c.until(() => c.events("pdf-page", "1/2") >= 2, 6000));
-  await c.pause(600);
-  await colours(c, "command: and the first page is back", [[0.5, 0.7]], ["#3373d9"], 40);
+  await colours(c, "command: and the first page is back", [[0.5, 0.7]], ["#3373d9"], 40, undefined, { ms: paintMs(c), explain });
   await loadsWhileBusy(c);
 }
 
@@ -641,19 +658,25 @@ async function rive(c: Ctx): Promise<void> {
     const native = c.inspect(c.host());
     return `${native ? `${native.surfaces.join(", ") || "no texture"}, attached=${native.attached} shown=${native.shown}` : "no native view"}; ${foreignSummary(c, ["rive-play", "rive-error"])}`;
   };
-  const middle = await colours(c, "capture: the animation is in the image (its middle is painted, not a hole)", [[0.5, 0.5], [0.45, 0.4], [0.55, 0.6]], ["#d62a5c", "#d62a5c", "#d62a5c"], 255, undefined, { ms: c.where === "row" ? 10000 : 5000, explain, until: (look) => riveBackdrop(look.colors) });
+  const middle = await colours(c, "capture: the animation is in the image (its middle is painted, not a hole)", riveMiddle, ["#d62a5c", "#d62a5c", "#d62a5c"], 255, undefined, { ms: paintMs(c), explain, until: (look) => riveBackdrop(look.colors) });
   // The artboard's own background is pink; the truck drives over the middle of it, so one of three points away from each other is enough.
   if (middle) c.check("capture: the animation's background is there (opaque, pink at one of three points)", riveBackdrop(middle.colors), middle.colors.map(show).join(" "));
-  // prop update: `fit` fill paints the whole box, contain leaves the sides of a wide box bare
-  const edges: [number, number][] = [[0.05, 0.5], [0.95, 0.5]];
-  c.lab.riveFit = "contain";
-  await c.pause(600);
-  const contain = await c.look(edges);
-  c.lab.riveFit = "fill";
-  await c.pause(900);
-  const fill = await c.look(edges);
+  // prop update: `fit` fill paints the whole box, contain leaves the sides of a wide box bare. A new fit reaches the TextureView by a frame of its own, later than the prop (on the final build's
+  // emulator run the row's capture 900 ms after the prop was transparent at both sides), so each fit is captured again every 400 ms until the capture is a painted frame of that fit
+  // (`riveFitPainted`) or the time is up. A frame that has not been drawn is transparent everywhere, which is also what the sides of `contain` look like, so contain needs its middle painted
+  // too; a view that never draws, and a fit that is not the one asked for, still fail, and the detail says how long each fit took to paint.
   if (!c.canLook) c.skip("prop update: fit changes how the animation fills the box", "no pixel reader on this platform yet");
-  else c.check("prop update: fit fill paints the sides that contain leaves bare", !!contain && !!fill && contain.colors.every((value) => !solid(value) || near(value, "#ffffff", 20) || argb(value).r < 150) && fill.colors.every(solid) && argb(pixel(fill, 0)).r > 150, `contain ${contain?.colors.map(show).join(" ")}; fill ${fill?.colors.map(show).join(" ")}`);
+  else {
+    const fitted = async (fit: RiveFit) => {
+      c.lab.riveFit = fit;
+      return lookUntil(c, [...riveSides, ...riveMiddle], undefined, (look) => riveFitPainted(fit, look.colors), paintMs(c));
+    };
+    const contain = await fitted("contain");
+    const fill = await fitted("fill");
+    const says = (fit: RiveFit, outcome: typeof contain): string => (outcome.seen ? riveFitDetail(fit, outcome.seen.colors, outcome.calls, outcome.waited) : `${fit} ${outcome.failure}`);
+    const ok = !!contain.seen && riveFitPainted("contain", contain.seen.colors) && !!fill.seen && riveFitPainted("fill", fill.seen.colors);
+    c.check("prop update: fit fill paints the sides that contain leaves bare", ok, `${says("contain", contain)}; ${says("fill", fill)}${ok ? "" : ` | ${explain()}`}`);
+  }
   c.lab.riveFit = "contain";
   // commands
   const handle = c.handles().rive;

@@ -84,6 +84,42 @@ export function riveBackdrop(colors: readonly number[]): boolean {
   return colors.length > 0 && colors.every(solid) && colors.some((pixel) => argb(pixel).r > 200 && argb(pixel).g < 110);
 }
 
+/** The points of Rive's box (fractions of the capture) that the capture check and the fit check read in the middle: the same three, so that a fit is judged on the pixels the first check already found painted. */
+export const riveMiddle: readonly (readonly [number, number])[] = [[0.5, 0.5], [0.45, 0.4], [0.55, 0.6]];
+/** The points on the two sides of the box, where `fit: contain` leaves a wide box bare and `fit: fill` paints the artboard. */
+export const riveSides: readonly (readonly [number, number])[] = [[0.05, 0.5], [0.95, 0.5]];
+
+/** The `fit` values the fit check puts on the animation. */
+export type RiveFit = "contain" | "fill";
+
+/** Whether a side of the box is bare, as `fit: contain` leaves it: transparent (what the views of every run showed), or, as the check always allowed, an opaque white or dark pixel. */
+export const riveSideBare = (pixel: number): boolean => !solid(pixel) || near(pixel, "#ffffff", 20) || argb(pixel).r < 150;
+
+/**
+ * Whether a capture of Rive's box shows a painted frame of [fit]; [colors] are the pixels at `riveSides`, then at `riveMiddle`. A TextureView that has not been drawn into yet captures
+ * transparent at every point, and for `contain` that is also what the sides look like, so a frame only counts as the view's when its middle is opaque:
+ * - `contain`: the middle is opaque (the view drew) and the sides are bare (the artboard keeps its proportions).
+ * - `fill`: the sides are opaque and the artboard's pink (red high): the artboard is stretched to the box.
+ * The settle loop of the fit check and the check that judges what it ended with ask this one question, so a never-painted view fails and so does a wrong fit.
+ */
+export function riveFitPainted(fit: RiveFit, colors: readonly number[]): boolean {
+  const sides = colors.slice(0, riveSides.length);
+  const middle = colors.slice(riveSides.length);
+  if (sides.length < riveSides.length) return false;
+  if (fit === "contain") return middle.length > 0 && middle.every(solid) && sides.every(riveSideBare);
+  return sides.every(solid) && argb(sides[0] ?? 0).r > 150;
+}
+
+/** What a settled capture took, as the lab's detail says it: the capture that ended the wait and how long the wait was. */
+export const tookNote = (calls: number, waited: number): string => `on capture ${calls}, ${waited} ms in`;
+
+/** The detail of one fit of the fit check: the pixels ([colors] as for `riveFitPainted`), and whether they are a painted frame of [fit] and how long it took to get there. */
+export function riveFitDetail(fit: RiveFit, colors: readonly number[], calls: number, waited: number): string {
+  const sides = colors.slice(0, riveSides.length).map(show).join(" ");
+  const middle = colors.slice(riveSides.length).map(show).join(" ");
+  return `${fit} sides ${sides}, middle ${middle} | ${riveFitPainted(fit, colors) ? `painted ${tookNote(calls, waited)}` : `not painted as ${fit} after ${calls} captures, ${waited} ms`}`;
+}
+
 /**
  * Whether [wanted] (event name and detail) arrived in this order among the entries of [history] from index [from] on, other events lying between them as they like: how a check
  * tells that two messages of one event name both reached JavaScript, and in the order they were sent.

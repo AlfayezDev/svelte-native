@@ -8,7 +8,7 @@ import { checkGatesFile, evaluate, type GatesFile } from "../lib/gates.ts";
 import { platformDir } from "../lib/paths.ts";
 import { findButton, parsePress } from "../lib/foreign-press.ts";
 import { parseForeignChecks } from "../parse/foreign.ts";
-import { argb, arrivedInOrder, clear, distance, hex, near, numberIn, riveBackdrop, show, solid, untilTaken } from "../../src/lib/native/dev/foreign-pixels.ts";
+import { argb, arrivedInOrder, clear, distance, hex, near, numberIn, riveBackdrop, riveFitDetail, riveFitPainted, riveMiddle, riveSides, show, solid, tookNote, untilTaken } from "../../src/lib/native/dev/foreign-pixels.ts";
 import { raceAttempts, runRace, type Race } from "../../src/lib/native/dev/foreign-race.ts";
 import type { ForeignCheck, ForeignFile, ForeignLaunch } from "../lib/types.ts";
 import { sample } from "./sample.ts";
@@ -424,6 +424,108 @@ describe("riveBackdrop: what the settle loop of the Rive capture waits for is wh
 		time = 0;
 		const never = await untilTaken(async () => [truck, truck, truck], riveBackdrop, 5000, async (milliseconds) => { time += milliseconds; }, 400, () => time);
 		expect(never).toEqual({ taken: [truck, truck, truck], calls: 14, waited: 5200 });
+	});
+});
+
+describe("riveFitPainted: the fit check waits for a painted frame of each fit, not for any capture", () => {
+	const pink = 0xffeb3a60;
+	const truck = 0xff384e70;
+	const hole = 0x00000000;
+	const white = 0xffffffff;
+	const dark = 0xff101010;
+	/** The pixels of one capture as the check reads them: the two sides, then the three points of the middle. */
+	const frame = (sides: [number, number], middle: [number, number, number]): number[] => [...sides, ...middle];
+
+	test("the points are the sides, then the middle, as many as the check reads", () => {
+		expect(riveSides).toHaveLength(2);
+		expect(riveMiddle).toHaveLength(3);
+	});
+
+	test("contain: a painted middle with bare sides is the frame of contain", () => {
+		expect(riveFitPainted("contain", frame([hole, hole], [truck, pink, truck]))).toBe(true);
+	});
+
+	test("contain: a view that has not drawn is transparent at every point, and the sides alone do not make it a frame", () => {
+		expect(riveFitPainted("contain", frame([hole, hole], [hole, hole, hole]))).toBe(false);
+		expect(riveFitPainted("contain", frame([hole, hole], [pink, hole, pink]))).toBe(false);
+	});
+
+	test("contain: painted sides are another fit's frame, not contain's", () => {
+		expect(riveFitPainted("contain", frame([pink, pink], [truck, pink, truck]))).toBe(false);
+		expect(riveFitPainted("contain", frame([hole, pink], [truck, pink, truck]))).toBe(false);
+	});
+
+	test("contain: an opaque white or dark side is bare, as the check always counted it", () => {
+		expect(riveFitPainted("contain", frame([white, dark], [truck, pink, truck]))).toBe(true);
+	});
+
+	test("fill: opaque pink sides are the frame of fill", () => {
+		expect(riveFitPainted("fill", frame([pink, pink], [truck, pink, truck]))).toBe(true);
+	});
+
+	test("fill: the transparent capture of the failed run (and the stale frame of contain) is not a frame of fill", () => {
+		expect(riveFitPainted("fill", frame([hole, hole], [hole, hole, hole]))).toBe(false);
+		expect(riveFitPainted("fill", frame([hole, hole], [truck, pink, truck]))).toBe(false);
+		expect(riveFitPainted("fill", frame([pink, hole], [truck, pink, truck]))).toBe(false);
+	});
+
+	test("fill: opaque sides that are not the artboard's pink are not painted as fill either", () => {
+		expect(riveFitPainted("fill", frame([dark, dark], [truck, pink, truck]))).toBe(false);
+	});
+
+	test("a capture that lacks points is not a frame of either fit", () => {
+		expect(riveFitPainted("contain", [])).toBe(false);
+		expect(riveFitPainted("fill", [])).toBe(false);
+		expect(riveFitPainted("fill", [pink])).toBe(false);
+	});
+
+	/** The loop of the check on a clock the pauses move, over the captures it is given in turn (the last one repeats). */
+	const settle = (fit: "contain" | "fill", ms: number, ...captures: number[][]) => {
+		let index = 0;
+		let time = 0;
+		return untilTaken(async () => captures[Math.min(index++, captures.length - 1)] ?? null, (colors) => riveFitPainted(fit, colors), ms, async (milliseconds) => { time += milliseconds; }, 400, () => time);
+	};
+
+	test("a fit that paints late is waited for: the stale frame of the old fit and the hole before it do not end the wait", async () => {
+		const stale = frame([hole, hole], [truck, pink, truck]);
+		const unpainted = frame([hole, hole], [hole, hole, hole]);
+		const painted = frame([pink, pink], [truck, pink, truck]);
+		const outcome = await settle("fill", 10000, stale, unpainted, painted);
+		expect(outcome).toEqual({ taken: painted, calls: 3, waited: 800 });
+		expect(riveFitPainted("fill", outcome.taken ?? [])).toBe(true);
+	});
+
+	test("a contain that paints late is waited for: a transparent capture is not contain's frame", async () => {
+		const unpainted = frame([hole, hole], [hole, hole, hole]);
+		const painted = frame([hole, hole], [truck, pink, truck]);
+		expect(await settle("contain", 5000, unpainted, unpainted, painted)).toEqual({ taken: painted, calls: 3, waited: 800 });
+	});
+
+	test("a view that never draws ends at the deadline with its last capture, and that capture fails the check", async () => {
+		const unpainted = frame([hole, hole], [hole, hole, hole]);
+		for (const fit of ["contain", "fill"] as const) {
+			const outcome = await settle(fit, 5000, unpainted);
+			expect(outcome).toEqual({ taken: unpainted, calls: 14, waited: 5200 });
+			expect(riveFitPainted(fit, outcome.taken ?? [])).toBe(false);
+		}
+	});
+
+	test("a wrong fit fails too: contain showing the frame of fill, and fill showing the frame of contain, wait out the time", async () => {
+		const filled = frame([pink, pink], [truck, pink, truck]);
+		const contained = frame([hole, hole], [truck, pink, truck]);
+		const wrongContain = await settle("contain", 2000, filled);
+		expect(wrongContain.waited).toBe(2000);
+		expect(riveFitPainted("contain", wrongContain.taken ?? [])).toBe(false);
+		const wrongFill = await settle("fill", 2000, contained);
+		expect(wrongFill.waited).toBe(2000);
+		expect(riveFitPainted("fill", wrongFill.taken ?? [])).toBe(false);
+	});
+
+	test("the detail says how long the paint took, and names a fit that did not get painted", () => {
+		expect(tookNote(3, 800)).toBe("on capture 3, 800 ms in");
+		expect(riveFitDetail("fill", frame([pink, pink], [truck, pink, truck]), 3, 800)).toBe("fill sides #eb3a60 #eb3a60, middle #384e70 #eb3a60 #384e70 | painted on capture 3, 800 ms in");
+		expect(riveFitDetail("contain", frame([hole, hole], [truck, pink, truck]), 1, 0)).toBe("contain sides #000000/0 #000000/0, middle #384e70 #eb3a60 #384e70 | painted on capture 1, 0 ms in");
+		expect(riveFitDetail("fill", frame([hole, hole], [hole, hole, hole]), 26, 10000)).toBe("fill sides #000000/0 #000000/0, middle #000000/0 #000000/0 #000000/0 | not painted as fill after 26 captures, 10000 ms");
 	});
 });
 

@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { readLaunchReport, staleReport } from "../commands/ios-boot.ts";
-import { buildKey, buildNotes, buildWarnings, type ReportFile } from "../commands/report.ts";
-import { reportProblems, type RunFileState } from "../commands/gates.ts";
+import { buildKey, buildNotes, buildWarnings, measuredBuilds, type ReportFile } from "../commands/report.ts";
+import { renderBuilds, reportProblems, type RunFileState } from "../commands/gates.ts";
+import { checkCarried, type CarriedRuns } from "../lib/carried.ts";
 import { parseCaptureIndex } from "../lib/iphone/capture.ts";
 import { IdentityMismatch, identityMismatch, reportedIdentity, withIdentity } from "../lib/iphone/identity.ts";
 import { labRunFromIos, parseIosLabResults } from "../lib/iphone/lab-results.ts";
@@ -172,6 +173,79 @@ describe("which build a run measured, across the runs of a device", () => {
 	test("a build record without the CDHash is a warning", () => {
 		const old = run({ installed: identity(), installedSha256: cd("b"), build: record("a", null) });
 		expect(buildWarnings("E74A", [["lab", old]])).toEqual(["E74A: the build record (qa/out/ios-build.json) has no CDHash: build again"]);
+	});
+
+	describe("runs carried from an earlier build (D14)", () => {
+		const carry = (fields: Partial<CarriedRuns> = {}): CarriedRuns => ({
+			device: "E74A",
+			runs: ["boot", "parity"],
+			build: "main.jsbundle cccccccccccc, CDHash dddddddddddd",
+			commit: "1919e8f03",
+			decision: "D14",
+			reason: "the diff changes only the foreign lab page",
+			...fields,
+		});
+		const runs = (): [string, ReturnType<typeof reported>][] => [["lab", reported("a", "b")], ["boot", reported("c", "d")], ["parity", reported("c", "d")], ["foreign", reported("a", "b")]];
+
+		test("a carried run is left out of the one-build check and named in a note with its build, commit and reason", () => {
+			expect(buildWarnings("E74A", runs())).toHaveLength(1);
+			expect(buildWarnings("E74A", runs(), [carry()])).toEqual([]);
+			expect(buildNotes("E74A", runs(), [carry()])).toEqual([
+				"E74A: the boot, parity runs are carried from main.jsbundle cccccccccccc, CDHash dddddddddddd (1919e8f03) under D14: the diff changes only the foreign lab page",
+			]);
+		});
+
+		test("the runs that are not carried must still agree on one build", () => {
+			const mixed: [string, ReturnType<typeof reported>][] = [...runs(), ["gestures", reported("e", "f")]];
+			const warnings = buildWarnings("E74A", mixed, [carry()]);
+			expect(warnings).toHaveLength(1);
+			expect(warnings[0]).toContain("lab and foreign: main.jsbundle aaaaaaaaaaaa");
+			expect(warnings[0]).toContain("gestures: main.jsbundle eeeeeeeeeeee");
+			expect(warnings[0]).not.toContain("boot");
+		});
+
+		test("an entry carries only the build it names: a run of another build is compared, and the note says the entry does not describe it", () => {
+			const entry = carry({ build: "main.jsbundle eeeeeeeeeeee, CDHash ffffffffffff" });
+			expect(buildWarnings("E74A", runs(), [entry])).toHaveLength(1);
+			expect(buildNotes("E74A", runs(), [entry])).toEqual([
+				"E74A: gates.json carries the boot run from main.jsbundle eeeeeeeeeeee, CDHash ffffffffffff, but it measured main.jsbundle cccccccccccc, CDHash dddddddddddd: it is compared with the others",
+				"E74A: gates.json carries the parity run from main.jsbundle eeeeeeeeeeee, CDHash ffffffffffff, but it measured main.jsbundle cccccccccccc, CDHash dddddddddddd: it is compared with the others",
+			]);
+			// another device's entry carries nothing here
+			expect(buildWarnings("E74A", runs(), [carry({ device: "R58Y" })])).toHaveLength(1);
+		});
+
+		test("the report records which build measured each run, and gates prints it per device", () => {
+			const builds = measuredBuilds("E74A", runs(), [carry()]);
+			expect(builds.map((entry) => [entry.run, entry.build?.slice(14, 26), entry.commit, entry.carried?.decision ?? null])).toEqual([
+				["lab", "aaaaaaaaaaaa", "afabc2ad7", null],
+				["boot", "cccccccccccc", "afabc2ad7", "D14"],
+				["parity", "cccccccccccc", "afabc2ad7", "D14"],
+				["foreign", "aaaaaaaaaaaa", "afabc2ad7", null],
+			]);
+			const device = { platform: "ios", measuredBuilds: builds } as unknown as ReportFile["devices"][string];
+			const markdown = renderBuilds({ devices: { E74A: device } } as unknown as ReportFile, "ios", { E74A: "iPhone SE 3" });
+			expect(markdown[0]).toBe("**Builds measured, iPhone SE 3 (2 runs carried from an earlier build under D14)**");
+			expect(markdown).toContain("| boot | main.jsbundle cccccccccccc, CDHash dddddddddddd | afabc2ad7 | D14 |");
+			expect(markdown).toContain("- D14, boot, parity (main.jsbundle cccccccccccc, CDHash dddddddddddd, afabc2ad7): the diff changes only the foreign lab page");
+			expect(markdown.filter((line) => line.includes("the diff changes only"))).toHaveLength(1);
+			expect(markdown).toContain("| lab | main.jsbundle aaaaaaaaaaaa, CDHash bbbbbbbbbbbb | afabc2ad7 | - |");
+			expect(renderBuilds({ devices: { E74A: device } } as unknown as ReportFile, "android", {})).toEqual([]);
+		});
+
+		test("a malformed entry is an error when gates.json is read", () => {
+			const file = (entry: CarriedRuns) => ({ devices: { E74A: {} }, carried: [entry] });
+			expect(() => checkCarried(file(carry()))).not.toThrow();
+			expect(() => checkCarried(file(carry({ decision: "D9" as "D14" })))).toThrow("D14 only");
+			expect(() => checkCarried(file(carry({ device: "R58Y" })))).toThrow("does not list");
+			expect(() => checkCarried(file(carry({ runs: [] })))).toThrow("no run");
+			expect(() => checkCarried(file(carry({ runs: ["smoke" as "lab"] })))).toThrow("not a run the report compares");
+			expect(() => checkCarried(file(carry({ runs: ["boot", "boot"] })))).toThrow("twice");
+			expect(() => checkCarried({ devices: { E74A: {} }, carried: [carry(), carry({ runs: ["parity"] })] })).toThrow("carry the parity run twice");
+			expect(() => checkCarried(file(carry({ build: "main.jsbundle ccc" })))).toThrow("not a build key");
+			expect(() => checkCarried(file(carry({ commit: "HEAD" })))).toThrow("not a commit hash");
+			expect(() => checkCarried(file(carry({ reason: " " })))).toThrow("no reason");
+		});
 	});
 });
 

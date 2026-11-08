@@ -2049,6 +2049,52 @@ test("the launch link can be opened before the root <Router> mounts: the first s
   } finally { delete launch.__initialURL; reset(); }
 });
 
+/** Every native node's own props that a stack is built from, screens and headers of the tab panes, as the host would receive them. */
+const paneNodes = (tree: FakeNode[]) => tabScreens(tree).map((screens) => screens.map((screen) => [String(screen.props.nativeID), ...ofKind(screen.children, "header").map((header) => String(header.props.nativeID))]));
+
+test("a cold start by a link to a sheet under a pane's stack, opened ahead of the <Router> or by it, gives the stacks and native screens a warm link to it gives", async () => {
+  withInsets(24);
+  const launch = globalThis as { __initialURL?: string };
+  // What the app shows once the link is open: the root stack, the pane's stack with the presentation and the back arrow of each screen, the selected tab, and every native screen and header.
+  const observed = (surface: number, router: TreeRouter) => {
+    const pane = paneRouter("/acme/inbox/compose");
+    return {
+      root: pathsOf(router),
+      pane: pathsOf(pane),
+      presentations: pane.entries.map((entry) => entry.presentation),
+      screens: pane.screens.map((screen) => [screen.canGoBack, screen.leaving]),
+      selected: selectedIndex(surface),
+      nodes: paneNodes(roots[surface]),
+    };
+  };
+  try {
+    launch.__initialURL = "rasheed://acme/inbox/compose";
+    const ahead = await mountTree(198, { initial: "/workspaces", mounted: false });
+    expect(await ahead.m.openLaunchURL(ahead.router)).toBe("rasheed://acme/inbox/compose");
+    ahead.app.show(true);
+    await ahead.settled();
+    const first = observed(198, ahead.router);
+    const after = await mountTree(199, { initial: "/workspaces" });
+    await after.settled(); // the <Router>'s own read of the link opens it
+    const second = observed(199, after.router);
+    // The warm link: the app is running on the inbox and is told of the same link.
+    delete launch.__initialURL;
+    const warm = await mountTree(200, { initial: "/acme/inbox" });
+    expect(pathsOf(paneRouter("/acme/inbox"))).toEqual(["/acme/inbox"]);
+    expect(warm.router.openURL("rasheed://acme/inbox/compose")).toBe(true);
+    await warm.settled();
+    const third = observed(200, warm.router);
+    expect(first.root).toEqual(["/acme"]);
+    expect(first.pane).toEqual(["/acme/inbox", "/acme/inbox/compose"]);
+    expect(first.presentations).toEqual(["push", "sheet"]);
+    expect(first.screens).toEqual([[false, false], [true, false]]);
+    expect(first.selected).toBe("1");
+    // A cold start, however the link is opened, is the warm link: the same stacks, the same presentations, the same screens for the native side.
+    expect(first).toEqual(third);
+    expect(second).toEqual(third);
+  } finally { delete launch.__initialURL; reset(); }
+});
+
 test("the read of the launch link is bounded and a failed read is not remembered", async () => {
   withInsets(24);
   const launch = globalThis as { __initialURL?: string; __initialURLReads?: number; __initialURLMode?: string };

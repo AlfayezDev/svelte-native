@@ -181,11 +181,11 @@ function suite(mode: "dev" | "preview", hermes = false) {
       const open = async () => { await api.stats().refresh(); return api.stats().current.liveOpen; };
       expect(await open()).toBe(1);
       // To the background: the stream is closed and not retried.
-      (globalThis as any).__appState("background");
+      (globalThis as any).__remoteAppState("background");
       expect(await eventually(open, (n) => n === 0)).toBe(0);
       expect(live.connected).toBe(false);
       // Back: it reconnects and keeps delivering.
-      (globalThis as any).__appState("active");
+      (globalThis as any).__remoteAppState("active");
       expect(await eventually(open, (n) => n === 1)).toBe(1);
       const resumed = live.current;
       await eventually(() => live.current, (current) => current !== resumed);

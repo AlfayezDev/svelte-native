@@ -318,6 +318,8 @@ async function video(c: Ctx): Promise<void> {
     "the loss is Android's: its one `VideoCustomEvent` class coalesced in React Native's event queue; iOS's RCTVideo is a legacy view manager whose events React Native's interop layer sends with `dispatchEvent`, which the queue never replaces",
     {
       send: (attempt) => { const video = c.handles().video; const [first, second] = volumesOf(attempt); void Promise.allSettled([video?.setVolume(first), video?.setVolume(second)]); },
+      // `setVolume` calls the VideoManager module at once (no commit, no view command), so the hold follows in the same task.
+      posted: true,
       names: ["video-volume"],
       arrived: (from, attempt) => inOrder(c, from, [["video-volume", volumesOf(attempt)[0]], ["video-volume", volumesOf(attempt)[1]]]),
       milliseconds: 1000,

@@ -15,8 +15,10 @@ import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
 import android.view.ViewTreeObserver
+import android.view.WindowInsets
 import android.view.animation.DecelerateInterpolator
 import android.widget.ScrollView
+import expo.modules.svelteengine.ChromeRules
 import expo.modules.svelteengine.DownPointer
 import expo.modules.svelteengine.GestureRules
 import expo.modules.svelteengine.NavEvents
@@ -138,7 +140,18 @@ class EngineSheet(context: Context) : EngineScreen(context), NativeClaim {
 
   private fun refreshAvailable() {
     val st = stack ?: return
-    availableCache = max(0, st.height - (SafeArea.top(st) ?: 0))
+    val top = SafeArea.top(st)
+    topSeen = top ?: -1
+    availableCache = max(0, st.height - (top ?: 0))
+  }
+
+  /** The status bar inset (px, -1 for none) [available] was last worked out with. */
+  private var topSeen = -1
+
+  // The window dispatches insets again when they change: the detents are fractions of the height below the status bar, so the sheet lays out again when it moved.
+  override fun onApplyWindowInsets(insets: WindowInsets): WindowInsets {
+    if (ChromeRules.insetStale(topSeen, stack?.let { SafeArea.top(it) })) requestLayout()
+    return super.onApplyWindowInsets(insets)
   }
 
   private fun available(): Int {
@@ -217,10 +230,17 @@ class EngineSheet(context: Context) : EngineScreen(context), NativeClaim {
     return best
   }
 
+  /** Something else moves the sheet: a drag or its settle, a transition of the stack (the animation that cancels a back gesture included), a gesture of the stack. */
+  private val busy: Boolean get() = dragging || settler != null || transitioning || leaving || running != null || gesturing
+
   override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
     super.onLayout(changed, l, t, r, b)
     refreshAvailable()
-    if (changed && !dragging && settler == null && !transitioning && !leaving) translationY = restY
+    // An idle sheet rests where the layout says, not only after its own frame changed: it is inserted (and laid out detached) before its stack has a
+    // size or the window a status bar, and the layouts that follow, with the same frame, work the rest out and found the sheet somewhere else. Where the
+    // sheet is is read from its translation, not remembered: a settle, a snap and a move to the rest all end there.
+    val rest = restY
+    if (ChromeRules.sheetMoves(translationY, rest, changed, busy)) translationY = rest
   }
 
   /** The enter transition ended: rest at the detent the sheet has by now (new detents may have arrived while it ran). */
@@ -262,6 +282,9 @@ class EngineSheet(context: Context) : EngineScreen(context), NativeClaim {
     super.onAttachedToWindow()
     availableCache = -1
     viewTreeObserver.addOnPreDrawListener(preDraw)
+    // The first layout ran detached, where there is no stack to take the height from and no window to take the status bar from: lay out again once
+    // attached, so the rest is worked out with both (the toolbar and the header do the same).
+    requestLayout()
   }
 
   override fun onDetachedFromWindow() {

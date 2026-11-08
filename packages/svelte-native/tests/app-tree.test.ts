@@ -841,6 +841,30 @@ test("a lab start that goes to a product screen starts the product on demand ins
   } finally { await app.close(); delete launch.__initialURL; reset(); }
 });
 
+test("a lab start by a deep link ends where the same link opened on the running lab ends: the same screen, a base with no back arrow, nothing leaving", async () => {
+  withInsets(24);
+  const launch = globalThis as { __initialURL?: string };
+  const ends = (app: { router: TreeRouter }) => ({ paths: pathsOf(app.router), arrows: app.router.screens.map((screen) => screen.canGoBack), leaving: app.router.screens.map((screen) => screen.leaving) });
+  const links: [string, string][] = [["rasheed-svelte:///__dev/screens?mode=sheet", "/__dev/screens?mode=sheet"], ["rasheed-svelte://__dev/screen", "/__dev/screen"]];
+  try {
+    for (const [index, [link, path]] of links.entries()) {
+      launch.__initialURL = link;
+      const cold = await labStart(184 + index * 2);
+      const coldEnds = ends(cold);
+      await cold.close();
+      launch.__initialURL = "rasheed-svelte:///__dev";
+      const warm = await labStart(185 + index * 2);
+      for (const handler of handlersOf("__linkHandlers")) (handler as (event: { url: string }) => void)({ url: link });
+      await warm.settled();
+      const warmEnds = ends(warm);
+      await warm.close();
+      expect([link, coldEnds]).toEqual([link, { paths: [path], arrows: [false], leaving: [false] }]); // the launch link is the base of the stack
+      // The warm link is a plain goto: it stacks on the lab. The screen on top is the cold start's.
+      expect([link, warmEnds.paths]).toEqual([link, ["/__dev", path]]);
+    }
+  } finally { delete launch.__initialURL; reset(); }
+});
+
 test("a lab start that goes to the login with the backend down shows the notice and keeps asking, and back in the lab it stops asking and the lab renders", async () => {
   withInsets(24);
   const launch = globalThis as { __initialURL?: string };

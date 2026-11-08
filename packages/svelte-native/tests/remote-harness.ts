@@ -143,8 +143,8 @@ async function startOnce(mode: "dev" | "preview", timeoutMs: number): Promise<Se
 }
 
 const stubs: Record<string, string> = {
-  // (One set of handlers for every bundle that is loaded: `globalThis.__appState(state)` reaches the app of each of them.)
-  "react-native/Libraries/AppState/AppState": "const handlers = (globalThis.__appStateHandlers ??= new Set()); globalThis.__appState ??= (state) => { for (const handler of [...globalThis.__appStateHandlers]) handler(state); }; export default { addEventListener(_type, handler) { handlers.add(handler); return { remove() { handlers.delete(handler); } }; } };",
+  // (One set of handlers for every bundle that is loaded: `globalThis.__remoteAppState(state)` reaches the app of each of them.)
+  "react-native/Libraries/AppState/AppState": "const handlers = (globalThis.__remoteAppStateHandlers ??= new Set()); globalThis.__remoteAppState ??= (state) => { for (const handler of [...globalThis.__remoteAppStateHandlers]) handler(state); }; export default { addEventListener(_type, handler) { handlers.add(handler); return { remove() { handlers.delete(handler); } }; } };",
   "react-native/Libraries/Linking/Linking": "export default { openURL: async (url) => { (globalThis.__opened ??= []).push(url); } };",
   "expo-constants": "export default { get expoConfig() { return globalThis.__expoConfig; } };",
   "expo/fetch": "export const fetch = (...args) => globalThis.__transport ? globalThis.__transport(...args) : globalThis.fetch(...args);",

@@ -53,11 +53,12 @@ class EngineStack(context: Context) : EngineView(context), NativeClaim {
     if (gestureScreen === s) return
     releaseGesture()
     gestureScreen = s
+    s.gesturing = true
     s.holdLayer()
   }
 
   private fun releaseGesture() {
-    gestureScreen?.releaseLayer()
+    gestureScreen?.let { it.gesturing = false; it.releaseLayer() }
     gestureScreen = null
   }
 

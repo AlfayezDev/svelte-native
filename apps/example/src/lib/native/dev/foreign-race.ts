@@ -21,6 +21,12 @@ export type Race = {
   send(attempt: number): void | Promise<void>;
   /** The events the check waits for: one of them reaching JavaScript before the hold began would have been read without the queue's replacing anything, and the attempt does not count. */
   names: readonly string[];
+  /**
+   * The send is a native module call, which React Native posts to the module's thread when it is made, so the hold begins in the same task, without the timer hop. A hop gives the
+   * UI thread a frame in which JavaScript reads both events before the hold, which leaves the queue nothing to replace: on the Samsung A16 (8 Nov 2026) video's two volume changes
+   * were read during the hop in all five attempts at one place.
+   */
+  posted?: boolean;
   /** Whether the send is ready for the hold (a prop the host has committed); an attempt that is not ready does not count. */
   ready?(): boolean;
   /** Whether all the messages of the attempt reached JavaScript, from entry [from] of the history on. */
@@ -36,7 +42,7 @@ export const raceAttempts = 5;
  * them: React Native's scheduler mounts a commit and dispatches a view command in the rendering update that follows the task (`Scheduler::uiManagerDidFinishTransaction` and
  * `schedulerDidDispatchCommand`, `Scheduler.cpp`), so a hold in the same task would start before the native side had seen anything, and everything it raised would land after the hold, when the thread is
  * free again and the queue is read as it arrives (the negative control on the emulator, 4 Nov 2026: `drawPdf` was logged as the hold ended, 1.5 s after the commit, in all six places of two runs). A native module call is
- * posted to its own thread at once and does not need the hop, but the same code serves it: the UI thread raises its events a little later, and the queue is read at the next frame. At the start of
+ * posted to its own thread when it is made, so a [Race.posted] send has no hop: the thread is held in the same task, before the UI thread can raise anything JavaScript could read first. Otherwise, at the start of
  * the next task the thread is held, so that the UI thread raises both messages while JavaScript cannot read the queue and both wait in it together. Without the library's `canCoalesce() false` the
  * queue would then replace the first by the second. The race is forced only if none of the events had reached JavaScript before the hold began (that is looked at, not assumed: on a busy thread the
  * timer hop can take long, and a frame can fall in it) and the send was ready, so an attempt in which one had is thrown away and made again, [raceAttempts] times at most; the check then fails
@@ -47,7 +53,7 @@ export async function runRace(world: RaceWorld, hold: (milliseconds: number) => 
   for (let attempt = 0; attempt < raceAttempts; attempt++) {
     const from = world.history().length;
     await race.send(attempt);
-    await world.pause(0);
+    if (!race.posted) await world.pause(0);
     const early = world.history().slice(from).some((entry) => race.names.includes(entry.event));
     if (early || (race.ready && !race.ready())) { await world.pause(500); continue; }
     hold(race.milliseconds);

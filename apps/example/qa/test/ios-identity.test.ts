@@ -226,7 +226,9 @@ describe("which build a run measured, across the runs of a device", () => {
 			const device = { platform: "ios", measuredBuilds: builds } as unknown as ReportFile["devices"][string];
 			const markdown = renderBuilds({ devices: { E74A: device } } as unknown as ReportFile, "ios", { E74A: "iPhone SE 3" });
 			expect(markdown[0]).toBe("**Builds measured, iPhone SE 3 (2 runs carried from an earlier build under D14)**");
-			expect(markdown).toContain("| boot | main.jsbundle cccccccccccc, CDHash dddddddddddd | afabc2ad7 | D14: the diff changes only the foreign lab page |");
+			expect(markdown).toContain("| boot | main.jsbundle cccccccccccc, CDHash dddddddddddd | afabc2ad7 | D14 |");
+			expect(markdown).toContain("- D14, boot, parity (main.jsbundle cccccccccccc, CDHash dddddddddddd, afabc2ad7): the diff changes only the foreign lab page");
+			expect(markdown.filter((line) => line.includes("the diff changes only"))).toHaveLength(1);
 			expect(markdown).toContain("| lab | main.jsbundle aaaaaaaaaaaa, CDHash bbbbbbbbbbbb | afabc2ad7 | - |");
 			expect(renderBuilds({ devices: { E74A: device } } as unknown as ReportFile, "android", {})).toEqual([]);
 		});

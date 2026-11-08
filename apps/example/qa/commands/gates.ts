@@ -4,7 +4,7 @@ import { evaluate, exceptGates, renderMarkdown, splitGates } from "../lib/gates.
 import { reportPath } from "../lib/paths.ts";
 import { latestRunFiles, readJson, runKinds, slug, type RunKind } from "../lib/runs.ts";
 import type { Platform } from "../lib/types.ts";
-import { deviceNames, loadGates, printVerdict, reportDevices, type ReportFile } from "./report.ts";
+import { deviceNames, loadGates, printVerdict, reportDevices, type MeasuredBuild, type ReportFile } from "./report.ts";
 
 /** A run file the report reads, with when it was last written and which platform's device made it. */
 export type RunFileState = { file: string; modifiedAt: Date; platform: Platform };
@@ -59,9 +59,23 @@ export function runsFlag(value: string | boolean | undefined): RunKind[] | undef
 	return kinds as RunKind[];
 }
 
+/** The carried runs of a device grouped by what carries them: the runs, the build they measured, its commit and the decision's reason, once each. */
+export function carriedGroups(runs: readonly MeasuredBuild[]): { runs: string[]; build: string | null; commit: string; decision: string; reason: string }[] {
+	const groups = new Map<string, { runs: string[]; build: string | null; commit: string; decision: string; reason: string }>();
+	for (const run of runs) {
+		if (!run.carried) continue;
+		const key = `${run.build}\u0000${run.carried.reason}`;
+		const group = groups.get(key) ?? { runs: [], build: run.build, commit: run.commit, decision: run.carried.decision, reason: run.carried.reason };
+		group.runs.push(run.run);
+		groups.set(key, group);
+	}
+	return [...groups.values()];
+}
+
 /**
  * Which build measured each run of the judged devices, as Markdown: one table per device that has runs, with the run, the build key,
- * its commit and, for a run carried from an earlier build (D14), the reason; empty when the report records none (written before).
+ * its commit and whether it is carried from an earlier build (D14), then each carry's reason once; empty when the report records none
+ * (written before).
  */
 export function renderBuilds(report: ReportFile, platform: Platform | undefined, names: Record<string, string>): string[] {
 	const out: string[] = [];
@@ -73,8 +87,10 @@ export function renderBuilds(report: ReportFile, platform: Platform | undefined,
 			"",
 			"| run | build | commit | carried |",
 			"| --- | --- | --- | --- |",
-			...entry.measuredBuilds.map((run) => `| ${[run.run, run.build ?? "not identified", run.commit, run.carried ? `${run.carried.decision}: ${run.carried.reason}` : "-"].map((cell) => cell.replaceAll("|", "\\|")).join(" | ")} |`),
+			...entry.measuredBuilds.map((run) => `| ${[run.run, run.build ?? "not identified", run.commit, run.carried ? run.carried.decision : "-"].map((cell) => cell.replaceAll("|", "\\|")).join(" | ")} |`),
 			"",
+			...carriedGroups(entry.measuredBuilds).map((group) => `- ${group.decision}, ${group.runs.join(", ")} (${group.build ?? "not identified"}, ${group.commit}): ${group.reason}`),
+			...(carried > 0 ? [""] : []),
 		);
 	}
 	return out;
@@ -122,9 +138,9 @@ export async function gates(argv: string[]): Promise<void> {
 	const rows = exceptGates(evaluate(smoke ? lanes.smoke : lanes.standard, reportDevices(reportFile, gatesFile, only), platform, gatesFile.exceptions), except, gatesFile);
 	const ok = printVerdict(rows, values.all === true, deviceNames(gatesFile));
 	for (const [serial, entry] of Object.entries(reportFile.devices))
-		for (const run of entry.measuredBuilds ?? [])
-			if (run.carried && (platform === undefined || entry.platform === platform))
-				console.log(`carried (${run.carried.decision}): the ${run.run} run of ${deviceNames(gatesFile)[serial] ?? serial} measured ${run.build} (${run.commit}): ${run.carried.reason}`);
+		if (platform === undefined || entry.platform === platform)
+			for (const group of carriedGroups(entry.measuredBuilds ?? []))
+				console.log(`carried (${group.decision}): ${deviceNames(gatesFile)[serial] ?? serial}, ${group.runs.join(", ")}, measured ${group.build} (${group.commit}): ${group.reason}`);
 	if (problems.length > 0) console.log(`\n${problems.length} problem(s) with the report itself: the verdict above is not one that can pass`);
 	const markdown = flagString(values.markdown);
 	if (markdown !== undefined) {

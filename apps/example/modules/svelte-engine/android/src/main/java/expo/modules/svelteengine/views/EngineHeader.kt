@@ -687,8 +687,8 @@ class EngineHeader(context: Context) : EngineView(context) {
   override fun onAttachedToWindow() {
     super.onAttachedToWindow()
     // The screen's first layout ran detached (`MountingManager.flushScreens` places its whole subtree before the stack attaches it), where the window
-    // reports no insets: lay out again with the real one, whether the screen is the first of its stack or pushed onto it. A large or translucent header
-    // is laid out again by `adopt` as well (it insets the screen's scroll view); an inline one adopts nothing, and kept the bar offset it drew detached.
+    // reports no insets: lay out again with the real one, whether the screen is the first of its stack or pushed onto it. `adopt` only re-pads the
+    // screen's scroll view and lays no header out again, so every header, large, translucent or inline, relies on this relayout for its bar offset.
     if (ChromeRules.insetStale(cachedInset, windowInset())) requestLayout()
     queueAdopt()
     if (searchActive) ensureSearchBack()

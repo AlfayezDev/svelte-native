@@ -15,6 +15,7 @@ import {
 import { dexoptFlag, prepareApp } from "../lib/app.ts";
 import { flagString, integerFlag, parseFlags, requireString } from "../lib/flags.ts";
 import { currentSource } from "../lib/git.ts";
+import { emulatorScript, restartEmulator } from "../lib/chunks.ts";
 import { lockFor, reexecUnderLock } from "../lib/lock.ts";
 import { defaultPackage, outDir, qaDir, runsDir } from "../lib/paths.ts";
 import { latestRunFiles, readJson, slug, stamp, writeRun, writeSideRun } from "../lib/runs.ts";
@@ -220,16 +221,21 @@ const suiteChunkMax = 10;
 
 export type CrashFlags = Record<string, string | boolean | undefined>;
 
-/** The flags of a child run: everything the caller passed except those that describe the chunking itself. */
+/**
+ * The flags of a child run: everything the caller passed except those that describe the chunking itself. `fresh`: the chunk restarts the
+ * emulator once it holds the lock (`--fresh`).
+ */
 export function childArgs(
 	values: CrashFlags,
 	starts: number,
 	suites: number,
 	resume: boolean,
+	fresh = false,
 ): string[] {
-	const skipped = new Set(["chunk", "gap", "starts", "suites", "resume"]);
+	const skipped = new Set(["chunk", "gap", "starts", "suites", "resume", "fresh"]);
 	const args = ["crashes", "--starts", String(starts), "--suites", String(suites)];
 	if (resume) args.push("--resume");
+	if (fresh) args.push("--fresh");
 	for (const [name, value] of Object.entries(values)) {
 		if (skipped.has(name) || value === undefined || value === false) continue;
 		args.push(`--${name}`);
@@ -260,8 +266,11 @@ export function chunkPlan(
 /**
  * `--chunk <n>`: the same run as several commands, each holding the emulator lock for at most `n` cold starts (or 10
  * suites) and releasing it in between, `--gap` seconds apart (default 20). The emulator's graphics stack leaks host
- * memory with every app launch, so a long series has to let the host's watchdog restart the emulator between chunks;
- * the chunks continue one file with `--resume`, so the counts add up across them.
+ * memory with every app launch, so on the shared emulator every chunk restarts it once it holds the lock (`--fresh`,
+ * as the chunks of `parity` and `a11y` do), the first one too: it may follow a suite that left the instance large. No
+ * watchdog on the host is needed: without the restarts, on 8 Nov 2026 the OVH host (22 GB) killed the emulator for
+ * memory 225 cold starts into a volume that followed a foreign run (qemu at 22.9 GB). A phone has nothing to restart.
+ * The chunks continue one file with `--resume`, so the counts add up across them.
  */
 async function runInChunks(values: CrashFlags, chunk: number): Promise<void> {
 	if (values["inject-crash"] === true)
@@ -272,6 +281,7 @@ async function runInChunks(values: CrashFlags, chunk: number): Promise<void> {
 	const suiteCount = integerFlag(values.suites, "suites", 100);
 	const gapSeconds = integerFlag(values.gap, "gap", 20);
 	const plan = chunkPlan(startCount, suiteCount, chunk);
+	const fresh = emulatorScript(String(values.device ?? "")) !== null;
 	for (const [index, step] of plan.entries()) {
 		if (index > 0) await sleep(gapSeconds * 1000);
 		console.log(
@@ -280,7 +290,7 @@ async function runInChunks(values: CrashFlags, chunk: number): Promise<void> {
 		const resume = index > 0 || values.resume === true;
 		const result = spawnSync(
 			process.execPath,
-			[...process.execArgv, script, ...childArgs(values, step.starts, step.suites, resume)],
+			[...process.execArgv, script, ...childArgs(values, step.starts, step.suites, resume, fresh)],
 			{ stdio: "inherit" },
 		);
 		if (result.error) throw result.error;
@@ -307,6 +317,7 @@ export async function crashes(argv: string[]): Promise<void> {
 		symbols: { type: "string" },
 		"inject-crash": { type: "boolean" },
 		resume: { type: "boolean" },
+		fresh: { type: "boolean" },
 		chunk: { type: "string" },
 		gap: { type: "string" },
 	});
@@ -318,6 +329,7 @@ export async function crashes(argv: string[]): Promise<void> {
 	}
 	const lock = lockFor(serial);
 	if (lock) await reexecUnderLock(lock, ["crashes", ...argv]);
+	if (values.fresh === true) await restartEmulator(serial, "a fresh emulator for crashes");
 
 	const startCount = integerFlag(values.starts, "starts", 1000);
 	const suiteCount = integerFlag(values.suites, "suites", 100);

@@ -50,6 +50,13 @@ java -cp "$work/input-rules-check.jar" expo.modules.svelteengine.InputRulesCheck
   "$here/../main/java/expo/modules/svelteengine/views/EngineInput.kt" \
   "$here/../main/cpp/AutoCorrectCode.h"
 
+# What a header and a sheet decide from measurements that are not there yet (the first layout of a screen runs detached): the bar's offset, when a header lays out
+# again, when a layout puts a sheet at its rest. The sources of EngineHeader and EngineSheet are read for the calls that use them.
+kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/ChromeRules.kt" \
+  "$here/kotlin/expo/modules/svelteengine/ChromeRulesCheck.kt" -include-runtime -d "$work/chrome-check.jar"
+java -cp "$work/chrome-check.jar" expo.modules.svelteengine.ChromeRulesCheckKt "$here/../main/java/expo/modules/svelteengine/views/EngineHeader.kt" \
+  "$here/../main/java/expo/modules/svelteengine/views/EngineSheet.kt"
+
 kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/AnimatedWire.kt" \
   "$here/kotlin/expo/modules/svelteengine/AnimatedWireCheck.kt" -include-runtime -d "$work/check.jar"
 java -cp "$work/check.jar" expo.modules.svelteengine.AnimatedWireCheckKt "$work/fixture.tsv"

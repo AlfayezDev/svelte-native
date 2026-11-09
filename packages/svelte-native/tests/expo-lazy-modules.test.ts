@@ -37,7 +37,7 @@ const definitionOnly = strings(/DEFINITION_ONLY_MODULE_NAMES = setOf\(([^)]*)\)/
 // Registered through `registerLazily` in `AppContext`, not through the modules provider.
 const coreModules: Record<string, string> = { NativeModulesProxy: "NativeModulesProxyModuleName", ExpoModulesCoreJSLogger: "JSLoggerModuleName" };
 
-const packageDirectories = [join(root, "node_modules"), join(root, "apps/example/modules")].flatMap((base) => readdirSync(base).map((entry) => join(base, entry)));
+const packageDirectories = [join(root, "node_modules"), join(root, "apps/example/modules"), join(root, "packages/svelte-native/native")].flatMap((base) => readdirSync(base).map((entry) => join(base, entry)));
 
 /** Kotlin source of a module class, looked up in the Expo packages and in the app's local modules. */
 function sourceOf(className: string): string | undefined {
@@ -66,7 +66,7 @@ describe("lazy Expo module registry", () => {
   for (const [className, name] of lazyEntries) {
     test(`${name} is the name ${className.split(".").pop()} declares and it needs no foreground, view or intent hooks`, () => {
       const source = sourceOf(className);
-      expect(source, `${className} sources not found under node_modules or apps/example/modules`).toBeDefined();
+      expect(source, `${className} sources not found under node_modules, apps/example/modules or packages/svelte-native/native`).toBeDefined();
       expect(declaresName(source ?? "", name), `${className} does not declare the name ${name}`).toBe(true);
       const hooks = viewsOnDemand.has(name) ? /\b(OnNewIntent|OnUserLeavesActivity)\b/m : /\b(OnActivityEntersForeground|OnActivityEntersBackground|OnNewIntent|OnUserLeavesActivity|ViewManager)\b|^\s*View\(/m;
       expect(hooks.test(source ?? ""), `${className} defines hooks that a late registration would miss`).toBe(false);
@@ -74,7 +74,7 @@ describe("lazy Expo module registry", () => {
   }
 
   test("the modules with views served on demand are the ones the engine's ExpoViews builds", () => {
-    const views = readFileSync(join(root, "apps/example/modules/svelte-engine/android/src/main/java/expo/modules/svelteengine/ExpoViews.kt"), "utf8");
+    const views = readFileSync(join(root, "packages/svelte-native/native/svelte-engine/android/src/main/java/expo/modules/svelteengine/ExpoViews.kt"), "utf8");
     expect(views).toContain("class ExpoViews(");
     for (const name of viewsOnDemand) expect(lazyEntries.map(([, lazyName]) => lazyName)).toContain(name);
     // The engine builds views only for those modules: Expo exports the views of every module that is not lazy when the host starts, so

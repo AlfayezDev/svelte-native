@@ -26,7 +26,8 @@
     "./native-modules": "./src/native-modules.ts",
     "./remote": "./src/remote/index.ts",
     "./remote/runtime": "./src/remote/runtime.ts",
-    "./remote/globals": "./src/remote/globals.ts"
+    "./remote/globals": "./src/remote/globals.ts",
+    "./package.json": "./package.json"
   },
   "bin": {
     "svelte-native": "./src/cli.ts"

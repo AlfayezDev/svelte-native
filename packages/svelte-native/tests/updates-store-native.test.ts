@@ -12,7 +12,7 @@ import { findHostJars } from "./native/host-tools.ts";
  * jar (the real implementation Android provides) is not found (`native/host-tools.ts` says where they are looked for; under CI=1
  * `native-tools.test.ts` fails instead of letting this skip).
  */
-const module = resolve(import.meta.dirname, "../../../apps/example/modules/svelte-updates/android/src/main/java/expo/modules/svelteupdates");
+const module = resolve(import.meta.dirname, "../native/svelte-updates/android/src/main/java/expo/modules/svelteupdates");
 const sources = ["UpdateStore.kt", "UpdatesConfig.kt", "QaReset.kt", "Http.kt"].map((file) => join(module, file)).concat(resolve(import.meta.dirname, "native/UpdateStoreHost.kt"));
 
 const { androidJar, jsonJar } = findHostJars();

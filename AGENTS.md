@@ -1,6 +1,6 @@
 # Agent guide
 
-Svelte Native: the library in `packages/svelte-native`, the example app, Expo modules and QA harness in `apps/example`. The layout and the install are in `README.md`; the library's own docs are `packages/svelte-native/README.md` and `REFERENCE.md`, the Android engine's spec is `apps/example/modules/svelte-engine/SPEC.md`.
+Svelte Native: the library in `packages/svelte-native`, the example app, Expo modules and QA harness in `apps/example`. The layout and the install are in `README.md`; the library's own docs are `packages/svelte-native/README.md` and `REFERENCE.md`, the Android engine's spec is `packages/svelte-native/native/svelte-engine/SPEC.md`.
 
 ## Checks
 

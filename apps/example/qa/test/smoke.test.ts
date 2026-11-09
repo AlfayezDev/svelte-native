@@ -379,8 +379,8 @@ describe("three apps: the product and the QA app link the product's native modul
 			expect([...qa.rn].toSorted()).toEqual([...product.rn].toSorted());
 			expect([...smoke.all].filter((name) => !qa.all.has(name)).toSorted()).toEqual(smokeOnlyFor(platform).toSorted());
 			expect([...qa.all].filter((name) => !smoke.all.has(name))).toEqual([]);
-			// What the product (and so the QA app) keeps: Expo's own modules, the shared packages, and the native modules the app ships.
-			const kept = ["expo-secure-store", "expo-localization", "expo-constants", "expo-asset", "expo-splash-screen", "expo-system-ui", platform === "android" ? "svelte-engine" : "svelte-screens-ios"];
+			// What the product (and so the QA app) keeps: Expo's own modules, the shared packages, and the library's native modules (one package, `@rasheed/svelte-native`: the engine on Android, the screens pod on iOS) the app ships.
+			const kept = ["expo-secure-store", "expo-localization", "expo-constants", "expo-asset", "expo-splash-screen", "expo-system-ui", "@rasheed/svelte-native"];
 			for (const name of kept) expect([name, qa.expo.includes(name)]).toEqual([name, true]);
 			for (const name of ["react-native-reanimated", "react-native-webview", "react-native-maps"]) expect([name, qa.rn.includes(name)]).toEqual([name, true]);
 		}, 60_000); // runs both real autolinkers three times: seconds on a busy machine

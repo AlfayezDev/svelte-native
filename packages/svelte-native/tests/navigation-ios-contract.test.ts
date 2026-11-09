@@ -5,7 +5,7 @@ import { applyAppDelegate } from "../src/expo.ts";
 
 // Swift cannot be compiled here, so what ties the three pieces of the iOS restore together is read from their sources: JavaScript (`fabric/host.ts`)
 // calls the module by the names it defines, the AppDelegate patch (`applyAppDelegate`) calls the enum it defines, and both modules are autolinked.
-const modules = resolve(import.meta.dirname, "../../../apps/example/modules/svelte-navigation-ios");
+const modules = resolve(import.meta.dirname, "../native/svelte-navigation-ios");
 const swift = readFileSync(resolve(modules, "ios/SvelteNavigationModule.swift"), "utf8");
 const host = readFileSync(resolve(import.meta.dirname, "../src/fabric/host.ts"), "utf8");
 /** The Swift without its comments: the policy is in JavaScript, and the comments are free to say so. */
@@ -36,7 +36,10 @@ describe("the iOS navigation module's sources agree with each other", () => {
     const podspec = readFileSync(resolve(modules, "ios/SvelteNavigation.podspec"), "utf8");
     expect(podspec).toContain("s.name           = 'SvelteNavigation'");
     expect(podspec).toContain("'DEFINES_MODULE' => 'YES'");
-    expect(JSON.parse(readFileSync(resolve(modules, "expo-module.config.json"), "utf8"))).toEqual({ platforms: ["apple"], apple: { modules: ["SvelteNavigationModule"] } });
+    const config = JSON.parse(readFileSync(resolve(modules, "../../expo-module.config.json"), "utf8")) as { apple: { modules: string[]; podspecPath: string[]; swiftModuleName: string[] } };
+    expect(config.apple.modules).toContain("SvelteNavigationModule");
+    expect(config.apple.podspecPath).toContain("native/svelte-navigation-ios/ios/SvelteNavigation.podspec");
+    expect(config.apple.swiftModuleName).toContain("SvelteNavigation");
     expect(swift).toContain("public final class SvelteNavigationModule: Module");
   });
 

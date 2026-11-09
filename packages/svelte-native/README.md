@@ -2,7 +2,7 @@
 
 Svelte 5 components that run as native Android and iOS apps. The components are compiled by a pinned Svelte compiler, run in Hermes, and drive React Native's Fabric shadow tree and Yoga directly. There is no React reconciler, no React Native component layer and no WebView. The build and release pipeline stays Expo: `expo prebuild`, config plugins, autolinking, Gradle and CocoaPods, EAS Build, EAS Submit and EAS Update.
 
-On Android the mounting is the package's own engine: Fabric's C++ transaction goes to typed Kotlin views instead of React Native's Java mounting. On iOS React Native's mounting is kept and the package adds its own UIKit navigation, sheets, tabs and toolbar. The engine is specified in [apps/example/modules/svelte-engine/SPEC.md](../../apps/example/modules/svelte-engine/SPEC.md); this file is the way in, [REFERENCE.md](REFERENCE.md) holds the detail of the JavaScript side, [CHANGELOG.md](CHANGELOG.md) what changed, and [PLAN.md](PLAN.md) what was measured and what is open.
+On Android the mounting is the package's own engine: Fabric's C++ transaction goes to typed Kotlin views instead of React Native's Java mounting. On iOS React Native's mounting is kept and the package adds its own UIKit navigation, sheets, tabs and toolbar. The engine is specified in [native/svelte-engine/SPEC.md](native/svelte-engine/SPEC.md); this file is the way in, [REFERENCE.md](REFERENCE.md) holds the detail of the JavaScript side, [CHANGELOG.md](CHANGELOG.md) what changed, and [PLAN.md](PLAN.md) what was measured and what is open.
 
 ## Supported platforms
 

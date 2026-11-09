@@ -23,32 +23,19 @@ const { smokeOnlyBundlePackages } = createRequire(import.meta.url)("../smoke-pac
 /**
  * The size of the same bundle at a reference commit (JavaScript before Hermes, bytes), built with this recipe: the QA app may grow by
  * 1 % over it before a test says so; a legitimate feature that does it moves this number, with the commit that explains why.
- * c75c31491 (before the smoke test): 10,944,737. The merge of the native-view libraries and the react-native-svg port: +4.4 %, all of
- * it the `/__dev/foreign` lab page's imports of the thirteen wrappers and the svg components: 11,429,553.
- * The merge of the gestures branch: +305,350 bytes (+2.7 %) to 11,734,903, the QA bundle of the merge commit (the product's was within 0.1 % of
- * it). About 250 KB is the gesture code: react-native-gesture-handler's JavaScript (about 100 KB), the host and detector ports in
- * `packages/svelte-native/src/gestures` and `src/fabric/gestures.ts` (about 120 KB) and the `/__dev/gestures` lab page with its scenarios
- * (about 30 KB); the remainder is the gesture props on the primitives and Reanimated's
- * `WorkletEventHandler`, which the UI-thread route now loads. (These are the QA app's bundle; the product has not carried the lab since, see
- * `productBaseline`.)
+ *
+ * Measured again on 9 November 2026 at 1bbbec6, the first commit of this repository whose example app has no code of the product it was
+ * extracted from (no session, no account screens, no database client, no product message catalog; a layout stand-in and a home screen
+ * instead). What changed is the app and not the library: the QA app 5,628,280 bytes in 1,151 modules, the production variant 3,953,493 in
+ * 851 (the smoke app, which no baseline holds, 8,682,070 in 1,870). In the repository the example came out of, the same recipe read 12,224,724
+ * (QA, with the remote functions lab) and 10,813,791 (production, +0.5 % over its 10,760,249 baseline): the 6.6 and 6.9 MB between the two
+ * are the product's, not measured module by module. The production variant is 1,674,787 bytes (29.8 %) under the QA app: the lab and the
+ * libraries only it imports.
  */
-// The merge of the device-verified native-view libraries and the engine's accessibility props: +119,195 bytes (+1.0 %) to 11,854,098,
-// nearly all of it lab code (the self-checking foreign-libraries lab and its checks, the /__dev/a11y states and actions page), plus
-// `fabric/accessibility.ts` (RN's aria-* and role rules), which the product carries too.
-// The remote functions lab (`/__dev/remote`): 12,224,724 bytes. Of the +370,626 (the rest is what the other branches added since the line above), 312 KB is the lab and what
-// only it imports: SvelteKit's client files for remote functions (152 KB: query, query.batch, query.live, command, prerender, the form helpers), the devalue they parse
-// with (68 KB), `packages/svelte-native/src/remote` (60 KB) and the lab's page, checks and stubs (32 KB). The product carries none of it (its bundle has `remote/router-link.ts`
-// and nothing else of it, 0.55 KB: 10,813,791 bytes, +0.5 % over `productBaseline`).
-const baseline = { commit: "the remote functions lab", bytes: 12_224_724 };
+const baseline = { commit: "1bbbec6 (the example without the product's code)", bytes: 5_628_280 };
 
-/**
- * The product's bundle without the lab, built with the same recipe: 10,760,249 bytes (1,188 modules) at the commit that left the lab out,
- * 980,248 bytes under the QA app's 11,740,497 (1,347 modules). The 160 modules the QA app has and the product has not are the lab's own 52, 82 of `packages/svelte-native` that
- * only the lab imports (the foreign view wrappers, the svg components, the animation and gesture bridges), 24 of react-native-svg,
- * expo-video and expo-keep-awake, the lab's image and the smoke checks' stub. Before that commit the product's bundle was the QA app's:
- * 11,738,008 bytes. It may grow by 1 % before a test says so.
- */
-const productBaseline = { commit: "the product without the lab", bytes: 10_760_249 };
+/** The production variant's bundle without the lab, built with the same recipe and measured at the same commit. It may grow by 1 % before a test says so. */
+const productBaseline = { commit: "1bbbec6 (the example without the product's code)", bytes: 3_953_493 };
 
 /** What this run made: the bundle directories (about 15 to 34 MB each) and the Metro caches of their own. All removed when the tests end. */
 const made: string[] = [];

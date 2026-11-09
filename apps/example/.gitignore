@@ -1,0 +1,25 @@
+node_modules
+
+# Generated native projects (expo prebuild) and the Samsung Pay SDK; the root .gitignore has the rules for git, this file is what ESLint reads
+/android
+/android-*
+/ios
+/libs
+/.expo
+
+.output
+/.svelte-kit
+/.svelte-kit-*
+/build
+
+.DS_Store
+Thumbs.db
+
+.env
+.env.*
+!.env.example
+!.env.test
+
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+test-results

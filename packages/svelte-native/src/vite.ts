@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import { sveltekit } from "@sveltejs/kit/vite";
 import type { PluginOption } from "vite";
 import { exportNative, syncNative } from "./build.ts";
+import { assertCustomRenderer } from "./svelte-build.ts";
 
 export function svelteNative(options: {
   target?: "web" | "native";
@@ -12,6 +13,7 @@ export function svelteNative(options: {
     { name: "svelte-native:web", config: () => ({ optimizeDeps: { entries: ["!src/routes/**/+mobile.svelte", "!src/routes/**/*.mobile.svelte", "!src/lib/native/**"] } }) },
     sveltekit(options.kit),
   ];
+  assertCustomRenderer("The native target of svelteNative() (@example/svelte-native/vite)");
   let root = "";
   return {
     name: "svelte-native",

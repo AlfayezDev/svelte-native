@@ -4,6 +4,8 @@ import { readFile } from "node:fs/promises";
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { compile } from "svelte/compiler";
+import { mapsProblems, mapsStreamEvents, neverCoalesces, pdfProblems, lottieProblems, stripComments, videoEmitterProblems, videoProblems } from "../src/doctor/shapes.ts";
+import { readerFor } from "../src/doctor/resolve.ts";
 import { createHarness } from "./foreign-harness.ts";
 
 /**
@@ -211,10 +213,10 @@ test("the static config of RNPDFPdfView lists the props of the library's Flow sp
 // `topChange`. An event that can coalesce is dispatched as a unique one, and React Native's C++ event queue (`EventQueue::enqueueEvent`) replaces
 // the unread unique event of the same type for the same view, so with the JavaScript thread busy the `loadComplete` of a document was overwritten by
 // the `pageChanged` the view posts 10 ms later (28 of 182 emulator row mounts, 10 of 130 Samsung row mounts lost `onLoadComplete`). The patch
-// (`patches/react-native-pdf@7.0.3.patch`) makes the event non-coalescable. iOS is not affected: its codegen emitter's `onChange` is a plain `dispatchEvent`.
+// (`react-native-pdf@7.0.3.patch` in the package's `patches/`) makes the event non-coalescable. iOS is not affected: its codegen emitter's `onChange` is a plain `dispatchEvent`.
 test("react-native-pdf's topChange event, which carries every message of the Android view, does not coalesce", () => {
   const directory = resolve(modules, "react-native-pdf/android/src/main/java/org/wonday/pdf");
-  const code = (file: string) => readFileSync(resolve(directory, file), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const code = (file: string) => stripComments(readFileSync(resolve(directory, file), "utf8"));
   const view = code("PdfView.java");
   const event = code("events/TopChangeEvent.java");
   // PdfView still puts several messages on the one event class (when the library splits them over events, this pin is to be revisited) ...
@@ -224,7 +226,8 @@ test("react-native-pdf's topChange event, which carries every message of the And
   expect(readdirSync(resolve(directory, "events"))).toEqual(["TopChangeEvent.java"]);
   expect(event).toMatch(/getEventName\(\)\s*\{\s*return "topChange";\s*\}/);
   // ... so the event must not coalesce (React Native's `Event.canCoalesce()` is `true` unless a subclass overrides it).
-  expect(event).toMatch(/@Override\s+public boolean canCoalesce\(\)\s*\{\s*return false;\s*\}/);
+  expect(neverCoalesces(event)).toBe(true);
+  expect(pdfProblems(readerFor(resolve(modules, "react-native-pdf")))).toEqual([]);
 });
 
 // The same defect in three more libraries (SPEC.md, "Foreign views", "Events on Android"): Lottie, maps and video. `Event.canCoalesce()` is true unless a subclass overrides it, Fabric
@@ -232,8 +235,7 @@ test("react-native-pdf's topChange event, which carries every message of the And
 // messages of one name reach JavaScript as the last one. Each library's Android events are pinned by what the library's source does now, so a version that adds an event class
 // or a sender fails here until the new one is decided. Rive needs no patch (its events go through React Native's interop emitter, pinned below). iOS cannot lose any of them: the
 // codegen emitters (Lottie, maps, pdf) and React Native's legacy interop layer (RCTVideo, Rive) dispatch with `dispatchEvent`, never `dispatchUniqueEvent`.
-const withoutComments = (file: string): string => readFileSync(resolve(modules, file), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-const neverCoalesces = /(?:@Override\s+public boolean canCoalesce\(\)\s*\{\s*return false;\s*\}|override fun canCoalesce\(\): Boolean = false)/;
+const withoutComments = (file: string): string => stripComments(readFileSync(resolve(modules, file), "utf8"));
 
 // rive-react-native sends its events through `getJSModule(RCTEventEmitter::class.java).receiveEvent(id, name, data)`, and under Fabric that is React Native's `InteropEventEmitter`, which
 // builds an `InteropEvent`. A first reading took that for a coalescable event (the class does not override `canCoalesce()`) and patched the library; it is not one: the emitter is made
@@ -289,6 +291,7 @@ test("react-native-maps' discrete events do not coalesce and its streams still d
   const directory = resolve(modules, "react-native-maps/android/src/main/java/com/rnmaps/fabric/event");
   // Streams: a position or a region per frame of a drag, a pan or a camera move, or per GPS fix, where the latest message replaces the earlier ones and coalescing is the saving.
   const streams = ["OnDragEvent", "OnMarkerDragEvent", "OnPanDragEvent", "OnRegionChangeEvent", "OnUserLocationChangeEvent"];
+  expect([...mapsStreamEvents]).toEqual(streams);
   // Everything else is one message per user act, state change or load, and keeps its own payload (an `action`, a marker `id`, a region, a coordinate).
   const discrete = [
     "OnCalloutPressEvent", "OnDeselectEvent", "OnDoublePressEvent", "OnDragEndEvent", "OnDragStartEvent", "OnIndoorBuildingFocusedEvent", "OnIndoorLevelActivatedEvent", "OnKmlReadyEvent",
@@ -296,8 +299,10 @@ test("react-native-maps' discrete events do not coalesce and its streams still d
     "OnPoiClickEvent", "OnPressEvent", "OnRegionChangeCompleteEvent", "OnRegionChangeStartEvent", "OnSelectEvent",
   ];
   expect(readdirSync(directory).map((file) => file.replace(/\.java$/, "")).sort()).toEqual([...discrete, ...streams].sort());
-  for (const name of discrete) expect(withoutComments(`react-native-maps/android/src/main/java/com/rnmaps/fabric/event/${name}.java`), name).toMatch(neverCoalesces);
+  for (const name of discrete) expect(neverCoalesces(withoutComments(`react-native-maps/android/src/main/java/com/rnmaps/fabric/event/${name}.java`)), name).toBe(true);
   for (const name of streams) expect(withoutComments(`react-native-maps/android/src/main/java/com/rnmaps/fabric/event/${name}.java`), name).not.toContain("canCoalesce");
+  // The same check over the whole directory, as `svelte-native doctor` makes it of an app's install.
+  expect(mapsProblems(readerFor(resolve(modules, "react-native-maps")))).toEqual([]);
   // `topPress` of the map's tag is one event for several kinds of press, and the map attaches an `action` to every message of its press and selection events: these nine are what MapView.java sends.
   const view = withoutComments("react-native-maps/android/src/main/java/com/rnmaps/maps/MapView.java");
   const actions = new Set([...view.matchAll(/putString\("action", "([a-z-]+)"\)/g)].map((match) => match[1]));
@@ -312,22 +317,19 @@ test("lottie-react-native's three events do not coalesce", () => {
   for (const file of events) {
     const code = withoutComments(`lottie-react-native/android/src/main/java/com/airbnb/android/react/lottie/${file}`);
     expect(code, file).toMatch(/Event<On\w+>\(surfaceId, viewId\)/);
-    expect(code, file).toMatch(neverCoalesces);
+    expect(neverCoalesces(code), file).toBe(true);
   }
+  expect(lottieProblems(readerFor(resolve(modules, "lottie-react-native")))).toEqual([]);
   expect(events.map((file) => /EVENT_NAME = "(\w+)"/.exec(withoutComments(`lottie-react-native/android/src/main/java/com/airbnb/android/react/lottie/${file}`))?.[1])).toEqual(["topAnimationFailure", "topAnimationFinish", "topAnimationLoaded"]);
 });
 
 test("react-native-video's one event class does not coalesce except for the progress and the bandwidth estimate", () => {
   const emitter = withoutComments("react-native-video/android/src/main/java/com/brentvatne/common/react/VideoEventEmitter.kt");
-  // One class carries every event, so the class decides by a flag the sender gives; a sender that says nothing is a discrete event ...
-  const custom = /private class VideoCustomEvent\([\s\S]*?\n {4}\}\n/.exec(emitter)?.[0] ?? "";
-  expect(custom).toMatch(/private val coalescable: Boolean/);
-  expect(custom).toMatch(/override fun canCoalesce\(\): Boolean = coalescable/);
-  expect(emitter).toMatch(/fun dispatch\(event: EventTypes, coalescable: Boolean = false, paramsSetter/);
-  expect(emitter.match(/: Event</g)?.length).toBe(1);
-  // ... and the two streams, whose latest message replaces the earlier ones, say so. Every other event (load, error, seek, end, playback state, buffer, ready, the track lists, ...) is discrete.
-  const streams = [...emitter.matchAll(/event\.dispatch\(EventTypes\.(\w+), coalescable = true\)/g)].map((match) => match[1]).sort();
-  expect(streams).toEqual(["EVENT_BANDWIDTH", "EVENT_PROGRESS"]);
+  // One class carries every event, so the class decides by a flag the sender gives; a sender that says nothing is a discrete event, and the two streams
+  // (progress, bandwidth), whose latest message replaces the earlier ones, say so. Every other event (load, error, seek, end, playback state, buffer, ready, the
+  // track lists, ...) is discrete. The shape is `videoEmitterProblems`, which `svelte-native doctor` asks of an app's install too.
+  expect(videoEmitterProblems(emitter)).toEqual([]);
+  expect(videoProblems(readerFor(resolve(modules, "react-native-video")))).toEqual([]);
   const senders = [...emitter.matchAll(/event\.dispatch\(EventTypes\.(\w+)/g)].map((match) => match[1] as string);
   expect(senders.length).toBeGreaterThan(25);
   for (const name of ["EVENT_LOAD", "EVENT_ERROR", "EVENT_SEEK", "EVENT_END", "EVENT_PLAYBACK_STATE_CHANGED", "EVENT_BUFFER", "EVENT_READY"]) expect(senders, name).toContain(name);

@@ -1,9 +1,12 @@
 import { afterEach, expect, test } from "bun:test";
 import { createRequire } from "node:module";
+import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
+import { readerFor } from "../src/doctor/resolve.ts";
+import { workletsProblems } from "../src/doctor/shapes.ts";
 
 /**
- * `patches/react-native-worklets@0.10.1.patch`: the UI runtime's `requestAnimationFrame` queue asks the native side for a frame
+ * `react-native-worklets@0.10.1.patch` (in the package's `patches/`): the UI runtime's `requestAnimationFrame` queue asks the native side for a frame
  * only while a callback or finalizer is waiting. Upstream re-requests the next frame from every flush, forever, so once the
  * runtime exists the main thread runs a Choreographer callback, a JNI call and a Hermes call on every frame with an empty queue
  * (about 12 % of an idle screen's main-thread samples on the Galaxy A16). The test runs the library's own function against a
@@ -81,4 +84,9 @@ test("a cancelled callback leaves at most one empty frame behind", async () => {
   (scope.cancelAnimationFrame as (handle: number) => void)(handle);
   frame(1);
   expect(requested.length).toBe(0);
+});
+
+test("the installed package has the patch's shape, the one `svelte-native doctor` looks for in an app", () => {
+  const entry = createRequire(import.meta.url).resolve("react-native-worklets/package.json");
+  expect(workletsProblems(readerFor(dirname(entry)))).toEqual([]);
 });

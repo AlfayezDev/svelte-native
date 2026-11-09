@@ -5,6 +5,11 @@ import { exportNative, runExpo, syncNative } from "./build.ts";
 
 const [command = "dev", ...args] = process.argv.slice(2);
 const root = process.cwd();
+if (command === "doctor") {
+  // Before the sync: the doctor is for an app that may not be set up yet, and it must not write anything.
+  const { runDoctor } = await import("./doctor/index.ts");
+  process.exit(runDoctor(root, args));
+}
 await syncNative(root);
 if (command === "build") {
   const platformIndex = args.indexOf("--platform");
@@ -32,5 +37,5 @@ if (command === "build") {
   child.once("error", (error) => { watcher.close(); console.error(error); process.exitCode = 1; });
   child.once("exit", (code) => { watcher.close(); process.exitCode = code ?? 1; });
 } else if (command !== "sync") {
-  throw new Error(`Unknown command: ${command}. Use dev, android, ios, build or sync.`);
+  throw new Error(`Unknown command: ${command}. Use dev, android, ios, build, sync or doctor.`);
 }

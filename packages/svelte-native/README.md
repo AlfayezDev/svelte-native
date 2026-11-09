@@ -16,7 +16,7 @@ It targets Expo SDK 57 and React Native 0.86.3 with Hermes, Reanimated 4.5.1, re
 
 ## Install in an app
 
-The package is private. An app outside this repository depends on a tag of it through pnpm's git dependency, over SSH, naming the package's directory. [`examples/minimal`](../../examples/minimal) is the smallest app that does everything below (copy it to start); `scripts/consumer-check.sh` installs and builds it from a scratch directory outside the repository, once with the library as a packed tarball and once as a git dependency of the repository's own commit.
+The package is private. An app outside this repository depends on a tag of it through pnpm's git dependency, over SSH, naming the package's directory. [`examples/minimal`](../../examples/minimal) is the smallest app that does everything below (copy it to start, or run `scripts/new-app.sh <dir>`, which copies it and does the install, the patches and the doctor for you: the root [README](../../README.md#try-it-early-preview), "Try it"); `scripts/consumer-check.sh` installs and builds it from a scratch directory outside the repository, once with the library as a packed tarball and once as a git dependency of the repository's own commit.
 
 ```sh
 pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#<tag>&path:packages/svelte-native" \
@@ -33,6 +33,14 @@ pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#<tag>&path:packa
 ```
 
 `<tag>` is any tag, branch or commit of the repository, and the lockfile records the commit it resolved to. Any other repository URL takes the same `#<ref>&path:packages/svelte-native` suffix (`git+file:///path/to/checkout#<commit>&path:packages/svelte-native` is what the check script installs).
+
+**A machine that reaches the repository only over SSH needs one git setting.** pnpm resolves a `github.com` git dependency over HTTPS whatever the specifier says (`git+ssh://git@github.com/…` included): `pnpm add` writes `github:AlfayezDev/svelte-native#<tag>&path:packages/svelte-native` to `package.json` and `https://github.com/AlfayezDev/svelte-native.git` to the lockfile, so that the lockfile works on every machine. Where git can read the private repository only with an SSH key, `pnpm add` stops with `ERR_PNPM_GIT_RESOLVE_FAILED` and a later `pnpm install` with `ERR_PNPM_GIT_FETCH_FAILED` (`could not read Username for 'https://github.com'`). Tell git to use SSH for this account's repositories, once (pnpm's own advice, narrowed to this account):
+
+```sh
+git config --global url."git@github.com:AlfayezDev/".insteadOf "https://github.com/AlfayezDev/"
+```
+
+`scripts/new-app.sh` sets it for its own run only, through `GIT_CONFIG_*` in its environment, and says so.
 
 A release is a tag with its [changelog](CHANGELOG.md) entry. What `pnpm install` copies is the package as `files` packs it (`pnpm pack` lists it): `src/` (TypeScript that Metro compiles), `dist/node/` (the JavaScript that Node itself loads, built from `src/`; see "Set up an app"), `native/` (the library's native modules), `expo-module.config.json`, `patches/` and the documents. Nothing is built at install time and nothing outside the package directory is needed: pnpm builds nothing for a git dependency, and refuses one whose `package.json` has a `prepare`, `prepack` or `prepublish` script (`ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED`, until the app lists it under `allowBuilds`, and then it installs the package's development dependencies and runs the script in a clone), so `dist/node/` is committed and the package has no such script (a test checks both).
 

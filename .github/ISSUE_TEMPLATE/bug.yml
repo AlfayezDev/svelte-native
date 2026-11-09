@@ -1,0 +1,90 @@
+name: Bug report
+description: Something does not work, or does not work the way the docs say.
+title: "[bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for trying Svelte Native. The more of the fields below you fill in, the sooner it can be fixed; most of them are one copy and paste.
+        A question or an idea is welcome as an issue, too: choose "Open a blank issue" below.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what did you expect?
+      description: In a few sentences. A screenshot or a screen recording helps if it is about something you can see.
+      placeholder: "I tap the button on the second screen and the app closes. I expected the screen to open."
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: |
+        The `.svelte` file of the screen that shows it (in a code fence, cut down to what is needed), or the steps from an app made with `scripts/new-app.sh`.
+        A link to a repository is fine, too.
+      placeholder: |
+        ```svelte
+        <script lang="ts">
+          import { Pressable, Screen, Text } from "@rasheed/svelte-native";
+        </script>
+        <Screen title="Repro">…</Screen>
+        ```
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Android
+        - iOS
+        - Both
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and OS version
+      description: Settings > About on a phone. Say if it is a simulator or an emulator.
+      placeholder: "Pixel 8, Android 15 / iPhone 15, iOS 26.1 / Android emulator, API 36"
+    validations:
+      required: true
+  - type: dropdown
+    id: build
+    attributes:
+      label: Build
+      description: A debug build loads its JavaScript from Metro (`pnpm android`, `pnpm ios`); a release build has it inside the app.
+      options:
+        - Debug
+        - Release
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: library-ref
+    attributes:
+      label: Library version (tag or commit)
+      description: The `#...` part of `@rasheed/svelte-native` in your `package.json`, or the commit in `pnpm-lock.yaml`.
+      placeholder: "v0.3.0"
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "Output of `pnpm exec svelte-native doctor`"
+      description: Run it in the app's directory and paste everything it prints.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Android: `adb logcat -d` right after it happens (a crash is in there). iOS: the Xcode console or the crash report. Metro's output for a build or bundling error.
+        Cut it down to the part around the problem if it is long.
+      render: shell
+    validations:
+      required: false

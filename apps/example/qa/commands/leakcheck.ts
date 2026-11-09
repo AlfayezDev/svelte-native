@@ -7,7 +7,7 @@ import { accountEmail, containsAccount, containsAddress, requireAccount, variabl
 import { outDir, qaDir, repoRoot, runsDir } from "../lib/paths.ts";
 
 /**
- * Looks for the QA account's address (`RASHEED_QA_EMAIL`) where it must never be: in the files the CI uploads (the run files and the evidence of failed tries under
+ * Looks for the QA account's address (`QA_ACCOUNT_EMAIL`) where it must never be: in the files the CI uploads (the run files and the evidence of failed tries under
  * qa/runs, the lane logs, the build records and gates tables of qa/out, the report), in what is about to be committed (the lines the staged diff adds, and with
  * `--all` the changes and the files git does not track yet) and in the references' manifests. It prints file names and counts, never the address or the line it was
  * found on, and exits 1 on a hit.

@@ -18,7 +18,6 @@
 			"channel": "preview",
 			"env": {
 				"UPDATES_CHANNEL": "preview",
-				"EXPO_PUBLIC_API_URL": "https://dev.qarnos.com",
 				"APP_VARIANT": "production"
 			},
 			"android": {
@@ -30,8 +29,7 @@
 			"distribution": "internal",
 			"channel": "qa",
 			"env": {
-				"UPDATES_CHANNEL": "qa",
-				"EXPO_PUBLIC_API_URL": "https://dev.qarnos.com"
+				"UPDATES_CHANNEL": "qa"
 			},
 			"android": {
 				"buildType": "apk"
@@ -43,7 +41,6 @@
 			"channel": "production",
 			"env": {
 				"UPDATES_CHANNEL": "production",
-				"EXPO_PUBLIC_API_URL": "https://qarnos.com",
 				"APP_VARIANT": "production"
 			}
 		},

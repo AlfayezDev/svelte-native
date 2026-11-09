@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { product } from "../commands/product.ts";
 import { gateKinds, type Gate, type GatesFile } from "../lib/gates.ts";
-import { loginLabels, isLoginScreen, parseLaunchMs, productFatals, productMetrics, productProblems, productWindowMs, productPackage, type ProductFile } from "../lib/product.ts";
+import { homeLabels, isHomeScreen, parseLaunchMs, productFatals, productMetrics, productProblems, productWindowMs, productPackage, type ProductFile } from "../lib/product.ts";
 import { runsDir } from "../lib/paths.ts";
 import { assertProductDevice, identify, refusePhone } from "../lib/reset.ts";
 import { runKinds } from "../lib/runs.ts";
@@ -29,15 +29,19 @@ const tree = (nodes: { text?: string; desc?: string; pkg: string }[]) =>
 			.join("")}</node></hierarchy>`,
 	);
 
-describe("the login screen is the first screen of the signed-out product", () => {
-	test("its button reads the same in both languages the app has", () => {
-		expect(loginLabels()).toEqual(["Continue with email", "المتابعة بالبريد الإلكتروني"]);
+describe("the home screen is the first screen of the production variant", () => {
+	test("it reads its title and its line of description, in both languages the app has (the title is the same in both)", () => {
+		expect(homeLabels()).toEqual([
+			"Svelte Native",
+			"Svelte 5 components running as a native Android and iOS app, with no React and no WebView.",
+			"مكوّنات Svelte 5 تعمل كتطبيق أصلي على Android وiOS، بلا React وبلا WebView.",
+		]);
 	});
-	test("only the product's own window counts", () => {
-		expect(isLoginScreen(tree([{ text: "Continue with email", pkg: productPackage }]))).toBe(true);
-		expect(isLoginScreen(tree([{ desc: "المتابعة بالبريد الإلكتروني", pkg: productPackage }]))).toBe(true);
-		expect(isLoginScreen(tree([{ text: "Continue with email", pkg: "io.rasheed.svelteqa" }]))).toBe(false);
-		expect(isLoginScreen(tree([{ text: "Loading", pkg: productPackage }, { text: "System UI isn't responding", pkg: "android" }]))).toBe(false);
+	test("only the app's own window counts", () => {
+		expect(isHomeScreen(tree([{ text: "Svelte Native", pkg: productPackage }]))).toBe(true);
+		expect(isHomeScreen(tree([{ desc: "مكوّنات Svelte 5 تعمل كتطبيق أصلي على Android وiOS، بلا React وبلا WebView.", pkg: productPackage }]))).toBe(true);
+		expect(isHomeScreen(tree([{ text: "Svelte Native", pkg: "io.rasheed.svelteqa" }]))).toBe(false);
+		expect(isHomeScreen(tree([{ text: "Loading", pkg: productPackage }, { text: "System UI isn't responding", pkg: "android" }]))).toBe(false);
 	});
 });
 
@@ -89,7 +93,7 @@ describe("the run, its metrics and its gates", () => {
 	});
 	test("a fatal, or no screen, is a problem; a screen later than the 15 s of the check is not a screen, whatever window the run had", () => {
 		expect(productProblems(file({ fatals: ["FATAL EXCEPTION Process: io.rasheed.app,"] }))[0]).toContain("fatal:");
-		expect(productProblems(file({ firstScreen: { reached: false, atMs: null } }))).toEqual(["the login screen was not reached within 15 s"]);
+		expect(productProblems(file({ firstScreen: { reached: false, atMs: null } }))).toEqual(["the home screen was not reached within 15 s"]);
 		expect(productMetrics(file({ firstScreen: { reached: false, atMs: null } }))["product.boot.firstScreen"]).toBe(0);
 		expect(productMetrics(file({ windowMs: 60_000, firstScreen: { reached: true, atMs: 20_000 } }))["product.boot.firstScreen"]).toBe(0);
 	});
@@ -171,7 +175,7 @@ esac
 		chmodSync(join(bin, "adb"), 0o755);
 		return { bin, log, logcat };
 	}
-	const loginScreen = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0"><node index="0" text="" class="android.widget.FrameLayout" package="${packageLine}" content-desc="" bounds="[0,0][1080,2400]"><node index="0" text="Continue with email" class="android.view.View" package="${packageLine}" content-desc="" clickable="true" enabled="true" bounds="[0,0][100,100]" /></node></hierarchy>`;
+	const homeScreen = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0"><node index="0" text="" class="android.widget.FrameLayout" package="${packageLine}" content-desc="" bounds="[0,0][1080,2400]"><node index="0" text="Svelte Native" class="android.view.View" package="${packageLine}" content-desc="" clickable="true" enabled="true" bounds="[0,0][100,100]" /></node></hierarchy>`;
 	const spinner = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0"><node index="0" text="" class="android.widget.FrameLayout" package="${packageLine}" content-desc="" bounds="[0,0][1080,2400]"><node index="0" text="" content-desc="Loading" class="android.view.View" package="${packageLine}" bounds="[0,0][100,100]" /></node></hierarchy>`;
 	const crash = ["11-01 12:00:05.000  4242  4290 E AndroidRuntime: FATAL EXCEPTION: mqt_v_js", `11-01 12:00:05.001  4242  4290 E AndroidRuntime: Process: ${packageLine}, PID: 4242`, "11-01 12:00:05.002  4242  4290 E AndroidRuntime: com.facebook.react.common.JavascriptException: src/lib/native/dev/ is not in this app"].join("\n");
 
@@ -180,7 +184,7 @@ esac
 		const adb = fakeAdb(directory, { emulator: options.emulator ?? true });
 		writeFileSync(adb.logcat, options.logcat ?? "");
 		const screen = join(directory, "screen.xml");
-		writeFileSync(screen, options.screen ?? loginScreen);
+		writeFileSync(screen, options.screen ?? homeScreen);
 		const apk = join(directory, "product.apk");
 		writeFileSync(apk, "apk");
 		const lock = join(directory, "emulator.lock");
@@ -218,12 +222,12 @@ esac
 		return { output, failure, status, calls: existsSync(adb.log) ? readFileSync(adb.log, "utf8").trim().split("\n") : [], apk };
 	}
 
-	test("a clean cold start that reaches the login screen passes, on the product's own package, with its data cleared first", async () => {
+	test("a clean cold start that reaches the home screen passes, on the product's own package, with its data cleared first", async () => {
 		const done = await run({});
 		expect(done.failure).toBeNull();
 		expect(done.status).not.toBe(1);
 		expect(done.output).toContain("product boot: pass");
-		expect(done.output).toMatch(/login screen reached after \d+ ms, activity displayed after 1234 ms, 0 fatal\(s\)/);
+		expect(done.output).toMatch(/home screen reached after \d+ ms, activity displayed after 1234 ms, 0 fatal\(s\)/);
 		expect(done.calls).toContain(`-s localhost:5555 install -r ${done.apk}`);
 		expect(done.calls.indexOf("-s localhost:5555 shell pm clear io.rasheed.app")).toBeGreaterThan(done.calls.findIndex((entry) => entry.includes("install -r")));
 		expect(done.calls.some((entry) => entry.includes("am start -W -n io.rasheed.app/.MainActivity"))).toBe(true);
@@ -240,7 +244,7 @@ esac
 		expect(crashed.output).toContain("fatal: FATAL EXCEPTION Process: io.rasheed.app");
 		const stuck = await run({ screen: spinner });
 		expect(stuck.status).toBe(1);
-		expect(stuck.output).toContain("the login screen was not reached within 1.5 s");
+		expect(stuck.output).toContain("the home screen was not reached within 1.5 s");
 		const gone = await run({ pid: "" });
 		expect(gone.status).toBe(1);
 		expect(gone.output).toContain("was gone when the window ended");

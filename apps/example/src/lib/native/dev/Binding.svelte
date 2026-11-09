@@ -3,7 +3,7 @@
   import { Text, View } from "@rasheed/svelte-native";
   import { labContext, type LabContext } from "./model.svelte.ts";
   import { theme } from "../state.svelte.ts";
-  import Field from "../components/Field.svelte";
+  import Field from "./Field.svelte";
   import Button from "../components/Button.svelte";
   let { value = $bindable(""), label, observe }: {
     value?: string; label: string; observe: (value: { value: string; label: string; context: string }) => void;

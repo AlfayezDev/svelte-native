@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import { describe, expect, test } from "bun:test";
 import { accountRects, exposedAccount, findNode, maskedChrome, matches, maskRects } from "../lib/drive.ts";
 import { compare, redactedFailure } from "../lib/parity.ts";
-import { copy } from "../lib/copy.ts";
 import { enterSignedIn } from "../lib/signin.ts";
 import { splitPhases } from "../lib/phases.ts";
 import { a11yMetrics, parityMetrics } from "../lib/suite-metrics.ts";
@@ -13,20 +12,19 @@ import {
 	layoutVariants,
 	matrix,
 	notCovered,
-	notCoveredStates,
 	pinnedNames,
 	referenceName,
-	selectorFor,
 	variants,
 	type ScreenCase,
 } from "../lib/screens.ts";
+import { accountList, accountProfile, signedInFixtures, withSignedInFixtures } from "./fixture-cases.ts";
 import { gatesPath } from "../lib/paths.ts";
 import { parseHierarchy } from "../lib/uia.ts";
 import type { A11yFile, ParityFile } from "../lib/types.ts";
 import type { GatesFile } from "../lib/gates.ts";
 
 const address = "qa.person+tests@example.test";
-const signedIn = cases.filter((screen) => screen.signedIn);
+const signedIn = signedInFixtures;
 const gatesFile = JSON.parse(readFileSync(gatesPath, "utf8")) as GatesFile;
 
 function node(attributes: { text?: string; desc?: string; bounds: string; cls?: string; id?: string }): string {
@@ -35,54 +33,45 @@ function node(attributes: { text?: string; desc?: string; bounds: string; cls?: 
 const tree = (...nodes: string[]) => parseHierarchy(`<?xml version='1.0' ?><hierarchy rotation="0">${nodes.join("")}</hierarchy>`);
 
 describe("the signed-in cases", () => {
-	test("they are the app-* cases, each one a signed-in case that needs the backend and opens the workspaces", () => {
-		expect(signedIn.length).toBeGreaterThan(10);
-		expect(signedIn.map((screen) => screen.id).every((id) => id.startsWith("app-"))).toBe(true);
-		expect(cases.filter((screen) => screen.id.startsWith("app-")).length).toBe(signedIn.length);
-		for (const screen of signedIn) {
-			expect(screen.needsBackend).toBe(true);
-			expect(screen.network).toBe("normal");
-			expect(screen.deepLink).toBe("rasheed-svelte:///workspaces");
-			expect(screen.steps.length).toBeGreaterThan(0);
-		}
-		expect(new Set(cases.map((screen) => screen.id)).size).toBe(cases.length);
-	});
-
-	test("the signed-out phase has none of them and the phases keep the matrix order", () => {
-		const phases = splitPhases(cases);
-		expect(phases.signedIn.map((screen) => screen.id)).toEqual(signedIn.map((screen) => screen.id));
-		expect(phases.signedOut.some((screen) => screen.signedIn)).toBe(false);
-		expect(phases.signedOut.length + phases.signedIn.length).toBe(cases.length);
-	});
-
-	test("a screen that shows the account's address masks it, and a sheet or modal names the screen it covers", () => {
-		const masksAddress = (screen: ScreenCase) => screen.masks.some((mask) => mask.account === "email");
-		for (const id of ["app-workspaces", "app-settings-profile", "app-account-profile"])
-			expect(masksAddress(cases.find((screen) => screen.id === id) as ScreenCase)).toBe(true);
-		for (const screen of signedIn.filter((entry) => entry.layout === "modal" || entry.layout === "sheet"))
-			expect(screen.hidden.length).toBeGreaterThan(0);
-	});
-
-	test("their labels are the catalog's words, in both languages, so a copy change reaches them", () => {
-		const workspaces = cases.find((screen) => screen.id === "app-workspaces") as ScreenCase;
-		expect(workspaces.title).toEqual(copy("onboarding.selectWorkspaceTitle"));
-		expect(selectorFor(workspaces.anchor, "rtl").label).toBe("اختر مساحة العمل");
-		expect(selectorFor(workspaces.anchor, "ltr").label).toBe("Choose a workspace");
-		expect(() => copy("auth.nothingLikeThis" as never)).toThrow("no text for");
-	});
-
-	test("every signed-in route is accounted for: the one the phase cannot reach is listed with the reason", () => {
-		expect(notCovered.map((entry) => entry.route)).toContain("/onboarding/profile");
-		expect(notCovered.some((entry) => entry.route.includes("workspaces"))).toBe(false);
-	});
-
-	test("gates.json pins exactly these screens for the emulator, and no pin is for a screen that is gone", () => {
-		expect(gatesFile.signedIn?.android).toEqual(signedIn.map((screen) => screen.id));
+	test("this repository's example has none: no case is signed in, and gates.json pins none", () => {
+		expect(cases.filter((screen) => screen.signedIn)).toEqual([]);
+		expect(gatesFile.signedIn?.android).toEqual([]);
 		const gateIds = gatesFile.gates.map((gate) => gate.id);
 		expect(gateIds).toContain("parity.signedIn.missing");
 		expect(gateIds).toContain("a11y.signedIn.missing");
 		for (const id of ["parity.signedIn.missing", "a11y.signedIn.missing"])
 			expect(gatesFile.gates.find((gate) => gate.id === id)?.bar).toEqual({ android: { max: 0 } });
+	});
+
+	test("the fixtures stand for the cases of a project with an account: each needs the backend and opens the app under a session", () => {
+		expect(signedIn.length).toBeGreaterThan(3);
+		for (const screen of signedIn) {
+			expect(screen.signedIn).toBe(true);
+			expect(screen.needsBackend).toBe(true);
+			expect(screen.network).toBe("normal");
+			expect(screen.deepLink).toBe("rasheed-svelte:///workspaces");
+		}
+		expect(new Set(signedIn.map((screen) => screen.id)).size).toBe(signedIn.length);
+	});
+
+	test("the signed-out phase has none of them and the phases keep the matrix order", () => {
+		const phases = splitPhases([...cases, ...signedIn]);
+		expect(phases.signedIn.map((screen) => screen.id)).toEqual(signedIn.map((screen) => screen.id));
+		expect(phases.signedOut.some((screen) => screen.signedIn)).toBe(false);
+		expect(phases.signedOut.length + phases.signedIn.length).toBe(cases.length + signedIn.length);
+		expect(splitPhases(cases).signedIn).toEqual([]);
+	});
+
+	test("a screen that shows the account's address masks it, and a sheet or modal names the screen it covers", () => {
+		const masksAddress = (screen: ScreenCase) => screen.masks.some((mask) => mask.account === "email");
+		for (const screen of [accountList, accountProfile]) expect(masksAddress(screen)).toBe(true);
+		for (const screen of signedIn.filter((entry) => entry.layout === "modal" || entry.layout === "sheet"))
+			expect(screen.hidden.length).toBeGreaterThan(0);
+	});
+
+	test("the routes the example has are accounted for: the home is listed with its reason, and none names an account's screen", () => {
+		expect(notCovered.map((entry) => entry.route)).toContain("/");
+		expect(notCovered.some((entry) => entry.route.includes("workspaces") || entry.route.includes("onboarding"))).toBe(false);
 	});
 });
 
@@ -100,13 +89,13 @@ describe("selecting the node that shows the address", () => {
 	test("with no account configured the selector matches nothing, so a mask built on it refuses instead of hiding nothing", () => {
 		useAccount(null);
 		expect(findNode(shown, { account: "email" }, "ltr")).toBeNull();
-		const workspaces = cases.find((screen) => screen.id === "app-workspaces") as ScreenCase;
+		const workspaces = accountList;
 		expect(() => maskRects(shown, workspaces, "ltr")).toThrow("matches no node");
 	});
 
 	test("its mask is the node's rectangle, and the error that names it never quotes the address", () => {
 		useAccount(address);
-		const workspaces = cases.find((screen) => screen.id === "app-workspaces") as ScreenCase;
+		const workspaces = accountList;
 		expect(maskRects(shown, workspaces, "ltr")).toEqual([{ x: 60, y: 300, width: 640, height: 60 }]);
 		useAccount(address);
 		const none = tree(node({ text: "Sign out", bounds: "[60,500][700,560]" }));
@@ -122,7 +111,7 @@ describe("selecting the node that shows the address", () => {
 
 	test("under a modal the covered screen's address is not masked: only a node the tree a service walks lists counts", () => {
 		useAccount(address);
-		const workspaces = cases.find((screen) => screen.id === "app-workspaces") as ScreenCase;
+		const workspaces = accountList;
 		const plain = tree(node({ text: address, bounds: "[60,300][700,360]" }), node({ text: "Close", bounds: "[0,100][100,200]" }));
 		const covered = tree(node({ text: "Close", bounds: "[0,100][100,200]" }));
 		expect(() => maskRects(plain, workspaces, "ltr", covered)).toThrow("matches no node");
@@ -164,7 +153,7 @@ describe("painting over what must not be stored", () => {
 });
 
 describe("a reference's masks stay off the screen's own chrome", () => {
-	const profileModal = cases.find((screen) => screen.id === "app-account-profile") as ScreenCase;
+	const profileModal = accountProfile;
 	// The account modal in English: its title, the Close button, the tab strip of the sections, and the address (the one thing the profile masks) further down.
 	const modal = tree(
 		node({ text: "Account settings", bounds: "[61,150][1019,230]" }),
@@ -280,12 +269,13 @@ describe("starting the phase", () => {
 		useAccount(null);
 		const unconfigured = await enterSignedIn(session, { ok: true, detail: "" });
 		expect(unconfigured.ok).toBe(false);
-		expect(unconfigured.ok ? "" : unconfigured.reason).toContain("RASHEED_QA_EMAIL");
+		expect(unconfigured.ok ? "" : unconfigured.reason).toContain("QA_ACCOUNT_EMAIL");
 		useAccount(undefined);
 	});
 });
 
 describe("the gates over the pinned screens", () => {
+	withSignedInFixtures();
 	const ids = ["app-workspaces", "app-account-preferences"];
 	const names = pinnedNames(ids, variants);
 
@@ -296,20 +286,19 @@ describe("the gates over the pinned screens", () => {
 		// A screen left out of the largest text is left out of the pinned names too.
 		expect(pinnedNames(["app-account-devices"], variants)).toHaveLength(variants.length / 2);
 		expect(pinnedNames(["app-account-devices"], layoutVariants)).toHaveLength(layoutVariants.length / 2);
-		expect(matrix(signedIn, variants).length).toBe(signedIn.length * variants.length - 2 * (variants.length / 2));
+		const left = signedIn.filter((screen) => !screen.largestText);
+		expect(left.map((screen) => screen.id)).toEqual(["app-account-devices"]);
+		expect(matrix(signedIn, variants).length).toBe(signedIn.length * variants.length - left.length * (variants.length / 2));
 	});
 
-	test("the pin is what a full emulator run captures: every signed-in screen in all eight variants, less the states documented as not covered at the largest text", () => {
+	test("the pin is what a full run captures: every signed-in case in the variants it is not left out of, and nothing for a project without any", () => {
 		const pinned = pinnedNames(gatesFile.signedIn?.android ?? [], variants);
-		const left = signedIn.filter((screen) => !screen.largestText);
-		expect(signedIn).toHaveLength(16);
-		expect(variants).toHaveLength(8);
-		// 16 screens x 8 variants, less the 2 screens that the 4 largest-text variants leave out
-		expect(pinned).toHaveLength(16 * 8 - left.length * (variants.length / 2));
-		expect(pinned).toHaveLength(120);
-		expect(new Set(pinned)).toEqual(new Set(matrix(signedIn, variants).map(({ screen, variant }) => referenceName(screen, variant))));
-		// and each of those states is told as not covered, by its route: no screen is left out silently
-		for (const screen of left) expect(notCoveredStates.map((state) => state.route)).toContain(`${screen.route} at the largest text size`);
+		expect(pinned).toEqual([]);
+		expect(pinned).toEqual(matrix(cases.filter((screen) => screen.signedIn && !signedIn.includes(screen)), variants).map(({ screen, variant }) => referenceName(screen, variant)));
+		// With the fixtures pinned, the pins are all their names in all eight variants, less the states left out at the largest text size.
+		const fixtureNames = pinnedNames(signedIn.map((screen) => screen.id), variants);
+		expect(fixtureNames).toHaveLength(signedIn.length * variants.length - 1 * (variants.length / 2));
+		expect(new Set(fixtureNames)).toEqual(new Set(matrix(signedIn, variants).map(({ screen, variant }) => referenceName(screen, variant))));
 	});
 
 	const caseOf = (name: string, verdict: "pass" | "skipped") => ({ name, verdict, differingPixels: 0, maskedPixels: 100 });

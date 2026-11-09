@@ -53,14 +53,14 @@ esac
 	const run = (phase: string, env: Record<string, string> = {}) =>
 		spawnSync("bash", [join(platform, "qa", "ci", "lane.sh"), phase], {
 			cwd: platform,
-			env: { ...process.env, QA_CLI: `bash ${cli}`, QA_EMULATOR_SH: emulator, GITHUB_STEP_SUMMARY: summary, GITHUB_SHA: "0123456789abcdef", RASHEED_QA_EMAIL: "", ...env },
+			env: { ...process.env, QA_CLI: `bash ${cli}`, QA_EMULATOR_SH: emulator, GITHUB_STEP_SUMMARY: summary, GITHUB_SHA: "0123456789abcdef", ...env },
 			encoding: "utf8",
 		});
 	/** The lane as a child that can be signalled: resolves with its exit status once it has exited. */
 	const start = (phase: string, env: Record<string, string> = {}) => {
 		const child = spawn("bash", [join(platform, "qa", "ci", "lane.sh"), phase], {
 			cwd: platform,
-			env: { ...process.env, QA_CLI: `bash ${cli}`, QA_EMULATOR_SH: emulator, GITHUB_STEP_SUMMARY: summary, GITHUB_SHA: "0123456789abcdef", RASHEED_QA_EMAIL: "", ...env },
+			env: { ...process.env, QA_CLI: `bash ${cli}`, QA_EMULATOR_SH: emulator, GITHUB_STEP_SUMMARY: summary, GITHUB_SHA: "0123456789abcdef", ...env },
 			stdio: "ignore",
 		});
 		const done = new Promise<number | null>((resolve) => child.on("close", (status) => resolve(status)));
@@ -90,7 +90,7 @@ describe("lane.sh emulator on a push", () => {
 			"gestures --device localhost:5555 --no-install --input both",
 			"product --device localhost:5555",
 			"report",
-			"gates --platform android --runs lab,parity,a11y,gestures,product --except lab.runs,parity.signedIn.missing,a11y.signedIn.missing --markdown qa/out/gates.md",
+			"gates --platform android --runs lab,parity,a11y,gestures,product --except lab.runs --markdown qa/out/gates.md",
 		]);
 		expect(machine.stages().every((row) => row[1] === "pass")).toBe(true);
 		expect(machine.stages().map((row) => row[0])).toEqual([
@@ -153,39 +153,31 @@ describe("lane.sh emulator on a dispatch", () => {
 			"smoke --device localhost:5555",
 			"product --device localhost:5555",
 			"report",
-			"gates --platform android --runs lab,boot,parity,a11y,resilience,gestures,product --except parity.signedIn.missing,a11y.signedIn.missing --markdown qa/out/gates.md",
+			"gates --platform android --runs lab,boot,parity,a11y,resilience,gestures,product --markdown qa/out/gates.md",
 			"gates --smoke --platform android --runs smoke --markdown qa/out/gates-smoke.md",
 		]);
 	});
-	test("with the QA account the signed-in gates are judged on a dispatch, and without it the lane says they are not", () => {
-		const without = lane();
-		const warned = without.run("emulator", { QA_MODE: "full", RASHEED_QA_EMAIL: "" });
-		expect(warned.stdout).toContain("::warning title=no QA account::");
-		expect(harness(without.lines()).at(-1)).toContain("--except parity.signedIn.missing,a11y.signedIn.missing");
-		const withAccount = lane();
-		const judged = withAccount.run("emulator", { QA_MODE: "full", RASHEED_QA_EMAIL: "qa-account-stand-in" });
-		expect(judged.stdout).not.toContain("no QA account");
-		expect(judged.stdout).not.toContain("qa-account-stand-in");
-		const ran = harness(withAccount.lines());
-		expect(ran.at(-2)).toBe("gates --platform android --runs lab,boot,parity,a11y,resilience,gestures,product --markdown qa/out/gates.md");
-		// The run files and the lane logs are uploaded as an artifact: with the account in hand the lane reads them for it after the gates and deletes what holds it (no git).
-		expect(ran.at(-1)).toBe("leakcheck --artifacts --purge");
-		expect(harness(without.lines()).some((line) => line.startsWith("leakcheck"))).toBe(false);
+	test("the lane needs no QA account: it judges every gate on a dispatch, leaves out only lab.runs on a push, and runs no leakcheck", () => {
+		const full = lane();
+		const dispatched = full.run("emulator", { QA_MODE: "full" });
+		expect(dispatched.stdout).not.toContain("QA account");
+		const ran = harness(full.lines());
+		expect(ran.at(-1)).toBe("gates --platform android --runs lab,boot,parity,a11y,resilience,gestures,product --markdown qa/out/gates.md");
+		const push = lane();
+		push.run("emulator");
+		expect(harness(push.lines()).at(-1)).toContain("--except lab.runs --markdown");
+		for (const machine of [full, push]) expect(harness(machine.lines()).some((line) => line.startsWith("leakcheck"))).toBe(false);
 	});
-	test("a lane that is told to stop purges the files the workflow uploads before it leaves, with the account, and only with it", async () => {
-		for (const account of ["qa-account-stand-in", ""]) {
-			const machine = lane();
-			// The lab stage takes two seconds; the signal arrives during it, and bash runs the trap when the stage is over.
-			const { child, done } = machine.start("emulator", { HANG_ON: "lab", HANG_SECONDS: "2", RASHEED_QA_EMAIL: account });
-			// Not before the stage has started: the lane sets its trap before anything runs, but a signal that arrives earlier kills it outright.
-			for (let waited = 0; !machine.lines().some((line) => line.startsWith("cli lab")) && waited < 10_000; waited += 50) await new Promise((resolve) => setTimeout(resolve, 50));
-			child.kill("SIGTERM");
-			expect(await done).toBe(143);
-			const ran = harness(machine.lines());
-			expect(ran.map((line) => line.split(" ")[0])).toEqual(account === "" ? ["lab"] : ["lab", "leakcheck"]);
-			if (account !== "") expect(ran.at(-1)).toBe("leakcheck --artifacts --purge");
-			expect(machine.stages().at(-1)?.[1]).toBe("cancelled");
-		}
+	test("a lane that is told to stop says so in its stage table before it leaves, and runs nothing more", async () => {
+		const machine = lane();
+		// The lab stage takes two seconds; the signal arrives during it, and bash runs the trap when the stage is over.
+		const { child, done } = machine.start("emulator", { HANG_ON: "lab", HANG_SECONDS: "2" });
+		// Not before the stage has started: the lane sets its trap before anything runs, but a signal that arrives earlier kills it outright.
+		for (let waited = 0; !machine.lines().some((line) => line.startsWith("cli lab")) && waited < 10_000; waited += 50) await new Promise((resolve) => setTimeout(resolve, 50));
+		child.kill("SIGTERM");
+		expect(await done).toBe(143);
+		expect(harness(machine.lines()).map((line) => line.split(" ")[0])).toEqual(["lab"]);
+		expect(machine.stages().at(-1)?.[1]).toBe("cancelled");
 	}, 20_000);
 	test("without QA_SMOKE the smoke app is neither run nor judged", () => {
 		const machine = lane();
@@ -201,7 +193,7 @@ describe("lane.sh emulator on a dispatch", () => {
 			"updates --device localhost:5555 --channel qa --warm 30",
 			"product --device localhost:5555",
 			"report",
-			"gates --platform android --runs lab,boot,parity,a11y,resilience,gestures,updates,product --except parity.signedIn.missing,a11y.signedIn.missing --markdown qa/out/gates.md",
+			"gates --platform android --runs lab,boot,parity,a11y,resilience,gestures,updates,product --markdown qa/out/gates.md",
 			"gates --smoke --platform android --runs smoke --markdown qa/out/gates-smoke.md",
 		]);
 		expect(machine.stages().map((row) => row[0])).toContain("guard-updates");
@@ -238,7 +230,7 @@ describe("lane.sh with QA_ONLY (one kind of stage, from a terminal)", () => {
 		expect(harness(machine.lines()).slice(1)).toEqual([
 			"product --device localhost:5555",
 			"report",
-			"gates --platform android --runs product --except lab.runs,parity.signedIn.missing,a11y.signedIn.missing --markdown qa/out/gates.md",
+			"gates --platform android --runs product --except lab.runs --markdown qa/out/gates.md",
 		]);
 		expect(machine.lines()).toContain("emulator restart fresh instance for the lane");
 	});
@@ -270,7 +262,7 @@ describe("lane.sh build, reset and summary", () => {
 		expect(harness(push.lines())).toEqual(["build --abi x86_64", "build --abi x86_64 --variant production"]);
 		expect(push.stages().map((row) => row[0])).toEqual(["build-qa", "build-product"]);
 		const full = lane();
-		full.run("build", { QA_MODE: "full", QA_SMOKE: "1", QA_SAMSUNGPAY_JAR: "/nonexistent" });
+		full.run("build", { QA_MODE: "full", QA_SMOKE: "1" });
 		expect(harness(full.lines())).toEqual(["build --abi x86_64", "build --abi x86_64 --variant production", "build --abi x86_64 --variant smoke"]);
 		for (const call of [...harness(push.lines()), ...harness(full.lines())]) expect(call).not.toContain("arm64");
 	});

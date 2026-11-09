@@ -8,13 +8,13 @@ afterEach(() => useAccount(undefined));
 
 describe("reading the account from a dotenv file", () => {
 	test("only the key asked for is read, quotes and trailing comments are not part of the value", () => {
-		const file = ["# secrets", "OTHER=nope", `RASHEED_QA_EMAIL=${address}`, 'QUOTED="x"'].join("\n");
-		expect(envFileValue(file, "RASHEED_QA_EMAIL")).toBe(address);
-		expect(envFileValue(`export RASHEED_QA_EMAIL='${address}'  # the QA account`, "RASHEED_QA_EMAIL")).toBe(address);
-		expect(envFileValue(`RASHEED_QA_EMAIL=${address}   # a comment`, "RASHEED_QA_EMAIL")).toBe(address);
-		expect(envFileValue("RASHEED_QA_EMAIL=\n", "RASHEED_QA_EMAIL")).toBeNull();
-		expect(envFileValue("RASHEED_QA_EMAIL_OLD=x", "RASHEED_QA_EMAIL")).toBeNull();
-		expect(envFileValue("", "RASHEED_QA_EMAIL")).toBeNull();
+		const file = ["# secrets", "OTHER=nope", `QA_ACCOUNT_EMAIL=${address}`, 'QUOTED="x"'].join("\n");
+		expect(envFileValue(file, "QA_ACCOUNT_EMAIL")).toBe(address);
+		expect(envFileValue(`export QA_ACCOUNT_EMAIL='${address}'  # the QA account`, "QA_ACCOUNT_EMAIL")).toBe(address);
+		expect(envFileValue(`QA_ACCOUNT_EMAIL=${address}   # a comment`, "QA_ACCOUNT_EMAIL")).toBe(address);
+		expect(envFileValue("QA_ACCOUNT_EMAIL=\n", "QA_ACCOUNT_EMAIL")).toBeNull();
+		expect(envFileValue("QA_ACCOUNT_EMAIL_OLD=x", "QA_ACCOUNT_EMAIL")).toBeNull();
+		expect(envFileValue("", "QA_ACCOUNT_EMAIL")).toBeNull();
 	});
 });
 
@@ -54,7 +54,7 @@ describe("keeping the address out of what is written", () => {
 		useAccount(null);
 		expect(containsAccount(address)).toBe(false);
 		expect(redact(address)).toBe(address);
-		expect(() => requireAccount()).toThrow("RASHEED_QA_EMAIL");
+		expect(() => requireAccount()).toThrow("QA_ACCOUNT_EMAIL");
 	});
 });
 

@@ -61,9 +61,9 @@ describe("the log lines", () => {
 		expect(parseSmokeResults(text)).toEqual([failed, skipped]);
 	});
 	test("a skip on the other platform has no path and no detail beyond the reason", () => {
-		const line = formatSmokeLine(result("samsung-pay", "skip", "Android only: the library has no iOS code", "none", 0));
-		expect(line).toBe("[Svelte smoke] samsung-pay skip path=none ms=0 Android only: the library has no iOS code");
-		expect(parseSmokeBody(line.slice("[Svelte smoke] ".length))).toEqual(result("samsung-pay", "skip", "Android only: the library has no iOS code", "none", 0));
+		const line = formatSmokeLine(result("hms", "skip", "Android only: the library has no iOS code", "none", 0));
+		expect(line).toBe("[Svelte smoke] hms skip path=none ms=0 Android only: the library has no iOS code");
+		expect(parseSmokeBody(line.slice("[Svelte smoke] ".length))).toEqual(result("hms", "skip", "Android only: the library has no iOS code", "none", 0));
 	});
 	test("lines of other tags and other prefixes are not modules; the completion line is not one either", () => {
 		const text = [
@@ -214,22 +214,22 @@ describe("metrics and gates", () => {
 		}
 		// Only libraries that have no code, or no service to call, on the platform may skip.
 		expect(gatesFile.smoke.skips.android).toEqual(["hms", "web-browser"]);
-		expect(gatesFile.smoke.skips.ios).toEqual(["web-browser", "hms", "samsung-pay"]);
+		expect(gatesFile.smoke.skips.ios).toEqual(["web-browser", "hms"]);
 	});
-	const clean = { "smoke.complete": 1, "smoke.fatals": 0, "smoke.failed": 0, "smoke.missing": 0, "smoke.unexpectedSkips": 0, "smoke.ok": 34 };
+	const clean = { "smoke.complete": 1, "smoke.fatals": 0, "smoke.failed": 0, "smoke.missing": 0, "smoke.unexpectedSkips": 0, "smoke.ok": 33 };
 	const verdicts = (serial: string, metrics: Record<string, number | null>) =>
 		Object.fromEntries(evaluate(splitGates(gatesFile.gates).smoke, { [serial]: { platform: "android", role: gatesFile.devices[serial]?.role ?? null, runs: gatesFile.devices[serial]?.runs ?? null, metrics } }, "android").map((row) => [row.id, row.verdict]));
 	test("the Samsung (phone) and the emulator (lab) pass a clean run, and each deviation fails its own gate and no other", () => {
 		const gates = ["smoke.complete", "smoke.fatals", "smoke.failed", "smoke.missing", "smoke.unexpectedSkips", "smoke.ok"];
 		for (const serial of ["R58Y90KNGRP", "localhost:5555"]) {
 			expect(Object.values(verdicts(serial, clean))).toEqual(gates.map(() => "pass"));
-			for (const [metric, value, gate] of [["smoke.complete", 0, "smoke.complete"], ["smoke.fatals", 1, "smoke.fatals"], ["smoke.failed", 1, "smoke.failed"], ["smoke.missing", 2, "smoke.missing"], ["smoke.unexpectedSkips", 1, "smoke.unexpectedSkips"], ["smoke.ok", 33, "smoke.ok"]] as const) {
+			for (const [metric, value, gate] of [["smoke.complete", 0, "smoke.complete"], ["smoke.fatals", 1, "smoke.fatals"], ["smoke.failed", 1, "smoke.failed"], ["smoke.missing", 2, "smoke.missing"], ["smoke.unexpectedSkips", 1, "smoke.unexpectedSkips"], ["smoke.ok", 32, "smoke.ok"]] as const) {
 				const deviated = verdicts(serial, { ...clean, [metric]: value });
 				expect([serial, metric, gates.filter((id) => deviated[id] === "fail")]).toEqual([serial, metric, [gate]]);
 			}
 		}
-		// 35 answers (web-browser answered too) is still a pass.
-		expect(verdicts("R58Y90KNGRP", { ...clean, "smoke.ok": 35 })["smoke.ok"]).toBe("pass");
+		// 34 answers (web-browser answered too) is still a pass.
+		expect(verdicts("R58Y90KNGRP", { ...clean, "smoke.ok": 34 })["smoke.ok"]).toBe("pass");
 	});
 	test("a device that never ran the smoke test fails the gates (not measured) rather than skipping them", () => {
 		expect(Object.values(verdicts("localhost:5555", {}))).toEqual(["not measured", "not measured", "not measured", "not measured", "not measured", "not measured"]);
@@ -243,7 +243,7 @@ describe("metrics and gates", () => {
 		expect(incomplete.lines.join("\n")).toContain("smoke.complete fail");
 		const crashed = await judgeSmoke(smokeFile(answered, { complete: false, crashes: ["FATAL EXCEPTION"] }), gatesFile);
 		expect(crashed.lines.join("\n")).toContain("smoke.fatals fail");
-		const wrongSkip = await judgeSmoke(smokeFile(modules.map((module) => result(module, module === "samsung-pay" || module === "hms" ? "skip" : "ok"))), gatesFile);
+		const wrongSkip = await judgeSmoke(smokeFile(modules.map((module) => result(module, module === "mmkv" || module === "hms" ? "skip" : "ok"))), gatesFile);
 		expect(wrongSkip.lines.join("\n")).toContain("smoke.unexpectedSkips fail");
 		// A run with no results at all (the lab never reached the scenario) fails everything that counts them.
 		const nothing = await judgeSmoke(smokeFile([]), gatesFile);
@@ -285,7 +285,7 @@ const packageJson = JSON.parse(readFileSync(join(platformDir, "package.json"), "
 
 describe("the pinned list, the module table and the checks agree", () => {
 	test("gates.json pins exactly the modules the page checks, for both platforms, in the order they run", () => {
-		expect(checked).toHaveLength(36);
+		expect(checked).toHaveLength(35);
 		// The runner lists the ids itself, so the page can show them without carrying the checks (Metro stubs smoke-checks.ts outside the smoke app).
 		expect(listed).toEqual(checked);
 		expect(gatesFile.smoke.modules.android).toEqual(checked);
@@ -312,11 +312,10 @@ describe("the pinned list, the module table and the checks agree", () => {
 	test("the packages the product already links are not in the exclusion list; a module on one platform says so", () => {
 		for (const shared of ["expo-secure-store", "expo-localization", "expo-constants", "expo-asset", "expo-system-ui", "expo-splash-screen"]) expect(smokeOnlyPackages).not.toContain(shared);
 		expect(smokeOnlyPackages).not.toContain("@statsig/react-native-bindings");
-		for (const name of ["react-native-mmkv", "@sentry/react-native", "@react-native-firebase/app", "expo-haptics", "expo-samsung-pay", "@hmscore/react-native-hms-location"]) expect(smokeOnlyPackages).toContain(name);
+		for (const name of ["react-native-mmkv", "@sentry/react-native", "@react-native-firebase/app", "expo-haptics", "@hmscore/react-native-hms-location"]) expect(smokeOnlyPackages).toContain(name);
 		expect(table.modules.find((entry) => entry.id === "hms")?.platforms).toEqual(["android"]);
-		expect(table.modules.find((entry) => entry.id === "samsung-pay")?.platforms).toEqual(["android"]);
 		// The libraries with code for one platform say so in their check, which then skips on the other.
-		expect(checks.filter((check) => check.only !== undefined).map((check) => [check.module, check.only])).toEqual([["web-browser", "android"], ["hms", "android"], ["samsung-pay", "android"]]);
+		expect(checks.filter((check) => check.only !== undefined).map((check) => [check.module, check.only])).toEqual([["web-browser", "android"], ["hms", "android"]]);
 		for (const entry of table.modules.filter((module) => module.platforms.length === 1)) expect([entry.id, checks.find((check) => check.module === entry.id)?.only]).toEqual([entry.id, entry.platforms[0]]);
 	});
 });
@@ -403,7 +402,7 @@ describe("three apps: the product and the QA app link the product's native modul
 		expect(config("smoke").ios.bundleIdentifier).toBe(packageOf.smoke);
 		expect([config("production").name, config("qa").name, config("smoke").name]).toEqual(["Rasheed", "Rasheed Svelte QA", "Svelte smoke"]);
 		expect([config("production").scheme, config("qa").scheme, config("smoke").scheme]).toEqual(["rasheed", schemeOf.qa, schemeOf.smoke]);
-		const smokePlugins = ["@react-native-firebase/app", "@react-native-firebase/messaging", "react-native-quick-crypto", "expo-samsung-pay", "@intercom/intercom-react-native", "expo-build-properties", "expo-notifications", "expo-location", "@config-plugins/react-native-adjust"];
+		const smokePlugins = ["@react-native-firebase/app", "@react-native-firebase/messaging", "react-native-quick-crypto", "@intercom/intercom-react-native", "expo-build-properties", "expo-notifications", "expo-location", "@config-plugins/react-native-adjust"];
 		for (const variant of ["production", "qa"] as const) {
 			const plugins = config(variant).plugins.map(pluginName);
 			expect(smokePlugins.filter((name) => plugins.includes(name))).toEqual([]);

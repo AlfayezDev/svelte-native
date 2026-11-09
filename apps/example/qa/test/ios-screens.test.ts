@@ -6,12 +6,12 @@ import { launchArguments, parseCaptureIndex, tryParseCaptureIndex } from "../lib
 import { iosBelowTheFold, iosCases, iosControl, iosLayoutVariants, iosMatrix, iosNotCovered, iosTitle, iosVariants } from "../lib/iphone/screens.ts";
 import { cases, referenceName } from "../lib/screens.ts";
 import { platformOf } from "../lib/flags.ts";
+import { login } from "./fixture-cases.ts";
 
 describe("the iOS matrix", () => {
 	test("it is the Android matrix without the screens an iOS app cannot be put in and without text sizes", () => {
-		expect(iosCases.map((screen) => screen.id)).not.toContain("startup-loading");
-		expect(iosCases.map((screen) => screen.id)).not.toContain("startup-error");
-		expect(iosCases).toHaveLength(cases.filter((screen) => !screen.signedIn && screen.androidOnly !== true).length - 2);
+		expect(iosCases).toHaveLength(cases.filter((screen) => !screen.signedIn && screen.androidOnly !== true && screen.network === "normal").length);
+		expect(iosCases.some((screen) => screen.network !== "normal")).toBe(false);
 		expect(cases.filter((screen) => screen.androidOnly === true).map((screen) => screen.id)).toEqual(["lab-a11y-states", "lab-a11y-actions"]);
 		expect(iosCases.some((screen) => screen.androidOnly === true)).toBe(false);
 		expect(iosCases.some((screen) => screen.signedIn)).toBe(false);
@@ -40,8 +40,9 @@ describe("the iOS matrix", () => {
 
 	test("what is left out is listed with its reason", () => {
 		const text = iosNotCovered.map((entry) => `${entry.route} ${entry.reason}`).join("\n");
-		expect(text).toContain("platform configuration");
+		expect(text).toContain("holds the app's network back");
 		expect(text).toContain("Dynamic Type");
+		expect(text).toContain("the example's home screen");
 	});
 
 	test("the back button's label is iOS's, the title is the heading without its subtitle", () => {
@@ -50,8 +51,6 @@ describe("the iOS matrix", () => {
 		const header = cases.find((entry) => entry.id === "screens-header");
 		if (!header) throw new Error("no screens-header case");
 		expect(iosTitle(header, "ltr")).toBe("Screen 1");
-		const login = cases.find((entry) => entry.id === "login");
-		if (!login) throw new Error("no login case");
 		expect(iosTitle(login, "rtl")).toBe("ما بريدك الإلكتروني؟");
 	});
 });

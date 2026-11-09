@@ -94,7 +94,7 @@ esac
 		const file = JSON.parse(readFileSync(`${done.written[0]}.json`, "utf8")) as SmokeFile;
 		expect(file.app.package).toBe("io.rasheed.svelteqa.smoke");
 		expect(file.complete).toBe(true);
-		expect(file.results).toHaveLength(36);
+		expect(file.results).toHaveLength(35);
 	}, 60_000);
 
 	test("exits 1 and says which gate failed when a module fails, a pinned one never reports, or the app crashed", () => {
@@ -112,9 +112,9 @@ esac
 	}, 90_000);
 
 	test("exits 1 for a skip the platform does not list, and for a run that logged no completion line", () => {
-		const skipped = run(logcatOf({ "samsung-pay": "skip" }));
+		const skipped = run(logcatOf({ mmkv: "skip" }));
 		expect(skipped.status).toBe(1);
-		expect(skipped.stdout).toContain("UNEXPECTED SKIP samsung-pay");
+		expect(skipped.stdout).toContain("UNEXPECTED SKIP mmkv");
 		expect(skipped.stdout).toContain("gate smoke.unexpectedSkips fail");
 		const unfinished = run(logcatOf().split("\n").filter((entry) => !entry.includes("[Svelte smoke] complete")).join("\n"));
 		expect(unfinished.status).toBe(1);

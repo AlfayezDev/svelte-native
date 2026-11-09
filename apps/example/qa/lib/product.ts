@@ -1,17 +1,17 @@
 import { productApplicationId } from "../../src/lib/native/app-ids.ts";
 import { findFaults, parseLines } from "../parse/logcat.ts";
 import { copy } from "./copy.ts";
-import type { Localized } from "./screens.ts";
 import type { AppInfo, DeviceInfo, Metrics, Source } from "./types.ts";
 import { findByLabel, type UiTree } from "./uia.ts";
 
 /**
- * The product boot check (`native-qa product`): the product (`io.rasheed.app`, built with `APP_VARIANT=production`, no development lab) is
- * installed on the OVH emulator with its data cleared and started cold. It passes when, within `windowMs` of the start, it reached its first
- * screen, the signed-out login screen, and logcat shows no JavaScript fatal and no native crash of the app.
+ * The product boot check (`native-qa product`): the example's production variant (`io.rasheed.app`, built with `APP_VARIANT=production`, no
+ * development lab) is installed on the OVH emulator with its data cleared and started cold. It passes when, within `windowMs` of the start, it
+ * reached its first screen, the example's home screen, and logcat shows no JavaScript fatal and no native crash of the app.
  *
- * It exists because nothing else starts the product: the QA app has the lab, whose directories the product's Metro replaces with a stub that
- * throws on any read, so a use of the lab that is not behind the flag passes every gate of the QA app and crashes the product's root layout.
+ * It exists because nothing else starts the production variant: the QA app has the lab, whose directories the production variant's Metro
+ * replaces with a stub that throws on any read, so a use of the lab that is not behind the flag passes every gate of the QA app and crashes the
+ * root layout of the production variant.
  */
 export const productPackage = productApplicationId;
 export const productWindowMs = 15_000;
@@ -26,7 +26,7 @@ export type ProductFile = {
 	app: AppInfo;
 	/** How long after the start the app had to reach its first screen, and was watched for faults. */
 	windowMs: number;
-	/** The login screen was seen in the accessibility tree of the app's window, and when (ms after the start was issued). */
+	/** The home screen was seen in the accessibility tree of the app's window, and when (ms after the start was issued). */
 	firstScreen: { reached: boolean; atMs: number | null };
 	/** The app's process was still there when the window ended. */
 	alive: boolean;
@@ -40,15 +40,15 @@ export type ProductFile = {
 	logFile: string;
 };
 
-/** The words of the login screen's one button in both languages of the app: the first screen of a signed-out product. */
-export function loginLabels(): string[] {
-	const label: Localized = copy("auth.continueWithEmail");
-	return typeof label === "string" ? [label] : [label.en, label.ar];
+/** The texts of the example's home screen in both languages of the app: its title and its one line of description (`src/routes/+mobile.svelte`). */
+export function homeLabels(): string[] {
+	const texts = [copy("home.title"), copy("home.description")];
+	return [...new Set(texts.flatMap((text) => (typeof text === "string" ? [text] : [text.en, text.ar])))];
 }
 
-/** Whether the tree is the product's login screen: a node of the product's own window that says what the login button says. */
-export function isLoginScreen(tree: UiTree, packageName: string = productPackage): boolean {
-	return loginLabels().some((label) => findByLabel(tree, label).some((node) => node.packageName === packageName));
+/** Whether the tree is the home screen: a node of the app's own window that says what the home says. */
+export function isHomeScreen(tree: UiTree, packageName: string = productPackage): boolean {
+	return homeLabels().some((label) => findByLabel(tree, label).some((node) => node.packageName === packageName));
 }
 
 /**
@@ -84,13 +84,13 @@ export function productMetrics(file: ProductFile): Metrics {
 /** Why the start failed the check, one line each; empty: it passed. The verdict `gates` gives for the same run is `product.boot.*`. */
 export function productProblems(file: ProductFile): string[] {
 	const problems = file.fatals.map((fatal) => `fatal: ${fatal.slice(0, 240)}`);
-	if (!file.firstScreen.reached) problems.push(`the login screen was not reached within ${file.windowMs / 1000} s`);
+	if (!file.firstScreen.reached) problems.push(`the home screen was not reached within ${file.windowMs / 1000} s`);
 	return problems;
 }
 
 export function describeProduct(file: ProductFile): string[] {
 	const first = file.firstScreen.reached ? `reached after ${file.firstScreen.atMs} ms` : `not reached within ${file.windowMs / 1000} s`;
 	return [
-		`product ${file.app.package} ${file.app.versionName}: login screen ${first}${file.launchMs === null ? "" : `, activity displayed after ${file.launchMs} ms`}, ${file.fatals.length} fatal(s), ${file.jsErrorCount} JavaScript error line(s) (not judged), process ${file.alive ? "alive" : "gone"} at the end`,
+		`product ${file.app.package} ${file.app.versionName}: home screen ${first}${file.launchMs === null ? "" : `, activity displayed after ${file.launchMs} ms`}, ${file.fatals.length} fatal(s), ${file.jsErrorCount} JavaScript error line(s) (not judged), process ${file.alive ? "alive" : "gone"} at the end`,
 	];
 }

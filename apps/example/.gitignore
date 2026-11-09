@@ -1,6 +1,6 @@
 node_modules
 
-# Generated native projects (expo prebuild) and the Samsung Pay SDK; the root .gitignore has the rules for git, this file is what ESLint reads
+# Generated native projects (expo prebuild) and libs/ (proprietary SDK jars are never committed); the root .gitignore has the rules for git, this file is what ESLint reads
 /android
 /android-*
 /ios

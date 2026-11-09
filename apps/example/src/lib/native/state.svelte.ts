@@ -3,24 +3,17 @@ import { setStatusBarStyle } from "expo-status-bar";
 import * as SecureStore from "expo-secure-store";
 import { getLocales } from "expo-localization";
 import { applicationId } from "expo-application";
-import { ar, en, arCounts, enCounts, createTranslator, type Locale, type Translate } from "@rasheed/client/messages";
+import { ar, en, createTranslator, type Locale, type Translate } from "./messages.ts";
 import { lab as bundleLab, variant as bundleVariant } from "@rasheed/svelte-native/routes";
-import { qaApplicationId, smokeApplicationId } from "./app-ids.ts";
+import { smokeApplicationId } from "./app-ids.ts";
 import { labDecision } from "./lab-flag.ts";
 
-export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "https://dev.qarnos.com";
 // What the bundle carries of the development lab is its route table's `lab` (the variant Metro bundled); the application id only adds to it (lab-flag.ts).
 const labDecided = labDecision({ bundleLab: bundleLab === true, applicationId, dev: __DEV__ });
 export const nativeLabEnabled = labDecided.enabled;
 if (labDecided.refused) console.error(`[Svelte lab] this ${bundleVariant} bundle carries the development lab, which the ${applicationId} app does not run (publish with APP_VARIANT=production): the lab is off`);
 /** Only the smoke app links the libraries the smoke test calls: in the QA app they are not there, and every check would fail. */
 export const nativeSmokeEnabled = nativeLabEnabled && applicationId === smokeApplicationId;
-/**
- * Whether the signed-in account's language sets the interface language (session.svelte.ts). It does everywhere but the QA app: the QA harness
- * runs the same signed-in screens in English and in Arabic under one account (`native-qa parity` and `a11y`, the signed-in phase), so there the
- * language is the device's, which the harness sets per app, and the account's is neither applied nor stored.
- */
-export const languageFollowsAccount = applicationId !== qaApplicationId;
 const storedLanguage = SecureStore.getItem("interface_language");
 let locale = $state<Locale>(storedLanguage === "ar" || storedLanguage === "en" ? storedLanguage : getLocales()[0]?.languageCode === "ar" ? "ar" : "en");
 let appearance = $state<"system" | "light" | "dark">("system");
@@ -55,9 +48,3 @@ export const theme = {
   get onAccent() { return dark ? "#191b1e" : "#ffffff"; },
   danger: "#d94343",
 };
-export function formatCount(key: keyof typeof enCounts, count: number): string {
-  const category = new Intl.PluralRules(locale).select(count);
-  const message = locale === "ar" ? arCounts[key][category] : enCounts[key][category === "one" ? "one" : "other"];
-  return message.replaceAll("{{count}}", new Intl.NumberFormat(locale).format(count));
-}
-export const isolateText = (value: string) => `${String.fromCharCode(0x2068)}${value}${String.fromCharCode(0x2069)}`;

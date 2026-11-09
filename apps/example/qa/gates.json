@@ -116,7 +116,6 @@
         "firebase",
         "sentry",
         "hms",
-        "samsung-pay",
         "intercom",
         "statsig",
         "mixpanel",
@@ -154,7 +153,6 @@
         "firebase",
         "sentry",
         "hms",
-        "samsung-pay",
         "intercom",
         "statsig",
         "mixpanel",
@@ -170,8 +168,7 @@
       ],
       "ios": [
         "web-browser",
-        "hms",
-        "samsung-pay"
+        "hms"
       ]
     }
   },
@@ -206,24 +203,7 @@
     ]
   },
   "signedIn": {
-    "android": [
-      "app-workspaces",
-      "app-workspace-create",
-      "app-workspace-home",
-      "app-workspace-settings",
-      "app-settings-profile",
-      "app-settings-preferences",
-      "app-settings-devices",
-      "app-settings-workspaces",
-      "app-settings-danger",
-      "app-account-profile",
-      "app-account-preferences",
-      "app-account-devices",
-      "app-account-workspaces",
-      "app-account-danger",
-      "app-account-change-email",
-      "app-account-delete-workspace"
-    ]
+    "android": []
   },
   "exceptions": [
     {
@@ -424,61 +404,6 @@
       "decision": "D11",
       "reason": "repeated short late intervals on the Galaxy A16's 90 Hz display (2 to 4 late intervals in more than one run of ten, no frame over 19 ms: late at 90 Hz, on time at 60 Hz); covered up to 4 late intervals and a 20 ms frame in the judged runs, no further",
       "evidence": "apps/example/qa/runs/lab-R58Y90KNGRP-20261102T182601Z.json (final build fb53ab1cf, 2 Nov, 10 runs): the churn-static and list-300-raw frame records; GOAL.md D11"
-    }
-  ],
-  "carried": [
-    {
-      "device": "E74A5608-BF8E-5806-8699-1605F82ADED9",
-      "runs": [
-        "lab",
-        "boot",
-        "parity",
-        "accessibility",
-        "resilience",
-        "gestures"
-      ],
-      "build": "main.jsbundle fbe7305271ec, CDHash 3aade46d7c70",
-      "commit": "1919e8f03",
-      "decision": "D14",
-      "reason": "from 1919e8f03 to the final source the iOS app's code differs only in the foreign lab page (src/lib/native/dev/foreign-libraries-checks.ts, foreign-pixels.ts, foreign-race.ts), which only the foreign run loads; every other change is the Android engine, the harness, the package tests or docs"
-    },
-    {
-      "device": "E74A5608-BF8E-5806-8699-1605F82ADED9",
-      "runs": [
-        "foreign"
-      ],
-      "build": "main.jsbundle 47dbd5e03653, CDHash 8f0ccfdde0f9",
-      "commit": "c8faf5e97",
-      "decision": "D14",
-      "reason": "from c8faf5e97 to the final source the iOS app's code differs only in the foreign lab's race helper (src/lib/native/dev/foreign-race.ts: a native module call's race holds in the same task) and the video race's `posted` flag, which only the foreign run loads; on iOS runRace returns before it sends anything (each race check is Android-only there), so the iPhone runs the same checks"
-    },
-    {
-      "device": "R58Y90KNGRP",
-      "runs": [
-        "lab",
-        "boot",
-        "gestures"
-      ],
-      "build": "sha256 cd1974157930",
-      "commit": "a7eed2fec",
-      "decision": "D14",
-      "reason": "from a7eed2fec to the final source the app differs only in the foreign lab's race helper (src/lib/native/dev/foreign-race.ts: a native module call's race holds in the same task) and the video race's `posted` flag, which only the foreign run loads, and the foreign run measured the final build"
-    },
-    {
-      "device": "localhost:5555",
-      "runs": [
-        "lab",
-        "boot",
-        "parity",
-        "accessibility",
-        "resilience",
-        "gestures",
-        "soak"
-      ],
-      "build": "sha256 3bbd472f9d1a",
-      "commit": "a7eed2fec",
-      "decision": "D14",
-      "reason": "from a7eed2fec to the final source the app differs only in the foreign lab's race helper (src/lib/native/dev/foreign-race.ts: a native module call's race holds in the same task) and the video race's `posted` flag, which only the foreign run loads, and the foreign run measured the final build"
     }
   ],
   "gates": [
@@ -1094,7 +1019,7 @@
           "max": 0
         }
       },
-      "informational": "D12: the signed-in screens are the Rasheed app's account screens, not the library; they are shown and never block"
+      "informational": "D12, D15: the signed-in screens are a product's account screens, not the library's; this repository's example has none (the list is empty), so the gate has nothing to count, and it is shown and never blocks"
     },
     {
       "id": "parity.casesRetried",
@@ -1227,7 +1152,7 @@
           "max": 0
         }
       },
-      "informational": "D12: the signed-in screens are the Rasheed app's account screens, not the library; they are shown and never block"
+      "informational": "D12, D15: the signed-in screens are a product's account screens, not the library's; this repository's example has none (the list is empty), so the gate has nothing to count, and it is shown and never blocks"
     },
     {
       "id": "a11y.screensRetried",
@@ -1547,7 +1472,7 @@
     },
     {
       "id": "product.boot.firstScreen",
-      "title": "Product boot: the signed-out login screen is reached within 15 s of a cold start",
+      "title": "Product boot: the home screen of the production variant is reached within 15 s of a cold start",
       "unit": "",
       "metric": "product.boot.firstScreen",
       "bar": {
@@ -1633,7 +1558,7 @@
       "metric": "smoke.ok",
       "bar": {
         "android": {
-          "min": 34
+          "min": 33
         },
         "ios": {
           "min": 33

@@ -24,7 +24,7 @@ on:
         description: Cold boot launches (the production bar is 30)
         default: "30"
       smoke:
-        description: Build and run the native module smoke app (needs libs/samsungpay.jar on the runner)
+        description: Build and run the native module smoke app
         type: boolean
         default: true
       updates:
@@ -48,7 +48,6 @@ permissions:
 env:
   CI: "1"
   EXPO_NO_TELEMETRY: "1"
-  EXPO_PUBLIC_API_URL: https://dev.qarnos.com
 
 jobs:
   unit:
@@ -179,20 +178,6 @@ jobs:
         env:
           # Only the step that publishes gets the token, and only when the dispatch asked for the update scenario.
           EXPO_TOKEN: ${{ github.event_name == 'workflow_dispatch' && inputs.updates && secrets.EXPO_TOKEN || '' }}
-          # The QA account of the signed-in phase (parity and a11y): a dispatch only, so a push neither signs in nor needs the secrets.
-          # Without them the phase does not run and lane.sh leaves the two gates that count its screens out of the verdict.
-          RASHEED_QA_EMAIL: ${{ github.event_name == 'workflow_dispatch' && secrets.RASHEED_QA_EMAIL || '' }}
-          RASHEED_QA_CODE: ${{ github.event_name == 'workflow_dispatch' && secrets.RASHEED_QA_CODE || '' }}
-
-      # The run files, the evidence of failed tries (raw dumps, logcat) and the lane logs are uploaded below for 14 days, and the summary quotes the logs. The lane deletes
-      # what holds the QA account's address as its last stage and when it is stopped; this step is every other way out of it (a lane that failed, a lost emulator lock, a
-      # lane that died). It reads only the files the upload ships (--artifacts: no git, so nothing else can fail it) and does nothing without the account.
-      - name: Keep the QA account's address out of the artifact
-        if: ${{ always() }}
-        run: node qa/native-qa.ts leakcheck --artifacts --purge
-        env:
-          RASHEED_QA_EMAIL: ${{ github.event_name == 'workflow_dispatch' && secrets.RASHEED_QA_EMAIL || '' }}
-          RASHEED_QA_CODE: ${{ github.event_name == 'workflow_dispatch' && secrets.RASHEED_QA_CODE || '' }}
 
       - name: Job summary
         if: ${{ always() }}

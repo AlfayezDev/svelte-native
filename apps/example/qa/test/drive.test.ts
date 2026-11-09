@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { dumpWithOwnControls, findNode, matches, maskRects } from "../lib/drive.ts";
 import { cases, ownLabels } from "../lib/screens.ts";
 import { parseHierarchy, type UiTree } from "../lib/uia.ts";
+import { startupLoading } from "./fixture-cases.ts";
 import { sample } from "./sample.ts";
 
 describe("selectors and masks", () => {
@@ -18,17 +19,13 @@ describe("selectors and masks", () => {
 		expect(findNode(tree, { label: "nothing" }, "ltr")).toBeNull();
 	});
 
-	test("the startup spinner's bounds are the case's mask", () => {
-		const startup = cases.find((entry) => entry.id === "startup-loading");
-		if (!startup) throw new Error("no startup-loading case");
-		expect(maskRects(tree, startup, "ltr")).toEqual([{ x: 63, y: 360, width: 53, height: 54 }]);
+	test("the spinner of a loading page has its bounds as the case's mask", () => {
+		expect(maskRects(tree, startupLoading, "ltr")).toEqual([{ x: 63, y: 360, width: 53, height: 54 }]);
 	});
 
 	test("a mask that matches nothing is an error, not an unmasked reference", () => {
-		const startup = cases.find((entry) => entry.id === "startup-loading");
-		if (!startup) throw new Error("no startup-loading case");
 		const empty = parseHierarchy(sample("uia-screens-header.xml"));
-		expect(() => maskRects(empty, startup, "ltr")).toThrow("matches no node");
+		expect(() => maskRects(empty, startupLoading, "ltr")).toThrow("matches no node");
 	});
 
 	test("a node that is only on screen at some text sizes is masked when it is there and ignored when it is not", () => {

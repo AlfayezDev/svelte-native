@@ -515,8 +515,8 @@ describe("eas update", () => {
 		expect(() => parsePublished("{}", "good", "m")).toThrow("no JSON array");
 	});
 	test("a bad bundle carries its fault, a good one an empty one whatever the shell exports, and the cache is cleared", () => {
-		for (const fault of badFaults) expect(publishEnvironment("bad", "m", "qa", "https://dev.qarnos.com", fault)).toMatchObject({ EXPO_PUBLIC_QA_UPDATE_FAULT: fault, EXPO_PUBLIC_QA_UPDATE_MARKER: "m", UPDATES_CHANNEL: "qa" });
-		for (const kind of ["head", "good", "cleanup"] as const) expect(publishEnvironment(kind, "m", "qa", "u", "mount").EXPO_PUBLIC_QA_UPDATE_FAULT).toBe("");
+		for (const fault of badFaults) expect(publishEnvironment("bad", "m", "qa", fault)).toMatchObject({ EXPO_PUBLIC_QA_UPDATE_FAULT: fault, EXPO_PUBLIC_QA_UPDATE_MARKER: "m", UPDATES_CHANNEL: "qa" });
+		for (const kind of ["head", "good", "cleanup"] as const) expect(publishEnvironment(kind, "m", "qa", "mount").EXPO_PUBLIC_QA_UPDATE_FAULT).toBe("");
 		const args = publishArguments("qa", "development", "hello");
 		expect(args).toEqual(["update", "--channel", "qa", "--platform", "android", "--environment", "development", "--message", "hello", "--clear-cache", "--non-interactive", "--json"]);
 	});

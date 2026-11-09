@@ -7,7 +7,7 @@ import { flagString, parseFlags, requireString } from "../lib/flags.ts";
 import { currentSource } from "../lib/git.ts";
 import { lockFor, reexecUnderLock } from "../lib/lock.ts";
 import { qaDir, runsDir } from "../lib/paths.ts";
-import { describeProduct, isLoginScreen, parseLaunchMs, productFatals, productPackage, productProblems, productWindowMs, type ProductFile } from "../lib/product.ts";
+import { describeProduct, isHomeScreen, parseLaunchMs, productFatals, productPackage, productProblems, productWindowMs, type ProductFile } from "../lib/product.ts";
 import { assertProductDevice, clearAppData, identify, refusePhone } from "../lib/reset.ts";
 import { slug, stamp, writeRun } from "../lib/runs.ts";
 import { sleep } from "../lib/wait.ts";
@@ -23,13 +23,14 @@ async function exists(path: string): Promise<boolean> {
 }
 
 /**
- * The product boot check. Installs the product (`io.rasheed.app`, `qa/out/app-production-<abi>.apk` from `native-qa build --variant
- * production`) on the OVH emulator, clears its data so it starts signed out, starts it cold and, for 15 s from the start, looks for its first
- * screen (the login screen) in the accessibility tree of its window while logcat collects what the app does. It passes when the screen came
- * and the app logged no JavaScript fatal and no native crash. Writes `qa/runs/product-<device>-<stamp>.json`, a run kind of its own.
+ * The product boot check. Installs the example's production variant (`io.rasheed.app`, `qa/out/app-production-<abi>.apk` from `native-qa
+ * build --variant production`) on the OVH emulator, clears its data so it starts with no stored state, starts it cold and, for 15 s from the
+ * start, looks for its first screen (the home screen) in the accessibility tree of its window while logcat collects what the app does. It
+ * passes when the screen came and the app logged no JavaScript fatal and no native crash. Writes `qa/runs/product-<device>-<stamp>.json`, a
+ * run kind of its own.
  *
  * Only a device that says it is an emulator and that `gates.json` lists as the lab is used: a phone is refused before the first adb
- * command, by its serial, and again by what the device reports about itself. The Samsung phone's product app is never touched.
+ * command, by its serial, and again by what the device reports about itself. A phone's copy of the production variant is never touched.
  * `windowMs` is the 15 s the check allows; only the tests pass another (a shorter one makes the check stricter, never weaker).
  */
 export async function product(argv: string[], windowMs: number = productWindowMs): Promise<void> {
@@ -62,7 +63,7 @@ export async function product(argv: string[], windowMs: number = productWindowMs
 	});
 	console.log(`${device.kind} ${device.model} (${serial}), Android ${device.osVersion}, ${device.abi}; product ${app.versionName} installed ${app.lastUpdateTime}`);
 
-	// A start with no session, so the first screen is the login screen and not a workspace list an earlier start left behind.
+	// A start with no stored state (language, appearance), so the first screen is the home screen in the device's language.
 	await clearAppData((command) => shell(serial, command), identity, productPackage);
 	await mkdir(runsDir, { recursive: true });
 	await wake(serial);
@@ -77,7 +78,7 @@ export async function product(argv: string[], windowMs: number = productWindowMs
 		try {
 			const tree = await dumpUi(serial, { attempts: 1, timeoutMs: 8000 });
 			const elapsed = Date.now() - launched;
-			if (isLoginScreen(tree) && elapsed <= windowMs) firstScreenMs = elapsed;
+			if (isHomeScreen(tree) && elapsed <= windowMs) firstScreenMs = elapsed;
 		} catch {
 			// The window is not there yet, or the app is not idle: look again until the time is up.
 		}

@@ -6,8 +6,7 @@
 #   build      the release APKs for x86_64 only: the QA app, the product (`build --variant production`, for the product boot check; its
 #              own project directory, android-production/, and the Gradle caches of the runner, GRADLE_USER_HOME, make it incremental),
 #              and, when asked, the smoke app (QA_SMOKE=1) and the QA app for the EAS channel (QA_UPDATES=1)
-#   emulator   a fresh emulator, then the stages below, then report and gates, then (with the QA account) leakcheck --artifacts --purge over the files the workflow
-#              uploads. Run it under the emulator lock:
+#   emulator   a fresh emulator, then the stages below, then report and gates. Run it under the emulator lock:
 #                node qa/native-qa.ts hold --device "$QA_DEVICE" -- bash qa/ci/lane.sh emulator
 #   crashes    the 1,000 cold starts and 100 suites in chunks, resumed after an outage; each chunk holds the lock on its own so
 #              the host's watchdog can restart the emulator between them
@@ -29,12 +28,7 @@
 #   QA_UPDATES   1: build the QA app for the EAS channel and run the over-the-air update scenario (`native-qa updates`) in full mode.
 #                It PUBLISHES updates to the channel, so the workflow sets it on dispatch only, never on a push; it needs
 #                EXPO_TOKEN (or an eas login) on the runner. QA_CHANNEL is the channel (qa)
-#   QA_SMOKE     1: build and run the smoke app in full mode; needs apps/example/libs/samsungpay.jar or $QA_SAMSUNGPAY_JAR
-#   RASHEED_QA_EMAIL, RASHEED_QA_CODE   the QA account of the signed-in phase of parity and a11y (secrets of the runner, from the
-#                environment or the repository's .env.local; the harness never prints or writes them). Without RASHEED_QA_EMAIL
-#                that phase does not run, and the two gates that count its screens (parity.signedIn.missing, a11y.signedIn.missing)
-#                are not judged. They are not judged on a push either: the quick lane compares the pinned screens in fewer
-#                variants than the pin lists
+#   QA_SMOKE     1: build and run the smoke app in full mode
 #   QA_STARTS, QA_SUITES, QA_CHUNK   the crash volume (1000, 100, 100)
 #   QA_CLI       the harness command (node qa/native-qa.ts); QA_EMULATOR_SH the emulator script (qa/ci/emulator.sh; from another
 #                machine qa/ci/emulator-remote.sh, which runs it on the host over ssh)
@@ -54,12 +48,6 @@ EMULATOR=${QA_EMULATOR_SH:-$CI_DIR/emulator.sh}
 # shellcheck disable=SC2206  # a command line, split on purpose
 QA=(${QA_CLI:-node qa/native-qa.ts})
 FAILED=0
-
-# Whether the harness will find the QA account: the environment, else the one key of the repository's .env.local (the way qa/lib/qa-account.ts
-# looks). Nothing is printed.
-qa_account() {
-  [ -n "${RASHEED_QA_EMAIL:-}" ] || grep -qsE '^[[:space:]]*(export[[:space:]]+)?RASHEED_QA_EMAIL[[:space:]]*=[[:space:]]*[^[:space:]#]' "$CI_DIR/../../../../.env.local"
-}
 
 emulator_rss() { bash "$EMULATOR" rss 2>/dev/null || echo "?"; }
 
@@ -84,16 +72,9 @@ stage() {
   return 0
 }
 
-# The files the workflow uploads as an artifact (qa/runs with the evidence of failed tries, the lane logs, the gates tables, the report) are read for the QA account's address
-# and any file that holds it is deleted. Git is not involved (--artifacts), so nothing but the files can fail it. Without the account there is nothing to look for.
-purge_artifacts() {
-  if qa_account; then "${QA[@]}" leakcheck --artifacts --purge; fi
-}
-
-# A lane that was told to stop says so in the table instead of vanishing from it, and leaves nothing behind that holds the account for the upload that follows.
+# A lane that was told to stop says so in the table instead of vanishing from it.
 cancelled() {
   printf '%s\t%s\t%s\t%s\n' "(stopped)" "cancelled" "$SECONDS" "$(emulator_rss)" >> "$STAGES"
-  purge_artifacts || true
   exit 143
 }
 
@@ -117,8 +98,6 @@ build() {
     stage build-product "${QA[@]}" build --abi x86_64 --variant production
   fi
   if [ "$MODE" = full ] && [ "${QA_SMOKE:-0}" = 1 ] && want smoke; then
-    local jar=${QA_SAMSUNGPAY_JAR:-/var/lib/svelte-qa/secrets/samsungpay.jar}
-    if [ ! -f libs/samsungpay.jar ] && [ -f "$jar" ]; then mkdir -p libs && cp "$jar" libs/samsungpay.jar; fi
     stage build-smoke "${QA[@]}" build --abi x86_64 --variant smoke
   fi
   # The update scenario installs this build over the plain one (which it measures first, as the baseline). It is kept apart in
@@ -134,17 +113,12 @@ emulator() {
   trap cancelled TERM INT
   local quick=--quick except=() kind
   local kinds=(lab parity a11y gestures)
-  local signed_in_gates=parity.signedIn.missing,a11y.signedIn.missing
   if [ "$MODE" = full ]; then
     quick=""
     kinds=(lab boot parity a11y resilience gestures)
     if [ "${QA_UPDATES:-0}" = 1 ]; then kinds+=(updates); fi
-    if ! qa_account; then
-      echo "::warning title=no QA account::RASHEED_QA_EMAIL is not set, so parity and a11y skip their signed-in phase and the gates that count its screens are not judged"
-      except=(--except "$signed_in_gates")
-    fi
   else
-    except=(--except "lab.runs,$signed_in_gates")
+    except=(--except lab.runs)
   fi
   # The product boot check is the last of the stages, in both modes: a start of the product with no development lab, which no stage of the QA app is.
   kinds+=(product)
@@ -199,9 +173,9 @@ emulator() {
     fresh_enough updates
     stage updates "${QA[@]}" updates --device "$DEVICE" --channel "$CHANNEL" --warm "$WARM"
   fi
-  # The product: its own package, installed with its data cleared (a start signed out), cold, watched for 15 s for the login screen and for a
+  # The production variant: its own package, installed with its data cleared, cold, watched for 15 s for the home screen and for a
   # fatal. It follows the stages of the QA app, which have the lab the product does not, so a use of the lab that is not behind its flag
-  # passes all of them and crashes here. A fatal or a login screen that did not come fails the stage, and so the push (the gates say the same).
+  # passes all of them and crashes here. A fatal or a home screen that did not come fails the stage, and so the push (the gates say the same).
   if want product; then
     fresh_enough product
     stage product "${QA[@]}" product --device "$DEVICE"
@@ -211,14 +185,6 @@ emulator() {
   stage gates "${QA[@]}" gates --platform android --runs "$runs_list" "${except[@]}" --markdown "$OUT/gates.md"
   if [ "$MODE" = full ] && [ "${QA_SMOKE:-0}" = 1 ] && want smoke; then
     stage gates-smoke "${QA[@]}" gates --smoke --platform android --runs smoke --markdown "$OUT/gates-smoke.md"
-  fi
-  # qa/runs and qa/out/*.log are uploaded as an artifact for 14 days, and the run files and the evidence of failed tries (the raw dumps, the logcat, the window lists) are text
-  # taken off a screen that can show the QA account's address. The harness redacts them as it writes; this reads them again with the address in hand and deletes any file
-  # that still holds it (the lane logs, copies of console output, included), so the upload step has nothing to leak. It needs the account to know what to look for, so it runs
-  # where the signed-in phase could (a leak fails the lane). It reads text only: the screenshots are kept clean by the rectangles painted over them, which it cannot check.
-  # The workflow runs the same command as a step of its own on every other way out of this script (a lost emulator lock, a lane that died), and `cancelled` runs it on TERM/INT.
-  if qa_account; then
-    stage leakcheck "${QA[@]}" leakcheck --artifacts --purge
   fi
   [ "$FAILED" = 0 ]
 }

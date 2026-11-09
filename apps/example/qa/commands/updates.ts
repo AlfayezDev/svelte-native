@@ -112,7 +112,6 @@ export async function updates(argv: string[]): Promise<void> {
 	const packageName = flagString(values.package) ?? defaultPackage;
 	const environment = flagString(values.environment) ?? "development";
 	const eas: Eas = easCommand(flagString(values.eas));
-	const apiUrl = process.env.EXPO_PUBLIC_API_URL ?? "https://dev.qarnos.com";
 	const dexopt = dexoptFlag(values.dexopt);
 
 	// One run per device and one per channel: two runs publishing to a channel at once would each find the other's updates at its head.
@@ -286,7 +285,7 @@ export async function updates(argv: string[]): Promise<void> {
 			const marker = `${runTag}-${kind}${fault ? `-${fault}` : ""}`;
 			const message = `native-qa updates ${runTag} ${kind}${fault ? ` ${fault}` : ""}`;
 			note(`publishing ${kind}${fault ? ` (${fault})` : ""} update ${marker} to the ${channel} channel`);
-			const published = await runEas(publishArguments(channel, environment, message), publishEnvironment(kind, marker, channel, apiUrl, fault), 20 * 60_000);
+			const published = await runEas(publishArguments(channel, environment, message), publishEnvironment(kind, marker, channel, fault), 20 * 60_000);
 			logs.push(`--- eas update (${kind}${fault ? ` ${fault}` : ""}) exit ${published.code}`, tail(published.stderr, 15));
 			if (published.code !== 0) throw failure("eas update failed", published);
 			const update = parsePublished(published.stdout, kind, marker, fault);

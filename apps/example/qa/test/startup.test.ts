@@ -1,12 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { isLabPath, labOnly, launchKind } from "../../src/lib/native/dev/launch-link.ts";
-import { needsProduct, productWaiter, productWaitMs } from "../../src/lib/native/dev/capture-wait.ts";
 import { createRetrier, isForeground, retryDelay, steadyDelay, type Foreground } from "../../src/lib/native/startup.ts";
 
 /**
- * How the app starts when the backend is slow or down (src/routes/+layout.mobile.svelte, src/lib/native/startup.ts): the product asks for the
- * platform configuration and tries again by itself; a launch by a lab link does not ask at all. The loop is driven here with a clock and a
- * foreground of its own; `packages/svelte-native/tests/app-tree.test.ts` mounts the real layout around both.
+ * How the app starts and tries again when its start fails (src/routes/+layout.mobile.svelte, src/lib/native/startup.ts): the start reads the lab
+ * link the app was launched with and loads the fonts, and a failed attempt is made again by itself. The loop is driven here with a clock and a
+ * foreground of its own.
  */
 
 describe("the retry schedule", () => {
@@ -289,82 +288,5 @@ describe("which AppState statuses pause the asking", () => {
 	test("background and iOS's inactive do; active and anything the platform says that the app does not know do not", () => {
 		expect(["background", "inactive"].map(isForeground)).toEqual([false, false]);
 		expect(["active", "unknown", "extension", "", null, undefined].map(isForeground)).toEqual([true, true, true, true, true, true]);
-	});
-});
-
-describe("the iPhone capture of a screen that needs the session", () => {
-	test("only the screens outside the lab need it: the login, not the lab's own and not what is pushed on the lab", () => {
-		expect(needsProduct({ goto: "/auth/login" })).toBe(true);
-		expect(needsProduct({ goto: "/workspaces?x=1" })).toBe(true);
-		expect(needsProduct({ goto: "/__dev?panel=checks" })).toBe(false);
-		expect(needsProduct({ base: "/__dev", goto: "/__dev/screen" })).toBe(false);
-		expect(needsProduct({ base: "/__dev/screens", goto: "/__dev/screens?mode=sheet" })).toBe(false);
-	});
-
-	/** A clock that only the waits move, and a start whose phase the test sets when the clock gets there. */
-	function clock(readyAt: number | null, failed = false) {
-		let at = 0;
-		const waits: number[] = [];
-		return {
-			waits,
-			now: () => at,
-			sleep: async (ms: number) => { waits.push(ms); at += ms; },
-			phase: (): "pending" | "failed" | "ready" => (readyAt !== null && at >= readyAt ? "ready" : failed ? "failed" : "pending"),
-			elapsed: () => at,
-		};
-	}
-
-	test("a start that is ready already costs nothing", async () => {
-		const world = clock(0);
-		expect(await productWaiter(world)()).toBeNull();
-		expect(world.waits).toEqual([]);
-	});
-
-	test("a start that becomes ready is waited for, and the screen gets a moment to render after it", async () => {
-		const world = clock(3_000);
-		expect(await productWaiter(world)()).toBeNull();
-		expect(world.elapsed()).toBeGreaterThanOrEqual(3_000);
-		expect(world.elapsed()).toBeLessThan(4_000);
-	});
-
-	test("a backend that stays down is waited for once: the bound, then the same detail at once for every screen and theme after", async () => {
-		const world = clock(null, true);
-		const wait = productWaiter(world);
-		const detail = await wait();
-		expect(detail).toContain(`within ${productWaitMs / 1000} s`);
-		expect(detail).toContain("not answering");
-		expect(detail).toContain("its start failed");
-		expect(world.elapsed()).toBeGreaterThanOrEqual(productWaitMs);
-		expect(world.elapsed()).toBeLessThan(productWaitMs + 1_000);
-		const spent = world.elapsed();
-		expect(await wait()).toBe(detail);
-		expect(await wait()).toBe(detail);
-		expect(world.elapsed()).toBe(spent);
-	});
-
-	test("the phone is kept awake while the capture waits, and let go whichever way the wait ends", async () => {
-		const events: string[] = [];
-		const hold = () => { events.push("hold"); return () => { events.push("release"); }; };
-		// Ready at once: no wait, nothing held.
-		await productWaiter({ ...clock(0), hold })();
-		expect(events).toEqual([]);
-		// Ready after a wait: held for it, then released.
-		await productWaiter({ ...clock(1_000), hold })();
-		expect(events).toEqual(["hold", "release"]);
-		// Never ready: held for the whole bound, released, and the next screen waits for nothing, so holds nothing.
-		events.length = 0;
-		const wait = productWaiter({ ...clock(null, true), hold });
-		await wait();
-		await wait();
-		expect(events).toEqual(["hold", "release"]);
-	});
-
-	test("a start that is only slow says so, and a start that comes up after the bound is believed again", async () => {
-		let at = 0;
-		let ready = false;
-		const wait = productWaiter({ now: () => at, sleep: async (ms) => { at += ms; }, phase: () => (ready ? "ready" : "pending"), boundMs: 1_000 });
-		expect(await wait()).toContain("still loading");
-		ready = true;
-		expect(await wait()).toBeNull();
 	});
 });

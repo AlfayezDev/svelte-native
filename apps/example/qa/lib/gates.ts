@@ -44,7 +44,7 @@ export type Gate = {
 	allowance?: { runs: string; min: number; late: string; long: string };
 	/**
 	 * Why the gate is informational on every device (a decision, in one line): its value is shown and nothing counts, whoever measured it.
-	 * D12: the signed-in screens belong to the Rasheed app, not to the library, so they do not block.
+	 * D12: the signed-in screens belong to a product, not to the library, so they do not block.
 	 */
 	informational?: string;
 };

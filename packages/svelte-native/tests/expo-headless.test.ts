@@ -341,3 +341,13 @@ describe("headless Android config", () => {
     expect(headlessPackageSource("io.example.app")).toStartWith("package io.example.app\n");
   });
 });
+
+describe("the React Native flags every app gets", () => {
+  test("view preallocation is off and prepared text layouts are on without any option, and an app can still override either", async () => {
+    const { androidFeatureFlagsFor, defaultAndroidFeatureFlags } = await import("../src/expo.ts");
+    expect(defaultAndroidFeatureFlags).toEqual({ disableViewPreallocationAndroid: true, enablePreparedTextLayout: true });
+    expect(androidFeatureFlagsFor()).toEqual({ disableViewPreallocationAndroid: true, enablePreparedTextLayout: true });
+    expect(androidFeatureFlagsFor({ androidFeatureFlags: { enablePreparedTextLayout: false } })).toEqual({ disableViewPreallocationAndroid: true, enablePreparedTextLayout: false });
+    expect(androidFeatureFlagsFor({ androidViewRecycling: true })).toMatchObject({ disableViewPreallocationAndroid: true, enableViewRecyclingForView: true });
+  });
+});

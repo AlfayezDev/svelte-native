@@ -101,3 +101,25 @@ test("Svelte is named once for the starter: the template's pkg.pr.new build is t
   const readme = readFileSync(join(repository, "packages/svelte-native/README.md"), "utf8");
   expect(readme).toContain(`"svelte": "${spec}"`);
 });
+
+test("the guide's package.json snippets carry the template's exact versions", () => {
+  const template = JSON.parse(readFileSync(join(repository, "examples/minimal/package.json"), "utf8")) as { dependencies: Record<string, string>; reanimated: unknown };
+  for (const page of ["docs/02-creating-a-project.md", "docs/07-adding-to-an-existing-expo-app.md"]) {
+    const text = readFileSync(join(repository, page), "utf8");
+    for (const [name, version] of Object.entries(template.dependencies)) {
+      if (["@example/svelte-native", "@sveltejs/kit", "svelte", "vite"].includes(name)) continue;
+      expect(text, `${page}: ${name}`).toContain(`"${name}": "${version}"`);
+    }
+  }
+  // The pnpm settings the guide names are the template's.
+  const workspace = readFileSync(join(repository, "examples/minimal/pnpm-workspace.yaml"), "utf8");
+  for (const page of ["docs/02-creating-a-project.md", "docs/07-adding-to-an-existing-expo-app.md"]) {
+    const text = readFileSync(join(repository, page), "utf8");
+    expect(workspace).toContain("expo-modules-core: 57.0.23");
+    expect(text, page).toContain("expo-modules-core: 57.0.23");
+    for (const line of workspace.split("\n").filter((entry) => /^ {2}"?[@\w/.-]+@[\w.-]+"?: patches\//.test(entry))) {
+      if (page.startsWith("docs/07") && line.includes("sveltejs/kit")) continue;
+      expect(text, `${page}: ${line.trim()}`).toContain(line);
+    }
+  }
+});

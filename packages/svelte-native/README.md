@@ -14,88 +14,24 @@ On Android the mounting is the package's own engine: Fabric's C++ transaction go
 
 It targets Expo SDK 57 and React Native 0.86.3 with Hermes, Reanimated 4.5.1, react-native-worklets 0.10.1 and react-native-gesture-handler 2.32. The Svelte compiler is Svelte's [unmerged custom-renderer pull request](https://github.com/sveltejs/svelte/pull/18042), pinned to commit `216f258068d93170a927ad4d27ee6864b0b305c5` (5.56.7). The package names it as a peer dependency, `svelte` 5.56.7 **with the `./renderer` export**, which the registry's 5.56.7 does not have; the repository vendors the build as `vendor/svelte-5.56.7-216f258.tgz`, and the package and the example app install that tarball by `file:` (a development dependency here, so a dependent never sees it). The library carries pnpm patches for SvelteKit, `expo-modules-core`, Reanimated, worklets and gesture-handler, and for four of the view libraries it wraps (`react-native-pdf`, `react-native-video`, `react-native-maps`, `lottie-react-native`; `patches/`); an app that installs the package applies them itself ("Install in an app"). Unsupported: Svelte DOM transitions and libraries, React widgets, the Expo dev client, Fast Refresh (a save remounts the root; see "Development loop"), tvOS, and tablet layouts (not exercised).
 
-## How it fits together
-
-The app is an Expo app that runs no React. Its screens are Svelte components: the library compiles them with the pinned custom-renderer Svelte, runs them in Hermes, and creates and updates native views through React Native's Fabric, with no React reconciler and no WebView. Expo still builds and ships the app: Metro bundles the JavaScript, `app.json` and config plugins describe the native project, autolinking links the native modules, and Gradle and Xcode compile it.
-
-The library ships native code: six native modules in `native/` (the Android engine, the iOS screens, insets, navigation and capture modules, and the updates module), which autolinking finds in `node_modules/@example/svelte-native/` through the package's one `expo-module.config.json`. Expo Go has a fixed set of native modules and cannot load them, so the app is a native build of its own (a debug build while you develop, which loads its JavaScript from Metro). The Expo dev client is not supported.
-
-The native project is not source. Expo's Continuous Native Generation writes it: `expo prebuild` generates `android/` and `ios/` from `app.json` (or `app.config.ts`), the config plugins (this library's is `@example/svelte-native`, which adjusts the generated projects and writes the route table) and the installed packages. The two folders are build output: the template's `.gitignore` leaves them out, a prebuild makes them again, and a change belongs in `app.json`, a plugin or an Expo module under `modules/`, never in the generated files, which the next prebuild replaces.
-
-## When to run expo prebuild
-
-`expo prebuild` makes the native project from the app's config. `expo run:android` and `expo run:ios` (so `svelte-native android` and `svelte-native ios`, which pass their arguments on to them) run it only when the platform's folder is missing, and build what is there otherwise: nothing notices that `app.json` or a package changed since, so after a change that affects the native project you run it yourself:
-
-```sh
-pnpm exec expo prebuild --platform android    # or ios
-```
-
-- The first time. `pnpm android` and `pnpm ios` do it when there is no `android/` or `ios/`.
-- After adding or removing a package that has native code (`npx expo install expo-camera`), or changing its version.
-- After changing a config plugin or its options (the library's own included: `plugins: [["@example/svelte-native", { … }]]`), or the native keys of `app.json` or `app.config.ts`: `ios.bundleIdentifier`, `android.package`, permissions, icons, splash, `scheme`, `updates`, `runtimeVersion`.
-- After upgrading `@example/svelte-native`: the plugin writes into the generated project, and what it writes can change between versions.
-
-It is not needed after a change to Svelte or TypeScript code (Metro reloads it, "Development loop"), to a route (the command line regenerates `.svelte-native/` itself), or to a patch: a patch changes what is compiled and not the project, so install again and build again.
-
-With the Expo CLI of SDK 57, `expo prebuild` starts from nothing: it deletes the platform folders and writes them again (it asks first when git has uncommitted changes), so running it also fixes a stale or hand-edited project, and `--no-clean` applies the changes to the existing folders instead. A native build is a separate step from the prebuild: `pnpm android` and `pnpm ios` compile and install the project that is there.
-
-## Start a new app
-
-`scripts/new-app.sh <dir>` makes a new app outside the repository from [`examples/minimal`](../../examples/minimal) and does what "Install in an app" does by hand, the way `scripts/consumer-check.sh` does it in its `git` mode (the steps the two share are in `scripts/lib/app-setup.sh`):
-
-1. It checks that `git`, `node` and `pnpm` are there at the versions the repository's `package.json` pins and that the private repository can be read, and it refuses a `<dir>` that exists and is not empty.
-2. It copies the template into `<dir>` and names it after the directory: the package name, the Expo `name`, `slug` and `scheme`, and the identifiers `dev.example.<name>`. The template's `patchedDependencies` block is left out for now.
-3. `pnpm add` of the library as a git dependency over SSH, at the newest release tag (`--ref <tag|branch|commit>` picks another), and of the custom-renderer Svelte from pkg.pr.new.
-4. It copies the patch files from the installed library into `patches/svelte-native/`, declares them in `pnpm-workspace.yaml` and installs again ("Apply the patches"); the first install cannot declare them, because pnpm reads patch files before it fetches anything.
-5. `pnpm exec svelte-native doctor`, which has to pass.
-
-The result is a pnpm project of its own, not a workspace of anything: `package.json` (with `main`, the scripts `android`, `ios`, `dev`, `sync` and `doctor`, the dependencies and the Reanimated flag of step 4), `app.json`, `metro.config.cjs`, `pnpm-workspace.yaml` (pnpm's settings and the patches), `patches/svelte-native/`, and `src/routes/` with the root layout, a home screen and a screen pushed on top of it. There is no `android/` or `ios/` yet: the first `pnpm android` or `pnpm ios` prebuilds them and builds the app ("Build and run the app"). `--local` depends on this checkout and on the Svelte tarball in `vendor/` instead of GitHub and pkg.pr.new, for testing the script. Without a clone to keep: `git clone --depth 1 git@github.com:AlfayezDev/svelte-native.git /tmp/svelte-native && /tmp/svelte-native/scripts/new-app.sh my-app` (the app does not refer to the clone).
-
 ## Install in an app
 
-This is how to add the library to an Expo app you already have, by hand; for a new app, "Start a new app" does all of it. The app needs Expo SDK 57 (React Native 0.86.3) and pnpm 12.3.4 or newer: the patches are pnpm's, and `svelte-native doctor` checks both. The package is private. An app outside this repository depends on a tag of it through pnpm's git dependency, over SSH, naming the package's directory. [`examples/minimal`](../../examples/minimal) is the smallest app that does everything below (copy it to start); `scripts/consumer-check.sh` installs and builds it from a scratch directory outside the repository, once with the library as a packed tarball and once as a git dependency of the repository's own commit.
+This section and the next two are the reference for what an app needs. To start an app, follow the [guide](../../docs/01-introduction.md) (`npx sv create`, then `scripts/new-app.sh`, which does the steps below for you), and to add the library to an Expo app you already have, [its page](../../docs/07-adding-to-an-existing-expo-app.md).
 
-The steps, in order:
-
-1. [Take the React app out of the way](#1-take-the-react-app-out-of-the-way).
-2. [Add the pnpm settings](#2-add-the-pnpm-settings): `allowBuilds` and `overrides`, which the first install already needs.
-3. [Install the library and Svelte](#3-install-the-library-and-svelte).
-4. [Add the dependencies](#4-add-the-dependencies), `main` and the Reanimated flag.
-5. [Apply the patches](#apply-the-patches): copy the library's patch files into the app and declare them.
-6. [Set up an app](#set-up-an-app): Metro, `app.json` and a first screen.
-7. Check the setup with `svelte-native doctor` ("Check an app with `svelte-native doctor`").
-8. [Build and run the app](#build-and-run-the-app): `pnpm android` or `pnpm ios`, which prebuilds the first time.
-
-### 1. Take the React app out of the way
-
-The library brings its own entry point and its own router, and it runs no React, so what a React app has for those goes:
-
-- The React entry: `App.tsx` and an `index.js` that calls `registerRootComponent`, or `expo-router/entry` as `main` (step 4 sets `main` to the library's generated entry).
-- expo-router: its `app/` directory and `"expo-router"` in `plugins` of `app.json`. A screen is a file `src/routes/**/+mobile.svelte` instead ("Add a screen").
-- The app's own React components and hooks: nothing mounts them.
-
-What stays: `app.json` (name, slug, identifiers, icons, permissions, the other plugins), `assets/`, `eas.json`, the app's own Expo modules in `modules/`, and every Expo or React Native library whose JavaScript does not need React ("Using Expo and React Native libraries").
-
-### 2. Add the pnpm settings
-
-pnpm 12 reads its settings from the app's `pnpm-workspace.yaml` (an app that is not a workspace has the file with these keys only); the library needs two:
-
-```yaml
-allowBuilds:
-  esbuild: true              # a dependency of the package; pnpm 12 stops with ERR_PNPM_IGNORED_BUILDS until its install script is allowed
-overrides:
-  expo-modules-core: 57.0.23 # expo asks for ~57.0.23, so a fresh install takes the newest 57.0.x, which the patch below is not for
-```
-
-Without the override a fresh install takes 57.0.25 and pnpm stops with `ERR_PNPM_UNUSED_PATCH`; `svelte-native doctor` reports a different version of `expo-modules-core` with this fix.
-
-The `patchedDependencies` entries go in the same file ("Apply the patches").
-
-### 3. Install the library and Svelte
+The package is private. An app outside this repository depends on a tag of it through pnpm's git dependency, over SSH, naming the package's directory. [`examples/minimal`](../../examples/minimal) is the smallest app that does everything below (copy it to start); `scripts/consumer-check.sh` installs and builds it from a scratch directory outside the repository, once with the library as a packed tarball and once as a git dependency of the repository's own commit.
 
 ```sh
 pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#<tag>&path:packages/svelte-native" \
          "svelte@https://pkg.pr.new/svelte@216f258068d93170a927ad4d27ee6864b0b305c5"
+```
+
+```json
+{
+  "dependencies": {
+    "@example/svelte-native": "git+ssh://git@github.com/AlfayezDev/svelte-native.git#<tag>&path:packages/svelte-native",
+    "svelte": "https://pkg.pr.new/svelte@216f258068d93170a927ad4d27ee6864b0b305c5"
+  }
+}
 ```
 
 `<tag>` is any tag, branch or commit of the repository, and the lockfile records the commit it resolved to. Any other repository URL takes the same `#<ref>&path:packages/svelte-native` suffix (`git+file:///path/to/checkout#<commit>&path:packages/svelte-native` is what the check script installs).
@@ -110,156 +46,63 @@ git config --global url."git@github.com:AlfayezDev/".insteadOf "https://github.c
 
 A release is a tag with its [changelog](CHANGELOG.md) entry. What `pnpm install` copies is the package as `files` packs it (`pnpm pack` lists it): `src/` (TypeScript that Metro compiles), `dist/node/` (the JavaScript that Node itself loads, built from `src/`; see "Set up an app"), `native/` (the library's native modules), `expo-module.config.json`, `patches/` and the documents. Nothing is built at install time and nothing outside the package directory is needed: pnpm builds nothing for a git dependency, and refuses one whose `package.json` has a `prepare`, `prepack` or `prepublish` script (`ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED`, until the app lists it under `allowBuilds`, and then it installs the package's development dependencies and runs the script in a clone), so `dist/node/` is committed and the package has no such script (a test checks both).
 
-**Svelte.** The renderer needs [the custom-renderer build](https://github.com/sveltejs/svelte/pull/18042), not the registry's `svelte`, whose 5.56.7 has the same version string and no `./renderer` export. Install it from pkg.pr.new (above), or from the tarball the repository vendors (`vendor/svelte-5.56.7-216f258.tgz`, byte for byte the same build: `pnpm add ./svelte-5.56.7-216f258.tgz`, which writes `"svelte": "file:./svelte-5.56.7-216f258.tgz"`). The package declares `svelte` as a peer dependency (`5.56.7`), so a package manager that finds another build warns, and pnpm reports the URL or `file:` build as an unmet peer (`pnpm peers check`); that warning is expected. `withSvelteNative` (Metro), the Metro transformer and the native target of `svelteNative()` (Vite) check the installed package for `./renderer` and fail with the same instructions. The web target of SvelteKit runs on the same build.
+- **Svelte.** The renderer needs [the custom-renderer build](https://github.com/sveltejs/svelte/pull/18042), not the registry's `svelte`, whose 5.56.7 has the same version string and no `./renderer` export. Install it from pkg.pr.new (above), or from the tarball the repository vendors (`vendor/svelte-5.56.7-216f258.tgz`, byte for byte the same build: `pnpm add ./svelte-5.56.7-216f258.tgz`, which writes `"svelte": "file:./svelte-5.56.7-216f258.tgz"`). The package declares `svelte` as a peer dependency (`5.56.7`), so a package manager that finds another build warns, and pnpm reports the URL or `file:` build as an unmet peer (`pnpm peers check`); that warning is expected. `withSvelteNative` (Metro), the Metro transformer and the native target of `svelteNative()` (Vite) check the installed package for `./renderer` and fail with the same instructions. The web target of SvelteKit runs on the same build.
+- **Dependencies of the app.** Next to the library and `svelte`, the app's `package.json` lists the peers that are not optional, at the versions it was exercised on:
+  - `expo` 57.0.30 and `expo-constants` 57.0.22 (the peer ranges are `~57.0.27` and `~57.0.21`), `react` 19.2.7 and `react-native` 0.86.3;
+  - `react-native-gesture-handler` 2.32.0, `react-native-reanimated` 4.5.1 and `react-native-worklets` 0.10.1, exactly: a patch (below) is for one version;
+  - `hermes-intl` ^0.1.2, a dependency of the app itself: the polyfills import it for the `Intl` constructors Hermes lacks (`PluralRules`, `RelativeTimeFormat`, `ListFormat`, `Locale`), Metro stops with `Unable to resolve module hermes-intl` without it, and it carries a native module that React Native's autolinking links only from the app's own dependencies (`svelte-native doctor` checks both).
 
-### 4. Add the dependencies
+  `@sveltejs/kit` (3.0.0-next.27 exactly) and `vite` are **optional**: remote functions and the web target need them (SvelteKit's client runtime is reused, and the Vite plugin runs the web build). An app that builds for native only installs neither, and the Metro plugin, the transformer and the runtime load and bundle without them; a feature that does need SvelteKit fails with a message that names the package.
 
-Next to the library and `svelte`, the app's `package.json` lists the peers that are not optional, at the versions it was exercised on. This is the `package.json` of `examples/minimal` without `@sveltejs/kit` and `vite`, which are optional (below), and with the two dependencies step 3 added (pnpm writes the first as `github:AlfayezDev/svelte-native#<tag>&path:packages/svelte-native`); run `pnpm install` after editing it:
+  The view-library wrappers are optional peers: install the ones the app uses with `npx expo install <name>`, and declare their patches if they have one (`lottie-react-native`, `react-native-maps`, `react-native-pdf`, `react-native-video`).
+- **`package.json` entries.** `"main": ".svelte-native/entry.ts"`, the file `svelte-native sync` (and the Metro config) writes; without it Expo falls back to `expo/AppEntry.js`, which is not the library's entry. And Reanimated's feature flag, which its package ships off:
 
-```json
-{
-  "main": ".svelte-native/entry.ts",
-  "dependencies": {
-    "@example/svelte-native": "git+ssh://git@github.com/AlfayezDev/svelte-native.git#<tag>&path:packages/svelte-native",
-    "svelte": "https://pkg.pr.new/svelte@216f258068d93170a927ad4d27ee6864b0b305c5",
-    "expo": "57.0.30",
-    "expo-constants": "57.0.22",
-    "hermes-intl": "^0.1.2",
-    "react": "19.2.7",
-    "react-native": "0.86.3",
-    "react-native-gesture-handler": "2.32.0",
-    "react-native-reanimated": "4.5.1",
-    "react-native-worklets": "0.10.1"
-  },
-  "reanimated": { "staticFeatureFlags": { "ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS": true } }
-}
-```
+  ```json
+  { "reanimated": { "staticFeatureFlags": { "ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS": true } } }
+  ```
 
-- `expo` 57.0.30 and `expo-constants` 57.0.22 (the peer ranges are `~57.0.27` and `~57.0.21`), `react` 19.2.7 and `react-native` 0.86.3;
-- `react-native-gesture-handler` 2.32.0, `react-native-reanimated` 4.5.1 and `react-native-worklets` 0.10.1, exactly: a patch (below) is for one version;
-- `hermes-intl` ^0.1.2, a dependency of the app itself: the polyfills import it for the `Intl` constructors Hermes lacks (`PluralRules`, `RelativeTimeFormat`, `ListFormat`, `Locale`), Metro stops with `Unable to resolve module hermes-intl` without it, and it carries a native module that React Native's autolinking links only from the app's own dependencies (`svelte-native doctor` checks both).
+  The patched Android update (the native sink of the engine's animation write path) is reached only through the synchronous update this flag turns on; the QA app sets it and the animation numbers in [PLAN.md](PLAN.md) were measured with it.
+- **pnpm settings.** pnpm 12 reads them from the app's `pnpm-workspace.yaml` (an app that is not a workspace has the file with these keys only):
 
-`@sveltejs/kit` (3.0.0-next.27 exactly) and `vite` are **optional**: remote functions and the web target need them (SvelteKit's client runtime is reused, and the Vite plugin runs the web build). An app that builds for native only installs neither, and the Metro plugin, the transformer and the runtime load and bundle without them; a feature that does need SvelteKit fails with a message that names the package.
+  ```yaml
+  allowBuilds:
+    esbuild: true              # a dependency of the package; pnpm 12 stops with ERR_PNPM_IGNORED_BUILDS until its install script is allowed
+  overrides:
+    expo-modules-core: 57.0.23 # expo asks for ~57.0.23, so a fresh install takes the newest 57.0.x, which the patch below is not for
+  ```
 
-The view-library wrappers are optional peers: install the ones the app uses with `npx expo install <name>`, and declare their patches if they have one (`lottie-react-native`, `react-native-maps`, `react-native-pdf`, `react-native-video`).
+  Without the override a fresh install takes 57.0.25 and pnpm stops with `ERR_PNPM_UNUSED_PATCH`; `svelte-native doctor` reports a different version of `expo-modules-core` with this fix.
 
-**`main` and the Reanimated flag.** `main` is `.svelte-native/entry.ts`, the file `svelte-native sync` (and the Metro config) writes; without it Expo falls back to `expo/AppEntry.js`, which is not the library's entry. The `reanimated` key is Reanimated's feature flag, which its package ships off: the patched Android update (the native sink of the engine's animation write path) is reached only through the synchronous update this flag turns on; the QA app sets it and the animation numbers in [PLAN.md](PLAN.md) were measured with it.
-
-**Native modules.** Nothing is copied into the app. The package's `expo-module.config.json` links six native projects through Expo's autolinking (Android Gradle projects `:svelte-engine` and `:svelte-updates`; iOS pods `SvelteScreensIOS`, `SvelteInsets`, `SvelteNavigation`, `SvelteCapture`, `SvelteUpdates`), so `expo prebuild` and `pod install` find them in `node_modules/@example/svelte-native/native/`. Keep the app's own Expo modules in its `modules/` directory as usual.
-
-**CI.** Declaring the patches changes the lockfile, and with `CI=1` pnpm refuses a frozen install of a lockfile that does not match: run `pnpm install --no-frozen-lockfile` once and commit `pnpm-lock.yaml`.
-
-## Apply the patches
-
-Step 5 of "Install in an app". The library works only with nine third-party packages patched, and pnpm applies a patch only from the app's own workspace, so an app copies the patch files in and declares them. They are in `patches/` of this package, named `<package>@<version>.patch`, and each is for exactly that version of the package it names (the peers below are pinned to the same versions).
-
-| Package | Needed | What the patch changes |
-|---|---|---|
-| `@sveltejs/kit` 3.0.0-next.27 | if installed (an optional peer: remote functions, the web target) | SvelteKit's route manifest and its `+page`/`+layout` warnings leave `+mobile.svelte` files in a route directory alone |
-| `expo-modules-core` 57.0.23 | always (comes with `expo`; pin it with `overrides`, "Install in an app") | Android: Expo modules register lazily and the common ones are prewarmed on a thread of their own; the native view adapter loads React Native's component registry on its first view |
-| `react-native-gesture-handler` 2.32.0 | always (a peer) | iOS: the manager can be asked for the root gesture recognizer of a screen the library presents (sheets, modals) and does not stop its walk above a view that holds a touch handler |
-| `react-native-reanimated` 4.5.1 | always (a peer) | Android: `synchronouslyUpdateUIProps` hands the engine's views to a native sink, and opacity and translate/scale transforms skip React Native's prop path |
-| `react-native-worklets` 0.10.1 | always (a peer) | the UI runtime asks for an animation frame only while a callback waits, not on every frame forever (about 12 % of an idle screen's main-thread samples on the Samsung A16) |
-| `lottie-react-native` 7.3.8 | if installed | Android: the three events do not coalesce; iOS: a load or failure raised before the view has its event emitter is kept for it |
-| `react-native-maps` 1.27.2 | if installed | Android: the 21 discrete events do not coalesce; the drag, pan, region and location streams still do |
-| `react-native-pdf` 7.0.3 | if installed | Android: the one `topChange` event, which carries every message of the view, does not coalesce (a document's load event was overwritten by the page event that follows it) |
-| `react-native-video` 6.19.3 | if installed | Android: only the progress and bandwidth events coalesce; load, seek, end, error and the rest are delivered one by one |
-
-Coalescing is React Native's event queue replacing an unread event of one name with the next from the same view while JavaScript is busy ([Native views from other libraries](#native-views-from-other-libraries)). The example app's `react-native-live-direction` patch is not here: it fixes `I18nManager` for the libraries of the smoke app and nothing of this package uses it.
-
-Copy them into the app, keep the entries of the libraries the app installs, and install again:
-
-```sh
-pnpm add <the library>                       # first: the patch files arrive with it
-mkdir -p patches/svelte-native
-cp node_modules/@example/svelte-native/patches/*.patch patches/svelte-native/
-```
-
-```yaml
-# pnpm-workspace.yaml, next to the allowBuilds and overrides of "Install in an app" (or "pnpm": { "patchedDependencies": { … } } in package.json)
-patchedDependencies:
-  "@sveltejs/kit@3.0.0-next.27": patches/svelte-native/@sveltejs__kit@3.0.0-next.27.patch
-  expo-modules-core@57.0.23: patches/svelte-native/expo-modules-core@57.0.23.patch
-  lottie-react-native@7.3.8: patches/svelte-native/lottie-react-native@7.3.8.patch
-  react-native-gesture-handler@2.32.0: patches/svelte-native/react-native-gesture-handler@2.32.0.patch
-  react-native-maps@1.27.2: patches/svelte-native/react-native-maps@1.27.2.patch
-  react-native-pdf@7.0.3: patches/svelte-native/react-native-pdf@7.0.3.patch
-  react-native-reanimated@4.5.1: patches/svelte-native/react-native-reanimated@4.5.1.patch
-  react-native-video@6.19.3: patches/svelte-native/react-native-video@6.19.3.patch
-  react-native-worklets@0.10.1: patches/svelte-native/react-native-worklets@0.10.1.patch
-```
-
-```sh
-pnpm install --no-frozen-lockfile    # the declaration changes the lockfile; commit it, and CI's frozen install then passes
-```
-
-- **Copy the files; do not point `patchedDependencies` at `node_modules/@example/svelte-native/patches/…`.** pnpm reads the patch files before it fetches anything, so on a clean install (CI, a fresh clone) that path does not exist yet and the install stops with "Failed to read patch file".
-- **Declare only the libraries the app installs.** pnpm refuses a patch whose package is not in the install (`ERR_PNPM_UNUSED_PATCH`), unless `allowUnusedPatches: true` is set. A library that is installed needs its patch: the events are lost without it.
-- **Versions are exact.** A patch is for one version; `pnpm add react-native-pdf@7.0.3`, not `^7`. The peer ranges in this package's `package.json` say which. `expo-modules-core` is not the app's own dependency: pin it with the `overrides` entry of "Install in an app", or pnpm resolves `expo`'s `~57.0.23` to a newer one and stops with `ERR_PNPM_UNUSED_PATCH`.
-- **Copy again after every upgrade of this package**, then `pnpm install`: a patch changes with the library's code that depends on it, and an older copy applies cleanly but leaves the old behaviour. The doctor compares the installed files with the patch files of the installed library, so it tells the two apart.
-- Most of the patches change native code (Kotlin, Java, Objective-C++, C++): rebuild the native app after installing or changing them.
+  The `patchedDependencies` entries go in the same file ("Apply the patches").
+- **Native modules.** Nothing is copied into the app. The package's `expo-module.config.json` links six native projects through Expo's autolinking (Android Gradle projects `:svelte-engine` and `:svelte-updates`; iOS pods `SvelteScreensIOS`, `SvelteInsets`, `SvelteNavigation`, `SvelteCapture`, `SvelteUpdates`), so `expo prebuild` and `pod install` find them in `node_modules/@example/svelte-native/native/`. Keep the app's own Expo modules in its `modules/` directory as usual.
+- **Patches.** The patches the library relies on are in the package's `patches/` directory; "Apply the patches" below says how an app copies and registers them (`patchedDependencies`), and `pnpm exec svelte-native doctor` checks the result.
+- **App config.** The Metro, Vite and Expo wiring is the one in "Set up an app" below; run `npx expo prebuild` after the first install and after a native dependency or a plugin option changes.
+- **CI.** Declaring the patches changes the lockfile, and with `CI=1` pnpm refuses a frozen install of a lockfile that does not match: run `pnpm install --no-frozen-lockfile` once and commit `pnpm-lock.yaml`.
 
 ## Set up an app
 
-Step 6 of "Install in an app". [`examples/minimal`](../../examples/minimal) is the smallest working app: a root layout, a home screen and a screen pushed on top of it, with the `app.json`, `metro.config.cjs` and `pnpm-workspace.yaml` (step 2). The custom-renderer Svelte, which `svelte-native doctor` points here for, is installed in step 3. It is its own pnpm workspace and imports nothing from this repository by path. `apps/example` is the showcase (a screen for each feature) and `apps/qa` the QA app; both link the library through their workspace dependency, as an app outside the repository does.
+[`examples/minimal`](../../examples/minimal) is the smallest working app: a root layout, a home screen and a screen pushed on top of it, with the `app.json`, `metro.config.cjs` and `pnpm-workspace.yaml` below. It is its own pnpm workspace and imports nothing from this repository by path. `apps/example` is the showcase (a screen for each feature) and `apps/qa` the QA app; both link the library through their workspace dependency, as an app outside the repository does.
 
-Metro and Expo need one line each:
-
+```ts
+// vite.config.ts: browser and native share one config
+plugins: [svelteNative({ target: mode === "native" ? "native" : "web", kit: { /* … */ } })]
+```
 ```js
 // metro.config.cjs
 const { getDefaultConfig } = require("expo/metro-config");
 const { withSvelteNative } = require("@example/svelte-native/metro");
 module.exports = withSvelteNative(getDefaultConfig(__dirname));
 ```
-
 ```json
 // app.json
 { "expo": { "plugins": ["@example/svelte-native"] } }
 ```
-
 ```ts
 // or app.config.ts, with options
 plugins: [["@example/svelte-native", { autolinkingExclude: [], androidOnDemandViewManagers: {} }]]
 ```
 
-Name the plugin by the package's own name, as for any Expo library: the package has an `app.plugin.js` at its root, which Expo looks for before the package's main entry. `@example/svelte-native/expo` is the same plugin by its path and keeps working (an `app.json` or `app.config` that names it is fine). No `babel.config.js` is needed: Expo's default preset gives the same bundle (checked byte for byte).
-
-The Vite plugin is for an app that also builds for browsers; an app that builds for native only installs neither `vite` nor `@sveltejs/kit`.
-
-```ts
-// vite.config.ts: browser and native share one config
-plugins: [svelteNative({ target: mode === "native" ? "native" : "web", kit: { /* … */ } })]
-```
-
-The app needs `src/routes/+layout.mobile.svelte` (the generated entry imports it as the app shell) and at least one `+mobile.svelte`. The first two files of the app, from `examples/minimal` (a screen is described in "Add a screen"):
-
-```svelte
-<!-- src/routes/+layout.mobile.svelte: the app shell; children is the root navigator -->
-<script lang="ts">
-  import type { Snippet } from "svelte";
-  let { children }: { children: Snippet } = $props();
-</script>
-
-{@render children()}
-```
-
-```svelte
-<!-- src/routes/+mobile.svelte: the first screen -->
-<script lang="ts">
-  import { Pressable, Screen, Text, View } from "@example/svelte-native";
-  let taps = $state(0);
-</script>
-
-<Screen title="Hello" header={{ large: true }}>
-  <View style={{ flex: 1, padding: 24, gap: 16, justifyContent: "center" }}>
-    <Text style={{ fontSize: 28, fontWeight: "700" }}>Svelte Native</Text>
-    <Text style={{ fontSize: 16 }}>Tapped {taps} {taps === 1 ? "time" : "times"}.</Text>
-    <Pressable onPress={() => taps++} accessibilityRole="button" style={{ padding: 14, borderRadius: 12, backgroundColor: "#1d4ed8" }}>
-      <Text style={{ color: "#ffffff", fontSize: 16, fontWeight: "600" }}>Tap</Text>
-    </Pressable>
-  </View>
-</Screen>
-```
+Name the plugin by the package's own name, as for any Expo library: the package has an `app.plugin.js` at its root, which Expo looks for before the package's main entry. `@example/svelte-native/expo` is the same plugin by its path and keeps working (an `app.json` or `app.config` that names it is fine). No `babel.config.js` is needed: Expo's default preset gives the same bundle (checked byte for byte). The app needs `src/routes/+layout.mobile.svelte` (the generated entry imports it as the app shell) and at least one `+mobile.svelte`.
 
 Run the commands as `pnpm exec svelte-native <command>`, or from `package.json` scripts (`"android": "svelte-native android"`):
 
@@ -287,98 +130,6 @@ svelte-native sync              # only regenerate .svelte-native/
 The built files are bundles of the Node-side code (the command line, the route generator, the Metro integration, the remote function transform, the doctor) with every package left as an import: they use the app's `svelte`, `expo`, `@sveltejs/kit` and the package's own dependencies, and name the runtime files Metro compiles (`src/fabric/…`) by path into the installed package.
 
 Generated files live in the ignored `.svelte-native/`: the entry and one route table per variant (`routes.<variant>.ts`, from `APP_VARIANT`; `routes.app.ts` for an app that sets none). A change to native dependencies, to the config plugin options or to a patch needs a native rebuild; a change to Svelte code does not. Details of the plugin, Metro options and variants: [REFERENCE.md](REFERENCE.md#integration).
-
-## Check an app with `svelte-native doctor`
-
-Step 7 of "Install in an app".
-
-```sh
-pnpm exec svelte-native doctor            # from the app's directory
-pnpm exec svelte-native doctor --json     # the same checks as JSON
-```
-
-It reads the app and prints one line per check, `pass`, `FAIL`, `skip` or `????` (it could not tell), and under a failure the fix. It exits 1 if a check failed and 0 otherwise; it changes nothing in the app (unlike the other commands it does not write `.svelte-native/`).
-
-```
-svelte-native doctor: /home/me/app
-
-environment
-  pass  node 25.2.0 (needs >=25.0.0)
-  pass  pnpm 12.3.4 (needs >=12.3.4)
-
-svelte
-  FAIL  svelte 5.56.7 is the stock Svelte: it has no ./renderer export (/home/me/app/node_modules/svelte)
-        fix: install the custom-renderer build of Svelte (sveltejs/svelte#18042, commit 216f258, 5.56.7); README: "Set up an app"
-
-peer dependencies
-  pass  react-native 0.86.3 satisfies 0.86.3
-  FAIL  react 19.2.6 does not satisfy 19.2.7
-        fix: pnpm add react@19.2.7
-  skip  optional view libraries not installed, nothing to check: lottie-react-native, react-native-maps
-
-patches
-  pass  react-native-reanimated@4.5.1 applied: the engine's views are written natively and opacity/translate/scale skip React Native's prop path (Android)
-  FAIL  react-native-pdf@7.0.3 is not applied: the pdf view's one event, which carries every message, no longer coalesces (Android)
-        android/src/main/java/org/wonday/pdf/events/TopChangeEvent.java: canCoalesce() is not overridden to return false
-        fix: copy node_modules/@example/svelte-native/patches/react-native-pdf@7.0.3.patch into your repository (patches/svelte-native/), declare "react-native-pdf@7.0.3: patches/svelte-native/react-native-pdf@7.0.3.patch" under patchedDependencies in pnpm-workspace.yaml, then pnpm install (README: "Apply the patches")
-
-build integration
-  pass  @example/svelte-native 0.3.0 is a dependency of the app
-  ????  could not tell: metro.config.cjs does not mention withSvelteNative (a config that applies it from a file it imports is fine)
-        fix: module.exports = withSvelteNative(getDefaultConfig(__dirname)), with withSvelteNative from require("@example/svelte-native/metro")
-  pass  app.json lists the @example/svelte-native/expo plugin
-
-…
-```
-
-What it checks, and how: [REFERENCE.md](REFERENCE.md#doctor). Among the peers: `hermes-intl` is a dependency of the app itself (autolinking), `@sveltejs/kit` and `vite` are skipped when absent, and a version of `expo-modules-core` other than the patch's gets the `overrides` fix. A patch counts as applied when the installed package has the code the patch adds (the Android events that must not coalesce, the gesture handler's manager, Reanimated's sink, the worklets frame loop, Expo's lazy registry, SvelteKit's route filter), not when `patchedDependencies` merely names it.
-
-## Build and run the app
-
-Step 8 of "Install in an app". With the setup checked:
-
-```sh
-pnpm android    # svelte-native android: sync, expo prebuild if android/ is missing, Gradle build, install, Metro
-pnpm ios        # svelte-native ios: the same with CocoaPods and Xcode, on a Mac
-```
-
-Arguments after the command go to `expo run:android` / `expo run:ios`: `--device` (or `--device <name>`) chooses the device or emulator, `--port` Metro's port, `--variant release` / `--configuration Release` a release build ("Development loop"). The first run builds the native app and takes several minutes (ten or more on a machine that has not built React Native before; later builds are incremental). Android needs a JDK 17, the Android SDK with the packages Gradle asks for (platform 36, build-tools 36.0.0, NDK 27.1.12297006, CMake 3.22.1) and `ANDROID_HOME`, and a phone with USB debugging or an emulator. iOS needs a Mac with Xcode and CocoaPods and a simulator or an iPhone (a device needs a development team to sign with). When the folder exists the command builds it as it is: after a change that affects the native project, prebuild first ("When to run expo prebuild").
-
-## Development loop
-
-The first build installs a debug build. From then on, start the dev server and open the installed app, which loads its JavaScript from Metro:
-
-```sh
-pnpm dev                        # svelte-native dev: regenerates .svelte-native/ when a route file changes, starts Metro (expo start)
-adb reverse tcp:8081 tcp:8081   # an Android phone on USB: the debug host asks Metro on that port
-```
-
-In this repository, for the QA app:
-
-```sh
-cd apps/qa && node ../../packages/svelte-native/src/cli.ts dev --port 8181
-adb reverse tcp:8181 tcp:8181      # Android device; the debug host asks Metro on that port
-```
-
-A debug build loads the bundle from Metro. A save re-runs the changed module and the entry, which remounts every surface on the same root; navigation state and native state are kept, component state is not. An uncaught error in development replaces the surface with a red error screen with a Reload button. Do not start Metro with `CI=1` (the file watcher is disabled and bundles go stale). A release build cannot be pointed at Metro. Recipe and limits: [REFERENCE.md](REFERENCE.md#fabric-entry-dev-loop).
-
-| You changed | What it takes |
-|---|---|
-| Svelte, TypeScript, a route file | Save (above). A new or removed route file is picked up by `pnpm dev`. |
-| A package with native code, a plugin or its options, the native keys of `app.json`, the library's version | `expo prebuild`, then `pnpm android` / `pnpm ios` ("When to run expo prebuild") |
-| A patch | `pnpm install`, then `pnpm android` / `pnpm ios` (no prebuild) |
-
-**Debug and release.** `expo run:*` makes a debug build unless told otherwise; a release build has its JavaScript bundled into the app. For Android, `pnpm android --variant release` builds and installs one; to only make the APK, prebuild and run `./gradlew :app:assembleRelease` in `android/`, which gives `android/app/build/outputs/apk/release/app-release.apk` (what `scripts/consumer-check.sh` runs and checks: the APK holds the engine, the Hermes bundle and the app id; the QA harness builds the same way). For iOS, the QA harness builds the Release configuration on a Mac with `xcodebuild` and signs it for a device; `pnpm ios --configuration Release` is Expo's way, and has not been run here. EAS Build, building on Expo's servers, has not been tried; the updates client works with `eas update` ("Updates").
-
-## Using Expo and React Native libraries
-
-What an Expo or React Native library gives the app decides how it is used:
-
-- **A module with a plain JavaScript API** is imported as usual: `expo-notifications`, `expo-location`, `expo-secure-store`, `expo-haptics`, `expo-web-browser`, `@react-native-async-storage/async-storage` and `react-native-mmkv` are some of the 35 native libraries the smoke app loads and calls (34 on the Samsung phone, where Huawei's location module is skipped; `pnpm native-qa smoke` fails when one stops loading). Install it (`npx expo install expo-location`), put its config plugin and permissions in `app.json` as for any Expo app, and prebuild ("When to run expo prebuild"). Its functions work; its React hooks and components do not, because there is no React to run them. A module that is loaded by name rather than imported: "Native modules".
-- **A native view** is a component of `@example/svelte-native/foreign`. The library has ready ones for expo-image, expo-blur, expo-linear-gradient, expo-conic-gradient, expo-video, react-native-video, lottie-react-native, rive-react-native, react-native-webview, react-native-maps, react-native-pdf and others (the table in "Native views from other libraries"), and `ForeignView` mounts any Fabric component by name. For the view of any other Expo module, `defineExpoView` makes a typed Svelte component of it by the module's name, with no wrapper written for the library.<!-- feat/expo-view: the last sentence of this bullet is true once that branch merges; defineExpoView is not in main -->
-- **A library that needs React** (its components and hooks are the API, such as a UI kit or a data library written for React) cannot be imported. Use its native module by name, as the wrappers do, or a Svelte equivalent.
-
-Libraries with native code need a native build after they are installed, and four of the view libraries (`lottie-react-native`, `react-native-maps`, `react-native-pdf`, `react-native-video`) need their patch ("Apply the patches").
 
 ## Add a screen
 
@@ -623,6 +374,108 @@ adb logcat -s ReactNativeJS | grep "remote lab results"      # {"origin":…,"re
 ```
 
 On the iPhone the dev server must be reachable from it: run it on the Mac and use the Mac's LAN address (`SVELTE_NATIVE_REMOTE_ORIGIN=http://<mac address>:3000`, or `?origin=http://<mac address>:3000` on the link of a build that has no host; an IP literal is outside App Transport Security) and open `example-svelte:///__dev/remote?run=1`. A build with no origin still has the page: type the origin of a reachable dev server and press "Use this host" (`?origin=<origin>` does it from the link; use `https:`, or on the iPhone a plain `http:` address to an IP, which App Transport Security does not cover). Then, by hand: type in the form and watch the issues change; leave the page while the clock runs, come back and press "Server stats": `liveOpen` is 1 (this page's clock) and not 2, because the first stream was closed with its screen; send the app to the background and back and check the clock resumes; kill the dev server and check the failures are shown, not swallowed.
+
+## Apply the patches
+
+The library works only with nine third-party packages patched, and pnpm applies a patch only from the app's own workspace, so an app copies the patch files in and declares them. They are in `patches/` of this package, named `<package>@<version>.patch`, and each is for exactly that version of the package it names (the peers below are pinned to the same versions).
+
+| Package | Needed | What the patch changes |
+|---|---|---|
+| `@sveltejs/kit` 3.0.0-next.27 | if installed (an optional peer: remote functions, the web target) | SvelteKit's route manifest and its `+page`/`+layout` warnings leave `+mobile.svelte` files in a route directory alone |
+| `expo-modules-core` 57.0.23 | always (comes with `expo`; pin it with `overrides`, "Install in an app") | Android: Expo modules register lazily and the common ones are prewarmed on a thread of their own; the native view adapter loads React Native's component registry on its first view |
+| `react-native-gesture-handler` 2.32.0 | always (a peer) | iOS: the manager can be asked for the root gesture recognizer of a screen the library presents (sheets, modals) and does not stop its walk above a view that holds a touch handler |
+| `react-native-reanimated` 4.5.1 | always (a peer) | Android: `synchronouslyUpdateUIProps` hands the engine's views to a native sink, and opacity and translate/scale transforms skip React Native's prop path |
+| `react-native-worklets` 0.10.1 | always (a peer) | the UI runtime asks for an animation frame only while a callback waits, not on every frame forever (about 12 % of an idle screen's main-thread samples on the Samsung A16) |
+| `lottie-react-native` 7.3.8 | if installed | Android: the three events do not coalesce; iOS: a load or failure raised before the view has its event emitter is kept for it |
+| `react-native-maps` 1.27.2 | if installed | Android: the 21 discrete events do not coalesce; the drag, pan, region and location streams still do |
+| `react-native-pdf` 7.0.3 | if installed | Android: the one `topChange` event, which carries every message of the view, does not coalesce (a document's load event was overwritten by the page event that follows it) |
+| `react-native-video` 6.19.3 | if installed | Android: only the progress and bandwidth events coalesce; load, seek, end, error and the rest are delivered one by one |
+
+Coalescing is React Native's event queue replacing an unread event of one name with the next from the same view while JavaScript is busy ([Native views from other libraries](#native-views-from-other-libraries)). The example app's `react-native-live-direction` patch is not here: it fixes `I18nManager` for the libraries of the smoke app and nothing of this package uses it.
+
+Copy them into the app, keep the entries of the libraries the app installs, and install again:
+
+```sh
+pnpm add <the library>                       # first: the patch files arrive with it
+mkdir -p patches/svelte-native
+cp node_modules/@example/svelte-native/patches/*.patch patches/svelte-native/
+```
+
+```yaml
+# pnpm-workspace.yaml, next to the allowBuilds and overrides of "Install in an app" (or "pnpm": { "patchedDependencies": { … } } in package.json)
+patchedDependencies:
+  "@sveltejs/kit@3.0.0-next.27": patches/svelte-native/@sveltejs__kit@3.0.0-next.27.patch
+  expo-modules-core@57.0.23: patches/svelte-native/expo-modules-core@57.0.23.patch
+  lottie-react-native@7.3.8: patches/svelte-native/lottie-react-native@7.3.8.patch
+  react-native-gesture-handler@2.32.0: patches/svelte-native/react-native-gesture-handler@2.32.0.patch
+  react-native-maps@1.27.2: patches/svelte-native/react-native-maps@1.27.2.patch
+  react-native-pdf@7.0.3: patches/svelte-native/react-native-pdf@7.0.3.patch
+  react-native-reanimated@4.5.1: patches/svelte-native/react-native-reanimated@4.5.1.patch
+  react-native-video@6.19.3: patches/svelte-native/react-native-video@6.19.3.patch
+  react-native-worklets@0.10.1: patches/svelte-native/react-native-worklets@0.10.1.patch
+```
+
+```sh
+pnpm install --no-frozen-lockfile    # the declaration changes the lockfile; commit it, and CI's frozen install then passes
+```
+
+- **Copy the files; do not point `patchedDependencies` at `node_modules/@example/svelte-native/patches/…`.** pnpm reads the patch files before it fetches anything, so on a clean install (CI, a fresh clone) that path does not exist yet and the install stops with "Failed to read patch file".
+- **Declare only the libraries the app installs.** pnpm refuses a patch whose package is not in the install (`ERR_PNPM_UNUSED_PATCH`), unless `allowUnusedPatches: true` is set. A library that is installed needs its patch: the events are lost without it.
+- **Versions are exact.** A patch is for one version; `pnpm add react-native-pdf@7.0.3`, not `^7`. The peer ranges in this package's `package.json` say which. `expo-modules-core` is not the app's own dependency: pin it with the `overrides` entry of "Install in an app", or pnpm resolves `expo`'s `~57.0.23` to a newer one and stops with `ERR_PNPM_UNUSED_PATCH`.
+- **Copy again after every upgrade of this package**, then `pnpm install`: a patch changes with the library's code that depends on it, and an older copy applies cleanly but leaves the old behaviour. The doctor compares the installed files with the patch files of the installed library, so it tells the two apart.
+- Most of the patches change native code (Kotlin, Java, Objective-C++, C++): rebuild the native app after installing or changing them.
+
+## Check an app with `svelte-native doctor`
+
+```sh
+pnpm exec svelte-native doctor            # from the app's directory
+pnpm exec svelte-native doctor --json     # the same checks as JSON
+```
+
+It reads the app and prints one line per check, `pass`, `FAIL`, `skip` or `????` (it could not tell), and under a failure the fix. It exits 1 if a check failed and 0 otherwise; it changes nothing in the app (unlike the other commands it does not write `.svelte-native/`).
+
+```
+svelte-native doctor: /home/me/app
+
+environment
+  pass  node 25.2.0 (needs >=25.0.0)
+  pass  pnpm 12.3.4 (needs >=12.3.4)
+
+svelte
+  FAIL  svelte 5.56.7 is the stock Svelte: it has no ./renderer export (/home/me/app/node_modules/svelte)
+        fix: install the custom-renderer build of Svelte (sveltejs/svelte#18042, commit 216f258, 5.56.7); README: "Set up an app"
+
+peer dependencies
+  pass  react-native 0.86.3 satisfies 0.86.3
+  FAIL  react 19.2.6 does not satisfy 19.2.7
+        fix: pnpm add react@19.2.7
+  skip  optional view libraries not installed, nothing to check: lottie-react-native, react-native-maps
+
+patches
+  pass  react-native-reanimated@4.5.1 applied: the engine's views are written natively and opacity/translate/scale skip React Native's prop path (Android)
+  FAIL  react-native-pdf@7.0.3 is not applied: the pdf view's one event, which carries every message, no longer coalesces (Android)
+        android/src/main/java/org/wonday/pdf/events/TopChangeEvent.java: canCoalesce() is not overridden to return false
+        fix: copy node_modules/@example/svelte-native/patches/react-native-pdf@7.0.3.patch into your repository (patches/svelte-native/), declare "react-native-pdf@7.0.3: patches/svelte-native/react-native-pdf@7.0.3.patch" under patchedDependencies in pnpm-workspace.yaml, then pnpm install (README: "Apply the patches")
+
+build integration
+  pass  @example/svelte-native 0.3.0 is a dependency of the app
+  ????  could not tell: metro.config.cjs does not mention withSvelteNative (a config that applies it from a file it imports is fine)
+        fix: module.exports = withSvelteNative(getDefaultConfig(__dirname)), with withSvelteNative from require("@example/svelte-native/metro")
+  pass  app.json lists the @example/svelte-native/expo plugin
+
+…
+```
+
+What it checks, and how: [REFERENCE.md](REFERENCE.md#doctor). Among the peers: `hermes-intl` is a dependency of the app itself (autolinking), `@sveltejs/kit` and `vite` are skipped when absent, and a version of `expo-modules-core` other than the patch's gets the `overrides` fix. A patch counts as applied when the installed package has the code the patch adds (the Android events that must not coalesce, the gesture handler's manager, Reanimated's sink, the worklets frame loop, Expo's lazy registry, SvelteKit's route filter), not when `patchedDependencies` merely names it.
+
+## Development loop
+
+```sh
+cd apps/qa && node ../../packages/svelte-native/src/cli.ts dev --port 8181
+adb reverse tcp:8181 tcp:8181      # Android device; the debug host asks Metro on that port
+```
+
+A debug build loads the bundle from Metro. A save re-runs the changed module and the entry, which remounts every surface on the same root; navigation state and native state are kept, component state is not. An uncaught error in development replaces the surface with a red error screen with a Reload button. Do not start Metro with `CI=1` (the file watcher is disabled and bundles go stale). A release build cannot be pointed at Metro. Recipe and limits: [REFERENCE.md](REFERENCE.md#fabric-entry-dev-loop).
 
 ## Testing and quality
 

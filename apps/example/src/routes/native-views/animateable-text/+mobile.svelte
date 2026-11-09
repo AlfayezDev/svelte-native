@@ -1,3 +1,4 @@
+<svelte:options runes />
 <script lang="ts">
   import { View } from "@rasheed/svelte-native";
   import { createSharedValue, withTiming } from "@rasheed/svelte-native/animation";
@@ -9,6 +10,7 @@
 
   // `AnimateableText` is react-native-animateable-text: a text whose string a worklet can set on the UI thread. `animatedProps` returns `{ text }`
   // from shared values, so the number changes every frame without the JavaScript thread. `text` is only what shows before the first frame.
+  // Runes mode (the tag above) keeps `count` a plain constant. Without it Svelte makes it state, because the buttons below mutate it, and a worklet cannot read state.
   const count = createSharedValue(0); // first: it loads Reanimated, so the worklet below captures the real functions
   const countText = () => { "worklet"; return { text: String(Math.round(count.value)) }; };
 </script>

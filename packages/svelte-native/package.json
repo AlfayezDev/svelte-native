@@ -3,6 +3,7 @@
   "version": "0.2.0",
   "private": true,
   "type": "module",
+  "license": "MIT",
   "exports": {
     ".": "./src/index.ts",
     "./core": "./src/core.ts",
@@ -32,6 +33,22 @@
   "bin": {
     "svelte-native": "./src/cli.ts"
   },
+  "files": [
+    "src",
+    "native",
+    "patches",
+    "expo-module.config.json",
+    "README.md",
+    "REFERENCE.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "!native/**/test",
+    "!native/**/*.md",
+    "!native/**/build",
+    "!native/**/.cxx",
+    "!native/**/.gradle",
+    "!native/**/Pods"
+  ],
   "scripts": {
     "typecheck": "svelte-check --tsconfig ./tsconfig.json",
     "test": "bun test --timeout 60000",

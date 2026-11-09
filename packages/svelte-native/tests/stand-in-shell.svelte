@@ -1,7 +1,7 @@
 <script>
-  import Layout from "../../../apps/example/src/routes/+layout.mobile.svelte";
+  import Layout from "./fixtures/stand-in-app/src/routes/+layout.mobile.svelte";
   import { useRouter } from "../src/router.svelte.ts";
   let { children } = $props();
-  globalThis.__labOffRouter = useRouter("root");
+  globalThis.__standInRouter = useRouter("root");
 </script>
 <Layout>{@render children()}</Layout>

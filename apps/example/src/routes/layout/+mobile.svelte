@@ -55,7 +55,7 @@
 
   <Section title="flex" note="Free space is shared in proportion: 1, 2 and 1.">
     <View style={{ flexDirection: "row", gap: 8, height: 40 }}>
-      <View style={[track, { flex: 1 }]} /><View style={[box, { flex: 2, width: undefined }]} /><View style={[track, { flex: 1 }]} />
+      <View style={[track, { flex: 1 }]} /><View style={[track, { flex: 2, backgroundColor: theme.colors.accent }]} /><View style={[track, { flex: 1 }]} />
     </View>
   </Section>
 

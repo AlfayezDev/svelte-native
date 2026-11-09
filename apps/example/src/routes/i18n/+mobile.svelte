@@ -6,8 +6,8 @@
   import { text, theme } from "#lib/theme.svelte.ts";
 
   // Internationalization and right-to-left. The words are a plain object per language, picked by state; plurals, numbers and dates come from
-  // `Intl`. The layout direction is a style: `direction: "rtl"` on a view flips its rows, and the logical keys (`marginStart`, `paddingEnd`)
-  // follow it where `marginLeft` would not. This screen flips one card so both can be compared; the phone's own language works the same way.
+  // `Intl`. The layout direction is a style: `direction: "rtl"` on a view flips its rows, and a logical key such as `marginStart` follows it
+  // where `marginLeft` would not. The cards below take their direction from the chosen language; the header and the rest of the app keep theirs.
   const messages = {
     en: { hello: "Hello, Sam", cart: "Your cart", zero: "is empty", one: "has one item", two: "has two items", few: "has {n} items", many: "has {n} items", other: "has {n} items" },
     ar: { hello: "مرحباً يا سام", cart: "سلتك", zero: "فارغة", one: "فيها عنصر واحد", two: "فيها عنصران", few: "فيها {n} عناصر", many: "فيها {n} عنصراً", other: "فيها {n} عنصر" },
@@ -21,7 +21,7 @@
   const number = $derived(new Intl.NumberFormat(locales[language]).format(count));
   const cart = $derived(`${words.cart} ${words[form].replace("{n}", number)}`);
   const price = $derived(new Intl.NumberFormat(locales[language], { style: "currency", currency: "USD" }).format(1234.5));
-  const date = $derived(new Intl.DateTimeFormat(locales[language], { dateStyle: "long" }).format(new Date(2026, 10, 9)));
+  const date = $derived(new Intl.DateTimeFormat(locales[language], { year: "numeric", month: "long", day: "numeric" }).format(new Date(2026, 10, 9)));
 </script>
 
 <Page title="Internationalization" intro="One screen in English and in Arabic. Pick a language and the words, the numbers and the direction of the layout change together.">

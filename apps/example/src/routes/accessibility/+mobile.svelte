@@ -8,7 +8,9 @@
   // Accessibility. A screen reader (TalkBack, VoiceOver) reads the screen from the same views that draw it, so the work is to say what they
   // mean: `accessibilityLabel` (what to say), `accessibilityRole` (what it is), `accessibilityState` (checked, selected, expanded, disabled),
   // `accessibilityHint` (what happens), `accessibilityLiveRegion` (announce changes) and `accessibilityActions` (things a gesture does,
-  // offered as a menu). The reader goes through the views in the order of this file, so write them in the order they should be read.
+  // offered as a menu). The reader goes through the views in the order of this file (its focus order), so write them in the order they
+  // should be read.
+  let closed = $state(false);
   let notifications = $state(false);
   let expanded = $state(false);
   let count = $state(0);
@@ -17,8 +19,8 @@
 
 <Page title="Accessibility" intro="Turn on TalkBack or VoiceOver and swipe through this screen. Everything below is said aloud, and every control can be used without seeing it.">
   <Section title="Labels and roles" note="An icon says nothing to a screen reader. A label does. A heading role lets a user jump from heading to heading.">
-    <Text accessibilityRole="header" style={text.heading}>Messages</Text>
-    <Pressable accessibilityRole="button" accessibilityLabel="Close" accessibilityHint="Closes the message list" onPress={() => {}} style={{ width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", backgroundColor: theme.colors.border }}>
+    <Text accessibilityRole="header" style={text.heading}>Messages: {closed ? "closed" : "open"}</Text>
+    <Pressable accessibilityRole="button" accessibilityLabel="Close" accessibilityHint="Closes the message list" onPress={() => (closed = true)} style={{ width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", backgroundColor: theme.colors.border }}>
       <Text style={text.heading}>✕</Text>
     </Pressable>
     <Image source={photo} accessibilityLabel="A sunset over hills" style={{ height: 64, borderRadius: 8 }} />
@@ -40,6 +42,13 @@
       <Text style={text.body}>$3.50</Text>
     </View>
     <View aria-hidden={true} importantForAccessibility="no-hide-descendants" style={{ height: 4, borderRadius: 2, backgroundColor: theme.colors.accent }} />
+  </Section>
+
+  <Section title="Reading order" note="A screen reader follows the order of the views in the file, not where they sit on the screen. This row is drawn reversed and is still read First, then Second. Keep the two orders the same.">
+    <View style={{ flexDirection: "row-reverse", justifyContent: "flex-end", gap: 12 }}>
+      <Text style={text.heading}>First</Text>
+      <Text style={text.heading}>Second</Text>
+    </View>
   </Section>
 
   <Section title="Announcements" note="A live region is read out when its text changes, without moving the reader's focus.">

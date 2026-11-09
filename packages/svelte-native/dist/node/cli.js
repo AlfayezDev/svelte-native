@@ -779,8 +779,15 @@ ${USAGE}`;
 }
 function formatPlan(plan, dryRun) {
   const lines = [`svelte-native init: ${plan.root}${dryRun ? " (dry run)" : ""}`, ""];
-  const width = Math.max(...plan.changes.map((change) => change.path.length), 10);
-  for (const change of plan.changes) lines.push(`  ${WORD[change.action]}  ${change.path.padEnd(width)}  ${change.summary}`);
+  const patchDirectory = "patches/svelte-native/";
+  const patches2 = plan.changes.filter((change) => change.path.startsWith(patchDirectory));
+  const rows = [];
+  for (const change of plan.changes) {
+    if (!change.path.startsWith(patchDirectory)) rows.push(change);
+    else if (change === patches2[0]) rows.push({ action: patches2.every((entry) => entry.action === "create") ? "create" : "edit", path: patchDirectory, summary: `${plural(patches2.length, "patch file")} from the installed library` });
+  }
+  const width = Math.max(...rows.map((row) => row.path.length), 10);
+  for (const row of rows) lines.push(`  ${WORD[row.action]}  ${row.path.padEnd(width)}  ${row.summary}`);
   for (const change of plan.changes.filter((entry) => entry.action === "manual")) lines.push("", `${change.path}:`, ...(change.instructions ?? "").split("\n").map((line) => `  ${line}`));
   if (plan.warnings.length > 0) lines.push("", "warnings:", ...plan.warnings.map((warning) => `  ${warning}`));
   return lines.join("\n");

@@ -1,12 +1,15 @@
 name: native-qa
 
-# Svelte Native on React Native Fabric: unit tests, then the Android emulator lane on the OVH host's self-hosted runner.
+# The Android emulator lane (and the crash volume) of the QA harness, on the self-hosted runner next to the emulator on the OVH host.
+# The static checks (lint, types, unit tests, host checks) are ci.yml; the build from a consumer's side is consumer.yml.
 # What runs, what blocks, how to read a failure and what it costs: apps/qa/qa/README.md, "CI".
-# Registering the runner: apps/qa/qa/ci/RUNBOOK.md.
+# Registering the runner and switching the lane on: apps/qa/qa/ci/RUNBOOK.md. Until the repository variable QA_EMULATOR_RUNNER is "true" no
+# job here runs (a push shows this workflow as skipped), so nothing waits for a runner that does not exist.
 
 on:
   push:
-    # A push that only touches documentation does not need an emulator.
+    # Branches only: the tag of a release is built by release.yml. A push that only touches documentation does not need an emulator.
+    branches: ["**"]
     paths-ignore:
       - "**/*.md"
       - "docs/**"
@@ -50,80 +53,21 @@ env:
   EXPO_NO_TELEMETRY: "1"
 
 jobs:
-  unit:
-    name: Unit tests, typecheck, lint
-    # GitHub-hosted by default, so this runs while the emulator lane of an earlier push still holds the OVH runner.
-    # Set the repository variable QA_UNIT_RUNS_ON to ["self-hosted","svelte-qa-emulator"] to run it on the OVH runner instead.
-    runs-on: ${{ fromJSON(vars.QA_UNIT_RUNS_ON || '"ubuntu-latest"') }}
-    timeout-minutes: 60
+  # A dispatch while the runner is not enabled says so instead of finishing green with nothing run.
+  runner-missing:
+    name: Emulator runner not enabled
+    if: ${{ github.event_name == 'workflow_dispatch' && vars.QA_EMULATOR_RUNNER != 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: package.json
-          cache: pnpm
-
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.14
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      # The Kotlin and C++ host checks (the engine's run.sh, and the package tests that compile *Host.kt) need a JDK and kotlinc, and skip
-      # themselves without them, so packages/svelte-native/tests/native-tools.test.ts fails under CI=1 when one is missing. g++ and the Android
-      # SDK's android.jar come with the hosted image; on the OVH runner (QA_UNIT_RUNS_ON) qa/ci/setup-runner.sh installs g++.
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      # A pinned kotlinc (2.1.20, the Kotlin the Android build compiles with) and the org.json jar, each checked against a sha256 and
-      # kept in ~/.cache/native-qa-host-tools, so a runner that keeps its home downloads once. It puts kotlinc on PATH and sets ORG_JSON_JAR.
-      - name: Install kotlinc and the org.json jar
-        run: bash apps/qa/qa/ci/host-tools.sh
-
-      - name: Lint the platform app
-        run: pnpm --dir apps/qa lint
-
-      - name: Lint the Svelte Native package
-        run: pnpm --dir packages/svelte-native lint
-
-      - name: Typecheck the Svelte Native package
-        run: pnpm --dir packages/svelte-native typecheck
-
-      - name: Typecheck the platform app
-        run: pnpm --dir apps/qa typecheck
-
-      - name: Typecheck the harness
-        run: pnpm --dir apps/qa native-qa:typecheck
-
-      # Kotlin and C++ host checks of the engine, no device: the animated wire (C++ encoder against the Kotlin decoder), the foreign-view
-      # ownership rules, what the view-shot capture decides before it draws, and the gesture rules (pointer events, who may claim a touch,
-      # the distances read from react-native-gesture-handler's own Pan source). About 20 s.
-      - name: Engine host checks (gesture rules, capture, animated wire)
-        run: bash packages/svelte-native/native/svelte-engine/android/src/test/run.sh
-
-      # The package suite (route discovery, Metro stubs, gestures, svg, the app-tree mounts with the product's stubs, and the updates
-      # client, launch and store tests: the Kotlin ones skip themselves without kotlinc, which native-tools.test.ts turns into a failure here) ran in no workflow before.
-      # Some of its tests start Metro or esbuild, so the default 5 s per test is too short on a hosted runner.
-      - name: Svelte Native package tests
-        working-directory: packages/svelte-native
-        run: bun test --timeout 60000
-
-      # The harness suite includes the updates unit tests (the scenario against a model of the client's policy, the eas-cli output
-      # and channel parsing, the log parser, the reset rules) and the bundle test, which bundles the QA, smoke and product apps with
-      # Metro (a few minutes, tens of MB of temporary files) to check what each one contains. The default 5 s per test is far too short.
-      - name: Harness tests
-        working-directory: apps/qa
-        run: bun test --timeout 120000 qa/test
+      - run: |
+          echo "::error title=No emulator runner::the repository variable QA_EMULATOR_RUNNER is not \"true\". Register the self-hosted runner (apps/qa/qa/ci/RUNBOOK.md) and set it; no emulator job ran."
+          exit 1
 
   emulator:
     name: Android emulator lane
-    needs: unit
+    # The runner has to exist: a job for a label no runner has stays queued until GitHub gives up after 24 hours.
+    if: ${{ vars.QA_EMULATOR_RUNNER == 'true' }}
     runs-on: [self-hosted, svelte-qa-emulator]
     timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && 480 || 180 }}
     # One emulator: runs queue instead of cancelling each other. GitHub keeps one running and the newest pending run in a group,
@@ -149,13 +93,13 @@ jobs:
     steps:
       # The runner's workspace is kept between runs, so Gradle, CMake and Metro build incrementally; lane.sh reset forgets the
       # last lane's run files, which the report would otherwise merge into this one.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           clean: false
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: package.json
 
@@ -185,7 +129,7 @@ jobs:
 
       - name: Upload run files, logs and report
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: native-qa-emulator-${{ github.run_id }}-${{ github.run_attempt }}
           if-no-files-found: warn
@@ -200,8 +144,7 @@ jobs:
 
   crashes:
     name: Crash volume
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.crashes }}
-    needs: unit
+    if: ${{ vars.QA_EMULATOR_RUNNER == 'true' && github.event_name == 'workflow_dispatch' && inputs.crashes }}
     runs-on: [self-hosted, svelte-qa-emulator]
     timeout-minutes: 1200
     # Not the group of the lane: a crash volume waiting for the runner must not be replaced by the next push's lane.
@@ -214,13 +157,13 @@ jobs:
       run:
         working-directory: apps/qa
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           clean: false
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: package.json
 
@@ -247,7 +190,7 @@ jobs:
 
       - name: Upload run files, logs and report
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: native-qa-crashes-${{ github.run_id }}-${{ github.run_attempt }}
           if-no-files-found: warn

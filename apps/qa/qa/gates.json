@@ -387,10 +387,23 @@
         "list-300-raw"
       ],
       "maxLateIntervals": 4,
-      "maxMs": 20,
+      "maxMs": 23,
       "decision": "D11",
-      "reason": "repeated short late intervals on the Galaxy A16's 90 Hz display (2 to 4 late intervals in more than one run of ten, no frame over 19 ms: late at 90 Hz, on time at 60 Hz); covered up to 4 late intervals and a 20 ms frame in the judged runs, no further",
-      "evidence": "apps/qa/qa/runs/lab-R58Y90KNGRP-20261102T182601Z.json (final build fb53ab1cf, 2 Nov, 10 runs): the churn-static and list-300-raw frame records; GOAL.md D11"
+      "reason": "repeated short late intervals on the Galaxy A16's 90 Hz display: 2 to 4 late intervals in more than one run of ten, frames of 16 to 22 ms (one or two 90 Hz periods late, on time at 60 Hz); covered up to 4 late intervals and a 23 ms frame (two periods plus margin) in the judged runs, no further",
+      "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'The Samsung's frame spread under D10 and D11 (9 November 2026)'; GOAL.md D11 (amended 9 Nov 2026)"
+    },
+    {
+      "gate": "frames.droppedPct",
+      "device": "R58Y90KNGRP",
+      "scenarios": [
+        "list-300",
+        "list-300-clipped"
+      ],
+      "maxLateIntervals": 2,
+      "maxMs": 23,
+      "decision": "D11",
+      "reason": "the plain and clipped 300-row lists show the same spread on the A16: a ten-run lab has a judged run with 2 late intervals about one time in five on any build (13 of 158 runs since 1 Nov, interleaved A/B old and new build equal); covered up to 2 late intervals and a 23 ms frame, no further",
+      "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'The Samsung's frame spread under D10 and D11 (9 November 2026)'; GOAL.md D11 (amended 9 Nov 2026)"
     },
     {
       "gate": "frames.maxPeriodRatio",
@@ -400,10 +413,23 @@
         "list-300-raw"
       ],
       "maxLateIntervals": 4,
-      "maxMs": 20,
+      "maxMs": 23,
       "decision": "D11",
-      "reason": "repeated short late intervals on the Galaxy A16's 90 Hz display (2 to 4 late intervals in more than one run of ten, no frame over 19 ms: late at 90 Hz, on time at 60 Hz); covered up to 4 late intervals and a 20 ms frame in the judged runs, no further",
-      "evidence": "apps/qa/qa/runs/lab-R58Y90KNGRP-20261102T182601Z.json (final build fb53ab1cf, 2 Nov, 10 runs): the churn-static and list-300-raw frame records; GOAL.md D11"
+      "reason": "repeated short late intervals on the Galaxy A16's 90 Hz display: 2 to 4 late intervals in more than one run of ten, frames of 16 to 22 ms (one or two 90 Hz periods late, on time at 60 Hz); covered up to 4 late intervals and a 23 ms frame (two periods plus margin) in the judged runs, no further",
+      "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'The Samsung's frame spread under D10 and D11 (9 November 2026)'; GOAL.md D11 (amended 9 Nov 2026)"
+    },
+    {
+      "gate": "frames.maxPeriodRatio",
+      "device": "R58Y90KNGRP",
+      "scenarios": [
+        "list-300",
+        "list-300-clipped"
+      ],
+      "maxLateIntervals": 2,
+      "maxMs": 23,
+      "decision": "D11",
+      "reason": "the plain and clipped 300-row lists show the same spread on the A16: a ten-run lab has a judged run with 2 late intervals about one time in five on any build (13 of 158 runs since 1 Nov, interleaved A/B old and new build equal); covered up to 2 late intervals and a 23 ms frame, no further",
+      "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'The Samsung's frame spread under D10 and D11 (9 November 2026)'; GOAL.md D11 (amended 9 Nov 2026)"
     }
   ],
   "gates": [

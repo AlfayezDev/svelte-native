@@ -163,6 +163,7 @@ Fixed `rowHeight`, measured rows (`estimatedRowHeight`), `rowHeights`, `horizont
 ### Coming from Svelte on the web
 
 - **Runes are the default.** The library compiles every component of the app in runes mode, also a component with no rune in it, where Svelte alone would infer legacy mode from the file. Legacy mode makes a variable the markup mutates reactive state, even a `const`, and a worklet that captures it crashes the screen on the device. A file opts out with `<svelte:options runes={false} />`. Svelte libraries below `node_modules` keep Svelte's own default (runes inferred per file), so a third-party component written in the legacy syntax still compiles; this library's own components are always runes. An app that is migrating legacy components turns the default off with `withSvelteNative(config, { runes: false })` in `metro.config.cjs` and `svelteNative({ runes: false })` in `vite.config.ts`, and Svelte infers the mode of each file again. The web target gets the default too, so a component both targets import means the same on each ([REFERENCE.md](REFERENCE.md#runes-mode)).
+- **`Text` keeps whitespace as written**, as React Native's does; a browser collapses it with CSS and there is none here. A sentence split across source lines shows the line break and the next line's indent. Write a long sentence on one source line, or as a string, `<Text>{"one long string"}</Text>` ([REFERENCE.md](REFERENCE.md#text-and-whitespace)).
 
 ## Platform modules
 

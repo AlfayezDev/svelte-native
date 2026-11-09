@@ -4,7 +4,7 @@ import { compile, compileModule } from "svelte/compiler";
 import { transformSync } from "esbuild";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { traverseFast } from "@babel/types";
+import { isIdentifier, isObjectProperty, isStringLiteral, traverseFast, type Node } from "@babel/types";
 import { lowerPrimitives } from "./lower.ts";
 import { sourceDirectory, sourceFile } from "./package-root.ts";
 import { assertCustomRenderer } from "./svelte-build.ts";
@@ -56,11 +56,41 @@ function requireCustomRenderer(): void {
   rendererChecked = true;
 }
 
+/**
+ * Fails the build when a worklet of a file Svelte compiled reads reactive state. A worklet runs on the UI runtime, where Svelte does not exist; state is read through
+ * Svelte's runtime (`$.get(count)`), so the Worklets plugin gives such a worklet `$`, the namespace of `svelte/internal/client`, in its closure, and the UI runtime turns each
+ * function of it into a remote function that throws when called ("Tried to synchronously call a Remote Function. Called "anonymous""): the screen throws when it mounts.
+ * Outside runes mode a shared value is state too when the markup mutates it (`count.value = ...` in a handler), so the message for that mode names `<svelte:options runes />`.
+ * The plugin writes a worklet's source into the module as `code` (`function name(){const{$,count}=this.__closure;...}`), which is what is read here.
+ */
+export function assertWorkletsReadNoState(filename: string, ast: object, runes: boolean): void {
+  const state = new Set<string>();
+  let reached = false;
+  traverseFast(ast as Node, (node) => {
+    if (!isObjectProperty(node) || !isIdentifier(node.key, { name: "code" }) || !isStringLiteral(node.value)) return;
+    const source = node.value.value;
+    const captured = /^function [\w$]*\([^)]*\)\{const\{([^}]*)\}=this\.__closure;/.exec(source)?.[1].split(",");
+    if (!captured?.includes("$")) return;
+    reached = true;
+    for (const read of source.matchAll(/\$\.\w+\(([A-Za-z_$][\w$]*)/g)) state.add(read[1]);
+  });
+  if (!reached) return;
+  const names = [...state].map((name) => `\`${name}\``).join(", ");
+  const what = names ? `${names}, which Svelte compiled into reactive state` : "reactive state (Svelte's runtime, `$`)";
+  throw new Error(`${filename}: a worklet reads ${what}. A worklet runs on the UI runtime, which has no Svelte, so it cannot read state; on the device it would throw "Tried to synchronously call a Remote Function" when the screen mounts. ${
+    runes
+      ? "State in runes mode is `$state`, `$derived` and props: copy the value into a shared value (`createSharedValue`) on the JavaScript side and read that in the worklet."
+      : "This component is not in runes mode, where a variable that the markup mutates (`count.value = ...` in a handler) is state even when it is a `const`. Add `<svelte:options runes />` to the component: there a `const` shared value stays a plain constant."
+  }`);
+}
+
 export function transform(input: TransformInput) {
   const { filename } = input;
   const src = sourceOf(input);
   let code = src;
+  let runes = true;
   const maps: TraceMap[] = [];
+  const compiledBySvelte = /\.svelte(\.[jt]s)?$/.test(filename);
   if (filename.endsWith(".svelte")) {
     requireCustomRenderer();
     const result = compile(lowerPrimitives(src, { filename }), {
@@ -71,6 +101,7 @@ export function transform(input: TransformInput) {
     });
     if (result.css?.code.trim()) throw new Error(`${filename}: use native style props; browser CSS is not supported`);
     code = result.js.code;
+    runes = result.metadata.runes;
     if (result.js.map) maps.push(new TraceMap(result.js.map.toString()));
   } else {
     // RN component codegen needs the original TypeScript declarations. The TypeScript a package ships under `node_modules` is left to Babel, except a `.svelte.ts`
@@ -90,6 +121,7 @@ export function transform(input: TransformInput) {
   }
   // Worklets reads this real filename when generating its source maps.
   const output = upstream.transform({ ...input, src: code });
+  if (compiledBySvelte && output.ast) assertWorkletsReadNoState(filename, output.ast, runes);
   if (maps.length && output.ast) traverseFast(output.ast, (node) => {
     if (!node.loc) return;
     for (const position of [node.loc.start, node.loc.end]) {

@@ -15,8 +15,8 @@ export function isLabPath(pathname: string): boolean {
 }
 
 /**
- * Whether every screen on the root stack is the lab's: the app can render them without an account. A restored stack that has the login
- * under the lab (a user went there from the login) is not.
+ * Whether every screen on the root stack is the lab's. A restored stack that has the home screen under the lab (a user went there from the
+ * home screen's link) is not.
  */
 export function labOnly(pathnames: readonly string[]): boolean {
   return pathnames.length > 0 && pathnames.every(isLabPath);

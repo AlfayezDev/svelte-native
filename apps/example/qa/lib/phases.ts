@@ -11,8 +11,8 @@ export function splitPhases(chosen: ScreenCase[]): { signedOut: ScreenCase[]; si
 }
 
 /**
- * Before the signed-out cases: a session an earlier run left (a killed run, a device used by hand) would make the login screen
- * show the workspaces, so the device is signed out first. Only the login case cares, and only a reachable backend can tell: anything
+ * Before the signed-out cases: a session an earlier run left (a killed run, a device used by hand) would make the sign-in screen
+ * show the signed-in app, so the device is signed out first. Only a sign-in case cares, and only a reachable backend can tell: anything
  * that goes wrong here is said and left to the case that depends on it. Returns what to tell the run file, if anything.
  */
 export async function startSignedOut(

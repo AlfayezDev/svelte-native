@@ -11,7 +11,7 @@ const signedInScreens = () => new Set(screenCases.filter((screen) => screen.sign
 const screenOf = (entry: { name: string; screen?: string }): string => entry.screen ?? entry.name.split("--")[0] ?? "";
 
 /**
- * D12: the signed-in phase covers the Rasheed app's account screens, not the library, so a phase that never started (no QA account, or the
+ * D12: the signed-in phase covers a product's account screens, not the library, so a phase that never started (no QA account, or the
  * sign-in was refused: `signedIn` false in its record) does not hold the run incomplete. True when the phase's cases were skipped for that
  * reason; a phase that did sign in, and every signed-out case, count as they always did.
  */

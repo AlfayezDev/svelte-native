@@ -177,7 +177,7 @@ type UpdatesSummary = {
 	finalBuild: "plain" | "channel";
 };
 
-/** The product boot check: the product app started cold on the lab emulator, and whether it reached its login screen without a fatal. */
+/** The product boot check: the product app started cold on the lab emulator, and whether it reached its home screen without a fatal. */
 type ProductSummary = {
 	file: string;
 	source: Source;
@@ -774,7 +774,7 @@ export async function report(): Promise<void> {
 		if (entry.product) {
 			const p = entry.product;
 			console.log(
-				`  product (${p.package}) login screen ${p.firstScreenMs === null ? "not reached" : `after ${p.firstScreenMs} ms`}, fatals ${m["product.boot.fatals"] ?? "-"}, JavaScript error lines ${m["product.boot.jsErrors"] ?? "-"} (not judged)`,
+				`  product (${p.package}) home screen ${p.firstScreenMs === null ? "not reached" : `after ${p.firstScreenMs} ms`}, fatals ${m["product.boot.fatals"] ?? "-"}, JavaScript error lines ${m["product.boot.jsErrors"] ?? "-"} (not judged)`,
 			);
 			for (const problem of p.problems) console.log(`    problem: ${problem}`);
 		}

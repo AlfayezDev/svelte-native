@@ -15,4 +15,7 @@ export const nativeFeatures: Feature[] = [
   { group: "Native views", route: "/native-views/shadow", title: "Shadow (fast-shadow)", summary: "The same soft shadow on both platforms" },
   { group: "Native views", route: "/native-views/animateable-text", title: "Animateable text", summary: "A number that counts on the UI thread" },
   { group: "Native views", route: "/native-views/view-shot", title: "View capture (view-shot)", summary: "Turn a view into a picture" },
+  { group: "Native views", route: "/native-views/date-time-picker", title: "Date and time picker", summary: "A native view on iOS, a dialog on Android" },
+  { group: "Native views", route: "/native-views/web-view", title: "WebView", summary: "A web page with messages both ways" },
+  { group: "Native views", route: "/native-views/map", title: "Map (react-native-maps)", summary: "A map, markers and camera moves" },
 ];

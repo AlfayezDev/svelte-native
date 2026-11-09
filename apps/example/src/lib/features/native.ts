@@ -25,4 +25,5 @@ export const nativeFeatures: Feature[] = [
 
   // Platform
   { group: "Platform", route: "/remote", title: "Remote functions", summary: "Call SvelteKit query, command and form from a screen" },
+  { group: "Platform", route: "/updates", title: "Updates", summary: "What bundle is running, and checking for a new one" },
 ];

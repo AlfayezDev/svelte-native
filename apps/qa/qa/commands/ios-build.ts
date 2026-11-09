@@ -25,8 +25,11 @@ const defaultScript = "/tmp/rasheed-ios-lab-20261025.command";
 const defaultSmokeScript = "/tmp/rasheed-ios-smoke.command";
 const productNames = { qa: "RasheedSvelteQA", smoke: "Sveltesmoke" } as const;
 const smokeBundleMarker = "RNFBAppModule";
-// DerivedData is the signed build's own cache on the Mac: `--delete` would wipe it and make every build a full ~6 min rebuild.
-const excludes = ["DerivedData", "node_modules", ".git", "apps/qa/android/", "apps/qa/ios/", "build", "dist", ".svelte-kit", ".svelte-native", ".rasheed", ".env", ".expo", "*.log"];
+// DerivedData is the signed build's own cache on the Mac: `--delete` would wipe it and make every build a full ~6 min rebuild. An app's
+// `dist/` is build output, but the library's `packages/svelte-native/dist/node/` is committed source the Expo plugin, Metro and the CLI
+// load (a bare "dist" pattern left the Mac without it, and prebuild failed to resolve `@rasheed/svelte-native/expo`, 9 Nov 2026).
+export const macSyncExcludes = ["DerivedData", "node_modules", ".git", "apps/qa/android/", "apps/qa/ios/", "build", "/apps/*/dist/", ".svelte-kit", ".svelte-native", ".rasheed", ".env", ".expo", "*.log"];
+const excludes = macSyncExcludes;
 const buildWaitMs = 30 * 60_000;
 
 export async function iosBuild(argv: string[]): Promise<void> {

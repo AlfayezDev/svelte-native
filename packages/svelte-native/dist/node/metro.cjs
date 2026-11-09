@@ -344,6 +344,9 @@ ${hot}`;
   }
   (0, import_node_fs2.rmSync)((0, import_node_path3.resolve)(output, "routes.ts"), { force: true });
 }
+function unrefTimer(timer) {
+  timer.unref?.();
+}
 function watchRoutes(root, options = {}, debounceMs = 50) {
   let timer;
   const watcher = (0, import_node_fs2.watch)((0, import_node_path3.resolve)(root, "src/routes"), { recursive: true }, () => {
@@ -355,7 +358,7 @@ function watchRoutes(root, options = {}, debounceMs = 50) {
         console.error(error);
       }
     }, debounceMs);
-    timer.unref();
+    unrefTimer(timer);
   });
   watcher.unref();
   return { close() {

@@ -151,6 +151,16 @@ describe("the web target of the Vite plugin", () => {
     expect(await dynamic(given(library))).toEqual({ css: "injected" });
   });
 
+  test("the app's callback may declare the data of any vite-plugin-svelte (7.3 adds Vite's `environment`) and still passes through", async () => {
+    // The type is the check: `pnpm typecheck` fails when withWebRunes does not take a callback of vite-plugin-svelte 7.3's shape, as well as 7.2's.
+    type Data73 = { filename: string; code: string; compileOptions: object; environment: { name: string } };
+    const seen: Data73[] = [];
+    const options = withWebRunes({ dynamicCompileOptions: (data: Data73) => { seen.push(data); return { css: "injected" as const }; } });
+    const wrapped = options.dynamicCompileOptions as (data: Data73) => Promise<unknown>;
+    expect(await wrapped({ ...given(app), environment: { name: "client" } })).toEqual({ runes: true, css: "injected" });
+    expect(seen[0]?.environment).toEqual({ name: "client" });
+  });
+
   test("withWebRunes keeps the rest of the SvelteKit options", () => {
     const options = withWebRunes({ compilerOptions: { experimental: { async: true } } });
     expect(options.compilerOptions).toEqual({ experimental: { async: true } });

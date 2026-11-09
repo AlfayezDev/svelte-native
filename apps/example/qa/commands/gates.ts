@@ -3,6 +3,7 @@ import { flagString, parseFlags } from "../lib/flags.ts";
 import { evaluate, exceptGates, renderMarkdown, splitGates } from "../lib/gates.ts";
 import { reportPath } from "../lib/paths.ts";
 import { latestRunFiles, readJson, runKinds, slug, type RunKind } from "../lib/runs.ts";
+import type { CarriedRuns } from "../lib/carried.ts";
 import type { Platform } from "../lib/types.ts";
 import { deviceNames, loadGates, printVerdict, reportDevices, type MeasuredBuild, type ReportFile } from "./report.ts";
 
@@ -15,7 +16,7 @@ export type RunFileState = { file: string; modifiedAt: Date; platform: Platform 
  * build nobody identified, or a suite that could not put its device back), so its numbers do not describe one build. The QA lane reads
  * `warnings`, the smoke lane (`smoke`) `smokeWarnings`.
  */
-export function reportProblems(report: ReportFile, runs: RunFileState[], platform?: Platform, smoke = false): string[] {
+export function reportProblems(report: ReportFile, runs: RunFileState[], platform?: Platform, smoke = false, carried?: readonly CarriedRuns[]): string[] {
 	const generatedAt = new Date(report.generatedAt);
 	const problems = runs
 		.filter((run) => (platform === undefined || run.platform === platform) && run.modifiedAt > generatedAt)
@@ -24,6 +25,8 @@ export function reportProblems(report: ReportFile, runs: RunFileState[], platfor
 	const laneWarnings = smoke ? (report.smokeWarnings ?? []) : report.warnings;
 	const warnings = platform === undefined ? laneWarnings : laneWarnings.filter((warning) => concerns(report, warning, platform));
 	for (const warning of warnings) problems.push(`the report warns: ${warning}`);
+	if (carried !== undefined && JSON.stringify(report.carried ?? []) !== JSON.stringify(carried))
+		problems.push("gates.json's `carried` entries are not the ones the report applied (the one-build check is made by `report`): run `native-qa report` again");
 	return problems;
 }
 
@@ -59,13 +62,16 @@ export function runsFlag(value: string | boolean | undefined): RunKind[] | undef
 	return kinds as RunKind[];
 }
 
-/** The carried runs of a device grouped by what carries them: the runs, the build they measured, its commit and the decision's reason, once each. */
+/**
+ * The carried runs of a device grouped by what carries them: the runs, the build they measured, the commit gates.json says that build came from
+ * (not the harness commit a run was taken at) and the decision's reason, once each.
+ */
 export function carriedGroups(runs: readonly MeasuredBuild[]): { runs: string[]; build: string | null; commit: string; decision: string; reason: string }[] {
 	const groups = new Map<string, { runs: string[]; build: string | null; commit: string; decision: string; reason: string }>();
 	for (const run of runs) {
 		if (!run.carried) continue;
-		const key = `${run.build}\u0000${run.carried.reason}`;
-		const group = groups.get(key) ?? { runs: [], build: run.build, commit: run.commit, decision: run.carried.decision, reason: run.carried.reason };
+		const key = `${run.build}\u0000${run.carried.commit}\u0000${run.carried.reason}`;
+		const group = groups.get(key) ?? { runs: [], build: run.build, commit: run.carried.commit, decision: run.carried.decision, reason: run.carried.reason };
 		group.runs.push(run.run);
 		groups.set(key, group);
 	}
@@ -125,10 +131,10 @@ export async function gates(argv: string[]): Promise<void> {
 			`cannot read qa/report.json (run \`native-qa report\` first): ${error instanceof Error ? error.message : String(error)}`,
 		);
 	});
-	const problems = reportProblems(reportFile, await newestRunFiles(reportFile, smoke), platform, smoke);
+	const gatesFile = await loadGates();
+	const problems = reportProblems(reportFile, await newestRunFiles(reportFile, smoke), platform, smoke, gatesFile.carried ?? []);
 	console.log(`report generated ${reportFile.generatedAt} (${age(new Date(reportFile.generatedAt))} ago)`);
 	for (const problem of problems) console.log(`FAIL: ${problem}`);
-	const gatesFile = await loadGates();
 	const lanes = splitGates(gatesFile.gates);
 	console.log(smoke ? "lane: the smoke app's native modules (smoke.* gates)" : "lane: the QA app (every gate but smoke.*; `--smoke` judges the smoke app)");
 	const only = runsFlag(values.runs);

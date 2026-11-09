@@ -117,12 +117,12 @@ export function spawnChunk(args: string[]): number {
 /**
  * The script that restarts the emulator (`restart <reason>`, the contract of `qa/ci/emulator.sh`): `QA_EMULATOR_SH`, else `qa/ci/emulator-remote.sh`
  * for an emulator behind an ssh tunnel (its lock is on the host) and `qa/ci/emulator.sh` for one on this machine. Null for a device that is not the
- * shared emulator.
+ * shared emulator (it has no lock), whatever `QA_EMULATOR_SH` says: a phone's chunks must not restart the emulator, and would do it without its lock.
  */
 export function emulatorScript(serial: string, env: LockEnvironment = process.env, lock = lockFor(serial)): string | null {
+	if (lock === null) return null;
 	const configured = env.QA_EMULATOR_SH?.trim();
 	if (configured) return configured;
-	if (lock === null) return null;
 	return join(qaDir, "ci", lock.kind === "remote" ? "emulator-remote.sh" : "emulator.sh");
 }
 

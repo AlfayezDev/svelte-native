@@ -214,7 +214,7 @@
       ],
       "decision": "D1",
       "reason": "UIKit's UINavigationBar re-lays out its items for every push and pop (about 30 ms a run, 20 to 23 ms of it layoutSubviews), which is the platform's floor, not the engine's",
-      "evidence": "apps/example/modules/svelte-engine/SPEC.md, 'Native screens, iOS' > 'Where the time goes (iPhone SE 3, Time Profiler, 60 Hz)'"
+      "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'Native screens, iOS' > 'Where the time goes (iPhone SE 3, Time Profiler, 60 Hz)'"
     },
     {
       "gate": "frames.maxPeriodRatio",
@@ -224,7 +224,7 @@
       ],
       "decision": "D1",
       "reason": "UIKit's UINavigationBar re-lays out its items for every push and pop (about 30 ms a run, 20 to 23 ms of it layoutSubviews), which is the platform's floor, not the engine's",
-      "evidence": "apps/example/modules/svelte-engine/SPEC.md, 'Native screens, iOS' > 'Where the time goes (iPhone SE 3, Time Profiler, 60 Hz)'"
+      "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'Native screens, iOS' > 'Where the time goes (iPhone SE 3, Time Profiler, 60 Hz)'"
     },
     {
       "gate": "frames.maxMs",
@@ -234,7 +234,7 @@
       ],
       "decision": "D1",
       "reason": "UIKit's UINavigationBar re-lays out its items for every push and pop (about 30 ms a run, 20 to 23 ms of it layoutSubviews), which is the platform's floor, not the engine's",
-      "evidence": "apps/example/modules/svelte-engine/SPEC.md, 'Native screens, iOS' > 'Where the time goes (iPhone SE 3, Time Profiler, 60 Hz)'"
+      "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'Native screens, iOS' > 'Where the time goes (iPhone SE 3, Time Profiler, 60 Hz)'"
     },
     {
       "gate": "frames.droppedPct",
@@ -244,7 +244,7 @@
       ],
       "decision": "D1",
       "reason": "Reanimated's worklet runtime applies the animated props of the churn on the Android UI thread, which no change in the engine's write path removes",
-      "evidence": "apps/example/modules/svelte-engine/SPEC.md, 'Animated write path' and 'Frames: recycling, text cache' (Measurements, churn-animated)"
+      "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'Animated write path' and 'Frames: recycling, text cache' (Measurements, churn-animated)"
     },
     {
       "gate": "frames.maxPeriodRatio",
@@ -254,7 +254,7 @@
       ],
       "decision": "D1",
       "reason": "Reanimated's worklet runtime applies the animated props of the churn on the Android UI thread, which no change in the engine's write path removes",
-      "evidence": "apps/example/modules/svelte-engine/SPEC.md, 'Animated write path' and 'Frames: recycling, text cache' (Measurements, churn-animated)"
+      "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'Animated write path' and 'Frames: recycling, text cache' (Measurements, churn-animated)"
     },
     {
       "gate": "frames.maxMs",
@@ -264,28 +264,28 @@
       ],
       "decision": "D1",
       "reason": "Reanimated's worklet runtime applies the animated props of the churn on the Android UI thread, which no change in the engine's write path removes",
-      "evidence": "apps/example/modules/svelte-engine/SPEC.md, 'Animated write path' and 'Frames: recycling, text cache' (Measurements, churn-animated)"
+      "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'Animated write path' and 'Frames: recycling, text cache' (Measurements, churn-animated)"
     },
     {
       "gate": "list.virtual300.mountMs",
       "device": "R58Y90KNGRP",
       "decision": "D9",
       "reason": "22 to 33 ms against 10 under the gate protocol (six idle frames before the mount); the work itself is about 9 ms on warm cores, and placement, clock and idle redraw do not explain the cold spread; pinning and ADPF had no effect",
-      "evidence": "apps/example/modules/svelte-engine/SPEC.md, 'The windowed list's cold mount on the A16 (2 November 2026, branch feat/svelte-native-list2)'"
+      "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'The windowed list's cold mount on the A16 (2 November 2026, branch feat/svelte-native-list2)'"
     },
     {
       "gate": "boot.warm.p90",
       "device": "R58Y90KNGRP",
       "decision": "D9",
       "reason": "the warm p90 is the phone's tail, another process's GC on a big core and the system_server window-manager lock; the phone has fast and slow days (round 2 read about 50 ms faster in the same interleaved hour, median 370 to 318 ms)",
-      "evidence": "apps/example/modules/svelte-engine/SPEC.md, 'Boot on the phone, round 2: where the slow launches come from (2 November 2026, Samsung A16)' and 'round 3'"
+      "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'Boot on the phone, round 2: where the slow launches come from (2 November 2026, Samsung A16)' and 'round 3'"
     },
     {
       "gate": "boot.cold.p90",
       "device": "R58Y90KNGRP",
       "decision": "D9",
       "reason": "the cold p90 is the phone's tail, another process's GC on a big core and the system_server window-manager lock; the phone has fast and slow days (round 2 read about 50 ms faster in the same interleaved hour, median 370 to 318 ms)",
-      "evidence": "apps/example/modules/svelte-engine/SPEC.md, 'Boot on the phone, round 2: where the slow launches come from (2 November 2026, Samsung A16)' and 'round 3'"
+      "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'Boot on the phone, round 2: where the slow launches come from (2 November 2026, Samsung A16)' and 'round 3'"
     },
     {
       "gate": "frames.droppedPct",
@@ -298,7 +298,7 @@
       "maxLateIntervals": 2,
       "decision": "D9",
       "reason": "the first interval of the window (19 to 27 ms in the D9 evidence): the scenario's own 48 withRepeat animations start in one Worklets message on the UI thread, pacing them was vetoed; covered up to 2 late intervals (that one plus the allowance every scenario has), no further",
-      "evidence": "apps/example/modules/svelte-engine/SPEC.md, 'The first interval of the animation scenarios, and what the UI thread takes in one message (2 November 2026)'"
+      "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'The first interval of the animation scenarios, and what the UI thread takes in one message (2 November 2026)'"
     },
     {
       "gate": "frames.maxPeriodRatio",
@@ -311,7 +311,7 @@
       "maxLateIntervals": 2,
       "decision": "D9",
       "reason": "the first interval of the window (19 to 27 ms in the D9 evidence): the scenario's own 48 withRepeat animations start in one Worklets message on the UI thread, pacing them was vetoed; covered up to 2 late intervals (that one plus the allowance every scenario has), no further",
-      "evidence": "apps/example/modules/svelte-engine/SPEC.md, 'The first interval of the animation scenarios, and what the UI thread takes in one message (2 November 2026)'"
+      "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'The first interval of the animation scenarios, and what the UI thread takes in one message (2 November 2026)'"
     },
     {
       "gate": "gestures.frames.droppedPct",
@@ -321,7 +321,7 @@
       ],
       "decision": "1 Nov first touch",
       "reason": "the first touch of a process runs react-native-gesture-handler's first worklet and class initialisation (25 ms for the first DOWN on a little core); a warm-up touch did not help",
-      "evidence": "apps/example/modules/svelte-engine/SPEC.md, 'The first touch of a process (1 November 2026)'"
+      "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'The first touch of a process (1 November 2026)'"
     },
     {
       "gate": "gestures.frames.maxPeriodRatio",
@@ -331,7 +331,7 @@
       ],
       "decision": "1 Nov first touch",
       "reason": "the first touch of a process runs react-native-gesture-handler's first worklet and class initialisation (25 ms for the first DOWN on a little core); a warm-up touch did not help",
-      "evidence": "apps/example/modules/svelte-engine/SPEC.md, 'The first touch of a process (1 November 2026)'"
+      "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'The first touch of a process (1 November 2026)'"
     },
     {
       "gate": "gestures.frames.maxMs",
@@ -341,7 +341,7 @@
       ],
       "decision": "1 Nov first touch",
       "reason": "the first touch of a process runs react-native-gesture-handler's first worklet and class initialisation (25 ms for the first DOWN on a little core); a warm-up touch did not help",
-      "evidence": "apps/example/modules/svelte-engine/SPEC.md, 'The first touch of a process (1 November 2026)'"
+      "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'The first touch of a process (1 November 2026)'"
     },
     {
       "gate": "gestures.frames.droppedPct",

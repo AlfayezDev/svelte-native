@@ -12,7 +12,7 @@ import { decodeRecords, navigationProps, type NavRecord } from "../src/fabric/na
  * fields out of Kotlin. Skipped when `g++`, `kotlinc` or `java` is not on the path.
  */
 const native = resolve(import.meta.dirname, "native");
-const engine = resolve(import.meta.dirname, "../../../apps/example/modules/svelte-engine/android/src/main");
+const engine = resolve(import.meta.dirname, "../native/svelte-engine/android/src/main");
 const sources = {
   header: resolve(engine, "cpp/PropsEncoderNavRecords.h"),
   cpp: resolve(native, "nav-records-host.cpp"),

@@ -22,4 +22,4 @@ pnpm typecheck    # svelte-check in the package and the example, tsc for the har
 pnpm test         # the package's tests, then the harness's
 ```
 
-The Kotlin and C++ host checks (`packages/svelte-native/tests`, `apps/example/modules/svelte-engine/android/src/test/run.sh`) need a JDK, `kotlinc` and `g++`, and skip themselves without them (they fail under `CI=1`). Building the apps and running the device suites additionally need the Android SDK or Xcode and a device; see the QA README.
+The Kotlin and C++ host checks (`packages/svelte-native/tests`, `packages/svelte-native/native/svelte-engine/android/src/test/run.sh`) need a JDK, `kotlinc` and `g++`, and skip themselves without them (they fail under `CI=1`). Building the apps and running the device suites additionally need the Android SDK or Xcode and a device; see the QA README.

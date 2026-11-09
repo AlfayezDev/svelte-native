@@ -38,7 +38,8 @@ const smokePlugins: NonNullable<ExpoConfig["plugins"]> = !smoke ? [] : [
   // `com.huawei.hms:location` from Huawei's repository, which only the production app's Huawei plugin (not used here) adds to the project.
   ["expo-build-properties", { ios: { useFrameworks: "static" }, android: { extraMavenRepos: [{ url: "https://developer.huawei.com/repo/" }] } }],
 ];
-// Local Expo modules (directories of `modules/`) that exist for the QA lab and must not ship: the in-app touch injector (Android), the QA
+// The library's own native modules (the engine, the updates module and the four iOS modules) are not local modules: they come from `node_modules/@example/svelte-native`, which
+// links them with its `expo-module.config.json`, and the product ships all of them. Local Expo modules (directories of `modules/`) that exist for the QA lab and must not ship: the in-app touch injector (Android), the QA
 // inspection and gesture trace module (iOS) and the view-creation bench (Android). The product build leaves them out of autolinking
 // (the svelte-native plugin writes the names into settings.gradle and the Podfile), so their classes are not compiled into the app.
 // `qa/test/product-modules.test.ts` resolves the module list with this exclusion.
@@ -132,7 +133,7 @@ export default {
     ...smokePlugins,
   ],
   ...(production ? { locales: { en: "./locales/en.json", ar: "./locales/ar.json" } } : {}),
-  // Read by the `svelte-updates` module from AndroidManifest.xml / Expo.plist; Expo's own config plugin writes them.
+  // Read by the library's `svelte-updates` module from AndroidManifest.xml / Expo.plist; Expo's own config plugin writes them.
   updates: {
     url: "https://u.expo.dev/bb048172-896f-48f1-97c0-c9ec765842c0",
     checkAutomatically: channel ? "ON_LOAD" : "NEVER",

@@ -1,0 +1,30 @@
+{
+  "platforms": ["android", "apple"],
+  "android": {
+    "projects": [
+      {
+        "name": "svelte-engine",
+        "path": "native/svelte-engine/android",
+        "modules": ["expo.modules.svelteengine.SvelteEngineModule"]
+      },
+      {
+        "name": "svelte-updates",
+        "path": "native/svelte-updates/android",
+        "modules": ["expo.modules.svelteupdates.SvelteUpdatesModule"]
+      }
+    ]
+  },
+  "apple": {
+    "podspecPath": [
+      "native/svelte-capture-ios/ios/SvelteCapture.podspec",
+      "native/svelte-insets-ios/ios/SvelteInsets.podspec",
+      "native/svelte-navigation-ios/ios/SvelteNavigation.podspec",
+      "native/svelte-screens-ios/native/SvelteScreensIOS.podspec",
+      "native/svelte-updates/ios/SvelteUpdates.podspec"
+    ],
+    "swiftModuleName": ["SvelteCapture", "SvelteInsets", "SvelteNavigation", "SvelteUpdates"],
+    "modules": ["SvelteInsetsModule", "SvelteNavigationModule", "SvelteUpdatesModule"],
+    "appDelegateSubscribers": ["SvelteCaptureSubscriber"],
+    "reactDelegateHandlers": ["SvelteUpdatesReactDelegateHandler"]
+  }
+}

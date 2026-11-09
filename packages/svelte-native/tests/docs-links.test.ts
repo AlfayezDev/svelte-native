@@ -8,9 +8,9 @@ import { dirname, relative, resolve } from "node:path";
  * reads every Markdown file under the roots below and fails on a link whose file or heading is gone.
  */
 const repository = resolve(import.meta.dirname, "../../..");
-const roots = ["README.md", "packages/svelte-native", "apps/example/qa", "apps/example/modules/svelte-engine"];
+const roots = ["README.md", "packages/svelte-native", "apps/example/qa"];
 const skipped = new Set(["node_modules", "out", "runs", "build", ".gradle", "Pods", ".svelte-native"]);
-const specFile = resolve(repository, "apps/example/modules/svelte-engine/SPEC.md");
+const specFile = resolve(repository, "packages/svelte-native/native/svelte-engine/SPEC.md");
 
 function markdownFiles(path: string): string[] {
   const absolute = resolve(repository, path);

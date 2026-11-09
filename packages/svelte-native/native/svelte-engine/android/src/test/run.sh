@@ -85,3 +85,8 @@ kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/GestureRules.kt" \
   "$here/kotlin/expo/modules/svelteengine/GestureRulesCheck.kt" -include-runtime -d "$work/rules.jar"
 java -cp "$work/rules.jar" expo.modules.svelteengine.GestureRulesCheckKt "$views/HitTest.kt" "$views/EngineRoot.kt" "$views/EngineStack.kt" "$views/EngineSheet.kt" \
   "$rngh/android/src/main/java/com/swmansion/gesturehandler/core/PanGestureHandler.kt" "$here/../main/java/expo/modules/svelteengine/SvelteEngineModule.kt"
+
+# The default of the status and navigation bars (SPEC.md, "Screen API contract": `auto` follows the system) and that the window is written the first time.
+kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/SystemBarsRules.kt" \
+  "$here/kotlin/expo/modules/svelteengine/SystemBarsRulesCheck.kt" -include-runtime -d "$work/system-bars-check.jar"
+java -cp "$work/system-bars-check.jar" expo.modules.svelteengine.SystemBarsRulesCheckKt

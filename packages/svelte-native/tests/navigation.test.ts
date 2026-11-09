@@ -1977,7 +1977,7 @@ test("the launch link is the stack's base: no back arrow on /__dev; later links 
   withInsets(24);
   const launch = globalThis as { __initialURL?: string };
   try {
-    const files = await routeFiles(resolve(import.meta.dirname, "../../../apps/example/src/routes"), { lab: true });
+    const files = await routeFiles(resolve(import.meta.dirname, "fixtures/stand-in-app/src/routes"), { lab: true });
     const arrows = (router: TreeRouter) => router.screens.filter((screen) => !screen.leaving).map((screen) => screen.canGoBack);
     const backOf = (surface: number) => Object.fromEntries(ofKind(roots[surface], "header").map((node) => {
       const pairs = parseNativeID(String(node.props.nativeID))?.pairs ?? {};
@@ -1985,9 +1985,9 @@ test("the launch link is the stack's base: no back arrow on /__dev; later links 
     }));
 
     launch.__initialURL = "rasheed-svelte:///__dev";
-    const lab = await mountTree(134, { initial: "/auth/login", files });
+    const lab = await mountTree(134, { initial: "/sign-in", files });
     await lab.settled();
-    expect(pathsOf(lab.router)).toEqual(["/__dev"]); // a direct load has no history: the login is not below it
+    expect(pathsOf(lab.router)).toEqual(["/__dev"]); // a direct load has no history: the sign-in is not below it
     expect(arrows(lab.router)).toEqual([false]);
     expect(backOf(134)["/__dev"]).toBe(false); // so the lab's header has no arrow, and its declared controls have no Back
     expect(lab.hardwareBack()).toBe(false);
@@ -1997,20 +1997,20 @@ test("the launch link is the stack's base: no back arrow on /__dev; later links 
     expect(pathsOf(lab.router)).toEqual(["/__dev", "/__dev/screens"]);
     expect(arrows(lab.router)).toEqual([false, true]);
 
-    // A workspace opened by the launch link is the base too: the tabs are the root's only entry.
+    // A project opened by the launch link is the base too: the tabs are the root's only entry.
     launch.__initialURL = "https://example.test/acme/settings";
-    const workspace = await mountTree(135, { initial: "/auth/login", files, tabs: [{ key: "home", title: "Home" }, { key: "settings", title: "Settings" }] });
-    await workspace.settled();
-    expect(pathsOf(workspace.router)).toEqual(["/acme"]);
+    const project = await mountTree(135, { initial: "/sign-in", files, tabs: [{ key: "home", title: "Home" }, { key: "settings", title: "Settings" }] });
+    await project.settled();
+    expect(pathsOf(project.router)).toEqual(["/acme"]);
     expect(selectedIndex(135)).toBe("1");
-    expect(arrows(workspace.router)).toEqual([false]);
-    expect(workspace.hardwareBack()).toBe(false);
+    expect(arrows(project.router)).toEqual([false]);
+    expect(project.hardwareBack()).toBe(false);
 
     // A link no screen matches is ignored: the app stays on its first screen.
     launch.__initialURL = "rasheed-svelte:///a/b/c/d/e";
-    const nothing = await mountTree(136, { initial: "/auth/login", files });
+    const nothing = await mountTree(136, { initial: "/sign-in", files });
     await nothing.settled();
-    expect(pathsOf(nothing.router)).toEqual(["/auth/login"]);
+    expect(pathsOf(nothing.router)).toEqual(["/sign-in"]);
   } finally { delete launch.__initialURL; reset(); }
 });
 
@@ -2229,7 +2229,7 @@ test("a launch link that is dropped is recorded as the one acted on, so a restar
     // The process dies and Android delivers the same intent to the restored app: the restored screens stay.
     delete launch.__initialURLMode;
     launch.__initialURL = link;
-    launch.__svelteNativeHmrState!.restore = saved;
+    (launch.__svelteNativeHmrState as { restore?: unknown }).restore = saved;
     const restored = await mountTree(199, { initial: "/acme/home" });
     await restored.settled();
     expect(pathsOf(restored.router)).toEqual(["/acme"]);

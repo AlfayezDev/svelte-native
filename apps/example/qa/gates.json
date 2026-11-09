@@ -1547,7 +1547,7 @@
     },
     {
       "id": "product.boot.firstScreen",
-      "title": "Product boot: the signed-out login screen is reached within 15 s of a cold start",
+      "title": "Product boot: the home screen of the production variant is reached within 15 s of a cold start",
       "unit": "",
       "metric": "product.boot.firstScreen",
       "bar": {

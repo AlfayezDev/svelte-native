@@ -1,5 +1,9 @@
 import type { ExpoConfig } from "expo/config";
 
+// The SvelteKit server the Remote functions screen calls: the library reads it at run time from `extra.svelteNative.remote`, which the plugin's
+// `remote` option writes. A build with none still runs; the screen then says there is no host. An `http:` origin is for a development server.
+const remoteOrigin = process.env.SVELTE_NATIVE_REMOTE_ORIGIN;
+
 export default {
   name: "Svelte Native",
   slug: "svelte-native-example",
@@ -23,7 +27,7 @@ export default {
   },
   plugins: [
     // The library's Expo plugin: autolinks its native modules and wires the Android and iOS hosts.
-    "@rasheed/svelte-native/expo",
+    ["@rasheed/svelte-native/expo", remoteOrigin ? { remote: { origin: remoteOrigin } } : {}],
     // The Map screen: Android's Maps SDK needs a key in the manifest. Set GOOGLE_MAPS_API_KEY for a build that draws tiles; the placeholder only mounts the map.
     ["react-native-maps", { androidGoogleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY ?? "svelte-native-example-placeholder-key" }],
     // Embeds the font files in the app, so `fontFamily: "JetBrainsMono-Regular"` works without loading code (the text screen).

@@ -22,4 +22,7 @@ export const nativeFeatures: Feature[] = [
   // Motion and touch
   { group: "Motion and touch", route: "/animation", title: "Animation", summary: "Fade, spring, loop and state-driven motion on the UI thread" },
   { group: "Motion and touch", route: "/gestures", title: "Gestures", summary: "Drag, pinch and rotate, swipe a row, long press" },
+
+  // Platform
+  { group: "Platform", route: "/remote", title: "Remote functions", summary: "Call SvelteKit query, command and form from a screen" },
 ];

@@ -27,7 +27,7 @@ function configuredExclude(variant: "production" | "qa" | "smoke"): string[] {
 	return entry[1].autolinkingExclude ?? [];
 }
 
-type Resolved = { modules: { packageName: string; projects?: { name: string; modules?: { classifier: string }[] }[] }[] };
+type Resolved = { modules: { packageName: string; projects?: { name: string; sourceDir: string; modules?: { classifier: string }[] }[]; pods?: { podName: string; podspecDir: string }[] }[] };
 
 /** `expo-modules-autolinking resolve` for a platform, with the exclusion; what Gradle's `useExpoModules()` and the Podfile's `use_expo_modules!` run. */
 function resolved(platform: "android" | "apple", exclude: string[]): Resolved {
@@ -41,6 +41,11 @@ const classes = (result: Resolved) => result.modules.flatMap((module) => (module
 const packages = (result: Resolved) => result.modules.map((module) => module.packageName);
 
 const qaOnly = ["svelte-qa-android", "svelte-qa-ios", "view-bench"];
+/** The library's own native modules are linked from the installed package, as an app outside this repository gets them (packages/svelte-native/expo-module.config.json). */
+const library = "@rasheed/svelte-native";
+const libraryDirectory = dirname(require.resolve("@rasheed/svelte-native/package.json"));
+const libraryPods = ["SvelteCapture", "SvelteInsets", "SvelteNavigation", "SvelteScreensIOS", "SvelteUpdates"];
+const libraryProjects = ["svelte-engine", "svelte-updates"];
 const { smokeOnlyPackages } = require("./qa/smoke-packages.cjs") as { smokeOnlyPackages: string[] };
 
 describe("the product build leaves the QA-only modules out of autolinking", () => {
@@ -62,25 +67,49 @@ describe("the product build leaves the QA-only modules out of autolinking", () =
 		expect(product).toContain("expo.modules.svelteupdates.SvelteUpdatesModule");
 	});
 
-	test("iOS: the QA build links SvelteQA, the product's pods do not, and keep the screens, insets, navigation and updates modules", () => {
+	test("iOS: the QA build links SvelteQA, the product's pods do not, and keep the library's screens, insets, navigation, capture and updates pods", () => {
 		expect(packages(resolved("apple", configuredExclude("qa")))).toContain("svelte-qa-ios");
-		const product = packages(resolved("apple", configuredExclude("production")));
-		expect(product).not.toContain("svelte-qa-ios");
-		for (const kept of ["svelte-screens-ios", "svelte-insets-ios", "svelte-navigation-ios", "svelte-capture-ios", "svelte-updates"]) expect(product).toContain(kept);
+		const product = resolved("apple", configuredExclude("production"));
+		expect(packages(product)).not.toContain("svelte-qa-ios");
+		expect(packages(product)).toContain(library);
+		expect(product.modules.find((module) => module.packageName === library)?.pods?.map((pod) => pod.podName).sort()).toEqual(libraryPods);
+	});
+
+	test("the library's modules come from the installed package and the QA modules from the app, each linked once, on both platforms", () => {
+		const exclude = configuredExclude("qa");
+		for (const platform of ["android", "apple"] as const) {
+			const result = resolved(platform, exclude);
+			const names = result.modules.flatMap((module) => (platform === "android" ? (module.projects ?? []).map((project) => project.name) : (module.pods ?? []).map((pod) => pod.podName)));
+			expect(names.length).toBe(new Set(names).size);
+			const own = result.modules.filter((module) => module.packageName === library);
+			expect(own).toHaveLength(1);
+			if (platform === "android") {
+				expect(own[0]?.projects?.map((project) => project.name)).toEqual(libraryProjects);
+				for (const project of own[0]?.projects ?? []) expect(project.sourceDir.startsWith(`${libraryDirectory}/native/`)).toBe(true);
+			} else {
+				for (const pod of own[0]?.pods ?? []) expect(pod.podspecDir.startsWith(`${libraryDirectory}/native/`)).toBe(true);
+			}
+			// nothing else in the app's list carries a library module: the QA modules are the app's own, and the six directories of the package are not local modules any more
+			const others = result.modules.filter((module) => module.packageName !== library && /^svelte-/.test(module.packageName));
+			expect(others.map((module) => module.packageName).sort()).toEqual(platform === "android" ? ["svelte-qa-android"] : ["svelte-qa-ios"]);
+		}
+		const android = resolved("android", exclude);
+		expect(android.modules.find((module) => module.packageName === "view-bench")?.projects?.[0]?.sourceDir).toBe(resolve(app, "modules/view-bench/android"));
 	});
 
 	test("iOS: the product links the capture sweep with its launch subscriber (react-native-view-shot's tmpfile leftovers are deleted when a process starts, as Android's engine does), and the QA build does too", () => {
 		for (const variant of ["production", "qa"] as const) {
-			const sweep = resolved("apple", configuredExclude(variant)).modules.find((module) => module.packageName === "svelte-capture-ios") as { appDelegateSubscribers?: string[]; swiftModuleNames?: string[] } | undefined;
+			const sweep = resolved("apple", configuredExclude(variant)).modules.find((module) => module.packageName === library) as { appDelegateSubscribers?: string[]; swiftModuleNames?: string[] } | undefined;
 			expect(sweep?.appDelegateSubscribers).toEqual(["SvelteCaptureSubscriber"]);
-			expect(sweep?.swiftModuleNames).toEqual(["SvelteCapture"]);
+			// the Swift modules the generated provider imports: SvelteScreensIOS is Objective-C++ with no module of its own (`DEFINES_MODULE` is NO), so it is not in the list
+			expect(sweep?.swiftModuleNames).toEqual(["SvelteCapture", "SvelteInsets", "SvelteNavigation", "SvelteUpdates"]);
 		}
 	});
 
 	test("the engine's own module list does not carry the injector, so excluding svelte-qa-android is enough", () => {
-		const engine = JSON.parse(readFileSync(resolve(app, "modules/svelte-engine/expo-module.config.json"), "utf8")) as { android: { modules: string[] } };
-		expect(engine.android.modules).toEqual(["expo.modules.svelteengine.SvelteEngineModule"]);
-		expect(existsSync(resolve(app, "modules/svelte-engine/android/src/main/java/expo/modules/svelteengine/views/QaTouch.kt"))).toBe(false);
+		const config = JSON.parse(readFileSync(resolve(libraryDirectory, "expo-module.config.json"), "utf8")) as { android: { projects: { name: string; modules: string[] }[] } };
+		expect(config.android.projects.find((project) => project.name === "svelte-engine")?.modules).toEqual(["expo.modules.svelteengine.SvelteEngineModule"]);
+		expect(existsSync(resolve(libraryDirectory, "native/svelte-engine/android/src/main/java/expo/modules/svelteengine/views/QaTouch.kt"))).toBe(false);
 		const qa = JSON.parse(readFileSync(resolve(app, "modules/svelte-qa-android/expo-module.config.json"), "utf8")) as { android: { modules: string[] } };
 		expect(qa.android.modules).toEqual(["expo.modules.svelteqa.SvelteQaTouchModule", "expo.modules.svelteqa.SvelteQaPixelsModule"]);
 		// every module the QA package lists is a class one of its files defines (a name no file defines links nothing and fails at run time)
@@ -100,7 +129,7 @@ describe("the product build leaves the QA-only modules out of autolinking", () =
 		// a hint with no content: a commit attached many animated nodes, the engine puts its threads on the big cores for a moment (and does nothing outside the foreground)
 		"animatedBatch",
 	];
-	const engineSource = () => readFileSync(resolve(app, "modules/svelte-engine/android/src/main/java/expo/modules/svelteengine/SvelteEngineModule.kt"), "utf8");
+	const engineSource = () => readFileSync(resolve(libraryDirectory, "native/svelte-engine/android/src/main/java/expo/modules/svelteengine/SvelteEngineModule.kt"), "utf8");
 	/** Every `Function(...)` and `AsyncFunction(...)` the module defines, and the lab check it opens with (the first statement after the lambda's parameters), if any. */
 	function engineFunctions(source: string): { name: string; guard: string | null }[] {
 		const head = /\b(?:Async)?Function\("(\w+)"\)\s*\{\s*(?:[\w\s:,?<>.]+->\s*)?(?:requireLab\("(\w+)"\))?/g;
@@ -125,7 +154,7 @@ describe("the product build leaves the QA-only modules out of autolinking", () =
 	});
 
 	test("the lab rule is the QA package or a debuggable build, and the module applies it", () => {
-		const rule = readFileSync(resolve(app, "modules/svelte-engine/android/src/main/java/expo/modules/svelteengine/LabSwitches.kt"), "utf8");
+		const rule = readFileSync(resolve(libraryDirectory, "native/svelte-engine/android/src/main/java/expo/modules/svelteengine/LabSwitches.kt"), "utf8");
 		expect(rule).toContain("fun allowed(packageName: String, debuggable: Boolean): Boolean = debuggable || packageName == QA_PACKAGE");
 		expect(engineSource()).toContain("LabSwitches.allowed(context.packageName, debuggable)");
 	});

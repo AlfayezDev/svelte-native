@@ -11,7 +11,7 @@ import { dirname, resolve } from "node:path";
 const require = createRequire(import.meta.url);
 const library = dirname(require.resolve("react-native-view-shot/package.json"));
 const reactNative = dirname(require.resolve("react-native/package.json"));
-const sweepModule = resolve(import.meta.dirname, "../../../apps/example/modules/svelte-capture-ios");
+const sweepModule = resolve(import.meta.dirname, "../native/svelte-capture-ios");
 const viewShot = readFileSync(resolve(library, "ios/RNViewShot.mm"), "utf8");
 const tempFilePath = (() => {
   const source = readFileSync(resolve(reactNative, "React/Base/RCTUtils.mm"), "utf8");
@@ -55,9 +55,11 @@ describe("React Native clears tmp/ReactNative late, which is why the module swee
 });
 
 describe("the module that sweeps is a product module wired the way Expo autolinks it", () => {
-  test("its config lists a subscriber that a Swift file defines, and its pod is the one the Swift files are in", () => {
-    const config = JSON.parse(readFileSync(resolve(sweepModule, "expo-module.config.json"), "utf8")) as unknown;
-    expect(config).toEqual({ platforms: ["apple"], apple: { appDelegateSubscribers: ["SvelteCaptureSubscriber"] } });
+  test("the package's config lists a subscriber that a Swift file defines and its pod, and its pod is the one the Swift files are in", () => {
+    const config = JSON.parse(readFileSync(resolve(sweepModule, "../../expo-module.config.json"), "utf8")) as { apple: { appDelegateSubscribers: string[]; podspecPath: string[]; swiftModuleName: string[] } };
+    expect(config.apple.appDelegateSubscribers).toEqual(["SvelteCaptureSubscriber"]);
+    expect(config.apple.podspecPath).toContain("native/svelte-capture-ios/ios/SvelteCapture.podspec");
+    expect(config.apple.swiftModuleName).toContain("SvelteCapture");
     expect(subscriber).toContain("public final class SvelteCaptureSubscriber: ExpoAppDelegateSubscriber");
     const podspec = readFileSync(resolve(sweepModule, "ios/SvelteCapture.podspec"), "utf8");
     expect(podspec).toContain("s.name           = 'SvelteCapture'");

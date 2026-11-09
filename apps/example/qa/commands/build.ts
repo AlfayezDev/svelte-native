@@ -18,8 +18,8 @@ import {
 	gradleLock,
 	platformDir,
 	qaDir,
-	repoRoot,
 	svelteNativeCli,
+	svelteNativeDir,
 } from "../lib/paths.ts";
 import { prebuildProject, selectVariantProject, staleReason } from "../lib/project.ts";
 import { writeBuild } from "../lib/runs.ts";
@@ -57,7 +57,7 @@ async function modifiedTime(path: string): Promise<number | null> {
 	}
 }
 
-/** Everything that changes what `expo prebuild` generates: the Expo config and what it reads (the smoke modules and packages, the Firebase files), the packages, the Svelte native plugin and the local modules. */
+/** Everything that changes what `expo prebuild` generates: the Expo config and what it reads (the smoke modules and packages, the Firebase files), the packages, the Svelte native plugin, the library's module list and the app's local modules. */
 export async function prebuildInputs(): Promise<string[]> {
 	const inputs = [
 		join(platformDir, "app.config.ts"),
@@ -66,7 +66,8 @@ export async function prebuildInputs(): Promise<string[]> {
 		join(platformDir, "qa/smoke-modules.json"),
 		join(platformDir, "qa/smoke-packages.cjs"),
 		join(platformDir, "qa/firebase-fake/google-services.json"),
-		join(repoRoot, "packages/svelte-native/src/expo.ts"),
+		join(svelteNativeDir, "src/expo.ts"),
+		join(svelteNativeDir, "expo-module.config.json"),
 	];
 	for (const module of await readdir(join(platformDir, "modules")))
 		inputs.push(join(platformDir, "modules", module, "expo-module.config.json"));

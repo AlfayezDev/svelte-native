@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import { traverseFast } from "@babel/types";
 import { lowerPrimitives } from "./lower.ts";
 import { sourceDirectory, sourceFile } from "./package-root.ts";
+import { assertCustomRenderer } from "./svelte-build.ts";
 import { isRemoteModule, kitGlobalsImport, transformRemoteModule } from "./remote/transform.ts";
 import { TraceMap, originalPositionFor } from "@jridgewell/trace-mapping";
 
@@ -28,12 +29,21 @@ export function sourceOf(input: TransformInput): string {
   return src + (kitGlobalsImport(filename) ?? "");
 }
 
+let rendererChecked = false;
+/** The first `.svelte` file of a worker fails with the fix when the installed Svelte is the stock release, instead of with the compiler's message about an unknown `customRenderer` option. */
+function requireCustomRenderer(): void {
+  if (rendererChecked) return;
+  assertCustomRenderer("The Metro transformer of @rasheed/svelte-native");
+  rendererChecked = true;
+}
+
 export function transform(input: TransformInput) {
   const { filename } = input;
   const src = sourceOf(input);
   let code = src;
   const maps: TraceMap[] = [];
   if (filename.endsWith(".svelte")) {
+    requireCustomRenderer();
     const result = compile(lowerPrimitives(src, { filename }), {
       filename,
       dev: false,

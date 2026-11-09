@@ -3,6 +3,7 @@
   "version": "0.2.0",
   "private": true,
   "type": "module",
+  "license": "MIT",
   "exports": {
     ".": "./src/index.ts",
     "./core": "./src/core.ts",
@@ -26,11 +27,28 @@
     "./native-modules": "./src/native-modules.ts",
     "./remote": "./src/remote/index.ts",
     "./remote/runtime": "./src/remote/runtime.ts",
-    "./remote/globals": "./src/remote/globals.ts"
+    "./remote/globals": "./src/remote/globals.ts",
+    "./package.json": "./package.json"
   },
   "bin": {
     "svelte-native": "./src/cli.ts"
   },
+  "files": [
+    "src",
+    "native",
+    "patches",
+    "expo-module.config.json",
+    "README.md",
+    "REFERENCE.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "!native/**/test",
+    "!native/**/*.md",
+    "!native/**/build",
+    "!native/**/.cxx",
+    "!native/**/.gradle",
+    "!native/**/Pods"
+  ],
   "scripts": {
     "typecheck": "svelte-check --tsconfig ./tsconfig.json",
     "test": "bun test --timeout 60000",
@@ -40,8 +58,7 @@
     "@babel/parser": "7.29.8",
     "@babel/types": "7.29.8",
     "@jridgewell/trace-mapping": "0.3.31",
-    "esbuild": "catalog:",
-    "svelte": "file:../../vendor/svelte-5.56.7-216f258.tgz"
+    "esbuild": "0.28.1"
   },
   "peerDependencies": {
     "@react-native-community/datetimepicker": "9.1.0",
@@ -69,6 +86,7 @@
     "react-native-webview": "13.16.1",
     "react-native-worklets": "0.10.1",
     "rive-react-native": "~9.7.1",
+    "svelte": "5.56.7",
     "vite": "^8.1.4"
   },
   "peerDependenciesMeta": {
@@ -136,6 +154,7 @@
     "eslint": "10.8.1",
     "eslint-plugin-svelte": "3.23.0",
     "globals": "17.11.0",
+    "svelte": "file:../../vendor/svelte-5.56.7-216f258.tgz",
     "svelte-check": "^4.6.0",
     "typescript": "6.0.3",
     "typescript-eslint": "8.67.0"

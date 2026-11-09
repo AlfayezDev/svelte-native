@@ -1,7 +1,7 @@
 /**
  * Window insets: the `SvelteEngine` module's `insets` event and `getInsets()` read, plus the padding math of
  * SafeAreaView and KeyboardAvoidingView. No Svelte in here, so the math is unit tested directly.
- * The payload is specified in `apps/example/modules/svelte-engine/SPEC.md` ("Insets and keyboard").
+ * The payload is specified in `native/svelte-engine/SPEC.md` ("Insets and keyboard").
  */
 import { EventEmitter, requireOptionalNativeModule } from "expo-modules-core";
 
@@ -14,7 +14,7 @@ type EngineModule = Partial<Emitter> & { getInsets?: () => InsetsEvent | null };
 
 /** Subscribes to insets changes and delivers the current value first when the engine already has one. Returns the unsubscribe function, or null without the engine module. */
 export function subscribeInsets(listener: (event: InsetsEvent) => void): (() => void) | null {
-  // Android: the engine module reports them; iOS: `SvelteInsets` (apps/example/modules/svelte-insets-ios) has the same surface and is not the engine.
+  // Android: the engine module reports them; iOS: `SvelteInsets` (native/svelte-insets-ios) has the same surface and is not the engine.
   const module = requireOptionalNativeModule<EngineModule>("SvelteEngine") ?? requireOptionalNativeModule<EngineModule>("SvelteInsets");
   if (!module) return null;
   const emitter = (typeof module.addListener === "function" ? module : new EventEmitter(module as never)) as unknown as Emitter;

@@ -59,7 +59,7 @@ If you'd rather compute it, `app.config.ts` works in its place.
 
 ### pnpm-workspace.yaml
 
-`pnpm-workspace.yaml` holds pnpm's settings in a project that isn't a workspace, as it is here. Svelte Native adds three:
+`pnpm-workspace.yaml` holds pnpm's settings in a project that isn't a workspace, as it is here. `sv` writes the first of these three, and `svelte-native init` the others:
 
 - `allowBuilds` lets esbuild run its install script.
 - `overrides` pins `expo-modules-core` to the version the patch below is for.
@@ -75,7 +75,7 @@ Three entries are particular to native:
 
 - `main` is `.svelte-native/entry.ts`, the generated entry point.
 - `reanimated.staticFeatureFlags` turns on a code path the Android renderer uses to animate.
-- The `native`, `android` and `ios` scripts run the `svelte-native` command line.
+- The `native`, `android`, `ios` and `check-setup` scripts run the `svelte-native` command line. `dev`, `build`, `preview` and `check` stay SvelteKit's.
 
 The dependencies include `expo`, `react-native` and friends at exact versions, and `svelte` and `@sveltejs/kit` are pinned to the builds the library was written against. Your own `svelte` imports resolve to that Svelte build, on the web and on the device.
 

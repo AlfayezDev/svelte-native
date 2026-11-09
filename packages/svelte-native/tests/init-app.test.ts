@@ -394,3 +394,22 @@ describe("what init writes is what the library was exercised on", () => {
     expect(appNames(undefined)).toMatchObject({ slug: "app" });
   });
 });
+
+describe("the guide says what init writes", () => {
+  test("docs/02's snippets carry the versions, the patches and the Svelte build init writes", () => {
+    const page = readFileSync(join(repository, "docs/02-creating-a-project.md"), "utf8");
+    for (const [name, version] of Object.entries(appDependencies)) expect(page, name).toContain(`"${name}": "${version}"`);
+    expect(page).toContain(`"svelte": "${requiredSvelte.preview}"`);
+    expect(page).toContain('"main": ".svelte-native/entry.ts"');
+    // The yaml of the page is the one a run writes for an sv project, from "overrides" on.
+    const root = project();
+    run(root);
+    const written = readFileSync(join(root, "pnpm-workspace.yaml"), "utf8");
+    const block = written.slice(written.indexOf("overrides:"));
+    expect(page).toContain(block.trimEnd());
+    // The kit pin and the scripts of the page are what the manifest has.
+    const manifest = readJson(root, "package.json");
+    expect(page).toContain(`"@sveltejs/kit": "${manifest.devDependencies["@sveltejs/kit"]}"`);
+    for (const [name, command] of Object.entries(manifest.scripts as Record<string, string>)) if (/^(native|android|ios|check-setup)$/.test(name)) expect(page).toContain(`"${name}": "${command}"`);
+  });
+});

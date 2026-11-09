@@ -426,9 +426,16 @@ function planPackageJson(root2, original, patches2, options) {
     next.reanimated = { ...reanimated, staticFeatureFlags: { ...reanimated.staticFeatureFlags ?? {}, ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS: true } };
     summary.push("the Reanimated flag");
   }
-  if (Object.keys(dependencies).length > 0 || manifest.dependencies !== void 0) next.dependencies = dependencies;
+  next.dependencies = dependencies;
   if (Object.keys(devDependencies).length > 0 || manifest.devDependencies !== void 0) next.devDependencies = devDependencies;
-  const text2 = `${JSON.stringify(next, null, indentOf(original))}${original.endsWith("\n") ? "\n" : ""}`;
+  const ordered = {};
+  for (const key of Object.keys(next)) {
+    if (key === "dependencies") continue;
+    if (key === "devDependencies") ordered.dependencies = dependencies;
+    ordered[key] = next[key];
+  }
+  if (!("dependencies" in ordered)) ordered.dependencies = dependencies;
+  const text2 = `${JSON.stringify(ordered, null, indentOf(original))}${original.endsWith("\n") ? "\n" : ""}`;
   return { text: text2, summary, warnings, kitVersion, hasKit, changed: text2 !== original, name: typeof manifest.name === "string" ? manifest.name : void 0 };
 }
 function mergeWorkspaceYaml(text2, blocks) {

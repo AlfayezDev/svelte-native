@@ -6,6 +6,17 @@ The app needs to be on Expo SDK 57 (React Native 0.86), and use pnpm 12.3.4 or n
 
 The result is a native-only app. It has no web app and doesn't need SvelteKit or Vite.
 
+## The shortcut
+
+Once the React app is out of the way (step 1 below), `svelte-native init` does steps 2 to 6 for you, the same way it does for a SvelteKit project ([Creating a project](02-creating-a-project.md#what-init-did)). Install the library first (step 3), then:
+
+```sh
+pnpm exec svelte-native init --dry-run    # what it would change
+pnpm exec svelte-native init
+```
+
+In a project without SvelteKit it leaves the Vite config alone and doesn't pin SvelteKit. It adds the plugin to your `app.json` and keeps the rest, and a `metro.config.cjs` or a `main` of yours is left as it is and the change printed. The steps below are what it does, for doing it by hand.
+
 ## 1. Take the React app out of the way
 
 Svelte Native has its own entry point and its own router, and it runs no React. What a React app has for those goes:
@@ -37,7 +48,7 @@ pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#<tag>&path:packa
          "svelte@https://pkg.pr.new/svelte@216f258068d93170a927ad4d27ee6864b0b305c5"
 ```
 
-`<tag>` is the newest release tag (`v0.3.0` at the time of writing). The repository is private, so pnpm needs your SSH key. If it stops with `ERR_PNPM_GIT_RESOLVE_FAILED`, see [Troubleshooting](08-troubleshooting.md#pnpm-cannot-read-the-repository).
+`<tag>` is the newest release tag. The repository is private, so pnpm needs your SSH key. If it stops with `ERR_PNPM_GIT_RESOLVE_FAILED`, see [Troubleshooting](08-troubleshooting.md#pnpm-cannot-read-the-repository).
 
 The Svelte you just installed is not the registry's. It's a build with a renderer export, from a pull request that isn't merged yet.
 
@@ -95,7 +106,7 @@ pnpm refuses a patch for a package that isn't installed, so leave out the ones y
 
 ## 6. Connect Metro and Expo
 
-Create `metro.config.cjs` as shown in [Creating a project](02-creating-a-project.md#connect-vite-and-metro), and add the library's plugin to the `plugins` of your `app.json`:
+Create `metro.config.cjs` as shown in [Creating a project](02-creating-a-project.md#metroconfigcjs-and-appjson), and add the library's plugin to the `plugins` of your `app.json`:
 
 ```json
 /// file: app.json
@@ -106,7 +117,7 @@ Create `metro.config.cjs` as shown in [Creating a project](02-creating-a-project
 }
 ```
 
-Then add `src/routes/+layout.mobile.svelte` and a first `src/routes/+mobile.svelte`, which are in [the same page](02-creating-a-project.md#add-the-first-screens). Add the commands to `package.json` as well:
+Then add `src/routes/+layout.mobile.svelte` and a first `src/routes/+mobile.svelte`, which are in [the same page](02-creating-a-project.md#srcroutes). Add the commands to `package.json` as well:
 
 ```json
 /// file: package.json

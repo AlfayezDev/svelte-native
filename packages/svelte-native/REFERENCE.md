@@ -58,6 +58,28 @@ With `runes: false` the library forces nothing and Svelte infers the mode of eac
 
 The web target gets the default too, on purpose: a component under `src/lib` that a native page and a web page both import is compiled by Vite for the browser and by Metro for the device, and in two modes the same source would mean two things (a variable the markup mutates would be reactive in the browser and a plain variable on the device).
 
+### Text and whitespace
+
+`Text` keeps the whitespace it is given, exactly as React Native's `Text` does: nothing is collapsed, and no HTML-style rule applies (a browser collapses whitespace with CSS, and there is none here). A sentence split across source lines reaches the native text with its line break and the next line's indent:
+
+```svelte
+<Text>
+  A sentence that is split
+    across two source lines.
+</Text>
+<!-- draws "A sentence that is split⏎    across two source lines." -->
+```
+
+What Svelte's compiler does before the text gets there stays: it drops the whitespace at the edges of an element's content (the line breaks around the sentence above are not in the text), turns a whitespace-only gap between two nodes into one space, and turns the whitespace between a text and a nested element (`Before <Text>nested</Text>⏎  after.`) into one space. It leaves the inside of a text as written. Write a long sentence on one source line, or as a string:
+
+```svelte
+<Text>{"A long sentence, written as one string."}</Text>
+<Text>{"A long sentence written "
+  + "over two source lines."}</Text>
+```
+
+(`eslint-plugin-svelte`'s `svelte/no-useless-mustaches` flags a string literal in a mustache; turn it off for these.) `tests/text-whitespace.test.ts` pins this on the Fabric host, for the lowered `Text` and the component alike, so a change to it is a decision.
+
 ### File routing: layouts as navigators
 
 The directory tree decides which stack or tab pane a page belongs to (contract: `native/svelte-engine/SPEC.md`, "Route tree: layouts as navigators"; code: `src/route-tree.ts`, `src/router.svelte.ts`, `src/build.ts`).

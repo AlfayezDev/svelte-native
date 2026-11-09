@@ -48,6 +48,9 @@ for (const platform of ["android", "ios"] as const) {
       expect(modules.filter((module) => /^apps\/qa\/|^packages\/svelte-native\/tests\//.test(module))).toEqual([]);
       // No React renderer: the library renders Svelte to Fabric directly. (React itself is there: some of React Native's modules import it.)
       expect(modules.filter((module) => /react-dom|react-reconciler|\/scheduler\//.test(module))).toEqual([]);
+      // A standard URL: the router builds every location as a `SvelteURL`, which React Native's own `URL` cannot construct, so the library's
+      // polyfills load Expo's WinterCG runtime. Without it the app started blank (9 Nov 2026, the first run of this app on an emulator).
+      expect(modules.some((module) => /node_modules\/expo\/src\/winter\/runtime\.native\.ts$/.test(module))).toBe(true);
     }, 300_000);
   });
 }

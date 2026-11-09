@@ -227,10 +227,21 @@ describe("which build a run measured, across the runs of a device", () => {
 			const markdown = renderBuilds({ devices: { E74A: device } } as unknown as ReportFile, "ios", { E74A: "iPhone SE 3" });
 			expect(markdown[0]).toBe("**Builds measured, iPhone SE 3 (2 runs carried from an earlier build under D14)**");
 			expect(markdown).toContain("| boot | main.jsbundle cccccccccccc, CDHash dddddddddddd | afabc2ad7 | D14 |");
-			expect(markdown).toContain("- D14, boot, parity (main.jsbundle cccccccccccc, CDHash dddddddddddd, afabc2ad7): the diff changes only the foreign lab page");
+			// the group names the commit gates.json declares for the carried build, not the harness commit the runs were taken at (afabc2ad7)
+			expect(markdown).toContain("- D14, boot, parity (main.jsbundle cccccccccccc, CDHash dddddddddddd, 1919e8f03): the diff changes only the foreign lab page");
 			expect(markdown.filter((line) => line.includes("the diff changes only"))).toHaveLength(1);
 			expect(markdown).toContain("| lab | main.jsbundle aaaaaaaaaaaa, CDHash bbbbbbbbbbbb | afabc2ad7 | - |");
 			expect(renderBuilds({ devices: { E74A: device } } as unknown as ReportFile, "android", {})).toEqual([]);
+		});
+
+		test("gates fails when gates.json's carried entries are not the ones the report applied", () => {
+			const report = { generatedAt: "2026-10-27T10:00:00.000Z", devices: {}, warnings: [], carried: [carry()] } as unknown as ReportFile;
+			expect(reportProblems(report, [], "ios", false, [carry()])).toEqual([]);
+			expect(reportProblems(report, [], "ios", false, [])[0]).toContain("not the ones the report applied");
+			expect(reportProblems(report, [], "ios", false, [carry({ reason: "another" })])).toHaveLength(1);
+			// a report written before the field, judged against a gates.json that carries runs
+			expect(reportProblems({ ...report, carried: undefined } as ReportFile, [], "ios", false, [carry()])).toHaveLength(1);
+			expect(reportProblems({ ...report, carried: undefined } as ReportFile, [], "ios", false, [])).toEqual([]);
 		});
 
 		test("a malformed entry is an error when gates.json is read", () => {

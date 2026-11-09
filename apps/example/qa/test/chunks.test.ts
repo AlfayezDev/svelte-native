@@ -114,8 +114,9 @@ describe("the script that restarts the emulator", () => {
 		expect(emulatorScript("localhost:5555", {}, remote)).toMatch(/qa\/ci\/emulator-remote\.sh$/);
 		expect(emulatorScript("emulator-5554", {}, local)).toMatch(/qa\/ci\/emulator\.sh$/);
 	});
-	test("a phone has none", () => {
+	test("a phone has none, even with QA_EMULATOR_SH set (it would restart the emulator without its lock)", () => {
 		expect(emulatorScript("R58Y90KNGRP", {}, null)).toBeNull();
+		expect(emulatorScript("R58Y90KNGRP", { QA_EMULATOR_SH: "/home/x/ctl.sh" }, null)).toBeNull();
 	});
 	test("restart runs `restart` and then checks the device answers", async () => {
 		const calls: string[] = [];

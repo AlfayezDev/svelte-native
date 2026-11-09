@@ -203,6 +203,8 @@ export type ReportFile = {
 	smokeWarnings?: string[];
 	/** What a report shows without failing a gate: settings an earlier run left on a device, which a suite cleared before it measured. Absent in reports written before. */
 	notes?: string[];
+	/** The `carried` entries of gates.json this report applied (D14); `gates` fails when gates.json's differ (the build check is made here, not there). Absent in reports written before. */
+	carried?: CarriedRuns[];
 	/** The QA gates (everything but `smoke.*`), which `gates` judges. */
 	gates: GateRow[];
 	verdict: ReturnType<typeof tally>;
@@ -240,7 +242,7 @@ type ReportDeviceEntry = {
 };
 
 /** One run of a device: the build it measured (`buildKey`, null when it could not tell), the commit that build came from, and the D14 entry that carries it, if any. */
-export type MeasuredBuild = { run: string; build: string | null; commit: string; carried: { decision: "D14"; reason: string } | null };
+export type MeasuredBuild = { run: string; build: string | null; commit: string; carried: { decision: "D14"; commit: string; reason: string } | null };
 
 function crashReportSummaries(platform: Platform, files: [CrashReportsSummary["run"], string | undefined, CrashReportsRecord | null][]): CrashReportsSummary[] {
 	if (platform !== "ios") return [];
@@ -397,7 +399,7 @@ export function measuredBuilds(serial: string, runs: [string, Measured | null][]
 		run: label,
 		build: buildKey(run.app),
 		commit: commitOf(run),
-		carried: entry ? { decision: entry.decision, reason: entry.reason } : null,
+		carried: entry ? { decision: entry.decision, commit: entry.commit, reason: entry.reason } : null,
 	}));
 }
 
@@ -691,6 +693,7 @@ export async function report(): Promise<void> {
 		warnings,
 		smokeWarnings,
 		notes,
+		carried: gates.carried ?? [],
 		gates: rows,
 		verdict: tally(rows),
 		smokeGates: smokeRows,

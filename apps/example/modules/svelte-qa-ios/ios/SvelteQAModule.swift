@@ -8,7 +8,7 @@ struct QAError: Error, CustomStringConvertible {
 }
 
 /// What the lab app can ask of itself on iOS, where nothing outside the process can take its screenshot or read its accessibility
-/// tree (`apps/platform/qa`, "iOS"): the pixels of its window, the elements VoiceOver walks, and the launch times. The production
+/// tree (`apps/example/qa`, "iOS"): the pixels of its window, the elements VoiceOver walks, and the launch times. The production
 /// build does not link this module at all: `app.config.ts` gives the svelte-native plugin `autolinkingExclude`, which the plugin
 /// writes into the Podfile as `use_expo_modules!(exclude: [...])`, so the pod, its boot subscriber and the gesture trace are not in that
 /// app. Should it be linked, every function but the boot recorder still refuses to run outside the QA bundle.

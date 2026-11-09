@@ -130,7 +130,7 @@ describe("the iPhone's launches", () => {
 describe("the release bundle of the iPhone build", () => {
 	const directory = mkdtempSync(join(tmpdir(), "ios-foreign-"));
 	const map = join(directory, "ios-bundle.map");
-	writeFileSync(map, JSON.stringify({ sources: ["/node_modules/react/index.js", "/node_modules/react-native-video/src/Video.tsx", "/apps/platform/src/lib/native/dev/LibrarySet.svelte"] }));
+	writeFileSync(map, JSON.stringify({ sources: ["/node_modules/react/index.js", "/node_modules/react-native-video/src/Video.tsx", "/apps/example/src/lib/native/dev/LibrarySet.svelte"] }));
 	const record = (overrides: Partial<IosBuildFile> = {}): IosBuildFile => ({
 		schema: 1, kind: "ios-build", finishedAt: "", durationMs: 1, source: { commit: "abc", dirty: false }, macCheckout: "/m", appPath: "/m/x.app", bundleSha256: "j", jsbundleSha256: "j", cdHash: "c", bundleBytes: 1,
 		sourceMap: { path: map, sizeBytes: 1, sha256: "s", sources: 3 }, logFile: "out/x.log", ...overrides,

@@ -5,7 +5,7 @@ import { applyAppDelegate } from "../src/expo.ts";
 
 // Swift cannot be compiled here, so what ties the three pieces of the iOS restore together is read from their sources: JavaScript (`fabric/host.ts`)
 // calls the module by the names it defines, the AppDelegate patch (`applyAppDelegate`) calls the enum it defines, and both modules are autolinked.
-const modules = resolve(import.meta.dirname, "../../../apps/platform/modules/svelte-navigation-ios");
+const modules = resolve(import.meta.dirname, "../../../apps/example/modules/svelte-navigation-ios");
 const swift = readFileSync(resolve(modules, "ios/SvelteNavigationModule.swift"), "utf8");
 const host = readFileSync(resolve(import.meta.dirname, "../src/fabric/host.ts"), "utf8");
 /** The Swift without its comments: the policy is in JavaScript, and the comments are free to say so. */

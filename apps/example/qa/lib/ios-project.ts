@@ -1,7 +1,7 @@
 import { appVariantOf, type Variant } from "./variant.ts";
 
 /**
- * The shell lines that prebuild the iOS project on the Mac, in `apps/platform` of its checkout. `ios/` is generated and shared by
+ * The shell lines that prebuild the iOS project on the Mac, in `apps/example` of its checkout. `ios/` is generated and shared by
  * the variants (the checkout is copied without it), and an Expo prebuild over an existing project keeps what an earlier one wrote
  * (the smoke app's `ios.useFrameworks: "static"` in `Podfile.properties.json`), so a prebuild for another variant, or after one
  * that did not finish, starts from nothing (`--clean`). The marker is removed before the prebuild and written after it, so a failed

@@ -10,10 +10,10 @@ import { parseNativeID } from "../src/fabric/navigation.ts";
 import { routeFiles, syncNative } from "../src/build.ts";
 import { stubCoreSource, stubSource } from "../src/metro.ts";
 import { buildTree, resolve as resolveHref, type PageRoute, type RouteNode } from "../src/route-tree.ts";
-import { enforceSession, type GuardedAccount } from "../../../apps/platform/src/lib/native/session-guard.ts";
+import { enforceSession, type GuardedAccount } from "../../../apps/example/src/lib/native/session-guard.ts";
 
 /**
- * The platform app's own route tree: the files under apps/platform/src/routes, built by the generator's reader, linked to the
+ * The platform app's own route tree: the files under apps/example/src/routes, built by the generator's reader, linked to the
  * test components of the fixtures (a tabs bar, a stack, a page that registers its router). It pins the shape the app was
  * migrated to and drives the navigation the product screens do. The pages themselves need Expo and the account, so they are
  * not mounted here.
@@ -137,7 +137,7 @@ async function mountTree(surface: number, props: Record<string, unknown> = {}, f
   return { m, app, router: app.root?.() as TreeRouter, hardwareBack, settled, texts: () => texts(surface), tree: () => roots[surface] };
 }
 
-const appRoutes = resolve(import.meta.dirname, "../../../apps/platform/src/routes");
+const appRoutes = resolve(import.meta.dirname, "../../../apps/example/src/routes");
 const appFiles = () => routeFiles(appRoutes, { lab: true });
 /** The product's route files (`APP_VARIANT=production`): discovery leaves the lab out. */
 const productFiles = () => routeFiles(appRoutes, { lab: false });
@@ -516,7 +516,7 @@ test("in the product a deep link to the lab ends where an unknown workspace does
 // lab binding that was not behind the flag passed this test and crashed the product's root layout. So each import of a stubbed directory
 // goes through a module that names the bindings the importer imports from it (`ownKeys`), and esbuild's copy then reads them through the
 // stub's `get` when they are used, which throws.
-const platformRoot = resolve(import.meta.dirname, "../../../apps/platform");
+const platformRoot = resolve(import.meta.dirname, "../../../apps/example");
 const packageRoot = resolve(import.meta.dirname, "..");
 const labDirectories = [`${resolve(platformRoot, "src/lib/native/dev")}/`, `${resolve(platformRoot, "src/routes/__dev")}/`];
 

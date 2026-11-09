@@ -1,6 +1,6 @@
 import UIKit
 
-/// What the gesture probes ask of UIKit (`apps/platform/src/lib/native/dev/probe.ts`, `gestures-*`): the gesture recognizers on the view that has a
+/// What the gesture probes ask of UIKit (`apps/example/src/lib/native/dev/probe.ts`, `gestures-*`): the gesture recognizers on the view that has a
 /// React Native tag and on every view above it up to the window, so that the harness can see whether react-native-gesture-handler's handler is bound to
 /// the view and its root recognizer sits on the view that holds React Native's touch handler (the surface, or a presented screen), and how the
 /// navigation controller's edge swipe and a sheet's own recognizers relate to them. Nothing here touches the screen.

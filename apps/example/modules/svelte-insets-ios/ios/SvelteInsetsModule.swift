@@ -1,7 +1,7 @@
 import ExpoModulesCore
 import UIKit
 
-/// Safe area and keyboard insets of the app's window, in the payload the Android engine sends (`apps/platform/modules/svelte-engine/SPEC.md`,
+/// Safe area and keyboard insets of the app's window, in the payload the Android engine sends (`apps/example/modules/svelte-engine/SPEC.md`,
 /// "Insets and keyboard"), points standing for dp: `{ top, right, bottom, left, keyboardHeight, keyboardVisible, frame }`.
 /// `keyboardHeight` is how much of the window the keyboard covers; `frame` is the window, the coordinate space of the host's
 /// `measureInWindow`. The module is called `SvelteInsets` (not `SvelteEngine`, whose presence tells the host the Android engine is installed).

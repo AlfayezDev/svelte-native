@@ -234,7 +234,7 @@
       ],
       "decision": "D1",
       "reason": "UIKit's UINavigationBar re-lays out its items for every push and pop (about 30 ms a run, 20 to 23 ms of it layoutSubviews), which is the platform's floor, not the engine's",
-      "evidence": "apps/platform/modules/svelte-engine/SPEC.md, 'Native screens, iOS' > 'Where the time goes (iPhone SE 3, Time Profiler, 60 Hz)'"
+      "evidence": "apps/example/modules/svelte-engine/SPEC.md, 'Native screens, iOS' > 'Where the time goes (iPhone SE 3, Time Profiler, 60 Hz)'"
     },
     {
       "gate": "frames.maxPeriodRatio",
@@ -244,7 +244,7 @@
       ],
       "decision": "D1",
       "reason": "UIKit's UINavigationBar re-lays out its items for every push and pop (about 30 ms a run, 20 to 23 ms of it layoutSubviews), which is the platform's floor, not the engine's",
-      "evidence": "apps/platform/modules/svelte-engine/SPEC.md, 'Native screens, iOS' > 'Where the time goes (iPhone SE 3, Time Profiler, 60 Hz)'"
+      "evidence": "apps/example/modules/svelte-engine/SPEC.md, 'Native screens, iOS' > 'Where the time goes (iPhone SE 3, Time Profiler, 60 Hz)'"
     },
     {
       "gate": "frames.maxMs",
@@ -254,7 +254,7 @@
       ],
       "decision": "D1",
       "reason": "UIKit's UINavigationBar re-lays out its items for every push and pop (about 30 ms a run, 20 to 23 ms of it layoutSubviews), which is the platform's floor, not the engine's",
-      "evidence": "apps/platform/modules/svelte-engine/SPEC.md, 'Native screens, iOS' > 'Where the time goes (iPhone SE 3, Time Profiler, 60 Hz)'"
+      "evidence": "apps/example/modules/svelte-engine/SPEC.md, 'Native screens, iOS' > 'Where the time goes (iPhone SE 3, Time Profiler, 60 Hz)'"
     },
     {
       "gate": "frames.droppedPct",
@@ -264,7 +264,7 @@
       ],
       "decision": "D1",
       "reason": "Reanimated's worklet runtime applies the animated props of the churn on the Android UI thread, which no change in the engine's write path removes",
-      "evidence": "apps/platform/modules/svelte-engine/SPEC.md, 'Animated write path' and 'Frames: recycling, text cache' (Measurements, churn-animated)"
+      "evidence": "apps/example/modules/svelte-engine/SPEC.md, 'Animated write path' and 'Frames: recycling, text cache' (Measurements, churn-animated)"
     },
     {
       "gate": "frames.maxPeriodRatio",
@@ -274,7 +274,7 @@
       ],
       "decision": "D1",
       "reason": "Reanimated's worklet runtime applies the animated props of the churn on the Android UI thread, which no change in the engine's write path removes",
-      "evidence": "apps/platform/modules/svelte-engine/SPEC.md, 'Animated write path' and 'Frames: recycling, text cache' (Measurements, churn-animated)"
+      "evidence": "apps/example/modules/svelte-engine/SPEC.md, 'Animated write path' and 'Frames: recycling, text cache' (Measurements, churn-animated)"
     },
     {
       "gate": "frames.maxMs",
@@ -284,28 +284,28 @@
       ],
       "decision": "D1",
       "reason": "Reanimated's worklet runtime applies the animated props of the churn on the Android UI thread, which no change in the engine's write path removes",
-      "evidence": "apps/platform/modules/svelte-engine/SPEC.md, 'Animated write path' and 'Frames: recycling, text cache' (Measurements, churn-animated)"
+      "evidence": "apps/example/modules/svelte-engine/SPEC.md, 'Animated write path' and 'Frames: recycling, text cache' (Measurements, churn-animated)"
     },
     {
       "gate": "list.virtual300.mountMs",
       "device": "R58Y90KNGRP",
       "decision": "D9",
       "reason": "22 to 33 ms against 10 under the gate protocol (six idle frames before the mount); the work itself is about 9 ms on warm cores, and placement, clock and idle redraw do not explain the cold spread; pinning and ADPF had no effect",
-      "evidence": "apps/platform/modules/svelte-engine/SPEC.md, 'The windowed list's cold mount on the A16 (2 November 2026, branch feat/svelte-native-list2)'"
+      "evidence": "apps/example/modules/svelte-engine/SPEC.md, 'The windowed list's cold mount on the A16 (2 November 2026, branch feat/svelte-native-list2)'"
     },
     {
       "gate": "boot.warm.p90",
       "device": "R58Y90KNGRP",
       "decision": "D9",
       "reason": "the warm p90 is the phone's tail, another process's GC on a big core and the system_server window-manager lock; the phone has fast and slow days (round 2 read about 50 ms faster in the same interleaved hour, median 370 to 318 ms)",
-      "evidence": "apps/platform/modules/svelte-engine/SPEC.md, 'Boot on the phone, round 2: where the slow launches come from (2 November 2026, Samsung A16)' and 'round 3'"
+      "evidence": "apps/example/modules/svelte-engine/SPEC.md, 'Boot on the phone, round 2: where the slow launches come from (2 November 2026, Samsung A16)' and 'round 3'"
     },
     {
       "gate": "boot.cold.p90",
       "device": "R58Y90KNGRP",
       "decision": "D9",
       "reason": "the cold p90 is the phone's tail, another process's GC on a big core and the system_server window-manager lock; the phone has fast and slow days (round 2 read about 50 ms faster in the same interleaved hour, median 370 to 318 ms)",
-      "evidence": "apps/platform/modules/svelte-engine/SPEC.md, 'Boot on the phone, round 2: where the slow launches come from (2 November 2026, Samsung A16)' and 'round 3'"
+      "evidence": "apps/example/modules/svelte-engine/SPEC.md, 'Boot on the phone, round 2: where the slow launches come from (2 November 2026, Samsung A16)' and 'round 3'"
     },
     {
       "gate": "frames.droppedPct",
@@ -318,7 +318,7 @@
       "maxLateIntervals": 2,
       "decision": "D9",
       "reason": "the first interval of the window (19 to 27 ms in the D9 evidence): the scenario's own 48 withRepeat animations start in one Worklets message on the UI thread, pacing them was vetoed; covered up to 2 late intervals (that one plus the allowance every scenario has), no further",
-      "evidence": "apps/platform/modules/svelte-engine/SPEC.md, 'The first interval of the animation scenarios, and what the UI thread takes in one message (2 November 2026)'"
+      "evidence": "apps/example/modules/svelte-engine/SPEC.md, 'The first interval of the animation scenarios, and what the UI thread takes in one message (2 November 2026)'"
     },
     {
       "gate": "frames.maxPeriodRatio",
@@ -331,7 +331,7 @@
       "maxLateIntervals": 2,
       "decision": "D9",
       "reason": "the first interval of the window (19 to 27 ms in the D9 evidence): the scenario's own 48 withRepeat animations start in one Worklets message on the UI thread, pacing them was vetoed; covered up to 2 late intervals (that one plus the allowance every scenario has), no further",
-      "evidence": "apps/platform/modules/svelte-engine/SPEC.md, 'The first interval of the animation scenarios, and what the UI thread takes in one message (2 November 2026)'"
+      "evidence": "apps/example/modules/svelte-engine/SPEC.md, 'The first interval of the animation scenarios, and what the UI thread takes in one message (2 November 2026)'"
     },
     {
       "gate": "gestures.frames.droppedPct",
@@ -341,7 +341,7 @@
       ],
       "decision": "1 Nov first touch",
       "reason": "the first touch of a process runs react-native-gesture-handler's first worklet and class initialisation (25 ms for the first DOWN on a little core); a warm-up touch did not help",
-      "evidence": "apps/platform/modules/svelte-engine/SPEC.md, 'The first touch of a process (1 November 2026)'"
+      "evidence": "apps/example/modules/svelte-engine/SPEC.md, 'The first touch of a process (1 November 2026)'"
     },
     {
       "gate": "gestures.frames.maxPeriodRatio",
@@ -351,7 +351,7 @@
       ],
       "decision": "1 Nov first touch",
       "reason": "the first touch of a process runs react-native-gesture-handler's first worklet and class initialisation (25 ms for the first DOWN on a little core); a warm-up touch did not help",
-      "evidence": "apps/platform/modules/svelte-engine/SPEC.md, 'The first touch of a process (1 November 2026)'"
+      "evidence": "apps/example/modules/svelte-engine/SPEC.md, 'The first touch of a process (1 November 2026)'"
     },
     {
       "gate": "gestures.frames.maxMs",
@@ -361,7 +361,7 @@
       ],
       "decision": "1 Nov first touch",
       "reason": "the first touch of a process runs react-native-gesture-handler's first worklet and class initialisation (25 ms for the first DOWN on a little core); a warm-up touch did not help",
-      "evidence": "apps/platform/modules/svelte-engine/SPEC.md, 'The first touch of a process (1 November 2026)'"
+      "evidence": "apps/example/modules/svelte-engine/SPEC.md, 'The first touch of a process (1 November 2026)'"
     },
     {
       "gate": "gestures.frames.droppedPct",
@@ -373,7 +373,7 @@
       ],
       "decision": "D13",
       "reason": "iOS can inject touches only through XCUITest, and frames measured under it are not the library's: the same box driven by a finger read 0.3 % dropped (1 late interval of 301), 33 ms worst, against 7.3 to 8.8 % and 53 to 67 ms through XCUITest, and the JavaScript-busy variant 1.5 % (synthetic touches get no touch boost; the runner loads the phone); the gesture checks stay judged",
-      "evidence": "apps/platform/qa/runs/lab-E74A5608-BF8E-5806-8699-1605F82ADED9-20261103T115915Z.json (finger, run 1) against gestures-E74A5608-BF8E-5806-8699-1605F82ADED9-20261103T103643Z.json (XCUITest); GOAL.md D13"
+      "evidence": "apps/example/qa/runs/lab-E74A5608-BF8E-5806-8699-1605F82ADED9-20261103T115915Z.json (finger, run 1) against gestures-E74A5608-BF8E-5806-8699-1605F82ADED9-20261103T103643Z.json (XCUITest); GOAL.md D13"
     },
     {
       "gate": "gestures.frames.maxPeriodRatio",
@@ -385,7 +385,7 @@
       ],
       "decision": "D13",
       "reason": "iOS can inject touches only through XCUITest, and frames measured under it are not the library's: the same box driven by a finger read 0.3 % dropped (1 late interval of 301), 33 ms worst, against 7.3 to 8.8 % and 53 to 67 ms through XCUITest, and the JavaScript-busy variant 1.5 % (synthetic touches get no touch boost; the runner loads the phone); the gesture checks stay judged",
-      "evidence": "apps/platform/qa/runs/lab-E74A5608-BF8E-5806-8699-1605F82ADED9-20261103T115915Z.json (finger, run 1) against gestures-E74A5608-BF8E-5806-8699-1605F82ADED9-20261103T103643Z.json (XCUITest); GOAL.md D13"
+      "evidence": "apps/example/qa/runs/lab-E74A5608-BF8E-5806-8699-1605F82ADED9-20261103T115915Z.json (finger, run 1) against gestures-E74A5608-BF8E-5806-8699-1605F82ADED9-20261103T103643Z.json (XCUITest); GOAL.md D13"
     },
     {
       "gate": "gestures.frames.maxMs",
@@ -397,7 +397,7 @@
       ],
       "decision": "D13",
       "reason": "iOS can inject touches only through XCUITest, and frames measured under it are not the library's: the same box driven by a finger read 0.3 % dropped (1 late interval of 301), 33 ms worst, against 7.3 to 8.8 % and 53 to 67 ms through XCUITest, and the JavaScript-busy variant 1.5 % (synthetic touches get no touch boost; the runner loads the phone); the gesture checks stay judged",
-      "evidence": "apps/platform/qa/runs/lab-E74A5608-BF8E-5806-8699-1605F82ADED9-20261103T115915Z.json (finger, run 1) against gestures-E74A5608-BF8E-5806-8699-1605F82ADED9-20261103T103643Z.json (XCUITest); GOAL.md D13"
+      "evidence": "apps/example/qa/runs/lab-E74A5608-BF8E-5806-8699-1605F82ADED9-20261103T115915Z.json (finger, run 1) against gestures-E74A5608-BF8E-5806-8699-1605F82ADED9-20261103T103643Z.json (XCUITest); GOAL.md D13"
     },
     {
       "gate": "frames.droppedPct",
@@ -410,7 +410,7 @@
       "maxMs": 20,
       "decision": "D11",
       "reason": "repeated short late intervals on the Galaxy A16's 90 Hz display (2 to 4 late intervals in more than one run of ten, no frame over 19 ms: late at 90 Hz, on time at 60 Hz); covered up to 4 late intervals and a 20 ms frame in the judged runs, no further",
-      "evidence": "apps/platform/qa/runs/lab-R58Y90KNGRP-20261102T182601Z.json (final build fb53ab1cf, 2 Nov, 10 runs): the churn-static and list-300-raw frame records; GOAL.md D11"
+      "evidence": "apps/example/qa/runs/lab-R58Y90KNGRP-20261102T182601Z.json (final build fb53ab1cf, 2 Nov, 10 runs): the churn-static and list-300-raw frame records; GOAL.md D11"
     },
     {
       "gate": "frames.maxPeriodRatio",
@@ -423,7 +423,7 @@
       "maxMs": 20,
       "decision": "D11",
       "reason": "repeated short late intervals on the Galaxy A16's 90 Hz display (2 to 4 late intervals in more than one run of ten, no frame over 19 ms: late at 90 Hz, on time at 60 Hz); covered up to 4 late intervals and a 20 ms frame in the judged runs, no further",
-      "evidence": "apps/platform/qa/runs/lab-R58Y90KNGRP-20261102T182601Z.json (final build fb53ab1cf, 2 Nov, 10 runs): the churn-static and list-300-raw frame records; GOAL.md D11"
+      "evidence": "apps/example/qa/runs/lab-R58Y90KNGRP-20261102T182601Z.json (final build fb53ab1cf, 2 Nov, 10 runs): the churn-static and list-300-raw frame records; GOAL.md D11"
     }
   ],
   "carried": [

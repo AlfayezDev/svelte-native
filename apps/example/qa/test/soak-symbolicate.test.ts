@@ -28,7 +28,7 @@ const map = new TraceMap({
 	version: 3,
 	sources: [
 		"/packages/svelte-native/src/init.ts",
-		"/apps/platform/src/lib/native/dev/Stress.svelte",
+		"/apps/example/src/lib/native/dev/Stress.svelte",
 	],
 	names: ["setGlobalHandler"],
 	mappings: "AAAA,wHAgEUA,oLCrDN,oLD0DF",
@@ -47,14 +47,14 @@ describe("symbolicateJsLine", () => {
 				map,
 			),
 		).toBe(
-			"10-26 12:41:00.200  5002  5034 E ReactNativeJS:     at anonymous (apps/platform/src/lib/native/dev/Stress.svelte:12:5)",
+			"10-26 12:41:00.200  5002  5034 E ReactNativeJS:     at anonymous (apps/example/src/lib/native/dev/Stress.svelte:12:5)",
 		);
 	});
 	test("React Native's name@line:offset form of a fatal exception", () => {
 		expect(
 			symbolicateJsLine("10-26 12:40:00.110  5001  5033 E AndroidRuntime: flush@1:310", map),
 		).toBe(
-			"10-26 12:40:00.110  5001  5033 E AndroidRuntime: at flush (apps/platform/src/lib/native/dev/Stress.svelte:12:5)",
+			"10-26 12:40:00.110  5001  5033 E AndroidRuntime: at flush (apps/example/src/lib/native/dev/Stress.svelte:12:5)",
 		);
 	});
 	test("name@line:offset only counts on line 1, where Hermes puts every bytecode frame", () => {
@@ -81,7 +81,7 @@ describe("symbolicateJsLine", () => {
 			true,
 		);
 		expect(
-			out[2]?.endsWith("at anonymous (apps/platform/src/lib/native/dev/Stress.svelte:12:5)"),
+			out[2]?.endsWith("at anonymous (apps/example/src/lib/native/dev/Stress.svelte:12:5)"),
 		).toBe(true);
 		expect(out[3]?.endsWith("    at native")).toBe(true);
 		expect(out[4]?.endsWith("at helper (packages/svelte-native/src/init.ts:70:3)")).toBe(true);
@@ -93,7 +93,7 @@ describe("parseNdkStack", () => {
 	const frames = parseNdkStack(sample("ndk-stack-output.txt"), "/repo/");
 	test("symbolized frames show the innermost function and a path relative to the repository", () => {
 		expect(frames[0]).toBe(
-			"#00 expo::svelteengine::encodeProps(expo::svelteengine::Batch&, expo::svelteengine::Kind, facebook::react::ShadowView const&, float) (apps/platform/modules/svelte-engine/android/src/main/cpp/PropsEncoder.cpp:264:0)",
+			"#00 expo::svelteengine::encodeProps(expo::svelteengine::Batch&, expo::svelteengine::Kind, facebook::react::ShadowView const&, float) (apps/example/modules/svelte-engine/android/src/main/cpp/PropsEncoder.cpp:264:0)",
 		);
 		expect(frames[1]?.startsWith("#01 expo::svelteengine::encodeState(")).toBe(true);
 		expect(frames[1]?.endsWith("PropsEncoder.cpp:323:0)")).toBe(true);
@@ -181,7 +181,7 @@ describe("symbolicateCrash", () => {
 		expect(result.symbolicated).toBe(true);
 		expect(result.frames.slice(0, 3)).toEqual([
 			"at setGlobalHandler (packages/svelte-native/src/init.ts:65:11)",
-			"at flush (apps/platform/src/lib/native/dev/Stress.svelte:12:5)",
+			"at flush (apps/example/src/lib/native/dev/Stress.svelte:12:5)",
 			"at anonymous (packages/svelte-native/src/init.ts:70:3)",
 		]);
 	});

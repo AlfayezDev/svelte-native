@@ -10,7 +10,7 @@ import { routesTableFile } from "../src/variant.ts";
 /**
  * The development lab's routes (a `__dev` directory, or a module script that exports `lab = true`) are in every variant but the
  * product's. The product's route discovery never reads them, so its route tree and generated table never name them
- * (apps/platform/modules/svelte-engine/SPEC.md, "What the product contains: no development lab (JavaScript)").
+ * (apps/example/modules/svelte-engine/SPEC.md, "What the product contains: no development lab (JavaScript)").
  */
 const marker = (extra = "") => `<script module>export const lab = true;${extra}</script>`;
 const tabs = '<script module>export const navigator = "tabs";</script>';

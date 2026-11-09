@@ -85,7 +85,7 @@ function bundle(variant: string, syncedFirst: readonly string[] = []): Bundle {
 		{ cwd: platformDir, env, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 },
 	);
 	if (done.status !== 0) throw new Error(`export:embed (${variant || "qa"}) failed: ${(done.stderr || done.stdout).slice(-600)}`);
-	// The source map lists the modules of the bundle, as paths from the repository root (`/apps/platform/src/…`).
+	// The source map lists the modules of the bundle, as paths from the repository root (`/apps/example/src/…`).
 	const { sources } = JSON.parse(readFileSync(sourceMap, "utf8")) as { sources: string[] };
 	return { text: readFileSync(output, "utf8"), bytes: statSync(output).size, modules: sources.map((source) => source.replace(/^\//, "")) };
 }
@@ -133,13 +133,13 @@ describe("the JavaScript bundles", () => {
 });
 
 /** Modules of the development lab: the routes under `__dev` and what `src/lib/native/dev` holds. */
-const labModule = /^apps\/platform\/src\/(?:lib\/native\/dev|routes\/__dev)\//;
+const labModule = /^apps\/example\/src\/(?:lib\/native\/dev|routes\/__dev)\//;
 /** A stub Metro puts where an import would reach a module the app does not carry. */
-const stubModule = /^apps\/platform\/\.svelte-native\/stubs\//;
+const stubModule = /^apps\/example\/\.svelte-native\/stubs\//;
 /** The generated route table of a variant: each bundle has its own variant's and no other (`.svelte-native/routes.<variant>.ts`). */
-const tableModule = /^apps\/platform\/\.svelte-native\/routes\.[^/]+\.ts$/;
+const tableModule = /^apps\/example\/\.svelte-native\/routes\.[^/]+\.ts$/;
 /** What only the lab may bring along: its assets, the workspace package (the foreign view wrappers) and the libraries. */
-const labDependency = /^(?:apps\/platform\/assets\/native\/lab\/|packages\/svelte-native\/|node_modules\/)|\/node_modules\//;
+const labDependency = /^(?:apps\/example\/assets\/native\/lab\/|packages\/svelte-native\/|node_modules\/)|\/node_modules\//;
 
 describe("the development lab", () => {
 	test("the product has no /__dev route and no module of the lab; what shared code still imports from it is a stub", () => {
@@ -147,7 +147,7 @@ describe("the development lab", () => {
 		expect(modules.filter((module) => labModule.test(module))).toEqual([]);
 		expect(modules.filter((module) => /\/__dev\//.test(module) || module.includes("assets/native/lab"))).toEqual([]);
 		// The root layout's hooks (the error counter, the update harness's faults and report, the QA module) name modules of the lab behind `nativeLabEnabled`: all resolve to the directory's stub.
-		expect(modules.filter((module) => stubModule.test(module)).toSorted()).toEqual(["apps/platform/.svelte-native/stubs/production/_core.js", "apps/platform/.svelte-native/stubs/production/src_lib_native_dev_.js"]);
+		expect(modules.filter((module) => stubModule.test(module)).toSorted()).toEqual(["apps/example/.svelte-native/stubs/production/_core.js", "apps/example/.svelte-native/stubs/production/src_lib_native_dev_.js"]);
 		expect(text).not.toContain("Mobile development lab");
 		// The route table does not name the lab, and the one place that knows its path is the session guard, which sends a link to it away (defence in depth).
 		expect(text.split("\n").filter((line) => line.includes("__dev")).map((line) => line.trim())).toEqual(['if (path === "/__dev" || path.startsWith("/__dev/")) {']);
@@ -158,15 +158,15 @@ describe("the development lab", () => {
 		expect(lab.length).toBeGreaterThan(50);
 		const routes = readdirSync(join(platformDir, "src/routes/__dev"), { recursive: true, encoding: "utf8" }).filter((path) => /(?:^|\/)\+(?:layout\.)?mobile\.svelte$/.test(path));
 		expect(routes.length).toBeGreaterThan(8);
-		for (const route of routes) expect(qa).toContain(`apps/platform/src/routes/__dev/${route}`);
-		for (const hook of ["errors.ts", "qa.ts", "update-probe.ts", "LabLink.svelte", "launch.ts"]) expect(qa).toContain(`apps/platform/src/lib/native/dev/${hook}`);
+		for (const route of routes) expect(qa).toContain(`apps/example/src/routes/__dev/${route}`);
+		for (const hook of ["errors.ts", "qa.ts", "update-probe.ts", "LabLink.svelte", "launch.ts"]) expect(qa).toContain(`apps/example/src/lib/native/dev/${hook}`);
 	}, 120_000);
 	test("the QA app is the product plus the lab: whatever the product has, the QA app has, and the rest is the lab or a library only it imports", () => {
 		const qa = new Set(bundled("").modules);
 		const product = new Set(bundled("production").modules);
 		// Each has the route table of its own variant, and only that one.
-		expect([...product].filter((module) => tableModule.test(module))).toEqual(["apps/platform/.svelte-native/routes.production.ts"]);
-		expect([...qa].filter((module) => tableModule.test(module))).toEqual(["apps/platform/.svelte-native/routes.qa.ts"]);
+		expect([...product].filter((module) => tableModule.test(module))).toEqual(["apps/example/.svelte-native/routes.production.ts"]);
+		expect([...qa].filter((module) => tableModule.test(module))).toEqual(["apps/example/.svelte-native/routes.qa.ts"]);
 		const missing = [...product].filter((module) => !qa.has(module) && !stubModule.test(module) && !tableModule.test(module));
 		expect(missing).toEqual([]);
 		const lab = [...qa].filter((module) => !product.has(module) && !stubModule.test(module) && !tableModule.test(module));
@@ -190,7 +190,7 @@ describe("the development lab", () => {
 		expect(forgotten.bytes).toBe(bundled("production").bytes);
 		// And the product's table synced before a QA bundle: the QA app has every route of the lab.
 		const leftover = bundled("", ["production"]);
-		expect(leftover.modules.filter((module) => /apps\/platform\/src\/routes\/__dev\/.*\+mobile\.svelte$/.test(module)).length).toBeGreaterThan(8);
+		expect(leftover.modules.filter((module) => /apps\/example\/src\/routes\/__dev\/.*\+mobile\.svelte$/.test(module)).length).toBeGreaterThan(8);
 		expect(leftover.bytes).toBe(bundled("").bytes);
 	}, 120_000);
 	test("a bundle writes no file another variant's Metro (a live development server of the QA app) reads: not its table, not the stubs", () => {
@@ -220,7 +220,7 @@ describe("the development lab", () => {
 		expect(product).toBeLessThan(qa * 0.93);
 		expect(qa - product).toBeGreaterThan(900_000);
 		const smoke = new Set(bundled("smoke").modules);
-		expect([...smoke].filter((module) => tableModule.test(module))).toEqual(["apps/platform/.svelte-native/routes.smoke.ts"]);
+		expect([...smoke].filter((module) => tableModule.test(module))).toEqual(["apps/example/.svelte-native/routes.smoke.ts"]);
 		expect(bundled("").modules.filter((module) => !smoke.has(module) && !stubModule.test(module) && !tableModule.test(module))).toEqual([]);
 	}, 120_000);
 });

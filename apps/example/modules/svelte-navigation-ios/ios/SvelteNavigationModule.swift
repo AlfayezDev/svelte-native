@@ -1,7 +1,7 @@
 import ExpoModulesCore
 import UIKit
 
-/// The root router's navigation state across the death of the process on iOS (`apps/platform/modules/svelte-engine/SPEC.md`, "Navigation state
+/// The root router's navigation state across the death of the process on iOS (`apps/example/modules/svelte-engine/SPEC.md`, "Navigation state
 /// across recreation and process death"). Android keeps the state in the Activity's saved instance state, which the system holds for a process it
 /// killed in the background and drops when the user removes the task. iOS has no such bundle, so the module does the same with a file and one
 /// signal from the system. It stores and reports; what to do with it is decided in JavaScript (`packages/svelte-native/src/navigation-restore.ts`,

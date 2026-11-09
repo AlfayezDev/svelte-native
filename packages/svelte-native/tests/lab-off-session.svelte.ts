@@ -1,10 +1,10 @@
 import { getContext, setContext } from "svelte";
 import { accountForms } from "../../client/account-forms.ts";
-import { bindForm } from "../../../apps/platform/src/lib/client/form.svelte.ts";
-import { getLocale, t } from "../../../apps/platform/src/lib/native/state.svelte.ts";
+import { bindForm } from "../../../apps/example/src/lib/client/form.svelte.ts";
+import { getLocale, t } from "../../../apps/example/src/lib/native/state.svelte.ts";
 
 /**
- * `apps/platform/src/lib/native/session.svelte.ts` without the SpacetimeDB connection: an account that is signed in (or not, by
+ * `apps/example/src/lib/native/session.svelte.ts` without the SpacetimeDB connection: an account that is signed in (or not, by
  * `globalThis.__labOffUser`), loaded and ready, with the real forms and the real `createNativeForm`. The app-lab-off test mounts the app on it.
  */
 export type NativeConfiguration = { uri: string; databaseName: string };

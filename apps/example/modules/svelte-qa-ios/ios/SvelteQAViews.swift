@@ -1,7 +1,7 @@
 import ImageIO
 import UIKit
 
-/// What the lab's checks of the native-view libraries read back from the platform (`apps/platform/src/lib/native/dev/foreign-libraries-checks.ts`,
+/// What the lab's checks of the native-view libraries read back from the platform (`apps/example/src/lib/native/dev/foreign-libraries-checks.ts`,
 /// SPEC.md, "Device verification of the libraries"): `inspect` says what UIKit built for a React Native tag (the class, its size and place on the screen
 /// in pixels, whether it is in a window and shown, the text it holds, the classes of the views inside it), and `samplePixels` decodes an image the app made of
 /// itself (a `captureRef` result: a file, a data URI or base64) and answers the colour at fractions of it, the mean of the square around each point.

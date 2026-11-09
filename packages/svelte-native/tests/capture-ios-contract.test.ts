@@ -11,7 +11,7 @@ import { dirname, resolve } from "node:path";
 const require = createRequire(import.meta.url);
 const library = dirname(require.resolve("react-native-view-shot/package.json"));
 const reactNative = dirname(require.resolve("react-native/package.json"));
-const sweepModule = resolve(import.meta.dirname, "../../../apps/platform/modules/svelte-capture-ios");
+const sweepModule = resolve(import.meta.dirname, "../../../apps/example/modules/svelte-capture-ios");
 const viewShot = readFileSync(resolve(library, "ios/RNViewShot.mm"), "utf8");
 const tempFilePath = (() => {
   const source = readFileSync(resolve(reactNative, "React/Base/RCTUtils.mm"), "utf8");

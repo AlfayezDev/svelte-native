@@ -6,7 +6,7 @@ import { applyHeadlessApplication, headlessExcludedPackages } from "../src/expo.
 
 // The Kotlin and Swift modules and the TypeScript client share a contract that no compiler checks across languages:
 // the module name, its constants and functions, and how each platform finds its launch hook. These tests pin it.
-const app = resolve(import.meta.dirname, "../../../apps/platform");
+const app = resolve(import.meta.dirname, "../../../apps/example");
 const module = join(app, "modules/svelte-updates");
 const read = (path: string) => readFileSync(join(module, path), "utf8");
 const kotlin = (file: string) => read(`android/src/main/java/expo/modules/svelteupdates/${file}`);

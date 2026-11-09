@@ -26,7 +26,7 @@ const defaultSmokeScript = "/tmp/rasheed-ios-smoke.command";
 const productNames = { qa: "RasheedSvelteQA", smoke: "Sveltesmoke" } as const;
 const smokeBundleMarker = "RNFBAppModule";
 // DerivedData is the signed build's own cache on the Mac: `--delete` would wipe it and make every build a full ~6 min rebuild.
-const excludes = ["DerivedData", "node_modules", ".git", "apps/platform/android/", "apps/platform/ios/", "build", "dist", ".svelte-kit", ".svelte-native", ".rasheed", ".env", ".expo", "*.log"];
+const excludes = ["DerivedData", "node_modules", ".git", "apps/example/android/", "apps/example/ios/", "build", "dist", ".svelte-kit", ".svelte-native", ".rasheed", ".env", ".expo", "*.log"];
 const buildWaitMs = 30 * 60_000;
 
 export async function iosBuild(argv: string[]): Promise<void> {
@@ -78,7 +78,7 @@ export async function iosBuild(argv: string[]): Promise<void> {
 			"set -o pipefail",
 			`cd ${shellQuote(checkout)}`,
 			"pnpm install --frozen-lockfile --ignore-scripts --prefer-offline 2>&1 | tail -n 1",
-			"cd apps/platform",
+			"cd apps/example",
 			`export PATH=/opt/homebrew/bin:/usr/local/bin:$PATH LANG=en_US.UTF-8 CI=1 EXPO_NO_TELEMETRY=1 APP_VARIANT=${appVariantOf[variant]}`,
 			...iosPrebuildLines(variant, "/tmp/native-qa-prebuild.log"),
 			"(cd ios && pod install > /tmp/native-qa-pods.log 2>&1) || { tail -n 20 /tmp/native-qa-pods.log; exit 1; }",
@@ -119,7 +119,7 @@ export async function iosBuild(argv: string[]): Promise<void> {
 	const signature = (await remoteOk(mac, `codesign -dvvv ${shellQuote(app)} 2>&1`)).trim();
 	const cdHash = /^CDHash=([0-9a-f]{40})$/m.exec(signature)?.[1];
 	if (!cdHash) throw new Error(`cannot read the app's CDHash from codesign: ${signature.split("\n").slice(-3).join(" ")}`);
-	await remote(mac, `cd ${shellQuote(`${checkout}/apps/platform`)} && node ../../packages/svelte-native/src/cli.ts sync > /dev/null 2>&1`);
+	await remote(mac, `cd ${shellQuote(`${checkout}/apps/example`)} && node ../../packages/svelte-native/src/cli.ts sync > /dev/null 2>&1`);
 	await writeFile(logFile, `${log.join("\n")}\n`);
 	await writeIosBuild({
 		schema: 1,

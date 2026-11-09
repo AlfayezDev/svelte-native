@@ -120,7 +120,7 @@ describe("android/ holds one variant, and only a finished project counts", () =>
 describe("when a generated project has to be made again", () => {
 	test("every input that changes the generated project is on the list, and exists", async () => {
 		const inputs = (await prebuildInputs()).map((path) => path.slice(repoRoot.length + 1));
-		for (const name of ["apps/platform/app.config.ts", "apps/platform/package.json", "apps/platform/react-native.config.js", "apps/platform/qa/smoke-modules.json", "apps/platform/qa/smoke-packages.cjs", "apps/platform/qa/firebase-fake/google-services.json", "packages/svelte-native/src/expo.ts"])
+		for (const name of ["apps/example/app.config.ts", "apps/example/package.json", "apps/example/react-native.config.js", "apps/example/qa/smoke-modules.json", "apps/example/qa/smoke-packages.cjs", "apps/example/qa/firebase-fake/google-services.json", "packages/svelte-native/src/expo.ts"])
 			expect(inputs).toContain(name);
 		for (const input of await prebuildInputs()) expect([input, existsSync(input)]).toEqual([input, true]);
 	});
@@ -243,13 +243,13 @@ describe("the iOS project of the Mac checkout holds one variant too", () => {
 describe(".gitignore", () => {
 	const ignored = (path: string) => spawnSync("git", ["check-ignore", "-q", path], { cwd: repoRoot }).status === 0;
 	test("ignores the generated Android projects of the harness, not the tracked parity references named like them", () => {
-		expect(ignored("apps/platform/android/app/build.gradle")).toBe(true);
-		expect(ignored("apps/platform/android-qa/app/build.gradle")).toBe(true);
-		expect(ignored("apps/platform/android-smoke/app/build.gradle")).toBe(true);
-		expect(ignored("apps/platform/qa/screenshots/android-api36-sdk/screens-menu--light-ltr.png")).toBe(false);
+		expect(ignored("apps/example/android/app/build.gradle")).toBe(true);
+		expect(ignored("apps/example/android-qa/app/build.gradle")).toBe(true);
+		expect(ignored("apps/example/android-smoke/app/build.gradle")).toBe(true);
+		expect(ignored("apps/example/qa/screenshots/android-api36-sdk/screens-menu--light-ltr.png")).toBe(false);
 	});
 	test("no tracked file is ignored", () => {
 		const tracked = spawnSync("git", ["ls-files", "-ci", "--exclude-standard"], { cwd: repoRoot, encoding: "utf8" });
-		expect(tracked.stdout.trim().split("\n").filter((line) => line.startsWith("apps/platform/qa/") || line.startsWith("apps/platform/android"))).toEqual([]);
+		expect(tracked.stdout.trim().split("\n").filter((line) => line.startsWith("apps/example/qa/") || line.startsWith("apps/example/android"))).toEqual([]);
 	});
 });

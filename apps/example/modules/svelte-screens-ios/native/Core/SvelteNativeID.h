@@ -6,7 +6,7 @@
 #include <utility>
 #include <vector>
 
-// Reader for the navigation `nativeID` (apps/platform/modules/svelte-engine/SPEC.md, "Screen API contract (header,
+// Reader for the navigation `nativeID` (apps/example/modules/svelte-engine/SPEC.md, "Screen API contract (header,
 // sheet, tabs)" and "Toolbar"). The grammar and the defaults are those of `decodeRecords` in packages/svelte-native/src/fabric/navigation.ts;
 // test/records_dump.cpp prints the records of every spec so that tests can compare them with that reference decoder.
 // No Foundation or UIKit here: the file builds and runs anywhere.

@@ -500,7 +500,7 @@ using namespace facebook::react;
                        }];
 }
 
-// What the stack believes, for the QA module (`apps/platform/modules/svelte-qa-ios`, `uikitState`): it finds this method by its
+// What the stack believes, for the QA module (`apps/example/modules/svelte-qa-ios`, `uikitState`): it finds this method by its
 // selector, so that a transition that did not happen can be traced to the flag that held it back.
 - (NSDictionary *)qaState {
   NSMutableArray *screens = [NSMutableArray new];

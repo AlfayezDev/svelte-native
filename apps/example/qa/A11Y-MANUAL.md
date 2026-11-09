@@ -132,7 +132,7 @@ Settings > Apps > the QA app > Language > Arabic (Samsung: Settings > General ma
 ### T10. Date picker and video (2 min)
 
 - [ ] `/__dev/foreign?mode=libraries`, date picker section: on Android the button opens the system date dialog; TalkBack reads the dialog natively; select a day and OK: the chosen date is spoken and focus returns to the button.
-- [ ] Video section (a muted, looping video with no controls): the video is either skipped or labeled as media; it does not trap focus or spam announcements. To check real controls, add `controls` to the `<Video>` in `apps/platform/src/lib/native/dev/LibrarySet.svelte` in a Metro dev build (do not commit it): play or pause, the seek bar (adjustable, announces position) and full screen are labeled and operable by double-tap.
+- [ ] Video section (a muted, looping video with no controls): the video is either skipped or labeled as media; it does not trap focus or spam announcements. To check real controls, add `controls` to the `<Video>` in `apps/example/src/lib/native/dev/LibrarySet.svelte` in a Metro dev build (do not commit it): play or pause, the seek bar (adjustable, announces position) and full screen are labeled and operable by double-tap.
 
 ### T11. Accessibility lab: state, value, hint, actions (4 min)
 

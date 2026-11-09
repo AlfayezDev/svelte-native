@@ -23,7 +23,7 @@ export function channelOutDir(channel: string | null, base: string = outDir): st
 
 const markerFile = ".native-qa-updates-channel";
 
-/** The channel `apps/platform/android` was generated for; "" when it was generated without one (or before the harness recorded it). */
+/** The channel `apps/example/android` was generated for; "" when it was generated without one (or before the harness recorded it). */
 export async function generatedChannel(directory: string = androidDir): Promise<string> {
 	try {
 		return (await readFile(join(directory, markerFile), "utf8")).trim();

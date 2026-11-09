@@ -8,7 +8,7 @@ import { join } from "node:path";
  *
  * - `android.jar` (compile-time types of the Android framework, newest platform first): `ANDROID_HOME`, `ANDROID_SDK_ROOT`, else `~/Android/sdk`.
  * - the `org.json` jar (the real implementation, which Android provides at run time): `ORG_JSON_JAR`
- *   (`apps/platform/qa/ci/host-tools.sh` sets it on a CI runner), else Gradle's cache (`GRADLE_USER_HOME`, else `~/.gradle`).
+ *   (`apps/example/qa/ci/host-tools.sh` sets it on a CI runner), else Gradle's cache (`GRADLE_USER_HOME`, else `~/.gradle`).
  */
 function find(directory: string, match: (path: string) => boolean): string | null {
   if (!existsSync(directory)) return null;

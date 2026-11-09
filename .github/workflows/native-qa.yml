@@ -1,8 +1,8 @@
 name: native-qa
 
 # Svelte Native on React Native Fabric: unit tests, then the Android emulator lane on the OVH host's self-hosted runner.
-# What runs, what blocks, how to read a failure and what it costs: apps/platform/qa/README.md, "CI".
-# Registering the runner: apps/platform/qa/ci/RUNBOOK.md.
+# What runs, what blocks, how to read a failure and what it costs: apps/example/qa/README.md, "CI".
+# Registering the runner: apps/example/qa/ci/RUNBOOK.md.
 
 on:
   push:
@@ -85,10 +85,10 @@ jobs:
       # A pinned kotlinc (2.1.20, the Kotlin the Android build compiles with) and the org.json jar, each checked against a sha256 and
       # kept in ~/.cache/native-qa-host-tools, so a runner that keeps its home downloads once. It puts kotlinc on PATH and sets ORG_JSON_JAR.
       - name: Install kotlinc and the org.json jar
-        run: bash apps/platform/qa/ci/host-tools.sh
+        run: bash apps/example/qa/ci/host-tools.sh
 
       - name: Lint the platform app
-        run: pnpm --dir apps/platform lint
+        run: pnpm --dir apps/example lint
 
       - name: Lint the Svelte Native package
         run: pnpm --dir packages/svelte-native lint
@@ -97,16 +97,16 @@ jobs:
         run: pnpm --dir packages/svelte-native typecheck
 
       - name: Typecheck the platform app
-        run: pnpm --dir apps/platform typecheck
+        run: pnpm --dir apps/example typecheck
 
       - name: Typecheck the harness
-        run: pnpm --dir apps/platform native-qa:typecheck
+        run: pnpm --dir apps/example native-qa:typecheck
 
       # Kotlin and C++ host checks of the engine, no device: the animated wire (C++ encoder against the Kotlin decoder), the foreign-view
       # ownership rules, what the view-shot capture decides before it draws, and the gesture rules (pointer events, who may claim a touch,
       # the distances read from react-native-gesture-handler's own Pan source). About 20 s.
       - name: Engine host checks (gesture rules, capture, animated wire)
-        run: bash apps/platform/modules/svelte-engine/android/src/test/run.sh
+        run: bash apps/example/modules/svelte-engine/android/src/test/run.sh
 
       # The package suite (route discovery, Metro stubs, gestures, svg, the app-tree mounts with the product's stubs, and the updates
       # client, launch and store tests: the Kotlin ones skip themselves without kotlinc, which native-tools.test.ts turns into a failure here) ran in no workflow before.
@@ -119,7 +119,7 @@ jobs:
       # and channel parsing, the log parser, the reset rules) and the bundle test, which bundles the QA, smoke and product apps with
       # Metro (a few minutes, tens of MB of temporary files) to check what each one contains. The default 5 s per test is far too short.
       - name: Harness tests
-        working-directory: apps/platform
+        working-directory: apps/example
         run: bun test --timeout 120000 qa/test
 
   emulator:
@@ -146,7 +146,7 @@ jobs:
       QA_LOCK_WAIT: ${{ github.event_name == 'workflow_dispatch' && '10800' || '5400' }}
     defaults:
       run:
-        working-directory: apps/platform
+        working-directory: apps/example
     steps:
       # The runner's workspace is kept between runs, so Gradle, CMake and Metro build incrementally; lane.sh reset forgets the
       # last lane's run files, which the report would otherwise merge into this one.
@@ -206,12 +206,12 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
           path: |
-            apps/platform/qa/report.json
-            apps/platform/qa/runs/
-            apps/platform/qa/out/*.log
-            apps/platform/qa/out/build-*.json
-            apps/platform/qa/out/lane-stages.tsv
-            apps/platform/qa/out/gates*.md
+            apps/example/qa/report.json
+            apps/example/qa/runs/
+            apps/example/qa/out/*.log
+            apps/example/qa/out/build-*.json
+            apps/example/qa/out/lane-stages.tsv
+            apps/example/qa/out/gates*.md
 
   crashes:
     name: Crash volume
@@ -227,7 +227,7 @@ jobs:
       QA_DEVICE: localhost:5555
     defaults:
       run:
-        working-directory: apps/platform
+        working-directory: apps/example
     steps:
       - uses: actions/checkout@v4
         with:
@@ -268,9 +268,9 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
           path: |
-            apps/platform/qa/report.json
-            apps/platform/qa/runs/
-            apps/platform/qa/out/*.log
-            apps/platform/qa/out/build-*.json
-            apps/platform/qa/out/lane-stages.tsv
-            apps/platform/qa/out/gates*.md
+            apps/example/qa/report.json
+            apps/example/qa/runs/
+            apps/example/qa/out/*.log
+            apps/example/qa/out/build-*.json
+            apps/example/qa/out/lane-stages.tsv
+            apps/example/qa/out/gates*.md

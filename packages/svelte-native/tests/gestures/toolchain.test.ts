@@ -11,7 +11,7 @@ import { load, settle, callsOf } from "./harness.ts";
  * the worklets plugin), the code that comes out runs in the host bundle, and so does the guards module, transformed too so that
  * its "is the worklets plugin on" probe sees what it sees in an app.
  */
-const projectRoot = new URL("../../../../apps/platform", import.meta.url).pathname;
+const projectRoot = new URL("../../../../apps/example", import.meta.url).pathname;
 const outputs = new Map<string, string>();
 
 function babelled(): Plugin {

@@ -2,7 +2,7 @@
 # setup-runner.sh — makes the OVH host (Ubuntu 26.04) the CI runner of the Svelte Native emulator lane. Run it by hand, as root,
 # ON the host, from a checkout of this repository (it installs qa/ci/emulator.sh from the checkout it sits in):
 #
-#   sudo -E RUNNER_URL=https://github.com/<owner>/<repo> RUNNER_TOKEN=<registration token> bash apps/platform/qa/ci/setup-runner.sh
+#   sudo -E RUNNER_URL=https://github.com/<owner>/<repo> RUNNER_TOKEN=<registration token> bash apps/example/qa/ci/setup-runner.sh
 #
 # Nothing here runs unless you run it. The registration token is read from the environment (or asked for on a terminal), handed to
 # the runner's config.sh as ACTIONS_RUNNER_INPUT_TOKEN so it never appears in a process list, and written nowhere.

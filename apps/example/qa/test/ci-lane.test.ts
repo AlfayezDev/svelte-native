@@ -14,7 +14,7 @@ let counter = 0;
  */
 function lane() {
 	const checkout = join(root, `checkout-${++counter}`);
-	const platform = join(checkout, "apps", "platform");
+	const platform = join(checkout, "apps", "example");
 	mkdirSync(join(platform, "qa"), { recursive: true });
 	cpSync(join(import.meta.dirname, "..", "ci"), join(platform, "qa", "ci"), { recursive: true });
 	const calls = join(checkout, "calls");

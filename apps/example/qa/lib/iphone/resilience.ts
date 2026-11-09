@@ -85,7 +85,7 @@ export const fullPlan: IosPlanOptions = { rotationCycles, backgroundCycles, kill
 export const restorationArgs = ["-ApplePersistenceIgnoreState", "NO"] as const;
 export const assumeSystemKillArgs = ["-SvelteNavigationAssumeSystemKill", "YES"] as const;
 
-/* ---- the screens the plan stands on (`apps/platform/src/routes/__dev/screens/+mobile.svelte`) ---- */
+/* ---- the screens the plan stands on (`apps/example/src/routes/__dev/screens/+mobile.svelte`) ---- */
 
 export const menuUrl = "rasheed-svelte:///__dev/screens";
 export const labUrl = (token: string): string => `rasheed-svelte:///__dev?run=resilience&token=${token}`;

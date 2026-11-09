@@ -30,7 +30,7 @@ test("the patch adds the manager's current-manager accessor and the registration
 });
 
 test("SvelteEnsureGestureRoot asks the library's manager instead of walking views and creating a recognizer of its own", async () => {
-  const support = await read("apps/platform/modules/svelte-screens-ios/native/Views/SvelteSupport.mm");
+  const support = await read("apps/example/modules/svelte-screens-ios/native/Views/SvelteSupport.mm");
   const start = support.indexOf("void SvelteEnsureGestureRoot(");
   expect(start).toBeGreaterThan(0);
   const section = support.slice(support.indexOf("#pragma mark - react-native-gesture-handler"), support.indexOf("@implementation SvelteTouchHost"));

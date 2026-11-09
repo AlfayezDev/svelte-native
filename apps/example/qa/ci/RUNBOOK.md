@@ -5,7 +5,7 @@ command below is yours to run, and each step says what it changes. `<TOKEN>` is 
 prompt on the host, so it is never in a shell history, an argument list or a file.
 
 The runner is a dedicated user `svelte-qa` on the OVH host (`ssh ovh-root`), the label is `svelte-qa-emulator`, the repository is
-`https://github.com/AlfayezDev/rasheed`. What the setup script does, in full: `bash apps/platform/qa/ci/setup-runner.sh --help`.
+`https://github.com/AlfayezDev/rasheed`. What the setup script does, in full: `bash apps/example/qa/ci/setup-runner.sh --help`.
 
 ## 0. Before
 
@@ -18,7 +18,7 @@ The runner is a dedicated user `svelte-qa` on the OVH host (`ssh ovh-root`), the
 From a checkout of the branch (this PC):
 
 ```
-git archive --format=tar HEAD package.json apps/platform/qa/ci | ssh ovh-root 'rm -rf /srv/svelte-qa-setup && mkdir -p /srv/svelte-qa-setup && tar -x -C /srv/svelte-qa-setup'
+git archive --format=tar HEAD package.json apps/example/qa/ci | ssh ovh-root 'rm -rf /srv/svelte-qa-setup && mkdir -p /srv/svelte-qa-setup && tar -x -C /srv/svelte-qa-setup'
 ```
 
 Changes: creates `/srv/svelte-qa-setup`.
@@ -26,7 +26,7 @@ Changes: creates `/srv/svelte-qa-setup`.
 ## 2. Read what it will do
 
 ```
-ssh ovh-root 'bash /srv/svelte-qa-setup/apps/platform/qa/ci/setup-runner.sh --dry-run --no-register'
+ssh ovh-root 'bash /srv/svelte-qa-setup/apps/example/qa/ci/setup-runner.sh --dry-run --no-register'
 ```
 
 Changes: nothing. Every `+` line is a command it would run, every `would write` a file it would create.
@@ -34,7 +34,7 @@ Changes: nothing. Every `+` line is a command it would run, every `would write` 
 ## 3. Prepare the host (no token needed)
 
 ```
-ssh ovh-root 'bash /srv/svelte-qa-setup/apps/platform/qa/ci/setup-runner.sh --no-register'
+ssh ovh-root 'bash /srv/svelte-qa-setup/apps/example/qa/ci/setup-runner.sh --no-register'
 ```
 
 Changes: apt packages (git curl jq unzip xz-utils tmux acl openjdk-17-jdk-headless g++); user `svelte-qa`; `/opt/svelte-qa/toolchain` (node, pnpm,
@@ -52,7 +52,7 @@ line (it lasts an hour). Or, with your `gh` login: `gh api -X POST repos/Alfayez
 ## 5. Register the runner
 
 ```
-ssh -t ovh-root 'RUNNER_URL=https://github.com/AlfayezDev/rasheed bash /srv/svelte-qa-setup/apps/platform/qa/ci/setup-runner.sh'
+ssh -t ovh-root 'RUNNER_URL=https://github.com/AlfayezDev/rasheed bash /srv/svelte-qa-setup/apps/example/qa/ci/setup-runner.sh'
 registration token: <paste TOKEN; nothing is echoed>
 ```
 
@@ -64,7 +64,7 @@ registered runner is left as it is (`--reconfigure` replaces the registration an
 ## 6. Move the emulator to the service (when nobody is using it)
 
 ```
-ssh ovh-root 'bash /srv/svelte-qa-setup/apps/platform/qa/ci/setup-runner.sh --no-register --takeover'
+ssh ovh-root 'bash /srv/svelte-qa-setup/apps/example/qa/ci/setup-runner.sh --no-register --takeover'
 ```
 
 Changes: stops the root emulator (tmux session `svelte-emu`) and starts `svelte-qa-emulator.service` and its watchdog in its place. The AVD is a
@@ -87,14 +87,14 @@ The harness on the PC takes the emulator lock on the host automatically while th
 ```
 ssh ovh-root 'systemctl --no-pager status "actions.runner.*" svelte-qa-emulator svelte-qa-emulator-watchdog | grep -E "●|Active"'
 ssh ovh-root 'sudo -u svelte-qa /opt/svelte-qa/bin/emulator.sh status'          # unit=active boot=1 adb=device rss=N GB
-node apps/platform/qa/native-qa.ts hold --device localhost:5555 -- echo "lock taken on the host"
+node apps/example/qa/native-qa.ts hold --device localhost:5555 -- echo "lock taken on the host"
 ```
 
 **Settings > Actions > Runners** shows `ovh-svelte-qa`, Idle, with the labels `self-hosted`, `Linux`, `X64`, `svelte-qa-emulator`.
 
 ## 8. Optional
 
-- The smoke app (dispatch only) needs the proprietary Samsung Pay SDK: `scp apps/platform/libs/samsungpay.jar ovh-root:/var/lib/svelte-qa/secrets/ && ssh ovh-root chown svelte-qa: /var/lib/svelte-qa/secrets/samsungpay.jar`. Without it the smoke stage fails with the harness's own message; turn the `smoke` input off for a dispatch without it.
+- The smoke app (dispatch only) needs the proprietary Samsung Pay SDK: `scp apps/example/libs/samsungpay.jar ovh-root:/var/lib/svelte-qa/secrets/ && ssh ovh-root chown svelte-qa: /var/lib/svelte-qa/secrets/samsungpay.jar`. Without it the smoke stage fails with the harness's own message; turn the `smoke` input off for a dispatch without it.
 - The update scenario (dispatch only, the `updates` input, off by default) publishes to an EAS Update channel (`qa`, or `updates_channel`) and needs an Expo access token with write access to that project in the repository secret `EXPO_TOKEN`; the workflow gives it to the lane step only. eas-cli is fetched by `npx` at run time, so the host needs network access to npm and EAS. A push never runs it.
 - The signed-in phase of `parity` and `a11y` (dispatch only) signs in as the QA account of the development database, which is published with a fixed code for one dedicated address (`apps/database/module/src/identity.rs`): put the address and the code in the repository secrets `RASHEED_QA_EMAIL` and `RASHEED_QA_CODE`. The harness keeps both out of every message and file. Without them the phase does not run, the lane says so (`no QA account`) and the two gates that count its screens (`parity.signedIn.missing`, `a11y.signedIn.missing`) are not judged; a push never signs in and never judges them, because the quick lane compares the pinned screens in fewer variants than the pin lists.
 - Run the unit job on this runner instead of a GitHub-hosted one: `gh variable set QA_UNIT_RUNS_ON --body '["self-hosted","svelte-qa-emulator"]'`. It needs g++ (step 3 installs it) and downloads two things itself: a JDK 17 (`actions/setup-java`, into the runner's tool cache) and, with `qa/ci/host-tools.sh`, kotlinc 2.1.20 and the `org.json` jar, each against a pinned sha256, into `~svelte-qa/.cache/native-qa-host-tools` (kept between runs, so once). Both need network access to github.com and repo1.maven.org; the Kotlin and C++ host checks (`run.sh`, the package tests that compile `*Host.kt`) fail, not skip, without them.
@@ -126,8 +126,8 @@ Take the runner away, keeping the host's other uses (the SDK and the apt package
 
 ```
 # a removal token: Settings > Actions > Runners > ovh-svelte-qa > Remove runner
-ssh -t ovh-root 'bash /srv/svelte-qa-setup/apps/platform/qa/ci/setup-runner.sh --uninstall'      # prompts for the removal token
-ssh -t ovh-root 'bash /srv/svelte-qa-setup/apps/platform/qa/ci/setup-runner.sh --uninstall --purge'   # and deletes the user, the workspace, the AVD, /opt/svelte-qa
+ssh -t ovh-root 'bash /srv/svelte-qa-setup/apps/example/qa/ci/setup-runner.sh --uninstall'      # prompts for the removal token
+ssh -t ovh-root 'bash /srv/svelte-qa-setup/apps/example/qa/ci/setup-runner.sh --uninstall --purge'   # and deletes the user, the workspace, the AVD, /opt/svelte-qa
 ```
 
 Then restore the PC tools' root emulator with their own `ovh_emulator.sh start`, and remove `/srv/svelte-qa-setup`.

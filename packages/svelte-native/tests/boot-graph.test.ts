@@ -26,7 +26,7 @@ const forbidden: Record<string, string> = {
 };
 
 const root = resolve(import.meta.dirname, "..");
-const platform = resolve(root, "../../apps/platform");
+const platform = resolve(root, "../../apps/example");
 const entries = ["src/init.ts", "src/polyfills.ts", "src/fabric/index.ts"].map((file) => join(root, file)).concat(join(platform, "src/routes/+layout.mobile.svelte"));
 const lite = join(root, "src/fabric/react-native-lite.ts");
 const extensions = [".android.ts", ".android.tsx", ".android.js", ".native.ts", ".native.js", ".ts", ".tsx", ".js", ".jsx", ".svelte", ".json"];

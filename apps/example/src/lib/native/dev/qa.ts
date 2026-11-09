@@ -1,6 +1,6 @@
 import { requireOptionalNativeModule } from "expo-modules-core";
 
-/** `SvelteQA` (apps/platform/modules/svelte-qa-ios): present in iOS builds, and every function but `recordBoot` refuses to run outside the QA app. */
+/** `SvelteQA` (apps/example/modules/svelte-qa-ios): present in iOS builds, and every function but `recordBoot` refuses to run outside the QA app. */
 export type SvelteQA = {
   enabled: boolean;
   /** The `[Svelte boot]` phases of this launch and the `console.error` count so far; the module writes `Documents/boot-report.json` once the first frame is out. */

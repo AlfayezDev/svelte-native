@@ -8,7 +8,7 @@ import { dirname, join, resolve } from "node:path";
 import { cookieFetch, fixtureRoot, loadClient, startServer, type Server } from "./remote-harness.ts";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-const platform = resolve(import.meta.dirname, "../../../apps/platform/src/lib/native/dev");
+const platform = resolve(import.meta.dirname, "../../../apps/example/src/lib/native/dev");
 const copy = join(fixtureRoot, "src/lib/lab/remote-lab.remote.ts");
 
 describe("the remote functions lab", () => {

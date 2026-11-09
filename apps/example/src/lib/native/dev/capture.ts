@@ -6,7 +6,7 @@ import { needsProduct, productWaiter } from "./capture-wait.ts";
 import { startupStatus } from "../startup.ts";
 
 /**
- * The iOS side of the parity and accessibility suites (`apps/platform/qa`, "iOS"): nothing outside the process can take an iOS
+ * The iOS side of the parity and accessibility suites (`apps/example/qa`, "iOS"): nothing outside the process can take an iOS
  * app's screenshot or read its accessibility tree, so the lab does both of itself. `run=capture:<ids>` visits each screen in
  * turn, takes its screenshot until two in a row are identical, dumps the accessibility tree, and writes both into
  * `Documents/capture` with an `index.json` the harness reads through `devicectl device copy from`.

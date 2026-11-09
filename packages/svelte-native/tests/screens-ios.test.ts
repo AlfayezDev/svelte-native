@@ -12,10 +12,10 @@ import * as ios from "../src/fabric/navigation.ios.ts";
 import { decodeRecords, navigationProps, parseNativeID } from "../src/fabric/navigation.ts";
 import { colorToWire, encodeNativeID, headerHeight, mergeScreenOptions, navigationTags, normalizeDetents, sheetStyle } from "../src/fabric/navigation.ios.ts";
 
-// The iOS bridges of apps/platform/modules/svelte-screens-ios: the wire they share with the engine, the view names the
+// The iOS bridges of apps/example/modules/svelte-screens-ios: the wire they share with the engine, the view names the
 // host picks per platform, and the pure C++ parts of the module (native/Core) built and run here.
 
-const module = resolve(import.meta.dirname, "../../../apps/platform/modules/svelte-screens-ios");
+const module = resolve(import.meta.dirname, "../../../apps/example/modules/svelte-screens-ios");
 
 test("the iOS module re-exports the shared encoders and the reference decoder unchanged", () => {
   expect(ios.navigationProps).toBe(shared.navigationProps);

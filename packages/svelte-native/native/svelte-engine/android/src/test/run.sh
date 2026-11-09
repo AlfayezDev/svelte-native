@@ -57,6 +57,12 @@ kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/ChromeRules.kt" \
 java -cp "$work/chrome-check.jar" expo.modules.svelteengine.ChromeRulesCheckKt "$here/../main/java/expo/modules/svelteengine/views/EngineHeader.kt" \
   "$here/../main/java/expo/modules/svelteengine/views/EngineSheet.kt" "$here/../main/java/expo/modules/svelteengine/views/EngineStack.kt"
 
+# The order the engine applies Fabric's transactions in (SPEC.md, "Transaction order"): the main thread, asked to apply a transaction, applies the ones the JavaScript
+# thread pulled before it first; MountingManager's source is read for the one call that applies a batch.
+kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/TransactionOrder.kt" \
+  "$here/kotlin/expo/modules/svelteengine/TransactionOrderCheck.kt" -include-runtime -d "$work/transaction-order-check.jar"
+java -cp "$work/transaction-order-check.jar" expo.modules.svelteengine.TransactionOrderCheckKt "$here/../main/java/expo/modules/svelteengine/MountingManager.kt"
+
 kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/AnimatedWire.kt" \
   "$here/kotlin/expo/modules/svelteengine/AnimatedWireCheck.kt" -include-runtime -d "$work/check.jar"
 java -cp "$work/check.jar" expo.modules.svelteengine.AnimatedWireCheckKt "$work/fixture.tsv"

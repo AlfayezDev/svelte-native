@@ -32,7 +32,7 @@
 		"eslint-plugin-svelte": "3.23.0",
 		"expo-updates": "~29.0.0",
 		"globals": "17.11.0",
-		"svelte": "https://pkg.pr.new/svelte@216f258068d93170a927ad4d27ee6864b0b305c5",
+		"svelte": "file:../../vendor/svelte-5.56.7-216f258.tgz",
 		"svelte-check": "^4.6.0",
 		"typescript": "^6.0.3",
 		"typescript-eslint": "8.67.0",

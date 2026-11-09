@@ -11,7 +11,7 @@ Svelte Native is a way to write Android and iOS apps as Svelte 5 components that
 - Node 25 or newer and pnpm 12.3.4 or newer (the versions this repository pins; the script below checks both).
 - Read access to this private repository over SSH: be a collaborator, with your SSH key on your GitHub account (`ssh -T git@github.com` should greet you by name).
 - To run on Android: Android Studio's SDK (platform 36, NDK 27.1.12297006, CMake 3.22.1), a JDK 17, and a phone with USB debugging or an emulator. To run on iOS: a Mac with Xcode, and a simulator or an iPhone.
-- It is a development build of your own app, not Expo Go: Expo Go cannot load the library's native modules.
+- It builds your own native app (a debug build that loads its JavaScript from Metro), not Expo Go: Expo Go cannot load the library's native modules.
 
 **Quick start**
 
@@ -42,7 +42,9 @@ git config --global url."git@github.com:AlfayezDev/".insteadOf "https://github.c
 - Expo SDK 57 and React Native 0.86 only.
 - `@rasheed/svelte-native` is a placeholder name and will change before a public release.
 
-**Found a bug?** [Open an issue](https://github.com/AlfayezDev/svelte-native/issues/new?template=bug.yml); the form asks for what is needed, including the output of `pnpm exec svelte-native doctor`. How the app is set up by hand, and everything else: the [package README](packages/svelte-native/README.md#install-in-an-app).
+**The guide** is the [package README](packages/svelte-native/README.md#how-it-fits-together): [how it fits together](packages/svelte-native/README.md#how-it-fits-together) (what `expo prebuild` makes and [when to run it](packages/svelte-native/README.md#when-to-run-expo-prebuild)), [adding the library to an existing Expo app](packages/svelte-native/README.md#install-in-an-app), the [development loop](packages/svelte-native/README.md#development-loop) and [using Expo and React Native libraries](packages/svelte-native/README.md#using-expo-and-react-native-libraries).
+
+**Found a bug?** [Open an issue](https://github.com/AlfayezDev/svelte-native/issues/new?template=bug.yml); the form asks for what is needed, including the output of `pnpm exec svelte-native doctor`.
 
 ## Layout
 

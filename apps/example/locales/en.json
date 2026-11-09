@@ -1,10 +1,10 @@
 {
 	"ios": {
-		"CFBundleDisplayName": "Rasheed",
-		"NSCameraUsageDescription": "Rasheed attaches the photos you take to your replies.",
-		"NSPhotoLibraryUsageDescription": "Rasheed attaches the photos and videos you choose to your replies."
+		"CFBundleDisplayName": "Svelte Native",
+		"NSCameraUsageDescription": "The example attaches the photos you take in the lab.",
+		"NSPhotoLibraryUsageDescription": "The example shows the photos and videos you choose in the lab."
 	},
 	"android": {
-		"app_name": "Rasheed"
+		"app_name": "Svelte Native"
 	}
 }

@@ -39,14 +39,14 @@ export function assertMayClear(identity: Identity, action: Destructive): void {
 }
 
 /**
- * The product app (`io.rasheed.app`) is the one the stores ship, and a shared phone has it, or may have: the harness never installs,
- * starts, clears or touches it there. Refuses a device that gates.json lists as a phone under any name it answers to. Checked from the
+ * The example's production variant (`io.rasheed.sveltenative.example`) is checked on the lab emulator only, and a shared phone carries apps
+ * that are not the harness's (Rasheed's `io.rasheed.app` among them): the harness never installs, starts, clears or touches a product build there. Refuses a device that gates.json lists as a phone under any name it answers to. Checked from the
  * serial alone (`identify(serial, {}, gates)`) before the first adb command, and again from what the device says about itself.
  */
 export function refusePhone(identity: Identity, what: string): void {
 	if (identity.role === "phone")
 		throw new Error(
-			`refusing to ${what} on ${identity.serial}: it is a phone in qa/gates.json, a shared device on which the harness never touches the product app (io.rasheed.app). The product boot check is for the lab emulator (localhost:5555) only`,
+			`refusing to ${what} on ${identity.serial}: it is a phone in qa/gates.json, a shared device on which the harness never installs or starts a product build. The product boot check is for the lab emulator (localhost:5555) only`,
 		);
 }
 

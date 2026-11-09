@@ -2,7 +2,7 @@ import type { ExpoConfig } from "expo/config";
 import { createRequire } from "node:module";
 import { productApplicationId, qaApplicationId, smokeApplicationId } from "./src/lib/native/app-ids.ts";
 
-// Three apps come out of this file. The product (`APP_VARIANT=production`, `io.rasheed.app`); the QA app (no variant, `io.rasheed.svelteqa`),
+// Three apps come out of this file. The product (`APP_VARIANT=production`, `io.rasheed.sveltenative.example`); the QA app (no variant, `io.rasheed.svelteqa`),
 // which every gate of qa/gates.json measures and so carries exactly the product's native modules; and the smoke app
 // (`APP_VARIANT=smoke`, `io.rasheed.svelteqa.smoke`), the QA app plus the production app's native libraries for the native module
 // smoke test (qa/smoke-modules.json; SPEC.md, "Native modules (smoke test)"). `smokeOnlyPackages` are the libraries the product does not
@@ -59,10 +59,10 @@ const remoteOrigin = process.env.SVELTE_NATIVE_REMOTE_ORIGIN;
 if (production && remoteOrigin && !remoteOrigin.startsWith("https://")) throw new Error(`SVELTE_NATIVE_REMOTE_ORIGIN must be an https: origin in the production app, not ${remoteOrigin}`);
 const remote = remoteOrigin ? { origin: remoteOrigin, ...(process.env.SVELTE_NATIVE_REMOTE_BASE ? { base: process.env.SVELTE_NATIVE_REMOTE_BASE } : {}) } : undefined;
 export default {
-  name: production ? "Rasheed" : smoke ? "Svelte smoke" : "Rasheed Svelte QA",
+  name: production ? "Svelte Native" : smoke ? "Svelte smoke" : "Rasheed Svelte QA",
   owner: "alfayez",
   slug: "rasheed",
-  scheme: production ? "rasheed" : smoke ? "rasheed-svelte-smoke" : "rasheed-svelte",
+  scheme: production ? "svelte-native" : smoke ? "rasheed-svelte-smoke" : "rasheed-svelte",
   version: "0.1.0",
   // Updates apply only to builds with the same native code; the app version stands for it, so bump `version` with any native change.
   runtimeVersion: { policy: "appVersion" },

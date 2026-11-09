@@ -231,7 +231,7 @@ type ReportDeviceEntry = {
 	foreign: ForeignSummary | null;
 	/** Android: the updates run. It installs its own build (the channel one), so it is left out of the cross-build comparison of the other runs. */
 	updates: UpdatesSummary | null;
-	/** Android: the product boot check. It starts another app (`io.rasheed.app`), so it is left out of the cross-build comparison of the others. */
+	/** Android: the product boot check. It starts another app (`io.rasheed.sveltenative.example`), so it is left out of the cross-build comparison of the others. */
 	product: ProductSummary | null;
 	/** iOS only: the crash reports of the phone each run file recorded. */
 	crashReports: CrashReportsSummary[];

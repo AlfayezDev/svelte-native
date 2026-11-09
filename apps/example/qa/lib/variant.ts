@@ -5,7 +5,7 @@ import { outDir } from "./paths.ts";
 /**
  * The apps the harness builds. `qa` is `io.rasheed.svelteqa`, the app every gate measures (boot, frames, parity, accessibility,
  * crashes); `smoke` is `io.rasheed.svelteqa.smoke`, the same app plus the production app's native libraries (SPEC.md, "Native modules
- * (smoke test)"), which only the smoke run uses; `production` is the product (`io.rasheed.app`, `APP_VARIANT=production`: no development
+ * (smoke test)"), which only the smoke run uses; `production` is the product (`io.rasheed.sveltenative.example`, `APP_VARIANT=production`: no development
  * lab), built here for one purpose, the product boot check (`native-qa product`, Android emulator only). What ships is built by EAS.
  */
 export type Variant = "qa" | "smoke" | "production";

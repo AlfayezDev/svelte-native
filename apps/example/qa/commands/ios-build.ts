@@ -4,7 +4,7 @@ import { exec, shellQuote } from "../lib/exec.ts";
 import { flagString, parseFlags, requireString } from "../lib/flags.ts";
 import { macFrom, remote, remoteOk } from "../lib/iphone/mac.ts";
 import { currentSource, iosBuildPathOf, writeIosBuild } from "../lib/iphone/session.ts";
-import { outDir, qaDir, repoRoot } from "../lib/paths.ts";
+import { outDir, qaDir, repoRoot, svelteNativeCliFromApp } from "../lib/paths.ts";
 import { makeIosBundleMap } from "../lib/ios-bundle.ts";
 import { iosPrebuildLines } from "../lib/ios-project.ts";
 import { appVariantOf, variantFlag } from "../lib/variant.ts";
@@ -82,7 +82,7 @@ export async function iosBuild(argv: string[]): Promise<void> {
 			`export PATH=/opt/homebrew/bin:/usr/local/bin:$PATH LANG=en_US.UTF-8 CI=1 EXPO_NO_TELEMETRY=1 APP_VARIANT=${appVariantOf[variant]}`,
 			...iosPrebuildLines(variant, "/tmp/native-qa-prebuild.log"),
 			"(cd ios && pod install > /tmp/native-qa-pods.log 2>&1) || { tail -n 20 /tmp/native-qa-pods.log; exit 1; }",
-			"node ../../packages/svelte-native/src/cli.ts sync",
+			`${svelteNativeCliFromApp} sync`,
 			`rm -f ${shellQuote(done)}`,
 			`open -a Terminal ${shellQuote(script)}`,
 		].join(" && "),
@@ -119,7 +119,7 @@ export async function iosBuild(argv: string[]): Promise<void> {
 	const signature = (await remoteOk(mac, `codesign -dvvv ${shellQuote(app)} 2>&1`)).trim();
 	const cdHash = /^CDHash=([0-9a-f]{40})$/m.exec(signature)?.[1];
 	if (!cdHash) throw new Error(`cannot read the app's CDHash from codesign: ${signature.split("\n").slice(-3).join(" ")}`);
-	await remote(mac, `cd ${shellQuote(`${checkout}/apps/example`)} && node ../../packages/svelte-native/src/cli.ts sync > /dev/null 2>&1`);
+	await remote(mac, `cd ${shellQuote(`${checkout}/apps/example`)} && ${svelteNativeCliFromApp} sync > /dev/null 2>&1`);
 	await writeFile(logFile, `${log.join("\n")}\n`);
 	await writeIosBuild({
 		schema: 1,

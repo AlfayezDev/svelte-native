@@ -2,7 +2,7 @@ import type { Feature } from "./feature.ts";
 
 /** The features that show native views, motion and touch. Add one here and a folder of the same name under `src/routes`. */
 export const nativeFeatures: Feature[] = [
-  // Native views: the library's wrappers of other native libraries, one screen each (`@rasheed/svelte-native/foreign` and `/svg`).
+  // Native views: the library's wrappers of other native libraries, one screen each (`@rasheed/svelte-native/foreign` and `/svg`), and `ExpoView` for an Expo library with none.
   { group: "Native views", route: "/native-views/image", title: "Image (expo-image)", summary: "Fit, blurhash placeholder and fade-in" },
   { group: "Native views", route: "/native-views/blur", title: "Blur (expo-blur)", summary: "Blur the content behind a view" },
   { group: "Native views", route: "/native-views/linear-gradient", title: "Linear gradient", summary: "expo-linear-gradient: colours, direction, children" },
@@ -18,6 +18,7 @@ export const nativeFeatures: Feature[] = [
   { group: "Native views", route: "/native-views/date-time-picker", title: "Date and time picker", summary: "A native view on iOS, a dialog on Android" },
   { group: "Native views", route: "/native-views/web-view", title: "WebView", summary: "A web page with messages both ways" },
   { group: "Native views", route: "/native-views/map", title: "Map (react-native-maps)", summary: "A map, markers and camera moves" },
+  { group: "Native views", route: "/native-views/any-expo-view", title: "Any Expo view", summary: "An Expo library with no wrapper, by name" },
 
   // Motion and touch
   { group: "Motion and touch", route: "/animation", title: "Animation", summary: "Fade, spring, loop and state-driven motion on the UI thread" },

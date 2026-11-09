@@ -13,6 +13,7 @@
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import { parse } from "@babel/parser";
+import { sourceDirectory } from "../package-root.ts";
 
 const require = createRequire(import.meta.url);
 
@@ -225,7 +226,7 @@ export function kitRoot(): string {
   return kitRootCache;
 }
 
-const shim = (name: string) => join(import.meta.dirname, "shims", name);
+const shim = (name: string) => join(sourceDirectory, "remote/shims", name);
 
 /**
  * Where the SvelteKit client files this package reuses find what a browser app gives them, as an absolute path, or `undefined` when

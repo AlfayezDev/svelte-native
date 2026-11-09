@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve, sep } from "node:path";
-import type { ConfigT } from "@expo/metro/metro-config";
+// `expo` re-exports Metro's config type: `@expo/metro` (where it comes from) is a dependency of `@expo/metro-config`, which is `expo`'s, and no one else's.
+import type { MetroConfig as ConfigT } from "expo/metro-config";
 import { syncRoutes, watchRoutes } from "./build.ts";
 import { sourceFile } from "./package-root.ts";
 import { remoteResolution } from "./remote/transform.ts";
@@ -45,7 +46,7 @@ export type SvelteNativeMetroOptions = {
    * out at the source (`routeFiles`); this is the backstop for what is still imported.
    */
   stubbedDirectories?: readonly string[];
-  /** The variant this Metro bundles (`APP_VARIANT`, `qa` for none): named in the stubs' message, and the one whose route table `./routes` is. Default `variantName()`. */
+  /** The variant this Metro bundles (`APP_VARIANT`, `app` for none): named in the stubs' message, and the one whose route table `./routes` is. Default `variantName()`. */
   variant?: string;
   /**
    * Whether Metro writes the app's route table for `variant` (`.svelte-native/routes.<variant>.ts`) when the config loads, before its file map

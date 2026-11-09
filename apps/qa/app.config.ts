@@ -9,6 +9,8 @@ import { productApplicationId, qaApplicationId, smokeApplicationId } from "./src
 // have: the product and the QA app exclude them from both autolinkers (and from React Native's, in react-native.config.js); only the
 // smoke app links them, and only it gets the config plugins in `smokePlugins`, the fake Firebase files and the Huawei repository.
 const { smokeOnlyPackages } = createRequire(import.meta.url)("./qa/smoke-packages.cjs") as { smokeOnlyPackages: string[] };
+// The library's default variant (no `APP_VARIANT`) is `app`; this app's is `qa`, whose route table the library's plugin writes (`routes.qa.ts`, as Metro's config does).
+const variant = process.env.APP_VARIANT || "qa";
 const production = process.env.APP_VARIANT === "production";
 const smoke = process.env.APP_VARIANT === "smoke";
 const applicationId = production ? productApplicationId : smoke ? smokeApplicationId : qaApplicationId;
@@ -90,6 +92,7 @@ export default {
   },
   plugins: [
     ["@rasheed/svelte-native/expo", {
+      variant,
       androidProfileable: !production,
       autolinkingExclude,
       ...(remote ? { remote } : {}),

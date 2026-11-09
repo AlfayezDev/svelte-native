@@ -100,11 +100,22 @@ describe("a patch that is not applied", () => {
     expect(find(checks, "react-native-video 6.19.4 does not satisfy 6.19.3")?.status).toBe("fail");
   });
 
+  test("a package that comes with expo is pinned by an override, not added as a dependency", () => {
+    const { checks } = check({ versions: { "expo-modules-core": "57.0.25" } });
+    const failure = find(checks, "expo-modules-core 57.0.25 is installed, the patch is for exactly 57.0.23");
+    expect(failure?.status).toBe("fail");
+    expect(failure?.fix).toContain("`overrides:` with `expo-modules-core: 57.0.23` in pnpm-workspace.yaml");
+    expect(failure?.fix).toContain("ERR_PNPM_UNUSED_PATCH");
+    expect(failed(checks)).toHaveLength(1);
+    // A package the app depends on itself is added the usual way.
+    expect(find(check({ versions: { "react-native-video": "6.19.4" } }).checks, "react-native-video 6.19.4 is installed, the patch is for exactly 6.19.3")?.fix).toBe("pnpm add react-native-video@6.19.3");
+  });
+
   test("a library the app does not use needs no patch; one it must have is a failure when it is missing", () => {
     const optional = check({ without: ["react-native-pdf", "react-native-video", "lottie-react-native", "react-native-maps"] }).checks;
     expect(failed(optional)).toEqual([]);
     expect(find(optional, "react-native-pdf@7.0.3: react-native-pdf is not installed (optional)")?.status).toBe("skip");
-    expect(find(optional, "optional view libraries not installed, nothing to check:")?.message).toContain("react-native-pdf");
+    expect(find(optional, "optional peer dependencies not installed, nothing to check:")?.message).toContain("react-native-pdf");
     const required = check({ without: ["react-native-worklets", "react-native-reanimated"] }).checks;
     expect(failed(required).map((entry) => entry.message).sort()).toEqual([
       "react-native-reanimated is not installed (needs 4.5.1)",
@@ -118,6 +129,75 @@ describe("a patch that is not applied", () => {
     const { checks } = check({ without: ["expo", "expo-modules-core"] });
     expect(find(checks, "expo-modules-core@57.0.23: expo-modules-core is not installed (expo is not either)")?.status).toBe("fail");
     expect(find(checks, "expo is not installed (needs ~57.0.27)")?.status).toBe("fail");
+  });
+});
+
+describe("hermes-intl", () => {
+  test("is a required peer of the library: the Intl constructors Hermes lacks come from it", () => {
+    expect(library.peerDependencies["hermes-intl"]).toBe("^0.1.2");
+    expect(library.peerDependenciesMeta["hermes-intl"]).toBeUndefined();
+  });
+
+  test("an app that has it as a dependency passes, and the check says why it has to be a dependency", () => {
+    const { checks } = check();
+    expect(find(checks, "hermes-intl 0.1.2 satisfies ^0.1.2")?.status).toBe("pass");
+    expect(find(checks, "hermes-intl is a dependency of the app: React Native's autolinking links its native module")?.status).toBe("pass");
+  });
+
+  test("an app without it fails, with the command that adds it", () => {
+    const { checks } = check({ without: ["hermes-intl"], files: { "package.json": JSON.stringify({ name: "fake-app", dependencies: { [library.name]: "*" } }) } });
+    expect(failed(checks).map((entry) => entry.message)).toEqual(["hermes-intl is not installed (needs ^0.1.2)"]);
+    expect(find(checks, "hermes-intl is not installed")?.fix).toBe("pnpm add hermes-intl@^0.1.2");
+  });
+
+  test("one that only has it installed (hoisted from another package) fails: React Native's autolinking reads the app's own dependencies", () => {
+    const { checks } = check({ files: { "package.json": JSON.stringify({ name: "fake-app", dependencies: { [library.name]: "*" } }) } });
+    const failure = find(checks, "hermes-intl is installed but is not a dependency of the app");
+    expect(failure?.status).toBe("fail");
+    expect(failure?.fix).toBe("pnpm add hermes-intl@^0.1.2, then npx expo prebuild");
+    expect(failed(checks)).toHaveLength(1);
+  });
+
+  test("a version outside the range fails", () => {
+    expect(find(check({ versions: { "hermes-intl": "0.2.0" } }).checks, "hermes-intl 0.2.0 does not satisfy ^0.1.2")?.status).toBe("fail");
+  });
+});
+
+describe("expo's runtime", () => {
+  test("an expo that has src/winter passes: the library's polyfills import it for the standard URL", () => {
+    expect(find(check().checks, "expo 57.0.27 has src/winter, the runtime (URL, fetch, TextDecoder) that the library's polyfills import")?.status).toBe("pass");
+  });
+
+  test("an expo without it fails, with the files and the fix", () => {
+    const { checks } = check({ files: { "node_modules/expo/src/winter/runtime.native.ts": null } });
+    const failure = find(checks, "expo 57.0.27 has no src/winter/runtime.native.ts");
+    expect(failure?.status).toBe("fail");
+    expect(failure?.fix).toContain("npx expo install expo");
+    expect(failed(checks)).toHaveLength(1);
+  });
+
+  test("no expo at all is the peer check's failure alone", () => {
+    expect(failed(check({ without: ["expo", "expo-modules-core"] }).checks).some((entry) => entry.message.includes("src/winter"))).toBe(false);
+  });
+});
+
+describe("SvelteKit and Vite are optional", () => {
+  test("they are optional peers of the library", () => {
+    expect(library.peerDependenciesMeta["@sveltejs/kit"]).toEqual({ optional: true });
+    expect(library.peerDependenciesMeta.vite).toEqual({ optional: true });
+  });
+
+  test("a native-only app, which has neither, passes: both are skipped, and so is SvelteKit's patch", () => {
+    const { checks } = check({ without: ["@sveltejs/kit", "vite"] });
+    expect(failed(checks)).toEqual([]);
+    expect(find(checks, "optional peer dependencies not installed, nothing to check:")?.message).toContain("@sveltejs/kit, ");
+    expect(find(checks, "optional peer dependencies not installed, nothing to check:")?.message).toContain("vite");
+    expect(find(checks, "@sveltejs/kit@3.0.0-next.27: @sveltejs/kit is not installed (optional), nothing to patch")?.status).toBe("skip");
+  });
+
+  test("an app that has SvelteKit must have the version and the patch", () => {
+    expect(find(check({ versions: { "@sveltejs/kit": "3.0.0-next.28" } }).checks, "@sveltejs/kit 3.0.0-next.28 does not satisfy 3.0.0-next.27")?.status).toBe("fail");
+    expect(failed(check({ unpatched: ["@sveltejs/kit"] }).checks).map((entry) => entry.message)).toEqual([expect.stringContaining("@sveltejs/kit@3.0.0-next.27 is not applied")]);
   });
 });
 
@@ -255,11 +335,23 @@ describe("the app's configs", () => {
     expect(find(unwrapped, `app.json lists the ${library.name}/expo plugin`)?.status).toBe("pass");
   });
 
+  test("the package's own name is the plugin as well (its app.plugin.js), in app.json and in app.config", () => {
+    const named = check({ files: { "app.json": JSON.stringify({ expo: { plugins: [library.name] } }) } }).checks;
+    expect(find(named, `app.json lists the ${library.name} plugin`)?.status).toBe("pass");
+    const tuple = check({ files: { "app.json": JSON.stringify({ expo: { plugins: [[library.name, { androidProfileable: true }]] } }) } }).checks;
+    expect(find(tuple, `app.json lists the ${library.name} plugin`)?.status).toBe("pass");
+    const code = check({ files: { "app.json": JSON.stringify({ expo: { plugins: [] } }), "app.config.ts": `export default ({ config }) => ({ ...config, plugins: ["${library.name}"] });\n` } }).checks;
+    expect(find(code, `app.config.ts lists the ${library.name} plugin`)?.status).toBe("pass");
+    // Another package that starts with the name is not the plugin.
+    const other = check({ files: { "app.json": JSON.stringify({ expo: { plugins: [`${library.name}-extra`] } }) } }).checks;
+    expect(find(other, `app.json does not list the ${library.name}/expo plugin`)?.status).toBe("fail");
+  });
+
   test("the findings, directly", () => {
     const root = makeFakeApp();
     apps.push(root);
     expect(metroFinding(root)).toEqual({ state: "found", file: "metro.config.cjs" });
-    expect(expoPluginFinding(root, library.name)).toEqual({ state: "found", file: "app.json" });
+    expect(expoPluginFinding(root, library.name)).toEqual({ state: "found", file: "app.json", name: `${library.name}/expo` });
   });
 
   test("an app that does not depend on the library is a failure", () => {

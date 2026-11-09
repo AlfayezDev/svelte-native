@@ -147,7 +147,7 @@ describe("builds", () => {
 		const before = process.env.APP_VARIANT;
 		process.env.APP_VARIANT = "production";
 		try {
-			expect(buildEnv("qa").APP_VARIANT).toBe("");
+			expect(buildEnv("qa").APP_VARIANT).toBe("qa");
 			expect(buildEnv("smoke").APP_VARIANT).toBe("smoke");
 			expect(buildEnv("qa").SENTRY_DISABLE_AUTO_UPLOAD).toBe("true");
 		} finally {
@@ -162,7 +162,7 @@ describe("builds", () => {
 		try {
 			expect(buildEnv("qa").UPDATES_CHANNEL).toBe("");
 			expect(buildEnv("smoke").UPDATES_CHANNEL).toBe("");
-			expect(buildEnv("qa", "qa")).toMatchObject({ UPDATES_CHANNEL: "qa", APP_VARIANT: "", SENTRY_DISABLE_AUTO_UPLOAD: "true" });
+			expect(buildEnv("qa", "qa")).toMatchObject({ UPDATES_CHANNEL: "qa", APP_VARIANT: "qa", SENTRY_DISABLE_AUTO_UPLOAD: "true" });
 		} finally {
 			if (before === undefined) delete process.env.UPDATES_CHANNEL;
 			else process.env.UPDATES_CHANNEL = before;
@@ -218,15 +218,15 @@ describe("the iOS project of the Mac checkout holds one variant too", () => {
 		const directory = temporary("native-qa-ios-");
 		const first = run(directory, "qa");
 		expect(first.status).toBe(0);
-		expect(first.calls.at(-1)).toBe(" expo prebuild --platform ios --clean");
+		expect(first.calls.at(-1)).toBe("qa expo prebuild --platform ios --clean");
 		expect(readFileSync(join(directory, "ios/.native-qa-variant"), "utf8")).toBe("qa\n");
-		expect(run(directory, "qa").calls.at(-1)).toBe(" expo prebuild --platform ios");
+		expect(run(directory, "qa").calls.at(-1)).toBe("qa expo prebuild --platform ios");
 		const smoke = run(directory, "smoke");
 		expect(smoke.calls.at(-1)).toBe("smoke expo prebuild --platform ios --clean");
 		expect(readFileSync(join(directory, "ios/.native-qa-variant"), "utf8")).toBe("smoke\n");
 		// What the smoke app wrote (the static frameworks of expo-build-properties) is gone when the QA app is built again.
 		writeFileSync(join(directory, "ios/Podfile.properties.json"), '{"ios.useFrameworks":"static"}');
-		expect(run(directory, "qa").calls.at(-1)).toBe(" expo prebuild --platform ios --clean");
+		expect(run(directory, "qa").calls.at(-1)).toBe("qa expo prebuild --platform ios --clean");
 		expect(existsSync(join(directory, "ios/Podfile.properties.json"))).toBe(false);
 	});
 	test("a prebuild that fails leaves no marker, so the next one starts from nothing whichever variant it is for", () => {

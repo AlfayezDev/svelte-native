@@ -1,6 +1,5 @@
 // src/vite.ts
 import { resolve as resolve2 } from "node:path";
-import { sveltekit } from "@sveltejs/kit/vite";
 
 // src/build.ts
 import { spawn } from "node:child_process";
@@ -144,7 +143,8 @@ function buildTree(files) {
 }
 
 // src/variant.ts
-var variantName = (env = process.env) => env.APP_VARIANT || "qa";
+var DEFAULT_VARIANT = "app";
+var variantName = (env = process.env) => env.APP_VARIANT || DEFAULT_VARIANT;
 var labIncludedFor = (variant) => variant !== "production";
 var routesTableFile = (variant) => `routes.${variant.replace(/[^A-Za-z0-9_-]/g, "_")}.ts`;
 
@@ -298,8 +298,8 @@ function runExpo(root, args) {
     env
   });
 }
-async function exportNative(root, platform) {
-  await syncNative(root);
+async function exportNative(root, platform, options = {}) {
+  await syncNative(root, options);
   const output = resolve(root, ".svelte-native/dist", platform);
   await mkdir(output, { recursive: true });
   const child = runExpo(root, [
@@ -326,9 +326,16 @@ async function exportNative(root, platform) {
   if (result !== 0) throw new Error(`Native ${platform} export exited with ${result}`);
 }
 
+// src/remote/kit.ts
+import { createRequire as createRequire2 } from "node:module";
+var require3 = createRequire2(import.meta.url);
+function kitMissingMessage(what) {
+  return `${what} needs \`@sveltejs/kit\`, which is not installed (an optional peer dependency of @rasheed/svelte-native: only remote functions and the web target use it). Install the version the package was written against: \`pnpm add @sveltejs/kit@3.0.0-next.27\`, and copy its patch (README, "Apply the patches").`;
+}
+
 // src/svelte-build.ts
 import { existsSync as existsSync2, readFileSync as readFileSync2 } from "node:fs";
-import { createRequire as createRequire2 } from "node:module";
+import { createRequire as createRequire3 } from "node:module";
 import { dirname, join } from "node:path";
 var requiredSvelte = {
   version: "5.56.7",
@@ -341,7 +348,7 @@ var requiredSvelte = {
 function inspectSvelte(from) {
   let manifestPath;
   try {
-    manifestPath = from ?? createRequire2(import.meta.url).resolve("svelte/package.json");
+    manifestPath = from ?? createRequire3(import.meta.url).resolve("svelte/package.json");
   } catch {
     return { ok: false, version: null, directory: null, reason: "missing" };
   }
@@ -367,11 +374,19 @@ function assertCustomRenderer(what, from) {
 }
 
 // src/vite.ts
+async function loadSvelteKit() {
+  try {
+    return (await import("@sveltejs/kit/vite")).sveltekit;
+  } catch (cause) {
+    if (cause.code === "ERR_MODULE_NOT_FOUND") throw new Error(kitMissingMessage("The web target of svelteNative() (@rasheed/svelte-native/vite)"), { cause });
+    throw cause;
+  }
+}
 function svelteNative(options = {}) {
-  if (options.target !== "native") return [
+  if (options.target !== "native") return loadSvelteKit().then((kit) => [
     { name: "svelte-native:web", config: () => ({ optimizeDeps: { entries: ["!src/routes/**/+mobile.svelte", "!src/routes/**/*.mobile.svelte", "!src/lib/native/**"] } }) },
-    sveltekit(options.kit)
-  ];
+    kit(options.kit)
+  ]);
   assertCustomRenderer("The native target of svelteNative() (@rasheed/svelte-native/vite)");
   let root = "";
   return {
@@ -381,7 +396,7 @@ function svelteNative(options = {}) {
       root = config.root;
     },
     async buildStart() {
-      await syncNative(root);
+      await syncNative(root, { variant: options.variant });
     },
     resolveId(id) {
       if (id === "virtual:svelte-native-build") return "\0svelte-native-build";
@@ -390,7 +405,7 @@ function svelteNative(options = {}) {
       if (id === "\0svelte-native-build") return "export {};";
     },
     async generateBundle() {
-      await exportNative(resolve2(root), options.platform ?? "android");
+      await exportNative(resolve2(root), options.platform ?? "android", { variant: options.variant });
     }
   };
 }

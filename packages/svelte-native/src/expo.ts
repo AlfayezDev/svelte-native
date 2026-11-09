@@ -42,6 +42,11 @@ export type SvelteNativeOptions = {
    * until `configureRemote({ origin })` sets one.
    */
   remote?: RemoteHostConfig;
+  /**
+   * The variant whose route table (`.svelte-native/routes.<variant>.ts`) the prebuild writes. Default: `APP_VARIANT`, or `app` when that is empty. An app whose own default is
+   * another name passes it here instead of setting the environment from its config (which every tool that imports the config would inherit).
+   */
+  variant?: string;
 };
 
 /**
@@ -468,7 +473,7 @@ const withSvelteNative: ConfigPlugin<SvelteNativeOptions | undefined> = (config,
   if (options?.remote) config = withRemoteHost(config, options.remote);
   for (const platform of ["android", "ios"] as const) {
     config = withDangerousMod(config, [platform, async (config) => {
-      await syncNative(config.modRequest.projectRoot);
+      await syncNative(config.modRequest.projectRoot, { variant: options?.variant });
       return config;
     }]);
   }

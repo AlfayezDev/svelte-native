@@ -20,5 +20,12 @@ const svelte = transformer.transform({
   options,
   plugins: [],
 });
+// A `.svelte.ts` module of the library at the path an install puts it at, under `node_modules`.
+const svelteModule = transformer.transform({
+  filename: `${root}/node_modules/@rasheed/svelte-native/src/counter.svelte.ts`,
+  src: "let count: number = $state(0);\nexport function bump(by: number = 1): number {\n  count += by;\n  return count;\n}\n",
+  options,
+  plugins: [],
+});
 const remote = transformer.sourceOf({ filename: `${root}/src/lib/api.remote.ts`, src: 'import { query } from "$app/server"; export const hello = query(async () => 1);', options });
-console.log(JSON.stringify({ exports: Object.keys(transformer).sort(), svelteImports: imports(svelte.ast), remote, cacheKey: transformer.getCacheKey({}), resolvedFrom: createRequire(`${root}/`).resolve("@rasheed/svelte-native/transformer") }));
+console.log(JSON.stringify({ exports: Object.keys(transformer).sort(), svelteImports: imports(svelte.ast), svelteModule: imports(svelteModule.ast), remote, cacheKey: transformer.getCacheKey({}), resolvedFrom: createRequire(`${root}/`).resolve("@rasheed/svelte-native/transformer") }));

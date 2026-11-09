@@ -1,0 +1,6 @@
+{
+  "name": "bare-app",
+  "private": true,
+  "type": "module",
+  "main": ".svelte-native/entry.ts"
+}

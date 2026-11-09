@@ -5,4 +5,8 @@ import { svelteNative } from "@rasheed/svelte-native/vite";
 
 const loaded = await loadConfigFromFile({ command: "build", mode: "native" }, "native.vite.config.ts", process.cwd());
 const names = (plugins) => [plugins].flat(Infinity).filter(Boolean).map((plugin) => plugin.name);
-console.log(JSON.stringify({ config: loaded?.path.split("/").pop(), plugins: names(loaded?.config.plugins), direct: names(svelteNative({ target: "native" })) }));
+// The web target loads SvelteKit's plugin when it is asked for (an app that has SvelteKit; the native-only app's probe is probe-vite.mjs).
+// (SvelteKit's own plugin is a promise of a list, which Vite settles itself.)
+const settle = async (option) => (await Promise.all([await option].flat(Infinity))).flat(Infinity);
+const web = names(await settle(svelteNative({ target: "web" })));
+console.log(JSON.stringify({ config: loaded?.path.split("/").pop(), plugins: names(loaded?.config.plugins), direct: names(svelteNative({ target: "native" })), web }));

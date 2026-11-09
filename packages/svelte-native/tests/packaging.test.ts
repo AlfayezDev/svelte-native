@@ -14,6 +14,7 @@ const manifest = JSON.parse(read("package.json")) as {
   dependencies: Record<string, string>;
   peerDependencies: Record<string, string>;
   optionalDependencies?: Record<string, string>;
+  peerDependenciesMeta?: Record<string, { optional?: boolean }>;
 };
 /** Every file the exports map and `bin` point at (an entry is a path, or a path per condition: `types` the sources, `default` the built JavaScript). */
 const entryFiles = [...Object.values(manifest.exports).flatMap((target) => (typeof target === "string" ? [target] : Object.values(target))), ...Object.values(manifest.bin)];
@@ -43,6 +44,21 @@ describe("the manifest holds nothing that only resolves inside this repository",
   test("the entries are in the package, and package.json is an entry (tools that resolve a package's directory ask for it)", () => {
     expect(manifest.exports["./package.json"]).toBe("./package.json");
     for (const target of entryFiles) expect([target, existsSync(join(root, target))]).toEqual([target, true]);
+  });
+
+  test("the config plugin is reachable by the package's own name (app.plugin.js, which Expo looks for first) and by its path, both at the built file", () => {
+    expect(manifest.exports["./expo"]).toEqual({ types: "./src/expo.ts", default: "./dist/node/expo.cjs" });
+    expect(manifest.exports["./app.plugin"]).toBe("./app.plugin.js");
+    expect(manifest.files).toContain("app.plugin.js");
+    expect(read("app.plugin.js")).toContain('from "./dist/node/expo.cjs"');
+  });
+
+  test("an app installs hermes-intl itself (React Native's autolinking links only its own dependencies); SvelteKit and Vite it may leave out", () => {
+    expect(manifest.peerDependencies["hermes-intl"]).toBeDefined();
+    expect(manifest.peerDependenciesMeta?.["hermes-intl"]).toBeUndefined();
+    expect(manifest.dependencies["hermes-intl"]).toBeUndefined();
+    expect(manifest.peerDependenciesMeta?.["@sveltejs/kit"]).toEqual({ optional: true });
+    expect(manifest.peerDependenciesMeta?.vite).toEqual({ optional: true });
   });
 
   test("the license is the repository's", () => {
@@ -111,7 +127,9 @@ describe("what `files` packs", () => {
       "REFERENCE.md",
       "CHANGELOG.md",
       "expo-module.config.json",
+      "app.plugin.js",
       "src/index.ts",
+      "src/platform.ts",
       "src/cli.ts",
       "src/expo.ts",
       "native/svelte-engine/android/build.gradle",

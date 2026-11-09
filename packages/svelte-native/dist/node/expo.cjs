@@ -181,7 +181,8 @@ function buildTree(files) {
 }
 
 // src/variant.ts
-var variantName = (env = process.env) => env.APP_VARIANT || "qa";
+var DEFAULT_VARIANT = "app";
+var variantName = (env = process.env) => env.APP_VARIANT || DEFAULT_VARIANT;
 var labIncludedFor = (variant) => variant !== "production";
 var routesTableFile = (variant) => `routes.${variant.replace(/[^A-Za-z0-9_-]/g, "_")}.ts`;
 
@@ -764,7 +765,7 @@ var withSvelteNative = (config, options) => {
   if (options?.remote) config = withRemoteHost(config, options.remote);
   for (const platform of ["android", "ios"]) {
     config = (0, import_config_plugins2.withDangerousMod)(config, [platform, async (config2) => {
-      await syncNative(config2.modRequest.projectRoot);
+      await syncNative(config2.modRequest.projectRoot, { variant: options?.variant });
       return config2;
     }]);
   }

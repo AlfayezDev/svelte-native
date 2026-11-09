@@ -122,7 +122,9 @@ test("sync takes the variant from APP_VARIANT unless it is told", async () => {
     expect(await read("smoke")).toContain("__dev");
     delete process.env.APP_VARIANT;
     await syncNative(directory);
-    expect(await read("qa")).toContain("export const variant = \"qa\";");
+    expect(await read("app")).toContain("export const variant = \"app\";");
+    expect(await read("app")).toContain("__dev");
+    expect(existsSync(resolve(directory, ".svelte-native", routesTableFile("qa")))).toBe(false);
     process.env.APP_VARIANT = "production";
     await syncNative(directory, { lab: true });
     expect(await read("production")).toContain("__dev");

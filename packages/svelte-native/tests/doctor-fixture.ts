@@ -62,6 +62,8 @@ export function makeFakeApp(options: FakeApp = {}): string {
     if (name === "svelte") continue;
     stub(name, patched.get(name)?.version ?? concreteVersion(range));
   }
+  // The runtime `polyfills.ts` imports from expo by path.
+  if (!without.has("expo")) for (const file of ["index.ts", "runtime.native.ts"]) put(`node_modules/expo/src/winter/${file}`, "export {};\n");
   stub("svelte", "5.56.7", options.stockSvelte ? { exports: { ".": "./src/index.js" } } : { exports: { ".": "./src/index.js", "./renderer": { default: "./src/renderer/index.js" } } });
   put("node_modules/svelte/src/compiler/validate-options.js", options.stockSvelte ? "export const options = {};\n" : "export const options = { experimental: { customRenderer: true } };\n");
   if (!options.stockSvelte) put("node_modules/svelte/src/renderer/index.js", "export {};\n");
@@ -80,7 +82,8 @@ export function makeFakeApp(options: FakeApp = {}): string {
     if (spec?.via) put(`node_modules/${patch.package}/package.json`, JSON.stringify({ name: patch.package, version: version(patch.package, patch.version) }));
   }
 
-  put("package.json", JSON.stringify({ name: "fake-app", version: "1.0.0", dependencies: { [library.name]: "*" } }));
+  // `hermes-intl` is a required peer with a native module, which React Native's autolinking links only when the app depends on it itself.
+  put("package.json", JSON.stringify({ name: "fake-app", version: "1.0.0", dependencies: { [library.name]: "*", "hermes-intl": "*" } }));
   put("metro.config.cjs", `const { getDefaultConfig } = require("expo/metro-config");\nconst { withSvelteNative } = require("${library.name}/metro");\nmodule.exports = withSvelteNative(getDefaultConfig(__dirname));\n`);
   put("app.json", JSON.stringify({ expo: { name: "fake", plugins: [[`${library.name}/expo`, {}]] } }));
   if (options.declared !== false) {

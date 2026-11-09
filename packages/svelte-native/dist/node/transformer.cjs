@@ -22,7 +22,6 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // src/transformer.ts
 var transformer_exports = {};
 __export(transformer_exports, {
-  assertWorkletsReadNoState: () => assertWorkletsReadNoState,
   getCacheKey: () => getCacheKey,
   sourceOf: () => sourceOf,
   transform: () => transform,
@@ -35,6 +34,7 @@ var import_compiler2 = require("svelte/compiler");
 var import_esbuild = require("esbuild");
 var import_node_crypto = require("node:crypto");
 var import_node_fs3 = require("node:fs");
+var import_parser2 = require("@babel/parser");
 var import_types = require("@babel/types");
 
 // src/lower.ts
@@ -437,16 +437,16 @@ function requireCustomRenderer() {
   assertCustomRenderer("The Metro transformer of @example/svelte-native");
   rendererChecked = true;
 }
-function assertWorkletsReadNoState(filename, ast, runes) {
+function assertWorkletsReadNoState(filename, code, runes) {
+  if (!/["']worklet["']/.test(code)) return;
   const state = /* @__PURE__ */ new Set();
   let reached = false;
-  (0, import_types.traverseFast)(ast, (node) => {
-    if (!(0, import_types.isObjectProperty)(node) || !(0, import_types.isIdentifier)(node.key, { name: "code" }) || !(0, import_types.isStringLiteral)(node.value)) return;
-    const source = node.value.value;
-    const captured = /^function [\w$]*\([^)]*\)\{const\{([^}]*)\}=this\.__closure;/.exec(source)?.[1].split(",");
-    if (!captured?.includes("$")) return;
-    reached = true;
-    for (const read of source.matchAll(/\$\.\w+\(([A-Za-z_$][\w$]*)/g)) state.add(read[1]);
+  (0, import_types.traverseFast)((0, import_parser2.parse)(code, { sourceType: "module" }), (node) => {
+    if (!(0, import_types.isFunction)(node) || !(0, import_types.isBlockStatement)(node.body) || !node.body.directives.some((directive) => directive.value.value === "worklet")) return;
+    (0, import_types.traverseFast)(node.body, (inner) => {
+      if ((0, import_types.isMemberExpression)(inner) && (0, import_types.isIdentifier)(inner.object, { name: "$" })) reached = true;
+      if ((0, import_types.isCallExpression)(inner) && (0, import_types.isMemberExpression)(inner.callee) && (0, import_types.isIdentifier)(inner.callee.object, { name: "$" }) && (0, import_types.isIdentifier)(inner.arguments[0])) state.add(inner.arguments[0].name);
+    });
   });
   if (!reached) return;
   const names = [...state].map((name) => `\`${name}\``).join(", ");
@@ -486,8 +486,8 @@ function transform(input) {
       if (result.js.map) maps.unshift(new import_trace_mapping.TraceMap(result.js.map.toString()));
     }
   }
+  if (compiledBySvelte) assertWorkletsReadNoState(filename, code, runes);
   const output = upstream.transform({ ...input, src: code });
-  if (compiledBySvelte && output.ast) assertWorkletsReadNoState(filename, output.ast, runes);
   if (maps.length && output.ast) (0, import_types.traverseFast)(output.ast, (node) => {
     if (!node.loc) return;
     for (const position of [node.loc.start, node.loc.end]) {
@@ -510,7 +510,6 @@ function getCacheKey(options) {
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
-  assertWorkletsReadNoState,
   getCacheKey,
   sourceOf,
   transform,

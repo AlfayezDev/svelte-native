@@ -7,7 +7,7 @@
   import { Text, View } from "@rasheed/svelte-native";
   import type { RowHandle } from "./model.svelte.ts";
   import { theme } from "../state.svelte.ts";
-  import Field from "../components/Field.svelte";
+  import Field from "./Field.svelte";
   import Button from "../components/Button.svelte";
   let { row, register, remove }: {
     row: { id: string; name: string }; register: (id: string, handle: RowHandle) => void; remove: (id: string) => void;

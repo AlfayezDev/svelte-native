@@ -22,6 +22,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // src/transformer.ts
 var transformer_exports = {};
 __export(transformer_exports, {
+  assertWorkletsReadNoState: () => assertWorkletsReadNoState,
   getCacheKey: () => getCacheKey,
   sourceOf: () => sourceOf,
   transform: () => transform,
@@ -436,11 +437,29 @@ function requireCustomRenderer() {
   assertCustomRenderer("The Metro transformer of @rasheed/svelte-native");
   rendererChecked = true;
 }
+function assertWorkletsReadNoState(filename, ast, runes) {
+  const state = /* @__PURE__ */ new Set();
+  let reached = false;
+  (0, import_types.traverseFast)(ast, (node) => {
+    if (!(0, import_types.isObjectProperty)(node) || !(0, import_types.isIdentifier)(node.key, { name: "code" }) || !(0, import_types.isStringLiteral)(node.value)) return;
+    const source = node.value.value;
+    const captured = /^function [\w$]*\([^)]*\)\{const\{([^}]*)\}=this\.__closure;/.exec(source)?.[1].split(",");
+    if (!captured?.includes("$")) return;
+    reached = true;
+    for (const read of source.matchAll(/\$\.\w+\(([A-Za-z_$][\w$]*)/g)) state.add(read[1]);
+  });
+  if (!reached) return;
+  const names = [...state].map((name) => `\`${name}\``).join(", ");
+  const what = names ? `${names}, which Svelte compiled into reactive state` : "reactive state (Svelte's runtime, `$`)";
+  throw new Error(`${filename}: a worklet reads ${what}. A worklet runs on the UI runtime, which has no Svelte, so it cannot read state; on the device it would throw "Tried to synchronously call a Remote Function" when the screen mounts. ${runes ? "State in runes mode is `$state`, `$derived` and props: copy the value into a shared value (`createSharedValue`) on the JavaScript side and read that in the worklet." : "This component is not in runes mode, where a variable that the markup mutates (`count.value = ...` in a handler) is state even when it is a `const`. Add `<svelte:options runes />` to the component: there a `const` shared value stays a plain constant."}`);
+}
 function transform(input) {
   const { filename } = input;
   const src = sourceOf(input);
   let code = src;
+  let runes = true;
   const maps = [];
+  const compiledBySvelte = /\.svelte(\.[jt]s)?$/.test(filename);
   if (filename.endsWith(".svelte")) {
     requireCustomRenderer();
     const result = (0, import_compiler2.compile)(lowerPrimitives(src, { filename }), {
@@ -451,6 +470,7 @@ function transform(input) {
     });
     if (result.css?.code.trim()) throw new Error(`${filename}: use native style props; browser CSS is not supported`);
     code = result.js.code;
+    runes = result.metadata.runes;
     if (result.js.map) maps.push(new import_trace_mapping.TraceMap(result.js.map.toString()));
   } else {
     const svelteModule = /\.svelte\.[jt]s$/.test(filename);
@@ -467,6 +487,7 @@ function transform(input) {
     }
   }
   const output = upstream.transform({ ...input, src: code });
+  if (compiledBySvelte && output.ast) assertWorkletsReadNoState(filename, output.ast, runes);
   if (maps.length && output.ast) (0, import_types.traverseFast)(output.ast, (node) => {
     if (!node.loc) return;
     for (const position of [node.loc.start, node.loc.end]) {
@@ -489,6 +510,7 @@ function getCacheKey(options) {
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
+  assertWorkletsReadNoState,
   getCacheKey,
   sourceOf,
   transform,

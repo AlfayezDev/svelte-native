@@ -6,10 +6,10 @@ Svelte 5 components that run as native Android and iOS apps on React Native's Fa
 
 | Path | What it is |
 | ---- | ---------- |
-| `packages/svelte-native` | The library, `@example/svelte-native`: renderer, router, Metro and Vite integration, Expo config plugin, gestures, view-library wrappers, updates client, remote functions. Its tests are in `tests/`. Start with [its README](packages/svelte-native/README.md). |
-| `apps/example` | The example app and the QA host: the development lab (`src/lib/native/dev`, `src/routes/__dev`), the nine local Expo modules in `modules/` (the Android engine, the iOS modules, the updates module), and the QA harness in `qa/` (`node qa/native-qa.ts`, see [qa/README.md](apps/example/qa/README.md)). |
+| `packages/svelte-native` | The library, `@example/svelte-native`: renderer, router, Metro and Vite integration, Expo config plugin, gestures, view-library wrappers, updates client, remote functions, and its six native modules in `native/` (the Android engine, the iOS screens, insets, navigation and capture modules, the updates module), linked by the package's one `expo-module.config.json`. Apps install it as a git dependency of this repository ([its README](packages/svelte-native/README.md), "Install in an app"). Its tests are in `tests/`. Start with [its README](packages/svelte-native/README.md). |
+| `apps/example` | The example app and the QA host. It depends on the library through the workspace (`@example/svelte-native`), as an app outside the repository would, and links its native modules from `node_modules/@example/svelte-native`. It has the development lab (`src/lib/native/dev`, `src/routes/__dev`), the three QA-only local Expo modules in `modules/` (the touch injector, the iOS QA module, the view bench), and the QA harness in `qa/` (`node qa/native-qa.ts`, see [qa/README.md](apps/example/qa/README.md)). |
 | `patches/` | pnpm patches of the third-party libraries the example links (listed in `pnpm-workspace.yaml`). The SvelteKit patch is in `packages/svelte-native/patches/`. |
-| `vendor/` | The Svelte build the library depends on (an unmerged custom-renderer pull request, commit `216f258`, 5.56.7), vendored so installs do not depend on a preview registry. |
+| `vendor/` | The Svelte build the library needs (an unmerged custom-renderer pull request, commit `216f258`, 5.56.7), vendored so installs do not depend on a preview registry. The package names `svelte` as a peer dependency; this repository's example and package install the tarball by `file:`. |
 
 ## Install and check
 
@@ -22,4 +22,4 @@ pnpm typecheck    # svelte-check in the package and the example, tsc for the har
 pnpm test         # the package's tests, then the harness's
 ```
 
-The Kotlin and C++ host checks (`packages/svelte-native/tests`, `apps/example/modules/svelte-engine/android/src/test/run.sh`) need a JDK, `kotlinc` and `g++`, and skip themselves without them (they fail under `CI=1`). Building the apps and running the device suites additionally need the Android SDK or Xcode and a device; see the QA README.
+The Kotlin and C++ host checks (`packages/svelte-native/tests`, `packages/svelte-native/native/svelte-engine/android/src/test/run.sh`) need a JDK, `kotlinc` and `g++`, and skip themselves without them (they fail under `CI=1`). Building the apps and running the device suites additionally need the Android SDK or Xcode and a device; see the QA README.

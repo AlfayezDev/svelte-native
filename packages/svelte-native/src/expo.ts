@@ -54,7 +54,7 @@ export type SvelteNativeOptions = {
 export const headlessExcludedPackages = [
   "react-native-screens",
   "react-native-safe-area-context",
-  "expo-updates", // the engine host ships its own updates module (modules/svelte-updates); this package only lets `eas update` run
+  "expo-updates", // the engine host ships its own updates module (native/svelte-updates); this package only lets `eas update` run
   "expo-dev-client",
   "expo-dev-launcher",
   "expo-dev-menu",
@@ -245,7 +245,7 @@ export function applyMainActivity(contents: string): string {
 
 /**
  * `AppDelegate.swift` (iOS): the four state restoration callbacks of `UIApplicationDelegate`, which Expo's `ExpoAppDelegate` does not forward, call
- * `SvelteNavigationRestoration` (`modules/svelte-navigation-ios`). UIKit saves the application's restorable state when the app enters the background,
+ * `SvelteNavigationRestoration` (`native/svelte-navigation-ios`). UIKit saves the application's restorable state when the app enters the background,
  * asks `shouldRestore` at the next launch only if it still has that state, and has deleted it when the user swiped the app away: that call is how the
  * navigation module tells a process the system ended (restore) from one the user ended (start from the first screen), as Android's saved instance
  * state does. The methods keep the protocol's Objective-C selectors under names of their own, so a later `ExpoAppDelegate` that forwards them is a

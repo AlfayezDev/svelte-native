@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { exec } from "./exec.ts";
-import { outDir, platformDir, repoRoot } from "./paths.ts";
+import { outDir, platformDir, svelteNativeCli } from "./paths.ts";
 import { appVariantOf, type Variant } from "./variant.ts";
 
 /**
@@ -25,7 +25,7 @@ export async function makeIosBundleMap(variant: Variant): Promise<IosBundleMap> 
 	try {
 		const env = { APP_VARIANT: appVariantOf[variant], CI: "1", EXPO_NO_TELEMETRY: "1", NODE_ENV: "production", TMPDIR: join(scratch, "metro") };
 		await mkdir(env.TMPDIR, { recursive: true });
-		const synced = await exec("node", [join(repoRoot, "packages/svelte-native/src/cli.ts"), "sync"], { cwd: platformDir, env, timeoutMs: 300_000 });
+		const synced = await exec("node", [svelteNativeCli, "sync"], { cwd: platformDir, env, timeoutMs: 300_000 });
 		if (synced.code !== 0) throw new Error(`svelte-native sync failed (${synced.code}): ${synced.stderr.trim().slice(-400)}`);
 		const bundle = join(scratch, "main.jsbundle");
 		const map = join(scratch, "main.jsbundle.map");

@@ -105,7 +105,7 @@ jobs:
       # ownership rules, what the view-shot capture decides before it draws, and the gesture rules (pointer events, who may claim a touch,
       # the distances read from react-native-gesture-handler's own Pan source). About 20 s.
       - name: Engine host checks (gesture rules, capture, animated wire)
-        run: bash apps/example/modules/svelte-engine/android/src/test/run.sh
+        run: bash packages/svelte-native/native/svelte-engine/android/src/test/run.sh
 
       # The package suite (route discovery, Metro stubs, gestures, svg, the app-tree mounts with the product's stubs, and the updates
       # client, launch and store tests: the Kotlin ones skip themselves without kotlinc, which native-tools.test.ts turns into a failure here) ran in no workflow before.

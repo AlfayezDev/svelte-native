@@ -8,7 +8,7 @@ import { join, resolve } from "node:path";
  * Which cores `BootBoost` and `MountBoost` pin to (BigCores.kt: pure functions of numbers read off the device), compiled for the
  * host and run on the layouts of real phones and the odd ones. Skipped when `kotlinc` or `java` is not on the path.
  */
-const engine = resolve(import.meta.dirname, "../../../apps/example/modules/svelte-engine/android/src/main/java/expo/modules/svelteengine");
+const engine = resolve(import.meta.dirname, "../native/svelte-engine/android/src/main/java/expo/modules/svelteengine");
 const sources = { cores: resolve(engine, "BigCores.kt"), host: resolve(import.meta.dirname, "native/BigCoresHost.kt") };
 const tools = Bun.which("kotlinc") && Bun.which("java");
 

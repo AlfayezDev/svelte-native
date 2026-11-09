@@ -7,7 +7,7 @@ import { applyHeadlessApplication, headlessExcludedPackages } from "../src/expo.
 // The Kotlin and Swift modules and the TypeScript client share a contract that no compiler checks across languages:
 // the module name, its constants and functions, and how each platform finds its launch hook. These tests pin it.
 const app = resolve(import.meta.dirname, "../../../apps/example");
-const module = join(app, "modules/svelte-updates");
+const module = resolve(import.meta.dirname, "../native/svelte-updates");
 const read = (path: string) => readFileSync(join(module, path), "utf8");
 const kotlin = (file: string) => read(`android/src/main/java/expo/modules/svelteupdates/${file}`);
 const names = (source: string, kind: "Constant" | "AsyncFunction") => [...source.matchAll(new RegExp(`${kind}\\("(\\w+)"\\)`, "g"))].map((match) => match[1] ?? "").sort();
@@ -61,12 +61,12 @@ describe("native module contract", () => {
 });
 
 describe("launch hooks", () => {
-  test("the module config registers the module and the iOS bundle handler", () => {
-    expect(JSON.parse(read("expo-module.config.json"))).toEqual({
-      platforms: ["android", "apple"],
-      android: { modules: ["expo.modules.svelteupdates.SvelteUpdatesModule"] },
-      apple: { modules: ["SvelteUpdatesModule"], reactDelegateHandlers: ["SvelteUpdatesReactDelegateHandler"] },
-    });
+  test("the package's module config registers the module and the iOS bundle handler", () => {
+    const config = JSON.parse(readFileSync(join(module, "../../expo-module.config.json"), "utf8")) as { android: { projects: { name: string; path: string; modules: string[] }[] }; apple: { podspecPath: string[]; modules: string[]; reactDelegateHandlers: string[] } };
+    expect(config.android.projects.find((project) => project.name === "svelte-updates")).toEqual({ name: "svelte-updates", path: "native/svelte-updates/android", modules: ["expo.modules.svelteupdates.SvelteUpdatesModule"] });
+    expect(config.apple.podspecPath).toContain("native/svelte-updates/ios/SvelteUpdates.podspec");
+    expect(config.apple.modules).toContain("SvelteUpdatesModule");
+    expect(config.apple.reactDelegateHandlers).toEqual(["SvelteUpdatesReactDelegateHandler"]);
     expect(read("ios/Launch.swift")).toContain("public final class SvelteUpdatesReactDelegateHandler: ExpoReactDelegateHandler");
   });
   test("Expo autolinking finds the Android bundle handler: a *Package file that imports expo.modules.core.interfaces.Package", () => {

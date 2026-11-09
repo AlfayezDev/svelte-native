@@ -11,6 +11,7 @@ export const coreFeatures: Feature[] = [
   { title: "Inputs and forms", summary: "TextInput, Switch, validation and the keyboard", group: "Lists and input", route: "/inputs" },
   { title: "Stack", summary: "Push and pop screens, native headers, route parameters", group: "Navigation", route: "/navigation/stack", also: ["/navigation/stack/[id]"] },
   { title: "Tabs", summary: "A tab bar whose tabs each keep their own stack", group: "Navigation", route: "/navigation/tabs", also: ["/navigation/tabs/feed", "/navigation/tabs/feed/[id]", "/navigation/tabs/profile"] },
+  { title: "Header and toolbar", summary: "Search in the header, a native bottom toolbar with actions and a badge", group: "Navigation", route: "/navigation/header" },
   { title: "Sheet", summary: "A bottom sheet with detents and a grabber", group: "Navigation", route: "/navigation/sheet" },
   { title: "Modal", summary: "A screen that covers everything, with its own Close button", group: "Navigation", route: "/navigation/modal" },
   { title: "Links", summary: "Deep links, the launch URL and router.openURL", group: "Navigation", route: "/navigation/links" },

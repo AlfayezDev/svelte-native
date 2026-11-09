@@ -1,4 +1,4 @@
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { clearLogcat, shell, startApp, wake } from "../lib/adb.ts";
 import { endsRun, key, newSessionNotes, reportRestore, withSession, type DeviceSession } from "../lib/device.ts";
@@ -208,6 +208,8 @@ export async function resilience(argv: string[]): Promise<void> {
 		console.log(`stopped: ${aborted.slice(0, 200)}`);
 	}
 
+	// A fresh checkout has no runs directory: the log is written before the run file, which is what creates it for the others.
+	await mkdir(runsDir, { recursive: true });
 	const logPath = join(runsDir, `resilience-${slug(serial)}-${stamp(startedAt)}.log`);
 	await writeFile(
 		logPath,

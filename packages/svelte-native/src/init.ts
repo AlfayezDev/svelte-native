@@ -2,9 +2,11 @@
  * Pre-main setup for the React-free Fabric entry, run instead of React Native's `InitializeCore`.
  *
  * Imports are deep paths only (never the `react-native` index) and every one is needed at startup or by the
- * SpacetimeDB SDK. Deliberately skipped: DOM/IntersectionObserver/MutationObserver setup, the `Performance` class
- * (a `performance.now` shim stands in), Promise and regenerator polyfills (Hermes has both), `setUpAlert`, the
- * segment fetcher, LogBox, React DevTools, React Refresh, Systrace and the legacy performance-logger module.
+ * network and data SDKs an app brings along (`setUpXHR` installs `fetch`, `Headers`, `WebSocket`, `Blob`, `URL` and the
+ * rest of the web networking globals that an HTTP, WebSocket or sync client expects to find). Deliberately skipped:
+ * DOM/IntersectionObserver/MutationObserver setup, the `Performance` class (a `performance.now` shim stands in), Promise
+ * and regenerator polyfills (Hermes has both), `setUpAlert`, the segment fetcher, LogBox, React DevTools, React Refresh,
+ * Systrace and the legacy performance-logger module.
  * `AppRegistry` is our own small callable module: React Native's drags in `renderApplication`, React and LogBox.
  */
 import { mark } from "./boot-marks.ts";

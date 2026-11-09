@@ -8,7 +8,7 @@ import StackLayout from "./tree-stack-layout.svelte";
 
 const file = (path: string, exports: RouteFile["exports"] = {}): RouteFile => ({ path, exports });
 
-/** The product shape the contract describes: pages at the root, a modal, a workspace with tabs (home and inbox, the inbox with a stack layout), a modal over them, and a flow (a stack navigator, with a stack navigator of its own). */
+/** The app shape the route-tree contract describes (SPEC "Route tree: layouts as navigators"): pages at the root, a modal, a workspace with tabs (home and inbox, the inbox with a stack layout), a modal over them, and a flow (a stack navigator, with a stack navigator of its own). */
 export const files: RouteFile[] = [
   file("+layout.mobile.svelte"),
   file("workspaces/+mobile.svelte"),

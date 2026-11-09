@@ -9,7 +9,7 @@ if (!("toSorted" in Array.prototype)) Object.defineProperty(Array.prototype, "to
   configurable: true,
 });
 
-// The SDK's focus check follows the native application's foreground lifecycle.
+// A data or query client's focus check (`window.addEventListener("focus", …)`) follows the native application's foreground lifecycle.
 if (typeof window.addEventListener !== "function") {
   const subscriptions = new Map<unknown, NativeEventSubscription>();
   Object.assign(window, {

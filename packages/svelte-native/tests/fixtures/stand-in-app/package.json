@@ -1,0 +1,8 @@
+{
+  "name": "stand-in-app",
+  "private": true,
+  "type": "module",
+  "imports": {
+    "#lib/*": "./src/lib/*"
+  }
+}

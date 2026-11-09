@@ -69,7 +69,8 @@ export async function prebuildInputs(): Promise<string[]> {
 		join(svelteNativeDir, "dist/node/expo.cjs"),
 		join(svelteNativeDir, "expo-module.config.json"),
 	];
-	for (const module of await readdir(join(platformDir, "modules")))
+	// Sorted: readdir's order is the filesystem's (it differed between this machine and GitHub's runners).
+	for (const module of (await readdir(join(platformDir, "modules"))).sort())
 		inputs.push(join(platformDir, "modules", module, "expo-module.config.json"));
 	return inputs;
 }

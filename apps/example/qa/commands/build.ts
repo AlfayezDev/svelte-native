@@ -37,7 +37,6 @@ export function buildEnv(variant: Variant, channel: string | null = null): Recor
 	return {
 		CI: "1",
 		EXPO_NO_TELEMETRY: "1",
-		EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL ?? "https://dev.qarnos.com",
 		APP_VARIANT: appVariantOf[variant],
 		// The product reads its Maps key from the environment (an EAS secret) and the Maps SDK throws at the first map when the manifest has
 		// none. This build is only ever started on the OVH emulator for the boot check and shows no map, so it gets the placeholder the QA app has.

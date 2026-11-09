@@ -69,19 +69,20 @@ export async function startSuite(
 export type BackendStatus = { ok: boolean; detail: string };
 
 /**
- * Whether the dev backend the app configures itself from answers, asked from the machine running the suite. A screen that
- * only exists while it does (login) is skipped, not failed, when it does not; the skip says why.
+ * Whether the backend a screen needs (`needsBackend`) answers, asked from the machine running the suite: the page in `QA_BACKEND_URL`, which
+ * answers 2xx while the backend is up. A screen that only exists while it does is skipped, not failed, when it does not; the skip says why.
+ * This repository's example has no backend and no such screen, so with the variable unset nothing is asked and the answer is "none configured".
  */
 export async function backendStatus(): Promise<BackendStatus> {
-	const base = process.env.EXPO_PUBLIC_API_URL ?? "https://dev.qarnos.com";
-	const url = new URL("/api/configuration", base);
+	const address = process.env.QA_BACKEND_URL?.trim();
+	if (!address) return { ok: false, detail: "no backend is configured (QA_BACKEND_URL is not set)" };
 	try {
-		const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
-		return { ok: response.ok, detail: `${url.href} answered ${response.status}` };
+		const response = await fetch(address, { signal: AbortSignal.timeout(8000) });
+		return { ok: response.ok, detail: `${address} answered ${response.status}` };
 	} catch (error) {
 		return {
 			ok: false,
-			detail: `${url.href} unreachable: ${error instanceof Error ? error.message : String(error)}`,
+			detail: `${address} unreachable: ${error instanceof Error ? error.message : String(error)}`,
 		};
 	}
 }

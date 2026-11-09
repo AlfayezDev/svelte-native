@@ -509,11 +509,10 @@ export function parseChannelView(stdout: string, channel: string): ChannelInfo {
 }
 
 /** The environment a published bundle is built in: the marker, the fault when it is a bad one, and the channel the app config is evaluated for. */
-export function publishEnvironment(kind: UpdateKind, marker: string, channel: string, apiUrl: string, fault: BadFault | null = null): Record<string, string> {
+export function publishEnvironment(kind: UpdateKind, marker: string, channel: string, fault: BadFault | null = null): Record<string, string> {
 	return {
 		CI: "1",
 		EXPO_NO_TELEMETRY: "1",
-		EXPO_PUBLIC_API_URL: apiUrl,
 		UPDATES_CHANNEL: channel,
 		EXPO_PUBLIC_QA_UPDATE_MARKER: marker,
 		// Always set, empty for a good bundle, so a variable of the calling shell never plants a fault.

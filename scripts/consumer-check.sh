@@ -65,17 +65,12 @@ case "${1:-all}" in
 esac
 
 # ---- the capped runner -------------------------------------------------------------------------------------------------------------------
-if [ "${CAP+set}" = set ]; then
-  read -r -a cap_prefix <<<"$CAP"
-elif command -v systemd-run >/dev/null 2>&1 && systemd-run --user --scope --quiet true >/dev/null 2>&1; then
-  cap_prefix=(systemd-run --user --scope --quiet -p CPUQuota=600% -p MemoryHigh=16G nice -n 19 ionice -c3)
-else
-  cap_prefix=(nice -n 19)
-fi
-cap() { "${cap_prefix[@]}" "$@"; }
-pnpm_flags=(--prefer-offline)
+# The steps this script shares with scripts/new-app.sh (the capped runner, the template copy, the install, the patches) are in a file of their own.
+# shellcheck source-path=SCRIPTDIR source=lib/app-setup.sh
+. "$repo/scripts/lib/app-setup.sh"
+sn_cap_init auto
 gradle_flags=()
-if [ "${OFFLINE:-}" = 1 ]; then pnpm_flags=(--offline); gradle_flags=(--offline); fi
+if [ "${OFFLINE:-}" = 1 ]; then gradle_flags=(--offline); fi
 
 # ---- the toolchain -----------------------------------------------------------------------------------------------------------------------
 if [ -z "${JAVA_HOME:-}" ] || ! "$JAVA_HOME/bin/java" -version 2>&1 | grep -q '"17\.'; then
@@ -96,9 +91,6 @@ app=
 logs=
 tarballs=
 step=0
-
-die() { echo "error: $*" >&2; exit 1; }
-spec_of() { node -e 'const p=require(process.argv[1]);console.log((p.dependencies||{})[process.argv[2]]||"")' "$app/package.json" "$1"; }
 
 # run_stage <name> <needs, space separated or ""> <function>: records the result in status[] and always returns 0. It must not be called from
 # an `if`, `&&` or `||` condition: bash would then ignore `set -e` in the stage's subshell, and a failing command in the middle of a stage
@@ -189,48 +181,18 @@ st_svelte() {
 }
 
 st_template() {
-  mkdir -p "$app"
-  tar -C "$template" -cf - --exclude=node_modules --exclude=.svelte-native --exclude=android --exclude=ios --exclude=.expo . | tar -C "$app" -xf -
-  # The app before "Apply the patches": the block is the last of the file, set aside and declared by the "patches" stage.
-  awk '/^patchedDependencies:/ { exit } { print }' "$template/pnpm-workspace.yaml" >"$app/pnpm-workspace.yaml"
-  awk '/^patchedDependencies:/ { found = 1 } found { print }' "$template/pnpm-workspace.yaml" >"$mode_dir/patched-dependencies.yaml"
-  [ -s "$mode_dir/patched-dependencies.yaml" ] || die "examples/minimal/pnpm-workspace.yaml has no patchedDependencies block"
-  awk 'NR > 1 && NF && !/^ / { exit 1 }' "$mode_dir/patched-dependencies.yaml" || die "patchedDependencies must be the last block of examples/minimal/pnpm-workspace.yaml"
-  # Nothing the app is made of reaches into this repository: no relative path out of it, no workspace/link/file specifier, no import of the library by path.
-  if grep -rnE '\.\./|packages/svelte-native|apps/(example|qa)' "$app/src" "$app/metro.config.cjs" "$app/app.json"; then die "the template points into the repository"; fi
-  if grep -nE '"(workspace|link|file):' "$app/package.json"; then die "the template's package.json has a workspace:, link: or file: specifier"; fi
-  echo "template: $(find "$app" -type f | wc -l) files, $(($(wc -l <"$mode_dir/patched-dependencies.yaml") - 1)) patches to declare"
+  sn_template_copy "$template" "$app" "$mode_dir/patched-dependencies.yaml"
 }
 
 st_install() {
-  cd "$app"
   local library
   if [ "$mode" = tarball ]; then library=$(ls "$tarballs"/rasheed-svelte-native-*.tgz); else library="$git_url#$git_ref&path:packages/svelte-native"; fi
-  echo "+ pnpm add $library $(ls "$tarballs"/svelte-*.tgz)"
-  cap pnpm add "${pnpm_flags[@]}" "$library" "$(ls "$tarballs"/svelte-*.tgz)"
-  echo "package.json: \"@rasheed/svelte-native\": \"$(spec_of @rasheed/svelte-native)\""
-  echo "package.json: \"svelte\": \"$(spec_of svelte)\""
-  [ -f node_modules/@rasheed/svelte-native/package.json ] || die "node_modules/@rasheed/svelte-native is missing"
-  [ -f node_modules/@rasheed/svelte-native/expo-module.config.json ] || die "the installed library has no expo-module.config.json"
+  sn_install "$app" "$library" "$(ls "$tarballs"/svelte-*.tgz)"
   if [ "$mode" = git ]; then grep -m1 "resolution: {commit" pnpm-lock.yaml | sed 's/^ */lockfile: /'; fi
 }
 
 st_patches() {
-  cd "$app"
-  # README, "Apply the patches": copy the files, declare them, install again.
-  mkdir -p patches/svelte-native
-  cp node_modules/@rasheed/svelte-native/patches/*.patch patches/svelte-native/
-  echo "copied $(ls patches/svelte-native | wc -l) patch files"
-  cat "$mode_dir/patched-dependencies.yaml" >>pnpm-workspace.yaml
-  # Declaring the patches changes the lockfile; with CI=1 pnpm would refuse ("frozen installation"), so the first install after the declaration is not frozen.
-  cap pnpm install --no-frozen-lockfile "${pnpm_flags[@]}"
-  local declared key
-  declared=$(sed -n 's/^  "\{0,1\}\([^":]*[^":]\)"\{0,1\}: patches.*/\1/p' "$mode_dir/patched-dependencies.yaml")
-  [ -n "$declared" ] || die "no patch declared"
-  for key in $declared; do
-    grep -qF "$key" <(sed -n '/^patchedDependencies:/,/^$/p' pnpm-lock.yaml) || die "$key is not in the lockfile's patchedDependencies"
-    echo "patched: $key"
-  done
+  sn_patches_apply "$app" "$mode_dir/patched-dependencies.yaml"
 }
 
 st_hook() {

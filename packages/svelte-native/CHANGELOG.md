@@ -14,6 +14,11 @@ Notable changes to `@rasheed/svelte-native`, newest first. The format follows [K
 
 - `svelte` is a peer dependency (`5.56.7`, the custom-renderer build of sveltejs/svelte#18042 at `216f258`), not a dependency by `file:`; the repository installs its vendored tarball as a development dependency. `esbuild` is pinned to `0.28.1` in the package's own manifest instead of the workspace catalog, which a dependent cannot resolve.
 - The six native modules moved from the example app's `modules/` to `native/` in the package, and the engine's `SPEC.md` with them (`native/svelte-engine/SPEC.md`). An app that linked them as local modules (`modules/svelte-engine` and the others) removes them and depends on the package; `autolinkingExclude` entries that named one of the six no longer exist (the six are one package). The example app links them through its workspace dependency, like any app.
+- The entries a Node process loads are built JavaScript in `dist/node/` (committed; `pnpm build` writes it, a test fails when it is stale): the `svelte-native` command line, `/metro`, `/transformer`, `/expo`, `/vite`, `/lower` and `/routes`. Their `exports` are `{ "types": "./src/….ts", "default": "./dist/node/…" }`; every other entry is still the TypeScript Metro compiles. The built files name the runtime files Metro compiles by path into `src/` of the package (`src/package-root.ts`), and the doctor finds `patches/` the same way.
+
+### Fixed
+
+- The `svelte-native` command line (`doctor`, `sync`, `dev`, …), `@rasheed/svelte-native/metro` (`metro.config.cjs`), `/transformer` (Metro's workers), `/expo` (`@expo/config`'s plugin loader) and `/vite` did not load when the package was installed in an app's `node_modules`: Node refuses TypeScript from there (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`, Node 25 and 26), and Vite and `@expo/config` hand the file to Node. They worked in this repository only because the workspace link is not under `node_modules`. A test unpacks the packed package into a scratch `node_modules` and loads each with plain `node`.
 
 ## 0.2.0 - 2026-11-08
 

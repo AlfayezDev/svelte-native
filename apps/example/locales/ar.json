@@ -1,10 +1,10 @@
 {
 	"ios": {
-		"CFBundleDisplayName": "رشيد",
-		"NSCameraUsageDescription": "يرفق رشيد الصور التي تلتقطها بردودك.",
-		"NSPhotoLibraryUsageDescription": "يرفق رشيد الصور ومقاطع الفيديو التي تختارها بردودك."
+		"CFBundleDisplayName": "Svelte Native",
+		"NSCameraUsageDescription": "يرفق المثال الصور التي تلتقطها في المختبر.",
+		"NSPhotoLibraryUsageDescription": "يعرض المثال الصور ومقاطع الفيديو التي تختارها في المختبر."
 	},
 	"android": {
-		"app_name": "رشيد"
+		"app_name": "Svelte Native"
 	}
 }

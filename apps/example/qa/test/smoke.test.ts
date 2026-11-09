@@ -394,14 +394,14 @@ describe("three apps: the product and the QA app link the product's native modul
 		expect(read("smoke").dependencies).toEqual({});
 	});
 	test("each app has its own id, name and scheme; the smoke app alone has the smoke test's plugins and the fake Firebase files", () => {
-		expect(config("production").android.package).toBe("io.example.app");
-		expect(config("production").ios.bundleIdentifier).toBe("io.example.app");
+		expect(config("production").android.package).toBe("io.example.sveltenative.example");
+		expect(config("production").ios.bundleIdentifier).toBe("io.example.sveltenative.example");
 		expect(config("qa").android.package).toBe(packageOf.qa);
 		expect(config("qa").ios.bundleIdentifier).toBe(packageOf.qa);
 		expect(config("smoke").android.package).toBe(packageOf.smoke);
 		expect(config("smoke").ios.bundleIdentifier).toBe(packageOf.smoke);
-		expect([config("production").name, config("qa").name, config("smoke").name]).toEqual(["Example", "Example Svelte QA", "Svelte smoke"]);
-		expect([config("production").scheme, config("qa").scheme, config("smoke").scheme]).toEqual(["example", schemeOf.qa, schemeOf.smoke]);
+		expect([config("production").name, config("qa").name, config("smoke").name]).toEqual(["Svelte Native", "Example Svelte QA", "Svelte smoke"]);
+		expect([config("production").scheme, config("qa").scheme, config("smoke").scheme]).toEqual(["svelte-native", schemeOf.qa, schemeOf.smoke]);
 		const smokePlugins = ["@react-native-firebase/app", "@react-native-firebase/messaging", "react-native-quick-crypto", "@intercom/intercom-react-native", "expo-build-properties", "expo-notifications", "expo-location", "@config-plugins/react-native-adjust"];
 		for (const variant of ["production", "qa"] as const) {
 			const plugins = config(variant).plugins.map(pluginName);

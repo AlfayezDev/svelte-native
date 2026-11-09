@@ -1,10 +1,10 @@
 {
 	"ios": {
-		"CFBundleDisplayName": "Example",
-		"NSCameraUsageDescription": "Example attaches the photos you take to your replies.",
-		"NSPhotoLibraryUsageDescription": "Example attaches the photos and videos you choose to your replies."
+		"CFBundleDisplayName": "Svelte Native",
+		"NSCameraUsageDescription": "The example attaches the photos you take in the lab.",
+		"NSPhotoLibraryUsageDescription": "The example shows the photos and videos you choose in the lab."
 	},
 	"android": {
-		"app_name": "Example"
+		"app_name": "Svelte Native"
 	}
 }

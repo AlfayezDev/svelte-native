@@ -48,15 +48,5 @@
 			"extends": "preview",
 			"distribution": "store"
 		}
-	},
-	"submit": {
-		"production": {
-			"android": {
-				"track": "internal"
-			},
-			"ios": {
-				"ascAppId": "6823075203"
-			}
-		}
 	}
 }

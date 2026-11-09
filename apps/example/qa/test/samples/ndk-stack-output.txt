@@ -1,9 +1,0 @@
-********** Crash dump: **********
-Build fingerprint: 'google/sdk_gphone64_x86_64/emu64xa:16/BP22.250124.009/12936430:userdebug/dev-keys'
-#00 0x0000000000024720 /data/app/~~Qm1xYz9p-AbCdEfGh==/io.rasheed.svelteqa-Zy8wVu2tSrQpOnMl==/base.apk!/lib/x86_64/libsvelteengine.so (offset 0x20000) (BuildId: 1e0d6029a2b3d85118e14ece7a0c941523226321)
-                                                                                                                                       expo::svelteengine::encodeProps(expo::svelteengine::Batch&, expo::svelteengine::Kind, facebook::react::ShadowView const&, float)
-                                                                                                                                       /repo/apps/example/modules/svelte-engine/android/src/main/cpp/PropsEncoder.cpp:264:0
-#01 0x00000000000258f0 /data/app/~~Qm1xYz9p-AbCdEfGh==/io.rasheed.svelteqa-Zy8wVu2tSrQpOnMl==/base.apk!/lib/x86_64/libsvelteengine.so (offset 0x20000) (BuildId: 1e0d6029a2b3d85118e14ece7a0c941523226321)
-                                                                                                                                       expo::svelteengine::encodeState(expo::svelteengine::Batch&, expo::svelteengine::Kind, facebook::react::ShadowView const&, float)
-                                                                                                                                       /repo/apps/example/modules/svelte-engine/android/src/main/cpp/PropsEncoder.cpp:323:0
-#02 0x000000000007f3c1 /data/app/~~Qm1xYz9p-AbCdEfGh==/io.rasheed.svelteqa-Zy8wVu2tSrQpOnMl==/base.apk!/lib/x86_64/libreactnative.so (offset 0x4d9000) (BuildId: 4f6a1c0e9b7d2a35c8e1f0a9b3d6c2e4)

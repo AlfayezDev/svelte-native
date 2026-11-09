@@ -1,0 +1,2262 @@
+{
+  "version": 1,
+  "devices": {
+    "R58Y90KNGRP": {
+      "role": "phone",
+      "name": "Samsung A16",
+      "runs": [
+        "lab",
+        "boot",
+        "smoke",
+        "gestures",
+        "foreign"
+      ]
+    },
+    "E74A5608-BF8E-5806-8699-1605F82ADED9": {
+      "role": "phone",
+      "name": "iPhone SE 3",
+      "runs": [
+        "lab",
+        "boot",
+        "parity",
+        "a11y",
+        "resilience",
+        "smoke",
+        "gestures",
+        "foreign"
+      ]
+    },
+    "localhost:5555": {
+      "role": "lab",
+      "name": "OVH emulator, software GL",
+      "runs": [
+        "lab",
+        "soak",
+        "crashes",
+        "parity",
+        "a11y",
+        "resilience",
+        "smoke",
+        "gestures",
+        "foreign",
+        "updates",
+        "product"
+      ]
+    }
+  },
+  "scenarios": {
+    "android": [
+      "idle",
+      "animation-48",
+      "animation-48-square",
+      "animation-48-translate",
+      "animation-48-css",
+      "churn-static",
+      "churn-animated",
+      "list-300",
+      "list-300-clipped",
+      "list-300-raw",
+      "list-300-virtual",
+      "input-120",
+      "modal-8",
+      "navigation-8",
+      "header-8",
+      "sheet-8",
+      "tabs-8"
+    ],
+    "ios": [
+      "idle",
+      "animation-48",
+      "animation-48-square",
+      "animation-48-translate",
+      "animation-48-css",
+      "churn-static",
+      "churn-animated",
+      "list-300",
+      "list-300-clipped",
+      "list-300-raw",
+      "list-300-virtual",
+      "input-120",
+      "modal-8",
+      "navigation-8",
+      "header-8",
+      "sheet-8",
+      "tabs-8"
+    ]
+  },
+  "smoke": {
+    "modules": {
+      "android": [
+        "async-storage",
+        "mmkv",
+        "secure-store",
+        "netinfo",
+        "device-info",
+        "expo-device",
+        "get-random-values",
+        "quick-crypto",
+        "quick-base64",
+        "nitro",
+        "launch-arguments",
+        "localization",
+        "constants",
+        "asset",
+        "haptics",
+        "screen-orientation",
+        "store-review",
+        "system-ui",
+        "tracking-transparency",
+        "local-authentication",
+        "notifications",
+        "location",
+        "sharing",
+        "web-browser",
+        "splash-screen",
+        "ssl-pinning",
+        "firebase",
+        "sentry",
+        "hms",
+        "intercom",
+        "statsig",
+        "mixpanel",
+        "adjust",
+        "check-installed-apps",
+        "live-direction"
+      ],
+      "ios": [
+        "async-storage",
+        "mmkv",
+        "secure-store",
+        "netinfo",
+        "device-info",
+        "expo-device",
+        "get-random-values",
+        "quick-crypto",
+        "quick-base64",
+        "nitro",
+        "launch-arguments",
+        "localization",
+        "constants",
+        "asset",
+        "haptics",
+        "screen-orientation",
+        "store-review",
+        "system-ui",
+        "tracking-transparency",
+        "local-authentication",
+        "notifications",
+        "location",
+        "sharing",
+        "web-browser",
+        "splash-screen",
+        "ssl-pinning",
+        "firebase",
+        "sentry",
+        "hms",
+        "intercom",
+        "statsig",
+        "mixpanel",
+        "adjust",
+        "check-installed-apps",
+        "live-direction"
+      ]
+    },
+    "skips": {
+      "android": [
+        "hms",
+        "web-browser"
+      ],
+      "ios": [
+        "web-browser",
+        "hms"
+      ]
+    }
+  },
+  "gestures": {
+    "android": [
+      "gestures-box",
+      "gestures-box-busy",
+      "gestures-box-js",
+      "gestures-box-js-busy",
+      "gestures-pinch-rotate",
+      "gestures-row",
+      "gestures-carousel",
+      "gestures-pushed-edge",
+      "gestures-sheet",
+      "gestures-longpress-tap",
+      "gestures-scroll-native",
+      "gestures-churn"
+    ],
+    "ios": [
+      "gestures-box",
+      "gestures-box-busy",
+      "gestures-box-js",
+      "gestures-box-js-busy",
+      "gestures-pinch-rotate",
+      "gestures-row",
+      "gestures-carousel",
+      "gestures-pushed-edge",
+      "gestures-sheet",
+      "gestures-longpress-tap",
+      "gestures-scroll-native",
+      "gestures-churn"
+    ]
+  },
+  "signedIn": {
+    "android": []
+  },
+  "exceptions": [
+    {
+      "gate": "frames.droppedPct",
+      "device": "E74A5608-BF8E-5806-8699-1605F82ADED9",
+      "scenarios": [
+        "header-8"
+      ],
+      "decision": "D1",
+      "reason": "UIKit's UINavigationBar re-lays out its items for every push and pop (about 30 ms a run, 20 to 23 ms of it layoutSubviews), which is the platform's floor, not the engine's",
+      "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'Native screens, iOS' > 'Where the time goes (iPhone SE 3, Time Profiler, 60 Hz)'"
+    },
+    {
+      "gate": "frames.maxPeriodRatio",
+      "device": "E74A5608-BF8E-5806-8699-1605F82ADED9",
+      "scenarios": [
+        "header-8"
+      ],
+      "decision": "D1",
+      "reason": "UIKit's UINavigationBar re-lays out its items for every push and pop (about 30 ms a run, 20 to 23 ms of it layoutSubviews), which is the platform's floor, not the engine's",
+      "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'Native screens, iOS' > 'Where the time goes (iPhone SE 3, Time Profiler, 60 Hz)'"
+    },
+    {
+      "gate": "frames.maxMs",
+      "device": "E74A5608-BF8E-5806-8699-1605F82ADED9",
+      "scenarios": [
+        "header-8"
+      ],
+      "decision": "D1",
+      "reason": "UIKit's UINavigationBar re-lays out its items for every push and pop (about 30 ms a run, 20 to 23 ms of it layoutSubviews), which is the platform's floor, not the engine's",
+      "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'Native screens, iOS' > 'Where the time goes (iPhone SE 3, Time Profiler, 60 Hz)'"
+    },
+    {
+      "gate": "frames.droppedPct",
+      "device": "R58Y90KNGRP",
+      "scenarios": [
+        "churn-animated"
+      ],
+      "decision": "D1",
+      "reason": "Reanimated's worklet runtime applies the animated props of the churn on the Android UI thread, which no change in the engine's write path removes",
+      "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'Animated write path' and 'Frames: recycling, text cache' (Measurements, churn-animated)"
+    },
+    {
+      "gate": "frames.maxPeriodRatio",
+      "device": "R58Y90KNGRP",
+      "scenarios": [
+        "churn-animated"
+      ],
+      "decision": "D1",
+      "reason": "Reanimated's worklet runtime applies the animated props of the churn on the Android UI thread, which no change in the engine's write path removes",
+      "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'Animated write path' and 'Frames: recycling, text cache' (Measurements, churn-animated)"
+    },
+    {
+      "gate": "frames.maxMs",
+      "device": "R58Y90KNGRP",
+      "scenarios": [
+        "churn-animated"
+      ],
+      "decision": "D1",
+      "reason": "Reanimated's worklet runtime applies the animated props of the churn on the Android UI thread, which no change in the engine's write path removes",
+      "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'Animated write path' and 'Frames: recycling, text cache' (Measurements, churn-animated)"
+    },
+    {
+      "gate": "list.virtual300.mountMs",
+      "device": "R58Y90KNGRP",
+      "decision": "D9",
+      "reason": "22 to 33 ms against 10 under the gate protocol (six idle frames before the mount); the work itself is about 9 ms on warm cores, and placement, clock and idle redraw do not explain the cold spread; pinning and ADPF had no effect",
+      "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'The windowed list's cold mount on the A16 (2 November 2026, branch feat/svelte-native-list2)'"
+    },
+    {
+      "gate": "boot.warm.p90",
+      "device": "R58Y90KNGRP",
+      "decision": "D9",
+      "reason": "the warm p90 is the phone's tail, another process's GC on a big core and the system_server window-manager lock; the phone has fast and slow days (round 2 read about 50 ms faster in the same interleaved hour, median 370 to 318 ms)",
+      "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'Boot on the phone, round 2: where the slow launches come from (2 November 2026, Samsung A16)' and 'round 3'"
+    },
+    {
+      "gate": "boot.cold.p90",
+      "device": "R58Y90KNGRP",
+      "decision": "D9",
+      "reason": "the cold p90 is the phone's tail, another process's GC on a big core and the system_server window-manager lock; the phone has fast and slow days (round 2 read about 50 ms faster in the same interleaved hour, median 370 to 318 ms)",
+      "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'Boot on the phone, round 2: where the slow launches come from (2 November 2026, Samsung A16)' and 'round 3'"
+    },
+    {
+      "gate": "frames.droppedPct",
+      "device": "R58Y90KNGRP",
+      "scenarios": [
+        "animation-48",
+        "animation-48-square",
+        "animation-48-translate"
+      ],
+      "maxLateIntervals": 2,
+      "decision": "D9",
+      "reason": "the first interval of the window (19 to 27 ms in the D9 evidence): the scenario's own 48 withRepeat animations start in one Worklets message on the UI thread, pacing them was vetoed; covered up to 2 late intervals (that one plus the allowance every scenario has), no further",
+      "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'The first interval of the animation scenarios, and what the UI thread takes in one message (2 November 2026)'"
+    },
+    {
+      "gate": "frames.maxPeriodRatio",
+      "device": "R58Y90KNGRP",
+      "scenarios": [
+        "animation-48",
+        "animation-48-square",
+        "animation-48-translate"
+      ],
+      "maxLateIntervals": 2,
+      "decision": "D9",
+      "reason": "the first interval of the window (19 to 27 ms in the D9 evidence): the scenario's own 48 withRepeat animations start in one Worklets message on the UI thread, pacing them was vetoed; covered up to 2 late intervals (that one plus the allowance every scenario has), no further",
+      "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'The first interval of the animation scenarios, and what the UI thread takes in one message (2 November 2026)'"
+    },
+    {
+      "gate": "gestures.frames.droppedPct",
+      "device": "R58Y90KNGRP",
+      "scenarios": [
+        "box"
+      ],
+      "decision": "1 Nov first touch",
+      "reason": "the first touch of a process runs react-native-gesture-handler's first worklet and class initialisation (25 ms for the first DOWN on a little core); a warm-up touch did not help",
+      "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'The first touch of a process (1 November 2026)'"
+    },
+    {
+      "gate": "gestures.frames.maxPeriodRatio",
+      "device": "R58Y90KNGRP",
+      "scenarios": [
+        "box"
+      ],
+      "decision": "1 Nov first touch",
+      "reason": "the first touch of a process runs react-native-gesture-handler's first worklet and class initialisation (25 ms for the first DOWN on a little core); a warm-up touch did not help",
+      "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'The first touch of a process (1 November 2026)'"
+    },
+    {
+      "gate": "gestures.frames.maxMs",
+      "device": "R58Y90KNGRP",
+      "scenarios": [
+        "box"
+      ],
+      "decision": "1 Nov first touch",
+      "reason": "the first touch of a process runs react-native-gesture-handler's first worklet and class initialisation (25 ms for the first DOWN on a little core); a warm-up touch did not help",
+      "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'The first touch of a process (1 November 2026)'"
+    },
+    {
+      "gate": "gestures.frames.droppedPct",
+      "device": "E74A5608-BF8E-5806-8699-1605F82ADED9",
+      "scenarios": [
+        "box",
+        "box-busy",
+        "pinch-rotate"
+      ],
+      "decision": "D13",
+      "reason": "iOS can inject touches only through XCUITest, and frames measured under it are not the library's: the same box driven by a finger read 0.3 % dropped (1 late interval of 301), 33 ms worst, against 7.3 to 8.8 % and 53 to 67 ms through XCUITest, and the JavaScript-busy variant 1.5 % (synthetic touches get no touch boost; the runner loads the phone); the gesture checks stay judged",
+      "evidence": "apps/qa/qa/runs/lab-E74A5608-BF8E-5806-8699-1605F82ADED9-20261103T115915Z.json (finger, run 1) against gestures-E74A5608-BF8E-5806-8699-1605F82ADED9-20261103T103643Z.json (XCUITest); GOAL.md D13"
+    },
+    {
+      "gate": "gestures.frames.maxPeriodRatio",
+      "device": "E74A5608-BF8E-5806-8699-1605F82ADED9",
+      "scenarios": [
+        "box",
+        "box-busy",
+        "pinch-rotate"
+      ],
+      "decision": "D13",
+      "reason": "iOS can inject touches only through XCUITest, and frames measured under it are not the library's: the same box driven by a finger read 0.3 % dropped (1 late interval of 301), 33 ms worst, against 7.3 to 8.8 % and 53 to 67 ms through XCUITest, and the JavaScript-busy variant 1.5 % (synthetic touches get no touch boost; the runner loads the phone); the gesture checks stay judged",
+      "evidence": "apps/qa/qa/runs/lab-E74A5608-BF8E-5806-8699-1605F82ADED9-20261103T115915Z.json (finger, run 1) against gestures-E74A5608-BF8E-5806-8699-1605F82ADED9-20261103T103643Z.json (XCUITest); GOAL.md D13"
+    },
+    {
+      "gate": "gestures.frames.maxMs",
+      "device": "E74A5608-BF8E-5806-8699-1605F82ADED9",
+      "scenarios": [
+        "box",
+        "box-busy",
+        "pinch-rotate"
+      ],
+      "decision": "D13",
+      "reason": "iOS can inject touches only through XCUITest, and frames measured under it are not the library's: the same box driven by a finger read 0.3 % dropped (1 late interval of 301), 33 ms worst, against 7.3 to 8.8 % and 53 to 67 ms through XCUITest, and the JavaScript-busy variant 1.5 % (synthetic touches get no touch boost; the runner loads the phone); the gesture checks stay judged",
+      "evidence": "apps/qa/qa/runs/lab-E74A5608-BF8E-5806-8699-1605F82ADED9-20261103T115915Z.json (finger, run 1) against gestures-E74A5608-BF8E-5806-8699-1605F82ADED9-20261103T103643Z.json (XCUITest); GOAL.md D13"
+    },
+    {
+      "gate": "frames.droppedPct",
+      "device": "R58Y90KNGRP",
+      "scenarios": [
+        "churn-static",
+        "list-300-raw"
+      ],
+      "maxLateIntervals": 4,
+      "maxMs": 20,
+      "decision": "D11",
+      "reason": "repeated short late intervals on the Galaxy A16's 90 Hz display (2 to 4 late intervals in more than one run of ten, no frame over 19 ms: late at 90 Hz, on time at 60 Hz); covered up to 4 late intervals and a 20 ms frame in the judged runs, no further",
+      "evidence": "apps/qa/qa/runs/lab-R58Y90KNGRP-20261102T182601Z.json (final build fb53ab1cf, 2 Nov, 10 runs): the churn-static and list-300-raw frame records; GOAL.md D11"
+    },
+    {
+      "gate": "frames.maxPeriodRatio",
+      "device": "R58Y90KNGRP",
+      "scenarios": [
+        "churn-static",
+        "list-300-raw"
+      ],
+      "maxLateIntervals": 4,
+      "maxMs": 20,
+      "decision": "D11",
+      "reason": "repeated short late intervals on the Galaxy A16's 90 Hz display (2 to 4 late intervals in more than one run of ten, no frame over 19 ms: late at 90 Hz, on time at 60 Hz); covered up to 4 late intervals and a 20 ms frame in the judged runs, no further",
+      "evidence": "apps/qa/qa/runs/lab-R58Y90KNGRP-20261102T182601Z.json (final build fb53ab1cf, 2 Nov, 10 runs): the churn-static and list-300-raw frame records; GOAL.md D11"
+    }
+  ],
+  "gates": [
+    {
+      "id": "checks.passed",
+      "title": "Functional checks passed (of 28)",
+      "unit": "checks",
+      "metric": "lab.checks.passed",
+      "bar": {
+        "android": {
+          "min": 28
+        },
+        "ios": {
+          "min": 28
+        }
+      }
+    },
+    {
+      "id": "checks.failed",
+      "title": "Functional checks failed",
+      "unit": "checks",
+      "metric": "lab.checks.failed",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "lab.runs",
+      "title": "Complete lab runs, consecutive",
+      "unit": "runs",
+      "metric": "lab.runs",
+      "bar": {
+        "android": {
+          "min": 10
+        },
+        "ios": {
+          "min": 10
+        }
+      }
+    },
+    {
+      "id": "lab.incomplete",
+      "title": "Lab runs that never logged their completion line, or that another app interrupted",
+      "unit": "runs",
+      "metric": "lab.incompleteRuns",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "lab.unparsed",
+      "title": "Lab: `[Svelte stress]` lines the harness could not read (cut by logcat near 4 KB, or quoted in a way it does not undo); the scenario each carried is missing",
+      "unit": "lines",
+      "metric": "lab.unparsedLines",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "lab.scenarios.failed",
+      "title": "Scenarios the lab itself marks failed",
+      "unit": "scenarios",
+      "metric": "lab.scenarios.failed",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      },
+      "roles": [
+        "phone"
+      ],
+      "excusing": {
+        "runs": "lab.scenarios.failedRuns",
+        "gates": [
+          "frames.droppedPct",
+          "frames.maxPeriodRatio",
+          "frames.maxMs"
+        ]
+      }
+    },
+    {
+      "id": "lab.scenarios.missing",
+      "title": "Scenarios of the full checks,quick run absent from the lab run (the list is `scenarios` above)",
+      "unit": "scenarios",
+      "metric": "lab.scenarios.missing",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "boot.warm.p90",
+      "title": "Warm boot p90, Start proc to Displayed",
+      "unit": "ms",
+      "metric": "boot.warm.p90",
+      "bar": {
+        "android": {
+          "max": 350
+        },
+        "ios": {
+          "max": 250
+        }
+      },
+      "roles": [
+        "phone"
+      ]
+    },
+    {
+      "id": "boot.cold.p90",
+      "title": "Cold boot p90, Start proc to Displayed (process cold after an idle gap; the launch users feel)",
+      "unit": "ms",
+      "metric": "boot.cold.p90",
+      "bar": {
+        "android": {
+          "max": 350
+        },
+        "ios": {
+          "max": 250
+        }
+      },
+      "roles": [
+        "phone"
+      ]
+    },
+    {
+      "id": "boot.warm.samples",
+      "title": "Warm boot samples",
+      "unit": "launches",
+      "metric": "boot.warm.samples",
+      "bar": {
+        "android": {
+          "min": 30
+        },
+        "ios": {
+          "min": 30
+        }
+      },
+      "roles": [
+        "phone"
+      ]
+    },
+    {
+      "id": "boot.cold.samples",
+      "title": "Cold boot samples",
+      "unit": "launches",
+      "metric": "boot.cold.samples",
+      "bar": {
+        "android": {
+          "min": 30
+        },
+        "ios": {
+          "min": 30
+        }
+      },
+      "roles": [
+        "phone"
+      ]
+    },
+    {
+      "id": "boot.warm.failed",
+      "title": "Warm launches that produced no display time",
+      "unit": "launches",
+      "metric": "boot.warm.failed",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      },
+      "roles": [
+        "phone"
+      ]
+    },
+    {
+      "id": "boot.cold.failed",
+      "title": "Cold launches that produced no display time",
+      "unit": "launches",
+      "metric": "boot.cold.failed",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      },
+      "roles": [
+        "phone"
+      ]
+    },
+    {
+      "id": "boot.warm.jsTotal.p90",
+      "title": "JavaScript before first content, warm p90",
+      "unit": "ms",
+      "metric": "boot.warm.jsTotal.p90",
+      "bar": {
+        "android": {
+          "max": 100
+        },
+        "ios": {
+          "max": 100
+        }
+      },
+      "roles": [
+        "phone"
+      ]
+    },
+    {
+      "id": "boot.js.samples",
+      "title": "Warm launches that logged the [Svelte boot] total, behind the p90 above",
+      "unit": "launches",
+      "metric": "boot.warm.jsTotal.samples",
+      "bar": {
+        "android": {
+          "min": 30
+        },
+        "ios": {
+          "min": 30
+        }
+      },
+      "roles": [
+        "phone"
+      ]
+    },
+    {
+      "id": "frames.droppedPct",
+      "title": "Dropped frames per scenario: intervals longer than 1.5 frame periods, at most one per run (D9), in all but one run of a lab of ten (D10); the worst run shows beside the value, and the dropped share of the judged run",
+      "unit": "late intervals",
+      "metric": "frames.*.lateIntervals",
+      "bar": {
+        "android": {
+          "max": 1
+        },
+        "ios": {
+          "max": 1
+        }
+      },
+      "roles": [
+        "phone"
+      ],
+      "also": {
+        "metric": "frames.*.droppedPct",
+        "unit": "%"
+      },
+      "allowance": {
+        "runs": "frames.*.runs",
+        "min": 10,
+        "late": "frames.droppedPct",
+        "long": "frames.maxMs"
+      }
+    },
+    {
+      "id": "frames.maxPeriodRatio",
+      "title": "Longest frame over the frame period, per scenario, judged as the dropped frames are (D9 and D10: at most one interval over 1.5 periods per run, all but one run of a lab of ten; a frame over 33 ms is frames.maxMs); the ratio of the judged run shows beside it",
+      "unit": "late intervals",
+      "metric": "frames.*.lateIntervals",
+      "bar": {
+        "android": {
+          "max": 1
+        },
+        "ios": {
+          "max": 1
+        }
+      },
+      "roles": [
+        "phone"
+      ],
+      "also": {
+        "metric": "frames.*.maxPeriodRatio",
+        "unit": "x period"
+      },
+      "allowance": {
+        "runs": "frames.*.runs",
+        "min": 10,
+        "late": "frames.droppedPct",
+        "long": "frames.maxMs"
+      }
+    },
+    {
+      "id": "frames.maxMs",
+      "title": "Longest frame, per scenario: at most 33 ms in the worst run, all but one run of a lab of ten (D10)",
+      "unit": "ms",
+      "metric": "frames.*.maxMs",
+      "bar": {
+        "android": {
+          "max": 33
+        },
+        "ios": {
+          "max": 33
+        }
+      },
+      "roles": [
+        "phone"
+      ],
+      "allowance": {
+        "runs": "frames.*.runs",
+        "min": 10,
+        "late": "frames.droppedPct",
+        "long": "frames.maxMs"
+      }
+    },
+    {
+      "id": "list.virtual300.mountMs",
+      "title": "300-row virtual list, mount to layout",
+      "unit": "ms",
+      "metric": "list.virtual300.mountMs",
+      "bar": {
+        "android": {
+          "max": 10
+        },
+        "ios": {
+          "max": 15
+        }
+      },
+      "roles": [
+        "phone"
+      ]
+    },
+    {
+      "id": "log.fatals",
+      "title": "Fatals: crashes, ANRs and JavaScript error logs",
+      "unit": "lines",
+      "metric": "log.fatals",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "log.crashReports",
+      "title": "Crash reports of the app in the iPhone's crash log (after the results too)",
+      "unit": "reports",
+      "metric": "log.crashReports",
+      "bar": {
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "log.engineWarnings",
+      "title": "Engine warnings (SvelteEngine W and E lines)",
+      "unit": "lines",
+      "metric": "log.engineWarnings",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "memory.heapGrowthPct",
+      "title": "Heap growth after the soak, over post-boot",
+      "unit": "%",
+      "metric": "memory.heapGrowthPct",
+      "bar": {
+        "android": {
+          "max": 5
+        },
+        "ios": {
+          "max": 5
+        }
+      }
+    },
+    {
+      "id": "memory.leakedViews",
+      "title": "Engine views alive after the soak's last unmount, over the baseline",
+      "unit": "views",
+      "metric": "memory.leakedViews",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "memory.deadTagWrites",
+      "title": "Animated writes outliving their node by over 1 s, never claimed or dropped",
+      "unit": "writes",
+      "metric": "memory.deadTagWrites",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "soak.minutes",
+      "title": "Soak duration (churn, navigation, modal, sheet, list, tabs)",
+      "unit": "min",
+      "metric": "soak.minutes",
+      "bar": {
+        "android": {
+          "min": 10
+        },
+        "ios": {
+          "min": 10
+        }
+      }
+    },
+    {
+      "id": "soak.crashes",
+      "title": "Crashes, ANRs and process deaths during the soak",
+      "unit": "crashes",
+      "metric": "soak.crashes",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "crashes.coldStarts",
+      "title": "Cold starts run for the crash count",
+      "unit": "starts",
+      "metric": "crashes.coldStarts",
+      "bar": {
+        "android": {
+          "min": 1000
+        },
+        "ios": {
+          "min": 1000
+        }
+      }
+    },
+    {
+      "id": "crashes.coldStartCrashes",
+      "title": "Cold starts that crashed or died",
+      "unit": "starts",
+      "metric": "crashes.coldStartCrashes",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "crashes.coldStartsNoBoot",
+      "title": "Cold starts that never logged [Svelte boot] and did not crash",
+      "unit": "starts",
+      "metric": "crashes.coldStartsNoBoot",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "crashes.run",
+      "title": "The lab run of the crash suites",
+      "unit": "",
+      "metric": "crashes.run",
+      "bar": {
+        "android": {
+          "equals": "checks,quick"
+        },
+        "ios": {
+          "equals": "checks,quick"
+        }
+      }
+    },
+    {
+      "id": "crashes.suites",
+      "title": "Full lab suites run for the crash count",
+      "unit": "suites",
+      "metric": "crashes.suites",
+      "bar": {
+        "android": {
+          "min": 100
+        },
+        "ios": {
+          "min": 100
+        }
+      }
+    },
+    {
+      "id": "crashes.suiteCrashes",
+      "title": "Full suites with a crash",
+      "unit": "suites",
+      "metric": "crashes.suiteCrashes",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "crashes.suitesIncomplete",
+      "title": "Full suites that never logged their last line and did not crash",
+      "unit": "suites",
+      "metric": "crashes.suitesIncomplete",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "crashes.anrs",
+      "title": "ANRs over the cold starts and the suites",
+      "unit": "ANRs",
+      "metric": "crashes.anrs",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "parity.diffPixels",
+      "title": "Screenshot parity: differing pixels outside the masks, worst case",
+      "unit": "px",
+      "metric": "parity.diffPixelsOutsideMasks",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "parity.incomplete",
+      "title": "Parity cases not compared against a reference (missing, unstable, errored, skipped, not run) (D12: the signed-in cases skipped because the phase never started, for lack of a QA account, are not counted)",
+      "unit": "cases",
+      "metric": "parity.casesIncomplete",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "parity.maskedPct",
+      "title": "Screenshot parity: share of the screen the masks cover, worst case",
+      "unit": "%",
+      "metric": "parity.maskedPct",
+      "bar": {
+        "android": {
+          "max": 25
+        },
+        "ios": {
+          "max": 25
+        }
+      }
+    },
+    {
+      "id": "parity.signedIn.missing",
+      "title": "Screenshot parity: pinned signed-in screens (gates.json signedIn) not compared in every variant (informational, D12)",
+      "unit": "cases",
+      "metric": "parity.signedIn.missing",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      },
+      "informational": "D12, D15: the signed-in screens are a product's account screens, not the library's; this repository's example has none (the list is empty), so the gate has nothing to count, and it is shown and never blocks"
+    },
+    {
+      "id": "parity.casesRetried",
+      "title": "Screenshot parity: cases the emulator ran more than once (a failed wait or dump, retried; informational)",
+      "unit": "cases",
+      "metric": "parity.casesRetried",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      },
+      "informational": "A retry that passes is a pass, and the first try's evidence is in the run file (failures); the count is shown so a retry is never silent and never blocks"
+    },
+    {
+      "id": "a11y.unreachable",
+      "title": "Accessibility: interactive elements not reachable",
+      "unit": "elements",
+      "metric": "a11y.unreachable",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "a11y.unlabeled",
+      "title": "Accessibility: interactive elements without a label",
+      "unit": "elements",
+      "metric": "a11y.unlabeled",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "a11y.notActionable",
+      "title": "Accessibility: interactive elements without an action",
+      "unit": "elements",
+      "metric": "a11y.notActionable",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "a11y.orderViolations",
+      "title": "Accessibility: focus order differing from visual order",
+      "unit": "pairs",
+      "metric": "a11y.orderViolations",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "a11y.titleNotFirst",
+      "title": "Accessibility: screens whose title is not first",
+      "unit": "screens",
+      "metric": "a11y.titleNotFirst",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "a11y.focusLeaks",
+      "title": "Accessibility: covered screen still reachable under a sheet or modal",
+      "unit": "elements",
+      "metric": "a11y.focusLeaks",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "a11y.stateMismatches",
+      "title": "Accessibility: published state, value, hint or actions differing from the lab's expectations",
+      "unit": "controls",
+      "metric": "a11y.stateMismatches",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "a11y.incomplete",
+      "title": "Accessibility: screens not dumped (D12: the signed-in cases skipped because the phase never started, for lack of a QA account, are not counted)",
+      "unit": "screens",
+      "metric": "a11y.screensIncomplete",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "a11y.signedIn.missing",
+      "title": "Accessibility: pinned signed-in screens (gates.json signedIn) not dumped in every layout (informational, D12)",
+      "unit": "screens",
+      "metric": "a11y.signedIn.missing",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      },
+      "informational": "D12, D15: the signed-in screens are a product's account screens, not the library's; this repository's example has none (the list is empty), so the gate has nothing to count, and it is shown and never blocks"
+    },
+    {
+      "id": "a11y.screensRetried",
+      "title": "Accessibility: screens the emulator ran more than once (a failed launch, retried; informational)",
+      "unit": "screens",
+      "metric": "a11y.screensRetried",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      },
+      "informational": "A retry that passes is a measurement, and the first try's evidence is in the run file (failures); the count is shown so a retry is never silent and never blocks"
+    },
+    {
+      "id": "resilience.failures",
+      "title": "Resilience: steps that failed (process, log, engine warnings, render)",
+      "unit": "steps",
+      "metric": "resilience.failures",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "resilience.stepsMissing",
+      "title": "Resilience: steps of the full plan not run",
+      "unit": "steps",
+      "metric": "resilience.stepsMissing",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "resilience.skipped",
+      "title": "Resilience: steps the device could not perform (neither a pass nor a failure; the iPhone's appearance pair when the XCUITest SDK cannot switch it)",
+      "unit": "steps",
+      "metric": "resilience.skipped",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 2
+        }
+      }
+    },
+    {
+      "id": "resilience.gateBypassed",
+      "title": "Resilience: the run bypassed the system's say in the iOS restore (a diagnostic, not evidence for the product)",
+      "unit": "runs",
+      "metric": "resilience.gateBypassed",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "gestures.checks",
+      "title": "Gestures: failed checks of a scenario (counters, rests, scroll offsets, leaks), a timeout counting as one",
+      "unit": "checks",
+      "metric": "gestures.*.failedChecks",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "gestures.frames.droppedPct",
+      "title": "Gestures: frames dropped while a gesture drives an animation (box, busy-JS box, pinch): intervals longer than 1.5 frame periods in the worst launch, at most one (D9); the dropped share shows beside it",
+      "unit": "late intervals",
+      "metric": "gestures.*.lateIntervals",
+      "bar": {
+        "android": {
+          "max": 1
+        },
+        "ios": {
+          "max": 1
+        }
+      },
+      "roles": [
+        "phone"
+      ],
+      "also": {
+        "metric": "gestures.*.droppedPct",
+        "unit": "%"
+      }
+    },
+    {
+      "id": "gestures.frames.maxPeriodRatio",
+      "title": "Gestures: longest frame over the frame period while a gesture drives an animation, judged as the dropped frames are (D9: at most one interval over 1.5 periods per launch); the ratio of the longest frame shows beside it",
+      "unit": "late intervals",
+      "metric": "gestures.*.lateIntervals",
+      "bar": {
+        "android": {
+          "max": 1
+        },
+        "ios": {
+          "max": 1
+        }
+      },
+      "roles": [
+        "phone"
+      ],
+      "also": {
+        "metric": "gestures.*.maxPeriodRatio",
+        "unit": "x period"
+      }
+    },
+    {
+      "id": "gestures.frames.maxMs",
+      "title": "Gestures: longest frame while a gesture drives an animation",
+      "unit": "ms",
+      "metric": "gestures.*.maxMs",
+      "roles": [
+        "phone"
+      ],
+      "bar": {
+        "android": {
+          "max": 33
+        },
+        "ios": {
+          "max": 33
+        }
+      }
+    },
+    {
+      "id": "gestures.churn.leaked",
+      "title": "Gestures: handlers, records, UI registrations and engine views left after 200 mounts and unmounts",
+      "unit": "left",
+      "metric": "gestures.churn.leaked",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "gestures.agreement",
+      "title": "Gestures: counters that differ between adb input and the in-app injector for one scenario",
+      "unit": "counters",
+      "metric": "gestures.agreement.mismatches",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "gestures.scenarios.missing",
+      "title": "Gestures: scenarios of the full run that some launch lacks",
+      "unit": "scenarios",
+      "metric": "gestures.scenarios.missing",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "gestures.launches",
+      "title": "Gestures: complete launches",
+      "unit": "launches",
+      "metric": "gestures.launches",
+      "bar": {
+        "android": {
+          "min": 2
+        },
+        "ios": {
+          "min": 1
+        }
+      }
+    },
+    {
+      "id": "gestures.incomplete",
+      "title": "Gestures: launches that did not reach the end of their scenarios",
+      "unit": "launches",
+      "metric": "gestures.incompleteLaunches",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "gestures.fatals",
+      "title": "Gestures: crashes and JavaScript errors during the run",
+      "unit": "fatals",
+      "metric": "gestures.fatals",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "gestures.engineWarnings",
+      "title": "Gestures: engine warnings and errors during the run",
+      "unit": "warnings",
+      "metric": "gestures.engineWarnings",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "gestures.harnessErrors",
+      "title": "Gestures: handshake lines the harness could not read and injections that failed",
+      "unit": "errors",
+      "metric": "gestures.harnessErrors",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "updates.applied",
+      "title": "Updates: a published update runs after the start that downloads it",
+      "unit": "",
+      "metric": "updates.applied",
+      "bar": {
+        "android": {
+          "min": 1
+        }
+      }
+    },
+    {
+      "id": "updates.rolledBack",
+      "title": "Updates: a bad update is recovered from on the next start",
+      "unit": "",
+      "metric": "updates.rolledBack",
+      "bar": {
+        "android": {
+          "min": 1
+        }
+      }
+    },
+    {
+      "id": "updates.badRetried",
+      "title": "Updates: launches that ran or downloaded the bad update again",
+      "unit": "launches",
+      "metric": "updates.badRetried",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "updates.unexpectedFaults",
+      "title": "Updates: launches other than the bad one that crashed or logged a JavaScript error",
+      "unit": "launches",
+      "metric": "updates.unexpectedFaults",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "updates.channelHealthy",
+      "title": "Updates: the channel ends on an update that runs",
+      "unit": "",
+      "metric": "updates.channelHealthy",
+      "bar": {
+        "android": {
+          "min": 1
+        }
+      }
+    },
+    {
+      "id": "product.boot.fatals",
+      "title": "Product boot: JavaScript fatals and native crashes while it starts (the product app, no development lab)",
+      "unit": "fatals",
+      "metric": "product.boot.fatals",
+      "bar": {
+        "android": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "product.boot.firstScreen",
+      "title": "Product boot: the home screen of the production variant is reached within 15 s of a cold start",
+      "unit": "",
+      "metric": "product.boot.firstScreen",
+      "bar": {
+        "android": {
+          "min": 1
+        }
+      }
+    },
+    {
+      "id": "smoke.complete",
+      "title": "The smoke run logged its completion line, was not interrupted and did not crash",
+      "unit": "run",
+      "metric": "smoke.complete",
+      "bar": {
+        "android": {
+          "min": 1
+        },
+        "ios": {
+          "min": 1
+        }
+      }
+    },
+    {
+      "id": "smoke.fatals",
+      "title": "Crashes, ANRs and interruptions during the smoke run",
+      "unit": "fatals",
+      "metric": "smoke.fatals",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "smoke.failed",
+      "title": "Native modules whose smoke call failed",
+      "unit": "modules",
+      "metric": "smoke.failed",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "smoke.missing",
+      "title": "Pinned native modules the smoke run never reported",
+      "unit": "modules",
+      "metric": "smoke.missing",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "smoke.unexpectedSkips",
+      "title": "Native modules that skipped where the platform does not list a skip (gates.json smoke.skips)",
+      "unit": "modules",
+      "metric": "smoke.unexpectedSkips",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "smoke.ok",
+      "title": "Native modules whose smoke call answered (the pinned modules less the listed skips)",
+      "unit": "modules",
+      "metric": "smoke.ok",
+      "bar": {
+        "android": {
+          "min": 33
+        },
+        "ios": {
+          "min": 33
+        }
+      }
+    },
+    {
+      "id": "foreign.image.failedChecks",
+      "title": "Foreign: failed checks of expo-image (mounts, prop updates, events, commands, pixels; inline, in a list row and in a sheet; React out of the bundle)",
+      "unit": "checks",
+      "metric": "foreign.image.failedChecks",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.image.checks",
+      "title": "Foreign: checks expo-image made (all three places; fewer means a check stopped running, which a failed-checks count cannot show)",
+      "unit": "checks",
+      "metric": "foreign.image.checks",
+      "bar": {
+        "android": {
+          "min": 36
+        },
+        "ios": {
+          "min": 33
+        }
+      }
+    },
+    {
+      "id": "foreign.image.skipped",
+      "title": "Foreign: checks of expo-image skipped (none on Android, where every check runs; on the iPhone at most a press that needs a finger: nonzero only for fast-shadow and svg, named in foreign.ios)",
+      "unit": "checks",
+      "metric": "foreign.image.skipped",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.blur.failedChecks",
+      "title": "Foreign: failed checks of expo-blur (mounts, prop updates, events, commands, pixels; inline, in a list row and in a sheet; React out of the bundle)",
+      "unit": "checks",
+      "metric": "foreign.blur.failedChecks",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.blur.checks",
+      "title": "Foreign: checks expo-blur made (all three places; fewer means a check stopped running, which a failed-checks count cannot show)",
+      "unit": "checks",
+      "metric": "foreign.blur.checks",
+      "bar": {
+        "android": {
+          "min": 21
+        },
+        "ios": {
+          "min": 18
+        }
+      }
+    },
+    {
+      "id": "foreign.blur.skipped",
+      "title": "Foreign: checks of expo-blur skipped (none on Android, where every check runs; on the iPhone at most a press that needs a finger: nonzero only for fast-shadow and svg, named in foreign.ios)",
+      "unit": "checks",
+      "metric": "foreign.blur.skipped",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.gradient.failedChecks",
+      "title": "Foreign: failed checks of expo-linear-gradient (mounts, prop updates, events, commands, pixels; inline, in a list row and in a sheet; React out of the bundle)",
+      "unit": "checks",
+      "metric": "foreign.gradient.failedChecks",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.gradient.checks",
+      "title": "Foreign: checks expo-linear-gradient made (all three places; fewer means a check stopped running, which a failed-checks count cannot show)",
+      "unit": "checks",
+      "metric": "foreign.gradient.checks",
+      "bar": {
+        "android": {
+          "min": 21
+        },
+        "ios": {
+          "min": 18
+        }
+      }
+    },
+    {
+      "id": "foreign.gradient.skipped",
+      "title": "Foreign: checks of expo-linear-gradient skipped (none on Android, where every check runs; on the iPhone at most a press that needs a finger: nonzero only for fast-shadow and svg, named in foreign.ios)",
+      "unit": "checks",
+      "metric": "foreign.gradient.skipped",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.video.failedChecks",
+      "title": "Foreign: failed checks of react-native-video (mounts, prop updates, events, commands, pixels; inline, in a list row and in a sheet; React out of the bundle)",
+      "unit": "checks",
+      "metric": "foreign.video.failedChecks",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.video.checks",
+      "title": "Foreign: checks react-native-video made (all three places; fewer means a check stopped running, which a failed-checks count cannot show)",
+      "unit": "checks",
+      "metric": "foreign.video.checks",
+      "bar": {
+        "android": {
+          "min": 66
+        },
+        "ios": {
+          "min": 51
+        }
+      }
+    },
+    {
+      "id": "foreign.video.skipped",
+      "title": "Foreign: checks of react-native-video skipped (none on Android, where every check runs; on the iPhone at most a press that needs a finger: nonzero only for fast-shadow and svg, named in foreign.ios)",
+      "unit": "checks",
+      "metric": "foreign.video.skipped",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.datetime.failedChecks",
+      "title": "Foreign: failed checks of datetimepicker (mounts, prop updates, events, commands, pixels; inline, in a list row and in a sheet; React out of the bundle)",
+      "unit": "checks",
+      "metric": "foreign.datetime.failedChecks",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.datetime.checks",
+      "title": "Foreign: checks @react-native-community/datetimepicker made (all three places; fewer means a check stopped running, which a failed-checks count cannot show)",
+      "unit": "checks",
+      "metric": "foreign.datetime.checks",
+      "bar": {
+        "android": {
+          "min": 27
+        },
+        "ios": {
+          "min": 30
+        }
+      }
+    },
+    {
+      "id": "foreign.datetime.skipped",
+      "title": "Foreign: checks of @react-native-community/datetimepicker skipped (none on Android, where every check runs; on the iPhone at most a press that needs a finger: nonzero only for fast-shadow and svg, named in foreign.ios)",
+      "unit": "checks",
+      "metric": "foreign.datetime.skipped",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.lottie.failedChecks",
+      "title": "Foreign: failed checks of lottie-react-native (mounts, prop updates, events, commands, pixels; inline, in a list row and in a sheet; React out of the bundle)",
+      "unit": "checks",
+      "metric": "foreign.lottie.failedChecks",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.lottie.checks",
+      "title": "Foreign: checks lottie-react-native made (all three places; fewer means a check stopped running, which a failed-checks count cannot show)",
+      "unit": "checks",
+      "metric": "foreign.lottie.checks",
+      "bar": {
+        "android": {
+          "min": 36
+        },
+        "ios": {
+          "min": 30
+        }
+      }
+    },
+    {
+      "id": "foreign.lottie.skipped",
+      "title": "Foreign: checks of lottie-react-native skipped (none on Android, where every check runs; on the iPhone at most a press that needs a finger: nonzero only for fast-shadow and svg, named in foreign.ios)",
+      "unit": "checks",
+      "metric": "foreign.lottie.skipped",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.pdf.failedChecks",
+      "title": "Foreign: failed checks of react-native-pdf (mounts, prop updates, events, commands, pixels; inline, in a list row and in a sheet; React out of the bundle)",
+      "unit": "checks",
+      "metric": "foreign.pdf.failedChecks",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.pdf.checks",
+      "title": "Foreign: checks react-native-pdf made (all three places; fewer means a check stopped running, which a failed-checks count cannot show)",
+      "unit": "checks",
+      "metric": "foreign.pdf.checks",
+      "bar": {
+        "android": {
+          "min": 42
+        },
+        "ios": {
+          "min": 36
+        }
+      }
+    },
+    {
+      "id": "foreign.pdf.skipped",
+      "title": "Foreign: checks of react-native-pdf skipped (none on Android, where every check runs; on the iPhone at most a press that needs a finger: nonzero only for fast-shadow and svg, named in foreign.ios)",
+      "unit": "checks",
+      "metric": "foreign.pdf.skipped",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.capture.failedChecks",
+      "title": "Foreign: failed checks of react-native-view-shot (mounts, prop updates, events, commands, pixels; inline, in a list row and in a sheet; React out of the bundle)",
+      "unit": "checks",
+      "metric": "foreign.capture.failedChecks",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.capture.checks",
+      "title": "Foreign: checks react-native-view-shot made (all three places; fewer means a check stopped running, which a failed-checks count cannot show)",
+      "unit": "checks",
+      "metric": "foreign.capture.checks",
+      "bar": {
+        "android": {
+          "min": 51
+        },
+        "ios": {
+          "min": 48
+        }
+      }
+    },
+    {
+      "id": "foreign.capture.skipped",
+      "title": "Foreign: checks of react-native-view-shot skipped (none on Android, where every check runs; on the iPhone at most a press that needs a finger: nonzero only for fast-shadow and svg, named in foreign.ios)",
+      "unit": "checks",
+      "metric": "foreign.capture.skipped",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.rive.failedChecks",
+      "title": "Foreign: failed checks of rive-react-native (mounts, prop updates, events, commands, pixels; inline, in a list row and in a sheet; React out of the bundle)",
+      "unit": "checks",
+      "metric": "foreign.rive.failedChecks",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.rive.checks",
+      "title": "Foreign: checks rive-react-native made (all three places; fewer means a check stopped running, which a failed-checks count cannot show)",
+      "unit": "checks",
+      "metric": "foreign.rive.checks",
+      "bar": {
+        "android": {
+          "min": 36
+        },
+        "ios": {
+          "min": 30
+        }
+      }
+    },
+    {
+      "id": "foreign.rive.skipped",
+      "title": "Foreign: checks of rive-react-native skipped (none on Android, where every check runs; on the iPhone at most a press that needs a finger: nonzero only for fast-shadow and svg, named in foreign.ios)",
+      "unit": "checks",
+      "metric": "foreign.rive.skipped",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.conic.failedChecks",
+      "title": "Foreign: failed checks of expo-conic-gradient (mounts, prop updates, events, commands, pixels; inline, in a list row and in a sheet; React out of the bundle)",
+      "unit": "checks",
+      "metric": "foreign.conic.failedChecks",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.conic.checks",
+      "title": "Foreign: checks expo-conic-gradient made (all three places; fewer means a check stopped running, which a failed-checks count cannot show)",
+      "unit": "checks",
+      "metric": "foreign.conic.checks",
+      "bar": {
+        "android": {
+          "min": 21
+        },
+        "ios": {
+          "min": 18
+        }
+      }
+    },
+    {
+      "id": "foreign.conic.skipped",
+      "title": "Foreign: checks of expo-conic-gradient skipped (none on Android, where every check runs; on the iPhone at most a press that needs a finger: nonzero only for fast-shadow and svg, named in foreign.ios)",
+      "unit": "checks",
+      "metric": "foreign.conic.skipped",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.shadow.failedChecks",
+      "title": "Foreign: failed checks of react-native-fast-shadow (mounts, prop updates, events, commands, pixels; inline, in a list row and in a sheet; React out of the bundle)",
+      "unit": "checks",
+      "metric": "foreign.shadow.failedChecks",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.shadow.checks",
+      "title": "Foreign: checks react-native-fast-shadow made (all three places; fewer means a check stopped running, which a failed-checks count cannot show)",
+      "unit": "checks",
+      "metric": "foreign.shadow.checks",
+      "bar": {
+        "android": {
+          "min": 36
+        },
+        "ios": {
+          "min": 18
+        }
+      }
+    },
+    {
+      "id": "foreign.shadow.skipped",
+      "title": "Foreign: checks of react-native-fast-shadow skipped (none on Android, where every check runs; on the iPhone at most a press that needs a finger: nonzero only for fast-shadow and svg, named in foreign.ios)",
+      "unit": "checks",
+      "metric": "foreign.shadow.skipped",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 3
+        }
+      }
+    },
+    {
+      "id": "foreign.text.failedChecks",
+      "title": "Foreign: failed checks of react-native-animateable-text (mounts, prop updates, events, commands, pixels; inline, in a list row and in a sheet; React out of the bundle)",
+      "unit": "checks",
+      "metric": "foreign.text.failedChecks",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.text.checks",
+      "title": "Foreign: checks react-native-animateable-text made (all three places; fewer means a check stopped running, which a failed-checks count cannot show)",
+      "unit": "checks",
+      "metric": "foreign.text.checks",
+      "bar": {
+        "android": {
+          "min": 33
+        },
+        "ios": {
+          "min": 30
+        }
+      }
+    },
+    {
+      "id": "foreign.text.skipped",
+      "title": "Foreign: checks of react-native-animateable-text skipped (none on Android, where every check runs; on the iPhone at most a press that needs a finger: nonzero only for fast-shadow and svg, named in foreign.ios)",
+      "unit": "checks",
+      "metric": "foreign.text.skipped",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.svg.failedChecks",
+      "title": "Foreign: failed checks of react-native-svg (mounts, prop updates, events, commands, pixels; inline, in a list row and in a sheet; React out of the bundle)",
+      "unit": "checks",
+      "metric": "foreign.svg.failedChecks",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.svg.checks",
+      "title": "Foreign: checks react-native-svg made (all three places; fewer means a check stopped running, which a failed-checks count cannot show)",
+      "unit": "checks",
+      "metric": "foreign.svg.checks",
+      "bar": {
+        "android": {
+          "min": 36
+        },
+        "ios": {
+          "min": 30
+        }
+      }
+    },
+    {
+      "id": "foreign.svg.skipped",
+      "title": "Foreign: checks of react-native-svg skipped (none on Android, where every check runs; on the iPhone at most a press that needs a finger: nonzero only for fast-shadow and svg, named in foreign.ios)",
+      "unit": "checks",
+      "metric": "foreign.svg.skipped",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 3
+        }
+      }
+    },
+    {
+      "id": "foreign.libraries.missing",
+      "title": "Foreign: pinned libraries that logged no check",
+      "unit": "libraries",
+      "metric": "foreign.libraries.missing",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.unparsedLines",
+      "title": "Foreign: tagged log lines that could not be read as a check",
+      "unit": "lines",
+      "metric": "foreign.unparsedLines",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.leftovers",
+      "title": "Foreign: capture files of the previous launch still there after its process died",
+      "unit": "files",
+      "metric": "foreign.leftovers.failed",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.launches",
+      "title": "Foreign: complete launches (the checks, then the leftovers)",
+      "unit": "launches",
+      "metric": "foreign.launches",
+      "bar": {
+        "android": {
+          "min": 2
+        },
+        "ios": {
+          "min": 2
+        }
+      }
+    },
+    {
+      "id": "foreign.incomplete",
+      "title": "Foreign: launches that did not reach the end of their scenario",
+      "unit": "launches",
+      "metric": "foreign.incompleteLaunches",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.fatals",
+      "title": "Foreign: crashes and JavaScript errors during the run",
+      "unit": "fatals",
+      "metric": "foreign.fatals",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "id": "foreign.engineWarnings",
+      "title": "Foreign: engine warnings and errors during the run",
+      "unit": "warnings",
+      "metric": "foreign.engineWarnings",
+      "bar": {
+        "android": {
+          "max": 0
+        },
+        "ios": {
+          "max": 0
+        }
+      }
+    }
+  ],
+  "foreign": {
+    "libraries": {
+      "android": [
+        "image",
+        "blur",
+        "gradient",
+        "video",
+        "datetime",
+        "lottie",
+        "pdf",
+        "capture",
+        "rive",
+        "conic",
+        "shadow",
+        "text",
+        "svg"
+      ],
+      "ios": [
+        "image",
+        "blur",
+        "gradient",
+        "video",
+        "datetime",
+        "lottie",
+        "pdf",
+        "capture",
+        "rive",
+        "conic",
+        "shadow",
+        "text",
+        "svg"
+      ]
+    },
+    "ios": {
+      "image": "`leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), which exist on Android only: one check fewer in each place.",
+      "blur": "`leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), which exist on Android only: one check fewer in each place.",
+      "gradient": "`leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), which exist on Android only: one check fewer in each place.",
+      "video": "Five checks fewer in each place, all of them Android facts: the frame and node counters (`SvelteEngine.foreignStats`), the player's own `SurfaceView` or `TextureView` (an `AVPlayerLayer` is a layer of the view and has no surface to list), the capture without `handleGLSurfaceViewOnAndroid` being a hole, the capture with it holding the frame (a snapshot of the view hierarchy does not hold an `AVPlayerLayer`'s video frames: transparent on the iPhone, 4 Nov 2026), and `two volume changes raise both onVolumeChange although the JS thread was busy`, which guards a defect of the Android event class (`VideoCustomEvent` coalesced in React Native's event queue; `patches/react-native-video@6.19.3.patch`). iOS's RCTVideo is a legacy view manager whose events React Native's interop layer sends with `dispatchEvent`, which the queue never replaces.",
+      "datetime": "Android's picker is a dialog window the module opens, dismisses and answers (`openDatePicker`, `dismissDatePicker`, the buttons the harness presses with `adb`), and the frame and node counters are Android's: those checks are Android-only on the iPhone. iOS's picker is a view (`RNDateTimePickerComponentView` holding a `UIDatePicker`) with six checks of its own in each place (the value prop, the date the handler stores, a new value, the mode, `onValueChange`, `onDismiss`), so the iPhone makes more checks than Android's bar of nine per place, which counts the dialog checks that need no press.",
+      "lottie": "Two checks fewer in each place, both Android's: `leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), and `two cancelled animations raise both onAnimationFinish although the JS thread was busy` guards a defect of the Android event classes (coalesced in React Native's event queue; `patches/lottie-react-native@7.3.8.patch`). iOS sends the events through the codegen emitter's `dispatchEvent`, which the queue never replaces.",
+      "pdf": "Two checks fewer in each place, both Android's: `leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), and `onLoadComplete arrives although the JS thread was busy while the document loaded` guards a defect of the Android view (its one `topChange` event coalesced in React Native's event queue; `patches/react-native-pdf@7.0.3.patch`). iOS sends `onChange` through the codegen emitter's `dispatchEvent`, which the queue never replaces, and loads the document again only when `path` changes, not for the page prop that reloads it on Android.",
+      "capture": "`leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), which exist on Android only: one check fewer in each place.",
+      "rive": "Two checks fewer in each place, both Android's: `leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), and `two animations played in turn raise both onPlay although the JS thread was busy`, which guards that Rive's Android events keep reaching JavaScript one by one. Nothing is patched for it: Rive sends them through React Native's interop emitter (`getJSModule(RCTEventEmitter)`), which is made with the application context, so its events have surface id -1 and are sent as non-coalescable. There is nothing to lose on iOS: `RiveReactNativeView` is a legacy view manager whose events React Native's interop layer sends with `dispatchEvent`, which the queue never replaces.",
+      "conic": "`leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), which exist on Android only: one check fewer in each place.",
+      "shadow": "react-native-fast-shadow has no iOS code (`ShadowedView` is React Native's `View` and the shadow is the layer's own), so the four checks of its Android view and of the engine's canvas clip, and the frame and node counters, are Android-only: five checks fewer in each place. The press on the shadowed child needs a finger, which the lab has none of on the iPhone (XCUITest does not run on it): it is skipped in each place, a sixth check fewer, so `skipped` is 3, not 0.",
+      "text": "`leaving drops every frame and node` reads the engine's frame and node counters (`SvelteEngine.foreignStats`), which exist on Android only: one check fewer in each place.",
+      "svg": "The frame and node counters (`SvelteEngine.foreignStats`) are Android's: one check fewer in each place. The press on the `Svg` needs a finger, which the lab has none of on the iPhone (XCUITest does not run on it): it is skipped in each place, a second check fewer, so `skipped` is 3, not 0."
+    }
+  }
+}

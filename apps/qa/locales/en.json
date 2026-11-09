@@ -1,0 +1,10 @@
+{
+	"ios": {
+		"CFBundleDisplayName": "Svelte QA product",
+		"NSCameraUsageDescription": "The example attaches the photos you take in the lab.",
+		"NSPhotoLibraryUsageDescription": "The example shows the photos and videos you choose in the lab."
+	},
+	"android": {
+		"app_name": "Svelte QA product"
+	}
+}

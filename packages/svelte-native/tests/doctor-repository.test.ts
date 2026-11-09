@@ -62,7 +62,7 @@ test("the tools the doctor asks for are the ones the repository names", () => {
 
 test("the example app, installed and patched by the repository, passes every check", () => {
   const checks = runChecks({
-    appRoot: join(repository, "apps/example"),
+    appRoot: join(repository, "apps/qa"),
     packageRoot: join(repository, "packages/svelte-native"),
     // The tools are asked about in doctor.test.ts (and the Node the app runs is not the one these tests run on); everything else is the repository's own install.
     node: requirements.node.slice(2),

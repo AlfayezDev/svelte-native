@@ -73,7 +73,8 @@ export function answerRequest(shouldStart: boolean, lockIdentifier: number): voi
   webViewModule.shouldStartLoadWithLockIdentifier(shouldStart, lockIdentifier);
 }
 
-const defined = new Set<string>();
+/** The Fabric names defined by `expoViewName`, with the kind (colour and image props) each was defined with. */
+const defined = new Map<string, string>();
 
 /** What a caller knows about an Expo view's props that the module's own config does not say: which are colours, lists of colours or images. */
 export type ExpoViewKind = Pick<Kind, "colors" | "colorLists" | "assetSources">;
@@ -88,11 +89,18 @@ export type ExpoViewKind = Pick<Kind, "colors" | "colorLists" | "assetSources">;
 export function expoViewName(moduleName: string, viewName?: string, kind: ExpoViewKind = {}): string {
   const expo = (globalThis as Globals).expo;
   const name = `ViewManagerAdapter_${moduleName}${viewName ? `_${viewName}` : ""}${expo?.__expo_app_identifier__ ? `_${expo.__expo_app_identifier__}` : ""}`;
-  if (defined.has(name)) return name;
+  const kindKey = JSON.stringify(kind);
+  const known = defined.get(name);
+  // A caller that names no colour or image props takes the definition as it is; one that names them replaces a definition made without them
+  // (the generic `ExpoView` may have mounted the view before its dedicated wrapper did).
+  if (known !== undefined && (known === kindKey || kindKey === "{}")) return name;
   const config = expo?.getViewConfig?.(moduleName, viewName);
-  if (!config) throw new Error(viewName ? `Expo module ${moduleName} has no view ${viewName}` : `Expo module ${moduleName} has no view`);
+  if (!config) {
+    const view = viewName ? `view ${viewName}` : "view";
+    throw new Error(`Expo module ${moduleName} has no ${view}: the native module is not in this build, or it declares no such view. Install the library (\`npx expo install\`) and rebuild the native app.`);
+  }
   defineViewKind(name, { ...kind, plain: Object.keys(config.validAttributes).join(" "), events: Object.keys(config.directEventTypes ?? {}).join(" ") });
-  defined.add(name);
+  defined.set(name, kindKey);
   return name;
 }
 

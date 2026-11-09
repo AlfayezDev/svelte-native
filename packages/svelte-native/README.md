@@ -256,7 +256,27 @@ A stack layout renders `<Stack header={{ large: true }} animation="slide_from_ri
 | react-native-webview, react-native-maps | `WebView`; `MapView`, `Marker` |
 | react-native-fast-shadow, react-native-animateable-text | `ShadowedView`, `shadowStyle`; `AnimateableText` |
 | react-native-svg 15.15.4 | `Svg`, shapes, text, gradients, filters, `SvgXml`, `SvgUri` (36 components) |
+| any other Expo module's view | `ExpoView`, `defineExpoView` mount it by the module's name, with the module's own props |
 | anything else | `ForeignView` mounts a Fabric component by name |
+
+An Expo library that has no component above (`expo-camera`) needs no wrapper written for it. `defineExpoView` makes a component of a module's view once; the view's props and events are read from the native module at run time, and `ref` gives the host handle with the functions the module defines for the view, as Expo's React adapter does:
+
+```svelte
+<script lang="ts">
+  import { Pressable, Text } from "@example/svelte-native";
+  import { defineExpoView, type ExpoViewHandle } from "@example/svelte-native/foreign";
+  import type { CameraNativeProps, CameraViewRef } from "expo-camera";
+
+  const CameraView = defineExpoView<CameraNativeProps, CameraViewRef>("ExpoCamera");
+  let camera: ExpoViewHandle<CameraViewRef> | null = null;
+</script>
+
+<CameraView facing="back" style={{ flex: 1 }} ref={(handle) => (camera = handle)}
+  onMountError={(event) => console.warn(event.nativeEvent.message)} />
+<Pressable onPress={async () => console.log((await camera?.takePicture({ quality: 1 }))?.uri)}><Text>Take a picture</Text></Pressable>
+```
+
+The component is the native view, not the library's React component: its props are the names the native module declares, an `on…` handler gets React Native's event object (`{ nativeEvent }`), and a shared object (an `expo-video` player) is given as its id. A library whose React component changes what it is given before the view sees it still needs that step done by the app: `expo-camera`'s `CameraView` maps `flash` to the native `flashMode`, `autofocus` to `autoFocus` and sets `barcodeScannerEnabled` from `onBarcodeScanned`, and `expo-linear-gradient` converts its colours. That is why the dedicated components above stay, and why the example types the native props (`CameraNativeProps`), not `CameraViewProps`. A view function that only normalises its options in JavaScript (`takePictureAsync`) is not on the handle; call the native one (`takePicture`). `<ExpoView module="ExpoCamera" ... />` is the same without the typing, for one place. [REFERENCE.md](REFERENCE.md#foreign-views) has the props, the handle and the errors.
 
 A touch inside a foreign view goes to the view and not to JavaScript (`pointerEvents="box-only"` keeps the frame's touches for JavaScript). Foreign views work inside list rows and sheets.
 

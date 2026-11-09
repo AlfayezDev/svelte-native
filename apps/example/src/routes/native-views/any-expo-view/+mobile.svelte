@@ -72,8 +72,10 @@
   <Section title="expo-camera, no wrapper" note="svelte-native has no component for expo-camera. The preview is the ExpoCamera view; Take a picture calls the view's takePicture through ref.">
     <Text style={text.caption}>{`Camera permission: ${permission}`}</Text>
     {#if permission === "granted"}
+      <!-- expo-camera's React component always sends barcodeScannerEnabled; on Android that prop is what starts the camera, so it is given here too. -->
       <CameraView
         facing="back"
+        barcodeScannerEnabled={false}
         flashMode="off"
         autoFocus="on"
         ref={(handle) => { camera = handle; }}

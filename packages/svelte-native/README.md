@@ -271,12 +271,12 @@ An Expo library that has no component above (`expo-camera`) needs no wrapper wri
   let camera: ExpoViewHandle<CameraViewRef> | null = null;
 </script>
 
-<CameraView facing="back" style={{ flex: 1 }} ref={(handle) => (camera = handle)}
+<CameraView facing="back" barcodeScannerEnabled={false} style={{ flex: 1 }} ref={(handle) => (camera = handle)}
   onMountError={(event) => console.warn(event.nativeEvent.message)} />
 <Pressable onPress={async () => console.log((await camera?.takePicture({ quality: 1 }))?.uri)}><Text>Take a picture</Text></Pressable>
 ```
 
-The component is the native view, not the library's React component: its props are the names the native module declares, an `on…` handler gets React Native's event object (`{ nativeEvent }`), and a shared object (an `expo-video` player) is given as its id. A library whose React component changes what it is given before the view sees it still needs that step done by the app: `expo-camera`'s `CameraView` maps `flash` to the native `flashMode`, `autofocus` to `autoFocus` and sets `barcodeScannerEnabled` from `onBarcodeScanned`, and `expo-linear-gradient` converts its colours. That is why the dedicated components above stay, and why the example types the native props (`CameraNativeProps`), not `CameraViewProps`. A view function that only normalises its options in JavaScript (`takePictureAsync`) is not on the handle; call the native one (`takePicture`). `<ExpoView module="ExpoCamera" ... />` is the same without the typing, for one place. [REFERENCE.md](REFERENCE.md#foreign-views) has the props, the handle and the errors.
+The component is the native view, not the library's React component: its props are the names the native module declares, an `on…` handler gets React Native's event object (`{ nativeEvent }`), and a shared object (an `expo-video` player) is given as its id. A library whose React component changes what it is given before the view sees it still needs that step done by the app: `expo-camera`'s `CameraView` maps `flash` to the native `flashMode`, `autofocus` to `autoFocus` and always sends `barcodeScannerEnabled` (from `onBarcodeScanned`; on Android that prop is what starts the camera, so the example gives it), and `expo-linear-gradient` converts its colours. That is why the dedicated components above stay, and why the example types the native props (`CameraNativeProps`), not `CameraViewProps`. A view function that only normalises its options in JavaScript (`takePictureAsync`) is not on the handle; call the native one (`takePicture`). `<ExpoView module="ExpoCamera" ... />` is the same without the typing, for one place. [REFERENCE.md](REFERENCE.md#foreign-views) has the props, the handle and the errors.
 
 A touch inside a foreign view goes to the view and not to JavaScript (`pointerEvents="box-only"` keeps the frame's touches for JavaScript). Foreign views work inside list rows and sheets.
 

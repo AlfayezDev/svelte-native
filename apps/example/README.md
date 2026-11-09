@@ -48,6 +48,40 @@ The home screen groups these under Basics, Layout and style, Lists and input, Na
 | Internationalization | `/i18n` | English and Arabic, `Intl` plurals, numbers and dates, `direction: "rtl"` and `marginStart` |
 | Accessibility | `/accessibility` | Labels, roles, state, hints, grouping, hidden decoration, live regions, `accessibilityActions` |
 
+## Native views, motion and touch, platform
+
+The features of `src/lib/features/native.ts`: the library's wrappers of other native libraries, its animation and gesture API, and two platform features. Each is one route and one short file. The native views are optional peer dependencies of the library; this app installs them (see `package.json`), so a change to that list needs a native build.
+
+| Feature | Route | What it shows |
+| ------- | ----- | ------------- |
+| Image (expo-image) | `/native-views/image` | `ExpoImage`: `contentFit`, a blurhash `placeholder`, `transition`, `onLoad` |
+| Blur (expo-blur) | `/native-views/blur` | `BlurView` over a `BlurTargetView` (Android's real blur), `intensity` |
+| Linear gradient | `/native-views/linear-gradient` | `LinearGradient`: `colors`, `start`, `end`, `locations`, children |
+| Conic gradient | `/native-views/conic-gradient` | `ConicGradient`: `colors`, `locations`, `center`, `angle` |
+| Video (react-native-video) | `/native-views/video` | `Video` with a bundled clip: `paused`, `repeat`, `onProgress`, `ref.seek` |
+| Lottie | `/native-views/lottie` | `LottieView` with a bundled JSON file: `autoPlay`, `loop`, `speed`, `ref.pause` |
+| PDF (react-native-pdf) | `/native-views/pdf` | `Pdf`: `enablePaging`, `onLoadComplete`, `onPageChanged`, `ref.setPage` |
+| SVG (react-native-svg) | `/native-views/svg` | `@example/svelte-native/svg`: shapes, gradient, text, `animatedProps`, `SvgXml` |
+| Rive | `/native-views/rive` | `Rive` from a URL (needs the network): `ref.play`, `onPlay`, `onError` |
+| Shadow (fast-shadow) | `/native-views/shadow` | `ShadowedView` and `shadowStyle` |
+| Animateable text | `/native-views/animateable-text` | `AnimateableText`: a counter written on the UI thread by a worklet |
+| View capture (view-shot) | `/native-views/view-shot` | `ViewShot` and `capture()` into a data URI |
+| Date and time picker | `/native-views/date-time-picker` | `DateTimePicker` on iOS, `openDatePicker` on Android |
+| WebView | `/native-views/web-view` | `WebView` with inline HTML: `onMessage`, `ref.injectJavaScript` |
+| Map (react-native-maps) | `/native-views/map` | `MapView`, `Marker`, `ref.animateToRegion` |
+| Animation | `/animation` | `AnimatedView` with `withTiming`, `withSpring`, `withRepeat`, CSS keyframes, and state written into a shared value |
+| Gestures | `/gestures` | `Gesture.Pan`, `Pinch`, `Rotation`, `LongPress` and a swipeable row (`components/native/SwipeRow.svelte`) |
+| Remote functions | `/remote` | the host (`extra.svelteNative.remote`, `configureRemote`) and a query, a command and a form of `src/lib/remote/notes.remote.ts` |
+| Updates | `/updates` | `isEnabled`, `updateId`, `channel`, `checkForUpdateAsync`, `fetchUpdateAsync`, `reloadAsync` |
+
+Things a build or a device must provide:
+
+- **Assets.** `assets/images/sample.png` (15 KB), `assets/media/pattern.mp4` (4 KB) and `assets/media/pulse.json` (1 KB) are the lab's samples, kept small. The PDF is a data URI in `src/lib/media.ts`: react-native-pdf opens a `require`d file on iOS only.
+- **Map.** iOS draws Apple Maps. Android needs a Google Maps key in the manifest: build with `GOOGLE_MAPS_API_KEY=...` (`app.config.ts` passes it to react-native-maps' plugin). With the placeholder key the map mounts and draws no tiles.
+- **Remote functions.** The functions run on a SvelteKit server, which this app does not have. To try them, copy `src/lib/remote/notes.remote.ts` to the same path in a SvelteKit app (the function ids are a hash of the path from the app's root) with `experimental: { remoteFunctions: true }`, make the server load the module, and build this app with `SVELTE_NATIVE_REMOTE_ORIGIN=https://that-server` (an `http:` origin works for a development server; `adb reverse` reaches a PC). Without a host the screen says so and offers a field for an origin.
+- **Updates.** The app config has no `updates` key, so the screen reads "off in this build". To turn updates on, add `updates.url`, `runtimeVersion` and a channel (`UPDATES_CHANNEL`), as the library's README describes under "Updates".
+- **Rive** loads `vehicles.riv` from Rive's CDN: it needs a connection.
+
 ## Notes for a reader
 
 - **React Native's JavaScript modules are imported by path** (`react-native/Libraries/Utilities/Platform`, `Appearance`, `Dimensions`, `Linking`): the library has none of its own, and the `react-native` index would load React's components. React Native ships no types for these paths, so `src/lib/modules.d.ts` declares the few members the app uses. It also declares two modules the library's own source imports, because a workspace link is type-checked with the app.

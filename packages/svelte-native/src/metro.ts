@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { dirname, join, resolve, sep } from "node:path";
 import type { ConfigT } from "@expo/metro/metro-config";
 import { syncRoutes, watchRoutes } from "./build.ts";
+import { sourceFile } from "./package-root.ts";
 import { remoteResolution } from "./remote/transform.ts";
 import { assertCustomRenderer } from "./svelte-build.ts";
 import { labIncludedFor, routesTableFile, variantName } from "./variant.ts";
@@ -176,21 +177,21 @@ export function withSvelteNative(config: ConfigT, options: SvelteNativeMetroOpti
       return context.resolveRequest(nativeContext, moduleName, platform);
     }
     if (moduleName === "react-native" && LITE_ORIGINS.test(context.originModulePath)) {
-      return { type: "sourceFile", filePath: require.resolve("./fabric/react-native-lite.ts") };
+      return { type: "sourceFile", filePath: sourceFile("fabric/react-native-lite.ts") };
     }
     if (moduleName === "esm-env") {
-      return { type: "sourceFile", filePath: require.resolve("./environment.ts") };
+      return { type: "sourceFile", filePath: sourceFile("environment.ts") };
     }
     const result = resolveRequest ? resolveRequest(context, moduleName, platform) : context.resolveRequest(context, moduleName, platform);
     if (result.type === "sourceFile") {
       const stubbedFile = stubForFile(result.filePath);
       if (stubbedFile !== null) return { type: "sourceFile", filePath: stubbedFile };
       const stub = Object.entries(RENDERER_STUBS).find(([suffix]) => result.filePath.endsWith(suffix));
-      if (stub) return { type: "sourceFile", filePath: require.resolve(stub[1]) };
+      if (stub) return { type: "sourceFile", filePath: sourceFile(stub[1]) };
       // `init.ts` is the Fabric entry's InitializeCore. `expo/src/winter` (run before main) imports InitializeCore for the
       // XHR globals it patches, so it gets `init.ts`, which then runs first; React Native's own would also put its
       // AppRegistry on `RN$AppRegistry` over the Fabric host's.
-      if (INITIALIZE_CORE.test(result.filePath)) return { type: "sourceFile", filePath: require.resolve("./init.ts") };
+      if (INITIALIZE_CORE.test(result.filePath)) return { type: "sourceFile", filePath: sourceFile("init.ts") };
     }
     if (result.type === "sourceFile" && (/\.server\.[cm]?[jt]s$/.test(result.filePath) || result.filePath.includes("/src/lib/server/"))) {
       throw new Error(`Server-only file in native bundle: ${result.filePath}`);

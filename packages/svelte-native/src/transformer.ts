@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { traverseFast } from "@babel/types";
 import { lowerPrimitives } from "./lower.ts";
+import { sourceDirectory, sourceFile } from "./package-root.ts";
 import { assertCustomRenderer } from "./svelte-build.ts";
 import { isRemoteModule, kitGlobalsImport, transformRemoteModule } from "./remote/transform.ts";
 import { TraceMap, originalPositionFor } from "@jridgewell/trace-mapping";
@@ -82,6 +83,14 @@ export function transform(input: TransformInput) {
   return output;
 }
 
+/**
+ * Metro's cache key for what this transformer produces: the code that runs, and upstream's key. Built (`dist/node/transformer.cjs`), the one file
+ * holds `lower.ts` and `remote/transform.ts`; run from the sources, those two are hashed next to this one.
+ */
 export function getCacheKey(options?: unknown): string {
-  return createHash("sha256").update(readFileSync(import.meta.filename)).update(readFileSync(new URL("./lower.ts", import.meta.url))).update(readFileSync(new URL("./remote/transform.ts", import.meta.url))).update(upstream.getCacheKey(options)).digest("hex");
+  const files = [import.meta.filename];
+  if (import.meta.dirname === sourceDirectory) files.push(sourceFile("lower.ts"), sourceFile("remote/transform.ts"));
+  const hash = createHash("sha256");
+  for (const file of files) hash.update(readFileSync(file));
+  return hash.update(upstream.getCacheKey(options)).digest("hex");
 }

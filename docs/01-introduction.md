@@ -65,7 +65,7 @@ What doesn't work yet, or hasn't been tried:
 - Screen readers (TalkBack, VoiceOver) are covered by automated checks, not yet by a person using them.
 - Svelte's DOM transitions, DOM-based libraries, React widgets and the Expo dev client are not supported.
 - Building on Expo's servers (EAS Build) is untried, and push notification delivery is not tested end to end.
-- The Svelte compiler it needs is an [unmerged pull request](https://github.com/sveltejs/svelte/pull/18042), pinned to one commit. SvelteKit is pinned to `3.0.0-next.27`, the version the library's patch is for.
+- The Svelte compiler it needs is an [unmerged pull request](https://github.com/sveltejs/svelte/pull/18042), pinned to one commit. SvelteKit is pinned to `3.1.1`, the version the library's patch is for.
 - `@rasheed/svelte-native` is a placeholder name and will change before a public release. The repository is private for now, and you install from it over SSH.
 
 ## Where to go next

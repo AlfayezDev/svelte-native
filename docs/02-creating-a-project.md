@@ -57,7 +57,7 @@ cd my-app
 `sv` installed the registry's `svelte` and a recent `@sveltejs/kit`. Svelte Native needs two others:
 
 - **Svelte** from a custom-renderer build. The registry's Svelte has the same version number, but not the `./renderer` export the library compiles against.
-- **SvelteKit 3.0.0-next.27**, exactly. The library patches that version so that SvelteKit's router leaves `+mobile.svelte` files alone.
+- **SvelteKit 3.1.1**, exactly. The library patches that version so that SvelteKit's router leaves `+mobile.svelte` files alone.
 
 Change three lines in `package.json`:
 
@@ -65,7 +65,7 @@ Change three lines in `package.json`:
 /// file: package.json
 {
 	"devDependencies": {
-		"@sveltejs/kit": "3.0.0-next.27",
+		"@sveltejs/kit": "3.1.1",
 		"@sveltejs/vite-plugin-svelte": "7.2.0",
 		"svelte": "https://pkg.pr.new/svelte@216f258068d93170a927ad4d27ee6864b0b305c5"
 	}
@@ -155,7 +155,7 @@ cp node_modules/@rasheed/svelte-native/patches/*.patch patches/svelte-native/
 ```yaml
 /// file: pnpm-workspace.yaml
 patchedDependencies:
-  "@sveltejs/kit@3.0.0-next.27": patches/svelte-native/@sveltejs__kit@3.0.0-next.27.patch
+  "@sveltejs/kit@3.1.1": patches/svelte-native/@sveltejs__kit@3.1.1.patch
   expo-modules-core@57.0.23: patches/svelte-native/expo-modules-core@57.0.23.patch
   react-native-gesture-handler@2.32.0: patches/svelte-native/react-native-gesture-handler@2.32.0.patch
   react-native-reanimated@4.5.1: patches/svelte-native/react-native-reanimated@4.5.1.patch
@@ -317,7 +317,7 @@ The web app is still there:
 pnpm dev
 ```
 
-`vite dev`, `vite build` and `vite preview` work as before. What you gave up is the stock versions. The web app now compiles with the pinned Svelte build, and runs on SvelteKit 3.0.0-next.27 (a prerelease) with a patch, not the stable release `sv` installed. When this page was written, `vite dev` and `vite build` worked on the `sv` template with the changes above.
+`vite dev`, `vite build` and `vite preview` work as before. What you gave up is the stock versions. The web app now compiles with the pinned Svelte build, and runs on SvelteKit 3.1.1 (a prerelease) with a patch, not the stable release `sv` installed. When this page was written, `vite dev` and `vite build` worked on the `sv` template with the changes above.
 
 > [!NOTE] `pnpm check` reports one error, in the library's own source: `Property 'unref' does not exist on type 'number'`. `svelte-check` follows imports into the library, and one of its files assumes Node's `setTimeout`. Your code isn't affected, and the build ignores it. See [Troubleshooting](08-troubleshooting.md#pnpm-check-reports-an-error-inside-svelte-native).
 

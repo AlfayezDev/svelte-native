@@ -1,5 +1,5 @@
 diff --git a/src/core/sync/create_manifest_data/index.js b/src/core/sync/create_manifest_data/index.js
-index 9e274c9026bb209f3cf85ae432368e786697e04b..2d6c015fdff8725686c4e69894bd426d31359de7 100644
+index 21a5bcc..567c93c 100644
 --- a/src/core/sync/create_manifest_data/index.js
 +++ b/src/core/sync/create_manifest_data/index.js
 @@ -231,6 +231,7 @@ function create_routes_and_nodes(cwd, config, fallback) {
@@ -11,10 +11,10 @@ index 9e274c9026bb209f3cf85ae432368e786697e04b..2d6c015fdff8725686c4e69894bd426d
  				const ext = valid_extensions.find((ext) => file.name.endsWith(ext));
  				if (!ext) continue;
 diff --git a/src/exports/vite/index.js b/src/exports/vite/index.js
-index 235fcf9a3981d0c6beb899bec7d6705c979e1a9f..c2dc6f731daae534688cf73def4237fd93491e02 100644
+index 3c5e4b9..100d748 100644
 --- a/src/exports/vite/index.js
 +++ b/src/exports/vite/index.js
-@@ -99,7 +99,7 @@ const warned = new Set();
+@@ -93,7 +93,7 @@ const warned = new Set();
  const warning_preprocessor = {
  	name: 'sveltekit:warnings',
  	script: ({ content, filename }) => {
@@ -23,7 +23,7 @@ index 235fcf9a3981d0c6beb899bec7d6705c979e1a9f..c2dc6f731daae534688cf73def4237fd
  
  		const basename = path.basename(filename);
  		if (basename.startsWith('+page.') || basename.startsWith('+layout.')) {
-@@ -119,7 +119,7 @@ const warning_preprocessor = {
+@@ -111,7 +111,7 @@ const warning_preprocessor = {
  		}
  	},
  	markup: ({ content, filename }) => {

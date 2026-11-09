@@ -257,7 +257,7 @@ describe("an app that builds for native only: no @sveltejs/kit, no vite", () => 
     // The runtime's imports of SvelteKit's files, and a remote function module, are what need it.
     for (const message of [result.kitFromRuntime, result.kitInternal]) {
       expect(message).toContain("`@sveltejs/kit`, which is not installed");
-      expect(message).toContain("pnpm add @sveltejs/kit@3.0.0-next.27");
+      expect(message).toContain("pnpm add @sveltejs/kit@3.1.1");
     }
     expect(result.remoteModule).toContain("api.remote.ts is a remote function module");
     expect(result.remoteModule).toContain("needs `@sveltejs/kit`, which is not installed");
@@ -285,7 +285,7 @@ describe("an app that builds for native only: no @sveltejs/kit, no vite", () => 
     expect(skipped?.message).toContain("@sveltejs/kit");
     expect(skipped?.message).toMatch(/\bvite\b/);
     expect(report.checks.filter((check) => check.status === "fail" && /@sveltejs\/kit|\bvite\b/.test(check.message))).toEqual([]);
-    expect(report.checks.find((check) => check.message.includes("@sveltejs/kit@3.0.0-next.27: @sveltejs/kit is not installed (optional)"))?.status).toBe("skip");
+    expect(report.checks.find((check) => check.message.includes("@sveltejs/kit@3.1.1: @sveltejs/kit is not installed (optional)"))?.status).toBe("skip");
   });
 
   test("Metro bundles a minimal app for Android: the page, the library's own .svelte.ts modules from node_modules, hermes-intl, and nothing of SvelteKit or Vite", () => {

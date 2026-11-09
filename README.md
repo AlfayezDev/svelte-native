@@ -35,7 +35,7 @@ pnpm android        # or: pnpm ios
 - Screen readers (TalkBack, VoiceOver) are covered by automated checks, not yet by a person using them.
 - Not supported: Svelte's DOM transitions and DOM-based libraries, React widgets, and the Expo dev client.
 - EAS Build on Expo's servers is not tried, and push notification delivery is not tested end to end.
-- The Svelte compiler is an unmerged pull request, [pinned](https://github.com/sveltejs/svelte/pull/18042) to one commit; the Svelte you install is that build, not the registry's, and the web side of the app runs on a pinned SvelteKit prerelease (3.0.0-next.27).
+- The Svelte compiler is an unmerged pull request, [pinned](https://github.com/sveltejs/svelte/pull/18042) to one commit; the Svelte you install is that build, not the registry's, and the web side of the app runs on a pinned SvelteKit prerelease (3.1.1).
 - Expo SDK 57 and React Native 0.86 only.
 - `@rasheed/svelte-native` is a placeholder name and will change before a public release.
 

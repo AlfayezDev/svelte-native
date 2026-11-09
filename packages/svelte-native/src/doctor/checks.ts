@@ -58,13 +58,13 @@ function library(context: Context, name: string, version: string, appPackage: Re
   const dependencies = { ...record(appPackage.dependencies), ...record(appPackage.devDependencies), ...record(appPackage.optionalDependencies) };
   return name in dependencies
     ? { group: "build integration", status: "pass", message: `${name} ${version} is a dependency of the app` }
-    : { group: "build integration", status: "fail", message: `${name} is not a dependency of the app (${join(context.appRoot, "package.json")})`, fix: `add it to the app's dependencies (README: "Set up an app")` };
+    : { group: "build integration", status: "fail", message: `${name} is not a dependency of the app (${join(context.appRoot, "package.json")})`, fix: `add it to the app's dependencies (README: "Install in an app"), or run \`pnpm exec svelte-native init\`` };
 }
 
 /** The renderer build of Svelte: the `./renderer` export and the compiler option the library compiles with. */
 function svelte(context: Context, peers: Record<string, unknown>): Check {
   const installed = findPackage("svelte", context.appRoot);
-  const fix = "install the custom-renderer build of Svelte (sveltejs/svelte#18042, commit 216f258, 5.56.7); README: \"Set up an app\"";
+  const fix = "install the custom-renderer build of Svelte (sveltejs/svelte#18042, commit 216f258, 5.56.7): `pnpm exec svelte-native init` does it (docs/02-creating-a-project.md), or by hand, README \"Install in an app\"";
   if (!installed) return { group: "svelte", status: "fail", message: "svelte is not installed", fix };
   const entry = record(installed.json.exports)["./renderer"];
   const target = text(entry) ?? text(record(entry).default);

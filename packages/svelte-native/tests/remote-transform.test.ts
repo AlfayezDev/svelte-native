@@ -14,7 +14,7 @@ import { hash, isRemoteModule, kitGlobalsImport, kitRoot, remoteExports, remoteH
 
 const nodeRequire = createRequire(import.meta.url);
 const kitHash = (await import(pathToFileURL(join(kitRoot(), "src/utils/hash.js")).href)).hash as (...values: string[]) => string;
-const ROOT = "/work/apps/example";
+const ROOT = "/work/apps/qa";
 
 describe("ids", () => {
   const paths = [

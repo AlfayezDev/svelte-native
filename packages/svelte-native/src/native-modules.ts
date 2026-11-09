@@ -1,6 +1,6 @@
 /**
  * Native modules reached the way React Native's JavaScript reaches them, without React. The foreign-view wrappers use them
- * (`fabric/foreign.ts`), and so does the native module smoke test (`apps/example/src/lib/native/dev/smoke.ts`) for libraries
+ * (`fabric/foreign.ts`), and so does the native module smoke test (`apps/qa/src/lib/native/dev/smoke.ts`) for libraries
  * whose own JavaScript needs React.
  */
 

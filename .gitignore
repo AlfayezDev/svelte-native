@@ -20,11 +20,11 @@ expo-env.d.ts
 ios/
 android/
 # The generated Android project of the other variant (native-qa build --variant parks it here); anchored: the parity references
-# under apps/example/qa/screenshots are named android-api36-... and are tracked
-/apps/example/android-*/
-/apps/example/android.prebuilding
+# under apps/qa/qa/screenshots are named android-api36-... and are tracked
+/apps/qa/android-*/
+/apps/qa/android.prebuilding
 # Samsung Pay SDK for the smoke app (native module smoke test) (proprietary: never committed)
-apps/example/libs/
+apps/qa/libs/
 
 # Testing
 coverage
@@ -56,9 +56,9 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
 # Local Expo modules ship their Android and iOS projects (the engine and the iOS modules); only their build output stays ignored.
-!apps/example/modules/*/android/
-apps/example/modules/*/android/build/
-apps/example/modules/*/android/.cxx/
-!apps/example/modules/*/ios/
-apps/example/modules/*/ios/build/
-apps/example/modules/*/ios/Pods/
+!apps/qa/modules/*/android/
+apps/qa/modules/*/android/build/
+apps/qa/modules/*/android/.cxx/
+!apps/qa/modules/*/ios/
+apps/qa/modules/*/ios/build/
+apps/qa/modules/*/ios/Pods/

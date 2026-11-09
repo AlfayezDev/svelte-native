@@ -1,4 +1,4 @@
-# The label of the self-hosted runner on the OVH host (apps/example/qa/ci/setup-runner.sh registers it).
+# The label of the self-hosted runner on the OVH host (apps/qa/qa/ci/setup-runner.sh registers it).
 self-hosted-runner:
   labels:
     - svelte-qa-emulator

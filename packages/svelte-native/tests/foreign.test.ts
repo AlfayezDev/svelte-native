@@ -323,7 +323,7 @@ for (const [name, file, interfaceName] of kinds) {
 // The view managers React Native creates on demand are listed by name in `app.config.ts`; a name that drifts from the
 // package's own would leave a component without a manager, so the names are read back from the packages' sources.
 test("the on-demand view manager names are the ones the packages register", async () => {
-  const { default: config } = await import("../../../apps/example/app.config.ts");
+  const { default: config } = await import("../../../apps/qa/app.config.ts");
   const entry = config.plugins.find((plugin): plugin is [string, { androidOnDemandViewManagers: Record<string, string[]> }] => Array.isArray(plugin) && plugin[0] === "@example/svelte-native/expo");
   const listed = entry?.[1].androidOnDemandViewManagers ?? {};
   expect(Object.keys(listed).sort()).toEqual([

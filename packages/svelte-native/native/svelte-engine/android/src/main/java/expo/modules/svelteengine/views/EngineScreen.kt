@@ -10,6 +10,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.facebook.react.bridge.ReactContext
 import com.facebook.react.uimanager.PointerEvents
 import expo.modules.svelteengine.GestureRules
 import expo.modules.svelteengine.NavProps
@@ -319,7 +320,13 @@ object SystemBars {
     return found
   }
 
+  /**
+   * The activity whose window the bars belong to. The decor view's context is the platform's `DecorContext`, which wraps the application's `ContextImpl` and not the
+   * activity (Android 16, and so every device the engine runs on today), so walking the root view's context wrappers finds none and the bars were never written.
+   * The view's own context is React Native's, which knows its current activity; the wrappers are the fallback for a host that has the activity in the chain.
+   */
   private fun activityOf(view: View): Activity? {
+    (view.context as? ReactContext)?.currentActivity?.let { return it }
     var context: Context? = view.rootView.context
     while (context is ContextWrapper) {
       if (context is Activity) return context

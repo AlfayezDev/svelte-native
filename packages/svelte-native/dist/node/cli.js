@@ -32,234 +32,21 @@ var init_package_root = __esm({
   }
 });
 
-// src/doctor/resolve.ts
-import { existsSync as existsSync3, readdirSync as readdirSync2, readFileSync as readFileSync2, realpathSync } from "node:fs";
-import { basename, dirname as dirname2, join as join2, resolve as resolve3 } from "node:path";
-function readerFor(directory) {
-  return {
-    read(path) {
-      try {
-        return readFileSync2(join2(directory, path), "utf8");
-      } catch {
-        return void 0;
-      }
-    },
-    list(path) {
-      try {
-        return readdirSync2(join2(directory, path));
-      } catch {
-        return [];
-      }
-    }
-  };
-}
-function readJson(file) {
-  try {
-    const parsed = JSON.parse(readFileSync2(file, "utf8"));
-    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? parsed : void 0;
-  } catch {
-    return void 0;
-  }
-}
-function findPackage(name, from) {
-  for (let directory = resolve3(from); ; directory = dirname2(directory)) {
-    const candidate = join2(basename(directory) === "node_modules" ? directory : join2(directory, "node_modules"), name);
-    const json = readJson(join2(candidate, "package.json"));
-    if (json && typeof json.version === "string") return { name, version: json.version, directory: realpathSync(candidate), json };
-    if (dirname2(directory) === directory) return void 0;
-  }
-}
-function findUp(file, from) {
-  for (let directory = resolve3(from); ; directory = dirname2(directory)) {
-    if (existsSync3(join2(directory, file))) return directory;
-    if (dirname2(directory) === directory) return void 0;
-  }
-}
-var init_resolve = __esm({
-  "src/doctor/resolve.ts"() {
-    "use strict";
-  }
-});
-
-// src/doctor/declared.ts
-import { readFileSync as readFileSync3 } from "node:fs";
-import { dirname as dirname3, join as join3, resolve as resolve4 } from "node:path";
-function patchedDependenciesOfYaml(text2) {
-  const entries = /* @__PURE__ */ new Map();
-  let inside = false;
-  for (const line of text2.split(/\r?\n/)) {
-    if (/^patchedDependencies:\s*(#.*)?$/.test(line)) {
-      inside = true;
-      continue;
-    }
-    if (!inside || /^\s*(#.*)?$/.test(line)) continue;
-    if (/^\S/.test(line)) break;
-    const entry = /^\s+(?:"([^"]+)"|'([^']+)'|([^\s:#]+))\s*:\s*(?:"([^"]+)"|'([^']+)'|([^\s#]+))/.exec(line);
-    if (entry) entries.set(entry[1] ?? entry[2] ?? entry[3] ?? "", entry[4] ?? entry[5] ?? entry[6] ?? "");
-  }
-  return entries;
-}
-function declaredPatches(appRoot) {
-  const declared = /* @__PURE__ */ new Map();
-  const add = (entries, base, source) => {
-    for (const [key, path] of entries) if (!declared.has(key)) declared.set(key, { path, file: resolve4(base, path), source });
-  };
-  const fromJson = (json) => {
-    const pnpm = json?.pnpm;
-    const patched = typeof pnpm === "object" && pnpm !== null ? pnpm.patchedDependencies : void 0;
-    return typeof patched === "object" && patched !== null ? Object.entries(patched).filter((entry) => typeof entry[1] === "string") : [];
-  };
-  const workspace = findUp("pnpm-workspace.yaml", appRoot);
-  if (workspace) {
-    try {
-      add(patchedDependenciesOfYaml(readFileSync3(join3(workspace, "pnpm-workspace.yaml"), "utf8")), workspace, "pnpm-workspace.yaml");
-    } catch {
-    }
-  }
-  const top = workspace ?? resolve4(appRoot);
-  for (let directory = resolve4(appRoot); ; directory = dirname3(directory)) {
-    add(fromJson(readJson(join3(directory, "package.json"))), directory, "package.json");
-    if (directory === top || dirname3(directory) === directory) break;
-  }
-  return declared;
-}
-var init_declared = __esm({
-  "src/doctor/declared.ts"() {
-    "use strict";
-    init_resolve();
-  }
-});
-
-// src/doctor/integration.ts
-import { existsSync as existsSync4, readFileSync as readFileSync4 } from "node:fs";
-import { join as join4 } from "node:path";
-function withoutJsComments(text2) {
-  return text2.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:\\])\/\/.*$/gm, "$1");
-}
-function metroFinding(appRoot) {
-  const file = firstExisting(appRoot, METRO_FILES);
-  if (!file) return { state: "no-file" };
-  const code = withoutJsComments(readFileSync4(join4(appRoot, file), "utf8"));
-  return { state: /\bwithSvelteNative\b/.test(code) ? "found" : "unclear", file };
-}
-function expoPluginFinding(appRoot, library2) {
-  const names = [`${library2}/expo`, library2];
-  const json = firstExisting(appRoot, ["app.json"]);
-  const code = firstExisting(appRoot, APP_CONFIG_FILES);
-  if (json) {
-    const parsed = readJson(join4(appRoot, json));
-    const expo = parsed?.expo ?? parsed;
-    const plugins = Array.isArray(expo?.plugins) ? expo.plugins : [];
-    const listed = names.find((name) => plugins.some((entry) => pluginName(entry) === name));
-    if (listed) return { state: "found", file: json, name: listed };
-  }
-  if (code) {
-    const source = withoutJsComments(readFileSync4(join4(appRoot, code), "utf8"));
-    const named = names.find((name) => ['"', "'", "`"].some((quote) => source.includes(`${quote}${name}${quote}`)));
-    return named ? { state: "found", file: code, name: named } : { state: "unclear", file: code };
-  }
-  return json ? { state: "absent", file: json } : { state: "no-file" };
-}
-var METRO_FILES, APP_CONFIG_FILES, firstExisting, pluginName;
-var init_integration = __esm({
-  "src/doctor/integration.ts"() {
-    "use strict";
-    init_resolve();
-    METRO_FILES = ["metro.config.js", "metro.config.cjs", "metro.config.mjs", "metro.config.ts", "metro.config.mts", "metro.config.cts"];
-    APP_CONFIG_FILES = ["app.config.ts", "app.config.js", "app.config.cjs", "app.config.mjs", "app.config.mts", "app.config.cts"];
-    firstExisting = (root2, names) => names.find((name) => existsSync4(join4(root2, name)));
-    pluginName = (entry) => typeof entry === "string" ? entry : Array.isArray(entry) && typeof entry[0] === "string" ? entry[0] : void 0;
-  }
-});
-
-// src/doctor/hunks.ts
-function parsePatch(text2) {
-  const lines = text2.replace(/\r\n/g, "\n").split("\n");
-  const files = [];
-  let current;
-  for (let index = 0; index < lines.length; index++) {
-    const line = lines[index] ?? "";
-    if (line.startsWith("diff --git ")) {
-      current = { path: (/ b\/(.+)$/.exec(line)?.[1] ?? "").trim(), created: false, removed: false, hunks: [] };
-      files.push(current);
-    } else if (current && line.startsWith("new file mode")) {
-      current.created = true;
-    } else if (current && line.startsWith("deleted file mode")) {
-      current.removed = true;
-    } else if (current && line.startsWith("@@")) {
-      const header = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/.exec(line);
-      let before = Number(header?.[1] ?? 1);
-      let after = Number(header?.[2] ?? 1);
-      const hunk = { before: [], after: [] };
-      while ((before > 0 || after > 0) && index + 1 < lines.length) {
-        const body = lines[++index] ?? "";
-        const mark = body[0] ?? " ";
-        if (mark === "\\") continue;
-        if (mark === " " || body === "") {
-          hunk.before.push(body.slice(1));
-          hunk.after.push(body.slice(1));
-          before--;
-          after--;
-        } else if (mark === "+") {
-          hunk.after.push(body.slice(1));
-          after--;
-        } else if (mark === "-") {
-          hunk.before.push(body.slice(1));
-          before--;
-        } else throw new Error(`patch line ${index + 1} is not part of a hunk: ${body}`);
-      }
-      current.hunks.push(hunk);
-    }
-  }
-  return files;
-}
-function indexOfBlock(haystack, block2) {
-  if (block2.length === 0) return 0;
-  for (let start = haystack.indexOf(block2[0] ?? ""); start >= 0 && start + block2.length <= haystack.length; start = haystack.indexOf(block2[0] ?? "", start + 1)) {
-    if (block2.every((line, offset) => haystack[start + offset] === line)) return start;
-  }
-  return -1;
-}
-function missingFromPackage(patch, installed) {
-  const missing = [];
-  for (const file of parsePatch(patch)) {
-    const text2 = installed.read(file.path);
-    if (file.removed) {
-      if (text2 !== void 0) missing.push(`${file.path} should be gone`);
-      continue;
-    }
-    if (text2 === void 0) {
-      missing.push(`${file.path} is not there`);
-      continue;
-    }
-    const lines = text2.replace(/\r\n/g, "\n").split("\n");
-    file.hunks.forEach((hunk, index) => {
-      if (indexOfBlock(lines, hunk.after) < 0) missing.push(`${file.path}: hunk ${index + 1} of ${file.hunks.length} of the patch is not in the installed file`);
-    });
-  }
-  return missing;
-}
-var init_hunks = __esm({
-  "src/doctor/hunks.ts"() {
-    "use strict";
-  }
-});
-
 // src/doctor/shapes.ts
-function inFile(read, path, checks, raw = false) {
-  const text2 = read.read(path);
+function inFile(read2, path, checks, raw = false) {
+  const text2 = read2.read(path);
   if (text2 === void 0) return [`${path} is not in the package`];
   const code = raw ? text2 : stripComments(text2);
   return checks.filter(([, holds2]) => !holds2(code)).map(([problem]) => `${path}: ${problem}`);
 }
-function kitProblems(read) {
+function kitProblems(read2) {
   return [
-    ...inFile(read, "src/core/sync/create_manifest_data/index.js", [["does not skip the +mobile files of a route directory", has("(?:mobile\\.|(?:layout|error)\\.mobile\\.)")]], true),
-    ...inFile(read, "src/exports/vite/index.js", [["the `+page`/`+layout` warnings still look at .mobile.svelte files", count("filename.endsWith('.mobile.svelte')", 2)]], true)
+    ...inFile(read2, "src/core/sync/create_manifest_data/index.js", [["does not skip the +mobile files of a route directory", has("(?:mobile\\.|(?:layout|error)\\.mobile\\.)")]], true),
+    ...inFile(read2, "src/exports/vite/index.js", [["the `+page`/`+layout` warnings still look at .mobile.svelte files", count("filename.endsWith('.mobile.svelte')", 2)]], true)
   ];
 }
-function pdfProblems(read) {
-  return inFile(read, "android/src/main/java/org/wonday/pdf/events/TopChangeEvent.java", [["canCoalesce() is not overridden to return false", neverCoalesces]]);
+function pdfProblems(read2) {
+  return inFile(read2, "android/src/main/java/org/wonday/pdf/events/TopChangeEvent.java", [["canCoalesce() is not overridden to return false", neverCoalesces]]);
 }
 function videoEmitterProblems(emitter) {
   const code = stripComments(emitter);
@@ -273,31 +60,31 @@ function videoEmitterProblems(emitter) {
   if (streams.join(",") !== "EVENT_BANDWIDTH,EVENT_PROGRESS") problems.push(`the events that may coalesce are ${streams.join(", ") || "none"}, not EVENT_BANDWIDTH and EVENT_PROGRESS`);
   return problems;
 }
-function videoProblems(read) {
+function videoProblems(read2) {
   const path = "android/src/main/java/com/brentvatne/common/react/VideoEventEmitter.kt";
-  const emitter = read.read(path);
+  const emitter = read2.read(path);
   return emitter === void 0 ? [`${path} is not in the package`] : videoEmitterProblems(emitter).map((problem) => `${path}: ${problem}`);
 }
-function mapsProblems(read) {
+function mapsProblems(read2) {
   const directory = "android/src/main/java/com/rnmaps/fabric/event";
-  const files = read.list(directory).filter((file) => file.endsWith(".java"));
+  const files = read2.list(directory).filter((file) => file.endsWith(".java"));
   if (files.length === 0) return [`${directory} is not in the package`];
   const problems = [];
   for (const file of files) {
     const stream = mapsStreamEvents.includes(file.slice(0, -".java".length));
-    problems.push(...inFile(read, `${directory}/${file}`, [stream ? ["a stream event no longer coalesces", (code) => !code.includes("canCoalesce")] : ["canCoalesce() is not overridden to return false", neverCoalesces]]));
+    problems.push(...inFile(read2, `${directory}/${file}`, [stream ? ["a stream event no longer coalesces", (code) => !code.includes("canCoalesce")] : ["canCoalesce() is not overridden to return false", neverCoalesces]]));
   }
   return problems;
 }
-function lottieProblems(read) {
+function lottieProblems(read2) {
   const directory = "android/src/main/java/com/airbnb/android/react/lottie";
-  const events = read.list(directory).filter((file) => /^On\w+Event\.kt$/.test(file));
-  const android = events.length === 0 ? [`${directory} has no event classes`] : events.flatMap((file) => inFile(read, `${directory}/${file}`, [["canCoalesce() is not overridden to return false", neverCoalesces]]));
-  const ios = inFile(read, "ios/Fabric/LottieAnimationViewComponentView.mm", [["does not keep events until the view has its emitter", (code) => code.includes("_eventsBeforeEmitter") && code.includes("lottieSendEvent:")]]);
+  const events = read2.list(directory).filter((file) => /^On\w+Event\.kt$/.test(file));
+  const android = events.length === 0 ? [`${directory} has no event classes`] : events.flatMap((file) => inFile(read2, `${directory}/${file}`, [["canCoalesce() is not overridden to return false", neverCoalesces]]));
+  const ios = inFile(read2, "ios/Fabric/LottieAnimationViewComponentView.mm", [["does not keep events until the view has its emitter", (code) => code.includes("_eventsBeforeEmitter") && code.includes("lottieSendEvent:")]]);
   return [...android, ...ios];
 }
-function rnghProblems(read) {
-  return Object.entries(rnghAdditions).flatMap(([path, lines]) => inFile(read, path, [
+function rnghProblems(read2) {
+  return Object.entries(rnghAdditions).flatMap(([path, lines]) => inFile(read2, path, [
     ...lines.map((line) => [`does not have \`${line.split("\n")[0]}\``, has(line)]),
     ...path.endsWith(".mm") ? [
       ...rnghUses.map((use) => [`does not use \`${use}\``, has(use)]),
@@ -305,20 +92,20 @@ function rnghProblems(read) {
     ] : []
   ], true));
 }
-function reanimatedProblems(read) {
+function reanimatedProblems(read2) {
   const base = "android/src/main";
   return [
-    ...inFile(read, `${base}/java/com/swmansion/reanimated/SvelteEngineHook.kt`, [["has no `updater` hook", has("var updater")]]),
-    ...inFile(read, `${base}/java/com/swmansion/reanimated/NativeProxy.kt`, [
+    ...inFile(read2, `${base}/java/com/swmansion/reanimated/SvelteEngineHook.kt`, [["has no `updater` hook", has("var updater")]]),
+    ...inFile(read2, `${base}/java/com/swmansion/reanimated/NativeProxy.kt`, [
       ["does not offer the engine's hook before React Native's prop dispatch", has("SvelteEngineHook.updater?.invoke(viewTag, props)")],
       ["has no direct path for opacity and translate/scale transforms", has("private fun applySimpleProps(")]
     ]),
-    ...inFile(read, `${base}/cpp/reanimated/android/NativeProxy.cpp`, [["does not export reanimatedSetSynchronousPropsSink", has("reanimatedSetSynchronousPropsSink")], ["does not call the sink", has("synchronousPropsSink.load")]]),
-    ...inFile(read, `${base}/cpp/reanimated/android/NativeProxy.h`, [["does not declare SynchronousPropsSink", has("SynchronousPropsSink")], ["does not keep the sink's rest buffers", has("sinkRestInts_")]])
+    ...inFile(read2, `${base}/cpp/reanimated/android/NativeProxy.cpp`, [["does not export reanimatedSetSynchronousPropsSink", has("reanimatedSetSynchronousPropsSink")], ["does not call the sink", has("synchronousPropsSink.load")]]),
+    ...inFile(read2, `${base}/cpp/reanimated/android/NativeProxy.h`, [["does not declare SynchronousPropsSink", has("SynchronousPropsSink")], ["does not keep the sink's rest buffers", has("sinkRestInts_")]])
   ];
 }
-function workletsProblems(read) {
-  const check = (path) => inFile(read, path, [
+function workletsProblems(read2) {
+  const check = (path) => inFile(read2, path, [
     ["does not request a native frame on demand", (code) => code.includes("let frameRequested = false;") && code.includes("function requestFrame()")],
     ["still starts the per-frame loop", (code) => !code.includes("/* Start the loop */") && code.split("__nativeRequestAnimationFrame(").length - 1 === 1]
   ], true);
@@ -348,15 +135,15 @@ function lazyRegistry(patch) {
 function adapterLoadsRegistryLazily(source) {
   return !/^import .*NativeComponentRegistry/m.test(source) && /require\('react-native\/Libraries\/NativeComponent\/NativeComponentRegistry'\)/.test(source);
 }
-function expoModulesCoreProblems(read, patch) {
+function expoModulesCoreProblems(read2, patch) {
   const { lazyEntries, prewarm, startup } = lazyRegistry(patch);
   return [
-    ...inFile(read, moduleRegistryPath, [
+    ...inFile(read2, moduleRegistryPath, [
       ["does not list the lazy modules the patch defines", (text2) => lazyEntries.length > 10 && lazyEntries.every(([className, name]) => text2.includes(`"${className}" to "${name}"`))],
       ["does not name the prewarmed and startup modules the patch defines", (text2) => [...prewarm, ...startup].every((name) => text2.includes(`"${name}"`))]
     ], true),
-    ...inFile(read, "android/src/main/java/expo/modules/adapters/react/NativeModulesProxy.java", [["cannot build the interop registry in the background", has("startInteropInBackground")]], true),
-    ...inFile(read, "src/NativeViewManagerAdapter.native.tsx", [["imports the native component registry when it loads", adapterLoadsRegistryLazily]], true)
+    ...inFile(read2, "android/src/main/java/expo/modules/adapters/react/NativeModulesProxy.java", [["cannot build the interop registry in the background", has("startInteropInBackground")]], true),
+    ...inFile(read2, "src/NativeViewManagerAdapter.native.tsx", [["imports the native component registry when it loads", adapterLoadsRegistryLazily]], true)
   ];
 }
 var stripComments, neverCoalescesPattern, neverCoalesces, has, count, mapsStreamEvents, rnghAdditions, rnghUses, rnghRegistration, strings, moduleRegistryPath;
@@ -381,14 +168,14 @@ var init_shapes = __esm({
 });
 
 // src/doctor/patches.ts
-import { readdirSync as readdirSync3 } from "node:fs";
-import { resolve as resolve5 } from "node:path";
+import { readdirSync as readdirSync2 } from "node:fs";
+import { resolve as resolve3 } from "node:path";
 function patchFiles(directory = patchesDirectory) {
-  return readdirSync3(directory).filter((file) => file.endsWith(".patch")).sort().map((file) => {
+  return readdirSync2(directory).filter((file) => file.endsWith(".patch")).sort().map((file) => {
     const stem = file.slice(0, -".patch".length);
     const at = stem.lastIndexOf("@");
     if (at <= 0) throw new Error(`${file}: a patch is named <package>@<version>.patch`);
-    return { package: stem.slice(0, at).replaceAll("__", "/"), version: stem.slice(at + 1), file, path: resolve5(directory, file) };
+    return { package: stem.slice(0, at).replaceAll("__", "/"), version: stem.slice(at + 1), file, path: resolve3(directory, file) };
   });
 }
 var patchesDirectory, patchSpecs, patchKey;
@@ -397,7 +184,7 @@ var init_patches = __esm({
     "use strict";
     init_package_root();
     init_shapes();
-    patchesDirectory = resolve5(packageRoot, "patches");
+    patchesDirectory = resolve3(packageRoot, "patches");
     patchSpecs = [
       { package: "@sveltejs/kit", does: "SvelteKit leaves the `+mobile.svelte` files of a route directory alone", inspect: kitProblems },
       { package: "expo-modules-core", via: "expo", does: "Expo modules register lazily and the common ones are prewarmed (Android start)", inspect: expoModulesCoreProblems },
@@ -410,18 +197,6 @@ var init_patches = __esm({
       { package: "react-native-worklets", does: "the UI runtime asks for a frame only while a callback waits, with no idle per-frame loop", inspect: workletsProblems }
     ];
     patchKey = (patch) => `${patch.package}@${patch.version}`;
-  }
-});
-
-// src/doctor/requirements.ts
-var requirements;
-var init_requirements = __esm({
-  "src/doctor/requirements.ts"() {
-    "use strict";
-    requirements = {
-      node: ">=25.0.0",
-      pnpm: ">=12.3.4"
-    };
   }
 });
 
@@ -517,9 +292,866 @@ var init_semver = __esm({
   }
 });
 
-// src/doctor/checks.ts
+// src/svelte-build.ts
+var requiredSvelte;
+var init_svelte_build = __esm({
+  "src/svelte-build.ts"() {
+    "use strict";
+    requiredSvelte = {
+      version: "5.56.7",
+      commit: "216f258068d93170a927ad4d27ee6864b0b305c5",
+      pullRequest: "https://github.com/sveltejs/svelte/pull/18042",
+      /** The preview build pkg.pr.new publishes for the commit; byte for byte the tarball in this repository's `vendor/`. */
+      preview: "https://pkg.pr.new/svelte@216f258068d93170a927ad4d27ee6864b0b305c5",
+      vendored: "vendor/svelte-5.56.7-216f258.tgz"
+    };
+  }
+});
+
+// src/init-app.ts
+var init_app_exports = {};
+__export(init_app_exports, {
+  appDependencies: () => appDependencies,
+  appNames: () => appNames,
+  applyPlan: () => applyPlan,
+  formatPlan: () => formatPlan,
+  mergeWorkspaceYaml: () => mergeWorkspaceYaml,
+  parseInitArguments: () => parseInitArguments,
+  planInit: () => planInit,
+  runInit: () => runInit,
+  svelteNativeViteConfig: () => svelteNativeViteConfig
+});
+import { spawnSync } from "node:child_process";
+import { existsSync as existsSync3, mkdirSync as mkdirSync2, readFileSync as readFileSync2, readdirSync as readdirSync3, writeFileSync as writeFileSync2 } from "node:fs";
+import { createRequire as createRequire2 } from "node:module";
+import { dirname as dirname2, join as join2, relative as relative2 } from "node:path";
+function indentOf(text2) {
+  return /^([ \t]+)"/m.exec(text2)?.[1] ?? "	";
+}
+function setEntry(map, name, value) {
+  if (name in map) {
+    map[name] = value;
+    return;
+  }
+  const keys = Object.keys(map);
+  const sorted = keys.every((key, index) => index === 0 || (keys[index - 1] ?? "") <= key);
+  const entries = Object.entries({ ...map, [name]: value });
+  if (sorted) entries.sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+  for (const key of keys) delete map[key];
+  for (const [key, entry] of entries) map[key] = entry;
+}
+function appNames(packageName, options = {}) {
+  const bare = (packageName ?? "app").replace(/^@[^/]+\//, "");
+  let slug = bare.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "app";
+  if (!/^[a-z]/.test(slug)) slug = `app-${slug}`;
+  const id = slug.replaceAll("-", "");
+  const title = options.name ?? (/^[A-Za-z0-9 ._-]+$/.test(bare) ? bare : slug);
+  return { title, slug, androidPackage: options.androidPackage ?? `dev.example.${id}`, iosBundleId: options.iosBundleId ?? `dev.example.${id}` };
+}
+function installedVersion(root2, name) {
+  const text2 = read(join2(root2, "node_modules", name, "package.json"));
+  if (text2 === void 0) return void 0;
+  try {
+    return JSON.parse(text2).version;
+  } catch {
+    return void 0;
+  }
+}
+function newestKitVersion(kitPatches) {
+  const parsed = kitPatches.flatMap((patch) => {
+    const version = parseVersion(patch.version);
+    return version ? [{ patch, version }] : [];
+  });
+  return parsed.sort((a, b) => compareVersions(a.version, b.version)).at(-1)?.patch.version;
+}
+function planPackageJson(root2, original, patches2, options) {
+  const manifest = JSON.parse(original);
+  const summary = [];
+  const warnings = [];
+  const dependencies = { ...manifest.dependencies ?? {} };
+  const devDependencies = { ...manifest.devDependencies ?? {} };
+  const setDependency = (name, value, preferred) => {
+    const list = name in dependencies ? dependencies : name in devDependencies ? devDependencies : preferred === "dependencies" ? dependencies : devDependencies;
+    if (list[name] === value) return false;
+    setEntry(list, name, value);
+    return true;
+  };
+  const has2 = (name) => name in dependencies || name in devDependencies;
+  const next = { ...manifest };
+  if (next.main !== ".svelte-native/entry.ts") {
+    if (next.main === void 0 || options.force) {
+      next.main = ".svelte-native/entry.ts";
+      summary.push('"main"');
+    } else {
+      warnings.push(`package.json: "main" is "${String(next.main)}", and Svelte Native needs ".svelte-native/entry.ts" (the generated entry); change it or run again with --force.`);
+    }
+  }
+  const svelteSpec = dependencies.svelte ?? devDependencies.svelte;
+  if (svelteSpec === void 0 || !(svelteSpec.startsWith("file:") || svelteSpec.startsWith("https://pkg.pr.new/svelte@"))) {
+    setDependency("svelte", requiredSvelte.preview, "devDependencies");
+    summary.push("svelte (the custom-renderer build)");
+  }
+  const hasKit = has2("@sveltejs/kit");
+  const kitPatches = patches2.filter((patch) => patch.package === "@sveltejs/kit");
+  let kitVersion;
+  if (hasKit) {
+    const installed = installedVersion(root2, "@sveltejs/kit");
+    const wanted = exactVersion(dependencies["@sveltejs/kit"] ?? devDependencies["@sveltejs/kit"]);
+    kitVersion = [installed, wanted].find((version) => version !== void 0 && kitPatches.some((patch) => patch.version === version)) ?? newestKitVersion(kitPatches);
+    if (kitVersion !== void 0 && setDependency("@sveltejs/kit", kitVersion, "devDependencies")) summary.push(`@sveltejs/kit ${kitVersion} (exact: the library patches that version)`);
+  }
+  let changedPeers = 0;
+  for (const [name, version] of Object.entries(appDependencies)) if (setDependency(name, version, "dependencies")) changedPeers++;
+  for (const patch of patches2.filter((entry) => alwaysPatched.includes(entry.package) && entry.package !== "expo-modules-core")) {
+    if (appDependencies[patch.package] !== patch.version) warnings.push(`${patch.package}: the library's patch is for ${patch.version}, and init's version is ${appDependencies[patch.package] ?? "none"}; this is a bug in the library.`);
+  }
+  if (changedPeers > 0) summary.push(`${plural(changedPeers, "dependency")} (the versions the library was exercised on)`);
+  const nextScripts = { ...manifest.scripts ?? {} };
+  const addedScripts = [];
+  for (const [name, command2] of Object.entries(scripts)) {
+    const current = nextScripts[name];
+    if (current === void 0) {
+      nextScripts[name] = command2;
+      addedScripts.push(name);
+    } else if (current !== command2) {
+      warnings.push(`package.json: the script "${name}" is "${current}", not "${command2}"; left as it is.`);
+    }
+  }
+  if (addedScripts.length > 0) {
+    next.scripts = nextScripts;
+    summary.push(`scripts ${addedScripts.join(", ")}`);
+  }
+  const reanimated = typeof next.reanimated === "object" && next.reanimated !== null ? next.reanimated : {};
+  if (reanimated.staticFeatureFlags?.ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS !== true) {
+    next.reanimated = { ...reanimated, staticFeatureFlags: { ...reanimated.staticFeatureFlags ?? {}, ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS: true } };
+    summary.push("the Reanimated flag");
+  }
+  if (Object.keys(dependencies).length > 0 || manifest.dependencies !== void 0) next.dependencies = dependencies;
+  if (Object.keys(devDependencies).length > 0 || manifest.devDependencies !== void 0) next.devDependencies = devDependencies;
+  const text2 = `${JSON.stringify(next, null, indentOf(original))}${original.endsWith("\n") ? "\n" : ""}`;
+  return { text: text2, summary, warnings, kitVersion, hasKit, changed: text2 !== original, name: typeof manifest.name === "string" ? manifest.name : void 0 };
+}
+function mergeWorkspaceYaml(text2, blocks) {
+  const crlf = text2.includes("\r\n");
+  const lines = text2.replaceAll("\r\n", "\n").split("\n");
+  if (lines.at(-1) === "") lines.pop();
+  const changes = [];
+  const manual = [];
+  let separated = false;
+  for (const [block2, wanted] of Object.entries(blocks)) {
+    const start = lines.findIndex((line) => new RegExp(`^${block2}:\\s*(?:#.*)?$`).test(line));
+    if (start < 0) {
+      if (lines.some((line) => new RegExp(`^${block2}:\\s*\\S`).test(line))) {
+        manual.push(`${block2}: ${Object.entries(wanted).map(([key, value]) => `${keyOf(key)}: ${value}`).join(", ")}`);
+        continue;
+      }
+      if (!separated && lines.length > 0 && lines.at(-1) !== "") lines.push("");
+      separated = true;
+      lines.push(`${block2}:`, ...Object.entries(wanted).map(([key, value]) => `  ${keyOf(key)}: ${value}`));
+      changes.push(`${block2}: ${Object.keys(wanted).join(", ")}`);
+      continue;
+    }
+    let end = start + 1;
+    while (end < lines.length && /^(?:\s+\S.*|\s*)$/.test(lines[end] ?? "")) end++;
+    let last = end - 1;
+    while (last > start && /^\s*$/.test(lines[last] ?? "")) last--;
+    const existing = /* @__PURE__ */ new Map();
+    let indent = "  ";
+    for (let index = start + 1; index <= last; index++) {
+      const entry = /^(\s+)(?:"([^"]+)"|'([^']+)'|([^\s:#]+))\s*:\s*(?:"([^"]*)"|'([^']*)'|([^\s#]+))?/.exec(lines[index] ?? "");
+      if (entry) {
+        indent = entry[1] ?? indent;
+        existing.set(entry[2] ?? entry[3] ?? entry[4] ?? "", { index, value: entry[5] ?? entry[6] ?? entry[7] });
+      }
+    }
+    const inserted = [];
+    for (const [key, value] of Object.entries(wanted)) {
+      const at = existing.get(key);
+      const line = `${indent}${keyOf(key)}: ${value}`;
+      if (at === void 0) {
+        inserted.push(line);
+        changes.push(`${block2}: ${key}`);
+      } else if (at.value !== value) {
+        lines[at.index] = line;
+        changes.push(`${block2}: ${key} (was ${at.value ?? "empty"})`);
+      }
+    }
+    lines.splice(last + 1, 0, ...inserted);
+  }
+  const merged = `${lines.join("\n")}
+`;
+  return { text: crlf ? merged.replaceAll("\n", "\r\n") : merged, changes, manual };
+}
+function closing(text2, open) {
+  const pairs = { "(": ")", "[": "]", "{": "}" };
+  const stack = [];
+  for (let index = open; index < text2.length; index++) {
+    const char = text2[index] ?? "";
+    if (char === "/" && text2[index + 1] === "/") {
+      index = text2.indexOf("\n", index);
+      if (index < 0) return -1;
+      continue;
+    }
+    if (char === "/" && text2[index + 1] === "*") {
+      index = text2.indexOf("*/", index + 2);
+      if (index < 0) return -1;
+      index++;
+      continue;
+    }
+    if (char === '"' || char === "'" || char === "`") {
+      for (index++; index < text2.length && text2[index] !== char; index++) if (text2[index] === "\\") index++;
+      continue;
+    }
+    if (char in pairs) stack.push(pairs[char] ?? "");
+    else if (char === ")" || char === "]" || char === "}") {
+      if (stack.pop() !== char) return -1;
+      if (stack.length === 0) return index;
+    }
+  }
+  return -1;
+}
+function svelteNativeViteConfig(text2) {
+  const quote = quoteOf(text2);
+  const importLine = /import\s*\{\s*sveltekit\s*\}\s*from\s*['"]@sveltejs\/kit\/vite['"];?/;
+  const callAt = /\bsveltekit\s*\(/.exec(text2.replace(importLine, (line) => " ".repeat(line.length)));
+  if (!importLine.test(text2) || !callAt || !/\bdefineConfig\s*\(/.test(text2)) return void 0;
+  const unit = /^\t/m.test(text2) ? "	" : "  ";
+  const open = callAt.index + callAt[0].length - 1;
+  const close = closing(text2, open);
+  if (close < 0) return void 0;
+  const args2 = text2.slice(open + 1, close);
+  const lineStart = text2.lastIndexOf("\n", callAt.index) + 1;
+  const indent = /^\s*/.exec(text2.slice(lineStart, callAt.index))?.[0] ?? "";
+  const target = `target: mode === ${quote}native${quote} ? ${quote}native${quote} : ${quote}web${quote}`;
+  const replacement = args2.trim() === "" ? `svelteNative({ ${target} })` : `svelteNative({
+${indent}${unit}${target},
+${indent}${unit}kit: ${args2.trim().replace(/\n(?=[^\n])/g, `
+${unit}`)}
+${indent}})`;
+  let edited = `${text2.slice(0, callAt.index)}${replacement}${text2.slice(close + 1)}`;
+  edited = edited.replace(importLine, `import { svelteNative } from ${quote}@rasheed/svelte-native/vite${quote};`);
+  const define = /\bdefineConfig\s*\(/.exec(edited);
+  if (!define) return void 0;
+  const afterDefine = edited.slice(define.index + define[0].length);
+  const defineOpen = define.index + define[0].length - 1;
+  const firstArgument = /^\s*/.exec(afterDefine)?.[0].length ?? 0;
+  if (afterDefine[firstArgument] === "{") {
+    const braceAt = defineOpen + 1 + firstArgument;
+    const braceClose = closing(edited, braceAt);
+    if (braceClose < 0) return void 0;
+    edited = `${edited.slice(0, braceAt)}({ mode }) => (${edited.slice(braceAt, braceClose + 1)})${edited.slice(braceClose + 1)}`;
+  } else if (!/^\s*(?:async\s*)?\(\s*\{[^)]*\bmode\b[^)]*\}\s*\)\s*=>/.test(afterDefine)) {
+    return void 0;
+  }
+  return edited;
+}
+function mobileRoutes(routes) {
+  if (!existsSync3(routes)) return [];
+  return readdirSync3(routes, { recursive: true, encoding: "utf8" }).filter((file) => /(^|[\\/])\+(?:mobile|layout\.mobile)\.svelte$/.test(file));
+}
+function planInit(root2, options = {}) {
+  const plan = { root: root2, changes: [], warnings: [], problems: [] };
+  const packageText = read(join2(root2, "package.json"));
+  if (packageText === void 0) {
+    plan.problems.push(`${root2} has no package.json: run \`svelte-native init\` in the directory of your project (after \`npx sv create\`).`);
+    return plan;
+  }
+  if (!existsSync3(join2(root2, "pnpm-lock.yaml")) && !existsSync3(join2(root2, "pnpm-workspace.yaml")) && (existsSync3(join2(root2, "package-lock.json")) || existsSync3(join2(root2, "yarn.lock")) || existsSync3(join2(root2, "bun.lock")) || existsSync3(join2(root2, "bun.lockb")))) {
+    plan.problems.push("This project uses another package manager than pnpm. The library's patches are pnpm's (`patchedDependencies`): create the project with pnpm (`npx sv create`, then choose pnpm) or move it to pnpm first.");
+    return plan;
+  }
+  let manifestText = packageText;
+  const patches2 = patchFiles();
+  let pkg;
+  try {
+    pkg = planPackageJson(root2, manifestText, patches2, options);
+  } catch (error) {
+    plan.problems.push(`package.json is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+    return plan;
+  }
+  manifestText = pkg.text;
+  plan.warnings.push(...pkg.warnings);
+  plan.changes.push(pkg.changed ? { path: "package.json", action: "edit", summary: pkg.summary.join(", "), text: pkg.text } : { path: "package.json", action: "keep", summary: "has everything" });
+  const names = appNames(pkg.name, options);
+  const manifest = JSON.parse(manifestText);
+  const declared = { ...manifest.devDependencies ?? {}, ...manifest.dependencies ?? {} };
+  const needed = [];
+  for (const patch of patches2) {
+    if (alwaysPatched.includes(patch.package)) needed.push(patch);
+    else if (patch.package === "@sveltejs/kit") {
+      if (pkg.hasKit && patch.version === pkg.kitVersion) needed.push(patch);
+    } else if (patch.package in declared) {
+      if (declared[patch.package] === patch.version) needed.push(patch);
+      else plan.warnings.push(`${patch.package}: package.json asks for ${declared[patch.package]}, and the library's patch is for ${patch.version} (it is declared only for that version); pin it with \`pnpm add ${patch.package}@${patch.version}\` and run init again.`);
+    }
+  }
+  const workspacePath = join2(root2, "pnpm-workspace.yaml");
+  const workspaceText = read(workspacePath);
+  const overrides = {};
+  const expoModules = patches2.find((patch) => patch.package === "expo-modules-core");
+  if (expoModules) overrides["expo-modules-core"] = expoModules.version;
+  const patched = Object.fromEntries(needed.map((patch) => [patchKey(patch), `patches/svelte-native/${patch.file}`]));
+  const merged = mergeWorkspaceYaml(workspaceText ?? "", { allowBuilds: { esbuild: "true" }, overrides, patchedDependencies: patched });
+  if (merged.manual.length > 0) {
+    plan.changes.push({
+      path: "pnpm-workspace.yaml",
+      action: "manual",
+      summary: "a block is written in a style init does not edit",
+      instructions: `Add these to pnpm-workspace.yaml:
+${merged.manual.map((line) => `  ${line}`).join("\n")}`
+    });
+  } else if (merged.changes.length > 0) {
+    plan.changes.push({ path: "pnpm-workspace.yaml", action: workspaceText === void 0 ? "create" : "edit", summary: merged.changes.join("; "), text: merged.text });
+  } else plan.changes.push({ path: "pnpm-workspace.yaml", action: "keep", summary: "has everything" });
+  if (workspaceText !== void 0) {
+    for (const key of patchedKeys(workspaceText)) {
+      const at = key.lastIndexOf("@");
+      const same = needed.find((patch) => patch.package === key.slice(0, at) && patch.version !== key.slice(at + 1));
+      if (same) plan.warnings.push(`pnpm-workspace.yaml declares a patch for ${key}, and the library's is for ${same.version}: remove the entry, or pnpm stops with ERR_PNPM_UNUSED_PATCH.`);
+    }
+  }
+  const copied = [];
+  const replaced = [];
+  for (const patch of needed) {
+    const target = join2(root2, "patches/svelte-native", patch.file);
+    const content = readFileSync2(patch.path);
+    const current = existsSync3(target) ? readFileSync2(target) : void 0;
+    if (current?.equals(content)) continue;
+    plan.changes.push({ path: relative2(root2, target), action: current === void 0 ? "create" : "edit", summary: current === void 0 ? "the library's patch" : "differs from the installed library's copy: replaced", text: content });
+    (current === void 0 ? copied : replaced).push(patch.file);
+  }
+  if (copied.length === 0 && replaced.length === 0) plan.changes.push({ path: "patches/svelte-native", action: "keep", summary: `${plural(needed.length, "patch")} up to date` });
+  const metroPath = join2(root2, "metro.config.cjs");
+  const metroText = read(metroPath) ?? read(join2(root2, "metro.config.js"));
+  if (metroText === void 0) plan.changes.push({ path: "metro.config.cjs", action: "create", summary: "withSvelteNative(getDefaultConfig(__dirname))", text: metroConfig });
+  else if (metroText.includes("withSvelteNative")) plan.changes.push({ path: "metro.config.cjs", action: "keep", summary: "uses withSvelteNative" });
+  else plan.changes.push({ path: "metro.config.cjs", action: "manual", summary: "exists and does not use withSvelteNative", instructions: `Wrap the config you export:
+  const { withSvelteNative } = require("@rasheed/svelte-native/metro");
+  module.exports = withSvelteNative(<your config>);` });
+  planAppJson(root2, names, plan);
+  const viteName = ["vite.config.ts", "vite.config.js", "vite.config.mts", "vite.config.mjs"].find((file) => existsSync3(join2(root2, file)));
+  if (pkg.hasKit && viteName === void 0) {
+    plan.changes.push({ path: "vite.config.ts", action: "manual", summary: "none found", instructions: viteInstructions("vite.config.ts") });
+  } else if (viteName !== void 0) {
+    const viteText = read(join2(root2, viteName)) ?? "";
+    if (viteText.includes("svelteNative(")) plan.changes.push({ path: viteName, action: "keep", summary: "uses svelteNative()" });
+    else {
+      const edited = svelteNativeViteConfig(viteText);
+      if (edited !== void 0 && syntaxOk(edited, viteName)) plan.changes.push({ path: viteName, action: "edit", summary: "svelteNative() around SvelteKit's plugin, as a function of the mode", text: edited });
+      else plan.changes.push({ path: viteName, action: "manual", summary: "not in a shape init edits safely", instructions: viteInstructions(viteName, quoteOf(viteText)) });
+    }
+  }
+  const routes = join2(root2, "src/routes");
+  const existing = mobileRoutes(routes);
+  if (!existing.some((file) => file === "+layout.mobile.svelte")) plan.changes.push({ path: "src/routes/+layout.mobile.svelte", action: "create", summary: "the app shell", text: layoutRoute });
+  else plan.changes.push({ path: "src/routes/+layout.mobile.svelte", action: "keep", summary: "exists" });
+  if (!existing.some((file) => /\+mobile\.svelte$/.test(file) && !/layout\.mobile/.test(file))) {
+    plan.changes.push({ path: "src/routes/+mobile.svelte", action: "create", summary: "a home screen", text: homeRoute(names.title) });
+    plan.changes.push({ path: "src/routes/details/+mobile.svelte", action: "create", summary: "a second screen", text: detailsRoute });
+  } else plan.changes.push({ path: "src/routes", action: "keep", summary: `${plural(existing.filter((file) => !/layout/.test(file)).length, "native screen")} already` });
+  const ignorePath = join2(root2, ".gitignore");
+  const ignoreText = read(ignorePath);
+  const lines = new Set((ignoreText ?? "").split(/\r?\n/).map((line) => line.trim().replace(/^\//, "").replace(/\/$/, "")));
+  const missing = gitignore.filter((line) => !lines.has(line.replace(/^\//, "")));
+  if (missing.length > 0) {
+    const base = ignoreText ?? "";
+    plan.changes.push({ path: ".gitignore", action: ignoreText === void 0 ? "create" : "edit", summary: missing.join(", "), text: `${base}${base === "" || base.endsWith("\n") ? "" : "\n"}${base === "" ? "" : "\n"}# Svelte Native
+${missing.join("\n")}
+` });
+  } else plan.changes.push({ path: ".gitignore", action: "keep", summary: "has the generated folders" });
+  return plan;
+}
+function patchedKeys(workspace) {
+  const keys = [];
+  let inside = false;
+  for (const line of workspace.split(/\r?\n/)) {
+    if (/^patchedDependencies:/.test(line)) {
+      inside = true;
+      continue;
+    }
+    if (!inside || /^\s*(#.*)?$/.test(line)) continue;
+    if (/^\S/.test(line)) break;
+    const key = /^\s+(?:"([^"]+)"|'([^']+)'|([^\s:#]+))\s*:/.exec(line);
+    keys.push(key?.[1] ?? key?.[2] ?? key?.[3] ?? "");
+  }
+  return keys.filter((key) => key !== "");
+}
+function syntaxOk(source, file) {
+  try {
+    const esbuild = createRequire2(import.meta.url)("esbuild");
+    esbuild.transformSync(source, { loader: file.endsWith("ts") ? "ts" : "js" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+function planAppJson(root2, names, plan) {
+  const path = join2(root2, "app.json");
+  const text2 = read(path);
+  const wanted = () => ({
+    name: names.title,
+    slug: names.slug,
+    scheme: names.slug,
+    version: "1.0.0",
+    android: { package: names.androidPackage },
+    ios: { bundleIdentifier: names.iosBundleId },
+    plugins: [plugin]
+  });
+  if (text2 === void 0) {
+    const config = ["app.config.ts", "app.config.js", "app.config.mjs", "app.config.cjs"].find((file) => existsSync3(join2(root2, file)));
+    if (config !== void 0) {
+      plan.changes.push({ path: config, action: "manual", summary: "the app is configured in code", instructions: `Add the library's plugin to \`plugins\` in ${config}:
+  plugins: ["${plugin}"]
+and give the app an \`android.package\` and \`ios.bundleIdentifier\`.` });
+      return;
+    }
+    plan.changes.push({ path: "app.json", action: "create", summary: `${names.title}, ${names.androidPackage}`, text: `${JSON.stringify({ expo: wanted() }, null, "	")}
+` });
+    return;
+  }
+  let json;
+  try {
+    json = JSON.parse(text2);
+  } catch {
+    plan.changes.push({ path: "app.json", action: "manual", summary: "is not valid JSON", instructions: `Add "${plugin}" to expo.plugins in app.json.` });
+    return;
+  }
+  const expo = json.expo ?? json;
+  const done = [];
+  const configured = wanted();
+  for (const key of ["name", "slug", "scheme", "version"]) {
+    if (expo[key] === void 0) {
+      expo[key] = configured[key];
+      done.push(key);
+    }
+  }
+  for (const [block2, key] of [["android", "package"], ["ios", "bundleIdentifier"]]) {
+    const value = typeof expo[block2] === "object" && expo[block2] !== null ? expo[block2] : {};
+    if (value[key] === void 0) {
+      expo[block2] = { ...value, [key]: configured[block2][key] };
+      done.push(`${block2}.${key}`);
+    }
+  }
+  const plugins = Array.isArray(expo.plugins) ? expo.plugins : [];
+  const has2 = plugins.some((entry) => (Array.isArray(entry) ? entry[0] : entry) === plugin || (Array.isArray(entry) ? entry[0] : entry) === "@rasheed/svelte-native");
+  if (!has2) {
+    expo.plugins = [...plugins, plugin];
+    done.push("the plugin");
+  }
+  if (done.length === 0) plan.changes.push({ path: "app.json", action: "keep", summary: "lists the plugin" });
+  else plan.changes.push({ path: "app.json", action: "edit", summary: done.join(", "), text: `${JSON.stringify(json, null, indentOf(text2))}${text2.endsWith("\n") ? "\n" : ""}` });
+}
+function applyPlan(plan) {
+  for (const change of plan.changes) {
+    if (change.text === void 0 || change.action !== "create" && change.action !== "edit") continue;
+    const file = join2(plan.root, change.path);
+    mkdirSync2(dirname2(file), { recursive: true });
+    writeFileSync2(file, change.text);
+  }
+}
+function parseInitArguments(args2) {
+  const options = {};
+  for (let index = 0; index < args2.length; index++) {
+    const arg = args2[index] ?? "";
+    const value = () => {
+      const next = args2[++index];
+      if (next === void 0 || next.startsWith("--")) throw new Error(`${arg} needs a value`);
+      return next;
+    };
+    try {
+      if (arg === "--dry-run") options.dryRun = true;
+      else if (arg === "--force") options.force = true;
+      else if (arg === "--no-install") options.install = false;
+      else if (arg === "--name") options.name = value();
+      else if (arg === "--android-package") options.androidPackage = value();
+      else if (arg === "--ios-bundle-id") options.iosBundleId = value();
+      else if (arg === "--help" || arg === "-h") return USAGE;
+      else return `Unknown option ${arg}.
+
+${USAGE}`;
+    } catch (error) {
+      return `${error instanceof Error ? error.message : String(error)}.
+
+${USAGE}`;
+    }
+  }
+  return options;
+}
+function formatPlan(plan, dryRun) {
+  const lines = [`svelte-native init: ${plan.root}${dryRun ? " (dry run)" : ""}`, ""];
+  const width = Math.max(...plan.changes.map((change) => change.path.length), 10);
+  for (const change of plan.changes) lines.push(`  ${WORD[change.action]}  ${change.path.padEnd(width)}  ${change.summary}`);
+  for (const change of plan.changes.filter((entry) => entry.action === "manual")) lines.push("", `${change.path}:`, ...(change.instructions ?? "").split("\n").map((line) => `  ${line}`));
+  if (plan.warnings.length > 0) lines.push("", "warnings:", ...plan.warnings.map((warning) => `  ${warning}`));
+  return lines.join("\n");
+}
+function runInit(root2, args2, io = processIo) {
+  const options = parseInitArguments(args2);
+  if (typeof options === "string") {
+    (options.startsWith("Usage") ? io.out : io.err)(options.trimEnd());
+    return options.startsWith("Usage") ? 0 : 2;
+  }
+  const plan = planInit(root2, options);
+  if (plan.problems.length > 0) {
+    for (const problem of plan.problems) io.err(`svelte-native init: ${problem}`);
+    return 1;
+  }
+  io.out(formatPlan(plan, options.dryRun === true));
+  const manual = plan.changes.filter((change) => change.action === "manual").length;
+  if (options.dryRun) {
+    io.out("\nNothing was written (--dry-run).");
+    return 0;
+  }
+  const written = plan.changes.filter((change) => change.action === "create" || change.action === "edit").length;
+  applyPlan(plan);
+  io.out(written === 0 ? "\nNothing to change: the project is already set up." : `
+Wrote ${plural(written, "file")}.`);
+  if (options.install === false) return manual > 0 ? 1 : 0;
+  io.out("\n==> pnpm install");
+  const install = spawnSync("pnpm", ["install", "--no-frozen-lockfile"], { cwd: root2, stdio: "inherit", shell: process.platform === "win32" });
+  if (install.status !== 0) {
+    io.err("svelte-native init: pnpm install failed; fix what it says and run `pnpm install` and `pnpm exec svelte-native doctor`.");
+    return install.status ?? 1;
+  }
+  io.out("\n==> svelte-native doctor");
+  const doctor = spawnSync("pnpm", ["exec", "svelte-native", "doctor"], { cwd: root2, stdio: "inherit", shell: process.platform === "win32" });
+  if (doctor.status !== 0) return doctor.status ?? 1;
+  io.out(`
+Next: the first \`pnpm android\` (or \`pnpm ios\`, on a Mac) builds the native app, which takes a while; after that \`pnpm native\` starts the dev server for it.${manual > 0 ? `
+First, the ${plural(manual, "change")} listed above for you to make.` : ""}`);
+  return manual > 0 ? 1 : 0;
+}
+var appDependencies, alwaysPatched, plugin, scripts, gitignore, read, plural, quoteOf, exactVersion, keyOf, viteInstructions, metroConfig, layoutRoute, homeRoute, detailsRoute, USAGE, processIo, WORD;
+var init_init_app = __esm({
+  "src/init-app.ts"() {
+    "use strict";
+    init_patches();
+    init_semver();
+    init_svelte_build();
+    appDependencies = {
+      expo: "57.0.30",
+      "expo-constants": "57.0.22",
+      "hermes-intl": "^0.1.2",
+      react: "19.2.7",
+      "react-native": "0.86.3",
+      "react-native-gesture-handler": "2.32.0",
+      "react-native-reanimated": "4.5.1",
+      "react-native-worklets": "0.10.1"
+    };
+    alwaysPatched = ["expo-modules-core", "react-native-gesture-handler", "react-native-reanimated", "react-native-worklets"];
+    plugin = "@rasheed/svelte-native/expo";
+    scripts = { native: "svelte-native dev", android: "svelte-native android", ios: "svelte-native ios", "check-setup": "svelte-native doctor" };
+    gitignore = [".svelte-native", ".expo", "/android", "/ios"];
+    read = (file) => existsSync3(file) ? readFileSync2(file, "utf8") : void 0;
+    plural = (count2, word) => `${count2} ${word.endsWith("y") ? count2 === 1 ? word : `${word.slice(0, -1)}ies` : count2 === 1 ? word : `${word}s`}`;
+    quoteOf = (text2) => /from\s+"/.test(text2) ? '"' : "'";
+    exactVersion = (spec) => spec !== void 0 && /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(spec) ? spec : void 0;
+    keyOf = (key) => key.startsWith("@") || key.includes(":") ? `"${key}"` : key;
+    viteInstructions = (file, quote = "'") => [
+      `In ${file}: import { svelteNative } from ${quote}@rasheed/svelte-native/vite${quote}, make the config a function of the mode, and replace SvelteKit's plugin`,
+      "with the library's, which wraps it and takes what you passed to sveltekit() as `kit`:",
+      "",
+      "  export default defineConfig(({ mode }) => ({",
+      "    plugins: [svelteNative({ target: mode === 'native' ? 'native' : 'web', kit: { /* what you passed to sveltekit() */ } })]",
+      "  }));"
+    ].join("\n");
+    metroConfig = `const { getDefaultConfig } = require("expo/metro-config");
+const { withSvelteNative } = require("@rasheed/svelte-native/metro");
+
+module.exports = withSvelteNative(getDefaultConfig(__dirname));
+`;
+    layoutRoute = `<script lang="ts">
+	import type { Snippet } from 'svelte';
+
+	let { children }: { children: Snippet } = $props();
+</script>
+
+<!-- The app shell: children is the root navigator, a stack of the screens under src/routes. -->
+{@render children()}
+`;
+    homeRoute = (title) => `<script lang="ts">
+	import { Pressable, Screen, Text, View, useRouter } from '@rasheed/svelte-native';
+
+	const router = useRouter();
+	let taps = $state(0);
+</script>
+
+<Screen title=${JSON.stringify(title)} header={{ large: true }}>
+	<View style={{ flex: 1, padding: 24, gap: 16, justifyContent: 'center' }}>
+		<Text style={{ fontSize: 28, fontWeight: '700' }}>Svelte Native</Text>
+		<Text style={{ fontSize: 16 }}>Tapped {taps} {taps === 1 ? 'time' : 'times'}.</Text>
+		<Pressable onPress={() => taps++} accessibilityRole="button" style={{ padding: 14, borderRadius: 12, backgroundColor: '#1d4ed8' }}>
+			<Text style={{ color: '#ffffff', fontSize: 16, fontWeight: '600' }}>Tap</Text>
+		</Pressable>
+		<Pressable onPress={() => router.goto('/details')} accessibilityRole="button" style={{ padding: 14, borderRadius: 12, backgroundColor: '#e5e7eb' }}>
+			<Text style={{ fontSize: 16, fontWeight: '600' }}>Open details</Text>
+		</Pressable>
+	</View>
+</Screen>
+`;
+    detailsRoute = `<script lang="ts">
+	import { Pressable, Screen, Text, View, useRouter } from '@rasheed/svelte-native';
+
+	const router = useRouter();
+</script>
+
+<Screen title="Details">
+	<View style={{ flex: 1, padding: 24, gap: 16, justifyContent: 'center' }}>
+		<Text style={{ fontSize: 16 }}>A second screen, pushed onto the stack. The header's back button, the edge swipe and Android's back return to the home screen.</Text>
+		<Pressable onPress={() => router.back()} accessibilityRole="button" style={{ padding: 14, borderRadius: 12, backgroundColor: '#e5e7eb' }}>
+			<Text style={{ fontSize: 16, fontWeight: '600' }}>Back</Text>
+		</Pressable>
+	</View>
+</Screen>
+`;
+    USAGE = `Usage: svelte-native init [options]
+
+Turns a SvelteKit project (npx sv create) into a Svelte Native app, from the project's directory, after the library is installed in it. It adds the
+dependencies, pnpm's settings and patches, the Metro and Expo config, the Vite plugin and a first native screen, then runs pnpm install and
+\`svelte-native doctor\`. Running it again changes nothing. A file it cannot change safely is left alone and the change is printed.
+
+  --dry-run               print what it would do and write nothing
+  --force                 replace a "main" or an entry the project has, where init would have written another
+  --no-install            write the files; do not run pnpm install and the doctor
+  --name <name>           the app's display name (default: the package name)
+  --android-package <id>  the Android application id (default: dev.example.<package name>)
+  --ios-bundle-id <id>    the iOS bundle identifier (default: the same)
+`;
+    processIo = { out: (text2) => process.stdout.write(`${text2}
+`), err: (text2) => process.stderr.write(`${text2}
+`) };
+    WORD = { create: "create", edit: "edit  ", keep: "keep  ", manual: "YOU   " };
+  }
+});
+
+// src/doctor/resolve.ts
+import { existsSync as existsSync4, readdirSync as readdirSync4, readFileSync as readFileSync3, realpathSync } from "node:fs";
+import { basename, dirname as dirname3, join as join3, resolve as resolve4 } from "node:path";
+function readerFor(directory) {
+  return {
+    read(path) {
+      try {
+        return readFileSync3(join3(directory, path), "utf8");
+      } catch {
+        return void 0;
+      }
+    },
+    list(path) {
+      try {
+        return readdirSync4(join3(directory, path));
+      } catch {
+        return [];
+      }
+    }
+  };
+}
+function readJson(file) {
+  try {
+    const parsed = JSON.parse(readFileSync3(file, "utf8"));
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? parsed : void 0;
+  } catch {
+    return void 0;
+  }
+}
+function findPackage(name, from) {
+  for (let directory = resolve4(from); ; directory = dirname3(directory)) {
+    const candidate = join3(basename(directory) === "node_modules" ? directory : join3(directory, "node_modules"), name);
+    const json = readJson(join3(candidate, "package.json"));
+    if (json && typeof json.version === "string") return { name, version: json.version, directory: realpathSync(candidate), json };
+    if (dirname3(directory) === directory) return void 0;
+  }
+}
+function findUp(file, from) {
+  for (let directory = resolve4(from); ; directory = dirname3(directory)) {
+    if (existsSync4(join3(directory, file))) return directory;
+    if (dirname3(directory) === directory) return void 0;
+  }
+}
+var init_resolve = __esm({
+  "src/doctor/resolve.ts"() {
+    "use strict";
+  }
+});
+
+// src/doctor/declared.ts
+import { readFileSync as readFileSync4 } from "node:fs";
+import { dirname as dirname4, join as join4, resolve as resolve5 } from "node:path";
+function patchedDependenciesOfYaml(text2) {
+  const entries = /* @__PURE__ */ new Map();
+  let inside = false;
+  for (const line of text2.split(/\r?\n/)) {
+    if (/^patchedDependencies:\s*(#.*)?$/.test(line)) {
+      inside = true;
+      continue;
+    }
+    if (!inside || /^\s*(#.*)?$/.test(line)) continue;
+    if (/^\S/.test(line)) break;
+    const entry = /^\s+(?:"([^"]+)"|'([^']+)'|([^\s:#]+))\s*:\s*(?:"([^"]+)"|'([^']+)'|([^\s#]+))/.exec(line);
+    if (entry) entries.set(entry[1] ?? entry[2] ?? entry[3] ?? "", entry[4] ?? entry[5] ?? entry[6] ?? "");
+  }
+  return entries;
+}
+function declaredPatches(appRoot) {
+  const declared = /* @__PURE__ */ new Map();
+  const add = (entries, base, source) => {
+    for (const [key, path] of entries) if (!declared.has(key)) declared.set(key, { path, file: resolve5(base, path), source });
+  };
+  const fromJson = (json) => {
+    const pnpm = json?.pnpm;
+    const patched = typeof pnpm === "object" && pnpm !== null ? pnpm.patchedDependencies : void 0;
+    return typeof patched === "object" && patched !== null ? Object.entries(patched).filter((entry) => typeof entry[1] === "string") : [];
+  };
+  const workspace = findUp("pnpm-workspace.yaml", appRoot);
+  if (workspace) {
+    try {
+      add(patchedDependenciesOfYaml(readFileSync4(join4(workspace, "pnpm-workspace.yaml"), "utf8")), workspace, "pnpm-workspace.yaml");
+    } catch {
+    }
+  }
+  const top = workspace ?? resolve5(appRoot);
+  for (let directory = resolve5(appRoot); ; directory = dirname4(directory)) {
+    add(fromJson(readJson(join4(directory, "package.json"))), directory, "package.json");
+    if (directory === top || dirname4(directory) === directory) break;
+  }
+  return declared;
+}
+var init_declared = __esm({
+  "src/doctor/declared.ts"() {
+    "use strict";
+    init_resolve();
+  }
+});
+
+// src/doctor/integration.ts
 import { existsSync as existsSync5, readFileSync as readFileSync5 } from "node:fs";
 import { join as join5 } from "node:path";
+function withoutJsComments(text2) {
+  return text2.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:\\])\/\/.*$/gm, "$1");
+}
+function metroFinding(appRoot) {
+  const file = firstExisting(appRoot, METRO_FILES);
+  if (!file) return { state: "no-file" };
+  const code = withoutJsComments(readFileSync5(join5(appRoot, file), "utf8"));
+  return { state: /\bwithSvelteNative\b/.test(code) ? "found" : "unclear", file };
+}
+function expoPluginFinding(appRoot, library2) {
+  const names = [`${library2}/expo`, library2];
+  const json = firstExisting(appRoot, ["app.json"]);
+  const code = firstExisting(appRoot, APP_CONFIG_FILES);
+  if (json) {
+    const parsed = readJson(join5(appRoot, json));
+    const expo = parsed?.expo ?? parsed;
+    const plugins = Array.isArray(expo?.plugins) ? expo.plugins : [];
+    const listed = names.find((name) => plugins.some((entry) => pluginName(entry) === name));
+    if (listed) return { state: "found", file: json, name: listed };
+  }
+  if (code) {
+    const source = withoutJsComments(readFileSync5(join5(appRoot, code), "utf8"));
+    const named = names.find((name) => ['"', "'", "`"].some((quote) => source.includes(`${quote}${name}${quote}`)));
+    return named ? { state: "found", file: code, name: named } : { state: "unclear", file: code };
+  }
+  return json ? { state: "absent", file: json } : { state: "no-file" };
+}
+var METRO_FILES, APP_CONFIG_FILES, firstExisting, pluginName;
+var init_integration = __esm({
+  "src/doctor/integration.ts"() {
+    "use strict";
+    init_resolve();
+    METRO_FILES = ["metro.config.js", "metro.config.cjs", "metro.config.mjs", "metro.config.ts", "metro.config.mts", "metro.config.cts"];
+    APP_CONFIG_FILES = ["app.config.ts", "app.config.js", "app.config.cjs", "app.config.mjs", "app.config.mts", "app.config.cts"];
+    firstExisting = (root2, names) => names.find((name) => existsSync5(join5(root2, name)));
+    pluginName = (entry) => typeof entry === "string" ? entry : Array.isArray(entry) && typeof entry[0] === "string" ? entry[0] : void 0;
+  }
+});
+
+// src/doctor/hunks.ts
+function parsePatch(text2) {
+  const lines = text2.replace(/\r\n/g, "\n").split("\n");
+  const files = [];
+  let current;
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index] ?? "";
+    if (line.startsWith("diff --git ")) {
+      current = { path: (/ b\/(.+)$/.exec(line)?.[1] ?? "").trim(), created: false, removed: false, hunks: [] };
+      files.push(current);
+    } else if (current && line.startsWith("new file mode")) {
+      current.created = true;
+    } else if (current && line.startsWith("deleted file mode")) {
+      current.removed = true;
+    } else if (current && line.startsWith("@@")) {
+      const header = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/.exec(line);
+      let before = Number(header?.[1] ?? 1);
+      let after = Number(header?.[2] ?? 1);
+      const hunk = { before: [], after: [] };
+      while ((before > 0 || after > 0) && index + 1 < lines.length) {
+        const body = lines[++index] ?? "";
+        const mark = body[0] ?? " ";
+        if (mark === "\\") continue;
+        if (mark === " " || body === "") {
+          hunk.before.push(body.slice(1));
+          hunk.after.push(body.slice(1));
+          before--;
+          after--;
+        } else if (mark === "+") {
+          hunk.after.push(body.slice(1));
+          after--;
+        } else if (mark === "-") {
+          hunk.before.push(body.slice(1));
+          before--;
+        } else throw new Error(`patch line ${index + 1} is not part of a hunk: ${body}`);
+      }
+      current.hunks.push(hunk);
+    }
+  }
+  return files;
+}
+function indexOfBlock(haystack, block2) {
+  if (block2.length === 0) return 0;
+  for (let start = haystack.indexOf(block2[0] ?? ""); start >= 0 && start + block2.length <= haystack.length; start = haystack.indexOf(block2[0] ?? "", start + 1)) {
+    if (block2.every((line, offset) => haystack[start + offset] === line)) return start;
+  }
+  return -1;
+}
+function missingFromPackage(patch, installed) {
+  const missing = [];
+  for (const file of parsePatch(patch)) {
+    const text2 = installed.read(file.path);
+    if (file.removed) {
+      if (text2 !== void 0) missing.push(`${file.path} should be gone`);
+      continue;
+    }
+    if (text2 === void 0) {
+      missing.push(`${file.path} is not there`);
+      continue;
+    }
+    const lines = text2.replace(/\r\n/g, "\n").split("\n");
+    file.hunks.forEach((hunk, index) => {
+      if (indexOfBlock(lines, hunk.after) < 0) missing.push(`${file.path}: hunk ${index + 1} of ${file.hunks.length} of the patch is not in the installed file`);
+    });
+  }
+  return missing;
+}
+var init_hunks = __esm({
+  "src/doctor/hunks.ts"() {
+    "use strict";
+  }
+});
+
+// src/doctor/requirements.ts
+var requirements;
+var init_requirements = __esm({
+  "src/doctor/requirements.ts"() {
+    "use strict";
+    requirements = {
+      node: ">=25.0.0",
+      pnpm: ">=12.3.4"
+    };
+  }
+});
+
+// src/doctor/checks.ts
+import { existsSync as existsSync6, readFileSync as readFileSync6 } from "node:fs";
+import { join as join6 } from "node:path";
 function environment(context) {
   const checks = [];
   if (context.node === void 0) {
@@ -540,7 +1172,7 @@ function environment(context) {
 }
 function library(context, name, version, appPackage) {
   const dependencies = { ...record(appPackage.dependencies), ...record(appPackage.devDependencies), ...record(appPackage.optionalDependencies) };
-  return name in dependencies ? { group: "build integration", status: "pass", message: `${name} ${version} is a dependency of the app` } : { group: "build integration", status: "fail", message: `${name} is not a dependency of the app (${join5(context.appRoot, "package.json")})`, fix: `add it to the app's dependencies (README: "Install in an app"), or run \`pnpm exec svelte-native init\`` };
+  return name in dependencies ? { group: "build integration", status: "pass", message: `${name} ${version} is a dependency of the app` } : { group: "build integration", status: "fail", message: `${name} is not a dependency of the app (${join6(context.appRoot, "package.json")})`, fix: `add it to the app's dependencies (README: "Install in an app"), or run \`pnpm exec svelte-native init\`` };
 }
 function svelte(context, peers) {
   const installed = findPackage("svelte", context.appRoot);
@@ -548,10 +1180,10 @@ function svelte(context, peers) {
   if (!installed) return { group: "svelte", status: "fail", message: "svelte is not installed", fix };
   const entry = record(installed.json.exports)["./renderer"];
   const target = text(entry) ?? text(record(entry).default);
-  const exported = target !== void 0 && existsSync5(join5(installed.directory, target));
+  const exported = target !== void 0 && existsSync6(join6(installed.directory, target));
   const compiler = ["src/compiler/validate-options.js", "compiler/index.js"].some((file) => {
     try {
-      return readFileSync5(join5(installed.directory, file), "utf8").includes("customRenderer");
+      return readFileSync6(join6(installed.directory, file), "utf8").includes("customRenderer");
     } catch {
       return false;
     }
@@ -593,7 +1225,7 @@ function peerDependencies(context, peers, optional) {
 function expoRuntime(context) {
   const expo = findPackage("expo", context.appRoot);
   if (!expo) return [];
-  const missing = EXPO_RUNTIME_FILES.filter((file) => !existsSync5(join5(expo.directory, file)));
+  const missing = EXPO_RUNTIME_FILES.filter((file) => !existsSync6(join6(expo.directory, file)));
   if (missing.length === 0) return [{ group: "peer dependencies", status: "pass", message: `expo ${expo.version} has src/winter, the runtime (URL, fetch, TextDecoder) that the library's polyfills import` }];
   return [{
     group: "peer dependencies",
@@ -611,7 +1243,7 @@ function autolinkedPeers(context, peers, appPackage) {
     if (name in dependencies) {
       checks.push({ group: "peer dependencies", status: "pass", message: `${name} is a dependency of the app: React Native's autolinking links its native module` });
     } else if (findPackage(name, context.appRoot)) {
-      checks.push({ group: "peer dependencies", status: "fail", message: `${name} is installed but is not a dependency of the app (${join5(context.appRoot, "package.json")}): React Native's autolinking links only the app's own dependencies, so the build would not have its native module`, fix: `pnpm add ${name}@${range}, then npx expo prebuild` });
+      checks.push({ group: "peer dependencies", status: "fail", message: `${name} is installed but is not a dependency of the app (${join6(context.appRoot, "package.json")}): React Native's autolinking links only the app's own dependencies, so the build would not have its native module`, fix: `pnpm add ${name}@${range}, then npx expo prebuild` });
     }
   }
   return checks;
@@ -619,7 +1251,7 @@ function autolinkedPeers(context, peers, appPackage) {
 function patches(context, libraryName, optional) {
   const declared = declaredPatches(context.appRoot);
   const checks = [];
-  for (const patch of patchFiles(join5(context.packageRoot, "patches"))) {
+  for (const patch of patchFiles(join6(context.packageRoot, "patches"))) {
     const key = patchKey(patch);
     const spec = patchSpecs.find((candidate) => candidate.package === patch.package);
     if (!spec) continue;
@@ -635,7 +1267,7 @@ function patches(context, libraryName, optional) {
       continue;
     }
     const reader = readerFor(installed.directory);
-    const patchText = readFileSync5(patch.path, "utf8");
+    const patchText = readFileSync6(patch.path, "utf8");
     const changed = spec.inspect(reader, patchText);
     const differing = changed.length === 0 ? missingFromPackage(patchText, reader) : [];
     if (changed.length === 0 && differing.length === 0) {
@@ -644,7 +1276,7 @@ function patches(context, libraryName, optional) {
     }
     const entry = declared.get(key);
     const copy = `node_modules/${libraryName}/patches/${patch.file}`;
-    const fix = !entry ? `copy ${copy} into your repository (patches/svelte-native/), declare "${key}: patches/svelte-native/${patch.file}" under patchedDependencies in pnpm-workspace.yaml, then pnpm install (README: "Apply the patches")` : !existsSync5(entry.file) ? `${entry.source} declares ${key} at ${entry.path}, which does not exist: copy ${copy} there, then pnpm install` : `${entry.source} declares ${key} (${entry.path}); run pnpm install, and if the package is still not patched copy ${copy} over that file (an older copy of the patch does not match this version of the library)`;
+    const fix = !entry ? `copy ${copy} into your repository (patches/svelte-native/), declare "${key}: patches/svelte-native/${patch.file}" under patchedDependencies in pnpm-workspace.yaml, then pnpm install (README: "Apply the patches")` : !existsSync6(entry.file) ? `${entry.source} declares ${key} at ${entry.path}, which does not exist: copy ${copy} there, then pnpm install` : `${entry.source} declares ${key} (${entry.path}); run pnpm install, and if the package is still not patched copy ${copy} over that file (an older copy of the patch does not match this version of the library)`;
     const problems = changed.length > 0 ? changed : differing;
     checks.push({
       group: "patches",
@@ -663,19 +1295,19 @@ function integration(context, name) {
     if (finding.state === "unclear") return { group: "build integration", status: "unknown", message: `could not tell: ${file} does not mention withSvelteNative (a config that applies it from a file it imports is fine)`, fix: `module.exports = withSvelteNative(getDefaultConfig(__dirname)), with withSvelteNative from require("${name}/metro")` };
     return { group: "build integration", status: "fail", message: "no metro.config.js in the app: Expo's default Metro config does not know the library", fix: `create metro.config.js: module.exports = withSvelteNative(getDefaultConfig(__dirname)), with withSvelteNative from require("${name}/metro")` };
   };
-  const plugin = (finding) => {
+  const plugin2 = (finding) => {
     const file = finding.file ?? "";
     if (finding.state === "found") return { group: "build integration", status: "pass", message: `${file} lists the ${finding.name ?? `${name}/expo`} plugin` };
     if (finding.state === "unclear") return { group: "build integration", status: "unknown", message: `could not tell: ${file} does not name ${name}/expo (a config that builds its plugins in code may add it)`, fix: `plugins: [["${name}/expo", {}]] in the Expo config` };
     if (finding.state === "absent") return { group: "build integration", status: "fail", message: `${file} does not list the ${name}/expo plugin`, fix: `add "${name}/expo" to plugins in ${file}` };
     return { group: "build integration", status: "fail", message: "no app.json or app.config.* in the app", fix: `create an Expo config with plugins: [["${name}/expo", {}]]` };
   };
-  return [metro(metroFinding(context.appRoot)), plugin(expoPluginFinding(context.appRoot, name))];
+  return [metro(metroFinding(context.appRoot)), plugin2(expoPluginFinding(context.appRoot, name))];
 }
 function runChecks(context) {
-  const own = readJson(join5(context.packageRoot, "package.json")) ?? {};
+  const own = readJson(join6(context.packageRoot, "package.json")) ?? {};
   const name = text(own.name) ?? "@rasheed/svelte-native";
-  const appPackage = readJson(join5(context.appRoot, "package.json"));
+  const appPackage = readJson(join6(context.appRoot, "package.json"));
   if (!appPackage) {
     return [{ group: "environment", status: "fail", message: `${context.appRoot} has no package.json: this is not an app directory`, fix: "run svelte-native doctor from the app's directory" }];
   }
@@ -719,7 +1351,7 @@ __export(doctor_exports, {
   runChecks: () => runChecks,
   runDoctor: () => runDoctor
 });
-import { spawnSync } from "node:child_process";
+import { spawnSync as spawnSync2 } from "node:child_process";
 import { resolve as resolve6 } from "node:path";
 function formatReport(checks, { color = false, appRoot = "" } = {}) {
   const paint = (status) => color ? `\x1B[${COLORS[status]}m${WORDS[status]}\x1B[0m` : WORDS[status];
@@ -741,25 +1373,25 @@ function formatReport(checks, { color = false, appRoot = "" } = {}) {
 }
 function nodeVersion() {
   if (!process.versions.bun) return process.versions.node;
-  const result = spawnSync("node", ["--version"], { encoding: "utf8", timeout: 15e3, shell: process.platform === "win32" });
+  const result = spawnSync2("node", ["--version"], { encoding: "utf8", timeout: 15e3, shell: process.platform === "win32" });
   const version = result.status === 0 ? result.stdout.trim().replace(/^v/, "") : void 0;
   return version && /^\d+\.\d+\.\d+/.test(version) ? version : void 0;
 }
 function pnpmVersion(directory) {
-  const result = spawnSync("pnpm", ["--version"], { cwd: directory, encoding: "utf8", timeout: 6e4, shell: process.platform === "win32" });
+  const result = spawnSync2("pnpm", ["--version"], { cwd: directory, encoding: "utf8", timeout: 6e4, shell: process.platform === "win32" });
   const version = result.status === 0 ? result.stdout.trim().split(/\r?\n/).pop() : void 0;
   return version && /^\d+\.\d+\.\d+/.test(version) ? version : void 0;
 }
 function runDoctor(root2, args2, out = process.stdout, context = {}) {
   if (args2.includes("--help") || args2.includes("-h")) {
-    out.write(USAGE);
+    out.write(USAGE2);
     return 0;
   }
   const unknown = args2.find((arg) => arg !== "--json");
   if (unknown !== void 0) {
     out.write(`Unknown argument ${unknown}
 
-${USAGE}`);
+${USAGE2}`);
     return 2;
   }
   const appRoot = resolve6(root2);
@@ -776,14 +1408,14 @@ ${USAGE}`);
   else out.write(formatReport(checks, { color: out.isTTY === true && !process.env.NO_COLOR, appRoot }));
   return failed ? 1 : 0;
 }
-var USAGE, WORDS, COLORS;
+var USAGE2, WORDS, COLORS;
 var init_doctor = __esm({
   "src/doctor/index.ts"() {
     "use strict";
     init_package_root();
     init_checks();
     init_checks();
-    USAGE = `Usage: svelte-native doctor [--json]
+    USAGE2 = `Usage: svelte-native doctor [--json]
 
 Checks, from the app's directory, that the setup the library needs is complete: Node and pnpm, the custom-renderer Svelte, the peer
 dependencies, the patches applied to the installed packages, and the app's Metro and Expo configs. One line per check; the exit status is
@@ -851,16 +1483,16 @@ function buildTree(files) {
     const found = /* @__PURE__ */ new Map();
     for (const source of everyDirectory) {
       if (!source.key.startsWith(`${tabs.key}/`)) continue;
-      const relative2 = source.directory.slice(tabs.directory.length);
+      const relative3 = source.directory.slice(tabs.directory.length);
       let groups = 0;
-      while (groups < relative2.length && isGroup(relative2[groups])) groups++;
-      if (groups === relative2.length) {
+      while (groups < relative3.length && isGroup(relative3[groups])) groups++;
+      if (groups === relative3.length) {
         const isPage = pages.get(source.key) === source;
         if (isPage || navigators.has(source.key)) throw new Error(`${source.path}: a ${isPage ? "page" : "navigator layout"} directly under a tabs layout has no pane to show in; move it into a pane directory`);
         continue;
       }
-      const key = relative2[groups];
-      const directory = tabs.directory.concat(relative2.slice(0, groups + 1));
+      const key = relative3[groups];
+      const directory = tabs.directory.concat(relative3.slice(0, groups + 1));
       const known = found.get(key);
       if (known && known.directory.join("/") !== directory.join("/")) throw new Error(`pane ${key} of ${tabs.key} is defined twice: ${known.directory.join("/")} and ${directory.join("/")}`);
       if (key.startsWith("[")) throw new Error(`${source.path}: a pane is a fixed directory, not a parameter`);
@@ -1138,6 +1770,22 @@ async function exportNative(root2, platform, options = {}) {
 // src/cli.ts
 var [command = "dev", ...args] = process.argv.slice(2);
 var root = process.cwd();
+if (command === "help" || command === "--help" || command === "-h") {
+  console.log(`Usage: svelte-native <command>
+
+  init       turn a SvelteKit project (npx sv create) into a Svelte Native app; \`init --help\` lists its options
+  doctor     check the app's setup (peer versions, patches, Metro and Expo wiring)
+  android    sync, prebuild if android/ is missing, build and run on a device or emulator (arguments go to expo run:android)
+  ios        the same for iOS (a Mac with Xcode)
+  dev        regenerate .svelte-native/ when a route file changes and start Metro (arguments go to expo start)
+  build      export the Hermes bytecode of a platform (--platform android|ios) without building the host
+  sync       only regenerate .svelte-native/`);
+  process.exit(0);
+}
+if (command === "init") {
+  const { runInit: runInit2 } = await Promise.resolve().then(() => (init_init_app(), init_app_exports));
+  process.exit(runInit2(root, args));
+}
 if (command === "doctor") {
   const { runDoctor: runDoctor2 } = await Promise.resolve().then(() => (init_doctor(), doctor_exports));
   process.exit(runDoctor2(root, args));
@@ -1186,5 +1834,5 @@ if (command === "build") {
     process.exitCode = code ?? 1;
   });
 } else if (command !== "sync") {
-  throw new Error(`Unknown command: ${command}. Use dev, android, ios, build, sync or doctor.`);
+  throw new Error(`Unknown command: ${command}. Use init, dev, android, ios, build, sync or doctor.`);
 }

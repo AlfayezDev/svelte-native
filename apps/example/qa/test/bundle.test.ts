@@ -4,10 +4,10 @@ import { createRequire } from "node:module";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { platformDir, repoRoot } from "../lib/paths.ts";
+import { platformDir, svelteNativeCli } from "../lib/paths.ts";
 
 /**
- * The JavaScript bundle of each app (modules/svelte-engine/SPEC.md, "Native modules (smoke test)" and "What the product contains: no development lab (JavaScript)"). The smoke test's libraries are in the smoke app only,
+ * The JavaScript bundle of each app (packages/svelte-native/native/svelte-engine/SPEC.md, "Native modules (smoke test)" and "What the product contains: no development lab (JavaScript)"). The smoke test's libraries are in the smoke app only,
  * so Metro resolves them, and the smoke checks, to a stub in the product and the QA app: the bundle the JavaScript boot gate
  * measures must not carry thirty libraries it never calls. Bundled the way React Native's Gradle plugin does it (`expo export:embed`,
  * release, not minified: Hermes compiles it), without the Hermes step.
@@ -51,7 +51,7 @@ afterAll(() => {
 type Bundle = { text: string; bytes: number; modules: string[] };
 /** `svelte-native sync` for a variant (the command a developer or the QA harness runs). */
 function sync(variant: string): void {
-	const done = spawnSync("node", [join(repoRoot, "packages/svelte-native/src/cli.ts"), "sync"], { cwd: platformDir, env: { ...process.env, APP_VARIANT: variant, EXPO_NO_TELEMETRY: "1" }, encoding: "utf8" });
+	const done = spawnSync("node", [svelteNativeCli, "sync"], { cwd: platformDir, env: { ...process.env, APP_VARIANT: variant, EXPO_NO_TELEMETRY: "1" }, encoding: "utf8" });
 	if (done.status !== 0) throw new Error(`svelte-native sync (${variant || "qa"}) failed: ${done.stderr.slice(0, 400)}`);
 }
 /**

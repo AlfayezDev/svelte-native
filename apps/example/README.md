@@ -40,6 +40,7 @@ The home screen groups these under Basics, Layout and style, Lists and input, Na
 | Inputs and forms | `/inputs` | `TextInput` and `Switch` with `bind:value`, a form with validation, `returnKeyType`, input refs, `KeyboardAvoidingView` |
 | Stack | `/navigation/stack`, `/navigation/stack/[id]` | `router.goto` and `back`, a route parameter, a large title, `headerRight`, the stack growing |
 | Tabs | `/navigation/tabs`, `/navigation/tabs/feed`, `/navigation/tabs/feed/[id]`, `/navigation/tabs/profile` | A layout with `navigator = "tabs"`, `Tabs` with icons from snippets and a badge, a stack inside a tab, closing the bar from its first screen |
+| Header and toolbar | `/navigation/header` | `search` and `headerSearch` in the native header, a bottom `toolbar` with items, a badge and `onPress`, `useToolbar()` |
 | Sheet | `/navigation/sheet` | `presentation = "sheet"`, `sheet={{ detents, grabber }}`, `onDetentChange` |
 | Modal | `/navigation/modal` | `presentation = "modal"` with its own Close button in `headerLeft` |
 | Links | `/navigation/links` | The launch URL, `Linking`, `router.openURL`, and the `adb` and `xcrun` commands that open the app on a screen |

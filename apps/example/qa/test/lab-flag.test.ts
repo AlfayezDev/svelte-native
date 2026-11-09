@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
+import { platformDir } from "../lib/paths.ts";
 import { productApplicationId, qaApplicationId, smokeApplicationId } from "../../src/lib/native/app-ids.ts";
+import { enforceLab } from "../../src/lib/native/lab-guard.ts";
 import { labDecision } from "../../src/lib/native/lab-flag.ts";
-import { OPERATOR_APP_ID } from "../../src/lib/server/native-apps.ts";
 import { defaultPackage } from "../lib/paths.ts";
 import { packageOf } from "../lib/variant.ts";
 
@@ -36,11 +38,46 @@ describe("what runs of the development lab", () => {
   });
 });
 
+describe("a build without the lab turns a link to it away", () => {
+	const routerAt = (pathname: string) => {
+		const calls: [string, unknown][] = [];
+		return { calls, router: { current: { url: new URL(pathname, "https://app.test") }, goto: (href: string, options?: unknown) => void calls.push([href, options]) } };
+	};
+	test("a lab path goes to the home screen, with the stack reset, and only where the lab is off", () => {
+		for (const path of ["/__dev", "/__dev/screens?mode=tabs", "/__dev/tree/home/detail/7"]) {
+			const off = routerAt(path);
+			enforceLab(off.router, false);
+			expect(off.calls).toEqual([["/", { reset: true }]]);
+			const on = routerAt(path);
+			enforceLab(on.router, true);
+			expect(on.calls).toEqual([]);
+		}
+	});
+	test("any other path is left alone, and so is a path that only starts like the lab's", () => {
+		for (const path of ["/", "/settings", "/__devices", "/x/__dev"]) {
+			const off = routerAt(path);
+			enforceLab(off.router, false);
+			expect(off.calls).toEqual([]);
+		}
+	});
+});
+
 describe("the three application ids", () => {
-  test("the registry of the operator app, the QA harness and the flag read the ones app.config.ts makes the apps with", () => {
-    expect(OPERATOR_APP_ID).toBe(productApplicationId);
-    expect(defaultPackage).toBe(qaApplicationId);
-    expect(packageOf).toEqual({ qa: qaApplicationId, smoke: smokeApplicationId, production: productApplicationId });
-    expect(new Set([productApplicationId, qaApplicationId, smokeApplicationId]).size).toBe(3);
-  });
+	/** The ids `app.config.ts` makes a build of each variant with: Android's package and iOS's bundle identifier. */
+	function configured(variant: "qa" | "smoke" | "production"): { android: string; ios: string } {
+		const env: NodeJS.ProcessEnv = { ...process.env };
+		delete env.APP_VARIANT;
+		if (variant !== "qa") env.APP_VARIANT = variant;
+		const run = spawnSync(process.execPath, ["-e", "import('./app.config.ts').then((m) => console.log(JSON.stringify({ android: m.default.android.package, ios: m.default.ios.bundleIdentifier })))"], { cwd: platformDir, env, encoding: "utf8" });
+		if (run.status !== 0) throw new Error(`app.config.ts did not evaluate: ${run.stderr}`);
+		return JSON.parse(run.stdout) as { android: string; ios: string };
+	}
+	test("the QA harness and the flag read the ones app.config.ts makes the apps with", () => {
+		expect(configured("production")).toEqual({ android: productApplicationId, ios: productApplicationId });
+		expect(configured("qa")).toEqual({ android: qaApplicationId, ios: qaApplicationId });
+		expect(configured("smoke")).toEqual({ android: smokeApplicationId, ios: smokeApplicationId });
+		expect(defaultPackage).toBe(qaApplicationId);
+		expect(packageOf).toEqual({ qa: qaApplicationId, smoke: smokeApplicationId, production: productApplicationId });
+		expect(new Set([productApplicationId, qaApplicationId, smokeApplicationId]).size).toBe(3);
+	});
 });

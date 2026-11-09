@@ -1,13 +1,12 @@
 /**
- * How the app's shell keeps trying to start. The product needs the platform configuration (`/api/configuration`) before anything else, and
- * the backend is slow or down at times: a failed attempt is tried again by itself, quickly at first and then at a steady pace, and only while
- * the app is in the foreground. Nothing here touches React Native, so the schedule and the loop are tested on their own (`qa/test/startup.test.ts`).
+ * How the app's shell keeps trying to start. The start (the root layout's fonts and the lab link the app was launched with) can fail, and a
+ * failed attempt is tried again by itself, quickly at first and then at a steady pace, and only while the app is in the foreground. Nothing
+ * here touches React Native, so the schedule and the loop are tested on their own (`qa/test/startup.test.ts`).
  *
- * The wait between attempts is client backoff on one HTTP request, not domain time: it happens before the app has a database connection (the
- * request is what gives it the connection's address), it belongs to this process and dies with it, and no row could hold it. A database schedule
- * (`jobs.rs`) is for time the data owns. The attempts are deliberately not bounded in count: a phone that is opened with the backend down is
- * still looking at the notice the next time it is looked at, so the app keeps asking at the steady pace (15 s) for as long as it is in the
- * foreground, and asks nothing in the background, where nobody sees the result. Unbounded in count, bounded in rate.
+ * The wait between attempts is client backoff on one local operation, not domain time: it belongs to this process and dies with it. The
+ * attempts are deliberately not bounded in count: a phone that is picked up after a failed start is still looking at the notice the next
+ * time it is looked at, so the app keeps trying at the steady pace (15 s) for as long as it is in the foreground, and tries nothing in the
+ * background, where nobody sees the result. Unbounded in count, bounded in rate.
  */
 
 const delays = [1_000, 2_000, 4_000, 8_000] as const;
@@ -26,12 +25,6 @@ export function retryDelay(failures: number): number {
  * cannot tell is better off asking than waiting for an event that may never come.
  */
 export const isForeground = (state: string | null | undefined): boolean => state !== "background" && state !== "inactive";
-
-/**
- * Where the product's start is, for the lab (the iPhone capture waits for it before it takes the screenshot of a screen that needs the session):
- * `pending` from the first attempt, `failed` after one failed (the notice is up, the attempts go on), `ready` once the session is up and loaded.
- */
-export const startupStatus: { phase: "pending" | "failed" | "ready" } = { phase: "pending" };
 
 /**
  * Whether the app is in the foreground, and when that changes (React Native's `AppState`, which the shell adapts with `isForeground`).

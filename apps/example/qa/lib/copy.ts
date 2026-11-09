@@ -1,4 +1,4 @@
-import { ar, en } from "@rasheed/client/messages";
+import { ar, en } from "../../src/lib/native/messages.ts";
 import type { Localized } from "./screens.ts";
 
 type Tree = { readonly [key: string]: string | Tree };

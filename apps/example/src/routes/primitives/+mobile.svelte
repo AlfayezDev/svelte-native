@@ -22,7 +22,7 @@
     </View>
   </Section>
 
-  <Section title="Image" note="The left one is a file bundled with the app, the right one comes from a URL. Both need a size.">
+  <Section title="Image" note="The left one is a file bundled with the app, the right one comes from a URL. An image takes its size from its style: here a height, and the width fills the column.">
     <View style={{ flexDirection: "row", gap: 12 }}>
       <View style={{ flex: 1, gap: 6 }}>
         <Image source={photo} resizeMode="cover" accessibilityLabel="A sunset over hills" style={{ height: 100, borderRadius: 8 }} />

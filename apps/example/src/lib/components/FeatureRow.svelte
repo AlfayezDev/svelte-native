@@ -2,7 +2,7 @@
   import { Pressable, Text, View } from "@rasheed/svelte-native";
   import { text, theme } from "#lib/theme.svelte.ts";
 
-  // One row of the home screen: the feature's name and its one-line description, and an arrow. The row dims while it is pressed.
+  // One row of the home screen: the feature's name and its one-line description, and an arrow that a screen reader skips. The row dims while it is pressed.
   let { title, summary, first, onPress }: { title: string; summary: string; first: boolean; onPress: () => void } = $props();
   let pressed = $state(false);
 </script>
@@ -28,5 +28,5 @@
     <Text style={text.heading}>{title}</Text>
     <Text style={text.caption}>{summary}</Text>
   </View>
-  <Text style={[text.heading, { color: theme.colors.muted }]}>›</Text>
+  <Text aria-hidden={true} style={[text.heading, { color: theme.colors.muted }]}>›</Text>
 </Pressable>

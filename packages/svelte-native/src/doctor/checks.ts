@@ -109,7 +109,51 @@ function peerDependencies(context: Context, peers: Record<string, unknown>, opti
     else if (ok === false) checks.push({ group: "peer dependencies", status: "fail", message: `${name} ${installed.version} does not satisfy ${range}`, fix: `pnpm add ${name}@${range}` });
     else checks.push({ group: "peer dependencies", status: "unknown", message: `${name} ${installed.version}: could not compare it with ${range}` });
   }
-  if (absent.length > 0) checks.push({ group: "peer dependencies", status: "skip", message: `optional view libraries not installed, nothing to check: ${absent.join(", ")}` });
+  if (absent.length > 0) checks.push({ group: "peer dependencies", status: "skip", message: `optional peer dependencies not installed, nothing to check: ${absent.join(", ")}` });
+  return checks;
+}
+
+/**
+ * What `polyfills.ts` imports from `expo` by path: `expo/src/winter`, Expo's WinterCG runtime (a standard `URL` and `URLSearchParams`, `fetch`, `TextDecoder`, ...). The router builds
+ * every location as a `SvelteURL`, which React Native's own `URL` cannot construct, so without the runtime an app starts blank with `TypeError: undefined is not a function`. `expo`
+ * has no `exports` map; Metro picks `runtime.native.ts` on a device.
+ */
+const EXPO_RUNTIME_FILES = ["src/winter/index.ts", "src/winter/runtime.native.ts"] as const;
+
+function expoRuntime(context: Context): Check[] {
+  const expo = findPackage("expo", context.appRoot);
+  // Not installed: the peer dependency check already fails it.
+  if (!expo) return [];
+  const missing = EXPO_RUNTIME_FILES.filter((file) => !existsSync(join(expo.directory, file)));
+  if (missing.length === 0) return [{ group: "peer dependencies", status: "pass", message: `expo ${expo.version} has src/winter, the runtime (URL, fetch, TextDecoder) that the library's polyfills import` }];
+  return [{
+    group: "peer dependencies",
+    status: "fail",
+    message: `expo ${expo.version} has no ${missing.join(", ")} (${expo.directory}): the library's polyfills import expo/src/winter for the standard URL, and the router starts blank without it`,
+    fix: `npx expo install expo (the version this library was exercised on is in its peerDependencies)`,
+  }];
+}
+
+/**
+ * Required peers that carry a native module React Native's autolinking must link. It reads the app's own `dependencies`, not whatever is installed
+ * below `node_modules`, so a library that only comes with another package (or a hoisted install) is in the JavaScript bundle and missing from the build. `hermes-intl` is
+ * the one: the library requires it for the `Intl` constructors Hermes lacks (`PluralRules`, `RelativeTimeFormat`, `ListFormat`, `Locale`).
+ */
+const AUTOLINKED_PEERS = ["hermes-intl"] as const;
+
+function autolinkedPeers(context: Context, peers: Record<string, unknown>, appPackage: Record<string, unknown>): Check[] {
+  const dependencies = { ...record(appPackage.dependencies), ...record(appPackage.devDependencies), ...record(appPackage.optionalDependencies) };
+  const checks: Check[] = [];
+  for (const name of AUTOLINKED_PEERS) {
+    const range = text(peers[name]);
+    if (range === undefined) continue;
+    if (name in dependencies) {
+      checks.push({ group: "peer dependencies", status: "pass", message: `${name} is a dependency of the app: React Native's autolinking links its native module` });
+    } else if (findPackage(name, context.appRoot)) {
+      checks.push({ group: "peer dependencies", status: "fail", message: `${name} is installed but is not a dependency of the app (${join(context.appRoot, "package.json")}): React Native's autolinking links only the app's own dependencies, so the build would not have its native module`, fix: `pnpm add ${name}@${range}, then npx expo prebuild` });
+    }
+    // Not installed and not declared: the peer dependency check above already fails it.
+  }
   return checks;
 }
 
@@ -129,7 +173,12 @@ function patches(context: Context, libraryName: string, optional: ReadonlySet<st
       continue;
     }
     if (installed.version !== patch.version) {
-      checks.push({ group: "patches", status: "fail", message: `${patch.package} ${installed.version} is installed, the patch is for exactly ${patch.version}: pnpm would not apply it`, fix: `pnpm add ${patch.package}@${patch.version}` });
+      // A package that comes with another one (`expo-modules-core` with `expo`) is asked for by a range there, so a fresh install takes the newest version in it, and the
+      // app does not depend on it: pin it for the whole install, as an override, instead of adding a dependency that nothing in the app uses.
+      const fix = spec.via
+        ? `pin ${patch.package} for the install: \`overrides:\` with \`${patch.package}: ${patch.version}\` in pnpm-workspace.yaml (${spec.via} asks for it by a range, so a fresh install takes a newer version and pnpm reports ERR_PNPM_UNUSED_PATCH), then pnpm install (README: "Install in an app")`
+        : `pnpm add ${patch.package}@${patch.version}`;
+      checks.push({ group: "patches", status: "fail", message: `${patch.package} ${installed.version} is installed, the patch is for exactly ${patch.version}: pnpm would not apply it`, fix });
       continue;
     }
     const reader = readerFor(installed.directory);
@@ -168,7 +217,7 @@ function integration(context: Context, name: string): Check[] {
   };
   const plugin = (finding: Finding): Check => {
     const file = finding.file ?? "";
-    if (finding.state === "found") return { group: "build integration", status: "pass", message: `${file} lists the ${name}/expo plugin` };
+    if (finding.state === "found") return { group: "build integration", status: "pass", message: `${file} lists the ${finding.name ?? `${name}/expo`} plugin` };
     if (finding.state === "unclear") return { group: "build integration", status: "unknown", message: `could not tell: ${file} does not name ${name}/expo (a config that builds its plugins in code may add it)`, fix: `plugins: [["${name}/expo", {}]] in the Expo config` };
     if (finding.state === "absent") return { group: "build integration", status: "fail", message: `${file} does not list the ${name}/expo plugin`, fix: `add "${name}/expo" to plugins in ${file}` };
     return { group: "build integration", status: "fail", message: "no app.json or app.config.* in the app", fix: `create an Expo config with plugins: [["${name}/expo", {}]]` };
@@ -190,6 +239,8 @@ export function runChecks(context: Context): Check[] {
     ...environment(context),
     svelte(context, peers),
     ...peerDependencies(context, peers, optional),
+    ...autolinkedPeers(context, peers, appPackage),
+    ...expoRuntime(context),
     ...patches(context, name, optional),
     library(context, name, text(own.version) ?? "?", appPackage),
     ...integration(context, name),

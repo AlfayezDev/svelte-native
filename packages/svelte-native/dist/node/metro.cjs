@@ -34,7 +34,7 @@ __export(metro_exports, {
 module.exports = __toCommonJS(metro_exports);
 var import_node_fs4 = require("node:fs");
 var import_node_module4 = require("node:module");
-var import_node_path5 = require("node:path");
+var import_node_path6 = require("node:path");
 
 // src/build.ts
 var import_node_fs = require("node:fs");
@@ -176,7 +176,8 @@ function buildTree(files) {
 }
 
 // src/variant.ts
-var variantName = (env = process.env) => env.APP_VARIANT || "qa";
+var DEFAULT_VARIANT = "app";
+var variantName = (env = process.env) => env.APP_VARIANT || DEFAULT_VARIANT;
 var labIncludedFor = (variant) => variant !== "production";
 var routesTableFile = (variant) => `routes.${variant.replace(/[^A-Za-z0-9_-]/g, "_")}.ts`;
 
@@ -356,28 +357,48 @@ function sourceFile(path) {
 }
 
 // src/remote/transform.ts
+var import_node_path4 = require("node:path");
+var import_parser = require("@babel/parser");
+
+// src/remote/kit.ts
 var import_node_module2 = require("node:module");
 var import_node_path3 = require("node:path");
-var import_parser = require("@babel/parser");
 var require3 = (0, import_node_module2.createRequire)(__importMetaUrl);
-var posix2 = (path) => path.replaceAll("\\", "/");
 var kitRootCache;
-function kitRoot() {
-  if (kitRootCache === void 0) kitRootCache = (0, import_node_path3.dirname)(require3.resolve("@sveltejs/kit/package.json"));
+function findKitRoot() {
+  if (kitRootCache === void 0) {
+    try {
+      kitRootCache = (0, import_node_path3.dirname)(require3.resolve("@sveltejs/kit/package.json"));
+    } catch {
+      kitRootCache = null;
+    }
+  }
   return kitRootCache;
 }
-var shim = (name) => (0, import_node_path3.join)(sourceDirectory, "remote/shims", name);
+function kitMissingMessage(what) {
+  return `${what} needs \`@sveltejs/kit\`, which is not installed (an optional peer dependency of @example/svelte-native: only remote functions and the web target use it). Install the version the package was written against: \`pnpm add @sveltejs/kit@3.0.0-next.27\`, and copy its patch (README, "Apply the patches").`;
+}
+function kitRoot(what = "The remote function runtime (`@example/svelte-native/remote`)") {
+  const found = findKitRoot();
+  if (found === null) throw new Error(kitMissingMessage(what));
+  return found;
+}
+
+// src/remote/transform.ts
+var posix2 = (path) => path.replaceAll("\\", "/");
+var shim = (name) => (0, import_node_path4.join)(sourceDirectory, "remote/shims", name);
 function remoteResolution(specifier, origin) {
-  const kit = kitRoot();
-  if (specifier.startsWith("@sveltejs/kit/src/")) return (0, import_node_path3.join)(kit, specifier.slice("@sveltejs/kit/".length));
-  if (specifier === "@sveltejs/kit/internal") return (0, import_node_path3.join)(kit, "src/exports/internal/index.js");
+  if (specifier.startsWith("@sveltejs/kit/src/")) return (0, import_node_path4.join)(kitRoot(), specifier.slice("@sveltejs/kit/".length));
+  if (specifier === "@sveltejs/kit/internal") return (0, import_node_path4.join)(kitRoot(), "src/exports/internal/index.js");
+  const kit = findKitRoot();
+  if (kit === null) return void 0;
   const inside = posix2(origin).startsWith(`${posix2(kit)}/`);
   if (!inside) return void 0;
   switch (specifier) {
     case "#internal":
-      return (0, import_node_path3.join)(kit, "src/exports/internal/client.js");
+      return (0, import_node_path4.join)(kit, "src/exports/internal/client.js");
     case "#app/internal/transport":
-      return (0, import_node_path3.join)(kit, "src/runtime/app/internal/transport.js");
+      return (0, import_node_path4.join)(kit, "src/runtime/app/internal/transport.js");
     case "#app/paths":
       return shim("paths.ts");
     case "#app/state/client":
@@ -385,14 +406,14 @@ function remoteResolution(specifier, origin) {
     case "$app/env":
       return shim("env.ts");
   }
-  if (specifier.startsWith(".") && (0, import_node_path3.resolve)((0, import_node_path3.dirname)(origin), specifier) === (0, import_node_path3.join)(kit, "src/runtime/client/client.js")) return shim("client.ts");
+  if (specifier.startsWith(".") && (0, import_node_path4.resolve)((0, import_node_path4.dirname)(origin), specifier) === (0, import_node_path4.join)(kit, "src/runtime/client/client.js")) return shim("client.ts");
   return void 0;
 }
 
 // src/svelte-build.ts
 var import_node_fs3 = require("node:fs");
 var import_node_module3 = require("node:module");
-var import_node_path4 = require("node:path");
+var import_node_path5 = require("node:path");
 var requiredSvelte = {
   version: "5.56.7",
   commit: "216f258068d93170a927ad4d27ee6864b0b305c5",
@@ -408,11 +429,11 @@ function inspectSvelte(from) {
   } catch {
     return { ok: false, version: null, directory: null, reason: "missing" };
   }
-  const directory = (0, import_node_path4.dirname)(manifestPath);
+  const directory = (0, import_node_path5.dirname)(manifestPath);
   const manifest = JSON.parse((0, import_node_fs3.readFileSync)(manifestPath, "utf8"));
   const version = manifest.version ?? null;
   const exported = manifest.exports !== void 0 && "./renderer" in manifest.exports;
-  if (!exported || !(0, import_node_fs3.existsSync)((0, import_node_path4.join)(directory, "src/renderer/index.js"))) return { ok: false, version, directory, reason: "stock-release" };
+  if (!exported || !(0, import_node_fs3.existsSync)((0, import_node_path5.join)(directory, "src/renderer/index.js"))) return { ok: false, version, directory, reason: "stock-release" };
   return { ok: true, version: version ?? "unknown", directory };
 }
 function customRendererMessage(inspection, what) {
@@ -431,7 +452,7 @@ function assertCustomRenderer(what, from) {
 
 // src/metro.ts
 var require4 = (0, import_node_module4.createRequire)(__importMetaUrl);
-var nativeSvelte = (0, import_node_path5.dirname)(require4.resolve("svelte/package.json"));
+var nativeSvelte = (0, import_node_path6.dirname)(require4.resolve("svelte/package.json"));
 var LITE_ORIGINS = /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?(?:hermes-intl|expo|expo-modules-core|expo-file-system|react-native-reanimated|react-native-worklets|react-native-is-edge-to-edge|expo-secure-store|expo-image-picker|expo-localization|expo-crypto|expo-constants|expo-font|expo-asset|expo-splash-screen|expo-status-bar|expo-system-ui|expo-keep-awake|expo-application|react-native-svg)[\\/]/;
 var INITIALIZE_CORE = /react-native[\\/]Libraries[\\/]Core[\\/]InitializeCore\.js$/;
 var RENDERER_STUBS = {
@@ -470,7 +491,7 @@ function withSvelteNative(config, options = {}) {
   const resolveRequest = config.resolver.resolveRequest;
   const stubbed = options.stubbedPackages ?? [];
   const variant = options.variant ?? variantName();
-  const stubDirectory = (0, import_node_path5.join)(config.projectRoot, ".svelte-native", "stubs", variant.replace(/[^A-Za-z0-9_-]/g, "_"));
+  const stubDirectory = (0, import_node_path6.join)(config.projectRoot, ".svelte-native", "stubs", variant.replace(/[^A-Za-z0-9_-]/g, "_"));
   const write = (file, content) => {
     let current;
     try {
@@ -483,10 +504,10 @@ function withSvelteNative(config, options = {}) {
   const stubs = /* @__PURE__ */ new Map();
   if (stubbed.length > 0) {
     (0, import_node_fs4.mkdirSync)(stubDirectory, { recursive: true });
-    write((0, import_node_path5.join)(stubDirectory, "_core.js"), stubCoreSource);
+    write((0, import_node_path6.join)(stubDirectory, "_core.js"), stubCoreSource);
   }
   for (const name of stubbed) {
-    const file = (0, import_node_path5.join)(stubDirectory, `${name.replace(/[^A-Za-z0-9_.-]/g, "_")}.js`);
+    const file = (0, import_node_path6.join)(stubDirectory, `${name.replace(/[^A-Za-z0-9_.-]/g, "_")}.js`);
     (0, import_node_fs4.mkdirSync)(stubDirectory, { recursive: true });
     write(file, stubSource(name, variant));
     stubs.set(name, file);
@@ -494,9 +515,9 @@ function withSvelteNative(config, options = {}) {
   const withoutExtension = (path) => path.replace(/\.[cm]?[jt]sx?$/, "");
   const nameOf = (path) => withoutExtension(path).slice(config.projectRoot.length + 1);
   const writeStub = (name) => {
-    const file = (0, import_node_path5.join)(stubDirectory, `${name.replace(/[^A-Za-z0-9_.-]/g, "_")}.js`);
+    const file = (0, import_node_path6.join)(stubDirectory, `${name.replace(/[^A-Za-z0-9_.-]/g, "_")}.js`);
     (0, import_node_fs4.mkdirSync)(stubDirectory, { recursive: true });
-    write((0, import_node_path5.join)(stubDirectory, "_core.js"), stubCoreSource);
+    write((0, import_node_path6.join)(stubDirectory, "_core.js"), stubCoreSource);
     write(file, stubSource(name, variant));
     return file;
   };
@@ -505,12 +526,12 @@ function withSvelteNative(config, options = {}) {
   const directories = /* @__PURE__ */ new Map();
   for (const path of options.stubbedDirectories ?? []) {
     const directory = path.replace(/[\\/]+$/, "");
-    directories.set(directory + import_node_path5.sep, writeStub(`${nameOf(directory)}/`));
+    directories.set(directory + import_node_path6.sep, writeStub(`${nameOf(directory)}/`));
   }
   const lab = labIncludedFor(variant);
-  const entryFile = (0, import_node_path5.join)(config.projectRoot, ".svelte-native", "entry.ts");
-  const routesTable = (0, import_node_path5.join)(config.projectRoot, ".svelte-native", routesTableFile(variant));
-  if (options.syncRoutes ?? (0, import_node_fs4.existsSync)((0, import_node_path5.join)(config.projectRoot, "src/routes"))) {
+  const entryFile = (0, import_node_path6.join)(config.projectRoot, ".svelte-native", "entry.ts");
+  const routesTable = (0, import_node_path6.join)(config.projectRoot, ".svelte-native", routesTableFile(variant));
+  if (options.syncRoutes ?? (0, import_node_fs4.existsSync)((0, import_node_path6.join)(config.projectRoot, "src/routes"))) {
     const syncing = { variant, lab, entry: "keep" };
     syncRoutes(config.projectRoot, syncing);
     if (process.env.NODE_ENV === "development") routeWatchers.add(watchRoutes(config.projectRoot, syncing));
@@ -518,7 +539,7 @@ function withSvelteNative(config, options = {}) {
   const stubFor = (moduleName, origin) => {
     const name = stubbed.find((candidate) => isInPackage(moduleName, candidate));
     if (name !== void 0) return stubs.get(name) ?? null;
-    if (files.size > 0 && (moduleName.startsWith("./") || moduleName.startsWith("../"))) return files.get(withoutExtension((0, import_node_path5.resolve)((0, import_node_path5.dirname)(origin), moduleName))) ?? null;
+    if (files.size > 0 && (moduleName.startsWith("./") || moduleName.startsWith("../"))) return files.get(withoutExtension((0, import_node_path6.resolve)((0, import_node_path6.dirname)(origin), moduleName))) ?? null;
     return null;
   };
   const stubForFile = (filePath) => {
@@ -543,7 +564,7 @@ function withSvelteNative(config, options = {}) {
         throw new Error(`Server-only import in native bundle: ${moduleName}`);
       }
       if (moduleName === "svelte" || moduleName.startsWith("svelte/")) {
-        const nativeContext = { ...context, originModulePath: (0, import_node_path5.resolve)(nativeSvelte, "native-entry.js"), unstable_conditionNames: ["browser", "require"] };
+        const nativeContext = { ...context, originModulePath: (0, import_node_path6.resolve)(nativeSvelte, "native-entry.js"), unstable_conditionNames: ["browser", "require"] };
         return context.resolveRequest(nativeContext, moduleName, platform);
       }
       if (moduleName === "react-native" && LITE_ORIGINS.test(context.originModulePath)) {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ConfigT } from "@expo/metro/metro-config";
@@ -69,15 +69,22 @@ describe("Metro writes the route table of the variant it bundles", () => {
     // The entry is written beside them, so a project nobody synced bundles.
     expect(readFileSync(join(root, ".svelte-native/entry.ts"), "utf8")).toContain("import { tree } from './routes';");
   });
-  test("the variant defaults to APP_VARIANT, qa for none", () => {
+  test("the variant defaults to APP_VARIANT, app for none: the table is routes.app.ts, not a variant of the library's own", () => {
     const root = project();
     process.env.APP_VARIANT = "production";
     withSvelteNative(fakeConfig(root));
     expect(existsSync(tableFile(root, "production"))).toBe(true);
-    expect(existsSync(tableFile(root, "qa"))).toBe(false);
+    expect(existsSync(tableFile(root, "app"))).toBe(false);
     delete process.env.APP_VARIANT;
     withSvelteNative(fakeConfig(root));
-    expect(existsSync(tableFile(root, "qa"))).toBe(true);
+    expect(existsSync(tableFile(root, "app"))).toBe(true);
+    expect(existsSync(tableFile(root, "qa"))).toBe(false);
+    expect(table(root, "app")).toContain('export const variant = "app";');
+    expect(readdirSync(join(root, ".svelte-native")).filter((file) => file.startsWith("routes.")).sort()).toEqual(["routes.app.ts", "routes.production.ts"]);
+    // An empty APP_VARIANT is none.
+    process.env.APP_VARIANT = "";
+    withSvelteNative(fakeConfig(root));
+    expect(readdirSync(join(root, ".svelte-native")).filter((file) => file.startsWith("routes.")).sort()).toEqual(["routes.app.ts", "routes.production.ts"]);
   });
   test("a project without src/routes, or told not to, is left alone", () => {
     const empty = mkdtempSync(join(tmpdir(), "metro-routes-"));

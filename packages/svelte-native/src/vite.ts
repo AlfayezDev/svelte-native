@@ -1,27 +1,45 @@
+// biome-ignore-all lint/suspicious/noTsIgnore: `@sveltejs/kit` may be absent (an optional peer), and `@ts-expect-error` would fail where it is installed
 import { resolve } from "node:path";
-import { sveltekit } from "@sveltejs/kit/vite";
 import type { PluginOption } from "vite";
 import { exportNative, syncNative } from "./build.ts";
+import { kitMissingMessage } from "./remote/kit.ts";
 import { assertCustomRenderer } from "./svelte-build.ts";
+
+// `@sveltejs/kit` is an optional peer: the web target needs it, a native-only app does not have it, and without it the `kit` option is not typed.
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment -- the module may be absent
+// @ts-ignore
+import type { sveltekit } from "@sveltejs/kit/vite";
+
+/** SvelteKit's Vite plugin, loaded when the web target asks for it: an app that only builds for native never loads (or installs) SvelteKit. */
+async function loadSvelteKit(): Promise<typeof sveltekit> {
+  try {
+    return (await import("@sveltejs/kit/vite")).sveltekit;
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code === "ERR_MODULE_NOT_FOUND") throw new Error(kitMissingMessage("The web target of svelteNative() (@example/svelte-native/vite)"), { cause });
+    throw cause;
+  }
+}
 
 export function svelteNative(options: {
   target?: "web" | "native";
   platform?: "android" | "ios";
+  /** The variant whose route table the native build writes. Default: `APP_VARIANT`, or `app` when that is empty. */
+  variant?: string;
   kit?: Parameters<typeof sveltekit>[0];
 } = {}): PluginOption {
-  if (options.target !== "native") return [
+  if (options.target !== "native") return loadSvelteKit().then((kit) => [
     { name: "svelte-native:web", config: () => ({ optimizeDeps: { entries: ["!src/routes/**/+mobile.svelte", "!src/routes/**/*.mobile.svelte", "!src/lib/native/**"] } }) },
-    sveltekit(options.kit),
-  ];
+    kit(options.kit),
+  ]);
   assertCustomRenderer("The native target of svelteNative() (@example/svelte-native/vite)");
   let root = "";
   return {
     name: "svelte-native",
     config: () => ({ build: { write: false, rolldownOptions: { input: "virtual:svelte-native-build" } } }),
     configResolved(config) { root = config.root; },
-    async buildStart() { await syncNative(root); },
+    async buildStart() { await syncNative(root, { variant: options.variant }); },
     resolveId(id) { if (id === "virtual:svelte-native-build") return "\0svelte-native-build"; },
     load(id) { if (id === "\0svelte-native-build") return "export {};"; },
-    async generateBundle() { await exportNative(resolve(root), options.platform ?? "android"); },
+    async generateBundle() { await exportNative(resolve(root), options.platform ?? "android", { variant: options.variant }); },
   };
 }

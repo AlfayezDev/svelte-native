@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import { dirname } from "node:path";
 import { compile, compileModule } from "svelte/compiler";
 import { transformSync } from "esbuild";
 import { createHash } from "node:crypto";
@@ -7,11 +8,28 @@ import { traverseFast } from "@babel/types";
 import { lowerPrimitives } from "./lower.ts";
 import { sourceDirectory, sourceFile } from "./package-root.ts";
 import { assertCustomRenderer } from "./svelte-build.ts";
-import { isRemoteModule, kitGlobalsImport, transformRemoteModule } from "./remote/transform.ts";
+import { isRemoteModule, kitGlobalsImport, kitRoot, transformRemoteModule } from "./remote/transform.ts";
 import { TraceMap, originalPositionFor } from "@jridgewell/trace-mapping";
 
 const require = createRequire(import.meta.url);
-const upstream = require("@expo/metro-config/babel-transformer");
+
+/**
+ * `@expo/metro-config/babel-transformer`, which this transformer wraps. `@expo/metro-config` is a dependency of `expo`, and of neither the app nor
+ * this package, so it is found through `expo`, as `expo/metro-config` finds it: `expo` is a required peer, which both the app and this package see in
+ * any layout. A hoisted install has `@expo/metro-config` at the top of `node_modules`; pnpm's default layout has it only beside `expo`'s own copy,
+ * where a plain `require` from here (or from the app) cannot reach it. The app's directory is asked first (Metro runs there), then this package's.
+ */
+export function upstreamTransformerPath(searchFrom: readonly string[] = [process.cwd(), import.meta.dirname]): string {
+  let expoManifest: string;
+  try {
+    expoManifest = require.resolve("expo/package.json", { paths: [...searchFrom] });
+  } catch (cause) {
+    throw new Error("The Metro transformer of @example/svelte-native needs `expo`, which it could not resolve (from the app's directory or from the package). Install it: `npx expo install expo`.", { cause });
+  }
+  return require.resolve("@expo/metro-config/babel-transformer", { paths: [dirname(expoManifest)] });
+}
+
+const upstream = require(upstreamTransformerPath());
 type TransformInput = { filename: string; src: string; options: { dev: boolean; projectRoot?: string }; [key: string]: unknown };
 
 /**
@@ -24,6 +42,7 @@ export function sourceOf(input: TransformInput): string {
   if (isRemoteModule(filename)) {
     const root = input.options.projectRoot;
     if (!root) throw new Error(`${filename}: Metro did not pass its project root, which the ids of remote functions are relative to`);
+    kitRoot(`${filename} is a remote function module (\`*.remote.ts\`), which`);
     return transformRemoteModule(src, filename, root);
   }
   return src + (kitGlobalsImport(filename) ?? "");
@@ -54,14 +73,16 @@ export function transform(input: TransformInput) {
     code = result.js.code;
     if (result.js.map) maps.push(new TraceMap(result.js.map.toString()));
   } else {
-    // RN component codegen needs the original TypeScript declarations.
-    const stripTypes = /\.tsx?$/.test(filename) && !filename.includes("/node_modules/") && !src.includes("codegenNativeComponent") && !src.includes("codegenNativeCommands");
+    // RN component codegen needs the original TypeScript declarations. The TypeScript a package ships under `node_modules` is left to Babel, except a `.svelte.ts`
+    // module: Svelte compiles it before Babel sees it, and its compiler reads JavaScript. The library's own (`router.svelte.ts`, `insets.svelte.ts`, ...) is one.
+    const svelteModule = /\.svelte\.[jt]s$/.test(filename);
+    const stripTypes = /\.tsx?$/.test(filename) && (svelteModule || !filename.includes("/node_modules/")) && !src.includes("codegenNativeComponent") && !src.includes("codegenNativeCommands");
     if (stripTypes) {
       const stripped = transformSync(src, { loader: filename.endsWith(".tsx") ? "tsx" : "ts", jsx: "preserve", target: "es2022", sourcemap: "external", sourcefile: filename });
       code = stripped.code;
       maps.push(new TraceMap(stripped.map));
     }
-    if (/\.svelte\.[jt]s$/.test(filename)) {
+    if (svelteModule) {
       const result = compileModule(code, { filename, dev: false, generate: "client" });
       code = result.js.code;
       if (result.js.map) maps.unshift(new TraceMap(result.js.map.toString()));

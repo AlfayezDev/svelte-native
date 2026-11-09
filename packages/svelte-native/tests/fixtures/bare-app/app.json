@@ -1,0 +1,1 @@
+{ "expo": { "name": "bare", "slug": "bare", "android": { "package": "io.example.bare" }, "ios": { "bundleIdentifier": "io.example.bare" } } }

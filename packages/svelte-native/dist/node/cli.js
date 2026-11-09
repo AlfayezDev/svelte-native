@@ -143,17 +143,20 @@ function metroFinding(appRoot) {
   return { state: /\bwithSvelteNative\b/.test(code) ? "found" : "unclear", file };
 }
 function expoPluginFinding(appRoot, library2) {
-  const plugin = `${library2}/expo`;
+  const names = [`${library2}/expo`, library2];
   const json = firstExisting(appRoot, ["app.json"]);
   const code = firstExisting(appRoot, APP_CONFIG_FILES);
   if (json) {
     const parsed = readJson(join4(appRoot, json));
     const expo = parsed?.expo ?? parsed;
     const plugins = Array.isArray(expo?.plugins) ? expo.plugins : [];
-    if (plugins.some((entry) => pluginName(entry) === plugin)) return { state: "found", file: json };
+    const listed = names.find((name) => plugins.some((entry) => pluginName(entry) === name));
+    if (listed) return { state: "found", file: json, name: listed };
   }
   if (code) {
-    return { state: withoutJsComments(readFileSync4(join4(appRoot, code), "utf8")).includes(plugin) ? "found" : "unclear", file: code };
+    const source = withoutJsComments(readFileSync4(join4(appRoot, code), "utf8"));
+    const named = names.find((name) => ['"', "'", "`"].some((quote) => source.includes(`${quote}${name}${quote}`)));
+    return named ? { state: "found", file: code, name: named } : { state: "unclear", file: code };
   }
   return json ? { state: "absent", file: json } : { state: "no-file" };
 }
@@ -584,7 +587,33 @@ function peerDependencies(context, peers, optional) {
     else if (ok === false) checks.push({ group: "peer dependencies", status: "fail", message: `${name} ${installed.version} does not satisfy ${range}`, fix: `pnpm add ${name}@${range}` });
     else checks.push({ group: "peer dependencies", status: "unknown", message: `${name} ${installed.version}: could not compare it with ${range}` });
   }
-  if (absent.length > 0) checks.push({ group: "peer dependencies", status: "skip", message: `optional view libraries not installed, nothing to check: ${absent.join(", ")}` });
+  if (absent.length > 0) checks.push({ group: "peer dependencies", status: "skip", message: `optional peer dependencies not installed, nothing to check: ${absent.join(", ")}` });
+  return checks;
+}
+function expoRuntime(context) {
+  const expo = findPackage("expo", context.appRoot);
+  if (!expo) return [];
+  const missing = EXPO_RUNTIME_FILES.filter((file) => !existsSync5(join5(expo.directory, file)));
+  if (missing.length === 0) return [{ group: "peer dependencies", status: "pass", message: `expo ${expo.version} has src/winter, the runtime (URL, fetch, TextDecoder) that the library's polyfills import` }];
+  return [{
+    group: "peer dependencies",
+    status: "fail",
+    message: `expo ${expo.version} has no ${missing.join(", ")} (${expo.directory}): the library's polyfills import expo/src/winter for the standard URL, and the router starts blank without it`,
+    fix: `npx expo install expo (the version this library was exercised on is in its peerDependencies)`
+  }];
+}
+function autolinkedPeers(context, peers, appPackage) {
+  const dependencies = { ...record(appPackage.dependencies), ...record(appPackage.devDependencies), ...record(appPackage.optionalDependencies) };
+  const checks = [];
+  for (const name of AUTOLINKED_PEERS) {
+    const range = text(peers[name]);
+    if (range === void 0) continue;
+    if (name in dependencies) {
+      checks.push({ group: "peer dependencies", status: "pass", message: `${name} is a dependency of the app: React Native's autolinking links its native module` });
+    } else if (findPackage(name, context.appRoot)) {
+      checks.push({ group: "peer dependencies", status: "fail", message: `${name} is installed but is not a dependency of the app (${join5(context.appRoot, "package.json")}): React Native's autolinking links only the app's own dependencies, so the build would not have its native module`, fix: `pnpm add ${name}@${range}, then npx expo prebuild` });
+    }
+  }
   return checks;
 }
 function patches(context, libraryName, optional) {
@@ -601,7 +630,8 @@ function patches(context, libraryName, optional) {
       continue;
     }
     if (installed.version !== patch.version) {
-      checks.push({ group: "patches", status: "fail", message: `${patch.package} ${installed.version} is installed, the patch is for exactly ${patch.version}: pnpm would not apply it`, fix: `pnpm add ${patch.package}@${patch.version}` });
+      const fix2 = spec.via ? `pin ${patch.package} for the install: \`overrides:\` with \`${patch.package}: ${patch.version}\` in pnpm-workspace.yaml (${spec.via} asks for it by a range, so a fresh install takes a newer version and pnpm reports ERR_PNPM_UNUSED_PATCH), then pnpm install (README: "Install in an app")` : `pnpm add ${patch.package}@${patch.version}`;
+      checks.push({ group: "patches", status: "fail", message: `${patch.package} ${installed.version} is installed, the patch is for exactly ${patch.version}: pnpm would not apply it`, fix: fix2 });
       continue;
     }
     const reader = readerFor(installed.directory);
@@ -635,7 +665,7 @@ function integration(context, name) {
   };
   const plugin = (finding) => {
     const file = finding.file ?? "";
-    if (finding.state === "found") return { group: "build integration", status: "pass", message: `${file} lists the ${name}/expo plugin` };
+    if (finding.state === "found") return { group: "build integration", status: "pass", message: `${file} lists the ${finding.name ?? `${name}/expo`} plugin` };
     if (finding.state === "unclear") return { group: "build integration", status: "unknown", message: `could not tell: ${file} does not name ${name}/expo (a config that builds its plugins in code may add it)`, fix: `plugins: [["${name}/expo", {}]] in the Expo config` };
     if (finding.state === "absent") return { group: "build integration", status: "fail", message: `${file} does not list the ${name}/expo plugin`, fix: `add "${name}/expo" to plugins in ${file}` };
     return { group: "build integration", status: "fail", message: "no app.json or app.config.* in the app", fix: `create an Expo config with plugins: [["${name}/expo", {}]]` };
@@ -655,12 +685,14 @@ function runChecks(context) {
     ...environment(context),
     svelte(context, peers),
     ...peerDependencies(context, peers, optional),
+    ...autolinkedPeers(context, peers, appPackage),
+    ...expoRuntime(context),
     ...patches(context, name, optional),
     library(context, name, text(own.version) ?? "?", appPackage),
     ...integration(context, name)
   ];
 }
-var record, text;
+var record, text, EXPO_RUNTIME_FILES, AUTOLINKED_PEERS;
 var init_checks = __esm({
   "src/doctor/checks.ts"() {
     "use strict";
@@ -673,6 +705,8 @@ var init_checks = __esm({
     init_semver();
     record = (value) => typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
     text = (value) => typeof value === "string" ? value : void 0;
+    EXPO_RUNTIME_FILES = ["src/winter/index.ts", "src/winter/runtime.native.ts"];
+    AUTOLINKED_PEERS = ["hermes-intl"];
   }
 });
 
@@ -908,7 +942,8 @@ function buildTree(files) {
 }
 
 // src/variant.ts
-var variantName = (env = process.env) => env.APP_VARIANT || "qa";
+var DEFAULT_VARIANT = "app";
+var variantName = (env = process.env) => env.APP_VARIANT || DEFAULT_VARIANT;
 var labIncludedFor = (variant) => variant !== "production";
 var routesTableFile = (variant) => `routes.${variant.replace(/[^A-Za-z0-9_-]/g, "_")}.ts`;
 
@@ -1062,8 +1097,8 @@ function runExpo(root2, args2) {
     env
   });
 }
-async function exportNative(root2, platform) {
-  await syncNative(root2);
+async function exportNative(root2, platform, options = {}) {
+  await syncNative(root2, options);
   const output = resolve(root2, ".svelte-native/dist", platform);
   await mkdir(output, { recursive: true });
   const child = runExpo(root2, [

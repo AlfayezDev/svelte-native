@@ -47,7 +47,8 @@
     "./remote": "./src/remote/index.ts",
     "./remote/runtime": "./src/remote/runtime.ts",
     "./remote/globals": "./src/remote/globals.ts",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./app.plugin": "./app.plugin.js"
   },
   "bin": {
     "svelte-native": "./dist/node/cli.js"
@@ -58,6 +59,7 @@
     "native",
     "patches",
     "expo-module.config.json",
+    "app.plugin.js",
     "README.md",
     "REFERENCE.md",
     "CHANGELOG.md",
@@ -91,6 +93,7 @@
     "expo-image": "~57.0.5",
     "expo-linear-gradient": "~57.0.2",
     "expo-video": "~57.0.5",
+    "hermes-intl": "^0.1.2",
     "lottie-react-native": "~7.3.8",
     "react": "19.2.7",
     "react-native": "0.86.3",
@@ -112,6 +115,9 @@
   },
   "peerDependenciesMeta": {
     "@react-native-community/datetimepicker": {
+      "optional": true
+    },
+    "@sveltejs/kit": {
       "optional": true
     },
     "expo-blur": {
@@ -161,6 +167,9 @@
     },
     "rive-react-native": {
       "optional": true
+    },
+    "vite": {
+      "optional": true
     }
   },
   "devDependencies": {
@@ -168,6 +177,7 @@
     "@babel/plugin-transform-flow-strip-types": "^7.29.7",
     "@eslint/js": "^10.0.1",
     "@react-native/babel-plugin-codegen": "^0.86.3",
+    "@sveltejs/kit": "3.0.0-next.27",
     "@types/node": "^26.1.1",
     "@types/react": "catalog:",
     "babel-plugin-syntax-hermes-parser": "^0.36.0",
@@ -175,9 +185,11 @@
     "eslint": "10.8.1",
     "eslint-plugin-svelte": "3.23.0",
     "globals": "17.11.0",
+    "hermes-intl": "^0.1.2",
     "svelte": "file:../../vendor/svelte-5.56.7-216f258.tgz",
     "svelte-check": "^4.6.0",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.67.0"
+    "typescript-eslint": "8.67.0",
+    "vite": "catalog:"
   }
 }

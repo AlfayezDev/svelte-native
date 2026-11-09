@@ -17,8 +17,8 @@ export const packageOf: Record<Variant, string> = { qa: qaApplicationId, smoke: 
 export const processNameOf: Record<Variant, string> = { qa: "ExampleSvelteQA", smoke: "Sveltesmoke", production: "Example" };
 /** The URL scheme of each variant: two apps on one device must not both answer `example-svelte://`. */
 export const schemeOf: Record<Variant, string> = { qa: "example-svelte", smoke: "example-svelte-smoke", production: "example" };
-/** The `APP_VARIANT` a build of the variant runs with (empty: the QA app, whatever the shell has). */
-export const appVariantOf: Record<Variant, string> = { qa: "", smoke: "smoke", production: "production" };
+/** The `APP_VARIANT` a build of the variant runs with, always set, so one in the shell cannot turn one app into another (the library's own default is `app`, not `qa`). */
+export const appVariantOf: Record<Variant, string> = { qa: "qa", smoke: "smoke", production: "production" };
 
 /** `--variant`: absent is the QA app. */
 export function variantFlag(value: string | boolean | undefined): Variant {

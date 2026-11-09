@@ -3,14 +3,17 @@
  * share one reading of both.
  */
 
-/** The variant a build is: `APP_VARIANT`, or `qa` when it is empty (the QA app, whatever the shell has). */
-export const variantName = (env: NodeJS.ProcessEnv = process.env): string => env.APP_VARIANT || "qa";
+/** The variant an app that names none is: its route table is `.svelte-native/routes.app.ts`. */
+export const DEFAULT_VARIANT = "app";
+
+/** The variant a build is: `APP_VARIANT`, or `app` when it is empty or unset. An app with variants of its own (`qa`, `smoke`, `production`) sets `APP_VARIANT` for each. */
+export const variantName = (env: NodeJS.ProcessEnv = process.env): string => env.APP_VARIANT || DEFAULT_VARIANT;
 
 /** Whether the variant carries the development lab: every variant but the product (`production`). */
 export const labIncludedFor = (variant: string): boolean => variant !== "production";
 
 /**
- * The route table of a variant, under `.svelte-native/`: `routes.production.ts`, `routes.qa.ts`, `routes.smoke.ts`. There is no table the
+ * The route table of a variant, under `.svelte-native/`: `routes.app.ts` (no variant), `routes.production.ts`, `routes.qa.ts`, `routes.smoke.ts`. There is no table the
  * variants share, so a sync for one variant cannot change what a running Metro (or a warm graph) of another serves.
  */
 export const routesTableFile = (variant: string): string => `routes.${variant.replace(/[^A-Za-z0-9_-]/g, "_")}.ts`;

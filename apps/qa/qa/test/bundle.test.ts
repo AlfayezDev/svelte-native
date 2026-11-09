@@ -51,7 +51,8 @@ afterAll(() => {
 type Bundle = { text: string; bytes: number; modules: string[] };
 /** `svelte-native sync` for a variant (the command a developer or the QA harness runs). */
 function sync(variant: string): void {
-	const done = spawnSync("node", [svelteNativeCli, "sync"], { cwd: platformDir, env: { ...process.env, APP_VARIANT: variant, EXPO_NO_TELEMETRY: "1" }, encoding: "utf8" });
+	// The QA app's variant is `qa` (the library's own default for no variant is `app`).
+	const done = spawnSync("node", [svelteNativeCli, "sync"], { cwd: platformDir, env: { ...process.env, APP_VARIANT: variant || "qa", EXPO_NO_TELEMETRY: "1" }, encoding: "utf8" });
 	if (done.status !== 0) throw new Error(`svelte-native sync (${variant || "qa"}) failed: ${done.stderr.slice(0, 400)}`);
 }
 /**

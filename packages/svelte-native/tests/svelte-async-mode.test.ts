@@ -44,9 +44,9 @@ test("the Metro transformer compiles components and modules without Svelte's asy
 test("the Vite plugin forwards the SvelteKit options, where the web build turns async mode on, to the web target only", () => {
   const vite = read("packages/svelte-native/src/vite.ts");
   expect(vite.match(/options\.kit/g)?.length).toBe(1);
-  // `sveltekit(options.kit)` follows the early return for the native target.
-  expect(vite.indexOf('if (options.target !== "native") return [')).toBeGreaterThan(-1);
-  expect(vite.indexOf("sveltekit(options.kit)")).toBeLessThan(vite.indexOf("let root"));
+  // `kit(options.kit)` (SvelteKit's `sveltekit`, loaded when the web target asks for it) follows the early return for the native target.
+  expect(vite.indexOf('if (options.target !== "native") return loadSvelteKit()')).toBeGreaterThan(-1);
+  expect(vite.indexOf("kit(options.kit)")).toBeLessThan(vite.indexOf("let root"));
   // The app asks for async mode in the SvelteKit options and nowhere else.
   const config = read("apps/qa/vite.config.ts");
   expect(config.match(/experimental: \{ async: true \}/g)?.length).toBe(1);

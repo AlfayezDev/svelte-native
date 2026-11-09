@@ -10,12 +10,12 @@
  * and kinds are read from the source: an export must be the result of a call to `query`, `query.batch`, `query.live`, `command`, `form` or
  * `prerender` imported from `$app/server`, which is how every remote function is written.
  */
-import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import { parse } from "@babel/parser";
 import { sourceDirectory } from "../package-root.ts";
+import { findKitRoot, kitRoot } from "./kit.ts";
 
-const require = createRequire(import.meta.url);
+export { kitRoot } from "./kit.ts";
 
 /** The module the stubs call into: the native client runtime (`remote/runtime.ts`). */
 export const REMOTE_RUNTIME = "@example/svelte-native/remote/runtime";
@@ -219,13 +219,6 @@ export function kitGlobalsImport(filename: string): string | undefined {
   return shadow && `\nimport { ${shadow.names.join(", ")} } from ${JSON.stringify(REMOTE_GLOBALS)};\n`;
 }
 
-let kitRootCache: string | undefined;
-/** The directory of the installed `@sveltejs/kit` package. */
-export function kitRoot(): string {
-  if (kitRootCache === undefined) kitRootCache = dirname(require.resolve("@sveltejs/kit/package.json"));
-  return kitRootCache;
-}
-
 const shim = (name: string) => join(sourceDirectory, "remote/shims", name);
 
 /**
@@ -238,9 +231,12 @@ const shim = (name: string) => join(sourceDirectory, "remote/shims", name);
  *   client (`client/client.js`: the query caches, `goto`, `refreshAll`) are replaced by `shims/`.
  */
 export function remoteResolution(specifier: string, origin: string): string | undefined {
-  const kit = kitRoot();
-  if (specifier.startsWith("@sveltejs/kit/src/")) return join(kit, specifier.slice("@sveltejs/kit/".length));
-  if (specifier === "@sveltejs/kit/internal") return join(kit, "src/exports/internal/index.js");
+  // The runtime's own imports: a native-only app that never imports `@example/svelte-native/remote` has no SvelteKit and never gets here.
+  if (specifier.startsWith("@sveltejs/kit/src/")) return join(kitRoot(), specifier.slice("@sveltejs/kit/".length));
+  if (specifier === "@sveltejs/kit/internal") return join(kitRoot(), "src/exports/internal/index.js");
+  // Every other module of every app passes through here; without SvelteKit none of them is one of its files.
+  const kit = findKitRoot();
+  if (kit === null) return undefined;
   const inside = posix(origin).startsWith(`${posix(kit)}/`);
   if (!inside) return undefined;
   switch (specifier) {

@@ -2,6 +2,9 @@ import { defineConfig } from "vite";
 import { svelteNative } from "@example/svelte-native/vite";
 import { remoteLabModule, remoteLabServed } from "./remote-lab.ts";
 
+// The library's default variant (no `APP_VARIANT`) is `app`; this app's is `qa`.
+const variant = process.env.APP_VARIANT || "qa";
+
 export default defineConfig(({ mode, command, isPreview }) => {
 	const remoteLab = remoteLabServed({ command, isPreview });
 	return {
@@ -16,6 +19,7 @@ export default defineConfig(({ mode, command, isPreview }) => {
 		plugins: [
 			svelteNative({
 				target: mode === "native" ? "native" : "web",
+				variant,
 				kit: {
 					compilerOptions: { experimental: { async: true } },
 					// Remote functions are the native lab's: on in development, off in a build.

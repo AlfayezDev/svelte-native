@@ -220,8 +220,8 @@ export function runExpo(root: string, args: string[]) {
   });
 }
 
-export async function exportNative(root: string, platform: "android" | "ios"): Promise<void> {
-  await syncNative(root);
+export async function exportNative(root: string, platform: "android" | "ios", options: SyncOptions = {}): Promise<void> {
+  await syncNative(root, options);
   const output = resolve(root, ".svelte-native/dist", platform);
   await mkdir(output, { recursive: true });
   const child = runExpo(root, ["export:embed", "--platform", platform,

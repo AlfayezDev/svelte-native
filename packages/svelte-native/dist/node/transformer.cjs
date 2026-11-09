@@ -24,10 +24,12 @@ var transformer_exports = {};
 __export(transformer_exports, {
   getCacheKey: () => getCacheKey,
   sourceOf: () => sourceOf,
-  transform: () => transform
+  transform: () => transform,
+  upstreamTransformerPath: () => upstreamTransformerPath
 });
 module.exports = __toCommonJS(transformer_exports);
 var import_node_module3 = require("node:module");
+var import_node_path5 = require("node:path");
 var import_compiler2 = require("svelte/compiler");
 var import_esbuild = require("esbuild");
 var import_node_crypto = require("node:crypto");
@@ -226,10 +228,34 @@ function assertCustomRenderer(what, from) {
 }
 
 // src/remote/transform.ts
+var import_node_path4 = require("node:path");
+var import_parser = require("@babel/parser");
+
+// src/remote/kit.ts
 var import_node_module2 = require("node:module");
 var import_node_path3 = require("node:path");
-var import_parser = require("@babel/parser");
 var require2 = (0, import_node_module2.createRequire)(__importMetaUrl);
+var kitRootCache;
+function findKitRoot() {
+  if (kitRootCache === void 0) {
+    try {
+      kitRootCache = (0, import_node_path3.dirname)(require2.resolve("@sveltejs/kit/package.json"));
+    } catch {
+      kitRootCache = null;
+    }
+  }
+  return kitRootCache;
+}
+function kitMissingMessage(what) {
+  return `${what} needs \`@sveltejs/kit\`, which is not installed (an optional peer dependency of @example/svelte-native: only remote functions and the web target use it). Install the version the package was written against: \`pnpm add @sveltejs/kit@3.0.0-next.27\`, and copy its patch (README, "Apply the patches").`;
+}
+function kitRoot(what = "The remote function runtime (`@example/svelte-native/remote`)") {
+  const found = findKitRoot();
+  if (found === null) throw new Error(kitMissingMessage(what));
+  return found;
+}
+
+// src/remote/transform.ts
 var REMOTE_RUNTIME = "@example/svelte-native/remote/runtime";
 var REMOTE_GLOBALS = "@example/svelte-native/remote/globals";
 var remoteModulePattern = /[/.]remote\.[^/]+$/;
@@ -245,7 +271,7 @@ function hash(value) {
   return (result >>> 0).toString(36);
 }
 function remoteHash(filename, root) {
-  return hash(posix((0, import_node_path3.relative)(root, filename)));
+  return hash(posix((0, import_node_path4.relative)(root, filename)));
 }
 var RemoteModuleError = class extends Error {
   constructor(filename, message, node) {
@@ -384,12 +410,22 @@ import { ${shadow.names.join(", ")} } from ${JSON.stringify(REMOTE_GLOBALS)};
 // src/transformer.ts
 var import_trace_mapping = require("@jridgewell/trace-mapping");
 var require3 = (0, import_node_module3.createRequire)(__importMetaUrl);
-var upstream = require3("@expo/metro-config/babel-transformer");
+function upstreamTransformerPath(searchFrom = [process.cwd(), __dirname]) {
+  let expoManifest;
+  try {
+    expoManifest = require3.resolve("expo/package.json", { paths: [...searchFrom] });
+  } catch (cause) {
+    throw new Error("The Metro transformer of @example/svelte-native needs `expo`, which it could not resolve (from the app's directory or from the package). Install it: `npx expo install expo`.", { cause });
+  }
+  return require3.resolve("@expo/metro-config/babel-transformer", { paths: [(0, import_node_path5.dirname)(expoManifest)] });
+}
+var upstream = require3(upstreamTransformerPath());
 function sourceOf(input) {
   const { filename, src } = input;
   if (isRemoteModule(filename)) {
     const root = input.options.projectRoot;
     if (!root) throw new Error(`${filename}: Metro did not pass its project root, which the ids of remote functions are relative to`);
+    kitRoot(`${filename} is a remote function module (\`*.remote.ts\`), which`);
     return transformRemoteModule(src, filename, root);
   }
   return src + (kitGlobalsImport(filename) ?? "");
@@ -417,13 +453,14 @@ function transform(input) {
     code = result.js.code;
     if (result.js.map) maps.push(new import_trace_mapping.TraceMap(result.js.map.toString()));
   } else {
-    const stripTypes = /\.tsx?$/.test(filename) && !filename.includes("/node_modules/") && !src.includes("codegenNativeComponent") && !src.includes("codegenNativeCommands");
+    const svelteModule = /\.svelte\.[jt]s$/.test(filename);
+    const stripTypes = /\.tsx?$/.test(filename) && (svelteModule || !filename.includes("/node_modules/")) && !src.includes("codegenNativeComponent") && !src.includes("codegenNativeCommands");
     if (stripTypes) {
       const stripped = (0, import_esbuild.transformSync)(src, { loader: filename.endsWith(".tsx") ? "tsx" : "ts", jsx: "preserve", target: "es2022", sourcemap: "external", sourcefile: filename });
       code = stripped.code;
       maps.push(new import_trace_mapping.TraceMap(stripped.map));
     }
-    if (/\.svelte\.[jt]s$/.test(filename)) {
+    if (svelteModule) {
       const result = (0, import_compiler2.compileModule)(code, { filename, dev: false, generate: "client" });
       code = result.js.code;
       if (result.js.map) maps.unshift(new import_trace_mapping.TraceMap(result.js.map.toString()));
@@ -454,5 +491,6 @@ function getCacheKey(options) {
 0 && (module.exports = {
   getCacheKey,
   sourceOf,
-  transform
+  transform,
+  upstreamTransformerPath
 });

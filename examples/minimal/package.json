@@ -1,0 +1,33 @@
+{
+	"name": "svelte-native-minimal",
+	"version": "1.0.0",
+	"private": true,
+	"description": "The smallest Svelte Native app: a root layout, a home screen and a second screen pushed on top of it.",
+	"main": ".svelte-native/entry.ts",
+	"scripts": {
+		"doctor": "svelte-native doctor",
+		"sync": "svelte-native sync",
+		"dev": "svelte-native dev",
+		"android": "svelte-native android",
+		"ios": "svelte-native ios"
+	},
+	"dependencies": {
+		"@example/svelte-native": "git+ssh://git@github.com/AlfayezDev/svelte-native.git#<tag>&path:packages/svelte-native",
+		"@sveltejs/kit": "3.0.0-next.27",
+		"expo": "57.0.30",
+		"expo-constants": "57.0.22",
+		"hermes-intl": "^0.1.2",
+		"react": "19.2.7",
+		"react-native": "0.86.3",
+		"react-native-gesture-handler": "2.32.0",
+		"react-native-reanimated": "4.5.1",
+		"react-native-worklets": "0.10.1",
+		"svelte": "https://pkg.pr.new/svelte@216f258068d93170a927ad4d27ee6864b0b305c5",
+		"vite": "^8.1.4"
+	},
+	"reanimated": {
+		"staticFeatureFlags": {
+			"ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS": true
+		}
+	}
+}

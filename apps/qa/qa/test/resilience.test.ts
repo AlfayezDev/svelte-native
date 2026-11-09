@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
 	anchorEvery,
 	buildPlan,
@@ -135,5 +137,15 @@ describe("the step probe", () => {
 
 	test("output without the marker is an error, not an empty log", () => {
 		expect(() => parseProbe("5725\n", pkg)).toThrow("no log marker");
+	});
+});
+
+describe("the run's files", () => {
+	test("the Android command makes the runs directory before it writes its log, so the end of a long run does not lose its results in a checkout that has none", () => {
+		const source = readFileSync(join(import.meta.dirname, "../commands/resilience.ts"), "utf8");
+		const made = source.indexOf("mkdir(runsDir");
+		const written = source.indexOf("writeFile(\n\t\tlogPath");
+		expect(made).toBeGreaterThan(0);
+		expect(written).toBeGreaterThan(made);
 	});
 });

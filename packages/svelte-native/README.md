@@ -12,11 +12,32 @@ On Android the mounting is the package's own engine: Fabric's C++ transaction go
 | iOS | iPhone SE 3rd generation (iOS 26.6, 60 Hz) | phones only; the Android-only engine pieces (view pool, overlay modal, foreign-view split) do not apply |
 | Web | the same app builds for browsers through SvelteKit | separate target: `+page.svelte` for browsers, `+mobile.svelte` for native |
 
-It targets Expo SDK 57 and React Native 0.86.3 with Hermes, Reanimated 4.5.1, react-native-worklets 0.10.1 and react-native-gesture-handler 2.32. The Svelte compiler is Svelte's [unmerged custom-renderer pull request](https://github.com/sveltejs/svelte/pull/18042), pinned to commit `216f258068d93170a927ad4d27ee6864b0b305c5` (5.56.7) and vendored in this repository as `vendor/svelte-5.56.7-216f258.tgz`; the package and the example app both depend on that build by `file:`, the web target included. The package is private to this repository and carries pnpm patches for SvelteKit, `expo-modules-core`, Reanimated, worklets and gesture-handler, and for four of the view libraries it wraps (`react-native-pdf`, `react-native-video`, `react-native-maps`, `lottie-react-native`; `patches/`). Unsupported: Svelte DOM transitions and libraries, React widgets, the Expo dev client, Fast Refresh (a save remounts the root; see "Development loop"), tvOS, and tablet layouts (not exercised).
+It targets Expo SDK 57 and React Native 0.86.3 with Hermes, Reanimated 4.5.1, react-native-worklets 0.10.1 and react-native-gesture-handler 2.32. The Svelte compiler is Svelte's [unmerged custom-renderer pull request](https://github.com/sveltejs/svelte/pull/18042), pinned to commit `216f258068d93170a927ad4d27ee6864b0b305c5` (5.56.7). The package names it as a peer dependency, `svelte` 5.56.7 **with the `./renderer` export**, which the registry's 5.56.7 does not have; the repository vendors the build as `vendor/svelte-5.56.7-216f258.tgz`, and the package and the example app install that tarball by `file:` (a development dependency here, so a dependent never sees it). The library carries pnpm patches for SvelteKit, `expo-modules-core`, Reanimated, worklets and gesture-handler, and for four of the view libraries it wraps (`react-native-pdf`, `react-native-video`, `react-native-maps`, `lottie-react-native`; `patches/`); an app that installs the package applies them itself ("Install in an app"). Unsupported: Svelte DOM transitions and libraries, React widgets, the Expo dev client, Fast Refresh (a save remounts the root; see "Development loop"), tvOS, and tablet layouts (not exercised).
+
+## Install in an app
+
+The package is private. An app outside this repository depends on a tag of it through pnpm's git dependency, over SSH, naming the package's directory:
+
+```json
+{
+  "dependencies": {
+    "@rasheed/svelte-native": "git+ssh://git@github.com/AlfayezDev/svelte-native.git#<tag>&path:packages/svelte-native",
+    "svelte": "https://pkg.pr.new/svelte@216f258068d93170a927ad4d27ee6864b0b305c5"
+  }
+}
+```
+
+A release is a tag with its [changelog](CHANGELOG.md) entry. What `pnpm install` copies is the package as `files` packs it (`pnpm pack` lists it): `src/` (TypeScript that Metro, Vite and Expo compile), `native/` (the library's native modules), `expo-module.config.json`, `patches/` and the documents. Nothing is built at install time and nothing outside the package directory is needed.
+
+- **Svelte.** The renderer needs [the custom-renderer build](https://github.com/sveltejs/svelte/pull/18042), not the registry's `svelte`, whose 5.56.7 has the same version string and no `./renderer` export. Install it from pkg.pr.new (above), or from the tarball the repository vendors (`vendor/svelte-5.56.7-216f258.tgz`, byte for byte the same build): `"svelte": "file:./vendor/svelte-5.56.7-216f258.tgz"`. The package declares `svelte` as a peer dependency (`5.56.7`), so a package manager that finds another build warns; `withSvelteNative` (Metro), the Metro transformer and the native target of `svelteNative()` (Vite) check the installed package for `./renderer` and fail with the same instructions. The web target of SvelteKit runs on the same build.
+- **Peer dependencies.** Expo SDK 57 and React Native 0.86.3, the libraries of `peerDependencies` that the app uses (the view-library wrappers are optional; install them with `npx expo install <name>`) and `@sveltejs/kit` 3.0.0-next.27 exactly.
+- **Native modules.** Nothing is copied into the app. The package's `expo-module.config.json` links six native projects through Expo's autolinking (Android Gradle projects `:svelte-engine` and `:svelte-updates`; iOS pods `SvelteScreensIOS`, `SvelteInsets`, `SvelteNavigation`, `SvelteCapture`, `SvelteUpdates`), so `expo prebuild` and `pod install` find them in `node_modules/@rasheed/svelte-native/native/`. Keep the app's own Expo modules in its `modules/` directory as usual.
+- **Patches.** The patches the library relies on are in the package's `patches/` directory. A pnpm app registers them in `patchedDependencies` of its `pnpm-workspace.yaml`, with the package versions they were written for.
+- **App config.** The Metro, Vite and Expo wiring is the one in "Set up an app" below; run `npx expo prebuild` after the first install and after a native dependency or a plugin option changes.
 
 ## Set up an app
 
-The example app (`apps/example`) is the working example.
+The example app (`apps/example`) is the working example; it links the library through its workspace dependency, as an app outside the repository does.
 
 ```ts
 // vite.config.ts: browser and native share one config

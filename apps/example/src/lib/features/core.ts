@@ -14,4 +14,7 @@ export const coreFeatures: Feature[] = [
   { title: "Sheet", summary: "A bottom sheet with detents and a grabber", group: "Navigation", route: "/navigation/sheet" },
   { title: "Modal", summary: "A screen that covers everything, with its own Close button", group: "Navigation", route: "/navigation/modal" },
   { title: "Links", summary: "Deep links, the launch URL and router.openURL", group: "Navigation", route: "/navigation/links" },
+  { title: "Platform", summary: "Safe area, status bar, keyboard, appearance, device", group: "Platform", route: "/platform" },
+  { title: "Internationalization", summary: "Languages, plurals, numbers and right-to-left layout", group: "Platform", route: "/i18n" },
+  { title: "Accessibility", summary: "Labels, roles, states, grouping, live regions, actions", group: "Platform", route: "/accessibility" },
 ];

@@ -5,13 +5,19 @@ command below is yours to run, and each step says what it changes. `<TOKEN>` is 
 prompt on the host, so it is never in a shell history, an argument list or a file.
 
 The runner is a dedicated user `svelte-qa` on the OVH host (`ssh ovh-root`), the label is `svelte-qa-emulator`, the repository is
-`https://github.com/AlfayezDev/svelte-native`. What the setup script does, in full: `bash apps/qa/qa/ci/setup-runner.sh --help`.
+`https://github.com/AlfayezDev/svelte-native` (private). What the setup script does, in full: `bash apps/qa/qa/ci/setup-runner.sh --help`.
+
+Only the emulator lane and the crash volume (`.github/workflows/native-qa.yml`) use this runner. The static checks (`ci.yml`), the consumer
+build (`consumer.yml`) and the release (`release.yml`) run on GitHub-hosted runners and need nothing from this file. Until step 8 sets the
+repository variable `QA_EMULATOR_RUNNER`, the jobs of `native-qa.yml` do not run at all (a push shows the workflow as skipped; a dispatch
+fails at once with "No emulator runner"), so a push never waits for a runner that is not there.
 
 ## 0. Before
 
 - Nobody should be using the emulator in step 6 (the PC tools' emulator is replaced by the service). Check on this PC with `fuser -v /tmp/svelte-qa-emulator.lock` (agents' runs) and on the host with `ssh ovh-root tmux ls`.
 - The host needs 30 GB free (`ssh ovh-root df -h /`): Gradle caches, the runner's workspace and the AVD take 20 to 30 GB.
-- Repository type: the workflow only reacts to `push` and `workflow_dispatch`, never to `pull_request`, so code from a fork never reaches the runner. Keep it so on a public repository; on a private one there is nothing more to do.
+- Repository type: `native-qa.yml` only reacts to `push` (branches) and `workflow_dispatch`, never to `pull_request`, so code from a fork never reaches the runner. Keep it so on a public repository; on a private one there is nothing more to do. Anyone who can push a branch to the repository runs code on this runner, as the unprivileged user `svelte-qa`.
+- The GitHub account: `gh auth status` shows a login with admin rights on `AlfayezDev/svelte-native` (the commands below with `gh` need it; each also has a Settings path).
 
 ## 1. Put the script on the host
 
@@ -92,12 +98,38 @@ node apps/qa/qa/native-qa.ts hold --device localhost:5555 -- echo "lock taken on
 
 **Settings > Actions > Runners** shows `ovh-svelte-qa`, Idle, with the labels `self-hosted`, `Linux`, `X64`, `svelte-qa-emulator`.
 
-## 8. Optional
+## 8. Switch the lane on
 
-- The update scenario (dispatch only, the `updates` input, off by default) publishes to an EAS Update channel (`qa`, or `updates_channel`) and needs an Expo access token with write access to that project in the repository secret `EXPO_TOKEN`; the workflow gives it to the lane step only. eas-cli is fetched by `npx` at run time, so the host needs network access to npm and EAS. A push never runs it.
-- Run the unit job on this runner instead of a GitHub-hosted one: `gh variable set QA_UNIT_RUNS_ON --body '["self-hosted","svelte-qa-emulator"]'`. It needs g++ (step 3 installs it) and downloads two things itself: a JDK 17 (`actions/setup-java`, into the runner's tool cache) and, with `qa/ci/host-tools.sh`, kotlinc 2.1.20 and the `org.json` jar, each against a pinned sha256, into `~svelte-qa/.cache/native-qa-host-tools` (kept between runs, so once). Both need network access to github.com and repo1.maven.org; the Kotlin and C++ host checks (`run.sh`, the package tests that compile `*Host.kt`) fail, not skip, without them.
-- Make the checks block merges: Settings > Branches > the rule > require the status checks `Unit tests, typecheck, lint` and `Android emulator lane`.
-- A first run: push, or after the workflow is on the default branch, `gh workflow run native-qa.yml --ref <branch>`. The first build on the new runner takes 15 to 30 minutes.
+The jobs of `native-qa.yml` carry `if: vars.QA_EMULATOR_RUNNER == 'true'`. Set the variable once step 7 shows the runner Idle:
+
+```
+gh variable set QA_EMULATOR_RUNNER --body true --repo AlfayezDev/svelte-native
+```
+
+Changes: one repository variable (Settings > Secrets and variables > Actions > Variables > New repository variable, name `QA_EMULATOR_RUNNER`, value `true`). From then on every push to a branch (except one that only changes Markdown, `docs/`, `deploy/` or `LICENSE`) queues the quick lane on this runner, one at a time. To switch it off again (the runner down for maintenance, a burst of pushes): `gh variable delete QA_EMULATOR_RUNNER --repo AlfayezDev/svelte-native` (or set it to `false`), and cancel the runs already waiting on the Actions page.
+
+A first full run, on the default branch's workflow file (a workflow can be dispatched once its file is on the default branch):
+
+```
+gh workflow run native-qa.yml --repo AlfayezDev/svelte-native --ref main -f repeat=10 -f warm=30 -f cold=30 -f smoke=true
+```
+
+The first build on the new runner takes 15 to 30 minutes (cold Gradle and NDK); later builds are incremental.
+
+## 9. Secrets
+
+Only one, and only for the over-the-air update scenario (dispatch only, the `updates` input, off by default): an Expo access token with write access to the EAS project, in the repository secret `EXPO_TOKEN`:
+
+```
+gh secret set EXPO_TOKEN --repo AlfayezDev/svelte-native      # prompts for the value; nothing is echoed
+```
+
+(Settings > Secrets and variables > Actions > New repository secret.) The workflow gives it to the lane step only, and only when the dispatch asked for `updates`; a push never has it. The scenario publishes to the EAS Update channel `qa` (or the `updates_channel` input), and eas-cli is fetched by `npx` at run time, so the host needs network access to npm and EAS. Without the secret everything else works and `updates` stays off. No other workflow uses a secret: `release.yml` publishes with the run's own `GITHUB_TOKEN`.
+
+## 10. Optional
+
+- Make the checks block merges (Settings > Rules > Rulesets, or Settings > Branches; on a private repository this needs a paid GitHub plan): require the status check `CI` (the aggregate of `ci.yml`) and, once the lane is on, `Android emulator lane`. Do not require `Consumer build (tarball)` / `Consumer build (git)`: `consumer.yml` runs on pull requests that touch `packages/**`, `examples/**`, `vendor/**` or `scripts/consumer-check.sh` only, and a required check that never runs leaves the other pull requests waiting for it. Nothing stops a push itself; the checks report on the commit.
+- If the repository restricts which actions may run (Settings > Actions > General > Actions permissions: "Allow ... select actions"), allow the third-party actions the workflows use: `pnpm/action-setup@*`, `oven-sh/setup-bun@*` and `android-actions/setup-android@*` (pinned by commit SHA in the workflows), besides `actions/*`.
 
 ## Day 2
 

@@ -30,7 +30,8 @@ The package is private. An app outside this repository depends on a tag of it th
 A release is a tag with its [changelog](CHANGELOG.md) entry. What `pnpm install` copies is the package as `files` packs it (`pnpm pack` lists it): `src/` (TypeScript that Metro compiles), `dist/node/` (the JavaScript that Node itself loads, built from `src/`; see "Set up an app"), `native/` (the library's native modules), `expo-module.config.json`, `patches/` and the documents. Nothing is built at install time and nothing outside the package directory is needed: pnpm builds nothing for a git dependency, and refuses one whose `package.json` has a `prepare`, `prepack` or `prepublish` script (`ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED`, until the app lists it under `allowBuilds`, and then it installs the package's development dependencies and runs the script in a clone), so `dist/node/` is committed and the package has no such script (a test checks both).
 
 - **Svelte.** The renderer needs [the custom-renderer build](https://github.com/sveltejs/svelte/pull/18042), not the registry's `svelte`, whose 5.56.7 has the same version string and no `./renderer` export. Install it from pkg.pr.new (above), or from the tarball the repository vendors (`vendor/svelte-5.56.7-216f258.tgz`, byte for byte the same build): `"svelte": "file:./vendor/svelte-5.56.7-216f258.tgz"`. The package declares `svelte` as a peer dependency (`5.56.7`), so a package manager that finds another build warns; `withSvelteNative` (Metro), the Metro transformer and the native target of `svelteNative()` (Vite) check the installed package for `./renderer` and fail with the same instructions. The web target of SvelteKit runs on the same build.
-- **Peer dependencies.** Expo SDK 57 and React Native 0.86.3, the libraries of `peerDependencies` that the app uses (the view-library wrappers are optional; install them with `npx expo install <name>`) and `@sveltejs/kit` 3.0.0-next.27 exactly.
+- **Peer dependencies.** Expo SDK 57 and React Native 0.86.3, the libraries of `peerDependencies` that the app uses (the view-library wrappers are optional; install them with `npx expo install <name>`), and **`hermes-intl`**, which the app lists in its own `dependencies` (`pnpm add hermes-intl`): the library requires it for the `Intl` constructors Hermes lacks (`PluralRules`, `RelativeTimeFormat`, `ListFormat`, `Locale`), Metro fails without it, and it carries a native module that React Native's autolinking links only from the app's own dependencies (`svelte-native doctor` checks both). **`@sveltejs/kit` (3.0.0-next.27 exactly) and `vite` are optional**: remote functions and the web target need them (SvelteKit's client runtime is reused, and the Vite plugin runs the web build); an app that builds for native only installs neither, and the Metro plugin, the transformer and the runtime load without them. A feature that does need SvelteKit fails with a message that names the package.
+- **`expo-modules-core` is pinned by an override.** `expo` depends on `expo-modules-core` by a range (`~57.0.23`), so a fresh install takes the newest version in it (57.0.25 at the time of writing), and the patch below is for exactly 57.0.23: pnpm stops with `ERR_PNPM_UNUSED_PATCH`. Pin it for the whole install in `pnpm-workspace.yaml`: `overrides:` with `expo-modules-core: 57.0.23`. `svelte-native doctor` reports a different version with this fix.
 - **Native modules.** Nothing is copied into the app. The package's `expo-module.config.json` links six native projects through Expo's autolinking (Android Gradle projects `:svelte-engine` and `:svelte-updates`; iOS pods `SvelteScreensIOS`, `SvelteInsets`, `SvelteNavigation`, `SvelteCapture`, `SvelteUpdates`), so `expo prebuild` and `pod install` find them in `node_modules/@example/svelte-native/native/`. Keep the app's own Expo modules in its `modules/` directory as usual.
 - **Patches.** The patches the library relies on are in the package's `patches/` directory; "Apply the patches" below says how an app copies and registers them (`patchedDependencies`), and `svelte-native doctor` checks the result.
 - **App config.** The Metro, Vite and Expo wiring is the one in "Set up an app" below; run `npx expo prebuild` after the first install and after a native dependency or a plugin option changes.
@@ -50,8 +51,8 @@ const { withSvelteNative } = require("@example/svelte-native/metro");
 module.exports = withSvelteNative(getDefaultConfig(__dirname));
 ```
 ```ts
-// app.config.ts
-plugins: [["@example/svelte-native/expo", { autolinkingExclude: [], androidOnDemandViewManagers: {} }]]
+// app.config.ts: the package's own name works as for any Expo library (its app.plugin.js); "@example/svelte-native/expo" is the same plugin
+plugins: [["@example/svelte-native", { autolinkingExclude: [], androidOnDemandViewManagers: {} }]]
 ```
 
 ```sh
@@ -69,15 +70,15 @@ svelte-native sync              # only regenerate .svelte-native/
 | `svelte-native` (the bin) | the shell, `pnpm exec`, an npm script | `dist/node/cli.js` (ES module, shebang) |
 | `@example/svelte-native/metro` | `metro.config.cjs`, which `require`s it | `dist/node/metro.cjs` |
 | `@example/svelte-native/transformer` | Metro's workers (`babelTransformerPath`, which `withSvelteNative` sets) | `dist/node/transformer.cjs` |
-| `@example/svelte-native/expo` | `@expo/config` and `expo prebuild`, which `require` the plugin | `dist/node/expo.cjs` |
+| `@example/svelte-native/expo`, and the bare `@example/svelte-native` (Expo's lookup of a package's `app.plugin.js`) | `@expo/config` and `expo prebuild`, which `require` the plugin | `dist/node/expo.cjs` (`app.plugin.js` re-exports it) |
 | `@example/svelte-native/vite` | Vite, which imports the plugin from `node_modules` natively | `dist/node/vite.js` (ES module) |
 | `@example/svelte-native/lower` | Node, for a tool that lowers `.svelte` files | `dist/node/lower.js` (ES module) |
 | `@example/svelte-native/routes` | the web build (the table is empty there); Metro resolves it to the generated table | `dist/node/routes.js` (empty) |
-| `.` and every other entry (`/core`, `/router`, `/fabric`, `/renderer`, `/animation`, `/gestures`, `/foreign`, `/svg`, `/updates`, `/remote`, `/native-modules`, `/polyfills`, `/init`) | Metro, which compiles them with the app (they import `react-native`) | `src/*.ts` |
+| `.` and every other entry (`/core`, `/router`, `/fabric`, `/renderer`, `/animation`, `/gestures`, `/foreign`, `/svg`, `/updates`, `/remote`, `/native-modules`, `/platform`, `/polyfills`, `/init`) | Metro, which compiles them with the app (they import `react-native`) | `src/*.ts` |
 
 The built files are bundles of the Node-side code (the command line, the route generator, the Metro integration, the remote function transform, the doctor) with every package left as an import: they use the app's `svelte`, `expo`, `@sveltejs/kit` and the package's own dependencies, and name the runtime files Metro compiles (`src/fabric/…`) by path into the installed package.
 
-Generated files live in the ignored `.svelte-native/`. A change to native dependencies, to the config plugin options or to a patch needs a native rebuild; a change to Svelte code does not. Details of the plugin, Metro options and variants: [REFERENCE.md](REFERENCE.md#integration).
+Generated files live in the ignored `.svelte-native/`: the entry and one route table per variant (`routes.<variant>.ts`, from `APP_VARIANT`; `routes.app.ts` for an app that sets none). A change to native dependencies, to the config plugin options or to a patch needs a native rebuild; a change to Svelte code does not. Details of the plugin, Metro options and variants: [REFERENCE.md](REFERENCE.md#integration).
 
 ## Add a screen
 
@@ -102,7 +103,7 @@ A screen is `src/routes/<path>/+mobile.svelte`, next to the browser's `+page.sve
 </Screen>
 ```
 
-- Use native style objects (`style={{ padding: 24 }}`); there is no CSS. Primitives: `View`, `Text`, `TextInput` (`bind:value`), `Pressable` (`onPress`, `onPressChange`, `hitSlop`), `ScrollView`, `Image`, `Switch`, `ActivityIndicator`, `Modal`, `SafeAreaView`, `KeyboardAvoidingView`, `List`. At build time `View`, `Text`, `ScrollView`, `Image`, `ActivityIndicator` and `Pressable` are lowered to host tags, so a row costs host nodes and no component instances.
+- Use native style objects (`style={{ padding: 24 }}`); there is no CSS. Primitives: `View`, `Text`, `TextInput` (`bind:value`), `Pressable` (`onPress`, `onPressChange`, `hitSlop`; `View` and `Text` take the same handlers), `ScrollView`, `Image`, `Switch`, `ActivityIndicator`, `Modal`, `SafeAreaView`, `KeyboardAvoidingView`, `List`. At build time `View`, `Text`, `ScrollView`, `Image`, `ActivityIndicator` and `Pressable` are lowered to host tags, so a row costs host nodes and no component instances.
 - `router` is the nearest navigator's: `goto(href, { reset?, replaceState?, presentation? })`, `back()`, `current`, `entries`. `goto` resolves over the whole tree and never stacks the same screen twice. A link the app was launched with becomes the stack's base; later links are plain `goto`s.
 - `ref` callbacks follow React's contract: the handle when the element is built, `null` when it is destroyed, and the old callback gets `null` before a new one gets the handle. `ScrollView` and `TextInput` handles have `scrollTo`, `focus`, `blur`, `measure`, `dispatchCommand`.
 - `export const presentation = "modal"` in the module script (a literal: `push`, `modal`, `transparentModal`, `sheet`, `formSheet`) sets how a page enters.
@@ -117,6 +118,22 @@ Long lists use `List`, which mounts only the rows near the viewport:
 ```
 
 Fixed `rowHeight`, measured rows (`estimatedRowHeight`), `rowHeights`, `horizontal`, `initialScrollIndex`, `header`, `footer`, `empty`, `onEndReached` and `onViewableItemsChanged` are in [REFERENCE.md](REFERENCE.md). An unvirtualized list of hundreds of rows costs one long mount frame.
+
+## Platform modules
+
+`@example/svelte-native/platform` exports React Native's JavaScript-only modules, typed, for an app without React: `Platform`, `Appearance`, `Dimensions`, `Linking`, `Keyboard`, `AppState`, `BackHandler`, `PixelRatio`, `Share`, `Vibration` and `Alert`. They are React Native's own objects (the instances `react-native` exports, reached by the path of each module because the `react-native` index would load React's components too), so state is shared with libraries that import them from the index. Importing the entry loads none of them: each loads when a property is first read, and a function read from one is bound to it.
+
+```svelte
+<script lang="ts">
+  import { Appearance, Dimensions, Linking, Platform } from "@example/svelte-native/platform";
+  let scheme = $state(Appearance.getColorScheme());
+  Appearance.addChangeListener((preferences) => { scheme = preferences.colorScheme; });
+  const width = Dimensions.get("window").width;
+  const label = Platform.select({ ios: "iPhone", android: "Android phone" });
+</script>
+```
+
+The types are `react-native`'s own, except `Platform`, which is narrowed to the two systems the library runs on (`Platform.OS` is `"ios" | "android"`, and `Platform.Version` is a string on iOS and a number on Android once `OS` is checked). No declaration of the app's own is needed, and none for the modules the library itself imports by path: its public declaration files carry them ("Type checking an app" in [REFERENCE.md](REFERENCE.md#type-checking-an-app)).
 
 ## Navigators and screens
 
@@ -244,7 +261,7 @@ SvelteKit's remote functions (`query`, `query.batch`, `query.live`, `command`, `
 <Pressable onPress={() => form.submit()}><Text>Add</Text></Pressable>
 ```
 
-**Set up.** The package peer-depends on `@sveltejs/kit` 3.0.0-next.27 exactly (it reaches into the package's `src/`; a new version is reviewed first, see below) and on `expo-constants`. On the server, `experimental: { remoteFunctions: true }` in the SvelteKit options, and every remote module in the server's graph: a module no web page imports is not known to the server (in `vite dev` it is registered when first loaded: list it in `server.warmup.ssrFiles`; in a build, import it from `hooks.server.ts`). In the app config, the host:
+**Set up.** The package peer-depends on `@sveltejs/kit` 3.0.0-next.27 exactly, optionally (it reaches into the package's `src/`; a new version is reviewed first, see below; install it to use remote functions, an app without them has none) and on `expo-constants`. On the server, `experimental: { remoteFunctions: true }` in the SvelteKit options, and every remote module in the server's graph: a module no web page imports is not known to the server (in `vite dev` it is registered when first loaded: list it in `server.warmup.ssrFiles`; in a build, import it from `hooks.server.ts`). In the app config, the host:
 
 ```ts
 // app.config.ts
@@ -308,8 +325,8 @@ The library works only with nine third-party packages patched, and pnpm applies 
 
 | Package | Needed | What the patch changes |
 |---|---|---|
-| `@sveltejs/kit` 3.0.0-next.27 | always (a peer) | SvelteKit's route manifest and its `+page`/`+layout` warnings leave `+mobile.svelte` files in a route directory alone |
-| `expo-modules-core` 57.0.23 | always (comes with `expo`) | Android: Expo modules register lazily and the common ones are prewarmed on a thread of their own; the native view adapter loads React Native's component registry on its first view |
+| `@sveltejs/kit` 3.0.0-next.27 | if installed (an optional peer: remote functions, the web target) | SvelteKit's route manifest and its `+page`/`+layout` warnings leave `+mobile.svelte` files in a route directory alone |
+| `expo-modules-core` 57.0.23 | always (comes with `expo`; pin it with `overrides`, "Install in an app") | Android: Expo modules register lazily and the common ones are prewarmed on a thread of their own; the native view adapter loads React Native's component registry on its first view |
 | `react-native-gesture-handler` 2.32.0 | always (a peer) | iOS: the manager can be asked for the root gesture recognizer of a screen the library presents (sheets, modals) and does not stop its walk above a view that holds a touch handler |
 | `react-native-reanimated` 4.5.1 | always (a peer) | Android: `synchronouslyUpdateUIProps` hands the engine's views to a native sink, and opacity and translate/scale transforms skip React Native's prop path |
 | `react-native-worklets` 0.10.1 | always (a peer) | the UI runtime asks for an animation frame only while a callback waits, not on every frame forever (about 12 % of an idle screen's main-thread samples on the Samsung A16) |
@@ -393,7 +410,7 @@ build integration
 …
 ```
 
-What it checks, and how: [REFERENCE.md](REFERENCE.md#doctor). A patch counts as applied when the installed package has the code the patch adds (the Android events that must not coalesce, the gesture handler's manager, Reanimated's sink, the worklets frame loop, Expo's lazy registry, SvelteKit's route filter), not when `patchedDependencies` merely names it.
+What it checks, and how: [REFERENCE.md](REFERENCE.md#doctor). Among the peers: `hermes-intl` is a dependency of the app itself (autolinking), `@sveltejs/kit` and `vite` are skipped when absent, and a version of `expo-modules-core` other than the patch's gets the `overrides` fix. A patch counts as applied when the installed package has the code the patch adds (the Android events that must not coalesce, the gesture handler's manager, Reanimated's sink, the worklets frame loop, Expo's lazy registry, SvelteKit's route filter), not when `patchedDependencies` merely names it.
 
 ## Development loop
 

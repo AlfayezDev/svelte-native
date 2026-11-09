@@ -7,8 +7,9 @@ name: CI
 
 on:
   push:
-    # Branches only: a pushed tag is built by release.yml, which calls this workflow.
-    branches: ["**"]
+    # main only (a private repository's minutes are billed): other branches are checked by their pull request, and a pushed tag
+    # is built by release.yml, which calls this workflow.
+    branches: [main]
   pull_request:
   workflow_dispatch:
   workflow_call:

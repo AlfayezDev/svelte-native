@@ -6,6 +6,8 @@ node_modules.root-owned.*
 # Build outputs
 build
 dist/
+# The Node-side JavaScript of the package is committed: a git dependency is not built on install (packages/svelte-native/scripts/build-node.ts)
+!/packages/svelte-native/dist/
 dist-ssr
 .output
 .cache

@@ -27,7 +27,7 @@ The package is private. An app outside this repository depends on a tag of it th
 }
 ```
 
-A release is a tag with its [changelog](CHANGELOG.md) entry. What `pnpm install` copies is the package as `files` packs it (`pnpm pack` lists it): `src/` (TypeScript that Metro, Vite and Expo compile), `native/` (the library's native modules), `expo-module.config.json`, `patches/` and the documents. Nothing is built at install time and nothing outside the package directory is needed.
+A release is a tag with its [changelog](CHANGELOG.md) entry. What `pnpm install` copies is the package as `files` packs it (`pnpm pack` lists it): `src/` (TypeScript that Metro compiles), `dist/node/` (the JavaScript that Node itself loads, built from `src/`; see "Set up an app"), `native/` (the library's native modules), `expo-module.config.json`, `patches/` and the documents. Nothing is built at install time and nothing outside the package directory is needed: pnpm builds nothing for a git dependency, and refuses one whose `package.json` has a `prepare`, `prepack` or `prepublish` script (`ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED`, until the app lists it under `allowBuilds`, and then it installs the package's development dependencies and runs the script in a clone), so `dist/node/` is committed and the package has no such script (a test checks both).
 
 - **Svelte.** The renderer needs [the custom-renderer build](https://github.com/sveltejs/svelte/pull/18042), not the registry's `svelte`, whose 5.56.7 has the same version string and no `./renderer` export. Install it from pkg.pr.new (above), or from the tarball the repository vendors (`vendor/svelte-5.56.7-216f258.tgz`, byte for byte the same build): `"svelte": "file:./vendor/svelte-5.56.7-216f258.tgz"`. The package declares `svelte` as a peer dependency (`5.56.7`), so a package manager that finds another build warns; `withSvelteNative` (Metro), the Metro transformer and the native target of `svelteNative()` (Vite) check the installed package for `./renderer` and fail with the same instructions. The web target of SvelteKit runs on the same build.
 - **Peer dependencies.** Expo SDK 57 and React Native 0.86.3, the libraries of `peerDependencies` that the app uses (the view-library wrappers are optional; install them with `npx expo install <name>`) and `@sveltejs/kit` 3.0.0-next.27 exactly.
@@ -61,6 +61,21 @@ svelte-native ios --device      # expo run:ios
 svelte-native build --platform ios   # export Hermes bytecode without building the host
 svelte-native sync              # only regenerate .svelte-native/
 ```
+
+**No TypeScript loader is needed in the app.** The package ships TypeScript, and Node refuses to run TypeScript from under `node_modules` (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`, Node 25 and 26). So the entries a Node process loads are built to JavaScript in `dist/node/`, and `package.json` points them there (`types` stays the `.ts` source); the entries Metro compiles stay TypeScript:
+
+| Entry | Loaded by | Shipped as |
+|---|---|---|
+| `svelte-native` (the bin) | the shell, `pnpm exec`, an npm script | `dist/node/cli.js` (ES module, shebang) |
+| `@example/svelte-native/metro` | `metro.config.cjs`, which `require`s it | `dist/node/metro.cjs` |
+| `@example/svelte-native/transformer` | Metro's workers (`babelTransformerPath`, which `withSvelteNative` sets) | `dist/node/transformer.cjs` |
+| `@example/svelte-native/expo` | `@expo/config` and `expo prebuild`, which `require` the plugin | `dist/node/expo.cjs` |
+| `@example/svelte-native/vite` | Vite, which imports the plugin from `node_modules` natively | `dist/node/vite.js` (ES module) |
+| `@example/svelte-native/lower` | Node, for a tool that lowers `.svelte` files | `dist/node/lower.js` (ES module) |
+| `@example/svelte-native/routes` | the web build (the table is empty there); Metro resolves it to the generated table | `dist/node/routes.js` (empty) |
+| `.` and every other entry (`/core`, `/router`, `/fabric`, `/renderer`, `/animation`, `/gestures`, `/foreign`, `/svg`, `/updates`, `/remote`, `/native-modules`, `/polyfills`, `/init`) | Metro, which compiles them with the app (they import `react-native`) | `src/*.ts` |
+
+The built files are bundles of the Node-side code (the command line, the route generator, the Metro integration, the remote function transform, the doctor) with every package left as an import: they use the app's `svelte`, `expo`, `@sveltejs/kit` and the package's own dependencies, and name the runtime files Metro compiles (`src/fabric/…`) by path into the installed package.
 
 Generated files live in the ignored `.svelte-native/`. A change to native dependencies, to the config plugin options or to a patch needs a native rebuild; a change to Svelte code does not. Details of the plugin, Metro options and variants: [REFERENCE.md](REFERENCE.md#integration).
 
@@ -394,10 +409,13 @@ A debug build loads the bundle from Metro. A save re-runs the changed module and
 ```sh
 cd packages/svelte-native
 bun run test             # bun test --timeout 30000: renderer, host against a fake Fabric binding, router, lowering, gestures, foreign libraries, updates, remote functions (a real SvelteKit server); a plain `bun test` keeps Bun's 5 s default, which the server and bundling tests can exceed on a busy machine
+pnpm build               # the JavaScript of the Node-side entries into dist/node/ (committed): run it after changing the code they are built from
 pnpm typecheck           # svelte-check
 pnpm lint                # eslint
 npx biome check .        # from the repository root: lint for the TypeScript packages
 ```
+
+`dist/node/` is what `pnpm build` (`scripts/build-node.ts`, esbuild) writes for the sources of the entries in the table of "Set up an app": the command line, the route generator, `metro.ts`, `transformer.ts`, `expo.ts`, `vite.ts`, `lower.ts` and what they import (`build.ts`, `doctor/`, `remote/{transform,plugin,host}.ts`, `svelte-build.ts`, `route-tree.ts`, `variant.ts`, `package-root.ts`). The repository's own tools use the built files too (the QA app's Metro, Vite and Expo config load them through the package's `exports`), so a change to that code reaches the QA app only after `pnpm build`. `tests/dist.test.ts` fails when `dist/node/` differs from a fresh build, and `tests/node-modules.test.ts` packs the package with `pnpm pack`, unpacks it into the `node_modules` of a scratch app and loads each entry with plain `node`. Node-side code names the TypeScript Metro compiles by path (`sourceFile()` in `src/package-root.ts`), never by a relative import: a built file is not next to its sources.
 
 Devices are driven by the `native-qa` harness in `apps/qa/qa` (see its [README](../../apps/qa/qa/README.md)): `pnpm native-qa build|lab|boot|parity|a11y|resilience|soak|crashes|gestures|foreign|smoke|updates|product|report|gates` builds the QA app, runs the lab on an emulator, the Samsung or the iPhone, and judges `gates.json`. The lab (28 functional checks plus the stress scenarios) is in the example app's `/__dev` routes, present in development and QA builds and absent from the production variant. Pixel references, accessibility-tree checks and the resilience loop are automated; what a person must check with TalkBack and VoiceOver is in [apps/qa/qa/A11Y-MANUAL.md](../../apps/qa/qa/A11Y-MANUAL.md). The state of the production bar, the exceptions and the final gate table (every device's result on the final build, with its decision where a bar is missed) are in [PLAN.md](PLAN.md).
 

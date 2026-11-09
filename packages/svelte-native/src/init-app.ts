@@ -203,9 +203,17 @@ function planPackageJson(root: string, original: string, patches: readonly Patch
     summary.push("the Reanimated flag");
   }
 
-  if (Object.keys(dependencies).length > 0 || manifest.dependencies !== undefined) next.dependencies = dependencies;
+  next.dependencies = dependencies;
   if (Object.keys(devDependencies).length > 0 || manifest.devDependencies !== undefined) next.devDependencies = devDependencies;
-  const text = `${JSON.stringify(next, null, indentOf(original))}${original.endsWith("\n") ? "\n" : ""}`;
+  // `dependencies` goes right before `devDependencies` (`pnpm add` appends it after); the other keys keep their places and new ones come last.
+  const ordered: Manifest = {};
+  for (const key of Object.keys(next)) {
+    if (key === "dependencies") continue;
+    if (key === "devDependencies") ordered.dependencies = dependencies;
+    ordered[key] = next[key];
+  }
+  if (!("dependencies" in ordered)) ordered.dependencies = dependencies;
+  const text = `${JSON.stringify(ordered, null, indentOf(original))}${original.endsWith("\n") ? "\n" : ""}`;
   return { text, summary, warnings, kitVersion, hasKit, changed: text !== original, name: typeof manifest.name === "string" ? manifest.name : undefined };
 }
 

@@ -17,7 +17,7 @@ The failures you're likely to see:
 - **`svelte … is the stock Svelte: it has no ./renderer export`.** You have the registry's Svelte. Install the pinned build: `"svelte": "https://pkg.pr.new/svelte@216f258068d93170a927ad4d27ee6864b0b305c5"`.
 - **`react 19.2.6 does not satisfy 19.2.7`**, or any other peer. The versions are exact, because each patch is for one version. Set the version it asks for.
 - **`… is not applied`** for a patch. Copy the patch files from `node_modules/@example/svelte-native/patches/` into `patches/svelte-native/` again and run `pnpm install`. A copy from an older release applies cleanly but doesn't have the fix.
-- **`metro.config.cjs does not mention withSvelteNative`**. See [Creating a project](02-creating-a-project.md#connect-vite-and-metro).
+- **`metro.config.cjs does not mention withSvelteNative`**. See [Creating a project](02-creating-a-project.md#metroconfigcjs-and-appjson).
 
 [The package README](../packages/svelte-native/README.md) shows a full example of its output, in the section "Check an app with `svelte-native doctor`".
 
@@ -34,24 +34,31 @@ The repository is private. pnpm fetches a GitHub dependency over HTTPS even when
 git config --global url."git@github.com:AlfayezDev/".insteadOf "https://github.com/AlfayezDev/"
 ```
 
-You need the setting for later installs, too. A fresh `pnpm install` of the project fails with `ERR_PNPM_GIT_FETCH_FAILED` without it. `scripts/new-app.sh` sets it for its own run only, and says so.
+You need the setting for later installs, too. A fresh `pnpm install` of the project fails with `ERR_PNPM_GIT_FETCH_FAILED` without it.
 
 If it still fails, `ssh -T git@github.com` should greet you by name. If it doesn't, your key isn't on your GitHub account, or you haven't been added to the repository.
+
+## svelte-native init stops or leaves something for you
+
+`init` prints a plan before it writes anything (`--dry-run` stops there). It stops without writing when:
+
+- **The project has no `package.json`.** Run it in the directory of your project, after `npx sv create`.
+- **The project uses npm, Yarn or Bun.** The library's patches are pnpm's. Create the project again with pnpm, or move it to pnpm.
+
+It leaves a file alone, prints the change for you to make and exits with status 1 when:
+
+- **`vite.config.ts` isn't the shape `sv` writes.** It prints the three lines to change. Wrap your options as `kit` and make the config a function of the mode, as in [Creating a project](02-creating-a-project.md#viteconfigts).
+- **`metro.config.cjs` exists and doesn't use `withSvelteNative`.** Wrap the config you export.
+- **The app is configured in `app.config.ts`**, or a block of `pnpm-workspace.yaml` is written in flow style (`allowBuilds: { esbuild: true }`).
+
+A warning about a `main`, a script or a patch for a library at another version means `init` kept what you had; `--force` replaces the `main`.
 
 ## pnpm stops during install
 
 - **`ERR_PNPM_UNUSED_PATCH`.** A patch is declared for a package that isn't installed, or at another version. Remove the entry, or install the package at the version in the patch's file name. For `expo-modules-core` the usual cause is the missing `overrides` entry: `expo` asks for it by a range, so a fresh install takes a newer one.
-- **`ERR_PNPM_IGNORED_BUILDS`.** esbuild's install script isn't allowed. Add `allowBuilds: { esbuild: true }` to `pnpm-workspace.yaml`.
+- **`ERR_PNPM_IGNORED_BUILDS`.** esbuild's install script isn't allowed. `sv` writes that setting for pnpm; if your project doesn't have it, add `allowBuilds: { esbuild: true }` to `pnpm-workspace.yaml`, or run `pnpm add --allow-build=esbuild <the library>` for the first install.
 - **A frozen lockfile in CI.** Declaring the patches changes the lockfile, and with `CI=1` pnpm refuses an install it would have to change. Run `pnpm install --no-frozen-lockfile` once, and commit `pnpm-lock.yaml`.
 - **Peer warnings.** `pnpm peers check` lists a few unmet peers, and none of them stops anything: the `svelte` build from a URL, `@react-native/metro-config` 0.88 where 0.86 is asked for, and `expo-constants` 57.0.22 where 57.0.23 is. They're expected.
-
-## pnpm check reports an error inside Svelte Native
-
-```
-node_modules/…/@example/svelte-native/src/build.ts 207:11 "Property 'unref' does not exist on type 'number'."
-```
-
-`svelte-check` follows your imports into the library's source, and one file of it assumes Node's `setTimeout`. It's a type error only: the app builds and runs. If you see a second error about `dynamicCompileOptions`, your `@sveltejs/vite-plugin-svelte` is newer than 7.2.0. Pin it to `7.2.0`, as [Creating a project](02-creating-a-project.md#use-the-svelte-and-sveltekit-that-svelte-native-needs) does.
 
 ## The app says "Unable to load script"
 

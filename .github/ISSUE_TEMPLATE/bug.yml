@@ -21,7 +21,7 @@ body:
     attributes:
       label: Minimal reproduction
       description: |
-        The `.svelte` file of the screen that shows it (in a code fence, cut down to what is needed), or the steps from an app made with `scripts/new-app.sh`.
+        The `.svelte` file of the screen that shows it (in a code fence, cut down to what is needed), or the steps from an app made with `svelte-native init`.
         A link to a repository is fine, too.
       placeholder: |
         ```svelte

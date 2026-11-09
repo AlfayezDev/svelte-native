@@ -16,7 +16,7 @@ It targets Expo SDK 57 and React Native 0.86.3 with Hermes, Reanimated 4.5.1, re
 
 ## Install in an app
 
-This section and the next two are the reference for what an app needs. To start an app, follow the [guide](../../docs/01-introduction.md) (`npx sv create`, then `scripts/new-app.sh`, which does the steps below for you), and to add the library to an Expo app you already have, [its page](../../docs/07-adding-to-an-existing-expo-app.md).
+This section and the next two are the reference for what an app needs. To start an app, follow the [guide](../../docs/01-introduction.md): `npx sv create`, `pnpm add` of the library, then `pnpm exec svelte-native init`, which does the steps below for you (and `init --dry-run` prints what it would do). To add the library to an Expo app you already have, see [its page](../../docs/07-adding-to-an-existing-expo-app.md).
 
 The package is private. An app outside this repository depends on a tag of it through pnpm's git dependency, over SSH, naming the package's directory. [`examples/minimal`](../../examples/minimal) is the smallest app that does everything below (copy it to start); `scripts/consumer-check.sh` installs and builds it from a scratch directory outside the repository, once with the library as a packed tarball and once as a git dependency of the repository's own commit.
 
@@ -42,7 +42,6 @@ pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#<tag>&path:packa
 git config --global url."git@github.com:AlfayezDev/".insteadOf "https://github.com/AlfayezDev/"
 ```
 
-`scripts/new-app.sh` sets it for its own run only, through `GIT_CONFIG_*` in its environment, and says so.
 
 A release is a tag with its [changelog](CHANGELOG.md) entry. What `pnpm install` copies is the package as `files` packs it (`pnpm pack` lists it): `src/` (TypeScript that Metro compiles), `dist/node/` (the JavaScript that Node itself loads, built from `src/`; see "Set up an app"), `native/` (the library's native modules), `expo-module.config.json`, `patches/` and the documents. Nothing is built at install time and nothing outside the package directory is needed: pnpm builds nothing for a git dependency, and refuses one whose `package.json` has a `prepare`, `prepack` or `prepublish` script (`ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED`, until the app lists it under `allowBuilds`, and then it installs the package's development dependencies and runs the script in a clone), so `dist/node/` is committed and the package has no such script (a test checks both).
 

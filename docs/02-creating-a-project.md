@@ -1,6 +1,6 @@
 # Creating a project
 
-You start where every SvelteKit app starts, with `npx sv create`, and then add the native layer. This page takes you from nothing to your app running on a device or emulator. If you'd rather not type the steps, [one command](#the-shortcut) does them for you.
+You start where every SvelteKit app starts, with `npx sv create`. Then you install Svelte Native and run one command that sets the project up. This page takes you from nothing to your app running on a device or emulator, and then shows what the command changed, so that you know what you have.
 
 ## Before you start
 
@@ -11,29 +11,31 @@ You need:
 - To run on Android: [Android Studio](https://developer.android.com/studio) with the SDK packages Gradle asks for (platform 36, build-tools 36.0.0, NDK 27.1.12297006, CMake 3.22.1), a JDK 17, and `ANDROID_HOME` set. You also need a phone with USB debugging or an emulator.
 - To run on iOS: a Mac with Xcode and CocoaPods, and a simulator or an iPhone.
 
-> [!NOTE] If `pnpm` can't read the repository, you'll see `ERR_PNPM_GIT_RESOLVE_FAILED`. The fix is one `git config` line, in [Troubleshooting](08-troubleshooting.md#pnpm-cannot-read-the-repository).
-
-## The shortcut
-
-`scripts/new-app.sh` does everything on this page. It lives in the repository, so clone it first. You don't have to keep the clone:
+pnpm fetches GitHub dependencies over HTTPS, even when you give it an SSH address, and the repository is private. If you reach GitHub with an SSH key only, tell git once to use SSH for this account's repositories:
 
 ```sh
-git clone --depth 1 git@github.com:AlfayezDev/svelte-native.git /tmp/svelte-native
-/tmp/svelte-native/scripts/new-app.sh my-app
-cd my-app && pnpm android
+git config --global url."git@github.com:AlfayezDev/".insteadOf "https://github.com/AlfayezDev/"
 ```
 
-The script checks your tools, runs `sv create`, adds the native layer, installs, applies the patches and runs `svelte-native doctor`. It takes about 20 seconds on a machine that has never installed these packages, and a few seconds when pnpm already has them. It builds nothing: the first `pnpm android` does.
+Without it the next section stops at `pnpm add` with `ERR_PNPM_GIT_RESOLVE_FAILED`. See [Troubleshooting](08-troubleshooting.md#pnpm-cannot-read-the-repository).
 
-The rest of this page is what the script does, so that you know what you have.
-
-## Create a SvelteKit project
+## Create the app
 
 ```sh
 npx sv create my-app
+cd my-app
+pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#<tag>&path:packages/svelte-native"
+pnpm exec svelte-native init
+pnpm android        # or: pnpm ios
 ```
 
-`sv` asks a few questions. Answer them like this:
+Replace `<tag>` with the newest release tag of the repository. The `init` command arrived after `v0.3.0`, so until the next release use the tag or commit it appears in.
+
+Here is what each command does.
+
+### npx sv create
+
+`sv` asks a few questions. This page was written with these answers:
 
 - **Which template?** SvelteKit minimal.
 - **Add type checking with TypeScript?** Yes, using TypeScript syntax.
@@ -46,42 +48,59 @@ To skip the questions, pass the answers as flags:
 npx sv@1.3.0 create my-app --template minimal --types ts --no-add-ons --install pnpm
 ```
 
-That is what this page was written against (`sv` 1.3.0, which creates a project with SvelteKit 3.1 and Svelte 5.57). Then:
+That is `sv` 1.3.0, which creates a project with SvelteKit 3.1 and Svelte 5.57. Other add-ons weren't tried. `init` edits `vite.config.ts` and `pnpm-workspace.yaml` when they look the way `sv` writes them, and prints what to change when they don't.
 
-```sh
-cd my-app
+### pnpm add
+
+This installs the library. It works in a fresh `sv` project, with some warnings about peer dependencies that `init` takes care of. The project still has the registry's Svelte and nothing is set up, but the library's command line already runs.
+
+> [!NOTE] `sv` allows esbuild's install script in the `pnpm-workspace.yaml` it writes when it installs with pnpm. If your project doesn't have that setting, add `--allow-build=esbuild` to the `pnpm add` command.
+
+### pnpm exec svelte-native init
+
+`init` turns the SvelteKit project into a Svelte Native one. It prints what it will do, does it, runs `pnpm install`, and then `svelte-native doctor`, which checks the result:
+
+```
+svelte-native init: /home/you/my-app
+
+  edit    package.json                  "main", svelte (the custom-renderer build), @sveltejs/kit 3.1.1 (exact: …), …
+  edit    pnpm-workspace.yaml           overrides: expo-modules-core; patchedDependencies: @sveltejs/kit@3.1.1, …
+  create  patches/svelte-native/        5 patch files from the installed library
+  create  metro.config.cjs              withSvelteNative(getDefaultConfig(__dirname))
+  create  app.json                      my-app, dev.example.myapp
+  edit    vite.config.ts                svelteNative() around SvelteKit's plugin, as a function of the mode
+  create  src/routes/+layout.mobile.svelte, src/routes/+mobile.svelte, src/routes/details/+mobile.svelte
+  edit    .gitignore                    .svelte-native, .expo, /android, /ios
 ```
 
-## Use the Svelte and SvelteKit that Svelte Native needs
+You can run it again whenever you like: a project that is set up gets `Nothing to change`. It never replaces something you changed without saying so. If a file has a shape it can't edit safely (a `vite.config.ts` that isn't what `sv` writes, say), it leaves the file alone and prints the exact change for you to make. Its options are:
 
-`sv` installed the registry's `svelte` and a recent `@sveltejs/kit`. Svelte Native needs two others:
+- `--dry-run` prints the plan and writes nothing.
+- `--name`, `--android-package` and `--ios-bundle-id` set the app's display name and its identifiers. By default they come from the package name, and `dev.example.myapp` is a placeholder: change it before you publish.
+- `--no-install` writes the files but doesn't run `pnpm install` and the doctor.
+- `--force` replaces a `main` of yours that `init` would have written differently.
 
-- **Svelte** from a custom-renderer build. The registry's Svelte has the same version number, but not the `./renderer` export the library compiles against.
-- **SvelteKit 3.1.1**, exactly. The library patches that version so that SvelteKit's router leaves `+mobile.svelte` files alone.
+### pnpm android
 
-Change three lines in `package.json`:
+This builds the native app, installs it on the device or emulator and starts the development server. See [Run it](#run-it) below.
+
+## What init did
+
+Everything `init` writes is an ordinary file, and you can make the same changes by hand, in any order. Run `pnpm install` afterwards, and `pnpm exec svelte-native doctor`.
+
+### package.json
+
+`init` pins the Svelte and SvelteKit that Svelte Native needs, adds the packages React Native needs, and adds `main` and four scripts:
 
 ```json
 /// file: package.json
 {
-	"devDependencies": {
-		"@sveltejs/kit": "3.1.1",
-		"@sveltejs/vite-plugin-svelte": "7.2.0",
-		"svelte": "https://pkg.pr.new/svelte@216f258068d93170a927ad4d27ee6864b0b305c5"
-	}
-}
-```
-
-The versions are exact, with no `^`. `vite-plugin-svelte` is pinned to the version the library's own web app uses: with a newer one, `svelte-check` reports a type error inside the library.
-
-## Add the library
-
-Add the library and the packages it needs next to the ones `sv` wrote. The `main` and `reanimated` entries are new, too:
-
-```json
-/// file: package.json
-{
-	"main": ".svelte-native/entry.ts",
+	"scripts": {
+		"native": "svelte-native dev",
+		"android": "svelte-native android",
+		"ios": "svelte-native ios",
+		"check-setup": "svelte-native doctor"
+	},
 	"dependencies": {
 		"@example/svelte-native": "git+ssh://git@github.com/AlfayezDev/svelte-native.git#<tag>&path:packages/svelte-native",
 		"expo": "57.0.30",
@@ -93,6 +112,11 @@ Add the library and the packages it needs next to the ones `sv` wrote. The `main
 		"react-native-reanimated": "4.5.1",
 		"react-native-worklets": "0.10.1"
 	},
+	"devDependencies": {
+		"@sveltejs/kit": "3.1.1",
+		"svelte": "https://pkg.pr.new/svelte@216f258068d93170a927ad4d27ee6864b0b305c5"
+	},
+	"main": ".svelte-native/entry.ts",
 	"reanimated": {
 		"staticFeatureFlags": {
 			"ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS": true
@@ -101,29 +125,16 @@ Add the library and the packages it needs next to the ones `sv` wrote. The `main
 }
 ```
 
-Replace `<tag>` with the newest release tag of the repository (`v0.3.0` at the time of writing). A few things in there are worth knowing:
-
-- `react` is there because React Native itself needs it. Your own code doesn't use it.
-- The versions are exact because the patches in the next step are for one version each.
-- `main` points at a file that Svelte Native generates. Without it Expo would look for `expo/AppEntry.js`.
+- `svelte` is a build with a renderer export, from a Svelte pull request that isn't merged yet. The registry's Svelte has the same version number but not that export. Your web app compiles with this build, too.
+- `@sveltejs/kit` is the version `sv` installed, made exact: the library patches that version, so a different one would lose the patch.
+- The versions are exact because the patches in the next sections are for one version each. `react` is there because React Native itself needs it. Your own code doesn't use it.
+- `main` points at a file Svelte Native generates. Without it Expo would look for `expo/AppEntry.js`.
 - The `reanimated` flag turns on a path the library's Android renderer uses for animations.
+- `dev`, `build`, `preview` and `check` stay the web app's. The native commands have names of their own, so `pnpm dev` is still `vite dev`. Don't call a script `doctor`: `pnpm doctor` is pnpm's own command.
 
-To make the native commands easy to run, add scripts next to `sv`'s. `dev`, `build` and `preview` stay the web app's:
+### pnpm-workspace.yaml
 
-```json
-/// file: package.json
-{
-	"scripts": {
-		"native": "svelte-native dev",
-		"android": "svelte-native android",
-		"ios": "svelte-native ios"
-	}
-}
-```
-
-## Add pnpm's settings
-
-pnpm needs to be told two things. Add them to the `pnpm-workspace.yaml` that `sv` created, which already has `allowBuilds` for esbuild:
+`sv` wrote this file for pnpm. `init` adds `overrides` and the patches to it:
 
 ```yaml
 /// file: pnpm-workspace.yaml
@@ -133,27 +144,6 @@ allowBuilds:
 
 overrides:
   expo-modules-core: 57.0.23
-```
-
-`expo` asks for `expo-modules-core` by a range, so a fresh install would take the newest one, and the patch in the next step is for 57.0.23 only.
-
-Install:
-
-```sh
-pnpm install --no-frozen-lockfile
-```
-
-## Apply the patches
-
-Svelte Native works only with a handful of third-party packages patched. pnpm applies a patch only from your own project, so you copy the library's patch files in and declare them:
-
-```sh
-mkdir -p patches/svelte-native
-cp node_modules/@example/svelte-native/patches/*.patch patches/svelte-native/
-```
-
-```yaml
-/// file: pnpm-workspace.yaml
 patchedDependencies:
   "@sveltejs/kit@3.1.1": patches/svelte-native/@sveltejs__kit@3.1.1.patch
   expo-modules-core@57.0.23: patches/svelte-native/expo-modules-core@57.0.23.patch
@@ -162,47 +152,25 @@ patchedDependencies:
   react-native-worklets@0.10.1: patches/svelte-native/react-native-worklets@0.10.1.patch
 ```
 
-```sh
-pnpm install --no-frozen-lockfile
-```
+`overrides` pins `expo-modules-core`: `expo` asks for it by a range, so a fresh install would take the newest one, and the patch is for 57.0.23 only. `patchedDependencies` lists the patches. [Project structure](03-project-structure.md#patches) says why there are any.
 
-Declare only the patches for packages you have installed. The library also has patches for four optional view libraries; you add those when you install the library ([Native libraries](06-native-libraries.md)). Copy the patches again after every upgrade of Svelte Native. [The package README](../packages/svelte-native/README.md#apply-the-patches) says what each one changes.
+### patches/svelte-native
 
-## Connect Vite and Metro
+The patch files themselves, copied from `node_modules/@example/svelte-native/patches/`. pnpm applies a patch only from your own project, and it reads the patch files before it fetches anything, so they have to be in your project. Copy them again after every upgrade of Svelte Native: `init` does it, and replaces a file that differs from the library's. The library also has patches for four optional view libraries. `init` declares one when your `package.json` lists that library at the patch's version ([Native libraries](06-native-libraries.md)).
 
-SvelteKit's Vite plugin becomes the library's, which wraps it. Replace `vite.config.ts`:
+### metro.config.cjs and app.json
 
-```ts
-/// file: vite.config.ts
-import adapter from '@sveltejs/adapter-auto';
-import { svelteNative } from '@example/svelte-native/vite';
-import { defineConfig } from 'vite';
-
-export default defineConfig(({ mode }) => ({
-	plugins: [
-		svelteNative({
-			target: mode === 'native' ? 'native' : 'web',
-			kit: {
-				adapter: adapter()
-			}
-		})
-	]
-}));
-```
-
-For `vite dev` and `vite build` this is the SvelteKit plugin, with a few extras that keep the native files out of the web build. `kit` is what you'd have passed to `sveltekit()`. The usual way to build for native is `pnpm android`, which doesn't go through Vite.
-
-The native side uses Metro, which needs a config of its own:
+Metro bundles the native app, as Vite bundles the web one:
 
 ```js
 /// file: metro.config.cjs
-const { getDefaultConfig } = require('expo/metro-config');
-const { withSvelteNative } = require('@example/svelte-native/metro');
+const { getDefaultConfig } = require("expo/metro-config");
+const { withSvelteNative } = require("@example/svelte-native/metro");
 
 module.exports = withSvelteNative(getDefaultConfig(__dirname));
 ```
 
-And Expo needs to know about the app and the library's plugin:
+Expo needs to know about the app and the library's plugin. If you already have an `app.json`, `init` adds the plugin to it and keeps the rest:
 
 ```json
 /// file: app.json
@@ -219,11 +187,36 @@ And Expo needs to know about the app and the library's plugin:
 }
 ```
 
-Use your own `package` and `bundleIdentifier`. They identify the app on the device.
+If your app is configured in code (`app.config.ts`), `init` prints the line to add instead.
 
-## Add the first screens
+### vite.config.ts
 
-A native screen is a `+mobile.svelte` file, next to the `+page.svelte` of the web app. The app needs a root layout, `+layout.mobile.svelte`, and at least one screen:
+SvelteKit's Vite plugin is replaced by the library's, which wraps it. What you passed to `sveltekit()` becomes `kit`, and the config becomes a function of the mode:
+
+```ts
+/// file: vite.config.ts
+import adapter from '@sveltejs/adapter-auto';
+import { svelteNative } from '@example/svelte-native/vite';
+import { defineConfig } from 'vite';
+
+export default defineConfig(({ mode }) => ({
+	plugins: [
+		svelteNative({
+			target: mode === 'native' ? 'native' : 'web',
+			kit: {
+				// what you passed to sveltekit(), as it was
+				adapter: adapter()
+			}
+		})
+	]
+}));
+```
+
+For `vite dev` and `vite build` this is the SvelteKit plugin, with a few extras that keep the native files out of the web build. The usual way to build for native is `pnpm android`, which doesn't go through Vite.
+
+### src/routes
+
+A native screen is a `+mobile.svelte` file, next to the `+page.svelte` of the web app. The app needs a root layout, `+layout.mobile.svelte`, and at least one screen. `init` writes them if the project has none: the layout, a home screen with a counter, and a second screen that the home screen opens. [Native routes](04-native-routes.md) explains them.
 
 ```svelte
 <!--- file: src/routes/+layout.mobile.svelte --->
@@ -233,67 +226,13 @@ A native screen is a `+mobile.svelte` file, next to the `+page.svelte` of the we
 	let { children }: { children: Snippet } = $props();
 </script>
 
+<!-- The app shell: children is the root navigator, a stack of the screens under src/routes. -->
 {@render children()}
 ```
 
-```svelte
-<!--- file: src/routes/+mobile.svelte --->
-<script lang="ts">
-	import { Pressable, Screen, Text, View, useRouter } from '@example/svelte-native';
+### .gitignore
 
-	const router = useRouter();
-	let taps = $state(0);
-</script>
-
-<Screen title="Home" header={{ large: true }}>
-	<View style={{ flex: 1, padding: 24, gap: 16, justifyContent: 'center' }}>
-		<Text style={{ fontSize: 28, fontWeight: '700' }}>Svelte Native</Text>
-		<Text>Tapped {taps} {taps === 1 ? 'time' : 'times'}.</Text>
-		<Pressable onPress={() => taps++} accessibilityRole="button">
-			<Text>Tap</Text>
-		</Pressable>
-		<Pressable onPress={() => router.goto('/details')} accessibilityRole="button">
-			<Text>Open details</Text>
-		</Pressable>
-	</View>
-</Screen>
-```
-
-```svelte
-<!--- file: src/routes/details/+mobile.svelte --->
-<script lang="ts">
-	import { Pressable, Screen, Text, View, useRouter } from '@example/svelte-native';
-
-	const router = useRouter();
-</script>
-
-<Screen title="Details">
-	<View style={{ flex: 1, padding: 24, gap: 16, justifyContent: 'center' }}>
-		<Text>A second screen, pushed onto the stack.</Text>
-		<Pressable onPress={() => router.back()} accessibilityRole="button">
-			<Text>Back</Text>
-		</Pressable>
-	</View>
-</Screen>
-```
-
-Finally, keep the files Svelte Native and Expo generate out of git:
-
-```
-/// file: .gitignore
-.svelte-native
-.expo
-/android
-/ios
-```
-
-## Check the setup
-
-```sh
-pnpm exec svelte-native doctor
-```
-
-`doctor` reads your project and prints one line per check: `pass`, `FAIL`, `skip` or `????`. Under a failure it tells you the fix. You want `0 failed`. Run it with `pnpm exec`: plain `pnpm doctor` is pnpm's own command.
+`.svelte-native`, `.expo`, `/android` and `/ios` are generated, so they're added to `.gitignore`.
 
 ## Run it
 
@@ -317,12 +256,11 @@ The web app is still there:
 pnpm dev
 ```
 
-`vite dev`, `vite build` and `vite preview` work as before. What you gave up is the stock versions. The web app now compiles with the pinned Svelte build, and runs on SvelteKit 3.1.1 (a prerelease) with a patch, not the stable release `sv` installed. When this page was written, `vite dev` and `vite build` worked on the `sv` template with the changes above.
-
-> [!NOTE] `pnpm check` reports one error, in the library's own source: `Property 'unref' does not exist on type 'number'`. `svelte-check` follows imports into the library, and one of its files assumes Node's `setTimeout`. Your code isn't affected, and the build ignores it. See [Troubleshooting](08-troubleshooting.md#pnpm-check-reports-an-error-inside-svelte-native).
+`vite dev`, `vite build` and `vite preview` work as before, and `pnpm check` has nothing to report. What you gave up is the stock versions: the web app now compiles with the pinned Svelte build, and runs on SvelteKit 3.1.1 with a patch. When this page was written, `vite dev` and `vite build` worked on the `sv` template with these changes.
 
 ## Further reading
 
-- [Project structure](03-project-structure.md) explains what each file you just added is for.
+- [Project structure](03-project-structure.md) explains what each file is for.
 - [Native routes](04-native-routes.md) shows how `+mobile.svelte` files become screens, stacks and tabs.
 - [Development builds](05-development-builds.md) explains `expo prebuild`, the daily loop and release builds.
+- [Troubleshooting](08-troubleshooting.md) lists what goes wrong, and how to fix it.

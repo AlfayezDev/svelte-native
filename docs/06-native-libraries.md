@@ -51,7 +51,7 @@ A map, a video player and an image with a blur are views: the platform draws the
 npx expo install expo-linear-gradient
 ```
 
-Four of these libraries (`lottie-react-native`, `react-native-maps`, `react-native-pdf` and `react-native-video`) need a patch from the library, or they lose events on Android. Copy it into `patches/svelte-native/` and declare it in `pnpm-workspace.yaml`, as in [Creating a project](02-creating-a-project.md#apply-the-patches). `svelte-native doctor` tells you if one is missing.
+Four of these libraries (`lottie-react-native`, `react-native-maps`, `react-native-pdf` and `react-native-video`) need a patch from the library, or they lose events on Android. Pin the library at the patch's version, and run `pnpm exec svelte-native init` again: it copies the patch into `patches/svelte-native/` and declares it in `pnpm-workspace.yaml` ([Project structure](03-project-structure.md#patches)). `svelte-native doctor` tells you if one is missing.
 
 A touch inside a native view goes to the view, not to your JavaScript. If you need the touches of its frame, give it `pointerEvents="box-only"`.
 

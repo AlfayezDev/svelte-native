@@ -1,0 +1,64 @@
+# Dependencies
+node_modules
+node_modules.root-owned.*
+.pnpm-store/
+
+# Build outputs
+build
+dist/
+dist-ssr
+.output
+.cache
+
+# Framework specific
+.svelte-kit
+.svelte-native
+
+# Expo / React Native
+.expo
+expo-env.d.ts
+ios/
+android/
+# The generated Android project of the other variant (native-qa build --variant parks it here); anchored: the parity references
+# under apps/example/qa/screenshots are named android-api36-... and are tracked
+/apps/example/android-*/
+/apps/example/android.prebuilding
+# Samsung Pay SDK for the smoke app (native module smoke test) (proprietary: never committed)
+apps/example/libs/
+
+# Testing
+coverage
+/test-results/
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Environment files
+.env
+.env.*
+!.env.example
+*.local
+.local/
+
+# TypeScript
+*.tsbuildinfo
+
+# OS files
+.DS_Store
+Thumbs.db
+*.pem
+
+# Vite
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# Local Expo modules ship their Android and iOS projects (the engine and the iOS modules); only their build output stays ignored.
+!apps/example/modules/*/android/
+apps/example/modules/*/android/build/
+apps/example/modules/*/android/.cxx/
+!apps/example/modules/*/ios/
+apps/example/modules/*/ios/build/
+apps/example/modules/*/ios/Pods/

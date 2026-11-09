@@ -1,0 +1,28 @@
+{
+	"name": "svelte-native",
+	"version": "0.0.0",
+	"private": true,
+	"description": "Svelte Native: Svelte 5 on React Native Fabric, with no React. The library, its Expo modules and the QA harness.",
+	"type": "module",
+	"scripts": {
+		"lint": "biome check . && pnpm --dir packages/svelte-native lint && pnpm --dir apps/example lint",
+		"typecheck": "pnpm --dir packages/svelte-native typecheck && pnpm --dir apps/example typecheck && pnpm --dir apps/example native-qa:typecheck",
+		"test": "pnpm --dir packages/svelte-native test && pnpm --dir apps/example native-qa:test"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.5.3",
+		"esbuild": "catalog:",
+		"typescript": "^6.0.3"
+	},
+	"devEngines": {
+		"runtime": {
+			"name": "node",
+			"version": "25.0.0",
+			"onFail": "download"
+		}
+	},
+	"engines": {
+		"node": "25.0.0"
+	},
+	"packageManager": "pnpm@12.3.4"
+}

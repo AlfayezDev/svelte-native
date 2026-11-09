@@ -166,7 +166,7 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
 
-  apps/example:
+  apps/qa:
     dependencies:
       '@hmscore/react-native-hms-location':
         specifier: ^6.16.0-301

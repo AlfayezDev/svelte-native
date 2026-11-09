@@ -5,9 +5,9 @@
 	"description": "Svelte Native: Svelte 5 on React Native Fabric, with no React. The library, its Expo modules and the QA harness.",
 	"type": "module",
 	"scripts": {
-		"lint": "biome check . && pnpm --dir packages/svelte-native lint && pnpm --dir apps/example lint",
-		"typecheck": "pnpm --dir packages/svelte-native typecheck && pnpm --dir apps/example typecheck && pnpm --dir apps/example native-qa:typecheck",
-		"test": "pnpm --dir packages/svelte-native test && pnpm --dir apps/example native-qa:test"
+		"lint": "biome check . && pnpm --dir packages/svelte-native lint && pnpm --dir apps/qa lint",
+		"typecheck": "pnpm --dir packages/svelte-native typecheck && pnpm --dir apps/qa typecheck && pnpm --dir apps/qa native-qa:typecheck",
+		"test": "pnpm --dir packages/svelte-native test && pnpm --dir apps/qa native-qa:test"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.5.3",

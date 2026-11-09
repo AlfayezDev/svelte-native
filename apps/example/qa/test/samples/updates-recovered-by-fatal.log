@@ -1,0 +1,8 @@
+11-01 11:32:35.119   679   709 I ActivityManager: Start proc 7933:io.example.svelteqa/u0a216 for next-top-activity {io.example.svelteqa/io.example.svelteqa.MainActivity}
+11-01 11:32:35.543  7933  7948 W SvelteUpdates: Update 01a196e1-af1a-72e6-a0e5-8355eb3f73d5 recorded a fatal error before its launch was confirmed; launching the previous update or the embedded bundle
+11-01 11:32:35.543  7933  7948 I SvelteUpdates: Launching update 01a196de-d2f3-7e15-a392-b63d46d37039 (created 1793532547827)
+11-01 11:32:35.544  7933  7948 I SvelteUpdates: Launch decided in 196243 us on thread pool-3-thread-1; reset flag read in 1049 us
+11-01 11:32:35.856  7933  7957 I ReactNativeJS: [Svelte boot] init 2 · polyfills 6 · rn 5 · updates 40 · expo-core 0 · svelte 0 · host 0 · fabric 0 · app 61 · first commit 46 · total 160 ms
+11-01 11:32:35.975  7933  7957 I ReactNativeJS: [Svelte QA updates] {"enabled":true,"updateId":"01a196de-d2f3-7e15-a392-b63d46d37039","embedded":false,"createdAt":1793532547827,"runtimeVersion":"0.1.0","channel":"qa","checkOnLaunch":"ALWAYS","marker":"qa-20261101T112336Z-good"}
+11-01 11:32:35.979   679   699 I ActivityTaskManager: Displayed io.example.svelteqa/.MainActivity for user 0: +872ms
+11-01 11:32:36.013  7933  7957 I ReactNativeJS: [Svelte updates] No update to download (updatePreviouslyFailed)

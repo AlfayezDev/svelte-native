@@ -1,0 +1,223 @@
+diff --git a/android/src/main/cpp/reanimated/android/NativeProxy.cpp b/android/src/main/cpp/reanimated/android/NativeProxy.cpp
+index 297ded4..7b876d9 100644
+--- a/android/src/main/cpp/reanimated/android/NativeProxy.cpp
++++ b/android/src/main/cpp/reanimated/android/NativeProxy.cpp
+@@ -11,6 +11,8 @@
+ #include <reanimated/android/PseudoSelectorCallback.h>
+ #include <reanimated/android/SensorSetter.h>
+ 
++#include <atomic>
++#include <cstddef>
+ #include <memory>
+ #include <string>
+ #include <utility>
+@@ -22,6 +24,16 @@ using namespace worklets;
+ using namespace facebook;
+ using namespace react;
+ 
++namespace {
++std::atomic<SynchronousPropsSink> synchronousPropsSink{nullptr};
++} // namespace
++
++// Example patch: the svelte-engine module finds this symbol with dlsym and registers its sink (null unregisters).
++extern "C" __attribute__((visibility("default"), used)) void reanimatedSetSynchronousPropsSink(
++    SynchronousPropsSink sink) {
++  synchronousPropsSink.store(sink, std::memory_order_release);
++}
++
+ NativeProxy::NativeProxy(
+     jni::alias_ref<NativeProxy::javaobject> jThis, // NOLINT //(performance-unnecessary-value-param)
+     jsi::Runtime *rnRuntime,
+@@ -199,12 +211,38 @@ std::optional<std::unique_ptr<int[]>> NativeProxy::preserveMountedTags(std::vect
+ void NativeProxy::synchronouslyUpdateUIProps(
+     const std::vector<int> &intBuffer,
+     const std::vector<double> &doubleBuffer) {
++  const int *ints = intBuffer.data();
++  const double *doubles = doubleBuffer.data();
++  std::size_t intCount = intBuffer.size();
++  std::size_t doubleCount = doubleBuffer.size();
++  // Example patch: the engine's views are written natively; only what the sink leaves is copied into Java arrays, and a
++  // frame made only of engine views makes no JNI call and no Java allocation.
++  if (const auto sink = synchronousPropsSink.load(std::memory_order_acquire)) {
++    if (sinkRestInts_.size() < intCount) {
++      sinkRestInts_.resize(intCount);
++    }
++    if (sinkRestDoubles_.size() < doubleCount) {
++      sinkRestDoubles_.resize(doubleCount);
++    }
++    std::size_t restDoubleCount = 0;
++    const std::size_t restIntCount =
++        sink(ints, intCount, doubles, doubleCount, sinkRestInts_.data(), sinkRestDoubles_.data(), &restDoubleCount);
++    if (restIntCount != kSynchronousPropsUntouched) {
++      if (restIntCount == 0) {
++        return;
++      }
++      ints = sinkRestInts_.data();
++      doubles = sinkRestDoubles_.data();
++      intCount = restIntCount;
++      doubleCount = restDoubleCount;
++    }
++  }
+   static const auto method = getJniMethod<void(jni::alias_ref<jni::JArrayInt>, jni::alias_ref<jni::JArrayDouble>)>(
+       "synchronouslyUpdateUIProps");
+-  auto jArrayInt = jni::JArrayInt::newArray(intBuffer.size());
+-  auto jArrayDouble = jni::JArrayDouble::newArray(doubleBuffer.size());
+-  jArrayInt->setRegion(0, intBuffer.size(), intBuffer.data());
+-  jArrayDouble->setRegion(0, doubleBuffer.size(), doubleBuffer.data());
++  auto jArrayInt = jni::JArrayInt::newArray(intCount);
++  auto jArrayDouble = jni::JArrayDouble::newArray(doubleCount);
++  jArrayInt->setRegion(0, intCount, ints);
++  jArrayDouble->setRegion(0, doubleCount, doubles);
+   method(javaPart_.get(), jArrayInt, jArrayDouble);
+ }
+ 
+diff --git a/android/src/main/cpp/reanimated/android/NativeProxy.h b/android/src/main/cpp/reanimated/android/NativeProxy.h
+index 5bc83ca..623cf7f 100644
+--- a/android/src/main/cpp/reanimated/android/NativeProxy.h
++++ b/android/src/main/cpp/reanimated/android/NativeProxy.h
+@@ -19,6 +19,21 @@ namespace reanimated {
+ using namespace facebook;
+ using namespace facebook::jni;
+ 
++// Example patch: lets a native mounting layer (the svelte-engine Expo module) take the engine views out of a frame's
++// synchronous prop batch before it is copied into Java arrays and rebuilt as ReadableMaps. The sink gets the two buffers
++// of SynchronousPropsBufferSerializer.cpp and writes the views it does not take to restInts/restDoubles (sized like the
++// input), returning the number of ints left; `restDoubleCount` receives the doubles left. It returns
++// kSynchronousPropsUntouched when it took nothing, and the batch then goes out unchanged.
++using SynchronousPropsSink = std::size_t (*)(
++    const int *ints,
++    std::size_t intCount,
++    const double *doubles,
++    std::size_t doubleCount,
++    int *restInts,
++    double *restDoubles,
++    std::size_t *restDoubleCount);
++constexpr std::size_t kSynchronousPropsUntouched = static_cast<std::size_t>(-1);
++
+ class NativeProxy : public jni::HybridClass<NativeProxy>, std::enable_shared_from_this<NativeProxy> {
+  public:
+   static auto constexpr kJavaDescriptor = "Lcom/swmansion/reanimated/NativeProxy;";
+@@ -48,6 +63,9 @@ class NativeProxy : public jni::HybridClass<NativeProxy>, std::enable_shared_fro
+   void installJSIBindings();
+   std::optional<std::unique_ptr<int[]>> preserveMountedTags(std::vector<int> &tags);
+   void synchronouslyUpdateUIProps(const std::vector<int> &intBuffer, const std::vector<double> &doubleBuffer);
++  // Example patch: what a SynchronousPropsSink leaves for the Java path; kept between frames so a frame allocates nothing.
++  std::vector<int> sinkRestInts_;
++  std::vector<double> sinkRestDoubles_;
+   PlatformDepMethodsHolder getPlatformDependentMethods();
+ 
+   double getAnimationTimestamp();
+diff --git a/android/src/main/java/com/swmansion/reanimated/NativeProxy.kt b/android/src/main/java/com/swmansion/reanimated/NativeProxy.kt
+index 48e3771..7b056cd 100644
+--- a/android/src/main/java/com/swmansion/reanimated/NativeProxy.kt
++++ b/android/src/main/java/com/swmansion/reanimated/NativeProxy.kt
+@@ -8,11 +8,14 @@ import com.facebook.jni.HybridData
+ import com.facebook.proguard.annotations.DoNotStrip
+ import com.facebook.react.bridge.NativeModule
+ import com.facebook.react.bridge.ReactApplicationContext
++import com.facebook.react.bridge.JavaOnlyMap
++import com.facebook.react.bridge.ReadableType
+ import com.facebook.react.bridge.UiThreadUtil
+ import com.facebook.react.common.annotations.FrameworkAPI
+ import com.facebook.react.fabric.FabricUIManager
+ import com.facebook.react.turbomodule.core.CallInvokerHolderImpl
+ import com.facebook.react.uimanager.IllegalViewOperationException
++import com.facebook.react.uimanager.PixelUtil
+ import com.facebook.react.uimanager.UIManagerHelper
+ import com.facebook.react.uimanager.common.UIManagerType
+ import com.facebook.soloader.SoLoader
+@@ -245,12 +248,74 @@ open class NativeProxy {
+             }.apply { isAccessible = true }
+     }
+ 
++    // Example patch: opacity and translate/scale-only transforms are written straight to the
++    // Android View. This skips the ViewManager prop diff and React Native's 4x4 matrix build and
++    // decomposition, which cost about 80 microseconds per view per frame on mid-range phones.
++    // Anything else (rotation, skew, percentages, matrices, a transform origin, other props)
++    // takes the regular path. The transform tag is kept current so a later React Native
++    // re-application uses the same values.
++    private fun applySimpleProps(
++        viewTag: Int,
++        props: JavaOnlyMap,
++    ): Boolean {
++        val keys = props.keySetIterator()
++        while (keys.hasNextKey()) {
++            val key = keys.nextKey()
++            if (key != "opacity" && key != "transform") return false
++        }
++        var translateX = 0.0
++        var translateY = 0.0
++        var scaleX = 1.0
++        var scaleY = 1.0
++        val transform = if (props.hasKey("transform")) props.getArray("transform") else null
++        if (transform != null) {
++            for (index in 0 until transform.size()) {
++                if (transform.getType(index) != ReadableType.Map) return false
++                val entry = transform.getMap(index) ?: return false
++                val entryKeys = entry.keySetIterator()
++                if (!entryKeys.hasNextKey()) return false
++                val name = entryKeys.nextKey()
++                if (entryKeys.hasNextKey() || entry.getType(name) != ReadableType.Number) return false
++                val value = entry.getDouble(name)
++                when (name) {
++                    "translateX" -> translateX += scaleX * value
++                    "translateY" -> translateY += scaleY * value
++                    "scale" -> { scaleX *= value; scaleY *= value }
++                    "scaleX" -> scaleX *= value
++                    "scaleY" -> scaleY *= value
++                    else -> return false
++                }
++            }
++        }
++        val view =
++            try {
++                mFabricUIManager.resolveView(viewTag)
++            } catch (e: IllegalViewOperationException) {
++                null
++            } ?: return false
++        if (view.getTag(com.facebook.react.R.id.transform_origin) != null) return false
++        if (props.hasKey("opacity")) view.alpha = props.getDouble("opacity").toFloat()
++        if (transform != null) {
++            view.translationX = PixelUtil.toPixelFromDIP(translateX.toFloat())
++            view.translationY = PixelUtil.toPixelFromDIP(translateY.toFloat())
++            view.scaleX = scaleX.toFloat()
++            view.scaleY = scaleY.toFloat()
++            view.rotation = 0f
++            view.rotationX = 0f
++            view.rotationY = 0f
++            view.setTag(com.facebook.react.R.id.transform, transform)
++        }
++        return true
++    }
++
+     @DoNotStrip
+     fun synchronouslyUpdateUIProps(
+         intBuffer: IntArray,
+         doubleBuffer: DoubleArray,
+     ) {
+         SynchronousPropsBufferParser.parse(intBuffer, doubleBuffer) { viewTag, props ->
++            if (SvelteEngineHook.updater?.invoke(viewTag, props) == true) return@parse
++            if (applySimpleProps(viewTag, props)) return@parse
+             if (BuildConfig.IS_REACT_NATIVE_86_OR_NEWER) {
+                 try {
+                     updatePropsSynchronouslyMethod.invoke(mountingManager, viewTag, props)
+diff --git a/android/src/main/java/com/swmansion/reanimated/SvelteEngineHook.kt b/android/src/main/java/com/swmansion/reanimated/SvelteEngineHook.kt
+new file mode 100644
+index 0000000..8d73b90
+--- /dev/null
++++ b/android/src/main/java/com/swmansion/reanimated/SvelteEngineHook.kt
+@@ -0,0 +1,14 @@
++package com.swmansion.reanimated
++
++import com.facebook.react.bridge.ReadableMap
++
++/**
++ * Example patch: lets a native mounting layer that does not use React Native's ViewManagers (the svelte-engine Expo
++ * module) take UI-thread prop writes before React Native's string dispatch. The updater runs on the UI thread and
++ * returns true when it owns the tag and applied the props, false to let the regular path continue.
++ */
++object SvelteEngineHook {
++  @JvmStatic
++  @Volatile
++  var updater: ((viewTag: Int, props: ReadableMap) -> Boolean)? = null
++}

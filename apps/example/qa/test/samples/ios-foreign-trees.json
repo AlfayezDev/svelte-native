@@ -1,0 +1,161 @@
+{
+	"source": "qa/runs/foreign-E74A5608-BF8E-5806-8699-1605F82ADED9-20261103T122249Z.json (the first iPhone run, 3 Nov 2026, b8600a2bb): what `SvelteQA.inspect` said of each library's section when it was mounted inline (the first four entries of the tree, which is all the check logs), and the layout the engine measured for it",
+	"density": 2,
+	"libraries": {
+		"image": {
+			"class": "ExpoImage.ImageView",
+			"views": [
+				"SDAnimatedImageView 714x188 clip=none"
+			],
+			"measured": {
+				"width": 357.0,
+				"height": 94.0
+			}
+		},
+		"blur": {
+			"class": "RCTViewComponentView",
+			"views": [
+				"ExpoBlurView 618x132 clip=bounds",
+				"  BlurEffectView 618x132 clip=none",
+				"    _UIVisualEffectBackdropView 618x132 clip=none",
+				"    _UIVisualEffectSubview 618x132 clip=none"
+			],
+			"measured": {
+				"width": 309.0,
+				"height": 66.0
+			}
+		},
+		"gradient": {
+			"class": "RCTViewComponentView",
+			"views": [
+				"LinearGradientView 714x188 clip=bounds",
+				"  RCTParagraphComponentView 131x39 clip=none",
+				"    RCTParagraphTextView 131x39 clip=none"
+			],
+			"measured": {
+				"width": 357.0,
+				"height": 94.0
+			}
+		},
+		"video": {
+			"class": "RCTLegacyViewManagerInteropComponentView",
+			"views": [
+				"RCTVideo 714x188 clip=none"
+			],
+			"measured": {
+				"width": 357.0,
+				"height": 94.0
+			}
+		},
+		"datetime": {
+			"class": "RNDateTimePickerComponentView",
+			"views": [
+				"RNDateTimePicker 247x73 clip=none",
+				"  _UIDatePickerIOSCompactView 247x73 clip=none",
+				"    _UIDatePickerCompactDateLabel 242x73 clip=none",
+				"      UIButton 242x73 clip=none"
+			],
+			"measured": {
+				"width": 123.5,
+				"height": 36.5
+			}
+		},
+		"lottie": {
+			"class": "LottieAnimationViewComponentView",
+			"views": [
+				"ContainerView 714x188 clip=none",
+				"  LottieAnimationView 714x188 clip=bounds"
+			],
+			"measured": {
+				"width": 357.0,
+				"height": 94.0
+			}
+		},
+		"pdf": {
+			"class": "RNPDFPdfView",
+			"views": [
+				"PDFView 714x188 clip=none",
+				"  _UIPageViewControllerContentView 714x188 clip=bounds",
+				"    _UIQueuingScrollView 714x208 clip=bounds",
+				"      UIView 714x188 clip=none"
+			],
+			"measured": {
+				"width": 357.0,
+				"height": 94.0
+			}
+		},
+		"capture": {
+			"class": "RCTViewComponentView",
+			"views": [
+				"RCTViewComponentView 32x120 clip=none",
+				"RCTViewComponentView 32x120 clip=none",
+				"RCTViewComponentView 32x120 clip=none",
+				"RCTViewComponentView 32x120 clip=none"
+			],
+			"measured": {
+				"width": 80.0,
+				"height": 60.0
+			}
+		},
+		"rive": {
+			"class": "RCTLegacyViewManagerInteropComponentView",
+			"views": [
+				"RiveReactNativeView 714x188 clip=none",
+				"  RiveView 714x188 clip=none"
+			],
+			"measured": {
+				"width": 357.0,
+				"height": 94.0
+			}
+		},
+		"conic": {
+			"class": "RCTViewComponentView",
+			"views": [
+				"HostingView<ConicGradientProps, ConicGradientView> 714x188 clip=none",
+				"  _UIHostingView<AnyView> 714x188 clip=none",
+				"RCTParagraphComponentView 87x39 clip=none",
+				"  RCTParagraphTextView 87x39 clip=none"
+			],
+			"measured": {
+				"width": 357.0,
+				"height": 94.0
+			}
+		},
+		"shadow": {
+			"class": "RCTViewComponentView",
+			"views": [
+				"RCTViewComponentView 216x76 clip=none",
+				"  RCTViewComponentView 144x36 clip=none",
+				"    RCTParagraphComponentView 144x36 clip=none",
+				"      RCTParagraphTextView 144x36 clip=none"
+			],
+			"measured": {
+				"width": 108.0,
+				"height": 38.0
+			}
+		},
+		"text": {
+			"class": "JBAnimatedTextComponentView",
+			"views": [
+				"RCTParagraphTextView 194x67 clip=none"
+			],
+			"measured": {
+				"width": 97.0,
+				"height": 33.5
+			}
+		},
+		"svg": {
+			"class": "RNSVGSvgView",
+			"views": [
+				"RNSVGGroup 116x68 clip=none",
+				"  RNSVGDefs 116x68 clip=none",
+				"    RNSVGLinearGradient 116x68 clip=none",
+				"  RNSVGRect 116x68 clip=none"
+			],
+			"measured": {
+				"width": 58.0,
+				"height": 34.0
+			}
+		}
+	}
+}

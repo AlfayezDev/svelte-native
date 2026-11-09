@@ -1,0 +1,10 @@
+{
+	"ios": {
+		"CFBundleDisplayName": "رشيد",
+		"NSCameraUsageDescription": "يرفق رشيد الصور التي تلتقطها بردودك.",
+		"NSPhotoLibraryUsageDescription": "يرفق رشيد الصور ومقاطع الفيديو التي تختارها بردودك."
+	},
+	"android": {
+		"app_name": "رشيد"
+	}
+}

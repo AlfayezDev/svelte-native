@@ -1,0 +1,69 @@
+{"bug_type":"298","timestamp":"2026-10-26 23:25:18.00 +0300","os_version":"iPhone OS 26.6 (23G71)","roots_installed":0,"incident_id":"19440CF7-0215-480A-A402-BB621D6D3522"}
+{
+  "build": "iPhone OS 26.6 (23G71)",
+  "product": "iPhone14,6",
+  "incident": "19440CF7-0215-480A-A402-BB621D6D3522",
+  "date": "2026-10-26 23:25:18.23 +0300",
+  "bug_type": "298",
+  "largestProcess": "kernel_task",
+  "processes": [
+    {
+      "states": [
+        "daemon",
+        "idle"
+      ],
+      "genCount": 0,
+      "purgeable": 0,
+      "rpages": 385,
+      "physicalPages": {
+        "internal": [
+          117,
+          252
+        ]
+      },
+      "mem_regions": 76,
+      "uuid": "fc47191f-a8b2-3bf6-b2a0-a9b826b77db3",
+      "fds": 25,
+      "name": "dtfilesandboxd",
+      "priority": 0,
+      "csTrustLevel": 8,
+      "cpuTime": 0.683034,
+      "freeze_skip_reason:": "disabled",
+      "idleDelta": 162607707,
+      "age": 3126735807824,
+      "coalition": 1224,
+      "csFlags": 570434305,
+      "reason": "per-process-limit",
+      "pid": 1133,
+      "lifetimeMax": 386,
+      "killDelta": 29015
+    },
+    {
+      "uuid": "f8632326-2adb-3bb5-b8ba-7c2ec5f8683e",
+      "states": [
+        "active",
+        "frontmost"
+      ],
+      "csFlags": 570434309,
+      "purgeable": 397,
+      "age": 752115397,
+      "fds": 50,
+      "coalition": 1855,
+      "csTrustLevel": 4,
+      "rpages": 4896,
+      "priority": 100,
+      "mem_regions": 520,
+      "physicalPages": {
+        "internal": [
+          5263,
+          0
+        ]
+      },
+      "freeze_skip_reason:": "none",
+      "pid": 2241,
+      "cpuTime": 4.818086,
+      "name": "ExampleSvelteQA",
+      "lifetimeMax": 4903
+    }
+  ]
+}

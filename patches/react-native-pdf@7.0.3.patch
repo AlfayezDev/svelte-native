@@ -1,0 +1,17 @@
+diff --git a/android/src/main/java/org/wonday/pdf/events/TopChangeEvent.java b/android/src/main/java/org/wonday/pdf/events/TopChangeEvent.java
+index 417b08b..9877c5a 100644
+--- a/android/src/main/java/org/wonday/pdf/events/TopChangeEvent.java
++++ b/android/src/main/java/org/wonday/pdf/events/TopChangeEvent.java
+@@ -23,4 +23,12 @@ public class TopChangeEvent extends Event<TopChangeEvent> {
+     protected WritableMap getEventData() {
+         return eventData;
+     }
++
++    // Every message of the view (loadComplete, pageChanged, scaleChanged, error, ...) is a "topChange" event. Fabric hands a coalescable event to
++    // C++ as a unique one, and the event queue replaces the last unique event of the same type for the same view that JavaScript has not read yet:
++    // with the JS thread busy, loadComplete and the pageChanged that follows it (PdfView delays it by 10 ms) reach JavaScript as pageChanged alone.
++    @Override
++    public boolean canCoalesce() {
++        return false;
++    }
+ }

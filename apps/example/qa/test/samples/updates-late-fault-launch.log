@@ -1,0 +1,6 @@
+11-01 11:32:24.988   679   709 I ActivityManager: Start proc 7855:io.example.svelteqa/u0a216 for next-top-activity {io.example.svelteqa/io.example.svelteqa.MainActivity}
+11-01 11:32:25.265  7855  7872 I SvelteUpdates: Launching update 01a196e1-af1a-72e6-a0e5-8355eb3f73d5 (created 1793532735258)
+11-01 11:32:25.266  7855  7872 I SvelteUpdates: Launch decided in 49227 us on thread pool-3-thread-1; reset flag read in 19411 us
+11-01 11:32:25.657  7855  7876 I ReactNativeJS: [Svelte boot] init 2 · polyfills 7 · rn 2 · updates 46 · expo-core 0 · svelte 0 · host 0 · fabric 0 · app 70 · first commit 51 · total 178 ms
+11-01 11:32:25.664  7855  7877 W unknown:BridgelessReact: ReactHost{0}.handleHostException(message = "Error: QA update fault: bundle qa-20261101T112336Z-bad-mount throws after its first commit, stack:
+11-01 11:32:25.783   679   699 I ActivityTaskManager: Displayed io.example.svelteqa/.MainActivity for user 0: +805ms

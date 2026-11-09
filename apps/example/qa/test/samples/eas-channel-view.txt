@@ -1,0 +1,51 @@
+
+Channel:
+Name        qa
+ID          01a19680-594e-78db-a74d-f03b04683f23
+Status      Active
+Protection  Unprotected
+
+Branches pointed at this channel and their most recent update group:
+{
+  "currentPage": {
+    "id": "01a19680-594e-78db-a74d-f03b04683f23",
+    "isPaused": false,
+    "isProtected": false,
+    "name": "qa",
+    "updatedAt": "2026-11-01T09:45:56.302Z",
+    "createdAt": "2026-11-01T09:45:56.302Z",
+    "branchMapping": "{\"data\":[{\"branchId\":\"01a19680-5793-7273-be62-a2bd85e51635\",\"branchMappingLogic\":\"true\"}],\"version\":0}",
+    "updateBranches": [
+      {
+        "id": "01a19680-5793-7273-be62-a2bd85e51635",
+        "name": "qa",
+        "updateGroups": [
+          [
+            {
+              "id": "01a196b3-9892-7be3-b7b6-7aaaa0a3a126",
+              "group": "8364b0fa-9b6b-455d-9b0d-0613b9ba00ca",
+              "message": "native-qa updates qa-20261101T103206Z cleanup",
+              "createdAt": "2026-11-01T10:41:54.834Z",
+              "runtime": { "id": "01a19688-6ec1-79ed-a596-c024c73db962", "version": "0.1.0" },
+              "platform": "android",
+              "isRollBackToEmbedded": false,
+              "branch": { "id": "01a19680-5793-7273-be62-a2bd85e51635", "name": "qa" }
+            }
+          ],
+          [
+            {
+              "id": "01a196ae-b9a9-7a4c-819f-5fb0b148590d",
+              "group": "9a1f0c1e-0000-4000-8000-000000000001",
+              "message": "native-qa updates qa-20261101T103206Z good",
+              "createdAt": "2026-11-01T10:33:00.000Z",
+              "runtime": { "id": "01a19688-6ec1-79ed-a596-c024c73db962", "version": "0.1.0" },
+              "platform": "android",
+              "isRollBackToEmbedded": false,
+              "branch": { "id": "01a19680-5793-7273-be62-a2bd85e51635", "name": "qa" }
+            }
+          ]
+        ]
+      }
+    ]
+  }
+}

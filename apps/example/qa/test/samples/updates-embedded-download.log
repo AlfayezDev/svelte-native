@@ -1,0 +1,6 @@
+11-01 13:08:27.259  6315  6336 I SvelteUpdates: Launching the embedded bundle (built 1793526761514)
+11-01 13:08:27.435  6315  6340 I ReactNativeJS: Running "main"
+11-01 13:08:27.459  6315  6340 I ReactNativeJS: [Svelte boot] init 1 · polyfills 2 · rn 1 · updates 57 · expo-core 0 · svelte 0 · host 0 · fabric 0 · app 34 · first commit 24 · total 118 ms
+11-01 13:08:27.472  6315  6340 I ReactNativeJS: [Svelte QA updates] {"enabled":true,"updateId":null,"embedded":true,"createdAt":1793526761514,"runtimeVersion":"0.1.0","channel":"qa","checkOnLaunch":"ALWAYS","marker":null}
+11-01 13:08:27.526   550   568 I ActivityTaskManager: Displayed io.example.svelteqa/.MainActivity for user 0: +433ms
+11-01 13:08:29.642  6315  6340 I ReactNativeJS: [Svelte updates] Update 01a19694-d84b-75f6-8727-26a4f2c91df4 downloaded; it launches on the next start

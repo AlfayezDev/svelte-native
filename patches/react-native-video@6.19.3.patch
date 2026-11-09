@@ -1,0 +1,57 @@
+diff --git a/android/src/main/java/com/brentvatne/common/react/VideoEventEmitter.kt b/android/src/main/java/com/brentvatne/common/react/VideoEventEmitter.kt
+index 60129329b2e120a2032c7d3f4454d45ff26d1d18..e6517d0e31ea9ed51c16c850bc4ad7bff3b816d0 100644
+--- a/android/src/main/java/com/brentvatne/common/react/VideoEventEmitter.kt
++++ b/android/src/main/java/com/brentvatne/common/react/VideoEventEmitter.kt
+@@ -169,7 +169,7 @@ class VideoEventEmitter {
+                 }
+             }
+             onVideoProgress = { currentPosition, bufferedDuration, seekableDuration, currentPlaybackTime ->
+-                event.dispatch(EventTypes.EVENT_PROGRESS) {
++                event.dispatch(EventTypes.EVENT_PROGRESS, coalescable = true) {
+                     putDouble("currentTime", currentPosition / 1000.0)
+                     putDouble("playableDuration", bufferedDuration / 1000.0)
+                     putDouble("seekableDuration", seekableDuration / 1000.0)
+@@ -177,7 +177,7 @@ class VideoEventEmitter {
+                 }
+             }
+             onVideoBandwidthUpdate = { bitRateEstimate, height, width, trackId ->
+-                event.dispatch(EventTypes.EVENT_BANDWIDTH) {
++                event.dispatch(EventTypes.EVENT_BANDWIDTH, coalescable = true) {
+                     putDouble("bitrate", bitRateEstimate.toDouble())
+                     if (width > 0) {
+                         putInt("width", width)
+@@ -312,17 +312,30 @@ class VideoEventEmitter {
+         }
+     }
+ 
+-    private class VideoCustomEvent(surfaceId: Int, viewId: Int, private val event: EventTypes, private val paramsSetter: (WritableMap.() -> Unit)?) :
+-        Event<VideoCustomEvent>(surfaceId, viewId) {
++    /**
++     * One class carries every event of the player. Fabric hands a coalescable event to C++ as a unique one, and the event queue replaces the unread unique event of
++     * the same name for the same view, so with the JavaScript thread busy only the last of two reaches it. That suits a stream whose latest message supersedes the
++     * earlier ones (progress, bandwidth: [coalescable] true) and nothing else: load, error, seek, end, playback state, buffer, ready for display, the track lists and
++     * the rest report a change that a handler follows or counts (a pause and the resume right after it would reach JavaScript as the resume alone), so they do not coalesce.
++     */
++    private class VideoCustomEvent(
++        surfaceId: Int,
++        viewId: Int,
++        private val event: EventTypes,
++        private val coalescable: Boolean,
++        private val paramsSetter: (WritableMap.() -> Unit)?
++    ) : Event<VideoCustomEvent>(surfaceId, viewId) {
+ 
+         override fun getEventName(): String = "top${event.eventName.removePrefix("on")}"
+ 
+         override fun getEventData(): WritableMap? = Arguments.createMap().apply(paramsSetter ?: {})
++
++        override fun canCoalesce(): Boolean = coalescable
+     }
+ 
+     private class EventBuilder(private val surfaceId: Int, private val viewId: Int, private val dispatcher: EventDispatcher) {
+-        fun dispatch(event: EventTypes, paramsSetter: (WritableMap.() -> Unit)? = null) =
+-            dispatcher.dispatchEvent(VideoCustomEvent(surfaceId, viewId, event, paramsSetter))
++        fun dispatch(event: EventTypes, coalescable: Boolean = false, paramsSetter: (WritableMap.() -> Unit)? = null) =
++            dispatcher.dispatchEvent(VideoCustomEvent(surfaceId, viewId, event, coalescable, paramsSetter))
+     }
+ 
+     private fun audioTracksToArray(audioTracks: java.util.ArrayList<Track>?): WritableArray =

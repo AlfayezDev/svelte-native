@@ -1,0 +1,81 @@
+{
+ "info": {
+  "commandType": "devicectl.list.devices",
+  "jsonVersion": 3,
+  "outcome": "success",
+  "version": "518.31"
+ },
+ "result": {
+  "devices": [
+   {
+    "capabilities": [],
+    "connectionProperties": {
+     "authenticationType": "manualPairing",
+     "isMobileDeviceOnly": false,
+     "lastConnectionDate": "2026-10-26T20:24:00.000Z",
+     "pairingState": "paired",
+     "potentialHostnames": [
+      "physical.coredevice.local",
+      "E74A5608-BF8E-5806-8699-1605F82ADED9.coredevice.local",
+      "00008110-001E10593410401E.coredevice.local"
+     ],
+     "transportType": "wired",
+     "tunnelState": "disconnected",
+     "tunnelTransportProtocol": "tcp"
+    },
+    "deviceProperties": {
+     "bootState": "booted",
+     "bootedFromSnapshot": true,
+     "bootedSnapshotName": "com.apple.os.update-C99104ECF292DF39CDE7C96C033B86B4E487B08173AC141BE860459E94D1663B",
+     "ddiServicesAvailable": false,
+     "developerModeStatus": "enabled",
+     "hasInternalOSBuild": false,
+     "name": "physical",
+     "osBuildUpdate": "23G71",
+     "osVersionNumber": "26.6",
+     "providerSpecificValues": {
+      "hasAMRestorableDeviceRef": "true"
+     },
+     "rootFileSystemIsWritable": false,
+     "screenViewingURL": "devices://device/open?id=E74A5608-BF8E-5806-8699-1605F82ADED9",
+     "supportsCheckedAllocations": false
+    },
+    "hardwareProperties": {
+     "cpuType": {
+      "name": "arm64e",
+      "subType": 2,
+      "type": 16777228
+     },
+     "deviceType": "iPhone",
+     "hardwareModel": "D49AP",
+     "internalStorageCapacity": 128000000000,
+     "isProductionFused": true,
+     "marketingName": "iPhone SE (3rd generation)",
+     "platform": "iOS",
+     "productType": "iPhone14,6",
+     "reality": "physical",
+     "supportedCPUTypes": [
+      {
+       "name": "arm64e",
+       "subType": 2,
+       "type": 16777228
+      },
+      {
+       "name": "arm64",
+       "subType": 0,
+       "type": 16777228
+      }
+     ],
+     "supportedDeviceFamilies": [
+      1
+     ],
+     "thinningProductType": "iPhone14,6",
+     "udid": "00008110-001E10593410401E"
+    },
+    "identifier": "E74A5608-BF8E-5806-8699-1605F82ADED9",
+    "tags": [],
+    "visibilityClass": "default"
+   }
+  ]
+ }
+}

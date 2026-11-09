@@ -1,0 +1,6 @@
+10-26 12:41:00.200  5002  5034 E ReactNative: Error: boom, js engine: hermes
+10-26 12:41:00.200  5002  5034 E ReactNativeJS:     at doThing (address at index.android.bundle:1:130)
+10-26 12:41:00.200  5002  5034 E ReactNativeJS:     at anonymous (address at index.android.bundle:1:310)
+10-26 12:41:00.200  5002  5034 E ReactNativeJS:     at native
+10-26 12:41:00.200  5002  5034 E ReactNativeJS:     at helper (address at index.android.bundle:1:9999)
+10-26 12:41:00.200  5002  5034 E ReactNativeJS: [Svelte stress] foo@12:3 is not a bytecode frame

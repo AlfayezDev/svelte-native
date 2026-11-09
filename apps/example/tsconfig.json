@@ -1,0 +1,22 @@
+{
+	"extends": "$app/tsconfig",
+	"compilerOptions": {
+		"sourceMap": true,
+		"target": "ES2022",
+		"strict": true,
+		"paths": {
+			"#lib/*": ["./src/lib/*"]
+		}
+	},
+	"exclude": [
+		"node_modules",
+		"build",
+		".svelte-kit",
+		".svelte-native",
+		"src/lib/native",
+		"src/routes/**/+mobile.svelte",
+		"src/routes/**/+layout.mobile.svelte",
+		"src/routes/**/+error.mobile.svelte",
+		"metro.config.cjs"
+	]
+}

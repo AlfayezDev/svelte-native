@@ -1,0 +1,261 @@
+name: native-qa
+
+# Svelte Native on React Native Fabric: unit tests, then the Android emulator lane on the OVH host's self-hosted runner.
+# What runs, what blocks, how to read a failure and what it costs: apps/example/qa/README.md, "CI".
+# Registering the runner: apps/example/qa/ci/RUNBOOK.md.
+
+on:
+  push:
+    # A push that only touches documentation does not need an emulator.
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "deploy/**"
+      - "LICENSE"
+  workflow_dispatch:
+    inputs:
+      repeat:
+        description: Lab runs (the production bar is 10 consecutive complete runs)
+        default: "10"
+      warm:
+        description: Warm boot launches (the production bar is 30)
+        default: "30"
+      cold:
+        description: Cold boot launches (the production bar is 30)
+        default: "30"
+      smoke:
+        description: Build and run the native module smoke app
+        type: boolean
+        default: true
+      updates:
+        description: Also run the over-the-air update scenario (native-qa updates). It PUBLISHES updates to the EAS channel below, so a push never does; needs the EXPO_TOKEN secret
+        type: boolean
+        default: false
+      updates_channel:
+        description: The EAS Update channel of the update scenario (qa, or qa-<suffix>). A run from another machine on the same channel waits for this one (the channel lock is a lock of the OVH host, like the emulator's)
+        default: qa
+      crashes:
+        description: Also run the crash volume, 1,000 cold starts and 100 suites (8 to 15 hours of the emulator)
+        type: boolean
+        default: false
+  # The crash volume weekly, if wanted (it holds the shared emulator for most of a day; set `crashes` above for one run):
+  # schedule:
+  #   - cron: "0 22 * * 6"
+
+permissions:
+  contents: read
+
+env:
+  CI: "1"
+  EXPO_NO_TELEMETRY: "1"
+
+jobs:
+  unit:
+    name: Unit tests, typecheck, lint
+    # GitHub-hosted by default, so this runs while the emulator lane of an earlier push still holds the OVH runner.
+    # Set the repository variable QA_UNIT_RUNS_ON to ["self-hosted","svelte-qa-emulator"] to run it on the OVH runner instead.
+    runs-on: ${{ fromJSON(vars.QA_UNIT_RUNS_ON || '"ubuntu-latest"') }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: pnpm
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The Kotlin and C++ host checks (the engine's run.sh, and the package tests that compile *Host.kt) need a JDK and kotlinc, and skip
+      # themselves without them, so packages/svelte-native/tests/native-tools.test.ts fails under CI=1 when one is missing. g++ and the Android
+      # SDK's android.jar come with the hosted image; on the OVH runner (QA_UNIT_RUNS_ON) qa/ci/setup-runner.sh installs g++.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # A pinned kotlinc (2.1.20, the Kotlin the Android build compiles with) and the org.json jar, each checked against a sha256 and
+      # kept in ~/.cache/native-qa-host-tools, so a runner that keeps its home downloads once. It puts kotlinc on PATH and sets ORG_JSON_JAR.
+      - name: Install kotlinc and the org.json jar
+        run: bash apps/example/qa/ci/host-tools.sh
+
+      - name: Lint the platform app
+        run: pnpm --dir apps/example lint
+
+      - name: Lint the Svelte Native package
+        run: pnpm --dir packages/svelte-native lint
+
+      - name: Typecheck the Svelte Native package
+        run: pnpm --dir packages/svelte-native typecheck
+
+      - name: Typecheck the platform app
+        run: pnpm --dir apps/example typecheck
+
+      - name: Typecheck the harness
+        run: pnpm --dir apps/example native-qa:typecheck
+
+      # Kotlin and C++ host checks of the engine, no device: the animated wire (C++ encoder against the Kotlin decoder), the foreign-view
+      # ownership rules, what the view-shot capture decides before it draws, and the gesture rules (pointer events, who may claim a touch,
+      # the distances read from react-native-gesture-handler's own Pan source). About 20 s.
+      - name: Engine host checks (gesture rules, capture, animated wire)
+        run: bash apps/example/modules/svelte-engine/android/src/test/run.sh
+
+      # The package suite (route discovery, Metro stubs, gestures, svg, the app-tree mounts with the product's stubs, and the updates
+      # client, launch and store tests: the Kotlin ones skip themselves without kotlinc, which native-tools.test.ts turns into a failure here) ran in no workflow before.
+      # Some of its tests start Metro or esbuild, so the default 5 s per test is too short on a hosted runner.
+      - name: Svelte Native package tests
+        working-directory: packages/svelte-native
+        run: bun test --timeout 60000
+
+      # The harness suite includes the updates unit tests (the scenario against a model of the client's policy, the eas-cli output
+      # and channel parsing, the log parser, the reset rules) and the bundle test, which bundles the QA, smoke and product apps with
+      # Metro (a few minutes, tens of MB of temporary files) to check what each one contains. The default 5 s per test is far too short.
+      - name: Harness tests
+        working-directory: apps/example
+        run: bun test --timeout 120000 qa/test
+
+  emulator:
+    name: Android emulator lane
+    needs: unit
+    runs-on: [self-hosted, svelte-qa-emulator]
+    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && 480 || 180 }}
+    # One emulator: runs queue instead of cancelling each other. GitHub keeps one running and the newest pending run in a group,
+    # so a run that a newer push replaced before it started shows as cancelled: nothing ran, nothing failed.
+    concurrency:
+      group: native-qa-emulator
+      cancel-in-progress: false
+    env:
+      QA_DEVICE: localhost:5555
+      QA_MODE: ${{ github.event_name == 'workflow_dispatch' && 'full' || 'push' }}
+      QA_REPEAT: ${{ inputs.repeat || '3' }}
+      QA_WARM: ${{ inputs.warm || '30' }}
+      QA_COLD: ${{ inputs.cold || '30' }}
+      QA_SMOKE: ${{ inputs.smoke && '1' || '0' }}
+      # The update scenario publishes to EAS: dispatch only, never on a push (lane.sh also ignores it outside the full mode).
+      QA_UPDATES: ${{ github.event_name == 'workflow_dispatch' && inputs.updates && '1' || '0' }}
+      QA_CHANNEL: ${{ inputs.updates_channel || 'qa' }}
+      # Seconds to wait for the emulator lock before the lane gives up (the job timeout counts this wait).
+      QA_LOCK_WAIT: ${{ github.event_name == 'workflow_dispatch' && '10800' || '5400' }}
+    defaults:
+      run:
+        working-directory: apps/example
+    steps:
+      # The runner's workspace is kept between runs, so Gradle, CMake and Metro build incrementally; lane.sh reset forgets the
+      # last lane's run files, which the report would otherwise merge into this one.
+      - uses: actions/checkout@v4
+        with:
+          clean: false
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: .
+
+      - name: Forget the previous lane
+        run: bash qa/ci/lane.sh reset
+
+      # Without the emulator lock: the build overlaps whatever else is using the emulator. x86_64 only, the QA app and then the product
+      # (io.example.app, no development lab: the app the product boot check starts), on the runner's Gradle caches (GRADLE_USER_HOME).
+      - name: Build the release APKs (x86_64)
+        run: bash qa/ci/lane.sh build
+
+      # The whole lane holds the emulator lock (the same file the agents' runs take over ssh): a fresh emulator instance, the
+      # stages (the product boot check after those of the QA app), the report and the gates. Waits at most QA_LOCK_WAIT seconds for the lock.
+      - name: Emulator lane
+        run: node qa/native-qa.ts hold --device "$QA_DEVICE" --wait "$QA_LOCK_WAIT" -- bash qa/ci/lane.sh emulator
+        env:
+          # Only the step that publishes gets the token, and only when the dispatch asked for the update scenario.
+          EXPO_TOKEN: ${{ github.event_name == 'workflow_dispatch' && inputs.updates && secrets.EXPO_TOKEN || '' }}
+
+      - name: Job summary
+        if: ${{ always() }}
+        run: bash qa/ci/lane.sh summary
+
+      - name: Upload run files, logs and report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-qa-emulator-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            apps/example/qa/report.json
+            apps/example/qa/runs/
+            apps/example/qa/out/*.log
+            apps/example/qa/out/build-*.json
+            apps/example/qa/out/lane-stages.tsv
+            apps/example/qa/out/gates*.md
+
+  crashes:
+    name: Crash volume
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.crashes }}
+    needs: unit
+    runs-on: [self-hosted, svelte-qa-emulator]
+    timeout-minutes: 1200
+    # Not the group of the lane: a crash volume waiting for the runner must not be replaced by the next push's lane.
+    concurrency:
+      group: native-qa-crashes
+      cancel-in-progress: false
+    env:
+      QA_DEVICE: localhost:5555
+    defaults:
+      run:
+        working-directory: apps/example
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          clean: false
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: .
+
+      - name: Forget the previous lane
+        run: bash qa/ci/lane.sh reset
+
+      # The crash volume starts the QA app only, so the product is not built (QA_ONLY narrows the lane's build to it).
+      - name: Build the release APK (x86_64)
+        run: bash qa/ci/lane.sh build
+        env:
+          QA_ONLY: crashes
+
+      # No lock held across the volume: every chunk takes it, so the host's watchdog can restart the emulator between chunks.
+      - name: 1,000 cold starts and 100 suites
+        run: bash qa/ci/lane.sh crashes
+
+      - name: Job summary
+        if: ${{ always() }}
+        run: bash qa/ci/lane.sh summary
+
+      - name: Upload run files, logs and report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-qa-crashes-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            apps/example/qa/report.json
+            apps/example/qa/runs/
+            apps/example/qa/out/*.log
+            apps/example/qa/out/build-*.json
+            apps/example/qa/out/lane-stages.tsv
+            apps/example/qa/out/gates*.md

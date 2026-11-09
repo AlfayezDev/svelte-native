@@ -1,0 +1,10 @@
+{
+	"ios": {
+		"CFBundleDisplayName": "Example",
+		"NSCameraUsageDescription": "Example attaches the photos you take to your replies.",
+		"NSPhotoLibraryUsageDescription": "Example attaches the photos and videos you choose to your replies."
+	},
+	"android": {
+		"app_name": "Example"
+	}
+}

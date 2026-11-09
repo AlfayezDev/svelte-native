@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 # Shared by scripts/consumer-check.sh and scripts/new-app.sh. Sourced, never run: it only defines functions.
 #
-# Both scripts make an app outside this repository from examples/minimal and set it up as packages/svelte-native/README.md says ("Install
-# in an app", "Apply the patches"); these are the steps they have in common, so there is one way of doing them:
+# Both scripts make an app outside this repository from examples/minimal's files and set it up as packages/svelte-native/README.md says
+# ("Install in an app", "Apply the patches"); these are the steps they have in common, so there is one way of doing them:
 #
-#   sn_cap_init <auto|none>           CAP, the pnpm flags (OFFLINE=1), and the `cap` runner for heavy commands
+#   sn_cap_init <auto|none>           CAP, the pnpm flags (OFFLINE=1), and the `cap` runner for heavy commands (both)
+#   sn_spec_of <app> <dependency>     the version specifier a package.json has for a dependency (both)
+#   sn_patches_apply <app> <aside>    copy the patch files from the installed library, declare them, install again, check the lockfile (both)
 #   sn_template_copy <template> <app> <aside>
-#                                     copy the template; set its patchedDependencies block aside (the app before "Apply the patches")
+#                                     copy the template whole; set its patchedDependencies block aside (consumer-check: the native-only app;
+#                                     new-app.sh starts from `sv create` instead and copies the template's files itself)
 #   sn_install <app> <library> <svelte>
-#                                     pnpm add the library and Svelte (the first install: the patch files arrive with the library)
-#   sn_patches_apply <app> <aside>    copy the patch files from the installed library, declare them, install again, check the lockfile
+#                                     pnpm add the library and Svelte (consumer-check)
 #
 # The caller sets nothing but the arguments (and `set -euo pipefail` where it wants the functions to stop at the first failure). Every
 # function that changes directory does so for its caller too; call it from a subshell when that matters.

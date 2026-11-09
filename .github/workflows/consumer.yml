@@ -4,7 +4,7 @@ name: Consumer
 # scratch directory, installs the library (as a packed tarball, and as a git dependency of this very checkout), applies the patches, runs
 # doctor and sync, bundles with Metro, runs expo prebuild and builds a release APK with Gradle. The two modes are two jobs, so each has a
 # runner and a disk of its own. About 25 to 40 minutes a job on a hosted runner (a Gradle build from nothing; the cache shortens the next).
-# A third job, the starter, runs scripts/new-app.sh (the one command of the early preview) in its --local mode: install, patches, doctor, sync.
+# A third job, the starter, runs scripts/new-app.sh (the one command of the early preview) in its --local mode: sv create, install, patches, doctor, then sync and the web build.
 # What it checks and how to read a failure: README.md, "CI".
 
 on:
@@ -139,8 +139,9 @@ jobs:
 
   # The starter of the early preview, scripts/new-app.sh, as a person runs it but with --local: the library is this checkout's commit (a git
   # dependency over file://, as in the git mode above) and Svelte is the vendored tarball, because a runner has no SSH key for the private
-  # repository. The rest is what a friend gets: the template named after the directory, the install, the patches copied and declared with a
-  # second install, svelte-native doctor (new-app.sh fails when it does), then sync. No Android SDK is needed: it builds nothing.
+  # repository. The rest is what a friend gets: a SvelteKit project from `sv create` with the native layer added, the install, the patches
+  # copied and declared with a second install, svelte-native doctor (new-app.sh fails when it does), then sync and the web build, which
+  # the native layer must not break. No Android SDK is needed: it builds nothing native.
   starter:
     name: Starter app (new-app.sh --local)
     runs-on: ubuntu-latest
@@ -165,3 +166,4 @@ jobs:
           cd "$APP"
           pnpm exec svelte-native sync
           test -f .svelte-native/entry.ts
+          pnpm build

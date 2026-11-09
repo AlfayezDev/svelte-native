@@ -18,16 +18,13 @@ Svelte Native is a way to write Android and iOS apps as Svelte 5 components that
 ```sh
 git clone --depth 1 git@github.com:AlfayezDev/svelte-native.git /tmp/svelte-native
 /tmp/svelte-native/scripts/new-app.sh my-app
-cd my-app && pnpm android        # or: pnpm ios
+cd my-app
+pnpm android        # or: pnpm ios
 ```
 
-`new-app.sh` makes `my-app` from [`examples/minimal`](examples/minimal), installs the library and the Svelte build it needs, copies in the patches it relies on and runs `svelte-native doctor`; it builds nothing and takes a minute or two. The first `pnpm android` / `pnpm ios` builds the native app, which can take ten minutes or more. The app does not refer to the clone, so `/tmp/svelte-native` can go; from a checkout you already have, run `scripts/new-app.sh ../my-app`. `--ref <tag|branch|commit>` picks the library version (the newest release tag by default).
+`new-app.sh` runs `npx sv create` (a SvelteKit project) and adds Svelte Native to it: the dependencies, the patches, the Metro and Expo config and a first native screen. It builds nothing and takes about 20 seconds; the first `pnpm android` / `pnpm ios` builds the native app, which can take ten minutes or more the first time. The app does not refer to the clone, so `/tmp/svelte-native` can go. The web app is still there: `pnpm dev`.
 
-If an install stops with `ERR_PNPM_GIT_RESOLVE_FAILED` or `could not read Username for 'https://github.com'`: pnpm fetches GitHub dependencies over HTTPS even for an SSH address, and this repository is private. The script works around it for its own run; for later installs in the app, tell git once to use SSH for it:
-
-```sh
-git config --global url."git@github.com:AlfayezDev/".insteadOf "https://github.com/AlfayezDev/"
-```
+**The guide** is [docs/](docs/01-introduction.md), written in the shape of SvelteKit's: [what it is](docs/01-introduction.md), [creating a project](docs/02-creating-a-project.md) (the steps `new-app.sh` performs, one by one), [project structure](docs/03-project-structure.md), [native routes](docs/04-native-routes.md), [development builds](docs/05-development-builds.md) (what `expo prebuild` is and when to run it), [native libraries](docs/06-native-libraries.md), [adding it to an existing Expo app](docs/07-adding-to-an-existing-expo-app.md) and [troubleshooting](docs/08-troubleshooting.md). The [package README](packages/svelte-native/README.md) is the reference.
 
 **The showcase** is `apps/example`, one short screen per feature (its [README](apps/example/README.md) lists them). From a checkout: `pnpm install`, then `pnpm --dir apps/example android` or `ios`. A [release](https://github.com/AlfayezDev/svelte-native/releases) may also have a prebuilt Android APK attached, when a release has one (`adb install -r <file>.apk`).
 
@@ -38,13 +35,11 @@ git config --global url."git@github.com:AlfayezDev/".insteadOf "https://github.c
 - Screen readers (TalkBack, VoiceOver) are covered by automated checks, not yet by a person using them.
 - Not supported: Svelte's DOM transitions and DOM-based libraries, React widgets, and the Expo dev client.
 - EAS Build on Expo's servers is not tried, and push notification delivery is not tested end to end.
-- The Svelte compiler is an unmerged pull request, [pinned](https://github.com/sveltejs/svelte/pull/18042) to one commit; the Svelte you install is that build, not the registry's.
+- The Svelte compiler is an unmerged pull request, [pinned](https://github.com/sveltejs/svelte/pull/18042) to one commit; the Svelte you install is that build, not the registry's, and the web side of the app runs on a pinned SvelteKit prerelease (3.0.0-next.27).
 - Expo SDK 57 and React Native 0.86 only.
 - `@rasheed/svelte-native` is a placeholder name and will change before a public release.
 
-**The guide** is the [package README](packages/svelte-native/README.md#how-it-fits-together): [how it fits together](packages/svelte-native/README.md#how-it-fits-together) (what `expo prebuild` makes and [when to run it](packages/svelte-native/README.md#when-to-run-expo-prebuild)), [adding the library to an existing Expo app](packages/svelte-native/README.md#install-in-an-app), the [development loop](packages/svelte-native/README.md#development-loop) and [using Expo and React Native libraries](packages/svelte-native/README.md#using-expo-and-react-native-libraries).
-
-**Found a bug?** [Open an issue](https://github.com/AlfayezDev/svelte-native/issues/new?template=bug.yml); the form asks for what is needed, including the output of `pnpm exec svelte-native doctor`.
+**Found a bug?** [Open an issue](https://github.com/AlfayezDev/svelte-native/issues/new?template=bug.yml); the form asks for what is needed, including the output of `pnpm exec svelte-native doctor`. If an install fails, start with [troubleshooting](docs/08-troubleshooting.md).
 
 ## Layout
 
@@ -76,7 +71,7 @@ Four workflows in `.github/workflows/`. The static checks and the consumer build
 | Workflow | Runs when | What it does | Expected time |
 | -------- | --------- | ------------ | ------------- |
 | `ci.yml` | every push to main, every pull request, by hand; `release.yml` calls it | Four jobs side by side, then the aggregate status `CI`. **Lint and types**: `biome check .` at the root, eslint, `svelte-check` and `tsc` of the library, the QA app, the harness and the showcase. **Library and showcase tests**: `bun test --timeout 60000` in `packages/svelte-native` (with JDK 17 and the pinned kotlinc for the Kotlin host checks; includes the test that `dist/node/` is not stale), then `pnpm build` and a check that it changed nothing, then the showcase's `pnpm test`. **QA harness tests**: `bun test --timeout 120000 qa` in `apps/qa`. **Engine host checks**: the engine's Kotlin and C++ checks (`run.sh`, g++ with sanitizers, kotlinc). | about 10 to 15 min |
-| `consumer.yml` | pushes to `main` and pull requests that touch `packages/**`, `examples/**`, `vendor/**` or `scripts/` (`consumer-check.sh`, `new-app.sh`, `lib/`); by hand (choose the ABI) | `scripts/consumer-check.sh` once per install mode (`tarball`, `git`), each on its own runner: installs the library into a copy of `examples/minimal` outside the repository, applies the patches, runs `doctor` and `sync`, bundles with Metro, runs `expo prebuild` and builds a release APK with Gradle (JDK 17, Android SDK 36, NDK 27.1.12297006, CMake 3.22.1). The APKs are uploaded as artifacts (7 days); a failed run uploads the stage logs. A third job, `starter`, runs `scripts/new-app.sh --local` (the starter of "Try it", on this checkout's commit; no Android SDK) and `sync`. | about 20 to 40 min (the first run builds with a cold Gradle cache); the starter job a few minutes |
+| `consumer.yml` | pushes to `main` and pull requests that touch `packages/**`, `examples/**`, `vendor/**` or `scripts/` (`consumer-check.sh`, `new-app.sh`, `lib/`); by hand (choose the ABI) | `scripts/consumer-check.sh` once per install mode (`tarball`, `git`), each on its own runner: installs the library into a copy of `examples/minimal` outside the repository, applies the patches, runs `doctor` and `sync`, bundles with Metro, runs `expo prebuild` and builds a release APK with Gradle (JDK 17, Android SDK 36, NDK 27.1.12297006, CMake 3.22.1). The APKs are uploaded as artifacts (7 days); a failed run uploads the stage logs. A third job, `starter`, runs `scripts/new-app.sh --local` (the starter of "Try it": `sv create` and the native layer on this checkout's commit; no Android SDK), then `sync` and the web build. | about 20 to 40 min (the first run builds with a cold Gradle cache); the starter job a few minutes |
 | `native-qa.yml` | every push to a branch except documentation-only ones; by hand (full lane, crash volume) | The Android emulator lane of the QA harness on the self-hosted runner `svelte-qa-emulator`. **Off until the runner is registered and the repository variable `QA_EMULATOR_RUNNER` is `true`** (until then no job of it runs): [`apps/qa/qa/ci/RUNBOOK.md`](apps/qa/qa/ci/RUNBOOK.md). What it runs and how to read it: [`apps/qa/qa/README.md`](apps/qa/qa/README.md), "CI". | 55 to 70 min a push |
 | `release.yml` | a tag `v*` | `ci.yml`, then a GitHub Release: the changelog section of the version as notes, the `pnpm pack` tarball and its `SHA256SUMS` attached. See "Release". | about 15 min |
 

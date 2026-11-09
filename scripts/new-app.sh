@@ -3,13 +3,15 @@
 #
 #   scripts/new-app.sh <dir> [--ref <tag|branch|commit>] [--local]
 #
-# It copies examples/minimal (the smallest working app) to <dir>, which must not exist yet or must be empty, and does what
-# packages/svelte-native/README.md ("Install in an app", "Apply the patches") tells an app to do, the way scripts/consumer-check.sh does it
-# in its git mode (the steps are in scripts/lib/app-setup.sh):
+# It does what docs/02-creating-a-project.md describes: a SvelteKit project from the official Svelte CLI, and the native layer on top of it. The
+# files of the native layer (metro.config.cjs, app.json, the first native routes, pnpm's settings and patches) are those of examples/minimal, so
+# that template is the one place they are written; the steps the script shares with scripts/consumer-check.sh are in scripts/lib/app-setup.sh.
 #
 #   1. checks node, pnpm and git, and that the private repository can be read (over SSH)
-#   2. copies the template, named after <dir>, without its patchedDependencies block
-#   3. pnpm add of the library, as a git dependency over SSH, and of the custom-renderer Svelte, from pkg.pr.new
+#   2. `sv create <dir>` (minimal template, TypeScript, no add-ons, pnpm), which installs SvelteKit and the registry's Svelte
+#   3. adds the native layer: package.json (the custom-renderer Svelte from pkg.pr.new, SvelteKit 3.0.0-next.27 exactly, the library as a git
+#      dependency over SSH, its peers, `main`, the Reanimated flag, the scripts `native`, `android`, `ios`), vite.config.ts (svelteNative()),
+#      pnpm's overrides, metro.config.cjs, app.json, the routes under src/routes/**/*mobile.svelte and .gitignore entries; installs
 #   4. copies the library's patch files into the app, declares them in pnpm-workspace.yaml and installs again
 #   5. runs `svelte-native doctor`
 #
@@ -18,12 +20,12 @@
 # Options:
 #   --ref <ref>   the tag, branch or commit of the repository the app depends on. Default: the newest tag `v*` of the repository this
 #                 script is run from (`git describe`), or, in a shallow clone that has no tags, of the repository on GitHub.
-#   --local       for testing the script, or working without a network: depend on this checkout (git+file://<checkout>#<commit>) and install
-#                 Svelte from the tarball in vendor/ instead of pkg.pr.new. The default ref is the checkout's HEAD commit.
+#   --local       for testing the script: depend on this checkout (git+file://<checkout>#<commit>) and install Svelte from the tarball in vendor/
+#                 instead of pkg.pr.new. The default ref is the checkout's HEAD commit. `sv create` still needs the npm registry.
 #   -h, --help    this text
 #
 # Environment:
-#   OFFLINE=1     pnpm --offline (the store must already hold everything)
+#   OFFLINE=1     pnpm --offline (the store must already hold everything; `sv create` needs a network anyway)
 #   CAP="<prefix>" a prefix for the heavy commands (pnpm), for example `nice -n 19`; none by default
 #
 # From a clone, or without keeping one (the app does not refer to the clone; delete it afterwards):
@@ -39,6 +41,8 @@ template=$repo/examples/minimal
 sn_cap_init none
 
 repo_url=git+ssh://git@github.com/AlfayezDev/svelte-native.git
+# The Svelte CLI version the guide was written against (docs/02-creating-a-project.md): its template decides what the native layer is added to.
+sv_version=1.3.0
 # The comment block at the top of this file.
 usage() { awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "${BASH_SOURCE[0]}"; }
 usage_error() { echo "new-app.sh: $*" >&2; echo "usage: scripts/new-app.sh <dir> [--ref <tag|branch|commit>] [--local]   (--help for the details)" >&2; exit 2; }
@@ -138,7 +142,7 @@ if [ "$use_local" = 1 ]; then
 $dirty")
   svelte_tgz=$(ls "$repo"/vendor/svelte-*.tgz 2>/dev/null) || die "no vendored svelte tarball in $repo/vendor/"
   [ "$(printf '%s\n' "$svelte_tgz" | wc -l)" -eq 1 ] || die "expected one vendored svelte tarball in $repo/vendor/"
-  svelte_arg=./$(basename "$svelte_tgz")
+  svelte_dep=file:$(basename "$svelte_tgz")
 else
   library_url=$repo_url
   plain_url=${repo_url#git+}
@@ -182,7 +186,7 @@ $(printf '%s\n' "$refs" | sed -n 's|^[0-9a-f]\{40\}[[:space:]]refs/tags/|  |p')"
   esac
   svelte_spec=$(sn_spec_of "$template" svelte)
   case $svelte_spec in https://pkg.pr.new/svelte@*) ;; *) die "examples/minimal names Svelte as '$svelte_spec', not a pkg.pr.new build; this script installs what the template names." ;; esac
-  svelte_arg=svelte@$svelte_spec
+  svelte_dep=$svelte_spec
 fi
 library_spec="$library_url#$ref&path:packages/svelte-native"
 # The app is made from this checkout's template and the library of <ref>: tell the person when the two are not the same version.
@@ -204,17 +208,21 @@ finish() {
 rename() { sed "s|$2|$3|g" "$1" >"$work/rename.tmp" && cat "$work/rename.tmp" >"$1"; }
 
 echo "Svelte Native: new app in $dir"
-echo "  node $have_node, pnpm $have_pnpm, library $library_spec"
+echo "  node $have_node, pnpm $have_pnpm, sv $sv_version, library $library_spec"
 if [ "${#warnings[@]}" -gt 0 ]; then
   for warning in "${warnings[@]}"; do printf 'warning: %s\n' "$warning" >&2; done
 fi
 if [ -n "$ssh_note" ]; then printf 'note: %s\n' "$ssh_note"; fi
 
-begin "creating the app from examples/minimal"
-mkdir -p "$dir"
+begin "creating a SvelteKit project (sv create)"
 created=1
-( sn_template_copy "$template" "$dir" "$work/patched-dependencies.yaml" )
-# Named after the directory: the package, the Expo slug and scheme, the app's name and its Android/iOS identifiers.
+# Every question of `sv create` is answered by a flag, so nothing is asked: the minimal template, TypeScript, no add-ons, installed with pnpm.
+cap pnpm dlx "sv@$sv_version" create "$dir" --template minimal --types ts --no-add-ons --install pnpm </dev/null
+[ -f "$dir/package.json" ] || die "sv create did not make $dir/package.json"
+finish
+
+begin "adding the native layer"
+# Named after the directory: the Expo name, slug and scheme, and the Android and iOS identifiers.
 base=$(basename "$dir")
 slug=$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]\{1,\}/-/g; s/^-//; s/-$//')
 [ -n "$slug" ] || slug=app
@@ -222,16 +230,76 @@ case $slug in [a-z]*) ;; *) slug=app-$slug ;; esac
 id=$(printf '%s' "$slug" | tr -d '-')
 title=$slug
 case $base in *[!A-Za-z0-9\ ._-]*) ;; *) title=$base ;; esac
-rename "$dir/package.json" '"name": "svelte-native-minimal"' "\"name\": \"$slug\""
+
+# The files of the native layer come from the template, so the template is the one place they are written.
+cp "$template/metro.config.cjs" "$dir/metro.config.cjs"
+cp "$template/app.json" "$dir/app.json"
 rename "$dir/app.json" 'Svelte Native Minimal' "$title"
 rename "$dir/app.json" 'dev\.example\.sveltenativeminimal' "dev.example.$id"
 rename "$dir/app.json" 'svelte-native-minimal' "$slug"
-echo "named: $title ($slug, dev.example.$id)"
+( cd "$template" && find src/routes -name '*mobile.svelte' ) | while IFS= read -r route; do
+  mkdir -p "$dir/$(dirname "$route")"
+  cp "$template/$route" "$dir/$route"
+done
+# pnpm's settings: sv wrote engineStrict and allowBuilds; the library also needs `overrides` (and, below, `patchedDependencies`). Both blocks are the template's.
+awk '/^overrides:/ { found = 1; print; next } found && /^[^ ]/ { exit } found { print }' "$template/pnpm-workspace.yaml" >"$work/overrides.yaml"
+[ -s "$work/overrides.yaml" ] || die "examples/minimal/pnpm-workspace.yaml has no overrides block"
+{ echo; echo "# The library's pins (docs/02-creating-a-project.md): expo-modules-core is the version its patch is for."; cat "$work/overrides.yaml"; } >>"$dir/pnpm-workspace.yaml"
+awk '/^patchedDependencies:/ { found = 1 } found { print }' "$template/pnpm-workspace.yaml" >"$work/patched-dependencies.yaml"
+[ -s "$work/patched-dependencies.yaml" ] || die "examples/minimal/pnpm-workspace.yaml has no patchedDependencies block"
 if [ "$use_local" = 1 ]; then cp "$svelte_tgz" "$dir/"; fi
+printf '%s\n' '' '# Svelte Native' '.svelte-native' '.expo' '/android' '/ios' >>"$dir/.gitignore"
+node - "$dir" "$template" "$library_spec" "$svelte_dep" <<'JS'
+const fs = require("node:fs");
+const path = require("node:path");
+const [dir, template, library, svelte] = process.argv.slice(2);
+const read = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
+const app = read(path.join(dir, "package.json"));
+const minimal = read(path.join(template, "package.json"));
+app.main = minimal.main;
+app.reanimated = minimal.reanimated;
+app.dependencies = { ...(app.dependencies || {}), "@rasheed/svelte-native": library };
+app.devDependencies = { ...(app.devDependencies || {}) };
+// The template's dependencies: SvelteKit and Svelte go where sv put them (as dependencies of the template they would be in the wrong list), the rest are the app's.
+for (const [name, spec] of Object.entries(minimal.dependencies)) {
+  if (name === "@rasheed/svelte-native" || name === "vite") continue;
+  if (name === "svelte") app.devDependencies.svelte = svelte;
+  else if (name === "@sveltejs/kit") app.devDependencies[name] = spec;
+  else app.dependencies[name] = spec;
+}
+const sorted = (object) => Object.fromEntries(Object.entries(object).sort(([a], [b]) => (a < b ? -1 : 1)));
+app.dependencies = sorted(app.dependencies);
+app.devDependencies = sorted(app.devDependencies);
+// `dev`, `build` and `preview` stay the web's (sv's); the native side gets scripts of its own.
+app.scripts = { ...app.scripts, native: "svelte-native dev", android: "svelte-native android", ios: "svelte-native ios" };
+// sv asks for `^7.2.0`, which is 7.3 now; the library's own web app pins 7.2.0, and its types for the plugin's options are written against that one.
+app.devDependencies["@sveltejs/vite-plugin-svelte"] = "7.2.0";
+fs.writeFileSync(path.join(dir, "package.json"), `${JSON.stringify(app, null, "\t")}\n`);
+fs.writeFileSync(path.join(dir, "vite.config.ts"), `import adapter from '@sveltejs/adapter-auto';
+import { svelteNative } from '@rasheed/svelte-native/vite';
+import { defineConfig } from 'vite';
+
+export default defineConfig(({ mode }) => ({
+	plugins: [
+		svelteNative({
+			// \`vite dev\` and \`vite build\` are the web app; \`vite build --mode native\` exports the native bundle (the usual way is \`pnpm android\`).
+			target: mode === 'native' ? 'native' : 'web',
+			// Passed to SvelteKit's plugin.
+			kit: {
+				// adapter-auto only supports some environments, see https://svelte.dev/docs/kit/adapter-auto for a list.
+				adapter: adapter()
+			}
+		})
+	]
+}));
+`);
+JS
+echo "named: $title ($slug, dev.example.$id)"
 finish
 
-begin "installing @rasheed/svelte-native and Svelte (pnpm add)"
-( sn_install "$dir" "$library_spec" "$svelte_arg" )
+begin "installing the library, Svelte and the peers (pnpm install)"
+( cd "$dir" && cap pnpm install --no-frozen-lockfile ${pnpm_flags[@]+"${pnpm_flags[@]}"} )
+[ -f "$dir/node_modules/@rasheed/svelte-native/package.json" ] || die "node_modules/@rasheed/svelte-native is missing"
 finish
 
 begin "copying and declaring the library's patches (pnpm install)"
@@ -247,21 +315,23 @@ version=$(node -p 'require(process.argv[1]).version' "$dir/node_modules/@rasheed
 commit=$(sed -n 's/.*resolution: {commit: \([0-9a-f]\{7,40\}\).*/\1/p' "$dir/pnpm-lock.yaml" | head -n 1)
 echo
 case $ref in *[!0-9a-f]*) from="$ref, commit ${commit:0:9}" ;; *) from="commit ${ref:0:9}" ;; esac
-echo "Done in $((SECONDS - started)) s. $dir is a Svelte Native app on @rasheed/svelte-native $version ($from)."
+echo "Done in $((SECONDS - started)) s. $dir is a SvelteKit app with Svelte Native $version ($from)."
 printf '%s' "$timings"
 cat <<EOF
 
 Next:
 
   cd "$dir"
-  pnpm android        # or: pnpm ios (macOS, Xcode)
+  pnpm dev            # the web app, as sv made it
+  pnpm android        # the native app on a device or emulator; or: pnpm ios (macOS, Xcode)
 
-The first run builds the native app, which takes several minutes: it needs the Android SDK (Android Studio, with JDK 17 and ANDROID_HOME set)
-and a device with USB debugging or an emulator, or Xcode and a simulator or a device on a Mac. This is a development build: Expo Go cannot load
-the library's native modules. After the first install, \`pnpm dev\` starts the dev server again without rebuilding, and a save reloads the app.
+The first \`pnpm android\` / \`pnpm ios\` builds the native app, which takes several minutes: it needs the Android SDK (Android Studio, with JDK 17
+and ANDROID_HOME set) and a device with USB debugging or an emulator, or Xcode and a simulator or a device on a Mac. It is a build of your own
+app, not Expo Go, which cannot load the library's native modules. After that, \`pnpm native\` starts the dev server for the installed app without
+rebuilding, and a save reloads it.
 
 ${ssh_note:+Note: $ssh_note
 
-}Something wrong: \`pnpm exec svelte-native doctor\` in the app says what, and a bug is an issue on
-https://github.com/AlfayezDev/svelte-native/issues (the template asks for what is needed). Reference: packages/svelte-native/README.md.
+}Something wrong: \`pnpm exec svelte-native doctor\` in the app says what, docs/08-troubleshooting.md lists the usual causes, and a bug is an issue on
+https://github.com/AlfayezDev/svelte-native/issues (the template asks for what is needed).
 EOF

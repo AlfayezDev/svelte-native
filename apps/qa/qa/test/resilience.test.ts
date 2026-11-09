@@ -3,7 +3,10 @@ import {
 	anchorEvery,
 	buildPlan,
 	fullPlan,
+	fontScaleCycles,
 	fullPlanSize,
+	onlyGroups,
+	parseGroups,
 	parseProbe,
 	probeFailures,
 	restoreAnchor,
@@ -46,6 +49,57 @@ describe("the resilience plan", () => {
 		expect(kill?.check).toEqual({ alive: false, anchors: [] });
 		expect(back?.check.alive).toBe(true);
 		expect(back?.check.anchors).toContain(restoreAnchor);
+	});
+});
+
+describe("the text size cycles", () => {
+	test("the full plan runs the three sizes once, under the names the gate's evidence uses", () => {
+		const sizes = buildPlan(fullPlan).filter((step) => step.group === "fontScale");
+		expect(sizes.map((step) => step.name)).toEqual(["largest text (2.0)", "small text (0.85)", "default text (1.0)"]);
+		expect(fullPlan.fontScaleCycles).toBe(fontScaleCycles);
+	});
+
+	test("--font-cycles repeats the three sizes, each cycle numbered, and changes no other group", () => {
+		const plan = buildPlan({ ...fullPlan, fontScaleCycles: 3 });
+		const sizes = plan.filter((step) => step.group === "fontScale");
+		expect(sizes.length).toBe(9);
+		expect(sizes.slice(0, 3).map((step) => step.name)).toEqual(["largest text (2.0) 1/3", "small text (0.85) 1/3", "default text (1.0) 1/3"]);
+		expect(sizes.slice(6).map((step) => step.name)).toEqual(["largest text (2.0) 3/3", "small text (0.85) 3/3", "default text (1.0) 3/3"]);
+		expect(sizes.map((step) => (step.action as { scale: number }).scale)).toEqual([2, 0.85, 1, 2, 0.85, 1, 2, 0.85, 1]);
+		expect(plan.length).toBe(fullPlanSize + 6);
+		expect(plan.filter((step) => step.group !== "fontScale").length).toBe(fullPlanSize - 3);
+	});
+
+	test("a run of one cycle is the plan's own, and none leaves the sizes out", () => {
+		expect(buildPlan({ ...fullPlan, fontScaleCycles: 1 })).toEqual(buildPlan(fullPlan));
+		expect(buildPlan({ ...fullPlan, fontScaleCycles: 0 }).filter((step) => step.group === "fontScale")).toEqual([]);
+	});
+});
+
+describe("a plan restricted to groups", () => {
+	test("--only keeps the opening step and the steps of the groups it names, in plan order", () => {
+		const plan = buildPlan(fullPlan);
+		const fontScale = onlyGroups(plan, parseGroups("fontScale"));
+		expect(fontScale.map((step) => step.name)).toEqual([
+			"launch",
+			"largest text (2.0)",
+			"small text (0.85)",
+			"default text (1.0)",
+		]);
+		const both = onlyGroups(plan, parseGroups("locale,fontScale"));
+		expect(both.map((step) => step.group)).toEqual(["rotation", "fontScale", "fontScale", "fontScale", "locale", "locale", "locale", "locale"]);
+		expect(onlyGroups(plan, parseGroups("rotation")).length).toBe(11);
+	});
+
+	test("a name that is not a group, a repeated one and an empty list are errors", () => {
+		expect(() => parseGroups("fontscale")).toThrow('"fontscale", which is not a step group');
+		expect(() => parseGroups("locale,locale")).toThrow("locale twice");
+		expect(() => parseGroups("")).toThrow("not a step group");
+		expect(() => onlyGroups(buildPlan(fullPlan), [])).toThrow("names no group");
+	});
+
+	test("a restricted plan is a partial run: the gate counts the rest of the plan as missing", () => {
+		expect(onlyGroups(buildPlan(fullPlan), parseGroups("fontScale")).length).toBeLessThan(fullPlanSize);
 	});
 });
 

@@ -87,6 +87,7 @@ export CI=1 EXPO_NO_TELEMETRY=1 SENTRY_DISABLE_AUTO_UPLOAD=true
 
 # ---- stages ------------------------------------------------------------------------------------------------------------------------------
 declare -A status      # "<mode>/<stage>" -> ok | FAILED | skipped
+abort=0
 declare -a table       # "<mode> <stage> <result> <seconds>"
 failed=0
 mode=
@@ -99,7 +100,9 @@ step=0
 die() { echo "error: $*" >&2; exit 1; }
 spec_of() { node -e 'const p=require(process.argv[1]);console.log((p.dependencies||{})[process.argv[2]]||"")' "$app/package.json" "$1"; }
 
-# run_stage <name> <needs, space separated or ""> <function>
+# run_stage <name> <needs, space separated or ""> <function>: records the result in status[] and always returns 0. It must not be called from
+# an `if`, `&&` or `||` condition: bash would then ignore `set -e` in the stage's subshell, and a failing command in the middle of a stage
+# would not fail it.
 run_stage() {
   local name=$1 needs=$2 fn=$3 need log started code
   step=$((step + 1))
@@ -125,18 +128,20 @@ run_stage() {
   echo "FAILED (exit $code, $((SECONDS - started)) s) -> $log"
   tail -n 25 "$log" | sed 's/^/   | /'
   if grep -q ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING "$log"; then
-    echo "   note: Node refuses TypeScript under node_modules; the library's Node-side entries (CLI, metro, transformer, expo, vite) must ship compiled"
+    echo "   note: Node refuses TypeScript under node_modules; a Node-side entry of the library is shipped as TypeScript"
   fi
   status[$mode/$name]=FAILED
   table+=("$mode $name FAILED $((SECONDS - started))")
   failed=1
-  return 1
+  return 0
 }
 
-# A stage every later stage stands on: its failure ends the mode whatever KEEP_GOING says.
-base_stage() { run_stage "$@" || return 1; }
-# A stage whose failure only skips what needs it (with KEEP_GOING=1), or ends the mode.
-soft_stage() { run_stage "$@" || { [ "${KEEP_GOING:-}" = 1 ] || return 1; }; return 0; }
+# stage <name> <needs> <function> [hard]: a failed stage ends the mode when it is hard (the later stages stand on it) or KEEP_GOING is not 1.
+stage() {
+  run_stage "$1" "$2" "$3"
+  if [ "${status[$mode/$1]}" = FAILED ] && { [ "${4:-}" = hard ] || [ "${KEEP_GOING:-}" != 1 ]; }; then abort=1; fi
+  return 0
+}
 
 st_scratch() {
   case "$mode_dir/" in "$repo"/*) die "the scratch directory $mode_dir is inside the repository" ;; esac
@@ -324,34 +329,22 @@ run_mode() {
   echo "######## $mode ########"
   git_url=${GIT_URL:-git+file://$repo}
   git_ref=${GIT_REF:-$(git -C "$repo" rev-parse HEAD)}
-  local abort=0
-  base_stage scratch "" st_scratch || abort=1
+  abort=0
+  stage scratch "" st_scratch hard
   if [ $abort = 0 ]; then
-    if [ "$mode" = tarball ]; then base_stage source "scratch" st_source_tarball || abort=1; else base_stage source "scratch" st_source_git || abort=1; fi
+    if [ "$mode" = tarball ]; then stage source scratch st_source_tarball hard; else stage source scratch st_source_git hard; fi
   fi
-  [ $abort = 0 ] && { base_stage svelte "source" st_svelte || abort=1; }
-  [ $abort = 0 ] && { base_stage template "svelte" st_template || abort=1; }
-  [ $abort = 0 ] && { base_stage install "template" st_install || abort=1; }
-  [ $abort = 0 ] && { base_stage patches "install" st_patches || abort=1; }
-  if [ $abort = 0 ] && [ -n "${AFTER_INSTALL:-}" ]; then base_stage hook "patches" st_hook || abort=1; fi
-  if [ $abort = 0 ]; then
-    soft_stage doctor "patches" st_doctor || abort=1
-  fi
-  if [ $abort = 0 ]; then
-    soft_stage sync "patches" st_sync || abort=1
-  fi
-  if [ $abort = 0 ]; then
-    soft_stage bundle "patches" st_bundle || abort=1
-  fi
-  if [ $abort = 0 ] && [ "${SKIP_BUILD:-}" != 1 ]; then
-    soft_stage prebuild "patches" st_prebuild || abort=1
-  fi
-  if [ $abort = 0 ] && [ "${SKIP_BUILD:-}" != 1 ]; then
-    soft_stage gradle "prebuild" st_gradle || abort=1
-  fi
-  if [ $abort = 0 ] && [ "${SKIP_BUILD:-}" != 1 ]; then
-    soft_stage apk "gradle" st_apk || abort=1
-  fi
+  if [ $abort = 0 ]; then stage svelte source st_svelte hard; fi
+  if [ $abort = 0 ]; then stage template svelte st_template hard; fi
+  if [ $abort = 0 ]; then stage install template st_install hard; fi
+  if [ $abort = 0 ]; then stage patches install st_patches hard; fi
+  if [ $abort = 0 ] && [ -n "${AFTER_INSTALL:-}" ]; then stage hook patches st_hook hard; fi
+  if [ $abort = 0 ]; then stage doctor patches st_doctor; fi
+  if [ $abort = 0 ]; then stage sync patches st_sync; fi
+  if [ $abort = 0 ]; then stage bundle patches st_bundle; fi
+  if [ $abort = 0 ] && [ "${SKIP_BUILD:-}" != 1 ]; then stage prebuild patches st_prebuild; fi
+  if [ $abort = 0 ] && [ "${SKIP_BUILD:-}" != 1 ]; then stage gradle prebuild st_gradle; fi
+  if [ $abort = 0 ] && [ "${SKIP_BUILD:-}" != 1 ]; then stage apk gradle st_apk; fi
   return 0
 }
 

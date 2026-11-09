@@ -31,7 +31,7 @@ const usage = `usage: native-qa <command> [flags]
   parity --device <serial> [--apk <path> | --no-install] [--update | --missing] [--quick] [--filter <screen>] [--chunk <n> | --limit <n>] [--resume] [--fresh]
   a11y   --device <serial> [--apk <path> | --no-install] [--quick] [--filter <screen>] [--chunk <n> | --limit <n>] [--resume] [--fresh]
          (--chunk <n>: the run as commands of --limit n cases, each on a fresh emulator (--fresh) continuing the run file (--resume); --limit ends with status 3 when cases are left)
-  resilience --device <serial> [--apk <path> | --no-install] [--rotations <n>] [--cycles <n>] [--rounds <n>]
+  resilience --device <serial> [--apk <path> | --no-install] [--rotations <n>] [--cycles <n>] [--rounds <n>] [--font-cycles <n>] [--only <groups>]
   resilience --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--team <id>] [--rebuild] [--build-only] [--rotations <n>] [--cycles <n>] [--rounds <n>] [--timeout <s>] [--assume-system-kill]
   smoke  --device <serial> [--apk <path> | --no-install] [--timeout <s>]      (the smoke app: build --variant smoke first)
   smoke  --platform ios --device <devicectl id> --mac <user@host> [--udid <hardware UDID>] [--app <.app on the Mac> | --no-install] [--timeout <s>]

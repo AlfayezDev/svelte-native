@@ -56,9 +56,12 @@ export type PlanOptions = {
 	rotationCycles: number;
 	backgroundCycles: number;
 	lowMemoryRounds: number;
+	/** How many times the text sizes (2.0, 0.85, 1.0) run one after the other; a change of the text size recreates the Activity, so this is how often the recreation is exercised. One in the full plan. */
+	fontScaleCycles?: number;
 };
 
-export const fullPlan: PlanOptions = { rotationCycles, backgroundCycles, lowMemoryRounds };
+export const fontScaleCycles = 1;
+export const fullPlan: PlanOptions = { rotationCycles, backgroundCycles, lowMemoryRounds, fontScaleCycles };
 
 /** The steps of a plan. The full plan is what the gate expects; a smaller one is for working on the loop itself. */
 export function buildPlan(options: PlanOptions): PlannedStep[] {
@@ -86,12 +89,19 @@ export function buildPlan(options: PlanOptions): PlannedStep[] {
 			},
 		);
 	}
-	for (const [name, scale] of [
-		["largest text (2.0)", 2],
-		["small text (0.85)", 0.85],
-		["default text (1.0)", 1],
-	] as const)
-		steps.push({ group: "fontScale", name, action: { kind: "fontScale", scale }, check: both });
+	const textCycles = options.fontScaleCycles ?? fontScaleCycles;
+	for (let cycle = 1; cycle <= textCycles; cycle++)
+		for (const [name, scale] of [
+			["largest text (2.0)", 2],
+			["small text (0.85)", 0.85],
+			["default text (1.0)", 1],
+		] as const)
+			steps.push({
+				group: "fontScale",
+				name: textCycles === 1 ? name : `${name} ${cycle}/${textCycles}`,
+				action: { kind: "fontScale", scale },
+				check: both,
+			});
 	steps.push(
 		{
 			group: "locale",
@@ -161,6 +171,33 @@ export function buildPlan(options: PlanOptions): PlannedStep[] {
 }
 
 export const fullPlanSize = buildPlan(fullPlan).length;
+
+export const stepGroups: readonly StepGroup[] = ["rotation", "fontScale", "locale", "background", "lowMemory"];
+
+/**
+ * The groups of `--only fontScale,locale`: a comma list of `stepGroups`, each at most once. A run restricted to some groups is a way to
+ * repeat one group of the plan while working on it; it leaves the rest of the plan counted as missing, so it cannot pass a gate.
+ */
+export function parseGroups(text: string): StepGroup[] {
+	const groups: StepGroup[] = [];
+	for (const name of text.split(",").map((part) => part.trim())) {
+		const group = stepGroups.find((candidate) => candidate === name);
+		if (group === undefined) throw new Error(`--only names ${JSON.stringify(name)}, which is not a step group (${stepGroups.join(", ")})`);
+		if (groups.includes(group)) throw new Error(`--only names ${group} twice`);
+		groups.push(group);
+	}
+	return groups;
+}
+
+/**
+ * The steps of the named groups, in plan order. The plan's first step opens the loop screen, which every other group starts from, so it stays
+ * even when the rotation group is not named (it is the same step; a name-less selection is an error, not the whole plan).
+ */
+export function onlyGroups(plan: PlannedStep[], groups: readonly StepGroup[]): PlannedStep[] {
+	if (groups.length === 0) throw new Error("--only names no group");
+	const [opening] = plan;
+	return plan.filter((step) => groups.includes(step.group) || step === opening);
+}
 
 /** `pidof`, then the filtered log of the step, separated by a marker line, as one adb call returns them. */
 export const stepProbeMarker = "--native-qa-log--";

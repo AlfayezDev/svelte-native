@@ -10,4 +10,9 @@ export const nativeFeatures: Feature[] = [
   { group: "Native views", route: "/native-views/video", title: "Video (react-native-video)", summary: "Play, pause and seek a bundled clip" },
   { group: "Native views", route: "/native-views/lottie", title: "Lottie", summary: "Play an animation from a JSON file" },
   { group: "Native views", route: "/native-views/pdf", title: "PDF (react-native-pdf)", summary: "Show a document and turn its pages" },
+  { group: "Native views", route: "/native-views/svg", title: "SVG (react-native-svg)", summary: "Shapes, gradients, text, an animated circle" },
+  { group: "Native views", route: "/native-views/rive", title: "Rive", summary: "Play a Rive file from the network" },
+  { group: "Native views", route: "/native-views/shadow", title: "Shadow (fast-shadow)", summary: "The same soft shadow on both platforms" },
+  { group: "Native views", route: "/native-views/animateable-text", title: "Animateable text", summary: "A number that counts on the UI thread" },
+  { group: "Native views", route: "/native-views/view-shot", title: "View capture (view-shot)", summary: "Turn a view into a picture" },
 ];

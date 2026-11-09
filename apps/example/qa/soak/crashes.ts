@@ -264,6 +264,19 @@ export function chunkPlan(
 }
 
 /**
+ * The steps of a chunk plan that a resumed file has not covered yet: a step whose cold starts and suites the file already holds would only
+ * restart the emulator (`--fresh`) and find nothing to do (on 9 Nov 2026 ten of them cost about 15 minutes after a volume resumed at 1,000
+ * starts). `done` is what the newest crashes file of the device holds; null (no file, no `--resume`) keeps the whole plan.
+ */
+export function pendingSteps(
+	plan: readonly { starts: number; suites: number }[],
+	done: { starts: number; suites: number } | null,
+): { starts: number; suites: number }[] {
+	if (done === null) return [...plan];
+	return plan.filter((step) => step.starts > done.starts || step.suites > done.suites);
+}
+
+/**
  * `--chunk <n>`: the same run as several commands, each holding the emulator lock for at most `n` cold starts (or 10
  * suites) and releasing it in between, `--gap` seconds apart (default 20). The emulator's graphics stack leaks host
  * memory with every app launch, so on the shared emulator every chunk restarts it once it holds the lock (`--fresh`,
@@ -280,8 +293,14 @@ async function runInChunks(values: CrashFlags, chunk: number): Promise<void> {
 	const startCount = integerFlag(values.starts, "starts", 1000);
 	const suiteCount = integerFlag(values.suites, "suites", 100);
 	const gapSeconds = integerFlag(values.gap, "gap", 20);
-	const plan = chunkPlan(startCount, suiteCount, chunk);
-	const fresh = emulatorScript(String(values.device ?? "")) !== null;
+	const device = String(values.device ?? "");
+	const resumePath = values.resume === true ? (await latestRunFiles()).crashes.get(slug(device)) : undefined;
+	const resumed = resumePath ? await readJson<CrashesFile>(resumePath) : null;
+	const full = chunkPlan(startCount, suiteCount, chunk);
+	const plan = pendingSteps(full, resumed ? { starts: resumed.coldStarts.length, suites: resumed.suites.length } : null);
+	if (resumed && plan.length < full.length)
+		console.log(`resuming: ${resumed.coldStarts.length} cold starts and ${resumed.suites.length} suites already measured, ${full.length - plan.length} of ${full.length} chunks skipped`);
+	const fresh = emulatorScript(device) !== null;
 	for (const [index, step] of plan.entries()) {
 		if (index > 0) await sleep(gapSeconds * 1000);
 		console.log(

@@ -3,6 +3,7 @@ import { labRunFrom } from "../lib/lab-run.ts";
 import {
 	childArgs,
 	chunkPlan,
+	pendingSteps,
 	classifyStart,
 	classifySuite,
 	crashesDefinition,
@@ -216,6 +217,21 @@ describe("chunkPlan", () => {
 		expect(chunkPlan(0, 3, 300)).toEqual([{ starts: 0, suites: 3 }]);
 		expect(chunkPlan(3, 0, 300)).toEqual([{ starts: 3, suites: 0 }]);
 		expect(chunkPlan(0, 0, 300)).toEqual([]);
+	});
+});
+
+describe("pendingSteps", () => {
+	const plan = chunkPlan(1000, 100, 100);
+	test("a resumed file skips the chunks it already covers, so none of them restarts the emulator for nothing", () => {
+		const left = pendingSteps(plan, { starts: 1000, suites: 10 });
+		expect(left[0]).toEqual({ starts: 1000, suites: 20 });
+		expect(left).toHaveLength(9);
+		// a chunk cut short in the middle runs again (its counts are not reached), the ones before it do not
+		expect(pendingSteps(plan, { starts: 225, suites: 0 })[0]).toEqual({ starts: 300, suites: 0 });
+		expect(pendingSteps(plan, { starts: 1000, suites: 100 })).toEqual([]);
+	});
+	test("without a file every chunk runs", () => {
+		expect(pendingSteps(plan, null)).toEqual(plan);
 	});
 });
 

@@ -23,7 +23,7 @@ export function findKitRoot(): string | null {
 
 /** What a feature that needs `@sveltejs/kit` says when the app has not installed it. `what` is the feature, as the subject of the sentence. */
 export function kitMissingMessage(what: string): string {
-  return `${what} needs \`@sveltejs/kit\`, which is not installed (an optional peer dependency of @example/svelte-native: only remote functions and the web target use it). Install the version the package was written against: \`pnpm add @sveltejs/kit@3.0.0-next.27\`, and copy its patch (README, "Apply the patches").`;
+  return `${what} needs \`@sveltejs/kit\`, which is not installed (an optional peer dependency of @example/svelte-native: only remote functions and the web target use it). Install the version the package was written against: \`pnpm add @sveltejs/kit@3.1.1\`, and copy its patch (README, "Apply the patches").`;
 }
 
 /** The directory of the installed `@sveltejs/kit` package; throws, naming the package, when it is not installed. */

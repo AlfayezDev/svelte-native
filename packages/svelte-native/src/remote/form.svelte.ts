@@ -4,7 +4,7 @@
 /**
  * `form` for a native app: the client half of SvelteKit's remote `form` without a `<form>` element.
  *
- * Ported from `@sveltejs/kit/src/runtime/client/remote-functions/form.svelte.js` (3.0.0-next.27). What is the same: the state (`fields`,
+ * Ported from `@sveltejs/kit/src/runtime/client/remote-functions/form.svelte.js` (3.1.1; compared with 3.0.0-next.27 when the pin moved: the messages moved to SvelteKit's message modules, and `for(key)` instances are held from inside the effect). What is the same: the state (`fields`,
  * `result`, `pending`, `submitted`), validation (`preflight`, `validate`, the server's issues merged with the client's), the request
  * (`remote_request`, the binary form format and `.updates(...)` of SvelteKit's own files), `for(key)` instances, `enhance`. What differs, because
  * a native screen has no DOM:
@@ -534,12 +534,15 @@ export function form(id: string) {
     value: (key: string | number | boolean) => {
       const entry = instances.get(key) ?? { count: 0, instance: create_instance(key) };
       try {
-        $effect.pre(() => () => {
-          entry.count--;
-          void tick().then(() => { if (entry.count === 0) instances.delete(key); });
+        // SvelteKit 3.1: the instance is held from inside the effect, and a late sweep only frees the entry it was made for.
+        $effect.pre(() => {
+          entry.count += 1;
+          instances.set(key, entry);
+          return () => {
+            entry.count--;
+            void tick().then(() => { if (entry.count === 0 && instances.get(key) === entry) instances.delete(key); });
+          };
         });
-        entry.count += 1;
-        instances.set(key, entry);
       } catch {
         // not in an effect context
       }

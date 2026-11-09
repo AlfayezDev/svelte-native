@@ -32,7 +32,7 @@ const { smokeOnlyBundlePackages } = createRequire(import.meta.url)("../smoke-pac
  * are the product's, not measured module by module. The production variant is 1,674,787 bytes (29.8 %) under the QA app: the lab and the
  * libraries only it imports.
  */
-const baseline = { commit: "1bbbec6 (the example without the product's code)", bytes: 5_628_280 };
+const baseline = { commit: "SvelteKit 3.1.1 (its client runtime imports its message modules: +91,291 bytes, 1.6 %, over the 5,628,280 measured at 1bbbec6, the example without the product's code)", bytes: 5_719_571 };
 
 /**
  * The production variant's bundle without the lab, built with the same recipe. It may grow by 1 % before a test says so. Measured again at 727bded, which makes the library's

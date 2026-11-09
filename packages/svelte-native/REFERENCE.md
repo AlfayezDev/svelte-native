@@ -256,7 +256,7 @@ Every wrapped library is an optional peer dependency of the package: install the
 
 ## Remote functions
 
-The guide is [README](README.md#remote-functions); this is the map. SvelteKit's version is 3.0.0-next.27 (`peerDependencies`); every file named `kit/…` is `node_modules/@sveltejs/kit/src/…`.
+The guide is [README](README.md#remote-functions); this is the map. SvelteKit's version is 3.1.1 (`peerDependencies`); every file named `kit/…` is `node_modules/@sveltejs/kit/src/…`.
 
 ### From a `*.remote.ts` to a call
 
@@ -428,7 +428,7 @@ Types that were wider than the host or narrower than what it does (found by chec
 
 ## Experimental dependency
 
-Native compilation depends on Svelte's [unmerged custom-renderer PR](https://github.com/sveltejs/svelte/pull/18042), pinned to commit `216f258068d93170a927ad4d27ee6864b0b305c5` (5.56.7). The package and the example app, the web target included, both depend on that build, vendored as `vendor/svelte-5.56.7-216f258.tgz`. The package also owns a small pnpm patch to SvelteKit 3-next.27 so its route scanner accepts mobile siblings. Both pins must be reviewed when updating Svelte or SvelteKit.
+Native compilation depends on Svelte's [unmerged custom-renderer PR](https://github.com/sveltejs/svelte/pull/18042), pinned to commit `216f258068d93170a927ad4d27ee6864b0b305c5` (5.56.7). The package and the example app, the web target included, both depend on that build, vendored as `vendor/svelte-5.56.7-216f258.tgz`. The package also owns a small pnpm patch to SvelteKit 3.1.1 so its route scanner accepts mobile siblings. Both pins must be reviewed when updating Svelte or SvelteKit.
 
 The pinned compiler currently requires boundary failure snippets to be declared outside `<svelte:boundary>` and passed with `{failed}`. Svelte DOM transitions, React widgets and Svelte DOM libraries are not adapted; a further native view needs an entry in the host's view-name table (`viewNames` in `src/fabric/host.ts`) or a wrapper in `@example/svelte-native/foreign`. Android and iOS run on physical phones (Samsung SM-A165F, iPhone SE 3rd generation) and, for Android, on an emulator; tablets and foldables have not been exercised.
 

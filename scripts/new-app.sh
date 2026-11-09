@@ -9,7 +9,7 @@
 #
 #   1. checks node, pnpm and git, and that the private repository can be read (over SSH)
 #   2. `sv create <dir>` (minimal template, TypeScript, no add-ons, pnpm), which installs SvelteKit and the registry's Svelte
-#   3. adds the native layer: package.json (the custom-renderer Svelte from pkg.pr.new, SvelteKit 3.0.0-next.27 exactly, the library as a git
+#   3. adds the native layer: package.json (the custom-renderer Svelte from pkg.pr.new, SvelteKit 3.1.1 exactly, the library as a git
 #      dependency over SSH, its peers, `main`, the Reanimated flag, the scripts `native`, `android`, `ios`), vite.config.ts (svelteNative()),
 #      pnpm's overrides, metro.config.cjs, app.json, the routes under src/routes/**/*mobile.svelte and .gitignore entries; installs
 #   4. copies the library's patch files into the app, declares them in pnpm-workspace.yaml and installs again
@@ -272,8 +272,6 @@ app.dependencies = sorted(app.dependencies);
 app.devDependencies = sorted(app.devDependencies);
 // `dev`, `build` and `preview` stay the web's (sv's); the native side gets scripts of its own.
 app.scripts = { ...app.scripts, native: "svelte-native dev", android: "svelte-native android", ios: "svelte-native ios" };
-// sv asks for `^7.2.0`, which is 7.3 now; the library's own web app pins 7.2.0, and its types for the plugin's options are written against that one.
-app.devDependencies["@sveltejs/vite-plugin-svelte"] = "7.2.0";
 fs.writeFileSync(path.join(dir, "package.json"), `${JSON.stringify(app, null, "\t")}\n`);
 fs.writeFileSync(path.join(dir, "vite.config.ts"), `import adapter from '@sveltejs/adapter-auto';
 import { svelteNative } from '@example/svelte-native/vite';

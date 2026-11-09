@@ -166,7 +166,7 @@ export function withSvelteNative(config: ConfigT, options: SvelteNativeMetroOpti
     const remote = remoteResolution(moduleName, context.originModulePath);
     if (remote !== undefined) return { type: "sourceFile", filePath: remote };
     // A `*.remote.ts` module is replaced by client stubs before its imports are read (the transformer), so `$app/server` is only reached by code that is not one.
-    if (moduleName.startsWith("$env/") && moduleName.includes("private") || moduleName === "$app/server" || moduleName === "@rasheed/ingest") {
+    if (moduleName.startsWith("$env/") && moduleName.includes("private") || moduleName === "$app/server") {
       throw new Error(`Server-only import in native bundle: ${moduleName}`);
     }
     if (moduleName === "svelte" || moduleName.startsWith("svelte/")) {

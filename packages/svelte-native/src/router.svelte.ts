@@ -596,7 +596,7 @@ export function openLaunchURL(router: Router, accept?: (url: string) => boolean)
  * screen below. `options.active` says whether the router currently owns the back key and links; a tab pane built by hand
  * passes its selection (default: always). The navigators below the root get their routers where their screens render.
  */
-export function createRouter(tree: StackNode, initial = "/auth/login", options: RouterScopeOptions = {}): Router {
+export function createRouter(tree: StackNode, initial = "/", options: RouterScopeOptions = {}): Router {
   if (!tree || typeof tree !== "object" || tree.kind !== "stack" || !Array.isArray(tree.routes)) {
     throw new Error(`createRouter takes the route tree, a root stack node ({ kind: "stack", id, path, routes }) such as the \`tree\` .svelte-native/routes.<variant>.ts exports, not ${Array.isArray(tree) ? "an array of routes (the form before the route tree)" : typeof tree}`);
   }

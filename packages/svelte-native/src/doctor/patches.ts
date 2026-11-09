@@ -1,10 +1,11 @@
 import { readdirSync } from "node:fs";
 import { resolve } from "node:path";
+import { packageRoot } from "../package-root.ts";
 import type { Reader } from "./resolve.ts";
 import { expoModulesCoreProblems, kitProblems, lottieProblems, mapsProblems, pdfProblems, reanimatedProblems, rnghProblems, videoProblems, workletsProblems } from "./shapes.ts";
 
 /** The directory of the library's patch files, in the repository and in an app's `node_modules` alike. */
-export const patchesDirectory = resolve(import.meta.dirname, "../../patches");
+export const patchesDirectory = resolve(packageRoot, "patches");
 
 export type PatchSpec = {
   /** The patched package's name. */

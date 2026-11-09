@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
+import { packageRoot } from "../package-root.ts";
 import { runChecks, type Check, type Context, type Status } from "./checks.ts";
 
 export type { Check, Context, Status } from "./checks.ts";
@@ -70,7 +71,7 @@ export function runDoctor(root: string, args: readonly string[], out: Output = p
   const appRoot = resolve(root);
   const checks = runChecks({
     appRoot,
-    packageRoot: resolve(import.meta.dirname, "../.."),
+    packageRoot,
     node: nodeVersion(),
     pnpm: () => pnpmVersion(appRoot),
     ...context,

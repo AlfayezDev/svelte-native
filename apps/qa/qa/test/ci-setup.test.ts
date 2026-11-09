@@ -12,7 +12,9 @@ const token = "ghr-TOKEN-must-not-be-printed-123";
 const setup = (args: string[], env: Record<string, string> = {}) =>
 	spawnSync("bash", [script, ...args], {
 		encoding: "utf8",
-		env: { ...process.env, STATE_DIR: join(root, "state"), OPT_DIR: join(root, "opt"), ANDROID_HOME: join(root, "sdk"), RUNNER_URL: "https://github.com/o/r", RUNNER_TOKEN: token, ...env },
+		// Without the RUNNER_* variables of the environment: a GitHub Actions runner sets RUNNER_NAME (and others) for its own jobs, which the
+		// script reads as its own settings.
+		env: { ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("RUNNER_"))), STATE_DIR: join(root, "state"), OPT_DIR: join(root, "opt"), ANDROID_HOME: join(root, "sdk"), RUNNER_URL: "https://github.com/o/r", RUNNER_TOKEN: token, ...env },
 	});
 
 describe("setup-runner.sh", () => {

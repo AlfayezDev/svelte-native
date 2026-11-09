@@ -16,7 +16,7 @@ on:
 permissions:
   contents: read
 
-# A newer push replaces the run of an older one on the same branch or pull request; main always finishes.
+# A newer push replaces the run of an older one on the same branch or pull request; a run on main is never cancelled once it has started.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}

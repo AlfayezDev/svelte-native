@@ -50,7 +50,7 @@ The home screen groups these under Basics, Layout and style, Lists and input, Na
 
 ## Native views, motion and touch, platform
 
-The features of `src/lib/features/native.ts`: the library's wrappers of other native libraries, its animation and gesture API, and two platform features. Each is one route and one short file. The native views are optional peer dependencies of the library; this app installs them (see `package.json`), so a change to that list needs a native build.
+The features of `src/lib/features/native.ts`: the library's wrappers of other native libraries (and `defineExpoView`, for an Expo library it has none for), its animation and gesture API, and two platform features. Each is one route and one short file. The native views are optional peer dependencies of the library; this app installs them (see `package.json`), so a change to that list needs a native build.
 
 | Feature | Route | What it shows |
 | ------- | ----- | ------------- |
@@ -69,6 +69,7 @@ The features of `src/lib/features/native.ts`: the library's wrappers of other na
 | Date and time picker | `/native-views/date-time-picker` | `DateTimePicker` on iOS, `openDatePicker` on Android |
 | WebView | `/native-views/web-view` | `WebView` with inline HTML: `onMessage`, `ref.injectJavaScript` |
 | Map (react-native-maps) | `/native-views/map` | `MapView`, `Marker`, `ref.animateToRegion` |
+| Any Expo view | `/native-views/any-expo-view` | `defineExpoView` for an Expo library with no wrapper: expo-camera's `ExpoCamera` (`onCameraReady`, `ref.takePicture`) and expo-image's `ExpoImage` (`onLoad`, `ref.reloadAsync`) |
 | Animation | `/animation` | `AnimatedView` with `withTiming`, `withSpring`, `withRepeat`, CSS keyframes, and state written into a shared value |
 | Gestures | `/gestures` | `Gesture.Pan`, `Pinch`, `Rotation`, `LongPress` and a swipeable row (`components/native/SwipeRow.svelte`) |
 | Remote functions | `/remote` | the host (`extra.svelteNative.remote`, `configureRemote`) and a query, a command and a form of `src/lib/remote/notes.remote.ts` |
@@ -81,6 +82,7 @@ Things a build or a device must provide:
 - **Remote functions.** The functions run on a SvelteKit server, which this app does not have. To try them, copy `src/lib/remote/notes.remote.ts` to the same path in a SvelteKit app (the function ids are a hash of the path from the app's root) with `experimental: { remoteFunctions: true }`, make the server load the module, and build this app with `SVELTE_NATIVE_REMOTE_ORIGIN=https://that-server` (an `http:` origin works for a development server; `adb reverse` reaches a PC). Without a host the screen says so and offers a field for an origin.
 - **Updates.** The app config has no `updates` key, so the screen reads "off in this build". To turn updates on, add `updates.url`, `runtimeVersion` and a channel (`UPDATES_CHANNEL`), as the library's README describes under "Updates".
 - **Rive** loads `vehicles.riv` from Rive's CDN: it needs a connection.
+- **Any Expo view** needs the camera permission: the `expo-camera` plugin in `app.config.ts` writes the prompt text (iOS) and `CAMERA` (Android), and the screen asks for it with a button. On an emulator or a simulator with no camera, expo-camera answers `takePicture` with a picture it draws itself. An app built before `expo-camera` was added does not have its native module, so the screen cannot load there: build the app again.
 
 ## Notes for a reader
 

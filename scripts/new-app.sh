@@ -7,7 +7,7 @@
 # packages/svelte-native/README.md ("Install in an app", "Apply the patches") tells an app to do, the way scripts/consumer-check.sh does it
 # in its git mode (the steps are in scripts/lib/app-setup.sh):
 #
-#   1. checks node, pnpm and git, and that the private repository can be read over SSH
+#   1. checks node, pnpm and git, and that the private repository can be read (over SSH)
 #   2. copies the template, named after <dir>, without its patchedDependencies block
 #   3. pnpm add of the library, as a git dependency over SSH, and of the custom-renderer Svelte, from pkg.pr.new
 #   4. copies the library's patch files into the app, declares them in pnpm-workspace.yaml and installs again
@@ -108,6 +108,7 @@ if [ -n "$want_pnpm" ] && ! version_ge "$have_pnpm" "$want_pnpm"; then
 Update it with \`npm install -g pnpm@${want_pnpm%%.*}\` (or \`pnpm self-update\`; https://pnpm.io/installation)."
 fi
 warnings=()
+ssh_note=
 if [ -n "$want_pnpm" ] && [ "${have_pnpm%%.*}" -gt "${want_pnpm%%.*}" ] 2>/dev/null; then
   warnings+=("pnpm $have_pnpm is newer than the pnpm ${want_pnpm%%.*} line this version was exercised on; if the install fails, try pnpm ${want_pnpm}.")
 fi
@@ -141,11 +142,29 @@ $dirty")
 else
   library_url=$repo_url
   plain_url=${repo_url#git+}
+  hosted_path=${plain_url#ssh://git@github.com/}
+  github_org=${hosted_path%%/*}
+  ls_remote() { GIT_TERMINAL_PROMPT=0 git ls-remote "$@"; }
   # One call answers three questions: can this machine read the private repository, what is its newest release, and does the ref exist.
-  refs=$(GIT_TERMINAL_PROMPT=0 git ls-remote --refs --sort=-v:refname "$plain_url" 2>"$work/ls-remote.err") || die "cannot read ${plain_url#ssh://} over SSH:
+  if refs=$(ls_remote --refs --sort=-v:refname "$plain_url" 2>"$work/ls-remote.err"); then
+    # pnpm resolves a github.com dependency over HTTPS whatever its specifier says (it records https://github.com/... in the lockfile, so that the
+    # lockfile works on every machine). A machine that reaches the private repository only over SSH has to tell git to use SSH for it. This is
+    # done for the processes of this script (git reads GIT_CONFIG_*), not in the person's git config; the later installs in the app need it, too.
+    if ! ls_remote --exit-code "https://github.com/$hosted_path" HEAD >/dev/null 2>&1; then
+      n=${GIT_CONFIG_COUNT:-0}
+      export "GIT_CONFIG_KEY_$n=url.git@github.com:$github_org/.insteadOf" "GIT_CONFIG_VALUE_$n=https://github.com/$github_org/" "GIT_CONFIG_COUNT=$((n + 1))"
+      ssh_note="git reaches github.com/$github_org over SSH only, and pnpm resolves GitHub dependencies over HTTPS. For this run git is told to use SSH for it
+(nothing in your git config is changed). Installs in the app later on (a fresh \`pnpm install\`, \`pnpm add\`) need the same, once:
+  git config --global url.\"git@github.com:$github_org/\".insteadOf \"https://github.com/$github_org/\""
+    fi
+  elif refs=$(ls_remote --refs --sort=-v:refname "https://github.com/$hosted_path" 2>/dev/null); then
+    : # no SSH key, but git reads the repository over HTTPS (a credential helper): pnpm uses the same
+  else
+    die "cannot read ${plain_url#ssh://} over SSH:
 $(sed 's/^/  /' "$work/ls-remote.err")
 The repository is private: you need to be invited as a collaborator, and the SSH key you use must be on your GitHub account.
-\`ssh -T git@github.com\` should greet you by name, and \`git ls-remote $(printf '%s' "${plain_url#ssh://}" | sed 's|/|:|')\` is the check this script just made."
+\`ssh -T git@github.com\` should greet you by name, and \`git ls-remote git@github.com:$hosted_path\` is the check this script just made."
+  fi
   if [ -z "$ref" ]; then
     ref=$(git -C "$repo" describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
   fi
@@ -189,6 +208,7 @@ echo "  node $have_node, pnpm $have_pnpm, library $library_spec"
 if [ "${#warnings[@]}" -gt 0 ]; then
   for warning in "${warnings[@]}"; do printf 'warning: %s\n' "$warning" >&2; done
 fi
+if [ -n "$ssh_note" ]; then printf 'note: %s\n' "$ssh_note"; fi
 
 begin "creating the app from examples/minimal"
 mkdir -p "$dir"
@@ -240,6 +260,8 @@ The first run builds the native app, which takes several minutes: it needs the A
 and a device with USB debugging or an emulator, or Xcode and a simulator or a device on a Mac. This is a development build: Expo Go cannot load
 the library's native modules. After the first install, \`pnpm dev\` starts the dev server again without rebuilding, and a save reloads the app.
 
-Something wrong: \`pnpm exec svelte-native doctor\` in the app says what, and a bug is an issue on
+${ssh_note:+Note: $ssh_note
+
+}Something wrong: \`pnpm exec svelte-native doctor\` in the app says what, and a bug is an issue on
 https://github.com/AlfayezDev/svelte-native/issues (the template asks for what is needed). Reference: packages/svelte-native/README.md.
 EOF

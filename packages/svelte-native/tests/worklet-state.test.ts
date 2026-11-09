@@ -56,16 +56,16 @@ test("a worklet that reads $state in a runes component is refused too, with the 
   expect(state.error).not.toContain("<svelte:options runes />");
 });
 
-test("a gesture callback is a worklet without the directive (the Babel plugin marks the callbacks of Gesture.X().onY(...)), and it is checked too", () => {
+test("a gesture callback is workletized without the directive and may run on the JavaScript thread, so the build leaves it to the gestures' own check", () => {
   const src = `<svelte:options runes />
 <script lang="ts">
   import { Gesture } from "@rasheed/svelte-native/gestures";
   let n = $state(1);
-  const pan = Gesture.Pan().onUpdate((event) => { console.log(n, event.translationX); });
+  const pan = Gesture.Pan().runOnJS(true).onUpdate((event) => { console.log(n, event.translationX); });
 </script>
 <native-view gesture={pan} onpress={() => { n++; }}></native-view>
 `;
   const [gesture] = run([{ filename: "/work/apps/example/src/routes/drag/+mobile.svelte", src }]);
-  expect(gesture.closures).toBeUndefined();
-  expect(gesture.error).toContain("`n`");
+  expect(gesture.error).toBeUndefined();
+  expect(gesture.closures?.[0]).toContain("n");
 });

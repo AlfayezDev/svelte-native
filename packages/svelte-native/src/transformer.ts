@@ -4,7 +4,8 @@ import { compile, compileModule } from "svelte/compiler";
 import { transformSync } from "esbuild";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { isIdentifier, isObjectProperty, isStringLiteral, traverseFast, type Node } from "@babel/types";
+import { parse } from "@babel/parser";
+import { isBlockStatement, isCallExpression, isFunction, isIdentifier, isMemberExpression, traverseFast } from "@babel/types";
 import { lowerPrimitives } from "./lower.ts";
 import { sourceDirectory, sourceFile } from "./package-root.ts";
 import { assertCustomRenderer } from "./svelte-build.ts";
@@ -57,22 +58,23 @@ function requireCustomRenderer(): void {
 }
 
 /**
- * Fails the build when a worklet of a file Svelte compiled reads reactive state. A worklet runs on the UI runtime, where Svelte does not exist; state is read through
- * Svelte's runtime (`$.get(count)`), so the Worklets plugin gives such a worklet `$`, the namespace of `svelte/internal/client`, in its closure, and the UI runtime turns each
- * function of it into a remote function that throws when called ("Tried to synchronously call a Remote Function. Called "anonymous""): the screen throws when it mounts.
- * Outside runes mode a shared value is state too when the markup mutates it (`count.value = ...` in a handler), so the message for that mode names `<svelte:options runes />`.
- * The plugin writes a worklet's source into the module as `code` (`function name(){const{$,count}=this.__closure;...}`), which is what is read here.
+ * Fails the build when a function marked `"worklet"` in a file Svelte compiled reads reactive state. Such a function is written for the UI runtime (`animatedStyle`,
+ * `animatedProps`, `runOnUI`), where Svelte does not exist; state is read through Svelte's runtime (`$.get(count)`), so the Worklets plugin gives it `$`, the namespace of
+ * `svelte/internal/client`, in its closure, and the UI runtime turns each function of that into a remote function that throws when called ("Tried to synchronously call a Remote
+ * Function. Called "anonymous""): the screen throws when it mounts. Outside runes mode a shared value is state too when the markup mutates it (`count.value = ...` in a
+ * handler), so the message for that mode names `<svelte:options runes />`. The callbacks of a `Gesture.X().onY(...)` chain are workletized without the directive and may run on
+ * the JavaScript thread (`.runOnJS(true)`), where reading state is fine; the gestures' own check (`gestures/guards.ts`) judges those when they attach.
  */
-export function assertWorkletsReadNoState(filename: string, ast: object, runes: boolean): void {
+function assertWorkletsReadNoState(filename: string, code: string, runes: boolean): void {
+  if (!/["']worklet["']/.test(code)) return;
   const state = new Set<string>();
   let reached = false;
-  traverseFast(ast as Node, (node) => {
-    if (!isObjectProperty(node) || !isIdentifier(node.key, { name: "code" }) || !isStringLiteral(node.value)) return;
-    const source = node.value.value;
-    const captured = /^function [\w$]*\([^)]*\)\{const\{([^}]*)\}=this\.__closure;/.exec(source)?.[1].split(",");
-    if (!captured?.includes("$")) return;
-    reached = true;
-    for (const read of source.matchAll(/\$\.\w+\(([A-Za-z_$][\w$]*)/g)) state.add(read[1]);
+  traverseFast(parse(code, { sourceType: "module" }), (node) => {
+    if (!isFunction(node) || !isBlockStatement(node.body) || !node.body.directives.some((directive) => directive.value.value === "worklet")) return;
+    traverseFast(node.body, (inner) => {
+      if (isMemberExpression(inner) && isIdentifier(inner.object, { name: "$" })) reached = true;
+      if (isCallExpression(inner) && isMemberExpression(inner.callee) && isIdentifier(inner.callee.object, { name: "$" }) && isIdentifier(inner.arguments[0])) state.add(inner.arguments[0].name);
+    });
   });
   if (!reached) return;
   const names = [...state].map((name) => `\`${name}\``).join(", ");
@@ -119,9 +121,9 @@ export function transform(input: TransformInput) {
       if (result.js.map) maps.unshift(new TraceMap(result.js.map.toString()));
     }
   }
+  if (compiledBySvelte) assertWorkletsReadNoState(filename, code, runes);
   // Worklets reads this real filename when generating its source maps.
   const output = upstream.transform({ ...input, src: code });
-  if (compiledBySvelte && output.ast) assertWorkletsReadNoState(filename, output.ast, runes);
   if (maps.length && output.ast) traverseFast(output.ast, (node) => {
     if (!node.loc) return;
     for (const position of [node.loc.start, node.loc.end]) {

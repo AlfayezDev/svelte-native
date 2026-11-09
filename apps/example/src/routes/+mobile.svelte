@@ -19,8 +19,8 @@
   <SafeAreaView edges={["left", "right", "bottom"]} style={{ flex: 1 }}>
     <ScrollView contentContainerStyle={{ padding: 20, gap: 24 }}>
       <Text style={text.body}>
-        Svelte components that run as real Android and iOS views, with no WebView and no React. Each row below is one feature: open it to read
-        a few sentences about it and use a live example. The code of every screen is one short file in src/routes.
+        {"Svelte components that run as real Android and iOS views, with no WebView and no React. Each row below is one feature: open it to " +
+          "read a few sentences about it and use a live example. The code of every screen is one short file in src/routes."}
       </Text>
       {#each sections as section (section.group)}
         <View style={{ gap: 8 }}>

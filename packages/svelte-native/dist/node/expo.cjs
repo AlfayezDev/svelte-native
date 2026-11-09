@@ -22,6 +22,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // src/expo.ts
 var expo_exports = {};
 __export(expo_exports, {
+  androidFeatureFlagsFor: () => androidFeatureFlagsFor,
   applyAppDelegate: () => applyAppDelegate,
   applyFeatureFlags: () => applyFeatureFlags,
   applyHeadlessApplication: () => applyHeadlessApplication,
@@ -30,6 +31,7 @@ __export(expo_exports, {
   applyPodfileAutolinkingExclude: () => applyPodfileAutolinkingExclude,
   baselineProfile: () => baselineProfile,
   default: () => expo_default,
+  defaultAndroidFeatureFlags: () => defaultAndroidFeatureFlags,
   headlessDroppedTurboModules: () => headlessDroppedTurboModules,
   headlessExcludedPackages: () => headlessExcludedPackages,
   headlessPackageSource: () => headlessPackageSource,
@@ -455,6 +457,14 @@ function recyclingOverrides(option) {
   ].filter((name) => typeof name === "string");
   return names.length ? ["enableViewRecycling", ...names] : [];
 }
+var defaultAndroidFeatureFlags = { disableViewPreallocationAndroid: true, enablePreparedTextLayout: true };
+function androidFeatureFlagsFor(options) {
+  return {
+    ...defaultAndroidFeatureFlags,
+    ...Object.fromEntries(recyclingOverrides(options?.androidViewRecycling).map((name) => [name, true])),
+    ...options?.androidFeatureFlags
+  };
+}
 function applyFeatureFlags(contents, overrides) {
   const flags = Array.isArray(overrides) ? Object.fromEntries(overrides.map((name) => [name, true])) : overrides;
   const stripped = contents.replace(new RegExp(`\\n${escapeRegExp(flagsBegin)}[\\s\\S]*?${escapeRegExp(flagsEnd)}`), "");
@@ -827,8 +837,7 @@ var withSvelteNative = (config, options) => {
   });
   config = (0, import_config_plugins2.withMainApplication)(config, (config2) => {
     if (config2.modResults.language !== "kt") throw new Error("Svelte native requires Expo's Kotlin MainApplication");
-    const flags = { ...Object.fromEntries(recyclingOverrides(options?.androidViewRecycling).map((name) => [name, true])), ...options?.androidFeatureFlags };
-    config2.modResults.contents = applyHeadlessApplication(applyFeatureFlags(config2.modResults.contents, flags), options?.androidOnDemandViewManagers);
+    config2.modResults.contents = applyHeadlessApplication(applyFeatureFlags(config2.modResults.contents, androidFeatureFlagsFor(options)), options?.androidOnDemandViewManagers);
     return config2;
   });
   return (0, import_config_plugins2.withAppBuildGradle)(config, (config2) => {
@@ -856,6 +865,7 @@ function baselineProfile() {
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
+  androidFeatureFlagsFor,
   applyAppDelegate,
   applyFeatureFlags,
   applyHeadlessApplication,
@@ -863,6 +873,7 @@ function baselineProfile() {
   applyMainActivity,
   applyPodfileAutolinkingExclude,
   baselineProfile,
+  defaultAndroidFeatureFlags,
   headlessDroppedTurboModules,
   headlessExcludedPackages,
   headlessPackageSource,

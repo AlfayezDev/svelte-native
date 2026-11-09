@@ -16,7 +16,10 @@ export type SvelteNativeOptions = {
   androidViewRecycling?: boolean | ViewRecycling;
   /** Marks the Android app `<profileable android:shell="true">`, so Perfetto and simpleperf can sample its stacks on a release build. For QA builds. */
   androidProfileable?: boolean;
-  /** React Native Android feature flags to force (`ReactNativeFeatureFlags.dangerouslyForceOverride`), by method name. The engine spike switches view preallocation off with these. */
+  /**
+   * React Native Android feature flags to force (`ReactNativeFeatureFlags.dangerouslyForceOverride`), by method name, over the library's
+   * defaults ([defaultAndroidFeatureFlags]).
+   */
   androidFeatureFlags?: Record<string, boolean>;
   /**
    * Packages whose view managers React Native creates on first use instead of at host start: the package's class name
@@ -114,6 +117,23 @@ function recyclingOverrides(option: boolean | ViewRecycling | undefined): string
 }
 
 /** Rewrites the generated feature-flag block after `loadReactNative(this)`, which installs React Native's own stable overrides first. */
+/**
+ * The React Native flags the engine is built and measured with, which every app gets unless it overrides one: view preallocation off (the
+ * engine mounts its own views; React Native's preallocation creates views when shadow nodes are made, before the eager modules exist, so an
+ * `Image` on the first screen reached Fresco before `FrescoModule` initialised it and the app crashed: the showcase, 9 Nov 2026), and
+ * prepared text layouts (the engine draws React Native's `PreparedLayout` as is). Both were set only by the QA app's config before.
+ */
+export const defaultAndroidFeatureFlags: Readonly<Record<string, boolean>> = { disableViewPreallocationAndroid: true, enablePreparedTextLayout: true };
+
+/** The flags the plugin writes: the library's defaults, the view-recycling overrides, then the app's own `androidFeatureFlags`. */
+export function androidFeatureFlagsFor(options?: Pick<SvelteNativeOptions, "androidViewRecycling" | "androidFeatureFlags">): Record<string, boolean> {
+  return {
+    ...defaultAndroidFeatureFlags,
+    ...Object.fromEntries(recyclingOverrides(options?.androidViewRecycling).map((name) => [name, true])),
+    ...options?.androidFeatureFlags,
+  };
+}
+
 export function applyFeatureFlags(contents: string, overrides: string[] | Record<string, boolean>): string {
   const flags: Record<string, boolean> = Array.isArray(overrides) ? Object.fromEntries(overrides.map((name) => [name, true])) : overrides;
   const stripped = contents.replace(new RegExp(`\\n${escapeRegExp(flagsBegin)}[\\s\\S]*?${escapeRegExp(flagsEnd)}`), "");
@@ -540,8 +560,7 @@ const withSvelteNative: ConfigPlugin<SvelteNativeOptions | undefined> = (config,
   });
   config = withMainApplication(config, (config) => {
     if (config.modResults.language !== "kt") throw new Error("Svelte native requires Expo's Kotlin MainApplication");
-    const flags: Record<string, boolean> = { ...Object.fromEntries(recyclingOverrides(options?.androidViewRecycling).map((name) => [name, true])), ...options?.androidFeatureFlags };
-    config.modResults.contents = applyHeadlessApplication(applyFeatureFlags(config.modResults.contents, flags), options?.androidOnDemandViewManagers);
+    config.modResults.contents = applyHeadlessApplication(applyFeatureFlags(config.modResults.contents, androidFeatureFlagsFor(options)), options?.androidOnDemandViewManagers);
     return config;
   });
   return withAppBuildGradle(config, (config) => {

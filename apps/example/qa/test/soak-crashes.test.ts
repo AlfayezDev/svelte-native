@@ -250,6 +250,13 @@ describe("childArgs", () => {
 	test("a continuing chunk resumes the file the first one wrote", () => {
 		expect(childArgs(values, 600, 0, true).includes("--resume")).toBe(true);
 	});
+	test("a chunk on the shared emulator restarts it (--fresh), and a caller's own --fresh is not passed twice", () => {
+		const args = childArgs({ ...values, fresh: true }, 600, 0, true, true);
+		expect(args.filter((arg) => arg === "--fresh")).toEqual(["--fresh"]);
+		expect(args.slice(0, 7)).toEqual(["crashes", "--starts", "600", "--suites", "0", "--resume", "--fresh"]);
+		// a phone's chunks only continue the file
+		expect(childArgs({ ...values, fresh: true }, 600, 0, true, false).includes("--fresh")).toBe(false);
+	});
 	test("boolean flags come through as bare flags", () => {
 		expect(childArgs({ device: "x", "no-install": true }, 5, 0, false)).toEqual([
 			"crashes",

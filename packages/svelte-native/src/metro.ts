@@ -4,6 +4,7 @@ import { dirname, join, resolve, sep } from "node:path";
 import type { ConfigT } from "@expo/metro/metro-config";
 import { syncRoutes, watchRoutes } from "./build.ts";
 import { remoteResolution } from "./remote/transform.ts";
+import { assertCustomRenderer } from "./svelte-build.ts";
 import { labIncludedFor, routesTableFile, variantName } from "./variant.ts";
 
 const require = createRequire(import.meta.url);
@@ -91,6 +92,7 @@ module.exports = require("./_core.js")(${JSON.stringify(name)}, ${JSON.stringify
 export const isInPackage = (moduleName: string, name: string): boolean => moduleName === name || moduleName.startsWith(`${name}/`);
 
 export function withSvelteNative(config: ConfigT, options: SvelteNativeMetroOptions = {}): ConfigT {
+  assertCustomRenderer("withSvelteNative (@rasheed/svelte-native/metro)");
   const resolveRequest = config.resolver.resolveRequest;
   const stubbed = options.stubbedPackages ?? [];
   const variant = options.variant ?? variantName();

@@ -289,14 +289,20 @@ class MountingManager(private val reactContext: ReactApplicationContext, private
     A11y.clicks = { tag -> native.dispatchClick(tag) }
   }
 
-  /** Called from C++ on the JS thread. */
+  /** What C++ hands over for one Fabric transaction. */
+  private class Transaction(val surfaceId: Int, val ops: IntArray, val strings: Array<String>, val objects: Array<Any?>)
+
+  /** The transactions in the order Fabric pulled them, whichever thread pulled each (SPEC.md, "Transaction order"). */
+  private val transactions = TransactionOrder<Transaction>(
+    onMain = { Looper.myLooper() == Looper.getMainLooper() },
+    post = { handler.post(it) },
+    apply = { apply(it.surfaceId, it.ops, it.strings, it.objects) },
+  )
+
+  /** Called from C++ on the thread that committed: the JS thread, or the main thread for a commit the platform made (a size, a rotation). */
   @Suppress("unused")
   fun onTransaction(surfaceId: Int, ops: IntArray, strings: Array<String>, objects: Array<Any?>) {
-    if (Looper.myLooper() == Looper.getMainLooper()) {
-      apply(surfaceId, ops, strings, objects)
-    } else {
-      handler.post { apply(surfaceId, ops, strings, objects) }
-    }
+    transactions.submit(Transaction(surfaceId, ops, strings, objects))
   }
 
   /** Views deleted while a screen's exit still showed them come back to the pool after the exit. */

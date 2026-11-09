@@ -14,15 +14,33 @@
     "./foreign": "./src/foreign.ts",
     "./svg": "./src/svg.ts",
     "./polyfills": "./src/polyfills.ts",
-    "./metro": "./src/metro.ts",
-    "./transformer": "./src/transformer.ts",
-    "./lower": "./src/lower.ts",
-    "./vite": "./src/vite.ts",
+    "./metro": {
+      "types": "./src/metro.ts",
+      "default": "./dist/node/metro.cjs"
+    },
+    "./transformer": {
+      "types": "./src/transformer.ts",
+      "default": "./dist/node/transformer.cjs"
+    },
+    "./lower": {
+      "types": "./src/lower.ts",
+      "default": "./dist/node/lower.js"
+    },
+    "./vite": {
+      "types": "./src/vite.ts",
+      "default": "./dist/node/vite.js"
+    },
     "./router": "./src/router.svelte.ts",
-    "./routes": "./src/routes-table.ts",
+    "./routes": {
+      "types": "./src/routes-table.ts",
+      "default": "./dist/node/routes.js"
+    },
     "./animation": "./src/animation.ts",
     "./gestures": "./src/gestures/index.ts",
-    "./expo": "./src/expo.ts",
+    "./expo": {
+      "types": "./src/expo.ts",
+      "default": "./dist/node/expo.cjs"
+    },
     "./updates": "./src/updates/index.ts",
     "./native-modules": "./src/native-modules.ts",
     "./remote": "./src/remote/index.ts",
@@ -31,10 +49,11 @@
     "./package.json": "./package.json"
   },
   "bin": {
-    "svelte-native": "./src/cli.ts"
+    "svelte-native": "./dist/node/cli.js"
   },
   "files": [
     "src",
+    "dist/node",
     "native",
     "patches",
     "expo-module.config.json",
@@ -52,7 +71,8 @@
   "scripts": {
     "typecheck": "svelte-check --tsconfig ./tsconfig.json",
     "test": "bun test --timeout 60000",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "build": "node scripts/build-node.ts"
   },
   "dependencies": {
     "@babel/parser": "7.29.8",

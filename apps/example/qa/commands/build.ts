@@ -57,7 +57,7 @@ async function modifiedTime(path: string): Promise<number | null> {
 	}
 }
 
-/** Everything that changes what `expo prebuild` generates: the Expo config and what it reads (the smoke modules and packages, the Firebase files), the packages, the Svelte native plugin, the library's module list and the app's local modules. */
+/** Everything that changes what `expo prebuild` generates: the Expo config and what it reads (the smoke modules and packages, the Firebase files), the packages, the Svelte native plugin (its built file: the one `expo prebuild` loads), the library's module list and the app's local modules. */
 export async function prebuildInputs(): Promise<string[]> {
 	const inputs = [
 		join(platformDir, "app.config.ts"),
@@ -66,7 +66,7 @@ export async function prebuildInputs(): Promise<string[]> {
 		join(platformDir, "qa/smoke-modules.json"),
 		join(platformDir, "qa/smoke-packages.cjs"),
 		join(platformDir, "qa/firebase-fake/google-services.json"),
-		join(svelteNativeDir, "src/expo.ts"),
+		join(svelteNativeDir, "dist/node/expo.cjs"),
 		join(svelteNativeDir, "expo-module.config.json"),
 	];
 	for (const module of await readdir(join(platformDir, "modules")))

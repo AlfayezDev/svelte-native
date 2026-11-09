@@ -6,6 +6,7 @@ Svelte Native: the library and its native modules (`native/`) in `packages/svelt
 
 - `pnpm install --frozen-lockfile`, then `pnpm lint`, `pnpm typecheck`, `pnpm test` from the root.
 - Package only: `cd packages/svelte-native && bun test --timeout 60000`, `pnpm lint`, `pnpm typecheck`.
+- After changing Node-side code (what `scripts/build-node.ts` bundles: `cli.ts`, `build.ts`, `metro.ts`, `transformer.ts`, `expo.ts`, `vite.ts`, `lower.ts`, `doctor/`, `remote/{transform,plugin,host}.ts`, `svelte-build.ts`, `package-root.ts`, `route-tree.ts`, `variant.ts`): `pnpm --dir packages/svelte-native build` and commit `packages/svelte-native/dist/node/`. Node cannot load the package's TypeScript from an app's `node_modules`, so those entries ship as JavaScript; `tests/dist.test.ts` fails on a stale `dist/node/`.
 - Harness only: `cd apps/example && bun test --timeout 120000 qa`, `pnpm native-qa:typecheck`, `pnpm lint`.
 - Heavy runs (full test suites, builds) on a shared machine: cap them, for example `systemd-run --user --scope -p CPUQuota=600% nice -n 19 ionice -c3 <command>`.
 

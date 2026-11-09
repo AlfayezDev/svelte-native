@@ -1,0 +1,5 @@
+{
+  "name": "installed-app",
+  "private": true,
+  "type": "module"
+}

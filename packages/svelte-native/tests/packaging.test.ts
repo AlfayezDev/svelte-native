@@ -9,12 +9,14 @@ const root = resolve(import.meta.dirname, "..");
 const read = (path: string) => readFileSync(join(root, path), "utf8");
 const manifest = JSON.parse(read("package.json")) as {
   files: string[];
-  exports: Record<string, string>;
+  exports: Record<string, string | Record<string, string>>;
   bin: Record<string, string>;
   dependencies: Record<string, string>;
   peerDependencies: Record<string, string>;
   optionalDependencies?: Record<string, string>;
 };
+/** Every file the exports map and `bin` point at (an entry is a path, or a path per condition: `types` the sources, `default` the built JavaScript). */
+const entryFiles = [...Object.values(manifest.exports).flatMap((target) => (typeof target === "string" ? [target] : Object.values(target))), ...Object.values(manifest.bin)];
 const config = JSON.parse(read("expo-module.config.json")) as {
   platforms: string[];
   android: { projects: { name: string; path: string; modules: string[] }[] };
@@ -40,7 +42,7 @@ describe("the manifest holds nothing that only resolves inside this repository",
 
   test("the entries are in the package, and package.json is an entry (tools that resolve a package's directory ask for it)", () => {
     expect(manifest.exports["./package.json"]).toBe("./package.json");
-    for (const target of [...Object.values(manifest.exports), ...Object.values(manifest.bin)]) expect([target, existsSync(join(root, target))]).toEqual([target, true]);
+    for (const target of entryFiles) expect([target, existsSync(join(root, target))]).toEqual([target, true]);
   });
 
   test("the license is the repository's", () => {
@@ -127,7 +129,7 @@ describe("what `files` packs", () => {
       expect([path, listed.includes(path)]).toEqual([path, true]);
     expect(listed.some((path) => path.startsWith("patches/"))).toBe(true);
     for (const project of config.android.projects) expect(listed.some((path) => path.startsWith(`${project.path}/src/main/`))).toBe(true);
-    for (const target of [...Object.values(manifest.exports), ...Object.values(manifest.bin)]) expect([target, listed.includes(relative(".", target))]).toEqual([target, true]);
+    for (const target of entryFiles) expect([target, listed.includes(relative(".", target))]).toEqual([target, true]);
   });
 
   test("it holds no test, fixture, plan, specification or build output", () => {

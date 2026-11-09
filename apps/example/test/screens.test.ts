@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { build, transform, type Plugin } from "esbuild";
 import { createRequire } from "node:module";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -84,8 +84,19 @@ beforeAll(async () => {
   const { reanimatedStubs } = (await import(join(libraryTests, "reanimated-stubs.ts"))) as { reanimatedStubs: Record<string, string> };
   Object.assign(stubs, reanimatedStubs);
   directory = await mkdtemp(join(process.env.TMPDIR ?? tmpdir(), "example-screens-"));
-  // A project whose `src` is the app's, so that the route table `svelte-native sync` writes requires the app's real pages.
-  await symlink(join(app, "src"), join(directory, "src"));
+  // A project whose `src` holds the app's real layout, home and lib, and the route folders of the core tour only: the route table
+  // `svelte-native sync` writes then requires exactly the pages this test mounts. The native-view, animation, gesture and remote screens
+  // need their libraries' native views, which the fake binding does not have; the bundle test (`bundle.test.ts`) compiles them.
+  await mkdir(join(directory, "src/routes"), { recursive: true });
+  // The app's `imports` (`#lib/*`), so the copied pages resolve what they import as they do in the app.
+  const manifest = JSON.parse(await readFile(join(app, "package.json"), "utf8")) as { imports?: unknown };
+  await writeFile(join(directory, "package.json"), JSON.stringify({ name: "example-screens", private: true, type: "module", imports: manifest.imports }));
+  await symlink(join(app, "src/lib"), join(directory, "src/lib"));
+  await symlink(join(app, "assets"), join(directory, "assets"));
+  for (const file of ["+layout.mobile.svelte", "+mobile.svelte"]) await symlink(join(app, "src/routes", file), join(directory, "src/routes", file));
+  const coreFolders = new Set(coreFeatures.flatMap((feature) => [feature.route, ...(feature.also ?? [])]).map((route) => route.split("/")[1]).filter((folder): folder is string => Boolean(folder)));
+  // Copied, not linked: route discovery does not follow a linked folder. Their relative imports reach the linked `src/lib`.
+  for (const folder of coreFolders) await cp(join(app, "src/routes", folder), join(directory, "src/routes", folder), { recursive: true });
   const { syncRoutes } = (await import(join(library, "src/build.ts"))) as { syncRoutes(root: string, options: { variant: string }): void };
   syncRoutes(directory, { variant: "test" });
   await mkdir(join(directory, "fixture"));
@@ -101,7 +112,7 @@ beforeAll(async () => {
       contents: `import Fixture from "./Fixture.svelte"; import { startSurface } from ${JSON.stringify(join(library, "src/fabric/host.ts"))}; import { tick } from "svelte"; export { Fixture, startSurface, tick };`,
       resolveDir: join(directory, "fixture"),
     },
-    bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], write: false, nodePaths: [join(app, "../../node_modules")],
+    bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], write: false, nodePaths: [join(app, "node_modules"), join(app, "../../node_modules")],
     loader: { ".png": "dataurl" },
     plugins: [svelteCompiler, {
       name: "fabric-fixture",

@@ -12,7 +12,7 @@ const run = (cases: { filename: string; src?: string; root: string }[]) => {
 };
 
 test("a remote module's imports are the runtime's alone: $app/server and the server code never reach Metro", () => {
-  const root = "/work/apps/example";
+  const root = "/work/apps/qa";
   const server = `import { query, command } from "$app/server";\nimport { db } from "$lib/server/db";\nimport * as v from "valibot";\nexport const list = query(async () => db.all());\nexport const add = command(v.string(), async (name) => db.add(name));\n`;
   const [remote, ordinary] = run([
     { filename: `${root}/src/lib/data.remote.ts`, src: server, root },
@@ -27,7 +27,7 @@ test("a remote module's imports are the runtime's alone: $app/server and the ser
 
 test("SvelteKit's client files import their globals from the package, and files outside the list are untouched", () => {
   const kit = kitRoot();
-  const root = "/work/apps/example";
+  const root = "/work/apps/qa";
   const [shared, iterator, formUtils, transport] = run([
     { filename: join(kit, "src/runtime/client/remote-functions/shared.svelte.js"), root },
     { filename: join(kit, "src/runtime/client/remote-functions/query-live/iterator.js"), root },

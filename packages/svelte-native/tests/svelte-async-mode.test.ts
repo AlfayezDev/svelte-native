@@ -8,7 +8,7 @@ import { compile } from "svelte/compiler";
  * Native bundles are compiled without Svelte's async mode (`experimental.async`), and the lab's busy-JavaScript checks depend on it (`foreign-libraries-checks.ts`, `loadsWhileBusy`): they set a
  * prop, `await tick()` and hold the JavaScript thread in the same task, which commits the prop first only because `tick()` is `await Promise.resolve(); flushSync()`. With the flag on, `tick()`
  * waits for `requestAnimationFrame` or a timer instead, a turn of the event loop in which the load's events could be delivered before the hold. The web build does turn the flag on
- * (`apps/example/vite.config.ts`, `kit.compilerOptions`), so this pins that the native path does not: the Metro transformer's compile options, what the Vite plugin forwards, and Svelte's runtime.
+ * (`apps/qa/vite.config.ts`, `kit.compilerOptions`), so this pins that the native path does not: the Metro transformer's compile options, what the Vite plugin forwards, and Svelte's runtime.
  */
 const root = resolve(import.meta.dirname, "../../..");
 // The Svelte copy the native bundle uses: Metro resolves every `svelte` import to the one next to the package (`metro.ts`, `nativeSvelte`).
@@ -48,14 +48,14 @@ test("the Vite plugin forwards the SvelteKit options, where the web build turns 
   expect(vite.indexOf('if (options.target !== "native") return [')).toBeGreaterThan(-1);
   expect(vite.indexOf("sveltekit(options.kit)")).toBeLessThan(vite.indexOf("let root"));
   // The app asks for async mode in the SvelteKit options and nowhere else.
-  const config = read("apps/example/vite.config.ts");
+  const config = read("apps/qa/vite.config.ts");
   expect(config.match(/experimental: \{ async: true \}/g)?.length).toBe(1);
   expect(config).toMatch(/kit: \{[\s\S]*?compilerOptions: \{ experimental: \{ async: true \} \}/);
-  for (const file of ["metro.config.cjs", "babel.config.cjs", "app.config.ts"]) expect(read("apps/example", file), file).not.toMatch(/experimental:\s*\{[^}]*\basync\b|flags\/async/);
+  for (const file of ["metro.config.cjs", "babel.config.cjs", "app.config.ts"]) expect(read("apps/qa", file), file).not.toMatch(/experimental:\s*\{[^}]*\basync\b|flags\/async/);
 });
 
 test("no native source imports the async flag module or asks for the flag", () => {
-  const directories = [join(root, "packages/svelte-native/src"), join(root, "apps/example/src/lib/native"), join(root, "apps/example/src/routes")];
+  const directories = [join(root, "packages/svelte-native/src"), join(root, "apps/qa/src/lib/native"), join(root, "apps/qa/src/routes")];
   const files = directories.flatMap((directory) => sources(directory));
   expect(files.length).toBeGreaterThan(200);
   for (const file of files) expect(readFileSync(file, "utf8"), file).not.toMatch(/internal\/flags\/async|enable_async_mode_flag|experimental:\s*\{[^}]*\basync\b/);

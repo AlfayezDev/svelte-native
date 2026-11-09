@@ -8,7 +8,10 @@ import { currentSource } from "../lib/git.ts";
 import { qaDir, runsDir } from "../lib/paths.ts";
 import {
 	buildPlan,
+	fontScaleCycles,
 	fullPlan,
+	onlyGroups,
+	parseGroups,
 	loopScreen,
 	fullPlanSize,
 	parseProbe,
@@ -161,14 +164,19 @@ export async function resilience(argv: string[]): Promise<void> {
 		rotations: { type: "string" },
 		cycles: { type: "string" },
 		rounds: { type: "string" },
+		"font-cycles": { type: "string" },
+		only: { type: "string" },
 	});
+	const only = typeof values.only === "string" ? parseGroups(values.only) : null;
 	const suite = await startSuite("resilience", argv, values);
 	const { serial, packageName, device, app, startedAt } = suite;
-	const plan = buildPlan({
+	const whole = buildPlan({
 		rotationCycles: integerFlag(values.rotations, "rotations", fullPlan.rotationCycles),
 		backgroundCycles: integerFlag(values.cycles, "cycles", fullPlan.backgroundCycles),
 		lowMemoryRounds: integerFlag(values.rounds, "rounds", fullPlan.lowMemoryRounds),
+		fontScaleCycles: integerFlag(values["font-cycles"], "font-cycles", fontScaleCycles),
 	});
+	const plan = only === null ? whole : onlyGroups(whole, only);
 	console.log(`resilience: ${plan.length} steps (the full plan has ${fullPlanSize})`);
 
 	const steps: ResilienceStep[] = [];

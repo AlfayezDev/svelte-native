@@ -2,6 +2,19 @@
 
 Notable changes to `@example/svelte-native`, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are `0.x` while the package is private and its Svelte compiler is pinned to an unmerged pull request, so a minor version may break. Each line is what an app that uses the package gets.
 
+## Unreleased
+
+### Added
+
+- The package is installable by an app outside this repository, as a pnpm git dependency of the private repository (`git+ssh://git@github.com/AlfayezDev/svelte-native.git#<tag>&path:packages/svelte-native`). It carries the library's six native modules, `native/svelte-engine`, `svelte-updates`, `svelte-screens-ios`, `svelte-navigation-ios`, `svelte-insets-ios` and `svelte-capture-ios`, and one `expo-module.config.json` at the package root that links them through Expo's autolinking (the Gradle projects keep their names, `:svelte-engine` and `:svelte-updates`; the five iOS pods are listed in `podspecPath`). A `files` list packs `src/`, `native/` (sources and build files; no tests, no `SPEC.md`), the config, `patches/` and the documents; `LICENSE` is in the package.
+- `@example/svelte-native/package.json` is an export, for tools that resolve the package's directory.
+- `withSvelteNative` (Metro), the Metro transformer and the native target of `svelteNative()` (Vite) fail with instructions when the installed `svelte` is a stock release without the `./renderer` export (the registry's 5.56.7 has the same version as the custom-renderer build): install `https://pkg.pr.new/svelte@216f258068d93170a927ad4d27ee6864b0b305c5` or the repository's vendored tarball.
+
+### Changed
+
+- `svelte` is a peer dependency (`5.56.7`, the custom-renderer build of sveltejs/svelte#18042 at `216f258`), not a dependency by `file:`; the repository installs its vendored tarball as a development dependency. `esbuild` is pinned to `0.28.1` in the package's own manifest instead of the workspace catalog, which a dependent cannot resolve.
+- The six native modules moved from the example app's `modules/` to `native/` in the package, and the engine's `SPEC.md` with them (`native/svelte-engine/SPEC.md`). An app that linked them as local modules (`modules/svelte-engine` and the others) removes them and depends on the package; `autolinkingExclude` entries that named one of the six no longer exist (the six are one package). The example app links them through its workspace dependency, like any app.
+
 ## 0.2.0 - 2026-11-08
 
 Built from `1c7e2ea9f`, the final build: `feat/svelte-native-next` after the merge of `feat/svelte-native-launchfix`, on top of `c8faf5e97`. It is the last commit that changed app code (the foreign lab, in the QA bundle only); the harness commits `709bb4141` and `9c87e3bc7` before it and `35c332168`, `daa779196` and `1961920bc` after it change only the QA harness and `qa/gates.json`. Which build measured each suite, and why a result is carried from an earlier build, is in [PLAN.md](PLAN.md), "Final build gates". The package is private and has not been published. The entries that were under "Unreleased" since the first cut of this version on 1 November (`48d746e54`) are folded in, and so are those since the record of 4 November (`68ae53455`): SvelteKit remote functions, the launch link read before the router mounts, Android event patches for four view libraries, and the Android header and sheet fix for a screen's first layout.

@@ -266,6 +266,99 @@ adb logcat -s ReactNativeJS | grep "remote lab results"      # {"origin":…,"re
 
 On the iPhone the dev server must be reachable from it: run it on the Mac and use the Mac's LAN address (`SVELTE_NATIVE_REMOTE_ORIGIN=http://<mac address>:3000`, or `?origin=http://<mac address>:3000` on the link of a build that has no host; an IP literal is outside App Transport Security) and open `rasheed-svelte:///__dev/remote?run=1`. A build with no origin still has the page: type the origin of a reachable dev server and press "Use this host" (`?origin=<origin>` does it from the link; use `https:`, or on the iPhone a plain `http:` address to an IP, which App Transport Security does not cover). Then, by hand: type in the form and watch the issues change; leave the page while the clock runs, come back and press "Server stats": `liveOpen` is 1 (this page's clock) and not 2, because the first stream was closed with its screen; send the app to the background and back and check the clock resumes; kill the dev server and check the failures are shown, not swallowed.
 
+## Apply the patches
+
+The library works only with nine third-party packages patched, and pnpm applies a patch only from the app's own workspace, so an app copies the patch files in and declares them. They are in `patches/` of this package, named `<package>@<version>.patch`, and each is for exactly that version of the package it names (the peers below are pinned to the same versions).
+
+| Package | Needed | What the patch changes |
+|---|---|---|
+| `@sveltejs/kit` 3.0.0-next.27 | always (a peer) | SvelteKit's route manifest and its `+page`/`+layout` warnings leave `+mobile.svelte` files in a route directory alone |
+| `expo-modules-core` 57.0.23 | always (comes with `expo`) | Android: Expo modules register lazily and the common ones are prewarmed on a thread of their own; the native view adapter loads React Native's component registry on its first view |
+| `react-native-gesture-handler` 2.32.0 | always (a peer) | iOS: the manager can be asked for the root gesture recognizer of a screen the library presents (sheets, modals) and does not stop its walk above a view that holds a touch handler |
+| `react-native-reanimated` 4.5.1 | always (a peer) | Android: `synchronouslyUpdateUIProps` hands the engine's views to a native sink, and opacity and translate/scale transforms skip React Native's prop path |
+| `react-native-worklets` 0.10.1 | always (a peer) | the UI runtime asks for an animation frame only while a callback waits, not on every frame forever (about 12 % of an idle screen's main-thread samples on the Samsung A16) |
+| `lottie-react-native` 7.3.8 | if installed | Android: the three events do not coalesce; iOS: a load or failure raised before the view has its event emitter is kept for it |
+| `react-native-maps` 1.27.2 | if installed | Android: the 21 discrete events do not coalesce; the drag, pan, region and location streams still do |
+| `react-native-pdf` 7.0.3 | if installed | Android: the one `topChange` event, which carries every message of the view, does not coalesce (a document's load event was overwritten by the page event that follows it) |
+| `react-native-video` 6.19.3 | if installed | Android: only the progress and bandwidth events coalesce; load, seek, end, error and the rest are delivered one by one |
+
+Coalescing is React Native's event queue replacing an unread event of one name with the next from the same view while JavaScript is busy ([Native views from other libraries](#native-views-from-other-libraries)). The example app's `react-native-live-direction` patch is not here: it fixes `I18nManager` for the libraries of the smoke app and nothing of this package uses it.
+
+Copy them into the app, keep the entries of the libraries the app installs, and install again:
+
+```sh
+pnpm add <the library>                       # first: the patch files arrive with it
+mkdir -p patches/svelte-native
+cp node_modules/@rasheed/svelte-native/patches/*.patch patches/svelte-native/
+```
+
+```yaml
+# pnpm-workspace.yaml (or "pnpm": { "patchedDependencies": { … } } in package.json)
+patchedDependencies:
+  "@sveltejs/kit@3.0.0-next.27": patches/svelte-native/@sveltejs__kit@3.0.0-next.27.patch
+  expo-modules-core@57.0.23: patches/svelte-native/expo-modules-core@57.0.23.patch
+  lottie-react-native@7.3.8: patches/svelte-native/lottie-react-native@7.3.8.patch
+  react-native-gesture-handler@2.32.0: patches/svelte-native/react-native-gesture-handler@2.32.0.patch
+  react-native-maps@1.27.2: patches/svelte-native/react-native-maps@1.27.2.patch
+  react-native-pdf@7.0.3: patches/svelte-native/react-native-pdf@7.0.3.patch
+  react-native-reanimated@4.5.1: patches/svelte-native/react-native-reanimated@4.5.1.patch
+  react-native-video@6.19.3: patches/svelte-native/react-native-video@6.19.3.patch
+  react-native-worklets@0.10.1: patches/svelte-native/react-native-worklets@0.10.1.patch
+```
+
+```sh
+pnpm install
+```
+
+- **Copy the files; do not point `patchedDependencies` at `node_modules/@rasheed/svelte-native/patches/…`.** pnpm reads the patch files before it fetches anything, so on a clean install (CI, a fresh clone) that path does not exist yet and the install stops with "Failed to read patch file".
+- **Declare only the libraries the app installs.** pnpm refuses a patch whose package is not in the install (`ERR_PNPM_UNUSED_PATCH`), unless `allowUnusedPatches: true` is set. A library that is installed needs its patch: the events are lost without it.
+- **Versions are exact.** A patch is for one version; `pnpm add react-native-pdf@7.0.3`, not `^7`. The peer ranges in this package's `package.json` say which.
+- **Copy again after every upgrade of this package**, then `pnpm install`: a patch changes with the library's code that depends on it, and an older copy applies cleanly but leaves the old behaviour. The doctor compares the installed files with the patch files of the installed library, so it tells the two apart.
+- Most of the patches change native code (Kotlin, Java, Objective-C++, C++): rebuild the native app after installing or changing them.
+
+## Check an app with `svelte-native doctor`
+
+```sh
+svelte-native doctor            # from the app's directory
+svelte-native doctor --json     # the same checks as JSON
+```
+
+It reads the app and prints one line per check, `pass`, `FAIL`, `skip` or `????` (it could not tell), and under a failure the fix. It exits 1 if a check failed and 0 otherwise; it changes nothing in the app (unlike the other commands it does not write `.svelte-native/`).
+
+```
+svelte-native doctor: /home/me/app
+
+environment
+  pass  node 25.2.0 (needs >=25.0.0)
+  pass  pnpm 12.3.4 (needs >=12.3.4)
+
+svelte
+  FAIL  svelte 5.56.7 is the stock Svelte: it has no ./renderer export (/home/me/app/node_modules/svelte)
+        fix: install the custom-renderer build of Svelte (sveltejs/svelte#18042, commit 216f258, 5.56.7); README: "Set up an app"
+
+peer dependencies
+  pass  react-native 0.86.3 satisfies 0.86.3
+  FAIL  react 19.2.6 does not satisfy 19.2.7
+        fix: pnpm add react@19.2.7
+  skip  optional view libraries not installed, nothing to check: lottie-react-native, react-native-maps
+
+patches
+  pass  react-native-reanimated@4.5.1 applied: the engine's views are written natively and opacity/translate/scale skip React Native's prop path (Android)
+  FAIL  react-native-pdf@7.0.3 is not applied: the pdf view's one event, which carries every message, no longer coalesces (Android)
+        android/src/main/java/org/wonday/pdf/events/TopChangeEvent.java: canCoalesce() is not overridden to return false
+        fix: copy node_modules/@rasheed/svelte-native/patches/react-native-pdf@7.0.3.patch into your repository (patches/svelte-native/), declare "react-native-pdf@7.0.3: patches/svelte-native/react-native-pdf@7.0.3.patch" under patchedDependencies in pnpm-workspace.yaml, then pnpm install (README: "Apply the patches")
+
+build integration
+  pass  @rasheed/svelte-native 0.2.0 is a dependency of the app
+  ????  could not tell: metro.config.cjs does not mention withSvelteNative (a config that applies it from a file it imports is fine)
+        fix: module.exports = withSvelteNative(getDefaultConfig(__dirname)), with withSvelteNative from require("@rasheed/svelte-native/metro")
+  pass  app.json lists the @rasheed/svelte-native/expo plugin
+
+…
+```
+
+What it checks, and how: [REFERENCE.md](REFERENCE.md#doctor). A patch counts as applied when the installed package has the code the patch adds (the Android events that must not coalesce, the gesture handler's manager, Reanimated's sink, the worklets frame loop, Expo's lazy registry, SvelteKit's route filter), not when `patchedDependencies` merely names it.
+
 ## Development loop
 
 ```sh

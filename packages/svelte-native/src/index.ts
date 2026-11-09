@@ -7,6 +7,7 @@ export { default as Tabs } from "./components/Tabs.svelte";
 export { createRouter, openLaunchURL, useRouter, type NativeLocation, type NavigateOptions, type Pane, type PageRoute, type RouteNode, type Router as NativeRouter, type StackNode, type TabsNode } from "./router.svelte.ts";
 export { inTabPane, useHeader, useToolbar } from "./fabric/navigation.ts";
 export { bootSummary } from "./boot-marks.ts";
+export type { HostHandle } from "./fabric/host.ts";
 export type {
   BarStyle, Detent, DetentChange, HeaderMetrics, HeaderOptions, NavigationBarOptions, Presentation, RouterScopeOptions,
   ScreenAnimation, ScreenOptions, SearchOptions, SheetOptions, StatusBarOptions, TabHandle, TabIconSource, TabItem, ToolbarItem, ToolbarOptions,

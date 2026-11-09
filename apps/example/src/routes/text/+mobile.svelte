@@ -3,7 +3,7 @@
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
   import { text, theme } from "#lib/theme.svelte.ts";
-  import Platform from "react-native/Libraries/Utilities/Platform";
+  import { Platform } from "@rasheed/svelte-native/platform";
 
   // Everything about text: size, weight, style, truncation, inline spans and fonts. Text takes the usual React Native text style keys.
   // A font is chosen by name with `fontFamily`: the system's own (their names differ per platform) or one bundled with the app. This app

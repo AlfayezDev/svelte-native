@@ -1,3 +1,5 @@
+// eslint-disable-next-line @typescript-eslint/triple-slash-reference -- a script of `declare module`s: it cannot be imported, only referenced
+/// <reference path="../fabric/react-native-internals.d.ts" />
 /**
  * The remote runtime's view of the app's navigation: the URL of the screen on top (what SvelteKit's client calls `page.url`) and where a
  * `redirect()` from the server goes. The root router registers itself while its `<Router>` is mounted (`connectHost`, through `router-link.ts`).

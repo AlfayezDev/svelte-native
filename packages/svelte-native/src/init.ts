@@ -1,3 +1,5 @@
+// eslint-disable-next-line @typescript-eslint/triple-slash-reference -- a script of `declare module`s: it cannot be imported, only referenced
+/// <reference path="./fabric/react-native-internals.d.ts" />
 /**
  * Pre-main setup for the React-free Fabric entry, run instead of React Native's `InitializeCore`.
  *

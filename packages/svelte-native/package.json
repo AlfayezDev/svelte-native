@@ -14,6 +14,7 @@
     "./foreign": "./src/foreign.ts",
     "./svg": "./src/svg.ts",
     "./polyfills": "./src/polyfills.ts",
+    "./platform": "./src/platform.ts",
     "./metro": {
       "types": "./src/metro.ts",
       "default": "./dist/node/metro.cjs"

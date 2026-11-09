@@ -794,8 +794,11 @@ function pressabilityFor(node: NativeNode): ResponderHandlers | undefined {
   }
   if (!press) { press = new Pressability({}, (callback) => handleFor(own, node).measure(callback)); pressabilities.set(node, press); }
   const { handlers, props } = own;
+  // React Native's `Pressable` takes `pressRetentionOffset` and hands Pressability `pressRectOffset`; the host reads the props itself, so it maps the name.
+  const { pressRectOffset, pressRetentionOffset } = props as PressabilityConfig & { pressRetentionOffset?: PressabilityConfig["pressRectOffset"] };
   press.configure({
     ...(props as PressabilityConfig),
+    pressRectOffset: pressRectOffset ?? pressRetentionOffset,
     onPress: handlers.onPress, onPressIn: handlers.onPressIn, onPressOut: handlers.onPressOut, onLongPress: handlers.onLongPress,
     onPressChange: handlers.onPressChange as unknown as PressabilityConfig["onPressChange"],
   });

@@ -7,7 +7,7 @@
 	},
 	"files": {
 		"ignoreUnknown": true,
-		"includes": ["**", "!**/*.svg", "!apps/qa", "!packages/svelte-native/**/*.svelte"]
+		"includes": ["**", "!**/*.svg", "!apps/qa", "!apps/example/**/*.svelte", "!packages/svelte-native/**/*.svelte"]
 	},
 	"formatter": {
 		"enabled": false,

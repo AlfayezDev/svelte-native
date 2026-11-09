@@ -193,6 +193,14 @@ export async function syncNative(root: string, options: SyncOptions = {}): Promi
 }
 
 /**
+ * Lets the process end while `timer` is pending. Node's timers have `unref`; the DOM's `setTimeout` returns a number, which is what a type-check of an app
+ * without Node's types makes of `ReturnType<typeof setTimeout>` (a SvelteKit app's tsconfig does not load them), so the method is not named on the type.
+ */
+function unrefTimer(timer: unknown): void {
+  (timer as { unref?: () => void }).unref?.();
+}
+
+/**
  * Syncs again when anything under `src/routes` changes (a route added, removed or renamed, a `presentation` or `navigator` edited), so a
  * development server's table follows the files. Debounced, never keeps the process alive, and a route tree the build rejects is logged
  * and waits for the next change. Close it to stop.
@@ -204,7 +212,7 @@ export function watchRoutes(root: string, options: SyncOptions = {}, debounceMs 
     timer = setTimeout(() => {
       try { syncRoutes(root, options); } catch (error) { console.error(error); }
     }, debounceMs);
-    timer.unref();
+    unrefTimer(timer);
   });
   watcher.unref();
   return { close() { clearTimeout(timer); watcher.close(); } };

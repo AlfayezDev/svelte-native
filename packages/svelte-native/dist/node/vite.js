@@ -54,7 +54,8 @@ function webDynamicCompileOptions(app, enabled = true) {
   };
 }
 function withWebRunes(kit, enabled = true) {
-  return { ...kit, dynamicCompileOptions: webDynamicCompileOptions(kit?.dynamicCompileOptions, enabled) };
+  const app = kit?.dynamicCompileOptions;
+  return { ...kit, dynamicCompileOptions: webDynamicCompileOptions(app, enabled) };
 }
 
 // src/route-tree.ts

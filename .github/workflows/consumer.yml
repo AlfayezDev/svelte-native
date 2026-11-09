@@ -9,6 +9,13 @@ name: Consumer
 on:
   push:
     branches: [main]
+    # Only when what an outside app installs or how it is installed changed: two Android builds of 20 to 40 minutes each.
+    paths:
+      - "packages/**"
+      - "examples/**"
+      - "vendor/**"
+      - "scripts/consumer-check.sh"
+      - ".github/workflows/consumer.yml"
   pull_request:
     paths:
       - "packages/**"

@@ -3,6 +3,7 @@ import { transformSync } from "esbuild";
 import { parseSync } from "@babel/core";
 import { parse as parseHermes } from "hermes-parser";
 import { compile, compileModule } from "svelte/compiler";
+import { componentOptions } from "../src/compile-options.ts";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
@@ -94,7 +95,7 @@ function resolveSpec(spec: string, importer: string): string | null {
 function javascript(path: string): string {
   const source = readFileSync(path, "utf8");
   if (path.endsWith(".svelte")) {
-    return compile(lowerPrimitives(source, { filename: path }), { filename: path, dev: false, css: "external", experimental: { customRenderer: "@rasheed/svelte-native/renderer" } }).js.code;
+    return compile(lowerPrimitives(source, { filename: path }), componentOptions(path)).js.code;
   }
   const code = /\.tsx?$/.test(path) ? transformSync(source, { loader: path.endsWith("x") ? "tsx" : "ts", jsx: "preserve", target: "es2022" }).code : source;
   return /\.svelte\.[jt]s$/.test(path) ? compileModule(code, { filename: path, dev: false, generate: "client" }).js.code : code;

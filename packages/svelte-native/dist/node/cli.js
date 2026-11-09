@@ -15,11 +15,11 @@ var __export = (target, all) => {
 };
 
 // src/package-root.ts
-import { existsSync as existsSync2 } from "node:fs";
-import { dirname, join, resolve as resolve2 } from "node:path";
+import { existsSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 function findPackageRoot(from) {
   for (let directory = from; ; directory = dirname(directory)) {
-    if (existsSync2(join(directory, "package.json"))) return directory;
+    if (existsSync(join(directory, "package.json"))) return directory;
     if (dirname(directory) === directory) throw new Error(`No package.json above ${from}: the package's files moved`);
   }
 }
@@ -802,10 +802,17 @@ import { resolve as resolve7 } from "node:path";
 
 // src/build.ts
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, watch, writeFileSync } from "node:fs";
+import { existsSync as existsSync2, mkdirSync, readFileSync, readdirSync, rmSync, watch, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { mkdir } from "node:fs/promises";
-import { relative, resolve, sep } from "node:path";
+import { relative, resolve as resolve2, sep as sep2 } from "node:path";
+
+// src/compile-options.ts
+init_package_root();
+import { sep } from "node:path";
+var RUNES_ENVIRONMENT_VARIABLE = "SVELTE_NATIVE_RUNES";
+var runesEnvironment = (runes) => runes === void 0 ? {} : { [RUNES_ENVIRONMENT_VARIABLE]: runes ? "1" : "0" };
+var ownSources = sourceDirectory + sep;
 
 // src/route-tree.ts
 var PAGE = "+mobile.svelte";
@@ -949,7 +956,7 @@ var routesTableFile = (variant) => `routes.${variant.replace(/[^A-Za-z0-9_-]/g, 
 
 // src/build.ts
 var require2 = createRequire(import.meta.url);
-var posix = (path) => path.split(sep).join("/");
+var posix = (path) => path.split(sep2).join("/");
 function exportedLiteral(ast, file, name, values) {
   for (const statement of ast.module?.content.body ?? []) {
     if (statement.type !== "ExportNamedDeclaration") continue;
@@ -978,7 +985,7 @@ function routeFilesSync(routesRoot, { lab = labIncluded() } = {}) {
   const paths = [];
   function walk(directory) {
     for (const item of readdirSync(directory, { withFileTypes: true })) {
-      const path = resolve(directory, item.name);
+      const path = resolve2(directory, item.name);
       if (item.isDirectory()) {
         if (lab || item.name !== LAB_DIRECTORY) walk(path);
       } else paths.push(posix(relative(routesRoot, path)));
@@ -991,7 +998,7 @@ function routeFilesSync(routesRoot, { lab = labIncluded() } = {}) {
   for (const path of paths.sort((a, b) => a.localeCompare(b))) {
     const name = path.slice(path.lastIndexOf("/") + 1);
     if (name !== "+mobile.svelte" && name !== "+layout.mobile.svelte") continue;
-    const ast = parse(readFileSync(resolve(routesRoot, path), "utf8"), { modern: true, filename: path });
+    const ast = parse(readFileSync(resolve2(routesRoot, path), "utf8"), { modern: true, filename: path });
     if (exportedInInstance(ast, "lab")) throw new Error(`${path}: export \`lab\` is ignored in the instance script; move \`lab\` to \`<script module>\`, which the route table reads at build time`);
     const labOnly = exportedLiteral(ast, path, "lab", [true]) === true;
     if (labOnly && path === name && name === "+layout.mobile.svelte") throw new Error(`${path}: the root layout is the app shell and cannot be lab-only`);
@@ -1013,7 +1020,7 @@ function routeFilesSync(routesRoot, { lab = labIncluded() } = {}) {
 }
 function treeModule(tree, routesRoot, output, variant, lab) {
   const json = (value) => JSON.stringify(value);
-  const code = (file) => `require(${json(posix(relative(output, resolve(routesRoot, file))))}).default`;
+  const code = (file) => `require(${json(posix(relative(output, resolve2(routesRoot, file))))}).default`;
   const loader = (file, layouts = []) => `async () => ({ component: ${code(file)}, layouts: [${layouts.map(code).join(", ")}] })`;
   const routeOf = (route, indent) => {
     if (route.kind === "page") {
@@ -1058,23 +1065,23 @@ export const tree: StackNode = ${nodeOf(tree, "").trimStart()};
 function syncRoutes(root2, options = {}) {
   const variant = options.variant ?? variantName();
   const lab = options.lab ?? labIncludedFor(variant);
-  const routesRoot = resolve(root2, "src/routes");
-  const output = resolve(root2, ".svelte-native");
+  const routesRoot = resolve2(root2, "src/routes");
+  const output = resolve2(root2, ".svelte-native");
   mkdirSync(output, { recursive: true });
   const manifest = treeModule(buildTree(routeFilesSync(routesRoot, { lab })), routesRoot, output, variant, lab);
   const customRoot = process.env.SVELTE_NATIVE_ROOT;
   const prelude = "import '@rasheed/svelte-native/init';\nimport '@rasheed/svelte-native/polyfills';\nimport { createFabricApp, remountSurfaces } from '@rasheed/svelte-native/fabric';\n";
   const hot = "declare const module: { hot?: { accept(callback?: () => void): void } };\nif (__DEV__) module.hot?.accept(() => remountSurfaces());\n";
-  const entry = customRoot ? `${prelude}import App from ${JSON.stringify(posix(relative(output, resolve(root2, customRoot))))};
+  const entry = customRoot ? `${prelude}import App from ${JSON.stringify(posix(relative(output, resolve2(root2, customRoot))))};
 createFabricApp(App, {});
 ${hot}` : `${prelude}import App from '../src/routes/+layout.mobile.svelte';
 import { tree } from './routes';
 createFabricApp(App, { tree });
 ${hot}`;
   const files = [[routesTableFile(variant), manifest]];
-  if (options.entry !== "keep" || customRoot !== void 0 || !existsSync(resolve(output, "entry.ts"))) files.push(["entry.ts", entry]);
+  if (options.entry !== "keep" || customRoot !== void 0 || !existsSync2(resolve2(output, "entry.ts"))) files.push(["entry.ts", entry]);
   for (const [file, content] of files) {
-    const destination = resolve(output, file);
+    const destination = resolve2(output, file);
     let current = "";
     try {
       current = readFileSync(destination, "utf8");
@@ -1083,23 +1090,26 @@ ${hot}`;
     }
     if (current !== content) writeFileSync(destination, content);
   }
-  rmSync(resolve(output, "routes.ts"), { force: true });
+  rmSync(resolve2(output, "routes.ts"), { force: true });
 }
 async function syncNative(root2, options = {}) {
   syncRoutes(root2, options);
 }
-function runExpo(root2, args2) {
-  const env = { ...process.env, EXPO_NO_TELEMETRY: "1" };
+function expoEnvironment(args2, extra = {}) {
+  const env = { ...process.env, EXPO_NO_TELEMETRY: "1", ...extra };
   if (args2.includes("--localhost")) env.NODE_OPTIONS = `${env.NODE_OPTIONS ?? ""} --dns-result-order=ipv4first`.trim();
+  return env;
+}
+function runExpo(root2, args2, extraEnv = {}) {
   return spawn(process.execPath, [require2.resolve("expo/bin/cli"), ...args2], {
     cwd: root2,
     stdio: "inherit",
-    env
+    env: expoEnvironment(args2, extraEnv)
   });
 }
 async function exportNative(root2, platform, options = {}) {
   await syncNative(root2, options);
-  const output = resolve(root2, ".svelte-native/dist", platform);
+  const output = resolve2(root2, ".svelte-native/dist", platform);
   await mkdir(output, { recursive: true });
   const child = runExpo(root2, [
     "export:embed",
@@ -1108,16 +1118,16 @@ async function exportNative(root2, platform, options = {}) {
     "--entry-file",
     ".svelte-native/entry.ts",
     "--bundle-output",
-    resolve(output, "index.hbc"),
+    resolve2(output, "index.hbc"),
     "--sourcemap-output",
-    resolve(output, "index.hbc.map"),
+    resolve2(output, "index.hbc.map"),
     "--assets-dest",
-    resolve(output, "assets"),
+    resolve2(output, "assets"),
     "--dev",
     "false",
     "--bytecode",
     "--reset-cache"
-  ]);
+  ], runesEnvironment(options.runes));
   const result = await new Promise((done, reject) => {
     child.once("error", reject);
     child.once("exit", done);

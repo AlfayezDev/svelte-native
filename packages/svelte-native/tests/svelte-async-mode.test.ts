@@ -3,6 +3,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { compile } from "svelte/compiler";
+import { componentOptions } from "../src/compile-options.ts";
 
 /**
  * Native bundles are compiled without Svelte's async mode (`experimental.async`), and the lab's busy-JavaScript checks depend on it (`foreign-libraries-checks.ts`, `loadsWhileBusy`): they set a
@@ -26,27 +27,27 @@ function sources(directory: string, found: string[] = []): string[] {
 }
 
 test("the Metro transformer compiles components and modules without Svelte's async mode", () => {
+  // The transformer takes its component options from `componentOptions` (`compile-options.ts`) and nowhere else.
   const transformer = read("packages/svelte-native/src/transformer.ts");
-  const componentOptions = /compile\(lowerPrimitives\(src, \{ filename \}\), (\{[\s\S]*?\n {4}\})\)/.exec(transformer)?.[1] ?? "";
-  expect(componentOptions).toContain("customRenderer");
-  expect(componentOptions).not.toMatch(/\basync\b/);
-  const experimental = /experimental: (\{[^}]*\})/.exec(componentOptions)?.[1] ?? "";
-  expect(experimental).toBe('{ customRenderer: "@rasheed/svelte-native/renderer" }');
+  expect(transformer).toContain("compile(lowerPrimitives(src, { filename }), componentOptions(filename))");
+  const options = componentOptions("/app/src/Probe.svelte");
+  expect(options.experimental).toEqual({ customRenderer: "@rasheed/svelte-native/renderer" });
+  const optionsSource = /export function componentOptions[\s\S]*?\n\}\n/.exec(read("packages/svelte-native/src/compile-options.ts"))?.[0] ?? "";
+  expect(optionsSource).toContain("customRenderer");
+  expect(optionsSource).not.toMatch(/\basync\b/);
   expect(/compileModule\(code, (\{[^}]*\})\)/.exec(transformer)?.[1]).not.toMatch(/\basync\b|experimental/);
   // With those options a component imports no flag module; with `async: true` added (the probe's control) it does, so the assertion can fail.
   const probe = "<script>let { a } = $props();</script><native-view>{a}</native-view>";
-  const options = { filename: "Probe.svelte", dev: false, css: "external" as const };
-  const customRenderer = { customRenderer: /customRenderer: "([^"]+)"/.exec(experimental)?.[1] ?? "" };
-  expect(compile(probe, { ...options, experimental: customRenderer }).js.code).not.toContain("svelte/internal/flags/async");
-  expect(compile(probe, { ...options, experimental: { ...customRenderer, async: true } }).js.code).toContain("svelte/internal/flags/async");
+  expect(compile(probe, options).js.code).not.toContain("svelte/internal/flags/async");
+  expect(compile(probe, { ...options, experimental: { ...options.experimental, async: true } }).js.code).toContain("svelte/internal/flags/async");
 });
 
 test("the Vite plugin forwards the SvelteKit options, where the web build turns async mode on, to the web target only", () => {
   const vite = read("packages/svelte-native/src/vite.ts");
   expect(vite.match(/options\.kit/g)?.length).toBe(1);
-  // `kit(options.kit)` (SvelteKit's `sveltekit`, loaded when the web target asks for it) follows the early return for the native target.
+  // `kit(withWebRunes(options.kit, …))` (SvelteKit's `sveltekit`, loaded when the web target asks for it, with the options the app gave it and the runes default added) follows the early return for the native target.
   expect(vite.indexOf('if (options.target !== "native") return loadSvelteKit()')).toBeGreaterThan(-1);
-  expect(vite.indexOf("kit(options.kit)")).toBeLessThan(vite.indexOf("let root"));
+  expect(vite.indexOf("kit(withWebRunes(options.kit, options.runes))")).toBeLessThan(vite.indexOf("let root"));
   // The app asks for async mode in the SvelteKit options and nowhere else.
   const config = read("apps/qa/vite.config.ts");
   expect(config.match(/experimental: \{ async: true \}/g)?.length).toBe(1);

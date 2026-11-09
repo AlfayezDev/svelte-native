@@ -148,7 +148,7 @@ A screen is `src/routes/<path>/+mobile.svelte`, next to the browser's `+page.sve
 - `router` is the nearest navigator's: `goto(href, { reset?, replaceState?, presentation? })`, `back()`, `current`, `entries`. `goto` resolves over the whole tree and never stacks the same screen twice. A link the app was launched with becomes the stack's base; later links are plain `goto`s.
 - `ref` callbacks follow React's contract: the handle when the element is built, `null` when it is destroyed, and the old callback gets `null` before a new one gets the handle. `ScrollView` and `TextInput` handles have `scrollTo`, `focus`, `blur`, `measure`, `dispatchCommand`.
 - `export const presentation = "modal"` in the module script (a literal: `push`, `modal`, `transparentModal`, `sheet`, `formSheet`) sets how a page enters.
-- Runes, stores, context, snippets, `{#await}`, `<svelte:boundary>` and `.svelte.ts` modules work. Keep shared validation and domain logic in portable modules; native screens call explicit network boundaries.
+- Runes, stores, context, snippets, `{#await}`, `<svelte:boundary>` and `.svelte.ts` modules work. Components are compiled in runes mode (below). Keep shared validation and domain logic in portable modules; native screens call explicit network boundaries.
 
 Long lists use `List`, which mounts only the rows near the viewport:
 
@@ -159,6 +159,10 @@ Long lists use `List`, which mounts only the rows near the viewport:
 ```
 
 Fixed `rowHeight`, measured rows (`estimatedRowHeight`), `rowHeights`, `horizontal`, `initialScrollIndex`, `header`, `footer`, `empty`, `onEndReached` and `onViewableItemsChanged` are in [REFERENCE.md](REFERENCE.md). An unvirtualized list of hundreds of rows costs one long mount frame.
+
+### Coming from Svelte on the web
+
+- **Runes are the default.** The library compiles every component of the app in runes mode, also a component with no rune in it, where Svelte alone would infer legacy mode from the file. Legacy mode makes a variable the markup mutates reactive state, even a `const`, and a worklet that captures it crashes the screen on the device. A file opts out with `<svelte:options runes={false} />`. Svelte libraries below `node_modules` keep Svelte's own default (runes inferred per file), so a third-party component written in the legacy syntax still compiles; this library's own components are always runes. An app that is migrating legacy components turns the default off with `withSvelteNative(config, { runes: false })` in `metro.config.cjs` and `svelteNative({ runes: false })` in `vite.config.ts`, and Svelte infers the mode of each file again. The web target gets the default too, so a component both targets import means the same on each ([REFERENCE.md](REFERENCE.md#runes-mode)).
 
 ## Platform modules
 

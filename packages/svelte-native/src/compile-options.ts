@@ -1,0 +1,107 @@
+import { realpathSync } from "node:fs";
+import { sep } from "node:path";
+import type { CompileOptions } from "svelte/compiler";
+import { sourceDirectory } from "./package-root.ts";
+
+/**
+ * How this library compiles Svelte, in one place: the Metro transformer, the web target of the Vite plugin and the tests that compile fixtures all ask here.
+ *
+ * Runes mode is the default for the app's own components. Outside runes mode Svelte turns every top-level variable that the markup mutates into reactive state, even a `const`
+ * (`const count = createSharedValue(0)` with `count.value = ...` in a handler), and a worklet that captures such a variable captures Svelte's runtime, which the UI runtime
+ * does not have (the showcase's animateable-text screen crashed on a device that way). In runes mode state is only what `$state` and `$derived` say it is.
+ *
+ * What the default does and does not reach:
+ * - A file may opt out with `<svelte:options runes={false} />`: Svelte merges a component's own `<svelte:options>` over the compile option, so the file's choice wins.
+ * - Svelte modules (`.svelte.ts`, `.svelte.js`) are always compiled in runes mode by Svelte (`compileModule` has no `runes` option), so there is nothing to default there.
+ * - A file below a `node_modules` directory keeps Svelte's own default (runes inferred from the file): a third-party Svelte library may still be written in the legacy syntax, and
+ *   forcing runes on it would break it. A package of the app's own workspace is linked from outside `node_modules`, so it counts as the app's.
+ * - This library's own components are written in runes and are always compiled as such, wherever the package is installed (its path below an app's `node_modules` included).
+ * - An app that is migrating legacy components sets `runes: false` (`withSvelteNative(config, { runes: false })`, `svelteNative({ runes: false })`): the library then forces nothing
+ *   and Svelte infers the mode of each file, as it does without this library.
+ */
+
+/**
+ * The environment variable that carries the app's `runes` setting to the Metro transformer. Metro hands a babel transformer the file and Metro's own options, and nothing of the
+ * app's config, but its workers are processes started by the one that loaded the config, and they inherit its environment. `withSvelteNative` sets it when it is given `runes`;
+ * `0`, `false`, `off` and `no` turn the default off, anything else (and unset) leaves it on.
+ */
+export const RUNES_ENVIRONMENT_VARIABLE = "SVELTE_NATIVE_RUNES";
+
+/** The environment that hands an app's `runes` option to the transformer of a Metro: nothing when the app gave none. */
+export const runesEnvironment = (runes: boolean | undefined): Record<string, string> => (runes === undefined ? {} : { [RUNES_ENVIRONMENT_VARIABLE]: runes ? "1" : "0" });
+
+/** Whether the app asked for the default: `true` unless the environment turns it off. */
+export function runesDefaultEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return !/^(?:0|false|off|no)$/i.test(env[RUNES_ENVIRONMENT_VARIABLE]?.trim() ?? "");
+}
+
+const IN_NODE_MODULES = /(?:^|[\\/])node_modules[\\/]/;
+const ownSources = sourceDirectory + sep;
+
+/** Whether `filename` is a source of this library: in its `src/` directory, or reached through a link into it (a path below `node_modules` that is a link into the package). */
+export function isLibrarySource(filename: string): boolean {
+  if (filename.startsWith(ownSources)) return true;
+  if (!IN_NODE_MODULES.test(filename)) return false;
+  try {
+    return realpathSync(filename).startsWith(ownSources);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The compiler's `runes` option for one component: `true` for the library's own sources, and for any file outside `node_modules` while the default is on; `undefined` (Svelte infers
+ * the mode of the file) for the rest. The file's own `<svelte:options runes={...} />` overrides either.
+ */
+export function runesOption(filename: string, enabled: boolean = runesDefaultEnabled()): true | undefined {
+  if (isLibrarySource(filename)) return true;
+  if (!enabled || IN_NODE_MODULES.test(filename)) return undefined;
+  return true;
+}
+
+/** The renderer module the compiler's `experimental.customRenderer` names: what turns Svelte's DOM calls into host-node calls. */
+export const CUSTOM_RENDERER = "@rasheed/svelte-native/renderer";
+
+/**
+ * The options the library compiles a native component with: external CSS (a style block is refused by the transformer), production output, the custom renderer, and the runes
+ * default. Async mode (`experimental.async`) is deliberately not on: the native path depends on `tick()` being a microtask flush (`tests/svelte-async-mode.test.ts`).
+ */
+export function componentOptions(filename: string, enabled: boolean = runesDefaultEnabled()) {
+  return {
+    filename,
+    dev: false,
+    css: "external",
+    runes: runesOption(filename, enabled),
+    experimental: { customRenderer: CUSTOM_RENDERER },
+  } as const;
+}
+
+/** vite-plugin-svelte's `dynamicCompileOptions` (its own types are not a dependency of this package: SvelteKit brings the plugin, and the web target is optional). */
+export type DynamicCompileOptions = (data: {
+  filename: string;
+  code: string;
+  compileOptions: Partial<CompileOptions>;
+}) =>
+  // biome-ignore lint/suspicious/noConfusingVoidType: the signature is vite-plugin-svelte's; a callback that returns nothing is a `void` one, and not assignable to `undefined`
+  Promise<Partial<CompileOptions> | void> | Partial<CompileOptions> | void;
+
+/**
+ * `dynamicCompileOptions` for the web target of the Vite plugin, which SvelteKit forwards to vite-plugin-svelte (the plugin calls it for every `.svelte` file and `.svelte.ts` module it
+ * compiles, node_modules libraries included). It sets `runes: true` by the same rule as `runesOption`, except that an app that gives `compilerOptions.runes` itself keeps its
+ * choice for its own files, and the options the app's own `dynamicCompileOptions` returns are applied over this one's.
+ *
+ * The web target gets the default too, because the same `.svelte` file (a component under `src/lib` that a native and a web page both import) is compiled by Vite for the browser and
+ * by Metro for the device. Two modes would make it mean two things: a variable the markup mutates would be reactive state in the browser and a plain variable on the device.
+ */
+export function webDynamicCompileOptions(app?: DynamicCompileOptions, enabled = true): DynamicCompileOptions {
+  return async (data) => {
+    const own = isLibrarySource(data.filename) || (data.compileOptions.runes === undefined && runesOption(data.filename, enabled) === true);
+    const theirs = await app?.(data);
+    return own ? { runes: true, ...theirs } : theirs;
+  };
+}
+
+/** The options an app gave SvelteKit's Vite plugin (`kit` of `svelteNative()`), with `webDynamicCompileOptions` as their `dynamicCompileOptions`. */
+export function withWebRunes<Kit extends { dynamicCompileOptions?: DynamicCompileOptions }>(kit: Kit | undefined, enabled = true): Kit & { dynamicCompileOptions: DynamicCompileOptions } {
+  return { ...(kit as Kit), dynamicCompileOptions: webDynamicCompileOptions(kit?.dynamicCompileOptions, enabled) };
+}

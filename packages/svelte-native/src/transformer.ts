@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { parse } from "@babel/parser";
 import { isBlockStatement, isCallExpression, isFunction, isIdentifier, isMemberExpression, traverseFast } from "@babel/types";
+import { componentOptions, runesDefaultEnabled } from "./compile-options.ts";
 import { lowerPrimitives } from "./lower.ts";
 import { sourceDirectory, sourceFile } from "./package-root.ts";
 import { assertCustomRenderer } from "./svelte-build.ts";
@@ -82,7 +83,7 @@ function assertWorkletsReadNoState(filename: string, code: string, runes: boolea
   throw new Error(`${filename}: a worklet reads ${what}. A worklet runs on the UI runtime, which has no Svelte, so it cannot read state; on the device it would throw "Tried to synchronously call a Remote Function" when the screen mounts. ${
     runes
       ? "State in runes mode is `$state`, `$derived` and props: copy the value into a shared value (`createSharedValue`) on the JavaScript side and read that in the worklet."
-      : "This component is not in runes mode, where a variable that the markup mutates (`count.value = ...` in a handler) is state even when it is a `const`. Add `<svelte:options runes />` to the component: there a `const` shared value stays a plain constant."
+      : "This component is not in runes mode (the library compiles the app's components in runes mode unless the file has `<svelte:options runes={false} />`, the app sets `runes: false`, or the file is a library below `node_modules`), where a variable that the markup mutates (`count.value = ...` in a handler) is state even when it is a `const`. Put the component in runes mode with `<svelte:options runes />`: there a `const` shared value stays a plain constant."
   }`);
 }
 
@@ -94,13 +95,9 @@ export function transform(input: TransformInput) {
   const maps: TraceMap[] = [];
   const compiledBySvelte = /\.svelte(\.[jt]s)?$/.test(filename);
   if (filename.endsWith(".svelte")) {
+    // Runes mode for the app's own components unless the file opts out (`componentOptions`, `compile-options.ts`); a file below `node_modules` keeps Svelte's own default.
     requireCustomRenderer();
-    const result = compile(lowerPrimitives(src, { filename }), {
-      filename,
-      dev: false,
-      css: "external",
-      experimental: { customRenderer: "@rasheed/svelte-native/renderer" },
-    });
+    const result = compile(lowerPrimitives(src, { filename }), componentOptions(filename));
     if (result.css?.code.trim()) throw new Error(`${filename}: use native style props; browser CSS is not supported`);
     code = result.js.code;
     runes = result.metadata.runes;
@@ -116,6 +113,7 @@ export function transform(input: TransformInput) {
       maps.push(new TraceMap(stripped.map));
     }
     if (svelteModule) {
+      // A Svelte module is always in runes mode: `compileModule` has no `runes` option.
       const result = compileModule(code, { filename, dev: false, generate: "client" });
       code = result.js.code;
       if (result.js.map) maps.unshift(new TraceMap(result.js.map.toString()));
@@ -139,13 +137,15 @@ export function transform(input: TransformInput) {
 }
 
 /**
- * Metro's cache key for what this transformer produces: the code that runs, and upstream's key. Built (`dist/node/transformer.cjs`), the one file
- * holds `lower.ts` and `remote/transform.ts`; run from the sources, those two are hashed next to this one.
+ * Metro's cache key for what this transformer produces: the code that runs, the app's `runes` setting, and upstream's key. Built (`dist/node/transformer.cjs`), the one file
+ * holds `lower.ts`, `remote/transform.ts` and `compile-options.ts`; run from the sources, those three are hashed next to this one.
  */
 export function getCacheKey(options?: unknown): string {
   const files = [import.meta.filename];
-  if (import.meta.dirname === sourceDirectory) files.push(sourceFile("lower.ts"), sourceFile("remote/transform.ts"));
+  if (import.meta.dirname === sourceDirectory) files.push(sourceFile("lower.ts"), sourceFile("remote/transform.ts"), sourceFile("compile-options.ts"));
   const hash = createHash("sha256");
   for (const file of files) hash.update(readFileSync(file));
+  // The mode an app's components are compiled in is not in any file: `withSvelteNative(config, { runes })` hands it over in the environment.
+  hash.update(`runes-default:${runesDefaultEnabled()}`);
   return hash.update(upstream.getCacheKey(options)).digest("hex");
 }

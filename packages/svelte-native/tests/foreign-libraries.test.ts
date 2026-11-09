@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { compile } from "svelte/compiler";
+import { componentOptions } from "../src/compile-options.ts";
 import { mapsProblems, mapsStreamEvents, neverCoalesces, pdfProblems, lottieProblems, stripComments, videoEmitterProblems, videoProblems } from "../src/doctor/shapes.ts";
 import { readerFor } from "../src/doctor/resolve.ts";
 import { createHarness } from "./foreign-harness.ts";
@@ -41,7 +42,7 @@ async function bundleForeignEntry(): Promise<Bundle> {
         builder.onResolve({ filter: /^@rasheed\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
         builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../src/environment.ts") }));
         builder.onLoad({ filter: /\.svelte$/ }, async ({ path }) => ({
-          contents: compile(await readFile(path, "utf8"), { filename: path, css: "external", dev: false, experimental: { customRenderer: "@rasheed/svelte-native/renderer" } }).js.code,
+          contents: compile(await readFile(path, "utf8"), componentOptions(path)).js.code,
           loader: "js",
         }));
       },

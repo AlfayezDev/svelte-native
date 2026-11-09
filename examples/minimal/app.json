@@ -1,0 +1,11 @@
+{
+	"expo": {
+		"name": "Svelte Native Minimal",
+		"slug": "svelte-native-minimal",
+		"scheme": "svelte-native-minimal",
+		"version": "1.0.0",
+		"android": { "package": "dev.example.sveltenativeminimal" },
+		"ios": { "bundleIdentifier": "dev.example.sveltenativeminimal" },
+		"plugins": ["@rasheed/svelte-native/expo"]
+	}
+}

@@ -18,4 +18,8 @@ export const nativeFeatures: Feature[] = [
   { group: "Native views", route: "/native-views/date-time-picker", title: "Date and time picker", summary: "A native view on iOS, a dialog on Android" },
   { group: "Native views", route: "/native-views/web-view", title: "WebView", summary: "A web page with messages both ways" },
   { group: "Native views", route: "/native-views/map", title: "Map (react-native-maps)", summary: "A map, markers and camera moves" },
+
+  // Motion and touch
+  { group: "Motion and touch", route: "/animation", title: "Animation", summary: "Fade, spring, loop and state-driven motion on the UI thread" },
+  { group: "Motion and touch", route: "/gestures", title: "Gestures", summary: "Drag, pinch and rotate, swipe a row, long press" },
 ];

@@ -34,8 +34,12 @@ const { smokeOnlyBundlePackages } = createRequire(import.meta.url)("../smoke-pac
  */
 const baseline = { commit: "1bbbec6 (the example without the product's code)", bytes: 5_628_280 };
 
-/** The production variant's bundle without the lab, built with the same recipe and measured at the same commit. It may grow by 1 % before a test says so. */
-const productBaseline = { commit: "1bbbec6 (the example without the product's code)", bytes: 3_953_493 };
+/**
+ * The production variant's bundle without the lab, built with the same recipe. It may grow by 1 % before a test says so. Measured again at 727bded, which makes the library's
+ * polyfills load Expo's WinterCG runtime (a standard `URL`, `fetch`, `TextDecoder`, ... that the router needs): 4,074,366 bytes, 120,873 (3.1 %) over the 3,953,493 of 1bbbec6 without
+ * it (the QA app, which imported the runtime already, did not move).
+ */
+const productBaseline = { commit: "727bded (Polyfills: Expo's WinterCG runtime is loaded)", bytes: 4_074_366 };
 
 /** What this run made: the bundle directories (about 15 to 34 MB each) and the Metro caches of their own. All removed when the tests end. */
 const made: string[] = [];

@@ -9,4 +9,9 @@ export const coreFeatures: Feature[] = [
   { title: "Styling", summary: "Style objects, theme colours, dark mode, shadows, transforms", group: "Layout and style", route: "/styling" },
   { title: "Lists", summary: "A plain list beside a windowed list of 5,000 rows", group: "Lists and input", route: "/lists" },
   { title: "Inputs and forms", summary: "TextInput, Switch, validation and the keyboard", group: "Lists and input", route: "/inputs" },
+  { title: "Stack", summary: "Push and pop screens, native headers, route parameters", group: "Navigation", route: "/navigation/stack", also: ["/navigation/stack/[id]"] },
+  { title: "Tabs", summary: "A tab bar whose tabs each keep their own stack", group: "Navigation", route: "/navigation/tabs", also: ["/navigation/tabs/feed", "/navigation/tabs/feed/[id]", "/navigation/tabs/profile"] },
+  { title: "Sheet", summary: "A bottom sheet with detents and a grabber", group: "Navigation", route: "/navigation/sheet" },
+  { title: "Modal", summary: "A screen that covers everything, with its own Close button", group: "Navigation", route: "/navigation/modal" },
+  { title: "Links", summary: "Deep links, the launch URL and router.openURL", group: "Navigation", route: "/navigation/links" },
 ];

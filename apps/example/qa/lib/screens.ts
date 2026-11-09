@@ -1,5 +1,4 @@
 import type { Direction, NetworkMode, Theme } from "./device.ts";
-import { copy } from "./copy.ts";
 import type { InfoExpectation, NodeExpectation } from "./a11y-state.ts";
 
 /**
@@ -100,7 +99,8 @@ export const rn = {
 };
 const and = (label: string, word: { en: string; ar: string }): Localized => ({ en: `${label}, ${word.en}`, ar: `${label}, ${word.ar}` });
 
-function screenCase(
+/** A case with every field defaulted: the lab's cases below, and the fixtures of the tests (`qa/test/fixture-cases.ts`). */
+export function screenCase(
 	id: string,
 	route: string,
 	deepLink: string | null,
@@ -171,49 +171,6 @@ const devCommon: Localized[] = [
 const asyncButtons = ["Start async", "Resolve async", "Reject async", "Trip error boundary"];
 
 const signedOutCases: ScreenCase[] = [
-	screenCase(
-		"startup-loading",
-		"/ (platform configuration pending)",
-		null,
-		{ className: "android.widget.ProgressBar" },
-		{
-			state: "loading",
-			network: "hang",
-			layout: "header",
-			title: "Rasheed",
-			masks: [{ className: "android.widget.ProgressBar" }],
-		},
-	),
-	screenCase(
-		"startup-error",
-		"/ (platform configuration unreachable)",
-		null,
-		{ className: "android.widget.Button" },
-		{
-			state: "error",
-			network: "refuse",
-			layout: "header",
-			title: "Rasheed",
-			controls: [{ en: "Retry", ar: "إعادة المحاولة" }],
-		},
-	),
-	screenCase(
-		"login",
-		"/auth/login",
-		null,
-		{ className: "android.widget.EditText" },
-		{
-			needsBackend: true,
-			layout: "header",
-			title: { en: "What’s your email address?", ar: "ما بريدك الإلكتروني؟" },
-			controls: [
-				{ en: "Email", ar: "البريد الإلكتروني" },
-				{ en: "Continue with email", ar: "المتابعة بالبريد الإلكتروني" },
-				{ en: "العربية", ar: "English" },
-				"Mobile development lab",
-			],
-		},
-	),
 	screenCase("dev-checks", "/__dev (checks)", dev, label("Run all checks"), {
 		layout: "header",
 		title: "Mobile development lab",
@@ -537,185 +494,16 @@ const signedOutCases: ScreenCase[] = [
 	),
 ];
 
-/* ---- the signed-in screens: the QA account's session (lib/signin.ts), the product's own routes ---- */
-
-/** Where a signed-in device opens: the list of workspaces. The harness has signed in before any of these cases starts. */
-const appLink = "rasheed-svelte:///workspaces";
-
-const words = {
-	chooseWorkspace: copy("onboarding.selectWorkspaceTitle"),
-	createNew: copy("onboarding.selectWorkspaceCreateNew"),
-	manageAccount: copy("workspaceSettings.manageAccount"),
-	manageWorkspace: copy("workspaceSettings.manageWorkspace"),
-	signOut: copy("auth.signOut"),
-	close: copy("common.close"),
-	home: copy("mobile.home"),
-	settings: copy("shell.modules.settings"),
-	createTitle: copy("onboarding.createWorkspaceTitle"),
-	workspaceName: copy("onboarding.workspaceName"),
-	workspaceSlug: copy("onboarding.workspaceSlug"),
-	createWorkspace: copy("onboarding.createWorkspace"),
-	profile: copy("workspaceSettings.personalPage.title"),
-	preferences: copy("workspaceSettings.personalPage.preferences"),
-	devices: copy("workspaceSettings.personalPage.devices"),
-	workspaces: copy("workspaceSettings.manageWorkspaces"),
-	danger: copy("workspaceSettings.personalPage.dangerZone"),
-	photo: copy("workspaceSettings.personalPage.photo"),
-	firstName: copy("workspaceSettings.personalPage.firstName"),
-	lastName: copy("workspaceSettings.personalPage.lastName"),
-	save: copy("common.save"),
-	changeEmail: copy("workspaceSettings.personalPage.changeEmailTitle"),
-	language: copy("workspaceSettings.personalPage.languageAria"),
-	appearance: copy("workspaceSettings.personalPage.appearance"),
-	devicesHint: copy("workspaceSettings.personalPage.devicesHint"),
-	signOutOthers: copy("workspaceSettings.personalPage.signOutOthers"),
-	deleteHint: copy("workspaceSettings.personalPage.deleteAccountHint"),
-	newEmail: copy("workspaceSettings.personalPage.newEmail"),
-	sendCode: copy("workspaceSettings.personalPage.sendCode"),
-	deleteWorkspace: copy("workspaceSettings.deleteWorkspace"),
-	deleteDescription: copy("workspaceSettings.deleteWorkspaceDescription"),
-	cancel: copy("common.cancel"),
-};
-
-/** The first screen of a signed-in device takes the connection, the subscription and the first rows: longer than a screen that needs no backend. */
-const slowWait = (text: Localized): Step => ({ wait: { label: text }, timeoutMs: 45_000 });
-
-/** A signed-in case: it opens the list of workspaces and the steps take it from there, by the buttons a user presses. */
-function appCase(id: string, route: string, anchor: Selector, fields: Partial<ScreenCase> = {}): ScreenCase {
-	return screenCase(id, route, appLink, anchor, { needsBackend: true, signedIn: true, layout: "header", ...fields });
-}
-
-/** The list of workspaces, then the first workspace (the first button of the list: the account's workspaces come before the create button). */
-const toWorkspace: Step[] = [
-	slowWait(words.chooseWorkspace),
-	{ tap: { className: "android.widget.Button" } },
-	{ wait: { label: words.manageWorkspace }, timeoutMs: 30_000 },
-	{ pause: 600 },
-];
-const toSettings: Step[] = [...toWorkspace, { tap: { label: words.settings } }, waitFor(words.danger), { pause: 600 }];
-const toAccount: Step[] = [slowWait(words.chooseWorkspace), { tap: { label: words.manageAccount } }, { wait: { label: words.close } }, { pause: 600 }];
-
-/** The account's address is on the list of workspaces and in the profile; the masks hide it, and the reference is stored without it. */
-const addressMask: Selector = { account: "email" };
-/** The photo of the profile, from the network. */
-const photoMask: Selector = { label: words.photo };
 /**
- * The user agent line of each device the account is signed in on (AccountSettings.svelte, `testID="device-agent"`): the account's own text. The cards
- * themselves are not masked (together they cover half the screen, over the 25 % the maskedPct gate allows), so the screen is only as stable as the
- * number of devices the account has: a device that signs in or out between two runs moves everything under it.
+ * The cases of the signed-in phase (`signedIn: true`, `lib/phases.ts`, `lib/signin.ts`): screens that exist only under a session, run after
+ * the suites sign in as the QA account and before they sign out again. This repository's example app has no account, so there are none, and
+ * `gates.json` pins none (`signedIn`). A project with an account adds its cases here, each with `signedIn: true` and `needsBackend: true`.
  */
-const deviceMask: Selector = { resourceId: "device-agent" };
-
-/** What one section of the account settings shows, whether it is a page of the workspace settings or a section of the account modal. */
-const sectionAnchors = {
-	// The first thing under the photo; at the largest text the change-email button is far below the fold, where the tree does not list it.
-	profile: { label: words.firstName },
-	preferences: { label: words.language },
-	devices: { label: words.devicesHint },
-	// One card per workspace (AccountSettings.svelte, `testID="workspace-card"`), the first thing the section shows; its create button is below all of them.
-	workspaces: { resourceId: "workspace-card" },
-	danger: { label: words.deleteHint },
-} as const satisfies Record<string, Selector>;
-type SectionId = keyof typeof sectionAnchors;
-const sectionIds = Object.keys(sectionAnchors) as SectionId[];
-const sectionTitle = (section: SectionId): Localized => words[section];
-
-const sectionMasks: Record<SectionId, Pick<ScreenCase, "masks" | "masksWhenShown">> = {
-	profile: { masks: [addressMask], masksWhenShown: [photoMask] },
-	preferences: { masks: [], masksWhenShown: [] },
-	devices: { masks: [], masksWhenShown: [deviceMask] },
-	workspaces: { masks: [], masksWhenShown: [] },
-	danger: { masks: [], masksWhenShown: [] },
-};
-
-/**
- * The controls of each section: buttons and fields only (a text is not a control, and a declared control that is only a text would count as
- * one that does nothing). They go in `scrolled`, which is checked where the tree has them and never reported missing: the page of every
- * section is a scroll view, and the largest text pushes the lower ones below the fold, where a screen reader reaches them by scrolling.
- */
-const sectionControls: Record<SectionId, Localized[]> = {
-	profile: [words.firstName, words.lastName, words.save, words.changeEmail, words.signOut],
-	preferences: [copy("common.english"), copy("common.arabic"), copy("workspaceSettings.personalPage.themeSystem"), copy("workspaceSettings.personalPage.themeLight"), copy("workspaceSettings.personalPage.themeDark"), words.signOut],
-	devices: [words.signOutOthers, words.signOut],
-	workspaces: [words.deleteWorkspace, words.createWorkspace, words.signOut],
-	danger: [words.signOut],
-};
-
-const signedInCases: ScreenCase[] = [
-	appCase("app-workspaces", "/workspaces", { label: words.chooseWorkspace }, {
-		steps: [slowWait(words.chooseWorkspace), { pause: 600 }],
-		title: words.chooseWorkspace,
-		scrolled: [words.createNew, words.manageAccount, words.signOut],
-		masks: [addressMask],
-	}),
-	appCase("app-workspace-create", "/workspaces/create", { label: words.createTitle }, {
-		steps: [slowWait(words.chooseWorkspace), { tap: { label: words.createNew } }, waitFor(words.createTitle), { pause: 600 }],
-		title: words.createTitle,
-		controls: ["Navigate up", words.workspaceName],
-		scrolled: [words.workspaceSlug, words.createWorkspace],
-	}),
-	appCase("app-workspace-home", "/(workspace)/[slug]/home", { label: words.manageWorkspace }, {
-		steps: toWorkspace,
-		layout: "tabs",
-		controls: [words.home, words.settings],
-		scrolled: [words.manageAccount, words.manageWorkspace, words.chooseWorkspace, words.signOut],
-	}),
-	appCase("app-workspace-settings", "/(workspace)/[slug]/settings", { label: words.danger }, {
-		steps: toSettings,
-		layout: "tabs",
-		title: words.manageWorkspace,
-		controls: [words.home, words.settings],
-		scrolled: sectionIds.map(sectionTitle),
-	}),
-	...sectionIds.map((section) =>
-		appCase(`app-settings-${section}`, `/(workspace)/[slug]/settings/${section}`, sectionAnchors[section], {
-			steps: [...toSettings, { tap: { label: sectionTitle(section) } }, { wait: sectionAnchors[section] }, { pause: 600 }],
-			layout: "tabs",
-			title: sectionTitle(section),
-			controls: ["Navigate up", words.home, words.settings],
-			scrolled: sectionControls[section],
-			largestText: section !== "devices",
-			...sectionMasks[section],
-		}),
-	),
-	...sectionIds.map((section) =>
-		appCase(`app-account-${section}`, `/(account)/account (${section}, modal)`, sectionAnchors[section], {
-			steps: [...toAccount, ...(section === "profile" ? [] : [{ tap: { label: sectionTitle(section) } } as Step]), { wait: sectionAnchors[section] }, { pause: 600 }],
-			layout: "modal",
-			title: words.manageAccount,
-			controls: [words.close],
-			scrolled: [...sectionIds.map(sectionTitle), ...sectionControls[section]],
-			hidden: [words.createNew],
-			largestText: section !== "devices",
-			...sectionMasks[section],
-		}),
-	),
-	// A window of its own (React Native's Modal): the tree of the dialog holds nothing of the screen under it.
-	appCase("app-account-change-email", "/(account)/account (profile, change email)", { label: words.newEmail }, {
-		steps: [...toAccount, { scrollToEnd: true }, { tap: { label: words.changeEmail } }, { wait: { label: words.newEmail } }, { pause: 600 }],
-		layout: "modal",
-		title: words.changeEmail,
-		controls: [words.close, words.newEmail],
-		scrolled: [words.sendCode],
-		hidden: [words.createNew],
-	}),
-	// Opens the confirmation and stops there: the button that deletes stays disabled until the workspace's slug is typed, which no case does.
-	// The account must own a workspace (the section shows the button only to an owner); without one the case fails on the missing button.
-	appCase("app-account-delete-workspace", "/(account)/account (workspaces, delete confirmation)", { label: words.deleteDescription }, {
-		steps: [...toAccount, { tap: { label: words.workspaces } }, { wait: sectionAnchors.workspaces }, { tap: { label: words.deleteWorkspace } }, { wait: { label: words.deleteDescription } }, { pause: 600 }],
-		layout: "modal",
-		controls: [words.cancel],
-		scrolled: [words.deleteWorkspace],
-		hidden: [words.createWorkspace],
-	}),
-];
+const signedInCases: ScreenCase[] = [];
 
 export const cases: ScreenCase[] = [...signedOutCases, ...signedInCases];
 
 export type NotCovered = { route: string; reason: string };
-
-const needsProfile =
-	"only an account that has not finished its profile is shown this screen (the router sends a signed-in user with a profile on to the workspaces), and the QA account has one: reaching it would mean writing a profile, which the signed-in phase never does (it signs in, reads and signs out)";
 
 /**
  * Every route with a `+mobile.svelte` page that no case reaches, with why. `routes.test.ts` checks this list and the cases
@@ -747,7 +535,11 @@ export const notCovered: NotCovered[] = [
 		reason:
 			"the SvelteKit remote functions lab calls a SvelteKit server that the build or the page names, so it shows nothing of its own without one, and with one its counters, live clock and request echo change between runs by design; its eleven checks run on the device against a dev server (README of the package, \"Remote functions\") and against its own server module in the package tests",
 	},
-	{ route: "/onboarding/profile", reason: needsProfile },
+	{
+		route: "/",
+		reason:
+			"the example's home screen: its title, one line of text, the language button and, in the QA and smoke apps, the link into the lab; it is what the production variant starts on, which `native-qa product` checks (the screen is found by its text in both languages), and a pixel reference of it would only pin the title and one button",
+	},
 ];
 
 /** The route directories (relative to `src/routes`) of the screens the cases reach, for the completeness check. */
@@ -760,28 +552,15 @@ export const coveredRouteDirectories = [
 	"__dev/tree/home/detail/[id]",
 	"__dev/tree/inbox",
 	"__dev/tree/inbox/compose",
-	"(public)/auth/login",
-	// The signed-in phase (`signedIn` cases): the QA account's session.
-	"(account)/account",
-	"workspaces",
-	"workspaces/create",
-	"(workspace)/[slug]/home",
-	"(workspace)/[slug]/settings",
-	"(workspace)/[slug]/settings/[section]",
 ];
 
 const pageDoesNotScroll =
 	"at 200 % text the button that sets this state (Start async, Trip error boundary) is below the first screen of the page, and the page cannot be scrolled: the ScrollView of Page.svelte reports scrollable=false with 2272 px of height and a 900 px swipe moves nothing (the same on /__dev/screen with its 60 rows), so neither a user nor the harness can reach the control";
 
 /** Screen states left out of the largest-text variants, with why: they count as not covered, not as missing. */
-const devicesWrap =
-	"at 200 % text every device's user agent line wraps to six or more lines, and the masks that hide them (the lines are the account's own text) cover over 30 % of the screen with the bars, more than the 25 % the parity.maskedPct gate allows; the page scrolls, the devices below the first screen are not in the tree, and the section is the same list of cards and buttons at the other text size";
-
 export const notCoveredStates: NotCovered[] = [
 	{ route: "/__dev (async, pending) at the largest text size", reason: pageDoesNotScroll },
 	{ route: "/__dev (async, error boundary) at the largest text size", reason: pageDoesNotScroll },
-	{ route: "/(workspace)/[slug]/settings/devices at the largest text size", reason: devicesWrap },
-	{ route: "/(account)/account (devices, modal) at the largest text size", reason: devicesWrap },
 ];
 
 export type Variant = {

@@ -9,6 +9,7 @@ import {
 } from "../lib/a11y.ts";
 import { cases, localize } from "../lib/screens.ts";
 import { parseHierarchy } from "../lib/uia.ts";
+import { login, startupLoading } from "./fixture-cases.ts";
 import { sample } from "./sample.ts";
 
 type N = {
@@ -496,8 +497,9 @@ describe("the tree a screen reader walks is the only tree the checks read", () =
 });
 
 describe("frozen dumps of the QA app (the checklist's findings in them, not the engine's state today)", () => {
+	// The lab's cases, and two fixtures (`fixture-cases.ts`): the sign-in and startup screens of the product the dumps were taken in.
 	function screen(file: string, id: string, direction: "ltr" | "rtl" = "ltr") {
-		const c = cases.find((entry) => entry.id === id);
+		const c = [...cases, login, startupLoading].find((entry) => entry.id === id);
 		if (!c) throw new Error(`no case ${id}`);
 		return analyzeScreen({
 			tree: parseHierarchy(sample(file)),

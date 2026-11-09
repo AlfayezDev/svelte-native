@@ -35,6 +35,7 @@ import { cases, referenceName, variants, type ScreenCase } from "../lib/screens.
 import type { FailureEvidence } from "../lib/types.ts";
 import { parseHierarchy, type UiTree } from "../lib/uia.ts";
 import { FakeDevice } from "./fake-device.ts";
+import { accountDevices, login } from "./fixture-cases.ts";
 
 /**
  * Every test starts with no QA account, whatever the environment or the repository's .env.local of the machine running it says (a developer's has one); a test
@@ -52,7 +53,7 @@ const test = (name: string, body: () => void | Promise<void>, timeoutMs?: number
 
 const normalScreen = cases.find((entry) => entry.network === "normal") as ScreenCase;
 /** A signed-in screen presented over another: its compressed dump leaves the covered screen out, and it masks the devices' text. */
-const devicesModal = cases.find((entry) => entry.id === "app-account-devices") as ScreenCase;
+const devicesModal = accountDevices;
 const address = "qa-user@example.test";
 const pkg = "io.rasheed.svelteqa";
 
@@ -792,7 +793,7 @@ describe("a parity case", () => {
 
 	test("with a reference that cannot be read is one run and an error: attempts 1, no second launch, no evidence set", async () => {
 		const { device, directory, session, variant, context, reference, quietly } = await parityContext();
-		const screen = cases.find((entry) => entry.id === "login") as ScreenCase;
+		const screen = login;
 		reference(screen);
 		try {
 			const record = await quietly(() => runCase(context, screen, variant));
@@ -811,7 +812,6 @@ describe("a parity case", () => {
 	test("whose screen never shows up is tried twice and recorded as an error whose attempts are 2, with the evidence of both tries and the first error", async () => {
 		const { device, root, session, variant, context, reference, quietly } = await parityContext();
 		// A step that waits for a node that is not on the startup screen the fake adb shows, for 50 ms.
-		const login = cases.find((entry) => entry.id === "login") as ScreenCase;
 		const screen: ScreenCase = { ...login, id: "login-never", steps: [{ wait: { label: "never there" }, timeoutMs: 50 }] };
 		reference(screen);
 		try {

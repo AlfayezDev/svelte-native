@@ -1,16 +1,15 @@
 import { amStartCommand } from "./adb.ts";
-import { copy } from "./copy.ts";
 import { findNode } from "./drive.ts";
 import { dumpUi, endsRun, key, tap, type DeviceSession } from "./device.ts";
 import { shellQuote } from "./exec.ts";
-import { accountEmail, codeVariable, configuredCode, placeholder, qaCode, redact, requireAccount, variable } from "./qa-account.ts";
+import { accountEmail, codeVariable, configuredCode, developmentCode, placeholder, qaCode, redact, requireAccount, variable } from "./qa-account.ts";
 import type { Selector } from "./screens.ts";
 import { center } from "./uia.ts";
 import { sleep } from "./wait.ts";
 
 /**
  * The signed-in phase of `parity` and `a11y`: sign in as the QA account the way a user does (the email, the request for a code, the
- * development deployment's code), once per run; run the signed-in cases under that session; sign out. The session lives in the app's
+ * development backend's code), once per run; run the signed-in cases under that session; sign out. The session lives in the app's
  * SecureStore (the device token the server bound to the account), so it survives the `am force-stop` every case starts with, and
  * `signOut` is the reducer a user's "Sign out" button calls, which is what ends the phase: the signed-out cases of the next run find the
  * login screen again.
@@ -20,19 +19,23 @@ import { sleep } from "./wait.ts";
  * is redacted before it is thrown (`scrub`), and nothing here logs it.
  */
 
-/** The labels of the signed-in app in English: the phase signs in and out with the device in the left-to-right language. */
+/**
+ * The labels of the sign-in screens in English: the phase signs in and out with the device in the left-to-right language. They are the screens
+ * of the product the phase was written for (an email address, a one-time code, then a list of workspaces); this repository's example has no
+ * account and no case that signs in, so a project with another sign-in changes this table and `signIn` together.
+ */
 const labels = {
-	email: copy("auth.email") as string,
-	code: copy("auth.otp") as string,
-	checkYourEmail: copy("auth.checkYourEmail") as string,
-	chooseWorkspace: copy("onboarding.selectWorkspaceTitle") as string,
-	profile: copy("onboarding.profileTitle") as string,
-	signOut: copy("auth.signOut") as string,
-	noWorkspaces: copy("workspaceSettings.noWorkspaces") as string,
-	wrongCode: copy("auth.invalidLoginCode") as string,
-	tooManyRequests: copy("auth.tooManyRequests") as string,
-	tooManyAttempts: copy("auth.tooManyCodeAttempts") as string,
-	expired: copy("auth.expiredLoginCode") as string,
+	email: "Email",
+	code: "Login code",
+	checkYourEmail: "Check your email",
+	chooseWorkspace: "Choose a workspace",
+	profile: "What’s your name?",
+	signOut: "Sign out",
+	noWorkspaces: "You have no workspaces. You can create one or delete your account below.",
+	wrongCode: "Invalid login code",
+	tooManyRequests: "Too many tries. Wait a moment, then try again.",
+	tooManyAttempts: "No tries left for this code. Request a new one.",
+	expired: "This code expired. Request a new one.",
 };
 
 const field: Selector = { className: "android.widget.EditText" };
@@ -118,7 +121,7 @@ export async function ensureSignedOut(session: DeviceSession): Promise<boolean> 
 
 /**
  * Signs in as the QA account from the login screen, in English. The account must have a profile (the sign-in must not land on the
- * onboarding screen, which a reference run cannot leave without writing one) and the one-time code is the development deployment's.
+ * onboarding screen, which a reference run cannot leave without writing one) and the one-time code is the development backend's.
  */
 export async function signIn(session: DeviceSession): Promise<void> {
 	const email = requireAccount();
@@ -131,7 +134,7 @@ export async function signIn(session: DeviceSession): Promise<void> {
 		await key(serial, "KEYCODE_ENTER");
 		const asked = await waitForOne(serial, [label(labels.checkYourEmail), label(labels.tooManyRequests)], "the screen that asks for the code", 40_000);
 		if (asked === 1)
-			throw new SignInError(`the database refused to issue a code (${JSON.stringify(labels.tooManyRequests)}): a code was requested for the account in the last minutes; wait and run again`);
+			throw new SignInError(`the backend refused to issue a code (${JSON.stringify(labels.tooManyRequests)}): a code was requested for the account in the last minutes; wait and run again`);
 		await sleep(600);
 		await tapSelector(serial, field);
 		await sleep(400);
@@ -148,13 +151,13 @@ export async function signIn(session: DeviceSession): Promise<void> {
 			throw new SignInError(`signing in landed on the onboarding screen: the QA account has no profile yet, and the harness writes none (finish its profile once by hand)`);
 		if (landed === 2)
 			throw new SignInError(
-				`the database rejected the sign-in code (${JSON.stringify(labels.wrongCode)}): ${
+				`the backend rejected the sign-in code (${JSON.stringify(labels.wrongCode)}): ${
 					configuredCode() === null
-						? `no ${codeVariable} is set, so the harness typed 000000, which only a database in development mode (DEV) accepts; this one emails its codes. Publish it with QA_SIGNIN_EMAIL and QA_SIGNIN_CODE for the QA address and put that code in ${codeVariable}`
-						: `the code in ${codeVariable} is not the one the database was published with (QA_SIGNIN_CODE), or the address in ${variable} is not its QA_SIGNIN_EMAIL`
+						? `no ${codeVariable} is set, so the harness typed ${developmentCode}, which only a backend in development mode accepts; this one sends its codes by email. Configure the backend with a fixed code for the QA address and put that code in ${codeVariable}`
+						: `the code in ${codeVariable} is not the one the backend was configured with for the QA address, or the address in ${variable} is not that address`
 				}`,
 			);
-		if (landed > 2) throw new SignInError(`the database refused the sign-in code (${JSON.stringify([labels.wrongCode, labels.tooManyAttempts, labels.expired][landed - 2])})`);
+		if (landed > 2) throw new SignInError(`the backend refused the sign-in code (${JSON.stringify([labels.wrongCode, labels.tooManyAttempts, labels.expired][landed - 2])})`);
 	} catch (error) {
 		if (endsRun(error)) throw error;
 		throw scrub(error, [email, qaCode()]);

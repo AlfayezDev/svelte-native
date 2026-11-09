@@ -18,10 +18,8 @@ import type { Direction } from "../device.ts";
  * do from inside is left out, with the reason in the run file.
  */
 
-/** Screens that need the app's network to be held back or refused: an iOS app cannot be told to see a proxy from outside. */
-const needsNetworkControl = new Set(["startup-loading", "startup-error"]);
-
-export const iosCases: ScreenCase[] = cases.filter((screen) => !needsNetworkControl.has(screen.id) && !screen.signedIn && screen.androidOnly !== true);
+/** A screen that needs the app's network held back or refused (`network` other than `normal`) is left out: an iOS app cannot be told to see a proxy from outside. */
+export const iosCases: ScreenCase[] = cases.filter((screen) => screen.network === "normal" && !screen.signedIn && screen.androidOnly !== true);
 
 /** Theme x direction at the standard text size: the app cannot change the system's text size from inside. */
 export const iosVariants: Variant[] = variants.filter((variant) => variant.fontScale === 1);
@@ -30,14 +28,9 @@ export const iosLayoutVariants: Variant[] = layoutVariants.filter((variant) => v
 export const iosNotCovered: NotCovered[] = [
 	...notCovered,
 	{
-		route: "/ (platform configuration pending), / (platform configuration unreachable)",
+		route: "the screens whose case holds the app's network back or refuses it, and the signed-in screens (`signedIn` cases)",
 		reason:
-			"the startup screen's loading and error states need the app's HTTP to hang or be refused; on Android the harness routes it through a proxy it controls, and an iOS app cannot be pointed at one from outside (the proxy is a system setting of the phone)",
-	},
-	{
-		route: "the signed-in screens (the `app-*` cases: /workspaces, /workspaces/create, the workspace's home and settings, the account modal and its change-email modal)",
-		reason:
-			"the signed-in phase signs in as the QA account by typing into the login screen over adb (`lib/signin.ts`); the iPhone's lab drives itself from inside and has no way to type the account in yet, so it runs the signed-out screens only until its references are scheduled",
+			"a case that sets `network` needs the app's HTTP to hang or be refused, which on Android the harness routes through a proxy it controls and an iOS app cannot be pointed at from outside (the proxy is a system setting of the phone); the signed-in phase signs in by typing into the sign-in screen over adb (`lib/signin.ts`), which the iPhone's lab, driving itself from inside, cannot do. The example has neither kind of case today",
 	},
 	{
 		route: "every screen at the largest text size",

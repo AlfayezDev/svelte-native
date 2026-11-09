@@ -3,20 +3,21 @@ import { join } from "node:path";
 import { repoRoot } from "./paths.ts";
 
 /**
- * The QA account the signed-in phase of `parity` and `a11y` signs in as. Its address is a secret of the machine running the harness: it
- * is read from `RASHEED_QA_EMAIL` in the environment, else from that one key of the repository's `.env.local` (gitignored, mode 600),
- * when the phase starts. It is never printed, logged, written to a run file, a report, a reference or a file name; the functions of this
- * file are how it stays that way (`redact`, `assertClean`), and `native-qa leakcheck` looks for it in what is about to be committed.
+ * The QA account the signed-in phase of `parity` and `a11y` signs in as, for a project that has an account and signed-in cases (this repository's
+ * example has neither, and nothing here is needed without them: with no account configured every function below is a no-op or answers
+ * "none"). Its address is a secret of the machine running the harness: it is read from `QA_ACCOUNT_EMAIL` in the environment, else from that one
+ * key of the repository's `.env.local` (gitignored, mode 600), when the phase starts. It is never printed, logged, written to a run file, a
+ * report, a reference or a file name; the functions of this file are how it stays that way (`redact`, `assertClean`), and
+ * `native-qa leakcheck` looks for it in what is about to be committed.
  *
- * The one-time code of a development database is public (it is in AGENTS.md); the address is not. A database that is not in
- * development mode emails its codes, which no harness can read: it can instead be published with a fixed code for one dedicated QA address
- * (`QA_SIGNIN_EMAIL` and `QA_SIGNIN_CODE`, apps/database/module/src/identity.rs). That code is a credential of the account like the address is:
- * `RASHEED_QA_CODE`, read the same way (environment, else `.env.local`), is kept out of every message and file the same way, and is
- * `000000` only when none is set.
+ * A development backend's one-time code is public; the address is not. A backend that is not in development mode sends its codes by email,
+ * which no harness can read: it can instead be configured with a fixed code for one dedicated QA address. That code is a credential of the
+ * account like the address is: `QA_ACCOUNT_CODE`, read the same way (environment, else `.env.local`), is kept out of every message and file the
+ * same way, and is `000000` only when none is set.
  */
 export const developmentCode = "000000";
-export const variable = "RASHEED_QA_EMAIL";
-export const codeVariable = "RASHEED_QA_CODE";
+export const variable = "QA_ACCOUNT_EMAIL";
+export const codeVariable = "QA_ACCOUNT_CODE";
 /** What stands for the address wherever a message, a label of the accessibility tree or a finding would have carried it. */
 export const placeholder = "<qa-account>";
 
@@ -54,7 +55,7 @@ function read(): string | null {
 
 const sixDigits = /^\d{6}$/;
 
-/** The fixed code configured for the account (`RASHEED_QA_CODE`, six digits), or null when none is set. A value that is not six digits is an error that never quotes it. */
+/** The fixed code configured for the account (`QA_ACCOUNT_CODE`, six digits), or null when none is set. A value that is not six digits is an error that never quotes it. */
 export function configuredCode(): string | null {
 	if (override) return override.code;
 	if (cachedCode === undefined) {
@@ -65,7 +66,7 @@ export function configuredCode(): string | null {
 	return cachedCode;
 }
 
-/** The code the sign-in types: the configured one, else the development database's. */
+/** The code the sign-in types: the configured one, else the development backend's. */
 export function qaCode(): string {
 	return configuredCode() ?? developmentCode;
 }

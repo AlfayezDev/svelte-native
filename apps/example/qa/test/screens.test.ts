@@ -53,7 +53,7 @@ describe("the screen matrix", () => {
 	test("the matrix leaves out the states that cannot be reached or masked at the largest text, and says so", () => {
 		const all = matrix(cases, variants);
 		const left = cases.filter((screen) => !screen.largestText).map((screen) => screen.id);
-		expect(left).toEqual(["dev-async-loading", "dev-async-error", "app-settings-devices", "app-account-devices"]);
+		expect(left).toEqual(["dev-async-loading", "dev-async-error"]);
 		expect(all.length).toBe(cases.length * variants.length - left.length * 4);
 		expect(
 			all.some((entry) => left.includes(entry.screen.id) && entry.variant.fontScale === 2),
@@ -93,7 +93,7 @@ describe("the screen matrix", () => {
 describe("the way a screen is reached decides whether it has a back button", () => {
 	// The router makes the launch link the base of the stack (no back arrow): a screen declared with "Navigate up" is one the lab
 	// pushes, so the launch link is the screen under it and a step pushes it.
-	// The lab's cases: the signed-in screens are pushed by the product's own buttons (`signed-in.test.ts`).
+	// The lab's cases: a signed-in screen is pushed by its product's own buttons (`signed-in.test.ts`).
 	const wantsBack = cases.filter((screen) => !screen.signedIn && screen.controls.some((control) => localize(control, "ltr") === "Navigate up"));
 
 	test("the cases that declare the back button", () => {

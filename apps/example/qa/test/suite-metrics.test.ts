@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
+import { withSignedInFixtures } from "./fixture-cases.ts";
 import { checkGatesFile, evaluate, type GatesFile, type ReportDevice } from "../lib/gates.ts";
 import { deviceMetrics } from "../lib/metrics.ts";
 import { fullPlanSize } from "../lib/resilience.ts";
@@ -366,11 +367,12 @@ describe("the gates of the three suites", () => {
 	});
 });
 
-describe("D12: the signed-in phase is the Rasheed app's, not the library's", () => {
+describe("D12: the signed-in phase is a product's, not the library's", () => {
+	withSignedInFixtures();
 	const gatesJson = JSON.parse(readFileSync(join(import.meta.dirname, "..", "gates.json"), "utf8")) as GatesFile;
 	const neverEntered = { cases: 4, signedIn: false, signedOut: null, detail: "could not sign in as the QA account" };
 	const entered = { cases: 4, signedIn: true, signedOut: true, detail: null };
-	// two signed-out cases and two signed-in ones (`app-*` screens), each in one variant
+	// two signed-out cases and two signed-in ones (the fixtures' `app-*` screens), each in one variant
 	const parityCases = (signedInVerdict: ParityCase["verdict"], signedOutVerdict: ParityCase["verdict"] = "pass") => [
 		parityCase("home--light-ltr", { screen: "home", verdict: signedOutVerdict }),
 		parityCase("login--light-ltr", { screen: "(public)/auth/login", verdict: "pass" }),

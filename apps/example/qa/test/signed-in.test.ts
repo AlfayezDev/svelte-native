@@ -12,7 +12,6 @@ import {
 	layoutVariants,
 	matrix,
 	notCovered,
-	notCoveredStates,
 	pinnedNames,
 	referenceName,
 	variants,

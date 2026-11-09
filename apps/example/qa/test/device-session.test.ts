@@ -19,9 +19,11 @@ import {
 } from "../lib/drive.ts";
 import { cases, type ScreenCase } from "../lib/screens.ts";
 import { FakeDevice } from "./fake-device.ts";
+import { startupLoading } from "./fixture-cases.ts";
 
 const normalScreen = cases.find((entry) => entry.network === "normal") as ScreenCase;
-const hangScreen = cases.find((entry) => entry.network === "hang") as ScreenCase;
+// No case of the example holds the network back; the fixture of a loading page does (`fixture-cases.ts`).
+const hangScreen: ScreenCase = startupLoading;
 
 async function withDevice<T>(
 	device: FakeDevice,

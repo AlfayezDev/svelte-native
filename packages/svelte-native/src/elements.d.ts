@@ -1,6 +1,11 @@
+// The declarations of the React Native modules the library's own source imports by path (`react-native/Libraries/…`): `react-native` ships no
+// types for some of them and none with a default export. An app's type check reaches every source file the library's entries import, from a
+// workspace link or from `node_modules`, so a public declaration file carries them along instead of leaving each app to declare them again.
+// eslint-disable-next-line @typescript-eslint/triple-slash-reference -- a script of `declare module`s: it cannot be imported, only referenced
+/// <reference path="./fabric/react-native-internals.d.ts" />
 import "svelte/elements";
 import type { ComponentPropsWithRef } from "react";
-import type { ActivityIndicatorProps, ImageProps, KeyboardAvoidingViewProps, ModalProps, PressableProps, ScrollViewProps, SwitchProps, TextInputProps, TextProps, ViewProps, ViewStyle } from "react-native";
+import type { ActivityIndicatorProps, ImageProps, Insets, KeyboardAvoidingViewProps, ModalProps, PressableProps, ScrollViewProps, SwitchProps, TextInputProps, TextProps, ViewProps, ViewStyle } from "react-native";
 import type Animated from "react-native-reanimated";
 import type { BaseAnimationBuilder, EntryExitAnimationFunction, LayoutAnimationFunction } from "react-native-reanimated";
 import type { BarStyle, Detent, DetentChange, HeaderMetrics, Presentation, ScreenAnimation } from "./fabric/navigation.ts";
@@ -15,12 +20,34 @@ type HostRef = (handle: any) => void; // eslint-disable-line @typescript-eslint/
  * `entering`, `exiting` and `layout` are Reanimated's layout animations (`FadeIn`, `FadeOut`, `LinearTransition`, ...), run by
  * Reanimated's C++ proxy (`entering` is read once, at mount).
  */
-export type NativeAnimatedViewProps = ComponentPropsWithRef<typeof Animated.View> & GestureProps & {
-  animatedStyle?: () => ViewStyle;
+export type NativeAnimatedViewProps = Omit<ComponentPropsWithRef<typeof Animated.View>, "animatedProps"> & GestureProps & {
+  /** A worklet returning the style to animate (`useAnimatedStyle` without the hook), or several that are merged. */
+  animatedStyle?: (() => ViewStyle) | ReadonlyArray<() => ViewStyle>;
+  /** A worklet returning the props that are not style to animate (`useAnimatedProps` without the hook), or several. Reanimated's own `animatedProps` object is not what this host takes. */
+  animatedProps?: (() => Record<string, unknown>) | ReadonlyArray<() => Record<string, unknown>>;
   entering?: BaseAnimationBuilder | typeof BaseAnimationBuilder | EntryExitAnimationFunction;
   exiting?: BaseAnimationBuilder | typeof BaseAnimationBuilder | EntryExitAnimationFunction;
   layout?: BaseAnimationBuilder | typeof BaseAnimationBuilder | LayoutAnimationFunction;
 };
+
+/**
+ * What the host's `Pressability` (a port of React Native's, `fabric/pressability.ts`) reads besides the press handlers React Native types. Any node that has a
+ * press handler (`onPress`, `onPressIn`, `onPressOut`, `onLongPress`, `onPressChange`) takes it: `Pressable` always, `Text` and `View` when one is set.
+ */
+export type PressConfig = {
+  /** Svelte's own: called with `true` when the press becomes active and `false` when it ends (after `delayPressOut`), to keep `let pressed = $state(false)`. */
+  onPressChange?: (pressed: boolean) => void;
+  /** How far outside the node, in points, a press may move and still count; the name of Pressability's config, which `Pressable` also takes as `pressRetentionOffset`. */
+  pressRectOffset?: Insets | number | null;
+  /** Milliseconds from touch down to the press becoming active (React Native's `unstable_pressDelay`). */
+  delayPressIn?: number | null;
+  /** Milliseconds from touch up to the press ending. */
+  delayPressOut?: number | null;
+  /** The press stays active at least this long (default 130). */
+  minPressDuration?: number | null;
+};
+/** The press handlers and options of `View`, which React Native's `View` does not have and this host's does (`<View onPress>`). */
+export type PressHandlers = Pick<PressableProps, "onPress" | "onPressIn" | "onPressOut" | "onLongPress" | "delayLongPress" | "cancelable"> & PressConfig;
 
 /**
  * A native element takes the React Native props of its primitive directly as attributes.
@@ -177,10 +204,10 @@ declare module "svelte/elements" {
   interface HTMLAttributes<T> { nativeProps?: object; }
   /** The element names the host maps to native views; see `viewNames` in `fabric/host.ts`. */
   interface SvelteHTMLElements {
-    "native-view": NativeElementAttributes<ViewProps>;
-    "native-text": NativeElementAttributes<TextProps>;
+    "native-view": NativeElementAttributes<ViewProps & PressHandlers>;
+    "native-text": NativeElementAttributes<TextProps & PressConfig>;
     "native-input": NativeElementAttributes<TextInputProps>;
-    "native-pressable": NativeElementAttributes<PressableProps>;
+    "native-pressable": NativeElementAttributes<PressableProps & PressConfig>;
     "native-scroll": NativeElementAttributes<ScrollViewProps>;
     "native-image": NativeElementAttributes<ImageProps>;
     "native-switch": NativeElementAttributes<SwitchProps>;

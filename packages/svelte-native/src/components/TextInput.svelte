@@ -2,9 +2,10 @@
   import type {} from "../elements.d.ts";
   import { createNativeProps } from "../native-props.ts";
   import type { TextInput as NativeTextInput, TextInputProps } from "react-native";
+  import type { HostHandle } from "../fabric/host.ts";
   let { value = $bindable(""), onChangeText, ref, ...attributes }: TextInputProps & {
-    /** Receives the React Native TextInput instance for `focus`, `blur` and `clear`. */
-    ref?: (instance: NativeTextInput | null) => void;
+    /** Receives the host handle: React Native's TextInput instance (`focus`, `blur`, `measure`) plus `dispatchCommand`, or null on unmount. The type has React Native's `clear()`, which the host handle does not implement: set the bound `value` to `""`. */
+    ref?: (instance: (NativeTextInput & Pick<HostHandle, "dispatchCommand">) | null) => void;
   } = $props();
   const resolveProps = createNativeProps();
 </script>

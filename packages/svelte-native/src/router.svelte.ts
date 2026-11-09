@@ -1,3 +1,4 @@
+/// <reference path="./fabric/react-native-internals.d.ts" />
 import { getContext, onDestroy, setContext } from "svelte";
 import { SvelteMap, SvelteURL } from "svelte/reactivity";
 import Platform from "react-native/Libraries/Utilities/Platform";

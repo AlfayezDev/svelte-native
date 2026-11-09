@@ -10,6 +10,8 @@
 </script>
 <native-view testID="root">
   <native-pressable testID="a" onPress={note("a.press")} onPressIn={note("a.in")} onPressOut={note("a.out")} onLongPress={undefined} onPressChange={(v) => { pressed = v; log(`a.change ${v}`); }} hitSlop={slop}></native-pressable>
+  <native-pressable testID="retained" pressRetentionOffset={100} onPress={note("retained.press")}></native-pressable>
+  <native-pressable testID="rect" pressRectOffset={100} onPress={note("rect.press")}></native-pressable>
   <native-pressable testID="instant" minPressDuration={0} onPress={note("i.press")} onPressIn={note("i.in")} onPressOut={note("i.out")}></native-pressable>
   <native-pressable testID="evt" onPress={(e) => events.push(e)}></native-pressable>
   <native-pressable testID="lp" onPress={note("lp.press")} onLongPress={note("lp.long")} delayLongPress={300} onPressOut={note("lp.out")}></native-pressable>

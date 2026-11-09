@@ -1,3 +1,5 @@
+// eslint-disable-next-line @typescript-eslint/triple-slash-reference -- a script of `declare module`s: it cannot be imported, only referenced
+/// <reference path="./fabric/react-native-internals.d.ts" />
 import { mark } from "./boot-marks.ts";
 import "./intl.ts"; // lazy: `mark("intl")` fires on the first Intl.PluralRules/RelativeTimeFormat/ListFormat/Locale access
 import AppState from "react-native/Libraries/AppState/AppState";

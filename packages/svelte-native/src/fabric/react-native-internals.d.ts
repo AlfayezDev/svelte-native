@@ -20,18 +20,28 @@ declare module "react-native/Libraries/Image/resolveAssetSource" {
   export default resolveAssetSource;
 }
 declare module "react-native/Libraries/Utilities/Platform" {
-  const Platform: { OS: string; Version: string | number };
+  import type { Platform as ReactNativePlatform } from "react-native";
+  const Platform: Extract<typeof ReactNativePlatform, { OS: "android" | "ios" }>;
   export default Platform;
 }
 declare module "react-native/Libraries/BatchedBridge/NativeModules" { const NativeModules: Record<string, unknown>; export default NativeModules; }
 declare module "react-native/Libraries/EventEmitter/NativeEventEmitter" { const NativeEventEmitter: unknown; export default NativeEventEmitter; }
 declare module "react-native/Libraries/AppState/AppState" {
-  const AppState: { addEventListener(type: "change", listener: (state: string) => void): { remove(): void } };
+  import type { AppState as ReactNativeAppState } from "react-native";
+  const AppState: typeof ReactNativeAppState;
   export default AppState;
 }
-declare module "react-native/Libraries/Utilities/Dimensions" { const Dimensions: { get(dimension: "window" | "screen"): { width: number; height: number; scale: number; fontScale: number } }; export default Dimensions; }
+declare module "react-native/Libraries/Utilities/Dimensions" {
+  import type { Dimensions as ReactNativeDimensions } from "react-native";
+  const Dimensions: typeof ReactNativeDimensions;
+  export default Dimensions;
+}
 declare module "react-native/Libraries/TurboModule/TurboModuleRegistry" { export function get<T>(name: string): T | null; export function getEnforcing<T>(name: string): T; }
-declare module "react-native/Libraries/Components/Keyboard/Keyboard" { const Keyboard: { isVisible(): boolean; dismiss(): void }; export default Keyboard; }
+declare module "react-native/Libraries/Components/Keyboard/Keyboard" {
+  import type { Keyboard as ReactNativeKeyboard } from "react-native";
+  const Keyboard: typeof ReactNativeKeyboard;
+  export default Keyboard;
+}
 declare module "react-native/Libraries/vendor/emitter/EventEmitter" { export interface EventSubscription { remove(): void } }
 declare module "react-native/Libraries/Core/setUpGlobals" {}
 declare module "react-native/Libraries/Core/setUpXHR" {}
@@ -56,19 +66,41 @@ declare module "react-native/Libraries/ReactNative/I18nManager" { const I18nMana
 
 declare module "react-native/Libraries/StyleSheet/processColor" { const processColor: (color: unknown) => number | null | undefined; export default processColor; }
 declare module "react-native/Libraries/Utilities/BackHandler" {
-  const BackHandler: { addEventListener(event: "hardwareBackPress", handler: () => boolean | null | undefined): { remove(): void } };
+  import type { BackHandler as ReactNativeBackHandler } from "react-native";
+  const BackHandler: typeof ReactNativeBackHandler;
   export default BackHandler;
 }
 declare module "react-native/Libraries/Linking/Linking" {
-  const Linking: {
-    addEventListener(type: "url", handler: (event: { url: string }) => void): { remove(): void };
-    getInitialURL(): Promise<string | null>;
-    openURL(url: string): Promise<unknown>;
-  };
+  import type { Linking as ReactNativeLinking } from "react-native";
+  const Linking: typeof ReactNativeLinking;
   export default Linking;
 }
-declare module "react-native/Libraries/Utilities/PixelRatio" { const PixelRatio: object; export default PixelRatio; }
-declare module "react-native/Libraries/Utilities/Appearance" { export function getColorScheme(): "light" | "dark" | null | undefined; export function setColorScheme(scheme: "light" | "dark" | null): void; export function addChangeListener(listener: (preferences: { colorScheme: "light" | "dark" | null | undefined }) => void): { remove(): void }; }
+declare module "react-native/Libraries/Utilities/PixelRatio" {
+  import type { PixelRatio as ReactNativePixelRatio } from "react-native";
+  const PixelRatio: typeof ReactNativePixelRatio;
+  export default PixelRatio;
+}
+declare module "react-native/Libraries/Utilities/Appearance" {
+  import type { Appearance as ReactNativeAppearance } from "react-native";
+  export const getColorScheme: typeof ReactNativeAppearance.getColorScheme;
+  export const setColorScheme: typeof ReactNativeAppearance.setColorScheme;
+  export const addChangeListener: typeof ReactNativeAppearance.addChangeListener;
+}
+declare module "react-native/Libraries/Share/Share" {
+  import type { Share as ReactNativeShare } from "react-native";
+  const Share: typeof ReactNativeShare;
+  export default Share;
+}
+declare module "react-native/Libraries/Vibration/Vibration" {
+  import type { Vibration as ReactNativeVibration } from "react-native";
+  const Vibration: typeof ReactNativeVibration;
+  export default Vibration;
+}
+declare module "react-native/Libraries/Alert/Alert" {
+  import type { Alert as ReactNativeAlert } from "react-native";
+  const Alert: typeof ReactNativeAlert;
+  export default Alert;
+}
 declare module "react-native/Libraries/Utilities/useColorScheme" { const useColorScheme: () => "light" | "dark" | null | undefined; export default useColorScheme; }
 declare module "react-native/Libraries/Components/StatusBar/StatusBar" { const StatusBar: object; export default StatusBar; }
 declare module "react-native/Libraries/Network/RCTNetworking" { const Networking: object; export default Networking; }

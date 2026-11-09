@@ -179,6 +179,17 @@ test("a move that stays inside the offset keeps the press, and hitSlop widens th
   expect(v.log).toContain("a.press");
 });
 
+test("pressRetentionOffset (React Native's Pressable name) and pressRectOffset (Pressability's) both widen the region a press may move in", async () => {
+  jest.useFakeTimers();
+  for (const id of ["retained", "rect"]) {
+    const t = await setup();
+    t.send(id, "topTouchStart", 50, 20);
+    t.send(id, "topTouchMove", 50, 120); // 40 + 100 offset = 140; the default offset (30) would have cancelled at 70
+    t.send(id, "topTouchEnd", 50, 120);
+    expect(t.log).toContain(`${id}.press`);
+  }
+});
+
 test("leaving and re-entering the press rect before release still presses", async () => {
   jest.useFakeTimers();
   const t = await setup();

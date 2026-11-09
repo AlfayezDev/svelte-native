@@ -1,0 +1,176 @@
+name: CI
+
+# The checks that need no device and no Android SDK: lint, types, the unit tests, the Node-side build and the engine's Kotlin and C++ host
+# checks. Every push to a branch and every pull request; release.yml calls it before it publishes. Four jobs run side by side (each installs
+# the workspace), and `CI` is the one status to require. The device lanes are native-qa.yml, the build from a consumer's side is consumer.yml.
+# What runs, how long it takes and how to read a failure: README.md, "CI".
+
+on:
+  push:
+    # Branches only: a pushed tag is built by release.yml, which calls this workflow.
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+# A newer push replaces the run of an older one on the same branch or pull request; a run on main is never cancelled once it has started.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  # CI=1 exactly: tests/native-tools.test.ts fails (instead of skipping the Kotlin and C++ checks) only when it is "1", not GitHub's "true".
+  CI: "1"
+  EXPO_NO_TELEMETRY: "1"
+
+jobs:
+  static:
+    name: Lint and types
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - id: setup
+        uses: ./.github/actions/setup
+
+      # Every check runs even when an earlier one failed, so one run reports everything that is wrong.
+      - name: Biome (repository)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: pnpm exec biome check .
+
+      - name: ESLint (library)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: pnpm --dir packages/svelte-native lint
+
+      - name: svelte-check (library)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: pnpm --dir packages/svelte-native typecheck
+
+      - name: ESLint (QA app)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: pnpm --dir apps/qa lint
+
+      - name: svelte-check (QA app)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: pnpm --dir apps/qa typecheck
+
+      - name: tsc (QA harness)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: pnpm --dir apps/qa native-qa:typecheck
+
+      - name: ESLint (showcase app)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: pnpm --dir apps/example lint
+
+      - name: svelte-check and tsc (showcase app)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: pnpm --dir apps/example typecheck
+
+  library:
+    name: Library and showcase tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # kotlinc, a JDK, g++, android.jar and the org.json jar: the package tests that compile tests/native/*Host.kt fail without them.
+      - id: setup
+        uses: ./.github/actions/setup
+        with:
+          host-tools: "true"
+
+      # Route discovery, Metro stubs, gestures, svg, the app-tree mounts, the updates client, the Kotlin host checks and the dist test
+      # (dist/node must be what the build writes). Some tests start Metro or esbuild, so Bun's 5 s per test is too short on a hosted runner.
+      - name: Library tests
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        working-directory: packages/svelte-native
+        run: bun test --timeout 60000
+
+      # After the tests, so that the dist test judged the committed files; the build then writes the same bytes, or the commit forgot it.
+      - name: Build dist/node and compare it with the commit
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: |
+          pnpm --dir packages/svelte-native build
+          changed=$(git status --porcelain -- packages/svelte-native/dist)
+          if [ -n "$changed" ]; then
+            echo "::error title=dist/node is stale::run 'pnpm --dir packages/svelte-native build' and commit packages/svelte-native/dist/node"
+            echo "$changed"
+            git --no-pager diff --stat -- packages/svelte-native/dist
+            exit 1
+          fi
+
+      # Bundles the showcase app for both platforms with Metro, so the default 5 s per test is far too short.
+      - name: Showcase tests
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        working-directory: apps/example
+        run: pnpm test
+
+  harness:
+    name: QA harness tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - id: setup
+        uses: ./.github/actions/setup
+
+      # The harness's unit tests (gates, parsers, the updates scenario against a model of the client, the lane script) and the bundle test,
+      # which bundles the QA, smoke and product apps with Metro (a few minutes, tens of MB of temporary files). No device is used.
+      - name: Harness tests
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        working-directory: apps/qa
+        run: bun test --timeout 120000 qa
+
+  engine-host:
+    name: Engine host checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - id: setup
+        uses: ./.github/actions/setup
+        with:
+          host-tools: "true"
+
+      # run.sh builds with AddressSanitizer. On a kernel with 32 bits of ASLR entropy (vm.mmap_rnd_bits) the sanitizer runtime of GCC 13 can die
+      # at start-up ("DEADLYSIGNAL", seen on GitHub-hosted Ubuntu images); 28 bits is what it was built for. Harmless where it is not needed.
+      - name: Lower the ASLR entropy for the sanitizers
+        run: sudo sysctl -w vm.mmap_rnd_bits=28 || true
+
+      # Kotlin and C++ checks of the engine, no device: the animated wire (C++ encoder against the Kotlin decoder), foreign-view ownership,
+      # view-shot capture, the accessibility records, header and sheet rules and the gesture rules read from react-native-gesture-handler's
+      # own Pan source. g++ with the address and undefined-behaviour sanitizers, kotlinc 2.1.20.
+      - name: Engine host checks
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bash packages/svelte-native/native/svelte-engine/android/src/test/run.sh
+
+  # The one status to require in a branch rule: it fails when any job above failed or was cancelled.
+  ci:
+    name: CI
+    if: ${{ always() }}
+    needs: [static, library, harness, engine-host]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every job passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "results: $RESULTS"
+          for result in $RESULTS; do
+            [ "$result" = success ] || { echo "::error title=CI::a job did not pass ($RESULTS)"; exit 1; }
+          done

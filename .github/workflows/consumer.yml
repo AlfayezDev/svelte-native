@@ -1,0 +1,126 @@
+name: Consumer
+
+# Proves that an app outside this repository can install the library and build it: scripts/consumer-check.sh copies examples/minimal to a
+# scratch directory, installs the library (as a packed tarball, and as a git dependency of this very checkout), applies the patches, runs
+# doctor and sync, bundles with Metro, runs expo prebuild and builds a release APK with Gradle. The two modes are two jobs, so each has a
+# runner and a disk of its own. About 25 to 40 minutes a job on a hosted runner (a Gradle build from nothing; the cache shortens the next).
+# What it checks and how to read a failure: README.md, "CI".
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "packages/**"
+      - "examples/**"
+      - "vendor/**"
+      - "scripts/consumer-check.sh"
+      - ".github/workflows/consumer.yml"
+  workflow_dispatch:
+    inputs:
+      abi:
+        description: The ABI Gradle builds (the emulator lane builds x86_64; a phone is arm64-v8a)
+        type: choice
+        options:
+          - x86_64
+          - arm64-v8a
+        default: x86_64
+
+permissions:
+  contents: read
+
+# A newer push to a pull request replaces its older run; runs on main and by hand finish.
+concurrency:
+  group: consumer-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CI: "1"
+  EXPO_NO_TELEMETRY: "1"
+
+jobs:
+  consumer:
+    name: Consumer build (${{ matrix.mode }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [tarball, git]
+    steps:
+      # Depth 1 is enough: the git mode installs the checked-out commit from this directory (git+file://), and pnpm clones it from there.
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: package.json
+
+      # React Native 0.86 builds with JDK 17 (scripts/consumer-check.sh looks for it in JAVA_HOME).
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # The SDK packages the generated project asks for, as react-native's gradle/libs.versions.toml pins them: compileSdk 36, build-tools
+      # 36.0.0, NDK 27.1.12297006, and CMake 3.22.1 for the engine's C++. The action accepts the licences and installs into the hosted
+      # image's SDK (ANDROID_HOME), so Gradle does not have to download (and fail on a licence prompt) in the middle of the build.
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          packages: platform-tools platforms;android-36 build-tools;36.0.0 ndk;27.1.12297006 cmake;3.22.1
+
+      # Gradle's downloads (the Android Gradle plugin, React Native's artifacts, Kotlin). The key follows what decides them: the React Native
+      # version the library asks for, the template's dependencies and the native projects' build files. Wrapper distributions are in it.
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: consumer-gradle-${{ runner.os }}-${{ hashFiles('packages/svelte-native/package.json', 'examples/minimal/package.json', 'packages/svelte-native/native/**/build.gradle') }}
+          restore-keys: |
+            consumer-gradle-${{ runner.os }}-
+
+      - name: Toolchain
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_HOME/ndk" "$ANDROID_HOME/cmake" "$ANDROID_HOME/build-tools" "$ANDROID_HOME/platforms"
+          java -version
+          node --version
+          pnpm --version
+          df -h / "$RUNNER_TEMP"
+          free -m
+          nproc
+
+      # CAP is empty: the script's cap (systemd-run --user, nice, ionice) is for a shared PC, and a hosted runner is a machine of its own.
+      # WORK is outside the workspace and outside any pnpm workspace; the APKs are copied to APK_OUT on success.
+      - name: scripts/consumer-check.sh ${{ matrix.mode }}
+        env:
+          MODE: ${{ matrix.mode }}
+          ABI: ${{ inputs.abi || 'x86_64' }}
+          WORK: ${{ runner.temp }}/consumer-check
+          APK_OUT: ${{ runner.temp }}/consumer-apks
+        run: |
+          export CAP=
+          bash scripts/consumer-check.sh "$MODE"
+
+      - name: Upload the APK
+        if: ${{ success() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: consumer-${{ matrix.mode }}-${{ inputs.abi || 'x86_64' }}
+          path: ${{ runner.temp }}/consumer-apks/*.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      # A failed run keeps its scratch directory: the log of every stage is <WORK>/<mode>/logs/NN-<stage>.log.
+      - name: Upload the stage logs
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: consumer-${{ matrix.mode }}-logs
+          path: ${{ runner.temp }}/consumer-check/${{ matrix.mode }}/logs/
+          if-no-files-found: warn
+          retention-days: 7

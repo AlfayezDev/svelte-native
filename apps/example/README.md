@@ -52,6 +52,7 @@ The home screen groups these under Basics, Layout and style, Lists and input, Na
 - **React Native's JavaScript modules are imported by path** (`react-native/Libraries/Utilities/Platform`, `Appearance`, `Dimensions`, `Linking`): the library has none of its own, and the `react-native` index would load React's components. React Native ships no types for these paths, so `src/lib/modules.d.ts` declares the few members the app uses. It also declares two modules the library's own source imports, because a workspace link is type-checked with the app.
 - **`hermes-intl` is a dependency of the app** although it is not a peer of the library: the library's polyfills require it, and Metro cannot bundle without it.
 - **`@sveltejs/kit` and `vite` are dependencies too**, because the library lists them as peers (the web target and remote functions use them). A native-only app like this one does not run either.
+- **`expo-system-ui`** makes `userInterfaceStyle: "automatic"` in `app.config.ts` apply on Android, so the app follows the system's dark mode there (Expo warns at prebuild without it).
 - **Dark mode** is the theme's: `src/lib/theme.svelte.ts` keeps the system's colour scheme in `$state` (React Native's `Appearance`), and a screen reads `theme.colors`. There is no in-app switch; change the phone's appearance.
 - **Fonts**: the system fonts need no setup. `JetBrainsMono-Regular.ttf` (SIL Open Font License, `assets/fonts/OFL.txt`) is embedded by the `expo-font` plugin in `app.config.ts`.
 

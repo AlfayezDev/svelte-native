@@ -4,6 +4,10 @@ Notable changes to `@rasheed/svelte-native`, newest first. The format follows [K
 
 ## Unreleased
 
+## 0.3.0 - 2026-11-10
+
+The first release of the standalone repository (`AlfayezDev/svelte-native`, extracted from the Rasheed monorepo on 9 November 2026 with its full history; D15). Apps install it from the tag: `pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#v0.3.0&path:packages/svelte-native"`. Proven on `abb4263` on the three devices (PLAN.md, "Standalone release 0.3.0"): the OVH emulator and the Samsung A16 pass every gate on the Android build of that commit, outside the documented exceptions (D1, D9, D11 and the first touch of a process); the iPhone SE 3 passes on the iOS build of `4f36d4d`, whose iOS app code is the same as `abb4263`'s (the commits between change the Android engine, its tests and the QA harness only).
+
 ### Added
 
 - `@rasheed/svelte-native/platform`: `Platform`, `Appearance`, `Dimensions`, `Linking`, `Keyboard`, `AppState`, `BackHandler`, `PixelRatio`, `Share`, `Vibration` and `Alert`, React Native's own JavaScript-only modules, typed (React Native's types; `Platform` narrowed to `"ios" | "android"`), for an app without React. An app no longer imports them by `react-native/Libraries/…` path or declares their types itself. Importing the entry loads none of them; each loads on its first property read.

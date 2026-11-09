@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { mkdir } from "node:fs/promises";
 import { relative, resolve, sep } from "node:path";
 import type { AST, parse as parseSvelte } from "svelte/compiler";
+import { runesEnvironment } from "./compile-options.ts";
 import { buildTree, type PageRoute, type RouteFile, type RouteNode, type StackNode } from "./route-tree.ts";
 import { labIncludedFor, routesTableFile, variantName } from "./variant.ts";
 
@@ -209,25 +210,35 @@ export function watchRoutes(root: string, options: SyncOptions = {}, debounceMs 
   return { close() { clearTimeout(timer); watcher.close(); } };
 }
 
-export function runExpo(root: string, args: string[]) {
-  const env: NodeJS.ProcessEnv = { ...process.env, EXPO_NO_TELEMETRY: "1" };
+/** The environment `expo` runs in: this process's, with `extra` over it. */
+export function expoEnvironment(args: string[], extra: Record<string, string> = {}): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, EXPO_NO_TELEMETRY: "1", ...extra };
   // adb reverse connects over IPv4; Node may otherwise bind localhost to ::1.
   if (args.includes("--localhost")) env.NODE_OPTIONS = `${env.NODE_OPTIONS ?? ""} --dns-result-order=ipv4first`.trim();
+  return env;
+}
+
+export function runExpo(root: string, args: string[], extraEnv: Record<string, string> = {}) {
   return spawn(process.execPath, [require.resolve("expo/bin/cli"), ...args], {
     cwd: root,
     stdio: "inherit",
-    env,
+    env: expoEnvironment(args, extraEnv),
   });
 }
 
-export async function exportNative(root: string, platform: "android" | "ios", options: SyncOptions = {}): Promise<void> {
+export type ExportOptions = SyncOptions & {
+  /** The app's `runes` setting for the Metro that runs the export (see `SvelteNativeMetroOptions.runes`); the app's own `withSvelteNative(config, { runes })` wins over it. */
+  runes?: boolean;
+};
+
+export async function exportNative(root: string, platform: "android" | "ios", options: ExportOptions = {}): Promise<void> {
   await syncNative(root, options);
   const output = resolve(root, ".svelte-native/dist", platform);
   await mkdir(output, { recursive: true });
   const child = runExpo(root, ["export:embed", "--platform", platform,
     "--entry-file", ".svelte-native/entry.ts", "--bundle-output", resolve(output, "index.hbc"),
     "--sourcemap-output", resolve(output, "index.hbc.map"), "--assets-dest", resolve(output, "assets"),
-    "--dev", "false", "--bytecode", "--reset-cache"]);
+    "--dev", "false", "--bytecode", "--reset-cache"], runesEnvironment(options.runes));
   const result = await new Promise<number | null>((done, reject) => { child.once("error", reject); child.once("exit", done); });
   if (result !== 0) throw new Error(`Native ${platform} export exited with ${result}`);
 }

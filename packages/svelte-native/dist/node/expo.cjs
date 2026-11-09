@@ -40,13 +40,31 @@ __export(expo_exports, {
 });
 module.exports = __toCommonJS(expo_exports);
 var import_promises = require("node:fs/promises");
-var import_node_path2 = require("node:path");
+var import_node_path4 = require("node:path");
 var import_config_plugins2 = require("expo/config-plugins");
 
 // src/build.ts
-var import_node_fs = require("node:fs");
+var import_node_fs2 = require("node:fs");
 var import_node_module = require("node:module");
+var import_node_path3 = require("node:path");
+
+// src/compile-options.ts
+var import_node_path2 = require("node:path");
+
+// src/package-root.ts
+var import_node_fs = require("node:fs");
 var import_node_path = require("node:path");
+function findPackageRoot(from) {
+  for (let directory = from; ; directory = (0, import_node_path.dirname)(directory)) {
+    if ((0, import_node_fs.existsSync)((0, import_node_path.join)(directory, "package.json"))) return directory;
+    if ((0, import_node_path.dirname)(directory) === directory) throw new Error(`No package.json above ${from}: the package's files moved`);
+  }
+}
+var packageRoot = findPackageRoot(__dirname);
+var sourceDirectory = (0, import_node_path.join)(packageRoot, "src");
+
+// src/compile-options.ts
+var ownSources = sourceDirectory + import_node_path2.sep;
 
 // src/route-tree.ts
 var PAGE = "+mobile.svelte";
@@ -190,7 +208,7 @@ var routesTableFile = (variant) => `routes.${variant.replace(/[^A-Za-z0-9_-]/g, 
 
 // src/build.ts
 var require2 = (0, import_node_module.createRequire)(__importMetaUrl);
-var posix = (path) => path.split(import_node_path.sep).join("/");
+var posix = (path) => path.split(import_node_path3.sep).join("/");
 function exportedLiteral(ast, file, name, values) {
   for (const statement of ast.module?.content.body ?? []) {
     if (statement.type !== "ExportNamedDeclaration") continue;
@@ -218,11 +236,11 @@ var LAB_DIRECTORY = "__dev";
 function routeFilesSync(routesRoot, { lab = labIncluded() } = {}) {
   const paths = [];
   function walk(directory) {
-    for (const item of (0, import_node_fs.readdirSync)(directory, { withFileTypes: true })) {
-      const path = (0, import_node_path.resolve)(directory, item.name);
+    for (const item of (0, import_node_fs2.readdirSync)(directory, { withFileTypes: true })) {
+      const path = (0, import_node_path3.resolve)(directory, item.name);
       if (item.isDirectory()) {
         if (lab || item.name !== LAB_DIRECTORY) walk(path);
-      } else paths.push(posix((0, import_node_path.relative)(routesRoot, path)));
+      } else paths.push(posix((0, import_node_path3.relative)(routesRoot, path)));
     }
   }
   walk(routesRoot);
@@ -232,7 +250,7 @@ function routeFilesSync(routesRoot, { lab = labIncluded() } = {}) {
   for (const path of paths.sort((a, b) => a.localeCompare(b))) {
     const name = path.slice(path.lastIndexOf("/") + 1);
     if (name !== "+mobile.svelte" && name !== "+layout.mobile.svelte") continue;
-    const ast = parse((0, import_node_fs.readFileSync)((0, import_node_path.resolve)(routesRoot, path), "utf8"), { modern: true, filename: path });
+    const ast = parse((0, import_node_fs2.readFileSync)((0, import_node_path3.resolve)(routesRoot, path), "utf8"), { modern: true, filename: path });
     if (exportedInInstance(ast, "lab")) throw new Error(`${path}: export \`lab\` is ignored in the instance script; move \`lab\` to \`<script module>\`, which the route table reads at build time`);
     const labOnly = exportedLiteral(ast, path, "lab", [true]) === true;
     if (labOnly && path === name && name === "+layout.mobile.svelte") throw new Error(`${path}: the root layout is the app shell and cannot be lab-only`);
@@ -254,7 +272,7 @@ function routeFilesSync(routesRoot, { lab = labIncluded() } = {}) {
 }
 function treeModule(tree, routesRoot, output, variant, lab) {
   const json = (value) => JSON.stringify(value);
-  const code = (file) => `require(${json(posix((0, import_node_path.relative)(output, (0, import_node_path.resolve)(routesRoot, file))))}).default`;
+  const code = (file) => `require(${json(posix((0, import_node_path3.relative)(output, (0, import_node_path3.resolve)(routesRoot, file))))}).default`;
   const loader = (file, layouts = []) => `async () => ({ component: ${code(file)}, layouts: [${layouts.map(code).join(", ")}] })`;
   const routeOf = (route, indent) => {
     if (route.kind === "page") {
@@ -299,32 +317,32 @@ export const tree: StackNode = ${nodeOf(tree, "").trimStart()};
 function syncRoutes(root, options = {}) {
   const variant = options.variant ?? variantName();
   const lab = options.lab ?? labIncludedFor(variant);
-  const routesRoot = (0, import_node_path.resolve)(root, "src/routes");
-  const output = (0, import_node_path.resolve)(root, ".svelte-native");
-  (0, import_node_fs.mkdirSync)(output, { recursive: true });
+  const routesRoot = (0, import_node_path3.resolve)(root, "src/routes");
+  const output = (0, import_node_path3.resolve)(root, ".svelte-native");
+  (0, import_node_fs2.mkdirSync)(output, { recursive: true });
   const manifest = treeModule(buildTree(routeFilesSync(routesRoot, { lab })), routesRoot, output, variant, lab);
   const customRoot = process.env.SVELTE_NATIVE_ROOT;
   const prelude = "import '@example/svelte-native/init';\nimport '@example/svelte-native/polyfills';\nimport { createFabricApp, remountSurfaces } from '@example/svelte-native/fabric';\n";
   const hot = "declare const module: { hot?: { accept(callback?: () => void): void } };\nif (__DEV__) module.hot?.accept(() => remountSurfaces());\n";
-  const entry = customRoot ? `${prelude}import App from ${JSON.stringify(posix((0, import_node_path.relative)(output, (0, import_node_path.resolve)(root, customRoot))))};
+  const entry = customRoot ? `${prelude}import App from ${JSON.stringify(posix((0, import_node_path3.relative)(output, (0, import_node_path3.resolve)(root, customRoot))))};
 createFabricApp(App, {});
 ${hot}` : `${prelude}import App from '../src/routes/+layout.mobile.svelte';
 import { tree } from './routes';
 createFabricApp(App, { tree });
 ${hot}`;
   const files = [[routesTableFile(variant), manifest]];
-  if (options.entry !== "keep" || customRoot !== void 0 || !(0, import_node_fs.existsSync)((0, import_node_path.resolve)(output, "entry.ts"))) files.push(["entry.ts", entry]);
+  if (options.entry !== "keep" || customRoot !== void 0 || !(0, import_node_fs2.existsSync)((0, import_node_path3.resolve)(output, "entry.ts"))) files.push(["entry.ts", entry]);
   for (const [file, content] of files) {
-    const destination = (0, import_node_path.resolve)(output, file);
+    const destination = (0, import_node_path3.resolve)(output, file);
     let current = "";
     try {
-      current = (0, import_node_fs.readFileSync)(destination, "utf8");
+      current = (0, import_node_fs2.readFileSync)(destination, "utf8");
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
     }
-    if (current !== content) (0, import_node_fs.writeFileSync)(destination, content);
+    if (current !== content) (0, import_node_fs2.writeFileSync)(destination, content);
   }
-  (0, import_node_fs.rmSync)((0, import_node_path.resolve)(output, "routes.ts"), { force: true });
+  (0, import_node_fs2.rmSync)((0, import_node_path3.resolve)(output, "routes.ts"), { force: true });
 }
 async function syncNative(root, options = {}) {
   syncRoutes(root, options);
@@ -782,11 +800,11 @@ var withSvelteNative = (config, options) => {
   config = (0, import_config_plugins2.withDangerousMod)(config, ["android", async (config2) => {
     const applicationId = config2.android?.package;
     if (!applicationId) throw new Error("Svelte native needs android.package in the Expo config");
-    const directory = (0, import_node_path2.join)(config2.modRequest.platformProjectRoot, "app/src/main/java", ...applicationId.split("."));
-    const file = (0, import_node_path2.join)(directory, `${headlessPackageName}.kt`);
+    const directory = (0, import_node_path4.join)(config2.modRequest.platformProjectRoot, "app/src/main/java", ...applicationId.split("."));
+    const file = (0, import_node_path4.join)(directory, `${headlessPackageName}.kt`);
     await (0, import_promises.mkdir)(directory, { recursive: true });
     await (0, import_promises.writeFile)(file, headlessPackageSource(applicationId));
-    await (0, import_promises.writeFile)((0, import_node_path2.join)(directory, `${onDemandPackageName}.kt`), onDemandPackageSource(applicationId));
+    await (0, import_promises.writeFile)((0, import_node_path4.join)(directory, `${onDemandPackageName}.kt`), onDemandPackageSource(applicationId));
     return config2;
   }]);
   config = (0, import_config_plugins2.withAndroidManifest)(config, (config2) => {
@@ -820,9 +838,9 @@ var withSvelteNative = (config, options) => {
     });
   }
   config = (0, import_config_plugins2.withDangerousMod)(config, ["android", async (config2) => {
-    const dir = (0, import_node_path2.join)(config2.modRequest.platformProjectRoot, "app", "src", "main");
+    const dir = (0, import_node_path4.join)(config2.modRequest.platformProjectRoot, "app", "src", "main");
     await (0, import_promises.mkdir)(dir, { recursive: true });
-    await (0, import_promises.writeFile)((0, import_node_path2.join)(dir, "baseline-prof.txt"), baselineProfile());
+    await (0, import_promises.writeFile)((0, import_node_path4.join)(dir, "baseline-prof.txt"), baselineProfile());
     return config2;
   }]);
   config = (0, import_config_plugins2.withMainActivity)(config, (config2) => {

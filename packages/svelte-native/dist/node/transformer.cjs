@@ -29,13 +29,66 @@ __export(transformer_exports, {
 });
 module.exports = __toCommonJS(transformer_exports);
 var import_node_module3 = require("node:module");
-var import_node_path5 = require("node:path");
+var import_node_path6 = require("node:path");
 var import_compiler2 = require("svelte/compiler");
 var import_esbuild = require("esbuild");
 var import_node_crypto = require("node:crypto");
-var import_node_fs3 = require("node:fs");
+var import_node_fs4 = require("node:fs");
 var import_parser2 = require("@babel/parser");
 var import_types = require("@babel/types");
+
+// src/compile-options.ts
+var import_node_fs2 = require("node:fs");
+var import_node_path2 = require("node:path");
+
+// src/package-root.ts
+var import_node_fs = require("node:fs");
+var import_node_path = require("node:path");
+function findPackageRoot(from) {
+  for (let directory = from; ; directory = (0, import_node_path.dirname)(directory)) {
+    if ((0, import_node_fs.existsSync)((0, import_node_path.join)(directory, "package.json"))) return directory;
+    if ((0, import_node_path.dirname)(directory) === directory) throw new Error(`No package.json above ${from}: the package's files moved`);
+  }
+}
+var packageRoot = findPackageRoot(__dirname);
+var sourceDirectory = (0, import_node_path.join)(packageRoot, "src");
+function sourceFile(path) {
+  const file = (0, import_node_path.resolve)(sourceDirectory, path);
+  if (!(0, import_node_fs.existsSync)(file)) throw new Error(`${file} is not in the package: the Node-side code names a source file that is missing`);
+  return file;
+}
+
+// src/compile-options.ts
+var RUNES_ENVIRONMENT_VARIABLE = "SVELTE_NATIVE_RUNES";
+function runesDefaultEnabled(env = process.env) {
+  return !/^(?:0|false|off|no)$/i.test(env[RUNES_ENVIRONMENT_VARIABLE]?.trim() ?? "");
+}
+var IN_NODE_MODULES = /(?:^|[\\/])node_modules[\\/]/;
+var ownSources = sourceDirectory + import_node_path2.sep;
+function isLibrarySource(filename) {
+  if (filename.startsWith(ownSources)) return true;
+  if (!IN_NODE_MODULES.test(filename)) return false;
+  try {
+    return (0, import_node_fs2.realpathSync)(filename).startsWith(ownSources);
+  } catch {
+    return false;
+  }
+}
+function runesOption(filename, enabled = runesDefaultEnabled()) {
+  if (isLibrarySource(filename)) return true;
+  if (!enabled || IN_NODE_MODULES.test(filename)) return void 0;
+  return true;
+}
+var CUSTOM_RENDERER = "@example/svelte-native/renderer";
+function componentOptions(filename, enabled = runesDefaultEnabled()) {
+  return {
+    filename,
+    dev: false,
+    css: "external",
+    runes: runesOption(filename, enabled),
+    experimental: { customRenderer: CUSTOM_RENDERER }
+  };
+}
 
 // src/lower.ts
 var import_compiler = require("svelte/compiler");
@@ -171,27 +224,10 @@ function lowerPrimitives(content, options = {}) {
   return output;
 }
 
-// src/package-root.ts
-var import_node_fs = require("node:fs");
-var import_node_path = require("node:path");
-function findPackageRoot(from) {
-  for (let directory = from; ; directory = (0, import_node_path.dirname)(directory)) {
-    if ((0, import_node_fs.existsSync)((0, import_node_path.join)(directory, "package.json"))) return directory;
-    if ((0, import_node_path.dirname)(directory) === directory) throw new Error(`No package.json above ${from}: the package's files moved`);
-  }
-}
-var packageRoot = findPackageRoot(__dirname);
-var sourceDirectory = (0, import_node_path.join)(packageRoot, "src");
-function sourceFile(path) {
-  const file = (0, import_node_path.resolve)(sourceDirectory, path);
-  if (!(0, import_node_fs.existsSync)(file)) throw new Error(`${file} is not in the package: the Node-side code names a source file that is missing`);
-  return file;
-}
-
 // src/svelte-build.ts
-var import_node_fs2 = require("node:fs");
+var import_node_fs3 = require("node:fs");
 var import_node_module = require("node:module");
-var import_node_path2 = require("node:path");
+var import_node_path3 = require("node:path");
 var requiredSvelte = {
   version: "5.56.7",
   commit: "216f258068d93170a927ad4d27ee6864b0b305c5",
@@ -207,11 +243,11 @@ function inspectSvelte(from) {
   } catch {
     return { ok: false, version: null, directory: null, reason: "missing" };
   }
-  const directory = (0, import_node_path2.dirname)(manifestPath);
-  const manifest = JSON.parse((0, import_node_fs2.readFileSync)(manifestPath, "utf8"));
+  const directory = (0, import_node_path3.dirname)(manifestPath);
+  const manifest = JSON.parse((0, import_node_fs3.readFileSync)(manifestPath, "utf8"));
   const version = manifest.version ?? null;
   const exported = manifest.exports !== void 0 && "./renderer" in manifest.exports;
-  if (!exported || !(0, import_node_fs2.existsSync)((0, import_node_path2.join)(directory, "src/renderer/index.js"))) return { ok: false, version, directory, reason: "stock-release" };
+  if (!exported || !(0, import_node_fs3.existsSync)((0, import_node_path3.join)(directory, "src/renderer/index.js"))) return { ok: false, version, directory, reason: "stock-release" };
   return { ok: true, version: version ?? "unknown", directory };
 }
 function customRendererMessage(inspection, what) {
@@ -229,18 +265,18 @@ function assertCustomRenderer(what, from) {
 }
 
 // src/remote/transform.ts
-var import_node_path4 = require("node:path");
+var import_node_path5 = require("node:path");
 var import_parser = require("@babel/parser");
 
 // src/remote/kit.ts
 var import_node_module2 = require("node:module");
-var import_node_path3 = require("node:path");
+var import_node_path4 = require("node:path");
 var require2 = (0, import_node_module2.createRequire)(__importMetaUrl);
 var kitRootCache;
 function findKitRoot() {
   if (kitRootCache === void 0) {
     try {
-      kitRootCache = (0, import_node_path3.dirname)(require2.resolve("@sveltejs/kit/package.json"));
+      kitRootCache = (0, import_node_path4.dirname)(require2.resolve("@sveltejs/kit/package.json"));
     } catch {
       kitRootCache = null;
     }
@@ -272,7 +308,7 @@ function hash(value) {
   return (result >>> 0).toString(36);
 }
 function remoteHash(filename, root) {
-  return hash(posix((0, import_node_path4.relative)(root, filename)));
+  return hash(posix((0, import_node_path5.relative)(root, filename)));
 }
 var RemoteModuleError = class extends Error {
   constructor(filename, message, node) {
@@ -418,7 +454,7 @@ function upstreamTransformerPath(searchFrom = [process.cwd(), __dirname]) {
   } catch (cause) {
     throw new Error("The Metro transformer of @example/svelte-native needs `expo`, which it could not resolve (from the app's directory or from the package). Install it: `npx expo install expo`.", { cause });
   }
-  return require3.resolve("@expo/metro-config/babel-transformer", { paths: [(0, import_node_path5.dirname)(expoManifest)] });
+  return require3.resolve("@expo/metro-config/babel-transformer", { paths: [(0, import_node_path6.dirname)(expoManifest)] });
 }
 var upstream = require3(upstreamTransformerPath());
 function sourceOf(input) {
@@ -451,7 +487,7 @@ function assertWorkletsReadNoState(filename, code, runes) {
   if (!reached) return;
   const names = [...state].map((name) => `\`${name}\``).join(", ");
   const what = names ? `${names}, which Svelte compiled into reactive state` : "reactive state (Svelte's runtime, `$`)";
-  throw new Error(`${filename}: a worklet reads ${what}. A worklet runs on the UI runtime, which has no Svelte, so it cannot read state; on the device it would throw "Tried to synchronously call a Remote Function" when the screen mounts. ${runes ? "State in runes mode is `$state`, `$derived` and props: copy the value into a shared value (`createSharedValue`) on the JavaScript side and read that in the worklet." : "This component is not in runes mode, where a variable that the markup mutates (`count.value = ...` in a handler) is state even when it is a `const`. Add `<svelte:options runes />` to the component: there a `const` shared value stays a plain constant."}`);
+  throw new Error(`${filename}: a worklet reads ${what}. A worklet runs on the UI runtime, which has no Svelte, so it cannot read state; on the device it would throw "Tried to synchronously call a Remote Function" when the screen mounts. ${runes ? "State in runes mode is `$state`, `$derived` and props: copy the value into a shared value (`createSharedValue`) on the JavaScript side and read that in the worklet." : "This component is not in runes mode (the library compiles the app's components in runes mode unless the file has `<svelte:options runes={false} />`, the app sets `runes: false`, or the file is a library below `node_modules`), where a variable that the markup mutates (`count.value = ...` in a handler) is state even when it is a `const`. Put the component in runes mode with `<svelte:options runes />`: there a `const` shared value stays a plain constant."}`);
 }
 function transform(input) {
   const { filename } = input;
@@ -462,12 +498,7 @@ function transform(input) {
   const compiledBySvelte = /\.svelte(\.[jt]s)?$/.test(filename);
   if (filename.endsWith(".svelte")) {
     requireCustomRenderer();
-    const result = (0, import_compiler2.compile)(lowerPrimitives(src, { filename }), {
-      filename,
-      dev: false,
-      css: "external",
-      experimental: { customRenderer: "@example/svelte-native/renderer" }
-    });
+    const result = (0, import_compiler2.compile)(lowerPrimitives(src, { filename }), componentOptions(filename));
     if (result.css?.code.trim()) throw new Error(`${filename}: use native style props; browser CSS is not supported`);
     code = result.js.code;
     runes = result.metadata.runes;
@@ -503,9 +534,10 @@ function transform(input) {
 }
 function getCacheKey(options) {
   const files = [__filename];
-  if (__dirname === sourceDirectory) files.push(sourceFile("lower.ts"), sourceFile("remote/transform.ts"));
+  if (__dirname === sourceDirectory) files.push(sourceFile("lower.ts"), sourceFile("remote/transform.ts"), sourceFile("compile-options.ts"));
   const hash2 = (0, import_node_crypto.createHash)("sha256");
-  for (const file of files) hash2.update((0, import_node_fs3.readFileSync)(file));
+  for (const file of files) hash2.update((0, import_node_fs4.readFileSync)(file));
+  hash2.update(`runes-default:${runesDefaultEnabled()}`);
   return hash2.update(upstream.getCacheKey(options)).digest("hex");
 }
 // Annotate the CommonJS export names for ESM import in node:

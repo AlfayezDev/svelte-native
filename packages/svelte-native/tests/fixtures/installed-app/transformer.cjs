@@ -27,5 +27,23 @@ const svelteModule = transformer.transform({
   options,
   plugins: [],
 });
+// D17: the app's components are in runes mode by default (no `svelte/internal/flags/legacy` import), a Svelte library below node_modules keeps Svelte's own default, and the library's own
+// components are runes wherever the package is installed, `TabPaneList.svelte` (which has no rune in it) among them.
+const plain = "<script>\n  let count = 0;\n</script>\n<native-pressable onpress={() => count++}><native-text>{count}</native-text></native-pressable>\n";
+const legacyLibrary = '<script>\n  export let title = "";\n</script>\n<native-text>{title}</native-text>\n';
+const modeOf = (filename, src) => {
+  try {
+    return imports(transformer.transform({ filename, src, options, plugins: [] }).ast).includes("svelte/internal/flags/legacy") ? "legacy" : "runes";
+  } catch (error) {
+    return `error: ${error.code ?? error.message}`;
+  }
+};
+const modes = {
+  app: modeOf(`${root}/src/Plain.svelte`, plain),
+  library: modeOf(`${root}/node_modules/some-svelte-lib/Plain.svelte`, plain),
+  legacyLibrary: modeOf(`${root}/node_modules/some-svelte-lib/Legacy.svelte`, legacyLibrary),
+  legacyApp: modeOf(`${root}/src/Legacy.svelte`, legacyLibrary),
+  own: modeOf(`${root}/node_modules/@example/svelte-native/src/TabPaneList.svelte`, require("node:fs").readFileSync(`${root}/node_modules/@example/svelte-native/src/TabPaneList.svelte`, "utf8")),
+};
 const remote = transformer.sourceOf({ filename: `${root}/src/lib/api.remote.ts`, src: 'import { query } from "$app/server"; export const hello = query(async () => 1);', options });
-console.log(JSON.stringify({ exports: Object.keys(transformer).sort(), svelteImports: imports(svelte.ast), svelteModule: imports(svelteModule.ast), remote, cacheKey: transformer.getCacheKey({}), resolvedFrom: createRequire(`${root}/`).resolve("@example/svelte-native/transformer") }));
+console.log(JSON.stringify({ exports: Object.keys(transformer).sort(), svelteImports: imports(svelte.ast), svelteModule: imports(svelteModule.ast), remote, modes, cacheKey: transformer.getCacheKey({}), resolvedFrom: createRequire(`${root}/`).resolve("@example/svelte-native/transformer") }));

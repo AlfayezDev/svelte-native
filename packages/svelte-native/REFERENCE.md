@@ -30,6 +30,34 @@ The detail behind the [README](README.md): routing, primitives, the renderer and
 - `<Native name="native-screen" attributes={{ ... }}>` renders a host tag chosen at runtime (the router uses it for `native-stack`/`native-screen`). The tags the host maps are `viewNames` in `src/fabric/host.ts`; an unmapped name throws when the host flushes.
 - Ordinary `.svelte.ts` modules, context, stores, runes and lifecycle hooks work. Shared validation/domain logic belongs in portable modules. SvelteKit server loads, form actions and remote functions still run on the server; native screens use explicit network boundaries.
 
+### Runes mode
+
+The library compiles every component of the app in runes mode, whatever the file looks like: a component with no `$state`, `$props` or other rune in it is runes too, where Svelte alone would infer legacy mode from it. Legacy mode turns a top-level variable that the markup mutates into reactive state, even a `const` (`const count = createSharedValue(0)` with `count.value = ...` in a handler), and a worklet that captures it captures Svelte's runtime, which the UI runtime does not have; the screen threw when it mounted. In runes mode state is what `$state` and `$derived` say it is. The build-time guard that refuses a worklet reading state stays (`assertWorkletsReadNoState`, `src/transformer.ts`).
+
+| | compiled in runes mode? |
+|---|---|
+| a `.svelte` file of the app (and of a workspace package, which is linked from outside `node_modules`) | yes, unless the file has `<svelte:options runes={false} />`: a component's own `<svelte:options>` wins over the compile option (checked in the vendored Svelte, `compile` in `svelte/src/compiler/index.js`) |
+| a `.svelte.ts` or `.svelte.js` module | always: `compileModule` has no `runes` option, a Svelte module is runes by definition |
+| a `.svelte` file below a `node_modules` directory (a third-party Svelte library) | no: Svelte's own default, runes inferred per file. A library written in the legacy syntax (`export let`, `$:`, `$$props`, `<slot>`, `on:`) would not compile if runes were forced on it |
+| this library's own components, wherever the package is installed (its path below an app's `node_modules` included) | yes, always; they are written in runes |
+
+The rule is `runesOption` in `src/compile-options.ts`, which the Metro transformer, the web target of the Vite plugin and the package's tests share (`componentOptions` is the whole option set the transformer compiles a component with).
+
+An app that is migrating legacy components turns the default off and moves its files over one at a time:
+
+```js
+// metro.config.cjs
+module.exports = withSvelteNative(getDefaultConfig(__dirname), { runes: false });
+```
+```ts
+// vite.config.ts
+svelteNative({ target: mode === "native" ? "native" : "web", runes: false, kit: { /* … */ } })
+```
+
+With `runes: false` the library forces nothing and Svelte infers the mode of each file, as it does without this library; a file that wants runes mode asks with `<svelte:options runes />` (or by using a rune). `withSvelteNative` hands the option to Metro's workers in the environment (`SVELTE_NATIVE_RUNES=0`; the transformer's cache key includes it, so a changed option never reads a cached component), so a Metro started by the Vite plugin's native target gets the plugin's `runes` and an explicit `withSvelteNative(config, { runes })` in the app's `metro.config` wins over it. The web target of the Vite plugin passes SvelteKit a `dynamicCompileOptions` (SvelteKit forwards it to vite-plugin-svelte), which sets `runes: true` by the same rule; an app's own `kit.compilerOptions.runes` is kept for its own files, and the options its own `kit.dynamicCompileOptions` returns are applied over this one's.
+
+The web target gets the default too, on purpose: a component under `src/lib` that a native page and a web page both import is compiled by Vite for the browser and by Metro for the device, and in two modes the same source would mean two things (a variable the markup mutates would be reactive in the browser and a plain variable on the device).
+
 ### File routing: layouts as navigators
 
 The directory tree decides which stack or tab pane a page belongs to (contract: `native/svelte-engine/SPEC.md`, "Route tree: layouts as navigators"; code: `src/route-tree.ts`, `src/router.svelte.ts`, `src/build.ts`).
@@ -85,7 +113,7 @@ A tabs layout renders `<Tabs {items}>{@render children()}</Tabs>` with `items` k
 <AnimatedView {animatedStyle} style={{ width: 48, height: 48, backgroundColor: "blue" }} />
 ```
 
-Capture plain shared-value handles in worklets. Read Svelte state on the JavaScript side and write the target into a shared value. A worklet cannot read a Svelte signal or proxy on the UI runtime, and the Metro transformer fails the build of a function marked `"worklet"` that does (it would throw "Tried to synchronously call a Remote Function" when the screen mounts). That includes a shared value in a component outside runes mode: there a variable the markup mutates (`count.value = ...` in a handler) is state even when it is a `const`, so a component with worklets starts with `<svelte:options runes />`. Call `createSharedValue` during component initialization; it cancels the current animation when the component is destroyed. Reanimated cancellation is asynchronous. `runOnUIAsync` and `runOnUISync` are available for explicit worklet calls.
+Capture plain shared-value handles in worklets. Read Svelte state on the JavaScript side and write the target into a shared value. A worklet cannot read a Svelte signal or proxy on the UI runtime, and the Metro transformer fails the build of a function marked `"worklet"` that does (it would throw "Tried to synchronously call a Remote Function" when the screen mounts). That includes a shared value in a component outside runes mode (a file that opts out with `<svelte:options runes={false} />`, an app that sets `runes: false`, or a Svelte library below `node_modules`): there a variable the markup mutates (`count.value = ...` in a handler) is state even when it is a `const`, so such a component with worklets starts with `<svelte:options runes />`. Components are runes by default ("Runes mode"). Call `createSharedValue` during component initialization; it cancels the current animation when the component is destroyed. Reanimated cancellation is asynchronous. `runOnUIAsync` and `runOnUISync` are available for explicit worklet calls.
 
 Timing, spring, repeat, sequence and delay helpers retain Reanimated's APIs and reduced-motion behavior. `AnimatedView` also accepts Reanimated's CSS animation and transition style keys without a worklet, for example `style={{ animationName: { from: { opacity: 0.3 }, to: { opacity: 1 } }, animationDuration: "400ms", animationIterationCount: "infinite", animationDirection: "alternate" }}`; those run in C++ on the UI thread. On the Samsung, 48 such tiles cost 1.0 ms of UI-thread time per frame versus 2.3 ms for the same motion written as a `useAnimatedStyle` worklet, so prefer CSS keyframes for repeating or decorative motion on Android and keep worklets for values that follow state. This adapter does not expose every Reanimated component, gesture or layout-transition API.
 
@@ -298,9 +326,9 @@ Left as components: `TextInput`, `SafeAreaView` (padding from the insets store),
 
 ## Integration
 
-The platform's Vite configuration composes `svelteNative({target: mode === "native" ? "native" : "web", kit: ...})`. Web mode runs SvelteKit and excludes mobile entry files from dependency discovery. Native mode discovers routes and invokes Expo's Metro/Hermes export. The native graph rejects `.server.ts`, `src/lib/server`, private environment and ingest imports.
+The platform's Vite configuration composes `svelteNative({target: mode === "native" ? "native" : "web", kit: ...})` (`runes: false` turns off the runes default for both targets, "Runes mode"). Web mode runs SvelteKit and excludes mobile entry files from dependency discovery. Native mode discovers routes and invokes Expo's Metro/Hermes export. The native graph rejects `.server.ts`, `src/lib/server`, private environment and ingest imports.
 
-Metro uses `withSvelteNative(getDefaultConfig(__dirname))`. It compiles Svelte with the pinned custom renderer and resolves every native `svelte/*` import to the same runtime. Add `"@example/svelte-native"` (the package's `app.plugin.js`, which Expo finds for a bare package name) or `"@example/svelte-native/expo"` (the same plugin by its path) to the Expo config's plugins. React Native's Gradle cache does not track Svelte files or external workspace sources, so this plugin rebundles the JavaScript graph on every Android release build; native compilation stays incremental. Expo continues to provide module resolution, native code generation, assets and Hermes compilation. The Node-side entries (the CLI, `/metro`, `/transformer`, `/expo`, `/vite`, `/lower`) are built JavaScript in `dist/node/` (README, "Set up an app"; `pnpm build` after a change to the code they come from), so an app needs no TypeScript support in Node; in this repository `node packages/svelte-native/src/cli.ts` still runs the sources.
+Metro uses `withSvelteNative(getDefaultConfig(__dirname))`. It compiles Svelte with the pinned custom renderer, in runes mode by default (`{ runes: false }` turns that off; "Runes mode"), and resolves every native `svelte/*` import to the same runtime. Add `"@example/svelte-native"` (the package's `app.plugin.js`, which Expo finds for a bare package name) or `"@example/svelte-native/expo"` (the same plugin by its path) to the Expo config's plugins. React Native's Gradle cache does not track Svelte files or external workspace sources, so this plugin rebundles the JavaScript graph on every Android release build; native compilation stays incremental. Expo continues to provide module resolution, native code generation, assets and Hermes compilation. The Node-side entries (the CLI, `/metro`, `/transformer`, `/expo`, `/vite`, `/lower`) are built JavaScript in `dist/node/` (README, "Set up an app"; `pnpm build` after a change to the code they come from), so an app needs no TypeScript support in Node; in this repository `node packages/svelte-native/src/cli.ts` still runs the sources.
 
 The plugin accepts `["@example/svelte-native/expo", { androidViewRecycling: true }]` to enable React Native's experimental Android view recycling (`enableViewRecycling` plus the `<View>`/`<Text>` opt-ins, or an object choosing `view`, `text`, `image`, `scrollView`). It writes a `ReactNativeFeatureFlags.dangerouslyForceOverride` block after `loadReactNative(this)` in the generated `MainApplication.kt`. This is React Native's recycling; the engine has its own view pool on Android (SPEC "Frames: recycling, text cache"). It is off by default: on 25 October 2026 it halved native view creation time on the Samsung (0.27 ms versus 0.5 ms per view) without improving frame times.
 

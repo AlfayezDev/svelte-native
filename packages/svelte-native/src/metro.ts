@@ -4,6 +4,7 @@ import { dirname, join, resolve, sep } from "node:path";
 // `expo` re-exports Metro's config type: `@expo/metro` (where it comes from) is a dependency of `@expo/metro-config`, which is `expo`'s, and no one else's.
 import type { MetroConfig as ConfigT } from "expo/metro-config";
 import { syncRoutes, watchRoutes } from "./build.ts";
+import { runesEnvironment } from "./compile-options.ts";
 import { sourceFile } from "./package-root.ts";
 import { remoteResolution } from "./remote/transform.ts";
 import { assertCustomRenderer } from "./svelte-build.ts";
@@ -57,6 +58,14 @@ export type SvelteNativeMetroOptions = {
    * only when missing or when the environment names a `SVELTE_NATIVE_ROOT`; `svelte-native sync` is what rewrites it.
    */
   syncRoutes?: boolean;
+  /**
+   * Whether the transformer compiles the app's components in runes mode (`<svelte:options runes={false} />` in a file still opts that file out). Default `true`: legacy mode turns a top-level
+   * variable that the markup mutates into reactive state even when it is a `const`, and a worklet that captures one crashes the screen on the device. `false` is for an app that is migrating
+   * legacy components: the library then forces nothing and Svelte infers the mode of each file. A Svelte library below `node_modules` always keeps Svelte's own default (runes inferred per
+   * file), so a legacy third-party component keeps working; the library's own components are always runes. The setting reaches Metro's workers through the environment
+   * (`SVELTE_NATIVE_RUNES`, set when this config loads).
+   */
+  runes?: boolean;
 };
 
 /** Route watchers the Metro integration started (one per config in development); the tests close them. */
@@ -95,6 +104,7 @@ export const isInPackage = (moduleName: string, name: string): boolean => module
 
 export function withSvelteNative(config: ConfigT, options: SvelteNativeMetroOptions = {}): ConfigT {
   assertCustomRenderer("withSvelteNative (@example/svelte-native/metro)");
+  Object.assign(process.env, runesEnvironment(options.runes));
   const resolveRequest = config.resolver.resolveRequest;
   const stubbed = options.stubbedPackages ?? [];
   const variant = options.variant ?? variantName();

@@ -7,9 +7,9 @@ import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 
 type Outcome = { filename: string; closures?: string[][]; error?: string };
-const run = (cases: { filename: string; src: string }[]): Outcome[] => {
+const run = (cases: { filename: string; src: string }[], env: Record<string, string> = {}): Outcome[] => {
   const root = "/work/apps/example";
-  const done = spawnSync("node", [join(import.meta.dirname, "worklet-transformer-probe.ts"), JSON.stringify(cases.map((one) => ({ ...one, root })))], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  const done = spawnSync("node", [join(import.meta.dirname, "worklet-transformer-probe.ts"), JSON.stringify(cases.map((one) => ({ ...one, root })))], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, env: { ...process.env, SVELTE_NATIVE_RUNES: "", ...env } });
   if (done.status !== 0) throw new Error(`the transformer probe failed:\n${done.stderr.slice(-2000)}`);
   return JSON.parse(done.stdout.trim().split("\n").at(-1) as string) as Outcome[];
 };
@@ -28,22 +28,50 @@ const rune = `<script lang="ts">
 </script>
 <native-view data={text} onpress={() => { n++; }}></native-view>`;
 
-test("a worklet reads a shared value the markup mutates: outside runes mode that is reactive state, and the build says so instead of the device throwing at mount", () => {
-  const [legacy] = run([{ filename: "/work/apps/example/src/routes/counter/+mobile.svelte", src: `${script}\n${markup}\n` }]);
+const page = "/work/apps/example/src/routes/counter/+mobile.svelte";
+
+test("a component that opts out of runes mode, and mutates the shared value its worklet reads, is reactive state: the build says so instead of the device throwing at mount", () => {
+  const [legacy] = run([{ filename: page, src: `<svelte:options runes={false} />\n${script}\n${markup}\n` }]);
   expect(legacy.closures).toBeUndefined();
   expect(legacy.error).toContain("+mobile.svelte");
   expect(legacy.error).toContain("`count`");
   expect(legacy.error).toContain("<svelte:options runes />");
+  expect(legacy.error).toContain("runes={false}");
 });
 
-test("in runes mode the same component keeps the shared value a plain constant: the worklet captures it and nothing of Svelte", () => {
-  const [runes] = run([{ filename: "/work/apps/example/src/routes/counter/+mobile.svelte", src: `<svelte:options runes />\n${script}\n${markup}\n` }]);
+test("the same component without the opt-out is in runes mode, the default: the shared value stays a plain constant and the worklet captures nothing of Svelte", () => {
+  const [byDefault, explicit] = run([
+    { filename: page, src: `${script}\n${markup}\n` },
+    { filename: page, src: `<svelte:options runes />\n${script}\n${markup}\n` },
+  ]);
+  for (const runes of [byDefault, explicit]) {
+    expect(runes.error).toBeUndefined();
+    expect(runes.closures).toEqual([["count"]]);
+  }
+});
+
+test("with the app's `runes: false` Svelte infers each file's mode again: the component with no rune in it is legacy, and the build refuses the worklet", () => {
+  const [legacy, runes] = run([
+    { filename: page, src: `${script}\n${markup}\n` },
+    { filename: page, src: `<svelte:options runes />\n${script}\n${markup}\n` },
+  ], { SVELTE_NATIVE_RUNES: "0" });
+  expect(legacy.error).toContain("`count`");
+  expect(legacy.error).toContain("`runes: false`");
+  // A file that asks for runes mode keeps it.
   expect(runes.error).toBeUndefined();
-  expect(runes.closures).toEqual([["count"]]);
+});
+
+test("a Svelte library below node_modules keeps Svelte's own default, so a component with no rune in it is legacy there even though the app's components are not", () => {
+  const [library, app] = run([
+    { filename: "/work/apps/example/node_modules/some-svelte-lib/Counter.svelte", src: `${script}\n${markup}\n` },
+    { filename: page, src: `${script}\n${markup}\n` },
+  ]);
+  expect(library.error).toContain("`count`");
+  expect(app.error).toBeUndefined();
 });
 
 test("a worklet in a component that never mutates the shared value from its markup is not state either way", () => {
-  const [legacy] = run([{ filename: "/work/apps/example/src/routes/counter/+mobile.svelte", src: `${script}\n<native-view data={countText}></native-view>\n` }]);
+  const [legacy] = run([{ filename: page, src: `<svelte:options runes={false} />\n${script}\n<native-view data={countText}></native-view>\n` }]);
   expect(legacy.error).toBeUndefined();
   expect(legacy.closures).toEqual([["count"]]);
 });

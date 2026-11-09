@@ -5,7 +5,7 @@ import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/pr
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { compile, compileModule } from "svelte/compiler";
+import { compile, compileModule, type CompileOptions } from "svelte/compiler";
 import { coreFeatures } from "../src/lib/features/core.ts";
 
 /**
@@ -61,11 +61,14 @@ const stubs: Record<string, string> = {
   "react-native": "export const AppRegistry = { registerRunnable() {} };",
 };
 
+// The options the library's transformer compiles a component with (runes mode for the app's own components), as the library's tests use them.
+const { componentOptions } = (await import(join(library, "src/compile-options.ts"))) as { componentOptions(filename: string): CompileOptions };
+
 const svelteCompiler: Plugin = {
   name: "svelte",
   setup(builder) {
     builder.onLoad({ filter: /\.svelte$/ }, async ({ path }) => ({
-      contents: compile(await readFile(path, "utf8"), { filename: path, css: "external", dev: false, experimental: { customRenderer: "@example/svelte-native/renderer" } }).js.code,
+      contents: compile(await readFile(path, "utf8"), componentOptions(path)).js.code,
       loader: "js",
     }));
     builder.onLoad({ filter: /\.svelte\.ts$/ }, async ({ path }) => {

@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { compile } from "svelte/compiler";
+import { componentOptions } from "../src/compile-options.ts";
 import { reanimatedStubs } from "./reanimated-stubs.ts";
 import ts from "typescript";
 import { reactNativeConverters, type Platform } from "./rn-reference.ts";
@@ -166,7 +167,7 @@ export function createHarness(platform: Platform, options: {
           builder.onResolve({ filter: /^@example\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
           builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../src/environment.ts") }));
           builder.onLoad({ filter: /\.svelte$/ }, async ({ path }) => ({
-            contents: compile(await readFile(path, "utf8"), { filename: path, css: "external", dev: false, experimental: { customRenderer: "@example/svelte-native/renderer" } }).js.code,
+            contents: compile(await readFile(path, "utf8"), componentOptions(path)).js.code,
             loader: "js",
           }));
         },

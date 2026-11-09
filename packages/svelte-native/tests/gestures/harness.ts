@@ -10,6 +10,7 @@ import { resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { compile } from "svelte/compiler";
+import { componentOptions } from "../../src/compile-options.ts";
 import { lowerPrimitives } from "../../src/lower.ts";
 import { reanimatedStubs, type AnimLog } from "../reanimated-stubs.ts";
 
@@ -101,7 +102,7 @@ export function hostPlugin(options: { openStubs?: boolean } = {}): Plugin {
       builder.onResolve({ filter: /^@example\/svelte-native$/ }, () => ({ path: "primitives", namespace: "stub" }));
       builder.onResolve({ filter: /^@example\/svelte-native\/gestures$/ }, () => ({ path: resolve(import.meta.dirname, "../../src/gestures/index.ts") }));
       builder.onLoad({ filter: /\.svelte$/ }, async ({ path }) => ({
-        contents: compile(lowerPrimitives(await readFile(path, "utf8"), { filename: path, warn: () => {} }), { filename: path, css: "external", dev: false, experimental: { customRenderer: "@example/svelte-native/renderer" } }).js.code,
+        contents: compile(lowerPrimitives(await readFile(path, "utf8"), { filename: path, warn: () => {} }), componentOptions(path)).js.code,
         loader: "js",
       }));
     },

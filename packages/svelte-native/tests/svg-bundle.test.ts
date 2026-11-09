@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { relative, resolve } from "node:path";
 import { compile } from "svelte/compiler";
+import { componentOptions } from "../src/compile-options.ts";
 
 /**
  * The `@example/svelte-native/svg` entry (SPEC.md, "react-native-svg") bundled as Metro bundles it: the library's own sources are imported by deep path (the
@@ -38,7 +39,7 @@ async function bundleSvgEntry(): Promise<Bundle> {
       builder.onResolve({ filter: /^@example\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
       builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../src/environment.ts") }));
       builder.onLoad({ filter: /\.svelte$/ }, async ({ path }) => ({
-        contents: compile(await readFile(path, "utf8"), { filename: path, css: "external", dev: false, experimental: { customRenderer: "@example/svelte-native/renderer" } }).js.code,
+        contents: compile(await readFile(path, "utf8"), componentOptions(path)).js.code,
         loader: "js",
       }));
     },

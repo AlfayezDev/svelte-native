@@ -1,39 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { readerFor } from "../src/doctor/resolve.ts";
+import { adapterLoadsRegistryLazily, expoModulesCoreProblems, lazyRegistry, moduleRegistryPath, strings } from "../src/doctor/shapes.ts";
 
-// The lazy module registry in patches/expo-modules-core@57.0.23.patch names every module it defers, because the name lives
+// The lazy module registry in patches/expo-modules-core@57.0.23.patch (of the package) names every module it defers, because the name lives
 // in `definition()`, which must not run at startup. A rename in an Expo upgrade would otherwise show up as a crash at the
-// first JavaScript access, so the lists are checked against the module sources here.
+// first JavaScript access, so the lists are checked against the module sources here. The lists are read from the patch by
+// `src/doctor/shapes.ts`, which `svelte-native doctor` also uses to tell whether an app's installed package carries the patch.
 const root = join(import.meta.dirname, "../../..");
-const patch = readFileSync(join(root, "patches/expo-modules-core@57.0.23.patch"), "utf8");
-const installed = join(root, "node_modules/expo-modules-core/android/src/main/java/expo/modules/kotlin/ModuleRegistry.kt");
+const patch = readFileSync(join(root, "packages/svelte-native/patches/expo-modules-core@57.0.23.patch"), "utf8");
+const installedPackage = join(root, "node_modules/expo-modules-core");
+const installed = join(installedPackage, moduleRegistryPath);
 
-/** Lines the patch adds to `ModuleRegistry.kt`, without the diff markers. */
-function addedRegistryLines(): string {
-  const start = patch.indexOf("diff --git a/android/src/main/java/expo/modules/kotlin/ModuleRegistry.kt");
-  const end = patch.indexOf("diff --git", start + 1);
-  return patch
-    .slice(start, end)
-    .split("\n")
-    .filter((line) => line.startsWith("+") && !line.startsWith("+++"))
-    .map((line) => line.slice(1))
-    .join("\n");
-}
-
-function block(source: string, header: RegExp): string {
-  const match = header.exec(source);
-  if (!match) throw new Error(`${header} not found in the registry`);
-  const rest = source.slice(match.index + match[0].length);
-  return rest.slice(0, rest.search(/^\s*\)\s*$/m));
-}
-
-const strings = (text: string) => [...text.matchAll(/"([^"]+)"/g)].map((match) => match[1] ?? "");
-const registry = addedRegistryLines();
-const lazyEntries = [...block(registry, /LAZY_MODULE_NAMES = mapOf\(/).matchAll(/"([\w.]+)" to "(\w+)"/g)].map((match) => [match[1] ?? "", match[2] ?? ""] as const);
-const prewarm = strings(block(registry, /PREWARM_MODULE_NAMES = listOf\(/));
-const startup = strings(/STARTUP_MODULE_NAMES = listOf\(([^)]*)\)/.exec(registry)?.[1] ?? "");
-const definitionOnly = strings(/DEFINITION_ONLY_MODULE_NAMES = setOf\(([^)]*)\)/.exec(registry)?.[1] ?? "");
+const { lazyEntries, prewarm, startup, definitionOnly } = lazyRegistry(patch);
 // Registered through `registerLazily` in `AppContext`, not through the modules provider.
 const coreModules: Record<string, string> = { NativeModulesProxy: "NativeModulesProxyModuleName", ExpoModulesCoreJSLogger: "JSLoggerModuleName" };
 
@@ -121,15 +101,14 @@ describe("lazy Expo module registry", () => {
 
   test("the native view adapter loads the component registry on its first view, not at import", () => {
     // The registry evaluates `getNativeComponentAttributes` and `UIManager`; the host needs neither before the first screen.
-    const adapter = readFileSync(join(root, "node_modules/expo-modules-core/src/NativeViewManagerAdapter.native.tsx"), "utf8");
-    expect(adapter).not.toMatch(/^import .*NativeComponentRegistry/m);
-    expect(adapter).toMatch(/require\('react-native\/Libraries\/NativeComponent\/NativeComponentRegistry'\)/);
+    const adapter = readFileSync(join(installedPackage, "src/NativeViewManagerAdapter.native.tsx"), "utf8");
+    expect(adapterLoadsRegistryLazily(adapter)).toBe(true);
   });
 
   test("the installed package carries the patch", () => {
     // pnpm applies the patch on install; a stale node_modules means `pnpm install` was not run after editing it.
-    const text = readFileSync(installed, "utf8");
-    for (const [className, name] of lazyEntries) expect(text).toContain(`"${className}" to "${name}"`);
-    for (const name of [...prewarm, ...startup]) expect(text).toContain(`"${name}"`);
+    // Every lazy module and every prewarmed or startup module the patch names is in the installed registry, and the proxy and the adapter have their
+    // changes: the check `svelte-native doctor` makes of an app.
+    expect(expoModulesCoreProblems(readerFor(installedPackage), patch)).toEqual([]);
   });
 });

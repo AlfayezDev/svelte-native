@@ -48,8 +48,6 @@ export function buildEnv(variant: Variant, channel: string | null = null): Recor
 	};
 }
 const gradleJvm = "-Dorg.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=1g";
-/** The Samsung Pay SDK of the smoke app's `expo-samsung-pay`: proprietary, kept out of git, copied from the production app's `libs/`. Only the smoke build needs it. */
-const samsungPayJar = join(platformDir, "libs/samsungpay.jar");
 
 async function modifiedTime(path: string): Promise<number | null> {
 	try {
@@ -162,10 +160,6 @@ export async function build(argv: string[]): Promise<void> {
 	const started = Date.now();
 	console.log(`building the ${variant} app (${packageOf[variant]})${variant === "production" ? " for the product boot check (native-qa product); never for a phone" : ""}`);
 
-	if (variant === "smoke" && (await modifiedTime(samsungPayJar)) === null)
-		throw new Error(
-			`${samsungPayJar} is missing: expo-samsung-pay (native module smoke test) does not compile without the Samsung Pay SDK. Copy libs/samsungpay.jar from the production app (it is proprietary and ignored by git).`,
-		);
 	await step("svelte-native sync", process.execPath, [svelteNativeCli, "sync"], platformDir, logPath, env);
 	const switched = await selectVariantProject(variant, androidDir);
 	const reason = values.prebuild ? "--prebuild" : (switched ?? (await prebuildReason(channel)));

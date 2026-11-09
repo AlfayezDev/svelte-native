@@ -24,7 +24,7 @@ on:
         description: Cold boot launches (the production bar is 30)
         default: "30"
       smoke:
-        description: Build and run the native module smoke app (needs libs/samsungpay.jar on the runner)
+        description: Build and run the native module smoke app
         type: boolean
         default: true
       updates:

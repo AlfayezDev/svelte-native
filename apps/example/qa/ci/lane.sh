@@ -29,7 +29,7 @@
 #   QA_UPDATES   1: build the QA app for the EAS channel and run the over-the-air update scenario (`native-qa updates`) in full mode.
 #                It PUBLISHES updates to the channel, so the workflow sets it on dispatch only, never on a push; it needs
 #                EXPO_TOKEN (or an eas login) on the runner. QA_CHANNEL is the channel (qa)
-#   QA_SMOKE     1: build and run the smoke app in full mode; needs apps/example/libs/samsungpay.jar or $QA_SAMSUNGPAY_JAR
+#   QA_SMOKE     1: build and run the smoke app in full mode
 #   RASHEED_QA_EMAIL, RASHEED_QA_CODE   the QA account of the signed-in phase of parity and a11y (secrets of the runner, from the
 #                environment or the repository's .env.local; the harness never prints or writes them). Without RASHEED_QA_EMAIL
 #                that phase does not run, and the two gates that count its screens (parity.signedIn.missing, a11y.signedIn.missing)
@@ -117,8 +117,6 @@ build() {
     stage build-product "${QA[@]}" build --abi x86_64 --variant production
   fi
   if [ "$MODE" = full ] && [ "${QA_SMOKE:-0}" = 1 ] && want smoke; then
-    local jar=${QA_SAMSUNGPAY_JAR:-/var/lib/svelte-qa/secrets/samsungpay.jar}
-    if [ ! -f libs/samsungpay.jar ] && [ -f "$jar" ]; then mkdir -p libs && cp "$jar" libs/samsungpay.jar; fi
     stage build-smoke "${QA[@]}" build --abi x86_64 --variant smoke
   fi
   # The update scenario installs this build over the plain one (which it measures first, as the baseline). It is kept apart in

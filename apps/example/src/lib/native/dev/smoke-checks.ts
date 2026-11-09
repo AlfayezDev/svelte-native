@@ -382,18 +382,6 @@ export const checks: Check[] = [
 		},
 	},
 	{
-		module: "samsung-pay",
-		path: "js",
-		only: "android",
-		run: () => {
-			const SamsungPay = require("expo-samsung-pay") as Record<string, unknown>;
-			const { requireOptionalNativeModule } = require("expo-modules-core") as typeof import("expo-modules-core");
-			const native = requireOptionalNativeModule("ExpoSamsungPay");
-			expect(native !== null, "the native module ExpoSamsungPay is not registered");
-			return `loaded, native module ExpoSamsungPay registered (exports: ${Object.keys(SamsungPay).join(", ")}); canMakePayments not called`;
-		},
-	},
-	{
 		module: "intercom",
 		path: "js+direct",
 		run: () => {

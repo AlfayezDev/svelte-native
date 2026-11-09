@@ -29,7 +29,6 @@
 		{ "id": "firebase", "packages": ["@react-native-firebase/app", "@react-native-firebase/analytics", "@react-native-firebase/messaging"], "link": "rn", "shared": false, "platforms": ["android", "ios"] },
 		{ "id": "sentry", "packages": ["@sentry/react-native"], "link": "rn", "shared": false, "platforms": ["android", "ios"] },
 		{ "id": "hms", "packages": ["@hmscore/react-native-hms-location"], "link": "rn", "shared": false, "platforms": ["android"] },
-		{ "id": "samsung-pay", "packages": ["expo-samsung-pay"], "link": "expo", "shared": false, "platforms": ["android"] },
 		{ "id": "intercom", "packages": ["@intercom/intercom-react-native"], "link": "rn", "shared": false, "platforms": ["android", "ios"] },
 		{ "id": "statsig", "packages": ["@statsig/react-native-bindings"], "link": "js", "shared": false, "platforms": ["android", "ios"] },
 		{ "id": "mixpanel", "packages": ["mixpanel-react-native"], "link": "rn", "shared": false, "platforms": ["android", "ios"] },

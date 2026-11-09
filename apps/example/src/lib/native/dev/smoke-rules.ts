@@ -33,7 +33,6 @@ export const smokeModules: readonly string[] = [
 	"firebase",
 	"sentry",
 	"hms",
-	"samsung-pay",
 	"intercom",
 	"statsig",
 	"mixpanel",

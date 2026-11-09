@@ -116,7 +116,6 @@
         "firebase",
         "sentry",
         "hms",
-        "samsung-pay",
         "intercom",
         "statsig",
         "mixpanel",
@@ -154,7 +153,6 @@
         "firebase",
         "sentry",
         "hms",
-        "samsung-pay",
         "intercom",
         "statsig",
         "mixpanel",
@@ -170,8 +168,7 @@
       ],
       "ios": [
         "web-browser",
-        "hms",
-        "samsung-pay"
+        "hms"
       ]
     }
   },
@@ -1561,7 +1558,7 @@
       "metric": "smoke.ok",
       "bar": {
         "android": {
-          "min": 34
+          "min": 33
         },
         "ios": {
           "min": 33

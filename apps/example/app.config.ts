@@ -7,8 +7,7 @@ import { productApplicationId, qaApplicationId, smokeApplicationId } from "./src
 // (`APP_VARIANT=smoke`, `io.rasheed.svelteqa.smoke`), the QA app plus the production app's native libraries for the native module
 // smoke test (qa/smoke-modules.json; SPEC.md, "Native modules (smoke test)"). `smokeOnlyPackages` are the libraries the product does not
 // have: the product and the QA app exclude them from both autolinkers (and from React Native's, in react-native.config.js); only the
-// smoke app links them, and only it gets the config plugins in `smokePlugins`, the fake Firebase files, the Huawei repository and
-// needs libs/samsungpay.jar.
+// smoke app links them, and only it gets the config plugins in `smokePlugins`, the fake Firebase files and the Huawei repository.
 const { smokeOnlyPackages } = createRequire(import.meta.url)("./qa/smoke-packages.cjs") as { smokeOnlyPackages: string[] };
 const production = process.env.APP_VARIANT === "production";
 const smoke = process.env.APP_VARIANT === "smoke";
@@ -34,7 +33,6 @@ const smokePlugins: NonNullable<ExpoConfig["plugins"]> = !smoke ? [] : [
   "./qa/smoke-personal-team.cjs",
   "expo-notifications",
   "@config-plugins/react-native-adjust",
-  ["expo-samsung-pay", { aarPath: "./libs/samsungpay.jar" }],
   ["react-native-live-direction", { locales: ["ar", "en"] }],
   // Firebase's iOS pods build as static frameworks (RNFirebase's requirement; the production app does the same). The HMS library resolves
   // `com.huawei.hms:location` from Huawei's repository, which only the production app's Huawei plugin (not used here) adds to the project.

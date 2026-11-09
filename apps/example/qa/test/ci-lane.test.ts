@@ -270,7 +270,7 @@ describe("lane.sh build, reset and summary", () => {
 		expect(harness(push.lines())).toEqual(["build --abi x86_64", "build --abi x86_64 --variant production"]);
 		expect(push.stages().map((row) => row[0])).toEqual(["build-qa", "build-product"]);
 		const full = lane();
-		full.run("build", { QA_MODE: "full", QA_SMOKE: "1", QA_SAMSUNGPAY_JAR: "/nonexistent" });
+		full.run("build", { QA_MODE: "full", QA_SMOKE: "1" });
 		expect(harness(full.lines())).toEqual(["build --abi x86_64", "build --abi x86_64 --variant production", "build --abi x86_64 --variant smoke"]);
 		for (const call of [...harness(push.lines()), ...harness(full.lines())]) expect(call).not.toContain("arm64");
 	});

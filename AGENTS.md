@@ -22,4 +22,4 @@ Svelte Native: the library in `packages/svelte-native`, the example app, Expo mo
 ## Rules
 
 - Do not rewrite history or add a remote without the owner's OK.
-- Keep the library generic: no product code, secrets or proprietary SDKs. The Samsung Pay SDK jar (`apps/example/libs/samsungpay.jar`) is never committed.
+- Keep the library generic: no product code, secrets or proprietary SDKs. The smoke app has no Samsung Pay module (`expo-samsung-pay` and its SDK jar are not part of this repository and are not added); `apps/example/libs/` stays ignored so a proprietary jar put there is never committed.

@@ -16,7 +16,7 @@ It targets Expo SDK 57 and React Native 0.86.3 with Hermes, Reanimated 4.5.1, re
 
 ## Install in an app
 
-This section and the next two are the reference for what an app needs. To start an app, follow the [guide](../../docs/01-introduction.md): `npx sv create`, `pnpm add` of the library, then `pnpm exec svelte-native init`, which does the steps below for you (and `init --dry-run` prints what it would do). To add the library to an Expo app you already have, see [its page](../../docs/07-adding-to-an-existing-expo-app.md).
+This section and the next two are the reference for what an app needs. To start an app, follow the [guide](../../docs/10-getting-started/10-introduction.md): `npx sv create`, `pnpm add` of the library, then `pnpm exec svelte-native init`, which does the steps below for you (and `init --dry-run` prints what it would do). To add the library to an Expo app you already have, see [its page](../../docs/60-appendix/10-adding-to-an-existing-expo-app.md).
 
 The package is private. An app outside this repository depends on a tag of it through pnpm's git dependency, over SSH, naming the package's directory. [`examples/minimal`](../../examples/minimal) is the smallest app that does everything below (copy it to start); `scripts/consumer-check.sh` installs and builds it from a scratch directory outside the repository, once with the library as a packed tarball and once as a git dependency of the repository's own commit.
 
@@ -465,7 +465,7 @@ environment
 
 svelte
   FAIL  svelte 5.56.7 is the stock Svelte: it has no ./renderer export (/home/me/app/node_modules/svelte)
-        fix: install the custom-renderer build of Svelte (sveltejs/svelte#18042, commit 216f258, 5.56.7): `pnpm exec svelte-native init` does it (docs/02-creating-a-project.md), or by hand, README "Install in an app"
+        fix: install the custom-renderer build of Svelte (sveltejs/svelte#18042, commit 216f258, 5.56.7): `pnpm exec svelte-native init` does it (docs/10-getting-started/20-creating-a-project.md), or by hand, README "Install in an app"
 
 peer dependencies
   pass  react-native 0.86.3 satisfies 0.86.3

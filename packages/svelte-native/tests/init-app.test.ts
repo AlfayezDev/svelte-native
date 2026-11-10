@@ -469,8 +469,8 @@ describe("what init writes is what the library was exercised on", () => {
 });
 
 describe("the guide says what init writes", () => {
-  test("docs/02's snippets carry the versions, the patches and the Svelte build init writes", () => {
-    const page = readFileSync(join(repository, "docs/02-creating-a-project.md"), "utf8");
+  test("the configuration page's snippets carry the versions, the patches and the Svelte build init writes", () => {
+    const page = readFileSync(join(repository, "docs/70-reference/20-configuration.md"), "utf8");
     for (const [name, version] of Object.entries(appDependencies)) expect(page, name).toContain(`"${name}": "${version}"`);
     expect(page).toContain(`"svelte": "${requiredSvelte.preview}"`);
     expect(page).toContain('"main": ".svelte-native/entry.ts"');

@@ -12,7 +12,7 @@
 #             apps install it from the private repository the same way:
 #               pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#<tag>&path:packages/svelte-native"
 #
-#   starter   the path the guide (docs/02-creating-a-project.md) gives a person, from a SvelteKit project and not from the template:
+#   starter   the path the guide (docs/10-getting-started/20-creating-a-project.md) gives a person, from a SvelteKit project and not from the template:
 #               pnpm dlx sv create <app> --template minimal --types ts --no-add-ons --install pnpm
 #               pnpm add "git+file://<repo>#<commit>&path:packages/svelte-native"      (the first install: Svelte is still the registry's)
 #               pnpm exec svelte-native init                                              (the install and the doctor are part of it)

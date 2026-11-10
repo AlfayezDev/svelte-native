@@ -6,7 +6,7 @@ You start where every SvelteKit app starts, with `npx sv create`. Then you insta
 
 You need:
 
-- Node 25 or newer, and pnpm 12.3.4 or newer. The patches Svelte Native relies on are pnpm's, so npm and Yarn won't do.
+- Node 24 LTS (24.3 or newer), Node 22.17 or newer, or Node 26 or newer, and pnpm 12.3.4 or newer. The patches Svelte Native relies on are pnpm's, so npm and Yarn won't do. Not Node 25: a fresh install takes React Native tools (`@react-native/metro-config` 0.88) that exclude it, and `pnpm add` stops with `ERR_PNPM_UNSUPPORTED_ENGINE` before `init` can run. See [Troubleshooting](08-troubleshooting.md#pnpm-stops-during-install).
 - Git, and read access to the private repository over SSH. Ask to be added as a collaborator and make sure the SSH key you use is on your GitHub account: `ssh -T git@github.com` should greet you by name.
 - To run on Android: [Android Studio](https://developer.android.com/studio) with the SDK packages Gradle asks for (platform 36, build-tools 36.0.0, NDK 27.1.12297006, CMake 3.22.1), a JDK 17, and `ANDROID_HOME` set. You also need a phone with USB debugging or an emulator.
 - To run on iOS: a Mac with Xcode and CocoaPods, and a simulator or an iPhone.
@@ -64,7 +64,7 @@ This installs the library. It works in a fresh `sv` project, with some warnings 
 svelte-native init: /home/you/my-app
 
   edit    package.json                       "main", svelte (the custom-renderer build), @sveltejs/kit 3.1.1 (exact: …), 8 dependencies, scripts, …
-  edit    pnpm-workspace.yaml                overrides: expo-modules-core; patchedDependencies: @sveltejs/kit@3.1.1, …
+  edit    pnpm-workspace.yaml                overrides: expo-modules-core, @react-native/metro-config; patchedDependencies: @sveltejs/kit@3.1.1, …
   create  patches/svelte-native/             5 patch files from the installed library
   create  metro.config.cjs                   withSvelteNative(getDefaultConfig(__dirname))
   create  app.json                           my-app, dev.example.myapp
@@ -146,6 +146,7 @@ allowBuilds:
 
 overrides:
   expo-modules-core: 57.0.23
+  "@react-native/metro-config": 0.86.3
 patchedDependencies:
   "@sveltejs/kit@3.1.1": patches/svelte-native/@sveltejs__kit@3.1.1.patch
   expo-modules-core@57.0.23: patches/svelte-native/expo-modules-core@57.0.23.patch
@@ -154,7 +155,7 @@ patchedDependencies:
   react-native-worklets@0.10.1: patches/svelte-native/react-native-worklets@0.10.1.patch
 ```
 
-`overrides` pins `expo-modules-core`: `expo` asks for it by a range, so a fresh install would take the newest one, and the patch is for 57.0.23 only. `patchedDependencies` lists the patches. [Project structure](03-project-structure.md#patches) says why there are any.
+`overrides` pins two packages that come with another one and are asked for by a range, so that a fresh install would take the newest. `expo-modules-core` is pinned because the patch is for 57.0.23 only. `@react-native/metro-config` is pinned to the React Native version, because otherwise the install takes 0.88 beside React Native 0.86.3, with Metro 0.87 and tools that exclude Node 25. `patchedDependencies` lists the patches. [Project structure](03-project-structure.md#patches) says why there are any.
 
 ### patches/svelte-native
 

@@ -90,7 +90,8 @@ describe("init in a fresh sv project", () => {
     run(root);
     const yaml = readFileSync(join(root, "pnpm-workspace.yaml"), "utf8");
     expect(yaml.startsWith("engineStrict: true\nallowBuilds:\n  esbuild: true\n")).toBe(true);
-    expect(yaml).toContain("overrides:\n  expo-modules-core: 57.0.23\n");
+    // Both packages that come with another one by a range: the patched expo-modules-core, and the Metro config package, pinned to the React Native version init writes.
+    expect(yaml).toContain(`overrides:\n  expo-modules-core: 57.0.23\n  "@react-native/metro-config": ${appDependencies["react-native"]}\n`);
     const declared = [...yaml.matchAll(/^ {2}"?([^\s":]+(?:@[^\s":]+)*)"?: (patches\/svelte-native\/\S+)$/gm)].map((match) => match[2] as string);
     expect(declared.length).toBeGreaterThanOrEqual(5);
     for (const path of declared) expect(existsSync(join(root, path)), path).toBe(true);
@@ -370,6 +371,42 @@ export default defineConfig(({ mode }) => ({
     expect(result.out).toContain("vite.config.ts");
     expect(result.out).toContain("kit: { /* what you passed to sveltekit() */ }");
     expect(result.status).toBe(1);
+  });
+});
+
+describe("the Metro config package follows React Native", () => {
+  test("a fresh app gets @react-native/metro-config pinned to the React Native version init writes, so the install does not take 0.88 beside 0.86.3", () => {
+    const root = project();
+    const plan = planInit(root);
+    const workspace = plan.changes.find((change) => change.path === "pnpm-workspace.yaml");
+    expect(workspace?.summary).toContain("overrides: expo-modules-core, @react-native/metro-config");
+    expect(appDependencies["react-native"]).toBe("0.86.3");
+    run(root);
+    const yaml = readFileSync(join(root, "pnpm-workspace.yaml"), "utf8");
+    expect(yaml).toContain('  "@react-native/metro-config": 0.86.3\n');
+    // It is a pin to the one version, not a range, and it is written once.
+    expect(yaml.match(/@react-native\/metro-config/g)).toHaveLength(1);
+  });
+
+  test("an override the project had for it at another version is replaced, and said so; one at the same version stays", () => {
+    const root = project((dir) => writeFileSync(join(dir, "pnpm-workspace.yaml"), 'allowBuilds:\n  esbuild: true\noverrides:\n  "@react-native/metro-config": 0.88.1\n'));
+    const result = run(root);
+    expect(result.out).toContain("overrides: @react-native/metro-config (was 0.88.1)");
+    const yaml = readFileSync(join(root, "pnpm-workspace.yaml"), "utf8");
+    expect(yaml).toContain('overrides:\n  "@react-native/metro-config": 0.86.3\n  expo-modules-core: 57.0.23\n');
+    expect(run(root).out).toContain("Nothing to change");
+  });
+
+  test("examples/minimal's overrides are the ones init writes, and the React Native it pins is the one the override is", () => {
+    const minimal = readFileSync(join(repository, "examples/minimal/pnpm-workspace.yaml"), "utf8");
+    const root = project();
+    run(root);
+    const written = readFileSync(join(root, "pnpm-workspace.yaml"), "utf8");
+    const block = (text: string) => /^overrides:\n((?: {2}\S.*\n)+)/m.exec(text)?.[1];
+    expect(block(minimal)).toBeDefined();
+    expect(block(minimal)).toBe(block(written));
+    const pinned = JSON.parse(readFileSync(join(repository, "examples/minimal/package.json"), "utf8")) as { dependencies: Record<string, string> };
+    expect(minimal).toContain(`  "@react-native/metro-config": ${pinned.dependencies["react-native"]}\n`);
   });
 });
 

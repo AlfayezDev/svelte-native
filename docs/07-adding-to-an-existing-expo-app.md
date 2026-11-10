@@ -2,7 +2,7 @@
 
 [Creating a project](02-creating-a-project.md) starts from a SvelteKit project. This page is for the other direction: you already have an Expo app, and you want it to run Svelte Native screens instead.
 
-The app needs to be on Expo SDK 57 (React Native 0.86), and use pnpm 12.3.4 or newer. Svelte Native's patches are pnpm's, so a project on npm or Yarn has to move first.
+The app needs to be on Expo SDK 57 (React Native 0.86), and use pnpm 12.3.4 or newer. Svelte Native's patches are pnpm's, so a project on npm or Yarn has to move first. Use Node 24 LTS (24.3 or newer), Node 22.17 or newer, or Node 26 or newer. Not Node 25: the React Native tools a fresh install takes (`@react-native/metro-config` 0.88) exclude it, and `svelte-native doctor` fails it ([Troubleshooting](08-troubleshooting.md#pnpm-stops-during-install)).
 
 The result is a native-only app. It has no web app and doesn't need SvelteKit or Vite.
 
@@ -37,9 +37,10 @@ allowBuilds:
   esbuild: true
 overrides:
   expo-modules-core: 57.0.23
+  "@react-native/metro-config": 0.86.3
 ```
 
-If your project isn't a pnpm workspace, the file holds just these settings. `esbuild` is a dependency of the library, and pnpm refuses to run its install script until you allow it. `expo-modules-core` is pinned because the patch below is for exactly that version.
+If your project isn't a pnpm workspace, the file holds just these settings. `esbuild` is a dependency of the library, and pnpm refuses to run its install script until you allow it. `expo-modules-core` is pinned because the patch below is for exactly that version. `@react-native/metro-config` is pinned to React Native's version: React Native asks for it by a range, so otherwise a fresh install takes 0.88, with Metro 0.87.
 
 ## 3. Install the library and Svelte
 

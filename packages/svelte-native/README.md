@@ -36,6 +36,8 @@ pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#<tag>&path:packa
 
 `<tag>` is any tag, branch or commit of the repository, and the lockfile records the commit it resolved to. Any other repository URL takes the same `#<ref>&path:packages/svelte-native` suffix (`git+file:///path/to/checkout#<commit>&path:packages/svelte-native` is what the check script installs).
 
+**Node.** An app runs on Node 24 LTS (24.3 or newer), Node 22.17 or newer, or Node 26 or newer (`svelte-native doctor` checks it); not Node 25. React Native 0.86.3 allows Node 25, but asks for `@react-native/metro-config` by a range, so a fresh install takes 0.88, whose tools exclude it, and pnpm stops with `ERR_PNPM_UNSUPPORTED_ENGINE` at the first `pnpm add` (the `engineStrict: true` that `sv create` writes), before `svelte-native init` can pin the package to React Native's version. The library's Node-side code ships as JavaScript, so an app needs no TypeScript in Node. This repository's own tools (its scripts and tests run TypeScript through Node) need Node 25 or newer, which is the repository's requirement and not an app's.
+
 **A machine that reaches the repository only over SSH needs one git setting.** pnpm resolves a `github.com` git dependency over HTTPS whatever the specifier says (`git+ssh://git@github.com/…` included): `pnpm add` writes `github:AlfayezDev/svelte-native#<tag>&path:packages/svelte-native` to `package.json` and `https://github.com/AlfayezDev/svelte-native.git` to the lockfile, so that the lockfile works on every machine. Where git can read the private repository only with an SSH key, `pnpm add` stops with `ERR_PNPM_GIT_RESOLVE_FAILED` and a later `pnpm install` with `ERR_PNPM_GIT_FETCH_FAILED` (`could not read Username for 'https://github.com'`). Tell git to use SSH for this account's repositories, once (pnpm's own advice, narrowed to this account):
 
 ```sh
@@ -68,9 +70,10 @@ A release is a tag with its [changelog](CHANGELOG.md) entry. What `pnpm install`
     esbuild: true              # a dependency of the package; pnpm 12 stops with ERR_PNPM_IGNORED_BUILDS until its install script is allowed
   overrides:
     expo-modules-core: 57.0.23 # expo asks for ~57.0.23, so a fresh install takes the newest 57.0.x, which the patch below is not for
+    "@react-native/metro-config": 0.86.3 # react-native asks for it by a range, so a fresh install takes 0.88 beside React Native 0.86.3 (Metro 0.87, tools that exclude Node 25)
   ```
 
-  Without the override a fresh install takes 57.0.25 and pnpm stops with `ERR_PNPM_UNUSED_PATCH`; `svelte-native doctor` reports a different version of `expo-modules-core` with this fix.
+  Without the first override a fresh install takes 57.0.25 and pnpm stops with `ERR_PNPM_UNUSED_PATCH`; `svelte-native doctor` reports a different version of `expo-modules-core` with this fix. The second is React Native's version (the one in `dependencies`): without it the install takes `@react-native/metro-config` 0.88 and Metro 0.87, whose engines exclude Node 25 (see "Node" above).
 
   The `patchedDependencies` entries go in the same file ("Apply the patches").
 - **Native modules.** Nothing is copied into the app. The package's `expo-module.config.json` links six native projects through Expo's autolinking (Android Gradle projects `:svelte-engine` and `:svelte-updates`; iOS pods `SvelteScreensIOS`, `SvelteInsets`, `SvelteNavigation`, `SvelteCapture`, `SvelteUpdates`), so `expo prebuild` and `pod install` find them in `node_modules/@example/svelte-native/native/`. Keep the app's own Expo modules in its `modules/` directory as usual.
@@ -457,7 +460,7 @@ It reads the app and prints one line per check, `pass`, `FAIL`, `skip` or `????`
 svelte-native doctor: /home/me/app
 
 environment
-  pass  node 25.2.0 (needs >=25.0.0)
+  pass  node 24.18.1 (needs ^22.17.0 || ^24.3.0 || >=26.0.0)
   pass  pnpm 12.3.4 (needs >=12.3.4)
 
 svelte

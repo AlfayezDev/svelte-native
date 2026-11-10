@@ -457,9 +457,14 @@ export function planInit(root: string, options: InitOptions = {}): Plan {
   // pnpm-workspace.yaml: allowBuilds, overrides, patchedDependencies.
   const workspacePath = join(root, "pnpm-workspace.yaml");
   const workspaceText = read(workspacePath);
+  // Packages that come with another one and are asked for by a range, so a fresh install takes the newest: pinned for the whole install, as `overrides`.
+  // `expo-modules-core` (the patch is for one version) and `@react-native/metro-config` (React Native asks for it by a range, so a fresh install takes 0.88 beside
+  // React Native 0.86.3, with Metro 0.87 and tools that exclude Node 25; the pin is the React Native version, as in this repository's lockfile).
   const overrides: Record<string, string> = {};
   const expoModules = patches.find((patch) => patch.package === "expo-modules-core");
   if (expoModules) overrides["expo-modules-core"] = expoModules.version;
+  const reactNative = appDependencies["react-native"];
+  if (reactNative !== undefined) overrides["@react-native/metro-config"] = reactNative;
   const patched: Record<string, string> = Object.fromEntries(needed.map((patch) => [patchKey(patch), `patches/svelte-native/${patch.file}`]));
   const merged = mergeWorkspaceYaml(workspaceText ?? "", { allowBuilds: { esbuild: "true" }, overrides, patchedDependencies: patched });
   if (merged.manual.length > 0) {

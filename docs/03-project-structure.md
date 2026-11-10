@@ -62,7 +62,7 @@ If you'd rather compute it, `app.config.ts` works in its place.
 `pnpm-workspace.yaml` holds pnpm's settings in a project that isn't a workspace, as it is here. `sv` writes the first of these three, and `svelte-native init` the others:
 
 - `allowBuilds` lets esbuild run its install script.
-- `overrides` pins `expo-modules-core` to the version the patch below is for.
+- `overrides` pins `expo-modules-core` to the version the patch below is for, and `@react-native/metro-config` to React Native's version (React Native asks for it by a range, and a fresh install would take 0.88).
 - `patchedDependencies` lists the patches.
 
 ### patches

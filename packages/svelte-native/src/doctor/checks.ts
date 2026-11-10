@@ -4,7 +4,7 @@ import { declaredPatches } from "./declared.ts";
 import { expoPluginFinding, metroFinding, type Finding } from "./integration.ts";
 import { missingFromPackage } from "./hunks.ts";
 import { patchFiles, patchKey, patchSpecs } from "./patches.ts";
-import { requirements } from "./requirements.ts";
+import { nodeAdvice, requirements } from "./requirements.ts";
 import { findPackage, readerFor, readJson, type InstalledPackage } from "./resolve.ts";
 import { satisfies } from "./semver.ts";
 
@@ -28,6 +28,8 @@ export type Context = {
   node: string | undefined;
   /** The version `pnpm --version` prints in the app's directory, or undefined when pnpm cannot be run. */
   pnpm: () => string | undefined;
+  /** The app is a member of this repository's workspace (`apps/qa`, `apps/example`), so it is judged by the repository's Node; default false, an app outside it. */
+  repository?: boolean;
 };
 
 const record = (value: unknown): Record<string, unknown> => (typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {});
@@ -35,13 +37,15 @@ const text = (value: unknown): string | undefined => (typeof value === "string" 
 
 function environment(context: Context): Check[] {
   const checks: Check[] = [];
+  const scope = context.repository ? "repository" : "app";
+  const range = requirements.node[scope];
   if (context.node === undefined) {
-    checks.push({ group: "environment", status: "unknown", message: `could not run node (needs ${requirements.node})`, fix: `install Node ${requirements.node.slice(2)} or newer and put it on the PATH` });
+    checks.push({ group: "environment", status: "unknown", message: `could not run node (needs ${range})`, fix: nodeAdvice[scope] });
   } else {
-    const ok = satisfies(context.node, requirements.node);
+    const ok = satisfies(context.node, range);
     checks.push(ok
-      ? { group: "environment", status: "pass", message: `node ${context.node} (needs ${requirements.node})` }
-      : { group: "environment", status: "fail", message: `node ${context.node} does not satisfy ${requirements.node}`, fix: `install Node ${requirements.node.slice(2)} or newer (the repository pins 25.0.0)` });
+      ? { group: "environment", status: "pass", message: `node ${context.node} (needs ${range})` }
+      : { group: "environment", status: "fail", message: `node ${context.node} does not satisfy ${range}`, fix: nodeAdvice[scope] });
   }
   const pnpm = context.pnpm();
   if (pnpm === undefined) {

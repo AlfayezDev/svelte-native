@@ -263,9 +263,13 @@ const SHEET_DRAG = 330;
  * checks `shouldFail` before `shouldActivate`, so a single move that carries the finger past both (more than 17.3 dp across at
  * 30 degrees, when the vertical travel passes 10) fails the pan and the list scrolls. Between the two the finger needs one event
  * in 10 to 17.3 dp across: a flick of 190 dp in 300 ms moves 10.6 dp across per frame and misses that window one time in three.
- * 600 ms (5.3 dp across per 16.7 ms frame) always lands an event in it, and is still a swipe, not a drag.
+ * 600 ms (5.3 dp across per 16.7 ms frame) lands an event in it while `adb input swipe` gives a sample every 12 to 18 ms, but not
+ * when the injection stalls for 23 ms: on the CI emulator (native-qa on `7d32623`, 10 Nov 2026) the adb launch's diagonal scrolled
+ * the list by 107 px and left the page at 1, while the frame-paced `qa` launch passed. The pager turns the page by distance (a
+ * quarter of its width), not speed, so the swipe can be slow: 1200 ms, as for the sheet's tie below, moves 2.6 dp across per
+ * frame and keeps a sample in the window unless the injection stalls for 46 ms.
  */
-const DIAGONAL_MS = 600;
+const DIAGONAL_MS = 1200;
 
 /**
  * The sheet's tie between its own drag and a pan with `activeOffsetY([-4, 4])`: the sheet claims at its 8 dp slop and the pan wins only if

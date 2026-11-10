@@ -205,7 +205,7 @@ PLAN.md step 8: the heap, the views and the crash count over time. Three command
 
 ```
 pnpm native-qa soak    --device localhost:5555 --apk qa/out/app-x86_64.apk [--minutes 10] [--interval 5] [--parts churn,nav]
-pnpm native-qa crashes --device localhost:5555 --apk qa/out/app-x86_64.apk [--starts 1000] [--suites 100] [--idle 2] [--chunk 300] [--resume] [--inject-crash --suites 0]
+pnpm native-qa crashes --device localhost:5555 --apk qa/out/app-x86_64.apk [--starts 1000] [--suites 100] [--idle 2] [--chunk 100] [--resume] [--inject-crash --suites 0]
 pnpm native-qa symbolicate --input qa/runs/crashes-localhost_5555-<stamp>.log [--all]
 ```
 
@@ -300,11 +300,11 @@ On the OVH emulator (60 Hz, software GL) a cold start takes about 5 s with its i
 ```
 pnpm native-qa build --abi x86_64
 pnpm native-qa soak    --device localhost:5555 --minutes 10                  # about 13 min
-pnpm native-qa crashes --device localhost:5555 --starts 1000 --suites 100 --chunk 300   # about 1.5 h for the starts, about 4-5 h for the suites
+pnpm native-qa crashes --device localhost:5555 --starts 1000 --suites 100 --chunk 100   # about 1.5 h for the starts, about 4-5 h for the suites
 pnpm native-qa report && pnpm native-qa gates --platform android
 ```
 
-`--chunk 300` runs the series as several commands (cold starts in steps of 300, suites in steps of 10, 20 s apart, each chunk continuing the same file with `--resume`, so the counts add up), each taking and releasing the emulator lock on its own: the OVH emulator's graphics stack (`-gpu swiftshader_indirect`) leaks host memory with every app launch (about 13 MB in October; about 0.12 GB of qemu's resident set per cold start on 9 Nov 2026, so a chunk of 100 starts peaks near 15 GB on the 22 GB host), so on the shared emulator every chunk restarts it once it holds the lock (`--fresh`, which a single run takes too), the first chunk included because it may follow a suite that left the instance large, and the other agents get the device between chunks. The run does not depend on a host watchdog: on 8 Nov 2026, with none running, the OVH host (22 GB) killed the emulator for memory 225 cold starts into a volume that followed a foreign run (qemu at 22.9 GB). A chunk that fails stops the run with the command to continue it; continued with `--resume`, the run skips the chunks the file already covers (each would restart the emulator for nothing). Without `--chunk` the command holds the lock for the whole series; run that only when nothing else needs the device. `report` takes the newest file of each kind, so a short run made afterwards replaces a full one: the count gates (`crashes.coldStarts` 1000, `crashes.suites` 100, `soak.minutes` 10) fail for what was not run.
+`--chunk 100` runs the series as several commands (cold starts in steps of 100, suites in steps of 10, 20 s apart, each chunk continuing the same file with `--resume`, so the counts add up), each taking and releasing the emulator lock on its own: the OVH emulator's graphics stack (`-gpu swiftshader_indirect`) leaks host memory with every app launch (about 13 MB in October; about 0.12 GB of qemu's resident set per cold start on 9 Nov 2026, so a chunk of 100 starts peaks near 15 GB on the 22 GB host; on 10 Nov 2026 a chunk of 300 was killed for memory at 235 starts, one of 150 peaked at 19.9 GB with 2 GB left, and chunks of 100 at 13.4 GB), so on the shared emulator every chunk restarts it once it holds the lock (`--fresh`, which a single run takes too), the first chunk included because it may follow a suite that left the instance large, and the other agents get the device between chunks. The run does not depend on a host watchdog: on 8 Nov 2026, with none running, the OVH host (22 GB) killed the emulator for memory 225 cold starts into a volume that followed a foreign run (qemu at 22.9 GB). A chunk that fails stops the run with the command to continue it; continued with `--resume`, the run skips the chunks the file already covers (each would restart the emulator for nothing). Without `--chunk` the command holds the lock for the whole series; run that only when nothing else needs the device. `report` takes the newest file of each kind, so a short run made afterwards replaces a full one: the count gates (`crashes.coldStarts` 1000, `crashes.suites` 100, `soak.minutes` 10) fail for what was not run.
 
 ### What the medium pass measured (26 October, OVH emulator, release x86_64 build)
 

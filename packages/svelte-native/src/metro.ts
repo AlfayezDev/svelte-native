@@ -1,11 +1,11 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve, sep } from "node:path";
 // `expo` re-exports Metro's config type: `@expo/metro` (where it comes from) is a dependency of `@expo/metro-config`, which is `expo`'s, and no one else's.
 import type { MetroConfig as ConfigT } from "expo/metro-config";
 import { syncRoutes, watchRoutes } from "./build.ts";
 import { runesEnvironment } from "./compile-options.ts";
-import { sourceFile } from "./package-root.ts";
+import { packageRoot, sourceFile } from "./package-root.ts";
 import { remoteResolution } from "./remote/transform.ts";
 import { assertCustomRenderer } from "./svelte-build.ts";
 import { labIncludedFor, routesTableFile, variantName } from "./variant.ts";
@@ -101,6 +101,28 @@ module.exports = require("./_core.js")(${JSON.stringify(name)}, ${JSON.stringify
 
 /** Whether [moduleName] is [name] or a path inside it. */
 export const isInPackage = (moduleName: string, name: string): boolean => moduleName === name || moduleName.startsWith(`${name}/`);
+
+/**
+ * Whether Metro has to start from empty caches because the installed library is not the one the project's last Metro used. Updating the library
+ * (a new tag of the git dependency) moves it to another directory of `node_modules/.pnpm`, and Metro's file map cache kept resolving
+ * `@example/svelte-native` to the old one after a restart (10 Nov 2026: a project updated to 0.4.0-rc.2 ran 0.4.0-rc.1's entry, which has no
+ * `colorScheme`, until its caches were reset). `.svelte-native/metro-library` holds the library's real directory; a project without it resets once.
+ * Decided once per process: Expo loads the config more than once, and only the first load sees the old record.
+ */
+let resetForLibrary: boolean | undefined;
+export function libraryChanged(projectRoot: string, library: string = realpathSync(packageRoot)): boolean {
+  const record = join(projectRoot, ".svelte-native", "metro-library");
+  let previous: string | undefined;
+  try {
+    previous = readFileSync(record, "utf8").trim();
+  } catch {
+    previous = undefined;
+  }
+  if (previous === library) return false;
+  mkdirSync(dirname(record), { recursive: true });
+  writeFileSync(record, `${library}\n`);
+  return true;
+}
 
 export function withSvelteNative(config: ConfigT, options: SvelteNativeMetroOptions = {}): ConfigT {
   assertCustomRenderer("withSvelteNative (@example/svelte-native/metro)");
@@ -220,5 +242,7 @@ export function withSvelteNative(config: ConfigT, options: SvelteNativeMetroOpti
     return modules.filter((module) => !/react-native[\\/]Libraries[\\/]Core[\\/]InitializeCore(\.js)?$/.test(module));
   };
   // Keep Metro's transform cache apart per mode: the same file resolves differently.
-  return { ...config, cacheVersion: `${config.cacheVersion ?? ""}+svelte-native-2${stubbed.length + files.size + directories.size > 0 ? `+stubs-${variant}` : ""}`, resolver, serializer, transformer: { ...config.transformer, babelTransformerPath: require.resolve("@example/svelte-native/transformer") } };
+  resetForLibrary ??= libraryChanged(config.projectRoot);
+  if (resetForLibrary && !config.resetCache) console.log("svelte-native: the installed library changed since Metro last ran here; starting Metro with empty caches");
+  return { ...config, resetCache: config.resetCache || resetForLibrary, cacheVersion: `${config.cacheVersion ?? ""}+svelte-native-2${stubbed.length + files.size + directories.size > 0 ? `+stubs-${variant}` : ""}`, resolver, serializer, transformer: { ...config.transformer, babelTransformerPath: require.resolve("@example/svelte-native/transformer") } };
 }

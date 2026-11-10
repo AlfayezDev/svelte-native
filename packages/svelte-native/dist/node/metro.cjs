@@ -27,6 +27,7 @@ __export(metro_exports, {
   RENDERER_STUBS: () => RENDERER_STUBS,
   closeRouteWatchers: () => closeRouteWatchers,
   isInPackage: () => isInPackage,
+  libraryChanged: () => libraryChanged,
   stubCoreSource: () => stubCoreSource,
   stubSource: () => stubSource,
   withSvelteNative: () => withSvelteNative
@@ -497,6 +498,21 @@ module.exports = require("./_core.js")(${JSON.stringify(name)}, ${JSON.stringify
 `;
 }
 var isInPackage = (moduleName, name) => moduleName === name || moduleName.startsWith(`${name}/`);
+var resetForLibrary;
+function libraryChanged(projectRoot, library = (0, import_node_fs4.realpathSync)(packageRoot)) {
+  const record = (0, import_node_path7.join)(projectRoot, ".svelte-native", "metro-library");
+  let previous;
+  try {
+    previous = (0, import_node_fs4.readFileSync)(record, "utf8").trim();
+  } catch {
+    previous = void 0;
+  }
+  if (previous === library) return false;
+  (0, import_node_fs4.mkdirSync)((0, import_node_path7.dirname)(record), { recursive: true });
+  (0, import_node_fs4.writeFileSync)(record, `${library}
+`);
+  return true;
+}
 function withSvelteNative(config, options = {}) {
   assertCustomRenderer("withSvelteNative (@example/svelte-native/metro)");
   Object.assign(process.env, runesEnvironment(options.runes));
@@ -605,7 +621,9 @@ function withSvelteNative(config, options = {}) {
     const modules = runBeforeMain(entryFile2);
     return modules.filter((module2) => !/react-native[\\/]Libraries[\\/]Core[\\/]InitializeCore(\.js)?$/.test(module2));
   };
-  return { ...config, cacheVersion: `${config.cacheVersion ?? ""}+svelte-native-2${stubbed.length + files.size + directories.size > 0 ? `+stubs-${variant}` : ""}`, resolver, serializer, transformer: { ...config.transformer, babelTransformerPath: require4.resolve("@example/svelte-native/transformer") } };
+  resetForLibrary ??= libraryChanged(config.projectRoot);
+  if (resetForLibrary && !config.resetCache) console.log("svelte-native: the installed library changed since Metro last ran here; starting Metro with empty caches");
+  return { ...config, resetCache: config.resetCache || resetForLibrary, cacheVersion: `${config.cacheVersion ?? ""}+svelte-native-2${stubbed.length + files.size + directories.size > 0 ? `+stubs-${variant}` : ""}`, resolver, serializer, transformer: { ...config.transformer, babelTransformerPath: require4.resolve("@example/svelte-native/transformer") } };
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
@@ -614,6 +632,7 @@ function withSvelteNative(config, options = {}) {
   RENDERER_STUBS,
   closeRouteWatchers,
   isInPackage,
+  libraryChanged,
   stubCoreSource,
   stubSource,
   withSvelteNative

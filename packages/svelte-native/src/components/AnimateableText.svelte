@@ -1,5 +1,6 @@
 <script lang="ts">
   import type {} from "../elements.d.ts";
+  import type { ClassProps } from "../classes.ts";
   import { createNativeProps } from "../native-props.ts";
   import type { TextProps } from "react-native";
 
@@ -18,7 +19,7 @@
     animatedProps?: (() => { text?: string }) | ReadonlyArray<() => { text?: string }>;
     /** Receives the host handle (`tag`, `measure`, ...), or null on unmount. */
     ref?: (handle: unknown) => void;
-  } = $props();
+  } & ClassProps = $props();
   const resolveProps = createNativeProps();
 </script>
 <native-foreign component="JBAnimatedText" nativeProps={resolveProps({ ...attributes, text, ...(animatedProps ? { animatedProps } : null), style, ref })}></native-foreign>

@@ -1,5 +1,6 @@
 <script lang="ts">
   import type {} from "../elements.d.ts";
+  import type { ClassProps } from "../classes.ts";
   import { createNativeProps } from "../native-props.ts";
   import { resolveAssetSource } from "../fabric/deps-rn.ts";
   import { expoViewName } from "../fabric/foreign.ts";
@@ -30,7 +31,7 @@
     /** After `onLoad` or `onError`. */
     onLoadEnd?: () => void;
     onDisplay?: () => void;
-  } = $props();
+  } & ClassProps = $props();
   const resolveProps = createNativeProps();
   // The view's only view: `ViewManagerAdapter_ExpoImage`, with the colour props the module's config does not tell from plain ones.
   const component = expoViewName("ExpoImage", undefined, { colors: "tintColor" });

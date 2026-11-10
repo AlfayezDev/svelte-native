@@ -42,6 +42,7 @@ title: Image
 | `source` | `ImageSource` | | What to show: an imported file, `{ uri, headers?, width?, height? }`, or an array of sources at different sizes. |
 | `resizeMode` | `'cover' \| 'contain' \| 'stretch' \| 'repeat' \| 'center'` | `'cover'` | How the picture fills the image's box. |
 | `style` | `ImageStyle` | | Size, border, border radius, `tintColor` and the layout keys. |
+| `class` | `ClassValue` | | A list of classes: a string, an array or an object, as on a DOM element in Svelte. Their style goes under `style`, which wins. Needs [Uniwind](styling#classes). |
 | `defaultSource` | `ImageSource` | | A bundled image shown while a network one loads. |
 | `blurRadius` | `number` | | Blurs the picture. |
 | `onLoadStart`, `onLoad`, `onLoadEnd` | `(event) => void` | | Loading started, succeeded, finished either way. |

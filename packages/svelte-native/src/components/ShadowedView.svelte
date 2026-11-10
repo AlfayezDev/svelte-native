@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import type {} from "../elements.d.ts";
+  import type { ClassProps } from "../classes.ts";
   import { createNativeProps } from "../native-props.ts";
   import { Platform } from "../fabric/deps-rn.ts";
   import { isRightToLeft, shadowedParts } from "../fabric/foreign-shadow.ts";
@@ -22,7 +23,7 @@
     children?: Snippet;
     /** Receives the host handle of the container, or null on unmount. */
     ref?: (handle: unknown) => void;
-  } = $props();
+  } & ClassProps = $props();
   const resolveProps = createNativeProps();
   const android = Platform.OS === "android";
   const parts = $derived(android ? shadowedParts(style, isRightToLeft()) : null);

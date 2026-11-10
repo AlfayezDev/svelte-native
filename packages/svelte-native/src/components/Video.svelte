@@ -1,6 +1,7 @@
 <script lang="ts">
   import { forwardRef } from "./forward-ref.ts";
   import type {} from "../elements.d.ts";
+  import type { ClassProps } from "../classes.ts";
   import { createNativeProps } from "../native-props.ts";
   import { Platform, resolveAssetSource } from "../fabric/deps-rn.ts";
   import type { Commandable } from "../fabric/foreign.ts";
@@ -50,7 +51,7 @@
     onReadyForDisplay?: () => void;
     onPlaybackStateChanged?: Event<{ isPlaying: boolean; isSeeking: boolean }>;
     [prop: string]: unknown;
-  } = $props();
+  } & ClassProps = $props();
   const resolveProps = createNativeProps();
   const platform = Platform.OS === "android" ? "android" : "ios";
   const asset = (number: number) => resolveAssetSource(number as never) as { uri: string } | null;

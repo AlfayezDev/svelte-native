@@ -2,7 +2,7 @@
 title: Styling
 ---
 
-There is no CSS and there are no classes. Each component takes a `style` prop: a plain object with React Native's style keys, in camelCase, with numbers for sizes.
+There is no CSS engine on the device. Each component takes a `style` prop: a plain object with React Native's style keys, in camelCase, with numbers for sizes. If you'd rather write classes, Tailwind's included, `class` works through Uniwind ([Classes](#classes)).
 
 ```svelte
 <!--- file: src/routes/+mobile.svelte --->
@@ -39,6 +39,87 @@ A style is a value like any other. Keep one in a constant, compute it with `$der
 ```
 
 To share styles across screens, export the objects from a module in `src/lib`.
+
+## Classes
+
+`class` takes Tailwind's utilities and classes of your own through [Uniwind](https://uniwind.dev), which compiles your CSS file to React Native styles when Metro builds the app. Without it, `class` does nothing, and a warning in development says so.
+
+```svelte
+<View class="flex-row items-center gap-3 rounded-2xl bg-white p-4 dark:bg-zinc-900">
+	<Text class="text-lg font-semibold text-zinc-900 dark:text-zinc-100">A card</Text>
+</View>
+```
+
+### Set up Uniwind
+
+Install Uniwind and Tailwind, at the versions Svelte Native is made for:
+
+```sh
+pnpm add uniwind@1.13.2 tailwindcss@4.3.3
+```
+
+Create the CSS file:
+
+```css
+/// file: src/global.css
+@import 'tailwindcss';
+@import 'uniwind';
+```
+
+Give its path to Metro, with the `uniwind` option of `withSvelteNative`:
+
+```js
+/// file: metro.config.cjs
+const { getDefaultConfig } = require('expo/metro-config');
+const { withSvelteNative } = require('@rasheed/svelte-native/metro');
+
+module.exports = withSvelteNative(getDefaultConfig(__dirname), {
+	uniwind: { cssEntryFile: './src/global.css' }
+});
+```
+
+Import Svelte Native's Uniwind module and the CSS file in the app shell, then restart Metro:
+
+```svelte
+<!--- file: src/routes/+layout.mobile.svelte --->
+<script lang="ts">
+	import '@rasheed/svelte-native/uniwind';
+	import '../global.css';
+	// ...
+</script>
+```
+
+Don't combine the configs with Uniwind's own `withUniwindConfig`: its resolver swaps React Native's components for React ones, which a Svelte Native app can't use. The `uniwind` option uses Uniwind's CSS compiler and leaves the resolver out.
+
+### Writing classes
+
+- `class` takes what it takes on a DOM element in Svelte: a string, an array or an object (`class={['card', selected && 'border-4']}`), and `class:name={condition}`.
+- `dark:` follows the system's light or dark mode, and the views that use it change when the user switches. Breakpoints such as `md:` follow the window's width, so they change when the device turns.
+- `style` wins over the classes, as an inline style wins over a stylesheet on the web: `<View class="bg-zinc-400" style={{ backgroundColor: '#f97316' }} />` is orange.
+- Tailwind finds the classes you use by reading your source files, `.svelte` files included. A name built at run time (`` `bg-${color}-500` ``) isn't found: write each class in full.
+
+Classes of your own go in the CSS file. Put them in Tailwind's `components` layer, so a utility next to one wins (`class="card border-4"`), as on the web. A class outside any layer wins over every utility.
+
+```css
+/// file: src/global.css
+@layer components {
+	.card {
+		padding: 16px;
+		border-radius: 12px;
+		background-color: var(--color-white);
+
+		@variant dark {
+			background-color: var(--color-zinc-900);
+		}
+	}
+}
+```
+
+### Not supported yet
+
+- The state variants `active:`, `focus:` and `disabled:`.
+- Uniwind's props that take classes for another prop, such as `contentContainerClassName` and `placeholderTextColorClassName`, and its React components and hooks (`withUniwind`, `useResolveClassNames`, `ScopedTheme`).
+- `class` on `<Stack>`, `<Tabs>` and `<List>`, which take `style`, and on SVG elements.
 
 ## Layout
 

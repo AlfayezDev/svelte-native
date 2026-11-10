@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import type {} from "../elements.d.ts";
+  import type { ClassProps } from "../classes.ts";
   import { createNativeProps } from "../native-props.ts";
   import { expoViewName } from "../fabric/foreign.ts";
   import { expoViewHandle, expoViewPrototype, expoViewProps, type UntypedExpoViewHandle } from "../fabric/foreign-expo-view.ts";
@@ -30,7 +31,7 @@
     /** Receives the host handle with the view's native functions, or null on unmount. */
     ref?: (handle: UntypedExpoViewHandle | null) => void;
     [prop: string]: unknown;
-  } = $props();
+  } & ClassProps = $props();
   const resolveProps = createNativeProps();
   // A node keeps the native view it was created for, so another module or view is another node (the key below); throws when there is none.
   const component = $derived(expoViewName(moduleName, viewName));

@@ -63,14 +63,16 @@ This installs the library. It works in a fresh `sv` project, with some warnings 
 ```
 svelte-native init: /home/you/my-app
 
-  edit    package.json                  "main", svelte (the custom-renderer build), @sveltejs/kit 3.1.1 (exact: …), …
-  edit    pnpm-workspace.yaml           overrides: expo-modules-core; patchedDependencies: @sveltejs/kit@3.1.1, …
-  create  patches/svelte-native/        5 patch files from the installed library
-  create  metro.config.cjs              withSvelteNative(getDefaultConfig(__dirname))
-  create  app.json                      my-app, dev.example.myapp
-  edit    vite.config.ts                svelteNative() around SvelteKit's plugin, as a function of the mode
-  create  src/routes/+layout.mobile.svelte, src/routes/+mobile.svelte, src/routes/details/+mobile.svelte
-  edit    .gitignore                    .svelte-native, .expo, /android, /ios
+  edit    package.json                       "main", svelte (the custom-renderer build), @sveltejs/kit 3.1.1 (exact: …), 8 dependencies, scripts, …
+  edit    pnpm-workspace.yaml                overrides: expo-modules-core; patchedDependencies: @sveltejs/kit@3.1.1, …
+  create  patches/svelte-native/             5 patch files from the installed library
+  create  metro.config.cjs                   withSvelteNative(getDefaultConfig(__dirname))
+  create  app.json                           my-app, dev.example.myapp
+  edit    vite.config.ts                     svelteNative() around SvelteKit's plugin, as a function of the mode
+  create  src/routes/+layout.mobile.svelte   the app shell
+  create  src/routes/+mobile.svelte          a home screen
+  create  src/routes/details/+mobile.svelte  a second screen
+  edit    .gitignore                         .svelte-native, .expo, /android, /ios
 ```
 
 You can run it again whenever you like: a project that is set up gets `Nothing to change`. It never replaces something you changed without saying so. If a file has a shape it can't edit safely (a `vite.config.ts` that isn't what `sv` writes, say), it leaves the file alone and prints the exact change for you to make. Its options are:

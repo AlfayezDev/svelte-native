@@ -4,6 +4,10 @@ Notable changes to `@rasheed/svelte-native`, newest first. The format follows [K
 
 ## Unreleased
 
+## 0.4.0 - 2026-11-10
+
+The early preview: an app starts from `npx sv create`, adds the library with `pnpm add` and runs `svelte-native init` (the guide is `docs/`). Checked on the release branch: the package, harness and showcase tests, the engine's host checks, the consumer check in its three modes (tarball, git and the guide's starter path, each through a Gradle build), the starter on the OVH emulator to its second screen, and the showcase on the Samsung A16 (the generic camera and image views, the scroll clip under a plain header, the status bar) and the iPhone SE 3 (ExpoView checked by hand; the release build launches). The device suites of `native-qa` were not run again for this release: PLAN.md has their last full round, on 0.3.0.
+
 ### Added
 
 - `svelte-native init` turns a SvelteKit project (`npx sv create`: minimal template, TypeScript, pnpm) into a Svelte Native app, after `pnpm add` of the library: the custom-renderer Svelte, the peers at the versions the library was exercised on, SvelteKit pinned to the version it patches, `main`, the Reanimated flag, the scripts `native`, `android`, `ios` and `check-setup` (`dev`, `build` and `check` stay SvelteKit's), pnpm's `allowBuilds`, `overrides` and `patchedDependencies` merged into the project's `pnpm-workspace.yaml`, the patch files, `metro.config.cjs`, `app.json`, the Vite config (`svelteNative()` around SvelteKit's plugin, when the file has the shape `sv` writes; otherwise the change is printed), the first native routes when there are none, and the `.gitignore` entries; then `pnpm install` and the doctor. `--dry-run` prints the plan, a second run changes nothing, a file it cannot change safely is left alone, and `--name`, `--android-package`, `--ios-bundle-id`, `--force` and `--no-install` are the options. It loads neither Svelte's compiler nor Metro, so it runs before the project is set up. `svelte-native --help` lists the commands.

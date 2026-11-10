@@ -477,7 +477,7 @@ patches
         fix: copy node_modules/@rasheed/svelte-native/patches/react-native-pdf@7.0.3.patch into your repository (patches/svelte-native/), declare "react-native-pdf@7.0.3: patches/svelte-native/react-native-pdf@7.0.3.patch" under patchedDependencies in pnpm-workspace.yaml, then pnpm install (README: "Apply the patches")
 
 build integration
-  pass  @rasheed/svelte-native 0.3.0 is a dependency of the app
+  pass  @rasheed/svelte-native 0.4.0 is a dependency of the app
   ????  could not tell: metro.config.cjs does not mention withSvelteNative (a config that applies it from a file it imports is fine)
         fix: module.exports = withSvelteNative(getDefaultConfig(__dirname)), with withSvelteNative from require("@rasheed/svelte-native/metro")
   pass  app.json lists the @rasheed/svelte-native/expo plugin

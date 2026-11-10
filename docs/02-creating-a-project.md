@@ -24,12 +24,12 @@ Without it the next section stops at `pnpm add` with `ERR_PNPM_GIT_RESOLVE_FAILE
 ```sh
 npx sv create my-app
 cd my-app
-pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#<tag>&path:packages/svelte-native"
+pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#v0.4.0&path:packages/svelte-native"
 pnpm exec svelte-native init
 pnpm android        # or: pnpm ios
 ```
 
-Replace `<tag>` with the newest release tag of the repository. The `init` command arrived after `v0.3.0`, so until the next release use the tag or commit it appears in.
+`v0.4.0` is the release this guide was written for. A newer tag works the same way: the [releases](https://github.com/AlfayezDev/svelte-native/releases) list them.
 
 Here is what each command does.
 

@@ -105,6 +105,9 @@ build() {
   if [ "$MODE" = full ] && [ "${QA_UPDATES:-0}" = 1 ] && want updates; then
     stage build-updates "${QA[@]}" build --abi x86_64 --updates-channel "$CHANNEL"
   fi
+  # The emulator lane follows on the same host (22 GB). A Gradle or Kotlin daemon left idle holds 4 GB or more while the emulator grows: on
+  # 10 Nov 2026 the kernel killed one 50 minutes into the lab, which stopped the runner's service and cancelled the job. The builds are one-shot.
+  pkill -u "$(id -u)" -f 'GradleDaemon|KotlinCompileDaemon' 2>/dev/null || true
   [ "$FAILED" = 0 ]
 }
 

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { satisfies } from "../src/doctor/semver.ts";
 import { patchFiles } from "../src/doctor/patches.ts";
 import { appDependencies, appNames, mergeWorkspaceYaml, parseInitArguments, planInit, runInit, svelteNativeViteConfig } from "../src/init-app.ts";
+import { compile } from "svelte/compiler";
 import { requiredSvelte } from "../src/svelte-build.ts";
 
 // `svelte-native init`: what it does to a project `npx sv create` made (tests/fixtures/sv-minimal is what sv 1.3.0 writes for the minimal template with
@@ -125,6 +126,41 @@ describe("init in a fresh sv project", () => {
     const ignore = readFileSync(join(root, ".gitignore"), "utf8");
     for (const line of [".svelte-native", ".expo", "/android", "/ios"]) expect(ignore.split("\n")).toContain(line);
     expect(ignore.startsWith(readFileSync(join(fixture, ".gitignore"), "utf8"))).toBe(true);
+  });
+
+  test("the first routes draw in the system's light or dark colours, and each screen is opaque, so a pushed one covers the one below it", () => {
+    const root = project();
+    run(root);
+    const theme = readFileSync(join(root, "src/lib/theme.ts"), "utf8");
+    expect(theme).toContain("import { colorScheme } from '@rasheed/svelte-native';");
+    expect(theme).toContain("colorScheme.current === 'dark' ? dark : light");
+    const routes = ["src/routes/+layout.mobile.svelte", "src/routes/+mobile.svelte", "src/routes/details/+mobile.svelte"];
+    const layout = readFileSync(join(root, routes[0] as string), "utf8");
+    // The stack's defaults give every screen the theme's background: without one a screen is transparent and the pushed one draws over the one below.
+    expect(layout).toContain("<Stack statusBar={{ style: 'auto' }} style={{ backgroundColor: theme.colors.background }}>");
+    for (const file of routes) {
+      const text = readFileSync(join(root, file), "utf8");
+      // sv maps #lib/*, so the routes import the theme the way sv's own files import a module of src/lib.
+      expect(text, file).toContain("import { theme } from '#lib/theme.ts';");
+      // Every text has a colour of the theme: React Native's default is black, which is unreadable on the dark background.
+      for (const tag of text.match(/<Text\b[^>]*>/g) ?? []) expect(tag, `${file}: ${tag}`).toContain("color: theme.colors.");
+      expect(() => compile(text, { filename: file, generate: "client" }), file).not.toThrow();
+    }
+  });
+
+  test("the theme is imported by a relative path where #lib is not mapped, and an app's own src/lib/theme.ts is left alone", () => {
+    const root = project((dir) => {
+      const manifest = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as Json;
+      delete manifest.imports;
+      writeFileSync(join(dir, "package.json"), `${JSON.stringify(manifest, null, "\t")}\n`);
+      mkdirSync(join(dir, "src/lib"), { recursive: true });
+      writeFileSync(join(dir, "src/lib/theme.ts"), "export const brand = 'red';\n");
+    });
+    expect(run(root).status).toBe(0);
+    expect(readFileSync(join(root, "src/lib/theme.ts"), "utf8")).toBe("export const brand = 'red';\n");
+    expect(readFileSync(join(root, "src/lib/native-theme.ts"), "utf8")).toContain("colorScheme.current");
+    expect(readFileSync(join(root, "src/routes/+mobile.svelte"), "utf8")).toContain("import { theme } from '../lib/native-theme.ts';");
+    expect(readFileSync(join(root, "src/routes/details/+mobile.svelte"), "utf8")).toContain("import { theme } from '../../lib/native-theme.ts';");
   });
 
   test("a second run changes nothing and says so", () => {

@@ -108,6 +108,26 @@ A layout wraps every screen below its directory. It receives `params`, `url` and
 
 Put what the whole app needs here: a theme provider, say, or a store that every screen reads.
 
+### Light and dark mode
+
+A screen has no background of its own, as in React Native: what you see behind your views is the window. Give the stack one, so each screen is opaque and a pushed screen covers the one below it while it slides in. A text without a colour is black, so give your texts colours too. `colorScheme.current` is `'light'` or `'dark'`, and a template that reads it draws again when the user switches:
+
+```svelte
+<!--- file: src/routes/+layout.mobile.svelte --->
+<script lang="ts">
+	import type { Snippet } from 'svelte';
+	import { Stack, colorScheme } from '@rasheed/svelte-native';
+
+	let { children }: { children: Snippet } = $props();
+</script>
+
+<Stack statusBar={{ style: 'auto' }} style={{ backgroundColor: colorScheme.current === 'dark' ? '#000000' : '#f2f2f7' }}>
+	{@render children()}
+</Stack>
+```
+
+The options of a `<Stack>` are the defaults of every screen in it, and `statusBar: { style: 'auto' }` gives the status bar light or dark icons to match. The headers, tab bars and sheets are the platform's, and they follow the system on their own. `init` writes this layout with a small theme, `src/lib/theme.ts`, which the first screens use for their colours.
+
 ### Stacks and tabs
 
 What SvelteKit has no word for is a _navigator_: the thing that decides how screens relate to each other. A layout becomes one when its module script exports `navigator`:

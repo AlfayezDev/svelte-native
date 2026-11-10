@@ -164,6 +164,8 @@ Where the program stands is in [PLAN.md](PLAN.md) ("Production plan status"); th
 
 `tests/platform.test.ts` pins the laziness and the binding; the showcase app reads its theme, window size, links and system version from this entry.
 
+`colorScheme` (the main entry, `src/color-scheme.ts`) is `Appearance` as state: `colorScheme.current` is `"light"` or `"dark"` (a system that reports none is light), and the effect that reads it (a template, `$derived`, `$effect`) runs again when the system switches. It is Svelte's `createSubscriber`, so every reader shares one `Appearance.addChangeListener`, added by the first reader inside an effect and removed when the last such effect is torn down (`tests/color-scheme.test.ts`). The starter that `svelte-native init` writes reads it through `src/lib/theme.ts`.
+
 ## Foreign views
 
 `@rasheed/svelte-native/foreign` mounts views other native libraries own inside the engine's tree (design and measurements in `native/svelte-engine/SPEC.md`, "Foreign views"). The components mount the native view by its Fabric name and port what the library's React code does before it; none imports the library or React.

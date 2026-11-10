@@ -359,18 +359,55 @@ const { withSvelteNative } = require("@rasheed/svelte-native/metro");
 module.exports = withSvelteNative(getDefaultConfig(__dirname));
 `;
 
-const layoutRoute = `<script lang="ts">
+const themeModule = `import { colorScheme } from '@rasheed/svelte-native';
+
+// The colours of the native screens, in the system's light and dark mode. A template that reads \`theme.colors\` draws again when the
+// user switches, because \`colorScheme.current\` is reactive.
+const light = {
+	background: '#f2f2f7',
+	surface: '#ffffff',
+	text: '#000000',
+	secondaryText: '#6c6c70',
+	accent: '#007aff',
+	onAccent: '#ffffff'
+};
+const dark: typeof light = {
+	background: '#000000',
+	surface: '#1c1c1e',
+	text: '#ffffff',
+	secondaryText: '#98989f',
+	accent: '#0a84ff',
+	onAccent: '#ffffff'
+};
+
+export const theme = {
+	get colors() {
+		return colorScheme.current === 'dark' ? dark : light;
+	}
+};
+`;
+
+const layoutRoute = (theme: string) => `<script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { Stack } from '@rasheed/svelte-native';
+	import { theme } from '${theme}';
 
 	let { children }: { children: Snippet } = $props();
 </script>
 
-<!-- The app shell: children is the root navigator, a stack of the screens under src/routes. -->
-{@render children()}
+<!--
+	The app shell: children is the root navigator, a native stack of the screens under src/routes. The options of <Stack> are the
+	defaults of every screen: an opaque background in the system's light or dark mode, so a pushed screen covers the one below it,
+	and a status bar that follows the mode.
+-->
+<Stack statusBar={{ style: 'auto' }} style={{ backgroundColor: theme.colors.background }}>
+	{@render children()}
+</Stack>
 `;
 
-const homeRoute = (title: string) => `<script lang="ts">
+const homeRoute = (title: string, theme: string) => `<script lang="ts">
 	import { Pressable, Screen, Text, View, useRouter } from '@rasheed/svelte-native';
+	import { theme } from '${theme}';
 
 	const router = useRouter();
 	let taps = $state(0);
@@ -378,33 +415,51 @@ const homeRoute = (title: string) => `<script lang="ts">
 
 <Screen title=${JSON.stringify(title)} header={{ large: true }}>
 	<View style={{ flex: 1, padding: 24, gap: 16, justifyContent: 'center' }}>
-		<Text style={{ fontSize: 28, fontWeight: '700' }}>Svelte Native</Text>
-		<Text style={{ fontSize: 16 }}>Tapped {taps} {taps === 1 ? 'time' : 'times'}.</Text>
-		<Pressable onPress={() => taps++} accessibilityRole="button" style={{ padding: 14, borderRadius: 12, backgroundColor: '#1d4ed8' }}>
-			<Text style={{ color: '#ffffff', fontSize: 16, fontWeight: '600' }}>Tap</Text>
+		<Text style={{ color: theme.colors.text, fontSize: 28, fontWeight: '700' }}>Svelte Native</Text>
+		<Text style={{ color: theme.colors.secondaryText, fontSize: 16 }}>Tapped {taps} {taps === 1 ? 'time' : 'times'}.</Text>
+		<Pressable onPress={() => taps++} accessibilityRole="button" style={{ padding: 14, borderRadius: 12, backgroundColor: theme.colors.accent }}>
+			<Text style={{ color: theme.colors.onAccent, fontSize: 16, fontWeight: '600' }}>Tap</Text>
 		</Pressable>
-		<Pressable onPress={() => router.goto('/details')} accessibilityRole="button" style={{ padding: 14, borderRadius: 12, backgroundColor: '#e5e7eb' }}>
-			<Text style={{ fontSize: 16, fontWeight: '600' }}>Open details</Text>
+		<Pressable onPress={() => router.goto('/details')} accessibilityRole="button" style={{ padding: 14, borderRadius: 12, backgroundColor: theme.colors.surface }}>
+			<Text style={{ color: theme.colors.accent, fontSize: 16, fontWeight: '600' }}>Open details</Text>
 		</Pressable>
 	</View>
 </Screen>
 `;
 
-const detailsRoute = `<script lang="ts">
+const detailsRoute = (theme: string) => `<script lang="ts">
 	import { Pressable, Screen, Text, View, useRouter } from '@rasheed/svelte-native';
+	import { theme } from '${theme}';
 
 	const router = useRouter();
 </script>
 
 <Screen title="Details">
 	<View style={{ flex: 1, padding: 24, gap: 16, justifyContent: 'center' }}>
-		<Text style={{ fontSize: 16 }}>A second screen, pushed onto the stack. The header's back button, the edge swipe and Android's back return to the home screen.</Text>
-		<Pressable onPress={() => router.back()} accessibilityRole="button" style={{ padding: 14, borderRadius: 12, backgroundColor: '#e5e7eb' }}>
-			<Text style={{ fontSize: 16, fontWeight: '600' }}>Back</Text>
+		<Text style={{ color: theme.colors.text, fontSize: 16 }}>A second screen, pushed onto the stack. The header's back button, the edge swipe and Android's back return to the home screen.</Text>
+		<Pressable onPress={() => router.back()} accessibilityRole="button" style={{ padding: 14, borderRadius: 12, backgroundColor: theme.colors.surface }}>
+			<Text style={{ color: theme.colors.accent, fontSize: 16, fontWeight: '600' }}>Back</Text>
 		</Pressable>
 	</View>
 </Screen>
 `;
+
+/**
+ * Where the starter's theme goes and how a route imports it: \`#lib/…\` when package.json maps \`#lib/*\` (as \`sv\` writes it), a relative
+ * path otherwise. A \`src/lib/theme.ts\` of the app's own is left alone; the starter's is then \`native-theme.ts\`.
+ */
+function starterTheme(root: string, manifest: Manifest): { path: string; exists: boolean; from: (directory: string) => string } {
+  const own = read(join(root, "src/lib/theme.ts"));
+  const name = own !== undefined && !own.includes("@rasheed/svelte-native") ? "native-theme.ts" : "theme.ts";
+  const path = `src/lib/${name}`;
+  const imports = manifest.imports;
+  const mapped = typeof imports === "object" && imports !== null && "#lib/*" in imports;
+  return {
+    path,
+    exists: existsSync(join(root, path)),
+    from: (directory) => (mapped ? `#lib/${name}` : relative(directory, path).split("\\").join("/")),
+  };
+}
 
 /** The `.mobile.svelte` route files of a project. */
 function mobileRoutes(routes: string): string[] {
@@ -525,11 +580,16 @@ export function planInit(root: string, options: InitOptions = {}): Plan {
   // The first routes: the root layout if there is none, a home screen and a second one when the app has no native screen yet.
   const routes = join(root, "src/routes");
   const existing = mobileRoutes(routes);
-  if (!existing.some((file) => file === "+layout.mobile.svelte")) plan.changes.push({ path: "src/routes/+layout.mobile.svelte", action: "create", summary: "the app shell", text: layoutRoute });
+  const createLayout = !existing.some((file) => file === "+layout.mobile.svelte");
+  const createScreens = !existing.some((file) => /\+mobile\.svelte$/.test(file) && !/layout\.mobile/.test(file));
+  // The starter's routes share a theme that follows the system's light or dark mode.
+  const theme = starterTheme(root, manifest);
+  if ((createLayout || createScreens) && !theme.exists) plan.changes.push({ path: theme.path, action: "create", summary: "light and dark colours for the native screens", text: themeModule });
+  if (createLayout) plan.changes.push({ path: "src/routes/+layout.mobile.svelte", action: "create", summary: "the app shell", text: layoutRoute(theme.from("src/routes")) });
   else plan.changes.push({ path: "src/routes/+layout.mobile.svelte", action: "keep", summary: "exists" });
-  if (!existing.some((file) => /\+mobile\.svelte$/.test(file) && !/layout\.mobile/.test(file))) {
-    plan.changes.push({ path: "src/routes/+mobile.svelte", action: "create", summary: "a home screen", text: homeRoute(names.title) });
-    plan.changes.push({ path: "src/routes/details/+mobile.svelte", action: "create", summary: "a second screen", text: detailsRoute });
+  if (createScreens) {
+    plan.changes.push({ path: "src/routes/+mobile.svelte", action: "create", summary: "a home screen", text: homeRoute(names.title, theme.from("src/routes")) });
+    plan.changes.push({ path: "src/routes/details/+mobile.svelte", action: "create", summary: "a second screen", text: detailsRoute(theme.from("src/routes/details")) });
   } else plan.changes.push({ path: "src/routes", action: "keep", summary: `${plural(existing.filter((file) => !/layout/.test(file)).length, "native screen")} already` });
 
   // .gitignore

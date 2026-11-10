@@ -93,8 +93,9 @@ Don't combine the configs with Uniwind's own `withUniwindConfig`: its resolver s
 
 ### Writing classes
 
-- `class` takes what it takes on a DOM element in Svelte: a string, an array or an object (`class={['card', selected && 'border-4']}`), and `class:name={condition}`.
+- `class` takes what it takes on a DOM element in Svelte: a string, an array or an object (`class={['card', selected && 'border-4']}`). On `View`, `Text`, `ScrollView`, `Image`, `ActivityIndicator` and `Pressable`, which a page compiles to native elements, `class:name={condition}` works too; Svelte allows no directive on other components, so write `class={{ name: condition }}` there.
 - `dark:` follows the system's light or dark mode, and the views that use it change when the user switches. Breakpoints such as `md:` follow the window's width, so they change when the device turns.
+- The safe-area utilities (`pt-safe`, `pb-safe`, `h-screen-safe`, ...) use the device's insets, the ones `<SafeAreaView>` adds.
 - `style` wins over the classes, as an inline style wins over a stylesheet on the web: `<View class="bg-zinc-400" style={{ backgroundColor: '#f97316' }} />` is orange.
 - Tailwind finds the classes you use by reading your source files, `.svelte` files included. A name built at run time (`` `bg-${color}-500` ``) isn't found: write each class in full.
 

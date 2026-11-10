@@ -87,6 +87,8 @@
   const resolveToolbar = createNativeProps();
   const resolveContent = createNativeProps();
   const screenProps = $derived(resolveScreen({
+    // `class` is an option like `style`: an inner screen's wins.
+    class: (options as ClassProps).class,
     style: options.style,
     activityState: options.activityState,
     stackPresentation: presentation,

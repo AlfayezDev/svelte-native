@@ -52,6 +52,18 @@ export function classList(value: unknown): string {
   return "";
 }
 
+/**
+ * `props` with the style of its `class` under its `style`, and no `class`: for a component that reads its `style` before the host does
+ * (a safe area's padding, expo-image's resize mode). Call it where the component's template or a `$derived` tracks it.
+ */
+export function mergeClass<T extends Record<string, unknown>>(props: T): Omit<T, "class"> {
+  if (!("class" in props)) return props;
+  const { class: value, ...rest } = props;
+  const fromClass = classStyle(value, rest);
+  if (fromClass === undefined) return rest;
+  return { ...rest, style: rest.style === undefined || rest.style === null ? fromClass : [fromClass, rest.style] };
+}
+
 /** The style of a component's `class`, or `undefined` when it has none or no resolver is registered (with a warning, once, in development). */
 export function classStyle(value: unknown, props: Readonly<Record<string, unknown>>): unknown {
   const className = classList(value);

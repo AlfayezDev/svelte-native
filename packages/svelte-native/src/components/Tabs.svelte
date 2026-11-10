@@ -2,7 +2,6 @@
   import { setContext, untrack, type Snippet } from "svelte";
   import type {} from "../elements.d.ts";
   import Platform from "react-native/Libraries/Utilities/Platform";
-  import type { ClassProps } from "../classes.ts";
   import { createNativeProps } from "../native-props.ts";
   import { connectInsets, insets } from "../insets.svelte.ts";
   import { nearestRouter } from "../router.svelte.ts";
@@ -33,7 +32,7 @@
     inactiveTint?: string;
     background?: string;
     labels?: "always" | "never";
-  } & ClassProps = $props();
+  } = $props();
 
   // The mode is a fact of where the component sits and cannot change while it lives.
   const componentMode = untrack(() => content !== undefined);

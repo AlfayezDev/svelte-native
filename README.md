@@ -86,7 +86,7 @@ A failed run: the job log names the step; `ci.yml` runs every check of a job eve
 
 ## Release
 
-A release is a tag `v<version>` on a commit of `main` that is green in `ci.yml` and `consumer.yml`. Apps depend on the tag (`pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#v<version>&path:packages/svelte-native"`); the GitHub Release is its notes and a convenience tarball.
+A release is a tag `v<version>` on a commit of `main` that is green in `ci.yml` and `consumer.yml`. Apps depend on the tag (`pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#v<version>&path:packages/svelte-native"`); the GitHub Release is its notes and a convenience tarball. A machine that reaches the private repository only with an SSH key needs one git setting first, because pnpm resolves a `github.com` dependency over HTTPS whatever the specifier says: `git config --global url."git@github.com:AlfayezDev/".insteadOf "https://github.com/AlfayezDev/"` (without it `pnpm add` stops with `ERR_PNPM_GIT_RESOLVE_FAILED`; the package README, "Install in an app", has the details).
 
 1. Set `"version"` in `packages/svelte-native/package.json` (`0.3.0`; a pre-release is `0.3.0-rc.1`, which the release marks as a pre-release).
 2. In `packages/svelte-native/CHANGELOG.md`, move what is under `## Unreleased` under a new heading `## 0.3.0 - YYYY-MM-DD` and leave `## Unreleased` empty. The text under the version's heading is the release notes verbatim (`scripts/release-notes.sh 0.3.0` prints it).

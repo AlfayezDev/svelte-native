@@ -244,10 +244,12 @@ install_sdk() {
   fi
   # Gradle may want to add a component on its own; the runner user may write the SDK, root keeps owning it.
   run setfacl -R -m "u:$RUNNER_USER:rwX,d:u:$RUNNER_USER:rwX" "$ANDROID_HOME"
-  # Same reason: nothing of a build may need a second download path.
+  # Same reason: nothing of a build may need a second download path. No daemons: each lane build is one-shot, and a Gradle or Kotlin daemon left
+  # idle holds 4 GB or more beside the emulator on a 22 GB host (10 Nov 2026: the kernel killed one in the lab and the job was cancelled).
   put "$STATE_DIR/gradle/gradle.properties" 0644 "$RUNNER_USER:$RUNNER_USER" <<EOF
 systemProp.java.net.preferIPv4Stack=true
-org.gradle.daemon=true
+org.gradle.daemon=false
+kotlin.compiler.execution.strategy=in-process
 EOF
 }
 
@@ -393,6 +395,20 @@ EOF
     run bash -c "cd '$dir' && ./svc.sh install '$RUNNER_USER'"
   else
     note "service installed: $(cat "$dir/.service")"
+  fi
+  # systemd's default for a service one of whose processes the kernel kills for memory is to stop it, and the runner then exits for good: on
+  # 10 Nov 2026 an idle Gradle daemon was killed in the lab and the lane stayed offline until someone restarted it. The job fails on its own;
+  # the runner keeps serving, and comes back after a failure.
+  local unit
+  unit=$(cat "$dir/.service" 2>/dev/null || true)
+  if [ -n "$unit" ]; then
+    put "/etc/systemd/system/$unit.d/svelte-qa.conf" 0644 root:root <<EOF
+[Service]
+OOMPolicy=continue
+Restart=on-failure
+RestartSec=30
+EOF
+    run systemctl daemon-reload
   fi
   run bash -c "cd '$dir' && ./svc.sh start || true"
 }

@@ -85,3 +85,9 @@ kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/GestureRules.kt" \
   "$here/kotlin/expo/modules/svelteengine/GestureRulesCheck.kt" -include-runtime -d "$work/rules.jar"
 java -cp "$work/rules.jar" expo.modules.svelteengine.GestureRulesCheckKt "$views/HitTest.kt" "$views/EngineRoot.kt" "$views/EngineStack.kt" "$views/EngineSheet.kt" \
   "$rngh/android/src/main/java/com/swmansion/gesturehandler/core/PanGestureHandler.kt" "$here/../main/java/expo/modules/svelteengine/SvelteEngineModule.kt"
+
+# What clips a scroll view's content to its viewport (SPEC.md, "Scroll viewport clip"): the rectangle from the view's bounds, border and scroll offset, and the sources of
+# the engine's scroll views read for the clip they apply around their children's draw.
+kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/ClipRules.kt" \
+  "$here/kotlin/expo/modules/svelteengine/ClipRulesCheck.kt" -include-runtime -d "$work/clip-check.jar"
+java -cp "$work/clip-check.jar" expo.modules.svelteengine.ClipRulesCheckKt "$views"

@@ -1,9 +1,11 @@
 package expo.modules.svelteengine.views
 
 import android.content.Context
+import android.graphics.Canvas
 import android.os.SystemClock
 import android.view.inputmethod.InputMethodManager
 import android.widget.OverScroller
+import expo.modules.svelteengine.ClipRules
 import expo.modules.svelteengine.PropSet
 import android.view.MotionEvent
 import android.view.VelocityTracker
@@ -77,6 +79,20 @@ class ScrollBridge(private val view: ViewGroup, private val node: NodeState) {
   /** Mirrors PointerEvents.canBeTouchTarget / canChildrenBeTouchTarget for the scroll view's own pointerEvents. */
   val canBeTouchTarget get() = node.pointer == 0 || node.pointer == 3
   val canChildrenBeTouchTarget get() = node.pointer == 0 || node.pointer == 2
+
+  private val viewport = FloatArray(4)
+
+  /**
+   * Clips [canvas] to the scroll view's viewport when its `overflow` is not visible (SPEC.md, "Scroll viewport clip") and returns the save count to restore to, or -1 when
+   * nothing was clipped. A scroll view has to clip its own children, as `ReactScrollView.draw` does: Android's way is the parent's `clipChildren`, which no engine view
+   * sets, so without this the content of a scroll view is drawn wherever it scrolls to, over the header and the status bar that sit before the scroll view in the screen.
+   */
+  fun clipToViewport(canvas: Canvas): Int {
+    if (!ClipRules.scrollViewport(node.overflow, view.scrollX, view.scrollY, view.width, view.height, node.border, viewport)) return -1
+    val saved = canvas.save()
+    canvas.clipRect(viewport[0], viewport[1], viewport[2], viewport[3])
+    return saved
+  }
 
   /** Applies the scroll records of [p]; `contentOffset` only on creation (it is an initial offset). */
   fun configure(p: PropSet, create: Boolean) {
@@ -497,6 +513,12 @@ class EngineScroll(context: Context) : ScrollView(context), EngineNode, EngineSc
     bridge.onLaidOut()
   }
 
+  override fun dispatchDraw(canvas: Canvas) {
+    val saved = bridge.clipToViewport(canvas)
+    super.dispatchDraw(canvas)
+    if (saved >= 0) canvas.restoreToCount(saved)
+  }
+
   /** Back to the scroll position and event state of a new view ([ViewPool]); the content child is detached afterwards. */
   fun resetForReuse() {
     bridge.native = null
@@ -600,6 +622,12 @@ class EngineHScroll(context: Context) : HorizontalScrollView(context), EngineNod
   override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
     super.onLayout(changed, l, t, r, b)
     bridge.onLaidOut()
+  }
+
+  override fun dispatchDraw(canvas: Canvas) {
+    val saved = bridge.clipToViewport(canvas)
+    super.dispatchDraw(canvas)
+    if (saved >= 0) canvas.restoreToCount(saved)
   }
 
   /** Back to the scroll position and event state of a new view ([ViewPool]); the content child is detached afterwards. */

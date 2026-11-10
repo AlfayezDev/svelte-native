@@ -3,6 +3,8 @@
  * views"). A separate entry, so an app that shows none of them does not evaluate them at boot.
  */
 export { default as ForeignView } from "./components/ForeignView.svelte";
+export { default as ExpoView } from "./components/ExpoView.svelte";
+export { defineExpoView } from "./components/define-expo-view.ts";
 export { default as WebView } from "./components/WebView.svelte";
 export { default as MapView } from "./components/MapView.svelte";
 export { default as Marker } from "./components/Marker.svelte";
@@ -23,6 +25,8 @@ export { default as AnimateableText } from "./components/AnimateableText.svelte"
 export { dismissDatePicker, openDatePicker } from "./fabric/foreign-datetime.ts";
 export { captureRef, captureScreen, releaseCapture } from "./fabric/foreign-capture.ts";
 export { shadowStyle } from "./fabric/foreign-shadow.ts";
+export type { ExpoViewProps } from "./components/define-expo-view.ts";
+export type { ExpoViewHandle, UntypedExpoViewHandle } from "./fabric/foreign-expo-view.ts";
 export type { Camera, EdgePadding, LatLng, MapHandle, Region, WebViewHandle, WebViewMessage, WebViewRequest, WebViewSource } from "./fabric/foreign.ts";
 export type { DatePickerOptions, DatePickerProps, DatePickerChange } from "./fabric/foreign-datetime.ts";
 export type { VideoHandle, VideoSource } from "./fabric/foreign-video.ts";

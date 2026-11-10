@@ -23,6 +23,7 @@
 		"@sveltejs/kit": "3.0.0-next.27",
 		"expo": "~57.0.27",
 		"expo-blur": "~57.0.3",
+		"expo-camera": "~57.0.6",
 		"expo-conic-gradient": "~0.2.1",
 		"expo-constants": "~57.0.21",
 		"expo-font": "~57.0.4",

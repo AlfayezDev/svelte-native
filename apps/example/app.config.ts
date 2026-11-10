@@ -32,5 +32,7 @@ export default {
     ["react-native-maps", { androidGoogleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY ?? "svelte-native-example-placeholder-key" }],
     // Embeds the font files in the app, so `fontFamily: "JetBrainsMono-Regular"` works without loading code (the text screen).
     ["expo-font", { fonts: ["./assets/fonts/JetBrainsMono-Regular.ttf"] }],
+    // The Any Expo view screen shows expo-camera's preview and takes a picture: the camera permission and its prompt text. It records no video, so no microphone.
+    ["expo-camera", { cameraPermission: "Svelte Native shows the camera preview on the Any Expo view screen.", microphonePermission: false, recordAudioAndroid: false }],
   ],
 } satisfies ExpoConfig;

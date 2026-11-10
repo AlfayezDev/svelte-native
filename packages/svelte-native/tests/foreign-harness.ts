@@ -88,6 +88,8 @@ export function expoViewConfigs(moduleFile: string): Record<string, ExpoViewConf
 export function createHarness(platform: Platform, options: {
   expo?: Record<string, Record<string, ExpoViewConfig>>;
   natives?: Partial<Natives>;
+  /** Expo native modules by name, as `expo.modules` holds them (an Expo view's `ViewPrototypes`). */
+  expoModules?: Record<string, object>;
   /** More stubbed modules, by import path (the source of an ES module). */
   stubs?: Record<string, string>;
   /** Esbuild plugins that resolve before the harness's own (a library's own sources, for the tests that bundle them). */
@@ -129,7 +131,7 @@ export function createHarness(platform: Platform, options: {
   scope.RN$registerCallableModule = () => {};
   scope.expo = {
     getViewConfig: (moduleName: string, viewName?: string) => options.expo?.[moduleName]?.[viewName ?? ""] ?? null,
-    modules: { SvelteEngine: engine },
+    modules: { SvelteEngine: engine, ...options.expoModules },
   };
   scope.__harness = { engine, natives };
 

@@ -18,12 +18,12 @@ Svelte Native is a way to write Android and iOS apps as Svelte 5 components that
 ```sh
 npx sv create my-app
 cd my-app
-pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#v0.4.0-rc.2&path:packages/svelte-native"
+pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#v0.4.0-rc.3&path:packages/svelte-native"
 pnpm exec svelte-native init
 pnpm android        # or: pnpm ios
 ```
 
-`npx sv create` makes a SvelteKit project (minimal, TypeScript, pnpm). `pnpm add` installs the library from a release tag (`v0.4.0-rc.2` here; use the newest). `svelte-native init` then turns the project into a Svelte Native one: the dependencies, the patches, the Metro and Expo config, the Vite plugin and a first native screen, followed by `pnpm install` and the doctor. Run it with `--dry-run` first to see the plan, and again whenever you like: it changes nothing a second time. The first `pnpm android` / `pnpm ios` builds the native app, which can take ten minutes or more the first time. The web app is still there: `pnpm dev`.
+`npx sv create` makes a SvelteKit project (minimal, TypeScript, pnpm). `pnpm add` installs the library from a release tag (`v0.4.0-rc.3` here; use the newest). `svelte-native init` then turns the project into a Svelte Native one: the dependencies, the patches, the Metro and Expo config, the Vite plugin and a first native screen, followed by `pnpm install` and the doctor. Run it with `--dry-run` first to see the plan, and again whenever you like: it changes nothing a second time. The first `pnpm android` / `pnpm ios` builds the native app, which can take ten minutes or more the first time. The web app is still there: `pnpm dev`.
 
 If `pnpm add` stops with `ERR_PNPM_GIT_RESOLVE_FAILED` (pnpm fetches GitHub dependencies over HTTPS even for an SSH address), tell git once to use SSH for this account: `git config --global url."git@github.com:AlfayezDev/".insteadOf "https://github.com/AlfayezDev/"`.
 

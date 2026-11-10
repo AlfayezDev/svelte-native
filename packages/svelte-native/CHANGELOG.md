@@ -4,6 +4,12 @@ Notable changes to `@rasheed/svelte-native`, newest first. The format follows [K
 
 ## Unreleased
 
+## 0.4.0-rc.3 - 2026-11-10
+
+### Fixed
+
+- After the library was updated (a new tag of the git dependency), Metro could keep bundling the old version from its caches, even after a restart: an app updated to 0.4.0-rc.2 failed with `Cannot read property 'current' of undefined` because it still ran 0.4.0-rc.1, which has no `colorScheme`. `withSvelteNative` now records where the installed library is (`.svelte-native/metro-library`) and starts Metro with empty caches once when that changes, as `--clear` would.
+
 ## 0.4.0-rc.2 - 2026-11-10
 
 ### Added

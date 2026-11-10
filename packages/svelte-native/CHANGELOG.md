@@ -4,6 +4,10 @@ Notable changes to `@rasheed/svelte-native`, newest first. The format follows [K
 
 ## Unreleased
 
+### Changed
+
+- The guide in `docs/` is reorganised in the shape of SvelteKit's, in sections: getting started, core concepts, a page for every component (what it is, an example, its props), native features, building and releasing, an appendix, and a reference for the command line, the configuration and every module. It is published at <https://svelte-native.alfayez.dev>. `svelte-native doctor` names the new path of "Creating a project".
+
 ## 0.4.0-rc.3 - 2026-11-10
 
 ### Fixed

@@ -1,0 +1,135 @@
+---
+title: Styling
+---
+
+There is no CSS and there are no classes. Each component takes a `style` prop: a plain object with React Native's style keys, in camelCase, with numbers for sizes.
+
+```svelte
+<!--- file: src/routes/+mobile.svelte --->
+<script lang="ts">
+	import { Text, View } from '@rasheed/svelte-native';
+</script>
+
+<View style={{ padding: 20, gap: 8, borderRadius: 16, backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#e5e5ea' }}>
+	<Text style={{ fontSize: 20, fontWeight: '600' }}>A card</Text>
+	<Text style={{ color: '#6c6c70' }}>Styled with a plain object.</Text>
+</View>
+```
+
+## Style values
+
+A style is a value like any other. Keep one in a constant, compute it with `$derived`, or combine several in an array: later entries win, and `false`, `null` and `undefined` are skipped.
+
+```svelte
+<script lang="ts">
+	import { Pressable, Text } from '@rasheed/svelte-native';
+
+	const card = { padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#e5e5ea' };
+	let selected = $state(false);
+</script>
+
+<Pressable
+	onPress={() => (selected = !selected)}
+	accessibilityRole="button"
+	accessibilityState={{ selected }}
+	style={[card, selected && { borderColor: '#007aff', borderWidth: 3 }]}
+>
+	<Text>{selected ? 'Selected' : 'Not selected'}</Text>
+</Pressable>
+```
+
+To share styles across screens, export the objects from a module in `src/lib`.
+
+## Layout
+
+Layout is flexbox, with a few differences from the web:
+
+- `flexDirection` is `'column'` by default. Use `'row'` to lay children out side by side.
+- Sizes are numbers in density-independent pixels: `width: 48`, not `'48px'`. Percentages are strings: `width: '50%'`.
+- `flex: 1` makes a view take the space left in its parent. A screen's top view usually has it.
+- `gap`, `rowGap` and `columnGap` space the children.
+- `position: 'absolute'` with `top`, `right`, `bottom`, `left` places a view relative to its parent.
+
+```svelte
+<View style={{ flex: 1, padding: 16, gap: 12 }}>
+	<View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+		<View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: '#007aff' }} />
+		<Text style={{ flex: 1 }}>The text takes the rest of the row.</Text>
+	</View>
+</View>
+```
+
+React Native's [layout props](https://reactnative.dev/docs/layout-props) page lists every layout key.
+
+## Text styles
+
+Font, colour and alignment go on a [`Text`](text): `fontSize`, `fontWeight`, `fontFamily`, `color`, `lineHeight`, `textAlign`, `letterSpacing`. A `View` can't style the text inside it. A `Text` inside another `Text` inherits its style and can override parts of it:
+
+```svelte
+<Text style={{ fontSize: 16, color: '#3c3c43' }}>
+	Plain words and <Text style={{ fontWeight: '700' }}>bold words</Text>.
+</Text>
+```
+
+## Shadows, borders and transforms
+
+- **Borders:** `borderWidth`, `borderColor`, `borderRadius`, and per side (`borderTopWidth`, `borderTopLeftRadius`, ...).
+- **Shadows:** iOS draws a shadow from `shadowColor`, `shadowOffset`, `shadowOpacity` and `shadowRadius`. Android draws one from `elevation`. Set both. For soft shadows on Android that match iOS, use [`ShadowedView`](native-views).
+- **Transforms:** `transform: [{ rotate: '15deg' }, { scale: 1.2 }, { translateX: 8 }]` changes how a view is drawn without changing its layout. `opacity` fades it.
+
+React Native's [View style props](https://reactnative.dev/docs/view-style-props) and [Text style props](https://reactnative.dev/docs/text-style-props) list every key.
+
+## Light and dark mode
+
+Native screens don't follow the system's appearance on their own: a `Text` without a colour is black, and a screen without a background shows the window behind it. `colorScheme.current` is `'light'` or `'dark'`, and anything that reads it (a template, a `$derived`, an `$effect`) updates when the user switches:
+
+```svelte
+<script lang="ts">
+	import { colorScheme, Text, View } from '@rasheed/svelte-native';
+
+	const dark = $derived(colorScheme.current === 'dark');
+</script>
+
+<View style={{ flex: 1, backgroundColor: dark ? '#000000' : '#f2f2f7' }}>
+	<Text style={{ color: dark ? '#ffffff' : '#000000' }}>Follows the system.</Text>
+</View>
+```
+
+`svelte-native init` writes a small theme, `src/lib/theme.ts`, built on the same idea. Its `theme.colors` is the light or the dark palette:
+
+```ts
+/// file: src/lib/theme.ts
+import { colorScheme } from '@rasheed/svelte-native';
+
+const light = { background: '#f2f2f7', surface: '#ffffff', text: '#000000', secondaryText: '#6c6c70', accent: '#007aff', onAccent: '#ffffff' };
+const dark: typeof light = { background: '#000000', surface: '#1c1c1e', text: '#ffffff', secondaryText: '#98989f', accent: '#0a84ff', onAccent: '#ffffff' };
+
+export const theme = {
+	get colors() {
+		return colorScheme.current === 'dark' ? dark : light;
+	}
+};
+```
+
+Give the root stack the background, so that every screen is opaque and a pushed screen covers the one below it as it slides in, and let the status bar pick light or dark icons:
+
+```svelte
+<!--- file: src/routes/+layout.mobile.svelte --->
+<script lang="ts">
+	import type { Snippet } from 'svelte';
+	import { Stack } from '@rasheed/svelte-native';
+	import { theme } from '#lib/theme.ts';
+
+	let { children }: { children: Snippet } = $props();
+</script>
+
+<Stack statusBar={{ style: 'auto' }} style={{ backgroundColor: theme.colors.background }}>
+	{@render children()}
+</Stack>
+```
+
+Then use `theme.colors` in your screens: `<Text style={{ color: theme.colors.text }}>`. Headers, tab bars, sheets and system controls ([`Switch`](switch), [`ActivityIndicator`](activity-indicator)) are the platform's and follow the system without help.
+
+## Safe areas
+
+The status bar, the camera cut-out and the home indicator cover the edges of the screen. A screen with a header is padded below it already. For content that reaches an edge, use [`SafeAreaView`](safe-area-view), or read the `insets` store ([Platform APIs](platform-apis)).

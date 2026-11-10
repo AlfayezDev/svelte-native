@@ -68,7 +68,7 @@ function library(context: Context, name: string, version: string, appPackage: Re
 /** The renderer build of Svelte: the `./renderer` export and the compiler option the library compiles with. */
 function svelte(context: Context, peers: Record<string, unknown>): Check {
   const installed = findPackage("svelte", context.appRoot);
-  const fix = "install the custom-renderer build of Svelte (sveltejs/svelte#18042, commit 216f258, 5.56.7): `pnpm exec svelte-native init` does it (docs/02-creating-a-project.md), or by hand, README \"Install in an app\"";
+  const fix = "install the custom-renderer build of Svelte (sveltejs/svelte#18042, commit 216f258, 5.56.7): `pnpm exec svelte-native init` does it (docs/10-getting-started/20-creating-a-project.md), or by hand, README \"Install in an app\"";
   if (!installed) return { group: "svelte", status: "fail", message: "svelte is not installed", fix };
   const entry = record(installed.json.exports)["./renderer"];
   const target = text(entry) ?? text(record(entry).default);

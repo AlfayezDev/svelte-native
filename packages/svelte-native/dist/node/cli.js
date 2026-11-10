@@ -1220,7 +1220,7 @@ var init_requirements = __esm({
     };
     nodeAdvice = {
       repository: "install Node 25.0.0 or newer (the repository pins 25.0.0) and put it on the PATH",
-      app: "install Node 24 LTS (24.3 or newer; Node 22.17 or newer and Node 26 or newer work too) and put it on the PATH. Node 25 is not supported: a fresh install takes @react-native/metro-config 0.88, whose tools exclude it, and pnpm stops with ERR_PNPM_UNSUPPORTED_ENGINE (docs/08-troubleshooting.md)"
+      app: "install Node 24 LTS (24.3 or newer; Node 22.17 or newer and Node 26 or newer work too) and put it on the PATH. Node 25 is not supported: a fresh install takes @react-native/metro-config 0.88, whose tools exclude it, and pnpm stops with ERR_PNPM_UNSUPPORTED_ENGINE (docs/60-appendix/20-troubleshooting.md)"
     };
   }
 });
@@ -1254,7 +1254,7 @@ function library(context, name, version, appPackage) {
 }
 function svelte(context, peers) {
   const installed = findPackage("svelte", context.appRoot);
-  const fix = 'install the custom-renderer build of Svelte (sveltejs/svelte#18042, commit 216f258, 5.56.7): `pnpm exec svelte-native init` does it (docs/02-creating-a-project.md), or by hand, README "Install in an app"';
+  const fix = 'install the custom-renderer build of Svelte (sveltejs/svelte#18042, commit 216f258, 5.56.7): `pnpm exec svelte-native init` does it (docs/10-getting-started/20-creating-a-project.md), or by hand, README "Install in an app"';
   if (!installed) return { group: "svelte", status: "fail", message: "svelte is not installed", fix };
   const entry = record(installed.json.exports)["./renderer"];
   const target = text(entry) ?? text(record(entry).default);

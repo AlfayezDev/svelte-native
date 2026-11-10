@@ -118,16 +118,16 @@ describe("which Node the doctor holds an app to", () => {
 describe("the guide tells an app which Node to use", () => {
   test("every place that tells a user the Node says the range the doctor holds an app to, and that Node 25 is not in it", () => {
     expect(requirements.node.app).toBe("^22.17.0 || ^24.3.0 || >=26.0.0");
-    for (const file of ["README.md", "docs/02-creating-a-project.md", "docs/07-adding-to-an-existing-expo-app.md", "docs/08-troubleshooting.md", "packages/svelte-native/README.md"]) {
+    for (const file of ["README.md", "docs/10-getting-started/20-creating-a-project.md", "docs/60-appendix/10-adding-to-an-existing-expo-app.md", "docs/60-appendix/20-troubleshooting.md", "packages/svelte-native/README.md"]) {
       const text = read(file);
       expect(text, file).toContain("Node 24 LTS (24.3 or newer");
       expect(text, file).toContain("Node 22.17 or newer");
       expect(text, file).toContain("Node 26 or newer");
       expect(text, file).toContain("Node 25");
     }
-    for (const file of ["README.md", "docs/02-creating-a-project.md", "docs/07-adding-to-an-existing-expo-app.md", "packages/svelte-native/README.md"]) expect(read(file), file).toMatch(/Not Node 25|not Node 25/);
+    for (const file of ["README.md", "docs/10-getting-started/20-creating-a-project.md", "docs/60-appendix/10-adding-to-an-existing-expo-app.md", "packages/svelte-native/README.md"]) expect(read(file), file).toMatch(/Not Node 25|not Node 25/);
     // The first install of a Node 25 user stops, and the troubleshooting page says how it looks and what to do.
-    const troubleshooting = read("docs/08-troubleshooting.md");
+    const troubleshooting = read("docs/60-appendix/20-troubleshooting.md");
     expect(troubleshooting).toContain("ERR_PNPM_UNSUPPORTED_ENGINE");
     expect(troubleshooting).toContain('(current: {"node":"25.0.0"})');
     expect(troubleshooting).toContain("before `svelte-native init`");

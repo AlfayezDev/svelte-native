@@ -8,7 +8,7 @@ Svelte Native is a way to write Android and iOS apps as Svelte 5 components that
 
 **You need**
 
-- Node 24 LTS (24.3 or newer), Node 22.17 or newer, or Node 26 or newer, and pnpm 12.3.4 or newer. **Not Node 25**: a fresh install takes React Native tools that exclude it, and `pnpm add` stops with `ERR_PNPM_UNSUPPORTED_ENGINE` ([troubleshooting](docs/08-troubleshooting.md#pnpm-stops-during-install)). `svelte-native doctor` checks both once the library is installed.
+- Node 24 LTS (24.3 or newer), Node 22.17 or newer, or Node 26 or newer, and pnpm 12.3.4 or newer. **Not Node 25**: a fresh install takes React Native tools that exclude it, and `pnpm add` stops with `ERR_PNPM_UNSUPPORTED_ENGINE` ([troubleshooting](docs/60-appendix/20-troubleshooting.md#pnpm-stops-during-install)). `svelte-native doctor` checks both once the library is installed.
 - Read access to this private repository over SSH: be a collaborator, with your SSH key on your GitHub account (`ssh -T git@github.com` should greet you by name).
 - To run on Android: Android Studio's SDK (platform 36, NDK 27.1.12297006, CMake 3.22.1), a JDK 17, and a phone with USB debugging or an emulator. To run on iOS: a Mac with Xcode, and a simulator or an iPhone.
 - It builds your own native app (a debug build that loads its JavaScript from Metro), not Expo Go: Expo Go cannot load the library's native modules.
@@ -27,7 +27,7 @@ pnpm android        # or: pnpm ios
 
 If `pnpm add` stops with `ERR_PNPM_GIT_RESOLVE_FAILED` (pnpm fetches GitHub dependencies over HTTPS even for an SSH address), tell git once to use SSH for this account: `git config --global url."git@github.com:AlfayezDev/".insteadOf "https://github.com/AlfayezDev/"`.
 
-**The guide** is [docs/](docs/01-introduction.md), written in the shape of SvelteKit's: [what it is](docs/01-introduction.md), [creating a project](docs/02-creating-a-project.md) (the four commands, and what `init` changes, file by file), [project structure](docs/03-project-structure.md), [native routes](docs/04-native-routes.md), [development builds](docs/05-development-builds.md) (what `expo prebuild` is and when to run it), [native libraries](docs/06-native-libraries.md), [adding it to an existing Expo app](docs/07-adding-to-an-existing-expo-app.md) and [troubleshooting](docs/08-troubleshooting.md). The [package README](packages/svelte-native/README.md) is the reference.
+**The guide** is in [docs/](docs/10-getting-started/10-introduction.md), and published at <https://svelte-native.alfayez.dev>. It has the shape of SvelteKit's: getting started (what it is, creating a project, project structure, coming from the web), core concepts (routing, styling, loading data, state), a page for every component, native features (native libraries and views, SVG, animation, gestures, platform APIs, updates), building and releasing, troubleshooting, and a reference for the command line, the configuration and every module. `apps/docs` is the site; [its README](apps/docs/README.md) says how to add a page.
 
 **The showcase** is `apps/example`, one short screen per feature (its [README](apps/example/README.md) lists them). From a checkout: `pnpm install --frozen-lockfile`, then `pnpm --dir apps/example android` or `ios`. A [release](https://github.com/AlfayezDev/svelte-native/releases) may also have a prebuilt Android APK attached, when a release has one (`adb install -r <file>.apk`).
 
@@ -42,7 +42,7 @@ If `pnpm add` stops with `ERR_PNPM_GIT_RESOLVE_FAILED` (pnpm fetches GitHub depe
 - Expo SDK 57 and React Native 0.86 only.
 - `@rasheed/svelte-native` is a placeholder name and will change before a public release.
 
-**Found a bug?** [Open an issue](https://github.com/AlfayezDev/svelte-native/issues/new?template=bug.yml); the form asks for what is needed, including the output of `pnpm exec svelte-native doctor`. If an install fails, start with [troubleshooting](docs/08-troubleshooting.md).
+**Found a bug?** [Open an issue](https://github.com/AlfayezDev/svelte-native/issues/new?template=bug.yml); the form asks for what is needed, including the output of `pnpm exec svelte-native doctor`. If an install fails, start with [troubleshooting](docs/60-appendix/20-troubleshooting.md).
 
 ## Layout
 

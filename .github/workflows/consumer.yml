@@ -64,9 +64,12 @@ jobs:
 
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
+      # Node 24 LTS in all three modes, not the repository's Node (package.json, 25.0.0): the jobs build apps, and an app is held to the range a fresh install accepts
+      # (`svelte-native doctor`: 22.17 or newer, 24.3 or newer, 26 or newer; Node 25 is refused, docs/08-troubleshooting.md). 24 is the LTS a person following the guide most
+      # likely has. The doctor stage of the tarball and git modes would fail on Node 25.
       - uses: actions/setup-node@v7
         with:
-          node-version-file: package.json
+          node-version: "24"
 
       # React Native 0.86 builds with JDK 17 (scripts/consumer-check.sh looks for it in JAVA_HOME).
       - uses: actions/setup-java@v6

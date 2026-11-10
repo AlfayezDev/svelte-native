@@ -2,6 +2,7 @@
   import { forwardRef } from "./forward-ref.ts";
   import type { Snippet } from "svelte";
   import type {} from "../elements.d.ts";
+  import type { ClassProps } from "../classes.ts";
   import { createNativeProps } from "../native-props.ts";
   import { mapHandle, type Commandable, type MapHandle, type LatLng, type Region } from "../fabric/foreign.ts";
   import type { ViewProps } from "react-native";
@@ -29,7 +30,7 @@
     onRegionChangeComplete?: (event: Event) => void;
     onMarkerPress?: (event: Event) => void;
     [prop: string]: unknown;
-  } = $props();
+  } & ClassProps = $props();
   const resolveProps = createNativeProps();
   let ready = $state(false);
   const mapReady = (event: Event) => { ready = true; onMapReady?.(event); };

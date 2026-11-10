@@ -1,5 +1,6 @@
 <script lang="ts">
   import type {} from "../elements.d.ts";
+  import type { ClassProps } from "../classes.ts";
   import { createNativeProps } from "../native-props.ts";
   import { expoViewName, sharedObjectId } from "../fabric/foreign.ts";
   import type { ViewProps } from "react-native";
@@ -22,7 +23,7 @@
     onPictureInPictureStart?: () => void;
     onPictureInPictureStop?: () => void;
     [prop: string]: unknown;
-  } = $props();
+  } & ClassProps = $props();
   const resolveProps = createNativeProps();
   const component = $derived(expoViewName("ExpoVideo", surfaceType === "textureView" ? "TextureVideoView" : "SurfaceVideoView"));
 </script>

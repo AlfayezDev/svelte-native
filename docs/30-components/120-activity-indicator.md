@@ -33,5 +33,6 @@ title: ActivityIndicator
 | `hidesWhenStopped` | `boolean` | `true` | iOS: hides the spinner while it doesn't spin. |
 | `accessibilityLabel` | `string` | | What a screen reader says, such as "Loading posts". |
 | `style` | `ViewStyle` | | Layout. |
+| `class` | `ClassValue` | | A list of classes: a string, an array or an object, as on a DOM element in Svelte. Their style goes under `style`, which wins. Needs [Uniwind](styling#classes). |
 
 It also takes the other props of React Native's [`ActivityIndicator`](https://reactnative.dev/docs/activityindicator).

@@ -49,6 +49,7 @@ The header is shown when the screen has a `title`, a `subtitle`, a `header` opti
 | `animation` | `'default' \| 'none' \| 'fade' \| 'slide_from_right' \| 'slide_from_bottom'` | How the screen is pushed and popped. Modals and sheets keep the platform's animation. |
 | `gestureEnabled` | `boolean` | `false` stops the user from swiping the screen away: the iOS edge swipe back, and swiping a modal down. Default `true`. A sheet has `sheet.dismissible` instead. |
 | `style` | `ViewStyle` | The style of the screen's content area. `backgroundColor` is the usual one. |
+| `class` | `ClassValue` | A list of classes: a string, an array or an object, as on a DOM element in Svelte. Their style goes under `style`, which wins. Needs [Uniwind](styling#classes). |
 | `onAppear` | `() => void` | The screen finished appearing. |
 | `onDisappear` | `() => void` | The screen finished disappearing: something covered it, or it left. |
 | `onDismiss` | `() => void` | The user closed the screen natively (the iOS back button or edge swipe, dragging a sheet or modal away) rather than your code calling `router.back()`. |

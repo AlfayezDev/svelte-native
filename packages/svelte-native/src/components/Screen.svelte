@@ -6,6 +6,7 @@
   import { getContext, setContext, type Snippet } from "svelte";
   import type {} from "../elements.d.ts";
   import Platform from "react-native/Libraries/Utilities/Platform";
+  import type { ClassProps } from "../classes.ts";
   import { createNativeProps } from "../native-props.ts";
   import Host from "./Host.svelte";
   import { resolveAssetSource } from "../fabric/deps-rn.ts";
@@ -24,7 +25,7 @@
    * The header is opt-in: it is shown when `title`, `subtitle`, `header`, a header snippet or `search` is given.
    * So is the toolbar: `toolbar` or a `toolbarCenter` snippet, unless `toolbar.hidden`; it is the screen's last child.
    */
-  let { children, ...own }: ScreenOptions & { children?: Snippet } = $props();
+  let { children, ...own }: ScreenOptions & { children?: Snippet } & ClassProps = $props();
 
   const parent = getContext<{ set(options: ScreenOptions): void; clear(): void } | undefined>(SCREEN_CONTEXT);
   // The outermost screen of a subtree no stack holds (the app shell, a `Modal`'s content) is a one-entry stack of its own.

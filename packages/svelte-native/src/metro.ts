@@ -13,7 +13,7 @@ import { labIncludedFor, routesTableFile, variantName } from "./variant.ts";
 const require = createRequire(import.meta.url);
 const nativeSvelte = dirname(require.resolve("svelte/package.json"));
 
-export const LITE_ORIGINS = /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?(?:hermes-intl|expo|expo-modules-core|expo-file-system|react-native-reanimated|react-native-worklets|react-native-is-edge-to-edge|expo-secure-store|expo-image-picker|expo-localization|expo-crypto|expo-constants|expo-font|expo-asset|expo-splash-screen|expo-status-bar|expo-system-ui|expo-keep-awake|expo-application|react-native-svg)[\\/]/;
+export const LITE_ORIGINS = /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?(?:hermes-intl|uniwind|expo|expo-modules-core|expo-file-system|react-native-reanimated|react-native-worklets|react-native-is-edge-to-edge|expo-secure-store|expo-image-picker|expo-localization|expo-crypto|expo-constants|expo-font|expo-asset|expo-splash-screen|expo-status-bar|expo-system-ui|expo-keep-awake|expo-application|react-native-svg)[\\/]/;
 
 export const INITIALIZE_CORE = /react-native[\\/]Libraries[\\/]Core[\\/]InitializeCore\.js$/;
 
@@ -66,7 +66,36 @@ export type SvelteNativeMetroOptions = {
    * (`SVELTE_NATIVE_RUNES`, set when this config loads).
    */
   runes?: boolean;
+  /**
+   * Tailwind classes through Uniwind (`uniwind` and `tailwindcss` installed in the app): Uniwind's options, of which `cssEntryFile` (the
+   * app's CSS file, relative to the project) is required. Metro then compiles that file with Uniwind, and `@example/svelte-native/uniwind`
+   * turns `class` into styles (docs: styling#classes).
+   */
+  uniwind?: UniwindOptions;
 };
+
+/** Uniwind's Metro options (`withUniwindConfig`'s second argument), passed on as they are. */
+export type UniwindOptions = { cssEntryFile: string; dtsFile?: string; extraThemes?: readonly string[]; [option: string]: unknown };
+
+/**
+ * Uniwind's Metro config on top of this one. Uniwind's transformer compiles the CSS file (and hands every other file to Expo's, which runs this
+ * config's Svelte transformer), and its cache store and the `css` source extension come with it. Its resolver does not: it swaps React
+ * Native's components for Uniwind's React ones, which a Svelte Native app never renders, and it would undo this config's replacement of
+ * `react-native` by the lite module (`LITE_ORIGINS`), so the resolver stays this config's.
+ */
+function withUniwind(config: ConfigT, options: UniwindOptions): ConfigT {
+  let plugin: { withUniwindConfig(config: ConfigT, options: UniwindOptions): ConfigT };
+  try {
+    plugin = createRequire(join(config.projectRoot, "package.json"))("uniwind/metro");
+  } catch (error) {
+    throw new Error(`withSvelteNative: the uniwind option needs Uniwind in the app: pnpm add uniwind@${UNIWIND_VERSION} tailwindcss (${(error as Error).message.split("\n")[0]})`, { cause: error });
+  }
+  const configured = plugin.withUniwindConfig(config, options);
+  return { ...configured, resolver: { ...configured.resolver, resolveRequest: config.resolver.resolveRequest } };
+}
+
+/** The Uniwind `uniwind.ts` is written against: it reads two modules of Uniwind's runtime that are not part of its public API. */
+export const UNIWIND_VERSION = "1.13.2";
 
 /** Route watchers the Metro integration started (one per config in development); the tests close them. */
 const routeWatchers = new Set<{ close(): void }>();
@@ -215,6 +244,13 @@ export function withSvelteNative(config: ConfigT, options: SvelteNativeMetroOpti
     if (moduleName === "esm-env") {
       return { type: "sourceFile", filePath: sourceFile("environment.ts") };
     }
+    // `@example/svelte-native/uniwind` reads two files of Uniwind's runtime that its package does not export: they are taken from the
+    // app's `uniwind`, the copy its CSS file's code initialises.
+    if (moduleName.startsWith("uniwind/src/")) {
+      const pinned = { ...context, originModulePath: join(config.projectRoot, "package.json") };
+      const manifest = context.resolveRequest(pinned, "uniwind/package.json", platform);
+      if (manifest.type === "sourceFile") return context.resolveRequest(pinned, join(dirname(manifest.filePath), moduleName.slice("uniwind/".length)), platform);
+    }
     const result = resolveRequest ? resolveRequest(context, moduleName, platform) : context.resolveRequest(context, moduleName, platform);
     if (result.type === "sourceFile") {
       const stubbedFile = stubForFile(result.filePath);
@@ -244,5 +280,6 @@ export function withSvelteNative(config: ConfigT, options: SvelteNativeMetroOpti
   // Keep Metro's transform cache apart per mode: the same file resolves differently.
   resetForLibrary ??= libraryChanged(config.projectRoot);
   if (resetForLibrary && !config.resetCache) console.log("svelte-native: the installed library changed since Metro last ran here; starting Metro with empty caches");
-  return { ...config, resetCache: config.resetCache || resetForLibrary, cacheVersion: `${config.cacheVersion ?? ""}+svelte-native-2${stubbed.length + files.size + directories.size > 0 ? `+stubs-${variant}` : ""}`, resolver, serializer, transformer: { ...config.transformer, babelTransformerPath: require.resolve("@example/svelte-native/transformer") } };
+  const configured: ConfigT = { ...config, resetCache: config.resetCache || resetForLibrary, cacheVersion: `${config.cacheVersion ?? ""}+svelte-native-2${stubbed.length + files.size + directories.size > 0 ? `+stubs-${variant}` : ""}`, resolver, serializer, transformer: { ...config.transformer, babelTransformerPath: require.resolve("@example/svelte-native/transformer") } };
+  return options.uniwind === undefined ? configured : withUniwind(configured, options.uniwind);
 }

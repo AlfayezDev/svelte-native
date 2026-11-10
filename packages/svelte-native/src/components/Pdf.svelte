@@ -2,6 +2,7 @@
   import { forwardRef } from "./forward-ref.ts";
   import { untrack, type Snippet } from "svelte";
   import type {} from "../elements.d.ts";
+  import type { ClassProps } from "../classes.ts";
   import { createNativeProps } from "../native-props.ts";
   import { Platform, resolveAssetSource } from "../fabric/deps-rn.ts";
   import type { Commandable } from "../fabric/foreign.ts";
@@ -57,7 +58,7 @@
     /** Receives `setPage(page)` (`host` is the view's handle), or null on unmount. */
     ref?: (handle: (PdfHandle & { host: unknown }) | null) => void;
     [prop: string]: unknown;
-  } = $props();
+  } & ClassProps = $props();
   const resolveProps = createNativeProps();
   const android = Platform.OS === "android";
   const asset = (number: number) => resolveAssetSource(number as never) as { uri?: string } | null;

@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import type {} from "../elements.d.ts";
+  import type { ClassProps } from "../classes.ts";
   import { createNativeProps } from "../native-props.ts";
   import type { ViewProps } from "react-native";
   /**
@@ -13,7 +14,7 @@
     /** Receives the host handle (`tag`, `measure`, `dispatchCommand`, ...), or null on unmount. */
     ref?: (handle: unknown) => void;
     [prop: string]: unknown;
-  } = $props();
+  } & ClassProps = $props();
   const resolveProps = createNativeProps();
 </script>
 <!-- A node keeps the native view it was created for, so another component name is another node. -->

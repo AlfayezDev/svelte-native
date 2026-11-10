@@ -1,9 +1,10 @@
 <script lang="ts">
   import type {} from "../elements.d.ts";
+  import type { ClassProps } from "../classes.ts";
   import { createNativeProps } from "../native-props.ts";
   import type { ImageProps } from "react-native";
   import type { GestureProps } from "../gestures/types.ts";
-  let { ...attributes }: ImageProps & GestureProps = $props();
+  let { ...attributes }: ImageProps & GestureProps & ClassProps = $props();
   const resolveProps = createNativeProps();
 </script>
 <native-image nativeProps={resolveProps(attributes)}></native-image>

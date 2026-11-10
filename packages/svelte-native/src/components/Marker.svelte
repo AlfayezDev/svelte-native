@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import type {} from "../elements.d.ts";
+  import type { ClassProps } from "../classes.ts";
   import { createNativeProps } from "../native-props.ts";
   import type { LatLng } from "../fabric/foreign.ts";
   import type { ViewProps } from "react-native";
@@ -21,7 +22,7 @@
     onSelect?: (event: Event) => void;
     onDeselect?: (event: Event) => void;
     [prop: string]: unknown;
-  } = $props();
+  } & ClassProps = $props();
   const resolveProps = createNativeProps();
 </script>
 <native-foreign component="RNMapsMarker" nativeProps={resolveProps({ ...attributes, ref })}>{@render children?.()}</native-foreign>

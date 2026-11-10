@@ -1,5 +1,6 @@
 <script lang="ts">
   import type {} from "../elements.d.ts";
+  import type { ClassProps } from "../classes.ts";
   import { createNativeProps } from "../native-props.ts";
   import { Platform } from "../fabric/deps-rn.ts";
   import { datePickerProps, type DatePickerChange, type DatePickerProps } from "../fabric/foreign-datetime.ts";
@@ -29,7 +30,7 @@
     onChange?: (event: DatePickerChange, date?: Date) => void;
     /** Receives the host handle (`tag`, `measure`, ...), or null on unmount. */
     ref?: (handle: unknown) => void;
-  } = $props();
+  } & ClassProps = $props();
   const resolveProps = createNativeProps();
   type Event = { nativeEvent: { timestamp?: number; utcOffset: number } };
   const changed = (event: Event) => {

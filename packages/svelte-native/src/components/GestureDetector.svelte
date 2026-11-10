@@ -2,6 +2,7 @@
   import type { Snippet } from "svelte";
   import type {} from "../elements.d.ts";
   import type { HostHandle } from "../fabric/host.ts";
+  import type { ClassProps } from "../classes.ts";
   import { createNativeProps } from "../native-props.ts";
   import type { ViewProps } from "react-native";
   import type { GestureAttribute } from "../gestures/types.ts";
@@ -11,7 +12,7 @@
     gesture: GestureAttribute;
     /** Receives the host handle (`HostHandle` in `fabric/host.ts`), or null on unmount. */
     ref?: (handle: HostHandle | null) => void;
-  } = $props();
+  } & ClassProps = $props();
   const required = (value: GestureAttribute | undefined): GestureAttribute => {
     if (!value) throw new Error("GestureDetector must have a gesture prop provided.");
     return value;

@@ -1,4 +1,5 @@
 import { createRenderer } from "svelte/renderer";
+import { classStyle } from "./classes.ts";
 
 type Listener = (...args: unknown[]) => void;
 export type Snapshot = {
@@ -39,9 +40,24 @@ export function hostValue<T>(value: T): T {
   return (typeof value === "function" ? boxOf(value as never) : value) as T;
 }
 
-/** What `{...props}` sends to Svelte: a copy in which every function Svelte would drop is boxed. */
+/**
+ * `class` on a lowered tag: `lower.ts` writes `nativeClass={hostClass(...)}` for `class` and `class:name` on `<View>`, `<Text>`, ..., because
+ * Svelte would join a `class` attribute into a string the host drops. The style is worked out here, in the element's template effect, so
+ * what the class resolver reads (the theme, the window) is tracked there, as for a component (`createNativeProps`); the host puts it under
+ * the element's own style (`mergeHostProps`).
+ */
+export function hostClass(value: unknown): unknown {
+  return classStyle(value, noProps);
+}
+
+/** What `{...props}` sends to Svelte: a copy in which every function Svelte would drop is boxed, and a `class` is its style (`hostClass`). */
 export function hostSpread<T extends object>(props: T): T {
   const copy = { ...props } as Record<string, unknown>;
+  if ("class" in copy) {
+    const fromClass = classStyle(copy.class, copy);
+    delete copy.class;
+    if (fromClass !== undefined) copy.nativeClass = fromClass;
+  }
   for (const key in copy) {
     const value = copy[key];
     if (typeof value === "function" && !handledBySvelte(key)) copy[key] = boxOf(value as never);

@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import type {} from "../elements.d.ts";
+  import type { ClassProps } from "../classes.ts";
   import { createNativeProps } from "../native-props.ts";
   import { expoViewName } from "../fabric/foreign.ts";
   import View from "./View.svelte";
@@ -21,7 +22,7 @@
     children?: Snippet;
     /** Receives the host handle of the container, or null on unmount. */
     ref?: (handle: unknown) => void;
-  } = $props();
+  } & ClassProps = $props();
   const resolveProps = createNativeProps();
   // The module's only view, with its colour list named: the module's own config does not tell it from a plain prop.
   const component = expoViewName("ConicGradient", undefined, { colorLists: "colors" });

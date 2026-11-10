@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import type {} from "../elements.d.ts";
+  import type { ClassProps } from "../classes.ts";
   import { createNativeProps } from "../native-props.ts";
   import { Platform } from "../fabric/deps-rn.ts";
   import { expoViewName } from "../fabric/foreign.ts";
@@ -16,7 +17,7 @@
     children?: Snippet;
     /** Receives the host handle (`tag`, `measure`, ...), or null on unmount. */
     ref?: (handle: unknown) => void;
-  } = $props();
+  } & ClassProps = $props();
   const resolveProps = createNativeProps();
   const android = Platform.OS === "android";
   const component = android ? expoViewName("ExpoBlur", "ExpoBlurTargetView") : "";

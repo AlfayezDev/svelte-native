@@ -7,6 +7,9 @@ const RENDERER = `${PACKAGE}/renderer`;
 // `on*` handler (a `ref`, say). The renderer's `hostSpread` and `hostValue` box those functions and `setAttribute` unboxes them.
 const SPREAD_HELPER = "__svelteNativeSpread";
 const VALUE_HELPER = "__svelteNativeValue";
+// `class` and `class:name` on a lowered tag become `nativeClass={__svelteNativeClass(...)}`: the renderer's `hostClass` works out their style.
+const CLASS_HELPER = "__svelteNativeClass";
+const HELPER_EXPORTS: Record<string, string> = { [SPREAD_HELPER]: "hostSpread", [VALUE_HELPER]: "hostValue", [CLASS_HELPER]: "hostClass" };
 
 // Lowered call sites never run the component (`<ScrollView>` becomes `<native-scroll>` here): behaviour every scroll view
 // needs, such as React Native's base scroll style, belongs to the host (`fabric/host.ts`, `splitProps`), not to the
@@ -66,6 +69,18 @@ function mustStayComponent(node: Node, primitive: string): boolean {
   return (node.fragment?.nodes ?? []).some((child: Node) => child.type === "SnippetBlock");
 }
 
+/** The source of a `class` attribute's value as one expression: `{expr}` as it is, a quoted value (with `{expr}` parts) as a template literal (its text cannot hold a `{`). */
+function classExpression(content: string, attribute: Node): string {
+  const value = attribute.value;
+  if (value === true) return "true";
+  if (!Array.isArray(value)) return content.slice(value.expression.start, value.expression.end);
+  let template = "`";
+  for (const part of value as Node[]) {
+    template += part.type === "Text" ? part.data.replace(/[`\\]/g, (match: string) => `\\${match}`) : `\${${content.slice(part.expression.start, part.expression.end)}}`;
+  }
+  return `${template}\``;
+}
+
 /** True when an attribute expression could evaluate to a function (a literal, an object, an array or an operator's result cannot). */
 function couldBeFunction(expression: Node): boolean {
   switch (expression.type) {
@@ -122,7 +137,20 @@ export function lowerPrimitives(content: string, options: LowerOptions = {}): st
     if (!primitive || mustStayComponent(node, primitive)) return;
     const tag = LOWERED_TAGS[primitive];
     const spreads = (node.attributes as Node[]).some((attribute) => attribute.type === "SpreadAttribute");
+    // `class` and every `class:name` become one `nativeClass`, written where the first of them was; the others are removed.
+    const classes = (node.attributes as Node[]).filter((attribute) => (attribute.type === "Attribute" && attribute.name === "class") || attribute.type === "ClassDirective");
+    if (classes.length > 0) {
+      const own = classes.find((attribute) => attribute.type === "Attribute");
+      const toggles = classes.filter((attribute) => attribute.type === "ClassDirective")
+        .map((directive) => `${JSON.stringify(directive.name)}: ${content.slice(directive.expression.start, directive.expression.end)}`);
+      const parts = [...(own ? [classExpression(content, own)] : []), ...(toggles.length > 0 ? [`{ ${toggles.join(", ")} }`] : [])];
+      helpers.add(CLASS_HELPER);
+      classes.forEach((attribute, index) => {
+        edits.push({ start: attribute.start, end: attribute.end, text: index === 0 ? `nativeClass={${CLASS_HELPER}(${parts.length === 1 ? parts[0] : `[${parts.join(", ")}]`})}` : "" });
+      });
+    }
     for (const attribute of node.attributes as Node[]) {
+      if (classes.includes(attribute)) continue;
       if (spreads && attribute.type === "SpreadAttribute") wrap(attribute.expression, SPREAD_HELPER);
       // With a spread on the element every attribute goes through `set_attributes` too: a function-valued one (`ref={handle}`) must be boxed as well.
       if (spreads && attribute.type === "Attribute" && !attribute.name.startsWith("on") && attribute.name !== "style" && attribute.value !== true
@@ -157,7 +185,7 @@ export function lowerPrimitives(content: string, options: LowerOptions = {}): st
   if (!edits.length) return content;
   const script = ast.instance ?? ast.module;
   if (helpers.size && script) {
-    const names = [...helpers].sort().map((helper) => `${helper === SPREAD_HELPER ? "hostSpread" : "hostValue"} as ${helper}`);
+    const names = [...helpers].sort().map((helper) => `${HELPER_EXPORTS[helper]} as ${helper}`);
     // On the line of the opening tag, so no line number below it moves.
     edits.push({ start: script.content.start, end: script.content.start, text: ` import { ${names.join(", ")} } from "${RENDERER}";` });
   }

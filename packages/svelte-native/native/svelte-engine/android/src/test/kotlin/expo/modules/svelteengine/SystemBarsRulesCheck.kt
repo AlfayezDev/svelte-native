@@ -30,6 +30,9 @@ fun main() {
   expect("the first write happens even for the same (empty) spec", SystemBarsRules.needsWrite(written = false, sameAsApplied = true), true)
   expect("an unchanged spec is not written again", SystemBarsRules.needsWrite(written = true, sameAsApplied = true), false)
   expect("a changed spec is written", SystemBarsRules.needsWrite(written = true, sameAsApplied = false), true)
+  // The system switched between light and night while the app ran: the same spec is written again, so `auto` draws its icons for the new appearance.
+  expect("an unchanged spec is written again after a switch to or from night", SystemBarsRules.needsWrite(written = true, sameAsApplied = true, sameNight = false), true)
+  expect("an unchanged spec in the same appearance is not", SystemBarsRules.needsWrite(written = true, sameAsApplied = true, sameNight = true), false)
   System.err.println("SystemBarsRulesCheck: $checks checks, $failures failures")
   if (failures > 0) exitProcess(1)
 }

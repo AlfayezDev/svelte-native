@@ -24,7 +24,9 @@ object SystemBarsRules {
   /**
    * Whether the window has to be written for a spec. The first time it always is, even for no spec at all: an app that never sets an option has the
    * default written once, instead of whatever the activity's theme leaves (light icons on a light header, the case that was missed when `applied`
-   * began as the spec of "no option" and so equalled it). Afterwards only a spec that differs from the one written is.
+   * began as the spec of "no option" and so equalled it). Afterwards a spec that differs from the one written is, and so is the same spec after the
+   * system switched between light and night (`sameNight` false): `auto` draws its icons for the appearance it was written in, and a switch while
+   * the app runs does not recreate the activity (React Native's template handles `uiMode` itself), so nothing else would write them again.
    */
-  fun needsWrite(written: Boolean, sameAsApplied: Boolean): Boolean = !written || !sameAsApplied
+  fun needsWrite(written: Boolean, sameAsApplied: Boolean, sameNight: Boolean = true): Boolean = !written || !sameAsApplied || !sameNight
 }

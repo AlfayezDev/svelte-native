@@ -60,7 +60,7 @@ A warning about a `main`, a script or a patch for a library at another version m
 - **`ERR_PNPM_UNUSED_PATCH`.** A patch is declared for a package that isn't installed, or at another version. Remove the entry, or install the package at the version in the patch's file name. For `expo-modules-core` the usual cause is the missing `overrides` entry: `expo` asks for it by a range, so a fresh install takes a newer one.
 - **`ERR_PNPM_IGNORED_BUILDS`.** esbuild's install script isn't allowed. `sv` writes that setting for pnpm; if your project doesn't have it, add `allowBuilds: { esbuild: true }` to `pnpm-workspace.yaml`, or run `pnpm add --allow-build=esbuild <the library>` for the first install.
 - **A frozen lockfile in CI.** Declaring the patches changes the lockfile, and with `CI=1` pnpm refuses an install it would have to change. Run `pnpm install --no-frozen-lockfile` once, and commit `pnpm-lock.yaml`.
-- **Peer warnings.** `pnpm peers check` lists a few unmet peers, and none of them stops anything: the `svelte` build from a URL, `@react-native/metro-config` 0.88 where 0.86 is asked for, and `expo-constants` 57.0.22 where 57.0.23 is. They're expected.
+- **Peer warnings.** `pnpm peers check` lists one unmet peer, `svelte`, and it stops nothing: the build from a URL is not in the range the registry's packages ask for. It's expected. (`@react-native/metro-config` 0.88 beside React Native 0.86.3 was listed too before `init` pinned it in `overrides`; a project set up by an older `init` still lists it, and `svelte-native init` again fixes it.)
 
 ## The app says "Unable to load script"
 

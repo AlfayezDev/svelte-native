@@ -76,12 +76,19 @@ export function componentOptions(filename: string, enabled: boolean = runesDefau
   } as const;
 }
 
-/** vite-plugin-svelte's `dynamicCompileOptions` (its own types are not a dependency of this package: SvelteKit brings the plugin, and the web target is optional). */
-export type DynamicCompileOptions = (data: {
+/**
+ * What vite-plugin-svelte hands `dynamicCompileOptions`, as far as this package reads it. The plugin's own types are not a dependency of this package (SvelteKit brings the
+ * plugin, and the web target is optional), and the data grows between its releases (7.3 adds Vite's `environment`), so the type names the fields used and a caller's own
+ * (wider) data type goes through unchanged.
+ */
+export type DynamicCompileData = {
   filename: string;
   code: string;
   compileOptions: Partial<CompileOptions>;
-}) =>
+};
+
+/** vite-plugin-svelte's `dynamicCompileOptions`. */
+export type DynamicCompileOptions<Data extends DynamicCompileData = DynamicCompileData> = (data: Data) =>
   // biome-ignore lint/suspicious/noConfusingVoidType: the signature is vite-plugin-svelte's; a callback that returns nothing is a `void` one, and not assignable to `undefined`
   Promise<Partial<CompileOptions> | void> | Partial<CompileOptions> | void;
 
@@ -93,7 +100,7 @@ export type DynamicCompileOptions = (data: {
  * The web target gets the default too, because the same `.svelte` file (a component under `src/lib` that a native and a web page both import) is compiled by Vite for the browser and
  * by Metro for the device. Two modes would make it mean two things: a variable the markup mutates would be reactive state in the browser and a plain variable on the device.
  */
-export function webDynamicCompileOptions(app?: DynamicCompileOptions, enabled = true): DynamicCompileOptions {
+export function webDynamicCompileOptions<Data extends DynamicCompileData = DynamicCompileData>(app?: DynamicCompileOptions<Data>, enabled = true): DynamicCompileOptions<Data> {
   return async (data) => {
     const own = isLibrarySource(data.filename) || (data.compileOptions.runes === undefined && runesOption(data.filename, enabled) === true);
     const theirs = await app?.(data);
@@ -101,7 +108,14 @@ export function webDynamicCompileOptions(app?: DynamicCompileOptions, enabled = 
   };
 }
 
-/** The options an app gave SvelteKit's Vite plugin (`kit` of `svelteNative()`), with `webDynamicCompileOptions` as their `dynamicCompileOptions`. */
-export function withWebRunes<Kit extends { dynamicCompileOptions?: DynamicCompileOptions }>(kit: Kit | undefined, enabled = true): Kit & { dynamicCompileOptions: DynamicCompileOptions } {
-  return { ...(kit as Kit), dynamicCompileOptions: webDynamicCompileOptions(kit?.dynamicCompileOptions, enabled) };
+/**
+ * The options an app gave SvelteKit's Vite plugin (`kit` of `svelteNative()`), with `webDynamicCompileOptions` as their `dynamicCompileOptions`. The app's own callback keeps whatever
+ * data type its version of vite-plugin-svelte declares (`(data: never) => unknown` accepts any function), and so does the one that wraps it.
+ */
+export function withWebRunes<Kit extends { dynamicCompileOptions?: (data: never) => unknown }>(
+  kit: Kit | undefined,
+  enabled = true,
+): Kit & { dynamicCompileOptions: NonNullable<Kit["dynamicCompileOptions"]> } {
+  const app = kit?.dynamicCompileOptions as DynamicCompileOptions | undefined;
+  return { ...(kit as Kit), dynamicCompileOptions: webDynamicCompileOptions(app, enabled) as NonNullable<Kit["dynamicCompileOptions"]> };
 }

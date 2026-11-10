@@ -192,12 +192,12 @@ describe("SvelteKit and Vite are optional", () => {
     expect(failed(checks)).toEqual([]);
     expect(find(checks, "optional peer dependencies not installed, nothing to check:")?.message).toContain("@sveltejs/kit, ");
     expect(find(checks, "optional peer dependencies not installed, nothing to check:")?.message).toContain("vite");
-    expect(find(checks, "@sveltejs/kit@3.0.0-next.27: @sveltejs/kit is not installed (optional), nothing to patch")?.status).toBe("skip");
+    expect(find(checks, "@sveltejs/kit@3.1.1: @sveltejs/kit is not installed (optional), nothing to patch")?.status).toBe("skip");
   });
 
   test("an app that has SvelteKit must have the version and the patch", () => {
-    expect(find(check({ versions: { "@sveltejs/kit": "3.0.0-next.28" } }).checks, "@sveltejs/kit 3.0.0-next.28 does not satisfy 3.0.0-next.27")?.status).toBe("fail");
-    expect(failed(check({ unpatched: ["@sveltejs/kit"] }).checks).map((entry) => entry.message)).toEqual([expect.stringContaining("@sveltejs/kit@3.0.0-next.27 is not applied")]);
+    expect(find(check({ versions: { "@sveltejs/kit": "3.1.2" } }).checks, "@sveltejs/kit 3.1.2 does not satisfy 3.1.1")?.status).toBe("fail");
+    expect(failed(check({ unpatched: ["@sveltejs/kit"] }).checks).map((entry) => entry.message)).toEqual([expect.stringContaining("@sveltejs/kit@3.1.1 is not applied")]);
   });
 });
 

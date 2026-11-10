@@ -344,6 +344,9 @@ ${hot}`;
   }
   (0, import_node_fs2.rmSync)((0, import_node_path3.resolve)(output, "routes.ts"), { force: true });
 }
+function unrefTimer(timer) {
+  timer.unref?.();
+}
 function watchRoutes(root, options = {}, debounceMs = 50) {
   let timer;
   const watcher = (0, import_node_fs2.watch)((0, import_node_path3.resolve)(root, "src/routes"), { recursive: true }, () => {
@@ -355,7 +358,7 @@ function watchRoutes(root, options = {}, debounceMs = 50) {
         console.error(error);
       }
     }, debounceMs);
-    timer.unref();
+    unrefTimer(timer);
   });
   watcher.unref();
   return { close() {
@@ -384,7 +387,7 @@ function findKitRoot() {
   return kitRootCache;
 }
 function kitMissingMessage(what) {
-  return `${what} needs \`@sveltejs/kit\`, which is not installed (an optional peer dependency of @rasheed/svelte-native: only remote functions and the web target use it). Install the version the package was written against: \`pnpm add @sveltejs/kit@3.0.0-next.27\`, and copy its patch (README, "Apply the patches").`;
+  return `${what} needs \`@sveltejs/kit\`, which is not installed (an optional peer dependency of @rasheed/svelte-native: only remote functions and the web target use it). Install the version the package was written against: \`pnpm add @sveltejs/kit@3.1.1\`, and copy its patch (README, "Apply the patches").`;
 }
 function kitRoot(what = "The remote function runtime (`@rasheed/svelte-native/remote`)") {
   const found = findKitRoot();

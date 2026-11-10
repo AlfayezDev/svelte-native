@@ -85,7 +85,7 @@
   },
   "peerDependencies": {
     "@react-native-community/datetimepicker": "9.1.0",
-    "@sveltejs/kit": "3.0.0-next.27",
+    "@sveltejs/kit": "3.1.1",
     "expo": "~57.0.27",
     "expo-blur": "~57.0.3",
     "expo-conic-gradient": "~0.2.1",
@@ -177,7 +177,7 @@
     "@babel/plugin-transform-flow-strip-types": "^7.29.7",
     "@eslint/js": "^10.0.1",
     "@react-native/babel-plugin-codegen": "^0.86.3",
-    "@sveltejs/kit": "3.0.0-next.27",
+    "@sveltejs/kit": "3.1.1",
     "@types/node": "^26.1.1",
     "@types/react": "catalog:",
     "babel-plugin-syntax-hermes-parser": "^0.36.0",

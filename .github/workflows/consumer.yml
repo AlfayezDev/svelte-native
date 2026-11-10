@@ -4,6 +4,8 @@ name: Consumer
 # scratch directory, installs the library (as a packed tarball, and as a git dependency of this very checkout), applies the patches, runs
 # doctor and sync, bundles with Metro, runs expo prebuild and builds a release APK with Gradle. The two modes are two jobs, so each has a
 # runner and a disk of its own. About 25 to 40 minutes a job on a hosted runner (a Gradle build from nothing; the cache shortens the next).
+# The third mode, starter, is the path of the guide (docs/02-creating-a-project.md) from a SvelteKit project: sv create, pnpm add of this very
+# checkout, svelte-native init, init again (no change), pnpm check, the web build, then the same Metro, prebuild and Gradle stages.
 # What it checks and how to read a failure: README.md, "CI".
 
 on:
@@ -53,7 +55,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mode: [tarball, git]
+        mode: [tarball, git, starter]
     steps:
       # Depth 1 is enough: the git mode installs the checked-out commit from this directory (git+file://), and pnpm clones it from there.
       - uses: actions/checkout@v7

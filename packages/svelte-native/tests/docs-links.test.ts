@@ -1,11 +1,13 @@
 import { test, expect } from "bun:test";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, relative, resolve } from "node:path";
+import { basename, dirname, relative, resolve } from "node:path";
 
 /**
  * The documents of the native program point at each other by relative link, at headings by fragment, and at the engine's
  * SPEC.md by quoted section name (`SPEC "Foreign views"`). A moved file or a renamed heading silently breaks them, so this
- * reads every Markdown file under the roots below and fails on a link whose file or heading is gone.
+ * reads every Markdown file under the roots below and fails on a link whose file or heading is gone. The guide under docs/
+ * links page to page by slug, `[Routing](routing#deep-links)`, as the documentation site resolves it: a page's slug is its
+ * file name without the order prefix.
  */
 const repository = resolve(import.meta.dirname, "../../..");
 const roots = ["README.md", "docs", "packages/svelte-native", "apps/qa/qa"];
@@ -47,6 +49,10 @@ const headings = (text: string): string[] =>
   });
 
 const files = roots.flatMap(markdownFiles);
+const guide = `${resolve(repository, "docs")}/`;
+const pages = new Map(
+  files.filter((file) => file.startsWith(guide) && !file.endsWith("/index.md")).map((file) => [basename(file, ".md").replace(/^\d+-/, ""), file]),
+);
 const anchorCache = new Map<string, Set<string>>();
 const anchorsOf = (file: string): Set<string> => {
   const cached = anchorCache.get(file);
@@ -73,7 +79,8 @@ test("every relative link resolves to a file and, with a fragment, to a heading"
   for (const file of files) {
     for (const target of linkTargets(readFileSync(file, "utf8"))) {
       const [path, fragment] = target.split("#");
-      const destination = path === "" ? file : resolve(dirname(file), decodeURIComponent(path.split("?")[0]));
+      const slug = file.startsWith(guide) && /^[a-z0-9-]+$/.test(path) ? path : undefined;
+      const destination = path === "" ? file : slug ? (pages.get(slug) ?? `${guide}${slug}`) : resolve(dirname(file), decodeURIComponent(path.split("?")[0]));
       if (!existsSync(destination)) broken.push(`${relative(repository, file)}: ${target} (no such file)`);
       else if (fragment && destination.endsWith(".md") && !anchorsOf(destination).has(decodeURIComponent(fragment))) {
         broken.push(`${relative(repository, file)}: ${target} (no such heading)`);

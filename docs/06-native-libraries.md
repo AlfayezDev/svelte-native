@@ -57,7 +57,7 @@ A touch inside a native view goes to the view, not to your JavaScript. If you ne
 
 For a view without a ready component, `ForeignView` mounts a React Native component by its name.
 
-For the native view of any other Expo module, `defineExpoView` makes a typed Svelte component of it, with no wrapper written for the library:<!-- feat/expo-view: the sentence before this comment, and the example below, are true once that branch merges; defineExpoView is not in main -->
+For the native view of any other Expo module, `defineExpoView` makes a typed Svelte component of it, with no wrapper written for the library:
 
 ```svelte
 <!--- file: src/routes/camera/+mobile.svelte --->

@@ -4,6 +4,8 @@ Notable changes to `@example/svelte-native`, newest first. The format follows [K
 
 ## Unreleased
 
+## 0.4.0-rc.2 - 2026-11-10
+
 ### Added
 
 - `colorScheme.current` (`import { colorScheme } from "@example/svelte-native"`): the system's light or dark mode, reactive like Svelte's `prefersReducedMotion`. A template, `$derived` or `$effect` that reads it runs again when the user switches; its readers share one listener on React Native's `Appearance`, removed when the last of them goes.
@@ -12,6 +14,7 @@ Notable changes to `@example/svelte-native`, newest first. The format follows [K
 
 - The first routes `svelte-native init` writes were unreadable in dark mode: their texts had no colour, so they were black on the dark window. They now take their colours from a theme `init` writes, `src/lib/theme.ts` (`native-theme.ts` when the app has a `theme.ts` of its own), which follows `colorScheme`.
 - The screens of `init`'s layout had no background, so the details screen drew over the home screen while it was pushed. The layout is now a `<Stack>` that gives every screen the theme's background, and a status bar that follows the mode.
+- Android: after a switch between light and dark while the app was open, the status and navigation bar icons kept the old appearance (white on a light bar after a switch to light); a cold start drew them right. The `auto` style now follows the switch.
 
 ## 0.4.0-rc.1 - 2026-11-10
 

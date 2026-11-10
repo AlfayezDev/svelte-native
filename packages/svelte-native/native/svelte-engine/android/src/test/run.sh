@@ -91,3 +91,8 @@ java -cp "$work/rules.jar" expo.modules.svelteengine.GestureRulesCheckKt "$views
 kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/ClipRules.kt" \
   "$here/kotlin/expo/modules/svelteengine/ClipRulesCheck.kt" -include-runtime -d "$work/clip-check.jar"
 java -cp "$work/clip-check.jar" expo.modules.svelteengine.ClipRulesCheckKt "$views"
+
+# The default of the status and navigation bars (SPEC.md, "Screen API contract": `auto` follows the system) and that the window is written the first time.
+kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/SystemBarsRules.kt" \
+  "$here/kotlin/expo/modules/svelteengine/SystemBarsRulesCheck.kt" -include-runtime -d "$work/system-bars-check.jar"
+java -cp "$work/system-bars-check.jar" expo.modules.svelteengine.SystemBarsRulesCheckKt

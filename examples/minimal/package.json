@@ -5,7 +5,7 @@
 	"description": "The smallest Svelte Native app: a root layout, a home screen and a second screen pushed on top of it.",
 	"main": ".svelte-native/entry.ts",
 	"scripts": {
-		"doctor": "svelte-native doctor",
+		"check-setup": "svelte-native doctor",
 		"sync": "svelte-native sync",
 		"dev": "svelte-native dev",
 		"android": "svelte-native android",
@@ -13,7 +13,7 @@
 	},
 	"dependencies": {
 		"@example/svelte-native": "git+ssh://git@github.com/AlfayezDev/svelte-native.git#<tag>&path:packages/svelte-native",
-		"@sveltejs/kit": "3.0.0-next.27",
+		"@sveltejs/kit": "3.1.1",
 		"expo": "57.0.30",
 		"expo-constants": "57.0.22",
 		"hermes-intl": "^0.1.2",

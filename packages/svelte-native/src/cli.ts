@@ -5,6 +5,23 @@ import { exportNative, runExpo, syncNative } from "./build.ts";
 
 const [command = "dev", ...args] = process.argv.slice(2);
 const root = process.cwd();
+if (command === "help" || command === "--help" || command === "-h") {
+  console.log(`Usage: svelte-native <command>
+
+  init       turn a SvelteKit project (npx sv create) into a Svelte Native app; \`init --help\` lists its options
+  doctor     check the app's setup (peer versions, patches, Metro and Expo wiring)
+  android    sync, prebuild if android/ is missing, build and run on a device or emulator (arguments go to expo run:android)
+  ios        the same for iOS (a Mac with Xcode)
+  dev        regenerate .svelte-native/ when a route file changes and start Metro (arguments go to expo start)
+  build      export the Hermes bytecode of a platform (--platform android|ios) without building the host
+  sync       only regenerate .svelte-native/`);
+  process.exit(0);
+}
+if (command === "init") {
+  // Before the sync, like the doctor: the project is not set up yet (its Svelte is still the registry's), and init is what sets it up.
+  const { runInit } = await import("./init-app.ts");
+  process.exit(runInit(root, args));
+}
 if (command === "doctor") {
   // Before the sync: the doctor is for an app that may not be set up yet, and it must not write anything.
   const { runDoctor } = await import("./doctor/index.ts");
@@ -37,5 +54,5 @@ if (command === "build") {
   child.once("error", (error) => { watcher.close(); console.error(error); process.exitCode = 1; });
   child.once("exit", (code) => { watcher.close(); process.exitCode = code ?? 1; });
 } else if (command !== "sync") {
-  throw new Error(`Unknown command: ${command}. Use dev, android, ios, build, sync or doctor.`);
+  throw new Error(`Unknown command: ${command}. Use init, dev, android, ios, build, sync or doctor.`);
 }

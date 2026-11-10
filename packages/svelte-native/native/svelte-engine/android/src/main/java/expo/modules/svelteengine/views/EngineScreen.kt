@@ -10,9 +10,11 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.facebook.react.bridge.ReactContext
 import com.facebook.react.uimanager.PointerEvents
 import expo.modules.svelteengine.GestureRules
 import expo.modules.svelteengine.NavProps
+import expo.modules.svelteengine.SystemBarsRules
 import kotlin.math.max
 
 /** The system bar options of a screen (record 125); styles are 0 auto, 1 light icons, 2 dark icons. */
@@ -292,6 +294,8 @@ object SystemBars {
   private var queued = false
   private var original: Int? = null
   private var applied: SystemBarsSpec? = null
+  // The window has been written at least once: without it `applied == null` is also the spec of an app that sets no option, and its default was never written.
+  private var written = false
 
   fun invalidate(view: View) {
     if (queued) return
@@ -316,7 +320,13 @@ object SystemBars {
     return found
   }
 
+  /**
+   * The activity whose window the bars belong to. The decor view's context is the platform's `DecorContext`, which wraps the application's `ContextImpl` and not the
+   * activity (Android 16, and so every device the engine runs on today), so walking the root view's context wrappers finds none and the bars were never written.
+   * The view's own context is React Native's, which knows its current activity; the wrappers are the fallback for a host that has the activity in the chain.
+   */
   private fun activityOf(view: View): Activity? {
+    (view.context as? ReactContext)?.currentActivity?.let { return it }
     var context: Context? = view.rootView.context
     while (context is ContextWrapper) {
       if (context is Activity) return context
@@ -326,7 +336,7 @@ object SystemBars {
   }
 
   private fun apply(root: EngineRoot, spec: SystemBarsSpec?) {
-    if (spec == applied) return
+    if (!SystemBarsRules.needsWrite(written, spec == applied)) return
     val window = activityOf(root)?.window ?: return
     val controller = WindowCompat.getInsetsController(window, window.decorView)
     val night = root.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
@@ -335,8 +345,8 @@ object SystemBars {
       original = window.navigationBarColor
     }
     // "light" means light icons (for a dark background): the platform flag is named for the bar, not the icons.
-    controller.isAppearanceLightStatusBars = when (spec?.statusStyle ?: 0) { 1 -> false; 2 -> true; else -> !night }
-    controller.isAppearanceLightNavigationBars = when (spec?.navStyle ?: 0) { 1 -> false; 2 -> true; else -> !night }
+    controller.isAppearanceLightStatusBars = SystemBarsRules.darkIcons(spec?.statusStyle ?: SystemBarsRules.AUTO, night)
+    controller.isAppearanceLightNavigationBars = SystemBarsRules.darkIcons(spec?.navStyle ?: SystemBarsRules.AUTO, night)
     if (spec?.statusHidden == true) {
       controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
       controller.hide(WindowInsetsCompat.Type.statusBars())
@@ -346,5 +356,6 @@ object SystemBars {
     @Suppress("DEPRECATION")
     window.navigationBarColor = if (spec?.hasNavColor == true) spec.navColor else original ?: 0
     applied = spec
+    written = true
   }
 }

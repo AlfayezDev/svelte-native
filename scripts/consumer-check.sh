@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Proves that an app outside this repository can install and build the library.
 #
-#   scripts/consumer-check.sh [tarball|git|all]      (default: all)
+#   scripts/consumer-check.sh [tarball|git|starter|all]      (default: all)
 #
 # It copies the template app (examples/minimal) to a scratch directory outside the repository and outside any pnpm workspace, so nothing
 # resolves through this repository, then does what the package README ("Install in an app", "Apply the patches") tells an app to do:
@@ -12,7 +12,14 @@
 #             apps install it from the private repository the same way:
 #               pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#<tag>&path:packages/svelte-native"
 #
-# Both modes install the custom-renderer Svelte from the tarball vendored in vendor/ (no registry, no preview server), then run the stages
+#   starter   the path the guide (docs/02-creating-a-project.md) gives a person, from a SvelteKit project and not from the template:
+#               pnpm dlx sv create <app> --template minimal --types ts --no-add-ons --install pnpm
+#               pnpm add "git+file://<repo>#<commit>&path:packages/svelte-native"      (the first install: Svelte is still the registry's)
+#               pnpm exec svelte-native init                                              (the install and the doctor are part of it)
+#             and then what the guide promises: init again changes nothing, `pnpm check` has no error, `pnpm build` builds the web app, and the
+#             native stages below. Svelte comes from pkg.pr.new, as it does for a person (SV_VERSION is the sv release asked for, 1.3.0).
+#
+# The tarball and git modes install the custom-renderer Svelte from the tarball vendored in vendor/ (no registry, no preview server), then run the stages
 # below in order. Each stage prints its result; its log is `<scratch>/<mode>/logs/NN-<stage>.log`.
 #
 #   scratch   the scratch directory is outside this repository and outside any pnpm workspace
@@ -22,6 +29,12 @@
 #   install   pnpm add <library> <svelte>
 #   patches   the patch files copied as the README says, the block declared, pnpm install; every patch is in the lockfile
 #   doctor    pnpm exec svelte-native doctor: no failed check
+#   sv        (starter) sv create, every question answered by a flag
+#   add       (starter) pnpm add of the library: what the first install of an sv project does
+#   init      (starter) pnpm exec svelte-native init: the files, pnpm install and the doctor, which must pass
+#   again     (starter) init a second time: no file changes
+#   check     (starter) pnpm check: svelte-check finds no error
+#   web       (starter) pnpm build: the web app still builds, and its build holds no native route
 #   sync      pnpm exec svelte-native sync: .svelte-native/entry.ts and the route table
 #   bundle    expo export:embed for Android, the way React Native's Gradle plugin bundles; nothing in the source map is from this repository
 #   prebuild  expo prebuild --platform android --no-install: the config plugin ran; nothing generated points into this repository
@@ -38,6 +51,7 @@
 #   KEEP_GOING=1      carry on past a failed stage
 #   ABI=x86_64        the ABI Gradle builds (x86_64, arm64-v8a)
 #   SKIP_BUILD=1      stop before prebuild and Gradle (the JavaScript side only)
+#   SV_VERSION=1.3.0  the release of sv the starter mode runs
 #   APK_OUT=<dir>     copy the APK to <dir>/consumer-<mode>-<abi>.apk
 #   GIT_URL=<url>     the repository of the git mode (default git+file://<this checkout>); GIT_REF=<branch|tag|commit> (default HEAD's commit)
 #   CAP="<prefix>"    prefix for every heavy command; default `systemd-run --user --scope --quiet -p CPUQuota=600% -p MemoryHigh=16G nice -n 19 ionice -c3`
@@ -60,9 +74,11 @@ modes=()
 case "${1:-all}" in
   tarball) modes=(tarball) ;;
   git) modes=(git) ;;
-  all) modes=(tarball git) ;;
-  *) echo "usage: scripts/consumer-check.sh [tarball|git|all]" >&2; exit 2 ;;
+  starter) modes=(starter) ;;
+  all) modes=(tarball git starter) ;;
+  *) echo "usage: scripts/consumer-check.sh [tarball|git|starter|all]" >&2; exit 2 ;;
 esac
+sv_version=${SV_VERSION:-1.3.0}
 
 # ---- the capped runner -------------------------------------------------------------------------------------------------------------------
 if [ "${CAP+set}" = set ]; then
@@ -98,6 +114,7 @@ tarballs=
 step=0
 
 die() { echo "error: $*" >&2; exit 1; }
+dev_spec() { node -e 'const p=require(process.argv[1]);console.log((p.devDependencies||{})[process.argv[2]]||"")' "$app/package.json" "$1"; }
 spec_of() { node -e 'const p=require(process.argv[1]);console.log((p.dependencies||{})[process.argv[2]]||"")' "$app/package.json" "$1"; }
 
 # run_stage <name> <needs, space separated or ""> <function>: records the result in status[] and always returns 0. It must not be called from
@@ -244,6 +261,66 @@ st_doctor() {
   cap pnpm exec svelte-native doctor
 }
 
+# What a person types: every question of `sv create` answered by a flag, so that nothing is asked.
+st_sv() {
+  cd "$mode_dir"
+  cap pnpm dlx "sv@$sv_version" create app --template minimal --types ts --no-add-ons --install pnpm </dev/null
+  [ -f "$app/package.json" ] || die "sv create did not make $app/package.json"
+  grep -q '"@sveltejs/kit"' "$app/package.json" || die "the sv project has no SvelteKit"
+  echo "sv $sv_version: $(dev_spec @sveltejs/kit) and svelte $(dev_spec svelte), the registry builds"
+}
+
+# The first install: Svelte is the registry's, the peers are missing and nothing is declared. It must succeed and leave a CLI that runs.
+st_add() {
+  cd "$app"
+  local library="$git_url#$git_ref&path:packages/svelte-native"
+  echo "+ pnpm add $library"
+  cap pnpm add "${pnpm_flags[@]}" "$library"
+  [ -f node_modules/@example/svelte-native/package.json ] || die "node_modules/@example/svelte-native is missing"
+  # init has to run in a project that is not set up yet: no Svelte renderer, no Metro, no patches.
+  cap pnpm exec svelte-native init --dry-run | sed -n '1,6p'
+  [ -z "$(cd "$app" && ls patches 2>/dev/null)" ] || die "init --dry-run wrote patches"
+}
+
+# The command of the guide. It installs and runs the doctor itself.
+st_init() {
+  cd "$app"
+  cap pnpm exec svelte-native init
+  [ -f .svelte-native/entry.ts ] || echo "(the entry is written by sync, below)"
+  for file in metro.config.cjs app.json src/routes/+layout.mobile.svelte src/routes/+mobile.svelte src/routes/details/+mobile.svelte patches/svelte-native; do
+    [ -e "$file" ] || die "init did not write $file"
+  done
+  grep -q "svelteNative" vite.config.ts || die "init did not change vite.config.ts"
+  echo "package.json: svelte $(dev_spec svelte), @sveltejs/kit $(dev_spec @sveltejs/kit)"
+  grep -m1 "resolution: {commit" pnpm-lock.yaml | sed 's/^ */lockfile: /'
+}
+
+# Running it again changes nothing: not a file of the project, whatever the tool wrote the first time.
+st_again() {
+  cd "$app"
+  local before after
+  before=$(find . \( -path ./node_modules -o -path ./.svelte-kit -o -path ./.svelte-native -o -path ./out \) -prune -o -type f -print0 | sort -z | xargs -0 sha256sum)
+  cap pnpm exec svelte-native init --no-install | tee "$mode_dir/again.out"
+  grep -q "Nothing to change" "$mode_dir/again.out" || die "the second init did not say that nothing changed"
+  after=$(find . \( -path ./node_modules -o -path ./.svelte-kit -o -path ./.svelte-native -o -path ./out \) -prune -o -type f -print0 | sort -z | xargs -0 sha256sum)
+  [ "$before" = "$after" ] || { diff <(echo "$before") <(echo "$after") || true; die "the second init changed a file"; }
+  echo "unchanged: $(echo "$after" | wc -l) files"
+}
+
+# svelte-check follows the imports into the library's own source: a type of the library that a SvelteKit project's tsconfig cannot hold shows up here.
+st_check() {
+  cd "$app"
+  cap pnpm check
+}
+
+st_web() {
+  cd "$app"
+  cap pnpm build
+  [ -d .svelte-kit/output ] || die "the web build left no .svelte-kit/output"
+  if grep -rl "details/+mobile\|+layout.mobile" .svelte-kit/output; then die "the web build holds a native route"; fi
+  echo "web build: $(find .svelte-kit/output -type f | wc -l) files, no native route in it"
+}
+
 st_sync() {
   cd "$app"
   cap pnpm exec svelte-native sync
@@ -334,15 +411,26 @@ run_mode() {
   if [ $abort = 0 ]; then
     if [ "$mode" = tarball ]; then stage source scratch st_source_tarball hard; else stage source scratch st_source_git hard; fi
   fi
-  if [ $abort = 0 ]; then stage svelte source st_svelte hard; fi
-  if [ $abort = 0 ]; then stage template svelte st_template hard; fi
-  if [ $abort = 0 ]; then stage install template st_install hard; fi
-  if [ $abort = 0 ]; then stage patches install st_patches hard; fi
-  if [ $abort = 0 ] && [ -n "${AFTER_INSTALL:-}" ]; then stage hook patches st_hook hard; fi
-  if [ $abort = 0 ]; then stage doctor patches st_doctor; fi
-  if [ $abort = 0 ]; then stage sync patches st_sync; fi
-  if [ $abort = 0 ]; then stage bundle patches st_bundle; fi
-  if [ $abort = 0 ] && [ "${SKIP_BUILD:-}" != 1 ]; then stage prebuild patches st_prebuild; fi
+  if [ "$mode" = starter ]; then
+    if [ $abort = 0 ]; then stage sv source st_sv hard; fi
+    if [ $abort = 0 ]; then stage add sv st_add hard; fi
+    if [ $abort = 0 ]; then stage init add st_init hard; fi
+    if [ $abort = 0 ]; then stage again init st_again; fi
+    if [ $abort = 0 ]; then stage check init st_check; fi
+    if [ $abort = 0 ]; then stage web init st_web; fi
+    patches_stage=init
+  else
+    if [ $abort = 0 ]; then stage svelte source st_svelte hard; fi
+    if [ $abort = 0 ]; then stage template svelte st_template hard; fi
+    if [ $abort = 0 ]; then stage install template st_install hard; fi
+    if [ $abort = 0 ]; then stage patches install st_patches hard; fi
+    patches_stage=patches
+  fi
+  if [ $abort = 0 ] && [ -n "${AFTER_INSTALL:-}" ]; then stage hook $patches_stage st_hook hard; fi
+  if [ $abort = 0 ] && [ "$mode" != starter ]; then stage doctor patches st_doctor; fi
+  if [ $abort = 0 ]; then stage sync $patches_stage st_sync; fi
+  if [ $abort = 0 ]; then stage bundle $patches_stage st_bundle; fi
+  if [ $abort = 0 ] && [ "${SKIP_BUILD:-}" != 1 ]; then stage prebuild $patches_stage st_prebuild; fi
   if [ $abort = 0 ] && [ "${SKIP_BUILD:-}" != 1 ]; then stage gradle prebuild st_gradle; fi
   if [ $abort = 0 ] && [ "${SKIP_BUILD:-}" != 1 ]; then stage apk gradle st_apk; fi
   return 0

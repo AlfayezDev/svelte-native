@@ -222,8 +222,8 @@ describe("SvelteKit's client files", () => {
 
   test("SvelteKit's form.svelte.js, which remote/form.svelte.ts is ported from, is the file that was reviewed: a change to it fails here until the port is compared", () => {
     const hash = createHash("sha256").update(readFileSync(join(functions, "form.svelte.js"))).digest("hex");
-    // 3.0.0-next.27. After comparing the new file with `src/remote/form.svelte.ts` (README, "Forms"; REFERENCE, "The native form"), put its hash here.
-    expect(hash).toBe("a25759090af9eb8e09571cd54af982d15bb8d308e9abc187e97da884533eadfa");
+    // 3.1.1. After comparing the new file with `src/remote/form.svelte.ts` (README, "Forms"; REFERENCE, "The native form"), put its hash here.
+    expect(hash).toBe("249ac3ccb82d2125631a8fcae73a3f28757c7a356fd556e195ab2977a8a39696");
   });
 
   test("the peer dependency on SvelteKit is the version that was reviewed, and Expo's constants are a peer", () => {

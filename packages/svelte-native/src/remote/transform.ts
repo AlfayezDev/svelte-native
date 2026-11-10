@@ -4,7 +4,7 @@
  * SvelteKit client files this package reuses are found. Pure Node (no React Native, no Metro), so the Metro integration, the transformer and the
  * tests share one reading of both.
  *
- * SvelteKit's Vite plugin (`@sveltejs/kit/src/exports/vite/plugins/remote.js`, 3.0.0-next.27) gives each remote module an id, the hash of
+ * SvelteKit's Vite plugin (`@sveltejs/kit/src/exports/vite/plugins/remote.js`, 3.1.1) gives each remote module an id, the hash of
  * its path from the project root, and replaces the module in the client build by `export const name = __remote.<kind>('<hash>/<name>')`.
  * It learns the names and kinds by running the server module. Metro cannot run the server module (it imports a database), so the names
  * and kinds are read from the source: an export must be the result of a call to `query`, `query.batch`, `query.live`, `command`, `form` or

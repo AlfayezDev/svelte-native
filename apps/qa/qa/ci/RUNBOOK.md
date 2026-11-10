@@ -106,7 +106,7 @@ The jobs of `native-qa.yml` carry `if: vars.QA_EMULATOR_RUNNER == 'true'`. Set t
 gh variable set QA_EMULATOR_RUNNER --body true --repo AlfayezDev/svelte-native
 ```
 
-Changes: one repository variable (Settings > Secrets and variables > Actions > Variables > New repository variable, name `QA_EMULATOR_RUNNER`, value `true`). From then on every push to a branch (except one that only changes Markdown, `docs/`, `deploy/` or `LICENSE`) queues the quick lane on this runner, one at a time. To switch it off again (the runner down for maintenance, a burst of pushes): `gh variable delete QA_EMULATOR_RUNNER --repo AlfayezDev/svelte-native` (or set it to `false`), and cancel the runs already waiting on the Actions page.
+Changes: one repository variable (Settings > Secrets and variables > Actions > Variables > New repository variable, name `QA_EMULATOR_RUNNER`, value `true`). From then on every push to a branch (except one that only changes Markdown, `docs/`, the docs site `apps/docs/`, `deploy/` or `LICENSE`) queues the quick lane on this runner, one at a time. To switch it off again (the runner down for maintenance, a burst of pushes): `gh variable delete QA_EMULATOR_RUNNER --repo AlfayezDev/svelte-native` (or set it to `false`), and cancel the runs already waiting on the Actions page.
 
 A first full run, on the default branch's workflow file (a workflow can be dispatched once its file is on the default branch):
 

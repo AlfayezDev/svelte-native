@@ -50,11 +50,14 @@ export function hostClass(value: unknown): unknown {
   return classStyle(value, noProps);
 }
 
-/** What `{...props}` sends to Svelte: a copy in which every function Svelte would drop is boxed, and a `class` is its style (`hostClass`). */
-export function hostSpread<T extends object>(props: T): T {
+/**
+ * What `{...props}` sends to Svelte: a copy in which every function Svelte would drop is boxed, and a `class` is its style (`hostClass`),
+ * with the toggles of the element's `class:name` directives (`lower.ts`).
+ */
+export function hostSpread<T extends object>(props: T, toggles?: Record<string, unknown>): T {
   const copy = { ...props } as Record<string, unknown>;
   if ("class" in copy) {
-    const fromClass = classStyle(copy.class, copy);
+    const fromClass = classStyle(toggles === undefined ? copy.class : [copy.class, toggles], copy);
     delete copy.class;
     if (fromClass !== undefined) copy.nativeClass = fromClass;
   }

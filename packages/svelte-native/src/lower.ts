@@ -76,7 +76,8 @@ function classExpression(content: string, attribute: Node): string {
   if (!Array.isArray(value)) return content.slice(value.expression.start, value.expression.end);
   let template = "`";
   for (const part of value as Node[]) {
-    template += part.type === "Text" ? part.data.replace(/[`\\]/g, (match: string) => `\\${match}`) : `\${${content.slice(part.expression.start, part.expression.end)}}`;
+    // As Svelte joins an attribute: a nullish part is the empty string.
+    template += part.type === "Text" ? part.data.replace(/[`\\]/g, (match: string) => `\\${match}`) : `\${(${content.slice(part.expression.start, part.expression.end)}) ?? ""}`;
   }
   return `${template}\``;
 }
@@ -137,21 +138,32 @@ export function lowerPrimitives(content: string, options: LowerOptions = {}): st
     if (!primitive || mustStayComponent(node, primitive)) return;
     const tag = LOWERED_TAGS[primitive];
     const spreads = (node.attributes as Node[]).some((attribute) => attribute.type === "SpreadAttribute");
-    // `class` and every `class:name` become one `nativeClass`, written where the first of them was; the others are removed.
+    // `class` and every `class:name` become one `nativeClass`, written where the `class` was (where the first directive was without one);
+    // the directives are removed. Next to a spread, as on the DOM: the last of `class` and the spreads that have a `class` gives the class,
+    // and the toggles of the directives apply to it. So each spread gets the toggles too (`hostSpread` uses them when the spread has a
+    // `class`), and toggles without a `class` attribute are written before every spread, which can then override them.
     const classes = (node.attributes as Node[]).filter((attribute) => (attribute.type === "Attribute" && attribute.name === "class") || attribute.type === "ClassDirective");
+    const directives = classes.filter((attribute) => attribute.type === "ClassDirective");
+    const toggles = directives.length === 0 ? undefined
+      : `{ ${directives.map((directive) => `${JSON.stringify(directive.name)}: ${content.slice(directive.expression.start, directive.expression.end)}`).join(", ")} }`;
     if (classes.length > 0) {
       const own = classes.find((attribute) => attribute.type === "Attribute");
-      const toggles = classes.filter((attribute) => attribute.type === "ClassDirective")
-        .map((directive) => `${JSON.stringify(directive.name)}: ${content.slice(directive.expression.start, directive.expression.end)}`);
-      const parts = [...(own ? [classExpression(content, own)] : []), ...(toggles.length > 0 ? [`{ ${toggles.join(", ")} }`] : [])];
+      const parts = [...(own ? [classExpression(content, own)] : []), ...(toggles ? [toggles] : [])];
+      const value = `nativeClass={${CLASS_HELPER}(${parts.length === 1 ? parts[0] : `[${parts.join(", ")}]`})}`;
       helpers.add(CLASS_HELPER);
-      classes.forEach((attribute, index) => {
-        edits.push({ start: attribute.start, end: attribute.end, text: index === 0 ? `nativeClass={${CLASS_HELPER}(${parts.length === 1 ? parts[0] : `[${parts.join(", ")}]`})}` : "" });
-      });
+      const at = own ?? (spreads ? undefined : classes[0]);
+      if (at === undefined) edits.push({ start: node.attributes[0].start, end: node.attributes[0].start, text: `${value} ` });
+      for (const attribute of classes) edits.push({ start: attribute.start, end: attribute.end, text: attribute === at ? value : "" });
     }
     for (const attribute of node.attributes as Node[]) {
       if (classes.includes(attribute)) continue;
-      if (spreads && attribute.type === "SpreadAttribute") wrap(attribute.expression, SPREAD_HELPER);
+      if (spreads && attribute.type === "SpreadAttribute") {
+        if (toggles === undefined) wrap(attribute.expression, SPREAD_HELPER);
+        else {
+          helpers.add(SPREAD_HELPER);
+          edits.push({ start: attribute.expression.start, end: attribute.expression.start, text: `${SPREAD_HELPER}(` }, { start: attribute.expression.end, end: attribute.expression.end, text: `, ${toggles})` });
+        }
+      }
       // With a spread on the element every attribute goes through `set_attributes` too: a function-valued one (`ref={handle}`) must be boxed as well.
       if (spreads && attribute.type === "Attribute" && !attribute.name.startsWith("on") && attribute.name !== "style" && attribute.value !== true
         && !Array.isArray(attribute.value) && attribute.value.type === "ExpressionTag" && couldBeFunction(attribute.value.expression)) {

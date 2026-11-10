@@ -6,7 +6,7 @@ Notable changes to `@example/svelte-native`, newest first. The format follows [K
 
 ### Added
 
-- `class` on components, through Uniwind (Tailwind 4): `withSvelteNative`'s new `uniwind` option compiles the app's CSS file with Uniwind, and `import "@example/svelte-native/uniwind"` in the app shell turns `class` into styles. Tailwind's utilities and your own classes work, `class` takes a string, an array or an object (and `class:name` on a page), `dark:` and breakpoints follow the system's appearance and the window, and an inline `style` wins. Uniwind's React components, its `*ClassName` props and the `active:`, `focus:` and `disabled:` variants are not supported yet. `uniwind@1.13.2` is an optional peer dependency. Without it, `class` is ignored as before, with a warning in development. The showcase has a Classes screen ("Classes" in the guide's Styling page).
+- `class` on components, through Uniwind (Tailwind 4): `withSvelteNative`'s new `uniwind` option compiles the app's CSS file with Uniwind, and `import "@example/svelte-native/uniwind"` in the app shell turns `class` into styles. Tailwind's utilities and your own classes work, `class` takes a string, an array or an object (and `class:name` on the primitives a page compiles to native elements), `dark:`, breakpoints and the safe-area utilities follow the system's appearance, the window and the insets, and an inline `style` wins. Uniwind's React components, its `*ClassName` props and the `active:`, `focus:` and `disabled:` variants are not supported yet. `uniwind@1.13.2` is an optional peer dependency. Without it, `class` is ignored as before, with a warning in development. The showcase has a Classes screen ("Classes" in the guide's Styling page).
 
 ### Changed
 

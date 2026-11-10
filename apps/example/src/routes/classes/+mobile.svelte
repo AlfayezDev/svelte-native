@@ -36,6 +36,12 @@
     </View>
   </Section>
 
+  <Section title="Safe area" note="pt-safe is the height of the status bar, the inset SafeAreaView would add: the label sits that far down.">
+    <View testID="safe-box" class="rounded-lg bg-indigo-500 pt-safe">
+      <Text testID="safe-label" class="px-3 pb-2 text-white">pt-safe</Text>
+    </View>
+  </Section>
+
   <Section title="Class and style" note="The style attribute wins over the classes: this box has the class bg-zinc-400 and a style with an orange background.">
     <View class="h-12 rounded-lg bg-zinc-400" style={{ backgroundColor: "#f97316" }} />
   </Section>

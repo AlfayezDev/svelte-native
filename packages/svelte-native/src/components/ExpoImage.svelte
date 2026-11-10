@@ -1,6 +1,6 @@
 <script lang="ts">
   import type {} from "../elements.d.ts";
-  import type { ClassProps } from "../classes.ts";
+  import { mergeClass, type ClassProps } from "../classes.ts";
   import { createNativeProps } from "../native-props.ts";
   import { resolveAssetSource } from "../fabric/deps-rn.ts";
   import { expoViewName } from "../fabric/foreign.ts";
@@ -38,7 +38,7 @@
   const handlers = $derived(expoImageHandlers({ onLoadStart, onLoad, onProgress, onError, onLoadEnd, onDisplay }));
 </script>
 <native-foreign {component} nativeProps={resolveProps({
-  ...expoImageProps(attributes, (asset) => resolveAssetSource(asset as never) as never, Platform.OS === "android" ? "android" : "ios"),
+  ...expoImageProps(mergeClass(attributes), (asset) => resolveAssetSource(asset as never) as never, Platform.OS === "android" ? "android" : "ios"),
   ...handlers,
   ref,
 })}></native-foreign>

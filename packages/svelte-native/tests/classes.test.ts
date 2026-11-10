@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
-import { build } from "esbuild";
+import { build, transform } from "esbuild";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { compile } from "svelte/compiler";
+import { compile, compileModule } from "svelte/compiler";
 import { classList } from "../src/classes.ts";
 import { componentOptions } from "../src/compile-options.ts";
 import { lowerPrimitives } from "../src/lower.ts";
@@ -12,11 +12,12 @@ import type { NativeNode } from "../src/renderer.ts";
 
 // `class` on components through `@example/svelte-native/uniwind`, against stand-ins for the two modules of Uniwind's runtime it reads:
 // a store that gives `themed` a color from the color scheme (dependency 1, as Uniwind's `dark:` does) and the listener it notifies.
-type Uniwind = { scheme: "light" | "dark"; listeners: Map<number, Set<() => void>>; calls: string[] };
-const uniwind: Uniwind = { scheme: "light", listeners: new Map(), calls: [] };
+type Insets = { top: number; right: number; bottom: number; left: number };
+type Uniwind = { scheme: "light" | "dark"; listeners: Map<number, Set<() => void>>; calls: string[]; insets: Insets[]; engine: { current: (Insets & Record<string, unknown>) | null; listener: ((event: Insets & Record<string, unknown>) => void) | null } };
+const uniwind: Uniwind = { scheme: "light", listeners: new Map(), calls: [], insets: [], engine: { current: null, listener: null } };
 (globalThis as { __uniwind?: Uniwind }).__uniwind = uniwind;
 const storeModule = `const stub = globalThis.__uniwind;
-  const fixed = { card: { padding: 16 }, loud: { borderWidth: 2 }, label: { fontSize: 18 }, muted: { opacity: 0.5 } };
+  const fixed = { card: { padding: 16 }, loud: { borderWidth: 2 }, label: { fontSize: 18 }, muted: { opacity: 0.5 }, "p-4": { padding: 16 } };
   export const UniwindStore = {
     getStyles(className, props, state, context) {
       stub.calls.push(className);
@@ -29,6 +30,15 @@ const storeModule = `const stub = globalThis.__uniwind;
       return { styles, dependencies, dependencySum: dependencies.length };
     },
   };`;
+const configModule = `const stub = globalThis.__uniwind;
+  export const Uniwind = { updateInsets(insets) { stub.insets.push(insets); } };`;
+// The engine module the insets come from (expo-modules-core's requireOptionalNativeModule), with the current value it reports first.
+const expoModulesCore = `const stub = globalThis.__uniwind;
+  export const EventEmitter = class {};
+  export const requireOptionalNativeModule = (name) => name !== "SvelteEngine" ? null : ({
+    getInsets: () => stub.engine.current,
+    addListener: (event, listener) => { if (event === "insets") stub.engine.listener = listener; return { remove() {} }; },
+  });`;
 const listenerModule = `const stub = globalThis.__uniwind;
   export const UniwindListener = {
     subscribe(listener, dependencies) {
@@ -56,19 +66,24 @@ async function load(withUniwind: boolean, lowered = false) {
     plugins: [{
       name: "classes-fixture",
       setup(builder) {
-        builder.onResolve({ filter: /^uniwind\/src\/core\/(native|listener)$/ }, (args) => ({ path: args.path, namespace: "uniwind" }));
-        builder.onLoad({ filter: /.*/, namespace: "uniwind" }, (args) => ({ contents: args.path.endsWith("/native") ? storeModule : listenerModule, loader: "js" }));
+        builder.onResolve({ filter: /^uniwind\/src\/core\/(native|listener|config)$/ }, (args) => ({ path: args.path, namespace: "uniwind" }));
+        builder.onLoad({ filter: /.*/, namespace: "uniwind" }, (args) => ({ contents: args.path.endsWith("/native") ? storeModule : args.path.endsWith("/config") ? configModule : listenerModule, loader: "js" }));
         builder.onResolve({ filter: /^react-native\/Libraries\// }, (args) => ({ path: args.path, namespace: "stub" }));
         builder.onResolve({ filter: /^(react-native|expo-modules-core)$/ }, (args) => ({ path: args.path, namespace: "stub" }));
-        builder.onLoad({ filter: /.*/, namespace: "stub" }, () => ({ contents: "export {};", loader: "js" }));
+        builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: args.path === "expo-modules-core" ? expoModulesCore : "export {};", loader: "js" }));
         builder.onResolve({ filter: /^@example\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
         builder.onResolve({ filter: /^@example\/svelte-native$/ }, () => ({ path: "primitives", namespace: "package" }));
         builder.onLoad({ filter: /.*/, namespace: "package" }, () => ({
           contents: `export { default as View } from ${JSON.stringify(resolve(import.meta.dirname, "../src/components/View.svelte"))};
-            export { default as Text } from ${JSON.stringify(resolve(import.meta.dirname, "../src/components/Text.svelte"))};`,
+            export { default as Text } from ${JSON.stringify(resolve(import.meta.dirname, "../src/components/Text.svelte"))};
+            export { default as SafeAreaView } from ${JSON.stringify(resolve(import.meta.dirname, "../src/components/SafeAreaView.svelte"))};`,
           loader: "js", resolveDir: import.meta.dirname,
         }));
         builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../src/environment.ts") }));
+        builder.onLoad({ filter: /\.svelte\.ts$/ }, async ({ path }) => {
+          const { code } = await transform(await readFile(path, "utf8"), { loader: "ts" });
+          return { contents: compileModule(code, { filename: path }).js.code, loader: "js" };
+        });
         builder.onLoad({ filter: /\.svelte$/ }, async ({ path }) => {
           const source = await readFile(path, "utf8");
           return { contents: compile(path.endsWith("-lowered-fixture.svelte") ? lowerPrimitives(source, { filename: path }) : source, componentOptions(path)).js.code, loader: "js" };
@@ -152,6 +167,26 @@ test(`a class that depends on the color scheme draws again when Uniwind says it 
   expect(uniwind.listeners.get(1)?.size ?? 0).toBe(0);
 });
 
+test(`a spread's class is resolved, and on a lowered tag the class: toggles next to it apply to it (${how})`, async () => {
+  const m = await load(true, lowered);
+  const { app, styleOf } = await mountFixture(m);
+  expect(styleOf("spread")).toEqual({ padding: 16 });
+  app.setTone("loud");
+  await m.tick();
+  expect(styleOf("spread")).toEqual(lowered ? { padding: 16, borderWidth: 2 } : { padding: 16 });
+  m.unmount(app);
+});
+
+test(`a safe area adds the insets to the padding of its classes (${how})`, async () => {
+  uniwind.engine.current = { top: 24, right: 0, bottom: 34, left: 0, keyboardHeight: 0, keyboardVisible: false, frame: { x: 0, y: 0, width: 400, height: 800 } };
+  const m = await load(true, lowered);
+  const { app, styleOf } = await mountFixture(m);
+  const flat = (style: unknown): Record<string, unknown> => Array.isArray(style) ? Object.assign({}, ...style.map(flat)) : (style as Record<string, unknown>) ?? {};
+  expect(flat(styleOf("safe"))).toMatchObject({ paddingTop: 40, paddingRight: 16, paddingBottom: 50, paddingLeft: 16 });
+  m.unmount(app);
+  uniwind.engine.current = null;
+});
+
 test(`without a resolver, class is dropped with one warning in development (${how})`, async () => {
   const m = await load(false, lowered);
   const warnings: string[] = [];
@@ -169,3 +204,16 @@ test(`without a resolver, class is dropped with one warning in development (${ho
   }
 });
 }
+
+test("Uniwind's safe-area insets come from the engine: the current value at once, then each change", async () => {
+  uniwind.insets.length = 0;
+  uniwind.engine.current = { top: 24, right: 0, bottom: 34, left: 0, keyboardHeight: 0, keyboardVisible: false, frame: { x: 0, y: 0, width: 400, height: 800 } };
+  await load(true);
+  expect(uniwind.insets).toEqual([{ top: 24, right: 0, bottom: 34, left: 0 }]);
+  // The keyboard moving is an insets event too; the safe area did not change, so Uniwind is not told.
+  uniwind.engine.listener?.({ ...uniwind.engine.current, keyboardHeight: 300, keyboardVisible: true });
+  expect(uniwind.insets).toHaveLength(1);
+  uniwind.engine.listener?.({ ...uniwind.engine.current, top: 0, bottom: 0, left: 48 });
+  expect(uniwind.insets).toEqual([{ top: 24, right: 0, bottom: 34, left: 0 }, { top: 0, right: 0, bottom: 0, left: 48 }]);
+  uniwind.engine.current = null;
+});

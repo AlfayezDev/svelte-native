@@ -1,0 +1,36 @@
+{
+	"name": "@svelte-native/docs",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"description": "The Svelte Native documentation site: a static SvelteKit app that renders the guide in ../../docs.",
+	"scripts": {
+		"prepare": "svelte-kit sync",
+		"dev": "vite dev",
+		"build": "vite build",
+		"preview": "vite preview",
+		"lint": "eslint .",
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"typecheck": "pnpm check"
+	},
+	"imports": {
+		"#lib/*": "./src/lib/*"
+	},
+	"devDependencies": {
+		"@eslint/js": "^10.0.1",
+		"@sveltejs/adapter-static": "4.0.0",
+		"@sveltejs/kit": "3.1.1",
+		"@sveltejs/vite-plugin-svelte": "7.2.0",
+		"@types/node": "^26.1.1",
+		"eslint": "10.8.1",
+		"eslint-plugin-svelte": "3.23.0",
+		"globals": "17.11.0",
+		"marked": "18.1.1",
+		"shiki": "4.5.0",
+		"svelte": "file:../../vendor/svelte-5.56.7-216f258.tgz",
+		"svelte-check": "^4.6.0",
+		"typescript": "^6.0.3",
+		"typescript-eslint": "8.67.0",
+		"vite": "catalog:"
+	}
+}

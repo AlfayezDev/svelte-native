@@ -69,6 +69,7 @@ svelte-native init: /home/you/my-app
   create  metro.config.cjs                   withSvelteNative(getDefaultConfig(__dirname))
   create  app.json                           my-app, dev.example.myapp
   edit    vite.config.ts                     svelteNative() around SvelteKit's plugin, as a function of the mode
+  create  src/lib/theme.ts                   light and dark colours for the native screens
   create  src/routes/+layout.mobile.svelte   the app shell
   create  src/routes/+mobile.svelte          a home screen
   create  src/routes/details/+mobile.svelte  a second screen
@@ -225,13 +226,22 @@ A native screen is a `+mobile.svelte` file, next to the `+page.svelte` of the we
 <!--- file: src/routes/+layout.mobile.svelte --->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { Stack } from '@example/svelte-native';
+	import { theme } from '#lib/theme.ts';
 
 	let { children }: { children: Snippet } = $props();
 </script>
 
-<!-- The app shell: children is the root navigator, a stack of the screens under src/routes. -->
-{@render children()}
+<Stack statusBar={{ style: 'auto' }} style={{ backgroundColor: theme.colors.background }}>
+	{@render children()}
+</Stack>
 ```
+
+`children` is the root navigator, a native stack of the screens under `src/routes`. The options of `<Stack>` are the defaults of every screen. Here they give each screen the theme's background, so a pushed screen covers the one below it, and a status bar that follows light and dark mode.
+
+### src/lib/theme.ts
+
+The colours the first screens use, in light and dark. `colorScheme.current` says which mode the system is in, and a screen that reads `theme.colors` draws again when the user switches. Change the colours, or replace the file with your own theme. [Light and dark mode](04-native-routes.md#light-and-dark-mode) has the details. If your project already has a `src/lib/theme.ts`, `init` leaves it alone and writes `src/lib/native-theme.ts` instead.
 
 ### .gitignore
 

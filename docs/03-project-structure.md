@@ -6,6 +6,7 @@ A Svelte Native project is a [SvelteKit project](https://svelte.dev/docs/kit/pro
 my-app/
 ├ src/
 │ ├ lib/
+│ │ ├ theme.ts
 │ │ └ [your lib files]
 │ ├ routes/
 │ │ ├ +layout.svelte

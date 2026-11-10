@@ -4,6 +4,15 @@ Notable changes to `@example/svelte-native`, newest first. The format follows [K
 
 ## Unreleased
 
+### Added
+
+- `colorScheme.current` (`import { colorScheme } from "@example/svelte-native"`): the system's light or dark mode, reactive like Svelte's `prefersReducedMotion`. A template, `$derived` or `$effect` that reads it runs again when the user switches; its readers share one listener on React Native's `Appearance`, removed when the last of them goes.
+
+### Fixed
+
+- The first routes `svelte-native init` writes were unreadable in dark mode: their texts had no colour, so they were black on the dark window. They now take their colours from a theme `init` writes, `src/lib/theme.ts` (`native-theme.ts` when the app has a `theme.ts` of its own), which follows `colorScheme`.
+- The screens of `init`'s layout had no background, so the details screen drew over the home screen while it was pushed. The layout is now a `<Stack>` that gives every screen the theme's background, and a status bar that follows the mode.
+
 ## 0.4.0-rc.1 - 2026-11-10
 
 The early preview, a release candidate for friends to try: an app starts from `npx sv create`, adds the library with `pnpm add` and runs `svelte-native init` (the guide is `docs/`). Checked on the release branch: the package, harness and showcase tests, the engine's host checks, the consumer check in its three modes (tarball, git and the guide's starter path, each through a Gradle build), the starter on the OVH emulator to its second screen, and the showcase on the Samsung A16 (the generic camera and image views, the scroll clip under a plain header, the status bar) and the iPhone SE 3 (ExpoView checked by hand; the release build launches). The device suites of `native-qa` were not run again for this release: PLAN.md has their last full round, on 0.3.0.

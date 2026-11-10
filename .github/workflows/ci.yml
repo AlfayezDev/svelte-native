@@ -1,7 +1,7 @@
 name: CI
 
 # The checks that need no device and no Android SDK: lint, types, the unit tests, the Node-side build and the engine's Kotlin and C++ host
-# checks. Every push to a branch and every pull request; release.yml calls it before it publishes. Four jobs run side by side (each installs
+# checks. Every push to a branch and every pull request; release.yml calls it before it publishes. Five jobs run side by side (each installs
 # the workspace), and `CI` is the one status to require. The device lanes are native-qa.yml, the build from a consumer's side is consumer.yml.
 # What runs, how long it takes and how to read a failure: README.md, "CI".
 
@@ -159,11 +159,29 @@ jobs:
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: bash packages/svelte-native/native/svelte-engine/android/src/test/run.sh
 
+  docs:
+    name: Documentation site
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - id: setup
+        uses: ./.github/actions/setup
+
+      # Prerenders docs/*.md to apps/docs/build; the build fails on a link between pages that leads to a page or a heading that is not there.
+      # Nothing is deployed.
+      - name: Build the documentation site
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: pnpm --dir apps/docs build
+
   # The one status to require in a branch rule: it fails when any job above failed or was cancelled.
   ci:
     name: CI
     if: ${{ always() }}
-    needs: [static, library, harness, engine-host]
+    needs: [static, library, harness, engine-host, docs]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

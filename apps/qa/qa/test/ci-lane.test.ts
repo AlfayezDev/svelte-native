@@ -90,7 +90,7 @@ describe("lane.sh emulator on a push", () => {
 			"gestures --device localhost:5555 --no-install --input both",
 			"product --device localhost:5555",
 			"report",
-			"gates --platform android --runs lab,parity,a11y,gestures,product --except lab.runs --markdown qa/out/gates.md",
+			"gates --platform android --runs lab,parity,a11y,gestures,product --except lab.runs,parity.incomplete,a11y.incomplete --markdown qa/out/gates.md",
 		]);
 		expect(machine.stages().every((row) => row[1] === "pass")).toBe(true);
 		expect(machine.stages().map((row) => row[0])).toEqual([
@@ -165,7 +165,7 @@ describe("lane.sh emulator on a dispatch", () => {
 		expect(ran.at(-1)).toBe("gates --platform android --runs lab,boot,parity,a11y,resilience,gestures,product --markdown qa/out/gates.md");
 		const push = lane();
 		push.run("emulator");
-		expect(harness(push.lines()).at(-1)).toContain("--except lab.runs --markdown");
+		expect(harness(push.lines()).at(-1)).toContain("--except lab.runs,parity.incomplete,a11y.incomplete --markdown");
 		for (const machine of [full, push]) expect(harness(machine.lines()).some((line) => line.startsWith("leakcheck"))).toBe(false);
 	});
 	test("a lane that is told to stop says so in its stage table before it leaves, and runs nothing more", async () => {
@@ -230,7 +230,7 @@ describe("lane.sh with QA_ONLY (one kind of stage, from a terminal)", () => {
 		expect(harness(machine.lines()).slice(1)).toEqual([
 			"product --device localhost:5555",
 			"report",
-			"gates --platform android --runs product --except lab.runs --markdown qa/out/gates.md",
+			"gates --platform android --runs product --except lab.runs,parity.incomplete,a11y.incomplete --markdown qa/out/gates.md",
 		]);
 		expect(machine.lines()).toContain("emulator restart fresh instance for the lane");
 	});

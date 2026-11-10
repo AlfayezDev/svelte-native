@@ -19,7 +19,9 @@
 # Environment (the workflow sets them):
 #   QA_MODE      push (default): lab, quick parity and a11y, gestures.  full: also boot, resilience, the full parity and a11y
 #                matrices, and the smoke app when QA_SMOKE=1
-#   QA_REPEAT    lab repeats (3). Under QA_MODE=push the lab.runs gate (the production 10) is not judged
+#   QA_REPEAT    lab repeats (3). Under QA_MODE=push the gates that count against the production sample are not judged: lab.runs (the
+#                production 10), parity.incomplete and a11y.incomplete (the full matrices; a quick run records them whole, so it never
+#                passes for a full one). A quick case that is missing, unstable or errored still fails its stage.
 #   QA_WARM, QA_COLD   boot launches in full mode (30, 30)
 #   QA_DEVICE    the serial (localhost:5555)
 #   QA_ONLY      a comma list of stage kinds (lab,boot,parity,a11y,resilience,gestures,smoke,updates,product; `crashes` for the build of the
@@ -121,7 +123,7 @@ emulator() {
     kinds=(lab boot parity a11y resilience gestures)
     if [ "${QA_UPDATES:-0}" = 1 ]; then kinds+=(updates); fi
   else
-    except=(--except lab.runs)
+    except=(--except lab.runs,parity.incomplete,a11y.incomplete)
   fi
   # The product boot check is the last of the stages, in both modes: a start of the product with no development lab, which no stage of the QA app is.
   kinds+=(product)

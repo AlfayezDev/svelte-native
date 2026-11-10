@@ -1,6 +1,7 @@
 package expo.modules.svelteengine.views
 
 import android.content.Context
+import android.content.res.Configuration
 import android.os.Trace
 import android.view.MotionEvent
 import android.view.View
@@ -116,6 +117,13 @@ class EngineRoot(context: Context) : FrameLayout(context), RootView {
 
   override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
     Frames.layoutChildren(this)
+  }
+
+  // A switch between light and night while the app runs reaches the views, not a new activity (React Native's template handles `uiMode`):
+  // the bars' `auto` style is written again for the new appearance.
+  override fun onConfigurationChanged(newConfig: Configuration) {
+    super.onConfigurationChanged(newConfig)
+    SystemBars.invalidate(this)
   }
 
   // Modal layers --------------------------------------------------------------------------------------------------

@@ -296,10 +296,12 @@ object SystemBars {
   private var applied: SystemBarsSpec? = null
   // The window has been written at least once: without it `applied == null` is also the spec of an app that sets no option, and its default was never written.
   private var written = false
+  // The appearance the icons were last written for: `auto` follows it, so a switch while the app runs writes the window again.
+  private var appliedNight: Boolean? = null
 
   fun invalidate(view: View) {
     if (queued) return
-    val root = view.engineRoot() ?: return
+    val root = view as? EngineRoot ?: view.engineRoot() ?: return
     queued = true
     root.post {
       queued = false
@@ -336,10 +338,10 @@ object SystemBars {
   }
 
   private fun apply(root: EngineRoot, spec: SystemBarsSpec?) {
-    if (!SystemBarsRules.needsWrite(written, spec == applied)) return
+    val night = root.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+    if (!SystemBarsRules.needsWrite(written, spec == applied, night == appliedNight)) return
     val window = activityOf(root)?.window ?: return
     val controller = WindowCompat.getInsetsController(window, window.decorView)
-    val night = root.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
     if (original == null) {
       @Suppress("DEPRECATION")
       original = window.navigationBarColor
@@ -356,6 +358,7 @@ object SystemBars {
     @Suppress("DEPRECATION")
     window.navigationBarColor = if (spec?.hasNavColor == true) spec.navColor else original ?: 0
     applied = spec
+    appliedNight = night
     written = true
   }
 }

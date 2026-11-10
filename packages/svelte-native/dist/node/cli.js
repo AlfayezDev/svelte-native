@@ -597,6 +597,8 @@ function planInit(root2, options = {}) {
   const overrides = {};
   const expoModules = patches2.find((patch) => patch.package === "expo-modules-core");
   if (expoModules) overrides["expo-modules-core"] = expoModules.version;
+  const reactNative = appDependencies["react-native"];
+  if (reactNative !== void 0) overrides["@react-native/metro-config"] = reactNative;
   const patched = Object.fromEntries(needed.map((patch) => [patchKey(patch), `patches/svelte-native/${patch.file}`]));
   const merged = mergeWorkspaceYaml(workspaceText ?? "", { allowBuilds: { esbuild: "true" }, overrides, patchedDependencies: patched });
   if (merged.manual.length > 0) {
@@ -1152,13 +1154,20 @@ var init_hunks = __esm({
 });
 
 // src/doctor/requirements.ts
-var requirements;
+var requirements, nodeAdvice;
 var init_requirements = __esm({
   "src/doctor/requirements.ts"() {
     "use strict";
     requirements = {
-      node: ">=25.0.0",
+      node: {
+        repository: ">=25.0.0",
+        app: "^22.17.0 || ^24.3.0 || >=26.0.0"
+      },
       pnpm: ">=12.3.4"
+    };
+    nodeAdvice = {
+      repository: "install Node 25.0.0 or newer (the repository pins 25.0.0) and put it on the PATH",
+      app: "install Node 24 LTS (24.3 or newer; Node 22.17 or newer and Node 26 or newer work too) and put it on the PATH. Node 25 is not supported: a fresh install takes @react-native/metro-config 0.88, whose tools exclude it, and pnpm stops with ERR_PNPM_UNSUPPORTED_ENGINE (docs/08-troubleshooting.md)"
     };
   }
 });
@@ -1168,11 +1177,13 @@ import { existsSync as existsSync6, readFileSync as readFileSync6 } from "node:f
 import { join as join6 } from "node:path";
 function environment(context) {
   const checks = [];
+  const scope = context.repository ? "repository" : "app";
+  const range = requirements.node[scope];
   if (context.node === void 0) {
-    checks.push({ group: "environment", status: "unknown", message: `could not run node (needs ${requirements.node})`, fix: `install Node ${requirements.node.slice(2)} or newer and put it on the PATH` });
+    checks.push({ group: "environment", status: "unknown", message: `could not run node (needs ${range})`, fix: nodeAdvice[scope] });
   } else {
-    const ok = satisfies(context.node, requirements.node);
-    checks.push(ok ? { group: "environment", status: "pass", message: `node ${context.node} (needs ${requirements.node})` } : { group: "environment", status: "fail", message: `node ${context.node} does not satisfy ${requirements.node}`, fix: `install Node ${requirements.node.slice(2)} or newer (the repository pins 25.0.0)` });
+    const ok = satisfies(context.node, range);
+    checks.push(ok ? { group: "environment", status: "pass", message: `node ${context.node} (needs ${range})` } : { group: "environment", status: "fail", message: `node ${context.node} does not satisfy ${range}`, fix: nodeAdvice[scope] });
   }
   const pnpm = context.pnpm();
   if (pnpm === void 0) {
@@ -1360,13 +1371,15 @@ var init_checks = __esm({
 var doctor_exports = {};
 __export(doctor_exports, {
   formatReport: () => formatReport,
+  isRepositoryApp: () => isRepositoryApp,
   nodeVersion: () => nodeVersion,
   pnpmVersion: () => pnpmVersion,
   runChecks: () => runChecks,
   runDoctor: () => runDoctor
 });
 import { spawnSync as spawnSync2 } from "node:child_process";
-import { resolve as resolve6 } from "node:path";
+import { existsSync as existsSync7, realpathSync as realpathSync2 } from "node:fs";
+import { basename as basename2, dirname as dirname5, join as join7, resolve as resolve6 } from "node:path";
 function formatReport(checks, { color = false, appRoot = "" } = {}) {
   const paint = (status) => color ? `\x1B[${COLORS[status]}m${WORDS[status]}\x1B[0m` : WORDS[status];
   const lines = [`svelte-native doctor${appRoot ? `: ${appRoot}` : ""}`];
@@ -1391,6 +1404,22 @@ function nodeVersion() {
   const version = result.status === 0 ? result.stdout.trim().replace(/^v/, "") : void 0;
   return version && /^\d+\.\d+\.\d+/.test(version) ? version : void 0;
 }
+function workspaceRoot(directory) {
+  for (let current = directory; ; current = dirname5(current)) {
+    if (existsSync7(join7(current, "pnpm-workspace.yaml"))) return current;
+    if (dirname5(current) === current) return void 0;
+  }
+}
+function isRepositoryApp(appRoot, packageRoot2) {
+  const packages = dirname5(packageRoot2);
+  if (basename2(packages) !== "packages") return false;
+  try {
+    const root2 = workspaceRoot(realpathSync2(appRoot));
+    return root2 !== void 0 && root2 === realpathSync2(dirname5(packages));
+  } catch {
+    return false;
+  }
+}
 function pnpmVersion(directory) {
   const result = spawnSync2("pnpm", ["--version"], { cwd: directory, encoding: "utf8", timeout: 6e4, shell: process.platform === "win32" });
   const version = result.status === 0 ? result.stdout.trim().split(/\r?\n/).pop() : void 0;
@@ -1414,6 +1443,7 @@ ${USAGE2}`);
     packageRoot,
     node: nodeVersion(),
     pnpm: () => pnpmVersion(appRoot),
+    repository: isRepositoryApp(appRoot, packageRoot),
     ...context
   });
   const failed = checks.some((check) => check.status === "fail");

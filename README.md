@@ -8,7 +8,7 @@ Svelte Native is a way to write Android and iOS apps as Svelte 5 components that
 
 **You need**
 
-- Node 25 or newer and pnpm 12.3.4 or newer (the versions this repository pins; the script below checks both).
+- Node 24 LTS (24.3 or newer), Node 22.17 or newer, or Node 26 or newer, and pnpm 12.3.4 or newer. **Not Node 25**: a fresh install takes React Native tools that exclude it, and `pnpm add` stops with `ERR_PNPM_UNSUPPORTED_ENGINE` ([troubleshooting](docs/08-troubleshooting.md#pnpm-stops-during-install)). `svelte-native doctor` checks both once the library is installed.
 - Read access to this private repository over SSH: be a collaborator, with your SSH key on your GitHub account (`ssh -T git@github.com` should greet you by name).
 - To run on Android: Android Studio's SDK (platform 36, NDK 27.1.12297006, CMake 3.22.1), a JDK 17, and a phone with USB debugging or an emulator. To run on iOS: a Mac with Xcode, and a simulator or an iPhone.
 - It builds your own native app (a debug build that loads its JavaScript from Metro), not Expo Go: Expo Go cannot load the library's native modules.

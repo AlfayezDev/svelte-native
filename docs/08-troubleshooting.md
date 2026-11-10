@@ -14,6 +14,7 @@ pnpm exec svelte-native doctor
 
 The failures you're likely to see:
 
+- **`node 25.0.0 does not satisfy ^22.17.0 || ^24.3.0 || >=26.0.0`.** Use Node 24 LTS (24.3 or newer), Node 22.17 or newer, or Node 26 or newer; see `ERR_PNPM_UNSUPPORTED_ENGINE` under [pnpm stops during install](#pnpm-stops-during-install) for why not 25.
 - **`svelte … is the stock Svelte: it has no ./renderer export`.** You have the registry's Svelte. Install the pinned build: `"svelte": "https://pkg.pr.new/svelte@216f258068d93170a927ad4d27ee6864b0b305c5"`.
 - **`react 19.2.6 does not satisfy 19.2.7`**, or any other peer. The versions are exact, because each patch is for one version. Set the version it asks for.
 - **`… is not applied`** for a patch. Copy the patch files from `node_modules/@rasheed/svelte-native/patches/` into `patches/svelte-native/` again and run `pnpm install`. A copy from an older release applies cleanly but doesn't have the fix.
@@ -55,6 +56,7 @@ A warning about a `main`, a script or a patch for a library at another version m
 
 ## pnpm stops during install
 
+- **`ERR_PNPM_UNSUPPORTED_ENGINE`**, as in `Unsupported engine for @react-native/babel-plugin-codegen@0.88.1: wanted: {"node":"^22.13.0 || ^24.3.0 || >= 26.0.0"} (current: {"node":"25.0.0"})` (the package named can be another `@react-native` or `metro` package). You are on Node 25. React Native 0.86.3 allows it, but asks for `@react-native/metro-config` by a range, so a fresh install takes 0.88, whose tools (and Metro 0.87) exclude Node 25, and `sv` writes `engineStrict: true`, so pnpm stops. It stops at the first `pnpm add`, before `svelte-native init` has pinned `@react-native/metro-config` to React Native's version, so `init` cannot fix it. Switch to Node 24 LTS (24.3 or newer; `mise use node@24`, `nvm install 24` or the installer from nodejs.org), Node 22.17 or newer, or Node 26 or newer, and run `pnpm add` again. On Node 22 before 22.17 the package named is `@sveltejs/kit` (`wanted: {"node":">=22.17"}`). Once the library is installed, `svelte-native doctor` fails Node 25 too, with the same advice.
 - **`ERR_PNPM_UNUSED_PATCH`.** A patch is declared for a package that isn't installed, or at another version. Remove the entry, or install the package at the version in the patch's file name. For `expo-modules-core` the usual cause is the missing `overrides` entry: `expo` asks for it by a range, so a fresh install takes a newer one.
 - **`ERR_PNPM_IGNORED_BUILDS`.** esbuild's install script isn't allowed. `sv` writes that setting for pnpm; if your project doesn't have it, add `allowBuilds: { esbuild: true }` to `pnpm-workspace.yaml`, or run `pnpm add --allow-build=esbuild <the library>` for the first install.
 - **A frozen lockfile in CI.** Declaring the patches changes the lockfile, and with `CI=1` pnpm refuses an install it would have to change. Run `pnpm install --no-frozen-lockfile` once, and commit `pnpm-lock.yaml`.

@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { resolve } from "node:path";
+import { existsSync, realpathSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
 import { packageRoot } from "../package-root.ts";
 import { runChecks, type Check, type Context, type Status } from "./checks.ts";
 
@@ -45,6 +46,30 @@ export function nodeVersion(): string | undefined {
   return version && /^\d+\.\d+\.\d+/.test(version) ? version : undefined;
 }
 
+/** The nearest directory at or above `directory` that has a pnpm-workspace.yaml: the root of the pnpm workspace it is in. */
+function workspaceRoot(directory: string): string | undefined {
+  for (let current = directory; ; current = dirname(current)) {
+    if (existsSync(join(current, "pnpm-workspace.yaml"))) return current;
+    if (dirname(current) === current) return undefined;
+  }
+}
+
+/**
+ * Whether the app is one of this repository's own (`apps/qa`, `apps/example`), which the repository's tools run: the library is `<repository>/packages/<name>` and the app is a
+ * member of the pnpm workspace at `<repository>`. Any other app, however it installs the library (a tarball, a git dependency, a `link:` to a checkout) and even
+ * `examples/minimal` inside the repository (a workspace root of its own), is judged by the Node an app needs.
+ */
+export function isRepositoryApp(appRoot: string, packageRoot: string): boolean {
+  const packages = dirname(packageRoot);
+  if (basename(packages) !== "packages") return false;
+  try {
+    const root = workspaceRoot(realpathSync(appRoot));
+    return root !== undefined && root === realpathSync(dirname(packages));
+  } catch {
+    return false;
+  }
+}
+
 /** The version `pnpm --version` prints in `directory`, or undefined when it cannot be run. */
 export function pnpmVersion(directory: string): string | undefined {
   const result = spawnSync("pnpm", ["--version"], { cwd: directory, encoding: "utf8", timeout: 60_000, shell: process.platform === "win32" });
@@ -74,6 +99,7 @@ export function runDoctor(root: string, args: readonly string[], out: Output = p
     packageRoot,
     node: nodeVersion(),
     pnpm: () => pnpmVersion(appRoot),
+    repository: isRepositoryApp(appRoot, packageRoot),
     ...context,
   });
   const failed = checks.some((check) => check.status === "fail");

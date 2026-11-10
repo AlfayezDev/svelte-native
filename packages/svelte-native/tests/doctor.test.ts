@@ -289,15 +289,43 @@ describe("Svelte", () => {
 });
 
 describe("the tools", () => {
-  test("an older Node fails, with what to install", () => {
-    const entry = find(check({}, { node: "24.9.0" }).checks, "node 24.9.0 does not satisfy");
-    expect(entry?.status).toBe("fail");
-    expect(entry?.fix).toContain("25.0.0");
+  // An app outside the repository: the Node a fresh install of an `sv create` project accepts (requirements.ts).
+  const accepted = ["22.17.0", "22.22.0", "24.3.0", "24.18.1", "26.0.0", "26.13.0"];
+  const refused = ["20.19.4", "22.16.0", "24.2.0", "25.0.0", "25.9.0"];
+
+  test("an app takes Node 22.17 and newer 22, Node 24.3 and newer 24, and Node 26 and newer", () => {
+    for (const node of accepted) expect(find(check({}, { node }).checks, `node ${node} (needs ^22.17.0 || ^24.3.0 || >=26.0.0)`)?.status, node).toBe("pass");
   });
 
-  test("a Node that cannot be found is not guessed", () => {
+  test("an app on any other Node fails, with the Node to install, and Node 25 with why it is not one", () => {
+    for (const node of refused) {
+      const entry = find(check({}, { node }).checks, `node ${node} does not satisfy ^22.17.0 || ^24.3.0 || >=26.0.0`);
+      expect(entry?.status, node).toBe("fail");
+      expect(entry?.fix, node).toContain("Node 24 LTS (24.3 or newer");
+      expect(entry?.fix, node).toContain("Node 25 is not supported");
+      expect(entry?.fix, node).toContain("ERR_PNPM_UNSUPPORTED_ENGINE");
+      expect(entry?.fix, node).not.toContain("25.0.0");
+    }
+  });
+
+  test("the repository's own apps need the repository's Node, 25 or newer", () => {
+    for (const node of ["25.0.0", "25.9.0", "26.13.0"]) expect(find(check({}, { node, repository: true }).checks, `node ${node} (needs >=25.0.0)`)?.status, node).toBe("pass");
+    for (const node of ["22.22.0", "24.18.1"]) {
+      const entry = find(check({}, { node, repository: true }).checks, `node ${node} does not satisfy >=25.0.0`);
+      expect(entry?.status, node).toBe("fail");
+      expect(entry?.fix, node).toContain("Node 25.0.0 or newer (the repository pins 25.0.0)");
+      expect(entry?.fix, node).not.toContain("Node 24 LTS");
+    }
+  });
+
+  test("a Node that cannot be found is not guessed, and the fix is the range's own", () => {
     const entry = find(check({}, { node: undefined }).checks, "could not run node");
     expect(entry?.status).toBe("unknown");
+    expect(entry?.message).toContain("needs ^22.17.0 || ^24.3.0 || >=26.0.0");
+    expect(entry?.fix).toContain("Node 24 LTS");
+    const own = find(check({}, { node: undefined, repository: true }).checks, "could not run node");
+    expect(own?.message).toContain("needs >=25.0.0");
+    expect(own?.fix).toContain("Node 25.0.0 or newer");
   });
 
   test("an older pnpm fails and a pnpm that cannot run is not a guess", () => {

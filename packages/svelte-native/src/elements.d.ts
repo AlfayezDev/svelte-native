@@ -64,7 +64,7 @@ type PressHandlerAttributes<Props> = {
   nativeOnLongPress?: Props extends { onLongPress?: infer Handler } ? Handler : unknown;
   nativeOnPressChange?: Props extends { onPressChange?: infer Handler } ? Handler : unknown;
 };
-type NativeElementAttributes<Props> = Omit<Props, "children" | "ref"> & GestureProps & PressHandlerAttributes<Props> & { nativeProps?: Record<string, unknown>; nativeStyle?: Props extends { style?: infer Style } ? Style : unknown; nativeClass?: unknown; ref?: HostRef };
+type NativeElementAttributes<Props> = Omit<Props, "children" | "ref"> & GestureProps & PressHandlerAttributes<Props> & { nativeProps?: Record<string, unknown>; nativeStyle?: Props extends { style?: infer Style } ? Style : unknown; nativeClass?: unknown; /** A style under the class and the style (an `<hr>`'s default). */ nativeBase?: unknown; /** Set by the lowering of an HTML element: text style inherits through it (`fabric/text-inherit.ts`). */ nativeHtml?: boolean; /** Set on a lowered `<form>`: submit buttons and Enter in its inputs fire its `submit` (`hostSubmit`). */ nativeForm?: boolean; ref?: HostRef };
 type ElementProps = NativeElementAttributes<Record<string, unknown>>;
 /**
  * What the engine's navigation container reads from a `native-screen` (see `fabric/navigation.ts`, SPEC.md "Navigation"

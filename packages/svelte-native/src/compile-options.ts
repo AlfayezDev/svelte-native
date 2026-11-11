@@ -77,6 +77,15 @@ export function runesOption(filename: string, enabled: boolean = runesDefaultEna
   return true;
 }
 
+/**
+ * Whether the Metro transformer lowers the HTML elements of `filename` (`<div>`, `<button>`, `<input>`, ... to native components, `lower-html.ts`): the app's own files do, the
+ * `.mobile.svelte` ones and the shared components of `src/lib` alike, and a package of the app's workspace (linked from outside `node_modules`) too. A library below `node_modules`
+ * keeps its markup as written, and the library's own components are written with the host tags. The web build never lowers (it does not load `lower.ts`), so a file still means HTML there.
+ */
+export function lowersHtml(filename: string): boolean {
+  return !IN_NODE_MODULES.test(filename) && !isLibrarySource(filename);
+}
+
 /** The renderer module the compiler's `experimental.customRenderer` names: what turns Svelte's DOM calls into host-node calls. */
 export const CUSTOM_RENDERER = "@example/svelte-native/renderer";
 

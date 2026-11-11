@@ -53,10 +53,10 @@ const stubs: Record<string, string> = {
   "react-native": "export const AppRegistry = { registerRunnable() {} };",
 };
 
-async function load() {
+async function load(fixture = "layout-animation-fixture.svelte") {
   const bundle = await build({
     stdin: {
-      contents: `import Fixture from './layout-animation-fixture.svelte';
+      contents: `import Fixture from './${fixture}';
         import { startSurface, flush, fabricStats } from '../src/fabric/host.ts';
         import { tick } from 'svelte';
         export { startSurface, flush, fabricStats, tick, Fixture };`,
@@ -87,7 +87,7 @@ async function load() {
 const find = (nodes: FakeNode[], name: string): FakeNode[] => nodes.flatMap((n) => [...(n.name === name ? [n] : []), ...find(n.children, name)]);
 const byId = (root: number, id: string) => find(roots[root] ?? [], "RCTView").find((n) => n.props.testID === id) as FakeNode;
 type App = { showEntering: () => void; swapLayout: () => void; dropExiting: () => void };
-const fresh = async () => { delete (globalThis as { __anim?: unknown }).__anim; roots = {}; configsAtCommit.length = 0; return load(); };
+const fresh = async (fixture?: string) => { delete (globalThis as { __anim?: unknown }).__anim; roots = {}; configsAtCommit.length = 0; return load(fixture); };
 const configs = () => log().layoutConfigs ?? [];
 
 test("entering is registered under a nativeID before the commit that inserts the node, and never reaches the payload", async () => {
@@ -141,4 +141,31 @@ test("entering appearing after the first mount is ignored, as in AnimatedCompone
   await m.tick();
   expect(configs().filter((c) => c.type === 1)).toHaveLength(before + 1); // the second node's own mount, not the first node's update
   expect(byId(44, "late").props.nativeID).toBeDefined();
+});
+
+test("an element that is made again as another component (a span of a run, then a text of its own) takes its layout animation to its new tag and lets the old view go", async () => {
+  const m = await fresh("remake-fixture.svelte");
+  const app = m.startSurface(45, m.Fixture, {}) as { setOn(value: boolean): void };
+  const remade = (): FakeNode => {
+    const walk = (nodes: FakeNode[]): FakeNode | undefined => { for (const node of nodes) { const found = node.props.testID === "remade" ? node : walk(node.children); if (found) return found; } return undefined; };
+    return walk(roots[45] ?? []) as FakeNode;
+  };
+  const first = remade();
+  expect(first.name).toBe("RCTText");
+  expect(configs().map((c) => [c.viewTag, c.type, c.config])).toEqual([[first.tag, 3, { move: "a" }]]);
+  expect(log().removable).toHaveLength(0);
+  app.setOn(true);
+  await m.tick();
+  const second = remade();
+  expect(second.name).toBe("RCTVirtualText");
+  expect(second.tag).not.toBe(first.tag);
+  // The layout config of the new view is registered by the new tag, and the old view's animation record was let go of (its shadow node is marked removable).
+  expect(configs().at(-1)).toMatchObject({ viewTag: second.tag, type: 3, config: { move: "a" } });
+  expect(log().removable).toHaveLength(1);
+  app.setOn(false);
+  await m.tick();
+  const third = remade();
+  expect(third.name).toBe("RCTText");
+  expect(configs().at(-1)).toMatchObject({ viewTag: third.tag, type: 3 });
+  expect(log().removable).toHaveLength(2);
 });

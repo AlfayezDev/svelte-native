@@ -25,6 +25,8 @@ export const captureSpecs: Record<string, CaptureSpec> = {
   "dev-animation": { goto: `${lab}?panel=animation` },
   // Pushed screens sit on the lab page, as they do when the app opens them from a link, so they have a screen to go back to.
   "lab-screen": { base: lab, goto: `${lab}/screen` },
+  "html-elements": { base: lab, goto: `${lab}/html` },
+  "transitions": { base: lab, goto: `${lab}/transitions` },
   "screens-menu": { base: lab, goto: screens },
   "screens-header": { base: lab, goto: `${screens}?mode=header&depth=1` },
   "screens-slots": { base: lab, goto: `${screens}?mode=slots` },

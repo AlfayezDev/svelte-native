@@ -10,8 +10,8 @@ import { detailRecords, progressRecord, skipEntry } from "./foreign-records.ts";
 import { smokeLaunch } from "./smoke-log.ts";
 
 /**
- * The `foreign-libraries` stress scenario (SPEC.md, "Foreign views", "Device verification of the libraries"): each of the thirteen native-view
- * libraries is mounted in each of the three places the lab has (inline, a row of the windowed `List`, a native sheet) and checked there
+ * The `foreign-libraries` stress scenario (SPEC.md, "Foreign views", "Device verification of the libraries"): each of the fourteen native-view
+ * libraries (the thirteen and the library's own blur) is mounted in each of the three places the lab has (inline, a row of the windowed `List`, a native sheet) and checked there
  * (`foreign-libraries-checks.ts`): it mounts, a prop update changes the native view, it raises its events, its commands work. Every check is
  * logged on a line of its own (`[Svelte foreign library]`, which `qa/lib/foreign.ts` reads), and the scenario's result carries the failures.
  * The page is `/__dev/foreign?mode=libraries|libraries-list|libraries-sheet`; this file drives it through the router, `libraryLab` and `libraryHandles`.
@@ -112,6 +112,8 @@ export async function runForeignLibraries(router: Router, signal: AbortSignal, o
         canInspect: android ? typeof engine?.inspect === "function" : typeof qaIos?.inspect === "function",
         canLook: !!pixels,
         canTap: android && typeof engine?.tap === "function",
+        // `RenderEffect` (the built-in blur's way to blur on Android) starts at API 31; Platform.Version is the API level there.
+        canBlur: !android || Number(Platform.Version) >= 31,
         picker: (action, milliseconds) => {
           const target = libraryHandles.get(opened.source)?.hosts[kind];
           return target && typeof qaIos?.datePicker === "function" ? qaIos.datePicker(target.tag, action, milliseconds) : null;

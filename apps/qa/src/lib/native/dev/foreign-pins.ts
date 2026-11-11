@@ -40,6 +40,10 @@ export const pins = {
   // `ExpoBlurView` (the component) is a container `View` (it takes children) holding the library's `ExpoBlurView` (an `ExpoView`, whose `BlurEffectView` is a `UIVisualEffectView`): the section's handle names
   // the container, and the library's view is below it, read by its Swift name (the module-qualified `ExpoBlur.ExpoBlurView` is what `NSStringFromClass` would say of a handle's own view).
   blur: { inside: "ExpoBlurView", ios: { inside: "ExpoBlurView" } },
+  // The library's own blur: `BlurView` is a container `View` (the handle) with `SvelteBlurView` behind its children (Android: `expo.modules.svelteblur.SvelteBlurView`, an `ExpoView`; iOS: the Swift class
+  // `SvelteBlurView`, an `ExpoView` whose first subview is the `UIVisualEffectView`), read below the container by its simple name. The iOS spelling is from the Swift source (`String(describing:)` has no
+  // module), not from a phone's tree yet: `qa/test/ios-foreign-pins.test.ts` lists the library as unrecorded until the first iPhone run puts its tree into `samples/ios-foreign-trees.json`.
+  svelteblur: { inside: "SvelteBlurView", ios: { inside: "SvelteBlurView" } },
   gradient: { inside: "LinearGradientView", ios: { inside: "LinearGradientView" } },
   // A Paper view manager: React Native's interop component view holds `RCTVideo`.
   video: { host: "com.brentvatne.exoplayer.ReactExoplayerView", ios: { host: "RCTLegacyViewManagerInteropComponentView", inside: "RCTVideo" } },

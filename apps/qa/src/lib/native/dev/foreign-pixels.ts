@@ -45,6 +45,72 @@ export const clear = (pixel: number): boolean => argb(pixel).a <= 4;
 export const solid = (pixel: number): boolean => argb(pixel).a >= 250;
 
 /**
+ * How the built-in blur's checks read a stripe edge (`foreign-libraries-checks.ts`, `svelteblur`). [colors] are the pixels of a capture at four points on a row across the edge between
+ * two stripes: [outer left, inner left, inner right, outer right], the inner pair a little way from the edge on each side (1.2 % of the box's width, 4 to 5 dp) and the outer pair further out
+ * (7 %, 25 to 28 dp). `near` is how far apart the inner pair looks and `far` the outer pair (the largest difference of one colour channel, 0 to 255). A tint takes the same share off the contrast of
+ * both pairs, so `near / far` ([edgeRatio]) is what the blur alone did: it does not move with a tint, a wash or a change of brightness.
+ *  - A hard edge (nothing over it) has both pairs straddling the line: the ratio is 1, and with the red and yellow of the lab both are 145.
+ *  - A Gaussian blur of standard deviation s smears the line over about 2 s: the inner pair sees erf(d / (s sqrt 2)) of the step and the outer pair the same for its larger distance. The ratio for a box
+ *    of 360 dp is 0.20 at s = 25 dp (intensity 100 on Android), 0.28 at 12.5 dp (intensity 50), 0.39 at 8.3 dp and 1 as s goes to 0.
+ *  - A tint alone (Android below 12, which draws it where it cannot blur) keeps the line and lowers the contrast: the ratio is still 1, and `near` falls as the tint grows.
+ */
+export type EdgeRead = { near: number; far: number };
+export function readEdge(colors: readonly number[]): EdgeRead {
+  const [outerLeft = 0, innerLeft = 0, innerRight = 0, outerRight = 0] = colors;
+  return { near: distance(argb(innerLeft), argb(innerRight)), far: distance(argb(outerLeft), argb(outerRight)) };
+}
+/** `near / far`, the part of the step the inner pair sees; null when the outer pair shows no step to speak of (under 10: a hole, or nothing behind). */
+export const edgeRatio = (read: EdgeRead): number | null => (read.far >= 10 ? read.near / read.far : null);
+/** A hard edge in the stripes' own colours: both pairs are a full step apart (the red and yellow differ by 145). */
+export const edgeHard = (read: EdgeRead): boolean => read.near >= 100 && read.near >= read.far * 0.85;
+/** A hard edge, tinted or not: the line is there (the outer pair shows 60 or more of the 145) and the inner pair sees nearly all of what the outer one does. The edge of a view that is not blurring. */
+export const edgeSharp = (read: EdgeRead): boolean => read.far >= 60 && read.near >= read.far * 0.85;
+/**
+ * The bounds of the ratio at intensity 100, by platform. Android's is 0.35, from `BlurRules.kt` (`native/svelte-blur`): `MAX_RADIUS_DP = 25` and `radius(intensity, density, scale) = intensity / 100 * MAX_RADIUS_DP
+ * * density * scale` with `scale = 1 / DIVISOR` (`DIVISOR = 4`: the picture of what is behind the view is a quarter of its size and drawn four times larger), so the render effect blurs by 25 dp at intensity 100
+ * (12.5 at 50; at 1 it is 0.16 px of the picture, under `MIN_EFFECT_RADIUS = 0.5`, and there is no effect). `RenderEffect.createBlurEffect` takes the radius as the Gaussian's standard deviation, which
+ * gives a ratio of 0.20 in a box of 360 dp (0.19 to 0.22 from 300 to 400); 0.35 is what a blur of 8 dp would give, a third of the blur the rules ask for, which the check must not accept. (If the platform
+ * read the radius as a blur radius and made a sigma of 0.577 r + 0.5, the ratio would be 0.25: inside the bound.) iOS's is the looser 0.5, TO BE TIGHTENED after the first iPhone run has said what
+ * a `UIBlurEffect` at full strength gives (its radius is the system's, not ours).
+ */
+export const gradualBound = { android: 0.35, ios: 0.5 } as const;
+/** A gradual edge: some step is there at all (the outer pair differs by 10 or more) and the inner pair sees at most [bound] of it (`gradualBound`). */
+export const edgeGradual = (read: EdgeRead, bound: number): boolean => read.far >= 10 && read.near <= read.far * bound;
+/** A hard edge under a light tint (Android below 12 draws no blur): the line is there (20 or more, the tint takes up to three quarters of 145) and the red stripe's green (72) has been lifted towards white. */
+export const edgeUnderTint = (colors: readonly number[], read: EdgeRead): boolean => read.near >= 20 && read.near >= read.far * 0.85 && argb(colors[0] ?? 0).g > 140;
+/** The sum of a pixel's red, green and blue: a light tint over a stripe is far above a dark one. */
+export const brightness = (pixel: number): number => { const { r, g, b } = argb(pixel); return r + g + b; };
+/**
+ * How much each intensity may differ from the next in `ratio`, by platform: the ratio at 50 is above the one at 100 by [lower] and below the one at 1 by [upper]. Android's lower is 0.03: the two differ by
+ * 0.07 to 0.09 in a box of 330 to 400 dp (0.20 against 0.28) and 8-bit pixels move a ratio by about 0.02. iOS's are small ones, TO BE TIGHTENED with the first iPhone run.
+ */
+export const betweenMargin = { android: { lower: 0.03, upper: 0.25 }, ios: { lower: 0.005, upper: 0.05 } } as const;
+/** The ratio at 50 sits between the ratios at 100 and at 1 (`betweenMargin`): a blur whose radius follows the intensity. */
+export function ratioBetween(full: number | null, half: number | null, weak: number | null, margin: { lower: number; upper: number }): boolean {
+  return full !== null && half !== null && weak !== null && half >= full + margin.lower && half <= weak - margin.upper;
+}
+/**
+ * The horizontal band behind the built-in blur (`LibrarySet.svelte`): a near-black band across the box from 30 % to 42 % of its height, over the stripes. Six points (`bandPoints`: columns at 3 % of the
+ * width, outside the blur's box, and 12 %, inside it; rows at 24 %, 36 % and 48 %: 6 % of the height, about 6 dp, above the band, in it and below it) say whether the band is where it is: the same
+ * pattern, bright dark bright, in both columns. Read at intensity 1 (almost nothing blurs but the picture of what is behind is still the one drawn), a picture that sits higher or lower than the box by 6 dp or more
+ * moves the edge past a row and breaks the pattern.
+ */
+export const bandPoints: readonly (readonly [number, number])[] = [[0.03, 0.24], [0.03, 0.36], [0.03, 0.48], [0.12, 0.24], [0.12, 0.36], [0.12, 0.48]];
+/**
+ * Whether the six pixels of `bandPoints` are bright, dark, bright in each column: the band is darker than the stripe above it and the one below it by 120 (the sum of the channels), with or without a
+ * tint over it (red 378 and the band 54 differ by 324, and a white tint of 0.30, the lightest the fallback draws, leaves 227 of it).
+ */
+export function bandInPlace(colors: readonly number[]): boolean {
+  if (colors.length !== bandPoints.length) return false;
+  const bright = colors.map((pixel) => brightness(pixel));
+  const column = (offset: number) => {
+    const [above, within, below] = [bright[offset] ?? 0, bright[offset + 1] ?? 999, bright[offset + 2] ?? 0];
+    return within + 120 <= Math.min(above, below);
+  };
+  return column(0) && column(3);
+}
+
+/**
  * The first number in a text (`count 23` -> 23), or null: the animated text's native string is read as a number to say whether it advanced.
  */
 export function numberIn(text: string | null | undefined): number | null {
@@ -55,8 +121,9 @@ export function numberIn(text: string | null | undefined): number | null {
 /**
  * Takes [take] again, [every] ms apart, until [wanted] holds for what it gave or [ms] have passed since the first call, and answers the last result with how many calls it took and how long
  * it waited. A library that says it has loaded or is playing before its first frame has reached a capture (Rive's `onPlay` comes when the file is set up, not when a frame is drawn) is
- * waited for; a view that never draws still ends with its last result, for the check to name. A [take] that gives null (a capture that failed or gave no pixels) ends it at once: that is
- * not lateness. With no time ([ms] 0) it is one call.
+ * waited for; a view that never draws still ends with its last result, for the check to name. A [take] that gives null (a capture that failed or gave no pixels) is taken again like any other
+ * result that is not wanted, until the time is up: the GPU frame of a capture times out after 3 s and the engine draws the next one in software (`Capture.kt`), so a failed capture is often the first of two.
+ * With no time ([ms] 0) it is one call.
  */
 export async function untilTaken<T>(
   take: () => Promise<T | null>,
@@ -70,7 +137,7 @@ export async function untilTaken<T>(
   for (let calls = 1; ; calls++) {
     const taken = await take();
     const waited = now() - start;
-    if (taken === null || wanted(taken) || waited >= ms) return { taken, calls, waited };
+    if ((taken !== null && wanted(taken)) || waited >= ms) return { taken, calls, waited };
     await pause(every);
   }
 }

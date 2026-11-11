@@ -452,7 +452,7 @@ describe("gates.json", () => {
 		}
 		expect(bar("frames.maxMs")).toEqual({ android: { max: 33 }, ios: { max: 33 } });
 		expect(bar("list.virtual300.mountMs")).toEqual({ android: { max: 10 }, ios: { max: 15 } });
-		expect(bar("checks.passed")).toEqual({ android: { min: 28 }, ios: { min: 28 } });
+		expect(bar("checks.passed")).toEqual({ android: { min: 49 }, ios: { min: 49 } });
 		expect(bar("log.fatals")).toEqual({ android: { max: 0 }, ios: { max: 0 } });
 		expect(bar("log.engineWarnings")).toEqual({ android: { max: 0 }, ios: { max: 0 } });
 	});

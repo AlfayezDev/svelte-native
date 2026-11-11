@@ -437,6 +437,31 @@ function longPressChecks(_rounds: Snapshot[], steps: Snapshot[][]): Check[] {
 
 const doneAfter = ({ box, index }: LongPressStep) => (s: Snapshot) => counterOf(s, `${box}.long`).finalize >= index + 1 && counterOf(s, `${box}.tap`).finalize >= index + 1;
 
+/**
+ * `gestures-span`: three taps on a paragraph of two lines with a link that begins the second. The link's press counts under `link`, the paragraph's under `paragraph`; each step is over when the tap has been
+ * counted at all (`area.tap`). A tap on the link goes to the link and not also to the paragraph (a press goes to the span under the finger), a tap on the first line and one on the plain words at the end of the
+ * second go to the paragraph and not to the link (a tap beside the link, on its line, is not on it).
+ */
+const SPAN_STEPS = [
+  { name: "tap the link", at: at("sentence", 0, 0.75, 30), link: 1, paragraph: 0 },
+  { name: "tap the first line", at: at("sentence", 0, 0.25, 30), link: 0, paragraph: 1 },
+  { name: "tap beside the link, on its line", at: at("sentence", 0.97, 0.75), link: 0, paragraph: 1 },
+] as const;
+
+function spanChecks(_rounds: Snapshot[], steps: Snapshot[][]): Check[] {
+  const snapshots = steps[0] ?? [];
+  const checks: Check[] = [];
+  SPAN_STEPS.forEach((entry, index) => {
+    const after = snapshots[index];
+    if (!after) return checks.push(check(`${entry.name} was injected`, false));
+    const before = index === 0 ? null : (snapshots[index - 1] ?? null);
+    const link = delta(after, before, "link").start;
+    const paragraph = delta(after, before, "paragraph").start;
+    checks.push(check(`${entry.name}: the link presses ${entry.link}, the paragraph ${entry.paragraph}`, link === entry.link && paragraph === entry.paragraph, `${link}, ${paragraph}`));
+  });
+  return checks;
+}
+
 function scrollNativeChecks(rounds: Snapshot[], _steps: Snapshot[][], context: EvalContext): Check[] {
   const s = rounds[0] as Snapshot;
   const pan = counterOf(s, "pan");
@@ -548,6 +573,11 @@ export const scenarios: ScenarioSpec[] = [
     name: "gestures-scroll-native", mode: "scroll-native", label: "Pan simultaneous with the Native gesture of a ScrollView",
     rounds: [{ id: "scroll-native", steps: [step("drag the scroll view", drag(at("scroll", 0.5, 0.75), [0, -250], 400), (s) => counterOf(s, "pan").finalize >= 1 && counterOf(s, "native").finalize >= 1, 900)] }],
     evaluate: scrollNativeChecks,
+  }),
+  spec({
+    name: "gestures-span", mode: "span", label: "A paragraph with a link: a press goes to the span under the finger, a press beside it to the paragraph",
+    rounds: [{ id: "span", steps: SPAN_STEPS.map((entry, index) => step(entry.name, { kind: "tap", at: entry.at }, (s) => counterOf(s, "area.tap").finalize >= index + 1, 400, 6000)) }],
+    evaluate: spanChecks,
   }),
   spec({
     name: "gestures-churn", mode: "churn", label: `${CHURN_ROUNDS} mounts and unmounts of a view with three gestures, half on the UI thread`,

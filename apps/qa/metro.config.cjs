@@ -16,7 +16,10 @@ const variant = process.env.APP_VARIANT || "qa";
 const smoke = variant === "smoke";
 const product = variant === "production";
 
+// `css`: the classes of src/global.css (Tailwind's and the lab's own) as React Native styles, for `class`; the checks of the native checks lab read what they became on the device
+// (src/lib/native/dev/class-checks.ts). Only the lab uses them, so the product has no class table (Tailwind reads every word of src/ as a candidate: the table would be bytes the product never reads).
 module.exports = withSvelteNative(getDefaultConfig(__dirname), {
+  css: product ? undefined : "src/global.css",
   stubbedPackages: smoke ? [] : smokeOnlyBundlePackages,
   stubbedFiles: smoke ? [] : [path.join(__dirname, "src/lib/native/dev/smoke-checks.ts")],
   stubbedDirectories: product ? [path.join(__dirname, "src/lib/native/dev"), path.join(__dirname, "src/routes/__dev")] : [],

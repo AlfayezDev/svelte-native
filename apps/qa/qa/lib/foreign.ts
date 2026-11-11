@@ -33,6 +33,9 @@ export async function foreignPins(platform: Platform): Promise<ForeignPins> {
 export const libraryModules: Record<string, RegExp[]> = {
 	image: [/\/node_modules\/expo-image\//],
 	blur: [/\/node_modules\/expo-blur\//],
+	// The library's own blur needs no package, and no other blur library's JavaScript is in the bundle either (expo-blur's belongs to `blur` above and fails that library alone: a bundle's module list says what the
+	// app carries, not which section imported it). That the built-in blur's own wrapper does not reach expo-blur's is held where it can be told, in its imports (`importClosure`, `expoBlurReaches`).
+	svelteblur: [/\/node_modules\/(?:@react-native-community\/blur|react-native-blur|@sbaiahmed1\/react-native-blur|react-native-blur-view|@react-native-masked-view\/masked-view)\//],
 	gradient: [/\/node_modules\/expo-linear-gradient\//],
 	video: [/\/node_modules\/react-native-video\//],
 	datetime: [/\/node_modules\/@react-native-community\/datetimepicker\//],
@@ -45,6 +48,41 @@ export const libraryModules: Record<string, RegExp[]> = {
 	text: [/\/node_modules\/react-native-animateable-text\//],
 	svg: [/\/node_modules\/react-native-svg\/(?!src\/lib\/)/],
 };
+
+/**
+ * What the files of the built-in blur's wrapper (`BlurView.svelte`) reach by their value imports, following the library's own relative imports: the paths of the files and the names of the packages. A type-only
+ * import is erased and reaches nothing. [read] gives a file's text or undefined for one that does not exist, so a test can hand it a file map.
+ */
+export function importClosure(entry: string, read: (path: string) => string | undefined): { files: string[]; packages: string[] } {
+	const files = new Set<string>();
+	const packages = new Set<string>();
+	const pending = [entry];
+	while (pending.length > 0) {
+		const path = pending.pop() as string;
+		if (files.has(path)) continue;
+		const text = read(path);
+		if (text === undefined) continue;
+		files.add(path);
+		for (const match of text.matchAll(/^[ \t]*(?:import|export)\s+(?!type\b)(?:[^;'"]*?\sfrom\s+)?["']([^"']+)["']/gm)) {
+			const specifier = match[1] as string;
+			if (!specifier.startsWith(".")) packages.add(specifier);
+			else pending.push(resolvePath(dirnameOf(path), specifier));
+		}
+	}
+	return { files: [...files].sort(), packages: [...packages].sort() };
+}
+const dirnameOf = (path: string): string => path.slice(0, Math.max(0, path.lastIndexOf("/")));
+const resolvePath = (directory: string, relative: string): string => {
+	const parts = directory.split("/");
+	for (const part of relative.split("/")) {
+		if (part === "..") parts.pop();
+		else if (part !== ".") parts.push(part);
+	}
+	return parts.join("/");
+};
+
+/** What the built-in blur's wrapper must not reach: expo-blur's wrapper components and their view config in the library, and the package. */
+export const expoBlurReaches: readonly RegExp[] = [/\/ExpoBlurView\.svelte$/, /\/BlurTargetView\.svelte$/, /\/foreign-blur\.ts$/, /^expo-blur(?:\/|$)/];
 
 const reactFile = /\/node_modules\/(?:\.pnpm\/[^/]+\/node_modules\/)?(?:react|react-dom|react-reconciler|scheduler|react-is)\//;
 

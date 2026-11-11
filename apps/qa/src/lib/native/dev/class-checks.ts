@@ -16,18 +16,18 @@ export type Style = Record<string, unknown>;
 export type HostNode = { getProp(key: string): unknown; peekProps(): Readonly<Record<string, unknown>> };
 export type Outcome = { passed: boolean; detail: string };
 
-/** The names of the class checks, in the order the lab runs them: `qa/test/class-checks.test.ts` pins their number (the lab's count of functional checks is 28 and this many) and their length (logcat cuts the lab's result line near 4 KB). */
+/** The names of the class checks, in the order the lab runs them: `qa/test/class-checks.test.ts` pins their number (the lab's count of functional checks is 28, these and the HTML checks) and their length (logcat cuts the lab's result line near 4 KB). */
 export const classCheckNames = [
   "class p-4: padding 16 on the four sides",
-  "class p-4 reaches the layout: the child sits 16 dp in from each side",
-  "class bg-sky-500/50: the colour of sky-500 at half opacity",
-  "class md: and max-md: follow the window width (p-2 md:p-10, p-2 max-md:p-10)",
-  "class dark: follows the scheme (bg-white dark:bg-zinc-900)",
-  "a class of our own in the components layer, with a dark override",
-  "a utility next to a components class wins (qa-card p-6)",
-  "an inline style wins over the classes (bg-zinc-400)",
-  "class arrays and objects follow a state change (p-4, p-8)",
-  "class text-lg: font size 18 and a line height made from it",
+  "p-4 reaches the layout (child 16 dp in)",
+  "bg-sky-500/50 is sky-500 at half opacity",
+  "md: and max-md: follow the window width",
+  "dark:bg-zinc-900 follows the scheme",
+  "own class: components layer, dark override",
+  "a utility beats a components class",
+  "an inline style wins over the classes",
+  "class arrays and objects follow state",
+  "text-lg: size 18, line height from it",
 ] as const;
 
 /** A style value (an object, or arrays and falsy values of them) as one object: the later entry wins a key, `false`, `null` and `undefined` are skipped, as React Native flattens it. */

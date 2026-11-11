@@ -16,10 +16,11 @@
   import PinchRotate from "#lib/native/dev/gestures/PinchRotate.svelte";
   import Row from "#lib/native/dev/gestures/Row.svelte";
   import ScrollNative from "#lib/native/dev/gestures/ScrollNative.svelte";
+  import Span from "#lib/native/dev/gestures/Span.svelte";
   import Sheet from "#lib/native/dev/gestures/Sheet.svelte";
 
   /**
-   * The gesture lab (SPEC.md, "Gestures"): `/__dev/gestures?mode=<box|box-js|pinch-rotate|row|carousel|pushed-edge|sheet|longpress-tap|scroll-native|churn>`.
+   * The gesture lab (SPEC.md, "Gestures"): `/__dev/gestures?mode=<box|box-js|pinch-rotate|row|carousel|pushed-edge|sheet|longpress-tap|scroll-native|span|churn>`.
    * `&js=busy` blocks the JavaScript thread 40 ms of every 50 while the gesture runs, `&round=<n>` picks a round of a scenario that has
    * several (`pushed-edge`), `&drive=<adb|qa|xctest>` says who injects the input (`qa`: this page, through `SvelteQaTouch`, Android's QA
    * variant only; `adb` and `xctest`: the harness, which reads the `[Svelte gesture] ready` lines) and `&managed=1` leaves the start to
@@ -166,6 +167,8 @@
     <LongPressTap {session} {probe} />
   {:else if mode === "scroll-native"}
     <ScrollNative {session} {probe} />
+  {:else if mode === "span"}
+    <Span {session} {probe} />
   {:else if mode === "churn"}
     <Churn {session} />
   {/if}

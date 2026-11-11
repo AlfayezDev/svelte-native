@@ -226,8 +226,10 @@ export function setInvalidationSink(sink: ((node: NativeNode, reason: Invalidati
 
 let refSink: ((node: NativeNode) => void) | null = null;
 /**
- * The host hears of a `ref` (the attribute, or the one in `nativeProps` a component hands its view) the moment it is set, which is while Svelte builds the element: the handle is
- * given then, so `onMount` and effects find it, and not a microtask later, when the host builds the view (`fabric/host.ts`, `earlyRef`).
+ * The host hears of a `ref` (the attribute, or the one in `nativeProps` a component hands its view) when the element is in a tree that is on a surface: the moment it is set if it is, and
+ * the moment it gets there if not (Svelte sets the attributes of an element while it builds the subtree it is in, and links the subtree into the screen after). The handle is given then, so
+ * `onMount` and effects find it, and not a microtask later, when the host builds the view (`fabric/host.ts`, `earlyRef`). An element that is in no screen yet (what a `fork()` builds
+ * off screen, `router.prepare`) hears nothing until it is: a screen that is dropped never calls its refs.
  */
 export function setRefSink(sink: ((node: NativeNode) => void) | null): void { refSink = sink; }
 
@@ -261,6 +263,10 @@ export class NativeNode {
   hostState: unknown = null;
   /** The host's own root of a surface: the one node it hears about before it has built anything under it. */
   surfaceRoot = false;
+  /** How many nodes of this subtree (this one too) have a `ref` that the host has not heard of, because the subtree is in no screen yet (`giveRefs`). */
+  waiting = 0;
+  /** This node's `ref` is one of those. */
+  refWaits = false;
   private children: readonly NativeNode[] = noChildren;
   private childrenStale = false;
   private snapshot: Snapshot | null = null;
@@ -295,7 +301,14 @@ export class NativeNode {
     if (this.propsShared) { this.props = { ...this.props }; this.propsShared = false; }
     this.props[key] = value;
     this.invalidate("props");
-    if ((key === "ref" || key === "nativeProps") && refSink !== null) refSink(this);
+    if ((key === "ref" || key === "nativeProps") && refSink !== null) {
+      if (onScreen(this)) refSink(this);
+      else if (!this.refWaits) {
+        // Counted in the subtrees above it, which a link and an unlink carry on (`link`, `unlink`).
+        this.refWaits = true;
+        carryWaiting(this, 1);
+      }
+    }
   }
 
   removeProp(key: string): void {
@@ -343,9 +356,34 @@ export class NativeNode {
   }
 }
 
+/** What waits for a screen in a subtree is counted in the node and in every node above it. */
+function carryWaiting(from: NativeNode | null, by: number): void {
+  for (let at = from; at; at = at.parent) at.waiting += by;
+}
+
+/** Whether the node is in a tree that hangs from the root of a surface. */
+function onScreen(node: NativeNode): boolean {
+  let top = node;
+  while (top.parent) top = top.parent;
+  return top.surfaceRoot;
+}
+
+/** The refs of a subtree that has just reached a screen are given to the host, parents first. */
+function giveRefs(node: NativeNode): void {
+  if (node.waiting === 0) return;
+  node.waiting = 0;
+  if (node.refWaits) {
+    node.refWaits = false;
+    refSink?.(node);
+  }
+  for (let child = node.firstChild; child; child = child.nextSibling) giveRefs(child);
+}
+
 function unlink(node: NativeNode): void {
   const parent = node.parent;
   if (!parent) return;
+  // What waits in the subtree is no longer waited for above it.
+  if (node.waiting > 0) carryWaiting(parent, -node.waiting);
   const { previousSibling, nextSibling } = node;
   if (previousSibling) previousSibling.nextSibling = nextSibling;
   else parent.firstChild = nextSibling;
@@ -375,6 +413,11 @@ function link(parent: NativeNode, node: NativeNode, anchor: NativeNode | null): 
     parent.lastChild = node;
   }
   parent.childrenChanged();
+  if (node.waiting > 0) {
+    // A subtree with refs that reach a screen gives them to the host; one that does not carries the count to the subtrees above.
+    if (onScreen(parent)) giveRefs(node);
+    else carryWaiting(parent, node.waiting);
+  }
 }
 
 function insert(parent: NativeNode, node: NativeNode, anchor: NativeNode | null): void {

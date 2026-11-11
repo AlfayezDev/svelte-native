@@ -19,7 +19,7 @@ Notable changes to `@rasheed/svelte-native`, newest first. The format follows [K
 
 ### Changed
 
-- A `ref` is called as soon as the element is made (it was a microtask later, when the host built the view), so `onMount` and effects find the handle; `focus()`, `measure` and the other native methods of a handle asked before the view is on the screen wait for it. A handle is an object of its own kind, so a `$state` array holds the handle itself, not a proxy of it.
+- A `ref` is called as soon as the element is on the screen (it was a microtask later, when the host built the view), so `onMount` and effects find the handle (an element of a screen that `router.prepare` builds off screen hears nothing until the screen is committed); `focus()`, `measure` and the other native methods of a handle asked before the view is on the screen wait for it. A handle is an object of its own kind, so a `$state` array holds the handle itself, not a proxy of it.
 - A view inside a text starts a new text under it, as in React Native: a `Text` in a `View` in a `Text` is a text, not a span of the outer one.
 - Edits of the lowering that start at the same place apply the longer one first; `<View class:on={x} {...rest} />` (the directive first, a spread after it) was written wrongly. A multi-line `class:` directive no longer moves the lines below it.
 - `bind:this` on a lowered `<View>`, `<Text>`, `<ScrollView>`, ... is a `ref` now. It was left as `bind:this` on a host tag, which Svelte's custom renderer refuses ("`bind:` is not compatible with `customRenderer`"), so a component with one did not build. The variable gets the host handle (`measure`, `scrollTo`, ...) and `null` when the element is destroyed.

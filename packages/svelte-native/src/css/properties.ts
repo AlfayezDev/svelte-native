@@ -30,12 +30,18 @@ type LengthOptions = { percent?: boolean; keywords?: Record<string, number | str
 
 /** What a handler works with: the declaration's property (for reports), the environment and the result it writes to. */
 class Declaration {
-  constructor(
-    readonly property: string,
-    readonly env: Env,
-    readonly out: Result,
-    private readonly report: Report,
-  ) {}
+  // Fields, not parameter properties: Node strips the types of a file it loads itself (the transformer from the sources, `lower-html.ts` through `inline.ts`) and does not do those.
+  readonly property: string;
+  readonly env: Env;
+  readonly out: Result;
+  private readonly report: Report;
+
+  constructor(property: string, env: Env, out: Result, report: Report) {
+    this.property = property;
+    this.env = env;
+    this.out = out;
+    this.report = report;
+  }
 
   fail(reason: string): void {
     this.report(this.property, reason);

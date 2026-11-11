@@ -1068,13 +1068,14 @@ var merge = (a, b, sign) => {
 };
 var scale = (q, factor) => Object.fromEntries(Object.entries(q).map(([k, v]) => [k, v * factor]));
 var Evaluator = class _Evaluator {
+  pos = 0;
+  // Fields, not parameter properties: Node strips the types of a file it loads itself (the transformer from the sources) and does not do those.
+  text;
+  remPx;
   constructor(text, remPx) {
     this.text = text;
     this.remPx = remPx;
   }
-  text;
-  remPx;
-  pos = 0;
   run() {
     try {
       const q = this.sum();
@@ -1271,16 +1272,17 @@ function own(table, key) {
   return Object.hasOwn(table, key) ? table[key] : void 0;
 }
 var Declaration = class {
+  // Fields, not parameter properties: Node strips the types of a file it loads itself (the transformer from the sources, `lower-html.ts` through `inline.ts`) and does not do those.
+  property;
+  env;
+  out;
+  report;
   constructor(property, env, out, report) {
     this.property = property;
     this.env = env;
     this.out = out;
     this.report = report;
   }
-  property;
-  env;
-  out;
-  report;
   fail(reason) {
     this.report(this.property, reason);
   }

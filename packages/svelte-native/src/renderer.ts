@@ -1,5 +1,6 @@
 import { createRenderer } from "svelte/renderer";
 import { classStyle } from "./classes.ts";
+import { inputTypeProps } from "./html-input.ts";
 
 type Listener = (...args: unknown[]) => void;
 export type Snapshot = {
@@ -56,9 +57,13 @@ export function hostClass(value: unknown, style?: unknown): unknown {
  * with the toggles of the element's `class:name` directives (`lower.ts`).
  */
 export function hostSpread<T extends object>(props: T, toggles?: Record<string, unknown>): T {
+  return spread(props, toggles, false);
+}
+
+function spread<T extends object>(props: T, toggles: Record<string, unknown> | undefined, defer: boolean): T {
   const copy = { ...props } as Record<string, unknown>;
   if ("class" in copy) {
-    const fromClass = classStyle(toggles === undefined ? copy.class : [copy.class, toggles], copy.style);
+    const fromClass = classStyle(toggles === undefined ? copy.class : [copy.class, toggles], copy.style, defer);
     delete copy.class;
     if (fromClass !== undefined) copy.nativeClass = fromClass;
   }
@@ -67,6 +72,117 @@ export function hostSpread<T extends object>(props: T, toggles?: Record<string, 
     if (typeof value === "function" && !handledBySvelte(key)) copy[key] = boxOf(value as never);
   }
   return copy as T;
+}
+
+/**
+ * The spread of an HTML element the lowering turned into a host tag (`lower-html.ts`): `hostSpread`, and a web handler name in the props is the native one (`onclick` is
+ * `onPress`), so `<button {...rest}>` presses when its parent gave `rest` an `onclick`, as a browser's does. The style of a `class` in it keeps its font-relative values
+ * for the host, as `hostHtmlClass` does.
+ */
+export function hostWebSpread<T extends object>(props: T, toggles?: Record<string, unknown>): T {
+  const copy = spread(props, toggles, true) as Record<string, unknown>;
+  if ("onclick" in copy) {
+    copy.onPress ??= copy.onclick;
+    delete copy.onclick;
+  }
+  return copy as T;
+}
+
+/** `hostClass` for a lowered HTML element: the font-relative values of the class (a `leading-6`'s line height) stay in the style for the host, which knows the font size the element inherits (`fabric/text-inherit.ts`). */
+export function hostHtmlClass(value: unknown, style?: unknown): unknown {
+  return classStyle(value, style, true);
+}
+
+/** The `src` of an HTML `<img>` as the `source` of a native image: a string is its `uri`; a source object and an asset module (what Metro makes of an `import`) already are one. */
+export function hostSource(value: unknown): unknown {
+  return typeof value === "string" ? { uri: value } : value;
+}
+
+/** The props the `type` of an HTML `<input>` implies for a `TextInput` (`html-input.ts`), for a `type={expression}` the lowering cannot read. */
+export function hostInputType(type: unknown): Record<string, string | boolean> {
+  return { ...inputTypeProps(type) };
+}
+
+/**
+ * What `oninput` and `onchange` of a lowered `<input>` get, in the shape a browser's event has for the fields web code reads: `currentTarget.value` (`.checked` for a checkbox) and
+ * `target`. The text, or the state of the switch, is what the native control reported.
+ */
+export function hostInputEvent(type: "input" | "change", value: unknown) {
+  const target = typeof value === "boolean" ? { checked: value } : { value };
+  return { type, target, currentTarget: target, preventDefault() {}, stopPropagation() {} };
+}
+
+const LENGTH = /^(-?(?:\d+\.?\d*|\.\d+))(px)?$/;
+const EM = /^(-?(?:\d+\.?\d*|\.\d+))em$/;
+const PLAIN = /^(?:-?(?:\d+\.?\d*|\.\d+)%|#[0-9a-f]{3,8}|(?:rgb|hsl)a?\([^)]*\)|[a-z][a-z-]*)$/i;
+const dev = () => typeof __DEV__ !== "undefined" && __DEV__;
+
+type StyleValue = { value: unknown } | { relative: number };
+function styleValue(key: string, value: unknown): StyleValue | undefined {
+  if (typeof value === "number") return key === "lineHeight" ? { relative: value } : { value };
+  if (typeof value !== "string") return undefined;
+  const text = value.trim();
+  const length = LENGTH.exec(text);
+  if (length) return length[2] === undefined && key === "lineHeight" ? { relative: Number(length[1]) } : { value: Number(length[1]) };
+  const em = EM.exec(text);
+  if (em) return key === "lineHeight" || key === "letterSpacing" ? { relative: Number(em[1]) } : undefined;
+  return PLAIN.test(text) ? { value: text } : undefined;
+}
+
+/**
+ * The style of the `style:property={value}` directives of an HTML element (`lower-html.ts`), as a React Native style object: the name is camel-cased, `px` and a plain number are
+ * dp, and a percentage, a color or a keyword passes as it is. A unitless `line-height` and an `em` `line-height` or `letter-spacing` are relative to the font size
+ * (`fontRelative`, `fabric/text-inherit.ts`). A value that is none of these (`rem`, `calc()`, `var()`) is left out, with a warning in development; so is `null`, `undefined` and `false`,
+ * which take the property away, as they do on the web.
+ */
+export function hostStyleProps(props: Record<string, unknown>): Record<string, unknown> {
+  const style: Record<string, unknown> = {};
+  for (const name in props) {
+    const value = props[name];
+    if (value === undefined || value === null || value === false || value === "") continue;
+    const key = name.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase());
+    const parsed = styleValue(key, value);
+    if (parsed === undefined) {
+      if (dev()) console.warn(`svelte-native: style:${name}={${JSON.stringify(value)}} is not a value a native style takes (px, a number, a percentage, a color or a keyword), so it is left out`);
+    } else if ("relative" in parsed) style.fontRelative = { ...(style.fontRelative as object), [key]: parsed.relative };
+    else style[key] = key === "fontWeight" ? String(parsed.value) : parsed.value;
+  }
+  return style;
+}
+
+/**
+ * A press, as a click: the handler gets the event with a `preventDefault` that works, and what the press does by itself (a link's navigation, a button's form submission) happens after
+ * it unless the handler called it. The event is the press event itself otherwise (`currentTarget` is the element).
+ */
+export function hostClick(event: unknown, handler: ((event: unknown) => void) | undefined | null, after?: (event: unknown) => void): void {
+  const press = Object.create((event ?? null) as object | null) as { defaultPrevented: boolean; preventDefault(): void };
+  press.defaultPrevented = false;
+  press.preventDefault = () => { press.defaultPrevented = true; };
+  handler?.(press);
+  if (!press.defaultPrevented) after?.(press);
+}
+
+/**
+ * What a `<button>` does after its press when it is a submit button (no `type`, or `type="submit"`, which `type` is the argument for), or what Enter in a single-line input does: the
+ * nearest `<form>` above the element that gave the event (a lowered `<form>` has `nativeForm`, which the element tree knows however the components are put together) hears `submit`,
+ * with `target` and `currentTarget` the form and `submitter` the element. With no form above, nothing happens.
+ */
+export function hostSubmit(event: unknown, type?: unknown): void {
+  if (type !== undefined && type !== "submit") return;
+  const origin = (event as { currentTarget?: unknown } | null | undefined)?.currentTarget;
+  if (!(origin instanceof NativeNode)) return;
+  for (let node: NativeNode | null = origin; node; node = node.parent) {
+    if (node.getProp("nativeForm") !== true) continue;
+    const submit = { type: "submit", target: node, currentTarget: node, submitter: origin, defaultPrevented: false, preventDefault() { submit.defaultPrevented = true; }, stopPropagation() {} };
+    node.dispatcher("submit")(submit);
+    return;
+  }
+}
+
+/** What `onkeydown` and `onkeyup` of a lowered `<input>` get: the key (`"Enter"`, `"a"`, `"Backspace"`) of the native key press, in the shape of a browser's event. */
+export function hostKeyEvent(type: "keydown" | "keyup", event: unknown) {
+  const native = (event as { nativeEvent?: { key?: string }; currentTarget?: unknown } | null | undefined) ?? {};
+  return { type, key: native.nativeEvent?.key, nativeEvent: native.nativeEvent, target: native.currentTarget, currentTarget: native.currentTarget, preventDefault() {}, stopPropagation() {} };
 }
 
 export type Invalidation = "props" | "children" | "text";

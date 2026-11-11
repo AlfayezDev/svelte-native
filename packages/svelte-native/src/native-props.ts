@@ -61,14 +61,15 @@ export function createNativeProps() {
 }
 
 function hidden(key: string): boolean {
-  return key === "nativeProps" || key === "nativeClass" || key === "children" || key === "class" || key === "id" || key.startsWith("$$") || key.startsWith("data-");
+  return key === "nativeProps" || key === "nativeClass" || key === "nativeBase" || key === "nativeHtml" || key === "nativeForm" || key === "children" || key === "class" || key === "id" || key.startsWith("$$") || key.startsWith("data-");
 }
 
 /**
  * The React Native props of a host element: the legacy `nativeProps` object overlaid with every other attribute
  * (Svelte internals, `class`, `id`, `data-*` and `children` are not React Native props; the style of `class` comes as `nativeClass`).
  * `ref` stays in the result for the host to peel off. Svelte stringifies a `style` attribute on every element,
- * so a string `style` is dropped and `nativeStyle` carries a style object for the lowering preprocessor.
+ * so a string `style` is dropped and `nativeStyle` carries a style object for the lowering preprocessor. The markers of a lowered HTML element (`nativeHtml`, `nativeForm`, `lower-html.ts`)
+ * are the host's and the renderer's to read, and `nativeBase` is a style under the element's class and style (the default of an `hr`).
  */
 export function mergeHostProps(attributes: Readonly<Record<string, unknown>>): Record<string, unknown> {
   const legacy = attributes.nativeProps;
@@ -84,5 +85,7 @@ export function mergeHostProps(attributes: Readonly<Record<string, unknown>>): R
   // The style of a lowered tag's `class` (`hostClass`), under its own style as on a component.
   const fromClass = attributes.nativeClass;
   if (fromClass !== undefined && fromClass !== null) merged.style = merged.style === undefined || merged.style === null ? fromClass : [fromClass, merged.style];
+  const base = attributes.nativeBase;
+  if (base !== undefined && base !== null) merged.style = merged.style === undefined || merged.style === null ? base : [base, merged.style];
   return merged;
 }

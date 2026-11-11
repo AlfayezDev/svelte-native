@@ -1742,10 +1742,10 @@
       "metric": "foreign.svelteblur.checks",
       "bar": {
         "android": {
-          "min": 36
+          "min": 42
         },
         "ios": {
-          "min": 33
+          "min": 39
         }
       }
     },

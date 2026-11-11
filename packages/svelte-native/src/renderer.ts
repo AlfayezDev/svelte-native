@@ -1,6 +1,12 @@
 import { createRenderer } from "svelte/renderer";
 import { classStyle } from "./classes.ts";
 
+/**
+ * The React Native props the host builds from a host node's attributes (`peekProps()`): the host calls this itself, so what it returns is what a node sends to the native view (its `style` is the
+ * style of its `class` under its own). For tests and the QA lab, which read a mounted node's resolved props.
+ */
+export { mergeHostProps } from "./native-props.ts";
+
 type Listener = (...args: unknown[]) => void;
 export type Snapshot = {
   props: Readonly<Record<string, unknown>>;

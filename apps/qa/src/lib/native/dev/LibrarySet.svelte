@@ -167,10 +167,12 @@
             <Text style={{ color: "#191b1e", fontSize: 16, fontWeight: "600" }}>Blur</Text>
           </ExpoBlurView>
         {:else if kind === "svelteblur"}
-          <!-- The stripes are drawn before the blur (an earlier sibling), which is what the blur shows. The label sits on a solid chip so that a capture reads a colour of the child, not a glyph. -->
+          <!-- The stripes, and a near-black band across them from 30 % to 42 % of the height (the picture the blur shows must put it where it is: `bandPoints` in foreign-pixels.ts), are drawn before the blur
+               (earlier siblings), which is what the blur shows. The label sits on a solid chip so that a capture reads a colour of the child, not a glyph. -->
           <View style={{ ...fill, flexDirection: "row" }}>
             {#each blurStripes as color, index (index)}<View style={{ flex: 1, backgroundColor: color }} />{/each}
           </View>
+          <View style={{ position: "absolute", left: 0, right: 0, top: "30%", height: "12%", backgroundColor: "#101214" }} />
           <BlurView intensity={libraryLab.svelteBlurIntensity} tint={libraryLab.svelteBlurTint} ref={keep(hosts, kind)} style={{ position: "absolute", left: 24, right: 24, top: 14, bottom: 14, borderRadius: 12, overflow: "hidden", alignItems: "center", justifyContent: "center" }}>
             <View collapsable={false} ref={keepExtra("chip")} style={{ backgroundColor: "#191b1e", borderRadius: 6, paddingHorizontal: 10, paddingVertical: 3 }}>
               <Text style={{ color: "#ffffff", fontSize: 14, fontWeight: "600" }}>Blur</Text>

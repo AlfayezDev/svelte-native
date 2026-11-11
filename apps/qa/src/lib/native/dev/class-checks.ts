@@ -2,17 +2,18 @@
  * What the class checks of the native checks lab expect (`/__dev`, "Run all checks": `class-lab.ts` runs them on the views of `ClassProbe.svelte`). No React Native import, so the harness's tests load it
  * (`qa/test/class-checks.test.ts` holds every expectation against the class table the build writes from `src/global.css`).
  *
- * `class` on a lowered tag is resolved in the page's template (`hostClass`, `classes.ts`): the host node, which `bind:this` hands out, holds the style of the classes as `nativeClass` and its own style as
- * `nativeStyle`, and what the host sends to the native view is the first under the second (`mergeHostProps`, `native-props.ts`: `[nativeClass, nativeStyle]`, the later wins). The checks read those props
- * of a mounted node on the device, so they cover what the build wrote into the bundle (the class table), the resolver running on Hermes (the color scheme, the window width, the font size) and the
- * template that applied it. One of them also reads the layout the native side made of a class, because a style that never reached Yoga would pass all the others.
+ * `class` on a lowered tag is resolved in the page's template (`hostClass`, `classes.ts`): the host node, which `{@attach}` hands out, holds the style of the classes as `nativeClass` and its own style as
+ * `nativeStyle`. What the host sends to the native view is `mergeHostProps(node.peekProps())` (`native-props.ts`, exported from the library's `./renderer` entry: the host calls the same function), whose
+ * `style` is the class under the element's own style. The checks read that, not a merge of their own, so a host that put the class over the inline style would fail them. They cover what the build wrote into
+ * the bundle (the class table), the resolver running on Hermes (the color scheme, the window width, the font size) and the template that applied it. One of them also reads the layout the native side made of
+ * a class, because a style that never reached Yoga would pass all the others.
  *
  * The expected values are Tailwind 4.3.3's: its spacing scale is 0.25 rem (4 dp) a step, its colours oklch converted to sRGB by the build.
  */
 
 export type Style = Record<string, unknown>;
-/** The part of the renderer's `NativeNode` the checks read. */
-export type HostNode = { getProp(key: string): unknown };
+/** The part of the renderer's `NativeNode` the checks read: its attributes, from which the host builds the props it sends (`mergeHostProps`). */
+export type HostNode = { getProp(key: string): unknown; peekProps(): Readonly<Record<string, unknown>> };
 export type Outcome = { passed: boolean; detail: string };
 
 /** The names of the class checks, in the order the lab runs them: `qa/test/class-checks.test.ts` pins their number (the lab's count of functional checks is 28 and this many) and their length (logcat cuts the lab's result line near 4 KB). */
@@ -20,7 +21,7 @@ export const classCheckNames = [
   "class p-4: padding 16 on the four sides",
   "class p-4 reaches the layout: the child sits 16 dp in from each side",
   "class bg-sky-500/50: the colour of sky-500 at half opacity",
-  "class md:p-10 is absent on a phone-width window (p-2 md:p-10)",
+  "class md: and max-md: follow the window width (p-2 md:p-10, p-2 max-md:p-10)",
   "class dark: follows the scheme (bg-white dark:bg-zinc-900)",
   "a class of our own in the components layer, with a dark override",
   "a utility next to a components class wins (qa-card p-6)",
@@ -38,11 +39,8 @@ export function flattenStyle(style: unknown): Style {
 /** The style of a host node's `class` alone (what the resolver made of it, before the element's own style goes over it). */
 export const classStyle = (node: HostNode): Style => flattenStyle(node.getProp("nativeClass"));
 
-/** What a lowered tag sends to the native view as its style: the class under the element's own style (`nativeStyle`, or a plain `style` object), as `mergeHostProps` puts them. */
-export function hostStyle(node: HostNode): Style {
-  const own = node.getProp("nativeStyle") ?? node.getProp("style");
-  return { ...classStyle(node), ...flattenStyle(typeof own === "string" ? undefined : own) };
-}
+/** The style of what the host sends to the native view ([sent] is `mergeHostProps(node.peekProps())`): the class under the element's own style, flattened. */
+export const sentStyle = (sent: Readonly<Record<string, unknown>>): Style => flattenStyle(sent.style);
 
 /** The four sides of `padding` or `margin` as a style gives them: the shorthand, the horizontal and vertical pairs and the sides, the later and the more specific winning, as React Native reads them. Null when a side has no number. */
 export function sides(style: Style, property: "padding" | "margin"): [top: number, right: number, bottom: number, left: number] | null {
@@ -108,10 +106,13 @@ export const expectations = {
     return verdict(Object.values(found).every((side) => Math.abs(side - 16) <= 0.6), `the child sits ${JSON.stringify(found)} dp in; the parent is ${parent.width}x${parent.height}, the child ${child.width}x${child.height}`);
   },
   tint: (style: Style): Outcome => verdict(isColor(style.backgroundColor, { ...sky500, a: 0.5 }), show(style, "backgroundColor")),
-  /** [width] is the window's width in dp: a phone is under the breakpoint, and a window at or over it (a tablet) must have the `md:` padding, so the check is right there too. */
-  responsive: (style: Style, width: number): Outcome => {
-    const wanted = width >= mdBreakpoint ? 40 : 8;
-    return verdict(allSides(style, "padding", wanted), `window ${width} dp, wanted ${wanted}: ${show(style, "paddingTop", "paddingLeft")}`);
+  /**
+   * [width] is the window's width in dp: `md:` applies from the breakpoint up and `max-md:` below it, so a phone has the second and a window at or over it (a tablet) the first, and the check is right on both.
+   * A phone is what the second is for: `p-2 md:p-10` alone proves a class is absent, `p-2 max-md:p-10` that the same condition applies.
+   */
+  responsive: (md: Style, capped: Style, width: number): Outcome => {
+    const wide = width >= mdBreakpoint;
+    return verdict(allSides(md, "padding", wide ? 40 : 8) && allSides(capped, "padding", wide ? 8 : 40), `window ${width} dp: md: wanted ${wide ? 40 : 8}, max-md: wanted ${wide ? 8 : 40}; ${show(md, "paddingTop", "paddingLeft")} / ${show(capped, "paddingTop", "paddingLeft")}`);
   },
   /** The scheme classes under the light scheme and under the dark one: the background is white, then zinc-900. */
   scheme: (light: Style, dark: Style | null): Outcome =>

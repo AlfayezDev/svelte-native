@@ -31,8 +31,14 @@ const { smokeOnlyBundlePackages } = createRequire(import.meta.url)("../smoke-pac
  * (QA, with the remote functions lab) and 10,813,791 (production, +0.5 % over its 10,760,249 baseline): the 6.6 and 6.9 MB between the two
  * are the product's, not measured module by module. The production variant is 1,674,787 bytes (29.8 %) under the QA app: the lab and the
  * libraries only it imports.
+ *
+ * Moved on 11 November 2026, with the commit that follows d7fa0e8 on feat/qa-coverage, from 5,719,571 to 5,814,897 bytes (1,185 modules). At 2762246 (main) the same recipe read 5,767,609, 0.84 % over the old reference, and the
+ * lab's coverage of two features that landed without it adds 47,288 bytes: the built-in BlurView's section and its nine pixel checks with their helpers (+16,971), the class probe, the ten class checks and their runner
+ * (+23,769) and the class table `src/global.css` makes (+6,548: Tailwind reads every word of `src/` as a candidate, so the table holds the classes the probe uses and those the sources happen to contain). All of it is the lab's, which
+ * only the QA app and the smoke app carry. The production variant has no lab and no `css` option; it moved by 209 bytes, the `mergeHostProps` export of the library's renderer entry that the class checks read the host's props
+ * through (4,108,744 to 4,108,953, 0.85 % over its own baseline below).
  */
-const baseline = { commit: "SvelteKit 3.1.1 (its client runtime imports its message modules: +91,291 bytes, 1.6 %, over the 5,628,280 measured at 1bbbec6, the example without the product's code)", bytes: 5_719_571 };
+const baseline = { commit: "QA lab round 2 on feat/qa-coverage, after d7fa0e8 (the BlurView and class checks of the lab: +47,288 bytes, 0.8 %, over the 5,767,609 that main measured at 2762246)", bytes: 5_814_897 };
 
 /**
  * The production variant's bundle without the lab, built with the same recipe. It may grow by 1 % before a test says so. Measured again at 727bded, which makes the library's

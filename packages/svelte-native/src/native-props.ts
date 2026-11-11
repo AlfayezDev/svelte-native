@@ -3,6 +3,7 @@
  * and keeps the identity of unchanged style objects between renders, so memoised branches skip work.
  */
 import { classStyle } from "./classes.ts";
+import { styleText } from "./html-style.ts";
 
 function plainRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype && !("_isReanimatedSharedValue" in value);
@@ -81,7 +82,8 @@ export function mergeHostProps(attributes: Readonly<Record<string, unknown>>): R
     if (key === "ref" && typeof value !== "function" && (value === null || typeof value !== "object")) continue;
     merged[key] = value;
   }
-  if (attributes.nativeStyle !== undefined) merged.style = attributes.nativeStyle;
+  // A style that is text only when the app runs (`style={text}` of an HTML element) is parsed; one written in the source was converted when the file was built.
+  if (attributes.nativeStyle !== undefined) merged.style = typeof attributes.nativeStyle === "string" ? styleText(attributes.nativeStyle) : attributes.nativeStyle;
   // The style of a lowered tag's `class` (`hostClass`), under its own style as on a component.
   const fromClass = attributes.nativeClass;
   if (fromClass !== undefined && fromClass !== null) merged.style = merged.style === undefined || merged.style === null ? fromClass : [fromClass, merged.style];

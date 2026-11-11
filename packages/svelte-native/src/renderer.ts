@@ -1,6 +1,6 @@
 import { createRenderer } from "svelte/renderer";
 import { classStyle } from "./classes.ts";
-import { inputTypeProps } from "./html-input.ts";
+import { hostTagOf } from "./html-tags.ts";
 
 type Listener = (...args: unknown[]) => void;
 export type Snapshot = {
@@ -76,13 +76,26 @@ function spread<T extends object>(props: T, toggles: Record<string, unknown> | u
 
 /**
  * The spread of an HTML element the lowering turned into a host tag (`lower-html.ts`): `hostSpread`, and a web handler name in the props is the native one (`onclick` is
- * `onPress`), so `<button {...rest}>` presses when its parent gave `rest` an `onclick`, as a browser's does. The style of a `class` in it keeps its font-relative values
+ * `onPress`), so `<div {...rest}>` presses when its parent gave `rest` an `onclick`, as a browser's does. The style of a `class` in it keeps its font-relative values
  * for the host, as `hostHtmlClass` does.
  */
 export function hostWebSpread<T extends object>(props: T, toggles?: Record<string, unknown>): T {
   const copy = spread(props, toggles, true) as Record<string, unknown>;
   if ("onclick" in copy) {
     copy.onPress ??= copy.onclick;
+    delete copy.onclick;
+  }
+  return copy as T;
+}
+
+/**
+ * The same for an element whose press does something by itself (a `<button>` submits its form, an `<a>` follows its `href`): that is `onPress`, and the spread's `onclick` must not replace
+ * it, so it is `onHtmlClick`, which `hostClick` runs (before what the press does, as a browser runs a handler before the default action).
+ */
+export function hostWebClickSpread<T extends object>(props: T, toggles?: Record<string, unknown>): T {
+  const copy = spread(props, toggles, true) as Record<string, unknown>;
+  if ("onclick" in copy) {
+    copy.onHtmlClick ??= copy.onclick;
     delete copy.onclick;
   }
   return copy as T;
@@ -98,79 +111,66 @@ export function hostSource(value: unknown): unknown {
   return typeof value === "string" ? { uri: value } : value;
 }
 
-/** The props the `type` of an HTML `<input>` implies for a `TextInput` (`html-input.ts`), for a `type={expression}` the lowering cannot read. */
-export function hostInputType(type: unknown): Record<string, string | boolean> {
-  return { ...inputTypeProps(type) };
+/**
+ * The host tag of the tag a `<svelte:element this={tag}>` is given when the app runs, by the table the lowering reads (`html-tags.ts`): `h2` is a text, `div` a view. A host tag
+ * (`native-view`) is as it is; no tag (`undefined`, `false`) is no element; a tag that has no host tag (an `input` is a component, a `table` has no equivalent) is an error that names it.
+ */
+export function hostTag(tag: unknown): unknown {
+  if (typeof tag !== "string" || tag === "") return tag;
+  if (tag.startsWith("native-")) return tag;
+  const host = hostTagOf(tag);
+  if (host === undefined) throw new Error(`<svelte:element this="${tag}"> has no native equivalent: only the elements that are a host tag here (div, p, span, h1, button, a, img, ...) can be chosen when the app runs; write ${tag} as an element of its own`);
+  return host;
 }
 
 /**
- * What `oninput` and `onchange` of a lowered `<input>` get, in the shape a browser's event has for the fields web code reads: `currentTarget.value` (`.checked` for a checkbox) and
- * `target`. The text, or the state of the switch, is what the native control reported.
+ * What `oninput` and `onchange` of an `<input>` get, in the shape a browser's event has for the fields web code reads: `currentTarget.value` (`.checked` for a checkbox) and
+ * `target`, with the `name`, `id` and `type` the element has. The text, or the state of the switch, is what the native control reported.
  */
-export function hostInputEvent(type: "input" | "change", value: unknown) {
-  const target = typeof value === "boolean" ? { checked: value } : { value };
+export function hostInputEvent(type: "input" | "change", value: unknown, element: { name?: string; id?: string; type?: string } = {}) {
+  const target = { ...element, ...(typeof value === "boolean" ? { checked: value } : { value }) };
   return { type, target, currentTarget: target, preventDefault() {}, stopPropagation() {} };
 }
 
-const LENGTH = /^(-?(?:\d+\.?\d*|\.\d+))(px)?$/;
-const EM = /^(-?(?:\d+\.?\d*|\.\d+))em$/;
-const PLAIN = /^(?:-?(?:\d+\.?\d*|\.\d+)%|#[0-9a-f]{3,8}|(?:rgb|hsl)a?\([^)]*\)|[a-z][a-z-]*)$/i;
-const dev = () => typeof __DEV__ !== "undefined" && __DEV__;
-
-type StyleValue = { value: unknown } | { relative: number };
-function styleValue(key: string, value: unknown): StyleValue | undefined {
-  if (typeof value === "number") return key === "lineHeight" ? { relative: value } : { value };
-  if (typeof value !== "string") return undefined;
-  const text = value.trim();
-  const length = LENGTH.exec(text);
-  if (length) return length[2] === undefined && key === "lineHeight" ? { relative: Number(length[1]) } : { value: Number(length[1]) };
-  const em = EM.exec(text);
-  if (em) return key === "lineHeight" || key === "letterSpacing" ? { relative: Number(em[1]) } : undefined;
-  return PLAIN.test(text) ? { value: text } : undefined;
-}
-
 /**
- * The style of the `style:property={value}` directives of an HTML element (`lower-html.ts`), as a React Native style object: the name is camel-cased, `px` and a plain number are
- * dp, and a percentage, a color or a keyword passes as it is. A unitless `line-height` and an `em` `line-height` or `letter-spacing` are relative to the font size
- * (`fontRelative`, `fabric/text-inherit.ts`). A value that is none of these (`rem`, `calc()`, `var()`) is left out, with a warning in development; so is `null`, `undefined` and `false`,
- * which take the property away, as they do on the web.
- */
-export function hostStyleProps(props: Record<string, unknown>): Record<string, unknown> {
-  const style: Record<string, unknown> = {};
-  for (const name in props) {
-    const value = props[name];
-    if (value === undefined || value === null || value === false || value === "") continue;
-    const key = name.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase());
-    const parsed = styleValue(key, value);
-    if (parsed === undefined) {
-      if (dev()) console.warn(`svelte-native: style:${name}={${JSON.stringify(value)}} is not a value a native style takes (px, a number, a percentage, a color or a keyword), so it is left out`);
-    } else if ("relative" in parsed) style.fontRelative = { ...(style.fontRelative as object), [key]: parsed.relative };
-    else style[key] = key === "fontWeight" ? String(parsed.value) : parsed.value;
-  }
-  return style;
-}
-
-/**
- * A press, as a click: the handler gets the event with a `preventDefault` that works, and what the press does by itself (a link's navigation, a button's form submission) happens after
- * it unless the handler called it. The event is the press event itself otherwise (`currentTarget` is the element).
+ * A press, as a click: the handler gets the event with a `preventDefault` that works, then the handlers a spread's `onclick` gave (`hostWebClickSpread`), and what the press does by itself (a
+ * link's navigation, a button's form submission) happens after them unless one called `preventDefault`. The event is the press event itself otherwise (`currentTarget` is the element).
  */
 export function hostClick(event: unknown, handler: ((event: unknown) => void) | undefined | null, after?: (event: unknown) => void): void {
   const press = Object.create((event ?? null) as object | null) as { defaultPrevented: boolean; preventDefault(): void };
   press.defaultPrevented = false;
   press.preventDefault = () => { press.defaultPrevented = true; };
   handler?.(press);
+  const origin = (event as { currentTarget?: unknown } | null | undefined)?.currentTarget;
+  const spread = origin instanceof NativeNode ? origin.listeners.get("HtmlClick") : undefined;
+  if (spread) for (const listener of [...spread]) listener(press);
   if (!press.defaultPrevented) after?.(press);
 }
 
+/** The `href` of the element a press came from (an `<a>`'s, which stays an attribute of it, so one from a spread is there too): a string, or nothing. */
+export function hostHref(event: unknown): string | undefined {
+  const origin = (event as { currentTarget?: unknown } | null | undefined)?.currentTarget;
+  const href = origin instanceof NativeNode ? origin.getProp("href") : undefined;
+  return typeof href === "string" && href !== "" ? href : undefined;
+}
+
+/** The inputs whose last key press was prevented: Enter in them is not a submission. */
+const keyPrevented = new WeakSet<object>();
+
 /**
- * What a `<button>` does after its press when it is a submit button (no `type`, or `type="submit"`, which `type` is the argument for), or what Enter in a single-line input does: the
- * nearest `<form>` above the element that gave the event (a lowered `<form>` has `nativeForm`, which the element tree knows however the components are put together) hears `submit`,
- * with `target` and `currentTarget` the form and `submitter` the element. With no form above, nothing happens.
+ * What a `<button>` does after its press when it is a submit button (no `type`, or `type="submit"`: the element's own `type`, so one from a spread counts), or what Enter in a
+ * single-line input does (`force`, unless its key press was prevented): the nearest `<form>` above the element that gave the event (a lowered `<form>` has `nativeForm`, which the
+ * element tree knows however the components are put together) hears `submit`, with `target` and `currentTarget` the form and `submitter` the element. With no form above, nothing happens.
  */
-export function hostSubmit(event: unknown, type?: unknown): void {
-  if (type !== undefined && type !== "submit") return;
+export function hostSubmit(event: unknown, force = false): void {
   const origin = (event as { currentTarget?: unknown } | null | undefined)?.currentTarget;
   if (!(origin instanceof NativeNode)) return;
+  if (force) {
+    if (keyPrevented.delete(origin)) return;
+  } else {
+    const type = origin.getProp("type");
+    if (typeof type === "string" && type !== "" && type.toLowerCase() !== "submit") return;
+  }
   for (let node: NativeNode | null = origin; node; node = node.parent) {
     if (node.getProp("nativeForm") !== true) continue;
     const submit = { type: "submit", target: node, currentTarget: node, submitter: origin, defaultPrevented: false, preventDefault() { submit.defaultPrevented = true; }, stopPropagation() {} };
@@ -179,16 +179,52 @@ export function hostSubmit(event: unknown, type?: unknown): void {
   }
 }
 
-/** What `onkeydown` and `onkeyup` of a lowered `<input>` get: the key (`"Enter"`, `"a"`, `"Backspace"`) of the native key press, in the shape of a browser's event. */
+/**
+ * What `onkeydown` and `onkeyup` of an `<input>` get: the key (`"Enter"`, `"a"`, `"Backspace"`) of the native key press, in the shape of a browser's event. `preventDefault` on the
+ * key press of Enter stops the submission it would make.
+ */
 export function hostKeyEvent(type: "keydown" | "keyup", event: unknown) {
   const native = (event as { nativeEvent?: { key?: string }; currentTarget?: unknown } | null | undefined) ?? {};
-  return { type, key: native.nativeEvent?.key, nativeEvent: native.nativeEvent, target: native.currentTarget, currentTarget: native.currentTarget, preventDefault() {}, stopPropagation() {} };
+  const origin = native.currentTarget;
+  if (type === "keydown" && origin !== null && typeof origin === "object") keyPrevented.delete(origin);
+  return {
+    type, key: native.nativeEvent?.key, nativeEvent: native.nativeEvent, target: origin, currentTarget: origin,
+    preventDefault() { if (origin !== null && typeof origin === "object") keyPrevented.add(origin); },
+    stopPropagation() {},
+  };
 }
+
+/**
+ * The `ref` of a `bind:this={target}` of the lowering: the variable gets the host handle, and `null` only if it still holds this one when the element goes away. `keys` are the computed
+ * keys of the target (`els[i]` has `[i]`), read where the attribute is, so the `ref` is made again when one changes (the host then gives the old one `null` and the new one the
+ * handle, as Svelte's own `bind:this` follows its target) and `set` and `get` act on the target the keys named when it was made, not on the one they name now.
+ */
+export function hostBind(set: (keys: unknown[], value: unknown) => void, get: (keys: unknown[]) => unknown, keys: unknown[] = []): (handle: unknown) => void {
+  let mine: unknown;
+  return (handle) => {
+    if (handle === null || handle === undefined) {
+      if (mine !== undefined && get(keys) === mine) set(keys, null);
+      mine = undefined;
+      return;
+    }
+    mine = handle;
+    set(keys, handle);
+  };
+}
+
+export { hostStyleProps } from "./html-style.ts";
 
 export type Invalidation = "props" | "children" | "text";
 let invalidationSink: ((node: NativeNode, reason: Invalidation) => void) | null = null;
 /** The host (see `fabric/`) hears every change through this sink. */
 export function setInvalidationSink(sink: ((node: NativeNode, reason: Invalidation) => void) | null): void { invalidationSink = sink; }
+
+let refSink: ((node: NativeNode) => void) | null = null;
+/**
+ * The host hears of a `ref` (the attribute, or the one in `nativeProps` a component hands its view) the moment it is set, which is while Svelte builds the element: the handle is
+ * given then, so `onMount` and effects find it, and not a microtask later, when the host builds the view (`fabric/host.ts`, `earlyRef`).
+ */
+export function setRefSink(sink: ((node: NativeNode) => void) | null): void { refSink = sink; }
 
 let unlinkSink: ((node: NativeNode) => void) | null = null;
 /**
@@ -254,6 +290,7 @@ export class NativeNode {
     if (this.propsShared) { this.props = { ...this.props }; this.propsShared = false; }
     this.props[key] = value;
     this.invalidate("props");
+    if ((key === "ref" || key === "nativeProps") && refSink !== null) refSink(this);
   }
 
   removeProp(key: string): void {

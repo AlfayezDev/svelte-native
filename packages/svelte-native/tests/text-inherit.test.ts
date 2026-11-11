@@ -69,3 +69,20 @@ test("a text and an input take the inherited style under their own; any other ma
   const own = { margin: 1 };
   expect(inheritedStyle(undefined, own, true)).toBe(own);
 });
+
+test("a default style that is a factor of the font size the element inherits (h1 is 2em, small 0.8em) is that size, which the element's own font size replaces, and which its descendants inherit", () => {
+  const outer = textStyleOf(undefined, { fontSize: 20 });
+  // Of what is inherited; 14 when nothing is.
+  expect(textStyleOf(outer, { fontScale: 2, fontWeight: "700" })).toEqual({ fontSize: 40, fontWeight: "700" });
+  expect(textStyleOf(undefined, { fontScale: 2 })).toEqual({ fontSize: 28 });
+  // A later style in the order of the array wins: the heading's own size (a class after the default), and a default after a size is of that size.
+  expect(textStyleOf(outer, [{ fontScale: 2 }, { fontSize: 18 }])).toEqual({ fontSize: 18 });
+  expect(textStyleOf(outer, [{ fontSize: 10 }, { fontScale: 0.8 }])).toEqual({ fontSize: 8 });
+  expect(hasTextKeys({ fontScale: 0.8 })).toBe(true);
+  expect(fontSizeOf(outer, { fontScale: 0.75 })).toBe(15);
+  // What a text is drawn with: the factor made into the size, in the place it was written, so a later item overrides it.
+  expect(resolveRelative([{ fontScale: 1.5, fontWeight: "700" }, { color: "red" }], 30, 20)).toEqual([{ fontWeight: "700", fontSize: 30 }, { color: "red" }]);
+  expect(inheritedStyle(outer, [{ fontScale: 2 }, { fontSize: 18 }], true)).toEqual([{ fontSize: 20 }, [{ fontSize: 40 }, { fontSize: 18 }]]);
+  // A line height that is a factor is of that size.
+  expect(inheritedStyle(textStyleOf(undefined, { fontRelative: { lineHeight: 1.5 } }), { fontScale: 2 }, true)).toEqual([{ lineHeight: 42 }, { fontSize: 28 }]);
+});

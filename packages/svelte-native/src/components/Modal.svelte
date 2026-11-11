@@ -7,10 +7,21 @@
   import type { ModalProps } from "react-native";
   import Platform from "react-native/Libraries/Utilities/Platform";
   import { keyboard } from "../keyboard.ts";
-  let { children, onRequestClose, onDismiss, onShow, ...attributes }: Omit<ModalProps, "children"> & { children?: Snippet } & ClassProps = $props();
+  let { children, onRequestClose, onDismiss, onShow, open = $bindable(), nativeHtml, ...attributes }: Omit<ModalProps, "children"> & {
+    children?: Snippet;
+    /** HTML's name for `visible` (an `<dialog open>`, written by the lowering of HTML elements): `bind:open` is set to `false` when the platform closes the modal (the Back key, a swipe). */
+    open?: boolean;
+    /** Set by the lowering of an HTML `<dialog>`: the text bare in it is drawn, and its class and style are the text style of what is in it (`fabric/text-inherit.ts`). */
+    nativeHtml?: boolean;
+  } & ClassProps = $props();
+  // `open`, when it is given, is whether the modal is shown; otherwise it is `visible`, React Native's name.
+  const visible = $derived(open !== undefined ? open : attributes.visible);
   function close(event: Parameters<NonNullable<ModalProps["onRequestClose"]>>[0]) {
     if (keyboard().isVisible()) keyboard().dismiss();
-    else onRequestClose?.(event);
+    else {
+      if (open !== undefined) open = false;
+      onRequestClose?.(event);
+    }
   }
   // iOS mounts the host only while it is shown, as React Native's `Modal.js` does: a hidden `RCTModalHostView` is still a
   // screen-sized view in the tree, and its hit test takes every touch meant for the app below it. After `visible` turns false the
@@ -26,12 +37,12 @@
   let wasVisible = false;
   let shown = false;
   $effect.pre(() => {
-    const visible = attributes.visible === true;
-    if (visible && !wasVisible) {
+    const isVisible = visible === true;
+    if (isVisible && !wasVisible) {
       presented = true;
       shown = false;
-    } else if (!visible && wasVisible && !shown) presented = false;
-    wasVisible = visible;
+    } else if (!isVisible && wasVisible && !shown) presented = false;
+    wasVisible = isVisible;
   });
   function showed(event: Parameters<NonNullable<ModalProps["onShow"]>>[0]) {
     shown = true;
@@ -40,9 +51,10 @@
   function dismissed() {
     presented = false;
     shown = false;
+    if (open !== undefined) open = false;
     onDismiss?.();
   }
-  const mounted = $derived(!ios || attributes.visible === true || presented);
+  const mounted = $derived(!ios || visible === true || presented);
   // A modal's content is a layer of its own, not part of the screen, the stack or the tab pane that holds the `<Modal>`: a `Screen` inside
   // it is the outermost one and draws its own header there (in a stack of its own), instead of handing its options (the title) to the screen
   // below, and the bottom inset is the content's to pad (a modal covers the tab bar).
@@ -52,5 +64,5 @@
   const resolveProps = createNativeProps();
 </script>
 {#if mounted}
-  <native-modal nativeProps={resolveProps({ ...attributes, onRequestClose: close, onShow: showed, onDismiss: dismissed })}>{@render children?.()}</native-modal>
+  <native-modal nativeHtml={nativeHtml} nativeProps={resolveProps({ ...attributes, visible, onRequestClose: close, onShow: showed, onDismiss: dismissed })}>{@render children?.()}</native-modal>
 {/if}

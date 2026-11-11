@@ -8,7 +8,7 @@ import { parse } from "@babel/parser";
 import { isBlockStatement, isCallExpression, isFunction, isIdentifier, isMemberExpression, traverseFast } from "@babel/types";
 import { componentOptions, lowersHtml, runesDefaultEnabled } from "./compile-options.ts";
 import { lowerPrimitives } from "./lower.ts";
-import { sourceDirectory, sourceFile } from "./package-root.ts";
+import { cacheKeyFiles } from "./transformer-cache.ts";
 import { assertCustomRenderer } from "./svelte-build.ts";
 import { isRemoteModule, kitGlobalsImport, kitRoot, transformRemoteModule } from "./remote/transform.ts";
 import { TraceMap, originalPositionFor } from "@jridgewell/trace-mapping";
@@ -136,13 +136,9 @@ export function transform(input: TransformInput) {
   return output;
 }
 
-/**
- * Metro's cache key for what this transformer produces: the code that runs, the app's `runes` setting, and upstream's key. Built (`dist/node/transformer.cjs`), the one file
- * holds `lower.ts` (and `lower-html.ts`, `html-input.ts`), `remote/transform.ts` and `compile-options.ts`; run from the sources, those are hashed next to this one.
- */
+/** Metro's cache key for what this transformer produces: the code that runs, the app's `runes` setting, and upstream's key. */
 export function getCacheKey(options?: unknown): string {
-  const files = [import.meta.filename];
-  if (import.meta.dirname === sourceDirectory) files.push(sourceFile("lower.ts"), sourceFile("lower-html.ts"), sourceFile("html-input.ts"), sourceFile("remote/transform.ts"), sourceFile("compile-options.ts"));
+  const files = cacheKeyFiles(import.meta.filename, import.meta.dirname);
   const hash = createHash("sha256");
   for (const file of files) hash.update(readFileSync(file));
   // The mode an app's components are compiled in is not in any file: `withSvelteNative(config, { runes })` hands it over in the environment.

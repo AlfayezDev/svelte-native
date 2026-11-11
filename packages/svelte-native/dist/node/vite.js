@@ -3,7 +3,7 @@ import { resolve as resolve3 } from "node:path";
 
 // src/build.ts
 import { spawn } from "node:child_process";
-import { existsSync as existsSync2, mkdirSync, readFileSync, readdirSync, rmSync, watch, writeFileSync } from "node:fs";
+import { existsSync as existsSync2, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { mkdir } from "node:fs/promises";
 import { relative, resolve as resolve2, sep as sep2 } from "node:path";

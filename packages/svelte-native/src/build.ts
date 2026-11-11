@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, watch, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { mkdir } from "node:fs/promises";
 import { relative, resolve, sep } from "node:path";
@@ -7,6 +7,7 @@ import type { AST, parse as parseSvelte } from "svelte/compiler";
 import { runesEnvironment } from "./compile-options.ts";
 import { buildTree, type PageRoute, type RouteFile, type RouteNode, type StackNode } from "./route-tree.ts";
 import { labIncludedFor, routesTableFile, variantName } from "./variant.ts";
+import { watchTree } from "./watch-tree.ts";
 
 const require = createRequire(import.meta.url);
 const posix = (path: string) => path.split(sep).join("/");
@@ -206,16 +207,10 @@ export function unrefTimer(timer: unknown): void {
  * and waits for the next change. Close it to stop.
  */
 export function watchRoutes(root: string, options: SyncOptions = {}, debounceMs = 50): { close(): void } {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const watcher = watch(resolve(root, "src/routes"), { recursive: true }, () => {
-    clearTimeout(timer);
-    timer = setTimeout(() => {
-      try { syncRoutes(root, options); } catch (error) { console.error(error); }
-    }, debounceMs);
-    unrefTimer(timer);
-  });
-  watcher.unref();
-  return { close() { clearTimeout(timer); watcher.close(); } };
+  // A watch per directory (`watchTree`): a recursive `fs.watch` stops reporting a route file once an editor saves it by a rename.
+  return watchTree(resolve(root, "src/routes"), () => {
+    try { syncRoutes(root, options); } catch (error) { console.error(error); }
+  }, { debounceMs });
 }
 
 /** The environment `expo` runs in: this process's, with `extra` over it. */

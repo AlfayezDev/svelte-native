@@ -33,14 +33,14 @@ __export(metro_exports, {
   withSvelteNative: () => withSvelteNative
 });
 module.exports = __toCommonJS(metro_exports);
-var import_node_fs5 = require("node:fs");
+var import_node_fs6 = require("node:fs");
 var import_node_module5 = require("node:module");
-var import_node_path8 = require("node:path");
+var import_node_path9 = require("node:path");
 
 // src/build.ts
-var import_node_fs2 = require("node:fs");
+var import_node_fs3 = require("node:fs");
 var import_node_module = require("node:module");
-var import_node_path3 = require("node:path");
+var import_node_path4 = require("node:path");
 
 // src/compile-options.ts
 var import_node_path2 = require("node:path");
@@ -208,9 +208,80 @@ var labIncludedFor = (variant) => variant !== "production";
 var routesTableFile = (variant) => `routes.${variant.replace(/[^A-Za-z0-9_-]/g, "_")}.ts`;
 var classesTableFile = (variant) => `classes.${variant.replace(/[^A-Za-z0-9_-]/g, "_")}.ts`;
 
+// src/watch-tree.ts
+var import_node_fs2 = require("node:fs");
+var import_node_path3 = require("node:path");
+function watchTree(root, onChange, options = {}) {
+  const base = (0, import_node_path3.resolve)(root);
+  const debounceMs = options.debounceMs ?? 50;
+  const skip = options.skip ?? ((name) => name === "node_modules" || name.startsWith("."));
+  const watchers2 = /* @__PURE__ */ new Map();
+  let timer;
+  let closed = false;
+  const changed = () => {
+    if (closed) return;
+    clearTimeout(timer);
+    timer = setTimeout(onChange, debounceMs);
+    timer.unref?.();
+  };
+  const add = (directory) => {
+    if (closed || watchers2.has(directory)) return;
+    let watcher;
+    try {
+      watcher = (0, import_node_fs2.watch)(directory, (_event, name) => {
+        if (name) {
+          const path = (0, import_node_path3.join)(directory, name.toString());
+          if (!watchers2.has(path) && isDirectory(path) && !skip(name.toString())) addTree(path);
+          if (watchers2.has(path) && !(0, import_node_fs2.existsSync)(path)) dropTree(path);
+        }
+        changed();
+      });
+    } catch {
+      return;
+    }
+    watcher.unref();
+    watcher.on("error", () => dropTree(directory));
+    watchers2.set(directory, watcher);
+  };
+  const addTree = (directory) => {
+    add(directory);
+    let entries;
+    try {
+      entries = (0, import_node_fs2.readdirSync)(directory, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) if (entry.isDirectory() && !skip(entry.name)) addTree((0, import_node_path3.join)(directory, entry.name));
+  };
+  const dropTree = (directory) => {
+    for (const [path, watcher] of watchers2) {
+      if (path === directory || path.startsWith(directory + import_node_path3.sep)) {
+        watcher.close();
+        watchers2.delete(path);
+      }
+    }
+  };
+  if (isDirectory(base)) addTree(base);
+  return {
+    close() {
+      closed = true;
+      clearTimeout(timer);
+      for (const watcher of watchers2.values()) watcher.close();
+      watchers2.clear();
+    }
+  };
+}
+function isDirectory(path) {
+  try {
+    return (0, import_node_fs2.statSync)(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 // src/build.ts
 var require2 = (0, import_node_module.createRequire)(__importMetaUrl);
-var posix = (path) => path.split(import_node_path3.sep).join("/");
+var posix = (path) => path.split(import_node_path4.sep).join("/");
 function exportedLiteral(ast, file, name, values) {
   for (const statement of ast.module?.content.body ?? []) {
     if (statement.type !== "ExportNamedDeclaration") continue;
@@ -238,11 +309,11 @@ var LAB_DIRECTORY = "__dev";
 function routeFilesSync(routesRoot, { lab = labIncluded() } = {}) {
   const paths = [];
   function walk(directory) {
-    for (const item of (0, import_node_fs2.readdirSync)(directory, { withFileTypes: true })) {
-      const path = (0, import_node_path3.resolve)(directory, item.name);
+    for (const item of (0, import_node_fs3.readdirSync)(directory, { withFileTypes: true })) {
+      const path = (0, import_node_path4.resolve)(directory, item.name);
       if (item.isDirectory()) {
         if (lab || item.name !== LAB_DIRECTORY) walk(path);
-      } else paths.push(posix((0, import_node_path3.relative)(routesRoot, path)));
+      } else paths.push(posix((0, import_node_path4.relative)(routesRoot, path)));
     }
   }
   walk(routesRoot);
@@ -252,7 +323,7 @@ function routeFilesSync(routesRoot, { lab = labIncluded() } = {}) {
   for (const path of paths.sort((a, b) => a.localeCompare(b))) {
     const name = path.slice(path.lastIndexOf("/") + 1);
     if (name !== "+mobile.svelte" && name !== "+layout.mobile.svelte") continue;
-    const ast = parse2((0, import_node_fs2.readFileSync)((0, import_node_path3.resolve)(routesRoot, path), "utf8"), { modern: true, filename: path });
+    const ast = parse2((0, import_node_fs3.readFileSync)((0, import_node_path4.resolve)(routesRoot, path), "utf8"), { modern: true, filename: path });
     if (exportedInInstance(ast, "lab")) throw new Error(`${path}: export \`lab\` is ignored in the instance script; move \`lab\` to \`<script module>\`, which the route table reads at build time`);
     const labOnly = exportedLiteral(ast, path, "lab", [true]) === true;
     if (labOnly && path === name && name === "+layout.mobile.svelte") throw new Error(`${path}: the root layout is the app shell and cannot be lab-only`);
@@ -274,7 +345,7 @@ function routeFilesSync(routesRoot, { lab = labIncluded() } = {}) {
 }
 function treeModule(tree, routesRoot, output, variant, lab) {
   const json = (value) => JSON.stringify(value);
-  const code = (file) => `require(${json(posix((0, import_node_path3.relative)(output, (0, import_node_path3.resolve)(routesRoot, file))))}).default`;
+  const code = (file) => `require(${json(posix((0, import_node_path4.relative)(output, (0, import_node_path4.resolve)(routesRoot, file))))}).default`;
   const loader = (file, layouts = []) => `async () => ({ component: ${code(file)}, layouts: [${layouts.map(code).join(", ")}] })`;
   const routeOf = (route, indent) => {
     if (route.kind === "page") {
@@ -319,62 +390,52 @@ export const tree: StackNode = ${nodeOf(tree, "").trimStart()};
 function syncRoutes(root, options = {}) {
   const variant = options.variant ?? variantName();
   const lab = options.lab ?? labIncludedFor(variant);
-  const routesRoot = (0, import_node_path3.resolve)(root, "src/routes");
-  const output = (0, import_node_path3.resolve)(root, ".svelte-native");
-  (0, import_node_fs2.mkdirSync)(output, { recursive: true });
+  const routesRoot = (0, import_node_path4.resolve)(root, "src/routes");
+  const output = (0, import_node_path4.resolve)(root, ".svelte-native");
+  (0, import_node_fs3.mkdirSync)(output, { recursive: true });
   const manifest = treeModule(buildTree(routeFilesSync(routesRoot, { lab })), routesRoot, output, variant, lab);
   const customRoot = process.env.SVELTE_NATIVE_ROOT;
   const prelude = "import '@example/svelte-native/init';\nimport '@example/svelte-native/polyfills';\nimport { createFabricApp, remountSurfaces } from '@example/svelte-native/fabric';\n";
   const hot = "declare const module: { hot?: { accept(callback?: () => void): void } };\nif (__DEV__) module.hot?.accept(() => remountSurfaces());\n";
-  const entry = customRoot ? `${prelude}import App from ${JSON.stringify(posix((0, import_node_path3.relative)(output, (0, import_node_path3.resolve)(root, customRoot))))};
+  const entry = customRoot ? `${prelude}import App from ${JSON.stringify(posix((0, import_node_path4.relative)(output, (0, import_node_path4.resolve)(root, customRoot))))};
 createFabricApp(App, {});
 ${hot}` : `${prelude}import App from '../src/routes/+layout.mobile.svelte';
 import { tree } from './routes';
 createFabricApp(App, { tree });
 ${hot}`;
   const files = [[routesTableFile(variant), manifest]];
-  if (options.entry !== "keep" || customRoot !== void 0 || !(0, import_node_fs2.existsSync)((0, import_node_path3.resolve)(output, "entry.ts"))) files.push(["entry.ts", entry]);
+  if (options.entry !== "keep" || customRoot !== void 0 || !(0, import_node_fs3.existsSync)((0, import_node_path4.resolve)(output, "entry.ts"))) files.push(["entry.ts", entry]);
   for (const [file, content] of files) {
-    const destination = (0, import_node_path3.resolve)(output, file);
+    const destination = (0, import_node_path4.resolve)(output, file);
     let current = "";
     try {
-      current = (0, import_node_fs2.readFileSync)(destination, "utf8");
+      current = (0, import_node_fs3.readFileSync)(destination, "utf8");
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
     }
-    if (current !== content) (0, import_node_fs2.writeFileSync)(destination, content);
+    if (current !== content) (0, import_node_fs3.writeFileSync)(destination, content);
   }
-  (0, import_node_fs2.rmSync)((0, import_node_path3.resolve)(output, "routes.ts"), { force: true });
+  (0, import_node_fs3.rmSync)((0, import_node_path4.resolve)(output, "routes.ts"), { force: true });
 }
 function unrefTimer(timer) {
   timer.unref?.();
 }
 function watchRoutes(root, options = {}, debounceMs = 50) {
-  let timer;
-  const watcher = (0, import_node_fs2.watch)((0, import_node_path3.resolve)(root, "src/routes"), { recursive: true }, () => {
-    clearTimeout(timer);
-    timer = setTimeout(() => {
-      try {
-        syncRoutes(root, options);
-      } catch (error) {
-        console.error(error);
-      }
-    }, debounceMs);
-    unrefTimer(timer);
-  });
-  watcher.unref();
-  return { close() {
-    clearTimeout(timer);
-    watcher.close();
-  } };
+  return watchTree((0, import_node_path4.resolve)(root, "src/routes"), () => {
+    try {
+      syncRoutes(root, options);
+    } catch (error) {
+      console.error(error);
+    }
+  }, { debounceMs });
 }
 
 // src/css/build.ts
 var import_node_child_process = require("node:child_process");
 var import_node_crypto = require("node:crypto");
-var import_node_fs3 = require("node:fs");
+var import_node_fs4 = require("node:fs");
 var import_node_module2 = require("node:module");
-var import_node_path4 = require("node:path");
+var import_node_path5 = require("node:path");
 
 // src/css/parse.ts
 function readChunk(css, from) {
@@ -2079,14 +2140,14 @@ var LONGEST_CANDIDATE = 300;
 function sourceFiles(root) {
   const files = [];
   const walk = (directory) => {
-    for (const item of (0, import_node_fs3.readdirSync)(directory, { withFileTypes: true }).sort((a, b) => a.name < b.name ? -1 : 1)) {
-      const path = (0, import_node_path4.join)(directory, item.name);
+    for (const item of (0, import_node_fs4.readdirSync)(directory, { withFileTypes: true }).sort((a, b) => a.name < b.name ? -1 : 1)) {
+      const path = (0, import_node_path5.join)(directory, item.name);
       if (item.isDirectory()) {
         if (!SKIPPED_DIRECTORIES.has(item.name)) walk(path);
-      } else if (SOURCE_EXTENSIONS.has((0, import_node_path4.extname)(item.name))) files.push(path);
+      } else if (SOURCE_EXTENSIONS.has((0, import_node_path5.extname)(item.name))) files.push(path);
     }
   };
-  if ((0, import_node_fs3.existsSync)((0, import_node_path4.join)(root, "src"))) walk((0, import_node_path4.join)(root, "src"));
+  if ((0, import_node_fs4.existsSync)((0, import_node_path5.join)(root, "src"))) walk((0, import_node_path5.join)(root, "src"));
   return files;
 }
 var isClassCharacter = (code) => code >= 48 && code <= 58 || code >= 65 && code <= 90 || code >= 97 && code <= 122 || code === 45 || code === 95 || code === 47 || code === 46 || code === 37 || code === 35 || code === 33 || code === 64 || code === 42 || code === 40 || code === 41;
@@ -2128,18 +2189,18 @@ function candidatesIn(source, into = /* @__PURE__ */ new Set()) {
 }
 function candidatesOf(root) {
   const candidates = /* @__PURE__ */ new Set();
-  for (const file of sourceFiles(root)) candidatesIn((0, import_node_fs3.readFileSync)(file, "utf8"), candidates);
+  for (const file of sourceFiles(root)) candidatesIn((0, import_node_fs4.readFileSync)(file, "utf8"), candidates);
   return [...candidates].sort();
 }
 function loadTailwind(root) {
-  const fromApp = (0, import_node_module2.createRequire)((0, import_node_path4.join)(root, "package.json"));
+  const fromApp = (0, import_node_module2.createRequire)((0, import_node_path5.join)(root, "package.json"));
   const install = `pnpm add -D tailwindcss@${TAILWIND_VERSION}`;
   let directory;
   let manifest;
   try {
     const manifestFile = fromApp.resolve("tailwindcss/package.json");
-    directory = (0, import_node_path4.dirname)(manifestFile);
-    manifest = JSON.parse((0, import_node_fs3.readFileSync)(manifestFile, "utf8"));
+    directory = (0, import_node_path5.dirname)(manifestFile);
+    manifest = JSON.parse((0, import_node_fs4.readFileSync)(manifestFile, "utf8"));
   } catch (error) {
     throw new Error(`svelte-native: the css option needs Tailwind CSS in the app: ${install} (${error.message.split("\n")[0]})`, { cause: error });
   }
@@ -2164,34 +2225,34 @@ function exportedStylesheet(exports2, key) {
 function packageStylesheet(id, base) {
   const name = id.startsWith("@") ? id.split("/").slice(0, 2).join("/") : id.split("/")[0];
   const subpath = id.slice(name.length);
-  for (let directory = base; ; directory = (0, import_node_path4.dirname)(directory)) {
-    const packageDirectory = (0, import_node_path4.join)(directory, "node_modules", name);
-    const manifestFile = (0, import_node_path4.join)(packageDirectory, "package.json");
-    if ((0, import_node_fs3.existsSync)(manifestFile)) {
-      const manifest = JSON.parse((0, import_node_fs3.readFileSync)(manifestFile, "utf8"));
+  for (let directory = base; ; directory = (0, import_node_path5.dirname)(directory)) {
+    const packageDirectory = (0, import_node_path5.join)(directory, "node_modules", name);
+    const manifestFile = (0, import_node_path5.join)(packageDirectory, "package.json");
+    if ((0, import_node_fs4.existsSync)(manifestFile)) {
+      const manifest = JSON.parse((0, import_node_fs4.readFileSync)(manifestFile, "utf8"));
       let target;
       if (subpath === "") target = exportedStylesheet(manifest.exports, ".") ?? manifest.style ?? (manifest.main?.endsWith(".css") ? manifest.main : void 0);
       else {
-        for (const file of [(0, import_node_path4.join)(packageDirectory, subpath), (0, import_node_path4.join)(packageDirectory, `${subpath}.css`)]) if ((0, import_node_fs3.existsSync)(file) && (0, import_node_fs3.statSync)(file).isFile()) return file;
+        for (const file of [(0, import_node_path5.join)(packageDirectory, subpath), (0, import_node_path5.join)(packageDirectory, `${subpath}.css`)]) if ((0, import_node_fs4.existsSync)(file) && (0, import_node_fs4.statSync)(file).isFile()) return file;
         target = exportedStylesheet(manifest.exports, `.${subpath}`);
       }
-      return target === void 0 ? void 0 : (0, import_node_path4.resolve)(packageDirectory, target);
+      return target === void 0 ? void 0 : (0, import_node_path5.resolve)(packageDirectory, target);
     }
-    if ((0, import_node_path4.dirname)(directory) === directory) return void 0;
+    if ((0, import_node_path5.dirname)(directory) === directory) return void 0;
   }
 }
 function stylesheetLoader(tailwindDirectory, read) {
   return async (id, base) => {
     let file;
-    if (id === "tailwindcss") file = (0, import_node_path4.join)(tailwindDirectory, "index.css");
-    else if (id.startsWith("tailwindcss/")) file = (0, import_node_path4.join)(tailwindDirectory, `${id.slice("tailwindcss/".length).replace(/\.css$/, "")}.css`);
-    else if (id.startsWith(".") || (0, import_node_path4.isAbsolute)(id)) file = (0, import_node_path4.resolve)(base, id);
+    if (id === "tailwindcss") file = (0, import_node_path5.join)(tailwindDirectory, "index.css");
+    else if (id.startsWith("tailwindcss/")) file = (0, import_node_path5.join)(tailwindDirectory, `${id.slice("tailwindcss/".length).replace(/\.css$/, "")}.css`);
+    else if (id.startsWith(".") || (0, import_node_path5.isAbsolute)(id)) file = (0, import_node_path5.resolve)(base, id);
     else {
-      const next = (0, import_node_path4.resolve)(base, id);
-      file = (0, import_node_fs3.existsSync)(next) && (0, import_node_fs3.statSync)(next).isFile() ? next : packageStylesheet(id, base);
+      const next = (0, import_node_path5.resolve)(base, id);
+      file = (0, import_node_fs4.existsSync)(next) && (0, import_node_fs4.statSync)(next).isFile() ? next : packageStylesheet(id, base);
       if (file === void 0) {
         try {
-          file = (0, import_node_module2.createRequire)((0, import_node_path4.join)(base, "noop.js")).resolve(id);
+          file = (0, import_node_module2.createRequire)((0, import_node_path5.join)(base, "noop.js")).resolve(id);
         } catch (error) {
           throw new Error(`svelte-native: cannot resolve @import "${id}" from ${base}: ${error.message.split("\n")[0]}`, { cause: error });
         }
@@ -2200,12 +2261,12 @@ function stylesheetLoader(tailwindDirectory, read) {
     }
     let content;
     try {
-      content = (0, import_node_fs3.readFileSync)(file, "utf8");
+      content = (0, import_node_fs4.readFileSync)(file, "utf8");
     } catch (error) {
       throw new Error(`svelte-native: cannot read @import "${id}" from ${base}: ${error.code ?? error.message}`, { cause: error });
     }
     read.add(file);
-    return { path: file, base: (0, import_node_path4.dirname)(file), content };
+    return { path: file, base: (0, import_node_path5.dirname)(file), content };
   };
 }
 var noPlugin = Object.assign(() => ({ handler: () => {
@@ -2237,13 +2298,13 @@ function unsupportedReasons(unsupported) {
 function writeIfChanged(file, content) {
   let current;
   try {
-    current = (0, import_node_fs3.readFileSync)(file, "utf8");
+    current = (0, import_node_fs4.readFileSync)(file, "utf8");
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
   if (current === content) return false;
-  (0, import_node_fs3.mkdirSync)((0, import_node_path4.dirname)(file), { recursive: true });
-  (0, import_node_fs3.writeFileSync)(file, content);
+  (0, import_node_fs4.mkdirSync)((0, import_node_path5.dirname)(file), { recursive: true });
+  (0, import_node_fs4.writeFileSync)(file, content);
   return true;
 }
 var built = /* @__PURE__ */ new Map();
@@ -2253,7 +2314,7 @@ function inputsOf(candidates, entry, stylesheets) {
   for (const sheet of /* @__PURE__ */ new Set([entry, ...stylesheets])) {
     hash.update("\0");
     try {
-      hash.update((0, import_node_fs3.readFileSync)(sheet));
+      hash.update((0, import_node_fs4.readFileSync)(sheet));
     } catch {
       hash.update("missing");
     }
@@ -2261,19 +2322,19 @@ function inputsOf(candidates, entry, stylesheets) {
   return hash.digest("hex");
 }
 async function buildClasses(options) {
-  const root = (0, import_node_path4.resolve)(options.root);
-  const entry = (0, import_node_path4.resolve)(root, options.css);
-  const file = (0, import_node_path4.join)(root, ".svelte-native", classesTableFile(options.variant));
-  if (!(0, import_node_fs3.existsSync)(entry)) throw new Error(`svelte-native: the css option names ${options.css}, which is not a file (relative to ${root})`);
+  const root = (0, import_node_path5.resolve)(options.root);
+  const entry = (0, import_node_path5.resolve)(root, options.css);
+  const file = (0, import_node_path5.join)(root, ".svelte-native", classesTableFile(options.variant));
+  if (!(0, import_node_fs4.existsSync)(entry)) throw new Error(`svelte-native: the css option names ${options.css}, which is not a file (relative to ${root})`);
   const candidates = candidatesOf(root);
   const previous = built.get(file);
   const inputs = inputsOf(candidates, entry, previous?.result.stylesheets ?? []);
-  if (previous !== void 0 && previous.inputs === inputs && (0, import_node_fs3.existsSync)(file)) return { ...previous.result, changed: false };
+  if (previous !== void 0 && previous.inputs === inputs && (0, import_node_fs4.existsSync)(file)) return { ...previous.result, changed: false };
   const { tailwind, directory } = loadTailwind(root);
   const read = /* @__PURE__ */ new Set([entry]);
   const skipped = /* @__PURE__ */ new Set();
-  const compiler = await tailwind.compile((0, import_node_fs3.readFileSync)(entry, "utf8"), {
-    base: (0, import_node_path4.dirname)(entry),
+  const compiler = await tailwind.compile((0, import_node_fs4.readFileSync)(entry, "utf8"), {
+    base: (0, import_node_path5.dirname)(entry),
     from: entry,
     loadStylesheet: stylesheetLoader(directory, read),
     loadModule: async (id, base, hint) => {
@@ -2289,14 +2350,14 @@ async function buildClasses(options) {
   return result;
 }
 function buildClassesSync(options) {
-  const root = (0, import_node_path4.resolve)(options.root);
-  const entry = (0, import_node_path4.resolve)(root, options.css);
-  const file = (0, import_node_path4.join)(root, ".svelte-native", classesTableFile(options.variant));
+  const root = (0, import_node_path5.resolve)(options.root);
+  const entry = (0, import_node_path5.resolve)(root, options.css);
+  const file = (0, import_node_path5.join)(root, ".svelte-native", classesTableFile(options.variant));
   const previous = built.get(file);
   const candidates = candidatesOf(root);
-  const inputs = (0, import_node_fs3.existsSync)(entry) ? inputsOf(candidates, entry, previous?.result.stylesheets ?? []) : "";
-  if (previous !== void 0 && previous.inputs === inputs && (0, import_node_fs3.existsSync)(file)) return { ...previous.result, changed: false };
-  const cli = process.versions.bun !== void 0 && __filename.endsWith(".ts") ? sourceFile("cli.ts") : (0, import_node_path4.join)(packageRoot, "dist/node/cli.js");
+  const inputs = (0, import_node_fs4.existsSync)(entry) ? inputsOf(candidates, entry, previous?.result.stylesheets ?? []) : "";
+  if (previous !== void 0 && previous.inputs === inputs && (0, import_node_fs4.existsSync)(file)) return { ...previous.result, changed: false };
+  const cli = process.versions.bun !== void 0 && __filename.endsWith(".ts") ? sourceFile("cli.ts") : (0, import_node_path5.join)(packageRoot, "dist/node/cli.js");
   const run = (0, import_node_child_process.spawnSync)(process.execPath, [cli, "css", options.css, "--variant", options.variant, "--json"], { cwd: root, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
   if (run.error) throw new Error(`svelte-native: could not run the CSS build (${run.error.message})`, { cause: run.error });
   if (run.status !== 0) throw new Error(run.stderr.trim() || `svelte-native: the CSS build exited with ${run.status}`);
@@ -2321,26 +2382,27 @@ function reportSkipped(skipped) {
   console.warn(`svelte-native: plugins and JS config do not apply on native: ${fresh.join(", ")} ${fresh.length === 1 ? "is" : "are"} ignored`);
 }
 function watchClasses(options, stylesheets = [], debounceMs = 100) {
-  const root = (0, import_node_path4.resolve)(options.root);
-  const source = (0, import_node_path4.join)(root, "src");
+  const root = (0, import_node_path5.resolve)(options.root);
+  const source = (0, import_node_path5.join)(root, "src");
   const watchers2 = /* @__PURE__ */ new Map();
   let timer;
   let running = Promise.resolve();
   let closed = false;
   const watchDirectory = (directory, recursive) => {
-    if (closed || watchers2.has(directory) || !(0, import_node_fs3.existsSync)(directory)) return;
-    const watcher = (0, import_node_fs3.watch)(directory, { recursive }, () => {
-      clearTimeout(timer);
-      timer = setTimeout(rebuild, debounceMs);
-      unrefTimer(timer);
-    });
+    if (closed || watchers2.has(directory) || !(0, import_node_fs4.existsSync)(directory)) return;
+    const watcher = (0, import_node_fs4.watch)(directory, { recursive }, schedule);
     watcher.unref();
     watchers2.set(directory, watcher);
   };
   const followStylesheets = (files) => {
-    for (const directory of new Set(files.map((file) => (0, import_node_path4.dirname)(file))))
-      if (!directory.split(import_node_path4.sep).includes("node_modules") && (0, import_node_path4.relative)(source, directory).startsWith("..")) watchDirectory(directory, false);
+    for (const directory of new Set(files.map((file) => (0, import_node_path5.dirname)(file))))
+      if (!directory.split(import_node_path5.sep).includes("node_modules") && (0, import_node_path5.relative)(source, directory).startsWith("..")) watchDirectory(directory, false);
   };
+  function schedule() {
+    clearTimeout(timer);
+    timer = setTimeout(rebuild, debounceMs);
+    unrefTimer(timer);
+  }
   const rebuild = () => {
     running = running.then(async () => {
       if (closed) return;
@@ -2354,12 +2416,13 @@ function watchClasses(options, stylesheets = [], debounceMs = 100) {
       }
     });
   };
-  watchDirectory(source, true);
-  followStylesheets([(0, import_node_path4.resolve)(root, options.css), ...stylesheets]);
+  const tree = watchTree(source, schedule, { debounceMs: 0 });
+  followStylesheets([(0, import_node_path5.resolve)(root, options.css), ...stylesheets]);
   return {
     close() {
       closed = true;
       clearTimeout(timer);
+      tree.close();
       for (const watcher of watchers2.values()) watcher.close();
       watchers2.clear();
     }
@@ -2367,18 +2430,18 @@ function watchClasses(options, stylesheets = [], debounceMs = 100) {
 }
 
 // src/remote/transform.ts
-var import_node_path6 = require("node:path");
+var import_node_path7 = require("node:path");
 var import_parser = require("@babel/parser");
 
 // src/remote/kit.ts
 var import_node_module3 = require("node:module");
-var import_node_path5 = require("node:path");
+var import_node_path6 = require("node:path");
 var require3 = (0, import_node_module3.createRequire)(__importMetaUrl);
 var kitRootCache;
 function findKitRoot() {
   if (kitRootCache === void 0) {
     try {
-      kitRootCache = (0, import_node_path5.dirname)(require3.resolve("@sveltejs/kit/package.json"));
+      kitRootCache = (0, import_node_path6.dirname)(require3.resolve("@sveltejs/kit/package.json"));
     } catch {
       kitRootCache = null;
     }
@@ -2396,19 +2459,19 @@ function kitRoot(what = "The remote function runtime (`@example/svelte-native/re
 
 // src/remote/transform.ts
 var posix2 = (path) => path.replaceAll("\\", "/");
-var shim = (name) => (0, import_node_path6.join)(sourceDirectory, "remote/shims", name);
+var shim = (name) => (0, import_node_path7.join)(sourceDirectory, "remote/shims", name);
 function remoteResolution(specifier, origin) {
-  if (specifier.startsWith("@sveltejs/kit/src/")) return (0, import_node_path6.join)(kitRoot(), specifier.slice("@sveltejs/kit/".length));
-  if (specifier === "@sveltejs/kit/internal") return (0, import_node_path6.join)(kitRoot(), "src/exports/internal/index.js");
+  if (specifier.startsWith("@sveltejs/kit/src/")) return (0, import_node_path7.join)(kitRoot(), specifier.slice("@sveltejs/kit/".length));
+  if (specifier === "@sveltejs/kit/internal") return (0, import_node_path7.join)(kitRoot(), "src/exports/internal/index.js");
   const kit = findKitRoot();
   if (kit === null) return void 0;
   const inside = posix2(origin).startsWith(`${posix2(kit)}/`);
   if (!inside) return void 0;
   switch (specifier) {
     case "#internal":
-      return (0, import_node_path6.join)(kit, "src/exports/internal/client.js");
+      return (0, import_node_path7.join)(kit, "src/exports/internal/client.js");
     case "#app/internal/transport":
-      return (0, import_node_path6.join)(kit, "src/runtime/app/internal/transport.js");
+      return (0, import_node_path7.join)(kit, "src/runtime/app/internal/transport.js");
     case "#app/paths":
       return shim("paths.ts");
     case "#app/state/client":
@@ -2416,14 +2479,14 @@ function remoteResolution(specifier, origin) {
     case "$app/env":
       return shim("env.ts");
   }
-  if (specifier.startsWith(".") && (0, import_node_path6.resolve)((0, import_node_path6.dirname)(origin), specifier) === (0, import_node_path6.join)(kit, "src/runtime/client/client.js")) return shim("client.ts");
+  if (specifier.startsWith(".") && (0, import_node_path7.resolve)((0, import_node_path7.dirname)(origin), specifier) === (0, import_node_path7.join)(kit, "src/runtime/client/client.js")) return shim("client.ts");
   return void 0;
 }
 
 // src/svelte-build.ts
-var import_node_fs4 = require("node:fs");
+var import_node_fs5 = require("node:fs");
 var import_node_module4 = require("node:module");
-var import_node_path7 = require("node:path");
+var import_node_path8 = require("node:path");
 var requiredSvelte = {
   version: "5.56.7",
   commit: "216f258068d93170a927ad4d27ee6864b0b305c5",
@@ -2439,11 +2502,11 @@ function inspectSvelte(from) {
   } catch {
     return { ok: false, version: null, directory: null, reason: "missing" };
   }
-  const directory = (0, import_node_path7.dirname)(manifestPath);
-  const manifest = JSON.parse((0, import_node_fs4.readFileSync)(manifestPath, "utf8"));
+  const directory = (0, import_node_path8.dirname)(manifestPath);
+  const manifest = JSON.parse((0, import_node_fs5.readFileSync)(manifestPath, "utf8"));
   const version = manifest.version ?? null;
   const exported = manifest.exports !== void 0 && "./renderer" in manifest.exports;
-  if (!exported || !(0, import_node_fs4.existsSync)((0, import_node_path7.join)(directory, "src/renderer/index.js"))) return { ok: false, version, directory, reason: "stock-release" };
+  if (!exported || !(0, import_node_fs5.existsSync)((0, import_node_path8.join)(directory, "src/renderer/index.js"))) return { ok: false, version, directory, reason: "stock-release" };
   return { ok: true, version: version ?? "unknown", directory };
 }
 function customRendererMessage(inspection, what) {
@@ -2462,7 +2525,7 @@ function assertCustomRenderer(what, from) {
 
 // src/metro.ts
 var require4 = (0, import_node_module5.createRequire)(__importMetaUrl);
-var nativeSvelte = (0, import_node_path8.dirname)(require4.resolve("svelte/package.json"));
+var nativeSvelte = (0, import_node_path9.dirname)(require4.resolve("svelte/package.json"));
 var LITE_ORIGINS = /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?(?:hermes-intl|expo|expo-modules-core|expo-file-system|react-native-reanimated|react-native-worklets|react-native-is-edge-to-edge|expo-secure-store|expo-image-picker|expo-localization|expo-crypto|expo-constants|expo-font|expo-asset|expo-splash-screen|expo-status-bar|expo-system-ui|expo-keep-awake|expo-application|react-native-svg)[\\/]/;
 var INITIALIZE_CORE = /react-native[\\/]Libraries[\\/]Core[\\/]InitializeCore\.js$/;
 var RENDERER_STUBS = {
@@ -2497,17 +2560,17 @@ module.exports = require("./_core.js")(${JSON.stringify(name)}, ${JSON.stringify
 }
 var isInPackage = (moduleName, name) => moduleName === name || moduleName.startsWith(`${name}/`);
 var resetForLibrary;
-function libraryChanged(projectRoot, library = (0, import_node_fs5.realpathSync)(packageRoot)) {
-  const record = (0, import_node_path8.join)(projectRoot, ".svelte-native", "metro-library");
+function libraryChanged(projectRoot, library = (0, import_node_fs6.realpathSync)(packageRoot)) {
+  const record = (0, import_node_path9.join)(projectRoot, ".svelte-native", "metro-library");
   let previous;
   try {
-    previous = (0, import_node_fs5.readFileSync)(record, "utf8").trim();
+    previous = (0, import_node_fs6.readFileSync)(record, "utf8").trim();
   } catch {
     previous = void 0;
   }
   if (previous === library) return false;
-  (0, import_node_fs5.mkdirSync)((0, import_node_path8.dirname)(record), { recursive: true });
-  (0, import_node_fs5.writeFileSync)(record, `${library}
+  (0, import_node_fs6.mkdirSync)((0, import_node_path9.dirname)(record), { recursive: true });
+  (0, import_node_fs6.writeFileSync)(record, `${library}
 `);
   return true;
 }
@@ -2517,33 +2580,33 @@ function withSvelteNative(config, options = {}) {
   const resolveRequest = config.resolver.resolveRequest;
   const stubbed = options.stubbedPackages ?? [];
   const variant = options.variant ?? variantName();
-  const stubDirectory = (0, import_node_path8.join)(config.projectRoot, ".svelte-native", "stubs", variant.replace(/[^A-Za-z0-9_-]/g, "_"));
+  const stubDirectory = (0, import_node_path9.join)(config.projectRoot, ".svelte-native", "stubs", variant.replace(/[^A-Za-z0-9_-]/g, "_"));
   const write = (file, content) => {
     let current;
     try {
-      current = (0, import_node_fs5.readFileSync)(file, "utf8");
+      current = (0, import_node_fs6.readFileSync)(file, "utf8");
     } catch {
       current = void 0;
     }
-    if (current !== content) (0, import_node_fs5.writeFileSync)(file, content);
+    if (current !== content) (0, import_node_fs6.writeFileSync)(file, content);
   };
   const stubs = /* @__PURE__ */ new Map();
   if (stubbed.length > 0) {
-    (0, import_node_fs5.mkdirSync)(stubDirectory, { recursive: true });
-    write((0, import_node_path8.join)(stubDirectory, "_core.js"), stubCoreSource);
+    (0, import_node_fs6.mkdirSync)(stubDirectory, { recursive: true });
+    write((0, import_node_path9.join)(stubDirectory, "_core.js"), stubCoreSource);
   }
   for (const name of stubbed) {
-    const file = (0, import_node_path8.join)(stubDirectory, `${name.replace(/[^A-Za-z0-9_.-]/g, "_")}.js`);
-    (0, import_node_fs5.mkdirSync)(stubDirectory, { recursive: true });
+    const file = (0, import_node_path9.join)(stubDirectory, `${name.replace(/[^A-Za-z0-9_.-]/g, "_")}.js`);
+    (0, import_node_fs6.mkdirSync)(stubDirectory, { recursive: true });
     write(file, stubSource(name, variant));
     stubs.set(name, file);
   }
   const withoutExtension = (path) => path.replace(/\.[cm]?[jt]sx?$/, "");
   const nameOf = (path) => withoutExtension(path).slice(config.projectRoot.length + 1);
   const writeStub = (name) => {
-    const file = (0, import_node_path8.join)(stubDirectory, `${name.replace(/[^A-Za-z0-9_.-]/g, "_")}.js`);
-    (0, import_node_fs5.mkdirSync)(stubDirectory, { recursive: true });
-    write((0, import_node_path8.join)(stubDirectory, "_core.js"), stubCoreSource);
+    const file = (0, import_node_path9.join)(stubDirectory, `${name.replace(/[^A-Za-z0-9_.-]/g, "_")}.js`);
+    (0, import_node_fs6.mkdirSync)(stubDirectory, { recursive: true });
+    write((0, import_node_path9.join)(stubDirectory, "_core.js"), stubCoreSource);
     write(file, stubSource(name, variant));
     return file;
   };
@@ -2552,17 +2615,17 @@ function withSvelteNative(config, options = {}) {
   const directories = /* @__PURE__ */ new Map();
   for (const path of options.stubbedDirectories ?? []) {
     const directory = path.replace(/[\\/]+$/, "");
-    directories.set(directory + import_node_path8.sep, writeStub(`${nameOf(directory)}/`));
+    directories.set(directory + import_node_path9.sep, writeStub(`${nameOf(directory)}/`));
   }
   const lab = labIncludedFor(variant);
-  const entryFile = (0, import_node_path8.join)(config.projectRoot, ".svelte-native", "entry.ts");
-  const routesTable = (0, import_node_path8.join)(config.projectRoot, ".svelte-native", routesTableFile(variant));
-  if (options.syncRoutes ?? (0, import_node_fs5.existsSync)((0, import_node_path8.join)(config.projectRoot, "src/routes"))) {
+  const entryFile = (0, import_node_path9.join)(config.projectRoot, ".svelte-native", "entry.ts");
+  const routesTable = (0, import_node_path9.join)(config.projectRoot, ".svelte-native", routesTableFile(variant));
+  if (options.syncRoutes ?? (0, import_node_fs6.existsSync)((0, import_node_path9.join)(config.projectRoot, "src/routes"))) {
     const syncing = { variant, lab, entry: "keep" };
     syncRoutes(config.projectRoot, syncing);
     if (process.env.NODE_ENV === "development") watchers.add(watchRoutes(config.projectRoot, syncing));
   }
-  const classesTable = options.css === void 0 ? sourceFile("css/empty-table.ts") : (0, import_node_path8.join)(config.projectRoot, ".svelte-native", classesTableFile(variant));
+  const classesTable = options.css === void 0 ? sourceFile("css/empty-table.ts") : (0, import_node_path9.join)(config.projectRoot, ".svelte-native", classesTableFile(variant));
   if (options.css !== void 0) {
     const building = { root: config.projectRoot, css: options.css, variant };
     const built2 = buildClassesSync(building);
@@ -2573,7 +2636,7 @@ function withSvelteNative(config, options = {}) {
   const stubFor = (moduleName, origin) => {
     const name = stubbed.find((candidate) => isInPackage(moduleName, candidate));
     if (name !== void 0) return stubs.get(name) ?? null;
-    if (files.size > 0 && (moduleName.startsWith("./") || moduleName.startsWith("../"))) return files.get(withoutExtension((0, import_node_path8.resolve)((0, import_node_path8.dirname)(origin), moduleName))) ?? null;
+    if (files.size > 0 && (moduleName.startsWith("./") || moduleName.startsWith("../"))) return files.get(withoutExtension((0, import_node_path9.resolve)((0, import_node_path9.dirname)(origin), moduleName))) ?? null;
     return null;
   };
   const stubForFile = (filePath) => {
@@ -2600,7 +2663,7 @@ function withSvelteNative(config, options = {}) {
       }
       if (moduleName === "svelte/reactivity/window") return { type: "sourceFile", filePath: sourceFile("reactivity-window.ts") };
       if (moduleName === "svelte" || moduleName.startsWith("svelte/")) {
-        const nativeContext = { ...context, originModulePath: (0, import_node_path8.resolve)(nativeSvelte, "native-entry.js"), unstable_conditionNames: ["browser", "require"] };
+        const nativeContext = { ...context, originModulePath: (0, import_node_path9.resolve)(nativeSvelte, "native-entry.js"), unstable_conditionNames: ["browser", "require"] };
         return context.resolveRequest(nativeContext, moduleName, platform);
       }
       if (moduleName === "react-native" && LITE_ORIGINS.test(context.originModulePath)) {

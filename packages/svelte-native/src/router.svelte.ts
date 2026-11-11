@@ -1,5 +1,5 @@
 /// <reference path="./fabric/react-native-internals.d.ts" />
-import { getContext, onDestroy, setContext } from "svelte";
+import { flushSync, fork, getContext, onDestroy, setContext, untrack } from "svelte";
 import { SvelteMap, SvelteURL } from "svelte/reactivity";
 import Platform from "react-native/Libraries/Utilities/Platform";
 import BackHandler from "react-native/Libraries/Utilities/BackHandler";
@@ -27,6 +27,31 @@ export type NativeLocation = {
 };
 /** One screen of a router's native stack: a live entry, or a popped one the stack is still taking away (`leaving`). */
 export type RouterScreen = { entry: NativeLocation; canGoBack: boolean; leaving: boolean };
+
+/**
+ * A navigation that is being got ready (`Router.prepare`). `commit()` does the navigation `goto(href, navigation)` does: when the screen was rendered in time and nothing has changed in the
+ * stacks since, that screen comes on screen at once (its effects run then, once); otherwise (the call came before `ready`, another navigation or the exit of a screen happened in between,
+ * a newer `prepare` took the screen, Svelte's async mode is off) the prepared screen is dropped and `commit()` is a plain `goto` from the stacks as they are then.
+ *
+ * `discard()` gives the navigation up: the screen that was rendered is released and `commit()` does nothing any more. It takes effect a task later, and a `commit()` made before then wins:
+ * `Pressable` reports a press that lasted 130 ms or more as `onPressOut` and then `onPress` in one task, and `onPressOut` is where the navigation is discarded. After `commit()` or
+ * `discard()` has taken effect, further calls do nothing.
+ *
+ * Only forward navigations are prepared: the ones whose operations are pushes and tab selections. One that pops, replaces or resets removes screens, which a fork cannot
+ * do for the native stack (the exit timer would be armed for a navigation that may never happen), so `ready` is `false` and `commit()` is a plain `goto`.
+ *
+ * `prepare` reads the stacks untracked and renders the screen in a timer task, so it may be called from an event handler, a timer or an effect. The rendering happens on the JavaScript thread, so
+ * it can delay the next touch event by as long as the screen takes to render: prepare when the thread is otherwise idle. A prepared navigation that is neither committed nor discarded keeps
+ * its screen in memory.
+ */
+export interface PreparedNavigation {
+  /** Settles when the screen is rendered off screen (`true`), or when nothing will be: the navigation cannot be prepared, was committed or discarded first, a newer `prepare` took it, or its modules failed to load (`false`). Never rejects, and settles when the navigation is discarded even if a module never loads. */
+  readonly ready: Promise<boolean>;
+  /** Does the navigation. */
+  commit(): void;
+  /** Gives it up, a task later unless `commit()` comes first: the screen that was rendered is released, and nothing changed on screen. */
+  discard(): void;
+}
 
 const contextKey = Symbol("svelte-native-router");
 /** The router context: each router links to the one above it, so `useRouter(scope)` can walk up to a named ancestor. */
@@ -56,6 +81,12 @@ export interface Router {
   modules(route: PageRoute | RouteNode): RouteModules | undefined;
   /** Navigates anywhere in the tree: the plan selects tabs, pops covering screens and pushes where the route belongs. */
   goto(href: string, navigation?: NavigateOptions): void;
+  /**
+   * Gets `goto(href, navigation)` ready without doing it: the screen's modules load, and the screen is rendered off screen (Svelte's `fork`, so its effects wait and
+   * nothing reaches the native stack) while the finger is still down. `commit()` then does the navigation, and puts the screen that is ready on screen; `discard()`
+   * drops it. See `PreparedNavigation` for what is prepared and what is not.
+   */
+  prepare(href: string, navigation?: NavigateOptions): PreparedNavigation;
   /** Pops this navigator's top screen (a tabs router's: the selected pane's); at its base, the stack above gets to pop; `false` when nothing can (the app may leave). */
   back(): boolean;
   /** Replaces the first entry of this stack with a page of this navigator. */
@@ -96,6 +127,12 @@ function release(entry: NativeLocation): void {
  * count with the one from when it gave up: the link is opened only if nothing has navigated since, in the root stack or in any pane below it.
  */
 let navigations = 0;
+/**
+ * Counts every write to the screens of any stack: a navigation, but also the exit of a popped screen (`exited`), `dropLeaving` and the exit timeout, which are no navigation and
+ * do not count in `navigations`. A prepared navigation compares it: Svelte applies a fork's value over a write that was made while the fork was pending, so a screen that left in
+ * between would come back with the fork's stack, and the screen the fork pushed would not show.
+ */
+let stackWrites = 0;
 
 /**
  * The native stack of one navigator. A popped entry stays in it, inactive, until the stack reports that its exit transition
@@ -112,6 +149,7 @@ function createStack(reportsExit: boolean, initial: readonly NativeLocation[] = 
   let exitTimer: ReturnType<typeof setTimeout> | undefined;
   /** Makes `next` the screens, and frees the navigators of the entries that are gone. */
   function show(next: readonly RouterScreen[]) {
+    stackWrites++;
     const gone = screens.filter((screen) => !next.some((kept) => kept.entry === screen.entry));
     screens = next;
     for (const screen of gone) release(screen.entry);
@@ -155,6 +193,7 @@ function createStack(reportsExit: boolean, initial: readonly NativeLocation[] = 
     setBaseBack(value: boolean): void {
       if (value === baseBack) return;
       baseBack = value;
+      stackWrites++;
       screens = screens.map((screen) => {
         const index = entries.indexOf(screen.entry);
         if (screen.leaving || index < 0) return screen;
@@ -234,6 +273,8 @@ function createStore(tree: StackNode) {
   // that renders loads its own (the first screen, a restored stack). A screen shows its `loading` snippet until they
   // arrive, and rethrows a failed load where it renders.
   const slots = new SvelteMap<object, Slot>();
+  /** The load of each route that has one, settled (never rejected) when its slot has modules or an error: what `prepare` waits for. */
+  const loads = new WeakMap<object, Promise<void>>();
   function load(route: PageRoute | RouteNode): void {
     const slot = slots.get(route);
     if (slot && !("error" in slot)) return;
@@ -241,7 +282,7 @@ function createStore(tree: StackNode) {
     if (!loader) throw new Error(`Route ${route.id} has no loader: a tree is linked to its code by the generated .svelte-native/routes.<variant>.ts`);
     const pending = loader(); // a route whose load failed tries again on its next navigation
     slots.set(route, { pending: true });
-    pending.then((modules) => slots.set(route, { modules }), (error: unknown) => slots.set(route, { error }));
+    loads.set(route, pending.then((modules) => { slots.set(route, { modules }); }, (error: unknown) => { slots.set(route, { error }); }));
   }
   function modules(route: PageRoute | RouteNode): RouteModules | undefined {
     const slot = slots.get(route);
@@ -407,14 +448,122 @@ function createStore(tree: StackNode) {
     return read;
   }
 
+  function navigate(href: string, navigation: Navigation): void {
+    const target = resolved(href);
+    apply(plan(stateOf(target), target, navigation), target, true);
+    // A navigation passes through the navigators of its chain: the layout of each is loaded if it is not, and again if its load failed (a pane's layout is no route of any stack, so nothing else would).
+    for (const { node } of target.chain) if (node.layout) load(node);
+  }
+
+  /** The navigation of this tree that is being prepared, if any. A newer `prepare` takes its screen (two forks on the one stack would each hold a stack the other has not seen); the router's disposal drops it. */
+  let preparing: { supersede(): void; drop(): void } | undefined;
+  let warnedAsync = false;
+  /** The base page of the pane a tabs navigator on the way shows: a pane mounts its stack on its first selection, and a fork that renders it needs the page's modules too. */
+  const paneBases = (target: Resolution): PageRoute[] => target.chain.flatMap(({ node, select }) => {
+    if (node.kind !== "tabs") return [];
+    const pane = node.panes.find((candidate) => candidate.key === select) ?? node.panes[0];
+    const page = pane && indexPage(pane.stack);
+    return page ? [page] : [];
+  });
+  function prepare(href: string, navigation: Navigation = {}): PreparedNavigation {
+    const target = resolved(href);
+    preparing?.supersede();
+    // Untracked: an effect that calls `prepare` must not depend on the stacks it reads.
+    const { forward, routes } = untrack(() => {
+      const operations = plan(stateOf(target), target, navigation);
+      const forward = operations.length > 0 && operations.every((operation) => operation.op === "push" || operation.op === "select");
+      // What `navigate` loads, and what the screens it makes render, loaded now: a fork renders the screens at once, and a module that arrives after it would render its page later, outside the fork,
+      // with its effects running at once (or, for a pane base, never: the pane stays on its loading placeholder).
+      const routes: (PageRoute | RouteNode)[] = [target.page, ...paneBases(target), ...target.chain.map(({ node }) => node).filter((node) => node.layout)];
+      if (forward) for (const route of routes) load(route);
+      return { forward, routes };
+    });
+    const base = navigations;
+    let settled = false;
+    let superseded = false;
+    let forked: ReturnType<typeof fork> | undefined;
+    let writesAtFork = 0;
+    let pendingDiscard: ReturnType<typeof setTimeout> | undefined;
+    let resolveReady: (prepared: boolean) => void = () => {};
+    const ready = new Promise<boolean>((done) => { resolveReady = done; });
+    const handle = {
+      supersede(): void {
+        superseded = true;
+        forked?.discard();
+        forked = undefined;
+        resolveReady(false);
+      },
+      drop(): void {
+        clearTimeout(pendingDiscard);
+        settle();
+        forked?.discard();
+        forked = undefined;
+      },
+    };
+    preparing = handle;
+    /** Committed or discarded: nothing more happens to this handle. `ready` settles `false` if it had not settled (a call that settles it twice does nothing). */
+    function settle(): void {
+      settled = true;
+      if (preparing === handle) preparing = undefined;
+      resolveReady(false);
+    }
+    function discard(): void {
+      if (settled || pendingDiscard !== undefined) return;
+      // A task later, and `commit()` cancels it: a press of 130 ms or more is `onPressOut` (the discard) and then `onPress` (the commit) in the same task.
+      pendingDiscard = setTimeout(() => {
+        pendingDiscard = undefined;
+        if (settled) return;
+        settle();
+        forked?.discard();
+        forked = undefined;
+      }, 0);
+    }
+    function commit(): void {
+      if (settled) return;
+      clearTimeout(pendingDiscard);
+      pendingDiscard = undefined;
+      settle();
+      if (forked && navigations === base && stackWrites === writesAtFork) {
+        // The counts were put back after the fork (a discarded one is no navigation), and are counted now.
+        navigations++;
+        stackWrites++;
+        forked.commit().catch((error: unknown) => { console.error("[Svelte router] a prepared navigation failed to commit", error); });
+      } else {
+        // Not ready, or something changed since: the navigation is made from the stacks as they are now.
+        forked?.discard();
+        navigate(href, navigation);
+      }
+      forked = undefined;
+    }
+    void (async () => {
+      if (!forward) return resolveReady(false);
+      await Promise.all(routes.map((route) => loads.get(route)));
+      // A task later: what the touch itself changed (a pressed state) reaches the screen before the JavaScript thread renders a screen.
+      await new Promise<void>((done) => setTimeout(done, 0));
+      if (settled || superseded || navigations !== base || !routes.every((route) => { const slot = slots.get(route); return slot !== undefined && "modules" in slot; })) return resolveReady(false);
+      try {
+        flushSync(); // a fork needs no change pending
+        const before = navigations;
+        const writes = stackWrites;
+        try { forked = fork(() => navigate(href, navigation)); } finally { navigations = before; stackWrites = writes; }
+        writesAtFork = writes;
+        resolveReady(true);
+      } catch (error) {
+        if (!(error instanceof Error && error.message.includes("experimental_async_required"))) console.error("[Svelte router] a navigation could not be prepared", error);
+        else if (!warnedAsync) {
+          warnedAsync = true;
+          console.warn("[Svelte router] prepare() needs Svelte's async mode, which the app has not turned on (withSvelteNative(config, { async: true }), see REFERENCE.md, Router: prepare); navigations are made when committed, as goto does");
+        }
+        resolveReady(false);
+      }
+    })();
+    return { ready, commit, discard };
+  }
+
   return {
     tree, root, load, modules, snapshot: () => snapshot(root), state: (): NavigationState => ({ stack: snapshot(root), launch: launched }), resolved,
-    navigate(href: string, navigation: Navigation) {
-      const target = resolved(href);
-      apply(plan(stateOf(target), target, navigation), target, true);
-      // A navigation passes through the navigators of its chain: the layout of each is loaded if it is not, and again if its load failed (a pane's layout is no route of any stack, so nothing else would).
-      for (const { node } of target.chain) if (node.layout) load(node);
-    },
+    navigate,
+    prepare,
     /**
      * Puts the first screen on the root stack (it loads when it renders, not here), from a saved state when there is one. Returns why the saved state was
      * refused (the app starts from `initial` then), or undefined when there was none or it was used.
@@ -480,7 +629,7 @@ function createStore(tree: StackNode) {
       // and the drop would put the old screens back. A microtask reads the stack as the flush left it.
       if (!value) queueMicrotask(() => { if (!shown) root.dropLeaving(); });
     },
-    dispose() { disposed = true; root.dispose(); },
+    dispose() { disposed = true; preparing?.drop(); root.dispose(); },
   };
 }
 
@@ -519,6 +668,7 @@ function makeRouter({ store, node, scope, above, navigator, active, entry }: Spe
     load: store.load,
     modules: store.modules,
     goto(href, navigation = {}) { store.navigate(href, navigation); },
+    prepare(href, navigation = {}) { return store.prepare(href, navigation); },
     back() {
       // This router's own stack first (a tabs router's is the selected pane's), then the stacks above it: a pane at its base hands the pop up, it does not pop its sibling.
       const stacks = [shown()];
@@ -673,6 +823,29 @@ export function enterPane(key: string): { router: Router; host: NativeLocation }
 /** The nearest router above this component, if any: what `Tabs` asks to tell a tabs layout from a tab bar of a page. */
 export function nearestRouter(): Router | undefined {
   return getContext<RouterContext | undefined>(contextKey)?.router;
+}
+
+/** A link to another site or app: a scheme (`https:`, `mailto:`, `tel:`, the app's own) or a protocol-relative `//host`. */
+const EXTERNAL_LINK = /^(?:[a-z][a-z\d+.-]*:|\/\/)/i;
+
+/**
+ * What a press of an `<a href>` calls (the lowering of HTML elements writes a `useLink()` call into the instance script, `lower-html.ts`): a path of the app goes to
+ * the nearest router's `goto`, as SvelteKit's router follows a link, and any other link (`https:`, `mailto:`, `tel:`, the app's own scheme) is opened by the platform
+ * (`Linking.openURL`). Call it while the component initializes, as `useRouter`; unlike `useRouter` it does not throw without a router above, because a link to another site needs none
+ * (a press of an app link without one does). A link that is only a hash (`#top`), or none, does nothing: there is no page to scroll.
+ */
+export function useLink(): (href?: string) => void {
+  const router = nearestRouter();
+  return (href) => {
+    // No `href` (an `<a>` without one, or `href={undefined}`) is no link: a press does nothing.
+    if (typeof href !== "string" || href === "" || href.startsWith("#")) return;
+    if (EXTERNAL_LINK.test(href)) {
+      Linking.openURL(href.startsWith("//") ? `https:${href}` : href).catch((error: unknown) => { console.warn(`[Svelte router] the platform could not open ${href}`, error); });
+      return;
+    }
+    if (!router) throw new Error(`<a href="${href}"> goes to a screen of the app, which needs a router above it`);
+    router.goto(href);
+  };
 }
 
 /** The nearest router, or with `scope` the nearest one above that was created with that name (`"root"` is the outermost). */

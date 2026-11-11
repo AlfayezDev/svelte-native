@@ -111,6 +111,7 @@ module.exports = withSvelteNative(getDefaultConfig(__dirname));
 | Option | Default | What it does |
 | --- | --- | --- |
 | `runes` | `true` | Compile every component of the app in runes mode. Set `false` while you migrate legacy components: Svelte then decides per file. |
+| `async` | `false` | Experimental. Compile every Svelte file with Svelte's async mode, which [`router.prepare`](routing#preparing-a-screen-experimental) needs and which allows `await` in `$derived`, in the markup and at the top of a component. See [Preparing a screen](routing#preparing-a-screen-experimental) for what changes. |
 | `syncRoutes` | `true` when `src/routes` exists | Write the route table when Metro starts, and again when a route file changes. |
 | `stubbedPackages` | `[]` | Packages this build doesn't link. Importing one gives a module that throws when used. |
 | `css` | none | Your CSS file, relative to the project (`'src/global.css'`): its classes, Tailwind's included, become the styles of `class`. See [Classes](styling#classes). |
@@ -143,6 +144,7 @@ export default defineConfig(({ mode }) => ({
 | `target` | `'web'` (the default) is SvelteKit's plugin, plus what keeps the `.mobile.svelte` files out of the web build. `'native'` is for exporting the native bundle through Vite; you normally don't need it. |
 | `kit` | SvelteKit's options, as you passed them to `sveltekit()`. |
 | `runes` | As for Metro. Set the same value in both, so a shared component means the same thing on both targets. |
+| `async` | As for Metro (experimental). On the web target it is added to the compiler options you gave `kit`, under yours. |
 
 ## app.json
 

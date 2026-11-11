@@ -1,4 +1,4 @@
-import { test, expect } from "bun:test";
+import { afterEach, beforeEach, expect, test } from "bun:test";
 import { build } from "esbuild";
 import { readFile, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -7,6 +7,21 @@ import { pathToFileURL } from "node:url";
 import { compile } from "svelte/compiler";
 import { componentOptions } from "../src/compile-options.ts";
 import type { NativeNode } from "../src/renderer.ts";
+
+// Bun runs every test file in one process, and a file before this one may have left a \`requestAnimationFrame\` behind. The windowing tests assume none unless
+// they install their own (as the frame-driven ones below do), so each test starts without one and the previous value is put back after it.
+const frameScope = globalThis as { requestAnimationFrame?: unknown; cancelAnimationFrame?: unknown };
+let framesBefore: [unknown, unknown] = [undefined, undefined];
+beforeEach(() => {
+  framesBefore = [frameScope.requestAnimationFrame, frameScope.cancelAnimationFrame];
+  delete frameScope.requestAnimationFrame;
+  delete frameScope.cancelAnimationFrame;
+});
+afterEach(() => {
+  [frameScope.requestAnimationFrame, frameScope.cancelAnimationFrame] = framesBefore;
+  if (framesBefore[0] === undefined) delete frameScope.requestAnimationFrame;
+  if (framesBefore[1] === undefined) delete frameScope.cancelAnimationFrame;
+});
 
 async function load() {
   const bundle = await build({

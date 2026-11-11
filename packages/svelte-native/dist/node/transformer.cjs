@@ -1571,6 +1571,7 @@ var UNSUPPORTED_TYPES = {
   month: "use `DateTimePicker` from `@rasheed/svelte-native/foreign`",
   week: "use `DateTimePicker` from `@rasheed/svelte-native/foreign`"
 };
+var TRANSITION_EVENTS = ["introstart", "introend", "outrostart", "outroend"];
 var INPUT_EVENTS = ["input", "change", "focus", "blur", "keydown", "keyup"];
 var lines = (text) => text.split("\n").length - 1;
 var WHITESPACE = /^[ \t\n\r\f]*$/;
@@ -1803,7 +1804,7 @@ function lowerHtml(ast, content, filename, warn = () => {
     const inline = kind === "text" && INLINE.has(node.name) || kind === "link" && context === "text";
     const generated = kind === "image" ? [] : [inline ? 'nativeHtml="inline"' : "nativeHtml={true}"];
     if (USER_AGENT_STYLES.has(node.name)) generated.push(`nativeBase="${node.name}"`);
-    const events = ["click"];
+    const events = ["click", ...TRANSITION_EVENTS];
     const role = (name) => {
       if (!hasRole(node)) generated.push(`accessibilityRole="${name}"`);
     };

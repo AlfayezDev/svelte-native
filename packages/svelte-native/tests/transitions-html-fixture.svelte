@@ -8,6 +8,8 @@
   let items = $state([1, 2, 3]);
   let faded = $state(false);
   let color = $state("red");
+  let evented = $state(false);
+  const heard: string[] = [];
   probe.__tx = {
     setOn: (value: boolean) => { on = value; },
     setShown: (value: boolean) => { shown = value; },
@@ -15,6 +17,8 @@
     setItems: (value: number[]) => { items = value; },
     setFaded: (value: boolean) => { faded = value; },
     setColor: (value: string) => { color = value; },
+    setEvented: (value: boolean) => { evented = value; },
+    heard: () => heard,
   };
 </script>
 
@@ -34,4 +38,9 @@
   <div testID="fading" style={{ color, fontSize: 20 }} in:fade={{ duration: 100 }}>
     <p testID="fading-child">Hi</p>
   </div>
+{/if}
+
+<!-- The events Svelte's transitions send the element: they reach the handlers written on it, and the lowering does not warn that they never run. -->
+{#if evented}
+  <div testID="evented" in:fade={{ duration: 100 }} out:fade={{ duration: 100 }} onintrostart={() => heard.push("introstart")} onintroend={() => heard.push("introend")} onoutrostart={() => heard.push("outrostart")} onoutroend={() => heard.push("outroend")}>x</div>
 {/if}

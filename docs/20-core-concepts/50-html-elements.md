@@ -124,7 +124,7 @@ A `line-height` without a unit, and a `letter-spacing` in `em`, are a factor of 
 <li onclick={() => select(item)}>{item.name}</li>
 ```
 
-The other events of the web don't exist on a phone. A handler that can't run, such as `onmouseover` on a `div`, gives a warning when the file is built, with the file and line. It's a warning and not an error because the file still works on the web. The ones the elements below do get are listed with them.
+The other events of the web don't exist on a phone, except the four Svelte's transitions send: `onintrostart`, `onintroend`, `onoutrostart` and `onoutroend` run on the element that plays the transition. A handler that can't run, such as `onmouseover` on a `div`, gives a warning when the file is built, with the file and line. It's a warning and not an error because the file still works on the web. The ones the elements below do get are listed with them.
 
 Svelte's own `on:` directive isn't accepted by the library's renderer, so `on:click={f}` is `onclick={f}`, and one with a modifier (`on:click|preventDefault={f}`) or no function (`on:click`) is a build error that says what to write: the attribute, and `event.preventDefault()` inside it.
 

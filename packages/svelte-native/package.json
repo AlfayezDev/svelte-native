@@ -43,7 +43,7 @@
       "default": "./dist/node/expo.cjs"
     },
     "./updates": "./src/updates/index.ts",
-    "./uniwind": "./src/uniwind.ts",
+    "./classes-table": "./src/css/empty-table.ts",
     "./native-modules": "./src/native-modules.ts",
     "./remote": "./src/remote/index.ts",
     "./remote/runtime": "./src/remote/runtime.ts",
@@ -112,7 +112,7 @@
     "react-native-worklets": "0.10.1",
     "rive-react-native": "~9.7.1",
     "svelte": "5.56.7",
-    "uniwind": "1.13.2",
+    "tailwindcss": "4.3.3",
     "vite": "^8.1.4"
   },
   "peerDependenciesMeta": {
@@ -170,7 +170,7 @@
     "rive-react-native": {
       "optional": true
     },
-    "uniwind": {
+    "tailwindcss": {
       "optional": true
     },
     "vite": {
@@ -193,6 +193,7 @@
     "hermes-intl": "^0.1.2",
     "svelte": "file:../../vendor/svelte-5.56.7-216f258.tgz",
     "svelte-check": "^4.6.0",
+    "tailwindcss": "4.3.3",
     "typescript": "6.0.3",
     "typescript-eslint": "8.67.0",
     "vite": "catalog:"

@@ -43,11 +43,12 @@ export function hostValue<T>(value: T): T {
 /**
  * `class` on a lowered tag: `lower.ts` writes `nativeClass={hostClass(...)}` for `class` and `class:name` on `<View>`, `<Text>`, ..., because
  * Svelte would join a `class` attribute into a string the host drops. The style is worked out here, in the element's template effect, so
- * what the class resolver reads (the theme, the window) is tracked there, as for a component (`createNativeProps`); the host puts it under
- * the element's own style (`mergeHostProps`).
+ * what the class resolver reads (the color scheme, the window) is tracked there, as for a component (`createNativeProps`); the host puts it under
+ * the element's own style (`mergeHostProps`). `style` is that style, which `lower.ts` passes when the tag has one: the font size it sets is what a font-relative
+ * line height is made from.
  */
-export function hostClass(value: unknown): unknown {
-  return classStyle(value, noProps);
+export function hostClass(value: unknown, style?: unknown): unknown {
+  return classStyle(value, style);
 }
 
 /**
@@ -57,7 +58,7 @@ export function hostClass(value: unknown): unknown {
 export function hostSpread<T extends object>(props: T, toggles?: Record<string, unknown>): T {
   const copy = { ...props } as Record<string, unknown>;
   if ("class" in copy) {
-    const fromClass = classStyle(toggles === undefined ? copy.class : [copy.class, toggles], copy);
+    const fromClass = classStyle(toggles === undefined ? copy.class : [copy.class, toggles], copy.style);
     delete copy.class;
     if (fromClass !== undefined) copy.nativeClass = fromClass;
   }

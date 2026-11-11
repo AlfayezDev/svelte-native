@@ -4,38 +4,36 @@
   import type { ClassProps } from "../classes.ts";
   import { createNativeProps } from "../native-props.ts";
   import { expoViewName } from "../fabric/foreign.ts";
+  import type { BlurTint } from "../fabric/foreign-blur.ts";
   import View from "./View.svelte";
   import type { ViewProps } from "react-native";
 
   /**
-   * The blur of `expo-blur` (`ExpoBlurView`) as a Svelte component, with that package's props: `intensity` (1 to 100), `tint`,
-   * `blurReductionFactor` and `blurMethod` (`experimentalBlurMethod` is its deprecated name) on Android, and `blurTarget`.
+   * The library's own blur: it blurs what is drawn behind it and needs no package (`SvelteBlur`, `native/svelte-blur`; the blur of `expo-blur` is
+   * `ExpoBlurView`). It is a `View` with the blur filling it and the children on top, so the children are the engine's views and take touches, and
+   * `borderRadius` with `overflow: "hidden"` rounds the blur.
    *
-   * iOS blurs what is behind the view. On Android `blurMethod="none"` (the default) draws a translucent tint colour, which needs
-   * nothing else; the real blur (`dimezisBlurView`, `dimezisBlurViewSdk31Plus`) renders what a `BlurTargetView` holds, so the
-   * content to blur goes in a `BlurTargetView` and `blurTarget` is its `ref` (the native view finds the target by its tag; the tag
-   * reaches it with the first update after both views exist). The views inside a `BlurTargetView` are mounted by React Native
-   * (the target is a foreign view): they draw and lay out as usual and take no JavaScript touch or responder events.
+   * `intensity` is 0 to 100 (default 50): the blur radius, up to 25 dp, and how opaque the tint is. `tint` is one of `expo-blur`'s names (default `"default"`):
+   * iOS maps them to its blur materials, Android draws a translucent white (`light`, `extraLight`, the `...Light` names), black (`dark`, the `...Dark`
+   * names) or, for every other name, white by day and black at night.
+   *
+   * iOS blurs what is behind the view. Android 12 (API 31) and up draws the window's content behind the view into a small picture each frame and blurs
+   * that on the GPU; before API 31, or where the view is drawn into a software canvas, it is the tint alone, stronger because nothing is blurred. The
+   * blur shows what is drawn before the view (views below it and earlier siblings, not what is drawn above); the content of a map, video or camera
+   * surface and a window other than the one the view is in (a native dialog) are not part of it.
    */
-  let { tint = "default", intensity = 50, blurReductionFactor = 4, blurMethod, experimentalBlurMethod, blurTarget, style, children, ref, ...attributes }: Omit<ViewProps, "children"> & {
-    tint?: string;
+  let { tint = "default", intensity = 50, style, children, ref, ...attributes }: Omit<ViewProps, "children"> & {
+    tint?: BlurTint;
     intensity?: number;
-    blurReductionFactor?: number;
-    blurMethod?: "none" | "dimezisBlurView" | "dimezisBlurViewSdk31Plus";
-    /** @deprecated Use `blurMethod`. */
-    experimentalBlurMethod?: "none" | "dimezisBlurView" | "dimezisBlurViewSdk31Plus";
-    /** The `ref` value of a `BlurTargetView` (its host handle), or its native tag. */
-    blurTarget?: { tag: number } | number | null;
     children?: Snippet;
     /** Receives the host handle of the container, or null on unmount. */
     ref?: (handle: unknown) => void;
   } & ClassProps = $props();
   const resolveProps = createNativeProps();
-  const component = expoViewName("ExpoBlur", "ExpoBlurView");
-  const blurTargetId = $derived(typeof blurTarget === "number" ? blurTarget : blurTarget?.tag);
+  const component = expoViewName("SvelteBlur", "SvelteBlurView");
   const fill = { position: "absolute", left: 0, top: 0, right: 0, bottom: 0 } as const;
 </script>
-<View {...attributes} style={[{ backgroundColor: "transparent" }, style]} {ref}>
-  <native-foreign {component} nativeProps={resolveProps({ blurTargetId, tint, intensity, blurReductionFactor, blurMethod: blurMethod ?? experimentalBlurMethod ?? "none", style: fill })}></native-foreign>
+<View {...attributes} {style} {ref}>
+  <native-foreign {component} nativeProps={resolveProps({ intensity, tint, pointerEvents: "none", style: fill })}></native-foreign>
   {@render children?.()}
 </View>

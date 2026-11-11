@@ -261,13 +261,15 @@ A stack layout renders `<Stack header={{ large: true }} animation="slide_from_ri
 
 | Library | Components |
 |---|---|
-| expo-image, expo-blur, expo-linear-gradient, expo-conic-gradient | `ExpoImage`; `BlurView`, `BlurTargetView`; `LinearGradient`; `ConicGradient` |
+| expo-image, expo-blur, expo-linear-gradient, expo-conic-gradient | `ExpoImage`; `ExpoBlurView`, `BlurTargetView`; `LinearGradient`; `ConicGradient` |
 | react-native-video, expo-video, lottie-react-native, rive-react-native | `Video`; `VideoView`; `LottieView`; `Rive` |
 | @react-native-community/datetimepicker | `DateTimePicker` (iOS), `openDatePicker` (Android dialog) |
 | react-native-pdf, react-native-view-shot | `Pdf`; `captureRef`, `ViewShot` |
 | react-native-webview, react-native-maps | `WebView`; `MapView`, `Marker` |
 | react-native-fast-shadow, react-native-animateable-text | `ShadowedView`, `shadowStyle`; `AnimateableText` |
 | react-native-svg 15.15.4 | `Svg`, shapes, text, gradients, filters, `SvgXml`, `SvgUri` (36 components) |
+
+The library has its own blur, `BlurView`, which needs no package (a native module of the library, `native/svelte-blur`): `intensity` and `tint`, children on top. `ExpoBlurView` is expo-blur's.
 | any other Expo module's view | `ExpoView`, `defineExpoView` mount it by the module's name, with the module's own props |
 | anything else | `ForeignView` mounts a Fabric component by name |
 

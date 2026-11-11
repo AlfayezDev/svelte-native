@@ -159,6 +159,11 @@ jobs:
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: bash packages/svelte-native/native/svelte-engine/android/src/test/run.sh
 
+      # The blur view's rules (intensity, tints, colours, radius, the size of its backdrop picture), kotlinc only.
+      - name: Blur view host checks
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: bash packages/svelte-native/native/svelte-blur/android/src/test/run.sh
+
   docs:
     name: Documentation site
     runs-on: ubuntu-latest

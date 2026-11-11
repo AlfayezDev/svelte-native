@@ -37,7 +37,7 @@ export function resolvePin(android: boolean, pinned: Pinned, mounted: Mounted): 
  */
 export const pins = {
   image: { host: "expo.modules.image.ExpoImageViewWrapper", ios: { host: "ExpoImage.ImageView" } },
-  // `BlurView` is a container `View` (it takes children) holding the library's `ExpoBlurView` (an `ExpoView`, whose `BlurEffectView` is a `UIVisualEffectView`): the section's handle names
+  // `ExpoBlurView` (the component) is a container `View` (it takes children) holding the library's `ExpoBlurView` (an `ExpoView`, whose `BlurEffectView` is a `UIVisualEffectView`): the section's handle names
   // the container, and the library's view is below it, read by its Swift name (the module-qualified `ExpoBlur.ExpoBlurView` is what `NSStringFromClass` would say of a handle's own view).
   blur: { inside: "ExpoBlurView", ios: { inside: "ExpoBlurView" } },
   gradient: { inside: "LinearGradientView", ios: { inside: "LinearGradientView" } },

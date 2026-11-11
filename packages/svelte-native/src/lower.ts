@@ -149,7 +149,10 @@ export function lowerPrimitives(content: string, options: LowerOptions = {}): st
     if (classes.length > 0) {
       const own = classes.find((attribute) => attribute.type === "Attribute");
       const parts = [...(own ? [classExpression(content, own)] : []), ...(toggles ? [toggles] : [])];
-      const value = `nativeClass={${CLASS_HELPER}(${parts.length === 1 ? parts[0] : `[${parts.join(", ")}]`})}`;
+      // The element's own style comes along, as written: the font size it sets is what a `leading-none` is made from. A quoted `style="..."` is a string, which sets none.
+      const style = (node.attributes as Node[]).find((attribute) => attribute.type === "Attribute" && attribute.name === "style" && attribute.value !== true && !Array.isArray(attribute.value));
+      const styleArgument = style === undefined ? "" : `, ${content.slice(style.value.expression.start, style.value.expression.end)}`;
+      const value = `nativeClass={${CLASS_HELPER}(${parts.length === 1 ? parts[0] : `[${parts.join(", ")}]`}${styleArgument})}`;
       helpers.add(CLASS_HELPER);
       const at = own ?? (spreads ? undefined : classes[0]);
       if (at === undefined) edits.push({ start: node.attributes[0].start, end: node.attributes[0].start, text: `${value} ` });

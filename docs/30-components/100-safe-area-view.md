@@ -25,7 +25,7 @@ title: SafeAreaView
 | --- | --- | --- | --- |
 | `edges` | `readonly ('top' \| 'right' \| 'bottom' \| 'left')[]` | all four | The edges to pad. |
 | `style` | `ViewStyle` | | As a `View`'s. On each padded edge, the inset is added to the style's own padding. |
-| `class` | `ClassValue` | | A list of classes: a string, an array or an object, as on a DOM element in Svelte. Their style goes under `style`, which wins. Needs [Uniwind](styling#classes). |
+| `class` | `ClassValue` | | A list of classes: a string, an array or an object, as on a DOM element in Svelte. Their style goes under `style`, which wins. Needs the `css` option ([Classes](styling#classes)). |
 | `children` | `Snippet` | | The content. |
 
 It also takes the props of [`View`](view#props).

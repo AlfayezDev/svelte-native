@@ -3,13 +3,13 @@
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
 
-  // `class` takes Tailwind's utilities and the classes of src/global.css. Uniwind compiles them to React Native styles when Metro builds
+  // `class` takes Tailwind's utilities and the classes of src/global.css. Svelte Native compiles them to React Native styles when Metro builds
   // the app, and `dark:` follows the system's appearance. `class` takes what it takes on a DOM element in Svelte: a string, an array
   // or an object, so a class can depend on state. An inline `style` still wins over the classes.
   let selected = $state(false);
 </script>
 
-<Page title="Classes" intro="Tailwind classes, compiled by Uniwind. dark: follows the system's appearance; your own classes come from src/global.css.">
+<Page title="Classes" intro="Tailwind classes, compiled to native styles when Metro starts. dark: follows the system's appearance; your own classes come from src/global.css.">
   <Section title="Utilities" note="Padding, rounded corners, a border and a background, all from classes.">
     <View class="items-center rounded-3xl border-2 border-sky-500 bg-sky-50 p-5 dark:bg-sky-950">
       <Text class="text-lg font-semibold text-sky-900 dark:text-sky-100">p-5 rounded-3xl border-2</Text>

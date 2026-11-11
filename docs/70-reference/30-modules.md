@@ -30,6 +30,7 @@ The main entry: components, navigation and the app's state.
 | `useHeader()`, `useToolbar()` | The height of the screen's header or toolbar, to pad content under a translucent bar. [Screen](screen) |
 | `inTabPane()` | Whether the caller is inside a tab pane. [Tabs](tabs) |
 | `colorScheme` | `colorScheme.current` is `'light'` or `'dark'`, as state. [Styling](styling#light-and-dark-mode) |
+| `windowSize` | The window's `width`, `height`, `scale`, `fontScale` and `screen`, as state. [Platform APIs](platform-apis#window-size) |
 | `insets` | The safe area and the keyboard, as state. [Platform APIs](platform-apis#safe-area-and-keyboard) |
 | `Native` | A native element whose tag is chosen at run time. For library authors. |
 | `Router`, `createRouter` | The router's building blocks. The generated entry uses them; an app doesn't need to. |
@@ -72,7 +73,8 @@ Native views of other libraries. [Native views](native-views)
 | Export | Description |
 | --- | --- |
 | `ExpoImage` | `expo-image`. |
-| `BlurView`, `BlurTargetView` | `expo-blur`. |
+| `BlurView` | Svelte Native's own blur ([BlurView](blur-view)). |
+| `ExpoBlurView`, `BlurTargetView` | `expo-blur`. |
 | `LinearGradient` | `expo-linear-gradient`. |
 | `ConicGradient` | `expo-conic-gradient`. |
 | `Video` | `react-native-video`. |
@@ -112,10 +114,6 @@ SvelteKit's remote functions on the device. [Loading data](loading-data#remote-f
 | `resetRemoteConfig()` | Drops what `configureRemote` set. |
 | `normalizeOrigin(origin)` | Checks and normalises an origin. |
 | `RemoteConfigError` | Thrown by a remote function call when no server is configured. |
-
-## @example/svelte-native/uniwind
-
-Import it once, in the app shell, to make `class` work through Uniwind. It exports nothing. [Classes](styling#classes)
 
 ## @example/svelte-native/updates
 

@@ -31,7 +31,7 @@ A `View` can't hold text directly. A string outside a [`Text`](text) isn't drawn
 | --- | --- | --- | --- |
 | `children` | `Snippet` | | The content. |
 | `style` | `ViewStyle` | | Layout, background, border, shadow, opacity, transform. See [styling](styling). |
-| `class` | `ClassValue` | | A list of classes: a string, an array or an object, as on a DOM element in Svelte. Their style goes under `style`, which wins. Needs [Uniwind](styling#classes). |
+| `class` | `ClassValue` | | A list of classes: a string, an array or an object, as on a DOM element in Svelte. Their style goes under `style`, which wins. Needs the `css` option ([Classes](styling#classes)). |
 | `onPress` | `(event) => void` | | Called when the view is tapped. Any of the press props makes the view respond to touches. |
 | `onPressIn`, `onPressOut` | `(event) => void` | | A finger went down on the view, or came up. |
 | `onLongPress` | `(event) => void` | | A press was held for `delayLongPress` milliseconds. |

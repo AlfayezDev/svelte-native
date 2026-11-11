@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ConfigT } from "@expo/metro/metro-config";
 import { syncRoutes } from "../src/build.ts";
-import { closeRouteWatchers, withSvelteNative } from "../src/metro.ts";
+import { closeWatchers, withSvelteNative } from "../src/metro.ts";
 import { routesTableFile } from "../src/variant.ts";
 
 /**
@@ -45,7 +45,7 @@ const environment = process.env.NODE_ENV;
 const variantEnvironment = process.env.APP_VARIANT;
 const rootEnvironment = process.env.SVELTE_NATIVE_ROOT;
 afterEach(() => {
-  closeRouteWatchers();
+  closeWatchers();
   if (environment === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = environment;
   if (variantEnvironment === undefined) delete process.env.APP_VARIANT; else process.env.APP_VARIANT = variantEnvironment;
   if (rootEnvironment === undefined) delete process.env.SVELTE_NATIVE_ROOT; else process.env.SVELTE_NATIVE_ROOT = rootEnvironment;

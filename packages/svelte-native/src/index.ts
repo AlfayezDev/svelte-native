@@ -8,6 +8,7 @@ export { createRouter, openLaunchURL, useRouter, type NativeLocation, type Navig
 export { inTabPane, useHeader, useToolbar } from "./fabric/navigation.ts";
 export { bootSummary } from "./boot-marks.ts";
 export { colorScheme } from "./color-scheme.ts";
+export { windowSize } from "./window-size.ts";
 export type { HostHandle } from "./fabric/host.ts";
 export type {
   BarStyle, Detent, DetentChange, HeaderMetrics, HeaderOptions, NavigationBarOptions, Presentation, RouterScopeOptions,

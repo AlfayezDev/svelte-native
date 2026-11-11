@@ -1,10 +1,13 @@
 /**
- * `class` on a component. Svelte Native has no CSS engine of its own: a class resolver turns a class list into a React Native
- * style, and an integration registers one (`@example/svelte-native/uniwind`, Tailwind through Uniwind). The style of the classes
- * goes under the component's own `style`, so an inline style wins, as it does over a stylesheet on the web.
+ * `class` on a component. Svelte Native has no CSS engine at run time: the app's CSS file is compiled when Metro starts (the `css` option of
+ * `withSvelteNative`; Tailwind 4 and the converter in `css/`) into a table of its classes as React Native styles, and a class list is looked up in
+ * it (`css/runtime.ts`). The style of the classes goes under the component's own `style`, so an inline style wins, as it does over a stylesheet on the web.
  *
- * The resolver runs while a component works out its props, inside its template, so a resolver that reads Svelte state (the theme,
- * the window size, the color scheme) makes the component update when that changes.
+ * The lookup runs while a component works out its props, inside its template, so a class that depends on the color scheme or the window size
+ * makes the component update when that changes.
+ *
+ * This module only holds the resolver: the Fabric entry (`fabric/index.ts`) registers the default one (`css/load-table.ts`), so the components, the renderer and what they import
+ * do not depend on React Native's platform modules, which a test or a tool that loads them outside an app has no stand-in for.
  */
 
 /** What `class` takes, as on a DOM element in Svelte: a string, or arrays and objects of class names (clsx). */
@@ -14,11 +17,8 @@ type ClassDictionary = Record<string, unknown>;
 /** The `class` prop of every component (`ClassValue`); see this module. */
 export type ClassProps = { class?: ClassValue };
 
-/** The state of the component the classes are for, for variants such as `disabled:`. */
-export type ClassState = { disabled: boolean };
-
-/** Turns a class list (never empty) into a React Native style, or `undefined` for none. */
-export type ClassResolver = (className: string, props: Readonly<Record<string, unknown>>, state: ClassState) => unknown;
+/** Turns a class list (never empty) into a React Native style, or `undefined` for none. `style` is the element's own style, whose font size its font-relative values are made from. */
+export type ClassResolver = (className: string, style?: unknown) => unknown;
 
 let resolver: ClassResolver | undefined;
 let warned = false;
@@ -59,21 +59,24 @@ export function classList(value: unknown): string {
 export function mergeClass<T extends Record<string, unknown>>(props: T): Omit<T, "class"> {
   if (!("class" in props)) return props;
   const { class: value, ...rest } = props;
-  const fromClass = classStyle(value, rest);
+  const fromClass = classStyle(value, rest.style);
   if (fromClass === undefined) return rest;
   return { ...rest, style: rest.style === undefined || rest.style === null ? fromClass : [fromClass, rest.style] };
 }
 
-/** The style of a component's `class`, or `undefined` when it has none or no resolver is registered (with a warning, once, in development). */
-export function classStyle(value: unknown, props: Readonly<Record<string, unknown>>): unknown {
+/**
+ * The style of a component's `class`, or `undefined` when it has none or no resolver is registered (with a warning, once, in development). `style` is the
+ * element's own style: a `leading-none` is made from the font size it sets (not one the element inherits from a parent `Text`).
+ */
+export function classStyle(value: unknown, style?: unknown): unknown {
   const className = classList(value);
   if (className === "") return undefined;
   if (resolver === undefined) {
     if (dev() && !warned) {
       warned = true;
-      console.warn(`svelte-native: class="${className}" has no effect: no class resolver is registered. Import "@example/svelte-native/uniwind" and your CSS file in the root layout (docs: styling#classes).`);
+      console.warn(`svelte-native: class="${className}" has no effect: no class table is loaded. The app's entry loads it through "@example/svelte-native/fabric" (docs: styling#classes).`);
     }
     return undefined;
   }
-  return resolver(className, props, { disabled: props.disabled === true });
+  return resolver(className, style);
 }

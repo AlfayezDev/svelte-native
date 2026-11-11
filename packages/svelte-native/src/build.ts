@@ -196,7 +196,7 @@ export async function syncNative(root: string, options: SyncOptions = {}): Promi
  * Lets the process end while `timer` is pending. Node's timers have `unref`; the DOM's `setTimeout` returns a number, which is what a type-check of an app
  * without Node's types makes of `ReturnType<typeof setTimeout>` (a SvelteKit app's tsconfig does not load them), so the method is not named on the type.
  */
-function unrefTimer(timer: unknown): void {
+export function unrefTimer(timer: unknown): void {
   (timer as { unref?: () => void }).unref?.();
 }
 

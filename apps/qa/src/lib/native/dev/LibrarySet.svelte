@@ -43,7 +43,7 @@
   import { Image, Pressable, Text, View } from "@example/svelte-native";
   import { createSharedValue, ReduceMotion, withRepeat, withTiming } from "@example/svelte-native/animation";
   import {
-    AnimateableText, BlurTargetView, BlurView, ConicGradient, DateTimePicker, ExpoImage, LinearGradient, LottieView, Pdf, Rive, ShadowedView, Video, ViewShot,
+    AnimateableText, BlurTargetView, ConicGradient, DateTimePicker, ExpoBlurView, ExpoImage, LinearGradient, LottieView, Pdf, Rive, ShadowedView, Video, ViewShot,
     captureRef, openDatePicker, shadowStyle,
   } from "@example/svelte-native/foreign";
   import Platform from "react-native/Libraries/Utilities/Platform";
@@ -161,9 +161,9 @@
           <BlurTargetView ref={(handle) => { blurTarget = handle as { tag: number } | null; }} style={{ ...fill, flexDirection: "row" }}>
             {#each stripes as color (color)}<View style={{ flex: 1, backgroundColor: color }} />{/each}
           </BlurTargetView>
-          <BlurView {blurTarget} intensity={libraryLab.blurIntensity} tint="light" ref={keep(hosts, kind)} blurMethod="dimezisBlurView" style={{ position: "absolute", left: 24, right: 24, top: 14, bottom: 14, borderRadius: 12, overflow: "hidden", alignItems: "center", justifyContent: "center" }}>
+          <ExpoBlurView {blurTarget} intensity={libraryLab.blurIntensity} tint="light" ref={keep(hosts, kind)} blurMethod="dimezisBlurView" style={{ position: "absolute", left: 24, right: 24, top: 14, bottom: 14, borderRadius: 12, overflow: "hidden", alignItems: "center", justifyContent: "center" }}>
             <Text style={{ color: "#191b1e", fontSize: 16, fontWeight: "600" }}>Blur</Text>
-          </BlurView>
+          </ExpoBlurView>
         {:else if kind === "gradient"}
           <LinearGradient colors={libraryLab.gradientColors} locations={libraryLab.gradientColors.length === 3 ? [0, 0.5, 1] : undefined} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} ref={keep(hosts, kind)} style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
             <Text style={{ color: "#ffffff", fontSize: 16, fontWeight: "600" }}>Gradient</Text>

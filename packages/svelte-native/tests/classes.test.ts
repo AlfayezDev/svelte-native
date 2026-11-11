@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { afterEach, expect, test } from "bun:test";
 import { build, transform } from "esbuild";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -7,67 +7,122 @@ import { pathToFileURL } from "node:url";
 import { compile, compileModule } from "svelte/compiler";
 import { classList } from "../src/classes.ts";
 import { componentOptions } from "../src/compile-options.ts";
+import type { ClassTable } from "../src/css/table.ts";
 import { lowerPrimitives } from "../src/lower.ts";
 import type { NativeNode } from "../src/renderer.ts";
 
-// `class` on components through `@example/svelte-native/uniwind`, against stand-ins for the two modules of Uniwind's runtime it reads:
-// a store that gives `themed` a color from the color scheme (dependency 1, as Uniwind's `dark:` does) and the listener it notifies.
+// `class` on components through the class table: a small table stands in for `@example/svelte-native/classes-table` (what `css/build.ts` writes and
+// Metro serves), and the three modules of React Native the resolver reads (`Appearance`, `Dimensions`, `Platform`) and the engine module the insets come
+// from are stand-ins that the test drives.
 type Insets = { top: number; right: number; bottom: number; left: number };
-type Uniwind = { scheme: "light" | "dark"; listeners: Map<number, Set<() => void>>; calls: string[]; insets: Insets[]; engine: { current: (Insets & Record<string, unknown>) | null; listener: ((event: Insets & Record<string, unknown>) => void) | null } };
-const uniwind: Uniwind = { scheme: "light", listeners: new Map(), calls: [], insets: [], engine: { current: null, listener: null } };
-(globalThis as { __uniwind?: Uniwind }).__uniwind = uniwind;
-const storeModule = `const stub = globalThis.__uniwind;
-  const fixed = { card: { padding: 16 }, loud: { borderWidth: 2 }, label: { fontSize: 18 }, muted: { opacity: 0.5 }, "p-4": { padding: 16 } };
-  export const UniwindStore = {
-    getStyles(className, props, state, context) {
-      stub.calls.push(className);
-      const styles = {};
-      const dependencies = [];
-      for (const name of className.split(" ")) {
-        if (name === "themed") { Object.assign(styles, { backgroundColor: stub.scheme === "dark" ? "black" : "white" }); dependencies.push(1); }
-        else Object.assign(styles, fixed[name]);
-      }
-      return { styles, dependencies, dependencySum: dependencies.length };
-    },
+type Stub = {
+  scheme: "light" | "dark" | null;
+  appearance: Set<() => void>;
+  window: { width: number; height: number };
+  windowListeners: Set<() => void>;
+  os: "ios" | "android";
+  engine: { current: (Insets & Record<string, unknown>) | null; listeners: Set<(event: Insets & Record<string, unknown>) => void> };
+};
+const fresh = (): Stub => ({ scheme: "light", appearance: new Set(), window: { width: 400, height: 800 }, windowListeners: new Set(), os: "android", engine: { current: null, listeners: new Set() } });
+const stub = fresh();
+(globalThis as { __classes?: Stub }).__classes = stub;
+afterEach(() => Object.assign(stub, fresh()));
+
+const appearanceModule = `const stub = globalThis.__classes;
+  export const getColorScheme = () => stub.scheme;
+  export const addChangeListener = (listener) => { stub.appearance.add(listener); return { remove() { stub.appearance.delete(listener); } }; };`;
+const dimensionsModule = `const stub = globalThis.__classes;
+  export default {
+    get: () => stub.window,
+    addEventListener: (type, listener) => { stub.windowListeners.add(listener); return { remove() { stub.windowListeners.delete(listener); } }; },
   };`;
-const configModule = `const stub = globalThis.__uniwind;
-  export const Uniwind = { updateInsets(insets) { stub.insets.push(insets); } };`;
+const platformModule = `const stub = globalThis.__classes;
+  export default { get OS() { return stub.os; } };`;
 // The engine module the insets come from (expo-modules-core's requireOptionalNativeModule), with the current value it reports first.
-const expoModulesCore = `const stub = globalThis.__uniwind;
+const expoModulesCore = `const stub = globalThis.__classes;
   export const EventEmitter = class {};
   export const requireOptionalNativeModule = (name) => name !== "SvelteEngine" ? null : ({
     getInsets: () => stub.engine.current,
-    addListener: (event, listener) => { if (event === "insets") stub.engine.listener = listener; return { remove() {} }; },
+    addListener: (event, listener) => { if (event === "insets") stub.engine.listeners.add(listener); return { remove() { stub.engine.listeners.delete(listener); } }; },
   });`;
-const listenerModule = `const stub = globalThis.__uniwind;
-  export const UniwindListener = {
-    subscribe(listener, dependencies) {
-      for (const dependency of dependencies) {
-        if (!stub.listeners.has(dependency)) stub.listeners.set(dependency, new Set());
-        stub.listeners.get(dependency).add(listener);
-      }
-      return () => { for (const dependency of dependencies) stub.listeners.get(dependency)?.delete(listener); };
-    },
-  };`;
 
-async function load(withUniwind: boolean, lowered = false) {
+const emitInsets = (event: Insets & Record<string, unknown>) => { for (const listener of [...stub.engine.listeners]) listener(event); };
+const engineInsets = (top: number, bottom = 0, left = 0) => ({ top, right: 0, bottom, left, keyboardHeight: 0, keyboardVisible: false, frame: { x: 0, y: 0, width: 400, height: 800 } });
+
+// A table the way the converter writes one: rules with their cascade `order`, and conditions, device values and font-relative values where a class has them.
+const table: ClassTable = {
+  version: 1,
+  classes: {
+    card: [{ order: 1, style: { padding: 16 } }],
+    loud: [{ order: 2, style: { borderWidth: 2 } }],
+    label: [{ order: 3, style: { fontSize: 18 } }],
+    muted: [{ order: 4, style: { opacity: 0.5 } }],
+    "p-4": [{ order: 5, style: { padding: 16 } }],
+    themed: [
+      { order: 6, when: { scheme: "light" }, style: { backgroundColor: "white" } },
+      { order: 7, when: { scheme: "dark" }, style: { backgroundColor: "black" } },
+    ],
+    wide: [
+      { order: 10, style: { padding: 4 } },
+      { order: 11, when: { minWidth: 768 }, style: { padding: 24 } },
+      { order: 12, when: { maxWidth: 360 }, style: { margin: 2 } },
+    ],
+    tx: [{ order: 20, style: { "transform:translateX": 8 } }],
+    rot: [{ order: 21, style: { "transform:rotate": "45deg" } }],
+    big: [{ order: 22, style: { "transform:scaleX": 1.1, "transform:scaleY": 1.1 } }],
+    skew: [{ order: 23, style: { transform: [{ skewX: "10deg" }] } }],
+    "lh-8": [{ order: 29, style: { lineHeight: 8 } }],
+    small: [{ order: 30, style: { fontSize: 12 }, fontRelative: { lineHeight: 1.5 } }],
+    snug: [{ order: 31, fontRelative: { lineHeight: 1.25 } }],
+    tracking: [{ order: 32, fontRelative: { letterSpacing: 0.1 } }],
+    "lh-24": [{ order: 33, style: { lineHeight: 24 } }],
+    "leading-none": [{ order: 35, fontRelative: { lineHeight: 1 } }],
+    "pt-4": [{ order: 39, style: { paddingTop: 4 } }],
+    "pad-top": [{ order: 40, dynamic: { paddingTop: { inset: "top", add: 8 } } }],
+    "pt-9": [{ order: 41, style: { paddingTop: 9 } }],
+    half: [{ order: 42, dynamic: { width: { window: "width", scale: 0.5 }, height: { window: "height", scale: 1, add: -10 } } }],
+    first: [{ order: 50, style: { margin: 1, opacity: 1 } }],
+    second: [{ order: 51, style: { margin: 2 } }],
+    "tx-none": [{ order: 24, style: { "transform:translateX": null } }],
+    "lh-none": [{ order: 34, style: { lineHeight: null } }],
+    "pt-none": [{ order: 43, style: { paddingTop: null } }],
+    "shadow-md": [{ order: 70, style: { boxShadow: "0 4px 6px rgba(0,0,0,0.1)" } }],
+    "shadow-none": [{ order: 71, style: { boxShadow: null } }],
+    "shadow-sm": [{ order: 72, style: { boxShadow: "0 1px 2px rgba(0,0,0,0.05)" } }],
+    "dark:shadow-none": [{ order: 73, when: { scheme: "dark" }, style: { boxShadow: null } }],
+    truncate: [{ order: 80, style: { overflow: "hidden" } }],
+    "font-mono": [{ order: 81, style: { fontFamily: "monospace" } }],
+    "font-serif": [{ order: 82, style: { fontFamily: "serif" } }],
+    "ios-only": [{ order: 60, when: { platform: "ios" }, style: { opacity: 0.1 } }],
+    "android-only": [{ order: 61, when: { platform: "android" }, style: { opacity: 0.2 } }],
+  },
+};
+// What the build left out of `classes` and why, as it writes it into the table.
+const unsupported = { truncate: "text-overflow: no React Native style for text-overflow", "hover:opacity-50": ":hover: pseudo-classes need state", transition: "transition-property: no React Native style for transition-property; transition-duration: no React Native style for transition-duration" };
+const withReasons: ClassTable = { ...table, unsupported };
+const empty: ClassTable = { version: 1, classes: {} };
+
+async function load(classTable: ClassTable, lowered = false) {
   const bundle = await build({
     stdin: {
       contents: `import Fixture from './${lowered ? "classes-lowered-fixture" : "classes-fixture"}.svelte';
-        ${withUniwind ? "import '../src/uniwind.ts';" : ""}
         import renderer, { NativeNode } from '../src/renderer.ts';
         import { mergeHostProps } from '../src/native-props.ts';
+        import '../src/css/load-table.ts';
         import { setClassResolver } from '../src/classes.ts';
+        import { resolveClasses, setClassTable, UNKNOWN_CLASS_DELAY } from '../src/css/runtime.ts';
         import { mount, tick, unmount } from 'svelte';
-        export { Fixture, renderer, NativeNode, mergeHostProps, setClassResolver, mount, tick, unmount };`,
+        export { Fixture, renderer, NativeNode, mergeHostProps, setClassResolver, resolveClasses, setClassTable, UNKNOWN_CLASS_DELAY, mount, tick, unmount };`,
       resolveDir: import.meta.dirname,
     },
     bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], write: false, define: { __DEV__: "true" },
     plugins: [{
       name: "classes-fixture",
       setup(builder) {
-        builder.onResolve({ filter: /^uniwind\/src\/core\/(native|listener|config)$/ }, (args) => ({ path: args.path, namespace: "uniwind" }));
-        builder.onLoad({ filter: /.*/, namespace: "uniwind" }, (args) => ({ contents: args.path.endsWith("/native") ? storeModule : args.path.endsWith("/config") ? configModule : listenerModule, loader: "js" }));
+        builder.onResolve({ filter: /^@example\/svelte-native\/classes-table$/ }, (args) => ({ path: args.path, namespace: "classes-table" }));
+        builder.onLoad({ filter: /.*/, namespace: "classes-table" }, () => ({ contents: `export default ${JSON.stringify(classTable)};`, loader: "js" }));
+        builder.onResolve({ filter: /^react-native\/Libraries\/Utilities\/(Appearance|Dimensions|Platform)$/ }, (args) => ({ path: args.path, namespace: "react-native" }));
+        builder.onLoad({ filter: /.*/, namespace: "react-native" }, (args) => ({ contents: args.path.endsWith("Appearance") ? appearanceModule : args.path.endsWith("Dimensions") ? dimensionsModule : platformModule, loader: "js" }));
         builder.onResolve({ filter: /^react-native\/Libraries\// }, (args) => ({ path: args.path, namespace: "stub" }));
         builder.onResolve({ filter: /^(react-native|expo-modules-core)$/ }, (args) => ({ path: args.path, namespace: "stub" }));
         builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: args.path === "expo-modules-core" ? expoModulesCore : "export {};", loader: "js" }));
@@ -101,7 +156,7 @@ async function load(withUniwind: boolean, lowered = false) {
 
 function nodes(node: NativeNode): NativeNode[] { return [node, ...node.getSnapshot().children.flatMap(nodes)]; }
 
-async function mountFixture(m: Awaited<ReturnType<typeof load>>, props: { inline?: boolean } = {}) {
+async function mountFixture(m: Awaited<ReturnType<typeof load>>, props: { inline?: boolean; unknown?: boolean } = {}) {
   const root = new m.NativeNode("fragment");
   const app = m.mount(m.Fixture, { target: root, renderer: m.renderer, props });
   await m.tick();
@@ -115,7 +170,26 @@ async function mountFixture(m: Awaited<ReturnType<typeof load>>, props: { inline
   return { app, styleOf };
 }
 
-const notify = (dependency: number) => { for (const listener of [...(uniwind.listeners.get(dependency) ?? [])]) listener(); };
+/** Records each class list the resolver works out (an element does that again whenever what its classes depend on changes), until `calls.length = 0`. */
+function spied(m: Awaited<ReturnType<typeof load>>) {
+  const calls: string[] = [];
+  m.setClassResolver((className: string) => { calls.push(className); return m.resolveClasses(className); });
+  return calls;
+}
+
+const flat = (style: unknown): Record<string, unknown> => Array.isArray(style) ? Object.assign({}, ...style.map(flat)) : (style as Record<string, unknown>) ?? {};
+const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
+
+async function withWarnings<T>(run: (warnings: string[]) => Promise<T>): Promise<T> {
+  const warnings: string[] = [];
+  const warn = console.warn;
+  console.warn = (message: string) => { warnings.push(message); };
+  try {
+    return await run(warnings);
+  } finally {
+    console.warn = warn;
+  }
+}
 
 test("class takes a string, an array or an object of names, as on a DOM element", () => {
   expect(classList("  a b ")).toBe("a b");
@@ -129,7 +203,7 @@ for (const lowered of [false, true]) {
 const how = lowered ? "lowered to host tags" : "as components";
 
 test(`the classes become the style, under the inline style (${how})`, async () => {
-  const m = await load(true, lowered);
+  const m = await load(table, lowered);
   const { app, styleOf } = await mountFixture(m, { inline: true });
   expect(styleOf("card")).toEqual([{ padding: 16 }, { padding: 1 }]);
   expect(styleOf("label")).toEqual({ fontSize: 18, opacity: 0.5 });
@@ -138,7 +212,7 @@ test(`the classes become the style, under the inline style (${how})`, async () =
 });
 
 test(`classes follow the component's state (${how})`, async () => {
-  const m = await load(true, lowered);
+  const m = await load(table, lowered);
   const { app, styleOf } = await mountFixture(m);
   expect(styleOf("card")).toEqual({ padding: 16 });
   expect(styleOf("label")).toEqual({ fontSize: 18, opacity: 0.5 });
@@ -149,26 +223,210 @@ test(`classes follow the component's state (${how})`, async () => {
   m.unmount(app);
 });
 
-test(`a class that depends on the color scheme draws again when Uniwind says it changed, and only that element works it out again (${how})`, async () => {
-  const m = await load(true, lowered);
-  uniwind.scheme = "light";
+test(`the same list gives the same style object: a change that crosses no breakpoint makes no new one (${how})`, async () => {
+  const m = await load(table, lowered);
+  const { app, styleOf } = await mountFixture(m);
+  const before = styleOf("wide");
+  stub.window = { width: 500, height: 800 };
+  for (const listener of [...stub.windowListeners]) listener();
+  await m.tick();
+  expect(styleOf("wide")).toBe(before);
+  m.unmount(app);
+});
+
+test(`a class that depends on the color scheme draws again when the scheme changes, only the elements that depend on it work it out again, and the listener goes with the last view (${how})`, async () => {
+  const m = await load(table, lowered);
+  const calls = spied(m);
   const { app, styleOf } = await mountFixture(m);
   expect(styleOf("themed")).toEqual({ backgroundColor: "white" });
-  expect(uniwind.listeners.get(1)?.size).toBe(1);
-  uniwind.calls.length = 0;
-  uniwind.scheme = "dark";
-  notify(1);
+  // One listener on the appearance for every view that reads it.
+  expect(stub.appearance.size).toBe(1);
+  const unrelated = styleOf("card");
+  calls.length = 0;
+  stub.scheme = "dark";
+  for (const listener of [...stub.appearance]) listener();
   await m.tick();
   expect(styleOf("themed")).toEqual({ backgroundColor: "black" });
-  expect(uniwind.calls).toEqual(["themed"]);
+  expect(calls.sort()).toEqual(["shadow-md dark:shadow-none", "themed"]);
+  expect(styleOf("card")).toBe(unrelated);
+  // A system that reports no scheme counts as light.
+  stub.scheme = null;
+  for (const listener of [...stub.appearance]) listener();
+  await m.tick();
+  expect(styleOf("themed")).toEqual({ backgroundColor: "white" });
   m.unmount(app);
   await m.tick();
-  // The last reader gone, the subscription to Uniwind goes too.
-  expect(uniwind.listeners.get(1)?.size ?? 0).toBe(0);
+  expect(stub.appearance.size).toBe(0);
+});
+
+test(`width conditions: min-width includes its bound, max-width excludes it, and a view that waits for a breakpoint draws when the window crosses it (${how})`, async () => {
+  const m = await load(table, lowered);
+  const calls = spied(m);
+  const resize = async (width: number) => {
+    stub.window = { width, height: 800 };
+    for (const listener of [...stub.windowListeners]) listener();
+    await m.tick();
+  };
+  const { app, styleOf } = await mountFixture(m);
+  expect(styleOf("wide")).toEqual({ padding: 4 });
+  expect(stub.windowListeners.size).toBe(1);
+  calls.length = 0;
+  await resize(767);
+  expect(styleOf("wide")).toEqual({ padding: 4 });
+  await resize(768);
+  expect(styleOf("wide")).toEqual({ padding: 24 });
+  await resize(360);
+  expect(styleOf("wide")).toEqual({ padding: 4 });
+  await resize(359);
+  expect(styleOf("wide")).toEqual({ padding: 4, margin: 2 });
+  // Only the elements that depend on the window ran again: the width-conditional one and the one sized by the window.
+  expect([...new Set(calls)].sort()).toEqual(["half", "wide"]);
+  // A change that is not the size (a scale, a font scale: the event fires for them) does not draw anything again.
+  calls.length = 0;
+  for (const listener of [...stub.windowListeners]) listener();
+  await m.tick();
+  expect(calls).toEqual([]);
+  m.unmount(app);
+  await m.tick();
+  expect(stub.windowListeners.size).toBe(0);
+});
+
+test(`translate, rotate and scale are composed into one transform in CSS's order, before a transform of its own (${how})`, async () => {
+  const m = await load(table, lowered);
+  const { app, styleOf } = await mountFixture(m);
+  // Written as `big tx rot`, composed as translate, rotate, scale.
+  expect(styleOf("moved")).toEqual({ transform: [{ translateX: 8 }, { rotate: "45deg" }, { scaleX: 1.1 }, { scaleY: 1.1 }] });
+  expect(styleOf("moved-list")).toEqual({ transform: [{ translateX: 8 }, { skewX: "10deg" }] });
+  expect(flat(styleOf("moved"))).not.toHaveProperty("transform:translateX");
+  m.unmount(app);
+});
+
+test(`a line height and a letter spacing relative to the font size are multiplied by it: the merged font size, 14 when no class sets one (${how})`, async () => {
+  const m = await load(table, lowered);
+  const { app, styleOf } = await mountFixture(m);
+  expect(styleOf("leading")).toEqual({ fontSize: 12, lineHeight: 18, letterSpacing: 1.2 });
+  expect(styleOf("leading-default")).toEqual({ lineHeight: 17.5 });
+  // An absolute line height after a relative one wins, as the later rule does; the other way round the relative one wins.
+  expect(styleOf("leading-absolute")).toEqual({ lineHeight: 24 });
+  expect(styleOf("leading-relative")).toEqual({ fontSize: 12, lineHeight: 18 });
+  m.unmount(app);
+});
+
+test(`a font-relative value is made from the font size of the element's own style, else the classes', else 14; one object per list and size (${how})`, async () => {
+  const m = await load(table, lowered);
+  const { app, styleOf } = await mountFixture(m);
+  const own = (testID: string) => (styleOf(testID) as unknown[])[0];
+  expect(styleOf("leading-own")).toEqual([{ lineHeight: 30 }, { fontSize: 30 }]);
+  // Arrays and falsy values of styles: the last size.
+  expect(own("leading-own-array")).toEqual({ lineHeight: 22 });
+  // The style is what is drawn: its size wins over the class's own, which wins over the default.
+  expect(own("leading-own-over-class")).toEqual({ fontSize: 12, lineHeight: 30 });
+  expect(styleOf("leading-class-size")).toEqual({ fontSize: 12, lineHeight: 12 });
+  // A spread's style counts too.
+  // (On a lowered tag Svelte stringifies a spread's `style` and the host drops it, as before: the class still had its size.)
+  expect(styleOf("spread-font")).toEqual(lowered ? { lineHeight: 26 } : [{ lineHeight: 26 }, { fontSize: 26 }]);
+  // The same list and size is the same object, whoever asks (a component copies it into its own props: `createNativeProps` keeps that copy's identity).
+  if (lowered) expect(own("leading-own")).toBe(own("leading-own-twin"));
+  else expect(own("leading-own")).toEqual(own("leading-own-twin"));
+  // The element's size changing draws it again.
+  app.setSize(20);
+  await m.tick();
+  expect(styleOf("leading-own")).toEqual([{ lineHeight: 20 }, { fontSize: 20 }]);
+  expect(own("leading-own-twin")).toEqual({ lineHeight: 30 });
+  m.unmount(app);
+});
+
+test(`font-mono and font-serif are the families iOS has: Menlo and Georgia; Android has the generic names (${how})`, async () => {
+  const m = await load(table, lowered);
+  const android = await mountFixture(m);
+  expect(android.styleOf("mono")).toEqual({ fontFamily: "monospace" });
+  expect(android.styleOf("serif")).toEqual({ fontFamily: "serif" });
+  m.unmount(android.app);
+  stub.os = "ios";
+  const again = await load(table, lowered);
+  const ios = await mountFixture(again);
+  expect(ios.styleOf("mono")).toEqual({ fontFamily: "Menlo" });
+  expect(ios.styleOf("serif")).toEqual({ fontFamily: "Georgia" });
+  again.unmount(ios.app);
+});
+
+test(`a value of the safe area follows the insets: the current ones at once, then each change (${how})`, async () => {
+  stub.engine.current = engineInsets(24, 34);
+  const m = await load(table, lowered);
+  const calls = spied(m);
+  const { app, styleOf } = await mountFixture(m);
+  expect(styleOf("inset")).toEqual({ paddingTop: 32 });
+  const unrelated = styleOf("card");
+  calls.length = 0;
+  emitInsets(engineInsets(40, 0));
+  await m.tick();
+  expect(styleOf("inset")).toEqual({ paddingTop: 48 });
+  // The keyboard moving is an insets event too: it changes none of the values a class reads.
+  calls.length = 0;
+  emitInsets({ ...engineInsets(40, 0), keyboardHeight: 300, keyboardVisible: true });
+  await m.tick();
+  expect(calls).toEqual([]);
+  expect(styleOf("card")).toBe(unrelated);
+  m.unmount(app);
+});
+
+test(`a value of the window follows its size (${how})`, async () => {
+  const m = await load(table, lowered);
+  const { app, styleOf } = await mountFixture(m);
+  expect(styleOf("half")).toEqual({ width: 200, height: 790 });
+  stub.window = { width: 300, height: 600 };
+  for (const listener of [...stub.windowListeners]) listener();
+  await m.tick();
+  expect(styleOf("half")).toEqual({ width: 150, height: 590 });
+  m.unmount(app);
+});
+
+test(`the cascade is the rules' order, not the order the classes are written in; a device value and a plain one fight by it too (${how})`, async () => {
+  stub.engine.current = engineInsets(24);
+  const m = await load(table, lowered);
+  const { app, styleOf } = await mountFixture(m);
+  expect(styleOf("cascade")).toEqual({ margin: 2, opacity: 1 });
+  expect(styleOf("inset-over-static")).toEqual({ paddingTop: 32 });
+  expect(styleOf("static-over-inset")).toEqual({ paddingTop: 9 });
+  m.unmount(app);
+});
+
+test(`a null removes the key the rules before it set, and a later rule sets it again; it takes a transform part, a device value and a font-relative value away too (${how})`, async () => {
+  stub.engine.current = engineInsets(24);
+  const m = await load(table, lowered);
+  const { app, styleOf } = await mountFixture(m);
+  expect(styleOf("removed")).toBeUndefined();
+  expect(styleOf("removed-then-set")).toEqual({ boxShadow: "0 1px 2px rgba(0,0,0,0.05)" });
+  expect(styleOf("moved-removed")).toEqual({ transform: [{ rotate: "45deg" }] });
+  expect(styleOf("inset-removed")).toBeUndefined();
+  expect(styleOf("leading-removed")).toEqual({ fontSize: 12 });
+  // A condition decides whether the removal is there: `shadow-md dark:shadow-none`.
+  expect(styleOf("removed-in-dark")).toEqual({ boxShadow: "0 4px 6px rgba(0,0,0,0.1)" });
+  stub.scheme = "dark";
+  for (const listener of [...stub.appearance]) listener();
+  await m.tick();
+  expect(styleOf("removed-in-dark")).toBeUndefined();
+  stub.scheme = "light";
+  for (const listener of [...stub.appearance]) listener();
+  await m.tick();
+  expect(styleOf("removed-in-dark")).toEqual({ boxShadow: "0 4px 6px rgba(0,0,0,0.1)" });
+  m.unmount(app);
+});
+
+test(`a rule for the other system does not apply (${how})`, async () => {
+  const m = await load(table, lowered);
+  const { app, styleOf } = await mountFixture(m);
+  expect(styleOf("system")).toEqual({ opacity: 0.2 });
+  m.unmount(app);
+  stub.os = "ios";
+  const again = await load(table, lowered);
+  const second = await mountFixture(again);
+  expect(second.styleOf("system")).toEqual({ opacity: 0.1 });
+  again.unmount(second.app);
 });
 
 test(`a spread's class is resolved, and on a lowered tag the class: toggles next to it apply to it (${how})`, async () => {
-  const m = await load(true, lowered);
+  const m = await load(table, lowered);
   const { app, styleOf } = await mountFixture(m);
   expect(styleOf("spread")).toEqual({ padding: 16 });
   app.setTone("loud");
@@ -178,42 +436,116 @@ test(`a spread's class is resolved, and on a lowered tag the class: toggles next
 });
 
 test(`a safe area adds the insets to the padding of its classes (${how})`, async () => {
-  uniwind.engine.current = { top: 24, right: 0, bottom: 34, left: 0, keyboardHeight: 0, keyboardVisible: false, frame: { x: 0, y: 0, width: 400, height: 800 } };
-  const m = await load(true, lowered);
+  stub.engine.current = engineInsets(24, 34);
+  const m = await load(table, lowered);
   const { app, styleOf } = await mountFixture(m);
-  const flat = (style: unknown): Record<string, unknown> => Array.isArray(style) ? Object.assign({}, ...style.map(flat)) : (style as Record<string, unknown>) ?? {};
   expect(flat(styleOf("safe"))).toMatchObject({ paddingTop: 40, paddingRight: 16, paddingBottom: 50, paddingLeft: 16 });
   m.unmount(app);
-  uniwind.engine.current = null;
 });
 
-test(`without a resolver, class is dropped with one warning in development (${how})`, async () => {
-  const m = await load(false, lowered);
-  const warnings: string[] = [];
-  const warn = console.warn;
-  console.warn = (message: string) => { warnings.push(message); };
-  try {
+test(`a new class table redraws the views that read it (the build wrote it again while the app runs) (${how})`, async () => {
+  const m = await load(table, lowered);
+  await withWarnings(async () => {
+    const { app, styleOf } = await mountFixture(m);
+    expect(styleOf("card")).toEqual({ padding: 16 });
+    m.setClassTable({ version: 1, classes: { ...table.classes, card: [{ order: 1, style: { padding: 20 } }] } });
+    await m.tick();
+    expect(styleOf("card")).toEqual({ padding: 20 });
+    m.setClassTable(empty);
+    await m.tick();
+    expect(styleOf("card")).toBeUndefined();
+    m.setClassTable(table);
+    await m.tick();
+    expect(styleOf("card")).toEqual({ padding: 16 });
+    m.unmount(app);
+  });
+});
+
+test(`a used class that has no rules is reported once, after the build has had time to write it: with the table's reason when it has one, else as unknown; a known class and the names of Object are not (${how})`, async () => {
+  const m = await load(withReasons, lowered);
+  await withWarnings(async (warnings) => {
+    const { app, styleOf } = await mountFixture(m, { unknown: true });
+    expect(styleOf("unknown")).toEqual({ padding: 16 });
+    expect(styleOf("prototype")).toBeUndefined();
+    // The class the converter could not express gives the rest of its list.
+    expect(styleOf("unsupported")).toEqual({ padding: 16 });
+    // Partly: the rules apply, and the reason is said.
+    expect(styleOf("partly")).toEqual({ overflow: "hidden" });
+    // The markers have no CSS and are not missing.
+    expect(styleOf("markers")).toEqual({ padding: 16 });
+    expect(warnings).toEqual([]);
+    await sleep(m.UNKNOWN_CLASS_DELAY + 150);
+    expect(warnings.sort()).toEqual([
+      'svelte-native: class "__proto__" is not in the class table: is the file under src/, and is the css option set?',
+      'svelte-native: class "constructor" is not in the class table: is the file under src/, and is the css option set?',
+      'svelte-native: class "hover:opacity-50" is not supported on native: :hover: pseudo-classes need state',
+      'svelte-native: class "nothing-here" is not in the class table: is the file under src/, and is the css option set?',
+      'svelte-native: class "transition" is not supported on native: transition-property: no React Native style for transition-property; transition-duration: no React Native style for transition-duration',
+      'svelte-native: class "truncate" is partly supported on native: text-overflow: no React Native style for text-overflow',
+    ]);
+    // Mounted again: already reported.
+    m.unmount(app);
+    const second = await mountFixture(m, { unknown: true });
+    await sleep(m.UNKNOWN_CLASS_DELAY + 150);
+    expect(warnings).toHaveLength(6);
+    m.unmount(second.app);
+  });
+});
+
+test(`a table without reasons reports every class that has no rules as unknown, and one with a reason it does not know the class by does too; a class with rules and no reason is silent (${how})`, async () => {
+  const m = await load({ ...table, unsupported: { somewhere: "else" } }, lowered);
+  await withWarnings(async (warnings) => {
+    const { app } = await mountFixture(m, { unknown: true });
+    await sleep(m.UNKNOWN_CLASS_DELAY + 150);
+    expect(warnings.filter((warning) => warning.includes("supported on native"))).toEqual([]);
+    expect(warnings.filter((warning) => warning.includes("truncate") || warning.includes('"group') || warning.includes('"peer'))).toEqual([]);
+    expect(warnings.filter((warning) => warning.includes("is not in the class table")).sort()).toEqual([
+      'svelte-native: class "__proto__" is not in the class table: is the file under src/, and is the css option set?',
+      'svelte-native: class "constructor" is not in the class table: is the file under src/, and is the css option set?',
+      'svelte-native: class "hover:opacity-50" is not in the class table: is the file under src/, and is the css option set?',
+      'svelte-native: class "nothing-here" is not in the class table: is the file under src/, and is the css option set?',
+      'svelte-native: class "transition" is not in the class table: is the file under src/, and is the css option set?',
+    ]);
+    m.unmount(app);
+  });
+});
+
+test(`the reason is the one the table has when the report is due, and a class the new table expresses is not reported (${how})`, async () => {
+  const m = await load(table, lowered);
+  await withWarnings(async (warnings) => {
+    const { app } = await mountFixture(m, { unknown: true });
+    // `transition` is expressed in the new table and its reason is gone; `hover:opacity-50` is still left out.
+    const stillUnsupported: Record<string, string> = { ...unsupported };
+    delete stillUnsupported.transition;
+    m.setClassTable({ ...table, classes: { ...table.classes, transition: [{ order: 98, style: { opacity: 1 } }] }, unsupported: stillUnsupported });
+    await sleep(m.UNKNOWN_CLASS_DELAY + 150);
+    expect(warnings.filter((warning) => warning.includes("hover:opacity-50"))).toEqual(['svelte-native: class "hover:opacity-50" is not supported on native: :hover: pseudo-classes need state']);
+    expect(warnings.filter((warning) => warning.includes('"transition"'))).toEqual([]);
+    m.unmount(app);
+  });
+});
+
+test(`a class that is in the table by the time the report is due is not reported (${how})`, async () => {
+  const m = await load(table, lowered);
+  await withWarnings(async (warnings) => {
+    const { app } = await mountFixture(m, { unknown: true });
+    m.setClassTable({ version: 1, classes: { ...table.classes, "nothing-here": [{ order: 99, style: { opacity: 0.3 } }] } });
+    await sleep(m.UNKNOWN_CLASS_DELAY + 150);
+    expect(warnings.filter((warning) => warning.includes("nothing-here"))).toEqual([]);
+    m.unmount(app);
+  });
+});
+
+test(`with an empty table (no css option), class is dropped with one warning in development (${how})`, async () => {
+  const m = await load(empty, lowered);
+  await withWarnings(async (warnings) => {
     const { app, styleOf } = await mountFixture(m);
     expect(styleOf("card")).toBeUndefined();
     expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toMatch(/^svelte-native: class="[a-z ]+" has no effect/);
-    expect(warnings[0]).toContain("@example/svelte-native/uniwind");
+    expect(warnings[0]).toMatch(/^svelte-native: class="[a-z -]+" has no effect/);
+    expect(warnings[0]).toContain("css option of withSvelteNative");
     m.unmount(app);
-  } finally {
-    console.warn = warn;
-  }
+  });
 });
 }
 
-test("Uniwind's safe-area insets come from the engine: the current value at once, then each change", async () => {
-  uniwind.insets.length = 0;
-  uniwind.engine.current = { top: 24, right: 0, bottom: 34, left: 0, keyboardHeight: 0, keyboardVisible: false, frame: { x: 0, y: 0, width: 400, height: 800 } };
-  await load(true);
-  expect(uniwind.insets).toEqual([{ top: 24, right: 0, bottom: 34, left: 0 }]);
-  // The keyboard moving is an insets event too; the safe area did not change, so Uniwind is not told.
-  uniwind.engine.listener?.({ ...uniwind.engine.current, keyboardHeight: 300, keyboardVisible: true });
-  expect(uniwind.insets).toHaveLength(1);
-  uniwind.engine.listener?.({ ...uniwind.engine.current, top: 0, bottom: 0, left: 48 });
-  expect(uniwind.insets).toEqual([{ top: 24, right: 0, bottom: 34, left: 0 }, { top: 0, right: 0, bottom: 0, left: 48 }]);
-  uniwind.engine.current = null;
-});

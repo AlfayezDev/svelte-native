@@ -111,7 +111,7 @@ module.exports = withSvelteNative(getDefaultConfig(__dirname));
 | `runes` | `true` | Compile every component of the app in runes mode. Set `false` while you migrate legacy components: Svelte then decides per file. |
 | `syncRoutes` | `true` when `src/routes` exists | Write the route table when Metro starts, and again when a route file changes. |
 | `stubbedPackages` | `[]` | Packages this build doesn't link. Importing one gives a module that throws when used. |
-| `uniwind` | none | Tailwind classes through Uniwind: Uniwind's options, of which `cssEntryFile` (your CSS file) is required. See [Classes](styling#classes). |
+| `css` | none | Your CSS file, relative to the project (`'src/global.css'`): its classes, Tailwind's included, become the styles of `class`. See [Classes](styling#classes). |
 
 ## vite.config.ts
 

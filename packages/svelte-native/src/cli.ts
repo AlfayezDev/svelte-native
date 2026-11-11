@@ -2,6 +2,7 @@
 import { watch } from "node:fs";
 import { resolve } from "node:path";
 import { exportNative, runExpo, syncNative } from "./build.ts";
+import { variantName } from "./variant.ts";
 
 const [command = "dev", ...args] = process.argv.slice(2);
 const root = process.cwd();
@@ -14,7 +15,8 @@ if (command === "help" || command === "--help" || command === "-h") {
   ios        the same for iOS (a Mac with Xcode)
   dev        regenerate .svelte-native/ when a route file changes and start Metro (arguments go to expo start)
   build      export the Hermes bytecode of a platform (--platform android|ios) without building the host
-  sync       only regenerate .svelte-native/`);
+  sync       only regenerate .svelte-native/
+  css <file> compile the app's CSS file (Tailwind 4) into the class table of \`class\` (.svelte-native/classes.<variant>.ts); --variant <name> picks the variant, --json prints the result as JSON`);
   process.exit(0);
 }
 if (command === "init") {
@@ -26,6 +28,26 @@ if (command === "doctor") {
   // Before the sync: the doctor is for an app that may not be set up yet, and it must not write anything.
   const { runDoctor } = await import("./doctor/index.ts");
   process.exit(runDoctor(root, args));
+}
+if (command === "css") {
+  // What the Metro integration runs in a process of its own (`buildClassesSync`), and a way to see what a CSS file compiles to. Before the sync: it needs no routes.
+  const { buildClasses } = await import("./css/build.ts");
+  const variantIndex = args.indexOf("--variant");
+  const file = args.find((arg, index) => !arg.startsWith("--") && (variantIndex < 0 || index !== variantIndex + 1));
+  if (file === undefined) throw new Error("Usage: svelte-native css <css file> [--variant <name>] [--json]");
+  try {
+    const result = await buildClasses({ root, css: file, variant: variantIndex < 0 ? variantName() : (args[variantIndex + 1] ?? variantName()) });
+    if (args.includes("--json")) await new Promise<void>((flushed) => process.stdout.write(JSON.stringify(result), () => flushed()));
+    else {
+      console.log(`svelte-native: ${result.changed ? "wrote" : "kept"} ${result.file}`);
+      for (const { className, property, reason } of result.unsupported) console.log(`  ${className}: ${property}: ${reason}`);
+      for (const line of result.skipped) console.log(`  ${line}: ignored (plugins and JS config do not apply on native)`);
+    }
+    process.exit(0);
+  } catch (error) {
+    console.error((error as Error).message);
+    process.exit(1);
+  }
 }
 await syncNative(root);
 if (command === "build") {
@@ -54,5 +76,5 @@ if (command === "build") {
   child.once("error", (error) => { watcher.close(); console.error(error); process.exitCode = 1; });
   child.once("exit", (code) => { watcher.close(); process.exitCode = code ?? 1; });
 } else if (command !== "sync") {
-  throw new Error(`Unknown command: ${command}. Use init, dev, android, ios, build, sync or doctor.`);
+  throw new Error(`Unknown command: ${command}. Use init, dev, android, ios, build, sync, css or doctor.`);
 }

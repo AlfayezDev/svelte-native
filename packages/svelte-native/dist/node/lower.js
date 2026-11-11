@@ -1481,6 +1481,9 @@ function unflattenable(text) {
   }
   return false;
 }
+function isFunctionLiteral(expression) {
+  return expression.type === "ArrowFunctionExpression" || expression.type === "FunctionExpression";
+}
 function oneLine(text) {
   return unflattenable(text) ? text : text.replace(/[ \t]*\r?\n[ \t]*/g, " ");
 }
@@ -1578,20 +1581,22 @@ function lowerHtml(ast, content, filename, warn = () => {
     return `${template}\``;
   };
   const handlerSource = (attribute, web2) => {
-    if (attribute.type === "Attribute" && attribute.name === `on${web2}` && attribute.value !== true && !Array.isArray(attribute.value)) return expressionSource(attribute.value.expression);
-    if (attribute.type === "OnDirective" && attribute.name === web2 && attribute.expression && attribute.modifiers.length === 0) return expressionSource(attribute.expression);
+    if (attribute.type === "Attribute" && attribute.name === `on${web2}` && attribute.value !== true && !Array.isArray(attribute.value)) return { source: expressionSource(attribute.value.expression), expression: attribute.value.expression };
+    if (attribute.type === "OnDirective" && attribute.name === web2 && attribute.expression && attribute.modifiers.length === 0) return { source: expressionSource(attribute.expression), expression: attribute.expression };
     return void 0;
   };
   const handlerOf = (node, web2) => {
+    const spread = node.attributes.some((attribute) => attribute.type === "SpreadAttribute");
     for (const attribute of node.attributes) {
-      const source = handlerSource(attribute, web2);
-      if (source !== void 0) return { attribute, source };
+      const found = handlerSource(attribute, web2);
+      if (found !== void 0) return { attribute, ...found, spread };
     }
     return void 0;
   };
   const nativeHandler = (found, to) => {
-    if (found.attribute.type === "Attribute") rename(found.attribute, to);
-    else replaceNode(found.attribute, `${to}={${found.source}}`);
+    const name = to === "onPress" && !found.spread && !isFunctionLiteral(found.expression) ? "nativeOnPress" : to;
+    if (found.attribute.type === "Attribute") rename(found.attribute, name);
+    else replaceNode(found.attribute, `${name}={${found.source}}`);
   };
   const wrappedHandler = (found, to, parameter, call) => {
     replaceNode(found.attribute, `${to}={(${parameter}) => (${found.source})?.(${call})}`);
@@ -1623,7 +1628,7 @@ function lowerHtml(ast, content, filename, warn = () => {
           fail(attribute, `on:${attribute.name}${modifiers} on <${node.name}> is not supported on native: write the \`on${attribute.name}\` attribute with a function, and call \`event.preventDefault()\` in it for a modifier`);
           continue;
         }
-        replaceNode(attribute, `on${attribute.name}={${source}}`);
+        replaceNode(attribute, `on${attribute.name}={${source.source}}`);
       }
       const event = attribute.type === "Attribute" && attribute.value !== true && /^on[a-z]+$/.test(attribute.name) ? attribute.name.slice(2) : attribute.type === "OnDirective" ? attribute.name : void 0;
       if (event === void 0 || handled.includes(event)) continue;
@@ -2018,6 +2023,7 @@ var LOWERED_TAGS = {
   ActivityIndicator: "native-spinner",
   Pressable: "native-pressable"
 };
+var PRESS_HANDLERS = /* @__PURE__ */ new Set(["onPress", "onPressIn", "onPressOut", "onLongPress", "onPressChange"]);
 var NOT_PRIMITIVES = `${PACKAGE2}/svg`;
 function fromPackage(source) {
   return typeof source === "string" && (source === PACKAGE2 || source.startsWith(`${PACKAGE2}/`) && source !== NOT_PRIMITIVES);
@@ -2151,6 +2157,11 @@ function lowerPrimitives(content, options = {}) {
       if (spreads && attribute.type === "Attribute" && !attribute.name.startsWith("on") && attribute.name !== "style" && attribute.value !== true && !Array.isArray(attribute.value) && attribute.value.type === "ExpressionTag" && couldBeFunction(attribute.value.expression)) {
         if (content[attribute.start] === "{") edits.push({ start: attribute.start, end: attribute.start, text: `${attribute.name}=` });
         wrap(attribute.value.expression, VALUE_HELPER2);
+      }
+      if (!spreads && attribute.type === "Attribute" && PRESS_HANDLERS.has(attribute.name) && attribute.value !== true && !Array.isArray(attribute.value) && attribute.value.type === "ExpressionTag" && !isFunctionLiteral(attribute.value.expression)) {
+        const renamed = `native${attribute.name[0].toUpperCase()}${attribute.name.slice(1)}`;
+        if (content[attribute.start] === "{") edits.push({ start: attribute.start, end: attribute.start, text: `${renamed}=` });
+        else edits.push({ start: attribute.start, end: attribute.start + attribute.name.length, text: renamed });
       }
       if (attribute.type === "Attribute" && attribute.name === "style" && content.startsWith("style", attribute.start)) {
         edits.push({ start: attribute.start, end: attribute.start + "style".length, text: "nativeStyle" });

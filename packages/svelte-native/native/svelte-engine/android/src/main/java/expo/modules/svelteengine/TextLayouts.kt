@@ -18,7 +18,6 @@ import android.text.style.LineHeightSpan
 import android.text.style.MetricAffectingSpan
 import com.facebook.react.views.text.ReactFontManager
 import java.lang.reflect.Method
-import java.text.BreakIterator
 import java.util.Locale
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -131,24 +130,7 @@ object TextLayouts {
   }
 
   /** `TextTransform.apply`. */
-  private fun transformed(text: String, mode: Int): String = when (mode) {
-    1 -> text.uppercase(Locale.getDefault())
-    2 -> text.lowercase(Locale.getDefault())
-    3 -> {
-      val words = BreakIterator.getWordInstance()
-      words.setText(text)
-      val out = StringBuilder(text.length)
-      var start = words.first()
-      var end = words.next()
-      while (end != BreakIterator.DONE) {
-        out.append(text.substring(start, end).replaceFirstChar { it.uppercaseChar() })
-        start = end
-        end = words.next()
-      }
-      out.toString()
-    }
-    else -> text
-  }
+  internal fun transformed(text: String, mode: Int): String = TextTransform.apply(text, mode)
 
   /**
    * Reads React Native's internal `com.facebook.react.views.text.PreparedLayout` (public JVM class, `internal` in Kotlin; the

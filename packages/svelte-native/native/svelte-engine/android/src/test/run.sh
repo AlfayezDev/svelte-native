@@ -97,3 +97,19 @@ java -cp "$work/clip-check.jar" expo.modules.svelteengine.ClipRulesCheckKt "$vie
 kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/SystemBarsRules.kt" \
   "$here/kotlin/expo/modules/svelteengine/SystemBarsRulesCheck.kt" -include-runtime -d "$work/system-bars-check.jar"
 java -cp "$work/system-bars-check.jar" expo.modules.svelteengine.SystemBarsRulesCheckKt
+
+# Which node a touch on a paragraph belongs to (SPEC.md, "Touches on nested Text"). The record a fragment's state carries (the node, whether it is a link) and the names of the
+# nested Text nodes the delegate keeps emitters for: the C++ encoder against React Native's plain structs (AccessibilityPrimitives.h), then the Kotlin decoder against the
+# bytes it wrote.
+g++ -std=c++20 -O1 -Wall -Wextra -Werror -fsanitize=address,undefined -I"$rn/ReactCommon" "$here/cpp/FragmentWireTest.cpp" -o "$work/fragment-wire-test"
+"$work/fragment-wire-test" "$work/fragment.tsv"
+kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/FragmentWire.kt" \
+  "$here/kotlin/expo/modules/svelteengine/FragmentWireCheck.kt" -include-runtime -d "$work/fragment-wire-check.jar"
+java -cp "$work/fragment-wire-check.jar" expo.modules.svelteengine.FragmentWireCheckKt "$work/fragment.tsv"
+
+# React Native's `reactTagForTouch` on a grid of characters (left to right, right to left, centred, mixed in direction, ellipsized, several lines) that answers as the layout does,
+# the lengths of the transformed fragments, the padding, the links a service lists; and, as tripwires, the sources read for the calls into all of it.
+kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/TextHitRules.kt" \
+  "$here/../main/java/expo/modules/svelteengine/TextTransform.kt" \
+  "$here/kotlin/expo/modules/svelteengine/TextHitRulesCheck.kt" -include-runtime -d "$work/text-hit-check.jar"
+java -cp "$work/text-hit-check.jar" expo.modules.svelteengine.TextHitRulesCheckKt "$here/../main"

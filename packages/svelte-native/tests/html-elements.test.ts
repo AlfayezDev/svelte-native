@@ -1,4 +1,4 @@
-import { test, expect, jest, afterEach } from "bun:test";
+import { test, expect, jest, afterEach, beforeEach } from "bun:test";
 import { build, transform } from "esbuild";
 import { readFile, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 import { compile, compileModule } from "svelte/compiler";
 import { componentOptions, lowersHtml } from "../src/compile-options.ts";
 import { lowerPrimitives } from "../src/lower.ts";
-import { hostClick, hostInputEvent, hostInputType, hostKeyEvent, hostSource, hostStyleProps, hostSubmit, hostWebSpread } from "../src/renderer.ts";
+import { hostBind, hostClick, hostHref, hostInputEvent, hostKeyEvent, hostSource, hostStyleProps, hostSubmit, hostTag, hostWebClickSpread, hostWebSpread } from "../src/renderer.ts";
 import { reanimatedStubs } from "./reanimated-stubs.ts";
 
 /**
@@ -140,6 +140,7 @@ const flat = (style: unknown): Record<string, unknown> => (Array.isArray(style) 
 const textOf = (node: FakeNode): string => node.children.map((child) => (child.name === "RCTRawText" ? String(child.props.text) : textOf(child))).join("");
 
 let surface = 500;
+beforeEach(() => { (globalThis as unknown as { __log: string[] }).__log = []; });
 let started: { m: Module; tag: number } | undefined;
 async function mount() {
   const m = await load();
@@ -192,9 +193,11 @@ test("a page of HTML elements is a host tree: views, texts, a pressable, an imag
   expect(save.name).toBe("RCTView");
   expect(save.props.accessibilityRole).toBe("button");
   expect(save.props.onClick).toBe(true);
-  expect(save.props).not.toHaveProperty("type");
+  // `type` stays as the element's own (a press reads it: a button that is not a submit button submits nothing); the native view ignores it.
   expect(save.props.disabled).toBe(false);
-  expect(save.props["aria-disabled"] ?? (save.props.accessibilityState as { disabled?: boolean } | undefined)?.disabled).toBeFalsy();
+  // A disabled button is disabled for the screen reader too, as React Native's Pressable makes it.
+  expect((save.props.accessibilityState as { disabled?: boolean } | undefined)?.disabled).toBe(false);
+  expect((t.byID("off").props.accessibilityState as { disabled?: boolean }).disabled).toBe(true);
   expect(textOf(save)).toBe("Save");
   expect(save.children[0]?.name).toBe("RCTText");
   // An image: `src` is the source, `alt` its label, `width` and `height` its size.
@@ -339,11 +342,6 @@ test("what the lowered code calls: a source from a string or an asset, the props
   const source = { uri: "https://x.dev/a.png" };
   expect(hostSource(source)).toBe(source);
   expect(hostSource(undefined)).toBeUndefined();
-  expect(hostInputType("password")).toEqual({ secureTextEntry: true, autoComplete: "password", autoCapitalize: "none" });
-  expect(hostInputType("EMAIL")).toMatchObject({ keyboardType: "email-address" });
-  expect(hostInputType("text")).toEqual({});
-  expect(hostInputType(undefined)).toEqual({});
-  expect(hostInputType("constructor")).toEqual({});
   const event = hostInputEvent("input", "ada");
   expect(event).toMatchObject({ type: "input", target: { value: "ada" }, currentTarget: { value: "ada" } });
   expect(hostInputEvent("change", true)).toMatchObject({ type: "change", currentTarget: { checked: true } });
@@ -509,13 +507,17 @@ test("style:property values are what a native style takes: px and numbers are dp
   console.warn = (message: unknown) => { warnings.push(message); };
   dev.__DEV__ = true;
   try {
-    expect(hostStyleProps({ width: "3rem", height: "calc(1px + 2px)", margin: { a: 1 }, color: "red" })).toEqual({ color: "red" });
+    expect(hostStyleProps({ width: "3rem", height: "calc(1px + 2px)", margin: { a: 1 }, color: "red", "--gap": "4px", flexo: 2 })).toEqual({ width: 48, color: "red", flexo: 2 });
   } finally {
     console.warn = warn;
     delete dev.__DEV__;
   }
-  expect(warnings).toHaveLength(3);
-  expect(String(warnings[0])).toContain('style:width={"3rem"} is not a value a native style takes');
+  // `calc()` and an object are not values, `--gap` is not a property, `flexo` is not a style: four warnings; `3rem` is 48.
+  expect(warnings).toHaveLength(4);
+  expect(String(warnings[0])).toContain('style:height={"calc(1px + 2px)"} is not a value a native style takes');
+  expect(warnings.map(String).some((warning) => warning.includes("--gap") && warning.includes("custom property"))).toBe(true);
+  expect(warnings.map(String).some((warning) => warning.includes("flexo is not a style React Native knows"))).toBe(true);
+  expect(hostStyleProps({ width: "10px !important", padding: "2rem" })).toEqual({ width: 10, padding: 32 });
 });
 
 test("a click runs the handler with a preventDefault that works, then what the press does by itself unless it was called; a submit needs the form above the element", () => {
@@ -536,4 +538,230 @@ test("a click runs the handler with a preventDefault that works, then what the p
   expect(() => { hostSubmit(undefined); hostSubmit({}); hostSubmit({ currentTarget: {} }); hostSubmit({ currentTarget: {} }, "button"); }).not.toThrow();
   expect(hostKeyEvent("keydown", { nativeEvent: { key: "a" }, currentTarget: 7 })).toMatchObject({ type: "keydown", key: "a", currentTarget: 7 });
   expect(hostKeyEvent("keyup", undefined)).toMatchObject({ type: "keyup", key: undefined });
+});
+
+/** A fixture on a surface of its own (no router), with a finder by `testID`. */
+async function mountFixture(fixture: string, surface: number) {
+  const m = await load(fixture);
+  roots = {};
+  globals.__opened = [];
+  m.startSurface(surface, m.Fixture, {});
+  await settle(m);
+  const byID = (testID: string) => {
+    const found = all(roots[surface] ?? []).find((candidate) => candidate.props.testID === testID);
+    if (!found) throw new Error(`no node ${testID}`);
+    return found;
+  };
+  return { m, byID, nodes: () => all(roots[surface] ?? []), settle: () => settle(m) };
+}
+const probe = globalThis as unknown as { __log: string[]; __focused: string[]; __htmlRun: { setN(value: number): void }; __htmlBind: { reverse(): void; remove(id: number): void; show(): void; tags(): (number | null)[] }; __htmlMisc: { setCss(value: string): void; setTag(value: string): void; amount(): number; note(): string } };
+/** The names of the children of a node, with a text's string: the shape of what the platform is given. */
+const shape = (node: FakeNode): string[] => node.children.map((child) => (child.name === "RCTRawText" ? `"${child.props.text}"` : `${child.name}(${textOf(child)})`));
+
+test("text that reaches an HTML view through children, a snippet or a block is drawn, as one line with the inline elements, and a View keeps React Native's rule", async () => {
+  const warn = console.warn;
+  const warnings: unknown[] = [];
+  console.warn = (message: unknown) => { warnings.push(message); };
+  (globalThis as { __DEV__?: boolean }).__DEV__ = true;
+  let t: Awaited<ReturnType<typeof mountFixture>>;
+  try {
+    t = await mountFixture("html-run-fixture.svelte", 610);
+  } finally {
+    delete (globalThis as { __DEV__?: boolean }).__DEV__;
+    console.warn = warn;
+  }
+  // A string a component hands to a button in `children`, and one in a snippet.
+  expect(shape(t.byID("child-text"))).toEqual(["RCTText(Child text)"]);
+  expect(shape(t.byID("snippet"))).toEqual(["RCTText(Save)"]);
+  // `Hello {#if n}{n}{/if}!` is one text, before the block shows anything and after.
+  expect(shape(t.byID("hello"))).toEqual(["RCTText(Hello !)"]);
+  probe.__htmlRun.setN(2);
+  await t.settle();
+  expect(shape(t.byID("hello"))).toEqual(["RCTText(Hello 2!)"]);
+  expect(t.byID("hello").children).toHaveLength(1);
+  // Spans are one line, with the space between them when there is one, and the paragraphs are not.
+  expect(shape(t.byID("spans"))).toEqual(["RCTText(ab)"]);
+  expect(t.byID("spans").children[0]?.children.map((child) => child.name)).toEqual(["RCTVirtualText", "RCTVirtualText"]);
+  expect(shape(t.byID("spaced"))).toEqual(["RCTText(a b)"]);
+  expect(shape(t.byID("blocks"))).toEqual(["RCTText(one)", "RCTText(two)"]);
+  // The whitespace at the edge of a line is not drawn: the text between two headings has none.
+  expect(shape(t.byID("edges"))).toEqual(["RCTText(T)", "RCTText(some text)", "RCTText(U)"]);
+  // A view in the middle splits the text in two; a button in a paragraph is a view in the text, whose own text is a text, not a span (React Native starts a new text under a view).
+  expect(shape(t.byID("mixed"))).toEqual(["RCTText(before)", "RCTView(inner)", "RCTText(after)"]);
+  expect(shape(t.byID("press"))).toEqual(['"Press "', "RCTView(here)", '" now"']);
+  expect(t.byID("here").children.map((child) => child.name)).toEqual(["RCTText"]);
+  // A view in a text starts a new text under it, as in React Native: the paragraph in it is a text, not a span of the text it is in.
+  expect(t.byID("s7-para").name).toBe("RCTText");
+  expect(t.byID("s7-box").name).toBe("RCTView");
+  // A dialog's text.
+  expect(shape(t.byID("dialog"))).toEqual(["RCTText(Dialog text)"]);
+  // A View of the package draws no bare text, and development says so once, for both.
+  expect(textOf(t.byID("rn"))).toBe("");
+  expect(warnings.filter((message) => String(message).includes("not inside a Text"))).toHaveLength(1);
+});
+
+test("bind:this gives the handle before onMount, and a handle asked to focus before there is a view does it when the view is on the screen", async () => {
+  const commands: string[] = [];
+  const original = fake.dispatchCommand;
+  fake.dispatchCommand = ((node: FakeNode, name: string) => { commands.push(`${name} ${node.props.testID}`); }) as never;
+  try {
+    probe.__focused = [];
+    const t = await mountFixture("html-bind-fixture.svelte", 611);
+    probe.__htmlBind.show();
+    await t.settle();
+    // The handles were there when `onMount` ran, for the input (a component, which hands its `ref` to the view) and the div.
+    expect(probe.__focused).toEqual(["input true", "div true"]);
+    // And what was asked of them has reached the views.
+    expect(commands.sort()).toEqual(["focus late", "focus late-div"]);
+  } finally {
+    fake.dispatchCommand = original;
+  }
+});
+
+test("bind:this={els[i]} follows its row: a handle is nulled only if the variable still holds it, and a moved row rebinds", async () => {
+  const t = await mountFixture("html-bind-fixture.svelte", 612);
+  const tag = (id: number) => t.byID(`row-${id}`).tag;
+  expect(probe.__htmlBind.tags()).toEqual([tag(1), tag(2), tag(3)]);
+  probe.__htmlBind.reverse();
+  await t.settle();
+  expect(probe.__htmlBind.tags()).toEqual([tag(3), tag(2), tag(1)]);
+  probe.__htmlBind.remove(2);
+  await t.settle();
+  // The removed row's slot is not the one it had in the end; the last slot is nobody's.
+  expect(probe.__htmlBind.tags()).toEqual([tag(3), tag(1), null]);
+});
+
+test("a component that passes its props down keeps HTML semantics: a button's type and onclick, an input's type, events, disabled and maxlength all come through the spread", async () => {
+  const t = await mountFixture("html-wrap-fixture.svelte", 613);
+  const log = probe.__log;
+  const press = (testID: string) => emit(t.byID(testID).target, "topClick", {});
+  press("cancel");
+  expect(log.splice(0)).toEqual(["cancel"]);
+  // The handler of the spread runs before the submission, as on the web, and a prevented click does not submit.
+  press("save");
+  expect(log.splice(0)).toEqual(["save click", "submitted"]);
+  press("prevent");
+  expect(log.splice(0)).toEqual(["prevented"]);
+  const pass = t.byID("pass");
+  expect(pass.props).toMatchObject({ secureTextEntry: true, autoComplete: "password", maxLength: 8 });
+  emit(pass.target, "topChange", { text: "pw", eventCount: 1 });
+  await t.settle();
+  expect(log.splice(0)).toEqual(["input pw"]);
+  expect(t.byID("off").props).toMatchObject({ editable: false, readOnly: true });
+  // A number in state is the text of a number input.
+  expect(t.byID("num").props).toMatchObject({ keyboardType: "numeric", text: "5" });
+  // A link gets its href from a spread, and the `onclick` of a spread that prevents the default stops the navigation.
+  globals.__opened = [];
+  press("spread-link");
+  expect(globals.__opened).toEqual(["https://example.com/spread"]);
+  press("spread-prevented");
+  expect(globals.__opened).toEqual(["https://example.com/spread"]);
+  expect(log.splice(0)).toEqual(["link prevented"]);
+});
+
+test("what the lowered code calls on a handle and an event: a bind that nulls only its own handle, the href of the element pressed, a spread that leaves a press its own", () => {
+  const store: Record<string, unknown> = {};
+  const set = (keys: unknown[], value: unknown) => { store[String(keys[0])] = value; };
+  const get = (keys: unknown[]) => store[String(keys[0])];
+  const first = { name: "first" };
+  const second = { name: "second" };
+  const refOne = hostBind(set, get, ["a"]);
+  const refTwo = hostBind(set, get, ["a"]);
+  refOne(first);
+  expect(store.a).toBe(first);
+  // Another element took the slot: the first one going away leaves it.
+  refTwo(second);
+  refOne(null);
+  expect(store.a).toBe(second);
+  refTwo(null);
+  expect(store.a).toBeNull();
+  // A ref made again for another key nulls the key it had.
+  const old = hostBind(set, get, ["x"]);
+  old(first);
+  hostBind(set, get, ["y"])(first);
+  old(null);
+  expect(store).toMatchObject({ x: null, y: first });
+  // The `onclick` of a spread: the press's own `onPress` stays for a button and a link, and is the handler of any other element.
+  const press = () => {};
+  expect(hostWebClickSpread({ onclick: press, onPress: go, id: "a" })).toEqual({ onHtmlClick: press, onPress: go, id: "a" });
+  expect(hostWebSpread({ onclick: press })).toEqual({ onPress: press });
+  expect(hostHref(undefined)).toBeUndefined();
+  expect(hostHref({ currentTarget: {} })).toBeUndefined();
+});
+
+test("a link without an href does nothing, a style that is text when the app runs is parsed, a number is the text of its input, and an input's event has its name, id and type", async () => {
+  const t = await mountFixture("html-misc-fixture.svelte", 614);
+  const log = probe.__log;
+  emit(t.byID("nolink").target, "topClick", {});
+  expect(log.splice(0)).toEqual(["no link clicked"]);
+  expect(flat(t.byID("text-style").props.style)).toEqual({ color: "red", fontSize: 20, padding: 16 });
+  probe.__htmlMisc.setCss("color: blue");
+  await t.settle();
+  expect(flat(t.byID("text-style").props.style)).toEqual({ color: "blue" });
+  expect(t.byID("number").props.text).toBe("5");
+  emit(t.byID("named").target, "topChange", { text: "ada", eventCount: 1 });
+  await t.settle();
+  expect(log.splice(0)).toEqual(["user/user-name/text/ada"]);
+  // The text between the tags of a textarea is its initial value, and a bound value wins.
+  expect(t.byID("initial").props.text).toBe("Initial 5 text");
+  expect(t.byID("initial-bound").props.text).toBe("");
+});
+
+test("preventDefault on the key press of Enter stops the submission; Enter submits otherwise", async () => {
+  const t = await mountFixture("html-misc-fixture.svelte", 615);
+  const log = probe.__log;
+  log.length = 0;
+  emit(t.byID("enter-free").target, "topSubmitEditing", { text: "" });
+  expect(log.splice(0)).toEqual(["submitted"]);
+  emit(t.byID("enter").target, "topKeyPress", { key: "Enter" });
+  emit(t.byID("enter").target, "topSubmitEditing", { text: "" });
+  expect(log.splice(0)).toEqual([]);
+  // The next key press clears it.
+  emit(t.byID("enter").target, "topKeyPress", { key: "a" });
+  emit(t.byID("enter").target, "topSubmitEditing", { text: "" });
+  expect(log.splice(0)).toEqual(["submitted"]);
+});
+
+test("<svelte:element this={tag}> draws the host tag of the tag, and one with no host tag fails where it is chosen", async () => {
+  const t = await mountFixture("html-misc-fixture.svelte", 616);
+  // `h2` is a text, `div` a view; the web's `testID` here is just an attribute.
+  expect(t.byID("dynamic").name).toBe("RCTText");
+  probe.__htmlMisc.setTag("div");
+  await t.settle();
+  expect(t.byID("dynamic").name).toBe("RCTView");
+  expect(hostTag("h2")).toBe("native-text");
+  expect(hostTag("button")).toBe("native-pressable");
+  expect(hostTag("native-scroll")).toBe("native-scroll");
+  expect(hostTag(undefined)).toBeUndefined();
+  expect(hostTag(false)).toBe(false);
+  expect(() => hostTag("table")).toThrow('<svelte:element this="table"> has no native equivalent');
+  expect(() => hostTag("input")).toThrow("write input as an element of its own");
+});
+
+test("the default style of an element is a browser's, under its class and style: bold, italic, underline, monospace, sizes of the font it inherits", async () => {
+  const t = await mountFixture("html-ua-fixture.svelte", 617);
+  const style = (testID: string) => flat(t.byID(testID).props.style);
+  expect(style("b")).toMatchObject({ fontWeight: "700" });
+  expect(style("em")).toMatchObject({ fontStyle: "italic" });
+  expect(style("u")).toMatchObject({ textDecorationLine: "underline" });
+  expect(style("del")).toMatchObject({ textDecorationLine: "line-through" });
+  expect(style("s")).toMatchObject({ textDecorationLine: "line-through" });
+  expect(style("code")).toMatchObject({ fontFamily: "monospace" });
+  expect(style("kbd")).toMatchObject({ fontFamily: "monospace" });
+  expect(style("mark")).toMatchObject({ backgroundColor: "#ffff00", color: "#000000" });
+  // A factor of the font size it inherits (14 when nothing sets one): small, and a heading, whose own size and class still win.
+  expect(style("small")).toMatchObject({ fontSize: 11.2 });
+  expect(style("h1")).toMatchObject({ fontSize: 28, fontWeight: "700" });
+  expect(style("h1-small")).toMatchObject({ fontSize: 22.4 });
+  expect(style("h2")).toMatchObject({ fontSize: 10, fontWeight: "700" });
+  expect(style("h3")).toMatchObject({ fontSize: 18, fontWeight: "700" });
+  // Of an inherited 20: h4 is 1, h6 0.67, sub 0.75, and a pre is monospace.
+  expect(style("h4")).toMatchObject({ fontSize: 20, fontWeight: "700" });
+  expect(style("h6")).toMatchObject({ fontSize: 13.4 });
+  expect(style("sub")).toMatchObject({ fontSize: 15 });
+  expect(style("pre")).toMatchObject({ fontFamily: "monospace", fontSize: 20 });
+  // A link has no default: its color is the app's.
+  expect(style("a")).not.toHaveProperty("color");
+  // The text of a paragraph does not take the bold of what is inside it.
+  expect(style("p")).toEqual({});
 });

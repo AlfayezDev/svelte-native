@@ -1,22 +1,23 @@
 /**
- * HTML elements to native ones, at compile time: `<div>`, `<p>`, `<button>`, `<a href>`, `<img>`, `<input>` and the rest of the table in `ELEMENTS`, so one `.svelte` file can be
+ * HTML elements to native ones, at compile time: `<div>`, `<p>`, `<button>`, `<a href>`, `<img>`, `<input>` and the rest of the table in `html-tags.ts`, so one `.svelte` file can be
  * written with HTML for SvelteKit and still run on a device. `lower.ts` calls this for the files the Metro transformer lowers (never for the web build, which does not load
  * `lower.ts`: `vite.ts` compiles `.svelte` files through SvelteKit alone), when the file is the app's own (`lowersHtml` in `compile-options.ts`).
  *
  * Two kinds of result. An element that is a plain host tag (`div`, `p`, `button`, `a`, `img`) is handed back in `elements`, and `lower.ts` carries over its `class`, `class:`,
  * `style` and spreads through the paths a lowered `<View>` takes (`bind:this` becomes a `ref`); the attributes this file rewrites (`onclick` to `onPress`, `src` to `source`) are in `handled`. An element
  * that needs a component for its meaning (`input` and `textarea` are a `TextInput`, a checkbox a `Switch`, `dialog` a `Modal`: they bind) is rewritten here, with the component imported
- * under a name of its own. The text that sits directly in a view-like element is wrapped in a `native-text` (the host draws no bare text, `fabric/host.ts`).
+ * under a name of its own; `TextInput` works the HTML attributes out when the app runs (`html-input.ts`), so a `{...rest}` that carries them means the same.
  *
  * Every element it makes a host tag of is marked (`nativeHtml`): the host passes the text style of a marked element (`class="text-lg"`, `style="color: white"`) down to the text and
- * the inputs of the marked elements below it, as CSS does (`fabric/text-inherit.ts`). A `<form>` is marked too (`nativeForm`), and a `<button>` or Enter in an input submits the form above it
- * (`hostSubmit`). A `style="..."` string is converted here (`css/inline.ts`), and `style:property` directives are worked out when they change (`hostStyleProps`).
+ * the inputs of the marked elements below it, as CSS does (`fabric/text-inherit.ts`), and draws the text that is bare in a marked view, however it got there (`children`, a snippet),
+ * in a text of its own (`buildRun`). The text elements that flow in a line are marked `"inline"`. A `<form>` is marked too (`nativeForm`), and a `<button>` or Enter in an input submits
+ * the form above it (`hostSubmit`). A `style="..."` string is converted here (`css/inline.ts`), and `style:property` directives are worked out when they change (`hostStyleProps`).
  *
- * Only text is inserted and renamed, and no newline is added, so a line number in the source is still the line of the same markup. What has no native meaning is an error that names
- * the element, the file and the line (all of them, in one message); a web handler that can never run on a device is a warning.
+ * Only text is inserted, renamed and moved, and the newlines of what moves go with it, so a line number in the source is still the line of the same markup. What has no native meaning is
+ * an error that names the element, the file and the line (all of them, in one message); a web handler that can never run on a device is a warning.
  */
 import { convertInlineStyle } from "./css/inline.ts";
-import { inputTypeProps } from "./html-input.ts";
+import { ELEMENTS, INLINE, USER_AGENT_STYLES, hostTagOf, type Kind } from "./html-tags.ts";
 
 const PACKAGE = "@example/svelte-native";
 const CORE = `${PACKAGE}/core`;
@@ -24,31 +25,36 @@ const ROUTER = `${PACKAGE}/router`;
 
 // The renderer's helpers the generated code calls (`renderer.ts`), by the names `lower.ts` imports them under.
 export const SOURCE_HELPER = "__svelteNativeSource";
-export const INPUT_TYPE_HELPER = "__svelteNativeInputType";
 export const INPUT_EVENT_HELPER = "__svelteNativeInputEvent";
 /** `hostSpread` for the spread of an HTML element: a web handler name in the spread (`onclick`) is the native one. */
 export const WEB_SPREAD_HELPER = "__svelteNativeWebSpread";
+/** The same for an element whose press does something by itself (a button, a link): the spread's `onclick` runs with it, it does not replace it. */
+export const WEB_CLICK_SPREAD_HELPER = "__svelteNativeWebClickSpread";
 /** `hostClass` for a lowered HTML element: the font-relative values of a class wait for the font size the element inherits. */
 export const HTML_CLASS_HELPER = "__svelteNativeHtmlClass";
 export const CLICK_HELPER = "__svelteNativeClick";
 export const SUBMIT_HELPER = "__svelteNativeSubmit";
-export const KEY_HELPER = "__svelteNativeKeyEvent";
+export const HREF_HELPER = "__svelteNativeHref";
 export const STYLE_HELPER = "__svelteNativeStyleProps";
+export const BIND_HELPER = "__svelteNativeBind";
+export const TAG_HELPER = "__svelteNativeTag";
 /** `hostValue` of `lower.ts`: a function next to a spread (a `ref`) is boxed, or Svelte's `set_attributes` drops it. */
-const VALUE_HELPER = "__svelteNativeValue";
+export const VALUE_HELPER = "__svelteNativeValue";
 export const HTML_HELPER_EXPORTS: Record<string, string> = {
   [SOURCE_HELPER]: "hostSource",
-  [INPUT_TYPE_HELPER]: "hostInputType",
   [INPUT_EVENT_HELPER]: "hostInputEvent",
   [WEB_SPREAD_HELPER]: "hostWebSpread",
+  [WEB_CLICK_SPREAD_HELPER]: "hostWebClickSpread",
   [HTML_CLASS_HELPER]: "hostHtmlClass",
   [CLICK_HELPER]: "hostClick",
   [SUBMIT_HELPER]: "hostSubmit",
-  [KEY_HELPER]: "hostKeyEvent",
+  [HREF_HELPER]: "hostHref",
   [STYLE_HELPER]: "hostStyleProps",
+  [BIND_HELPER]: "hostBind",
+  [TAG_HELPER]: "hostTag",
 };
 
-/** The function a pressed `<a href>` calls: `useLink()` (`router.svelte.ts`) is called while the component initializes, which a handler cannot do. */
+/** The function a pressed `<a>` calls with its `href`: `useLink()` (`router.svelte.ts`) is called while the component initializes, which a handler cannot do. */
 const LINK = "__svelteNativeLink";
 /** The components that carry what a host tag cannot (a binding), under names that cannot collide with the file's own imports (a tag name must start with a capital). */
 const COMPONENTS: Record<string, string> = { TextInput: "SvelteNativeTextInput", Switch: "SvelteNativeSwitch", Modal: "SvelteNativeModal" };
@@ -67,11 +73,13 @@ export type LoweredElement = {
   attributes: string;
   /** A void element (`<img>`) has no closing tag to rename: the host tag needs one. */
   isVoid: boolean;
+  /** The helper its spread goes through (`hostWebSpread`, or the one that leaves a press its own). */
+  spreadHelper: string;
 };
 
 export type HtmlLowering = {
   elements: Map<Node, LoweredElement>;
-  /** What this file rewrites itself: wrapped text, and the elements that become components. */
+  /** What this file rewrites itself: the elements that become components, what is moved, what is taken out. */
   edits: Edit[];
   /** The renderer's helpers (keys of `HTML_HELPER_EXPORTS`) the generated code calls. */
   helpers: Set<string>;
@@ -80,19 +88,6 @@ export type HtmlLowering = {
   /** Statements for the instance script (they run when the component initializes). */
   setup: string[];
 };
-
-/**
- * The elements and what each becomes. `view`, `text`, `button`, `link`, `image`: a host tag; `input` and `textarea`: `TextInput` (an `input` of `type="checkbox"` is a `Switch`);
- * `dialog`: `Modal`.
- */
-type Kind = "view" | "text" | "button" | "link" | "image" | "input" | "textarea" | "dialog" | "pre" | "br" | "rule";
-const ELEMENTS: Record<string, Kind> = {};
-for (const name of "div section header footer main nav article aside ul ol li form label figure fieldset dl dd".split(" ")) ELEMENTS[name] = "view";
-for (const name of "p span h1 h2 h3 h4 h5 h6 strong b em i small code blockquote figcaption dt mark kbd time abbr s u del ins q cite sub sup var samp dfn data".split(" ")) ELEMENTS[name] = "text";
-Object.assign(ELEMENTS, { button: "button", a: "link", img: "image", input: "input", textarea: "textarea", dialog: "dialog", pre: "pre", br: "br", hr: "rule" });
-
-/** What flows with text in a line: bare text and `{expression}`s next to these make one `native-text` of their own. */
-const INLINE = new Set("span strong b em i small code a br mark kbd time abbr s u del ins q cite sub sup var samp dfn data".split(" "));
 
 const table = "tables have no native equivalent: lay the rows out with flex `div`s (`flex flex-row`)";
 const select = "there is no native select: show the choices as a list of `button`s, in a `Modal` if they should cover the screen";
@@ -120,8 +115,10 @@ const HINTS: Record<string, string> = {
   link: "there is nothing to link on a device", meta: "there is nothing to describe on a device", base: "there is no base URL on a device", param: "use `WebView` from `@example/svelte-native/foreign`",
 };
 const DEFAULT_HINT = "use a `div` (View) or a `span` (Text), or a component of `@example/svelte-native`";
-const HTML_NAMES = new Set([...Object.keys(ELEMENTS), ...Object.keys(HINTS), "slot", "style", "script", "title", "head", "body", "html"]);
-const OPENING = new RegExp(`<(?:${[...HTML_NAMES].join("|")})(?=[\\s/>])`);
+const HTML_NAMES = new Set([...Object.keys(ELEMENTS), ...Object.keys(HINTS)]);
+// What the gate looks for: a tag in lower case that is not a host tag (`native-view`), a `script` or a `style` (every file has those), which is any element of the markup that is not
+// a component (`<center>` and a custom element are errors, so they are looked for too), and the special elements Svelte's custom renderer refuses.
+const OPENING = /<(?!native-|script[\s>]|style[\s>])[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?=[\s/>])|<svelte:(?:head|window|document|body|element)(?=[\s/>])/;
 
 /** True when the file may have an HTML element the lowering handles (a cheap test, so a file with none is not parsed). */
 export function mayHaveHtml(content: string): boolean {
@@ -138,11 +135,8 @@ const UNSUPPORTED_TYPES: Record<string, string> = {
   "datetime-local": "use `DateTimePicker` from `@example/svelte-native/foreign`", month: "use `DateTimePicker` from `@example/svelte-native/foreign`", week: "use `DateTimePicker` from `@example/svelte-native/foreign`",
 };
 
-// What an HTML attribute is called for a `TextInput` (the ones not named here keep their name).
-const INPUT_RENAMES: Record<string, string> = {
-  readonly: "readOnly", autofocus: "autoFocus", autocomplete: "autoComplete", autocapitalize: "autoCapitalize", inputmode: "inputMode", enterkeyhint: "enterKeyHint",
-  onfocus: "onFocus", onblur: "onBlur",
-};
+/** The events of the web a text input gets on a device (`html-input.ts`). */
+const INPUT_EVENTS = ["input", "change", "focus", "blur", "keydown", "keyup"];
 
 const lines = (text: string): number => text.split("\n").length - 1;
 const WHITESPACE = /^[ \t\n\r\f]*$/;
@@ -150,9 +144,32 @@ const NUMBER = /^\d+(?:\.\d+)?(?:px)?$/;
 
 type Context = "view" | "text" | "unknown";
 
-
 /** Where the text of a `<pre>` is: the whitespace in it is the text, and Svelte would trim and collapse it in any element but a `pre`. */
 type Pre = "start" | "inside" | undefined;
+
+/**
+ * The `ref` a `bind:this={target}` becomes, or undefined for a binding with a getter and a setter. The variable gets the host handle and `null` when the element goes away, and only
+ * if it still holds this handle (`hostBind`): the target may have moved (`bind:this={els[i]}` of a keyed `{#each}`), so the computed keys of the target are read where the attribute
+ * is (`[i]`), the `ref` is made again when one changes, and the target is written with the keys it had. `spreads`: the element has a spread, which passes a function only boxed.
+ */
+export function bindThisText(content: string, attribute: Node, spreads: boolean): string | undefined {
+  const expression: Node = attribute.expression;
+  if (expression.type === "SequenceExpression") return undefined;
+  const keys: Node[] = [];
+  const collect = (node: Node): void => {
+    if (node.type !== "MemberExpression") return;
+    collect(node.object);
+    if (node.computed && node.property.type !== "Literal") keys.push(node.property);
+  };
+  collect(expression);
+  let target = content.slice(expression.start, expression.end);
+  for (let index = keys.length - 1; index >= 0; index--) {
+    const key = keys[index] as Node;
+    target = `${target.slice(0, key.start - expression.start)}__k[${index}]${target.slice(key.end - expression.start)}`;
+  }
+  const call = `${BIND_HELPER}((__k, __v) => (${target} = __v), (__k) => ${target}, [${keys.map((key) => content.slice(key.start, key.end)).join(", ")}])`;
+  return `ref={${spreads ? `${VALUE_HELPER}(${call})` : call}}`;
+}
 
 export function lowerHtml(ast: Node, content: string, filename: string | undefined, warn: (message: string) => void = () => {}): HtmlLowering {
   const out: HtmlLowering = { elements: new Map(), edits: [], helpers: new Set(), imports: [], setup: [] };
@@ -174,6 +191,15 @@ export function lowerHtml(ast: Node, content: string, filename: string | undefin
     out.edits.push({ start, end, text: lost > 0 ? text + "\n".repeat(lost) : text });
   };
   const replaceNode = (node: Node, text: string): void => replace(node.start, node.end, text);
+  /**
+   * Takes a node out of its place because its text is written somewhere else (a move), and returns the text it is written as with the newlines of the part that is not in it (the
+   * braces of an attribute, the line breaks around a value) added to it, so the lines that were there are where the text is now and nothing is added where it was.
+   */
+  const moveOut = (node: Node, written: string): string => {
+    out.edits.push({ start: node.start, end: node.end, text: "" });
+    const lost = lines(slice(node)) - lines(written);
+    return lost > 0 ? written + "\n".repeat(lost) : written;
+  };
   /** Gives an `Attribute` another name (the shorthand `{onclick}` becomes `onPress={onclick}`). */
   const rename = (attribute: Node, to: string): void => {
     if (content[attribute.start] === "{") out.edits.push({ start: attribute.start, end: attribute.start, text: `${to}=` });
@@ -220,7 +246,7 @@ export function lowerHtml(ast: Node, content: string, filename: string | undefin
     }
     return undefined;
   };
-  /** An event attribute under the native name: an attribute is renamed, the directive is written as the attribute. */
+  /** An event attribute under another name: an attribute is renamed, the directive is written as the attribute. */
   const nativeHandler = (found: { attribute: Node; source: string }, to: string): void => {
     if (found.attribute.type === "Attribute") rename(found.attribute, to);
     else replaceNode(found.attribute, `${to}={${found.source}}`);
@@ -268,7 +294,8 @@ export function lowerHtml(ast: Node, content: string, filename: string | undefin
   /**
    * `style="padding: 4px; color: red"` is converted here (`css/inline.ts`) and written as the style object; `style:property={value}` directives become one call that works them out
    * when they change (`hostStyleProps`). The directives and the string go with the element's own `style={...}` into one array, in that order (a directive wins, as on the web). A `style`
-   * that is an expression stays as it is, unless there are directives to join it. `property` is the attribute that carries the style on the target (`nativeStyle` for a host tag).
+   * that is an expression stays as it is, unless there are directives to join it; one that is text when the app runs is parsed then. `property` is the attribute that carries the style on
+   * the target (`nativeStyle` for a host tag).
    */
   const lowerStyle = (node: Node, property: "nativeStyle" | "style", handled: Set<Node> | undefined, generated: string[]): void => {
     const attribute = attributeNamed(node, "style");
@@ -298,8 +325,7 @@ export function lowerHtml(ast: Node, content: string, filename: string | undefin
       const entries: string[] = [];
       for (const style of directives) {
         if (style.value === true && !/^[A-Za-z_$][\w$]*$/.test(style.name)) fail(style, `style:${style.name} needs a value: write style:${style.name}={...}`);
-        entries.push(`${JSON.stringify(style.name)}: ${style.value === true ? style.name : valueSource(style)}`);
-        replaceNode(style, "");
+        entries.push(moveOut(style, `${JSON.stringify(style.name)}: ${style.value === true ? style.name : valueSource(style)}`));
         handled?.add(style);
       }
       parts.push(`${helper(STYLE_HELPER)}({ ${entries.join(", ")} })`);
@@ -316,39 +342,29 @@ export function lowerHtml(ast: Node, content: string, filename: string | undefin
   const hasRole = (node: Node): boolean => (node.attributes as Node[]).some((attribute) => attribute.type === "Attribute" && (attribute.name === "role" || attribute.name === "accessibilityRole"));
 
   /**
-   * `onclick` (or `on:click`) is `onPress`. With an `href` a press also follows the link, so the `<a>` has no `href` left, and a submit button submits its form: both after the
-   * handler, unless it called `preventDefault` on the event (`hostClick`). The attributes it writes are added to `generated`, and the ones it dealt with are `handled`.
-   * `submit` is the source of the button's `type`. Returns whether there is a handler of the element's own.
+   * `onclick` (or `on:click`) is `onPress`. What the press does by itself (`after`: a link's navigation, a button's form submission, both read from the element when it is pressed, so a
+   * spread's `href` and `type` count) happens after the handler, unless it called `preventDefault` on the event (`hostClick`). The attributes it writes are added to `generated`, and the
+   * ones it dealt with are `handled`. Returns whether there is a handler of the element's own.
    */
-  const press = (node: Node, handled: Set<Node>, generated: string[], href?: Node, submit?: string): boolean => {
+  const press = (node: Node, handled: Set<Node>, generated: string[], after?: string): boolean => {
     const click = handlerOf(node, "click");
-    const target = href === undefined || href.value === true ? undefined : valueSource(href);
-    if (href) {
-      handled.add(href);
-      replaceNode(href, "");
-    }
-    if (target !== undefined) link = true;
     if (click) handled.add(click.attribute);
-    const after = target !== undefined ? `() => ${LINK}(${target})` : submit !== undefined ? `(__event) => ${helper(SUBMIT_HELPER)}(__event, ${submit})` : undefined;
     if (after === undefined) {
       if (click) nativeHandler(click, "onPress");
-    } else {
-      const call = `onPress={(__event) => ${helper(CLICK_HELPER)}(__event, ${click ? click.source : "undefined"}, ${after})}`;
-      if (click) replaceNode(click.attribute, call);
-      else generated.push(call);
+      return click !== undefined;
     }
+    const call = `onPress={(__event) => ${helper(CLICK_HELPER)}(__event, ${click ? click.source : "undefined"}, ${after})}`;
+    if (click) replaceNode(click.attribute, call);
+    else generated.push(call);
     return click !== undefined;
-  };
-
-  /** A `disabled` button is dimmed for the screen reader too (`aria-disabled`): the host keeps the press state in `disabled` alone. */
-  const ariaDisabled = (node: Node, generated: string[]): void => {
-    const disabled = attributeNamed(node, "disabled");
-    if (disabled && !attributeNamed(node, "aria-disabled")) generated.push(`aria-disabled={${valueSource(disabled)}}`);
   };
 
   const host = (node: Node, kind: Kind, context: Context): Context => {
     const handled = new Set<Node>();
-    const generated: string[] = kind === "image" ? [] : ["nativeHtml={true}"];
+    const inline = (kind === "text" && INLINE.has(node.name)) || (kind === "link" && context === "text");
+    const generated: string[] = kind === "image" ? [] : [inline ? 'nativeHtml="inline"' : "nativeHtml={true}"];
+    // The style a browser gives the element until its class or style says otherwise.
+    if (USER_AGENT_STYLES.has(node.name)) generated.push(`nativeBase="${node.name}"`);
     const events = ["click"];
     const role = (name: string): void => {
       if (!hasRole(node)) generated.push(`accessibilityRole="${name}"`);
@@ -356,6 +372,7 @@ export function lowerHtml(ast: Node, content: string, filename: string | undefin
     let tag = "native-view";
     let inside: Context = "view";
     let isVoid = false;
+    let spreadHelper = WEB_SPREAD_HELPER;
     if (kind === "text" || kind === "pre") {
       tag = "native-text";
       inside = "text";
@@ -366,21 +383,16 @@ export function lowerHtml(ast: Node, content: string, filename: string | undefin
       tag = inText ? "native-text" : "native-pressable";
       inside = inText ? "text" : "view";
       role("link");
-      press(node, handled, generated, attributeNamed(node, "href"));
+      // Every link follows its `href` when pressed (`hostHref`: the attribute stays, so a spread's counts, and none, or one that is not a string, is no navigation).
+      link = true;
+      spreadHelper = WEB_CLICK_SPREAD_HELPER;
+      press(node, handled, generated, `(__event) => ${LINK}(${helper(HREF_HELPER)}(__event))`);
     } else if (kind === "button") {
       tag = "native-pressable";
       role("button");
-      ariaDisabled(node, generated);
-      // A button is a submit button unless it says it is not (`type="button"`): whether a form is above it is known when it is pressed.
-      const type = attributeNamed(node, "type");
-      const typeText = type && type.value !== true ? staticText(type)?.trim().toLowerCase() : undefined;
-      const submit = type === undefined || type.value === true || typeText === "submit" ? "undefined" : typeText === undefined ? valueSource(type) : undefined;
-      press(node, handled, generated, undefined, submit);
-      // `type` (submit, button, reset) is the form's: nothing else is done with it on a device.
-      if (type) {
-        handled.add(type);
-        replaceNode(type, "");
-      }
+      // A button is a submit button unless its `type` says it is not, which is read when it is pressed (`hostSubmit`, so a spread's `type` counts): whether a form is above it is known then too.
+      spreadHelper = WEB_CLICK_SPREAD_HELPER;
+      press(node, handled, generated, `(__event) => ${helper(SUBMIT_HELPER)}(__event)`);
     } else if (kind === "image") {
       tag = "native-image";
       isVoid = true;
@@ -389,7 +401,7 @@ export function lowerHtml(ast: Node, content: string, filename: string | undefin
       events.push("load", "error");
     } else if (kind === "rule") {
       isVoid = true;
-      generated.push(`nativeBase="hairline"`);
+      generated.push('nativeBase="hairline"');
     } else {
       if (node.name === "form") {
         generated.push("nativeForm={true}");
@@ -401,7 +413,7 @@ export function lowerHtml(ast: Node, content: string, filename: string | undefin
     // `class:` is carried over by `lower.ts` (as it is for a lowered `<View>`); the other directives have no meaning here.
     rejectDirectives(node, (attribute) => attribute.type === "ClassDirective");
     warnUnhandled(node, events);
-    out.elements.set(node, { tag, handled, attributes: generated.map((attribute) => ` ${attribute}`).join(""), isVoid });
+    out.elements.set(node, { tag, handled, attributes: generated.map((attribute) => ` ${attribute}`).join(""), isVoid, spreadHelper });
     return kind === "image" || kind === "rule" ? "unknown" : inside;
   };
 
@@ -437,25 +449,41 @@ export function lowerHtml(ast: Node, content: string, filename: string | undefin
 
   /**
    * `bind:this` is the element on the web, and on a device it is the host handle (`measure`, `focus`, ...), which is what a `ref` gets: Svelte's custom renderer refuses `bind:` on a host tag,
-   * and on a component `bind:this` is the component's instance, not the control. Like `bind:this`, the `ref` gets `null` when the element goes away.
+   * and on a component `bind:this` is the component's instance, not the control (`bindThisText`).
    */
-  const thisAsRef = (node: Node, attribute: Node): void => {
-    if (attribute.expression.type === "SequenceExpression") return;
-    const set = `(__ref) => (${expressionSource(attribute.expression)} = __ref)`;
-    // With a spread on the element, every attribute goes through `set_attributes`, which drops a function that is not a handler.
-    const spread = (node.attributes as Node[]).some((other) => other.type === "SpreadAttribute");
-    replaceNode(attribute, `ref={${spread ? `${helper(VALUE_HELPER)}(${set})` : set}}`);
+  const thisAsRef = (attribute: Node): void => {
+    const text = bindThisText(content, attribute, false);
+    if (text !== undefined) replaceNode(attribute, text);
+  };
+
+  /** The initial value of a `<textarea>` is what is written between its tags: text and `{expression}`s, which become its `value` (unless it has one), and a newline right after the tag is not part of it. */
+  const textareaValue = (node: Node, generated: string[]): void => {
+    const nodes = node.fragment.nodes as Node[];
+    if (nodes.length === 0 || attributeNamed(node, "value") || directive(node, "BindDirective", "value")) return;
+    if (!nodes.every((child) => child.type === "Text" || child.type === "ExpressionTag")) return;
+    let template = "`";
+    let lost = 0;
+    for (const [index, child] of nodes.entries()) {
+      if (child.type === "Text") {
+        let data: string = child.data;
+        if (index === 0 && data.startsWith("\n")) {
+          data = data.slice(1);
+          lost++;
+        }
+        template += data.replace(/[`\\]|\$\{/g, (match) => `\\${match}`);
+      } else template += `\${(${expressionSource(child.expression)}) ?? ""}`;
+    }
+    const written = `value={${template}\`}${"\n".repeat(lost)}`;
+    const range = { start: (nodes[0] as Node).start, end: (nodes[nodes.length - 1] as Node).end } as Node;
+    generated.push(moveOut(range, written));
   };
 
   const lowerTextInput = (node: Node, multiline: boolean): void => {
     const generated: string[] = ["nativeHtml={true}"];
-    const names = new Set<string>();
     const typeAttribute = multiline ? undefined : attributeNamed(node, "type");
-    let typed: Readonly<Record<string, string | boolean>> = {};
     if (typeAttribute && typeAttribute.value !== true) {
       const text = staticText(typeAttribute);
-      if (text === undefined) generated.push(`{...${helper(INPUT_TYPE_HELPER)}(${valueSource(typeAttribute)})}`);
-      else {
+      if (text !== undefined) {
         const type = text.trim().toLowerCase();
         if (type === "checkbox") {
           lowerCheckbox(node, typeAttribute);
@@ -466,67 +494,39 @@ export function lowerHtml(ast: Node, content: string, filename: string | undefin
           fail(node, `<input type="${text}"> is not supported on native: ${UNSUPPORTED_TYPES[type]}`);
           return;
         }
-        typed = inputTypeProps(type);
       }
     }
-    if (typeAttribute) replaceNode(typeAttribute, "");
+    if (multiline) {
+      if (!attributeNamed(node, "multiline")) generated.push("multiline={true}");
+      textareaValue(node, generated);
+    }
+    // The attributes stay as they are: `TextInput` works the HTML ones out when the app runs (`html-input.ts`), so a `type={expression}` and a `{...rest}` mean the same. What is
+    // written as a directive becomes the attribute, which is the name the component reads.
     for (const attribute of node.attributes as Node[]) {
-      if (attribute === typeAttribute) continue;
-      if (attribute.type === "Attribute") {
-        const name: string = attribute.name;
-        if (name === "disabled") {
-          replaceNode(attribute, `editable={${attribute.value === true ? "false" : `!(${valueSource(attribute)})`}}`);
-          names.add("editable");
-        } else if (name === "maxlength") {
-          if (!numberAttribute(attribute, "maxLength")) rename(attribute, "maxLength");
-          names.add("maxLength");
-        } else if (name === "rows" && multiline) {
-          if (!numberAttribute(attribute, "numberOfLines")) rename(attribute, "numberOfLines");
-          names.add("numberOfLines");
-        } else if (name === "oninput" || name === "onchange") {
-          // `oninput` fires on every edit (`onChangeText`); the web's `change` fires when the edit is finished (`onEndEditing`), whose event has the text in `nativeEvent`.
-          const found = handlerOf(node, name.slice(2));
-          if (found?.attribute === attribute && attribute.value !== true && !Array.isArray(attribute.value)) {
-            if (name === "oninput") wrappedHandler(found, "onChangeText", "__text", `${helper(INPUT_EVENT_HELPER)}("input", __text)`);
-            else wrappedHandler(found, "onEndEditing", "__event", `${helper(INPUT_EVENT_HELPER)}("change", __event?.nativeEvent?.text)`);
-            names.add(name === "oninput" ? "onChangeText" : "onEndEditing");
-          }
-        } else if (Object.hasOwn(INPUT_RENAMES, name)) {
-          rename(attribute, INPUT_RENAMES[name] as string);
-          names.add(INPUT_RENAMES[name] as string);
-        } else names.add(name);
-      } else if (attribute.type === "OnDirective") {
+      if (attribute.type === "OnDirective" && INPUT_EVENTS.includes(attribute.name)) {
         const found = handlerOf(node, attribute.name);
-        if (found && attribute.name === "input") wrappedHandler(found, "onChangeText", "__text", `${helper(INPUT_EVENT_HELPER)}("input", __text)`);
-        else if (found && attribute.name === "change") wrappedHandler(found, "onEndEditing", "__event", `${helper(INPUT_EVENT_HELPER)}("change", __event?.nativeEvent?.text)`);
-        else if (found && (attribute.name === "focus" || attribute.name === "blur")) nativeHandler(found, attribute.name === "focus" ? "onFocus" : "onBlur");
+        if (found?.attribute === attribute) replaceNode(attribute, `on${attribute.name}={${found.source}}`);
       } else if (attribute.type === "BindDirective") {
-        if (attribute.name === "this") thisAsRef(node, attribute);
+        if (attribute.name === "this") thisAsRef(attribute);
         else if (attribute.name !== "value") unsupportedBinding(node, attribute, "bind:value is the one a text input has");
-        else names.add("value");
       }
     }
-    // The key events: React Native has the one `onKeyPress`, with the key in its event, so `onkeydown` and `onkeyup` are both it.
-    const down = handlerOf(node, "keydown");
-    const up = handlerOf(node, "keyup");
-    if (down || up) {
-      const call = (type: "keydown" | "keyup", found: typeof down): string => (found ? `(${found.source})?.(${helper(KEY_HELPER)}("${type}", __event)); ` : "");
-      replaceNode((down ?? up)?.attribute as Node, `onKeyPress={(__event) => { ${call("keydown", down)}${call("keyup", up)}}}`);
-      if (down && up) replaceNode(up.attribute, "");
-    }
-    // Enter in a single-line input submits the form above it, as in a browser.
-    if (!multiline && !names.has("onSubmitEditing")) generated.push(`onSubmitEditing={(__event) => ${helper(SUBMIT_HELPER)}(__event)}`);
     lowerStyle(node, "style", undefined, generated);
     rejectDirectives(node, (attribute) => attribute.type === "BindDirective");
-    warnUnhandled(node, ["input", "change", "focus", "blur", "keydown", "keyup"]);
-    for (const [name, value] of Object.entries(typed)) if (!names.has(name)) generated.push(value === true ? `${name}={true}` : `${name}="${value}"`);
-    if (multiline && !names.has("multiline")) generated.push("multiline={true}");
+    warnUnhandled(node, INPUT_EVENTS);
     asComponent(node, "TextInput", generated);
   };
 
   /** `<input type="checkbox">` is a `Switch`: `checked` is its `value`, and a change gives the web's event shape (`currentTarget.checked`). */
   const lowerCheckbox = (node: Node, typeAttribute: Node): void => {
     replaceNode(typeAttribute, "");
+    const element = [`type: "checkbox"`];
+    for (const name of ["name", "id"]) {
+      const text = attributeNamed(node, name);
+      const value = text && staticText(text);
+      if (value !== undefined && value !== "") element.push(`${name}: ${JSON.stringify(value)}`);
+    }
+    const change = (): string => `${helper(INPUT_EVENT_HELPER)}("change", __value, { ${element.join(", ")} })`;
     for (const attribute of node.attributes as Node[]) {
       if (attribute.type === "Attribute") {
         if (attribute.name === "checked") {
@@ -535,14 +535,14 @@ export function lowerHtml(ast: Node, content: string, filename: string | undefin
         } else if (attribute.name === "value") replaceNode(attribute, ""); // the value a checkbox submits with a form, not its state
         else if (attribute.name === "onchange") {
           const found = handlerOf(node, "change");
-          if (found?.attribute === attribute) wrappedHandler(found, "onValueChange", "__value", `${helper(INPUT_EVENT_HELPER)}("change", __value)`);
+          if (found?.attribute === attribute) wrappedHandler(found, "onValueChange", "__value", change());
         }
       } else if (attribute.type === "OnDirective" && attribute.name === "change") {
         const found = handlerOf(node, "change");
-        if (found) wrappedHandler(found, "onValueChange", "__value", `${helper(INPUT_EVENT_HELPER)}("change", __value)`);
+        if (found) wrappedHandler(found, "onValueChange", "__value", change());
       } else if (attribute.type === "BindDirective") {
         if (attribute.name === "checked") replaceNode(attribute, `bind:value={${expressionSource(attribute.expression)}}`);
-        else if (attribute.name === "this") thisAsRef(node, attribute);
+        else if (attribute.name === "this") thisAsRef(attribute);
         else unsupportedBinding(node, attribute, attribute.name === "group" ? "keep the choice in state" : "`bind:checked` is the one a checkbox has");
       }
     }
@@ -553,22 +553,18 @@ export function lowerHtml(ast: Node, content: string, filename: string | undefin
     asComponent(node, "Switch", generated);
   };
 
-  /** `<dialog open>` is a `Modal` that is `visible`; `bind:open` also closes it when the platform does (the back key, a swipe), and `onclose` hears that. */
+  /**
+   * `<dialog open>` is a `Modal` that is shown while it is open: `Modal` takes `open` (and `bind:open`, which it sets to `false` when the platform closes it: the Back key, a swipe)
+   * as it takes `visible`, so they stay as written. A dialog with no `open` is closed. `onclose` hears the platform's closing, as `onRequestClose`.
+   */
   const lowerDialog = (node: Node): void => {
-    const generated: string[] = [];
+    const generated: string[] = ["nativeHtml={true}"];
     const open = attributeNamed(node, "open");
     const bound = directive(node, "BindDirective", "open");
+    if (!open && !bound) generated.push("open={false}");
     const close = handlerOf(node, "close");
-    if (open) replaceNode(open, `visible={${valueSource(open)}}`);
-    else if (!bound) generated.push("visible={false}");
-    if (bound?.expression.type === "SequenceExpression") fail(bound, "bind:open with a getter and a setter is not supported on native: give the dialog `open={...}` and an `onclose`");
-    else if (bound) {
-      const target = expressionSource(bound.expression);
-      replaceNode(bound, `visible={${target}}`);
-      if (close) replaceNode(close.attribute, "");
-      generated.push(`onRequestClose={(__event) => { ${target} = false; ${close ? `(${close.source})?.(__event); ` : ""}}}`);
-    } else if (close) nativeHandler(close, "onRequestClose");
-    for (const attribute of node.attributes as Node[]) if (attribute.type === "BindDirective" && attribute.name === "this") thisAsRef(node, attribute);
+    if (close) nativeHandler(close, "onRequestClose");
+    for (const attribute of node.attributes as Node[]) if (attribute.type === "BindDirective" && attribute.name === "this") thisAsRef(attribute);
     lowerStyle(node, "style", undefined, generated);
     rejectDirectives(node, (attribute) => attribute === bound);
     warnUnhandled(node, ["close"]);
@@ -578,13 +574,14 @@ export function lowerHtml(ast: Node, content: string, filename: string | undefin
   // The walk ------------------------------------------------------------------------------------------------------------------------------------------------------
 
   const blank = (node: Node): boolean => node.type === "Comment" || (node.type === "Text" && WHITESPACE.test(node.data));
-  const inline = (node: Node): boolean => node.type === "Text" || node.type === "ExpressionTag" || node.type === "Comment" || (node.type === "RegularElement" && INLINE.has(node.name));
+  const inlineNode = (node: Node): boolean => node.type === "Text" || node.type === "ExpressionTag" || node.type === "Comment" || (node.type === "RegularElement" && INLINE.has(node.name));
 
   /**
-   * In a view-like element, a run of text, `{expression}`s and inline elements (`<b>`, `<a>`, ...) that holds some text is one `native-text`: as in a browser, it is a line the
-   * inline elements are part of. The text of a run in a `native-text` keeps the whitespace it has, and the edges are trimmed by Svelte, as for a written `<Text>`. Returns the members.
+   * In a view-like element, a run of text, `{expression}`s and inline elements (`<b>`, `<a>`, ...) that holds some text is a line the inline elements are part of: an `<a>` in it is a
+   * press on the text, as one in a `<p>`. The host draws the run in a text of its own, from what it finds when the app runs (`buildRun`), so text that comes from `children` or a snippet
+   * is drawn too. Returns the members.
    */
-  const wrapRuns = (nodes: Node[]): Set<Node> => {
+  const lineMembers = (nodes: Node[]): Set<Node> => {
     const members = new Set<Node>();
     let run: Node[] = [];
     const finish = (): void => {
@@ -595,11 +592,10 @@ export function lowerHtml(ast: Node, content: string, filename: string | undefin
       const body = run.slice(from, to);
       run = [];
       if (!body.some((node) => node.type === "ExpressionTag" || (node.type === "Text" && !WHITESPACE.test(node.data)))) return;
-      out.edits.push({ start: (body[0] as Node).start, end: (body[0] as Node).start, text: "<native-text nativeHtml={true}>" }, { start: (body[body.length - 1] as Node).end, end: (body[body.length - 1] as Node).end, text: "</native-text>" });
       for (const node of body) members.add(node);
     };
     for (const node of nodes) {
-      if (inline(node)) run.push(node);
+      if (inlineNode(node)) run.push(node);
       else finish();
     }
     finish();
@@ -624,11 +620,28 @@ export function lowerHtml(ast: Node, content: string, filename: string | undefin
 
   const visitFragment = (fragment: Node, context: Context, pre?: Pre): void => {
     const nodes = fragment.nodes as Node[];
-    const wrapped = context === "view" ? wrapRuns(nodes) : new Set<Node>();
+    const members = context === "view" ? lineMembers(nodes) : new Set<Node>();
     for (const [index, node] of nodes.entries()) {
       if (pre && node.type === "Text") preformatted(node, pre === "start" && index === 0);
-      else visitNode(node, wrapped.has(node) ? "text" : context, pre === undefined ? undefined : "inside");
+      else visitNode(node, members.has(node) ? "text" : context, pre === undefined ? undefined : "inside");
     }
+  };
+
+  /** `<svelte:element this={tag}>` draws the host tag of `tag` (`hostTag`, by the table the elements are lowered by); its attributes are not adapted. */
+  const visitDynamic = (node: Node): void => {
+    const tag: Node = node.tag;
+    if (tag.type === "Literal" && typeof tag.value === "string") {
+      const host = tag.value.startsWith("native-") ? tag.value : hostTagOf(tag.value);
+      if (host === undefined) fail(tag, `<svelte:element this="${tag.value}"> has no native equivalent: ${Object.hasOwn(HINTS, tag.value) ? HINTS[tag.value] : DEFAULT_HINT}`);
+      else if (host !== tag.value) out.edits.push({ start: tag.start, end: tag.end, text: host });
+    } else out.edits.push({ start: tag.start, end: tag.start, text: `${helper(TAG_HELPER)}(` }, { start: tag.end, end: tag.end, text: ")" });
+    out.edits.push({ start: node.start + 1 + "svelte:element".length, end: node.start + 1 + "svelte:element".length, text: " nativeHtml={true}" });
+    for (const attribute of node.attributes as Node[]) {
+      if ((attribute.type === "Attribute" && (attribute.name === "class" || attribute.name === "style" || /^on[a-z]+$/.test(attribute.name))) || attribute.type === "ClassDirective" || attribute.type === "StyleDirective") {
+        warn(`${where(attribute)} ${attribute.type === "Attribute" ? attribute.name : `${attribute.type === "ClassDirective" ? "class" : "style"}:${attribute.name}`} on <svelte:element> is not adapted on native (a class, a style and the web's events are for the elements written out): write the element, or use \`native-*\` attributes`);
+      }
+    }
+    visitFragment(node.fragment, "unknown");
   };
 
   const visitNode = (node: Node, context: Context, pre?: Pre): void => {
@@ -636,8 +649,20 @@ export function lowerHtml(ast: Node, content: string, filename: string | undefin
       visitElement(node, context, pre);
       return;
     }
-    // `<svelte:head>` is the document's: nothing of it is drawn on a device.
-    if (node.type === "SvelteHead") return;
+    // `<svelte:head>` is the document's: it means nothing on a device, and Svelte's custom renderer refuses it, so a file shared with the web compiles without it.
+    if (node.type === "SvelteHead") {
+      replaceNode(node, "");
+      return;
+    }
+    if (node.type === "SvelteWindow" || node.type === "SvelteDocument" || node.type === "SvelteBody") {
+      const name = node.type === "SvelteWindow" ? "svelte:window" : node.type === "SvelteDocument" ? "svelte:document" : "svelte:body";
+      fail(node, `<${name}> is not supported on native: there is no ${name.slice(7)} to listen to (read the window's size with \`windowSize\` or \`svelte/reactivity/window\`, and use the events of the elements)`);
+      return;
+    }
+    if (node.type === "SvelteElement") {
+      visitDynamic(node);
+      return;
+    }
     // A block draws where it stands; what a component, a snippet or a dynamic element draws is up to them.
     const inherit = node.type === "IfBlock" || node.type === "EachBlock" || node.type === "KeyBlock" || node.type === "AwaitBlock";
     for (const key in node) {
@@ -648,9 +673,15 @@ export function lowerHtml(ast: Node, content: string, filename: string | undefin
 
   const visitElement = (node: Node, context: Context, pre?: Pre): void => {
     const name: string = node.name;
-    // A host tag written by hand (`native-view`), a custom element or a part of an SVG already reported: not an HTML element.
-    if (!HTML_NAMES.has(name)) {
+    // A host tag written by hand (`native-view`): the author's.
+    if (name.startsWith("native-")) {
       visitFragment(node.fragment, "unknown");
+      return;
+    }
+    if (!HTML_NAMES.has(name)) {
+      fail(node, name.includes("-")
+        ? `<${name}> is a custom element, which is not supported on native: write a component, or a host tag (\`native-view\`)`
+        : `<${name}> is not supported on native: ${DEFAULT_HINT}`);
       return;
     }
     const kind = ELEMENTS[name];

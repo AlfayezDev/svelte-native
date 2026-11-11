@@ -36,28 +36,53 @@ It applies to the files of your app: routes (`+page.svelte`, `+mobile.svelte`), 
 | `pre` | `Text` | Spaces and newlines are kept as written. |
 | `br` | a newline | Only inside text; elsewhere it's an error. |
 | `hr` | `View` | A hairline (grey, 8 points of margin above and below). Its class or style changes it. |
-| `button` | [`Pressable`](pressable) | The `button` role. `type` is dropped. A submit button submits its form. |
+| `button` | [`Pressable`](pressable) | The `button` role. A button submits its form unless its `type` says it doesn't. |
 | `a` | `Pressable` (`Text` inside text) | The `link` role. A press follows `href`. |
 | `img` | [`Image`](image) | `src` is the source. `alt` is its label. |
 | `input` (`text`, `email`, `password`, `number`, `search`, `url`, `tel`) and `textarea` | [`TextInput`](text-input) | `type` picks the keyboard. `bind:value` works. |
 | `input type="checkbox"` | [`Switch`](switch) | `bind:checked` works. |
-| `dialog` | [`Modal`](modal) | `open` is `visible`. |
+| `dialog` | [`Modal`](modal) | `open` is shown, `bind:open` works. |
 
-Everything on an element carries over: `class`, `class:name`, `style`, `{...spread}`, `bind:this`, `use:`, and the `in:`, `out:`, `transition:` and `animate:` directives. You can use `{#if}`, `{#each}` and snippets inside any of them, as usual.
+`class`, `class:name`, `style`, `{...spread}` and `bind:this` carry over, and you can use `{#if}`, `{#each}` and snippets inside any of them, as usual. `use:` actions don't run on a native element (the build warns, naming the file and line). `in:`, `out:`, `transition:` and `animate:` are passed through as you wrote them, and play on the UI thread once the library's transitions land.
+
+An element that isn't in the table (`<center>`, `<font>`, a custom element) is a build error, like the ones under [What doesn't exist](#what-doesnt-exist).
+
+## Spreads and wrappers
+
+A component of your own that passes its props down keeps the meaning of the HTML it holds:
+
+```svelte
+<!--- file: src/lib/Button.svelte --->
+<script lang="ts">
+	let { children, ...rest } = $props();
+</script>
+
+<button {...rest}>{@render children?.()}</button>
+```
+
+`<Button type="button" onclick={cancel}>Cancel</Button>` in a form doesn't submit it, and `onclick` runs before a submit button submits, as it does in a browser. An input that passes `{...rest}` gets its `type`, `disabled`, `maxlength` and `oninput` the same way, and a link gets its `href`.
 
 ## Text
 
-A string, or an `{expression}`, directly inside a `div` (or any element that becomes a `View`) is wrapped in a `Text` for you. A browser would show it as a line, and so does the device:
+A string, or an `{expression}`, directly inside a `div` (or any element that becomes a `View`) is drawn for you. The device finds out what is in the element when the screen runs, so it doesn't matter where the text comes from: written in the element, passed in `children`, or rendered from a snippet or a block.
 
 ```svelte
 <div class="p-4">
 	Hello {name}, you have <b>{count}</b> messages.
 </div>
+
+<button>{@render children?.()}</button>
 ```
 
-Here the string, the expression and the `<b>` are one `Text`, with the `<b>` as a span of it. A `div` with only elements in it gets no `Text`.
+The string, the expression and the `<b>` are one line, with the `<b>` as a span of it, as in a browser. So are `<span>a</span><span>b</span>`, and the text of `Hello {#if n}{n}{/if}!`. An element that isn't inline (a `p`, a `div`, a `button`) ends the line and starts another. The whitespace at the edge of a line is not drawn, and the rest is kept as written ([Text](text)). The one exception is `pre`, which keeps all of it.
 
-Whitespace is as in a `Text`: the edges are trimmed and the rest is kept as written ([Text](text)). The one exception is `pre`, which keeps all of it.
+A `View` or a `Text` you import has React Native's rule: a string directly in a `View` is not drawn, and in development the library warns about it once.
+
+## Default styles
+
+A browser gives some elements a look, and so does the device, under the element's class and style: `b` and `strong` are bold; `em`, `i`, `cite`, `dfn` and `var` italic; `u` and `ins` underlined; `s` and `del` struck through; `code`, `kbd`, `samp` and `pre` monospace; `small` is 0.8 of the font size, `sub` and `sup` 0.75; `mark` is black on yellow; and `h1` to `h6` are bold at 2, 1.5, 1.17, 1, 0.83 and 0.67 times the font size they inherit. A link has no default colour: that is the app's to choose.
+
+On the web, Tailwind's preflight takes the default style of headings away. If a file is shared with the web, give the headings classes of their own (`text-2xl font-bold`), which win on both.
 
 ## Text style is inherited
 
@@ -94,11 +119,11 @@ The other events of the web don't exist on a phone. A handler that can't run, su
 - A link to another place (`https:`, `mailto:`, `tel:`, or your app's own scheme) is opened by the phone.
 - A link that is only a hash (`#top`) does nothing.
 
-An `onclick` on the link runs first, and `event.preventDefault()` in it stops the navigation.
+A link follows the `href` the element has when it is pressed, so one that comes from a `{...spread}` counts, and an `<a>` with no `href` (or `href={undefined}`) does nothing. An `onclick` on the link runs first, and `event.preventDefault()` in it stops the navigation.
 
 ### Forms
 
-A `<form onsubmit>` hears `submit` when a submit button inside it is pressed, or when someone presses Enter in a single-line `input` inside it. A button is a submit button unless it says `type="button"`. The form finds its buttons and fields by where they are, not by which file they're written in, so a field in a component of its own submits the form it sits in.
+A `<form onsubmit>` hears `submit` when a submit button inside it is pressed, or when someone presses Enter in a single-line `input` inside it. A button is a submit button unless it says `type="button"` (or `reset`), even when its `type` comes from a spread. The form finds its buttons and fields by where they are, not by which file they're written in, so a field in a component of its own submits the form it sits in.
 
 ```svelte
 <form onsubmit={(event) => { event.preventDefault(); save(); }}>
@@ -108,7 +133,7 @@ A `<form onsubmit>` hears `submit` when a submit button inside it is pressed, or
 </form>
 ```
 
-`event.currentTarget` and `event.target` are the form. Nothing is sent anywhere by itself: there is no page to navigate to, so `action` and `method` do nothing and `preventDefault` has nothing to prevent. `event.preventDefault()` in a button's `onclick` stops its submission, as on the web.
+`event.currentTarget` and `event.target` are the form. Nothing is sent anywhere by itself: there is no page to navigate to, so `action` and `method` do nothing and `preventDefault` has nothing to prevent. `event.preventDefault()` in a button's `onclick` stops its submission, and in `onkeydown` on the key press of Enter it stops that submission, as on the web.
 
 ## Images
 
@@ -122,19 +147,21 @@ A native image has no size of its own until it loads, so give it a `width` and a
 
 ## Inputs
 
-`input` is a [`TextInput`](text-input). `type` chooses the keyboard and what the phone may fill in: `email`, `password` (hides what is typed), `number`, `search`, `url`, `tel`. `type={expression}` works too, and is looked at when it changes, so a password field with a "show" button works.
+`input` is a [`TextInput`](text-input), and it works the HTML attributes out when the screen runs, so they mean the same on the element and in a `{...rest}` a component passes down. `type` chooses the keyboard and what the phone may fill in: `email`, `password` (hides what is typed), `number`, `search`, `url`, `tel`. `type={expression}` is looked at when it changes, so a password field with a "show" button works.
 
-`disabled` is `editable={false}`, and `readonly`, `maxlength`, `autofocus`, `autocomplete`, `autocapitalize`, `inputmode` and `enterkeyhint` are the native props of those names. `rows` on a `textarea` is `numberOfLines`.
+`disabled` is `editable={false}`, and `readonly`, `maxlength`, `autofocus`, `autocomplete`, `autocapitalize`, `inputmode` and `enterkeyhint` are the native props of those names. `rows` on a `textarea` is `numberOfLines`, and the text between its tags is its initial value (unless it has `bind:value`).
 
-`oninput` runs on every edit, and `onchange` when the edit is finished. Their event has what web code reads: `event.currentTarget.value` (and `event.target.value`). `onkeydown` and `onkeyup` are the key press of the keyboard, with `event.key` (`"Enter"`, `"a"`, `"Backspace"`); a key press comes once, so both run for it. `bind:this` gives the input's handle, which has `focus()` and `blur()`.
+`oninput` runs on every edit, and `onchange` when the edit is finished. Their event has what web code reads: `event.currentTarget.value` (and `event.target.value`), and the `name`, `id` and `type` of the input. `onkeydown` and `onkeyup` are the key press of the keyboard, with `event.key` (`"Enter"`, `"a"`, `"Backspace"`); a key press comes once, so both run for it.
+
+`bind:this` gives the element's handle, which has `focus()`, `blur()` and `measure()`. It is there as soon as the element is, so `onMount(() => el.focus())` in an `{#if}` works, and a handle asked to focus before the view is on the screen does it when it is. In a keyed `{#each}`, `bind:this={els[i]}` follows its row, as it does on the web.
 
 A checkbox is a switch: `bind:checked`, `checked`, `disabled` and `onchange` (with `event.currentTarget.checked`) work.
 
-`bind:value` on `type="number"` is a string here, where the browser gives a number.
+`bind:value` on `type="number"` is a string when the user types, where the browser gives a number. A number in state is shown as its text.
 
 ## Dialog
 
-`<dialog open={shown}>` is a [`Modal`](modal) that is visible while `shown` is true. `bind:open` works too, and also closes the dialog when the phone does (the Back key, a swipe down), and `onclose` hears it. A dialog without `open` is closed.
+`<dialog open={shown}>` is a [`Modal`](modal) that is shown while `shown` is true (the `Modal` takes `open` as it takes `visible`). `bind:open` works too, and the `Modal` sets it to `false` when the phone closes the dialog (the Back key, a swipe down), and `onclose` hears it. A dialog without `open` is closed.
 
 ```svelte
 <dialog bind:open={shown} class="rounded-xl bg-white p-6">
@@ -148,13 +175,13 @@ A checkbox is a switch: `bind:checked`, `checked`, `disabled` and `onchange` (wi
 `class` works as on the web, with the classes of your CSS file ([Classes](styling#classes)). So does `style`, in two forms:
 
 - `style="padding: 4px 8px; color: red"` is turned into a style object when the file is built, by the converter that makes the classes, so a unit or a colour means the same as in a class. A declaration that has no native equivalent is a build error that names it. So is a `vw`, `vh` or `env()` value (a class can have those; a string written at build time can't know the device), and a string with `{expressions}` in it. For those, use `style={{ ... }}`, a class or `style:`.
-- `style:property={value}` follows its value. The name is camel-cased, `px` and plain numbers are points, and percentages, colours and keywords pass through. A value it can't use (`3rem`, `calc()`, `var()`) is left out, with a warning in development.
+- `style:property={value}` follows its value. The name is camel-cased, `px` and plain numbers are points, `rem` is 16 points, and percentages, colours and keywords pass through; `!important` is dropped. A value it can't use (`calc()`, `var()`), a custom property (`--gap`) and a name React Native doesn't know are left out or reported, with a warning in development.
 
 ```svelte
 <div style:width="{percent}%" style:background-color={color} class="h-2 rounded"></div>
 ```
 
-`style={{ ... }}` with a React Native style object also works, as in any native component.
+`style={{ ... }}` with a React Native style object also works, as in any native component, and `style={text}` with a string that is only known when the screen runs is read then, by the same rules as `style:`.
 
 ## What doesn't exist
 
@@ -174,11 +201,13 @@ An element with no native equivalent is a build error, naming the element, the f
 
 Any other HTML element not in the first table is also an error. All the errors of a file are reported together.
 
+Some elements of Svelte are for the document: `<svelte:head>` is taken out when the file is built, so a page shared with the web compiles, and `<svelte:window>`, `<svelte:document>` and `<svelte:body>` are errors that say so (`windowSize` and `svelte/reactivity/window` give the window's size). `<svelte:element this={tag}>` draws the host tag of `tag` (`h2` is a text, `div` a view), and fails with the tag's name when it has none; its `class`, `style` and events are not adapted (the build warns), so write the element when you need them.
+
 ## Limits
 
 - **No CSS cascade.** Apart from the inherited text style above, a style applies to its element only. There are no selectors or `<style>` blocks (`<style>` is refused in a native file).
 - **No browser behaviour.** Hover, focus rings, `:active`, tab order, text selection, drag and drop, and scroll events don't exist. `overflow: auto` is a [`ScrollView`](scroll-view).
 - **A list is not a `ul`.** `ul` and `li` are `View`s. For a long list, use [`List`](list).
-- **A spread can't be adapted.** The names inside `{...props}` are the native ones, except `onclick`, which is `onPress` there too. A web name such as `maxlength` in a spread does nothing.
+- **A spread on a view, text or image keeps the native names.** `{...props}` on a `div` or an `img` has `onclick` (it is `onPress` there too), and the rest is as the host reads it. The ones above that decide what an element does by itself (a button's `type` and `onclick`, a link's `href`, an input's attributes) are read as HTML when they come through a spread.
 - **Elements from libraries aren't changed.** A Svelte component library in `node_modules` that is written with HTML keeps its HTML, and so doesn't draw on a device.
 - **`{@html}` has no equivalent.** Use a [`WebView`](native-views#webview).

@@ -682,12 +682,13 @@ const EXTERNAL_LINK = /^(?:[a-z][a-z\d+.-]*:|\/\/)/i;
  * What a press of an `<a href>` calls (the lowering of HTML elements writes a `useLink()` call into the instance script, `lower-html.ts`): a path of the app goes to
  * the nearest router's `goto`, as SvelteKit's router follows a link, and any other link (`https:`, `mailto:`, `tel:`, the app's own scheme) is opened by the platform
  * (`Linking.openURL`). Call it while the component initializes, as `useRouter`; unlike `useRouter` it does not throw without a router above, because a link to another site needs none
- * (a press of an app link without one does). A link that is only a hash (`#top`) does nothing: there is no page to scroll.
+ * (a press of an app link without one does). A link that is only a hash (`#top`), or none, does nothing: there is no page to scroll.
  */
-export function useLink(): (href: string) => void {
+export function useLink(): (href?: string) => void {
   const router = nearestRouter();
   return (href) => {
-    if (href.startsWith("#")) return;
+    // No `href` (an `<a>` without one, or `href={undefined}`) is no link: a press does nothing.
+    if (typeof href !== "string" || href === "" || href.startsWith("#")) return;
     if (EXTERNAL_LINK.test(href)) {
       Linking.openURL(href.startsWith("//") ? `https:${href}` : href).catch((error: unknown) => { console.warn(`[Svelte router] the platform could not open ${href}`, error); });
       return;

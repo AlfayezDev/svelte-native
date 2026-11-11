@@ -1,5 +1,5 @@
 import { parse } from "svelte/compiler";
-import { HTML_CLASS_HELPER, HTML_HELPER_EXPORTS, WEB_SPREAD_HELPER, lowerHtml, mayHaveHtml } from "./lower-html.ts";
+import { HTML_CLASS_HELPER, HTML_HELPER_EXPORTS, bindThisText, lowerHtml, mayHaveHtml } from "./lower-html.ts";
 
 const PACKAGE = "@example/svelte-native";
 const GESTURES = `${PACKAGE}/gestures`;
@@ -150,7 +150,7 @@ export function lowerPrimitives(content: string, options: LowerOptions = {}): st
     const primitive = lowered ? undefined : locals.get(node.name);
     if (node.type === "RegularElement" ? !lowered : !primitive || mustStayComponent(node, primitive)) return;
     const tag = lowered?.tag ?? LOWERED_TAGS[primitive as string];
-    const spreadHelper = lowered ? WEB_SPREAD_HELPER : SPREAD_HELPER;
+    const spreadHelper = lowered ? lowered.spreadHelper : SPREAD_HELPER;
     // An HTML element inherits its font size, so the font-relative values of its class wait for the host (`hostHtmlClass`).
     const classHelper = lowered ? HTML_CLASS_HELPER : CLASS_HELPER;
     const spreads = (node.attributes as Node[]).some((attribute) => attribute.type === "SpreadAttribute");
@@ -168,7 +168,10 @@ export function lowerPrimitives(content: string, options: LowerOptions = {}): st
       // The element's own style comes along, as written: the font size it sets is what a `leading-none` is made from. A quoted `style="..."` is a string, which sets none.
       const style = (node.attributes as Node[]).find((attribute) => attribute.type === "Attribute" && attribute.name === "style" && attribute.value !== true && !Array.isArray(attribute.value));
       const styleArgument = style === undefined ? "" : `, ${content.slice(style.value.expression.start, style.value.expression.end)}`;
-      const value = `nativeClass={${classHelper}(${parts.length === 1 ? parts[0] : `[${parts.join(", ")}]`}${styleArgument})}`;
+      // What the attributes were written with (the braces around an expression, the breaks between them) is not in the call: its newlines are written after it, so no line moves.
+      const written = `nativeClass={${classHelper}(${parts.length === 1 ? parts[0] : `[${parts.join(", ")}]`}${styleArgument})}`;
+      const dropped = classes.reduce((count, attribute) => count + content.slice(attribute.start, attribute.end).split("\n").length - 1, 0) - (written.split("\n").length - 1);
+      const value = dropped > 0 ? written + "\n".repeat(dropped) : written;
       helpers.add(classHelper);
       const at = own ?? (spreads ? undefined : classes[0]);
       if (at === undefined) edits.push({ start: node.attributes[0].start, end: node.attributes[0].start, text: `${value} ` });
@@ -176,14 +179,16 @@ export function lowerPrimitives(content: string, options: LowerOptions = {}): st
     }
     for (const attribute of node.attributes as Node[]) {
       if (classes.includes(attribute) || lowered?.handled.has(attribute)) continue;
-      // `bind:this` of a host tag does not compile (Svelte's custom renderer has no `bind:`), and on the component it is the instance: what the host gives is the handle `ref` takes (`measure`, ...).
-      if (attribute.type === "BindDirective" && attribute.name === "this" && attribute.expression.type !== "SequenceExpression") {
-        const set = `(__ref) => (${content.slice(attribute.expression.start, attribute.expression.end)} = __ref)`;
-        if (spreads) helpers.add(VALUE_HELPER);
-        const text = `ref={${spreads ? `${VALUE_HELPER}(${set})` : set}}`;
-        const lost = content.slice(attribute.start, attribute.end).split("\n").length - text.split("\n").length;
-        edits.push({ start: attribute.start, end: attribute.end, text: lost > 0 ? text + "\n".repeat(lost) : text });
-        continue;
+      // `bind:this` of a host tag does not compile (Svelte's custom renderer has no `bind:`), and on the component it is the instance: what the host gives an element is the handle `ref` takes (`measure`, ...).
+      if (attribute.type === "BindDirective" && attribute.name === "this") {
+        const text = bindThisText(content, attribute, spreads);
+        if (text !== undefined) {
+          if (spreads) helpers.add(VALUE_HELPER);
+          helpers.add("__svelteNativeBind");
+          const lost = content.slice(attribute.start, attribute.end).split("\n").length - text.split("\n").length;
+          edits.push({ start: attribute.start, end: attribute.end, text: lost > 0 ? text + "\n".repeat(lost) : text });
+          continue;
+        }
       }
       if (spreads && attribute.type === "SpreadAttribute") {
         if (toggles === undefined) wrap(attribute.expression, spreadHelper);
@@ -209,7 +214,7 @@ export function lowerPrimitives(content: string, options: LowerOptions = {}): st
         edits.push({ start: attribute.end, end: attribute.end, text: "={true}" });
       }
       if (WARN_DIRECTIVES.has(attribute.type) && !(attribute.type === "UseDirective" && actions.has(attribute.name))) {
-        warn(`${options.filename ?? "component"}: ${attribute.type === "UseDirective" ? "use:" : attribute.type === "AnimateDirective" ? "animate:" : "transition:"}${attribute.name} on <${node.name}> is passed to <${tag}> unchanged; native elements do not run DOM directives`);
+        warn(`${options.filename ?? "component"}: ${attribute.type === "UseDirective" ? "use:" : attribute.type === "AnimateDirective" ? "animate:" : attribute.intro && !attribute.outro ? "in:" : attribute.outro && !attribute.intro ? "out:" : "transition:"}${attribute.name} on <${node.name}> is passed to <${tag}> unchanged; native elements do not run DOM directives`);
       }
     }
     edits.push({ start: node.start + 1, end: node.start + 1 + node.name.length, text: tag + (lowered?.attributes ?? "") });
@@ -233,7 +238,8 @@ export function lowerPrimitives(content: string, options: LowerOptions = {}): st
   if (injected && script && (ast.instance || !setup.length)) edits.push({ start: script.content.start, end: script.content.start, text: ` ${injected}` });
   // What runs when the component initializes needs an instance script, and a file of HTML alone (or with a module script only) has none: one is written at the start of the first line.
   else if (injected) edits.push({ start: 0, end: 0, text: `<script>${injected}</script>` });
-  edits.sort((a, b) => b.start - a.start);
+  // From the end of the text to its start, so no edit moves another; two that start at the same place apply the longer one first, so what is inserted there ends up in front of what replaces it.
+  edits.sort((a, b) => b.start - a.start || b.end - a.end);
   let output = content;
   for (const edit of edits) output = output.slice(0, edit.start) + edit.text + output.slice(edit.end);
   return output;

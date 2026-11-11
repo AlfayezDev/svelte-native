@@ -10,6 +10,9 @@
  * A unitless `line-height` and an `em` `letter-spacing` are relative to the font size of the element they are used on, which may be inherited. The class resolver and the
  * conversion of an inline style leave them under a `fontRelative` key (`{ lineHeight: 1.5 }`), they inherit as the factor, and `resolveRelative` makes the dp from the font
  * size the element ends up with (its own, else the inherited one, else React Native's 14).
+ *
+ * The default style of some elements (`h1` is 2em, `small` 0.8em) is a factor of the font size the element inherits: `nativeBase` has it as `fontScale`, which the element's own style
+ * (a `text-lg`) still overrides, and which becomes the `fontSize` it says (`resolveRelative`, `lay`).
  */
 
 /** The style keys that inherit: the ones of a CSS text that an element's descendants get from it. */
@@ -37,7 +40,7 @@ export function hasTextKeys(style: unknown): boolean {
     return false;
   }
   if (!isStyleObject(style)) return false;
-  for (const key in style) if (TEXT_KEYS.has(key) || key === "fontRelative") return true;
+  for (const key in style) if (TEXT_KEYS.has(key) || key === "fontRelative" || key === "fontScale") return true;
   return false;
 }
 
@@ -61,6 +64,11 @@ function lay(into: TextStyle, style: unknown): void {
         delete into[name];
         into.fontRelative = { ...into.fontRelative, [name]: factor };
       }
+      continue;
+    }
+    if (key === "fontScale") {
+      // A factor of the font size the element inherits: what `into` has so far, which a later `fontSize` replaces.
+      if (typeof value === "number") into.fontSize = Math.round((typeof into.fontSize === "number" ? into.fontSize : DEFAULT_FONT_SIZE) * value * 100) / 100;
       continue;
     }
     if (!TEXT_KEYS.has(key)) continue;
@@ -112,20 +120,24 @@ export function fontSizeOf(inherited: TextStyle | undefined, style: unknown): nu
   return typeof text.fontSize === "number" ? text.fontSize : DEFAULT_FONT_SIZE;
 }
 
-/** The style with each `fontRelative` made into dp for `fontSize`, in the place it was written (so a later item still overrides it). The same object when there is none. */
-export function resolveRelative(style: unknown, fontSize: number): unknown {
+/**
+ * The style with each `fontRelative` made into dp for `fontSize`, and each `fontScale` into the `fontSize` it is of `inheritedSize`, in the place it was written (so a later item still
+ * overrides it). The same object when there is none.
+ */
+export function resolveRelative(style: unknown, fontSize: number, inheritedSize: number = DEFAULT_FONT_SIZE): unknown {
   if (Array.isArray(style)) {
     let changed = false;
     const next = style.map((item) => {
-      const resolved = resolveRelative(item, fontSize);
+      const resolved = resolveRelative(item, fontSize, inheritedSize);
       if (resolved !== item) changed = true;
       return resolved;
     });
     return changed ? next : style;
   }
-  if (!isStyleObject(style) || !("fontRelative" in style)) return style;
-  const { fontRelative, ...rest } = style as Record<string, unknown> & { fontRelative?: Record<string, number> };
+  if (!isStyleObject(style) || !("fontRelative" in style || "fontScale" in style)) return style;
+  const { fontRelative, fontScale, ...rest } = style as Record<string, unknown> & { fontRelative?: Record<string, number>; fontScale?: number };
   for (const key in fontRelative) rest[key] = Math.round((fontRelative[key] as number) * fontSize * 10_000) / 10_000;
+  if (typeof fontScale === "number") rest.fontSize = Math.round(inheritedSize * fontScale * 100) / 100;
   return rest;
 }
 
@@ -135,10 +147,11 @@ export function resolveRelative(style: unknown, fontSize: number): unknown {
  */
 export function inheritedStyle(inherited: TextStyle | undefined, style: unknown, receives: boolean): unknown {
   const hasRelative = inherited?.fontRelative !== undefined || hasRelativeKey(style);
-  if (!receives || inherited === undefined) return hasRelative ? resolveRelative(style, fontSizeOf(inherited, style)) : style;
+  const above = typeof inherited?.fontSize === "number" ? inherited.fontSize : DEFAULT_FONT_SIZE;
+  if (!receives || inherited === undefined) return hasRelative ? resolveRelative(style, fontSizeOf(inherited, style), above) : style;
   const size = hasRelative ? fontSizeOf(inherited, style) : 0;
-  const base = hasRelative ? resolveRelative(inherited, size) : inherited;
-  const own = hasRelative ? resolveRelative(style, size) : style;
+  const base = hasRelative ? resolveRelative(inherited, size, above) : inherited;
+  const own = hasRelative ? resolveRelative(style, size, above) : style;
   return own === undefined || own === null ? base : [base, own];
 }
 
@@ -147,5 +160,5 @@ function hasRelativeKey(style: unknown): boolean {
     for (const item of style) if (hasRelativeKey(item)) return true;
     return false;
   }
-  return isStyleObject(style) && "fontRelative" in style;
+  return isStyleObject(style) && ("fontRelative" in style || "fontScale" in style);
 }

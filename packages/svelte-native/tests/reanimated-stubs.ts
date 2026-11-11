@@ -14,6 +14,8 @@ export type AnimLog = {
   eventHandlers?: FakeEventHandler[];
   /** `setGestureState(tag, state)` calls. */
   gestureStates?: [tag: number, state: number][];
+  /** Every `withTiming` that a shared value was given (the animation a transition plays), in order; `callback` is the one the transition handed over, which a test calls to finish it. */
+  timings?: { mutable: { value: unknown }; to: number; config: { duration?: number; easing?: unknown }; callback?: (finished: boolean) => void; cancelled: boolean }[];
 };
 export type FakeEventHandler = { worklet: (event: object) => void; eventNames: string[]; tags: Set<number>; log: (readonly [string, ...unknown[]])[] };
 
@@ -25,10 +27,17 @@ export const reanimatedStubs: Record<string, string> = {
     export const makeMutable = (initial) => {
       const m = { _value: initial, writes: [], _isReanimatedSharedValue: true,
         get value() { return this._value; },
-        set value(next) { A.onWrite?.(m, next); m.writes.push(next); m._value = next; } };
+        // An animation is not the value: it is recorded and the test moves the value itself (m._value = 0.4), then calls the callback to finish it.
+        set value(next) {
+          if (next && next.__timing) { const timing = { mutable: m, to: next.to, config: next.config, callback: next.callback, cancelled: false }; (A.timings ??= []).push(timing); m.timing = timing; return; }
+          A.onWrite?.(m, next); m.writes.push(next); m._value = next;
+        } };
       (A.mutables ??= []).push(m);
       return m;
     };
+    export const Easing = { linear: function linear(t) { return t; } };
+    export const withTiming = (to, config, callback) => ({ __timing: true, to, config, callback });
+    export const cancelAnimation = (m) => { if (m.timing) { m.timing.cancelled = true; m.timing = null; } };
     export const setGestureState = (tag, state) => { (A.gestureStates ??= []).push([tag, state]); };
     export const isSharedValue = (v) => v?._isReanimatedSharedValue === true;
     export const startMapper = (worklet, inputs) => { const id = A.mappers.length + 1; A.mappers.push({ id, worklet, inputs, stopped: false }); return id; };

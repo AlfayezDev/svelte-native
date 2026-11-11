@@ -68,6 +68,7 @@ patchedDependencies:
   react-native-gesture-handler@2.32.0: patches/svelte-native/react-native-gesture-handler@2.32.0.patch
   react-native-reanimated@4.5.1: patches/svelte-native/react-native-reanimated@4.5.1.patch
   react-native-worklets@0.10.1: patches/svelte-native/react-native-worklets@0.10.1.patch
+  svelte@5.56.7: patches/svelte-native/svelte@5.56.7.patch
 ```
 
 - `allowBuilds` lets esbuild run its install script. Without it, pnpm stops with `ERR_PNPM_IGNORED_BUILDS`.
@@ -85,6 +86,7 @@ Svelte Native depends on small changes to a few packages. They ship with the lib
 | `react-native-gesture-handler` 2.32.0 | always | iOS: gestures work in sheets and modals |
 | `react-native-reanimated` 4.5.1 | always | Android: animations write to Svelte Native's views directly |
 | `react-native-worklets` 0.10.1 | always | an idle screen stops asking for animation frames |
+| `svelte` 5.56.7 | always | `transition:`, `in:`, `out:` and `animate:` compile on native elements |
 | `lottie-react-native` 7.3.8 | when installed | Android: animation events are never dropped |
 | `react-native-maps` 1.27.2 | when installed | Android: map events are never dropped |
 | `react-native-pdf` 7.0.3 | when installed | Android: the load event is never dropped |

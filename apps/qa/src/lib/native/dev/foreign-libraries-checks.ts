@@ -13,7 +13,7 @@ import type { Host, LibraryHandles, LibraryKind } from "./LibrarySet.svelte";
 import { libraryLab } from "./foreign.svelte.ts";
 import { argb, arrivedInOrder, bandInPlace, bandPoints, betweenMargin, brightness, clear, edgeGradual, edgeHard, edgeRatio, edgeSharp, edgeUnderTint, gradualBound, lightTint, near, numberIn, ratioBetween, readEdge, riveBackdrop, riveFitDetail, riveFitPainted, riveMiddle, riveSides, show, solid, tookNote, untilTaken, type EdgeRead, type RiveFit } from "./foreign-pixels.ts";
 import { pins, resolvePin, type Pinned } from "./foreign-pins.ts";
-import { runRace, type Race } from "./foreign-race.ts";
+import { nextTaskOf, runRace, type Race, type RuntimeScheduler } from "./foreign-race.ts";
 
 export type Where = "inline" | "row" | "sheet";
 export type Rect = { x: number; y: number; width: number; height: number };
@@ -111,10 +111,12 @@ function hold(milliseconds: number): void {
 }
 
 /**
- * The checks of the Android event patches (SPEC.md, "Events on Android") force the race by construction: `runRace` (`foreign-race.ts`) with the real hold. [iosWhy] says why the iPhone cannot lose the
+ * The checks of the Android event patches (SPEC.md, "Events on Android") force the race by construction: `runRace` (`foreign-race.ts`) with the real hold, and, for the hop between the send and the hold, the next task of
+ * React Native's runtime scheduler (`nextTaskOf`: not a timer, which on Android ends at a frame, where a view command's events have already reached JavaScript). [iosWhy] says why the iPhone cannot lose the
  * messages (the check is Android-only there).
  */
-const forcedRace = (c: Ctx, name: string, iosWhy: string, race: Race): Promise<void> => runRace(c, hold, name, iosWhy, race);
+const forcedRace = (c: Ctx, name: string, iosWhy: string, race: Race): Promise<void> =>
+  runRace(c, hold, name, iosWhy, race, nextTaskOf((globalThis as { nativeRuntimeScheduler?: RuntimeScheduler }).nativeRuntimeScheduler, () => c.pause(0)));
 
 /** Whether [steps] (event name and detail) reached JavaScript in this order, from entry [from] of the history on. */
 const inOrder = (c: Ctx, from: number, steps: readonly (readonly [event: string, detail: unknown])[]): boolean => arrivedInOrder(c.history(), from, steps);
@@ -664,7 +666,7 @@ const hostFlushes = (): number => (globalThis as { __svelteFabric?: { stats(): {
  * The race is forced by `forcedRace`, in two tasks. The first sets the prop, and `tick()` has Svelte's effects and the host's own flush (a microtask: `queueMicrotask(flush)` in `onInvalidate`)
  * commit it to Fabric; but React Native mounts a commit only in the rendering update that follows the task (`Scheduler::uiManagerDidFinishTransaction`), so a hold in that task starts before
  * `drawPdf` has run and the load happens after the hold, with the thread free (the first device run of the unpatched build showed it: `drawPdf` was logged 1.5 s after the commit, as the hold
- * ended, and the check passed or failed by the speed of the event beat). The timer hop ends the task, the rendering update mounts the prop, and the next task holds the thread: the UI thread then
+ * ended, and the check passed or failed by the speed of the event beat). The hop (`nextTask`: the next task of the runtime scheduler, which a timer is not, see `nextTaskOf`) ends the task, the rendering update mounts the prop, and the next task holds the thread: the UI thread then
  * applies the prop (a frame), loads the document (about 100 ms on the emulator) and raises `loadComplete` and, 10 ms later, `pageChanged`, all while JavaScript cannot read the queue. If an event of
  * the load had reached JavaScript before the hold, or the host had not committed the prop (`flushes`), the attempt does not count and is made again with the other page.
  *

@@ -11,12 +11,14 @@
 import { bootSummary, mark, runBootTasks } from "../boot-marks.ts";
 import { loadReanimated } from "./reanimated-load.ts";
 import { onFirstCommit } from "../updates/launch.ts";
-import { resolveAssetSource, Platform } from "./deps-rn.ts";
+import { resolveAssetSource, Platform, pixelRatio } from "./deps-rn.ts";
 import { createPayload, diffPayload, viewConfigFor } from "./view-configs.ts";
 import { requireOptionalNativeModule } from "./deps-expo.ts";
 import { droppedReasons, freshNavigation } from "../navigation-restore.ts";
 import type { Adoption } from "../hmr-state.ts";
-import { mount, unmount, type Component } from "./deps-svelte.ts";
+import { mount, unmount, untrack, type Component } from "./deps-svelte.ts";
+import { inheritedStyle, textStyleOf, type TextStyle } from "./text-inherit.ts";
+import { flexKeysOf, isFlexContainer, isHidden, isInlineLevel } from "./html-flow.ts";
 // The animation layer (Reanimated + worklets, ≈ 90 ms of bundle evaluation and a second Hermes runtime on a mid-range
 // phone) loads on the first node that needs it; a plain first screen boots without it.
 type AnimationModule = typeof import("./animation.ts");
@@ -101,7 +103,7 @@ import { iosNavigationViewName } from "./navigation.ios.ts";
 import { mergeHostProps } from "../native-props.ts";
 import { applyAriaProps, isAriaKey } from "./accessibility.ts";
 import { foreignText, type ForeignText } from "./foreign-text.ts";
-import renderer, { NativeNode, setInvalidationSink, setUnlinkSink, type Invalidation } from "../renderer.ts";
+import renderer, { NativeNode, setInvalidationSink, setRefSink, setUnlinkSink, type Invalidation } from "../renderer.ts";
 import { Pressability, type PressabilityConfig, type ResponderHandlers } from "./pressability.ts";
 import { createResponder } from "./responder.ts";
 
@@ -140,7 +142,7 @@ export type HostHandle = {
   blur(): void;
   setNativeProps(props: Record<string, unknown>): void;
 };
-type Handler = (event: { nativeEvent: object }) => void;
+type Handler = (event: { nativeEvent: object; currentTarget?: unknown; target?: unknown }) => void;
 type State = {
   tag: number;
   viewName: string;
@@ -166,6 +168,18 @@ type State = {
   lone: boolean;
   /** The node has been through the animation layer, which keeps a record of it: every later build goes through it too, so that it can detach. */
   animated: boolean;
+  /** The node is an element the lowering made from HTML (`nativeHtml`): text style inherits through it (`text-inherit.ts`). */
+  html?: boolean;
+  /** The text style of the node and the marked elements above it, which a marked text or input below takes. */
+  textStyle?: TextStyle;
+  /** The element was destroyed (`releaseRefs`): what a handle of it is asked after that is not kept for a view that will not come (`handleFor`). */
+  dead?: boolean;
+  /** A marked view: whether its style made it a flex container when its children were last put together (`isFlexContainer`): they are split into items one way or the other, so it changing is a rebuild of them. */
+  flex?: boolean;
+  /** The text of an implicit run: what it was built from (`buildRun`), so it is built again only when that changes. */
+  run?: { items: NativeNode[]; handles: unknown[] };
+  /** Its node was made in this flush and is not committed until the flush ends (`completeRoot`): a view that is not on the screen yet, so what a handle is asked until then waits, as for a new element. */
+  uncommitted?: boolean;
 };
 type Root = { rootTag: number; node: NativeNode; instance: Record<string, unknown> };
 
@@ -303,7 +317,7 @@ export function navigationAdopted(adoption: Adoption | undefined): void {
 }
 /** Whether the host's window went away because the user left (Back, a swipe from Recents) and not because it is being recreated: Android's `Activity.isFinishing`. */
 export function hostFinishing(): boolean { return engineModule?.finishing?.() === true; }
-export function fabricStats() { return { ...stats, engineInstalled, animationLoaded: animation !== null, gesturesLoaded: gestures !== null, gestures: gestures?.stats() ?? null }; }
+export function fabricStats() { return { ...stats, waiting: waiting.length, engineInstalled, animationLoaded: animation !== null, gesturesLoaded: gestures !== null, gestures: gestures?.stats() ?? null }; }
 /**
  * Spike instrumentation: the cost of the Fabric binding itself, per call, measured without Svelte.
  * Nodes created here are never committed; they are released when garbage collected.
@@ -355,17 +369,61 @@ function state(node: NativeNode, viewName: string): State {
   return current;
 }
 
+const baseStyles = new Map<string, Record<string, unknown> | null>();
+const monospace = () => (Platform.OS === "ios" ? "Menlo" : "monospace");
+const HEADING_SCALE: Record<string, number> = { h1: 2, h2: 1.5, h3: 1.17, h4: 1, h5: 0.83, h6: 0.67 };
+/**
+ * What an element looks like until its class or style says otherwise (`nativeBase`, `lower-html.ts`), as a browser's own style sheet has it: an `<hr>` is a hairline across the
+ * width of its parent in the grey of a separator, with a margin above and below; `b` is bold, `em` italic, `u` underlined, `code` monospace, `h1` to `h6` bold at their sizes
+ * (`fontScale`: a factor of the font size the element inherits, `text-inherit.ts`) and so on. `a` has no default: its color is the app's to give.
+ */
+function baseStyle(token: string): Record<string, unknown> | null {
+  let style = baseStyles.get(token);
+  if (style !== undefined) return style;
+  switch (token) {
+    case "hairline": style = { height: Math.max(pixelRatio().roundToNearestPixel(0.4), 1 / pixelRatio().get()), backgroundColor: "#c7c7cc", marginVertical: 8 }; break;
+    case "b": case "strong": style = { fontWeight: "700" }; break;
+    case "em": case "i": case "cite": case "dfn": case "var": style = { fontStyle: "italic" }; break;
+    case "u": case "ins": style = { textDecorationLine: "underline" }; break;
+    case "s": case "del": style = { textDecorationLine: "line-through" }; break;
+    case "code": case "kbd": case "samp": case "pre": style = { fontFamily: monospace() }; break;
+    case "small": style = { fontScale: 0.8 }; break;
+    case "sub": case "sup": style = { fontScale: 0.75 }; break;
+    case "mark": style = { backgroundColor: "#ffff00", color: "#000000" }; break;
+    default: style = Object.hasOwn(HEADING_SCALE, token) ? { fontWeight: "700", fontScale: HEADING_SCALE[token] } : null;
+  }
+  baseStyles.set(token, style);
+  return style;
+}
 /** The element's attributes as React Native props (see `mergeHostProps`), with each listener registered on the node as its `on…` handler. */
 function nativeProps(node: NativeNode): Record<string, unknown> {
-  const props = mergeHostProps(node.peekProps());
+  const own = node.peekProps();
+  const props = mergeHostProps(typeof own.nativeBase === "string" ? { ...own, nativeBase: baseStyle(own.nativeBase) } : own);
   if (node.listeners.size > 0) for (const type of node.listeners.keys()) props[`on${type[0]?.toUpperCase()}${type.slice(1)}`] = node.dispatcher(type);
   return props;
 }
 
-/** `ref` for a Fabric element: the shadow node handle is read at call time, so it is always the latest committed clone. */
+/** What was asked of a handle before its view was on the screen (`measure`, `focus`, ...), of all of them in the order it was asked: done after the flush that puts the view there (`drainQueues`). */
+let waiting: { current: State; operation: () => void }[] = [];
+/** The states made in the flush that is under way, and given their handle in it (`build`): the handle is asked for things in its `ref` callback, before the commit. */
+const uncommitted = new Set<State>();
+/** What a handle is: an object of its own kind, not a plain one, so Svelte's `$state` does not wrap it in a proxy when it is bound (`bind:this={els[i]}`): the variable holds the very handle. */
+const handlePrototype = Object.create(Object.prototype) as object;
+
+/**
+ * `ref` for a Fabric element: the shadow node handle is read at call time, so it is always the latest committed clone. The handle is given when the element is made (`earlyRef`),
+ * before there is a view: what is asked of it until then (`focus()` in `onMount`, a measurement) waits, in order, and is done as soon as the view is on the screen.
+ */
 function handleFor(current: State, node: NativeNode | null = null): HostHandle {
-  return {
-    tag: current.tag,
+  const later = (operation: () => void): void => {
+    if (current.node && !current.uncommitted) operation();
+    // The element is gone: no view is coming for it.
+    else if (!current.dead) waiting.push({ current, operation });
+  };
+  const handle = Object.create(handlePrototype) as HostHandle;
+  // The tag is the element's now, not the one it had when the handle was made: an element that is made again (`remake`) has another, and the handle it gave out still reaches it.
+  Object.defineProperty(handle, "tag", { get: () => current.tag, enumerable: true });
+  return Object.assign(handle, {
     position: () => {
       const path: number[] = [];
       for (let at = node; at?.parent; at = at.parent) {
@@ -375,32 +433,56 @@ function handleFor(current: State, node: NativeNode | null = null): HostHandle {
       }
       return path.reverse();
     },
-    measure: (callback) => { if (current.node) binding?.measure?.(current.node, callback); },
-    measureInWindow: (callback) => { if (current.node) binding?.measureInWindow?.(current.node, callback); },
+    measure: (callback: Parameters<HostHandle["measure"]>[0]) => { later(() => { if (current.node) binding?.measure?.(current.node, callback); }); },
+    measureInWindow: (callback: Parameters<HostHandle["measureInWindow"]>[0]) => { later(() => { if (current.node) binding?.measureInWindow?.(current.node, callback); }); },
     // Engine views take their commands from the engine; a foreign view's view is React Native's, so its commands go through Fabric.
-    dispatchCommand: (name, args = []) => {
-      if (!current.foreign && engineInstalled && engineModule?.dispatchCommand) engineModule.dispatchCommand(current.tag, name, args);
-      else if (current.node) binding?.dispatchCommand?.(current.node, name, args);
+    dispatchCommand: (name: string, args: unknown[] = []) => {
+      later(() => {
+        if (!current.foreign && engineInstalled && engineModule?.dispatchCommand) engineModule.dispatchCommand(current.tag, name, args);
+        else if (current.node) binding?.dispatchCommand?.(current.node, name, args);
+      });
     },
-    scrollTo(options, deprecatedY, deprecatedAnimated) {
+    scrollTo(options?: { x?: number; y?: number; animated?: boolean } | number, deprecatedY?: number, deprecatedAnimated?: boolean) {
       const spec = typeof options === "number" ? { x: options, y: deprecatedY, animated: deprecatedAnimated } : options ?? {};
       this.dispatchCommand("scrollTo", [spec.x ?? 0, spec.y ?? 0, spec.animated !== false]);
     },
-    scrollToEnd(options) { this.dispatchCommand("scrollToEnd", [options?.animated !== false]); },
+    scrollToEnd(options?: { animated?: boolean }) { this.dispatchCommand("scrollToEnd", [options?.animated !== false]); },
     focus() { this.dispatchCommand("focus"); },
     blur() { this.dispatchCommand("blur"); },
-    setNativeProps(props) {
-      if (!current.foreign && engineInstalled && engineModule?.setNativeProps) engineModule.setNativeProps(current.tag, props);
-      else if (current.node) binding?.setNativeProps?.(current.node, props);
+    setNativeProps(props: Record<string, unknown>) {
+      later(() => {
+        if (!current.foreign && engineInstalled && engineModule?.setNativeProps) engineModule.setNativeProps(current.tag, props);
+        else if (current.node) binding?.setNativeProps?.(current.node, props);
+      });
     },
-  };
+  });
 }
 
-/** The `source` array and default style React Native's Image.android.js builds for the native image. */
+/** What was asked of a handle before its view existed, now that the flush has put the views on the screen, in the order it was asked (of different handles too). What is asked of a view that is not built yet waits for a later flush. */
+function drainQueues(): void {
+  for (const made of uncommitted) made.uncommitted = false;
+  uncommitted.clear();
+  const asked = waiting;
+  waiting = [];
+  for (const entry of asked) {
+    if (entry.current.node) entry.operation();
+    else if (!entry.current.dead) waiting.push(entry);
+  }
+}
+
+/**
+ * The `source` array and default style React Native's Image.android.js builds for the native image, with its `width` and `height` (the size of an image with no style of its
+ * own, under the style) and `alt` (its label, and it makes the image an accessibility element), which an HTML `<img>` writes.
+ */
 function imageProps(props: Record<string, unknown>): Record<string, unknown> {
+  const { width, height, alt, ...rest } = props;
   const resolved = Array.isArray(props.source) ? props.source : [resolveAssetSource(props.source as never) ?? { uri: "" }];
   const first = (resolved[0] ?? {}) as { width?: number; height?: number };
-  const next: Record<string, unknown> = { ...props, source: resolved, style: [resolved.length === 1 && { width: first.width, height: first.height }, { overflow: "hidden" }, props.style] };
+  const next: Record<string, unknown> = { ...rest, source: resolved, style: [resolved.length === 1 && { width: first.width ?? width, height: first.height ?? height }, { overflow: "hidden" }, props.style] };
+  if (alt != null) {
+    next.accessibilityLabel ??= alt;
+    next.accessible = true;
+  }
   if (props.onLoadStart || props.onLoad || props.onLoadEnd || props.onError) next.shouldNotifyLoadEvents = true;
   return next;
 }
@@ -520,8 +602,161 @@ function declaresOf(viewName: string, config: ReturnType<typeof viewConfig>): (k
   return entry.declares;
 }
 
+/** The text style of the nearest marked element above `node` (the ones between it and the node are not marked: React Native's own views let it through). */
+function textStyleAbove(node: NativeNode): TextStyle | undefined {
+  for (let parent = node.parent; parent; parent = parent.parent) {
+    const above = stateOf(parent);
+    if (above?.html) return above.textStyle;
+  }
+  return undefined;
+}
+
+/**
+ * The marked elements below `node` (an element the lowering made from HTML) rebuild: the text style they inherit changed. Between them and `node` the nodes that were built are
+ * rebuilt too, to reach them; a marked element that is rebuilt hands the change on to the ones below it when its own text style changes (`inheritTextStyle`).
+ */
+function markInheritors(node: NativeNode): boolean {
+  let found = false;
+  const view = isHtmlView(node);
+  for (let child = node.firstChild; child; child = child.nextSibling) {
+    // The text of a marked view is drawn in a text of its own (`buildRun`), which takes the text style the view has.
+    if (child.kind === "text") {
+      if (view && !isBlankText(child)) found = true;
+      continue;
+    }
+    if (child.kind !== "element") continue;
+    const own = stateOf(child);
+    if (!own) continue;
+    if (own.html) {
+      own.propsDirty = true;
+      found = true;
+    } else if (markInheritors(child)) {
+      own.childrenDirty = true;
+      found = true;
+    }
+  }
+  return found;
+}
+
+/** An element the lowering made from HTML: a `nativeHtml` of `true`, or `"inline"` for the text elements that flow in a line (`span`, `b`, an `<a>` among text, ...). */
+const isHtml = (node: NativeNode): boolean => node.getProp("nativeHtml") !== undefined && node.getProp("nativeHtml") !== false;
+/** A marked element that draws views and, now, the text that is bare in it: it is drawn in a text of its own (`buildRun`). */
+const isHtmlView = (node: NativeNode): boolean => (node.name === "native-view" || node.name === "native-pressable" || node.name === "native-modal") && isHtml(node);
+const isBlankText = (node: NativeNode): boolean => /^[ \t\n\r\f]*$/.test(node.textValue);
+/** Bare text, or a text element that flows in a line: what a marked view draws in a text of its own. */
+const flowsInLine = (node: NativeNode): boolean => node.kind === "text" || (node.kind === "element" && node.getProp("nativeHtml") === "inline");
+/** The style an element has from its class, its own style and its default, which is what its `display` is read from: undefined when it has none, which is most of them. */
+function ownStyle(node: NativeNode): unknown {
+  const own = node.peekProps();
+  if (own.style === undefined && own.nativeStyle === undefined && own.nativeClass === undefined) return undefined;
+  return mergeHostProps(own).style;
+}
+
+let droppedText = false;
+/** Development says once that text outside a `Text` is not drawn: the one thing React Native does not tell you, and the one a missing wrapper looks like. */
+function warnDropped(text: string): void {
+  if (droppedText || !(typeof __DEV__ !== "undefined" && __DEV__) || isBlankText({ textValue: text } as NativeNode)) return;
+  droppedText = true;
+  console.warn(`[Svelte Native] text that is not inside a Text is not drawn: ${JSON.stringify(text.length > 40 ? `${text.slice(0, 40)}...` : text)}. Put it in a Text (an HTML element does it for you: a div, a p, a button).`);
+}
+
+const layoutWarned = new WeakSet<NativeNode>();
+/** Development says once for a text element that the keys of a flex container do nothing on it: a text draws its own text, and its children are not laid out as items (a `div` is the element for that). */
+function warnTextLayout(node: NativeNode, style: unknown): void {
+  if (layoutWarned.has(node)) return;
+  const keys = flexKeysOf(style);
+  if (keys.length === 0) return;
+  layoutWarned.add(node);
+  console.warn(`[Svelte Native] ${keys.join(", ")} on a text (a p, h1 to h6, span, or a link among text) does nothing: a text does not lay its children out as flex items. Use a div for flex layout.`);
+}
+
+/** The text a run of text and inline elements is drawn in, for each run: one node, kept for as long as the run starts with the same node. It has no place in the tree, but its parent is the marked view, which is where it takes its text style from. */
+const implicitTexts = new WeakMap<NativeNode, NativeNode>();
+function implicitText(first: NativeNode, parent: NativeNode): NativeNode {
+  let standIn = implicitTexts.get(first);
+  if (!standIn) {
+    standIn = new NativeNode("element", "native-text");
+    standIn.setProp("nativeHtml", true);
+    implicitTexts.set(first, standIn);
+  }
+  standIn.parent = parent;
+  return standIn;
+}
+
+/**
+ * The text that is bare in a marked view, and the text elements that flow with it, are one line, as in a browser: a native text of their own holds them (the inline elements are its
+ * spans), and its first and last strings lose the whitespace at the edge of the line. A run of nothing but blanks is nothing; a run of one element is that element. This is what draws
+ * `<button>{@render children()}</button>` with a string in `children`, which the build cannot see.
+ */
+function buildRun(parent: NativeNode, members: NativeNode[], rootTag: number, foreign: boolean): FabricNode | null {
+  let from = 0;
+  let to = members.length;
+  while (from < to && (members[from] as NativeNode).kind === "text" && isBlankText(members[from] as NativeNode)) from++;
+  while (to > from && (members[to - 1] as NativeNode).kind === "text" && isBlankText(members[to - 1] as NativeNode)) to--;
+  if (from === to) return null;
+  const items = members.slice(from, to);
+  const only = items[0] as NativeNode;
+  if (items.length === 1 && only.kind === "element") return build(only, rootTag, false, foreign);
+  const standIn = implicitText(only, parent);
+  const own = state(standIn, "RCTText");
+  // Its own props are worked out each time (the text style it inherits may have changed: a few comparisons, and a clone only if something did). Its children are built again only when the run
+  // is not what they were made from: other members, or a member that is not the node it was (an element that was made again) or has something to say.
+  own.propsDirty = true;
+  if (!own.node || own.run === undefined || own.run.items.length !== items.length || items.some((member, index) => member !== own.run?.items[index] || changedSince(member, own.run.handles[index]))) own.childrenDirty = true;
+  const handle = build(standIn, rootTag, false, foreign, items, { first: only, last: items[items.length - 1] as NativeNode });
+  own.run = { items, handles: items.map((member) => stateOf(member)?.node) };
+  return handle;
+}
+
+/** Whether a member of a run is not the Fabric node the run's text was built with, or has a change to be built. */
+function changedSince(member: NativeNode, handle: unknown): boolean {
+  const own = stateOf(member);
+  return own === null || own.propsDirty || own.childrenDirty || own.node !== handle;
+}
+
+/**
+ * An element the lowering made from HTML: its text style (`text-inherit.ts`) is the one of the marked elements above it with its own style over it, a text that is not inside
+ * another and an input are drawn with the text style they inherit under their own, and the font-relative values (a unitless `line-height`) are made into dp for the font size
+ * the element ends up with. When the text style of the element changes, the marked elements below it are built again.
+ */
+function inheritTextStyle(node: NativeNode, current: State, attributes: Record<string, unknown>, insideText: boolean): Record<string, unknown> {
+  current.html = true;
+  // A marked button is disabled for the screen reader too, as React Native's Pressable makes it (the lowering keeps `disabled` as it was written, and so does a spread's).
+  if (node.name === "native-pressable" && attributes.disabled !== undefined && attributes["aria-disabled"] === undefined && attributes.accessibilityState === undefined) attributes["aria-disabled"] = Boolean(attributes.disabled);
+  const above = textStyleAbove(node);
+  const next = textStyleOf(above, attributes.style, current.textStyle);
+  const changed = next !== current.textStyle;
+  current.textStyle = next;
+  if (changed && markInheritors(node)) current.childrenDirty = true;
+  attributes.style = inheritedStyle(above, attributes.style, !insideText && (isText(node) || node.name === "native-input"));
+  return attributes;
+}
+
+/**
+ * The element is to be another component than the one its Fabric node is: nothing of the node is kept, and everything it held is built into the new one. The old handle's `ref` hears
+ * `null` (and the animation and gesture layers let go of the old tag, which they know the view by) before `build` gives the new one its handle.
+ */
+function remake(current: State, node: NativeNode): void {
+  animation?.detachAnimation(node);
+  gestures?.detachGesture(node);
+  const previous = current.ref;
+  current.ref = undefined;
+  if (typeof previous === "function") {
+    refCount--;
+    (previous as (handle: null) => void)(null);
+  }
+  current.tag = allocateTag();
+  current.node = null;
+  current.props = {};
+  current.content = null;
+  current.lone = false;
+  current.declaredFor = undefined;
+  current.propsDirty = true;
+  current.childrenDirty = true;
+}
+
 /** Builds (or rebuilds) the Fabric node for a Svelte element and returns the handle to append into its parent. */
-function build(node: NativeNode, rootTag: number, insideText: boolean, insideForeign = false): FabricNode | null {
+function build(node: NativeNode, rootTag: number, insideText: boolean, insideForeign = false, only?: readonly NativeNode[], edges?: { first: NativeNode; last: NativeNode }): FabricNode | null {
   if (!binding) throw new Error("nativeFabricUIManager is not installed");
   if (node.kind === "comment" || node.kind === "fragment") return null;
   // A place in the tree with no view (`Stop`, `FeMergeNode`): only its `ref` is served.
@@ -533,17 +768,31 @@ function build(node: NativeNode, rootTag: number, insideText: boolean, insideFor
     return null;
   }
   if (node.kind === "text") {
-    const text = node.textValue;
-    if (!insideText) return null; // bare text outside a Text is not renderable, as in React Native
+    let text = node.textValue;
+    if (!insideText) { // bare text outside a Text is not renderable, as in React Native (a marked view draws it in a text of its own: `buildRun`)
+      warnDropped(text);
+      return null;
+    }
+    // The first and last string of a line lose the whitespace at its edges.
+    if (edges && node === edges.first) text = text.replace(/^[ \t\n\r\f]+/, "");
+    if (edges && node === edges.last) text = text.replace(/[ \t\n\r\f]+$/, "");
     const current = state(node, "RCTRawText");
+    // The props object is the payload, and it is made only when there is a node to make (a text that is built again with the same string is the same node).
     if (!current.node) {
+      const props = { text };
       const t0 = profile ? now() : 0;
-      current.node = binding.createNode(current.tag, "RCTRawText", rootTag, { text }, node);
+      current.node = binding.createNode(current.tag, "RCTRawText", rootTag, props, node);
       if (profile) stats.createMs += now() - t0;
       stats.lastCreated++;
+      current.props = props;
+    } else if (current.props.text !== text) {
+      const props = { text };
+      current.node = binding.cloneNodeWithNewProps(current.node, props);
+      stats.lastCloned++;
+      current.props = props;
     }
-    else if (current.propsDirty) { current.node = binding.cloneNodeWithNewProps(current.node, { text }); stats.lastCloned++; }
     current.propsDirty = false;
+    current.childrenDirty = false;
     return current.node;
   }
   let attributes = nativeProps(node);
@@ -559,7 +808,15 @@ function build(node: NativeNode, rootTag: number, insideText: boolean, insideFor
   const lone = textMode === "span" && attributes.childrenAsArray !== true ? loneText(node) : null;
   if (lone) attributes = { ...attributes, content: lone.textValue };
   const current = state(node, viewName);
+  // A Fabric node cannot become another component: an element whose view name changed (a text that is a span of the text it is in, and a text of its own when the run that held it is gone; a
+  // text input that turns multiline) is made again, as React does for a component of another type.
+  if (current.node && current.viewName !== viewName) remake(current, node);
+  // Its node is made in this build, and not committed until the flush ends: the `ref` it is given below may ask its handle for things, which wait for the view.
+  const fresh = !current.node;
+  current.viewName = viewName;
   current.foreign = foreign;
+  if (isHtml(node) || current.html) attributes = inheritTextStyle(node, current, attributes, insideText);
+  if (isText(node) && isHtml(node) && typeof __DEV__ !== "undefined" && __DEV__) warnTextLayout(node, attributes.style);
   const config = viewConfig(viewName);
   if (current.declaredFor !== config) {
     current.declaredFor = config;
@@ -576,19 +833,57 @@ function build(node: NativeNode, rootTag: number, insideText: boolean, insideFor
   const gestured = gestures || attributes.gesture !== undefined ? loadGestures().gestureProps(node, current, animated) : animated;
   const rnProps = splitProps(node.name === "native-image" ? imageProps(gestured) : navigationTags.has(node.name) ? navigationProps(node.name, gestured) : gestured, current, navigationTags.has(node.name));
   const scroll = viewName === "RCTScrollView";
+  const view = only === undefined && isHtmlView(node);
+  // A flex container's children are items: each element is one, and each run of text is an anonymous one. Which it is, is read from the style (`html-flow.ts`), and a change of it is a change of the children.
+  const flex = view && isFlexContainer(attributes.style);
+  if (view) {
+    if (current.node && current.flex !== flex) current.childrenDirty = true;
+    current.flex = flex;
+  }
   const childrenHost = (parent: FabricNode) => {
-    for (let child = node.firstChild; child; child = child.nextSibling) {
-      if (textMode && child.kind === "text" && text) {
-        if (child === lone || child.textValue === "") continue; // the text of `lone` is the `content` above
-        binding.appendChild(parent, buildSpan(child, rootTag, text));
-        continue;
-      }
-      const handle = build(child, rootTag, insideText || isText(node), foreign);
-      if (!handle) continue;
+    // The children are the nodes of a run, for the text built for one, and otherwise what is linked in the node.
+    let run: NativeNode[] = [];
+    const append = (handle: FabricNode | null) => {
+      if (!handle) return;
       const t0 = profile ? now() : 0;
       binding.appendChild(parent, handle);
       if (profile) stats.appendMs += now() - t0;
-    }
+    };
+    const endRun = () => {
+      if (run.length === 0) return;
+      const members = run;
+      run = [];
+      append(buildRun(node, members, rootTag, foreign));
+    };
+    const visit = (child: NativeNode) => {
+      if (textMode && child.kind === "text" && text) {
+        if (child === lone || child.textValue === "") return; // the text of `lone` is the `content` above
+        binding.appendChild(parent, buildSpan(child, rootTag, text));
+        return;
+      }
+      if (view) {
+        if (child.kind === "comment" || child.kind === "fragment") return;
+        // Text is a line with the inline elements, which only a block container makes of them: a flex container's items are its elements, and what is between them is an item of its own. An
+        // element that sets its own `display` (`class="block"`) is not in a line either.
+        const inLine = !flex && child.kind === "element" && flowsInLine(child);
+        const style = inLine ? ownStyle(child) : undefined;
+        if (child.kind === "text" || (inLine && isInlineLevel(style))) {
+          run.push(child);
+          return;
+        }
+        // An element with `display: none` has no box: it is built as an item of its own (a hidden text cannot be a span: a span takes no `display`), and the line goes on around it.
+        if (inLine && isHidden(style)) {
+          append(build(child, rootTag, false, foreign, undefined, edges));
+          return;
+        }
+        endRun();
+      }
+      // A view in a text is not inside it, as in React Native: what it holds is built as a text of its own.
+      append(build(child, rootTag, isText(node), foreign, undefined, edges));
+    };
+    if (only) for (const child of only) visit(child);
+    else for (let child = node.firstChild; child; child = child.nextSibling) visit(child);
+    endRun();
   };
   if (!current.node) {
     const t0 = profile ? now() : 0;
@@ -645,6 +940,10 @@ function build(node: NativeNode, rootTag: number, insideText: boolean, insideFor
   current.lone = lone !== null;
   current.propsDirty = false;
   current.childrenDirty = false;
+  if (fresh && typeof attributes.ref === "function" && attributes.ref !== current.ref) {
+    current.uncommitted = true;
+    uncommitted.add(current);
+  }
   callRef(current, node, attributes.ref);
   return current.node;
 }
@@ -661,6 +960,30 @@ function callRef(current: State, node: NativeNode, ref: unknown): void {
   if (typeof ref === "function") { refCount++; (ref as (handle: HostHandle) => void)(handleFor(current, node)); }
 }
 
+/**
+ * The `ref` of an element is called when the renderer sets it, while Svelte is building the element, and not when the host builds the view a microtask later: `onMount` and the
+ * effects of the same flush find the handle (`el.focus()` in an `{#if}`). What is asked of the handle before the view exists waits for it (`handleFor`). The callback runs untracked:
+ * it writes state (`bind:this`), which Svelte forbids from a block's own effect and allows from an untracked call.
+ */
+function earlyRef(node: NativeNode): void {
+  const own = node.peekProps();
+  let ref = own.ref;
+  if (typeof ref !== "function") {
+    const legacy = own.nativeProps;
+    ref = legacy !== null && typeof legacy === "object" ? (legacy as { ref?: unknown }).ref : undefined;
+  }
+  if (typeof ref !== "function") return;
+  const entry = viewNames[node.name];
+  let viewName: string;
+  try {
+    viewName = typeof entry === "function" ? entry({}) : entry ?? node.name;
+  } catch {
+    return; // a node whose view cannot be told yet (`native-foreign` needs its component): it is built, and its ref called, with the rest
+  }
+  const current = state(node, viewName);
+  untrack(() => callRef(current, node, ref));
+}
+
 /** Nodes with a function `ref` that are alive: while there are none, a removal costs the host nothing. */
 let refCount = 0;
 /** Nodes taken out of their parent since the last flush ended (`setUnlinkSink`): destroyed unless they were moved. */
@@ -670,11 +993,16 @@ function onUnlink(node: NativeNode): void { if (refCount > 0) unlinked.add(node)
 /** `ref(null)` for the node and everything below it, parents first (as React detaches): the subtree is gone. */
 function releaseRefs(node: NativeNode): void {
   const own = stateOf(node);
-  if (own && typeof own.ref === "function") {
-    const ref = own.ref as (handle: null) => void;
-    own.ref = undefined;
-    refCount--;
-    ref(null);
+  if (own) {
+    // What a handle was asked before its view was built is not done for a view that will never be: it would wait for good, once for each element that came and went in one flush.
+    own.dead = true;
+    if (waiting.length > 0) waiting = waiting.filter((entry) => entry.current !== own);
+    if (typeof own.ref === "function") {
+      const ref = own.ref as (handle: null) => void;
+      own.ref = undefined;
+      refCount--;
+      ref(null);
+    }
   }
   for (let child = node.firstChild; child; child = child.nextSibling) releaseRefs(child);
 }
@@ -762,6 +1090,7 @@ export function flush(): void {
     if (profile) stats.completeMs += now() - t0;
     stats.lastCompleted++;
   }
+  if (waiting.length > 0 || uncommitted.size > 0) drainQueues();
   // Tens of animated nodes attached at once are one long message on the UI thread and a cold RenderThread: the engine puts both on the big cores.
   if ((animation?.commitAnimations() ?? 0) >= BULK_ANIMATED_NODES && engineInstalled) engineModule?.animatedBatch?.();
   gestures?.commitGestures(isLive);
@@ -863,7 +1192,8 @@ function dispatchEvent(target: unknown, topLevelType: string, nativeEvent: objec
     const own = stateOf(node);
     const name = (own && eventNamesOf(own.viewName).get(topLevelType)) ?? `on${topLevelType.replace(/^top/, "")}`;
     const handler = own?.handlers[name];
-    if (handler) { handler({ nativeEvent }); return; }
+    // An element lowered from HTML gets the element the handler is on and the one the event came from, as a web event has (a lowered `<form>` finds the input an Enter came from by them: `hostSubmit`).
+    if (handler) { handler(own?.html ? { nativeEvent, currentTarget: node, target } : { nativeEvent }); return; }
     if (own && name === "onChange") {
       // Component-level conveniences React Native's TextInput and Switch provide on top of the native `onChange`.
       const event = nativeEvent as { text?: string; eventCount?: number; value?: boolean };
@@ -886,6 +1216,7 @@ export function startSurface<Props extends Record<string, unknown>>(rootTag: num
   if (!handlerRegistered) { binding.registerEventHandler(dispatchEvent); handlerRegistered = true; }
   setInvalidationSink(onInvalidate);
   setUnlinkSink(onUnlink);
+  setRefSink(earlyRef);
   if (!engineTried) {
     engineTried = true;
     const engine = probeEngine() as { install: (reanimatedReady: boolean) => boolean; dispatchCommand?: (tag: number, name: string, args: unknown[]) => void } | null;

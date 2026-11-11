@@ -1,4 +1,5 @@
 import { parse } from "svelte/compiler";
+import { HTML_CLASS_HELPER, HTML_HELPER_EXPORTS, bindThisText, lowerHtml, mayHaveHtml, oneLine, repeatableSource } from "./lower-html.ts";
 
 const PACKAGE = "@rasheed/svelte-native";
 const GESTURES = `${PACKAGE}/gestures`;
@@ -9,7 +10,7 @@ const SPREAD_HELPER = "__svelteNativeSpread";
 const VALUE_HELPER = "__svelteNativeValue";
 // `class` and `class:name` on a lowered tag become `nativeClass={__svelteNativeClass(...)}`: the renderer's `hostClass` works out their style.
 const CLASS_HELPER = "__svelteNativeClass";
-const HELPER_EXPORTS: Record<string, string> = { [SPREAD_HELPER]: "hostSpread", [VALUE_HELPER]: "hostValue", [CLASS_HELPER]: "hostClass" };
+const HELPER_EXPORTS: Record<string, string> = { [SPREAD_HELPER]: "hostSpread", [VALUE_HELPER]: "hostValue", [CLASS_HELPER]: "hostClass", ...HTML_HELPER_EXPORTS };
 
 // Lowered call sites never run the component (`<ScrollView>` becomes `<native-scroll>` here): behaviour every scroll view
 // needs, such as React Native's base scroll style, belongs to the host (`fabric/host.ts`, `splitProps`), not to the
@@ -115,7 +116,16 @@ function walk(value: unknown, visit: (node: Node) => void) {
   for (const key in node) if (key !== "metadata") walk(node[key], visit);
 }
 
-export type LowerOptions = { filename?: string; warn?: (message: string) => void };
+export type LowerOptions = {
+  filename?: string;
+  warn?: (message: string) => void;
+  /**
+   * Also lower the HTML elements of the file (`<div>`, `<p>`, `<button>`, `<a href>`, `<img>`, `<input>`, ...) to native ones (`lower-html.ts`), and fail on an HTML element with no native
+   * equivalent. Off by default: the Metro transformer asks for it for the app's own files, and the preprocessor (`lower`, which svelte-check and a `svelte.config.js` may load, and so a
+   * web build) never does, since a file must still mean HTML there.
+   */
+  html?: boolean;
+};
 
 /**
  * Rewrites `<View>`, `<Text>`, ... imported from "@rasheed/svelte-native" into their host tags.
@@ -123,7 +133,7 @@ export type LowerOptions = { filename?: string; warn?: (message: string) => void
  * stable (columns shift on lines holding a lowered tag, and no source map is produced).
  */
 export function lowerPrimitives(content: string, options: LowerOptions = {}): string {
-  if (!content.includes(PACKAGE)) return content;
+  if (!content.includes(PACKAGE) && !(options.html && mayHaveHtml(content))) return content;
   let ast: Node;
   try {
     ast = parse(content, { modern: true, filename: options.filename }) as unknown as Node;
@@ -135,10 +145,11 @@ export function lowerPrimitives(content: string, options: LowerOptions = {}): st
   const actions = new Set<string>();
   collectImports(ast.instance?.content, locals, actions);
   collectImports(ast.module?.content, locals, actions);
-  if (!locals.size) return content;
   const warn = options.warn ?? ((message: string) => console.warn(message));
-  const edits: Edit[] = [];
-  const helpers = new Set<string>();
+  const html = options.html ? lowerHtml(ast, content, options.filename, warn) : undefined;
+  if (!locals.size && !html?.elements.size && !html?.edits.length) return content;
+  const edits: Edit[] = html ? [...html.edits] : [];
+  const helpers = new Set<string>(html?.helpers);
   /** Wraps an expression in a call of one of the renderer's helpers. */
   const wrap = (expression: Node, helper: string) => {
     helpers.add(helper);
@@ -146,11 +157,16 @@ export function lowerPrimitives(content: string, options: LowerOptions = {}): st
   };
   const seen = new Set<Node>();
   walk(ast.fragment, (node) => {
-    if (node.type !== "Component" || seen.has(node)) return;
+    if ((node.type !== "Component" && node.type !== "RegularElement") || seen.has(node)) return;
     seen.add(node);
-    const primitive = locals.get(node.name);
-    if (!primitive || mustStayComponent(node, primitive)) return;
-    const tag = LOWERED_TAGS[primitive];
+    // An HTML element that `lower-html.ts` turns into a host tag takes the paths below as a lowered `<View>` does.
+    const lowered = node.type === "RegularElement" ? html?.elements.get(node) : undefined;
+    const primitive = lowered ? undefined : locals.get(node.name);
+    if (node.type === "RegularElement" ? !lowered : !primitive || mustStayComponent(node, primitive)) return;
+    const tag = lowered?.tag ?? LOWERED_TAGS[primitive as string];
+    const spreadHelper = lowered ? lowered.spreadHelper : SPREAD_HELPER;
+    // An HTML element inherits its font size, so the font-relative values of its class wait for the host (`hostHtmlClass`).
+    const classHelper = lowered ? HTML_CLASS_HELPER : CLASS_HELPER;
     const spreads = (node.attributes as Node[]).some((attribute) => attribute.type === "SpreadAttribute");
     // `class` and every `class:name` become one `nativeClass`, written where the `class` was (where the first directive was without one);
     // the directives are removed. Next to a spread, as on the DOM: the last of `class` and the spreads that have a `class` gives the class,
@@ -159,26 +175,43 @@ export function lowerPrimitives(content: string, options: LowerOptions = {}): st
     const classes = (node.attributes as Node[]).filter((attribute) => (attribute.type === "Attribute" && attribute.name === "class") || attribute.type === "ClassDirective");
     const directives = classes.filter((attribute) => attribute.type === "ClassDirective");
     const toggles = directives.length === 0 ? undefined
-      : `{ ${directives.map((directive) => `${JSON.stringify(directive.name)}: ${content.slice(directive.expression.start, directive.expression.end)}`).join(", ")} }`;
+      : `{ ${directives.map((directive) => `${JSON.stringify(directive.name)}: ${oneLine(content.slice(directive.expression.start, directive.expression.end))}`).join(", ")} }`;
     if (classes.length > 0) {
       const own = classes.find((attribute) => attribute.type === "Attribute");
       const parts = [...(own ? [classExpression(content, own)] : []), ...(toggles ? [toggles] : [])];
-      // The element's own style comes along, as written: the font size it sets is what a `leading-none` is made from. A quoted `style="..."` is a string, which sets none.
-      const style = (node.attributes as Node[]).find((attribute) => attribute.type === "Attribute" && attribute.name === "style" && attribute.value !== true && !Array.isArray(attribute.value));
-      const styleArgument = style === undefined ? "" : `, ${content.slice(style.value.expression.start, style.value.expression.end)}`;
-      const value = `nativeClass={${CLASS_HELPER}(${parts.length === 1 ? parts[0] : `[${parts.join(", ")}]`}${styleArgument})}`;
-      helpers.add(CLASS_HELPER);
+      // The element's own style comes along: the font size it sets is what a `leading-none` of a `<View>` or a `<Text>` is made from. It is written a second time, so it must be a plain read (not a call
+      // that would run twice), and it is on one line (the copy adds no line to the file). A quoted `style="..."` is a string, which sets none, and an HTML element has none: its class keeps the
+      // font-relative values for the host, which knows the font size the element ends up with.
+      const style = lowered ? undefined : (node.attributes as Node[]).find((attribute) => attribute.type === "Attribute" && attribute.name === "style" && attribute.value !== true && !Array.isArray(attribute.value));
+      const copy = style === undefined ? undefined : repeatableSource(content, style.value.expression);
+      const styleArgument = copy === undefined ? "" : `, ${copy}`;
+      // What the attributes were written with (the braces around an expression, the breaks between them) is not in the call: its newlines are written after it, so no line moves.
+      const written = `nativeClass={${classHelper}(${parts.length === 1 ? parts[0] : `[${parts.join(", ")}]`}${styleArgument})}`;
+      const dropped = classes.reduce((count, attribute) => count + content.slice(attribute.start, attribute.end).split("\n").length - 1, 0) - (written.split("\n").length - 1);
+      const value = dropped > 0 ? written + "\n".repeat(dropped) : written;
+      helpers.add(classHelper);
       const at = own ?? (spreads ? undefined : classes[0]);
       if (at === undefined) edits.push({ start: node.attributes[0].start, end: node.attributes[0].start, text: `${value} ` });
       for (const attribute of classes) edits.push({ start: attribute.start, end: attribute.end, text: attribute === at ? value : "" });
     }
     for (const attribute of node.attributes as Node[]) {
-      if (classes.includes(attribute)) continue;
+      if (classes.includes(attribute) || lowered?.handled.has(attribute)) continue;
+      // `bind:this` of a host tag does not compile (Svelte's custom renderer has no `bind:`), and on the component it is the instance: what the host gives an element is the handle `ref` takes (`measure`, ...).
+      if (attribute.type === "BindDirective" && attribute.name === "this") {
+        const text = bindThisText(content, attribute, spreads);
+        if (text !== undefined) {
+          if (spreads) helpers.add(VALUE_HELPER);
+          helpers.add("__svelteNativeBind");
+          const lost = content.slice(attribute.start, attribute.end).split("\n").length - text.split("\n").length;
+          edits.push({ start: attribute.start, end: attribute.end, text: lost > 0 ? text + "\n".repeat(lost) : text });
+          continue;
+        }
+      }
       if (spreads && attribute.type === "SpreadAttribute") {
-        if (toggles === undefined) wrap(attribute.expression, SPREAD_HELPER);
+        if (toggles === undefined) wrap(attribute.expression, spreadHelper);
         else {
-          helpers.add(SPREAD_HELPER);
-          edits.push({ start: attribute.expression.start, end: attribute.expression.start, text: `${SPREAD_HELPER}(` }, { start: attribute.expression.end, end: attribute.expression.end, text: `, ${toggles})` });
+          helpers.add(spreadHelper);
+          edits.push({ start: attribute.expression.start, end: attribute.expression.start, text: `${spreadHelper}(` }, { start: attribute.expression.end, end: attribute.expression.end, text: `, ${toggles})` });
         }
       }
       // With a spread on the element every attribute goes through `set_attributes` too: a function-valued one (`ref={handle}`) must be boxed as well.
@@ -206,13 +239,15 @@ export function lowerPrimitives(content: string, options: LowerOptions = {}): st
         edits.push({ start: attribute.end, end: attribute.end, text: "={true}" });
       }
       if (WARN_DIRECTIVES.has(attribute.type) && !(attribute.type === "UseDirective" && actions.has(attribute.name))) {
-        warn(`${options.filename ?? "component"}: ${attribute.type === "UseDirective" ? "use:" : attribute.type === "AnimateDirective" ? "animate:" : "transition:"}${attribute.name} on <${node.name}> is passed to <${tag}> unchanged; native elements do not run DOM directives`);
+        warn(`${options.filename ?? "component"}: ${attribute.type === "UseDirective" ? "use:" : attribute.type === "AnimateDirective" ? "animate:" : attribute.intro && !attribute.outro ? "in:" : attribute.outro && !attribute.intro ? "out:" : "transition:"}${attribute.name} on <${node.name}> is passed to <${tag}> unchanged; native elements do not run DOM directives`);
       }
     }
-    edits.push({ start: node.start + 1, end: node.start + 1 + node.name.length, text: tag });
+    edits.push({ start: node.start + 1, end: node.start + 1 + node.name.length, text: tag + (lowered?.attributes ?? "") });
     const source = content.slice(node.start, node.end);
     if (source.endsWith("/>")) {
       edits.push({ start: node.end - 2, end: node.end, text: `></${tag}>` });
+    } else if (lowered?.isVoid) {
+      edits.push({ start: node.end, end: node.end, text: `</${tag}>` });
     } else {
       const close = content.lastIndexOf(`</${node.name}`, node.end - 1);
       if (close < node.start) return;
@@ -221,12 +256,15 @@ export function lowerPrimitives(content: string, options: LowerOptions = {}): st
   });
   if (!edits.length) return content;
   const script = ast.instance ?? ast.module;
-  if (helpers.size && script) {
-    const names = [...helpers].sort().map((helper) => `${HELPER_EXPORTS[helper]} as ${helper}`);
-    // On the line of the opening tag, so no line number below it moves.
-    edits.push({ start: script.content.start, end: script.content.start, text: ` import { ${names.join(", ")} } from "${RENDERER}";` });
-  }
-  edits.sort((a, b) => b.start - a.start);
+  const names = [...helpers].sort().map((helper) => `${HELPER_EXPORTS[helper]} as ${helper}`);
+  const setup = html?.setup ?? [];
+  const injected = [...(names.length ? [`import { ${names.join(", ")} } from "${RENDERER}";`] : []), ...(html?.imports ?? []), ...setup].join(" ");
+  // On the line of the opening tag, so no line number below it moves.
+  if (injected && script && (ast.instance || !setup.length)) edits.push({ start: script.content.start, end: script.content.start, text: ` ${injected}` });
+  // What runs when the component initializes needs an instance script, and a file of HTML alone (or with a module script only) has none: one is written at the start of the first line.
+  else if (injected) edits.push({ start: 0, end: 0, text: `<script>${injected}</script>` });
+  // From the end of the text to its start, so no edit moves another; two that start at the same place apply the longer one first, so what is inserted there ends up in front of what replaces it.
+  edits.sort((a, b) => b.start - a.start || b.end - a.end);
   let output = content;
   for (const edit of edits) output = output.slice(0, edit.start) + edit.text + output.slice(edit.end);
   return output;

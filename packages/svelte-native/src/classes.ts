@@ -17,8 +17,11 @@ type ClassDictionary = Record<string, unknown>;
 /** The `class` prop of every component (`ClassValue`); see this module. */
 export type ClassProps = { class?: ClassValue };
 
-/** Turns a class list (never empty) into a React Native style, or `undefined` for none. `style` is the element's own style, whose font size its font-relative values are made from. */
-export type ClassResolver = (className: string, style?: unknown) => unknown;
+/**
+ * Turns a class list (never empty) into a React Native style, or `undefined` for none. `style` is the element's own style, whose font size its font-relative values are made from.
+ * `defer` leaves them in the result as a `fontRelative` key instead (the lowered HTML elements, whose font size is the one they inherit: the host works them out, `fabric/text-inherit.ts`).
+ */
+export type ClassResolver = (className: string, style?: unknown, defer?: boolean) => unknown;
 
 let resolver: ClassResolver | undefined;
 let warned = false;
@@ -68,7 +71,7 @@ export function mergeClass<T extends Record<string, unknown>>(props: T): Omit<T,
  * The style of a component's `class`, or `undefined` when it has none or no resolver is registered (with a warning, once, in development). `style` is the
  * element's own style: a `leading-none` is made from the font size it sets (not one the element inherits from a parent `Text`).
  */
-export function classStyle(value: unknown, style?: unknown): unknown {
+export function classStyle(value: unknown, style?: unknown, defer?: boolean): unknown {
   const className = classList(value);
   if (className === "") return undefined;
   if (resolver === undefined) {
@@ -78,5 +81,5 @@ export function classStyle(value: unknown, style?: unknown): unknown {
     }
     return undefined;
   }
-  return resolver(className, style);
+  return defer ? resolver(className, style, true) : resolver(className, style);
 }

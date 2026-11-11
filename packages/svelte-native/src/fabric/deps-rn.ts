@@ -15,4 +15,7 @@ const turboModuleRegistry = () => require("react-native/Libraries/TurboModule/Tu
 type DeviceEventEmitter = { addListener(name: string, listener: (event: never) => void): { remove(): void } };
 const deviceEventEmitter = () => (require("react-native/Libraries/EventEmitter/RCTDeviceEventEmitter") as { default: DeviceEventEmitter }).default;
 /* eslint-enable @typescript-eslint/no-require-imports */
-export { resolveAssetSource, Platform, turboModuleRegistry, deviceEventEmitter };
+type PixelRatio = { get(): number; roundToNearestPixel(size: number): number };
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- an `<hr>` is the first to ask
+const pixelRatio = () => (require("react-native/Libraries/Utilities/PixelRatio") as { default: PixelRatio }).default;
+export { resolveAssetSource, Platform, turboModuleRegistry, deviceEventEmitter, pixelRatio };

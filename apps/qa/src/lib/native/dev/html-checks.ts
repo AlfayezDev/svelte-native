@@ -27,12 +27,12 @@ export type Built = { viewName: string; flex: boolean | undefined; style: Style;
 
 /** The names of the HTML checks, in the order the lab runs them: `qa/test/class-checks.test.ts` pins their number and their length (logcat cuts the lab's result line near 4 KB). */
 export const htmlCheckNames = [
-  "html: inherited colour and size reach the text",
+  "html: text inherits colour and size",
   "html: a flex row has 2 items",
-  "html: a block div draws text, spans and link as one line",
-  "html: h1 is bold at 2x the inherited size",
-  "html: a submit press calls onsubmit, prevented",
-  "html: input type=password is secure",
+  "html: block div is one line of text",
+  "html: h1 is bold, 2x the size",
+  "html: submit press calls onsubmit",
+  "html: password input is secure",
 ] as const;
 
 /** `text-lg` and `text-sky-900` of the card, as the build converts them (`qa/test/html-checks.test.ts` holds both against the class table). */

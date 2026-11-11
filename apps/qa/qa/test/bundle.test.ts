@@ -32,22 +32,25 @@ const { smokeOnlyBundlePackages } = createRequire(import.meta.url)("../smoke-pac
  * are the product's, not measured module by module. The production variant is 1,674,787 bytes (29.8 %) under the QA app: the lab and the
  * libraries only it imports.
  *
- * Moved on 11 November 2026 (feat/qa-coverage, after main's HTML elements and span press were merged in) from 5,719,571 to 5,902,863 bytes (1,195 modules). The same recipe read 5,767,609 at 2762246 (main, before the
- * HTML elements) and 5,811,760 at 94411f8 (main, with them: +44,151, which the host and the lowering add to every app and the example's screen to the QA app's lab). The lab's coverage of the features that landed without
- * it adds 91,103 more: the built-in BlurView's section and its nine pixel checks with their helpers (+16,971), the class probe, the ten class checks and their runner (+23,769), the class table `src/global.css` makes
- * (+6,548: Tailwind reads every word of `src/` as a candidate, so the table holds the classes the probes use and those the sources happen to contain), the six HTML checks and their runner (+10,762), and the screen of
- * HTML elements the checks read, its route, the gestures page of the span press and its scenario, with the classes they add to the table (+33,053 together, not split). All of it is the lab's, which only the QA app and the
- * smoke app carry; the production variant has no lab and no `css` option (4,154,837 bytes, +1,959 over main's 4,152,878: the `mergeHostProps` export of the library's renderer entry that the checks read the host's
- * props through, 209 bytes, and the commits main made after it measured, 1,750; 0.8 % over its own baseline below).
+ * Moved on 11 November 2026 (feat/qa-coverage, after main's HTML elements, span press, and transitions with `animate:flip` were merged in) from 5,719,571 to 6,003,584 bytes (1,205 modules). The same recipe read 5,867,760
+ * bytes in 1,190 modules at eda5a64 (main, with the transitions: they are about 51 KB of main's own baseline below, the keyframe tracks, the worklet that samples them, the host's playback and layout read, and the node's
+ * DOM-like surface in the renderer, which every app carries). The lab's coverage of what landed without it adds 135,824 more (2.3 %), all of it the lab's, which only the QA app and the smoke app carry: the built-in
+ * BlurView's section and its nine pixel checks with their helpers (+16,971), the class probe, the ten class checks and their runner (+23,769), the class table `src/global.css` makes (+6,548: Tailwind reads every word of
+ * `src/` as a candidate, so the table holds the classes the probes use and those the sources happen to contain), the six HTML checks and their runner (+10,762), the screen of HTML elements the checks read, its route, the
+ * gestures page of the span press and its scenario, with the classes they add to the table (+33,053 together, not split), and, for transitions, the screen of `in:`, `out:`, `transition:` and `animate:flip` on HTML
+ * elements, its route, the five checks with their runner and expectations, and the classes they add to the table (+44,721 together, not split; the first five were measured against main's earlier 5,811,760, so the
+ * split is not exact to the byte). The production variant has no lab and no `css` option: 4,207,070 bytes in 906 modules, +209 over main's 4,206,861 at eda5a64, which is the `mergeHostProps` export of the library's
+ * renderer entry that the checks read the host's props through (0.1 % over its own baseline below). Both were measured in a checkout whose installed Svelte had the library's patch applied to a scratch copy of the
+ * compiler (`patches/svelte@5.56.7.patch`, which lets the compiler accept transitions with a custom renderer), the same bytes an install with the patch gives, because the patch changes the compiler and not what it emits.
  */
-const baseline = { commit: "the lab's coverage of BlurView, classes and HTML elements on feat/qa-coverage, with main's HTML elements and span press (+91,103 bytes, 1.6 %, over the 5,811,760 that main measured at 94411f8)", bytes: 5_902_863 };
+const baseline = { commit: "the lab's coverage of BlurView, classes, HTML elements and transitions on feat/qa-coverage, with main's HTML elements, span press and transitions (+135,824 bytes, 2.3 %, over the 5,867,760 that main measured at eda5a64)", bytes: 6_003_584 };
 
 /**
  * The production variant's bundle without the lab, built with the same recipe. It may grow by 1 % before a test says so. Measured again at 727bded, which makes the library's
  * polyfills load Expo's WinterCG runtime (a standard `URL`, `fetch`, `TextDecoder`, ... that the router needs): 4,074,366 bytes, 120,873 (3.1 %) over the 3,953,493 of 1bbbec6 without
  * it (the QA app, which imported the runtime already, did not move).
  */
-const productBaseline = { commit: "HTML elements (the same host code is in every app: +78,512 bytes, 1.9 %, over the 4,074,366 of 727bded, where the polyfills load Expo's WinterCG runtime), measured again on feat/qa-coverage with main's later commits and the renderer's mergeHostProps export (+1,959 bytes)", bytes: 4_154_837 };
+const productBaseline = { commit: "Svelte's transitions and animate:flip on top of HTML elements (4,204,439 bytes, +51,561, 1.2 %, over the 4,152,878 of HTML elements; the same transitions code as in the QA app's, which every app carries), measured again on feat/qa-coverage at 4,207,070 (+209 over main's 4,206,861 at eda5a64: the renderer's mergeHostProps export)", bytes: 4_207_070 };
 
 /** What this run made: the bundle directories (about 15 to 34 MB each) and the Metro caches of their own. All removed when the tests end. */
 const made: string[] = [];

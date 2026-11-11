@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { htmlCheckNames } from "../../src/lib/native/dev/html-checks.ts";
+import { transitionCheckNames } from "../../src/lib/native/dev/transition-checks.ts";
 import { allSides, classCheckNames, classStyle, expectations, flattenStyle, isColor, mdBreakpoint, parseColor, sentStyle, sides, sky500, white, zinc400, zinc900, type Style } from "../../src/lib/native/dev/class-checks.ts";
 import type { GatesFile } from "../lib/gates.ts";
 import { platformDir, svelteNativeCli } from "../lib/paths.ts";
@@ -21,34 +22,37 @@ const page = source("src/routes/__dev/+mobile.svelte");
 const probe = source("src/lib/native/dev/ClassProbe.svelte");
 
 describe("the number of functional checks", () => {
-	/** The checks the page's own runner makes (Svelte's runes, bindings, blocks and the Reanimated one): every `check("...")` of `+mobile.svelte` but the two that report an exception. */
+	/** The checks the page's own runner makes (Svelte's runes, bindings, blocks and the Reanimated one): every `check("...")` of `+mobile.svelte` but the three that report an exception. */
 	const own = [...page.matchAll(/\bcheck\("([^"]+)"/g)].map((match) => match[1] ?? "").filter((name) => !name.endsWith("completed"));
 
-	test("28 of the page's own, one for each class check and one for each HTML check: 44", () => {
+	test("28 of the page's own, one for each class check, each HTML check and each transition check: 49", () => {
 		expect(own).toHaveLength(28);
 		expect(classCheckNames).toHaveLength(10);
 		expect(htmlCheckNames).toHaveLength(6);
-		expect(new Set([...classCheckNames, ...htmlCheckNames]).size).toBe(classCheckNames.length + htmlCheckNames.length);
-		const total = own.length + classCheckNames.length + htmlCheckNames.length;
+		expect(transitionCheckNames).toHaveLength(5);
+		expect(new Set([...classCheckNames, ...htmlCheckNames, ...transitionCheckNames]).size).toBe(classCheckNames.length + htmlCheckNames.length + transitionCheckNames.length);
+		const total = own.length + classCheckNames.length + htmlCheckNames.length + transitionCheckNames.length;
 		const bar = gates.gates.find((gate) => gate.id === "checks.passed")?.bar;
 		expect(bar).toEqual({ android: { min: total }, ios: { min: total } });
 		expect(gates.gates.find((gate) => gate.id === "checks.passed")?.title).toBe(`Functional checks passed (of ${total})`);
 	});
 
-	test("the page calls the class checks after its own, and the HTML checks after those, once each", () => {
+	test("the page calls the class checks after its own, the HTML checks after those and the transition checks last, once each", () => {
 		expect(page.match(/runClassChecks\(/g)).toHaveLength(1);
 		expect(page.match(/runHtmlChecks\(/g)).toHaveLength(1);
+		expect(page.match(/runTransitionChecks\(/g)).toHaveLength(1);
 		expect(page.indexOf("await verifyAnimation();")).toBeLessThan(page.indexOf("runClassChecks("));
 		expect(page.indexOf("runClassChecks(")).toBeLessThan(page.indexOf("runHtmlChecks("));
+		expect(page.indexOf("runHtmlChecks(")).toBeLessThan(page.indexOf("runTransitionChecks("));
 	});
 
 	test("the lab's result line stays under logcat's 4 KB cut with all of them passing (a passing check carries no detail)", () => {
 		// The Android harness counts the entries of one logcat line (`parseLabChecks`): an entry cut off by the limit is a check that never happened. The line of the 28-check run read 2,224 characters.
 		const line = sample("lab-run.log").split("\n").find((entry) => entry.includes('"phase":"checks"')) ?? "";
 		expect(line.length).toBeGreaterThan(2000);
-		const added = [...classCheckNames, ...htmlCheckNames].reduce((sum, name) => sum + JSON.stringify({ name, passed: true, detail: "" }).length + 1, 0);
-		// 44 checks: about 3,500 characters, and logcat's entry holds 4,068 bytes, with the header's few fields (the token, the build, the error count) that the old sample does not have
-		expect(line.length + added).toBeLessThan(3600);
+		const added = [...classCheckNames, ...htmlCheckNames, ...transitionCheckNames].reduce((sum, name) => sum + JSON.stringify({ name, passed: true, detail: "" }).length + 1, 0);
+		// 49 checks: about 3,700 characters, and logcat's entry holds 4,068 bytes, with the header's few fields (the token, the build, the error count) that the old sample does not have: 3,750 leaves them 300
+		expect(line.length + added).toBeLessThan(3750);
 	});
 });
 

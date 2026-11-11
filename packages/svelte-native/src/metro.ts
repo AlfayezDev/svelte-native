@@ -5,7 +5,7 @@ import { dirname, join, resolve, sep } from "node:path";
 import type { MetroConfig as ConfigT } from "expo/metro-config";
 import { syncRoutes, watchRoutes } from "./build.ts";
 import { buildClassesSync, reportSkipped, reportUnsupported, watchClasses } from "./css/build.ts";
-import { runesEnvironment } from "./compile-options.ts";
+import { asyncEnvironment, runesEnvironment } from "./compile-options.ts";
 import { packageRoot, sourceFile } from "./package-root.ts";
 import { remoteResolution } from "./remote/transform.ts";
 import { assertCustomRenderer } from "./svelte-build.ts";
@@ -67,6 +67,14 @@ export type SvelteNativeMetroOptions = {
    * (`SVELTE_NATIVE_RUNES`, set when this config loads).
    */
   runes?: boolean;
+  /**
+   * Experimental. Whether Svelte's async mode is on: every Svelte file the transformer compiles (the app's, the library's own and a library's below `node_modules`) gets `experimental.async`,
+   * which allows `await` in `$derived`, in the markup and at the top of a component, and is what `router.prepare` needs. Default `false`. Svelte's async mode is one switch for the whole app
+   * (the first module that imports its flag turns it on for all), so the option is all or none, and a precompiled Svelte package built with `experimental.async` turns it on by itself.
+   * With it on, `tick()` waits for the next frame or a timer instead of a microtask, and the components of different blocks (`{#if}`, `{#each}`, `{#key}`) that change in one update run
+   * their `$effect.pre` and their teardown in another order. Like `runes` it reaches Metro's workers through the environment (`SVELTE_NATIVE_ASYNC`), and it is part of the transformer's cache key.
+   */
+  async?: boolean;
   /**
    * `class` on components: the app's CSS file (Tailwind 4: `@import "tailwindcss";` and the app's own classes), relative to the project, for example
    * `"src/global.css"`. Tailwind (`tailwindcss`, which the app installs) compiles it for the classes the files under `src/` use, and the result is
@@ -135,7 +143,7 @@ export function libraryChanged(projectRoot: string, library: string = realpathSy
 
 export function withSvelteNative(config: ConfigT, options: SvelteNativeMetroOptions = {}): ConfigT {
   assertCustomRenderer("withSvelteNative (@rasheed/svelte-native/metro)");
-  Object.assign(process.env, runesEnvironment(options.runes));
+  Object.assign(process.env, runesEnvironment(options.runes), asyncEnvironment(options.async));
   const resolveRequest = config.resolver.resolveRequest;
   const stubbed = options.stubbedPackages ?? [];
   const variant = options.variant ?? variantName();

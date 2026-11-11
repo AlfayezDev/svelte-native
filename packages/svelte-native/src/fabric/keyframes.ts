@@ -45,6 +45,12 @@ export type Spec = {
 };
 
 /** Reports a property or function that cannot be played, once per `key`. */
+const PAINT_ONLY = /^(?:opacity|transform)$|(?:^|[a-z])Color$|^color$/;
+/** Whether playing the spec changes layout (a length, a discrete value such as `position`), not only paint (opacity, transforms, colours). */
+export function affectsLayout(spec: Spec): boolean {
+  return spec.keys.some((key) => !PAINT_ONLY.test(key));
+}
+
 export type Warn = (key: string, message: string) => void;
 
 const META = new Set(["offset", "easing", "composite", "computedOffset"]);

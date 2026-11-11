@@ -322,6 +322,11 @@ test("animate:flip on a reordered keyed list animates each moved item from where
   expect(flip1.keyframes[0]?.transform).toBe("translate(0px, -50px) scale(1, 1)");
   expect(moved("item-2")[1]?.keyframes[0]?.transform).toBe("translate(0px, -50px) scale(1, 1)");
   expect(calls.filter((call) => call.startsWith("rect "))).not.toHaveLength(0);
+  // The first layout read commits the new order; the next commit starts every moved item's animation at once. A layout read does not commit what only
+  // paints, or the list would mount an item at a time: a frame of the new order with some items still in their old places.
+  const commits = calls.flatMap((call, at) => (call === "completeRoot" ? [at] : []));
+  const started = calls.slice((commits[0] as number) + 1, commits[1]);
+  expect(started.filter((call) => call.startsWith("cloneProps"))).toHaveLength(3);
 
   // On the UI thread the node moves by the transform list: translate, then scale.
   const node = byId(55, "item-3");

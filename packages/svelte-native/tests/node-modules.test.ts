@@ -160,6 +160,7 @@ describe("with plain node, from node_modules", () => {
     expect(result.svelteModule).toContain("svelte/internal/client");
     expect(result.svelteImports).toContain("@rasheed/svelte-native/renderer");
     expect(result.svelteImports).toContain("svelte/internal/client");
+    expect(result.svelteImports).toContain("svelte/transition");
     expect(result.remote).toContain("@rasheed/svelte-native/remote/runtime");
     expect(result.cacheKey).toMatch(/^[0-9a-f]{64}$/);
     // Runes mode by default (D17): the app's components and the library's own, at the path an install puts them at; a Svelte library below node_modules keeps Svelte's own default.

@@ -735,6 +735,7 @@ function onInvalidate(node: NativeNode, reason: Invalidation): void {
     if (parent === null || stateOf(parent) === null) return;
   }
   if (reason === "children") childrenInvalidated = true;
+  if (reason !== "animation") layoutPending = true;
   dirty.add(node);
   if (!flushScheduled) { flushScheduled = true; queueMicrotask(flush); }
 }
@@ -755,11 +756,14 @@ function detachRemovedAnimations(): void {
 
 /** A commit is being built: a layout read (`layoutOf`) made from inside it (a `ref` callback) reads the tree as it was, and does not start another. */
 let flushing = false;
+/** Whether a pending change can move layout: anything but an `animation` invalidation. A layout read commits first only then. */
+let layoutPending = false;
 /** Commits every pending change in one Fabric transaction per root. */
 export function flush(): void {
   if (flushing) return;
   flushScheduled = false;
   if (!binding || dirty.size === 0) return;
+  layoutPending = false;
   flushing = true;
   try {
     commit();
@@ -886,13 +890,15 @@ function dispatchEvent(target: unknown, topLevelType: string, nativeEvent: objec
 }
 
 /**
- * A node's box, from React Native's synchronous layout read of the committed tree: what is pending is committed first (Svelte reads a layout right after it changed the tree, `animate:`
+ * A node's box, from React Native's synchronous layout read of the committed tree: what is pending that can move layout is committed first (Svelte reads a layout right after it changed the tree, `animate:`
  * does it twice per item), and the box includes the transform the node's own style gives it. While an animation moves the node (the UI thread draws that, the committed tree does not
  * have it) the layout box is read without a transform and moved by what the animation draws. Null for a node that has no view yet.
  */
 function layoutOf(node: NativeNode): Rect | null {
   if (!binding?.getBoundingClientRect) return null;
-  flush();
+  // What is pending is committed first, unless it only paints: `animate:` reads every item's box after it started the items before it, and committing
+  // each of those would mount the list a few items at a time (a frame of the new order with some items in their old places).
+  if (layoutPending) flush();
   const current = stateOf(node);
   if (!current?.node) return null;
   const driven = node.dom?.animation ? loadTransitions().drivesTransform(node) : false;

@@ -103,6 +103,11 @@ class SvelteEngineModule : Module() {
     // how any animation starts.
     Function("animatedBatch") { mountingManager?.animatedBatch() }
 
+    // The commits JavaScript makes next belong together (a layout read needs one, the first frames of an animation are the next): the engine applies them in one message, so no
+    // frame shows the first alone (`MountingManager.holdMounts`, SPEC.md "Transaction order"). Released by `releaseMounts`, or by itself after 100 ms.
+    Function("holdMounts") { mountingManager?.holdMounts() }
+    Function("releaseMounts") { mountingManager?.releaseMounts() }
+
     // The root router's navigation state as JSON, after every change (SPEC.md, "Navigation state across recreation and process
     // death"); MainActivity keeps it in the Activity's saved instance state. `finishing` is read when a surface stops: true when the
     // Activity is going away for good, so the next start does not adopt the state.

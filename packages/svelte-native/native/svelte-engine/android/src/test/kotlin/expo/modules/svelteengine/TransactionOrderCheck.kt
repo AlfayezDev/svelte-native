@@ -22,7 +22,7 @@ private fun expect(name: String, actual: Any?, expected: Any?) {
 }
 
 /** A main looper, and a [TransactionOrder] of strings that records what it applied and where. */
-private class Looper {
+private class Looper(budgetNanos: Long = TransactionOrder.DEFAULT_BUDGET_NANOS) {
   private val messages = LinkedBlockingQueue<Runnable>()
   @Volatile private var quit = false
   val main: Thread = Thread {
@@ -36,6 +36,10 @@ private class Looper {
   /** Runs inside every apply, on the main thread. */
   var during: (String) -> Unit = {}
 
+  /** A clock the test moves: every apply costs [applyCostNanos] of it. */
+  @Volatile var clock = 0L
+  var applyCostNanos = 0L
+
   val order = TransactionOrder<String>(
     onMain = { Thread.currentThread() === main },
     post = { messages.add(it) },
@@ -43,7 +47,10 @@ private class Looper {
       if (Thread.currentThread() !== main) appliedOffMain++
       events.add(it)
       during(it)
+      clock += applyCostNanos
     },
+    budgetNanos = budgetNanos,
+    now = { clock },
   )
 
   /** A message, not waited for. */
@@ -72,8 +79,8 @@ private class Looper {
   }
 }
 
-private fun looper(block: Looper.() -> Unit) {
-  val looper = Looper()
+private fun looper(budgetNanos: Long = TransactionOrder.DEFAULT_BUDGET_NANOS, block: Looper.() -> Unit) {
+  val looper = Looper(budgetNanos)
   try { looper.block() } finally { looper.stop() }
 }
 
@@ -130,7 +137,8 @@ private fun scenarios() {
     expect("applied at once", inside, listOf("only"))
   }
 
-  // A transaction from another thread is a message of its own: the main looper runs what was posted between two of them before the second.
+  // What a flip needs: two transactions the JavaScript thread submitted before the message ran (the new order, then the items' first frames) are applied in that message, and
+  // the frame that is queued behind the first one's message waits for both.
   looper {
     val hold = busy()
     fromAnotherThread { order.submit("a") }
@@ -138,7 +146,121 @@ private fun scenarios() {
     fromAnotherThread { order.submit("b") }
     hold()
     settle()
-    expect("one transaction per message", events, listOf("a", "a frame", "b"))
+    expect("both transactions are applied before the frame", events, listOf("a", "b", "a frame"))
+  }
+
+  // The commit that arrives while the first is applied (the main thread slow on a cold core, the JavaScript thread committing meanwhile) is applied before the message returns.
+  looper {
+    during = { name -> if (name == "a") fromAnotherThread { order.submit("b, committed while a was applied") } }
+    val hold = busy()
+    fromAnotherThread { order.submit("a") }
+    later { events.add("a frame") }
+    hold()
+    settle()
+    expect("the one that arrived during the apply is applied before the frame", events, listOf("a", "b, committed while a was applied", "a frame"))
+    expect("on the main thread", appliedOffMain, 0)
+  }
+
+  // The same, with a main-thread submit in the middle: it applies what came before it, and what comes after it still waits its turn in the order.
+  looper {
+    during = { name -> if (name == "a") { fromAnotherThread { order.submit("b") }; order.submit("c, submitted by the main thread") } }
+    val hold = busy()
+    fromAnotherThread { order.submit("a") }
+    fromAnotherThread { order.submit("d") }
+    hold()
+    settle()
+    expect("one order, whoever submitted", events, listOf("a", "d", "b", "c, submitted by the main thread"))
+  }
+
+  // The budget: a message that has applied for longer than the budget and finds more queued posts the rest, so the frame queued behind it runs first. Each apply costs 30 ms of
+  // the clock the check moves, the budget is 50 ms: a, then b (30 ms is under the budget), then the rest waits.
+  looper(budgetNanos = 50_000_000L) {
+    applyCostNanos = 30_000_000L
+    val hold = busy()
+    fromAnotherThread { order.submit("a") }
+    later { events.add("a frame") }
+    for (name in listOf("b", "c", "d", "e")) fromAnotherThread { order.submit(name) }
+    hold()
+    settle()
+    expect("the frame runs after the budget, and the order is kept", events, listOf("a", "b", "a frame", "c", "d", "e"))
+  }
+
+  // Every message makes progress, whatever the budget: with none (0), a message still applies one transaction, then leaves the rest to the next, as it did before the drain.
+  looper(budgetNanos = 0L) {
+    val hold = busy()
+    fromAnotherThread { order.submit("a") }
+    later { events.add("a frame") }
+    fromAnotherThread { order.submit("b") }
+    hold()
+    settle()
+    expect("one transaction per message with no budget", events, listOf("a", "a frame", "b"))
+  }
+
+  // Without work over the budget nothing is left behind: a long queue of cheap transactions is applied in one message.
+  looper {
+    applyCostNanos = 1_000_000L
+    val hold = busy()
+    for (index in 0 until 40) {
+      fromAnotherThread { order.submit("t%02d".format(index)) }
+      if (index == 0) later { events.add("a frame") }
+    }
+    hold()
+    settle()
+    expect("40 ms of work is under the budget: every transaction, then the frame", events.indexOf("a frame"), 40)
+    expect("all 40 applied", events.size, 41)
+  }
+
+  // The hold JavaScript asks for across a layout read's commit and the one after it: what is queued while held is not applied by any message, and one message applies it all
+  // after the release, before the frame that was queued behind it.
+  looper {
+    order.hold()
+    fromAnotherThread { order.submit("the new order") }
+    settle()
+    expect("nothing is applied while the queue is held", events, emptyList<String>())
+    fromAnotherThread { order.submit("the items' first frames") }
+    settle()
+    expect("still nothing", events, emptyList<String>())
+    val hold = busy()
+    order.release()
+    later { events.add("a frame") }
+    hold()
+    settle()
+    expect("both commits are applied in one message, before the frame", events, listOf("the new order", "the items' first frames", "a frame"))
+  }
+
+  // A hold does not hold up the main thread's own submit: it applies everything queued before it, and then itself, as it always did.
+  looper {
+    order.hold()
+    fromAnotherThread { order.submit("a") }
+    onMain { order.submit("m, from the main thread") }
+    expect("the held transaction comes first", events, listOf("a", "m, from the main thread"))
+    order.release()
+    settle()
+    expect("the release finds nothing left", events, listOf("a", "m, from the main thread"))
+  }
+
+  // A hold that comes while a message applies stops it after the transaction it is applying; the rest waits for the release.
+  looper {
+    during = { name -> if (name == "a") order.hold() }
+    val hold = busy()
+    fromAnotherThread { order.submit("a") }
+    fromAnotherThread { order.submit("b") }
+    hold()
+    settle()
+    expect("the message stops at the hold", events, listOf("a"))
+    order.release()
+    settle()
+    expect("the release applies the rest", events, listOf("a", "b"))
+  }
+
+  // A release with nothing held and nothing queued does nothing, and a transaction after a release is a message as usual.
+  looper {
+    order.release()
+    settle()
+    expect("nothing happened", events, emptyList<String>())
+    fromAnotherThread { order.submit("a") }
+    settle()
+    expect("and a later one is applied", events, listOf("a"))
   }
 
   // A transaction submitted by an apply, on the main thread, waits for the apply it was made in and keeps its place in the order.
@@ -189,6 +311,8 @@ private fun source(path: String) {
   expect("onTransaction applies nothing itself", Regex("""\bapply\(""").containsMatchIn(onTransaction), false)
   expect("onTransaction posts nothing itself", onTransaction.contains("handler.post"), false)
   expect("the queue is the engine's order class", text.contains("TransactionOrder<Transaction>("), true)
+  expect("holdMounts holds the queue and ends the hold by itself", Regex("""fun holdMounts\(\)\s*\{[^}]*transactions\.hold\(\)[^}]*postDelayed\(releaseHeld""").containsMatchIn(text), true)
+  expect("releaseMounts releases it", Regex("""fun releaseMounts\(\)\s*\{[^}]*transactions\.release\(\)""").containsMatchIn(text), true)
   expect("the queue is the one caller of the batch's apply", Regex("""\bapply\(it\.surfaceId""").findAll(text).count(), 1)
 }
 

@@ -11,6 +11,8 @@ const compiled = (lowered: string) => compile(lowered, { filename: "/app/page.sv
 const lower = (source: string) => lowerPrimitives(source, { filename: "page.svelte", html: true, warn: () => {} });
 const prelude = `<script lang="ts">
   import { View, Text } from "@example/svelte-native";
+  import { fade, fly, slide } from "svelte/transition";
+  import { flip } from "svelte/animate";
   let a = $state(""); let b = $state(true); let n = $state(1); let c = $state("red"); let w = $state("10px");
   let el = $state<unknown>(null); let els = $state<unknown[]>([]); let i = 0; let show = $state(false); let list = $state([1, 2]);
   let { rest = {}, children }: { rest?: Record<string, unknown>; children?: () => unknown } = $props();
@@ -119,6 +121,9 @@ function generate(next: () => number): string {
     if (chance(0.2)) found.push(pick([`bind:this={el}`, `bind:this={els[i]}`, `bind:this={\n  el\n}`, `bind:this={els[\n  i\n]}`, `bind:this={els[\n  i +\n 1\n]}`]));
     if (chance(0.15)) found.push(pick(["{...rest}", "{...\n  rest\n}"]));
     if (chance(0.1)) found.push("use:act");
+    // Svelte's own directives, which the native element plays (`fabric/transitions.ts`): on a tag the lowering turns into a host tag they stay as written, on an `input` (a component) they are left out.
+    // (Not on a `<View>` or a `<Text>`: those are lowered to a host tag only when nothing in them needs the component, and a directive on one that stays a component is Svelte's own error.)
+    if (!component && chance(0.18)) found.push(pick([`in:fly={{ y: 8 }}`, `out:fade`, `transition:slide|local`, `in:fade={{\n  duration: 100,\n}}`, `out:fly={{ y: 4 }}${gap()}in:fade`, `transition:fade={{ duration: 50 }}`, `in:fly|global={{\n y: 8 }}`]));
     if (kind === "button" || kind === "div" || kind === "span" || kind === "p" || kind === "a") {
       if (chance(0.4)) found.push(pick([`onclick={${handler()}}`, `on:click={${handler()}}`, "onclick={go}", "on:mouseover={go}"]));
     }
@@ -153,10 +158,16 @@ function generate(next: () => number): string {
     if (roll < 0.28) return text();
     if (roll < 0.34) return `{#if b}${node(depth + 1, phrasing, inside)}${chance(0.5) ? `{:else}${node(depth + 1, phrasing, inside)}` : ""}{/if}`;
     if (roll < 0.39) return `{#each list as item (item)}${node(depth + 1, phrasing, inside)}{/each}`;
+    // `animate:` is for the only child of a keyed `{#each}`, and the child is an element.
+    if (roll < 0.405) {
+      const tag = phrasing ? "span" : pick(["div", "li", "p", "section"]);
+      return `{#each list as item (item)}<${tag}${gap()}animate:flip${pick(["", "={{ duration: 100 }}", "={{\n  duration: 100,\n}}"])}${attributes(tag)}>${text()}</${tag}>{/each}`;
+    }
     if (roll < 0.42) return "{@render children?.()}";
     if (roll < 0.44) return "<!-- note -->";
     if (roll < 0.46) return `{#key n}${node(depth + 1, phrasing, inside)}{/key}`;
-    if (roll < 0.47) return `{#snippet s${marks}(v)}${node(depth + 1, phrasing, inside)}{/snippet}{@render s${marks++}(n)}`;
+    // (A snippet declared inside a `<View>` or `<Text>` keeps it a component, which takes no `class:` or transition directive: Svelte's own error, not the lowering's.)
+    if (roll < 0.47 && inside !== "View" && inside !== "Text") return `{#snippet s${marks}(v)}${node(depth + 1, phrasing, inside)}{/snippet}{@render s${marks++}(n)}`;
     if (roll < 0.48) return `{#await Promise.resolve(1) then v}${node(depth + 1, phrasing, inside)}{:catch}x{/await}`;
     if (roll < 0.49) return `{#if b}{@const q${marks} = n + 1}{q${marks++}}{/if}`;
     if (roll < 0.51 && !phrasing) return `<svelte:element this={pick([a, "div", "span"])}${attributes("div")}>${node(depth + 1, phrasing, "div")}</svelte:element>`;

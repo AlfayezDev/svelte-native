@@ -93,4 +93,4 @@ A library whose API is React components or hooks can't be imported: UI kits writ
 - Use a Svelte library that does the same job, as long as it doesn't touch the DOM.
 - Write the part you need yourself.
 
-Libraries that use the DOM don't apply either, Svelte's `transition:` directives included. There is no DOM: use [Animation](animation) instead.
+Libraries that use the DOM don't apply either. Svelte's own `transition:` and `animate:` directives do work: see [Svelte transitions](animation#svelte-transitions).

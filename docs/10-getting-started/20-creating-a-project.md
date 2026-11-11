@@ -53,7 +53,7 @@ svelte-native init: /home/you/my-app
 
   edit    package.json                       "main", svelte (the custom-renderer build), @sveltejs/kit 3.1.1 (exact: …), 8 dependencies, scripts, …
   edit    pnpm-workspace.yaml                overrides: expo-modules-core, @react-native/metro-config; patchedDependencies: @sveltejs/kit@3.1.1, …
-  create  patches/svelte-native/             5 patch files from the installed library
+  create  patches/svelte-native/             6 patch files from the installed library
   create  metro.config.cjs                   withSvelteNative(getDefaultConfig(__dirname))
   create  app.json                           my-app, dev.example.myapp
   edit    vite.config.ts                     svelteNative() around SvelteKit's plugin, as a function of the mode

@@ -50,4 +50,4 @@ patchedDependencies:
   react-native-reanimated@4.5.1: packages/svelte-native/patches/react-native-reanimated@4.5.1.patch
   react-native-video@6.19.3: packages/svelte-native/patches/react-native-video@6.19.3.patch
   react-native-worklets@0.10.1: packages/svelte-native/patches/react-native-worklets@0.10.1.patch
-  svelte@5.56.7: packages/svelte-native/patches/svelte@5.56.7.patch
+  svelte@5.56.7: patches/svelte@5.56.7.patch

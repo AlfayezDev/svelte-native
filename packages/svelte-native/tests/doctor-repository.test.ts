@@ -35,11 +35,17 @@ test("the repository declares each of them from the package, with the lockfile's
   }
 });
 
-test("the one patch left at the root is the example's, for a library the package does not use", () => {
+test("the patches left at the root are the repository's own: the example's, for a library the package does not use, and Svelte's compiler, for Bun", () => {
   const declared = patchedDependenciesOfYaml(read("pnpm-workspace.yaml"));
   const others = [...declared].filter(([key]) => !patchFiles().some((patch) => patchKey(patch) === key));
-  expect(others).toEqual([["react-native-live-direction@0.1.1", "patches/react-native-live-direction@0.1.1.patch"]]);
-  expect(readdirSync(join(repository, "patches"))).toEqual(["react-native-live-direction@0.1.1.patch"]);
+  expect(others).toEqual([
+    ["react-native-live-direction@0.1.1", "patches/react-native-live-direction@0.1.1.patch"],
+    ["svelte@5.56.7", "patches/svelte@5.56.7.patch"],
+  ]);
+  expect(readdirSync(join(repository, "patches")).sort()).toEqual(["react-native-live-direction@0.1.1.patch", "svelte@5.56.7.patch"]);
+  // Svelte's is not an app's: an app's Metro transformer removes the compiler's refusals itself (`svelte-compiler.ts`), so the package ships no patch of Svelte and the doctor asks for none. The patch is only
+  // for this repository's tests, which run under Bun, where no Node hook runs.
+  expect(patchFiles().map((patch) => patch.package)).not.toContain("svelte");
   // Nothing of the library imports it or lists it: the patch fixes `I18nManager` for the production app's use of the library, which the example's smoke app stands in for.
   const sources = readdirSync(join(repository, "packages/svelte-native/src"), { recursive: true, encoding: "utf8" }).filter((file) => /\.(ts|svelte)$/.test(file));
   for (const file of sources) expect(read(`packages/svelte-native/src/${file}`), file).not.toContain("react-native-live-direction");

@@ -538,6 +538,19 @@ test("a <pre> is a text whose whitespace is its own: the text is a template lite
   expect(code).toContain("three `x` ");
 });
 
+test("onintrostart, onintroend, onoutrostart and onoutroend on an HTML element are events it gets (Svelte's transitions send them): kept as written, and no warning", () => {
+  const warnings: string[] = [];
+  const source = `<div in:fade onintroend={f} onoutroend={g} onintrostart={h} onoutrostart={k}>x</div><p out:fade onintroend={f}>y</p><button in:fade onoutroend={g}>z</button><img onintroend={f} /><span in:fade onintroend={f}>w</span>`;
+  const out = html(source, { filename: "page.svelte", warn: (message) => warnings.push(message) });
+  expect(warnings).toEqual([]);
+  expect(out).toContain("<native-view nativeHtml={true} in:fade onintroend={f} onoutroend={g} onintrostart={h} onoutrostart={k}>x</native-view>");
+  expect(out).toContain("onintroend={f}");
+  // An element that is a component (an input, a dialog) takes no transition directive, so it gets none of the events either: they are still told about.
+  const inputWarnings: string[] = [];
+  html(`<input onintroend={f} />`, { filename: "page.svelte", warn: (message) => inputWarnings.push(message) });
+  expect(inputWarnings).toEqual([expect.stringContaining('onintroend on <input> never runs on a device')]);
+});
+
 test("onkeydown and onkeyup are the component's to work out; a web handler that can never run on a device is a warning naming the file and line; the handlers that do run are not", () => {
   expect(body(`<input onkeydown={down} onkeyup={up} />`)).toBe(`<SvelteNativeTextInput onkeydown={down} onkeyup={up} />`);
   const warnings: string[] = [];

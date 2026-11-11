@@ -44,8 +44,8 @@ const qaOnly = ["svelte-qa-android", "svelte-qa-ios", "view-bench"];
 /** The library's own native modules are linked from the installed package, as an app outside this repository gets them (packages/svelte-native/expo-module.config.json). */
 const library = "@rasheed/svelte-native";
 const libraryDirectory = dirname(require.resolve("@rasheed/svelte-native/package.json"));
-const libraryPods = ["SvelteCapture", "SvelteInsets", "SvelteNavigation", "SvelteScreensIOS", "SvelteUpdates"];
-const libraryProjects = ["svelte-engine", "svelte-updates"];
+const libraryPods = ["SvelteBlur", "SvelteCapture", "SvelteInsets", "SvelteNavigation", "SvelteScreensIOS", "SvelteUpdates"];
+const libraryProjects = ["svelte-engine", "svelte-updates", "svelte-blur"];
 const { smokeOnlyPackages } = require("./qa/smoke-packages.cjs") as { smokeOnlyPackages: string[] };
 
 describe("the product build leaves the QA-only modules out of autolinking", () => {
@@ -65,6 +65,7 @@ describe("the product build leaves the QA-only modules out of autolinking", () =
 		expect(product).not.toContain("expo.modules.svelteqa.SvelteQaPixelsModule");
 		expect(product).toContain("expo.modules.svelteengine.SvelteEngineModule");
 		expect(product).toContain("expo.modules.svelteupdates.SvelteUpdatesModule");
+		expect(product).toContain("expo.modules.svelteblur.SvelteBlurModule");
 	});
 
 	test("iOS: the QA build links SvelteQA, the product's pods do not, and keep the library's screens, insets, navigation, capture and updates pods", () => {
@@ -102,7 +103,7 @@ describe("the product build leaves the QA-only modules out of autolinking", () =
 			const sweep = resolved("apple", configuredExclude(variant)).modules.find((module) => module.packageName === library) as { appDelegateSubscribers?: string[]; swiftModuleNames?: string[] } | undefined;
 			expect(sweep?.appDelegateSubscribers).toEqual(["SvelteCaptureSubscriber"]);
 			// the Swift modules the generated provider imports: SvelteScreensIOS is Objective-C++ with no module of its own (`DEFINES_MODULE` is NO), so it is not in the list
-			expect(sweep?.swiftModuleNames).toEqual(["SvelteCapture", "SvelteInsets", "SvelteNavigation", "SvelteUpdates"]);
+			expect(sweep?.swiftModuleNames).toEqual(["SvelteCapture", "SvelteInsets", "SvelteNavigation", "SvelteUpdates", "SvelteBlur"]);
 		}
 	});
 

@@ -31,7 +31,7 @@ A `Text` without a `color` is black, also in dark mode. Give your text colours: 
 | --- | --- | --- | --- |
 | `children` | `Snippet` | | The text, and nested `Text`s. |
 | `style` | `TextStyle` | | `color`, `fontSize`, `fontWeight`, `fontFamily`, `fontStyle`, `lineHeight`, `letterSpacing`, `textAlign`, `textDecorationLine`, `textTransform`, and the layout keys of a `View`. |
-| `class` | `ClassValue` | | A list of classes: a string, an array or an object, as on a DOM element in Svelte. Their style goes under `style`, which wins. Needs [Uniwind](styling#classes). |
+| `class` | `ClassValue` | | A list of classes: a string, an array or an object, as on a DOM element in Svelte. Their style goes under `style`, which wins. Needs the `css` option ([Classes](styling#classes)). |
 | `numberOfLines` | `number` | | Cuts the text to this many lines. |
 | `ellipsizeMode` | `'head' \| 'middle' \| 'tail' \| 'clip'` | `'tail'` | Where the ellipsis goes when the text is cut. |
 | `selectable` | `boolean` | `false` | Lets the user select and copy the text. |

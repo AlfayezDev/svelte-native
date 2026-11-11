@@ -11,6 +11,7 @@ export { default as Marker } from "./components/Marker.svelte";
 export { default as VideoView } from "./components/VideoView.svelte";
 export { default as ExpoImage } from "./components/ExpoImage.svelte";
 export { default as BlurView } from "./components/BlurView.svelte";
+export { default as ExpoBlurView } from "./components/ExpoBlurView.svelte";
 export { default as BlurTargetView } from "./components/BlurTargetView.svelte";
 export { default as LinearGradient } from "./components/LinearGradient.svelte";
 export { default as Video } from "./components/Video.svelte";
@@ -32,6 +33,7 @@ export type { DatePickerOptions, DatePickerProps, DatePickerChange } from "./fab
 export type { VideoHandle, VideoSource } from "./fabric/foreign-video.ts";
 export type { LottieHandle, LottieSource } from "./fabric/foreign-lottie.ts";
 export type { GradientPoint } from "./fabric/foreign-gradient.ts";
+export type { BlurTint } from "./fabric/foreign-blur.ts";
 export type { ExpoImageProps, ImageContentFit, ImageContentPosition, ImageSource, ImageSourceProp, ImageTransition } from "./fabric/foreign-image.ts";
 export type { PdfHandle, PdfSource } from "./fabric/foreign-pdf.ts";
 export type { CaptureFormat, CaptureOptions, CaptureResult, CaptureTarget } from "./fabric/foreign-capture.ts";

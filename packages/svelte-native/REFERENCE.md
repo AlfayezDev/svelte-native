@@ -172,7 +172,7 @@ Where the program stands is in [PLAN.md](PLAN.md) ("Production plan status"); th
 
 ```svelte
 <script lang="ts">
-  import { ExpoImage, BlurTargetView, BlurView, LinearGradient, Video, LottieView, DateTimePicker, openDatePicker, WebView, MapView, Marker } from "@rasheed/svelte-native/foreign";
+  import { ExpoImage, BlurTargetView, ExpoBlurView, BlurView, LinearGradient, Video, LottieView, DateTimePicker, openDatePicker, WebView, MapView, Marker } from "@rasheed/svelte-native/foreign";
   import { Pdf, ViewShot, captureRef, Rive, ConicGradient, ShadowedView, shadowStyle, AnimateableText } from "@rasheed/svelte-native/foreign";
   import { ExpoView, defineExpoView } from "@rasheed/svelte-native/foreign";
 </script>
@@ -199,7 +199,8 @@ The libraries ported component by component:
 | Library | Components | Notes |
 |---|---|---|
 | expo-image | `ExpoImage` | `source`, `placeholder` (URL, `{ uri, headers }`, `require`d asset, blurhash, thumbhash), `contentFit`, `transition`, `cachePolicy`, `priority`, `recyclingKey`, `tintColor`, `onLoad`/`onError`. Our `Image` is unchanged. Static methods and the view's functions are not ported (use `requireNativeModule("ExpoImage")`). |
-| expo-blur | `BlurView`, `BlurTargetView` | iOS blurs what is behind. On Android `blurMethod="none"` (the default) is a translucent tint; the real blur renders a `BlurTargetView`, whose `ref` goes to `blurTarget`. The target's children are mounted by React Native: they draw and lay out but take no JavaScript touch events. |
+| the library's own blur | `BlurView` | Needs no package (`SvelteBlur`, `native/svelte-blur`). `intensity` (0 to 100, default 50), `tint` (expo-blur's names, default `"default"`), `children` on top of the blur (the engine's views: they take touches), `style` (`borderRadius` with `overflow: "hidden"` rounds it), `class`, `ref` (the container). iOS blurs what is behind with a `UIVisualEffectView`. Android 12 (API 31) and up draws what is behind the view into a small picture each frame and blurs it on the GPU; before that, or in a software canvas, it is a translucent white or black tint alone. It shows what is drawn before the view; map, video and camera surfaces and other windows are not in it. |
+| expo-blur | `ExpoBlurView`, `BlurTargetView` | iOS blurs what is behind. On Android `blurMethod="none"` (the default) is a translucent tint; the real blur renders a `BlurTargetView`, whose `ref` goes to `blurTarget`. The target's children are mounted by React Native: they draw and lay out but take no JavaScript touch events. |
 | expo-linear-gradient | `LinearGradient` | `colors` (any colour React Native takes), `locations`, `start`, `end`; the children are the engine's views. |
 | react-native-video 6 | `Video` | `source`, `paused`, `muted`, `repeat`, `resizeMode`, `rate`, `volume`, `controls`, `poster` and the library's callbacks; `ref` gives `seek`, `pause`, `resume`, `setVolume`, `getCurrentPosition`, `setSource`, ... through the library's `VideoManager`. `renderLoader` and FairPlay's `getLicense` are not ported. |
 | @react-native-community/datetimepicker | `DateTimePicker` (iOS), `openDatePicker` (Android) | One pattern: `{#if Platform.OS === "ios"}<DateTimePicker {value} onValueChange={(_, date) => (value = date)} />{:else}…await openDatePicker({ value, mode: "date" })…{/if}`; `openDatePicker` answers with the `Date`, or `null` when the dialog is dismissed. |

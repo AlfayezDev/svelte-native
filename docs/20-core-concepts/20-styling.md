@@ -44,7 +44,7 @@ To share styles across screens, export the objects from a module in `src/lib`.
 
 `class` takes Tailwind's utilities and classes of your own through [Uniwind](https://uniwind.dev), which compiles your CSS file to React Native styles when Metro builds the app. Without it, `class` does nothing, and a warning in development says so.
 
-> [!NOTE] Classes aren't in a release yet. Until the next one, they're on the `feat/uniwind` branch: install it with `#feat/uniwind&path:packages/svelte-native` in place of the tag. In 0.4.0-rc.3, `class` does nothing.
+> [!NOTE] Classes come after 0.4.0-rc.3: in that release, `class` does nothing. Until the next release, install from `main` with `#main&path:packages/svelte-native` in place of the tag.
 
 ```svelte
 <View class="flex-row items-center gap-3 rounded-2xl bg-white p-4 dark:bg-zinc-900">

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterAll, describe, expect, test } from "bun:test";
-import { builtOf, cardSize, expectations, find, htmlCheckNames, isBlank, members, sky900, textOf, type Built, type HtmlNode, type MemberRead } from "../../src/lib/native/dev/html-checks.ts";
+import { builtOf, cardSize, expectations, find, htmlCheckNames, isBlank, members, sky100, sky900, textOf, type Built, type HtmlNode, type MemberRead } from "../../src/lib/native/dev/html-checks.ts";
 import { platformDir, svelteNativeCli } from "../lib/paths.ts";
 
 /**
@@ -54,6 +54,15 @@ describe("what each check expects", () => {
 		expect(expectations.inherit(card, null, reaches).passed).toBe(false);
 		// the card without the class is not a card that gives anything
 		expect(expectations.inherit({ fontSize: cardSize }, reaches, reaches).passed).toBe(false);
+	});
+
+	test("inheritance in dark mode: the card's dark: colour is the one that must reach the text (a phone in dark mode read the light one as a failure)", () => {
+		const darkCard = { color: sky100, fontSize: cardSize };
+		const darkReaches = built("RCTText", { color: sky100, fontSize: cardSize });
+		expect(expectations.inherit(darkCard, darkReaches, darkReaches, "dark")).toEqual({ passed: true, detail: "" });
+		// the light colour on a dark device, or the dark one on a light device, is not the card's
+		expect(expectations.inherit(card, reaches, reaches, "dark").passed).toBe(false);
+		expect(expectations.inherit(darkCard, darkReaches, darkReaches, "light").passed).toBe(false);
 	});
 
 	test("a flex row: flex, two items, each a text of its own (a span of a line is not one)", () => {
@@ -132,6 +141,7 @@ describe("the values the checks name are the ones the build wrote", () => {
 		const { default: table } = (await import(pathToFileURL(file).href)) as { default: { classes: Record<string, { style: Record<string, unknown> }[]> } };
 		expect(table.classes["text-lg"]?.[0]?.style.fontSize).toBe(cardSize);
 		expect(table.classes["text-sky-900"]?.[0]?.style.color).toBe(sky900);
+		expect(table.classes["dark:text-sky-100"]?.[0]?.style.color).toBe(sky100);
 		// the card has both, and the screen's markup says so
 		expect(readFileSync(join(platformDir, "src/lib/native/dev/HtmlScreen.svelte"), "utf8")).toMatch(/hold\("card"\)\}[^>]*class="[^"]*\btext-lg\b[^"]*\btext-sky-900\b/);
 	}, 60_000);

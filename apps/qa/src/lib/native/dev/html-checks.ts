@@ -38,6 +38,8 @@ export const htmlCheckNames = [
 /** `text-lg` and `text-sky-900` of the card, as the build converts them (`qa/test/html-checks.test.ts` holds both against the class table). */
 export const cardSize = 18;
 export const sky900 = "#024a70";
+/** `dark:text-sky-100` of the card: what it inherits when the device is in dark mode (a phone the lab must not reconfigure may be). */
+export const sky100 = "#dff2fe";
 
 export function builtOf(node: HtmlNode | undefined): Built | null {
   const state = node?.hostState as { viewName?: unknown; flex?: unknown; props?: unknown } | null | undefined;
@@ -76,10 +78,11 @@ const said = (style: Style | undefined, ...keys: string[]): string => (style ? k
 
 /** What each check asks of what it read. A function answers whether the reading is right, with a message for when it is not (empty when it is). */
 export const expectations = {
-  /** [card] is the card's own style (`mergeHostProps`), [paragraph] and [span] what the host built for a `p` of the card and for a span of its flex row, which is a view between them and the card. */
-  inherit: (card: Style, paragraph: Built | null, span: Built | null): Outcome => {
-    const given = isColor(card.color, sky900, 1) && card.fontSize === cardSize;
-    const reached = (built: Built | null) => !!built && isColor(built.style.color, sky900, 1) && built.style.fontSize === cardSize;
+  /** [card] is the card's own style (`mergeHostProps`), [paragraph] and [span] what the host built for a `p` of the card and for a span of its flex row, which is a view between them and the card; [scheme] is the device's, which picks the card's `dark:` colour. */
+  inherit: (card: Style, paragraph: Built | null, span: Built | null, scheme: "light" | "dark" = "light"): Outcome => {
+    const colour = scheme === "dark" ? sky100 : sky900;
+    const given = isColor(card.color, colour, 1) && card.fontSize === cardSize;
+    const reached = (built: Built | null) => !!built && isColor(built.style.color, colour, 1) && built.style.fontSize === cardSize;
     return verdict(given && reached(paragraph) && reached(span), `card ${said(card, "color", "fontSize")}; p ${said(paragraph?.style, "color", "fontSize")}; span ${said(span?.style, "color", "fontSize")}`);
   },
   /** [row] is what the host built for the flex row, [items] its elements with the view the host made of each: two texts of their own, not spans of one line. */

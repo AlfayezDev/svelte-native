@@ -12,7 +12,14 @@ type Tree = Mounted & { measured: { width: number; height: number } };
 /** What `SvelteQA.inspect` said of each library's section on the first iPhone run: the class of the section's view, the first entries of the tree below it, the layout the engine measured. */
 const recorded = JSON.parse(sample("ios-foreign-trees.json")) as { density: number; libraries: Record<string, Tree> };
 const gates = JSON.parse(readFileSync(join(platformDir, "qa/gates.json"), "utf8")) as GatesFile;
-const libraries = gates.foreign?.libraries.ios ?? [];
+/**
+ * The libraries added after the first iPhone run (3 Nov 2026), which have a pin and no recorded tree yet: the built-in BlurView (11 Nov 2026; its iOS name, `SvelteBlurView`, is from the Swift source). The first iPhone run
+ * of each puts its tree into `samples/ios-foreign-trees.json`, and it comes off this list in the same commit (the test below fails while a library is on it and recorded).
+ */
+const unrecorded: readonly string[] = ["svelteblur"];
+const pinned = gates.foreign?.libraries.ios ?? [];
+/** The libraries the recorded trees cover. */
+const libraries = pinned.filter((library) => !unrecorded.includes(library));
 const treeOf = (library: string): Tree => {
 	const tree = recorded.libraries[library];
 	if (!tree) throw new Error(`no recorded tree for ${library}`);
@@ -29,9 +36,20 @@ const emptied = (tree: Mounted): Mounted => ({ class: "UIView", views: tree.view
 const without = (tree: Mounted, name: string): Mounted => ({ ...tree, views: tree.views.filter((view) => !view.trim().startsWith(`${name} `)) });
 
 describe("the iOS pin of each library, against the view trees the first iPhone run printed", () => {
-	test("every pinned library has a pin and a recorded tree", () => {
-		expect(Object.keys(pins).sort()).toEqual([...libraries].sort());
+	test("every pinned library has a pin and a recorded tree, except the ones listed as not recorded yet", () => {
+		expect(Object.keys(pins).sort()).toEqual([...pinned].sort());
 		expect(Object.keys(recorded.libraries).sort()).toEqual([...libraries].sort());
+		for (const library of unrecorded) expect([library, library in recorded.libraries]).toEqual([library, false]);
+	});
+
+	test("the built-in blur's pin is the Swift class below its container, spelled without a module, and Android's the Kotlin class's simple name", () => {
+		expect(pins.svelteblur).toEqual({ inside: "SvelteBlurView", ios: { inside: "SvelteBlurView" } });
+		// the section's handle names the container View; the view is below it, as the entries of `SvelteQA.inspect` and `SvelteEngine.inspect` spell it (a name and a size)
+		expect(resolvePin(false, pins.svelteblur, { class: "RCTViewComponentView", views: ["SvelteBlurView 618x132 clip=bounds", "  UIVisualEffectView 618x132 clip=none"] })).toMatchObject({ there: true, name: "SvelteBlurView inside" });
+		expect(resolvePin(true, pins.svelteblur, { class: "expo.modules.svelteengine.views.EngineView", views: ["SvelteBlurView 618x132 clip=children"] })).toMatchObject({ there: true, name: "SvelteBlurView", entry: "SvelteBlurView 618x132 clip=children" });
+		// expo-blur's own view is not it, and neither is the visual-effect view alone
+		expect(resolvePin(false, pins.svelteblur, { class: "RCTViewComponentView", views: ["ExpoBlurView 618x132 clip=bounds", "  BlurEffectView 618x132 clip=none"] }).there).toBe(false);
+		expect(resolvePin(true, pins.svelteblur, { class: "x", views: ["ExpoBlurView 1x1"] }).there).toBe(false);
 	});
 
 	test("each pin finds the library's own view in the tree the phone built for it", () => {

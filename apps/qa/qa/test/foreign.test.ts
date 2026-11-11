@@ -8,7 +8,7 @@ import { checkGatesFile, evaluate, type GatesFile } from "../lib/gates.ts";
 import { platformDir } from "../lib/paths.ts";
 import { findButton, parsePress } from "../lib/foreign-press.ts";
 import { parseForeignChecks } from "../parse/foreign.ts";
-import { argb, arrivedInOrder, clear, distance, hex, near, numberIn, riveBackdrop, riveFitDetail, riveFitPainted, riveMiddle, riveSides, show, solid, tookNote, untilTaken } from "../../src/lib/native/dev/foreign-pixels.ts";
+import { argb, arrivedInOrder, brightness, clear, distance, edgeGradual, edgeHard, edgeUnderTint, hex, near, numberIn, readEdge, riveBackdrop, riveFitDetail, riveFitPainted, riveMiddle, riveSides, show, solid, tookNote, untilTaken } from "../../src/lib/native/dev/foreign-pixels.ts";
 import { raceAttempts, runRace, type Race } from "../../src/lib/native/dev/foreign-race.ts";
 import type { ForeignCheck, ForeignFile, ForeignLaunch } from "../lib/types.ts";
 import { sample } from "./sample.ts";
@@ -268,9 +268,10 @@ describe("what the release bundle may hold", () => {
 });
 
 describe("gates.json", () => {
-	test("pins the thirteen libraries for both platforms and keeps the file valid", () => {
+	test("pins the fourteen libraries (the thirteen and the built-in BlurView) for both platforms and keeps the file valid", () => {
 		expect(() => checkGatesFile(gates)).not.toThrow();
-		expect(libraries).toHaveLength(13);
+		expect(libraries).toHaveLength(14);
+		expect(libraries).toContain("svelteblur");
 		expect(gates.foreign?.libraries.ios).toEqual(libraries);
 	});
 
@@ -352,6 +353,72 @@ describe("the colour helpers the lab's pixel checks use", () => {
 		expect(numberIn("count 23")).toBe(23);
 		expect(numberIn("hello")).toBeNull();
 		expect(numberIn(undefined)).toBeNull();
+	});
+});
+
+describe("the stripe edge, as the built-in BlurView's checks read it", () => {
+	const pixelOf = ({ r, g, b }: { r: number; g: number; b: number }) => ((255 << 24) | (Math.round(r) << 16) | (Math.round(g) << 8) | Math.round(b)) >>> 0;
+	const red = hex("#e5484d");
+	const yellow = hex("#f5d90a");
+	/** The row across the red | yellow edge when [t] of the step has been taken (0 red, 1 yellow) and [tint] of white lies over it. */
+	const at = (t: number, tint = 0) => {
+		const mix = (a: number, b: number) => (a + (b - a) * t) * (1 - tint) + 255 * tint;
+		return pixelOf({ r: mix(red.r, yellow.r), g: mix(red.g, yellow.g), b: mix(red.b, yellow.b) });
+	};
+	/** A Gaussian blur of [sigma] dp over the edge, the four points at -21, -4, +4, +21 dp: the step the blurred line has reached at each. */
+	const erf = (x: number) => {
+		// Abramowitz and Stegun 7.1.26, good to 1.5e-7
+		const t = 1 / (1 + 0.3275911 * Math.abs(x));
+		const poly = ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t;
+		return Math.sign(x) * (1 - poly * Math.exp(-x * x));
+	};
+	const phi = (x: number) => 0.5 * (1 + erf(x / Math.SQRT2));
+	const blurred = (sigma: number, tint = 0) => [-21, -3.7, 3.7, 21].map((dp) => at(Math.min(1, Math.max(0, phi(dp / sigma))), tint));
+
+	test("a hard edge in the stripes' own colours: both pairs are a full step apart", () => {
+		const read = readEdge([at(0), at(0), at(1), at(1)]);
+		expect(read).toEqual({ near: 145, far: 145 });
+		expect(edgeHard(read)).toBe(true);
+		expect(edgeGradual(read)).toBe(false);
+	});
+
+	test("a blur of 25 dp (intensity 100 on Android) under a 45 % tint: gradual, and the inner pair sees about a fifth of what the outer pair does", () => {
+		const read = readEdge(blurred(25, 0.45));
+		expect(read.far).toBeGreaterThanOrEqual(40);
+		expect(read.near / read.far).toBeLessThan(0.3);
+		expect(edgeGradual(read)).toBe(true);
+		expect(edgeHard(read)).toBe(false);
+	});
+
+	test("a blur of 8 dp is the weakest the check calls gradual, and one of 3 dp is still an edge", () => {
+		expect(edgeGradual(readEdge(blurred(8)))).toBe(true);
+		expect(edgeGradual(readEdge(blurred(3)))).toBe(false);
+	});
+
+	test("a tint alone (Android below 12) keeps the line at a lower contrast and lifts the red stripe: it is neither hard in the stripes' colours nor gradual", () => {
+		const tinted = [at(0, 0.75), at(0, 0.75), at(1, 0.75), at(1, 0.75)];
+		const read = readEdge(tinted);
+		expect(read.near).toBeGreaterThanOrEqual(35);
+		expect(edgeHard(read)).toBe(false);
+		expect(edgeGradual(read)).toBe(false);
+		expect(edgeUnderTint(tinted, read)).toBe(true);
+		// an untinted hard edge is not a tinted one (the green of the red stripe is its own 72), and a blurred one is not either
+		expect(edgeUnderTint([at(0), at(0), at(1), at(1)], read)).toBe(false);
+		expect(edgeUnderTint(blurred(25, 0.45), readEdge(blurred(25, 0.45)))).toBe(false);
+	});
+
+	test("a capture that read nothing (a hole) is neither hard nor gradual nor tinted", () => {
+		const read = readEdge([0, 0, 0, 0]);
+		expect([edgeHard(read), edgeGradual(read), edgeUnderTint([0, 0, 0, 0], read)]).toEqual([false, false, false]);
+		expect(readEdge([])).toEqual({ near: 0, far: 0 });
+	});
+
+	test("brightness is the sum of the channels: a dark tint over a stripe is far below a light one", () => {
+		expect(brightness(0xffffffff)).toBe(765);
+		expect(brightness(0xff000000)).toBe(0);
+		const stripe = hex("#f5d90a");
+		const over = (white: boolean) => pixelOf({ r: stripe.r * 0.55 + (white ? 255 * 0.45 : 0), g: stripe.g * 0.55 + (white ? 255 * 0.45 : 0), b: stripe.b * 0.55 + (white ? 255 * 0.45 : 0) });
+		expect(brightness(over(true)) - brightness(over(false))).toBeGreaterThanOrEqual(150);
 	});
 });
 

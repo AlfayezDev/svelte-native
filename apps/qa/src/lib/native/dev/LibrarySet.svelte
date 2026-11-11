@@ -4,8 +4,8 @@
   import type { SvgHandle, SvgRootHandle } from "@example/svelte-native/svg";
   /** A host handle (`ref` of a view): its tag names the native view, `measureInWindow` gives the layout the engine measured. */
   export type Host = { readonly tag: number; measureInWindow(callback: (x: number, y: number, width: number, height: number) => void): void };
-  export type LibraryKind = "image" | "blur" | "gradient" | "video" | "datetime" | "lottie" | "pdf" | "capture" | "rive" | "conic" | "shadow" | "text" | "svg";
-  export const libraryKinds: readonly LibraryKind[] = ["image", "blur", "gradient", "video", "datetime", "lottie", "pdf", "capture", "rive", "conic", "shadow", "text", "svg"];
+  export type LibraryKind = "image" | "blur" | "svelteblur" | "gradient" | "video" | "datetime" | "lottie" | "pdf" | "capture" | "rive" | "conic" | "shadow" | "text" | "svg";
+  export const libraryKinds: readonly LibraryKind[] = ["image", "blur", "svelteblur", "gradient", "video", "datetime", "lottie", "pdf", "capture", "rive", "conic", "shadow", "text", "svg"];
   /** What a set hands to whoever drives it: the video's, the animation's, the PDF's and Rive's functions, the Android date dialog, the capture, the shared value the text shows and the SVG's handles and progress. */
   export type LibraryHandles = {
     video: (VideoHandle & { host: unknown }) | null;
@@ -27,13 +27,13 @@
     hosts: Partial<Record<LibraryKind, Host>>;
     /** The host handle of each section's box (the view a capture of the section draws), by kind. */
     boxes: Partial<Record<LibraryKind, Host>>;
-    /** Views of a section the checks reach besides its main one (the shadow section's card in an unflattened wrapper), by name. */
+    /** Views of a section the checks reach besides its main one (the shadow section's card in an unflattened wrapper, the built-in blur's label chip), by name. */
     extras: Record<string, Host>;
     /** The text the animated text shows now, as the shared value holds it (JavaScript's own view of the number). */
     shown: () => number | null;
   };
   const titles: Record<LibraryKind, string> = {
-    image: "expo-image", blur: "expo-blur", gradient: "expo-linear-gradient", video: "react-native-video", datetime: "datetimepicker", lottie: "lottie-react-native",
+    image: "expo-image", blur: "expo-blur", svelteblur: "BlurView (built in)", gradient: "expo-linear-gradient", video: "react-native-video", datetime: "datetimepicker", lottie: "lottie-react-native",
     pdf: "react-native-pdf", capture: "react-native-view-shot", rive: "rive-react-native", conic: "expo-conic-gradient", shadow: "react-native-fast-shadow", text: "react-native-animateable-text",
     svg: "react-native-svg",
   };
@@ -43,7 +43,7 @@
   import { Image, Pressable, Text, View } from "@example/svelte-native";
   import { createSharedValue, ReduceMotion, withRepeat, withTiming } from "@example/svelte-native/animation";
   import {
-    AnimateableText, BlurTargetView, ConicGradient, DateTimePicker, ExpoBlurView, ExpoImage, LinearGradient, LottieView, Pdf, Rive, ShadowedView, Video, ViewShot,
+    AnimateableText, BlurTargetView, BlurView, ConicGradient, DateTimePicker, ExpoBlurView, ExpoImage, LinearGradient, LottieView, Pdf, Rive, ShadowedView, Video, ViewShot,
     captureRef, openDatePicker, shadowStyle,
   } from "@example/svelte-native/foreign";
   import Platform from "react-native/Libraries/Utilities/Platform";
@@ -56,7 +56,7 @@
   import { labSvgIcons } from "./lab-svg.ts";
 
   /**
-   * One box per library (expo-image, expo-blur, expo-linear-gradient, react-native-video, datetimepicker, lottie-react-native,
+   * One box per library (expo-image, expo-blur, the library's own `BlurView`, expo-linear-gradient, react-native-video, datetimepicker, lottie-react-native,
    * react-native-pdf, react-native-view-shot, rive-react-native, expo-conic-gradient, react-native-fast-shadow,
    * react-native-animateable-text, react-native-svg), each a fixed `height`, the way the foreign-views lab (SPEC.md, "Foreign views") mounts the older
    * three: inline, in a list row and in a sheet. Every event is recorded under `source` (`record`), and the video's, the animation's,
@@ -144,6 +144,8 @@
   onDestroy(() => { libraryHandles.delete(own); });
 
   const stripes = ["#e5484d", "#f5d90a", "#30a46c", "#0091ff", "#8e4ec6"];
+  /** The stripes behind the built-in blur: the first one's colour is a lab prop (the blur must show a change of what is behind it). */
+  const blurStripes = $derived([libraryLab.svelteBlurStripe, ...stripes.slice(1)]);
   const box = $derived({ height, borderRadius: 12, overflow: "hidden", borderWidth: 1, borderColor: theme.border } as const);
   const fill = { position: "absolute", left: 0, top: 0, right: 0, bottom: 0 } as const;
 </script>
@@ -164,6 +166,16 @@
           <ExpoBlurView {blurTarget} intensity={libraryLab.blurIntensity} tint="light" ref={keep(hosts, kind)} blurMethod="dimezisBlurView" style={{ position: "absolute", left: 24, right: 24, top: 14, bottom: 14, borderRadius: 12, overflow: "hidden", alignItems: "center", justifyContent: "center" }}>
             <Text style={{ color: "#191b1e", fontSize: 16, fontWeight: "600" }}>Blur</Text>
           </ExpoBlurView>
+        {:else if kind === "svelteblur"}
+          <!-- The stripes are drawn before the blur (an earlier sibling), which is what the blur shows. The label sits on a solid chip so that a capture reads a colour of the child, not a glyph. -->
+          <View style={{ ...fill, flexDirection: "row" }}>
+            {#each blurStripes as color, index (index)}<View style={{ flex: 1, backgroundColor: color }} />{/each}
+          </View>
+          <BlurView intensity={libraryLab.svelteBlurIntensity} tint={libraryLab.svelteBlurTint} ref={keep(hosts, kind)} style={{ position: "absolute", left: 24, right: 24, top: 14, bottom: 14, borderRadius: 12, overflow: "hidden", alignItems: "center", justifyContent: "center" }}>
+            <View collapsable={false} ref={keepExtra("chip")} style={{ backgroundColor: "#191b1e", borderRadius: 6, paddingHorizontal: 10, paddingVertical: 3 }}>
+              <Text style={{ color: "#ffffff", fontSize: 14, fontWeight: "600" }}>Blur</Text>
+            </View>
+          </BlurView>
         {:else if kind === "gradient"}
           <LinearGradient colors={libraryLab.gradientColors} locations={libraryLab.gradientColors.length === 3 ? [0, 0.5, 1] : undefined} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} ref={keep(hosts, kind)} style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
             <Text style={{ color: "#ffffff", fontSize: 16, fontWeight: "600" }}>Gradient</Text>

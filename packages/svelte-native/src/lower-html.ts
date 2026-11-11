@@ -137,6 +137,8 @@ const UNSUPPORTED_TYPES: Record<string, string> = {
   "datetime-local": "use `DateTimePicker` from `@example/svelte-native/foreign`", month: "use `DateTimePicker` from `@example/svelte-native/foreign`", week: "use `DateTimePicker` from `@example/svelte-native/foreign`",
 };
 
+/** The events Svelte's transitions send the element they play on (`element.dispatchEvent`: `NativeNode.dispatchEvent` calls the listeners), so `onintroend={...}` runs on a device. */
+const TRANSITION_EVENTS = ["introstart", "introend", "outrostart", "outroend"];
 /** The events of the web a text input gets on a device (`html-input.ts`). */
 const INPUT_EVENTS = ["input", "change", "focus", "blur", "keydown", "keyup"];
 
@@ -454,7 +456,7 @@ export function lowerHtml(ast: Node, content: string, filename: string | undefin
     const generated: string[] = kind === "image" ? [] : [inline ? 'nativeHtml="inline"' : "nativeHtml={true}"];
     // The style a browser gives the element until its class or style says otherwise.
     if (USER_AGENT_STYLES.has(node.name)) generated.push(`nativeBase="${node.name}"`);
-    const events = ["click"];
+    const events = ["click", ...TRANSITION_EVENTS];
     const role = (name: string): void => {
       if (!hasRole(node)) generated.push(`accessibilityRole="${name}"`);
     };

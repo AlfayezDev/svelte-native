@@ -41,6 +41,12 @@ Notable changes to `@example/svelte-native`, newest first. The format follows [K
 
 The first three are changes in the native engine, so the native host has to be rebuilt.
 
+### Fixed
+
+- An app that installs the library from a tarball or git bundles again: Babel, which compiles the library's sources under `node_modules`, rejected the `declare` fields of `InlineStyle`; the five properties are typed by an interface merged with the class, and a test compiles every source file with `babel-preset-expo` as an app's Metro does.
+- The guide's starter passes the doctor again: pnpm 12 does not apply a patch to the Svelte that `pkg.pr.new` serves, so the doctor failed with "svelte@5.56.7 is not applied". The Metro transformer no longer needs the patch: it removes the compiler's two refusals of the transition directives as it loads the compiler (`module.registerHooks`, Node 22.15 or newer). The package ships no patch of Svelte, `init` declares none and the doctor asks for none.
+- `onintrostart`, `onintroend`, `onoutrostart` and `onoutroend` on an HTML element are no longer warned about ("never runs on a device"): Svelte's transitions send them and the handlers run.
+
 ## 0.4.0-rc.3 - 2026-11-10
 
 ### Fixed

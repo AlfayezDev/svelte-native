@@ -27,8 +27,8 @@ export const appDependencies: Readonly<Record<string, string>> = {
   "react-native-worklets": "0.10.1",
 };
 
-/** Packages whose patch every app needs; the others are declared when the app has the package (SvelteKit) or lists it at the patch's version (the view libraries). */
-const alwaysPatched = ["expo-modules-core", "react-native-gesture-handler", "react-native-reanimated", "react-native-worklets"];
+/** Packages whose patch every app needs (`svelte`: every app compiles with that build, whose compiler the patch lets accept `transition:` and `animate:`); the others are declared when the app has the package (SvelteKit) or lists it at the patch's version (the view libraries). */
+const alwaysPatched = ["expo-modules-core", "react-native-gesture-handler", "react-native-reanimated", "react-native-worklets", "svelte"];
 const plugin = "@example/svelte-native/expo";
 const scripts: Readonly<Record<string, string>> = { native: "svelte-native dev", android: "svelte-native android", ios: "svelte-native ios", "check-setup": "svelte-native doctor" };
 const gitignore = [".svelte-native", ".expo", "/android", "/ios"];
@@ -174,7 +174,8 @@ function planPackageJson(root: string, original: string, patches: readonly Patch
   // The packages the app needs next to the library, at the versions it was exercised on.
   let changedPeers = 0;
   for (const [name, version] of Object.entries(appDependencies)) if (setDependency(name, version, "dependencies")) changedPeers++;
-  for (const patch of patches.filter((entry) => alwaysPatched.includes(entry.package) && entry.package !== "expo-modules-core")) {
+  // `expo-modules-core` comes with `expo` and `svelte` is the custom-renderer build (a `file:` tarball or the preview URL): neither is a dependency init pins by version.
+  for (const patch of patches.filter((entry) => alwaysPatched.includes(entry.package) && entry.package !== "expo-modules-core" && entry.package !== "svelte")) {
     if (appDependencies[patch.package] !== patch.version) warnings.push(`${patch.package}: the library's patch is for ${patch.version}, and init's version is ${appDependencies[patch.package] ?? "none"}; this is a bug in the library.`);
   }
   if (changedPeers > 0) summary.push(`${plural(changedPeers, "dependency")} (the versions the library was exercised on)`);

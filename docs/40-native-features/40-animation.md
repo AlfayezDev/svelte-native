@@ -134,6 +134,50 @@ For motion that repeats or decorates, such as a pulse, a spinner or a shimmer, u
 
 Use worklets when the motion follows state, a gesture or a value that changes every frame; use CSS keys for the rest.
 
+## Svelte transitions
+
+Svelte's `transition:`, `in:`, `out:` and `animate:` work on native elements, with the functions from `svelte/transition` and `svelte/animate`:
+
+```svelte
+<script>
+  import { fade, fly } from 'svelte/transition';
+  import { flip } from 'svelte/animate';
+
+  let open = $state(false);
+  let items = $state([1, 2, 3]);
+</script>
+
+{#if open}
+  <View in:fly={{ y: 24 }} out:fade>
+    <Text>Hello</Text>
+  </View>
+{/if}
+
+{#each items as item (item)}
+  <View animate:flip={{ duration: 250 }}>
+    <Text>{item}</Text>
+  </View>
+{/each}
+```
+
+Svelte decides when a transition runs and works out its frames, as on the web. The library then plays those frames on the UI thread, so a busy script doesn't make them stutter. An `in:` that turns into an `out:` carries on from where it was. `animate:flip` moves each item of a keyed `{#each}` from where it was.
+
+What plays:
+
+- `opacity` and transforms: `translate`, `scale`, `rotate`, `skew` and `perspective`. These are the cheapest to animate.
+- Lengths and percentages, such as `height`, `width`, `padding`, `margin` and border widths. These cost a layout pass per frame, so `slide` costs more than `fade`.
+- Colours.
+
+What doesn't:
+
+- `filter`, so `blur` fades without blurring.
+- SVG stroke properties, so `draw` does nothing.
+- `matrix()` and the 3D transform functions.
+
+A transition skips what doesn't play and still plays the rest; in development you get one warning. A transition that only has `tick` runs on the JavaScript thread. While an element plays its outro, it takes no touches.
+
+`svelte-check` reports a directive written on a component such as `<View>`, even though Metro compiles it. Where the type check matters, write the directive on an HTML element instead (`<div in:fly>`).
+
 ## Running code on either thread
 
 | Function | What it does |

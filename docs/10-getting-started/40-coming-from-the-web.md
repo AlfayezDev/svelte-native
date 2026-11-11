@@ -72,13 +72,16 @@ There are no links and no URLs in the address bar. A screen asks the router to m
 
 A native screen is not rendered on a server and has no `load` function. It fetches its own data, with `fetch` or with SvelteKit's [remote functions](loading-data#remote-functions), which call your SvelteKit server from the phone.
 
+## Transitions play on the UI thread
+
+`transition:`, `in:`, `out:` and `animate:flip` work as on the web, with `svelte/transition` and `svelte/animate`. They play on the UI thread, so a busy script doesn't make them stutter. Some CSS properties have no native counterpart: see [Svelte transitions](animation#svelte-transitions).
+
 ## Runes mode is the default
 
 Every component of your app compiles in runes mode, even one with no rune in it. A file that needs legacy mode opts out with `<svelte:options runes={false} />`. Svelte libraries in `node_modules` keep Svelte's own default.
 
 ## What doesn't carry over
 
-- **Transitions.** `transition:`, `in:`, `out:` and `animate:` need the DOM. Use [`AnimatedView`](animation).
 - **The DOM.** `document`, `window`, actions that touch DOM nodes, and libraries built on them.
 - **React.** React Native components and hooks can't be used. Many native libraries still can: see [Native libraries](native-libraries).
 - **SvelteKit's page APIs.** `$app/navigation`, `$app/state`, `load`, form actions and `+error.svelte` are the web app's.

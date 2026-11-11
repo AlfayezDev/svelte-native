@@ -1,0 +1,147 @@
+import { afterEach, expect, test } from "bun:test";
+import { createRequire } from "node:module";
+import { dirname } from "node:path";
+import { compile } from "svelte/compiler";
+import { componentOptions } from "../src/compile-options.ts";
+import { readerFor } from "../src/doctor/resolve.ts";
+import { svelteProblems } from "../src/doctor/shapes.ts";
+import { lowerPrimitives } from "../src/lower.ts";
+import { NativeNode, setAnimationDriver, setInvalidationSink, type AnimationDriver } from "../src/renderer.ts";
+
+// What a native element offers the code Svelte compiles for `transition:`, `in:`, `out:` and `animate:` (element.style, dispatchEvent, getComputedStyle, getBoundingClientRect,
+// element.animate), without a host; and that the compiled component reaches for them on a lowered tag.
+
+afterEach(() => {
+  setAnimationDriver(null);
+  setInvalidationSink(null);
+});
+
+const imports = `<script>\n  import { View, Text, Image } from "@example/svelte-native";\n  import { fade, fly, scale } from "svelte/transition";\n  import { flip } from "svelte/animate";\n  let { rows = [] } = $props();\n</script>\n`;
+
+test("the installed Svelte has `svelte@5.56.7.patch`: the shape `svelte-native doctor` looks for, and a custom renderer's compiler takes every one of the directives", () => {
+  expect(svelteProblems(readerFor(dirname(createRequire(import.meta.url).resolve("svelte/package.json"))))).toEqual([]);
+  for (const directive of ["in:fade", "out:fade", "transition:fade", "animate:flip"]) {
+    const each = directive.startsWith("animate") ? "{#each [1] as item (item)}<native-view animate:flip>{item}</native-view>{/each}" : `<native-view ${directive}></native-view>`;
+    expect(() => compile(`<script>\n  import { fade } from "svelte/transition";\n  import { flip } from "svelte/animate";\n</script>\n${each}`, componentOptions("directive.svelte")), directive).not.toThrow();
+  }
+});
+
+test("a lowered View, Text and Image take the directives through to the compiled host tags", () => {
+  const source = `${imports}<View in:fly={{ y: 20 }} out:fade style={{ padding: 4 }}><Text transition:scale={{ start: 0.5 }}>x</Text></View>\n{#each rows as row (row)}<Image animate:flip={{ duration: 200 }} in:fade source={row} />{/each}`;
+  const lowered = lowerPrimitives(source);
+  expect(lowered).toContain("<native-view in:fly={{ y: 20 }} out:fade nativeStyle={{ padding: 4 }}>");
+  const code = compile(lowered, componentOptions("transitions.svelte")).js.code;
+  expect(code).toContain("$.transition(1, native_view, () => fly, () => ({ y: 20 }));");
+  expect(code).toContain("$.transition(2, native_view, () => fade);");
+  expect(code).toContain("$.transition(3, native_text, () => scale, () => ({ start: 0.5 }));");
+  expect(code).toContain("$.animation(native_image, () => flip, () => ({ duration: 200 }));");
+  expect(code).toContain("$.transition(1, native_image, () => fade);");
+  expect(code).not.toMatch(/\bView\(|\bText\(|\bImage\(/);
+});
+
+test("node.style keeps what Svelte writes (overflow, position, size, transform) and tells the host once per change; an empty value removes it", () => {
+  const node = new NativeNode("element", "native-view");
+  const told: string[] = [];
+  setInvalidationSink((_, reason) => told.push(reason));
+  expect(node.style.overflow).toBe("");
+  node.style.overflow = "hidden";
+  node.style.position = "absolute";
+  node.style.width = "100px";
+  node.style.transform = "translate(1px, 2px)";
+  expect(node.dom?.inline).toEqual({ overflow: "hidden", position: "absolute", width: "100px", transform: "translate(1px, 2px)" });
+  expect(told).toEqual(["props", "props", "props", "props"]);
+  node.style.overflow = "hidden"; // no change, no word
+  expect(told).toHaveLength(4);
+  node.style.overflow = "";
+  node.style.height = undefined as never;
+  expect(node.style.overflow).toBe("");
+  expect(node.style.getPropertyValue("position")).toBe("absolute");
+  expect(node.style.removeProperty("position")).toBe("absolute");
+  node.style.setProperty("width", null);
+  node.style.transform = "";
+  expect(node.dom?.inline).toBeNull();
+  // the node's own attributes are not touched
+  node.setProp("nativeStyle", { padding: 1 });
+  expect(node.peekProps()).toEqual({ nativeStyle: { padding: 1 } });
+});
+
+test("an inert node takes no touches: element.inert is pointerEvents none over the node's own style", () => {
+  const node = new NativeNode("element", "native-view");
+  const told: string[] = [];
+  setInvalidationSink((_, reason) => told.push(reason));
+  expect(node.inert).toBe(false);
+  node.inert = false; // what a transition does when it starts, with the value it read
+  expect(told).toEqual([]);
+  node.inert = true;
+  expect(node.inert).toBe(true);
+  expect(node.dom?.inline).toEqual({ pointerEvents: "none" });
+  node.inert = false;
+  expect(node.dom?.inline).toBeNull();
+  expect(told).toEqual(["props", "props"]);
+});
+
+test("dispatchEvent calls the listeners of the event's type, which is how introstart and outroend reach the element's handlers", () => {
+  const node = new NativeNode("element", "native-view");
+  const seen: unknown[] = [];
+  node.listeners = new Map([["introstart", new Set([(event: unknown) => seen.push(event)])]]);
+  const event = new CustomEvent("introstart");
+  expect(node.dispatchEvent(event)).toBe(true);
+  expect(node.dispatchEvent(new CustomEvent("outroend"))).toBe(true);
+  expect(seen).toEqual([event]);
+});
+
+test("without a host the node answers with no layout, no animations, and an animation that finishes at once, so an outro still ends", async () => {
+  const node = new NativeNode("element", "native-view");
+  const rect = node.getBoundingClientRect();
+  expect([rect.left, rect.top, rect.right, rect.bottom, rect.width, rect.height]).toEqual([0, 0, 0, 0, 0, 0]);
+  expect([node.clientWidth, node.clientHeight]).toEqual([0, 0]);
+  expect(node.getAnimations()).toEqual([]);
+  const animation = node.animate([{ opacity: "1" }, { opacity: "0" }], { duration: 400, fill: "forwards" });
+  let finished = 0;
+  animation.onfinish = () => { finished++; };
+  expect(animation.playState).toBe("running");
+  await Promise.resolve();
+  expect(finished).toBe(1);
+  expect(animation.playState).toBe("finished");
+  const cancelled = node.animate([], { duration: 1 });
+  let late = 0;
+  cancelled.onfinish = () => { late++; };
+  cancelled.cancel();
+  cancelled.effect = null;
+  await Promise.resolve();
+  expect(late).toBe(0);
+  expect(cancelled.playState).toBe("idle");
+});
+
+test("the global getComputedStyle answers for a node, from its own style, and does not fail for anything else", () => {
+  expect(typeof getComputedStyle).toBe("function");
+  const node = new NativeNode("element", "native-view");
+  node.setProp("nativeStyle", { opacity: 0.25, transform: [{ rotate: "10deg" }] });
+  const style = getComputedStyle(node as never);
+  expect(style.opacity).toBe("0.25");
+  expect(style.transform).toBe("rotate(10deg)");
+  expect(+style.opacity).toBe(0.25);
+  expect(style.transform === "none" ? "" : style.transform).toBe("rotate(10deg)");
+  expect(getComputedStyle(null as never).opacity).toBe("1");
+});
+
+test("the layout a node reports is the host's, with the zoom a flip asks for answered here", () => {
+  const driver: AnimationDriver = {
+    animate: () => { throw new Error("not used"); },
+    getAnimations: () => [],
+    layout: () => ({ x: 10, y: 20, width: 100, height: 40 }),
+  };
+  setAnimationDriver(driver);
+  const node = new NativeNode("element", "native-view");
+  const rect = node.getBoundingClientRect();
+  expect([rect.left, rect.top, rect.right, rect.bottom, rect.width, rect.height]).toEqual([10, 20, 110, 60, 100, 40]);
+  expect([node.clientWidth, node.clientHeight]).toEqual([100, 40]);
+  expect("currentCSSZoom" in node).toBe(true);
+  expect(node.currentCSSZoom).toBe(1);
+  const style = getComputedStyle(node as never);
+  expect([style.width, style.height, style.transformOrigin]).toEqual(["100px", "40px", "50px 20px"]);
+  // flip's reading of it: the origin as a share of the size
+  const [ox, oy] = style.transformOrigin.split(" ").map(parseFloat);
+  expect([(ox as number) / node.clientWidth, (oy as number) / node.clientHeight]).toEqual([0.5, 0.5]);
+  expect(node.getAnimations()).toEqual([]); // nothing animates it
+});

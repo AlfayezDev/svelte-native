@@ -1,0 +1,31 @@
+diff --git a/src/compiler/phases/2-analyze/visitors/AnimateDirective.js b/src/compiler/phases/2-analyze/visitors/AnimateDirective.js
+index 8c5b1a6..2b1aced 100644
+--- a/src/compiler/phases/2-analyze/visitors/AnimateDirective.js
++++ b/src/compiler/phases/2-analyze/visitors/AnimateDirective.js
+@@ -8,10 +8,6 @@ import { custom_renderer } from '../../../state.js';
+  * @param {Context} context
+  */
+ export function AnimateDirective(node, context) {
+-	if (custom_renderer) {
+-		e.incompatible_with_custom_renderer(node, '`animate:`');
+-	}
+-
+ 	context.next({ ...context.state, expression: node.metadata.expression });
+ 
+ 	if (node.metadata.expression.has_await) {
+diff --git a/src/compiler/phases/2-analyze/visitors/TransitionDirective.js b/src/compiler/phases/2-analyze/visitors/TransitionDirective.js
+index 3b78997..eb79a74 100644
+--- a/src/compiler/phases/2-analyze/visitors/TransitionDirective.js
++++ b/src/compiler/phases/2-analyze/visitors/TransitionDirective.js
+@@ -10,11 +10,6 @@ import { mark_subtree_dynamic } from './shared/fragment.js';
+  * @param {Context} context
+  */
+ export function TransitionDirective(node, context) {
+-	if (custom_renderer) {
+-		const directive = node.intro && node.outro ? '`transition:`' : node.intro ? '`in:`' : '`out:`';
+-		e.incompatible_with_custom_renderer(node, directive);
+-	}
+-
+ 	mark_subtree_dynamic(context.path);
+ 
+ 	context.next({ ...context.state, expression: node.metadata.expression });

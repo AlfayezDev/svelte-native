@@ -85,6 +85,16 @@ function loadAnimation(): AnimationModule {
   animation = require("./animation.ts") as AnimationModule;
   return animation;
 }
+// Svelte's transitions and `animate:` (`transitions.ts`) are played by the animation layer, and load with it on the first `element.animate`.
+type TransitionsModule = typeof import("./transitions.ts");
+let transitions: TransitionsModule | null = null;
+function loadTransitions(): TransitionsModule {
+  if (transitions) return transitions;
+  loadAnimation();
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  transitions = require("./transitions.ts") as TransitionsModule;
+  return transitions;
+}
 // The gesture host (react-native-gesture-handler's detector, `fabric/gestures.ts`) loads on the first node with a `gesture`
 // attribute, after Reanimated: UI-thread callbacks are worklets, which must be created against the real functions.
 type GesturesModule = typeof import("./gestures.ts");
@@ -101,7 +111,8 @@ import { iosNavigationViewName } from "./navigation.ios.ts";
 import { mergeHostProps } from "../native-props.ts";
 import { applyAriaProps, isAriaKey } from "./accessibility.ts";
 import { foreignText, type ForeignText } from "./foreign-text.ts";
-import renderer, { NativeNode, setInvalidationSink, setUnlinkSink, type Invalidation } from "../renderer.ts";
+import renderer, { InstantAnimation, NativeNode, setAnimationDriver, setInvalidationSink, setUnlinkSink, type AnimationDriver, type Invalidation } from "../renderer.ts";
+import { applyInlineStyle, type Rect } from "./dom-style.ts";
 import { Pressability, type PressabilityConfig, type ResponderHandlers } from "./pressability.ts";
 import { createResponder } from "./responder.ts";
 
@@ -118,6 +129,8 @@ type Binding = {
   registerEventHandler(handler: (target: unknown, type: string, nativeEvent: object) => void): void;
   measure?(node: FabricNode, callback: (x: number, y: number, width: number, height: number, pageX: number, pageY: number) => void): void;
   measureInWindow?(node: FabricNode, callback: (x: number, y: number, width: number, height: number) => void): void;
+  /** React Native's synchronous layout read of the committed tree: `[x, y, width, height]` in the window, `undefined` when the surface has no revision. */
+  getBoundingClientRect?(node: FabricNode, includeTransform: boolean): readonly number[] | undefined;
   dispatchCommand?(node: FabricNode, name: string, args: unknown[]): void;
   setNativeProps?(node: FabricNode, props: object): void;
 };
@@ -358,6 +371,11 @@ function state(node: NativeNode, viewName: string): State {
 /** The element's attributes as React Native props (see `mergeHostProps`), with each listener registered on the node as its `on…` handler. */
 function nativeProps(node: NativeNode): Record<string, unknown> {
   const props = mergeHostProps(node.peekProps());
+  // What Svelte's transitions and `animate:` wrote to `node.style`, and the worklet that draws their animations (`transitions.ts`).
+  if (node.dom !== null) {
+    if (node.dom.inline !== null) applyInlineStyle(props, node.dom.inline);
+    if (node.dom.animation !== null) loadTransitions().injectAnimations(node, props);
+  }
   if (node.listeners.size > 0) for (const type of node.listeners.keys()) props[`on${type[0]?.toUpperCase()}${type.slice(1)}`] = node.dispatcher(type);
   return props;
 }
@@ -735,10 +753,23 @@ function detachRemovedAnimations(): void {
   gestures?.sweepGestures(isLive);
 }
 
+/** A commit is being built: a layout read (`layoutOf`) made from inside it (a `ref` callback) reads the tree as it was, and does not start another. */
+let flushing = false;
 /** Commits every pending change in one Fabric transaction per root. */
 export function flush(): void {
+  if (flushing) return;
   flushScheduled = false;
   if (!binding || dirty.size === 0) return;
+  flushing = true;
+  try {
+    commit();
+  } finally {
+    flushing = false;
+  }
+}
+
+function commit(): void {
+  if (!binding) return;
   const started = performance.now();
   profile = profiling();
   stats.lastCreated = 0; stats.lastCloned = 0; stats.lastCompleted = 0; stats.payloadMs = 0; stats.createMs = 0; stats.appendMs = 0; stats.completeMs = 0;
@@ -854,6 +885,44 @@ function dispatchEvent(target: unknown, topLevelType: string, nativeEvent: objec
   }
 }
 
+/**
+ * A node's box, from React Native's synchronous layout read of the committed tree: what is pending is committed first (Svelte reads a layout right after it changed the tree, `animate:`
+ * does it twice per item), and the box includes the transform the node's own style gives it. While an animation moves the node (the UI thread draws that, the committed tree does not
+ * have it) the layout box is read without a transform and moved by what the animation draws. Null for a node that has no view yet.
+ */
+function layoutOf(node: NativeNode): Rect | null {
+  if (!binding?.getBoundingClientRect) return null;
+  flush();
+  const current = stateOf(node);
+  if (!current?.node) return null;
+  const driven = node.dom?.animation ? loadTransitions().drivesTransform(node) : false;
+  const box = binding.getBoundingClientRect(current.node, !driven);
+  if (!box) return null;
+  const rect = { x: box[0] as number, y: box[1] as number, width: box[2] as number, height: box[3] as number };
+  return driven ? loadTransitions().compensate(node, rect) : rect;
+}
+
+/** An app without Reanimated (or one whose Reanimated does not load) still ends its transitions, at once: an outro that never finished would keep its node. */
+let transitionsFailed = false;
+function animate(node: NativeNode, keyframes: Parameters<AnimationDriver["animate"]>[1], options: Parameters<AnimationDriver["animate"]>[2]) {
+  if (!transitionsFailed) {
+    try {
+      return loadTransitions().animate(node, keyframes, options);
+    } catch (error) {
+      if (transitions) throw error;
+      transitionsFailed = true;
+      console.warn("[Svelte transitions] react-native-reanimated did not load, so transitions and animate: end at once instead of playing", error);
+    }
+  }
+  return new InstantAnimation();
+}
+
+const animationDriver: AnimationDriver = {
+  animate,
+  getAnimations: (node) => loadTransitions().getAnimations(node),
+  layout: layoutOf,
+};
+
 let handlerRegistered = false;
 let bootLogged = false;
 
@@ -863,6 +932,7 @@ export function startSurface<Props extends Record<string, unknown>>(rootTag: num
   if (!handlerRegistered) { binding.registerEventHandler(dispatchEvent); handlerRegistered = true; }
   setInvalidationSink(onInvalidate);
   setUnlinkSink(onUnlink);
+  setAnimationDriver(animationDriver);
   if (!engineTried) {
     engineTried = true;
     const engine = probeEngine() as { install: (reanimatedReady: boolean) => boolean; dispatchCommand?: (tag: number, name: string, args: unknown[]) => void } | null;

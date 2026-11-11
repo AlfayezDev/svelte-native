@@ -32,14 +32,14 @@ const { smokeOnlyBundlePackages } = createRequire(import.meta.url)("../smoke-pac
  * are the product's, not measured module by module. The production variant is 1,674,787 bytes (29.8 %) under the QA app: the lab and the
  * libraries only it imports.
  */
-const baseline = { commit: "SvelteKit 3.1.1 (its client runtime imports its message modules: +91,291 bytes, 1.6 %, over the 5,628,280 measured at 1bbbec6, the example without the product's code)", bytes: 5_719_571 };
+const baseline = { commit: "Svelte's transitions and animate:flip on native elements (5,806,133 bytes, +86,562, 1.5 %, over the 5,719,571 measured with SvelteKit 3.1.1 (its client runtime imports its message modules: +91,291 bytes, 1.6 %, over the 5,628,280 measured at 1bbbec6, the example without the product's code); about 41 KB of that is the transitions: the keyframe tracks and the worklet that samples them, the host's playback and layout read, and the node's DOM-like surface in the renderer)", bytes: 5_806_133 };
 
 /**
  * The production variant's bundle without the lab, built with the same recipe. It may grow by 1 % before a test says so. Measured again at 727bded, which makes the library's
  * polyfills load Expo's WinterCG runtime (a standard `URL`, `fetch`, `TextDecoder`, ... that the router needs): 4,074,366 bytes, 120,873 (3.1 %) over the 3,953,493 of 1bbbec6 without
  * it (the QA app, which imported the runtime already, did not move).
  */
-const productBaseline = { commit: "727bded (Polyfills: Expo's WinterCG runtime is loaded)", bytes: 4_074_366 };
+const productBaseline = { commit: "Svelte's transitions and animate:flip on native elements (4,147,267 bytes, +72,901, 1.8 %, over the 4,074,366 measured at 727bded, which loads Expo's WinterCG runtime in the polyfills; about 41 KB of that is the transitions, as in the QA app's)", bytes: 4_147_267 };
 
 /** What this run made: the bundle directories (about 15 to 34 MB each) and the Metro caches of their own. All removed when the tests end. */
 const made: string[] = [];

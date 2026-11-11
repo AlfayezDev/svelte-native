@@ -134,12 +134,16 @@ test("bindings other than this and let: directives keep the component", () => {
   expect(run(source)).toBe(source);
 });
 
-test("directives are left alone and warned about", () => {
+test("transition:, in:, out: and animate: stay on the host tag and are not warned about; an action other than gesture is", () => {
   const warnings: string[] = [];
-  const source = `${imp}<View use:tap transition:fade>x</View>`;
+  const source = `${imp}<View use:tap transition:fade in:fly={{ y: 20 }} out:fade animate:flip={{ duration: 200 }}>x</View>`;
   const out = lowerPrimitives(source, { filename: "d.svelte", warn: (m) => warnings.push(m) });
-  expect(out).toContain("<native-view use:tap transition:fade>x</native-view>");
-  expect(warnings).toHaveLength(2);
+  expect(out).toContain("<native-view use:tap transition:fade in:fly={{ y: 20 }} out:fade animate:flip={{ duration: 200 }}>x</native-view>");
+  expect(warnings).toHaveLength(1);
+  expect(warnings[0]).toContain("use:tap");
+  const clean: string[] = [];
+  lowerPrimitives(`${imp}<View transition:fade><Text in:fly out:fade>x</Text><Image animate:flip /><Pressable transition:scale /></View>`, { warn: (m) => clean.push(m) });
+  expect(clean).toEqual([]);
 });
 
 test("TypeScript scripts parse and stay untouched; line numbers are stable", () => {

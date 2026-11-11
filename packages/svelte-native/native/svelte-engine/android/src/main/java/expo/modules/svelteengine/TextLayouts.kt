@@ -131,7 +131,7 @@ object TextLayouts {
   }
 
   /** `TextTransform.apply`. */
-  private fun transformed(text: String, mode: Int): String = when (mode) {
+  internal fun transformed(text: String, mode: Int): String = when (mode) {
     1 -> text.uppercase(Locale.getDefault())
     2 -> text.lowercase(Locale.getDefault())
     3 -> {

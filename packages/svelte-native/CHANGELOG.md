@@ -16,6 +16,13 @@ Notable changes to `@rasheed/svelte-native`, newest first. The format follows [K
 - **Breaking:** expo-blur's component is now `ExpoBlurView` (the name `BlurView` is the library's own blur above); its props and `BlurTargetView` are unchanged. Rename the import and the tag where you use expo-blur's.
 - The guide in `docs/` is reorganised in the shape of SvelteKit's, in sections: getting started, core concepts, a page for every component (what it is, an example, its props), native features, building and releasing, an appendix, and a reference for the command line, the configuration and every module. It is published at <https://svelte-native.alfayez.dev>. `svelte-native doctor` names the new path of "Creating a project".
 
+### Fixed
+
+- Android: a `Text` nested in a `Text` with its own `onPress` (the inline link, `<Text>See <Text onPress={...}>this link</Text> here</Text>`) never got its presses: the engine sent every touch to the whole paragraph, so only an `onPress` on the outer `Text` worked. The touch now goes to the nested `Text` under the finger, as in React Native (`reactTagForTouch`): its `onPress`, `onPressIn`, `onPressOut`, `onLongPress` and `onPressChange` run, and the paragraph's does not, unless the nested `Text` has no handler; a press that moves far off the sentence is cancelled. A nested `Text` with `role="link"` is listed as a link by a screen reader.
+- Android: a `Text` with `onPress` ran it twice per tap (the touch's press, then a second one from Android's click when the finger lifted). It runs once.
+
+Both are changes in the native engine, so the native host has to be rebuilt.
+
 ## 0.4.0-rc.3 - 2026-11-10
 
 ### Fixed

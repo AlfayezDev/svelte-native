@@ -28,6 +28,16 @@ Notable changes to `@example/svelte-native`, newest first. The format follows [K
 - **Breaking:** expo-blur's component is now `ExpoBlurView` (the name `BlurView` is the library's own blur above); its props and `BlurTargetView` are unchanged. Rename the import and the tag where you use expo-blur's.
 - The guide in `docs/` is reorganised in the shape of SvelteKit's, in sections: getting started, core concepts, a page for every component (what it is, an example, its props), native features, building and releasing, an appendix, and a reference for the command line, the configuration and every module. It is published at <https://svelte-native.alfayez.dev>. `svelte-native doctor` names the new path of "Creating a project".
 
+### Fixed
+
+- Android: a `Text` nested in a `Text` with its own `onPress` (the inline link, `<Text>See <Text onPress={...}>this link</Text> here</Text>`) never got its presses: the engine sent every touch to the whole paragraph, so only an `onPress` on the outer `Text` worked. The touch now goes to the nested `Text` under the finger, as in React Native (`reactTagForTouch`): its `onPress`, `onPressIn`, `onPressOut`, `onLongPress` and `onPressChange` run, and the paragraph's does not, unless the nested `Text` has no handler; a press that moves far off the sentence is cancelled. A nested `Text` with `role="link"` is a link to accessibility services (a clickable span over its words, which a service lists and activates; the activation presses it). A touch on the `…` of a `numberOfLines` text is the paragraph's, not a hidden link's.
+- Android: a `Text`, an `Image` or an `ActivityIndicator` with a press handler ran it twice per tap (the touch's press, then a second one from Android's click when the finger lifted). It runs once.
+- A press whose node is unmounted while the finger is down no longer runs the node's handlers when the finger lifts, and a press whose end never arrives (native drops the touches of a deleted node) no longer leaves the next touch without a responder.
+
+- A `Text`, `View` or `Pressable` whose `onPress` (or another press handler) is `undefined` (`onPress={enabled ? go : undefined}`) no longer keeps the press from the nearest ancestor that has a handler: Svelte compiled it to an event listener that stayed on the element and did nothing, and the host took the element for a pressable. The lowering now passes a press handler that is not a function written in place as the attribute `nativeOnPress` (and `nativeOnPressIn`, ...), which is the prop only while it is a function. An HTML element does the same for an `onclick` that may be `undefined` (a `div`, a `span`, a `p`; a button and a link press by themselves, so they are always pressable). A hand-written `native-*` tag keeps the old behaviour unless it uses these attributes.
+
+The first three are changes in the native engine, so the native host has to be rebuilt.
+
 ## 0.4.0-rc.3 - 2026-11-10
 
 ### Fixed

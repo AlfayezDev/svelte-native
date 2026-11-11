@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Canvas
 import android.graphics.PorterDuff
+import android.view.MotionEvent
 import android.widget.ProgressBar
 import expo.modules.svelteengine.ViewProps
 
@@ -43,6 +44,13 @@ class EngineSpinner(context: Context, styleCode: Int) : ProgressBar(context, nul
     }
     invalidate()
   }
+
+  /**
+   * A node that listens for `click` is clickable for accessibility services ([expo.modules.svelteengine.A11y.setClickable]), and `View.onTouchEvent` performs the click when the
+   * finger lifts: JavaScript would hear `click` after the press its touch has already made ([EngineRoot] hands it every touch). The touch is consumed as a clickable view
+   * consumes it (a scroll ancestor can still take the gesture over) and nothing more; a click comes from a service.
+   */
+  override fun onTouchEvent(event: MotionEvent): Boolean = isClickable
 
   override fun onDraw(canvas: Canvas) {
     // `animating = false` hides the indicator (React Native: ProgressBarContainerView).

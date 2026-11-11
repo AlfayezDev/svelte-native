@@ -1112,6 +1112,23 @@ function eventNamesOf(viewName: string): ReadonlyMap<string, string> {
 }
 
 const pressHandlerNames = ["onPress", "onPressIn", "onPressOut", "onLongPress", "onPressChange"];
+/**
+ * The press region of a node. A Text nested in a Text has no frame of its own: Fabric answers `measure` for it with no numbers (its words are laid out in the
+ * paragraph, and the Android engine draws them there), which Pressability reads as "no region" and so never sees the finger leave. Its region is the paragraph's
+ * (the nearest Text that is not nested), widened by the retention offset as any other: a press that starts on a span is cancelled when the finger goes that far
+ * from the paragraph.
+ */
+function measurePressRegion(own: State, node: NativeNode, callback: Parameters<HostHandle["measure"]>[0]): void {
+  let host = node;
+  let hosted = own;
+  while (hosted.viewName === "RCTVirtualText" && host.parent) {
+    const next = stateOf(host.parent);
+    if (!next) break;
+    host = host.parent;
+    hosted = next;
+  }
+  handleFor(hosted, host).measure(callback);
+}
 const pressabilities = new WeakMap<NativeNode, Pressability>();
 /** Pressability's responder handlers for a node that carries press handlers; created on first use and disposed when the handlers go away. */
 function pressabilityFor(node: NativeNode): ResponderHandlers | undefined {
@@ -1121,7 +1138,7 @@ function pressabilityFor(node: NativeNode): ResponderHandlers | undefined {
     if (press) { press.reset(); pressabilities.delete(node); }
     return undefined;
   }
-  if (!press) { press = new Pressability({}, (callback) => handleFor(own, node).measure(callback)); pressabilities.set(node, press); }
+  if (!press) { press = new Pressability({}, (callback) => measurePressRegion(own, node, callback)); pressabilities.set(node, press); }
   const { handlers, props } = own;
   // React Native's `Pressable` takes `pressRetentionOffset` and hands Pressability `pressRectOffset`; the host reads the props itself, so it maps the name.
   const { pressRectOffset, pressRetentionOffset } = props as PressabilityConfig & { pressRetentionOffset?: PressabilityConfig["pressRectOffset"] };
@@ -1157,6 +1174,12 @@ const responder = createResponder<NativeNode>({
   },
   releaseNativeResponder: () => {
     if (gestures) nativeGestureModule().handleClearJSResponder();
+  },
+  // A node that was removed from the tree while it held the gesture (a link whose paragraph re-rendered without it, a screen that was popped) is no responder any more.
+  mounted: isLive,
+  abandon: (node) => {
+    const press = pressabilities.get(node);
+    if (press) { press.reset(); pressabilities.delete(node); }
   },
 });
 

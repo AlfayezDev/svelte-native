@@ -11,6 +11,7 @@ export type Unit = "" | "%" | "deg";
 export type TransformOp = { name: string; unit: Unit; value: number };
 export type NativeTransform = Record<string, number | string>;
 export type Rect = { x: number; y: number; width: number; height: number };
+export type Size = { width: number; height: number };
 
 const NUMBER = /^([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)([a-z%]*)$/i;
 
@@ -155,6 +156,65 @@ export function transformOps(transform: unknown): TransformOp[] {
   return parseTransform(transformToCss(transform)).ops;
 }
 
+/** The entries of a `transform` array (what a worklet writes: `{ translateX: 10 }`, `{ scale: 2 }`, `{ rotate: "45deg" }`) as operations. */
+export function entriesToOps(entries: readonly Record<string, number | string>[]): TransformOp[] {
+  const ops: TransformOp[] = [];
+  for (const entry of entries) {
+    for (const name in entry) {
+      const value = entry[name] as number | string;
+      if (typeof value === "number") ops.push({ name, unit: "", value });
+      else if (value.endsWith("%")) ops.push({ name, unit: "%", value: Number.parseFloat(value) });
+      else if (value.endsWith("deg")) ops.push({ name, unit: "deg", value: Number.parseFloat(value) });
+    }
+  }
+  return ops;
+}
+
+const ORIGIN_WORDS: Record<string, number> = { left: 0, top: 0, center: 0.5, right: 1, bottom: 1 };
+/** One coordinate of a `transformOrigin` (`left`, `50%`, `10px`, `10`) in px of an extent. */
+function originCoordinate(part: unknown, extent: number): number {
+  if (typeof part === "number") return part;
+  if (typeof part !== "string") return extent / 2;
+  const word = ORIGIN_WORDS[part.trim().toLowerCase()];
+  if (word !== undefined) return word * extent;
+  const length = parseLength(part);
+  return length === null ? extent / 2 : length.unit === "%" ? (length.value / 100) * extent : length.value;
+}
+
+/**
+ * A `transformOrigin` (a string such as `top left`, `50% 50%` or `10px 20px`, or React Native's array form) as the point it names in a box of `size`, in px from the box's top left.
+ * Nothing, or a value that is not one, is the centre, which is where React Native and CSS put it.
+ */
+export function parseOrigin(origin: unknown, size: Size): { x: number; y: number } {
+  const words = Array.isArray(origin) ? origin : typeof origin === "string" ? origin.trim().split(/\s+/) : [];
+  const lower = words.map((word) => (typeof word === "string" ? word.toLowerCase() : word));
+  let [horizontal, vertical] = lower;
+  // A vertical keyword first (`top left`, `bottom`): the horizontal part is the second word, or the centre.
+  if (horizontal === "top" || horizontal === "bottom") [horizontal, vertical] = [vertical ?? "center", horizontal];
+  return { x: originCoordinate(horizontal, size.width), y: originCoordinate(vertical, size.height) };
+}
+
+/**
+ * Where a transform puts a box: its translation and its scale about `origin` (a point of the box, in px from its top left), as `getBoundingClientRect` reports the box of a transformed
+ * element. A rotation, a skew and a perspective are not applied (the box stays the one it was).
+ */
+export function transformRect(box: Rect, ops: readonly TransformOp[], origin: { x: number; y: number }): Rect {
+  let tx = 0;
+  let ty = 0;
+  let sx = 1;
+  let sy = 1;
+  for (const op of ops) {
+    const amount = op.unit === "%" ? (op.value / 100) * (op.name === "translateY" ? box.height : box.width) : op.value;
+    if (op.name === "translateX") tx += sx * amount;
+    else if (op.name === "translateY") ty += sy * amount;
+    else if (op.name === "scale") { sx *= op.value; sy *= op.value; }
+    else if (op.name === "scaleX") sx *= op.value;
+    else if (op.name === "scaleY") sy *= op.value;
+  }
+  if (tx === 0 && ty === 0 && sx === 1 && sy === 1) return box;
+  return { x: box.x + origin.x + tx - sx * origin.x, y: box.y + origin.y + ty - sy * origin.y, width: box.width * sx, height: box.height * sy };
+}
+
 // --- Styles -------------------------------------------------------------------------------------------------------------------
 
 /** A style (an object, or arrays of them, with falsy entries) as one object, later entries winning; a shared value or any other object that is not a plain record is skipped. */
@@ -222,11 +282,29 @@ function edge(style: Record<string, unknown>, shorthand: string, axis: string, k
 
 export type ComputedStyle = Record<string, string> & { opacity: string; transform: string; transformOrigin: string; width: string; height: string };
 
+/** A colour of a style (a string, or the integer React Native processes it to: ARGB) as the CSS string `getComputedStyle` gives; `fallback` when the style has none. */
+function cssColor(value: unknown, fallback: string): string {
+  if (typeof value === "string" && value !== "") return value;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const argb = value >>> 0;
+    const alpha = Math.round(((argb >>> 24) / 255) * 1000) / 1000;
+    return `rgba(${(argb >>> 16) & 255}, ${(argb >>> 8) & 255}, ${argb & 255}, ${alpha})`;
+  }
+  return fallback;
+}
+
+const COLOURS: readonly [name: string, fallback: string][] = [
+  ["backgroundColor", "rgba(0, 0, 0, 0)"], ["color", "rgb(0, 0, 0)"], ["borderColor", "rgb(0, 0, 0)"],
+  ["borderTopColor", ""], ["borderRightColor", ""], ["borderBottomColor", ""], ["borderLeftColor", ""],
+];
+const RADII = ["borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius"] as const;
+
 /**
- * What `getComputedStyle(node)` gives Svelte's transitions and `flip`: the values they read, as the strings the DOM gives, from the node's own style (and its inline `style`) and its
- * layout. The layout is read when `width` or `height` is: it asks the host to commit what is pending first, which a transition that reads neither (`fade`, `fly`) never costs.
+ * What `getComputedStyle(node)` gives Svelte's transitions and `flip`: the values they read, as the strings the DOM gives, from the node's own style (and its inline `style`: the style
+ * of its `class` is in it) and its layout. The size is read when `width`, `height` or `transformOrigin` is: it asks the host to commit what is pending first, which a transition that
+ * reads none of them (`fade`, `fly`) never costs.
  */
-export function computedStyleOf(props: Readonly<Record<string, unknown>>, inline: Readonly<Record<string, string>> | null, layout: () => Rect | null): ComputedStyle {
+export function computedStyleOf(props: Readonly<Record<string, unknown>>, inline: Readonly<Record<string, string>> | null, size: () => Size | null): ComputedStyle {
   const style = effectiveStyle(props, inline);
   const opacity = typeof style.opacity === "number" ? style.opacity : 1;
   const result: Record<string, string> = {
@@ -237,16 +315,22 @@ export function computedStyleOf(props: Readonly<Record<string, unknown>>, inline
     position: typeof style.position === "string" ? style.position : "relative",
     overflow: typeof style.overflow === "string" ? style.overflow : "visible",
     filter: "none",
+    // What `transition:draw` reads of an element that has no stroke.
+    strokeLinecap: "butt",
+    strokeWidth: "0",
   };
   for (const [name, shorthand, axis, side] of [
     ["paddingTop", "padding", "Vertical", "Top"], ["paddingBottom", "padding", "Vertical", "Bottom"], ["paddingLeft", "padding", "Horizontal", "Left"], ["paddingRight", "padding", "Horizontal", "Right"],
     ["marginTop", "margin", "Vertical", "Top"], ["marginBottom", "margin", "Vertical", "Bottom"], ["marginLeft", "margin", "Horizontal", "Left"], ["marginRight", "margin", "Horizontal", "Right"],
   ] as const) result[name] = px(edge(style, shorthand, axis, `${shorthand}${side}`));
   for (const side of ["Top", "Bottom", "Left", "Right"]) result[`border${side}Width`] = px(edge(style, "borderWidth", "", `border${side}Width`));
+  for (const [name, fallback] of COLOURS) result[name] = cssColor(style[name], name.startsWith("border") && name !== "borderColor" ? cssColor(style.borderColor, "rgb(0, 0, 0)") : fallback);
+  for (const name of RADII) result[name] = px(typeof style[name] === "number" ? style[name] : typeof style.borderRadius === "number" ? style.borderRadius : 0);
+  result.borderRadius = px(typeof style.borderRadius === "number" ? style.borderRadius : 0);
   Object.defineProperties(result, {
-    width: { get: () => px(layout()?.width ?? 0), enumerable: true },
-    height: { get: () => px(layout()?.height ?? 0), enumerable: true },
-    transformOrigin: { get: () => { const box = layout(); return `${(box?.width ?? 0) / 2}px ${(box?.height ?? 0) / 2}px`; }, enumerable: true },
+    width: { get: () => px(size()?.width ?? 0), enumerable: true },
+    height: { get: () => px(size()?.height ?? 0), enumerable: true },
+    transformOrigin: { get: () => { const box = size() ?? { width: 0, height: 0 }; const at = parseOrigin(style.transformOrigin, box); return `${at.x}px ${at.y}px`; }, enumerable: true },
   });
   return result as ComputedStyle;
 }

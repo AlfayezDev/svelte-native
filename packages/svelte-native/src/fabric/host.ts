@@ -112,7 +112,7 @@ import { mergeHostProps } from "../native-props.ts";
 import { applyAriaProps, isAriaKey } from "./accessibility.ts";
 import { foreignText, type ForeignText } from "./foreign-text.ts";
 import renderer, { InstantAnimation, NativeNode, setAnimationDriver, setInvalidationSink, setUnlinkSink, type AnimationDriver, type Invalidation } from "../renderer.ts";
-import { applyInlineStyle, type Rect } from "./dom-style.ts";
+import { applyInlineStyle, effectiveStyle, parseOrigin, transformOps, transformRect, type Rect } from "./dom-style.ts";
 import { Pressability, type PressabilityConfig, type ResponderHandlers } from "./pressability.ts";
 import { createResponder } from "./responder.ts";
 
@@ -889,44 +889,99 @@ function dispatchEvent(target: unknown, topLevelType: string, nativeEvent: objec
   }
 }
 
+/** `loadTransitions`, or null when Reanimated (or the animation layer) does not load: an app without it still ends its transitions, at once, and says so once. */
+let transitionsFailed = false;
+function ensureTransitions(): TransitionsModule | null {
+  if (transitions) return transitions;
+  if (transitionsFailed) return null;
+  try {
+    const module = loadTransitions();
+    module.warmUp();
+    return module;
+  } catch (error) {
+    transitionsFailed = true;
+    console.warn("[Svelte transitions] react-native-reanimated did not load, so transitions and animate: end at once instead of playing", error);
+    return null;
+  }
+}
+
+/** One read of React Native's layout of the committed tree for a node's shadow node: `[x, y, width, height]` in the window. */
+function readBox(current: State, includeTransform: boolean): Rect | null {
+  const box = current.node ? binding?.getBoundingClientRect?.(current.node, includeTransform) : undefined;
+  return box ? { x: box[0] as number, y: box[1] as number, width: box[2] as number, height: box[3] as number } : null;
+}
+
+/** What is pending is committed before a layout is read (Svelte reads one right after it changed the tree), unless it only paints: `animate:` reads every item's box after it started the items before it, and committing each would mount the list a few items at a time. */
+function commitBeforeRead(): void {
+  if (layoutPending) flush();
+}
+
 /**
- * A node's box, from React Native's synchronous layout read of the committed tree: what is pending that can move layout is committed first (Svelte reads a layout right after it changed the tree, `animate:`
- * does it twice per item), and the box includes the transform the node's own style gives it. While an animation moves the node (the UI thread draws that, the committed tree does not
- * have it) the layout box is read without a transform and moved by what the animation draws. Null for a node that has no view yet.
+ * A node's own size, before any transform (`clientWidth`, `clientHeight`, the `width` a transition reads), from the committed tree. Null for a node that has no view yet.
+ */
+function sizeOf(node: NativeNode): { width: number; height: number } | null {
+  if (!binding?.getBoundingClientRect) return null;
+  commitBeforeRead();
+  const current = stateOf(node);
+  const box = current ? readBox(current, false) : null;
+  return box ? { width: box.width, height: box.height } : null;
+}
+
+/**
+ * How far transforms of the node's ancestors move what is inside them: the nearest ancestor that has a view, read with and without its transforms (scroll offsets are among them).
+ * React Native applies the flag to the whole chain up to the root, so the difference is what the chain does to a child, as a translation.
+ */
+function ancestorShift(node: NativeNode): { x: number; y: number } {
+  for (let up = node.parent; up; up = up.parent) {
+    const view = stateOf(up);
+    if (!view?.node) continue;
+    const moved = readBox(view, true);
+    const laid = readBox(view, false);
+    return moved && laid ? { x: moved.x - laid.x, y: moved.y - laid.y } : { x: 0, y: 0 };
+  }
+  return { x: 0, y: 0 };
+}
+
+/**
+ * A node's box as `getBoundingClientRect` reports it, from React Native's synchronous layout read of the committed tree: its layout box moved by what its ancestors' transforms do
+ * (`ancestorShift`), then by its own transform about its origin. The own transform is the one an animation of the node draws now when one does (the UI thread draws it, the committed
+ * tree does not have it), and the one its style gives it otherwise. A rotation is not applied. Null for a node that has no view yet.
  */
 function layoutOf(node: NativeNode): Rect | null {
   if (!binding?.getBoundingClientRect) return null;
-  // What is pending is committed first, unless it only paints: `animate:` reads every item's box after it started the items before it, and committing
-  // each of those would mount the list a few items at a time (a frame of the new order with some items in their old places).
-  if (layoutPending) flush();
+  // The first `animate:` of an app loads Reanimated here, before the tree changes, and not when the first animation starts: that would show the changed tree, untransformed, while it loads.
+  const module = ensureTransitions();
+  commitBeforeRead();
   const current = stateOf(node);
-  if (!current?.node) return null;
-  const driven = node.dom?.animation ? loadTransitions().drivesTransform(node) : false;
-  const box = binding.getBoundingClientRect(current.node, !driven);
-  if (!box) return null;
-  const rect = { x: box[0] as number, y: box[1] as number, width: box[2] as number, height: box[3] as number };
-  return driven ? loadTransitions().compensate(node, rect) : rect;
+  const laid = current ? readBox(current, false) : null;
+  if (!laid) return null;
+  const shift = ancestorShift(node);
+  const base = { x: laid.x + shift.x, y: laid.y + shift.y, width: laid.width, height: laid.height };
+  const drawn = node.dom?.animation ? module?.drawnTransform(node) ?? null : null;
+  const style = effectiveStyle(node.peekProps(), node.dom?.inline ?? null);
+  const ops = drawn?.ops ?? transformOps(style.transform);
+  return ops.length === 0 ? base : transformRect(base, ops, parseOrigin(drawn?.origin ?? style.transformOrigin, base));
 }
 
-/** An app without Reanimated (or one whose Reanimated does not load) still ends its transitions, at once: an outro that never finished would keep its node. */
-let transitionsFailed = false;
-function animate(node: NativeNode, keyframes: Parameters<AnimationDriver["animate"]>[1], options: Parameters<AnimationDriver["animate"]>[2]) {
-  if (!transitionsFailed) {
-    try {
-      return loadTransitions().animate(node, keyframes, options);
-    } catch (error) {
-      if (transitions) throw error;
-      transitionsFailed = true;
-      console.warn("[Svelte transitions] react-native-reanimated did not load, so transitions and animate: end at once instead of playing", error);
-    }
+/** The shadow node of a node's view, made again under the same tag and attached to no tree: what Reanimated needs to forget the tag (`forgetAnimatedValues`). */
+function forgetAnimated(node: NativeNode): void {
+  const current = stateOf(node);
+  if (!binding || !current?.node || current.foreign || !animation) return;
+  let top = node;
+  while (top.parent) top = top.parent;
+  for (const root of roots.values()) {
+    if (root.node !== top) continue;
+    animation.forgetAnimatedValues(binding.createNode(current.tag, "RCTView", root.rootTag, {}, node));
+    return;
   }
-  return new InstantAnimation();
 }
 
 const animationDriver: AnimationDriver = {
-  animate,
+  animate: (node, keyframes, options) => ensureTransitions()?.animate(node, keyframes, options) ?? new InstantAnimation(),
   getAnimations: (node) => loadTransitions().getAnimations(node),
   layout: layoutOf,
+  size: sizeOf,
+  forget: forgetAnimated,
 };
 
 let handlerRegistered = false;

@@ -126,10 +126,13 @@ test("the global getComputedStyle answers for a node, from its own style, and do
 });
 
 test("the layout a node reports is the host's, with the zoom a flip asks for answered here", () => {
+  let forgot = 0;
   const driver: AnimationDriver = {
     animate: () => { throw new Error("not used"); },
     getAnimations: () => [],
     layout: () => ({ x: 10, y: 20, width: 100, height: 40 }),
+    size: () => ({ width: 100, height: 40 }),
+    forget: () => { forgot++; },
   };
   setAnimationDriver(driver);
   const node = new NativeNode("element", "native-view");
@@ -144,4 +147,9 @@ test("the layout a node reports is the host's, with the zoom a flip asks for ans
   const [ox, oy] = style.transformOrigin.split(" ").map(parseFloat);
   expect([(ox as number) / node.clientWidth, (oy as number) / node.clientHeight]).toEqual([0.5, 0.5]);
   expect(node.getAnimations()).toEqual([]); // nothing animates it
+  // `transition:draw` asks an SVG path for its length; a native element has none to give, and the transition degrades instead of throwing.
+  expect(node.getTotalLength()).toBe(0);
+  expect([style.strokeLinecap, style.strokeWidth]).toEqual(["butt", "0"]);
+  node.forgetAnimated();
+  expect(forgot).toBe(1);
 });

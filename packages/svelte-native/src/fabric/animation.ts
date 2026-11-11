@@ -344,10 +344,12 @@ export function animationProps(node: object, target: AnimationTarget, props: Rec
     record.css = null;
     if (inline) style = mapped;
   }
-  if (record.style) style = [style, record.style.initial];
+  // The first-run values are for the build that attaches an updater; a build that takes the updater away (`wantsStyle` false: the runtime is stopped by `attachAnimation` right after) must not
+  // commit them again: they are where the animation started, and the node's own values are what it is left with.
+  if (record.style && record.wantsStyle) style = [style, record.style.initial];
   if (style === undefined) delete out.style;
   else out.style = style;
-  if (record.props) Object.assign(out, record.props.initial);
+  if (record.props && record.wantsProps) Object.assign(out, record.props.initial);
   pending.add(node);
   return out;
 }
@@ -471,6 +473,17 @@ function markRemovable(wrapper: unknown): void {
   markNodeAsRemovable(wrapper as never);
   remarks.push({ wrapper, due: Date.now() + REMARK_AFTER_MS });
   if (remarkTimer === undefined) remarkTimer = setTimeout(remark, REMARK_AFTER_MS);
+}
+
+/**
+ * Forgets what Reanimated's props registry holds for a node that stays: its last animated values (`transform`, `opacity`, a restored `height`, ...). The registry keeps them for as long as
+ * the node lives and its commit hook puts them over every commit's props for that node (`ReanimatedCommitHook`, by shadow node family), so the next commit that moves the node
+ * (a first frame committed with the new layout) is overruled by the last frame of the previous animation until the mapper writes again, a frame or more later.
+ * `ghost` is a shadow node with the node's tag that is in no tree: Reanimated empties the registry of the tag of a node marked removable that it does not find in the mounted tree
+ * (`UpdatesRegistryManager::handleNodeRemovals`, by tag), after the next mount.
+ */
+export function forgetAnimatedValues(ghost: object): void {
+  markRemovable(ghost);
 }
 
 /** Stops the mapper, drops the view descriptors, cleans up CSS animations and transitions, and forgets the node. */

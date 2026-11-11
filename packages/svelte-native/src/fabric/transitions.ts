@@ -12,32 +12,35 @@
  *   shared value, which is what Svelte turns an `in:` into an `out:` from.
  * - An animation that moves nothing (a `fade`'s dummy delay, a hold of the first keyframe while a `delay` runs, a `tick`-only transition's clock) needs no shared value: it is a timer, and
  *   its values (if any) are held by the same worklet.
- * - `cancel()` takes the animation off the node and writes the node's own values back for a moment (`restoreValues`), then lets the worklet go: Reanimated keeps the last values it wrote to
- *   a view, and the node must not stay where the animation left it.
+ * - `cancel()` takes the animation off the node and has the node's own values written back (`restoreValues`: every key the animation wrote), until the UI thread has applied them (a mapper
+ *   of its own tells JavaScript), and then lets the worklet go: Reanimated keeps the last values it wrote to a view, and the node must not stay where the animation left it.
+ * - Reanimated also keeps those last values in a props registry, and puts them over the props of every later commit of the node (by shadow node family). So the first frame of the next
+ *   animation, committed with the new layout, would be overruled by the last frame of the previous one until the mapper writes again: a frame of the new order with no inverse
+ *   transform in a `flip`. When the node's own values are back, `forget` lets the registry go (`animation.ts`, `forgetAnimatedValues`), so the next commit is the node's alone.
  */
-import { cancelAnimation, Easing, makeMutable, withTiming, type SharedValue } from "react-native-reanimated";
+import { cancelAnimation, Easing, makeMutable, startMapper, stopMapper, withTiming, type SharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
-import type { AnimationOptions, Keyframe, NativeAnimation, NativeNode } from "../renderer.ts";
-import { effectiveStyle, type Rect } from "./dom-style.ts";
+import { InstantAnimation, NativeNode, type AnimationOptions, type Keyframe, type NativeAnimation } from "../renderer.ts";
+import { animationProps, detachAnimation } from "./animation.ts";
+import { effectiveStyle, entriesToOps, type TransformOp } from "./dom-style.ts";
 import { affectsLayout, hasTransform, parseKeyframes, restoreValues, sampleSpec, type Spec } from "./keyframes.ts";
 
 type Values = Record<string, unknown>;
 type Updater = () => Values;
 type State = {
-  /** Every animation of the node that was not cancelled: what `getAnimations()` returns. */
+  /** Every animation of the node that was not cancelled and still has an effect: what `getAnimations()` returns. */
   animations: Set<Playback>;
   /** The ones that draw something, in the order they were made. */
   entries: Playback[];
-  /** The node's own values for what a cancelled animation wrote, written until `settle`. */
+  /** The node's own values for what a cancelled animation wrote, written until the UI thread has applied them. */
   restore: Values | null;
-  timer: ReturnType<typeof setTimeout> | null;
+  /** Which restore is waited for: the acknowledgement of an older one means nothing. */
+  generation: number;
   updater: Updater | null;
 };
 
-/** How long a cancelled animation's restoring values stay in the node's worklet: long enough for the mapper to run on the UI thread once, whatever frame rate the screen has. */
-const RESTORE_MS = 120;
-
 const warned = new Set<string>();
+/** Something that cannot be played, once per `key`, in development. */
 function warn(key: string, message: string): void {
   if (warned.has(key)) return;
   warned.add(key);
@@ -46,7 +49,7 @@ function warn(key: string, message: string): void {
 
 function stateOf(node: NativeNode): State {
   const dom = node.domState();
-  dom.animation ??= { animations: new Set(), entries: [], restore: null, timer: null, updater: null } satisfies State;
+  dom.animation ??= { animations: new Set(), entries: [], restore: null, generation: 0, updater: null } satisfies State;
   return dom.animation as State;
 }
 
@@ -63,20 +66,21 @@ class Playback implements NativeAnimation {
   private readonly startedAt = now();
 
   constructor(private readonly node: NativeNode, readonly spec: Spec) {
-    const state = stateOf(node);
     this.invalidation = affectsLayout(spec) ? "props" : "animation";
-    state.animations.add(this);
+    // Whatever can throw (the shared value, the animation) comes first, so that a failure leaves nothing registered on the node.
     if (!spec.empty && !spec.constant && spec.total > 0) {
       const progress = makeMutable(0);
-      this.progress = progress;
       const done = () => this.finish();
       progress.value = withTiming(1, { duration: spec.total, easing: Easing.linear }, (finished) => {
         "worklet";
         if (finished) scheduleOnRN(done);
       });
+      this.progress = progress;
     } else if (spec.total > 0) this.timer = setTimeout(() => this.finish(), spec.total);
     // `element.animate` returns before Svelte sets `onfinish`: an animation of no length finishes in a microtask, after the host has committed what it drew.
     else queueMicrotask(() => this.finish());
+    const state = stateOf(node);
+    state.animations.add(this);
     if (!spec.empty) {
       state.entries.push(this);
       state.updater = null;
@@ -95,6 +99,8 @@ class Playback implements NativeAnimation {
     if (this.playState !== "running") return;
     this.playState = "finished";
     this.timer = null;
+    // A fill that does not hold the last keyframe (`none`, `backwards`) leaves no effect after the end: the node is its own again, as it is for a cancelled animation.
+    if (!this.spec.forwards) release(this.node, this);
     this.onfinish?.();
   }
 
@@ -111,7 +117,7 @@ class Playback implements NativeAnimation {
   at(): number { return this.progress === null ? 1 : this.progress.value; }
 }
 
-/** Takes an animation off its node and puts the node's own values back, for `RESTORE_MS`. */
+/** Takes an animation off its node and has the node's own values written back until the UI thread has applied them. */
 function release(node: NativeNode, playback: Playback): void {
   const state = stateOf(node);
   state.animations.delete(playback);
@@ -121,14 +127,33 @@ function release(node: NativeNode, playback: Playback): void {
   state.updater = null;
   const own = effectiveStyle(node.peekProps(), node.dom?.inline ?? null);
   state.restore = { ...state.restore, ...restoreValues(playback.spec, own) };
-  if (state.timer !== null) clearTimeout(state.timer);
-  state.timer = setTimeout(() => {
-    state.timer = null;
-    state.restore = null;
-    state.updater = null;
-    node.invalidate("props");
-  }, RESTORE_MS);
   node.invalidate(playback.invalidation);
+  expectRestored(node, state);
+}
+
+/**
+ * Waits until the UI thread has written `state.restore`, and then lets it go: the node's worklet stops, the node's committed props are its own, and Reanimated's registry forgets the
+ * node's last values. Not a timer: a mapper of its own is started right after the host has committed the node (which started the node's mapper, with the restoring values: the two run in
+ * the same frame, in this order), and tells JavaScript when it first runs.
+ */
+function expectRestored(node: NativeNode, state: State): void {
+  const generation = ++state.generation;
+  queueMicrotask(() => {
+    if (state.generation !== generation || state.restore === null) return;
+    let id = -1;
+    const applied = () => {
+      stopMapper(id);
+      if (state.generation !== generation || state.restore === null) return;
+      state.restore = null;
+      state.updater = null;
+      node.invalidate("props");
+      if (state.entries.length === 0) node.forgetAnimated();
+    };
+    id = startMapper(() => {
+      "worklet";
+      scheduleOnRN(applied);
+    }, []);
+  });
 }
 
 /**
@@ -149,9 +174,19 @@ function makeUpdater(entries: readonly Playback[], restore: Values | null): Upda
   };
 }
 
-/** `element.animate(keyframes, options)` for a node. */
+let failed = false;
+/** `element.animate(keyframes, options)` for a node. An animation that cannot be started (a shared value or an animation Reanimated refuses) ends at once, so that an outro still ends. */
 export function animate(node: NativeNode, keyframes: readonly Keyframe[], options: AnimationOptions = {}): NativeAnimation {
-  return new Playback(node, parseKeyframes(keyframes, options, warn));
+  const spec = parseKeyframes(keyframes, options, warn);
+  try {
+    return new Playback(node, spec);
+  } catch (error) {
+    if (!failed) {
+      failed = true;
+      console.warn("[Svelte transitions] an animation could not be started with Reanimated, so it ends at once instead of playing", error);
+    }
+    return new InstantAnimation();
+  }
 }
 
 export function getAnimations(node: NativeNode): NativeAnimation[] {
@@ -175,36 +210,31 @@ export function injectAnimations(node: NativeNode, props: Record<string, unknown
   props.collapsable = false;
 }
 
-/** Whether an animation of the node draws a transform now (so the committed tree, which has the node's own, is not where it is). */
-export function drivesTransform(node: NativeNode): boolean {
-  const state = node.dom?.animation as State | null | undefined;
-  return state?.entries.some((entry) => hasTransform(entry.spec)) === true;
+/**
+ * The first shared value, animation and mapper of an app cost the JavaScript thread more than the next ones. An `animate:` would pay them between the commit that changes the tree and
+ * the commit that starts its animations, which the screen shows as a frame of the changed tree with the items in their new places. The host calls this when it loads the animation
+ * layer (the first layout read of a tree that is about to change, or the first animation), with an animation of a node that is on no screen, so that part of the cost is paid before.
+ * What the first run of the native side and of the UI runtime's worklets costs cannot be paid here: the first reorder after an app starts can still show that frame.
+ */
+export function warmUp(): void {
+  try {
+    const spare = new NativeNode("element", "native-view");
+    new Playback(spare, parseKeyframes([{ opacity: "0", transform: "translate(0px, 4px)" }, { opacity: "1", transform: "translate(0px, 0px)" }], { duration: 16, fill: "forwards" }, warn)).cancel();
+    animationProps(spare, { tag: -1, viewName: "RCTView", node: null, propsDirty: false }, { animatedStyle: () => ({ opacity: 1 }) });
+    detachAnimation(spare);
+  } catch {
+    // A failure surfaces with the first real animation, with its warning.
+  }
 }
 
-/** The box of a node that an animation is moving: `rect` (its layout box) with the translation and the scale the animations draw it with now, about its centre, as the DOM's `getBoundingClientRect` reports it. */
-export function compensate(node: NativeNode, rect: Rect): Rect {
+/**
+ * What the animations of a node draw it with now: the transform (as operations) and the origin it is about, when one of them has a track for it; null when none does, and the node's
+ * own style is what it is drawn with. The committed tree does not have this (the UI thread draws it), so a layout read adds it (`getBoundingClientRect`).
+ */
+export function drawnTransform(node: NativeNode): { ops: TransformOp[] | null; origin: unknown } | null {
   const state = node.dom?.animation as State | null | undefined;
-  if (!state) return rect;
+  if (!state?.entries.some((entry) => hasTransform(entry.spec) || entry.spec.keys.includes("transformOrigin"))) return null;
   const drawn: Values = {};
   for (const entry of state.entries) sampleSpec(entry.spec, entry.at(), drawn);
-  if (!Array.isArray(drawn.transform)) return rect;
-  let tx = 0;
-  let ty = 0;
-  let sx = 1;
-  let sy = 1;
-  for (const entry of drawn.transform as Record<string, number | string>[]) {
-    for (const name in entry) {
-      const value = entry[name] as number | string;
-      const percent = typeof value === "string" && value.endsWith("%");
-      const amount = typeof value === "number" ? value : Number.parseFloat(value);
-      if (name === "translateX") tx += sx * (percent ? (amount / 100) * rect.width : amount);
-      else if (name === "translateY") ty += sy * (percent ? (amount / 100) * rect.height : amount);
-      else if (name === "scale") { sx *= amount; sy *= amount; }
-      else if (name === "scaleX") sx *= amount;
-      else if (name === "scaleY") sy *= amount;
-    }
-  }
-  const width = rect.width * sx;
-  const height = rect.height * sy;
-  return { x: rect.x + rect.width / 2 + tx - width / 2, y: rect.y + rect.height / 2 + ty - height / 2, width, height };
+  return { ops: Array.isArray(drawn.transform) ? entriesToOps(drawn.transform as Record<string, number | string>[]) : null, origin: drawn.transformOrigin };
 }

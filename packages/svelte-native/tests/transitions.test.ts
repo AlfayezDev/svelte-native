@@ -1,4 +1,4 @@
-import { afterEach, test, expect } from "bun:test";
+import { test, expect } from "bun:test";
 import { build } from "esbuild";
 import { readFile, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -17,21 +17,29 @@ let roots: Record<number, FakeNode[]> = {};
 const calls: string[] = [];
 const ROW = 50;
 /** The layout of the committed tree: a node is as wide as 100 and as high as 50 and sits at its index among its siblings times 50; a node with `position: absolute` is out of the flow, at the top. */
-function rectOf(target: FakeNode): number[] | undefined {
-  const search = (nodes: FakeNode[]): number[] | undefined => {
+function locate(target: FakeNode): { rect: number[]; path: FakeNode[] } | undefined {
+  const search = (nodes: FakeNode[], path: FakeNode[]): { rect: number[]; path: FakeNode[] } | undefined => {
     let index = 0;
     for (const node of nodes) {
       const absolute = node.props.position === "absolute";
-      if (node === target) return [0, absolute ? 0 : index * ROW, 100, ROW];
+      if (node === target) return { rect: [0, absolute ? 0 : index * ROW, 100, ROW], path: [...path, node] };
       if (!absolute) index++;
-      const found = search(node.children);
+      const found = search(node.children, [...path, node]);
       if (found) return found;
     }
     return undefined;
   };
-  for (const root of Object.values(roots)) { const found = search(root); if (found) return found; }
+  for (const root of Object.values(roots)) { const found = search(root, []); if (found) return found; }
   return undefined;
 }
+/** What the committed transforms of these nodes (their `translateX` and `translateY`) move what is inside the last of them by. */
+function translation(path: FakeNode[]): { x: number; y: number } {
+  const moved = { x: 0, y: 0 };
+  for (const node of path) for (const entry of (node.props.transform as Record<string, number>[] | null | undefined) ?? []) { moved.x += entry.translateX ?? 0; moved.y += entry.translateY ?? 0; }
+  return moved;
+}
+/** Whether the animation layer was loaded at each layout read the host made. */
+const reads: boolean[] = [];
 const fake = {
   createNode(tag: number, name: string, _root: number, props: Record<string, unknown>, target: unknown) { calls.push(`create ${name}`); return { tag, name, props: { ...props }, children: [], sealed: false, target }; },
   cloneNodeWithNewChildren(node: FakeNode) { calls.push(`cloneChildren ${node.name}`); return { ...node, children: [], sealed: false }; },
@@ -46,7 +54,15 @@ const fake = {
     set.children.forEach(seal);
     roots[root] = set.children;
   },
-  getBoundingClientRect(node: FakeNode, includeTransform: boolean) { calls.push(`rect ${node.tag} ${includeTransform}`); return rectOf(node); },
+  getBoundingClientRect(node: FakeNode, includeTransform: boolean) {
+    calls.push(`rect ${node.tag} ${includeTransform}`);
+    reads.push((globalThis as { __loaded?: () => boolean }).__loaded?.() ?? false);
+    const found = locate(node);
+    if (!found) return undefined;
+    const [x, y, width, height] = found.rect as [number, number, number, number];
+    const moved = includeTransform ? translation(found.path) : { x: 0, y: 0 };
+    return [x + moved.x, y + moved.y, width, height];
+  },
   measure() {},
   measureInWindow() {},
   dispatchCommand() {},
@@ -70,17 +86,17 @@ const stubs: Record<string, string> = {
 type Animate = { node: unknown; keyframes: Record<string, unknown>[]; options: { duration?: number; delay?: number; fill?: string }; animation: Animation };
 type Animation = { onfinish: (() => void) | null; effect: unknown; playState: string; currentTime: number | null; cancel(): void };
 type NodeClass = { prototype: { animate(this: unknown, keyframes: unknown, options: unknown): Animation; getProp(key: string): unknown } };
-type App = { setIntro(value: boolean): void; setOutro(value: boolean): void; setReversible(value: boolean): void; setBlurred(value: boolean): void; setItems(value: number[]): void; setRows(value: number[]): void; setSlid(value: boolean): void; seen(): string[] };
-type Loaded = { startSurface(root: number, component: unknown, props: object): App; tick(): Promise<void>; Fixture: unknown; NativeNode: NodeClass };
+type App = { setIntro(value: boolean): void; setOutro(value: boolean): void; setReversible(value: boolean): void; setBlurred(value: boolean): void; setItems(value: number[]): void; setRows(value: number[]): void; setSlid(value: boolean): void; setSliding(value: boolean): void; setDrawing(value: boolean): void; setDelayed(value: boolean): void; setLists(left: number[], right: number[]): void; seen(): string[] };
+type Loaded = { startSurface(root: number, component: unknown, props: object): App; tick(): Promise<void>; fabricStats(): { animationLoaded: boolean }; Fixture: unknown; NativeNode: NodeClass };
 
 async function load(): Promise<Loaded> {
   const bundle = await build({
     stdin: {
       contents: `import Fixture from './transitions-fixture.svelte';
-        import { startSurface } from '../src/fabric/host.ts';
+        import { startSurface, fabricStats } from '../src/fabric/host.ts';
         import { NativeNode } from '../src/renderer.ts';
         import { tick } from 'svelte';
-        export { startSurface, tick, Fixture, NativeNode };`,
+        export { startSurface, fabricStats, tick, Fixture, NativeNode };`,
       resolveDir: import.meta.dirname,
     },
     bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], mainFields: ["main"], write: false,
@@ -109,8 +125,10 @@ async function fresh(): Promise<Loaded> {
   delete (globalThis as { __anim?: unknown }).__anim;
   roots = {};
   calls.length = 0;
+  reads.length = 0;
   animates.length = 0;
   const m = await load();
+  (globalThis as { __loaded?: () => boolean }).__loaded = () => m.fabricStats().animationLoaded;
   const original = m.NativeNode.prototype.animate;
   m.NativeNode.prototype.animate = function (this: unknown, keyframes: unknown, options: unknown) {
     const animation = original.call(this, keyframes, options);
@@ -123,9 +141,8 @@ const find = (nodes: FakeNode[], name: string): FakeNode[] => nodes.flatMap((n) 
 const byId = (root: number, id: string) => find(roots[root] ?? [], "RCTView").find((n) => n.props.testID === id) as FakeNode;
 /** Lets every microtask that is queued, and the ones those queue, run. */
 const settle = async (m: Loaded) => { await m.tick(); await new Promise((done) => setTimeout(done, 0)); };
-// A cancelled animation leaves the node's own values in its worklet for a moment (RESTORE_MS) and then takes it away: let that timer fire while this test's log is still the one it writes to.
-afterEach(async () => { await new Promise((done) => setTimeout(done, 150)); });
-const timings = () => log().timings ?? [];
+/** The animations of the shared values, except the 16 ms one the host plays on a node of no screen when it loads the animation layer (`warmUp`). */
+const timings = () => (log().timings ?? []).filter((timing) => timing.config.duration !== 16);
 const A = () => log();
 /** The values the node's mapper writes at a progress (the test plays the UI thread: it moves the shared value, then runs the mapper's worklet). */
 function drawn(mapper: AnimLog["mappers"][number], mutable?: { _value: unknown }, progress?: number): Record<string, unknown> {
@@ -134,7 +151,12 @@ function drawn(mapper: AnimLog["mappers"][number], mutable?: { _value: unknown }
   mapper.worklet(true);
   return A().updates.slice(before).at(-1)?.values ?? {};
 }
-const live = () => A().mappers.filter((mapper) => !mapper.stopped);
+/** The mapper a node's restoring values wait for: it runs once on the UI thread and tells JavaScript (`scheduleOnRN`) that the values were written. */
+const isAcknowledgement = (mapper: AnimLog["mappers"][number]) => String(mapper.worklet).includes("scheduleOnRN");
+/** The mappers of nodes (their `animatedStyle` worklets) that are running. */
+const live = () => A().mappers.filter((mapper) => !mapper.stopped && !isAcknowledgement(mapper));
+/** One frame of the UI thread: every mapper runs, in the order it was started; those that wait for the restoring values to be written tell JavaScript. */
+const frame = () => { for (const mapper of A().mappers.filter((entry) => !entry.stopped)) mapper.worklet(true); };
 /** The mapper that writes to the view of a node: the one that writes to the descriptor set the node's tag was added to. */
 function mapperFor(tag: number): AnimLog["mappers"][number] {
   const id = A().descriptors.find((entry) => entry.adds.some((add) => add.tag === tag))?.id;
@@ -145,6 +167,10 @@ function mapperFor(tag: number): AnimLog["mappers"][number] {
   }
   throw new Error(`no live mapper writes to the node with tag ${tag}`);
 }
+const idOf = (node: unknown) => (node as { getProp(key: string): unknown }).getProp("testID");
+const animatesOf = (id: string) => animates.filter((entry) => idOf(entry.node) === id);
+/** Reanimated forgets the registry of the tags it was handed a node of in no tree for: the ghosts that were marked, whose tag is the node's. */
+const forgotten = (tag: number) => A().removable.filter((wrapper) => (wrapper as { tag?: number }).tag === tag);
 
 test("in:fly plays when its element appears: first commit at the first keyframe, then a linear withTiming over its duration, sampled by a mapper", async () => {
   const m = await fresh();
@@ -240,9 +266,12 @@ test("onfinish is called when the shared value's animation ends, playState follo
   await settle(m);
   const restore = live().at(-1) as AnimLog["mappers"][number];
   expect(drawn(restore).opacity).toBe(1); // the node has no opacity of its own: the default
-  expect(A().mappers.filter((mp) => !mp.stopped).length).toBeGreaterThan(0);
-  await new Promise((done) => setTimeout(done, 200)); // after the settle timer the node's worklet is gone: the mapper stops
-  expect(live().some((mp) => mp === restore)).toBe(false);
+  // The values stay in the node's worklet until the UI thread has written them, however long that takes (no timer): a mapper of its own tells JavaScript when it first runs.
+  await new Promise((done) => setTimeout(done, 200));
+  expect(live().includes(restore)).toBe(true);
+  frame();
+  await settle(m);
+  expect(live().includes(restore)).toBe(false);
 });
 
 test("out:fade keeps its node until the animation finishes, then removes it", async () => {
@@ -298,7 +327,7 @@ test("an intro turned around by an outro starts from the progress it had reached
   expect(second).not.toBe(intro);
   expect(second.config.duration).toBeCloseTo(400, 5);
   // The node did not jump: the mapper that draws the outro starts at the intro's value.
-  const mapper = live().at(-1) as AnimLog["mappers"][number];
+  const mapper = mapperFor(byId(54, "reversible").tag);
   expect(drawn(mapper, second.mutable as { _value: unknown }, 0).opacity).toBeCloseTo(0.4, 5);
 });
 
@@ -429,6 +458,246 @@ test("transition:slide reads the node's layout (the host commits what is pending
   timing.callback?.(true);
   await settle(m);
   expect(byId(59, "slid").props.overflow).toBeNull(); // the prop is reset
+  // Every key the animation wrote goes back to the node's own (or is released: `undefined`), not the lengths alone.
   const restoring = drawn(mapperFor(node.tag));
-  expect(restoring).toEqual({ height: undefined, minHeight: undefined, opacity: 1 });
+  expect(restoring).toEqual({
+    opacity: 1, height: undefined, minHeight: undefined,
+    paddingTop: undefined, paddingBottom: undefined, marginTop: undefined, marginBottom: undefined, borderTopWidth: undefined, borderBottomWidth: undefined,
+  });
+});
+
+const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
+type Measured = { getBoundingClientRect(): { left: number; top: number; width: number; height: number }; clientWidth: number; clientHeight: number; animate(keyframes: unknown, options: unknown): Animation; getAnimations(): Animation[] };
+const measured = (root: number, id: string) => byId(root, id).target as Measured;
+const box = (target: Measured) => { const rect = target.getBoundingClientRect(); return [rect.left, rect.top, rect.width, rect.height]; };
+
+test("when the UI thread has written a node's own values back, its committed props are its own and Reanimated forgets what it wrote, and not before", async () => {
+  const m = await fresh();
+  const app = m.startSurface(60, m.Fixture, {});
+  app.setIntro(true);
+  await settle(m);
+  const node = byId(60, "intro");
+  expect(node.props.opacity).toBe(0); // the first frame, while it plays
+  const timing = timings()[0] as NonNullable<AnimLog["timings"]>[number];
+  (timing.mutable as { _value: unknown })._value = 1;
+  timing.callback?.(true); // the intro ends; Svelte takes its effect off
+  await settle(m);
+  // The node's worklet writes the node's own values until the UI thread has: Reanimated's registry still has the animation's last frame, which the next commit would be overruled by.
+  expect(live()).toHaveLength(1);
+  expect(forgotten(node.tag)).toHaveLength(0);
+  frame();
+  await settle(m);
+  const own = byId(60, "intro");
+  // The commit that takes the worklet away does not carry the animation's first frame again (opacity 0, a transform): it is gone from the node's props.
+  expect(own.props.opacity ?? null).toBeNull();
+  expect(own.props.transform ?? null).toBeNull();
+  expect(own.props.collapsable ?? null).toBeNull();
+  expect(live()).toHaveLength(0);
+  // Reanimated is handed a shadow node with the node's tag that is in no tree, marked removable: it forgets the tag's registry when the next mount shows it is not there.
+  expect(forgotten(own.tag)).toHaveLength(1);
+  expect(forgotten(own.tag)[0]).not.toBe(own);
+  expect(calls.filter((call) => call === "create RCTView").length).toBeGreaterThan(0);
+});
+
+test("the registry is not forgotten while another animation of the node plays", async () => {
+  const m = await fresh();
+  const app = m.startSurface(61, m.Fixture, {});
+  await settle(m);
+  const inner = measured(61, "inner");
+  const tag = byId(61, "inner").tag;
+  const first = inner.animate([{ opacity: "0.5" }, { opacity: "0.5" }], { duration: 1000, fill: "forwards" });
+  const second = inner.animate([{ opacity: "0.25" }, { opacity: "0.25" }], { duration: 1000, fill: "forwards" });
+  await settle(m);
+  first.cancel();
+  await settle(m);
+  frame();
+  await settle(m);
+  expect(forgotten(tag)).toHaveLength(0); // the second still draws the node
+  second.cancel();
+  await settle(m);
+  frame();
+  await settle(m);
+  expect(forgotten(tag)).toHaveLength(1);
+  void app;
+});
+
+test("an out:slide shown again mid-way releases every length it wrote, and the node is its own after", async () => {
+  const m = await fresh();
+  const app = m.startSurface(62, m.Fixture, {});
+  app.setSliding(true);
+  await settle(m);
+  const tag = byId(62, "sliding").tag;
+  app.setSliding(false);
+  await settle(m);
+  const outro = timings().at(-1) as NonNullable<AnimLog["timings"]>[number];
+  expect(outro.config.duration).toBe(100);
+  const half = drawn(mapperFor(tag), outro.mutable as { _value: unknown }, 0.5);
+  // Padding, margin and border widths are mid-way, as the height is.
+  for (const key of ["paddingTop", "marginTop", "borderTopWidth"]) { expect(half[key] as number, key).toBeGreaterThan(0); }
+  expect(half.paddingTop as number).toBeLessThan(4);
+  expect(half.height as number).toBeGreaterThan(0);
+  app.setSliding(true); // shown again before the outro ended: Svelte takes the outro's effect off
+  await settle(m);
+  expect(outro.cancelled).toBe(true);
+  expect(byId(62, "sliding")).toBeDefined();
+  expect(drawn(mapperFor(tag))).toEqual({
+    opacity: 1, height: undefined, minHeight: undefined, paddingTop: undefined, paddingBottom: undefined, marginTop: undefined, marginBottom: undefined, borderTopWidth: undefined, borderBottomWidth: undefined,
+  });
+  frame();
+  await settle(m);
+  const own = byId(62, "sliding");
+  // (`overflow: hidden` stays: Svelte takes it off only when an intro ends, on the web as here.)
+  for (const key of ["height", "paddingTop", "marginTop", "borderTopWidth"]) expect(own.props[key] ?? null, key).toBeNull();
+  expect(live()).toHaveLength(0);
+});
+
+test("transition:draw degrades on a native element: no path to measure, no throw, the stroke is left out with a warning, and the transition still ends", async () => {
+  const warnings: string[] = [];
+  const original = console.warn;
+  console.warn = (...args: unknown[]) => { warnings.push(args.join(" ")); };
+  try {
+    const m = await fresh();
+    const app = m.startSurface(63, m.Fixture, {});
+    app.setDrawing(true);
+    await settle(m);
+    expect(byId(63, "drawing")).toBeDefined();
+    const main = animatesOf("drawing").at(-1) as Animate;
+    expect(main.options.duration).toBe(100);
+    expect(Object.keys(main.keyframes[0] as object).sort()).toEqual(["strokeDasharray", "strokeDashoffset"]);
+    expect(warnings.filter((warning) => warning.includes("strokeDasharray"))).toHaveLength(1);
+    expect(warnings.filter((warning) => warning.includes("strokeDashoffset"))).toHaveLength(1);
+    expect(timings()).toHaveLength(0); // nothing to draw, so a timer and no shared value
+    await sleep(160);
+    expect(main.animation.playState).toBe("idle"); // it ended by itself, and Svelte took its effect off
+  } finally {
+    console.warn = original;
+  }
+});
+
+test("an intro with a delay holds its first keyframe for the delay (a timer, no shared value), then plays", async () => {
+  const m = await fresh();
+  const app = m.startSurface(64, m.Fixture, {});
+  app.setDelayed(true);
+  await settle(m);
+  const node = byId(64, "delayed");
+  expect(node.props).toMatchObject({ opacity: 0, collapsable: false });
+  expect(node.props.transform).toEqual([{ translateX: 0 }, { translateY: 20 }]);
+  const held = animatesOf("delayed");
+  expect(held).toHaveLength(1);
+  expect(held[0]?.options).toEqual({ duration: 120, fill: "forwards" });
+  expect(timings()).toHaveLength(0);
+  expect(held[0]?.animation.playState).toBe("running");
+  await sleep(180);
+  await settle(m);
+  expect(animatesOf("delayed")).toHaveLength(2);
+  expect(animatesOf("delayed")[1]?.options.duration).toBe(100);
+  expect(timings()).toHaveLength(1);
+  expect(timings()[0]?.config.duration).toBe(100);
+  expect(held[0]?.animation.playState).toBe("idle"); // the hold was taken off when the transition started
+});
+
+test("crossfade sends an item to the other list and receives it there (about the top left) while flip moves what stays", async () => {
+  const m = await fresh();
+  const app = m.startSurface(65, m.Fixture, {});
+  animates.length = 0;
+  app.setLists([1, 3], [2]); // item 2 leaves the first list (y = 50) for the second (y = 0); item 3 moves up (100 to 50)
+  await settle(m);
+  const sent = animatesOf("left-2").at(-1) as Animate;
+  const received = animatesOf("right-2").at(-1) as Animate;
+  expect(sent.keyframes[0]).toMatchObject({ transformOrigin: "top left" });
+  expect(received.keyframes[0]).toMatchObject({ transformOrigin: "top left" });
+  // From the other end's box: the received one starts 50 below where it is (in the first list, at y = 50), the sent one ends 50 above where it was.
+  expect(String(received.keyframes[0]?.transform)).toContain("translate(0px,50px)");
+  expect(String(sent.keyframes.at(-1)?.transform)).toContain("translate(0px,-50px)");
+  expect(received.options.duration).toBe(200);
+  const flipped = animatesOf("left-3").at(-1) as Animate;
+  expect(flipped.keyframes[0]?.transform).toBe("translate(0px, 50px) scale(1, 1)");
+  // The origin is a track too: the mapper writes it with the transform.
+  const progress = (received.animation as unknown as { progress: { _value: number } }).progress;
+  const writes = drawn(mapperFor(byId(65, "right-2").tag), progress, 0);
+  expect(writes.transformOrigin).toBe("top left");
+  expect((writes.transform as { translateY: number }[]).some((entry) => entry.translateY === 50)).toBe(true);
+});
+
+test("an animation whose fill does not hold its last keyframe leaves no effect when it ends, and the node's own values are written back", async () => {
+  const m = await fresh();
+  const app = m.startSurface(66, m.Fixture, {});
+  await settle(m);
+  const inner = measured(66, "inner");
+  const tag = byId(66, "inner").tag;
+  const none = inner.animate([{ opacity: "0.2" }, { opacity: "0.6" }], { duration: 100, fill: "none" });
+  await settle(m);
+  const timing = timings().at(-1) as NonNullable<AnimLog["timings"]>[number];
+  expect(inner.getAnimations()).toContain(none);
+  (timing.mutable as { _value: unknown })._value = 1;
+  timing.callback?.(true);
+  expect(none.playState).toBe("finished");
+  expect(inner.getAnimations()).not.toContain(none);
+  await settle(m);
+  expect(drawn(mapperFor(tag)).opacity).toBe(1); // not the 0.6 it ended at
+  void app;
+});
+
+test("an animation Reanimated cannot start ends at once, with one warning, so that an outro still ends", async () => {
+  const warnings: string[] = [];
+  const original = console.warn;
+  console.warn = (...args: unknown[]) => { warnings.push(args.join(" ")); };
+  try {
+    const m = await fresh();
+    const app = m.startSurface(67, m.Fixture, {});
+    await settle(m);
+    const inner = measured(67, "inner");
+    inner.animate([{ opacity: "0" }, { opacity: "1" }], { duration: 100, fill: "forwards" }); // loads the layer
+    await settle(m);
+    let finished = 0;
+    A().failMutable = true; // a shared value cannot be made now
+    const broken = inner.animate([{ opacity: "0" }, { opacity: "1" }], { duration: 100, fill: "forwards" });
+    broken.onfinish = () => { finished++; };
+    inner.animate([{ opacity: "0" }, { opacity: "1" }], { duration: 100, fill: "forwards" });
+    A().failMutable = false;
+    await settle(m);
+    expect(finished).toBe(1);
+    expect(inner.getAnimations()).not.toContain(broken);
+    expect(warnings.filter((warning) => warning.includes("could not be started"))).toHaveLength(1);
+    void app;
+  } finally {
+    console.warn = original;
+  }
+});
+
+test("the first layout read loads the animation layer before the tree it measures changes, not at the first animation", async () => {
+  const m = await fresh();
+  const app = m.startSurface(68, m.Fixture, {});
+  expect(m.fabricStats().animationLoaded).toBe(false);
+  expect(reads).toEqual([]);
+  app.setItems([3, 1, 2]);
+  await settle(m);
+  expect(reads.length).toBeGreaterThan(0);
+  expect(reads[0]).toBe(true); // already loaded when the first box was read, before the reorder was committed
+});
+
+test("getBoundingClientRect counts the ancestors' transforms and the node's own once (the animation's when one draws, the style's otherwise); clientWidth ignores transforms", async () => {
+  const m = await fresh();
+  const app = m.startSurface(69, m.Fixture, {});
+  await settle(m);
+  const inner = measured(69, "inner");
+  // The committed tree: the parent is moved 10 down, the node 3 to the right.
+  expect(box(inner)).toEqual([3, 10, 100, 50]);
+  expect([inner.clientWidth, inner.clientHeight]).toEqual([100, 50]);
+  // An animation draws the node: its transform replaces the style's, once (the commit has its first frame, the box is not asked to count it again).
+  const move = inner.animate([{ transform: "translate(0px, 20px)" }, { transform: "translate(0px, 20px)" }], { duration: 1000, fill: "forwards" });
+  await settle(m);
+  expect(box(inner)).toEqual([0, 30, 100, 50]);
+  move.cancel();
+  // A scale about the top left keeps the corner; about the centre (no origin) it moves it.
+  const corner = inner.animate([{ transform: "scale(0.5)", transformOrigin: "top left" }, { transform: "scale(0.5)", transformOrigin: "top left" }], { duration: 1000, fill: "forwards" });
+  await settle(m);
+  expect(box(inner)).toEqual([0, 10, 50, 25]);
+  expect([inner.clientWidth, inner.clientHeight]).toEqual([100, 50]);
+  corner.cancel();
+  const centre = inner.animate([{ transform: "scale(0.5)" }, { transform: "scale(0.5)" }], { duration: 1000, fill: "forwards" });
+  await settle(m);
+  expect(box(inner)).toEqual([25, 22.5, 50, 25]);
+  centre.cancel();
+  void app;
 });

@@ -14,6 +14,8 @@ export type AnimLog = {
   eventHandlers?: FakeEventHandler[];
   /** `setGestureState(tag, state)` calls. */
   gestureStates?: [tag: number, state: number][];
+  /** A test sets it to make `makeMutable` throw, as Reanimated does when it cannot make a shared value. */
+  failMutable?: boolean;
   /** Every `withTiming` that a shared value was given (the animation a transition plays), in order; `callback` is the one the transition handed over, which a test calls to finish it. */
   timings?: { mutable: { value: unknown }; to: number; config: { duration?: number; easing?: unknown }; callback?: (finished: boolean) => void; cancelled: boolean }[];
 };
@@ -25,6 +27,7 @@ const cssKey = "(k) => k.startsWith('animation') || k.startsWith('transition')";
 export const reanimatedStubs: Record<string, string> = {
   "react-native-reanimated": `${head}
     export const makeMutable = (initial) => {
+      if (A.failMutable) throw new Error("no shared value for you");
       const m = { _value: initial, writes: [], _isReanimatedSharedValue: true,
         get value() { return this._value; },
         // An animation is not the value: it is recorded and the test moves the value itself (m._value = 0.4), then calls the callback to finish it.

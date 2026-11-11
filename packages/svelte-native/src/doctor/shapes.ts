@@ -140,14 +140,6 @@ export function workletsProblems(read: Reader): string[] {
   return [...check("lib/module/runLoop/uiRuntime/requestAnimationFrame.js"), ...check("src/runLoop/uiRuntime/requestAnimationFrame.ts")];
 }
 
-// ---- svelte: the custom-renderer build's compiler accepts the transition and animation directives ----
-
-export function svelteProblems(read: Reader): string[] {
-  const directory = "src/compiler/phases/2-analyze/visitors";
-  return ["TransitionDirective.js", "AnimateDirective.js"].flatMap((file) =>
-    inFile(read, `${directory}/${file}`, [["still refuses the directive on a custom renderer (incompatible_with_custom_renderer)", (code) => !code.includes("incompatible_with_custom_renderer")]], true));
-}
-
 // ---- expo-modules-core: the lazy module registry ----
 
 /** The lines a patch adds to one of the files it changes, without the diff markers. */

@@ -55,7 +55,7 @@ afterEach(() => {
   }
 });
 
-type Tx = { setOn(value: boolean): void; setShown(value: boolean): void; setBold(value: boolean): void; setItems(value: number[]): void; setFaded(value: boolean): void; setColor(value: string): void };
+type Tx = { setOn(value: boolean): void; setShown(value: boolean): void; setBold(value: boolean): void; setItems(value: number[]): void; setFaded(value: boolean): void; setColor(value: string): void; setEvented(value: boolean): void; heard(): string[] };
 let surface = 700;
 async function mount() {
   delete (globalThis as { __anim?: unknown }).__anim;
@@ -226,4 +226,27 @@ test("the text style an element gives its children stays theirs while it fades i
   expect(flat(byID("fading").props.style)).toMatchObject({ color: "blue", fontSize: 20 });
   expect(flat(byID("fading-child").props.style)).toEqual({ color: "blue", fontSize: 20 });
   expect(live()).toHaveLength(0);
+});
+
+test("onintrostart, onintroend, onoutrostart and onoutroend on an HTML element are not warned about, and run as the element's transitions begin and end", async () => {
+  const { m, tx, byID } = await mount();
+  // The lowering of the fixture, which has them on a <div>, said nothing about them (the harness collects what it warned about).
+  expect(host.warnings.filter((warning) => /never runs on a device/.test(warning))).toEqual([]);
+  tx.setEvented(true);
+  await settle(m);
+  expect(byID("evented").name).toBe("RCTView");
+  expect(tx.heard()).toEqual(["introstart"]);
+  const intro = timings().at(-1) as Timing;
+  progressOf(intro)._value = 1;
+  intro.callback?.(true);
+  await settle(m);
+  expect(tx.heard()).toEqual(["introstart", "introend"]);
+  tx.setEvented(false);
+  await settle(m);
+  expect(tx.heard()).toEqual(["introstart", "introend", "outrostart"]);
+  const outro = timings().at(-1) as Timing;
+  progressOf(outro)._value = 1;
+  outro.callback?.(true);
+  await settle(m);
+  expect(tx.heard()).toEqual(["introstart", "introend", "outrostart", "outroend"]);
 });

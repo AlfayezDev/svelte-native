@@ -166,6 +166,8 @@ A native image has no size of its own until it loads, so give it a `width` and a
 
 `input` is a [`TextInput`](text-input), and it works the HTML attributes out when the screen runs, so they mean the same on the element and in a `{...rest}` a component passes down. `type` chooses the keyboard and what the phone may fill in: `email`, `password` (hides what is typed), `number`, `search`, `url`, `tel`. `type={expression}` is looked at when it changes, so a password field with a "show" button works.
 
+A single-line `input` keeps its text centred in the field whatever the line height, as a browser does: it ignores a `leading-*` class and the line height it would inherit. A `textarea` uses them.
+
 `disabled` is `editable={false}`, and `readonly`, `maxlength`, `autofocus`, `autocomplete`, `autocapitalize`, `inputmode` and `enterkeyhint` are the native props of those names. `rows` on a `textarea` is `numberOfLines`, and the text between its tags is its initial value (unless it has `bind:value`).
 
 `oninput` runs on every edit, and `onchange` when the edit is finished. Their event has what web code reads: `event.currentTarget.value` (and `event.target.value`), and the `name`, `id` and `type` of the input. `onkeydown` and `onkeyup` are the key press of the keyboard, with `event.key` (`"Enter"`, `"a"`, `"Backspace"`); a key press comes once, so both run for it.

@@ -33,6 +33,8 @@ Notable changes to `@rasheed/svelte-native`, newest first. The format follows [K
 
 ### Fixed
 
+- A single-line HTML `input` sends no line height, its own (`leading-*`) or inherited, so its text stays centred as on the web. On iOS a line height drew the text 2 pt low, and a text field view reused for another input kept it.
+
 - Android: a `Text` nested in a `Text` with its own `onPress` (the inline link, `<Text>See <Text onPress={...}>this link</Text> here</Text>`) never got its presses: the engine sent every touch to the whole paragraph, so only an `onPress` on the outer `Text` worked. The touch now goes to the nested `Text` under the finger, as in React Native (`reactTagForTouch`): its `onPress`, `onPressIn`, `onPressOut`, `onLongPress` and `onPressChange` run, and the paragraph's does not, unless the nested `Text` has no handler; a press that moves far off the sentence is cancelled. A nested `Text` with `role="link"` is a link to accessibility services (a clickable span over its words, which a service lists and activates; the activation presses it). A touch on the `…` of a `numberOfLines` text is the paragraph's, not a hidden link's.
 - Android: a `Text`, an `Image` or an `ActivityIndicator` with a press handler ran it twice per tap (the touch's press, then a second one from Android's click when the finger lifted). It runs once.
 - A press whose node is unmounted while the finger is down no longer runs the node's handlers when the finger lifts, and a press whose end never arrives (native drops the touches of a deleted node) no longer leaves the next touch without a responder.

@@ -6,9 +6,9 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { parse } from "@babel/parser";
 import { isBlockStatement, isCallExpression, isFunction, isIdentifier, isMemberExpression, traverseFast } from "@babel/types";
-import { componentOptions, runesDefaultEnabled } from "./compile-options.ts";
+import { asyncEnabled, componentOptions, lowersHtml, moduleOptions, runesDefaultEnabled } from "./compile-options.ts";
 import { lowerPrimitives } from "./lower.ts";
-import { sourceDirectory, sourceFile } from "./package-root.ts";
+import { cacheKeyFiles } from "./transformer-cache.ts";
 import { assertCustomRenderer } from "./svelte-build.ts";
 import { isRemoteModule, kitGlobalsImport, kitRoot, transformRemoteModule } from "./remote/transform.ts";
 import { TraceMap, originalPositionFor } from "@jridgewell/trace-mapping";
@@ -97,7 +97,7 @@ export function transform(input: TransformInput) {
   if (filename.endsWith(".svelte")) {
     // Runes mode for the app's own components unless the file opts out (`componentOptions`, `compile-options.ts`); a file below `node_modules` keeps Svelte's own default.
     requireCustomRenderer();
-    const result = compile(lowerPrimitives(src, { filename }), componentOptions(filename));
+    const result = compile(lowerPrimitives(src, { filename, html: lowersHtml(filename) }), componentOptions(filename));
     if (result.css?.code.trim()) throw new Error(`${filename}: use native style props; browser CSS is not supported`);
     code = result.js.code;
     runes = result.metadata.runes;
@@ -114,7 +114,7 @@ export function transform(input: TransformInput) {
     }
     if (svelteModule) {
       // A Svelte module is always in runes mode: `compileModule` has no `runes` option.
-      const result = compileModule(code, { filename, dev: false, generate: "client" });
+      const result = compileModule(code, moduleOptions(filename));
       code = result.js.code;
       if (result.js.map) maps.unshift(new TraceMap(result.js.map.toString()));
     }
@@ -137,15 +137,15 @@ export function transform(input: TransformInput) {
 }
 
 /**
- * Metro's cache key for what this transformer produces: the code that runs, the app's `runes` setting, and upstream's key. Built (`dist/node/transformer.cjs`), the one file
- * holds `lower.ts`, `remote/transform.ts` and `compile-options.ts`; run from the sources, those three are hashed next to this one.
+ * Metro's cache key for what this transformer produces: the code that runs, the app's `runes` and `async` settings, and upstream's key. Built (`dist/node/transformer.cjs`), the one file
+ * holds the modules it imports; run from the sources, those that make the output (`cacheKeyFiles`: `lower.ts` and what it imports, `remote/transform.ts`, `compile-options.ts`) are hashed next to this one.
  */
 export function getCacheKey(options?: unknown): string {
-  const files = [import.meta.filename];
-  if (import.meta.dirname === sourceDirectory) files.push(sourceFile("lower.ts"), sourceFile("remote/transform.ts"), sourceFile("compile-options.ts"));
+  const files = cacheKeyFiles(import.meta.filename, import.meta.dirname);
   const hash = createHash("sha256");
   for (const file of files) hash.update(readFileSync(file));
-  // The mode an app's components are compiled in is not in any file: `withSvelteNative(config, { runes })` hands it over in the environment.
+  // The mode an app's components are compiled in is not in any file: `withSvelteNative(config, { runes, async })` hands it over in the environment.
   hash.update(`runes-default:${runesDefaultEnabled()}`);
+  hash.update(`async:${asyncEnabled()}`);
   return hash.update(upstream.getCacheKey(options)).digest("hex");
 }

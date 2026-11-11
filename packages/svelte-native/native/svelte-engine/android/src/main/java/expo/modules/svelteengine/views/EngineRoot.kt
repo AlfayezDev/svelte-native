@@ -12,6 +12,7 @@ import expo.modules.svelteengine.ClaimArbiter
 import expo.modules.svelteengine.ClaimOutcome
 import expo.modules.svelteengine.GestureRules
 import expo.modules.svelteengine.SvelteEngineNative
+import expo.modules.svelteengine.TextHitRules
 
 /**
  * What the root asks of react-native-gesture-handler's `RNGestureHandlerRootHelper` once gestures are enabled
@@ -205,8 +206,9 @@ class EngineRoot(context: Context) : FrameLayout(context), RootView {
       collectClaimers(target)
       if (target == null) return false
       // A modal layer's own area has no node: the gesture is held, JavaScript hears nothing of it.
-      if (tagOf(target) != 0) {
-        track(ev, 0, target)
+      val tag = tagAt(target, ev.x, ev.y)
+      if (tag != 0) {
+        track(ev, 0, target, tag)
         send(TYPE_START, 0)
       }
     } else if (!onEngine) {
@@ -217,8 +219,9 @@ class EngineRoot(context: Context) : FrameLayout(context), RootView {
         when (action) {
           MotionEvent.ACTION_POINTER_DOWN -> {
             val target = HitTest.find(this, ev.getX(ev.actionIndex), ev.getY(ev.actionIndex))
-            if (target != null && tagOf(target) != 0 && count < MAX) {
-              track(ev, ev.actionIndex, target)
+            val tag = if (target == null) 0 else tagAt(target, ev.getX(ev.actionIndex), ev.getY(ev.actionIndex))
+            if (target != null && tag != 0 && count < MAX) {
+              track(ev, ev.actionIndex, target, tag)
               send(TYPE_START, count - 1)
             }
           }
@@ -369,8 +372,19 @@ class EngineRoot(context: Context) : FrameLayout(context), RootView {
 
   private fun tagOf(view: View): Int = (view as? EngineNode)?.node?.tag ?: 0
 
-  private fun track(ev: MotionEvent, index: Int, target: View) {
-    val tag = tagOf(target)
+  /**
+   * The node a touch at ([x], [y]) of this root lands on, [target] being the view found there: the view's own, or for a text the Text nested in it under the finger
+   * (`EngineText.tagForTouch`, React Native's `reactTagForTouch`), which is dispatched the touch like any node. The view stays the text's: the local position
+   * JavaScript gets is in the paragraph's coordinates, as React Native gives it.
+   */
+  private fun tagAt(target: View, x: Float, y: Float): Int {
+    if (target !is EngineText) return tagOf(target)
+    HitTest.toLocal(this, target, x, y, local)
+    // A Text deleted by a commit that the views have not applied yet has no emitter any more: the paragraph's own then, not a dropped touch.
+    return TextHitRules.resolve(target.tagForTouch(local[0], local[1]), tagOf(target)) { native?.hasEmitter(it) ?: true }
+  }
+
+  private fun track(ev: MotionEvent, index: Int, target: View, tag: Int) {
     ids[count] = ev.getPointerId(index)
     tags[count] = tag
     views[count] = target

@@ -16,6 +16,7 @@ import { packageRoot, sourceFile } from "../package-root.ts";
 import { classesTableFile } from "../variant.ts";
 import { convertCss } from "./convert.ts";
 import type { ClassTable, Unsupported } from "./table.ts";
+import { watchTree } from "../watch-tree.ts";
 
 /** The Tailwind the converter is written against (the package's optional peer): the app installs this one. */
 export const TAILWIND_VERSION = "4.3.3";
@@ -381,6 +382,12 @@ export function reportUnsupported(unsupported: readonly Unsupported[], developme
 /** The `@plugin` and `@config` lines already reported by this process. */
 const reportedSkipped = new Set<string>();
 
+/** Forgets what `reportUnsupported` and `reportSkipped` have said in this process (tests share one process across files). */
+export function resetReports(): void {
+  reported.clear();
+  reportedSkipped.clear();
+}
+
 /** Once for each plugin or config the CSS has: a native build ignores them, and the classes they define are not in the table (a used one warns when it renders). */
 export function reportSkipped(skipped: readonly string[]): void {
   const fresh = skipped.filter((line) => !reportedSkipped.has(line));
@@ -405,11 +412,7 @@ export function watchClasses(options: ClassBuildOptions, stylesheets: readonly s
   let closed = false;
   const watchDirectory = (directory: string, recursive: boolean) => {
     if (closed || watchers.has(directory) || !existsSync(directory)) return;
-    const watcher = watch(directory, { recursive }, () => {
-      clearTimeout(timer);
-      timer = setTimeout(rebuild, debounceMs);
-      unrefTimer(timer);
-    });
+    const watcher = watch(directory, { recursive }, schedule);
     watcher.unref();
     watchers.set(directory, watcher);
   };
@@ -418,6 +421,11 @@ export function watchClasses(options: ClassBuildOptions, stylesheets: readonly s
     for (const directory of new Set(files.map((file) => dirname(file))))
       if (!directory.split(sep).includes("node_modules") && relative(source, directory).startsWith("..")) watchDirectory(directory, false);
   };
+  function schedule() {
+    clearTimeout(timer);
+    timer = setTimeout(rebuild, debounceMs);
+    unrefTimer(timer);
+  }
   const rebuild = () => {
     running = running.then(async () => {
       if (closed) return;
@@ -431,12 +439,14 @@ export function watchClasses(options: ClassBuildOptions, stylesheets: readonly s
       }
     });
   };
-  watchDirectory(source, true);
+  // `src/` with a watch per directory (`watchTree`): a recursive `fs.watch` stops reporting a file once an editor saves it by a rename.
+  const tree = watchTree(source, schedule, { debounceMs: 0, skip: (name) => SKIPPED_DIRECTORIES.has(name) });
   followStylesheets([resolve(root, options.css), ...stylesheets]);
   return {
     close() {
       closed = true;
       clearTimeout(timer);
+      tree.close();
       for (const watcher of watchers.values()) watcher.close();
       watchers.clear();
     },

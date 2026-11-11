@@ -45,7 +45,7 @@ const baseline = { commit: "QA lab round 2 on feat/qa-coverage, after d7fa0e8 (t
  * polyfills load Expo's WinterCG runtime (a standard `URL`, `fetch`, `TextDecoder`, ... that the router needs): 4,074,366 bytes, 120,873 (3.1 %) over the 3,953,493 of 1bbbec6 without
  * it (the QA app, which imported the runtime already, did not move).
  */
-const productBaseline = { commit: "727bded (Polyfills: Expo's WinterCG runtime is loaded)", bytes: 4_074_366 };
+const productBaseline = { commit: "HTML elements (the same host code is in every app: +78,512 bytes, 1.9 %, over the 4,074,366 of 727bded, where the polyfills load Expo's WinterCG runtime)", bytes: 4_152_878 };
 
 /** What this run made: the bundle directories (about 15 to 34 MB each) and the Metro caches of their own. All removed when the tests end. */
 const made: string[] = [];

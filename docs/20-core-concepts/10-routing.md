@@ -169,6 +169,7 @@ Call `useRouter()` while the component initialises, like `getContext`. The route
 | `entries` | The screens of this navigator's stack, first one first. |
 | `replaceBase(href)` | Replaces the first screen of this stack. |
 | `openURL(url)` | Opens a link to the app (see [Deep links](#deep-links)). Returns `false` when no route matches. |
+| `prepare(href, options?)` | Gets a `goto` ready while the finger is still down (experimental, see [Preparing a screen](#preparing-a-screen-experimental)). |
 
 `goto` takes these options:
 
@@ -179,6 +180,51 @@ Call `useRouter()` while the component initialises, like `getContext`. The route
 | `presentation` | present this screen as `'modal'`, `'sheet'`, ... this time, whatever the page says |
 
 The header's back button, the iOS edge swipe and Android's back button go back without any code. Android's back button goes to the innermost navigator the user sees.
+
+## Preparing a screen (experimental)
+
+A heavy screen takes a while to mount on the JavaScript thread, and a tap waits for it. `router.prepare` does that work while the finger is still down, so that lifting it only puts the finished screen on the stack. It builds on Svelte's `fork()`, which Svelte marks experimental, and on Svelte's async mode, which Svelte Native leaves off. Both may change, and so may `prepare`.
+
+Turn async mode on in the Metro config:
+
+```js
+/// file: metro.config.cjs
+module.exports = withSvelteNative(getDefaultConfig(__dirname), { async: true });
+```
+
+With the option every Svelte file Metro compiles, yours, the library's and your dependencies', is compiled with Svelte's `experimental.async`. Svelte's async mode is one switch for the whole app, and the option sets it for all files at once. It also lets a component use `await` in `$derived`, in the markup and at the top of its script. If the app builds for the web with `svelteNative()` in `vite.config.ts`, give it `async: true` as well, so a shared component compiles the same way on both targets (on the web, `kit.compilerOptions.experimental.async` in your own config wins). A prebuilt Svelte package that was compiled with the option turns the mode on for the whole app by itself, even without yours.
+
+Then prepare on the finger going down, commit on the tap and discard when the finger leaves without one:
+
+```svelte
+<script lang="ts">
+	import { Pressable, Text, useRouter, type PreparedNavigation } from '@rasheed/svelte-native';
+
+	const router = useRouter();
+	let prepared: PreparedNavigation | undefined;
+</script>
+
+<Pressable
+	onPressIn={() => (prepared = router.prepare('/posts/42'))}
+	onPress={() => prepared?.commit()}
+	onPressOut={() => prepared?.discard()}
+>
+	<Text>Read post 42</Text>
+</Pressable>
+```
+
+`prepare` loads the code of the pages the screen needs (the page, its layouts and the first page of a tab it opens), renders the screen off screen, and returns `{ ready, commit(), discard() }`. Nothing reaches the native stack until `commit()`, and the screen's effects run then, once. `ready` is a promise of `true` when a screen was rendered and `false` when none will be, and it never rejects.
+
+- `commit()` does the navigation `goto` does. When the screen was ready and nothing has changed in the stacks since, it puts that screen on at once. When it was not ready (the finger came up first), when something else navigated or a screen finished leaving in between, or when async mode is off, the prepared screen is dropped and `commit()` is a plain `goto` from the stacks as they are then.
+- `discard()` takes effect a task later, and a `commit()` before then wins. That is why the example is safe: for a press of 130 ms or more `Pressable` calls `onPressOut` and then `onPress` in one task. Once `commit()` or `discard()` has taken effect, further calls do nothing, and `ready` settles `false` at once if it had not settled.
+- Only forward navigations are prepared: a push, or the selection of a tab. One that pops, replaces or resets is not prepared and `commit()` is the `goto`.
+- A tree has one prepared navigation at a time. A newer `prepare` takes the screen of the one before it, and that one's `commit()` is then a plain `goto`.
+- **Every `prepare` must end in `commit()` or `discard()`.** A screen that is never committed or discarded stays in memory, with everything its components created.
+- `prepare` reads the stacks untracked and renders the screen in a timer task, so you may call it from an event handler, a timer or an effect.
+- The screen is rendered by one task on the JavaScript thread, so a heavy screen delays the next touch event by as long as it takes. Prepare when the thread has nothing else to do. Fabric still builds the screen's views when `commit()` puts it on the stack.
+- What a component does in its script outside an effect, for instance opening a subscription, is not undone by a `discard()`: Svelte never runs the teardown of an effect that never ran. Start such things in `$effect` or `onMount`.
+
+With async mode on, `await tick()` waits for the next frame or timer instead of a microtask, and when several blocks of one component tree change in one update, the components of different blocks run their `$effect.pre` and their teardown in another order. A component sees its own calls in the same order, and the screens look the same.
 
 ## Deep links
 

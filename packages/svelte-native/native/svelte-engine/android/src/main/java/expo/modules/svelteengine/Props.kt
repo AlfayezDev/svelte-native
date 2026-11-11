@@ -33,6 +33,10 @@ class Fragment(
   var shadowColor = 0
   /** `FontVariant` bit set of the Fabric attributes. */
   var variant = 0
+  /** Record 27: the tag of the node the text sits in (the paragraph's own, or a nested Text's); 0 when the state did not say. A touch on the text goes to it. */
+  var tag = 0
+  /** Record 27: the node is a link for accessibility (`role` or `accessibilityRole` "link"). */
+  var link = false
 
   /** Same fragment with another colour and size (animated props). */
   fun restyled(size: Float, color: Int): Fragment {
@@ -40,6 +44,7 @@ class Fragment(
     f.flags = flags; f.transform = transform; f.background = background; f.opacity = opacity
     f.shadowDx = shadowDx; f.shadowDy = shadowDy; f.shadowRadius = shadowRadius; f.shadowColor = shadowColor
     f.variant = variant
+    f.tag = tag; f.link = link
     return f
   }
 
@@ -239,6 +244,11 @@ object Props {
           fr.shadowDx = f(ops, i + 4); fr.shadowDy = f(ops, i + 5); fr.shadowRadius = f(ops, i + 6); fr.shadowColor = ops[i + 7]
           fr.variant = ops[i + 8]
           i += 9
+        }
+        FragmentWire.TARGET -> {
+          val fr = out.fragments?.lastOrNull() ?: throw IllegalStateException("SvelteEngine: fragment target without fragment")
+          fr.tag = FragmentWire.tag(ops, i); fr.link = FragmentWire.isLink(ops, i)
+          i += FragmentWire.TARGET_INTS
         }
         in 110..139 -> i = PropsNav.decode(id, ops, i, strings, out.nav)
         in 40..109 -> i = PropsViews.decode(id, ops, i, strings, out.views)

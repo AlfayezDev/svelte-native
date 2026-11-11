@@ -11,12 +11,13 @@
 import { bootSummary, mark, runBootTasks } from "../boot-marks.ts";
 import { loadReanimated } from "./reanimated-load.ts";
 import { onFirstCommit } from "../updates/launch.ts";
-import { resolveAssetSource, Platform } from "./deps-rn.ts";
+import { resolveAssetSource, Platform, pixelRatio } from "./deps-rn.ts";
 import { createPayload, diffPayload, viewConfigFor } from "./view-configs.ts";
 import { requireOptionalNativeModule } from "./deps-expo.ts";
 import { droppedReasons, freshNavigation } from "../navigation-restore.ts";
 import type { Adoption } from "../hmr-state.ts";
 import { mount, unmount, type Component } from "./deps-svelte.ts";
+import { inheritedStyle, textStyleOf, type TextStyle } from "./text-inherit.ts";
 // The animation layer (Reanimated + worklets, ≈ 90 ms of bundle evaluation and a second Hermes runtime on a mid-range
 // phone) loads on the first node that needs it; a plain first screen boots without it.
 type AnimationModule = typeof import("./animation.ts");
@@ -140,7 +141,7 @@ export type HostHandle = {
   blur(): void;
   setNativeProps(props: Record<string, unknown>): void;
 };
-type Handler = (event: { nativeEvent: object }) => void;
+type Handler = (event: { nativeEvent: object; currentTarget?: unknown; target?: unknown }) => void;
 type State = {
   tag: number;
   viewName: string;
@@ -166,6 +167,10 @@ type State = {
   lone: boolean;
   /** The node has been through the animation layer, which keeps a record of it: every later build goes through it too, so that it can detach. */
   animated: boolean;
+  /** The node is an element the lowering made from HTML (`nativeHtml`): text style inherits through it (`text-inherit.ts`). */
+  html?: boolean;
+  /** The text style of the node and the marked elements above it, which a marked text or input below takes. */
+  textStyle?: TextStyle;
 };
 type Root = { rootTag: number; node: NativeNode; instance: Record<string, unknown> };
 
@@ -355,9 +360,17 @@ function state(node: NativeNode, viewName: string): State {
   return current;
 }
 
+let hairlineStyle: Record<string, unknown> | undefined;
+/** What an `<hr>` looks like until its class or style says otherwise (`nativeBase="hairline"`, `lower-html.ts`): a hairline across the width of its parent, in the grey of a separator, with a margin above and below. */
+function hairline(): Record<string, unknown> {
+  hairlineStyle ??= { height: Math.max(pixelRatio().roundToNearestPixel(0.4), 1 / pixelRatio().get()), backgroundColor: "#c7c7cc", marginVertical: 8 };
+  return hairlineStyle;
+}
+
 /** The element's attributes as React Native props (see `mergeHostProps`), with each listener registered on the node as its `on…` handler. */
 function nativeProps(node: NativeNode): Record<string, unknown> {
-  const props = mergeHostProps(node.peekProps());
+  const own = node.peekProps();
+  const props = mergeHostProps(own.nativeBase === "hairline" ? { ...own, nativeBase: hairline() } : own);
   if (node.listeners.size > 0) for (const type of node.listeners.keys()) props[`on${type[0]?.toUpperCase()}${type.slice(1)}`] = node.dispatcher(type);
   return props;
 }
@@ -396,11 +409,19 @@ function handleFor(current: State, node: NativeNode | null = null): HostHandle {
   };
 }
 
-/** The `source` array and default style React Native's Image.android.js builds for the native image. */
+/**
+ * The `source` array and default style React Native's Image.android.js builds for the native image, with its `width` and `height` (the size of an image with no style of its
+ * own, under the style) and `alt` (its label, and it makes the image an accessibility element), which an HTML `<img>` writes.
+ */
 function imageProps(props: Record<string, unknown>): Record<string, unknown> {
+  const { width, height, alt, ...rest } = props;
   const resolved = Array.isArray(props.source) ? props.source : [resolveAssetSource(props.source as never) ?? { uri: "" }];
   const first = (resolved[0] ?? {}) as { width?: number; height?: number };
-  const next: Record<string, unknown> = { ...props, source: resolved, style: [resolved.length === 1 && { width: first.width, height: first.height }, { overflow: "hidden" }, props.style] };
+  const next: Record<string, unknown> = { ...rest, source: resolved, style: [resolved.length === 1 && { width: first.width ?? width, height: first.height ?? height }, { overflow: "hidden" }, props.style] };
+  if (alt != null) {
+    next.accessibilityLabel ??= alt;
+    next.accessible = true;
+  }
   if (props.onLoadStart || props.onLoad || props.onLoadEnd || props.onError) next.shouldNotifyLoadEvents = true;
   return next;
 }
@@ -520,6 +541,52 @@ function declaresOf(viewName: string, config: ReturnType<typeof viewConfig>): (k
   return entry.declares;
 }
 
+/** The text style of the nearest marked element above `node` (the ones between it and the node are not marked: React Native's own views let it through). */
+function textStyleAbove(node: NativeNode): TextStyle | undefined {
+  for (let parent = node.parent; parent; parent = parent.parent) {
+    const above = stateOf(parent);
+    if (above?.html) return above.textStyle;
+  }
+  return undefined;
+}
+
+/**
+ * The marked elements below `node` (an element the lowering made from HTML) rebuild: the text style they inherit changed. Between them and `node` the nodes that were built are
+ * rebuilt too, to reach them; a marked element that is rebuilt hands the change on to the ones below it when its own text style changes (`inheritTextStyle`).
+ */
+function markInheritors(node: NativeNode): boolean {
+  let found = false;
+  for (let child = node.firstChild; child; child = child.nextSibling) {
+    if (child.kind !== "element") continue;
+    const own = stateOf(child);
+    if (!own) continue;
+    if (own.html) {
+      own.propsDirty = true;
+      found = true;
+    } else if (markInheritors(child)) {
+      own.childrenDirty = true;
+      found = true;
+    }
+  }
+  return found;
+}
+
+/**
+ * An element the lowering made from HTML: its text style (`text-inherit.ts`) is the one of the marked elements above it with its own style over it, a text that is not inside
+ * another and an input are drawn with the text style they inherit under their own, and the font-relative values (a unitless `line-height`) are made into dp for the font size
+ * the element ends up with. When the text style of the element changes, the marked elements below it are built again.
+ */
+function inheritTextStyle(node: NativeNode, current: State, attributes: Record<string, unknown>, insideText: boolean): Record<string, unknown> {
+  current.html = true;
+  const above = textStyleAbove(node);
+  const next = textStyleOf(above, attributes.style, current.textStyle);
+  const changed = next !== current.textStyle;
+  current.textStyle = next;
+  if (changed && markInheritors(node)) current.childrenDirty = true;
+  attributes.style = inheritedStyle(above, attributes.style, !insideText && (isText(node) || node.name === "native-input"));
+  return attributes;
+}
+
 /** Builds (or rebuilds) the Fabric node for a Svelte element and returns the handle to append into its parent. */
 function build(node: NativeNode, rootTag: number, insideText: boolean, insideForeign = false): FabricNode | null {
   if (!binding) throw new Error("nativeFabricUIManager is not installed");
@@ -560,6 +627,7 @@ function build(node: NativeNode, rootTag: number, insideText: boolean, insideFor
   if (lone) attributes = { ...attributes, content: lone.textValue };
   const current = state(node, viewName);
   current.foreign = foreign;
+  if (node.getProp("nativeHtml") === true || current.html) attributes = inheritTextStyle(node, current, attributes, insideText);
   const config = viewConfig(viewName);
   if (current.declaredFor !== config) {
     current.declaredFor = config;
@@ -840,7 +908,8 @@ function dispatchEvent(target: unknown, topLevelType: string, nativeEvent: objec
     const own = stateOf(node);
     const name = (own && eventNamesOf(own.viewName).get(topLevelType)) ?? `on${topLevelType.replace(/^top/, "")}`;
     const handler = own?.handlers[name];
-    if (handler) { handler({ nativeEvent }); return; }
+    // An element lowered from HTML gets the element the handler is on and the one the event came from, as a web event has (a lowered `<form>` finds the input an Enter came from by them: `hostSubmit`).
+    if (handler) { handler(own?.html ? { nativeEvent, currentTarget: node, target } : { nativeEvent }); return; }
     if (own && name === "onChange") {
       // Component-level conveniences React Native's TextInput and Switch provide on top of the native `onChange`.
       const event = nativeEvent as { text?: string; eventCount?: number; value?: boolean };

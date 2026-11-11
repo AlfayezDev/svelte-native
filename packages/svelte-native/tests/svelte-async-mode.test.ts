@@ -29,7 +29,7 @@ function sources(directory: string, found: string[] = []): string[] {
 test("the Metro transformer compiles components and modules without Svelte's async mode", () => {
   // The transformer takes its component options from `componentOptions` (`compile-options.ts`) and nowhere else.
   const transformer = read("packages/svelte-native/src/transformer.ts");
-  expect(transformer).toContain("compile(lowerPrimitives(src, { filename }), componentOptions(filename))");
+  expect(transformer).toContain("compile(lowerPrimitives(src, { filename, html: lowersHtml(filename) }), componentOptions(filename))");
   const options = componentOptions("/app/src/Probe.svelte");
   expect(options.experimental).toEqual({ customRenderer: "@example/svelte-native/renderer" });
   const optionsSource = /export function componentOptions[\s\S]*?\n\}\n/.exec(read("packages/svelte-native/src/compile-options.ts"))?.[0] ?? "";

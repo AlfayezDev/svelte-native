@@ -240,6 +240,23 @@ test("a <pre> keeps its spaces and newlines, a <br> is a newline of its text, an
   expect(flat(rules[1]?.props.style)).toEqual({ height: 4, backgroundColor: "#c7c7cc", marginVertical: 0 });
 });
 
+test("a single-line input sends no line height, its own or inherited, so its text stays centred (iOS laid it out above the text); a textarea keeps it", async () => {
+  const m = await load("html-input-lineheight-fixture.svelte");
+  host.roots = {};
+  m.startSurface(611, m.Fixture, {});
+  await settle(m);
+  const byTest = (id: string) => all(host.roots[611] ?? []).find((node) => node.props.testID === id);
+  for (const id of ["own", "inherited"]) {
+    const input = byTest(id);
+    expect(input?.name).toBe("AndroidTextInput");
+    const style = flat(input?.props.style);
+    expect(style.lineHeight).toBeUndefined();
+    expect(style.fontSize).toBe(18);
+  }
+  const area = byTest("area");
+  expect(flat(area?.props.style).lineHeight).toBe(27);
+});
+
 test("a submit button anywhere below a <form> (in a component of its own too) and Enter in a single-line input make the form hear submit; preventDefault on the click stops it", async () => {
   const m = await load("html-form-fixture.svelte");
   host.roots = {};

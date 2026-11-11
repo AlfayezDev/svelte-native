@@ -757,7 +757,28 @@ function inheritTextStyle(node: NativeNode, current: State, attributes: Record<s
   current.textStyle = next;
   if (changed && markInheritors(node)) current.childrenDirty = true;
   attributes.style = inheritedStyle(above, attributes.style, !insideText && (isText(node) || node.name === "native-input"));
+  // A single-line input draws its text centred in the field whatever the line height, as on the web. React Native's iOS input lays a line height out above the
+  // text instead (a `text-base` input, line-height 24 at 16 px, drew its text 2 pt low), and a field view reused for another input kept it (12 Nov: every
+  // sheet input of the QA app after the HTML screen moved down 2 pt). So an HTML input that is not multiline sends no line height, inherited or its own.
+  if (node.name === "native-input" && attributes.multiline !== true) attributes.style = withoutLineHeight(attributes.style);
   return attributes;
+}
+
+/** [style] (an object, or arrays of them) with no `lineHeight` anywhere: the same value when it has none. */
+function withoutLineHeight(style: unknown): unknown {
+  if (Array.isArray(style)) {
+    let changed = false;
+    const items = style.map((item) => {
+      const next = withoutLineHeight(item);
+      if (next !== item) changed = true;
+      return next;
+    });
+    return changed ? items : style;
+  }
+  if (style === null || typeof style !== "object" || !("lineHeight" in style)) return style;
+  const rest: Record<string, unknown> = { ...(style as Record<string, unknown>) };
+  delete rest.lineHeight;
+  return rest;
 }
 
 /**

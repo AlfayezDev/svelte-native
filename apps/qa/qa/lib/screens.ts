@@ -270,6 +270,20 @@ const signedOutCases: ScreenCase[] = [
 		layout: "header",
 		title: "Lab screen",
 	}),
+	// The screen of HTML elements and classes (`qa/README.md`, "HTML elements"): a card whose text style is inherited, a flex row, a line with a link, a form, a rule and a `pre`, written with no component of the
+	// library. Everything is static (the counters it shows are zero until a press), so the references are stable; the fields and the buttons are further down the page than the first screen at any text size.
+	screenCase("html-elements", "/__dev/html", `${dev}/html`, label("Heading one"), {
+		layout: "header",
+		title: "HTML elements",
+		scrolled: ["Send", "Cancel", "Name", "Password", "Remember me"],
+	}),
+	// The screen of transitions on HTML elements (`qa/README.md`, "Transitions"): the route opens it settled (the card shown and the panel open: a block that is there when its screen opens plays nothing), so no
+	// animation is running when it is photographed and the references are stable; the list's order is the one it starts with. The buttons that run the transitions are further down at the larger sizes.
+	screenCase("transitions", "/__dev/transitions", `${dev}/transitions`, label("Hide the card"), {
+		layout: "header",
+		title: "Transitions",
+		scrolled: ["Shuffle the list", "Close the panel"],
+	}),
 	// The accessibility lab (SPEC.md "Accessibility props"): the state, value, hint and actions of each control are checked against the dump
 	// (`expect`) and, for what the dump cannot show, against the node info the lab logs (`info`). Labels are what React Native's views would
 	// say for the same props: "mixed", "busy" and the value's text follow the label, joined by ", ".
@@ -523,7 +537,7 @@ export const notCovered: NotCovered[] = [
 	{
 		route: "/__dev/foreign",
 		reason:
-			"the foreign-views lab (WebView, map, video, and the sections for expo-image, expo-blur, expo-linear-gradient, react-native-video, datetimepicker, lottie-react-native, react-native-pdf, react-native-view-shot, rive-react-native, expo-conic-gradient, react-native-fast-shadow, react-native-animateable-text and react-native-svg) draws third-party content that is not ours to freeze: remote pages and Rive's file, map tiles, video frames, the looping animations, the counting text and the SVG section's progress ring change between runs (the ring is animated by a shared value, so no frame of the screen is stable), and the blur, date picker, PDF renderer, shadow, image decoders and the SVG rasteriser are the libraries' own rendering that a pixel reference would pin to one device and library version; the foreign-views stress scenario of the lab checks these views functionally",
+			"the foreign-views lab (WebView, map, video, and the sections for expo-image, expo-blur, the library's own blur, expo-linear-gradient, react-native-video, datetimepicker, lottie-react-native, react-native-pdf, react-native-view-shot, rive-react-native, expo-conic-gradient, react-native-fast-shadow, react-native-animateable-text and react-native-svg) draws third-party content that is not ours to freeze: remote pages and Rive's file, map tiles, video frames, the looping animations, the counting text and the SVG section's progress ring change between runs (the ring is animated by a shared value, so no frame of the screen is stable), and the blurs, date picker, PDF renderer, shadow, image decoders and the SVG rasteriser are the libraries' own rendering that a pixel reference would pin to one device and library version; the foreign-views stress scenario of the lab checks these views functionally",
 	},
 	{
 		route: "/__dev/smoke",
@@ -546,8 +560,10 @@ export const notCovered: NotCovered[] = [
 export const coveredRouteDirectories = [
 	"__dev",
 	"__dev/a11y",
+	"__dev/html",
 	"__dev/screen",
 	"__dev/screens",
+	"__dev/transitions",
 	"__dev/tree/home",
 	"__dev/tree/home/detail/[id]",
 	"__dev/tree/inbox",

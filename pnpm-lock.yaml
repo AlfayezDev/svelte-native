@@ -600,6 +600,9 @@ importers:
       svelte-check:
         specifier: ^4.6.0
         version: 4.7.6(picomatch@4.0.7)(svelte@file:vendor/svelte-5.56.7-216f258.tgz(patch_hash=d9740d6e8bc3e550125c469730e880b5f142289d71db5bb2427bfc6a4101b342)(@typescript-eslint/types@8.67.0))(typescript@6.0.3)
+      tailwindcss:
+        specifier: 4.3.3
+        version: 4.3.3
       typescript:
         specifier: ^6.0.3
         version: 6.0.3

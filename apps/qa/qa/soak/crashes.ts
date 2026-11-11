@@ -41,7 +41,7 @@ export function crashesDefinition(idleSeconds: number): string {
 	return [
 		`A cold start is a process started from nothing: wake, am force-stop, ${idleSeconds} s pause, logcat cleared, am start -W; the log is followed (main, system and crash buffers) until the JavaScript host prints [Svelte boot] and for ${settleMs / 1000} s more.`,
 		"It crashed when the log holds a FATAL EXCEPTION or a native Fatal signal of the package, and it is an ANR when it holds ANR in <package>. It died when pidof finds no process of the package after that window. A start that did none of these but never printed [Svelte boot] within 20 s is counted apart (no boot).",
-		"A suite is the full lab (rasheed-svelte:///__dev?run=checks,quick: 28 checks and the stress scenarios) as `native-qa lab` runs it; it crashed when its log holds a crash or an ANR of the package, and it is incomplete when the lab never logged its last line.",
+		"A suite is the full lab (rasheed-svelte:///__dev?run=checks,quick: 44 checks and the stress scenarios) as `native-qa lab` runs it; it crashed when its log holds a crash or an ANR of the package, and it is incomplete when the lab never logged its last line.",
 		"Every distinct failure is kept once with a count (first 20), its frames symbolicated through the source map and the unstripped libraries when the build left them next to the APK.",
 	].join(" ");
 }

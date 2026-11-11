@@ -42,7 +42,7 @@ export function labPage(version: string): string {
 /** The commands of the sets that are mounted, by source (the scenario reads it when it needs it, outside any effect). */
 export const foreignHandles = new SvelteMap<string, SetHandles>();
 
-/** The same for the sets of the twelve native-view libraries (`LibrarySet.svelte`): the video's, animation's, PDF's and Rive's functions, the capture, the animated text's number and the Android date dialog. */
+/** The same for the sets of the native-view libraries (`LibrarySet.svelte`): the video's, animation's, PDF's and Rive's functions, the capture, the animated text's number and the Android date dialog. */
 export const libraryHandles = new SvelteMap<string, LibraryHandles>();
 
 /** What the lab page reports: one entry per event of a view, by the set (`inline`, `row-2`, `sheet`, `cycle`) that raised it. */
@@ -67,6 +67,10 @@ export const labImageBlue = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAA
 export const libraryLabDefaults = {
   image: "default" as "default" | "red" | "blue",
   blurIntensity: 70,
+  /** The library's own `BlurView` (the `svelteblur` section): its `intensity` and `tint`, and the colour of the first of the stripes behind it. */
+  svelteBlurIntensity: 70,
+  svelteBlurTint: "light" as "light" | "dark",
+  svelteBlurStripe: "#e5484d",
   gradientColors: ["#ff7a18", "#af002d", "#319197"] as string[],
   videoPaused: false,
   lottieAutoPlay: true,

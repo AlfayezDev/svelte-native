@@ -1,14 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { launchOf } from "../commands/foreign.ts";
 import { labRunFrom } from "../lib/lab-run.ts";
-import { analyseSources, bundleChecks, describeForeign, failedChecks, foreignMetrics, libraryModules, missingPlaces } from "../lib/foreign.ts";
+import { analyseSources, bundleChecks, describeForeign, expoBlurReaches, failedChecks, foreignMetrics, importClosure, libraryModules, missingPlaces } from "../lib/foreign.ts";
 import { checkGatesFile, evaluate, type GatesFile } from "../lib/gates.ts";
 import { platformDir } from "../lib/paths.ts";
 import { findButton, parsePress } from "../lib/foreign-press.ts";
 import { parseForeignChecks } from "../parse/foreign.ts";
-import { argb, arrivedInOrder, clear, distance, hex, near, numberIn, riveBackdrop, riveFitDetail, riveFitPainted, riveMiddle, riveSides, show, solid, tookNote, untilTaken } from "../../src/lib/native/dev/foreign-pixels.ts";
+import { argb, arrivedInOrder, bandInPlace, bandPoints, betweenMargin, brightness, clear, distance, edgeGradual, edgeHard, edgeRatio, edgeSharp, edgeUnderTint, gradualBound, hex, near, numberIn, ratioBetween, readEdge, riveBackdrop, riveFitDetail, riveFitPainted, riveMiddle, riveSides, show, solid, tookNote, untilTaken } from "../../src/lib/native/dev/foreign-pixels.ts";
 import { raceAttempts, runRace, type Race } from "../../src/lib/native/dev/foreign-race.ts";
 import type { ForeignCheck, ForeignFile, ForeignLaunch } from "../lib/types.ts";
 import { sample } from "./sample.ts";
@@ -260,6 +260,45 @@ describe("what the release bundle may hold", () => {
 		expect(result.forbidden.map((value) => value.library).sort()).toEqual(["datetime", "pdf", "rive", "svg", "video"]);
 	});
 
+	test("expo-blur's JavaScript fails the `blur` library alone: the built-in blur has patterns of its own, which are other blur packages' and not expo-blur's", () => {
+		const held = analyseSources(["/node_modules/expo-blur/build/BlurView.js", "/node_modules/expo-blur/build/BlurTargetView.android.js"]);
+		expect([...new Set(held.forbidden.map((value) => value.library))]).toEqual(["blur"]);
+		const others = analyseSources(["/node_modules/@react-native-community/blur/src/BlurView.js", "/node_modules/react-native-blur/index.js"]);
+		expect(others.forbidden.map((value) => value.library)).toEqual(["svelteblur", "svelteblur"]);
+		// a bundle with expo-blur's modules makes the `blur` check fail and leaves the built-in blur's passing
+		const bundle = { map: "m", sources: 3, reactFiles: [], forbidden: held.forbidden, matchesBuild: true };
+		expect(bundleChecks(bundle, ["blur", "svelteblur"]).map((value) => [value.library, value.passed])).toEqual([["blur", false], ["svelteblur", true]]);
+	});
+
+	test("the built-in blur's wrapper reaches no expo-blur file: not the library's wrappers of it, their view config or the package, in any file it imports", () => {
+		const source = join(resolve(platformDir, "../.."), "packages/svelte-native/src");
+		const read = (path: string) => (existsSync(path) ? readFileSync(path, "utf8") : undefined);
+		const { files, packages } = importClosure(join(source, "components/BlurView.svelte"), read);
+		// the wrapper's own files: the container `View`, the class and props helpers, the foreign-view naming (and what that reads)
+		const own = files.map((file) => file.slice(source.length + 1));
+		for (const file of ["components/BlurView.svelte", "components/View.svelte", "fabric/foreign.ts", "native-props.ts"]) expect([file, own.includes(file)]).toEqual([file, true]);
+		expect(files.filter((file) => expoBlurReaches.some((pattern) => pattern.test(file)))).toEqual([]);
+		expect(packages.filter((name) => expoBlurReaches.some((pattern) => pattern.test(name)))).toEqual([]);
+	});
+
+	test("the closure finds what a wrapper would reach: a value import of expo-blur's wrapper, through another file or a package, and not a type-only one", () => {
+		const files: Record<string, string> = {
+			"/s/components/BlurView.svelte": '<script lang="ts">\n  import type { BlurTint } from "../fabric/foreign-blur.ts";\n  import View from "./View.svelte";\n  import { helper } from "../helper.ts";\n</script>',
+			"/s/components/View.svelte": "<script>\n  import { x } from '../native-props.ts';\n</script>",
+			"/s/native-props.ts": "export const x = 1;",
+			"/s/helper.ts": 'import {\n  ExpoBlur,\n} from "./components/ExpoBlurView.svelte";\nexport const helper = 1;',
+			"/s/components/ExpoBlurView.svelte": '<script>\n  import { BlurView } from "expo-blur";\n</script>',
+		};
+		const reach = importClosure("/s/components/BlurView.svelte", (path) => files[path]);
+		expect(reach.files).toContain("/s/components/ExpoBlurView.svelte");
+		expect(reach.packages).toEqual(["expo-blur"]);
+		expect(reach.files.filter((file) => expoBlurReaches.some((pattern) => pattern.test(file)))).toEqual(["/s/components/ExpoBlurView.svelte"]);
+		// without that file's import the same wrapper reaches nothing of expo-blur, and the type-only import of its config is erased
+		const clean = importClosure("/s/components/BlurView.svelte", (path) => (path === "/s/helper.ts" ? "export const helper = 1;" : files[path]));
+		expect(clean.files).not.toContain("/s/fabric/foreign-blur.ts");
+		expect([...clean.files, ...clean.packages].filter((value) => expoBlurReaches.some((pattern) => pattern.test(value)))).toEqual([]);
+	});
+
 	test("every pinned library has a module pattern, and expo-image does not match expo-image-picker", () => {
 		for (const library of libraries) expect(libraryModules[library]?.length ?? 0).toBeGreaterThan(0);
 		expect(analyseSources(["/node_modules/expo-image-picker/src/ImagePicker.ts"]).forbidden).toEqual([]);
@@ -268,9 +307,10 @@ describe("what the release bundle may hold", () => {
 });
 
 describe("gates.json", () => {
-	test("pins the thirteen libraries for both platforms and keeps the file valid", () => {
+	test("pins the fourteen libraries (the thirteen and the built-in BlurView) for both platforms and keeps the file valid", () => {
 		expect(() => checkGatesFile(gates)).not.toThrow();
-		expect(libraries).toHaveLength(13);
+		expect(libraries).toHaveLength(14);
+		expect(libraries).toContain("svelteblur");
 		expect(gates.foreign?.libraries.ios).toEqual(libraries);
 	});
 
@@ -355,6 +395,128 @@ describe("the colour helpers the lab's pixel checks use", () => {
 	});
 });
 
+describe("the stripe edge, as the built-in BlurView's checks read it", () => {
+	const pixelOf = ({ r, g, b }: { r: number; g: number; b: number }) => ((255 << 24) | (Math.round(r) << 16) | (Math.round(g) << 8) | Math.round(b)) >>> 0;
+	const red = hex("#e5484d");
+	const yellow = hex("#f5d90a");
+	/** The row across the red | yellow edge when [t] of the step has been taken (0 red, 1 yellow) and [tint] of white lies over it. */
+	const at = (t: number, tint = 0) => {
+		const mix = (a: number, b: number) => (a + (b - a) * t) * (1 - tint) + 255 * tint;
+		return pixelOf({ r: mix(red.r, yellow.r), g: mix(red.g, yellow.g), b: mix(red.b, yellow.b) });
+	};
+	/** A Gaussian blur of [sigma] dp over the edge, the four points at -21, -4, +4, +21 dp: the step the blurred line has reached at each. */
+	const erf = (x: number) => {
+		// Abramowitz and Stegun 7.1.26, good to 1.5e-7
+		const t = 1 / (1 + 0.3275911 * Math.abs(x));
+		const poly = ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t;
+		return Math.sign(x) * (1 - poly * Math.exp(-x * x));
+	};
+	const phi = (x: number) => 0.5 * (1 + erf(x / Math.SQRT2));
+	const blurred = (sigma: number, tint = 0) => [-21, -3.7, 3.7, 21].map((dp) => at(Math.min(1, Math.max(0, phi(dp / sigma))), tint));
+
+	test("a hard edge in the stripes' own colours: both pairs are a full step apart, the ratio is 1", () => {
+		const read = readEdge([at(0), at(0), at(1), at(1)]);
+		expect(read).toEqual({ near: 145, far: 145 });
+		expect(edgeRatio(read)).toBe(1);
+		expect(edgeHard(read)).toBe(true);
+		expect(edgeSharp(read)).toBe(true);
+		expect(edgeGradual(read, gradualBound.android)).toBe(false);
+		expect(edgeGradual(read, gradualBound.ios)).toBe(false);
+	});
+
+	test("a blur of 25 dp (intensity 100 on Android, BlurRules.kt) under a 45 % tint: gradual, and the inner pair sees about a fifth of what the outer pair does", () => {
+		const read = readEdge(blurred(25, 0.45));
+		expect(read.far).toBeGreaterThanOrEqual(40);
+		expect(read.near / read.far).toBeLessThan(0.3);
+		expect(edgeGradual(read, gradualBound.android)).toBe(true);
+		expect(edgeHard(read)).toBe(false);
+	});
+
+	test("the ratio is what a tint does not move: the same blur under no tint, a light one and a heavy one reads the same", () => {
+		const ratios = [0, 0.3, 0.45, 0.75].map((tint) => edgeRatio(readEdge(blurred(12.5, tint))) ?? 9);
+		for (const ratio of ratios) expect(Math.abs(ratio - (ratios[0] ?? 0))).toBeLessThan(0.05);
+		expect(ratios[0]).toBeGreaterThan(0.2);
+		expect(ratios[0]).toBeLessThan(0.35);
+		// the near pair alone does move with it: 0.28 of 145 untinted, a quarter of that under three quarters of white
+		expect(readEdge(blurred(12.5, 0.75)).near).toBeLessThan(readEdge(blurred(12.5)).near / 3);
+	});
+
+	test("Android's bound is a third of the blur the rules ask for: 25 dp passes, 15 dp passes, 8 dp does not, in boxes of 330 to 400 dp; iOS's looser one takes 8 dp", () => {
+		const across = (width: number, sigma: number) => readEdge([-0.07, -0.012, 0.012, 0.07].map((fraction) => at(Math.min(1, Math.max(0, phi((fraction * width) / sigma))))));
+		for (const width of [330, 360, 400]) {
+			expect([width, edgeGradual(across(width, 25), gradualBound.android)]).toEqual([width, true]);
+			expect([width, edgeGradual(across(width, 15), gradualBound.android)]).toEqual([width, true]);
+			expect([width, edgeGradual(across(width, 8), gradualBound.android)]).toEqual([width, false]);
+			expect([width, edgeGradual(across(width, 8), gradualBound.ios)]).toEqual([width, true]);
+			expect([width, edgeGradual(across(width, 3), gradualBound.ios)]).toEqual([width, false]);
+		}
+		// the figures the comment of `gradualBound` gives for a box of 360 dp
+		expect(edgeRatio(across(360, 25))).toBeCloseTo(0.2, 1);
+		expect(edgeRatio(across(360, 12.5))).toBeCloseTo(0.28, 1);
+		expect(edgeRatio(across(360, 8.3))).toBeCloseTo(0.4, 1);
+	});
+
+	test("the ratio is unknown when the outer pair shows no step (a hole, or nothing behind), and then nothing is gradual", () => {
+		expect(edgeRatio({ near: 0, far: 5 })).toBeNull();
+		expect(edgeGradual({ near: 0, far: 5 }, 0.35)).toBe(false);
+		expect(edgeSharp({ near: 40, far: 40 })).toBe(false);
+	});
+
+	test("the intensity-50 ratio sits between the ones at 100 and at 1: by 0.03 above and 0.25 below on Android, by little on iOS", () => {
+		expect(ratioBetween(0.2, 0.28, 1, betweenMargin.android)).toBe(true);
+		expect(ratioBetween(0.2, 0.2, 1, betweenMargin.android)).toBe(false);
+		expect(ratioBetween(0.2, 0.21, 1, betweenMargin.android)).toBe(false);
+		expect(ratioBetween(0.2, 0.9, 1, betweenMargin.android)).toBe(false);
+		expect(ratioBetween(0.2, 0.28, null, betweenMargin.android)).toBe(false);
+		expect(ratioBetween(null, 0.28, 1, betweenMargin.android)).toBe(false);
+		expect(ratioBetween(0.2, 0.28, 1, betweenMargin.ios)).toBe(true);
+		expect(ratioBetween(0.2, 1, 1, betweenMargin.ios)).toBe(false);
+	});
+
+	test("a tint alone (Android below 12) keeps the line at a lower contrast and lifts the red stripe: it is neither hard in the stripes' colours nor gradual", () => {
+		const tinted = [at(0, 0.75), at(0, 0.75), at(1, 0.75), at(1, 0.75)];
+		const read = readEdge(tinted);
+		expect(read.near).toBeGreaterThanOrEqual(35);
+		expect(edgeHard(read)).toBe(false);
+		expect(edgeGradual(read, gradualBound.ios)).toBe(false);
+		// a full-strength tint (0.75) leaves 36 of the 145: not a sharp edge in the sense of intensity 1, whose tint is 0.30 and leaves 101
+		expect(edgeSharp(read)).toBe(false);
+		expect(edgeSharp(readEdge([at(0, 0.3), at(0, 0.3), at(1, 0.3), at(1, 0.3)]))).toBe(true);
+		expect(edgeUnderTint(tinted, read)).toBe(true);
+		// an untinted hard edge is not a tinted one (the green of the red stripe is its own 72), and a blurred one is not either
+		expect(edgeUnderTint([at(0), at(0), at(1), at(1)], read)).toBe(false);
+		expect(edgeUnderTint(blurred(25, 0.45), readEdge(blurred(25, 0.45)))).toBe(false);
+	});
+
+	test("a capture that read nothing (a hole) is neither hard nor gradual nor tinted", () => {
+		const read = readEdge([0, 0, 0, 0]);
+		expect([edgeHard(read), edgeGradual(read, gradualBound.ios), edgeSharp(read), edgeUnderTint([0, 0, 0, 0], read)]).toEqual([false, false, false, false]);
+		expect(readEdge([])).toEqual({ near: 0, far: 0 });
+	});
+
+	test("the band's six points read bright, dark, bright in both columns, with or without a tint, and anything else is a band that is not where the box is", () => {
+		expect(bandPoints).toHaveLength(6);
+		const grey = (value: number) => pixelOf({ r: value / 3, g: value / 3, b: value / 3 });
+		const column = (above: number, within: number, below: number) => [grey(above), grey(within), grey(below)];
+		// outside the blur: the red stripe (378) and the band (54); inside it at intensity 1 under the lightest tint of the fallback (0.30 of white, 227 of the 324 left) and under 0.12
+		expect(bandInPlace([...column(378, 54, 378), ...column(425, 140, 425)])).toBe(true);
+		expect(bandInPlace([...column(378, 54, 378), ...column(496, 270, 496)])).toBe(true);
+		// the picture is lower: the point meant to be above the band is in it, or the one in it is below it
+		expect(bandInPlace([...column(378, 54, 378), ...column(140, 140, 425)])).toBe(false);
+		expect(bandInPlace([...column(378, 54, 378), ...column(425, 425, 140)])).toBe(false);
+		expect(bandInPlace([...column(378, 54, 378), ...column(425, 425, 425)])).toBe(false);
+		expect(bandInPlace([...column(378, 54, 378)])).toBe(false);
+	});
+
+	test("brightness is the sum of the channels: a dark tint over a stripe is far below a light one", () => {
+		expect(brightness(0xffffffff)).toBe(765);
+		expect(brightness(0xff000000)).toBe(0);
+		const stripe = hex("#f5d90a");
+		const over = (white: boolean) => pixelOf({ r: stripe.r * 0.55 + (white ? 255 * 0.45 : 0), g: stripe.g * 0.55 + (white ? 255 * 0.45 : 0), b: stripe.b * 0.55 + (white ? 255 * 0.45 : 0) });
+		expect(brightness(over(true)) - brightness(over(false))).toBeGreaterThanOrEqual(150);
+	});
+});
+
 describe("untilTaken: the capture that is asked again until a late paint has arrived", () => {
 	/** A clock the pauses move, so that the loop runs in no time. */
 	const clock = () => {
@@ -383,14 +545,25 @@ describe("untilTaken: the capture that is asked again until a late paint has arr
 		expect(outcome).toEqual({ taken: "hole", calls: 6, waited: 2000 });
 	});
 
-	test("a capture that failed or gave nothing ends it at once, whatever time is left", async () => {
+	test("a capture that failed or gave nothing is taken again, like one that is not wanted: the GPU frame of a capture times out and the next is a software one", async () => {
 		const { now, pause } = clock();
-		expect(await untilTaken(given("hole", null, "painted"), (taken) => taken === "painted", 5000, pause, 400, now)).toEqual({ taken: null, calls: 2, waited: 400 });
+		expect(await untilTaken(given("hole", null, "painted"), (taken) => taken === "painted", 5000, pause, 400, now)).toEqual({ taken: "painted", calls: 3, waited: 800 });
+		const { now: later, pause: wait } = clock();
+		expect(await untilTaken(given(null, null, null, "painted"), (taken) => taken === "painted", 5000, wait, 400, later)).toEqual({ taken: "painted", calls: 4, waited: 1200 });
 	});
 
-	test("with no time to settle it is one capture, wanted or not (every check that does not wait)", async () => {
+	test("captures that keep failing end at the deadline with null, for the check to say the capture failed", async () => {
+		const { now, pause } = clock();
+		expect(await untilTaken(given(null), (taken) => taken === "painted", 2000, pause, 400, now)).toEqual({ taken: null, calls: 6, waited: 2000 });
+		// ...and a wanted-looking result after the failures is still found before it
+		const { now: again, pause: wait } = clock();
+		expect(await untilTaken(given(null, null, "painted"), (taken) => taken === "painted", 2000, wait, 400, again)).toEqual({ taken: "painted", calls: 3, waited: 800 });
+	});
+
+	test("with no time to settle it is one capture, wanted or not, failed or not (every check that does not wait)", async () => {
 		const { now, pause } = clock();
 		expect(await untilTaken(given("hole", "painted"), (taken) => taken === "painted", 0, pause, 400, now)).toEqual({ taken: "hole", calls: 1, waited: 0 });
+		expect(await untilTaken(given(null, "painted"), (taken) => taken === "painted", 0, pause, 400, now)).toEqual({ taken: null, calls: 1, waited: 0 });
 	});
 });
 

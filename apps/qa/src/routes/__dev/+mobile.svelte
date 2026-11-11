@@ -15,6 +15,12 @@
   import Row from "#lib/native/dev/Row.svelte";
   import Observed from "#lib/native/dev/Observed.svelte";
   import Stress from "#lib/native/dev/Stress.svelte";
+  import ClassProbe from "#lib/native/dev/ClassProbe.svelte";
+  import { runClassChecks } from "#lib/native/dev/class-lab.ts";
+  import HtmlScreen from "#lib/native/dev/HtmlScreen.svelte";
+  import { runHtmlChecks } from "#lib/native/dev/html-lab.ts";
+  import TransitionsScreen from "#lib/native/dev/TransitionsScreen.svelte";
+  import { runTransitionChecks } from "#lib/native/dev/transition-lab.ts";
   import Page from "#lib/native/components/Page.svelte";
   import Button from "#lib/native/components/Button.svelte";
   import { runCapture } from "#lib/native/dev/capture.ts";
@@ -97,6 +103,15 @@
   let panel = $state<Panel>(panels.find((name) => name === initialPanel) ?? "checks");
   let running = $state(false);
   let checks = $state<Check[]>([]);
+  /** The views of the class checks (`class-lab.ts`): on the page while the run reads them, not otherwise (the page's screens are frozen without them). */
+  let classProbe: ReturnType<typeof ClassProbe> | undefined = $state();
+  let classProbeOn = $state(false);
+  /** The same for the HTML checks (`html-lab.ts`): the lab's screen of HTML elements, whose tree they read. */
+  let htmlProbe: ReturnType<typeof HtmlScreen> | undefined = $state();
+  let htmlProbeOn = $state(false);
+  /** And for the transition checks (`transition-lab.ts`): the lab's screen of transitions, which the run shows, hides, shuffles and opens. */
+  let transitionProbe: ReturnType<typeof TransitionsScreen> | undefined = $state();
+  let transitionProbeOn = $state(false);
   const passed = $derived(checks.filter((check) => check.passed).length);
   const failed = $derived(checks.length - passed);
   const titleStyle = $derived({ color: theme.foreground, fontSize: 19, fontWeight: "600" as const });
@@ -316,10 +331,31 @@
       panel = "animation";
       await settle();
       await verifyAnimation();
+
+      // `class` (the css option: src/global.css): ten checks of what the classes of a mounted view became, after the others because one of them switches the app's appearance for a moment.
+      panel = "checks";
+      classProbeOn = true;
+      await settle();
+      try { await runClassChecks(classProbe, check); }
+      catch (error) { check("Class checks completed", false, error instanceof Error ? error.message : String(error)); console.error("[native lab classes]", error); }
+
+      classProbeOn = false;
+      // HTML elements (`HtmlScreen.svelte`, written with HTML and classes): six checks of what the host drew from the mounted elements, after the class checks, whose scheme override is over by now.
+      htmlProbeOn = true;
+      await settle();
+      try { await runHtmlChecks(htmlProbe, check); }
+      catch (error) { check("HTML checks completed", false, error instanceof Error ? error.message : String(error)); console.error("[native lab html]", error); }
+
+      htmlProbeOn = false;
+      // Transitions (`TransitionsScreen.svelte`: `in:`, `out:`, `transition:` and `animate:flip` on HTML elements): five checks of what the host and Reanimated did to the elements, last because they take a few seconds of real time.
+      transitionProbeOn = true;
+      await settle();
+      try { await runTransitionChecks(transitionProbe, check); }
+      catch (error) { check("Transition checks completed", false, error instanceof Error ? error.message : String(error)); console.error("[native lab transitions]", error); }
     } catch (error) {
       check("Runner completed", false, error instanceof Error ? error.message : String(error));
       console.error("[native lab]", error);
-    } finally { running = false; panel = previousPanel; }
+    } finally { running = false; classProbeOn = false; htmlProbeOn = false; transitionProbeOn = false; panel = previousPanel; }
   }
 </script>
 
@@ -340,6 +376,9 @@
     <Text style={textStyle}>Effect observed {observed} · pre-effect {preObserved} · store {$storeTriple}</Text>
     <Text style={textStyle}>Collections {collectionSummary}</Text>
     <Button label="Increment state" variant="secondary" onPress={() => { count++; }} disabled={running} />
+    {#if classProbeOn}<ClassProbe bind:this={classProbe} />{/if}
+    {#if htmlProbeOn}<HtmlScreen bind:this={htmlProbe} />{/if}
+    {#if transitionProbeOn}<TransitionsScreen bind:this={transitionProbe} />{/if}
     {#each checks as result, index (`${index}:${result.name}`)}
       <View style={{ gap: 5, borderLeftWidth: 3, borderLeftColor: result.passed ? "#22a06b" : theme.danger, paddingLeft: 12 }}>
         <Text style={textStyle}>{result.passed ? "PASS" : "FAIL"} · {result.name}</Text>

@@ -477,6 +477,43 @@ describe("verdicts", () => {
 		expect(failing(missing)).toContain("race tap was injected");
 	});
 
+	test("span: a tap on the link presses the link only, a tap on the first line or beside the link presses the paragraph only", () => {
+		/** The snapshots after each tap, when the taps pressed [taps] (the counters add up as the lab's do). */
+		const run = (taps: { link: number; paragraph: number }[]): Snapshot[] => {
+			const total: Record<string, number[]> = {};
+			const add = (name: string, by: number[]) => { const c = total[name] ?? [0, 0, 0, 0, 0, 0, 0]; total[name] = c.map((value, index) => value + (by[index] ?? 0)); };
+			return taps.map((entry) => {
+				add("area.tap", [1, 1, 0, 1, 1, 1, 1]);
+				add("link", [0, entry.link, 0, 0, 0, 0, 0]);
+				add("paragraph", [0, entry.paragraph, 0, 0, 0, 0, 0]);
+				return snapshot(JSON.parse(JSON.stringify(total)) as Record<string, number[]>);
+			});
+		};
+		const right = run([{ link: 1, paragraph: 0 }, { link: 0, paragraph: 1 }, { link: 0, paragraph: 1 }]);
+		expect(failing(evaluate("gestures-span", [right[2] as Snapshot], [right]))).toEqual([]);
+		// a press that went to the paragraph as well as the link, one that went to the link from beside it, and taps that were never injected
+		const both = run([{ link: 1, paragraph: 1 }, { link: 0, paragraph: 1 }, { link: 0, paragraph: 1 }]);
+		expect(failing(evaluate("gestures-span", [both[2] as Snapshot], [both]))).toEqual(["tap the link: the link presses 1, the paragraph 0"]);
+		const swapped = run([{ link: 1, paragraph: 0 }, { link: 0, paragraph: 1 }, { link: 1, paragraph: 0 }]);
+		expect(failing(evaluate("gestures-span", [swapped[2] as Snapshot], [swapped]))).toEqual(["tap beside the link, on its line: the link presses 0, the paragraph 1"]);
+		expect(failing(evaluate("gestures-span", [right[0] as Snapshot], [right.slice(0, 1)]))).toEqual(["tap the first line was injected", "tap beside the link, on its line was injected"]);
+	});
+
+	test("span: the three taps aim at the sentence, two lines of 32 dp: the link on the lower half, the first line on the upper, the end of the lower line", () => {
+		const entry = findScenario("gestures-span") as NonNullable<ReturnType<typeof findScenario>>;
+		const inputs = entry.rounds[0]?.steps.map((step) => step.input);
+		expect(inputs).toEqual([
+			{ kind: "tap", at: { target: "sentence", fx: 0, fy: 0.75, dx: 30 } },
+			{ kind: "tap", at: { target: "sentence", fx: 0, fy: 0.25, dx: 30 } },
+			{ kind: "tap", at: { target: "sentence", fx: 0.97, fy: 0.75 } },
+		]);
+		expect(entry.inputs).toEqual(["adb", "qa"]);
+		// the step is over when the tap has been counted by the recogniser around the sentence, whatever the tap pressed
+		const done = entry.rounds[0]?.steps.map((step) => step.done);
+		expect(done?.map((fn, index) => fn(snapshot({ "area.tap": [0, 0, 0, 0, 0, index + 1, 1] })))).toEqual([true, true, true]);
+		expect(done?.map((fn, index) => fn(snapshot({ "area.tap": [0, 0, 0, 0, 0, index, 1] })))).toEqual([false, false, false]);
+	});
+
 	test("scroll-native: both recognisers and the offset", () => {
 		const s = snapshot({ pan: [1, 1, 20, 1, 1, 1, 1], native: [1, 1, 0, 1, 1, 1, 1] }, { scrollY: 240, maxActive: 2 });
 		expect(failing(evaluate("gestures-scroll-native", [s]))).toEqual([]);
@@ -559,7 +596,7 @@ describe("the scenario table", () => {
 		for (const entry of scenarios) expect(scenarioFor(entry.mode, entry.busy)?.name).toBe(entry.name);
 		expect(scenarioNames).toEqual([
 			"gestures-box", "gestures-box-busy", "gestures-box-js", "gestures-box-js-busy", "gestures-pinch-rotate", "gestures-row", "gestures-carousel",
-			"gestures-pushed-edge", "gestures-sheet", "gestures-longpress-tap", "gestures-scroll-native", "gestures-churn",
+			"gestures-pushed-edge", "gestures-sheet", "gestures-longpress-tap", "gestures-scroll-native", "gestures-span", "gestures-churn",
 		]);
 	});
 

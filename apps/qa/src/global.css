@@ -1,0 +1,16 @@
+/* Tailwind for the QA app: Svelte Native compiles this file to React Native styles when Metro starts (metro.config.cjs, `css`), and the class checks of the
+   native checks lab (src/lib/native/dev/class-checks.ts, ClassProbe.svelte) read, on the device, what the classes became. */
+@import "tailwindcss";
+
+/* One class of the lab's own, in Tailwind's components layer so that a utility next to it wins (`class="qa-card p-6"`), with a dark override. */
+@layer components {
+  .qa-card {
+    padding: 12px;
+    border-radius: 10px;
+    background-color: var(--color-white);
+
+    @variant dark {
+      background-color: var(--color-zinc-900);
+    }
+  }
+}

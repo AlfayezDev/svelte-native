@@ -25,6 +25,8 @@ const gateOf = (library: string, field: string): Gate | undefined => gates.gates
 const first: Record<string, { checks: number; failed: number; skipped: number; androidOnly: number }> = {
 	image: { checks: 33, failed: 0, skipped: 0, androidOnly: 3 },
 	blur: { checks: 18, failed: 3, skipped: 0, androidOnly: 3 },
+	// The built-in BlurView (added 11 Nov 2026) has no iPhone run yet: its row is the structure its checks make (thirteen in each place, the frame and node counters being Android's), not a measurement.
+	svelteblur: { checks: 39, failed: 0, skipped: 0, androidOnly: 3 },
 	gradient: { checks: 18, failed: 0, skipped: 0, androidOnly: 3 },
 	video: { checks: 51, failed: 18, skipped: 0, androidOnly: 15 },
 	datetime: { checks: 30, failed: 0, skipped: 0, androidOnly: 24 },

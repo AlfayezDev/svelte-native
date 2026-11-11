@@ -846,6 +846,12 @@ const responder = createResponder<NativeNode>({
   releaseNativeResponder: () => {
     if (gestures) nativeGestureModule().handleClearJSResponder();
   },
+  // A node that was removed from the tree while it held the gesture (a link whose paragraph re-rendered without it, a screen that was popped) is no responder any more.
+  mounted: isLive,
+  abandon: (node) => {
+    const press = pressabilities.get(node);
+    if (press) { press.reset(); pressabilities.delete(node); }
+  },
 });
 
 function dispatchEvent(target: unknown, topLevelType: string, nativeEvent: object): void {

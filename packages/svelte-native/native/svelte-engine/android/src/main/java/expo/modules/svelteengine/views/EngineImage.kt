@@ -11,6 +11,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Base64
 import android.util.LruCache
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewOutlineProvider
 import android.widget.ImageView
@@ -153,6 +154,13 @@ class EngineImage(context: Context) : ImageView(context), EngineNode {
   init {
     scaleType = ScaleType.FIT_XY
   }
+
+  /**
+   * A node that listens for `click` is clickable for accessibility services ([expo.modules.svelteengine.A11y.setClickable]), and `View.onTouchEvent` performs the click when the
+   * finger lifts: JavaScript would hear `click` after the press its touch has already made ([EngineRoot] hands it every touch). The touch is consumed as a clickable view
+   * consumes it (a scroll ancestor can still take the gesture over) and nothing more; a click comes from a service.
+   */
+  override fun onTouchEvent(event: MotionEvent): Boolean = isClickable
 
   fun apply(v: ViewProps) {
     val newRepeat = v.resizeMode == 4

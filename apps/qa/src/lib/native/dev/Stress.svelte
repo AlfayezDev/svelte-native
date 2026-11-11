@@ -31,8 +31,9 @@
   let results = $state<Result[]>([]);
   let status = $state("Ready. Each scenario samples UI-runtime frame intervals; verdicts use the display's measured frame period.");
   let period = $state(1000 / 60);
-  let view = $state<"none" | "tiles" | "list" | "virtual-list" | "input" | "modal" | "tabs">("none");
+  let view = $state<"none" | "tiles" | "spans" | "list" | "virtual-list" | "input" | "modal" | "tabs">("none");
   let tiles = $state<number[]>([]);
+  let spans = $state<number[]>([]);
   let animatedTiles = $state(true);
   let tileVariant = $state<"default" | "square" | "translate" | "css">("default");
   let calibrated = false;
@@ -188,9 +189,23 @@
   }
 
   let soakSeconds = 600;
-  /** The parts of one soak cycle. `run=soak-mix-<seconds>s` runs the default ones, `.static.churn` and the like only those named (to bisect a growth); `static` is plain view churn, off by default. */
-  const soakPartNames: readonly string[] = ["churn", "static", "nav", "modal", "sheet", "header", "list", "tabs"];
-  let soakParts = new Set(soakPartNames.filter((part) => part !== "static"));
+  /** The parts of one soak cycle. `run=soak-mix-<seconds>s` runs the default ones, `.static.churn` and the like only those named (to bisect a growth); `static` is plain view churn and `spans` is churn of pressable nested Texts (their event emitters, which no view holds), both off by default. */
+  const soakPartNames: readonly string[] = ["churn", "static", "spans", "nav", "modal", "sheet", "header", "list", "tabs"];
+  let soakParts = new Set(soakPartNames.filter((part) => part !== "static" && part !== "spans"));
+  /** A paragraph of 32 pressable nested Texts, 24 of them replaced every 250 ms: each Text has no view but the engine keeps its event emitter from its Create to its Delete, so `emitters` in the soak's samples must come back to where it was. */
+  async function spanChurn(signal: AbortSignal, durationMs: number): Promise<void> {
+    let nextId = 32;
+    view = "spans";
+    spans = Array.from({ length: 32 }, (_, index) => index);
+    await tick();
+    const start = Date.now();
+    while (Date.now() - start < durationMs && !signal.aborted) {
+      await pause(250, signal);
+      spans = [...Array.from({ length: 8 }, (_, index) => index), ...Array.from({ length: 24 }, () => nextId++)];
+      await tick();
+    }
+    spans = []; view = "none"; await settle();
+  }
   async function measure<Value>(work: () => Promise<Value>): Promise<{ stats: FrameStats; frames: FrameSummary; value: Value }> {
     await startFrameMonitor();
     try {
@@ -638,7 +653,7 @@
       await pause(2000, signal);
       return { verdict: "fail", summary: "The app should have crashed with a JavaScript fatal." };
     } },
-    { name: "soak-mix", label: "Soak · animated churn, navigation, modal, sheet, header screens, virtual list and tabs in turn, sampled for qa/soak (`run=soak-mix-<seconds>s`, parts named after dots: `.churn.static.nav.modal.sheet.header.list.tabs`)", async run(signal) {
+    { name: "soak-mix", label: "Soak · animated churn, navigation, modal, sheet, header screens, virtual list and tabs in turn, sampled for qa/soak (`run=soak-mix-<seconds>s`, parts named after dots: `.churn.static.spans.nav.modal.sheet.header.list.tabs`)", async run(signal) {
       const since = Date.now();
       const depth = router.entries.length;
       const warmupCycles = 2;
@@ -666,6 +681,7 @@
             created += report.created; destroyed += report.destroyed; changesAfterDestroy += report.changesAfterDestroy; lateCompletions += report.lateCompletions;
           }
           if (soakParts.has("static")) await churn(signal, false, 6000, false);
+          if (soakParts.has("spans")) await spanChurn(signal, 6000);
           if (soakParts.has("nav")) for (let push = 0; push < 2 && !signal.aborted; push++) { router.goto("/__dev/screen?header=none"); await pause(700, signal); router.back(); await pause(700, signal); }
           if (soakParts.has("modal")) {
             view = "modal"; await settle();
@@ -803,6 +819,8 @@
   <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10, paddingVertical: 14 }}>
     {#each tiles as id (id)}<StressTile {id} animated={animatedTiles} variant={tileVariant} {completions} {mounted} {removed} />{/each}
   </View>
+{:else if view === "spans"}
+  <Text style={{ color: theme.foreground, fontSize: 14 }}>{#each spans as id (id)}<Text onPress={() => {}} style={{ textDecorationLine: "underline" }}>link {id} </Text>{/each}</Text>
 {:else if view === "list"}
   <ScrollView ref={(instance) => { scroller = instance; }} nestedScrollEnabled removeClippedSubviews={listClipped} style={{ height: 360, borderRadius: 12, borderWidth: 1, borderColor: theme.border }} contentContainerStyle={{ padding: 8, gap: 6 }}>
     {#each rows as row (row)}

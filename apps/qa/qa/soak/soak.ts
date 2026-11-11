@@ -23,10 +23,11 @@ import { parseMeminfo } from "./meminfo.ts";
 import { soakMetrics } from "./metrics.ts";
 import { watchLogcat } from "./stream.ts";
 
-/** The parts of a soak cycle the lab knows (`soak-mix` in Stress.svelte); `static` is plain view churn and is only run when named. */
+/** The parts of a soak cycle the lab knows (`soak-mix` in Stress.svelte); `static` (plain view churn) and `spans` (pressable nested Texts, whose event emitters have no view) are only run when named. */
 export const soakParts = [
 	"churn",
 	"static",
+	"spans",
 	"nav",
 	"modal",
 	"sheet",

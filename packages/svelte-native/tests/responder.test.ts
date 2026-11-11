@@ -100,7 +100,7 @@ async function setup() {
   const log: string[] = [];
   const events: unknown[] = [];
   const root = nextRoot++;
-  const app = m.startSurface(root, m.Fixture, { log: (entry: string) => log.push(entry), events }) as { setSlop: (n: number) => void; isPressed: () => boolean; removePress: () => void };
+  const app = m.startSurface(root, m.Fixture, { log: (entry: string) => log.push(entry), events }) as { setSlop: (n: number) => void; isPressed: () => boolean; removePress: () => void; hideEphemeral: () => void; removeStrip: () => void };
   const all = (nodes: FakeNode[]): FakeNode[] => nodes.flatMap((n) => [n, ...all(n.children)]);
   const nodeOf = (id: string) => {
     const node = all(roots[root]).find((n) => n.props.testID === id);
@@ -108,12 +108,14 @@ async function setup() {
     return node.target;
   };
   let clock = 1000;
-  const send = (id: string, type: string, x = 10, y = 10, identifier = 0) => {
+  /** A touch event to a node the test holds (one that is not in the tree any more, say), as native sends it: to the node the gesture's finger went down on. */
+  const sendTo = (target: unknown, type: string, x = 10, y = 10, identifier = 0) => {
     const touch = { pageX: x, pageY: y, locationX: x, locationY: y, identifier, target: 1, timestamp: clock++ };
     const lifting = type === "topTouchEnd" || type === "topTouchCancel";
-    emit(nodeOf(id), type, { ...touch, touches: lifting ? [] : [touch], changedTouches: [touch] });
+    emit(target, type, { ...touch, touches: lifting ? [] : [touch], changedTouches: [touch] });
   };
-  return { m, log, events, app, send, nodeOf, settle: () => settle(m) };
+  const send = (id: string, type: string, x = 10, y = 10, identifier = 0) => sendTo(nodeOf(id), type, x, y, identifier);
+  return { m, log, events, app, send, sendTo, nodeOf, settle: () => settle(m) };
 }
 
 afterEach(() => { jest.useRealTimers(); });
@@ -494,4 +496,119 @@ test("topClick on a nested Text (an accessibility service activating a link) pre
   t.log.length = 0;
   emit(t.nodeOf("plainSpan"), "topClick", {});
   expect(t.log).toEqual(["paragraph.press"]);
+});
+
+// What a gesture does when the node it went down on goes away, and which node a move names.
+
+test("a nested Text unmounted while it is pressed is not pressed: its press ends with none of its handlers run, and the next touch works", async () => {
+  jest.useFakeTimers();
+  const t = await setup();
+  const gone = t.nodeOf("ephemeral");
+  t.send("ephemeral", "topTouchStart");
+  expect(t.log).toEqual(["eph.change true", "eph.in"]);
+  t.app.hideEphemeral();
+  await t.settle();
+  t.sendTo(gone, "topTouchEnd");
+  jest.advanceTimersByTime(1000);
+  expect(t.log).toEqual(["eph.change true", "eph.in"]); // no press, no press out of a component that is gone
+  t.log.length = 0;
+  t.send("sibling", "topTouchStart");
+  t.send("sibling", "topTouchEnd");
+  expect(t.log).toEqual(["sibling.press"]);
+});
+
+test("a nested Text unmounted while it is pressed, whose end never arrives (native drops the touches of a deleted node), does not wedge the next gesture", async () => {
+  jest.useFakeTimers();
+  const t = await setup();
+  t.send("ephemeral", "topTouchStart");
+  t.app.hideEphemeral();
+  await t.settle();
+  t.log.length = 0;
+  // The finger lifts and goes down again (native gives the same pointer id): the end was lost, and the new gesture is a gesture.
+  t.send("sibling", "topTouchStart");
+  t.send("sibling", "topTouchEnd");
+  expect(t.log).toEqual(["sibling.press"]);
+  t.send("sibling", "topTouchStart");
+  t.send("sibling", "topTouchEnd");
+  expect(t.log).toEqual(["sibling.press", "sibling.press"]);
+});
+
+test("a finger that goes down again without having come up ends the gesture whose end was lost, for a node that is still there too", async () => {
+  jest.useFakeTimers();
+  const t = await setup();
+  t.send("instant", "topTouchStart");
+  expect(t.log).toEqual(["i.in"]);
+  t.send("a", "topTouchStart"); // the same finger (identifier 0): the end of the first gesture never came
+  expect(t.log).toEqual(["i.in", "i.out", "a.change true", "a.in"]);
+  t.send("a", "topTouchEnd");
+  expect(t.log).toContain("a.press");
+  expect(t.log).not.toContain("i.press");
+});
+
+test("a second finger (another identifier) is not a lost end", async () => {
+  jest.useFakeTimers();
+  const t = await setup();
+  t.send("instant", "topTouchStart", 10, 10, 0);
+  t.send("a", "topTouchStart", 20, 10, 1);
+  expect(t.log).toEqual(["i.in"]);
+});
+
+test("a nested Text whose handlers are removed while it is pressed ends the press with nothing run, and the next touch works", async () => {
+  jest.useFakeTimers();
+  const t = await setup();
+  t.send("strip", "topTouchStart");
+  expect(t.log).toEqual(["strip.in"]);
+  t.app.removeStrip();
+  await t.settle();
+  t.send("strip", "topTouchEnd");
+  jest.advanceTimersByTime(1000);
+  expect(t.log).toEqual(["strip.in"]); // the press the handlers were removed from is not run
+  t.log.length = 0;
+  t.send("sibling", "topTouchStart");
+  t.send("sibling", "topTouchEnd");
+  expect(t.log).toEqual(["sibling.press"]);
+});
+
+test("a move that names another nested Text than the press began on does not move the press: the first one is still the responder and presses", async () => {
+  jest.useFakeTimers();
+  const t = await setup();
+  t.send("span", "topTouchStart", 50, 20);
+  t.send("sibling", "topTouchMove", 60, 20); // the target of a move is the node the gesture began on; a host that is told another one must not be thrown by it
+  t.send("span", "topTouchEnd", 60, 20);
+  jest.advanceTimersByTime(200);
+  expect(t.log).toContain("span.press");
+  expect(t.log).not.toContain("sibling.press");
+  expect(t.log).not.toContain("paragraph.press");
+});
+
+test("a move on another nested Text asks the Text around both whether it takes the gesture, as for any two nodes: with a handler that says yes it does, and the press is cancelled", async () => {
+  jest.useFakeTimers();
+  const t = await setup();
+  t.send("moveA", "topTouchStart", 50, 20);
+  expect(t.log).toEqual([]);
+  t.send("moveB", "topTouchMove", 60, 20);
+  expect(t.log).toEqual(["movePara.grant"]);
+  jest.advanceTimersByTime(500);
+  expect(t.log).toEqual(["movePara.grant", "moveA.out"]);
+  t.send("moveA", "topTouchEnd", 60, 20);
+  expect(t.log).not.toContain("moveA.press");
+  expect(t.log).not.toContain("moveB.press");
+});
+
+test("a nested Text with a long press and no press: a tap is nothing, and does not press the paragraph around it; a hold runs the long press", async () => {
+  jest.useFakeTimers();
+  const t = await setup();
+  t.send("longOnly", "topTouchStart");
+  t.send("longOnly", "topTouchEnd");
+  jest.advanceTimersByTime(1000);
+  expect(t.log).toEqual([]);
+  t.send("longOnly", "topTouchStart");
+  jest.advanceTimersByTime(300);
+  expect(t.log).toEqual(["longOnly.long"]);
+  t.send("longOnly", "topTouchEnd");
+  jest.advanceTimersByTime(1000);
+  expect(t.log).toEqual(["longOnly.long"]);
+  t.send("longParagraph", "topTouchStart");
+  t.send("longParagraph", "topTouchEnd");
+  expect(t.log).toEqual(["longOnly.long", "longPara.press"]); // the paragraph itself still presses
 });

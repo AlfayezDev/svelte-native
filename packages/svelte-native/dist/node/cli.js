@@ -2772,13 +2772,14 @@ var init_values = __esm({
     };
     scale = (q, factor) => Object.fromEntries(Object.entries(q).map(([k, v]) => [k, v * factor]));
     Evaluator = class _Evaluator {
+      pos = 0;
+      // Fields, not parameter properties: Node strips the types of a file it loads itself (the transformer from the sources) and does not do those.
+      text;
+      remPx;
       constructor(text2, remPx) {
         this.text = text2;
         this.remPx = remPx;
       }
-      text;
-      remPx;
-      pos = 0;
       run() {
         try {
           const q = this.sum();
@@ -3036,16 +3037,17 @@ var init_properties = __esm({
     emptyResult = () => ({ style: {}, dynamic: {}, fontRelative: {} });
     isEmptyResult = (result) => Object.keys(result.style).length + Object.keys(result.dynamic).length + Object.keys(result.fontRelative).length === 0;
     Declaration = class {
+      // Fields, not parameter properties: Node strips the types of a file it loads itself (the transformer from the sources, `lower-html.ts` through `inline.ts`) and does not do those.
+      property;
+      env;
+      out;
+      report;
       constructor(property, env, out, report) {
         this.property = property;
         this.env = env;
         this.out = out;
         this.report = report;
       }
-      property;
-      env;
-      out;
-      report;
       fail(reason) {
         this.report(this.property, reason);
       }
@@ -3190,7 +3192,7 @@ var init_properties = __esm({
       d.color(["backgroundColor"], text2);
     };
     handlers.display = (d, text2) => {
-      d.keyword("display", text2, { flex: "flex", "inline-flex": "flex", block: "flex", "inline-block": "flex", inline: "flex", "flow-root": "flex", none: "none", contents: "contents" });
+      if (d.keyword("display", text2, { flex: "flex", "inline-flex": "flex", block: "flex", "inline-block": "flex", inline: "flex", "flow-root": "flex", none: "none", contents: "contents" })) d.set("htmlDisplay", text2.trim().toLowerCase());
     };
     handlers.position = (d, text2) => void d.keyword("position", text2, same("absolute", "relative", "static"));
     handlers["z-index"] = (d, text2) => text2.trim() === "auto" ? d.set("zIndex", null) : void d.number("zIndex", text2);

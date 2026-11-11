@@ -46,6 +46,10 @@ for (const platform of ["android", "ios"] as const) {
       expect(bytes).toBeGreaterThan(100_000);
       expect(routeModules().filter((module) => !modules.includes(module))).toEqual([]);
       expect(modules.filter((module) => /^apps\/qa\/|^packages\/svelte-native\/tests\//.test(module))).toEqual([]);
+      // The lowering of HTML and the converter of `style="..."` (the `css/` compiler: `dist/node/transformer.cjs` and `lower.js` carry about 90 kB of it) run in Node, when Metro transforms a file: the app's JavaScript does not hold them.
+      expect(modules.filter((module) => /packages\/svelte-native\/src\/(?:lower|lower-html|transformer|css\/(?:inline|convert|properties|parse|values|color))\.ts$/.test(module))).toEqual([]);
+      // The list of style keys the development warning of `html-style.ts` checks names against is loaded only when `__DEV__` is true: a release build leaves it out.
+      expect(modules.filter((module) => /packages\/svelte-native\/src\/html-style(?:-known)?\.ts$/.test(module)).map((module) => module.split("/").pop())).toEqual(["html-style.ts"]);
       // No React renderer: the library renders Svelte to Fabric directly. (React itself is there: some of React Native's modules import it.)
       expect(modules.filter((module) => /react-dom|react-reconciler|\/scheduler\//.test(module))).toEqual([]);
       // A standard URL: the router builds every location as a `SvelteURL`, which React Native's own `URL` cannot construct, so the library's

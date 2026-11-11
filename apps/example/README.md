@@ -32,6 +32,7 @@ The home screen groups these under Basics, Layout and style, Lists and input, Na
 | Feature | Route | What it shows |
 | ------- | ----- | ------------- |
 | Primitives | `/primitives` | `View`, `Text`, `Image` (a bundled file and a URL), `Pressable`, a horizontal `ScrollView`, `ActivityIndicator`, `Modal` |
+| HTML elements | `/html` | A screen written only with HTML elements and Tailwind classes: a card list (`ul`, `li`, `img`, `button`), a form (`input`, a checkbox, `button type="submit"`), links (`a href`) and a `dialog` |
 | Text and fonts | `/text` | Size, weight, style, spans and links, `numberOfLines`, system fonts per platform, a font bundled with the `expo-font` plugin |
 | State and reactivity | `/state` | `$state`, `$derived`, `$effect` with a cleanup, a `$state` array whose fields are bound to `Switch`es, `{#await}` |
 | Layout | `/layout` | Flexbox through Yoga: column and row, `justifyContent` (live), `alignItems`, `flexWrap` and `gap`, `flex`, absolute position |

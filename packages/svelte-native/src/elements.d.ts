@@ -56,7 +56,7 @@ export type PressHandlers = Pick<PressableProps, "onPress" | "onPressIn" | "onPr
  * `gesture` takes a gesture from `@example/svelte-native/gestures` (react-native-gesture-handler's builders): the host attaches
  * native recognisers to the element's view, which then keeps its own native view (`collapsable` is forced to `false`).
  */
-type NativeElementAttributes<Props> = Omit<Props, "children" | "ref"> & GestureProps & { nativeProps?: Record<string, unknown>; nativeStyle?: Props extends { style?: infer Style } ? Style : unknown; nativeClass?: unknown; ref?: HostRef };
+type NativeElementAttributes<Props> = Omit<Props, "children" | "ref"> & GestureProps & { nativeProps?: Record<string, unknown>; nativeStyle?: Props extends { style?: infer Style } ? Style : unknown; nativeClass?: unknown; /** A style under the class and the style (an `<hr>`'s default). */ nativeBase?: unknown; /** Set by the lowering of an HTML element: text style inherits through it (`fabric/text-inherit.ts`). */ nativeHtml?: boolean; /** Set on a lowered `<form>`: submit buttons and Enter in its inputs fire its `submit` (`hostSubmit`). */ nativeForm?: boolean; ref?: HostRef };
 type ElementProps = NativeElementAttributes<Record<string, unknown>>;
 /**
  * What the engine's navigation container reads from a `native-screen` (see `fabric/navigation.ts`, SPEC.md "Navigation"

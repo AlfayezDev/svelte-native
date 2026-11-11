@@ -3080,7 +3080,7 @@ var init_properties = __esm({
       d.color(["backgroundColor"], text2);
     };
     handlers.display = (d, text2) => {
-      d.keyword("display", text2, { flex: "flex", "inline-flex": "flex", block: "flex", "inline-block": "flex", inline: "flex", "flow-root": "flex", none: "none", contents: "contents" });
+      if (d.keyword("display", text2, { flex: "flex", "inline-flex": "flex", block: "flex", "inline-block": "flex", inline: "flex", "flow-root": "flex", none: "none", contents: "contents" })) d.set("htmlDisplay", text2.trim().toLowerCase());
     };
     handlers.position = (d, text2) => void d.keyword("position", text2, same("absolute", "relative", "static"));
     handlers["z-index"] = (d, text2) => text2.trim() === "auto" ? d.set("zIndex", null) : void d.number("zIndex", text2);

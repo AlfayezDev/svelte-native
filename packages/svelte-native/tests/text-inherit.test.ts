@@ -86,3 +86,16 @@ test("a default style that is a factor of the font size the element inherits (h1
   // A line height that is a factor is of that size.
   expect(inheritedStyle(textStyleOf(undefined, { fontRelative: { lineHeight: 1.5 } }), { fontScale: 2 }, true)).toEqual([{ lineHeight: 42 }, { fontSize: 28 }]);
 });
+
+test("decorations add up as in CSS: an element inside an underlined one that is struck is both, and a none takes nothing away", () => {
+  const underlined = textStyleOf(undefined, { textDecorationLine: "underline" });
+  expect(textStyleOf(underlined, { textDecorationLine: "line-through" })).toEqual({ textDecorationLine: "underline line-through" });
+  expect(textStyleOf(underlined, { textDecorationLine: "none" })).toEqual({ textDecorationLine: "underline" });
+  expect(textStyleOf(underlined, { textDecorationLine: "underline" })).toEqual(underlined);
+  expect(textStyleOf(textStyleOf(underlined, { textDecorationLine: "line-through" }), { textDecorationLine: "underline" })).toEqual({ textDecorationLine: "underline line-through" });
+  // What a span is drawn with (it takes only its own style from the text it is in): the sum after its own, which a later item wins over.
+  expect(inheritedStyle(underlined, { textDecorationLine: "line-through" }, false)).toEqual([{ textDecorationLine: "line-through" }, { textDecorationLine: "underline line-through" }]);
+  expect(inheritedStyle(underlined, { color: "red" }, false)).toEqual({ color: "red" });
+  expect(inheritedStyle(underlined, { textDecorationLine: "underline" }, false)).toEqual({ textDecorationLine: "underline" });
+  expect(inheritedStyle(underlined, { textDecorationLine: "line-through" }, true)).toEqual([[underlined, { textDecorationLine: "line-through" }], { textDecorationLine: "underline line-through" }]);
+});

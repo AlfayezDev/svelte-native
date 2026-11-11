@@ -1,6 +1,6 @@
 import { createRenderer } from "svelte/renderer";
 import { classStyle } from "./classes.ts";
-import { hostTagOf } from "./html-tags.ts";
+import { INLINE, hostTagOf } from "./html-tags.ts";
 
 type Listener = (...args: unknown[]) => void;
 export type Snapshot = {
@@ -121,6 +121,11 @@ export function hostTag(tag: unknown): unknown {
   const host = hostTagOf(tag);
   if (host === undefined) throw new Error(`<svelte:element this="${tag}"> has no native equivalent: only the elements that are a host tag here (div, p, span, h1, button, a, img, ...) can be chosen when the app runs; write ${tag} as an element of its own`);
   return host;
+}
+
+/** What `nativeHtml` is for the tag of a `<svelte:element>` that is worked out when the app runs: `"inline"` for a text element that flows in a line (`span`, `b`, ...), as the lowering marks the ones it reads. */
+export function hostInline(tag: unknown): true | "inline" {
+  return typeof tag === "string" && INLINE.has(tag) && hostTagOf(tag) === "native-text" ? "inline" : true;
 }
 
 /**

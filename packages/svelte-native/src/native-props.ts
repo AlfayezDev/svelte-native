@@ -61,6 +61,19 @@ export function createNativeProps() {
   };
 }
 
+/** A style with the CSS text in it (a string, or one in an array of styles) parsed; the same value when there is none. */
+function parseStrings(style: unknown): unknown {
+  if (typeof style === "string") return styleText(style);
+  if (!Array.isArray(style)) return style;
+  let changed = false;
+  const items = style.map((item) => {
+    const parsed = parseStrings(item);
+    if (parsed !== item) changed = true;
+    return parsed;
+  });
+  return changed ? items : style;
+}
+
 function hidden(key: string): boolean {
   return key === "nativeProps" || key === "nativeClass" || key === "nativeBase" || key === "nativeHtml" || key === "nativeForm" || key === "children" || key === "class" || key === "id" || key.startsWith("$$") || key.startsWith("data-");
 }
@@ -82,8 +95,8 @@ export function mergeHostProps(attributes: Readonly<Record<string, unknown>>): R
     if (key === "ref" && typeof value !== "function" && (value === null || typeof value !== "object")) continue;
     merged[key] = value;
   }
-  // A style that is text only when the app runs (`style={text}` of an HTML element) is parsed; one written in the source was converted when the file was built.
-  if (attributes.nativeStyle !== undefined) merged.style = typeof attributes.nativeStyle === "string" ? styleText(attributes.nativeStyle) : attributes.nativeStyle;
+  // A style that is text only when the app runs (`style={text}` of an HTML element, alone or beside `style:` directives, which makes an array of it) is parsed; one written in the source was converted when the file was built.
+  if (attributes.nativeStyle !== undefined) merged.style = parseStrings(attributes.nativeStyle);
   // The style of a lowered tag's `class` (`hostClass`), under its own style as on a component.
   const fromClass = attributes.nativeClass;
   if (fromClass !== undefined && fromClass !== null) merged.style = merged.style === undefined || merged.style === null ? fromClass : [fromClass, merged.style];

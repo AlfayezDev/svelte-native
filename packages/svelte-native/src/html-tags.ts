@@ -31,7 +31,7 @@ export function hostTagOf(name: string): string | undefined {
 }
 
 /**
- * The elements that have a default style, as a browser's has: `nativeBase` of the element is its name, and the host works the style out (`fabric/host.ts`, `userAgentStyle`), under
+ * The elements that have a default style, as a browser's has: `nativeBase` of the element is its name, and the host works the style out (`fabric/host.ts`, `baseStyle`), under
  * the element's class and style. `a` has none: its color is the app's to give.
  */
 export const USER_AGENT_STYLES = new Set("b strong em i cite dfn var u ins s del code kbd samp pre small sub sup mark h1 h2 h3 h4 h5 h6".split(" "));

@@ -22,6 +22,7 @@ export const nativeFeatures: Feature[] = [
 
   // Motion and touch
   { group: "Motion and touch", route: "/animation", title: "Animation", summary: "Fade, spring, loop and state-driven motion on the UI thread" },
+  { group: "Motion and touch", route: "/animation/transitions", title: "Transitions", summary: "Svelte's in:, out:, transition: and animate:flip, on the UI thread" },
   { group: "Motion and touch", route: "/gestures", title: "Gestures", summary: "Drag, pinch and rotate, swipe a row, long press" },
 
   // Platform

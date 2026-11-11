@@ -39,8 +39,6 @@ type Edit = { start: number; end: number; text: string };
  */
 const PRESS_HANDLERS = new Set(["onPress", "onPressIn", "onPressOut", "onLongPress", "onPressChange"]);
 
-const WARN_DIRECTIVES = new Set(["UseDirective", "TransitionDirective", "AnimateDirective"]);
-
 // The entry of react-native-svg exports a `Text` and an `Image` of its own (SVG elements, not the primitives): nothing imported from it is lowered.
 const NOT_PRIMITIVES = `${PACKAGE}/svg`;
 
@@ -233,8 +231,9 @@ export function lowerPrimitives(content: string, options: LowerOptions = {}): st
       if (attribute.type === "Attribute" && attribute.value === true) {
         edits.push({ start: attribute.end, end: attribute.end, text: "={true}" });
       }
-      if (WARN_DIRECTIVES.has(attribute.type) && !(attribute.type === "UseDirective" && actions.has(attribute.name))) {
-        warn(`${options.filename ?? "component"}: ${attribute.type === "UseDirective" ? "use:" : attribute.type === "AnimateDirective" ? "animate:" : attribute.intro && !attribute.outro ? "in:" : attribute.outro && !attribute.intro ? "out:" : "transition:"}${attribute.name} on <${node.name}> is passed to <${tag}> unchanged; native elements do not run DOM directives`);
+      // `transition:`, `in:`, `out:` and `animate:` stay as they are: the host tag plays them (`fabric/transitions.ts`). An action other than `use:gesture` is passed on unchanged, but nothing runs it against a DOM.
+      if (attribute.type === "UseDirective" && !actions.has(attribute.name)) {
+        warn(`${options.filename ?? "component"}: use:${attribute.name} on <${node.name}> is passed to <${tag}> unchanged; native elements do not run DOM actions`);
       }
     }
     edits.push({ start: node.start + 1, end: node.start + 1 + node.name.length, text: tag + (lowered?.attributes ?? "") });

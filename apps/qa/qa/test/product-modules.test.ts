@@ -129,6 +129,8 @@ describe("the product build leaves the QA-only modules out of autolinking", () =
 		"benchAnimated", "foreignStats", "collectJava", "stats",
 		// a hint with no content: a commit attached many animated nodes, the engine puts its threads on the big cores for a moment (and does nothing outside the foreground)
 		"animatedBatch",
+		// two hints with no content: the commits JavaScript makes next belong together (a layout read and the first frames of an animation), so the engine applies them in one message
+		"holdMounts", "releaseMounts",
 	];
 	const engineSource = () => readFileSync(resolve(libraryDirectory, "native/svelte-engine/android/src/main/java/expo/modules/svelteengine/SvelteEngineModule.kt"), "utf8");
 	/** Every `Function(...)` and `AsyncFunction(...)` the module defines, and the lab check it opens with (the first statement after the lambda's parameters), if any. */

@@ -30,7 +30,6 @@ __export(transformer_exports, {
 module.exports = __toCommonJS(transformer_exports);
 var import_node_module3 = require("node:module");
 var import_node_path6 = require("node:path");
-var import_compiler2 = require("svelte/compiler");
 var import_esbuild = require("esbuild");
 var import_node_crypto = require("node:crypto");
 var import_node_fs4 = require("node:fs");
@@ -2126,7 +2125,6 @@ var LOWERED_TAGS = {
   Pressable: "native-pressable"
 };
 var PRESS_HANDLERS = /* @__PURE__ */ new Set(["onPress", "onPressIn", "onPressOut", "onLongPress", "onPressChange"]);
-var WARN_DIRECTIVES = /* @__PURE__ */ new Set(["UseDirective", "TransitionDirective", "AnimateDirective"]);
 var NOT_PRIMITIVES = `${PACKAGE2}/svg`;
 function fromPackage(source) {
   return typeof source === "string" && (source === PACKAGE2 || source.startsWith(`${PACKAGE2}/`) && source !== NOT_PRIMITIVES);
@@ -2272,8 +2270,8 @@ function lowerPrimitives(content, options = {}) {
       if (attribute.type === "Attribute" && attribute.value === true) {
         edits.push({ start: attribute.end, end: attribute.end, text: "={true}" });
       }
-      if (WARN_DIRECTIVES.has(attribute.type) && !(attribute.type === "UseDirective" && actions.has(attribute.name))) {
-        warn(`${options.filename ?? "component"}: ${attribute.type === "UseDirective" ? "use:" : attribute.type === "AnimateDirective" ? "animate:" : attribute.intro && !attribute.outro ? "in:" : attribute.outro && !attribute.intro ? "out:" : "transition:"}${attribute.name} on <${node.name}> is passed to <${tag}> unchanged; native elements do not run DOM directives`);
+      if (attribute.type === "UseDirective" && !actions.has(attribute.name)) {
+        warn(`${options.filename ?? "component"}: use:${attribute.name} on <${node.name}> is passed to <${tag}> unchanged; native elements do not run DOM actions`);
       }
     }
     edits.push({ start: node.start + 1, end: node.start + 1 + node.name.length, text: tag + (lowered?.attributes ?? "") });
@@ -2541,6 +2539,11 @@ import { ${shadow.names.join(", ")} } from ${JSON.stringify(REMOTE_GLOBALS)};
 // src/transformer.ts
 var import_trace_mapping = require("@jridgewell/trace-mapping");
 var require3 = (0, import_node_module3.createRequire)(__importMetaUrl);
+var compiler = null;
+function svelteCompiler() {
+  compiler ??= require3((0, import_node_path6.join)((0, import_node_path6.dirname)(require3.resolve("svelte/package.json")), "src/compiler/index.js"));
+  return compiler;
+}
 function upstreamTransformerPath(searchFrom = [process.cwd(), __dirname]) {
   let expoManifest;
   try {
@@ -2592,7 +2595,7 @@ function transform(input) {
   const compiledBySvelte = /\.svelte(\.[jt]s)?$/.test(filename);
   if (filename.endsWith(".svelte")) {
     requireCustomRenderer();
-    const result = (0, import_compiler2.compile)(lowerPrimitives(src, { filename, html: lowersHtml(filename) }), componentOptions(filename));
+    const result = svelteCompiler().compile(lowerPrimitives(src, { filename, html: lowersHtml(filename) }), componentOptions(filename));
     if (result.css?.code.trim()) throw new Error(`${filename}: use native style props; browser CSS is not supported`);
     code = result.js.code;
     runes = result.metadata.runes;
@@ -2606,7 +2609,7 @@ function transform(input) {
       maps.push(new import_trace_mapping.TraceMap(stripped.map));
     }
     if (svelteModule) {
-      const result = (0, import_compiler2.compileModule)(code, moduleOptions(filename));
+      const result = svelteCompiler().compileModule(code, moduleOptions(filename));
       code = result.js.code;
       if (result.js.map) maps.unshift(new import_trace_mapping.TraceMap(result.js.map.toString()));
     }

@@ -151,12 +151,16 @@ test("bindings other than this and let: directives keep the component", () => {
   expect(run(source)).toBe(source);
 });
 
-test("directives are left alone and warned about", () => {
+test("transition:, in:, out: and animate: stay on the host tag and are not warned about; an action other than gesture is", () => {
   const warnings: string[] = [];
-  const source = `${imp}<View use:tap transition:fade>x</View>`;
+  const source = `${imp}<View use:tap transition:fade in:fly={{ y: 20 }} out:fade animate:flip={{ duration: 200 }}>x</View>`;
   const out = lowerPrimitives(source, { filename: "d.svelte", warn: (m) => warnings.push(m) });
-  expect(out).toContain("<native-view use:tap transition:fade>x</native-view>");
-  expect(warnings).toHaveLength(2);
+  expect(out).toContain("<native-view use:tap transition:fade in:fly={{ y: 20 }} out:fade animate:flip={{ duration: 200 }}>x</native-view>");
+  expect(warnings).toHaveLength(1);
+  expect(warnings[0]).toContain("use:tap");
+  const clean: string[] = [];
+  lowerPrimitives(`${imp}<View transition:fade><Text in:fly out:fade>x</Text><Image animate:flip /><Pressable transition:scale /></View>`, { warn: (m) => clean.push(m) });
+  expect(clean).toEqual([]);
 });
 
 test("TypeScript scripts parse and stay untouched; line numbers are stable", () => {
@@ -550,15 +554,15 @@ test("onkeydown and onkeyup are the component's to work out; a web handler that 
   ]);
 });
 
-test("in:, out:, transition: and animate: pass through an HTML element untouched, whatever else is done to it, and the notice names the directive as it was written", () => {
+test("in:, out:, transition: and animate: pass through an HTML element untouched, whatever else is done to it, and are not warned about (the host plays them); an action is", () => {
   const warnings: string[] = [];
   const out = body(`<div in:fly={{ y: 8 }} out:fade={{ duration: 100 }} animate:flip class="a" onclick={go}>x</div><p transition:slide|local>y</p><button in:scale>z</button>`);
   expect(out).toContain("in:fly={{ y: 8 }} out:fade={{ duration: 100 }} animate:flip");
   expect(out).toContain("<native-text transition:slide|local>y</native-text>");
   expect(out).toContain("in:scale>");
-  // They are the author's: no error rejects them.
+  // They are the author's, and the native element plays them (`fabric/transitions.ts`): no error and no notice. An action nothing runs against a DOM is told about, as it was written.
   html(`<div in:fly out:fade transition:slide animate:flip use:tap />`, { warn: (message) => warnings.push(message) });
-  expect(warnings.map((message) => /: (\S+) on <div>/.exec(message)?.[1])).toEqual(["in:fly", "out:fade", "transition:slide", "animate:flip", "use:tap"]);
+  expect(warnings.map((message) => /: (\S+) on <div>/.exec(message)?.[1])).toEqual(["use:tap"]);
 });
 
 test("style as a string is converted by the class converter when the file is built: units and colors mean what they mean in a class", () => {

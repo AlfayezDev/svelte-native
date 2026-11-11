@@ -1,6 +1,10 @@
 import { createRenderer } from "svelte/renderer";
 import { classStyle } from "./classes.ts";
+import { computedStyleOf, domRect, inlineProperties, type ComputedStyle, type Rect, type Size } from "./fabric/dom-style.ts";
+import type { AnimationOptions, Keyframe } from "./fabric/keyframes.ts";
 import { INLINE, hostTagOf } from "./html-tags.ts";
+
+export type { AnimationOptions, Keyframe } from "./fabric/keyframes.ts";
 
 /**
  * The React Native props the host builds from a host node's attributes (`peekProps()`): the host calls this itself, so what it returns is what a node sends to the native view (its `style` is the
@@ -225,11 +229,93 @@ export function hostBind(set: (keys: unknown[], value: unknown) => void, get: (k
 
 export { hostStyleProps } from "./html-style.ts";
 
-export type Invalidation = "props" | "children" | "text";
+
+/**
+ * Why a node must be committed again. `animation`: what the node's transitions draw changed (`fabric/transitions.ts`), and only in paint (opacity, transforms,
+ * colours), so the layout of the committed tree is still right: a layout read (`getBoundingClientRect`) does not commit it first.
+ */
+export type Invalidation = "props" | "children" | "text" | "animation";
 let invalidationSink: ((node: NativeNode, reason: Invalidation) => void) | null = null;
 /** The host (see `fabric/`) hears every change through this sink. */
 export function setInvalidationSink(sink: ((node: NativeNode, reason: Invalidation) => void) | null): void { invalidationSink = sink; }
 
+/**
+ * The members of a Web Animations `Animation` that Svelte's transitions and `animate:` use: they set `onfinish` and `effect`, read `playState` and `currentTime`, and call `cancel()`.
+ * What plays one is the host (`fabric/transitions.ts`).
+ */
+export interface NativeAnimation {
+  /** Called once, on the JS thread, when the animation has run its length. Never after `cancel()`. */
+  onfinish: ((event?: unknown) => void) | null;
+  /** Svelte sets it to null after `cancel()` (to let Chromium free the effect); nothing reads it. */
+  effect: unknown;
+  readonly playState: "idle" | "running" | "finished";
+  /** Milliseconds since the animation started, including its delay; the length once it has finished; null once cancelled. */
+  readonly currentTime: number | null;
+  /** Stops it, takes its effect off the node (the node goes back to its own style) and never calls `onfinish`. */
+  cancel(): void;
+}
+
+/** What the host plays a node's animations with, and measures a node by. Installed by `startSurface`. */
+export interface AnimationDriver {
+  animate(node: NativeNode, keyframes: readonly Keyframe[], options: AnimationOptions): NativeAnimation;
+  getAnimations(node: NativeNode): NativeAnimation[];
+  /** The node's box in the window as `getBoundingClientRect` reports it: from the tree the host has committed (what is pending is committed first), with the node's own transform, which an animation may be drawing. Null when the node has no view yet. */
+  layout(node: NativeNode): Rect | null;
+  /** The node's own size, before any transform (`clientWidth`, `clientHeight`, a computed `width`). Null when the node has no view yet. */
+  size(node: NativeNode): Size | null;
+  /** A node's animations are over and its own values are back: the host lets go of what Reanimated remembers of the node's last animated values (`fabric/animation.ts`, `forgetAnimatedValues`). */
+  forget(node: NativeNode): void;
+}
+let animationDriver: AnimationDriver | null = null;
+export function setAnimationDriver(driver: AnimationDriver | null): void { animationDriver = driver; }
+
+/** What plays when there is no host (a tree built without a surface): nothing moves, and the animation finishes at once, so a transition's outro still ends and its node still goes. */
+export class InstantAnimation implements NativeAnimation {
+  onfinish: ((event?: unknown) => void) | null = null;
+  effect: unknown = {};
+  playState: "idle" | "running" | "finished" = "running";
+  currentTime: number | null = 0;
+  constructor() {
+    queueMicrotask(() => {
+      if (this.playState !== "running") return;
+      this.playState = "finished";
+      this.onfinish?.();
+    });
+  }
+  cancel(): void { this.playState = "idle"; this.currentTime = null; }
+}
+
+/** What a node keeps for the DOM-like surface Svelte's transitions use. */
+export type DomState = {
+  /** What was written to `node.style` (`overflow`, `position`, `width`, `height`, `transform`), as CSS text. */
+  inline: Record<string, string> | null;
+  shim: InlineStyle | null;
+  /** The host's record of the animations playing on the node (`fabric/transitions.ts`). */
+  animation: object | null;
+};
+
+/**
+ * `node.style`, as far as Svelte writes it: `overflow` (a transition that clips), and `position`, `width`, `height`, `transform` (`animate:` takes a leaving item out of the flow and
+ * keeps it where it was). A write is kept on the node and applied over its own style by the host (`applyInlineStyle`); an empty string removes it, as on the DOM.
+ */
+export class InlineStyle {
+  declare overflow: string;
+  declare position: string;
+  declare width: string;
+  declare height: string;
+  declare transform: string;
+  constructor(private readonly node: NativeNode) {}
+  getPropertyValue(name: string): string { return this.node.dom?.inline?.[name] ?? ""; }
+  setProperty(name: string, value: string | number | null): void { this.node.setInline(name, value === null ? "" : String(value)); }
+  removeProperty(name: string): string { const old = this.getPropertyValue(name); this.node.setInline(name, ""); return old; }
+}
+for (const name of inlineProperties) {
+  Object.defineProperty(InlineStyle.prototype, name, {
+    get(this: InlineStyle) { return this.getPropertyValue(name); },
+    set(this: InlineStyle, value: unknown) { this.setProperty(name, value === undefined || value === null ? "" : String(value)); },
+    enumerable: true,
+  });
+}
 let refSink: ((node: NativeNode) => void) | null = null;
 /**
  * The host hears of a `ref` (the attribute, or the one in `nativeProps` a component hands its view) when the element is in a tree that is on a surface: the moment it is set if it is, and
@@ -269,6 +355,8 @@ export class NativeNode {
   hostState: unknown = null;
   /** The host's own root of a surface: the one node it hears about before it has built anything under it. */
   surfaceRoot = false;
+  /** Created by the first animation or write to `style`: most nodes never have one. */
+  dom: DomState | null = null;
   /** How many nodes of this subtree (this one too) have a `ref` that the host has not heard of, because the subtree is in no screen yet (`giveRefs`). */
   waiting = 0;
   /** This node's `ref` is one of those. */
@@ -353,6 +441,67 @@ export class NativeNode {
   childrenChanged(): void {
     this.childrenStale = true;
     this.invalidate("children");
+  }
+
+  // --- The DOM-like surface Svelte's `transition:`, `in:`, `out:` and `animate:` use (`svelte/internal/client/dom/elements/transitions.js`) ---
+
+  /** The node's DOM state, made at the first use. */
+  domState(): DomState {
+    this.dom ??= { inline: null, shim: null, animation: null };
+    return this.dom;
+  }
+
+  /** `element.style`: the inline style Svelte's transitions write (`InlineStyle`). */
+  get style(): InlineStyle {
+    const dom = this.domState();
+    dom.shim ??= new InlineStyle(this);
+    return dom.shim;
+  }
+
+  /** One inline style property; an empty value removes it. The host sees the change. */
+  setInline(name: string, value: string): void {
+    const dom = this.domState();
+    if ((dom.inline?.[name] ?? "") === value) return;
+    if (value === "") {
+      if (dom.inline) { delete dom.inline[name]; if (Object.keys(dom.inline).length === 0) dom.inline = null; }
+    } else {
+      dom.inline ??= {};
+      dom.inline[name] = value;
+    }
+    this.invalidate("props");
+  }
+
+  /** `element.inert`: Svelte makes an element inert for the length of its outro, so it takes no clicks while it leaves. On a native node that is `pointerEvents: "none"`, over the node's own. */
+  get inert(): boolean { return this.dom?.inline?.pointerEvents === "none"; }
+  set inert(value: boolean) { this.setInline("pointerEvents", value ? "none" : ""); }
+
+  /** `element.animate(keyframes, options)`: plays on the UI thread through Reanimated (`fabric/transitions.ts`); see `NativeAnimation`. */
+  animate(keyframes: readonly Keyframe[], options: AnimationOptions = {}): NativeAnimation {
+    return animationDriver ? animationDriver.animate(this, keyframes, options) : new InstantAnimation();
+  }
+
+  /** `element.getAnimations()`: the animations that have not been cancelled. */
+  getAnimations(): NativeAnimation[] { return animationDriver && this.dom?.animation ? animationDriver.getAnimations(this) : []; }
+
+  /** The node's box as `getBoundingClientRect` gives it: layout from the tree the host has committed (pending changes are committed first), with what a running animation moves. Zeros for a node with no view. */
+  getBoundingClientRect(): DOMRectReadOnly { return domRect(animationDriver?.layout(this) ?? { x: 0, y: 0, width: 0, height: 0 }); }
+  get clientWidth(): number { return animationDriver?.size(this)?.width ?? 0; }
+  get clientHeight(): number { return animationDriver?.size(this)?.height ?? 0; }
+  /** The node's animations are over and its own values are back (`fabric/transitions.ts`): the host lets go of what Reanimated remembers of the node's last animated values. */
+  forgetAnimated(): void { animationDriver?.forget(this); }
+  /** `transition:draw` asks an SVG path for its length; a native element has none, so the transition has nothing to draw (its other properties still play). */
+  getTotalLength(): number { return 0; }
+  /** Svelte's `flip` asks for the zoom: a native view has none, and answering here keeps it from walking up the parents. */
+  get currentCSSZoom(): number { return 1; }
+
+  /** What `getComputedStyle(node)` returns for this node. */
+  computedStyle(): ComputedStyle { return computedStyleOf(this.props, this.dom?.inline ?? null, () => animationDriver?.size(this) ?? null); }
+
+  /** Calls the listeners of `event.type`, as `dispatchEvent` does (`introstart`, `introend`, `outrostart`, `outroend` reach `onintrostart={...}` this way). */
+  dispatchEvent(event: { type: string }): boolean {
+    const handlers = this.listeners.get(event.type);
+    if (handlers) for (const handler of [...handlers]) handler(event);
+    return true;
   }
 
   /** Drops the cached snapshot and reports the change to the host. */
@@ -485,5 +634,14 @@ const renderer = createRenderer<{
     node.invalidate();
   },
 });
+
+/**
+ * Svelte's transitions and `animate:flip` ask the global `getComputedStyle` for an element's opacity, transform, size and spacing. A device has none, so this installs one that answers for
+ * a node (`NativeNode.computedStyle`); where a DOM has one (a test environment) it is left alone. A value that is not a node gets the same answer a DOM would give an empty style.
+ */
+const scope = globalThis as { getComputedStyle?: unknown };
+if (typeof scope.getComputedStyle !== "function") {
+  scope.getComputedStyle = (element: { computedStyle?: () => ComputedStyle } | null) => element?.computedStyle?.() ?? computedStyleOf({}, null, () => null);
+}
 
 export default renderer;

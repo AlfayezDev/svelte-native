@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
-import { dirname } from "node:path";
-import { compile, compileModule } from "svelte/compiler";
+import { dirname, join } from "node:path";
+import type * as SvelteCompiler from "svelte/compiler";
 import { transformSync } from "esbuild";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -14,6 +14,18 @@ import { isRemoteModule, kitGlobalsImport, kitRoot, transformRemoteModule } from
 import { TraceMap, originalPositionFor } from "@jridgewell/trace-mapping";
 
 const require = createRequire(import.meta.url);
+
+let compiler: typeof SvelteCompiler | null = null;
+/**
+ * Svelte's compiler, loaded from its sources. Metro loads this transformer as CommonJS (`dist/node/transformer.cjs`), and under `require` the
+ * `svelte/compiler` export is Svelte's prebuilt bundle (`compiler/index.js`). The library's patch (`patches/svelte@5.56.7.patch`, which lets the compiler
+ * accept `transition:`, `in:`, `out:` and `animate:` with a custom renderer) changes the sources, so the bundle would still refuse those directives.
+ * `import` resolves the export to the sources, so only a CommonJS load shows the difference (`tests/node-modules.test.ts`). Node `require`s an ES module from 22.12.
+ */
+function svelteCompiler(): typeof SvelteCompiler {
+  compiler ??= require(join(dirname(require.resolve("svelte/package.json")), "src/compiler/index.js")) as typeof SvelteCompiler;
+  return compiler;
+}
 
 /**
  * `@expo/metro-config/babel-transformer`, which this transformer wraps. `@expo/metro-config` is a dependency of `expo`, and of neither the app nor
@@ -97,7 +109,7 @@ export function transform(input: TransformInput) {
   if (filename.endsWith(".svelte")) {
     // Runes mode for the app's own components unless the file opts out (`componentOptions`, `compile-options.ts`); a file below `node_modules` keeps Svelte's own default.
     requireCustomRenderer();
-    const result = compile(lowerPrimitives(src, { filename, html: lowersHtml(filename) }), componentOptions(filename));
+    const result = svelteCompiler().compile(lowerPrimitives(src, { filename, html: lowersHtml(filename) }), componentOptions(filename));
     if (result.css?.code.trim()) throw new Error(`${filename}: use native style props; browser CSS is not supported`);
     code = result.js.code;
     runes = result.metadata.runes;
@@ -114,7 +126,7 @@ export function transform(input: TransformInput) {
     }
     if (svelteModule) {
       // A Svelte module is always in runes mode: `compileModule` has no `runes` option.
-      const result = compileModule(code, moduleOptions(filename));
+      const result = svelteCompiler().compileModule(code, moduleOptions(filename));
       code = result.js.code;
       if (result.js.map) maps.unshift(new TraceMap(result.js.map.toString()));
     }

@@ -6,7 +6,7 @@ import { labRunFrom } from "../lib/lab-run.ts";
 import { analyseSources, bundleChecks, describeForeign, expoBlurReaches, failedChecks, foreignMetrics, importClosure, libraryModules, missingPlaces } from "../lib/foreign.ts";
 import { checkGatesFile, evaluate, type GatesFile } from "../lib/gates.ts";
 import { platformDir } from "../lib/paths.ts";
-import { findButton, parsePress } from "../lib/foreign-press.ts";
+import { findButton, parsePress, parsePressDone } from "../lib/foreign-press.ts";
 import { parseForeignChecks } from "../parse/foreign.ts";
 import { argb, arrivedInOrder, bandInPlace, bandPoints, betweenMargin, brightness, clear, distance, edgeGradual, edgeHard, edgeRatio, edgeSharp, edgeUnderTint, gradualBound, hex, near, numberIn, ratioBetween, readEdge, riveBackdrop, riveFitDetail, riveFitPainted, riveMiddle, riveSides, show, solid, tookNote, untilTaken } from "../../src/lib/native/dev/foreign-pixels.ts";
 import { raceAttempts, runRace, type Race } from "../../src/lib/native/dev/foreign-race.ts";
@@ -877,6 +877,28 @@ describe("what the lab asks the harness to press", () => {
 		expect(parsePress(line("'[Svelte foreign press]', '{\"id\":3}'"))).toBeNull();
 		expect(parsePress(line("'[Svelte stress]', '{}'"))).toBeNull();
 		expect(parsePress("not a logcat line")).toBeNull();
+	});
+
+	test("a request carries the token that ties it to the lab's later line, and the done line is read by its token alone", () => {
+		const request = line(`'[Svelte foreign press]', '{"id":"date-ok","resourceId":"android:id/button1","token":"m3x-4"}'`);
+		expect(parsePress(request)).toEqual({ id: "date-ok", resourceId: "android:id/button1", token: "m3x-4" });
+		const done = line(`'[Svelte foreign press done]', '{"id":"date-ok","token":"m3x-4"}'`);
+		expect(parsePressDone(done)).toBe("m3x-4");
+		// each line is its own: a done line is no request (the harness would press it), and a request is no done line (it would end a press that has not started)
+		expect(parsePress(done)).toBeNull();
+		expect(parsePressDone(request)).toBeNull();
+		expect(parsePressDone(line(`'[Svelte foreign press done]', '{"id":"date-ok"}'`))).toBeNull();
+		expect(parsePressDone(line("'[Svelte foreign press done]', 'not json'"))).toBeNull();
+		expect(parsePressDone("not a logcat line")).toBeNull();
+	});
+
+	test("the lab says when it stopped waiting for a press, and the harness reads what the lab prints", () => {
+		const lab = readFileSync(join(platformDir, "src/lib/native/dev/foreign-libraries-lab.ts"), "utf8");
+		const checks = readFileSync(join(platformDir, "src/lib/native/dev/foreign-libraries-checks.ts"), "utf8");
+		expect(lab).toContain(`console.info("[Svelte foreign press]", JSON.stringify({ id, resourceId, token }))`);
+		expect(lab).toContain(`console.info("[Svelte foreign press done]", JSON.stringify({ id, token }))`);
+		// the press is over once the wait is: the answer or the timeout, before the pause that lets the dialog go
+		expect(checks).toMatch(/const stopped = c\.press\(id, resourceId\);[\s\S]*await Promise\.race\(\[open,[\s\S]*stopped\(\);[\s\S]*await c\.pause\(3000\)/);
 	});
 
 	test("the middle of the button is found by its resource id, and an empty box is not a button", () => {

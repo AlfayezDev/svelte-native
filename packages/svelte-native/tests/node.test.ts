@@ -113,6 +113,18 @@ test("host props merge direct attributes over nativeProps and leave out Svelte i
   expect(mergeHostProps({})).toEqual({});
 });
 
+test("a lowered tag's press handlers (`nativeOnPress`...) are the props they stand for while they are functions, and none when they are not", async () => {
+  const { mergeHostProps } = await import("../src/native-props.ts");
+  const go = () => {};
+  const hold = () => {};
+  expect(mergeHostProps({ nativeOnPress: go, nativeOnPressIn: go, nativeOnPressOut: go, nativeOnLongPress: hold, nativeOnPressChange: go })).toEqual({ onPress: go, onPressIn: go, onPressOut: go, onLongPress: hold, onPressChange: go });
+  // `undefined` (an `onPress={enabled ? go : undefined}` that is not enabled) is no prop at all, and no key is left behind for the host to read as a handler.
+  expect(mergeHostProps({ nativeOnPress: undefined, nativeOnLongPress: null, testID: "a" })).toEqual({ testID: "a" });
+  // `nativeProps` has its own handler and the attribute has none: the object's stays; a function in the attribute wins over it.
+  expect(mergeHostProps({ nativeProps: { onPress: go }, nativeOnPress: undefined })).toEqual({ onPress: go });
+  expect(mergeHostProps({ nativeProps: { onPress: go }, nativeOnPress: hold })).toEqual({ onPress: hold });
+});
+
 test("nodes share one read-only empty props object and one empty children array until they are written to, and a write copies", () => {
   const first = renderer.createElement("native-view");
   const second = renderer.createElement("native-text");

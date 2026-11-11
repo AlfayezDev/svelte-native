@@ -26,6 +26,19 @@ test("nested, self-closing, aliases, bind:this and id", () => {
     .toBe(`<native-view bind:this={el} id="b" testID="c" ref={fn}><native-view ></native-view></native-view>\n<native-image source={s} ></native-image>\n<native-spinner\n  size="large"\n></native-spinner>`);
 });
 
+test("a press handler that may be undefined is passed as nativeOnPress; one written as a function stays an event", () => {
+  // Svelte compiles `onPress={enabled ? go : undefined}` to a listener that stays on the node and does nothing while it is undefined (see `PRESS_HANDLERS` in lower.ts).
+  expect(run(`<Text onPress={enabled ? go : undefined} onPressIn={handler} onPressOut={maybe?.out} onLongPress={() => hold()} onPressChange={function (p) { held = p; }} />`))
+    .toBe(`<native-text nativeOnPress={enabled ? go : undefined} nativeOnPressIn={handler} nativeOnPressOut={maybe?.out} onLongPress={() => hold()} onPressChange={function (p) { held = p; }} ></native-text>`);
+  // A shorthand keeps its braces; other events and a handler string are untouched; a spread sends every attribute through `set_attributes`, which removes a nullish handler's listener itself.
+  expect(run(`<Pressable {onPress} onLayout={maybe}>x</Pressable>`)).toBe(`<native-pressable nativeOnPress={onPress} onLayout={maybe}>x</native-pressable>`);
+  expect(run(`<View {...rest} onPress={enabled ? go : undefined} />`)).toContain(`<native-view {...__svelteNativeSpread(rest)} onPress={enabled ? go : undefined} ></native-view>`);
+  // Compiled, the handler is a prop of the element and not an event listener.
+  const compiled = compile(lowerPrimitives(`<script>\n  import { Text } from "@rasheed/svelte-native";\n  let { go } = $props();\n</script>\n<Text onPress={go} />`), { filename: "f.svelte", generate: "client", runes: true, experimental: { customRenderer: "@rasheed/svelte-native/renderer" } }).js.code;
+  expect(compiled).toContain("nativeOnPress");
+  expect(compiled).not.toContain("$.event(");
+});
+
 /** The markup after the script, whatever the lowering put into the script (a helper import). */
 const markup = (out: string) => out.slice(out.indexOf("</script>\n") + "</script>\n".length);
 
@@ -120,7 +133,7 @@ test("never lowers behavioural components, svelte:component or unrelated imports
 });
 
 test("Pressable lowers only without a style function or parameterised children", () => {
-  expect(run(`<Pressable onPress={go} style={{ padding: 1 }}>x</Pressable>`)).toBe(`<native-pressable onPress={go} nativeStyle={{ padding: 1 }}>x</native-pressable>`);
+  expect(run(`<Pressable onPress={go} style={{ padding: 1 }}>x</Pressable>`)).toBe(`<native-pressable nativeOnPress={go} nativeStyle={{ padding: 1 }}>x</native-pressable>`);
   const fn = `<Pressable style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}>x</Pressable>`;
   expect(run(fn)).toBe(fn);
   const named = `<Pressable style={styleFn}>x</Pressable>`;

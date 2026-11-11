@@ -22,9 +22,11 @@ function locate(target: FakeNode): number[] | undefined {
   return undefined;
 }
 const A = () => (globalThis as unknown as { __anim: AnimLog }).__anim;
-/** The Fabric binding of these tests: the harness's, with a layout read, and Reanimated's registry put over every commit (its commit hook) and emptied for a tag that was marked removable and is in no tree (its mount hook). */
-const layoutFake = {
-  ...base,
+/**
+ * The Fabric binding of these tests: the harness's, with a layout read, and Reanimated's registry put over every commit (its commit hook) and emptied for a tag that was marked removable and is in
+ * no tree (its mount hook). The harness installs its `fake` again right before it imports a bundle, so the methods are replaced on that object for the length of a test.
+ */
+const layoutMethods = {
   createNode(tag: number, name: string, _root: number, props: Record<string, unknown>, target: unknown) { return { tag, name, props: { ...props }, children: [], sealed: false, target, family: {} }; },
   completeRoot(root: number, set: { children: FakeNode[] }) {
     const registry = A()?.registry;
@@ -40,18 +42,26 @@ const layoutFake = {
   },
   getBoundingClientRect(node: FakeNode) { return locate(node); },
 };
+type Methods = Record<string, unknown>;
+const kept: Methods = {};
+function installLayout(): void {
+  for (const name of Object.keys(layoutMethods)) { kept[name] = (base as unknown as Methods)[name]; (base as unknown as Methods)[name] = (layoutMethods as unknown as Methods)[name]; }
+}
 (globalThis as { __DEV__?: boolean }).__DEV__ = true;
-const original = (globalThis as { nativeFabricUIManager?: unknown }).nativeFabricUIManager;
-afterEach(() => { (globalThis as { nativeFabricUIManager?: unknown }).nativeFabricUIManager = original; });
+afterEach(() => {
+  for (const name of Object.keys(layoutMethods)) {
+    if (kept[name] === undefined) delete (base as unknown as Methods)[name];
+    else (base as unknown as Methods)[name] = kept[name];
+  }
+});
 
 type Tx = { setOn(value: boolean): void; setShown(value: boolean): void; setBold(value: boolean): void; setItems(value: number[]): void; setFaded(value: boolean): void; setColor(value: string): void };
 let surface = 700;
 async function mount() {
   delete (globalThis as { __anim?: unknown }).__anim;
   host.roots = {};
-  (globalThis as { nativeFabricUIManager?: unknown }).nativeFabricUIManager = layoutFake;
+  installLayout();
   const m = await load("transitions-html-fixture.svelte");
-  (globalThis as { nativeFabricUIManager?: unknown }).nativeFabricUIManager = original;
   const tag = ++surface;
   m.startSurface(tag, m.Fixture, {});
   await settle(m);

@@ -1075,7 +1075,23 @@ function onInvalidate(node: NativeNode, reason: Invalidation): void {
   if (reason === "children") childrenInvalidated = true;
   if (reason !== "animation") layoutPending = true;
   dirty.add(node);
+  if (reason === "animation") {
+    // An animation starts the next one in a microtask of its own (Svelte's `animate:` plays a hold of no length, and its `onfinish` starts the move), and each item of a list does it in
+    // its turn. A commit that came after the first of them would carry the first item's first frame and leave the others, in their new places and untransformed, to the next commit,
+    // and a frame between the two shows it. So the commit waits until a few microtasks pass with no animation started.
+    animationHops = ANIMATION_HOPS;
+    if (!animationWaiting) { animationWaiting = true; flushScheduled = true; queueMicrotask(waitForAnimations); }
+    return;
+  }
   if (!flushScheduled) { flushScheduled = true; queueMicrotask(flush); }
+}
+const ANIMATION_HOPS = 3;
+let animationHops = 0;
+let animationWaiting = false;
+function waitForAnimations(): void {
+  if (--animationHops > 0) { queueMicrotask(waitForAnimations); return; }
+  animationWaiting = false;
+  flush();
 }
 
 /** Whether a node is still under a mounted surface. */

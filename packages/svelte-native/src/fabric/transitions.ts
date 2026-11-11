@@ -19,7 +19,7 @@ import { cancelAnimation, Easing, makeMutable, withTiming, type SharedValue } fr
 import { scheduleOnRN } from "react-native-worklets";
 import type { AnimationOptions, Keyframe, NativeAnimation, NativeNode } from "../renderer.ts";
 import { effectiveStyle, type Rect } from "./dom-style.ts";
-import { hasTransform, parseKeyframes, restoreValues, sampleSpec, type Spec } from "./keyframes.ts";
+import { affectsLayout, hasTransform, parseKeyframes, restoreValues, sampleSpec, type Spec } from "./keyframes.ts";
 
 type Values = Record<string, unknown>;
 type Updater = () => Values;
@@ -57,11 +57,14 @@ class Playback implements NativeAnimation {
   effect: unknown = {};
   playState: "idle" | "running" | "finished" = "running";
   readonly progress: SharedValue<number> | null = null;
+  /** How adding or removing this animation invalidates the node: `animation` when it only paints, so a layout read made meanwhile commits nothing (`animate:` reads one per item). */
+  readonly invalidation: "props" | "animation";
   private timer: ReturnType<typeof setTimeout> | null = null;
   private readonly startedAt = now();
 
   constructor(private readonly node: NativeNode, readonly spec: Spec) {
     const state = stateOf(node);
+    this.invalidation = affectsLayout(spec) ? "props" : "animation";
     state.animations.add(this);
     if (!spec.empty && !spec.constant && spec.total > 0) {
       const progress = makeMutable(0);
@@ -77,7 +80,7 @@ class Playback implements NativeAnimation {
     if (!spec.empty) {
       state.entries.push(this);
       state.updater = null;
-      node.invalidate("props");
+      node.invalidate(this.invalidation);
     }
   }
 
@@ -125,7 +128,7 @@ function release(node: NativeNode, playback: Playback): void {
     state.updater = null;
     node.invalidate("props");
   }, RESTORE_MS);
-  node.invalidate("props");
+  node.invalidate(playback.invalidation);
 }
 
 /**

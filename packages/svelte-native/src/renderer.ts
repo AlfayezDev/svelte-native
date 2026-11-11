@@ -73,7 +73,11 @@ export function hostSpread<T extends object>(props: T, toggles?: Record<string, 
   return copy as T;
 }
 
-export type Invalidation = "props" | "children" | "text";
+/**
+ * Why a node must be committed again. `animation`: what the node's transitions draw changed (`fabric/transitions.ts`), and only in paint (opacity, transforms,
+ * colours), so the layout of the committed tree is still right: a layout read (`getBoundingClientRect`) does not commit it first.
+ */
+export type Invalidation = "props" | "children" | "text" | "animation";
 let invalidationSink: ((node: NativeNode, reason: Invalidation) => void) | null = null;
 /** The host (see `fabric/`) hears every change through this sink. */
 export function setInvalidationSink(sink: ((node: NativeNode, reason: Invalidation) => void) | null): void { invalidationSink = sink; }

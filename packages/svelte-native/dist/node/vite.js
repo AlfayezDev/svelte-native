@@ -30,6 +30,8 @@ var runesEnvironment = (runes) => runes === void 0 ? {} : { [RUNES_ENVIRONMENT_V
 function runesDefaultEnabled(env = process.env) {
   return !/^(?:0|false|off|no)$/i.test(env[RUNES_ENVIRONMENT_VARIABLE]?.trim() ?? "");
 }
+var ASYNC_ENVIRONMENT_VARIABLE = "SVELTE_NATIVE_ASYNC";
+var asyncEnvironment = (enabled) => enabled === void 0 ? {} : { [ASYNC_ENVIRONMENT_VARIABLE]: enabled ? "1" : "0" };
 var IN_NODE_MODULES = /(?:^|[\\/])node_modules[\\/]/;
 var ownSources = sourceDirectory + sep;
 function isLibrarySource(filename) {
@@ -56,6 +58,10 @@ function webDynamicCompileOptions(app, enabled = true) {
 function withWebRunes(kit, enabled = true) {
   const app = kit?.dynamicCompileOptions;
   return { ...kit, dynamicCompileOptions: webDynamicCompileOptions(app, enabled) };
+}
+function withWebAsync(kit, enabled) {
+  if (!enabled) return kit;
+  return { ...kit, compilerOptions: { ...kit?.compilerOptions, experimental: { async: true, ...kit?.compilerOptions?.experimental } } };
 }
 
 // src/route-tree.ts
@@ -371,7 +377,7 @@ async function exportNative(root, platform, options = {}) {
     "false",
     "--bytecode",
     "--reset-cache"
-  ], runesEnvironment(options.runes));
+  ], { ...runesEnvironment(options.runes), ...asyncEnvironment(options.async) });
   const result = await new Promise((done, reject) => {
     child.once("error", reject);
     child.once("exit", done);
@@ -438,7 +444,7 @@ async function loadSvelteKit() {
 function svelteNative(options = {}) {
   if (options.target !== "native") return loadSvelteKit().then((kit) => [
     { name: "svelte-native:web", config: () => ({ optimizeDeps: { entries: ["!src/routes/**/+mobile.svelte", "!src/routes/**/*.mobile.svelte", "!src/lib/native/**"] } }) },
-    kit(withWebRunes(options.kit, options.runes))
+    kit(withWebAsync(withWebRunes(options.kit, options.runes), options.async))
   ]);
   assertCustomRenderer("The native target of svelteNative() (@example/svelte-native/vite)");
   let root = "";
@@ -458,7 +464,7 @@ function svelteNative(options = {}) {
       if (id === "\0svelte-native-build") return "export {};";
     },
     async generateBundle() {
-      await exportNative(resolve3(root), options.platform ?? "android", { variant: options.variant, runes: options.runes });
+      await exportNative(resolve3(root), options.platform ?? "android", { variant: options.variant, runes: options.runes, async: options.async });
     }
   };
 }

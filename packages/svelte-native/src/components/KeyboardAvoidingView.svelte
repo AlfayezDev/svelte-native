@@ -1,6 +1,7 @@
 <script lang="ts">
   import { untrack, type Snippet } from "svelte";
   import type {} from "../elements.d.ts";
+  import type { ClassProps } from "../classes.ts";
   import { createNativeProps } from "../native-props.ts";
   import { avoidingStyle, keyboardOverlap, type AvoidBehavior } from "../fabric/insets.ts";
   import { connectInsets, insets } from "../insets.svelte.ts";
@@ -10,7 +11,7 @@
    * "position" lifts an inner container, each by how far the keyboard overlaps the view (measured in window coordinates).
    * No keyboard animation yet.
    */
-  let { children, behavior, contentContainerStyle, enabled = true, keyboardVerticalOffset = 0, style, onLayout, ...attributes }: Omit<KeyboardAvoidingViewProps, "children"> & { children?: Snippet } = $props();
+  let { children, behavior, contentContainerStyle, enabled = true, keyboardVerticalOffset = 0, style, onLayout, ...attributes }: Omit<KeyboardAvoidingViewProps, "children"> & { children?: Snippet } & ClassProps = $props();
   connectInsets();
   const resolveProps = createNativeProps();
   const resolveInner = createNativeProps();

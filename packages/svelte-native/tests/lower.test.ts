@@ -20,10 +20,39 @@ test("compiled acceptance fixture has host tags and no component calls", () => {
   expect(code(source)).toMatch(/\bView\(/);
 });
 
-test("nested, self-closing, aliases, bind:this, class and id", () => {
+test("nested, self-closing, aliases, bind:this and id", () => {
   const header = `<script>\n  import { View as V, Image, ActivityIndicator } from "@example/svelte-native";\n</script>\n`;
-  expect(run(`<V bind:this={el} class="a" id="b" testID="c" ref={fn}><V /></V>\n<Image source={s} />\n<ActivityIndicator\n  size="large"\n/>`, header))
-    .toBe(`<native-view bind:this={el} class="a" id="b" testID="c" ref={fn}><native-view ></native-view></native-view>\n<native-image source={s} ></native-image>\n<native-spinner\n  size="large"\n></native-spinner>`);
+  expect(run(`<V bind:this={el} id="b" testID="c" ref={fn}><V /></V>\n<Image source={s} />\n<ActivityIndicator\n  size="large"\n/>`, header))
+    .toBe(`<native-view bind:this={el} id="b" testID="c" ref={fn}><native-view ></native-view></native-view>\n<native-image source={s} ></native-image>\n<native-spinner\n  size="large"\n></native-spinner>`);
+});
+
+/** The markup after the script, whatever the lowering put into the script (a helper import). */
+const markup = (out: string) => out.slice(out.indexOf("</script>\n") + "</script>\n".length);
+
+test("class and class:name on a lowered tag become one nativeClass, worked out by the renderer's hostClass", () => {
+  const lowered = (source: string) => lowerPrimitives(imp + source, { filename: "c.svelte", warn: () => {} });
+  const out = lowered(`<View class="card p-4" testID="a"><Text class={[tone, on && "bold"]}>x</Text></View>`);
+  expect(out.startsWith(`<script> ${helperImport("hostClass as __svelteNativeClass")}\n`)).toBe(true);
+  expect(markup(out)).toBe("<native-view nativeClass={__svelteNativeClass(`card p-4`)} testID=\"a\"><native-text nativeClass={__svelteNativeClass([tone, on && \"bold\"])}>x</native-text></native-view>");
+  // A quoted value with expressions is a template literal; a backtick and a backslash in its text are escaped (a `{` in markup always opens an expression).
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: the expected output is the source of a template literal
+  expect(markup(lowered("<View class=\"a {size} b-[`x`]\\$\" />"))).toBe("<native-view nativeClass={__svelteNativeClass(`a ${(size) ?? \"\"} b-[\\`x\\`]\\\\$`)} ></native-view>");
+  // `class:name` toggles join the class value as an object, in one nativeClass where the `class` was (the first directive without one); the directives are removed.
+  expect(markup(lowered(`<View class:selected class="row" class:dim={!on} />`))).toBe("<native-view  nativeClass={__svelteNativeClass([`row`, { \"selected\": selected, \"dim\": !on }])}  ></native-view>");
+  expect(markup(lowered(`<View class:active={on} />`))).toBe(`<native-view nativeClass={__svelteNativeClass({ "active": on })} ></native-view>`);
+  // Next to a spread, toggles without a class go before every spread, and every spread gets them for a class it may carry.
+  expect(markup(lowered(`<View {...p} class:loud={on} testID="t" />`))).toBe(`<native-view nativeClass={__svelteNativeClass({ "loud": on })} {...__svelteNativeSpread(p, { "loud": on })}  testID="t" ></native-view>`);
+  expect(markup(lowered(`<View class="k" {...p} class:loud={on} />`))).toBe("<native-view nativeClass={__svelteNativeClass([`k`, { \"loud\": on }])} {...__svelteNativeSpread(p, { \"loud\": on })}  ></native-view>");
+  // A component that stays a component gets its class as a prop (createNativeProps).
+  expect(markup(lowered(`<Pressable class="a" style={fn} />`))).toBe(`<Pressable class="a" style={fn} />`);
+});
+
+test("compiled, a lowered class is a hostClass call in the element's template effect and never Svelte's set_class", () => {
+  const source = `<script>\n  import { View } from "@example/svelte-native";\n  let { tone } = $props();\n</script>\n<View class={["card", tone]} />\n<View class="fixed" />`;
+  const code = compile(lowerPrimitives(source), { filename: "f.svelte", generate: "client", runes: true, experimental: { customRenderer: "@example/svelte-native/renderer" } }).js.code;
+  expect(code).toContain("__svelteNativeClass(");
+  expect(code).toContain("nativeClass");
+  expect(code).not.toMatch(/set_class|clsx/);
 });
 
 const helperImport = (names: string) => `import { ${names} } from "@example/svelte-native/renderer";`;
@@ -32,10 +61,10 @@ test("spreads: the spread and the attributes beside it are wrapped, so a functio
   const source = `${imp}<View {...rest} bind:this={el} class="a" id="b" testID="c" ref={fn} onLayout={go} style={s} width={3} animated={a.b} {shorthand} {...(on ? p : q)}><View /></View>\n<Image source={s} />`;
   const out = lowerPrimitives(source, { filename: "s.svelte", warn: () => {} });
   // One import, on the line of the opening tag: no line below moves.
-  expect(out.startsWith(`<script> ${helperImport("hostSpread as __svelteNativeSpread, hostValue as __svelteNativeValue")}\n`)).toBe(true);
+  expect(out.startsWith(`<script> ${helperImport("hostClass as __svelteNativeClass, hostSpread as __svelteNativeSpread, hostValue as __svelteNativeValue")}\n`)).toBe(true);
   expect(out.split("\n")).toHaveLength(source.split("\n").length);
   expect(out.slice(out.indexOf("<native-view"))).toBe(
-    `<native-view {...__svelteNativeSpread(rest)} bind:this={el} class="a" id="b" testID="c" ref={__svelteNativeValue(fn)} onLayout={go} nativeStyle={s} width={3} animated={__svelteNativeValue(a.b)} shorthand={__svelteNativeValue(shorthand)} {...(__svelteNativeSpread(on ? p : q))}><native-view ></native-view></native-view>\n<native-image source={s} ></native-image>`,
+    "<native-view {...__svelteNativeSpread(rest)} bind:this={el} nativeClass={__svelteNativeClass(`a`)} id=\"b\" testID=\"c\" ref={__svelteNativeValue(fn)} onLayout={go} nativeStyle={s} width={3} animated={__svelteNativeValue(a.b)} shorthand={__svelteNativeValue(shorthand)} {...(__svelteNativeSpread(on ? p : q))}><native-view ></native-view></native-view>\n<native-image source={s} ></native-image>",
   );
 });
 

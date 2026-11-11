@@ -25,6 +25,7 @@ __export(metro_exports, {
   INITIALIZE_CORE: () => INITIALIZE_CORE,
   LITE_ORIGINS: () => LITE_ORIGINS,
   RENDERER_STUBS: () => RENDERER_STUBS,
+  UNIWIND_VERSION: () => UNIWIND_VERSION,
   closeRouteWatchers: () => closeRouteWatchers,
   isInPackage: () => isInPackage,
   libraryChanged: () => libraryChanged,
@@ -465,13 +466,24 @@ function assertCustomRenderer(what, from) {
 // src/metro.ts
 var require4 = (0, import_node_module4.createRequire)(__importMetaUrl);
 var nativeSvelte = (0, import_node_path7.dirname)(require4.resolve("svelte/package.json"));
-var LITE_ORIGINS = /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?(?:hermes-intl|expo|expo-modules-core|expo-file-system|react-native-reanimated|react-native-worklets|react-native-is-edge-to-edge|expo-secure-store|expo-image-picker|expo-localization|expo-crypto|expo-constants|expo-font|expo-asset|expo-splash-screen|expo-status-bar|expo-system-ui|expo-keep-awake|expo-application|react-native-svg)[\\/]/;
+var LITE_ORIGINS = /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?(?:hermes-intl|uniwind|expo|expo-modules-core|expo-file-system|react-native-reanimated|react-native-worklets|react-native-is-edge-to-edge|expo-secure-store|expo-image-picker|expo-localization|expo-crypto|expo-constants|expo-font|expo-asset|expo-splash-screen|expo-status-bar|expo-system-ui|expo-keep-awake|expo-application|react-native-svg)[\\/]/;
 var INITIALIZE_CORE = /react-native[\\/]Libraries[\\/]Core[\\/]InitializeCore\.js$/;
 var RENDERER_STUBS = {
   "react-native/Libraries/ReactNative/RendererProxy.js": "./fabric/renderer-stub.ts",
   "react-native/Libraries/Renderer/shims/ReactFabric.js": "./fabric/react-fabric-stub.ts",
   "react-native/Libraries/Renderer/shims/createReactNativeComponentClass.js": "./fabric/component-class-stub.ts"
 };
+function withUniwind(config, options) {
+  let plugin;
+  try {
+    plugin = (0, import_node_module4.createRequire)((0, import_node_path7.join)(config.projectRoot, "package.json"))("uniwind/metro");
+  } catch (error) {
+    throw new Error(`withSvelteNative: the uniwind option needs Uniwind in the app: pnpm add uniwind@${UNIWIND_VERSION} tailwindcss (${error.message.split("\n")[0]})`, { cause: error });
+  }
+  const configured = plugin.withUniwindConfig(config, options);
+  return { ...configured, resolver: { ...configured.resolver, resolveRequest: config.resolver.resolveRequest } };
+}
+var UNIWIND_VERSION = "1.13.2";
 var routeWatchers = /* @__PURE__ */ new Set();
 function closeRouteWatchers() {
   for (const watcher of routeWatchers) watcher.close();
@@ -601,6 +613,11 @@ function withSvelteNative(config, options = {}) {
       if (moduleName === "esm-env") {
         return { type: "sourceFile", filePath: sourceFile("environment.ts") };
       }
+      if (moduleName.startsWith("uniwind/src/")) {
+        const pinned = { ...context, originModulePath: (0, import_node_path7.join)(config.projectRoot, "package.json") };
+        const manifest = context.resolveRequest(pinned, "uniwind/package.json", platform);
+        if (manifest.type === "sourceFile") return context.resolveRequest(pinned, (0, import_node_path7.join)((0, import_node_path7.dirname)(manifest.filePath), moduleName.slice("uniwind/".length)), platform);
+      }
       const result = resolveRequest ? resolveRequest(context, moduleName, platform) : context.resolveRequest(context, moduleName, platform);
       if (result.type === "sourceFile") {
         const stubbedFile = stubForFile(result.filePath);
@@ -623,13 +640,15 @@ function withSvelteNative(config, options = {}) {
   };
   resetForLibrary ??= libraryChanged(config.projectRoot);
   if (resetForLibrary && !config.resetCache) console.log("svelte-native: the installed library changed since Metro last ran here; starting Metro with empty caches");
-  return { ...config, resetCache: config.resetCache || resetForLibrary, cacheVersion: `${config.cacheVersion ?? ""}+svelte-native-2${stubbed.length + files.size + directories.size > 0 ? `+stubs-${variant}` : ""}`, resolver, serializer, transformer: { ...config.transformer, babelTransformerPath: require4.resolve("@example/svelte-native/transformer") } };
+  const configured = { ...config, resetCache: config.resetCache || resetForLibrary, cacheVersion: `${config.cacheVersion ?? ""}+svelte-native-2${stubbed.length + files.size + directories.size > 0 ? `+stubs-${variant}` : ""}`, resolver, serializer, transformer: { ...config.transformer, babelTransformerPath: require4.resolve("@example/svelte-native/transformer") } };
+  return options.uniwind === void 0 ? configured : withUniwind(configured, options.uniwind);
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   INITIALIZE_CORE,
   LITE_ORIGINS,
   RENDERER_STUBS,
+  UNIWIND_VERSION,
   closeRouteWatchers,
   isInPackage,
   libraryChanged,

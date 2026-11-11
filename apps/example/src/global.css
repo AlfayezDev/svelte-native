@@ -1,0 +1,23 @@
+/* Tailwind for the native app, compiled by Uniwind (metro.config.cjs, `uniwind`). Tailwind finds the classes in the source files,
+   the .svelte ones included. */
+@import "tailwindcss";
+@import "uniwind";
+
+/* A class of your own, used like a utility: `class="card"`. It is in Tailwind's components layer, so a utility next to it
+   (`class="card border-4"`) wins, as on the web; a class outside any layer would win over every utility. */
+@layer components {
+  .card {
+    padding: 16px;
+    border-radius: 12px;
+    border-width: 1px;
+    border-color: var(--color-zinc-300);
+    background-color: var(--color-white);
+
+    /* The dark variant overrides the two colours above. */
+    @variant dark {
+      /* biome-ignore lint/suspicious/noDuplicateProperties: overrides the light value in dark mode */
+      border-color: var(--color-zinc-700);
+      background-color: var(--color-zinc-900);
+    }
+  }
+}

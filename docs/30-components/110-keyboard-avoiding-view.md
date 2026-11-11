@@ -35,6 +35,7 @@ title: KeyboardAvoidingView
 | `keyboardVerticalOffset` | `number` | `0` | Extra room, in points, to keep between the keyboard and the content. |
 | `contentContainerStyle` | `ViewStyle` | | With `behavior="position"`: the style of the inner container that's lifted. |
 | `style` | `ViewStyle` | | As a `View`'s. Give it `flex: 1` to fill the screen. |
+| `class` | `ClassValue` | | A list of classes: a string, an array or an object, as on a DOM element in Svelte. Their style goes under `style`, which wins. Needs [Uniwind](styling#classes). |
 | `children` | `Snippet` | | The content. |
 
 It also takes the props of [`View`](view#props).

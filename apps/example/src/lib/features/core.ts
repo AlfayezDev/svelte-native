@@ -7,6 +7,7 @@ export const coreFeatures: Feature[] = [
   { title: "State and reactivity", summary: "Runes driving native views: $state, $derived, $effect, await", group: "Basics", route: "/state" },
   { title: "Layout", summary: "Flexbox: rows, columns, wrap, alignment, flex, absolute", group: "Layout and style", route: "/layout" },
   { title: "Styling", summary: "Style objects, theme colours, dark mode, shadows, transforms", group: "Layout and style", route: "/styling" },
+  { title: "Classes", summary: "Tailwind classes through Uniwind: utilities, dark:, your own CSS classes", group: "Layout and style", route: "/classes" },
   { title: "Lists", summary: "A plain list beside a windowed list of 5,000 rows", group: "Lists and input", route: "/lists" },
   { title: "Inputs and forms", summary: "TextInput, Switch, validation and the keyboard", group: "Lists and input", route: "/inputs" },
   { title: "Stack", summary: "Push and pop screens, native headers, route parameters", group: "Navigation", route: "/navigation/stack", also: ["/navigation/stack/[id]"] },

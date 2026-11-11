@@ -1,5 +1,6 @@
 <script lang="ts">
   import type {} from "../elements.d.ts";
+  import { mergeClass, type ClassProps } from "../classes.ts";
   import { createNativeProps } from "../native-props.ts";
   import { resolveAssetSource } from "../fabric/deps-rn.ts";
   import { expoViewName } from "../fabric/foreign.ts";
@@ -30,14 +31,14 @@
     /** After `onLoad` or `onError`. */
     onLoadEnd?: () => void;
     onDisplay?: () => void;
-  } = $props();
+  } & ClassProps = $props();
   const resolveProps = createNativeProps();
   // The view's only view: `ViewManagerAdapter_ExpoImage`, with the colour props the module's config does not tell from plain ones.
   const component = expoViewName("ExpoImage", undefined, { colors: "tintColor" });
   const handlers = $derived(expoImageHandlers({ onLoadStart, onLoad, onProgress, onError, onLoadEnd, onDisplay }));
 </script>
 <native-foreign {component} nativeProps={resolveProps({
-  ...expoImageProps(attributes, (asset) => resolveAssetSource(asset as never) as never, Platform.OS === "android" ? "android" : "ios"),
+  ...expoImageProps(mergeClass(attributes), (asset) => resolveAssetSource(asset as never) as never, Platform.OS === "android" ? "android" : "ios"),
   ...handlers,
   ref,
 })}></native-foreign>

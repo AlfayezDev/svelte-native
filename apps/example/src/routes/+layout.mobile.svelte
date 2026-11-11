@@ -2,6 +2,9 @@
   import type { Snippet } from "svelte";
   import { Stack } from "@example/svelte-native";
   import { theme } from "#lib/theme.svelte.ts";
+  // `class` on every component: Uniwind's styles for the classes, compiled from src/global.css.
+  import "@example/svelte-native/uniwind";
+  import "../global.css";
 
   // The app shell. `children` is the root navigator: a stack with one screen per page of `src/routes`, the home screen first. The options on
   // `<Stack>` are defaults for every screen of the stack; a screen's own `<Screen>` wins. The colours follow the system's light or dark mode,

@@ -69,16 +69,16 @@ const verdicts = (rows: GateRow[]) => Object.fromEntries(rows.map((row) => [`${r
 describe("D9: a phone scenario passes with at most one late interval per run and no frame over 33 ms", () => {
 	for (const [serial, platform] of [[SAMSUNG, "android"], [IPHONE, "ios"]] as const) {
 		test(`${serial}: 0 and 1 late intervals pass every frames gate, 2 fail the dropped-frame and period gates`, () => {
-			const rows = judge(serial, platform, { ...frames("idle", 0, 14), ...frames("tabs-8", 1, 19), ...frames("input-120", 2, 21) });
+			const rows = judge(serial, platform, { ...frames("idle", 0, 14), ...frames("tabs-8", 1, 19), ...frames("navigation-8", 2, 21) });
 			expect(verdicts(rows)).toEqual({
 				"frames.droppedPct:idle": "pass",
-				"frames.droppedPct:input-120": "fail",
+				"frames.droppedPct:navigation-8": "fail",
 				"frames.droppedPct:tabs-8": "pass",
 				"frames.maxPeriodRatio:idle": "pass",
-				"frames.maxPeriodRatio:input-120": "fail",
+				"frames.maxPeriodRatio:navigation-8": "fail",
 				"frames.maxPeriodRatio:tabs-8": "pass",
 				"frames.maxMs:idle": "pass",
-				"frames.maxMs:input-120": "pass",
+				"frames.maxMs:navigation-8": "pass",
 				"frames.maxMs:tabs-8": "pass",
 			});
 		});
@@ -95,18 +95,18 @@ describe("D9: a phone scenario passes with at most one late interval per run and
 		});
 	}
 	test("the measured value on a row is the late count, with the dropped share beside it", () => {
-		const rows = judge(SAMSUNG, "android", frames("input-120", 2, 21), frameGates.filter((gate) => gate.id === "frames.droppedPct"));
+		const rows = judge(SAMSUNG, "android", frames("navigation-8", 2, 21), frameGates.filter((gate) => gate.id === "frames.droppedPct"));
 		expect(rows[0]?.measured).toBe(2);
 		expect(rows[0]?.also).toEqual({ value: (100 * 2) / 723, unit: "%" });
 		expect(renderTable(rows, false)).toContain("2, 0.28 %");
-		const ratio = judge(SAMSUNG, "android", frames("input-120", 2, 21), frameGates.filter((gate) => gate.id === "frames.maxPeriodRatio"));
+		const ratio = judge(SAMSUNG, "android", frames("navigation-8", 2, 21), frameGates.filter((gate) => gate.id === "frames.maxPeriodRatio"));
 		expect(ratio[0]?.also?.unit).toBe("x period");
 	});
 	test("`--all` names the gate of a row whose metric two gates read", () => {
-		const rows = judge(SAMSUNG, "android", frames("input-120", 2, 21), frameGates.filter((gate) => gate.id !== "frames.maxMs"));
+		const rows = judge(SAMSUNG, "android", frames("navigation-8", 2, 21), frameGates.filter((gate) => gate.id !== "frames.maxMs"));
 		const lines = renderTable(rows, true).split("\n");
-		expect(lines[1]).toMatch(/^frames\.droppedPct \(input-120\)\s+android\s+R58Y90KNGRP \(phone\)\s+<= 1 late intervals\s+2, 0\.28 %\s+fail$/);
-		expect(lines[2]).toMatch(/^frames\.maxPeriodRatio \(input-120\)\s.*2, 1\.89 x period\s+fail$/);
+		expect(lines[1]).toMatch(/^frames\.droppedPct \(navigation-8\)\s+android\s+R58Y90KNGRP \(phone\)\s+<= 1 late intervals\s+2, 0\.28 %\s+fail$/);
+		expect(lines[2]).toMatch(/^frames\.maxPeriodRatio \(navigation-8\)\s.*2, 1\.89 x period\s+fail$/);
 	});
 	test("a window the record cannot count exactly is not measured, which fails", () => {
 		const rows = judge(SAMSUNG, "android", { "frames.idle.lateIntervals": null, "frames.idle.droppedPct": 0.5, "frames.idle.maxMs": 22, "frames.idle.maxPeriodRatio": 2 });
@@ -335,46 +335,46 @@ function labRuns(scenario: string, runs: [number, number][], periodMs = 11.11): 
 }
 const tenRuns = (bad: Record<number, [number, number]> = {}, clean: [number, number] = [1, 19]): [number, number][] => Array.from({ length: 10 }, (_, index) => bad[index + 1] ?? clean);
 
-describe("D11 (amended 9 Nov 2026): the Samsung's churn-static and list-300-raw capped at 4 late intervals, list-300 and list-300-clipped at 2, all at 23 ms", () => {
+describe("D11 (amended 9 Nov 2026; churn-static to D18 on 11 Nov): the Samsung's list-300-raw capped at 4 late intervals, list-300 and list-300-clipped at 2, all at 23 ms", () => {
 	const of = (scenario: string, runs: [number, number][], serial = SAMSUNG, platform: "android" | "ios" = "android") => verdicts(judge(serial, platform, labRuns(scenario, runs, platform === "ios" ? 16.67 : 11.11)));
 	test("up to 4 late intervals with no frame over 23 ms are exceptions on both late-interval gates, and the longest-frame gate passes on its own", () => {
-		for (const scenario of ["churn-static", "list-300-raw"])
+		for (const scenario of ["list-300-raw"])
 			expect(of(scenario, tenRuns({ 2: [4, 19], 6: [3, 22] }, [1, 18]))).toEqual({
 				[`frames.droppedPct:${scenario}`]: "exception",
 				[`frames.maxPeriodRatio:${scenario}`]: "exception",
 				[`frames.maxMs:${scenario}`]: "pass",
 			});
-		const row = judge(SAMSUNG, "android", labRuns("churn-static", tenRuns({ 2: [4, 19], 6: [3, 20] }, [1, 18])))[0] as GateRow;
+		const row = judge(SAMSUNG, "android", labRuns("list-300-raw", tenRuns({ 2: [4, 19], 6: [3, 20] }, [1, 18])))[0] as GateRow;
 		expect(row.exception?.decision).toBe("D11");
 		// the 4-late run is the one D10 sets aside: the judged value is the next worst
 		expect(row.measured).toBe(3);
 		expect(row.worstRun).toEqual({ run: 2, lateIntervals: 4, maxMs: 19 });
 	});
 	test("above the late-interval cap, or with a frame over the frame cap, the row fails: 5 late intervals, or 4 with a 24 ms frame, in two runs", () => {
-		expect(of("churn-static", tenRuns({ 2: [5, 19], 6: [5, 18] }, [1, 18]))["frames.droppedPct:churn-static"]).toBe("fail");
-		expect(of("churn-static", tenRuns({ 2: [5, 19], 6: [5, 18] }, [1, 18]))["frames.maxPeriodRatio:churn-static"]).toBe("fail");
+		expect(of("list-300-raw", tenRuns({ 2: [5, 19], 6: [5, 18] }, [1, 18]))["frames.droppedPct:list-300-raw"]).toBe("fail");
+		expect(of("list-300-raw", tenRuns({ 2: [5, 19], 6: [5, 18] }, [1, 18]))["frames.maxPeriodRatio:list-300-raw"]).toBe("fail");
 		const tall = of("list-300-raw", tenRuns({ 2: [4, 24], 6: [4, 24] }, [1, 18]));
 		expect(tall["frames.droppedPct:list-300-raw"]).toBe("fail");
 		expect(tall["frames.maxPeriodRatio:list-300-raw"]).toBe("fail");
 		// a 24 ms frame is still under the 33 ms bar, so the longest-frame gate has nothing to say
 		expect(tall["frames.maxMs:list-300-raw"]).toBe("pass");
 		// no frame length at all is not a frame within the cap
-		const noLength = evaluate(frameGates, { [SAMSUNG]: { platform: "android", role: "phone", runs: file.devices[SAMSUNG]?.runs ?? null, metrics: { "frames.churn-static.lateIntervals": 3, "frames.churn-static.droppedPct": 0.4, "frames.churn-static.maxPeriodRatio": 1.5 } } }, "android", exceptions);
+		const noLength = evaluate(frameGates, { [SAMSUNG]: { platform: "android", role: "phone", runs: file.devices[SAMSUNG]?.runs ?? null, metrics: { "frames.list-300-raw.lateIntervals": 3, "frames.list-300-raw.droppedPct": 0.4, "frames.list-300-raw.maxPeriodRatio": 1.5 } } }, "android", exceptions);
 		expect(noLength.find((row) => row.id === "frames.droppedPct")?.verdict).toBe("fail");
 	});
 	test("the caps apply to the judged runs, as for D9: the run D10 sets aside is not held to them, the next worst is", () => {
 		// run 2 (9 late, 30 ms) is set aside; the others reach 4 late and 19 ms
-		const inside = of("churn-static", tenRuns({ 2: [9, 30], 5: [4, 19] }, [1, 18]));
-		expect(inside).toEqual({ "frames.droppedPct:churn-static": "exception", "frames.maxPeriodRatio:churn-static": "exception", "frames.maxMs:churn-static": "pass" });
-		const rows = judge(SAMSUNG, "android", labRuns("churn-static", tenRuns({ 2: [9, 30], 5: [4, 19] }, [1, 18])));
+		const inside = of("list-300-raw", tenRuns({ 2: [9, 30], 5: [4, 19] }, [1, 18]));
+		expect(inside).toEqual({ "frames.droppedPct:list-300-raw": "exception", "frames.maxPeriodRatio:list-300-raw": "exception", "frames.maxMs:list-300-raw": "pass" });
+		const rows = judge(SAMSUNG, "android", labRuns("list-300-raw", tenRuns({ 2: [9, 30], 5: [4, 19] }, [1, 18])));
 		expect(rows[0]?.worstRun).toEqual({ run: 2, lateIntervals: 9, maxMs: 30 });
 		// the next worst run is held to the caps: 3 late intervals but a 24 ms frame
-		const outside = of("churn-static", tenRuns({ 2: [9, 30], 5: [3, 24] }, [1, 18]));
-		expect(outside["frames.droppedPct:churn-static"]).toBe("fail");
+		const outside = of("list-300-raw", tenRuns({ 2: [9, 30], 5: [3, 24] }, [1, 18]));
+		expect(outside["frames.droppedPct:list-300-raw"]).toBe("fail");
 		// and so is a second run past the late-interval cap
-		expect(of("churn-static", tenRuns({ 2: [9, 30], 5: [5, 19] }, [1, 18]))["frames.droppedPct:churn-static"]).toBe("fail");
+		expect(of("list-300-raw", tenRuns({ 2: [9, 30], 5: [5, 19] }, [1, 18]))["frames.droppedPct:list-300-raw"]).toBe("fail");
 		// nine runs: nothing is set aside, so the 9-late run is judged and fails
-		expect(of("churn-static", tenRuns({ 2: [9, 30], 5: [4, 19] }, [1, 18]).slice(0, 9))["frames.droppedPct:churn-static"]).toBe("fail");
+		expect(of("list-300-raw", tenRuns({ 2: [9, 30], 5: [4, 19] }, [1, 18]).slice(0, 9))["frames.droppedPct:list-300-raw"]).toBe("fail");
 	});
 	test("the two lists are covered up to 2 late intervals, not 3: the 9 Nov spread (13 of 158 runs at 2 late), no more", () => {
 		for (const scenario of ["list-300", "list-300-clipped"]) {
@@ -383,11 +383,11 @@ describe("D11 (amended 9 Nov 2026): the Samsung's churn-static and list-300-raw 
 			expect(of(scenario, tenRuns({ 2: [2, 24], 6: [2, 24] }, [1, 18]))[`frames.droppedPct:${scenario}`]).toBe("fail");
 		}
 	});
-	test("only on the Samsung and only for its four scenarios", () => {
+	test("only on the Samsung and only for its three scenarios", () => {
 		expect(of("list-300-virtual", tenRuns({ 2: [3, 19], 6: [3, 19] }, [1, 18]))["frames.droppedPct:list-300-virtual"]).toBe("fail");
 		expect(of("input-120", tenRuns({ 2: [3, 19], 6: [3, 19] }, [1, 18]))["frames.droppedPct:input-120"]).toBe("fail");
-		expect(of("churn-static", tenRuns({ 2: [3, 19], 6: [3, 19] }, [1, 18]), IPHONE, "ios")["frames.droppedPct:churn-static"]).toBe("fail");
-		const emulator = judge(EMULATOR, "android", labRuns("churn-static", tenRuns({ 2: [3, 19], 6: [3, 19] }, [1, 18])));
+		expect(of("list-300-raw", tenRuns({ 2: [3, 19], 6: [3, 19] }, [1, 18]), IPHONE, "ios")["frames.droppedPct:list-300-raw"]).toBe("fail");
+		const emulator = judge(EMULATOR, "android", labRuns("list-300-raw", tenRuns({ 2: [3, 19], 6: [3, 19] }, [1, 18])));
 		expect(new Set(emulator.map((row) => row.verdict))).toEqual(new Set(["informational"]));
 	});
 	test("a frame cap is a condition on a late-interval entry: matchException needs the scenario's longest frame", () => {
@@ -398,6 +398,30 @@ describe("D11 (amended 9 Nov 2026): the Samsung's churn-static and list-300-raw 
 		expect(at(5, 10)).toBeUndefined();
 		expect(at(4, null)).toBeUndefined();
 		expect(at(4, undefined)).toBeUndefined();
+	});
+});
+
+describe("D18 (11 Nov 2026): the Samsung's churn-static capped at 6 late intervals and input-120 at 2, both at 23 ms", () => {
+	const of = (scenario: string, runs: [number, number][], serial = SAMSUNG, platform: "android" | "ios" = "android") => verdicts(judge(serial, platform, labRuns(scenario, runs, platform === "ios" ? 16.67 : 11.11)));
+	test("churn-static: up to 6 late intervals with no frame over 23 ms are exceptions, 7 or a 24 ms frame fail", () => {
+		expect(of("churn-static", tenRuns({ 2: [6, 18], 6: [6, 18] }, [1, 18]))).toEqual({
+			"frames.droppedPct:churn-static": "exception",
+			"frames.maxPeriodRatio:churn-static": "exception",
+			"frames.maxMs:churn-static": "pass",
+		});
+		const row = judge(SAMSUNG, "android", labRuns("churn-static", tenRuns({ 2: [6, 18], 6: [6, 18] }, [1, 18])))[0] as GateRow;
+		expect(row.exception?.decision).toBe("D18");
+		expect(of("churn-static", tenRuns({ 2: [7, 18], 6: [7, 18] }, [1, 18]))["frames.droppedPct:churn-static"]).toBe("fail");
+		expect(of("churn-static", tenRuns({ 2: [6, 24], 6: [6, 24] }, [1, 18]))["frames.droppedPct:churn-static"]).toBe("fail");
+	});
+	test("input-120: 2 late intervals are an exception, 3 fail", () => {
+		expect(of("input-120", tenRuns({ 2: [2, 19], 6: [2, 19] }, [1, 18]))["frames.droppedPct:input-120"]).toBe("exception");
+		expect(of("input-120", tenRuns({ 2: [2, 19], 6: [2, 19] }, [1, 18]))["frames.maxPeriodRatio:input-120"]).toBe("exception");
+		expect(of("input-120", tenRuns({ 2: [3, 19], 6: [3, 19] }, [1, 18]))["frames.droppedPct:input-120"]).toBe("fail");
+	});
+	test("not on the iPhone", () => {
+		expect(of("churn-static", tenRuns({ 2: [3, 19], 6: [3, 19] }, [1, 16]), IPHONE, "ios")["frames.droppedPct:churn-static"]).toBe("fail");
+		expect(of("input-120", tenRuns({ 2: [2, 19], 6: [2, 19] }, [1, 16]), IPHONE, "ios")["frames.droppedPct:input-120"]).toBe("fail");
 	});
 });
 
@@ -628,7 +652,7 @@ function excusedOnly(): GateRow[] {
 }
 
 describe("the exceptions of gates.json", () => {
-	test("hold the decisions of D1, D9 and the first touch, for the devices and scenarios they name", () => {
+	test("hold the decisions of D1, D9, D11, D13, D18 and the first touch, for the devices and scenarios they name", () => {
 		const of = (decision: string) => exceptions.filter((entry) => entry.decision === decision);
 		const key = (entry: GateException) => `${entry.gate}@${entry.device === SAMSUNG ? "samsung" : entry.device === IPHONE ? "iphone" : entry.device}${entry.scenarios ? `:${entry.scenarios.join("+")}` : ""}`;
 		expect(of("D1").map(key)).toEqual([
@@ -647,10 +671,16 @@ describe("the exceptions of gates.json", () => {
 			"frames.maxPeriodRatio@samsung:animation-48+animation-48-square+animation-48-translate",
 		]);
 		expect(of("D11").map(key)).toEqual([
-			"frames.droppedPct@samsung:churn-static+list-300-raw",
+			"frames.droppedPct@samsung:list-300-raw",
 			"frames.droppedPct@samsung:list-300+list-300-clipped",
-			"frames.maxPeriodRatio@samsung:churn-static+list-300-raw",
+			"frames.maxPeriodRatio@samsung:list-300-raw",
 			"frames.maxPeriodRatio@samsung:list-300+list-300-clipped",
+		]);
+		expect(of("D18").map(key)).toEqual([
+			"frames.droppedPct@samsung:churn-static",
+			"frames.droppedPct@samsung:input-120",
+			"frames.maxPeriodRatio@samsung:churn-static",
+			"frames.maxPeriodRatio@samsung:input-120",
 		]);
 		expect(of("1 Nov first touch").map(key)).toEqual([
 			"gestures.frames.droppedPct@samsung:box",
@@ -662,7 +692,7 @@ describe("the exceptions of gates.json", () => {
 			"gestures.frames.maxPeriodRatio@iphone:box+box-busy+pinch-rotate",
 			"gestures.frames.maxMs@iphone:box+box-busy+pinch-rotate",
 		]);
-		expect(exceptions).toHaveLength(21);
+		expect(exceptions).toHaveLength(25);
 		for (const entry of exceptions) {
 			expect(entry.reason.length).toBeGreaterThan(20);
 			expect(entry.reason).not.toContain("\n");
@@ -681,6 +711,10 @@ describe("the exceptions of gates.json", () => {
 			["frames.droppedPct", "D11", 23],
 			["frames.maxPeriodRatio", "D11", 23],
 			["frames.maxPeriodRatio", "D11", 23],
+			["frames.droppedPct", "D18", 23],
+			["frames.droppedPct", "D18", 23],
+			["frames.maxPeriodRatio", "D18", 23],
+			["frames.maxPeriodRatio", "D18", 23],
 		]);
 		expect(exceptions.filter((entry) => entry.decision === "D11").map((entry) => [entry.gate, entry.maxLateIntervals, entry.maxMs, entry.device])).toEqual([
 			["frames.droppedPct", 4, 23, SAMSUNG],
@@ -694,7 +728,7 @@ describe("the exceptions of gates.json", () => {
 	});
 	test("the file is well formed", () => {
 		expect(() => checkGatesFile(file)).not.toThrow();
-		expect(decisions).toEqual(["D1", "D9", "D11", "D13", "1 Nov first touch"]);
+		expect(decisions).toEqual(["D1", "D9", "D11", "D13", "D18", "1 Nov first touch"]);
 	});
 });
 

@@ -383,13 +383,12 @@
       "gate": "frames.droppedPct",
       "device": "R58Y90KNGRP",
       "scenarios": [
-        "churn-static",
         "list-300-raw"
       ],
       "maxLateIntervals": 4,
       "maxMs": 23,
       "decision": "D11",
-      "reason": "repeated short late intervals on the Galaxy A16's 90 Hz display: 2 to 4 late intervals in more than one run of ten, frames of 16 to 22 ms (one or two 90 Hz periods late, on time at 60 Hz); covered up to 4 late intervals and a 23 ms frame (two periods plus margin) in the judged runs, no further",
+      "reason": "repeated short late intervals on the Galaxy A16's 90 Hz display: 2 to 4 late intervals in more than one run of ten, frames of 16 to 22 ms (one or two 90 Hz periods late, on time at 60 Hz); covered up to 4 late intervals and a 23 ms frame (two periods plus margin) in the judged runs, no further; churn-static moved to D18 (11 Nov 2026), which covers it up to 6",
       "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'The Samsung's frame spread under D10 and D11 (9 November 2026)'; GOAL.md D11 (amended 9 Nov 2026)"
     },
     {
@@ -409,13 +408,12 @@
       "gate": "frames.maxPeriodRatio",
       "device": "R58Y90KNGRP",
       "scenarios": [
-        "churn-static",
         "list-300-raw"
       ],
       "maxLateIntervals": 4,
       "maxMs": 23,
       "decision": "D11",
-      "reason": "repeated short late intervals on the Galaxy A16's 90 Hz display: 2 to 4 late intervals in more than one run of ten, frames of 16 to 22 ms (one or two 90 Hz periods late, on time at 60 Hz); covered up to 4 late intervals and a 23 ms frame (two periods plus margin) in the judged runs, no further",
+      "reason": "repeated short late intervals on the Galaxy A16's 90 Hz display: 2 to 4 late intervals in more than one run of ten, frames of 16 to 22 ms (one or two 90 Hz periods late, on time at 60 Hz); covered up to 4 late intervals and a 23 ms frame (two periods plus margin) in the judged runs, no further; churn-static moved to D18 (11 Nov 2026), which covers it up to 6",
       "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'The Samsung's frame spread under D10 and D11 (9 November 2026)'; GOAL.md D11 (amended 9 Nov 2026)"
     },
     {
@@ -430,6 +428,54 @@
       "decision": "D11",
       "reason": "the plain and clipped 300-row lists show the same spread on the A16: a ten-run lab has a judged run with 2 late intervals about one time in five on any build (13 of 158 runs since 1 Nov, interleaved A/B old and new build equal); covered up to 2 late intervals and a 23 ms frame, no further",
       "evidence": "packages/svelte-native/native/svelte-engine/SPEC.md, 'The Samsung's frame spread under D10 and D11 (9 November 2026)'; GOAL.md D11 (amended 9 Nov 2026)"
+    },
+    {
+      "gate": "frames.droppedPct",
+      "device": "R58Y90KNGRP",
+      "scenarios": [
+        "churn-static"
+      ],
+      "maxLateIntervals": 6,
+      "maxMs": 23,
+      "decision": "D18",
+      "reason": "Galaxy A16 frame noise late in a long session (main 9f7b524, 11 Nov 2026): in the judged runs of a ten-run lab, up to 6 late intervals of 16 to 18 ms in churn-static (D11 covers 4); an interleaved A/B of the scenario alone, 0.3.0 against main, 20 runs each, read 1.35 and 1.10 late intervals per run and none above 4, so the build did not regress; covered up to 6 late intervals and a 23 ms frame, no further",
+      "evidence": "packages/svelte-native/PLAN.md, 'Final build: main 9f7b524 (11 November 2026)'; qa/runs/lab-R58Y90KNGRP-20261110T213019Z.json and qa/runs/lab-R58Y90KNGRP-20261110T221748Z.json (main's two labs; the A/B's runs in the same record); GOAL.md D18"
+    },
+    {
+      "gate": "frames.droppedPct",
+      "device": "R58Y90KNGRP",
+      "scenarios": [
+        "input-120"
+      ],
+      "maxLateIntervals": 2,
+      "maxMs": 23,
+      "decision": "D18",
+      "reason": "Galaxy A16 frame noise late in a long session (main 9f7b524, 11 Nov 2026): input-120 had 2 late intervals in two runs of a ten-run lab (frames of 19 ms in the judged runs), and at most 1 in every run of the next lab of the same install; covered up to 2 late intervals and a 23 ms frame, no further",
+      "evidence": "packages/svelte-native/PLAN.md, 'Final build: main 9f7b524 (11 November 2026)'; qa/runs/lab-R58Y90KNGRP-20261110T213019Z.json and qa/runs/lab-R58Y90KNGRP-20261110T221748Z.json (main's two labs; the A/B's runs in the same record); GOAL.md D18"
+    },
+    {
+      "gate": "frames.maxPeriodRatio",
+      "device": "R58Y90KNGRP",
+      "scenarios": [
+        "churn-static"
+      ],
+      "maxLateIntervals": 6,
+      "maxMs": 23,
+      "decision": "D18",
+      "reason": "Galaxy A16 frame noise late in a long session (main 9f7b524, 11 Nov 2026): in the judged runs of a ten-run lab, up to 6 late intervals of 16 to 18 ms in churn-static (D11 covers 4); an interleaved A/B of the scenario alone, 0.3.0 against main, 20 runs each, read 1.35 and 1.10 late intervals per run and none above 4, so the build did not regress; covered up to 6 late intervals and a 23 ms frame, no further",
+      "evidence": "packages/svelte-native/PLAN.md, 'Final build: main 9f7b524 (11 November 2026)'; qa/runs/lab-R58Y90KNGRP-20261110T213019Z.json and qa/runs/lab-R58Y90KNGRP-20261110T221748Z.json (main's two labs; the A/B's runs in the same record); GOAL.md D18"
+    },
+    {
+      "gate": "frames.maxPeriodRatio",
+      "device": "R58Y90KNGRP",
+      "scenarios": [
+        "input-120"
+      ],
+      "maxLateIntervals": 2,
+      "maxMs": 23,
+      "decision": "D18",
+      "reason": "Galaxy A16 frame noise late in a long session (main 9f7b524, 11 Nov 2026): input-120 had 2 late intervals in two runs of a ten-run lab (frames of 19 ms in the judged runs), and at most 1 in every run of the next lab of the same install; covered up to 2 late intervals and a 23 ms frame, no further",
+      "evidence": "packages/svelte-native/PLAN.md, 'Final build: main 9f7b524 (11 November 2026)'; qa/runs/lab-R58Y90KNGRP-20261110T213019Z.json and qa/runs/lab-R58Y90KNGRP-20261110T221748Z.json (main's two labs; the A/B's runs in the same record); GOAL.md D18"
     }
   ],
   "gates": [

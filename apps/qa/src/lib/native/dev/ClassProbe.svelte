@@ -41,6 +41,7 @@
   <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
     <View {@attach hold("tint")} class="size-8 bg-sky-500/50" />
     <View {@attach hold("responsive")} class="p-2 md:p-10" />
+    <View {@attach hold("capped")} class="p-2 max-md:p-10" />
     <View {@attach hold("scheme")} class="size-8 bg-white dark:bg-zinc-900" />
     <View {@attach hold("custom")} class="qa-card" />
     <View {@attach hold("beaten")} class="qa-card p-6" />

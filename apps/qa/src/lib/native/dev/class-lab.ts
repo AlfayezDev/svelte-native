@@ -1,6 +1,7 @@
 import { tick } from "svelte";
 import { Appearance, Dimensions } from "@example/svelte-native/platform";
-import { allSides, classCheckNames, classStyle, expectations, hostStyle, isColor, white, zinc900, type HostNode, type Outcome, type Rect, type Style } from "./class-checks.ts";
+import { mergeHostProps } from "@example/svelte-native/renderer";
+import { allSides, classCheckNames, classStyle, expectations, isColor, sentStyle, white, zinc900, type HostNode, type Outcome, type Rect, type Style } from "./class-checks.ts";
 
 /**
  * The class checks of the native checks lab (`/__dev`, "Run all checks", after the 28 checks of Svelte itself): `class` on the views of `ClassProbe.svelte` must have become the style the CSS file says
@@ -20,7 +21,7 @@ export type ClassProbeHandle = {
 };
 type Report = (name: string, passed: boolean, detail?: string) => void;
 
-const nodeNames = ["padding", "tint", "responsive", "scheme", "custom", "beaten", "inline", "list", "object", "label"] as const;
+const nodeNames = ["padding", "tint", "responsive", "capped", "scheme", "custom", "beaten", "inline", "list", "object", "label"] as const;
 
 async function until(test: () => boolean, milliseconds: number): Promise<boolean> {
   const end = Date.now() + milliseconds;
@@ -39,14 +40,15 @@ const rectOf = (handle: Measurable | null): Promise<Rect | null> =>
   });
 
 export async function runClassChecks(probe: ClassProbeHandle | undefined, report: Report): Promise<void> {
-  const missing = probe ? nodeNames.filter((name) => !(probe.node(name) as HostNode | null | undefined)?.getProp) : [...nodeNames];
+  const missing = probe ? nodeNames.filter((name) => typeof (probe.node(name) as HostNode | null | undefined)?.peekProps !== "function") : [...nodeNames];
   if (!probe || missing.length > 0) {
     // Each check still reports, so that a probe that did not mount is that many failures and not a count that quietly fell.
     for (const name of classCheckNames) report(name, false, `the probe's views are not mounted: ${missing.join(", ")}`);
     return;
   }
   const node = (name: (typeof nodeNames)[number]): HostNode => probe.node(name) as HostNode;
-  const read = (name: (typeof nodeNames)[number]): Style => hostStyle(node(name));
+  // What the host sends the native view for a node: the props it builds from the node's attributes, `style` flattened.
+  const read = (name: (typeof nodeNames)[number]): Style => sentStyle(mergeHostProps(node(name).peekProps()));
   const [padding, layout, tint, responsive, scheme, custom, beaten, inline, state, text] = classCheckNames;
   const outcomes = new Map<string, Outcome>();
 
@@ -54,7 +56,7 @@ export async function runClassChecks(probe: ClassProbeHandle | undefined, report
   const { parent, child } = probe.handles();
   outcomes.set(layout, expectations.layout(await rectOf(parent), await rectOf(child)));
   outcomes.set(tint, expectations.tint(read("tint")));
-  outcomes.set(responsive, expectations.responsive(read("responsive"), Dimensions.get("window").width));
+  outcomes.set(responsive, expectations.responsive(read("responsive"), read("capped"), Dimensions.get("window").width));
   outcomes.set(inline, expectations.inline(read("inline"), classStyle(node("inline"))));
   outcomes.set(text, expectations.text(read("label")));
 

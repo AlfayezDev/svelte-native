@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { allSides, classCheckNames, classStyle, expectations, flattenStyle, hostStyle, isColor, mdBreakpoint, parseColor, sides, sky500, white, zinc400, zinc900, type Style } from "../../src/lib/native/dev/class-checks.ts";
+import { allSides, classCheckNames, classStyle, expectations, flattenStyle, isColor, mdBreakpoint, parseColor, sentStyle, sides, sky500, white, zinc400, zinc900, type Style } from "../../src/lib/native/dev/class-checks.ts";
 import type { GatesFile } from "../lib/gates.ts";
 import { platformDir, svelteNativeCli } from "../lib/paths.ts";
 import { sample } from "./sample.ts";
@@ -47,7 +47,7 @@ describe("the number of functional checks", () => {
 });
 
 describe("reading a mounted node's props", () => {
-	const node = (props: Record<string, unknown>) => ({ getProp: (key: string) => props[key] });
+	const node = (props: Record<string, unknown>) => ({ getProp: (key: string) => props[key], peekProps: () => props });
 
 	test("a style is flattened the way React Native does: arrays and falsy values, the later entry wins", () => {
 		expect(flattenStyle([{ a: 1, b: 1 }, false, null, [{ b: 2 }, undefined], { c: 3 }])).toEqual({ a: 1, b: 2, c: 3 });
@@ -55,12 +55,12 @@ describe("reading a mounted node's props", () => {
 		expect(flattenStyle("width: 1px")).toEqual({});
 	});
 
-	test("what the host sends is the class under the element's own style, and the class alone is readable too", () => {
-		const read = node({ nativeClass: { backgroundColor: "#9f9fa9", padding: 4 }, nativeStyle: { backgroundColor: "#f97316" } });
-		expect(hostStyle(read)).toEqual({ backgroundColor: "#f97316", padding: 4 });
-		expect(classStyle(read)).toEqual({ backgroundColor: "#9f9fa9", padding: 4 });
-		expect(hostStyle(node({ nativeClass: [{ a: 1 }], style: [{ a: 2 }] }))).toEqual({ a: 2 });
-		expect(hostStyle(node({ style: "color: red" }))).toEqual({});
+	test("what the host sends is read from the props it built, and the class alone from the node's own attribute", () => {
+		// `sent` is what `mergeHostProps` gives (class-probe.test.ts runs the real one): the check takes its `style` as it is, and does not merge anything itself
+		expect(sentStyle({ style: [{ backgroundColor: "#9f9fa9", padding: 4 }, { backgroundColor: "#f97316" }] })).toEqual({ backgroundColor: "#f97316", padding: 4 });
+		expect(sentStyle({ style: [{ backgroundColor: "#f97316" }, { backgroundColor: "#9f9fa9" }] })).toEqual({ backgroundColor: "#9f9fa9" });
+		expect(sentStyle({})).toEqual({});
+		expect(classStyle(node({ nativeClass: { backgroundColor: "#9f9fa9", padding: 4 }, nativeStyle: { backgroundColor: "#f97316" } }))).toEqual({ backgroundColor: "#9f9fa9", padding: 4 });
 	});
 
 	test("the four sides of padding, from the shorthand, the pairs or the sides", () => {
@@ -89,6 +89,7 @@ const classesOf = {
 	padding: "self-start p-4",
 	tint: "size-8 bg-sky-500/50",
 	responsive: "p-2 md:p-10",
+	capped: "p-2 max-md:p-10",
 	scheme: "size-8 bg-white dark:bg-zinc-900",
 	custom: "qa-card",
 	beaten: "qa-card p-6",
@@ -156,11 +157,15 @@ describe("what the check expects is what the build makes of src/global.css", () 
 		expect(expectations.tint(light("tint")).passed).toBe(true);
 		expect(expectations.tint(resolve(table, "size-8 bg-sky-500")).passed).toBe(false);
 
-		// a phone is under the breakpoint and a window at or over it has the md: padding: the check follows the window
-		expect(expectations.responsive(resolve(table, classesOf.responsive, { width: 411 }), 411).passed).toBe(true);
-		expect(expectations.responsive(resolve(table, classesOf.responsive, { width: mdBreakpoint }), mdBreakpoint).passed).toBe(true);
-		expect(expectations.responsive(resolve(table, classesOf.responsive, { width: mdBreakpoint }), 411).passed).toBe(false);
-		expect(expectations.responsive(resolve(table, classesOf.responsive, { width: 411 }), mdBreakpoint).passed).toBe(false);
+		// a phone is under the breakpoint: md: is absent and max-md: applies; a window at or over it is the other way round, and the check follows the window
+		const both = (width: number) => [resolve(table, classesOf.responsive, { width }), resolve(table, classesOf.capped, { width })] as const;
+		for (const width of [360, 411, 767]) expect(expectations.responsive(...both(width), width).passed).toBe(true);
+		for (const width of [mdBreakpoint, 800, 1024]) expect(expectations.responsive(...both(width), width).passed).toBe(true);
+		expect(expectations.responsive(...both(mdBreakpoint), 411).passed).toBe(false);
+		expect(expectations.responsive(...both(411), mdBreakpoint).passed).toBe(false);
+		// a class that applies nowhere (the md: one ignored) or everywhere is not a breakpoint
+		expect(expectations.responsive(resolve(table, "p-2 p-10"), resolve(table, "p-2 p-10"), 411).passed).toBe(false);
+		expect(expectations.responsive(resolve(table, "p-2"), resolve(table, "p-2"), 411).passed).toBe(false);
 
 		expect(expectations.scheme(light("scheme"), dark("scheme")).passed).toBe(true);
 		expect(expectations.scheme(light("scheme"), light("scheme")).passed).toBe(false);

@@ -54,7 +54,10 @@ const dimensionsModule = `const stub = globalThis.__probe;
 const platformModule = `export default { OS: "android", Version: 36 };`;
 const expoModulesCore = `export const EventEmitter = class {}; export const requireOptionalNativeModule = () => null;`;
 
-async function load(table: unknown) {
+/** A change to one of the library's sources, made as the bundle reads it: the broken variant a check must fail on. The text it replaces has to be there, so a change that no longer applies fails the test. */
+type Mutation = { file: RegExp; from: string; to: string };
+
+async function load(table: unknown, mutations: readonly Mutation[] = []) {
 	const [{ componentOptions }, { lowerPrimitives }] = await Promise.all([
 		import(pathToFileURL(join(library, "src/compile-options.ts")).href) as Promise<{ componentOptions(path: string): Record<string, unknown> }>,
 		import(pathToFileURL(join(library, "src/lower.ts")).href) as Promise<{ lowerPrimitives(source: string, options: { filename: string }): string }>,
@@ -73,6 +76,16 @@ async function load(table: unknown) {
 		plugins: [{
 			name: "class-probe",
 			setup(builder) {
+				builder.onLoad({ filter: /\.ts$/ }, async ({ path }) => {
+					const applying = mutations.filter((mutation) => mutation.file.test(path));
+					if (applying.length === 0) return undefined;
+					let contents = await readFile(path, "utf8");
+					for (const mutation of applying) {
+						if (!contents.includes(mutation.from)) throw new Error(`the mutation of ${path} no longer applies: ${mutation.from}`);
+						contents = contents.replace(mutation.from, mutation.to);
+					}
+					return { contents, loader: "ts" };
+				});
 				builder.onResolve({ filter: /^@example\/svelte-native\/classes-table$/ }, (args) => ({ path: args.path, namespace: "classes-table" }));
 				builder.onLoad({ filter: /.*/, namespace: "classes-table" }, () => ({ contents: `export default ${JSON.stringify(table)};`, loader: "js" }));
 				builder.onResolve({ filter: /^react-native\/Libraries\/Utilities\/(Appearance|Dimensions|Platform)$/ }, (args) => ({ path: args.path, namespace: "react-native" }));
@@ -117,6 +130,18 @@ async function load(table: unknown) {
 	}>;
 }
 
+/** Mounts the probe, runs the class checks as the lab does (a layout stands in for `ref`) and answers what each reported, by name. */
+async function ran(m: Awaited<ReturnType<typeof load>>) {
+	const app = m.mount(m.ClassProbe, { target: new m.NativeNode("fragment"), renderer: m.renderer, props: {} });
+	await m.tick();
+	const at = (x: number, y: number, width: number, height: number) => ({ measureInWindow: (callback: (x: number, y: number, width: number, height: number) => void) => callback(x, y, width, height) });
+	const reports: { name: string; passed: boolean; detail: string }[] = [];
+	await m.runClassChecks({ node: app.node, setWide: app.setWide, handles: () => ({ parent: at(10, 20, 72, 52), child: at(26, 36, 40, 20) }) }, (name, passed, detail = "") => { reports.push({ name, passed, detail }); });
+	m.unmount(app);
+	return reports;
+}
+const failed = (reports: { name: string; passed: boolean }[]) => reports.filter((report) => !report.passed).map((report) => report.name);
+
 describe("the class checks on the host: the real table, resolver, renderer and probe, with the platform stubbed", () => {
 	test("the probe's views hand out their nodes, with the class resolved into their props, and every check reads as passing", async () => {
 		const m = await load(builtTable());
@@ -148,6 +173,7 @@ describe("the class checks on the host: the real table, resolver, renderer and p
 			const app = m.mount(m.ClassProbe, { target: new m.NativeNode("fragment"), renderer: m.renderer, props: {} });
 			await m.tick();
 			expect((app.node("responsive") as { getProp(key: string): unknown }).getProp("nativeClass")).toMatchObject({ paddingTop: 40 });
+			expect((app.node("capped") as { getProp(key: string): unknown }).getProp("nativeClass")).toMatchObject({ paddingTop: 8 });
 			const reports: { name: string; passed: boolean }[] = [];
 			const at = { measureInWindow: (callback: (x: number, y: number, width: number, height: number) => void) => callback(0, 0, 10, 10) };
 			await m.runClassChecks({ node: app.node, setWide: app.setWide, handles: () => ({ parent: at, child: at }) }, (name, passed) => { reports.push({ name, passed }); });
@@ -156,6 +182,23 @@ describe("the class checks on the host: the real table, resolver, renderer and p
 		} finally {
 			stub.window = { width: 411, height: 900 };
 		}
+	}, 60_000);
+
+	test("an inline style that the host puts under the class instead of over it fails the inline check, and only it (the real merge, with its order swapped)", async () => {
+		const table = builtTable();
+		// `native-props.ts`: the line that puts the class under the element's own style
+		const swapped: Mutation = { file: /native-props\.ts$/, from: "[fromClass, merged.style]", to: "[merged.style, fromClass]" };
+		expect(failed(await ran(await load(table)))).toEqual([]);
+		expect(failed(await ran(await load(table, [swapped])))).toEqual([classCheckNames[7]]);
+	}, 60_000);
+
+	test("the window width: a resolver that applies md: everywhere, or max-md: everywhere, fails the breakpoint check on a phone", async () => {
+		const table = builtTable();
+		const always: Mutation = { file: /css\/runtime\.ts$/, from: "if (when.minWidth !== undefined && width < when.minWidth) return false;", to: "" };
+		const never: Mutation = { file: /css\/runtime\.ts$/, from: "if (when.maxWidth !== undefined && width >= when.maxWidth) return false;", to: "if (when.maxWidth !== undefined) return false;" };
+		expect(failed(await ran(await load(table)))).toEqual([]);
+		expect(failed(await ran(await load(table, [always])))).toEqual([classCheckNames[3]]);
+		expect(failed(await ran(await load(table, [never])))).toEqual([classCheckNames[3]]);
 	}, 60_000);
 
 	test("a probe that is not mounted is ten failures, not a count that fell", async () => {

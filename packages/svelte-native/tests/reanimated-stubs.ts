@@ -5,6 +5,15 @@ export type AnimLog = {
   updates: { descriptors: unknown; values: Record<string, unknown>; animatedProps: boolean }[];
   css: { shadowNodeWrapper: object; viewTag: number; reactViewName: string; updates: Record<string, unknown>[]; cleaned: boolean }[];
   removable: object[];
+  /**
+   * Reanimated's props registry: the last props written for each view tag (`updateProps`; an `undefined` is dropped, as the JSI conversion drops it). The test's fake `completeRoot` puts them over
+   * the props of every commit (the commit hook) and empties the entry of a tag whose marked-removable shadow node is in no tree after the mount (`handleNodeRemovals`).
+   */
+  registry?: Map<number, Record<string, unknown>>;
+  /** The shadow nodes `markNodeAsRemovable` was handed since the last mount. */
+  marked?: object[];
+  /** A test sets it to make the Reanimated stub throw when it is loaded, as an app without Reanimated does. */
+  failLoad?: boolean;
   layoutConfigs?: { viewTag: number; type: number; config: unknown }[];
   inline?: unknown[];
   /** Every `makeMutable` value, in creation order; a test sets `onWrite` to make a write fail, as Reanimated's serialiser can. */
@@ -26,6 +35,7 @@ const cssKey = "(k) => k.startsWith('animation') || k.startsWith('transition')";
 
 export const reanimatedStubs: Record<string, string> = {
   "react-native-reanimated": `${head}
+    if (A.failLoad) throw new Error("react-native-reanimated is not installed");
     export const makeMutable = (initial) => {
       if (A.failMutable) throw new Error("no shared value for you");
       const m = { _value: initial, writes: [], _isReanimatedSharedValue: true,
@@ -59,7 +69,18 @@ export const reanimatedStubs: Record<string, string> = {
       unregisterFromEvents(tag) { this.tags.delete(tag); this.log.push(['unregister', tag]); }
     }`,
   "react-native-reanimated/src/animation/util": "export const initialUpdaterRun = (updater) => updater();",
-  "react-native-reanimated/src/updateProps": `${head} export const updateProps = (descriptors, values, isAnimatedProps) => { A.updates.push({ descriptors, values: { ...values }, animatedProps: isAnimatedProps === true }); };`,
+  "react-native-reanimated/src/updateProps": `${head}
+    export const updateProps = (descriptors, values, isAnimatedProps) => {
+      A.updates.push({ descriptors, values: { ...values }, animatedProps: isAnimatedProps === true });
+      // The registry keeps what the view was last given, by tag, and the JSI conversion skips undefined.
+      const set = A.descriptors.find((entry) => entry.id === descriptors.id);
+      for (const { tag } of set?.adds ?? []) {
+        if (set.removes.includes(tag)) continue;
+        const kept = (A.registry ??= new Map()).get(tag) ?? {};
+        for (const key in values) if (values[key] !== undefined) kept[key] = values[key];
+        A.registry.set(tag, kept);
+      }
+    };`,
   "react-native-reanimated/src/ViewDescriptorsSet": `${head}
     export const makeViewDescriptorsSet = () => {
       const entry = { id: A.descriptors.length + 1, adds: [], removes: [] };
@@ -76,7 +97,7 @@ export const reanimatedStubs: Record<string, string> = {
       update(style) { this.entry.updates.push(style); }
       unmountCleanup() { this.entry.cleaned = true; }
     }`,
-  "react-native-reanimated/src/css/native/proxy": `${head} export const markNodeAsRemovable = (wrapper) => { A.removable.push(wrapper); };`,
+  "react-native-reanimated/src/css/native/proxy": `${head} export const markNodeAsRemovable = (wrapper) => { A.removable.push(wrapper); (A.marked ??= []).push(wrapper); };`,
   "react-native-reanimated/src/css/utils": `
     const isCss = ${cssKey};
     export const filterCSSAndStyleProperties = (style) => { const rest = {}; for (const k in style) if (!isCss(k) && style[k] !== undefined) rest[k] = style[k]; return [null, null, null, null, rest]; };`,

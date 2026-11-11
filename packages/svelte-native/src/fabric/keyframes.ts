@@ -57,11 +57,15 @@ const META = new Set(["offset", "easing", "composite", "computedOffset"]);
 const UNSUPPORTED = /^(?:filter|backdropFilter|clipPath|mask.*|stroke.*|fill.*|cssFloat|cssOffset)$/;
 const COLOUR_KEY = /(?:^|[a-z])Color$|^color$/;
 
-/** An `hsl()` colour (`hsl(120 50% 40%)`, `hsla(120, 50%, 40%, 0.5)`, a `/` before the alpha) as [r, g, b, a]. */
+/** The degrees of a hue in `deg`, `grad`, `rad` or `turn` (none: degrees). */
+const HUE_UNITS: Record<string, number> = { deg: 1, grad: 0.9, rad: 180 / Math.PI, turn: 360 };
+
+/** An `hsl()` colour (`hsl(120 50% 40%)`, `hsla(120, 50%, 40%, 0.5)`, `hsl(0.5turn 50% 40%)`, a `/` before the alpha) as [r, g, b, a]. */
 function hslChannels(parts: string[]): number[] | null {
-  const numbers = parts.map((part) => (/^[+-]?(?:\d+\.?\d*|\.\d+)(?:deg|%)?$/.test(part) ? Number.parseFloat(part) : Number.NaN));
+  const numbers = parts.map((part) => (/^[+-]?(?:\d+\.?\d*|\.\d+)(?:deg|grad|rad|turn|%)?$/.test(part) ? Number.parseFloat(part) : Number.NaN));
   if (numbers.some((value) => Number.isNaN(value))) return null;
-  const hue = (((numbers[0] as number) % 360) + 360) % 360;
+  const unit = /[a-z]+$/.exec(parts[0] as string)?.[0];
+  const hue = ((((numbers[0] as number) * (HUE_UNITS[unit ?? "deg"] ?? 1)) % 360) + 360) % 360;
   const saturation = Math.min(100, Math.max(0, numbers[1] as number)) / 100;
   const lightness = Math.min(100, Math.max(0, numbers[2] as number)) / 100;
   const chroma = saturation * Math.min(lightness, 1 - lightness);
@@ -217,8 +221,15 @@ export function sampleSpec(spec: Spec, progress: number, out: Record<string, unk
     const track = spec.colours[i] as Colour;
     const from = track.values[index] as number[];
     const to = track.values[next] as number[];
-    const channel = (at: number) => (from[at] as number) + ((to[at] as number) - (from[at] as number)) * fraction;
-    out[track.key] = `rgba(${Math.round(channel(0))}, ${Math.round(channel(1))}, ${Math.round(channel(2))}, ${channel(3)})`;
+    // Premultiplied by the alpha, as CSS blends: transparent to red is half red at the half, not a half-grey red.
+    const fromAlpha = from[3] as number;
+    const alpha = fromAlpha + ((to[3] as number) - fromAlpha) * fraction;
+    const channel = (at: number) => {
+      if (alpha <= 0) return 0;
+      const start = (from[at] as number) * fromAlpha;
+      return Math.round((start + ((to[at] as number) * (to[3] as number) - start) * fraction) / alpha);
+    };
+    out[track.key] = `rgba(${channel(0)}, ${channel(1)}, ${channel(2)}, ${alpha})`;
   }
   for (let i = 0; i < spec.discrete.length; i++) {
     const track = spec.discrete[i] as Discrete;
@@ -242,16 +253,22 @@ export function sampleSpec(spec: Spec, progress: number, out: Record<string, unk
 
 /**
  * The values to write when an animation that wrote `spec` is cancelled, so the view goes back to what the node's own style says: opacity, transform and the origin to the style's (or the
- * defaults), and every other key to the style's value, which may be nothing (`undefined`: a `height` or a padding the animation pinned is released). Every key the animation wrote is
- * in it: an animation cancelled in the middle (a `slide` turned around) has left lengths and colours at values of its own.
+ * defaults), and every other key to the style's value. Every key the animation wrote is in it: an animation cancelled in the middle (a `slide` turned around) has left lengths and colours
+ * at values of its own. A key the node has no value for is `null`, never `undefined`: Reanimated's JSI conversion drops `undefined` and the registry then keeps what the animation wrote
+ * (a `height` pinned half way), while `null` resets the prop. A colour cannot be `null` (it throws in the colour processor): the node's own, or `transparent` for `backgroundColor`;
+ * another colour the node has no value for has no neutral one and is left out (it is released with the registry, `forgetAnimatedValues`).
  */
 export function restoreValues(spec: Spec, natural: Readonly<Record<string, unknown>>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const key of spec.keys) {
-    if (key === "opacity") out.opacity = typeof natural.opacity === "number" ? natural.opacity : 1;
-    else if (key === "transform") out.transform = nativeTransform(transformOps(natural.transform));
-    else if (key === "transformOrigin") out.transformOrigin = natural.transformOrigin ?? "50% 50%";
-    else out[key] = natural[key];
+    const own = natural[key];
+    if (key === "opacity") out.opacity = typeof own === "number" ? own : 1;
+    else if (key === "transform") out.transform = nativeTransform(transformOps(own));
+    else if (key === "transformOrigin") out.transformOrigin = own ?? "50% 50%";
+    else if (COLOUR_KEY.test(key)) {
+      if (own !== undefined && own !== null) out[key] = own;
+      else if (key === "backgroundColor") out[key] = "transparent";
+    } else out[key] = own ?? null;
   }
   return out;
 }

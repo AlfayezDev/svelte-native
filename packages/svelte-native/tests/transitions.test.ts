@@ -12,10 +12,13 @@ import { reactNativeConverters } from "./rn-reference.ts";
 
 // Svelte's `in:`, `out:`, `transition:` and `animate:flip` on a host tag, through the real Fabric host with Reanimated's stand-ins: what reaches `element.animate`, how it is played
 // (a shared value animated `withTiming`, a mapper that samples the keyframes), what the node looks like in each commit, and when Svelte is told the animation is over.
-type FakeNode = { tag: number; name: string; props: Record<string, unknown>; children: FakeNode[]; sealed: boolean; target?: unknown };
+/** `family` is what the clones of one node share (React Native's shadow node family); `shown` is what the commit carries once Reanimated's registry was put over `props` (its commit hook). */
+type FakeNode = { tag: number; name: string; props: Record<string, unknown>; children: FakeNode[]; sealed: boolean; target?: unknown; family: object; shown?: Record<string, unknown> };
 let roots: Record<number, FakeNode[]> = {};
 const calls: string[] = [];
 const ROW = 50;
+/** The scroll offset of a scroll view by tag: React Native moves what is inside a scroll view by it, and not the scroll view itself. */
+const scrolled: Record<number, { x: number; y: number }> = {};
 /** The layout of the committed tree: a node is as wide as 100 and as high as 50 and sits at its index among its siblings times 50; a node with `position: absolute` is out of the flow, at the top. */
 function locate(target: FakeNode): { rect: number[]; path: FakeNode[] } | undefined {
   const search = (nodes: FakeNode[], path: FakeNode[]): { rect: number[]; path: FakeNode[] } | undefined => {
@@ -32,16 +35,38 @@ function locate(target: FakeNode): { rect: number[]; path: FakeNode[] } | undefi
   for (const root of Object.values(roots)) { const found = search(root, []); if (found) return found; }
   return undefined;
 }
-/** What the committed transforms of these nodes (their `translateX` and `translateY`) move what is inside the last of them by. */
-function translation(path: FakeNode[]): { x: number; y: number } {
-  const moved = { x: 0, y: 0 };
-  for (const node of path) for (const entry of (node.props.transform as Record<string, number>[] | null | undefined) ?? []) { moved.x += entry.translateX ?? 0; moved.y += entry.translateY ?? 0; }
-  return moved;
+/**
+ * The box of the last node of `path` with the committed transforms of the chain applied, from the node up: each one scales and moves everything in it about the centre of its own layout box (a
+ * scroll view moves what is inside it by its scroll offset, and not itself).
+ */
+function transformed(path: FakeNode[], rect: number[]): number[] {
+  let [x, y, width, height] = rect as [number, number, number, number];
+  for (let at = path.length - 1; at >= 0; at--) {
+    const node = path[at] as FakeNode;
+    const own = locate(node)?.rect as [number, number, number, number];
+    const centre = { x: own[0] + own[2] / 2, y: own[1] + own[3] / 2 };
+    let sx = 1;
+    let sy = 1;
+    let tx = 0;
+    let ty = 0;
+    for (const entry of (node.props.transform as Record<string, number>[] | null | undefined) ?? []) {
+      sx *= entry.scale ?? entry.scaleX ?? 1;
+      sy *= entry.scale ?? entry.scaleY ?? 1;
+      tx += entry.translateX ?? 0;
+      ty += entry.translateY ?? 0;
+    }
+    x = centre.x + sx * (x - centre.x) + tx;
+    y = centre.y + sy * (y - centre.y) + ty;
+    width *= sx;
+    height *= sy;
+    if (at < path.length - 1 && scrolled[node.tag]) { x -= scrolled[node.tag]?.x ?? 0; y -= scrolled[node.tag]?.y ?? 0; }
+  }
+  return [x, y, width, height];
 }
 /** Whether the animation layer was loaded at each layout read the host made. */
 const reads: boolean[] = [];
 const fake = {
-  createNode(tag: number, name: string, _root: number, props: Record<string, unknown>, target: unknown) { calls.push(`create ${name}`); return { tag, name, props: { ...props }, children: [], sealed: false, target }; },
+  createNode(tag: number, name: string, _root: number, props: Record<string, unknown>, target: unknown) { calls.push(`create ${name}`); return { tag, name, props: { ...props }, children: [], sealed: false, target, family: {} }; },
   cloneNodeWithNewChildren(node: FakeNode) { calls.push(`cloneChildren ${node.name}`); return { ...node, children: [], sealed: false }; },
   cloneNodeWithNewProps(node: FakeNode, props: Record<string, unknown>) { calls.push(`cloneProps ${node.name}`); return { ...node, props: { ...node.props, ...props }, children: [...node.children], sealed: false }; },
   cloneNodeWithNewChildrenAndProps(node: FakeNode, props: Record<string, unknown>) { calls.push(`cloneBoth ${node.name}`); return { ...node, props: { ...node.props, ...props }, children: [], sealed: false }; },
@@ -50,18 +75,26 @@ const fake = {
   appendChildToSet(set: { children: FakeNode[] }, child: FakeNode) { set.children.push(child); },
   completeRoot(root: number, set: { children: FakeNode[] }) {
     calls.push("completeRoot");
-    const seal = (n: FakeNode) => { n.sealed = true; n.children.forEach(seal); };
+    const anim = (globalThis as { __anim?: AnimLog }).__anim;
+    const registry = anim?.registry;
+    // The commit hook: what Reanimated's registry holds for a tag is put over the props of every commit of it. Then the mount: a shadow node that was marked removable and is in no tree
+    // lets the registry of its tag go.
+    const seal = (n: FakeNode) => { n.sealed = true; n.shown = { ...n.props, ...registry?.get(n.tag) }; n.children.forEach(seal); };
     set.children.forEach(seal);
     roots[root] = set.children;
+    const marked = anim?.marked ?? [];
+    if (anim) anim.marked = [];
+    for (const wrapper of marked as FakeNode[]) {
+      const mounted = Object.values(roots).some((children) => find(children, wrapper.name, (n) => n.family === wrapper.family).length > 0);
+      if (!mounted) registry?.delete(wrapper.tag);
+    }
   },
   getBoundingClientRect(node: FakeNode, includeTransform: boolean) {
     calls.push(`rect ${node.tag} ${includeTransform}`);
     reads.push((globalThis as { __loaded?: () => boolean }).__loaded?.() ?? false);
     const found = locate(node);
     if (!found) return undefined;
-    const [x, y, width, height] = found.rect as [number, number, number, number];
-    const moved = includeTransform ? translation(found.path) : { x: 0, y: 0 };
-    return [x + moved.x, y + moved.y, width, height];
+    return includeTransform ? transformed(found.path, found.rect) : found.rect;
   },
   measure() {},
   measureInWindow() {},
@@ -86,7 +119,7 @@ const stubs: Record<string, string> = {
 type Animate = { node: unknown; keyframes: Record<string, unknown>[]; options: { duration?: number; delay?: number; fill?: string }; animation: Animation };
 type Animation = { onfinish: (() => void) | null; effect: unknown; playState: string; currentTime: number | null; cancel(): void };
 type NodeClass = { prototype: { animate(this: unknown, keyframes: unknown, options: unknown): Animation; getProp(key: string): unknown } };
-type App = { setIntro(value: boolean): void; setOutro(value: boolean): void; setReversible(value: boolean): void; setBlurred(value: boolean): void; setItems(value: number[]): void; setRows(value: number[]): void; setSlid(value: boolean): void; setSliding(value: boolean): void; setDrawing(value: boolean): void; setDelayed(value: boolean): void; setLists(left: number[], right: number[]): void; seen(): string[] };
+type App = { setIntro(value: boolean): void; setOutro(value: boolean): void; setReversible(value: boolean): void; setBlurred(value: boolean): void; setItems(value: number[]): void; setRows(value: number[]): void; setSlid(value: boolean): void; setSliding(value: boolean): void; setDrawing(value: boolean): void; setDelayed(value: boolean): void; setLists(left: number[], right: number[]): void; setAnimated(value: boolean): void; setCss(value: boolean): void; setScrolling(value: number[]): void; seen(): string[] };
 type Loaded = { startSurface(root: number, component: unknown, props: object): App; tick(): Promise<void>; fabricStats(): { animationLoaded: boolean }; Fixture: unknown; NativeNode: NodeClass };
 
 async function load(): Promise<Loaded> {
@@ -137,10 +170,11 @@ async function fresh(): Promise<Loaded> {
   };
   return m;
 }
-const find = (nodes: FakeNode[], name: string): FakeNode[] => nodes.flatMap((n) => [...(n.name === name ? [n] : []), ...find(n.children, name)]);
+const find = (nodes: FakeNode[], name: string, accept: (node: FakeNode) => boolean = () => true): FakeNode[] => nodes.flatMap((n) => [...(n.name === name && accept(n) ? [n] : []), ...find(n.children, name, accept)]);
 const byId = (root: number, id: string) => find(roots[root] ?? [], "RCTView").find((n) => n.props.testID === id) as FakeNode;
 /** Lets every microtask that is queued, and the ones those queue, run. */
-const settle = async (m: Loaded) => { await m.tick(); await new Promise((done) => setTimeout(done, 0)); };
+const realSetTimeout = globalThis.setTimeout;
+const settle = async (m: Loaded) => { await m.tick(); await new Promise((done) => realSetTimeout(done, 0)); };
 /** The animations of the shared values, except the 16 ms one the host plays on a node of no screen when it loads the animation layer (`warmUp`). */
 const timings = () => (log().timings ?? []).filter((timing) => timing.config.duration !== 16);
 const A = () => log();
@@ -155,17 +189,46 @@ function drawn(mapper: AnimLog["mappers"][number], mutable?: { _value: unknown }
 const isAcknowledgement = (mapper: AnimLog["mappers"][number]) => String(mapper.worklet).includes("scheduleOnRN");
 /** The mappers of nodes (their `animatedStyle` worklets) that are running. */
 const live = () => A().mappers.filter((mapper) => !mapper.stopped && !isAcknowledgement(mapper));
-/** One frame of the UI thread: every mapper runs, in the order it was started; those that wait for the restoring values to be written tell JavaScript. */
-const frame = () => { for (const mapper of A().mappers.filter((entry) => !entry.stopped)) mapper.worklet(true); };
+/** One frame of the UI thread: every mapper runs, in the order it was started, and writes only when what its worklet returns differs from the last frame; those that wait for the restoring values to be written tell JavaScript. */
+const frame = () => { for (const mapper of A().mappers.filter((entry) => !entry.stopped)) mapper.worklet(); };
 /** The mapper that writes to the view of a node: the one that writes to the descriptor set the node's tag was added to. */
 function mapperFor(tag: number): AnimLog["mappers"][number] {
-  const id = A().descriptors.find((entry) => entry.adds.some((add) => add.tag === tag))?.id;
+  const id = A().descriptors.findLast((entry) => entry.adds.some((add) => add.tag === tag))?.id; // the latest: a node that stopped its worklet and got another has more than one
   for (const mapper of live()) {
     const before = A().updates.length;
     mapper.worklet(true);
     if ((A().updates.slice(before).at(-1)?.descriptors as { id: number } | undefined)?.id === id) return mapper;
   }
   throw new Error(`no live mapper writes to the node with tag ${tag}`);
+}
+/** What a node's commit carries once Reanimated's commit hook has put its registry over the props. */
+const shown = (node: FakeNode) => node.shown ?? node.props;
+/**
+ * Timers and the clock under the test's control, for what a transition waits for with a timer: `advance(ms)` runs what is due, in order. Installed after the surface is up, because
+ * everything else (`settle`) waits with the real ones.
+ */
+function fakeClock() {
+  const original = { setTimeout: globalThis.setTimeout, clearTimeout: globalThis.clearTimeout, now: Date.now };
+  let now = original.now();
+  let next = 1;
+  let timers: { id: number; at: number; run: () => void }[] = [];
+  globalThis.setTimeout = ((run: () => void, ms = 0) => { const id = next++; timers.push({ id, at: now + Number(ms), run }); return id; }) as unknown as typeof setTimeout;
+  globalThis.clearTimeout = ((id: number) => { timers = timers.filter((timer) => timer.id !== id); }) as typeof clearTimeout;
+  Date.now = () => now;
+  return {
+    advance(ms: number) {
+      const end = now + ms;
+      for (;;) {
+        const due = timers.filter((timer) => timer.at <= end).sort((a, b) => a.at - b.at)[0];
+        if (!due) break;
+        timers = timers.filter((timer) => timer !== due);
+        now = Math.max(now, due.at);
+        due.run();
+      }
+      now = end;
+    },
+    restore() { globalThis.setTimeout = original.setTimeout; globalThis.clearTimeout = original.clearTimeout; Date.now = original.now; },
+  };
 }
 const idOf = (node: unknown) => (node as { getProp(key: string): unknown }).getProp("testID");
 const animatesOf = (id: string) => animates.filter((entry) => idOf(entry.node) === id);
@@ -267,7 +330,9 @@ test("onfinish is called when the shared value's animation ends, playState follo
   const restore = live().at(-1) as AnimLog["mappers"][number];
   expect(drawn(restore).opacity).toBe(1); // the node has no opacity of its own: the default
   // The values stay in the node's worklet until the UI thread has written them, however long that takes (no timer): a mapper of its own tells JavaScript when it first runs.
-  await new Promise((done) => setTimeout(done, 200));
+  const clock = fakeClock();
+  try { clock.advance(60_000); } finally { clock.restore(); }
+  await settle(m);
   expect(live().includes(restore)).toBe(true);
   frame();
   await settle(m);
@@ -458,15 +523,15 @@ test("transition:slide reads the node's layout (the host commits what is pending
   timing.callback?.(true);
   await settle(m);
   expect(byId(59, "slid").props.overflow).toBeNull(); // the prop is reset
-  // Every key the animation wrote goes back to the node's own (or is released: `undefined`), not the lengths alone.
+  // Every key the animation wrote goes back to the node's own, not the lengths alone, or is reset (`null`: Reanimated drops an `undefined`, and the registry would keep the animation's last value).
   const restoring = drawn(mapperFor(node.tag));
   expect(restoring).toEqual({
-    opacity: 1, height: undefined, minHeight: undefined,
-    paddingTop: undefined, paddingBottom: undefined, marginTop: undefined, marginBottom: undefined, borderTopWidth: undefined, borderBottomWidth: undefined,
+    opacity: 1, height: null, minHeight: null,
+    paddingTop: null, paddingBottom: null, marginTop: null, marginBottom: null, borderTopWidth: null, borderBottomWidth: null,
   });
+  expect(Object.values(restoring).includes(undefined)).toBe(false);
 });
 
-const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
 type Measured = { getBoundingClientRect(): { left: number; top: number; width: number; height: number }; clientWidth: number; clientHeight: number; animate(keyframes: unknown, options: unknown): Animation; getAnimations(): Animation[] };
 const measured = (root: number, id: string) => byId(root, id).target as Measured;
 const box = (target: Measured) => { const rect = target.getBoundingClientRect(); return [rect.left, rect.top, rect.width, rect.height]; };
@@ -496,6 +561,9 @@ test("when the UI thread has written a node's own values back, its committed pro
   // Reanimated is handed a shadow node with the node's tag that is in no tree, marked removable: it forgets the tag's registry when the next mount shows it is not there.
   expect(forgotten(own.tag)).toHaveLength(1);
   expect(forgotten(own.tag)[0]).not.toBe(own);
+  // The ghost carries no props: a prop that makes it a node of another kind makes React Native delete the live view of the tag when the ghost is collected.
+  expect((forgotten(own.tag)[0] as FakeNode).props).toEqual({});
+  expect(A().registry?.get(own.tag)).toBeUndefined(); // and the mount that followed has let the registry of the tag go
   expect(calls.filter((call) => call === "create RCTView").length).toBeGreaterThan(0);
 });
 
@@ -541,23 +609,27 @@ test("an out:slide shown again mid-way releases every length it wrote, and the n
   expect(outro.cancelled).toBe(true);
   expect(byId(62, "sliding")).toBeDefined();
   expect(drawn(mapperFor(tag))).toEqual({
-    opacity: 1, height: undefined, minHeight: undefined, paddingTop: undefined, paddingBottom: undefined, marginTop: undefined, marginBottom: undefined, borderTopWidth: undefined, borderBottomWidth: undefined,
+    opacity: 1, height: null, minHeight: null, paddingTop: null, paddingBottom: null, marginTop: null, marginBottom: null, borderTopWidth: null, borderBottomWidth: null,
   });
   frame();
   await settle(m);
   const own = byId(62, "sliding");
+  // What Reanimated's registry puts over the commit that takes the worklet away is the node's own too: the half-way height it had written is reset in the registry, not left in it.
+  for (const key of ["height", "paddingTop", "marginTop", "borderTopWidth"]) expect(shown(own)[key] ?? null, key).toBeNull();
   // (`overflow: hidden` stays: Svelte takes it off only when an intro ends, on the web as here.)
   for (const key of ["height", "paddingTop", "marginTop", "borderTopWidth"]) expect(own.props[key] ?? null, key).toBeNull();
   expect(live()).toHaveLength(0);
 });
 
 test("transition:draw degrades on a native element: no path to measure, no throw, the stroke is left out with a warning, and the transition still ends", async () => {
+  let clock: ReturnType<typeof fakeClock> | undefined;
   const warnings: string[] = [];
   const original = console.warn;
   console.warn = (...args: unknown[]) => { warnings.push(args.join(" ")); };
   try {
     const m = await fresh();
     const app = m.startSurface(63, m.Fixture, {});
+    clock = fakeClock();
     app.setDrawing(true);
     await settle(m);
     expect(byId(63, "drawing")).toBeDefined();
@@ -567,9 +639,11 @@ test("transition:draw degrades on a native element: no path to measure, no throw
     expect(warnings.filter((warning) => warning.includes("strokeDasharray"))).toHaveLength(1);
     expect(warnings.filter((warning) => warning.includes("strokeDashoffset"))).toHaveLength(1);
     expect(timings()).toHaveLength(0); // nothing to draw, so a timer and no shared value
-    await sleep(160);
+    clock.advance(160);
+    await settle(m);
     expect(main.animation.playState).toBe("idle"); // it ended by itself, and Svelte took its effect off
   } finally {
+    clock?.restore();
     console.warn = original;
   }
 });
@@ -577,23 +651,31 @@ test("transition:draw degrades on a native element: no path to measure, no throw
 test("an intro with a delay holds its first keyframe for the delay (a timer, no shared value), then plays", async () => {
   const m = await fresh();
   const app = m.startSurface(64, m.Fixture, {});
-  app.setDelayed(true);
-  await settle(m);
-  const node = byId(64, "delayed");
-  expect(node.props).toMatchObject({ opacity: 0, collapsable: false });
-  expect(node.props.transform).toEqual([{ translateX: 0 }, { translateY: 20 }]);
-  const held = animatesOf("delayed");
-  expect(held).toHaveLength(1);
-  expect(held[0]?.options).toEqual({ duration: 120, fill: "forwards" });
-  expect(timings()).toHaveLength(0);
-  expect(held[0]?.animation.playState).toBe("running");
-  await sleep(180);
-  await settle(m);
+  const clock = fakeClock();
+  try {
+    app.setDelayed(true);
+    await settle(m);
+    const node = byId(64, "delayed");
+    expect(node.props).toMatchObject({ opacity: 0, collapsable: false });
+    expect(node.props.transform).toEqual([{ translateX: 0 }, { translateY: 20 }]);
+    const held = animatesOf("delayed");
+    expect(held).toHaveLength(1);
+    expect(held[0]?.options).toEqual({ duration: 120, fill: "forwards" });
+    expect(timings()).toHaveLength(0);
+    expect(held[0]?.animation.playState).toBe("running");
+    clock.advance(119);
+    await settle(m);
+    expect(animatesOf("delayed")).toHaveLength(1); // the delay is not over
+    clock.advance(1);
+    await settle(m);
+    expect(held[0]?.animation.playState).toBe("idle"); // the hold was taken off when the transition started
+  } finally {
+    clock.restore();
+  }
   expect(animatesOf("delayed")).toHaveLength(2);
   expect(animatesOf("delayed")[1]?.options.duration).toBe(100);
   expect(timings()).toHaveLength(1);
   expect(timings()[0]?.config.duration).toBe(100);
-  expect(held[0]?.animation.playState).toBe("idle"); // the hold was taken off when the transition started
 });
 
 test("crossfade sends an item to the other list and receives it there (about the top left) while flip moves what stays", async () => {
@@ -700,4 +782,145 @@ test("getBoundingClientRect counts the ancestors' transforms and the node's own 
   expect(box(inner)).toEqual([25, 22.5, 50, 25]);
   centre.cancel();
   void app;
+});
+
+test("an element with an animatedStyle of its own stays whole after its in:fade: the commit that ends the transition carries the node's own first frame, and the registry is left to the node", async () => {
+  const m = await fresh();
+  const app = m.startSurface(70, m.Fixture, {});
+  app.setAnimated(true);
+  await settle(m);
+  const tag = byId(70, "animated").tag;
+  expect(byId(70, "animated").props.opacity).toBe(0); // the transition's first frame, over the node's own 0.5
+  const timing = timings()[0] as NonNullable<AnimLog["timings"]>[number];
+  (timing.mutable as { _value: unknown })._value = 1;
+  timing.callback?.(true);
+  await settle(m);
+  frame(); // the UI thread writes the node's own values back and tells JavaScript
+  await settle(m);
+  frame(); // the node's own worklet is the only one now
+  await settle(m);
+  const own = byId(70, "animated");
+  // The runtime was made for the first frame of the transition; it commits the first frame of the worklets the node has now.
+  expect(own.props.opacity).toBe(0.5);
+  expect(shown(own).opacity).toBe(0.5);
+  expect(A().registry?.get(tag)?.opacity).toBe(0.5);
+  // Forgetting the tag would take the node's own values out of the registry with the transition's.
+  expect(forgotten(tag)).toHaveLength(0);
+  expect(live()).toHaveLength(1);
+});
+
+test("a node with Reanimated CSS keys keeps the registry when its outro is cancelled: the entries of its CSS animations are not the transition's to forget", async () => {
+  const m = await fresh();
+  const app = m.startSurface(71, m.Fixture, {});
+  app.setCss(true);
+  await settle(m);
+  const tag = byId(71, "css").tag;
+  app.setCss(false);
+  await settle(m);
+  app.setCss(true); // shown again before its outro ended
+  await settle(m);
+  frame();
+  await settle(m);
+  expect(byId(71, "css")).toBeDefined();
+  expect(live()).toHaveLength(0); // the node's own values were acknowledged: the worklet went
+  expect(forgotten(tag)).toHaveLength(0);
+});
+
+test("a reorder while a flip runs commits the new flip's first frame, not the first frame of the flip before it", async () => {
+  const m = await fresh();
+  const app = m.startSurface(72, m.Fixture, {});
+  app.setItems([3, 1, 2]);
+  await settle(m);
+  const first = animatesOf("item-3").at(-1) as Animate;
+  expect(first.keyframes[0]?.transform).toBe("translate(0px, 100px) scale(1, 1)");
+  expect(byId(72, "item-3").props.transform).toEqual([{ translateX: 0 }, { translateY: 100 }, { scaleX: 1 }, { scaleY: 1 }]);
+  (first.animation as unknown as { progress: { _value: number } }).progress._value = 0.5;
+  app.setItems([1, 2, 3]);
+  await settle(m);
+  const second = animatesOf("item-3").at(-1) as Animate;
+  expect(second.keyframes[0]?.transform).toBe("translate(0px, -87.5px) scale(1, 1)");
+  expect(byId(72, "item-3").props.transform).toEqual([{ translateX: 0 }, { translateY: -87.5 }, { scaleX: 1 }, { scaleY: 1 }]);
+});
+
+test("the registry is let go once: it is not emptied again 400 ms later, when another animation of the node may be using it", async () => {
+  const m = await fresh();
+  const app = m.startSurface(73, m.Fixture, {});
+  await settle(m);
+  const inner = measured(73, "inner");
+  const tag = byId(73, "inner").tag;
+  const clock = fakeClock();
+  try {
+    inner.animate([{ opacity: "0.5" }, { opacity: "0.5" }], { duration: 1000, fill: "forwards" }).cancel();
+    await settle(m);
+    frame();
+    await settle(m);
+    expect(forgotten(tag)).toHaveLength(1);
+    // Another animation of the node writes to the registry; a commit (a mount) comes after the 400 ms the node was marked again at.
+    inner.animate([{ opacity: "0.25" }, { opacity: "0.75" }], { duration: 1000, fill: "forwards" });
+    await settle(m);
+    drawn(mapperFor(tag), (timings().at(-1) as NonNullable<AnimLog["timings"]>[number]).mutable as { _value: unknown }, 0);
+    expect(A().registry?.get(tag)?.opacity).toBe(0.25);
+    clock.advance(500);
+    app.setIntro(true);
+    await settle(m);
+    expect(forgotten(tag)).toHaveLength(1);
+    expect(A().registry?.get(tag)?.opacity).toBe(0.25);
+  } finally {
+    clock.restore();
+  }
+});
+
+test("an app without Reanimated measures with no warning, and is told once that an animation cannot be played", async () => {
+  const warnings: string[] = [];
+  const original = console.warn;
+  console.warn = (...args: unknown[]) => { warnings.push(args.join(" ")); };
+  try {
+    const m = await fresh();
+    (globalThis as { __anim?: unknown }).__anim = { descriptors: [], mappers: [], updates: [], css: [], removable: [], failLoad: true };
+    const app = m.startSurface(74, m.Fixture, {});
+    await settle(m);
+    const inner = measured(74, "inner");
+    expect(box(inner)).toEqual([3, 10, 100, 50]); // a plain measure
+    expect(inner.getAnimations()).toEqual([]);
+    expect(warnings.filter((warning) => warning.includes("Svelte transitions"))).toHaveLength(0);
+    let finished = 0;
+    const first = inner.animate([{ opacity: "0" }, { opacity: "1" }], { duration: 100, fill: "forwards" });
+    first.onfinish = () => { finished++; };
+    inner.animate([{ opacity: "0" }, { opacity: "1" }], { duration: 100, fill: "forwards" });
+    await settle(m);
+    expect(finished).toBe(1); // it ends at once, so that an outro still ends
+    expect(warnings.filter((warning) => warning.includes("react-native-reanimated did not load"))).toHaveLength(1);
+    void app;
+  } finally {
+    console.warn = original;
+  }
+});
+
+test("the ancestors' transforms take a child where it is drawn, scale included, and a scroll view's offset moves its direct children", async () => {
+  const m = await fresh();
+  const app = m.startSurface(75, m.Fixture, {});
+  await settle(m);
+  // A scaled parent: the child is drawn twice as large, about the parent's centre.
+  const scaledInner = byId(75, "scaled-inner");
+  expect(box(measured(75, "scaled-inner"))).toEqual(fake.getBoundingClientRect(scaledInner, true));
+  expect(box(measured(75, "scaled-inner"))[2]).toBe(200);
+  // A scrolled scroll view: React Native moves what is inside it by the offset, and not the scroll view itself.
+  const scroller = find(roots[75] ?? [], "RCTScrollView")[0] as FakeNode;
+  scrolled[scroller.tag] = { x: 0, y: 30 };
+  expect(box(measured(75, "scroll-2"))).toEqual([0, 50 - 30, 100, 50]);
+  delete scrolled[scroller.tag];
+  void app;
+});
+
+test("a list of items under one parent reads the parent's transforms once for the task, not once for each item", async () => {
+  const m = await fresh();
+  const app = m.startSurface(76, m.Fixture, {});
+  await settle(m);
+  const parent = find(roots[76] ?? [], "RCTView").find((node) => node.props.testID === "list") as FakeNode;
+  calls.length = 0;
+  app.setItems([3, 1, 2]);
+  await settle(m);
+  // One pair of reads before the reorder (the items' old boxes) and one after (the new ones), not three pairs of each.
+  expect(calls.filter((call) => call === `rect ${parent.tag} true`).length).toBeLessThanOrEqual(2);
+  expect(calls.filter((call) => call === `rect ${parent.tag} false`).length).toBeLessThanOrEqual(2);
 });

@@ -14,6 +14,9 @@
   let left = $state([1, 2, 3]);
   let right = $state([]);
   let events = $state([]);
+  let animated = $state(false);
+  let cssNode = $state(false);
+  let scrolling = $state([1, 2, 3]);
   const [send, receive] = crossfade({ duration: 200, fallback: (node) => fade(node, { duration: 100 }) });
   export function setIntro(value) { intro = value; }
   export function setOutro(value) { outro = value; }
@@ -26,6 +29,9 @@
   export function setDrawing(value) { drawing = value; }
   export function setDelayed(value) { delayed = value; }
   export function setLists(a, b) { left = a; right = b; }
+  export function setAnimated(value) { animated = value; }
+  export function setCss(value) { cssNode = value; }
+  export function setScrolling(value) { scrolling = value; }
   export function seen() { return events; }
 </script>
 {#if intro}
@@ -52,6 +58,12 @@
 {#if delayed}
   <native-view testID="delayed" in:fly={{ y: 20, delay: 120, duration: 100 }}></native-view>
 {/if}
+{#if animated}
+  <native-view testID="animated" animatedStyle={() => { "worklet"; return { opacity: 0.5 }; }} in:fade={{ duration: 100 }}></native-view>
+{/if}
+{#if cssNode}
+  <native-view testID="css" nativeStyle={{ transitionProperty: "opacity", transitionDuration: 200 }} out:fade={{ duration: 100 }}></native-view>
+{/if}
 <native-view testID="rows">
   {#each rows as row (row)}
     <native-view testID={`row-${row}`} animate:flip={{ duration: 300 }} out:fade={{ duration: 100 }}></native-view>
@@ -74,4 +86,12 @@
 </native-view>
 <native-view testID="shifted" nativeStyle={{ transform: [{ translateY: 10 }] }}>
   <native-view testID="inner" nativeStyle={{ transform: [{ translateX: 3 }], backgroundColor: "#336699", borderRadius: 6 }}></native-view>
+</native-view>
+<native-scroll testID="scroller">
+  {#each scrolling as item (item)}
+    <native-view testID={`scroll-${item}`} animate:flip={{ duration: 300 }}></native-view>
+  {/each}
+</native-scroll>
+<native-view testID="scaled" nativeStyle={{ transform: [{ scale: 2 }] }}>
+  <native-view testID="scaled-inner"></native-view>
 </native-view>

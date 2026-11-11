@@ -769,6 +769,7 @@ export function flush(): void {
     commit();
   } finally {
     flushing = false;
+    affines = null;
   }
 }
 
@@ -889,20 +890,30 @@ function dispatchEvent(target: unknown, topLevelType: string, nativeEvent: objec
   }
 }
 
-/** `loadTransitions`, or null when Reanimated (or the animation layer) does not load: an app without it still ends its transitions, at once, and says so once. */
+/**
+ * `loadTransitions`, or null when Reanimated (or the animation layer) does not load: an app without it still ends its transitions, at once. The layer is also tried at the first layout read
+ * (`layoutOf`), which cannot tell Svelte's measure for an `animate:` from a caller's own: that one fails silently, and the warning (once) is for the first animation that cannot be played.
+ */
+let transitionsFailure: unknown;
 let transitionsFailed = false;
-function ensureTransitions(): TransitionsModule | null {
+let transitionsWarned = false;
+function ensureTransitions(announce: boolean): TransitionsModule | null {
   if (transitions) return transitions;
-  if (transitionsFailed) return null;
-  try {
-    const module = loadTransitions();
-    module.warmUp();
-    return module;
-  } catch (error) {
-    transitionsFailed = true;
-    console.warn("[Svelte transitions] react-native-reanimated did not load, so transitions and animate: end at once instead of playing", error);
-    return null;
+  if (!transitionsFailed) {
+    try {
+      const module = loadTransitions();
+      module.warmUp();
+      return module;
+    } catch (error) {
+      transitionsFailed = true;
+      transitionsFailure = error;
+    }
   }
+  if (announce && !transitionsWarned) {
+    transitionsWarned = true;
+    console.warn("[Svelte transitions] react-native-reanimated did not load, so transitions and animate: end at once instead of playing", transitionsFailure);
+  }
+  return null;
 }
 
 /** One read of React Native's layout of the committed tree for a node's shadow node: `[x, y, width, height]` in the window. */
@@ -927,46 +938,74 @@ function sizeOf(node: NativeNode): { width: number; height: number } | null {
   return box ? { width: box.width, height: box.height } : null;
 }
 
+/** What the transforms of an ancestor (and of everything above it, and a scroll offset) do to a point inside it: `x' = sx * x + tx`, `y' = sy * y + ty`; exact for translations and scales. */
+type Affine = { sx: number; sy: number; tx: number; ty: number };
+const IDENTITY: Affine = { sx: 1, sy: 1, tx: 0, ty: 0 };
+/** The ancestors read in this JS task, by the host state they were read for: a list of items under one parent asks the same two questions of it once each, not once per item. A commit empties it. */
+let affines: Map<State, Affine> | null = null;
+
 /**
- * How far transforms of the node's ancestors move what is inside them: the nearest ancestor that has a view, read with and without its transforms (scroll offsets are among them).
- * React Native applies the flag to the whole chain up to the root, so the difference is what the chain does to a child, as a translation.
+ * What the transforms of the node's ancestors do to what is inside them: the nearest ancestor that has a view is read with and without its transforms, and React Native applies the flag to
+ * the whole chain up to the root (scroll offsets are among them), so the two boxes give the map that takes the layout box of a child to where it is drawn. A translation and a scale are exact;
+ * a rotation is not (the map is read off an axis-aligned box). A scroll view's own box is not moved by its scroll offset, only what is inside it, so for a direct child of one the read is made through
+ * its content container.
  */
-function ancestorShift(node: NativeNode): { x: number; y: number } {
+function ancestorMap(node: NativeNode): Affine {
   for (let up = node.parent; up; up = up.parent) {
-    const view = stateOf(up);
+    let view = stateOf(up);
     if (!view?.node) continue;
-    const moved = readBox(view, true);
-    const laid = readBox(view, false);
-    return moved && laid ? { x: moved.x - laid.x, y: moved.y - laid.y } : { x: 0, y: 0 };
+    if (view.viewName === "RCTScrollView") {
+      const content = stateOf(contentNode(up));
+      if (content?.node) view = content;
+    }
+    if (affines === null) {
+      affines = new Map();
+      queueMicrotask(() => { affines = null; });
+    }
+    let map = affines.get(view);
+    if (map === undefined) {
+      const moved = readBox(view, true);
+      const laid = readBox(view, false);
+      const sx = moved && laid && laid.width > 0 ? moved.width / laid.width : 1;
+      const sy = moved && laid && laid.height > 0 ? moved.height / laid.height : 1;
+      map = moved && laid ? { sx, sy, tx: moved.x - sx * laid.x, ty: moved.y - sy * laid.y } : IDENTITY;
+      affines.set(view, map);
+    }
+    return map;
   }
-  return { x: 0, y: 0 };
+  return IDENTITY;
 }
 
 /**
  * A node's box as `getBoundingClientRect` reports it, from React Native's synchronous layout read of the committed tree: its layout box moved by what its ancestors' transforms do
- * (`ancestorShift`), then by its own transform about its origin. The own transform is the one an animation of the node draws now when one does (the UI thread draws it, the committed
+ * (`ancestorMap`), then by its own transform about its origin. The own transform is the one an animation of the node draws now when one does (the UI thread draws it, the committed
  * tree does not have it), and the one its style gives it otherwise. A rotation is not applied. Null for a node that has no view yet.
  */
 function layoutOf(node: NativeNode): Rect | null {
   if (!binding?.getBoundingClientRect) return null;
   // The first `animate:` of an app loads Reanimated here, before the tree changes, and not when the first animation starts: that would show the changed tree, untransformed, while it loads.
-  const module = ensureTransitions();
+  const module = ensureTransitions(false);
   commitBeforeRead();
   const current = stateOf(node);
   const laid = current ? readBox(current, false) : null;
   if (!laid) return null;
-  const shift = ancestorShift(node);
-  const base = { x: laid.x + shift.x, y: laid.y + shift.y, width: laid.width, height: laid.height };
+  const map = ancestorMap(node);
+  const base = { x: map.sx * laid.x + map.tx, y: map.sy * laid.y + map.ty, width: map.sx * laid.width, height: map.sy * laid.height };
   const drawn = node.dom?.animation ? module?.drawnTransform(node) ?? null : null;
   const style = effectiveStyle(node.peekProps(), node.dom?.inline ?? null);
   const ops = drawn?.ops ?? transformOps(style.transform);
   return ops.length === 0 ? base : transformRect(base, ops, parseOrigin(drawn?.origin ?? style.transformOrigin, base));
 }
 
-/** The shadow node of a node's view, made again under the same tag and attached to no tree: what Reanimated needs to forget the tag (`forgetAnimatedValues`). */
+/**
+ * The shadow node of a node's view, made again under the same tag and attached to no tree: what Reanimated needs to forget the tag (`forgetAnimatedValues`). Its props must stay `{}`: a prop
+ * that makes it a node of its own kind (a form control's, `FormsView`) makes React Native delete the live view of that tag when the ghost is collected (`FabricMountingManager`).
+ * A node that has animated values of its own is left alone: forgetting the tag takes those away too (`ownsAnimatedValues`).
+ */
 function forgetAnimated(node: NativeNode): void {
   const current = stateOf(node);
   if (!binding || !current?.node || current.foreign || !animation) return;
+  if (animation.ownsAnimatedValues(node, mergeHostProps(node.peekProps()))) return;
   let top = node;
   while (top.parent) top = top.parent;
   for (const root of roots.values()) {
@@ -977,8 +1016,8 @@ function forgetAnimated(node: NativeNode): void {
 }
 
 const animationDriver: AnimationDriver = {
-  animate: (node, keyframes, options) => ensureTransitions()?.animate(node, keyframes, options) ?? new InstantAnimation(),
-  getAnimations: (node) => loadTransitions().getAnimations(node),
+  animate: (node, keyframes, options) => ensureTransitions(true)?.animate(node, keyframes, options) ?? new InstantAnimation(),
+  getAnimations: (node) => transitions?.getAnimations(node) ?? [],
   layout: layoutOf,
   size: sizeOf,
   forget: forgetAnimated,

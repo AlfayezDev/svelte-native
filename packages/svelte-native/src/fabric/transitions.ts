@@ -16,7 +16,15 @@
  *   of its own tells JavaScript), and then lets the worklet go: Reanimated keeps the last values it wrote to a view, and the node must not stay where the animation left it.
  * - Reanimated also keeps those last values in a props registry, and puts them over the props of every later commit of the node (by shadow node family). So the first frame of the next
  *   animation, committed with the new layout, would be overruled by the last frame of the previous one until the mapper writes again: a frame of the new order with no inverse
- *   transform in a `flip`. When the node's own values are back, `forget` lets the registry go (`animation.ts`, `forgetAnimatedValues`), so the next commit is the node's alone.
+ *   transform in a `flip`. When the node's own values are back, `forget` lets the registry go (`animation.ts`, `forgetAnimatedValues`), so the next commit is the node's alone, unless the node
+ *   has animated values of its own (an `animatedStyle`, CSS animations, shared values in `style`) that the registry also holds: then it is left, and the keys the transition wrote were
+ *   written back with the node's own values (`restoreValues`; `null` for a key the node has no value for, which resets it).
+ *
+ * Limits of that: the registry is released after the node's own values were written, not before, so a frame can still show the last frame of the animation that ended in two places. A reorder
+ * made while a flip runs commits the new first frame, but the registry still holds the running flip's frame (the UI thread writes it each frame) and the commit hook puts it over that commit, so
+ * the first frame of the new flip can show the old one's position for a frame. And for about three frames after an animation ends (the node's own values acknowledged by the UI thread, the
+ * commit that takes the worklet away, the mount that lets the registry go) a reorder or a new animation starts from the registry's last frame too. Both show as a one-frame blip of an item, not as
+ * a lasting wrong state: the mapper writes the right frame next.
  */
 import { cancelAnimation, Easing, makeMutable, startMapper, stopMapper, withTiming, type SharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
@@ -147,7 +155,12 @@ function expectRestored(node: NativeNode, state: State): void {
       state.restore = null;
       state.updater = null;
       node.invalidate("props");
-      if (state.entries.length === 0) node.forgetAnimated();
+      // Forgetting is housekeeping: a node that cannot do it (no shadow node to make a ghost of) is no worse off than before, and the mapper's callback must not throw.
+      try {
+        if (state.entries.length === 0) node.forgetAnimated();
+      } catch (error) {
+        warn("forget", `Reanimated's last values of a node could not be released: ${String(error)}`);
+      }
     };
     id = startMapper(() => {
       "worklet";
@@ -206,7 +219,9 @@ export function injectAnimations(node: NativeNode, props: Record<string, unknown
     state.updater = makeUpdater(state.entries, state.restore);
   }
   const own = props.animatedStyle;
-  props.animatedStyle = own === undefined || own === null ? state.updater : [own, state.updater];
+  // Later worklets win. Over the node's own while an animation plays, as the animation draws the node; under it while the node's own values are only being written back (`restore`), because
+  // a key the node's worklet writes is the node's own value, and the transition's default for it would show for the frames until the node's worklet writes it again.
+  props.animatedStyle = own === undefined || own === null ? state.updater : state.entries.length === 0 ? [state.updater, own] : [own, state.updater];
   props.collapsable = false;
 }
 

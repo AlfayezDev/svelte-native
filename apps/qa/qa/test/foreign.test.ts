@@ -9,7 +9,7 @@ import { platformDir } from "../lib/paths.ts";
 import { findButton, parsePress } from "../lib/foreign-press.ts";
 import { parseForeignChecks } from "../parse/foreign.ts";
 import { argb, arrivedInOrder, bandInPlace, bandPoints, betweenMargin, brightness, clear, distance, edgeGradual, edgeHard, edgeRatio, edgeSharp, edgeUnderTint, gradualBound, hex, near, numberIn, ratioBetween, readEdge, riveBackdrop, riveFitDetail, riveFitPainted, riveMiddle, riveSides, show, solid, tookNote, untilTaken } from "../../src/lib/native/dev/foreign-pixels.ts";
-import { raceAttempts, runRace, type Race } from "../../src/lib/native/dev/foreign-race.ts";
+import { immediatePriority, nextTaskOf, raceAttempts, runRace, type Race } from "../../src/lib/native/dev/foreign-race.ts";
 import type { ForeignCheck, ForeignFile, ForeignLaunch } from "../lib/types.ts";
 import { sample } from "./sample.ts";
 
@@ -871,6 +871,196 @@ describe("runRace: the event checks hold the thread only once the native side ha
 		expect(l.only).toEqual(["name: the iPhone cannot lose them"]);
 		expect(l.log).toEqual([]);
 		expect(l.checks).toEqual([]);
+	});
+});
+
+/**
+ * The race on Android's real loop, as a model: the JavaScript thread's tasks (run by priority, immediate before a native event's user-blocking before a timer's normal, as `RuntimeScheduler_Modern` orders them), the
+ * rendering update at the end of each task (the commands and commits a task made are handed to the native side only then, `updateRendering`), and the Choreographer's frames, which are where everything else
+ * happens: in a frame the commands that have reached the UI thread are executed (`DISPATCH_UI`, which runs first) and the event beat hands what the views raised to the JavaScript thread in that callback, and then the
+ * timers that are due fire (`TIMERS_EVENTS`: on Android `setTimeout` is `JavaTimerManager`, and its timers end at a frame, not after their delay). The queue of events replaces an unread one of a name that coalesces,
+ * and is read when the delivery task runs, so a thread that is held reads it after the hold.
+ *
+ * `commandFrames` is how many frames after the update the command is executed: 1 is the first frame (the frame the timer of a hop ends in too, so the events are posted to the thread before the timer is), 2 is
+ * the frame after it (the timer is first). The log of the Samsung A16's `rive` row (11 Nov 2026) shows the first for every attempt: the two `onPlay` of an attempt were in the history 14 to 23 ms after the commands,
+ * five attempts of five, with the hold never begun, while `inline` and `sheet` of the same run held the thread first. What moved the row is not known (React Native's command path is not the engine's mounting:
+ * the engine's drain and hold of mounts do not touch a view command); the model holds that the race is forced whichever frame the command lands in when the hop is a task, and only in one of the two when it is a timer.
+ */
+function androidLoop(options: { frame: number; phase: number; commandFrames: number; coalescing: boolean }) {
+	type Entry = { event: string; detail?: unknown };
+	type Task = { ready: number; priority: number; order: number; run: () => void };
+	const IMMEDIATE = immediatePriority;
+	const USER_BLOCKING = 2;
+	const NORMAL = 3;
+	const history: Entry[] = [];
+	const tasks: Task[] = [];
+	const timers: { target: number; resolve: () => void }[] = [];
+	const ui: { frames: number; run: () => void }[] = [];
+	const sent: (() => void)[] = [];
+	const queue: Entry[] = [];
+	const log: string[] = [];
+	const checks: { name: string; passed: boolean; detail?: string }[] = [];
+	let now = 0;
+	let order = 0;
+	let nextFrame = options.phase;
+	let delivery = false;
+
+	const post = (priority: number, run: () => void, ready = now) => { tasks.push({ ready, priority, order: order++, run }); };
+	const raise = (entry: Entry) => {
+		const last = queue[queue.length - 1];
+		if (options.coalescing && last && last.event === entry.event) queue[queue.length - 1] = entry;
+		else queue.push(entry);
+	};
+	const deliver = () => { delivery = false; history.push(...queue.splice(0)); };
+	const frame = (at: number) => {
+		// DISPATCH_UI: the commands that have come to the UI thread are executed (their views raise events at once) and the event beat posts the delivery to the JavaScript thread
+		const due = ui.filter((command) => --command.frames <= 0);
+		for (const command of due) { ui.splice(ui.indexOf(command), 1); command.run(); }
+		if (queue.length > 0 && !delivery) { delivery = true; post(USER_BLOCKING, deliver, at); }
+		// TIMERS_EVENTS: the timers whose time is before the frame's fire
+		for (const timer of timers.filter((entry) => entry.target < at)) { timers.splice(timers.indexOf(timer), 1); post(NORMAL, timer.resolve, at); }
+	};
+	const framesUntil = (end: number) => { while (nextFrame <= end) { frame(nextFrame); nextFrame += options.frame; } };
+
+	const world = {
+		android: true,
+		history: () => history,
+		pause: (milliseconds: number) => { log.push(`pause ${milliseconds}`); return new Promise<void>((resolve) => { timers.push({ target: now + milliseconds, resolve }); }); },
+		nextTask: () => { log.push("task"); return new Promise<void>((resolve) => { post(IMMEDIATE, resolve); }); },
+		until: async (test: () => boolean, milliseconds: number) => {
+			const end = now + milliseconds;
+			while (!test()) {
+				if (now >= end) return false;
+				await world.pause(50);
+			}
+			return true;
+		},
+		check: (name: string, passed: boolean, detail?: string) => { checks.push({ name, passed, detail }); },
+		androidOnly: () => undefined,
+	};
+	/** A busy thread: no task runs, the frames go on (the UI thread executes what it has and the views raise their events into the queue). */
+	const hold = (milliseconds: number) => { log.push(`hold ${milliseconds}`); framesUntil(now + milliseconds); now += milliseconds; };
+	/** What a view command does: handed to the native side by the rendering update that ends the task, and executed in a later frame. */
+	const command = (run: () => void) => { sent.push(run); };
+	const flush = () => new Promise<void>((resolve) => { setImmediate(resolve); });
+	/** Runs the thread until [finished]: a task at a time, the continuations of its promises as part of it, then the rendering update, and the next frame when nothing is ready. */
+	async function run(finished: () => boolean) {
+		for (let guard = 0; !finished() && guard < 20_000; guard++) {
+			await flush();
+			for (const send of sent.splice(0)) ui.push({ frames: options.commandFrames, run: send });
+			const ready = tasks.filter((task) => task.ready <= now).sort((a, b) => a.priority - b.priority || a.order - b.order)[0];
+			if (ready) { tasks.splice(tasks.indexOf(ready), 1); ready.run(); continue; }
+			const soonest = Math.min(nextFrame, ...tasks.map((task) => task.ready));
+			if (soonest === nextFrame) { now = Math.max(now, nextFrame); frame(nextFrame); nextFrame += options.frame; } else now = soonest;
+		}
+	}
+	return { world, hold, command, raise, run, log, checks, history };
+}
+
+describe("runRace on Android's loop: a hop that is a task is forced in every frame, a hop that is a timer ends in the frame that delivers the events", () => {
+	const first = { event: "x-event", detail: "first" };
+	const second = { event: "x-event", detail: "second" };
+	const frame = 11.1;
+	const phases = [0.2, 2, 5.5, 9, 11];
+	async function forced(options: { phase: number; commandFrames: number; coalescing: boolean }, hop: "timer" | "task") {
+		const loop = androidLoop({ frame, ...options });
+		const race: Race = {
+			send: () => { loop.command(() => { loop.raise(first); loop.raise(second); }); },
+			names: ["x-event"],
+			arrived: (from) => arrivedInOrder(loop.history, from, [["x-event", "first"], ["x-event", "second"]]),
+			milliseconds: 1000,
+		};
+		let done = false;
+		const outcome = (hop === "task" ? runRace(loop.world, loop.hold, "name", "why", race, loop.world.nextTask) : runRace(loop.world, loop.hold, "name", "why", race)).then(() => { done = true; });
+		await loop.run(() => done);
+		await outcome;
+		return loop;
+	}
+
+	test("the old hop (a timer) ends in the frame in which the command is executed and its events are handed to the thread: read before any hold, in every attempt, at every phase of the frame, and the race is never forced", async () => {
+		for (const phase of phases) {
+			const loop = await forced({ phase, commandFrames: 1, coalescing: true }, "timer");
+			expect([phase, loop.log.filter((entry) => entry.startsWith("hold"))]).toEqual([phase, []]);
+			expect(loop.log.filter((entry) => entry === "pause 0")).toHaveLength(raceAttempts);
+			expect(loop.checks).toHaveLength(1);
+			expect(loop.checks[0]?.passed).toBe(false);
+			expect(loop.checks[0]?.detail).toContain("could not be forced");
+		}
+	});
+
+	test("the next task is forced at every phase: the thread is held before the native side has run the command, the queue replaces the first message by the second, and a library that coalesces fails the check at the first attempt", async () => {
+		for (const phase of phases) {
+			const loop = await forced({ phase, commandFrames: 1, coalescing: true }, "task");
+			expect([phase, loop.log.slice(0, 2), loop.log.filter((entry) => entry === "pause 0" || entry === "pause 500")]).toEqual([phase, ["task", "hold 1000"], []]);
+			expect(loop.checks).toEqual([{ name: "name", passed: false, detail: "attempt 1; got x-event second" }]);
+		}
+	});
+
+	test("and a library whose event does not coalesce passes it with both messages in order, in the frame the command lands in, whichever it is", async () => {
+		for (const commandFrames of [1, 2]) {
+			for (const phase of phases) {
+				const loop = await forced({ phase, commandFrames, coalescing: false }, "task");
+				expect([commandFrames, phase, loop.checks]).toEqual([commandFrames, phase, [{ name: "name", passed: true, detail: "attempt 1; got x-event first, x-event second" }]]);
+			}
+		}
+	});
+
+	test("where the command lands a frame after the timer's (the places of the Samsung's run that passed) the old hop was forced too: the setup that is kept for a runtime that has no scheduler is not a different check", async () => {
+		for (const phase of phases) {
+			const loop = await forced({ phase, commandFrames: 2, coalescing: true }, "timer");
+			expect([phase, loop.log.filter((entry) => entry.startsWith("hold"))]).toEqual([phase, ["hold 1000"]]);
+			expect(loop.checks).toEqual([{ name: "name", passed: false, detail: "attempt 1; got x-event second" }]);
+		}
+	});
+
+	test("a check that cannot set its race up still fails, loudly: with messages the hop cannot get ahead of (read by the thread as the task ends) the check says it could not force the race and never holds the thread", async () => {
+		const loop = androidLoop({ frame, phase: 3, commandFrames: 1, coalescing: false });
+		const race: Race = {
+			// the messages are on the thread's queue before the hop: a native module that answers from its own thread, or a runtime in which the beat is not a frame
+			send: () => { loop.history.push({ ...first }, { ...second }); },
+			names: ["x-event"],
+			arrived: () => true,
+			milliseconds: 1000,
+		};
+		let done = false;
+		const outcome = runRace(loop.world, loop.hold, "name", "why", race, loop.world.nextTask).then(() => { done = true; });
+		await loop.run(() => done);
+		await outcome;
+		expect(loop.log.filter((entry) => entry.startsWith("hold"))).toEqual([]);
+		expect(loop.checks).toHaveLength(1);
+		expect(loop.checks[0]?.passed).toBe(false);
+		expect(loop.checks[0]?.detail).toContain("could not be forced");
+	});
+});
+
+describe("nextTaskOf: the hop is a task of React Native's runtime scheduler, a timer only where there is none", () => {
+	test("with the scheduler it schedules one immediate task, and resolves when that task runs", async () => {
+		const scheduled: { priority: number; callback: () => void }[] = [];
+		const hop = nextTaskOf({ unstable_scheduleCallback: (priority, callback) => { scheduled.push({ priority, callback }); } }, () => Promise.reject(new Error("a timer")));
+		let resolved = false;
+		const waiting = hop().then(() => { resolved = true; });
+		await Promise.resolve();
+		expect(scheduled.map((task) => task.priority)).toEqual([immediatePriority]);
+		expect(resolved).toBe(false);
+		scheduled[0]?.callback();
+		await waiting;
+		expect(resolved).toBe(true);
+	});
+
+	test("without it, the fallback is the hop", async () => {
+		let timers = 0;
+		await nextTaskOf(undefined, async () => { timers++; })();
+		expect(timers).toBe(1);
+	});
+
+	test("the lab's races use it: every `forcedRace` hands runRace the next task of `global.nativeRuntimeScheduler`, with the lab's own pause as the fallback", () => {
+		const checks = readFileSync(join(platformDir, "src/lib/native/dev/foreign-libraries-checks.ts"), "utf8");
+		expect(checks).toContain("nextTaskOf((globalThis as { nativeRuntimeScheduler?: RuntimeScheduler }).nativeRuntimeScheduler, () => c.pause(0))");
+		expect(checks.match(/runRace\(/g)).toHaveLength(1);
+		expect(checks.match(/forcedRace\(c, /g)?.length).toBeGreaterThanOrEqual(4);
+		// 1 is ImmediatePriority in `SchedulerPriority.h`
+		const header = join(platformDir, "../../node_modules/react-native/ReactCommon/react/renderer/runtimescheduler/SchedulerPriority.h");
+		if (existsSync(header)) expect(readFileSync(header, "utf8")).toMatch(/ImmediatePriority\s*=\s*1/);
 	});
 });
 

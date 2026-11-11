@@ -32,14 +32,14 @@ const { smokeOnlyBundlePackages } = createRequire(import.meta.url)("../smoke-pac
  * are the product's, not measured module by module. The production variant is 1,674,787 bytes (29.8 %) under the QA app: the lab and the
  * libraries only it imports.
  */
-const baseline = { commit: "HTML elements (the host draws runs of text and inline elements, inherits text style, lays out flex and block, and adapts inputs and styles: +92,189 bytes, 1.6 %, over the 5,719,571 of SvelteKit 3.1.1; unminified, much of it doc comments)", bytes: 5_811_760 };
+const baseline = { commit: "Svelte's transitions and animate:flip on top of HTML elements (5,863,179 bytes, +51,419, 0.9 %, over the 5,811,760 of HTML elements; the transitions are about 51 KB of it, unminified and much of it doc comments: the keyframe tracks and the worklet that samples them, the host's playback, layout read and commit wait, and the node's DOM-like surface in the renderer)", bytes: 5_863_179 };
 
 /**
  * The production variant's bundle without the lab, built with the same recipe. It may grow by 1 % before a test says so. Measured again at 727bded, which makes the library's
  * polyfills load Expo's WinterCG runtime (a standard `URL`, `fetch`, `TextDecoder`, ... that the router needs): 4,074,366 bytes, 120,873 (3.1 %) over the 3,953,493 of 1bbbec6 without
  * it (the QA app, which imported the runtime already, did not move).
  */
-const productBaseline = { commit: "HTML elements (the same host code is in every app: +78,512 bytes, 1.9 %, over the 4,074,366 of 727bded, where the polyfills load Expo's WinterCG runtime)", bytes: 4_152_878 };
+const productBaseline = { commit: "Svelte's transitions and animate:flip on top of HTML elements (4,204,439 bytes, +51,561, 1.2 %, over the 4,152,878 of HTML elements; the same transitions code as in the QA app's, which every app carries)", bytes: 4_204_439 };
 
 /** What this run made: the bundle directories (about 15 to 34 MB each) and the Metro caches of their own. All removed when the tests end. */
 const made: string[] = [];

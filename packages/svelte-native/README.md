@@ -12,7 +12,7 @@ On Android the mounting is the package's own engine: Fabric's C++ transaction go
 | iOS | iPhone SE 3rd generation (iOS 26.6, 60 Hz) | phones only; the Android-only engine pieces (view pool, overlay modal, foreign-view split) do not apply |
 | Web | the same app builds for browsers through SvelteKit | separate target: `+page.svelte` for browsers, `+mobile.svelte` for native |
 
-It targets Expo SDK 57 and React Native 0.86.3 with Hermes, Reanimated 4.5.1, react-native-worklets 0.10.1 and react-native-gesture-handler 2.32. The Svelte compiler is Svelte's [unmerged custom-renderer pull request](https://github.com/sveltejs/svelte/pull/18042), pinned to commit `216f258068d93170a927ad4d27ee6864b0b305c5` (5.56.7). The package names it as a peer dependency, `svelte` 5.56.7 **with the `./renderer` export**, which the registry's 5.56.7 does not have; the repository vendors the build as `vendor/svelte-5.56.7-216f258.tgz`, and the package and the example app install that tarball by `file:` (a development dependency here, so a dependent never sees it). The library carries pnpm patches for SvelteKit, `expo-modules-core`, Reanimated, worklets and gesture-handler, and for four of the view libraries it wraps (`react-native-pdf`, `react-native-video`, `react-native-maps`, `lottie-react-native`; `patches/`); an app that installs the package applies them itself ("Install in an app"). Unsupported: Svelte DOM transitions and libraries, React widgets, the Expo dev client, Fast Refresh (a save remounts the root; see "Development loop"), tvOS, and tablet layouts (not exercised).
+It targets Expo SDK 57 and React Native 0.86.3 with Hermes, Reanimated 4.5.1, react-native-worklets 0.10.1 and react-native-gesture-handler 2.32. The Svelte compiler is Svelte's [unmerged custom-renderer pull request](https://github.com/sveltejs/svelte/pull/18042), pinned to commit `216f258068d93170a927ad4d27ee6864b0b305c5` (5.56.7). The package names it as a peer dependency, `svelte` 5.56.7 **with the `./renderer` export**, which the registry's 5.56.7 does not have; the repository vendors the build as `vendor/svelte-5.56.7-216f258.tgz`, and the package and the example app install that tarball by `file:` (a development dependency here, so a dependent never sees it). The library carries pnpm patches for SvelteKit, `expo-modules-core`, Reanimated, worklets, gesture-handler and Svelte's own compiler (so that it accepts `transition:` and `animate:` on native elements), and for four of the view libraries it wraps (`react-native-pdf`, `react-native-video`, `react-native-maps`, `lottie-react-native`; `patches/`); an app that installs the package applies them itself ("Install in an app"). Svelte's `transition:`, `in:`, `out:` and `animate:` play on native elements, on the UI thread ("Animation"); write them on HTML elements (`<div in:fly>`), which svelte-check accepts: on a component such as `<View in:fly>` Metro compiles the directive, but svelte-check reports it (a directive on a component). Unsupported: libraries that need the DOM, React widgets, the Expo dev client, Fast Refresh (a save remounts the root; see "Development loop"), tvOS, and tablet layouts (not exercised).
 
 ## Install in an app
 
@@ -253,7 +253,7 @@ A stack layout renders `<Stack header={{ large: true }} animation="slide_from_ri
 
 ## Animation
 
-`@rasheed/svelte-native/animation` adapts Reanimated: `AnimatedView` with `animatedStyle` or `animatedProps` worklets, `createSharedValue` (cancelled when the component is destroyed), `withTiming`, `withSpring`, `withRepeat`, `withSequence`, `withDelay`, `runOnUISync`/`runOnUIAsync`, entering/exiting/layout animations. `AnimatedView` also takes Reanimated's CSS animation and transition style keys without a worklet; those run in C++ on the UI thread and are the cheaper choice for repeating or decorative motion. Read Svelte state on the JavaScript side and write the target into a shared value; a worklet cannot read a signal. Reanimated and worklets load on first use. See [REFERENCE.md](REFERENCE.md#animation) and SPEC "Animated write path".
+`@rasheed/svelte-native/animation` adapts Reanimated: `AnimatedView` with `animatedStyle` or `animatedProps` worklets, `createSharedValue` (cancelled when the component is destroyed), `withTiming`, `withSpring`, `withRepeat`, `withSequence`, `withDelay`, `runOnUISync`/`runOnUIAsync`, entering/exiting/layout animations. Svelte's own `transition:`, `in:`, `out:` (`svelte/transition`: `fade`, `fly`, `scale`, `slide`, `blur` without its filter, and transitions of your own) and `animate:flip` work on native elements as on the web, and play on the UI thread through the same path (the patch to Svelte's compiler above; opacity, transforms, lengths and colours; see the CHANGELOG). `AnimatedView` also takes Reanimated's CSS animation and transition style keys without a worklet; those run in C++ on the UI thread and are the cheaper choice for repeating or decorative motion. Read Svelte state on the JavaScript side and write the target into a shared value; a worklet cannot read a signal. Reanimated and worklets load on first use. See [REFERENCE.md](REFERENCE.md#animation) and SPEC "Animated write path".
 
 ## Native views from other libraries
 
@@ -401,7 +401,7 @@ On the iPhone the dev server must be reachable from it: run it on the Mac and us
 
 ## Apply the patches
 
-The library works only with nine third-party packages patched, and pnpm applies a patch only from the app's own workspace, so an app copies the patch files in and declares them. They are in `patches/` of this package, named `<package>@<version>.patch`, and each is for exactly that version of the package it names (the peers below are pinned to the same versions).
+The library works only with ten third-party packages patched, and pnpm applies a patch only from the app's own workspace, so an app copies the patch files in and declares them. They are in `patches/` of this package, named `<package>@<version>.patch`, and each is for exactly that version of the package it names (the peers below are pinned to the same versions).
 
 | Package | Needed | What the patch changes |
 |---|---|---|
@@ -410,6 +410,7 @@ The library works only with nine third-party packages patched, and pnpm applies 
 | `react-native-gesture-handler` 2.32.0 | always (a peer) | iOS: the manager can be asked for the root gesture recognizer of a screen the library presents (sheets, modals) and does not stop its walk above a view that holds a touch handler |
 | `react-native-reanimated` 4.5.1 | always (a peer) | Android: `synchronouslyUpdateUIProps` hands the engine's views to a native sink, and opacity and translate/scale transforms skip React Native's prop path |
 | `react-native-worklets` 0.10.1 | always (a peer) | the UI runtime asks for an animation frame only while a callback waits, not on every frame forever (about 12 % of an idle screen's main-thread samples on the Samsung A16) |
+| `svelte` 5.56.7 | always (the custom-renderer build, "Install in an app") | the compiler accepts `transition:`, `in:`, `out:` and `animate:` on native elements, which the pull request's build refuses at compile time; the host plays them on the UI thread |
 | `lottie-react-native` 7.3.8 | if installed | Android: the three events do not coalesce; iOS: a load or failure raised before the view has its event emitter is kept for it |
 | `react-native-maps` 1.27.2 | if installed | Android: the 21 discrete events do not coalesce; the drag, pan, region and location streams still do |
 | `react-native-pdf` 7.0.3 | if installed | Android: the one `topChange` event, which carries every message of the view, does not coalesce (a document's load event was overwritten by the page event that follows it) |
@@ -437,6 +438,7 @@ patchedDependencies:
   react-native-reanimated@4.5.1: patches/svelte-native/react-native-reanimated@4.5.1.patch
   react-native-video@6.19.3: patches/svelte-native/react-native-video@6.19.3.patch
   react-native-worklets@0.10.1: patches/svelte-native/react-native-worklets@0.10.1.patch
+  svelte@5.56.7: patches/svelte-native/svelte@5.56.7.patch
 ```
 
 ```sh

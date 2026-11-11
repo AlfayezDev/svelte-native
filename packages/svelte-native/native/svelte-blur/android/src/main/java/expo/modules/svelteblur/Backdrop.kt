@@ -173,10 +173,18 @@ internal class BackdropCanvas : Canvas() {
  * into a bitmap of a sixteenth of the pixels (the trade of the BlurView library's software path). What a software canvas cannot take is handled by
  * [BackdropCanvas]; a throw from anything else keeps the last picture.
  *
- * No work when nothing could show: the view without a size, not shown, its window not visible, nothing of it on screen, intensity 0. While the view or one of
- * its ancestors has a layer (`setLayerType`: a screen held during a transition, `renderToHardwareTextureAndroid`) nothing is drawn either and the last picture
- * stays: a software draw builds a layer's drawing cache on a canvas of its own, which the drawing could neither stop at the view nor afford (a cache of the
- * layer's size). A layer on a view that is not an ancestor is drawn into the picture as it is (its cache is built once and stays until the view detaches).
+ * No work when nothing could show ([BlurRules.idleReason]): the view without a size, not shown, its window not visible, nothing of it on screen, intensity 0. While the
+ * view or one of its ancestors has a layer (`setLayerType`: a screen held during a transition, the screen the stack keeps in a layer while it stands still,
+ * `renderToHardwareTextureAndroid`) nothing is drawn either and the last picture stays: a software draw builds a layer's drawing cache on a canvas of its own, which
+ * the drawing could neither stop at the view nor afford (a cache of the layer's size). A layer on a view that is not an ancestor is drawn into the picture as it is
+ * (its cache is built once and stays until the view detaches).
+ *
+ * The pre-draw that finds a layer asks for a frame of its own, once ([BlurRules.asksForFrame]): a pre-draw only runs for a frame, a layer that a transition holds
+ * goes when the transition ends (and the frame that makes comes with it), but the layer a screen keeps while it stands still goes only when something under the screen
+ * is invalidated, and a screen at rest has no frames. Without the request a blur on a screen that has settled showed its stronger tint, with no blur, until something
+ * else on the screen changed (in the lab it was the next prop the checks set, which is why a place with nothing else on it blurred, and a list row, which has a video
+ * and an animation beside it, was judged before them). The view's own `invalidate` is that something, and the picture of the frame it makes is drawn and recorded even
+ * when it equals the one on show ([BlurRules.shouldRecord]): the node was recorded before the layer.
  *
  * No allocation per frame: three bitmaps and their canvases (one is on screen, one may still be read by the render thread, one is written), one node, one
  * effect per radius. The bitmaps only grow, in steps ([BlurRules.capacity]): a picture that changes size a pixel at a time (an animated height) is drawn into
@@ -204,6 +212,15 @@ internal class Backdrop(private val view: SvelteBlurView) {
   private var appliedRadius = -1f
   private var failed = false
   private var warnedSkips = false
+  private var effect: RenderEffect? = null
+
+  /** The pre-draw has asked for a frame for the layer it is waiting on (see [BlurRules.asksForFrame]), and the node may hold a picture from before the layer. */
+  private var asked = false
+  private var stale = false
+
+  /** What the last pre-draw that was noted did (`Idle.ordinal`, -1 for drawing) and how many were: a state change is one line of the log, a few per view, so that a device run says why a view drew what it drew. */
+  private var noted = -2
+  private var notes = 0
 
   /** Whether the node holds a picture of the backdrop. */
   var ready = false
@@ -213,10 +230,22 @@ internal class Backdrop(private val view: SvelteBlurView) {
   fun update() {
     val width = view.width
     val height = view.height
-    if (width <= 0 || height <= 0 || view.intensity <= 0.0 || !view.isShown || view.windowVisibility != View.VISIBLE) return
-    if (!view.getGlobalVisibleRect(visible)) return
+    val reason = BlurRules.idleReason(
+      width, height, view.intensity, view.isShown, view.windowVisibility == View.VISIBLE,
+      { view.getGlobalVisibleRect(visible) }, { view.rootView === view }, { layered() },
+    )
+    if (reason != null) {
+      note(reason.ordinal)
+      if (BlurRules.asksForFrame(reason, asked)) {
+        asked = true
+        stale = true
+        view.invalidate()
+      }
+      if (reason != BlurRules.Idle.LAYER) asked = false
+      return
+    }
+    asked = false
     val root = view.rootView
-    if (root === view || layered()) return
     var shape = picture
     if (shape == null || shape.width != width || shape.height != height) {
       shape = BlurRules.picture(width, height) ?: return
@@ -258,13 +287,16 @@ internal class Backdrop(private val view: SvelteBlurView) {
       warnedSkips = true
       Log.w(TAG, "${canvas.skipped} draws (a hardware bitmap in a shader, a render node) are left out of the backdrop")
     }
+    note(if (view.reached) DRAWING else NOT_REACHED)
     if (!view.reached) return
     val last = bitmaps.getOrNull(current)
-    if (last != null && last.sameAs(bitmap)) return
+    if (!BlurRules.shouldRecord(last != null && last.sameAs(bitmap), stale)) return
+    stale = false
     current = next
     record(shape, bitmap)
     if (!ready) {
       ready = true
+      logReady(shape, bitmap)
       // The view's display list was recorded without the node (or with the stronger tint of no blur): record it again, in this frame.
       view.invalidate()
     }
@@ -287,6 +319,10 @@ internal class Backdrop(private val view: SvelteBlurView) {
     current = -1
     picture = null
     appliedRadius = -1f
+    effect = null
+    asked = false
+    stale = false
+    noted = -2
     failed = false
     capacityWidth = 0
     capacityHeight = 0
@@ -327,6 +363,8 @@ internal class Backdrop(private val view: SvelteBlurView) {
     } finally {
       node.endRecording()
     }
+    // The effect is the node's property and a recording is its content; they are put together again whenever the content is, so that what the node shows never depends on which of the two was made first.
+    node.setRenderEffect(effect)
   }
 
   private fun applyEffect(shape: BlurRules.Picture) {
@@ -334,11 +372,51 @@ internal class Backdrop(private val view: SvelteBlurView) {
     val radius = BlurRules.radius(view.intensity, view.resources.displayMetrics.density, 1f / shape.divisor)
     if (radius == appliedRadius) return
     appliedRadius = radius
-    node.setRenderEffect(if (BlurRules.hasEffect(radius)) RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP) else null)
+    effect = if (BlurRules.hasEffect(radius)) RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP) else null
+    node.setRenderEffect(effect)
+  }
+
+  /** One line of the log when what the pre-draws do changes (at most [MAX_NOTES] for a view): what a view was doing is in a device's log, not a guess from its pixels. */
+  private fun note(state: Int) {
+    if (state == noted) return
+    noted = state
+    if (notes++ >= MAX_NOTES) return
+    val what = when (state) {
+      DRAWING -> "draws its backdrop"
+      NOT_REACHED -> "drew the window without reaching the view: the picture is left as it is"
+      else -> "idle (${BlurRules.Idle.values()[state]})${if (state == BlurRules.Idle.LAYER.ordinal) ", under ${layerOwner()}" else ""}"
+    }
+    Log.i(TAG, "backdrop ${view.width}x${view.height} intensity ${view.intensity}: $what")
+  }
+
+  /** The first view with a layer on the way up from the view, for the log. */
+  private fun layerOwner(): String {
+    var found: View? = view
+    while (found != null) {
+      if (found.layerType != View.LAYER_TYPE_NONE) return "${found.javaClass.simpleName} (layer type ${found.layerType})"
+      found = found.parent as? View
+    }
+    return "no layer"
+  }
+
+  /** The first picture of a view: what it is (its size and radius, the opaque points of a 3 by 3 grid of it: nothing opaque is a window that drew nothing behind the view), once per attach. */
+  private fun logReady(shape: BlurRules.Picture, bitmap: Bitmap) {
+    if (notes >= MAX_NOTES) return
+    notes++
+    var opaque = 0
+    for (row in 0 until 3) for (column in 0 until 3) {
+      val x = ((column + 0.5f) * shape.pictureWidth / 3f).toInt().coerceIn(0, shape.pictureWidth - 1)
+      val y = ((row + 0.5f) * shape.pictureHeight / 3f).toInt().coerceIn(0, shape.pictureHeight - 1)
+      if (Color.alpha(bitmap.getPixel(x, y)) >= 250) opaque++
+    }
+    Log.i(TAG, "backdrop ready: view ${shape.width}x${shape.height}, picture ${shape.pictureWidth}x${shape.pictureHeight} (divisor ${shape.divisor}), blur radius $appliedRadius px, $opaque of 9 points opaque")
   }
 
   private companion object {
     const val TAG = "SvelteBlur"
     const val SLOTS = 3
+    const val MAX_NOTES = 12
+    const val DRAWING = -1
+    const val NOT_REACHED = 100
   }
 }

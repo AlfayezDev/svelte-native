@@ -1,7 +1,7 @@
-import { afterAll, afterEach, describe, expect, spyOn, test } from "bun:test";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { afterAll, afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { buildClasses, buildClassesSync, candidatesIn, candidatesOf, reportSkipped, reportUnsupported, sourceFiles, TAILWIND_VERSION, unsupportedReasons, watchClasses, type ClassBuildOptions, type Converter } from "../src/css/build.ts";
+import { buildClasses, buildClassesSync, candidatesIn, candidatesOf, reportSkipped, reportUnsupported, resetReports, sourceFiles, TAILWIND_VERSION, unsupportedReasons, watchClasses, type ClassBuildOptions, type Converter } from "../src/css/build.ts";
 import type { ClassTable } from "../src/css/table.ts";
 import { classesTableFile } from "../src/variant.ts";
 import { cssProject, removeCssProjects, tailwindDirectory } from "./css-project.ts";
@@ -329,6 +329,8 @@ describe("buildClassesSync, for the Metro config that cannot wait", () => {
 
 describe("what the converter left out is summarised", () => {
   const entry = (className: string, property = "p") => ({ className, property, reason: "r" });
+  // The counts are per process, and the test runner shares one process with every other file that builds a class table.
+  beforeEach(resetReports);
   afterEach(() => spyOn(console, "warn").mockRestore());
 
   test("in development one line with the number of classes, again only when there are more; in any other build nothing", () => {
@@ -399,6 +401,27 @@ describe("watchClasses", () => {
     writeFileSync(join(root, "src/routes/+mobile.svelte"), '<View class="p-4 extra rounded-xl added shadow-md" />\n');
     await sleep(400);
     expect(readFileSync(tableFile(root), "utf8")).toBe(written);
+  });
+
+  test("a source saved by a rename (sed -i, vim, many editors) is seen every time, not only the first (11 Nov 2026: a recursive fs.watch went silent)", async () => {
+    const root = cssProject({ "src/routes/+mobile.svelte": '<View class="p-4" />\n' });
+    await buildClasses(options(root));
+    spyOn(console, "warn").mockImplementation(() => {});
+    const watcher = watchClasses(options(root), [], 40);
+    const file = join(root, "src/routes/+mobile.svelte");
+    const save = (content: string) => {
+      writeFileSync(`${file}.tmp`, content);
+      renameSync(`${file}.tmp`, file);
+    };
+    try {
+      for (const added of ["bg-rose-200", "bg-lime-300", "bg-violet-300", "bg-amber-300"]) {
+        save(`<View class="p-4 ${added}" />\n`);
+        await until(() => readFileSync(tableFile(root), "utf8").includes(`"${added}"`));
+        expect(readFileSync(tableFile(root), "utf8")).toContain(`"${added}"`);
+      }
+    } finally {
+      watcher.close();
+    }
   });
 
   test("a build that fails (a CSS file mid-edit) is logged and the next change builds", async () => {

@@ -63,6 +63,10 @@ var RUNES_ENVIRONMENT_VARIABLE = "SVELTE_NATIVE_RUNES";
 function runesDefaultEnabled(env = process.env) {
   return !/^(?:0|false|off|no)$/i.test(env[RUNES_ENVIRONMENT_VARIABLE]?.trim() ?? "");
 }
+var ASYNC_ENVIRONMENT_VARIABLE = "SVELTE_NATIVE_ASYNC";
+function asyncEnabled(env = process.env) {
+  return /^(?:1|true|on|yes)$/i.test(env[ASYNC_ENVIRONMENT_VARIABLE]?.trim() ?? "");
+}
 var IN_NODE_MODULES = /(?:^|[\\/])node_modules[\\/]/;
 var ownSources = sourceDirectory + import_node_path2.sep;
 function isLibrarySource(filename) {
@@ -83,14 +87,17 @@ function lowersHtml(filename) {
   return !IN_NODE_MODULES.test(filename) && !isLibrarySource(filename);
 }
 var CUSTOM_RENDERER = "@rasheed/svelte-native/renderer";
-function componentOptions(filename, enabled = runesDefaultEnabled()) {
+function componentOptions(filename, enabled = runesDefaultEnabled(), async = asyncEnabled()) {
   return {
     filename,
     dev: false,
     css: "external",
     runes: runesOption(filename, enabled),
-    experimental: { customRenderer: CUSTOM_RENDERER }
+    experimental: { customRenderer: CUSTOM_RENDERER, ...async ? { async: true } : {} }
   };
+}
+function moduleOptions(filename, async = asyncEnabled()) {
+  return { filename, dev: false, generate: "client", ...async ? { experimental: { async: true } } : {} };
 }
 
 // src/lower.ts
@@ -2588,7 +2595,7 @@ function transform(input) {
       maps.push(new import_trace_mapping.TraceMap(stripped.map));
     }
     if (svelteModule) {
-      const result = (0, import_compiler2.compileModule)(code, { filename, dev: false, generate: "client" });
+      const result = (0, import_compiler2.compileModule)(code, moduleOptions(filename));
       code = result.js.code;
       if (result.js.map) maps.unshift(new import_trace_mapping.TraceMap(result.js.map.toString()));
     }
@@ -2613,6 +2620,7 @@ function getCacheKey(options) {
   const hash2 = (0, import_node_crypto.createHash)("sha256");
   for (const file of files) hash2.update((0, import_node_fs4.readFileSync)(file));
   hash2.update(`runes-default:${runesDefaultEnabled()}`);
+  hash2.update(`async:${asyncEnabled()}`);
   return hash2.update(upstream.getCacheKey(options)).digest("hex");
 }
 // Annotate the CommonJS export names for ESM import in node:

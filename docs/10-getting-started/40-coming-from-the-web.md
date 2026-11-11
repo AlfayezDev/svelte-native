@@ -44,9 +44,27 @@ A native screen is built from components, not HTML elements:
 
 Events are props: `onPress` instead of `onclick`, `onChangeText` instead of `oninput`. `bind:value` works on `TextInput` and `Switch`.
 
+## Or write the HTML you know
+
+You don't have to write components. `div`, `p`, `button`, `a`, `img`, `input` and the other elements of the table above are turned into them when the app is built for a phone, so one `.svelte` file can be a page in the browser and a screen on the device. `onclick` works, `<a href="/settings">` goes to the screen, `bind:value` and `bind:checked` work on inputs, and `class="text-lg text-white"` on a `div` styles the text inside it. What has no native equivalent (a `table`, an `svg`, a `select`) is a build error that says what to use. [HTML elements](html-elements) has the whole list.
+
+```svelte
+<!--- file: src/lib/Hello.svelte --->
+<script lang="ts">
+	let name = $state('');
+	let greeting = $state('');
+</script>
+
+<div class="p-6">
+	<input bind:value={name} placeholder="Your name" />
+	<button onclick={() => (greeting = `Hello ${name}`)}>Say hello</button>
+	<p>{greeting}</p>
+</div>
+```
+
 ## Text goes in Text
 
-Every string must be inside a [`Text`](text). A string directly inside a `View` is not drawn.
+Every string must be inside a [`Text`](text). A string directly inside a `View` is not drawn. (In an HTML element, text directly inside a `div` is put in a `Text` for you.)
 
 `Text` keeps whitespace as you write it. A browser collapses spaces and line breaks; a phone doesn't. A sentence split across two lines of your source shows the line break and the indent. Keep a long sentence on one line, or write it as a string:
 
@@ -62,7 +80,7 @@ There is no CSS. Each component takes a `style` object, with React Native's name
 <View style={{ flexDirection: 'row', gap: 8, padding: 16, backgroundColor: '#f2f2f7', borderRadius: 12 }} />
 ```
 
-Layout is flexbox, but the default direction is a column, sizes are numbers (density-independent pixels), and styles don't cascade, except from a `Text` to the `Text`s inside it. [Styling](styling) covers it.
+Layout is flexbox, but the default direction is a column, sizes are numbers (density-independent pixels), and styles don't cascade, except from a `Text` to the `Text`s inside it, and from an [HTML element](html-elements#text-style-is-inherited) to the text below it. [Styling](styling) covers it.
 
 ## Navigation is native
 
@@ -74,7 +92,7 @@ A native screen is not rendered on a server and has no `load` function. It fetch
 
 ## Transitions play on the UI thread
 
-`transition:`, `in:`, `out:` and `animate:flip` work as on the web, with `svelte/transition` and `svelte/animate`. They play on the UI thread, so a busy script doesn't make them stutter. Some CSS properties have no native counterpart: see [Svelte transitions](animation#svelte-transitions).
+`transition:`, `in:`, `out:` and `animate:flip` work as on the web, with `svelte/transition` and `svelte/animate`, on the HTML elements you write (`<div in:fly>`). They play on the UI thread, so a busy script doesn't make them stutter. Some CSS properties have no native counterpart: see [Svelte transitions](animation#svelte-transitions).
 
 ## Runes mode is the default
 

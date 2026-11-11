@@ -136,7 +136,7 @@ Use worklets when the motion follows state, a gesture or a value that changes ev
 
 ## Svelte transitions
 
-Svelte's `transition:`, `in:`, `out:` and `animate:` work on native elements, with the functions from `svelte/transition` and `svelte/animate`:
+Svelte's `transition:`, `in:`, `out:` and `animate:` work on the HTML elements you write, with the functions from `svelte/transition` and `svelte/animate`:
 
 ```svelte
 <script>
@@ -148,16 +148,16 @@ Svelte's `transition:`, `in:`, `out:` and `animate:` work on native elements, wi
 </script>
 
 {#if open}
-  <View in:fly={{ y: 24 }} out:fade>
-    <Text>Hello</Text>
-  </View>
+  <div in:fly={{ y: 24 }} out:fade>
+    <p>Hello</p>
+  </div>
 {/if}
 
-{#each items as item (item)}
-  <View animate:flip={{ duration: 250 }}>
-    <Text>{item}</Text>
-  </View>
-{/each}
+<ul>
+  {#each items as item (item)}
+    <li animate:flip={{ duration: 250 }}>{item}</li>
+  {/each}
+</ul>
 ```
 
 Svelte decides when a transition runs and works out its frames, as on the web. The library then plays those frames on the UI thread, so a busy script doesn't make them stutter. An `in:` that turns into an `out:` carries on from where it was. `animate:flip` moves each item of a keyed `{#each}` from where it was.
@@ -178,7 +178,7 @@ A transition skips what doesn't play and still plays the rest; in development yo
 
 An item can show a single frame in the wrong place when it is reordered while its `animate:flip` is still running, or in the few frames after an animation ends. Reanimated keeps the last values it drew a view with and applies them over the next layout until it has been told to forget them; the library does that as soon as it can, but not before the new animation's first frame is committed. The item is never left in the wrong place: the next frame draws it correctly.
 
-`svelte-check` reports a directive written on a component such as `<View>`, even though Metro compiles it. Where the type check matters, write the directive on an HTML element instead (`<div in:fly>`).
+Write the directives on HTML elements (`div`, `p`, `li`, `button`, `img`, ...). Svelte takes a directive only on an element, so `svelte-check` reports one on a component such as `<View in:fly>`, even though Metro compiles it; `<div in:fly>` is checked, and builds the same native view. The elements that are components in their own right, `input`, `textarea` and `dialog`, take none: the build leaves it out and warns. On a `span` or other text inside a paragraph a transition runs its length and draws nothing, because React Native draws it as part of the paragraph.
 
 ## Running code on either thread
 

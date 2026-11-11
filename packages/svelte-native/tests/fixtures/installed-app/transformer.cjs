@@ -46,5 +46,33 @@ const modes = {
   legacyApp: modeOf(`${root}/src/Legacy.svelte`, legacyLibrary),
   own: modeOf(`${root}/node_modules/@rasheed/svelte-native/src/TabPaneList.svelte`, require("node:fs").readFileSync(`${root}/node_modules/@rasheed/svelte-native/src/TabPaneList.svelte`, "utf8")),
 };
+// The app's `async` option, through the path an app takes: `withSvelteNative(config, { async })` (`@rasheed/svelte-native/metro`, built) sets the environment the Metro workers inherit, and the built
+// transformer compiles with it. A component with no `await` imports Svelte's async flag with the option and does not without it, the library's own and a library's below node_modules included, and the
+// transformer's cache key follows it. A Svelte module that awaits in a `$derived` compiles only with it.
+const { withSvelteNative } = require("@rasheed/svelte-native/metro");
+const FLAG = "svelte/internal/flags/async";
+const awaited = "let a = $state(1);\nconst later = $derived(await Promise.resolve(a));\nexport const read = () => later;\n";
+const asyncMode = {};
+for (const [name, value] of [["default", undefined], ["on", true], ["off", false]]) {
+  delete process.env.SVELTE_NATIVE_ASYNC;
+  withSvelteNative({ projectRoot: root, cacheVersion: "1", resolver: { sourceExts: ["js", "ts"] }, serializer: { getModulesRunBeforeMainModule: () => [] }, transformer: {} }, { syncRoutes: false, async: value });
+  const flagged = (filename, src) => imports(transformer.transform({ filename, src, options, plugins: [] }).ast).includes(FLAG);
+  let awaitedModule;
+  try {
+    transformer.transform({ filename: `${root}/src/later.svelte.ts`, src: awaited, options, plugins: [] });
+    awaitedModule = "compiles";
+  } catch (error) {
+    awaitedModule = `error: ${error.code ?? error.message}`;
+  }
+  asyncMode[name] = {
+    env: process.env.SVELTE_NATIVE_ASYNC ?? null,
+    app: flagged(`${root}/src/Plain.svelte`, plain),
+    library: flagged(`${root}/node_modules/some-svelte-lib/Plain.svelte`, plain),
+    own: flagged(`${root}/node_modules/@rasheed/svelte-native/src/TabPaneList.svelte`, require("node:fs").readFileSync(`${root}/node_modules/@rasheed/svelte-native/src/TabPaneList.svelte`, "utf8")),
+    awaitedModule,
+    cacheKey: transformer.getCacheKey({}),
+  };
+}
+delete process.env.SVELTE_NATIVE_ASYNC;
 const remote = transformer.sourceOf({ filename: `${root}/src/lib/api.remote.ts`, src: 'import { query } from "$app/server"; export const hello = query(async () => 1);', options });
-console.log(JSON.stringify({ exports: Object.keys(transformer).sort(), svelteImports: imports(svelte.ast), svelteModule: imports(svelteModule.ast), remote, modes, cacheKey: transformer.getCacheKey({}), resolvedFrom: createRequire(`${root}/`).resolve("@rasheed/svelte-native/transformer") }));
+console.log(JSON.stringify({ exports: Object.keys(transformer).sort(), svelteImports: imports(svelte.ast), svelteModule: imports(svelteModule.ast), remote, modes, asyncMode, cacheKey: transformer.getCacheKey({}), resolvedFrom: createRequire(`${root}/`).resolve("@rasheed/svelte-native/transformer") }));

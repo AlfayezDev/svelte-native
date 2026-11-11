@@ -104,11 +104,14 @@ const scale = (q: Quantity, factor: number): Quantity => Object.fromEntries(Obje
 
 class Evaluator {
   private pos = 0;
+  // Fields, not parameter properties: Node strips the types of a file it loads itself (the transformer from the sources) and does not do those.
+  private readonly text: string;
+  private readonly remPx: number;
 
-  constructor(
-    private readonly text: string,
-    private readonly remPx: number,
-  ) {}
+  constructor(text: string, remPx: number) {
+    this.text = text;
+    this.remPx = remPx;
+  }
 
   run(): Evaluated {
     try {

@@ -173,6 +173,20 @@ describe("with plain node, from node_modules", () => {
     });
   });
 
+  test("@rasheed/svelte-native/transformer with withSvelteNative(config, { async: true }): the built transformer compiles every Svelte file with Svelte's async mode, and without the option none", () => {
+    type Mode = { env: string | null; app: boolean; library: boolean; own: boolean; awaitedModule: string; cacheKey: string };
+    const { asyncMode } = probe("transformer.cjs") as { asyncMode: Record<"default" | "on" | "off", Mode> };
+    // With the option the environment says so, and the component's compiled code imports the flag: the app's, a library's below node_modules and the package's own.
+    expect(asyncMode.on).toMatchObject({ env: "1", app: true, library: true, own: true, awaitedModule: "compiles" });
+    // Without it, and with `async: false`, nothing imports the flag, and `await` in a Svelte module is the compiler's error.
+    for (const off of [asyncMode.default, asyncMode.off]) expect(off).toMatchObject({ app: false, library: false, own: false, awaitedModule: "error: experimental_async" });
+    expect([asyncMode.default.env, asyncMode.off.env]).toEqual([null, "0"]);
+    // Metro's cache key follows the option: an app that turns it on never reads components cached without it.
+    expect(asyncMode.on.cacheKey).toMatch(/^[0-9a-f]{64}$/);
+    expect(asyncMode.on.cacheKey).not.toBe(asyncMode.default.cacheKey);
+    expect(asyncMode.off.cacheKey).toBe(asyncMode.default.cacheKey);
+  });
+
   test("@rasheed/svelte-native/expo and the bare package name: @expo/config-plugins loads the config plugin by either and runs it", () => {
     type Summary = { mods: string[]; remote: { origin: string }; pluginFile: string; isPluginFile: boolean; kind: string };
     const result = probe("expo.cjs") as { path: Summary; bare: Summary; same: boolean };

@@ -1,12 +1,13 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, watch, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { mkdir } from "node:fs/promises";
 import { relative, resolve, sep } from "node:path";
 import type { AST, parse as parseSvelte } from "svelte/compiler";
-import { runesEnvironment } from "./compile-options.ts";
+import { asyncEnvironment, runesEnvironment } from "./compile-options.ts";
 import { buildTree, type PageRoute, type RouteFile, type RouteNode, type StackNode } from "./route-tree.ts";
 import { labIncludedFor, routesTableFile, variantName } from "./variant.ts";
+import { watchTree } from "./watch-tree.ts";
 
 const require = createRequire(import.meta.url);
 const posix = (path: string) => path.split(sep).join("/");
@@ -206,16 +207,11 @@ export function unrefTimer(timer: unknown): void {
  * and waits for the next change. Close it to stop.
  */
 export function watchRoutes(root: string, options: SyncOptions = {}, debounceMs = 50): { close(): void } {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const watcher = watch(resolve(root, "src/routes"), { recursive: true }, () => {
-    clearTimeout(timer);
-    timer = setTimeout(() => {
-      try { syncRoutes(root, options); } catch (error) { console.error(error); }
-    }, debounceMs);
-    unrefTimer(timer);
-  });
-  watcher.unref();
-  return { close() { clearTimeout(timer); watcher.close(); } };
+  // A watch per directory (`watchTree`): a recursive `fs.watch` stops reporting a route file once an editor saves it by a rename.
+  return watchTree(resolve(root, "src/routes"), () => {
+    try { syncRoutes(root, options); } catch (error) { console.error(error); }
+    // `routeFilesSync` reads every directory under routes (the lab's too, when it is included).
+  }, { debounceMs, skip: (name) => name === "node_modules" });
 }
 
 /** The environment `expo` runs in: this process's, with `extra` over it. */
@@ -237,6 +233,8 @@ export function runExpo(root: string, args: string[], extraEnv: Record<string, s
 export type ExportOptions = SyncOptions & {
   /** The app's `runes` setting for the Metro that runs the export (see `SvelteNativeMetroOptions.runes`); the app's own `withSvelteNative(config, { runes })` wins over it. */
   runes?: boolean;
+  /** The app's `async` setting for the Metro that runs the export (see `SvelteNativeMetroOptions.async`); the app's own `withSvelteNative(config, { async })` wins over it. */
+  async?: boolean;
 };
 
 export async function exportNative(root: string, platform: "android" | "ios", options: ExportOptions = {}): Promise<void> {
@@ -246,7 +244,7 @@ export async function exportNative(root: string, platform: "android" | "ios", op
   const child = runExpo(root, ["export:embed", "--platform", platform,
     "--entry-file", ".svelte-native/entry.ts", "--bundle-output", resolve(output, "index.hbc"),
     "--sourcemap-output", resolve(output, "index.hbc.map"), "--assets-dest", resolve(output, "assets"),
-    "--dev", "false", "--bytecode", "--reset-cache"], runesEnvironment(options.runes));
+    "--dev", "false", "--bytecode", "--reset-cache"], { ...runesEnvironment(options.runes), ...asyncEnvironment(options.async) });
   const result = await new Promise<number | null>((done, reject) => { child.once("error", reject); child.once("exit", done); });
   if (result !== 0) throw new Error(`Native ${platform} export exited with ${result}`);
 }

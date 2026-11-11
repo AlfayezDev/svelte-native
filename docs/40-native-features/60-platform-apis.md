@@ -47,22 +47,41 @@ const shadow = Platform.OS === 'ios' ? { shadowOpacity: 0.2, shadowRadius: 8 } :
 
 ## Window size
 
-`Dimensions.get('window')` is `{ width, height, scale, fontScale }`: the window in points, the pixel density, and the user's text size setting. Listen for changes, such as a rotation:
+`windowSize` is the window's size, reactive like [`colorScheme`](#light-and-dark-mode): read it in the markup, a `$derived` or an `$effect`, and that part runs again when the window changes (the device turns, a foldable opens, split screen, the user's text size).
 
 ```svelte
 <script lang="ts">
-	import { Dimensions } from '@rasheed/svelte-native/platform';
+	import { Text, View, windowSize } from '@rasheed/svelte-native';
 
-	let size = $state(Dimensions.get('window'));
+	const wide = $derived(windowSize.width >= 768);
+	const columns = $derived(Math.max(1, Math.floor(windowSize.width / 180)));
+</script>
 
-	$effect(() => {
-		const subscription = Dimensions.addEventListener('change', (event) => (size = event.window));
-		return () => subscription.remove();
-	});
+<View style={{ flexDirection: wide ? 'row' : 'column' }}>
+	<Text>{columns} columns at {windowSize.width} × {windowSize.height}</Text>
+</View>
+```
+
+| Property | What it is |
+| --- | --- |
+| `width`, `height` | The window, in points. |
+| `scale` | The pixel density (pixels per point). |
+| `fontScale` | The user's text size setting (1 is the default). |
+| `screen` | `{ width, height }` of the whole screen. |
+
+All the readers share one listener, added when the first one renders and removed when the last one goes. Read outside the markup, `$derived` or `$effect` (in an event handler, say), it gives the current value and subscribes to nothing.
+
+Svelte's own reactive window values work too, from the same import as on the web, so a component shared with your SvelteKit pages needs no change: `innerWidth`, `innerHeight`, `outerWidth`, `outerHeight` and `devicePixelRatio` read the same values, and the ones a native app has no counterpart for (`scrollX`, `scrollY`, `screenLeft`, `screenTop`, `online`) are `undefined`, as on the server.
+
+```svelte
+<script lang="ts">
+	import { innerWidth } from 'svelte/reactivity/window';
+
+	const wide = $derived((innerWidth.current ?? 0) >= 768);
 </script>
 ```
 
-`PixelRatio.get()` is the pixel density, and `PixelRatio.roundToNearestPixel(points)` aligns a size to whole pixels.
+`Dimensions` itself is in `@rasheed/svelte-native/platform` (`Dimensions.get('window')`, `Dimensions.addEventListener('change', ...)`), and `PixelRatio.roundToNearestPixel(points)` aligns a size to whole pixels.
 
 ## Safe area and keyboard
 

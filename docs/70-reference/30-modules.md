@@ -30,6 +30,7 @@ The main entry: components, navigation and the app's state.
 | `useHeader()`, `useToolbar()` | The height of the screen's header or toolbar, to pad content under a translucent bar. [Screen](screen) |
 | `inTabPane()` | Whether the caller is inside a tab pane. [Tabs](tabs) |
 | `colorScheme` | `colorScheme.current` is `'light'` or `'dark'`, as state. [Styling](styling#light-and-dark-mode) |
+| `windowSize` | The window's `width`, `height`, `scale`, `fontScale` and `screen`, as state. [Platform APIs](platform-apis#window-size) |
 | `insets` | The safe area and the keyboard, as state. [Platform APIs](platform-apis#safe-area-and-keyboard) |
 | `Native` | A native element whose tag is chosen at run time. For library authors. |
 | `Router`, `createRouter` | The router's building blocks. The generated entry uses them; an app doesn't need to. |

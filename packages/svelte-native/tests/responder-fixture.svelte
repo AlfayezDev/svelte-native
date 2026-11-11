@@ -21,6 +21,10 @@
     <native-pressable testID="innerDisabled" disabled={true} onPress={note("disabled.press")}></native-pressable>
   </native-view>
   <native-text testID="text" onPress={note("text.press")}>hello</native-text>
+  <native-text testID="paragraph" onPress={note("paragraph.press")}>See <native-text testID="span" onPress={note("span.press")} onPressIn={note("span.in")} onPressOut={note("span.out")} onLongPress={undefined} onPressChange={(v) => log(`span.change ${v}`)} onTouchStart={note("span.touchStart")}>this link</native-text> here <native-text testID="plainSpan">plain</native-text> and <native-text testID="sibling" onPress={note("sibling.press")}>another</native-text></native-text>
+  <native-text testID="evtParagraph" onPress={note("evtParagraph.press")}>Event <native-text testID="evtSpan" onPress={(e) => events.push(e)}>span</native-text></native-text>
+  <native-text testID="holder">Hold <native-text testID="longSpan" onPress={note("longSpan.press")} onLongPress={note("longSpan.long")} delayLongPress={300}>this</native-text></native-text>
+  <native-text testID="outerLink" onPress={note("outerLink.press")}><native-text testID="innerBold">bold <native-text testID="innerDeep">deeper</native-text></native-text> then <native-text testID="innerLink" onPress={note("innerLink.press")}>inner <native-text testID="innerLinkBold">bold</native-text></native-text></native-text>
   <native-view testID="plain"></native-view>
   <native-view testID="custom" onStartShouldSetResponder={() => true} onResponderGrant={note("custom.grant")} onResponderMove={note("custom.move")} onResponderRelease={note("custom.release")} onResponderTerminate={note("custom.terminate")} onTouchStart={note("custom.touchStart")}></native-view>
   <native-view testID="thiefA" onMoveShouldSetResponder={() => true} onResponderGrant={note("thiefA.grant")}>

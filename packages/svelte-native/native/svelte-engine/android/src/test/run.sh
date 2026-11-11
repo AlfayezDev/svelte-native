@@ -96,3 +96,9 @@ java -cp "$work/clip-check.jar" expo.modules.svelteengine.ClipRulesCheckKt "$vie
 kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/SystemBarsRules.kt" \
   "$here/kotlin/expo/modules/svelteengine/SystemBarsRulesCheck.kt" -include-runtime -d "$work/system-bars-check.jar"
 java -cp "$work/system-bars-check.jar" expo.modules.svelteengine.SystemBarsRulesCheckKt
+
+# Which node a touch on a paragraph belongs to (SPEC.md, "Touches on nested Text"): React Native's `reactTagForTouch` on a grid of characters, left to right and right to
+# left, and the sources read for the wiring (the wire record, the decoder, the view, the root, the mounting delegate's emitters).
+kotlinc -nowarn "$here/../main/java/expo/modules/svelteengine/TextHitRules.kt" \
+  "$here/kotlin/expo/modules/svelteengine/TextHitRulesCheck.kt" -include-runtime -d "$work/text-hit-check.jar"
+java -cp "$work/text-hit-check.jar" expo.modules.svelteengine.TextHitRulesCheckKt "$here/../main"

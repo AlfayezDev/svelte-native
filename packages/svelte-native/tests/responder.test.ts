@@ -86,7 +86,13 @@ const settle = async (m: { tick: () => Promise<void> }) => { await m.tick(); awa
 const emit = (target: unknown, type: string, event: object) => (fake as unknown as { handler: (t: unknown, type: string, e: object) => void }).handler(target, type, event);
 let nextRoot = 100;
 const rect = { x: 0, y: 0, w: 100, h: 40 };
-fake.measure = (node: FakeNode, callback: (...args: number[]) => void) => { callback(0, 0, rect.w, rect.h, rect.x, rect.y); void node; };
+// Fabric has no frame for a Text nested in a Text: its `measure` calls back with no numbers (the paragraph, which lays the words out, answers).
+const measured: string[] = [];
+fake.measure = (node: FakeNode, callback: (...args: number[]) => void) => {
+  measured.push(node.name);
+  if (node.name === "RCTVirtualText") callback();
+  else callback(0, 0, rect.w, rect.h, rect.x, rect.y);
+};
 
 async function setup() {
   const m = await load();
@@ -360,3 +366,132 @@ test("a stale gesture whose end was lost does not wedge the next touch", async (
   expect(t.log).toEqual(["i.in", "i.out", "i.press"]);
 });
 
+
+// A Text nested in a Text has no view. The Android engine finds the one under the finger (React Native's `reactTagForTouch`) and dispatches the touch to that node, so the
+// target of a touch can be a nested Text (the iOS paragraph view has always done it); the responder system starts from it and walks up, as it does from any node.
+
+test("a press on a nested Text runs its own onPress and not the paragraph's", async () => {
+  jest.useFakeTimers();
+  const t = await setup();
+  t.send("span", "topTouchStart");
+  expect(t.log).toEqual(["span.change true", "span.in", "span.touchStart"]);
+  t.send("span", "topTouchEnd");
+  expect(t.log).toEqual(["span.change true", "span.in", "span.touchStart", "span.press"]);
+  jest.advanceTimersByTime(130);
+  expect(t.log).toEqual(["span.change true", "span.in", "span.touchStart", "span.press", "span.out", "span.change false"]);
+  expect(t.log).not.toContain("paragraph.press");
+});
+
+test("a nested Text that listens for nothing hands the press to the paragraph around it", async () => {
+  jest.useFakeTimers();
+  const t = await setup();
+  t.send("plainSpan", "topTouchStart");
+  t.send("plainSpan", "topTouchEnd");
+  expect(t.log).toEqual(["paragraph.press"]);
+});
+
+test("a press on one nested Text is not a press on its sibling or on the paragraph", async () => {
+  jest.useFakeTimers();
+  const t = await setup();
+  t.send("sibling", "topTouchStart");
+  t.send("sibling", "topTouchEnd");
+  expect(t.log).toEqual(["sibling.press"]);
+  t.log.length = 0;
+  t.send("paragraph", "topTouchStart");
+  t.send("paragraph", "topTouchEnd");
+  expect(t.log).toEqual(["paragraph.press"]);
+});
+
+test("the nearest nested Text with a handler takes the press, and one inside a pressable span presses that span", async () => {
+  jest.useFakeTimers();
+  const t = await setup();
+  t.send("innerBold", "topTouchStart");
+  t.send("innerBold", "topTouchEnd");
+  expect(t.log).toEqual(["outerLink.press"]);
+  t.log.length = 0;
+  t.send("innerDeep", "topTouchStart");
+  t.send("innerDeep", "topTouchEnd");
+  expect(t.log).toEqual(["outerLink.press"]);
+  t.log.length = 0;
+  t.send("innerLinkBold", "topTouchStart");
+  t.send("innerLinkBold", "topTouchEnd");
+  expect(t.log).toEqual(["innerLink.press"]);
+});
+
+test("a nested Text's press event names the nested Text as its target, with the touch's position", async () => {
+  jest.useFakeTimers();
+  const t = await setup();
+  t.send("evtSpan", "topTouchStart", 12, 34);
+  t.send("evtSpan", "topTouchEnd", 12, 34);
+  expect(t.events).toHaveLength(1);
+  expect(t.log).toEqual([]); // the paragraph's onPress is not run
+  const event = t.events[0] as { nativeEvent: Record<string, unknown>; target: unknown; currentTarget: unknown };
+  expect(event.nativeEvent).toMatchObject({ pageX: 12, pageY: 34, locationX: 12, locationY: 34, identifier: 0 });
+  expect(event.target).toBe(t.nodeOf("evtSpan"));
+  expect(event.currentTarget).toBe(t.nodeOf("evtSpan"));
+});
+
+test("a nested Text's press follows the same rules as a pressable's: a long press replaces onPress, cancelled on a move away", async () => {
+  jest.useFakeTimers();
+  const t = await setup();
+  t.send("longSpan", "topTouchStart");
+  jest.advanceTimersByTime(300);
+  expect(t.log).toEqual(["longSpan.long"]);
+  t.send("longSpan", "topTouchEnd");
+  expect(t.log).toEqual(["longSpan.long"]); // onLongPress is there to take the press
+  t.log.length = 0;
+
+  const u = await setup();
+  u.send("longSpan", "topTouchStart", 50, 20);
+  u.send("longSpan", "topTouchMove", 50, 20 + 25); // beyond the long-press deactivation distance, still in the paragraph's region
+  jest.advanceTimersByTime(1000);
+  expect(u.log).not.toContain("longSpan.long");
+  u.send("longSpan", "topTouchEnd", 50, 45);
+  expect(u.log).toContain("longSpan.press");
+});
+
+test("moving off the paragraph cancels a nested Text's press: its region is the paragraph's, which Fabric can measure and the nested Text it cannot", async () => {
+  jest.useFakeTimers();
+  const t = await setup();
+  measured.length = 0;
+  t.send("span", "topTouchStart", 50, 20);
+  expect(measured).toContain("RCTText"); // not the nested Text's own (empty) answer
+  t.send("span", "topTouchMove", 50, 200); // below the 40pt tall paragraph and its 30pt offset
+  t.send("span", "topTouchEnd", 50, 200);
+  expect(t.log).not.toContain("span.press");
+  jest.advanceTimersByTime(500);
+  expect(t.log).toContain("span.out");
+  expect(t.log.at(-1)).toBe("span.change false");
+
+  const u = await setup();
+  u.send("span", "topTouchStart", 50, 20);
+  u.send("span", "topTouchMove", 50, 65); // 40 + the 30pt offset = 70
+  u.send("span", "topTouchEnd", 50, 65);
+  expect(u.log).toContain("span.press");
+
+  // Leaving and coming back before the release still presses, as for any pressable.
+  const v = await setup();
+  v.send("span", "topTouchStart", 50, 20);
+  v.send("span", "topTouchMove", 50, 300);
+  v.send("span", "topTouchMove", 50, 20);
+  v.send("span", "topTouchEnd", 50, 20);
+  expect(v.log).toContain("span.press");
+});
+
+test("a touch that is cancelled ends a nested Text's press without onPress", async () => {
+  jest.useFakeTimers();
+  const t = await setup();
+  t.send("span", "topTouchStart");
+  t.send("span", "topTouchCancel");
+  jest.advanceTimersByTime(1000);
+  expect(t.log).toEqual(["span.change true", "span.in", "span.touchStart", "span.out", "span.change false"]);
+});
+
+test("topClick on a nested Text (an accessibility service activating a link) presses it, and a nested Text with no handler gives the click to the paragraph", async () => {
+  const t = await setup();
+  emit(t.nodeOf("span"), "topClick", {});
+  expect(t.log).toEqual(["span.press"]);
+  t.log.length = 0;
+  emit(t.nodeOf("plainSpan"), "topClick", {});
+  expect(t.log).toEqual(["paragraph.press"]);
+});

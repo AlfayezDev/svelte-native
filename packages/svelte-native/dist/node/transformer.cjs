@@ -114,6 +114,7 @@ var LOWERED_TAGS = {
   ActivityIndicator: "native-spinner",
   Pressable: "native-pressable"
 };
+var PRESS_HANDLERS = /* @__PURE__ */ new Set(["onPress", "onPressIn", "onPressOut", "onLongPress", "onPressChange"]);
 var WARN_DIRECTIVES = /* @__PURE__ */ new Set(["UseDirective", "TransitionDirective", "AnimateDirective"]);
 var NOT_PRIMITIVES = `${PACKAGE}/svg`;
 function fromPackage(source) {
@@ -152,6 +153,9 @@ function classExpression(content, attribute) {
     template += part.type === "Text" ? part.data.replace(/[`\\]/g, (match) => `\\${match}`) : `\${(${content.slice(part.expression.start, part.expression.end)}) ?? ""}`;
   }
   return `${template}\``;
+}
+function isFunctionLiteral(expression) {
+  return expression.type === "ArrowFunctionExpression" || expression.type === "FunctionExpression";
 }
 function couldBeFunction(expression) {
   switch (expression.type) {
@@ -231,6 +235,11 @@ function lowerPrimitives(content, options = {}) {
       if (spreads && attribute.type === "Attribute" && !attribute.name.startsWith("on") && attribute.name !== "style" && attribute.value !== true && !Array.isArray(attribute.value) && attribute.value.type === "ExpressionTag" && couldBeFunction(attribute.value.expression)) {
         if (content[attribute.start] === "{") edits.push({ start: attribute.start, end: attribute.start, text: `${attribute.name}=` });
         wrap(attribute.value.expression, VALUE_HELPER);
+      }
+      if (!spreads && attribute.type === "Attribute" && PRESS_HANDLERS.has(attribute.name) && attribute.value !== true && !Array.isArray(attribute.value) && attribute.value.type === "ExpressionTag" && !isFunctionLiteral(attribute.value.expression)) {
+        const renamed = `native${attribute.name[0].toUpperCase()}${attribute.name.slice(1)}`;
+        if (content[attribute.start] === "{") edits.push({ start: attribute.start, end: attribute.start, text: `${renamed}=` });
+        else edits.push({ start: attribute.start, end: attribute.start + attribute.name.length, text: renamed });
       }
       if (attribute.type === "Attribute" && attribute.name === "style" && content.startsWith("style", attribute.start)) {
         edits.push({ start: attribute.start, end: attribute.start + "style".length, text: "nativeStyle" });

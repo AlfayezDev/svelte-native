@@ -169,6 +169,7 @@ Call `useRouter()` while the component initialises, like `getContext`. The route
 | `entries` | The screens of this navigator's stack, first one first. |
 | `replaceBase(href)` | Replaces the first screen of this stack. |
 | `openURL(url)` | Opens a link to the app (see [Deep links](#deep-links)). Returns `false` when no route matches. |
+| `prepare(href, options?)` | Gets a `goto` ready while the finger is still down (experimental, see [Preparing a screen](#preparing-a-screen-experimental)). |
 
 `goto` takes these options:
 
@@ -179,6 +180,51 @@ Call `useRouter()` while the component initialises, like `getContext`. The route
 | `presentation` | present this screen as `'modal'`, `'sheet'`, ... this time, whatever the page says |
 
 The header's back button, the iOS edge swipe and Android's back button go back without any code. Android's back button goes to the innermost navigator the user sees.
+
+## Preparing a screen (experimental)
+
+A heavy screen takes a while to mount on the JavaScript thread, and a tap waits for it. `router.prepare` does that work while the finger is still down, so that lifting it only puts the finished screen on the stack. It builds on Svelte's `fork()`, which Svelte marks experimental, and on Svelte's async mode, which Svelte Native leaves off. Both may change, and so may `prepare`.
+
+Turn async mode on by importing its flag before the app mounts, at the top of the root layout:
+
+```svelte
+<!--- file: src/routes/+layout.mobile.svelte --->
+<script module>
+	import 'svelte/internal/flags/async';
+</script>
+```
+
+Then prepare on the finger going down, commit on the tap and discard when the finger leaves without one:
+
+```svelte
+<script lang="ts">
+	import { Pressable, Text, useRouter, type PreparedNavigation } from '@rasheed/svelte-native';
+
+	const router = useRouter();
+	let prepared: PreparedNavigation | undefined;
+</script>
+
+<Pressable
+	onPressIn={() => (prepared = router.prepare('/posts/42'))}
+	onPress={() => prepared?.commit()}
+	onPressOut={() => prepared?.discard()}
+>
+	<Text>Read post 42</Text>
+</Pressable>
+```
+
+`prepare` loads the screen's code, renders the screen off screen, and returns `{ ready, commit(), discard() }`. Nothing reaches the native stack until `commit()`, and the screen's effects run then, once. `ready` is a promise of `true` when a screen was rendered and `false` when none will be, and it never rejects.
+
+- `commit()` always makes the navigation `goto` would make. When the screen was not ready (the finger came up first), when something else navigated in between, or when async mode is off, it is a plain `goto`. A prepared navigation is never slower than an unprepared one and never lands somewhere else.
+- A call after `commit()` or `discard()` does nothing, so `onPressOut` above is safe after `onPress`.
+- Only forward navigations are prepared: a push, or the selection of a tab. One that pops, replaces or resets is not prepared and `commit()` is the `goto`.
+- A tree has one prepared navigation at a time. A newer `prepare` discards the one before it.
+- **Every `prepare` must end in `commit()` or `discard()`.** A screen that is never committed or discarded stays in memory, with everything its components created.
+- Call `prepare` from an event handler or a timer, not from an effect: Svelte does not allow a fork inside one.
+- The screen is rendered by one task on the JavaScript thread, so a heavy screen delays the next touch event by as long as it takes. Prepare when the thread has nothing else to do. Fabric still builds the screen's views when `commit()` puts it on the stack.
+- What a component does in its script outside an effect, for instance opening a subscription, is not undone by a `discard()`: Svelte never runs the teardown of an effect that never ran. Start such things in `$effect` or `onMount`.
+
+With async mode on, `await tick()` waits for the next frame or timer instead of a microtask, and when several blocks of one component tree change in one update, the components of different blocks run their `$effect.pre` and their teardown in another order. A component sees its own calls in the same order, and the screens look the same.
 
 ## Deep links
 

@@ -227,8 +227,6 @@ function watchTree(root, onChange, options = {}) {
   };
   const add = (directory) => {
     if (closed || watchers2.has(directory)) return;
-    const inode = inodeOf(directory);
-    if (inode === null) return;
     let watcher;
     try {
       watcher = (0, import_node_fs2.watch)(directory, (_event, name) => {
@@ -244,13 +242,11 @@ function watchTree(root, onChange, options = {}) {
       refused(directory, error);
       dropTree(directory);
     });
-    watchers2.set(directory, { watcher, inode });
+    watchers2.set(directory, watcher);
   };
   const seen = (path, name) => {
-    const known = watchers2.get(path);
-    const inode = inodeOf(path);
-    if (known && known.inode !== inode) dropTree(path);
-    if (inode !== null && !watchers2.has(path) && !skip(name) && isDirectory(path)) addTree(path);
+    if (watchers2.has(path)) dropTree(path);
+    if (!skip(name) && isDirectory(path)) addTree(path);
   };
   const addTree = (directory) => {
     add(directory);
@@ -263,7 +259,7 @@ function watchTree(root, onChange, options = {}) {
     for (const entry of entries) if (entry.isDirectory() && !skip(entry.name)) addTree((0, import_node_path3.join)(directory, entry.name));
   };
   const dropTree = (directory) => {
-    for (const [path, { watcher }] of watchers2) {
+    for (const [path, watcher] of watchers2) {
       if (path === directory || path.startsWith(directory + import_node_path3.sep)) {
         watcher.close();
         watchers2.delete(path);
@@ -294,7 +290,7 @@ function watchTree(root, onChange, options = {}) {
       clearTimeout(timer);
       waiting?.close();
       waiting = null;
-      for (const { watcher } of watchers2.values()) watcher.close();
+      for (const watcher of watchers2.values()) watcher.close();
       watchers2.clear();
     }
   };
@@ -306,13 +302,6 @@ function refused(directory, error) {
   warned = true;
   const hint = code === "ENOSPC" ? " The system's limit on watches is reached: raise fs.inotify.max_user_watches (sysctl)." : "";
   console.warn(`svelte-native: cannot watch ${directory} (${code ?? String(error)}); changes below it are not picked up until Metro restarts.${hint}`);
-}
-function inodeOf(path) {
-  try {
-    return (0, import_node_fs2.statSync)(path).ino;
-  } catch {
-    return null;
-  }
 }
 function isDirectory(path) {
   try {

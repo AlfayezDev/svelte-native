@@ -222,8 +222,6 @@ function watchTree(root2, onChange, options = {}) {
   };
   const add = (directory) => {
     if (closed || watchers.has(directory)) return;
-    const inode = inodeOf(directory);
-    if (inode === null) return;
     let watcher;
     try {
       watcher = watch(directory, (_event, name) => {
@@ -239,13 +237,11 @@ function watchTree(root2, onChange, options = {}) {
       refused(directory, error);
       dropTree(directory);
     });
-    watchers.set(directory, { watcher, inode });
+    watchers.set(directory, watcher);
   };
   const seen = (path, name) => {
-    const known = watchers.get(path);
-    const inode = inodeOf(path);
-    if (known && known.inode !== inode) dropTree(path);
-    if (inode !== null && !watchers.has(path) && !skip(name) && isDirectory(path)) addTree(path);
+    if (watchers.has(path)) dropTree(path);
+    if (!skip(name) && isDirectory(path)) addTree(path);
   };
   const addTree = (directory) => {
     add(directory);
@@ -258,7 +254,7 @@ function watchTree(root2, onChange, options = {}) {
     for (const entry of entries) if (entry.isDirectory() && !skip(entry.name)) addTree(join2(directory, entry.name));
   };
   const dropTree = (directory) => {
-    for (const [path, { watcher }] of watchers) {
+    for (const [path, watcher] of watchers) {
       if (path === directory || path.startsWith(directory + sep2)) {
         watcher.close();
         watchers.delete(path);
@@ -289,7 +285,7 @@ function watchTree(root2, onChange, options = {}) {
       clearTimeout(timer);
       waiting?.close();
       waiting = null;
-      for (const { watcher } of watchers.values()) watcher.close();
+      for (const watcher of watchers.values()) watcher.close();
       watchers.clear();
     }
   };
@@ -300,13 +296,6 @@ function refused(directory, error) {
   warned = true;
   const hint = code === "ENOSPC" ? " The system's limit on watches is reached: raise fs.inotify.max_user_watches (sysctl)." : "";
   console.warn(`svelte-native: cannot watch ${directory} (${code ?? String(error)}); changes below it are not picked up until Metro restarts.${hint}`);
-}
-function inodeOf(path) {
-  try {
-    return statSync(path).ino;
-  } catch {
-    return null;
-  }
 }
 function isDirectory(path) {
   try {

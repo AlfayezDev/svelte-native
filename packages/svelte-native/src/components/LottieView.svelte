@@ -1,6 +1,7 @@
 <script lang="ts">
   import { forwardRef } from "./forward-ref.ts";
   import type {} from "../elements.d.ts";
+  import type { ClassProps } from "../classes.ts";
   import { createNativeProps } from "../native-props.ts";
   import { resolveAssetSource } from "../fabric/deps-rn.ts";
   import type { Commandable } from "../fabric/foreign.ts";
@@ -43,7 +44,7 @@
     /** Receives `play`, `reset`, `pause` and `resume` (`host` is the view's handle), or null on unmount. */
     ref?: (handle: (LottieHandle & { host: unknown }) | null) => void;
     [prop: string]: unknown;
-  } = $props();
+  } & ClassProps = $props();
   const resolveProps = createNativeProps();
   const sources = $derived(source === null || source === undefined ? undefined : lottieSources(source, (asset) => resolveAssetSource(asset as never) as { uri: string } | null));
   // The library plays from its ref callback too: an animation that is ready before the first `autoPlay` update still starts.

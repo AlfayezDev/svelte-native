@@ -51,6 +51,7 @@ A `TextInput` has no border or padding of its own. Give it a style, and a `minHe
 | `autoFocus` | `boolean` | `false` | Focuses the field, and opens the keyboard, when it mounts. |
 | `ref` | `(handle \| null) => void` | | Receives the field's handle. See [ref](#ref). |
 | `style` | `TextStyle` | | Text style and layout. |
+| `class` | `ClassValue` | | A list of classes: a string, an array or an object, as on a DOM element in Svelte. Their style goes under `style`, which wins. Needs [Uniwind](styling#classes). |
 | `accessibilityLabel` | `string` | | What a screen reader calls the field. A placeholder isn't a label. |
 
 It also takes the other props of React Native's [`TextInput`](https://reactnative.dev/docs/textinput).

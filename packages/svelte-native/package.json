@@ -43,6 +43,7 @@
       "default": "./dist/node/expo.cjs"
     },
     "./updates": "./src/updates/index.ts",
+    "./uniwind": "./src/uniwind.ts",
     "./native-modules": "./src/native-modules.ts",
     "./remote": "./src/remote/index.ts",
     "./remote/runtime": "./src/remote/runtime.ts",
@@ -111,6 +112,7 @@
     "react-native-worklets": "0.10.1",
     "rive-react-native": "~9.7.1",
     "svelte": "5.56.7",
+    "uniwind": "1.13.2",
     "vite": "^8.1.4"
   },
   "peerDependenciesMeta": {
@@ -166,6 +168,9 @@
       "optional": true
     },
     "rive-react-native": {
+      "optional": true
+    },
+    "uniwind": {
       "optional": true
     },
     "vite": {

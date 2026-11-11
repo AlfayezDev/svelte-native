@@ -1,6 +1,7 @@
 <script lang="ts">
   import { forwardRef } from "./forward-ref.ts";
   import type {} from "../elements.d.ts";
+  import type { ClassProps } from "../classes.ts";
   import { createNativeProps } from "../native-props.ts";
   import { Platform, resolveAssetSource } from "../fabric/deps-rn.ts";
   import type { Commandable } from "../fabric/foreign.ts";
@@ -20,7 +21,7 @@
    * with the view's tag. Not ported: `renderLoader`, FairPlay's `getLicense`, `restoreUserInterfaceForPictureInPictureStopCompleted`.
    * Android's `viewType` defaults to a surface; `TEXTURE` (0) keeps the video in the view tree's z-order.
    */
-  let { source, style, poster, posterResizeMode, ref, ...attributes }: Omit<ViewProps, "children"> & {
+  let { source, style, class: className, poster, posterResizeMode, ref, ...attributes }: Omit<ViewProps, "children"> & {
     source?: VideoSource | number;
     poster?: Poster;
     /** @deprecated Use `poster.resizeMode`. */
@@ -50,7 +51,7 @@
     onReadyForDisplay?: () => void;
     onPlaybackStateChanged?: Event<{ isPlaying: boolean; isSeeking: boolean }>;
     [prop: string]: unknown;
-  } = $props();
+  } & ClassProps = $props();
   const resolveProps = createNativeProps();
   const platform = Platform.OS === "android" ? "android" : "ios";
   const asset = (number: number) => resolveAssetSource(number as never) as { uri: string } | null;
@@ -68,7 +69,7 @@
   const posterSource = $derived(typeof poster === "string" ? { uri: poster } : poster?.source);
   const posterMode = $derived(typeof poster === "object" && poster?.resizeMode ? poster.resizeMode : posterResizeMode && posterResizeMode !== "none" ? posterResizeMode : "contain");
 </script>
-<View {style}>
+<View {style} class={className}>
   <native-foreign component="RCTVideo" nativeProps={resolveProps({ ...native, ...handlers, style: fill, ref: hostRef })}></native-foreign>
   {#if hasPoster && posterShown}
     <Image source={posterSource as never} style={[fill, { resizeMode: posterMode }, typeof poster === "object" ? poster.style : undefined] as never} />

@@ -7,6 +7,9 @@ const RENDERER = `${PACKAGE}/renderer`;
 // `on*` handler (a `ref`, say). The renderer's `hostSpread` and `hostValue` box those functions and `setAttribute` unboxes them.
 const SPREAD_HELPER = "__svelteNativeSpread";
 const VALUE_HELPER = "__svelteNativeValue";
+// `class` and `class:name` on a lowered tag become `nativeClass={__svelteNativeClass(...)}`: the renderer's `hostClass` works out their style.
+const CLASS_HELPER = "__svelteNativeClass";
+const HELPER_EXPORTS: Record<string, string> = { [SPREAD_HELPER]: "hostSpread", [VALUE_HELPER]: "hostValue", [CLASS_HELPER]: "hostClass" };
 
 // Lowered call sites never run the component (`<ScrollView>` becomes `<native-scroll>` here): behaviour every scroll view
 // needs, such as React Native's base scroll style, belongs to the host (`fabric/host.ts`, `splitProps`), not to the
@@ -66,6 +69,19 @@ function mustStayComponent(node: Node, primitive: string): boolean {
   return (node.fragment?.nodes ?? []).some((child: Node) => child.type === "SnippetBlock");
 }
 
+/** The source of a `class` attribute's value as one expression: `{expr}` as it is, a quoted value (with `{expr}` parts) as a template literal (its text cannot hold a `{`). */
+function classExpression(content: string, attribute: Node): string {
+  const value = attribute.value;
+  if (value === true) return "true";
+  if (!Array.isArray(value)) return content.slice(value.expression.start, value.expression.end);
+  let template = "`";
+  for (const part of value as Node[]) {
+    // As Svelte joins an attribute: a nullish part is the empty string.
+    template += part.type === "Text" ? part.data.replace(/[`\\]/g, (match: string) => `\\${match}`) : `\${(${content.slice(part.expression.start, part.expression.end)}) ?? ""}`;
+  }
+  return `${template}\``;
+}
+
 /** True when an attribute expression could evaluate to a function (a literal, an object, an array or an operator's result cannot). */
 function couldBeFunction(expression: Node): boolean {
   switch (expression.type) {
@@ -122,8 +138,32 @@ export function lowerPrimitives(content: string, options: LowerOptions = {}): st
     if (!primitive || mustStayComponent(node, primitive)) return;
     const tag = LOWERED_TAGS[primitive];
     const spreads = (node.attributes as Node[]).some((attribute) => attribute.type === "SpreadAttribute");
+    // `class` and every `class:name` become one `nativeClass`, written where the `class` was (where the first directive was without one);
+    // the directives are removed. Next to a spread, as on the DOM: the last of `class` and the spreads that have a `class` gives the class,
+    // and the toggles of the directives apply to it. So each spread gets the toggles too (`hostSpread` uses them when the spread has a
+    // `class`), and toggles without a `class` attribute are written before every spread, which can then override them.
+    const classes = (node.attributes as Node[]).filter((attribute) => (attribute.type === "Attribute" && attribute.name === "class") || attribute.type === "ClassDirective");
+    const directives = classes.filter((attribute) => attribute.type === "ClassDirective");
+    const toggles = directives.length === 0 ? undefined
+      : `{ ${directives.map((directive) => `${JSON.stringify(directive.name)}: ${content.slice(directive.expression.start, directive.expression.end)}`).join(", ")} }`;
+    if (classes.length > 0) {
+      const own = classes.find((attribute) => attribute.type === "Attribute");
+      const parts = [...(own ? [classExpression(content, own)] : []), ...(toggles ? [toggles] : [])];
+      const value = `nativeClass={${CLASS_HELPER}(${parts.length === 1 ? parts[0] : `[${parts.join(", ")}]`})}`;
+      helpers.add(CLASS_HELPER);
+      const at = own ?? (spreads ? undefined : classes[0]);
+      if (at === undefined) edits.push({ start: node.attributes[0].start, end: node.attributes[0].start, text: `${value} ` });
+      for (const attribute of classes) edits.push({ start: attribute.start, end: attribute.end, text: attribute === at ? value : "" });
+    }
     for (const attribute of node.attributes as Node[]) {
-      if (spreads && attribute.type === "SpreadAttribute") wrap(attribute.expression, SPREAD_HELPER);
+      if (classes.includes(attribute)) continue;
+      if (spreads && attribute.type === "SpreadAttribute") {
+        if (toggles === undefined) wrap(attribute.expression, SPREAD_HELPER);
+        else {
+          helpers.add(SPREAD_HELPER);
+          edits.push({ start: attribute.expression.start, end: attribute.expression.start, text: `${SPREAD_HELPER}(` }, { start: attribute.expression.end, end: attribute.expression.end, text: `, ${toggles})` });
+        }
+      }
       // With a spread on the element every attribute goes through `set_attributes` too: a function-valued one (`ref={handle}`) must be boxed as well.
       if (spreads && attribute.type === "Attribute" && !attribute.name.startsWith("on") && attribute.name !== "style" && attribute.value !== true
         && !Array.isArray(attribute.value) && attribute.value.type === "ExpressionTag" && couldBeFunction(attribute.value.expression)) {
@@ -157,7 +197,7 @@ export function lowerPrimitives(content: string, options: LowerOptions = {}): st
   if (!edits.length) return content;
   const script = ast.instance ?? ast.module;
   if (helpers.size && script) {
-    const names = [...helpers].sort().map((helper) => `${helper === SPREAD_HELPER ? "hostSpread" : "hostValue"} as ${helper}`);
+    const names = [...helpers].sort().map((helper) => `${HELPER_EXPORTS[helper]} as ${helper}`);
     // On the line of the opening tag, so no line number below it moves.
     edits.push({ start: script.content.start, end: script.content.start, text: ` import { ${names.join(", ")} } from "${RENDERER}";` });
   }

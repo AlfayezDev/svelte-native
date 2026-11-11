@@ -97,6 +97,8 @@ var GESTURES = `${PACKAGE}/gestures`;
 var RENDERER = `${PACKAGE}/renderer`;
 var SPREAD_HELPER = "__svelteNativeSpread";
 var VALUE_HELPER = "__svelteNativeValue";
+var CLASS_HELPER = "__svelteNativeClass";
+var HELPER_EXPORTS = { [SPREAD_HELPER]: "hostSpread", [VALUE_HELPER]: "hostValue", [CLASS_HELPER]: "hostClass" };
 var LOWERED_TAGS = {
   View: "native-view",
   Text: "native-text",
@@ -133,6 +135,16 @@ function mustStayComponent(node, primitive) {
     }
   }
   return (node.fragment?.nodes ?? []).some((child) => child.type === "SnippetBlock");
+}
+function classExpression(content, attribute) {
+  const value = attribute.value;
+  if (value === true) return "true";
+  if (!Array.isArray(value)) return content.slice(value.expression.start, value.expression.end);
+  let template = "`";
+  for (const part of value) {
+    template += part.type === "Text" ? part.data.replace(/[`\\]/g, (match) => `\\${match}`) : `\${(${content.slice(part.expression.start, part.expression.end)}) ?? ""}`;
+  }
+  return `${template}\``;
 }
 function couldBeFunction(expression) {
   switch (expression.type) {
@@ -186,8 +198,27 @@ function lowerPrimitives(content, options = {}) {
     if (!primitive || mustStayComponent(node, primitive)) return;
     const tag = LOWERED_TAGS[primitive];
     const spreads = node.attributes.some((attribute) => attribute.type === "SpreadAttribute");
+    const classes = node.attributes.filter((attribute) => attribute.type === "Attribute" && attribute.name === "class" || attribute.type === "ClassDirective");
+    const directives = classes.filter((attribute) => attribute.type === "ClassDirective");
+    const toggles = directives.length === 0 ? void 0 : `{ ${directives.map((directive) => `${JSON.stringify(directive.name)}: ${content.slice(directive.expression.start, directive.expression.end)}`).join(", ")} }`;
+    if (classes.length > 0) {
+      const own = classes.find((attribute) => attribute.type === "Attribute");
+      const parts = [...own ? [classExpression(content, own)] : [], ...toggles ? [toggles] : []];
+      const value = `nativeClass={${CLASS_HELPER}(${parts.length === 1 ? parts[0] : `[${parts.join(", ")}]`})}`;
+      helpers.add(CLASS_HELPER);
+      const at = own ?? (spreads ? void 0 : classes[0]);
+      if (at === void 0) edits.push({ start: node.attributes[0].start, end: node.attributes[0].start, text: `${value} ` });
+      for (const attribute of classes) edits.push({ start: attribute.start, end: attribute.end, text: attribute === at ? value : "" });
+    }
     for (const attribute of node.attributes) {
-      if (spreads && attribute.type === "SpreadAttribute") wrap(attribute.expression, SPREAD_HELPER);
+      if (classes.includes(attribute)) continue;
+      if (spreads && attribute.type === "SpreadAttribute") {
+        if (toggles === void 0) wrap(attribute.expression, SPREAD_HELPER);
+        else {
+          helpers.add(SPREAD_HELPER);
+          edits.push({ start: attribute.expression.start, end: attribute.expression.start, text: `${SPREAD_HELPER}(` }, { start: attribute.expression.end, end: attribute.expression.end, text: `, ${toggles})` });
+        }
+      }
       if (spreads && attribute.type === "Attribute" && !attribute.name.startsWith("on") && attribute.name !== "style" && attribute.value !== true && !Array.isArray(attribute.value) && attribute.value.type === "ExpressionTag" && couldBeFunction(attribute.value.expression)) {
         if (content[attribute.start] === "{") edits.push({ start: attribute.start, end: attribute.start, text: `${attribute.name}=` });
         wrap(attribute.value.expression, VALUE_HELPER);
@@ -215,7 +246,7 @@ function lowerPrimitives(content, options = {}) {
   if (!edits.length) return content;
   const script = ast.instance ?? ast.module;
   if (helpers.size && script) {
-    const names = [...helpers].sort().map((helper) => `${helper === SPREAD_HELPER ? "hostSpread" : "hostValue"} as ${helper}`);
+    const names = [...helpers].sort().map((helper) => `${HELPER_EXPORTS[helper]} as ${helper}`);
     edits.push({ start: script.content.start, end: script.content.start, text: ` import { ${names.join(", ")} } from "${RENDERER}";` });
   }
   edits.sort((a, b) => b.start - a.start);

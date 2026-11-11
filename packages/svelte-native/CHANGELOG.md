@@ -4,6 +4,10 @@ Notable changes to `@rasheed/svelte-native`, newest first. The format follows [K
 
 ## Unreleased
 
+### Added
+
+- `class` on components, through Uniwind (Tailwind 4): `withSvelteNative`'s new `uniwind` option compiles the app's CSS file with Uniwind, and `import "@rasheed/svelte-native/uniwind"` in the app shell turns `class` into styles. Tailwind's utilities and your own classes work, `class` takes a string, an array or an object (and `class:name` on the primitives a page compiles to native elements), `dark:`, breakpoints and the safe-area utilities follow the system's appearance, the window and the insets, and an inline `style` wins. Uniwind's React components, its `*ClassName` props and the `active:`, `focus:` and `disabled:` variants are not supported yet. `uniwind@1.13.2` is an optional peer dependency. Without it, `class` is ignored as before, with a warning in development. The showcase has a Classes screen ("Classes" in the guide's Styling page).
+
 ### Changed
 
 - The guide in `docs/` is reorganised in the shape of SvelteKit's, in sections: getting started, core concepts, a page for every component (what it is, an example, its props), native features, building and releasing, an appendix, and a reference for the command line, the configuration and every module. It is published at <https://svelte-native.alfayez.dev>. `svelte-native doctor` names the new path of "Creating a project".

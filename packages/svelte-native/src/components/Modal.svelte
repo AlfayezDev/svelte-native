@@ -1,12 +1,13 @@
 <script lang="ts">
   import { setContext, type Snippet } from "svelte";
   import type {} from "../elements.d.ts";
+  import type { ClassProps } from "../classes.ts";
   import { createNativeProps } from "../native-props.ts";
   import { IN_STACK_CONTEXT, PANE_CONTEXT, SCREEN_CONTEXT } from "../fabric/navigation.ts";
   import type { ModalProps } from "react-native";
   import Platform from "react-native/Libraries/Utilities/Platform";
   import { keyboard } from "../keyboard.ts";
-  let { children, onRequestClose, onDismiss, onShow, ...attributes }: Omit<ModalProps, "children"> & { children?: Snippet } = $props();
+  let { children, onRequestClose, onDismiss, onShow, ...attributes }: Omit<ModalProps, "children"> & { children?: Snippet } & ClassProps = $props();
   function close(event: Parameters<NonNullable<ModalProps["onRequestClose"]>>[0]) {
     if (keyboard().isVisible()) keyboard().dismiss();
     else onRequestClose?.(event);

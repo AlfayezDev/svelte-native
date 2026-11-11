@@ -59,6 +59,10 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/NativeComponent/ViewConfig": "export const createViewConfig = (partial) => partial;",
   "expo-modules-core": "export const EventEmitter = class {}; export const requireOptionalNativeModule = (name) => name === 'SvelteEngine' ? { install: () => false, getInsets: () => globalThis.__navigationInsets, addListener: () => ({ remove() {} }) } : null;",
   "react-native": "export const AppRegistry = { registerRunnable() {} };",
+  // Uniwind's runtime, which `@rasheed/svelte-native/uniwind` reads: a store with no stylesheet (Metro compiles global.css, this bundle does not), so `class` adds no style here.
+  "uniwind/src/core/native": "export const UniwindStore = { getStyles: () => ({ styles: {}, dependencies: [], dependencySum: 0 }) };",
+  "uniwind/src/core/listener": "export const UniwindListener = { subscribe: () => () => {} };",
+  "uniwind/src/core/config": "export const Uniwind = { updateInsets() {} };",
 };
 
 // The options the library's transformer compiles a component with (runes mode for the app's own components), as the library's tests use them.
@@ -121,6 +125,9 @@ beforeAll(async () => {
       name: "fabric-fixture",
       setup(builder) {
         builder.onResolve({ filter: /^(react-native|expo-modules-core)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
+        builder.onResolve({ filter: /^uniwind\/src\/core\/(native|listener|config)$/ }, (args) => ({ path: args.path, namespace: "stub" }));
+        // The app's CSS file is Uniwind's to compile, in Metro.
+        builder.onResolve({ filter: /\.css$/ }, (args) => ({ path: args.path, namespace: "stub" }));
         builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? "export {};", loader: "js" }));
         builder.onResolve({ filter: /\/view-configs\.ts$/ }, () => ({ path: join(libraryTests, "view-configs-stub.ts") }));
         builder.onResolve({ filter: /^@rasheed\/svelte-native\/renderer$/ }, () => ({ path: join(library, "src/renderer.ts") }));

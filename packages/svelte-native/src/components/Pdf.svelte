@@ -2,6 +2,7 @@
   import { forwardRef } from "./forward-ref.ts";
   import { untrack, type Snippet } from "svelte";
   import type {} from "../elements.d.ts";
+  import { classStyle, type ClassProps } from "../classes.ts";
   import { createNativeProps } from "../native-props.ts";
   import { Platform, resolveAssetSource } from "../fabric/deps-rn.ts";
   import type { Commandable } from "../fabric/foreign.ts";
@@ -25,7 +26,7 @@
     source, page = 1, scale = 1, minScale = 1, maxScale = 3, horizontal = false, enablePaging = false, fitPolicy = 2, spacing = 10, password = "",
     enableRTL = false, enableAnnotationRendering = true, enableAntialiasing = true, showsHorizontalScrollIndicator = true,
     showsVerticalScrollIndicator = true, scrollEnabled = true, singlePage = false, trustAllCerts = true,
-    onLoadComplete, onPageChanged, onError, onPressLink, onPageSingleTap, onScaleChanged, loading, style, ref, ...attributes
+    onLoadComplete, onPageChanged, onError, onPressLink, onPageSingleTap, onScaleChanged, loading, style, class: className, ref, ...attributes
   }: Omit<ViewProps, "children"> & {
     source: PdfSource;
     page?: number;
@@ -57,7 +58,7 @@
     /** Receives `setPage(page)` (`host` is the view's handle), or null on unmount. */
     ref?: (handle: (PdfHandle & { host: unknown }) | null) => void;
     [prop: string]: unknown;
-  } = $props();
+  } & ClassProps = $props();
   const resolveProps = createNativeProps();
   const android = Platform.OS === "android";
   const asset = (number: number) => resolveAssetSource(number as never) as { uri?: string } | null;
@@ -96,9 +97,10 @@
     else onPressLink?.(message.url);
   };
   const hostRef = $derived(forwardRef(ref, (host: Commandable) => ({ ...pdfHandle(host), host })));
-  const nativeStyle = $derived([android ? { flex: 1, backgroundColor: "#EEE" } : { backgroundColor: "#EEE", overflow: "hidden" }, style]);
+  // The classes size the wrapper, as `style` does, and style the native view under its own style.
+  const nativeStyle = $derived([android ? { flex: 1, backgroundColor: "#EEE" } : { backgroundColor: "#EEE", overflow: "hidden" }, classStyle(className, attributes), style]);
 </script>
-<View style={[style, { overflow: "hidden" }]}>
+<View style={[style, { overflow: "hidden" }]} class={className}>
   {#if path === null}
     <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>{@render loading?.()}</View>
   {:else}

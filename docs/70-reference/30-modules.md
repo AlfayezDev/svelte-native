@@ -113,6 +113,10 @@ SvelteKit's remote functions on the device. [Loading data](loading-data#remote-f
 | `normalizeOrigin(origin)` | Checks and normalises an origin. |
 | `RemoteConfigError` | Thrown by a remote function call when no server is configured. |
 
+## @rasheed/svelte-native/uniwind
+
+Import it once, in the app shell, to make `class` work through Uniwind. It exports nothing. [Classes](styling#classes)
+
 ## @rasheed/svelte-native/updates
 
 Over-the-air updates, compatible with `eas update`: `isEnabled`, `updateId`, `channel`, `runtimeVersion`, `checkForUpdateAsync`, `fetchUpdateAsync`, `reloadAsync` and `checkOnLaunch`. [Updates](updates)

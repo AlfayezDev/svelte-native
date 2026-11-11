@@ -2,6 +2,7 @@
   import { forwardRef } from "./forward-ref.ts";
   import { onDestroy } from "svelte";
   import type {} from "../elements.d.ts";
+  import type { ClassProps } from "../classes.ts";
   import { createNativeProps } from "../native-props.ts";
   import { resolveAssetSource } from "../fabric/deps-rn.ts";
   import {
@@ -42,7 +43,7 @@
     onRenderProcessGone?: (event: Event) => void;
     onScroll?: (event: Event) => void;
     [prop: string]: unknown;
-  } = $props();
+  } & ClassProps = $props();
 
   const messagingModuleName = nextWebViewName();
   const resolveProps = createNativeProps();

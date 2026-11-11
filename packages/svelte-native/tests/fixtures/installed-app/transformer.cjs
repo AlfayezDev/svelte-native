@@ -16,7 +16,7 @@ const imports = (ast) => {
 };
 const svelte = transformer.transform({
   filename: `${root}/src/Page.svelte`,
-  // `in:` needs the library's patch to Svelte's compiler, which `require("svelte/compiler")` (Svelte's prebuilt bundle) does not have: the transformer loads the sources.
+  // `in:` is refused by the custom-renderer build of Svelte's compiler, and the app's Svelte here is the stock one (`installStockSvelte`): the transformer loads the sources and removes the refusals.
   src: '<script lang="ts">import { View, Text } from "@example/svelte-native"; import { fade } from "svelte/transition"; let n: number = $state(1);</script>\n{#if n}<View in:fade><Text>{n}</Text></View>{/if}\n',
   options,
   plugins: [],

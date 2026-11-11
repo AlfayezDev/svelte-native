@@ -63,6 +63,9 @@ beforeAll(() => {
   // The dependencies are installed with the package; the peers (those this repository has) by the app. `@expo/config-plugins` is what Expo brings to a hoisted install, and the
   // tool the Expo plugin is loaded by. `@expo/metro-config` is not linked: the transformer finds it through `expo`, which is.
   for (const name of [...installedNames(), "@expo/config-plugins"]) link(name);
+  // The app's Svelte is the stock custom-renderer build, as the guide installs it (a URL install, which pnpm does not patch), and not this repository's, which a patch has changed for
+  // Bun: the transformer has to make that compiler accept the transition directives itself.
+  installStockSvelte(app);
 
   // The native-only app. `expo-modules-core` and the two `@types` packages are what a hoisted install has at the top: the library's source imports the first (a dependency of `expo`),
   // and the app's tsconfig names the others.
@@ -79,6 +82,18 @@ beforeAll(() => {
   symlinkSync(store, join(strict, "node_modules/expo"));
   for (const name of installedNames(["expo"])) link(name, strict);
 });
+
+/** Replaces the link to this repository's Svelte by an unpacked copy of the vendored tarball (the build as published, its compiler unpatched), with the dependencies it links in `into`. */
+function installStockSvelte(into: string): void {
+  const target = join(into, "node_modules/svelte");
+  rmSync(target, { recursive: true, force: true });
+  mkdirSync(target, { recursive: true });
+  const unpack = Bun.spawnSync(["tar", "-xzf", join(repositoryRoot, "vendor/svelte-5.56.7-216f258.tgz"), "-C", target, "--strip-components=1"], { stdout: "pipe", stderr: "pipe" });
+  expect(unpack.stderr.toString() + unpack.exitCode).toMatch(/0$/);
+  const repositorySvelte = findPackage("svelte", packageDirectory)?.directory ?? "";
+  const dependencies = Object.keys((JSON.parse(readFileSync(join(target, "package.json"), "utf8")) as { dependencies: Record<string, string> }).dependencies);
+  for (const name of dependencies) if (!existsSync(join(into, "node_modules", name))) link(name, into, repositorySvelte);
+}
 
 /** The peers an app that builds for native only does not install. */
 const optionalPeers = ["@sveltejs/kit", "vite"];
@@ -145,11 +160,55 @@ describe("with plain node, from node_modules", () => {
     expect(result.rendererStub).toBe(join(installed, "src/fabric/renderer-stub.ts"));
     expect(result.initializeCore).toBe(join(installed, "src/init.ts"));
     // `svelte/*` is resolved from the entry of the svelte the app installed.
-    expect(result.svelte).toBe(`${join(findPackage("svelte", packageDirectory)?.directory ?? "", "native-entry.js")}::svelte/internal/client`);
+    expect(result.svelte).toBe(`${join(app, "node_modules/svelte/native-entry.js")}::svelte/internal/client`); // the app's own Svelte
     // The fixture names no variant: the table is the library's default, `app`.
     expect(result.routes).toBe(join(app, ".svelte-native/routes.app.ts"));
     expect(result.table).toContain("../src/routes/+mobile.svelte");
     expect(result.entry).toContain("createFabricApp");
+  });
+
+  test("control: the app's Svelte is the stock build, and its compiler refuses a transition directive on a custom renderer", () => {
+    const refusals = ["TransitionDirective.js", "AnimateDirective.js"].map((file) => readFileSync(join(app, "node_modules/svelte/src/compiler/phases/2-analyze/visitors", file), "utf8").includes("incompatible_with_custom_renderer"));
+    expect(refusals).toEqual([true, true]);
+    const result = run(["-e", `const { compile } = require(${JSON.stringify(join(app, "node_modules/svelte/src/compiler/index.js"))}); compile("<native-view in:fade></native-view>", { generate: "client", experimental: { customRenderer: "@example/svelte-native/renderer" } });`]);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("not compatible with `customRenderer`");
+  });
+
+  test("@example/svelte-native/transformer compiles in:, out:, transition: and animate: with that stock Svelte: its hook removes the refusals as the compiler loads", () => {
+    const script = join(app, "directives.cjs");
+    writeFileSync(
+      script,
+      `const transformer = require(require.resolve("@example/svelte-native/transformer"));
+const options = { dev: false, projectRoot: process.cwd(), platform: "android", hot: false, inlineRequires: false, minify: false, type: "module", unstable_transformProfile: "default", publicPath: "/assets", customTransformOptions: {} };
+const source = '<script lang="ts">import { fade, fly } from "svelte/transition"; import { flip } from "svelte/animate"; let items: number[] = $state([1]);</script>\\n<div in:fly out:fade></div><section transition:fade></section>{#each items as item (item)}<p animate:flip>{item}</p>{/each}\\n';
+const { traverseFast } = require("@babel/types");
+const { ast } = transformer.transform({ filename: process.cwd() + "/src/Directives.svelte", src: source, options, plugins: [] });
+const names = new Set();
+traverseFast(ast, (node) => { if (node.type === "MemberExpression" && node.property && node.property.name) names.add(node.property.name); });
+console.log(JSON.stringify({ transition: names.has("transition"), animation: names.has("animation") }));
+`,
+    );
+    const result = run([script]);
+    expect(result.stderr + result.exitCode).toMatch(/0$/);
+    expect(JSON.parse(result.stdout.trim().split("\n").pop() ?? "")).toEqual({ transition: true, animation: true });
+  });
+
+  test("on a Node without module.registerHooks the transformer says what it needs instead of failing on the directive", () => {
+    const preload = join(app, "no-hooks.cjs");
+    writeFileSync(preload, 'delete require("node:module").registerHooks;\n');
+    const script = join(app, "no-hooks-probe.cjs");
+    writeFileSync(
+      script,
+      `const transformer = require(require.resolve("@example/svelte-native/transformer"));
+const options = { dev: false, projectRoot: process.cwd(), platform: "android", hot: false, inlineRequires: false, minify: false, type: "module", unstable_transformProfile: "default", publicPath: "/assets", customTransformOptions: {} };
+try { transformer.transform({ filename: process.cwd() + "/src/Plain.svelte", src: "<native-view in:fade></native-view>", options, plugins: [] }); console.log("compiled"); } catch (error) { console.log(error.message); }
+`,
+    );
+    const result = run(["-r", preload, script]);
+    expect(result.stdout).toContain("module.registerHooks");
+    expect(result.stdout).toContain(`Node ${process.version.startsWith("v") ? "v" : ""}`);
+    expect(result.stdout).toContain("22.15");
   });
 
   test("@example/svelte-native/transformer: the path Metro's worker requires compiles a .svelte file and a remote module", () => {

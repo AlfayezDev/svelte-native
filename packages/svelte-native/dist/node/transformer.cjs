@@ -1,9 +1,11 @@
 "use strict";
 var __importMetaUrl = require("node:url").pathToFileURL(__filename).href;
 "use strict";
+var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __export = (target, all) => {
   for (var name in all)
@@ -17,6 +19,14 @@ var __copyProps = (to, from, except, desc) => {
   }
   return to;
 };
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // src/transformer.ts
@@ -29,10 +39,10 @@ __export(transformer_exports, {
 });
 module.exports = __toCommonJS(transformer_exports);
 var import_node_module3 = require("node:module");
-var import_node_path6 = require("node:path");
+var import_node_path7 = require("node:path");
 var import_esbuild = require("esbuild");
 var import_node_crypto = require("node:crypto");
-var import_node_fs4 = require("node:fs");
+var import_node_fs5 = require("node:fs");
 var import_parser2 = require("@babel/parser");
 var import_types = require("@babel/types");
 
@@ -2299,6 +2309,68 @@ function lowerPrimitives(content, options = {}) {
   return output;
 }
 
+// src/svelte-compiler.ts
+var nodeModule = __toESM(require("node:module"), 1);
+var import_node_fs3 = require("node:fs");
+var import_node_path3 = require("node:path");
+var import_node_url = require("node:url");
+var require2 = nodeModule.createRequire(__importMetaUrl);
+var compiler = null;
+function svelteCompiler() {
+  if (compiler) return compiler;
+  const root = (0, import_node_path3.dirname)(require2.resolve("svelte/package.json"));
+  acceptDirectivesIn(root);
+  compiler = require2((0, import_node_path3.join)(root, "src/compiler/index.js"));
+  return compiler;
+}
+var VISITORS = "src/compiler/phases/2-analyze/visitors";
+var REFUSAL = "incompatible_with_custom_renderer";
+var REFUSALS = {
+  "TransitionDirective.js": "	if (custom_renderer) {\n		const directive = node.intro && node.outro ? '`transition:`' : node.intro ? '`in:`' : '`out:`';\n		e.incompatible_with_custom_renderer(node, directive);\n	}\n\n",
+  "AnimateDirective.js": "	if (custom_renderer) {\n		e.incompatible_with_custom_renderer(node, '`animate:`');\n	}\n\n"
+};
+function acceptDirectives(file, source) {
+  if (!source.includes(REFUSAL)) return source;
+  const block = REFUSALS[file];
+  if (block === void 0) throw new Error(`${file} is not one of the Svelte files whose refusal of the transition directives is removed (${Object.keys(REFUSALS).join(", ")})`);
+  if (!source.includes(block)) {
+    throw new Error(
+      `@example/svelte-native: ${file} of the installed Svelte refuses \`transition:\`, \`in:\`, \`out:\` and \`animate:\` on a custom renderer in a form this version of the library does not know how to remove (Svelte was updated: the library is written against the custom-renderer build 5.56.7 at commit 216f258, which the guide installs).`
+    );
+  }
+  const accepted = source.replace(block, "");
+  if (accepted.includes(`${REFUSAL}(`)) throw new Error(`@example/svelte-native: ${file} of the installed Svelte refuses a directive in more than one place`);
+  return accepted;
+}
+var hookedFor;
+function acceptDirectivesIn(root) {
+  if (hookedFor !== void 0) return;
+  const needed = Object.keys(REFUSALS).map((file) => (0, import_node_fs3.realpathSync)((0, import_node_path3.join)(root, VISITORS, file))).filter((path) => (0, import_node_fs3.readFileSync)(path, "utf8").includes(REFUSAL));
+  if (needed.length === 0) return;
+  const register = nodeModule.registerHooks;
+  if (typeof register !== "function") {
+    throw new Error(
+      `@example/svelte-native: Svelte's compiler refuses \`transition:\`, \`in:\`, \`out:\` and \`animate:\` on native elements, and the Metro transformer removes the refusal as the compiler loads (\`module.registerHooks\`), which Node ${process.version} does not have: use Node 22.15 or newer (the library asks for 22.17, 24.3 or 26).`
+    );
+  }
+  register({
+    load(url, context, next) {
+      const result = next(url, context);
+      if (!url.startsWith("file:") || result.source === void 0 || result.source === null) return result;
+      let path;
+      try {
+        path = (0, import_node_fs3.realpathSync)((0, import_node_url.fileURLToPath)(url));
+      } catch {
+        return result;
+      }
+      if (!needed.includes(path)) return result;
+      const text = typeof result.source === "string" ? result.source : Buffer.from(result.source).toString("utf8");
+      return { ...result, source: acceptDirectives((0, import_node_path3.basename)(path), text) };
+    }
+  });
+  hookedFor = root;
+}
+
 // src/transformer-cache.ts
 function cacheKeyFiles(transformer, directory) {
   const files = [transformer];
@@ -2310,16 +2382,17 @@ function cacheKeyFiles(transformer, directory) {
       sourceFile("html-tags.ts"),
       ...["inline", "properties", "values", "color", "parse", "table"].map((name) => sourceFile(`css/${name}.ts`)),
       sourceFile("remote/transform.ts"),
-      sourceFile("compile-options.ts")
+      sourceFile("compile-options.ts"),
+      sourceFile("svelte-compiler.ts")
     );
   }
   return files;
 }
 
 // src/svelte-build.ts
-var import_node_fs3 = require("node:fs");
+var import_node_fs4 = require("node:fs");
 var import_node_module = require("node:module");
-var import_node_path3 = require("node:path");
+var import_node_path4 = require("node:path");
 var requiredSvelte = {
   version: "5.56.7",
   commit: "216f258068d93170a927ad4d27ee6864b0b305c5",
@@ -2335,11 +2408,11 @@ function inspectSvelte(from) {
   } catch {
     return { ok: false, version: null, directory: null, reason: "missing" };
   }
-  const directory = (0, import_node_path3.dirname)(manifestPath);
-  const manifest = JSON.parse((0, import_node_fs3.readFileSync)(manifestPath, "utf8"));
+  const directory = (0, import_node_path4.dirname)(manifestPath);
+  const manifest = JSON.parse((0, import_node_fs4.readFileSync)(manifestPath, "utf8"));
   const version = manifest.version ?? null;
   const exported = manifest.exports !== void 0 && "./renderer" in manifest.exports;
-  if (!exported || !(0, import_node_fs3.existsSync)((0, import_node_path3.join)(directory, "src/renderer/index.js"))) return { ok: false, version, directory, reason: "stock-release" };
+  if (!exported || !(0, import_node_fs4.existsSync)((0, import_node_path4.join)(directory, "src/renderer/index.js"))) return { ok: false, version, directory, reason: "stock-release" };
   return { ok: true, version: version ?? "unknown", directory };
 }
 function customRendererMessage(inspection, what) {
@@ -2357,18 +2430,18 @@ function assertCustomRenderer(what, from) {
 }
 
 // src/remote/transform.ts
-var import_node_path5 = require("node:path");
+var import_node_path6 = require("node:path");
 var import_parser = require("@babel/parser");
 
 // src/remote/kit.ts
 var import_node_module2 = require("node:module");
-var import_node_path4 = require("node:path");
-var require2 = (0, import_node_module2.createRequire)(__importMetaUrl);
+var import_node_path5 = require("node:path");
+var require3 = (0, import_node_module2.createRequire)(__importMetaUrl);
 var kitRootCache;
 function findKitRoot() {
   if (kitRootCache === void 0) {
     try {
-      kitRootCache = (0, import_node_path4.dirname)(require2.resolve("@sveltejs/kit/package.json"));
+      kitRootCache = (0, import_node_path5.dirname)(require3.resolve("@sveltejs/kit/package.json"));
     } catch {
       kitRootCache = null;
     }
@@ -2400,7 +2473,7 @@ function hash(value) {
   return (result >>> 0).toString(36);
 }
 function remoteHash(filename, root) {
-  return hash(posix((0, import_node_path5.relative)(root, filename)));
+  return hash(posix((0, import_node_path6.relative)(root, filename)));
 }
 var RemoteModuleError = class extends Error {
   constructor(filename, message, node) {
@@ -2538,22 +2611,17 @@ import { ${shadow.names.join(", ")} } from ${JSON.stringify(REMOTE_GLOBALS)};
 
 // src/transformer.ts
 var import_trace_mapping = require("@jridgewell/trace-mapping");
-var require3 = (0, import_node_module3.createRequire)(__importMetaUrl);
-var compiler = null;
-function svelteCompiler() {
-  compiler ??= require3((0, import_node_path6.join)((0, import_node_path6.dirname)(require3.resolve("svelte/package.json")), "src/compiler/index.js"));
-  return compiler;
-}
+var require4 = (0, import_node_module3.createRequire)(__importMetaUrl);
 function upstreamTransformerPath(searchFrom = [process.cwd(), __dirname]) {
   let expoManifest;
   try {
-    expoManifest = require3.resolve("expo/package.json", { paths: [...searchFrom] });
+    expoManifest = require4.resolve("expo/package.json", { paths: [...searchFrom] });
   } catch (cause) {
     throw new Error("The Metro transformer of @example/svelte-native needs `expo`, which it could not resolve (from the app's directory or from the package). Install it: `npx expo install expo`.", { cause });
   }
-  return require3.resolve("@expo/metro-config/babel-transformer", { paths: [(0, import_node_path6.dirname)(expoManifest)] });
+  return require4.resolve("@expo/metro-config/babel-transformer", { paths: [(0, import_node_path7.dirname)(expoManifest)] });
 }
-var upstream = require3(upstreamTransformerPath());
+var upstream = require4(upstreamTransformerPath());
 function sourceOf(input) {
   const { filename, src } = input;
   if (isRemoteModule(filename)) {
@@ -2632,7 +2700,7 @@ function transform(input) {
 function getCacheKey(options) {
   const files = cacheKeyFiles(__filename, __dirname);
   const hash2 = (0, import_node_crypto.createHash)("sha256");
-  for (const file of files) hash2.update((0, import_node_fs4.readFileSync)(file));
+  for (const file of files) hash2.update((0, import_node_fs5.readFileSync)(file));
   hash2.update(`runes-default:${runesDefaultEnabled()}`);
   hash2.update(`async:${asyncEnabled()}`);
   return hash2.update(upstream.getCacheKey(options)).digest("hex");

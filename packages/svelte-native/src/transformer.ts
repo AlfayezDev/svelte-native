@@ -1,6 +1,5 @@
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
-import type * as SvelteCompiler from "svelte/compiler";
+import { dirname } from "node:path";
 import { transformSync } from "esbuild";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -8,24 +7,13 @@ import { parse } from "@babel/parser";
 import { isBlockStatement, isCallExpression, isFunction, isIdentifier, isMemberExpression, traverseFast } from "@babel/types";
 import { asyncEnabled, componentOptions, lowersHtml, moduleOptions, runesDefaultEnabled } from "./compile-options.ts";
 import { lowerPrimitives } from "./lower.ts";
+import { svelteCompiler } from "./svelte-compiler.ts";
 import { cacheKeyFiles } from "./transformer-cache.ts";
 import { assertCustomRenderer } from "./svelte-build.ts";
 import { isRemoteModule, kitGlobalsImport, kitRoot, transformRemoteModule } from "./remote/transform.ts";
 import { TraceMap, originalPositionFor } from "@jridgewell/trace-mapping";
 
 const require = createRequire(import.meta.url);
-
-let compiler: typeof SvelteCompiler | null = null;
-/**
- * Svelte's compiler, loaded from its sources. Metro loads this transformer as CommonJS (`dist/node/transformer.cjs`), and under `require` the
- * `svelte/compiler` export is Svelte's prebuilt bundle (`compiler/index.js`). The library's patch (`patches/svelte@5.56.7.patch`, which lets the compiler
- * accept `transition:`, `in:`, `out:` and `animate:` with a custom renderer) changes the sources, so the bundle would still refuse those directives.
- * `import` resolves the export to the sources, so only a CommonJS load shows the difference (`tests/node-modules.test.ts`). Node `require`s an ES module from 22.12.
- */
-function svelteCompiler(): typeof SvelteCompiler {
-  compiler ??= require(join(dirname(require.resolve("svelte/package.json")), "src/compiler/index.js")) as typeof SvelteCompiler;
-  return compiler;
-}
 
 /**
  * `@expo/metro-config/babel-transformer`, which this transformer wraps. `@expo/metro-config` is a dependency of `expo`, and of neither the app nor

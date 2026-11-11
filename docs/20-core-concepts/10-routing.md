@@ -185,14 +185,14 @@ The header's back button, the iOS edge swipe and Android's back button go back w
 
 A heavy screen takes a while to mount on the JavaScript thread, and a tap waits for it. `router.prepare` does that work while the finger is still down, so that lifting it only puts the finished screen on the stack. It builds on Svelte's `fork()`, which Svelte marks experimental, and on Svelte's async mode, which Svelte Native leaves off. Both may change, and so may `prepare`.
 
-Turn async mode on by importing its flag before the app mounts, at the top of the root layout:
+Turn async mode on in the Metro config:
 
-```svelte
-<!--- file: src/routes/+layout.mobile.svelte --->
-<script module>
-	import 'svelte/internal/flags/async';
-</script>
+```js
+/// file: metro.config.cjs
+module.exports = withSvelteNative(getDefaultConfig(__dirname), { async: true });
 ```
+
+With the option every Svelte file Metro compiles, yours, the library's and your dependencies', is compiled with Svelte's `experimental.async`. Svelte's async mode is one switch for the whole app, and the option sets it for all files at once. It also lets a component use `await` in `$derived`, in the markup and at the top of its script. If the app builds for the web with `svelteNative()` in `vite.config.ts`, give it `async: true` as well, so a shared component compiles the same way on both targets (on the web, `kit.compilerOptions.experimental.async` in your own config wins). A prebuilt Svelte package that was compiled with the option turns the mode on for the whole app by itself, even without yours.
 
 Then prepare on the finger going down, commit on the tap and discard when the finger leaves without one:
 

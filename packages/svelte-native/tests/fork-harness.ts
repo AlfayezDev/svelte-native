@@ -11,13 +11,11 @@ import { reanimatedStubs } from "./reanimated-stubs.ts";
 import { reactNativeConverters } from "./rn-reference.ts";
 
 /**
- * The harness of `fork.test.ts`: a bundle of the renderer, the Fabric host and a fixture, with Svelte's async mode on, which `fork()` needs and which the library leaves off
- * (`compile-options.ts`). The components are compiled with the library's own options and the bundle imports the flag module first, which is how an app turns the mode on
- * (`svelte/internal/flags/async`); `compiled: true` compiles every component with `experimental.async` instead (the same output but for that one import, `fork.test.ts`).
- * The bundle carries its own copy of Svelte's runtime, so the flag stays in that bundle and no other test's runtime sees it.
- *
- * The host runs against a fake of `nativeFabricUIManager` that records every call, as `fabric.test.ts` does, so a test can tell what Fabric was asked to build and when.
- */
+ * The harness of `fork.test.ts`: a bundle of the renderer, the Fabric host and a fixture, with Svelte's async mode on, which `fork()` needs and which the library leaves off unless the app
+ * asks (`withSvelteNative(config, { async: true })`, `compile-options.ts`). By default the components are compiled with the library's own options and the bundle imports the flag module first,
+ * the one thing the option adds to a component without an `await`; `compiled: true` compiles every component with `experimental.async`, which is what the option does (the same output but for
+ * that import, `fork.test.ts`), and a function chooses the files, for a bundle in which only some are. The bundle carries its own copy of Svelte's runtime, so the flag stays in that bundle
+ * and no other test's runtime sees it. */
 export type FakeNode = { tag: number; name: string; props: Record<string, unknown>; children: FakeNode[]; target?: unknown };
 export const fabric = { calls: [] as string[], roots: {} as Record<number, FakeNode[]> };
 const fake = {
@@ -70,7 +68,7 @@ export type ForkModule = {
 const flags = resolve(dirname(createRequire(import.meta.url).resolve("svelte/package.json")), "src/internal/flags/index.js");
 
 /** Bundles the fixture with async mode on (`async: false` is the control: the same bundle without the flag). */
-export async function loadFork(fixture: string, { async = true, compiled = false, realConfigs = false }: { async?: boolean; compiled?: boolean; realConfigs?: boolean } = {}): Promise<ForkModule> {
+export async function loadFork(fixture: string, { async = true, compiled = false, realConfigs = false }: { async?: boolean; compiled?: boolean | ((path: string) => boolean); realConfigs?: boolean } = {}): Promise<ForkModule> {
   const bundle = await build({
     stdin: {
       contents: `${async ? "import 'svelte/internal/flags/async';" : ""}
@@ -96,7 +94,7 @@ export async function loadFork(fixture: string, { async = true, compiled = false
         builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../src/environment.ts") }));
         builder.onLoad({ filter: /\.svelte$/ }, async ({ path }) => {
           const options = componentOptions(path);
-          const experimental = compiled ? { ...options.experimental, async: true } : options.experimental;
+          const experimental = (typeof compiled === "function" ? compiled(path) : compiled) ? { ...options.experimental, async: true } : options.experimental;
           return { contents: compile(await readFile(path, "utf8"), { ...options, experimental }).js.code, loader: "js" };
         });
         builder.onLoad({ filter: /\.svelte\.ts$/ }, async ({ path }) => {

@@ -45,6 +45,29 @@ export const clear = (pixel: number): boolean => argb(pixel).a <= 4;
 export const solid = (pixel: number): boolean => argb(pixel).a >= 250;
 
 /**
+ * How the built-in blur's checks read a stripe edge (`foreign-libraries-checks.ts`, `svelteblur`). [colors] are the pixels of a capture at four points on a row across the edge between
+ * two stripes: [outer left, inner left, inner right, outer right], the inner pair a little way from the edge on each side (about 4 dp for a 300 dp box) and the outer pair further out
+ * (about 21 dp). `near` is how far apart the inner pair looks and `far` the outer pair (the largest difference of one colour channel, 0 to 255).
+ *  - A hard edge (nothing over it) has both pairs straddling the line: `near` equals `far`, and with the red and yellow of the lab both are 145.
+ *  - A Gaussian blur of radius r smears the line over about 2 r: with r = 25 dp (intensity 100 on Android) the inner pair is 0.12 of the step apart and the outer pair 0.60, so `near` is a fifth of `far`,
+ *    whatever the tint takes off the contrast of both. The check asks for half, which a blur of 8 dp already gives.
+ *  - A tint alone (Android below 12, which draws it where it cannot blur) keeps the line and lowers the contrast: `near` still equals `far`.
+ */
+export type EdgeRead = { near: number; far: number };
+export function readEdge(colors: readonly number[]): EdgeRead {
+  const [outerLeft = 0, innerLeft = 0, innerRight = 0, outerRight = 0] = colors;
+  return { near: distance(argb(innerLeft), argb(innerRight)), far: distance(argb(outerLeft), argb(outerRight)) };
+}
+/** A hard edge in the stripes' own colours: both pairs are a full step apart (the red and yellow differ by 145). */
+export const edgeHard = (read: EdgeRead): boolean => read.near >= 100 && read.near >= read.far * 0.85;
+/** A gradual edge: some step is there at all (the outer pair differs by 10 or more) and the inner pair sees at most half of it. */
+export const edgeGradual = (read: EdgeRead): boolean => read.far >= 10 && read.near <= read.far * 0.5;
+/** A hard edge under a light tint (Android below 12 draws no blur): the line is there (20 or more, the tint takes up to three quarters of 145) and the red stripe's green (72) has been lifted towards white. */
+export const edgeUnderTint = (colors: readonly number[], read: EdgeRead): boolean => read.near >= 20 && read.near >= read.far * 0.85 && argb(colors[0] ?? 0).g > 140;
+/** The sum of a pixel's red, green and blue: a light tint over a stripe is far above a dark one. */
+export const brightness = (pixel: number): number => { const { r, g, b } = argb(pixel); return r + g + b; };
+
+/**
  * The first number in a text (`count 23` -> 23), or null: the animated text's native string is read as a number to say whether it advanced.
  */
 export function numberIn(text: string | null | undefined): number | null {

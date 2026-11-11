@@ -1,5 +1,5 @@
 /**
- * The checks of the native-view libraries (SPEC.md, "Foreign views", "Device verification of the libraries"): for each of the thirteen, what must
+ * The checks of the native-view libraries (SPEC.md, "Foreign views", "Device verification of the libraries"): for each of the fourteen (the thirteen libraries and the built-in blur), what must
  * hold on a device in the three places the lab mounts it (inline, in a row of the windowed `List`, in a native sheet). Each check reads the answer
  * from the platform where it can: the class Android built and its size (`SvelteEngine.inspect`), the pixels of a capture of the section
  * (`captureRef`, then `SvelteQaPixels.sample`), an event the library raised, a command's own result, the text the native view holds. A check
@@ -11,7 +11,7 @@ import { dismissDatePicker, openDatePicker, captureRef, releaseCapture, type Cap
 import { tick } from "svelte";
 import type { Host, LibraryHandles, LibraryKind } from "./LibrarySet.svelte";
 import { libraryLab } from "./foreign.svelte.ts";
-import { argb, arrivedInOrder, clear, near, numberIn, riveBackdrop, riveFitDetail, riveFitPainted, riveMiddle, riveSides, show, solid, tookNote, untilTaken, type RiveFit } from "./foreign-pixels.ts";
+import { argb, arrivedInOrder, brightness, clear, edgeGradual, edgeHard, edgeUnderTint, near, numberIn, readEdge, riveBackdrop, riveFitDetail, riveFitPainted, riveMiddle, riveSides, show, solid, tookNote, untilTaken, type EdgeRead, type RiveFit } from "./foreign-pixels.ts";
 import { pins, resolvePin, type Pinned } from "./foreign-pins.ts";
 import { runRace, type Race } from "./foreign-race.ts";
 
@@ -54,6 +54,8 @@ export type Ctx = {
   readonly canLook: boolean;
   /** The platform can press the screen at a point (the engine's `tap`: Android). A press needs a finger elsewhere: the iPhone has none that the lab can use. */
   readonly canTap: boolean;
+  /** The platform blurs what is drawn behind a view: iOS always, Android from API 31 (below it the built-in `BlurView` draws a stronger tint and blurs nothing). */
+  readonly canBlur: boolean;
   /**
    * iOS: the `UIDatePicker` of the date picker section, read (`read`), given a pick the way UIKit reports one (`change` to [milliseconds]: the date, then `valueChanged`) or told its editing
    * ended (`dismiss`: `editingDidEnd`). The answer is what the picker holds afterwards; null where the platform has no such picker.
@@ -247,6 +249,86 @@ async function blur(c: Ctx): Promise<void> {
     c.check("prop update: intensity 100 pulls the two sides of a stripe edge together, intensity 1 leaves them apart", !!weak && !!strong && strong.spread < weak.spread * 0.6, `intensity 1 ${weak?.text} (${weak?.spread}), intensity 100 ${strong?.text} (${strong?.spread})`);
   } catch (error) {
     c.check("prop update: the blur smears a stripe edge in proportion to its intensity", false, String(error));
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------
+// BlurView, the library's own (SvelteBlur, `native/svelte-blur`): the stripes of expo-blur's section sit behind it (an earlier sibling), its box is inset 24 dp at the sides and 14 dp at the top and bottom, and a solid
+// label chip is its child. A capture of the box is what the blur's contract looks like: a stripe edge under the view is a gradual transition and one above it a line, `intensity` and `tint` change what is read,
+// the view follows what is behind it, and the child is on top. On Android 12 and up the capture is the GPU frame of the box, which holds the blur (a RenderEffect); below it the view draws a tint and nothing is blurred.
+// On the emulator (software GL) the blur is as right and slower: every reading is taken again every 400 ms until it shows what was asked or 5 s (10 in a row) have passed, like the other pixel checks.
+
+/** The row across the red | yellow edge at height [y] (fractions of the box): the four points `readEdge` reads. */
+const edgeRow = (y: number): [number, number][] => [[0.2 - 0.07, y], [0.2 - 0.012, y], [0.2 + 0.012, y], [0.2 + 0.07, y]];
+const stripesAre = (look: Look): boolean => near(pixel(look, 0), "#e5484d") && near(pixel(look, 3), "#f5d90a");
+
+async function svelteblur(c: Ctx): Promise<void> {
+  await mounts(c, pins.svelteblur);
+  if (!c.canLook) { c.skip("a capture of the stripes shows the blur, its intensity and tint, what is behind it and what is on top", "no pixel reader on this platform yet"); return; }
+  type Reading = { look: Look; edge: EdgeRead; note: string };
+  /** The row across the edge at height [y], captured again until [wanted] holds for it (or the time is up): what the last capture shows, or why there is none. */
+  const read = async (y: number, wanted: (look: Look, edge: EdgeRead) => boolean): Promise<{ reading: Reading | null; failure: string }> => {
+    const { seen, calls, waited, failure } = await lookUntil(c, edgeRow(y), undefined, (look) => wanted(look, readEdge(look.colors)), paintMs(c));
+    return { reading: seen ? { look: seen, edge: readEdge(seen.colors), note: calls > 1 ? ` | ${tookNote(calls, waited)}` : "" } : null, failure };
+  };
+  const say = ({ reading, failure }: { reading: Reading | null; failure: string }): string => (reading ? `${reading.look.colors.map(show).join(" ")} (near ${reading.edge.near}, far ${reading.edge.far})${reading.note}` : failure);
+  /** A prop of the section changed: the engine and the native view need a frame or two before a capture can show it. */
+  const changed = (change: () => void): Promise<void> => { change(); return c.pause(400); };
+  // Below the chip and inside the blur box (it spans 14 % to 86 % of the height); above the box (6 %) nothing is over the stripes.
+  const inside = 0.78;
+  try {
+    const outside = await read(0.06, (look, edge) => edgeHard(edge) && stripesAre(look));
+    c.check("the stripe edge outside the blur is sharp (red next to yellow, as drawn)", !!outside.reading && edgeHard(outside.reading.edge) && stripesAre(outside.reading.look), say(outside));
+
+    await changed(() => { c.lab.svelteBlurIntensity = 0; });
+    const off = await read(inside, (look, edge) => edgeHard(edge) && stripesAre(look));
+    c.check("intensity 0 draws nothing over the stripes: the edge under the view is as sharp as outside it", !!off.reading && edgeHard(off.reading.edge) && stripesAre(off.reading.look), say(off));
+
+    await changed(() => { c.lab.svelteBlurIntensity = 100; });
+    const full = await read(inside, (look, edge) => (c.canBlur ? edgeGradual(edge) : edgeUnderTint(look.colors, edge)));
+    c.check("intensity 100: the stripe edge under the blur is a gradual transition (below Android 12 nothing is blurred: the line stays, under a light tint)",
+      !!full.reading && (c.canBlur ? edgeGradual(full.reading.edge) : edgeUnderTint(full.reading.look.colors, full.reading.edge)), `${c.canBlur ? "blur" : "tint only"}: ${say(full)}`);
+
+    await changed(() => { c.lab.svelteBlurIntensity = 1; });
+    const weak = await read(inside, (_, edge) => edge.near >= 60);
+    c.check("prop update: intensity 100 pulls the two sides of the edge together, intensity 1 leaves them apart",
+      !!weak.reading && !!full.reading && weak.reading.edge.near >= 60 && full.reading.edge.near < weak.reading.edge.near * 0.6, `intensity 1: ${say(weak)} | intensity 100: ${say(full)}`);
+
+    // The same stripe (yellow, a third of the way across) under the light tint and under the dark one, at full strength. Each is captured until it looks like its tint (a light one lifts the yellow's
+    // channels far above a dark one's), because the first capture after a change may still show the one before.
+    const yellow: [number, number][] = [[0.3, inside]];
+    await changed(() => { c.lab.svelteBlurIntensity = 100; c.lab.svelteBlurTint = "light"; });
+    const light = await lookUntil(c, yellow, undefined, (look) => brightness(pixel(look, 0)) > 450, paintMs(c));
+    const lightness = light.seen ? brightness(pixel(light.seen, 0)) : null;
+    await changed(() => { c.lab.svelteBlurTint = "dark"; });
+    const dark = await lookUntil(c, yellow, undefined, (look) => lightness !== null && brightness(pixel(look, 0)) <= lightness - 150, paintMs(c));
+    const darkness = dark.seen ? brightness(pixel(dark.seen, 0)) : null;
+    c.check("prop update: the dark tint is darker than the light tint over the same stripe", lightness !== null && lightness > 450 && darkness !== null && lightness - darkness >= 150,
+      `light ${light.seen ? at(light.seen, 0) : light.failure}, dark ${dark.seen ? at(dark.seen, 0) : dark.failure}`);
+
+    // What is behind the blur changes (the first stripe, red, turns blue): the view shows it. Each side is captured until it looks like its stripe under the light tint (red, then blue; a capture of the dark tint that came before it is not one), for the same reason.
+    const first: [number, number][] = [[0.13, inside]];
+    const channels = (look: Look | null) => (look ? argb(pixel(look, 0)) : null);
+    const redish = (look: Look) => { const colour = argb(pixel(look, 0)); return colour.r > colour.b + 40 && brightness(pixel(look, 0)) > 450; };
+    const bluish = (look: Look) => { const colour = argb(pixel(look, 0)); return colour.b > colour.r + 40 && brightness(pixel(look, 0)) > 450; };
+    await changed(() => { c.lab.svelteBlurIntensity = 70; c.lab.svelteBlurTint = "light"; c.lab.svelteBlurStripe = "#e5484d"; });
+    const was = await lookUntil(c, first, undefined, redish, paintMs(c));
+    await changed(() => { c.lab.svelteBlurStripe = "#0091ff"; });
+    const now = await lookUntil(c, first, undefined, bluish, paintMs(c));
+    const wasColour = channels(was.seen);
+    const nowColour = channels(now.seen);
+    c.check("the blur follows what is behind it: a new colour of the stripe shows through",
+      !!wasColour && !!nowColour && !!was.seen && !!now.seen && redish(was.seen) && bluish(now.seen) && wasColour.r - nowColour.r >= 50 && nowColour.b - wasColour.b >= 50,
+      `${was.seen ? at(was.seen, 0) : was.failure} -> ${now.seen ? at(now.seen, 0) : now.failure}`);
+
+    // The label chip is the blur's child: it is drawn above the blur and the tint, so its own colour is in the capture.
+    const chip = c.handles().extras.chip;
+    const left = chip ? await c.point(chip, 0.08, 0.5) : null;
+    const right = chip ? await c.point(chip, 0.92, 0.5) : null;
+    if (!left || !right) c.check("the children are on top of the blur: the label chip keeps its own colour", false, `no layout for the chip: ${JSON.stringify(left)} ${JSON.stringify(right)}`);
+    else await colours(c, "the children are on top of the blur: the label chip keeps its own colour", [left, right], ["#191b1e", "#191b1e"], 30, undefined, { ms: paintMs(c), explain: () => "a light tint over it would lift every channel by 60 or more" });
+  } catch (error) {
+    c.check("the capture checks of the blur ran to the end", false, String(error));
   }
 }
 
@@ -856,5 +938,5 @@ async function svg(c: Ctx): Promise<void> {
 }
 
 export const libraryChecks: Record<LibraryKind, (c: Ctx) => Promise<void>> = {
-  image, blur, gradient, video, datetime, lottie, pdf, capture, rive, conic, shadow, text, svg,
+  image, blur, svelteblur, gradient, video, datetime, lottie, pdf, capture, rive, conic, shadow, text, svg,
 };

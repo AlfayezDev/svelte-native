@@ -33,6 +33,8 @@ export async function foreignPins(platform: Platform): Promise<ForeignPins> {
 export const libraryModules: Record<string, RegExp[]> = {
 	image: [/\/node_modules\/expo-image\//],
 	blur: [/\/node_modules\/expo-blur\//],
+	// The library's own blur needs no package: the bundle that carries its section must not carry expo-blur's JavaScript either (the `blur` entry above says so for expo-blur's own section; both read the same modules).
+	svelteblur: [/\/node_modules\/expo-blur\//],
 	gradient: [/\/node_modules\/expo-linear-gradient\//],
 	video: [/\/node_modules\/react-native-video\//],
 	datetime: [/\/node_modules\/@react-native-community\/datetimepicker\//],

@@ -130,6 +130,13 @@ const labModule = /^apps\/qa\/src\/(?:lib\/native\/dev|routes\/__dev)\//;
 const stubModule = /^apps\/qa\/\.svelte-native\/stubs\//;
 /** The generated route table of a variant: each bundle has its own variant's and no other (`.svelte-native/routes.<variant>.ts`). */
 const tableModule = /^apps\/qa\/\.svelte-native\/routes\.[^/]+\.ts$/;
+/**
+ * The generated class table of a variant (`.svelte-native/classes.<variant>.ts`, the `css` option of `metro.config.cjs`): the lab's own classes are what the checks of the native checks lab read, so the QA app and the smoke app
+ * have a table and the product, which has no lab and no class, has none (`css` is off for it).
+ */
+const classTable = /^apps\/qa\/\.svelte-native\/classes\.[^/]+\.ts$/;
+/** What the product has in the class table's place: the library's own empty table (an app with no `css` option). */
+const emptyClassTable = "packages/svelte-native/src/css/empty-table.ts";
 /** What only the lab may bring along: its assets, the workspace package (the foreign view wrappers) and the libraries. */
 const labDependency = /^(?:apps\/qa\/assets\/native\/lab\/|packages\/svelte-native\/|node_modules\/)|\/node_modules\//;
 
@@ -159,9 +166,13 @@ describe("the development lab", () => {
 		// Each has the route table of its own variant, and only that one.
 		expect([...product].filter((module) => tableModule.test(module))).toEqual(["apps/qa/.svelte-native/routes.production.ts"]);
 		expect([...qa].filter((module) => tableModule.test(module))).toEqual(["apps/qa/.svelte-native/routes.qa.ts"]);
-		const missing = [...product].filter((module) => !qa.has(module) && !stubModule.test(module) && !tableModule.test(module));
+		// The class table is the lab's too: the QA app has its own variant's, the product none.
+		expect([...product].filter((module) => classTable.test(module))).toEqual([]);
+		expect([...qa].filter((module) => classTable.test(module))).toEqual(["apps/qa/.svelte-native/classes.qa.ts"]);
+		expect([product.has(emptyClassTable), qa.has(emptyClassTable)]).toEqual([true, false]);
+		const missing = [...product].filter((module) => !qa.has(module) && !stubModule.test(module) && !tableModule.test(module) && module !== emptyClassTable);
 		expect(missing).toEqual([]);
-		const lab = [...qa].filter((module) => !product.has(module) && !stubModule.test(module) && !tableModule.test(module));
+		const lab = [...qa].filter((module) => !product.has(module) && !stubModule.test(module) && !tableModule.test(module) && !classTable.test(module));
 		// No module of the app outside the lab is only in the QA app, and the product has none of the lab's own modules.
 		expect(lab.filter((module) => !labModule.test(module) && !labDependency.test(module))).toEqual([]);
 		expect(lab.filter((module) => labModule.test(module)).length).toBe([...qa].filter((module) => labModule.test(module)).length);
@@ -213,6 +224,7 @@ describe("the development lab", () => {
 		expect(qa - product).toBeGreaterThan(900_000);
 		const smoke = new Set(bundled("smoke").modules);
 		expect([...smoke].filter((module) => tableModule.test(module))).toEqual(["apps/qa/.svelte-native/routes.smoke.ts"]);
-		expect(bundled("").modules.filter((module) => !smoke.has(module) && !stubModule.test(module) && !tableModule.test(module))).toEqual([]);
+		expect([...smoke].filter((module) => classTable.test(module))).toEqual(["apps/qa/.svelte-native/classes.smoke.ts"]);
+		expect(bundled("").modules.filter((module) => !smoke.has(module) && !stubModule.test(module) && !tableModule.test(module) && !classTable.test(module))).toEqual([]);
 	}, 120_000);
 });

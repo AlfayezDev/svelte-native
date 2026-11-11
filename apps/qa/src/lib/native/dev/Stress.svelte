@@ -138,7 +138,7 @@
       return { collected, allocated: stats.js_allocatedBytes ?? -1, heapSize: stats.js_heapSize ?? -1, malloc: stats.js_mallocSizeEstimate ?? -1, va: stats.js_vaSize ?? -1, gcs: stats.js_numGCs ?? -1 };
     });
   }
-  /** `run=foreign-libraries,only:image.blur`: the libraries `foreign-libraries` checks (the thirteen when absent). */
+  /** `run=foreign-libraries,only:image.blur`: the libraries `foreign-libraries` checks (the fourteen when absent). */
   let foreignOnly: LibraryKind[] | undefined;
   /** `run=foreign-leftovers,expect:6`: how many capture files the earlier launch must have left for this one to find gone (0 without the capture library). */
   let leftoverFiles = 0;
@@ -609,7 +609,7 @@
       const { frames, value } = await measure(() => runForeignViews(router, signal));
       return { verdict: value.passed ? "pass" : "fail", summary: `${value.summary} · ${describe(frames)}`, frames, detail: value.detail };
     } },
-    { name: "foreign-libraries", label: "Native-view libraries (thirteen) inline, in a list row and in a sheet: mounts, prop updates, events, commands, pixels of a capture (`run=foreign-libraries`, `only:<library>.<library>` after it narrows it)", async run(signal) {
+    { name: "foreign-libraries", label: "Native-view libraries (fourteen) inline, in a list row and in a sheet: mounts, prop updates, events, commands, pixels of a capture (`run=foreign-libraries`, `only:<library>.<library>` after it narrows it)", async run(signal) {
       const value = await runForeignLibraries(router, signal, foreignOnly, gestureDrive === "adb");
       return { verdict: value.passed ? "pass" : "fail", summary: value.summary, detail: value.detail };
     } },

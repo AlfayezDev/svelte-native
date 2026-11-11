@@ -22,7 +22,9 @@ Notable changes to `@example/svelte-native`, newest first. The format follows [K
 - Android: a `Text`, an `Image` or an `ActivityIndicator` with a press handler ran it twice per tap (the touch's press, then a second one from Android's click when the finger lifted). It runs once.
 - A press whose node is unmounted while the finger is down no longer runs the node's handlers when the finger lifts, and a press whose end never arrives (native drops the touches of a deleted node) no longer leaves the next touch without a responder.
 
-These are changes in the native engine, so the native host has to be rebuilt.
+- A `Text`, `View` or `Pressable` whose `onPress` (or another press handler) is `undefined` (`onPress={enabled ? go : undefined}`) no longer keeps the press from the nearest ancestor that has a handler: Svelte compiled it to an event listener that stayed on the element and did nothing, and the host took the element for a pressable. The lowering now passes a press handler that is not a function written in place as the attribute `nativeOnPress` (and `nativeOnPressIn`, ...), which is the prop only while it is a function. A hand-written `native-*` tag keeps the old behaviour unless it uses these attributes.
+
+The first three are changes in the native engine, so the native host has to be rebuilt.
 
 ## 0.4.0-rc.3 - 2026-11-10
 

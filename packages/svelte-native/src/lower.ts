@@ -29,6 +29,15 @@ export const LOWERED_TAGS: Record<string, string> = {
 type Node = { type: string; start: number; end: number; [key: string]: any }; // eslint-disable-line @typescript-eslint/no-explicit-any
 type Edit = { start: number; end: number; text: string };
 
+/**
+ * The press handlers of a lowered tag. Svelte compiles `onPress={enabled ? go : undefined}` to an event listener that stays on the node for good and calls whatever
+ * the expression is now, which is nothing when it is `undefined`: the host sees a listener and takes the node for a pressable that does nothing, which keeps the
+ * gesture from the nearest ancestor that has a handler (as in React Native, where a `Text` or `View` with no handler is no responder). So a handler that is not
+ * written as a function (it may be `undefined`) is passed as an attribute, `nativeOnPress`, which the host reads as the prop `onPress` and which is there only
+ * while it is a function. A function written in place is always one and stays an event.
+ */
+const PRESS_HANDLERS = new Set(["onPress", "onPressIn", "onPressOut", "onLongPress", "onPressChange"]);
+
 const WARN_DIRECTIVES = new Set(["UseDirective", "TransitionDirective", "AnimateDirective"]);
 
 // The entry of react-native-svg exports a `Text` and an `Image` of its own (SVG elements, not the primitives): nothing imported from it is lowered.
@@ -80,6 +89,11 @@ function classExpression(content: string, attribute: Node): string {
     template += part.type === "Text" ? part.data.replace(/[`\\]/g, (match: string) => `\\${match}`) : `\${(${content.slice(part.expression.start, part.expression.end)}) ?? ""}`;
   }
   return `${template}\``;
+}
+
+/** A function written where it is used: an arrow or a `function`, which is a handler whenever it is read. */
+function isFunctionLiteral(expression: Node): boolean {
+  return expression.type === "ArrowFunctionExpression" || expression.type === "FunctionExpression";
 }
 
 /** True when an attribute expression could evaluate to a function (a literal, an object, an array or an operator's result cannot). */
@@ -173,6 +187,14 @@ export function lowerPrimitives(content: string, options: LowerOptions = {}): st
         // A shorthand `{ref}` is `ref={ref}` once its value is a call.
         if (content[attribute.start] === "{") edits.push({ start: attribute.start, end: attribute.start, text: `${attribute.name}=` });
         wrap(attribute.value.expression, VALUE_HELPER);
+      }
+      // A press handler that may be `undefined` (no spread on the tag: through `set_attributes` a nullish handler removes its listener as it should).
+      if (!spreads && attribute.type === "Attribute" && PRESS_HANDLERS.has(attribute.name) && attribute.value !== true && !Array.isArray(attribute.value)
+        && attribute.value.type === "ExpressionTag" && !isFunctionLiteral(attribute.value.expression)) {
+        const renamed = `native${attribute.name[0].toUpperCase()}${attribute.name.slice(1)}`;
+        // A shorthand `{onPress}` keeps its braces and gains the name.
+        if (content[attribute.start] === "{") edits.push({ start: attribute.start, end: attribute.start, text: `${renamed}=` });
+        else edits.push({ start: attribute.start, end: attribute.start + attribute.name.length, text: renamed });
       }
       // Svelte compiles a `style` attribute on any element to `set_style`, which stringifies the object before the
       // renderer sees it; the hosts read the object from `nativeStyle` instead.

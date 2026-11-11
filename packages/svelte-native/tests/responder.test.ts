@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { compile } from "svelte/compiler";
 import { componentOptions } from "../src/compile-options.ts";
+import { lowerPrimitives } from "../src/lower.ts";
 import { reanimatedStubs } from "./reanimated-stubs.ts";
 
 type FakeNode = { tag: number; name: string; props: Record<string, unknown>; children: FakeNode[]; sealed: boolean; target?: unknown };
@@ -45,6 +46,7 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/Components/View/ViewNativeComponent": "export {};",
   "react-native/Libraries/Text/TextNativeComponent": "export {};",
   "react-native/Libraries/Components/ScrollView/ScrollViewNativeComponent": "export {};",
+  "@example/svelte-native": "export const View = null, Text = null, Pressable = null;", // the fixture imports the primitives to be lowered; nothing of them is left to run
   "expo-modules-core": "export const requireOptionalNativeModule = () => null;",
   "react-native": "export const AppRegistry = { registerRunnable() {} };",
 };
@@ -64,10 +66,12 @@ async function load() {
       setup(builder) {
         builder.onResolve({ filter: /^(react-native|expo-modules-core)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
         builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? "export {};", loader: "js" }));
+        builder.onResolve({ filter: /^@example\/svelte-native$/ }, (args) => ({ path: args.path, namespace: "stub" }));
         builder.onResolve({ filter: /^@example\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
         builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../src/environment.ts") }));
         builder.onLoad({ filter: /\.svelte$/ }, async ({ path }) => ({
-          contents: compile(await readFile(path, "utf8"), componentOptions(path)).js.code,
+          // As the app's build does: the primitives imported from the package are lowered to host tags before the compile.
+          contents: compile(lowerPrimitives(await readFile(path, "utf8"), { filename: path, warn: () => {} }), componentOptions(path)).js.code,
           loader: "js",
         }));
       },
@@ -100,7 +104,7 @@ async function setup() {
   const log: string[] = [];
   const events: unknown[] = [];
   const root = nextRoot++;
-  const app = m.startSurface(root, m.Fixture, { log: (entry: string) => log.push(entry), events }) as { setSlop: (n: number) => void; isPressed: () => boolean; removePress: () => void; hideEphemeral: () => void; removeStrip: () => void };
+  const app = m.startSurface(root, m.Fixture, { log: (entry: string) => log.push(entry), events }) as { setSlop: (n: number) => void; isPressed: () => boolean; removePress: () => void; hideEphemeral: () => void; removeStrip: () => void; setGate: (open: boolean) => void };
   const all = (nodes: FakeNode[]): FakeNode[] => nodes.flatMap((n) => [n, ...all(n.children)]);
   const nodeOf = (id: string) => {
     const node = all(roots[root]).find((n) => n.props.testID === id);
@@ -611,4 +615,66 @@ test("a nested Text with a long press and no press: a tap is nothing, and does n
   t.send("longParagraph", "topTouchStart");
   t.send("longParagraph", "topTouchEnd");
   expect(t.log).toEqual(["longOnly.long", "longPara.press"]); // the paragraph itself still presses
+});
+
+// A press handler written as an expression that may be `undefined` (`onPress={enabled ? go : undefined}`). Svelte compiles that to an event listener that is on the node for good,
+// so the node looked like a pressable that does nothing and kept the press from the nearest ancestor that has a handler; the lowering passes it as a prop that is there only while
+// it is a function.
+
+test("a nested Text whose onPress is undefined is no responder: the press goes to the Text around it; with a function again it is its own", async () => {
+  jest.useFakeTimers();
+  const t = await setup();
+  t.send("gatedSpan", "topTouchStart");
+  t.send("gatedSpan", "topTouchEnd");
+  jest.advanceTimersByTime(200);
+  expect(t.log).toEqual(["gatedSpan.in", "gatedSpan.press"]);
+  t.log.length = 0;
+  t.app.setGate(false);
+  await t.settle();
+  t.send("gatedSpan", "topTouchStart");
+  t.send("gatedSpan", "topTouchEnd");
+  jest.advanceTimersByTime(200);
+  expect(t.log).toEqual(["gateParagraph.press"]);
+  t.log.length = 0;
+  t.app.setGate(true);
+  await t.settle();
+  t.send("gatedSpan", "topTouchStart");
+  t.send("gatedSpan", "topTouchEnd");
+  jest.advanceTimersByTime(200);
+  expect(t.log).toEqual(["gatedSpan.in", "gatedSpan.press"]);
+});
+
+test("a Text, a View and a Pressable whose onPress is undefined are no responder: the press goes to the View around them", async () => {
+  jest.useFakeTimers();
+  const t = await setup();
+  for (const id of ["gatedText", "gatedView", "gatedPressable"]) {
+    t.send(id, "topTouchStart");
+    t.send(id, "topTouchEnd");
+    expect(t.log).toEqual([`${id}.press`]);
+    t.log.length = 0;
+  }
+  t.app.setGate(false);
+  await t.settle();
+  for (const id of ["gatedText", "gatedView", "gatedPressable"]) {
+    t.send(id, "topTouchStart");
+    t.send(id, "topTouchEnd");
+    expect(t.log).toEqual(["gateRoot.press"]);
+    t.log.length = 0;
+  }
+  // Nor does a long press with no function: a hold is no long press, and the press is the View's.
+  t.send("gatedText", "topTouchStart");
+  jest.advanceTimersByTime(1000);
+  t.send("gatedText", "topTouchEnd");
+  expect(t.log).toEqual(["gateRoot.press"]);
+});
+
+test("an accessibility click on a node whose onPress is undefined goes to the nearest ancestor that has one", async () => {
+  const t = await setup();
+  emit(t.nodeOf("gatedSpan"), "topClick", {});
+  expect(t.log).toEqual(["gatedSpan.press"]);
+  t.log.length = 0;
+  t.app.setGate(false);
+  await t.settle();
+  emit(t.nodeOf("gatedSpan"), "topClick", {});
+  expect(t.log).toEqual(["gateParagraph.press"]);
 });

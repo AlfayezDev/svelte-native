@@ -29,7 +29,15 @@ const fake = {
   completeRoot(root: number, set: { children: FakeNode[] }) { fabric.calls.push("completeRoot"); fabric.roots[root] = set.children; },
   registerEventHandler() {},
 };
-(globalThis as { nativeFabricUIManager?: unknown }).nativeFabricUIManager = fake;
+/**
+ * The host reads `nativeFabricUIManager` when its module is evaluated, and other test files put a fake of their own in its place, so every `loadFork()` installs this one again (and
+ * empties what it recorded) before it evaluates a bundle: a test then sees the calls of its own bundle and no other.
+ */
+function installFabric(): void {
+  fabric.calls.length = 0;
+  fabric.roots = {};
+  (globalThis as { nativeFabricUIManager?: unknown }).nativeFabricUIManager = fake;
+}
 // React Native has `requestAnimationFrame`, which `tick()` waits for in async mode; bun has none.
 (globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame ??= (callback: () => void) => setTimeout(callback, 16);
 
@@ -37,6 +45,7 @@ const stubs: Record<string, string> = {
   ...reanimatedStubs,
   "react-native/Libraries/Utilities/Platform": "export default { OS: 'android', Version: 34 };",
   "react-native/Libraries/Utilities/BackHandler": "export default { addEventListener: () => ({ remove() {} }) };",
+  "react-native/Libraries/AppState/AppState": "export default { currentState: 'active', addEventListener: () => ({ remove() {} }) };",
   "react-native/Libraries/Linking/Linking": "export default { addEventListener: () => ({ remove() {} }), getInitialURL: () => Promise.resolve(null) };",
   "react-native/Libraries/Image/resolveAssetSource": "export default () => null;",
   "react-native/Libraries/Components/Keyboard/Keyboard": "export default { isVisible: () => false, dismiss() {} };",
@@ -107,6 +116,7 @@ export async function loadFork(fixture: string, { async = true, compiled = false
   const directory = await mkdtemp(resolve(tmpdir(), "svelte-native-fork-"));
   const file = resolve(directory, "bundle.mjs");
   await writeFile(file, bundle.outputFiles[0]?.contents ?? "");
+  installFabric();
   const loaded = await import(pathToFileURL(file).href);
   await rm(directory, { recursive: true });
   return loaded;

@@ -1,5 +1,6 @@
 import { expect, jest, test } from "bun:test";
 import type { NativeNode } from "../src/renderer.ts";
+import { asyncRun } from "./async-run.ts";
 import { fabric, loadFork, type ForkModule } from "./fork-harness.ts";
 
 /**
@@ -13,8 +14,6 @@ function shape(node: NativeNode, depth = 0): string {
   const own = Object.entries(props).map(([key, value]) => `${key}=${typeof value === "function" ? "fn" : JSON.stringify(value)}`).join(" ");
   return [`${" ".repeat(depth)}${node.kind}:${node.name} ${own} ${node.kind === "text" ? JSON.stringify(text) : ""}`.trimEnd(), ...children.map((child) => shape(child, depth + 1))].join("\n");
 }
-/** `SVELTE_NATIVE_TEST_ASYNC` (`async-mode-setup.ts`) compiles every component with async mode, so the control that needs it off cannot run. */
-const asyncRun = process.env.SVELTE_NATIVE_TEST_ASYNC !== undefined && process.env.SVELTE_NATIVE_TEST_ASYNC !== "frames";
 type Parity = Record<"bump" | "bumpTwice" | "toggle" | "reverse" | "removeFirst" | "replaceAll" | "rename" | "batch", () => void> & { add(id: string): void };
 type Step = [name: string, run: (app: Parity) => void];
 const steps: Step[] = [

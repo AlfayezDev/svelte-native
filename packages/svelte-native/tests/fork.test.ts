@@ -4,18 +4,17 @@ import { resolve } from "node:path";
 import { compile } from "svelte/compiler";
 import { componentOptions } from "../src/compile-options.ts";
 import type { NativeNode } from "../src/renderer.ts";
+import { Pressability, type PressEvent, type ResponderHandlers } from "../src/fabric/pressability.ts";
+import { asyncRun } from "./async-run.ts";
 import { fabric, find, loadFork, type ForkModule } from "./fork-harness.ts";
 
 /**
  * Svelte 5's `fork()` (experimental, async mode) against this library's custom renderer and Fabric host: what a fork builds off screen, what the host can see of it, what a commit
- * and a discard do, and the router's `prepare` built on it. The harness (`fork-harness.ts`) compiles every component with `experimental.async`, which the library's own
- * options leave off (`compile-options.ts`, `svelte-async-mode.test.ts`).
+ * and a discard do, and the router's `prepare` built on it. The harness (`fork-harness.ts`) turns Svelte's async mode on, which the library leaves off unless the app asks for it
+ * (`compile-options.ts`, `async-option.test.ts`, `svelte-async-mode.test.ts`). `prepare-tree.test.ts` runs `prepare` over the stand-in app's tree.
  */
-/** `SVELTE_NATIVE_TEST_ASYNC` (`async-mode-setup.ts`) compiles every component with async mode, so a control that needs it off cannot run. */
-const asyncRun = process.env.SVELTE_NATIVE_TEST_ASYNC !== undefined && process.env.SVELTE_NATIVE_TEST_ASYNC !== "frames";
 const settle = async (m: ForkModule) => { m.flushSync(); await Promise.resolve(); await Promise.resolve(); };
 const sleep = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
-const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)] ?? 0;
 
 /** A tree as one string: kind, name, props (functions by name) and text, so two trees compare by what they show. */
 function shape(node: NativeNode, depth = 0): string {
@@ -312,54 +311,48 @@ test.skipIf(asyncRun)("async mode is one switch for the bundle: components compi
 
 // (e) Cost.
 
-test("(e) a 300-row screen: most of its Svelte-side mount happens inside the fork, and Fabric is not asked for anything until the commit", async () => {
-  const log: string[] = [];
-  const scope = globalThis as { __forkLog?: string[]; __forkRows?: number; __svelteFabricProfile?: boolean; __svelteFlushLog?: { ms: number; created: number }[] };
-  scope.__forkLog = log;
+test("(e) a 300-row screen: its nodes are all created inside the fork, the commit creates next to none, and Fabric is not asked for a node until the commit", async () => {
+  // Counted, not timed (a millisecond comparison flakes under load): the Svelte-side work of mounting the screen is the creation of its nodes and the running of its components, and the
+  // fork does it all; the commit attaches what the fork made and runs the effects. What Fabric builds, `create` per node, is the host's flush after the commit.
+  const scope = globalThis as { __forkLog?: string[]; __forkRows?: number };
+  scope.__forkLog = [];
   scope.__forkRows = 300;
-  scope.__svelteFabricProfile = true;
   const m = await loadFork("fork-router-fixture.svelte", { realConfigs: true });
-  const inFork: number[] = [];
-  const atCommit: number[] = [];
-  const direct: number[] = [];
-  let createdBeforeCommit = 0;
-  let createdAtCommit = 0;
-  for (let trial = 0; trial < 11; trial++) {
-    for (const mode of ["direct", "fork"] as const) {
-      const app = m.startSurface(200 + trial * 2 + (mode === "fork" ? 1 : 0), m.Fixture, {}) as unknown as { router: Router };
-      await settle(m);
-      const heavy = app.router.node.routes.find((route) => route.id === "heavy");
-      app.router.load(heavy as never);
-      await sleep(0);
-      await settle(m);
-      fabric.calls.length = 0;
-      scope.__svelteFlushLog = [];
-      const hostMs = () => (scope.__svelteFlushLog ?? []).reduce((sum, entry) => sum + entry.ms, 0);
-      if (mode === "direct") {
-        const start = performance.now();
-        app.router.goto("/heavy");
-        await settle(m);
-        direct.push(performance.now() - start - hostMs());
-        continue;
-      }
-      const start = performance.now();
-      const fork = m.fork(() => app.router.goto("/heavy"));
-      inFork.push(performance.now() - start);
-      await settle(m);
-      createdBeforeCommit = fabric.calls.filter((call) => call.startsWith("create")).length;
-      const committing = performance.now();
-      const pending = fork.commit();
-      await pending;
-      await settle(m);
-      atCommit.push(performance.now() - committing - hostMs());
-      createdAtCommit = fabric.calls.filter((call) => call.startsWith("create")).length;
-    }
-  }
-  expect(createdBeforeCommit).toBe(0);
-  expect(createdAtCommit).toBeGreaterThanOrEqual(900);
-  // The Svelte-side work is moved, not removed: about the same in all (direct vs fork + commit), and the commit is the smaller part.
-  expect(median(inFork)).toBeGreaterThan(median(atCommit));
-  expect(median(inFork) + median(atCommit)).toBeLessThan(median(direct) * 2);
+  const created: NativeNode[] = [];
+  recordElements(m, created);
+  const app = m.startSurface(200, m.Fixture, {}) as unknown as { router: Router };
+  await settle(m);
+  app.router.load(app.router.node.routes.find((route) => route.id === "heavy") as never);
+  await sleep(0);
+  await settle(m);
+  const created0 = created.length;
+  fabric.calls.length = 0;
+  const fork = m.fork(() => app.router.goto("/heavy"));
+  const inFork = created.length - created0;
+  await settle(m);
+  const fabricBeforeCommit = fabric.calls.filter((call) => call.startsWith("create")).length;
+  const pending = fork.commit();
+  await pending;
+  await settle(m);
+  const atCommit = created.length - created0 - inFork;
+  const fabricAtCommit = fabric.calls.filter((call) => call.startsWith("create")).length;
+  expect(inFork).toBeGreaterThanOrEqual(600);
+  expect(atCommit).toBeLessThan(inFork / 10);
+  expect(fabricBeforeCommit).toBe(0);
+  expect(fabricAtCommit).toBeGreaterThanOrEqual(900);
+  // The same navigation made directly, as the control: the nodes are created at the change, in the one flush, where the fork has already made them.
+  const direct = await loadFork("fork-router-fixture.svelte", { realConfigs: true });
+  const directCreated: NativeNode[] = [];
+  recordElements(direct, directCreated);
+  const other = direct.startSurface(201, direct.Fixture, {}) as unknown as { router: Router };
+  await settle(direct);
+  other.router.load(other.router.node.routes.find((route) => route.id === "heavy") as never);
+  await sleep(0);
+  await settle(direct);
+  const before = directCreated.length;
+  other.router.goto("/heavy");
+  await settle(direct);
+  expect(directCreated.length - before).toBe(inFork + atCommit);
 });
 
 // (d) The router.
@@ -368,11 +361,17 @@ type Route = { id: string };
 type Router = {
   node: { routes: Route[] };
   entries: { url: URL }[];
+  screens: { entry: { key: number; url: URL }; leaving: boolean }[];
   goto(href: string, navigation?: object): void;
+  back(): boolean;
+  exited(key: number): void;
   load(route: never): void;
   prepare(href: string, navigation?: object): { ready: Promise<boolean>; commit(): void; discard(): void };
 };
-type RouterApp = { router: Router; release(id: string): void; fail(id: string): void; loadLog(): string[] };
+type RouterApp = {
+  router: Router; release(id: string): void; fail(id: string): void; loadLog(): string[];
+  prepareFromEffect(href: string): void; effectState(): { runs: number; prepared?: ReturnType<Router["prepare"]> };
+};
 
 async function mountRouter(options: { hold?: string[]; async?: boolean } = {}) {
   const log: string[] = [];
@@ -469,6 +468,7 @@ test("router.prepare then discard changes nothing: the stack, the tree and the e
   const prepared = app.router.prepare("/b");
   expect(await prepared.ready).toBe(true);
   prepared.discard();
+  await sleep(0);
   await settle(m);
   expect(shape(root)).toBe(before);
   expect(paths()).toEqual(["/"]);
@@ -513,18 +513,135 @@ test("router.prepare: a navigation that happened since makes commit() a goto fro
   expect(log.filter((entry) => entry === "page/b:effect")).toHaveLength(1);
 });
 
-test("router.prepare: a newer prepare discards the one before it, and the tree has one prepared screen at a time", async () => {
+test("router.prepare: a newer prepare takes the screen of the one before it, and that one's commit() is then a plain goto, as every commit is", async () => {
   const { m, app, log, paths } = await mountRouter();
   const first = app.router.prepare("/b");
   expect(await first.ready).toBe(true);
   const second = app.router.prepare("/c");
   expect(await second.ready).toBe(true);
-  first.commit(); // discarded by the second: nothing
-  expect(paths()).toEqual(["/"]);
+  // The first one's screen is gone (the tree holds one prepared screen): its commit navigates from the stack as it is.
+  first.commit();
+  await settle(m);
+  expect(paths()).toEqual(["/", "/b"]);
+  expect(log.filter((entry) => entry === "page/b:effect")).toHaveLength(1);
+  // The second one's stack was the one before the first navigation, so it is made again from this one.
   second.commit();
   await settle(m);
+  expect(paths()).toEqual(["/", "/b", "/c"]);
+  expect(log.filter((entry) => entry === "page/c:effect")).toHaveLength(1);
+});
+
+test("router.prepare: discard() takes effect a task later, and a commit() before then wins; after it, commit() does nothing", async () => {
+  const { m, app, log, paths } = await mountRouter();
+  // Discard, then commit in the same task (what `Pressable` does after a press of 130 ms or more: `onPressOut`, then `onPress`).
+  const pressed = app.router.prepare("/b");
+  expect(await pressed.ready).toBe(true);
+  pressed.discard();
+  pressed.commit();
+  await sleep(0);
+  await settle(m);
+  expect(paths()).toEqual(["/", "/b"]);
+  expect(log).toEqual(["page/b:init", "page/b:effect", "page/b:mount"]);
+  // Commit, then discard: nothing more.
+  pressed.discard();
+  await sleep(0);
+  expect(paths()).toEqual(["/", "/b"]);
+  // A discard that was not followed by a commit takes effect once the task is over, and then commit() has nothing to do.
+  log.length = 0;
+  const dropped = app.router.prepare("/c");
+  expect(await dropped.ready).toBe(true);
+  dropped.discard();
+  dropped.discard();
+  expect(paths()).toEqual(["/", "/b"]);
+  await sleep(0);
+  dropped.commit();
+  await settle(m);
+  expect(paths()).toEqual(["/", "/b"]);
+  expect(log).toEqual(["page/c:init"]);
+});
+
+test("router.prepare: discard() settles ready as false although a module never arrives", async () => {
+  const { app, paths } = await mountRouter({ hold: ["b"] });
+  const prepared = app.router.prepare("/b");
+  prepared.discard();
+  expect(await prepared.ready).toBe(false);
+  expect(paths()).toEqual(["/"]);
+  // And a commit that comes first settles it too.
+  const committed = app.router.prepare("/b");
+  committed.commit();
+  expect(await committed.ready).toBe(false);
+  expect(paths()).toEqual(["/", "/b"]);
+});
+
+test("router.prepare: a screen that leaves while the navigation is prepared is not brought back by its commit", async () => {
+  // A popped screen stays in `screens`, leaving, until the native stack reports its exit (`exited`). Svelte applies a fork's value over a write made after the fork, so a commit
+  // that used the fork would put the screen that left back and lose the one that was pushed: the router sees the write and makes the navigation from the stack as it is.
+  const { m, app, paths, screens, pageTexts } = await mountRouter();
+  app.router.goto("/b");
+  await sleep(0);
+  await settle(m);
+  expect(app.router.back()).toBe(true);
+  await settle(m);
+  const leaving = app.router.screens.find((screen) => screen.leaving);
+  expect(leaving?.entry.url.pathname).toBe("/b");
+  const prepared = app.router.prepare("/c");
+  expect(await prepared.ready).toBe(true);
+  app.router.exited(leaving?.entry.key as number);
+  await settle(m);
+  expect(app.router.screens.map((screen) => screen.entry.url.pathname)).toEqual(["/"]);
+  prepared.commit();
+  await settle(m);
   expect(paths()).toEqual(["/", "/c"]);
-  expect(log.filter((entry) => entry.endsWith(":effect"))).toEqual(["page/c:effect"]);
+  expect(app.router.screens.map((screen) => `${screen.entry.url.pathname}${screen.leaving ? "!" : ""}`)).toEqual(["/", "/c"]);
+  expect(screens()).toBe(2);
+  expect(pageTexts()).toEqual(["page /", "page /c"]);
+});
+
+test("router.prepare called from an effect reads the stacks untracked: the effect does not run again when they change", async () => {
+  const { m, app, paths } = await mountRouter();
+  app.prepareFromEffect("/b");
+  await settle(m);
+  expect(app.effectState().runs).toBe(1);
+  expect(await app.effectState().prepared?.ready).toBe(true);
+  // The stacks change (a navigation, and the one prepared is stale for it): an effect that tracked them would run `prepare` again.
+  app.router.goto("/c");
+  await sleep(0);
+  await settle(m);
+  expect(paths()).toEqual(["/", "/c"]);
+  expect(app.effectState().runs).toBe(1);
+  app.effectState().prepared?.discard();
+});
+
+/** A touch at `x` on a stand-in for the view the press is on (the measured region is 100 by 100). */
+const touch = (x: number): PressEvent => ({ nativeEvent: { pageX: x, pageY: x, touches: [{ pageX: x, pageY: x }] }, persist() {}, stopPropagation() {}, preventDefault() {} });
+
+test("router.prepare with the library's own Pressability: the documented pattern (prepare on press in, commit on press, discard on press out) navigates for every press length, and not for a finger that slides off", async () => {
+  // `Pressability` reports the end of a press that lasted 130 ms or more as `onPressOut` and then `onPress` in one task, and delays `onPressOut` for a shorter one until 130 ms.
+  const press = async (held: number, slide = false) => {
+    const t = await mountRouter();
+    let prepared: ReturnType<Router["prepare"]> | undefined;
+    const pressability = new Pressability({
+      onPressIn: () => { prepared = t.app.router.prepare("/b"); },
+      onPress: () => prepared?.commit(),
+      onPressOut: () => prepared?.discard(),
+    }, (callback) => callback(0, 0, 100, 100, 0, 0));
+    const handlers = pressability.getEventHandlers() as ResponderHandlers;
+    handlers.onStartShouldSetResponder?.(touch(5));
+    handlers.onResponderGrant?.(touch(5));
+    await sleep(held);
+    if (slide) handlers.onResponderMove?.(touch(500));
+    handlers.onResponderRelease?.(touch(slide ? 500 : 5));
+    await sleep(250);
+    await settle(t.m);
+    pressability.reset();
+    return { paths: t.paths(), log: t.log };
+  };
+  for (const held of [20, 129, 131, 400]) {
+    // Navigated, once, by the screen that was prepared: it ran its script once and its effects after the commit.
+    expect(await press(held), `${held} ms`).toEqual({ paths: ["/", "/b"], log: ["page/b:init", "page/b:effect", "page/b:mount"] });
+  }
+  // The finger slid off the view before it lifted (the press is cancelled, `onPress` never comes): nothing navigated, and the prepared screen was released.
+  expect(await press(150, true), "slid off").toEqual({ paths: ["/"], log: ["page/b:init"] });
 });
 
 test("router.prepare: a discarded screen is collected (once the templates are used again), and a committed one is not", async () => {

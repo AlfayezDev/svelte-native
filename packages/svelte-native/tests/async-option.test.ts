@@ -1,13 +1,16 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { afterEach, describe, expect, mock, test } from "bun:test";
+import { EventEmitter } from "node:events";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { compile, compileModule } from "svelte/compiler";
 import type { ConfigT } from "@expo/metro/metro-config";
-import { expoEnvironment } from "../src/build.ts";
-import { ASYNC_ENVIRONMENT_VARIABLE, asyncEnabled, asyncEnvironment, componentOptions, moduleOptions, withWebAsync } from "../src/compile-options.ts";
+import { expoEnvironment, exportNative } from "../src/build.ts";
+import { ASYNC_ENVIRONMENT_VARIABLE, RUNES_ENVIRONMENT_VARIABLE, asyncEnabled, asyncEnvironment, componentOptions, moduleOptions, withWebAsync } from "../src/compile-options.ts";
 import { withSvelteNative } from "../src/metro.ts";
 import { sourceDirectory } from "../src/package-root.ts";
+import { svelteNative } from "../src/vite.ts";
+import { asyncRun } from "./async-run.ts";
 
 /**
  * `withSvelteNative(config, { async: true })` (and `svelteNative({ async: true })`): Svelte's async mode, which `router.prepare` needs, as an option of the library instead of an import of Svelte's
@@ -18,8 +21,6 @@ const root = resolve(import.meta.dirname, "../../..");
 const app = "/work/app/src/routes/counter/+mobile.svelte";
 const library = "/work/app/node_modules/some-svelte-lib/Counter.svelte";
 const own = join(sourceDirectory, "Router.svelte");
-/** `SVELTE_NATIVE_TEST_ASYNC` (`async-mode-setup.ts`) mocks the compiler to compile every file with async mode, so a control that compiles without it cannot run. */
-const asyncRun = process.env.SVELTE_NATIVE_TEST_ASYNC !== undefined && process.env.SVELTE_NATIVE_TEST_ASYNC !== "frames";
 
 const saved = process.env[ASYNC_ENVIRONMENT_VARIABLE];
 afterEach(() => {
@@ -58,15 +59,47 @@ describe("the setting", () => {
     }
   });
 
-  test("the Vite plugin's native target runs the export with it in the environment of the Metro it starts", () => {
+  test("the Vite plugin's native target runs the export with it in the environment of the Metro it starts", async () => {
     expect(expoEnvironment(["export:embed"], asyncEnvironment(true))[ASYNC_ENVIRONMENT_VARIABLE]).toBe("1");
     // Without the option the environment is the process's own, so a setting from the shell or from the app's metro.config is not overwritten.
     process.env[ASYNC_ENVIRONMENT_VARIABLE] = "1";
     expect(expoEnvironment(["export:embed"], asyncEnvironment(undefined))[ASYNC_ENVIRONMENT_VARIABLE]).toBe("1");
-    // `exportNative` hands the option over with the runes one (the process it starts is not run here).
-    const build = readFileSync(join(sourceDirectory, "build.ts"), "utf8");
-    expect(build).toContain("{ ...runesEnvironment(options.runes), ...asyncEnvironment(options.async) }");
-    expect(readFileSync(join(sourceDirectory, "vite.ts"), "utf8")).toContain("runes: options.runes, async: options.async");
+    // And the two ways to start that Metro, `exportNative` and the plugin's `generateBundle`, hand the option over: `expo export:embed` is run through a stand-in for `spawn` that
+    // records the environment it was given.
+    const started: { args: string[]; env: NodeJS.ProcessEnv }[] = [];
+    const childProcess = { ...(await import("node:child_process")) };
+    mock.module("node:child_process", () => ({
+      ...childProcess,
+      spawn: (_command: string, args: string[], options: { env: NodeJS.ProcessEnv }) => {
+        started.push({ args, env: options.env });
+        const child = new EventEmitter();
+        queueMicrotask(() => child.emit("exit", 0));
+        return child;
+      },
+    }));
+    const projectRoot = mkdtempSync(join(tmpdir(), "async-export-"));
+    mkdirSync(join(projectRoot, "src/routes"), { recursive: true });
+    writeFileSync(join(projectRoot, "src/routes/+mobile.svelte"), "<native-text>home</native-text>\n");
+    try {
+      delete process.env[ASYNC_ENVIRONMENT_VARIABLE];
+      delete process.env[RUNES_ENVIRONMENT_VARIABLE];
+      await exportNative(projectRoot, "android", { async: true, runes: false });
+      expect(started.at(-1)?.args).toContain("export:embed");
+      expect(started.at(-1)?.env[ASYNC_ENVIRONMENT_VARIABLE]).toBe("1");
+      expect(started.at(-1)?.env[RUNES_ENVIRONMENT_VARIABLE]).toBe("0");
+      await exportNative(projectRoot, "android", {});
+      expect(started.at(-1)?.env[ASYNC_ENVIRONMENT_VARIABLE]).toBeUndefined();
+      // The plugin: its hooks, run the way Vite runs them (`configResolved`, then `generateBundle`).
+      const plugin = svelteNative({ target: "native", platform: "ios", async: true }) as { configResolved(config: { root: string }): void; generateBundle(): Promise<void> };
+      plugin.configResolved({ root: projectRoot });
+      await plugin.generateBundle();
+      expect(started.at(-1)?.args).toContain("ios");
+      expect(started.at(-1)?.env[ASYNC_ENVIRONMENT_VARIABLE]).toBe("1");
+      expect(started).toHaveLength(3);
+    } finally {
+      mock.module("node:child_process", () => childProcess);
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
   });
 
   test("the transformer's cache key follows it, so a changed option never reads a cached component", () => {

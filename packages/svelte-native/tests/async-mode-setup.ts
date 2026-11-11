@@ -1,8 +1,9 @@
 import { mock } from "bun:test";
+import { asyncTestMode } from "./async-run.ts";
 
 /**
  * Test setup for the async-mode run: the whole suite with Svelte's async mode (`experimental.async`) on, to see what an app that turns it on would see. `bunfig.toml` preloads this file;
- * without `SVELTE_NATIVE_TEST_ASYNC` it does nothing and the default suite is unchanged. Run `SVELTE_NATIVE_TEST_ASYNC=1 bun test`, one file at a time under a `timeout` when hunting a hang
+ * without `SVELTE_NATIVE_TEST_ASYNC` (or with a value other than the three below, `0` and `false` included) it does nothing and the default suite is unchanged. Run `SVELTE_NATIVE_TEST_ASYNC=1 bun test`, one file at a time under a `timeout` when hunting a hang
  * (what the mode changes for an app is pinned in `tests/async-mode-parity.test.ts` and written up in the docs, Routing, "Preparing a screen"). The app's own switch, `SVELTE_NATIVE_ASYNC` (`withSvelteNative(config, { async: true })`), reaches only the options the
  * library builds (`componentOptions`); this mocks the compiler, so the tests' own `compile` and `compileModule` calls get the option as well.
  *
@@ -12,7 +13,7 @@ import { mock } from "bun:test";
  *   would never resolve; the microtask frame lets those files run and show what else they would report.
  * - `frames`: the frame timer alone, async mode off: tells a failure the frame shim causes from one async mode does.
  */
-const mode = process.env.SVELTE_NATIVE_TEST_ASYNC;
+const mode = asyncTestMode;
 if (mode) {
   if (mode !== "frames") {
     // A copy of the real functions, taken before the mock: Bun's `mock.module` rewrites the module's own exports in place, so the namespace itself would reach the mock (and call it for ever).

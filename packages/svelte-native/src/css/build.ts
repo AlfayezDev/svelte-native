@@ -440,7 +440,7 @@ export function watchClasses(options: ClassBuildOptions, stylesheets: readonly s
     });
   };
   // `src/` with a watch per directory (`watchTree`): a recursive `fs.watch` stops reporting a file once an editor saves it by a rename.
-  const tree = watchTree(source, schedule, { debounceMs: 0 });
+  const tree = watchTree(source, schedule, { debounceMs: 0, skip: (name) => SKIPPED_DIRECTORIES.has(name) });
   followStylesheets([resolve(root, options.css), ...stylesheets]);
   return {
     close() {

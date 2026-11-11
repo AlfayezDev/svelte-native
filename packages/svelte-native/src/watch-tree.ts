@@ -1,5 +1,5 @@
-import { existsSync, type FSWatcher, readdirSync, statSync, watch } from "node:fs";
-import { join, resolve, sep } from "node:path";
+import { type FSWatcher, readdirSync, statSync, watch } from "node:fs";
+import { dirname, join, resolve, sep } from "node:path";
 
 /**
  * Watches a directory and every directory below it, calling `onChange` (debounced) when anything in them changes.
@@ -8,12 +8,19 @@ import { join, resolve, sep } from "node:path";
  * vim, JetBrains' safe write, many formatters) is never reported again, nor is any later change to it (Node 26.8, 11 Nov 2026: one event for the
  * first replacement, none for the next four, none for an append). A watch per directory reports every change of an entry whatever happened to
  * its inode, so this keeps one per directory, adds one for a directory that appears and drops the watch of one that goes.
+ *
+ * - A directory deleted and made again at once (`rm -rf x && cp -r template x`, or a swap by rename) is a new inode under the same name: its old
+ *   watch hears nothing more, so a known directory whose inode changed is watched again.
+ * - `skip` names the directories not to watch, by name; give the ones the reader of the tree skips, so a file it reads is never unwatched.
+ * - A root that does not exist yet is waited for from the nearest directory above it that does.
+ * - A watch the system refuses for another reason than the directory being gone (the inotify limit, a permission) is reported once.
  */
 export function watchTree(root: string, onChange: () => void, options: { debounceMs?: number; skip?: (name: string) => boolean } = {}): { close(): void } {
   const base = resolve(root);
   const debounceMs = options.debounceMs ?? 50;
   const skip = options.skip ?? ((name: string) => name === "node_modules" || name.startsWith("."));
-  const watchers = new Map<string, FSWatcher>();
+  const watchers = new Map<string, { watcher: FSWatcher; inode: number }>();
+  let waiting: FSWatcher | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let closed = false;
 
@@ -26,23 +33,32 @@ export function watchTree(root: string, onChange: () => void, options: { debounc
 
   const add = (directory: string) => {
     if (closed || watchers.has(directory)) return;
+    const inode = inodeOf(directory);
+    if (inode === null) return;
     let watcher: FSWatcher;
     try {
       watcher = watch(directory, (_event, name) => {
-        // A new directory is watched as soon as it is seen; one that went is dropped with everything below it.
-        if (name) {
-          const path = join(directory, name.toString());
-          if (!watchers.has(path) && isDirectory(path) && !skip(name.toString())) addTree(path);
-          if (watchers.has(path) && !existsSync(path)) dropTree(path);
-        }
+        if (name) seen(join(directory, name.toString()), name.toString());
         changed();
       });
-    } catch {
-      return; // gone between the listing and the watch
+    } catch (error) {
+      refused(directory, error);
+      return;
     }
     watcher.unref();
-    watcher.on("error", () => dropTree(directory));
-    watchers.set(directory, watcher);
+    watcher.on("error", (error) => {
+      refused(directory, error);
+      dropTree(directory);
+    });
+    watchers.set(directory, { watcher, inode });
+  };
+
+  // An entry of a watched directory changed: a directory that is new, gone or another one under the same name is watched accordingly.
+  const seen = (path: string, name: string) => {
+    const known = watchers.get(path);
+    const inode = inodeOf(path);
+    if (known && known.inode !== inode) dropTree(path);
+    if (inode !== null && !watchers.has(path) && !skip(name) && isDirectory(path)) addTree(path);
   };
 
   const addTree = (directory: string) => {
@@ -57,7 +73,7 @@ export function watchTree(root: string, onChange: () => void, options: { debounc
   };
 
   const dropTree = (directory: string) => {
-    for (const [path, watcher] of watchers) {
+    for (const [path, { watcher }] of watchers) {
       if (path === directory || path.startsWith(directory + sep)) {
         watcher.close();
         watchers.delete(path);
@@ -65,15 +81,54 @@ export function watchTree(root: string, onChange: () => void, options: { debounc
     }
   };
 
+  // The root is not there yet: wait for it from the nearest directory above that is, and watch it (and report a change) once it appears.
+  const waitForRoot = () => {
+    let above = dirname(base);
+    while (!isDirectory(above) && dirname(above) !== above) above = dirname(above);
+    try {
+      waiting = watch(above, () => {
+        if (!isDirectory(base)) return;
+        waiting?.close();
+        waiting = null;
+        addTree(base);
+        changed();
+      });
+      waiting.unref();
+    } catch (error) {
+      refused(above, error);
+    }
+  };
+
   if (isDirectory(base)) addTree(base);
+  else waitForRoot();
   return {
     close() {
       closed = true;
       clearTimeout(timer);
-      for (const watcher of watchers.values()) watcher.close();
+      waiting?.close();
+      waiting = null;
+      for (const { watcher } of watchers.values()) watcher.close();
       watchers.clear();
     },
   };
+}
+
+let warned = false;
+/** A watch that failed for another reason than the directory being gone: said once, with what usually causes it. */
+function refused(directory: string, error: unknown): void {
+  const code = (error as { code?: string }).code;
+  if (code === "ENOENT" || code === "ENOTDIR" || warned) return;
+  warned = true;
+  const hint = code === "ENOSPC" ? " The system's limit on watches is reached: raise fs.inotify.max_user_watches (sysctl)." : "";
+  console.warn(`svelte-native: cannot watch ${directory} (${code ?? String(error)}); changes below it are not picked up until Metro restarts.${hint}`);
+}
+
+function inodeOf(path: string): number | null {
+  try {
+    return statSync(path).ino;
+  } catch {
+    return null;
+  }
 }
 
 function isDirectory(path: string): boolean {

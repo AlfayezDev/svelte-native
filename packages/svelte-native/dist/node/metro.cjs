@@ -216,6 +216,7 @@ function watchTree(root, onChange, options = {}) {
   const debounceMs = options.debounceMs ?? 50;
   const skip = options.skip ?? ((name) => name === "node_modules" || name.startsWith("."));
   const watchers2 = /* @__PURE__ */ new Map();
+  let waiting = null;
   let timer;
   let closed = false;
   const changed = () => {
@@ -226,22 +227,30 @@ function watchTree(root, onChange, options = {}) {
   };
   const add = (directory) => {
     if (closed || watchers2.has(directory)) return;
+    const inode = inodeOf(directory);
+    if (inode === null) return;
     let watcher;
     try {
       watcher = (0, import_node_fs2.watch)(directory, (_event, name) => {
-        if (name) {
-          const path = (0, import_node_path3.join)(directory, name.toString());
-          if (!watchers2.has(path) && isDirectory(path) && !skip(name.toString())) addTree(path);
-          if (watchers2.has(path) && !(0, import_node_fs2.existsSync)(path)) dropTree(path);
-        }
+        if (name) seen((0, import_node_path3.join)(directory, name.toString()), name.toString());
         changed();
       });
-    } catch {
+    } catch (error) {
+      refused(directory, error);
       return;
     }
     watcher.unref();
-    watcher.on("error", () => dropTree(directory));
-    watchers2.set(directory, watcher);
+    watcher.on("error", (error) => {
+      refused(directory, error);
+      dropTree(directory);
+    });
+    watchers2.set(directory, { watcher, inode });
+  };
+  const seen = (path, name) => {
+    const known = watchers2.get(path);
+    const inode = inodeOf(path);
+    if (known && known.inode !== inode) dropTree(path);
+    if (inode !== null && !watchers2.has(path) && !skip(name) && isDirectory(path)) addTree(path);
   };
   const addTree = (directory) => {
     add(directory);
@@ -254,22 +263,56 @@ function watchTree(root, onChange, options = {}) {
     for (const entry of entries) if (entry.isDirectory() && !skip(entry.name)) addTree((0, import_node_path3.join)(directory, entry.name));
   };
   const dropTree = (directory) => {
-    for (const [path, watcher] of watchers2) {
+    for (const [path, { watcher }] of watchers2) {
       if (path === directory || path.startsWith(directory + import_node_path3.sep)) {
         watcher.close();
         watchers2.delete(path);
       }
     }
   };
+  const waitForRoot = () => {
+    let above = (0, import_node_path3.dirname)(base);
+    while (!isDirectory(above) && (0, import_node_path3.dirname)(above) !== above) above = (0, import_node_path3.dirname)(above);
+    try {
+      waiting = (0, import_node_fs2.watch)(above, () => {
+        if (!isDirectory(base)) return;
+        waiting?.close();
+        waiting = null;
+        addTree(base);
+        changed();
+      });
+      waiting.unref();
+    } catch (error) {
+      refused(above, error);
+    }
+  };
   if (isDirectory(base)) addTree(base);
+  else waitForRoot();
   return {
     close() {
       closed = true;
       clearTimeout(timer);
-      for (const watcher of watchers2.values()) watcher.close();
+      waiting?.close();
+      waiting = null;
+      for (const { watcher } of watchers2.values()) watcher.close();
       watchers2.clear();
     }
   };
+}
+var warned = false;
+function refused(directory, error) {
+  const code = error.code;
+  if (code === "ENOENT" || code === "ENOTDIR" || warned) return;
+  warned = true;
+  const hint = code === "ENOSPC" ? " The system's limit on watches is reached: raise fs.inotify.max_user_watches (sysctl)." : "";
+  console.warn(`svelte-native: cannot watch ${directory} (${code ?? String(error)}); changes below it are not picked up until Metro restarts.${hint}`);
+}
+function inodeOf(path) {
+  try {
+    return (0, import_node_fs2.statSync)(path).ino;
+  } catch {
+    return null;
+  }
 }
 function isDirectory(path) {
   try {
@@ -427,7 +470,7 @@ function watchRoutes(root, options = {}, debounceMs = 50) {
     } catch (error) {
       console.error(error);
     }
-  }, { debounceMs });
+  }, { debounceMs, skip: (name) => name === "node_modules" });
 }
 
 // src/css/build.ts
@@ -2416,7 +2459,7 @@ function watchClasses(options, stylesheets = [], debounceMs = 100) {
       }
     });
   };
-  const tree = watchTree(source, schedule, { debounceMs: 0 });
+  const tree = watchTree(source, schedule, { debounceMs: 0, skip: (name) => SKIPPED_DIRECTORIES.has(name) });
   followStylesheets([(0, import_node_path5.resolve)(root, options.css), ...stylesheets]);
   return {
     close() {

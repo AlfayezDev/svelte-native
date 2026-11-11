@@ -210,7 +210,8 @@ export function watchRoutes(root: string, options: SyncOptions = {}, debounceMs 
   // A watch per directory (`watchTree`): a recursive `fs.watch` stops reporting a route file once an editor saves it by a rename.
   return watchTree(resolve(root, "src/routes"), () => {
     try { syncRoutes(root, options); } catch (error) { console.error(error); }
-  }, { debounceMs });
+    // `routeFilesSync` reads every directory under routes (the lab's too, when it is included).
+  }, { debounceMs, skip: (name) => name === "node_modules" });
 }
 
 /** The environment `expo` runs in: this process's, with `extra` over it. */

@@ -1,10 +1,11 @@
-import { afterAll, afterEach, describe, expect, spyOn, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ConfigT } from "@expo/metro/metro-config";
 import { closeWatchers, withSvelteNative } from "../src/metro.ts";
 import { sourceFile } from "../src/package-root.ts";
 import { classesTableFile } from "../src/variant.ts";
+import { resetReports } from "../src/css/build.ts";
 import { cssProject, removeCssProjects } from "./css-project.ts";
 
 /**
@@ -34,6 +35,7 @@ const id = "@rasheed/svelte-native/classes-table";
 
 const environment = process.env.NODE_ENV;
 afterAll(removeCssProjects);
+beforeEach(resetReports);
 afterEach(() => {
   closeWatchers();
   spyOn(console, "warn").mockRestore();

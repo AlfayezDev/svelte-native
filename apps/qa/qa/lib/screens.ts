@@ -270,6 +270,13 @@ const signedOutCases: ScreenCase[] = [
 		layout: "header",
 		title: "Lab screen",
 	}),
+	// The screen of HTML elements and classes (SPEC.md, "HTML elements"): a card whose text style is inherited, a flex row, a line with a link, a form, a rule and a `pre`, written with no component of the
+	// library. Everything is static (the counters it shows are zero until a press), so the references are stable; the fields and the buttons are further down the page than the first screen at any text size.
+	screenCase("html-elements", "/__dev/html", `${dev}/html`, label("Heading one"), {
+		layout: "header",
+		title: "HTML elements",
+		scrolled: ["Send", "Cancel", "Name", "Password", "Remember me"],
+	}),
 	// The accessibility lab (SPEC.md "Accessibility props"): the state, value, hint and actions of each control are checked against the dump
 	// (`expect`) and, for what the dump cannot show, against the node info the lab logs (`info`). Labels are what React Native's views would
 	// say for the same props: "mixed", "busy" and the value's text follow the label, joined by ", ".
@@ -546,6 +553,7 @@ export const notCovered: NotCovered[] = [
 export const coveredRouteDirectories = [
 	"__dev",
 	"__dev/a11y",
+	"__dev/html",
 	"__dev/screen",
 	"__dev/screens",
 	"__dev/tree/home",

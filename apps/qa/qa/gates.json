@@ -185,6 +185,7 @@
       "gestures-sheet",
       "gestures-longpress-tap",
       "gestures-scroll-native",
+      "gestures-span",
       "gestures-churn"
     ],
     "ios": [
@@ -199,6 +200,7 @@
       "gestures-sheet",
       "gestures-longpress-tap",
       "gestures-scroll-native",
+      "gestures-span",
       "gestures-churn"
     ]
   },
@@ -481,15 +483,15 @@
   "gates": [
     {
       "id": "checks.passed",
-      "title": "Functional checks passed (of 38)",
+      "title": "Functional checks passed (of 44)",
       "unit": "checks",
       "metric": "lab.checks.passed",
       "bar": {
         "android": {
-          "min": 38
+          "min": 44
         },
         "ios": {
-          "min": 38
+          "min": 44
         }
       }
     },

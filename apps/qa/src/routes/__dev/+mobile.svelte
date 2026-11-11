@@ -17,6 +17,8 @@
   import Stress from "#lib/native/dev/Stress.svelte";
   import ClassProbe from "#lib/native/dev/ClassProbe.svelte";
   import { runClassChecks } from "#lib/native/dev/class-lab.ts";
+  import HtmlScreen from "#lib/native/dev/HtmlScreen.svelte";
+  import { runHtmlChecks } from "#lib/native/dev/html-lab.ts";
   import Page from "#lib/native/components/Page.svelte";
   import Button from "#lib/native/components/Button.svelte";
   import { runCapture } from "#lib/native/dev/capture.ts";
@@ -102,6 +104,9 @@
   /** The views of the class checks (`class-lab.ts`): on the page while the run reads them, not otherwise (the page's screens are frozen without them). */
   let classProbe: ReturnType<typeof ClassProbe> | undefined = $state();
   let classProbeOn = $state(false);
+  /** The same for the HTML checks (`html-lab.ts`): the lab's screen of HTML elements, whose tree they read. */
+  let htmlProbe: ReturnType<typeof HtmlScreen> | undefined = $state();
+  let htmlProbeOn = $state(false);
   const passed = $derived(checks.filter((check) => check.passed).length);
   const failed = $derived(checks.length - passed);
   const titleStyle = $derived({ color: theme.foreground, fontSize: 19, fontWeight: "600" as const });
@@ -328,10 +333,17 @@
       await settle();
       try { await runClassChecks(classProbe, check); }
       catch (error) { check("Class checks completed", false, error instanceof Error ? error.message : String(error)); console.error("[native lab classes]", error); }
+
+      classProbeOn = false;
+      // HTML elements (`HtmlScreen.svelte`, written with HTML and classes): six checks of what the host drew from the mounted elements, after the class checks, whose scheme override is over by now.
+      htmlProbeOn = true;
+      await settle();
+      try { await runHtmlChecks(htmlProbe, check); }
+      catch (error) { check("HTML checks completed", false, error instanceof Error ? error.message : String(error)); console.error("[native lab html]", error); }
     } catch (error) {
       check("Runner completed", false, error instanceof Error ? error.message : String(error));
       console.error("[native lab]", error);
-    } finally { running = false; classProbeOn = false; panel = previousPanel; }
+    } finally { running = false; classProbeOn = false; htmlProbeOn = false; panel = previousPanel; }
   }
 </script>
 
@@ -353,6 +365,7 @@
     <Text style={textStyle}>Collections {collectionSummary}</Text>
     <Button label="Increment state" variant="secondary" onPress={() => { count++; }} disabled={running} />
     {#if classProbeOn}<ClassProbe bind:this={classProbe} />{/if}
+    {#if htmlProbeOn}<HtmlScreen bind:this={htmlProbe} />{/if}
     {#each checks as result, index (`${index}:${result.name}`)}
       <View style={{ gap: 5, borderLeftWidth: 3, borderLeftColor: result.passed ? "#22a06b" : theme.danger, paddingLeft: 12 }}>
         <Text style={textStyle}>{result.passed ? "PASS" : "FAIL"} · {result.name}</Text>

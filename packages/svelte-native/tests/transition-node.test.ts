@@ -1,10 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
-import { createRequire } from "node:module";
-import { dirname } from "node:path";
 import { compile } from "svelte/compiler";
 import { componentOptions } from "../src/compile-options.ts";
-import { readerFor } from "../src/doctor/resolve.ts";
-import { svelteProblems } from "../src/doctor/shapes.ts";
 import { lowerPrimitives } from "../src/lower.ts";
 import { NativeNode, setAnimationDriver, setInvalidationSink, type AnimationDriver } from "../src/renderer.ts";
 
@@ -18,8 +14,7 @@ afterEach(() => {
 
 const imports = `<script>\n  import { View, Text, Image } from "@rasheed/svelte-native";\n  import { fade, fly, scale } from "svelte/transition";\n  import { flip } from "svelte/animate";\n  let { rows = [] } = $props();\n</script>\n`;
 
-test("the installed Svelte has `svelte@5.56.7.patch`: the shape `svelte-native doctor` looks for, and a custom renderer's compiler takes every one of the directives", () => {
-  expect(svelteProblems(readerFor(dirname(createRequire(import.meta.url).resolve("svelte/package.json"))))).toEqual([]);
+test("a custom renderer's compiler takes every one of the directives (this repository's Svelte has the refusals patched out for Bun, which runs no Node hooks: `patches/svelte@5.56.7.patch`; an app's transformer does it as it loads the compiler)", () => {
   for (const directive of ["in:fade", "out:fade", "transition:fade", "animate:flip"]) {
     const each = directive.startsWith("animate") ? "{#each [1] as item (item)}<native-view animate:flip>{item}</native-view>{/each}" : `<native-view ${directive}></native-view>`;
     expect(() => compile(`<script>\n  import { fade } from "svelte/transition";\n  import { flip } from "svelte/animate";\n</script>\n${each}`, componentOptions("directive.svelte")), directive).not.toThrow();

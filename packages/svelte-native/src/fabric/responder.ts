@@ -22,6 +22,13 @@ export type ResponderTree<Node> = {
   blockNativeResponder?(node: Node): void;
   /** The responder that blocked them was released or terminated, or the next one does not block (`UIManager.clearJSResponder()`). */
   releaseNativeResponder?(): void;
+  /**
+   * Whether the node is still in the tree. A responder that was unmounted while it held the gesture is dropped, with none of its handlers run: React Native resets a
+   * `Pressable`'s Pressability when it unmounts, so a link that went away mid-press never presses.
+   */
+  mounted?(node: Node): boolean;
+  /** A responder that was unmounted while it held the gesture was dropped (`mounted` said no): its press state is the host's to clear (Pressability's `reset`). */
+  abandon?(node: Node): void;
 };
 
 type NativeTouchEvent = { touches?: unknown[]; changedTouches?: { identifier?: number }[]; identifier?: number; target?: unknown; timestamp?: number };
@@ -33,6 +40,8 @@ export function createResponder<Node extends object>(tree: ResponderTree<Node>) 
   let blocking = false;
   /** Identifiers of the fingers down, as React Native's touch history tracks them: the gesture ends when the last one lifts. */
   const active = new Set<number>();
+  /** The responder was unmounted and dropped: the rest of that gesture is nobody's (no new responder is negotiated from its moves), until every finger is up. */
+  let orphaned = false;
 
   const lookup = (node: Node, name: string): Fn | undefined =>
     tree.handler(node, name) ?? (tree.pressability(node) as unknown as Record<string, Fn> | undefined)?.[name];
@@ -81,6 +90,17 @@ export function createResponder<Node extends object>(tree: ResponderTree<Node>) 
     else if (blocking) { blocking = false; tree.releaseNativeResponder?.(); }
   }
 
+  /** Drops the responder if it left the tree while it held the gesture; true when it did. */
+  function dropIfUnmounted(): boolean {
+    const current = responder;
+    if (!current || !tree.mounted || tree.mounted(current)) return false;
+    responder = null;
+    orphaned = true;
+    tree.abandon?.(current);
+    if (blocking) { blocking = false; tree.releaseNativeResponder?.(); }
+    return true;
+  }
+
   function commonAncestor(a: Node, b: Node): Node | null {
     const seen = new Set(ancestors(a));
     for (let node: Node | null = b; node; node = tree.parent(node)) if (seen.has(node)) return node;
@@ -104,14 +124,20 @@ export function createResponder<Node extends object>(tree: ResponderTree<Node>) 
       const event = makeEvent(target, target, nativeEvent);
       switch (topLevelType) {
         case "topTouchStart": {
+          const down = changedIds(nativeEvent as NativeTouchEvent);
+          // A finger that goes down again without having come up: its end never arrived (native drops the touches of a node that was deleted while it was pressed), and the
+          // gesture it belonged to is over. The same finger is the same pointer id, which is how a lost end is told from a second finger.
+          if (down.some((id) => active.has(id))) { active.clear(); dropIfUnmounted(); }
           if (active.size === 0 && responder) release(nativeEvent, "onResponderTerminate"); // a lost end event must not wedge the gesture
-          for (const id of changedIds(nativeEvent as NativeTouchEvent)) active.add(id);
+          orphaned = false;
+          for (const id of down) active.add(id);
           if (responder) return true; // a further finger does not take the gesture away
           const next = negotiate(target, null, "Start", event);
           if (next) grant(next, target, nativeEvent);
           return next !== null;
         }
         case "topTouchMove": {
+          if (dropIfUnmounted() || orphaned) return false;
           if (!responder) {
             const next = negotiate(target, null, "Move", event);
             if (next) grant(next, target, nativeEvent);
@@ -132,6 +158,8 @@ export function createResponder<Node extends object>(tree: ResponderTree<Node>) 
         }
         case "topTouchEnd": {
           for (const id of changedIds(nativeEvent as NativeTouchEvent)) active.delete(id);
+          dropIfUnmounted();
+          if (active.size === 0) orphaned = false;
           if (!responder) return false;
           if (active.size === 0) release(nativeEvent, "onResponderRelease");
           else call(responder, "onResponderMove", makeEvent(responder, target, nativeEvent));
@@ -139,6 +167,8 @@ export function createResponder<Node extends object>(tree: ResponderTree<Node>) 
         }
         case "topTouchCancel": {
           active.clear();
+          orphaned = false;
+          dropIfUnmounted();
           if (!responder) return false;
           release(nativeEvent, "onResponderTerminate");
           return true;

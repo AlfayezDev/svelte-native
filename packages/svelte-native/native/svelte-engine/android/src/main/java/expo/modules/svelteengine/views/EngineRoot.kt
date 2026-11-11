@@ -12,6 +12,7 @@ import expo.modules.svelteengine.ClaimArbiter
 import expo.modules.svelteengine.ClaimOutcome
 import expo.modules.svelteengine.GestureRules
 import expo.modules.svelteengine.SvelteEngineNative
+import expo.modules.svelteengine.TextHitRules
 
 /**
  * What the root asks of react-native-gesture-handler's `RNGestureHandlerRootHelper` once gestures are enabled
@@ -379,7 +380,8 @@ class EngineRoot(context: Context) : FrameLayout(context), RootView {
   private fun tagAt(target: View, x: Float, y: Float): Int {
     if (target !is EngineText) return tagOf(target)
     HitTest.toLocal(this, target, x, y, local)
-    return target.tagForTouch(local[0], local[1])
+    // A Text deleted by a commit that the views have not applied yet has no emitter any more: the paragraph's own then, not a dropped touch.
+    return TextHitRules.resolve(target.tagForTouch(local[0], local[1]), tagOf(target)) { native?.hasEmitter(it) ?: true }
   }
 
   private fun track(ev: MotionEvent, index: Int, target: View, tag: Int) {

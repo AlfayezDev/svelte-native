@@ -5,9 +5,9 @@
 #include <react/renderer/mounting/ShadowViewMutation.h>
 
 #include <cmath>
-#include <cstring>
 #include <vector>
 
+#include "FragmentWire.h"
 #include "PropsEncoder.h"
 #include "PropsEncoderNav.h"
 #include "PropsEncoderViews.h"
@@ -44,12 +44,11 @@ ShadowView inEngineFrame(const ShadowView &view) {
   return framed;
 }
 
-// A Text nested in a Text has no view of the engine's (its words are fragments of the paragraph's state), but a touch can land on it: the paragraph's
-// view finds the fragment under the finger and the touch is dispatched to that node, as React Native's `ReactTextView.reactTagForTouch` does. So the node's
-// event emitter is kept like a view's, from its Create to its Delete.
+// A Text nested in a Text has no view of the engine's (its words are fragments of the paragraph's state), but a touch can land on it: the paragraph's view finds
+// the fragment under the finger and the touch is dispatched to that node, as React Native's `ReactTextView.reactTagForTouch` does. So the node's event emitter is
+// kept like a view's, from its Create to its Delete (FragmentWire.h names which nodes).
 bool isNestedText(const ShadowView &view) {
-  const char *name = view.componentName;
-  return name && (!std::strcmp(name, "Text") || !std::strcmp(name, "VirtualText") || !std::strcmp(name, "RCTVirtualText"));
+  return fragmentwire::isNestedTextName(view.componentName);
 }
 
 bool sameForReactNative(const ShadowView &a, const ShadowView &b) {

@@ -245,10 +245,10 @@ object Props {
           fr.variant = ops[i + 8]
           i += 9
         }
-        27 -> {
+        FragmentWire.TARGET -> {
           val fr = out.fragments?.lastOrNull() ?: throw IllegalStateException("SvelteEngine: fragment target without fragment")
-          fr.tag = ops[i]; fr.link = ops[i + 1] and 1 != 0
-          i += 2
+          fr.tag = FragmentWire.tag(ops, i); fr.link = FragmentWire.isLink(ops, i)
+          i += FragmentWire.TARGET_INTS
         }
         in 110..139 -> i = PropsNav.decode(id, ops, i, strings, out.nav)
         in 40..109 -> i = PropsViews.decode(id, ops, i, strings, out.views)

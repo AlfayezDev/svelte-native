@@ -11,7 +11,6 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.accessibility.AccessibilityNodeInfo
 import expo.modules.svelteengine.A11y
-import expo.modules.svelteengine.Fragment
 import expo.modules.svelteengine.TextHitRules
 import expo.modules.svelteengine.TextLayouts
 import expo.modules.svelteengine.TextSpec
@@ -47,6 +46,7 @@ class EngineText(context: Context) : View(context), EngineNode {
     val height = (node.h - node.padT - node.padB).toInt()
     val built = if (s == null) null else TextLayouts.build(s, width, height)
     layout = built?.layout
+    linked = null
     verticalOffset = built?.verticalOffset ?: 0f
     builtWidth = width
     builtHeight = height
@@ -60,6 +60,7 @@ class EngineText(context: Context) : View(context), EngineNode {
   fun clearForReuse() {
     spec = null
     layout = null
+    linked = null
     verticalOffset = 0f
     builtWidth = -1
     builtHeight = -1
@@ -96,26 +97,10 @@ class EngineText(context: Context) : View(context), EngineNode {
     if (!t.isNullOrEmpty()) info.text = withLinks(t)
   }
 
-  /**
-   * Where each fragment of the attributed string sits in the text (`starts` until `ends`, as `ReactTagSpan` covers it) and the node it belongs to; the paragraph's
-   * own tag for a fragment whose state did not name one, and whether the node is a link.
-   */
-  private class Runs(val starts: IntArray, val ends: IntArray, val tags: IntArray, val links: BooleanArray)
-
-  private fun runs(frags: List<Fragment>): Runs {
-    val n = frags.size
-    val r = Runs(IntArray(n), IntArray(n), IntArray(n), BooleanArray(n))
-    var at = 0
-    for (i in 0 until n) {
-      val f = frags[i]
-      r.starts[i] = at
-      // The text React Native laid out has each fragment transformed (`TextTransform.apply`); the length of an uppercased text is not always the one it had.
-      at += if (f.transform == 0) f.text.length else TextLayouts.transformed(f.text, f.transform).length
-      r.ends[i] = at
-      r.tags[i] = if (f.tag != 0) f.tag else node.tag
-      r.links[i] = f.link
-    }
-    return r
+  /** The runs of the fragments of the text (see [TextHitRules.runs]); null when the text has no fragments. */
+  private fun runs(): TextHitRules.Runs? {
+    val frags = spec?.fragments ?: return null
+    return TextHitRules.runs(frags.size, { frags[it].text }, { frags[it].transform }, { frags[it].tag }, { frags[it].link }, node.tag)
   }
 
   /**
@@ -125,32 +110,29 @@ class EngineText(context: Context) : View(context), EngineNode {
    */
   fun tagForTouch(x: Float, y: Float): Int {
     val own = node.tag
-    val frags = spec?.fragments ?: return own
     val l = layout ?: return own
-    var nested = false
-    for (i in frags.indices) {
-      val t = frags[i].tag
-      if (t != 0 && t != own) {
-        nested = true
-        break
-      }
-    }
-    if (!nested) return own
-    val r = runs(frags)
-    return TextHitRules.tagAt(LayoutLines(l), x - node.padL, y - node.padT - verticalOffset, r.starts, r.ends, r.tags, frags.size, own)
+    val r = runs() ?: return own
+    if (!TextHitRules.nested(r, own)) return own
+    return TextHitRules.tagForTouch(LayoutLines(l), x, y, node.padL, node.padT, verticalOffset, r, own)
   }
 
-  /** What a service reads of the text: the string, with a link (`role` "link" on a nested Text, as React Native's `ReactLinkSpan`) as a `ClickableSpan` that clicks the nested node. */
+  /** The text a service was given with its links, and the string it was made of: a service asks again for the node it activates a link of, which has to find the same spans. */
+  private var linked: SpannableString? = null
+
+  /**
+   * What a service reads of the text: the string, with a link (`role` "link" on a nested Text, as React Native's `ReactLinkSpan`) as a `ClickableSpan` that clicks the nested node.
+   * The spans are made once for the text and handed out again: the platform names a link by its span's id, and activating one asks the view for its node again
+   * and looks the span up by that id, so a node built with spans of its own every time finds none and the activation does nothing.
+   */
   private fun withLinks(text: CharSequence): CharSequence {
-    val frags = spec?.fragments
-    if (frags == null || frags.none { it.link }) return text.toString()
-    val r = runs(frags)
-    val out = SpannableString(text.toString())
-    for (i in frags.indices) {
-      val end = minOf(r.ends[i], out.length)
-      if (!r.links[i] || end <= r.starts[i]) continue
-      out.setSpan(LinkSpan(r.tags[i]), r.starts[i], end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-    }
+    val string = text.toString()
+    linked?.let { if (it.toString() == string) return it }
+    val r = runs()
+    val links = if (r == null) emptyList() else TextHitRules.linkRanges(r, string.length)
+    if (links.isEmpty()) return string
+    val out = SpannableString(string)
+    for (link in links) out.setSpan(LinkSpan(link.tag), link.start, link.end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+    linked = out
     return out
   }
 
@@ -171,6 +153,9 @@ class EngineText(context: Context) : View(context), EngineNode {
     override fun lineLeft(line: Int) = layout.getLineLeft(line)
     override fun lineRight(line: Int) = layout.getLineRight(line)
     override fun offsetForHorizontal(line: Int, x: Float) = layout.getOffsetForHorizontal(line, x)
+    override fun lineStart(line: Int) = layout.getLineStart(line)
+    override fun ellipsisStart(line: Int) = layout.getEllipsisStart(line)
+    override fun ellipsisCount(line: Int) = layout.getEllipsisCount(line)
   }
 
   override fun onDraw(canvas: Canvas) {

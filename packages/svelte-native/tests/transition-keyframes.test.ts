@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { applyInlineStyle, computedStyleOf, effectiveStyle, parseLength, parseTransform, transformToCss } from "../src/fabric/dom-style.ts";
+import { applyInlineStyle, computedStyleOf, effectiveStyle, entriesToOps, parseLength, parseOrigin, parseTransform, transformRect, transformToCss } from "../src/fabric/dom-style.ts";
 import { parseKeyframes, restoreValues, sampleSpec, type Keyframe, type Spec } from "../src/fabric/keyframes.ts";
 
 // Svelte's keyframes (what `element.animate` receives) as tracks, and the sampling of tracks: opacity, every transform form, px lengths, colours, what is dropped.
@@ -110,10 +110,23 @@ test("colours are read in hex and rgb() forms; a name is not a colour that is pl
   expect(colours("#f00", "#00ff0080").colours[0]?.values).toEqual([[255, 0, 0, 1], [0, 255, 0, 128 / 255]]);
   expect(colours("rgb(255 0 0 / 50%)", "rgba(0, 0, 255, 1)").colours[0]?.values).toEqual([[255, 0, 0, 0.5], [0, 0, 255, 1]]);
   expect(colours("rgb(100%, 0%, 0%)", "rgb(0, 0, 0)").colours[0]?.values[0]).toEqual([255, 0, 0, 1]);
-  const named = colours("red", "blue");
-  expect(named.colours).toEqual([]);
-  expect(at(named, 0.25)).toEqual({ backgroundColor: "red" });
-  expect(at(named, 0.75)).toEqual({ backgroundColor: "blue" });
+  const named = spec([{ backgroundColor: "red" }, { backgroundColor: "blue" }]);
+  expect(named.parsed.colours).toEqual([]);
+  expect(at(named.parsed, 0.25)).toEqual({ backgroundColor: "red" });
+  expect(at(named.parsed, 0.75)).toEqual({ backgroundColor: "blue" });
+  // not blended, and said so (once): a name, oklch(), ... is shown one keyframe after the other
+  expect(named.warnings).toHaveLength(1);
+  expect(named.warnings[0]).toContain("`red`");
+  expect(spec([{ color: "oklch(0.7 0.1 200)" }, { color: "#ffffff" }]).warnings).toHaveLength(1);
+});
+
+test("hsl() and transparent are colours that are blended", () => {
+  const colours = (...values: string[]) => spec(values.map((backgroundColor) => ({ backgroundColor })));
+  const hsl = colours("hsl(120 100% 25%)", "hsla(240, 100%, 50%, 0.5)");
+  expect(hsl.warnings).toEqual([]);
+  expect(hsl.parsed.colours[0]?.values).toEqual([[0, 128, 0, 1], [0, 0, 255, 0.5]]);
+  expect(colours("hsl(0deg 0% 100%)", "transparent").parsed.colours[0]?.values).toEqual([[255, 255, 255, 1], [0, 0, 0, 0]]);
+  expect(colours("hsl(60, 100%, 50% / 50%)", "#000000").parsed.colours[0]?.values[0]).toEqual([255, 255, 0, 0.5]);
 });
 
 test("a property that is missing from a keyframe takes the nearest keyframe's value", () => {
@@ -150,12 +163,38 @@ test("fill and delay: nothing before the delay, nothing after the end, unless th
   expect(at(instant, 1)).toEqual({ opacity: 0.3 });
 });
 
-test("restoring a cancelled animation gives the node's own values back", () => {
-  const { parsed } = spec([{ opacity: 0, transform: "scale(0)", height: "0px", paddingTop: "0px", backgroundColor: "#000000", transformOrigin: "top left" }, { opacity: 1, transform: "scale(1)", height: "10px", paddingTop: "4px", backgroundColor: "#ffffff", transformOrigin: "top left" }]);
-  expect(restoreValues(parsed, {})).toEqual({ opacity: 1, transform: [], height: undefined, backgroundColor: undefined, transformOrigin: "50% 50%" });
-  expect(restoreValues(parsed, { opacity: 0.8, transform: [{ rotate: "10deg" }], height: 40, backgroundColor: "red", transformOrigin: "center" })).toEqual({
-    opacity: 0.8, transform: [{ rotate: "10deg" }], height: 40, backgroundColor: "red", transformOrigin: "center",
+test("restoring a cancelled animation gives the node's own values back: every key it wrote, released when the node has none", () => {
+  const { parsed } = spec([{ opacity: 0, transform: "scale(0)", height: "0px", paddingTop: "0px", borderTopWidth: "0px", backgroundColor: "#000000", transformOrigin: "top left" }, { opacity: 1, transform: "scale(1)", height: "10px", paddingTop: "4px", borderTopWidth: "1px", backgroundColor: "#ffffff", transformOrigin: "top left" }]);
+  expect(restoreValues(parsed, {})).toEqual({ opacity: 1, transform: [], height: undefined, paddingTop: undefined, borderTopWidth: undefined, backgroundColor: undefined, transformOrigin: "50% 50%" });
+  expect(restoreValues(parsed, { opacity: 0.8, transform: [{ rotate: "10deg" }], height: 40, paddingTop: 3, borderTopWidth: 2, backgroundColor: "red", transformOrigin: "center" })).toEqual({
+    opacity: 0.8, transform: [{ rotate: "10deg" }], height: 40, paddingTop: 3, borderTopWidth: 2, backgroundColor: "red", transformOrigin: "center",
   });
+  // every key of the spec is in it
+  expect(Object.keys(restoreValues(parsed, {})).sort()).toEqual([...parsed.keys].sort());
+});
+
+test("a transform origin is the point it names in a box, and a transform moves a box about it", () => {
+  const size = { width: 100, height: 50 };
+  expect(parseOrigin(undefined, size)).toEqual({ x: 50, y: 25 });
+  expect(parseOrigin("top left", size)).toEqual({ x: 0, y: 0 });
+  expect(parseOrigin("left top", size)).toEqual({ x: 0, y: 0 });
+  expect(parseOrigin("bottom right", size)).toEqual({ x: 100, y: 50 });
+  expect(parseOrigin("top", size)).toEqual({ x: 50, y: 0 });
+  expect(parseOrigin("left", size)).toEqual({ x: 0, y: 25 });
+  expect(parseOrigin("25% 10px", size)).toEqual({ x: 25, y: 10 });
+  expect(parseOrigin(["10%", 5, 0], size)).toEqual({ x: 10, y: 5 });
+  expect(parseOrigin("nonsense", size)).toEqual({ x: 50, y: 25 });
+  const box = { x: 10, y: 20, width: 100, height: 50 };
+  const ops = (text: string) => parseTransform(text).ops;
+  expect(transformRect(box, ops("scale(0.5)"), { x: 0, y: 0 })).toEqual({ x: 10, y: 20, width: 50, height: 25 }); // about the top left the corner stays
+  expect(transformRect(box, ops("scale(0.5)"), { x: 50, y: 25 })).toEqual({ x: 35, y: 32.5, width: 50, height: 25 }); // about the centre it moves
+  expect(transformRect(box, ops("translate(5px, -5px) scale(2)"), { x: 50, y: 25 })).toEqual({ x: -35, y: -10, width: 200, height: 100 });
+  expect(transformRect(box, ops("scale(2) translate(5px, -5px)"), { x: 50, y: 25 })).toEqual({ x: -30, y: -15, width: 200, height: 100 }); // the order of the list matters
+  expect(transformRect(box, ops("translateX(50%)"), { x: 50, y: 25 })).toEqual({ x: 60, y: 20, width: 100, height: 50 });
+  expect(transformRect(box, ops("rotate(45deg)"), { x: 50, y: 25 })).toBe(box); // not applied
+  expect(entriesToOps([{ translateX: 3 }, { scale: 2 }, { rotate: "30deg" }, { translateY: "10%" }])).toEqual([
+    { name: "translateX", unit: "", value: 3 }, { name: "scale", unit: "", value: 2 }, { name: "rotate", unit: "deg", value: 30 }, { name: "translateY", unit: "%", value: 10 },
+  ]);
 });
 
 test("getComputedStyle gives what the transitions read, and asks for the layout only when a size is read", () => {
@@ -183,4 +222,19 @@ test("what is written to node.style goes over the node's style: sizes in px, the
   applyInlineStyle(bare, { height: "50%" });
   expect(bare.style).toEqual({ height: "50%" });
   expect(effectiveStyle({ nativeStyle: { opacity: 0.4, width: 10 } }, { width: "20px" })).toEqual({ opacity: 0.4, width: 20 });
+});
+
+test("getComputedStyle has the colours and radii of the merged style, the style of a class included, and the origin as px", () => {
+  const props = {
+    nativeClass: [{ backgroundColor: "#336699", borderRadius: 8 }, { borderTopLeftRadius: 2 }],
+    nativeStyle: { color: 0xff112233, borderColor: "red", borderTopColor: "blue", transformOrigin: "top left" },
+  };
+  const style = computedStyleOf(props, null, () => ({ width: 120, height: 48 }));
+  expect(style.backgroundColor).toBe("#336699"); // from the class
+  expect(style.color).toBe("rgba(17, 34, 51, 1)"); // an ARGB integer, as React Native processes a colour
+  expect([style.borderColor, style.borderTopColor, style.borderLeftColor]).toEqual(["red", "blue", "red"]); // a side falls back to the whole border's
+  expect([style.borderRadius, style.borderTopLeftRadius, style.borderTopRightRadius]).toEqual(["8px", "2px", "8px"]);
+  expect(style.transformOrigin).toBe("0px 0px");
+  const bare = computedStyleOf({}, null, () => null);
+  expect([bare.backgroundColor, bare.color, bare.borderRadius, bare.transformOrigin]).toEqual(["rgba(0, 0, 0, 0)", "rgb(0, 0, 0)", "0px", "0px 0px"]);
 });

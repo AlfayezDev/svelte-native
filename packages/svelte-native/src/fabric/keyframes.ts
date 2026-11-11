@@ -6,7 +6,7 @@
  * plain numbers and strings in it so it can be handed to the UI runtime; `sampleSpec` is the worklet that reads a spec at a progress and writes the values of that moment. The same
  * function runs on the JS thread (the first values of a node, the layout `getBoundingClientRect` reports while an animation moves a node) and in the mapper on the UI thread.
  *
- * What a track can be: a number (`opacity`, a length in px or a percentage, `height`, `paddingTop`, ...), a colour in hex or `rgb()` (`backgroundColor`, ...), a transform list whose functions are the same in
+ * What a track can be: a number (`opacity`, a length in px or a percentage, `height`, `paddingTop`, ...), a colour in hex, `rgb()`, `hsl()` or `transparent` (`backgroundColor`, ...; a name or `oklch()` is shown, not blended, with a warning), a transform list whose functions are the same in
  * every keyframe (`translate`, `scale`, `rotate`, `skew`, `perspective`), a transform list that is not (the keyframes are shown one after the other), or a string (shown one after the other).
  * What cannot be played is dropped with a warning and the rest plays: `filter` (React Native has no filter on a view for `blur`), the SVG stroke properties (`draw`), `matrix()` and the 3D
  * transform functions. `overflow` is not a track: Svelte also writes it to `element.style`, which a node applies for the length of the transition (`NativeNode.style`).
@@ -57,19 +57,36 @@ const META = new Set(["offset", "easing", "composite", "computedOffset"]);
 const UNSUPPORTED = /^(?:filter|backdropFilter|clipPath|mask.*|stroke.*|fill.*|cssFloat|cssOffset)$/;
 const COLOUR_KEY = /(?:^|[a-z])Color$|^color$/;
 
-/** `#rgb`, `#rrggbb`, `#rrggbbaa` and `rgb()` / `rgba()` (commas or spaces, `/` before the alpha) as [r, g, b, a], or null: the colours a keyframe can have that are played (a name is shown as it is). */
+/** An `hsl()` colour (`hsl(120 50% 40%)`, `hsla(120, 50%, 40%, 0.5)`, a `/` before the alpha) as [r, g, b, a]. */
+function hslChannels(parts: string[]): number[] | null {
+  const numbers = parts.map((part) => (/^[+-]?(?:\d+\.?\d*|\.\d+)(?:deg|%)?$/.test(part) ? Number.parseFloat(part) : Number.NaN));
+  if (numbers.some((value) => Number.isNaN(value))) return null;
+  const hue = (((numbers[0] as number) % 360) + 360) % 360;
+  const saturation = Math.min(100, Math.max(0, numbers[1] as number)) / 100;
+  const lightness = Math.min(100, Math.max(0, numbers[2] as number)) / 100;
+  const chroma = saturation * Math.min(lightness, 1 - lightness);
+  const channel = (offset: number) => {
+    const k = (offset + hue / 30) % 12;
+    return Math.round((lightness - chroma * Math.max(-1, Math.min(k - 3, 9 - k, 1))) * 255);
+  };
+  return [channel(0), channel(8), channel(4), numbers[3] === undefined ? 1 : parts[3]?.endsWith("%") ? numbers[3] / 100 : numbers[3]];
+}
+
+/** `#rgb`, `#rrggbb`, `#rrggbbaa`, `transparent`, `rgb()` / `rgba()` and `hsl()` / `hsla()` (commas or spaces, `/` before the alpha) as [r, g, b, a], or null: the colours a keyframe can have that are played. */
 const parseChannels = (css: string): number[] | null => {
   const text = css.trim().toLowerCase();
+  if (text === "transparent") return [0, 0, 0, 0];
   const hex = /^#([\da-f]{3,8})$/.exec(text)?.[1];
   if (hex !== undefined && (hex.length === 3 || hex.length === 4 || hex.length === 6 || hex.length === 8)) {
     const wide = hex.length <= 4 ? [...hex].map((digit) => digit + digit) : (hex.match(/../g) as string[]);
     const [r, g, b, a] = wide.map((pair) => parseInt(pair, 16));
     return [r as number, g as number, b as number, a === undefined ? 1 : a / 255];
   }
-  const functional = /^rgba?\(\s*([^)]*)\)$/.exec(text)?.[1];
-  if (functional === undefined) return null;
-  const parts = functional.split(/[\s,/]+/).filter((part) => part !== "");
+  const functional = /^(rgba?|hsla?)\(\s*([^)]*)\)$/.exec(text);
+  if (functional === null) return null;
+  const parts = (functional[2] as string).split(/[\s,/]+/).filter((part) => part !== "");
   if (parts.length !== 3 && parts.length !== 4) return null;
+  if ((functional[1] as string).startsWith("hsl")) return hslChannels(parts);
   const values = parts.map((part, at) => {
     if (!/^[+-]?(?:\d+\.?\d*|\.\d+)%?$/.test(part)) return Number.NaN;
     const value = Number.parseFloat(part);
@@ -157,6 +174,8 @@ function addProperty(spec: Spec, key: string, raw: (string | number | undefined)
     const channels = texts.map((text) => (text === undefined ? undefined : parseChannels(text) ?? undefined));
     const filled = channels.every((entry, at) => entry !== undefined || texts[at] === undefined) ? fillGaps(channels) : null;
     if (filled) { spec.colours.push({ key, values: filled }); spec.keys.push(key); return; }
+    const unread = texts.find((text, at) => text !== undefined && channels[at] === undefined);
+    warn(key, `the colour \`${unread}\` of \`${key}\` is not hex, rgb(), hsl() or transparent: it is shown as it is, one keyframe after the other, and not blended`);
   }
   const values = fillGaps(texts);
   if (values === null) return;
@@ -221,12 +240,10 @@ export function sampleSpec(spec: Spec, progress: number, out: Record<string, unk
   } else if (spec.transforms !== null) out.transform = spec.transforms[fraction < 0.5 ? index : next];
 }
 
-const SIZES = new Set(["width", "height", "minWidth", "minHeight", "maxWidth", "maxHeight", "top", "left", "right", "bottom"]);
-
 /**
- * The values to write when an animation that wrote `spec` is cancelled, so the view goes back to what the node's own style says: opacity and transform to the style's (or the defaults),
- * the origin, a size (`height`, `width`, ...) and a colour to the style's, which may be nothing (`undefined`: a `height` the animation pinned is released). The paddings, margins and border
- * widths a `slide` animates end where the style has them, so they are left as the last keyframe wrote them.
+ * The values to write when an animation that wrote `spec` is cancelled, so the view goes back to what the node's own style says: opacity, transform and the origin to the style's (or the
+ * defaults), and every other key to the style's value, which may be nothing (`undefined`: a `height` or a padding the animation pinned is released). Every key the animation wrote is
+ * in it: an animation cancelled in the middle (a `slide` turned around) has left lengths and colours at values of its own.
  */
 export function restoreValues(spec: Spec, natural: Readonly<Record<string, unknown>>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -234,7 +251,7 @@ export function restoreValues(spec: Spec, natural: Readonly<Record<string, unkno
     if (key === "opacity") out.opacity = typeof natural.opacity === "number" ? natural.opacity : 1;
     else if (key === "transform") out.transform = nativeTransform(transformOps(natural.transform));
     else if (key === "transformOrigin") out.transformOrigin = natural.transformOrigin ?? "50% 50%";
-    else if (SIZES.has(key) || COLOUR_KEY.test(key)) out[key] = natural[key];
+    else out[key] = natural[key];
   }
   return out;
 }

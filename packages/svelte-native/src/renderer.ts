@@ -1,6 +1,6 @@
 import { createRenderer } from "svelte/renderer";
 import { classStyle } from "./classes.ts";
-import { computedStyleOf, domRect, inlineProperties, type ComputedStyle, type Rect } from "./fabric/dom-style.ts";
+import { computedStyleOf, domRect, inlineProperties, type ComputedStyle, type Rect, type Size } from "./fabric/dom-style.ts";
 import type { AnimationOptions, Keyframe } from "./fabric/keyframes.ts";
 
 export type { AnimationOptions, Keyframe } from "./fabric/keyframes.ts";
@@ -102,8 +102,12 @@ export interface NativeAnimation {
 export interface AnimationDriver {
   animate(node: NativeNode, keyframes: readonly Keyframe[], options: AnimationOptions): NativeAnimation;
   getAnimations(node: NativeNode): NativeAnimation[];
-  /** The node's box in the window, from the tree the host has committed; commits what is pending first. Null when the node has no view yet. */
+  /** The node's box in the window as `getBoundingClientRect` reports it: from the tree the host has committed (what is pending is committed first), with the node's own transform, which an animation may be drawing. Null when the node has no view yet. */
   layout(node: NativeNode): Rect | null;
+  /** The node's own size, before any transform (`clientWidth`, `clientHeight`, a computed `width`). Null when the node has no view yet. */
+  size(node: NativeNode): Size | null;
+  /** A node's animations are over and its own values are back: the host lets go of what Reanimated remembers of the node's last animated values (`fabric/animation.ts`, `forgetAnimatedValues`). */
+  forget(node: NativeNode): void;
 }
 let animationDriver: AnimationDriver | null = null;
 export function setAnimationDriver(driver: AnimationDriver | null): void { animationDriver = driver; }
@@ -304,13 +308,17 @@ export class NativeNode {
 
   /** The node's box as `getBoundingClientRect` gives it: layout from the tree the host has committed (pending changes are committed first), with what a running animation moves. Zeros for a node with no view. */
   getBoundingClientRect(): DOMRectReadOnly { return domRect(animationDriver?.layout(this) ?? { x: 0, y: 0, width: 0, height: 0 }); }
-  get clientWidth(): number { return animationDriver?.layout(this)?.width ?? 0; }
-  get clientHeight(): number { return animationDriver?.layout(this)?.height ?? 0; }
+  get clientWidth(): number { return animationDriver?.size(this)?.width ?? 0; }
+  get clientHeight(): number { return animationDriver?.size(this)?.height ?? 0; }
+  /** The node's animations are over and its own values are back (`fabric/transitions.ts`): the host lets go of what Reanimated remembers of the node's last animated values. */
+  forgetAnimated(): void { animationDriver?.forget(this); }
+  /** `transition:draw` asks an SVG path for its length; a native element has none, so the transition has nothing to draw (its other properties still play). */
+  getTotalLength(): number { return 0; }
   /** Svelte's `flip` asks for the zoom: a native view has none, and answering here keeps it from walking up the parents. */
   get currentCSSZoom(): number { return 1; }
 
   /** What `getComputedStyle(node)` returns for this node. */
-  computedStyle(): ComputedStyle { return computedStyleOf(this.props, this.dom?.inline ?? null, () => animationDriver?.layout(this) ?? null); }
+  computedStyle(): ComputedStyle { return computedStyleOf(this.props, this.dom?.inline ?? null, () => animationDriver?.size(this) ?? null); }
 
   /** Calls the listeners of `event.type`, as `dispatchEvent` does (`introstart`, `introend`, `outrostart`, `outroend` reach `onintrostart={...}` this way). */
   dispatchEvent(event: { type: string }): boolean {

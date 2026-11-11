@@ -94,11 +94,11 @@ describe("init in a fresh sv project", () => {
     // Both packages that come with another one by a range: the patched expo-modules-core, and the Metro config package, pinned to the React Native version init writes.
     expect(yaml).toContain(`overrides:\n  expo-modules-core: 57.0.23\n  "@react-native/metro-config": ${appDependencies["react-native"]}\n`);
     const declared = [...yaml.matchAll(/^ {2}"?([^\s":]+(?:@[^\s":]+)*)"?: (patches\/svelte-native\/\S+)$/gm)].map((match) => match[2] as string);
-    expect(declared.length).toBeGreaterThanOrEqual(6);
+    expect(declared.length).toBeGreaterThanOrEqual(5);
     for (const path of declared) expect(existsSync(join(root, path)), path).toBe(true);
-    // The library's five always-needed patches (Svelte's own compiler, for the transition directives, among them) and SvelteKit's, and none of the optional view libraries'.
+    // The library's four always-needed patches and SvelteKit's, and none of the optional view libraries'. Svelte's compiler is not among them: the transformer makes it accept the transition directives.
     expect(declared.map((path) => path.replace("patches/svelte-native/", "").replace(/@[^@]+\.patch$/, "")).sort()).toEqual(
-      ["@sveltejs__kit", "expo-modules-core", "react-native-gesture-handler", "react-native-reanimated", "react-native-worklets", "svelte"].sort(),
+      ["@sveltejs__kit", "expo-modules-core", "react-native-gesture-handler", "react-native-reanimated", "react-native-worklets"].sort(),
     );
     expect(yaml).not.toContain("lottie-react-native");
     // Each patch file is the library's own, byte for byte.

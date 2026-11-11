@@ -298,16 +298,21 @@ export type DomState = {
  * `node.style`, as far as Svelte writes it: `overflow` (a transition that clips), and `position`, `width`, `height`, `transform` (`animate:` takes a leaving item out of the flow and
  * keeps it where it was). A write is kept on the node and applied over its own style by the host (`applyInlineStyle`); an empty string removes it, as on the DOM.
  */
-export class InlineStyle {
-  declare overflow: string;
-  declare position: string;
-  declare width: string;
-  declare height: string;
-  declare transform: string;
+// biome-ignore lint/suspicious/noUnsafeDeclarationMerging: the interface below types the accessors the prototype gets
+export class InlineStyle { // eslint-disable-line @typescript-eslint/no-unsafe-declaration-merging
   constructor(private readonly node: NativeNode) {}
   getPropertyValue(name: string): string { return this.node.dom?.inline?.[name] ?? ""; }
   setProperty(name: string, value: string | number | null): void { this.node.setInline(name, value === null ? "" : String(value)); }
   removeProperty(name: string): string { const old = this.getPropertyValue(name); this.node.setInline(name, ""); return old; }
+}
+// The five properties are accessors on the prototype (below): the class declares their types by merging with an interface, not with fields, which a `declare` field would be (Babel, which
+// compiles the library's sources when they sit under `node_modules`, rejects `declare` fields unless it is told to allow them, and a real field would shadow the accessor).
+export interface InlineStyle { // eslint-disable-line @typescript-eslint/no-unsafe-declaration-merging
+  overflow: string;
+  position: string;
+  width: string;
+  height: string;
+  transform: string;
 }
 for (const name of inlineProperties) {
   Object.defineProperty(InlineStyle.prototype, name, {

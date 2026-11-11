@@ -924,3 +924,23 @@ test("a list of items under one parent reads the parent's transforms once for th
   expect(calls.filter((call) => call === `rect ${parent.tag} true`).length).toBeLessThanOrEqual(2);
   expect(calls.filter((call) => call === `rect ${parent.tag} false`).length).toBeLessThanOrEqual(2);
 });
+
+test("animations that start one another are committed together: the commit that follows the holds of a list has the first frame of every item's move, not of the first one's", async () => {
+  const m = await fresh();
+  const app = m.startSurface(77, m.Fixture, {});
+  await settle(m);
+  const first = measured(77, "inner");
+  const second = measured(77, "scaled-inner");
+  calls.length = 0;
+  // Svelte's `animate:` plays a hold of no length for each item, and the item's move starts in the hold's `onfinish`, a microtask later. A commit queued by the first hold's change must not come
+  // between the first move and the second: the second item would be committed, in its new place, without its first frame, and drawn so until the next commit.
+  for (const node of [first, second]) {
+    const hold = node.animate([{ opacity: "0.5" }, { opacity: "0.5" }], { duration: 0, fill: "forwards" });
+    hold.onfinish = () => { node.animate([{ opacity: "0.25" }, { opacity: "0.75" }], { duration: 100, fill: "forwards" }); };
+  }
+  await settle(m);
+  expect(calls.filter((call) => call === "completeRoot")).toHaveLength(1);
+  expect(byId(77, "inner").props.opacity).toBe(0.25);
+  expect(byId(77, "scaled-inner").props.opacity).toBe(0.25);
+  void app;
+});

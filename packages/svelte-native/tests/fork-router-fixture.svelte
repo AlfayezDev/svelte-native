@@ -25,5 +25,17 @@
   export function release(id) { waiting[id].shift().resolve(); }
   export function fail(id) { waiting[id].shift().reject(new Error(`${id} failed`)); }
   export function loadLog() { return [...loads]; }
+  // `prepare` called from an effect: the effect must not depend on what `prepare` reads.
+  let effectTrigger = $state(0);
+  let effectHref = "/b";
+  let effectRuns = 0;
+  let effectPrepared;
+  $effect(() => {
+    if (effectTrigger === 0) return;
+    effectRuns++;
+    effectPrepared = router.prepare(effectHref);
+  });
+  export function prepareFromEffect(href) { effectHref = href; effectTrigger++; }
+  export function effectState() { return { runs: effectRuns, prepared: effectPrepared }; }
 </script>
 <Router {router} />

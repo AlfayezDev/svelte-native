@@ -1,5 +1,5 @@
 import { parse } from "svelte/compiler";
-import { HTML_CLASS_HELPER, HTML_HELPER_EXPORTS, bindThisText, lowerHtml, mayHaveHtml, oneLine, repeatableSource } from "./lower-html.ts";
+import { HTML_CLASS_HELPER, HTML_HELPER_EXPORTS, bindThisText, isFunctionLiteral, lowerHtml, mayHaveHtml, oneLine, repeatableSource } from "./lower-html.ts";
 
 const PACKAGE = "@rasheed/svelte-native";
 const GESTURES = `${PACKAGE}/gestures`;
@@ -90,11 +90,6 @@ function classExpression(content: string, attribute: Node): string {
     template += part.type === "Text" ? part.data.replace(/[`\\]/g, (match: string) => `\\${match}`) : `\${(${content.slice(part.expression.start, part.expression.end)}) ?? ""}`;
   }
   return `${template}\``;
-}
-
-/** A function written where it is used: an arrow or a `function`, which is a handler whenever it is read. */
-function isFunctionLiteral(expression: Node): boolean {
-  return expression.type === "ArrowFunctionExpression" || expression.type === "FunctionExpression";
 }
 
 /** True when an attribute expression could evaluate to a function (a literal, an object, an array or an operator's result cannot). */

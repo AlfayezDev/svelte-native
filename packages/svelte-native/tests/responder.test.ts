@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { compile } from "svelte/compiler";
-import { componentOptions } from "../src/compile-options.ts";
+import { componentOptions, lowersHtml } from "../src/compile-options.ts";
 import { lowerPrimitives } from "../src/lower.ts";
 import { reanimatedStubs } from "./reanimated-stubs.ts";
 
@@ -70,8 +70,8 @@ async function load() {
         builder.onResolve({ filter: /^@rasheed\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
         builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../src/environment.ts") }));
         builder.onLoad({ filter: /\.svelte$/ }, async ({ path }) => ({
-          // As the app's build does: the primitives imported from the package are lowered to host tags before the compile.
-          contents: compile(lowerPrimitives(await readFile(path, "utf8"), { filename: path, warn: () => {} }), componentOptions(path)).js.code,
+          // As the app's build does: the primitives imported from the package (and the HTML elements, in a file the build lowers them in) are lowered to host tags before the compile.
+          contents: compile(lowerPrimitives(await readFile(path, "utf8"), { filename: path, html: lowersHtml(path), warn: () => {} }), componentOptions(path)).js.code,
           loader: "js",
         }));
       },

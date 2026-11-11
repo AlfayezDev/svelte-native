@@ -270,17 +270,25 @@ test("a button is a pressable with the button role; its press reads its own type
 });
 
 test("onclick is onPress on every mapped element; a view with a handler is a pressable, a text stays a text", () => {
-  expect(body(`<div onclick={go}>a</div>`)).toBe(`<native-pressable onPress={go}>a</native-pressable>`);
+  expect(body(`<div onclick={go}>a</div>`)).toBe(`<native-pressable nativeOnPress={go}>a</native-pressable>`);
   expect(body(`<li onclick={() => pick(i)}><b>x</b></li>`)).toBe(`<native-pressable onPress={() => pick(i)}><native-text>x</native-text></native-pressable>`);
-  expect(body(`<span onclick={go}>a</span>`)).toBe(`<native-text onPress={go}>a</native-text>`);
-  expect(body(`<p {onclick}>a</p>`)).toBe(`<native-text onPress={onclick}>a</native-text>`);
-  expect(body(`<img onclick={go} src="/a.png" />`)).toContain("onPress={go}");
+  expect(body(`<span onclick={go}>a</span>`)).toBe(`<native-text nativeOnPress={go}>a</native-text>`);
+  expect(body(`<p {onclick}>a</p>`)).toBe(`<native-text nativeOnPress={onclick}>a</native-text>`);
+  expect(body(`<img onclick={go} src="/a.png" />`)).toContain("nativeOnPress={go}");
+  // A handler written as a function stays the event; one that may be undefined is the prop (`PRESS_HANDLERS` in lower.ts): an element with none is no responder. With a spread on the element Svelte's set_attributes removes a nullish listener itself.
+  expect(body(`<div onclick={on ? go : undefined}>a</div>`)).toBe(`<native-pressable nativeOnPress={on ? go : undefined}>a</native-pressable>`);
+  expect(body(`<span on:click={on && go}>a</span>`)).toBe(`<native-text nativeOnPress={on && go}>a</native-text>`);
+  expect(body(`<div {...rest} onclick={on ? go : undefined}>a</div>`)).toContain("onPress={on ? go : undefined}");
+  expect(body(`<div {...rest} onclick={on ? go : undefined}>a</div>`)).not.toContain("nativeOnPress");
+  // A button and a link press by themselves: their `onPress` is a function that runs the handler when it is there, so they are always pressable.
+  expect(body(`<button onclick={on ? go : undefined}>a</button>`)).toContain("onPress={(__event) => __svelteNativeClick(__event, on ? go : undefined,");
+  expect(body(`<p>x <a href="/a" onclick={on ? go : undefined}>a</a></p>`)).toContain("onPress={(__event) => __svelteNativeClick(__event, on ? go : undefined,");
   // The directive is the same event; a forwarding `on:click` has no handler to rename; the other events pass through as they are.
-  expect(body(`<div on:click={go} onpointerdown={down} onLayout={size}></div>`)).toBe(`<native-pressable onPress={go} onpointerdown={down} onLayout={size}></native-pressable>`);
+  expect(body(`<div on:click={go} onpointerdown={down} onLayout={size}></div>`)).toBe(`<native-pressable nativeOnPress={go} onpointerdown={down} onLayout={size}></native-pressable>`);
   // Svelte's custom renderer refuses `on:`, so what is left of a directive is the attribute of its event (a warning that it never runs, for an event the element does not get), and what cannot be is an error that says what to write.
   const warnings: string[] = [];
   const out = html(`<div on:mouseover={over} on:click={go}></div>`, { warn: (message) => warnings.push(message) });
-  expect(out).toContain("<native-pressable nativeHtml={true} onmouseover={over} onPress={go}>");
+  expect(out).toContain("<native-pressable nativeHtml={true} onmouseover={over} nativeOnPress={go}>");
   expect(warnings).toEqual([expect.stringContaining('on:mouseover on <div> never runs on a device')]);
   compiled(out);
   for (const directive of ["on:click", "on:click|preventDefault={go}", "on:keydown|once={go}", "on:custom"]) expect(() => html(`<div ${directive}></div>`), directive).toThrow(/on:\w+(\|\w+)? on <div> is not supported on native: write the `on\w+` attribute with a function/);
@@ -436,7 +444,7 @@ test("class, class:, style, spreads and ref carry over as on a lowered View; a b
     // biome-ignore lint/suspicious/noTemplateCurlyInString: the expected output is the source of a template literal
     .toBe("<native-view nativeClass={__svelteNativeClass([`a ${(b) ?? \"\"}`, { \"on\": on }])}  nativeStyle={s} {...__svelteNativeWebSpread(rest, { \"on\": on })} id=\"x\" aria-label=\"l\">t</native-view>");
   // An HTML element's class does not get its own style along: the host knows the font size the element inherits, which a `leading-6` is made from.
-  expect(body(`<p class="t" style={{ fontSize: 20 }} {onclick} hidden>x</p>`)).toBe("<native-text nativeClass={__svelteNativeClass(`t`)} nativeStyle={{ fontSize: 20 }} onPress={onclick} hidden={true}>x</native-text>");
+  expect(body(`<p class="t" style={{ fontSize: 20 }} {onclick} hidden>x</p>`)).toBe("<native-text nativeClass={__svelteNativeClass(`t`)} nativeStyle={{ fontSize: 20 }} nativeOnPress={onclick} hidden={true}>x</native-text>");
   // A press that does something by itself (a button submits, a link follows) is not replaced by the `onclick` of a spread: that runs with it.
   expect(body(`<button {...rest}>x</button>`)).toContain("{...__svelteNativeWebClickSpread(rest)}");
   expect(body(`<div {...rest}>x</div>`)).toContain("{...__svelteNativeWebSpread(rest)}");

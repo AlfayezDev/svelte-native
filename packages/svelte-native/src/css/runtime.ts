@@ -263,9 +263,9 @@ function fontSizeOf(style: unknown): number | undefined {
  * The variant's style with what only the element or the device knows filled in: the values of the safe area and the window, and the line height and letter
  * spacing that are relative to the font size (the element's own style's, else the classes', else 14). The same object while those are the same.
  */
-function finish(variant: Variant, elementStyle: unknown): Style | undefined {
+function finish(variant: Variant, elementStyle: unknown, defer: boolean): Style | undefined {
   if (variant.dynamic === undefined && variant.relative === undefined) return variant.style;
-  const values: Record<string, number> = {};
+  const values: Record<string, unknown> = {};
   let key = "";
   // Each source is read once, so a view listens to it once.
   let size: { width: number; height: number } | undefined;
@@ -283,7 +283,11 @@ function finish(variant: Variant, elementStyle: unknown): Style | undefined {
     values[property] = base + (value.add ?? 0);
     key += `${values[property]},`;
   }
-  if (variant.relative !== undefined) {
+  if (variant.relative !== undefined && defer) {
+    // The element inherits its font size (a lowered HTML element, `fabric/text-inherit.ts`): the host works the values out, so they stay what the classes said.
+    values.fontRelative = variant.relative;
+    key += "d";
+  } else if (variant.relative !== undefined) {
     const own = variant.style?.fontSize;
     const fontSize = fontSizeOf(elementStyle) ?? (typeof own === "number" ? own : DEFAULT_FONT_SIZE);
     for (const property of RELATIVE_KEYS) {
@@ -303,9 +307,10 @@ function finish(variant: Variant, elementStyle: unknown): Style | undefined {
 
 /**
  * The style of a class list (the names separated by spaces, not empty), or `undefined` when none of its classes gives one. `style` is the element's own
- * style, which sets the font size its relative line height is made from. Call it where a template or a `$derived` tracks it: what the rules depend on is read here.
+ * style, which sets the font size its relative line height is made from. With `defer` the relative values stay in the result, under a `fontRelative` key (see `ClassResolver`).
+ * Call it where a template or a `$derived` tracks it: what the rules depend on is read here.
  */
-export function resolveClasses(className: string, style?: unknown): unknown {
+export function resolveClasses(className: string, style?: unknown, defer?: boolean): unknown {
   if (dev()) subscribeTable();
   if (empty) {
     if (dev() && !warnedEmpty) {
@@ -328,5 +333,5 @@ export function resolveClasses(className: string, style?: unknown): unknown {
     variant = merge(analysis.rules.filter((rule) => applies(rule, scheme, width)));
     analysis.variants.set(key, variant);
   }
-  return finish(variant, style);
+  return finish(variant, style, defer === true);
 }

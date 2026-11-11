@@ -1163,13 +1163,14 @@ var merge = (a, b, sign) => {
 };
 var scale = (q, factor) => Object.fromEntries(Object.entries(q).map(([k, v]) => [k, v * factor]));
 var Evaluator = class _Evaluator {
+  pos = 0;
+  // Fields, not parameter properties: Node strips the types of a file it loads itself (the transformer from the sources) and does not do those.
+  text;
+  remPx;
   constructor(text, remPx) {
     this.text = text;
     this.remPx = remPx;
   }
-  text;
-  remPx;
-  pos = 0;
   run() {
     try {
       const q = this.sum();
@@ -1366,16 +1367,17 @@ function own(table, key) {
   return Object.hasOwn(table, key) ? table[key] : void 0;
 }
 var Declaration = class {
+  // Fields, not parameter properties: Node strips the types of a file it loads itself (the transformer from the sources, `lower-html.ts` through `inline.ts`) and does not do those.
+  property;
+  env;
+  out;
+  report;
   constructor(property, env, out, report) {
     this.property = property;
     this.env = env;
     this.out = out;
     this.report = report;
   }
-  property;
-  env;
-  out;
-  report;
   fail(reason) {
     this.report(this.property, reason);
   }
@@ -1580,7 +1582,7 @@ handlers.background = (d, text) => {
   d.color(["backgroundColor"], text);
 };
 handlers.display = (d, text) => {
-  d.keyword("display", text, { flex: "flex", "inline-flex": "flex", block: "flex", "inline-block": "flex", inline: "flex", "flow-root": "flex", none: "none", contents: "contents" });
+  if (d.keyword("display", text, { flex: "flex", "inline-flex": "flex", block: "flex", "inline-block": "flex", inline: "flex", "flow-root": "flex", none: "none", contents: "contents" })) d.set("htmlDisplay", text.trim().toLowerCase());
 };
 handlers.position = (d, text) => void d.keyword("position", text, same("absolute", "relative", "static"));
 handlers["z-index"] = (d, text) => text.trim() === "auto" ? d.set("zIndex", null) : void d.number("zIndex", text);

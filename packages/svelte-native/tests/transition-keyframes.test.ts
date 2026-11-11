@@ -101,7 +101,7 @@ test("unsupported properties are dropped with a warning and the rest plays", () 
 test("overflow is not a track, colours are, other strings are shown one after the other", () => {
   const { parsed } = spec([{ overflow: "hidden", backgroundColor: "#ff0000", transformOrigin: "top left", zIndex: "1" }, { overflow: "hidden", backgroundColor: "rgba(0, 0, 255, 0.5)", transformOrigin: "bottom right", zIndex: "3" }]);
   expect(parsed.keys.sort()).toEqual(["backgroundColor", "transformOrigin", "zIndex"]);
-  expect(at(parsed, 0.5)).toEqual({ zIndex: 2, backgroundColor: "rgba(128, 0, 128, 0.75)", transformOrigin: "bottom right" });
+  expect(at(parsed, 0.5)).toEqual({ zIndex: 2, backgroundColor: "rgba(170, 0, 85, 0.75)", transformOrigin: "bottom right" });
   expect(at(parsed, 0.25).transformOrigin).toBe("top left");
 });
 
@@ -127,6 +127,11 @@ test("hsl() and transparent are colours that are blended", () => {
   expect(hsl.parsed.colours[0]?.values).toEqual([[0, 128, 0, 1], [0, 0, 255, 0.5]]);
   expect(colours("hsl(0deg 0% 100%)", "transparent").parsed.colours[0]?.values).toEqual([[255, 255, 255, 1], [0, 0, 0, 0]]);
   expect(colours("hsl(60, 100%, 50% / 50%)", "#000000").parsed.colours[0]?.values[0]).toEqual([255, 255, 0, 0.5]);
+  // a hue in other units of angle is still a hue
+  expect(colours("hsl(0.5turn 100% 50%)", "#000000").parsed.colours[0]?.values[0]).toEqual([0, 255, 255, 1]);
+  expect(colours("hsl(200grad 100% 50%)", "#000000").parsed.colours[0]?.values[0]).toEqual([0, 255, 255, 1]);
+  expect(colours(`hsl(${Math.PI}rad 100% 50%)`, "#000000").parsed.colours[0]?.values[0]).toEqual([0, 255, 255, 1]);
+  expect(colours("hsl(0.5turn 100% 50%)", "#000000").warnings).toEqual([]);
 });
 
 test("a property that is missing from a keyframe takes the nearest keyframe's value", () => {
@@ -163,14 +168,31 @@ test("fill and delay: nothing before the delay, nothing after the end, unless th
   expect(at(instant, 1)).toEqual({ opacity: 0.3 });
 });
 
-test("restoring a cancelled animation gives the node's own values back: every key it wrote, released when the node has none", () => {
+test("restoring a cancelled animation gives the node's own values back: every key it wrote, reset (null, never undefined) when the node has none", () => {
   const { parsed } = spec([{ opacity: 0, transform: "scale(0)", height: "0px", paddingTop: "0px", borderTopWidth: "0px", backgroundColor: "#000000", transformOrigin: "top left" }, { opacity: 1, transform: "scale(1)", height: "10px", paddingTop: "4px", borderTopWidth: "1px", backgroundColor: "#ffffff", transformOrigin: "top left" }]);
-  expect(restoreValues(parsed, {})).toEqual({ opacity: 1, transform: [], height: undefined, paddingTop: undefined, borderTopWidth: undefined, backgroundColor: undefined, transformOrigin: "50% 50%" });
+  // Reanimated's JSI conversion drops an `undefined`, so a key the node has no value for is `null`; a colour cannot be (the colour processor throws): `transparent` for a background.
+  const bare = restoreValues(parsed, {});
+  expect(bare).toEqual({ opacity: 1, transform: [], height: null, paddingTop: null, borderTopWidth: null, backgroundColor: "transparent", transformOrigin: "50% 50%" });
+  expect(Object.values(bare).includes(undefined)).toBe(false);
   expect(restoreValues(parsed, { opacity: 0.8, transform: [{ rotate: "10deg" }], height: 40, paddingTop: 3, borderTopWidth: 2, backgroundColor: "red", transformOrigin: "center" })).toEqual({
     opacity: 0.8, transform: [{ rotate: "10deg" }], height: 40, paddingTop: 3, borderTopWidth: 2, backgroundColor: "red", transformOrigin: "center",
   });
   // every key of the spec is in it
-  expect(Object.keys(restoreValues(parsed, {})).sort()).toEqual([...parsed.keys].sort());
+  expect(Object.keys(bare).sort()).toEqual([...parsed.keys].sort());
+  // a colour the node has no value for and that has no neutral one is left out, not written as undefined or null
+  const text = spec([{ color: "#000000", borderTopColor: "#000000" }, { color: "#ffffff", borderTopColor: "#ffffff" }]).parsed;
+  expect(restoreValues(text, {})).toEqual({});
+  expect(restoreValues(text, { color: "#123456" })).toEqual({ color: "#123456" });
+});
+
+test("colours are blended premultiplied by their alpha, as CSS does: transparent to red is half red at the half, not a pink", () => {
+  const { parsed } = spec([{ backgroundColor: "transparent" }, { backgroundColor: "#ff0000" }]);
+  expect(at(parsed, 0)).toEqual({ backgroundColor: "rgba(0, 0, 0, 0)" });
+  expect(at(parsed, 0.5)).toEqual({ backgroundColor: "rgba(255, 0, 0, 0.5)" });
+  expect(at(parsed, 1)).toEqual({ backgroundColor: "rgba(255, 0, 0, 1)" });
+  // opaque colours are blended channel by channel, as before
+  const opaque = spec([{ backgroundColor: "#000000" }, { backgroundColor: "#ff8040" }]).parsed;
+  expect(at(opaque, 0.5)).toEqual({ backgroundColor: "rgba(128, 64, 32, 1)" });
 });
 
 test("a transform origin is the point it names in a box, and a transform moves a box about it", () => {

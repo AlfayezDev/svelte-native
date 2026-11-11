@@ -176,6 +176,8 @@ What doesn't:
 
 A transition skips what doesn't play and still plays the rest; in development you get one warning. A transition that only has `tick` runs on the JavaScript thread. While an element plays its outro, it takes no touches.
 
+An item can show a single frame in the wrong place when it is reordered while its `animate:flip` is still running, or in the few frames after an animation ends. Reanimated keeps the last values it drew a view with and applies them over the next layout until it has been told to forget them; the library does that as soon as it can, but not before the new animation's first frame is committed. The item is never left in the wrong place: the next frame draws it correctly.
+
 `svelte-check` reports a directive written on a component such as `<View>`, even though Metro compiles it. Where the type check matters, write the directive on an HTML element instead (`<div in:fly>`).
 
 ## Running code on either thread

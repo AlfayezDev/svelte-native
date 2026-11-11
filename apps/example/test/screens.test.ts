@@ -62,13 +62,15 @@ const stubs: Record<string, string> = {
 };
 
 // The options the library's transformer compiles a component with (runes mode for the app's own components), as the library's tests use them.
-const { componentOptions } = (await import(join(library, "src/compile-options.ts"))) as { componentOptions(filename: string): CompileOptions };
+const { componentOptions, lowersHtml } = (await import(join(library, "src/compile-options.ts"))) as { componentOptions(filename: string): CompileOptions; lowersHtml(filename: string): boolean };
+// And the lowering the transformer runs first: the primitives, and the HTML elements of the app's own files (the HTML screen has nothing else).
+const { lowerPrimitives } = (await import(join(library, "src/lower.ts"))) as { lowerPrimitives(content: string, options: { filename: string; html: boolean }): string };
 
 const svelteCompiler: Plugin = {
   name: "svelte",
   setup(builder) {
     builder.onLoad({ filter: /\.svelte$/ }, async ({ path }) => ({
-      contents: compile(await readFile(path, "utf8"), componentOptions(path)).js.code,
+      contents: compile(lowerPrimitives(await readFile(path, "utf8"), { filename: path, html: lowersHtml(path) }), componentOptions(path)).js.code,
       loader: "js",
     }));
     builder.onLoad({ filter: /\.svelte\.ts$/ }, async ({ path }) => {
@@ -188,6 +190,19 @@ describe("every screen of the core tour mounts", () => {
     expect(rows).not.toContain("Person 4000");
     expect(rows.length).toBeGreaterThanOrEqual(40);
     expect(rows.length).toBeLessThan(100);
+  });
+
+  test("the HTML screen draws its list, form and links from HTML elements, and the dialog is a closed modal", async () => {
+    const { surface, problems } = await mount("/html");
+    expect(problems).toEqual([]);
+    const lines = texts(surface);
+    // The text of an li (h3 and p), of a button, of the form's label and of a paragraph with links in it.
+    for (const line of ["Amal Haddad", "jon@example.com", "Add contact", "Send updates", "stack screen"]) expect([line, lines.includes(line)]).toEqual([line, true]);
+    // `<input>` is a text input and a switch, `<dialog>` a modal that is not shown, `<img>` an image.
+    expect(find(roots[surface] ?? [], "AndroidTextInput").length).toBe(2);
+    expect(find(roots[surface] ?? [], "AndroidSwitch").length).toBe(1);
+    expect(find(roots[surface] ?? [], "RCTImageView").length).toBe(2);
+    expect(find(roots[surface] ?? [], "RCTModalHostView").map((node) => node.props.visible)).toEqual([false]);
   });
 
   test("a route parameter reaches the page: item 7 of the stack", async () => {

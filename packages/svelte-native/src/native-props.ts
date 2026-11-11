@@ -3,6 +3,7 @@
  * and keeps the identity of unchanged style objects between renders, so memoised branches skip work.
  */
 import { classStyle } from "./classes.ts";
+import { styleText } from "./html-style.ts";
 
 function plainRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && Object.getPrototypeOf(value) === Object.prototype && !("_isReanimatedSharedValue" in value);
@@ -60,15 +61,34 @@ export function createNativeProps() {
   };
 }
 
+/** The press handlers a lowered tag passes as attributes (`lower.ts`, `PRESS_HANDLERS`), by the prop they are. */
+const PRESS_ATTRIBUTES: Readonly<Record<string, string>> = {
+  nativeOnPress: "onPress", nativeOnPressIn: "onPressIn", nativeOnPressOut: "onPressOut", nativeOnLongPress: "onLongPress", nativeOnPressChange: "onPressChange",
+};
+
+/** A style with the CSS text in it (a string, or one in an array of styles) parsed; the same value when there is none. */
+function parseStrings(style: unknown): unknown {
+  if (typeof style === "string") return styleText(style);
+  if (!Array.isArray(style)) return style;
+  let changed = false;
+  const items = style.map((item) => {
+    const parsed = parseStrings(item);
+    if (parsed !== item) changed = true;
+    return parsed;
+  });
+  return changed ? items : style;
+}
+
 function hidden(key: string): boolean {
-  return key === "nativeProps" || key === "nativeClass" || key === "children" || key === "class" || key === "id" || key.startsWith("$$") || key.startsWith("data-");
+  return key === "nativeProps" || key === "nativeClass" || key === "nativeBase" || key === "nativeHtml" || key === "nativeForm" || key === "children" || key === "class" || key === "id" || key.startsWith("$$") || key.startsWith("data-");
 }
 
 /**
  * The React Native props of a host element: the legacy `nativeProps` object overlaid with every other attribute
  * (Svelte internals, `class`, `id`, `data-*` and `children` are not React Native props; the style of `class` comes as `nativeClass`).
  * `ref` stays in the result for the host to peel off. Svelte stringifies a `style` attribute on every element,
- * so a string `style` is dropped and `nativeStyle` carries a style object for the lowering preprocessor.
+ * so a string `style` is dropped and `nativeStyle` carries a style object for the lowering preprocessor. The markers of a lowered HTML element (`nativeHtml`, `nativeForm`, `lower-html.ts`)
+ * are the host's and the renderer's to read, and `nativeBase` is a style under the element's class and style (the default of an `hr`).
  */
 export function mergeHostProps(attributes: Readonly<Record<string, unknown>>): Record<string, unknown> {
   const legacy = attributes.nativeProps;
@@ -76,13 +96,21 @@ export function mergeHostProps(attributes: Readonly<Record<string, unknown>>): R
   for (const key in attributes) {
     if (hidden(key) || key === "nativeStyle") continue;
     const value = attributes[key];
+    // A press handler is a prop while it is a function and none when it is not (`undefined`), so a node whose handlers have gone is no responder.
+    if (Object.hasOwn(PRESS_ATTRIBUTES, key)) {
+      if (typeof value === "function") merged[PRESS_ATTRIBUTES[key] as string] = value;
+      continue;
+    }
     if (key === "style" && typeof value === "string") continue;
     if (key === "ref" && typeof value !== "function" && (value === null || typeof value !== "object")) continue;
     merged[key] = value;
   }
-  if (attributes.nativeStyle !== undefined) merged.style = attributes.nativeStyle;
+  // A style that is text only when the app runs (`style={text}` of an HTML element, alone or beside `style:` directives, which makes an array of it) is parsed; one written in the source was converted when the file was built.
+  if (attributes.nativeStyle !== undefined) merged.style = parseStrings(attributes.nativeStyle);
   // The style of a lowered tag's `class` (`hostClass`), under its own style as on a component.
   const fromClass = attributes.nativeClass;
   if (fromClass !== undefined && fromClass !== null) merged.style = merged.style === undefined || merged.style === null ? fromClass : [fromClass, merged.style];
+  const base = attributes.nativeBase;
+  if (base !== undefined && base !== null) merged.style = merged.style === undefined || merged.style === null ? base : [base, merged.style];
   return merged;
 }

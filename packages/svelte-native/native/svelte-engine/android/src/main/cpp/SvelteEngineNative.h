@@ -39,6 +39,7 @@ class SvelteEngineNative : public facebook::jni::HybridClass<SvelteEngineNative>
   jint foreignCount();
   // Live sizes of the delegate's tables (emitters, scroll states), for the soak runner.
   jint emitterCount();
+  jboolean hasEmitter(jint tag);
   jint scrollStateCount();
 
   ~SvelteEngineNative();

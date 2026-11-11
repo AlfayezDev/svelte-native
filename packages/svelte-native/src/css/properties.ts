@@ -30,12 +30,18 @@ type LengthOptions = { percent?: boolean; keywords?: Record<string, number | str
 
 /** What a handler works with: the declaration's property (for reports), the environment and the result it writes to. */
 class Declaration {
-  constructor(
-    readonly property: string,
-    readonly env: Env,
-    readonly out: Result,
-    private readonly report: Report,
-  ) {}
+  // Fields, not parameter properties: Node strips the types of a file it loads itself (the transformer from the sources, `lower-html.ts` through `inline.ts`) and does not do those.
+  readonly property: string;
+  readonly env: Env;
+  readonly out: Result;
+  private readonly report: Report;
+
+  constructor(property: string, env: Env, out: Result, report: Report) {
+    this.property = property;
+    this.env = env;
+    this.out = out;
+    this.report = report;
+  }
 
   fail(reason: string): void {
     this.report(this.property, reason);
@@ -297,8 +303,9 @@ handlers.background = (d, text) => {
 
 // Layout.
 handlers.display = (d, text) => {
-  // React Native lays everything out as flex, so `block`, `inline` and `inline-block` are `flex` (what `md:block` needs to undo `hidden`); there is no grid or table.
-  d.keyword("display", text, { flex: "flex", "inline-flex": "flex", block: "flex", "inline-block": "flex", inline: "flex", "flow-root": "flex", none: "none", contents: "contents" });
+  // React Native lays everything out as flex, so `block`, `inline` and `inline-block` are `flex` (what `md:block` needs to undo `hidden`); there is no grid or table. What the author wrote
+  // goes with it as `htmlDisplay`, which the native view does not know and the host reads: a `div class="block"` holds a line of text, and a `div class="flex"` holds items (`fabric/html-flow.ts`).
+  if (d.keyword("display", text, { flex: "flex", "inline-flex": "flex", block: "flex", "inline-block": "flex", inline: "flex", "flow-root": "flex", none: "none", contents: "contents" })) d.set("htmlDisplay", text.trim().toLowerCase());
 };
 handlers.position = (d, text) => void d.keyword("position", text, same("absolute", "relative", "static"));
 handlers["z-index"] = (d, text) => (text.trim() === "auto" ? d.set("zIndex", null) : void d.number("zIndex", text));

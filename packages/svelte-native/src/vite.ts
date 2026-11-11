@@ -2,7 +2,7 @@
 import { resolve } from "node:path";
 import type { PluginOption } from "vite";
 import { exportNative, syncNative } from "./build.ts";
-import { withWebRunes } from "./compile-options.ts";
+import { withWebAsync, withWebRunes } from "./compile-options.ts";
 import { kitMissingMessage } from "./remote/kit.ts";
 import { assertCustomRenderer } from "./svelte-build.ts";
 
@@ -34,11 +34,17 @@ export function svelteNative(options: {
    * `withSvelteNative(config, { runes })` in the app's `metro.config` wins over it.
    */
   runes?: boolean;
+  /**
+   * Experimental: Svelte's async mode (`experimental.async`), for `router.prepare` and for `await` in `$derived`, the markup and the top of a component. Default `false`. Native target: the Metro that
+   * runs the export gets it in the environment (`withSvelteNative(config, { async })` in the app's `metro.config` wins over it); see `SvelteNativeMetroOptions.async`. Web target: added to the
+   * compiler options handed to SvelteKit, under the app's own `kit.compilerOptions.experimental` (which wins), so one `.svelte` file compiles the same way on both targets.
+   */
+  async?: boolean;
   kit?: Parameters<typeof sveltekit>[0];
 } = {}): PluginOption {
   if (options.target !== "native") return loadSvelteKit().then((kit) => [
     { name: "svelte-native:web", config: () => ({ optimizeDeps: { entries: ["!src/routes/**/+mobile.svelte", "!src/routes/**/*.mobile.svelte", "!src/lib/native/**"] } }) },
-    kit(withWebRunes(options.kit, options.runes)),
+    kit(withWebAsync(withWebRunes(options.kit, options.runes), options.async)),
   ]);
   assertCustomRenderer("The native target of svelteNative() (@example/svelte-native/vite)");
   let root = "";
@@ -49,6 +55,6 @@ export function svelteNative(options: {
     async buildStart() { await syncNative(root, { variant: options.variant }); },
     resolveId(id) { if (id === "virtual:svelte-native-build") return "\0svelte-native-build"; },
     load(id) { if (id === "\0svelte-native-build") return "export {};"; },
-    async generateBundle() { await exportNative(resolve(root), options.platform ?? "android", { variant: options.variant, runes: options.runes }); },
+    async generateBundle() { await exportNative(resolve(root), options.platform ?? "android", { variant: options.variant, runes: options.runes, async: options.async }); },
   };
 }

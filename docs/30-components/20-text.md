@@ -57,6 +57,8 @@ A nested `Text` with `onPress` is a link inside a sentence:
 </Text>
 ```
 
+The press goes to the nested `Text` under the finger and to nothing else: the `Text` around it, which can have an `onPress` of its own for the rest of the sentence, does not hear it. A nested `Text` without a handler passes the press on to the one around it. `onPressChange` says while the link is held, to colour it, and a finger that moves far off the sentence cancels the press, as on any pressable. Give the link `role="link"` so that a screen reader lists it as one.
+
 ## Whitespace
 
 `Text` keeps whitespace as you write it. A browser collapses whitespace with CSS, and there's no CSS here, so a sentence split over two source lines shows the line break and the next line's indentation:

@@ -7,6 +7,7 @@
 #include <cmath>
 #include <vector>
 
+#include "FragmentWire.h"
 #include "PropsEncoder.h"
 #include "PropsEncoderNav.h"
 #include "PropsEncoderViews.h"
@@ -41,6 +42,13 @@ ShadowView inEngineFrame(const ShadowView &view) {
   metrics.frame.origin = Point{0, 0};
   metrics.frame.size = Size{widthPx / scale, heightPx / scale};
   return framed;
+}
+
+// A Text nested in a Text has no view of the engine's (its words are fragments of the paragraph's state), but a touch can land on it: the paragraph's view finds
+// the fragment under the finger and the touch is dispatched to that node, as React Native's `ReactTextView.reactTagForTouch` does. So the node's event emitter is
+// kept like a view's, from its Create to its Delete (FragmentWire.h names which nodes).
+bool isNestedText(const ShadowView &view) {
+  return fragmentwire::isNestedTextName(view.componentName);
 }
 
 bool sameForReactNative(const ShadowView &a, const ShadowView &b) {
@@ -153,7 +161,10 @@ std::optional<MountingTransaction> MountingDelegate::pullTransaction(
       switch (mutation.type) {
         case ShadowViewMutation::Create: {
           Kind kind = kindOf(newView);
-          if (kind == kSkip) break;
+          if (kind == kSkip) {
+            if (isNestedText(newView)) setEmitter(newView.tag, newView.eventEmitter);
+            break;
+          }
           batch.putInt(kOpCreate);
           batch.putInt(newView.tag);
           batch.putInt(kind);
@@ -175,7 +186,10 @@ std::optional<MountingTransaction> MountingDelegate::pullTransaction(
           // Reanimated's proxy holds back the Remove/Delete of an exiting view until its animation ends, so a
           // Delete can arrive long after the shadow tree dropped the node (as with React Native's own Java side).
           // Everything below is idempotent for unknown tags.
-          if (kindOf(oldView) == kSkip) break;
+          if (kindOf(oldView) == kSkip) {
+            if (isNestedText(oldView)) eraseEmitter(oldView.tag);
+            break;
+          }
           batch.putInt(kOpDelete);
           batch.putInt(oldView.tag);
           eraseEmitter(oldView.tag);
@@ -239,7 +253,10 @@ std::optional<MountingTransaction> MountingDelegate::pullTransaction(
         case ShadowViewMutation::Update: {
           if (newView.tag == surfaceId) break;  // the surface root itself (RootView); it has no engine view
           Kind kind = kindOf(newView);
-          if (kind == kSkip) break;
+          if (kind == kSkip) {
+            if (isNestedText(newView) && oldView.eventEmitter != newView.eventEmitter) setEmitter(newView.tag, newView.eventEmitter);
+            break;
+          }
           if (isRoot) {
             const ShadowView before = inEngineFrame(oldView);
             const ShadowView after = inEngineFrame(newView);

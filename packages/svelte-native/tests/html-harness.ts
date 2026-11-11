@@ -37,7 +37,14 @@ export const fake = {
   dispatchCommand() {},
   registerEventHandler(handler: unknown) { (fake as { handler?: unknown }).handler = handler; },
 };
-(globalThis as { nativeFabricUIManager?: unknown }).nativeFabricUIManager = fake;
+/**
+ * The bundled host reads `nativeFabricUIManager` when the bundle is evaluated, and other test files put a fake of their own in its place. Bun runs every file in one process,
+ * in the order the file system lists them, so `load()` installs this fake again right before it imports a bundle (on CI another file's fake was read and the trees were empty).
+ */
+function installFake(): void {
+  (globalThis as { nativeFabricUIManager?: unknown }).nativeFabricUIManager = fake;
+}
+installFake();
 
 const stubs: Record<string, string> = {
   ...reanimatedStubs,
@@ -132,6 +139,7 @@ export async function load(fixture = "html-root-fixture.svelte") {
   const directory = await mkdtemp(resolve(tmpdir(), "svelte-native-html-"));
   const file = resolve(directory, "bundle.mjs");
   await writeFile(file, bundle.outputFiles[0].contents);
+  installFake();
   const m = await import(pathToFileURL(file).href);
   await rm(directory, { recursive: true });
   return m;

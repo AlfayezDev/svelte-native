@@ -43,7 +43,9 @@ It applies to the files of your app: routes (`+page.svelte`, `+mobile.svelte`), 
 | `input type="checkbox"` | [`Switch`](switch) | `bind:checked` works. |
 | `dialog` | [`Modal`](modal) | `open` is shown, `bind:open` works. |
 
-`class`, `class:name`, `style`, `{...spread}` and `bind:this` carry over, and you can use `{#if}`, `{#each}` and snippets inside any of them, as usual. `use:` actions don't run on a native element (the build warns, naming the file and line). `in:`, `out:`, `transition:` and `animate:` are passed through as you wrote them, and play on the UI thread once the library's transitions land.
+`class`, `class:name`, `style`, `{...spread}` and `bind:this` carry over, and you can use `{#if}`, `{#each}` and snippets inside any of them, as usual. `use:` actions don't run on a native element (the build warns, naming the file and line). `in:`, `out:`, `transition:` and `animate:` are passed through as you wrote them, and play on the UI thread once the library's transitions land. On an `input`, a `textarea` and a `dialog`, which are components, Svelte takes no such directive, so the build leaves it out and warns.
+
+The file keeps its lines: every construct is on the line it was written on, so an error from the Svelte compiler points where you wrote it. (A `//` comment, or a template literal with a line break in it, inside an expression that has to be written twice, such as a `bind:this` target, is the one place where that can't hold.)
 
 An element that isn't in the table (`<center>`, `<font>`, a custom element) is a build error, like the ones under [What doesn't exist](#what-doesnt-exist).
 
@@ -74,13 +76,26 @@ A string, or an `{expression}`, directly inside a `div` (or any element that bec
 <button>{@render children?.()}</button>
 ```
 
-The string, the expression and the `<b>` are one line, with the `<b>` as a span of it, as in a browser. So are `<span>a</span><span>b</span>`, and the text of `Hello {#if n}{n}{/if}!`. An element that isn't inline (a `p`, a `div`, a `button`) ends the line and starts another. The whitespace at the edge of a line is not drawn, and the rest is kept as written ([Text](text)). The one exception is `pre`, which keeps all of it.
+The string, the expression and the `<b>` are one line, with the `<b>` as a span of it, as in a browser. So is the text of `Hello {#if n}{n}{/if}!`, and so are `<span>a</span><span>b</span>` in a `div`. An element that isn't inline (a `p`, a `div`, a `button`) ends the line and starts another. The whitespace at the edge of a line is not drawn, and the rest is kept as written ([Text](text)). The one exception is `pre`, which keeps all of it.
+
+That is what a block container does. A **flex container** lays out items instead, as it does in a browser: each element is an item, and each run of text between them is an item of its own (the whitespace between items is not drawn).
+
+```svelte
+<div class="flex flex-row justify-between"><span>Name</span><span>{price}</span></div>
+<button class="flex flex-row items-center gap-2"><span>★</span><span>Label</span></button>
+<div class="flex flex-row gap-2">Total: <span>5</span></div>
+<div>Total: <span>5</span></div>
+```
+
+The first three have two items each, a `Name` and a price at the two ends of a row, an icon and a label side by side, `Total:` and `5` next to each other. The last is one line. A view is a flex container when its style has `display: flex` (`flex`, `inline-flex`, `style="display: flex"`) or any of `flex-direction`, `flex-wrap`, `gap`, `justify-content`, `align-items` and `align-content` (`flexDirection` and the others in a style object). A `class="block"` is not one, even though React Native has only flex and the class compiler writes `flex` for it (it keeps the word you used beside it), so `<label class="block">Name <span>*</span></label>` is a line.
+
+An inline element that sets its own `display` is not in the line either: `<span class="block">` is an item of its own, and `<span class="inline">` or `inline-block` flows. And an `<a>` in a component of its own (`<Link>See the terms</Link>` in the middle of a paragraph) is a pressable, not a span of the text around it, so it ends the line, as a `button` does; written as `<a>` in the paragraph, it is part of the line and a press on that part of the text.
 
 A `View` or a `Text` you import has React Native's rule: a string directly in a `View` is not drawn, and in development the library warns about it once.
 
 ## Default styles
 
-A browser gives some elements a look, and so does the device, under the element's class and style: `b` and `strong` are bold; `em`, `i`, `cite`, `dfn` and `var` italic; `u` and `ins` underlined; `s` and `del` struck through; `code`, `kbd`, `samp` and `pre` monospace; `small` is 0.8 of the font size, `sub` and `sup` 0.75; `mark` is black on yellow; and `h1` to `h6` are bold at 2, 1.5, 1.17, 1, 0.83 and 0.67 times the font size they inherit. A link has no default colour: that is the app's to choose.
+A browser gives some elements a look, and so does the device, under the element's class and style: `b` and `strong` are bold; `em`, `i`, `cite`, `dfn` and `var` italic; `u` and `ins` underlined; `s` and `del` struck through; `code`, `kbd`, `samp` and `pre` monospace; `small` is 0.8 of the font size, `sub` and `sup` 0.75; `mark` is black on yellow; and `h1` to `h6` are bold at 2, 1.5, 1.17, 1, 0.83 and 0.67 times the font size they inherit. Decorations add up, as in CSS: a `<s>` in a `<u>` is underlined and struck through, and a `text-decoration: none` doesn't take away the line of an element above. A link has no default colour: that is the app's to choose.
 
 On the web, Tailwind's preflight takes the default style of headings away. If a file is shared with the web, give the headings classes of their own (`text-2xl font-bold`), which win on both.
 
@@ -110,6 +125,8 @@ A `line-height` without a unit, and a `letter-spacing` in `em`, are a factor of 
 ```
 
 The other events of the web don't exist on a phone. A handler that can't run, such as `onmouseover` on a `div`, gives a warning when the file is built, with the file and line. It's a warning and not an error because the file still works on the web. The ones the elements below do get are listed with them.
+
+Svelte's own `on:` directive isn't accepted by the library's renderer, so `on:click={f}` is `onclick={f}`, and one with a modifier (`on:click|preventDefault={f}`) or no function (`on:click`) is a build error that says what to write: the attribute, and `event.preventDefault()` inside it.
 
 ### Links
 
@@ -201,7 +218,7 @@ An element with no native equivalent is a build error, naming the element, the f
 
 Any other HTML element not in the first table is also an error. All the errors of a file are reported together.
 
-Some elements of Svelte are for the document: `<svelte:head>` is taken out when the file is built, so a page shared with the web compiles, and `<svelte:window>`, `<svelte:document>` and `<svelte:body>` are errors that say so (`windowSize` and `svelte/reactivity/window` give the window's size). `<svelte:element this={tag}>` draws the host tag of `tag` (`h2` is a text, `div` a view), and fails with the tag's name when it has none; its `class`, `style` and events are not adapted (the build warns), so write the element when you need them.
+Some elements of Svelte are for the document: `<svelte:head>` is taken out when the file is built, so a page shared with the web compiles, and `<svelte:window>`, `<svelte:document>` and `<svelte:body>` are errors that say so (`windowSize` and `svelte/reactivity/window` give the window's size). `<svelte:element this={tag}>` draws the host tag of `tag` (`h2` is a text, `div` a view, and a `span` or a `b` is a span of the line it is in), and fails with the tag's name when it has none. `bind:this` is its handle, and `on:click={f}` is `onclick={f}`; its `class`, `style` and events are not adapted (the build warns), so write the element when you need them.
 
 ## Limits
 

@@ -183,10 +183,15 @@ test("alignment: items, justify, self", () => {
   expect(styleOf("self-end")).toEqual({ alignSelf: "flex-end" });
 });
 
-test("display: flex and none are kept, block is flex (it is how md:block undoes hidden), grid is unsupported", () => {
-  expect(styleOf("hidden")).toEqual({ display: "none" });
-  expect(styleOf("flex")).toEqual({ display: "flex" });
-  expect(styleOf("block")).toEqual({ display: "flex" });
+test("display: flex and none are kept, block is flex (it is how md:block undoes hidden), grid is unsupported; the keyword that was written goes with it, for the host to tell a block from a flex container", () => {
+  expect(styleOf("hidden")).toEqual({ display: "none", htmlDisplay: "none" });
+  expect(styleOf("flex")).toEqual({ display: "flex", htmlDisplay: "flex" });
+  expect(styleOf("block")).toEqual({ display: "flex", htmlDisplay: "block" });
+  expect(styleOfCss("display: inline-block")).toEqual({ display: "flex", htmlDisplay: "inline-block" });
+  expect(styleOfCss("display: inline-flex")).toEqual({ display: "flex", htmlDisplay: "inline-flex" });
+  // A later declaration of `display` replaces the keyword with it, so the two never disagree; `md:block` over `hidden` is the same.
+  expect(styleOfCss("display: block; display: flex")).toEqual({ display: "flex", htmlDisplay: "flex" });
+  expect(styleOfCss("display: flex; display: grid")).toEqual({ display: "flex", htmlDisplay: "flex" });
 });
 
 test("overflow and opacity", () => {

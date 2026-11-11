@@ -38,6 +38,7 @@ export const HREF_HELPER = "__svelteNativeHref";
 export const STYLE_HELPER = "__svelteNativeStyleProps";
 export const BIND_HELPER = "__svelteNativeBind";
 export const TAG_HELPER = "__svelteNativeTag";
+export const INLINE_HELPER = "__svelteNativeInline";
 /** `hostValue` of `lower.ts`: a function next to a spread (a `ref`) is boxed, or Svelte's `set_attributes` drops it. */
 export const VALUE_HELPER = "__svelteNativeValue";
 export const HTML_HELPER_EXPORTS: Record<string, string> = {
@@ -52,6 +53,7 @@ export const HTML_HELPER_EXPORTS: Record<string, string> = {
   [STYLE_HELPER]: "hostStyleProps",
   [BIND_HELPER]: "hostBind",
   [TAG_HELPER]: "hostTag",
+  [INLINE_HELPER]: "hostInline",
 };
 
 /** The function a pressed `<a>` calls with its `href`: `useLink()` (`router.svelte.ts`) is called while the component initializes, which a handler cannot do. */
@@ -148,6 +150,37 @@ type Context = "view" | "text" | "unknown";
 type Pre = "start" | "inside" | undefined;
 
 /**
+ * A piece of source that is written more than once, on one line: its line breaks are spaces, so the copy adds none to the file. Source with a `//` comment (which would swallow what follows
+ * it) or a template literal (whose text has the line breaks in it) is not changed.
+ */
+export function oneLine(text: string): string {
+  return text.includes("//") || text.includes("`") ? text : text.replace(/[ \t]*\r?\n[ \t]*/g, " ");
+}
+
+/** The kinds of expression with no effect of their own: reading them twice is the same as reading them once, and a getter that reads a variable is as reactive twice as once. */
+const READ_ONLY = new Set(["Identifier", "Literal", "ObjectExpression", "ArrayExpression", "Property", "SpreadElement", "MemberExpression", "ChainExpression", "ConditionalExpression", "LogicalExpression", "BinaryExpression", "TemplateLiteral", "TemplateElement"]);
+
+/**
+ * The source of an expression that is written a second time as a copy, on one line (`oneLine`), or undefined when it must not be: it is not a plain read (a call, an assignment, `await`,
+ * `new`, ... would run twice) or it cannot be put on one line.
+ */
+export function repeatableSource(content: string, expression: Node): string | undefined {
+  const reads = (node: Node): boolean => {
+    if (!READ_ONLY.has(node.type) || (node.type === "TemplateElement" && node.value.raw.includes("\n"))) return false;
+    for (const key in node) {
+      if (key === "metadata" || key === "type" || key === "start" || key === "end" || key === "loc") continue;
+      const value = node[key];
+      if (value && typeof value === "object" && !(Array.isArray(value) ? value.every((item) => item === null || typeof item !== "object" || reads(item as Node)) : typeof value.type !== "string" || reads(value as Node))) return false;
+    }
+    return true;
+  };
+  const source = content.slice(expression.start, expression.end);
+  if (!reads(expression)) return undefined;
+  const flat = oneLine(source);
+  return flat.includes("\n") ? undefined : flat;
+}
+
+/**
  * The `ref` a `bind:this={target}` becomes, or undefined for a binding with a getter and a setter. The variable gets the host handle and `null` when the element goes away, and only
  * if it still holds this handle (`hostBind`): the target may have moved (`bind:this={els[i]}` of a keyed `{#each}`), so the computed keys of the target are read where the attribute
  * is (`[i]`), the `ref` is made again when one changes, and the target is written with the keys it had. `spreads`: the element has a spread, which passes a function only boxed.
@@ -167,6 +200,8 @@ export function bindThisText(content: string, attribute: Node, spreads: boolean)
     const key = keys[index] as Node;
     target = `${target.slice(0, key.start - expression.start)}__k[${index}]${target.slice(key.end - expression.start)}`;
   }
+  // The target is written twice (the setter and the getter): the copies are on one line, so they add none to the file.
+  target = oneLine(target);
   const call = `${BIND_HELPER}((__k, __v) => (${target} = __v), (__k) => ${target}, [${keys.map((key) => content.slice(key.start, key.end)).join(", ")}])`;
   return `ref={${spreads ? `${VALUE_HELPER}(${call})` : call}}`;
 }
@@ -190,18 +225,25 @@ export function lowerHtml(ast: Node, content: string, filename: string | undefin
     const lost = lines(content.slice(start, end)) - lines(text);
     out.edits.push({ start, end, text: lost > 0 ? text + "\n".repeat(lost) : text });
   };
-  const replaceNode = (node: Node, text: string): void => replace(node.start, node.end, text);
+  /** The attributes and directives this file has written another way (the rest are looked at by `warnUnhandled`). */
+  const edited = new Set<Node>();
+  const replaceNode = (node: Node, text: string): void => {
+    edited.add(node);
+    replace(node.start, node.end, text);
+  };
   /**
    * Takes a node out of its place because its text is written somewhere else (a move), and returns the text it is written as with the newlines of the part that is not in it (the
    * braces of an attribute, the line breaks around a value) added to it, so the lines that were there are where the text is now and nothing is added where it was.
    */
   const moveOut = (node: Node, written: string): string => {
+    edited.add(node);
     out.edits.push({ start: node.start, end: node.end, text: "" });
     const lost = lines(slice(node)) - lines(written);
     return lost > 0 ? written + "\n".repeat(lost) : written;
   };
   /** Gives an `Attribute` another name (the shorthand `{onclick}` becomes `onPress={onclick}`). */
   const rename = (attribute: Node, to: string): void => {
+    edited.add(attribute);
     if (content[attribute.start] === "{") out.edits.push({ start: attribute.start, end: attribute.start, text: `${to}=` });
     else out.edits.push({ start: attribute.start, end: attribute.start + attribute.name.length, text: to });
   };
@@ -280,11 +322,22 @@ export function lowerHtml(ast: Node, content: string, filename: string | undefin
   };
 
   /**
-   * A web handler that can never run on a device (`onmouseover`, `onkeydown` on a div) is a warning, not an error: the file is shared with the web, where it runs. `handled` are the
-   * events this element does get (`click`, ...): the others, written as `on...` in lower case or as an `on:` directive, are the web's. A native handler (`onLayout`) is camel case.
+   * The events of the web on an element, once the ones it gets are dealt with (`handled`: `click`, ...). A handler that can never run on a device (`onmouseover`, `onkeydown` on a div) is a
+   * warning, not an error: the file is shared with the web, where it runs. The others, written as `on...` in lower case or as an `on:` directive, are the web's; a native handler
+   * (`onLayout`) is camel case. Svelte's custom renderer refuses `on:`, so a directive that is left is written as the attribute of the event (`on:click={f}` is `onclick={f}`), and one
+   * with a modifier (`|preventDefault`), or none that gives a function, cannot be and is an error that says what to write.
    */
   const warnUnhandled = (node: Node, handled: readonly string[]): void => {
     for (const attribute of node.attributes as Node[]) {
+      if (attribute.type === "OnDirective" && !edited.has(attribute)) {
+        const modifiers = (attribute.modifiers as string[]).map((modifier) => `|${modifier}`).join("");
+        const source = handlerSource(attribute, attribute.name);
+        if (source === undefined) {
+          fail(attribute, `on:${attribute.name}${modifiers} on <${node.name}> is not supported on native: write the \`on${attribute.name}\` attribute with a function, and call \`event.preventDefault()\` in it for a modifier`);
+          continue;
+        }
+        replaceNode(attribute, `on${attribute.name}={${source}}`);
+      }
       const event = attribute.type === "Attribute" && attribute.value !== true && /^on[a-z]+$/.test(attribute.name) ? attribute.name.slice(2) : attribute.type === "OnDirective" ? attribute.name : undefined;
       if (event === undefined || handled.includes(event)) continue;
       warn(`${where(attribute)} ${attribute.type === "Attribute" ? attribute.name : `on:${event}`} on <${node.name}> never runs on a device: a native element has no "${event}" event (the web still calls it)`);
@@ -438,6 +491,13 @@ export function lowerHtml(ast: Node, content: string, filename: string | undefin
   /** Renames the element to the component (and closes a void one): the attributes it keeps are the component's props. */
   const asComponent = (node: Node, component: string, generated: string[]): void => {
     components.add(component);
+    // Svelte refuses a DOM directive on a component, and a native control runs none: it is taken out, and the file says so.
+    for (const attribute of node.attributes as Node[]) {
+      if (attribute.type !== "UseDirective" && attribute.type !== "TransitionDirective" && attribute.type !== "AnimateDirective") continue;
+      const kind = attribute.type === "UseDirective" ? "use:" : attribute.type === "AnimateDirective" ? "animate:" : attribute.intro && !attribute.outro ? "in:" : attribute.outro && !attribute.intro ? "out:" : "transition:";
+      warn(`${where(attribute)} ${kind}${attribute.name} on <${node.name}> is left out on native: the control is a component, which takes no DOM directive, and a native element runs none`);
+      replaceNode(attribute, "");
+    }
     out.edits.push({ start: node.start + 1, end: node.start + 1 + node.name.length, text: COMPONENTS[component] + generated.map((attribute) => ` ${attribute}`).join("") });
     if (slice(node).endsWith("/>")) return;
     if (node.name === "input") out.edits.push({ start: node.end - 1, end: node.end - 1, text: " /" });
@@ -451,9 +511,12 @@ export function lowerHtml(ast: Node, content: string, filename: string | undefin
    * `bind:this` is the element on the web, and on a device it is the host handle (`measure`, `focus`, ...), which is what a `ref` gets: Svelte's custom renderer refuses `bind:` on a host tag,
    * and on a component `bind:this` is the component's instance, not the control (`bindThisText`).
    */
-  const thisAsRef = (attribute: Node): void => {
-    const text = bindThisText(content, attribute, false);
-    if (text !== undefined) replaceNode(attribute, text);
+  const thisAsRef = (attribute: Node, spreads = false): void => {
+    const text = bindThisText(content, attribute, spreads);
+    if (text === undefined) return;
+    helper(BIND_HELPER);
+    if (spreads) helper(VALUE_HELPER);
+    replaceNode(attribute, text);
   };
 
   /** The initial value of a `<textarea>` is what is written between its tags: text and `{expression}`s, which become its `value` (unless it has one), and a newline right after the tag is not part of it. */
@@ -627,17 +690,35 @@ export function lowerHtml(ast: Node, content: string, filename: string | undefin
     }
   };
 
-  /** `<svelte:element this={tag}>` draws the host tag of `tag` (`hostTag`, by the table the elements are lowered by); its attributes are not adapted. */
+  /**
+   * `<svelte:element this={tag}>` draws the host tag of `tag` (`hostTag`, by the table the elements are lowered by), and a text element that flows in a line is marked so (a tag written out
+   * is known, and one that is worked out when the app runs is marked by the same table, `hostInline`, when it can be read twice). `bind:this` is the host handle, as on any element. The
+   * rest of its attributes are not adapted: a `class`, a `style` and the web's events are for the elements written out, and an `on:` directive, which Svelte's custom renderer refuses,
+   * is the `on` attribute of the same event.
+   */
   const visitDynamic = (node: Node): void => {
     const tag: Node = node.tag;
+    let marker = " nativeHtml={true}";
     if (tag.type === "Literal" && typeof tag.value === "string") {
       const host = tag.value.startsWith("native-") ? tag.value : hostTagOf(tag.value);
       if (host === undefined) fail(tag, `<svelte:element this="${tag.value}"> has no native equivalent: ${Object.hasOwn(HINTS, tag.value) ? HINTS[tag.value] : DEFAULT_HINT}`);
       else if (host !== tag.value) out.edits.push({ start: tag.start, end: tag.end, text: host });
-    } else out.edits.push({ start: tag.start, end: tag.start, text: `${helper(TAG_HELPER)}(` }, { start: tag.end, end: tag.end, text: ")" });
-    out.edits.push({ start: node.start + 1 + "svelte:element".length, end: node.start + 1 + "svelte:element".length, text: " nativeHtml={true}" });
+      if (INLINE.has(tag.value) && host === "native-text") marker = ' nativeHtml="inline"';
+    } else {
+      out.edits.push({ start: tag.start, end: tag.start, text: `${helper(TAG_HELPER)}(` }, { start: tag.end, end: tag.end, text: ")" });
+      const again = repeatableSource(content, tag);
+      if (again !== undefined) marker = ` nativeHtml={${helper(INLINE_HELPER)}(${again})}`;
+    }
+    out.edits.push({ start: node.start + 1 + "svelte:element".length, end: node.start + 1 + "svelte:element".length, text: marker });
     for (const attribute of node.attributes as Node[]) {
-      if ((attribute.type === "Attribute" && (attribute.name === "class" || attribute.name === "style" || /^on[a-z]+$/.test(attribute.name))) || attribute.type === "ClassDirective" || attribute.type === "StyleDirective") {
+      if (attribute.type === "BindDirective") {
+        // Svelte sends every attribute of a dynamic element through `set_attributes`, which drops a function (the tag is not known to be one that takes a `ref`): the box carries it.
+        if (attribute.name === "this") thisAsRef(attribute, true);
+        else unsupportedBinding(node, attribute, "there is nothing to bind to on a native view");
+      } else if (attribute.type === "OnDirective") {
+        if (attribute.expression && (attribute.modifiers as string[]).length === 0) replaceNode(attribute, `on${attribute.name}={${expressionSource(attribute.expression)}}`);
+        else fail(attribute, `on:${attribute.name}${(attribute.modifiers as string[]).map((modifier) => `|${modifier}`).join("")} on <svelte:element> is not supported on native: write the \`on${attribute.name}\` attribute, and call \`event.preventDefault()\` in it for a modifier`);
+      } else if ((attribute.type === "Attribute" && (attribute.name === "class" || attribute.name === "style" || /^on[a-z]+$/.test(attribute.name))) || attribute.type === "ClassDirective" || attribute.type === "StyleDirective") {
         warn(`${where(attribute)} ${attribute.type === "Attribute" ? attribute.name : `${attribute.type === "ClassDirective" ? "class" : "style"}:${attribute.name}`} on <svelte:element> is not adapted on native (a class, a style and the web's events are for the elements written out): write the element, or use \`native-*\` attributes`);
       }
     }

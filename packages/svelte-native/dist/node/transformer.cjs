@@ -1131,7 +1131,7 @@ handlers.background = (d, text) => {
   d.color(["backgroundColor"], text);
 };
 handlers.display = (d, text) => {
-  d.keyword("display", text, { flex: "flex", "inline-flex": "flex", block: "flex", "inline-block": "flex", inline: "flex", "flow-root": "flex", none: "none", contents: "contents" });
+  if (d.keyword("display", text, { flex: "flex", "inline-flex": "flex", block: "flex", "inline-block": "flex", inline: "flex", "flow-root": "flex", none: "none", contents: "contents" })) d.set("htmlDisplay", text.trim().toLowerCase());
 };
 handlers.position = (d, text) => void d.keyword("position", text, same("absolute", "relative", "static"));
 handlers["z-index"] = (d, text) => text.trim() === "auto" ? d.set("zIndex", null) : void d.number("zIndex", text);
@@ -1460,6 +1460,7 @@ var HREF_HELPER = "__svelteNativeHref";
 var STYLE_HELPER = "__svelteNativeStyleProps";
 var BIND_HELPER = "__svelteNativeBind";
 var TAG_HELPER = "__svelteNativeTag";
+var INLINE_HELPER = "__svelteNativeInline";
 var VALUE_HELPER = "__svelteNativeValue";
 var HTML_HELPER_EXPORTS = {
   [SOURCE_HELPER]: "hostSource",
@@ -1472,7 +1473,8 @@ var HTML_HELPER_EXPORTS = {
   [HREF_HELPER]: "hostHref",
   [STYLE_HELPER]: "hostStyleProps",
   [BIND_HELPER]: "hostBind",
-  [TAG_HELPER]: "hostTag"
+  [TAG_HELPER]: "hostTag",
+  [INLINE_HELPER]: "hostInline"
 };
 var LINK = "__svelteNativeLink";
 var COMPONENTS = { TextInput: "SvelteNativeTextInput", Switch: "SvelteNativeSwitch", Modal: "SvelteNativeModal" };
@@ -1557,6 +1559,25 @@ var INPUT_EVENTS = ["input", "change", "focus", "blur", "keydown", "keyup"];
 var lines = (text) => text.split("\n").length - 1;
 var WHITESPACE = /^[ \t\n\r\f]*$/;
 var NUMBER = /^\d+(?:\.\d+)?(?:px)?$/;
+function oneLine(text) {
+  return text.includes("//") || text.includes("`") ? text : text.replace(/[ \t]*\r?\n[ \t]*/g, " ");
+}
+var READ_ONLY = /* @__PURE__ */ new Set(["Identifier", "Literal", "ObjectExpression", "ArrayExpression", "Property", "SpreadElement", "MemberExpression", "ChainExpression", "ConditionalExpression", "LogicalExpression", "BinaryExpression", "TemplateLiteral", "TemplateElement"]);
+function repeatableSource(content, expression) {
+  const reads = (node) => {
+    if (!READ_ONLY.has(node.type) || node.type === "TemplateElement" && node.value.raw.includes("\n")) return false;
+    for (const key in node) {
+      if (key === "metadata" || key === "type" || key === "start" || key === "end" || key === "loc") continue;
+      const value = node[key];
+      if (value && typeof value === "object" && !(Array.isArray(value) ? value.every((item) => item === null || typeof item !== "object" || reads(item)) : typeof value.type !== "string" || reads(value))) return false;
+    }
+    return true;
+  };
+  const source = content.slice(expression.start, expression.end);
+  if (!reads(expression)) return void 0;
+  const flat = oneLine(source);
+  return flat.includes("\n") ? void 0 : flat;
+}
 function bindThisText(content, attribute, spreads) {
   const expression = attribute.expression;
   if (expression.type === "SequenceExpression") return void 0;
@@ -1572,6 +1593,7 @@ function bindThisText(content, attribute, spreads) {
     const key = keys[index];
     target = `${target.slice(0, key.start - expression.start)}__k[${index}]${target.slice(key.end - expression.start)}`;
   }
+  target = oneLine(target);
   const call = `${BIND_HELPER}((__k, __v) => (${target} = __v), (__k) => ${target}, [${keys.map((key) => content.slice(key.start, key.end)).join(", ")}])`;
   return `ref={${spreads ? `${VALUE_HELPER}(${call})` : call}}`;
 }
@@ -1593,13 +1615,19 @@ function lowerHtml(ast, content, filename, warn = () => {
     const lost = lines(content.slice(start, end)) - lines(text);
     out.edits.push({ start, end, text: lost > 0 ? text + "\n".repeat(lost) : text });
   };
-  const replaceNode = (node, text) => replace(node.start, node.end, text);
+  const edited = /* @__PURE__ */ new Set();
+  const replaceNode = (node, text) => {
+    edited.add(node);
+    replace(node.start, node.end, text);
+  };
   const moveOut = (node, written) => {
+    edited.add(node);
     out.edits.push({ start: node.start, end: node.end, text: "" });
     const lost = lines(slice(node)) - lines(written);
     return lost > 0 ? written + "\n".repeat(lost) : written;
   };
   const rename = (attribute, to) => {
+    edited.add(attribute);
     if (content[attribute.start] === "{") out.edits.push({ start: attribute.start, end: attribute.start, text: `${to}=` });
     else out.edits.push({ start: attribute.start, end: attribute.start + attribute.name.length, text: to });
   };
@@ -1666,6 +1694,15 @@ function lowerHtml(ast, content, filename, warn = () => {
   };
   const warnUnhandled = (node, handled) => {
     for (const attribute of node.attributes) {
+      if (attribute.type === "OnDirective" && !edited.has(attribute)) {
+        const modifiers = attribute.modifiers.map((modifier) => `|${modifier}`).join("");
+        const source = handlerSource(attribute, attribute.name);
+        if (source === void 0) {
+          fail(attribute, `on:${attribute.name}${modifiers} on <${node.name}> is not supported on native: write the \`on${attribute.name}\` attribute with a function, and call \`event.preventDefault()\` in it for a modifier`);
+          continue;
+        }
+        replaceNode(attribute, `on${attribute.name}={${source}}`);
+      }
       const event = attribute.type === "Attribute" && attribute.value !== true && /^on[a-z]+$/.test(attribute.name) ? attribute.name.slice(2) : attribute.type === "OnDirective" ? attribute.name : void 0;
       if (event === void 0 || handled.includes(event)) continue;
       warn(`${where(attribute)} ${attribute.type === "Attribute" ? attribute.name : `on:${event}`} on <${node.name}> never runs on a device: a native element has no "${event}" event (the web still calls it)`);
@@ -1792,6 +1829,12 @@ function lowerHtml(ast, content, filename, warn = () => {
   };
   const asComponent = (node, component2, generated) => {
     components2.add(component2);
+    for (const attribute of node.attributes) {
+      if (attribute.type !== "UseDirective" && attribute.type !== "TransitionDirective" && attribute.type !== "AnimateDirective") continue;
+      const kind = attribute.type === "UseDirective" ? "use:" : attribute.type === "AnimateDirective" ? "animate:" : attribute.intro && !attribute.outro ? "in:" : attribute.outro && !attribute.intro ? "out:" : "transition:";
+      warn(`${where(attribute)} ${kind}${attribute.name} on <${node.name}> is left out on native: the control is a component, which takes no DOM directive, and a native element runs none`);
+      replaceNode(attribute, "");
+    }
     out.edits.push({ start: node.start + 1, end: node.start + 1 + node.name.length, text: COMPONENTS[component2] + generated.map((attribute) => ` ${attribute}`).join("") });
     if (slice(node).endsWith("/>")) return;
     if (node.name === "input") out.edits.push({ start: node.end - 1, end: node.end - 1, text: " /" });
@@ -1800,9 +1843,12 @@ function lowerHtml(ast, content, filename, warn = () => {
       if (close > node.start) out.edits.push({ start: close + 2, end: close + 2 + node.name.length, text: COMPONENTS[component2] });
     }
   };
-  const thisAsRef = (attribute) => {
-    const text = bindThisText(content, attribute, false);
-    if (text !== void 0) replaceNode(attribute, text);
+  const thisAsRef = (attribute, spreads = false) => {
+    const text = bindThisText(content, attribute, spreads);
+    if (text === void 0) return;
+    helper(BIND_HELPER);
+    if (spreads) helper(VALUE_HELPER);
+    replaceNode(attribute, text);
   };
   const textareaValue = (node, generated) => {
     const nodes = node.fragment.nodes;
@@ -1948,14 +1994,26 @@ function lowerHtml(ast, content, filename, warn = () => {
   };
   const visitDynamic = (node) => {
     const tag = node.tag;
+    let marker = " nativeHtml={true}";
     if (tag.type === "Literal" && typeof tag.value === "string") {
       const host2 = tag.value.startsWith("native-") ? tag.value : hostTagOf(tag.value);
       if (host2 === void 0) fail(tag, `<svelte:element this="${tag.value}"> has no native equivalent: ${Object.hasOwn(HINTS, tag.value) ? HINTS[tag.value] : DEFAULT_HINT}`);
       else if (host2 !== tag.value) out.edits.push({ start: tag.start, end: tag.end, text: host2 });
-    } else out.edits.push({ start: tag.start, end: tag.start, text: `${helper(TAG_HELPER)}(` }, { start: tag.end, end: tag.end, text: ")" });
-    out.edits.push({ start: node.start + 1 + "svelte:element".length, end: node.start + 1 + "svelte:element".length, text: " nativeHtml={true}" });
+      if (INLINE.has(tag.value) && host2 === "native-text") marker = ' nativeHtml="inline"';
+    } else {
+      out.edits.push({ start: tag.start, end: tag.start, text: `${helper(TAG_HELPER)}(` }, { start: tag.end, end: tag.end, text: ")" });
+      const again = repeatableSource(content, tag);
+      if (again !== void 0) marker = ` nativeHtml={${helper(INLINE_HELPER)}(${again})}`;
+    }
+    out.edits.push({ start: node.start + 1 + "svelte:element".length, end: node.start + 1 + "svelte:element".length, text: marker });
     for (const attribute of node.attributes) {
-      if (attribute.type === "Attribute" && (attribute.name === "class" || attribute.name === "style" || /^on[a-z]+$/.test(attribute.name)) || attribute.type === "ClassDirective" || attribute.type === "StyleDirective") {
+      if (attribute.type === "BindDirective") {
+        if (attribute.name === "this") thisAsRef(attribute, true);
+        else unsupportedBinding(node, attribute, "there is nothing to bind to on a native view");
+      } else if (attribute.type === "OnDirective") {
+        if (attribute.expression && attribute.modifiers.length === 0) replaceNode(attribute, `on${attribute.name}={${expressionSource(attribute.expression)}}`);
+        else fail(attribute, `on:${attribute.name}${attribute.modifiers.map((modifier) => `|${modifier}`).join("")} on <svelte:element> is not supported on native: write the \`on${attribute.name}\` attribute, and call \`event.preventDefault()\` in it for a modifier`);
+      } else if (attribute.type === "Attribute" && (attribute.name === "class" || attribute.name === "style" || /^on[a-z]+$/.test(attribute.name)) || attribute.type === "ClassDirective" || attribute.type === "StyleDirective") {
         warn(`${where(attribute)} ${attribute.type === "Attribute" ? attribute.name : `${attribute.type === "ClassDirective" ? "class" : "style"}:${attribute.name}`} on <svelte:element> is not adapted on native (a class, a style and the web's events are for the elements written out): write the element, or use \`native-*\` attributes`);
       }
     }
@@ -2133,12 +2191,13 @@ function lowerPrimitives(content, options = {}) {
     const spreads = node.attributes.some((attribute) => attribute.type === "SpreadAttribute");
     const classes = node.attributes.filter((attribute) => attribute.type === "Attribute" && attribute.name === "class" || attribute.type === "ClassDirective");
     const directives = classes.filter((attribute) => attribute.type === "ClassDirective");
-    const toggles = directives.length === 0 ? void 0 : `{ ${directives.map((directive) => `${JSON.stringify(directive.name)}: ${content.slice(directive.expression.start, directive.expression.end)}`).join(", ")} }`;
+    const toggles = directives.length === 0 ? void 0 : `{ ${directives.map((directive) => `${JSON.stringify(directive.name)}: ${oneLine(content.slice(directive.expression.start, directive.expression.end))}`).join(", ")} }`;
     if (classes.length > 0) {
       const own2 = classes.find((attribute) => attribute.type === "Attribute");
       const parts = [...own2 ? [classExpression(content, own2)] : [], ...toggles ? [toggles] : []];
-      const style = node.attributes.find((attribute) => attribute.type === "Attribute" && attribute.name === "style" && attribute.value !== true && !Array.isArray(attribute.value));
-      const styleArgument = style === void 0 ? "" : `, ${content.slice(style.value.expression.start, style.value.expression.end)}`;
+      const style = lowered ? void 0 : node.attributes.find((attribute) => attribute.type === "Attribute" && attribute.name === "style" && attribute.value !== true && !Array.isArray(attribute.value));
+      const copy = style === void 0 ? void 0 : repeatableSource(content, style.value.expression);
+      const styleArgument = copy === void 0 ? "" : `, ${copy}`;
       const written = `nativeClass={${classHelper}(${parts.length === 1 ? parts[0] : `[${parts.join(", ")}]`}${styleArgument})}`;
       const dropped = classes.reduce((count, attribute) => count + content.slice(attribute.start, attribute.end).split("\n").length - 1, 0) - (written.split("\n").length - 1);
       const value = dropped > 0 ? written + "\n".repeat(dropped) : written;

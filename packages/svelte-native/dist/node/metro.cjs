@@ -1487,7 +1487,7 @@ handlers.background = (d, text) => {
   d.color(["backgroundColor"], text);
 };
 handlers.display = (d, text) => {
-  d.keyword("display", text, { flex: "flex", "inline-flex": "flex", block: "flex", "inline-block": "flex", inline: "flex", "flow-root": "flex", none: "none", contents: "contents" });
+  if (d.keyword("display", text, { flex: "flex", "inline-flex": "flex", block: "flex", "inline-block": "flex", inline: "flex", "flow-root": "flex", none: "none", contents: "contents" })) d.set("htmlDisplay", text.trim().toLowerCase());
 };
 handlers.position = (d, text) => void d.keyword("position", text, same("absolute", "relative", "static"));
 handlers["z-index"] = (d, text) => text.trim() === "auto" ? d.set("zIndex", null) : void d.number("zIndex", text);

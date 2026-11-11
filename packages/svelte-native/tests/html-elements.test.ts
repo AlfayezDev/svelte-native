@@ -1,12 +1,13 @@
 import { test, expect, jest, afterEach, beforeEach } from "bun:test";
 import { build, transform } from "esbuild";
 import { readFile, mkdtemp, writeFile, rm } from "node:fs/promises";
-import { resolve } from "node:path";
+import { isAbsolute, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { compile, compileModule } from "svelte/compiler";
 import { componentOptions, lowersHtml } from "../src/compile-options.ts";
 import { lowerPrimitives } from "../src/lower.ts";
+import { htmlTextInput } from "../src/html-input.ts";
 import { hostBind, hostClick, hostHref, hostInputEvent, hostKeyEvent, hostSource, hostStyleProps, hostSubmit, hostTag, hostWebClickSpread, hostWebSpread } from "../src/renderer.ts";
 import { reanimatedStubs } from "./reanimated-stubs.ts";
 
@@ -72,6 +73,14 @@ const classTable = {
     "text-white": [{ order: 4, style: { color: "#ffffff" } }],
     "bg-blue": [{ order: 5, style: { backgroundColor: "#0000ff" } }],
     card: [{ order: 6, style: { padding: 16 } }],
+    // What the converter writes for these: `display` is what the native view gets and `htmlDisplay` the keyword the author used (`css/properties.ts`).
+    flex: [{ order: 7, style: { display: "flex", htmlDisplay: "flex" } }],
+    block: [{ order: 8, style: { display: "flex", htmlDisplay: "block" } }],
+    inline: [{ order: 9, style: { display: "flex", htmlDisplay: "inline" } }],
+    "flex-row": [{ order: 10, style: { flexDirection: "row" } }],
+    "justify-between": [{ order: 11, style: { justifyContent: "space-between" } }],
+    "items-center": [{ order: 12, style: { alignItems: "center" } }],
+    "gap-2": [{ order: 13, style: { gap: 8 } }],
   },
 };
 
@@ -84,7 +93,7 @@ async function load(fixture = "html-root-fixture.svelte") {
   warnings = [];
   const bundle = await build({
     stdin: {
-      contents: `import Fixture from './${fixture}';
+      contents: `import Fixture from ${JSON.stringify(isAbsolute(fixture) ? fixture : `./${fixture}`)};
         import '../src/css/load-table.ts';
         import { startSurface, stopSurface } from '../src/fabric/host.ts';
         import { tick } from 'svelte';
@@ -518,6 +527,17 @@ test("style:property values are what a native style takes: px and numbers are dp
   expect(warnings.map(String).some((warning) => warning.includes("--gap") && warning.includes("custom property"))).toBe(true);
   expect(warnings.map(String).some((warning) => warning.includes("flexo is not a style React Native knows"))).toBe(true);
   expect(hostStyleProps({ width: "10px !important", padding: "2rem" })).toEqual({ width: 10, padding: 32 });
+  // `display` is what the class compiler writes for it: the native one, and the keyword that was used (the host reads which of a block and a flex container the element is).
+  expect(hostStyleProps({ display: "block" })).toEqual({ display: "flex", htmlDisplay: "block" });
+  expect(hostStyleProps({ display: "inline-flex" })).toEqual({ display: "flex", htmlDisplay: "inline-flex" });
+  expect(hostStyleProps({ display: "none" })).toEqual({ display: "none", htmlDisplay: "none" });
+});
+
+test("an input's own props go over what its type implies, but one that is undefined does not undo it", () => {
+  expect(htmlTextInput({ type: "password" }).props).toMatchObject({ secureTextEntry: true, autoComplete: "password" });
+  expect(htmlTextInput({ type: "password", secureTextEntry: undefined, autocomplete: undefined }).props).toMatchObject({ secureTextEntry: true, autoComplete: "password" });
+  expect(htmlTextInput({ type: "password", secureTextEntry: false }).props.secureTextEntry).toBe(false);
+  expect(htmlTextInput({ type: "email", keyboardType: "default" }).props).toMatchObject({ keyboardType: "default", autoComplete: "email" });
 });
 
 test("a click runs the handler with a preventDefault that works, then what the press does by itself unless it was called; a submit needs the form above the element", () => {
@@ -557,6 +577,47 @@ async function mountFixture(fixture: string, surface: number) {
 const probe = globalThis as unknown as { __log: string[]; __focused: string[]; __htmlRun: { setN(value: number): void }; __htmlBind: { reverse(): void; remove(id: number): void; show(): void; tags(): (number | null)[] }; __htmlMisc: { setCss(value: string): void; setTag(value: string): void; amount(): number; note(): string } };
 /** The names of the children of a node, with a text's string: the shape of what the platform is given. */
 const shape = (node: FakeNode): string[] => node.children.map((child) => (child.name === "RCTRawText" ? `"${child.props.text}"` : `${child.name}(${textOf(child)})`));
+
+/**
+ * A fixture written in the test: `source` is the page (it calls `globalThis.__api = { ... }` for what the test drives), `files` the components it imports. It is lowered and mounted as a file of an app is.
+ */
+async function mountSource(source: string, files: Record<string, string> = {}) {
+  // Inside the package, so the imports of the page find `svelte`; the directory is gone when the page is built.
+  const directory = await mkdtemp(resolve(import.meta.dirname, ".source-"));
+  try {
+    for (const [name, text] of Object.entries(files)) await writeFile(resolve(directory, name), text);
+    await writeFile(resolve(directory, "Fixture.svelte"), source);
+    const m = await load(resolve(directory, "Fixture.svelte"));
+    roots = {};
+    globals.__opened = [];
+    probe.__log = [];
+    (globalThis as { __api?: unknown }).__api = undefined;
+    const tag = ++surface;
+    m.startSurface(tag, m.Fixture, {});
+    await settle(m);
+    const nodes = () => all(roots[tag] ?? []);
+    const byID = (testID: string) => {
+      const found = nodes().find((candidate) => candidate.props.testID === testID);
+      if (!found) throw new Error(`no node ${testID}`);
+      return found;
+    };
+    started = { m, tag };
+    return { m, byID, nodes, settle: () => settle(m), api: (globalThis as { __api: Record<string, (...args: unknown[]) => unknown> }).__api, tree: () => roots[tag] ?? [] };
+  } finally {
+    await rm(directory, { recursive: true });
+  }
+}
+/** What is wrong with the text of a tree of the platform, if anything: a span outside a text, a text in a text, a string outside a text. React Native's own rules. */
+function textFaults(nodes: FakeNode[], inText = false): string[] {
+  const faults: string[] = [];
+  for (const node of nodes) {
+    if (node.name === "RCTRawText" && !inText) faults.push(`a string outside a text: ${node.props.text}`);
+    if (node.name === "RCTVirtualText" && !inText) faults.push(`a span outside a text: ${node.props.testID ?? textOf(node)}`);
+    if (node.name === "RCTText" && inText) faults.push(`a text in a text: ${node.props.testID ?? textOf(node)}`);
+    faults.push(...textFaults(node.children, node.name === "RCTText" || node.name === "RCTVirtualText"));
+  }
+  return faults;
+}
 
 test("text that reaches an HTML view through children, a snippet or a block is drawn, as one line with the inline elements, and a View keeps React Native's rule", async () => {
   const warn = console.warn;
@@ -764,4 +825,254 @@ test("the default style of an element is a browser's, under its class and style:
   expect(style("a")).not.toHaveProperty("color");
   // The text of a paragraph does not take the bold of what is inside it.
   expect(style("p")).toEqual({});
+});
+
+// --- Round 4: the text context of an element changes, flex containers, runs that are kept ---
+
+const wrapper = { "W.svelte": `<script>let { label = "", children, ...rest } = $props();</script><div {...rest}>{label}{@render children?.()}</div>` };
+
+test("an element that is a span of a run and then a text of its own (or the other way) is made again as the other component, and its ref hears null and then the new handle", async () => {
+  const t = await mountSource(`<script>
+    let on = $state(false);
+    let el = $state(null);
+    globalThis.__api = { set: (value) => { on = value; }, tag: () => el?.tag };
+  </script>
+  <div testID="d">{#if on}Hi {/if}<b testID="b" bind:this={el}>x</b></div>
+  <div testID="d2">{#if on}Hi {/if}<i testID="i" ref={(handle) => globalThis.__log.push(handle ? \`handle \${handle.tag}\` : "null")}>y</i></div>`);
+  const state = () => ({ name: t.byID("b").name, d: t.byID("d").children.map((child) => `${child.name}(${textOf(child)})`), tag: t.byID("b").tag, ref: t.api.tag() });
+  const alone = state();
+  const first = t.byID("i");
+  expect(alone).toMatchObject({ name: "RCTText", d: ["RCTText(x)"], ref: alone.tag });
+  t.api.set(true);
+  await t.settle();
+  // `Hi` and the bold are one text now, and the bold is a span of it: another component, so another node, which the ref has (Svelte trims the edge of a block: no space between them).
+  const together = state();
+  expect(together).toMatchObject({ name: "RCTVirtualText", d: ["RCTText(Hix)"], ref: together.tag });
+  expect(together.tag).not.toBe(alone.tag);
+  // A `ref` callback hears `null` for the node that is gone, and then gets the handle of the new one.
+  expect(probe.__log).toEqual([`handle ${first.tag}`, "null", `handle ${t.byID("i").tag}`]);
+  expect(textFaults(t.tree())).toEqual([]);
+  t.api.set(false);
+  await t.settle();
+  expect(state()).toMatchObject({ name: "RCTText", d: ["RCTText(x)"] });
+  expect(state().ref).toBe(state().tag);
+  expect(textFaults(t.tree())).toEqual([]);
+  t.api.set(true);
+  await t.settle();
+  expect(state().name).toBe("RCTVirtualText");
+  expect(textFaults(t.tree())).toEqual([]);
+});
+
+test("the same through a component: a label that comes and goes beside the children it is given", async () => {
+  const t = await mountSource(`<script>
+    import W from "./W.svelte";
+    let label = $state("");
+    globalThis.__api = { label: (value) => { label = value; } };
+  </script>
+  <W testID="d" {label}><span testID="sp">x</span></W>`, wrapper);
+  expect(t.byID("sp").name).toBe("RCTText");
+  t.api.label("Name: ");
+  await t.settle();
+  expect(textOf(t.byID("d"))).toBe("Name: x");
+  expect(t.byID("sp").name).toBe("RCTVirtualText");
+  expect(textFaults(t.tree())).toEqual([]);
+  t.api.label("");
+  await t.settle();
+  expect(t.byID("sp").name).toBe("RCTText");
+  expect(textFaults(t.tree())).toEqual([]);
+});
+
+test("a span that is a text of its own again still has the text style of the elements above it, and keeps its own", async () => {
+  const t = await mountSource(`<script>
+    let on = $state(true);
+    globalThis.__api = { set: (value) => { on = value; } };
+  </script>
+  <div class="text-lg" testID="d">{#if on}Hi {/if}<b testID="b" class="text-white">x</b></div>`);
+  // A span takes what its text has: its own style only.
+  expect(flat(t.byID("b").props.style)).toMatchObject({ fontWeight: "700", color: "#ffffff" });
+  expect(flat(t.byID("b").props.style).fontSize).toBeUndefined();
+  t.api.set(false);
+  await t.settle();
+  // A text of its own takes the style of the div, under its own.
+  expect(flat(t.byID("b").props.style)).toMatchObject({ fontSize: 18, fontWeight: "700", color: "#ffffff" });
+  t.api.set(true);
+  await t.settle();
+  expect(flat(t.byID("b").props.style).fontSize).toBeUndefined();
+});
+
+test("what is asked of a handle before its view exists is not kept for an element that never gets one, and is done in the order it was asked, across handles", async () => {
+  const done: string[] = [];
+  const dispatch = fake.dispatchCommand;
+  const measure = fake.measure;
+  fake.dispatchCommand = ((node: FakeNode, name: string) => { done.push(`${name} ${node.props.testID}`); }) as never;
+  fake.measure = ((node: FakeNode) => { done.push(`measure ${node.props.testID}`); }) as never;
+  try {
+    const t = await mountSource(`<script>
+      import { flushSync, onMount } from "svelte";
+      let show = $state(false);
+      let flash = $state(false);
+      let a = $state(null); let b = $state(null);
+      globalThis.__api = { show: () => { show = true; }, flash: () => { flash = true; flushSync(); flash = false; flushSync(); } };
+      $effect(() => { if (a && b) { a.focus(); b.focus(); a.measure(() => {}); } });
+    </script>
+    {#if show}<div testID="a" bind:this={a}>a</div><div testID="b" bind:this={b}>b</div>{/if}
+    {#if flash}<div testID="late" ref={(handle) => { handle?.focus(); handle?.measure(() => {}); }}>x</div>{/if}`);
+    const waiting = () => (globalThis as unknown as { __svelteFabric: { stats(): { waiting: number } } }).__svelteFabric.stats().waiting;
+    for (let round = 0; round < 3; round++) { t.api.flash(); await t.settle(); }
+    // Three elements that came and went in one flush left nothing waiting for a view.
+    expect(waiting()).toBe(0);
+    expect(done).toEqual([]);
+    t.api.show();
+    await t.settle();
+    expect(done).toEqual(["focus a", "focus b", "measure a"]);
+    expect(waiting()).toBe(0);
+  } finally {
+    fake.dispatchCommand = dispatch;
+    fake.measure = measure;
+  }
+});
+
+test("a flex container's children are its items: each element, and each run of text; a block container's are a line", async () => {
+  const t = await mountSource(`<script>
+    let price = $state(5);
+    globalThis.__api = {};
+  </script>
+  <div testID="row" class="flex-row justify-between"><span testID="l">Name</span><span testID="r">\${price}</span></div>
+  <button testID="btn" class="flex-row items-center gap-2"><span testID="ic">★</span><span testID="lb">Label</span></button>
+  <div testID="plain"><span>a</span><span>b</span></div>
+  <div testID="flex-total" class="flex-row gap-2">Total: <span>5</span></div>
+  <div testID="block-total">Total: <span>5</span></div>
+  <div testID="explicit" class="flex"><b>x</b> <i>y</i></div>
+  <div testID="blocky" class="block"><b>x</b> <i>y</i></div>
+  <label testID="label" class="block">Name <span>*</span></label>
+  <div testID="stack">a <span class="block" testID="blk">b</span> c</div>
+  <div testID="inl">a <span class="inline" testID="in">b</span> c</div>
+  <ul class="flex-row gap-2"><li testID="li1">one</li><li testID="li2">two</li></ul>`);
+  expect(shape(t.byID("row"))).toEqual(["RCTText(Name)", "RCTText($5)"]);
+  expect(flat(t.byID("row").props.style)).toMatchObject({ flexDirection: "row", justifyContent: "space-between" });
+  expect(shape(t.byID("btn"))).toEqual(["RCTText(★)", "RCTText(Label)"]);
+  expect(t.byID("l").name).toBe("RCTText");
+  // A block container: one line, as before.
+  expect(shape(t.byID("plain"))).toEqual(["RCTText(ab)"]);
+  // The text between the elements of a flex container is an item of its own, and the whitespace at its edge is not drawn.
+  expect(shape(t.byID("flex-total"))).toEqual(["RCTText(Total:)", "RCTText(5)"]);
+  expect(shape(t.byID("block-total"))).toEqual(["RCTText(Total: 5)"]);
+  // `display: flex` is a flex container; `block` is not one (the class compiler writes `flex` for it, with the keyword that was used beside it).
+  expect(shape(t.byID("explicit"))).toEqual(["RCTText(x)", "RCTText(y)"]);
+  expect(shape(t.byID("blocky"))).toEqual(["RCTText(x y)"]);
+  expect(shape(t.byID("label"))).toEqual(["RCTText(Name *)"]);
+  // An element of its own `display` is not in the line: `block` stacks, `inline` flows.
+  expect(shape(t.byID("stack"))).toEqual(["RCTText(a)", "RCTText(b)", "RCTText(c)"]);
+  expect(shape(t.byID("inl"))).toEqual(["RCTText(a b c)"]);
+  expect(textFaults(t.tree())).toEqual([]);
+});
+
+test("the layout of a view follows its class: a container that becomes a flex one (or stops being one), and an element that sets its display or stops, are split again", async () => {
+  const t = await mountSource(`<script>
+    let cls = $state("block");
+    let own = $state("");
+    globalThis.__api = { cls: (value) => { cls = value; }, own: (value) => { own = value; } };
+  </script>
+  <div testID="d" class={cls}>a <b>x</b> c</div>
+  <div testID="e">a <span testID="s" class={own}>x</span> c</div>`);
+  expect(shape(t.byID("d"))).toEqual(["RCTText(a x c)"]);
+  t.api.cls("flex");
+  await t.settle();
+  expect(shape(t.byID("d"))).toEqual(["RCTText(a)", "RCTText(x)", "RCTText(c)"]);
+  t.api.cls("block");
+  await t.settle();
+  expect(shape(t.byID("d"))).toEqual(["RCTText(a x c)"]);
+  expect(shape(t.byID("e"))).toEqual(["RCTText(a x c)"]);
+  t.api.own("block");
+  await t.settle();
+  expect(shape(t.byID("e"))).toEqual(["RCTText(a)", "RCTText(x)", "RCTText(c)"]);
+  t.api.own("");
+  await t.settle();
+  expect(shape(t.byID("e"))).toEqual(["RCTText(a x c)"]);
+  expect(textFaults(t.tree())).toEqual([]);
+});
+
+test("an <a> that is among text is still a pressable span with its own press, in a block container; in a flex container it is an item that presses", async () => {
+  const t = await mountSource(`<script>
+    globalThis.__api = {};
+  </script>
+  <p testID="p">See <a testID="in-p" href="https://x.dev/a" onclick={() => globalThis.__log.push("p")}>terms</a> now</p>
+  <div testID="block">See <a testID="in-block" href="https://x.dev/a" onclick={() => globalThis.__log.push("block")}>terms</a> now</div>
+  <div testID="flex" class="flex-row">See <a testID="in-flex" href="https://x.dev/a" onclick={() => globalThis.__log.push("flex")}>terms</a></div>`);
+  for (const id of ["in-p", "in-block"]) {
+    expect(t.byID(id).name, id).toBe("RCTVirtualText");
+    expect(t.byID(id).props, id).toMatchObject({ accessibilityRole: "link", onClick: true });
+  }
+  expect(t.byID("in-flex").name).toBe("RCTText");
+  expect(t.byID("in-flex").props.onClick).toBe(true);
+  for (const id of ["in-p", "in-block", "in-flex"]) emit(t.byID(id).target, "topClick", {});
+  expect(probe.__log).toEqual(["p", "block", "flex"]);
+});
+
+test("a view rebuilt for a change below it does not clone the runs of text it holds that did not change", async () => {
+  const t = await mountSource(`<script>
+    let m = $state(0);
+    globalThis.__api = { m: (value) => { m = value; } };
+  </script>
+  <div testID="outer">Header <b>bold</b> and more
+    <section><p testID="deep">deep {m}</p></section>
+    trailing text <i>it</i>
+  </div>`);
+  const cloned: string[] = [];
+  const names = ["cloneNodeWithNewChildren", "cloneNodeWithNewProps", "cloneNodeWithNewChildrenAndProps"] as const;
+  const originals = names.map((name) => fake[name]);
+  for (const [index, name] of names.entries()) {
+    (fake as Record<string, unknown>)[name] = function (this: unknown, node: FakeNode, ...rest: never[]) { cloned.push(`${name.replace("cloneNodeWith", "")} ${node.name}${node.props.testID ? `#${node.props.testID}` : ""}`); return (originals[index] as (...args: unknown[]) => unknown).call(this, node, ...rest); };
+  }
+  try {
+    t.api.m(1);
+    await t.settle();
+  } finally {
+    for (const [index, name] of names.entries()) (fake as Record<string, unknown>)[name] = originals[index];
+  }
+  expect(textOf(t.byID("deep"))).toBe("deep 1");
+  // The paragraph's string, the paragraph, the section and the div were changed, and nothing else: the two runs of text beside the section were not.
+  expect(cloned.filter((entry) => entry.includes("RCTText") || entry.includes("RCTVirtualText"))).toEqual(["NewChildren RCTText#deep"]);
+  expect(cloned.filter((entry) => entry.includes("RCTRawText"))).toEqual(["NewProps RCTRawText"]);
+  expect(textOf(t.byID("outer").children[0] as FakeNode)).toBe("Header bold and more");
+});
+
+test("nested decorations add up, a style that is text beside style: directives is parsed, a dynamic svelte:element is a span in the line, and an undefined prop does not undo the default of an input type", async () => {
+  const t = await mountSource(`<script>
+    import { TextInput } from "@example/svelte-native/core";
+    let css = $state("padding: 4px; color: red");
+    let w = $state("10px");
+    let tag = $state("b");
+    let secure = $state(undefined);
+    let el = $state(null);
+    globalThis.__api = { css: (value) => { css = value; }, tag: (value) => { tag = value; }, el: () => el?.tag };
+  </script>
+  <p testID="p"><u testID="u"><s testID="s">x</s></u> and <u testID="plain-u">y</u></p>
+  <div testID="styled" style={css} style:width={w}>x</div>
+  <div testID="array" style={[{ margin: 2 }, css]}>x</div>
+  <div testID="line">a <svelte:element this={tag} testID="dyn" bind:this={el}>b</svelte:element> c</div>
+  <div testID="lit">a <svelte:element this="span" testID="lit-span">b</svelte:element> c</div>
+  <input testID="pass" type="password" secureTextEntry={secure} />`);
+  expect(flat(t.byID("s").props.style).textDecorationLine).toBe("underline line-through");
+  expect(flat(t.byID("u").props.style).textDecorationLine).toBe("underline");
+  expect(flat(t.byID("plain-u").props.style).textDecorationLine).toBe("underline");
+  // The string is parsed with the directives over it, and in an array of styles.
+  expect(flat(t.byID("styled").props.style)).toEqual({ padding: 4, color: "red", width: 10 });
+  expect(flat(t.byID("array").props.style)).toEqual({ margin: 2, padding: 4, color: "red" });
+  t.api.css("margin: 8px");
+  await t.settle();
+  expect(flat(t.byID("styled").props.style)).toEqual({ margin: 8, width: 10 });
+  expect(flat(t.byID("array").props.style)).toEqual({ margin: 8 });
+  // An element chosen when the app runs is a span of the line when it is a text that flows, as one written out is, and its ref is the handle.
+  expect(shape(t.byID("line"))).toEqual(["RCTText(a b c)"]);
+  expect(t.byID("dyn").name).toBe("RCTVirtualText");
+  expect(t.api.el()).toBe(t.byID("dyn").tag);
+  expect(shape(t.byID("lit"))).toEqual(["RCTText(a b c)"]);
+  expect(t.byID("lit-span").name).toBe("RCTVirtualText");
+  t.api.tag("div");
+  await t.settle();
+  expect(shape(t.byID("line"))).toEqual(["RCTText(a)", "RCTView(b)", "RCTText(c)"]);
+  // `secureTextEntry={undefined}` leaves what the type says.
+  expect(t.byID("pass").props.secureTextEntry).toBe(true);
+  expect(textFaults(t.tree())).toEqual([]);
 });

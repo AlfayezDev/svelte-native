@@ -1,5 +1,5 @@
 import { parse } from "svelte/compiler";
-import { HTML_CLASS_HELPER, HTML_HELPER_EXPORTS, bindThisText, lowerHtml, mayHaveHtml } from "./lower-html.ts";
+import { HTML_CLASS_HELPER, HTML_HELPER_EXPORTS, bindThisText, lowerHtml, mayHaveHtml, oneLine, repeatableSource } from "./lower-html.ts";
 
 const PACKAGE = "@example/svelte-native";
 const GESTURES = `${PACKAGE}/gestures`;
@@ -161,13 +161,16 @@ export function lowerPrimitives(content: string, options: LowerOptions = {}): st
     const classes = (node.attributes as Node[]).filter((attribute) => (attribute.type === "Attribute" && attribute.name === "class") || attribute.type === "ClassDirective");
     const directives = classes.filter((attribute) => attribute.type === "ClassDirective");
     const toggles = directives.length === 0 ? undefined
-      : `{ ${directives.map((directive) => `${JSON.stringify(directive.name)}: ${content.slice(directive.expression.start, directive.expression.end)}`).join(", ")} }`;
+      : `{ ${directives.map((directive) => `${JSON.stringify(directive.name)}: ${oneLine(content.slice(directive.expression.start, directive.expression.end))}`).join(", ")} }`;
     if (classes.length > 0) {
       const own = classes.find((attribute) => attribute.type === "Attribute");
       const parts = [...(own ? [classExpression(content, own)] : []), ...(toggles ? [toggles] : [])];
-      // The element's own style comes along, as written: the font size it sets is what a `leading-none` is made from. A quoted `style="..."` is a string, which sets none.
-      const style = (node.attributes as Node[]).find((attribute) => attribute.type === "Attribute" && attribute.name === "style" && attribute.value !== true && !Array.isArray(attribute.value));
-      const styleArgument = style === undefined ? "" : `, ${content.slice(style.value.expression.start, style.value.expression.end)}`;
+      // The element's own style comes along: the font size it sets is what a `leading-none` of a `<View>` or a `<Text>` is made from. It is written a second time, so it must be a plain read (not a call
+      // that would run twice), and it is on one line (the copy adds no line to the file). A quoted `style="..."` is a string, which sets none, and an HTML element has none: its class keeps the
+      // font-relative values for the host, which knows the font size the element ends up with.
+      const style = lowered ? undefined : (node.attributes as Node[]).find((attribute) => attribute.type === "Attribute" && attribute.name === "style" && attribute.value !== true && !Array.isArray(attribute.value));
+      const copy = style === undefined ? undefined : repeatableSource(content, style.value.expression);
+      const styleArgument = copy === undefined ? "" : `, ${copy}`;
       // What the attributes were written with (the braces around an expression, the breaks between them) is not in the call: its newlines are written after it, so no line moves.
       const written = `nativeClass={${classHelper}(${parts.length === 1 ? parts[0] : `[${parts.join(", ")}]`}${styleArgument})}`;
       const dropped = classes.reduce((count, attribute) => count + content.slice(attribute.start, attribute.end).split("\n").length - 1, 0) - (written.split("\n").length - 1);

@@ -49,7 +49,9 @@ function both(first: ((event: unknown) => void) | undefined, second: ((event: un
  */
 export function htmlTextInput(attributes: Props): { props: Props; onChangeText: ((text: string) => void) | undefined } {
   const { type, disabled, maxlength, rows, oninput, onchange, onkeydown, onkeyup, style, ...rest } = attributes;
-  const props: Props = { ...inputTypeProps(type), ...rest };
+  // What the element sets goes over what its type implies, but a prop that is `undefined` (`secureTextEntry={maybe}` with nothing yet) sets nothing: the type's still holds, as a missing attribute would leave it.
+  const props: Props = { ...inputTypeProps(type) };
+  for (const key in rest) if (rest[key] !== undefined) props[key] = rest[key];
   for (const web in RENAMES) {
     if (!(web in props)) continue;
     const native = RENAMES[web] as string;

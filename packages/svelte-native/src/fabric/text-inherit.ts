@@ -109,8 +109,23 @@ export function textStyleOf(inherited: TextStyle | undefined, style: unknown, pr
   if (!hasTextKeys(style)) return sameText(inherited, previous) ? previous : inherited;
   const next: TextStyle = { ...inherited };
   lay(next, style);
+  addDecorations(next, inherited);
   if (Object.keys(next).length === 0) return undefined;
   return sameText(next, previous) ? previous : next;
+}
+
+/** The lines of a `text-decoration-line`, without `none`, which cannot take a line away that an element above draws. */
+const decorationWords = (value: unknown): string[] => (typeof value === "string" ? value.split(/\s+/).filter((word) => word === "underline" || word === "line-through") : []);
+
+/**
+ * Decorations add up, as in CSS: a `<s>` in a `<u>` is struck and underlined, not only struck, and a `none` on an element does not take the line of the one above away. `style` is what the
+ * element's own style made of the text style it inherits (`textDecorationLine` of it, when it has set one): the lines of both.
+ */
+function addDecorations(style: TextStyle, inherited: TextStyle | undefined): void {
+  const above = decorationWords(inherited?.textDecorationLine);
+  if (above.length === 0 || style.textDecorationLine === inherited?.textDecorationLine) return;
+  const lines = [...new Set([...above, ...decorationWords(style.textDecorationLine)])];
+  style.textDecorationLine = lines.length === 0 ? "none" : lines.join(" ");
 }
 
 /** The font size a text with this inherited style and own style is drawn at. */
@@ -148,11 +163,23 @@ export function resolveRelative(style: unknown, fontSize: number, inheritedSize:
 export function inheritedStyle(inherited: TextStyle | undefined, style: unknown, receives: boolean): unknown {
   const hasRelative = inherited?.fontRelative !== undefined || hasRelativeKey(style);
   const above = typeof inherited?.fontSize === "number" ? inherited.fontSize : DEFAULT_FONT_SIZE;
-  if (!receives || inherited === undefined) return hasRelative ? resolveRelative(style, fontSizeOf(inherited, style), above) : style;
+  // The element's own lines and the ones above add up (`addDecorations`): the style gets the sum after its own, where it overrides the native text's.
+  let lines: string | undefined;
+  if (inherited !== undefined && decorationWords(inherited.textDecorationLine).length > 0 && hasTextKeys(style)) {
+    const own: TextStyle = {};
+    lay(own, style);
+    if (own.textDecorationLine !== undefined) {
+      const sum: TextStyle = { ...own };
+      addDecorations(sum, { textDecorationLine: inherited.textDecorationLine });
+      if (sum.textDecorationLine !== own.textDecorationLine) lines = sum.textDecorationLine as string;
+    }
+  }
+  const sum = (value: unknown): unknown => (lines === undefined ? value : [value, { textDecorationLine: lines }]);
+  if (!receives || inherited === undefined) return sum(hasRelative ? resolveRelative(style, fontSizeOf(inherited, style), above) : style);
   const size = hasRelative ? fontSizeOf(inherited, style) : 0;
   const base = hasRelative ? resolveRelative(inherited, size, above) : inherited;
   const own = hasRelative ? resolveRelative(style, size, above) : style;
-  return own === undefined || own === null ? base : [base, own];
+  return own === undefined || own === null ? base : sum([base, own]);
 }
 
 function hasRelativeKey(style: unknown): boolean {

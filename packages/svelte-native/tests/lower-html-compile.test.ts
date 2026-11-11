@@ -14,6 +14,8 @@ const prelude = `<script lang="ts">
   let el = $state<unknown>(null); let els = $state<unknown[]>([]); let i = 0; let show = $state(false); let list = $state([1, 2]);
   let { rest = {}, children }: { rest?: Record<string, unknown>; children?: () => unknown } = $props();
   const go = (event?: unknown) => {};
+  const act = (node: unknown) => {};
+  const mk = (value: unknown) => value;
 </script>
 `;
 
@@ -85,8 +87,14 @@ function random(seed: number): () => number {
   };
 }
 
+/**
+ * A random file: elements nested in elements (what Svelte allows in what), blocks, snippets, `{#await}`, `<svelte:element>`, spreads, and attributes whose values span lines. Each
+ * top-level piece is followed by a comment that says which piece it is (`<!--@@3-->`), on a line of its own, so the test can tell where a line went and not only how many there are.
+ */
 function generate(next: () => number): string {
-  const pick = <T>(items: readonly T[]): T => items[Math.floor(next() * items.length)] as T;
+  let marks = 0;
+  const marker = (): string => `\n<!--@@${marks++}-->\n`;
+  const pick = <T,>(items: readonly T[]): T => items[Math.floor(next() * items.length)] as T;
   const chance = (p: number): boolean => next() < p;
   // A gap between the pieces of a tag, which may be a line break.
   const gap = (): string => pick([" ", " ", "\n  ", "\n"]);
@@ -95,17 +103,23 @@ function generate(next: () => number): string {
   const handler = (): string => pick(["go", "() => go()", "(event) => { go(event); }", "() => { go(); go(); }", "(event) => {\n    go(event);\n  }"]);
   const attributes = (kind: string): string => {
     const found: string[] = [];
-    if (chance(0.5)) found.push(pick([`class="a b"`, `class={[ "a", b && "c" ]}`, `class="x {a}"`]));
-    if (chance(0.25)) found.push(pick([`class:on={b}`, `class:on`]));
-    if (chance(0.3)) found.push(pick([`style="color: red; padding: 4px"`, `style={{ color: c }}`, `style:color={c}`, `style:width={w}`, `style:opacity="0.5"`]));
-    if (chance(0.3)) found.push(`id="i${Math.floor(next() * 5)}"`);
-    if (chance(0.15)) found.push(pick([`bind:this={el}`, `bind:this={els[i]}`]));
-    if (chance(0.1)) found.push("{...rest}");
-    if (kind === "button" || kind === "div" || kind === "span" || kind === "p" || kind === "a") {
-      if (chance(0.4)) found.push(pick([`onclick={${handler()}}`, `on:click={${handler()}}`, `{onclick}`.replace("{onclick}", "onclick={go}")]));
+    if (chance(0.5)) found.push(pick([`class="a b"`, `class={[ "a", b && "c" ]}`, `class={[\n "a",\n b && "c",\n]}`, `class="x {a}"`, `class="x\n  {a}\n  y"`]));
+    if (chance(0.25)) found.push(pick([`class:on={b}`, `class:on`, `class:on={\n b\n}`, `class:on={a ===\n "x"}`]));
+    if (chance(0.35)) {
+      found.push(pick([
+        `style="color: red; padding: 4px"`, `style="\n  color: red;\n  padding: 4px\n"`, `style={{ color: c }}`, `style={{\n  color: c,\n  padding: 4,\n}}`, `style={mk(\n c\n)}`, `style={[{ margin: 2 },\n {\n padding: 4 }]}`,
+        `style:color={c}`, `style:color={\n c\n}`, `style:width={\n w\n}`, `style:opacity="0.5"`,
+      ]));
     }
-    if (kind === "a" && chance(0.7)) found.push(pick([`href="/x"`, `href={\n    a\n  }`, `href="/p/{n}"`]));
-    if (kind === "button" && chance(0.4)) found.push(pick([`type="button"`, `type={a}`, `disabled`, `disabled={${expression()}}`]));
+    if (chance(0.3)) found.push(`id="i${Math.floor(next() * 5)}"`);
+    if (chance(0.2)) found.push(pick([`bind:this={el}`, `bind:this={els[i]}`, `bind:this={\n  el\n}`, `bind:this={els[\n  i\n]}`, `bind:this={els[\n  i +\n 1\n]}`]));
+    if (chance(0.15)) found.push(pick(["{...rest}", "{...\n  rest\n}"]));
+    if (chance(0.1)) found.push("use:act");
+    if (kind === "button" || kind === "div" || kind === "span" || kind === "p" || kind === "a") {
+      if (chance(0.4)) found.push(pick([`onclick={${handler()}}`, `on:click={${handler()}}`, "onclick={go}", "on:mouseover={go}"]));
+    }
+    if (kind === "a" && chance(0.7)) found.push(pick([`href="/x"`, `href={\n    a\n  }`, `href="/p/{n}"`, `href="/p/{\n n\n}/x"`]));
+    if (kind === "button" && chance(0.4)) found.push(pick([`type="button"`, `type={a}`, `type={\n a\n}`, "disabled", `disabled={${expression()}}`, `disabled={\n a === "" &&\n b\n}`]));
     if (kind === "form" && chance(0.5)) found.push(`onsubmit={${handler()}}`);
     return found.length === 0 ? "" : found.map((item) => `${gap()}${item}`).join("");
   };
@@ -117,12 +131,12 @@ function generate(next: () => number): string {
     const kinds = (phrasing ? PHRASING : FLOW).filter((kind) => !(kind === inside && (kind === "a" || kind === "button" || kind === "label" || kind === "p" || kind === "li")));
     const kind = pick(kinds);
     const holdsPhrasing = ["span", "b", "em", "code", "small", "a", "button", "label", "p", "h1", "pre"].includes(kind);
-    const children = (count = 3): string => Array.from({ length: Math.floor(next() * (count + 1)) }, () => node(depth + 1, phrasing || holdsPhrasing, kind)).join(pick(["", "\n", " "]));
+    const children = (count = 3): string => Array.from({ length: Math.floor(next() * (count + 1)) }, () => node(depth + 1, phrasing || holdsPhrasing, kind)).join(pick(["", marker(), " "]));
     switch (kind) {
       case "img": return `<img${attributes("img")} src={a}${chance(0.5) ? " />" : ">"}`;
       case "hr": return pick(["<hr>", "<hr />"]);
       case "br": return pick(["<br>", "<br />"]);
-      case "input": return `<input${attributes("input")}${pick([" bind:value={a}", ` type="email"`, ` type={a}`, " disabled", ` maxlength="3"`, ` oninput={${handler()}}`, ` on:keyup={go}`])}${pick([" />", ">"])}`;
+      case "input": return `<input${attributes("input")}${pick([" bind:value={a}", ` type="email"`, ` type={a}`, " disabled", ` maxlength="3"`, ` oninput={${handler()}}`, " on:keyup={go}"])}${pick([" />", ">"])}`;
       case "checkbox": return `<input type="checkbox"${pick([" bind:checked={b}", " checked", ` onchange={${handler()}}`])}${chance(0.3) ? attributes("x") : ""}${pick([" />", ">"])}`;
       case "textarea": return `<textarea${attributes("x")}${pick([" bind:value={a}", ""])}>${chance(0.5) ? pick(["plain", "line\n  two {n}", "{a}"]) : ""}</textarea>`;
       case "dialog": return `<dialog${pick([" open", " open={b}", " bind:open={show}", ""])}${chance(0.3) ? ` onclose={${handler()}}` : ""}>${children(2)}</dialog>`;
@@ -135,20 +149,46 @@ function generate(next: () => number): string {
     if (roll < 0.28) return text();
     if (roll < 0.34) return `{#if b}${node(depth + 1, phrasing, inside)}${chance(0.5) ? `{:else}${node(depth + 1, phrasing, inside)}` : ""}{/if}`;
     if (roll < 0.39) return `{#each list as item (item)}${node(depth + 1, phrasing, inside)}{/each}`;
-    if (roll < 0.42) return `{@render children?.()}`;
-    if (roll < 0.44) return `<!-- note -->`;
+    if (roll < 0.42) return "{@render children?.()}";
+    if (roll < 0.44) return "<!-- note -->";
     if (roll < 0.46) return `{#key n}${node(depth + 1, phrasing, inside)}{/key}`;
+    if (roll < 0.47) return `{#snippet s${marks}(v)}${node(depth + 1, phrasing, inside)}{/snippet}{@render s${marks++}(n)}`;
+    if (roll < 0.48) return `{#await Promise.resolve(1) then v}${node(depth + 1, phrasing, inside)}{:catch}x{/await}`;
+    if (roll < 0.49) return `{#if b}{@const q${marks} = n + 1}{q${marks++}}{/if}`;
+    if (roll < 0.51 && !phrasing) return `<svelte:element this={pick([a, "div", "span"])}${attributes("div")}>${node(depth + 1, phrasing, "div")}</svelte:element>`;
+    if (roll < 0.52 && !phrasing) return `<svelte:element this="${pick(["div", "span", "p", "b"])}"${attributes("div")}>${node(depth + 1, phrasing, "div")}</svelte:element>`;
     return element(depth, phrasing, inside);
   };
   const lines: string[] = [];
   for (let index = 0; index < 1 + Math.floor(next() * 3); index++) lines.push(node(0));
-  return `${prelude}${chance(0.1) ? "<svelte:head><title>T</title></svelte:head>\n" : ""}${lines.join("\n")}\n<p id="end">end</p>`;
+  return `${prelude}${chance(0.1) ? "<svelte:head><title>T</title></svelte:head>\n" : ""}${lines.join(marker())}\n<p id="end">end</p>`;
 }
 
-test("random files of nested HTML, blocks, attributes and expressions that span lines lower into text that compiles and keeps every line where it was", () => {
+/** What is wrong with a lowered file, or nothing: it keeps every line where it was (by the markers, and by how many there are), it calls only helpers it imports, and the compiler takes it. */
+function problems(source: string, out: string): string | undefined {
+  const before = source.split("\n");
+  const after = out.split("\n");
+  for (const [index, line] of before.entries()) {
+    const marked = /<!--@@(\d+)-->/.exec(line);
+    if (marked && !(after[index] ?? "").includes(marked[0])) return `marker ${marked[1]} moved from line ${index + 1}`;
+  }
+  if (before.length !== after.length) return `${before.length} lines became ${after.length}`;
+  // The helpers the generated code calls are imported (or declared) by the file: a name that is not would be a ReferenceError when the app runs, which no compiler sees.
+  const known = new Set([...out.matchAll(/ as (__svelteNative\w+)/g), ...out.matchAll(/const (__svelteNative\w+)/g)].map((match) => match[1]));
+  for (const name of new Set(out.match(/__svelteNative\w+/g))) if (!known.has(name)) return `${name} is used and not imported`;
+  try {
+    compiled(out);
+  } catch (error) {
+    return (error as Error).message.split("\n")[0];
+  }
+  return undefined;
+}
+
+test("random files of nested HTML, blocks, snippets, attributes and expressions that span lines lower into text that compiles, keeps every line where it was and imports what it calls", () => {
   const failures: string[] = [];
   let lowered = 0;
-  for (let seed = 1; seed <= 600; seed++) {
+  const seeds = Number(process.env.SEEDS ?? 1500);
+  for (let seed = 1; seed <= seeds; seed++) {
     const source = generate(random(seed));
     let out: string;
     try {
@@ -160,14 +200,10 @@ test("random files of nested HTML, blocks, attributes and expressions that span 
       continue;
     }
     lowered++;
-    if (out.split("\n").length !== source.split("\n").length) failures.push(`seed ${seed}: ${source.split("\n").length} lines became ${out.split("\n").length}\n${source}`);
-    try {
-      compiled(out);
-    } catch (error) {
-      failures.push(`seed ${seed}: ${(error as Error).message.split("\n")[0]}\n${source}`);
-    }
+    const wrong = problems(source, out);
+    if (wrong !== undefined) failures.push(`seed ${seed}: ${wrong}\n${source}`);
   }
   expect(failures.slice(0, 3)).toEqual([]);
   // Most files lower (the ones that do not hold a `<br>` outside text, which is an error on purpose).
-  expect(lowered).toBeGreaterThan(400);
+  expect(lowered).toBeGreaterThan(seeds * 0.6);
 }, 120_000);

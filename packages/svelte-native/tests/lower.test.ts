@@ -264,7 +264,15 @@ test("onclick is onPress on every mapped element; a view with a handler is a pre
   expect(body(`<img onclick={go} src="/a.png" />`)).toContain("onPress={go}");
   // The directive is the same event; a forwarding `on:click` has no handler to rename; the other events pass through as they are.
   expect(body(`<div on:click={go} onpointerdown={down} onLayout={size}></div>`)).toBe(`<native-pressable onPress={go} onpointerdown={down} onLayout={size}></native-pressable>`);
-  expect(body(`<div on:click></div>`)).toBe(`<native-view on:click></native-view>`);
+  // Svelte's custom renderer refuses `on:`, so what is left of a directive is the attribute of its event (a warning that it never runs, for an event the element does not get), and what cannot be is an error that says what to write.
+  const warnings: string[] = [];
+  const out = html(`<div on:mouseover={over} on:click={go}></div>`, { warn: (message) => warnings.push(message) });
+  expect(out).toContain("<native-pressable nativeHtml={true} onmouseover={over} onPress={go}>");
+  expect(warnings).toEqual([expect.stringContaining('on:mouseover on <div> never runs on a device')]);
+  compiled(out);
+  for (const directive of ["on:click", "on:click|preventDefault={go}", "on:keydown|once={go}", "on:custom"]) expect(() => html(`<div ${directive}></div>`), directive).toThrow(/on:\w+(\|\w+)? on <div> is not supported on native: write the `on\w+` attribute with a function/);
+  expect(() => html(`<img on:load={f} on:click|stopPropagation={g} src="a">`)).toThrow("on:click|stopPropagation on <img> is not supported on native");
+  expect(compiled(html(`<img on:load={f} on:error={e} src="/a.png" /><form on:submit={s}></form>`))).not.toContain("on:");
 });
 
 test("an <a> follows its href when pressed: the attribute stays, so one from a spread counts and none is no link; the instance script gets the call", () => {
@@ -369,14 +377,27 @@ test("<svelte:head> is taken out (it means nothing on a device and Svelte's cust
   }
 });
 
-test("<svelte:element this={tag}> gets the host tag of the tag when the app runs, or at once for a tag written out; its attributes are not adapted, which is a warning", () => {
+test("<svelte:element this={tag}> gets the host tag of the tag when the app runs, or at once for a tag written out, and is marked inline when it is a text that flows; its attributes are not adapted, which is a warning, but bind:this and on: are", () => {
   const warnings: string[] = [];
-  const out = html(`<svelte:element this={tag} class="c" onclick={go}>x</svelte:element><svelte:element this="h2">y</svelte:element>`, { warn: (message) => warnings.push(message) });
-  expect(out).toContain(`<svelte:element nativeHtml={true} this={__svelteNativeTag(tag)} class="c" onclick={go}>`);
+  const out = html(`<svelte:element this={tag} class="c" onclick={go}>x</svelte:element><svelte:element this="h2">y</svelte:element><svelte:element this="span">z</svelte:element><svelte:element this={pick()}>w</svelte:element>`, { warn: (message) => warnings.push(message) });
+  expect(out).toContain(`<svelte:element nativeHtml={__svelteNativeInline(tag)} this={__svelteNativeTag(tag)} class="c" onclick={go}>`);
   expect(out).toContain(`<svelte:element nativeHtml={true} this="native-text">y`);
+  expect(out).toContain(`<svelte:element nativeHtml="inline" this="native-text">z`);
+  // A tag that is a call is not read twice: it is marked a block.
+  expect(out).toContain(`<svelte:element nativeHtml={true} this={__svelteNativeTag(pick())}>w`);
   expect(out).toContain("hostTag as __svelteNativeTag");
   expect(warnings).toHaveLength(2);
   expect(warnings[0]).toContain("class on <svelte:element> is not adapted on native");
+  // Svelte refuses `bind:` and `on:` on it as it does anywhere under the custom renderer: `bind:this` is the host handle, `on:` the attribute of the event, a modifier an error.
+  const bound = html(`<script>let el, rest = {};</script><svelte:element this="div" bind:this={el} on:click={go}>x</svelte:element><svelte:element this="div" bind:this={el} {...rest} />`);
+  // Svelte sends every attribute of a dynamic element through `set_attributes`, which drops a function: the ref is boxed, with a spread or without.
+  expect(bound.match(/ref=\{__svelteNativeValue\(__svelteNativeBind\(\(__k, __v\) => \(el = __v\), \(__k\) => el, \[\]\)\)\}/g)).toHaveLength(2);
+  expect(bound).toContain("onclick={go}");
+  expect(bound).toMatch(/import \{[^}]*hostBind as __svelteNativeBind[^}]*\} from/);
+  expect(bound).toMatch(/import \{[^}]*hostValue as __svelteNativeValue[^}]*\} from/);
+  expect(compiled(bound)).toContain("__svelteNativeBind");
+  expect(() => html(`<svelte:element this="div" on:click|preventDefault={go} />`)).toThrow("on:click|preventDefault on <svelte:element> is not supported on native");
+  expect(() => html(`<svelte:element this="div" bind:value={v} />`)).toThrow("bind:value on <svelte:element> is not supported on native");
   expect(() => html(`<svelte:element this="table" />`)).toThrow('<svelte:element this="table"> has no native equivalent');
   expect(() => html(`<svelte:element this="input" />`)).toThrow("has no native equivalent");
   expect(compiled(html(`<script>let { tag } = $props();</script><svelte:element this={tag}>x</svelte:element>`))).toContain("__svelteNativeTag");
@@ -395,8 +416,9 @@ test("an element that is not an HTML element of the table, a host tag or a compo
 test("class, class:, style, spreads and ref carry over as on a lowered View; a button's and a link's spread keeps its press, and bind:this is a ref", () => {
   expect(body(`<div class="a {b}" class:on style={s} {...rest} id="x" aria-label="l">t</div>`))
     // biome-ignore lint/suspicious/noTemplateCurlyInString: the expected output is the source of a template literal
-    .toBe("<native-view nativeClass={__svelteNativeClass([`a ${(b) ?? \"\"}`, { \"on\": on }], s)}  nativeStyle={s} {...__svelteNativeWebSpread(rest, { \"on\": on })} id=\"x\" aria-label=\"l\">t</native-view>");
-  expect(body(`<p class="t" style={{ fontSize: 20 }} {onclick} hidden>x</p>`)).toBe("<native-text nativeClass={__svelteNativeClass(`t`, { fontSize: 20 })} nativeStyle={{ fontSize: 20 }} onPress={onclick} hidden={true}>x</native-text>");
+    .toBe("<native-view nativeClass={__svelteNativeClass([`a ${(b) ?? \"\"}`, { \"on\": on }])}  nativeStyle={s} {...__svelteNativeWebSpread(rest, { \"on\": on })} id=\"x\" aria-label=\"l\">t</native-view>");
+  // An HTML element's class does not get its own style along: the host knows the font size the element inherits, which a `leading-6` is made from.
+  expect(body(`<p class="t" style={{ fontSize: 20 }} {onclick} hidden>x</p>`)).toBe("<native-text nativeClass={__svelteNativeClass(`t`)} nativeStyle={{ fontSize: 20 }} onPress={onclick} hidden={true}>x</native-text>");
   // A press that does something by itself (a button submits, a link follows) is not replaced by the `onclick` of a spread: that runs with it.
   expect(body(`<button {...rest}>x</button>`)).toContain("{...__svelteNativeWebClickSpread(rest)}");
   expect(body(`<div {...rest}>x</div>`)).toContain("{...__svelteNativeWebSpread(rest)}");
@@ -404,6 +426,13 @@ test("class, class:, style, spreads and ref carry over as on a lowered View; a b
   // The View a file imports from the package takes the same paths beside the HTML.
   const mixed = html(`<script>\n  import { View } from "@example/svelte-native";\n</script>\n<View class="v"><div class="d">x</div></View>`);
   expect(markup(mixed)).toBe("<native-view nativeClass={__svelteNativeClass(`v`)}><native-view nativeHtml={true} nativeClass={__svelteNativeHtmlClass(`d`)}>x</native-view></native-view>");
+  // A `<View>`'s class gets the style the view has, which sets the font size it is made from: written a second time, on one line, and only if it is a plain read (a call would run twice).
+  const view = (style: string) => markup(html(`<script>\n  import { View } from "@example/svelte-native";\n</script>\n<View class="v" style=${style}>x</View>`));
+  expect(view("{{\n  fontSize: 20,\n  color: c,\n}}")).toBe("<native-view nativeClass={__svelteNativeClass(`v`, { fontSize: 20, color: c, })} nativeStyle={{\n  fontSize: 20,\n  color: c,\n}}>x</native-view>");
+  expect(view("{styles.box}")).toBe("<native-view nativeClass={__svelteNativeClass(`v`, styles.box)} nativeStyle={styles.box}>x</native-view>");
+  expect(view("{mk(c)}")).toBe("<native-view nativeClass={__svelteNativeClass(`v`)} nativeStyle={mk(c)}>x</native-view>");
+  expect(view("{{ ...mk(c) }}")).toBe("<native-view nativeClass={__svelteNativeClass(`v`)} nativeStyle={{ ...mk(c) }}>x</native-view>");
+  expect(view("{{\n  // the font\n  fontSize: 20,\n}}")).toBe("<native-view nativeClass={__svelteNativeClass(`v`)} nativeStyle={{\n  // the font\n  fontSize: 20,\n}}>x</native-view>");
 });
 
 test("bind:this is a ref that follows its target: keys that are computed are read where the attribute is, and the variable is written with the keys it had", () => {

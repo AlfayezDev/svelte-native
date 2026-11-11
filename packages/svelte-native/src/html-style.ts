@@ -11,10 +11,6 @@ const PLAIN = /^(?:-?(?:\d+\.?\d*|\.\d+)%|#[0-9a-f]{3,8}|(?:rgb|hsl)a?\([^)]*\)|
 const IMPORTANT = /\s*!\s*important\s*$/i;
 const dev = () => typeof __DEV__ !== "undefined" && __DEV__;
 
-/** The style keys React Native knows (its `ReactNativeStyleAttributes`), for the warning about a name that is none of them. */
-const KNOWN = `alignContent alignItems alignSelf aspectRatio borderBottomWidth borderEndWidth borderLeftWidth borderRightWidth borderStartWidth borderTopWidth boxSizing columnGap borderWidth bottom direction display end flex flexBasis flexDirection flexGrow flexShrink flexWrap gap height inset insetBlock insetBlockEnd insetBlockStart insetInline insetInlineEnd insetInlineStart justifyContent left margin marginBlock marginBlockEnd marginBlockStart marginBottom marginEnd marginHorizontal marginInline marginInlineEnd marginInlineStart marginLeft marginRight marginStart marginTop marginVertical maxHeight maxWidth minHeight minWidth overflow padding paddingBlock paddingBlockEnd paddingBlockStart paddingBottom paddingEnd paddingHorizontal paddingInline paddingInlineEnd paddingInlineStart paddingLeft paddingRight paddingStart paddingTop paddingVertical position right rowGap start top width zIndex elevation shadowColor shadowOffset shadowOpacity shadowRadius transform transformOrigin filter mixBlendMode isolation boxShadow backfaceVisibility backgroundColor borderBlockColor borderBlockEndColor borderBlockStartColor borderBottomColor borderBottomEndRadius borderBottomLeftRadius borderBottomRightRadius borderBottomStartRadius borderColor borderCurve borderEndColor borderEndEndRadius borderEndStartRadius borderLeftColor borderRadius borderRightColor borderStartColor borderStartEndRadius borderStartStartRadius borderStyle borderTopColor borderTopEndRadius borderTopLeftRadius borderTopRightRadius borderTopStartRadius cursor opacity outlineColor outlineOffset outlineStyle outlineWidth pointerEvents color fontFamily fontSize fontStyle fontVariant fontWeight includeFontPadding letterSpacing lineHeight textAlign textAlignVertical textDecorationColor textDecorationLine textDecorationStyle textShadowColor textShadowOffset textShadowRadius textTransform userSelect verticalAlign writingDirection overlayColor resizeMode tintColor objectFit`;
-let known: Set<string> | undefined;
-
 type StyleValue = { value: unknown } | { relative: number };
 
 function styleValue(key: string, value: unknown): StyleValue | undefined {
@@ -32,6 +28,15 @@ function styleValue(key: string, value: unknown): StyleValue | undefined {
   return PLAIN.test(text) ? { value: text } : undefined;
 }
 
+/** Development says when a name is not a style React Native knows. The list of the ones it knows is loaded only then: `__DEV__` is a constant of the build, and a release build leaves the branch, and the module, out. */
+function warnUnknown(key: string, where: string): void {
+  if (typeof __DEV__ !== "undefined" && __DEV__) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { KNOWN_STYLE_KEYS } = require("./html-style-known.ts") as typeof import("./html-style-known.ts");
+    if (!KNOWN_STYLE_KEYS.has(key)) console.warn(`svelte-native: ${where}: ${key} is not a style React Native knows`);
+  }
+}
+
 function setProperty(style: Record<string, unknown>, name: string, value: unknown, where: string): void {
   if (value === undefined || value === null || value === false || value === "") return;
   if (name.startsWith("--")) {
@@ -44,12 +49,15 @@ function setProperty(style: Record<string, unknown>, name: string, value: unknow
     if (dev()) console.warn(`svelte-native: ${where} is not a value a native style takes (px, rem, a number, a percentage, a color or a keyword), so it is left out`);
     return;
   }
-  if (dev()) {
-    known ??= new Set(KNOWN.split(" "));
-    if (!known.has(key)) console.warn(`svelte-native: ${where}: ${key} is not a style React Native knows`);
-  }
-  if ("relative" in parsed) style.fontRelative = { ...(style.fontRelative as object), [key]: parsed.relative };
-  else style[key] = key === "fontWeight" ? String(parsed.value) : parsed.value;
+  warnUnknown(key, where);
+  if ("relative" in parsed) {
+    style.fontRelative = { ...(style.fontRelative as object), [key]: parsed.relative };
+  } else if (key === "display" && typeof parsed.value === "string") {
+    // As the converter of the classes writes it: the native view's `display`, and the keyword the author used (`fabric/html-flow.ts`).
+    const keyword = parsed.value.toLowerCase();
+    style.display = keyword === "none" || keyword === "contents" ? keyword : "flex";
+    style.htmlDisplay = keyword;
+  } else style[key] = key === "fontWeight" ? String(parsed.value) : parsed.value;
 }
 
 /** The style of the `style:property={value}` directives of an element, as a React Native style object. `null`, `undefined` and `false` take the property away, as they do on the web. */

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { build } from "esbuild";
+import { betweenMargin, brightness, edgeGradual, edgeRatio, gradualBound, lightTint, ratioBetween, readEdge } from "../../src/lib/native/dev/foreign-pixels.ts";
 import { platformDir } from "../lib/paths.ts";
 
 /**
@@ -95,8 +96,18 @@ type Model = {
 const normal = { childrenOnTop: true, live: true, wash: (tint: "light" | "dark") => (tint === "dark" ? 0 : 255), offsetY: 0, ramp: 0, failAfterChange: 0, softwareFirst: false };
 /** Android 12 and up: a blur of up to 25 dp and a tint of 0.12 to 0.45 over it (`BlurRules`); the tint alone, 0.30 to 0.75. */
 const android: Model = { ...normal, sigma: (i) => (i * 25) / 100, overlay: (i, _tint, blurred) => (i <= 0 ? 0 : blurred ? 0.12 + 0.33 * (i / 100) : 0.3 + 0.45 * (i / 100)), lag: 1 };
-/** iOS: a system material, a blur of about 20 dp at full strength, and a heavy white (or black) wash over it; what the intensity scrubs is the effect. */
-const ios: Model = { ...normal, sigma: (i) => (i * 20) / 100, overlay: (i, tint) => (i <= 0 ? 0 : (tint === "light" ? 0.6 : 0.65) * Math.min(1, 0.3 + i / 100)), lag: 0 };
+/**
+ * iOS (a `UIVisualEffectView` with a `UIBlurEffect`), as the first iPhone run measured it (iPhone SE 3, iOS 26.6, a box of 309 dp): a blur that saturates (the ratio of the inner pair to the outer one is 0.20 to
+ * 0.22 at intensity 100, 0.24 to 0.26 at 50 and 1 at 1: a sigma of 20 dp at 100 and about 12 at 50), a light material that greys the stripe (the yellow's 472 becomes 446 to 450, the red and the blue about 450
+ * to 465) and a dark one that takes it to 161 to 165. What the intensity scrubs is the effect.
+ */
+const ios: Model = {
+	...normal,
+	sigma: (i) => (i <= 1 ? 0.2 : 20 * (i / 100) ** 0.74),
+	overlay: (i, tint) => (i <= 0 ? 0 : (tint === "light" ? 0.5 : 0.62) * Math.min(1, 0.3 + i / 100)),
+	wash: (tint) => (tint === "dark" ? 0 : 152),
+	lag: 0,
+};
 
 type Shown = Lab & { blurs: boolean; strength: number };
 
@@ -196,7 +207,8 @@ describe("the built-in BlurView's checks, against a model of the capture", () =>
 	test("on Android 12 and up, and on iOS, a view that blurs, tints, follows and keeps its children on top passes all nine pixel checks, in boxes of 330 to 400 dp", async () => {
 		const run = await load();
 		for (const [model, onAndroid] of [[android, true], [ios, false]] as const) {
-			for (const width of [330, 360, 400]) {
+			// the iPhone SE's box is 309 dp (293 in the sheet), narrower than the Android boxes of the first runs
+			for (const width of onAndroid ? [330, 360, 400] : [293, 309, 330, 360, 400]) {
 				const { c, recorded } = device(model, { width, android: onAndroid });
 				await run(c);
 				expect([width, failures(recorded)]).toEqual([width, []]);
@@ -261,7 +273,7 @@ describe("the built-in BlurView's checks, against a model of the capture", () =>
 		expect((near[1] ?? 999) < (near[0] ?? 0) * 0.6).toBe(true);
 	});
 
-	test("a blur a third of the strength it should have (8 dp at intensity 100) fails the Android bound, and passes iOS's looser one", async () => {
+	test("a blur a third of the strength it should have (8 dp at intensity 100) fails the bound of each platform: Android's 0.35, and the iPhone's 0.30 (the first iPhone run read 0.20 to 0.22)", async () => {
 		const run = await load();
 		const weakBlur: Model = { ...android, sigma: (i) => (i * 8.3) / 100 };
 		const onAndroid = device(weakBlur);
@@ -270,11 +282,14 @@ describe("the built-in BlurView's checks, against a model of the capture", () =>
 		const [ratio] = ratios(outcome(onAndroid.recorded, bare[2])?.detail ?? "");
 		expect(ratio).toBeGreaterThan(0.35);
 		expect(ratio).toBeLessThan(0.5);
-		const onIos = device({ ...ios, sigma: (i) => (i * 8.3) / 100 }, { android: false });
+		const onIos = device({ ...ios, sigma: (i) => (i * 8.3) / 100 }, { android: false, width: 309 });
 		await run(onIos.c);
-		expect(failures(onIos.recorded)).toEqual([]);
-		// ...and an iOS blur that is hardly one fails the looser bound too
-		const hardly = device({ ...ios, sigma: (i) => (i * 3) / 100 }, { android: false });
+		expect(failures(onIos.recorded)).toContain(bare[2]);
+		const [iosRatio] = ratios(outcome(onIos.recorded, bare[2])?.detail ?? "");
+		expect(iosRatio).toBeGreaterThan(0.3);
+		expect(iosRatio).toBeLessThan(0.5);
+		// ...and an iOS blur that is hardly one fails it by more
+		const hardly = device({ ...ios, sigma: (i) => (i * 3) / 100 }, { android: false, width: 309 });
 		await run(hardly.c);
 		expect(failures(hardly.recorded)).toContain(bare[2]);
 	});
@@ -329,8 +344,8 @@ describe("the built-in BlurView's checks, against a model of the capture", () =>
 	test("a light tint that lifts the stripe only to about 470 (under the floor of 520, over the old one of 450) fails the tint check, and the old floor passes it", async () => {
 		const real = await load();
 		const lowered = await load([
-			{ from: "steady(sum, (look) => sum(look) > 520)", to: "steady(sum, (look) => sum(look) > 450)" },
-			{ from: "lightness !== null && lightness > 520 &&", to: "lightness !== null && lightness > 450 &&" },
+			{ from: "steady(sum, (look) => sum(look) > tints.yellow)", to: "steady(sum, (look) => sum(look) > 450)" },
+			{ from: "lightness !== null && lightness > tints.yellow &&", to: "lightness !== null && lightness > 450 &&" },
 		]);
 		// the dark tint is strong and the light one faint: the difference is far over 150, and the light reading is over 450 and under 520
 		const faint: Model = { ...android, overlay: (i, tint, blurred) => (i >= 100 ? (tint === "light" ? 0.08 : 0.6) : android.overlay(i, tint, blurred)) };
@@ -340,16 +355,16 @@ describe("the built-in BlurView's checks, against a model of the capture", () =>
 		const loose = device(faint);
 		await lowered(loose.c);
 		expect(failures(loose.recorded)).toEqual([]);
-		const lightness = Number(/\((\d+), over 520\)/.exec(outcome(strict.recorded, bare[6])?.detail ?? "")?.[1]);
+		const lightness = Number(/\((\d+), over \d+\)/.exec(outcome(strict.recorded, bare[6])?.detail ?? "")?.[1]);
 		expect(lightness).toBeGreaterThan(450);
 		expect(lightness).toBeLessThan(520);
 	});
 
 	test("a tint that comes on over a few captures is read when it has settled, and not before (the reading without the wait is a partial one)", async () => {
 		const real = await load();
-		const unsettled = await load([{ from: "steady(sum, (look) => sum(look) > 520)", to: "((look: Look) => sum(look) > 520)" }]);
+		const unsettled = await load([{ from: "steady(sum, (look) => sum(look) > tints.yellow)", to: "((look: Look) => sum(look) > tints.yellow)" }]);
 		const slow: Model = { ...android, ramp: 5 };
-		const lightnessOf = (detail: string) => Number(/\((\d+), over 520\)/.exec(detail)?.[1]);
+		const lightnessOf = (detail: string) => Number(/\((\d+), over \d+\)/.exec(detail)?.[1]);
 		const settled = device(slow);
 		await real(settled.c);
 		expect(failures(settled.recorded)).toEqual([]);
@@ -394,5 +409,114 @@ describe("the built-in BlurView's checks, against a model of the capture", () =>
 		const { c, recorded } = device({ ...android, softwareFirst: true, lag: 0 });
 		await run(c);
 		expect(failures(recorded)).toEqual([]);
+	});
+});
+
+// ---------------------------------------------------------------------------------------------------------------------------------------
+// iOS, calibrated from the first iPhone run (iPhone SE 3, iOS 26.6, svelteblur: 39 checks, the three places)
+
+describe("the built-in BlurView's checks on iOS, with the bounds the first iPhone run gave", () => {
+	/** What the run read in each place (`qa/runs/foreign-E74A5608-...-20261111T211549Z.json`): the edge pairs at 100, 50 and 1, the yellow's sum under the light and the dark tint, and the red and the blue stripe under the light one. */
+	const run = {
+		inline: { full: [13, 60], half: [32, 123], weak: [145, 145], light: 447, dark: 164, red: [254, 108, 84], blue: [33, 177, 255] },
+		row: { full: [12, 61], half: [32, 124], weak: [145, 145], light: 450, dark: 165, red: [255, 109, 84], blue: [33, 178, 254] },
+		sheet: { full: [11, 54], half: [29, 119], weak: [144, 144], light: 446, dark: 161, red: [254, 111, 82], blue: [38, 177, 250] },
+	} as const;
+	const ratioOf = (pair: readonly number[]) => edgeRatio({ near: pair[0] ?? 0, far: pair[1] ?? 0 }) ?? Number.NaN;
+	const sumOf = (rgb: readonly number[]) => (rgb[0] ?? 0) + (rgb[1] ?? 0) + (rgb[2] ?? 0);
+
+	test("every reading of the run is inside the iOS bounds, with room: the ratio at 100 under 0.30 (the largest was 0.22), the ratio at 50 above it by 0.02 and below the one at 1 by 0.5, the light tint over 400 and 200 above the dark one", () => {
+		for (const [place, reading] of Object.entries(run)) {
+			const full = ratioOf(reading.full);
+			const half = ratioOf(reading.half);
+			const weak = ratioOf(reading.weak);
+			expect([place, edgeGradual(readEdge([0, 0, 0, 0]), 1), edgeGradual({ near: reading.full[0] ?? 0, far: reading.full[1] ?? 0 }, gradualBound.ios)]).toEqual([place, false, true]);
+			expect([place, ratioBetween(full, half, weak, betweenMargin.ios)]).toEqual([place, true]);
+			expect([place, reading.light > lightTint.ios.yellow, reading.light - reading.dark >= lightTint.ios.gap]).toEqual([place, true, true]);
+			expect([place, sumOf(reading.red) > lightTint.ios.stripe, sumOf(reading.blue) > lightTint.ios.stripe]).toEqual([place, true, true]);
+			// the room: the bounds are tight enough to mean something (not the 0.5 and the 0.005 of before the run) and loose enough for the next phone's pixels
+			expect(gradualBound.ios).toBeGreaterThan(full * 1.25);
+			expect(gradualBound.ios).toBeLessThan(full * 1.7);
+			expect(half - full).toBeGreaterThanOrEqual(betweenMargin.ios.lower * 1.9);
+			expect(weak - half).toBeGreaterThanOrEqual(betweenMargin.ios.upper * 1.4);
+			expect(reading.light).toBeGreaterThan(lightTint.ios.yellow * 1.1);
+			expect(reading.light - reading.dark).toBeGreaterThanOrEqual(lightTint.ios.gap * 1.4);
+		}
+	});
+
+	test("the numbers that were wrong for iOS were Android's: the light tint over the yellow read 446 to 450 on the phone, under the Android floor of 520 (it is under the bare yellow's 472: the material greys), and the red read 446 to 448 under the Android floor of 450", () => {
+		for (const reading of Object.values(run)) {
+			expect(reading.light).toBeLessThan(lightTint.android.yellow);
+			expect(sumOf(reading.red)).toBeLessThan(lightTint.android.stripe + 5);
+		}
+		expect(Math.max(...Object.values(run).map((reading) => sumOf(reading.red)))).toBeLessThan(lightTint.android.stripe + 1);
+		expect(brightness(0xfff5d90a)).toBe(472);
+		// Android's own readings (the Samsung A16: 600 to 604 and 515 to 529, a gap of 345) are still over its floors
+		expect(601).toBeGreaterThan(lightTint.android.yellow);
+		expect(515).toBeGreaterThan(lightTint.android.stripe);
+		expect(601 - 256).toBeGreaterThan(lightTint.android.gap);
+	});
+
+	test("each way the iOS view can be broken is outside those bounds: a tint only or no view (a ratio of 1), a blur of 8 dp (0.35), a tint the view ignores or no view at all (the same 472 under both), a swapped tint (the light one under the floor)", () => {
+		const full = ratioOf(run.inline.full);
+		expect(edgeGradual({ near: 145, far: 145 }, gradualBound.ios)).toBe(false);
+		expect(edgeGradual({ near: 51, far: 145 }, gradualBound.ios)).toBe(false);
+		expect(ratioBetween(full, 1, 1, betweenMargin.ios)).toBe(false);
+		expect(ratioBetween(full, full, 1, betweenMargin.ios)).toBe(false);
+		expect(472 > lightTint.ios.yellow && 472 - 472 >= lightTint.ios.gap).toBe(false);
+		expect(164 > lightTint.ios.yellow).toBe(false);
+		expect(446 - 164 >= lightTint.ios.gap && 446 - 164 < lightTint.ios.gap * 2).toBe(true);
+	});
+
+	test("the checks' model of the phone gives the run's readings and passes all nine checks in each of the phone's boxes, and each broken view fails the checks that are for it", async () => {
+		const checks = await load();
+		const phone = device(ios, { width: 309, android: false });
+		await checks(phone.c);
+		expect(failures(phone.recorded)).toEqual([]);
+		const [full] = ratios(outcome(phone.recorded, bare[2])?.detail ?? "");
+		const [, half] = ratios(outcome(phone.recorded, bare[4])?.detail ?? "");
+		expect(full).toBeGreaterThan(0.17);
+		expect(full).toBeLessThan(0.25);
+		expect(half).toBeGreaterThan(0.22);
+		expect(half).toBeLessThan(0.3);
+		const lightness = Number(/\((\d+), over \d+\)/.exec(outcome(phone.recorded, bare[6])?.detail ?? "")?.[1]);
+		expect(lightness).toBeGreaterThan(430);
+		expect(lightness).toBeLessThan(470);
+
+		// a tint and no blur (the view draws, the effect does not): the three checks that tell a blur from a tint fail, and the others pass
+		const tintOnly = device(ios, { width: 309, android: false, blurs: false, canBlur: true });
+		await checks(tintOnly.c);
+		expect(failures(tintOnly.recorded)).toEqual([bare[2], bare[3], bare[4]]);
+		expect(outcome(tintOnly.recorded, bare[2])?.detail).toContain("blur, the inner pair at most 0.3");
+
+		// no view: a capture that shows nothing of it fails every pixel check
+		const none = device(ios, { width: 309, android: false, frozen: true });
+		await checks(none.c);
+		expect(failures(none.recorded)).toEqual(bare);
+
+		// a picture that does not follow what is behind it fails that check and only it
+		const stuck = device({ ...ios, live: false }, { width: 309, android: false });
+		await checks(stuck.c);
+		expect(failures(stuck.recorded)).toEqual([bare[7]]);
+
+		// a tint the view ignores (both read the same) fails the tint check and only it
+		const ignores = device({ ...ios, overlay: (i) => ios.overlay(i, "light", false), wash: () => 152 }, { width: 309, android: false });
+		await checks(ignores.c);
+		expect(failures(ignores.recorded)).toEqual([bare[6]]);
+
+		// a blur that does not follow the intensity fails the between check and only it
+		const binary = device({ ...ios, sigma: (i) => (i >= 10 ? 20 : 0.2) }, { width: 309, android: false });
+		await checks(binary.c);
+		expect(failures(binary.recorded)).toEqual([bare[4]]);
+	});
+
+	test("with Android's floors (520 for the yellow, 450 for the stripes) the phone's readings fail the tint and the follow checks: this is what the first iPhone run saw", async () => {
+		const android = await load([
+			{ from: "const tints = c.android ? lightTint.android : lightTint.ios;", to: "const tints = lightTint.android;" },
+		]);
+		const phone = device(ios, { width: 309, android: false });
+		await android(phone.c);
+		expect(failures(phone.recorded)).toEqual([bare[6], bare[7]]);
+		expect(outcome(phone.recorded, bare[6])?.detail).toMatch(/over 520/);
 	});
 });

@@ -441,15 +441,21 @@ describe("the stripe edge, as the built-in BlurView's checks read it", () => {
 		expect(readEdge(blurred(12.5, 0.75)).near).toBeLessThan(readEdge(blurred(12.5)).near / 3);
 	});
 
-	test("Android's bound is a third of the blur the rules ask for: 25 dp passes, 15 dp passes, 8 dp does not, in boxes of 330 to 400 dp; iOS's looser one takes 8 dp", () => {
+	test("each platform's bound is read against a blur: Android's is a third of the blur the rules ask for (25 dp passes, 15 dp passes, 8 dp does not, in boxes of 330 to 400 dp), and iOS's, from the iPhone, takes what the phone's material gave (20 dp in its 309 dp) and refuses 8 dp", () => {
 		const across = (width: number, sigma: number) => readEdge([-0.07, -0.012, 0.012, 0.07].map((fraction) => at(Math.min(1, Math.max(0, phi((fraction * width) / sigma))))));
 		for (const width of [330, 360, 400]) {
 			expect([width, edgeGradual(across(width, 25), gradualBound.android)]).toEqual([width, true]);
 			expect([width, edgeGradual(across(width, 15), gradualBound.android)]).toEqual([width, true]);
 			expect([width, edgeGradual(across(width, 8), gradualBound.android)]).toEqual([width, false]);
-			expect([width, edgeGradual(across(width, 8), gradualBound.ios)]).toEqual([width, true]);
+		}
+		for (const width of [293, 309, 330, 360, 400]) {
+			expect([width, edgeGradual(across(width, 25), gradualBound.ios)]).toEqual([width, true]);
+			expect([width, edgeGradual(across(width, 15), gradualBound.ios)]).toEqual([width, true]);
+			// 8 dp leaves a third of the step in the inner pair (0.35 to 0.4): the old bound of 0.5 took it, the one from the phone's 0.20 to 0.22 does not
+			expect([width, edgeGradual(across(width, 8), gradualBound.ios)]).toEqual([width, false]);
 			expect([width, edgeGradual(across(width, 3), gradualBound.ios)]).toEqual([width, false]);
 		}
+		expect(edgeRatio(across(309, 20))).toBeCloseTo(0.2, 1);
 		// the figures the comment of `gradualBound` gives for a box of 360 dp
 		expect(edgeRatio(across(360, 25))).toBeCloseTo(0.2, 1);
 		expect(edgeRatio(across(360, 12.5))).toBeCloseTo(0.28, 1);
@@ -462,15 +468,21 @@ describe("the stripe edge, as the built-in BlurView's checks read it", () => {
 		expect(edgeSharp({ near: 40, far: 40 })).toBe(false);
 	});
 
-	test("the intensity-50 ratio sits between the ones at 100 and at 1: by 0.03 above and 0.25 below on Android, by little on iOS", () => {
+	test("the intensity-50 ratio sits between the ones at 100 and at 1: by 0.03 above and 0.25 below on Android, by 0.02 above and 0.5 below on iOS (the iPhone's gaps were 0.04 and 0.74)", () => {
 		expect(ratioBetween(0.2, 0.28, 1, betweenMargin.android)).toBe(true);
 		expect(ratioBetween(0.2, 0.2, 1, betweenMargin.android)).toBe(false);
 		expect(ratioBetween(0.2, 0.21, 1, betweenMargin.android)).toBe(false);
 		expect(ratioBetween(0.2, 0.9, 1, betweenMargin.android)).toBe(false);
 		expect(ratioBetween(0.2, 0.28, null, betweenMargin.android)).toBe(false);
 		expect(ratioBetween(null, 0.28, 1, betweenMargin.android)).toBe(false);
-		expect(ratioBetween(0.2, 0.28, 1, betweenMargin.ios)).toBe(true);
+		// the three places of the first iPhone run: 100, 50 and 1
+		for (const [full, half] of [[0.22, 0.26], [0.2, 0.26], [0.2, 0.24]] as const) expect([full, half, ratioBetween(full, half, 1, betweenMargin.ios)]).toEqual([full, half, true]);
+		// the same ratio at 50 as at 100 (an intensity that does not reach the blur), one that is hardly above it, one that is as absent as at 1, and a missing reading
+		expect(ratioBetween(0.2, 0.2, 1, betweenMargin.ios)).toBe(false);
+		expect(ratioBetween(0.2, 0.21, 1, betweenMargin.ios)).toBe(false);
 		expect(ratioBetween(0.2, 1, 1, betweenMargin.ios)).toBe(false);
+		expect(ratioBetween(0.2, 0.75, 1, betweenMargin.ios)).toBe(false);
+		expect(ratioBetween(0.2, 0.26, null, betweenMargin.ios)).toBe(false);
 	});
 
 	test("a tint alone (Android below 12) keeps the line at a lower contrast and lifts the red stripe: it is neither hard in the stripes' colours nor gradual", () => {

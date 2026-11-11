@@ -70,10 +70,14 @@ export const edgeSharp = (read: EdgeRead): boolean => read.far >= 60 && read.nea
  * * density * scale` with `scale = 1 / DIVISOR` (`DIVISOR = 4`: the picture of what is behind the view is a quarter of its size and drawn four times larger), so the render effect blurs by 25 dp at intensity 100
  * (12.5 at 50; at 1 it is 0.16 px of the picture, under `MIN_EFFECT_RADIUS = 0.5`, and there is no effect). `RenderEffect.createBlurEffect` takes the radius as the Gaussian's standard deviation, which
  * gives a ratio of 0.20 in a box of 360 dp (0.19 to 0.22 from 300 to 400); 0.35 is what a blur of 8 dp would give, a third of the blur the rules ask for, which the check must not accept. (If the platform
- * read the radius as a blur radius and made a sigma of 0.577 r + 0.5, the ratio would be 0.25: inside the bound.) iOS's is the looser 0.5, TO BE TIGHTENED after the first iPhone run has said what
- * a `UIBlurEffect` at full strength gives (its radius is the system's, not ours).
+ * read the radius as a blur radius and made a sigma of 0.577 r + 0.5, the ratio would be 0.25: inside the bound.)
+ *
+ * iOS's is 0.30, from the first iPhone run (iPhone SE 3, iOS 26.6, `UIVisualEffectView` with a `UIBlurEffect`, the three places of the section in a box of 309, 309 and 293 dp): the ratio at intensity 100 was
+ * 0.22, 0.20 and 0.20 (the inner pair 13, 12 and 11 apart, the outer pair 60, 61 and 54), at 50 it was 0.26, 0.26 and 0.24, and at 1 it was 1.00 in all three. The system's blur is not ours (its radius is not a
+ * number the library gives it), so its readings saturate: 0.30 is a third over the largest of them, and a blur that left a third of the step in the inner pair, or a view that draws only a tint (a ratio of 1), is
+ * over it.
  */
-export const gradualBound = { android: 0.35, ios: 0.5 } as const;
+export const gradualBound = { android: 0.35, ios: 0.30 } as const;
 /** A gradual edge: some step is there at all (the outer pair differs by 10 or more) and the inner pair sees at most [bound] of it (`gradualBound`). */
 export const edgeGradual = (read: EdgeRead, bound: number): boolean => read.far >= 10 && read.near <= read.far * bound;
 /** A hard edge under a light tint (Android below 12 draws no blur): the line is there (20 or more, the tint takes up to three quarters of 145) and the red stripe's green (72) has been lifted towards white. */
@@ -82,13 +86,30 @@ export const edgeUnderTint = (colors: readonly number[], read: EdgeRead): boolea
 export const brightness = (pixel: number): number => { const { r, g, b } = argb(pixel); return r + g + b; };
 /**
  * How much each intensity may differ from the next in `ratio`, by platform: the ratio at 50 is above the one at 100 by [lower] and below the one at 1 by [upper]. Android's lower is 0.03: the two differ by
- * 0.07 to 0.09 in a box of 330 to 400 dp (0.20 against 0.28) and 8-bit pixels move a ratio by about 0.02. iOS's are small ones, TO BE TIGHTENED with the first iPhone run.
+ * 0.07 to 0.09 in a box of 330 to 400 dp (0.20 against 0.28) and 8-bit pixels move a ratio by about 0.02. iOS's come from the first iPhone run (see `gradualBound`): the ratio at 50 was above the one at 100 by
+ * 0.04, 0.06 and 0.04, and below the one at 1 (always 1.00) by 0.74, 0.74 and 0.76. A lower of 0.02 is half of the smallest gap (and about the noise of 8-bit pixels: a view whose intensity does not reach the
+ * blur gives a gap of 0 to 0.02), an upper of 0.5 is two thirds of the smallest one (a blur that is as absent at 50 as at 1 gives 0).
  */
-export const betweenMargin = { android: { lower: 0.03, upper: 0.25 }, ios: { lower: 0.005, upper: 0.05 } } as const;
+export const betweenMargin = { android: { lower: 0.03, upper: 0.25 }, ios: { lower: 0.02, upper: 0.5 } } as const;
 /** The ratio at 50 sits between the ratios at 100 and at 1 (`betweenMargin`): a blur whose radius follows the intensity. */
 export function ratioBetween(full: number | null, half: number | null, weak: number | null, margin: { lower: number; upper: number }): boolean {
   return full !== null && half !== null && weak !== null && half >= full + margin.lower && half <= weak - margin.upper;
 }
+/**
+ * What the capture of a light tint must show over a stripe, by platform (`foreign-libraries-checks.ts`, `svelteblur`): each is a sum of the red, green and blue channels (`brightness`).
+ *  - `yellow`: the floor of the light tint over the yellow stripe's middle (the stripe's own sum is 472) at intensity 100, which a dark tint is far below. `stripe`: the floor of the light tint over the red and
+ *    the blue stripe (378 and 400 bare) at intensity 70. `gap`: how much darker the dark tint over the yellow is than the light one.
+ *  - Android draws a white of 0.45 over a blurred stripe, which lifts the yellow to about 600 (601 and 604 on the Samsung A16: 520 is under it by 80, over the bare 472) and the red and the blue to 515 and
+ *    529 (450 is under them); the dark one gave 255 to 259 (a gap of 345).
+ *  - iOS's light material does not lift a stripe the way a white does: it blurs the stripe into its neighbours and greys it. On the iPhone SE 3 the light tint gave the yellow 447, 450 and 446 (under the bare
+ *    472, which the Android floor demands to be over), the red 446 to 448 and the blue 465, and the dark one gave the yellow 164, 165 and 161 (a gap of 283 to 285). The floors are 400 (a tenth under the lowest
+ *    light reading, and far over any dark one) and the gap 200 (over two thirds of the smallest); what the checks still tell is a tint that is ignored (a gap of 0), swapped (the light one under the floor)
+ *    or drawn by a view that is not there (472 for both).
+ */
+export const lightTint = {
+  android: { yellow: 520, stripe: 450, gap: 150 },
+  ios: { yellow: 400, stripe: 400, gap: 200 },
+} as const;
 /**
  * The horizontal band behind the built-in blur (`LibrarySet.svelte`): a near-black band across the box from 30 % to 42 % of its height, over the stripes. Six points (`bandPoints`: columns at 3 % of the
  * width, outside the blur's box, and 12 %, inside it; rows at 24 %, 36 % and 48 %: 6 % of the height, about 6 dp, above the band, in it and below it) say whether the band is where it is: the same

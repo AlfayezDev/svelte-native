@@ -112,7 +112,8 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/Components/View/ViewNativeComponent": "export {};",
   "react-native/Libraries/Text/TextNativeComponent": "export {};",
   "react-native/Libraries/Components/ScrollView/ScrollViewNativeComponent": "export {};",
-  "expo-modules-core": "export const requireOptionalNativeModule = () => null;",
+  // The Android engine, for the tests that give it a stand-in (`globalThis.__testEngine`).
+  "expo-modules-core": "export const requireOptionalNativeModule = (name) => (name === 'SvelteEngine' ? (globalThis.__testEngine ?? null) : null);",
   "react-native": "export const AppRegistry = { registerRunnable() {} };",
 };
 
@@ -943,4 +944,72 @@ test("animations that start one another are committed together: the commit that 
   expect(byId(77, "inner").props.opacity).toBe(0.25);
   expect(byId(77, "scaled-inner").props.opacity).toBe(0.25);
   void app;
+});
+
+/** An Android engine that says what it is told, in the order of `calls` (the commits, `completeRoot`, are in it too). */
+function engineStandIn() {
+  (globalThis as { __testEngine?: unknown }).__testEngine = {
+    install: () => true,
+    holdMounts: () => { calls.push("holdMounts"); },
+    releaseMounts: () => { calls.push("releaseMounts"); },
+  };
+}
+const withoutEngine = () => { delete (globalThis as { __testEngine?: unknown }).__testEngine; };
+
+test("the engine is asked to hold its mounts at a flip's first layout read and to release them with the commit of the items' first frames", async () => {
+  engineStandIn();
+  try {
+    const m = await fresh();
+    const app = m.startSurface(78, m.Fixture, {});
+    await settle(m);
+    calls.length = 0;
+    app.setItems([3, 1, 2]);
+    await settle(m);
+    const order = calls.filter((call) => call === "holdMounts" || call === "releaseMounts" || call === "completeRoot");
+    // Held when Svelte measures where the items are, before it moves them; the new order is the first commit, the items' first frames the second, and the hold ends after it: the engine
+    // applies the two together.
+    expect(order.slice(0, 4)).toEqual(["holdMounts", "completeRoot", "completeRoot", "releaseMounts"]);
+    expect(order.filter((call) => call === "holdMounts")).toHaveLength(1);
+    expect(order.filter((call) => call === "releaseMounts")).toHaveLength(1);
+  } finally {
+    withoutEngine();
+  }
+});
+
+test("a layout read that no animation follows holds the engine's mounts only until the end of the tick", async () => {
+  engineStandIn();
+  try {
+    const m = await fresh();
+    const app = m.startSurface(79, m.Fixture, {});
+    await settle(m);
+    const inner = measured(79, "inner");
+    calls.length = 0;
+    inner.style.setProperty("width", "10px"); // a change that can move layout, not committed yet
+    inner.getBoundingClientRect(); // the host commits it before it answers
+    expect(calls.filter((call) => call === "holdMounts" || call === "completeRoot")).toEqual(["holdMounts", "completeRoot"]);
+    expect(calls).not.toContain("releaseMounts"); // the tick is not over
+    await new Promise((done) => setImmediate(done));
+    expect(calls.filter((call) => call === "holdMounts" || call === "releaseMounts")).toEqual(["holdMounts", "releaseMounts"]);
+    void app;
+  } finally {
+    withoutEngine();
+  }
+});
+
+test("a read with nothing pending commits nothing, and holds the engine's mounts only until the end of the tick", async () => {
+  engineStandIn();
+  try {
+    const m = await fresh();
+    const app = m.startSurface(80, m.Fixture, {});
+    await settle(m);
+    calls.length = 0;
+    box(measured(80, "inner"));
+    expect(calls.filter((call) => call === "holdMounts" || call === "completeRoot" || call === "releaseMounts")).toEqual(["holdMounts"]);
+    box(measured(80, "inner")); // a second read of the same tick holds nothing more
+    await new Promise((done) => setImmediate(done));
+    expect(calls.filter((call) => call === "holdMounts" || call === "completeRoot" || call === "releaseMounts")).toEqual(["holdMounts", "releaseMounts"]);
+    void app;
+  } finally {
+    withoutEngine();
+  }
 });

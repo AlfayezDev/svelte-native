@@ -256,7 +256,7 @@ let childrenInvalidated = false;
 let engineInstalled = false;
 let reanimatedAtInstall = false;
 let reanimatedAnnounced = false;
-let engineModule: { reanimatedLoaded?: () => void; animatedBatch?: () => void; dispatchCommand?: (tag: number, name: string, args: unknown[]) => void; setNativeProps?: (tag: number, props: Record<string, unknown>) => void; registerForeign?: (name: string) => boolean; saveNavigation?: (json: string) => void; finishing?: () => boolean } | null = null;
+let engineModule: { reanimatedLoaded?: () => void; animatedBatch?: () => void; holdMounts?: () => void; releaseMounts?: () => void; dispatchCommand?: (tag: number, name: string, args: unknown[]) => void; setNativeProps?: (tag: number, props: Record<string, unknown>) => void; registerForeign?: (name: string) => boolean; saveNavigation?: (json: string) => void; finishing?: () => boolean } | null = null;
 /** The foreign components the engine was told about: its mounting delegate must know a component's name before the first node of it is committed. */
 const foreignNames = new Set<string>();
 function registerForeign(viewName: string): void {
@@ -1125,6 +1125,7 @@ export function flush(): void {
     flushing = false;
     affines = null;
   }
+  if (mountsHeld && ++heldCommits >= 2) releaseMounts();
 }
 
 function commit(): void {
@@ -1284,10 +1285,43 @@ function commitBeforeRead(): void {
 }
 
 /**
+ * A layout read is the first sign of an `animate:` or a transition that measures: Svelte reads where the items are before it changes the tree and where they are after, and then
+ * starts the animations that draw the move. That is two commits, the new tree (which the host commits in the microtask after the change, or before the read that needs it) and the
+ * animations' first frames. The Android engine applies each commit in a message of its own, and a frame drawn between the two shows the new tree untransformed (a flip's items in their
+ * new places, a slide's element whole), so the engine is asked, at the first read, to hold what is committed and to apply it together (`holdMounts`; the engine's SPEC.md, "Transaction
+ * order"). The hold ends with the second commit, or after a few dozen microtasks when no second commit comes (a read that no animation follows), or by itself after 100 ms. (Not
+ * `setImmediate`: here it runs before the microtasks that follow the read, and would end the hold before the first commit.)
+ */
+let mountsHeld = false;
+let heldCommits = 0;
+let heldHops = 0;
+/** Microtask hops a hold waits for the second commit: all of Svelte's work after a read (the commit of the change, the animations that start one another, the wait for them) is well inside. */
+const HOLD_HOPS = 24;
+function holdMounts(): void {
+  if (mountsHeld || !engineInstalled || !engineModule?.holdMounts) return;
+  mountsHeld = true;
+  heldCommits = 0;
+  heldHops = HOLD_HOPS;
+  engineModule.holdMounts();
+  queueMicrotask(heldHop);
+}
+function heldHop(): void {
+  if (!mountsHeld) return;
+  if (--heldHops > 0) queueMicrotask(heldHop);
+  else releaseMounts();
+}
+function releaseMounts(): void {
+  if (!mountsHeld) return;
+  mountsHeld = false;
+  engineModule?.releaseMounts?.();
+}
+
+/**
  * A node's own size, before any transform (`clientWidth`, `clientHeight`, the `width` a transition reads), from the committed tree. Null for a node that has no view yet.
  */
 function sizeOf(node: NativeNode): { width: number; height: number } | null {
   if (!binding?.getBoundingClientRect) return null;
+  holdMounts();
   commitBeforeRead();
   const current = stateOf(node);
   const box = current ? readBox(current, false) : null;
@@ -1341,6 +1375,7 @@ function layoutOf(node: NativeNode): Rect | null {
   if (!binding?.getBoundingClientRect) return null;
   // The first `animate:` of an app loads Reanimated here, before the tree changes, and not when the first animation starts: that would show the changed tree, untransformed, while it loads.
   const module = ensureTransitions(false);
+  holdMounts(); // after the load, which takes longer than the engine waits for a hold to end
   commitBeforeRead();
   const current = stateOf(node);
   const laid = current ? readBox(current, false) : null;

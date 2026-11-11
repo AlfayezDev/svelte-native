@@ -5,6 +5,8 @@
  * converted when the file is built, by the converter of the classes (`css/inline.ts`), which this module does not need and the app does not carry.
  */
 
+import { NATIVE_DISPLAY } from "./fabric/html-flow.ts";
+
 const LENGTH = /^(-?(?:\d+\.?\d*|\.\d+))(px|rem)?$/;
 const EM = /^(-?(?:\d+\.?\d*|\.\d+))em$/;
 const PLAIN = /^(?:-?(?:\d+\.?\d*|\.\d+)%|#[0-9a-f]{3,8}|(?:rgb|hsl)a?\([^)]*\)|[a-z][a-z-]*)$/i;
@@ -53,9 +55,13 @@ function setProperty(style: Record<string, unknown>, name: string, value: unknow
   if ("relative" in parsed) {
     style.fontRelative = { ...(style.fontRelative as object), [key]: parsed.relative };
   } else if (key === "display" && typeof parsed.value === "string") {
-    // As the converter of the classes writes it: the native view's `display`, and the keyword the author used (`fabric/html-flow.ts`).
+    // As the converter of the classes writes it: the native view's `display`, and the keyword the author used (`fabric/html-flow.ts`). One it has no native equivalent for (`grid`, `table`) is left out.
     const keyword = parsed.value.toLowerCase();
-    style.display = keyword === "none" || keyword === "contents" ? keyword : "flex";
+    if (!Object.hasOwn(NATIVE_DISPLAY, keyword)) {
+      if (dev()) console.warn(`svelte-native: ${where}: display: ${keyword} has no React Native equivalent (a view is flex, \`none\` or \`contents\`), so it is left out`);
+      return;
+    }
+    style.display = NATIVE_DISPLAY[keyword];
     style.htmlDisplay = keyword;
   } else style[key] = key === "fontWeight" ? String(parsed.value) : parsed.value;
 }

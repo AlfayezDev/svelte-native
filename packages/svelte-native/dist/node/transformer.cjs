@@ -1559,8 +1559,25 @@ var INPUT_EVENTS = ["input", "change", "focus", "blur", "keydown", "keyup"];
 var lines = (text) => text.split("\n").length - 1;
 var WHITESPACE = /^[ \t\n\r\f]*$/;
 var NUMBER = /^\d+(?:\.\d+)?(?:px)?$/;
+function unflattenable(text) {
+  for (let at = 0; at < text.length; at++) {
+    const char = text[at];
+    if (char === '"' || char === "'") {
+      for (at++; at < text.length && text[at] !== char; at++) if (text[at] === "\\") at++;
+    } else if (char === "`") {
+      const from = at;
+      for (at++; at < text.length && text[at] !== "`"; at++) if (text[at] === "\\") at++;
+      if (text.slice(from, at).includes("\n")) return true;
+    } else if (char === "/" && text[at + 1] === "/") return true;
+    else if (char === "/" && text[at + 1] === "*") {
+      const end = text.indexOf("*/", at + 2);
+      at = end < 0 ? text.length : end + 1;
+    }
+  }
+  return false;
+}
 function oneLine(text) {
-  return text.includes("//") || text.includes("`") ? text : text.replace(/[ \t]*\r?\n[ \t]*/g, " ");
+  return unflattenable(text) ? text : text.replace(/[ \t]*\r?\n[ \t]*/g, " ");
 }
 var READ_ONLY = /* @__PURE__ */ new Set(["Identifier", "Literal", "ObjectExpression", "ArrayExpression", "Property", "SpreadElement", "MemberExpression", "ChainExpression", "ConditionalExpression", "LogicalExpression", "BinaryExpression", "TemplateLiteral", "TemplateElement"]);
 function repeatableSource(content, expression) {
@@ -2010,8 +2027,10 @@ function lowerHtml(ast, content, filename, warn = () => {
       if (attribute.type === "BindDirective") {
         if (attribute.name === "this") thisAsRef(attribute, true);
         else unsupportedBinding(node, attribute, "there is nothing to bind to on a native view");
+      } else if (attribute.type === "Attribute" && attribute.name === "onclick" && attribute.value !== true) {
+        rename(attribute, "onPress");
       } else if (attribute.type === "OnDirective") {
-        if (attribute.expression && attribute.modifiers.length === 0) replaceNode(attribute, `on${attribute.name}={${expressionSource(attribute.expression)}}`);
+        if (attribute.expression && attribute.modifiers.length === 0) replaceNode(attribute, `on${attribute.name === "click" ? "Press" : attribute.name}={${expressionSource(attribute.expression)}}`);
         else fail(attribute, `on:${attribute.name}${attribute.modifiers.map((modifier) => `|${modifier}`).join("")} on <svelte:element> is not supported on native: write the \`on${attribute.name}\` attribute, and call \`event.preventDefault()\` in it for a modifier`);
       } else if (attribute.type === "Attribute" && (attribute.name === "class" || attribute.name === "style" || /^on[a-z]+$/.test(attribute.name)) || attribute.type === "ClassDirective" || attribute.type === "StyleDirective") {
         warn(`${where(attribute)} ${attribute.type === "Attribute" ? attribute.name : `${attribute.type === "ClassDirective" ? "class" : "style"}:${attribute.name}`} on <svelte:element> is not adapted on native (a class, a style and the web's events are for the elements written out): write the element, or use \`native-*\` attributes`);

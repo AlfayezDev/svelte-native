@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { compile } from "svelte/compiler";
 import { lowersHtml } from "../src/compile-options.ts";
 import lowerDefault, { lower, lowerPrimitives } from "../src/lower.ts";
-import { mayHaveHtml } from "../src/lower-html.ts";
+import { mayHaveHtml, oneLine } from "../src/lower-html.ts";
 
 const imp = `<script>\n  import { View, Text, Pressable, ScrollView, Image, ActivityIndicator, SafeAreaView, TextInput } from "@rasheed/svelte-native";\n</script>\n`;
 const run = (markup: string, header = imp) => lowerPrimitives(header + markup, { filename: "x.svelte", warn: () => {} }).slice(header.length);
@@ -380,19 +380,24 @@ test("<svelte:head> is taken out (it means nothing on a device and Svelte's cust
 test("<svelte:element this={tag}> gets the host tag of the tag when the app runs, or at once for a tag written out, and is marked inline when it is a text that flows; its attributes are not adapted, which is a warning, but bind:this and on: are", () => {
   const warnings: string[] = [];
   const out = html(`<svelte:element this={tag} class="c" onclick={go}>x</svelte:element><svelte:element this="h2">y</svelte:element><svelte:element this="span">z</svelte:element><svelte:element this={pick()}>w</svelte:element>`, { warn: (message) => warnings.push(message) });
-  expect(out).toContain(`<svelte:element nativeHtml={__svelteNativeInline(tag)} this={__svelteNativeTag(tag)} class="c" onclick={go}>`);
+  // A tap is a touch, which the host makes `onPress` of: `onclick` is that, as on a lowered `div`.
+  expect(out).toContain(`<svelte:element nativeHtml={__svelteNativeInline(tag)} this={__svelteNativeTag(tag)} class="c" onPress={go}>`);
   expect(out).toContain(`<svelte:element nativeHtml={true} this="native-text">y`);
   expect(out).toContain(`<svelte:element nativeHtml="inline" this="native-text">z`);
   // A tag that is a call is not read twice: it is marked a block.
   expect(out).toContain(`<svelte:element nativeHtml={true} this={__svelteNativeTag(pick())}>w`);
   expect(out).toContain("hostTag as __svelteNativeTag");
-  expect(warnings).toHaveLength(2);
+  expect(warnings).toHaveLength(1);
   expect(warnings[0]).toContain("class on <svelte:element> is not adapted on native");
+  expect(html(`<svelte:element this="div" onmouseover={go} {onclick} />`, { warn: (message) => warnings.push(message) })).toContain("onPress={onclick}");
+  expect(warnings).toHaveLength(2);
+  expect(warnings[1]).toContain("onmouseover on <svelte:element> is not adapted on native");
   // Svelte refuses `bind:` and `on:` on it as it does anywhere under the custom renderer: `bind:this` is the host handle, `on:` the attribute of the event, a modifier an error.
   const bound = html(`<script>let el, rest = {};</script><svelte:element this="div" bind:this={el} on:click={go}>x</svelte:element><svelte:element this="div" bind:this={el} {...rest} />`);
   // Svelte sends every attribute of a dynamic element through `set_attributes`, which drops a function: the ref is boxed, with a spread or without.
   expect(bound.match(/ref=\{__svelteNativeValue\(__svelteNativeBind\(\(__k, __v\) => \(el = __v\), \(__k\) => el, \[\]\)\)\}/g)).toHaveLength(2);
-  expect(bound).toContain("onclick={go}");
+  expect(bound).toContain("onPress={go}");
+  expect(html(`<svelte:element this="div" on:keydown={go} />`)).toContain("onkeydown={go}");
   expect(bound).toMatch(/import \{[^}]*hostBind as __svelteNativeBind[^}]*\} from/);
   expect(bound).toMatch(/import \{[^}]*hostValue as __svelteNativeValue[^}]*\} from/);
   expect(compiled(bound)).toContain("__svelteNativeBind");
@@ -432,6 +437,8 @@ test("class, class:, style, spreads and ref carry over as on a lowered View; a b
   expect(view("{styles.box}")).toBe("<native-view nativeClass={__svelteNativeClass(`v`, styles.box)} nativeStyle={styles.box}>x</native-view>");
   expect(view("{mk(c)}")).toBe("<native-view nativeClass={__svelteNativeClass(`v`)} nativeStyle={mk(c)}>x</native-view>");
   expect(view("{{ ...mk(c) }}")).toBe("<native-view nativeClass={__svelteNativeClass(`v`)} nativeStyle={{ ...mk(c) }}>x</native-view>");
+  // A `//` in a string is not a comment: the copy is on one line.
+  expect(view('{{\n  backgroundImage: "url(http://x)",\n  color: c,\n}}')).toBe('<native-view nativeClass={__svelteNativeClass(`v`, { backgroundImage: "url(http://x)", color: c, })} nativeStyle={{\n  backgroundImage: "url(http://x)",\n  color: c,\n}}>x</native-view>');
   expect(view("{{\n  // the font\n  fontSize: 20,\n}}")).toBe("<native-view nativeClass={__svelteNativeClass(`v`)} nativeStyle={{\n  // the font\n  fontSize: 20,\n}}>x</native-view>");
 });
 
@@ -572,4 +579,20 @@ test("a file with HTML the mapping does not touch, or only in a string, is retur
   expect(html(`<script>let a = 1;</script>\n<native-text>{a}</native-text>`)).toBe(`<script>let a = 1;</script>\n<native-text>{a}</native-text>`);
   const broken = `<div {x>`;
   expect(html(broken)).toBe(broken);
+});
+
+test("a piece of source that is written twice is put on one line, unless that changes what it says: a comment that runs to the end of the line, a template literal with a line break in it", () => {
+  expect(oneLine("els[\n    i\n  ]")).toBe("els[ i ]");
+  expect(oneLine("a ===\n  \"x\"")).toBe('a === "x"');
+  // A `//` or a quote inside a string is not a comment, and a block comment is closed on the line it is flattened to.
+  expect(oneLine('els[\n  "a//b"\n]')).toBe('els[ "a//b" ]');
+  expect(oneLine("els[\n  'it\\'s // here'\n]")).toBe("els[ 'it\\'s // here' ]");
+  expect(oneLine("a /* one\n two */ + b")).toBe("a /* one two */ + b");
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: the source of a template literal
+  expect(oneLine("`one ${a}`\n+ b")).toBe("`one ${a}` + b");
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: the source of a template literal
+  for (const source of ["a // note\n + b", "a\n/* x */ // y\n+ b", "`one\ntwo`\n+ b", "x\n+ `a ${b}\n`"]) expect(oneLine(source), source).toBe(source);
+  // A target that cannot be flattened is written as it is, and what it adds is the file's to know (the docs say so).
+  const source = `<script>let els = [], i = 0;</script>\n<div bind:this={els[\n  // the row\n  i\n]}>x</div>`;
+  expect(html(source).split("\n").length).toBeGreaterThan(source.split("\n").length);
 });

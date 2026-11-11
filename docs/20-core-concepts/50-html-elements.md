@@ -45,7 +45,7 @@ It applies to the files of your app: routes (`+page.svelte`, `+mobile.svelte`), 
 
 `class`, `class:name`, `style`, `{...spread}` and `bind:this` carry over, and you can use `{#if}`, `{#each}` and snippets inside any of them, as usual. `use:` actions don't run on a native element (the build warns, naming the file and line). `in:`, `out:`, `transition:` and `animate:` are passed through as you wrote them, and play on the UI thread once the library's transitions land. On an `input`, a `textarea` and a `dialog`, which are components, Svelte takes no such directive, so the build leaves it out and warns.
 
-The file keeps its lines: every construct is on the line it was written on, so an error from the Svelte compiler points where you wrote it. (A `//` comment, or a template literal with a line break in it, inside an expression that has to be written twice, such as a `bind:this` target, is the one place where that can't hold.)
+The file keeps its lines: every construct is on the line it was written on, so an error from the Svelte compiler points where you wrote it. (A comment that runs to the end of a line, or a template literal with a line break in it, inside an expression that has to be written twice, such as a `bind:this` target, is the one place where that can't hold. A `//` inside a string is not a comment.)
 
 An element that isn't in the table (`<center>`, `<font>`, a custom element) is a build error, like the ones under [What doesn't exist](#what-doesnt-exist).
 
@@ -87,9 +87,9 @@ That is what a block container does. A **flex container** lays out items instead
 <div>Total: <span>5</span></div>
 ```
 
-The first three have two items each, a `Name` and a price at the two ends of a row, an icon and a label side by side, `Total:` and `5` next to each other. The last is one line. A view is a flex container when its style has `display: flex` (`flex`, `inline-flex`, `style="display: flex"`) or any of `flex-direction`, `flex-wrap`, `gap`, `justify-content`, `align-items` and `align-content` (`flexDirection` and the others in a style object). A `class="block"` is not one, even though React Native has only flex and the class compiler writes `flex` for it (it keeps the word you used beside it), so `<label class="block">Name <span>*</span></label>` is a line.
+The first three have two items each, a `Name` and a price at the two ends of a row, an icon and a label side by side, `Total:` and `5` next to each other. The last is one line. A view is a flex container when its style has `display: flex` (`flex`, `inline-flex`, `style="display: flex"`) or any of `flex-direction`, `flex-wrap`, `gap`, `justify-content`, `align-items` and `align-content` (`flexDirection` and the others in a style object). A text element (`p`, `h1`–`h6`, `span`, an `<a>` among text) is not a container at all: it draws its own text, so `flex`, `gap` or `items-center` on it does nothing, and in development the library says so once for each element. Use a `div` when you need items. A `class="block"` is not a flex container, even though React Native has only flex and the class compiler writes `flex` for it (it keeps the word you used beside it), so `<label class="block">Name <span>*</span></label>` is a line.
 
-An inline element that sets its own `display` is not in the line either: `<span class="block">` is an item of its own, and `<span class="inline">` or `inline-block` flows. And an `<a>` in a component of its own (`<Link>See the terms</Link>` in the middle of a paragraph) is a pressable, not a span of the text around it, so it ends the line, as a `button` does; written as `<a>` in the paragraph, it is part of the line and a press on that part of the text.
+An inline element that sets its own `display` is in the line or not by what it sets: `inline`, `inline-block` and `inline-flex` flow with the text, `none` has no box and doesn't break the line (`<span class="hidden sm:inline">` is out of it while it's hidden, and a span of it when it shows), and `block` or `flex` is an item of its own, as `<span class="block">` is. And an `<a>` in a component of its own (`<Link>See the terms</Link>` in the middle of a paragraph) is a pressable, not a span of the text around it, so it ends the line, as a `button` does; written as `<a>` in the paragraph, it is part of the line and a press on that part of the text.
 
 A `View` or a `Text` you import has React Native's rule: a string directly in a `View` is not drawn, and in development the library warns about it once.
 
@@ -170,7 +170,7 @@ A native image has no size of its own until it loads, so give it a `width` and a
 
 `oninput` runs on every edit, and `onchange` when the edit is finished. Their event has what web code reads: `event.currentTarget.value` (and `event.target.value`), and the `name`, `id` and `type` of the input. `onkeydown` and `onkeyup` are the key press of the keyboard, with `event.key` (`"Enter"`, `"a"`, `"Backspace"`); a key press comes once, so both run for it.
 
-`bind:this` gives the element's handle, which has `focus()`, `blur()` and `measure()`. It is there as soon as the element is, so `onMount(() => el.focus())` in an `{#if}` works, and a handle asked to focus before the view is on the screen does it when it is. In a keyed `{#each}`, `bind:this={els[i]}` follows its row, as it does on the web.
+`bind:this` gives the element's handle, which has `focus()`, `blur()` and `measure()`. When the content around an element changes what it is drawn as (a text that is alone and then a span of a line), the platform view is made again and the handle's `tag` is the new view's: the one you held reaches it. It is there as soon as the element is, so `onMount(() => el.focus())` in an `{#if}` works, and a handle asked to focus before the view is on the screen does it when it is. In a keyed `{#each}`, `bind:this={els[i]}` follows its row, as it does on the web.
 
 A checkbox is a switch: `bind:checked`, `checked`, `disabled` and `onchange` (with `event.currentTarget.checked`) work.
 
@@ -192,7 +192,7 @@ A checkbox is a switch: `bind:checked`, `checked`, `disabled` and `onchange` (wi
 `class` works as on the web, with the classes of your CSS file ([Classes](styling#classes)). So does `style`, in two forms:
 
 - `style="padding: 4px 8px; color: red"` is turned into a style object when the file is built, by the converter that makes the classes, so a unit or a colour means the same as in a class. A declaration that has no native equivalent is a build error that names it. So is a `vw`, `vh` or `env()` value (a class can have those; a string written at build time can't know the device), and a string with `{expressions}` in it. For those, use `style={{ ... }}`, a class or `style:`.
-- `style:property={value}` follows its value. The name is camel-cased, `px` and plain numbers are points, `rem` is 16 points, and percentages, colours and keywords pass through; `!important` is dropped. A value it can't use (`calc()`, `var()`), a custom property (`--gap`) and a name React Native doesn't know are left out or reported, with a warning in development.
+- `style:property={value}` follows its value. The name is camel-cased, `px` and plain numbers are points, `rem` is 16 points, and percentages, colours and keywords pass through; `!important` is dropped. A value it can't use (`calc()`, `var()`), a custom property (`--gap`), a `display` a device has no layout for (`grid`, `table`: a view is flex, `none` or `contents`) and a name React Native doesn't know are left out or reported, with a warning in development.
 
 ```svelte
 <div style:width="{percent}%" style:background-color={color} class="h-2 rounded"></div>
@@ -218,7 +218,7 @@ An element with no native equivalent is a build error, naming the element, the f
 
 Any other HTML element not in the first table is also an error. All the errors of a file are reported together.
 
-Some elements of Svelte are for the document: `<svelte:head>` is taken out when the file is built, so a page shared with the web compiles, and `<svelte:window>`, `<svelte:document>` and `<svelte:body>` are errors that say so (`windowSize` and `svelte/reactivity/window` give the window's size). `<svelte:element this={tag}>` draws the host tag of `tag` (`h2` is a text, `div` a view, and a `span` or a `b` is a span of the line it is in), and fails with the tag's name when it has none. `bind:this` is its handle, and `on:click={f}` is `onclick={f}`; its `class`, `style` and events are not adapted (the build warns), so write the element when you need them.
+Some elements of Svelte are for the document: `<svelte:head>` is taken out when the file is built, so a page shared with the web compiles, and `<svelte:window>`, `<svelte:document>` and `<svelte:body>` are errors that say so (`windowSize` and `svelte/reactivity/window` give the window's size). `<svelte:element this={tag}>` draws the host tag of `tag` (`h2` is a text, `div` a view, and a `span` or a `b` is a span of the line it is in), and fails with the tag's name when it has none. `bind:this` is its handle, and a tap presses it: `onclick={f}` and `on:click={f}` are `onPress`, as on a `div` (any other `on:event={f}` is `onevent={f}`); its `class`, `style` and other events are not adapted (the build warns), so write the element when you need them.
 
 ## Limits
 

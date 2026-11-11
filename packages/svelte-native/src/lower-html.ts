@@ -150,11 +150,34 @@ type Context = "view" | "text" | "unknown";
 type Pre = "start" | "inside" | undefined;
 
 /**
+ * Whether the source has a comment or a template literal with a line break in it, outside of strings: what keeps it from being put on one line (`oneLine`). Strings are skipped, so a `//`
+ * in one (`"http://x"`) is not a comment; a regular expression with a quote in it is not understood, which no style or binding target has.
+ */
+function unflattenable(text: string): boolean {
+  for (let at = 0; at < text.length; at++) {
+    const char = text[at];
+    if (char === '"' || char === "'") {
+      for (at++; at < text.length && text[at] !== char; at++) if (text[at] === "\\") at++;
+    } else if (char === "`") {
+      // The literal, to its closing quote (what is inside a `${}` is not told from the text): one with a line break in it is not flattened.
+      const from = at;
+      for (at++; at < text.length && text[at] !== "`"; at++) if (text[at] === "\\") at++;
+      if (text.slice(from, at).includes("\n")) return true;
+    } else if (char === "/" && text[at + 1] === "/") return true;
+    else if (char === "/" && text[at + 1] === "*") {
+      const end = text.indexOf("*/", at + 2);
+      at = end < 0 ? text.length : end + 1;
+    }
+  }
+  return false;
+}
+
+/**
  * A piece of source that is written more than once, on one line: its line breaks are spaces, so the copy adds none to the file. Source with a `//` comment (which would swallow what follows
- * it) or a template literal (whose text has the line breaks in it) is not changed.
+ * it) or a template literal that has a line break in it (the text of the literal would change) is not changed. A `//` in a string is not a comment.
  */
 export function oneLine(text: string): string {
-  return text.includes("//") || text.includes("`") ? text : text.replace(/[ \t]*\r?\n[ \t]*/g, " ");
+  return unflattenable(text) ? text : text.replace(/[ \t]*\r?\n[ \t]*/g, " ");
 }
 
 /** The kinds of expression with no effect of their own: reading them twice is the same as reading them once, and a getter that reads a variable is as reactive twice as once. */
@@ -715,8 +738,11 @@ export function lowerHtml(ast: Node, content: string, filename: string | undefin
         // Svelte sends every attribute of a dynamic element through `set_attributes`, which drops a function (the tag is not known to be one that takes a `ref`): the box carries it.
         if (attribute.name === "this") thisAsRef(attribute, true);
         else unsupportedBinding(node, attribute, "there is nothing to bind to on a native view");
+      } else if (attribute.type === "Attribute" && attribute.name === "onclick" && attribute.value !== true) {
+        // A tap is a touch, which the host turns into `onPress`: a `click` listener is for the accessibility services only, so the press is what `onclick` means, as on a lowered `div`.
+        rename(attribute, "onPress");
       } else if (attribute.type === "OnDirective") {
-        if (attribute.expression && (attribute.modifiers as string[]).length === 0) replaceNode(attribute, `on${attribute.name}={${expressionSource(attribute.expression)}}`);
+        if (attribute.expression && (attribute.modifiers as string[]).length === 0) replaceNode(attribute, `on${attribute.name === "click" ? "Press" : attribute.name}={${expressionSource(attribute.expression)}}`);
         else fail(attribute, `on:${attribute.name}${(attribute.modifiers as string[]).map((modifier) => `|${modifier}`).join("")} on <svelte:element> is not supported on native: write the \`on${attribute.name}\` attribute, and call \`event.preventDefault()\` in it for a modifier`);
       } else if ((attribute.type === "Attribute" && (attribute.name === "class" || attribute.name === "style" || /^on[a-z]+$/.test(attribute.name))) || attribute.type === "ClassDirective" || attribute.type === "StyleDirective") {
         warn(`${where(attribute)} ${attribute.type === "Attribute" ? attribute.name : `${attribute.type === "ClassDirective" ? "class" : "style"}:${attribute.name}`} on <svelte:element> is not adapted on native (a class, a style and the web's events are for the elements written out): write the element, or use \`native-*\` attributes`);

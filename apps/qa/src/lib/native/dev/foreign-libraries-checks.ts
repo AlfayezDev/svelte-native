@@ -11,9 +11,9 @@ import { dismissDatePicker, openDatePicker, captureRef, releaseCapture, type Cap
 import { tick } from "svelte";
 import type { Host, LibraryHandles, LibraryKind } from "./LibrarySet.svelte";
 import { libraryLab } from "./foreign.svelte.ts";
-import { argb, arrivedInOrder, bandInPlace, bandPoints, betweenMargin, brightness, clear, edgeGradual, edgeHard, edgeRatio, edgeSharp, edgeUnderTint, gradualBound, near, numberIn, ratioBetween, readEdge, riveBackdrop, riveFitDetail, riveFitPainted, riveMiddle, riveSides, show, solid, tookNote, untilTaken, type EdgeRead, type RiveFit } from "./foreign-pixels.ts";
+import { argb, arrivedInOrder, bandInPlace, bandPoints, betweenMargin, brightness, clear, edgeGradual, edgeHard, edgeRatio, edgeSharp, edgeUnderTint, gradualBound, lightTint, near, numberIn, ratioBetween, readEdge, riveBackdrop, riveFitDetail, riveFitPainted, riveMiddle, riveSides, show, solid, tookNote, untilTaken, type EdgeRead, type RiveFit } from "./foreign-pixels.ts";
 import { pins, resolvePin, type Pinned } from "./foreign-pins.ts";
-import { runRace, type Race } from "./foreign-race.ts";
+import { nextTaskOf, runRace, type Race, type RuntimeScheduler } from "./foreign-race.ts";
 
 export type Where = "inline" | "row" | "sheet";
 export type Rect = { x: number; y: number; width: number; height: number };
@@ -111,10 +111,12 @@ function hold(milliseconds: number): void {
 }
 
 /**
- * The checks of the Android event patches (SPEC.md, "Events on Android") force the race by construction: `runRace` (`foreign-race.ts`) with the real hold. [iosWhy] says why the iPhone cannot lose the
+ * The checks of the Android event patches (SPEC.md, "Events on Android") force the race by construction: `runRace` (`foreign-race.ts`) with the real hold, and, for the hop between the send and the hold, the next task of
+ * React Native's runtime scheduler (`nextTaskOf`: not a timer, which on Android ends at a frame, where a view command's events have already reached JavaScript). [iosWhy] says why the iPhone cannot lose the
  * messages (the check is Android-only there).
  */
-const forcedRace = (c: Ctx, name: string, iosWhy: string, race: Race): Promise<void> => runRace(c, hold, name, iosWhy, race);
+const forcedRace = (c: Ctx, name: string, iosWhy: string, race: Race): Promise<void> =>
+  runRace(c, hold, name, iosWhy, race, nextTaskOf((globalThis as { nativeRuntimeScheduler?: RuntimeScheduler }).nativeRuntimeScheduler, () => c.pause(0)));
 
 /** Whether [steps] (event name and detail) reached JavaScript in this order, from entry [from] of the history on. */
 const inOrder = (c: Ctx, from: number, steps: readonly (readonly [event: string, detail: unknown])[]): boolean => arrivedInOrder(c.history(), from, steps);
@@ -287,6 +289,7 @@ async function svelteblur(c: Ctx): Promise<void> {
   const wait = blurMs(c);
   const bound = c.android ? gradualBound.android : gradualBound.ios;
   const margin = c.android ? betweenMargin.android : betweenMargin.ios;
+  const tints = c.android ? lightTint.android : lightTint.ios;
   /** The row across the edge at height [y], captured again until [wanted] holds for it (or the time is up): what the last capture shows, or why there is none. */
   const read = async (y: number, wanted: (look: Look, edge: EdgeRead) => boolean): Promise<{ reading: Reading | null; failure: string }> => {
     const { seen, calls, waited, failure } = await lookUntil(c, edgeRow(y), undefined, (look) => wanted(look, readEdge(look.colors)), wait);
@@ -338,24 +341,25 @@ async function svelteblur(c: Ctx): Promise<void> {
       !!band.seen && bandInPlace(band.seen.colors), band.seen ? `${band.seen.colors.map((value) => brightness(value)).join(" ")} (bright, dark, bright outside | inside)` : band.failure);
 
     // The same yellow stripe (a third of the way across) under the light tint and under the dark one, at full strength. Each is captured until it looks like its tint and has stopped changing (two captures
-    // in a row agree): the light one lifts the yellow's channels well above the stripe's own 472 (a blurred yellow under a 0.45 white tint is about 590, a bare one 472), the dark one takes them far below.
+    // in a row agree): the light one is over its platform's floor (`lightTint`: on Android a white of 0.45 lifts a blurred yellow to about 600, over the bare 472; the iPhone's material greys it to about 447, which
+    // is why its floor is lower), the dark one takes the channels far below it.
     const yellow: [number, number][] = [[0.3, inside]];
     const sum = (look: Look) => brightness(pixel(look, 0));
     await changed(() => { c.lab.svelteBlurIntensity = 100; c.lab.svelteBlurTint = "light"; });
-    const light = await lookUntil(c, yellow, undefined, steady(sum, (look) => sum(look) > 520), wait);
+    const light = await lookUntil(c, yellow, undefined, steady(sum, (look) => sum(look) > tints.yellow), wait);
     const lightness = light.seen ? sum(light.seen) : null;
     await changed(() => { c.lab.svelteBlurTint = "dark"; });
-    const dark = await lookUntil(c, yellow, undefined, steady(sum, (look) => lightness !== null && sum(look) <= lightness - 150), wait);
+    const dark = await lookUntil(c, yellow, undefined, steady(sum, (look) => lightness !== null && sum(look) <= lightness - tints.gap), wait);
     const darkness = dark.seen ? sum(dark.seen) : null;
-    c.check("prop update: the dark tint is darker than the light tint over the same stripe", lightness !== null && lightness > 520 && darkness !== null && lightness - darkness >= 150,
-      `light ${light.seen ? at(light.seen, 0) : light.failure} (${lightness}, over 520), dark ${dark.seen ? at(dark.seen, 0) : dark.failure} (${darkness})`);
+    c.check("prop update: the dark tint is darker than the light tint over the same stripe", lightness !== null && lightness > tints.yellow && darkness !== null && lightness - darkness >= tints.gap,
+      `light ${light.seen ? at(light.seen, 0) : light.failure} (${lightness}, over ${tints.yellow}), dark ${dark.seen ? at(dark.seen, 0) : dark.failure} (${darkness})`);
 
     // What is behind the blur changes (the first stripe, red, turns blue): the view shows it. Each side is captured until it looks like its stripe under the light tint (red, then blue; a capture of the dark tint
     // that came before it is not one) and has stopped changing, for the same reason.
     const first: [number, number][] = [[0.13, inside]];
     const channels = (look: Look | null) => (look ? argb(pixel(look, 0)) : null);
-    const redish = (look: Look) => { const colour = argb(pixel(look, 0)); return colour.r > colour.b + 40 && sum(look) > 450; };
-    const bluish = (look: Look) => { const colour = argb(pixel(look, 0)); return colour.b > colour.r + 40 && sum(look) > 450; };
+    const redish = (look: Look) => { const colour = argb(pixel(look, 0)); return colour.r > colour.b + 40 && sum(look) > tints.stripe; };
+    const bluish = (look: Look) => { const colour = argb(pixel(look, 0)); return colour.b > colour.r + 40 && sum(look) > tints.stripe; };
     await changed(() => { c.lab.svelteBlurIntensity = 70; c.lab.svelteBlurTint = "light"; c.lab.svelteBlurStripe = "#e5484d"; });
     const was = await lookUntil(c, first, undefined, steady(sum, redish), wait);
     await changed(() => { c.lab.svelteBlurStripe = "#0091ff"; });
@@ -662,7 +666,7 @@ const hostFlushes = (): number => (globalThis as { __svelteFabric?: { stats(): {
  * The race is forced by `forcedRace`, in two tasks. The first sets the prop, and `tick()` has Svelte's effects and the host's own flush (a microtask: `queueMicrotask(flush)` in `onInvalidate`)
  * commit it to Fabric; but React Native mounts a commit only in the rendering update that follows the task (`Scheduler::uiManagerDidFinishTransaction`), so a hold in that task starts before
  * `drawPdf` has run and the load happens after the hold, with the thread free (the first device run of the unpatched build showed it: `drawPdf` was logged 1.5 s after the commit, as the hold
- * ended, and the check passed or failed by the speed of the event beat). The timer hop ends the task, the rendering update mounts the prop, and the next task holds the thread: the UI thread then
+ * ended, and the check passed or failed by the speed of the event beat). The hop (`nextTask`: the next task of the runtime scheduler, which a timer is not, see `nextTaskOf`) ends the task, the rendering update mounts the prop, and the next task holds the thread: the UI thread then
  * applies the prop (a frame), loads the document (about 100 ms on the emulator) and raises `loadComplete` and, 10 ms later, `pageChanged`, all while JavaScript cannot read the queue. If an event of
  * the load had reached JavaScript before the hold, or the host had not committed the prop (`flushes`), the attempt does not count and is made again with the other page.
  *

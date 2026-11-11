@@ -93,7 +93,7 @@ describe("with the css option", () => {
     withSvelteNative(fakeConfig(root), { variant: "app", css: "src/global.css" });
     const said = warn.mock.calls.map((call) => String(call[0])).filter((message) => message.includes("mention"));
     expect(said).toHaveLength(1);
-    expect(said[0]).toMatch(/^svelte-native: \d+ classes? the sources mention (is|are) not supported on native; a class that is used warns when it renders$/);
+    expect(said[0]).toMatch(/^svelte-native: \d+ class(es)? the sources mention (is|are) not supported on native; a class that is used warns when it renders$/);
     expect(warn.mock.calls.map((call) => String(call[0])).filter((message) => message.includes("hover:opacity-50"))).toEqual([]);
     expect(readFileSync(tableFile(root, "app"), "utf8")).toMatch(/"hover:opacity-50": "[^"]*:hover/);
     // Another build: no new class, no new line.
@@ -154,4 +154,10 @@ describe("without the css option", () => {
     expect(existsSync(join(import.meta.dirname, "..", manifest.exports["./classes-table"] as string))).toBe(true);
     expect(sourceFile("css/empty-table.ts")).toBe(join(import.meta.dirname, "../src/css/empty-table.ts"));
   });
+});
+
+test("svelte/reactivity/window resolves to the native module from an app's code (Svelte's own reads the DOM's window)", () => {
+  const root = cssProject();
+  const config = withSvelteNative(fakeConfig(root), { variant: "qa" });
+  expect(resolveFrom(config, join(root, "src/routes/+mobile.svelte"), "svelte/reactivity/window")).toBe(sourceFile("reactivity-window.ts"));
 });

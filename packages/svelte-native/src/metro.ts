@@ -225,6 +225,8 @@ export function withSvelteNative(config: ConfigT, options: SvelteNativeMetroOpti
     if (moduleName.startsWith("$env/") && moduleName.includes("private") || moduleName === "$app/server") {
       throw new Error(`Server-only import in native bundle: ${moduleName}`);
     }
+    // Svelte's reactive window values read the DOM's `window`; on the device they are `Dimensions`' (`reactivity-window.ts`).
+    if (moduleName === "svelte/reactivity/window") return { type: "sourceFile", filePath: sourceFile("reactivity-window.ts") };
     if (moduleName === "svelte" || moduleName.startsWith("svelte/")) {
       const nativeContext = { ...context, originModulePath: resolve(nativeSvelte, "native-entry.js"), unstable_conditionNames: ["browser", "require"] };
       return context.resolveRequest(nativeContext, moduleName, platform);

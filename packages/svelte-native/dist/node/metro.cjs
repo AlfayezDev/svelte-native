@@ -2598,6 +2598,7 @@ function withSvelteNative(config, options = {}) {
       if (moduleName.startsWith("$env/") && moduleName.includes("private") || moduleName === "$app/server") {
         throw new Error(`Server-only import in native bundle: ${moduleName}`);
       }
+      if (moduleName === "svelte/reactivity/window") return { type: "sourceFile", filePath: sourceFile("reactivity-window.ts") };
       if (moduleName === "svelte" || moduleName.startsWith("svelte/")) {
         const nativeContext = { ...context, originModulePath: (0, import_node_path8.resolve)(nativeSvelte, "native-entry.js"), unstable_conditionNames: ["browser", "require"] };
         return context.resolveRequest(nativeContext, moduleName, platform);

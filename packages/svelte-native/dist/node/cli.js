@@ -204,13 +204,14 @@ var init_variant = __esm({
 });
 
 // src/watch-tree.ts
-import { existsSync as existsSync2, readdirSync, statSync, watch } from "node:fs";
-import { join as join2, resolve as resolve2, sep as sep2 } from "node:path";
+import { readdirSync, statSync, watch } from "node:fs";
+import { dirname as dirname2, join as join2, resolve as resolve2, sep as sep2 } from "node:path";
 function watchTree(root2, onChange, options = {}) {
   const base = resolve2(root2);
   const debounceMs = options.debounceMs ?? 50;
   const skip = options.skip ?? ((name) => name === "node_modules" || name.startsWith("."));
   const watchers = /* @__PURE__ */ new Map();
+  let waiting = null;
   let timer;
   let closed = false;
   const changed = () => {
@@ -221,22 +222,30 @@ function watchTree(root2, onChange, options = {}) {
   };
   const add = (directory) => {
     if (closed || watchers.has(directory)) return;
+    const inode = inodeOf(directory);
+    if (inode === null) return;
     let watcher;
     try {
       watcher = watch(directory, (_event, name) => {
-        if (name) {
-          const path = join2(directory, name.toString());
-          if (!watchers.has(path) && isDirectory(path) && !skip(name.toString())) addTree(path);
-          if (watchers.has(path) && !existsSync2(path)) dropTree(path);
-        }
+        if (name) seen(join2(directory, name.toString()), name.toString());
         changed();
       });
-    } catch {
+    } catch (error) {
+      refused(directory, error);
       return;
     }
     watcher.unref();
-    watcher.on("error", () => dropTree(directory));
-    watchers.set(directory, watcher);
+    watcher.on("error", (error) => {
+      refused(directory, error);
+      dropTree(directory);
+    });
+    watchers.set(directory, { watcher, inode });
+  };
+  const seen = (path, name) => {
+    const known = watchers.get(path);
+    const inode = inodeOf(path);
+    if (known && known.inode !== inode) dropTree(path);
+    if (inode !== null && !watchers.has(path) && !skip(name) && isDirectory(path)) addTree(path);
   };
   const addTree = (directory) => {
     add(directory);
@@ -249,22 +258,55 @@ function watchTree(root2, onChange, options = {}) {
     for (const entry of entries) if (entry.isDirectory() && !skip(entry.name)) addTree(join2(directory, entry.name));
   };
   const dropTree = (directory) => {
-    for (const [path, watcher] of watchers) {
+    for (const [path, { watcher }] of watchers) {
       if (path === directory || path.startsWith(directory + sep2)) {
         watcher.close();
         watchers.delete(path);
       }
     }
   };
+  const waitForRoot = () => {
+    let above = dirname2(base);
+    while (!isDirectory(above) && dirname2(above) !== above) above = dirname2(above);
+    try {
+      waiting = watch(above, () => {
+        if (!isDirectory(base)) return;
+        waiting?.close();
+        waiting = null;
+        addTree(base);
+        changed();
+      });
+      waiting.unref();
+    } catch (error) {
+      refused(above, error);
+    }
+  };
   if (isDirectory(base)) addTree(base);
+  else waitForRoot();
   return {
     close() {
       closed = true;
       clearTimeout(timer);
-      for (const watcher of watchers.values()) watcher.close();
+      waiting?.close();
+      waiting = null;
+      for (const { watcher } of watchers.values()) watcher.close();
       watchers.clear();
     }
   };
+}
+function refused(directory, error) {
+  const code = error.code;
+  if (code === "ENOENT" || code === "ENOTDIR" || warned) return;
+  warned = true;
+  const hint = code === "ENOSPC" ? " The system's limit on watches is reached: raise fs.inotify.max_user_watches (sysctl)." : "";
+  console.warn(`svelte-native: cannot watch ${directory} (${code ?? String(error)}); changes below it are not picked up until Metro restarts.${hint}`);
+}
+function inodeOf(path) {
+  try {
+    return statSync(path).ino;
+  } catch {
+    return null;
+  }
 }
 function isDirectory(path) {
   try {
@@ -273,15 +315,17 @@ function isDirectory(path) {
     return false;
   }
 }
+var warned;
 var init_watch_tree = __esm({
   "src/watch-tree.ts"() {
     "use strict";
+    warned = false;
   }
 });
 
 // src/build.ts
 import { spawn } from "node:child_process";
-import { existsSync as existsSync3, mkdirSync, readFileSync, readdirSync as readdirSync2, rmSync, writeFileSync } from "node:fs";
+import { existsSync as existsSync2, mkdirSync, readFileSync, readdirSync as readdirSync2, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { mkdir } from "node:fs/promises";
 import { relative, resolve as resolve3, sep as sep3 } from "node:path";
@@ -403,7 +447,7 @@ import { tree } from './routes';
 createFabricApp(App, { tree });
 ${hot}`;
   const files = [[routesTableFile(variant), manifest]];
-  if (options.entry !== "keep" || customRoot !== void 0 || !existsSync3(resolve3(output, "entry.ts"))) files.push(["entry.ts", entry]);
+  if (options.entry !== "keep" || customRoot !== void 0 || !existsSync2(resolve3(output, "entry.ts"))) files.push(["entry.ts", entry]);
   for (const [file, content] of files) {
     const destination = resolve3(output, file);
     let current = "";
@@ -768,9 +812,9 @@ __export(init_app_exports, {
   svelteNativeViteConfig: () => svelteNativeViteConfig
 });
 import { spawnSync } from "node:child_process";
-import { existsSync as existsSync4, mkdirSync as mkdirSync2, readFileSync as readFileSync2, readdirSync as readdirSync4, writeFileSync as writeFileSync2 } from "node:fs";
+import { existsSync as existsSync3, mkdirSync as mkdirSync2, readFileSync as readFileSync2, readdirSync as readdirSync4, writeFileSync as writeFileSync2 } from "node:fs";
 import { createRequire as createRequire2 } from "node:module";
-import { dirname as dirname2, join as join3, relative as relative2 } from "node:path";
+import { dirname as dirname3, join as join3, relative as relative2 } from "node:path";
 function indentOf(text2) {
   return /^([ \t]+)"/m.exec(text2)?.[1] ?? "	";
 }
@@ -1006,12 +1050,12 @@ function starterTheme(root2, manifest) {
   const mapped = typeof imports === "object" && imports !== null && "#lib/*" in imports;
   return {
     path,
-    exists: existsSync4(join3(root2, path)),
+    exists: existsSync3(join3(root2, path)),
     from: (directory) => mapped ? `#lib/${name}` : relative2(directory, path).split("\\").join("/")
   };
 }
 function mobileRoutes(routes) {
-  if (!existsSync4(routes)) return [];
+  if (!existsSync3(routes)) return [];
   return readdirSync4(routes, { recursive: true, encoding: "utf8" }).filter((file) => /(^|[\\/])\+(?:mobile|layout\.mobile)\.svelte$/.test(file));
 }
 function planInit(root2, options = {}) {
@@ -1021,7 +1065,7 @@ function planInit(root2, options = {}) {
     plan.problems.push(`${root2} has no package.json: run \`svelte-native init\` in the directory of your project (after \`npx sv create\`).`);
     return plan;
   }
-  if (!existsSync4(join3(root2, "pnpm-lock.yaml")) && !existsSync4(join3(root2, "pnpm-workspace.yaml")) && (existsSync4(join3(root2, "package-lock.json")) || existsSync4(join3(root2, "yarn.lock")) || existsSync4(join3(root2, "bun.lock")) || existsSync4(join3(root2, "bun.lockb")))) {
+  if (!existsSync3(join3(root2, "pnpm-lock.yaml")) && !existsSync3(join3(root2, "pnpm-workspace.yaml")) && (existsSync3(join3(root2, "package-lock.json")) || existsSync3(join3(root2, "yarn.lock")) || existsSync3(join3(root2, "bun.lock")) || existsSync3(join3(root2, "bun.lockb")))) {
     plan.problems.push("This project uses another package manager than pnpm. The library's patches are pnpm's (`patchedDependencies`): create the project with pnpm (`npx sv create`, then choose pnpm) or move it to pnpm first.");
     return plan;
   }
@@ -1082,7 +1126,7 @@ ${merged.manual.map((line) => `  ${line}`).join("\n")}`
   for (const patch of needed) {
     const target = join3(root2, "patches/svelte-native", patch.file);
     const content = readFileSync2(patch.path);
-    const current = existsSync4(target) ? readFileSync2(target) : void 0;
+    const current = existsSync3(target) ? readFileSync2(target) : void 0;
     if (current?.equals(content)) continue;
     plan.changes.push({ path: relative2(root2, target), action: current === void 0 ? "create" : "edit", summary: current === void 0 ? "the library's patch" : "differs from the installed library's copy: replaced", text: content });
     (current === void 0 ? copied : replaced).push(patch.file);
@@ -1096,7 +1140,7 @@ ${merged.manual.map((line) => `  ${line}`).join("\n")}`
   const { withSvelteNative } = require("@example/svelte-native/metro");
   module.exports = withSvelteNative(<your config>);` });
   planAppJson(root2, names, plan);
-  const viteName = ["vite.config.ts", "vite.config.js", "vite.config.mts", "vite.config.mjs"].find((file) => existsSync4(join3(root2, file)));
+  const viteName = ["vite.config.ts", "vite.config.js", "vite.config.mts", "vite.config.mjs"].find((file) => existsSync3(join3(root2, file)));
   if (pkg.hasKit && viteName === void 0) {
     plan.changes.push({ path: "vite.config.ts", action: "manual", summary: "none found", instructions: viteInstructions("vite.config.ts") });
   } else if (viteName !== void 0) {
@@ -1169,7 +1213,7 @@ function planAppJson(root2, names, plan) {
     plugins: [plugin]
   });
   if (text2 === void 0) {
-    const config = ["app.config.ts", "app.config.js", "app.config.mjs", "app.config.cjs"].find((file) => existsSync4(join3(root2, file)));
+    const config = ["app.config.ts", "app.config.js", "app.config.mjs", "app.config.cjs"].find((file) => existsSync3(join3(root2, file)));
     if (config !== void 0) {
       plan.changes.push({ path: config, action: "manual", summary: "the app is configured in code", instructions: `Add the library's plugin to \`plugins\` in ${config}:
   plugins: ["${plugin}"]
@@ -1216,7 +1260,7 @@ function applyPlan(plan) {
   for (const change of plan.changes) {
     if (change.text === void 0 || change.action !== "create" && change.action !== "edit") continue;
     const file = join3(plan.root, change.path);
-    mkdirSync2(dirname2(file), { recursive: true });
+    mkdirSync2(dirname3(file), { recursive: true });
     writeFileSync2(file, change.text);
   }
 }
@@ -1320,7 +1364,7 @@ var init_init_app = __esm({
     plugin = "@example/svelte-native/expo";
     scripts = { native: "svelte-native dev", android: "svelte-native android", ios: "svelte-native ios", "check-setup": "svelte-native doctor" };
     gitignore = [".svelte-native", ".expo", "/android", "/ios"];
-    read = (file) => existsSync4(file) ? readFileSync2(file, "utf8") : void 0;
+    read = (file) => existsSync3(file) ? readFileSync2(file, "utf8") : void 0;
     plural = (count2, word) => `${count2} ${word.endsWith("y") ? count2 === 1 ? word : `${word.slice(0, -1)}ies` : count2 === 1 ? word : `${word}s`}`;
     quoteOf = (text2) => /from\s+"/.test(text2) ? '"' : "'";
     exactVersion = (spec) => spec !== void 0 && /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(spec) ? spec : void 0;
@@ -1440,8 +1484,8 @@ dependencies, pnpm's settings and patches, the Metro and Expo config, the Vite p
 });
 
 // src/doctor/resolve.ts
-import { existsSync as existsSync5, readdirSync as readdirSync5, readFileSync as readFileSync3, realpathSync } from "node:fs";
-import { basename, dirname as dirname3, join as join4, resolve as resolve5 } from "node:path";
+import { existsSync as existsSync4, readdirSync as readdirSync5, readFileSync as readFileSync3, realpathSync } from "node:fs";
+import { basename, dirname as dirname4, join as join4, resolve as resolve5 } from "node:path";
 function readerFor(directory) {
   return {
     read(path) {
@@ -1469,17 +1513,17 @@ function readJson(file) {
   }
 }
 function findPackage(name, from) {
-  for (let directory = resolve5(from); ; directory = dirname3(directory)) {
+  for (let directory = resolve5(from); ; directory = dirname4(directory)) {
     const candidate = join4(basename(directory) === "node_modules" ? directory : join4(directory, "node_modules"), name);
     const json = readJson(join4(candidate, "package.json"));
     if (json && typeof json.version === "string") return { name, version: json.version, directory: realpathSync(candidate), json };
-    if (dirname3(directory) === directory) return void 0;
+    if (dirname4(directory) === directory) return void 0;
   }
 }
 function findUp(file, from) {
-  for (let directory = resolve5(from); ; directory = dirname3(directory)) {
-    if (existsSync5(join4(directory, file))) return directory;
-    if (dirname3(directory) === directory) return void 0;
+  for (let directory = resolve5(from); ; directory = dirname4(directory)) {
+    if (existsSync4(join4(directory, file))) return directory;
+    if (dirname4(directory) === directory) return void 0;
   }
 }
 var init_resolve = __esm({
@@ -1490,7 +1534,7 @@ var init_resolve = __esm({
 
 // src/doctor/declared.ts
 import { readFileSync as readFileSync4 } from "node:fs";
-import { dirname as dirname4, join as join5, resolve as resolve6 } from "node:path";
+import { dirname as dirname5, join as join5, resolve as resolve6 } from "node:path";
 function patchedDependenciesOfYaml(text2) {
   const entries = /* @__PURE__ */ new Map();
   let inside = false;
@@ -1524,9 +1568,9 @@ function declaredPatches(appRoot) {
     }
   }
   const top = workspace ?? resolve6(appRoot);
-  for (let directory = resolve6(appRoot); ; directory = dirname4(directory)) {
+  for (let directory = resolve6(appRoot); ; directory = dirname5(directory)) {
     add(fromJson(readJson(join5(directory, "package.json"))), directory, "package.json");
-    if (directory === top || dirname4(directory) === directory) break;
+    if (directory === top || dirname5(directory) === directory) break;
   }
   return declared;
 }
@@ -1538,7 +1582,7 @@ var init_declared = __esm({
 });
 
 // src/doctor/integration.ts
-import { existsSync as existsSync6, readFileSync as readFileSync5 } from "node:fs";
+import { existsSync as existsSync5, readFileSync as readFileSync5 } from "node:fs";
 import { join as join6 } from "node:path";
 function withoutJsComments(text2) {
   return text2.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:\\])\/\/.*$/gm, "$1");
@@ -1574,7 +1618,7 @@ var init_integration = __esm({
     init_resolve();
     METRO_FILES = ["metro.config.js", "metro.config.cjs", "metro.config.mjs", "metro.config.ts", "metro.config.mts", "metro.config.cts"];
     APP_CONFIG_FILES = ["app.config.ts", "app.config.js", "app.config.cjs", "app.config.mjs", "app.config.mts", "app.config.cts"];
-    firstExisting = (root2, names) => names.find((name) => existsSync6(join6(root2, name)));
+    firstExisting = (root2, names) => names.find((name) => existsSync5(join6(root2, name)));
     pluginName = (entry) => typeof entry === "string" ? entry : Array.isArray(entry) && typeof entry[0] === "string" ? entry[0] : void 0;
   }
 });
@@ -1672,7 +1716,7 @@ var init_requirements = __esm({
 });
 
 // src/doctor/checks.ts
-import { existsSync as existsSync7, readFileSync as readFileSync6 } from "node:fs";
+import { existsSync as existsSync6, readFileSync as readFileSync6 } from "node:fs";
 import { join as join7 } from "node:path";
 function environment(context) {
   const checks = [];
@@ -1704,7 +1748,7 @@ function svelte(context, peers) {
   if (!installed) return { group: "svelte", status: "fail", message: "svelte is not installed", fix };
   const entry = record(installed.json.exports)["./renderer"];
   const target = text(entry) ?? text(record(entry).default);
-  const exported = target !== void 0 && existsSync7(join7(installed.directory, target));
+  const exported = target !== void 0 && existsSync6(join7(installed.directory, target));
   const compiler = ["src/compiler/validate-options.js", "compiler/index.js"].some((file) => {
     try {
       return readFileSync6(join7(installed.directory, file), "utf8").includes("customRenderer");
@@ -1749,7 +1793,7 @@ function peerDependencies(context, peers, optional) {
 function expoRuntime(context) {
   const expo = findPackage("expo", context.appRoot);
   if (!expo) return [];
-  const missing = EXPO_RUNTIME_FILES.filter((file) => !existsSync7(join7(expo.directory, file)));
+  const missing = EXPO_RUNTIME_FILES.filter((file) => !existsSync6(join7(expo.directory, file)));
   if (missing.length === 0) return [{ group: "peer dependencies", status: "pass", message: `expo ${expo.version} has src/winter, the runtime (URL, fetch, TextDecoder) that the library's polyfills import` }];
   return [{
     group: "peer dependencies",
@@ -1800,7 +1844,7 @@ function patches(context, libraryName, optional) {
     }
     const entry = declared.get(key);
     const copy = `node_modules/${libraryName}/patches/${patch.file}`;
-    const fix = !entry ? `copy ${copy} into your repository (patches/svelte-native/), declare "${key}: patches/svelte-native/${patch.file}" under patchedDependencies in pnpm-workspace.yaml, then pnpm install (README: "Apply the patches")` : !existsSync7(entry.file) ? `${entry.source} declares ${key} at ${entry.path}, which does not exist: copy ${copy} there, then pnpm install` : `${entry.source} declares ${key} (${entry.path}); run pnpm install, and if the package is still not patched copy ${copy} over that file (an older copy of the patch does not match this version of the library)`;
+    const fix = !entry ? `copy ${copy} into your repository (patches/svelte-native/), declare "${key}: patches/svelte-native/${patch.file}" under patchedDependencies in pnpm-workspace.yaml, then pnpm install (README: "Apply the patches")` : !existsSync6(entry.file) ? `${entry.source} declares ${key} at ${entry.path}, which does not exist: copy ${copy} there, then pnpm install` : `${entry.source} declares ${key} (${entry.path}); run pnpm install, and if the package is still not patched copy ${copy} over that file (an older copy of the patch does not match this version of the library)`;
     const problems = changed.length > 0 ? changed : differing;
     checks.push({
       group: "patches",
@@ -1877,8 +1921,8 @@ __export(doctor_exports, {
   runDoctor: () => runDoctor
 });
 import { spawnSync as spawnSync2 } from "node:child_process";
-import { existsSync as existsSync8, realpathSync as realpathSync2 } from "node:fs";
-import { basename as basename2, dirname as dirname5, join as join8, resolve as resolve7 } from "node:path";
+import { existsSync as existsSync7, realpathSync as realpathSync2 } from "node:fs";
+import { basename as basename2, dirname as dirname6, join as join8, resolve as resolve7 } from "node:path";
 function formatReport(checks, { color = false, appRoot = "" } = {}) {
   const paint = (status) => color ? `\x1B[${COLORS[status]}m${WORDS[status]}\x1B[0m` : WORDS[status];
   const lines = [`svelte-native doctor${appRoot ? `: ${appRoot}` : ""}`];
@@ -1904,17 +1948,17 @@ function nodeVersion() {
   return version && /^\d+\.\d+\.\d+/.test(version) ? version : void 0;
 }
 function workspaceRoot(directory) {
-  for (let current = directory; ; current = dirname5(current)) {
-    if (existsSync8(join8(current, "pnpm-workspace.yaml"))) return current;
-    if (dirname5(current) === current) return void 0;
+  for (let current = directory; ; current = dirname6(current)) {
+    if (existsSync7(join8(current, "pnpm-workspace.yaml"))) return current;
+    if (dirname6(current) === current) return void 0;
   }
 }
 function isRepositoryApp(appRoot, packageRoot2) {
-  const packages = dirname5(packageRoot2);
+  const packages = dirname6(packageRoot2);
   if (basename2(packages) !== "packages") return false;
   try {
     const root2 = workspaceRoot(realpathSync2(appRoot));
-    return root2 !== void 0 && root2 === realpathSync2(dirname5(packages));
+    return root2 !== void 0 && root2 === realpathSync2(dirname6(packages));
   } catch {
     return false;
   }
@@ -3728,9 +3772,9 @@ __export(build_exports, {
 });
 import { spawnSync as spawnSync3 } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync as existsSync9, mkdirSync as mkdirSync3, readdirSync as readdirSync6, readFileSync as readFileSync7, statSync as statSync2, watch as watch2, writeFileSync as writeFileSync3 } from "node:fs";
+import { existsSync as existsSync8, mkdirSync as mkdirSync3, readdirSync as readdirSync6, readFileSync as readFileSync7, statSync as statSync2, watch as watch2, writeFileSync as writeFileSync3 } from "node:fs";
 import { createRequire as createRequire3 } from "node:module";
-import { dirname as dirname6, extname, isAbsolute, join as join9, relative as relative3, resolve as resolve8, sep as sep4 } from "node:path";
+import { dirname as dirname7, extname, isAbsolute, join as join9, relative as relative3, resolve as resolve8, sep as sep4 } from "node:path";
 function sourceFiles(root2) {
   const files = [];
   const walk = (directory) => {
@@ -3741,7 +3785,7 @@ function sourceFiles(root2) {
       } else if (SOURCE_EXTENSIONS.has(extname(item.name))) files.push(path);
     }
   };
-  if (existsSync9(join9(root2, "src"))) walk(join9(root2, "src"));
+  if (existsSync8(join9(root2, "src"))) walk(join9(root2, "src"));
   return files;
 }
 function closingBracket(source, start) {
@@ -3792,7 +3836,7 @@ function loadTailwind(root2) {
   let manifest;
   try {
     const manifestFile = fromApp.resolve("tailwindcss/package.json");
-    directory = dirname6(manifestFile);
+    directory = dirname7(manifestFile);
     manifest = JSON.parse(readFileSync7(manifestFile, "utf8"));
   } catch (error) {
     throw new Error(`svelte-native: the css option needs Tailwind CSS in the app: ${install} (${error.message.split("\n")[0]})`, { cause: error });
@@ -3818,20 +3862,20 @@ function exportedStylesheet(exports, key) {
 function packageStylesheet(id, base) {
   const name = id.startsWith("@") ? id.split("/").slice(0, 2).join("/") : id.split("/")[0];
   const subpath = id.slice(name.length);
-  for (let directory = base; ; directory = dirname6(directory)) {
+  for (let directory = base; ; directory = dirname7(directory)) {
     const packageDirectory = join9(directory, "node_modules", name);
     const manifestFile = join9(packageDirectory, "package.json");
-    if (existsSync9(manifestFile)) {
+    if (existsSync8(manifestFile)) {
       const manifest = JSON.parse(readFileSync7(manifestFile, "utf8"));
       let target;
       if (subpath === "") target = exportedStylesheet(manifest.exports, ".") ?? manifest.style ?? (manifest.main?.endsWith(".css") ? manifest.main : void 0);
       else {
-        for (const file of [join9(packageDirectory, subpath), join9(packageDirectory, `${subpath}.css`)]) if (existsSync9(file) && statSync2(file).isFile()) return file;
+        for (const file of [join9(packageDirectory, subpath), join9(packageDirectory, `${subpath}.css`)]) if (existsSync8(file) && statSync2(file).isFile()) return file;
         target = exportedStylesheet(manifest.exports, `.${subpath}`);
       }
       return target === void 0 ? void 0 : resolve8(packageDirectory, target);
     }
-    if (dirname6(directory) === directory) return void 0;
+    if (dirname7(directory) === directory) return void 0;
   }
 }
 function stylesheetLoader(tailwindDirectory, read2) {
@@ -3842,7 +3886,7 @@ function stylesheetLoader(tailwindDirectory, read2) {
     else if (id.startsWith(".") || isAbsolute(id)) file = resolve8(base, id);
     else {
       const next = resolve8(base, id);
-      file = existsSync9(next) && statSync2(next).isFile() ? next : packageStylesheet(id, base);
+      file = existsSync8(next) && statSync2(next).isFile() ? next : packageStylesheet(id, base);
       if (file === void 0) {
         try {
           file = createRequire3(join9(base, "noop.js")).resolve(id);
@@ -3859,7 +3903,7 @@ function stylesheetLoader(tailwindDirectory, read2) {
       throw new Error(`svelte-native: cannot read @import "${id}" from ${base}: ${error.code ?? error.message}`, { cause: error });
     }
     read2.add(file);
-    return { path: file, base: dirname6(file), content };
+    return { path: file, base: dirname7(file), content };
   };
 }
 function tableSource(table) {
@@ -3894,7 +3938,7 @@ function writeIfChanged(file, content) {
     if (error.code !== "ENOENT") throw error;
   }
   if (current === content) return false;
-  mkdirSync3(dirname6(file), { recursive: true });
+  mkdirSync3(dirname7(file), { recursive: true });
   writeFileSync3(file, content);
   return true;
 }
@@ -3915,16 +3959,16 @@ async function buildClasses(options) {
   const root2 = resolve8(options.root);
   const entry = resolve8(root2, options.css);
   const file = join9(root2, ".svelte-native", classesTableFile(options.variant));
-  if (!existsSync9(entry)) throw new Error(`svelte-native: the css option names ${options.css}, which is not a file (relative to ${root2})`);
+  if (!existsSync8(entry)) throw new Error(`svelte-native: the css option names ${options.css}, which is not a file (relative to ${root2})`);
   const candidates = candidatesOf(root2);
   const previous = built.get(file);
   const inputs = inputsOf(candidates, entry, previous?.result.stylesheets ?? []);
-  if (previous !== void 0 && previous.inputs === inputs && existsSync9(file)) return { ...previous.result, changed: false };
+  if (previous !== void 0 && previous.inputs === inputs && existsSync8(file)) return { ...previous.result, changed: false };
   const { tailwind, directory } = loadTailwind(root2);
   const read2 = /* @__PURE__ */ new Set([entry]);
   const skipped = /* @__PURE__ */ new Set();
   const compiler = await tailwind.compile(readFileSync7(entry, "utf8"), {
-    base: dirname6(entry),
+    base: dirname7(entry),
     from: entry,
     loadStylesheet: stylesheetLoader(directory, read2),
     loadModule: async (id, base, hint) => {
@@ -3945,8 +3989,8 @@ function buildClassesSync(options) {
   const file = join9(root2, ".svelte-native", classesTableFile(options.variant));
   const previous = built.get(file);
   const candidates = candidatesOf(root2);
-  const inputs = existsSync9(entry) ? inputsOf(candidates, entry, previous?.result.stylesheets ?? []) : "";
-  if (previous !== void 0 && previous.inputs === inputs && existsSync9(file)) return { ...previous.result, changed: false };
+  const inputs = existsSync8(entry) ? inputsOf(candidates, entry, previous?.result.stylesheets ?? []) : "";
+  if (previous !== void 0 && previous.inputs === inputs && existsSync8(file)) return { ...previous.result, changed: false };
   const cli = process.versions.bun !== void 0 && import.meta.filename.endsWith(".ts") ? sourceFile("cli.ts") : join9(packageRoot, "dist/node/cli.js");
   const run = spawnSync3(process.execPath, [cli, "css", options.css, "--variant", options.variant, "--json"], { cwd: root2, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
   if (run.error) throw new Error(`svelte-native: could not run the CSS build (${run.error.message})`, { cause: run.error });
@@ -3981,13 +4025,13 @@ function watchClasses(options, stylesheets = [], debounceMs = 100) {
   let running = Promise.resolve();
   let closed = false;
   const watchDirectory = (directory, recursive) => {
-    if (closed || watchers.has(directory) || !existsSync9(directory)) return;
+    if (closed || watchers.has(directory) || !existsSync8(directory)) return;
     const watcher = watch2(directory, { recursive }, schedule);
     watcher.unref();
     watchers.set(directory, watcher);
   };
   const followStylesheets = (files) => {
-    for (const directory of new Set(files.map((file) => dirname6(file))))
+    for (const directory of new Set(files.map((file) => dirname7(file))))
       if (!directory.split(sep4).includes("node_modules") && relative3(source, directory).startsWith("..")) watchDirectory(directory, false);
   };
   function schedule() {
@@ -4008,7 +4052,7 @@ function watchClasses(options, stylesheets = [], debounceMs = 100) {
       }
     });
   };
-  const tree = watchTree(source, schedule, { debounceMs: 0 });
+  const tree = watchTree(source, schedule, { debounceMs: 0, skip: (name) => SKIPPED_DIRECTORIES.has(name) });
   followStylesheets([resolve8(root2, options.css), ...stylesheets]);
   return {
     close() {

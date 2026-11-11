@@ -233,7 +233,7 @@ Three sources are read:
 | lab, engine | `alive` (engine views mounted under a React tag), `pooled`, `held`, `created`, `deleted`, the animated-write classes `lateWrites`, `staleWrites`, `replayedWrites`, `expiredWrites`, `overflowWrites`, `earlyPending`, and the sizes of the C++ delegate's tables `emitters` and `scrollStates` | `SvelteEngine.stats()` (`MountingManager.stats()`, SPEC "Stats for the soak runner") |
 | host, process | Native Heap Pss / Heap Alloc / Heap Size, Dalvik Heap Pss / Alloc, total Pss, `Views`, `ViewRootImpl`, `Activities`, `AppContexts` | `adb shell dumpsys meminfo <package>`, every `--interval` seconds and once per window sample the lab announces (`parseMeminfo`) |
 
-`--parts churn,static,nav,modal,sheet,header,list,tabs` runs only the named parts of the cycle (`static` is plain view churn, off by default), to find where a growth comes from; such a run is written as `partsoak-<device>-<stamp>.json`, which `report` never reads, so a bisect cannot stand in for the full soak.
+`--parts churn,static,spans,nav,modal,sheet,header,list,tabs` runs only the named parts of the cycle (`static` is plain view churn and `spans` is churn of pressable nested Texts, whose event emitters the engine keeps with no view: both off by default), to find where a growth comes from; such a run is written as `partsoak-<device>-<stamp>.json`, which `report` never reads, so a bisect cannot stand in for the full soak.
 
 `qa/runs/soak-<device>-<stamp>.json` keeps the raw series (`js`, `memory`), the faults seen, and the `metrics` derived from them (`report` derives them again from the series, so editing the derivation needs no new run); the full logcat is `soak-<device>-<stamp>.log`.
 

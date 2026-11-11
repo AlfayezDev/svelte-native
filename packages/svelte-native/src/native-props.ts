@@ -61,6 +61,11 @@ export function createNativeProps() {
   };
 }
 
+/** The press handlers a lowered tag passes as attributes (`lower.ts`, `PRESS_HANDLERS`), by the prop they are. */
+const PRESS_ATTRIBUTES: Readonly<Record<string, string>> = {
+  nativeOnPress: "onPress", nativeOnPressIn: "onPressIn", nativeOnPressOut: "onPressOut", nativeOnLongPress: "onLongPress", nativeOnPressChange: "onPressChange",
+};
+
 /** A style with the CSS text in it (a string, or one in an array of styles) parsed; the same value when there is none. */
 function parseStrings(style: unknown): unknown {
   if (typeof style === "string") return styleText(style);
@@ -91,6 +96,11 @@ export function mergeHostProps(attributes: Readonly<Record<string, unknown>>): R
   for (const key in attributes) {
     if (hidden(key) || key === "nativeStyle") continue;
     const value = attributes[key];
+    // A press handler is a prop while it is a function and none when it is not (`undefined`), so a node whose handlers have gone is no responder.
+    if (Object.hasOwn(PRESS_ATTRIBUTES, key)) {
+      if (typeof value === "function") merged[PRESS_ATTRIBUTES[key] as string] = value;
+      continue;
+    }
     if (key === "style" && typeof value === "string") continue;
     if (key === "ref" && typeof value !== "function" && (value === null || typeof value !== "object")) continue;
     merged[key] = value;

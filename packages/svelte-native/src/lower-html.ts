@@ -172,6 +172,11 @@ function unflattenable(text: string): boolean {
   return false;
 }
 
+/** A function written where it is used: an arrow or a `function`, which is a handler whenever it is read. */
+export function isFunctionLiteral(expression: Node): boolean {
+  return expression.type === "ArrowFunctionExpression" || expression.type === "FunctionExpression";
+}
+
 /**
  * A piece of source that is written more than once, on one line: its line breaks are spaces, so the copy adds none to the file. Source with a `//` comment (which would swallow what follows
  * it) or a template literal that has a line break in it (the text of the literal would change) is not changed. A `//` in a string is not a comment.
@@ -298,26 +303,34 @@ export function lowerHtml(ast: Node, content: string, filename: string | undefin
     for (const part of parts) template += part.type === "Text" ? part.data.replace(/[`\\$]/g, (match: string) => `\\${match}`) : `\${(${expressionSource(part.expression)}) ?? ""}`;
     return `${template}\``;
   };
-  /** The function an `onclick`-style attribute or `on:click` directive hands the element, as source; undefined when there is none (or it only forwards the event). */
-  const handlerSource = (attribute: Node, web: string): string | undefined => {
-    if (attribute.type === "Attribute" && attribute.name === `on${web}` && attribute.value !== true && !Array.isArray(attribute.value)) return expressionSource(attribute.value.expression);
-    if (attribute.type === "OnDirective" && attribute.name === web && attribute.expression && (attribute.modifiers as string[]).length === 0) return expressionSource(attribute.expression);
+  /** The function an `onclick`-style attribute or `on:click` directive hands the element, as source (and as the node of its expression); undefined when there is none (or it only forwards the event). */
+  const handlerSource = (attribute: Node, web: string): { source: string; expression: Node } | undefined => {
+    if (attribute.type === "Attribute" && attribute.name === `on${web}` && attribute.value !== true && !Array.isArray(attribute.value)) return { source: expressionSource(attribute.value.expression), expression: attribute.value.expression };
+    if (attribute.type === "OnDirective" && attribute.name === web && attribute.expression && (attribute.modifiers as string[]).length === 0) return { source: expressionSource(attribute.expression), expression: attribute.expression };
     return undefined;
   };
-  const handlerOf = (node: Node, web: string): { attribute: Node; source: string } | undefined => {
+  type Handler = { attribute: Node; source: string; expression: Node; spread: boolean };
+  const handlerOf = (node: Node, web: string): Handler | undefined => {
+    const spread = (node.attributes as Node[]).some((attribute) => attribute.type === "SpreadAttribute");
     for (const attribute of node.attributes as Node[]) {
-      const source = handlerSource(attribute, web);
-      if (source !== undefined) return { attribute, source };
+      const found = handlerSource(attribute, web);
+      if (found !== undefined) return { attribute, ...found, spread };
     }
     return undefined;
   };
-  /** An event attribute under another name: an attribute is renamed, the directive is written as the attribute. */
-  const nativeHandler = (found: { attribute: Node; source: string }, to: string): void => {
-    if (found.attribute.type === "Attribute") rename(found.attribute, to);
-    else replaceNode(found.attribute, `${to}={${found.source}}`);
+  /**
+   * An event attribute under another name: an attribute is renamed, the directive is written as the attribute. A press that may be `undefined` (`onclick={enabled ? go : undefined}`)
+   * is `nativeOnPress`, not `onPress`: Svelte compiles `onPress={...}` to a listener that stays on the element for good, and the host would take an element whose handler is `undefined`
+   * for a pressable that does nothing and give it the press that belongs to an ancestor (`PRESS_HANDLERS` in `lower.ts`). With a spread on the element Svelte's `set_attributes` removes
+   * a nullish listener itself, and a function in `nativeOnPress` would not get through it, so it stays `onPress` there.
+   */
+  const nativeHandler = (found: Handler, to: string): void => {
+    const name = to === "onPress" && !found.spread && !isFunctionLiteral(found.expression) ? "nativeOnPress" : to;
+    if (found.attribute.type === "Attribute") rename(found.attribute, name);
+    else replaceNode(found.attribute, `${name}={${found.source}}`);
   };
   /** An event attribute that is wrapped: the web handler gets an event-like argument built from what the native one gives (`call` is the expression that calls it). */
-  const wrappedHandler = (found: { attribute: Node; source: string }, to: string, parameter: string, call: string): void => {
+  const wrappedHandler = (found: Handler, to: string, parameter: string, call: string): void => {
     replaceNode(found.attribute, `${to}={(${parameter}) => (${found.source})?.(${call})}`);
   };
 
@@ -359,7 +372,7 @@ export function lowerHtml(ast: Node, content: string, filename: string | undefin
           fail(attribute, `on:${attribute.name}${modifiers} on <${node.name}> is not supported on native: write the \`on${attribute.name}\` attribute with a function, and call \`event.preventDefault()\` in it for a modifier`);
           continue;
         }
-        replaceNode(attribute, `on${attribute.name}={${source}}`);
+        replaceNode(attribute, `on${attribute.name}={${source.source}}`);
       }
       const event = attribute.type === "Attribute" && attribute.value !== true && /^on[a-z]+$/.test(attribute.name) ? attribute.name.slice(2) : attribute.type === "OnDirective" ? attribute.name : undefined;
       if (event === undefined || handled.includes(event)) continue;

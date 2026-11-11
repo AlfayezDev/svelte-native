@@ -156,6 +156,10 @@ jint SvelteEngineNative::emitterCount() {
   return static_cast<jint>(delegate_->emitterCount());
 }
 
+jboolean SvelteEngineNative::hasEmitter(jint tag) {
+  return delegate_->emitterFor(tag) != nullptr ? JNI_TRUE : JNI_FALSE;
+}
+
 jint SvelteEngineNative::scrollStateCount() {
   return static_cast<jint>(delegate_->scrollStateCount());
 }
@@ -229,6 +233,7 @@ void SvelteEngineNative::registerNatives() {
       makeNativeMethod("isForeign", SvelteEngineNative::isForeign),
       makeNativeMethod("foreignCount", SvelteEngineNative::foreignCount),
       makeNativeMethod("emitterCount", SvelteEngineNative::emitterCount),
+      makeNativeMethod("hasEmitter", SvelteEngineNative::hasEmitter),
       makeNativeMethod("scrollStateCount", SvelteEngineNative::scrollStateCount),
       makeNativeMethod("updateScrollState", SvelteEngineNative::updateScrollState),
   });

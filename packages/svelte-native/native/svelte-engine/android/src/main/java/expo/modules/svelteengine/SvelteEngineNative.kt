@@ -69,6 +69,9 @@ class SvelteEngineNative(fabricUIManager: FabricUIManager, mountingManager: Moun
 
   /** How many nodes the C++ delegate holds an event emitter for, and a ScrollView state for (a node that was deleted must be gone from both). */
   external fun emitterCount(): Int
+
+  /** Whether the C++ delegate holds an event emitter for [tag]: a touch dispatched to a node without one is dropped. */
+  external fun hasEmitter(tag: Int): Boolean
   external fun scrollStateCount(): Int
 
   companion object {

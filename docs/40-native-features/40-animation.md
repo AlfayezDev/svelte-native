@@ -134,6 +134,52 @@ For motion that repeats or decorates, such as a pulse, a spinner or a shimmer, u
 
 Use worklets when the motion follows state, a gesture or a value that changes every frame; use CSS keys for the rest.
 
+## Svelte transitions
+
+Svelte's `transition:`, `in:`, `out:` and `animate:` work on the HTML elements you write, with the functions from `svelte/transition` and `svelte/animate`:
+
+```svelte
+<script>
+  import { fade, fly } from 'svelte/transition';
+  import { flip } from 'svelte/animate';
+
+  let open = $state(false);
+  let items = $state([1, 2, 3]);
+</script>
+
+{#if open}
+  <div in:fly={{ y: 24 }} out:fade>
+    <p>Hello</p>
+  </div>
+{/if}
+
+<ul>
+  {#each items as item (item)}
+    <li animate:flip={{ duration: 250 }}>{item}</li>
+  {/each}
+</ul>
+```
+
+Svelte decides when a transition runs and works out its frames, as on the web. The library then plays those frames on the UI thread, so a busy script doesn't make them stutter. An `in:` that turns into an `out:` carries on from where it was. `animate:flip` moves each item of a keyed `{#each}` from where it was.
+
+What plays:
+
+- `opacity` and transforms: `translate`, `scale`, `rotate`, `skew` and `perspective`. These are the cheapest to animate.
+- Lengths and percentages, such as `height`, `width`, `padding`, `margin` and border widths. These cost a layout pass per frame, so `slide` costs more than `fade`.
+- Colours.
+
+What doesn't:
+
+- `filter`, so `blur` fades without blurring.
+- SVG stroke properties, so `draw` does nothing.
+- `matrix()` and the 3D transform functions.
+
+A transition skips what doesn't play and still plays the rest; in development you get one warning. A transition that only has `tick` runs on the JavaScript thread. While an element plays its outro, it takes no touches.
+
+An item can show a single frame in the wrong place when it is reordered while its `animate:flip` is still running, or in the few frames after an animation ends. Reanimated keeps the last values it drew a view with and applies them over the next layout until it has been told to forget them; the library does that as soon as it can, but not before the new animation's first frame is committed. The item is never left in the wrong place: the next frame draws it correctly. The first reorder after the app starts can show the new order for a frame or two before the items start from where they were, while the animation layer runs for the first time.
+
+Write the directives on HTML elements (`div`, `p`, `li`, `button`, `img`, ...). Svelte takes a directive only on an element, so `svelte-check` reports one on a component such as `<View in:fly>`, even though Metro compiles it; `<div in:fly>` is checked, and builds the same native view. The elements that are components in their own right, `input`, `textarea` and `dialog`, take none: the build leaves it out and warns. On a `span` or other text inside a paragraph a transition runs its length and draws nothing, because React Native draws it as part of the paragraph.
+
 ## Running code on either thread
 
 | Function | What it does |

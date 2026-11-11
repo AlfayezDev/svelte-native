@@ -2024,7 +2024,6 @@ var LOWERED_TAGS = {
   Pressable: "native-pressable"
 };
 var PRESS_HANDLERS = /* @__PURE__ */ new Set(["onPress", "onPressIn", "onPressOut", "onLongPress", "onPressChange"]);
-var WARN_DIRECTIVES = /* @__PURE__ */ new Set(["UseDirective", "TransitionDirective", "AnimateDirective"]);
 var NOT_PRIMITIVES = `${PACKAGE2}/svg`;
 function fromPackage(source) {
   return typeof source === "string" && (source === PACKAGE2 || source.startsWith(`${PACKAGE2}/`) && source !== NOT_PRIMITIVES);
@@ -2170,8 +2169,8 @@ function lowerPrimitives(content, options = {}) {
       if (attribute.type === "Attribute" && attribute.value === true) {
         edits.push({ start: attribute.end, end: attribute.end, text: "={true}" });
       }
-      if (WARN_DIRECTIVES.has(attribute.type) && !(attribute.type === "UseDirective" && actions.has(attribute.name))) {
-        warn(`${options.filename ?? "component"}: ${attribute.type === "UseDirective" ? "use:" : attribute.type === "AnimateDirective" ? "animate:" : attribute.intro && !attribute.outro ? "in:" : attribute.outro && !attribute.intro ? "out:" : "transition:"}${attribute.name} on <${node.name}> is passed to <${tag}> unchanged; native elements do not run DOM directives`);
+      if (attribute.type === "UseDirective" && !actions.has(attribute.name)) {
+        warn(`${options.filename ?? "component"}: use:${attribute.name} on <${node.name}> is passed to <${tag}> unchanged; native elements do not run DOM actions`);
       }
     }
     edits.push({ start: node.start + 1, end: node.start + 1 + node.name.length, text: tag + (lowered?.attributes ?? "") });

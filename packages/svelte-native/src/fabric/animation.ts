@@ -257,13 +257,21 @@ function styleUpdater(viewDescriptors: SharedValue<any>, updater: Updater, state
 // biome-ignore-end lint: Reanimated's worklets
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-function createStyleRuntime(updaters: Updater[], animatedProps = false): StyleRuntime {
+/**
+ * What the updaters return when they run now, as the values the node's commit carries (`initial`) and the ones the UI runtime starts from (`returned`).
+ * `updateProps(..., true)` turns the colours of animated props (`fill`, `stroke`, `floodColor`, `backgroundColor`, ...) into the platform's integer before the native view
+ * gets them; the first values reach it in the node's props, so they are given the same treatment (a colour the worklet returns as `{ type: 0, payload }` throws, as it does there).
+ */
+function firstValues(updaters: Updater[], animatedProps: boolean): { returned: Values; initial: Values } {
   const returned = { ...initialUpdaterRun(combine(updaters)) } as Values;
   validateAnimatedStyles(returned);
-  // `updateProps(..., true)` turns the colours of animated props (`fill`, `stroke`, `floodColor`, `backgroundColor`, ...) into the platform's integer before the native view
-  // gets them; the first values reach it in the node's props, so they are given the same treatment (a colour the worklet returns as `{ type: 0, payload }` throws, as it does there).
   const initial = animatedProps ? { ...returned } : returned;
   if (animatedProps) processColorsInProps(initial);
+  return { returned, initial };
+}
+
+function createStyleRuntime(updaters: Updater[], animatedProps = false): StyleRuntime {
+  const { returned, initial } = firstValues(updaters, animatedProps);
   return {
     animatedProps,
     descriptors: makeViewDescriptorsSet(),
@@ -311,14 +319,18 @@ export function animationProps(node: object, target: AnimationTarget, props: Rec
   }
   record.layoutProps = { exiting: props.exiting, layout: props.layout };
   record.target = target;
+  // `initial` is what a build commits while the node wants the runtime: the first frame of the updaters it has now. A runtime outlives the updaters it was made for (a node's own `animatedStyle`
+  // beside a transition's worklet that comes and goes), so it is made again whenever the list changes: the one from the runtime's first build would commit a frame that is long gone.
   record.wantsStyle = updaters.length > 0;
   if (record.wantsStyle) {
     if (!record.style) record.style = createStyleRuntime(updaters);
+    else if (!sameList(updaters, record.style.updaters)) record.style.initial = firstValues(updaters, false).initial;
     record.style.updaters = updaters;
   }
   record.wantsProps = propUpdaters.length > 0;
   if (record.wantsProps) {
     if (!record.props) record.props = createStyleRuntime(propUpdaters, true);
+    else if (!sameList(propUpdaters, record.props.updaters)) record.props.initial = firstValues(propUpdaters, true).initial;
     record.props.updaters = propUpdaters;
   }
   record.wantsInline = inline;
@@ -344,10 +356,12 @@ export function animationProps(node: object, target: AnimationTarget, props: Rec
     record.css = null;
     if (inline) style = mapped;
   }
-  if (record.style) style = [style, record.style.initial];
+  // The first-run values are for the build that attaches an updater; a build that takes the updater away (`wantsStyle` false: the runtime is stopped by `attachAnimation` right after) must not
+  // commit them again: they are where the animation started, and the node's own values are what it is left with.
+  if (record.style && record.wantsStyle) style = [style, record.style.initial];
   if (style === undefined) delete out.style;
   else out.style = style;
-  if (record.props) Object.assign(out, record.props.initial);
+  if (record.props && record.wantsProps) Object.assign(out, record.props.initial);
   pending.add(node);
   return out;
 }
@@ -471,6 +485,30 @@ function markRemovable(wrapper: unknown): void {
   markNodeAsRemovable(wrapper as never);
   remarks.push({ wrapper, due: Date.now() + REMARK_AFTER_MS });
   if (remarkTimer === undefined) remarkTimer = setTimeout(remark, REMARK_AFTER_MS);
+}
+
+/**
+ * Forgets what Reanimated's props registry holds for a node that stays: its last animated values (`transform`, `opacity`, a restored `height`, ...). The registry keeps them for as long as
+ * the node lives and its commit hook puts them over every commit's props for that node (`ReanimatedCommitHook`, by shadow node family), so the next commit that moves the node
+ * (a first frame committed with the new layout) is overruled by the last frame of the previous animation until the mapper writes again, a frame or more later.
+ * `ghost` is a shadow node with the node's tag that is in no tree: Reanimated empties the registry of the tag of a node marked removable that it does not find in the mounted tree
+ * (`UpdatesRegistryManager::handleNodeRemovals`, by tag), after the next mount. The mark is made once and not again later, as `markRemovable` does for a node that left: the node is
+ * alive, and a second mark a moment later would empty the entry of whatever animates it by then.
+ */
+export function forgetAnimatedValues(ghost: object): void {
+  markNodeAsRemovable(ghost as never);
+}
+
+/**
+ * Whether the node has animated values of its own that the registry also holds, and that forgetting the tag's registry would take away: an `animatedStyle` or `animatedProps` (their last
+ * values are written only when they change), Reanimated's CSS animations and transitions (entries of their own in the registry), and shared values in `style`. A transition that ends on
+ * such a node leaves the registry alone: what the transition wrote is overwritten by the node's own values, and the keys it alone wrote were written back (`restoreValues`).
+ */
+export function ownsAnimatedValues(node: object, props: Record<string, unknown>): boolean {
+  if (updatersOf(props.animatedStyle).length > 0 || updatersOf(props.animatedProps).length > 0) return true;
+  const target = records.get(node)?.target;
+  for (const key in props) if (props[key] !== undefined && CSS_PROP.test(key) && target?.declares?.(key) !== true) return true;
+  return flatten(props.style).some((style) => hasInlineStyles(style as Values) || Object.keys(style as Values).some(isCssKey));
 }
 
 /** Stops the mapper, drops the view descriptors, cleans up CSS animations and transitions, and forgets the node. */

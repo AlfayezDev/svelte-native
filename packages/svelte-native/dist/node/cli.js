@@ -592,6 +592,10 @@ function workletsProblems(read2) {
   ], true);
   return [...check("lib/module/runLoop/uiRuntime/requestAnimationFrame.js"), ...check("src/runLoop/uiRuntime/requestAnimationFrame.ts")];
 }
+function svelteProblems(read2) {
+  const directory = "src/compiler/phases/2-analyze/visitors";
+  return ["TransitionDirective.js", "AnimateDirective.js"].flatMap((file) => inFile(read2, `${directory}/${file}`, [["still refuses the directive on a custom renderer (incompatible_with_custom_renderer)", (code) => !code.includes("incompatible_with_custom_renderer")]], true));
+}
 function addedLines(patch, file) {
   const start = patch.indexOf(`diff --git a/${file}`);
   if (start < 0) return "";
@@ -675,7 +679,8 @@ var init_patches = __esm({
       { package: "react-native-pdf", does: "the pdf view's one event, which carries every message, no longer coalesces (Android)", inspect: pdfProblems },
       { package: "react-native-reanimated", does: "the engine's views are written natively and opacity/translate/scale skip React Native's prop path (Android)", inspect: reanimatedProblems },
       { package: "react-native-video", does: "only progress and bandwidth events coalesce; every other video event is delivered (Android)", inspect: videoProblems },
-      { package: "react-native-worklets", does: "the UI runtime asks for a frame only while a callback waits, with no idle per-frame loop", inspect: workletsProblems }
+      { package: "react-native-worklets", does: "the UI runtime asks for a frame only while a callback waits, with no idle per-frame loop", inspect: workletsProblems },
+      { package: "svelte", does: "the custom-renderer compiler accepts `transition:`, `in:`, `out:` and `animate:` on native elements, which play on the UI thread", inspect: svelteProblems }
     ];
     patchKey = (patch) => `${patch.package}@${patch.version}`;
   }
@@ -883,7 +888,7 @@ function planPackageJson(root2, original, patches2, options) {
   }
   let changedPeers = 0;
   for (const [name, version] of Object.entries(appDependencies)) if (setDependency(name, version, "dependencies")) changedPeers++;
-  for (const patch of patches2.filter((entry) => alwaysPatched.includes(entry.package) && entry.package !== "expo-modules-core")) {
+  for (const patch of patches2.filter((entry) => alwaysPatched.includes(entry.package) && entry.package !== "expo-modules-core" && entry.package !== "svelte")) {
     if (appDependencies[patch.package] !== patch.version) warnings.push(`${patch.package}: the library's patch is for ${patch.version}, and init's version is ${appDependencies[patch.package] ?? "none"}; this is a bug in the library.`);
   }
   if (changedPeers > 0) summary.push(`${plural(changedPeers, "dependency")} (the versions the library was exercised on)`);
@@ -1351,7 +1356,7 @@ var init_init_app = __esm({
       "react-native-reanimated": "4.5.1",
       "react-native-worklets": "0.10.1"
     };
-    alwaysPatched = ["expo-modules-core", "react-native-gesture-handler", "react-native-reanimated", "react-native-worklets"];
+    alwaysPatched = ["expo-modules-core", "react-native-gesture-handler", "react-native-reanimated", "react-native-worklets", "svelte"];
     plugin = "@example/svelte-native/expo";
     scripts = { native: "svelte-native dev", android: "svelte-native android", ios: "svelte-native ios", "check-setup": "svelte-native doctor" };
     gitignore = [".svelte-native", ".expo", "/android", "/ios"];

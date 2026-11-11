@@ -35,6 +35,24 @@ export function runesDefaultEnabled(env: NodeJS.ProcessEnv = process.env): boole
   return !/^(?:0|false|off|no)$/i.test(env[RUNES_ENVIRONMENT_VARIABLE]?.trim() ?? "");
 }
 
+/**
+ * Svelte's async mode (`experimental.async`, which `router.prepare` needs and which also allows `await` in `$derived`, in the markup and at the top of a component) is off, and an app
+ * turns it on with `withSvelteNative(config, { async: true })` (`svelteNative({ async: true })` for the Vite plugin). It reaches the transformer the way `runes` does, through the environment,
+ * and is a compile option for every Svelte file the transformer compiles, the library's own and a library's below `node_modules` included: Svelte's flag is one switch for the whole
+ * process, turned on by the first module that imports `svelte/internal/flags/async`, which is all a component compiled with the option adds when it has no `await` (`tests/fork.test.ts`).
+ * Compiling some files with it and others without would change nothing at run time, so the option is all or none. A precompiled Svelte package that was built with `experimental.async`
+ * imports the flag itself, and turns the mode on for an app that did not ask for it.
+ */
+export const ASYNC_ENVIRONMENT_VARIABLE = "SVELTE_NATIVE_ASYNC";
+
+/** The environment that hands an app's `async` option to the transformer of a Metro: nothing when the app gave none. */
+export const asyncEnvironment = (enabled: boolean | undefined): Record<string, string> => (enabled === undefined ? {} : { [ASYNC_ENVIRONMENT_VARIABLE]: enabled ? "1" : "0" });
+
+/** Whether the app asked for async mode: `false` unless the environment turns it on (`1`, `true`, `on` or `yes`). */
+export function asyncEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return /^(?:1|true|on|yes)$/i.test(env[ASYNC_ENVIRONMENT_VARIABLE]?.trim() ?? "");
+}
+
 const IN_NODE_MODULES = /(?:^|[\\/])node_modules[\\/]/;
 const ownSources = sourceDirectory + sep;
 
@@ -73,16 +91,22 @@ export const CUSTOM_RENDERER = "@example/svelte-native/renderer";
 
 /**
  * The options the library compiles a native component with: external CSS (a style block is refused by the transformer), production output, the custom renderer, and the runes
- * default. Async mode (`experimental.async`) is deliberately not on: the native path depends on `tick()` being a microtask flush (`tests/svelte-async-mode.test.ts`).
+ * default. Async mode (`experimental.async`) is on only when the app asked for it (`asyncEnabled`): the native path otherwise depends on `tick()` being a microtask flush
+ * (`tests/svelte-async-mode.test.ts`).
  */
-export function componentOptions(filename: string, enabled: boolean = runesDefaultEnabled()) {
+export function componentOptions(filename: string, enabled: boolean = runesDefaultEnabled(), async: boolean = asyncEnabled()) {
   return {
     filename,
     dev: false,
     css: "external",
     runes: runesOption(filename, enabled),
-    experimental: { customRenderer: CUSTOM_RENDERER },
+    experimental: { customRenderer: CUSTOM_RENDERER, ...(async ? { async: true } : {}) },
   } as const;
+}
+
+/** The options a Svelte module (`.svelte.ts`, `.svelte.js`) is compiled with: always runes (`compileModule` has no `runes` option), and async mode when the app asked for it. */
+export function moduleOptions(filename: string, async: boolean = asyncEnabled()) {
+  return { filename, dev: false, generate: "client", ...(async ? { experimental: { async: true } } : {}) } as const;
 }
 
 /**
@@ -127,4 +151,13 @@ export function withWebRunes<Kit extends { dynamicCompileOptions?: (data: never)
 ): Kit & { dynamicCompileOptions: NonNullable<Kit["dynamicCompileOptions"]> } {
   const app = kit?.dynamicCompileOptions as DynamicCompileOptions | undefined;
   return { ...(kit as Kit), dynamicCompileOptions: webDynamicCompileOptions(app, enabled) as NonNullable<Kit["dynamicCompileOptions"]> };
+}
+
+/**
+ * The options an app gave SvelteKit's Vite plugin (`kit` of `svelteNative()`) with async mode added to the compiler options when the app asked for it (`svelteNative({ async: true })`).
+ * What the app's own `kit.compilerOptions.experimental` says is kept, so `async: false` there still wins, and a web app that sets `experimental.async` itself needs no option.
+ */
+export function withWebAsync<Kit extends { compilerOptions?: { experimental?: object } }>(kit: Kit | undefined, enabled: boolean | undefined): Kit | undefined {
+  if (!enabled) return kit;
+  return { ...kit, compilerOptions: { ...kit?.compilerOptions, experimental: { async: true, ...kit?.compilerOptions?.experimental } } } as Kit;
 }

@@ -1,7 +1,6 @@
-/* Tailwind for the native app, compiled by Uniwind (metro.config.cjs, `uniwind`). Tailwind finds the classes in the source files,
-   the .svelte ones included. */
+/* Tailwind for the native app: Svelte Native compiles it to React Native styles when Metro starts (metro.config.cjs, `css`).
+   Tailwind finds the classes in the source files under src/, the .svelte ones included. */
 @import "tailwindcss";
-@import "uniwind";
 
 /* A class of your own, used like a utility: `class="card"`. It is in Tailwind's components layer, so a utility next to it
    (`class="card border-4"`) wins, as on the web; a class outside any layer would win over every utility. */

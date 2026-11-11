@@ -55,7 +55,7 @@ The features of `src/lib/features/native.ts`: the library's wrappers of other na
 | Feature | Route | What it shows |
 | ------- | ----- | ------------- |
 | Image (expo-image) | `/native-views/image` | `ExpoImage`: `contentFit`, a blurhash `placeholder`, `transition`, `onLoad` |
-| Blur (expo-blur) | `/native-views/blur` | `BlurView` over a `BlurTargetView` (Android's real blur), `intensity` |
+| Blur | `/native-views/blur` | Svelte Native's own `BlurView` over striped views: `intensity`, `tint`, children on top |
 | Linear gradient | `/native-views/linear-gradient` | `LinearGradient`: `colors`, `start`, `end`, `locations`, children |
 | Conic gradient | `/native-views/conic-gradient` | `ConicGradient`: `colors`, `locations`, `center`, `angle` |
 | Video (react-native-video) | `/native-views/video` | `Video` with a bundled clip: `paused`, `repeat`, `onProgress`, `ref.seek` |

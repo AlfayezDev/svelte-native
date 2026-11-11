@@ -45,7 +45,7 @@ title: Pressable
 | `hitSlop` | `number \| Insets` | | Extends the area that starts a press beyond the element's frame, for small targets. |
 | `pressRetentionOffset` | `number \| Insets` | | How far a finger can move outside the element and still count as pressing it. |
 | `style` | `ViewStyle` | | As a [`View`'s](view). |
-| `class` | `ClassValue` | | A list of classes: a string, an array or an object, as on a DOM element in Svelte. Their style goes under `style`, which wins. Needs [Uniwind](styling#classes). |
+| `class` | `ClassValue` | | A list of classes: a string, an array or an object, as on a DOM element in Svelte. Their style goes under `style`, which wins. Needs the `css` option ([Classes](styling#classes)). |
 | `gesture` | `Gesture` | | A gesture to recognise on the element. See [gestures](gestures). |
 | `accessibilityRole` | `string` | | `'button'` for a button, `'link'` for a link. |
 | `accessibilityLabel` | `string` | | What a screen reader says, when the content isn't text or isn't enough. |

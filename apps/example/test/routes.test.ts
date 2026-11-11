@@ -58,7 +58,7 @@ describe("the feature registries", () => {
 
 describe("the screens", () => {
   /** The library's entries an app is meant to import (`packages/svelte-native/README.md`): not `/fabric`, `/core`, `/renderer` or `/init`, which are its inside. */
-  const publicEntries = ["@rasheed/svelte-native", "@rasheed/svelte-native/router", "@rasheed/svelte-native/animation", "@rasheed/svelte-native/gestures", "@rasheed/svelte-native/foreign", "@rasheed/svelte-native/svg", "@rasheed/svelte-native/updates", "@rasheed/svelte-native/remote", "@rasheed/svelte-native/native-modules", "@rasheed/svelte-native/platform", "@rasheed/svelte-native/uniwind"];
+  const publicEntries = ["@rasheed/svelte-native", "@rasheed/svelte-native/router", "@rasheed/svelte-native/animation", "@rasheed/svelte-native/gestures", "@rasheed/svelte-native/foreign", "@rasheed/svelte-native/svg", "@rasheed/svelte-native/updates", "@rasheed/svelte-native/remote", "@rasheed/svelte-native/native-modules", "@rasheed/svelte-native/platform"];
   const sourceFiles = (): string[] => readdirSync(join(app, "src"), { recursive: true, withFileTypes: true })
     .filter((entry) => entry.isFile() && /\.(?:svelte|ts)$/.test(entry.name))
     .map((entry) => join(entry.parentPath, entry.name));

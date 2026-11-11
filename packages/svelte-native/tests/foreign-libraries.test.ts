@@ -22,7 +22,7 @@ const libraries = [
   "expo-image", "expo-blur", "expo-linear-gradient", "expo-video", "react-native-video", "@react-native-community/datetimepicker", "lottie-react-native", "react-native-webview", "react-native-maps",
   "react-native-pdf", "react-native-blob-util", "react-native-view-shot", "rive-react-native", "expo-conic-gradient", "react-native-fast-shadow", "react-native-animateable-text",
 ];
-const components = ["ExpoView", "ExpoImage", "BlurView", "BlurTargetView", "LinearGradient", "Video", "DateTimePicker", "LottieView", "Pdf", "ViewShot", "Rive", "ConicGradient", "ShadowedView", "AnimateableText"];
+const components = ["ExpoView", "ExpoImage", "BlurView", "ExpoBlurView", "BlurTargetView", "LinearGradient", "Video", "DateTimePicker", "LottieView", "Pdf", "ViewShot", "Rive", "ConicGradient", "ShadowedView", "AnimateableText"];
 const helpers = ["expo-view", "image", "gradient", "video", "datetime", "lottie", "pdf", "capture", "rive", "shadow"];
 
 type Bundle = { externals: string[]; inputs: string[] };

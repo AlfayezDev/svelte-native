@@ -35,7 +35,7 @@ A screen with a large title collapses the title as its first `ScrollView` scroll
 | `horizontal` | `boolean` | `false` | Scrolls sideways, with the children in a row. |
 | `contentContainerStyle` | `ViewStyle` | | The style of the content: padding, `gap`, alignment. |
 | `style` | `ViewStyle` | | The style of the scroll view's frame. |
-| `class` | `ClassValue` | | A list of classes: a string, an array or an object, as on a DOM element in Svelte. Their style goes under `style`, which wins. Needs [Uniwind](styling#classes). |
+| `class` | `ClassValue` | | A list of classes: a string, an array or an object, as on a DOM element in Svelte. Their style goes under `style`, which wins. Needs the `css` option ([Classes](styling#classes)). |
 | `showsVerticalScrollIndicator`, `showsHorizontalScrollIndicator` | `boolean` | `true` | Shows the scroll bar. |
 | `pagingEnabled` | `boolean` | `false` | Stops on multiples of the scroll view's size, for a pager. |
 | `keyboardShouldPersistTaps` | `'never' \| 'always' \| 'handled'` | `'never'` | What a tap does while the keyboard is open. `'handled'` lets buttons work at once; with `'never'` the first tap only closes the keyboard. |

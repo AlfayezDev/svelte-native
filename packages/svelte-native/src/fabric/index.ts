@@ -1,5 +1,7 @@
 import { mark } from "../boot-marks.ts";
 import type { Component, Snippet } from "svelte";
+// Registers the class resolver and loads the app's class table (`class` on components); see `css/load-table.ts`.
+import "../css/load-table.ts";
 import { hmrState } from "../hmr-state.ts";
 import Root from "../Root.svelte";
 import type { StackNode } from "../route-tree.ts";

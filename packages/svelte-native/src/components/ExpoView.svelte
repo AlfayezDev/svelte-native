@@ -22,7 +22,7 @@
    *
    * A library whose React component changes its props in JavaScript before they reach the view (`expo-linear-gradient`
    * converts its colours) needs that change made here; the dedicated components (`LinearGradient`, `ExpoImage`, `VideoView`,
-   * `BlurView`) are those libraries' own.
+   * `ExpoBlurView`) are those libraries' own.
    */
   let { module: moduleName, view: viewName, children, ref, ...attributes }: Omit<ViewProps, "children"> & {
     module: string;

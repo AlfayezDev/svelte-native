@@ -1,8 +1,8 @@
 <script>
-  import BlurView from "../src/components/BlurView.svelte";
+  import ExpoBlurView from "../src/components/ExpoBlurView.svelte";
   import View from "../src/components/View.svelte";
 </script>
 <View>
-  <BlurView />
-  <BlurView experimentalBlurMethod="dimezisBlurViewSdk31Plus" />
+  <ExpoBlurView />
+  <ExpoBlurView experimentalBlurMethod="dimezisBlurViewSdk31Plus" />
 </View>

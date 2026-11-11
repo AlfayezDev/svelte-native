@@ -98,7 +98,7 @@
   };
   const hostRef = $derived(forwardRef(ref, (host: Commandable) => ({ ...pdfHandle(host), host })));
   // The classes size the wrapper, as `style` does, and style the native view under its own style.
-  const nativeStyle = $derived([android ? { flex: 1, backgroundColor: "#EEE" } : { backgroundColor: "#EEE", overflow: "hidden" }, classStyle(className, attributes), style]);
+  const nativeStyle = $derived([android ? { flex: 1, backgroundColor: "#EEE" } : { backgroundColor: "#EEE", overflow: "hidden" }, classStyle(className, style), style]);
 </script>
 <View style={[style, { overflow: "hidden" }]} class={className}>
   {#if path === null}

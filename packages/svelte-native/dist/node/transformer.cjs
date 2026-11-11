@@ -204,7 +204,9 @@ function lowerPrimitives(content, options = {}) {
     if (classes.length > 0) {
       const own = classes.find((attribute) => attribute.type === "Attribute");
       const parts = [...own ? [classExpression(content, own)] : [], ...toggles ? [toggles] : []];
-      const value = `nativeClass={${CLASS_HELPER}(${parts.length === 1 ? parts[0] : `[${parts.join(", ")}]`})}`;
+      const style = node.attributes.find((attribute) => attribute.type === "Attribute" && attribute.name === "style" && attribute.value !== true && !Array.isArray(attribute.value));
+      const styleArgument = style === void 0 ? "" : `, ${content.slice(style.value.expression.start, style.value.expression.end)}`;
+      const value = `nativeClass={${CLASS_HELPER}(${parts.length === 1 ? parts[0] : `[${parts.join(", ")}]`}${styleArgument})}`;
       helpers.add(CLASS_HELPER);
       const at = own ?? (spreads ? void 0 : classes[0]);
       if (at === void 0) edits.push({ start: node.attributes[0].start, end: node.attributes[0].start, text: `${value} ` });

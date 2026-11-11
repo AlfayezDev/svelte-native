@@ -47,6 +47,17 @@ test("class and class:name on a lowered tag become one nativeClass, worked out b
   expect(markup(lowered(`<Pressable class="a" style={fn} />`))).toBe(`<Pressable class="a" style={fn} />`);
 });
 
+test("a tag that has a style hands it to hostClass with the class: the font size it sets is what a font-relative class is made from", () => {
+  const lowered = (source: string) => markup(lowerPrimitives(imp + source, { filename: "c.svelte", warn: () => {} }));
+  expect(lowered(`<Text class="leading-none" style={{ fontSize: 30 }} />`)).toBe("<native-text nativeClass={__svelteNativeClass(`leading-none`, { fontSize: 30 })} nativeStyle={{ fontSize: 30 }} ></native-text>");
+  expect(lowered(`<Text style={s} class={["a", on && "b"]} class:c={d} />`)).toBe(`<native-text nativeStyle={s} nativeClass={__svelteNativeClass([["a", on && "b"], { "c": d }], s)}  ></native-text>`);
+  expect(lowered(`<View {style} class="a" />`)).toBe("<native-view {style} nativeClass={__svelteNativeClass(`a`, style)} ></native-view>");
+  // A quoted style is a string: it sets no size, and is not passed.
+  expect(lowered(`<Text class="a" style="color: red" />`)).toBe("<native-text nativeClass={__svelteNativeClass(`a`)} nativeStyle=\"color: red\" ></native-text>");
+  // No class, no call.
+  expect(lowered(`<Text style={s} />`)).toBe("<native-text nativeStyle={s} ></native-text>");
+});
+
 test("compiled, a lowered class is a hostClass call in the element's template effect and never Svelte's set_class", () => {
   const source = `<script>\n  import { View } from "@rasheed/svelte-native";\n  let { tone } = $props();\n</script>\n<View class={["card", tone]} />\n<View class="fixed" />`;
   const code = compile(lowerPrimitives(source), { filename: "f.svelte", generate: "client", runes: true, experimental: { customRenderer: "@rasheed/svelte-native/renderer" } }).js.code;
@@ -64,7 +75,7 @@ test("spreads: the spread and the attributes beside it are wrapped, so a functio
   expect(out.startsWith(`<script> ${helperImport("hostClass as __svelteNativeClass, hostSpread as __svelteNativeSpread, hostValue as __svelteNativeValue")}\n`)).toBe(true);
   expect(out.split("\n")).toHaveLength(source.split("\n").length);
   expect(out.slice(out.indexOf("<native-view"))).toBe(
-    "<native-view {...__svelteNativeSpread(rest)} bind:this={el} nativeClass={__svelteNativeClass(`a`)} id=\"b\" testID=\"c\" ref={__svelteNativeValue(fn)} onLayout={go} nativeStyle={s} width={3} animated={__svelteNativeValue(a.b)} shorthand={__svelteNativeValue(shorthand)} {...(__svelteNativeSpread(on ? p : q))}><native-view ></native-view></native-view>\n<native-image source={s} ></native-image>",
+    "<native-view {...__svelteNativeSpread(rest)} bind:this={el} nativeClass={__svelteNativeClass(`a`, s)} id=\"b\" testID=\"c\" ref={__svelteNativeValue(fn)} onLayout={go} nativeStyle={s} width={3} animated={__svelteNativeValue(a.b)} shorthand={__svelteNativeValue(shorthand)} {...(__svelteNativeSpread(on ? p : q))}><native-view ></native-view></native-view>\n<native-image source={s} ></native-image>",
   );
 });
 

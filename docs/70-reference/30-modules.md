@@ -72,7 +72,8 @@ Native views of other libraries. [Native views](native-views)
 | Export | Description |
 | --- | --- |
 | `ExpoImage` | `expo-image`. |
-| `BlurView`, `BlurTargetView` | `expo-blur`. |
+| `BlurView` | Svelte Native's own blur ([BlurView](blur-view)). |
+| `ExpoBlurView`, `BlurTargetView` | `expo-blur`. |
 | `LinearGradient` | `expo-linear-gradient`. |
 | `ConicGradient` | `expo-conic-gradient`. |
 | `Video` | `react-native-video`. |
@@ -112,10 +113,6 @@ SvelteKit's remote functions on the device. [Loading data](loading-data#remote-f
 | `resetRemoteConfig()` | Drops what `configureRemote` set. |
 | `normalizeOrigin(origin)` | Checks and normalises an origin. |
 | `RemoteConfigError` | Thrown by a remote function call when no server is configured. |
-
-## @rasheed/svelte-native/uniwind
-
-Import it once, in the app shell, to make `class` work through Uniwind. It exports nothing. [Classes](styling#classes)
 
 ## @rasheed/svelte-native/updates
 

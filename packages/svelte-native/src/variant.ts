@@ -17,3 +17,9 @@ export const labIncludedFor = (variant: string): boolean => variant !== "product
  * variants share, so a sync for one variant cannot change what a running Metro (or a warm graph) of another serves.
  */
 export const routesTableFile = (variant: string): string => `routes.${variant.replace(/[^A-Za-z0-9_-]/g, "_")}.ts`;
+
+/**
+ * The class table of a variant, under `.svelte-native/`: `classes.app.ts`, `classes.production.ts`, ... (`css/build.ts` writes it, Metro resolves
+ * `@rasheed/svelte-native/classes-table` to it). One per variant for the reason the route tables are: one Metro's rebuild never changes what another serves.
+ */
+export const classesTableFile = (variant: string): string => `classes.${variant.replace(/[^A-Za-z0-9_-]/g, "_")}.ts`;

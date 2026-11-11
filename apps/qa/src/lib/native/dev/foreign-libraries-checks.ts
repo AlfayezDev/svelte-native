@@ -81,8 +81,11 @@ export type Ctx = {
   rect(host?: Host): Promise<Rect | null>;
   /** The point ([fx], [fy], fractions of [host]'s own box) as a point of the section's box, for `look`; null while a layout is missing. */
   point(host: Host, fx: number, fy: number): Promise<[number, number] | null>;
-  /** Asks the harness to tap the button with this resource id on the screen (`foreign-press.ts`): a native dialog the page cannot press. */
-  press(id: string, resourceId: string): void;
+  /**
+   * Asks the harness to tap the button with this resource id on the screen (`foreign-press.ts`): a native dialog the page cannot press. The function it returns says the lab has stopped
+   * waiting for the dialog (it answered, or the wait ran out): the harness stops looking for the button then, and does not press the same button of the next dialog.
+   */
+  press(id: string, resourceId: string): () => void;
   /** A tap through the engine's root at the middle of [host] (the section's view by default). */
   tap(host?: Host): Promise<boolean>;
   /** Captures [target] (the section's box by default) and reads the colours at [points]. */
@@ -563,9 +566,11 @@ async function pressed(c: Ctx): Promise<void> {
     const open = openDatePicker({ value, mode });
     void open.catch(() => undefined);
     await c.pause(1200);
-    c.press(id, resourceId);
-    const result = await Promise.race([open, new Promise<string>((resolve) => setTimeout(resolve, 12000, "timeout"))]).catch((error: unknown) => String(error));
-    // The harness looks at the screen once more to see its tap closed the dialog: the next one opens after that look.
+    const stopped = c.press(id, resourceId);
+    // The harness dumps the screen before it taps (two seconds on the emulator, up to ten while the screen keeps changing) and the tap takes a second or two more.
+    const result = await Promise.race([open, new Promise<string>((resolve) => setTimeout(resolve, 20000, "timeout"))]).catch((error: unknown) => String(error));
+    stopped();
+    // The next dialog opens a while after this one ended: `open` on a dialog whose fragment is still there only updates it and never answers (`DatePickerModule.open`).
     await c.pause(3000);
     return result;
   };

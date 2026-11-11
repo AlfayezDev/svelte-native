@@ -45,6 +45,9 @@ const qaIos = android ? null : requireOptionalNativeModule<QaIos>("SvelteQA");
 const pixels: Pixels | null = android ? requireOptionalNativeModule<Pixels>("SvelteQaPixels") : qaIos?.samplePixels ? { sample: (source, points, radius) => qaIos.samplePixels?.(source, points, radius) as Sampled } : null;
 const inspectTag = (tag: number): Native | null => (android ? engine?.inspect?.(tag) : qaIos?.inspect?.(tag)) ?? null;
 const places: readonly Where[] = ["inline", "row", "sheet"];
+/** Names a press to the harness across its two lines (`[Svelte foreign press]` and `[Svelte foreign press done]`): the launch's start and a count, since the count starts again with every launch of the app and the harness outlives them. */
+const launchToken = Date.now().toString(36);
+let pressCount = 0;
 /** The file of the captures a launch leaves for the next one to find gone. */
 const leftoverFile = () => new File(Paths.document, "foreign-leftovers.json");
 /** iOS: what the scenario has recorded so far, written after every place, so that a launch that dies in the middle still tells the harness how far it got (it reads `lab-results.json` only when the scenario ends). */
@@ -119,7 +122,11 @@ export async function runForeignLibraries(router: Router, signal: AbortSignal, o
           return target && typeof qaIos?.datePicker === "function" ? qaIos.datePicker(target.tag, action, milliseconds) : null;
         },
         driven,
-        press: (id, resourceId) => { console.info("[Svelte foreign press]", JSON.stringify({ id, resourceId })); },
+        press: (id, resourceId) => {
+          const token = `${launchToken}-${++pressCount}`;
+          console.info("[Svelte foreign press]", JSON.stringify({ id, resourceId, token }));
+          return () => { console.info("[Svelte foreign press done]", JSON.stringify({ id, token })); };
+        },
         lab: libraryLab,
         handles: () => { handlesNow = libraryHandles.get(opened.source) ?? handlesNow; if (!handlesNow) throw new Error(`the ${kind} section is not mounted in ${where}`); return handlesNow; },
         host: () => libraryHandles.get(opened.source)?.hosts[kind],

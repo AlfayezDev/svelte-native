@@ -1,6 +1,7 @@
 #include "PropsEncoder.h"
 
 #include "A11yWire.h"
+#include "FragmentWire.h"
 #include "PropsEncoderNav.h"
 #include "PropsEncoderViews.h"
 
@@ -407,6 +408,15 @@ void encodeState(Batch &batch, Kind kind, const ShadowView &view, float fallback
       batch.putFloat(sanitize(radius));
       batch.putInt(shadowColor);
       batch.putInt(ta.fontVariant.has_value() ? static_cast<int32_t>(*ta.fontVariant) : 0);
+
+      // Who a touch on this fragment's text belongs to: the node the text sits in (`ReactTagSpan`'s tag: the paragraph itself, or the nested Text that holds
+      // the string), and whether that node is a link for accessibility (FragmentWire.h).
+      struct Out {
+        Records &r;
+        void begin(int32_t id) { r.begin(id); }
+        void putInt(int32_t v) { r.batch.putInt(v); }
+      } target{r};
+      fragmentwire::encodeTarget(target, fragment.parentShadowView.tag, ta.role, ta.accessibilityRole);
     }
 
     // Prepared android.text.Layout (com.facebook.react.views.text.PreparedLayout) when RN built one.

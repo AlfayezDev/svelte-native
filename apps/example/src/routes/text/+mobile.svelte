@@ -11,6 +11,9 @@
   const ios = Platform.OS === "ios";
   const longText = "Text wraps to the width of its box. Give it numberOfLines and it ends with an ellipsis instead, which is what a list row wants.";
   let link = $state("A link is a Text with onPress. Tap it.");
+  // A Text inside a Text takes its own presses: the sentence around it does not.
+  let taps = $state(0);
+  let held = $state(false);
   // A style is a value: `base` is the style every line below starts from, and an array adds to it.
   const base = $derived({ color: theme.colors.text, fontSize: 18 });
 </script>
@@ -27,13 +30,20 @@
     <Text style={[base, { textAlign: "center" }]}>Centered in its box</Text>
   </Section>
 
-  <Section title="Inline spans" note="A Text inside a Text changes the style of part of a sentence. With onPress it becomes a link.">
+  <Section title="Inline spans" note="A Text inside a Text changes the style of part of a sentence. With onPress it becomes a link that takes its own presses, and the rest of the sentence takes none.">
     <Text style={text.body}>
       Colour a <Text style={{ color: theme.colors.accent, fontWeight: "700" }}>few words</Text>, or make
       <Text style={{ textDecorationLine: "line-through" }}>a mistake</Text> visible.
     </Text>
-    <Text style={text.body} onPress={() => (link = "Followed.")}>
+    <Text style={text.body} testID="outer-link" onPress={() => (link = "Followed.")}>
       <Text style={{ color: theme.colors.accent, textDecorationLine: "underline" }}>{link}</Text>
+    </Text>
+    <Text style={text.body} testID="span-link-sentence">
+      Read the <Text
+        role="link"
+        style={{ color: held ? theme.colors.danger : theme.colors.accent, textDecorationLine: "underline" }}
+        onPress={() => (taps += 1)}
+        onPressChange={(pressed) => (held = pressed)}>terms of use</Text> before you go: {held ? "holding the link" : taps === 0 ? "not tapped yet" : `tapped ${taps} ${taps === 1 ? "time" : "times"}`}.
     </Text>
   </Section>
 

@@ -122,6 +122,47 @@ fun main(args: Array<String>) {
   expect("the copy is never bigger than the bitmap", listOf(BlurRules.copyScale(1), BlurRules.copyScale(2)), listOf(1f, 1f))
   expect("a side of the copy", listOf(BlurRules.copySide(1080, 0.5f), BlurRules.copySide(1081, 0.5f), BlurRules.copySide(1, 0.25f)), listOf(540, 541, 1))
 
+  // Why a pre-draw does nothing: the order of the reasons is the order they are looked at, and the walks up the parents are asked only when everything before them lets them be.
+  var asked = mutableListOf<String>()
+  fun idle(
+    width: Int = 300, height: Int = 100, intensity: Double = 50.0, shown: Boolean = true, windowVisible: Boolean = true,
+    onScreen: Boolean = true, isRoot: Boolean = false, layered: Boolean = false,
+  ): BlurRules.Idle? = BlurRules.idleReason(
+    width, height, intensity, shown, windowVisible,
+    { asked.add("onScreen"); onScreen }, { asked.add("isRoot"); isRoot }, { asked.add("layered"); layered },
+  )
+  expect("a view that can show draws", idle(), null)
+  expect("a view without a width", idle(width = 0), BlurRules.Idle.NO_SIZE)
+  expect("a view without a height", idle(height = 0), BlurRules.Idle.NO_SIZE)
+  expect("intensity 0", idle(intensity = 0.0), BlurRules.Idle.NO_INTENSITY)
+  expect("a view that is not shown", idle(shown = false), BlurRules.Idle.NOT_SHOWN)
+  expect("a window that is not visible", idle(windowVisible = false), BlurRules.Idle.WINDOW_HIDDEN)
+  expect("a view with nothing of it on the screen", idle(onScreen = false), BlurRules.Idle.OFF_SCREEN)
+  expect("a view that is the root", idle(isRoot = true), BlurRules.Idle.IS_ROOT)
+  expect("a view under a layer", idle(layered = true), BlurRules.Idle.LAYER)
+  expect("the facts of the view come before the walks up its parents", idle(width = 0, onScreen = false, isRoot = true, layered = true), BlurRules.Idle.NO_SIZE)
+  expect("being off the screen comes before a layer", idle(onScreen = false, layered = true), BlurRules.Idle.OFF_SCREEN)
+  asked = mutableListOf()
+  idle(intensity = 0.0)
+  expect("a view that draws nothing asks nothing of its parents", asked, listOf<String>())
+  asked = mutableListOf()
+  idle(onScreen = false)
+  expect("a view that is off the screen does not look for a layer", asked, listOf("onScreen"))
+  asked = mutableListOf()
+  idle()
+  expect("a view that draws asks all three, in order", asked, listOf("onScreen", "isRoot", "layered"))
+
+  // A view under a layer asks for one frame, and only while the layer stands: the layer a screen keeps at rest goes on the first invalidation under it, and a screen at rest has no frame to run the pre-draw in.
+  expect("under a layer, for the first time, it asks", BlurRules.asksForFrame(BlurRules.Idle.LAYER, asked = false), true)
+  expect("under the same layer, it does not ask again", BlurRules.asksForFrame(BlurRules.Idle.LAYER, asked = true), false)
+  for (reason in BlurRules.Idle.values()) if (reason != BlurRules.Idle.LAYER) expect("$reason does not ask for a frame", BlurRules.asksForFrame(reason, asked = false), false)
+  expect("a pre-draw that draws does not ask", BlurRules.asksForFrame(null, asked = false), false)
+  // A picture is recorded when it differs from the one on show, and when the view has been under a layer since that one.
+  expect("a new picture is recorded", BlurRules.shouldRecord(sameAsShown = false, stale = false), true)
+  expect("the same picture is not recorded again", BlurRules.shouldRecord(sameAsShown = true, stale = false), false)
+  expect("the same picture is recorded again after a layer", BlurRules.shouldRecord(sameAsShown = true, stale = true), true)
+  expect("a new picture is recorded after a layer too", BlurRules.shouldRecord(sameAsShown = false, stale = true), true)
+
   // Where the real blur is possible.
   expect("API 30 cannot blur", BlurRules.canBlur(30, hardwareAccelerated = true), false)
   expect("API 31 can", BlurRules.canBlur(31, hardwareAccelerated = true), true)
@@ -141,7 +182,12 @@ fun main(args: Array<String>) {
   expect("the pre-draw listener is added once attached and removed when detached", view.contains("addOnPreDrawListener(preDraw)") && view.contains("removeOnPreDrawListener(preDraw)"), true)
 
   val backdrop = File(args[2]).readText()
-  expect("a layer on the view or an ancestor stops the drawing (a software draw would build the layer's cache on a canvas of its own)", Regex("""if \(root === view \|\| layered\(\)\) return""").containsMatchIn(backdrop) && Regex("""if \(\w+\.layerType != View\.LAYER_TYPE_NONE\) return true""").findAll(backdrop).count() == 2, true)
+  expect("a layer on the view or an ancestor stops the drawing (a software draw would build the layer's cache on a canvas of its own)", Regex("""\{ view\.rootView === view \}, \{ layered\(\) \}""").containsMatchIn(backdrop) && Regex("""if \(\w+\.layerType != View\.LAYER_TYPE_NONE\) return true""").findAll(backdrop).count() == 2, true)
+  expect("every reason the pre-draw does nothing for is one of the rules' (the gate is BlurRules.idleReason, and its answer returns before anything is drawn)", Regex("""val reason = BlurRules\.idleReason\([\s\S]*?\)\s*if \(reason != null\) \{[\s\S]*?return\s*\}""").containsMatchIn(backdrop), true)
+  expect("a view that waits for a layer asks for a frame, once: the request is the view's own invalidate, made when the rule says so and marked, and the picture that follows is recorded whatever it equals", Regex("""if \(BlurRules\.asksForFrame\(reason, asked\)\) \{\s*asked = true\s*stale = true\s*view\.invalidate\(\)\s*\}""").containsMatchIn(backdrop) && Regex("""BlurRules\.shouldRecord\(last != null && last\.sameAs\(bitmap\), stale\)""").containsMatchIn(backdrop) && Regex("""stale = false\s*current = next\s*record\(shape, bitmap\)""").containsMatchIn(backdrop), true)
+  expect("the request is forgotten when the reason is not a layer any more, so that the next layer asks again", Regex("""if \(reason != BlurRules\.Idle\.LAYER\) asked = false""").containsMatchIn(backdrop) && Regex("""\}\s*asked = false\s*val root = view\.rootView""").containsMatchIn(backdrop), true)
+  expect("the render effect is put on the node again with each recording, from the one effect made for the radius", Regex("""node\.endRecording\(\)\s*\}\s*[^\n]*\n\s*node\.setRenderEffect\(effect\)""").containsMatchIn(backdrop) && Regex("""effect = if \(BlurRules\.hasEffect\(radius\)\) RenderEffect\.createBlurEffect\(radius, radius, Shader\.TileMode\.CLAMP\) else null\s*node\.setRenderEffect\(effect\)""").containsMatchIn(backdrop), true)
+  expect("what the view does is in the log: a state change is a line, and the first picture says what it holds", backdrop.contains("private fun note(state: Int)") && backdrop.contains("private fun logReady(") && backdrop.contains("points opaque"), true)
   expect("the canvas takes a hardware bitmap through its software copy, in every drawBitmap", Regex("""override fun drawBitmap\(""").findAll(backdrop).count() == 4 && Regex("""isHardware\(bitmap\)""").findAll(backdrop).count() >= 5, true)
   expect("and skips what it cannot take instead of throwing", backdrop.contains("override fun drawRenderNode") && backdrop.contains("catch (_: RuntimeException)"), true)
   val copies = File(args[3]).readText()

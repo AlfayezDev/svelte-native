@@ -86,6 +86,46 @@ object BlurRules {
   fun canBlur(sdk: Int, hardwareAccelerated: Boolean): Boolean = sdk >= MIN_BLUR_SDK && hardwareAccelerated
 
   /**
+   * Why a pre-draw of the backdrop does nothing (`Backdrop.update`), in the order the reasons are looked at, which is the order of their cost: the cheap facts of the view first, and the walks up its parents
+   * (visibility on the screen, a layer) after. `null` is a pre-draw that draws the picture. [onScreen], [isRoot] and [layered] are asked only when the facts before them let the question be asked.
+   */
+  enum class Idle { NO_SIZE, NO_INTENSITY, NOT_SHOWN, WINDOW_HIDDEN, OFF_SCREEN, IS_ROOT, LAYER }
+
+  inline fun idleReason(
+    width: Int,
+    height: Int,
+    intensity: Double,
+    shown: Boolean,
+    windowVisible: Boolean,
+    onScreen: () -> Boolean,
+    isRoot: () -> Boolean,
+    layered: () -> Boolean,
+  ): Idle? = when {
+    width <= 0 || height <= 0 -> Idle.NO_SIZE
+    intensity <= 0.0 -> Idle.NO_INTENSITY
+    !shown -> Idle.NOT_SHOWN
+    !windowVisible -> Idle.WINDOW_HIDDEN
+    !onScreen() -> Idle.OFF_SCREEN
+    isRoot() -> Idle.IS_ROOT
+    layered() -> Idle.LAYER
+    else -> null
+  }
+
+  /**
+   * Whether a pre-draw that did nothing for [reason] asks for a frame of its own ([asked]: it already did, for as long as the reason has stood). A view under a layer waits for the layer to go, and a layer
+   * goes by itself when a transition ends, but not when a screen holds one while it stands still (the engine's resident layer lets go of it on the first invalidation under the screen, and nothing else): a
+   * pre-draw only runs for a frame, and a screen at rest has none, so the view that waited for the layer to go would wait for ever, drawing its stronger tint. One invalidation of the view is what the
+   * screen's layer lets go for, and the frame it makes is the one the picture is drawn in.
+   */
+  fun asksForFrame(reason: Idle?, asked: Boolean): Boolean = reason == Idle.LAYER && !asked
+
+  /**
+   * Whether a picture drawn now is recorded: when it is not the one on show ([sameAsShown]), and also when the view has stood idle under a layer since ([stale]): what the node holds was recorded before
+   * the layer and may not be what is behind the view now, and a picture that "equals" it is not a reason to leave the node as it is.
+   */
+  fun shouldRecord(sameAsShown: Boolean, stale: Boolean): Boolean = !sameAsShown || stale
+
+  /**
    * The side, in pixels, of the bitmaps that hold a picture [needed] pixels across, when they are [current] now (0 when there are none): [current] while the picture
    * fits and is not under half of it, otherwise [needed] rounded up to [CAPACITY_STEP]. A picture smaller than the bitmap is drawn into its corner.
    */

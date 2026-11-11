@@ -1,4 +1,5 @@
 import { tick } from "svelte";
+import { Appearance } from "@example/svelte-native/platform";
 import { mergeHostProps } from "@example/svelte-native/renderer";
 import { sentStyle, type Outcome, type Style } from "./class-checks.ts";
 import { builtOf, expectations, find, htmlCheckNames, isBlank, members, textOf, type Counted, type HtmlNode, type InputRead, type MemberRead } from "./html-checks.ts";
@@ -37,7 +38,7 @@ export async function runHtmlChecks(probe: HtmlProbeHandle | undefined, report: 
   const outcomes = new Map<string, Outcome>();
   const card = own(node("card"));
 
-  outcomes.set(inherit, expectations.inherit(card, builtOf(node("p")), builtOf(node("rowLeft"))));
+  outcomes.set(inherit, expectations.inherit(card, builtOf(node("p")), builtOf(node("rowLeft")), Appearance.getColorScheme() === "dark" ? "dark" : "light"));
 
   const items = members(node("row")).filter((member) => !isBlank(member));
   outcomes.set(row, expectations.row(builtOf(node("row")), items.map((item) => ({ view: builtOf(item)?.viewName, text: textOf(item) }))));

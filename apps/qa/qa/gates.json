@@ -483,15 +483,15 @@
   "gates": [
     {
       "id": "checks.passed",
-      "title": "Functional checks passed (of 44)",
+      "title": "Functional checks passed (of 49)",
       "unit": "checks",
       "metric": "lab.checks.passed",
       "bar": {
         "android": {
-          "min": 44
+          "min": 49
         },
         "ios": {
-          "min": 44
+          "min": 49
         }
       }
     },

@@ -5,7 +5,7 @@
   import type { Probe, Session } from "../gestures-lab.ts";
 
   /**
-   * `gestures-span`: a press inside a paragraph goes to the span under the finger (SPEC.md, "Text span press"), and a press elsewhere in it to the paragraph. The sentence is HTML, a `<p>` of two lines
+   * `gestures-span`: a press inside a paragraph goes to the span under the finger (SPEC.md, "Touches on nested Text"), and a press elsewhere in it to the paragraph. The sentence is HTML, a `<p>` of two lines
    * (a line height of 32 dp, so the first line is the top half of its rectangle and the second the bottom half) with an `<a>` that begins the second line and some plain words after it. The link
    * counts its presses under `link` and the paragraph its own under `paragraph`; a `Tap` on the view around them counts every tap under `area.tap`, which is what each step waits for, because a tap that
    * presses nothing has no other trace.

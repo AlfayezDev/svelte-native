@@ -18,16 +18,16 @@ export type Outcome = { passed: boolean; detail: string };
 
 /** The names of the class checks, in the order the lab runs them: `qa/test/class-checks.test.ts` pins their number (the lab's count of functional checks is 28, these and the HTML checks) and their length (logcat cuts the lab's result line near 4 KB). */
 export const classCheckNames = [
-  "class p-4: padding 16 on the four sides",
-  "p-4 reaches the layout (child 16 dp in)",
-  "bg-sky-500/50 is sky-500 at half opacity",
-  "md: and max-md: follow the window width",
+  "p-4: padding 16 on four sides",
+  "p-4 reaches the layout (16 dp in)",
+  "bg-sky-500/50: half-opacity sky",
+  "md: and max-md: follow the width",
   "dark:bg-zinc-900 follows the scheme",
-  "own class: components layer, dark override",
+  "own class: layer + dark override",
   "a utility beats a components class",
-  "an inline style wins over the classes",
-  "class arrays and objects follow state",
-  "text-lg: size 18, line height from it",
+  "inline style wins over classes",
+  "class arrays/objects follow state",
+  "text-lg: size 18, line height",
 ] as const;
 
 /** A style value (an object, or arrays and falsy values of them) as one object: the later entry wins a key, `false`, `null` and `undefined` are skipped, as React Native flattens it. */

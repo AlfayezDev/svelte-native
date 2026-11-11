@@ -4,7 +4,7 @@
   import HtmlScreen from "#lib/native/dev/HtmlScreen.svelte";
 
   /**
-   * The lab's screen of HTML elements and classes (SPEC.md, "HTML elements"): `HtmlScreen` is written with HTML and Tailwind classes alone, and the checks of the native checks lab read the same screen
+   * The lab's screen of HTML elements and classes (`qa/README.md`, "HTML elements"): `HtmlScreen` is written with HTML and Tailwind classes alone, and the checks of the native checks lab read the same screen
    * (`html-lab.ts`) while it runs. The page is a parity and accessibility case (`html-elements`).
    */
 </script>

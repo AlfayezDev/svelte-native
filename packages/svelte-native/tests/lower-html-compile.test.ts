@@ -10,12 +10,14 @@ import { lowerPrimitives } from "../src/lower.ts";
 const compiled = (lowered: string) => compile(lowered, { filename: "/app/page.svelte", generate: "client", runes: true, experimental: { customRenderer: "@example/svelte-native/renderer" } }).js.code;
 const lower = (source: string) => lowerPrimitives(source, { filename: "page.svelte", html: true, warn: () => {} });
 const prelude = `<script lang="ts">
+  import { View, Text } from "@example/svelte-native";
   let a = $state(""); let b = $state(true); let n = $state(1); let c = $state("red"); let w = $state("10px");
   let el = $state<unknown>(null); let els = $state<unknown[]>([]); let i = 0; let show = $state(false); let list = $state([1, 2]);
   let { rest = {}, children }: { rest?: Record<string, unknown>; children?: () => unknown } = $props();
   const go = (event?: unknown) => {};
   const act = (node: unknown) => {};
   const mk = (value: unknown) => value;
+  const styles = { box: { padding: 2 } };
 </script>
 `;
 
@@ -105,8 +107,10 @@ function generate(next: () => number): string {
     const found: string[] = [];
     if (chance(0.5)) found.push(pick([`class="a b"`, `class={[ "a", b && "c" ]}`, `class={[\n "a",\n b && "c",\n]}`, `class="x {a}"`, `class="x\n  {a}\n  y"`]));
     if (chance(0.25)) found.push(pick([`class:on={b}`, `class:on`, `class:on={\n b\n}`, `class:on={a ===\n "x"}`]));
+    // A `<View>` and a `<Text>` take the paths of a lowered tag, but a style string and `style:` are HTML's: what they take is an object.
+    const component = kind === "View" || kind === "Text";
     if (chance(0.35)) {
-      found.push(pick([
+      found.push(pick(component ? [`style={{ color: c }}`, `style={{\n  color: c,\n  padding: 4,\n}}`, `style={mk(\n c\n)}`, `style={styles.box}`, `style={{ ...mk(\n c\n) }}`, `style={{\n  // lead\n  color: c,\n}}`, `style={{ backgroundImage: "url(http://x)",\n  color: c }}`] : [
         `style="color: red; padding: 4px"`, `style="\n  color: red;\n  padding: 4px\n"`, `style={{ color: c }}`, `style={{\n  color: c,\n  padding: 4,\n}}`, `style={mk(\n c\n)}`, `style={[{ margin: 2 },\n {\n padding: 4 }]}`,
         `style:color={c}`, `style:color={\n c\n}`, `style:width={\n w\n}`, `style:opacity="0.5"`,
       ]));
@@ -125,12 +129,12 @@ function generate(next: () => number): string {
   };
   const text = (): string => pick(["plain text", "two words", "text\n  across lines", " spaced ", "&nbsp;", "a &amp; b", "{a}", "x {n} y", "{#if b}shown{/if}", "{expression}"]).replace("{expression}", `{${expression()}}`);
   // What may be inside what: Svelte refuses `<ul>` in a `<p>` and a button in a button, so text-like elements hold text-like ones, as HTML says.
-  const PHRASING = ["span", "b", "em", "code", "small", "a", "button", "img", "input", "checkbox", "textarea", "br", "label"] as const;
-  const FLOW = [...PHRASING, "div", "p", "ul", "li", "h1", "form", "section", "pre", "dialog", "hr"] as const;
+  const PHRASING = ["Text", "span", "b", "em", "code", "small", "a", "button", "img", "input", "checkbox", "textarea", "br", "label"] as const;
+  const FLOW = [...PHRASING, "View", "View", "div", "p", "ul", "li", "h1", "form", "section", "pre", "dialog", "hr"] as const;
   const element = (depth: number, phrasing: boolean, inside: string): string => {
     const kinds = (phrasing ? PHRASING : FLOW).filter((kind) => !(kind === inside && (kind === "a" || kind === "button" || kind === "label" || kind === "p" || kind === "li")));
     const kind = pick(kinds);
-    const holdsPhrasing = ["span", "b", "em", "code", "small", "a", "button", "label", "p", "h1", "pre"].includes(kind);
+    const holdsPhrasing = ["Text", "span", "b", "em", "code", "small", "a", "button", "label", "p", "h1", "pre"].includes(kind);
     const children = (count = 3): string => Array.from({ length: Math.floor(next() * (count + 1)) }, () => node(depth + 1, phrasing || holdsPhrasing, kind)).join(pick(["", marker(), " "]));
     switch (kind) {
       case "img": return `<img${attributes("img")} src={a}${chance(0.5) ? " />" : ">"}`;

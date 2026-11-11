@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { isFlexContainer, isInlineLevel } from "../src/fabric/html-flow.ts";
+import { flexKeysOf, isFlexContainer, isHidden, isInlineLevel } from "../src/fabric/html-flow.ts";
 
 // What the host reads of a style to lay the children of an HTML view out (`fabric/html-flow.ts`); the trees it gives are in html-elements.test.ts.
 
@@ -26,12 +26,37 @@ test("the class compiler writes flex for a block too, with the keyword that was 
   expect(isFlexContainer({ display: "flex", htmlDisplay: "block", gap: 4 })).toBe(true);
 });
 
+test("a key that a later item of the array leaves unset is not set: a flex key is not sticky", () => {
+  expect(isFlexContainer([{ gap: 8 }, { gap: undefined }])).toBe(false);
+  expect(isFlexContainer([{ gap: 8 }, { gap: null }])).toBe(false);
+  expect(isFlexContainer([{ gap: undefined }, { gap: 8 }])).toBe(true);
+  expect(isFlexContainer([{ gap: 8, alignItems: "center" }, { gap: undefined }])).toBe(true);
+  expect(flexKeysOf([{ gap: 8, alignItems: "center" }, { gap: undefined }])).toEqual(["alignItems"]);
+  expect(flexKeysOf({ display: "flex", htmlDisplay: "flex", flexDirection: "row" })).toEqual(["display: flex", "flexDirection"]);
+  expect(flexKeysOf({ padding: 4 })).toEqual([]);
+});
+
+test("the keyword beside a display is believed only where it is one that display comes from", () => {
+  // `block` is `flex` on a device; a stale or foreign keyword (a style object that was merged by hand) is not believed.
+  expect(isFlexContainer({ display: "flex", htmlDisplay: "block" })).toBe(false);
+  expect(isFlexContainer({ display: "none", htmlDisplay: "flex" })).toBe(false);
+  expect(isHidden({ display: "none", htmlDisplay: "block" })).toBe(true);
+  expect(isInlineLevel({ display: "flex", htmlDisplay: "bogus" })).toBe(false);
+  expect(isInlineLevel({ display: "flex", htmlDisplay: "inline" })).toBe(true);
+  expect(isInlineLevel({ display: "contents", htmlDisplay: "inline" })).toBe(true);
+});
+
 test("an inline element is in the line unless it sets a display of its own", () => {
   expect(isInlineLevel(undefined)).toBe(true);
   expect(isInlineLevel({ color: "red", fontWeight: "700" })).toBe(true);
   expect(isInlineLevel({ display: "flex", htmlDisplay: "inline" })).toBe(true);
   expect(isInlineLevel({ display: "flex", htmlDisplay: "inline-block" })).toBe(true);
   expect(isInlineLevel({ display: "contents" })).toBe(true);
+  expect(isInlineLevel({ display: "flex", htmlDisplay: "inline-flex" })).toBe(true);
+  expect(isHidden({ display: "none", htmlDisplay: "none" })).toBe(true);
+  expect(isHidden({ display: "none" })).toBe(true);
+  expect(isHidden({ display: "flex", htmlDisplay: "block" })).toBe(false);
+  expect(isHidden(undefined)).toBe(false);
   expect(isInlineLevel({ display: "flex", htmlDisplay: "block" })).toBe(false);
   expect(isInlineLevel({ display: "flex", htmlDisplay: "flex" })).toBe(false);
   expect(isInlineLevel({ display: "flex" })).toBe(false);

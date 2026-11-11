@@ -1,152 +1,17 @@
 import { test, expect, jest, afterEach, beforeEach } from "bun:test";
-import { build, transform } from "esbuild";
-import { readFile, mkdtemp, writeFile, rm } from "node:fs/promises";
-import { isAbsolute, resolve } from "node:path";
-import { tmpdir } from "node:os";
-import { pathToFileURL } from "node:url";
-import { compile, compileModule } from "svelte/compiler";
-import { componentOptions, lowersHtml } from "../src/compile-options.ts";
-import { lowerPrimitives } from "../src/lower.ts";
+import { resolve } from "node:path";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { htmlTextInput } from "../src/html-input.ts";
 import { hostBind, hostClick, hostHref, hostInputEvent, hostKeyEvent, hostSource, hostStyleProps, hostSubmit, hostTag, hostWebClickSpread, hostWebSpread } from "../src/renderer.ts";
-import { reanimatedStubs } from "./reanimated-stubs.ts";
+import { type FakeNode, type Module, all, emit, fake, flat, host, load, settle, textOf } from "./html-harness.ts";
 
 /**
  * A page written with HTML elements and nothing imported from the package (`html-page-fixture.svelte`), lowered as the Metro transformer lowers it (`lowerPrimitives` with `html`, for the
  * files `lowersHtml` names), mounted under a real `<Router>` on a fake Fabric host: the host tree and its props are what the platform would be given, and a press, an edit and a
  * link go through the host's own event path.
  */
-type FakeNode = { tag: number; name: string; props: Record<string, unknown>; children: FakeNode[]; sealed: boolean; target?: unknown };
-let roots: Record<number, FakeNode[]> = {};
-const fake = {
-  createNode(tag: number, name: string, _root: number, props: Record<string, unknown>, target: unknown) { return { tag, name, props: { ...props }, children: [], sealed: false, target }; },
-  cloneNodeWithNewChildren(node: FakeNode) { return { ...node, children: [], sealed: false }; },
-  cloneNodeWithNewProps(node: FakeNode, props: Record<string, unknown>) { return { ...node, props: { ...node.props, ...props }, children: [...node.children], sealed: false }; },
-  cloneNodeWithNewChildrenAndProps(node: FakeNode, props: Record<string, unknown>) { return { ...node, props: { ...node.props, ...props }, children: [], sealed: false }; },
-  appendChild(parent: FakeNode, child: FakeNode) {
-    if (parent.sealed) throw new Error(`appendChild on sealed ${parent.name}`);
-    parent.children.push(child);
-  },
-  createChildSet(root: number) { return { root, children: [] as FakeNode[] }; },
-  appendChildToSet(set: { children: FakeNode[] }, child: FakeNode) { set.children.push(child); },
-  completeRoot(root: number, set: { children: FakeNode[] }) {
-    const seal = (n: FakeNode) => { n.sealed = true; n.children.forEach(seal); };
-    set.children.forEach(seal);
-    roots[root] = set.children;
-  },
-  measure(_node: FakeNode, callback: (...args: number[]) => void) { callback(1, 2, 3, 4, 5, 6); },
-  measureInWindow(_node: FakeNode, callback: (...args: number[]) => void) { callback(5, 6, 3, 4); },
-  dispatchCommand() {},
-  registerEventHandler(handler: unknown) { (fake as { handler?: unknown }).handler = handler; },
-};
-(globalThis as { nativeFabricUIManager?: unknown }).nativeFabricUIManager = fake;
-
-const stubs: Record<string, string> = {
-  ...reanimatedStubs,
-  "react-native/Libraries/ReactNative/ReactFabricPublicInstance/ReactNativeAttributePayload": "export const create = (props) => ({ ...props }); export const diff = (prev, next) => { const out = {}; let changed = false; for (const k of new Set([...Object.keys(prev), ...Object.keys(next)])) { if (prev[k] !== next[k]) { out[k] = k in next ? next[k] : null; changed = true; } } return changed ? out : null; };",
-  "react-native/Libraries/Renderer/shims/ReactNativeViewConfigRegistry": "export const register = (name) => name; export const get = (name) => ({ uiViewClassName: name, validAttributes: {}, bubblingEventTypes: { topChange: { phasedRegistrationNames: { bubbled: 'onChange', captured: 'onChangeCapture' } } }, directEventTypes: { topLayout: { registrationName: 'onLayout' }, topScroll: { registrationName: 'onScroll' } } });",
-  "react-native/Libraries/Utilities/Platform": "export default { OS: 'android', Version: 34 };",
-  "react-native/Libraries/Utilities/BackHandler": "export default { addEventListener: () => ({ remove() {} }) };",
-  "react-native/Libraries/Linking/Linking": "export default { addEventListener: () => ({ remove() {} }), getInitialURL: () => Promise.resolve(null), openURL: (url) => { (globalThis.__opened ??= []).push(url); return Promise.resolve(); } };",
-  "react-native/Libraries/Image/resolveAssetSource": "export default (source) => source && typeof source === 'object' && 'uri' in source ? { scale: 1, ...source } : null;",
-  "react-native/Libraries/Components/Keyboard/Keyboard": "export default { isVisible: () => false, dismiss() {} };",
-  "react-native/Libraries/NativeComponent/ViewConfig": "export const createViewConfig = (partial) => partial;",
-  "react-native/Libraries/Components/View/ViewNativeComponent": "export {};",
-  "react-native/Libraries/Text/TextNativeComponent": "export {};",
-  "react-native/Libraries/Components/ScrollView/ScrollViewNativeComponent": "export {};",
-  "expo-modules-core": "export const EventEmitter = class {}; export const requireOptionalNativeModule = () => null;",
-  "react-native": "export const AppRegistry = { registerRunnable() {} };",
-  "react-native/Libraries/Utilities/Appearance": "export const getColorScheme = () => 'light'; export const addChangeListener = () => ({ remove() {} });",
-  "react-native/Libraries/Utilities/PixelRatio": "export default { get: () => 2, roundToNearestPixel: (value) => Math.round(value * 2) / 2 };",
-  "react-native/Libraries/Utilities/Dimensions": "export default { get: () => ({ width: 400, height: 800 }), addEventListener: () => ({ remove() {} }) };",
-  // The `Text` and `View` a fixture imports are lowered to `<native-text>` and `<native-view>`, and the import is then unused.
-  "@example/svelte-native": "export const Text = null; export const View = null;",
-};
-
-// The class table the class resolver reads (`@example/svelte-native/classes-table`): what the converter would write for these classes.
-const classTable = {
-  version: 1,
-  classes: {
-    "text-lg": [{ order: 1, style: { fontSize: 18 }, fontRelative: { lineHeight: 1.5 } }],
-    "text-sm": [{ order: 2, style: { fontSize: 14 }, fontRelative: { lineHeight: 1.25 } }],
-    "leading-snug": [{ order: 3, fontRelative: { lineHeight: 1.25 } }],
-    "text-white": [{ order: 4, style: { color: "#ffffff" } }],
-    "bg-blue": [{ order: 5, style: { backgroundColor: "#0000ff" } }],
-    card: [{ order: 6, style: { padding: 16 } }],
-    // What the converter writes for these: `display` is what the native view gets and `htmlDisplay` the keyword the author used (`css/properties.ts`).
-    flex: [{ order: 7, style: { display: "flex", htmlDisplay: "flex" } }],
-    block: [{ order: 8, style: { display: "flex", htmlDisplay: "block" } }],
-    inline: [{ order: 9, style: { display: "flex", htmlDisplay: "inline" } }],
-    "flex-row": [{ order: 10, style: { flexDirection: "row" } }],
-    "justify-between": [{ order: 11, style: { justifyContent: "space-between" } }],
-    "items-center": [{ order: 12, style: { alignItems: "center" } }],
-    "gap-2": [{ order: 13, style: { gap: 8 } }],
-  },
-};
-
-const components = ["TextInput", "Switch", "Modal"];
-
-/** What the lowering warned about while the last fixture was built. */
-let warnings: string[] = [];
-
-async function load(fixture = "html-root-fixture.svelte") {
-  warnings = [];
-  const bundle = await build({
-    stdin: {
-      contents: `import Fixture from ${JSON.stringify(isAbsolute(fixture) ? fixture : `./${fixture}`)};
-        import '../src/css/load-table.ts';
-        import { startSurface, stopSurface } from '../src/fabric/host.ts';
-        import { tick } from 'svelte';
-        export { startSurface, stopSurface, tick, Fixture };`,
-      resolveDir: import.meta.dirname,
-    },
-    bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], write: false,
-    plugins: [{
-      name: "html-fixture",
-      setup(builder) {
-        builder.onResolve({ filter: /^(react-native|expo-modules-core|@example\/svelte-native$)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
-        builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? "export {};", loader: "js" }));
-        builder.onResolve({ filter: /\/view-configs\.ts$/ }, () => ({ path: resolve(import.meta.dirname, "view-configs-stub.ts") }));
-        builder.onResolve({ filter: /^@example\/svelte-native\/classes-table$/ }, (args) => ({ path: args.path, namespace: "classes-table" }));
-        builder.onLoad({ filter: /.*/, namespace: "classes-table" }, () => ({ contents: `export default ${JSON.stringify(classTable)};`, loader: "js" }));
-        builder.onResolve({ filter: /^@example\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
-        builder.onResolve({ filter: /^@example\/svelte-native\/router$/ }, () => ({ path: resolve(import.meta.dirname, "../src/router.svelte.ts") }));
-        // What the lowering imports the components from; the entry holds more (lists, keyboards) than the page needs.
-        builder.onResolve({ filter: /^@example\/svelte-native\/core$/ }, () => ({ path: "core", namespace: "package" }));
-        builder.onLoad({ filter: /.*/, namespace: "package" }, () => ({
-          contents: components.map((name) => `export { default as ${name} } from ${JSON.stringify(resolve(import.meta.dirname, `../src/components/${name}.svelte`))};`).join("\n"),
-          loader: "js", resolveDir: import.meta.dirname,
-        }));
-        builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../src/environment.ts") }));
-        builder.onLoad({ filter: /\.svelte\.ts$/ }, async ({ path }) => {
-          const { code } = await transform(await readFile(path, "utf8"), { loader: "ts" });
-          return { contents: compileModule(code, { filename: path }).js.code, loader: "js" };
-        });
-        // The way Metro's transformer does it, for the files it lowers HTML in.
-        builder.onLoad({ filter: /\.svelte$/ }, async ({ path }) => ({
-          contents: compile(lowerPrimitives(await readFile(path, "utf8"), { filename: path, html: lowersHtml(path), warn: (message) => warnings.push(message) }), componentOptions(path)).js.code,
-          loader: "js",
-        }));
-      },
-    }],
-  });
-  const directory = await mkdtemp(resolve(tmpdir(), "svelte-native-html-"));
-  const file = resolve(directory, "bundle.mjs");
-  await writeFile(file, bundle.outputFiles[0].contents);
-  const m = await import(pathToFileURL(file).href);
-  await rm(directory, { recursive: true });
-  return m;
-}
-
-type Module = Awaited<ReturnType<typeof load>>;
 type Page = { snapshot(): { name: string; agreed: boolean; showDialog: boolean; boxed: boolean; sectioned: boolean }; setDialog(value: boolean): void; setName(value: string): void; toggleSecret(): void };
 const globals = globalThis as unknown as { __htmlLog: (entry: string) => void; __htmlPage: Page; __opened?: string[] };
-const settle = async (m: Module) => { for (let turn = 0; turn < 4; turn++) { await m.tick(); await Promise.resolve(); await Promise.resolve(); } };
-const all = (nodes: FakeNode[]): FakeNode[] => nodes.flatMap((node) => [node, ...all(node.children)]);
-const emit = (target: unknown, type: string, event: object) => (fake as unknown as { handler: (t: unknown, type: string, e: object) => void }).handler(target, type, event);
-const flat = (style: unknown): Record<string, unknown> => (Array.isArray(style) ? Object.assign({}, ...style.map(flat)) : ((style as Record<string, unknown>) ?? {}));
-/** What a node draws: the text it holds, with the text of nested spans in their places. */
-const textOf = (node: FakeNode): string => node.children.map((child) => (child.name === "RCTRawText" ? String(child.props.text) : textOf(child))).join("");
 
 let surface = 500;
 beforeEach(() => { (globalThis as unknown as { __log: string[] }).__log = []; });
@@ -154,7 +19,7 @@ let started: { m: Module; tag: number } | undefined;
 async function mount() {
   const m = await load();
   jest.useFakeTimers();
-  roots = {};
+  host.roots = {};
   globals.__opened = [];
   const log: string[] = [];
   globals.__htmlLog = (entry) => log.push(entry);
@@ -162,7 +27,7 @@ async function mount() {
   const app = m.startSurface(tag, m.Fixture, {}) as { current(): string };
   started = { m, tag };
   await settle(m);
-  const nodes = () => all(roots[tag] ?? []);
+  const nodes = () => all(host.roots[tag] ?? []);
   const byID = (testID: string) => {
     const found = nodes().find((node) => node.props.testID === testID);
     if (!found) throw new Error(`no node ${testID}`);
@@ -314,9 +179,9 @@ const textsOf = (nodes: FakeNode[]): string[][] => nodes.flatMap((node) => {
 
 test("the text of a div reaches the native text as the text of a Text written the same way does, whitespace included (tests/text-whitespace.test.ts)", async () => {
   const m = await load("html-text-fixture.svelte");
-  roots = {};
+  host.roots = {};
   const app = m.startSurface(601, m.Fixture, {}) as { rename(next: string): void };
-  const texts = textsOf(roots[601] ?? []);
+  const texts = textsOf(host.roots[601] ?? []);
   expect(texts).toHaveLength(12);
   // Even indexes are the div's, odd ones the Text's: the same strings (the last two are not pairs).
   for (let index = 0; index < 10; index += 2) expect(texts[index], `text ${index / 2}`).toEqual(texts[index + 1] as string[]);
@@ -327,17 +192,17 @@ test("the text of a div reaches the native text as the text of a Text written th
   app.rename("Grace");
   await m.tick();
   await Promise.resolve();
-  const after = textsOf(roots[601] ?? []);
+  const after = textsOf(host.roots[601] ?? []);
   expect(after[2]).toEqual(["Hello Grace,\n    welcome   back."]);
   expect(after[8]).toEqual(["Grace"]);
 });
 
 test("a link has the platform open another site or app, ignores a hash, and needs a router for a screen of the app", async () => {
   const m = await load("html-link-fixture.svelte");
-  roots = {};
+  host.roots = {};
   globals.__opened = [];
   m.startSurface(602, m.Fixture, {});
-  const press = (testID: string) => emit(all(roots[602] ?? []).find((node) => node.props.testID === testID)?.target, "topClick", {});
+  const press = (testID: string) => emit(all(host.roots[602] ?? []).find((node) => node.props.testID === testID)?.target, "topClick", {});
   press("mail");
   press("net");
   press("hash");
@@ -363,13 +228,13 @@ function go() {}
 
 test("a <pre> keeps its spaces and newlines, a <br> is a newline of its text, and an <hr> is a hairline that its class or style can change", async () => {
   const m = await load("html-text-fixture.svelte");
-  roots = {};
+  host.roots = {};
   m.startSurface(604, m.Fixture, {});
-  const texts = textsOf(roots[604] ?? []);
+  const texts = textsOf(host.roots[604] ?? []);
   // The newline right after `<pre>` is not part of the text, as in HTML; the rest is as written, around a nested element.
   expect(texts[10]).toEqual(["  line one\n    ", "bold", "  and  `ticks` \\ back\n"]);
   expect(texts[11]).toEqual(["a\nb"]);
-  const rules = all(roots[604] ?? []).filter((node) => node.props.testID === "rule" || node.props.testID === "rule-own");
+  const rules = all(host.roots[604] ?? []).filter((node) => node.props.testID === "rule" || node.props.testID === "rule-own");
   expect(flat(rules[0]?.props.style)).toEqual({ height: 0.5, backgroundColor: "#c7c7cc", marginVertical: 8 });
   // The element's own style is over the default, key by key.
   expect(flat(rules[1]?.props.style)).toEqual({ height: 4, backgroundColor: "#c7c7cc", marginVertical: 0 });
@@ -377,12 +242,12 @@ test("a <pre> keeps its spaces and newlines, a <br> is a newline of its text, an
 
 test("a submit button anywhere below a <form> (in a component of its own too) and Enter in a single-line input make the form hear submit; preventDefault on the click stops it", async () => {
   const m = await load("html-form-fixture.svelte");
-  roots = {};
+  host.roots = {};
   const log: string[] = [];
   globals.__htmlLog = (entry) => log.push(entry);
   m.startSurface(603, m.Fixture, {});
   const node = (testID: string) => {
-    const found = all(roots[603] ?? []).find((candidate) => candidate.props.testID === testID);
+    const found = all(host.roots[603] ?? []).find((candidate) => candidate.props.testID === testID);
     if (!found) throw new Error(`no node ${testID}`);
     return found.target;
   };
@@ -410,26 +275,26 @@ test("a submit button anywhere below a <form> (in a component of its own too) an
 
 test("a web handler that can never run on a device is a warning with the file and line, once; the ones that run are not", async () => {
   await load("html-form-fixture.svelte");
-  expect(warnings).toEqual([`${resolve(import.meta.dirname, "html-form-fixture.svelte")}:26:27 onmouseover on <div> never runs on a device: a native element has no "mouseover" event (the web still calls it)`]);
+  expect(host.warnings).toEqual([`${resolve(import.meta.dirname, "html-form-fixture.svelte")}:26:27 onmouseover on <div> never runs on a device: a native element has no "mouseover" event (the web still calls it)`]);
 });
 
 test("onkeydown and onkeyup of an input are its key press, with the key", async () => {
   const m = await load("html-form-fixture.svelte");
-  roots = {};
+  host.roots = {};
   const log: string[] = [];
   globals.__htmlLog = (entry) => log.push(entry);
   m.startSurface(605, m.Fixture, {});
-  const keyed = all(roots[605] ?? []).find((candidate) => candidate.props.testID === "keyed");
+  const keyed = all(host.roots[605] ?? []).find((candidate) => candidate.props.testID === "keyed");
   emit(keyed?.target, "topKeyPress", { key: "Enter" });
   expect(log).toEqual(["down Enter", "up Enter"]);
 });
 
 test("style as a string is converted when the file is built, and style:property directives follow their values", async () => {
   const m = await load("html-form-fixture.svelte");
-  roots = {};
+  host.roots = {};
   m.startSurface(606, m.Fixture, {});
   const byID = (testID: string) => {
-    const found = all(roots[606] ?? []).find((candidate) => candidate.props.testID === testID);
+    const found = all(host.roots[606] ?? []).find((candidate) => candidate.props.testID === testID);
     if (!found) throw new Error(`no node ${testID}`);
     return found;
   };
@@ -447,10 +312,10 @@ test("style as a string is converted when the file is built, and style:property 
 
 test("text style of an HTML element reaches the text and the inputs below it, through a View, and the text's own style wins", async () => {
   const m = await load("html-inherit-fixture.svelte");
-  roots = {};
+  host.roots = {};
   m.startSurface(607, m.Fixture, {});
   const byID = (testID: string) => {
-    const found = all(roots[607] ?? []).find((candidate) => candidate.props.testID === testID);
+    const found = all(host.roots[607] ?? []).find((candidate) => candidate.props.testID === testID);
     if (!found) throw new Error(`no node ${testID}`);
     return found;
   };
@@ -471,10 +336,10 @@ test("text style of an HTML element reaches the text and the inputs below it, th
 
 test("a change to an element's text style reaches the text below it, and a font size it inherits is what a relative line height is made from", async () => {
   const m = await load("html-inherit-fixture.svelte");
-  roots = {};
+  host.roots = {};
   m.startSurface(608, m.Fixture, {});
   const byID = (testID: string) => {
-    const found = all(roots[608] ?? []).find((candidate) => candidate.props.testID === testID);
+    const found = all(host.roots[608] ?? []).find((candidate) => candidate.props.testID === testID);
     if (!found) throw new Error(`no node ${testID}`);
     return found;
   };
@@ -563,16 +428,16 @@ test("a click runs the handler with a preventDefault that works, then what the p
 /** A fixture on a surface of its own (no router), with a finder by `testID`. */
 async function mountFixture(fixture: string, surface: number) {
   const m = await load(fixture);
-  roots = {};
+  host.roots = {};
   globals.__opened = [];
   m.startSurface(surface, m.Fixture, {});
   await settle(m);
   const byID = (testID: string) => {
-    const found = all(roots[surface] ?? []).find((candidate) => candidate.props.testID === testID);
+    const found = all(host.roots[surface] ?? []).find((candidate) => candidate.props.testID === testID);
     if (!found) throw new Error(`no node ${testID}`);
     return found;
   };
-  return { m, byID, nodes: () => all(roots[surface] ?? []), settle: () => settle(m) };
+  return { m, byID, nodes: () => all(host.roots[surface] ?? []), settle: () => settle(m) };
 }
 const probe = globalThis as unknown as { __log: string[]; __focused: string[]; __htmlRun: { setN(value: number): void }; __htmlBind: { reverse(): void; remove(id: number): void; show(): void; tags(): (number | null)[] }; __htmlMisc: { setCss(value: string): void; setTag(value: string): void; amount(): number; note(): string } };
 /** The names of the children of a node, with a text's string: the shape of what the platform is given. */
@@ -588,21 +453,21 @@ async function mountSource(source: string, files: Record<string, string> = {}) {
     for (const [name, text] of Object.entries(files)) await writeFile(resolve(directory, name), text);
     await writeFile(resolve(directory, "Fixture.svelte"), source);
     const m = await load(resolve(directory, "Fixture.svelte"));
-    roots = {};
+    host.roots = {};
     globals.__opened = [];
     probe.__log = [];
     (globalThis as { __api?: unknown }).__api = undefined;
     const tag = ++surface;
     m.startSurface(tag, m.Fixture, {});
     await settle(m);
-    const nodes = () => all(roots[tag] ?? []);
+    const nodes = () => all(host.roots[tag] ?? []);
     const byID = (testID: string) => {
       const found = nodes().find((candidate) => candidate.props.testID === testID);
       if (!found) throw new Error(`no node ${testID}`);
       return found;
     };
     started = { m, tag };
-    return { m, byID, nodes, settle: () => settle(m), api: (globalThis as { __api: Record<string, (...args: unknown[]) => unknown> }).__api, tree: () => roots[tag] ?? [] };
+    return { m, byID, nodes, settle: () => settle(m), api: (globalThis as { __api: Record<string, (...args: unknown[]) => unknown> }).__api, tree: () => host.roots[tag] ?? [] };
   } finally {
     await rm(directory, { recursive: true });
   }
@@ -1075,4 +940,148 @@ test("nested decorations add up, a style that is text beside style: directives i
   // `secureTextEntry={undefined}` leaves what the type says.
   expect(t.byID("pass").props.secureTextEntry).toBe(true);
   expect(textFaults(t.tree())).toEqual([]);
+});
+
+// --- Round 5: hidden and inline-flex elements, handles in a ref, a tap on a dynamic element, warnings ---
+
+test("a hidden inline element does not break the line it is in, and an inline-flex or inline-block one is part of it", async () => {
+  const t = await mountSource(`<script>
+    let cls = $state("hidden");
+    globalThis.__api = { cls: (value) => { cls = value; } };
+  </script>
+  <div testID="hid">a <span class="hidden" testID="gone">x</span> b</div>
+  <div testID="sm">Price <span class={cls} testID="sm-span">only on big</span> now</div>
+  <div testID="flex-inline">a <span class="inline-flex" testID="f">x</span> b <b class="inline-block">y</b> c</div>
+  <div testID="flexrow" class="flex-row">a <span class="hidden" testID="gone2">x</span> b</div>`);
+  // The line is one text, and the hidden span is built on its own (a span takes no `display`), with `display: none`.
+  expect(shape(t.byID("hid")).filter((entry) => entry.startsWith("RCTText(a"))).toEqual(["RCTText(a  b)"]);
+  expect(t.byID("hid").children).toHaveLength(2);
+  expect(t.byID("gone").name).toBe("RCTText");
+  expect(flat(t.byID("gone").props.style).display).toBe("none");
+  // `hidden sm:inline`: hidden it is out of the line, and when it shows it is a span of it.
+  expect(shape(t.byID("sm")).filter((entry) => entry.startsWith("RCTText(Price"))).toEqual(["RCTText(Price  now)"]);
+  t.api.cls("inline");
+  await t.settle();
+  expect(shape(t.byID("sm"))).toEqual(["RCTText(Price only on big now)"]);
+  expect(t.byID("sm-span").name).toBe("RCTVirtualText");
+  t.api.cls("hidden");
+  await t.settle();
+  expect(t.byID("sm").children).toHaveLength(2);
+  expect(t.byID("sm-span").name).toBe("RCTText");
+  // inline-flex and inline-block are in the line.
+  expect(shape(t.byID("flex-inline"))).toEqual(["RCTText(a x b y c)"]);
+  expect(t.byID("f").name).toBe("RCTVirtualText");
+  // In a flex container every element is an item, hidden or not.
+  expect(shape(t.byID("flexrow")).sort()).toEqual(["RCTText(a)", "RCTText(b)", "RCTText(x)"]);
+  expect(textFaults(t.tree())).toEqual([]);
+});
+
+test("a ref callback that asks its handle for things in the flush that makes the element again does not reach a view that is not on the screen: it waits for the commit", async () => {
+  const order: string[] = [];
+  const originals = { measure: fake.measure, dispatchCommand: fake.dispatchCommand, completeRoot: fake.completeRoot };
+  fake.measure = ((node: FakeNode, callback: (...args: number[]) => void) => { order.push(`measure ${node.name}#${node.tag}`); callback(1, 2, 3, 4, 5, 6); }) as never;
+  fake.dispatchCommand = ((node: FakeNode, name: string) => { order.push(`${name} ${node.name}#${node.tag}`); }) as never;
+  fake.completeRoot = ((root: number, set: { children: FakeNode[] }) => { order.push("completeRoot"); originals.completeRoot(root, set); }) as never;
+  try {
+    const t = await mountSource(`<script>
+      let on = $state(false);
+      globalThis.__api = { set: (value) => { on = value; } };
+    </script>
+    <div testID="d">{#if on}Hi {/if}<b testID="b" ref={(handle) => { if (handle) { handle.measure(() => {}); handle.focus(); } }}>x</b></div>`);
+    // The first flush: the handle is given before the view exists, and what it is asked waits, so it is after the commit.
+    expect(order.indexOf("completeRoot")).toBeLessThan(order.findIndex((entry) => entry.startsWith("measure")));
+    order.length = 0;
+    t.api.set(true);
+    await t.settle();
+    const tag = t.byID("b").tag;
+    // Made again as a span: its new view is committed, and then it is asked.
+    expect(order).toEqual(["completeRoot", `measure RCTVirtualText#${tag}`, `focus RCTVirtualText#${tag}`]);
+  } finally {
+    Object.assign(fake, originals);
+  }
+});
+
+test("the handle an element gave out follows its tag when it is made again", async () => {
+  const t = await mountSource(`<script>
+    let on = $state(false);
+    globalThis.__handles = [];
+    globalThis.__api = { set: (value) => { on = value; } };
+  </script>
+  <div testID="d">{#if on}Hi {/if}<i testID="i" ref={(handle) => { if (handle) globalThis.__handles.push(handle); }}>y</i></div>`);
+  const handles = (globalThis as unknown as { __handles: { tag: number }[] }).__handles;
+  const before = t.byID("i").tag;
+  expect(handles.map((handle) => handle.tag)).toEqual([before]);
+  t.api.set(true);
+  await t.settle();
+  const after = t.byID("i").tag;
+  expect(after).not.toBe(before);
+  // The first handle was told it is gone (`ref(null)`), and still reads the element's tag, as the second does.
+  expect(handles.map((handle) => handle.tag)).toEqual([after, after]);
+});
+
+test("a tap on an element chosen when the app runs presses it: onclick and on:click are onPress, as on a div", async () => {
+  jest.useFakeTimers();
+  const t = await mountSource(`<script>
+    let tag = $state("div");
+    globalThis.__api = { tag: (value) => { tag = value; } };
+  </script>
+  <svelte:element this={tag} testID="a" onclick={() => globalThis.__log.push("onclick")}>one</svelte:element>
+  <svelte:element this={tag} testID="b" on:click={() => globalThis.__log.push("on:click")}>two</svelte:element>`);
+  const touch = (target: unknown, type: string) => emit(target, type, { pageX: 5, pageY: 5, locationX: 5, locationY: 5, identifier: 0, target: 1, timestamp: 1, touches: type === "topTouchEnd" ? [] : [{ pageX: 5, pageY: 5, identifier: 0 }], changedTouches: [{ pageX: 5, pageY: 5, identifier: 0 }] });
+  const tap = (testID: string) => { const { target } = t.byID(testID); touch(target, "topTouchStart"); touch(target, "topTouchEnd"); jest.advanceTimersByTime(200); };
+  for (const kind of ["div", "span"]) {
+    t.api.tag(kind);
+    await t.settle();
+    expect(t.byID("a").name).toBe(kind === "div" ? "RCTView" : "RCTText");
+    probe.__log.length = 0;
+    tap("a");
+    tap("b");
+    expect(probe.__log, kind).toEqual(["onclick", "on:click"]);
+  }
+});
+
+test("development says once that the keys of a flex container do nothing on a text, and not for a div, a block or an item's keys", async () => {
+  const warn = console.warn;
+  const warnings: string[] = [];
+  console.warn = (message: unknown) => { warnings.push(String(message)); };
+  (globalThis as { __DEV__?: boolean }).__DEV__ = true;
+  try {
+    const t = await mountSource(`<script>
+      let n = $state(0);
+      globalThis.__api = { n: (value) => { n = value; } };
+    </script>
+    <p class="flex-row gap-2">{n} text</p>
+    <h2 class="flex">heading</h2>
+    <p class="block" style={{ flexGrow: 1 }}>fine</p>
+    <div class="flex-row gap-2">a <span>b</span></div>
+    <span class="block">fine too</span>`);
+    t.api.n(1);
+    await t.settle();
+    t.api.n(2);
+    await t.settle();
+    expect(warnings.filter((message) => message.includes("does nothing"))).toEqual([
+      expect.stringContaining("flexDirection, gap on a text"),
+      expect.stringContaining("display: flex on a text"),
+    ]);
+  } finally {
+    delete (globalThis as { __DEV__?: boolean }).__DEV__;
+    console.warn = warn;
+  }
+});
+
+test("style:display with a value a device has no layout for is left out with a warning, as the class compiler reports it", () => {
+  const warn = console.warn;
+  const warnings: string[] = [];
+  console.warn = (message: unknown) => { warnings.push(String(message)); };
+  (globalThis as { __DEV__?: boolean }).__DEV__ = true;
+  try {
+    expect(hostStyleProps({ display: "grid", color: "red" })).toEqual({ color: "red" });
+    expect(hostStyleProps({ display: "table" })).toEqual({});
+  } finally {
+    delete (globalThis as { __DEV__?: boolean }).__DEV__;
+    console.warn = warn;
+  }
+  expect(warnings).toHaveLength(2);
+  expect(warnings[0]).toContain("display: grid has no React Native equivalent");
+  expect(hostStyleProps({ display: "inline-block" })).toEqual({ display: "flex", htmlDisplay: "inline-block" });
 });

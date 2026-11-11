@@ -18,7 +18,7 @@ import { droppedReasons, freshNavigation } from "../navigation-restore.ts";
 import type { Adoption } from "../hmr-state.ts";
 import { mount, unmount, untrack, type Component } from "./deps-svelte.ts";
 import { inheritedStyle, textStyleOf, type TextStyle } from "./text-inherit.ts";
-import { isFlexContainer, isInlineLevel } from "./html-flow.ts";
+import { flexKeysOf, isFlexContainer, isHidden, isInlineLevel } from "./html-flow.ts";
 // The animation layer (Reanimated + worklets, ≈ 90 ms of bundle evaluation and a second Hermes runtime on a mid-range
 // phone) loads on the first node that needs it; a plain first screen boots without it.
 type AnimationModule = typeof import("./animation.ts");
@@ -178,6 +178,8 @@ type State = {
   flex?: boolean;
   /** The text of an implicit run: what it was built from (`buildRun`), so it is built again only when that changes. */
   run?: { items: NativeNode[]; handles: unknown[] };
+  /** Its node was made in this flush and is not committed until the flush ends (`completeRoot`): a view that is not on the screen yet, so what a handle is asked until then waits, as for a new element. */
+  uncommitted?: boolean;
 };
 type Root = { rootTag: number; node: NativeNode; instance: Record<string, unknown> };
 
@@ -403,6 +405,8 @@ function nativeProps(node: NativeNode): Record<string, unknown> {
 
 /** What was asked of a handle before its view was on the screen (`measure`, `focus`, ...), of all of them in the order it was asked: done after the flush that puts the view there (`drainQueues`). */
 let waiting: { current: State; operation: () => void }[] = [];
+/** The states made in the flush that is under way, and given their handle in it (`build`): the handle is asked for things in its `ref` callback, before the commit. */
+const uncommitted = new Set<State>();
 /** What a handle is: an object of its own kind, not a plain one, so Svelte's `$state` does not wrap it in a proxy when it is bound (`bind:this={els[i]}`): the variable holds the very handle. */
 const handlePrototype = Object.create(Object.prototype) as object;
 
@@ -412,12 +416,14 @@ const handlePrototype = Object.create(Object.prototype) as object;
  */
 function handleFor(current: State, node: NativeNode | null = null): HostHandle {
   const later = (operation: () => void): void => {
-    if (current.node) operation();
+    if (current.node && !current.uncommitted) operation();
     // The element is gone: no view is coming for it.
     else if (!current.dead) waiting.push({ current, operation });
   };
-  return Object.assign(Object.create(handlePrototype) as HostHandle, {
-    tag: current.tag,
+  const handle = Object.create(handlePrototype) as HostHandle;
+  // The tag is the element's now, not the one it had when the handle was made: an element that is made again (`remake`) has another, and the handle it gave out still reaches it.
+  Object.defineProperty(handle, "tag", { get: () => current.tag, enumerable: true });
+  return Object.assign(handle, {
     position: () => {
       const path: number[] = [];
       for (let at = node; at?.parent; at = at.parent) {
@@ -454,6 +460,8 @@ function handleFor(current: State, node: NativeNode | null = null): HostHandle {
 
 /** What was asked of a handle before its view existed, now that the flush has put the views on the screen, in the order it was asked (of different handles too). What is asked of a view that is not built yet waits for a later flush. */
 function drainQueues(): void {
+  for (const made of uncommitted) made.uncommitted = false;
+  uncommitted.clear();
   const asked = waiting;
   waiting = [];
   for (const entry of asked) {
@@ -652,6 +660,16 @@ function warnDropped(text: string): void {
   console.warn(`[Svelte Native] text that is not inside a Text is not drawn: ${JSON.stringify(text.length > 40 ? `${text.slice(0, 40)}...` : text)}. Put it in a Text (an HTML element does it for you: a div, a p, a button).`);
 }
 
+const layoutWarned = new WeakSet<NativeNode>();
+/** Development says once for a text element that the keys of a flex container do nothing on it: a text draws its own text, and its children are not laid out as items (a `div` is the element for that). */
+function warnTextLayout(node: NativeNode, style: unknown): void {
+  if (layoutWarned.has(node)) return;
+  const keys = flexKeysOf(style);
+  if (keys.length === 0) return;
+  layoutWarned.add(node);
+  console.warn(`[Svelte Native] ${keys.join(", ")} on a text (a p, h1 to h6, span, or a link among text) does nothing: a text does not lay its children out as flex items. Use a div for flex layout.`);
+}
+
 /** The text a run of text and inline elements is drawn in, for each run: one node, kept for as long as the run starts with the same node. It has no place in the tree, but its parent is the marked view, which is where it takes its text style from. */
 const implicitTexts = new WeakMap<NativeNode, NativeNode>();
 function implicitText(first: NativeNode, parent: NativeNode): NativeNode {
@@ -793,9 +811,12 @@ function build(node: NativeNode, rootTag: number, insideText: boolean, insideFor
   // A Fabric node cannot become another component: an element whose view name changed (a text that is a span of the text it is in, and a text of its own when the run that held it is gone; a
   // text input that turns multiline) is made again, as React does for a component of another type.
   if (current.node && current.viewName !== viewName) remake(current, node);
+  // Its node is made in this build, and not committed until the flush ends: the `ref` it is given below may ask its handle for things, which wait for the view.
+  const fresh = !current.node;
   current.viewName = viewName;
   current.foreign = foreign;
   if (isHtml(node) || current.html) attributes = inheritTextStyle(node, current, attributes, insideText);
+  if (isText(node) && isHtml(node) && typeof __DEV__ !== "undefined" && __DEV__) warnTextLayout(node, attributes.style);
   const config = viewConfig(viewName);
   if (current.declaredFor !== config) {
     current.declaredFor = config;
@@ -844,8 +865,15 @@ function build(node: NativeNode, rootTag: number, insideText: boolean, insideFor
         if (child.kind === "comment" || child.kind === "fragment") return;
         // Text is a line with the inline elements, which only a block container makes of them: a flex container's items are its elements, and what is between them is an item of its own. An
         // element that sets its own `display` (`class="block"`) is not in a line either.
-        if (child.kind === "text" || (!flex && flowsInLine(child) && isInlineLevel(ownStyle(child)))) {
+        const inLine = !flex && child.kind === "element" && flowsInLine(child);
+        const style = inLine ? ownStyle(child) : undefined;
+        if (child.kind === "text" || (inLine && isInlineLevel(style))) {
           run.push(child);
+          return;
+        }
+        // An element with `display: none` has no box: it is built as an item of its own (a hidden text cannot be a span: a span takes no `display`), and the line goes on around it.
+        if (inLine && isHidden(style)) {
+          append(build(child, rootTag, false, foreign, undefined, edges));
           return;
         }
         endRun();
@@ -912,6 +940,10 @@ function build(node: NativeNode, rootTag: number, insideText: boolean, insideFor
   current.lone = lone !== null;
   current.propsDirty = false;
   current.childrenDirty = false;
+  if (fresh && typeof attributes.ref === "function" && attributes.ref !== current.ref) {
+    current.uncommitted = true;
+    uncommitted.add(current);
+  }
   callRef(current, node, attributes.ref);
   return current.node;
 }
@@ -1058,7 +1090,7 @@ export function flush(): void {
     if (profile) stats.completeMs += now() - t0;
     stats.lastCompleted++;
   }
-  if (waiting.length > 0) drainQueues();
+  if (waiting.length > 0 || uncommitted.size > 0) drainQueues();
   // Tens of animated nodes attached at once are one long message on the UI thread and a cold RenderThread: the engine puts both on the big cores.
   if ((animation?.commitAnimations() ?? 0) >= BULK_ANIMATED_NODES && engineInstalled) engineModule?.animatedBatch?.();
   gestures?.commitGestures(isLive);

@@ -65,6 +65,8 @@ function sourceFile(path) {
 // src/compile-options.ts
 var RUNES_ENVIRONMENT_VARIABLE = "SVELTE_NATIVE_RUNES";
 var runesEnvironment = (runes) => runes === void 0 ? {} : { [RUNES_ENVIRONMENT_VARIABLE]: runes ? "1" : "0" };
+var ASYNC_ENVIRONMENT_VARIABLE = "SVELTE_NATIVE_ASYNC";
+var asyncEnvironment = (enabled) => enabled === void 0 ? {} : { [ASYNC_ENVIRONMENT_VARIABLE]: enabled ? "1" : "0" };
 var ownSources = sourceDirectory + import_node_path2.sep;
 
 // src/route-tree.ts
@@ -2608,7 +2610,7 @@ function libraryChanged(projectRoot, library = (0, import_node_fs6.realpathSync)
 }
 function withSvelteNative(config, options = {}) {
   assertCustomRenderer("withSvelteNative (@rasheed/svelte-native/metro)");
-  Object.assign(process.env, runesEnvironment(options.runes));
+  Object.assign(process.env, runesEnvironment(options.runes), asyncEnvironment(options.async));
   const resolveRequest = config.resolver.resolveRequest;
   const stubbed = options.stubbedPackages ?? [];
   const variant = options.variant ?? variantName();

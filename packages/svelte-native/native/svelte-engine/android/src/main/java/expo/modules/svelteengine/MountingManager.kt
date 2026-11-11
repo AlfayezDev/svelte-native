@@ -52,6 +52,8 @@ private const val OP_END = 9
 
 private const val DELETED_TAGS = 1024
 private const val SWEEP_DELAY_MS = 500L
+/** A hold of the transaction queue that JavaScript does not end (a thread that stopped between the two commits) ends by itself after this long. */
+private const val HOLD_TIMEOUT_MS = 100L
 private const val MAX_EARLY_ANIMATED = 64
 private const val EARLY_ANIMATED_MS = 1000L
 
@@ -298,6 +300,23 @@ class MountingManager(private val reactContext: ReactApplicationContext, private
     post = { handler.post(it) },
     apply = { apply(it.surfaceId, it.ops, it.strings, it.objects) },
   )
+
+  /**
+   * JavaScript's word that the next commits belong together (the one a layout read needs, and the one that follows it): the queue is held until [releaseMounts], so that one message
+   * applies both and no frame is drawn between them (SPEC.md, "Transaction order"). A hold that JavaScript does not end is ended after [HOLD_TIMEOUT_MS].
+   */
+  fun holdMounts() {
+    transactions.hold()
+    handler.removeCallbacks(releaseHeld)
+    handler.postDelayed(releaseHeld, HOLD_TIMEOUT_MS)
+  }
+
+  fun releaseMounts() {
+    handler.removeCallbacks(releaseHeld)
+    transactions.release()
+  }
+
+  private val releaseHeld = Runnable { transactions.release() }
 
   /** Called from C++ on the thread that committed: the JS thread, or the main thread for a commit the platform made (a size, a rotation). */
   @Suppress("unused")

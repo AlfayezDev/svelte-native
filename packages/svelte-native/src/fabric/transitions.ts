@@ -26,11 +26,11 @@
  * commit that takes the worklet away, the mount that lets the registry go) a reorder or a new animation starts from the registry's last frame too. Both show as a one-frame blip of an item, not as
  * a lasting wrong state: the mapper writes the right frame next.
  *
- * A flip also needs two commits: the new order, which a layout read makes (the host commits it so that `getBoundingClientRect` answers for it), and the items' first frames, which are in the next one
- * (`host.ts`, `waitForAnimations` makes that one commit for the whole list). The engine applies each on the main thread in a message of its own, so after a pause, with the main thread on a cold
- * core (a first apply that takes longer than the JavaScript gap between the two), a frame can be drawn between them: the new order, untransformed, for a frame or two. A press that changes
- * something on screen a few tens of milliseconds earlier (a button with a pressed state) warms the thread and it does not happen; a plain `<button>` does not. Only the engine can hold the first
- * commit's mount until the second, so this is left to it.
+ * A flip also needs two commits: the new order, which the host commits when Svelte reads the layout of the new order (`getBoundingClientRect`), and the items' first frames, in the next
+ * one (`host.ts`: `waitForAnimations` makes that one commit for the whole list). The Android engine applies each commit in a message of its own, and a frame drawn between the two showed the
+ * new order untransformed, for a frame or two. The host asks the engine to hold its mounts at the first layout read and to apply them together after the second commit
+ * (`holdMounts`, the engine's SPEC.md "Transaction order"). What remains is the first reorder after the app starts, which can still flash a frame or two while the animation layer runs
+ * for the first time.
  */
 import { cancelAnimation, Easing, makeMutable, startMapper, stopMapper, withTiming, type SharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";

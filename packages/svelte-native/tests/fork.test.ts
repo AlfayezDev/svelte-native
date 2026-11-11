@@ -285,6 +285,31 @@ test.skipIf(asyncRun)("components compiled with experimental.async fork as the o
   expect(log).toEqual(["panel:init", "panel:effect(0)", "panel:mount", "root:effect(show=true,count=0)"]);
 });
 
+test.skipIf(asyncRun)("async mode is one switch for the bundle: components compiled with it over components compiled without work, and one compiled with it turns it on for the rest", async () => {
+  // The app's fixture and its page are compiled with the option (`withSvelteNative(config, { async: true })` compiles every file with it), the library's Router, Screen and the rest are not, and
+  // the entry imports no flag module: the one import the compiled components carry turns the mode on, and `prepare` works across both kinds.
+  const log: string[] = [];
+  const scope = globalThis as { __forkLog?: string[]; __forkHold?: string[] };
+  scope.__forkLog = log;
+  scope.__forkHold = undefined;
+  const m = await loadFork("fork-router-fixture.svelte", { async: false, compiled: (path) => /tests\/fork-(router-fixture|route-page)\.svelte$/.test(path) });
+  expect(m.asyncFlag()).toBe(true);
+  const root = new m.NativeNode("fragment");
+  const app = m.mount(m.Fixture, { target: root, renderer: m.renderer, props: {} }) as unknown as RouterApp;
+  await settle(m);
+  log.length = 0;
+  const prepared = app.router.prepare("/b");
+  expect(await prepared.ready).toBe(true);
+  expect(log).toEqual(["page/b:init"]);
+  prepared.commit();
+  expect(app.router.entries.map((entry) => entry.url.pathname)).toEqual(["/", "/b"]);
+  expect(log).toEqual(["page/b:init", "page/b:effect", "page/b:mount"]);
+  // The other way round: a module of the library compiled with the option is enough to turn the mode on for an app that compiled none of its own.
+  const library = await loadFork("fork-router-fixture.svelte", { async: false, compiled: (path) => path.endsWith("src/Router.svelte") });
+  expect(library.asyncFlag()).toBe(true);
+  expect((await loadFork("fork-router-fixture.svelte", { async: false })).asyncFlag()).toBe(false);
+});
+
 // (e) Cost.
 
 test("(e) a 300-row screen: most of its Svelte-side mount happens inside the fork, and Fabric is not asked for anything until the commit", async () => {

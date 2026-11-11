@@ -39,13 +39,15 @@ var init_package_root = __esm({
 
 // src/compile-options.ts
 import { sep } from "node:path";
-var RUNES_ENVIRONMENT_VARIABLE, runesEnvironment, ownSources;
+var RUNES_ENVIRONMENT_VARIABLE, runesEnvironment, ASYNC_ENVIRONMENT_VARIABLE, asyncEnvironment, ownSources;
 var init_compile_options = __esm({
   "src/compile-options.ts"() {
     "use strict";
     init_package_root();
     RUNES_ENVIRONMENT_VARIABLE = "SVELTE_NATIVE_RUNES";
     runesEnvironment = (runes) => runes === void 0 ? {} : { [RUNES_ENVIRONMENT_VARIABLE]: runes ? "1" : "0" };
+    ASYNC_ENVIRONMENT_VARIABLE = "SVELTE_NATIVE_ASYNC";
+    asyncEnvironment = (enabled) => enabled === void 0 ? {} : { [ASYNC_ENVIRONMENT_VARIABLE]: enabled ? "1" : "0" };
     ownSources = sourceDirectory + sep;
   }
 });
@@ -378,7 +380,7 @@ async function exportNative(root2, platform, options = {}) {
     "false",
     "--bytecode",
     "--reset-cache"
-  ], runesEnvironment(options.runes));
+  ], { ...runesEnvironment(options.runes), ...asyncEnvironment(options.async) });
   const result = await new Promise((done, reject) => {
     child.once("error", reject);
     child.once("exit", done);

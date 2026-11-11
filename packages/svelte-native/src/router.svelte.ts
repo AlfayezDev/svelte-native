@@ -496,7 +496,7 @@ function createStore(tree: StackNode) {
         if (!(error instanceof Error && error.message.includes("experimental_async_required"))) console.error("[Svelte router] a navigation could not be prepared", error);
         else if (!warnedAsync) {
           warnedAsync = true;
-          console.warn("[Svelte router] prepare() needs Svelte's async mode, which the app has not turned on (REFERENCE.md, Router: prepare); navigations are made when committed, as goto does");
+          console.warn("[Svelte router] prepare() needs Svelte's async mode, which the app has not turned on (withSvelteNative(config, { async: true }), see REFERENCE.md, Router: prepare); navigations are made when committed, as goto does");
         }
         return false;
       }

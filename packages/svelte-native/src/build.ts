@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { mkdir } from "node:fs/promises";
 import { relative, resolve, sep } from "node:path";
 import type { AST, parse as parseSvelte } from "svelte/compiler";
-import { runesEnvironment } from "./compile-options.ts";
+import { asyncEnvironment, runesEnvironment } from "./compile-options.ts";
 import { buildTree, type PageRoute, type RouteFile, type RouteNode, type StackNode } from "./route-tree.ts";
 import { labIncludedFor, routesTableFile, variantName } from "./variant.ts";
 
@@ -237,6 +237,8 @@ export function runExpo(root: string, args: string[], extraEnv: Record<string, s
 export type ExportOptions = SyncOptions & {
   /** The app's `runes` setting for the Metro that runs the export (see `SvelteNativeMetroOptions.runes`); the app's own `withSvelteNative(config, { runes })` wins over it. */
   runes?: boolean;
+  /** The app's `async` setting for the Metro that runs the export (see `SvelteNativeMetroOptions.async`); the app's own `withSvelteNative(config, { async })` wins over it. */
+  async?: boolean;
 };
 
 export async function exportNative(root: string, platform: "android" | "ios", options: ExportOptions = {}): Promise<void> {
@@ -246,7 +248,7 @@ export async function exportNative(root: string, platform: "android" | "ios", op
   const child = runExpo(root, ["export:embed", "--platform", platform,
     "--entry-file", ".svelte-native/entry.ts", "--bundle-output", resolve(output, "index.hbc"),
     "--sourcemap-output", resolve(output, "index.hbc.map"), "--assets-dest", resolve(output, "assets"),
-    "--dev", "false", "--bytecode", "--reset-cache"], runesEnvironment(options.runes));
+    "--dev", "false", "--bytecode", "--reset-cache"], { ...runesEnvironment(options.runes), ...asyncEnvironment(options.async) });
   const result = await new Promise<number | null>((done, reject) => { child.once("error", reject); child.once("exit", done); });
   if (result !== 0) throw new Error(`Native ${platform} export exited with ${result}`);
 }

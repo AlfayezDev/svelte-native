@@ -1,5 +1,5 @@
 <script>
-  import BlurView from "../src/components/BlurView.svelte";
+  import ExpoBlurView from "../src/components/ExpoBlurView.svelte";
   import BlurTargetView from "../src/components/BlurTargetView.svelte";
   import Text from "../src/components/Text.svelte";
   import View from "../src/components/View.svelte";
@@ -18,7 +18,7 @@
       <View style={{ width: 10, height: 10 }} />
     </BlurTargetView>
   {/if}
-  <BlurView blurTarget={target} intensity={80} tint="dark" blurReductionFactor={6} blurMethod={method} ref={(h) => { wrapper = h; }} style={{ height: 60, borderRadius: 12 }}>
+  <ExpoBlurView blurTarget={target} intensity={80} tint="dark" blurReductionFactor={6} blurMethod={method} ref={(h) => { wrapper = h; }} style={{ height: 60, borderRadius: 12 }}>
     <Text>over the blur</Text>
-  </BlurView>
+  </ExpoBlurView>
 </View>

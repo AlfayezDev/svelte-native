@@ -46,7 +46,7 @@ export function createNativeProps() {
     const old = previous ?? {};
     const next: Record<string, unknown> = { ...attributes };
     if ("class" in next) {
-      const fromClass = classStyle(next.class, next);
+      const fromClass = classStyle(next.class, next.style);
       delete next.class;
       if (fromClass !== undefined) next.style = next.style === undefined || next.style === null ? fromClass : [fromClass, next.style];
     }

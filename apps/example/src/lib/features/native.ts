@@ -4,7 +4,7 @@ import type { Feature } from "./feature.ts";
 export const nativeFeatures: Feature[] = [
   // Native views: the library's wrappers of other native libraries, one screen each (`@example/svelte-native/foreign` and `/svg`), and `ExpoView` for an Expo library with none.
   { group: "Native views", route: "/native-views/image", title: "Image (expo-image)", summary: "Fit, blurhash placeholder and fade-in" },
-  { group: "Native views", route: "/native-views/blur", title: "Blur (expo-blur)", summary: "Blur the content behind a view" },
+  { group: "Native views", route: "/native-views/blur", title: "Blur", summary: "The built-in BlurView: blur whatever is behind a view" },
   { group: "Native views", route: "/native-views/linear-gradient", title: "Linear gradient", summary: "expo-linear-gradient: colours, direction, children" },
   { group: "Native views", route: "/native-views/conic-gradient", title: "Conic gradient", summary: "expo-conic-gradient: a colour wheel with an angle" },
   { group: "Native views", route: "/native-views/video", title: "Video (react-native-video)", summary: "Play, pause and seek a bundled clip" },

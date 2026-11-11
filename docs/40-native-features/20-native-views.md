@@ -38,7 +38,7 @@ An app that doesn't install a library doesn't bundle anything of it, even if it 
 | Library | Components |
 | --- | --- |
 | `expo-image` | [`ExpoImage`](#expoimage) |
-| `expo-blur` | [`BlurView`, `BlurTargetView`](#blurview-and-blurtargetview) |
+| `expo-blur` | [`ExpoBlurView`, `BlurTargetView`](#expoblurview-and-blurtargetview) |
 | `expo-linear-gradient` | [`LinearGradient`](#lineargradient) |
 | `expo-conic-gradient` | [`ConicGradient`](#conicgradient) |
 | `react-native-video` | [`Video`](#video) |
@@ -92,14 +92,14 @@ An image with `expo-image`'s extras: a placeholder (a blurhash or thumbhash), a 
 
 The library's static functions (`prefetch`, the cache functions) are reached through its native module, `requireNativeModule('ExpoImage')`.
 
-### BlurView and BlurTargetView
+### ExpoBlurView and BlurTargetView
 
-`BlurView` blurs what is behind it. On iOS that's all you need. On Android, the real blur draws what a `BlurTargetView` holds: put the content to blur in the target, and give the target's `ref` handle to `blurTarget`. Without a target, Android draws a translucent tint instead (`blurMethod="none"`, the default).
+`ExpoBlurView` is `expo-blur`'s view, for its own props. For a blur with nothing to install, use Svelte Native's [`BlurView`](blur-view). `ExpoBlurView` blurs what is behind it. On iOS that's all you need. On Android, the real blur draws what a `BlurTargetView` holds: put the content to blur in the target, and give the target's `ref` handle to `blurTarget`. Without a target, Android draws a translucent tint instead (`blurMethod="none"`, the default).
 
 ```svelte
 <script lang="ts">
 	import { Text, View } from '@example/svelte-native';
-	import { BlurTargetView, BlurView } from '@example/svelte-native/foreign';
+	import { BlurTargetView, ExpoBlurView } from '@example/svelte-native/foreign';
 
 	const fill = { position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 } as const;
 	let target = $state<{ tag: number } | null>(null);
@@ -110,9 +110,9 @@ The library's static functions (`prefetch`, the cache functions) are reached thr
 		<View style={{ flex: 1, backgroundColor: '#e5484d' }} />
 		<View style={{ flex: 1, backgroundColor: '#0091ff' }} />
 	</BlurTargetView>
-	<BlurView blurTarget={target} blurMethod="dimezisBlurView" intensity={60} tint="light" style={{ ...fill, margin: 24, alignItems: 'center', justifyContent: 'center' }}>
+	<ExpoBlurView blurTarget={target} blurMethod="dimezisBlurView" intensity={60} tint="light" style={{ ...fill, margin: 24, alignItems: 'center', justifyContent: 'center' }}>
 		<Text>Blurred</Text>
-	</BlurView>
+	</ExpoBlurView>
 </View>
 ```
 

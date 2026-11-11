@@ -171,3 +171,17 @@ Only regenerates `.svelte-native/`:
 - `routes.app.ts`, the route table: every `+mobile.svelte` and `+layout.mobile.svelte` under `src/routes`, with the `presentation` and `navigator` they export.
 
 The other commands, and Metro itself, do this for you. Run `sync` when a tool reads `.svelte-native/` without going through them, such as a type check in CI. A route tree that breaks a rule (a page next to a navigator layout, a tab bar inside a tab bar, ...) fails here with the file's name.
+
+## css
+
+```sh
+pnpm exec svelte-native css src/global.css
+```
+
+Compiles the CSS file the way Metro's `css` option does (Tailwind 4, then React Native styles) and writes the class table to `.svelte-native/classes.<variant>.ts`. Metro already runs it when it starts and when a file changes, so you need it only to see what a file compiles to.
+
+| Option | What it does |
+| --- | --- |
+| `--variant <name>` | The variant to write the table for (`APP_VARIANT`; `app` when unset). |
+| `--json` | Print what happened as JSON: the file written, whether it changed, the classes that aren't supported and the stylesheets read. The file is written either way. |
+

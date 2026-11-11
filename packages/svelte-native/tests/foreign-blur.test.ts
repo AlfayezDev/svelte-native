@@ -2,7 +2,7 @@ import { test, expect } from "bun:test";
 import { createHarness, expoViewConfigs, find, settle } from "./foreign-harness.ts";
 
 /**
- * expo-blur (SPEC.md, "Foreign views"): `BlurView` is a container with the native `ExpoBlurView` filling it and the children
+ * expo-blur (SPEC.md, "Foreign views"): `ExpoBlurView` (the component) is a container with the native `ExpoBlurView` filling it and the children
  * on top, as the library builds it; on Android the real blur reads a `BlurTargetView` (`ExpoBlurTargetView`) by its tag, which
  * the native view needs after both views exist, so it arrives with the update that follows the first commit.
  */

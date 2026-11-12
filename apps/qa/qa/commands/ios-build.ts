@@ -28,7 +28,9 @@ const smokeBundleMarker = "RNFBAppModule";
 // DerivedData is the signed build's own cache on the Mac: `--delete` would wipe it and make every build a full ~6 min rebuild. An app's
 // `dist/` is build output, but the library's `packages/svelte-native/dist/node/` is committed source the Expo plugin, Metro and the CLI
 // load (a bare "dist" pattern left the Mac without it, and prebuild failed to resolve `@example/svelte-native/expo`, 9 Nov 2026).
-export const macSyncExcludes = ["DerivedData", "node_modules", ".git", "apps/qa/android/", "apps/qa/ios/", "build", "/apps/*/dist/", ".svelte-kit", ".svelte-native", ".example", ".env", ".expo", "*.log"];
+// `.cxx` and `.gradle` are the Android build's native intermediates and caches: the Mac never reads them, and a Gradle build running in the same
+// checkout writes and deletes files in them while rsync walks it, which makes rsync exit 24 ("file has vanished") and the build fail.
+export const macSyncExcludes = ["DerivedData", "node_modules", ".git", "apps/qa/android/", "apps/qa/ios/", "build", ".cxx", ".gradle", "/apps/*/dist/", ".svelte-kit", ".svelte-native", ".example", ".env", ".expo", "*.log"];
 const excludes = macSyncExcludes;
 const buildWaitMs = 30 * 60_000;
 

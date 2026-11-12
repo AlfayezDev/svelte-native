@@ -27,8 +27,8 @@
   ]);
 
   onMount(() => {
-    void Linking.getInitialURL().then((url) => { launchedWith = url ?? "no link: the app was opened normally"; });
-    const subscription = Linking.addEventListener("url", ({ url }) => { received = url; });
+    void Linking.getInitialURL().then((href) => { launchedWith = href ?? "no link: the app was opened normally"; });
+    const subscription = Linking.addEventListener("url", ({ url: href }) => { received = href; });
     return () => subscription.remove();
   });
 </script>

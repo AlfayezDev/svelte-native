@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, jest, test } from "bun:test";
 import { build, transform, type Plugin } from "esbuild";
 import { createRequire } from "node:module";
 import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
@@ -7,16 +7,50 @@ import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { compile, compileModule, type CompileOptions } from "svelte/compiler";
 import { coreFeatures } from "../src/lib/features/core.ts";
+import { demos } from "../src/lib/features/demos.ts";
 
 /**
  * Every screen of the core tour mounted on the library's fake Fabric binding (the one its own tests use, `packages/svelte-native/tests`): the
  * app's real root layout, the generated route table and the real pages, compiled by the Svelte compiler with the custom renderer, with React
  * Native's modules stubbed. It cannot say how a screen looks, but it does catch a screen that throws when it mounts, a log of an error, and a
  * list that mounts every row. A device is still where the look and the touch are checked.
+ *
+ * The same harness plays the demo scripts (`src/lib/demo.ts`): a screen opened with `?demo` runs its script on a fake clock, so ten seconds of
+ * pauses take a few milliseconds, and the test says whether the script got to its end without an error. The screens whose views come from a
+ * native library are the ones it cannot mount (`needsNativeLibrary`).
  */
 const app = join(import.meta.dirname, "..");
 const library = dirname(createRequire(import.meta.url).resolve("@rasheed/svelte-native/package.json"));
 const libraryTests = join(library, "tests");
+
+/**
+ * The routes of the demo manifest this harness does not mount, and the native library each one needs. A foreign view (`@rasheed/svelte-native/foreign`
+ * and `/svg`) is drawn from the library's own view configs and native module, and the gestures screen attaches handlers to react-native-gesture-handler's
+ * turbo module; the fake binding has none of them. Their scripts are checked on a device (the videos are recorded there); the bundle test compiles
+ * the screens, and `demo.test.ts` runs the helper they all use.
+ */
+const needsNativeLibrary: Record<string, string> = {
+  "/native-views/image": "expo-image",
+  "/native-views/blur": "the library's own blur view and expo-image",
+  "/native-views/linear-gradient": "expo-linear-gradient",
+  "/native-views/conic-gradient": "expo-conic-gradient",
+  "/native-views/video": "react-native-video",
+  "/native-views/lottie": "lottie-react-native",
+  "/native-views/pdf": "react-native-pdf",
+  "/native-views/svg": "react-native-svg",
+  "/native-views/rive": "rive-react-native",
+  "/native-views/shadow": "react-native-fast-shadow",
+  "/native-views/animateable-text": "react-native-animateable-text",
+  "/native-views/view-shot": "react-native-view-shot",
+  "/native-views/date-time-picker": "@react-native-community/datetimepicker",
+  "/native-views/web-view": "react-native-webview",
+  "/native-views/map": "react-native-maps",
+  "/native-views/any-expo-view": "expo-camera and expo-image, by name",
+  "/gestures": "react-native-gesture-handler",
+};
+/** The screens with a script that run here. */
+const scripted = [...new Set(demos.map((demo) => demo.route))].sort();
+const playable = scripted.filter((route) => !(route in needsNativeLibrary));
 
 type FakeNode = { tag: number; name: string; props: Record<string, unknown>; children: FakeNode[]; sealed: boolean };
 const roots: Record<number, FakeNode[]> = {};
@@ -52,10 +86,12 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/Utilities/Appearance": "export const getColorScheme = () => 'light'; export const addChangeListener = () => ({ remove() {} });",
   "react-native/Libraries/Utilities/Dimensions": "export default { get: () => ({ width: 400, height: 800, scale: 2, fontScale: 1 }) };",
   "react-native/Libraries/Utilities/BackHandler": "export default { addEventListener: () => ({ remove() {} }) };",
-  "react-native/Libraries/Linking/Linking": "export default { addEventListener: () => ({ remove() {} }), getInitialURL: () => Promise.resolve(null) };",
+  // A link that arrives while the app is open (`play`'s `from`) goes to the newest router: the screens of earlier tests are still mounted.
+  "react-native/Libraries/Linking/Linking": "const handlers = (globalThis.__linkHandlers ??= []); export default { addEventListener: (type, handler) => { handlers.push(handler); return { remove() { handlers.splice(handlers.indexOf(handler), 1); } }; }, getInitialURL: () => Promise.resolve(null) };",
   "react-native/Libraries/AppState/AppState": "export default { currentState: 'active', addEventListener: () => ({ remove() {} }) };",
   "react-native/Libraries/Image/resolveAssetSource": "export default (source) => source && typeof source === 'object' && 'uri' in source ? { scale: 1, ...source } : null;",
   "react-native/Libraries/Components/Keyboard/Keyboard": "export default { isVisible: () => false, dismiss() {} };",
+  "react-native/Libraries/EventEmitter/RCTDeviceEventEmitter": "export default { addListener: () => ({ remove() {} }) };",
   "react-native/Libraries/NativeComponent/ViewConfig": "export const createViewConfig = (partial) => partial;",
   "expo-modules-core": "export const EventEmitter = class {}; export const requireOptionalNativeModule = (name) => name === 'SvelteEngine' ? { install: () => false, getInsets: () => globalThis.__navigationInsets, addListener: () => ({ remove() {} }) } : null;",
   "react-native": "export const AppRegistry = { registerRunnable() {} };",
@@ -88,10 +124,12 @@ beforeAll(async () => {
   // The library loads Reanimated when a screen first animates, and its bundle always names it: the library's own stand-ins for it.
   const { reanimatedStubs } = (await import(join(libraryTests, "reanimated-stubs.ts"))) as { reanimatedStubs: Record<string, string> };
   Object.assign(stubs, reanimatedStubs);
+  // The library's stand-in knows `withTiming` only; the animation and gestures screens also spring and repeat, which the stand-in treats like a timing: the animation is recorded, not played.
+  stubs["react-native-reanimated"] += "\nexport const withSpring = (to, config, callback) => withTiming(to, config, callback); export const withRepeat = (animation) => animation;";
   directory = await mkdtemp(join(process.env.TMPDIR ?? tmpdir(), "example-screens-"));
-  // A project whose `src` holds the app's real layout, home and lib, and the route folders of the core tour only: the route table
-  // `svelte-native sync` writes then requires exactly the pages this test mounts. The native-view, animation, gesture and remote screens
-  // need their libraries' native views, which the fake binding does not have; the bundle test (`bundle.test.ts`) compiles them.
+  // A project whose `src` holds the app's real layout, home and lib, and the route folders of the core tour and of the demo screens that
+  // can run here: the route table `svelte-native sync` writes then requires exactly the pages this test mounts. The native-view and remote
+  // screens need their libraries' native views, which the fake binding does not have; the bundle test (`bundle.test.ts`) compiles them.
   await mkdir(join(directory, "src/routes"), { recursive: true });
   // The app's `imports` (`#lib/*`), so the copied pages resolve what they import as they do in the app.
   const manifest = JSON.parse(await readFile(join(app, "package.json"), "utf8")) as { imports?: unknown };
@@ -99,9 +137,9 @@ beforeAll(async () => {
   await symlink(join(app, "src/lib"), join(directory, "src/lib"));
   await symlink(join(app, "assets"), join(directory, "assets"));
   for (const file of ["+layout.mobile.svelte", "+mobile.svelte"]) await symlink(join(app, "src/routes", file), join(directory, "src/routes", file));
-  const coreFolders = new Set(coreFeatures.flatMap((feature) => [feature.route, ...(feature.also ?? [])]).map((route) => route.split("/")[1]).filter((folder): folder is string => Boolean(folder)));
+  const folders = new Set([...coreFeatures.flatMap((feature) => [feature.route, ...(feature.also ?? [])]), ...playable].map((route) => route.split("/")[1]).filter((folder): folder is string => Boolean(folder)));
   // Copied, not linked: route discovery does not follow a linked folder. Their relative imports reach the linked `src/lib`.
-  for (const folder of coreFolders) await cp(join(app, "src/routes", folder), join(directory, "src/routes", folder), { recursive: true });
+  for (const folder of folders) await cp(join(app, "src/routes", folder), join(directory, "src/routes", folder), { recursive: true });
   const { syncRoutes } = (await import(join(library, "src/build.ts"))) as { syncRoutes(root: string, options: { variant: string }): void };
   syncRoutes(directory, { variant: "test" });
   await mkdir(join(directory, "fixture"));
@@ -161,6 +199,48 @@ async function mount(href: string, os: "android" | "ios" = "android") {
   return { surface, problems };
 }
 
+/** Waits for a task of the real event loop, which lets every promise that is ready settle; `setImmediate` is not on the fake clock. */
+const settled = () => new Promise<void>((resolve) => { setImmediate(resolve); });
+
+/**
+ * Opens `route` with `?demo` and plays its script on a fake clock until the script says it ended or stopped (or logs a problem, or nothing is
+ * left to wait for). The clock jumps from timer to timer, and a timer's promises settle before the next one fires, as they would in a gap of
+ * real time. `from` is a screen to start the app on, with the demo link arriving afterwards as a link opened by the platform does (a sheet or
+ * a modal needs a screen below it). `ms` is the time the script took on the fake clock: what `[demo] end` says.
+ */
+async function play(route: string, from?: string) {
+  (globalThis as { __exampleOS?: string }).__exampleOS = "android";
+  const surface = nextSurface++;
+  const log: string[] = [];
+  const problems: string[] = [];
+  const logged = { log: console.log, error: console.error, warn: console.warn };
+  const line = (args: unknown[]) => args.map(String).join(" ");
+  console.log = (...args: unknown[]) => { log.push(line(args)); };
+  console.error = (...args: unknown[]) => { problems.push(line(args)); };
+  // A screen that goes leaves the native stack when the stack reports its exit; there is none here, so the router's timeout removes it, with a warning.
+  console.warn = (...args: unknown[]) => { if (!/did not report their exit/.test(line(args))) problems.push(line(args)); };
+  const ended = () => log.some((entry) => /^\[demo\] (?:end|stopped) /.test(entry));
+  jest.useFakeTimers();
+  try {
+    mounted.startSurface(surface, mounted.Fixture, { initial: from ?? `${route}?demo` });
+    await turns();
+    if (from) {
+      const links = (globalThis as { __linkHandlers?: ((event: { url: string }) => void)[] }).__linkHandlers ?? [];
+      links[links.length - 1]?.({ url: `svelte-native://${route}?demo` });
+      await turns();
+    }
+    for (let fired = 0; !ended() && problems.length === 0 && jest.getTimerCount() > 0 && fired < 20_000; fired++) {
+      jest.advanceTimersToNextTimer();
+      await settled();
+    }
+  } finally {
+    jest.useRealTimers();
+    Object.assign(console, logged);
+  }
+  const end = log.map((entry) => /^\[demo\] end \S+ after (\d+) ms$/.exec(entry)).find((match) => match !== null);
+  return { log, problems, ms: end ? Number(end[1]) : undefined };
+}
+
 const routes = coreFeatures.flatMap((feature) => [feature.route, ...(feature.also ?? [])]).map((route) => route.replace("[id]", "7"));
 
 describe("every screen of the core tour mounts", () => {
@@ -215,5 +295,25 @@ describe("every screen of the core tour mounts", () => {
     const { surface } = await mount("/navigation/tabs");
     expect(titles(surface)).toContain("Feed");
     expect(texts(surface)).toContain("Post 1");
+  });
+});
+
+describe("every demo script plays to its end", () => {
+  // A sheet and a modal close themselves with `router.back()`, which needs a screen below them: the app is open on the home screen, as for a recording.
+  const overHome = new Set(["/navigation/sheet", "/navigation/modal"]);
+  for (const route of playable) {
+    test(`${route} logs its start and its end, and nothing else goes wrong`, async () => {
+      const { log, problems, ms } = await play(route, overHome.has(route) ? "/" : undefined);
+      expect(problems).toEqual([]);
+      expect(log.filter((entry) => entry.startsWith("[demo]")).map((entry) => entry.replace(/ after \d+ ms$/, ""))).toEqual([`[demo] start ${route}`, `[demo] end ${route}`]);
+      // The manifest's length is what a recording on an emulator took: the pauses add up to a little less (a frame to render, the keyboard to open), never to more.
+      const recorded = demos.find((demo) => demo.route === route)?.durationMs ?? 0;
+      expect([route, ms, ms !== undefined && ms <= recorded + 50 && ms >= recorded - 1000]).toEqual([route, ms, true]);
+    });
+  }
+
+  test("a screen that has a script is played here, or is listed with the library that stops it", () => {
+    expect(scripted.length).toBe(playable.length + Object.keys(needsNativeLibrary).length);
+    for (const route of Object.keys(needsNativeLibrary)) expect([route, scripted.includes(route)]).toEqual([route, true]);
   });
 });

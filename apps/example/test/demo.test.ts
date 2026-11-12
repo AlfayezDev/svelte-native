@@ -1,21 +1,31 @@
-import { describe, expect, mock, test } from "bun:test";
+import { afterAll, describe, expect, mock, test } from "bun:test";
 
 /**
  * Demo mode (`src/lib/demo.ts`): a screen plays its script only when its link has `?demo`, runs the steps in order with the settle before
  * the first and the hold after the last, and stops when its screen goes. `onMount` is stood in for, so a test can say whether a component
- * asked to run something when it mounts and then run it.
+ * asked to run something when it mounts and then run it. The rest of `svelte` stays as it is, and is put back when the file is done: Bun's
+ * module mocks are for the whole run, not for one file, and a module's namespace is live (the copy keeps the real `onMount`).
  */
+const realSvelte = { ...(await import("svelte")) };
 const mounted: Array<() => unknown> = [];
-mock.module("svelte", () => ({ onMount: (run: () => unknown) => { mounted.push(run); } }));
+mock.module("svelte", () => ({ ...realSvelte, onMount: (run: () => unknown) => { mounted.push(run); } }));
+afterAll(() => { mock.module("svelte", () => realSvelte); });
 const { demoRequested, playDemo, scroller, sleep, typeInto, useDemo } = await import("../src/lib/demo.ts");
 
 const link = (query: string) => new URL(`svelte-native:///layout${query}`);
-/** Runs `body` with the console's log quiet: a demo says when it starts and ends. */
-async function quietly<T>(body: () => Promise<T>): Promise<T> {
-  const log = console.log;
-  console.log = () => {};
-  try { return await body(); } finally { console.log = log; }
+/** Runs `body` and returns what the console logged meanwhile, so a demo's `[demo]` lines are heard and not printed. */
+async function logging(body: () => Promise<void>): Promise<{ log: string[]; error: string[] }> {
+  const saved = { log: console.log, error: console.error };
+  const heard = { log: [] as string[], error: [] as string[] };
+  console.log = (...args: unknown[]) => { heard.log.push(args.map(String).join(" ")); };
+  console.error = (...args: unknown[]) => { heard.error.push(args.map(String).join(" ")); };
+  try { await body(); } finally { Object.assign(console, saved); }
+  return heard;
 }
+/** The `[demo]` lines without the time they took, which varies. */
+const without = (lines: string[]) => lines.map((line) => line.replace(/ after \d+ ms$/, ""));
+// A timer can fire a few milliseconds early on a busy machine (the clock is rounded to milliseconds): the lower bounds below leave this much.
+const slack = 5;
 
 describe("the demo parameter", () => {
   test("`?demo` and `?demo=1` ask for the demo; no parameter, another one, `?demo=0` and `?demo=false` do not", () => {
@@ -44,20 +54,35 @@ describe("the demo parameter", () => {
     useDemo(() => link("?demo"), [[() => seen.push("one"), 5], [() => seen.push("two"), 5]], { settle: 5, hold: 5 });
     expect(mounted.length).toBe(before + 1);
     expect(seen).toEqual([]);
-    await quietly(async () => {
+    const played = await logging(async () => {
       const stop = mounted[before]?.() as () => void;
       await sleep(60);
       expect(seen).toEqual(["one", "two"]);
       stop();
     });
+    expect(without(played.log)).toEqual(["[demo] start /layout", "[demo] end /layout"]);
+    expect(played.log[1]).toMatch(/^\[demo\] end \/layout after \d+ ms$/);
     // A second screen that is closed before its first step never plays it.
     useDemo(() => link("?demo"), [[() => seen.push("late")]], { settle: 30 });
-    await quietly(async () => {
+    const closed = await logging(async () => {
       const stop = mounted[before + 1]?.() as () => void;
       stop();
       await sleep(60);
     });
     expect(seen).toEqual(["one", "two"]);
+    expect(without(closed.log)).toEqual(["[demo] start /layout", "[demo] stopped /layout"]);
+  });
+
+  test("a step that throws is reported as a failure, and the script does not log an end", async () => {
+    const before = mounted.length;
+    useDemo(() => link("?demo"), [[() => { throw new Error("no such view"); }]], { settle: 0, hold: 0 });
+    const failed = await logging(async () => {
+      mounted[before]?.();
+      await sleep(30);
+    });
+    expect(failed.log).toEqual(["[demo] start /layout"]);
+    expect(failed.error.length).toBe(1);
+    expect(failed.error[0]).toContain("[demo] a step of /layout failed");
   });
 });
 
@@ -74,11 +99,11 @@ describe("a script", () => {
     expect(await finished).toBe(true);
     const total = performance.now() - started;
     expect(events).toEqual(["a", "b start", "b end", "c"]);
-    expect(at[0]).toBeGreaterThanOrEqual(38);
+    expect(at[0]).toBeGreaterThanOrEqual(40 - slack);
     // c comes after the settle, a's pause, b's 20 ms of work and b's pause: 40 + 30 + 20 + 10
-    expect(at[1]).toBeGreaterThanOrEqual(98);
+    expect(at[1]).toBeGreaterThanOrEqual(100 - slack);
     // and the hold (25) follows c's own pause (15)
-    expect(total).toBeGreaterThanOrEqual(98 + 15 + 25 - 3);
+    expect(total).toBeGreaterThanOrEqual(100 + 15 + 25 - slack);
   });
 
   test("stop() ends it at once: no later step runs and `finished` says false", async () => {
@@ -89,6 +114,17 @@ describe("a script", () => {
     expect(await finished).toBe(false);
     await sleep(20);
     expect(events).toEqual(["a"]);
+  });
+
+  test("a stop after the last step has run, in its pause or in the hold, still counts as the end", async () => {
+    const inPause = playDemo([[() => {}, 5], [() => {}, 200]], { settle: 0, hold: 0 });
+    await sleep(40);
+    inPause.stop();
+    expect(await inPause.finished).toBe(true);
+    const inHold = playDemo([[() => {}, 0]], { settle: 0, hold: 200 });
+    await sleep(40);
+    inHold.stop();
+    expect(await inHold.finished).toBe(true);
   });
 
   test("a step that throws rejects `finished` and ends the script", async () => {
@@ -104,6 +140,15 @@ describe("the helpers a script uses", () => {
     const values: string[] = [];
     await typeInto((value) => values.push(value), "Sam", 1);
     expect(values).toEqual(["S", "Sa", "Sam"]);
+  });
+
+  test("a step that hands typeInto its signal stops typing when the script is stopped", async () => {
+    const values: string[] = [];
+    const demo = playDemo([[(signal) => typeInto((value) => { values.push(value); if (value.length === 3) demo.stop(); }, "abcdef", 2, signal), 0]], { settle: 0, hold: 0 });
+    // The stop came in the last step, which then ends: the script is over.
+    expect(await demo.finished).toBe(true);
+    await sleep(20);
+    expect(values).toEqual(["a", "ab", "abc"]);
   });
 
   test("a scroller glides to an offset in steps that only go forward, jumps to an exact one, and does nothing once its view is gone", async () => {

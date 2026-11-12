@@ -31,17 +31,17 @@
   // submit it, correct it and submit again.
   let { url }: { url: URL } = $props();
   useDemo(() => url, [
-    [() => typeInto((value) => (echo = value), "Hello Svelte", 70), 400],
+    [(signal) => typeInto((value) => (echo = value), "Hello Svelte", 70, signal), 400],
     [() => (notifications = false), 800],
     [() => (notifications = true), 300],
     [() => emailInput?.focus(), 900],
-    [() => typeInto((value) => (email = value), "sam@example", 50), 200],
+    [(signal) => typeInto((value) => (email = value), "sam@example", 50, signal), 200],
     [() => passwordInput?.focus(), 500],
-    [() => typeInto((value) => (password = value), "secret", 50), 200],
+    [(signal) => typeInto((value) => (password = value), "secret", 50, signal), 200],
     [() => { submitted = true; passwordInput?.blur(); }, 1400],
-    [async () => {
-      await typeInto((value) => (email = `sam@example${value}`), ".com", 60);
-      await typeInto((value) => (password = `secret${value}`), "-phrase", 50);
+    [async (signal) => {
+      await typeInto((value) => (email = `sam@example${value}`), ".com", 60, signal);
+      await typeInto((value) => (password = `secret${value}`), "-phrase", 50, signal);
       agree = true;
     }, 1800],
     [() => { echo = email = password = ""; agree = submitted = false; }, 0],

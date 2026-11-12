@@ -11,6 +11,7 @@ import {
 import { amStartCommand } from "./adb.ts";
 import { accountEmail, placeholder } from "./qa-account.ts";
 import { diffImages, type Image, type Rect } from "./png.ts";
+import { MASK_PAD } from "./parity.ts";
 import { localize, selectorFor, type Selector, type ScreenCase, type Step } from "./screens.ts";
 import { center, type UiNode, type UiTree } from "./uia.ts";
 import { sleep } from "./wait.ts";
@@ -77,11 +78,21 @@ export function maskedChrome(tree: UiTree, screen: ScreenCase, direction: Direct
 		for (let above = node.parent; above !== null; above = above.parent) if (above.bounds.width > 0 && above.bounds.height > 0 && within(above.bounds, mask)) return true;
 		return false;
 	};
+	// A node the case masks (one of its `masks` or `masksWhenShown` selectors answers to it) may carry a label of the case (a Switch named by its `<label>`,
+	// "Remember me"): its own mask, its box or that box with the reference's padding (`MASK_PAD`), is not over chrome; the label's text beside it stays in view.
+	const selectors = [...screen.masks, ...screen.masksWhenShown].map((selector) => selectorFor(selector, direction));
+	const own = (mask: Rect, node: UiNode) =>
+		selectors.some((selector) => matches(node, selector)) &&
+		within(node.bounds, mask) &&
+		node.bounds.x - mask.x <= MASK_PAD &&
+		node.bounds.y - mask.y <= MASK_PAD &&
+		mask.x + mask.width - (node.bounds.x + node.bounds.width) <= MASK_PAD &&
+		mask.y + mask.height - (node.bounds.y + node.bounds.height) <= MASK_PAD;
 	const found = new Set<string>();
 	for (const node of tree.nodes) {
 		if (node.bounds.width <= 0 || node.bounds.height <= 0) continue;
 		const label = labels.find((candidate) => node.text.trim() === candidate || node.contentDesc.trim() === candidate);
-		if (label !== undefined && masks.some((mask) => covers(mask, node.bounds) && !carried(node, mask))) found.add(label);
+		if (label !== undefined && masks.some((mask) => covers(mask, node.bounds) && !own(mask, node) && !carried(node, mask))) found.add(label);
 	}
 	return [...found];
 }

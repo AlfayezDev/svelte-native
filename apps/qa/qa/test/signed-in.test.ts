@@ -174,6 +174,22 @@ describe("a reference's masks stay off the screen's own chrome", () => {
 		useAccount(undefined);
 	});
 
+	test("a node's own mask is not chrome, though the node carries a label of the case: the label's text beside it stays in view", () => {
+		// The HTML screen on the emulator (12 Nov): the checkbox is a Switch named by its `<label>`, "Remember me", a label the case scrolls to; it is masked by its class.
+		const form = tree(
+			node({ text: "Remember me", bounds: "[63,1870][336,1933]" }),
+			node({ desc: "Remember me", bounds: "[895,1866][1017,1937]", cls: "android.widget.Switch" }),
+		);
+		const htmlCase = { ...profileModal, title: null, controls: [], scrolled: ["Remember me"], masks: [], masksWhenShown: [{ className: "android.widget.Switch" }] };
+		expect(maskedChrome(form, htmlCase, "ltr", [{ x: 895, y: 1866, width: 122, height: 71 }])).toEqual([]);
+		// and as a reference stores it, padded by 2 px on each side (the comparison's check reads the stored masks)
+		expect(maskedChrome(form, htmlCase, "ltr", [{ x: 893, y: 1864, width: 126, height: 75 }])).toEqual([]);
+		// a mask that reaches further is not the node's own: it is a mask over a labelled node
+		expect(maskedChrome(form, htmlCase, "ltr", [{ x: 890, y: 1864, width: 129, height: 75 }])).toEqual(["Remember me"]);
+		// nor is the Switch's box when the case does not mask Switches: then it is a mask over a node that only happens to be the same size
+		expect(maskedChrome(form, { ...htmlCase, masksWhenShown: [] }, "ltr", [{ x: 893, y: 1864, width: 126, height: 75 }])).toEqual(["Remember me"]);
+	});
+
 	test("every signed-in case's own chrome is named by its title, controls and the controls further down, in the language of the variant", () => {
 		const arabic = tree(node({ text: "الملف الشخصي", bounds: "[61,336][300,397]" }));
 		const rtl = maskedChrome(arabic, profileModal, "rtl", [{ x: 61, y: 336, width: 958, height: 61 }]);

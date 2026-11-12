@@ -1,5 +1,6 @@
 <script lang="ts">
   import { List, SafeAreaView, Screen, ScrollView, Text, View } from "@rasheed/svelte-native";
+  import { scroller, useDemo } from "#lib/demo.ts";
   import { text, theme } from "#lib/theme.svelte.ts";
 
   // Two ways to show rows. A ScrollView with an {#each} mounts every row, which is fine for a few dozen. `List` mounts only the rows near
@@ -11,6 +12,18 @@
   const few = people.slice(0, 40);
   let shown = $state("Scroll to see which rows are on screen.");
   const box = $derived({ flex: 1, overflow: "hidden" as const, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface });
+
+  // `?demo`: scroll the plain list a little, then the windowed one, jump it far down the 5,000 rows and scroll on, and back to the top.
+  let { url }: { url: URL } = $props();
+  const plain = scroller();
+  const windowed = scroller();
+  useDemo(() => url, [
+    [() => plain.glide(560, 1600), 400],
+    [() => windowed.glide(52 * 24, 2000), 400],
+    [() => windowed.jump(52 * 2400), 500],
+    [() => windowed.glide(52 * 2412, 1500), 600],
+    [() => { plain.jump(0); windowed.jump(0); }, 0],
+  ], { hold: 1200 });
 </script>
 
 {#snippet row(person: Person)}
@@ -26,7 +39,7 @@
     <View style={{ flex: 1, gap: 6 }}>
       <Text style={text.heading}>ScrollView with each: 40 rows</Text>
       <View style={box}>
-        <ScrollView>
+        <ScrollView ref={plain.ref}>
           {#each few as person (person.id)}{@render row(person)}{/each}
         </ScrollView>
       </View>
@@ -38,6 +51,7 @@
       <View style={box}>
         <List
           items={people}
+          ref={windowed.ref}
           rowHeight={52}
           keyOf={(person) => person.id}
           {row}

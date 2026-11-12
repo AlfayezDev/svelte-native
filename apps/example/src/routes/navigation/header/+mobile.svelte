@@ -1,5 +1,6 @@
 <script lang="ts">
   import { SafeAreaView, Screen, ScrollView, Text, View, useToolbar, type ToolbarItem } from "@rasheed/svelte-native";
+  import { useDemo } from "#lib/demo.ts";
   import { text, theme } from "#lib/theme.svelte.ts";
 
   // More of what `<Screen>` configures. `search` puts a native search field in the header (it asks for a place to show results: the
@@ -16,6 +17,17 @@
     { key: "flag", title: "Flag", icon: circle, badge: 2, accessibilityLabel: "Flag, 2 new" },
   ];
   const toolbar = useToolbar();
+
+  // `?demo`: press the two toolbar actions, one after the other, twice. The search field in the header is the platform's and opens only on a
+  // touch: the hold at the end leaves room for one (see features/demos.ts).
+  let { url }: { url: URL } = $props();
+  useDemo(() => url, [
+    [() => (pressed = "reply"), 1400],
+    [() => (pressed = "flag"), 1400],
+    [() => (pressed = "reply"), 1400],
+    [() => (pressed = "flag"), 1000],
+    [() => (pressed = "nothing yet"), 0],
+  ], { hold: 3500 });
 </script>
 
 {#snippet circle()}

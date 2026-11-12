@@ -2,6 +2,7 @@
   import { KeyboardAvoidingView, Screen, ScrollView, Switch, Text, TextInput, View, insets } from "@rasheed/svelte-native";
   import Button from "#lib/components/Button.svelte";
   import Section from "#lib/components/Section.svelte";
+  import { typeInto, useDemo } from "#lib/demo.ts";
   import { text, theme } from "#lib/theme.svelte.ts";
 
   // TextInput and Switch bind to state: `bind:value` keeps a variable and the native view in step, in both directions. The form below checks
@@ -14,7 +15,8 @@
   let password = $state("");
   let agree = $state(false);
   let submitted = $state(false);
-  let passwordInput: { focus(): void } | null = null;
+  let emailInput: { focus(): void; blur(): void } | null = null;
+  let passwordInput: { focus(): void; blur(): void } | null = null;
   const errors = $derived({
     email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ? "" : "Enter an address like name@example.com.",
     password: password.length >= 8 ? "" : "Use at least 8 characters.",
@@ -24,6 +26,26 @@
   const shown = $derived(submitted ? errors : { email: "", password: "", agree: "" });
   const input = $derived({ minHeight: 48, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border, color: theme.colors.text, fontSize: 16 });
   const error = $derived({ color: theme.colors.danger, fontSize: 14 });
+
+  // `?demo`: type into the echo field and flip the switch, then fill in the form wrongly (the keyboard opens and the form rises above it),
+  // submit it, correct it and submit again.
+  let { url }: { url: URL } = $props();
+  useDemo(() => url, [
+    [(signal) => typeInto((value) => (echo = value), "Hello Svelte", 70, signal), 400],
+    [() => (notifications = false), 800],
+    [() => (notifications = true), 300],
+    [() => emailInput?.focus(), 900],
+    [(signal) => typeInto((value) => (email = value), "sam@example", 50, signal), 200],
+    [() => passwordInput?.focus(), 500],
+    [(signal) => typeInto((value) => (password = value), "secret", 50, signal), 200],
+    [() => { submitted = true; passwordInput?.blur(); }, 1400],
+    [async (signal) => {
+      await typeInto((value) => (email = `sam@example${value}`), ".com", 60, signal);
+      await typeInto((value) => (password = `secret${value}`), "-phrase", 50, signal);
+      agree = true;
+    }, 1800],
+    [() => { echo = email = password = ""; agree = submitted = false; }, 0],
+  ], { hold: 800 });
 </script>
 
 <Screen title="Inputs and forms">
@@ -46,6 +68,7 @@
       <Section title="A small form">
         <TextInput
           bind:value={email}
+          ref={(handle) => (emailInput = handle)}
           keyboardType="email-address"
           autoCapitalize="none"
           autoCorrect={false}

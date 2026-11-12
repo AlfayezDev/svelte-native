@@ -1,6 +1,7 @@
 <script lang="ts">
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
+  import { scroller, typeInto, useDemo } from "#lib/demo.ts";
 
   // Everything below the Page frame is HTML: no component of the library is imported for it. The build turns div, p, button, a, img, input, form and
   // dialog into native views, texts, pressables, an image, a TextInput, a Switch and a Modal, and the file would mean the same in a browser.
@@ -19,8 +20,8 @@
   let removing = $state<Contact | undefined>();
   let nextId = 3;
 
-  function add(event: SubmitEvent) {
-    event.preventDefault();
+  function add(event?: SubmitEvent) {
+    event?.preventDefault();
     contacts.push({ id: nextId++, name: name.trim(), email: email.trim() });
     message = `Added ${name.trim()}${updates ? ", who will get updates" : ""}.`;
     name = email = "";
@@ -31,9 +32,22 @@
     message = `Removed ${removing.name}.`;
     removing = undefined;
   }
+
+  // `?demo`: fill in the form and add a contact, then remove that contact through the dialog.
+  let { url }: { url: URL } = $props();
+  const view = scroller();
+  useDemo(() => url, [
+    [() => view.glide(360, 900), 300],
+    [(signal) => typeInto((value) => (name = value), "Sam Ito", 70, signal), 300],
+    [(signal) => typeInto((value) => (email = value), "sam@example.com", 55, signal), 500],
+    [() => add(), 900],
+    [() => view.glide(0, 800), 300],
+    [() => (removing = contacts[2]), 1800],
+    [() => { remove(); message = "Add a contact, or remove one."; }, 0],
+  ]);
 </script>
 
-<Page title="HTML elements" intro="This screen is written with HTML elements and Tailwind classes. The build turns them into native views, so the same markup could also be a web page.">
+<Page title="HTML elements" scrollRef={view.ref} intro="This screen is written with HTML elements and Tailwind classes. The build turns them into native views, so the same markup could also be a web page.">
   <Section title="A card list" note="ul and li are views, h3 and p texts, img an image, button a pressable. text-sm on the card sets the size of the text inside it.">
     <ul class="gap-3">
       {#each contacts as contact (contact.id)}

@@ -8,7 +8,6 @@
   import Platform from "react-native/Libraries/Utilities/Platform";
   import type { ClassProps } from "../classes.ts";
   import { createNativeProps } from "../native-props.ts";
-  import Host from "./Host.svelte";
   import { resolveAssetSource } from "../fabric/deps-rn.ts";
   import { connectInsets, insets } from "../insets.svelte.ts";
   import {
@@ -30,6 +29,7 @@
   const parent = getContext<{ set(options: ScreenOptions): void; clear(): void } | undefined>(SCREEN_CONTEXT);
   // The outermost screen of a subtree no stack holds (the app shell, a `Modal`'s content) is a one-entry stack of its own.
   const inStack = getContext<boolean | undefined>(IN_STACK_CONTEXT) === true;
+  if (!parent && !inStack) setContext(IN_STACK_CONTEXT, true);
   let nested = $state.raw<ScreenOptions>({});
   const options = $derived(mergeScreenOptions(own, nested));
   setContext(SCREEN_CONTEXT, { set(value: ScreenOptions) { nested = value; }, clear() { nested = {}; } });
@@ -192,5 +192,5 @@
 {:else if inStack}
   {@render screen()}
 {:else}
-  <Host name="native-stack" attributes={{ style: { flex: 1 } }}>{@render screen()}</Host>
+  <native-stack nativeProps={{ style: { flex: 1 } }}>{@render screen()}</native-stack>
 {/if}

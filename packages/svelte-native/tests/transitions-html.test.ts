@@ -57,11 +57,11 @@ afterEach(() => {
 
 type Tx = { setOn(value: boolean): void; setShown(value: boolean): void; setBold(value: boolean): void; setItems(value: number[]): void; setFaded(value: boolean): void; setColor(value: string): void; setEvented(value: boolean): void; heard(): string[] };
 let surface = 700;
-async function mount() {
+async function mount(fixture = "transitions-html-fixture.svelte") {
   delete (globalThis as { __anim?: unknown }).__anim;
   host.roots = {};
   installLayout();
-  const m = await load("transitions-html-fixture.svelte");
+  const m = await load(fixture);
   const tag = ++surface;
   m.startSurface(tag, m.Fixture, {});
   await settle(m);
@@ -179,8 +179,9 @@ test("an out: on an element inside a paragraph runs its length and draws nothing
   }
 });
 
-test("animate:flip on <li> in a keyed each moves each item from where it was: a view with its transform in the first commit and a worklet for it", async () => {
-  const { m, tx, byID } = await mount();
+/** A list of three items `animate:flip`s when its order changes: each moves from where it was (a view with its transform in the first commit and a worklet for it), and the flips end in identity. */
+async function flips(fixture?: string) {
+  const { m, tx, byID } = await mount(fixture);
   tx.setItems([3, 1, 2]);
   await settle(m);
   const transformOf = (id: string) => flat(byID(id).props.style).transform;
@@ -200,6 +201,20 @@ test("animate:flip on <li> in a keyed each moves each item from where it was: a 
     expect(flat(byID(id).props.style).transform ?? []).toEqual([]);
     expect(forgotten(byID(id).tag)).toHaveLength(1);
   }
+}
+
+test("animate:flip on <li> in a keyed each moves each item from where it was: a view with its transform in the first commit and a worklet for it", async () => {
+  await flips();
+});
+
+// Svelte's `<svelte:element>` hands the `animate:` of everything that renders with it (the first render of its children) to the effect around it, so a keyed each that renders inside one never measures its items.
+// What the library renders itself is written with its elements for that: these two put a page in the `native-stack` of a screen and of a router, in the first render of both.
+test("animate:flip on the first render of a page in a screen of its own plays: the screen's native-stack is not a <svelte:element>", async () => {
+  await flips("transitions-screen-fixture.svelte");
+});
+
+test("animate:flip on the first render of a page in the router's stack plays: the router's native-stack is not a <svelte:element>", async () => {
+  await flips("transitions-router-fixture.svelte");
 });
 
 test("the text style an element gives its children stays theirs while it fades in, follows the element when it changes meanwhile, and the fade's values never reach the children", async () => {

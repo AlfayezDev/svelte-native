@@ -186,6 +186,17 @@ internal class BackdropCanvas : Canvas() {
  * and an animation beside it, was judged before them). The view's own `invalidate` is that something, and the picture of the frame it makes is drawn and recorded even
  * when it equals the one on show ([BlurRules.shouldRecord]): the node was recorded before the layer.
  *
+ * The request for a frame is made once in the first pre-draw under a layer, and that pre-draw is a frame of the transition that holds the layer, so it does not reach the layer the stack keeps on the
+ * screen after the transition (the hold is handed over to it, and no frame follows on a screen at rest): the view looks again [BlurRules.QUIET_MS] after a pre-draw that found a layer ([quietCheck]), and
+ * when no pre-draw went by in that time asks once more ([BlurRules.afterQuietWait]); while the window moves it waits again. A pushed screen with a blur and nothing else on it showed it: the blur stayed a tint.
+ *
+ * The node's display list is the renderer's to drop: a `RenderNode` that no display list refers to for a frame loses what it holds (its parent count goes to zero and the render thread
+ * frees its content, `RenderNode.hasDisplayList()` answers false), and the view's own list refers to the node only while the view draws it ([draw]). A frame in which the view draws nothing
+ * (intensity 0, which the lab sets between two readings) is such a frame; when the intensity comes back the picture behind the view is the same one as before, so it was not recorded again and
+ * the node, empty, drew nothing: the tint of a blur over stripes that stayed sharp. [update] asks the node ([BlurRules.nodeLost]) and records the picture again when it is empty, whatever the
+ * picture equals. A view that is attached again ([release]) records a first picture anyway, which is why only the list row of the lab showed it: the view of its inline and sheet places is taken out
+ * of React Native's parent and attached again by the engine after its first frames, so its first picture at intensity 100 was a new one.
+ *
  * No allocation per frame: three bitmaps and their canvases (one is on screen, one may still be read by the render thread, one is written), one node, one
  * effect per radius. The bitmaps only grow, in steps ([BlurRules.capacity]): a picture that changes size a pixel at a time (an animated height) is drawn into
  * the corner of the same bitmaps, which are made again only when the picture no longer fits or is under half of them (a size change makes one small [BlurRules.Picture]).
@@ -218,6 +229,23 @@ internal class Backdrop(private val view: SvelteBlurView) {
   private var asked = false
   private var stale = false
 
+  /** Pre-draws that ran, counted so that the wait for a quiet window can tell whether any went by (it only compares, so it may wrap). */
+  private var frames = 0
+
+  /** The last pre-draw found a layer on the way up (and nothing before it that made it idle): the wait for a quiet window only goes on while it did. */
+  private var underLayer = false
+
+  /** [quietCheck] is posted, and the number of [frames] it was posted at. */
+  private var waiting = false
+  private var framesAtWait = 0
+
+  /** The wait for a quiet window asked for its frame, for the layer that stands now (forgotten with [asked] when the reason is not a layer any more). */
+  private var askedQuiet = false
+  private val quiet = Runnable { quietCheck() }
+
+  /** The node was found empty and the view asked for a frame to refer to it again, and it has not been found with its display list since (see [BlurRules.asksForFrameAfterLoss]). */
+  private var askedAfterLoss = false
+
   /** What the last pre-draw that was noted did (`Idle.ordinal`, -1 for drawing) and how many were: a state change is one line of the log, a few per view, so that a device run says why a view drew what it drew. */
   private var noted = -2
   private var notes = 0
@@ -228,6 +256,7 @@ internal class Backdrop(private val view: SvelteBlurView) {
 
   /** The view's pre-draw: draws the backdrop again when the frame is about to show something else than the last one. */
   fun update() {
+    frames++
     val width = view.width
     val height = view.height
     val reason = BlurRules.idleReason(
@@ -241,10 +270,16 @@ internal class Backdrop(private val view: SvelteBlurView) {
         stale = true
         view.invalidate()
       }
-      if (reason != BlurRules.Idle.LAYER) asked = false
+      underLayer = reason == BlurRules.Idle.LAYER
+      if (underLayer) waitForQuiet() else {
+        asked = false
+        askedQuiet = false
+      }
       return
     }
     asked = false
+    askedQuiet = false
+    underLayer = false
     val root = view.rootView
     var shape = picture
     if (shape == null || shape.width != width || shape.height != height) {
@@ -253,6 +288,8 @@ internal class Backdrop(private val view: SvelteBlurView) {
       fit(shape)
     }
     applyEffect(shape)
+    val lost = BlurRules.nodeLost(ready, node.hasDisplayList())
+    if (!lost) askedAfterLoss = false
 
     view.getLocationInWindow(location)
     root.getLocationInWindow(rootLocation)
@@ -290,7 +327,7 @@ internal class Backdrop(private val view: SvelteBlurView) {
     note(if (view.reached) DRAWING else NOT_REACHED)
     if (!view.reached) return
     val last = bitmaps.getOrNull(current)
-    if (!BlurRules.shouldRecord(last != null && last.sameAs(bitmap), stale)) return
+    if (!BlurRules.shouldRecord(last != null && last.sameAs(bitmap), stale, lost)) return
     stale = false
     current = next
     record(shape, bitmap)
@@ -299,6 +336,13 @@ internal class Backdrop(private val view: SvelteBlurView) {
       logReady(shape, bitmap)
       // The view's display list was recorded without the node (or with the stronger tint of no blur): record it again, in this frame.
       view.invalidate()
+    } else if (lost) {
+      logLost()
+      // The view's display list has to refer to the node again; the frame of the intensity that came back from 0 does that already, this is for the ones that did not.
+      if (BlurRules.asksForFrameAfterLoss(lost, askedAfterLoss)) {
+        askedAfterLoss = true
+        view.invalidate()
+      }
     }
   }
 
@@ -315,6 +359,10 @@ internal class Backdrop(private val view: SvelteBlurView) {
 
   /** The view left its window: nothing is drawn until it is back, and the pictures go (the render thread may still read one: they are not recycled). */
   fun release() {
+    view.removeCallbacks(quiet)
+    waiting = false
+    askedQuiet = false
+    underLayer = false
     ready = false
     current = -1
     picture = null
@@ -322,12 +370,36 @@ internal class Backdrop(private val view: SvelteBlurView) {
     effect = null
     asked = false
     stale = false
+    askedAfterLoss = false
     noted = -2
     failed = false
     capacityWidth = 0
     capacityHeight = 0
     bitmaps.fill(null)
     node.discardDisplayList()
+  }
+
+  /** Posts the look for a quiet window, once at a time: a view that found a layer looks again when [BlurRules.QUIET_MS] have passed (see [BlurRules.afterQuietWait]). */
+  private fun waitForQuiet() {
+    if (waiting || askedQuiet) return
+    waiting = true
+    framesAtWait = frames
+    view.postDelayed(quiet, BlurRules.QUIET_MS)
+  }
+
+  private fun quietCheck() {
+    waiting = false
+    if (!view.isAttachedToWindow) return
+    when (BlurRules.afterQuietWait(underLayer && layered(), frames != framesAtWait, askedQuiet)) {
+      BlurRules.Quiet.WAIT -> waitForQuiet()
+      BlurRules.Quiet.ASK -> {
+        askedQuiet = true
+        stale = true
+        logQuiet()
+        view.invalidate()
+      }
+      BlurRules.Quiet.STOP -> Unit
+    }
   }
 
   /** Whether the view or an ancestor draws through a layer: see the class comment. One walk up the parents, no allocation. */
@@ -387,6 +459,18 @@ internal class Backdrop(private val view: SvelteBlurView) {
       else -> "idle (${BlurRules.Idle.values()[state]})${if (state == BlurRules.Idle.LAYER.ordinal) ", under ${layerOwner()}" else ""}"
     }
     Log.i(TAG, "backdrop ${view.width}x${view.height} intensity ${view.intensity}: $what")
+  }
+
+  /** No frame came for a while under a layer and the view asked for one: one line of the log, within the view's [MAX_NOTES]. */
+  private fun logQuiet() {
+    if (notes++ >= MAX_NOTES) return
+    Log.i(TAG, "backdrop ${view.width}x${view.height} intensity ${view.intensity}: under ${layerOwner()} with no frame for ${BlurRules.QUIET_MS} ms: asks for one")
+  }
+
+  /** The node lost its display list and the picture was recorded again: one line of the log, within the view's [MAX_NOTES]. */
+  private fun logLost() {
+    if (notes++ >= MAX_NOTES) return
+    Log.i(TAG, "backdrop ${view.width}x${view.height} intensity ${view.intensity}: the node had lost its display list (no frame drew it for a while): recorded again")
   }
 
   /** The first view with a layer on the way up from the view, for the log. */

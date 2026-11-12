@@ -6,11 +6,17 @@
 <script lang="ts">
   import { Pressable, SafeAreaView, Screen, Text, View, useRouter } from "@rasheed/svelte-native";
   import Button from "#lib/components/Button.svelte";
+  import { useDemo } from "#lib/demo.ts";
   import { text, theme } from "#lib/theme.svelte.ts";
 
   // A modal screen: it slides up over everything. A modal has no back arrow, so it brings its own Close button in the header (`headerLeft`);
   // the swipe down on iOS and the back button on Android close it as well. `router.back()` closes it from code.
   const router = useRouter();
+
+  // `?demo`: stay a while, then close the modal from code. Open it from another screen, so there is one below to go back to: a modal that is the
+  // first screen of the app (a cold link) has none, and stays.
+  let { url }: { url: URL } = $props();
+  useDemo(() => url, [[() => { if (router.entries.length > 1) router.back(); }, 0]], { settle: 6000, hold: 0 });
 </script>
 
 {#snippet close()}

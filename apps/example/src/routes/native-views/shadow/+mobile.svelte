@@ -4,6 +4,7 @@
   import Button from "#lib/components/Button.svelte";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
+  import { useDemo } from "#lib/demo.ts";
   import { text, theme } from "#lib/theme.svelte.ts";
 
   // `ShadowedView` is react-native-fast-shadow: a View whose shadow is drawn the same on Android as on iOS, shaped by its corner radii. The
@@ -11,6 +12,15 @@
   // (a radius and offset as in design tools). Do not put `overflow: "hidden"` on it, that clips the shadow.
   let opacity = $state(0.35);
   const card = $derived({ alignItems: "center", justifyContent: "center", height: 96, borderRadius: 16, backgroundColor: theme.colors.surface } as const);
+
+  // `?demo`: raise the shadow's opacity, drop it to almost nothing and bring it back.
+  let { url }: { url: URL } = $props();
+  useDemo(() => url, [
+    [() => (opacity = 0.75), 1500],
+    [() => (opacity = 0.15), 1500],
+    [() => (opacity = 0.55), 1500],
+    [() => (opacity = 0.35), 0],
+  ]);
 </script>
 
 <Page title="Shadow" intro="ShadowedView draws a soft shadow around a box on both platforms. React Native's own shadow props only work on iOS; Android would need elevation.">

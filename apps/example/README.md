@@ -94,6 +94,19 @@ Things a build or a device must provide:
 - **Dark mode** is the theme's: `src/lib/theme.svelte.ts` keeps the system's colour scheme in `$state` (React Native's `Appearance`), and a screen reads `theme.colors`. There is no in-app switch; change the phone's appearance.
 - **Fonts**: the system fonts need no setup. `JetBrainsMono-Regular.ttf` (SIL Open Font License, `assets/fonts/OFL.txt`) is embedded by the `expo-font` plugin in `app.config.ts`.
 
+## Demo mode
+
+Every screen that has something to show can play a short scripted interaction by itself, for recording the docs' videos on a device or a simulator without touch injection. A screen opened with `?demo` in its link runs its script once after it mounts; without the parameter nothing runs.
+
+```sh
+adb shell am start -a android.intent.action.VIEW -d "svelte-native:///animation/transitions?demo" io.rasheed.sveltenative.example
+xcrun simctl openurl booted "svelte-native:///animation/transitions?demo"
+```
+
+- `src/lib/demo.ts` is the helper. A page gets its link as the prop `url` (the router passes it with `params`), and calls `useDemo(() => url, steps)` with a list of steps, `[run, pauseMs]`: the screen's own state and functions (a toggle, a shuffle, `router.goto`, a text field's bound value typed letter by letter with `typeInto`, a scroll with `scroller().glide`). A settle comes before the first step and a hold after the last. The script logs `[demo] start <path>` and `[demo] end <path> after <ms> ms` (`adb logcat -s ReactNativeJS`), which a recording tool can wait for.
+- `src/lib/features/demos.ts` is the manifest: for each docs page, the route to open, how long the script runs, and whether the recording needs touch input (gestures, a native dialog) with the touches described. `test/demos.test.ts` keeps it in step with the docs, the registries and the screens; `test/demo.test.ts` tests the helper.
+- The router drops the query of a tab bar's link, so the Tabs demo is on `/navigation/tabs/feed`. A sheet or a modal needs a screen below it to be dismissed to: open the app first, then the link. A link to the screen already on top does nothing (the same address), so a second take on the same screen uses `?demo=2` or another screen first.
+
 ## Tests
 
 ```sh

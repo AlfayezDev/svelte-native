@@ -4,6 +4,7 @@
   import Button from "#lib/components/Button.svelte";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
+  import { scroller, useDemo } from "#lib/demo.ts";
   import { text, theme } from "#lib/theme.svelte.ts";
   import sample from "../../../../assets/images/sample.png";
 
@@ -13,9 +14,20 @@
   const fits = ["cover", "contain", "fill", "scale-down"] as const;
   let attempt = $state(0);
   let loaded = $state("");
+  const again = () => { loaded = ""; attempt += 1; };
+
+  // `?demo`: scroll to the placeholder example and load the picture twice: the blurhash shows, then the picture fades in.
+  let { url }: { url: URL } = $props();
+  const view = scroller();
+  useDemo(() => url, [
+    [() => view.glide(220, 900), 600],
+    [again, 2200],
+    [again, 2200],
+    [() => view.glide(0, 800), 0],
+  ]);
 </script>
 
-<Page title="Image" intro="ExpoImage shows a picture with expo-image's native view. It fits the picture into its box, can show a blurred placeholder while the picture loads, and fades the picture in.">
+<Page title="Image" scrollRef={view.ref} intro="ExpoImage shows a picture with expo-image's native view. It fits the picture into its box, can show a blurred placeholder while the picture loads, and fades the picture in.">
   <Section title="contentFit" note="The same 96 x 64 picture in four 80 pt boxes.">
     <View style={{ flexDirection: "row", gap: 8 }}>
       {#each fits as fit (fit)}
@@ -40,6 +52,6 @@
       />
     {/key}
     <Text style={text.caption}>{loaded || "Loading"}</Text>
-    <Button label="Load again" variant="secondary" onPress={() => { loaded = ""; attempt += 1; }} />
+    <Button label="Load again" variant="secondary" onPress={again} />
   </Section>
 </Page>

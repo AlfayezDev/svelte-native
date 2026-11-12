@@ -4,6 +4,7 @@
   import Button from "#lib/components/Button.svelte";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
+  import { useDemo } from "#lib/demo.ts";
   import { text, theme } from "#lib/theme.svelte.ts";
 
   // `ViewShot` is react-native-view-shot: a View that can draw itself into an image. `ref` gives `capture()`, which answers where the image
@@ -18,6 +19,15 @@
     try { picture = (await shot?.capture()) ?? null; }
     catch (error) { failed = String(error); }
   }
+
+  // `?demo`: capture the stripes, hold on the picture beside them, and clear it.
+  let { url }: { url: URL } = $props();
+  useDemo(() => url, [
+    [capture, 2600],
+    [() => { picture = null; }, 800],
+    [capture, 2200],
+    [() => { picture = null; }, 0],
+  ], { hold: 600 });
 </script>
 
 <Page title="View capture" intro="ViewShot turns a view into a picture. Press the button and the stripes below are drawn into an image, shown next to them.">

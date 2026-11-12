@@ -4,6 +4,7 @@
   import Button from "#lib/components/Button.svelte";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
+  import { scroller, useDemo } from "#lib/demo.ts";
   import { text } from "#lib/theme.svelte.ts";
 
   // `@rasheed/svelte-native/updates` is expo-updates reduced to what this host needs, and works with `eas update`. `isEnabled`, `updateId`,
@@ -37,9 +38,18 @@
       status = `The download failed: ${String(error)}`;
     }
   }
+
+  // `?demo`: ask the update server (this build has updates off, so it answers at once), then read the answer.
+  let { url }: { url: URL } = $props();
+  const view = scroller();
+  useDemo(() => url, [
+    [() => view.glide(240, 1000), 800],
+    [check, 2200],
+    [() => { status = "Not checked yet"; available = false; return view.glide(0, 900); }, 0],
+  ]);
 </script>
 
-<Page title="Updates" intro="Over-the-air updates replace the app's JavaScript without a store release. The screen shows which bundle is running and asks the update server whether there is a newer one.">
+<Page title="Updates" scrollRef={view.ref} intro="Over-the-air updates replace the app's JavaScript without a store release. The screen shows which bundle is running and asks the update server whether there is a newer one.">
   <Section title="What is running" note="A build for a channel checks once after it starts and downloads the newest update for the next start. Add updates.url, runtimeVersion and UPDATES_CHANNEL to the app config to turn it on.">
     {#each facts as [label, value] (label)}
       <View style={{ gap: 2 }}>

@@ -2,12 +2,22 @@
   import { SafeAreaView, Screen, ScrollView, Text, View, useRouter } from "@rasheed/svelte-native";
   import Button from "#lib/components/Button.svelte";
   import Section from "#lib/components/Section.svelte";
+  import { useDemo } from "#lib/demo.ts";
   import { text } from "#lib/theme.svelte.ts";
 
   // A stack of screens. Every folder in src/routes is a screen of the root stack, and `router.goto(href)` pushes one on top of the current
   // one. The header, the back arrow and the swipe or back button that pops a screen are native and need no code. `<Screen>` configures the
   // header of the screen it is in: this one asks for a large title that shrinks as the content scrolls.
   const router = useRouter();
+
+  // `?demo`: push two items, one on top of the other, and pop them again.
+  let { url }: { url: URL } = $props();
+  useDemo(() => url, [
+    [() => router.goto("/navigation/stack/1"), 1800],
+    [() => router.goto("/navigation/stack/2"), 1800],
+    [() => router.back(), 1500],
+    [() => router.back(), 900],
+  ]);
 </script>
 
 <Screen title="Stack" header={{ large: true }}>

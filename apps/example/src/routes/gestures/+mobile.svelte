@@ -1,11 +1,12 @@
 <script lang="ts">
   import { Text } from "@rasheed/svelte-native";
-  import { AnimatedView, createSharedValue, runOnJS, withSpring } from "@rasheed/svelte-native/animation";
+  import { AnimatedView, createSharedValue, runOnJS, withSpring, withTiming } from "@rasheed/svelte-native/animation";
   import { Gesture } from "@rasheed/svelte-native/gestures";
   import Button from "#lib/components/Button.svelte";
   import SwipeRow from "#lib/components/native/SwipeRow.svelte";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
+  import { scroller, sleep, useDemo } from "#lib/demo.ts";
   import { text, theme } from "#lib/theme.svelte.ts";
 
   // `Gesture` is react-native-gesture-handler's builders (`Pan`, `Pinch`, `Rotation`, `LongPress`, `Tap`, ...). A gesture goes on a view with
@@ -32,9 +33,28 @@
     .onBegin(() => { press.value = withSpring(0.9); })
     .onStart(() => { runOnJS(markHeld)(); })
     .onFinalize(() => { press.value = withSpring(1); });
+
+  // `?demo`: no finger is on the screen, so the script writes the same shared values the gestures write: the box follows an invisible drag, the
+  // square pinches and turns, the first row slides away and the button is held down. Real touches are listed in features/demos.ts.
+  let { url }: { url: URL } = $props();
+  const view = scroller();
+  let swipers = $state<({ swipeAway(): void } | undefined)[]>([]);
+  const to = (value: number) => withTiming(value, { duration: 700 });
+  useDemo(() => url, [
+    [() => { x.value = to(110); y.value = to(24); }, 900],
+    [() => { x.value = withSpring(0); y.value = withSpring(0); }, 800],
+    [() => view.glide(250, 700), 200],
+    [() => { scale.value = to(1.5); angle.value = to(0.7); }, 1000],
+    [() => { scale.value = withSpring(1); angle.value = withSpring(0); }, 800],
+    [() => view.glide(520, 800), 200],
+    [() => swipers[0]?.swipeAway(), 900],
+    [() => view.glide(820, 700), 200],
+    [async () => { press.value = withTiming(0.9, { duration: 600 }); await sleep(700); markHeld(); press.value = withSpring(1); }, 900],
+    [() => { rows = ["Swipe me left", "Swipe me too", "And me"]; held = 0; return view.glide(0, 800); }, 0],
+  ], { hold: 800 });
 </script>
 
-<Page title="Gestures" intro="Gestures are recognised by the platform, not by JavaScript. Drag the box, pinch and twist the square with two fingers, swipe a row, or hold the button down.">
+<Page title="Gestures" scrollRef={view.ref} intro="Gestures are recognised by the platform, not by JavaScript. Drag the box, pinch and twist the square with two fingers, swipe a row, or hold the button down.">
   <Section title="Pan: drag" note="Drag the box; it springs back when you let go. A touch anywhere else still scrolls the page.">
     <AnimatedView gesture={drag} style={box} animatedStyle={() => { "worklet"; return { transform: [{ translateX: x.value }, { translateY: y.value }] }; }} />
   </Section>
@@ -44,8 +64,8 @@
   </Section>
 
   <Section title="A swipeable row" note="Swipe left past 100 pt to delete. A vertical move still scrolls the page.">
-    {#each rows as row (row)}
-      <SwipeRow label={row} onDelete={() => { rows = rows.filter((other) => other !== row); }} />
+    {#each rows as row, index (row)}
+      <SwipeRow bind:this={swipers[index]} label={row} onDelete={() => { rows = rows.filter((other) => other !== row); }} />
     {/each}
     {#if rows.length === 0}<Button label="Bring the rows back" onPress={() => { rows = ["Swipe me left", "Swipe me too", "And me"]; }} />{/if}
   </Section>

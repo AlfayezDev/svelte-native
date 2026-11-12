@@ -450,10 +450,22 @@
         "input-120"
       ],
       "maxLateIntervals": 2,
+      "maxMs": 30,
+      "decision": "D18",
+      "reason": "Galaxy A16 frame noise late in a long session (main 9f7b524, 11 Nov 2026): input-120 had 2 late intervals in two runs of a ten-run lab (frames of 19 ms in the judged runs), and at most 1 in every run of the next lab of the same install; covered up to 2 late intervals and a 23 ms frame, no further; extended 12 Nov 2026 (user) to frames of 30 ms: on the final build main 36f207d the second ten-run lab read input-120 with 2 late intervals in three runs and frames to 30 ms, and an interleaved A/B against 9f7b524 (20 runs each, warm-up,input-120,list-300-virtual) read 9 and 5 late intervals with no run above 1",
+      "evidence": "packages/svelte-native/PLAN.md, 'Final build: main 9f7b524 (11 November 2026)'; qa/runs/lab-R58Y90KNGRP-20261110T213019Z.json and qa/runs/lab-R58Y90KNGRP-20261110T221748Z.json (main's two labs; the A/B's runs in the same record); GOAL.md D18; packages/svelte-native/PLAN.md, 'Final build: main 36f207d (12 November 2026)', qa/runs/lab-R58Y90KNGRP-20261112T063329Z.json"
+    },
+    {
+      "gate": "frames.droppedPct",
+      "device": "R58Y90KNGRP",
+      "scenarios": [
+        "list-300-virtual"
+      ],
+      "maxLateIntervals": 2,
       "maxMs": 23,
       "decision": "D18",
-      "reason": "Galaxy A16 frame noise late in a long session (main 9f7b524, 11 Nov 2026): input-120 had 2 late intervals in two runs of a ten-run lab (frames of 19 ms in the judged runs), and at most 1 in every run of the next lab of the same install; covered up to 2 late intervals and a 23 ms frame, no further",
-      "evidence": "packages/svelte-native/PLAN.md, 'Final build: main 9f7b524 (11 November 2026)'; qa/runs/lab-R58Y90KNGRP-20261110T213019Z.json and qa/runs/lab-R58Y90KNGRP-20261110T221748Z.json (main's two labs; the A/B's runs in the same record); GOAL.md D18"
+      "reason": "Galaxy A16 frame noise late in a long session (main 36f207d, 12 Nov 2026, user): the first of two ten-run labs read list-300-virtual with 2 late intervals in two runs (frames to 18 ms) and the second passed it; an interleaved A/B against 9f7b524, 20 runs each, read 6 and 7 late intervals with no run above 1, so the build did not regress; covered up to 2 late intervals and a 23 ms frame, no further",
+      "evidence": "packages/svelte-native/PLAN.md, 'Final build: main 36f207d (12 November 2026)'; qa/runs/lab-R58Y90KNGRP-20261112T055604Z.json and qa/runs/lab-R58Y90KNGRP-20261112T063329Z.json (the final build's two labs; the A/B's runs in ~/.cache/final/ab/runs-final4-ab-20261112); GOAL.md D18"
     },
     {
       "gate": "frames.maxPeriodRatio",
@@ -474,10 +486,22 @@
         "input-120"
       ],
       "maxLateIntervals": 2,
+      "maxMs": 30,
+      "decision": "D18",
+      "reason": "Galaxy A16 frame noise late in a long session (main 9f7b524, 11 Nov 2026): input-120 had 2 late intervals in two runs of a ten-run lab (frames of 19 ms in the judged runs), and at most 1 in every run of the next lab of the same install; covered up to 2 late intervals and a 23 ms frame, no further; extended 12 Nov 2026 (user) to frames of 30 ms: on the final build main 36f207d the second ten-run lab read input-120 with 2 late intervals in three runs and frames to 30 ms, and an interleaved A/B against 9f7b524 (20 runs each, warm-up,input-120,list-300-virtual) read 9 and 5 late intervals with no run above 1",
+      "evidence": "packages/svelte-native/PLAN.md, 'Final build: main 9f7b524 (11 November 2026)'; qa/runs/lab-R58Y90KNGRP-20261110T213019Z.json and qa/runs/lab-R58Y90KNGRP-20261110T221748Z.json (main's two labs; the A/B's runs in the same record); GOAL.md D18; packages/svelte-native/PLAN.md, 'Final build: main 36f207d (12 November 2026)', qa/runs/lab-R58Y90KNGRP-20261112T063329Z.json"
+    },
+    {
+      "gate": "frames.maxPeriodRatio",
+      "device": "R58Y90KNGRP",
+      "scenarios": [
+        "list-300-virtual"
+      ],
+      "maxLateIntervals": 2,
       "maxMs": 23,
       "decision": "D18",
-      "reason": "Galaxy A16 frame noise late in a long session (main 9f7b524, 11 Nov 2026): input-120 had 2 late intervals in two runs of a ten-run lab (frames of 19 ms in the judged runs), and at most 1 in every run of the next lab of the same install; covered up to 2 late intervals and a 23 ms frame, no further",
-      "evidence": "packages/svelte-native/PLAN.md, 'Final build: main 9f7b524 (11 November 2026)'; qa/runs/lab-R58Y90KNGRP-20261110T213019Z.json and qa/runs/lab-R58Y90KNGRP-20261110T221748Z.json (main's two labs; the A/B's runs in the same record); GOAL.md D18"
+      "reason": "Galaxy A16 frame noise late in a long session (main 36f207d, 12 Nov 2026, user): the first of two ten-run labs read list-300-virtual with 2 late intervals in two runs (frames to 18 ms) and the second passed it; an interleaved A/B against 9f7b524, 20 runs each, read 6 and 7 late intervals with no run above 1, so the build did not regress; covered up to 2 late intervals and a 23 ms frame, no further",
+      "evidence": "packages/svelte-native/PLAN.md, 'Final build: main 36f207d (12 November 2026)'; qa/runs/lab-R58Y90KNGRP-20261112T055604Z.json and qa/runs/lab-R58Y90KNGRP-20261112T063329Z.json (the final build's two labs; the A/B's runs in ~/.cache/final/ab/runs-final4-ab-20261112); GOAL.md D18"
     }
   ],
   "gates": [

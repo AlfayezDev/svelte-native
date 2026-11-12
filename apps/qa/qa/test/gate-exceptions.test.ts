@@ -679,8 +679,10 @@ describe("the exceptions of gates.json", () => {
 		expect(of("D18").map(key)).toEqual([
 			"frames.droppedPct@samsung:churn-static",
 			"frames.droppedPct@samsung:input-120",
+			"frames.droppedPct@samsung:list-300-virtual",
 			"frames.maxPeriodRatio@samsung:churn-static",
 			"frames.maxPeriodRatio@samsung:input-120",
+			"frames.maxPeriodRatio@samsung:list-300-virtual",
 		]);
 		expect(of("1 Nov first touch").map(key)).toEqual([
 			"gestures.frames.droppedPct@samsung:box",
@@ -692,7 +694,7 @@ describe("the exceptions of gates.json", () => {
 			"gestures.frames.maxPeriodRatio@iphone:box+box-busy+pinch-rotate",
 			"gestures.frames.maxMs@iphone:box+box-busy+pinch-rotate",
 		]);
-		expect(exceptions).toHaveLength(25);
+		expect(exceptions).toHaveLength(27);
 		for (const entry of exceptions) {
 			expect(entry.reason.length).toBeGreaterThan(20);
 			expect(entry.reason).not.toContain("\n");
@@ -711,9 +713,12 @@ describe("the exceptions of gates.json", () => {
 			["frames.droppedPct", "D11", 23],
 			["frames.maxPeriodRatio", "D11", 23],
 			["frames.maxPeriodRatio", "D11", 23],
+			// D18 as extended on 12 Nov 2026 (final build 36f207d): input-120's frames to 30 ms, list-300-virtual added at 23 ms
 			["frames.droppedPct", "D18", 23],
+			["frames.droppedPct", "D18", 30],
 			["frames.droppedPct", "D18", 23],
 			["frames.maxPeriodRatio", "D18", 23],
+			["frames.maxPeriodRatio", "D18", 30],
 			["frames.maxPeriodRatio", "D18", 23],
 		]);
 		expect(exceptions.filter((entry) => entry.decision === "D11").map((entry) => [entry.gate, entry.maxLateIntervals, entry.maxMs, entry.device])).toEqual([

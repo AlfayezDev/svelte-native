@@ -1346,6 +1346,446 @@
 				"dirty": true
 			}
 		},
+		"html-elements--dark-ltr-normal": {
+			"file": "html-elements--dark-ltr-normal.png",
+			"sha256": "8cb583f943481b89ab49ea373eb478acc945a294aff072162424df4c43e2f1d8",
+			"width": 750,
+			"height": 1334,
+			"masks": [
+				{
+					"name": "moving node 1",
+					"x": 0,
+					"y": 30,
+					"width": 68,
+					"height": 168
+				},
+				{
+					"name": "moving node 2",
+					"x": 682,
+					"y": 30,
+					"width": 68,
+					"height": 168
+				},
+				{
+					"name": "moving node 3",
+					"x": 0,
+					"y": 30,
+					"width": 750,
+					"height": 24
+				},
+				{
+					"name": "moving node 4",
+					"x": 0,
+					"y": 134,
+					"width": 750,
+					"height": 64
+				},
+				{
+					"name": "moving node 5",
+					"x": 22,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 6",
+					"x": 22,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 7",
+					"x": 22,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 8",
+					"x": 17.800414939545384,
+					"y": 25.800414939545384,
+					"width": 116.39917012090922,
+					"height": 156.39917012090922
+				},
+				{
+					"name": "moving node 9",
+					"x": 22,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 10",
+					"x": 22,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 11",
+					"x": 22,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 12",
+					"x": 22,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 13",
+					"x": 22,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				}
+			],
+			"screen": "html-elements",
+			"route": "/__dev/html",
+			"state": "ready",
+			"theme": "dark",
+			"direction": "ltr",
+			"fontScale": 1,
+			"updatedAt": "2026-11-12T00:51:18.916Z",
+			"source": {
+				"commit": "7581de3",
+				"dirty": true
+			}
+		},
+		"html-elements--dark-rtl-normal": {
+			"file": "html-elements--dark-rtl-normal.png",
+			"sha256": "6bdcf121cb83f2d8efce55b98c0ee0c1a1c63f9e37ebf67ca0e4900ff0f3b23e",
+			"width": 750,
+			"height": 1334,
+			"masks": [
+				{
+					"name": "moving node 1",
+					"x": 0,
+					"y": 30,
+					"width": 68,
+					"height": 168
+				},
+				{
+					"name": "moving node 2",
+					"x": 682,
+					"y": 30,
+					"width": 68,
+					"height": 168
+				},
+				{
+					"name": "moving node 3",
+					"x": 0,
+					"y": 30,
+					"width": 750,
+					"height": 24
+				},
+				{
+					"name": "moving node 4",
+					"x": 0,
+					"y": 134,
+					"width": 750,
+					"height": 64
+				},
+				{
+					"name": "moving node 5",
+					"x": 620,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 6",
+					"x": 620,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 7",
+					"x": 620,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 8",
+					"x": 615.8004149395454,
+					"y": 25.800414939545384,
+					"width": 116.39917012090928,
+					"height": 156.39917012090922
+				},
+				{
+					"name": "moving node 9",
+					"x": 620,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 10",
+					"x": 620,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 11",
+					"x": 620,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 12",
+					"x": 620,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 13",
+					"x": 620,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				}
+			],
+			"screen": "html-elements",
+			"route": "/__dev/html",
+			"state": "ready",
+			"theme": "dark",
+			"direction": "rtl",
+			"fontScale": 1,
+			"updatedAt": "2026-11-12T00:54:03.430Z",
+			"source": {
+				"commit": "7581de3",
+				"dirty": true
+			}
+		},
+		"html-elements--light-ltr-normal": {
+			"file": "html-elements--light-ltr-normal.png",
+			"sha256": "733c5c1e21ff81f269d6e9a4d72831b9647aa14d2bfe2f76998b35ef15c2c7e2",
+			"width": 750,
+			"height": 1334,
+			"masks": [
+				{
+					"name": "moving node 1",
+					"x": 0,
+					"y": 30,
+					"width": 68,
+					"height": 168
+				},
+				{
+					"name": "moving node 2",
+					"x": 682,
+					"y": 30,
+					"width": 68,
+					"height": 168
+				},
+				{
+					"name": "moving node 3",
+					"x": 0,
+					"y": 30,
+					"width": 750,
+					"height": 24
+				},
+				{
+					"name": "moving node 4",
+					"x": 0,
+					"y": 134,
+					"width": 750,
+					"height": 64
+				},
+				{
+					"name": "moving node 5",
+					"x": 22,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 6",
+					"x": 22,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 7",
+					"x": 22,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 8",
+					"x": 17.800414939545384,
+					"y": 25.800414939545384,
+					"width": 116.39917012090922,
+					"height": 156.39917012090922
+				},
+				{
+					"name": "moving node 9",
+					"x": 22,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 10",
+					"x": 22,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 11",
+					"x": 22,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 12",
+					"x": 22,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 13",
+					"x": 22,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				}
+			],
+			"screen": "html-elements",
+			"route": "/__dev/html",
+			"state": "ready",
+			"theme": "light",
+			"direction": "ltr",
+			"fontScale": 1,
+			"updatedAt": "2026-11-12T00:51:18.723Z",
+			"source": {
+				"commit": "7581de3",
+				"dirty": true
+			}
+		},
+		"html-elements--light-rtl-normal": {
+			"file": "html-elements--light-rtl-normal.png",
+			"sha256": "acc5e1a6b16c722ca303988413f575f3f8521f01cb2220bf30e8a5ffb191446b",
+			"width": 750,
+			"height": 1334,
+			"masks": [
+				{
+					"name": "moving node 1",
+					"x": 0,
+					"y": 30,
+					"width": 68,
+					"height": 168
+				},
+				{
+					"name": "moving node 2",
+					"x": 682,
+					"y": 30,
+					"width": 68,
+					"height": 168
+				},
+				{
+					"name": "moving node 3",
+					"x": 0,
+					"y": 30,
+					"width": 750,
+					"height": 24
+				},
+				{
+					"name": "moving node 4",
+					"x": 0,
+					"y": 134,
+					"width": 750,
+					"height": 64
+				},
+				{
+					"name": "moving node 5",
+					"x": 620,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 6",
+					"x": 620,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 7",
+					"x": 620,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 8",
+					"x": 615.8004149395454,
+					"y": 25.800414939545384,
+					"width": 116.39917012090928,
+					"height": 156.39917012090922
+				},
+				{
+					"name": "moving node 9",
+					"x": 620,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 10",
+					"x": 620,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 11",
+					"x": 620,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 12",
+					"x": 620,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 13",
+					"x": 620,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				}
+			],
+			"screen": "html-elements",
+			"route": "/__dev/html",
+			"state": "ready",
+			"theme": "light",
+			"direction": "rtl",
+			"fontScale": 1,
+			"updatedAt": "2026-11-12T00:54:03.236Z",
+			"source": {
+				"commit": "7581de3",
+				"dirty": true
+			}
+		},
 		"lab-screen--dark-ltr-normal": {
 			"file": "lab-screen--dark-ltr-normal.png",
 			"sha256": "e46e2f1241d51ec54949803692692da27d923f2e0cc47a0c2cb90cd5e1f3bc56",
@@ -11244,6 +11684,446 @@
 			"source": {
 				"commit": "86a2de13e",
 				"dirty": true
+			}
+		},
+		"transitions--dark-ltr-normal": {
+			"file": "transitions--dark-ltr-normal.png",
+			"sha256": "7344f8d374942c9bf02382c409e40246978c5bcdce640f6deb6f870c19b302a7",
+			"width": 750,
+			"height": 1334,
+			"masks": [
+				{
+					"name": "moving node 1",
+					"x": 0,
+					"y": 30,
+					"width": 68,
+					"height": 168
+				},
+				{
+					"name": "moving node 2",
+					"x": 682,
+					"y": 30,
+					"width": 68,
+					"height": 168
+				},
+				{
+					"name": "moving node 3",
+					"x": 0,
+					"y": 30,
+					"width": 750,
+					"height": 24
+				},
+				{
+					"name": "moving node 4",
+					"x": 0,
+					"y": 134,
+					"width": 750,
+					"height": 64
+				},
+				{
+					"name": "moving node 5",
+					"x": 22,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 6",
+					"x": 22,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 7",
+					"x": 22,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 8",
+					"x": 17.800414939545384,
+					"y": 25.800414939545384,
+					"width": 116.39917012090922,
+					"height": 156.39917012090922
+				},
+				{
+					"name": "moving node 9",
+					"x": 22,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 10",
+					"x": 22,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 11",
+					"x": 22,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 12",
+					"x": 22,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 13",
+					"x": 22,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				}
+			],
+			"screen": "transitions",
+			"route": "/__dev/transitions",
+			"state": "ready",
+			"theme": "dark",
+			"direction": "ltr",
+			"fontScale": 1,
+			"updatedAt": "2026-11-11T20:17:04.598Z",
+			"source": {
+				"commit": "f46221b",
+				"dirty": false
+			}
+		},
+		"transitions--dark-rtl-normal": {
+			"file": "transitions--dark-rtl-normal.png",
+			"sha256": "de4bc33a197acaf7eb1ee187c848bae9bd40ef53eb15cfdd8f7f860e50d8ab9d",
+			"width": 750,
+			"height": 1334,
+			"masks": [
+				{
+					"name": "moving node 1",
+					"x": 0,
+					"y": 30,
+					"width": 68,
+					"height": 168
+				},
+				{
+					"name": "moving node 2",
+					"x": 682,
+					"y": 30,
+					"width": 68,
+					"height": 168
+				},
+				{
+					"name": "moving node 3",
+					"x": 0,
+					"y": 30,
+					"width": 750,
+					"height": 24
+				},
+				{
+					"name": "moving node 4",
+					"x": 0,
+					"y": 134,
+					"width": 750,
+					"height": 64
+				},
+				{
+					"name": "moving node 5",
+					"x": 620,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 6",
+					"x": 620,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 7",
+					"x": 620,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 8",
+					"x": 615.8004149395454,
+					"y": 25.800414939545384,
+					"width": 116.39917012090928,
+					"height": 156.39917012090922
+				},
+				{
+					"name": "moving node 9",
+					"x": 620,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 10",
+					"x": 620,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 11",
+					"x": 620,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 12",
+					"x": 620,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 13",
+					"x": 620,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				}
+			],
+			"screen": "transitions",
+			"route": "/__dev/transitions",
+			"state": "ready",
+			"theme": "dark",
+			"direction": "rtl",
+			"fontScale": 1,
+			"updatedAt": "2026-11-11T20:19:51.516Z",
+			"source": {
+				"commit": "f46221b",
+				"dirty": false
+			}
+		},
+		"transitions--light-ltr-normal": {
+			"file": "transitions--light-ltr-normal.png",
+			"sha256": "2c992ee4b13e54e79ea57e2f8f307c42a4d61357d79065cda75bdfd9c92afc75",
+			"width": 750,
+			"height": 1334,
+			"masks": [
+				{
+					"name": "moving node 1",
+					"x": 0,
+					"y": 30,
+					"width": 68,
+					"height": 168
+				},
+				{
+					"name": "moving node 2",
+					"x": 682,
+					"y": 30,
+					"width": 68,
+					"height": 168
+				},
+				{
+					"name": "moving node 3",
+					"x": 0,
+					"y": 30,
+					"width": 750,
+					"height": 24
+				},
+				{
+					"name": "moving node 4",
+					"x": 0,
+					"y": 134,
+					"width": 750,
+					"height": 64
+				},
+				{
+					"name": "moving node 5",
+					"x": 22,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 6",
+					"x": 22,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 7",
+					"x": 22,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 8",
+					"x": 17.800414939545384,
+					"y": 25.800414939545384,
+					"width": 116.39917012090922,
+					"height": 156.39917012090922
+				},
+				{
+					"name": "moving node 9",
+					"x": 22,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 10",
+					"x": 22,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 11",
+					"x": 22,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 12",
+					"x": 22,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 13",
+					"x": 22,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				}
+			],
+			"screen": "transitions",
+			"route": "/__dev/transitions",
+			"state": "ready",
+			"theme": "light",
+			"direction": "ltr",
+			"fontScale": 1,
+			"updatedAt": "2026-11-11T20:17:04.100Z",
+			"source": {
+				"commit": "f46221b",
+				"dirty": false
+			}
+		},
+		"transitions--light-rtl-normal": {
+			"file": "transitions--light-rtl-normal.png",
+			"sha256": "d71955f0ad9e4aeb2efad94a47b7a2e7b0c9449a14af386ef3a9722a7d14b0bd",
+			"width": 750,
+			"height": 1334,
+			"masks": [
+				{
+					"name": "moving node 1",
+					"x": 0,
+					"y": 30,
+					"width": 68,
+					"height": 168
+				},
+				{
+					"name": "moving node 2",
+					"x": 682,
+					"y": 30,
+					"width": 68,
+					"height": 168
+				},
+				{
+					"name": "moving node 3",
+					"x": 0,
+					"y": 30,
+					"width": 750,
+					"height": 24
+				},
+				{
+					"name": "moving node 4",
+					"x": 0,
+					"y": 134,
+					"width": 750,
+					"height": 64
+				},
+				{
+					"name": "moving node 5",
+					"x": 620,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 6",
+					"x": 620,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 7",
+					"x": 620,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 8",
+					"x": 615.8004149395454,
+					"y": 25.800414939545384,
+					"width": 116.39917012090928,
+					"height": 156.39917012090922
+				},
+				{
+					"name": "moving node 9",
+					"x": 620,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 10",
+					"x": 620,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 11",
+					"x": 620,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 12",
+					"x": 620,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				},
+				{
+					"name": "moving node 13",
+					"x": 620,
+					"y": 30,
+					"width": 108,
+					"height": 148
+				}
+			],
+			"screen": "transitions",
+			"route": "/__dev/transitions",
+			"state": "ready",
+			"theme": "light",
+			"direction": "rtl",
+			"fontScale": 1,
+			"updatedAt": "2026-11-11T20:19:51.156Z",
+			"source": {
+				"commit": "f46221b",
+				"dirty": false
 			}
 		},
 		"tree-compose--dark-ltr-normal": {

@@ -1,10 +1,11 @@
 ---
 title: Introduction
+description: Write Android and iOS apps as Svelte 5 components that become real native views, laid out and drawn by the platform.
 ---
 
 ## Before we begin
 
-> [!NOTE] If you're new to Svelte or SvelteKit, start with the [Svelte tutorial](https://svelte.dev/tutorial) and the [SvelteKit docs](https://svelte.dev/docs/kit). This guide assumes you know them, and covers what is different on a phone.
+> **info** If you're new to Svelte or SvelteKit, start with the [Svelte tutorial](https://svelte.dev/tutorial) and the [SvelteKit docs](https://svelte.dev/docs/kit). This guide assumes you know them, and covers what is different on a phone.
 >
 > Svelte Native is an early preview. [What works today](#what-works-today) is listed below. If you get stuck, see [Troubleshooting](troubleshooting).
 

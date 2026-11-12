@@ -1,5 +1,7 @@
 ---
 title: List
+group: Scrolling and overlays
+video: list
 ---
 
 `List` shows a long list of rows and mounts only the ones near the screen. Scrolling through 5,000 rows costs about as much as showing 20. Give it the items, a `row` snippet that draws one item, and a key for each item.

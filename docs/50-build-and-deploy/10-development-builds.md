@@ -34,7 +34,7 @@ When you save:
 - A new or deleted route file is picked up as well.
 - An uncaught error shows a red error screen with a **Reload** button.
 
-> [!NOTE] Don't start Metro with `CI=1` in the environment. It turns the file watcher off, and the app keeps loading old code.
+> **warning** Don't start Metro with `CI=1` in the environment. It turns the file watcher off, and the app keeps loading old code.
 
 ## Continuous Native Generation
 

@@ -1,5 +1,6 @@
 ---
 title: Animation
+video: animation
 ---
 
 Animations in Svelte Native run on the UI thread, with [Reanimated](https://docs.swmansion.com/react-native-reanimated/), so they stay smooth while JavaScript is busy. `@example/svelte-native/animation` gives you an `AnimatedView`, shared values to animate, and Reanimated's helpers that move them.

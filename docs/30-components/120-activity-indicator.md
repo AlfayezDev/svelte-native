@@ -1,5 +1,7 @@
 ---
 title: ActivityIndicator
+group: Layout and status
+video: activity-indicator
 ---
 
 `ActivityIndicator` is the platform's spinner: a Material progress circle on Android, a `UIActivityIndicatorView` on iOS. Show it while something loads.

@@ -1,5 +1,6 @@
 ---
 title: Styling
+video: styling
 ---
 
 There is no CSS engine on the device. Each component takes a `style` prop: a plain object with React Native's style keys, in camelCase, with numbers for sizes. If you'd rather write classes, Tailwind's included, `class` works too ([Classes](#classes)).
@@ -50,7 +51,7 @@ To share styles across screens, export the objects from a module in `src/lib`.
 </View>
 ```
 
-> [!NOTE] Classes come after 0.4.0-rc.3: in that release, `class` does nothing. Until the next release, install from `main` with `#main&path:packages/svelte-native` in place of the tag.
+> **warning** Classes come after 0.4.0-rc.3: in that release, `class` does nothing. Until the next release, install from `main` with `#main&path:packages/svelte-native` in place of the tag.
 
 ### Set up classes
 

@@ -1,5 +1,7 @@
 ---
 title: Modal
+group: Scrolling and overlays
+video: modal
 ---
 
 `Modal` shows content in a layer over the whole app, header and tab bar included. It's for UI that belongs to the current screen and has no address of its own: a confirmation, a picker, a short form. You show and hide it with `visible`.

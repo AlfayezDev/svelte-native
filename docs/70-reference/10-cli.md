@@ -1,5 +1,6 @@
 ---
 title: Command line
+description: The svelte-native command, with init, doctor, android, ios, dev, build, sync and css.
 ---
 
 Svelte Native's command line is `svelte-native`. Run it from your app's directory, through pnpm:
@@ -24,7 +25,7 @@ pnpm exec svelte-native <command> [options]
 
 `pnpm android`, `pnpm ios`, `pnpm native` and `pnpm check-setup` run them. The web app's scripts (`dev`, `build`, `preview`, `check`) are left alone, so `pnpm dev` is still `vite dev`.
 
-> [!NOTE] Don't name a script `doctor`, and don't run `pnpm doctor`: that is pnpm's own command, which checks pnpm, not your app. Use `pnpm exec svelte-native doctor` or `pnpm check-setup`.
+> **warning** Don't name a script `doctor`, and don't run `pnpm doctor`: that is pnpm's own command, which checks pnpm, not your app. Use `pnpm exec svelte-native doctor` or `pnpm check-setup`.
 
 ## init
 

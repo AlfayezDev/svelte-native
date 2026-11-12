@@ -1,5 +1,7 @@
 ---
 title: Screen
+group: Navigation and effects
+video: screen
 ---
 
 `Screen` configures the native screen a page is shown in: its header, a search field, a bottom toolbar, how a sheet sizes itself, and the system bars. Put one at the top of every `+mobile.svelte` page. The header, the back button and the bars are the platform's own: UIKit's on iOS, Material on Android.

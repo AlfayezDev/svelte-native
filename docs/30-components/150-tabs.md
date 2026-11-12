@@ -1,5 +1,7 @@
 ---
 title: Tabs
+group: Navigation and effects
+video: tabs
 ---
 
 `Tabs` draws a tab bar at the bottom of the screen, with a pane for each tab: UIKit's `UITabBar` on iOS, a Material-style bottom bar on Android. Each pane keeps its state, and its own stack of screens, while the user is on another tab.

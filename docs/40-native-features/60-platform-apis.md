@@ -1,5 +1,6 @@
 ---
 title: Platform APIs
+video: platform-apis
 ---
 
 The device is more than a screen. It has an operating system, a window size, a light and dark mode, a safe area around the notch, a keyboard, and links that open your app. This page covers how to read and use them.

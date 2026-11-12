@@ -1,5 +1,7 @@
 ---
 title: Text
+group: Basics
+video: text
 ---
 
 `Text` draws text. It's the only component that can: a string anywhere else isn't drawn. A `Text` inside a `Text` styles part of a sentence, as a `span` does on the web.

@@ -1,5 +1,6 @@
 ---
 title: Native views
+video: native-views
 ---
 
 Some libraries give you a view that the platform draws: an image with a placeholder and a disk cache, a blur, a video player, a map. `@example/svelte-native/foreign` has Svelte components for the common ones. Each mounts the library's native view directly, with the library's own props, and none of them loads React.

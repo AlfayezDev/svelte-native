@@ -3,6 +3,7 @@
   import Button from "#lib/components/Button.svelte";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
+  import { useDemo, scroller } from "#lib/demo.ts";
   import { text, theme } from "#lib/theme.svelte.ts";
 
   // Layout is flexbox, computed by Yoga, the engine React Native uses. A View lays its children out in a column by default; flexDirection,
@@ -12,9 +13,22 @@
   let justify = $state<(typeof options)[number]>("flex-start");
   const box = $derived({ width: 40, height: 40, borderRadius: 8, backgroundColor: theme.colors.accent });
   const track = $derived({ borderRadius: 8, backgroundColor: theme.colors.border });
+
+  // `?demo`: walk through the values of justifyContent, then scroll down to the other examples and back.
+  let { url }: { url: URL } = $props();
+  const scroll = scroller();
+  useDemo(() => url, [
+    [() => (justify = "center")],
+    [() => (justify = "flex-end")],
+    [() => (justify = "space-between")],
+    [() => (justify = "space-around")],
+    [() => (justify = "flex-start")],
+    [() => scroll.glide(760, 2000), 800],
+    [() => scroll.glide(0, 1500), 0],
+  ], { hold: 1200 });
 </script>
 
-<Page title="Layout" intro="Boxes are placed by flexbox. Pick a value below and watch the boxes move: the layout is recomputed natively, and the views are not rebuilt.">
+<Page title="Layout" scrollRef={scroll.ref} intro="Boxes are placed by flexbox. Pick a value below and watch the boxes move: the layout is recomputed natively, and the views are not rebuilt.">
   <Section title="Column and row" note="A column stacks its children, a row puts them side by side.">
     <View style={{ flexDirection: "row", gap: 32 }}>
       <View style={{ gap: 8 }}>

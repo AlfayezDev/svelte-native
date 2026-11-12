@@ -2,6 +2,7 @@
   import { Text } from "@example/svelte-native";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
+  import { scroller, useDemo } from "#lib/demo.ts";
   import { text, theme } from "#lib/theme.svelte.ts";
   import { Platform } from "@example/svelte-native/platform";
 
@@ -16,9 +17,21 @@
   let held = $state(false);
   // A style is a value: `base` is the style every line below starts from, and an array adds to it.
   const base = $derived({ color: theme.colors.text, fontSize: 18 });
+
+  // `?demo`: scroll to the inline spans, follow the link and hold the span link down, then on to the long text and the fonts.
+  let { url }: { url: URL } = $props();
+  const view = scroller();
+  useDemo(() => url, [
+    [() => view.glide(420, 1400), 400],
+    [() => (link = "Followed."), 1000],
+    [() => (held = true), 800],
+    [() => { held = false; taps += 1; }, 1000],
+    [() => view.glide(900, 1400), 1200],
+    [() => { link = "A link is a Text with onPress. Tap it."; taps = 0; return view.glide(0, 1000); }, 0],
+  ]);
 </script>
 
-<Page title="Text and fonts" intro="Text is where every word on screen lives. Its style decides the size, weight and font, and numberOfLines decides how much of it to show.">
+<Page title="Text and fonts" scrollRef={view.ref} intro="Text is where every word on screen lives. Its style decides the size, weight and font, and numberOfLines decides how much of it to show.">
   <Section title="Size, weight and style">
     <Text style={[base, { fontSize: 12 }]}>Size 12</Text>
     <Text style={base}>Size 18</Text>

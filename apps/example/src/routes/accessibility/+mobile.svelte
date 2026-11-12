@@ -2,6 +2,7 @@
   import { Image, Pressable, Text, View } from "@example/svelte-native";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
+  import { scroller, useDemo } from "#lib/demo.ts";
   import { text, theme } from "#lib/theme.svelte.ts";
   import photo from "../../../assets/images/photo.png";
 
@@ -15,9 +16,24 @@
   let expanded = $state(false);
   let count = $state(0);
   let archived = $state("Nothing archived yet.");
+
+  // `?demo`: close the message list, switch the notifications on and open the details, then announce a count and archive the invoice.
+  let { url }: { url: URL } = $props();
+  const view = scroller();
+  useDemo(() => url, [
+    [() => (closed = true), 900],
+    [() => view.glide(330, 900), 200],
+    [() => (notifications = true), 900],
+    [() => (expanded = true), 1100],
+    [() => view.glide(900, 1100), 200],
+    [() => count++, 800],
+    [() => count++, 800],
+    [() => (archived = "Invoice 117 archived."), 1000],
+    [() => { closed = notifications = expanded = false; count = 0; archived = "Nothing archived yet."; return view.glide(0, 900); }, 0],
+  ], { hold: 1000 });
 </script>
 
-<Page title="Accessibility" intro="Turn on TalkBack or VoiceOver and swipe through this screen. Everything below is said aloud, and every control can be used without seeing it.">
+<Page title="Accessibility" scrollRef={view.ref} intro="Turn on TalkBack or VoiceOver and swipe through this screen. Everything below is said aloud, and every control can be used without seeing it.">
   <Section title="Labels and roles" note="An icon says nothing to a screen reader. A label does. A heading role lets a user jump from heading to heading.">
     <Text accessibilityRole="header" style={text.heading}>Messages: {closed ? "closed" : "open"}</Text>
     <Pressable accessibilityRole="button" accessibilityLabel="Close" accessibilityHint="Closes the message list" onPress={() => (closed = true)} style={{ width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", backgroundColor: theme.colors.border }}>

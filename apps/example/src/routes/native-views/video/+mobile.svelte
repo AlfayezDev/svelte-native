@@ -4,6 +4,7 @@
   import Button from "#lib/components/Button.svelte";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
+  import { useDemo } from "#lib/demo.ts";
   import { text } from "#lib/theme.svelte.ts";
   import pattern from "../../../../assets/media/pattern.mp4";
 
@@ -12,6 +13,14 @@
   let paused = $state(false);
   let seconds = $state(0);
   let player: VideoHandle | null = null;
+
+  // `?demo`: let the clip play, pause it, play on, and seek back to the start.
+  let { url }: { url: URL } = $props();
+  useDemo(() => url, [
+    [() => (paused = true), 1600],
+    [() => (paused = false), 1800],
+    [() => player?.seek(0), 1500],
+  ], { settle: 2500, hold: 800 });
 </script>
 
 <Page title="Video" intro="Video plays a file with react-native-video. The clip is three seconds long, bundled with the app and looped. Pause it with the prop, or jump back with the player's seek function.">

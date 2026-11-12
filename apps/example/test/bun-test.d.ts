@@ -19,6 +19,7 @@ declare module "bun:test" {
 		toThrow(expected?: string | RegExp | (new (...args: never[]) => Error)): void;
 		toBeGreaterThanOrEqual(expected: number): void;
 	}
+	export const mock: { module(specifier: string, factory: () => Record<string, unknown>): void };
 	export function beforeAll(body: () => void | Promise<void>): void;
 	export function afterAll(body: () => void | Promise<void>): void;
 	export function afterEach(body: () => void | Promise<void>): void;

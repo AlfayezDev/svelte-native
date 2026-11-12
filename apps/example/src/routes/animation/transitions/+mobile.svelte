@@ -3,6 +3,7 @@
   import { fade, fly, scale, slide } from "svelte/transition";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
+  import { scroller, useDemo } from "#lib/demo.ts";
 
   // Svelte's own transitions and animations, written as on the web: `in:`, `out:`, `transition:` with `svelte/transition`, `animate:flip` in a keyed
   // `{#each}`, on HTML elements (the build turns them into native views, texts and pressables). Svelte decides when they run and works out their frames;
@@ -18,9 +19,26 @@
     while (Date.now() < until) { /* the JavaScript thread does nothing else for a second */ }
   }
   function shuffle() { items = [...items].sort(() => Math.random() - 0.5); }
+
+  // `?demo`: hide and show the box, open and close the slide, then shuffle, add and remove rows (a fixed shuffle, so every take is the same).
+  let { url }: { url: URL } = $props();
+  const view = scroller();
+  const reverse = () => { items = [...items].reverse(); };
+  useDemo(() => url, [
+    [() => (shown = false), 900],
+    [() => (shown = true), 1100],
+    [() => (open = true), 1300],
+    [() => (open = false), 800],
+    [() => view.glide(520, 900), 200],
+    [reverse, 900],
+    [() => (items = [...items, next++]), 800],
+    [() => (items = items.slice(1)), 800],
+    [reverse, 800],
+    [() => { items = [1, 2, 3, 4, 5]; next = 6; return view.glide(0, 700); }, 0],
+  ], { hold: 1000 });
 </script>
 
-<Page title="Transitions" intro="Svelte's transitions and animate:flip, as on the web, played on the UI thread.">
+<Page title="Transitions" scrollRef={view.ref} intro="Svelte's transitions and animate:flip, as on the web, played on the UI thread.">
   <Section title="in: and out:" note="fly in from below, fade out. Toggle it, then toggle it again before it finishes: it turns around from where it is.">
     <div class="h-[72px]">
       {#if shown}

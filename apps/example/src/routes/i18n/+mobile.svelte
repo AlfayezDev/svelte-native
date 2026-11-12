@@ -3,6 +3,7 @@
   import Button from "#lib/components/Button.svelte";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
+  import { useDemo } from "#lib/demo.ts";
   import { text, theme } from "#lib/theme.svelte.ts";
 
   // Internationalization and right-to-left. The words are a plain object per language, picked by state; plurals, numbers and dates come from
@@ -22,6 +23,17 @@
   const cart = $derived(`${words.cart} ${words[form].replace("{n}", number)}`);
   const price = $derived(new Intl.NumberFormat(locales[language], { style: "currency", currency: "USD" }).format(1234.5));
   const date = $derived(new Intl.DateTimeFormat(locales[language], { year: "numeric", month: "long", day: "numeric" }).format(new Date(2026, 10, 9)));
+
+  // `?demo`: switch to Arabic (the words, the digits and the direction change), step through the plural forms, and back to English.
+  let { url }: { url: URL } = $props();
+  useDemo(() => url, [
+    [() => (language = "ar"), 1900],
+    [() => (count = 1), 1100],
+    [() => (count = 2), 1100],
+    [() => (count = 11), 1100],
+    [() => (count = 3), 700],
+    [() => (language = "en"), 0],
+  ]);
 </script>
 
 <Page title="Internationalization" intro="One screen in English and in Arabic. Pick a language and the words, the numbers and the direction of the layout change together.">

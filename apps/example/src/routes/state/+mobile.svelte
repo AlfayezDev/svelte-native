@@ -3,6 +3,7 @@
   import Button from "#lib/components/Button.svelte";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
+  import { scroller, typeInto, useDemo } from "#lib/demo.ts";
   import { text, theme } from "#lib/theme.svelte.ts";
 
   // Svelte's runes drive native views the way they drive a web page: change `$state` and the views that read it update. This screen uses
@@ -36,9 +37,26 @@
 
   const ask = () => new Promise<number>((resolve) => setTimeout(() => resolve(Math.round(Math.random() * 100)), 800));
   let answer = $state.raw(ask());
+
+  // `?demo`: count up, run the timer, tick a todo and add one, ask again, and put it all back.
+  let { url }: { url: URL } = $props();
+  const view = scroller();
+  useDemo(() => url, [
+    [() => count++, 500],
+    [() => count++, 700],
+    [() => (running = true), 1400],
+    [() => (running = false), 300],
+    [() => view.glide(430, 700), 300],
+    [() => (todos[2].done = true), 600],
+    [() => typeInto((value) => (draft = value), "Water plants", 50), 300],
+    [add, 400],
+    [() => view.glide(800, 700), 200],
+    [() => (answer = ask()), 1000],
+    [() => { count = 0; seconds = 0; todos.pop(); todos[2].done = false; return view.glide(0, 800); }, 0],
+  ], { hold: 800 });
 </script>
 
-<Page title="State and reactivity" intro="There is no setState and no hook. A variable declared with $state is reactive: assign to it and every native view that reads it updates.">
+<Page title="State and reactivity" scrollRef={view.ref} intro="There is no setState and no hook. A variable declared with $state is reactive: assign to it and every native view that reads it updates.">
   <Section title="$state and $derived" note="doubled is computed from count and recomputes by itself.">
     <Text style={[text.heading, { fontSize: 28 }]}>{count} doubled is {doubled}</Text>
     <View style={{ flexDirection: "row", gap: 8 }}>

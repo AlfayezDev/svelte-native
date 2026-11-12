@@ -6,12 +6,18 @@
 <script lang="ts">
   import { Screen, Text, View, useRouter } from "@example/svelte-native";
   import Button from "#lib/components/Button.svelte";
+  import { useDemo } from "#lib/demo.ts";
   import { text, theme } from "#lib/theme.svelte.ts";
 
   // A bottom sheet. The `sheet` option of `<Screen>` gives it its heights (`detents`, fractions of the screen) and a grabber, and the user
   // drags it between them or down to dismiss it. `onDetentChange` reports where it rests.
   const router = useRouter();
   let detent = $state("the first height (40 %)");
+
+  // `?demo`: stay a while, then close the sheet from code. Open it from another screen, so there is one below to go back to: a sheet that is the
+  // first screen of the app (a cold link) has none, and stays.
+  let { url }: { url: URL } = $props();
+  useDemo(() => url, [[() => { if (router.entries.length > 1) router.back(); }, 0]], { settle: 6000, hold: 0 });
 </script>
 
 <Screen

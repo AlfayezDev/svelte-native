@@ -4,6 +4,7 @@
   import Button from "#lib/components/Button.svelte";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
+  import { useDemo } from "#lib/demo.ts";
   import { samplePdf } from "#lib/media.ts";
   import { text } from "#lib/theme.svelte.ts";
 
@@ -13,6 +14,13 @@
   let page = $state(1);
   let pages = $state(0);
   let pdf: PdfHandle | null = null;
+
+  // `?demo`: let the document open, turn to the second page, and back.
+  let { url }: { url: URL } = $props();
+  useDemo(() => url, [
+    [() => pdf?.setPage(2), 2400],
+    [() => pdf?.setPage(1), 1800],
+  ], { settle: 2800, hold: 800 });
 </script>
 
 <Page title="PDF" intro="Pdf shows a document with the platform's PDF engine. Swipe the pages or use the buttons; the screen reads the page number from the events.">

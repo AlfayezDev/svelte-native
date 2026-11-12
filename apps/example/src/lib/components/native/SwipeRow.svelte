@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Text, View } from "@example/svelte-native";
-  import { AnimatedView, createSharedValue, runOnJS, withSpring } from "@example/svelte-native/animation";
+  import { AnimatedView, createSharedValue, runOnJS, withSpring, withTiming } from "@example/svelte-native/animation";
   import { Gesture } from "@example/svelte-native/gestures";
   import { text, theme } from "#lib/theme.svelte.ts";
 
@@ -10,6 +10,11 @@
   let { label, onDelete }: { label: string; onDelete: () => void } = $props();
   const x = createSharedValue(0); // first: it loads Reanimated
   const remove = () => onDelete();
+  /** Swipes the row away by itself, the way a finger would: the demo (`#lib/demo.ts`) of the Gestures screen uses it. */
+  export function swipeAway() {
+    x.value = withTiming(-160, { duration: 350 });
+    setTimeout(remove, 400);
+  }
   const swipe = Gesture.Pan()
     .activeOffsetX([-10, 10]) // a horizontal move starts the swipe ...
     .failOffsetY([-10, 10]) // ... a vertical one is the page scrolling

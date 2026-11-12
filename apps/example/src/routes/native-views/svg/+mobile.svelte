@@ -4,6 +4,7 @@
   import { Circle, Defs, LinearGradient, Path, Rect, Stop, Svg, SvgXml, Text as SvgText } from "@example/svelte-native/svg";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
+  import { scroller, useDemo } from "#lib/demo.ts";
   import { theme } from "#lib/theme.svelte.ts";
 
   // `@example/svelte-native/svg` is react-native-svg as Svelte components: the same elements and props (`Svg`, `Rect`, `Circle`, `Path`, the
@@ -13,9 +14,17 @@
   radius.value = withRepeat(withTiming(14, { duration: 900 }), -1, true);
   const pulse = () => { "worklet"; return { r: radius.value }; };
   const check = `<svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" fill="none" stroke="#30a46c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+  // `?demo`: the circle pulses by itself on the UI thread; the script holds on it, then scrolls down to the path and the XML drawing and back.
+  let { url }: { url: URL } = $props();
+  const view = scroller();
+  useDemo(() => url, [
+    [() => view.glide(300, 1500), 2200],
+    [() => view.glide(0, 1000), 0],
+  ], { settle: 2500 });
 </script>
 
-<Page title="SVG" intro="Svg draws vector graphics with react-native-svg's elements. Shapes, paths, gradients and text are components, and a circle can be animated on the UI thread without JavaScript.">
+<Page title="SVG" scrollRef={view.ref} intro="Svg draws vector graphics with react-native-svg's elements. Shapes, paths, gradients and text are components, and a circle can be animated on the UI thread without JavaScript.">
   <Section title="Shapes, gradient and text">
     <View style={{ alignItems: "center" }}>
       <Svg width={200} height={100} viewBox="0 0 200 100" accessibilityLabel="A gradient card with a pulsing dot">

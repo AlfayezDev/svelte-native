@@ -4,6 +4,7 @@
   import Button from "#lib/components/Button.svelte";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
+  import { scroller, useDemo } from "#lib/demo.ts";
   import { text } from "#lib/theme.svelte.ts";
 
   // `LinearGradient` is expo-linear-gradient's native view. `colors` is a list of any colours React Native takes, `start` and `end` are points
@@ -15,9 +16,20 @@
   ];
   let index = $state(0);
   const colors = $derived(palettes[index] ?? []);
+
+  // `?demo`: go through the three palettes, then scroll to the directions and locations example.
+  let { url }: { url: URL } = $props();
+  const view = scroller();
+  useDemo(() => url, [
+    [() => (index = 1), 1400],
+    [() => (index = 2), 1400],
+    [() => (index = 0), 1400],
+    [() => view.glide(260, 1000), 1000],
+    [() => view.glide(0, 800), 0],
+  ]);
 </script>
 
-<Page title="Linear gradient" intro="LinearGradient fills a box with a colour ramp. The box can hold children, so a card with a gradient background is one component.">
+<Page title="Linear gradient" scrollRef={view.ref} intro="LinearGradient fills a box with a colour ramp. The box can hold children, so a card with a gradient background is one component.">
   <Section title="Diagonal, with children" note="Press the button to change the colours.">
     <LinearGradient {colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ height: 120, borderRadius: 12, overflow: "hidden", alignItems: "center", justifyContent: "center" }}>
       <Text style={{ color: "#ffffff", fontSize: 20, fontWeight: "600" }}>Gradient</Text>

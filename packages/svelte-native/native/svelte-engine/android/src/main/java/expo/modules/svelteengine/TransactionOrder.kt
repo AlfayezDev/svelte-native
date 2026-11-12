@@ -14,24 +14,22 @@ import java.util.concurrent.ConcurrentLinkedQueue
  * service that reads the accessibility tree skips as invisible, for as long as the screen lived.
  *
  * Every transaction goes into one queue in the order it arrives. The main thread, asked to apply one, first applies the ones that came before it, then that one, and
- * returns with its work done (what it did before, when nothing waited). A transaction from another thread asks the main looper for a message that drains the queue: it
- * applies every transaction that is queued, and the ones that are queued while it applies, before it returns, and a message that finds the queue empty does nothing.
+ * returns with its work done (what it did before, when nothing waited). A transaction from another thread asks the main looper for a message that applies one
+ * transaction, the first that is queued, so the main looper is free for a frame between two; a message that finds the queue empty does nothing.
  *
- * Why a message does not stop after one transaction (it did, to leave the main looper free for a frame between two): the JavaScript thread often commits twice in a row
- * for one change, and the second commit is not independent of the first. `animate:flip` reads the layout of the new order, which the host commits for it, and then commits
- * the items' first frames. When the second is queued while the first is applied (an apply that is slow, a main thread that was idle and runs on a cold core), the frame
- * callback that came due meanwhile is ahead of the second one's message, and the frame it draws shows the new order with no transform. React Native's `MountItemDispatcher` has no
- * such pause: one dispatch takes every pending mount item and looks again for the ones added meanwhile.
- *
- * A drain does not make two commits one when the second is not queued yet while the first applies, which is how it is for `animate:flip` on a warm main thread (measured on the
- * emulator, one shuffle: the new order committed 3 ms after a frame, applied in 1 ms, the first frames committed 10 ms later, applied after the next frame, at 17 ms: a frame drawn between
- * them). The JavaScript thread knows which commits belong together (the host asks for a layout, which is the first sign of an `animate:` or a transition that measures), so it can [hold] the
- * queue at that read and [release] it after the second commit: what is queued while held is applied by one message after the release, or by the main thread's own submit, which applies
+ * Commits that belong together are the JavaScript thread's to say. It often commits twice in a row for one change, and the second commit is not independent of the first:
+ * `animate:flip` reads the layout of the new order, which the host commits for it, and then commits the items' first frames, and a frame drawn between the two shows the new
+ * order with no transform. The host asks for a layout first (the sign of an `animate:` or a transition that measures), so it [hold]s the queue at that read and [release]s it after
+ * the second commit: what is queued while held is applied by one message after the release, before the frame queued behind it, or by the main thread's own submit, which applies
  * everything queued before it whatever the hold. A hold that is not released is the caller's to end (`MountingManager` ends it after a timeout).
  *
- * What bounds the drain is its time, [budgetNanos] (50 ms): a message that has applied for that long, and finds more queued, applies no more and posts the rest as a message
- * of its own, so a frame can run. Without it a JavaScript thread that commits faster than the main thread applies (every transaction of a start-up that the looper was too
- * busy to take, an animation that commits each frame) would hold the looper for as long as it lasts. A transaction is applied whatever the budget, so every message makes progress.
+ * From 11 to 12 November 2026 every message drained the queue (all that was queued, and what was queued while it applied), as React Native's `MountItemDispatcher` does, to keep
+ * a flip's two commits together on a slow main thread. It cost the commits that do not belong together their frame between them: on the Samsung A16 the windowed list of the
+ * QA lab (`list-300-virtual`, which mounts rows as it scrolls) read 17 late frame intervals in twenty runs with it and 3 with the order of before it (12 Nov, SPEC.md). The hold
+ * keeps a flip's commits together without it, so only the message a release posts drains.
+ *
+ * What bounds that drain is its time, [budgetNanos] (50 ms): a message that has applied for that long, and finds more queued, applies no more and posts the rest as a message
+ * of its own, so a frame can run. A transaction is applied whatever the budget, so every message makes progress.
  */
 internal class TransactionOrder<T : Any>(
   /** Whether the caller is the main thread. */
@@ -46,7 +44,10 @@ internal class TransactionOrder<T : Any>(
   private val now: () -> Long = System::nanoTime,
 ) {
   private val pending = ConcurrentLinkedQueue<T>()
-  private val drain = Runnable { take(budgeted = true) }
+  /** The message a transaction from another thread asks for: it applies one. */
+  private val applyOne = Runnable { take(budgeted = true, all = false) }
+  /** The message a [release] posts: what was held belongs together, and it applies all of it, within the budget. */
+  private val drain = Runnable { take(budgeted = true, all = true) }
 
   /** Whether messages leave the queue alone: set by [hold], from any thread. */
   @Volatile private var held = false
@@ -57,7 +58,7 @@ internal class TransactionOrder<T : Any>(
   /** Queues [transaction] behind the ones already queued; the main thread applies it, and everything before it, before it returns. */
   fun submit(transaction: T) {
     pending.add(transaction)
-    if (!onMain() || applying) { if (!held) post(drain) } else take(budgeted = false)
+    if (!onMain() || applying) { if (!held) post(applyOne) } else take(budgeted = false, all = true)
   }
 
   /** What is queued from now on is applied only after [release], or by the main thread's own [submit]. Any thread. */
@@ -65,13 +66,13 @@ internal class TransactionOrder<T : Any>(
     held = true
   }
 
-  /** Ends a [hold]: one message applies what was queued meanwhile. Any thread; nothing happens when nothing was held or queued. */
+  /** Ends a [hold]: one message applies what is queued (all of it, within the budget). Any thread; with nothing queued nothing happens. */
   fun release() {
     held = false
     if (!pending.isEmpty()) post(drain)
   }
 
-  private fun take(budgeted: Boolean) {
+  private fun take(budgeted: Boolean, all: Boolean) {
     if (applying) return
     applying = true
     try {
@@ -79,6 +80,7 @@ internal class TransactionOrder<T : Any>(
       var applied = 0
       while (true) {
         if (budgeted && held) return // release() posts the next message
+        if (!all && applied > 0) return
         if (budgeted && applied > 0 && now() - start >= budgetNanos && pending.isNotEmpty()) {
           post(drain)
           return
@@ -92,7 +94,7 @@ internal class TransactionOrder<T : Any>(
   }
 
   companion object {
-    /** 50 ms: a few frames, long enough for a commit that was queued a few milliseconds behind a slow one, short enough that a start-up's queue does not hold the looper for good. */
+    /** 50 ms: a few frames, long enough for the commits a hold kept together, short enough that a long held queue does not hold the looper for good. */
     const val DEFAULT_BUDGET_NANOS = 50_000_000L
   }
 }

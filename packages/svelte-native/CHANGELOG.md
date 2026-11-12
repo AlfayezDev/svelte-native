@@ -33,6 +33,8 @@ Notable changes to `@example/svelte-native`, newest first. The format follows [K
 
 ### Fixed
 
+- Android: a list that mounts rows while it scrolls (`List`, a windowed list) drops no more frames than before transitions. Since transitions the engine applied every commit that was waiting in one message of the main thread, so two commits that did not belong together were drawn in one frame; it applies one per message again, and only the commits the host holds together for an `animate:` or a transition (the layout read, then the first frames) are applied at once. On a Samsung A16 the lab's windowed list read 17 late frame intervals in twenty runs with the drain and 3 without it.
+
 - A row of host tags (`<native-view nativeProps={{ style }}>`) costs less JavaScript to mount again: a `nativeProps` with no `ref` in it no longer goes through the wait for a screen that refs need, and an element that is not an HTML view builds its children without gathering lines. HTML elements had made 300 such rows 15 % slower to mount (130 ms to 148 ms of Svelte flush on a Samsung A16); on the PC's interpreter the same mount measures 9.0 ms before HTML elements, 10.4 ms with them, and 9.5 ms now.
 
 - A single-line HTML `input` sends no line height, its own (`leading-*`) or inherited, so its text stays centred as on the web. On iOS a line height drew the text 2 pt low, and a text field view reused for another input kept it.

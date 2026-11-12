@@ -157,11 +157,53 @@ fun main(args: Array<String>) {
   expect("under the same layer, it does not ask again", BlurRules.asksForFrame(BlurRules.Idle.LAYER, asked = true), false)
   for (reason in BlurRules.Idle.values()) if (reason != BlurRules.Idle.LAYER) expect("$reason does not ask for a frame", BlurRules.asksForFrame(reason, asked = false), false)
   expect("a pre-draw that draws does not ask", BlurRules.asksForFrame(null, asked = false), false)
-  // A picture is recorded when it differs from the one on show, and when the view has been under a layer since that one.
-  expect("a new picture is recorded", BlurRules.shouldRecord(sameAsShown = false, stale = false), true)
-  expect("the same picture is not recorded again", BlurRules.shouldRecord(sameAsShown = true, stale = false), false)
-  expect("the same picture is recorded again after a layer", BlurRules.shouldRecord(sameAsShown = true, stale = true), true)
-  expect("a new picture is recorded after a layer too", BlurRules.shouldRecord(sameAsShown = false, stale = true), true)
+  // A picture is recorded when it differs from the one on show, when the view has been under a layer since that one, and when the node has lost it.
+  expect("a new picture is recorded", BlurRules.shouldRecord(sameAsShown = false, stale = false, nodeEmpty = false), true)
+  expect("the same picture is not recorded again", BlurRules.shouldRecord(sameAsShown = true, stale = false, nodeEmpty = false), false)
+  expect("the same picture is recorded again after a layer", BlurRules.shouldRecord(sameAsShown = true, stale = true, nodeEmpty = false), true)
+  expect("a new picture is recorded after a layer too", BlurRules.shouldRecord(sameAsShown = false, stale = true, nodeEmpty = false), true)
+  expect("the same picture is recorded again when the node is empty", BlurRules.shouldRecord(sameAsShown = true, stale = false, nodeEmpty = true), true)
+  expect("an empty node after a layer", BlurRules.shouldRecord(sameAsShown = true, stale = true, nodeEmpty = true), true)
+
+  // The renderer drops the display list of a node that no display list refers to for a frame: a view that was ready and whose node answers that it has none lost it.
+  expect("a ready view whose node has a display list has lost nothing", BlurRules.nodeLost(ready = true, hasDisplayList = true), false)
+  expect("a ready view whose node has none has lost it", BlurRules.nodeLost(ready = true, hasDisplayList = false), true)
+  expect("a view that is not ready has recorded nothing to lose", BlurRules.nodeLost(ready = false, hasDisplayList = false), false)
+  expect("nor one that is not ready and has a list", BlurRules.nodeLost(ready = false, hasDisplayList = true), false)
+  expect("the view asks for a frame once for a loss", listOf(BlurRules.asksForFrameAfterLoss(lost = true, asked = false), BlurRules.asksForFrameAfterLoss(lost = true, asked = true)), listOf(true, false))
+  expect("and never when nothing was lost", listOf(BlurRules.asksForFrameAfterLoss(lost = false, asked = false), BlurRules.asksForFrameAfterLoss(lost = false, asked = true)), listOf(false, false))
+  // The list row of the device runs: the picture is recorded at intensity 70, a frame at intensity 0 draws nothing (the renderer drops the node's list), and at intensity 100 the picture behind the view is the
+  // same one. The decision of that pre-draw, which is what the lab's three checks of the row read, is a record; the pre-draw of a frame that drew the node is not.
+  fun decision(ready: Boolean, hasDisplayList: Boolean, sameAsShown: Boolean, stale: Boolean = false): Boolean {
+    val lost = BlurRules.nodeLost(ready, hasDisplayList)
+    return BlurRules.shouldRecord(sameAsShown, stale, lost)
+  }
+  expect("a view's first picture is recorded", decision(ready = false, hasDisplayList = false, sameAsShown = false), true)
+  expect("the same picture, node drawn since: left as it is", decision(ready = true, hasDisplayList = true, sameAsShown = true), false)
+  expect("the same picture after a frame without the node (intensity 0, then 100): recorded again", decision(ready = true, hasDisplayList = false, sameAsShown = true), true)
+  expect("a new picture is recorded whatever the node holds", listOf(decision(true, true, false), decision(true, false, false)), listOf(true, true))
+
+  // A view under a layer looks again after a quiet while: the one request it made was a frame of the transition that held the layer, and the layer the stack keeps once it has settled came after it.
+  expect("no layer any more: stop", BlurRules.afterQuietWait(layered = false, framesRan = false, asked = false), BlurRules.Quiet.STOP)
+  expect("no layer and frames: stop", BlurRules.afterQuietWait(layered = false, framesRan = true, asked = false), BlurRules.Quiet.STOP)
+  expect("frames went by under the layer: the window moves, wait again", BlurRules.afterQuietWait(layered = true, framesRan = true, asked = false), BlurRules.Quiet.WAIT)
+  expect("no frame under the layer: a screen at rest, ask", BlurRules.afterQuietWait(layered = true, framesRan = false, asked = false), BlurRules.Quiet.ASK)
+  expect("asked for this layer already: stop, a layer nothing lets go of must not keep the view drawing", BlurRules.afterQuietWait(layered = true, framesRan = false, asked = true), BlurRules.Quiet.STOP)
+  expect("asked, with frames going by: stop too", BlurRules.afterQuietWait(layered = true, framesRan = true, asked = true), BlurRules.Quiet.STOP)
+  expect("the wait is a tenth of a second, longer than any frame of a transition", BlurRules.QUIET_MS in 50L..250L, true)
+  // The sequence of the quiet page of the lab: the first pre-draw is a frame of the push (layered, asks), the stack hands the layer to its resident one and no frame follows: the wait ends quiet and asks again, once.
+  var pre = 3
+  var framesAtWait = pre // the wait is posted by the first pre-draw under the layer
+  pre++ // the pre-draw that the request of that first one made
+  val actions = mutableListOf<BlurRules.Quiet>()
+  var askedQuiet = false
+  repeat(3) {
+    val action = BlurRules.afterQuietWait(layered = true, framesRan = pre != framesAtWait, asked = askedQuiet)
+    actions.add(action)
+    if (action == BlurRules.Quiet.ASK) askedQuiet = true
+    framesAtWait = pre // no frame follows on a screen at rest
+  }
+  expect("a frame, then quiet: wait, ask, stop", actions, listOf(BlurRules.Quiet.WAIT, BlurRules.Quiet.ASK, BlurRules.Quiet.STOP))
 
   // Where the real blur is possible.
   expect("API 30 cannot blur", BlurRules.canBlur(30, hardwareAccelerated = true), false)
@@ -184,8 +226,11 @@ fun main(args: Array<String>) {
   val backdrop = File(args[2]).readText()
   expect("a layer on the view or an ancestor stops the drawing (a software draw would build the layer's cache on a canvas of its own)", Regex("""\{ view\.rootView === view \}, \{ layered\(\) \}""").containsMatchIn(backdrop) && Regex("""if \(\w+\.layerType != View\.LAYER_TYPE_NONE\) return true""").findAll(backdrop).count() == 2, true)
   expect("every reason the pre-draw does nothing for is one of the rules' (the gate is BlurRules.idleReason, and its answer returns before anything is drawn)", Regex("""val reason = BlurRules\.idleReason\([\s\S]*?\)\s*if \(reason != null\) \{[\s\S]*?return\s*\}""").containsMatchIn(backdrop), true)
-  expect("a view that waits for a layer asks for a frame, once: the request is the view's own invalidate, made when the rule says so and marked, and the picture that follows is recorded whatever it equals", Regex("""if \(BlurRules\.asksForFrame\(reason, asked\)\) \{\s*asked = true\s*stale = true\s*view\.invalidate\(\)\s*\}""").containsMatchIn(backdrop) && Regex("""BlurRules\.shouldRecord\(last != null && last\.sameAs\(bitmap\), stale\)""").containsMatchIn(backdrop) && Regex("""stale = false\s*current = next\s*record\(shape, bitmap\)""").containsMatchIn(backdrop), true)
-  expect("the request is forgotten when the reason is not a layer any more, so that the next layer asks again", Regex("""if \(reason != BlurRules\.Idle\.LAYER\) asked = false""").containsMatchIn(backdrop) && Regex("""\}\s*asked = false\s*val root = view\.rootView""").containsMatchIn(backdrop), true)
+  expect("a view that waits for a layer asks for a frame, once: the request is the view's own invalidate, made when the rule says so and marked, and the picture that follows is recorded whatever it equals", Regex("""if \(BlurRules\.asksForFrame\(reason, asked\)\) \{\s*asked = true\s*stale = true\s*view\.invalidate\(\)\s*\}""").containsMatchIn(backdrop) && Regex("""BlurRules\.shouldRecord\(last != null && last\.sameAs\(bitmap\), stale, lost\)""").containsMatchIn(backdrop) && Regex("""stale = false\s*current = next\s*record\(shape, bitmap\)""").containsMatchIn(backdrop), true)
+  expect("the node is asked whether it still has its display list, before the window is drawn, and a node that has not is recorded again whatever the picture equals (the renderer drops the list of a node no display list refers to for a frame: a frame at intensity 0)", Regex("""val lost = BlurRules\.nodeLost\(ready, node\.hasDisplayList\(\)\)[\s\S]*?root\.draw\(canvas\)""").containsMatchIn(backdrop) && Regex("""BlurRules\.shouldRecord\(last != null && last\.sameAs\(bitmap\), stale, lost\)\) return\s*stale = false\s*current = next\s*record\(shape, bitmap\)""").containsMatchIn(backdrop), true)
+  expect("the view asks for a frame once for a loss (the rule says so, and the request is marked until the node has its list again), so that a node the renderer keeps dropping does not keep the view drawing", Regex("""if \(!lost\) askedAfterLoss = false""").containsMatchIn(backdrop) && Regex("""\} else if \(lost\) \{\s*logLost\(\)[\s\S]*?if \(BlurRules\.asksForFrameAfterLoss\(lost, askedAfterLoss\)\) \{\s*askedAfterLoss = true\s*view\.invalidate\(\)\s*\}""").containsMatchIn(backdrop) && Regex("""askedAfterLoss = false\s*noted = -2""").containsMatchIn(backdrop), true)
+  expect("the request is forgotten when the reason is not a layer any more, so that the next layer asks again", Regex("""underLayer = reason == BlurRules\.Idle\.LAYER\s*if \(underLayer\) waitForQuiet\(\) else \{\s*asked = false\s*askedQuiet = false\s*\}""").containsMatchIn(backdrop) && Regex("""\}\s*asked = false\s*askedQuiet = false\s*underLayer = false\s*val root = view\.rootView""").containsMatchIn(backdrop), true)
+  expect("a view that found a layer looks again after a quiet while: the wait is posted from the pre-draw under the layer, asks through the view's own invalidation once for a layer that stands, and is removed when the view detaches", Regex("""private fun waitForQuiet\(\) \{\s*if \(waiting \|\| askedQuiet\) return\s*waiting = true\s*framesAtWait = frames\s*view\.postDelayed\(quiet, BlurRules\.QUIET_MS\)""").containsMatchIn(backdrop) && Regex("""BlurRules\.afterQuietWait\(underLayer && layered\(\), frames != framesAtWait, askedQuiet\)""").containsMatchIn(backdrop) && Regex("""BlurRules\.Quiet\.ASK -> \{\s*askedQuiet = true\s*stale = true\s*logQuiet\(\)\s*view\.invalidate\(\)""").containsMatchIn(backdrop) && Regex("""fun release\(\) \{\s*view\.removeCallbacks\(quiet\)""").containsMatchIn(backdrop) && Regex("""fun update\(\) \{\s*frames\+\+""").containsMatchIn(backdrop), true)
   expect("the render effect is put on the node again with each recording, from the one effect made for the radius", Regex("""node\.endRecording\(\)\s*\}\s*[^\n]*\n\s*node\.setRenderEffect\(effect\)""").containsMatchIn(backdrop) && Regex("""effect = if \(BlurRules\.hasEffect\(radius\)\) RenderEffect\.createBlurEffect\(radius, radius, Shader\.TileMode\.CLAMP\) else null\s*node\.setRenderEffect\(effect\)""").containsMatchIn(backdrop), true)
   expect("what the view does is in the log: a state change is a line, and the first picture says what it holds", backdrop.contains("private fun note(state: Int)") && backdrop.contains("private fun logReady(") && backdrop.contains("points opaque"), true)
   expect("the canvas takes a hardware bitmap through its software copy, in every drawBitmap", Regex("""override fun drawBitmap\(""").findAll(backdrop).count() == 4 && Regex("""isHardware\(bitmap\)""").findAll(backdrop).count() >= 5, true)

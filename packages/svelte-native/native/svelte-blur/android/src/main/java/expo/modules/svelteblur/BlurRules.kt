@@ -119,11 +119,47 @@ object BlurRules {
    */
   fun asksForFrame(reason: Idle?, asked: Boolean): Boolean = reason == Idle.LAYER && !asked
 
+  /** How long a view that waits for a layer lets pass without a pre-draw of its own before it takes the window for a screen at rest (ms): a transition has a frame every 16 ms. */
+  const val QUIET_MS = 100L
+
+  /** What the view does when the wait for a quiet window is over ([afterQuietWait]). */
+  enum class Quiet { WAIT, ASK, STOP }
+
   /**
-   * Whether a picture drawn now is recorded: when it is not the one on show ([sameAsShown]), and also when the view has stood idle under a layer since ([stale]): what the node holds was recorded before
-   * the layer and may not be what is behind the view now, and a picture that "equals" it is not a reason to leave the node as it is.
+   * The answer to the wait of a view that found a layer on the way up and has asked for its one frame ([asksForFrame]). That frame is asked for in the first pre-draw under the layer, which is a frame of the
+   * transition that holds it; the layer the stack keeps on the screen once it has settled is taken after that frame (the hold of the transition is handed over to it), and no frame follows on a screen at
+   * rest, so the request was spent on the layer that went and the view stayed under the one that came: the stronger tint, for as long as nothing else on the screen changed (a pushed screen with a blur and no scroll
+   * view, whose scroll bar would invalidate it, is that page; no page of the lab is). So the view looks again after [QUIET_MS]: while pre-draws went by ([framesRan]) the window is still moving and it waits
+   * again, with none it is at rest and the view asks once more ([asked]: once for a layer that stands, so that a layer nothing lets go of, an application's own `renderToHardwareTexture`, does not keep the
+   * view drawing), and it stops when the layer is gone ([layered] false) or it asked. The view's own invalidation is the request, as for the first.
    */
-  fun shouldRecord(sameAsShown: Boolean, stale: Boolean): Boolean = !sameAsShown || stale
+  fun afterQuietWait(layered: Boolean, framesRan: Boolean, asked: Boolean): Quiet = when {
+    !layered || asked -> Quiet.STOP
+    framesRan -> Quiet.WAIT
+    else -> Quiet.ASK
+  }
+
+  /**
+   * Whether a picture drawn now is recorded: when it is not the one on show ([sameAsShown]), when the view has stood idle under a layer since ([stale]): what the node holds was recorded before
+   * the layer and may not be what is behind the view now, and a picture that "equals" it is not a reason to leave the node as it is; and when the node has lost what it held ([nodeEmpty], see
+   * [nodeLost]): the picture is the one on show and the node shows nothing of it.
+   */
+  fun shouldRecord(sameAsShown: Boolean, stale: Boolean, nodeEmpty: Boolean): Boolean = !sameAsShown || stale || nodeEmpty
+
+  /**
+   * Whether the render node that holds the picture has lost its display list ([hasDisplayList] is the node's own answer) although the view believes it recorded it ([ready]). The window's renderer drops the
+   * display list of a node that no display list refers to for a frame, and the view's own list refers to the node only while the view draws it: a frame at intensity 0 (nothing is drawn), a window
+   * that destroyed its hardware resources. The node is then empty, and drawn it shows nothing: a tint over the stripes behind the view, with no blur. Nothing else of the view
+   * changes (the picture is the same, the effect is on the node), so the picture is recorded again.
+   */
+  fun nodeLost(ready: Boolean, hasDisplayList: Boolean): Boolean = ready && !hasDisplayList
+
+  /**
+   * Whether the view invalidates itself after recording a node that was lost ([lost]), which it does once while the loss stands ([asked]): the view's own display list has to refer to the node again, and
+   * that is made by a frame in which the view draws. It is the view's invalidation that makes the frame in nearly every case (the intensity that came back from 0 invalidated the view), so this is the net
+   * under the others, and it is made once so that a node the renderer keeps dropping cannot keep the view drawing frame after frame.
+   */
+  fun asksForFrameAfterLoss(lost: Boolean, asked: Boolean): Boolean = lost && !asked
 
   /**
    * The side, in pixels, of the bitmaps that hold a picture [needed] pixels across, when they are [current] now (0 when there are none): [current] while the picture

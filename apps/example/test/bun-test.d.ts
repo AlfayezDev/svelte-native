@@ -20,6 +20,8 @@ declare module "bun:test" {
 		toBeGreaterThanOrEqual(expected: number): void;
 	}
 	export const mock: { module(specifier: string, factory: () => Record<string, unknown>): void };
+	/** The fake clock: it replaces `setTimeout` and `Date.now` (not `setImmediate`) until `useRealTimers()`; timers fire only when the test advances it. */
+	export const jest: { useFakeTimers(): void; useRealTimers(): void; advanceTimersToNextTimer(): void; getTimerCount(): number };
 	export function beforeAll(body: () => void | Promise<void>): void;
 	export function afterAll(body: () => void | Promise<void>): void;
 	export function afterEach(body: () => void | Promise<void>): void;

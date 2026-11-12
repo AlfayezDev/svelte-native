@@ -48,7 +48,7 @@
     [() => (running = false), 300],
     [() => view.glide(430, 700), 300],
     [() => (todos[2].done = true), 600],
-    [() => typeInto((value) => (draft = value), "Water plants", 50), 300],
+    [(signal) => typeInto((value) => (draft = value), "Water plants", 50, signal), 300],
     [add, 400],
     [() => view.glide(800, 700), 200],
     [() => (answer = ask()), 1000],

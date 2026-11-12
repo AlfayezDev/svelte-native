@@ -10,11 +10,15 @@
 // The script is a list of steps, `[run, pause]`: `run` does the thing (it may return a promise, which is awaited) and `pause` is how long
 // to wait afterwards, in ms. A settle comes before the first step (the screen finishes arriving) and a hold after the last (the viewer
 // sees the end state). The script logs `[demo] start <path>` and `[demo] end <path> after <ms> ms` to the console, which a recording tool
-// can wait for (`adb logcat -s ReactNativeJS`).
+// can wait for (`adb logcat -s ReactNativeJS`). When the screen goes before the script is over, it logs `[demo] stopped` instead, unless
+// every step had run: a script that closes its own screen (a sheet, a modal) is over when its last step has.
 import { onMount } from "svelte";
 
+/** What a step is told about its script: whether `stop()` has cut it short, for a step that takes a while (typing) to give up when it has. */
+export type DemoSignal = { readonly stopped: boolean };
+
 /** What to do, and how long to wait after it (ms; the script's `pause` option when left out). */
-export type DemoStep = readonly [run: () => unknown, pause?: number];
+export type DemoStep = readonly [run: (signal: DemoSignal) => unknown, pause?: number];
 
 export type DemoOptions = {
   /** Wait before the first step: the screen finishes arriving. */
@@ -28,9 +32,14 @@ export type DemoOptions = {
 /** Waits `ms`: for a step that does several things in turn. */
 export const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-/** Types `text` into a field by setting its bound value one letter at a time, `perChar` ms apart: `typeInto((value) => (name = value), "Sam")`. */
-export async function typeInto(set: (value: string) => void, text: string, perChar = 80): Promise<void> {
+/**
+ * Types `text` into a field by setting its bound value one letter at a time, `perChar` ms apart: `typeInto((value) => (name = value), "Sam")`.
+ * It waits one `perChar` after the last letter as well, so the whole text is on screen for a beat before the step's own pause. Hand it the
+ * step's `signal` and it stops typing when the script is stopped, instead of writing into a screen that has gone.
+ */
+export async function typeInto(set: (value: string) => void, text: string, perChar = 80, signal?: DemoSignal): Promise<void> {
   for (let length = 1; length <= text.length; length++) {
+    if (signal?.stopped) return;
     set(text.slice(0, length));
     await sleep(perChar);
   }
@@ -44,11 +53,14 @@ export function demoRequested(url: URL | undefined): boolean {
 
 /**
  * Plays a script: the settle, then each step and its pause in order (a step that returns a promise is awaited first), then the hold.
- * `finished` resolves `true` when it got to the end, `false` when `stop()` cut it short, and rejects with what a step threw.
+ * `finished` resolves `true` when every step has run, `false` when `stop()` came before the last one began, and rejects with what a step threw.
+ * A stop during the last step's pause or the hold still counts as the end: a script that closes its own screen may be stopped by the screen
+ * going a moment before its hold is over.
  */
 export function playDemo(steps: readonly DemoStep[], { settle = 1000, hold = 1500, pause = 1000 }: DemoOptions = {}): { finished: Promise<boolean>; stop(): void } {
   let stopped = false;
   let wake: (() => void) | undefined;
+  const signal: DemoSignal = { get stopped() { return stopped; } };
   const wait = (ms: number) => stopped ? Promise.resolve() : new Promise<void>((resolve) => {
     const timer = setTimeout(resolve, ms);
     wake = () => { clearTimeout(timer); resolve(); };
@@ -57,12 +69,11 @@ export function playDemo(steps: readonly DemoStep[], { settle = 1000, hold = 150
     await wait(settle);
     for (const [step, after = pause] of steps) {
       if (stopped) return false;
-      await step();
+      await step(signal);
       await wait(after);
     }
-    if (stopped) return false;
     await wait(hold);
-    return !stopped;
+    return true;
   };
   return { finished: run(), stop() { stopped = true; wake?.(); } };
 }
@@ -111,10 +122,10 @@ export function scroller() {
         await sleep(16);
       }
     },
-    /** Scrolls to `to` at once (`animated`: with the platform's own, quicker animation), for a distance a glide would take too long over. */
-    jump(to: number, animated = false, axis: "x" | "y" = "y"): void {
-      at[axis] = to;
-      view?.scrollTo({ [axis]: to, animated });
+    /** Scrolls down to `to` at once, for a distance a glide would take too long over. */
+    jump(to: number): void {
+      at.y = to;
+      view?.scrollTo({ y: to, animated: false });
     },
   };
 }

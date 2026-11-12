@@ -38,8 +38,8 @@
   const view = scroller();
   useDemo(() => url, [
     [() => view.glide(360, 900), 300],
-    [() => typeInto((value) => (name = value), "Sam Ito", 70), 300],
-    [() => typeInto((value) => (email = value), "sam@example.com", 55), 500],
+    [(signal) => typeInto((value) => (name = value), "Sam Ito", 70, signal), 300],
+    [(signal) => typeInto((value) => (email = value), "sam@example.com", 55, signal), 500],
     [() => add(), 900],
     [() => view.glide(0, 800), 300],
     [() => (removing = contacts[2]), 1800],

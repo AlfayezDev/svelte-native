@@ -38,7 +38,7 @@
   // square pinches and turns, the first row slides away and the button is held down. Real touches are listed in features/demos.ts.
   let { url }: { url: URL } = $props();
   const view = scroller();
-  let swipers = $state<({ swipeAway(): void } | undefined)[]>([]);
+  const swipers: ({ swipeAway(): void } | undefined)[] = [];
   const to = (value: number) => withTiming(value, { duration: 700 });
   useDemo(() => url, [
     [() => { x.value = to(110); y.value = to(24); }, 900],

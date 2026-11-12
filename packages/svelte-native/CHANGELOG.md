@@ -33,6 +33,8 @@ Notable changes to `@rasheed/svelte-native`, newest first. The format follows [K
 
 ### Fixed
 
+- A row of host tags (`<native-view nativeProps={{ style }}>`) costs less JavaScript to mount again: a `nativeProps` with no `ref` in it no longer goes through the wait for a screen that refs need, and an element that is not an HTML view builds its children without gathering lines. HTML elements had made 300 such rows 15 % slower to mount (130 ms to 148 ms of Svelte flush on a Samsung A16); on the PC's interpreter the same mount measures 9.0 ms before HTML elements, 10.4 ms with them, and 9.5 ms now.
+
 - A single-line HTML `input` sends no line height, its own (`leading-*`) or inherited, so its text stays centred as on the web. On iOS a line height drew the text 2 pt low, and a text field view reused for another input kept it.
 
 - Android: a `Text` nested in a `Text` with its own `onPress` (the inline link, `<Text>See <Text onPress={...}>this link</Text> here</Text>`) never got its presses: the engine sent every touch to the whole paragraph, so only an `onPress` on the outer `Text` worked. The touch now goes to the nested `Text` under the finger, as in React Native (`reactTagForTouch`): its `onPress`, `onPressIn`, `onPressOut`, `onLongPress` and `onPressChange` run, and the paragraph's does not, unless the nested `Text` has no handler; a press that moves far off the sentence is cancelled. A nested `Text` with `role="link"` is a link to accessibility services (a clickable span over its words, which a service lists and activates; the activation presses it). A touch on the `…` of a `numberOfLines` text is the paragraph's, not a hidden link's.

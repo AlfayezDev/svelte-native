@@ -2,6 +2,7 @@
   import { SafeAreaView, Screen, ScrollView, Switch, Text, TextInput, View, insets } from "@example/svelte-native";
   import Button from "#lib/components/Button.svelte";
   import Section from "#lib/components/Section.svelte";
+  import { scroller, useDemo } from "#lib/demo.ts";
   import { text, theme } from "#lib/theme.svelte.ts";
   import { Dimensions, Platform } from "@example/svelte-native/platform";
 
@@ -11,13 +12,25 @@
   // Read `insets` anywhere and the view updates when it changes, for example when the keyboard opens.
   const size = Dimensions.get("window");
   let hideStatusBar = $state(false);
-  let field: { blur(): void } | null = null;
+  let field: { focus(): void; blur(): void } | null = null;
   const row = $derived({ flexDirection: "row" as const, justifyContent: "space-between" as const });
+
+  // `?demo`: scroll to the keyboard section and open the keyboard from code, close it, then hide the status bar and show it again.
+  let { url }: { url: URL } = $props();
+  const view = scroller();
+  useDemo(() => url, [
+    [() => view.glide(420, 1200), 400],
+    [() => field?.focus(), 2200],
+    [() => field?.blur(), 800],
+    [() => (hideStatusBar = true), 1600],
+    [() => (hideStatusBar = false), 800],
+    [() => view.glide(0, 1000), 0],
+  ]);
 </script>
 
 <Screen title="Platform" statusBar={{ style: "auto", hidden: hideStatusBar }}>
   <SafeAreaView edges={["left", "right", "bottom"]} style={{ flex: 1 }}>
-    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, gap: 24 }}>
+    <ScrollView ref={view.ref} keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, gap: 24 }}>
       <Text style={text.body}>The device is more than a screen: it has a safe area, a status bar, a keyboard and a light and a dark mode. The app can read all of them.</Text>
 
       <Section title="Device" note="Platform.OS, Platform.Version and the size of the window in points.">

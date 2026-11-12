@@ -94,6 +94,20 @@ Things a build or a device must provide:
 - **Dark mode** is the theme's: `src/lib/theme.svelte.ts` keeps the system's colour scheme in `$state` (React Native's `Appearance`), and a screen reads `theme.colors`. There is no in-app switch; change the phone's appearance.
 - **Fonts**: the system fonts need no setup. `JetBrainsMono-Regular.ttf` (SIL Open Font License, `assets/fonts/OFL.txt`) is embedded by the `expo-font` plugin in `app.config.ts`.
 
+## Demo mode
+
+Every screen that has something to show can play a short scripted interaction by itself, for recording the docs' videos on a device or a simulator without touch injection. A screen opened with `?demo` in its link runs its script once after it mounts; without the parameter nothing runs.
+
+```sh
+adb shell am start -a android.intent.action.VIEW -d "svelte-native:///animation/transitions?demo" io.example.sveltenative.example
+xcrun simctl openurl booted "svelte-native:///animation/transitions?demo"
+```
+
+- `src/lib/demo.ts` is the helper. A page gets its link as the prop `url` (the router passes it with `params`), and calls `useDemo(() => url, steps)` with a list of steps, `[run, pauseMs]`: the screen's own state and functions (a toggle, a shuffle, `router.goto`, a text field's bound value typed letter by letter with `typeInto`, a scroll with `scroller().glide`). A settle comes before the first step and a hold after the last. The script logs `[demo] start <path>` and `[demo] end <path> after <ms> ms` (`adb logcat -s ReactNativeJS`), which a recording tool can wait for.
+- `src/lib/features/demos.ts` is the manifest: for each docs page, the route to open, how long the script runs, and whether the recording needs touch input (gestures, a native dialog) with the touches described. `test/demos.test.ts` keeps it in step with the docs, the registries and the screens; `test/demo.test.ts` tests the helper.
+- The router drops the query of a tab bar's link, so the Tabs demo is on `/navigation/tabs/feed`. A sheet or a modal needs a screen below it to be dismissed to: open the app first, then the link. A link to the screen already on top does nothing (the same address), so a second take on the same screen uses `?demo=2` or another screen first.
+- The router saves a screen's link, `?demo` included, in the state it restores: when Android restarts the app's process, or a hot reload remounts the screen in development, the restored screen plays its script again. Close the app between takes.
+
 ## Tests
 
 ```sh
@@ -104,5 +118,5 @@ pnpm test         # bun test: the registries, the screens and the Metro bundles
 ```
 
 - `test/routes.test.ts`: every route of `src/routes` is listed in a registry and every listed route is a folder; screens stay short; the app imports only the library's public entries.
-- `test/screens.test.ts`: every screen of the core registry mounts on the library's fake Fabric binding (Android and iOS) without an error.
+- `test/screens.test.ts`: every screen of the core registry mounts on the library's fake Fabric binding (Android and iOS) without an error, and every demo script of a screen it can mount plays to its end on a fake clock. The scripts of the native-view and gesture screens run on a device only (the test lists them with the library that stops it).
 - `test/bundle.test.ts`: the Metro bundle of the app is made for Android and iOS (`expo export:embed`, release, not minified), which is what a build runs before Hermes. None of these needs a device.

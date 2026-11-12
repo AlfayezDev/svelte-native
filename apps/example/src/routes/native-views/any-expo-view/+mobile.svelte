@@ -9,6 +9,7 @@
   import Button from "#lib/components/Button.svelte";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
+  import { scroller, useDemo } from "#lib/demo.ts";
   import { text } from "#lib/theme.svelte.ts";
   import sample from "../../../../assets/images/sample.png";
 
@@ -66,9 +67,19 @@
       functionStatus = `View function failed: ${message(error)}`;
     }
   }
+
+  // `?demo`: with the camera permission already granted, take a picture; then scroll to the image and call its reload function.
+  let { url }: { url: URL } = $props();
+  const view = scroller();
+  useDemo(() => url, [
+    [() => cameraStatus === "Camera ready" ? takePicture() : undefined, 2000],
+    [() => view.glide(340, 1000), 700],
+    [reload, 1800],
+    [() => view.glide(0, 800), 0],
+  ], { settle: 2500 });
 </script>
 
-<Page title="Any Expo view" intro="These views are mounted by name, with no wrapper written for them: defineExpoView reads the native module's view at run time and gives a component typed by the library's own types.">
+<Page title="Any Expo view" scrollRef={view.ref} intro="These views are mounted by name, with no wrapper written for them: defineExpoView reads the native module's view at run time and gives a component typed by the library's own types.">
   <Section title="expo-camera, no wrapper" note="svelte-native has no component for expo-camera. The preview is the ExpoCamera view; Take a picture calls the view's takePicture through ref.">
     <Text style={text.caption}>{`Camera permission: ${permission}`}</Text>
     {#if permission === "granted"}

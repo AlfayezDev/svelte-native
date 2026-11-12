@@ -4,6 +4,7 @@
   import Button from "#lib/components/Button.svelte";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
+  import { scroller, useDemo } from "#lib/demo.ts";
   import { text } from "#lib/theme.svelte.ts";
   import photo from "../../../../assets/images/photo.png";
 
@@ -13,9 +14,22 @@
   const stripes = ["#e5484d", "#f5d90a", "#30a46c", "#0091ff", "#8e4ec6"];
   const fill = { position: "absolute", left: 0, top: 0, right: 0, bottom: 0 } as const;
   let intensity = $state(60);
+
+  // `?demo`: step the intensity from none to full and back to where it started, then scroll to the photo.
+  let { url }: { url: URL } = $props();
+  const view = scroller();
+  useDemo(() => url, [
+    [() => (intensity = 0), 1100],
+    [() => (intensity = 30), 900],
+    [() => (intensity = 60), 900],
+    [() => (intensity = 100), 1100],
+    [() => (intensity = 60), 600],
+    [() => view.glide(300, 1000), 1500],
+    [() => view.glide(0, 800), 0],
+  ], { hold: 1000 });
 </script>
 
-<Page title="Blur" intro="BlurView blurs the content behind it. Change the intensity with the buttons and watch the stripes behind the card.">
+<Page title="Blur" scrollRef={view.ref} intro="BlurView blurs the content behind it. Change the intensity with the buttons and watch the stripes behind the card.">
   <Section title="BlurView" note="The stripes are ordinary views; the card on top is the BlurView.">
     <View testID="blur-stage" style={{ height: 140, borderRadius: 12, overflow: "hidden" }}>
       <View style={{ ...fill, flexDirection: "row" }}>

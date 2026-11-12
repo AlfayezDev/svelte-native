@@ -3,6 +3,7 @@
   import Button from "#lib/components/Button.svelte";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
+  import { scroller, sleep, useDemo } from "#lib/demo.ts";
   import { text, theme } from "#lib/theme.svelte.ts";
   import photo from "../../../assets/images/photo.png";
 
@@ -12,9 +13,26 @@
   let pressed = $state(false);
   let photoStatus = $state("loading");
   let modalOpen = $state(false);
+
+  // `?demo`: scroll to the Pressable and press it twice, slide the row of numbers, open the Modal and close it.
+  let { url }: { url: URL } = $props();
+  const vertical = scroller();
+  const across = scroller();
+  const press = async () => { pressed = true; await sleep(180); pressed = false; taps += 1; };
+  useDemo(() => url, [
+    [() => vertical.glide(300, 800), 200],
+    [press, 500],
+    [press, 600],
+    [() => across.glide(380, 1100, "x"), 200],
+    [() => across.glide(0, 600, "x"), 200],
+    [() => vertical.glide(900, 900), 300],
+    [() => (modalOpen = true), 1600],
+    [() => (modalOpen = false), 500],
+    [() => { taps = 0; return vertical.glide(0, 800); }, 0],
+  ], { hold: 1000 });
 </script>
 
-<Page title="Primitives" intro="Every screen is built from a handful of native views. A View is a box, a Text holds text, an Image shows a picture, and a Pressable reacts to a tap.">
+<Page title="Primitives" scrollRef={vertical.ref} intro="Every screen is built from a handful of native views. A View is a box, a Text holds text, an Image shows a picture, and a Pressable reacts to a tap.">
   <Section title="View and Text" note="Text can nest: the inner Text inherits and overrides the style of the outer one.">
     <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
       <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: theme.colors.accent }} />
@@ -56,7 +74,7 @@
   </Section>
 
   <Section title="ScrollView" note="Content that does not fit scrolls. This one scrolls sideways.">
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+    <ScrollView horizontal ref={across.ref} showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
       {#each [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as value (value)}
         <View style={{ width: 64, height: 64, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: theme.colors.border }}>
           <Text style={text.heading}>{value}</Text>

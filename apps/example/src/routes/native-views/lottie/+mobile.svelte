@@ -4,6 +4,7 @@
   import Button from "#lib/components/Button.svelte";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
+  import { useDemo } from "#lib/demo.ts";
   import { text } from "#lib/theme.svelte.ts";
   import pulse from "../../../../assets/media/pulse.json";
 
@@ -12,6 +13,17 @@
   let player: LottieHandle | null = null;
   let playing = $state(true);
   let speed = $state(1);
+  const toggle = () => { if (playing) player?.pause(); else player?.resume(); playing = !playing; };
+
+  // `?demo`: let it pulse, speed it up twice, pause it, resume it and put the speed back.
+  let { url }: { url: URL } = $props();
+  useDemo(() => url, [
+    [() => (speed = 2), 1500],
+    [() => (speed = 3), 1500],
+    [toggle, 1400],
+    [toggle, 1400],
+    [() => (speed = 1), 0],
+  ], { settle: 1800, hold: 800 });
 </script>
 
 <Page title="Lottie" intro="LottieView plays an animation exported from After Effects. This one is a 1 KB blue dot that grows and shrinks, loaded from a JSON file in the app.">
@@ -28,7 +40,7 @@
     <Text style={text.caption}>Speed {speed}x</Text>
     <Button
       label={playing ? "Pause" : "Resume"}
-      onPress={() => { if (playing) player?.pause(); else player?.resume(); playing = !playing; }}
+      onPress={toggle}
     />
     <Button label="Faster" variant="secondary" onPress={() => { speed = speed >= 3 ? 1 : speed + 1; }} />
   </Section>

@@ -2,6 +2,7 @@
   import { Pressable, Text, View } from "@example/svelte-native";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
+  import { scroller, useDemo } from "#lib/demo.ts";
   import { text, theme } from "#lib/theme.svelte.ts";
 
   // There is no CSS and there are no classes: a style is a plain object with React Native's style keys (camelCase, numbers in density-independent
@@ -10,9 +11,20 @@
   let selected = $state(false);
   const card = $derived({ padding: 16, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface });
   const swatches = $derived(Object.entries(theme.colors));
+
+  // `?demo`: select the card and let go of it, then scroll down through the colours, the shadow and the transforms.
+  let { url }: { url: URL } = $props();
+  const view = scroller();
+  useDemo(() => url, [
+    [() => (selected = true), 1400],
+    [() => (selected = false), 800],
+    [() => view.glide(480, 1600), 900],
+    [() => view.glide(1000, 1600), 900],
+    [() => view.glide(0, 1400), 0],
+  ]);
 </script>
 
-<Page title="Styling" intro="A style is an object. Keep it in a constant, compute it from state, or combine several in an array. The colours here follow the system's light and dark mode.">
+<Page title="Styling" scrollRef={view.ref} intro="A style is an object. Keep it in a constant, compute it from state, or combine several in an array. The colours here follow the system's light and dark mode.">
   <Section title="A style object" note="The whole style of this box is the object written on the view.">
     <View style={{ padding: 20, borderRadius: 24, borderWidth: 3, borderColor: theme.colors.accent, backgroundColor: theme.colors.background, alignItems: "center" }}>
       <Text style={text.heading}>padding, borderRadius, borderWidth</Text>

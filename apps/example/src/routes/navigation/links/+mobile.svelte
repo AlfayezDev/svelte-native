@@ -4,6 +4,7 @@
   import Button from "#lib/components/Button.svelte";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
+  import { useDemo } from "#lib/demo.ts";
   import { text, theme } from "#lib/theme.svelte.ts";
   import { Linking } from "@example/svelte-native/platform";
 
@@ -15,10 +16,19 @@
   let launchedWith = $state("(asking)");
   let received = $state("nothing yet");
   let lastOpened = $state("");
+  const open = (link: string) => { lastOpened = `${link}: ${router.openURL(link) ? "opened" : "no screen matches"}`; };
+
+  // `?demo`: open the link to a stack item (it pushes the screen), come back, then try the link that matches nothing.
+  let { url }: { url: URL } = $props();
+  useDemo(() => url, [
+    [() => open(links[0] as string), 1800],
+    [() => router.back(), 1500],
+    [() => open(links[2] as string), 1800],
+  ]);
 
   onMount(() => {
-    void Linking.getInitialURL().then((url) => { launchedWith = url ?? "no link: the app was opened normally"; });
-    const subscription = Linking.addEventListener("url", ({ url }) => { received = url; });
+    void Linking.getInitialURL().then((href) => { launchedWith = href ?? "no link: the app was opened normally"; });
+    const subscription = Linking.addEventListener("url", ({ url: href }) => { received = href; });
     return () => subscription.remove();
   });
 </script>
@@ -30,7 +40,7 @@
 
   <Section title="Open a link" note="openURL opens the screen of a link that matches a route, and returns false when nothing matches.">
     {#each links as link (link)}
-      <Button label={link.replace("svelte-native://", "")} variant="secondary" onPress={() => { lastOpened = `${link}: ${router.openURL(link) ? "opened" : "no screen matches"}`; }} />
+      <Button label={link.replace("svelte-native://", "")} variant="secondary" onPress={() => open(link)} />
     {/each}
     {#if lastOpened}<Text style={text.caption}>{lastOpened}</Text>{/if}
   </Section>

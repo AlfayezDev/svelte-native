@@ -102,7 +102,7 @@ Total: 17–20 weeks. Phase 5's list work can start after phase 1 on the React h
 
 #### Phase 7 inventory (25 October 2026, 20:00)
 
-Applied at the cutover (see the phase summary above). What the inventory left as "decide" and how it was decided: `animated-host.ts` deleted (its props type moved to `elements.d.ts`); `Native`/`Host.svelte` kept without gating (the router uses it); `isNativeStack` removed; `List.svelte` keeps only the command path; `androidHeadless` removed as an option; `cli dev` without the dev client and `eas.json` without `developmentClient`; `@types/react` kept (React Native's types need it); reanimated patch part (a) kept for engine-off runs; `SVELTE_NATIVE_FABRIC_APP` renamed `SVELTE_NATIVE_ROOT`; stale `.svelte-native/dist` deleted.
+Applied at the cutover (see the phase summary above). What the inventory left as "decide" and how it was decided: `animated-host.ts` deleted (its props type moved to `elements.d.ts`); `Native`/`Host.svelte` kept without gating (the router used it until 12 Nov 2026, when it began to write its `native-stack` itself: a `<svelte:element>` loses the `animate:` of the children that render with it); `isNativeStack` removed; `List.svelte` keeps only the command path; `androidHeadless` removed as an option; `cli dev` without the dev client and `eas.json` without `developmentClient`; `@types/react` kept (React Native's types need it); reanimated patch part (a) kept for engine-off runs; `SVELTE_NATIVE_FABRIC_APP` renamed `SVELTE_NATIVE_ROOT`; stale `.svelte-native/dist` deleted.
 
 ## Production plan (set 25 October 2026, late evening; phases 0–7 done)
 

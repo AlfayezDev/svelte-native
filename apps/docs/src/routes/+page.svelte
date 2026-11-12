@@ -19,13 +19,13 @@
 <svelte:head>
 	<title>{TITLE}</title>
 	<meta name="description" content={DESCRIPTION} />
-	<link rel="canonical" href={data.canonical} />
+	{#if data.canonical}<link rel="canonical" href={data.canonical} />{/if}
 	<link rel="alternate" type="text/plain" href={resolve("/llms.txt")} title="llms.txt" />
 	<meta property="og:type" content="website" />
 	<meta property="og:site_name" content="Svelte Native" />
 	<meta property="og:title" content={TITLE} />
 	<meta property="og:description" content={DESCRIPTION} />
-	<meta property="og:url" content={data.canonical} />
+	{#if data.canonical}<meta property="og:url" content={data.canonical} />{/if}
 	<meta name="twitter:card" content="summary" />
 </svelte:head>
 

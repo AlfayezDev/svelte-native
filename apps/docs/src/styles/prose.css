@@ -161,6 +161,7 @@
 .prose code {
 	padding: 1px 4px;
 	font: 400 12px/1.5 var(--docs-mono);
+	font-variant-ligatures: none;
 	color: var(--docs-text-default);
 	background: var(--docs-bg-subtle);
 	border: 1px solid var(--docs-border-secondary);

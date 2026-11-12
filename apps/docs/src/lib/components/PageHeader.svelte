@@ -15,7 +15,7 @@
 	<div class="title-row">
 		<h1 id="top">{page.title}</h1>
 		<div class="actions" data-pagefind-ignore>
-			<a class="edit" href="{REPOSITORY}/blob/main/{page.source}" rel="noreferrer"><Pencil size={14} />Edit page</a>
+			<a class="edit" href="{REPOSITORY}/edit/main/{page.source}" rel="noreferrer"><Pencil size={14} />Edit page</a>
 			<CopyPage slug={page.slug} />
 		</div>
 	</div>
@@ -123,6 +123,7 @@
 	.description :global(code) {
 		padding: 1px 4px;
 		font: 400 0.8em/1.5 var(--docs-mono);
+		font-variant-ligatures: none;
 		color: var(--docs-text-default);
 		background: var(--docs-bg-subtle);
 		border: 1px solid var(--docs-border-secondary);

@@ -98,8 +98,15 @@
 		transform: scale(0.97);
 	}
 
+	/* The GitHub link's name is its text: a phone shows the icon, and a screen reader still gets the word. */
 	.link-label {
-		display: none;
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		margin: -1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
 	}
 
 	/* The sidebar has the search on a desktop: the header's button is for the phone and for the pages without a sidebar. */
@@ -109,7 +116,12 @@
 			display: none;
 		}
 		.link-label {
-			display: inline;
+			position: static;
+			width: auto;
+			height: auto;
+			margin: 0;
+			overflow: visible;
+			clip-path: none;
 		}
 		.link {
 			padding: 0 12px 0 10px;

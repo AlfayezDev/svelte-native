@@ -1,4 +1,4 @@
-import { ORIGIN, BASE } from "#lib/base-path";
+import { SITE_URL } from "#lib/base-path";
 import { renderCode } from "#lib/docs.server";
 
 const EXAMPLE = `<script lang="ts">
@@ -17,5 +17,5 @@ const EXAMPLE = `<script lang="ts">
 </Screen>`;
 
 export function load() {
-	return { example: renderCode(EXAMPLE, "svelte", "src/routes/+mobile.svelte"), canonical: `${ORIGIN}${BASE}/` };
+	return { example: renderCode(EXAMPLE, "svelte", "src/routes/+mobile.svelte"), canonical: SITE_URL ? `${SITE_URL}/` : undefined };
 }

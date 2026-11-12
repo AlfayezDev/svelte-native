@@ -36,7 +36,8 @@ export default defineConfig({
 		pagefindInPreview(),
 		sveltekit({
 			adapter: adapter({ pages: "build", assets: "build", precompress: false, strict: true }),
-			paths: { base: BASE },
+			// Absolute asset paths, so that a page served at /docs/routing/ (a trailing slash) still finds its stylesheet and scripts.
+			paths: { base: BASE, relative: false },
 		}),
 	],
 	// The stylesheet uses light-dark() for its colours: keep the minifier from rewriting it for older browsers, where it can not follow a theme class on one element.

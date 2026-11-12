@@ -9,7 +9,7 @@
 		align = "end",
 		class: className = "",
 	}: {
-		/** What the button is called for assistive technology. */
+		/** What the menu is called for assistive technology. The button is named by its own content, so that its visible text is its name. */
 		label: string;
 		trigger: Snippet;
 		children: Snippet<[close: () => void]>;
@@ -61,7 +61,7 @@
 <svelte:window onpointerdown={onwindowpointerdown} />
 
 <div class="dropdown" bind:this={root} {onkeydown} role="presentation">
-	<button bind:this={button} class={["dropdown-trigger", className]} type="button" aria-label={label} aria-haspopup="menu" aria-expanded={open} onclick={() => (open = !open)}>
+	<button bind:this={button} class={["dropdown-trigger", className]} type="button" aria-haspopup="menu" aria-expanded={open} onclick={() => (open = !open)}>
 		{@render trigger()}
 	</button>
 	{#if open}

@@ -18,6 +18,7 @@
 <Dropdown label="Theme" class="theme-trigger">
 	{#snippet trigger()}
 		<!-- The button shows the mode that app.html put on <html> as data-theme, by CSS, so it is right on the first paint. -->
+		<span class="sr-only">Theme:</span>
 		{#each modes as { id, label, icon: Icon } (id)}
 			<span class="mode" data-mode={id}>
 				<Icon size={16} />
@@ -88,7 +89,17 @@
 		color: var(--docs-text-secondary);
 	}
 
-	.mode-label,
+	/* Below the desktop width the button is an icon, and the mode's name is for screen readers. */
+	.mode-label {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		margin: -1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
+	}
+
 	:global(.theme-trigger .chevron) {
 		display: none;
 	}
@@ -100,7 +111,12 @@
 			padding: 0 10px 0 12px;
 		}
 		.mode-label {
-			display: inline;
+			position: static;
+			width: auto;
+			height: auto;
+			margin: 0;
+			overflow: visible;
+			clip-path: none;
 			font-size: 14px;
 		}
 		:global(.theme-trigger .chevron) {

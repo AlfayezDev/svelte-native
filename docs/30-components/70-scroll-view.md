@@ -1,5 +1,7 @@
 ---
 title: ScrollView
+group: Scrolling and overlays
+video: scroll-view
 ---
 
 `ScrollView` scrolls content that doesn't fit, vertically or sideways. It mounts all of its children at once, so it suits a screen's content, a form or a few dozen rows. For a long list, use [`List`](list), which mounts only the rows on screen.

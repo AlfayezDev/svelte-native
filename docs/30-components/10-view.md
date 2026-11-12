@@ -1,5 +1,7 @@
 ---
 title: View
+group: Basics
+video: view
 ---
 
 `View` is the basic box of a native screen, the counterpart of a `div`. It lays out its children with flexbox, draws a background, a border and a shadow, and can react to a tap. On Android it's an Android `View`, on iOS a `UIView`.

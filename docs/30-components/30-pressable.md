@@ -1,5 +1,7 @@
 ---
 title: Pressable
+group: Basics
+video: pressable
 ---
 
 `Pressable` makes whatever it wraps respond to a tap. Use it for buttons, list rows and anything else the user presses. It's a [`View`](view) with press handling: it lays out its children and takes the same style.

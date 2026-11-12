@@ -1,5 +1,7 @@
 ---
 title: TextInput
+group: Basics
+video: text-input
 ---
 
 `TextInput` is a native text field, single-line or multi-line. Bind its `value` to a variable, as you would an `input` on the web. The platform draws it, so it has the system keyboard, selection, autocorrect and autofill.

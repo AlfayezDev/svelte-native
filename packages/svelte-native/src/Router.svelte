@@ -1,9 +1,8 @@
 <script lang="ts">
   import { getContext, onMount, setContext, type Snippet } from "svelte";
-  import Host from "./components/Host.svelte";
   import Screen from "./components/Screen.svelte";
   import RouteView from "./RouteView.svelte";
-  import { SCREEN_CONTEXT } from "./fabric/navigation.ts";
+  import { IN_STACK_CONTEXT, SCREEN_CONTEXT } from "./fabric/navigation.ts";
   import { PLACEHOLDER_CONTEXT, STACK_CONTEXT, type PlaceholderContext, type StackContext } from "./navigator-context.ts";
   import { connectHost, type NativeLocation, type Router } from "./router.svelte.ts";
   /**
@@ -14,6 +13,7 @@
   let { router, loading }: { router: Router; loading?: Snippet<[NativeLocation]> } = $props();
   // The router's screens are real screens of its own stack, wherever the router sits (inside a tab pane, a sheet, a page).
   setContext(SCREEN_CONTEXT, undefined);
+  setContext(IN_STACK_CONTEXT, true);
   const stack = getContext<StackContext | undefined>(STACK_CONTEXT);
   // The options of a `<Stack>` belong to the stack it wraps, not to routers below its pages.
   setContext(STACK_CONTEXT, undefined);
@@ -23,7 +23,8 @@
   onMount(() => connectHost(router));
 </script>
 
-<Host name="native-stack" attributes={{ style: { flex: 1 } }}>
+<!-- A written element, not `<Host name="native-stack">`: the screens render inside it, and the children of a `<svelte:element>` that render with it lose their `animate:` (`Host.svelte`). -->
+<native-stack nativeProps={{ style: { flex: 1 } }}>
   {#each router.screens as { entry, canGoBack, leaving } (entry.key)}
     <Screen
       {...stack?.defaults}
@@ -37,4 +38,4 @@
       <RouteView {entry} {router} loading={placeholder} />
     </Screen>
   {/each}
-</Host>
+</native-stack>

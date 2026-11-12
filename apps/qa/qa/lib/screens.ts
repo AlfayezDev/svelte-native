@@ -278,7 +278,8 @@ const signedOutCases: ScreenCase[] = [
 		scrolled: ["Send", "Cancel", "Name", "Password", "Remember me"],
 		// The checkbox is the platform's Switch, whose thumb shadow the emulator's software renderer draws a little differently from one launch to the next
 		// (12 Nov: 1,051 pixels at the thumb's edge between two launches of the same build, nothing visible). This case is about the lowering, not the Switch.
-		masks: [label("Remember me")],
+		// By its class, and only when shown: by label it also takes the row's own text (chrome), and at the larger sizes the Switch is below the fold.
+		masksWhenShown: [{ className: "android.widget.Switch" }],
 	}),
 	// The screen of transitions on HTML elements (`qa/README.md`, "Transitions"): the route opens it settled (the card shown and the panel open: a block that is there when its screen opens plays nothing), so no
 	// animation is running when it is photographed and the references are stable; the list's order is the one it starts with. The buttons that run the transitions are further down at the larger sizes.

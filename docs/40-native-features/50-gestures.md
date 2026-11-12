@@ -1,5 +1,6 @@
 ---
 title: Gestures
+video: gestures
 ---
 
 Drags, pinches, swipes and long presses are recognised by the platform, with [react-native-gesture-handler](https://docs.swmansion.com/react-native-gesture-handler/). `@rasheed/svelte-native/gestures` puts its gestures on Svelte views. You build a gesture with the library's own builders, and attach it to a view with `gesture={...}`.

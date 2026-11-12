@@ -1,0 +1,330 @@
+/* The page's Markdown: headings, text, lists, tables, images and callouts. The code blocks are in code.css. */
+.prose {
+	min-width: 0;
+	overflow-wrap: break-word;
+}
+
+.prose > :first-child {
+	margin-top: 0;
+}
+
+.prose h2,
+.prose h3,
+.prose h4,
+.prose h5 {
+	position: relative;
+	color: var(--docs-text-default);
+}
+
+.prose h2 {
+	margin: 32px 0 14px;
+	font-size: 25px;
+	line-height: 1.4;
+	font-weight: 700;
+	letter-spacing: -0.01em;
+}
+
+.prose h3 {
+	margin: 28px 0 12px;
+	font-size: 20px;
+	line-height: 1.4;
+	font-weight: 600;
+}
+
+.prose h4 {
+	margin: 24px 0 8px;
+	font-size: 16px;
+	font-weight: 600;
+}
+
+.prose h5 {
+	margin: 20px 0 8px;
+	font-size: 13px;
+	font-weight: 500;
+}
+
+@media (max-width: 787.98px) {
+	.prose h2 {
+		font-size: 22px;
+	}
+	.prose h3 {
+		font-size: 18px;
+	}
+}
+
+@media (max-width: 467.98px) {
+	.prose h2 {
+		font-size: 19px;
+	}
+	.prose h3 {
+		font-size: 16px;
+	}
+}
+
+/* The permalink: after the heading's text, there on hover and on keyboard focus */
+.permalink {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 25px;
+	height: 25px;
+	margin-left: 4px;
+	vertical-align: middle;
+	color: var(--docs-text-tertiary);
+	border-radius: var(--docs-radius-sm);
+	opacity: 0;
+	text-decoration: none;
+	transition:
+		opacity 150ms,
+		background-color 150ms;
+}
+
+.permalink:hover {
+	color: var(--docs-text-default);
+	background: var(--docs-bg-element);
+}
+
+:is(h2, h3, h4, h5):hover > .permalink,
+.permalink:focus-visible {
+	opacity: 1;
+}
+
+@media (hover: none) {
+	.permalink {
+		display: none;
+	}
+}
+
+.prose p {
+	margin: 0 0 1.5ch;
+}
+
+.prose a {
+	color: var(--docs-link);
+	text-decoration: underline;
+	text-decoration-color: color-mix(in oklab, var(--docs-link) 35%, transparent);
+	text-decoration-thickness: 1px;
+	text-underline-offset: 3px;
+	transition: text-decoration-color 150ms;
+}
+
+.prose a:hover {
+	text-decoration-color: currentcolor;
+}
+
+.prose a.permalink {
+	text-decoration: none;
+}
+
+.prose strong {
+	font-weight: 600;
+}
+
+.prose ul,
+.prose ol {
+	margin: 0 0 1.5ch;
+	padding-left: 24px;
+}
+
+.prose li {
+	margin: 4px 0;
+	padding-left: 2px;
+}
+
+.prose li::marker {
+	color: var(--docs-text-tertiary);
+}
+
+.prose li > p {
+	margin-bottom: 0.5ch;
+}
+
+.prose li > ul,
+.prose li > ol {
+	margin: 4px 0 0;
+}
+
+.prose hr {
+	margin: 48px 0 0;
+	border: 0;
+	border-top: 1px solid var(--docs-border-secondary);
+}
+
+.prose blockquote {
+	margin: 20px 0;
+	padding: 0 0 0 16px;
+	color: var(--docs-text-secondary);
+	border-left: 3px solid var(--docs-border);
+}
+
+/* Inline code */
+.prose code {
+	padding: 1px 4px;
+	font: 400 12px/1.5 var(--docs-mono);
+	font-variant-ligatures: none;
+	color: var(--docs-text-default);
+	background: var(--docs-bg-subtle);
+	border: 1px solid var(--docs-border-secondary);
+	border-radius: var(--docs-radius-sm);
+	overflow-wrap: anywhere;
+}
+
+.prose :is(h2, h3, h4, h5) code {
+	font-size: 0.8em;
+	font-weight: 500;
+}
+
+/* A prop name or a type in a table breaks between words, never inside one: a long type wraps at its spaces, and on a phone the table scrolls sideways. */
+.prose td code {
+	overflow-wrap: normal;
+}
+
+/* The description column keeps a readable width: a table too wide for the page scrolls sideways, and does not squeeze it into a narrow strip. */
+.prose td:last-child:not(:first-child) {
+	min-width: 12rem;
+}
+
+/* Images */
+.media {
+	margin: 20px 0;
+}
+
+.media img {
+	display: block;
+	width: 100%;
+	height: auto;
+	border: 1px solid var(--docs-border);
+	border-radius: var(--docs-radius-2xl);
+}
+
+.media figcaption {
+	margin-top: 8px;
+	font-size: 14px;
+	text-align: center;
+	color: var(--docs-text-secondary);
+}
+
+.prose p img {
+	max-width: 100%;
+	height: auto;
+}
+
+/* Tables: a rounded, bordered wrapper that scrolls sideways when the table is wider than the page */
+.table-wrap {
+	margin: 20px 0;
+	overflow-x: auto;
+	background: var(--docs-bg-default);
+	border: 1px solid var(--docs-border);
+	border-radius: var(--docs-radius-2xl);
+	box-shadow: var(--docs-shadow-xs);
+}
+
+.prose table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 14px;
+	line-height: 1.5;
+}
+
+.prose th,
+.prose td {
+	padding: 12px 16px;
+	text-align: left;
+	vertical-align: top;
+	border-left: 1px solid var(--docs-border-secondary);
+}
+
+.prose th:first-child,
+.prose td:first-child {
+	border-left: 0;
+}
+
+.prose thead th {
+	font-size: 12px;
+	font-weight: 500;
+	color: var(--docs-text-secondary);
+	background: var(--docs-bg-subtle);
+	border-bottom: 1px solid var(--docs-border);
+	white-space: nowrap;
+}
+
+.prose tbody tr:nth-child(even) {
+	background: var(--docs-bg-subtle);
+}
+
+.prose tbody tr + tr td {
+	border-top: 1px solid var(--docs-border-secondary);
+}
+
+/* Callouts: > **info**, > **warning**, > **important**, > **success** or > **error** at the start of a quote */
+.callout {
+	--callout: var(--docs-info);
+	display: flex;
+	gap: 10px;
+	margin: 20px 0;
+	padding: 12px 16px 12px 14px;
+	font-size: 15px;
+	line-height: 1.55;
+	background: var(--docs-info-bg);
+	border: 1px solid var(--docs-info-border);
+	border-radius: var(--docs-radius-2xl);
+	box-shadow: var(--docs-shadow-xs);
+}
+
+.callout-warning {
+	--callout: var(--docs-warning);
+	background: var(--docs-warning-bg);
+	border-color: var(--docs-warning-border);
+}
+
+.callout-important {
+	--callout: var(--docs-important);
+	background: var(--docs-important-bg);
+	border-color: var(--docs-important-border);
+}
+
+.callout-success {
+	--callout: var(--docs-success);
+	background: var(--docs-success-bg);
+	border-color: var(--docs-success-border);
+}
+
+.callout-error {
+	--callout: var(--docs-danger);
+	background: var(--docs-danger-bg);
+	border-color: var(--docs-danger-border);
+}
+
+.callout-icon {
+	flex: none;
+	margin-top: 3px;
+	color: var(--callout);
+}
+
+.callout-icon svg {
+	display: block;
+}
+
+.callout-body {
+	min-width: 0;
+	flex: 1;
+}
+
+.callout-body > :first-child {
+	margin-top: 0;
+}
+
+.callout-body > :last-child {
+	margin-bottom: 0;
+}
+
+.callout code {
+	background: color-mix(in oklab, var(--callout) 10%, transparent);
+	border-color: color-mix(in oklab, var(--callout) 28%, transparent);
+	color: inherit;
+}
+
+.prose .callout a {
+	color: var(--callout);
+	text-decoration-color: color-mix(in oklab, var(--callout) 50%, transparent);
+}

@@ -1,5 +1,7 @@
 ---
 title: Image
+group: Basics
+video: pressable
 ---
 
 `Image` shows a picture: a file bundled with the app, or one from a URL.

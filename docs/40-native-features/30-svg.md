@@ -1,5 +1,6 @@
 ---
 title: SVG
+video: svg
 ---
 
 `@rasheed/svelte-native/svg` draws vector graphics with [react-native-svg](https://github.com/software-mansion/react-native-svg), as Svelte components. The elements and their props are the ones you know from SVG on the web, written in camelCase (`strokeWidth`, `stopColor`).

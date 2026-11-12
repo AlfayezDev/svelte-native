@@ -1,5 +1,7 @@
 ---
 title: KeyboardAvoidingView
+group: Layout and status
+video: keyboard-avoiding-view
 ---
 
 `KeyboardAvoidingView` moves its content out of the keyboard's way. When the keyboard opens and covers part of the view, it adds padding, shrinks or lifts the content by the height it covers. Wrap a form in one, so the field being edited stays visible.

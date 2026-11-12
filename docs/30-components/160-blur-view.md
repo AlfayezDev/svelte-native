@@ -1,5 +1,7 @@
 ---
 title: BlurView
+group: Navigation and effects
+video: blur-view
 ---
 
 `BlurView` blurs whatever is behind it on the screen, and draws its children sharp on top: a frosted card over a photo, a header over a list. It is part of Svelte Native, so there is nothing to install and nothing to point it at; it is native code, so an app needs a new native build (not an over-the-air update) the first time it uses it.

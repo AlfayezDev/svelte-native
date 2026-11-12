@@ -1,5 +1,6 @@
 ---
 title: HTML elements
+video: html-elements
 ---
 
 You can write a native screen with HTML elements. `<div>`, `<p>`, `<button>`, `<a href>`, `<img>`, `<input>` and the rest of the list below become native components when the app is built for a phone, so one `.svelte` file can be a SvelteKit page in the browser and a screen on the device. You import a component from the library only for what HTML can't say: [`ScrollView`](scroll-view), [`List`](list), [`Screen`](screen), gestures, [`BlurView`](blur-view).

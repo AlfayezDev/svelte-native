@@ -1,0 +1,239 @@
+/* Code blocks and terminals. The Shiki markup carries both themes' colours as variables; light-dark() picks one. */
+.code {
+	position: relative;
+	margin: 20px 0;
+	background: var(--docs-bg-subtle);
+	border: 1px solid var(--docs-border);
+	border-radius: var(--docs-radius-2xl);
+	overflow: hidden;
+}
+
+.shiki,
+.shiki span {
+	color: light-dark(var(--shiki-light), var(--shiki-dark));
+}
+
+.code pre,
+.terminal pre {
+	margin: 0;
+	padding: 16px;
+	overflow-x: auto;
+	font: 400 12px/1.7 var(--docs-mono);
+	tab-size: 2;
+	background: none;
+}
+
+.code pre code,
+.terminal pre code {
+	padding: 0;
+	font: inherit;
+	color: inherit;
+	background: none;
+	border: 0;
+	border-radius: 0;
+	overflow-wrap: normal;
+	white-space: pre;
+}
+
+/* A block with a file name has a header; one without has its tools in the corner, on hover */
+.code-head,
+.terminal-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 40px;
+	padding: 4px 8px 4px 16px;
+	font-size: 14px;
+	border-bottom: 1px solid var(--docs-border);
+}
+
+.code-head > svg,
+.terminal-title > svg {
+	flex: none;
+	color: var(--docs-text-tertiary);
+}
+
+.code-title {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	font-weight: 500;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.code-tools {
+	position: absolute;
+	top: 8px;
+	right: 8px;
+	z-index: 1;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 2px 2px 2px 8px;
+	background: var(--docs-bg-subtle);
+	border-radius: var(--docs-radius-md);
+	opacity: 0;
+	transition: opacity 150ms;
+}
+
+.code:hover .code-tools,
+.code:focus-within .code-tools,
+.code-tools:has([data-copied]) {
+	opacity: 1;
+}
+
+/* No hover on a touch screen: the tools are a slim row above the code, where they cover nothing. */
+@media (hover: none) {
+	.code-tools {
+		position: static;
+		justify-content: flex-end;
+		padding: 6px 6px 0;
+		background: none;
+		opacity: 1;
+	}
+	.code-tools + pre {
+		padding-top: 4px;
+	}
+}
+
+.code-lang {
+	font: 500 11px/1 var(--docs-mono);
+	color: var(--docs-text-tertiary);
+}
+
+.copy {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 28px;
+	padding: 0 8px;
+	font-size: 12px;
+	font-weight: 500;
+	color: var(--docs-text-secondary);
+	background: none;
+	border: 0;
+	border-radius: var(--docs-radius-md);
+	cursor: pointer;
+	transition:
+		background-color 150ms,
+		color 150ms,
+		transform 150ms;
+}
+
+.copy:hover {
+	color: var(--docs-text-default);
+	background: var(--docs-bg-hover);
+}
+
+.copy:active {
+	transform: scale(0.97);
+}
+
+.copy .i-check,
+.copy[data-copied] .i-copy {
+	display: none;
+}
+
+.copy[data-copied] .i-check {
+	display: block;
+	color: var(--docs-success);
+}
+
+.code-tools .copy-label {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+}
+
+/* On a phone the header keeps its icon, and the label is for screen readers. */
+@media (max-width: 467.98px) {
+	.terminal-head .copy-label,
+	.code-head .copy-label {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		margin: -1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+	}
+	.terminal-head .copy,
+	.code-head .copy {
+		padding: 0 6px;
+	}
+	.pm-tabs button {
+		padding: 0 8px;
+	}
+}
+
+/* The terminal: always dark. The package manager is a class of <html> (pm-npm ... pm-bun), set before the first paint, so every terminal agrees. */
+.terminal {
+	color-scheme: dark;
+	margin: 20px 0;
+	color: var(--docs-text-default);
+	background: var(--docs-bg-subtle);
+	border: 1px solid var(--docs-border);
+	border-radius: var(--docs-radius-2xl);
+	overflow: hidden;
+}
+
+.terminal-title {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	margin-right: auto;
+	font-weight: 500;
+}
+
+.pm-tabs {
+	display: flex;
+	gap: 2px;
+}
+
+.pm-tabs button {
+	height: 26px;
+	padding: 0 10px;
+	font-size: 12px;
+	font-weight: 500;
+	color: var(--docs-text-secondary);
+	background: none;
+	border: 1px solid transparent;
+	border-radius: 999px;
+	cursor: pointer;
+	transition:
+		background-color 150ms,
+		color 150ms;
+}
+
+.pm-tabs button:hover {
+	color: var(--docs-text-default);
+}
+
+.pm-npm [data-pm="npm"],
+.pm-yarn [data-pm="yarn"],
+.pm-pnpm [data-pm="pnpm"],
+.pm-bun [data-pm="bun"] {
+	color: var(--docs-text-default);
+	background: var(--docs-bg-element);
+	border-color: var(--docs-border);
+}
+
+[data-pm-block] {
+	display: none;
+}
+
+.pm-npm [data-pm-block~="npm"],
+.pm-yarn [data-pm-block~="yarn"],
+.pm-pnpm [data-pm-block~="pnpm"],
+.pm-bun [data-pm-block~="bun"] {
+	display: block;
+}
+
+.terminal .line.cmd::before {
+	content: "$ ";
+	color: var(--docs-text-tertiary);
+	user-select: none;
+}

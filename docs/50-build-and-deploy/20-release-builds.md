@@ -42,4 +42,4 @@ To publish, open `ios/<YourApp>.xcworkspace` in Xcode, choose your team under **
 
 A release build can download new JavaScript without a new store release, from Expo's update service (`eas update`). Svelte Native has its own updates client for this: see [Updates](updates).
 
-> [!NOTE] Building on Expo's servers with EAS Build hasn't been tried with Svelte Native yet. Local builds, as above, work.
+> **info** Building on Expo's servers with EAS Build hasn't been tried with Svelte Native yet. Local builds, as above, work.

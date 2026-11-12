@@ -4,6 +4,28 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="color-scheme" content="light dark" />
+		<link rel="icon" href="%sveltekit.assets%/favicon.svg" type="image/svg+xml" />
+		<!-- Before the first paint: the theme (a class on <html>, none for "Auto", which follows the system) and the package manager of the terminal blocks (pm-npm, pm-yarn, pm-pnpm or pm-bun). -->
+		<script>
+			(() => {
+				const root = document.documentElement;
+				let theme = "auto";
+				let manager = "pnpm";
+				try {
+					const stored = localStorage.getItem("docs-theme");
+					if (stored === "light" || stored === "dark") theme = stored;
+					const pm = localStorage.getItem("docs-package-manager");
+					if (pm === "npm" || pm === "yarn" || pm === "pnpm" || pm === "bun") manager = pm;
+				} catch {
+					// no storage: the defaults
+				}
+				root.dataset.theme = theme;
+				if (theme !== "auto") root.classList.add(theme);
+				root.classList.add(`pm-${manager}`);
+				const platform = navigator.userAgentData?.platform || navigator.platform || "";
+				if (/mac|iphone|ipad/i.test(platform)) root.classList.add("mac");
+			})();
+		</script>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">

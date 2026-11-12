@@ -1,5 +1,7 @@
 ---
 title: SafeAreaView
+group: Layout and status
+video: safe-area-view
 ---
 
 `SafeAreaView` is a [`View`](view) padded by the safe-area insets: the space the status bar, a notch, the home indicator and the system navigation bar take at the edges of the screen. Content inside it stays clear of them.

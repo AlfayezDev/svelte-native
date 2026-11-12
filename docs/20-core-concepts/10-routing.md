@@ -1,5 +1,6 @@
 ---
 title: Routing
+video: routing
 ---
 
 Svelte Native has SvelteKit's _filesystem-based router_: the directories under `src/routes` are the screens of your app. Web routes are `+page.svelte` and `+layout.svelte`; native routes are `+mobile.svelte` and `+layout.mobile.svelte`, and the two kinds can share a directory.

@@ -1,11 +1,17 @@
 ---
 title: Creating a project
+description: Create a SvelteKit project, add Svelte Native and run the app on a phone or an emulator.
 ---
 
-You start where every SvelteKit app starts, with `npx sv create`. Then you install Svelte Native and run one command that sets the project up:
+You start where every SvelteKit app starts, with `npx sv create`:
+
+```sh terminal
+npx sv create my-app
+```
+
+Then you install Svelte Native and run one command that sets the project up. Svelte Native's patches are pnpm's, so from here on the commands are pnpm's:
 
 ```sh
-npx sv create my-app
 cd my-app
 pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#v0.4.0-rc.3&path:packages/svelte-native"
 pnpm exec svelte-native init
@@ -36,7 +42,7 @@ git config --global url."git@github.com:AlfayezDev/".insteadOf "https://github.c
 
 Creates a SvelteKit project. Choose the **minimal** template, **TypeScript**, no add-ons, and **pnpm**. To skip the questions:
 
-```sh
+```sh terminal
 npx sv create my-app --template minimal --types ts --no-add-ons --install pnpm
 ```
 

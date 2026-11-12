@@ -107,9 +107,12 @@ export async function writeReference(
 	};
 }
 
+/** How far a reference's mask of a moving node reaches past the node's box, on each side. */
+export const MASK_PAD = 2;
+
 /** The masks a reference is frozen with: the status bar (clock, battery, notification icons), the navigation bar (the gesture pill) and the case's own nodes. */
 export function referenceMasks(statusBar: Rect | null, caseMasks: Rect[], image: Image, navigationBar: Rect | null = null): ReferenceMask[] {
-	const pad = 2;
+	const pad = MASK_PAD;
 	const clip = (rect: Rect): Rect => {
 		const x = Math.max(0, rect.x - pad);
 		const y = Math.max(0, rect.y - pad);

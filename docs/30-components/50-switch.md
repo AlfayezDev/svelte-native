@@ -1,7 +1,7 @@
 ---
 title: Switch
 group: Basics
-video: switch
+video: text-input
 ---
 
 `Switch` is the platform's on/off toggle: a Material switch on Android, a `UISwitch` on iOS. Bind its `value` to a boolean.

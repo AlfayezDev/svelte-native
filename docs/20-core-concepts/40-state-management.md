@@ -1,5 +1,6 @@
 ---
 title: State management
+video: state-management
 ---
 
 State works as in any Svelte app: `$state` in a component, shared state in `.svelte.ts` modules, and context for state that belongs to part of the tree. A few things are different on a phone: how long a screen lives, and where data survives a restart.

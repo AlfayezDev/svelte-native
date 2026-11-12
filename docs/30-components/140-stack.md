@@ -1,7 +1,7 @@
 ---
 title: Stack
 group: Navigation and effects
-video: stack
+video: routing
 ---
 
 `Stack` sets the defaults of every screen in a stack navigator: the header style, the transition, the background, the system bars. You write it in the layout of the stack, around `children`. It draws nothing itself: the stack is the navigator the routes make, and `Stack` only configures it.

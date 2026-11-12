@@ -39,7 +39,7 @@
 	{/if}
 
 	<ul class="links">
-		<li><a href="{REPOSITORY}/blob/main/{page.source}" rel="noreferrer"><Pencil size={14} />Edit this page</a></li>
+		<li><a href="{REPOSITORY}/edit/main/{page.source}" rel="noreferrer"><Pencil size={14} />Edit this page</a></li>
 		<li><a href="{REPOSITORY}/issues/new?title={encodeURIComponent(`Docs: ${page.title}`)}" rel="noreferrer"><MessageSquareWarning size={14} />Report an issue</a></li>
 		<li><a href={resolve("/llms.txt")}><FileText size={14} />llms.txt</a></li>
 	</ul>

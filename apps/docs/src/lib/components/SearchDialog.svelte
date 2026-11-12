@@ -100,6 +100,12 @@
 		}
 	});
 
+	// The page behind the dialog does not scroll.
+	$effect(() => {
+		document.documentElement.classList.toggle("scroll-locked", search.open);
+		return () => document.documentElement.classList.remove("scroll-locked");
+	});
+
 	// The row the arrow keys are on stays in view.
 	$effect(() => {
 		const row = rows[active];
@@ -119,6 +125,10 @@
 		} else if (event.key === "Enter") {
 			event.preventDefault();
 			open(rows[active]);
+		} else if (event.key === "Escape") {
+			// A search field clears itself on Esc, and the dialog would stay: one Esc closes it.
+			event.preventDefault();
+			search.open = false;
 		}
 	}
 </script>

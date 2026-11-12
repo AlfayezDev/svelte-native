@@ -13,13 +13,13 @@
 <svelte:head>
 	<title>{data.page.title} • Svelte Native</title>
 	{#if description}<meta name="description" content={description} />{/if}
-	<link rel="canonical" href={data.page.canonical} />
+	{#if data.page.canonical}<link rel="canonical" href={data.page.canonical} />{/if}
 	<link rel="alternate" type="text/markdown" href={resolve("/docs/[slug].md", { slug: data.page.slug })} />
 	<meta property="og:type" content="article" />
 	<meta property="og:site_name" content="Svelte Native" />
 	<meta property="og:title" content="{data.page.title} • Svelte Native" />
 	{#if description}<meta property="og:description" content={description} />{/if}
-	<meta property="og:url" content={data.page.canonical} />
+	{#if data.page.canonical}<meta property="og:url" content={data.page.canonical} />{/if}
 	<meta name="twitter:card" content="summary" />
 </svelte:head>
 

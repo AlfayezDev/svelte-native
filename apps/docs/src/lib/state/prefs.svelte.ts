@@ -24,13 +24,14 @@ export function setGroup(key: string, open: boolean) {
 /** The platform the feature videos show, on every page. */
 export const media = $state<{ platform: Platform }>({ platform: "ios" });
 
+/** The platform is also <html data-video="...">, set before the first paint by the script in app.html, so a page shows the right video at once. */
 export function loadMedia() {
-	const stored = read("docs-video-platform");
-	if (stored === "ios" || stored === "android") media.platform = stored;
+	media.platform = document.documentElement.dataset.video === "android" ? "android" : "ios";
 }
 
 export function setVideoPlatform(platform: Platform) {
 	media.platform = platform;
+	document.documentElement.dataset.video = platform;
 	write("docs-video-platform", platform);
 }
 

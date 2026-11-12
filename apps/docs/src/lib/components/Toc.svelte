@@ -1,7 +1,7 @@
 <script lang="ts">
 	// "On this page", with a scroll-spy. The active heading is the last one above a line 5% of the viewport under the header; at the bottom of
-	// the page it is the section most of the viewport shows, as the last headings can never reach the line. A click scrolls smoothly and
-	// holds the highlight on the clicked heading until the scroll settles.
+	// the page it is the last one, as the last headings can never reach the line. A click scrolls smoothly and holds the highlight on the
+	// clicked heading until the scroll settles.
 	import ArrowUp from "@lucide/svelte/icons/arrow-up";
 	import TextAlignStart from "@lucide/svelte/icons/text-align-start";
 
@@ -40,18 +40,14 @@
 			else break;
 		}
 
-		// At the bottom of the page: the section with most of the viewport in it, the later one when they tie.
+		// At the bottom of a page that scrolls, the last entry: the last headings can never reach the line, however short their sections.
 		const root = document.documentElement;
-		if (scrollY + height >= root.scrollHeight - Math.min(200, height * 0.1)) {
-			let best = 0;
-			for (let i = 0; i < tops.length; i++) {
-				const start = tops[i];
-				if (start === undefined) continue;
-				const end = tops.slice(i + 1).find((top) => top !== undefined) ?? root.scrollHeight - scrollY;
-				const visible = Math.max(0, Math.min(end, height) - Math.max(start, HEADER));
-				if (visible >= best) {
-					best = visible;
+		const scrolls = root.scrollHeight > height + 4;
+		if (scrolls && scrollY + height >= root.scrollHeight - 4) {
+			for (let i = tops.length - 1; i >= 0; i--) {
+				if (tops[i] !== undefined) {
 					next = i;
+					break;
 				}
 			}
 		}

@@ -16,6 +16,8 @@
 	import { search } from "#lib/state/ui.svelte";
 
 	let { areas }: { areas: NavArea[] } = $props();
+	/** The sidebar is on the page twice while the mobile menu is open: its ids must not be the same twice. */
+	const uid = $props.id();
 
 	/** The sidebar scrolls inside the element that holds it, the desktop column or the mobile menu. */
 	let nav = $state<HTMLElement>();
@@ -92,11 +94,11 @@
 							{@const key = groupKey(section.id, item.title)}
 							{@const open = isOpen(key, containsActive(item.pages))}
 							<li class="group">
-								<button class="group-button" type="button" aria-expanded={open} aria-controls="group-{key.replace(/\W+/g, '-')}" onclick={() => setGroup(key, !open)}>
+								<button class="group-button" type="button" aria-expanded={open} aria-controls="group-{uid}-{key.replace(/\W+/g, '-')}" onclick={() => setGroup(key, !open)}>
 									<span class="chevron" class:closed={!open} aria-hidden="true"><ChevronDown size={12} /></span>
 									{item.title}
 								</button>
-								<ul id="group-{key.replace(/\W+/g, '-')}" hidden={!open}>
+								<ul id="group-{uid}-{key.replace(/\W+/g, '-')}" hidden={!open}>
 									{#each item.pages as child (child.slug)}
 										<li>{@render pageLink(child)}</li>
 									{/each}

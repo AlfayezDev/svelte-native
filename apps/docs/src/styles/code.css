@@ -20,6 +20,7 @@
 	overflow-x: auto;
 	font: 400 12px/1.7 var(--docs-mono);
 	tab-size: 2;
+	font-variant-ligatures: none;
 	background: none;
 }
 
@@ -208,10 +209,6 @@
 		color 150ms;
 }
 
-.pm-tabs button:hover {
-	color: var(--docs-text-default);
-}
-
 .pm-npm [data-pm="npm"],
 .pm-yarn [data-pm="yarn"],
 .pm-pnpm [data-pm="pnpm"],
@@ -221,10 +218,22 @@
 	border-color: var(--docs-border);
 }
 
+/* Without the script of app.html (no JavaScript) no pm- class is set: npm, the commands as they are written. */
+:root:not([class*="pm-"]) [data-pm="npm"] {
+	color: var(--docs-text-default);
+	background: var(--docs-bg-element);
+	border-color: var(--docs-border);
+}
+
+.pm-tabs button:hover {
+	color: var(--docs-text-default);
+}
+
 [data-pm-block] {
 	display: none;
 }
 
+:where(:root:not([class*="pm-"])) [data-pm-block~="npm"],
 .pm-npm [data-pm-block~="npm"],
 .pm-yarn [data-pm-block~="yarn"],
 .pm-pnpm [data-pm-block~="pnpm"],

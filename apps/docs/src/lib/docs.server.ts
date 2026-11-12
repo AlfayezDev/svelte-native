@@ -19,11 +19,11 @@ import Info from "@lucide/svelte/icons/info";
 import LinkIcon from "@lucide/svelte/icons/link";
 import TerminalIcon from "@lucide/svelte/icons/terminal";
 import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
-import { Marked, type Tokens } from "marked";
+import { Lexer, Marked, type Token, type Tokens } from "marked";
 import { createHighlighter, type ShikiTransformer } from "shiki";
 import { render as renderComponent } from "svelte/server";
 
-import { BASE, ORIGIN } from "./base-path";
+import { BASE, SITE_URL } from "./base-path";
 import { areaIcons, type Icon, sectionIcons } from "./icons";
 import { REPOSITORY } from "./site";
 import { hasPrompt, PACKAGE_MANAGERS, terminalVariants } from "./terminal";
@@ -53,7 +53,8 @@ export type Page = PageLink & {
 	/** The feature video of the page: only the platforms whose file exists. */
 	video?: { title: string; sources: VideoSource[] };
 	updated?: { iso: string; label: string };
-	canonical: string;
+	/** The page's absolute address, when SITE_URL says where the site is. */
+	canonical?: string;
 };
 
 type File = {
@@ -107,11 +108,22 @@ function slugify(text: string) {
 		.replace(/\s/g, "-");
 }
 
-const plainText = (markdown: string) =>
-	markdown
-		.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-		.replace(/[`*]/g, "")
-		.replace(/(^|\s)_|_(\s|$)/g, "$1$2");
+const decodeEntities = (text: string) => text.replace(/&(amp|lt|gt|quot|#39);/g, (_, name: string) => ({ amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'" })[name] ?? "");
+
+/** The text of inline tokens, as a reader sees it: no emphasis marks, link targets, code ticks or backslash escapes. */
+function inlineText(tokens: Token[] | undefined): string {
+	return (tokens ?? [])
+		.map((token) => {
+			if (token.type === "html") return "";
+			if (token.type === "br") return " ";
+			if (token.type === "codespan" || token.type === "escape") return token.text;
+			if ("tokens" in token && Array.isArray(token.tokens)) return inlineText(token.tokens);
+			return decodeEntities(token.type === "text" ? token.text : (token.raw ?? ""));
+		})
+		.join("");
+}
+
+const plainText = (markdown: string) => inlineText(Lexer.lexInline(markdown));
 
 const CALLOUTS: Record<string, { icon: Icon; label: string }> = {
 	info: { icon: Info, label: "Note" },
@@ -120,6 +132,7 @@ const CALLOUTS: Record<string, { icon: Icon; label: string }> = {
 	success: { icon: CircleCheck, label: "Tip" },
 	error: { icon: CircleX, label: "Caution" },
 };
+const isCallout = (name: string) => Object.hasOwn(CALLOUTS, name);
 const CALLOUT_ICONS = Object.fromEntries(Object.entries(CALLOUTS).map(([kind, { icon }]) => [kind, svg(icon, "i-callout", 16)]));
 /** GitHub's `> [!NOTE]` alerts map onto the same five callouts as `> **info**`. */
 const GITHUB_ALERT = /^\[!(NOTE|TIP|WARNING|IMPORTANT|CAUTION)\][ \t]*\n?/i;
@@ -131,8 +144,14 @@ const SLUG_LINK = /^([a-z0-9-]+)(?:#(.+))?$/;
 
 const copyButton = `<button type="button" class="copy" data-copy>${icons.copy}${icons.check}<span class="copy-label" aria-live="polite">Copy</span></button>`;
 
+/** The colours of GitHub's themes that are under 4.5:1 on the code background at 12px (the light orange, red and green, the dark comments), each replaced by the next shade of its own hue that reaches it. */
+const COLOR_REPLACEMENTS = {
+	"github-light": { "#d73a49": "#cf222e", "#e36209": "#bc4c00", "#22863a": "#1a7f37" },
+	"github-dark": { "#6a737d": "#8b949e" },
+};
+
 function highlight(code: string, language: string, transformers: ShikiTransformer[] = []) {
-	return highlighter.codeToHtml(code, { lang: language, themes: { light: "github-light", dark: "github-dark" }, defaultColor: false, transformers });
+	return highlighter.codeToHtml(code, { lang: language, themes: { light: "github-light", dark: "github-dark" }, defaultColor: false, colorReplacements: COLOR_REPLACEMENTS, transformers });
 }
 
 function codeBlock(code: string, lang: string, name: string) {
@@ -148,6 +167,7 @@ function codeBlock(code: string, lang: string, name: string) {
 /** A terminal: dark in both themes, with a tab for each package manager when it has a command to translate. Which tab is selected and which block shows is the CSS of <html class="pm-pnpm"> (see app.html), so every terminal on the page agrees and nothing flashes. */
 function terminalBlock(source: string) {
 	const { variants, switchable } = terminalVariants(source);
+	// Pagefind reads npm's spelling of the commands, once: the other three are the same text with another word in front.
 	const block = (managers: string, code: string) => {
 		const lines = code.split("\n");
 		const html = highlight(code, "sh", [
@@ -157,7 +177,7 @@ function terminalBlock(source: string) {
 				},
 			},
 		]);
-		return `<div data-pm-block="${managers}">${html}</div>`;
+		return `<div data-pm-block="${managers}"${switchable && managers !== "npm" ? " data-pagefind-ignore" : ""}>${html}</div>`;
 	};
 	const tabs = switchable ? `<div class="pm-tabs" role="group" aria-label="Package manager">${PACKAGE_MANAGERS.map((manager) => `<button type="button" data-pm="${manager}" aria-pressed="false">${manager}</button>`).join("")}</div>` : "";
 	const blocks = switchable ? PACKAGE_MANAGERS.map((manager) => block(manager, variants[manager])) : [block(PACKAGE_MANAGERS.join(" "), source.replace(/\n+$/, ""))];
@@ -242,7 +262,15 @@ function render(file: File, section: string): Rendered {
 	const headings: Heading[] = [];
 	const anchors = new Set<string>();
 	const links: Rendered["links"] = [];
-	const seen = new Map<string, number>();
+	/** The ids taken: the page's own (a heading is never named like these) and the title's. A heading's id is the first free one of its slug, slug-1, slug-2. */
+	const used = new Set(["top", "main", "mobile-menu", "search-results"]);
+	const uniqueId = (slug: string) => {
+		const base = slug || "section";
+		let id = base;
+		for (let n = 1; used.has(id); n++) id = `${base}-${n}`;
+		used.add(id);
+		return id;
+	};
 	/** An image under the site's root, /images/screen.png, is a file of static/. */
 	const src = (href: string) => (href.startsWith("/") ? `${BASE}${href}` : href);
 
@@ -250,11 +278,8 @@ function render(file: File, section: string): Rendered {
 		renderer: {
 			heading({ tokens, depth, text }) {
 				if (depth === 1) throw new Error(`${file.path}: "# ${text}": the title comes from the frontmatter; start the sections at ##`);
-				const plain = plainText(text);
-				let id = slugify(plain);
-				const count = seen.get(id) ?? 0;
-				seen.set(id, count + 1);
-				if (count) id = `${id}-${count}`;
+				const plain = inlineText(tokens);
+				const id = uniqueId(slugify(plain));
 				anchors.add(id);
 				if (depth === 2 || depth === 3) headings.push({ id, text: plain, depth });
 				const inner = this.parser.parseInline(tokens);
@@ -280,7 +305,7 @@ function render(file: File, section: string): Rendered {
 					const inline = (first as Tokens.Paragraph).tokens;
 					const head = inline[0];
 					const alert = GITHUB_ALERT.exec(first.text)?.[1];
-					if (head?.type === "strong" && head.text.toLowerCase() in CALLOUTS) {
+					if (head?.type === "strong" && isCallout(head.text.toLowerCase())) {
 						// > **warning** text
 						kind = head.text.toLowerCase();
 						inline.shift();
@@ -449,7 +474,7 @@ export function getPage(slug: string): Page | undefined {
 		platforms: file.platforms,
 		video: videoOf(file),
 		updated: updatedOf(file.path),
-		canonical: `${ORIGIN}${BASE}/docs/${slug}`,
+		canonical: SITE_URL ? `${SITE_URL}/docs/${slug}` : undefined,
 	};
 }
 
@@ -472,15 +497,18 @@ export function getMarkdown(slug: string): string | undefined {
 /** llms.txt: the guide's pages, and where to read each one as Markdown (https://llmstxt.org). */
 export function getLlmsTxt(): string {
 	const lines = ["# Svelte Native", "", "> Svelte 5 on React Native Fabric, with no React: write Android and iOS apps as Svelte components. This is its guide. Every page is also available as Markdown, at the address listed.", ""];
+	/** A page's Markdown file: an absolute address with SITE_URL, a path without. */
+	const where = (slug: string) => `${SITE_URL || BASE}/docs/${slug}.md`;
 	let section = "";
 	for (const page of all().pages.values()) {
 		if (page.section !== section) {
+			if (section) lines.push("");
 			section = page.section;
 			lines.push(`## ${section}`, "");
 		}
 		const summary = page.description?.text.replace(/\s+/g, " ");
 		const short = summary && summary.length > 160 ? `${summary.slice(0, summary.lastIndexOf(" ", 157))}...` : summary;
-		lines.push(`- [${page.title}](${ORIGIN}${BASE}/docs/${page.slug}.md)${short ? `: ${short}` : ""}`);
+		lines.push(`- [${page.title}](${where(page.slug)})${short ? `: ${short}` : ""}`);
 	}
 	return `${lines.join("\n")}\n`;
 }

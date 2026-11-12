@@ -1,12 +1,12 @@
 <script lang="ts">
 	// Below the desktop width the sidebar is a panel under the header, opened by the hamburger.
 	import type { NavArea } from "#lib/docs.server";
-	import { drawer } from "#lib/state/ui.svelte";
+	import { drawer, search } from "#lib/state/ui.svelte";
 	import Sidebar from "./Sidebar.svelte";
 
 	let { areas }: { areas: NavArea[] } = $props();
 
-	// The page behind it does not scroll while it is open, and it closes when the window grows into the desktop layout.
+	// The page behind it does not scroll while it is open (and is inert, see +layout.svelte), and it closes when the window grows into the desktop layout.
 	$effect(() => {
 		document.documentElement.classList.add("drawer-open");
 		const desktop = matchMedia("(min-width: 1008px)");
@@ -19,9 +19,16 @@
 			desktop.removeEventListener("change", onchange);
 		};
 	});
+
+	// Esc closes the menu and gives the focus back to the button that opened it, unless it was meant for the search dialog on top of it.
+	function onkeydown(event: KeyboardEvent) {
+		if (event.key !== "Escape" || event.defaultPrevented || search.open) return;
+		drawer.open = false;
+		document.querySelector<HTMLElement>(".menu-button")?.focus();
+	}
 </script>
 
-<svelte:window onkeydown={(event) => event.key === "Escape" && (drawer.open = false)} />
+<svelte:window {onkeydown} />
 
 <div id="mobile-menu" class="drawer">
 	<Sidebar {areas} />

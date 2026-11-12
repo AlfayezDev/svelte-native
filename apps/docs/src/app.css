@@ -26,19 +26,20 @@
 
 	--docs-text-default: light-dark(#1c2024, #edeef0);
 	--docs-text-secondary: light-dark(#60646c, #b0b4ba);
-	--docs-text-tertiary: light-dark(#686c75, #888c94);
-	--docs-link: var(--accent);
+	--docs-text-tertiary: light-dark(#646870, #8f939b);
+	/* The accent is the fill and the icon; as text on the tinted backgrounds (hover, selected) the light one is a shade darker, for 4.5:1. */
+	--docs-link: light-dark(#b53a0a, var(--accent));
 
-	--docs-success: light-dark(#218358, #3dd68c);
+	--docs-success: light-dark(#217953, #3dd68c);
 	--docs-success-bg: light-dark(#e6f6eb, #132d21);
 	--docs-success-border: light-dark(#8eceaa, #28684a);
-	--docs-warning: light-dark(#ab6400, #ffca16);
+	--docs-warning: light-dark(#9d5d04, #ffca16);
 	--docs-warning-bg: light-dark(#fff7c2, #302008);
 	--docs-warning-border: light-dark(#e9c162, #714f19);
-	--docs-danger: light-dark(#ce2c31, #ff9592);
+	--docs-danger: light-dark(#bc2b30, #ff9592);
 	--docs-danger-bg: light-dark(#feebec, #3b1219);
 	--docs-danger-border: light-dark(#f4a9aa, #8c333a);
-	--docs-info: light-dark(#0d74ce, #70b8ff);
+	--docs-info: light-dark(#0e6cbd, #70b8ff);
 	--docs-info-bg: light-dark(#e6f4fe, #0d2847);
 	--docs-info-border: light-dark(#8ec8f6, #205d9e);
 	--docs-important: light-dark(#8145b5, #d19dff);
@@ -78,9 +79,12 @@ html {
 	scroll-padding-top: calc(var(--docs-header-height) + 20px);
 	scrollbar-width: thin;
 	scrollbar-color: var(--docs-border) transparent;
+	scrollbar-gutter: stable;
 }
 
-html.drawer-open {
+/* The page does not scroll under the mobile menu or the search dialog. */
+html.drawer-open,
+html.scroll-locked {
 	overflow: hidden;
 }
 
@@ -93,7 +97,8 @@ body {
 	text-wrap: pretty;
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
-	overflow-x: hidden;
+	/* clip, not hidden: hidden makes <body> a scroll container, and the sticky header then scrolls away when <html> is locked. */
+	overflow-x: clip;
 }
 
 * {

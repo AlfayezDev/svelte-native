@@ -400,7 +400,7 @@ export class NativeNode {
     if (this.propsShared) { this.props = { ...this.props }; this.propsShared = false; }
     this.props[key] = value;
     this.invalidate("props");
-    if ((key === "ref" || key === "nativeProps") && refSink !== null) {
+    if (refSink !== null && (key === "ref" || (key === "nativeProps" && hasRef(value)))) {
       if (onScreen(this)) refSink(this);
       else if (!this.refWaits) {
         // Counted in the subtrees above it, which a link and an unlink carry on (`link`, `unlink`).
@@ -514,6 +514,11 @@ export class NativeNode {
     this.snapshot = null;
     invalidationSink?.(this, reason);
   }
+}
+
+/** Whether a `nativeProps` object hands the view a callback `ref` (what the host's `earlyRef` calls): one that does not (most do not: a row of host tags sets only a style) has nothing for the host to hear of. */
+function hasRef(value: unknown): boolean {
+  return value !== null && typeof value === "object" && typeof (value as { ref?: unknown }).ref === "function";
 }
 
 /** What waits for a screen in a subtree is counted in the node and in every node above it. */

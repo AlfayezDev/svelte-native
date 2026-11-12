@@ -70,8 +70,12 @@ private class Looper(budgetNanos: Long = TransactionOrder.DEFAULT_BUDGET_NANOS) 
     return { release.countDown() }
   }
 
-  /** Returns once every message posted so far has run. */
-  fun settle() = onMain {}
+  /** Returns once the looper is quiet: every message posted so far has run, and so have the ones those posted (an apply that submits, a drain that leaves the rest). */
+  fun settle() {
+    // Quiet is a message of ours that finds nothing queued behind it: it runs on the main thread, so no other message is running then.
+    var quiet = false
+    while (!quiet) onMain { quiet = messages.isEmpty() }
+  }
 
   fun stop() {
     quit = true
@@ -137,8 +141,8 @@ private fun scenarios() {
     expect("applied at once", inside, listOf("only"))
   }
 
-  // What a flip needs: two transactions the JavaScript thread submitted before the message ran (the new order, then the items' first frames) are applied in that message, and
-  // the frame that is queued behind the first one's message waits for both.
+  // Two transactions the JavaScript thread submitted before the main looper was free, with no hold: each is a message of its own, and the frame that is queued behind the
+  // first one's message runs between them (a list that mounts rows as it scrolls commits often, and each commit keeps its frame).
   looper {
     val hold = busy()
     fromAnotherThread { order.submit("a") }
@@ -146,10 +150,10 @@ private fun scenarios() {
     fromAnotherThread { order.submit("b") }
     hold()
     settle()
-    expect("both transactions are applied before the frame", events, listOf("a", "b", "a frame"))
+    expect("one transaction per message, the frame between", events, listOf("a", "a frame", "b"))
   }
 
-  // The commit that arrives while the first is applied (the main thread slow on a cold core, the JavaScript thread committing meanwhile) is applied before the message returns.
+  // A commit that arrives while the first is applied waits for a message of its own too, behind the frame that came due meanwhile; the commits that belong together are held.
   looper {
     during = { name -> if (name == "a") fromAnotherThread { order.submit("b, committed while a was applied") } }
     val hold = busy()
@@ -157,7 +161,7 @@ private fun scenarios() {
     later { events.add("a frame") }
     hold()
     settle()
-    expect("the one that arrived during the apply is applied before the frame", events, listOf("a", "b, committed while a was applied", "a frame"))
+    expect("the one that arrived during the apply comes after the frame", events, listOf("a", "a frame", "b, committed while a was applied"))
     expect("on the main thread", appliedOffMain, 0)
   }
 
@@ -172,33 +176,49 @@ private fun scenarios() {
     expect("one order, whoever submitted", events, listOf("a", "d", "b", "c, submitted by the main thread"))
   }
 
-  // The budget: a message that has applied for longer than the budget and finds more queued posts the rest, so the frame queued behind it runs first. Each apply costs 30 ms of
-  // the clock the check moves, the budget is 50 ms: a, then b (30 ms is under the budget), then the rest waits.
+  // The budget of the drain a release posts: a message that has applied for longer than the budget and finds more queued posts the rest, so the frame queued behind it runs
+  // first. Each apply costs 30 ms of the clock the check moves, the budget is 50 ms: a, then b (30 ms is under the budget), then the rest waits.
   looper(budgetNanos = 50_000_000L) {
     applyCostNanos = 30_000_000L
     val hold = busy()
-    fromAnotherThread { order.submit("a") }
+    order.hold()
+    for (name in listOf("a", "b", "c", "d", "e")) fromAnotherThread { order.submit(name) }
+    order.release()
     later { events.add("a frame") }
-    for (name in listOf("b", "c", "d", "e")) fromAnotherThread { order.submit(name) }
     hold()
     settle()
     expect("the frame runs after the budget, and the order is kept", events, listOf("a", "b", "a frame", "c", "d", "e"))
   }
 
-  // Every message makes progress, whatever the budget: with none (0), a message still applies one transaction, then leaves the rest to the next, as it did before the drain.
+  // Every message makes progress, whatever the budget: with none (0), the drain still applies one transaction, then leaves the rest to the next.
   looper(budgetNanos = 0L) {
     val hold = busy()
+    order.hold()
     fromAnotherThread { order.submit("a") }
-    later { events.add("a frame") }
     fromAnotherThread { order.submit("b") }
+    order.release()
+    later { events.add("a frame") }
     hold()
     settle()
     expect("one transaction per message with no budget", events, listOf("a", "a frame", "b"))
   }
 
-  // Without work over the budget nothing is left behind: a long queue of cheap transactions is applied in one message.
+  // Without work over the budget nothing that was held is left behind: a long held queue of cheap transactions is applied in one message.
   looper {
     applyCostNanos = 1_000_000L
+    val hold = busy()
+    order.hold()
+    for (index in 0 until 40) fromAnotherThread { order.submit("t%02d".format(index)) }
+    order.release()
+    later { events.add("a frame") }
+    hold()
+    settle()
+    expect("40 ms of held work is under the budget: every transaction, then the frame", events.indexOf("a frame"), 40)
+    expect("all 40 applied", events.size, 41)
+  }
+
+  // The same 40, not held: a message each, so the frame queued behind the first one's message runs after one transaction, and none is applied twice.
+  looper {
     val hold = busy()
     for (index in 0 until 40) {
       fromAnotherThread { order.submit("t%02d".format(index)) }
@@ -206,8 +226,8 @@ private fun scenarios() {
     }
     hold()
     settle()
-    expect("40 ms of work is under the budget: every transaction, then the frame", events.indexOf("a frame"), 40)
-    expect("all 40 applied", events.size, 41)
+    expect("the frame comes after the first transaction", events.indexOf("a frame"), 1)
+    expect("all 40 applied once", events.filter { it != "a frame" }, (0 until 40).map { "t%02d".format(it) })
   }
 
   // The hold JavaScript asks for across a layout read's commit and the one after it: what is queued while held is not applied by any message, and one message applies it all
@@ -251,6 +271,20 @@ private fun scenarios() {
     order.release()
     settle()
     expect("the release applies the rest", events, listOf("a", "b"))
+  }
+
+  // A hold that comes while a release's drain applies stops it after the transaction it is applying; the rest waits for the next release.
+  looper {
+    during = { name -> if (name == "a") order.hold() }
+    order.hold()
+    fromAnotherThread { order.submit("a") }
+    fromAnotherThread { order.submit("b") }
+    order.release()
+    settle()
+    expect("the drain stops at the hold", events, listOf("a"))
+    order.release()
+    settle()
+    expect("the next release applies the rest", events, listOf("a", "b"))
   }
 
   // A release with nothing held and nothing queued does nothing, and a transaction after a release is a message as usual.

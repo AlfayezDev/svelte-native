@@ -79,3 +79,26 @@ test("a subtree that is dropped before it reaches a screen never has its refs he
   expect(named(sink)).toEqual(["kept", "dropped"]);
   expect(root.waiting).toBe(0);
 });
+
+test("`nativeProps` with a `ref` waits for a screen like the attribute, and `nativeProps` without one costs nothing: no count, no call", () => {
+  const root = surface();
+  const row = element("row");
+  const label = element("label");
+  insert(row, label);
+  // A row of host tags (`<native-view nativeProps={{ style }}>`): Svelte sets its attributes before it links the row.
+  row.setProp("nativeProps", { style: { padding: 10 } });
+  label.setProp("nativeProps", { style: { fontSize: 14 } });
+  expect([row.waiting, label.waiting, label.refWaits]).toEqual([0, 0, false]);
+  insert(root, row);
+  expect(sink).toEqual([]);
+  // A component that hands its view a `ref` through `nativeProps` (`<native-view nativeProps={{ ...rest, ref }}>`).
+  const panel = element("panel");
+  panel.setProp("nativeProps", { style: {}, ref: () => {} });
+  expect(panel.waiting).toBe(1);
+  insert(root, panel);
+  expect(named(sink)).toEqual(["panel"]);
+  // On the screen, a ref that arrives in a later `nativeProps` is heard at once, and a `nativeProps` without one again tells nothing.
+  row.setProp("nativeProps", { style: { padding: 10 }, ref: () => {} });
+  label.setProp("nativeProps", { style: { fontSize: 16 } });
+  expect(named(sink)).toEqual(["panel", "row"]);
+});

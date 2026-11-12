@@ -667,9 +667,13 @@ function markInheritors(node: NativeNode): boolean {
 }
 
 /** An element the lowering made from HTML: a `nativeHtml` of `true`, or `"inline"` for the text elements that flow in a line (`span`, `b`, an `<a>` among text, ...). */
-const isHtml = (node: NativeNode): boolean => node.getProp("nativeHtml") !== undefined && node.getProp("nativeHtml") !== false;
+const isHtml = (node: NativeNode): boolean => {
+  const html = node.getProp("nativeHtml");
+  return html !== undefined && html !== false;
+};
 /** A marked element that draws views and, now, the text that is bare in it: it is drawn in a text of its own (`buildRun`). */
-const isHtmlView = (node: NativeNode): boolean => (node.name === "native-view" || node.name === "native-pressable" || node.name === "native-modal") && isHtml(node);
+const isViewTag = (node: NativeNode): boolean => node.name === "native-view" || node.name === "native-pressable" || node.name === "native-modal";
+const isHtmlView = (node: NativeNode): boolean => isViewTag(node) && isHtml(node);
 const isBlankText = (node: NativeNode): boolean => /^[ \t\n\r\f]*$/.test(node.textValue);
 /** Bare text, or a text element that flows in a line: what a marked view draws in a text of its own. */
 const flowsInLine = (node: NativeNode): boolean => node.kind === "text" || (node.kind === "element" && node.getProp("nativeHtml") === "inline");
@@ -864,8 +868,9 @@ function build(node: NativeNode, rootTag: number, insideText: boolean, insideFor
   const fresh = !current.node;
   current.viewName = viewName;
   current.foreign = foreign;
-  if (isHtml(node) || current.html) attributes = inheritTextStyle(node, current, attributes, insideText);
-  if (isText(node) && isHtml(node) && typeof __DEV__ !== "undefined" && __DEV__) warnTextLayout(node, attributes.style);
+  const html = isHtml(node);
+  if (html || current.html) attributes = inheritTextStyle(node, current, attributes, insideText);
+  if (html && typeof __DEV__ !== "undefined" && __DEV__ && isText(node)) warnTextLayout(node, attributes.style);
   const config = viewConfig(viewName);
   if (current.declaredFor !== config) {
     current.declaredFor = config;
@@ -882,7 +887,7 @@ function build(node: NativeNode, rootTag: number, insideText: boolean, insideFor
   const gestured = gestures || attributes.gesture !== undefined ? loadGestures().gestureProps(node, current, animated) : animated;
   const rnProps = splitProps(node.name === "native-image" ? imageProps(gestured) : navigationTags.has(node.name) ? navigationProps(node.name, gestured) : gestured, current, navigationTags.has(node.name));
   const scroll = viewName === "RCTScrollView";
-  const view = only === undefined && isHtmlView(node);
+  const view = only === undefined && html && isViewTag(node);
   // A flex container's children are items: each element is one, and each run of text is an anonymous one. Which it is, is read from the style (`html-flow.ts`), and a change of it is a change of the children.
   const flex = view && isFlexContainer(attributes.style);
   if (view) {
@@ -890,6 +895,22 @@ function build(node: NativeNode, rootTag: number, insideText: boolean, insideFor
     current.flex = flex;
   }
   const childrenHost = (parent: FabricNode) => {
+    // Not a marked view and not a run: each child is built in place, with no line to gather (a list of 300 rows of host tags pays nothing for HTML elements).
+    if (!view && only === undefined) {
+      for (let child = node.firstChild; child; child = child.nextSibling) {
+        if (textMode && child.kind === "text" && text) {
+          if (child === lone || child.textValue === "") continue; // the text of `lone` is the `content` above
+          binding.appendChild(parent, buildSpan(child, rootTag, text));
+          continue;
+        }
+        const handle = build(child, rootTag, isText(node), foreign, undefined, edges);
+        if (!handle) continue;
+        const t0 = profile ? now() : 0;
+        binding.appendChild(parent, handle);
+        if (profile) stats.appendMs += now() - t0;
+      }
+      return;
+    }
     // The children are the nodes of a run, for the text built for one, and otherwise what is linked in the node.
     let run: NativeNode[] = [];
     const append = (handle: FabricNode | null) => {

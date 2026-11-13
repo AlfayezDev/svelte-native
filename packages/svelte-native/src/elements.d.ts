@@ -53,7 +53,7 @@ export type PressHandlers = Pick<PressableProps, "onPress" | "onPressIn" | "onPr
  * A native element takes the React Native props of its primitive directly as attributes.
  * `nativeProps` is the legacy object form; attributes win over its keys.
  * `nativeStyle` carries a style object where Svelte would stringify a `style` attribute, and `nativeClass` the style of a `class` (`lower.ts`).
- * `gesture` takes a gesture from `@rasheed/svelte-native/gestures` (react-native-gesture-handler's builders): the host attaches
+ * `gesture` takes a gesture from `@alfayez/svelte-native/gestures` (react-native-gesture-handler's builders): the host attaches
  * native recognisers to the element's view, which then keeps its own native view (`collapsable` is forced to `false`).
  */
 type PressHandlerAttributes<Props> = {

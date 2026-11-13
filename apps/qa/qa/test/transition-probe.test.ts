@@ -172,7 +172,7 @@ const platform = (recorder: Record<string, string>): Record<string, string> => (
 	"react-native/Libraries/Utilities/Appearance": "export const getColorScheme = () => 'light'; export const addChangeListener = () => ({ remove() {} });",
 	"react-native/Libraries/Utilities/PixelRatio": "export default { get: () => 2, roundToNearestPixel: (value) => Math.round(value * 2) / 2 };",
 	"react-native/Libraries/Utilities/Dimensions": "export default { get: () => ({ width: 400, height: 800 }), addEventListener: () => ({ remove() {} }) };",
-	"@rasheed/svelte-native": "export const Text = null; export const View = null;",
+	"@alfayez/svelte-native": "export const Text = null; export const View = null;",
 });
 
 type Harness = { host: { warnings: string[] } };
@@ -210,14 +210,14 @@ async function load(table: unknown, mutations: readonly Mutation[]): Promise<Bun
 					}
 					return { contents, loader: "ts" };
 				});
-				builder.onResolve({ filter: /^(react-native|expo-modules-core|@rasheed\/svelte-native$)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
+				builder.onResolve({ filter: /^(react-native|expo-modules-core|@alfayez\/svelte-native$)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
 				builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? "export {};", loader: "js" }));
 				builder.onResolve({ filter: /\/view-configs\.ts$/ }, () => ({ path: join(library, "tests/view-configs-stub.ts") }));
-				builder.onResolve({ filter: /^@rasheed\/svelte-native\/classes-table$/ }, (args) => ({ path: args.path, namespace: "classes-table" }));
+				builder.onResolve({ filter: /^@alfayez\/svelte-native\/classes-table$/ }, (args) => ({ path: args.path, namespace: "classes-table" }));
 				builder.onLoad({ filter: /.*/, namespace: "classes-table" }, () => ({ contents: `export default ${JSON.stringify(table)};`, loader: "js" }));
-				builder.onResolve({ filter: /^@rasheed\/svelte-native\/renderer$/ }, () => ({ path: join(library, "src/renderer.ts") }));
-				builder.onResolve({ filter: /^@rasheed\/svelte-native\/router$/ }, () => ({ path: join(library, "src/router.svelte.ts") }));
-				builder.onResolve({ filter: /^@rasheed\/svelte-native\/core$/ }, () => ({ path: "core", namespace: "package" }));
+				builder.onResolve({ filter: /^@alfayez\/svelte-native\/renderer$/ }, () => ({ path: join(library, "src/renderer.ts") }));
+				builder.onResolve({ filter: /^@alfayez\/svelte-native\/router$/ }, () => ({ path: join(library, "src/router.svelte.ts") }));
+				builder.onResolve({ filter: /^@alfayez\/svelte-native\/core$/ }, () => ({ path: "core", namespace: "package" }));
 				builder.onLoad({ filter: /.*/, namespace: "package" }, () => ({
 					contents: components.map((name) => `export { default as ${name} } from ${JSON.stringify(join(library, `src/components/${name}.svelte`))};`).join("\n"),
 					loader: "js", resolveDir: library,

@@ -3,13 +3,13 @@ title: Native views
 video: native-views
 ---
 
-Some libraries give you a view that the platform draws: an image with a placeholder and a disk cache, a blur, a video player, a map. `@rasheed/svelte-native/foreign` has Svelte components for the common ones. Each mounts the library's native view directly, with the library's own props, and none of them loads React.
+Some libraries give you a view that the platform draws: an image with a placeholder and a disk cache, a blur, a video player, a map. `@alfayez/svelte-native/foreign` has Svelte components for the common ones. Each mounts the library's native view directly, with the library's own props, and none of them loads React.
 
 ```svelte
 <!--- file: src/routes/+mobile.svelte --->
 <script lang="ts">
-	import { Screen, Text } from '@rasheed/svelte-native';
-	import { LinearGradient } from '@rasheed/svelte-native/foreign';
+	import { Screen, Text } from '@alfayez/svelte-native';
+	import { LinearGradient } from '@alfayez/svelte-native/foreign';
 </script>
 
 <Screen title="Gradient">
@@ -69,7 +69,7 @@ An image with `expo-image`'s extras: a placeholder (a blurhash or thumbhash), a 
 
 ```svelte
 <script lang="ts">
-	import { ExpoImage } from '@rasheed/svelte-native/foreign';
+	import { ExpoImage } from '@alfayez/svelte-native/foreign';
 </script>
 
 <ExpoImage
@@ -99,8 +99,8 @@ The library's static functions (`prefetch`, the cache functions) are reached thr
 
 ```svelte
 <script lang="ts">
-	import { Text, View } from '@rasheed/svelte-native';
-	import { BlurTargetView, ExpoBlurView } from '@rasheed/svelte-native/foreign';
+	import { Text, View } from '@alfayez/svelte-native';
+	import { BlurTargetView, ExpoBlurView } from '@alfayez/svelte-native/foreign';
 
 	const fill = { position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 } as const;
 	let target = $state<{ tag: number } | null>(null);
@@ -159,8 +159,8 @@ The gradient fills the view and the children are drawn above it. Round the corne
 
 ```svelte
 <script lang="ts">
-	import { Pressable, Text } from '@rasheed/svelte-native';
-	import { Video, type VideoHandle } from '@rasheed/svelte-native/foreign';
+	import { Pressable, Text } from '@alfayez/svelte-native';
+	import { Video, type VideoHandle } from '@alfayez/svelte-native/foreign';
 
 	let paused = $state(false);
 	let seconds = $state(0);
@@ -202,7 +202,7 @@ The `ref` handle has `seek(time)`, `pause()`, `resume()`, `setVolume(volume)`, `
 
 ```svelte
 <script lang="ts">
-	import { VideoView } from '@rasheed/svelte-native/foreign';
+	import { VideoView } from '@alfayez/svelte-native/foreign';
 	import { createVideoPlayer } from 'expo-video/build/VideoPlayer';
 
 	const player = createVideoPlayer({ uri: 'https://example.com/clip.mp4' });
@@ -228,7 +228,7 @@ Plays a Lottie animation.
 
 ```svelte
 <script lang="ts">
-	import { LottieView, type LottieHandle } from '@rasheed/svelte-native/foreign';
+	import { LottieView, type LottieHandle } from '@alfayez/svelte-native/foreign';
 	import pulse from '../../assets/pulse.json';
 
 	let player: LottieHandle | null = null;
@@ -254,7 +254,7 @@ Plays a Rive animation, with its state machines.
 
 ```svelte
 <script lang="ts">
-	import { Rive, type RiveHandle } from '@rasheed/svelte-native/foreign';
+	import { Rive, type RiveHandle } from '@alfayez/svelte-native/foreign';
 
 	let rive: RiveHandle | null = null;
 </script>
@@ -284,9 +284,9 @@ The system date and time picker. iOS has a view, `DateTimePicker`. Android has d
 
 ```svelte
 <script lang="ts">
-	import { Pressable, Text } from '@rasheed/svelte-native';
-	import { DateTimePicker, openDatePicker } from '@rasheed/svelte-native/foreign';
-	import { Platform } from '@rasheed/svelte-native/platform';
+	import { Pressable, Text } from '@alfayez/svelte-native';
+	import { DateTimePicker, openDatePicker } from '@alfayez/svelte-native/foreign';
+	import { Platform } from '@alfayez/svelte-native/platform';
 
 	let date = $state(new Date());
 </script>
@@ -310,8 +310,8 @@ Shows a PDF document. It needs `react-native-blob-util` installed as well.
 
 ```svelte
 <script lang="ts">
-	import { Text } from '@rasheed/svelte-native';
-	import { Pdf } from '@rasheed/svelte-native/foreign';
+	import { Text } from '@alfayez/svelte-native';
+	import { Pdf } from '@alfayez/svelte-native/foreign';
 
 	let page = $state(1);
 	let pages = $state(0);
@@ -343,7 +343,7 @@ A web page inside your screen, with `react-native-webview`.
 
 ```svelte
 <script lang="ts">
-	import { WebView } from '@rasheed/svelte-native/foreign';
+	import { WebView } from '@alfayez/svelte-native/foreign';
 </script>
 
 <WebView
@@ -369,8 +369,8 @@ A map with `react-native-maps`. iOS draws Apple Maps. Android draws Google Maps,
 
 ```svelte
 <script lang="ts">
-	import { Pressable, Text } from '@rasheed/svelte-native';
-	import { MapView, Marker, type MapHandle } from '@rasheed/svelte-native/foreign';
+	import { Pressable, Text } from '@alfayez/svelte-native';
+	import { MapView, Marker, type MapHandle } from '@alfayez/svelte-native/foreign';
 
 	const london = { latitude: 51.5072, longitude: -0.1276, latitudeDelta: 0.2, longitudeDelta: 0.2 };
 	const paris = { latitude: 48.8566, longitude: 2.3522, latitudeDelta: 0.2, longitudeDelta: 0.2 };
@@ -396,8 +396,8 @@ Draws views into an image. `ViewShot` is a `View` whose `ref` handle has `captur
 
 ```svelte
 <script lang="ts">
-	import { Image, Pressable, Text, View } from '@rasheed/svelte-native';
-	import { ViewShot } from '@rasheed/svelte-native/foreign';
+	import { Image, Pressable, Text, View } from '@alfayez/svelte-native';
+	import { ViewShot } from '@alfayez/svelte-native/foreign';
 
 	let shot: { capture(): Promise<string> } | null = null;
 	let picture = $state<string | null>(null);
@@ -431,8 +431,8 @@ Android draws a `View`'s shadow from `elevation` only. `ShadowedView` draws the 
 
 ```svelte
 <script lang="ts">
-	import { Text } from '@rasheed/svelte-native';
-	import { ShadowedView, shadowStyle } from '@rasheed/svelte-native/foreign';
+	import { Text } from '@alfayez/svelte-native';
+	import { ShadowedView, shadowStyle } from '@alfayez/svelte-native/foreign';
 </script>
 
 <ShadowedView style={[{ padding: 20, borderRadius: 16, backgroundColor: '#ffffff' }, shadowStyle({ color: '#000000', opacity: 0.2, radius: 12, offset: [0, 4] })]}>
@@ -448,8 +448,8 @@ A `Text` whose string a worklet can set on the UI thread, for numbers that chang
 
 ```svelte
 <script lang="ts">
-	import { createSharedValue, withTiming } from '@rasheed/svelte-native/animation';
-	import { AnimateableText } from '@rasheed/svelte-native/foreign';
+	import { createSharedValue, withTiming } from '@alfayez/svelte-native/animation';
+	import { AnimateableText } from '@alfayez/svelte-native/foreign';
 
 	const count = createSharedValue(0);
 	count.value = withTiming(100, { duration: 2000 });
@@ -467,8 +467,8 @@ An Expo library without a component above (`expo-camera`, say) needs no wrapper.
 ```svelte
 <!--- file: src/routes/camera/+mobile.svelte --->
 <script lang="ts">
-	import { Pressable, Text } from '@rasheed/svelte-native';
-	import { defineExpoView, type ExpoViewHandle } from '@rasheed/svelte-native/foreign';
+	import { Pressable, Text } from '@alfayez/svelte-native';
+	import { defineExpoView, type ExpoViewHandle } from '@alfayez/svelte-native/foreign';
 	import type { CameraNativeProps, CameraViewRef } from 'expo-camera';
 
 	const CameraView = defineExpoView<CameraNativeProps, CameraViewRef>('ExpoCamera');

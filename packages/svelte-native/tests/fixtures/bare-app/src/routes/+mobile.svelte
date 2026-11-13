@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Pressable, Text, View } from "@rasheed/svelte-native";
-  import { Platform } from "@rasheed/svelte-native/platform";
+  import { Pressable, Text, View } from "@alfayez/svelte-native";
+  import { Platform } from "@alfayez/svelte-native/platform";
   let count = $state(0);
 </script>
 

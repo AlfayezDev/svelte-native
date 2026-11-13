@@ -2,7 +2,7 @@
   export const presentation = "sheet";
 </script>
 <script lang="ts">
-  import { Screen, TextInput, View, useRouter } from "@rasheed/svelte-native";
+  import { Screen, TextInput, View, useRouter } from "@alfayez/svelte-native";
   import { nativeLabEnabled, theme } from "#lib/native/state.svelte.ts";
   import Button from "#lib/native/components/Button.svelte";
 

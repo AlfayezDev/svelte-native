@@ -26,7 +26,7 @@ export function upstreamTransformerPath(searchFrom: readonly string[] = [process
   try {
     expoManifest = require.resolve("expo/package.json", { paths: [...searchFrom] });
   } catch (cause) {
-    throw new Error("The Metro transformer of @rasheed/svelte-native needs `expo`, which it could not resolve (from the app's directory or from the package). Install it: `npx expo install expo`.", { cause });
+    throw new Error("The Metro transformer of @alfayez/svelte-native needs `expo`, which it could not resolve (from the app's directory or from the package). Install it: `npx expo install expo`.", { cause });
   }
   return require.resolve("@expo/metro-config/babel-transformer", { paths: [dirname(expoManifest)] });
 }
@@ -54,7 +54,7 @@ let rendererChecked = false;
 /** The first `.svelte` file of a worker fails with the fix when the installed Svelte is the stock release, instead of with the compiler's message about an unknown `customRenderer` option. */
 function requireCustomRenderer(): void {
   if (rendererChecked) return;
-  assertCustomRenderer("The Metro transformer of @rasheed/svelte-native");
+  assertCustomRenderer("The Metro transformer of @alfayez/svelte-native");
   rendererChecked = true;
 }
 

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Text } from "@rasheed/svelte-native";
-  import { defineExpoView, type ExpoViewHandle } from "@rasheed/svelte-native/foreign";
+  import { Text } from "@alfayez/svelte-native";
+  import { defineExpoView, type ExpoViewHandle } from "@alfayez/svelte-native/foreign";
   import type { CameraNativeProps, CameraViewRef } from "expo-camera";
   import CameraManager from "expo-camera/build/ExpoCameraManager";
   import type { ImageLoadEventData, ImageNativeProps } from "expo-image";

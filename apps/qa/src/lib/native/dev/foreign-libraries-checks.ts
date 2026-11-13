@@ -7,7 +7,7 @@
  *
  * `foreign-libraries-lab.ts` mounts the section, builds the context and calls the library's function here.
  */
-import { dismissDatePicker, openDatePicker, captureRef, releaseCapture, type CaptureOptions } from "@rasheed/svelte-native/foreign";
+import { dismissDatePicker, openDatePicker, captureRef, releaseCapture, type CaptureOptions } from "@alfayez/svelte-native/foreign";
 import { tick } from "svelte";
 import type { Host, LibraryHandles, LibraryKind } from "./LibrarySet.svelte";
 import { libraryLab } from "./foreign.svelte.ts";

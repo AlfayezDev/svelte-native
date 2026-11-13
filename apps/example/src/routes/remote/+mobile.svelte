@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Text, TextInput } from "@rasheed/svelte-native";
-  import { configureRemote, remoteHost } from "@rasheed/svelte-native/remote";
+  import { Text, TextInput } from "@alfayez/svelte-native";
+  import { configureRemote, remoteHost } from "@alfayez/svelte-native/remote";
   import Button from "#lib/components/Button.svelte";
   import RemoteExamples from "#lib/components/native/RemoteExamples.svelte";
   import Page from "#lib/components/Page.svelte";

@@ -5,7 +5,7 @@ import { lowersHtml } from "../src/compile-options.ts";
 import lowerDefault, { lower, lowerPrimitives } from "../src/lower.ts";
 import { mayHaveHtml, oneLine } from "../src/lower-html.ts";
 
-const imp = `<script>\n  import { View, Text, Pressable, ScrollView, Image, ActivityIndicator, SafeAreaView, TextInput } from "@rasheed/svelte-native";\n</script>\n`;
+const imp = `<script>\n  import { View, Text, Pressable, ScrollView, Image, ActivityIndicator, SafeAreaView, TextInput } from "@alfayez/svelte-native";\n</script>\n`;
 const run = (markup: string, header = imp) => lowerPrimitives(header + markup, { filename: "x.svelte", warn: () => {} }).slice(header.length);
 
 test("acceptance: keyed rows lower to host tags", () => {
@@ -14,8 +14,8 @@ test("acceptance: keyed rows lower to host tags", () => {
 });
 
 test("compiled acceptance fixture has host tags and no component calls", () => {
-  const source = `<script>\n  import { View, Text } from "@rasheed/svelte-native";\n  let { rows } = $props();\n  const rowStyle = {}; const t = {};\n</script>\n{#each rows as row, i (row.id)}\n  <View style={rowStyle} onLayout={() => {}}><Text style={t}>Row {i}</Text></View>\n{/each}`;
-  const code = (lowered: string) => compile(lowered, { filename: "f.svelte", generate: "client", runes: true, experimental: { customRenderer: "@rasheed/svelte-native/renderer" } }).js.code;
+  const source = `<script>\n  import { View, Text } from "@alfayez/svelte-native";\n  let { rows } = $props();\n  const rowStyle = {}; const t = {};\n</script>\n{#each rows as row, i (row.id)}\n  <View style={rowStyle} onLayout={() => {}}><Text style={t}>Row {i}</Text></View>\n{/each}`;
+  const code = (lowered: string) => compile(lowered, { filename: "f.svelte", generate: "client", runes: true, experimental: { customRenderer: "@alfayez/svelte-native/renderer" } }).js.code;
   const output = code(lowerPrimitives(source));
   expect(output).toContain("native-view");
   expect(output).toContain("native-text");
@@ -24,7 +24,7 @@ test("compiled acceptance fixture has host tags and no component calls", () => {
 });
 
 test("nested, self-closing, aliases, bind:this and id", () => {
-  const header = `<script>\n  import { View as V, Image, ActivityIndicator } from "@rasheed/svelte-native";\n</script>\n`;
+  const header = `<script>\n  import { View as V, Image, ActivityIndicator } from "@alfayez/svelte-native";\n</script>\n`;
   // `bind:this` of a host tag is a `ref` (the compiler refuses it), which needs the renderer's helper: the import is in the script, and the markup is after it.
   expect(markup(lowerPrimitives(`${header}<V bind:this={el} id="b" testID="c" ref={fn}><V /></V>\n<Image source={s} />\n<ActivityIndicator\n  size="large"\n/>`, { warn: () => {} })))
     .toBe(`<native-view ref={__svelteNativeBind((__k, __v) => (el = __v), (__k) => el, [])} id="b" testID="c" ref={fn}><native-view ></native-view></native-view>\n<native-image source={s} ></native-image>\n<native-spinner\n  size="large"\n></native-spinner>`);
@@ -38,7 +38,7 @@ test("a press handler that may be undefined is passed as nativeOnPress; one writ
   expect(run(`<Pressable {onPress} onLayout={maybe}>x</Pressable>`)).toBe(`<native-pressable nativeOnPress={onPress} onLayout={maybe}>x</native-pressable>`);
   expect(run(`<View {...rest} onPress={enabled ? go : undefined} />`)).toContain(`<native-view {...__svelteNativeSpread(rest)} onPress={enabled ? go : undefined} ></native-view>`);
   // Compiled, the handler is a prop of the element and not an event listener.
-  const compiled = compile(lowerPrimitives(`<script>\n  import { Text } from "@rasheed/svelte-native";\n  let { go } = $props();\n</script>\n<Text onPress={go} />`), { filename: "f.svelte", generate: "client", runes: true, experimental: { customRenderer: "@rasheed/svelte-native/renderer" } }).js.code;
+  const compiled = compile(lowerPrimitives(`<script>\n  import { Text } from "@alfayez/svelte-native";\n  let { go } = $props();\n</script>\n<Text onPress={go} />`), { filename: "f.svelte", generate: "client", runes: true, experimental: { customRenderer: "@alfayez/svelte-native/renderer" } }).js.code;
   expect(compiled).toContain("nativeOnPress");
   expect(compiled).not.toContain("$.event(");
 });
@@ -76,14 +76,14 @@ test("a tag that has a style hands it to hostClass with the class: the font size
 });
 
 test("compiled, a lowered class is a hostClass call in the element's template effect and never Svelte's set_class", () => {
-  const source = `<script>\n  import { View } from "@rasheed/svelte-native";\n  let { tone } = $props();\n</script>\n<View class={["card", tone]} />\n<View class="fixed" />`;
-  const code = compile(lowerPrimitives(source), { filename: "f.svelte", generate: "client", runes: true, experimental: { customRenderer: "@rasheed/svelte-native/renderer" } }).js.code;
+  const source = `<script>\n  import { View } from "@alfayez/svelte-native";\n  let { tone } = $props();\n</script>\n<View class={["card", tone]} />\n<View class="fixed" />`;
+  const code = compile(lowerPrimitives(source), { filename: "f.svelte", generate: "client", runes: true, experimental: { customRenderer: "@alfayez/svelte-native/renderer" } }).js.code;
   expect(code).toContain("__svelteNativeClass(");
   expect(code).toContain("nativeClass");
   expect(code).not.toMatch(/set_class|clsx/);
 });
 
-const helperImport = (names: string) => `import { ${names} } from "@rasheed/svelte-native/renderer";`;
+const helperImport = (names: string) => `import { ${names} } from "@alfayez/svelte-native/renderer";`;
 
 test("spreads: the spread and the attributes beside it are wrapped, so a function-valued ref survives Svelte's set_attributes", () => {
   const source = `${imp}<View {...rest} bind:this={el} class="a" id="b" testID="c" ref={fn} onLayout={go} style={s} width={3} animated={a.b} {shorthand} {...(on ? p : q)}><View /></View>\n<Image source={s} />`;
@@ -106,7 +106,7 @@ test("no spread, no helper and no import; a component that stays a component kee
 });
 
 test("the helper import goes into a module script when the file has no instance script", () => {
-  const source = `<script module lang="ts">\n  import { View } from "@rasheed/svelte-native";\n  export const probe = () => ({ ref: () => {} });\n</script>\n<View {...probe()} />`;
+  const source = `<script module lang="ts">\n  import { View } from "@alfayez/svelte-native";\n  export const probe = () => ({ ref: () => {} });\n</script>\n<View {...probe()} />`;
   const out = lowerPrimitives(source, { warn: () => {} });
   expect(out.startsWith(`<script module lang="ts"> ${helperImport("hostSpread as __svelteNativeSpread")}\n`)).toBe(true);
   expect(out).toContain("<native-view {...__svelteNativeSpread(probe())} ></native-view>");
@@ -164,7 +164,7 @@ test("transition:, in:, out: and animate: stay on the host tag and are not warne
 });
 
 test("TypeScript scripts parse and stay untouched; line numbers are stable", () => {
-  const header = `<script lang="ts">\n  import { View, type ViewProps } from "@rasheed/svelte-native";\n  let { a }: { a: ViewProps; b?: Array<string> } = $props();\n  const x = <T,>(v: T): T => v;\n</script>\n`;
+  const header = `<script lang="ts">\n  import { View, type ViewProps } from "@alfayez/svelte-native";\n  let { a }: { a: ViewProps; b?: Array<string> } = $props();\n  const x = <T,>(v: T): T => v;\n</script>\n`;
   const source = `${header}<View style={a.style}>\n  hi\n</View>\n`;
   const out = lowerPrimitives(source);
   expect(out.startsWith(header)).toBe(true);
@@ -186,16 +186,16 @@ test("preprocessor object", () => {
 });
 
 test("valueless attributes stay boolean true on lowered tags", () => {
-  const source = `<script>\n  import { ScrollView } from "@rasheed/svelte-native";\n</script>\n<ScrollView nestedScrollEnabled horizontal={false}>x</ScrollView>`;
+  const source = `<script>\n  import { ScrollView } from "@alfayez/svelte-native";\n</script>\n<ScrollView nestedScrollEnabled horizontal={false}>x</ScrollView>`;
   expect(lowerPrimitives(source)).toContain(`<native-scroll nestedScrollEnabled={true} horizontal={false}>x</native-scroll>`);
 });
 
 test("what the svg entry exports as Text and Image is not lowered: they are SVG elements, not the primitives", () => {
-  const header = `<script>\n  import { View } from "@rasheed/svelte-native";\n  import { Svg, Text, Image as SvgImage, Text as Label } from "@rasheed/svelte-native/svg";\n</script>\n`;
+  const header = `<script>\n  import { View } from "@alfayez/svelte-native";\n  import { Svg, Text, Image as SvgImage, Text as Label } from "@alfayez/svelte-native/svg";\n</script>\n`;
   const markup = `<View><Svg><Text x={1}>a</Text><SvgImage href="x" /><Label>b</Label></Svg></View>`;
   expect(run(markup, header)).toBe(`<native-view><Svg><Text x={1}>a</Text><SvgImage href="x" /><Label>b</Label></Svg></native-view>`);
   // The other entries still lower: a subpath that exports a primitive is the package's own.
-  const core = `<script>\n  import { Text } from "@rasheed/svelte-native/core";\n</script>\n`;
+  const core = `<script>\n  import { Text } from "@alfayez/svelte-native/core";\n</script>\n`;
   expect(run(`<Text>a</Text>`, core)).toBe(`<native-text>a</native-text>`);
 });
 
@@ -208,7 +208,7 @@ const html = (source: string, options: { filename?: string; warn?: (message: str
 const plainHtml = (code: string) => code.replaceAll(" nativeHtml={true}", "").replaceAll(' nativeHtml="inline"', "").replace(/ nativeBase="[^"]*"/g, "").replaceAll("__svelteNativeHtmlClass", "__svelteNativeClass");
 /** The markup after the script(s), whatever the lowering put into the script. */
 const body = (source: string) => { const out = html(source); const end = out.lastIndexOf("</script>"); return plainHtml(end < 0 ? out : out.slice(end + "</script>".length).replace(/^\n/, "")); };
-const compiled = (lowered: string) => compile(lowered, { filename: "/app/page.svelte", generate: "client", runes: true, experimental: { customRenderer: "@rasheed/svelte-native/renderer" } }).js.code;
+const compiled = (lowered: string) => compile(lowered, { filename: "/app/page.svelte", generate: "client", runes: true, experimental: { customRenderer: "@alfayez/svelte-native/renderer" } }).js.code;
 /** The press hook of a button and of a link: what the element does after the handler, read from the element when it is pressed. */
 const submitHook = (handler = "undefined") => `onPress={(__event) => __svelteNativeClick(__event, ${handler}, (__event) => __svelteNativeSubmit(__event))}`;
 const linkHook = (handler = "undefined") => `onPress={(__event) => __svelteNativeClick(__event, ${handler}, (__event) => __svelteNativeLink(__svelteNativeHref(__event)))}`;
@@ -244,7 +244,7 @@ test("p, span, h1 to h6, strong, b, em, i, small, code, blockquote, figcaption, 
 });
 
 test("an HTML element is marked, so the host passes text style down and draws the text bare in it; the elements that flow in a line are inline, and a browser's default style is its base", () => {
-  const out = html(`<script>\n  import { View } from "@rasheed/svelte-native";\n</script>\n<div class="a">Hi <b>x</b><h1>T</h1><hr><input /><img src="/a.png" /><dialog /><View /></div>`);
+  const out = html(`<script>\n  import { View } from "@alfayez/svelte-native";\n</script>\n<div class="a">Hi <b>x</b><h1>T</h1><hr><input /><img src="/a.png" /><dialog /><View /></div>`);
   expect(markup(out)).toBe([
     "<native-view nativeHtml={true} nativeClass={__svelteNativeHtmlClass(`a`)}>Hi ",
     `<native-text nativeHtml="inline" nativeBase="b">x</native-text>`,
@@ -256,7 +256,7 @@ test("an HTML element is marked, so the host passes text style down and draws th
     "<native-view ></native-view></native-view>",
   ].join(""));
   // The class of an element that is not HTML-made goes through the plain helper: its font size is the one it sets.
-  expect(markup(lowerPrimitives(`<script>\n  import { View } from "@rasheed/svelte-native";\n</script>\n<View class="a" />`))).toContain("__svelteNativeClass(`a`)");
+  expect(markup(lowerPrimitives(`<script>\n  import { View } from "@alfayez/svelte-native";\n</script>\n<View class="a" />`))).toContain("__svelteNativeClass(`a`)");
   // The elements with a default style have a base of their own name; the others have none, and a link has no default color.
   const base = (source: string) => html(source).match(/nativeBase="([^"]*)"/)?.[1];
   for (const name of "b strong em i cite dfn var u ins s del code kbd samp pre small sub sup mark h1 h2 h3 h4 h5 h6".split(" ")) expect(base(`<${name}>x</${name}>`), name).toBe(name);
@@ -302,7 +302,7 @@ test("onclick is onPress on every mapped element; a view with a handler is a pre
 
 test("an <a> follows its href when pressed: the attribute stays, so one from a spread counts and none is no link; the instance script gets the call", () => {
   const out = html(`<script>\n  let id = 1;\n</script>\n<a href="/settings" class="link">Settings</a>`);
-  expect(out.startsWith(`<script> ${helperImport("hostClick as __svelteNativeClick, hostHref as __svelteNativeHref, hostHtmlClass as __svelteNativeHtmlClass")} import { useLink as __svelteNativeUseLink } from "@rasheed/svelte-native/router"; const __svelteNativeLink = __svelteNativeUseLink();\n  let id = 1;`)).toBe(true);
+  expect(out.startsWith(`<script> ${helperImport("hostClick as __svelteNativeClick, hostHref as __svelteNativeHref, hostHtmlClass as __svelteNativeHtmlClass")} import { useLink as __svelteNativeUseLink } from "@alfayez/svelte-native/router"; const __svelteNativeLink = __svelteNativeUseLink();\n  let id = 1;`)).toBe(true);
   expect(plainHtml(markup(out))).toBe(`<native-pressable accessibilityRole="link" ${linkHook()} href="/settings" nativeClass={__svelteNativeClass(\`link\`)}>Settings</native-pressable>`);
   // A dynamic href, an `onclick` of its own that runs first (the link is followed after it, unless it called `preventDefault`), and no href at all: the same hook.
   expect(body(`<script>let id = 1;</script><a href={url} onclick={log}>x</a>`)).toBe(`<native-pressable accessibilityRole="link" href={url} ${linkHook("log")}>x</native-pressable>`);
@@ -368,10 +368,10 @@ test("a <dialog> is a Modal that takes open as it takes visible, bind:open too (
 });
 
 test("the components the elements need are imported under names of their own, from the package's core entry", () => {
-  const out = html(`<script lang="ts">\n  import { TextInput } from "@rasheed/svelte-native";\n  let v = $state("");\n</script>\n<input bind:value={v} /><input type="checkbox" /><dialog></dialog>`);
-  expect(out.startsWith(`<script lang="ts"> import { Modal as SvelteNativeModal, Switch as SvelteNativeSwitch, TextInput as SvelteNativeTextInput } from "@rasheed/svelte-native/core";\n`)).toBe(true);
+  const out = html(`<script lang="ts">\n  import { TextInput } from "@alfayez/svelte-native";\n  let v = $state("");\n</script>\n<input bind:value={v} /><input type="checkbox" /><dialog></dialog>`);
+  expect(out.startsWith(`<script lang="ts"> import { Modal as SvelteNativeModal, Switch as SvelteNativeSwitch, TextInput as SvelteNativeTextInput } from "@alfayez/svelte-native/core";\n`)).toBe(true);
   // The file's own `TextInput` is the author's: it stays a component.
-  const own = html(`<script>\n  import { TextInput } from "@rasheed/svelte-native";\n</script>\n<TextInput bind:value={v} /><input bind:value={v} />`);
+  const own = html(`<script>\n  import { TextInput } from "@alfayez/svelte-native";\n</script>\n<TextInput bind:value={v} /><input bind:value={v} />`);
   expect(plainHtml(markup(own))).toBe(`<TextInput bind:value={v} /><SvelteNativeTextInput bind:value={v} />`);
 });
 
@@ -385,7 +385,7 @@ test("text in an HTML element is left where it is for the host to draw (it also 
   expect(body(`<div>See <a href="/x">x</a></div>`)).toContain("<native-text accessibilityRole=\"link\"");
   expect(body(`<div><a href="/x">x</a> <a href="/y">y</a></div>`)).toContain("<native-pressable accessibilityRole=\"link\"");
   // A component's children, a snippet and the document root are not a view's: nothing there is told apart.
-  expect(body(`<script>import { Screen } from "@rasheed/svelte-native";</script>text {x}\n<Screen>inside {y}<div>z</div></Screen>{#snippet s()}bare{/snippet}`))
+  expect(body(`<script>import { Screen } from "@alfayez/svelte-native";</script>text {x}\n<Screen>inside {y}<div>z</div></Screen>{#snippet s()}bare{/snippet}`))
     .toBe(`text {x}\n<Screen>inside {y}<native-view>z</native-view></Screen>{#snippet s()}bare{/snippet}`);
   // A host tag written by hand is the author's; the elements inside it are still lowered.
   expect(body(`<native-view>text<div>x</div></native-view>`)).toBe(`<native-view>text<native-view>x</native-view></native-view>`);
@@ -454,10 +454,10 @@ test("class, class:, style, spreads and ref carry over as on a lowered View; a b
   expect(body(`<div {...rest}>x</div>`)).toContain("{...__svelteNativeWebSpread(rest)}");
   expect(html(`<button {...rest}>x</button>`)).toContain("hostWebClickSpread as __svelteNativeWebClickSpread");
   // The View a file imports from the package takes the same paths beside the HTML.
-  const mixed = html(`<script>\n  import { View } from "@rasheed/svelte-native";\n</script>\n<View class="v"><div class="d">x</div></View>`);
+  const mixed = html(`<script>\n  import { View } from "@alfayez/svelte-native";\n</script>\n<View class="v"><div class="d">x</div></View>`);
   expect(markup(mixed)).toBe("<native-view nativeClass={__svelteNativeClass(`v`)}><native-view nativeHtml={true} nativeClass={__svelteNativeHtmlClass(`d`)}>x</native-view></native-view>");
   // A `<View>`'s class gets the style the view has, which sets the font size it is made from: written a second time, on one line, and only if it is a plain read (a call would run twice).
-  const view = (style: string) => markup(html(`<script>\n  import { View } from "@rasheed/svelte-native";\n</script>\n<View class="v" style=${style}>x</View>`));
+  const view = (style: string) => markup(html(`<script>\n  import { View } from "@alfayez/svelte-native";\n</script>\n<View class="v" style=${style}>x</View>`));
   expect(view("{{\n  fontSize: 20,\n  color: c,\n}}")).toBe("<native-view nativeClass={__svelteNativeClass(`v`, { fontSize: 20, color: c, })} nativeStyle={{\n  fontSize: 20,\n  color: c,\n}}>x</native-view>");
   expect(view("{styles.box}")).toBe("<native-view nativeClass={__svelteNativeClass(`v`, styles.box)} nativeStyle={styles.box}>x</native-view>");
   expect(view("{mk(c)}")).toBe("<native-view nativeClass={__svelteNativeClass(`v`)} nativeStyle={mk(c)}>x</native-view>");

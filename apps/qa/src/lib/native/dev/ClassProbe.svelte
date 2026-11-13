@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Text, View } from "@rasheed/svelte-native";
+  import { Text, View } from "@alfayez/svelte-native";
   import { theme } from "../state.svelte.ts";
 
   /**

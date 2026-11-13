@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import { Stack } from "@rasheed/svelte-native";
+  import { Stack } from "@alfayez/svelte-native";
   import { theme } from "#lib/theme.svelte.ts";
 
   // The app shell. `children` is the root navigator: a stack with one screen per page of `src/routes`, the home screen first. The options on

@@ -27,7 +27,7 @@ A native screen is built from components, not HTML elements:
 ```svelte
 <!--- file: src/routes/+mobile.svelte --->
 <script lang="ts">
-	import { Pressable, Text, TextInput, View } from '@rasheed/svelte-native';
+	import { Pressable, Text, TextInput, View } from '@alfayez/svelte-native';
 
 	let name = $state('');
 	let greeting = $state('');

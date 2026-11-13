@@ -16,7 +16,7 @@ async function loadSvelteKit(): Promise<typeof sveltekit> {
   try {
     return (await import("@sveltejs/kit/vite")).sveltekit;
   } catch (cause) {
-    if ((cause as NodeJS.ErrnoException).code === "ERR_MODULE_NOT_FOUND") throw new Error(kitMissingMessage("The web target of svelteNative() (@rasheed/svelte-native/vite)"), { cause });
+    if ((cause as NodeJS.ErrnoException).code === "ERR_MODULE_NOT_FOUND") throw new Error(kitMissingMessage("The web target of svelteNative() (@alfayez/svelte-native/vite)"), { cause });
     throw cause;
   }
 }
@@ -46,7 +46,7 @@ export function svelteNative(options: {
     { name: "svelte-native:web", config: () => ({ optimizeDeps: { entries: ["!src/routes/**/+mobile.svelte", "!src/routes/**/*.mobile.svelte", "!src/lib/native/**"] } }) },
     kit(withWebAsync(withWebRunes(options.kit, options.runes), options.async)),
   ]);
-  assertCustomRenderer("The native target of svelteNative() (@rasheed/svelte-native/vite)");
+  assertCustomRenderer("The native target of svelteNative() (@alfayez/svelte-native/vite)");
   let root = "";
   return {
     name: "svelte-native",

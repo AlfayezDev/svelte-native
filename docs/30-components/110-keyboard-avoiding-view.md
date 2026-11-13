@@ -9,7 +9,7 @@ video: text-input
 ```svelte
 <!--- file: src/routes/sign-in/+mobile.svelte --->
 <script lang="ts">
-	import { KeyboardAvoidingView, Pressable, Screen, ScrollView, Text, TextInput } from '@rasheed/svelte-native';
+	import { KeyboardAvoidingView, Pressable, Screen, ScrollView, Text, TextInput } from '@alfayez/svelte-native';
 
 	let email = $state('');
 	let password = $state('');

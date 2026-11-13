@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { Text } from "@rasheed/svelte-native";
-  import { AnimatedView, createSharedValue, runOnJS, withSpring, withTiming } from "@rasheed/svelte-native/animation";
-  import { Gesture } from "@rasheed/svelte-native/gestures";
+  import { Text } from "@alfayez/svelte-native";
+  import { AnimatedView, createSharedValue, runOnJS, withSpring, withTiming } from "@alfayez/svelte-native/animation";
+  import { Gesture } from "@alfayez/svelte-native/gestures";
   import Button from "#lib/components/Button.svelte";
   import SwipeRow from "#lib/components/native/SwipeRow.svelte";
   import Page from "#lib/components/Page.svelte";

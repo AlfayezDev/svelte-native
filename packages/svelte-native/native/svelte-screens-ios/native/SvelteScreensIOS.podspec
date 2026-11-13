@@ -2,7 +2,7 @@ Pod::Spec.new do |s|
   s.name         = "SvelteScreensIOS"
   s.version      = "0.1.0"
   s.summary      = "UIKit stack, header, sheet and tabs for Svelte Native on React Native's Fabric mounting."
-  s.description  = "Fabric components over UINavigationController, UINavigationItem, UISheetPresentationController and UITabBarController, configured from the navigation nativeID of @rasheed/svelte-native."
+  s.description  = "Fabric components over UINavigationController, UINavigationItem, UISheetPresentationController and UITabBarController, configured from the navigation nativeID of @alfayez/svelte-native."
   s.homepage     = "https://rasheed.io"
   s.license      = { :type => "UNLICENSED" }
   s.author       = "Rasheed"

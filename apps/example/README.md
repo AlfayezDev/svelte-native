@@ -1,6 +1,6 @@
 # Svelte Native showcase
 
-A tour of [`@rasheed/svelte-native`](../../packages/svelte-native/README.md): a small app where every feature of the library is its own screen with one short example. It is written the way an app that installs the library would be written, and it imports nothing but the library's public entries (`@rasheed/svelte-native`, `/animation`, `/gestures`, `/foreign`, `/svg`, ...). Read it with the library's [README](../../packages/svelte-native/README.md) and [REFERENCE](../../packages/svelte-native/REFERENCE.md) beside it.
+A tour of [`@alfayez/svelte-native`](../../packages/svelte-native/README.md): a small app where every feature of the library is its own screen with one short example. It is written the way an app that installs the library would be written, and it imports nothing but the library's public entries (`@alfayez/svelte-native`, `/animation`, `/gestures`, `/foreign`, `/svg`, ...). Read it with the library's [README](../../packages/svelte-native/README.md) and [REFERENCE](../../packages/svelte-native/REFERENCE.md) beside it.
 
 The app id is `io.rasheed.sveltenative.example`, the name is "Svelte Native" and the link scheme is `svelte-native://`.
 
@@ -62,7 +62,7 @@ The features of `src/lib/features/native.ts`: the library's wrappers of other na
 | Video (react-native-video) | `/native-views/video` | `Video` with a bundled clip: `paused`, `repeat`, `onProgress`, `ref.seek` |
 | Lottie | `/native-views/lottie` | `LottieView` with a bundled JSON file: `autoPlay`, `loop`, `speed`, `ref.pause` |
 | PDF (react-native-pdf) | `/native-views/pdf` | `Pdf`: `enablePaging`, `onLoadComplete`, `onPageChanged`, `ref.setPage` |
-| SVG (react-native-svg) | `/native-views/svg` | `@rasheed/svelte-native/svg`: shapes, gradient, text, `animatedProps`, `SvgXml` |
+| SVG (react-native-svg) | `/native-views/svg` | `@alfayez/svelte-native/svg`: shapes, gradient, text, `animatedProps`, `SvgXml` |
 | Rive | `/native-views/rive` | `Rive` from a URL (needs the network): `ref.play`, `onPlay`, `onError` |
 | Shadow (fast-shadow) | `/native-views/shadow` | `ShadowedView` and `shadowStyle` |
 | Animateable text | `/native-views/animateable-text` | `AnimateableText`: a counter written on the UI thread by a worklet |

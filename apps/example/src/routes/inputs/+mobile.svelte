@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { KeyboardAvoidingView, Screen, ScrollView, Switch, Text, TextInput, View, insets } from "@rasheed/svelte-native";
+  import { KeyboardAvoidingView, Screen, ScrollView, Switch, Text, TextInput, View, insets } from "@alfayez/svelte-native";
   import Button from "#lib/components/Button.svelte";
   import Section from "#lib/components/Section.svelte";
   import { typeInto, useDemo } from "#lib/demo.ts";

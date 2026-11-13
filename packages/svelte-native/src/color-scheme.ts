@@ -11,7 +11,7 @@ const subscribe = createSubscriber((update) => {
 /**
  * The system's light or dark mode, reactive like Svelte's `prefersReducedMotion`: a template, `$derived` or `$effect` that reads
  * `colorScheme.current` runs again when the user switches. A system that reports no scheme counts as light, as React Native's views do.
- * `Appearance.setColorScheme` (`@rasheed/svelte-native/platform`) overrides it for the app.
+ * `Appearance.setColorScheme` (`@alfayez/svelte-native/platform`) overrides it for the app.
  */
 export const colorScheme = {
   get current(): "light" | "dark" {

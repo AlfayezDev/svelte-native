@@ -3,7 +3,7 @@ export type GestureAttribute = import("./rngh.js").ComposedGesture | import("./r
 
 /** The attribute as a props type, for the primitives that forward it to their host element. Removing it, or setting it to `undefined`, detaches the gesture. */
 export type GestureProps = {
-  /** A gesture from `@rasheed/svelte-native/gestures`. The view keeps its own native view (`collapsable` is forced to `false`). One gesture object drives one view. */
+  /** A gesture from `@alfayez/svelte-native/gestures`. The view keeps its own native view (`collapsable` is forced to `false`). One gesture object drives one view. */
   gesture?: GestureAttribute;
 };
 

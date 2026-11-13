@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import { Pressable, SafeAreaView, Screen, ScrollView, Text, inTabPane } from "@rasheed/svelte-native";
+  import { Pressable, SafeAreaView, Screen, ScrollView, Text, inTabPane } from "@alfayez/svelte-native";
   import { theme, t } from "../state.svelte.ts";
   /**
    * One scrolling page of the product. The title is the native header's (`<Screen title>`) and the back button is the header's

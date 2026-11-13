@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SafeAreaView, Screen, ScrollView, Text, View, useRouter } from "@rasheed/svelte-native";
+  import { SafeAreaView, Screen, ScrollView, Text, View, useRouter } from "@alfayez/svelte-native";
   import FeatureRow from "#lib/components/FeatureRow.svelte";
   import { coreFeatures } from "#lib/features/core.ts";
   import { groups, type Feature } from "#lib/features/feature.ts";

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Text, View } from "@rasheed/svelte-native";
+  import { Text, View } from "@alfayez/svelte-native";
   import Button from "#lib/components/Button.svelte";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";

@@ -229,7 +229,7 @@ importers:
 
   apps/example:
     dependencies:
-      '@rasheed/svelte-native':
+      '@alfayez/svelte-native':
         specifier: workspace:*
         version: link:../../packages/svelte-native
       '@react-native-community/datetimepicker':
@@ -365,7 +365,7 @@ importers:
       '@intercom/intercom-react-native':
         specifier: 10.7.0
         version: 10.7.0(react-native@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(@react-native-community/cli@20.1.0(supports-color@8.1.1)(typescript@6.0.3))(@react-native/metro-config@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.2.17)(react@19.2.7)(supports-color@8.1.1))(react@19.2.7)
-      '@rasheed/svelte-native':
+      '@alfayez/svelte-native':
         specifier: workspace:*
         version: link:../../packages/svelte-native
       '@react-native-async-storage/async-storage':

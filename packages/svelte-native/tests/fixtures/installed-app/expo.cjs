@@ -13,7 +13,7 @@ const summary = (name) => {
   const resolved = resolveConfigPluginFunctionWithInfo(process.cwd(), name);
   return { mods: Object.keys(config.mods ?? {}).sort(), remote: config.extra?.svelteNative?.remote, pluginFile: resolved.pluginFile, isPluginFile: resolved.isPluginFile, kind: typeof resolved.plugin };
 };
-const names = { path: "@rasheed/svelte-native/expo", bare: "@rasheed/svelte-native" };
+const names = { path: "@alfayez/svelte-native/expo", bare: "@alfayez/svelte-native" };
 const result = Object.fromEntries(Object.entries(names).map(([key, name]) => [key, summary(name)]));
 // What the bare name resolves to is the same plugin function as the path's.
 result.same = resolveConfigPluginFunctionWithInfo(process.cwd(), names.bare).plugin === resolveConfigPluginFunctionWithInfo(process.cwd(), names.path).plugin;

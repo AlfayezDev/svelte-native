@@ -22,7 +22,7 @@ function configuredExclude(variant: "production" | "qa" | "smoke"): string[] {
 	const run = spawnSync(process.execPath, ["-e", "import('./app.config.ts').then((m) => console.log(JSON.stringify(m.default.plugins)))"], { cwd: app, env, encoding: "utf8" });
 	if (run.status !== 0) throw new Error(`app.config.ts did not evaluate: ${run.stderr}`);
 	const plugins = JSON.parse(run.stdout) as (string | [string, { autolinkingExclude?: string[] }])[];
-	const entry = plugins.find((plugin): plugin is [string, { autolinkingExclude?: string[] }] => Array.isArray(plugin) && plugin[0] === "@rasheed/svelte-native/expo");
+	const entry = plugins.find((plugin): plugin is [string, { autolinkingExclude?: string[] }] => Array.isArray(plugin) && plugin[0] === "@alfayez/svelte-native/expo");
 	if (!entry) throw new Error("app.config.ts does not configure the svelte-native plugin");
 	return entry[1].autolinkingExclude ?? [];
 }
@@ -42,8 +42,8 @@ const packages = (result: Resolved) => result.modules.map((module) => module.pac
 
 const qaOnly = ["svelte-qa-android", "svelte-qa-ios", "view-bench"];
 /** The library's own native modules are linked from the installed package, as an app outside this repository gets them (packages/svelte-native/expo-module.config.json). */
-const library = "@rasheed/svelte-native";
-const libraryDirectory = dirname(require.resolve("@rasheed/svelte-native/package.json"));
+const library = "@alfayez/svelte-native";
+const libraryDirectory = dirname(require.resolve("@alfayez/svelte-native/package.json"));
 const libraryPods = ["SvelteBlur", "SvelteCapture", "SvelteInsets", "SvelteNavigation", "SvelteScreensIOS", "SvelteUpdates"];
 const libraryProjects = ["svelte-engine", "svelte-updates", "svelte-blur"];
 const { smokeOnlyPackages } = require("./qa/smoke-packages.cjs") as { smokeOnlyPackages: string[] };

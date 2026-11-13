@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { KeyboardAvoidingView, Pressable, SafeAreaView, Screen, ScrollView, Tabs, Text, TextInput, View, useRouter, type TabHandle, type TabItem, type ToolbarItem } from "@rasheed/svelte-native";
+  import { KeyboardAvoidingView, Pressable, SafeAreaView, Screen, ScrollView, Tabs, Text, TextInput, View, useRouter, type TabHandle, type TabItem, type ToolbarItem } from "@alfayez/svelte-native";
   import { nativeLabEnabled, theme } from "#lib/native/state.svelte.ts";
   import { screenLab } from "#lib/native/dev/model.svelte.ts";
   import Button from "#lib/native/components/Button.svelte";

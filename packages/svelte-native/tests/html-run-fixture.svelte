@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { View } from "@rasheed/svelte-native";
+  import { View } from "@alfayez/svelte-native";
   import Btn from "./html-btn-fixture.svelte";
   const probe = globalThis as unknown as { __htmlRun: Record<string, unknown> };
   let n = $state(0);

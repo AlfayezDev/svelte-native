@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
-  import { View } from "@rasheed/svelte-native/core";
-  import { AnimatedView, createSharedValue, withTiming, withRepeat, withSequence, ReduceMotion, type SharedValue } from "@rasheed/svelte-native/animation";
+  import { View } from "@alfayez/svelte-native/core";
+  import { AnimatedView, createSharedValue, withTiming, withRepeat, withSequence, ReduceMotion, type SharedValue } from "@alfayez/svelte-native/animation";
 
   let { id, animated = true, variant = "default", completions, mounted, removed }: {
     id: number;

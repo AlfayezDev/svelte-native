@@ -59,13 +59,13 @@ describe("which files are compiled in runes mode", () => {
     // Installed: the path below the app's node_modules is a link into the package (pnpm's layout), and the file is the library's.
     const scratch = realpathSync(mkdtempSync(join(tmpdir(), "runes-default-")));
     try {
-      mkdirSync(join(scratch, "node_modules/@rasheed"), { recursive: true });
-      symlinkSync(resolve(sourceDirectory, ".."), join(scratch, "node_modules/@rasheed/svelte-native"));
-      const installed = join(scratch, "node_modules/@rasheed/svelte-native/src/Router.svelte");
+      mkdirSync(join(scratch, "node_modules/@alfayez"), { recursive: true });
+      symlinkSync(resolve(sourceDirectory, ".."), join(scratch, "node_modules/@alfayez/svelte-native"));
+      const installed = join(scratch, "node_modules/@alfayez/svelte-native/src/Router.svelte");
       expect(isLibrarySource(installed)).toBe(true);
       expect(runesOption(installed, false)).toBe(true);
       // A file below node_modules that does not exist, or is not a link into the package, is a third party's.
-      expect(isLibrarySource(join(scratch, "node_modules/@rasheed/svelte-native/src/Nothing.svelte"))).toBe(false);
+      expect(isLibrarySource(join(scratch, "node_modules/@alfayez/svelte-native/src/Nothing.svelte"))).toBe(false);
       mkdirSync(join(scratch, "node_modules/other"), { recursive: true });
       writeFileSync(join(scratch, "node_modules/other/A.svelte"), "");
       expect(isLibrarySource(join(scratch, "node_modules/other/A.svelte"))).toBe(false);
@@ -80,7 +80,7 @@ describe("which files are compiled in runes mode", () => {
     const notRunes = files.filter((file) => !compiled(readFileSync(file, "utf8"), file, false).metadata.runes);
     expect(notRunes).toEqual([]);
     // The control: without the default some of them would be inferred as legacy.
-    const inferred = files.filter((file) => !compile(readFileSync(file, "utf8"), { filename: file, generate: "client", experimental: { customRenderer: "@rasheed/svelte-native/renderer" } }).metadata.runes);
+    const inferred = files.filter((file) => !compile(readFileSync(file, "utf8"), { filename: file, generate: "client", experimental: { customRenderer: "@alfayez/svelte-native/renderer" } }).metadata.runes);
     expect(inferred.map((file) => file.slice(sourceDirectory.length + 1)).toSorted()).toEqual(["TabPaneList.svelte", "TabPanes.svelte"]);
   });
 
@@ -102,7 +102,7 @@ describe("what the compiler does with the option, in the vendored Svelte", () =>
     expect(byDefault.js.code).not.toContain("internal/flags/legacy");
     expect(byDefault.js.code).not.toContain("mutable_source");
     // The control: Svelte on its own infers legacy mode and makes `count` state.
-    const inferred = compile(mutated, { filename: app, experimental: { customRenderer: "@rasheed/svelte-native/renderer" } });
+    const inferred = compile(mutated, { filename: app, experimental: { customRenderer: "@alfayez/svelte-native/renderer" } });
     expect(inferred.metadata.runes).toBe(false);
     expect(inferred.js.code).toContain("mutable_source");
   });

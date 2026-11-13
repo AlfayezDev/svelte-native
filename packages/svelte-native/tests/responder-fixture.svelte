@@ -1,5 +1,5 @@
 <script>
-  import { View, Text, Pressable } from "@rasheed/svelte-native";
+  import { View, Text, Pressable } from "@alfayez/svelte-native";
   let { log, events } = $props();
   let pressed = $state(false);
   let slop = $state(0);

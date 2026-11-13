@@ -29,7 +29,7 @@ export const appDependencies: Readonly<Record<string, string>> = {
 
 /** Packages whose patch every app needs; the others are declared when the app has the package (SvelteKit) or lists it at the patch's version (the view libraries). */
 const alwaysPatched = ["expo-modules-core", "react-native-gesture-handler", "react-native-reanimated", "react-native-worklets"];
-const plugin = "@rasheed/svelte-native/expo";
+const plugin = "@alfayez/svelte-native/expo";
 const scripts: Readonly<Record<string, string>> = { native: "svelte-native dev", android: "svelte-native android", ios: "svelte-native ios", "check-setup": "svelte-native doctor" };
 const gitignore = [".svelte-native", ".expo", "/android", "/ios"];
 
@@ -324,7 +324,7 @@ export function svelteNativeViteConfig(text: string): string | undefined {
     ? `svelteNative({ ${target} })`
     : `svelteNative({\n${indent}${unit}${target},\n${indent}${unit}kit: ${args.trim().replace(/\n(?=[^\n])/g, `\n${unit}`)}\n${indent}})`;
   let edited = `${text.slice(0, callAt.index)}${replacement}${text.slice(close + 1)}`;
-  edited = edited.replace(importLine, `import { svelteNative } from ${quote}@rasheed/svelte-native/vite${quote};`);
+  edited = edited.replace(importLine, `import { svelteNative } from ${quote}@alfayez/svelte-native/vite${quote};`);
   const define = /\bdefineConfig\s*\(/.exec(edited);
   if (!define) return undefined;
   // `defineConfig({ ... })` becomes `defineConfig(({ mode }) => ({ ... }))`. A config that is already a function must already take `mode`.
@@ -344,7 +344,7 @@ export function svelteNativeViteConfig(text: string): string | undefined {
 
 /** What to tell the person to write when the file cannot be edited. */
 const viteInstructions = (file: string, quote = "'") => [
-  `In ${file}: import { svelteNative } from ${quote}@rasheed/svelte-native/vite${quote}, make the config a function of the mode, and replace SvelteKit's plugin`,
+  `In ${file}: import { svelteNative } from ${quote}@alfayez/svelte-native/vite${quote}, make the config a function of the mode, and replace SvelteKit's plugin`,
   "with the library's, which wraps it and takes what you passed to sveltekit() as `kit`:",
   "",
   "  export default defineConfig(({ mode }) => ({",
@@ -355,12 +355,12 @@ const viteInstructions = (file: string, quote = "'") => [
 // ---- the files init writes ---------------------------------------------------------------------------------------------------------------
 
 const metroConfig = `const { getDefaultConfig } = require("expo/metro-config");
-const { withSvelteNative } = require("@rasheed/svelte-native/metro");
+const { withSvelteNative } = require("@alfayez/svelte-native/metro");
 
 module.exports = withSvelteNative(getDefaultConfig(__dirname));
 `;
 
-const themeModule = `import { colorScheme } from '@rasheed/svelte-native';
+const themeModule = `import { colorScheme } from '@alfayez/svelte-native';
 
 // The colours of the native screens, in the system's light and dark mode. A template that reads \`theme.colors\` draws again when the
 // user switches, because \`colorScheme.current\` is reactive.
@@ -390,7 +390,7 @@ export const theme = {
 
 const layoutRoute = (theme: string) => `<script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { Stack } from '@rasheed/svelte-native';
+	import { Stack } from '@alfayez/svelte-native';
 	import { theme } from '${theme}';
 
 	let { children }: { children: Snippet } = $props();
@@ -407,7 +407,7 @@ const layoutRoute = (theme: string) => `<script lang="ts">
 `;
 
 const homeRoute = (title: string, theme: string) => `<script lang="ts">
-	import { Pressable, Screen, Text, View, useRouter } from '@rasheed/svelte-native';
+	import { Pressable, Screen, Text, View, useRouter } from '@alfayez/svelte-native';
 	import { theme } from '${theme}';
 
 	const router = useRouter();
@@ -429,7 +429,7 @@ const homeRoute = (title: string, theme: string) => `<script lang="ts">
 `;
 
 const detailsRoute = (theme: string) => `<script lang="ts">
-	import { Pressable, Screen, Text, View, useRouter } from '@rasheed/svelte-native';
+	import { Pressable, Screen, Text, View, useRouter } from '@alfayez/svelte-native';
 	import { theme } from '${theme}';
 
 	const router = useRouter();
@@ -451,7 +451,7 @@ const detailsRoute = (theme: string) => `<script lang="ts">
  */
 function starterTheme(root: string, manifest: Manifest): { path: string; exists: boolean; from: (directory: string) => string } {
   const own = read(join(root, "src/lib/theme.ts"));
-  const name = own !== undefined && !own.includes("@rasheed/svelte-native") ? "native-theme.ts" : "theme.ts";
+  const name = own !== undefined && !own.includes("@alfayez/svelte-native") ? "native-theme.ts" : "theme.ts";
   const path = `src/lib/${name}`;
   const imports = manifest.imports;
   const mapped = typeof imports === "object" && imports !== null && "#lib/*" in imports;
@@ -559,7 +559,7 @@ export function planInit(root: string, options: InitOptions = {}): Plan {
   const metroText = read(metroPath) ?? read(join(root, "metro.config.js"));
   if (metroText === undefined) plan.changes.push({ path: "metro.config.cjs", action: "create", summary: "withSvelteNative(getDefaultConfig(__dirname))", text: metroConfig });
   else if (metroText.includes("withSvelteNative")) plan.changes.push({ path: "metro.config.cjs", action: "keep", summary: "uses withSvelteNative" });
-  else plan.changes.push({ path: "metro.config.cjs", action: "manual", summary: "exists and does not use withSvelteNative", instructions: `Wrap the config you export:\n  const { withSvelteNative } = require("@rasheed/svelte-native/metro");\n  module.exports = withSvelteNative(<your config>);` });
+  else plan.changes.push({ path: "metro.config.cjs", action: "manual", summary: "exists and does not use withSvelteNative", instructions: `Wrap the config you export:\n  const { withSvelteNative } = require("@alfayez/svelte-native/metro");\n  module.exports = withSvelteNative(<your config>);` });
 
   // app.json
   planAppJson(root, names, plan);
@@ -673,7 +673,7 @@ function planAppJson(root: string, names: ReturnType<typeof appNames>, plan: Pla
     }
   }
   const plugins = Array.isArray(expo.plugins) ? (expo.plugins as unknown[]) : [];
-  const has = plugins.some((entry) => (Array.isArray(entry) ? entry[0] : entry) === plugin || (Array.isArray(entry) ? entry[0] : entry) === "@rasheed/svelte-native");
+  const has = plugins.some((entry) => (Array.isArray(entry) ? entry[0] : entry) === plugin || (Array.isArray(entry) ? entry[0] : entry) === "@alfayez/svelte-native");
   if (!has) {
     expo.plugins = [...plugins, plugin];
     done.push("the plugin");

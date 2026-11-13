@@ -3,13 +3,13 @@ title: SVG
 video: svg
 ---
 
-`@rasheed/svelte-native/svg` draws vector graphics with [react-native-svg](https://github.com/software-mansion/react-native-svg), as Svelte components. The elements and their props are the ones you know from SVG on the web, written in camelCase (`strokeWidth`, `stopColor`).
+`@alfayez/svelte-native/svg` draws vector graphics with [react-native-svg](https://github.com/software-mansion/react-native-svg), as Svelte components. The elements and their props are the ones you know from SVG on the web, written in camelCase (`strokeWidth`, `stopColor`).
 
 ```svelte
 <!--- file: src/routes/+mobile.svelte --->
 <script lang="ts">
-	import { Screen } from '@rasheed/svelte-native';
-	import { Circle, Defs, LinearGradient, Rect, Stop, Svg, Text as SvgText } from '@rasheed/svelte-native/svg';
+	import { Screen } from '@alfayez/svelte-native';
+	import { Circle, Defs, LinearGradient, Rect, Stop, Svg, Text as SvgText } from '@alfayez/svelte-native/svg';
 </script>
 
 <Screen title="SVG">
@@ -47,7 +47,7 @@ pnpm android
 | Filters | `Filter`, `FeBlend`, `FeColorMatrix`, `FeComposite`, `FeDropShadow`, `FeFlood`, `FeGaussianBlur`, `FeMerge`, `FeMergeNode`, `FeOffset` |
 | Documents | `SvgXml`, `SvgUri` |
 
-`Text` and `Image` here are the SVG elements, and their names clash with the primitives of `@rasheed/svelte-native`. Import them under another name when you use both: `import { Text as SvgText } from '@rasheed/svelte-native/svg'`.
+`Text` and `Image` here are the SVG elements, and their names clash with the primitives of `@alfayez/svelte-native`. Import them under another name when you use both: `import { Text as SvgText } from '@alfayez/svelte-native/svg'`.
 
 Inside a `Text` or `TextPath`, a string is a text span of its own. Whitespace between elements counts as text, as in HTML.
 
@@ -57,7 +57,7 @@ Inside a `Text` or `TextPath`, a string is a text span of its own. Whitespace be
 
 ```svelte
 <script lang="ts">
-	import { SvgXml } from '@rasheed/svelte-native/svg';
+	import { SvgXml } from '@alfayez/svelte-native/svg';
 
 	const check = `<svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" fill="none" stroke="#191b1e" stroke-width="2"/></svg>`;
 </script>
@@ -73,7 +73,7 @@ An element's `ref` gets a handle with the library's geometry functions: `getBBox
 
 ```svelte
 <script lang="ts">
-	import { Path, Svg, type SvgHandle } from '@rasheed/svelte-native/svg';
+	import { Path, Svg, type SvgHandle } from '@alfayez/svelte-native/svg';
 
 	let length = $state(0);
 </script>
@@ -89,8 +89,8 @@ An element's `ref` gets a handle with the library's geometry functions: `getBBox
 
 ```svelte
 <script lang="ts">
-	import { createSharedValue, withRepeat, withTiming } from '@rasheed/svelte-native/animation';
-	import { Circle, Svg } from '@rasheed/svelte-native/svg';
+	import { createSharedValue, withRepeat, withTiming } from '@alfayez/svelte-native/animation';
+	import { Circle, Svg } from '@alfayez/svelte-native/svg';
 
 	const radius = createSharedValue(6);
 	radius.value = withRepeat(withTiming(12, { duration: 800 }), -1, true);

@@ -1,7 +1,7 @@
 import { parse } from "svelte/compiler";
 import { HTML_CLASS_HELPER, HTML_HELPER_EXPORTS, bindThisText, isFunctionLiteral, lowerHtml, mayHaveHtml, oneLine, repeatableSource } from "./lower-html.ts";
 
-const PACKAGE = "@rasheed/svelte-native";
+const PACKAGE = "@alfayez/svelte-native";
 const GESTURES = `${PACKAGE}/gestures`;
 const RENDERER = `${PACKAGE}/renderer`;
 // Svelte's `set_attributes`, which an element with a `{...spread}` sends all of its attributes through, drops a function that is not an
@@ -53,7 +53,7 @@ function collectImports(program: Node | null | undefined, locals: Map<string, st
       if (specifier.type !== "ImportSpecifier" || specifier.importKind === "type") continue;
       const imported = specifier.imported.name ?? specifier.imported.value;
       if (Object.hasOwn(LOWERED_TAGS, imported)) locals.set(specifier.local.name, imported);
-      // `use:gesture` (from `@rasheed/svelte-native/gestures`) is an action the host tag does run: it sets the `gesture` attribute.
+      // `use:gesture` (from `@alfayez/svelte-native/gestures`) is an action the host tag does run: it sets the `gesture` attribute.
       if (imported === "gesture" && statement.source?.value === GESTURES) actions.add(specifier.local.name);
     }
   }
@@ -121,7 +121,7 @@ export type LowerOptions = {
 };
 
 /**
- * Rewrites `<View>`, `<Text>`, ... imported from "@rasheed/svelte-native" into their host tags.
+ * Rewrites `<View>`, `<Text>`, ... imported from "@alfayez/svelte-native" into their host tags.
  * Only the tag names change: everything else is carried over verbatim, so line numbers are
  * stable (columns shift on lines holding a lowered tag, and no source map is produced).
  */

@@ -65,10 +65,10 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/Utilities/PixelRatio": "export default { get: () => 2, roundToNearestPixel: (value) => Math.round(value * 2) / 2 };",
   "react-native/Libraries/Utilities/Dimensions": "export default { get: () => ({ width: 400, height: 800 }), addEventListener: () => ({ remove() {} }) };",
   // The `Text` and `View` a fixture imports are lowered to `<native-text>` and `<native-view>`, and the import is then unused.
-  "@rasheed/svelte-native": "export const Text = null; export const View = null;",
+  "@alfayez/svelte-native": "export const Text = null; export const View = null;",
 };
 
-// The class table the class resolver reads (`@rasheed/svelte-native/classes-table`): what the converter would write for these classes.
+// The class table the class resolver reads (`@alfayez/svelte-native/classes-table`): what the converter would write for these classes.
 const classTable = {
   version: 1,
   classes: {
@@ -110,15 +110,15 @@ export async function load(fixture = "html-root-fixture.svelte") {
     plugins: [{
       name: "html-fixture",
       setup(builder) {
-        builder.onResolve({ filter: /^(react-native|expo-modules-core|@rasheed\/svelte-native$)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
+        builder.onResolve({ filter: /^(react-native|expo-modules-core|@alfayez\/svelte-native$)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
         builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? "export {};", loader: "js" }));
         builder.onResolve({ filter: /\/view-configs\.ts$/ }, () => ({ path: resolve(import.meta.dirname, "view-configs-stub.ts") }));
-        builder.onResolve({ filter: /^@rasheed\/svelte-native\/classes-table$/ }, (args) => ({ path: args.path, namespace: "classes-table" }));
+        builder.onResolve({ filter: /^@alfayez\/svelte-native\/classes-table$/ }, (args) => ({ path: args.path, namespace: "classes-table" }));
         builder.onLoad({ filter: /.*/, namespace: "classes-table" }, () => ({ contents: `export default ${JSON.stringify(classTable)};`, loader: "js" }));
-        builder.onResolve({ filter: /^@rasheed\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
-        builder.onResolve({ filter: /^@rasheed\/svelte-native\/router$/ }, () => ({ path: resolve(import.meta.dirname, "../src/router.svelte.ts") }));
+        builder.onResolve({ filter: /^@alfayez\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
+        builder.onResolve({ filter: /^@alfayez\/svelte-native\/router$/ }, () => ({ path: resolve(import.meta.dirname, "../src/router.svelte.ts") }));
         // What the lowering imports the components from; the entry holds more (lists, keyboards) than the page needs.
-        builder.onResolve({ filter: /^@rasheed\/svelte-native\/core$/ }, () => ({ path: "core", namespace: "package" }));
+        builder.onResolve({ filter: /^@alfayez\/svelte-native\/core$/ }, () => ({ path: "core", namespace: "package" }));
         builder.onLoad({ filter: /.*/, namespace: "package" }, () => ({
           contents: components.map((name) => `export { default as ${name} } from ${JSON.stringify(resolve(import.meta.dirname, `../src/components/${name}.svelte`))};`).join("\n"),
           loader: "js", resolveDir: import.meta.dirname,

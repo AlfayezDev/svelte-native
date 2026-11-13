@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Text, TextInput, View } from "@rasheed/svelte-native";
-  import { native } from "@rasheed/svelte-native/remote";
+  import { Text, TextInput, View } from "@alfayez/svelte-native";
+  import { native } from "@alfayez/svelte-native/remote";
   import Button from "#lib/components/Button.svelte";
   import Section from "#lib/components/Section.svelte";
   import { addNote, hello, listNotes, visit, visits } from "#lib/remote/notes.remote.ts";

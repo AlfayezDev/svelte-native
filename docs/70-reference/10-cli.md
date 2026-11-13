@@ -90,9 +90,9 @@ patches
   …
 
 build integration
-  pass  @rasheed/svelte-native 0.4.0-rc.4 is a dependency of the app
+  pass  @alfayez/svelte-native 0.4.0-rc.5 is a dependency of the app
   pass  metro.config.cjs uses withSvelteNative
-  pass  app.json lists the @rasheed/svelte-native/expo plugin
+  pass  app.json lists the @alfayez/svelte-native/expo plugin
 
 21 passed, 1 failed, 0 could not tell, 1 skipped
 ```

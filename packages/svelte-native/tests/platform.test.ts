@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { join } from "node:path";
 
 /**
- * `@rasheed/svelte-native/platform` exports React Native's JavaScript-only modules for an app without React. Importing it loads none of them (`Keyboard` alone reads the
+ * `@alfayez/svelte-native/platform` exports React Native's JavaScript-only modules for an app without React. Importing it loads none of them (`Keyboard` alone reads the
  * constants of every view manager); each loads on the first read of a property, from the path its default export lives at, and a function read from one is bound to it.
  * `platform-probe.ts` does it against recording fakes in a process of its own (`mock.module` is global to a test process).
  */

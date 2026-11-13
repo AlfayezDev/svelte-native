@@ -1,6 +1,6 @@
 <script lang="ts">
   // Imported from the package, so the lowering turns these into host tags, as in an app.
-  import { SafeAreaView, Text, View } from "@rasheed/svelte-native";
+  import { SafeAreaView, Text, View } from "@alfayez/svelte-native";
 
   let { inline = false, unknown = false }: { inline?: boolean; unknown?: boolean } = $props();
   let size = $state(30);

@@ -232,7 +232,7 @@ function integration(context: Context, name: string): Check[] {
 /** Every check, in the order they are printed. */
 export function runChecks(context: Context): Check[] {
   const own = readJson(join(context.packageRoot, "package.json")) ?? {};
-  const name = text(own.name) ?? "@rasheed/svelte-native";
+  const name = text(own.name) ?? "@alfayez/svelte-native";
   const appPackage = readJson(join(context.appRoot, "package.json"));
   if (!appPackage) {
     return [{ group: "environment", status: "fail", message: `${context.appRoot} has no package.json: this is not an app directory`, fix: "run svelte-native doctor from the app's directory" }];

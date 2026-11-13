@@ -1,4 +1,4 @@
-import { openLaunchURL, type NativeRouter } from "@rasheed/svelte-native";
+import { openLaunchURL, type NativeRouter } from "@alfayez/svelte-native";
 
 /** What the link the app was launched with says: it names a screen of the lab (`standin://__dev/screens`), anything else, or there is none. */
 export function launchKind(url: string | null | undefined): "lab" | "other" | "none" {

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { List, SafeAreaView, Screen, ScrollView, Text, View } from "@rasheed/svelte-native";
+  import { List, SafeAreaView, Screen, ScrollView, Text, View } from "@alfayez/svelte-native";
   import { scroller, useDemo } from "#lib/demo.ts";
   import { text, theme } from "#lib/theme.svelte.ts";
 

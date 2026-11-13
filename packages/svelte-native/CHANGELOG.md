@@ -4,6 +4,15 @@ Notable changes to `@alfayez/svelte-native` (named `@rasheed/svelte-native` up t
 
 ## Unreleased
 
+### Added
+
+- The library's own `fetch`, on a native module of its own (`SvelteFetch`, in the new `native/svelte-core`: URLSession on iOS, React Native's OkHttp client on Android, so cookies and the app's interceptors are shared with React Native's networking). On the device the library installs `fetch`, `Headers`, `Request`, `Response`, `Blob`, `File`, `FileReader` and `FormData` in place of Expo's and React Native's, and `URL.createObjectURL` and `URL.revokeObjectURL`; each global is a getter that loads its implementation on the first read, so the start-up loads none of it, and an app binary without the native module keeps Expo's `fetch`. A response's bytes stay native until the code reads them: `arrayBuffer()` and `bytes()` hand JavaScript one native buffer (no base64, no copy through a JavaScript array), `blob()` keeps them native, and `body` is a `ReadableStream` that reads them in 64 KiB chunks as they arrive (the transfer pauses while more than 1 MiB is unread). A `Blob` is native bytes too: joining, `slice`, uploading one and a multipart body built from them copy nothing through JavaScript, and `URL.createObjectURL(blob)` gives a `file://` URL an image, a video or a WebView loads. `fetch` takes http(s), `data:`, `file://` and (Android) `content://` URLs; `redirect` is `follow` (up to 20), `error` or `manual` (the redirect response itself, as Node's `fetch` gives it); `credentials: "omit"` sends no cookie and keeps none; an `AbortSignal` stops the request or the body (and `AbortSignal.timeout` and `AbortSignal.any` exist); `text()` decodes UTF-8 as the standard says (a byte order mark dropped, an invalid sequence U+FFFD). `FormData` extends React Native's, so `XMLHttpRequest` and axios still send it; its `Blob` and `File` values reach them as files. Request bodies are sent whole: a `ReadableStream` body is read to its end first. Not supported: `xhr.send(blob)` with the library's `Blob` (React Native's `XMLHttpRequest` takes only its own), `mode`, `cache`, `referrer` and `integrity` (accepted and ignored). On iOS a repeated response header arrives joined with ", " (Set-Cookie too), `statusText` is the standard phrase for the status, and URLSession may give a POST body without a Content-Type `application/x-www-form-urlencoded`.
+- The showcase's "Web APIs" screen: a docs video downloaded as a body stream with a progress bar, its SHA-256 from `crypto.subtle`, a picture from `response.blob()` through an object URL, `crypto.randomUUID()`, and a visit count in `localStorage`. Opened with `?checks=<origin>`, it runs 26 checks of `fetch`, `Blob`, `crypto` and `localStorage` against the library's test server (`tests/fetch/server.ts`) and logs each as `[web-apis] …`.
+
+### Changed
+
+- On Android the `SvelteFetch` module is registered lazily and prewarmed off the JavaScript thread (the expo-modules-core patch), in the place of Expo's fetch module, which the app no longer loads.
+
 ## 0.4.0-rc.7 - 2026-11-13
 
 ### Added

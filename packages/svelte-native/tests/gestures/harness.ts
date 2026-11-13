@@ -96,11 +96,11 @@ export function hostPlugin(options: { openStubs?: boolean } = {}): Plugin {
       builder.onResolve({ filter: /^(react-native|expo-modules-core)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
       // `openStubs` (the import-graph tests) lets any module import any name from a stub, as a CommonJS module does.
       builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: options.openStubs ? "module.exports = new Proxy({}, { get: () => () => {} });" : stubs[args.path] ?? "export {};", loader: "js" }));
-      builder.onResolve({ filter: /^@example\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../../src/renderer.ts") }));
+      builder.onResolve({ filter: /^@alfayez\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../../src/renderer.ts") }));
       builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../../src/environment.ts") }));
       // A fixture that imports primitives from the package is lowered as the transformer does; the import itself is then unused.
-      builder.onResolve({ filter: /^@example\/svelte-native$/ }, () => ({ path: "primitives", namespace: "stub" }));
-      builder.onResolve({ filter: /^@example\/svelte-native\/gestures$/ }, () => ({ path: resolve(import.meta.dirname, "../../src/gestures/index.ts") }));
+      builder.onResolve({ filter: /^@alfayez\/svelte-native$/ }, () => ({ path: "primitives", namespace: "stub" }));
+      builder.onResolve({ filter: /^@alfayez\/svelte-native\/gestures$/ }, () => ({ path: resolve(import.meta.dirname, "../../src/gestures/index.ts") }));
       builder.onLoad({ filter: /\.svelte$/ }, async ({ path }) => ({
         contents: compile(lowerPrimitives(await readFile(path, "utf8"), { filename: path, warn: () => {} }), componentOptions(path)).js.code,
         loader: "js",
@@ -118,7 +118,7 @@ export type Loaded = {
   fabricStats(): { gesturesLoaded: boolean; animationLoaded: boolean; gestures: { records: number; handlers: number; eventHandlers: number } | null };
   tick(): Promise<void>;
   Fixture: unknown;
-  /** The bundle's own copy of `@example/svelte-native/gestures`. */
+  /** The bundle's own copy of `@alfayez/svelte-native/gestures`. */
   gestures: typeof import("../../src/gestures/index.ts");
   bootSummary(): string;
   /** The bundle's own copies of what a test inspects: the JS receiver's memory, RNGH's mount registry and handler registry. */

@@ -12,7 +12,7 @@ A native screen is not rendered on a server and has no `load` function. It loads
 ```svelte
 <!--- file: src/routes/posts/+mobile.svelte --->
 <script lang="ts">
-	import { ActivityIndicator, Screen, Text, View } from '@example/svelte-native';
+	import { ActivityIndicator, Screen, Text, View } from '@alfayez/svelte-native';
 
 	type Post = { id: number; title: string };
 
@@ -59,7 +59,7 @@ export const like = command(v.number(), async (id) => {
 ```svelte
 <!--- file: src/routes/posts/+mobile.svelte --->
 <script lang="ts">
-	import { Pressable, Screen, Text, View } from '@example/svelte-native';
+	import { Pressable, Screen, Text, View } from '@alfayez/svelte-native';
 	import { getPosts, like } from '#lib/posts.remote.ts';
 
 	const posts = getPosts();
@@ -87,7 +87,7 @@ What you get back is SvelteKit's own client API: a query has `.current`, `.loadi
    /// file: app.config.ts
    export default {
    	expo: {
-   		plugins: [['@example/svelte-native', { remote: { origin: 'https://app.example.com' } }]]
+   		plugins: [['@alfayez/svelte-native', { remote: { origin: 'https://app.example.com' } }]]
    	}
    };
    ```
@@ -105,8 +105,8 @@ There is no `<form>` and no `<input>`, so a `form` function is used through its 
 
 ```svelte
 <script lang="ts">
-	import { Pressable, Switch, Text, TextInput, View } from '@example/svelte-native';
-	import { native } from '@example/svelte-native/remote';
+	import { Pressable, Switch, Text, TextInput, View } from '@alfayez/svelte-native';
+	import { native } from '@alfayez/svelte-native/remote';
 	import { addPost } from '#lib/posts.remote.ts';
 
 	const form = native(addPost);
@@ -137,4 +137,4 @@ What is submitted is what the inputs show, as in a browser. `form.submit()` vali
 
 ### Not supported
 
-File fields; restoring data from a server-rendered page (screens aren't server-rendered); `load` invalidation (`refreshAll()` from `@example/svelte-native/remote` refreshes remote queries only); remote modules inside `node_modules`; `export *` in a remote module.
+File fields; restoring data from a server-rendered page (screens aren't server-rendered); `load` invalidation (`refreshAll()` from `@alfayez/svelte-native/remote` refreshes remote queries only); remote modules inside `node_modules`; `export *` in a remote module.

@@ -12,7 +12,7 @@ import { createHarness } from "./foreign-harness.ts";
 /**
  * The twelve native-view libraries (expo-image, expo-blur, expo-linear-gradient, react-native-video, @react-native-community/datetimepicker,
  * lottie-react-native, react-native-pdf with react-native-blob-util, react-native-view-shot, rive-react-native, expo-conic-gradient,
- * react-native-fast-shadow, react-native-animateable-text; SPEC.md, "Foreign views"): what the entry `@example/svelte-native/foreign`
+ * react-native-fast-shadow, react-native-animateable-text; SPEC.md, "Foreign views"): what the entry `@alfayez/svelte-native/foreign`
  * pulls into a bundle, and the static view configs that are not compared with a TypeScript spec in `foreign.test.ts`. React must stay
  * out: the components mount the native views by name and port the libraries' prop handling, so nothing of the libraries' JavaScript
  * (which imports React) is bundled.
@@ -39,7 +39,7 @@ async function bundleForeignEntry(): Promise<Bundle> {
           externals.add(args.path);
           return { path: args.path, external: true };
         });
-        builder.onResolve({ filter: /^@example\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
+        builder.onResolve({ filter: /^@alfayez\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
         builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../src/environment.ts") }));
         builder.onLoad({ filter: /\.svelte$/ }, async ({ path }) => ({
           contents: compile(await readFile(path, "utf8"), componentOptions(path)).js.code,

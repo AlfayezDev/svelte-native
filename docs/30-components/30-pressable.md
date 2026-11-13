@@ -9,7 +9,7 @@ video: pressable
 ```svelte
 <!--- file: src/routes/+mobile.svelte --->
 <script lang="ts">
-	import { Pressable, Screen, Text, View } from '@example/svelte-native';
+	import { Pressable, Screen, Text, View } from '@alfayez/svelte-native';
 
 	let count = $state(0);
 	let pressed = $state(false);
@@ -60,7 +60,7 @@ React Native passes `{ pressed }` to a function `style`. Here you keep the state
 
 ```svelte
 <script lang="ts">
-	import { Pressable, Text } from '@example/svelte-native';
+	import { Pressable, Text } from '@alfayez/svelte-native';
 
 	let pressed = $state(false);
 </script>

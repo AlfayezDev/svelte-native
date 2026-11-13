@@ -1,7 +1,7 @@
 <script lang="ts" module>
-  import type { SharedValue } from "@example/svelte-native/animation";
-  import type { LottieHandle, PdfHandle, RiveHandle, VideoHandle } from "@example/svelte-native/foreign";
-  import type { SvgHandle, SvgRootHandle } from "@example/svelte-native/svg";
+  import type { SharedValue } from "@alfayez/svelte-native/animation";
+  import type { LottieHandle, PdfHandle, RiveHandle, VideoHandle } from "@alfayez/svelte-native/foreign";
+  import type { SvgHandle, SvgRootHandle } from "@alfayez/svelte-native/svg";
   /** A host handle (`ref` of a view): its tag names the native view, `measureInWindow` gives the layout the engine measured. */
   export type Host = { readonly tag: number; measureInWindow(callback: (x: number, y: number, width: number, height: number) => void): void };
   export type LibraryKind = "image" | "blur" | "svelteblur" | "gradient" | "video" | "datetime" | "lottie" | "pdf" | "capture" | "rive" | "conic" | "shadow" | "text" | "svg";
@@ -40,14 +40,14 @@
 </script>
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
-  import { Image, Pressable, Text, View } from "@example/svelte-native";
-  import { createSharedValue, ReduceMotion, withRepeat, withTiming } from "@example/svelte-native/animation";
+  import { Image, Pressable, Text, View } from "@alfayez/svelte-native";
+  import { createSharedValue, ReduceMotion, withRepeat, withTiming } from "@alfayez/svelte-native/animation";
   import {
     AnimateableText, BlurTargetView, BlurView, ConicGradient, DateTimePicker, ExpoBlurView, ExpoImage, LinearGradient, LottieView, Pdf, Rive, ShadowedView, Video, ViewShot,
     captureRef, openDatePicker, shadowStyle,
-  } from "@example/svelte-native/foreign";
+  } from "@alfayez/svelte-native/foreign";
   import Platform from "react-native/Libraries/Utilities/Platform";
-  import { Circle, Defs, LinearGradient as SvgLinearGradient, Path, Rect, Stop, Svg, SvgXml, Text as SvgText } from "@example/svelte-native/svg";
+  import { Circle, Defs, LinearGradient as SvgLinearGradient, Path, Rect, Stop, Svg, SvgXml, Text as SvgText } from "@alfayez/svelte-native/svg";
   import labImage from "../../../../assets/native/lab/lab-image.png";
   import { theme } from "../state.svelte.ts";
   import { labImageBlue, labImageRed, labVideoFile, libraryHandles, libraryLab, record } from "./foreign.svelte.ts";

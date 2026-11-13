@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Pressable, Text, ActivityIndicator, View } from "@example/svelte-native";
+  import { Pressable, Text, ActivityIndicator, View } from "@alfayez/svelte-native";
   import { theme } from "../state.svelte.ts";
   /**
    * `accessibilityLabel` is what a screen reader says when it must differ from the visible `label`: a button that repeats in a list says

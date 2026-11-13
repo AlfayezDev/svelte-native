@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Text, View } from "@example/svelte-native";
-  import { ShadowedView, shadowStyle } from "@example/svelte-native/foreign";
+  import { Text, View } from "@alfayez/svelte-native";
+  import { ShadowedView, shadowStyle } from "@alfayez/svelte-native/foreign";
   import Button from "#lib/components/Button.svelte";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";

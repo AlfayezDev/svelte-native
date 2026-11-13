@@ -73,7 +73,7 @@ async function load(fixture = "navigation-fixture.svelte") {
         builder.onResolve({ filter: /^(react-native|expo-modules-core)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
         builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? "export {};", loader: "js" }));
         builder.onResolve({ filter: /\/view-configs\.ts$/ }, () => ({ path: resolve(import.meta.dirname, "view-configs-stub.ts") }));
-        builder.onResolve({ filter: /^@example\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
+        builder.onResolve({ filter: /^@alfayez\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
         builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../src/environment.ts") }));
         builder.onLoad({ filter: /\.svelte$/ }, async ({ path }) => ({
           contents: compile(await readFile(path, "utf8"), componentOptions(path)).js.code,
@@ -468,7 +468,7 @@ test("Screen, Stack and Tabs stay components: they take snippets, so the lowerin
   expect(Object.hasOwn(LOWERED_TAGS, "Screen")).toBe(false);
   expect(Object.hasOwn(LOWERED_TAGS, "Stack")).toBe(false);
   expect(Object.hasOwn(LOWERED_TAGS, "Tabs")).toBe(false);
-  const source = `<script>\n  import { Screen, Stack, Tabs, View } from "@example/svelte-native";\n</script>\n<Screen title="x">{#snippet headerRight()}<View />{/snippet}</Screen>\n<Stack header={{ large: true }}>{@render children()}</Stack>\n<Tabs items={items} selected={s} content={pane} />`;
+  const source = `<script>\n  import { Screen, Stack, Tabs, View } from "@alfayez/svelte-native";\n</script>\n<Screen title="x">{#snippet headerRight()}<View />{/snippet}</Screen>\n<Stack header={{ large: true }}>{@render children()}</Stack>\n<Tabs items={items} selected={s} content={pane} />`;
   const lowered = lowerPrimitives(source, { filename: "x.svelte", warn: noop });
   expect(lowered).toContain('<Screen title="x">');
   expect(lowered).toContain("<native-view ></native-view>");

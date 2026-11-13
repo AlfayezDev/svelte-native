@@ -1,6 +1,6 @@
 /**
  * Over-the-air JavaScript updates, compatible with `eas update`. Same surface as the core of `expo-updates`:
- * `import { checkForUpdateAsync, fetchUpdateAsync, reloadAsync } from "@example/svelte-native/updates"`.
+ * `import { checkForUpdateAsync, fetchUpdateAsync, reloadAsync } from "@alfayez/svelte-native/updates"`.
  * Without the `SvelteUpdates` native module, or in a build where updates are off (development builds), every call resolves
  * without doing anything and `isEnabled` is false.
  */

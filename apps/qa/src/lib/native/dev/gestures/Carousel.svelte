@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { ScrollView, Text, View } from "@example/svelte-native";
-  import { AnimatedView, createSharedValue, runOnJS, withSpring } from "@example/svelte-native/animation";
-  import { Gesture } from "@example/svelte-native/gestures";
+  import { ScrollView, Text, View } from "@alfayez/svelte-native";
+  import { AnimatedView, createSharedValue, runOnJS, withSpring } from "@alfayez/svelte-native/animation";
+  import { Gesture } from "@alfayez/svelte-native/gestures";
   import { theme } from "../../state.svelte.ts";
   import type { Probe, Session } from "../gestures-lab.ts";
 

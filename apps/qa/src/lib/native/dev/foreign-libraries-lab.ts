@@ -1,7 +1,7 @@
 import { requireOptionalNativeModule } from "expo-modules-core";
 import { applicationId } from "expo-application";
 import { Directory, File, Paths } from "expo-file-system";
-import { captureRef, releaseCapture, type CaptureOptions } from "@example/svelte-native/foreign";
+import { captureRef, releaseCapture, type CaptureOptions } from "@alfayez/svelte-native/foreign";
 import Platform from "react-native/Libraries/Utilities/Platform";
 import { libraryKinds, type Host, type LibraryHandles, type LibraryKind } from "./LibrarySet.svelte";
 import { count, foreignEvents, foreignLab, libraryHandles, libraryLab, resetLibraryLab } from "./foreign.svelte.ts";

@@ -19,7 +19,7 @@ test("a remote module's imports are the runtime's alone: $app/server and the ser
     { filename: `${root}/src/lib/data.remote.ts`, src: server, root },
     { filename: `${root}/src/lib/data.ts`, src: `import { db } from "$lib/server/db";\nexport const x = db;\n`, root },
   ]);
-  expect(remote.dependencies.filter((dependency) => !dependency.startsWith("@babel/runtime"))).toEqual(["@example/svelte-native/remote/runtime"]);
+  expect(remote.dependencies.filter((dependency) => !dependency.startsWith("@babel/runtime"))).toEqual(["@alfayez/svelte-native/remote/runtime"]);
   // Only remote modules are replaced.
   expect(ordinary.dependencies).toContain("$lib/server/db");
   // The same module under another name is not one.
@@ -35,9 +35,9 @@ test("SvelteKit's client files import their globals from the package, and files 
     { filename: join(kit, "src/runtime/form-utils.js"), root },
     { filename: join(kit, "src/runtime/app/internal/transport.js"), root },
   ]);
-  for (const file of [shared, iterator]) expect(file.dependencies).toContain("@example/svelte-native/remote/globals");
-  expect(formUtils.dependencies).toContain("@example/svelte-native/remote/globals");
-  expect(transport.dependencies).not.toContain("@example/svelte-native/remote/globals");
+  for (const file of [shared, iterator]) expect(file.dependencies).toContain("@alfayez/svelte-native/remote/globals");
+  expect(formUtils.dependencies).toContain("@alfayez/svelte-native/remote/globals");
+  expect(transport.dependencies).not.toContain("@alfayez/svelte-native/remote/globals");
   // The relative imports are still SvelteKit's (the resolver redirects the ones that are shims).
   expect(shared.dependencies).toContain("../client.js");
   expect(shared.dependencies).toContain("#app/state/client");
@@ -48,12 +48,12 @@ test("a .svelte.ts module of a package under node_modules is compiled by Svelte 
   // The types are stripped before Svelte's module compiler, which reads JavaScript, sees the file; the path under node_modules makes no difference to it.
   const source = "let count: number = $state(0);\nexport function bump(by: number = 1): number {\n  count += by;\n  return count;\n}\n";
   const [installed, own] = run([
-    { filename: `${root}/node_modules/@example/svelte-native/src/counter.svelte.ts`, src: source, root },
+    { filename: `${root}/node_modules/@alfayez/svelte-native/src/counter.svelte.ts`, src: source, root },
     { filename: `${root}/src/lib/counter.svelte.ts`, src: source, root },
   ]);
   expect(installed.dependencies).toContain("svelte/internal/client");
   expect(installed.dependencies).toEqual(own.dependencies);
   // The real files, at the path an install puts them at.
-  const sources = ["router.svelte.ts", "insets.svelte.ts"].map((name) => ({ filename: `${root}/node_modules/@example/svelte-native/src/${name}`, src: readFileSync(join(import.meta.dirname, "../src", name), "utf8"), root }));
+  const sources = ["router.svelte.ts", "insets.svelte.ts"].map((name) => ({ filename: `${root}/node_modules/@alfayez/svelte-native/src/${name}`, src: readFileSync(join(import.meta.dirname, "../src", name), "utf8"), root }));
   for (const result of run(sources)) expect(result.dependencies).toContain("svelte/internal/client");
 });

@@ -9,7 +9,7 @@ video: pressable
 ```svelte
 <!--- file: src/routes/+mobile.svelte --->
 <script lang="ts">
-	import { Modal, Pressable, Screen, Text, View } from '@example/svelte-native';
+	import { Modal, Pressable, Screen, Text, View } from '@alfayez/svelte-native';
 
 	let open = $state(false);
 </script>

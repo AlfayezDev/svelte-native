@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Image, Pressable, Text, View } from "@example/svelte-native";
+  import { Image, Pressable, Text, View } from "@alfayez/svelte-native";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
   import { scroller, useDemo } from "#lib/demo.ts";

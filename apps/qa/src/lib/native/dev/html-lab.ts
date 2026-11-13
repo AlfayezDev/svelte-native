@@ -1,6 +1,6 @@
 import { tick } from "svelte";
-import { Appearance } from "@example/svelte-native/platform";
-import { mergeHostProps } from "@example/svelte-native/renderer";
+import { Appearance } from "@alfayez/svelte-native/platform";
+import { mergeHostProps } from "@alfayez/svelte-native/renderer";
 import { sentStyle, type Outcome, type Style } from "./class-checks.ts";
 import { builtOf, expectations, find, htmlCheckNames, isBlank, members, textOf, type Counted, type HtmlNode, type InputRead, type MemberRead } from "./html-checks.ts";
 

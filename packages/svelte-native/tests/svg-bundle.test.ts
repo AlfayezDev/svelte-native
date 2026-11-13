@@ -7,7 +7,7 @@ import { compile } from "svelte/compiler";
 import { componentOptions } from "../src/compile-options.ts";
 
 /**
- * The `@example/svelte-native/svg` entry (SPEC.md, "react-native-svg") bundled as Metro bundles it: the library's own sources are imported by deep path (the
+ * The `@alfayez/svelte-native/svg` entry (SPEC.md, "react-native-svg") bundled as Metro bundles it: the library's own sources are imported by deep path (the
  * extractors in `src/lib`), the library's `react-native` import resolves to the host's lite shim, and everything of React Native's is an external that is
  * recorded. React must stay out, and with it every part of the library that is React: its elements, its XML renderer, its fabric components and its index.
  */
@@ -36,7 +36,7 @@ async function bundleSvgEntry(): Promise<Bundle> {
         externals.add(args.path);
         return { path: args.path, external: true };
       });
-      builder.onResolve({ filter: /^@example\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
+      builder.onResolve({ filter: /^@alfayez\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
       builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../src/environment.ts") }));
       builder.onLoad({ filter: /\.svelte$/ }, async ({ path }) => ({
         contents: compile(await readFile(path, "utf8"), componentOptions(path)).js.code,

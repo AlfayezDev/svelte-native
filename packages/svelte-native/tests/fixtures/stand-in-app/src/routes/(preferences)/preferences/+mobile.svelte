@@ -2,7 +2,7 @@
   export const presentation = "modal";
 </script>
 <script lang="ts">
-  import { Pressable, Text, View, useRouter } from "@example/svelte-native";
+  import { Pressable, Text, View, useRouter } from "@alfayez/svelte-native";
   const router = useRouter();
   const close = () => { if (!router.back()) router.goto("/projects", { reset: true }); };
 </script>

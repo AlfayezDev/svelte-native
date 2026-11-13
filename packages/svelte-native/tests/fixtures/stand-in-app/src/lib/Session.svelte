@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import { useRouter } from "@example/svelte-native";
+  import { useRouter } from "@alfayez/svelte-native";
   import { labEnabled } from "#lib/flag.ts";
   import { enforceGate } from "#lib/gate.ts";
   import { openSession } from "#lib/session.ts";

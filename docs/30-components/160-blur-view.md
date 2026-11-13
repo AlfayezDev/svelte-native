@@ -9,8 +9,8 @@ video: blur-view
 ```svelte
 <!--- file: src/routes/+mobile.svelte --->
 <script lang="ts">
-	import { Image, Text, View } from '@example/svelte-native';
-	import { BlurView } from '@example/svelte-native/foreign';
+	import { Image, Text, View } from '@alfayez/svelte-native';
+	import { BlurView } from '@alfayez/svelte-native/foreign';
 </script>
 
 <View style={{ height: 200 }}>

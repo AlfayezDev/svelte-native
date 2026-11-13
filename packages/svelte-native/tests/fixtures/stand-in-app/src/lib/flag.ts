@@ -1,5 +1,5 @@
 import { applicationId } from "expo-application";
-import { lab as bundleLab } from "@example/svelte-native/routes";
+import { lab as bundleLab } from "@alfayez/svelte-native/routes";
 
 /** The application id of the store build: the one app that never runs the development lab. */
 export const storeApplicationId = "com.example.app";

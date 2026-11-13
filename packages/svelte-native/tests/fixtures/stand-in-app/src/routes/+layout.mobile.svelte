@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, type Snippet } from "svelte";
-  import { ActivityIndicator, Text, View, useRouter } from "@example/svelte-native";
+  import { ActivityIndicator, Text, View, useRouter } from "@alfayez/svelte-native";
   import { labEnabled, labRefused } from "#lib/flag.ts";
   import { installErrorCounter } from "#lib/lab/counter.ts";
   import { lateFault, lateFaultMessage } from "#lib/lab/faults.ts";

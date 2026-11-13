@@ -2,9 +2,9 @@
   import { onDestroy, onMount, tick, untrack } from "svelte";
   import { SvelteMap } from "svelte/reactivity";
   import type { ScrollView as NativeScrollView, TextInput as NativeTextInput } from "react-native";
-  import type {} from "@example/svelte-native/elements";
-  import { List, Modal, ScrollView, Tabs, Text, TextInput, View, useRouter, type TabHandle, type TabItem } from "@example/svelte-native";
-  import { createSharedValue, runOnUIAsync, type SharedValue } from "@example/svelte-native/animation";
+  import type {} from "@alfayez/svelte-native/elements";
+  import { List, Modal, ScrollView, Tabs, Text, TextInput, View, useRouter, type TabHandle, type TabItem } from "@alfayez/svelte-native";
+  import { createSharedValue, runOnUIAsync, type SharedValue } from "@alfayez/svelte-native/animation";
   import { requireOptionalNativeModule } from "expo-modules-core";
   import Dimensions from "react-native/Libraries/Utilities/Dimensions";
   import Platform from "react-native/Libraries/Utilities/Platform";

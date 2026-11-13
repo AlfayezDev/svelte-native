@@ -20,6 +20,6 @@ export const routesTableFile = (variant: string): string => `routes.${variant.re
 
 /**
  * The class table of a variant, under `.svelte-native/`: `classes.app.ts`, `classes.production.ts`, ... (`css/build.ts` writes it, Metro resolves
- * `@example/svelte-native/classes-table` to it). One per variant for the reason the route tables are: one Metro's rebuild never changes what another serves.
+ * `@alfayez/svelte-native/classes-table` to it). One per variant for the reason the route tables are: one Metro's rebuild never changes what another serves.
  */
 export const classesTableFile = (variant: string): string => `classes.${variant.replace(/[^A-Za-z0-9_-]/g, "_")}.ts`;

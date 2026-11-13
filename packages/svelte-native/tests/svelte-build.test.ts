@@ -52,11 +52,11 @@ describe("the Svelte build this library needs", () => {
     expect(inspection).toMatchObject({ ok: false, reason: "stock-release", version: requiredSvelte.version });
     let message = "";
     try {
-      assertCustomRenderer("The Metro transformer of @example/svelte-native", stock);
+      assertCustomRenderer("The Metro transformer of @alfayez/svelte-native", stock);
     } catch (error) {
       message = (error as Error).message;
     }
-    expect(message).toContain("The Metro transformer of @example/svelte-native needs the custom-renderer build of Svelte");
+    expect(message).toContain("The Metro transformer of @alfayez/svelte-native needs the custom-renderer build of Svelte");
     expect(message).toContain("has no `./renderer` export");
     expect(message).toContain(requiredSvelte.pullRequest);
     expect(message).toContain(`pnpm add svelte@${requiredSvelte.preview}`);
@@ -77,7 +77,7 @@ describe("the Svelte build this library needs", () => {
 
   test("the Metro integration, the transformer and the native Vite target check before they need the renderer", () => {
     const source = (file: string) => readFileSync(resolve(import.meta.dirname, "../src", file), "utf8");
-    expect(source("metro.ts")).toContain('assertCustomRenderer("withSvelteNative (@example/svelte-native/metro)")');
+    expect(source("metro.ts")).toContain('assertCustomRenderer("withSvelteNative (@alfayez/svelte-native/metro)")');
     expect(source("transformer.ts")).toMatch(/requireCustomRenderer\(\);\s+const result = svelteCompiler\(\)\.compile\(/);
     expect(source("vite.ts")).toContain("assertCustomRenderer(");
   });

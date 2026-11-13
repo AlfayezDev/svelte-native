@@ -3,7 +3,7 @@
 </script>
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import { Tabs, View, type TabItem } from "@example/svelte-native";
+  import { Tabs, View, type TabItem } from "@alfayez/svelte-native";
   import { theme } from "#lib/native/state.svelte.ts";
 
   /**

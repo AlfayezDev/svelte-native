@@ -9,7 +9,7 @@ video: screen
 ```svelte
 <!--- file: src/routes/inbox/+mobile.svelte --->
 <script lang="ts">
-	import { Pressable, Screen, ScrollView, Text, useRouter } from '@example/svelte-native';
+	import { Pressable, Screen, ScrollView, Text, useRouter } from '@alfayez/svelte-native';
 
 	const router = useRouter();
 </script>
@@ -82,7 +82,7 @@ Header snippets lay out start to end, and mirror in right-to-left languages. Giv
 ```svelte
 <!--- file: src/routes/people/+mobile.svelte --->
 <script lang="ts">
-	import { Screen, ScrollView, Text } from '@example/svelte-native';
+	import { Screen, ScrollView, Text } from '@alfayez/svelte-native';
 
 	const people = ['Amal', 'Bilal', 'Carla', 'Dev', 'Esra'];
 	let query = $state('');
@@ -123,7 +123,7 @@ Header snippets lay out start to end, and mirror in right-to-left languages. Giv
 ```svelte
 <!--- file: src/routes/message/[id]/+mobile.svelte --->
 <script lang="ts">
-	import { Screen, Text, type ToolbarItem } from '@example/svelte-native';
+	import { Screen, Text, type ToolbarItem } from '@alfayez/svelte-native';
 	import replyIcon from '../../../../assets/reply.png';
 
 	const items: ToolbarItem[] = [
@@ -160,7 +160,7 @@ A page whose [presentation](routing#presentation) is `'sheet'` slides up from th
 </script>
 
 <script lang="ts">
-	import { Screen, Text } from '@example/svelte-native';
+	import { Screen, Text } from '@alfayez/svelte-native';
 </script>
 
 <Screen title="Share" sheet={{ detents: [0.4, 0.9], grabber: true }} onDetentChange={({ index }) => console.log(index)}>
@@ -196,7 +196,7 @@ So a layout can set what all its pages share, and each page adds its title:
 <!--- file: src/routes/settings/+layout.mobile.svelte --->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { Screen } from '@example/svelte-native';
+	import { Screen } from '@alfayez/svelte-native';
 
 	let { children }: { children: Snippet } = $props();
 </script>
@@ -218,7 +218,7 @@ With a `translucent` header or toolbar, or a `large` header, content runs under 
 
 ```svelte
 <script lang="ts">
-	import { Screen, ScrollView, useHeader } from '@example/svelte-native';
+	import { Screen, ScrollView, useHeader } from '@alfayez/svelte-native';
 
 	const header = useHeader();
 </script>

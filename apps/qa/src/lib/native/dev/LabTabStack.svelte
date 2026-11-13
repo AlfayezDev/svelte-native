@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack, type Component } from "svelte";
-  import { Router, createRouter, type StackNode, type TabHandle } from "@example/svelte-native";
+  import { Router, createRouter, type StackNode, type TabHandle } from "@alfayez/svelte-native";
   import LabTabPage from "./LabTabPage.svelte";
   /** The pane of one tab in the screens lab: a stack of its own that answers the back key only while its tab is selected. */
   let { tab }: { tab: TabHandle } = $props();

@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { View } from "@example/svelte-native";
-  import { Gesture as G } from "@example/svelte-native/gestures";
+  import { View } from "@alfayez/svelte-native";
+  import { Gesture as G } from "@alfayez/svelte-native/gestures";
   // Not a `Gesture.X().onY(...)` chain by name: the babel plugin leaves the callback alone.
   export const pan = G.Pan().onUpdate((e) => { console.log(e.translationX); });
 </script>

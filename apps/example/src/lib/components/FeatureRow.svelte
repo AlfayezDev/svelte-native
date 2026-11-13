@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Pressable, Text, View } from "@example/svelte-native";
+  import { Pressable, Text, View } from "@alfayez/svelte-native";
   import { text, theme } from "#lib/theme.svelte.ts";
 
   // One row of the home screen: the feature's name and its one-line description, and an arrow that a screen reader skips. The row dims while it is pressed.

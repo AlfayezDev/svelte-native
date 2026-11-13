@@ -26,7 +26,7 @@ body:
       placeholder: |
         ```svelte
         <script lang="ts">
-          import { Pressable, Screen, Text } from "@example/svelte-native";
+          import { Pressable, Screen, Text } from "@alfayez/svelte-native";
         </script>
         <Screen title="Repro">…</Screen>
         ```
@@ -66,7 +66,7 @@ body:
     id: library-ref
     attributes:
       label: Library version (tag or commit)
-      description: The `#...` part of `@example/svelte-native` in your `package.json`, or the commit in `pnpm-lock.yaml`.
+      description: The `#...` part of `@alfayez/svelte-native` in your `package.json`, or the commit in `pnpm-lock.yaml`.
       placeholder: "v0.3.0"
     validations:
       required: true

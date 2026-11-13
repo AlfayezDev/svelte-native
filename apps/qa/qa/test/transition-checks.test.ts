@@ -107,7 +107,7 @@ describe("the screen and the lab", () => {
 		for (const part of ["in:fade={{ duration: times.fade }}", "out:fly={{ y: 40, duration: times.fly }}", "animate:flip={{ duration: times.flip }}", "transition:slide={{ duration: times.slide }}"]) expect(screen).toContain(part);
 		for (const name of ['hold("fader")', 'hold("panel")', "hold(`item-${item}`)"]) expect(screen).toContain(name);
 		// HTML elements, no component of the library
-		expect(screen).not.toMatch(/from "@example\/svelte-native/);
+		expect(screen).not.toMatch(/from "@alfayez\/svelte-native/);
 		expect(screen).toMatch(/<ul class=/);
 		expect(screen).toMatch(/<li \{@attach/);
 	});

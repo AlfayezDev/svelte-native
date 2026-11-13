@@ -15,13 +15,13 @@ const run = (cases: { filename: string; src: string }[], env: Record<string, str
 };
 
 const script = `<script lang="ts">
-  import { createSharedValue, withTiming } from "@example/svelte-native/animation";
+  import { createSharedValue, withTiming } from "@alfayez/svelte-native/animation";
   const count = createSharedValue(0);
   const countText = () => { "worklet"; return { text: String(Math.round(count.value)) }; };
 </script>`;
 const markup = `<native-view data={countText} onpress={() => { count.value = withTiming(1000, { duration: 3000 }); }}></native-view>`;
 const rune = `<script lang="ts">
-  import { createSharedValue } from "@example/svelte-native/animation";
+  import { createSharedValue } from "@alfayez/svelte-native/animation";
   const shown = createSharedValue(0);
   let n = $state(1);
   const text = () => { "worklet"; return { text: String(shown.value + n) }; };
@@ -87,7 +87,7 @@ test("a worklet that reads $state in a runes component is refused too, with the 
 test("a gesture callback is workletized without the directive and may run on the JavaScript thread, so the build leaves it to the gestures' own check", () => {
   const src = `<svelte:options runes />
 <script lang="ts">
-  import { Gesture } from "@example/svelte-native/gestures";
+  import { Gesture } from "@alfayez/svelte-native/gestures";
   let n = $state(1);
   const pan = Gesture.Pan().runOnJS(true).onUpdate((event) => { console.log(n, event.translationX); });
 </script>

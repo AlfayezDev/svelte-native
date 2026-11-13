@@ -27,7 +27,7 @@ test("compiled Svelte updates text, moves keyed nodes, removes branches and disp
     plugins: [{
       name: "native-fixture",
       setup(builder) {
-        builder.onResolve({ filter: /^@example\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
+        builder.onResolve({ filter: /^@alfayez\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
         builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../src/environment.ts") }));
         builder.onLoad({ filter: /\.svelte$/ }, async ({ path }) => ({
           contents: compile(await readFile(path, "utf8"), componentOptions(path)).js.code,

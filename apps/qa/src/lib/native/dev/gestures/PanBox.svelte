@@ -1,8 +1,8 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import { Text, View } from "@example/svelte-native";
-  import { createSharedValue, runOnJS } from "@example/svelte-native/animation";
-  import { Gesture, type GestureAttribute, type GestureType } from "@example/svelte-native/gestures";
+  import { Text, View } from "@alfayez/svelte-native";
+  import { createSharedValue, runOnJS } from "@alfayez/svelte-native/animation";
+  import { Gesture, type GestureAttribute, type GestureType } from "@alfayez/svelte-native/gestures";
   import { theme } from "../../state.svelte.ts";
   import type { Probe, Session } from "../gestures-lab.ts";
 

@@ -9,7 +9,7 @@ video: view
 ```svelte
 <!--- file: src/routes/+mobile.svelte --->
 <script lang="ts">
-	import { Screen, Text, View } from '@example/svelte-native';
+	import { Screen, Text, View } from '@alfayez/svelte-native';
 </script>
 
 <Screen title="Profile">
@@ -40,7 +40,7 @@ A `View` can't hold text directly. A string outside a [`Text`](text) isn't drawn
 | `onPressChange` | `(pressed: boolean) => void` | | `true` when a press becomes active, `false` when it ends. Keep it in a `$state` to draw a pressed look. |
 | `delayLongPress` | `number` | `500` | Milliseconds before `onLongPress`. |
 | `hitSlop` | `number \| Insets` | | How far outside the view a touch still counts. |
-| `gesture` | `Gesture` | | A gesture from `@example/svelte-native/gestures` to recognise on this view. See [gestures](gestures). |
+| `gesture` | `Gesture` | | A gesture from `@alfayez/svelte-native/gestures` to recognise on this view. See [gestures](gestures). |
 | `ref` | `(handle: HostHandle \| null) => void` | | Receives the view's handle when it's created, and `null` when it's destroyed. See [ref](#ref). |
 | `onLayout` | `(event) => void` | | Called with the view's size and position (`event.nativeEvent.layout`) after every layout that changes them. |
 | `pointerEvents` | `'auto' \| 'none' \| 'box-none' \| 'box-only'` | `'auto'` | Whether the view and its children take touches. `'box-none'`: the children do, the view doesn't. |
@@ -58,7 +58,7 @@ The press props of a `View` are the same as [`Pressable`'s](pressable#props). To
 
 ```svelte
 <script lang="ts">
-	import { Text, View } from '@example/svelte-native';
+	import { Text, View } from '@alfayez/svelte-native';
 
 	let pressed = $state(false);
 </script>
@@ -85,7 +85,7 @@ The press props of a `View` are the same as [`Pressable`'s](pressable#props). To
 
 ```svelte
 <script lang="ts">
-	import { View, type HostHandle } from '@example/svelte-native';
+	import { View, type HostHandle } from '@alfayez/svelte-native';
 
 	let box: HostHandle | null = null;
 </script>

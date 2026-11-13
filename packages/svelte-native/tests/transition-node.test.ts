@@ -12,7 +12,7 @@ afterEach(() => {
   setInvalidationSink(null);
 });
 
-const imports = `<script>\n  import { View, Text, Image } from "@example/svelte-native";\n  import { fade, fly, scale } from "svelte/transition";\n  import { flip } from "svelte/animate";\n  let { rows = [] } = $props();\n</script>\n`;
+const imports = `<script>\n  import { View, Text, Image } from "@alfayez/svelte-native";\n  import { fade, fly, scale } from "svelte/transition";\n  import { flip } from "svelte/animate";\n  let { rows = [] } = $props();\n</script>\n`;
 
 test("a custom renderer's compiler takes every one of the directives (this repository's Svelte has the refusals patched out for Bun, which runs no Node hooks: `patches/svelte@5.56.7.patch`; an app's transformer does it as it loads the compiler)", () => {
   for (const directive of ["in:fade", "out:fade", "transition:fade", "animate:flip"]) {

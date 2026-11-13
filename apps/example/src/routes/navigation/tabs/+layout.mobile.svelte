@@ -4,7 +4,7 @@
 
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import { Tabs, View, type TabItem } from "@example/svelte-native";
+  import { Tabs, View, type TabItem } from "@alfayez/svelte-native";
   import { theme } from "#lib/theme.svelte.ts";
 
   // A layout that exports `navigator = "tabs"` turns its folder into a tab bar: each folder below it (feed, profile) is a tab with a stack of

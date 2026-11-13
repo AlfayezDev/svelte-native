@@ -46,7 +46,7 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/Components/View/ViewNativeComponent": "export {};",
   "react-native/Libraries/Text/TextNativeComponent": "export {};",
   "react-native/Libraries/Components/ScrollView/ScrollViewNativeComponent": "export {};",
-  "@example/svelte-native": "export const View = null, Text = null, Pressable = null;", // the fixture imports the primitives to be lowered; nothing of them is left to run
+  "@alfayez/svelte-native": "export const View = null, Text = null, Pressable = null;", // the fixture imports the primitives to be lowered; nothing of them is left to run
   "expo-modules-core": "export const requireOptionalNativeModule = () => null;",
   "react-native": "export const AppRegistry = { registerRunnable() {} };",
 };
@@ -66,8 +66,8 @@ async function load() {
       setup(builder) {
         builder.onResolve({ filter: /^(react-native|expo-modules-core)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
         builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? "export {};", loader: "js" }));
-        builder.onResolve({ filter: /^@example\/svelte-native$/ }, (args) => ({ path: args.path, namespace: "stub" }));
-        builder.onResolve({ filter: /^@example\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
+        builder.onResolve({ filter: /^@alfayez\/svelte-native$/ }, (args) => ({ path: args.path, namespace: "stub" }));
+        builder.onResolve({ filter: /^@alfayez\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
         builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../src/environment.ts") }));
         builder.onLoad({ filter: /\.svelte$/ }, async ({ path }) => ({
           // As the app's build does: the primitives imported from the package (and the HTML elements, in a file the build lowers them in) are lowered to host tags before the compile.

@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { Text, View } from "@example/svelte-native";
-  import { channel, checkForUpdateAsync, fetchUpdateAsync, isEnabled, reloadAsync, runtimeVersion, updateId } from "@example/svelte-native/updates";
+  import { Text, View } from "@alfayez/svelte-native";
+  import { channel, checkForUpdateAsync, fetchUpdateAsync, isEnabled, reloadAsync, runtimeVersion, updateId } from "@alfayez/svelte-native/updates";
   import Button from "#lib/components/Button.svelte";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
   import { scroller, useDemo } from "#lib/demo.ts";
   import { text } from "#lib/theme.svelte.ts";
 
-  // `@example/svelte-native/updates` is expo-updates reduced to what this host needs, and works with `eas update`. `isEnabled`, `updateId`,
+  // `@alfayez/svelte-native/updates` is expo-updates reduced to what this host needs, and works with `eas update`. `isEnabled`, `updateId`,
   // `channel` and `runtimeVersion` say what is running; `checkForUpdateAsync()` asks the server, `fetchUpdateAsync()` downloads, `reloadAsync()`
   // restarts on the new update. In a build that has updates off (a development build, or no `updates.url` in app.config.ts) every call answers
   // "updatesDisabled" and does nothing.

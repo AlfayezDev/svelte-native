@@ -1,6 +1,6 @@
 const path = require("node:path");
 const { getDefaultConfig } = require("expo/metro-config");
-const { withSvelteNative } = require("@example/svelte-native/metro");
+const { withSvelteNative } = require("@alfayez/svelte-native/metro");
 const { smokeOnlyBundlePackages } = require("./qa/smoke-packages.cjs");
 
 // The libraries of the native module smoke test are in the smoke app only (APP_VARIANT=smoke). The product and the QA app do not link

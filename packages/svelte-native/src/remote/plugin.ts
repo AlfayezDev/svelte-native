@@ -1,5 +1,5 @@
 /**
- * The `remote` option of the Expo config plugin (`@example/svelte-native/expo`): the SvelteKit server the app's remote functions call. It
+ * The `remote` option of the Expo config plugin (`@alfayez/svelte-native/expo`): the SvelteKit server the app's remote functions call. It
  * validates the host at config time, writes it where the runtime reads it (`extra.svelteNative.remote`, which `expo-constants` embeds in the
  * build), and, for an `http:` host (a development server), lets the app talk to it: Android blocks cleartext traffic and iOS App Transport
  * Security blocks `http:` to a named domain, unless the build says otherwise. An `https:` host changes nothing native.

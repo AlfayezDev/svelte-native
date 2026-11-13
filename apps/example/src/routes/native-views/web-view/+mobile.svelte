@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Text } from "@example/svelte-native";
-  import { WebView, type WebViewHandle } from "@example/svelte-native/foreign";
+  import { Text } from "@alfayez/svelte-native";
+  import { WebView, type WebViewHandle } from "@alfayez/svelte-native/foreign";
   import Button from "#lib/components/Button.svelte";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";

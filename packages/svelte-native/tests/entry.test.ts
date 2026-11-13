@@ -27,7 +27,7 @@ async function entryFor(root?: string): Promise<string> {
 
 test("the entry boots the app layout as the shell of the generated tree and accepts hot updates", async () => {
   const entry = await entryFor();
-  expect(entry).toContain("import '@example/svelte-native/init';");
+  expect(entry).toContain("import '@alfayez/svelte-native/init';");
   expect(entry).toContain("import App from '../src/routes/+layout.mobile.svelte';");
   expect(entry).toContain("import { tree } from './routes';");
   expect(entry).toContain("createFabricApp(App, { tree });");
@@ -69,7 +69,7 @@ test("the route table loads no page up front: every route is a loader", async ()
   await withRoutes(tree, async (_directory, table) => {
     expect(table).not.toMatch(/^import (?!type)/m);
     expect(table).not.toContain("import * as");
-    expect(table).toContain("import type { StackNode } from '@example/svelte-native/router';");
+    expect(table).toContain("import type { StackNode } from '@alfayez/svelte-native/router';");
     expect(table).toContain("export const tree: StackNode = {");
     expect([...table.matchAll(/kind: "page", id: "([^"]*)", path: "([^"]*)"/g)].map((match) => `${match[1]} ${match[2]}`).sort()).toEqual([
       " /", "(group)/b/[id] /b/[id]", "a /a", "a/[...rest] /a/[...rest]",

@@ -95,17 +95,17 @@ describe("which Node the doctor holds an app to", () => {
     expect(isRepositoryApp(tmpdir(), packageRoot)).toBe(false);
   });
 
-  test("the library installed in an app (node_modules/@example/svelte-native, or a link to a checkout) does not make the app the repository's", () => {
+  test("the library installed in an app (node_modules/@alfayez/svelte-native, or a link to a checkout) does not make the app the repository's", () => {
     const outside = mkdtempSync(join(tmpdir(), "doctor-scope-"));
     try {
       writeFileSync(join(outside, "package.json"), "{}\n");
       writeFileSync(join(outside, "pnpm-workspace.yaml"), "allowBuilds:\n  esbuild: true\n");
       // The installed copy: its directory is not `packages/<name>` of a workspace.
-      const installed = join(outside, "node_modules/@example/svelte-native");
+      const installed = join(outside, "node_modules/@alfayez/svelte-native");
       mkdirSync(installed, { recursive: true });
       expect(isRepositoryApp(outside, installed)).toBe(false);
       // A `link:` to the checkout: the package is the repository's, the app is not in its workspace.
-      mkdirSync(join(outside, "node_modules/@example"), { recursive: true });
+      mkdirSync(join(outside, "node_modules/@alfayez"), { recursive: true });
       rmSync(installed, { recursive: true });
       symlinkSync(packageRoot, installed);
       expect(isRepositoryApp(outside, packageRoot)).toBe(false);

@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { Text } from "@example/svelte-native";
+  import { Text } from "@alfayez/svelte-native";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
   import { scroller, useDemo } from "#lib/demo.ts";
   import { text, theme } from "#lib/theme.svelte.ts";
-  import { Platform } from "@example/svelte-native/platform";
+  import { Platform } from "@alfayez/svelte-native/platform";
 
   // Everything about text: size, weight, style, truncation, inline spans and fonts. Text takes the usual React Native text style keys.
   // A font is chosen by name with `fontFamily`: the system's own (their names differ per platform) or one bundled with the app. This app

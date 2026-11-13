@@ -69,7 +69,7 @@ async function load(fixture = "animation-fixture.svelte") {
         builder.onResolve({ filter: /^(react-native|expo-modules-core)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
         builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? "export {};", loader: "js" }));
         builder.onResolve({ filter: /\/view-configs\.ts$/ }, (args) => (args.importer.endsWith("/fabric/host.ts") ? { path: resolve(import.meta.dirname, "payload-tap.ts") } : undefined));
-        builder.onResolve({ filter: /^@example\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
+        builder.onResolve({ filter: /^@alfayez\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
         builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../src/environment.ts") }));
         // A spy on the animation layer's entry: which nodes the host sent through it.
         builder.onLoad({ filter: /fabric\/animation\.ts$/ }, async ({ path }) => ({

@@ -1,4 +1,4 @@
-import { configureRemote } from "@example/svelte-native/remote";
+import { configureRemote } from "@alfayez/svelte-native/remote";
 
 /**
  * Points the app's remote functions at another SvelteKit server, from the lab page (`?origin=<origin>` or the host field). Only a build that has the

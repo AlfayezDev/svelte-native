@@ -18,9 +18,9 @@ import { findKitRoot, kitRoot } from "./kit.ts";
 export { kitRoot } from "./kit.ts";
 
 /** The module the stubs call into: the native client runtime (`remote/runtime.ts`). */
-export const REMOTE_RUNTIME = "@example/svelte-native/remote/runtime";
+export const REMOTE_RUNTIME = "@alfayez/svelte-native/remote/runtime";
 /** The module that gives the SvelteKit client files the globals they use and a native does not have (`remote/globals.ts`). */
-export const REMOTE_GLOBALS = "@example/svelte-native/remote/globals";
+export const REMOTE_GLOBALS = "@alfayez/svelte-native/remote/globals";
 
 /** The kinds of remote function. Each is the name of a function of SvelteKit's client runtime (`client/remote-functions/index.js`). */
 export type RemoteKind = "query" | "query_batch" | "query_live" | "command" | "form" | "prerender";
@@ -231,7 +231,7 @@ const shim = (name: string) => join(sourceDirectory, "remote/shims", name);
  *   client (`client/client.js`: the query caches, `goto`, `refreshAll`) are replaced by `shims/`.
  */
 export function remoteResolution(specifier: string, origin: string): string | undefined {
-  // The runtime's own imports: a native-only app that never imports `@example/svelte-native/remote` has no SvelteKit and never gets here.
+  // The runtime's own imports: a native-only app that never imports `@alfayez/svelte-native/remote` has no SvelteKit and never gets here.
   if (specifier.startsWith("@sveltejs/kit/src/")) return join(kitRoot(), specifier.slice("@sveltejs/kit/".length));
   if (specifier === "@sveltejs/kit/internal") return join(kitRoot(), "src/exports/internal/index.js");
   // Every other module of every app passes through here; without SvelteKit none of them is one of its files.

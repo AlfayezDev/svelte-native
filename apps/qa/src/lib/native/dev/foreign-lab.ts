@@ -1,6 +1,6 @@
 import { requireOptionalNativeModule } from "expo-modules-core";
 import { count, foreignEvents, foreignHandles, foreignLab } from "./foreign.svelte.ts";
-import type { Camera } from "@example/svelte-native/foreign";
+import type { Camera } from "@alfayez/svelte-native/foreign";
 import type { Kind } from "./ForeignSet.svelte";
 
 /**

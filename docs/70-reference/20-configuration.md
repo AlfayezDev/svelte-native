@@ -18,7 +18,7 @@ What `svelte-native init` writes, file by file, and the options of the Vite, Met
 		"check-setup": "svelte-native doctor"
 	},
 	"dependencies": {
-		"@example/svelte-native": "git+ssh://git@github.com/AlfayezDev/svelte-native.git#<tag>&path:packages/svelte-native",
+		"@alfayez/svelte-native": "git+ssh://git@github.com/AlfayezDev/svelte-native.git#<tag>&path:packages/svelte-native",
 		"expo": "57.0.30",
 		"expo-constants": "57.0.22",
 		"hermes-intl": "^0.1.2",
@@ -99,7 +99,7 @@ After every upgrade of Svelte Native, run `pnpm exec svelte-native init` again: 
 ```js
 /// file: metro.config.cjs
 const { getDefaultConfig } = require('expo/metro-config');
-const { withSvelteNative } = require('@example/svelte-native/metro');
+const { withSvelteNative } = require('@alfayez/svelte-native/metro');
 
 module.exports = withSvelteNative(getDefaultConfig(__dirname));
 ```
@@ -121,7 +121,7 @@ SvelteKit's plugin is replaced by Svelte Native's, which wraps it. What you pass
 ```ts
 /// file: vite.config.ts
 import adapter from '@sveltejs/adapter-auto';
-import { svelteNative } from '@example/svelte-native/vite';
+import { svelteNative } from '@alfayez/svelte-native/vite';
 import { defineConfig } from 'vite';
 
 export default defineConfig(({ mode }) => ({
@@ -158,18 +158,18 @@ export default defineConfig(({ mode }) => ({
 		"version": "1.0.0",
 		"android": { "package": "dev.example.myapp" },
 		"ios": { "bundleIdentifier": "dev.example.myapp" },
-		"plugins": ["@example/svelte-native/expo"]
+		"plugins": ["@alfayez/svelte-native/expo"]
 	}
 }
 ```
 
-The plugin is also known by the package's own name, `@example/svelte-native`. If your app is configured in code, `app.config.ts`, add it there. It takes options as a second element:
+The plugin is also known by the package's own name, `@alfayez/svelte-native`. If your app is configured in code, `app.config.ts`, add it there. It takes options as a second element:
 
 ```ts
 /// file: app.config.ts
 export default {
 	expo: {
-		plugins: [['@example/svelte-native', { remote: { origin: 'https://app.example.com' } }]]
+		plugins: [['@alfayez/svelte-native', { remote: { origin: 'https://app.example.com' } }]]
 	}
 };
 ```

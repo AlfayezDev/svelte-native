@@ -3,8 +3,8 @@
  *
  * ```svelte
  * <script>
- *   import { AnimatedView, createSharedValue, withSpring } from "@example/svelte-native/animation";
- *   import { Gesture } from "@example/svelte-native/gestures";
+ *   import { AnimatedView, createSharedValue, withSpring } from "@alfayez/svelte-native/animation";
+ *   import { Gesture } from "@alfayez/svelte-native/gestures";
  *   const x = createSharedValue(0);
  *   const pan = Gesture.Pan().onUpdate((e) => { x.value = e.translationX; }).onEnd(() => { x.value = withSpring(0); });
  * </script>

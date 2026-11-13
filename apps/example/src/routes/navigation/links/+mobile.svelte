@@ -1,16 +1,16 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Text, useRouter } from "@example/svelte-native";
+  import { Text, useRouter } from "@alfayez/svelte-native";
   import Button from "#lib/components/Button.svelte";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
   import { useDemo } from "#lib/demo.ts";
   import { text, theme } from "#lib/theme.svelte.ts";
-  import { Linking } from "@example/svelte-native/platform";
+  import { Linking } from "@alfayez/svelte-native/platform";
 
   // Links. The app declares its scheme in app.config.ts (`scheme: "svelte-native"`), so `svelte-native:///navigation/stack/42` opens the
   // screen of that route: the router matches a link against the route tree, and a link the app was launched with becomes the first screen.
-  // `router.openURL(href)` does the same from code and says whether any screen matched. `Linking` is React Native's own module, from `@example/svelte-native/platform`.
+  // `router.openURL(href)` does the same from code and says whether any screen matched. `Linking` is React Native's own module, from `@alfayez/svelte-native/platform`.
   const router = useRouter();
   const links = ["svelte-native:///navigation/stack/42", "svelte-native:///navigation/tabs/feed/2", "svelte-native:///nowhere"];
   let launchedWith = $state("(asking)");

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
-  import { Text, TextInput, View } from "@example/svelte-native";
-  import { remoteHost } from "@example/svelte-native/remote";
+  import { Text, TextInput, View } from "@alfayez/svelte-native";
+  import { remoteHost } from "@alfayez/svelte-native/remote";
   import { nativeLabEnabled, theme } from "#lib/native/state.svelte.ts";
   import Page from "#lib/native/components/Page.svelte";
   import Button from "#lib/native/components/Button.svelte";

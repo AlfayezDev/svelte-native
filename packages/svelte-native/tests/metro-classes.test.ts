@@ -10,7 +10,7 @@ import { cssProject, removeCssProjects } from "./css-project.ts";
 
 /**
  * `class` through Metro: the `css` option builds the variant's class table when the config loads (and in development again when the sources change),
- * and `@example/svelte-native/classes-table`, which the library's resolver imports, resolves to that file; without the option it is the library's empty table.
+ * and `@alfayez/svelte-native/classes-table`, which the library's resolver imports, resolves to that file; without the option it is the library's empty table.
  */
 const fakeConfig = (projectRoot: string): ConfigT => ({
   projectRoot,
@@ -31,7 +31,7 @@ const until = async (condition: () => boolean, ms = 10_000) => {
   const deadline = Date.now() + ms;
   while (!condition() && Date.now() < deadline) await new Promise((done) => setTimeout(done, 25));
 };
-const id = "@example/svelte-native/classes-table";
+const id = "@alfayez/svelte-native/classes-table";
 
 const environment = process.env.NODE_ENV;
 afterAll(removeCssProjects);

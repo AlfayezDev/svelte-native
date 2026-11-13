@@ -141,9 +141,10 @@ function expoRuntime(context: Context): Check[] {
 /**
  * Required peers that carry a native module React Native's autolinking must link. It reads the app's own `dependencies`, not whatever is installed
  * below `node_modules`, so a library that only comes with another package (or a hoisted install) is in the JavaScript bundle and missing from the build. `hermes-intl` is
- * the one: the library requires it for the `Intl` constructors Hermes lacks (`PluralRules`, `RelativeTimeFormat`, `ListFormat`, `Locale`).
+ * the library's `Intl` constructors (`PluralRules`, `RelativeTimeFormat`, `ListFormat`, `Locale`: Hermes lacks them); the others are what the web's `crypto` and `localStorage` are made of:
+ * react-native-quick-crypto with the Nitro runtime it and react-native-mmkv share (`react-native-nitro-modules`) and the base64 module it asks for (`react-native-quick-base64`).
  */
-const AUTOLINKED_PEERS = ["hermes-intl"] as const;
+const AUTOLINKED_PEERS = ["hermes-intl", "react-native-mmkv", "react-native-nitro-modules", "react-native-quick-base64", "react-native-quick-crypto"] as const;
 
 function autolinkedPeers(context: Context, peers: Record<string, unknown>, appPackage: Record<string, unknown>): Check[] {
   const dependencies = { ...record(appPackage.dependencies), ...record(appPackage.devDependencies), ...record(appPackage.optionalDependencies) };

@@ -40,6 +40,11 @@
       "types": "./dist/types/platform.d.ts",
       "default": "./src/platform.ts"
     },
+    "./mmkv": {
+      "svelte-native-source": "./src/mmkv.ts",
+      "types": "./dist/types/mmkv.d.ts",
+      "default": "./src/mmkv.ts"
+    },
     "./metro": {
       "svelte-native-source": "./src/metro.ts",
       "types": "./dist/types/metro.d.ts",
@@ -147,7 +152,11 @@
     "react-native-fast-shadow": "~0.1.1",
     "react-native-gesture-handler": "~2.32.0",
     "react-native-maps": "1.27.2",
+    "react-native-mmkv": "4.3.1",
+    "react-native-nitro-modules": "0.35.10",
     "react-native-pdf": "7.0.3",
+    "react-native-quick-base64": "2.2.2",
+    "react-native-quick-crypto": "1.1.3",
     "react-native-reanimated": "4.5.1",
     "react-native-svg": "15.15.4",
     "react-native-video": "6.19.3",

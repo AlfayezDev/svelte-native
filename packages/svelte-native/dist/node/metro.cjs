@@ -24,6 +24,8 @@ var metro_exports = {};
 __export(metro_exports, {
   INITIALIZE_CORE: () => INITIALIZE_CORE,
   LITE_ORIGINS: () => LITE_ORIGINS,
+  NODE_CRYPTO: () => NODE_CRYPTO,
+  QUICK_CRYPTO: () => QUICK_CRYPTO,
   RENDERER_STUBS: () => RENDERER_STUBS,
   closeWatchers: () => closeWatchers,
   isInPackage: () => isInPackage,
@@ -2595,7 +2597,9 @@ function assertCustomRenderer(what, from) {
 // src/metro.ts
 var require4 = (0, import_node_module5.createRequire)(__importMetaUrl);
 var nativeSvelte = (0, import_node_path9.dirname)(require4.resolve("svelte/package.json"));
-var LITE_ORIGINS = /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?(?:hermes-intl|expo|expo-modules-core|expo-file-system|react-native-reanimated|react-native-worklets|react-native-is-edge-to-edge|expo-secure-store|expo-image-picker|expo-localization|expo-crypto|expo-constants|expo-font|expo-asset|expo-splash-screen|expo-status-bar|expo-system-ui|expo-keep-awake|expo-application|react-native-svg)[\\/]/;
+var LITE_ORIGINS = /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?(?:hermes-intl|expo|expo-modules-core|expo-file-system|react-native-reanimated|react-native-worklets|react-native-is-edge-to-edge|expo-secure-store|expo-image-picker|expo-localization|expo-crypto|expo-constants|expo-font|expo-asset|expo-splash-screen|expo-status-bar|expo-system-ui|expo-keep-awake|expo-application|react-native-nitro-modules|react-native-mmkv|react-native-quick-crypto|react-native-quick-base64|react-native-svg)[\\/]/;
+var NODE_CRYPTO = /* @__PURE__ */ new Set(["crypto", "node:crypto"]);
+var QUICK_CRYPTO = "react-native-quick-crypto";
 var INITIALIZE_CORE = /react-native[\\/]Libraries[\\/]Core[\\/]InitializeCore\.js$/;
 var RENDERER_STUBS = {
   "react-native/Libraries/ReactNative/RendererProxy.js": "./fabric/renderer-stub.ts",
@@ -2720,7 +2724,10 @@ function withSvelteNative(config, options = {}) {
   const resolver = {
     ...config.resolver,
     sourceExts: [.../* @__PURE__ */ new Set([...config.resolver.sourceExts, "svelte"])],
-    resolveRequest: (context, moduleName, platform) => {
+    resolveRequest: (given, requested, platform) => {
+      const aliased = NODE_CRYPTO.has(requested);
+      const moduleName = aliased ? QUICK_CRYPTO : requested;
+      const context = aliased ? { ...given, originModulePath: (0, import_node_path9.join)(config.projectRoot, "package.json") } : given;
       if (moduleName === "@alfayez/svelte-native/routes" || moduleName === "./routes" && context.originModulePath === entryFile) return { type: "sourceFile", filePath: routesTable };
       if (moduleName === "@alfayez/svelte-native/classes-table") return { type: "sourceFile", filePath: classesTable };
       const stub = stubFor(moduleName, context.originModulePath);
@@ -2772,6 +2779,8 @@ function withSvelteNative(config, options = {}) {
 0 && (module.exports = {
   INITIALIZE_CORE,
   LITE_ORIGINS,
+  NODE_CRYPTO,
+  QUICK_CRYPTO,
   RENDERER_STUBS,
   closeWatchers,
   isInPackage,

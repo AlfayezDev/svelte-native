@@ -9,7 +9,7 @@ import { findPackage } from "../src/doctor/resolve.ts";
 import { expoPluginFinding, metroFinding, withoutJsComments } from "../src/doctor/integration.ts";
 import { patchFiles, patchKey, patchSpecs } from "../src/doctor/patches.ts";
 import { compareVersions, parseVersion, satisfies } from "../src/doctor/semver.ts";
-import { library, makeFakeApp, repository, type FakeApp } from "./doctor-fixture.ts";
+import { library, makeFakeApp, nativePeers, repository, type FakeApp } from "./doctor-fixture.ts";
 
 // `svelte-native doctor` against fake apps: node_modules stubs with patched and unpatched copies of the files the patches change (doctor-fixture.ts),
 // the configs it reads, and the tools it asks about. The repository's own install is checked in doctor-repository.test.ts.
@@ -26,6 +26,8 @@ function check(options: FakeApp = {}, context: Partial<Context> = {}): { root: s
 const failed = (checks: Check[]) => checks.filter((entry) => entry.status === "fail");
 const find = (checks: Check[], text: string) => checks.find((entry) => entry.message.includes(text));
 const patchChecks = (checks: Check[]) => checks.filter((entry) => entry.group === "patches");
+/** The package.json of an app that depends on the library and on these packages. */
+const manifestWith = (dependencies: readonly string[]) => JSON.stringify({ name: "fake-app", dependencies: { [library.name]: "*", ...Object.fromEntries(dependencies.map((name) => [name, "*"])) } });
 
 describe("an app that is set up", () => {
   const { checks } = check();
@@ -145,13 +147,13 @@ describe("hermes-intl", () => {
   });
 
   test("an app without it fails, with the command that adds it", () => {
-    const { checks } = check({ without: ["hermes-intl"], files: { "package.json": JSON.stringify({ name: "fake-app", dependencies: { [library.name]: "*" } }) } });
+    const { checks } = check({ without: ["hermes-intl"], files: { "package.json": manifestWith(nativePeers.filter((name) => name !== "hermes-intl")) } });
     expect(failed(checks).map((entry) => entry.message)).toEqual(["hermes-intl is not installed (needs ^0.1.2)"]);
     expect(find(checks, "hermes-intl is not installed")?.fix).toBe("pnpm add hermes-intl@^0.1.2");
   });
 
   test("one that only has it installed (hoisted from another package) fails: React Native's autolinking reads the app's own dependencies", () => {
-    const { checks } = check({ files: { "package.json": JSON.stringify({ name: "fake-app", dependencies: { [library.name]: "*" } }) } });
+    const { checks } = check({ files: { "package.json": manifestWith(nativePeers.filter((name) => name !== "hermes-intl")) } });
     const failure = find(checks, "hermes-intl is installed but is not a dependency of the app");
     expect(failure?.status).toBe("fail");
     expect(failure?.fix).toBe("pnpm add hermes-intl@^0.1.2, then npx expo prebuild");
@@ -160,6 +162,55 @@ describe("hermes-intl", () => {
 
   test("a version outside the range fails", () => {
     expect(find(check({ versions: { "hermes-intl": "0.2.0" } }).checks, "hermes-intl 0.2.0 does not satisfy ^0.1.2")?.status).toBe("fail");
+  });
+});
+
+describe("what `crypto` and `localStorage` are made of", () => {
+  const needed = ["react-native-quick-crypto", "react-native-nitro-modules", "react-native-quick-base64", "react-native-mmkv"] as const;
+
+  test("react-native-quick-crypto, react-native-nitro-modules, react-native-quick-base64 and react-native-mmkv are required peers of the library, at versions that agree (Nitro is shared)", () => {
+    expect(library.peerDependencies).toMatchObject({
+      "react-native-quick-crypto": "1.1.3",
+      "react-native-nitro-modules": "0.35.10",
+      "react-native-quick-base64": "2.2.2",
+      "react-native-mmkv": "4.3.1",
+    });
+    for (const name of needed) expect([name, library.peerDependenciesMeta[name]]).toEqual([name, undefined]);
+    // Their own peer ranges, from the installed copies, are satisfied by the versions the library names.
+    for (const name of ["react-native-quick-crypto", "react-native-mmkv"]) {
+      const peers = (findPackage(name, repository)?.json.peerDependencies ?? {}) as Record<string, string>;
+      for (const dependency of ["react-native-nitro-modules", "react-native-quick-base64"]) if (peers[dependency] !== undefined) expect(satisfies(library.peerDependencies[dependency] ?? "", peers[dependency]), `${name} asks for ${dependency} ${peers[dependency]}`).toBe(true);
+    }
+  });
+
+  test("an app that has them as dependencies passes, each said to be linked by autolinking", () => {
+    const { checks } = check();
+    for (const name of needed) {
+      expect(find(checks, `${name} ${library.peerDependencies[name]} satisfies ${library.peerDependencies[name]}`)?.status, name).toBe("pass");
+      expect(find(checks, `${name} is a dependency of the app: React Native's autolinking links its native module`)?.status, name).toBe("pass");
+    }
+  });
+
+  test("an app without one fails, naming it and the command that adds it", () => {
+    for (const name of needed) {
+      const { checks } = check({ without: [name], files: { "package.json": manifestWith(["hermes-intl", ...needed.filter((other) => other !== name)]) } });
+      expect(failed(checks).map((entry) => entry.message), name).toEqual([`${name} is not installed (needs ${library.peerDependencies[name]})`]);
+      expect(find(checks, `${name} is not installed`)?.fix).toBe(`pnpm add ${name}@${library.peerDependencies[name]}`);
+    }
+  });
+
+  test("one that only has them installed (hoisted from another package) fails: autolinking reads the app's own dependencies", () => {
+    for (const name of needed) {
+      const { checks } = check({ files: { "package.json": manifestWith(["hermes-intl", ...needed.filter((other) => other !== name)]) } });
+      const failure = find(checks, `${name} is installed but is not a dependency of the app`);
+      expect([name, failure?.status]).toEqual([name, "fail"]);
+      expect(failure?.fix).toBe(`pnpm add ${name}@${library.peerDependencies[name]}, then npx expo prebuild`);
+      expect(failed(checks)).toHaveLength(1);
+    }
+  });
+
+  test("a version outside the range fails", () => {
+    for (const name of needed) expect(find(check({ versions: { [name]: "0.0.1" } }).checks, `${name} 0.0.1 does not satisfy ${library.peerDependencies[name]}`)?.status, name).toBe("fail");
   });
 });
 

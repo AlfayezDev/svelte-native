@@ -95,26 +95,5 @@ export const window = {
   },
 };
 
-/**
- * `Blob` for `serialize_binary_form` (SvelteKit's form-utils.js), which builds the body of a form submission from `Uint8Array` and string parts;
- * React Native's `Blob` refuses `ArrayBuffer` parts. This one only collects bytes, and `bytes()` is what the request sends.
- */
-export class Blob {
-  readonly #bytes: Uint8Array;
-  constructor(parts: ReadonlyArray<Uint8Array | string> = []) {
-    const encoder = new TextEncoder();
-    const chunks = parts.map((part) => {
-      if (typeof part === "string") return encoder.encode(part);
-      if (part instanceof Uint8Array) return part;
-      throw new Error("A native form can carry text, numbers and booleans; files are not supported.");
-    });
-    this.#bytes = new Uint8Array(chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0));
-    let offset = 0;
-    for (const chunk of chunks) {
-      this.#bytes.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-  }
-  get size(): number { return this.#bytes.byteLength; }
-  bytes(): Uint8Array { return this.#bytes; }
-}
+// Scoped shims: preserve native/global Blob and File behavior outside SvelteKit form utilities.
+export { BinaryFormBlob as Blob, NativeFile as File } from "./files.ts";

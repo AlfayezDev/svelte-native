@@ -13,6 +13,7 @@ beforeAll(async () => {
   m = await loadClient(`
     export * from "../src/remote/index.ts";
     export { form } from "../src/remote/runtime.ts";
+    export { serialize_binary_form as serializeBinary } from "@sveltejs/kit/src/runtime/form-utils.js";
   `);
 });
 // A host, and a fetch that fails the test: every submission here stops at a preflight schema, so nothing may be sent.
@@ -151,11 +152,45 @@ describe("fields.x.as(type)", () => {
     await keyed.submit();
     expect(sent[0]).toEqual({ name: "x", id: "k-1" });
   });
-  test("files and unknown types are refused", () => {
+  test("file pickers carry bytes, preserve identity, reset, and refuse URI objects", async () => {
+    const { form, submit } = recording();
+    const single = form.fields.photo.as("file");
+    const many = form.fields.attachments.as("file multiple");
+    const file = new m.NativeFile(new Uint8Array([0, 255, 42]), "photo.png", { type: "image/png" });
+    single.onValueChange(file);
+    many.onValueChange([file]);
+    expect(single.value).toBe(file);
+    expect(form.fields.photo.dirty()).toBe(true);
+    const copy = many.value;
+    copy.length = 0;
+    expect(many.value).toEqual([file]);
+    const data = await submit();
+    expect(data.photo).toBe(file);
+    expect(data.attachments).toEqual([file]);
+    expect(() => single.onValueChange({ uri: "file:///private/photo.png" })).toThrow(/NativeFile/);
+    expect(() => many.onValueChange([file, "file:///photo.png"])).toThrow(/NativeFile/);
+    single.onValueChange(undefined);
+    expect(single.value).toBeUndefined();
+    form.reset();
+    expect(many.value).toEqual([]);
+  });
+  test("SvelteKit binary serialization includes file metadata and sorts payloads by size", () => {
+    const large = new m.NativeFile(new Uint8Array([1, 0, 255]), "large.bin", { lastModified: 123 });
+    const small = new m.NativeFile(new Uint8Array([42]), "small.bin", { lastModified: 456 });
+    const bytes = m.serializeBinary({ files: [large, small] }, {}).blob.bytes();
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const headerLength = view.getUint32(1, true);
+    const offsetsLength = view.getUint16(5, true);
+    const header = new TextDecoder().decode(bytes.subarray(7, 7 + headerLength));
+    const offsets = new TextDecoder().decode(bytes.subarray(7 + headerLength, 7 + headerLength + offsetsLength));
+    expect(header).toContain("large.bin");
+    expect(header).toContain("small.bin");
+    expect(JSON.parse(offsets)).toEqual([1, 0]);
+    expect([...bytes.subarray(7 + headerLength + offsetsLength)]).toEqual([42, 1, 0, 255]);
+  });
+  test("image submit buttons and unknown types are refused", () => {
     const { fields } = m.form("h/f");
-    expect(() => fields.photo.as("file")).toThrow(/files are not supported/);
-    expect(() => fields.photo.as("file multiple")).toThrow(/files are not supported/);
-    expect(() => fields.photo.as("image")).toThrow(/files are not supported/);
+    expect(() => fields.photo.as("image")).toThrow(/Image submit buttons/);
     expect(() => fields.photo.as("datetime")).toThrow(/not a field type a native form knows/);
   });
 });
@@ -496,3 +531,4 @@ describe("the environment", () => {
     expect(missingGlobals()).toEqual([]);
   });
 });
+

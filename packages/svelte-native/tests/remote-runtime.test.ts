@@ -135,7 +135,7 @@ describe("the transport", () => {
     const expected = new Uint8Array(await kit.serialize_binary_form(data, meta).blob.arrayBuffer());
     expect(m.serialize_binary_form(data, meta).blob.bytes()).toEqual(expected);
     expect(expected[0]).toBe(0);
-    expect(() => new m.Blob([new Uint16Array(1)])).toThrow(/files are not supported/);
+    expect(() => new m.Blob([new Uint16Array(1)])).toThrow(/Native uploads must use NativeFile/);
     expect(new m.Blob(["ab", new Uint8Array([1, 2])]).bytes()).toEqual(new Uint8Array([97, 98, 1, 2]));
   });
 });
@@ -327,3 +327,4 @@ describe("the product's share of it", () => {
     expect(router.match(/from "\.\/remote\/[^"]+"/g)).toEqual(['from "./remote/router-link.ts"']);
   });
 });
+

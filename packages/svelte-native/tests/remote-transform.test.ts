@@ -127,7 +127,7 @@ describe("SvelteKit's client files", () => {
   test("the globals a file uses that a native lacks are given to it, as names of that module only", async () => {
     const prelude = kitGlobalsImport(join(functions, "shared.svelte.js"));
     expect(prelude).toBe(`\nimport { fetch, location, navigator, window, FinalizationRegistry, WeakRef, __SVELTEKIT_DEV__ } from "@alfayez/svelte-native/remote/globals";\n`);
-    expect(kitGlobalsImport(join(kit, "src/runtime/form-utils.js"))).toBe(`\nimport { Blob } from "@alfayez/svelte-native/remote/globals";\n`);
+    expect(kitGlobalsImport(join(kit, "src/runtime/form-utils.js"))).toBe(`\nimport { Blob, File } from "@alfayez/svelte-native/remote/globals";\n`);
     expect(kitGlobalsImport(join(kit, "src/runtime/utils.js"))).toBe(`\nimport { btoa, atob } from "@alfayez/svelte-native/remote/globals";\n`);
     expect(kitGlobalsImport(join(kit, "src/runtime/shared.js"))).toBeUndefined();
     expect(kitGlobalsImport("/app/src/routes/page.svelte")).toBeUndefined();
@@ -217,7 +217,7 @@ describe("SvelteKit's client files", () => {
       const given = platform.has(name) || files.every((file) => shadowsOf(join(kit, file)).includes(name) || guarded(join(kit, file), name));
       expect([name, given]).toEqual([name, true]);
     }
-    expect(names).toEqual(expect.arrayContaining(["fetch", "location", "navigator", "window", "Blob", "atob", "btoa"]));
+    expect(names).toEqual(expect.arrayContaining(["fetch", "location", "navigator", "window", "Blob", "File", "atob", "btoa"]));
   });
 
   test("SvelteKit's form.svelte.js, which remote/form.svelte.ts is ported from, is the file that was reviewed: a change to it fails here until the port is compared", () => {
@@ -258,3 +258,4 @@ describe("SvelteKit's client files", () => {
     expect(unexpected).toEqual([]);
   });
 });
+

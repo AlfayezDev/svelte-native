@@ -12,7 +12,7 @@
  * - The values are set by `fields.x.set(value)` or by the props `fields.x.as(type)` returns (`value` and `onChangeText`/`onValueChange`), not
  *   read from inputs when the form is submitted. SvelteKit keeps a mirror of the DOM in `input`; here `input` is the source.
  * - `submit()` is what pressing a submit button is on the web: preflight, then the `enhance` callback (default: send, and reset on success).
- *   There is no `element`, no attachment, no `action`, and no file fields.
+ *   There is no `element`, no attachment, no `action`, and no browser file picker. File fields accept explicitly loaded NativeFile bytes.
  * - `reset()` returns the fields to their defaults (the web's `<form>.reset()`), and is what the default `enhance` does after a successful send.
  * - What a submission carries is what the inputs show: SvelteKit reads it from the DOM (`new FormData(form)`: the inputs that are there, with the value
  *   they show, an unchecked box not at all), and so does this, from the inputs `as(type)` made and the host has on screen (`variants` below).
@@ -20,6 +20,7 @@
  *   `handleError`), is shown by `form.error`, and `submit()` resolves `false`.
  * Every divergence is listed in REFERENCE.md ("The native form").
  */
+import { NativeFile } from "./files.ts";
 import { tick } from "svelte";
 import {
   BINARY_FORM_CONTENT_TYPE, build_path_string, create_field_proxy, DELETE_KEY, deep_get, deep_set, flatten_issues, normalize_issue, serialize_binary_form,
@@ -46,7 +47,7 @@ type Submission = Promise<boolean> & { updates: (...updates: unknown[]) => Promi
 type Variant = {
   name: string;
   path: Path;
-  kind: "text" | "number" | "checkbox" | "list" | "radio" | "select" | "hidden";
+  kind: "text" | "number" | "checkbox" | "list" | "radio" | "select" | "hidden" | "file";
   /** The value or choice the input is written with (`as("radio", "s")`: "s"), for the kinds that have one. */
   option: unknown;
   /** The value the input shows until it is edited. */
@@ -137,6 +138,7 @@ export function form(id: string) {
           switch (variant.kind) {
             case "text": if (deep_get(data, path) === undefined) set(value ?? ""); break;
             case "number": if (deep_get(data, path) === undefined) set(value); break;
+            case "file":
             case "select": if (deep_get(data, path) === undefined && value !== undefined) set(value); break;
             case "hidden": set(value); break;
             case "checkbox": set(value === true ? true : DELETE_KEY); break;
@@ -306,7 +308,22 @@ export function form(id: string) {
       const handlers = { onBlur: () => blur(path) };
 
       return (type: string, option?: unknown, third?: unknown): Record<string, unknown> => {
-        if (type === "file" || type === "file multiple" || type === "image") throw new Error(`form.fields.${name}.as('${type}'): files are not supported by native forms`);
+        if (type === "image") throw new Error("Image submit buttons are not supported by native forms");
+        if (type === "file" || type === "file multiple") {
+          const multiple = type === "file multiple";
+          return variant("file", type, undefined, undefined, () => {
+            const shown = () => read(multiple ? [] : undefined);
+            return {
+              props: reactive({ multiple, ...handlers, onValueChange: (value: unknown) => {
+                if (multiple ? !Array.isArray(value) || !value.every((item) => item instanceof NativeFile) : value !== undefined && !(value instanceof NativeFile)) {
+                  throw new TypeError("File fields require NativeFile values with explicitly read bytes");
+                }
+                edit(path, Array.isArray(value) ? [...value] : value);
+              } }, () => { const value = shown(); return Array.isArray(value) ? [...value] : value; }),
+              shown,
+            };
+          }).props;
+        }
         if (type === "submit") {
           return reactive({
             onPress: () => {

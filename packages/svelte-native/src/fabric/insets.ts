@@ -57,11 +57,11 @@ export type AvoidBehavior = "padding" | "height" | "position" | undefined;
 /**
  * How far the keyboard overlaps the view, React Native's `_relativeKeyboardHeight`. `viewY` and `viewHeight` are the view's
  * window frame, `rootHeight` the overlay's height and `keyboardHeight` what the keyboard covers of it, so the keyboard's
- * top edge is `rootHeight - keyboardHeight`. For "height" the view has already shrunk by `previous`, which is added back.
+ * top edge in window coordinates is `rootY + rootHeight - keyboardHeight`. For "height" the view has already shrunk by `previous`, which is added back.
  */
-export function keyboardOverlap(args: { viewY: number; viewHeight: number; rootHeight: number; keyboardHeight: number; offset?: number; behavior?: AvoidBehavior; previous?: number }): number {
+export function keyboardOverlap(args: { viewY: number; viewHeight: number; rootHeight: number; rootY?: number; keyboardHeight: number; offset?: number; behavior?: AvoidBehavior; previous?: number }): number {
   if (args.keyboardHeight <= 0) return 0;
-  const keyboardY = args.rootHeight - args.keyboardHeight - (args.offset ?? 0);
+  const keyboardY = (args.rootY ?? 0) + args.rootHeight - args.keyboardHeight - (args.offset ?? 0);
   const shrunk = args.behavior === "height" ? args.previous ?? 0 : 0;
   return Math.max(shrunk + args.viewY + args.viewHeight - keyboardY, 0);
 }
@@ -69,6 +69,6 @@ export function keyboardOverlap(args: { viewY: number; viewHeight: number; rootH
 /** The style a KeyboardAvoidingView wraps its content in for `bottom` px of overlap (the outer view of "padding" and "height"; the inner container of "position" uses `{ bottom }`). */
 export function avoidingStyle(behavior: AvoidBehavior, style: StyleValue, bottom: number, initialHeight: number): StyleValue {
   if (behavior === "padding") return [style, { paddingBottom: bottom }];
-  if (behavior === "height" && bottom > 0) return [style, { height: initialHeight - bottom, flex: 0 }];
+  if (behavior === "height" && bottom > 0) return [style, { height: Math.max(0, initialHeight - bottom), flex: 0 }];
   return style;
 }

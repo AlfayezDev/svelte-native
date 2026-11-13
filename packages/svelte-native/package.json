@@ -5,52 +5,106 @@
   "type": "module",
   "license": "MIT",
   "exports": {
-    ".": "./src/index.ts",
-    "./core": "./src/core.ts",
+    ".": {
+      "svelte-native-source": "./src/index.ts",
+      "types": "./dist/types/index.d.ts",
+      "default": "./src/index.ts"
+    },
+    "./core": {
+      "svelte-native-source": "./src/core.ts",
+      "types": "./dist/types/core.d.ts",
+      "default": "./src/core.ts"
+    },
     "./init": "./src/init.ts",
-    "./app": "./src/app.ts",
-    "./renderer": "./src/renderer.ts",
-    "./elements": "./src/elements.d.ts",
+    "./app": {
+      "svelte-native-source": "./src/app.ts",
+      "types": "./dist/types/app.d.ts",
+      "default": "./src/app.ts"
+    },
+    "./renderer": {
+      "svelte-native-source": "./src/renderer.ts",
+      "types": "./dist/types/renderer.d.ts",
+      "default": "./src/renderer.ts"
+    },
+    "./elements": {
+      "svelte-native-source": "./src/elements.d.ts",
+      "types": "./dist/types/elements.d.ts",
+      "default": "./src/elements.d.ts"
+    },
     "./fabric": "./src/deprecated/fabric.ts",
-    "./foreign": "./src/foreign.ts",
+    "./foreign": {
+      "svelte-native-source": "./src/foreign.ts",
+      "types": "./dist/types/foreign.d.ts",
+      "default": "./src/foreign.ts"
+    },
     "./svg": "./src/deprecated/svg.ts",
     "./polyfills": "./src/polyfills.ts",
-    "./platform": "./src/platform.ts",
+    "./platform": {
+      "svelte-native-source": "./src/platform.ts",
+      "types": "./dist/types/platform.d.ts",
+      "default": "./src/platform.ts"
+    },
     "./metro": {
-      "types": "./src/metro.ts",
+      "svelte-native-source": "./src/metro.ts",
+      "types": "./dist/types/metro.d.ts",
       "default": "./dist/node/metro.cjs"
     },
     "./transformer": {
-      "types": "./src/transformer.ts",
+      "svelte-native-source": "./src/transformer.ts",
+      "types": "./dist/types/transformer.d.ts",
       "default": "./dist/node/transformer.cjs"
     },
     "./lower": {
-      "types": "./src/lower.ts",
+      "svelte-native-source": "./src/lower.ts",
+      "types": "./dist/types/lower.d.ts",
       "default": "./dist/node/lower.js"
     },
     "./vite": {
-      "types": "./src/vite.ts",
+      "svelte-native-source": "./src/vite.ts",
+      "types": "./dist/types/vite.d.ts",
       "default": "./dist/node/vite.js"
     },
-    "./router": "./src/router.svelte.ts",
+    "./router": {
+      "svelte-native-source": "./src/router.svelte.ts",
+      "types": "./dist/types/router.svelte-module.d.ts",
+      "default": "./src/router.svelte.ts"
+    },
     "./routes": {
-      "types": "./src/routes-table.ts",
+      "svelte-native-source": "./src/routes-table.ts",
+      "types": "./dist/types/routes-table.d.ts",
       "default": "./dist/node/routes.js"
     },
     "./animation": "./src/deprecated/animation.ts",
     "./gestures": "./src/deprecated/gestures.ts",
     "./expo": {
-      "types": "./src/expo.ts",
+      "svelte-native-source": "./src/expo.ts",
+      "types": "./dist/types/expo.d.ts",
       "default": "./dist/node/expo.cjs"
     },
-    "./updates": "./src/updates/index.ts",
-    "./classes-table": "./src/css/empty-table.ts",
+    "./updates": {
+      "svelte-native-source": "./src/updates/index.ts",
+      "types": "./dist/types/updates/index.d.ts",
+      "default": "./src/updates/index.ts"
+    },
+    "./classes-table": {
+      "svelte-native-source": "./src/css/empty-table.ts",
+      "types": "./dist/types/css/empty-table.d.ts",
+      "default": "./src/css/empty-table.ts"
+    },
     "./native-modules": "./src/deprecated/native-modules.ts",
-    "./remote": "./src/remote/index.ts",
+    "./remote": {
+      "svelte-native-source": "./src/remote/index.ts",
+      "types": "./dist/types/remote/index.d.ts",
+      "default": "./src/remote/index.ts"
+    },
     "./remote/runtime": "./src/remote/runtime.ts",
     "./remote/globals": "./src/remote/globals.ts",
     "./package.json": "./package.json",
-    "./app.plugin": "./app.plugin.js"
+    "./app.plugin": {
+      "svelte-native-source": "./src/expo.ts",
+      "types": "./dist/types/expo.d.ts",
+      "default": "./app.plugin.js"
+    }
   },
   "bin": {
     "svelte-native": "./dist/node/cli.js"
@@ -58,6 +112,7 @@
   "files": [
     "src",
     "dist/node",
+    "dist/types",
     "native",
     "patches",
     "expo-module.config.json",
@@ -191,6 +246,7 @@
     "hermes-intl": "^0.1.2",
     "svelte": "file:../../vendor/svelte-5.56.7-216f258.tgz",
     "svelte-check": "^4.6.0",
+    "svelte2tsx": "0.7.63",
     "tailwindcss": "4.3.3",
     "typescript": "6.0.3",
     "typescript-eslint": "8.67.0",

@@ -1,34 +1,18 @@
 // The declarations of the React Native modules the library's own source imports by path (`react-native/Libraries/…`): `react-native` ships no
-// types for some of them and none with a default export. An app's type check reaches every source file the library's entries import, from a
-// workspace link or from `node_modules`, so a public declaration file carries them along instead of leaving each app to declare them again.
+// types for some of them and none with a default export. A type check of the source (this repository's apps, which take the `svelte-native-source` condition of the
+// exports map) reaches every source file the library's entries import, so a public declaration file carries them along instead of leaving each app
+// to declare them again. The declarations in `dist/types` (what an installed app reads) name none of these modules, and their copy of this file leaves the
+// reference out (`scripts/build-types.ts`).
 // eslint-disable-next-line @typescript-eslint/triple-slash-reference -- a script of `declare module`s: it cannot be imported, only referenced
 /// <reference path="./fabric/react-native-internals.d.ts" />
 import "svelte/elements";
-import type { ComponentPropsWithRef } from "react";
-import type { ActivityIndicatorProps, ImageProps, Insets, KeyboardAvoidingViewProps, ModalProps, PressableProps, ScrollViewProps, SwitchProps, TextInputProps, TextProps, ViewProps, ViewStyle } from "react-native";
-import type Animated from "react-native-reanimated";
-import type { BaseAnimationBuilder, EntryExitAnimationFunction, LayoutAnimationFunction } from "react-native-reanimated";
+import type { ActivityIndicatorProps, ImageProps, Insets, KeyboardAvoidingViewProps, ModalProps, PressableProps, ScrollViewProps, SwitchProps, TextInputProps, TextProps, ViewProps } from "react-native";
 import type { BarStyle, Detent, DetentChange, HeaderMetrics, Presentation, ScreenAnimation } from "./fabric/navigation.ts";
 import type { GestureProps } from "./gestures/types.ts";
 
 /** What a `ref` attribute on a host element receives: the host's handle for the element (see `fabric/host.ts`), or null on unmount. */
 // biome-ignore lint/suspicious/noExplicitAny: the handle type depends on the element
 type HostRef = (handle: any) => void; // eslint-disable-line @typescript-eslint/no-explicit-any -- The handle type depends on the element.
-
-/**
- * Reanimated's animated view props (including CSS animation and transition style keys) plus an optional UI-runtime style worklet.
- * `entering`, `exiting` and `layout` are Reanimated's layout animations (`FadeIn`, `FadeOut`, `LinearTransition`, ...), run by
- * Reanimated's C++ proxy (`entering` is read once, at mount).
- */
-export type NativeAnimatedViewProps = Omit<ComponentPropsWithRef<typeof Animated.View>, "animatedProps"> & GestureProps & {
-  /** A worklet returning the style to animate (`useAnimatedStyle` without the hook), or several that are merged. */
-  animatedStyle?: (() => ViewStyle) | ReadonlyArray<() => ViewStyle>;
-  /** A worklet returning the props that are not style to animate (`useAnimatedProps` without the hook), or several. Reanimated's own `animatedProps` object is not what this host takes. */
-  animatedProps?: (() => Record<string, unknown>) | ReadonlyArray<() => Record<string, unknown>>;
-  entering?: BaseAnimationBuilder | typeof BaseAnimationBuilder | EntryExitAnimationFunction;
-  exiting?: BaseAnimationBuilder | typeof BaseAnimationBuilder | EntryExitAnimationFunction;
-  layout?: BaseAnimationBuilder | typeof BaseAnimationBuilder | LayoutAnimationFunction;
-};
 
 /**
  * What the host's `Pressability` (a port of React Native's, `fabric/pressability.ts`) reads besides the press handlers React Native types. Any node that has a

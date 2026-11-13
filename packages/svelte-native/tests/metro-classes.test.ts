@@ -151,9 +151,9 @@ describe("without the css option", () => {
   });
 
   test("the package exports the id (a type check, a test and any bundler that Metro does not serve see the empty table)", () => {
-    const manifest = JSON.parse(readFileSync(join(import.meta.dirname, "../package.json"), "utf8")) as { exports: Record<string, string> };
-    expect(manifest.exports["./classes-table"]).toBe("./src/css/empty-table.ts");
-    expect(existsSync(join(import.meta.dirname, "..", manifest.exports["./classes-table"] as string))).toBe(true);
+    const manifest = JSON.parse(readFileSync(join(import.meta.dirname, "../package.json"), "utf8")) as { exports: Record<string, Record<string, string>> };
+    expect(manifest.exports["./classes-table"]).toEqual({ "svelte-native-source": "./src/css/empty-table.ts", types: "./dist/types/css/empty-table.d.ts", default: "./src/css/empty-table.ts" });
+    expect(existsSync(join(import.meta.dirname, "..", manifest.exports["./classes-table"]?.default as string))).toBe(true);
     expect(sourceFile("css/empty-table.ts")).toBe(join(import.meta.dirname, "../src/css/empty-table.ts"));
   });
 });

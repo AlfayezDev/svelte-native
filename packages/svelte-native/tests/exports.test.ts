@@ -106,7 +106,7 @@ describe("the main entry exports the animation, the gestures, the SVG components
 describe("the entries that were folded in are deprecated aliases that keep their names", () => {
   const entry = (name: string) => {
     const target = manifest.exports[name];
-    return join(root, typeof target === "string" ? target : (target.types as string));
+    return join(root, typeof target === "string" ? target : (target["svelte-native-source"] ?? target.types as string));
   };
 
   test("each is still in the exports map, and exports what it did", () => {
@@ -131,15 +131,15 @@ describe("the entries that were folded in are deprecated aliases that keep their
   test("`/init` and `/polyfills` are the modules the entry runs, and `/app` runs them in order before the Fabric host, then exports what the entry calls", () => {
     expect(manifest.exports["./init"]).toBe("./src/init.ts");
     expect(manifest.exports["./polyfills"]).toBe("./src/polyfills.ts");
-    expect(manifest.exports["./app"]).toBe("./src/app.ts");
+    expect(manifest.exports["./app"]).toEqual({ "svelte-native-source": "./src/app.ts", types: "./dist/types/app.d.ts", default: "./src/app.ts" });
     const imports = readFileSync(src("app.ts"), "utf8").split("\n").filter((line) => line.startsWith("import "));
     expect(imports).toEqual(['import "./init.ts";', 'import "./polyfills.ts";', expect.stringMatching(/^import \{ .* \} from "\.\/fabric\/index\.ts";$/)]);
     expect(all(exportsOf(src("app.ts")))).toEqual(["createFabricApp", "fabricStats", "flush", "remountSurfaces", "showError"]);
   });
 
   test("`/expo` and the package's own name are the config plugin: app.plugin.js, built at dist/node/expo.cjs", () => {
-    expect(manifest.exports["./app.plugin"]).toBe("./app.plugin.js");
-    expect(manifest.exports["./expo"]).toEqual({ types: "./src/expo.ts", default: "./dist/node/expo.cjs" });
+    expect(manifest.exports["./app.plugin"]).toEqual({ "svelte-native-source": "./src/expo.ts", types: "./dist/types/expo.d.ts", default: "./app.plugin.js" });
+    expect(manifest.exports["./expo"]).toEqual({ "svelte-native-source": "./src/expo.ts", types: "./dist/types/expo.d.ts", default: "./dist/node/expo.cjs" });
   });
 
   test("the remote runtime and its globals stay two entries: the SvelteKit files that import the globals are imported by the runtime", () => {

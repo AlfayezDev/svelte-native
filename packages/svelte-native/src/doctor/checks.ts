@@ -221,10 +221,11 @@ function integration(context: Context, name: string): Check[] {
   };
   const plugin = (finding: Finding): Check => {
     const file = finding.file ?? "";
-    if (finding.state === "found") return { group: "build integration", status: "pass", message: `${file} lists the ${finding.name ?? `${name}/expo`} plugin` };
-    if (finding.state === "unclear") return { group: "build integration", status: "unknown", message: `could not tell: ${file} does not name ${name}/expo (a config that builds its plugins in code may add it)`, fix: `plugins: [["${name}/expo", {}]] in the Expo config` };
-    if (finding.state === "absent") return { group: "build integration", status: "fail", message: `${file} does not list the ${name}/expo plugin`, fix: `add "${name}/expo" to plugins in ${file}` };
-    return { group: "build integration", status: "fail", message: "no app.json or app.config.* in the app", fix: `create an Expo config with plugins: [["${name}/expo", {}]]` };
+    // The package's own name finds `app.plugin.js`, which is the plugin (`<name>/app.plugin` is the same file; `<name>/expo` is a deprecated name for it).
+    if (finding.state === "found") return { group: "build integration", status: "pass", message: `${file} lists the ${finding.name ?? name} plugin${finding.name === `${name}/expo` ? ` (the ${name}/expo path is deprecated: list ${name})` : ""}` };
+    if (finding.state === "unclear") return { group: "build integration", status: "unknown", message: `could not tell: ${file} does not name ${name} (a config that builds its plugins in code may add it)`, fix: `plugins: ["${name}"] in the Expo config` };
+    if (finding.state === "absent") return { group: "build integration", status: "fail", message: `${file} does not list the ${name} plugin`, fix: `add "${name}" to plugins in ${file}` };
+    return { group: "build integration", status: "fail", message: "no app.json or app.config.* in the app", fix: `create an Expo config with plugins: ["${name}"]` };
   };
   return [metro(metroFinding(context.appRoot)), plugin(expoPluginFinding(context.appRoot, name))];
 }

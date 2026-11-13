@@ -199,6 +199,24 @@ test("what the svg entry exports as Text and Image is not lowered: they are SVG 
   expect(run(`<Text>a</Text>`, core)).toBe(`<native-text>a</native-text>`);
 });
 
+test("the main entry's SvgText and SvgImage are SVG elements and stay components beside the lowered Text and Image views", () => {
+  const header = `<script>\n  import { Image, Svg, SvgImage, SvgText, Text, View } from "@alfayez/svelte-native";\n</script>\n`;
+  const markup = `<View><Text>a</Text><Image source={1} /><Svg><SvgText x={1}>b</SvgText><SvgImage href="x" /></Svg></View>`;
+  expect(run(markup, header)).toBe(`<native-view><native-text>a</native-text><native-image source={1} ></native-image><Svg><SvgText x={1}>b</SvgText><SvgImage href="x" /></Svg></native-view>`);
+});
+
+test("`use:gesture` of the main entry (and of the deprecated /gestures entry) is not warned about on a lowered tag; any other action is", () => {
+  const warnings: string[] = [];
+  const lowered = (source: string) => lowerPrimitives(source, { filename: "a.svelte", warn: (message) => warnings.push(message) });
+  for (const entry of ["@alfayez/svelte-native", "@alfayez/svelte-native/gestures"]) {
+    expect(lowered(`<script>\n  import { View } from "@alfayez/svelte-native";\n  import { gesture } from "${entry}";\n  const pan = {};\n</script>\n<View use:gesture={pan} />`)).toContain("<native-view");
+  }
+  expect(warnings).toEqual([]);
+  lowered(`<script>\n  import { View } from "@alfayez/svelte-native";\n  import { gesture } from "./my-actions.ts";\n</script>\n<View use:gesture={{}} />`);
+  expect(warnings).toHaveLength(1);
+  expect(warnings[0]).toContain("use:gesture on <View>");
+});
+
 // HTML elements ------------------------------------------------------------------------------------------------------------------------------------------------------
 // `lowerPrimitives(..., { html: true })` is what the Metro transformer runs for the app's own files (`lowersHtml`); `lower-html.ts` is the mapping. What the elements do on the
 // device is in html-elements.test.ts (mounted on a fake host); the compiled output and the line numbers of whole files are in lower-html-compile.test.ts.

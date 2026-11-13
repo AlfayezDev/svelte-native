@@ -99,8 +99,8 @@ const blockLike = "use a `div`";
 /** What to use instead of an HTML element that has no native one. */
 const HINTS: Record<string, string> = {
   table, thead: table, tbody: table, tfoot: table, tr: table, td: table, th: table, caption: table, colgroup: table, col: table,
-  canvas: "there is no canvas: draw with the SVG components of `@alfayez/svelte-native/svg` (react-native-svg)",
-  svg: "SVG is react-native-svg here: import `Svg`, `Path`, ... from `@alfayez/svelte-native/svg`",
+  canvas: "there is no canvas: draw with the SVG components of `@alfayez/svelte-native` (react-native-svg)",
+  svg: "SVG is react-native-svg here: import `Svg`, `Path`, ... from `@alfayez/svelte-native`",
   video: "use `Video` (react-native-video) or `VideoView` (expo-video) from `@alfayez/svelte-native/foreign`",
   audio: "there is no audio element: play sound with a native module such as expo-audio",
   iframe: web, embed: web, object: web,
@@ -131,7 +131,7 @@ const UNSUPPORTED_TYPES: Record<string, string> = {
   radio: "there is no native radio: use a `button` per choice and keep the chosen one in state",
   submit: "use a `button`", reset: "use a `button`", button: "use a `button`", image: "use a `button` around an `img`",
   file: "there is no file input: pick files with a native module such as expo-document-picker",
-  range: "there is no slider here: build one with gestures (`@alfayez/svelte-native/gestures`)",
+  range: "there is no slider here: build one with gestures (`Gesture` from `@alfayez/svelte-native`)",
   color: "there is no color picker", hidden: "keep the value in a variable",
   date: "use `DateTimePicker` from `@alfayez/svelte-native/foreign`", time: "use `DateTimePicker` from `@alfayez/svelte-native/foreign`",
   "datetime-local": "use `DateTimePicker` from `@alfayez/svelte-native/foreign`", month: "use `DateTimePicker` from `@alfayez/svelte-native/foreign`", week: "use `DateTimePicker` from `@alfayez/svelte-native/foreign`",

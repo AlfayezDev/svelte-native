@@ -246,18 +246,19 @@ try { transformer.transform({ filename: process.cwd() + "/src/Plain.svelte", src
     expect(asyncMode.off.cacheKey).toBe(asyncMode.default.cacheKey);
   });
 
-  test("@alfayez/svelte-native/expo and the bare package name: @expo/config-plugins loads the config plugin by either and runs it", () => {
+  test("the bare package name, @alfayez/svelte-native/app.plugin and the deprecated @alfayez/svelte-native/expo: @expo/config-plugins loads the config plugin by each and runs it", () => {
     type Summary = { mods: string[]; remote: { origin: string }; pluginFile: string; isPluginFile: boolean; kind: string };
-    const result = probe("expo.cjs") as { path: Summary; bare: Summary; same: boolean };
-    for (const summary of [result.path, result.bare]) {
+    const result = probe("expo.cjs") as { path: Summary; bare: Summary; appPlugin: Summary; same: boolean; sameAppPlugin: boolean };
+    for (const summary of [result.path, result.bare, result.appPlugin]) {
       expect(summary.mods).toEqual(["android", "ios"]);
       expect(summary.remote.origin).toBe("https://app.example.com");
       expect(summary.kind).toBe("function");
     }
-    // The path is the built file through the exports map; the bare name is the package's `app.plugin.js` (what Expo looks for first), which hands out the same plugin.
+    // The deprecated path is the built file through the exports map; the bare name is the package's `app.plugin.js` (what Expo looks for first), which hands out the same plugin, and so is `/app.plugin` (the exports map's entry for that file).
     expect([result.path.pluginFile, result.path.isPluginFile]).toEqual([join(installed, "dist/node/expo.cjs"), false]);
     expect([result.bare.pluginFile, result.bare.isPluginFile]).toEqual([join(installed, "app.plugin.js"), true]);
-    expect(result.same).toBe(true);
+    expect(result.appPlugin.pluginFile).toBe(join(installed, "app.plugin.js"));
+    expect([result.same, result.sameAppPlugin]).toEqual([true, true]);
   });
 
   test("@alfayez/svelte-native/vite: imported, and loaded by Vite's own config loader", () => {

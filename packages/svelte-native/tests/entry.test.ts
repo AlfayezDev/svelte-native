@@ -27,7 +27,10 @@ async function entryFor(root?: string): Promise<string> {
 
 test("the entry boots the app layout as the shell of the generated tree and accepts hot updates", async () => {
   const entry = await entryFor();
-  expect(entry).toContain("import '@alfayez/svelte-native/init';");
+  // One import for the boot modules and the host: `/app` runs `init`, then `polyfills`, then loads the Fabric host (the order is pinned in exports.test.ts).
+  expect(entry).toContain("import { createFabricApp, remountSurfaces } from '@alfayez/svelte-native/app';");
+  for (const folded of ["@alfayez/svelte-native/init", "@alfayez/svelte-native/polyfills", "@alfayez/svelte-native/fabric"]) expect(entry).not.toContain(folded);
+  expect(entry.split("\n").filter((line) => line.startsWith("import ")).slice(0, 1)).toEqual(["import { createFabricApp, remountSurfaces } from '@alfayez/svelte-native/app';"]);
   expect(entry).toContain("import App from '../src/routes/+layout.mobile.svelte';");
   expect(entry).toContain("import { tree } from './routes';");
   expect(entry).toContain("createFabricApp(App, { tree });");
@@ -37,6 +40,7 @@ test("the entry boots the app layout as the shell of the generated tree and acce
 
 test("SVELTE_NATIVE_ROOT selects a custom root component", async () => {
   const entry = await entryFor("src/lib/Spike.svelte");
+  expect(entry).toContain("import { createFabricApp, remountSurfaces } from '@alfayez/svelte-native/app';");
   expect(entry).toContain('import App from "../src/lib/Spike.svelte";');
   expect(entry).toContain("createFabricApp(App, {});");
 });

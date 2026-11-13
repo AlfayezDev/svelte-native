@@ -85,7 +85,7 @@ export function makeFakeApp(options: FakeApp = {}): string {
   // `hermes-intl` is a required peer with a native module, which React Native's autolinking links only when the app depends on it itself.
   put("package.json", JSON.stringify({ name: "fake-app", version: "1.0.0", dependencies: { [library.name]: "*", "hermes-intl": "*" } }));
   put("metro.config.cjs", `const { getDefaultConfig } = require("expo/metro-config");\nconst { withSvelteNative } = require("${library.name}/metro");\nmodule.exports = withSvelteNative(getDefaultConfig(__dirname));\n`);
-  put("app.json", JSON.stringify({ expo: { name: "fake", plugins: [[`${library.name}/expo`, {}]] } }));
+  put("app.json", JSON.stringify({ expo: { name: "fake", plugins: [[library.name, {}]] } }));
   if (options.declared !== false) {
     put("pnpm-workspace.yaml", `packages: []\npatchedDependencies:\n${patchFiles().map((patch) => `  ${patchKey(patch)}: patches/svelte-native/${patch.file}`).join("\n")}\n`);
     for (const patch of patchFiles()) put(`patches/svelte-native/${patch.file}`, readFileSync(patch.path, "utf8"));

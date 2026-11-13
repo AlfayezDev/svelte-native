@@ -1,5 +1,6 @@
 ---
 title: SvelteKit modules
+video: sveltekit-modules
 ---
 
 A page you share with the web imports SvelteKit's modules: `goto` from `$app/navigation`, `page` from `$app/state`, `resolve` from `$app/paths`, `spring` from `svelte/motion`. The same imports work in a native screen. When the app is built for a phone, Metro resolves each of them to the library's own implementation, which reads the app's router, the system and the build, so the code needs no `if` for the device.

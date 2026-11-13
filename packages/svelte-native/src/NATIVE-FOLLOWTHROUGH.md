@@ -28,8 +28,9 @@ This checkout can run JS contract tests but has no Kotlin compiler, Android SDK
 build tools/emulator or Apple build tools. Therefore no new native callback ABI
 or ownership patch is claimed compiled or verified. The next implementation gate
 is an Android native build/test environment, an iOS build environment, and named
-emulator/device targets for concurrent navigation/cancel/commit QA. Existing
-compiler transition-fixture errors are a separate owner-controlled blocker.
+emulator/device targets for concurrent navigation/cancel/commit QA. The earlier local
+transition-fixture errors were resolved by applying the repository's existing
+Svelte source patch; no new compiler change was needed.
 
 ## Streaming and background uploads
 

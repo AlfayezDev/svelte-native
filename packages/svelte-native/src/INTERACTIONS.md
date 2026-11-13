@@ -78,7 +78,7 @@ The remaining platform work is not hidden behind this API:
 | Basic drag/swipe | JS-state callbacks, axis arbitration, web pointer capture | Nested native scroll views, platform latency, physical-device cancellation |
 | Gesture composition | Existing RNGH builders and relationships | No automatic inference of simultaneous/exclusive intent from arbitrary Svelte markup |
 | Accessibility | HTML ARIA normalization and visible alternative controls | VoiceOver/TalkBack gestures, focus announcements, hardware keyboard ordering |
-| Motion | Existing Svelte motion/transition bridges, reduced-motion race fix | Full transition fixture validation with a compiler build supporting custom-renderer transitions |
+| Motion | Existing Svelte motion/transition bridges, reduced-motion race fix | Native device interruption/animation validation; JS transition fixtures pass with the repository's Svelte patch |
 | Navigation | Forward forks, disposal guards, existing Android predictive back and iOS interactive pop | Optional Svelte-visible progress/fork integration and platform device QA |
 | Keyboard/safe area | Existing components plus coordinate correction | Rotation, floating keyboards and keyboard animation on iOS/Android |
 | Remote files | Explicit immutable bytes in Kit's binary form format | Streaming/resumable/background upload transport and server/device round trip |

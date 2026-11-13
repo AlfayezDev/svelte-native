@@ -146,6 +146,10 @@ export default defineConfig(({ mode }) => ({
 | `runes` | As for Metro. Set the same value in both, so a shared component means the same thing on both targets. |
 | `async` | As for Metro (experimental). On the web target it is added to the compiler options you gave `kit`, under yours. |
 
+## tsconfig.json
+
+The library ships type declarations, and an app's type checker (`tsc`, `svelte-check`, the editor) reads them. They resolve with `moduleResolution: "bundler"`, which SvelteKit's generated `.svelte-kit/tsconfig.json` sets, so a SvelteKit project needs nothing. Under `node16` or `nodenext` a relative `./View.svelte` in a declaration resolves to a `View.d.svelte.ts` and not to the `View.svelte.d.ts` that is there, and the components lose their types (every library built with `svelte-package` has this limit): use `bundler`.
+
 ## app.json
 
 `init` adds the plugin to the `plugins` of your `app.json`, and creates the file if there is none:
@@ -165,7 +169,7 @@ export default defineConfig(({ mode }) => ({
 }
 ```
 
-The plugin is named by the package's own name: Expo loads the package's `app.plugin.js`. (`@alfayez/svelte-native/app.plugin` is that same file. `@alfayez/svelte-native/expo` still works and is removed in 0.4.0-rc.7.) If your app is configured in code, `app.config.ts`, add it there. It takes options as a second element:
+The plugin is named by the package's own name: Expo loads the package's `app.plugin.js`. (`@alfayez/svelte-native/app.plugin` is that same file. `@alfayez/svelte-native/expo`, the plugin's path in 0.4.0-rc.6 and before, was removed in 0.4.0-rc.7 and no longer resolves: write the package's name in its place.) If your app is configured in code, `app.config.ts`, add it there. It takes options as a second element:
 
 ```ts
 /// file: app.config.ts

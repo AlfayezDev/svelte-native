@@ -1,0 +1,29 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "noEmit": false
+  },
+  "include": [],
+  "files": [
+    "src/index.ts",
+    "src/core.ts",
+    "src/platform.ts",
+    "src/foreign.ts",
+    "src/router.svelte.ts",
+    "src/remote/index.ts",
+    "src/updates/index.ts",
+    "src/metro.ts",
+    "src/vite.ts",
+    "src/lower.ts",
+    "src/transformer.ts",
+    "src/expo.ts",
+    "src/routes-table.ts",
+    "src/css/empty-table.ts",
+    "src/app.ts",
+    "src/renderer.ts",
+    "src/elements.d.ts",
+    "src/interactions.ts"
+  ]
+}

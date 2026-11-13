@@ -62,7 +62,8 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/Components/ScrollView/ScrollViewNativeComponent": "export {};",
   "react-native/Libraries/TurboModule/TurboModuleRegistry": recorderSource,
   "react-native/Libraries/EventEmitter/RCTDeviceEventEmitter": emitterSource,
-  primitives: "export const View = null, Text = null, Pressable = null, ScrollView = null, Image = null;",
+  // The main entry: the primitives (lowered away) and the gestures it re-exports (`src/index.ts`).
+  primitives: `export const View = null, Text = null, Pressable = null, ScrollView = null, Image = null; export * from ${JSON.stringify(resolve(import.meta.dirname, "../../src/gestures/index.ts"))};`,
   "expo-modules-core": "export const requireOptionalNativeModule = (name) => (name === 'SvelteEngine' ? globalThis.__gh.engine : null);",
   "react-native": "export const AppRegistry = { registerRunnable() {} };",
 };
@@ -95,12 +96,11 @@ export function hostPlugin(options: { openStubs?: boolean } = {}): Plugin {
     setup(builder) {
       builder.onResolve({ filter: /^(react-native|expo-modules-core)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
       // `openStubs` (the import-graph tests) lets any module import any name from a stub, as a CommonJS module does.
-      builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: options.openStubs ? "module.exports = new Proxy({}, { get: () => () => {} });" : stubs[args.path] ?? "export {};", loader: "js" }));
+      builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: options.openStubs ? "module.exports = new Proxy({}, { get: () => () => {} });" : stubs[args.path] ?? "export {};", loader: "js", resolveDir: import.meta.dirname }));
       builder.onResolve({ filter: /^@alfayez\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../../src/renderer.ts") }));
       builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../../src/environment.ts") }));
       // A fixture that imports primitives from the package is lowered as the transformer does; the import itself is then unused.
       builder.onResolve({ filter: /^@alfayez\/svelte-native$/ }, () => ({ path: "primitives", namespace: "stub" }));
-      builder.onResolve({ filter: /^@alfayez\/svelte-native\/gestures$/ }, () => ({ path: resolve(import.meta.dirname, "../../src/gestures/index.ts") }));
       builder.onLoad({ filter: /\.svelte$/ }, async ({ path }) => ({
         contents: compile(lowerPrimitives(await readFile(path, "utf8"), { filename: path, warn: () => {} }), componentOptions(path)).js.code,
         loader: "js",
@@ -118,7 +118,7 @@ export type Loaded = {
   fabricStats(): { gesturesLoaded: boolean; animationLoaded: boolean; gestures: { records: number; handlers: number; eventHandlers: number } | null };
   tick(): Promise<void>;
   Fixture: unknown;
-  /** The bundle's own copy of `@alfayez/svelte-native/gestures`. */
+  /** The bundle's own copy of the gestures the main entry (`@alfayez/svelte-native`) exports. */
   gestures: typeof import("../../src/gestures/index.ts");
   bootSummary(): string;
   /** The bundle's own copies of what a test inspects: the JS receiver's memory, RNGH's mount registry and handler registry. */

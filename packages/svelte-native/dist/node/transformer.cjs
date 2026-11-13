@@ -2121,7 +2121,6 @@ ${problems.map((problem) => `  ${problem}`).join("\n")}`);
 
 // src/lower.ts
 var PACKAGE2 = "@alfayez/svelte-native";
-var GESTURES = `${PACKAGE2}/gestures`;
 var RENDERER = `${PACKAGE2}/renderer`;
 var SPREAD_HELPER = "__svelteNativeSpread";
 var VALUE_HELPER2 = "__svelteNativeValue";
@@ -2136,9 +2135,8 @@ var LOWERED_TAGS = {
   Pressable: "native-pressable"
 };
 var PRESS_HANDLERS = /* @__PURE__ */ new Set(["onPress", "onPressIn", "onPressOut", "onLongPress", "onPressChange"]);
-var NOT_PRIMITIVES = `${PACKAGE2}/svg`;
 function fromPackage(source) {
-  return typeof source === "string" && (source === PACKAGE2 || source.startsWith(`${PACKAGE2}/`) && source !== NOT_PRIMITIVES);
+  return typeof source === "string" && (source === PACKAGE2 || source.startsWith(`${PACKAGE2}/`));
 }
 function collectImports(program, locals, actions) {
   for (const statement of program?.body ?? []) {
@@ -2148,7 +2146,7 @@ function collectImports(program, locals, actions) {
       const imported = specifier.imported.name ?? specifier.imported.value;
       if (Object.hasOwn(LOWERED_TAGS, imported)) locals.set(specifier.local.name, imported);
       if (["drag", "swipe"].includes(imported) && (statement.source?.value === PACKAGE2 || statement.source?.value === `${PACKAGE2}/interactions`)) actions.add(specifier.local.name);
-      if (imported === "gesture" && (statement.source?.value === PACKAGE2 || statement.source?.value === GESTURES)) actions.add(specifier.local.name);
+      if (imported === "gesture" && statement.source?.value === PACKAGE2) actions.add(specifier.local.name);
     }
   }
 }

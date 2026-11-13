@@ -9,6 +9,7 @@
 		"noEmit": true,
 		"noUncheckedIndexedAccess": true,
 		"allowImportingTsExtensions": true,
+		"customConditions": ["svelte-native-source"],
 		"verbatimModuleSyntax": true,
 		"erasableSyntaxOnly": true,
 		"skipLibCheck": true

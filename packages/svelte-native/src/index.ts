@@ -1,5 +1,5 @@
 export * from "./core.ts";
-// Animation, gestures and SVG are part of the main entry (they were `/animation`, `/gestures` and `/svg`, which stay as deprecated aliases for one release candidate).
+// Animation, gestures and SVG are part of the main entry.
 // `animation.ts` and `gestures/index.ts` import nothing of Reanimated or the gesture builders until a name is used; `svg.ts` names its two elements `SvgText` and `SvgImage`,
 // since `Text` and `Image` are the views. `runOnJS` and `scheduleOnRN` come from `animation.ts` and `gestures/index.ts` both: the same bindings.
 export * from "./animation.ts";

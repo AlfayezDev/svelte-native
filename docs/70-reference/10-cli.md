@@ -37,7 +37,7 @@ Turns a SvelteKit project (from `npx sv create`) into a Svelte Native app. Run i
 
 - adds the dependencies, `main` and the scripts to `package.json`, and pins Svelte and SvelteKit to the builds Svelte Native needs;
 - adds pnpm's `overrides` and `patchedDependencies` to `pnpm-workspace.yaml`, and copies the patches into `patches/svelte-native/`;
-- creates `metro.config.cjs` and `app.json`, or adds the library's plugin to the `app.json` you have;
+- creates `metro.config.cjs` and `app.json`, or adds the library's plugin to the `app.json` you have (a `@alfayez/svelte-native/expo` entry, which no longer resolves, becomes the package's name);
 - wraps SvelteKit's plugin in `vite.config.ts` with `svelteNative()`;
 - creates a first app if `src/routes` has no native routes: a root layout, a home screen, a details screen and `src/lib/theme.ts`;
 - adds the generated folders to `.gitignore`;
@@ -90,7 +90,7 @@ patches
   …
 
 build integration
-  pass  @alfayez/svelte-native 0.4.0-rc.6 is a dependency of the app
+  pass  @alfayez/svelte-native 0.4.0-rc.7 is a dependency of the app
   pass  metro.config.cjs uses withSvelteNative
   pass  app.json lists the @alfayez/svelte-native plugin
 

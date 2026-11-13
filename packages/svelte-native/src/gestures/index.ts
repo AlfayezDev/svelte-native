@@ -12,7 +12,7 @@
  *
  * Importing this module loads nothing: not the builders, not Reanimated. The first read of a `Gesture` property loads the
  * builders and Reanimated with worklets (so a worklet created afterwards captures the real functions), and the first node with a
- * `gesture` attribute loads the host (`fabric/gestures.ts`). The main entry re-exports all of it; `@alfayez/svelte-native/gestures` is a deprecated alias.
+ * `gesture` attribute loads the host (`fabric/gestures.ts`). The main entry re-exports all of it.
  */
 import { loadReanimated } from "../fabric/reanimated-load.ts";
 import { lazyObject } from "../lazy-object.ts";

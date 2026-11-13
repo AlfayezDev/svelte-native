@@ -69,36 +69,38 @@ describe("dist/node holds the Node-side code and none of the React Native runtim
 });
 
 describe("package.json points at the built files", () => {
-  const conditional = Object.entries(manifest.exports).flatMap(([entry, target]) => (typeof target === "string" ? [] : [[entry, target] as const]));
-  const built = conditional.filter(([, target]) => target.default?.startsWith("./dist/node/"));
-  const runtime = conditional.filter(([, target]) => !target.default?.startsWith("./dist/node/"));
+  const built = Object.entries(manifest.exports).flatMap(([entry, target]) => (typeof target === "string" || !target.default?.startsWith("./dist/node/") ? [] : [[entry, target] as const]));
   const files = entries.map((entry) => `./dist/node/${entry.name}${extensionOf(entry.format)}`);
 
-  test("every built entry is the `default` of an export (or the bin), with the TypeScript source as its `types`", () => {
-    const targets = [...built.map(([, target]) => target.default), manifest.bin["svelte-native"]].sort();
+  test("every built entry is the `default` of an export (or the bin, or the config plugin's file), with the TypeScript source as its `svelte-native-source` and its declarations as its `types`", () => {
+    // `expo.cjs` is not an export of its own (`@alfayez/svelte-native/expo` was removed in 0.4.0-rc.7): `app.plugin.js`, the `./app.plugin` export, imports it.
+    expect(readFileSync(join(packageRoot, "app.plugin.js"), "utf8")).toContain('import plugin from "./dist/node/expo.cjs";');
+    const targets = [...built.map(([, target]) => target.default), manifest.bin["svelte-native"], "./dist/node/expo.cjs"].sort();
     expect(targets).toEqual([...files].sort());
     for (const [entry, target] of built) {
-      expect(Object.keys(target), entry).toEqual(["types", "default"]);
-      expect(target.types, entry).toMatch(/^\.\/src\/.+\.ts$/);
+      expect(Object.keys(target), entry).toEqual(["svelte-native-source", "types", "default"]);
+      expect(target["svelte-native-source"], entry).toMatch(/^\.\/src\/.+\.ts$/);
+      expect(target.types, entry).toMatch(/^\.\/dist\/types\/.+\.d\.ts$/);
     }
   });
 
-  test("each export is built from the source its `types` names", () => {
+  test("each export is built from the source its `svelte-native-source` names", () => {
     for (const [entry, target] of built) {
       const name = target.default.replace(/^\.\/dist\/node\//, "").replace(/\.c?js$/, "");
-      expect([entry, entries.find((candidate) => candidate.name === name)?.source]).toEqual([entry, target.types.replace(/^\.\//, "")]);
+      expect([entry, entries.find((candidate) => candidate.name === name)?.source]).toEqual([entry, target["svelte-native-source"]?.replace(/^\.\//, "")]);
     }
   });
 
   test("conditional runtime exports remain source files, separate from the Node build", () => {
-    expect(runtime.map(([entry]) => entry)).toEqual(["./interactions"]);
     expect(manifest.exports["./interactions"]).toEqual({
+      "svelte-native-source": "./src/interactions.ts",
+      types: "./dist/types/interactions.d.ts",
       "react-native": "./src/interactions.ts",
       browser: "./src/interactions.web.ts",
       default: "./src/interactions.ts",
     });
     // Metro may enable browser as well: the native condition must win when both match.
-    expect(Object.keys(manifest.exports["./interactions"]!)).toEqual(["react-native", "browser", "default"]);
+    expect(Object.keys(manifest.exports["./interactions"]!)).toEqual(["svelte-native-source", "types", "react-native", "browser", "default"]);
   });
 
   test("interactions resolves to native for Metro/default and to the dependency-free entry for browser", async () => {
@@ -125,9 +127,10 @@ describe("package.json points at the built files", () => {
     }
   });
 
-  test("a runtime entry stays the TypeScript Metro compiles: a path, not built", () => {
-    for (const entry of [".", "./core", "./init", "./app", "./renderer", "./fabric", "./foreign", "./svg", "./polyfills", "./router", "./animation", "./gestures", "./updates", "./native-modules", "./remote", "./remote/runtime", "./remote/globals"])
-      expect([entry, typeof manifest.exports[entry]]).toEqual([entry, "string"]);
+  test("a runtime entry stays the TypeScript Metro compiles: its `default` is the source, not a built file", () => {
+    const runtime = (entry: string) => { const target = manifest.exports[entry]; return typeof target === "string" ? target : target?.default; };
+    for (const entry of [".", "./core", "./app", "./renderer", "./foreign", "./router", "./updates", "./remote", "./remote/runtime", "./remote/globals"])
+      expect([entry, runtime(entry)?.startsWith("./src/")]).toEqual([entry, true]);
   });
 });
 

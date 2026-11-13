@@ -8,10 +8,11 @@ import { compile, compileModule } from "svelte/compiler";
 import { componentOptions } from "../src/compile-options.ts";
 import { reanimatedStubs } from "./reanimated-stubs.ts";
 import { svgLibraryStubs } from "./svg-library-stubs.ts";
+import { animation, gestures, nativeModules, svg, svgRenamed } from "./removed-entries.ts";
 
 /**
- * The main entry and the deprecated entries, bundled together and evaluated (React Native's modules are stubs, as in the other bundle tests): the deprecated entries hand out
- * the very same values as the main entry, and the main entry's SVG, animation and gesture exports are the ones the old entries had.
+ * The main entry and `/platform`, bundled together and evaluated (React Native's modules are stubs, as in the other bundle tests): they export every name the entries
+ * 0.4.0-rc.7 removed (`/animation`, `/gestures`, `/svg`, `/native-modules`) exported, as values of the same kind.
  */
 const stubs: Record<string, string> = {
   ...reanimatedStubs,
@@ -26,16 +27,12 @@ const stubs: Record<string, string> = {
 };
 
 type Entry = Record<string, unknown>;
-async function load(): Promise<{ main: Entry; animation: Entry; gestures: Entry; svg: Entry; nativeModules: Entry; platform: Entry }> {
+async function load(): Promise<{ main: Entry; platform: Entry }> {
   const bundle = await build({
     stdin: {
       contents: `import * as main from '../src/index.ts';
-        import * as animation from '../src/deprecated/animation.ts';
-        import * as gestures from '../src/deprecated/gestures.ts';
-        import * as svg from '../src/deprecated/svg.ts';
-        import * as nativeModules from '../src/deprecated/native-modules.ts';
         import * as platform from '../src/platform.ts';
-        export { main, animation, gestures, svg, nativeModules, platform };`,
+        export { main, platform };`,
       resolveDir: import.meta.dirname,
     },
     bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], write: false,
@@ -62,28 +59,25 @@ async function load(): Promise<{ main: Entry; animation: Entry; gestures: Entry;
   return loaded;
 }
 
-test("the main entry has the SVG components, the animation, the gestures and BlurView, and the deprecated entries are the same values under their old names", async () => {
-  const { main, animation, gestures, svg, nativeModules, platform } = await load();
+test("the main entry has the SVG components, the animation, the gestures and BlurView, and `/platform` the two native module lookups: every name the removed entries exported", async () => {
+  const { main, platform } = await load();
   // Names: reading the key list reads nothing lazy.
   for (const name of ["Svg", "Path", "SvgText", "SvgImage", "SvgLinearGradient", "SvgMarker", "SvgXml", "withSpring", "withTiming", "createSharedValue", "AnimatedView", "Easing", "Gesture", "GestureDetector", "gesture", "State", "runOnJS", "BlurView", "View", "Text", "Image"]) {
     expect([name, name in main]).toEqual([name, true]);
   }
   expect(Object.keys(main)).not.toContain("default");
 
-  // `/svg`: the old names for the same components. The main entry's Text and Image are still the views.
-  expect([svg.default, svg.Svg, svg.Path, svg.SvgXml]).toEqual([main.Svg, main.Svg, main.Path, main.SvgXml]);
-  expect([svg.Text, svg.Image, svg.LinearGradient, svg.Marker]).toEqual([main.SvgText, main.SvgImage, main.SvgLinearGradient, main.SvgMarker]);
+  // `/svg`: the main entry has its elements under react-native-svg's names, but the four that clash with the views' and `/foreign`'s, which are `SvgText`, `SvgImage`, `SvgLinearGradient` and `SvgMarker`
+  // (the main entry's Text and Image are the views). Its default export was `Svg`.
+  for (const name of svg.values) expect([name, name in main]).toEqual([name, true]);
+  for (const [old, name] of Object.entries(svgRenamed)) expect([old, name, name in main]).toEqual([old, name, true]);
   expect(["LinearGradient", "Marker"].filter((name) => name in main)).toEqual([]);
   expect([main.SvgText === main.Text, main.SvgImage === main.Image]).toEqual([false, false]);
-  expect(Object.keys(svg).sort()).toEqual([...Object.keys(main).filter((name) => ["Svg", "G", "Path", "Rect", "Circle", "Ellipse", "Line", "Polygon", "Polyline", "TSpan", "TextPath", "Use", "Defs", "ClipPath", "RadialGradient", "Stop", "Pattern", "Mask", "Symbol", "ForeignObject", "Filter", "FeBlend", "FeColorMatrix", "FeComposite", "FeDropShadow", "FeFlood", "FeGaussianBlur", "FeMerge", "FeMergeNode", "FeOffset", "SvgXml", "SvgUri"].includes(name)), "Text", "Image", "LinearGradient", "Marker", "default"].sort());
 
-  // `/animation` and `/gestures`: the same functions, objects and components.
-  expect(Object.keys(animation).sort()).toEqual(["AnimatedView", "Easing", "ReduceMotion", "cancelAnimation", "createSharedValue", "runOnJS", "runOnUIAsync", "runOnUISync", "scheduleOnRN", "withDelay", "withRepeat", "withSequence", "withSpring", "withTiming"]);
-  for (const name of Object.keys(animation)) expect([name, animation[name] === main[name]]).toEqual([name, true]);
-  expect(Object.keys(gestures).sort()).toEqual(["ActionType", "Directions", "Gesture", "GestureDetector", "GestureStateManager", "PointerType", "State", "TouchEventType", "gesture", "runOnJS", "scheduleOnRN"]);
-  for (const name of Object.keys(gestures)) expect([name, gestures[name] === main[name]]).toEqual([name, true]);
+  // `/animation` and `/gestures`: the functions, objects and components are the main entry's (the gestures' `runOnJS` and `scheduleOnRN` are the animation's).
+  for (const name of [...animation.values, ...gestures.values]) expect([name, name in main]).toEqual([name, true]);
+  expect([typeof main.withSpring, typeof main.AnimatedView, typeof main.createSharedValue]).toEqual(["function", "function", "function"]);
 
-  // `/native-modules` and `/platform`.
-  expect(Object.keys(nativeModules).sort()).toEqual(["nativeModule", "turboModule"]);
-  expect([nativeModules.turboModule, nativeModules.nativeModule]).toEqual([platform.turboModule, platform.nativeModule]);
+  // `/native-modules` is `/platform`.
+  for (const name of nativeModules.values) expect([name, typeof platform[name]]).toEqual([name, "function"]);
 }, 60_000);

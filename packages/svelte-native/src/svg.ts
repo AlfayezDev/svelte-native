@@ -1,6 +1,9 @@
 /**
  * react-native-svg on the Svelte host (SPEC.md, "react-native-svg"): the library's elements as Svelte components, mounted through React Native's
- * own mounting. A separate entry, so an app that draws no SVG does not evaluate them at boot. The library's React components are not used.
+ * own mounting. The main entry re-exports all of them (`@alfayez/svelte-native`). The library's React components are not used.
+ *
+ * Two elements take another name than react-native-svg's, because the main entry already has a `Text` and an `Image` (the views): `SvgText` and `SvgImage`.
+ * The deprecated `@alfayez/svelte-native/svg` entry (`deprecated/svg.ts`) keeps the old names, `Text` and `Image`, until the next release candidate.
  */
 export { default as Svg } from "./components/svg/Svg.svelte";
 export { default as G } from "./components/svg/G.svelte";
@@ -11,11 +14,11 @@ export { default as Ellipse } from "./components/svg/Ellipse.svelte";
 export { default as Line } from "./components/svg/Line.svelte";
 export { default as Polygon } from "./components/svg/Polygon.svelte";
 export { default as Polyline } from "./components/svg/Polyline.svelte";
-export { default as Text } from "./components/svg/Text.svelte";
+export { default as SvgText } from "./components/svg/Text.svelte";
 export { default as TSpan } from "./components/svg/TSpan.svelte";
 export { default as TextPath } from "./components/svg/TextPath.svelte";
 export { default as Use } from "./components/svg/Use.svelte";
-export { default as Image } from "./components/svg/Image.svelte";
+export { default as SvgImage } from "./components/svg/Image.svelte";
 export { default as Defs } from "./components/svg/Defs.svelte";
 export { default as ClipPath } from "./components/svg/ClipPath.svelte";
 export { default as LinearGradient } from "./components/svg/LinearGradient.svelte";
@@ -40,4 +43,3 @@ export { default as SvgXml } from "./components/svg/SvgXml.svelte";
 export { default as SvgUri } from "./components/svg/SvgUri.svelte";
 export type { SvgHandle, SvgRootHandle, SvgBoundingBoxOptions, SvgMatrix, SvgPoint, SvgRect } from "./fabric/foreign-svg.ts";
 export type { SvgRef, SvgExtras } from "./components/svg/handle.ts";
-export { default } from "./components/svg/Svg.svelte";

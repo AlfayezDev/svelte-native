@@ -169,7 +169,8 @@ export function syncRoutes(root: string, options: SyncOptions = {}): void {
   // The entry boots the app layout, the shell around the generated tree's root navigator; SVELTE_NATIVE_ROOT=<path> renders that
   // component as the root instead (the lab's spike roots).
   const customRoot = process.env.SVELTE_NATIVE_ROOT;
-  const prelude = "import '@alfayez/svelte-native/init';\nimport '@alfayez/svelte-native/polyfills';\nimport { createFabricApp, remountSurfaces } from '@alfayez/svelte-native/fabric';\n";
+  // `/app` runs the boot modules (`init`, then `polyfills`) before it loads the Fabric host, and exports what the entry calls.
+  const prelude = "import { createFabricApp, remountSurfaces } from '@alfayez/svelte-native/app';\n";
   // In development the entry accepts every hot update itself (see `fabric/hmr.ts`): Metro re-runs the edited module and its importers up to
   // here, which re-registers the app, and the handler remounts the running surfaces.
   const hot = "declare const module: { hot?: { accept(callback?: () => void): void } };\nif (__DEV__) module.hot?.accept(() => remountSurfaces());\n";

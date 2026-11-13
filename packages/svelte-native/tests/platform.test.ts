@@ -13,7 +13,7 @@ const platformPath = "react-native/Libraries/Utilities/Platform";
 
 test("importing the entry loads none of React Native's modules", () => {
   expect(seen.afterImport).toEqual([]);
-  expect(seen.exports).toEqual(["Alert", "AppState", "Appearance", "BackHandler", "Dimensions", "Keyboard", "Linking", "PixelRatio", "Platform", "Share", "Vibration"]);
+  expect(seen.exports).toEqual(["Alert", "AppState", "Appearance", "BackHandler", "Dimensions", "Keyboard", "Linking", "PixelRatio", "Platform", "Share", "Vibration", "nativeModule", "turboModule"]);
 });
 
 test("reading a property loads that module, once, and no other", () => {
@@ -40,4 +40,12 @@ test("writes and key listings go to the module", () => {
   expect(seen.written).toBe("background");
   expect(seen.has).toEqual([true, false]);
   expect(seen.keys).toEqual(["addEventListener", "currentState"]);
+});
+
+test("turboModule and nativeModule, which `@alfayez/svelte-native/native-modules` used to export, are exports of the entry and load React Native's registries on their first call", () => {
+  expect(seen.turbo).toEqual({ turbo: "Blob" });
+  expect(seen.turboMissing).toBe("no module Missing");
+  expect(seen.legacy).toEqual({ ping: true });
+  expect(seen.legacyMissing).toBeNull();
+  expect(seen.afterModules).toEqual(["react-native/Libraries/TurboModule/TurboModuleRegistry", "react-native/Libraries/BatchedBridge/NativeModules"]);
 });

@@ -24,12 +24,15 @@ export const appDependencies: Readonly<Record<string, string>> = {
   "react-native": "0.86.3",
   "react-native-gesture-handler": "2.32.0",
   "react-native-reanimated": "4.5.1",
+  "react-native-svg": "15.15.4",
   "react-native-worklets": "0.10.1",
 };
 
 /** Packages whose patch every app needs; the others are declared when the app has the package (SvelteKit) or lists it at the patch's version (the view libraries). */
 const alwaysPatched = ["expo-modules-core", "react-native-gesture-handler", "react-native-reanimated", "react-native-worklets"];
-const plugin = "@alfayez/svelte-native/expo";
+// The package's own name: Expo finds the package's `app.plugin.js`, the same plugin as `@alfayez/svelte-native/app.plugin` and the deprecated `@alfayez/svelte-native/expo`.
+const plugin = "@alfayez/svelte-native";
+const pluginNames: readonly string[] = [plugin, `${plugin}/app.plugin`, `${plugin}/expo`];
 const scripts: Readonly<Record<string, string>> = { native: "svelte-native dev", android: "svelte-native android", ios: "svelte-native ios", "check-setup": "svelte-native doctor" };
 const gitignore = [".svelte-native", ".expo", "/android", "/ios"];
 
@@ -673,7 +676,7 @@ function planAppJson(root: string, names: ReturnType<typeof appNames>, plan: Pla
     }
   }
   const plugins = Array.isArray(expo.plugins) ? (expo.plugins as unknown[]) : [];
-  const has = plugins.some((entry) => (Array.isArray(entry) ? entry[0] : entry) === plugin || (Array.isArray(entry) ? entry[0] : entry) === "@alfayez/svelte-native");
+  const has = plugins.some((entry) => pluginNames.includes((Array.isArray(entry) ? entry[0] : entry) as string));
   if (!has) {
     expo.plugins = [...plugins, plugin];
     done.push("the plugin");

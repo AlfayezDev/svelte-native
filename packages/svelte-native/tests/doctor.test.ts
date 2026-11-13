@@ -242,7 +242,9 @@ describe("versions", () => {
 
   test("a peer that is not installed is a failure unless it is optional", () => {
     expect(find(check({ without: ["react"] }).checks, "react is not installed (needs 19.2.7)")?.status).toBe("fail");
-    expect(find(check({ without: ["react-native-svg"] }).checks, "react-native-svg")?.status).not.toBe("fail");
+    // react-native-svg is a required peer (the main entry exports its components); a view library such as react-native-pdf is not.
+    expect(find(check({ without: ["react-native-svg"] }).checks, "react-native-svg is not installed (needs 15.15.4)")?.status).toBe("fail");
+    expect(find(check({ without: ["react-native-pdf"] }).checks, "react-native-pdf")?.status).not.toBe("fail");
   });
 
   test("a range it cannot read is not guessed", () => {
@@ -349,18 +351,23 @@ describe("the app's configs", () => {
 
   test("the Expo plugin is looked for in app.json and in app.config", () => {
     const listed = check().checks;
-    expect(find(listed, `app.json lists the ${library.name}/expo plugin`)?.status).toBe("pass");
+    expect(find(listed, `app.json lists the ${library.name} plugin`)?.status).toBe("pass");
     const bare = check({ files: { "app.json": JSON.stringify({ expo: { plugins: ["expo-font"] } }) } }).checks;
-    expect(find(bare, `app.json does not list the ${library.name}/expo plugin`)?.status).toBe("fail");
+    expect(find(bare, `app.json does not list the ${library.name} plugin`)?.status).toBe("fail");
+    // `<library>/app.plugin` is the same file; `<library>/expo` is a deprecated name for it, which passes with a note.
+    const path = check({ files: { "app.json": JSON.stringify({ expo: { plugins: [`${library.name}/app.plugin`] } }) } }).checks;
+    expect(find(path, `app.json lists the ${library.name}/app.plugin plugin`)?.status).toBe("pass");
+    const deprecated = check({ files: { "app.json": JSON.stringify({ expo: { plugins: [`${library.name}/expo`] } }) } }).checks;
+    expect(find(deprecated, `app.json lists the ${library.name}/expo plugin (the ${library.name}/expo path is deprecated: list ${library.name})`)?.status).toBe("pass");
     const code = check({ files: { "app.json": JSON.stringify({ expo: { plugins: [] } }), "app.config.ts": `export default ({ config }) => ({ ...config, plugins: [["${library.name}/expo", {}]] });\n` } }).checks;
-    expect(find(code, `app.config.ts lists the ${library.name}/expo plugin`)?.status).toBe("pass");
+    expect(find(code, `app.config.ts lists the ${library.name}/expo plugin (the ${library.name}/expo path is deprecated: list ${library.name})`)?.status).toBe("pass");
     const dynamic = check({ files: { "app.json": JSON.stringify({ expo: { plugins: [] } }), "app.config.ts": "export default ({ config }) => ({ ...config, plugins: pluginsFor(process.env) });\n" } }).checks;
     expect(find(dynamic, "could not tell: app.config.ts does not name")?.status).toBe("unknown");
     const none = check({ files: { "app.json": null } }).checks;
     expect(find(none, "no app.json or app.config.* in the app")?.status).toBe("fail");
     // The bare form of app.json, without the `expo` key, is Expo's too.
-    const unwrapped = check({ files: { "app.json": JSON.stringify({ plugins: [[`${library.name}/expo`, {}]] }) } }).checks;
-    expect(find(unwrapped, `app.json lists the ${library.name}/expo plugin`)?.status).toBe("pass");
+    const unwrapped = check({ files: { "app.json": JSON.stringify({ plugins: [[library.name, {}]] }) } }).checks;
+    expect(find(unwrapped, `app.json lists the ${library.name} plugin`)?.status).toBe("pass");
   });
 
   test("the package's own name is the plugin as well (its app.plugin.js), in app.json and in app.config", () => {
@@ -372,14 +379,14 @@ describe("the app's configs", () => {
     expect(find(code, `app.config.ts lists the ${library.name} plugin`)?.status).toBe("pass");
     // Another package that starts with the name is not the plugin.
     const other = check({ files: { "app.json": JSON.stringify({ expo: { plugins: [`${library.name}-extra`] } }) } }).checks;
-    expect(find(other, `app.json does not list the ${library.name}/expo plugin`)?.status).toBe("fail");
+    expect(find(other, `app.json does not list the ${library.name} plugin`)?.status).toBe("fail");
   });
 
   test("the findings, directly", () => {
     const root = makeFakeApp();
     apps.push(root);
     expect(metroFinding(root)).toEqual({ state: "found", file: "metro.config.cjs" });
-    expect(expoPluginFinding(root, library.name)).toEqual({ state: "found", file: "app.json", name: `${library.name}/expo` });
+    expect(expoPluginFinding(root, library.name)).toEqual({ state: "found", file: "app.json", name: library.name });
   });
 
   test("an app that does not depend on the library is a failure", () => {

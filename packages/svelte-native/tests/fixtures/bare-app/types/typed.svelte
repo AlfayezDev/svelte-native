@@ -4,11 +4,10 @@
   import {
     View, Text, TextInput, Pressable, ScrollView, Image, Switch, ActivityIndicator, Modal, SafeAreaView, KeyboardAvoidingView, List,
     Screen, Stack, Tabs, Native, useRouter, useHeader, useToolbar, inTabPane, insets, bootSummary, openLaunchURL,
+    AnimatedView, createSharedValue, withTiming, withSpring, withRepeat, withSequence, withDelay, runOnUISync, runOnUIAsync,
+    Gesture, GestureDetector, BlurView, Svg, Path, SvgText, SvgImage, type SvgHandle,
   } from "@alfayez/svelte-native";
-  import { Platform, Appearance, Dimensions, Linking, Keyboard, AppState, BackHandler, PixelRatio, Share, Vibration, Alert } from "@alfayez/svelte-native/platform";
-  import { AnimatedView, createSharedValue, withTiming, withSpring, withRepeat, withSequence, withDelay, runOnUISync, runOnUIAsync } from "@alfayez/svelte-native/animation";
-  import { Gesture, GestureDetector } from "@alfayez/svelte-native/gestures";
-  import { turboModule, nativeModule } from "@alfayez/svelte-native/native-modules";
+  import { Platform, Appearance, Dimensions, Linking, Keyboard, AppState, BackHandler, PixelRatio, Share, Vibration, Alert, turboModule, nativeModule } from "@alfayez/svelte-native/platform";
   import { FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";
   import { checkForUpdateAsync, fetchUpdateAsync, reloadAsync, isEnabled } from "@alfayez/svelte-native/updates";
 
@@ -36,7 +35,8 @@
   const appState = AppState.currentState;
   BackHandler.addEventListener("hardwareBackPress", () => true).remove();
   void [PixelRatio.get(), Share.share({ message: "x" }), Vibration.vibrate(), Alert.alert("t")];
-  void [os, version, picked, scheme, size, appState, header.height, toolbar.height, inTabPane(), insets.top, bootSummary, openLaunchURL, turboModule, nativeModule, checkForUpdateAsync, fetchUpdateAsync, reloadAsync, isEnabled, withTiming, withRepeat, withSequence, withDelay, runOnUISync, runOnUIAsync];
+  const svgHandle: SvgHandle | null = null;
+  void [svgHandle, GestureDetector, SvgImage, BlurView, os, version, picked, scheme, size, appState, header.height, toolbar.height, inTabPane(), insets.top, bootSummary, openLaunchURL, turboModule, nativeModule, checkForUpdateAsync, fetchUpdateAsync, reloadAsync, isEnabled, withTiming, withRepeat, withSequence, withDelay, runOnUISync, runOnUIAsync];
 </script>
 
 <Stack header={{ large: true }} animation="slide_from_right">
@@ -98,6 +98,8 @@
       <AnimatedView gesture={pan} style={{ width: 96, height: 96 }} animatedStyle={() => { "worklet"; return { transform: [{ translateX: x.value }] }; }} />
       <AnimatedView entering={FadeIn} exiting={FadeOut} layout={LinearTransition} animatedProps={() => { "worklet"; return {}; }} style={{ transitionProperty: "opacity", transitionDuration: 300, animationName: { from: { opacity: 0 }, to: { opacity: 1 } }, animationDuration: 500 }} />
       <GestureDetector gesture={pan}><View /></GestureDetector>
+      <BlurView intensity={40} tint="light" style={{ height: 40 }}><Text>blur</Text></BlurView>
+      <Svg width={40} height={40}><Path d="M0 0L10 10" stroke="#000" /><SvgText x={1} y={2}>t</SvgText><SvgImage href="x" width={4} height={4} /></Svg>
       <Native name="native-view" attributes={{}} />
       <native-view nativeStyle={{ flex: 1 }} onPress={() => {}}></native-view>
       <native-pressable onPressChange={() => {}}></native-pressable>

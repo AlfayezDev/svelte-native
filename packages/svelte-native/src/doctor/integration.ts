@@ -29,11 +29,11 @@ export function metroFinding(appRoot: string): Finding {
 const pluginName = (entry: unknown): string | undefined => (typeof entry === "string" ? entry : Array.isArray(entry) && typeof entry[0] === "string" ? entry[0] : undefined);
 
 /**
- * Whether the app's Expo config lists the library's config plugin, by either name: `<library>/expo`, or the package's own name (its `app.plugin.js`, which Expo
- * finds for a bare package name). In `app.json`'s `plugins`, or by name in an `app.config.*`.
+ * Whether the app's Expo config lists the library's config plugin, by any of its names: the package's own name (its `app.plugin.js`, which Expo finds for a bare
+ * package name), that file's path `<library>/app.plugin`, or the deprecated `<library>/expo`. In `app.json`'s `plugins`, or by name in an `app.config.*`.
  */
 export function expoPluginFinding(appRoot: string, library: string): Finding {
-  const names = [`${library}/expo`, library];
+  const names = [library, `${library}/app.plugin`, `${library}/expo`];
   const json = firstExisting(appRoot, ["app.json"]);
   const code = firstExisting(appRoot, APP_CONFIG_FILES);
   if (json) {
@@ -44,7 +44,7 @@ export function expoPluginFinding(appRoot: string, library: string): Finding {
     if (listed) return { state: "found", file: json, name: listed };
   }
   if (code) {
-    // The name in the file, however the list is built: a dynamic config may add it in a way the doctor cannot see, so a miss is unclear. The bare name is a whole string, not the start of `<library>/expo` or of another package.
+    // The name in the file, however the list is built: a dynamic config may add it in a way the doctor cannot see, so a miss is unclear. The bare name is a whole string, not the start of `<library>/app.plugin` or of another package.
     const source = withoutJsComments(readFileSync(join(appRoot, code), "utf8"));
     const named = names.find((name) => ["\"", "'", "`"].some((quote) => source.includes(`${quote}${name}${quote}`)));
     return named ? { state: "found", file: code, name: named } : { state: "unclear", file: code };

@@ -16,7 +16,7 @@ final class NativeRequest: SharedObject, @unchecked Sendable {
 
   func start(client: FetchClient, url: String, requestInit: NativeRequestInit, body: EitherOfThree<NativeBlob, Data, String>?, promise: Promise) {
     guard transfer.begin(promise) else { return }
-    guard let target = URL(string: url), let scheme = target.scheme?.lowercased() else {
+    guard let target = FetchURL.parse(url), let scheme = target.scheme?.lowercased() else {
       transfer.ended(FetchException.url("Not a URL: \(url)"))
       return
     }
@@ -48,6 +48,7 @@ final class NativeRequest: SharedObject, @unchecked Sendable {
       request.setValue(String(length), forHTTPHeaderField: "Content-Length")
     }
     transfer.redirectMode = requestInit.redirect
+    transfer.method = requestInit.method
     client.session(includingCookies: include).launch(request, body: body, transfer: transfer)
   }
 }

@@ -43,7 +43,7 @@
   <Section title="Image" note="The left one is a file bundled with the app, the right one comes from a URL. An image takes its size from its style: here a height, and the width fills the column.">
     <View style={{ flexDirection: "row", gap: 12 }}>
       <View style={{ flex: 1, gap: 6 }}>
-        <Image source={photo} resizeMode="cover" accessibilityLabel="A sunset over hills" style={{ height: 100, borderRadius: 8 }} />
+        <Image source={photo} resizeMode="cover" accessibilityLabel="A sunset over hills" style={{ width: "100%", height: 100, borderRadius: 8 }} />
         <Text style={text.caption}>require()d file</Text>
       </View>
       <View style={{ flex: 1, gap: 6 }}>
@@ -53,7 +53,7 @@
           accessibilityLabel="Mountains above the clouds at sunset"
           onLoad={() => (photoStatus = "loaded")}
           onError={() => (photoStatus = "failed (offline?)")}
-          style={{ height: 100, borderRadius: 8, backgroundColor: theme.colors.border }}
+          style={{ width: "100%", height: 100, borderRadius: 8, backgroundColor: theme.colors.border }}
         />
         <Text style={text.caption}>URL: {photoStatus}</Text>
       </View>

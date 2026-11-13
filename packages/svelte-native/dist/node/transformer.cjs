@@ -2147,6 +2147,7 @@ function collectImports(program, locals, actions) {
       if (specifier.type !== "ImportSpecifier" || specifier.importKind === "type") continue;
       const imported = specifier.imported.name ?? specifier.imported.value;
       if (Object.hasOwn(LOWERED_TAGS, imported)) locals.set(specifier.local.name, imported);
+      if (["drag", "swipe"].includes(imported) && (statement.source?.value === PACKAGE2 || statement.source?.value === `${PACKAGE2}/interactions`)) actions.add(specifier.local.name);
       if (imported === "gesture" && (statement.source?.value === PACKAGE2 || statement.source?.value === GESTURES)) actions.add(specifier.local.name);
     }
   }
@@ -2599,7 +2600,7 @@ function transformRemoteModule(source, filename, root) {
 }
 var SHADOWS = [
   { pattern: /\/node_modules\/@sveltejs\/kit\/src\/runtime\/client\/remote-functions\//, names: ["fetch", "location", "navigator", "window", "FinalizationRegistry", "WeakRef", "__SVELTEKIT_DEV__"] },
-  { pattern: /\/node_modules\/@sveltejs\/kit\/src\/runtime\/form-utils\.js$/, names: ["Blob"] },
+  { pattern: /\/node_modules\/@sveltejs\/kit\/src\/runtime\/form-utils\.js$/, names: ["Blob", "File"] },
   { pattern: /\/node_modules\/@sveltejs\/kit\/src\/runtime\/utils\.js$/, names: ["btoa", "atob"] }
 ];
 function kitGlobalsImport(filename) {

@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
+import { build } from "esbuild";
 import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -68,7 +69,9 @@ describe("dist/node holds the Node-side code and none of the React Native runtim
 });
 
 describe("package.json points at the built files", () => {
-  const built = Object.entries(manifest.exports).flatMap(([entry, target]) => (typeof target === "string" ? [] : [[entry, target] as const]));
+  const conditional = Object.entries(manifest.exports).flatMap(([entry, target]) => (typeof target === "string" ? [] : [[entry, target] as const]));
+  const built = conditional.filter(([, target]) => target.default?.startsWith("./dist/node/"));
+  const runtime = conditional.filter(([, target]) => !target.default?.startsWith("./dist/node/"));
   const files = entries.map((entry) => `./dist/node/${entry.name}${extensionOf(entry.format)}`);
 
   test("every built entry is the `default` of an export (or the bin), with the TypeScript source as its `types`", () => {
@@ -84,6 +87,41 @@ describe("package.json points at the built files", () => {
     for (const [entry, target] of built) {
       const name = target.default.replace(/^\.\/dist\/node\//, "").replace(/\.c?js$/, "");
       expect([entry, entries.find((candidate) => candidate.name === name)?.source]).toEqual([entry, target.types.replace(/^\.\//, "")]);
+    }
+  });
+
+  test("conditional runtime exports remain source files, separate from the Node build", () => {
+    expect(runtime.map(([entry]) => entry)).toEqual(["./interactions"]);
+    expect(manifest.exports["./interactions"]).toEqual({
+      "react-native": "./src/interactions.ts",
+      browser: "./src/interactions.web.ts",
+      default: "./src/interactions.ts",
+    });
+    // Metro may enable browser as well: the native condition must win when both match.
+    expect(Object.keys(manifest.exports["./interactions"]!)).toEqual(["react-native", "browser", "default"]);
+  });
+
+  test("interactions resolves to native for Metro/default and to the dependency-free entry for browser", async () => {
+    for (const [conditions, expected] of [
+      [["react-native", "browser"], "src/interactions.ts"],
+      [["browser"], "src/interactions.web.ts"],
+      [[], "src/interactions.ts"],
+    ] as const) {
+      let resolved = "";
+      await build({
+        stdin: { contents: "import '@alfayez/svelte-native/interactions';", resolveDir: packageRoot },
+        bundle: true, platform: "neutral", conditions: [...conditions], write: false,
+        plugins: [{ name: "inspect-runtime-resolution", setup(builder) {
+          builder.onResolve({ filter: /^@alfayez\/svelte-native\/interactions$/ }, async (args) => {
+            if (args.pluginData === "resolve") return;
+            const result = await builder.resolve(args.path, { kind: args.kind, resolveDir: args.resolveDir, pluginData: "resolve" });
+            if (result.errors.length) return { errors: result.errors };
+            resolved = result.path;
+            return { path: result.path, external: true }; // Inspect resolution, not native runtime execution.
+          });
+        } }],
+      });
+      expect(resolved).toBe(join(packageRoot, expected));
     }
   });
 
@@ -111,3 +149,4 @@ describe("an app installs the package as a git dependency, where nothing is buil
     expect(ignored.stdout.toString()).toBe("");
   });
 });
+

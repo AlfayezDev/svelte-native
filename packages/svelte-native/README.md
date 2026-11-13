@@ -259,7 +259,7 @@ A stack layout renders `<Stack header={{ large: true }} animation="slide_from_ri
 
 ## Native views from other libraries
 
-`@alfayez/svelte-native/foreign` mounts views other libraries own inside the tree, and the main entry exports react-native-svg as Svelte components (`Svg`, `Path`, ..., with `SvgText` and `SvgImage` for its `Text` and `Image`; react-native-svg is a required peer). None imports the library's React code, and `/foreign` is evaluated only when the app imports it. Install the libraries you use (`npx expo install <name>`; the ones below are optional peer dependencies) and rebuild the native host.
+`@alfayez/svelte-native/foreign` mounts views other libraries own inside the tree, and the main entry exports react-native-svg as Svelte components (`Svg`, `Path`, ..., with `SvgText`, `SvgImage`, `SvgLinearGradient` and `SvgMarker` for its `Text`, `Image`, `LinearGradient` and `Marker`; react-native-svg is a required peer). None imports the library's React code, and `/foreign` is evaluated only when the app imports it. Install the libraries you use (`npx expo install <name>`; the ones below are optional peer dependencies) and rebuild the native host.
 
 | Library | Components |
 |---|---|

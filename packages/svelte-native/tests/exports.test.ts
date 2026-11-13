@@ -48,13 +48,15 @@ function exportsOf(file: string, skip: readonly string[] = []): Names {
 }
 
 const without = (names: string[], leave: readonly string[]) => names.filter((name) => !leave.includes(name));
+/** The SVG elements the main entry names differently from react-native-svg (and from the deprecated `/svg` entry): the views' names, and the names of `/foreign`'s components. */
+const renamed = { SvgText: "Text", SvgImage: "Image", SvgLinearGradient: "LinearGradient", SvgMarker: "Marker" } as const;
 const main = exportsOf(src("index.ts"));
 const animation = exportsOf(src("animation.ts"));
 const gestures = exportsOf(src("gestures/index.ts"));
 const svg = exportsOf(src("svg.ts"));
 
 describe("the main entry exports the animation, the gestures, the SVG components and BlurView", () => {
-  test("everything `/animation`, `/gestures` and `/svg` export is there, under the same name and kind (the two SVG elements that clash are SvgText and SvgImage)", () => {
+  test("everything `/animation`, `/gestures` and `/svg` export is there, under the same name and kind (the four SVG elements whose names clash are SvgText, SvgImage, SvgLinearGradient and SvgMarker)", () => {
     for (const [group, names] of [["animation", animation], ["gestures", gestures], ["svg", svg]] as const) {
       for (const name of names.values) expect([group, name, main.values.has(name)]).toEqual([group, name, true]);
       for (const name of names.types) expect([group, name, main.types.has(name)]).toEqual([group, name, true]);
@@ -65,12 +67,25 @@ describe("the main entry exports the animation, the gestures, the SVG components
     expect([main.types.has("SharedValue"), main.types.has("SvgHandle"), main.types.has("GestureType")]).toEqual([true, true, true]);
   });
 
-  test("react-native-svg's Text and Image are SvgText and SvgImage in the main entry (the views are Text and Image); no SVG export is called by a view's name", () => {
-    expect([svg.values.has("SvgText"), svg.values.has("SvgImage"), svg.values.has("Text"), svg.values.has("Image"), svg.values.has("default")]).toEqual([true, true, false, false, false]);
+  test("react-native-svg's Text, Image, LinearGradient and Marker are SvgText, SvgImage, SvgLinearGradient and SvgMarker in the main entry; no SVG export is called by a view's or a `/foreign` component's name", () => {
+    for (const [name, old] of Object.entries(renamed)) expect([name, svg.values.has(name), svg.values.has(old)]).toEqual([name, true, false]);
+    expect(svg.values.has("default")).toBe(false);
     expect([main.values.has("Text"), main.values.has("Image")]).toEqual([true, true]);
     // Text and Image of the main entry are the views of core.ts, not the SVG elements.
     expect(readFileSync(src("core.ts"), "utf8")).toContain('export { default as Text } from "./components/Text.svelte";');
     expect(readFileSync(src("svg.ts"), "utf8")).toContain('export { default as SvgText } from "./components/svg/Text.svelte";');
+    expect(readFileSync(src("svg.ts"), "utf8")).toContain('export { default as SvgLinearGradient } from "./components/svg/LinearGradient.svelte";');
+    expect(readFileSync(src("svg.ts"), "utf8")).toContain('export { default as SvgMarker } from "./components/svg/Marker.svelte";');
+  });
+
+  test("the main entry exports no name that `/foreign` exports for another component (BlurView, which both export, is one component)", () => {
+    const foreign = exportsOf(src("foreign.ts"));
+    const shared = (a: Names, b: Names) => [...a.values].filter((name) => b.values.has(name));
+    expect(shared(main, foreign)).toEqual(["BlurView"]);
+    const line = 'export { default as BlurView } from "./components/BlurView.svelte";';
+    expect([readFileSync(src("index.ts"), "utf8").includes(line), readFileSync(src("foreign.ts"), "utf8").includes(line)]).toEqual([true, true]);
+    // The types too: a type of the same name from two entries is as confusing as a component.
+    expect([...main.types].filter((name) => foreign.types.has(name))).toEqual([]);
   });
 
   test("no name is exported twice with two meanings: the groups share nothing, but the two worklets exports the gestures entry takes from the animation module", () => {
@@ -101,7 +116,7 @@ describe("the entries that were folded in are deprecated aliases that keep their
     const internals = ["BaseGesture", "BaseGestureConfig", "CALLBACK_TYPE", "GestureObjects", "HandlerCallbacks", "MountRegistry", "findHandler", "registerHandler", "unregisterHandler"];
     expect(all(exportsOf(entry("./gestures")))).toEqual(without(all(gestures), internals));
     // The svg entry has the old names: its Text and Image, and Svg as its default.
-    expect(all(exportsOf(entry("./svg")))).toEqual([...without(all(svg), ["SvgText", "SvgImage"]), "Image", "Text", "default"].sort());
+    expect(all(exportsOf(entry("./svg")))).toEqual([...without(all(svg), Object.keys(renamed)), ...Object.values(renamed), "default"].sort());
     expect(all(exportsOf(entry("./native-modules")))).toEqual(["nativeModule", "turboModule"]);
     expect(all(exportsOf(entry("./fabric")))).toEqual(["createFabricApp", "fabricStats", "flush", "remountSurfaces", "showError"]);
   });
@@ -169,15 +184,15 @@ describe("an editor strikes through the deprecated names", () => {
   test("every name of the deprecated entries is flagged, and the same names from the main entry are not", () => {
     const animationNames = [...animation.values];
     const gestureNames = [...gestures.values, "ComposedGesture", "GestureType", "GestureRef", "GestureProps"];
-    const svgNames = [...svg.values].filter((name) => name !== "SvgText" && name !== "SvgImage");
+    const svgNames = [...svg.values].filter((name) => !(name in renamed));
     const deprecated = deprecatedUses([
       importAll("./deprecated/animation.ts", animationNames),
       importAll("./deprecated/gestures.ts", gestureNames.filter((name) => !["runOnJS", "scheduleOnRN"].includes(name))),
-      importAll("./deprecated/svg.ts", [...svgNames, "Text", "Image"]),
+      importAll("./deprecated/svg.ts", [...svgNames, ...Object.values(renamed)]),
       importAll("./deprecated/native-modules.ts", ["nativeModule", "turboModule"]),
       importAll("./deprecated/fabric.ts", ["createFabricApp", "remountSurfaces"]),
     ].join(""));
-    expect(deprecated).toEqual([...new Set([...animationNames, ...gestureNames.filter((name) => !["runOnJS", "scheduleOnRN"].includes(name)), ...svgNames, "Text", "Image", "nativeModule", "turboModule", "createFabricApp", "remountSurfaces"])].sort());
-    expect(deprecatedUses(importAll("./index.ts", [...animationNames, ...gestureNames, ...svgNames, "SvgText", "SvgImage", "BlurView"]))).toEqual([]);
+    expect(deprecated).toEqual([...new Set([...animationNames, ...gestureNames.filter((name) => !["runOnJS", "scheduleOnRN"].includes(name)), ...svgNames, ...Object.values(renamed), "nativeModule", "turboModule", "createFabricApp", "remountSurfaces"])].sort());
+    expect(deprecatedUses(importAll("./index.ts", [...animationNames, ...gestureNames, ...svgNames, ...Object.keys(renamed), "BlurView"]))).toEqual([]);
   }, 60_000);
 });

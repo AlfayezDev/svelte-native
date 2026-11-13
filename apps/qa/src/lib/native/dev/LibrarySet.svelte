@@ -40,7 +40,7 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
   import {
-    Circle, Defs, Image, LinearGradient as SvgLinearGradient, Path, Pressable, ReduceMotion, Rect, Stop, Svg, SvgText, SvgXml, Text, View,
+    Circle, Defs, Image, Path, Pressable, ReduceMotion, Rect, Stop, Svg, SvgLinearGradient, SvgText, SvgXml, Text, View,
     createSharedValue, withRepeat, withTiming,
   } from "@alfayez/svelte-native";
   import {

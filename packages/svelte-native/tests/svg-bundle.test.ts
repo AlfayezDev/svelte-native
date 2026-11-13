@@ -7,7 +7,7 @@ import { compile } from "svelte/compiler";
 import { componentOptions } from "../src/compile-options.ts";
 
 /**
- * The `@alfayez/svelte-native/svg` entry (SPEC.md, "react-native-svg") bundled as Metro bundles it: the library's own sources are imported by deep path (the
+ * The SVG exports of the main entry, `src/svg.ts` (SPEC.md, "react-native-svg"), bundled as Metro bundles it: the library's own sources are imported by deep path (the
  * extractors in `src/lib`), the library's `react-native` import resolves to the host's lite shim, and everything of React Native's is an external that is
  * recorded. React must stay out, and with it every part of the library that is React: its elements, its XML renderer, its fabric components and its index.
  */

@@ -4,6 +4,12 @@ Notable changes to `@alfayez/svelte-native` (named `@example/svelte-native` up t
 
 ## Unreleased
 
+### Removed
+
+- The import paths 0.4.0-rc.6 deprecated no longer resolve, so an import of one fails to resolve in Metro, Vite and TypeScript. Import `@alfayez/svelte-native/animation` and `@alfayez/svelte-native/gestures` from `@alfayez/svelte-native`, with the same names. Import `@alfayez/svelte-native/svg` from `@alfayez/svelte-native` too, where `Text`, `Image`, `LinearGradient` and `Marker` are `SvgText`, `SvgImage`, `SvgLinearGradient` and `SvgMarker`, and `Svg`, which was the default export, is a named one (`import { Svg } from "@alfayez/svelte-native"`). Import `turboModule` and `nativeModule` (`@alfayez/svelte-native/native-modules`) from `@alfayez/svelte-native/platform`.
+- `@alfayez/svelte-native/expo` is not a name of the config plugin any more: write `"@alfayez/svelte-native"` in `plugins` of `app.json` or `app.config.*`, with the same options, or `expo prebuild` stops with `PLUGIN_NOT_FOUND`. `svelte-native init` replaces the entry in an `app.json` (and keeps its options), and `svelte-native doctor` fails on a config that lists the path, saying to write the package's name in its place (up to 0.4.0-rc.6 it passed with a note).
+- `@alfayez/svelte-native/init`, `/polyfills` and `/fabric` are gone: run `svelte-native sync`, and the generated `.svelte-native/entry.ts` imports `createFabricApp` and `remountSurfaces` from `@alfayez/svelte-native/app`, which also loads the boot modules in order. An entry of your own that imports them does the same (`/app` exports `createFabricApp`, `remountSurfaces`, `showError`, `fabricStats` and `flush`).
+
 ## 0.4.0-rc.6 - 2026-11-13
 
 ### Added

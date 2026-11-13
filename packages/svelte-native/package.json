@@ -7,14 +7,10 @@
   "exports": {
     ".": "./src/index.ts",
     "./core": "./src/core.ts",
-    "./init": "./src/init.ts",
     "./app": "./src/app.ts",
     "./renderer": "./src/renderer.ts",
     "./elements": "./src/elements.d.ts",
-    "./fabric": "./src/deprecated/fabric.ts",
     "./foreign": "./src/foreign.ts",
-    "./svg": "./src/deprecated/svg.ts",
-    "./polyfills": "./src/polyfills.ts",
     "./platform": "./src/platform.ts",
     "./metro": {
       "types": "./src/metro.ts",
@@ -37,15 +33,8 @@
       "types": "./src/routes-table.ts",
       "default": "./dist/node/routes.js"
     },
-    "./animation": "./src/deprecated/animation.ts",
-    "./gestures": "./src/deprecated/gestures.ts",
-    "./expo": {
-      "types": "./src/expo.ts",
-      "default": "./dist/node/expo.cjs"
-    },
     "./updates": "./src/updates/index.ts",
     "./classes-table": "./src/css/empty-table.ts",
-    "./native-modules": "./src/deprecated/native-modules.ts",
     "./remote": "./src/remote/index.ts",
     "./remote/runtime": "./src/remote/runtime.ts",
     "./remote/globals": "./src/remote/globals.ts",

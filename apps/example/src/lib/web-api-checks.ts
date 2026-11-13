@@ -149,6 +149,29 @@ const checks: [name: string, run: (origin: string) => Promise<string>][] = [
     expect(parts[1]!.name === "file" && parts[1]!.filename === "f.bin" && parts[1]!.sha256 === sha256(file), JSON.stringify({ ...parts[1], text: undefined }));
     return "2 parts";
   }],
+  ["POST bytes: no Content-Type", async (o) => {
+    const body = await echo(o, { method: "POST", body: seeded(64, 8) });
+    const type = header(body, "content-type");
+    expect(type === null, `Content-Type: ${type}`);
+    return "none, as the standard says";
+  }],
+  ["POST a 9 MiB Blob (a streamed upload)", async (o) => {
+    const bytes = seeded(9 * 1024 * 1024, 13);
+    const body = await echo(o, { method: "POST", body: new Blob([bytes]) });
+    expect(body.bodyLength === bytes.length && body.bodySha256 === sha256(bytes), `${body.bodyLength} bytes, ${body.bodySha256}`);
+    return `${body.bodyLength} bytes`;
+  }],
+  ["FormData: a { uri } file part", async (o) => {
+    const file = seeded(300_000, 12);
+    const uri = URL.createObjectURL(new Blob([file]));
+    const form = new FormData();
+    // React Native's own way to send a local file: an object with its uri, which the library reads natively.
+    form.append("doc", { uri, name: "doc.bin", type: "application/octet-stream" } as unknown as Blob);
+    const { parts } = (await (await fetch(`${o}/multipart`, { method: "POST", body: form })).json()) as { parts: { name: string; filename: string | null; type: string | null; sha256: string; length: number }[] };
+    URL.revokeObjectURL(uri);
+    expect(parts.length === 1 && parts[0]!.filename === "doc.bin" && parts[0]!.type === "application/octet-stream" && parts[0]!.sha256 === sha256(file), JSON.stringify(parts));
+    return `${parts[0]!.length} bytes`;
+  }],
   ["URLSearchParams body", async (o) => {
     const body = await echo(o, { method: "POST", body: new URLSearchParams({ x: "1", y: "é" }) });
     expect(header(body, "content-type") === "application/x-www-form-urlencoded;charset=UTF-8", String(header(body, "content-type")));
@@ -159,6 +182,13 @@ const checks: [name: string, run: (origin: string) => Promise<string>][] = [
     const response = await fetch(`${o}/redirect?n=3`);
     expect(response.redirected && response.url.endsWith("/echo") && response.status === 200, `${response.status} ${response.url} redirected=${response.redirected}`);
     return response.url;
+  }],
+  ["redirect: 20 hops followed, 21 an error", async (o) => {
+    const twenty = await fetch(`${o}/redirect?n=20`);
+    expect(twenty.status === 200 && twenty.redirected, `20 hops: ${twenty.status}`);
+    const name = await errorName(fetch(`${o}/redirect?n=21`));
+    expect(name === "TypeError", `21 hops: ${name}`);
+    return "20 ok, 21 TypeError";
   }],
   ["redirect: error", async (o) => {
     const name = await errorName(fetch(`${o}/redirect?n=1`, { redirect: "error" }));

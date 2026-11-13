@@ -34,7 +34,7 @@ overrides:
 ## 3. Install the library
 
 ```sh
-pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#v0.4.0-rc.5&path:packages/svelte-native"
+pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#v0.4.0-rc.6&path:packages/svelte-native"
 ```
 
 If pnpm stops with `ERR_PNPM_GIT_RESOLVE_FAILED`, see [Troubleshooting](troubleshooting#pnpm-cannot-read-the-repository).

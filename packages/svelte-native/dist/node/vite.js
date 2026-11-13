@@ -320,7 +320,7 @@ function syncRoutes(root, options = {}) {
   mkdirSync(output, { recursive: true });
   const manifest = treeModule(buildTree(routeFilesSync(routesRoot, { lab })), routesRoot, output, variant, lab);
   const customRoot = process.env.SVELTE_NATIVE_ROOT;
-  const prelude = "import '@alfayez/svelte-native/init';\nimport '@alfayez/svelte-native/polyfills';\nimport { createFabricApp, remountSurfaces } from '@alfayez/svelte-native/fabric';\n";
+  const prelude = "import { createFabricApp, remountSurfaces } from '@alfayez/svelte-native/app';\n";
   const hot = "declare const module: { hot?: { accept(callback?: () => void): void } };\nif (__DEV__) module.hot?.accept(() => remountSurfaces());\n";
   const entry = customRoot ? `${prelude}import App from ${JSON.stringify(posix(relative(output, resolve2(root, customRoot))))};
 createFabricApp(App, {});

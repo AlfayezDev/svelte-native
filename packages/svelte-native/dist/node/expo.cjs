@@ -322,7 +322,7 @@ function syncRoutes(root, options = {}) {
   (0, import_node_fs2.mkdirSync)(output, { recursive: true });
   const manifest = treeModule(buildTree(routeFilesSync(routesRoot, { lab })), routesRoot, output, variant, lab);
   const customRoot = process.env.SVELTE_NATIVE_ROOT;
-  const prelude = "import '@alfayez/svelte-native/init';\nimport '@alfayez/svelte-native/polyfills';\nimport { createFabricApp, remountSurfaces } from '@alfayez/svelte-native/fabric';\n";
+  const prelude = "import { createFabricApp, remountSurfaces } from '@alfayez/svelte-native/app';\n";
   const hot = "declare const module: { hot?: { accept(callback?: () => void): void } };\nif (__DEV__) module.hot?.accept(() => remountSurfaces());\n";
   const entry = customRoot ? `${prelude}import App from ${JSON.stringify(posix((0, import_node_path3.relative)(output, (0, import_node_path3.resolve)(root, customRoot))))};
 createFabricApp(App, {});
@@ -359,7 +359,7 @@ var RemoteConfigError = class extends Error {
   }
 };
 var EXTRA_KEY = "svelteNative";
-var HOW = 'Set `extra.svelteNative.remote.origin` in app.config.ts (the "@alfayez/svelte-native/expo" plugin\'s `remote` option writes it), or call `configureRemote({ origin })` before the first remote function.';
+var HOW = 'Set `extra.svelteNative.remote.origin` in app.config.ts (the "@alfayez/svelte-native" plugin\'s `remote` option writes it), or call `configureRemote({ origin })` before the first remote function.';
 function normalizeOrigin(value) {
   if (typeof value !== "string" || value.trim() === "") throw new RemoteConfigError(`The remote origin must be a URL string such as "https://app.example.com", not ${JSON.stringify(value)}. ${HOW}`);
   let url;

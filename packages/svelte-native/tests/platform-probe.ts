@@ -21,6 +21,8 @@ const modules: Record<string, Record<string, unknown>> = {
   "react-native/Libraries/Share/Share": { default: { share: () => Promise.resolve({ action: "sharedAction" }) } },
   "react-native/Libraries/Vibration/Vibration": { default: { vibrate() {}, cancel() {} } },
   "react-native/Libraries/Alert/Alert": { default: { alert() {} } },
+  "react-native/Libraries/TurboModule/TurboModuleRegistry": { getEnforcing: (name: string) => { if (name === "Missing") throw new Error("no module Missing"); return { turbo: name }; } },
+  "react-native/Libraries/BatchedBridge/NativeModules": { default: { Legacy: { ping: true } } },
 };
 for (const [path, module] of Object.entries(modules)) {
   mock.module(path, () => {
@@ -68,4 +70,12 @@ result.written = ((modules["react-native/Libraries/AppState/AppState"] as { defa
 result.has = ["currentState" in platform.AppState, "missing" in platform.AppState];
 result.keys = Object.keys(platform.AppState).sort();
 result.finalLoads = loads.length;
+
+// `turboModule` and `nativeModule` (native-modules.ts) are exports of the entry too: each requires React Native's registry on its first call, not before.
+result.loadsBeforeModules = loads.length;
+result.turbo = platform.turboModule<{ turbo: string }>("Blob");
+result.turboMissing = (() => { try { platform.turboModule("Missing"); return "returned"; } catch (error) { return (error as Error).message; } })();
+result.legacy = platform.nativeModule<{ ping: boolean }>("Legacy");
+result.legacyMissing = platform.nativeModule("Nothing") ?? null;
+result.afterModules = loads.slice(result.loadsBeforeModules as number);
 console.log(JSON.stringify(result));

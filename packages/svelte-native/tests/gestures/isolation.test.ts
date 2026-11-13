@@ -43,11 +43,18 @@ test("the Fabric host reaches the gesture host through `require` only: nothing o
   expect(reachable(meta, src("fabric/host.ts")).filter((path) => path === "src/fabric/gestures.ts")).toEqual(["src/fabric/gestures.ts"]);
 });
 
-test("neither the package entry, the Fabric entry nor the animation entry import the gesture host or RNGH at start", async () => {
-  for (const entry of ["index.ts", "fabric/index.ts", "animation.ts"]) {
+test("neither the Fabric entry nor the animation entry import the gesture host or RNGH at start", async () => {
+  for (const entry of ["fabric/index.ts", "animation.ts"]) {
     const meta = await graph(src(entry));
     expect(reachable(meta, src(entry), "import-statement").filter(gestureCode), entry).toEqual([]);
   }
+});
+
+test("the package entry re-exports the gestures: at start it imports what the gestures entry does (the sugar and five constants), and not the gesture host or any builder", async () => {
+  const gestures = reachable(await graph(src("gestures/index.ts")), src("gestures/index.ts"), "import-statement").filter(gestureCode);
+  const main = reachable(await graph(src("index.ts")), src("index.ts"), "import-statement").filter(gestureCode);
+  expect(main).toEqual(gestures);
+  expect(main.filter((path) => path === "src/fabric/gestures.ts" || path.startsWith("rngh/handlers/") || path === "rngh/mountRegistry.ts")).toEqual([]);
 });
 
 test("the public entry imports no builders at start: only RNGH's five constants and the sugar", async () => {

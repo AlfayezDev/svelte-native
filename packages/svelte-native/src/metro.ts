@@ -262,8 +262,8 @@ export function withSvelteNative(config: ConfigT, options: SvelteNativeMetroOpti
     return result;
     },
   };
-  // The Fabric entry boots through our own init (its first import, so it is in the module graph and runs before
-  // the app) instead of InitializeCore, which is dropped from the pre-main list; every other pre-main module is kept.
+  // The Fabric entry boots through our own init (the first import of `@alfayez/svelte-native/app`, which the entry imports, so it is in the module graph and
+  // runs before the app) instead of InitializeCore, which is dropped from the pre-main list; every other pre-main module is kept.
   // Expo's serializer holds on to this very `serializer` object, so the option is replaced in place rather than copied.
   const serializer = config.serializer as { -readonly [K in keyof ConfigT["serializer"]]: ConfigT["serializer"][K] };
   const runBeforeMain = serializer.getModulesRunBeforeMainModule;

@@ -18,3 +18,7 @@ export function diffPayload(previous: Record<string, unknown>, next: Record<stri
   }
   return changed ? payload : null;
 }
+
+// The main entry exports the SVG components, whose host modules define their view kinds and convert colours at import time; these bundles mount none of them.
+export const defineViewKind = (): void => {};
+export const processColorValue = (color: unknown): unknown => color;

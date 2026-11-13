@@ -345,7 +345,7 @@ describe("three apps: the product and the QA app link the product's native modul
 	}
 	/** The `autolinkingExclude` the Svelte native plugin gets from app.config.ts for a variant: what it writes into settings.gradle and the Podfile. */
 	function configuredExclude(variant: keyof typeof variantEnv): string[] {
-		const plugin = config(variant).plugins.find((entry) => pluginName(entry) === "@alfayez/svelte-native/expo") as [string, { autolinkingExclude: string[] }];
+		const plugin = config(variant).plugins.find((entry) => pluginName(entry) === "@alfayez/svelte-native") as [string, { autolinkingExclude: string[] }];
 		return plugin[1].autolinkingExclude;
 	}
 	/** The packages each autolinker would link for a platform, given the excludes the build passes both (settings.gradle's `--exclude` list / the Podfile's). */

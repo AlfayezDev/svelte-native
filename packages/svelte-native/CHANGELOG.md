@@ -4,6 +4,21 @@ Notable changes to `@alfayez/svelte-native` (named `@rasheed/svelte-native` up t
 
 ## Unreleased
 
+### Changed
+
+- One import for the library: `@alfayez/svelte-native` also exports everything `/animation`, `/gestures` and `/svg` did, and `BlurView` (the library's own blur; `/foreign` still exports it too). `import { View, Text, AnimatedView, Gesture, createSharedValue, withSpring, Svg, Path } from "@alfayez/svelte-native"` works. Reanimated and the gesture builders still load on first use, not when the app starts; the main entry now evaluates the animation, gesture and SVG modules at start, which `/animation`, `/gestures` and `/svg` did only for an app that imported them.
+- Four SVG elements take another name in the main entry than react-native-svg's: `Text` and `Image` are `SvgText` and `SvgImage`, because `Text` and `Image` are the views there (the compiler lowers those two to native elements; `SvgText` and `SvgImage` are left as components), and `LinearGradient` and `Marker` are `SvgLinearGradient` and `SvgMarker`, because `/foreign` has a `LinearGradient` (expo-linear-gradient) and a `Marker` (maps) of its own. The other SVG names are the same, and the main entry exports no name that `/foreign` also exports for a different component.
+- `react-native-svg` (15.15.4) is a required peer dependency: the main entry exports its components, so every app has it. `svelte-native init` adds it to `package.json`, `svelte-native doctor` fails when it is missing or out of range (it was an optional peer, skipped), and `examples/minimal` lists it. An existing app runs `pnpm add react-native-svg@15.15.4`, then `npx expo prebuild` if it did not have it.
+- `turboModule` and `nativeModule` are exports of `@alfayez/svelte-native/platform`, with `Platform`, `Dimensions` and the rest of the platform modules. They still load React Native's registries on their first call.
+- The Expo config plugin is named by the package, `plugins: ["@alfayez/svelte-native"]` (Expo loads the package's `app.plugin.js`), which `svelte-native init`, the guide and the example apps write now; `@alfayez/svelte-native/app.plugin` is the same file. `svelte-native doctor` accepts all three names (`/expo` too, with a note that it is deprecated).
+- The generated entry (`.svelte-native/entry.ts`) is one import, `import { createFabricApp, remountSurfaces } from "@alfayez/svelte-native/app"`, where it was three (`/init`, `/polyfills`, `/fabric`). `/app` runs `init`, then `polyfills`, then loads the Fabric host, as before, and exports `createFabricApp`, `remountSurfaces`, `showError`, `fabricStats` and `flush`. An entry written by an earlier release keeps working until `svelte-native sync` rewrites it (`svelte-native dev`, `android`, `ios` and `build` run it). Apps do not import `/app` themselves.
+- `use:gesture` works from the main entry (`import { gesture } from "@alfayez/svelte-native"`) as it did from `/gestures`: no warning about an action on a native element.
+- The remote function runtime and its globals stay two internal entries (`/remote/runtime`, `/remote/globals`): SvelteKit's client files import the globals and the runtime imports those files, so one module for both would import itself. An app does not import either.
+
+### Deprecated
+
+- `@alfayez/svelte-native/animation`, `/gestures`, `/svg` (its `Text`, `Image`, `LinearGradient` and `Marker`, and `Svg` as its default, keep their names), `/native-modules`, `/expo`, `/init`, `/polyfills` and `/fabric` still work in this release and are removed in 0.4.0-rc.7. Import from `@alfayez/svelte-native` (animation, gestures, SVG), `@alfayez/svelte-native/platform` (`turboModule`, `nativeModule`), name the plugin `@alfayez/svelte-native` (`/expo`), and run `svelte-native sync` for `/init`, `/polyfills` and `/fabric` (the entry imports `/app`). An editor strikes the deprecated names through (`@deprecated` on each export); nothing is logged when the app runs.
+
 ## 0.4.0-rc.5 - 2026-11-13
 
 ### Changed

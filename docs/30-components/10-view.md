@@ -40,7 +40,7 @@ A `View` can't hold text directly. A string outside a [`Text`](text) isn't drawn
 | `onPressChange` | `(pressed: boolean) => void` | | `true` when a press becomes active, `false` when it ends. Keep it in a `$state` to draw a pressed look. |
 | `delayLongPress` | `number` | `500` | Milliseconds before `onLongPress`. |
 | `hitSlop` | `number \| Insets` | | How far outside the view a touch still counts. |
-| `gesture` | `Gesture` | | A gesture from `@alfayez/svelte-native/gestures` to recognise on this view. See [gestures](gestures). |
+| `gesture` | `Gesture` | | A gesture from `@alfayez/svelte-native` to recognise on this view. See [gestures](gestures). |
 | `ref` | `(handle: HostHandle \| null) => void` | | Receives the view's handle when it's created, and `null` when it's destroyed. See [ref](#ref). |
 | `onLayout` | `(event) => void` | | Called with the view's size and position (`event.nativeEvent.layout`) after every layout that changes them. |
 | `pointerEvents` | `'auto' \| 'none' \| 'box-none' \| 'box-only'` | `'auto'` | Whether the view and its children take touches. `'box-none'`: the children do, the view doesn't. |

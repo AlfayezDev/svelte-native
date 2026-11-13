@@ -2,7 +2,8 @@
  * React Native's JavaScript-only platform modules, typed, for an app that has no React: `Platform`, `Appearance`, `Dimensions`,
  * `Linking`, `Keyboard`, `AppState`, `BackHandler`, `PixelRatio`, `Share`, `Vibration` and `Alert`. They are React Native's own
  * objects (the same instances `react-native` exports, so a library that imports them from the index sees the same state), reached by
- * the paths of `react-native/Libraries/…` because the `react-native` index would load React's components too.
+ * the paths of `react-native/Libraries/…` because the `react-native` index would load React's components too. The entry also exports the
+ * two lookups of native modules, `turboModule` and `nativeModule` (`native-modules.ts`), which load React Native's registry on their first call.
  *
  * Importing this entry loads none of them. Each export is a stand-in that requires its module on the first property read, so a
  * screen that reads `Platform.OS` pays for `Platform` and nothing else (`Keyboard` pulls in `LayoutAnimation` and `UIManager`, which
@@ -13,6 +14,8 @@
  * library runs on: `Platform.OS === "ios"` narrows `Platform.Version` to a string, and `"android"` to a number.
  */
 import type * as ReactNative from "react-native";
+
+export { nativeModule, turboModule } from "./native-modules.ts";
 
 /** A stand-in for a module object: every read, write and key listing goes to `read()`, which loads the module the first time. */
 function lazyModule<T extends object>(read: () => T): T {

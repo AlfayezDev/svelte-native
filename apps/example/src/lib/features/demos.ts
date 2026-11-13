@@ -51,6 +51,7 @@ export const demos: readonly Demo[] = [
   { doc: "20-core-concepts/20-styling.md", route: "/classes", durationMs: 11200, notes: "Selects the card (a class that depends on state), scrolls through the utilities, the layout classes, the safe area and the class and style example." },
   { doc: "20-core-concepts/40-state-management.md", route: "/state", durationMs: 11500, notes: "Counts up ($state, $derived), runs the timer ($effect), ticks a todo and adds one by typing it, asks again ({#await}), then puts it all back." },
   { doc: "20-core-concepts/50-html-elements.md", route: "/html", durationMs: 10100, notes: "Types a name and an address into the form, adds the contact to the list, then removes it through the dialog." },
+  { doc: "20-core-concepts/60-sveltekit-modules.md", route: "/sveltekit", durationMs: 10400, notes: "Types a word, goes through the filters with goto('?filter=...') (the url line and the page section follow, the word stays: the screen is not built again), moves the Spring ball twice, then opens item 7 with goto(resolve(...)), which pushes a screen." },
 
   // Components
   { doc: "30-components/10-view.md", route: "/layout", durationMs: 11700, notes: "Walks through the values of justifyContent (the row moves), then scrolls down to alignItems, flexWrap, flex and absolute position, and back." },

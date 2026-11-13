@@ -3,7 +3,7 @@ title: SvelteKit modules
 video: sveltekit-modules
 ---
 
-A page you share with the web imports SvelteKit's modules: `goto` from `$app/navigation`, `page` from `$app/state`, `resolve` from `$app/paths`, `spring` from `svelte/motion`. The same imports work in a native screen. When the app is built for a phone, Metro resolves each of them to the library's own implementation, which reads the app's router, the system and the build, so the code needs no `if` for the device.
+A page you share with the web imports SvelteKit's modules: `goto` from `$app/navigation`, `page` from `$app/state`, `resolve` from `$app/paths`, `spring` from `svelte/motion`, `MediaQuery` from `svelte/reactivity`. The same imports work in a native screen. When the app is built for a phone, Metro resolves each of them to the library's own implementation, which reads the app's router, the system and the build, so the code needs no `if` for the device.
 
 | Module | On the device |
 | --- | --- |
@@ -12,7 +12,8 @@ A page you share with the web imports SvelteKit's modules: `goto` from `$app/nav
 | [`$app/env`](#environment-and-mobile) | `browser` is `false`, `dev` is `__DEV__`, `version` is the app's version, and `mobile` is `true`. |
 | [`$app/environment`](#environment-and-mobile) | The name SvelteKit 3 deprecates `$app/env` under: the same module. |
 | [`$app/paths`](#paths) | `resolve` builds the path of a route. `asset` and `match` too. |
-| [`svelte/motion`](#motion) | Svelte's own, with a `prefersReducedMotion` that reads the system's setting. |
+| [`svelte/motion`](#motion) | Svelte's own. `prefersReducedMotion` reads the system's setting. |
+| [`svelte/reactivity`](#media-queries) | `MediaQuery` and `window.matchMedia` read the window's size, the scheme and the accessibility settings. `svelte/reactivity/window` is the window's size ([Platform APIs](platform-apis#window-size)). |
 
 The types are SvelteKit's own, so install `@sveltejs/kit` in the project and nothing needs declaring. The library adds one export, `mobile`, and its declaration comes with the library: a program that has your `vite.config.ts` sees it through the plugin it imports, and one that has your native screens through the router they import.
 
@@ -161,7 +162,7 @@ An optional parameter (`[[lang]]`) is left out when it is missing or empty, and 
 
 ## Motion
 
-`Spring`, `Tween`, `spring` and `tweened` from `svelte/motion` are Svelte's own. They run on `requestAnimationFrame`, which React Native has. `prefersReducedMotion` isn't: Svelte builds it from `matchMedia`, which React Native lacks, and its module throws `window.matchMedia is not a function` as soon as it is imported. The library's `svelte/motion` loads Svelte's with that one call covered, and `prefersReducedMotion.current` reads the system's setting instead (Reduce Motion on iOS; animations turned off on Android). It is reactive like Svelte's: a template, `$derived` or `$effect` that reads it runs again when the setting changes. It is `false` for the moment before the system answers, which is shortly after the app starts.
+`Spring`, `Tween`, `spring`, `tweened` and `prefersReducedMotion` from `svelte/motion` are Svelte's own. The first four run on `requestAnimationFrame`, which React Native has. `prefersReducedMotion` is a `MediaQuery` of `(prefers-reduced-motion: reduce)`, so `prefersReducedMotion.current` is the system's setting (Reduce Motion on iOS; animations turned off on Android) and is reactive like on the web: a template, `$derived` or `$effect` that reads it runs again when the setting changes. It is `false` for the moment before the system answers, which is shortly after the app starts.
 
 ```svelte
 <script lang="ts">
@@ -171,7 +172,46 @@ An optional parameter (`[[lang]]`) is left out when it is missing or empty, and 
 </script>
 ```
 
-The other `svelte/*` modules that read the window have a counterpart too: `svelte/reactivity/window` is the window's size ([Platform APIs](platform-apis#window-size)). `MediaQuery` from `svelte/reactivity` is not one of them. It reads `matchMedia` and throws when it is constructed, so use `windowSize` for sizes, `colorScheme` for dark mode and `prefersReducedMotion` for motion.
+Svelte builds `prefersReducedMotion` when `svelte/motion` loads, and it calls `window.matchMedia` then. The app's entry installs the library's `matchMedia` before any screen's code is loaded, so there is nothing to do.
+
+## Media queries
+
+React Native has no `window.matchMedia`, which Svelte's `MediaQuery` and a lot of code shared with the web call. The library adds one, so both work on the device. `MediaQuery` from `svelte/reactivity` is Svelte's own: `current` is the answer, and a template, `$derived` or `$effect` that reads it runs again when the answer changes.
+
+```svelte
+<!--- file: src/lib/Layout.svelte --->
+<script lang="ts">
+	import { MediaQuery } from 'svelte/reactivity';
+
+	const wide = new MediaQuery('(min-width: 600px)');
+	const portrait = new MediaQuery('(orientation: portrait)');
+	const dark = new MediaQuery('(prefers-color-scheme: dark)');
+</script>
+
+<p>{wide.current ? 'Wide' : 'Narrow'}, {portrait.current ? 'portrait' : 'landscape'}, {dark.current ? 'dark' : 'light'}</p>
+```
+
+`window.matchMedia(query)` is the browser's: a `MediaQueryList` with `matches` (read from the system each time), `media` (the query as a browser writes it: lower case, `(min-width: 600px)`), `onchange`, `addEventListener('change', listener)` and `removeEventListener`, the older `addListener` and `removeListener`, and `dispatchEvent`. A `change` event has `matches` and `media`, and comes only when the answer flips: a window that gets wider while the query still matches says nothing. A list listens to the system while it has a listener and not before or after, so a `MediaQuery` that no effect reads costs nothing.
+
+The queries are the browser's: a comma is `or`, and `not`, `only`, `and`, `or` and parentheses work as in CSS, as does the range syntax: `(width >= 600px)`, `(400px <= width < 700px)`. The media types `all` and `screen` match, and `print` and every other type don't. The features, and what each reads on the device:
+
+| Feature | On the device |
+| --- | --- |
+| `width`, `height` (`min-` and `max-`) | The window's size in points (dp, the `px` of CSS): `Dimensions`' `window`. It changes when the device turns, a foldable opens, or the window is split. `em` and `rem` are 16px; `pt`, `pc`, `in`, `cm`, `mm` and `q` are converted; viewport units are not understood. A unitless `0` is allowed. |
+| `orientation` | `portrait` when the window is at least as tall as it is wide, `landscape` otherwise. |
+| `aspect-ratio` (`min-` and `max-`) | The window's width over its height, written `16/9` or `16 / 9`. |
+| `resolution` (`min-` and `max-`), `-webkit-device-pixel-ratio` (`-webkit-min-` and `-webkit-max-`) | The window's pixel ratio, `PixelRatio.get()`: `2` is `2dppx`, `2x`, `192dpi` and `-webkit-device-pixel-ratio: 2`. |
+| `prefers-color-scheme` | `dark` or `light`, from `Appearance`; a system that reports none is light. `Appearance.setColorScheme` overrides it. |
+| `prefers-reduced-motion` | `reduce` when the system's Reduce Motion is on (Android: animations turned off), from `AccessibilityInfo`. React Native answers that question asynchronously, so a query made before the answer is `no-preference`, and its `change` event comes when the answer is `reduce`. |
+| `prefers-contrast` | `more` when iOS's Increase Contrast (darker system colors) or Android's high contrast text is on, from `AccessibilityInfo`; `no-preference` otherwise. `less` and `custom` never match. It answers like `prefers-reduced-motion`. |
+| `hover`, `any-hover` | `none`: a phone has no hover. |
+| `pointer`, `any-pointer` | `coarse`: a finger. |
+| `display-mode` | `standalone`: the app is not in a browser. |
+| `color` (`min-` and `max-`) | `8`, bits per color component. |
+
+A feature written alone, `(hover)`, `(color)`, `(prefers-reduced-motion)`, is true when its value is not `none`, `no-preference` or zero. A feature that is not in the table (`device-width`, `forced-colors`, `update`, `monochrome`, `color-gamut`, ...), a value it does not take (`(min-width: red)`, `(hover: sideways)`) and a query that does not parse (`(min-width: 600px`, `screen and`) are `not all`, as in a browser: the query is false, `media` says `not all`, and nothing throws. Of a comma-separated list, only the part that doesn't parse is `not all`; the others still decide. So `matchMedia('(forced-colors)').media === 'not all'` tells you the device does not have the feature, as it does on the web.
+
+The window and the scheme are the same values as `windowSize` and `colorScheme` ([Platform APIs](platform-apis#window-size)). Use those for a number or a scheme; use a media query for code shared with the web, or for a condition that is more than one comparison.
 
 ## Not available
 

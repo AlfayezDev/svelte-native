@@ -9,5 +9,11 @@
   const seen = (globalThis.__kitSeen = []);
   $effect(() => { seen.push(`${page.url.pathname} ${JSON.stringify(page.params)} ${page.route.id}`); });
   export function root() { return router; }
+  // `fn` in an effect of its own, and how many times that effect has run: what an app's `$effect(() => { if (!signedIn) goto("/sign-in") })` is.
+  export function inEffect(fn) {
+    let runs = 0;
+    const stop = $effect.root(() => { $effect(() => { runs++; fn(); }); });
+    return { runs: () => runs, stop };
+  }
 </script>
 <Router {router} />

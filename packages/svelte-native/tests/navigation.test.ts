@@ -1177,12 +1177,12 @@ test("a screen pushed while another leaves goes below it; a replacement, a reset
     app.goto("/b/3");
     await turns(m);
     app.back();
-    app.goto("/a?x=1");
+    app.goto("/c");
     await turns(m);
-    expect(app.screens()).toEqual(["/:root:live", "/a:back:live", "/a:back:live", "/b/3:back:leaving"]);
+    expect(app.screens()).toEqual(["/:root:live", "/a:back:live", "/c:back:live", "/b/3:back:leaving"]);
     app.goto("/b/4", { replaceState: true });
     await turns(m);
-    expect(app.screens()).toEqual(["/:root:live", "/a:back:live", "/b/4:back:live", "/a:back:leaving", "/b/3:back:leaving"]); // the new screen goes under the ones that leave
+    expect(app.screens()).toEqual(["/:root:live", "/a:back:live", "/b/4:back:live", "/c:back:leaving", "/b/3:back:leaving"]); // the new screen goes under the ones that leave
     app.goto("/a", { reset: true });
     await turns(m);
     expect(app.stack()).toEqual(["/a:push"]);

@@ -457,11 +457,33 @@ function createStore(tree: StackNode) {
     return read;
   }
 
+  /**
+   * The screen the user sees when `target` is that same screen with another search or hash (the same page at the same path, so the same parameters), unless the navigation is a `reset`,
+   * which makes a new root. Going there does not add a screen: `navigate` changes that screen's `url` in place. A new screen for `?tab=2` would be a remount of the very page the user is on.
+   */
+  function inPlace(target: Resolution, navigation: Navigation): NativeLocation | undefined {
+    if (navigation.reset) return undefined;
+    const top = root.entries.at(-1);
+    const shown = top && deepest(top);
+    return shown && shown.route === target.page && shown.url.pathname === new URL(target.href, BASE).pathname ? shown : undefined;
+  }
+
+  /** Untracked, like `prepare`: an effect that navigates (`$effect(() => { if (!signedIn) goto("/sign-in") })`) must not depend on the stacks the navigation reads and writes. */
   function navigate(href: string, navigation: Navigation): void {
-    const target = resolved(href);
-    apply(plan(stateOf(target), target, navigation), target, true);
-    // A navigation passes through the navigators of its chain: the layout of each is loaded if it is not, and again if its load failed (a pane's layout is no route of any stack, so nothing else would).
-    for (const { node } of target.chain) if (node.layout) load(node);
+    untrack(() => {
+      const target = resolved(href);
+      const shown = inPlace(target, navigation);
+      if (shown) {
+        const { search, hash } = new URL(target.href, BASE);
+        if (shown.url.search !== search) shown.url.search = search;
+        if (shown.url.hash !== hash) shown.url.hash = hash;
+        navigations++;
+        return;
+      }
+      apply(plan(stateOf(target), target, navigation), target, true);
+      // A navigation passes through the navigators of its chain: the layout of each is loaded if it is not, and again if its load failed (a pane's layout is no route of any stack, so nothing else would).
+      for (const { node } of target.chain) if (node.layout) load(node);
+    });
   }
 
   /** The navigation of this tree that is being prepared, if any. A newer `prepare` takes its screen (two forks on the one stack would each hold a stack the other has not seen); the router's disposal drops it. */
@@ -480,7 +502,7 @@ function createStore(tree: StackNode) {
     // Untracked: an effect that calls `prepare` must not depend on the stacks it reads.
     const { forward, routes } = untrack(() => {
       const operations = plan(stateOf(target), target, navigation);
-      const forward = operations.length > 0 && operations.every((operation) => operation.op === "push" || operation.op === "select");
+      const forward = !inPlace(target, navigation) && operations.length > 0 && operations.every((operation) => operation.op === "push" || operation.op === "select");
       // What `navigate` loads, and what the screens it makes render, loaded now: a fork renders the screens at once, and a module that arrives after it would render its page later, outside the fork,
       // with its effects running at once (or, for a pane base, never: the pane stays on its loading placeholder).
       const routes: (PageRoute | RouteNode)[] = [target.page, ...paneBases(target), ...target.chain.map(({ node }) => node).filter((node) => node.layout)];
@@ -753,7 +775,9 @@ export function openLaunchURL(router: Router, accept?: (url: string) => boolean)
 
 /** The app's root router while the component that created it lives. Reactive: what `page` (`$app/state`) follows, and `goto` (`$app/navigation`) drives, from any code. */
 let appRoot = $state.raw<Router | undefined>(undefined);
-/** The app's root router (the one `createRouter` made with the scope `"root"`), or `undefined` before the app creates it and after its component is gone. A read inside an effect or a template follows it. */
+/** The root routers whose components are alive, oldest first: `appRoot` is the last. Plain, not state: a teardown that reads a source written in the same batch gets its value from before the write. */
+const liveRoots: Router[] = [];
+/** The app's root router (the newest one `createRouter` made with the scope `"root"` whose component is alive), or `undefined` before the app creates it and after it is gone. A read inside an effect or a template follows it. */
 export const rootRouter = (): Router | undefined => appRoot;
 
 /**
@@ -806,9 +830,14 @@ export function createRouter(tree: StackNode, initial = "/", options: RouterScop
   } else if (scope !== undefined) scopes.set(scope, store.snapshot);
   const router = makeRouter({ store, node: tree, scope, above, navigator: { kind: "stack", stack: store.root }, active: options.active ?? (() => true) });
   if (scope === "root") {
+    liveRoots.push(router);
     appRoot = router;
-    // A router made in its place (a remount of the app shell) may already have taken the registration.
-    onDestroy(() => { if (appRoot === router) appRoot = undefined; });
+    // The newest router that is still alive is the app's: a surface that starts before another one stops (a remount of the app shell) keeps the registration, and the one that stops last leaves none.
+    onDestroy(() => {
+      const at = liveRoots.indexOf(router);
+      if (at >= 0) liveRoots.splice(at, 1);
+      appRoot = liveRoots.at(-1);
+    });
   }
   return router;
 }

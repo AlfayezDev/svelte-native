@@ -90,7 +90,7 @@ patches
   …
 
 build integration
-  pass  @example/svelte-native 0.4.0-rc.3 is a dependency of the app
+  pass  @example/svelte-native 0.4.0-rc.4 is a dependency of the app
   pass  metro.config.cjs uses withSvelteNative
   pass  app.json lists the @example/svelte-native/expo plugin
 

@@ -51,6 +51,7 @@ A release is a tag with its [changelog](CHANGELOG.md) entry. What `pnpm install`
 - **Dependencies of the app.** Next to the library and `svelte`, the app's `package.json` lists the peers that are not optional, at the versions it was exercised on:
   - `expo` 57.0.30 and `expo-constants` 57.0.22 (the peer ranges are `~57.0.27` and `~57.0.21`), `react` 19.2.7 and `react-native` 0.86.3;
   - `react-native-gesture-handler` 2.32.0, `react-native-reanimated` 4.5.1 and `react-native-worklets` 0.10.1, exactly: a patch (below) is for one version;
+  - `react-native-svg` 15.15.4, exactly: the main entry exports its elements as Svelte components (`Svg`, `Path`, ...), so it is a required peer with native code, and `svelte-native init` installs it;
   - `hermes-intl` ^0.1.2, a dependency of the app itself: the polyfills import it for the `Intl` constructors Hermes lacks (`PluralRules`, `RelativeTimeFormat`, `ListFormat`, `Locale`), Metro stops with `Unable to resolve module hermes-intl` without it, and it carries a native module that React Native's autolinking links only from the app's own dependencies (`svelte-native doctor` checks both).
 
   `@sveltejs/kit` (3.1.1 exactly) and `vite` are **optional**: remote functions and the web target need them (SvelteKit's client runtime is reused, and the Vite plugin runs the web build). An app that builds for native only installs neither, and the Metro plugin, the transformer and the runtime load and bundle without them; a feature that does need SvelteKit fails with a message that names the package.
@@ -104,7 +105,7 @@ module.exports = withSvelteNative(getDefaultConfig(__dirname));
 plugins: [["@alfayez/svelte-native", { autolinkingExclude: [], androidOnDemandViewManagers: {} }]]
 ```
 
-Name the plugin by the package's own name, as for any Expo library: the package has an `app.plugin.js` at its root, which Expo looks for before the package's main entry. `@alfayez/svelte-native/expo` is the same plugin by its path and keeps working (an `app.json` or `app.config` that names it is fine). No `babel.config.js` is needed: Expo's default preset gives the same bundle (checked byte for byte). The app needs `src/routes/+layout.mobile.svelte` (the generated entry imports it as the app shell) and at least one `+mobile.svelte`.
+Name the plugin by the package's own name, as for any Expo library: the package has an `app.plugin.js` at its root, which Expo looks for before the package's main entry. `@alfayez/svelte-native/app.plugin` is that file by its path, and `@alfayez/svelte-native/expo`, the same plugin, is a deprecated alias that is removed in 0.4.0-rc.7 (an `app.json` or `app.config` that names it works until then). No `babel.config.js` is needed: Expo's default preset gives the same bundle (checked byte for byte). The app needs `src/routes/+layout.mobile.svelte` (the generated entry imports it as the app shell) and at least one `+mobile.svelte`.
 
 Run the commands as `pnpm exec svelte-native <command>`, or from `package.json` scripts (`"android": "svelte-native android"`):
 
@@ -123,11 +124,13 @@ svelte-native sync              # only regenerate .svelte-native/
 | `svelte-native` (the bin) | the shell, `pnpm exec`, an npm script | `dist/node/cli.js` (ES module, shebang) |
 | `@alfayez/svelte-native/metro` | `metro.config.cjs`, which `require`s it | `dist/node/metro.cjs` |
 | `@alfayez/svelte-native/transformer` | Metro's workers (`babelTransformerPath`, which `withSvelteNative` sets) | `dist/node/transformer.cjs` |
-| `@alfayez/svelte-native/expo`, and the bare `@alfayez/svelte-native` (Expo's lookup of a package's `app.plugin.js`) | `@expo/config` and `expo prebuild`, which `require` the plugin | `dist/node/expo.cjs` (`app.plugin.js` re-exports it) |
+| the bare `@alfayez/svelte-native` (Expo's lookup of a package's `app.plugin.js`), `@alfayez/svelte-native/app.plugin`, and the deprecated `@alfayez/svelte-native/expo` | `@expo/config` and `expo prebuild`, which `require` the plugin | `dist/node/expo.cjs` (`app.plugin.js` re-exports it) |
 | `@alfayez/svelte-native/vite` | Vite, which imports the plugin from `node_modules` natively | `dist/node/vite.js` (ES module) |
 | `@alfayez/svelte-native/lower` | Node, for a tool that lowers `.svelte` files | `dist/node/lower.js` (ES module) |
 | `@alfayez/svelte-native/routes` | the web build (the table is empty there); Metro resolves it to the generated table | `dist/node/routes.js` (empty) |
-| `.` and every other entry (`/core`, `/router`, `/fabric`, `/renderer`, `/animation`, `/gestures`, `/foreign`, `/svg`, `/updates`, `/remote`, `/native-modules`, `/platform`, `/polyfills`, `/init`) | Metro, which compiles them with the app (they import `react-native`) | `src/*.ts` |
+| `.` and every other entry | Metro, which compiles them with the app (they import `react-native`) | `src/*.ts` |
+
+The entries an app imports are `.` (components, navigation, animation, gestures and SVG), `/foreign`, `/platform`, `/router`, `/remote` and `/updates`. `/app` is the one the generated entry imports: it runs `init`, then `polyfills`, then loads the Fabric host. `/core`, `/renderer`, `/elements`, `/classes-table`, `/remote/runtime` and `/remote/globals` are the library's own inside (the lowering, the Metro transformer and the generated route table import them). Until 0.4.0-rc.7, `/animation`, `/gestures`, `/svg`, `/native-modules`, `/expo`, `/init`, `/polyfills` and `/fabric` stay as deprecated aliases (an editor strikes their names through); each is replaced by `.`, `/platform`, the plugin's package name or `/app` ([CHANGELOG](CHANGELOG.md)).
 
 The built files are bundles of the Node-side code (the command line, the route generator, the Metro integration, the remote function transform, the doctor) with every package left as an import: they use the app's `svelte`, `expo`, `@sveltejs/kit` and the package's own dependencies, and name the runtime files Metro compiles (`src/fabric/…`) by path into the installed package.
 
@@ -235,12 +238,11 @@ A stack layout renders `<Stack header={{ large: true }} animation="slide_from_ri
 
 ## Gestures
 
-`@alfayez/svelte-native/gestures` puts react-native-gesture-handler on Svelte views: its recognisers and arbitration unchanged, its `Gesture.Pan()`, `Tap()`, `Pinch()`, `Rotation()`, `Fling()`, `LongPress()`, `Native()` and `Manual()` builders and `Race`/`Simultaneous`/`Exclusive` as they are. The app wraps nothing.
+`@alfayez/svelte-native` puts react-native-gesture-handler on Svelte views: its recognisers and arbitration unchanged, its `Gesture.Pan()`, `Tap()`, `Pinch()`, `Rotation()`, `Fling()`, `LongPress()`, `Native()` and `Manual()` builders and `Race`/`Simultaneous`/`Exclusive` as they are. The app wraps nothing.
 
 ```svelte
 <script lang="ts">
-  import { AnimatedView, createSharedValue, withSpring } from "@alfayez/svelte-native/animation";
-  import { Gesture } from "@alfayez/svelte-native/gestures";
+  import { AnimatedView, Gesture, createSharedValue, withSpring } from "@alfayez/svelte-native";
   const x = createSharedValue(0); // first: it loads Reanimated
   const pan = Gesture.Pan()
     .onUpdate((e) => { x.value = e.translationX; })  // a worklet, on the UI thread
@@ -253,11 +255,11 @@ A stack layout renders `<Stack header={{ large: true }} animation="slide_from_ri
 
 ## Animation
 
-`@alfayez/svelte-native/animation` adapts Reanimated: `AnimatedView` with `animatedStyle` or `animatedProps` worklets, `createSharedValue` (cancelled when the component is destroyed), `withTiming`, `withSpring`, `withRepeat`, `withSequence`, `withDelay`, `runOnUISync`/`runOnUIAsync`, entering/exiting/layout animations. Svelte's own `transition:`, `in:`, `out:` (`svelte/transition`: `fade`, `fly`, `scale`, `slide`, `blur` without its filter, and transitions of your own) and `animate:flip` work on native elements as on the web, and play on the UI thread through the same path (the patch to Svelte's compiler above; opacity, transforms, lengths and colours; see the CHANGELOG). `AnimatedView` also takes Reanimated's CSS animation and transition style keys without a worklet; those run in C++ on the UI thread and are the cheaper choice for repeating or decorative motion. Read Svelte state on the JavaScript side and write the target into a shared value; a worklet cannot read a signal. Reanimated and worklets load on first use. See [REFERENCE.md](REFERENCE.md#animation) and SPEC "Animated write path".
+`@alfayez/svelte-native` adapts Reanimated: `AnimatedView` with `animatedStyle` or `animatedProps` worklets, `createSharedValue` (cancelled when the component is destroyed), `withTiming`, `withSpring`, `withRepeat`, `withSequence`, `withDelay`, `runOnUISync`/`runOnUIAsync`, entering/exiting/layout animations. Svelte's own `transition:`, `in:`, `out:` (`svelte/transition`: `fade`, `fly`, `scale`, `slide`, `blur` without its filter, and transitions of your own) and `animate:flip` work on native elements as on the web, and play on the UI thread through the same path (the patch to Svelte's compiler above; opacity, transforms, lengths and colours; see the CHANGELOG). `AnimatedView` also takes Reanimated's CSS animation and transition style keys without a worklet; those run in C++ on the UI thread and are the cheaper choice for repeating or decorative motion. Read Svelte state on the JavaScript side and write the target into a shared value; a worklet cannot read a signal. Reanimated and worklets load on first use. See [REFERENCE.md](REFERENCE.md#animation) and SPEC "Animated write path".
 
 ## Native views from other libraries
 
-`@alfayez/svelte-native/foreign` mounts views other libraries own inside the tree, and `@alfayez/svelte-native/svg` is react-native-svg as Svelte components. None imports the library's React code, and none loads at boot unless the app imports it. Install the libraries you use (`npx expo install <name>`; they are optional peer dependencies) and rebuild the native host.
+`@alfayez/svelte-native/foreign` mounts views other libraries own inside the tree, and the main entry exports react-native-svg as Svelte components (`Svg`, `Path`, ..., with `SvgText` and `SvgImage` for its `Text` and `Image`; react-native-svg is a required peer). None imports the library's React code, and `/foreign` is evaluated only when the app imports it. Install the libraries you use (`npx expo install <name>`; the ones below are optional peer dependencies) and rebuild the native host.
 
 | Library | Components |
 |---|---|
@@ -267,9 +269,9 @@ A stack layout renders `<Stack header={{ large: true }} animation="slide_from_ri
 | react-native-pdf, react-native-view-shot | `Pdf`; `captureRef`, `ViewShot` |
 | react-native-webview, react-native-maps | `WebView`; `MapView`, `Marker` |
 | react-native-fast-shadow, react-native-animateable-text | `ShadowedView`, `shadowStyle`; `AnimateableText` |
-| react-native-svg 15.15.4 | `Svg`, shapes, text, gradients, filters, `SvgXml`, `SvgUri` (36 components) |
+| react-native-svg 15.15.4 (required; the main entry exports them, not `/foreign`) | `Svg`, shapes, `SvgText`, gradients, filters, `SvgXml`, `SvgUri` (36 components) |
 
-The library has its own blur, `BlurView`, which needs no package (a native module of the library, `native/svelte-blur`): `intensity` and `tint`, children on top. `ExpoBlurView` is expo-blur's.
+The library has its own blur, `BlurView`, which needs no package (a native module of the library, `native/svelte-blur`): `intensity` and `tint`, children on top. The main entry exports it; `/foreign` does too. `ExpoBlurView` is expo-blur's.
 | any other Expo module's view | `ExpoView`, `defineExpoView` mount it by the module's name, with the module's own props |
 | anything else | `ForeignView` mounts a Fabric component by name |
 
@@ -301,7 +303,7 @@ On Android, React Native's event queue replaces an unread event of one name with
 Use a native module the way React Native's JavaScript does, without React:
 
 ```ts
-import { turboModule, nativeModule } from "@alfayez/svelte-native/native-modules";
+import { turboModule, nativeModule } from "@alfayez/svelte-native/platform";
 import { requireNativeModule } from "expo-modules-core";
 
 const blobUtil = turboModule<{ getConstants(): object }>("ReactNativeBlobUtil"); // a TurboModule by name; throws if none
@@ -345,7 +347,7 @@ SvelteKit's remote functions (`query`, `query.batch`, `query.live`, `command`, `
 
 ```ts
 // app.config.ts
-plugins: [["@alfayez/svelte-native/expo", { remote: { origin: "https://app.example.com" /*, base: "/prefix", appDir: "_app" */ } }]]
+plugins: [["@alfayez/svelte-native", { remote: { origin: "https://app.example.com" /*, base: "/prefix", appDir: "_app" */ } }]]
 ```
 
 `base` and `appDir` are SvelteKit's `paths.base` and `appDir` when they are not the defaults. Metro needs no setting: `withSvelteNative` resolves the remote function runtime, and the transformer turns `*.remote.ts` into stubs. `configureRemote({ origin, base, appDir, transport, handleError, fetch, goto })` (from `@alfayez/svelte-native/remote`) overrides the config and sets what the web's `hooks.ts` sets: pass the same `transport` object as the browser's universal hooks for custom types, and the client `handleError`. `remoteHost()` is the host in effect and `refreshAll()` refetches every query and reconnects every live query a screen holds.
@@ -485,7 +487,7 @@ build integration
   pass  @alfayez/svelte-native 0.4.0-rc.5 is a dependency of the app
   ????  could not tell: metro.config.cjs does not mention withSvelteNative (a config that applies it from a file it imports is fine)
         fix: module.exports = withSvelteNative(getDefaultConfig(__dirname)), with withSvelteNative from require("@alfayez/svelte-native/metro")
-  pass  app.json lists the @alfayez/svelte-native/expo plugin
+  pass  app.json lists the @alfayez/svelte-native plugin
 
 …
 ```

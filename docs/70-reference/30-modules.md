@@ -2,11 +2,11 @@
 title: Modules
 ---
 
-Svelte Native's code is split into entry points, so an app loads only what it uses. This page lists each entry point and what it exports, with a link to the page that explains it.
+Svelte Native's code is split into a few entry points. An app imports almost everything from the main one and reaches for `/foreign`, `/platform`, `/remote` and `/updates` for the rest. This page lists each entry point and what it exports, with a link to the page that explains it.
 
 ## @alfayez/svelte-native
 
-The main entry: components, navigation and the app's state.
+The main entry: components, navigation, the app's state, animation, gestures and SVG.
 
 | Export | Description |
 | --- | --- |
@@ -32,15 +32,16 @@ The main entry: components, navigation and the app's state.
 | `colorScheme` | `colorScheme.current` is `'light'` or `'dark'`, as state. [Styling](styling#light-and-dark-mode) |
 | `windowSize` | The window's `width`, `height`, `scale`, `fontScale` and `screen`, as state. [Platform APIs](platform-apis#window-size) |
 | `insets` | The safe area and the keyboard, as state. [Platform APIs](platform-apis#safe-area-and-keyboard) |
+| `BlurView` | Svelte Native's own blur. [BlurView](blur-view) |
 | `Native` | A native element whose tag is chosen at run time. For library authors. |
 | `Router`, `createRouter` | The router's building blocks. The generated entry uses them; an app doesn't need to. |
 | `bootSummary()` | How long each phase of the app's start took, as one line of text, for profiling. |
 
 The types of the options are exported too: `ScreenOptions`, `HeaderOptions`, `SheetOptions`, `ToolbarOptions`, `ToolbarItem`, `TabItem`, `StatusBarOptions`, `NavigationBarOptions`, `SearchOptions`, `Presentation`, `Detent`, `BarStyle`, `ScreenAnimation`, `NavigateOptions`, `NativeLocation`, `NativeRouter` and `HostHandle`.
 
-## @alfayez/svelte-native/animation
+### Animation
 
-Animations on the UI thread, with Reanimated. [Animation](animation)
+Animations on the UI thread, with Reanimated. [Animation](animation) Reanimated loads the first time one of these is used, not when the app starts.
 
 | Export | Description |
 | --- | --- |
@@ -53,9 +54,9 @@ Animations on the UI thread, with Reanimated. [Animation](animation)
 | `runOnJS`, `scheduleOnRN` | From a worklet, call a function on the JavaScript thread. |
 | `SharedValue` | The type of a shared value. |
 
-## @alfayez/svelte-native/gestures
+### Gestures
 
-Native gesture recognisers, with react-native-gesture-handler. [Gestures](gestures)
+Native gesture recognisers, with react-native-gesture-handler. [Gestures](gestures) The builders load the first time `Gesture` is read.
 
 | Export | Description |
 | --- | --- |
@@ -64,7 +65,11 @@ Native gesture recognisers, with react-native-gesture-handler. [Gestures](gestur
 | `gesture` | The action form: `use:gesture={g}`. |
 | `GestureStateManager` | Activates or fails a gesture by hand, from its touch callbacks. |
 | `State`, `Directions`, `PointerType`, `TouchEventType` | The library's constants. |
-| `runOnJS`, `scheduleOnRN` | The same as in `/animation`. |
+| `runOnJS`, `scheduleOnRN` | The same as in the animation exports above. |
+
+### SVG
+
+SVG with react-native-svg, which is a required peer dependency: `Svg`, `G`, `Path`, `Rect`, `Circle`, `Ellipse`, `Line`, `Polygon`, `Polyline`, `SvgText`, `TSpan`, `TextPath`, `Use`, `SvgImage`, `Defs`, `ClipPath`, `LinearGradient`, `RadialGradient`, `Stop`, `Pattern`, `Mask`, `Marker`, `Symbol`, `ForeignObject`, the filters (`Filter`, `FeBlend`, `FeColorMatrix`, `FeComposite`, `FeDropShadow`, `FeFlood`, `FeGaussianBlur`, `FeMerge`, `FeMergeNode`, `FeOffset`), `SvgXml` and `SvgUri`, and the handle types `SvgHandle` and `SvgRootHandle`. react-native-svg's `Text` and `Image` are `SvgText` and `SvgImage` here, because `Text` and `Image` are the views. `/foreign` has a `LinearGradient` and a `Marker` too (expo-linear-gradient and react-native-maps), so import one of each pair `as` another name when a file uses both. [SVG](svg)
 
 ## @alfayez/svelte-native/foreign
 
@@ -73,7 +78,7 @@ Native views of other libraries. [Native views](native-views)
 | Export | Description |
 | --- | --- |
 | `ExpoImage` | `expo-image`. |
-| `BlurView` | Svelte Native's own blur ([BlurView](blur-view)). |
+| `BlurView` | Svelte Native's own blur ([BlurView](blur-view)). The main entry exports it too. |
 | `ExpoBlurView`, `BlurTargetView` | `expo-blur`. |
 | `LinearGradient` | `expo-linear-gradient`. |
 | `ConicGradient` | `expo-conic-gradient`. |
@@ -93,13 +98,11 @@ Native views of other libraries. [Native views](native-views)
 
 The handle and option types (`VideoHandle`, `LottieHandle`, `MapHandle`, `WebViewHandle`, `RiveHandle`, `PdfHandle`, `ExpoViewHandle`, `CaptureOptions`, ...) are exported with them.
 
-## @alfayez/svelte-native/svg
-
-SVG with react-native-svg: `Svg` (also the default export), `G`, `Path`, `Rect`, `Circle`, `Ellipse`, `Line`, `Polygon`, `Polyline`, `Text`, `TSpan`, `TextPath`, `Use`, `Image`, `Defs`, `ClipPath`, `LinearGradient`, `RadialGradient`, `Stop`, `Pattern`, `Mask`, `Marker`, `Symbol`, `ForeignObject`, the filters (`Filter`, `FeBlend`, `FeColorMatrix`, `FeComposite`, `FeDropShadow`, `FeFlood`, `FeGaussianBlur`, `FeMerge`, `FeMergeNode`, `FeOffset`), `SvgXml` and `SvgUri`, and the handle types `SvgHandle` and `SvgRootHandle`. [SVG](svg)
-
 ## @alfayez/svelte-native/platform
 
 React Native's platform modules, typed: `Platform`, `Appearance`, `Dimensions`, `PixelRatio`, `Linking`, `Keyboard`, `AppState`, `BackHandler`, `Share`, `Vibration` and `Alert`. Each loads the first time it's used. [Platform APIs](platform-apis)
+
+It also has the two lookups of native modules: `turboModule<T>(name)` returns a TurboModule by name and throws when the build doesn't have it, and `nativeModule<T>(name)` returns a legacy NativeModule by name, or `undefined`. [Native libraries](native-libraries#calling-a-native-module-directly)
 
 ## @alfayez/svelte-native/remote
 
@@ -119,10 +122,6 @@ SvelteKit's remote functions on the device. [Loading data](loading-data#remote-f
 
 Over-the-air updates, compatible with `eas update`: `isEnabled`, `updateId`, `channel`, `runtimeVersion`, `checkForUpdateAsync`, `fetchUpdateAsync`, `reloadAsync` and `checkOnLaunch`. [Updates](updates)
 
-## @alfayez/svelte-native/native-modules
-
-`turboModule<T>(name)` returns a TurboModule by name and throws when the build doesn't have it. `nativeModule<T>(name)` returns a legacy NativeModule by name, or `undefined`. [Native libraries](native-libraries#calling-a-native-module-directly)
-
 ## Build tools
 
 These entry points run in Node, in your build configuration, not in the app.
@@ -131,8 +130,21 @@ These entry points run in Node, in your build configuration, not in the app.
 | --- | --- | --- |
 | `@alfayez/svelte-native/vite` | `svelteNative(options)`: SvelteKit's Vite plugin, wrapped. | `vite.config.ts` |
 | `@alfayez/svelte-native/metro` | `withSvelteNative(config, options?)`: Expo's Metro config, extended to compile Svelte and find your routes. | `metro.config.cjs` |
-| `@alfayez/svelte-native/expo` | The Expo config plugin. `@alfayez/svelte-native` names the same plugin. | `app.json` or `app.config.ts` |
+| `@alfayez/svelte-native` | The Expo config plugin, found through the package's `app.plugin.js`. `@alfayez/svelte-native/app.plugin` is the same file. | `app.json` or `app.config.ts` |
 
 [Configuration](configuration) shows each one with its options. The `svelte-native` command is the package's binary: see [Command line](cli).
 
-The other entry points (`/core`, `/router`, `/routes`, `/renderer`, `/fabric`, `/elements`, `/polyfills`, `/init`, `/lower`, `/transformer`, `/remote/runtime`, `/remote/globals`) are used by the generated entry, Metro and the library itself. An app doesn't import them.
+The other entry points (`/app`, `/core`, `/router`, `/routes`, `/renderer`, `/elements`, `/lower`, `/transformer`, `/remote/runtime`, `/remote/globals`) are used by the generated entry, Metro and the library itself. An app doesn't import them.
+
+## Deprecated entry points
+
+These still work in 0.4.0-rc.6 and are removed in 0.4.0-rc.7. Your editor strikes through the deprecated names.
+
+| Entry | Use instead |
+| --- | --- |
+| `@alfayez/svelte-native/animation` | `@alfayez/svelte-native` |
+| `@alfayez/svelte-native/gestures` | `@alfayez/svelte-native` |
+| `@alfayez/svelte-native/svg` | `@alfayez/svelte-native`, where its `Text` is `SvgText` and its `Image` is `SvgImage` |
+| `@alfayez/svelte-native/native-modules` | `@alfayez/svelte-native/platform` |
+| `@alfayez/svelte-native/expo` | `@alfayez/svelte-native` in `plugins` |
+| `@alfayez/svelte-native/init`, `/polyfills`, `/fabric` | `@alfayez/svelte-native/app`: run `svelte-native sync` and the generated entry imports it |

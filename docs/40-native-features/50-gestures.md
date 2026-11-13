@@ -3,14 +3,12 @@ title: Gestures
 video: gestures
 ---
 
-Drags, pinches, swipes and long presses are recognised by the platform, with [react-native-gesture-handler](https://docs.swmansion.com/react-native-gesture-handler/). `@alfayez/svelte-native/gestures` puts its gestures on Svelte views. You build a gesture with the library's own builders, and attach it to a view with `gesture={...}`.
+Drags, pinches, swipes and long presses are recognised by the platform, with [react-native-gesture-handler](https://docs.swmansion.com/react-native-gesture-handler/). `@alfayez/svelte-native` puts its gestures on Svelte views. You build a gesture with the library's own builders, and attach it to a view with `gesture={...}`.
 
 ```svelte
 <!--- file: src/routes/+mobile.svelte --->
 <script lang="ts">
-	import { Screen } from '@alfayez/svelte-native';
-	import { AnimatedView, createSharedValue, withSpring } from '@alfayez/svelte-native/animation';
-	import { Gesture } from '@alfayez/svelte-native/gestures';
+	import { AnimatedView, Gesture, Screen, createSharedValue, withSpring } from '@alfayez/svelte-native';
 
 	const x = createSharedValue(0);
 	const y = createSharedValue(0);
@@ -83,8 +81,7 @@ Two other forms do the same:
 
 ```svelte
 <script lang="ts">
-	import { Text } from '@alfayez/svelte-native';
-	import { Gesture, GestureDetector } from '@alfayez/svelte-native/gestures';
+	import { Gesture, GestureDetector, Text } from '@alfayez/svelte-native';
 
 	let liked = $state(false);
 	const doubleTap = Gesture.Tap().numberOfTaps(2).runOnJS(true).onEnd(() => (liked = !liked));
@@ -105,7 +102,7 @@ A gesture whose callbacks are all worklets runs on the UI thread. An inline call
 It can't capture `$state`, `$derived` or props. To change Svelte state from a UI callback, call a JavaScript function with `runOnJS`:
 
 ```ts
-import { runOnJS } from '@alfayez/svelte-native/gestures';
+import { runOnJS } from '@alfayez/svelte-native';
 
 let held = $state(0);
 const markHeld = () => (held += 1);

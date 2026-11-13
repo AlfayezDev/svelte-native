@@ -71,8 +71,10 @@ describe("package.json points at the built files", () => {
   const built = Object.entries(manifest.exports).flatMap(([entry, target]) => (typeof target === "string" ? [] : [[entry, target] as const]));
   const files = entries.map((entry) => `./dist/node/${entry.name}${extensionOf(entry.format)}`);
 
-  test("every built entry is the `default` of an export (or the bin), with the TypeScript source as its `types`", () => {
-    const targets = [...built.map(([, target]) => target.default), manifest.bin["svelte-native"]].sort();
+  test("every built entry is the `default` of an export (or the bin, or the config plugin's file), with the TypeScript source as its `types`", () => {
+    // `expo.cjs` is not an export of its own (`@alfayez/svelte-native/expo` was removed in 0.4.0-rc.7): `app.plugin.js`, the `./app.plugin` export, imports it.
+    expect(readFileSync(join(packageRoot, "app.plugin.js"), "utf8")).toContain('import plugin from "./dist/node/expo.cjs";');
+    const targets = [...built.map(([, target]) => target.default), manifest.bin["svelte-native"], "./dist/node/expo.cjs"].sort();
     expect(targets).toEqual([...files].sort());
     for (const [entry, target] of built) {
       expect(Object.keys(target), entry).toEqual(["types", "default"]);
@@ -88,7 +90,7 @@ describe("package.json points at the built files", () => {
   });
 
   test("a runtime entry stays the TypeScript Metro compiles: a path, not built", () => {
-    for (const entry of [".", "./core", "./init", "./app", "./renderer", "./fabric", "./foreign", "./svg", "./polyfills", "./router", "./animation", "./gestures", "./updates", "./native-modules", "./remote", "./remote/runtime", "./remote/globals"])
+    for (const entry of [".", "./core", "./app", "./renderer", "./foreign", "./router", "./updates", "./remote", "./remote/runtime", "./remote/globals"])
       expect([entry, typeof manifest.exports[entry]]).toEqual([entry, "string"]);
   });
 });

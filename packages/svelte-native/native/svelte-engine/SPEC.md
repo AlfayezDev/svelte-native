@@ -1856,7 +1856,7 @@ Written by agent X on 26 Oct 2026 (wave 2). Foreign views are views other librar
 | `packages/svelte-native/src/expo.ts` | `androidOnDemandViewManagers`, the `ExpoViewsPackage` |
 | `packages/svelte-native/src/components/{ExpoImage,ExpoBlurView,BlurTargetView,LinearGradient,Video,DateTimePicker,LottieView}.svelte`, `src/fabric/foreign-{image,gradient,video,datetime,lottie}.ts` | the six native-view libraries ("Native-view libraries" below) |
 | `packages/svelte-native/src/components/{Pdf,ViewShot,Rive,ConicGradient,ShadowedView,AnimateableText}.svelte`, `src/fabric/foreign-{pdf,capture,rive,shadow}.ts`, `android/.../Capture.kt` | six more native-view libraries ("Six more native-view libraries" below) |
-| `packages/svelte-native/src/components/svg/*.svelte`, exports of the main entry (`src/svg.ts`; `@alfayez/svelte-native/svg` is a deprecated alias), `src/fabric/{foreign-svg,foreign-svg-kinds,foreign-svg-extract,foreign-svg-xml,foreign-text,svg-library}.{ts,js,d.ts}` | react-native-svg ("react-native-svg" below); `foreign-text.ts` is the one hook the host got for it |
+| `packages/svelte-native/src/components/svg/*.svelte`, exports of the main entry (`src/svg.ts`), `src/fabric/{foreign-svg,foreign-svg-kinds,foreign-svg-extract,foreign-svg-xml,foreign-text,svg-library}.{ts,js,d.ts}` | react-native-svg ("react-native-svg" below); `foreign-text.ts` is the one hook the host got for it |
 
 ### The delegate split
 
@@ -2328,7 +2328,7 @@ JS and toolchain:
   animatedStyle={() => { "worklet"; return { transform: [{ translateX: x.value }, { translateY: y.value }] }; }} />
 ```
 
-Exports of `src/gestures/index.ts` (a separate `exports` entry when this was written, `@alfayez/svelte-native/gestures`; the main entry exports them now and `/gestures` is a deprecated alias until 0.4.0-rc.7):
+Exports of `src/gestures/index.ts` (a separate `exports` entry when this was written, `@alfayez/svelte-native/gestures`, which 0.4.0-rc.7 removed; the main entry exports them):
 
 | Export | Notes |
 |---|---|
@@ -2368,7 +2368,7 @@ Files, all new unless marked, in `packages/svelte-native`:
 | `src/fabric/host.ts` (edited) | The three call sites, next to the animation ones: in `build`, `const gestured = gestures || attributes.gesture !== undefined ? loadGestures().gestureProps(node, current, animated) : animated;` before `splitProps`; in `flush`, `gestures?.commitGestures(isLive)` after `animation?.commitAnimations()`; in `detachRemovedAnimations`, `gestures?.sweepGestures(isLive)`. Plus `ensureReanimated()` (loads Reanimated once and tells the engine once, for both layers), `isLive(node)` (still under a mounted surface) and `gesturesLoaded`/`gestures` on `fabricStats()`. |
 | `src/fabric/deps-rn.ts` (edited) | `turboModuleRegistry()` and `deviceEventEmitter()`: lazy `require`s of `react-native/Libraries/TurboModule/TurboModuleRegistry` and `.../EventEmitter/RCTDeviceEventEmitter`, the only `react-native` imports of the gesture host. |
 | `src/fabric/reanimated-internals.{js,d.ts}`, `src/animation.ts` (edited) | Export `WorkletEventHandler` from `react-native-reanimated/src/WorkletEventHandler`; export `runOnJS`, `scheduleOnRN`. |
-| `src/lower.ts` (edited) | No `use:` warning for the `gesture` action imported from `@alfayez/svelte-native` or `@alfayez/svelte-native/gestures` (aliases included). |
+| `src/lower.ts` (edited) | No `use:` warning for the `gesture` action imported from `@alfayez/svelte-native` (and, up to 0.4.0-rc.6, from `@alfayez/svelte-native/gestures`). |
 | `tests/*.test.ts` (ten files), `tests/reanimated-stubs.ts` | The `react-native*` stub filter lets `react-native-gesture-handler/...` resolve to the installed package (RNGH's pure modules are in the host's bundle graph now, behind a lazy `require`); the Reanimated stubs gain `WorkletEventHandler`, a recording `makeMutable` and `setGestureState`. |
 
 Reused from RNGH by deep import (`react-native-gesture-handler/src/...`, resolved by Metro like `reanimated-internals.js`): `handlers/gestures/{gestureObjects,gesture,gestureComposition,tapGesture,panGesture,pinchGesture,rotationGesture,flingGesture,longPressGesture,nativeGesture,manualGesture,hoverGesture,forceTouchGesture}.ts`, `handlers/{getNextHandlerTag,handlersRegistry}.ts`, `{mountRegistry,State,Directions,PointerType,TouchEventType,ActionType,utils}.ts`. **Never imported**: `index.ts`, `components/*`, `handlers/createHandler.tsx`, any `*GestureHandler.ts` component, `GestureDetector/*`, `eventReceiver.ts`, `reanimatedWrapper.ts`, `gestureStateManager.ts` at start (both eagerly `require` Reanimated), `findNodeHandle`. A test bundles the entry and fails on any of them.

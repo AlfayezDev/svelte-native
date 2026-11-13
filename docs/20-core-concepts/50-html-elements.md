@@ -210,7 +210,7 @@ An element with no native equivalent is a build error, naming the element, the f
 | Element | Use |
 | --- | --- |
 | `table`, `tr`, `td`, ... | `div`s with flex classes |
-| `svg` | [`@alfayez/svelte-native/svg`](svg) |
+| `svg` | the [SVG components](svg) of `@alfayez/svelte-native` |
 | `canvas` | the SVG components |
 | `video` | [`Video` or `VideoView`](native-views#video) from `@alfayez/svelte-native/foreign` |
 | `iframe` | [`WebView`](native-views#webview) from `@alfayez/svelte-native/foreign` |

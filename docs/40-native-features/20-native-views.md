@@ -53,11 +53,10 @@ An app that doesn't install a library doesn't bundle anything of it, even if it 
 | `react-native-view-shot` | [`ViewShot`, `captureRef`](#viewshot-and-captureref) |
 | `react-native-fast-shadow` | [`ShadowedView`, `shadowStyle`](#shadowedview-and-shadowstyle) |
 | `react-native-animateable-text` | [`AnimateableText`](#animateabletext) |
-| `react-native-svg` | the components of [SVG](svg) |
 | any other Expo module | [`ExpoView`, `defineExpoView`](#any-expo-view) |
 | anything else | [`ForeignView`](#foreignview) |
 
-Four of these libraries need a patch: see [Patches](#patches).
+Four of these libraries need a patch: see [Patches](#patches). `react-native-svg` isn't in the list because it's a required dependency of Svelte Native; its components are in the main entry (see [SVG](svg)).
 
 Every component takes the usual layout and accessibility props of a [`View`](view) (`style`, `accessibilityLabel`, `testID`, ...) besides its own. `ref` gives a handle: the host handle (`tag`, `measure`, ...) or, where the library has them, its functions.
 
@@ -448,7 +447,7 @@ A `Text` whose string a worklet can set on the UI thread, for numbers that chang
 
 ```svelte
 <script lang="ts">
-	import { createSharedValue, withTiming } from '@alfayez/svelte-native/animation';
+	import { createSharedValue, withTiming } from '@alfayez/svelte-native';
 	import { AnimateableText } from '@alfayez/svelte-native/foreign';
 
 	const count = createSharedValue(0);

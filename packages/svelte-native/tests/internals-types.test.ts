@@ -16,9 +16,9 @@ const root = resolve(import.meta.dirname, "..");
 const internals = join(root, "src/fabric/react-native-internals.d.ts");
 const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { exports: Record<string, string | Record<string, string>> };
 
-/** The source file each entry of the package types from (the `types` condition when there is one). */
+/** The source file each entry of the package types from (the `svelte-native-source` condition when there is one: the declarations in `dist/types` are what `types.test.ts` checks). */
 const entries = Object.entries(manifest.exports)
-  .map(([name, target]) => [name, typeof target === "string" ? target : (target.types ?? target.default ?? "")] as const)
+  .map(([name, target]) => [name, typeof target === "string" ? target : (target["svelte-native-source"] ?? target.types ?? target.default ?? "")] as const)
   .filter(([, file]) => /\.(?:ts|svelte)$/.test(file) && file.startsWith("./src/"));
 
 /** The files a source file imports or references by a relative path, as TypeScript's program would pull them in (a type-only or dynamic `import()` included, a `require()` call not). */

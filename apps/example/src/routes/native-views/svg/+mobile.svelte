@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { View, createSharedValue, withRepeat, withTiming, Circle, Defs, LinearGradient, Path, Rect, Stop, Svg, SvgXml, SvgText } from "@alfayez/svelte-native";
+  import { View, createSharedValue, withRepeat, withTiming, Circle, Defs, Path, Rect, Stop, Svg, SvgLinearGradient, SvgXml, SvgText } from "@alfayez/svelte-native";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
   import { scroller, useDemo } from "#lib/demo.ts";
@@ -27,10 +27,10 @@
     <View style={{ alignItems: "center" }}>
       <Svg width={200} height={100} viewBox="0 0 200 100" accessibilityLabel="A gradient card with a pulsing dot">
         <Defs>
-          <LinearGradient id="card" x1="0" y1="0" x2="1" y2="1">
+          <SvgLinearGradient id="card" x1="0" y1="0" x2="1" y2="1">
             <Stop offset="0" stopColor="#ff7a18" />
             <Stop offset="1" stopColor="#319197" />
-          </LinearGradient>
+          </SvgLinearGradient>
         </Defs>
         <Rect width="200" height="100" rx="16" fill="url(#card)" />
         <Circle cx="40" cy="50" r="6" fill="#ffffff" animatedProps={pulse} />

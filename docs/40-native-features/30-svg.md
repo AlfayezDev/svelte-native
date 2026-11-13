@@ -8,16 +8,16 @@ video: svg
 ```svelte
 <!--- file: src/routes/+mobile.svelte --->
 <script lang="ts">
-	import { Circle, Defs, LinearGradient, Rect, Screen, Stop, Svg, SvgText } from '@alfayez/svelte-native';
+	import { Circle, Defs, Rect, Screen, Stop, Svg, SvgLinearGradient, SvgText } from '@alfayez/svelte-native';
 </script>
 
 <Screen title="SVG">
 	<Svg width={96} height={64} viewBox="0 0 96 64">
 		<Defs>
-			<LinearGradient id="card" x1="0" y1="0" x2="1" y2="1">
+			<SvgLinearGradient id="card" x1="0" y1="0" x2="1" y2="1">
 				<Stop offset="0" stopColor="#ff7a18" />
 				<Stop offset="1" stopColor="#319197" />
-			</LinearGradient>
+			</SvgLinearGradient>
 		</Defs>
 		<Rect width="96" height="64" rx="12" fill="url(#card)" />
 		<Circle cx="24" cy="32" r="6" fill="#fff" />
@@ -36,11 +36,11 @@ react-native-svg is a required peer dependency of Svelte Native, so every app ha
 | Shapes | `Rect`, `Circle`, `Ellipse`, `Line`, `Polygon`, `Polyline`, `Path` |
 | Text | `SvgText`, `TSpan`, `TextPath` |
 | Structure | `G`, `Defs`, `Use`, `Symbol`, `SvgImage`, `ForeignObject` |
-| Paint | `LinearGradient`, `RadialGradient`, `Stop`, `Pattern`, `Mask`, `ClipPath`, `Marker` |
+| Paint | `SvgLinearGradient`, `RadialGradient`, `Stop`, `Pattern`, `Mask`, `ClipPath`, `SvgMarker` |
 | Filters | `Filter`, `FeBlend`, `FeColorMatrix`, `FeComposite`, `FeDropShadow`, `FeFlood`, `FeGaussianBlur`, `FeMerge`, `FeMergeNode`, `FeOffset` |
 | Documents | `SvgXml`, `SvgUri` |
 
-react-native-svg calls its text and image elements `Text` and `Image`, which are the names of the [`Text`](text) and [`Image`](image) views. Here they are `SvgText` and `SvgImage`. `LinearGradient` and `Marker` are SVG elements in this entry; the `LinearGradient` of expo-linear-gradient and the `Marker` of the map are in `@alfayez/svelte-native/foreign`, so import one of each pair `as` another name when a file uses both.
+react-native-svg calls its text and image elements `Text` and `Image`, which are the names of the [`Text`](text) and [`Image`](image) views. Here they are `SvgText` and `SvgImage`. Two more get an `Svg` prefix because [`@alfayez/svelte-native/foreign`](native-views) has components of the same names (expo-linear-gradient's `LinearGradient` and the map's `Marker`): react-native-svg's are `SvgLinearGradient` and `SvgMarker`. Every other element keeps its name.
 
 Inside a `Text` or `TextPath`, a string is a text span of its own. Whitespace between elements counts as text, as in HTML.
 

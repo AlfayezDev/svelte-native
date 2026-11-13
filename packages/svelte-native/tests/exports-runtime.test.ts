@@ -65,16 +65,17 @@ async function load(): Promise<{ main: Entry; animation: Entry; gestures: Entry;
 test("the main entry has the SVG components, the animation, the gestures and BlurView, and the deprecated entries are the same values under their old names", async () => {
   const { main, animation, gestures, svg, nativeModules, platform } = await load();
   // Names: reading the key list reads nothing lazy.
-  for (const name of ["Svg", "Path", "SvgText", "SvgImage", "LinearGradient", "SvgXml", "withSpring", "withTiming", "createSharedValue", "AnimatedView", "Easing", "Gesture", "GestureDetector", "gesture", "State", "runOnJS", "BlurView", "View", "Text", "Image"]) {
+  for (const name of ["Svg", "Path", "SvgText", "SvgImage", "SvgLinearGradient", "SvgMarker", "SvgXml", "withSpring", "withTiming", "createSharedValue", "AnimatedView", "Easing", "Gesture", "GestureDetector", "gesture", "State", "runOnJS", "BlurView", "View", "Text", "Image"]) {
     expect([name, name in main]).toEqual([name, true]);
   }
   expect(Object.keys(main)).not.toContain("default");
 
   // `/svg`: the old names for the same components. The main entry's Text and Image are still the views.
-  expect([svg.default, svg.Svg, svg.Path, svg.SvgXml, svg.LinearGradient]).toEqual([main.Svg, main.Svg, main.Path, main.SvgXml, main.LinearGradient]);
-  expect([svg.Text, svg.Image]).toEqual([main.SvgText, main.SvgImage]);
+  expect([svg.default, svg.Svg, svg.Path, svg.SvgXml]).toEqual([main.Svg, main.Svg, main.Path, main.SvgXml]);
+  expect([svg.Text, svg.Image, svg.LinearGradient, svg.Marker]).toEqual([main.SvgText, main.SvgImage, main.SvgLinearGradient, main.SvgMarker]);
+  expect(["LinearGradient", "Marker"].filter((name) => name in main)).toEqual([]);
   expect([main.SvgText === main.Text, main.SvgImage === main.Image]).toEqual([false, false]);
-  expect(Object.keys(svg).sort()).toEqual([...Object.keys(main).filter((name) => ["Svg", "G", "Path", "Rect", "Circle", "Ellipse", "Line", "Polygon", "Polyline", "TSpan", "TextPath", "Use", "Defs", "ClipPath", "LinearGradient", "RadialGradient", "Stop", "Pattern", "Mask", "Marker", "Symbol", "ForeignObject", "Filter", "FeBlend", "FeColorMatrix", "FeComposite", "FeDropShadow", "FeFlood", "FeGaussianBlur", "FeMerge", "FeMergeNode", "FeOffset", "SvgXml", "SvgUri"].includes(name)), "Text", "Image", "default"].sort());
+  expect(Object.keys(svg).sort()).toEqual([...Object.keys(main).filter((name) => ["Svg", "G", "Path", "Rect", "Circle", "Ellipse", "Line", "Polygon", "Polyline", "TSpan", "TextPath", "Use", "Defs", "ClipPath", "RadialGradient", "Stop", "Pattern", "Mask", "Symbol", "ForeignObject", "Filter", "FeBlend", "FeColorMatrix", "FeComposite", "FeDropShadow", "FeFlood", "FeGaussianBlur", "FeMerge", "FeMergeNode", "FeOffset", "SvgXml", "SvgUri"].includes(name)), "Text", "Image", "LinearGradient", "Marker", "default"].sort());
 
   // `/animation` and `/gestures`: the same functions, objects and components.
   expect(Object.keys(animation).sort()).toEqual(["AnimatedView", "Easing", "ReduceMotion", "cancelAnimation", "createSharedValue", "runOnJS", "runOnUIAsync", "runOnUISync", "scheduleOnRN", "withDelay", "withRepeat", "withSequence", "withSpring", "withTiming"]);

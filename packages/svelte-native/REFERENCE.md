@@ -219,18 +219,18 @@ Every wrapped library is an optional peer dependency of the package: install the
 
 ### react-native-svg
 
-The main entry exports [react-native-svg](https://github.com/software-mansion/react-native-svg) 15.15.4 (a required peer: `svelte-native init` installs it, `svelte-native doctor` checks it; `src/svg.ts`) as Svelte components: `Svg`, `G`, `Path`, `Rect`, `Circle`, `Ellipse`, `Line`, `Polygon`, `Polyline`, `SvgText`, `TSpan`, `TextPath`, `Use`, `SvgImage`, `Defs`, `ClipPath`, `LinearGradient`, `RadialGradient`, `Stop`, `Pattern`, `Mask`, `Marker`, `Symbol`, `ForeignObject`, the filters `Filter`, `FeBlend`, `FeColorMatrix`, `FeComposite`, `FeDropShadow`, `FeFlood`, `FeGaussianBlur`, `FeMerge`, `FeMergeNode`, `FeOffset`, and `SvgXml` and `SvgUri`. The props are the library's (its own prop extraction runs, imported by deep path; no React is bundled: `tests/svg-bundle.test.ts`), and so is what each element sends the native view (`tests/svg-elements.test.ts` compares every element with the library's own class). The library's `Text` and `Image` are named `SvgText` and `SvgImage`, since `Text` and `Image` are the primitives; the primitive lowering leaves them alone (they are not in `LOWERED_TAGS`). `LinearGradient` and `Marker` are the SVG elements here, and `/foreign` has a `LinearGradient` (expo-linear-gradient) and a `Marker` (maps) of its own: import one of each pair `as` another name when a file uses both. The deprecated `@alfayez/svelte-native/svg` keeps react-native-svg's names (`Text`, `Image`, and `Svg` as its default export) and is never lowered.
+The main entry exports [react-native-svg](https://github.com/software-mansion/react-native-svg) 15.15.4 (a required peer: `svelte-native init` installs it, `svelte-native doctor` checks it; `src/svg.ts`) as Svelte components: `Svg`, `G`, `Path`, `Rect`, `Circle`, `Ellipse`, `Line`, `Polygon`, `Polyline`, `SvgText`, `TSpan`, `TextPath`, `Use`, `SvgImage`, `Defs`, `ClipPath`, `SvgLinearGradient`, `RadialGradient`, `Stop`, `Pattern`, `Mask`, `SvgMarker`, `Symbol`, `ForeignObject`, the filters `Filter`, `FeBlend`, `FeColorMatrix`, `FeComposite`, `FeDropShadow`, `FeFlood`, `FeGaussianBlur`, `FeMerge`, `FeMergeNode`, `FeOffset`, and `SvgXml` and `SvgUri`. The props are the library's (its own prop extraction runs, imported by deep path; no React is bundled: `tests/svg-bundle.test.ts`), and so is what each element sends the native view (`tests/svg-elements.test.ts` compares every element with the library's own class). The library's `Text` and `Image` are named `SvgText` and `SvgImage`, since `Text` and `Image` are the primitives; the primitive lowering leaves them alone (they are not in `LOWERED_TAGS`). Its `LinearGradient` and `Marker` are `SvgLinearGradient` and `SvgMarker`, because `/foreign` has a `LinearGradient` (expo-linear-gradient) and a `Marker` (maps) of its own (`tests/exports.test.ts` checks that the main entry exports no name `/foreign` also exports for another component). The deprecated `@alfayez/svelte-native/svg` keeps react-native-svg's names (`Text`, `Image`, `LinearGradient`, `Marker`, and `Svg` as its default export) and is never lowered.
 
 ```svelte
 <script lang="ts">
-  import { Svg, Defs, LinearGradient, Stop, Rect, Circle, SvgText, SvgXml, createSharedValue, withRepeat, withTiming } from "@alfayez/svelte-native";
+  import { Svg, Defs, SvgLinearGradient, Stop, Rect, Circle, SvgText, SvgXml, createSharedValue, withRepeat, withTiming } from "@alfayez/svelte-native";
   const radius = createSharedValue(6);
   radius.value = withRepeat(withTiming(12, { duration: 800 }), -1, true);
   const pulse = () => { "worklet"; return { r: radius.value }; };
 </script>
 
 <Svg width={96} height={64} viewBox="0 0 96 64">
-  <Defs><LinearGradient id="card" x1="0" y1="0" x2="1" y2="1"><Stop offset="0" stopColor="#ff7a18" /><Stop offset="1" stopColor="#319197" /></LinearGradient></Defs>
+  <Defs><SvgLinearGradient id="card" x1="0" y1="0" x2="1" y2="1"><Stop offset="0" stopColor="#ff7a18" /><Stop offset="1" stopColor="#319197" /></SvgLinearGradient></Defs>
   <Rect width="96" height="64" rx="12" fill="url(#card)" />
   <Circle cx="24" cy="32" r="6" fill="#fff" animatedProps={pulse} />
   <SvgText x="48" y="38" fill="#fff" fontSize="14" fontWeight="bold">SVG</SvgText>

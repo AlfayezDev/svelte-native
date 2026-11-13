@@ -1,6 +1,6 @@
 /**
  * The deprecated `@alfayez/svelte-native/svg` entry: the same elements as the main entry, with the names react-native-svg gives them. It goes away in
- * 0.4.0-rc.7; import from `@alfayez/svelte-native` instead, where the two elements the views' names would clash with are `SvgText` and `SvgImage`.
+ * 0.4.0-rc.7; import from `@alfayez/svelte-native` instead, where the four elements whose names clash with the views' and `/foreign`'s are `SvgText`, `SvgImage`, `SvgLinearGradient` and `SvgMarker`.
  */
 export {
   /** @deprecated Import `Svg` from "@alfayez/svelte-native"; `@alfayez/svelte-native/svg` is removed in 0.4.0-rc.7. */
@@ -31,8 +31,6 @@ export {
   Defs,
   /** @deprecated Import `ClipPath` from "@alfayez/svelte-native"; `@alfayez/svelte-native/svg` is removed in 0.4.0-rc.7. */
   ClipPath,
-  /** @deprecated Import `LinearGradient` from "@alfayez/svelte-native"; `@alfayez/svelte-native/svg` is removed in 0.4.0-rc.7. */
-  LinearGradient,
   /** @deprecated Import `RadialGradient` from "@alfayez/svelte-native"; `@alfayez/svelte-native/svg` is removed in 0.4.0-rc.7. */
   RadialGradient,
   /** @deprecated Import `Stop` from "@alfayez/svelte-native"; `@alfayez/svelte-native/svg` is removed in 0.4.0-rc.7. */
@@ -41,8 +39,6 @@ export {
   Pattern,
   /** @deprecated Import `Mask` from "@alfayez/svelte-native"; `@alfayez/svelte-native/svg` is removed in 0.4.0-rc.7. */
   Mask,
-  /** @deprecated Import `Marker` from "@alfayez/svelte-native"; `@alfayez/svelte-native/svg` is removed in 0.4.0-rc.7. */
-  Marker,
   /** @deprecated Import `Symbol` from "@alfayez/svelte-native"; `@alfayez/svelte-native/svg` is removed in 0.4.0-rc.7. */
   Symbol,
   /** @deprecated Import `ForeignObject` from "@alfayez/svelte-native"; `@alfayez/svelte-native/svg` is removed in 0.4.0-rc.7. */
@@ -89,6 +85,14 @@ export {
   type SvgExtras,
 } from "../svg.ts";
 
+export {
+  /** @deprecated Import `SvgLinearGradient` from "@alfayez/svelte-native"; `@alfayez/svelte-native/svg` is removed in 0.4.0-rc.7. */
+  default as LinearGradient,
+} from "../components/svg/LinearGradient.svelte";
+export {
+  /** @deprecated Import `SvgMarker` from "@alfayez/svelte-native"; `@alfayez/svelte-native/svg` is removed in 0.4.0-rc.7. */
+  default as Marker,
+} from "../components/svg/Marker.svelte";
 export {
   /** @deprecated Import `SvgText` from "@alfayez/svelte-native"; `@alfayez/svelte-native/svg` is removed in 0.4.0-rc.7. The main entry's `Text` is the view. */
   default as Text,

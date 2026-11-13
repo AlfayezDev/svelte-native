@@ -69,7 +69,7 @@ Native gesture recognisers, with react-native-gesture-handler. [Gestures](gestur
 
 ### SVG
 
-SVG with react-native-svg, which is a required peer dependency: `Svg`, `G`, `Path`, `Rect`, `Circle`, `Ellipse`, `Line`, `Polygon`, `Polyline`, `SvgText`, `TSpan`, `TextPath`, `Use`, `SvgImage`, `Defs`, `ClipPath`, `LinearGradient`, `RadialGradient`, `Stop`, `Pattern`, `Mask`, `Marker`, `Symbol`, `ForeignObject`, the filters (`Filter`, `FeBlend`, `FeColorMatrix`, `FeComposite`, `FeDropShadow`, `FeFlood`, `FeGaussianBlur`, `FeMerge`, `FeMergeNode`, `FeOffset`), `SvgXml` and `SvgUri`, and the handle types `SvgHandle` and `SvgRootHandle`. react-native-svg's `Text` and `Image` are `SvgText` and `SvgImage` here, because `Text` and `Image` are the views. `/foreign` has a `LinearGradient` and a `Marker` too (expo-linear-gradient and react-native-maps), so import one of each pair `as` another name when a file uses both. [SVG](svg)
+SVG with react-native-svg, which is a required peer dependency: `Svg`, `G`, `Path`, `Rect`, `Circle`, `Ellipse`, `Line`, `Polygon`, `Polyline`, `SvgText`, `TSpan`, `TextPath`, `Use`, `SvgImage`, `Defs`, `ClipPath`, `SvgLinearGradient`, `RadialGradient`, `Stop`, `Pattern`, `Mask`, `SvgMarker`, `Symbol`, `ForeignObject`, the filters (`Filter`, `FeBlend`, `FeColorMatrix`, `FeComposite`, `FeDropShadow`, `FeFlood`, `FeGaussianBlur`, `FeMerge`, `FeMergeNode`, `FeOffset`), `SvgXml` and `SvgUri`, and the handle types `SvgHandle` and `SvgRootHandle`. react-native-svg's `Text`, `Image`, `LinearGradient` and `Marker` are `SvgText`, `SvgImage`, `SvgLinearGradient` and `SvgMarker` here, because `Text` and `Image` are the views and `/foreign` has a `LinearGradient` and a `Marker` of its own (expo-linear-gradient and react-native-maps). [SVG](svg)
 
 ## @alfayez/svelte-native/foreign
 
@@ -144,7 +144,7 @@ These still work in 0.4.0-rc.6 and are removed in 0.4.0-rc.7. Your editor strike
 | --- | --- |
 | `@alfayez/svelte-native/animation` | `@alfayez/svelte-native` |
 | `@alfayez/svelte-native/gestures` | `@alfayez/svelte-native` |
-| `@alfayez/svelte-native/svg` | `@alfayez/svelte-native`, where its `Text` is `SvgText` and its `Image` is `SvgImage` |
+| `@alfayez/svelte-native/svg` | `@alfayez/svelte-native`, where its `Text`, `Image`, `LinearGradient` and `Marker` are `SvgText`, `SvgImage`, `SvgLinearGradient` and `SvgMarker` |
 | `@alfayez/svelte-native/native-modules` | `@alfayez/svelte-native/platform` |
 | `@alfayez/svelte-native/expo` | `@alfayez/svelte-native` in `plugins` |
 | `@alfayez/svelte-native/init`, `/polyfills`, `/fabric` | `@alfayez/svelte-native/app`: run `svelte-native sync` and the generated entry imports it |

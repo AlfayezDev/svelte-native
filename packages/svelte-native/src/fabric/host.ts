@@ -556,6 +556,10 @@ function splitProps(attributes: Record<string, unknown>, into: State, navigation
   // read by VoiceOver) and so does its Pressable (a button is a button with a label of its own); the lowered tags and the
   // components that bypass them must do the same, unless the caller says `accessible={false}`.
   if (Platform.OS === "ios" && props.accessible === undefined && into.viewName === "RCTText") props.accessible = true;
+  // React Native's Text sends `ellipsizeMode: "tail"` when the caller gives none, and the native side depends on it: Fabric measures a paragraph with
+  // the C++ default, `clip`, while Android's text view draws with its own, `END`. With `numberOfLines` and no mode, a text too long for its lines was
+  // measured at its line count and drawn on more, over whatever came below it (the Web APIs screen's SHA-256 line, 14 Nov 2026).
+  if (props.ellipsizeMode === undefined && into.viewName === "RCTText") props.ellipsizeMode = "tail";
   // A navigation tag's `onPress` is the engine's own event (the toolbar's `topPress { key, index }`), not a responder
   // handler: it must neither make the node clickable and an accessibility element nor start Pressability on it.
   for (let index = 0; index < pressHandlerNames.length && !navigation; index++) {

@@ -208,6 +208,7 @@ fun main(args: Array<String>) {
   }
 
   utf8Checks(vectors)
+  val afterUtf8 = passed
   fileHandleChecks(scratch)
   blobChecks(scratch, files)
   bytesChecks(fx)
@@ -224,6 +225,7 @@ fun main(args: Array<String>) {
   cookieChecks(fx, jar)
 
   check("every reply settled exactly once", settlements.get() == 0) { "${settlements.get()} extra settlements" }
+  println("  everything but the UTF-8 vectors: ${passed - afterUtf8} passed")
   println("fetch host checks: $passed passed, $failed failed")
   exitProcess(if (failed == 0) 0 else 1)
 }
@@ -437,6 +439,7 @@ private fun largeChecks(fx: Fx) {
     }
     check("8 MiB through a slow consumer arrives intact", out.size() == expected.size && sha256(out.toByteArray()) == sha256(expected)) { "${out.size()} bytes" }
     check("a slow consumer never had more than 1 MiB + a chunk unread", started.call.peakUnread <= BodyBuffer.HIGH_WATER + 65536L) { "peak ${started.call.peakUnread}" }
+    println("  backpressure: $idle bytes buffered with nothing read, peak ${started.call.peakUnread} through a slow consumer (limit ${BodyBuffer.HIGH_WATER})")
   }
   // arrayBuffer asks for everything, so the pause is lifted.
   run {

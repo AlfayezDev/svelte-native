@@ -95,7 +95,7 @@ function runesOption(filename, enabled = runesDefaultEnabled()) {
 function lowersHtml(filename) {
   return !IN_NODE_MODULES.test(filename) && !isLibrarySource(filename);
 }
-var CUSTOM_RENDERER = "@rasheed/svelte-native/renderer";
+var CUSTOM_RENDERER = "@alfayez/svelte-native/renderer";
 function componentOptions(filename, enabled = runesDefaultEnabled(), async = asyncEnabled()) {
   return {
     filename,
@@ -1462,7 +1462,7 @@ function hostTagOf(name) {
 var USER_AGENT_STYLES = new Set("b strong em i cite dfn var u ins s del code kbd samp pre small sub sup mark h1 h2 h3 h4 h5 h6".split(" "));
 
 // src/lower-html.ts
-var PACKAGE = "@rasheed/svelte-native";
+var PACKAGE = "@alfayez/svelte-native";
 var CORE = `${PACKAGE}/core`;
 var ROUTER = `${PACKAGE}/router`;
 var SOURCE_HELPER = "__svelteNativeSource";
@@ -1496,7 +1496,7 @@ var LINK = "__svelteNativeLink";
 var COMPONENTS = { TextInput: "SvelteNativeTextInput", Switch: "SvelteNativeSwitch", Modal: "SvelteNativeModal" };
 var table = "tables have no native equivalent: lay the rows out with flex `div`s (`flex flex-row`)";
 var select = "there is no native select: show the choices as a list of `button`s, in a `Modal` if they should cover the screen";
-var web = "use `WebView` from `@rasheed/svelte-native/foreign`";
+var web = "use `WebView` from `@alfayez/svelte-native/foreign`";
 var textLike = "use a `span` (or `p`)";
 var blockLike = "use a `div`";
 var HINTS = {
@@ -1510,9 +1510,9 @@ var HINTS = {
   caption: table,
   colgroup: table,
   col: table,
-  canvas: "there is no canvas: draw with the SVG components of `@rasheed/svelte-native/svg` (react-native-svg)",
-  svg: "SVG is react-native-svg here: import `Svg`, `Path`, ... from `@rasheed/svelte-native/svg`",
-  video: "use `Video` (react-native-video) or `VideoView` (expo-video) from `@rasheed/svelte-native/foreign`",
+  canvas: "there is no canvas: draw with the SVG components of `@alfayez/svelte-native/svg` (react-native-svg)",
+  svg: "SVG is react-native-svg here: import `Svg`, `Path`, ... from `@alfayez/svelte-native/svg`",
+  video: "use `Video` (react-native-video) or `VideoView` (expo-video) from `@alfayez/svelte-native/foreign`",
   audio: "there is no audio element: play sound with a native module such as expo-audio",
   iframe: web,
   embed: web,
@@ -1524,7 +1524,7 @@ var HINTS = {
   progress: "use `ActivityIndicator`, or a `div` whose width follows the value",
   meter: "use a `div` whose width follows the value",
   picture: "use an `img`",
-  source: "use `img`, or `Video` from `@rasheed/svelte-native/foreign`",
+  source: "use `img`, or `Video` from `@alfayez/svelte-native/foreign`",
   details: blockLike,
   summary: blockLike,
   menu: "use a `ul`",
@@ -1541,15 +1541,15 @@ var HINTS = {
   output: textLike,
   map: "image maps have no native equivalent",
   area: "image maps have no native equivalent",
-  track: "use `Video` from `@rasheed/svelte-native/foreign`",
+  track: "use `Video` from `@alfayez/svelte-native/foreign`",
   template: "there is no template element: use a snippet (`{#snippet}`)",
   noscript: "there is no noscript on a device",
   link: "there is nothing to link on a device",
   meta: "there is nothing to describe on a device",
   base: "there is no base URL on a device",
-  param: "use `WebView` from `@rasheed/svelte-native/foreign`"
+  param: "use `WebView` from `@alfayez/svelte-native/foreign`"
 };
-var DEFAULT_HINT = "use a `div` (View) or a `span` (Text), or a component of `@rasheed/svelte-native`";
+var DEFAULT_HINT = "use a `div` (View) or a `span` (Text), or a component of `@alfayez/svelte-native`";
 var HTML_NAMES = /* @__PURE__ */ new Set([...Object.keys(ELEMENTS), ...Object.keys(HINTS)]);
 var OPENING = /<(?!native-|script[\s>]|style[\s>])[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?=[\s/>])|<svelte:(?:head|window|document|body|element)(?=[\s/>])/;
 function mayHaveHtml(content) {
@@ -1562,14 +1562,14 @@ var UNSUPPORTED_TYPES = {
   button: "use a `button`",
   image: "use a `button` around an `img`",
   file: "there is no file input: pick files with a native module such as expo-document-picker",
-  range: "there is no slider here: build one with gestures (`@rasheed/svelte-native/gestures`)",
+  range: "there is no slider here: build one with gestures (`@alfayez/svelte-native/gestures`)",
   color: "there is no color picker",
   hidden: "keep the value in a variable",
-  date: "use `DateTimePicker` from `@rasheed/svelte-native/foreign`",
-  time: "use `DateTimePicker` from `@rasheed/svelte-native/foreign`",
-  "datetime-local": "use `DateTimePicker` from `@rasheed/svelte-native/foreign`",
-  month: "use `DateTimePicker` from `@rasheed/svelte-native/foreign`",
-  week: "use `DateTimePicker` from `@rasheed/svelte-native/foreign`"
+  date: "use `DateTimePicker` from `@alfayez/svelte-native/foreign`",
+  time: "use `DateTimePicker` from `@alfayez/svelte-native/foreign`",
+  "datetime-local": "use `DateTimePicker` from `@alfayez/svelte-native/foreign`",
+  month: "use `DateTimePicker` from `@alfayez/svelte-native/foreign`",
+  week: "use `DateTimePicker` from `@alfayez/svelte-native/foreign`"
 };
 var TRANSITION_EVENTS = ["introstart", "introend", "outrostart", "outroend"];
 var INPUT_EVENTS = ["input", "change", "focus", "blur", "keydown", "keyup"];
@@ -2120,7 +2120,7 @@ ${problems.map((problem) => `  ${problem}`).join("\n")}`);
 }
 
 // src/lower.ts
-var PACKAGE2 = "@rasheed/svelte-native";
+var PACKAGE2 = "@alfayez/svelte-native";
 var GESTURES = `${PACKAGE2}/gestures`;
 var RENDERER = `${PACKAGE2}/renderer`;
 var SPREAD_HELPER = "__svelteNativeSpread";
@@ -2336,11 +2336,11 @@ function acceptDirectives(file, source) {
   if (block === void 0) throw new Error(`${file} is not one of the Svelte files whose refusal of the transition directives is removed (${Object.keys(REFUSALS).join(", ")})`);
   if (!source.includes(block)) {
     throw new Error(
-      `@rasheed/svelte-native: ${file} of the installed Svelte refuses \`transition:\`, \`in:\`, \`out:\` and \`animate:\` on a custom renderer in a form this version of the library does not know how to remove (Svelte was updated: the library is written against the custom-renderer build 5.56.7 at commit 216f258, which the guide installs).`
+      `@alfayez/svelte-native: ${file} of the installed Svelte refuses \`transition:\`, \`in:\`, \`out:\` and \`animate:\` on a custom renderer in a form this version of the library does not know how to remove (Svelte was updated: the library is written against the custom-renderer build 5.56.7 at commit 216f258, which the guide installs).`
     );
   }
   const accepted = source.replace(block, "");
-  if (accepted.includes(`${REFUSAL}(`)) throw new Error(`@rasheed/svelte-native: ${file} of the installed Svelte refuses a directive in more than one place`);
+  if (accepted.includes(`${REFUSAL}(`)) throw new Error(`@alfayez/svelte-native: ${file} of the installed Svelte refuses a directive in more than one place`);
   return accepted;
 }
 var hookedFor;
@@ -2351,7 +2351,7 @@ function acceptDirectivesIn(root) {
   const register = nodeModule.registerHooks;
   if (typeof register !== "function") {
     throw new Error(
-      `@rasheed/svelte-native: Svelte's compiler refuses \`transition:\`, \`in:\`, \`out:\` and \`animate:\` on native elements, and the Metro transformer removes the refusal as the compiler loads (\`module.registerHooks\`), which Node ${process.version} does not have: use Node 22.15 or newer (the library asks for 22.17, 24.3 or 26).`
+      `@alfayez/svelte-native: Svelte's compiler refuses \`transition:\`, \`in:\`, \`out:\` and \`animate:\` on native elements, and the Metro transformer removes the refusal as the compiler loads (\`module.registerHooks\`), which Node ${process.version} does not have: use Node 22.15 or newer (the library asks for 22.17, 24.3 or 26).`
     );
   }
   register({
@@ -2450,17 +2450,17 @@ function findKitRoot() {
   return kitRootCache;
 }
 function kitMissingMessage(what) {
-  return `${what} needs \`@sveltejs/kit\`, which is not installed (an optional peer dependency of @rasheed/svelte-native: only remote functions and the web target use it). Install the version the package was written against: \`pnpm add @sveltejs/kit@3.1.1\`, and copy its patch (README, "Apply the patches").`;
+  return `${what} needs \`@sveltejs/kit\`, which is not installed (an optional peer dependency of @alfayez/svelte-native: only remote functions and the web target use it). Install the version the package was written against: \`pnpm add @sveltejs/kit@3.1.1\`, and copy its patch (README, "Apply the patches").`;
 }
-function kitRoot(what = "The remote function runtime (`@rasheed/svelte-native/remote`)") {
+function kitRoot(what = "The remote function runtime (`@alfayez/svelte-native/remote`)") {
   const found = findKitRoot();
   if (found === null) throw new Error(kitMissingMessage(what));
   return found;
 }
 
 // src/remote/transform.ts
-var REMOTE_RUNTIME = "@rasheed/svelte-native/remote/runtime";
-var REMOTE_GLOBALS = "@rasheed/svelte-native/remote/globals";
+var REMOTE_RUNTIME = "@alfayez/svelte-native/remote/runtime";
+var REMOTE_GLOBALS = "@alfayez/svelte-native/remote/globals";
 var remoteModulePattern = /[/.]remote\.[^/]+$/;
 var posix = (path) => path.replaceAll("\\", "/");
 function isRemoteModule(filename) {
@@ -2618,7 +2618,7 @@ function upstreamTransformerPath(searchFrom = [process.cwd(), __dirname]) {
   try {
     expoManifest = require4.resolve("expo/package.json", { paths: [...searchFrom] });
   } catch (cause) {
-    throw new Error("The Metro transformer of @rasheed/svelte-native needs `expo`, which it could not resolve (from the app's directory or from the package). Install it: `npx expo install expo`.", { cause });
+    throw new Error("The Metro transformer of @alfayez/svelte-native needs `expo`, which it could not resolve (from the app's directory or from the package). Install it: `npx expo install expo`.", { cause });
   }
   return require4.resolve("@expo/metro-config/babel-transformer", { paths: [(0, import_node_path7.dirname)(expoManifest)] });
 }
@@ -2636,7 +2636,7 @@ function sourceOf(input) {
 var rendererChecked = false;
 function requireCustomRenderer() {
   if (rendererChecked) return;
-  assertCustomRenderer("The Metro transformer of @rasheed/svelte-native");
+  assertCustomRenderer("The Metro transformer of @alfayez/svelte-native");
   rendererChecked = true;
 }
 function assertWorkletsReadNoState(filename, code, runes) {

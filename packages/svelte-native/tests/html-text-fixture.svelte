@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Text } from "@rasheed/svelte-native";
+  import { Text } from "@alfayez/svelte-native";
   let name = $state("Ada");
   export function rename(next: string) { name = next; }
 </script>

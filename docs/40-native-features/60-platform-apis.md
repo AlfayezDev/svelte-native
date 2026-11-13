@@ -5,13 +5,13 @@ video: safe-area-view
 
 The device is more than a screen. It has an operating system, a window size, a light and dark mode, a safe area around the notch, a keyboard, and links that open your app. This page covers how to read and use them.
 
-`@rasheed/svelte-native/platform` exports React Native's platform modules, typed, for an app without React. They are React Native's own objects, so a library that imports them from `react-native` sees the same state. Each one loads the first time you use it.
+`@alfayez/svelte-native/platform` exports React Native's platform modules, typed, for an app without React. They are React Native's own objects, so a library that imports them from `react-native` sees the same state. Each one loads the first time you use it.
 
 ```svelte
 <!--- file: src/routes/+mobile.svelte --->
 <script lang="ts">
-	import { Screen, Text } from '@rasheed/svelte-native';
-	import { Dimensions, Platform } from '@rasheed/svelte-native/platform';
+	import { Screen, Text } from '@alfayez/svelte-native';
+	import { Dimensions, Platform } from '@alfayez/svelte-native/platform';
 
 	const { width, height } = Dimensions.get('window');
 </script>
@@ -26,7 +26,7 @@ The device is more than a screen. It has an operating system, a window size, a l
 `Platform.OS` is `'ios'` or `'android'`. `Platform.Version` is the system version: a number (the API level) on Android, a string on iOS. `Platform.select` picks a value per platform:
 
 ```ts
-import { Platform } from '@rasheed/svelte-native/platform';
+import { Platform } from '@alfayez/svelte-native/platform';
 
 const label = Platform.select({ ios: 'iPhone', android: 'Android phone' });
 const shadow = Platform.OS === 'ios' ? { shadowOpacity: 0.2, shadowRadius: 8 } : { elevation: 4 };
@@ -38,7 +38,7 @@ const shadow = Platform.OS === 'ios' ? { shadowOpacity: 0.2, shadowRadius: 8 } :
 
 ```svelte
 <script lang="ts">
-	import { Text, colorScheme } from '@rasheed/svelte-native';
+	import { Text, colorScheme } from '@alfayez/svelte-native';
 </script>
 
 <Text style={{ color: colorScheme.current === 'dark' ? '#ffffff' : '#000000' }}>Hello</Text>
@@ -52,7 +52,7 @@ const shadow = Platform.OS === 'ios' ? { shadowOpacity: 0.2, shadowRadius: 8 } :
 
 ```svelte
 <script lang="ts">
-	import { Text, View, windowSize } from '@rasheed/svelte-native';
+	import { Text, View, windowSize } from '@alfayez/svelte-native';
 
 	const wide = $derived(windowSize.width >= 768);
 	const columns = $derived(Math.max(1, Math.floor(windowSize.width / 180)));
@@ -82,7 +82,7 @@ Svelte's own reactive window values work too, from the same import as on the web
 </script>
 ```
 
-`Dimensions` itself is in `@rasheed/svelte-native/platform` (`Dimensions.get('window')`, `Dimensions.addEventListener('change', ...)`), and `PixelRatio.roundToNearestPixel(points)` aligns a size to whole pixels.
+`Dimensions` itself is in `@alfayez/svelte-native/platform` (`Dimensions.get('window')`, `Dimensions.addEventListener('change', ...)`), and `PixelRatio.roundToNearestPixel(points)` aligns a size to whole pixels.
 
 ## Safe area and keyboard
 
@@ -97,7 +97,7 @@ Svelte's own reactive window values work too, from the same import as on the web
 
 ```svelte
 <script lang="ts">
-	import { Text, View, insets } from '@rasheed/svelte-native';
+	import { Text, View, insets } from '@alfayez/svelte-native';
 </script>
 
 <View style={{ flex: 1, paddingBottom: insets.keyboardVisible ? insets.keyboardHeight : insets.bottom }}>
@@ -114,7 +114,7 @@ Usually you don't need it directly. Content under a native header already starts
 `Linking` opens other apps and web pages, and tells you about links that opened yours:
 
 ```ts
-import { Linking } from '@rasheed/svelte-native/platform';
+import { Linking } from '@alfayez/svelte-native/platform';
 
 await Linking.openURL('https://svelte.dev');        // the browser
 await Linking.openURL('mailto:hello@example.com');  // the mail app
@@ -129,7 +129,7 @@ You don't need `Linking` to handle links into your app. The router opens a link 
 
 ```svelte
 <script lang="ts">
-	import { AppState } from '@rasheed/svelte-native/platform';
+	import { AppState } from '@alfayez/svelte-native/platform';
 
 	$effect(() => {
 		const subscription = AppState.addEventListener('change', (state) => {
@@ -146,7 +146,7 @@ Android's back button already goes back in your app's navigation, through the ro
 
 ```svelte
 <script lang="ts">
-	import { BackHandler } from '@rasheed/svelte-native/platform';
+	import { BackHandler } from '@alfayez/svelte-native/platform';
 
 	let dirty = $state(false);
 
@@ -164,7 +164,7 @@ Android's back button already goes back in your app's navigation, through the ro
 ## Alerts, sharing and vibration
 
 ```ts
-import { Alert, Share, Vibration } from '@rasheed/svelte-native/platform';
+import { Alert, Share, Vibration } from '@alfayez/svelte-native/platform';
 
 Alert.alert('Delete this note?', 'You can’t undo this.', [
 	{ text: 'Cancel', style: 'cancel' },

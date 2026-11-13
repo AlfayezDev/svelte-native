@@ -29,7 +29,7 @@ export function add(item: { id: string; name: string }) {
 ```svelte
 <!--- file: src/routes/cart/+mobile.svelte --->
 <script lang="ts">
-	import { Screen, Text } from '@rasheed/svelte-native';
+	import { Screen, Text } from '@alfayez/svelte-native';
 	import { cart } from '#lib/cart.svelte.ts';
 </script>
 
@@ -50,7 +50,7 @@ State that belongs to one part of the app, a signed-in user or one workspace, ca
 <!--- file: src/routes/+layout.mobile.svelte --->
 <script lang="ts">
 	import { setContext, type Snippet } from 'svelte';
-	import { Stack } from '@rasheed/svelte-native';
+	import { Stack } from '@alfayez/svelte-native';
 
 	let { children }: { children: Snippet } = $props();
 

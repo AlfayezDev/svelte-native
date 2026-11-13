@@ -9,7 +9,7 @@ video: pressable
 ```svelte
 <!--- file: src/routes/+mobile.svelte --->
 <script lang="ts">
-	import { Image, Screen, Text, View } from '@rasheed/svelte-native';
+	import { Image, Screen, Text, View } from '@alfayez/svelte-native';
 	import photo from '../../assets/images/photo.png';
 
 	let status = $state('loading');
@@ -54,4 +54,4 @@ video: pressable
 
 It also takes the other props of React Native's [`Image`](https://reactnative.dev/docs/image).
 
-For placeholders (blurhash, thumbhash), transitions between pictures and control over caching, use `ExpoImage` from `@rasheed/svelte-native/foreign`, which is [expo-image](native-views).
+For placeholders (blurhash, thumbhash), transitions between pictures and control over caching, use `ExpoImage` from `@alfayez/svelte-native/foreign`, which is [expo-image](native-views).

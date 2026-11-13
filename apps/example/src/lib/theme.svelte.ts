@@ -1,7 +1,7 @@
 // The colours of the app in light and dark, and three text styles. The theme follows the system: the library's `Appearance` says which one
 // is on and tells us when it changes, and every screen that reads `theme.colors` redraws, because `scheme` is Svelte state.
 import type { TextStyle } from "react-native";
-import { Appearance } from "@rasheed/svelte-native/platform";
+import { Appearance } from "@alfayez/svelte-native/platform";
 
 const light = {
   background: "#f4f4f6",

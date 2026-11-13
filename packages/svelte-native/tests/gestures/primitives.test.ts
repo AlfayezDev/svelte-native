@@ -57,26 +57,26 @@ test("a GestureDetector without a gesture is an error", async () => {
 test("lowering keeps `use:gesture` quiet, and still warns about other actions and about a gesture import from elsewhere", () => {
   const warnings: string[] = [];
   const warn = (message: string) => warnings.push(message);
-  const imports = `<script>\n  import { View } from "@rasheed/svelte-native";\n  import { gesture } from "@rasheed/svelte-native/gestures";\n  import { tap } from "./actions";\n</script>\n`;
+  const imports = `<script>\n  import { View } from "@alfayez/svelte-native";\n  import { gesture } from "@alfayez/svelte-native/gestures";\n  import { tap } from "./actions";\n</script>\n`;
   const out = lowerPrimitives(`${imports}<View use:gesture={pan}>a</View><View use:tap>b</View>`, { filename: "a.svelte", warn });
   expect(out).toContain("<native-view use:gesture={pan}>a</native-view>");
   expect(warnings).toHaveLength(1);
   expect(warnings[0]).toContain("use:tap");
 
   warnings.length = 0;
-  const other = `<script>\n  import { View } from "@rasheed/svelte-native";\n  import { gesture } from "./mine";\n</script>\n<View use:gesture={pan}>a</View>`;
+  const other = `<script>\n  import { View } from "@alfayez/svelte-native";\n  import { gesture } from "./mine";\n</script>\n<View use:gesture={pan}>a</View>`;
   lowerPrimitives(other, { filename: "b.svelte", warn });
   expect(warnings).toHaveLength(1);
 
   // An alias is still the action.
   warnings.length = 0;
-  lowerPrimitives(`<script>\n  import { View } from "@rasheed/svelte-native";\n  import { gesture as drag } from "@rasheed/svelte-native/gestures";\n</script>\n<View use:drag={pan}>a</View>`, { filename: "c.svelte", warn });
+  lowerPrimitives(`<script>\n  import { View } from "@alfayez/svelte-native";\n  import { gesture as drag } from "@alfayez/svelte-native/gestures";\n</script>\n<View use:drag={pan}>a</View>`, { filename: "c.svelte", warn });
   expect(warnings).toEqual([]);
 });
 
 test("the lowered and the component form of a primitive compile to the same host tag with the attribute", () => {
-  const source = `<script>\n  import { View } from "@rasheed/svelte-native";\n  let { pan } = $props();\n</script>\n<View gesture={pan} />`;
-  const code = compile(lowerPrimitives(source), { filename: "f.svelte", generate: "client", runes: true, experimental: { customRenderer: "@rasheed/svelte-native/renderer" } }).js.code;
+  const source = `<script>\n  import { View } from "@alfayez/svelte-native";\n  let { pan } = $props();\n</script>\n<View gesture={pan} />`;
+  const code = compile(lowerPrimitives(source), { filename: "f.svelte", generate: "client", runes: true, experimental: { customRenderer: "@alfayez/svelte-native/renderer" } }).js.code;
   expect(code).toContain("native-view");
   expect(code).toContain("'gesture'");
 });

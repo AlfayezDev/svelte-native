@@ -1,8 +1,14 @@
 # Changelog
 
-Notable changes to `@rasheed/svelte-native`, newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are `0.x` while the package is private and its Svelte compiler is pinned to an unmerged pull request, so a minor version may break. Each line is what an app that uses the package gets.
+Notable changes to `@alfayez/svelte-native` (named `@rasheed/svelte-native` up to 0.4.0-rc.4), newest first. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are `0.x` while the package is private and its Svelte compiler is pinned to an unmerged pull request, so a minor version may break. Each line is what an app that uses the package gets.
 
 ## Unreleased
+
+## 0.4.0-rc.5 - 2026-11-13
+
+### Changed
+
+- The package is `@alfayez/svelte-native`, no longer `@rasheed/svelte-native`. Change the dependency's name in `package.json` and every import (`@rasheed/svelte-native` and its subpaths, `/foreign`, `/metro`, `/vite`, ...) to `@alfayez/svelte-native`; nothing else changes. `pnpm pack` writes `alfayez-svelte-native-<version>.tgz`.
 
 ## 0.4.0-rc.4 - 2026-11-13
 

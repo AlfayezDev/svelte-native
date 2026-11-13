@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 /**
  * The Svelte build this library compiles with: the custom-renderer pull request, https://github.com/sveltejs/svelte/pull/18042, at the commit the
  * package was written against. Its version string is 5.56.7, the same as the release's, so the version cannot tell the two apart; the `./renderer`
- * export (`svelte/renderer`, which `@rasheed/svelte-native/renderer` imports and the compiler's `customRenderer` option names) is what only this build has.
+ * export (`svelte/renderer`, which `@alfayez/svelte-native/renderer` imports and the compiler's `customRenderer` option names) is what only this build has.
  */
 export const requiredSvelte = {
   version: "5.56.7",

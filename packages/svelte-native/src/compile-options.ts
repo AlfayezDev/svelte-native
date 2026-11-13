@@ -87,7 +87,7 @@ export function lowersHtml(filename: string): boolean {
 }
 
 /** The renderer module the compiler's `experimental.customRenderer` names: what turns Svelte's DOM calls into host-node calls. */
-export const CUSTOM_RENDERER = "@rasheed/svelte-native/renderer";
+export const CUSTOM_RENDERER = "@alfayez/svelte-native/renderer";
 
 /**
  * The options the library compiles a native component with: external CSS (a style block is refused by the transformer), production output, the custom renderer, and the runes

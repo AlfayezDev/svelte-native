@@ -10,7 +10,7 @@ import { routesTableFile } from "../src/variant.ts";
 /**
  * The route table is per variant (the product's leaves the development lab out): each variant has a file of its own under
  * `.svelte-native/`, Metro writes its variant's when its config loads and resolves `./routes` (the generated entry's import) and
- * `@rasheed/svelte-native/routes` (the app's read of `variant` and `lab`) to it. No file is shared, so a sync for another variant, in
+ * `@alfayez/svelte-native/routes` (the app's read of `variant` and `lab`) to it. No file is shared, so a sync for another variant, in
  * a script or beside a running Metro, changes nothing it serves (packages/svelte-native/native/svelte-engine/SPEC.md, "What the product contains: no development lab (JavaScript)").
  */
 const fakeConfig = (projectRoot: string): ConfigT => ({
@@ -97,13 +97,13 @@ describe("Metro writes the route table of the variant it bundles", () => {
 });
 
 describe("Metro resolves the route table to the bundling variant's file", () => {
-  test("`./routes` from the generated entry, and the app's `@rasheed/svelte-native/routes` from anywhere", () => {
+  test("`./routes` from the generated entry, and the app's `@alfayez/svelte-native/routes` from anywhere", () => {
     const root = project();
     const entry = join(root, ".svelte-native/entry.ts");
     for (const variant of ["production", "qa", "smoke"]) {
       const config = withSvelteNative(fakeConfig(root), { variant });
       expect(resolveFrom(config, entry, "./routes")).toBe(tableFile(root, variant));
-      expect(resolveFrom(config, join(root, "src/lib/native/state.svelte.ts"), "@rasheed/svelte-native/routes")).toBe(tableFile(root, variant));
+      expect(resolveFrom(config, join(root, "src/lib/native/state.svelte.ts"), "@alfayez/svelte-native/routes")).toBe(tableFile(root, variant));
     }
     // Any other `./routes` is the real thing.
     const config = withSvelteNative(fakeConfig(root), { variant: "qa" });

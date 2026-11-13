@@ -58,7 +58,7 @@ describe("the feature registries", () => {
 
 describe("the screens", () => {
   /** The library's entries an app is meant to import (`packages/svelte-native/README.md`): not `/fabric`, `/core`, `/renderer` or `/init`, which are its inside. */
-  const publicEntries = ["@rasheed/svelte-native", "@rasheed/svelte-native/router", "@rasheed/svelte-native/animation", "@rasheed/svelte-native/gestures", "@rasheed/svelte-native/foreign", "@rasheed/svelte-native/svg", "@rasheed/svelte-native/updates", "@rasheed/svelte-native/remote", "@rasheed/svelte-native/native-modules", "@rasheed/svelte-native/platform"];
+  const publicEntries = ["@alfayez/svelte-native", "@alfayez/svelte-native/router", "@alfayez/svelte-native/animation", "@alfayez/svelte-native/gestures", "@alfayez/svelte-native/foreign", "@alfayez/svelte-native/svg", "@alfayez/svelte-native/updates", "@alfayez/svelte-native/remote", "@alfayez/svelte-native/native-modules", "@alfayez/svelte-native/platform"];
   const sourceFiles = (): string[] => readdirSync(join(app, "src"), { recursive: true, withFileTypes: true })
     .filter((entry) => entry.isFile() && /\.(?:svelte|ts)$/.test(entry.name))
     .map((entry) => join(entry.parentPath, entry.name));
@@ -74,7 +74,7 @@ describe("the screens", () => {
       const specifiers = [...source.matchAll(/(?:from|import)\s*\(?\s*["']([^"']+)["']/g)].map((match) => match[1] ?? "");
       for (const specifier of specifiers) {
         const where = `${file.slice(app.length + 1)}: ${specifier}`;
-        if (specifier.startsWith("@rasheed/svelte-native")) expect([where, publicEntries.includes(specifier)]).toEqual([where, true]);
+        if (specifier.startsWith("@alfayez/svelte-native")) expect([where, publicEntries.includes(specifier)]).toEqual([where, true]);
         expect([where, /apps\/qa|__dev|packages\/svelte-native/.test(specifier)]).toEqual([where, false]);
       }
     }

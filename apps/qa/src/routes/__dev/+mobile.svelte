@@ -7,8 +7,8 @@
   import { randomUUID } from "expo-crypto";
   import { SvelteMap, SvelteSet, SvelteDate, SvelteURL } from "svelte/reactivity";
   import { writable, derived } from "svelte/store";
-  import { Text, View, Pressable, useRouter } from "@rasheed/svelte-native";
-  import { AnimatedView, createSharedValue, withTiming, withSpring, withRepeat, withSequence, cancelAnimation, ReduceMotion, runOnUISync } from "@rasheed/svelte-native/animation";
+  import { Text, View, Pressable, useRouter } from "@alfayez/svelte-native";
+  import { AnimatedView, createSharedValue, withTiming, withSpring, withRepeat, withSequence, cancelAnimation, ReduceMotion, runOnUISync } from "@alfayez/svelte-native/animation";
   import { nativeLabEnabled, theme } from "#lib/native/state.svelte.ts";
   import { labContext, RuneCounter, runeCounter, screenLab, type RowHandle } from "#lib/native/dev/model.svelte.ts";
   import Binding from "#lib/native/dev/Binding.svelte";

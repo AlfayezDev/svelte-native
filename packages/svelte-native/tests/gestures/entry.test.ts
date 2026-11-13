@@ -1,7 +1,7 @@
 import { test, expect } from "bun:test";
 import { load, anim } from "./harness.ts";
 
-/** What `@rasheed/svelte-native/gestures` exports, and that its lazy parts resolve to the real thing when first used. */
+/** What `@alfayez/svelte-native/gestures` exports, and that its lazy parts resolve to the real thing when first used. */
 test("the entry exports the builders, the sugar, the constants and worklets' runOnJS and scheduleOnRN", async () => {
   const m = await load({ fixture: "gesture-fixture.svelte" });
   const entry = m.gestures;

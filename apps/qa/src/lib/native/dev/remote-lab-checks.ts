@@ -1,6 +1,6 @@
 // The checks of the remote functions lab (`/__dev/remote`), apart from the page so a host test can run them against the lab's own server module:
 // each one calls remote functions the way a screen does and throws when what comes back is not what the server sends.
-import { configureRemote, native, remoteHost } from "@rasheed/svelte-native/remote";
+import { configureRemote, native, remoteHost } from "@alfayez/svelte-native/remote";
 import {
   labBounce, labBuildInfo, labClock, labCounter, labDouble, labHello, labIncrement, labIncrementRequested, labLogin, labProbe, labReset, labSignup, labStats, labTeapot, labTypes, labWhoAmI,
 } from "./remote-lab.remote.ts";

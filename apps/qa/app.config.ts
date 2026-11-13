@@ -40,7 +40,7 @@ const smokePlugins: NonNullable<ExpoConfig["plugins"]> = !smoke ? [] : [
   // `com.huawei.hms:location` from Huawei's repository, which only the production app's Huawei plugin (not used here) adds to the project.
   ["expo-build-properties", { ios: { useFrameworks: "static" }, android: { extraMavenRepos: [{ url: "https://developer.huawei.com/repo/" }] } }],
 ];
-// The library's own native modules (the engine, the updates module and the four iOS modules) are not local modules: they come from `node_modules/@rasheed/svelte-native`, which
+// The library's own native modules (the engine, the updates module and the four iOS modules) are not local modules: they come from `node_modules/@alfayez/svelte-native`, which
 // links them with its `expo-module.config.json`, and the product ships all of them. Local Expo modules (directories of `modules/`) that exist for the QA lab and must not ship: the in-app touch injector (Android), the QA
 // inspection and gesture trace module (iOS) and the view-creation bench (Android). The product build leaves them out of autolinking
 // (the svelte-native plugin writes the names into settings.gradle and the Podfile), so their classes are not compiled into the app.
@@ -91,7 +91,7 @@ export default {
     },
   },
   plugins: [
-    ["@rasheed/svelte-native/expo", {
+    ["@alfayez/svelte-native/expo", {
       variant,
       androidProfileable: !production,
       autolinkingExclude,

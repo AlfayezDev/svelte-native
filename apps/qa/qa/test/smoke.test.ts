@@ -345,7 +345,7 @@ describe("three apps: the product and the QA app link the product's native modul
 	}
 	/** The `autolinkingExclude` the Svelte native plugin gets from app.config.ts for a variant: what it writes into settings.gradle and the Podfile. */
 	function configuredExclude(variant: keyof typeof variantEnv): string[] {
-		const plugin = config(variant).plugins.find((entry) => pluginName(entry) === "@rasheed/svelte-native/expo") as [string, { autolinkingExclude: string[] }];
+		const plugin = config(variant).plugins.find((entry) => pluginName(entry) === "@alfayez/svelte-native/expo") as [string, { autolinkingExclude: string[] }];
 		return plugin[1].autolinkingExclude;
 	}
 	/** The packages each autolinker would link for a platform, given the excludes the build passes both (settings.gradle's `--exclude` list / the Podfile's). */
@@ -379,8 +379,8 @@ describe("three apps: the product and the QA app link the product's native modul
 			expect([...qa.rn].toSorted()).toEqual([...product.rn].toSorted());
 			expect([...smoke.all].filter((name) => !qa.all.has(name)).toSorted()).toEqual(smokeOnlyFor(platform).toSorted());
 			expect([...qa.all].filter((name) => !smoke.all.has(name))).toEqual([]);
-			// What the product (and so the QA app) keeps: Expo's own modules, the shared packages, and the library's native modules (one package, `@rasheed/svelte-native`: the engine on Android, the screens pod on iOS) the app ships.
-			const kept = ["expo-secure-store", "expo-localization", "expo-constants", "expo-asset", "expo-splash-screen", "expo-system-ui", "@rasheed/svelte-native"];
+			// What the product (and so the QA app) keeps: Expo's own modules, the shared packages, and the library's native modules (one package, `@alfayez/svelte-native`: the engine on Android, the screens pod on iOS) the app ships.
+			const kept = ["expo-secure-store", "expo-localization", "expo-constants", "expo-asset", "expo-splash-screen", "expo-system-ui", "@alfayez/svelte-native"];
 			for (const name of kept) expect([name, qa.expo.includes(name)]).toEqual([name, true]);
 			for (const name of ["react-native-reanimated", "react-native-webview", "react-native-maps"]) expect([name, qa.rn.includes(name)]).toEqual([name, true]);
 		}, 60_000); // runs both real autolinkers three times: seconds on a busy machine

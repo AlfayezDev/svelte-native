@@ -87,7 +87,7 @@ async function load() {
       setup(builder) {
         builder.onResolve({ filter: /^(react-native|expo-modules-core)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
         builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? "export {};", loader: "js" }));
-        builder.onResolve({ filter: /^@rasheed\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
+        builder.onResolve({ filter: /^@alfayez\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
         builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../src/environment.ts") }));
         builder.onLoad({ filter: /\.svelte$/ }, async ({ path }) => ({
           contents: compile(await readFile(path, "utf8"), componentOptions(path)).js.code,
@@ -325,7 +325,7 @@ for (const [name, file, interfaceName] of kinds) {
 // package's own would leave a component without a manager, so the names are read back from the packages' sources.
 test("the on-demand view manager names are the ones the packages register", async () => {
   const { default: config } = await import("../../../apps/qa/app.config.ts");
-  const entry = config.plugins.find((plugin): plugin is [string, { androidOnDemandViewManagers: Record<string, string[]> }] => Array.isArray(plugin) && plugin[0] === "@rasheed/svelte-native/expo");
+  const entry = config.plugins.find((plugin): plugin is [string, { androidOnDemandViewManagers: Record<string, string[]> }] => Array.isArray(plugin) && plugin[0] === "@alfayez/svelte-native/expo");
   const listed = entry?.[1].androidOnDemandViewManagers ?? {};
   expect(Object.keys(listed).sort()).toEqual([
     "com.airbnb.android.react.lottie.LottiePackage", "com.brentvatne.react.ReactVideoPackage", "com.horcrux.svg.SvgPackage", "com.reactnativecommunity.webview.RNCWebViewPackage", "com.reactnativefastshadow.FastShadowPackage",

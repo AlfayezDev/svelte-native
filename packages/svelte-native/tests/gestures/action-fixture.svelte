@@ -1,7 +1,7 @@
 <script>
   // `use:gesture` on a lowered View: the action follows its parameter and removes the attribute when the element goes.
-  import { View } from "@rasheed/svelte-native";
-  import { gesture } from "@rasheed/svelte-native/gestures";
+  import { View } from "@alfayez/svelte-native";
+  import { gesture } from "@alfayez/svelte-native/gestures";
   let { first } = $props();
   let current = $state.raw(first);
   let shown = $state(true);

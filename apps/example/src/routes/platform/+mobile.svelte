@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { SafeAreaView, Screen, ScrollView, Switch, Text, TextInput, View, insets } from "@rasheed/svelte-native";
+  import { SafeAreaView, Screen, ScrollView, Switch, Text, TextInput, View, insets } from "@alfayez/svelte-native";
   import Button from "#lib/components/Button.svelte";
   import Section from "#lib/components/Section.svelte";
   import { scroller, useDemo } from "#lib/demo.ts";
   import { text, theme } from "#lib/theme.svelte.ts";
-  import { Dimensions, Platform } from "@rasheed/svelte-native/platform";
+  import { Dimensions, Platform } from "@alfayez/svelte-native/platform";
 
   // What the platform tells the app. The library has `insets` (the safe area and the keyboard, as reactive state) and the options of `<Screen>`
-  // for the system bars. The rest is React Native's own JavaScript modules, which `@rasheed/svelte-native/platform` exports with their types:
+  // for the system bars. The rest is React Native's own JavaScript modules, which `@alfayez/svelte-native/platform` exports with their types:
   // `Platform` (which OS) and `Dimensions` (the size of the screen); `Appearance` (light or dark) is read by the theme in src/lib/theme.svelte.ts.
   // Read `insets` anywhere and the view updates when it changes, for example when the keyboard opens.
   const size = Dimensions.get("window");

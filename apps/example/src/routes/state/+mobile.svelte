@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ActivityIndicator, Pressable, Switch, Text, TextInput, View } from "@rasheed/svelte-native";
+  import { ActivityIndicator, Pressable, Switch, Text, TextInput, View } from "@alfayez/svelte-native";
   import Button from "#lib/components/Button.svelte";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";

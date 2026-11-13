@@ -9,7 +9,7 @@ video: text-input
 ```svelte
 <!--- file: src/routes/settings/+mobile.svelte --->
 <script lang="ts">
-	import { Screen, Switch, Text, View } from '@rasheed/svelte-native';
+	import { Screen, Switch, Text, View } from '@alfayez/svelte-native';
 
 	let notifications = $state(true);
 </script>

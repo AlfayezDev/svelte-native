@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { View } from "@rasheed/svelte-native";
-  import { createSharedValue, runOnJS } from "@rasheed/svelte-native/animation";
-  import { Gesture } from "@rasheed/svelte-native/gestures";
+  import { View } from "@alfayez/svelte-native";
+  import { createSharedValue, runOnJS } from "@alfayez/svelte-native/animation";
+  import { Gesture } from "@alfayez/svelte-native/gestures";
   import type { Probe, Session } from "../gestures-lab.ts";
 
   /**

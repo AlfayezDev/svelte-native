@@ -2,8 +2,8 @@
 // Loaded by plain `node` in an app that has neither `@sveltejs/kit` nor `vite` (tests/node-modules.test.ts): the Metro integration and the transformer load, resolve and
 // compile without them, and what does need SvelteKit says so by name.
 const { traverseFast } = require("@babel/types");
-const { withSvelteNative } = require("@rasheed/svelte-native/metro");
-const transformer = require(require.resolve("@rasheed/svelte-native/transformer"));
+const { withSvelteNative } = require("@alfayez/svelte-native/metro");
+const transformer = require(require.resolve("@alfayez/svelte-native/transformer"));
 
 const root = process.cwd();
 const found = (filePath) => ({ type: "sourceFile", filePath });
@@ -31,17 +31,17 @@ const imports = (ast) => {
 };
 const compiled = transformer.transform({
   filename: `${root}/src/Page.svelte`,
-  src: '<script lang="ts">import { View, Text } from "@rasheed/svelte-native"; let n: number = $state(1);</script>\n<View><Text>{n}</Text></View>\n',
+  src: '<script lang="ts">import { View, Text } from "@alfayez/svelte-native"; let n: number = $state(1);</script>\n<View><Text>{n}</Text></View>\n',
   options,
   plugins: [],
 });
 
 console.log(
   JSON.stringify({
-    routes: resolveRequest(context(`${root}/src/a.ts`), "@rasheed/svelte-native/routes", "android").filePath,
+    routes: resolveRequest(context(`${root}/src/a.ts`), "@alfayez/svelte-native/routes", "android").filePath,
     ordinary: resolveRequest(context(`${root}/src/a.ts`), "react-native-reanimated", "android").filePath,
-    kitFromRuntime: message(() => resolveRequest(context(`${root}/node_modules/@rasheed/svelte-native/src/remote/runtime.ts`), "@sveltejs/kit/src/runtime/client/remote-functions/command.svelte.js", "android")),
-    kitInternal: message(() => resolveRequest(context(`${root}/node_modules/@rasheed/svelte-native/src/remote/shims/client.ts`), "@sveltejs/kit/internal", "android")),
+    kitFromRuntime: message(() => resolveRequest(context(`${root}/node_modules/@alfayez/svelte-native/src/remote/runtime.ts`), "@sveltejs/kit/src/runtime/client/remote-functions/command.svelte.js", "android")),
+    kitInternal: message(() => resolveRequest(context(`${root}/node_modules/@alfayez/svelte-native/src/remote/shims/client.ts`), "@sveltejs/kit/internal", "android")),
     svelteImports: imports(compiled.ast),
     remoteModule: message(() => transformer.sourceOf({ filename: `${root}/src/lib/api.remote.ts`, src: 'import { query } from "$app/server"; export const hello = query(async () => 1);', options })),
     cacheKey: transformer.getCacheKey({}),

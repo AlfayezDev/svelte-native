@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Pressable, Screen, ScrollView, Text, View, useRouter } from "@rasheed/svelte-native";
+  import { Pressable, Screen, ScrollView, Text, View, useRouter } from "@alfayez/svelte-native";
   import Button from "../components/Button.svelte";
   import { theme } from "../state.svelte.ts";
   /** A screen of one tab's own stack in the screens lab: `/[tab]` is the tab's root, `/[tab]/[depth]` a screen pushed on it. */

@@ -1,5 +1,5 @@
 import { Directory, File, Paths } from "expo-file-system";
-import type { Presentation } from "@rasheed/svelte-native";
+import type { Presentation } from "@alfayez/svelte-native";
 import { qaModule, type BuildIdentity } from "./qa.ts";
 
 /**

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Pressable, Screen, Text, View, useRouter } from "@rasheed/svelte-native";
+  import { Pressable, Screen, Text, View, useRouter } from "@alfayez/svelte-native";
   const router = useRouter();
 </script>
 

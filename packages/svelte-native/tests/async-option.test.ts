@@ -46,14 +46,14 @@ describe("the setting", () => {
       withSvelteNative(config(projectRoot), { syncRoutes: false });
       expect(process.env[ASYNC_ENVIRONMENT_VARIABLE]).toBeUndefined();
       expect(asyncEnabled()).toBe(false);
-      expect(componentOptions(app).experimental).toEqual({ customRenderer: "@rasheed/svelte-native/renderer" });
+      expect(componentOptions(app).experimental).toEqual({ customRenderer: "@alfayez/svelte-native/renderer" });
       withSvelteNative(config(projectRoot), { syncRoutes: false, async: true });
       expect(process.env[ASYNC_ENVIRONMENT_VARIABLE]).toBe("1");
-      expect(componentOptions(app).experimental).toEqual({ customRenderer: "@rasheed/svelte-native/renderer", async: true });
+      expect(componentOptions(app).experimental).toEqual({ customRenderer: "@alfayez/svelte-native/renderer", async: true });
       expect(moduleOptions("/work/app/src/lib/state.svelte.ts")).toEqual({ filename: "/work/app/src/lib/state.svelte.ts", dev: false, generate: "client", experimental: { async: true } });
       withSvelteNative(config(projectRoot), { syncRoutes: false, async: false });
       expect(process.env[ASYNC_ENVIRONMENT_VARIABLE]).toBe("0");
-      expect(componentOptions(app).experimental).toEqual({ customRenderer: "@rasheed/svelte-native/renderer" });
+      expect(componentOptions(app).experimental).toEqual({ customRenderer: "@alfayez/svelte-native/renderer" });
     } finally {
       rmSync(projectRoot, { recursive: true, force: true });
     }

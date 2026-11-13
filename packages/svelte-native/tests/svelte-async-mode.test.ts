@@ -37,7 +37,7 @@ test("the Metro transformer compiles components and modules without Svelte's asy
   delete process.env[ASYNC_ENVIRONMENT_VARIABLE];
   try {
     const options = componentOptions("/app/src/Probe.svelte");
-    expect(options.experimental).toEqual({ customRenderer: "@rasheed/svelte-native/renderer" });
+    expect(options.experimental).toEqual({ customRenderer: "@alfayez/svelte-native/renderer" });
     expect(moduleOptions("/app/src/probe.svelte.ts")).toEqual({ filename: "/app/src/probe.svelte.ts", dev: false, generate: "client" });
     // With those options a component imports no flag module; with `async: true` added (the probe's control, and what the app's setting does) it does, so the assertion can fail.
     const probe = "<script>let { a } = $props();</script><native-view>{a}</native-view>";

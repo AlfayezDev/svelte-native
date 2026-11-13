@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Pressable, Text } from "@rasheed/svelte-native";
+  import { Pressable, Text } from "@alfayez/svelte-native";
   import { theme } from "#lib/theme.svelte.ts";
 
   // A button: a `Pressable` that dims while a finger is on it (`onPressIn` and `onPressOut`) and says what it is to a screen reader.

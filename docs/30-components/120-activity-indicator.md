@@ -9,7 +9,7 @@ video: pressable
 ```svelte
 <!--- file: src/routes/+mobile.svelte --->
 <script lang="ts">
-	import { ActivityIndicator, Screen, Text, View } from '@rasheed/svelte-native';
+	import { ActivityIndicator, Screen, Text, View } from '@alfayez/svelte-native';
 
 	const posts = fetch('https://api.example.com/posts').then((response) => response.json());
 </script>

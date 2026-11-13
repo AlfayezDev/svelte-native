@@ -8,7 +8,7 @@ There is no CSS engine on the device. Each component takes a `style` prop: a pla
 ```svelte
 <!--- file: src/routes/+mobile.svelte --->
 <script lang="ts">
-	import { Text, View } from '@rasheed/svelte-native';
+	import { Text, View } from '@alfayez/svelte-native';
 </script>
 
 <View style={{ padding: 20, gap: 8, borderRadius: 16, backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#e5e5ea' }}>
@@ -23,7 +23,7 @@ A style is a value like any other. Keep one in a constant, compute it with `$der
 
 ```svelte
 <script lang="ts">
-	import { Pressable, Text } from '@rasheed/svelte-native';
+	import { Pressable, Text } from '@alfayez/svelte-native';
 
 	const card = { padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#e5e5ea' };
 	let selected = $state(false);
@@ -71,7 +71,7 @@ Give its path to Metro, and restart Metro:
 ```js
 /// file: metro.config.cjs
 const { getDefaultConfig } = require('expo/metro-config');
-const { withSvelteNative } = require('@rasheed/svelte-native/metro');
+const { withSvelteNative } = require('@alfayez/svelte-native/metro');
 
 module.exports = withSvelteNative(getDefaultConfig(__dirname), { css: 'src/global.css' });
 ```
@@ -160,7 +160,7 @@ Native screens don't follow the system's appearance on their own: a `Text` witho
 
 ```svelte
 <script lang="ts">
-	import { colorScheme, Text, View } from '@rasheed/svelte-native';
+	import { colorScheme, Text, View } from '@alfayez/svelte-native';
 
 	const dark = $derived(colorScheme.current === 'dark');
 </script>
@@ -174,7 +174,7 @@ Native screens don't follow the system's appearance on their own: a `Text` witho
 
 ```ts
 /// file: src/lib/theme.ts
-import { colorScheme } from '@rasheed/svelte-native';
+import { colorScheme } from '@alfayez/svelte-native';
 
 const light = { background: '#f2f2f7', surface: '#ffffff', text: '#000000', secondaryText: '#6c6c70', accent: '#007aff', onAccent: '#ffffff' };
 const dark: typeof light = { background: '#000000', surface: '#1c1c1e', text: '#ffffff', secondaryText: '#98989f', accent: '#0a84ff', onAccent: '#ffffff' };
@@ -192,7 +192,7 @@ Give the root stack the background, so that every screen is opaque and a pushed 
 <!--- file: src/routes/+layout.mobile.svelte --->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { Stack } from '@rasheed/svelte-native';
+	import { Stack } from '@alfayez/svelte-native';
 	import { theme } from '#lib/theme.ts';
 
 	let { children }: { children: Snippet } = $props();

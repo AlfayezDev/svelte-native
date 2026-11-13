@@ -86,16 +86,16 @@ async function load(table: unknown, mutations: readonly Mutation[] = []) {
 					}
 					return { contents, loader: "ts" };
 				});
-				builder.onResolve({ filter: /^@rasheed\/svelte-native\/classes-table$/ }, (args) => ({ path: args.path, namespace: "classes-table" }));
+				builder.onResolve({ filter: /^@alfayez\/svelte-native\/classes-table$/ }, (args) => ({ path: args.path, namespace: "classes-table" }));
 				builder.onLoad({ filter: /.*/, namespace: "classes-table" }, () => ({ contents: `export default ${JSON.stringify(table)};`, loader: "js" }));
 				builder.onResolve({ filter: /^react-native\/Libraries\/Utilities\/(Appearance|Dimensions|Platform)$/ }, (args) => ({ path: args.path, namespace: "react-native" }));
 				builder.onLoad({ filter: /.*/, namespace: "react-native" }, (args) => ({ contents: args.path.endsWith("Appearance") ? appearanceModule : args.path.endsWith("Dimensions") ? dimensionsModule : platformModule, loader: "js" }));
 				builder.onResolve({ filter: /^react-native\/Libraries\// }, (args) => ({ path: args.path, namespace: "stub" }));
 				builder.onResolve({ filter: /^(react-native|expo-modules-core)$/ }, (args) => ({ path: args.path, namespace: "stub" }));
 				builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: args.path === "expo-modules-core" ? expoModulesCore : "export {};", loader: "js" }));
-				builder.onResolve({ filter: /^@rasheed\/svelte-native\/renderer$/ }, () => ({ path: join(library, "src/renderer.ts") }));
-				builder.onResolve({ filter: /^@rasheed\/svelte-native\/platform$/ }, () => ({ path: join(library, "src/platform.ts") }));
-				builder.onResolve({ filter: /^@rasheed\/svelte-native$/ }, () => ({ path: "primitives", namespace: "package" }));
+				builder.onResolve({ filter: /^@alfayez\/svelte-native\/renderer$/ }, () => ({ path: join(library, "src/renderer.ts") }));
+				builder.onResolve({ filter: /^@alfayez\/svelte-native\/platform$/ }, () => ({ path: join(library, "src/platform.ts") }));
+				builder.onResolve({ filter: /^@alfayez\/svelte-native$/ }, () => ({ path: "primitives", namespace: "package" }));
 				builder.onLoad({ filter: /.*/, namespace: "package" }, () => ({
 					contents: `export { default as View } from ${JSON.stringify(join(library, "src/components/View.svelte"))};
 						export { default as Text } from ${JSON.stringify(join(library, "src/components/Text.svelte"))};`,

@@ -20,11 +20,11 @@ import { demos } from "../src/lib/features/demos.ts";
  * native library are the ones it cannot mount (`needsNativeLibrary`).
  */
 const app = join(import.meta.dirname, "..");
-const library = dirname(createRequire(import.meta.url).resolve("@rasheed/svelte-native/package.json"));
+const library = dirname(createRequire(import.meta.url).resolve("@alfayez/svelte-native/package.json"));
 const libraryTests = join(library, "tests");
 
 /**
- * The routes of the demo manifest this harness does not mount, and the native library each one needs. A foreign view (`@rasheed/svelte-native/foreign`
+ * The routes of the demo manifest this harness does not mount, and the native library each one needs. A foreign view (`@alfayez/svelte-native/foreign`
  * and `/svg`) is drawn from the library's own view configs and native module, and the gestures screen attaches handlers to react-native-gesture-handler's
  * turbo module; the fake binding has none of them. Their scripts are checked on a device (the videos are recorded there); the bundle test compiles
  * the screens, and `demo.test.ts` runs the helper they all use.
@@ -146,7 +146,7 @@ beforeAll(async () => {
   await writeFile(join(directory, "fixture/Fixture.svelte"), `<script>
     import Root from ${JSON.stringify(join(library, "src/Root.svelte"))};
     import Shell from ${JSON.stringify(join(app, "src/routes/+layout.mobile.svelte"))};
-    import { tree } from "@rasheed/svelte-native/routes";
+    import { tree } from "@alfayez/svelte-native/routes";
     let { initial } = $props();
   </script>
   <Root shell={Shell} {tree} {initial} />`);
@@ -163,8 +163,8 @@ beforeAll(async () => {
         builder.onResolve({ filter: /^(react-native|expo-modules-core)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
         builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? "export {};", loader: "js" }));
         builder.onResolve({ filter: /\/view-configs\.ts$/ }, () => ({ path: join(libraryTests, "view-configs-stub.ts") }));
-        builder.onResolve({ filter: /^@rasheed\/svelte-native\/renderer$/ }, () => ({ path: join(library, "src/renderer.ts") }));
-        builder.onResolve({ filter: /^@rasheed\/svelte-native\/routes$/ }, () => ({ path: join(directory, ".svelte-native/routes.test.ts") }));
+        builder.onResolve({ filter: /^@alfayez\/svelte-native\/renderer$/ }, () => ({ path: join(library, "src/renderer.ts") }));
+        builder.onResolve({ filter: /^@alfayez\/svelte-native\/routes$/ }, () => ({ path: join(directory, ".svelte-native/routes.test.ts") }));
         builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: join(library, "src/environment.ts") }));
       },
     }],

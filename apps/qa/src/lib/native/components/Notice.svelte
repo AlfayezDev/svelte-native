@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Text } from "@rasheed/svelte-native";
+  import { Text } from "@alfayez/svelte-native";
   import { theme } from "../state.svelte.ts";
   let { message, danger = true }: { message?: string; danger?: boolean } = $props();
 </script>

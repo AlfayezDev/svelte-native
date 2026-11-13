@@ -25,7 +25,7 @@ function project(adjust?: (root: string) => void): string {
   directories.push(root);
   cpSync(fixture, root, { recursive: true });
   const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { dependencies?: Record<string, string> };
-  manifest.dependencies = { "@rasheed/svelte-native": library };
+  manifest.dependencies = { "@alfayez/svelte-native": library };
   writeFileSync(join(root, "package.json"), `${JSON.stringify(manifest, null, "\t")}\n`);
   adjust?.(root);
   return root;
@@ -71,7 +71,7 @@ describe("init in a fresh sv project", () => {
     const manifest = readJson(root, "package.json");
     expect(manifest.main).toBe(".svelte-native/entry.ts");
     expect(manifest.devDependencies.svelte).toBe(requiredSvelte.preview);
-    expect(manifest.dependencies["@rasheed/svelte-native"]).toBe(library);
+    expect(manifest.dependencies["@alfayez/svelte-native"]).toBe(library);
     for (const [name, version] of Object.entries(appDependencies)) expect(manifest.dependencies[name], name).toBe(version);
     // The SvelteKit sv installed is pinned to a version the library has a patch for, exactly.
     const kitVersions = patchFiles().filter((patch) => patch.package === "@sveltejs/kit").map((patch) => patch.version);
@@ -112,9 +112,9 @@ describe("init in a fresh sv project", () => {
     run(root);
     expect(readFileSync(join(root, "metro.config.cjs"), "utf8")).toContain("withSvelteNative(getDefaultConfig(__dirname))");
     const app = readJson(root, "app.json").expo;
-    expect(app).toMatchObject({ name: "my-app", slug: "my-app", scheme: "my-app", android: { package: "dev.example.myapp" }, ios: { bundleIdentifier: "dev.example.myapp" }, plugins: ["@rasheed/svelte-native/expo"] });
+    expect(app).toMatchObject({ name: "my-app", slug: "my-app", scheme: "my-app", android: { package: "dev.example.myapp" }, ios: { bundleIdentifier: "dev.example.myapp" }, plugins: ["@alfayez/svelte-native/expo"] });
     const vite = readFileSync(join(root, "vite.config.ts"), "utf8");
-    expect(vite).toContain("import { svelteNative } from '@rasheed/svelte-native/vite';");
+    expect(vite).toContain("import { svelteNative } from '@alfayez/svelte-native/vite';");
     expect(vite).toContain("defineConfig(({ mode }) => ({");
     expect(vite).toContain("svelteNative({");
     expect(vite).toContain("target: mode === 'native' ? 'native' : 'web',");
@@ -132,7 +132,7 @@ describe("init in a fresh sv project", () => {
     const root = project();
     run(root);
     const theme = readFileSync(join(root, "src/lib/theme.ts"), "utf8");
-    expect(theme).toContain("import { colorScheme } from '@rasheed/svelte-native';");
+    expect(theme).toContain("import { colorScheme } from '@alfayez/svelte-native';");
     expect(theme).toContain("colorScheme.current === 'dark' ? dark : light");
     const routes = ["src/routes/+layout.mobile.svelte", "src/routes/+mobile.svelte", "src/routes/details/+mobile.svelte"];
     const layout = readFileSync(join(root, routes[0] as string), "utf8");
@@ -235,7 +235,7 @@ describe("init in a project that already has things", () => {
     const root = project((dir) => writeFileSync(join(dir, "app.json"), `${JSON.stringify({ expo: { name: "Mine", slug: "mine", icon: "./icon.png", plugins: ["expo-font"] } }, null, 2)}\n`));
     run(root);
     const app = readJson(root, "app.json").expo;
-    expect(app).toMatchObject({ name: "Mine", slug: "mine", icon: "./icon.png", plugins: ["expo-font", "@rasheed/svelte-native/expo"] });
+    expect(app).toMatchObject({ name: "Mine", slug: "mine", icon: "./icon.png", plugins: ["expo-font", "@alfayez/svelte-native/expo"] });
     expect(app.android.package).toBe("dev.example.myapp");
     expect(readFileSync(join(root, "app.json"), "utf8").startsWith('{\n  "expo"')).toBe(true);
     expect(run(root).out).toContain("Nothing to change");
@@ -246,7 +246,7 @@ describe("init in a project that already has things", () => {
     const result = run(root);
     expect(existsSync(join(root, "app.json"))).toBe(false);
     expect(result.out).toContain("app.config.ts");
-    expect(result.out).toContain('plugins: ["@rasheed/svelte-native/expo"]');
+    expect(result.out).toContain('plugins: ["@alfayez/svelte-native/expo"]');
   });
 
   test("a different version of SvelteKit that has no patch is pinned to the newest one that has; an installed one that has a patch is kept", () => {
@@ -347,7 +347,7 @@ describe("the edit of vite.config", () => {
 
   test("sv's config becomes svelteNative() around SvelteKit's options, in sv's own style", () => {
     expect(svelteNativeViteConfig(sv)).toBe(`import adapter from '@sveltejs/adapter-auto';
-import { svelteNative } from '@rasheed/svelte-native/vite';
+import { svelteNative } from '@alfayez/svelte-native/vite';
 import { defineConfig } from 'vite';
 
 export default defineConfig(({ mode }) => ({
@@ -382,7 +382,7 @@ export default defineConfig({
 });
 `;
     expect(svelteNativeViteConfig(withTailwind)).toBe(`import tailwindcss from "@tailwindcss/vite";
-import { svelteNative } from "@rasheed/svelte-native/vite";
+import { svelteNative } from "@alfayez/svelte-native/vite";
 import { defineConfig } from "vite";
 
 export default defineConfig(({ mode }) => ({

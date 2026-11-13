@@ -4,13 +4,13 @@
   import {
     View, Text, TextInput, Pressable, ScrollView, Image, Switch, ActivityIndicator, Modal, SafeAreaView, KeyboardAvoidingView, List,
     Screen, Stack, Tabs, Native, useRouter, useHeader, useToolbar, inTabPane, insets, bootSummary, openLaunchURL,
-  } from "@rasheed/svelte-native";
-  import { Platform, Appearance, Dimensions, Linking, Keyboard, AppState, BackHandler, PixelRatio, Share, Vibration, Alert } from "@rasheed/svelte-native/platform";
-  import { AnimatedView, createSharedValue, withTiming, withSpring, withRepeat, withSequence, withDelay, runOnUISync, runOnUIAsync } from "@rasheed/svelte-native/animation";
-  import { Gesture, GestureDetector } from "@rasheed/svelte-native/gestures";
-  import { turboModule, nativeModule } from "@rasheed/svelte-native/native-modules";
+  } from "@alfayez/svelte-native";
+  import { Platform, Appearance, Dimensions, Linking, Keyboard, AppState, BackHandler, PixelRatio, Share, Vibration, Alert } from "@alfayez/svelte-native/platform";
+  import { AnimatedView, createSharedValue, withTiming, withSpring, withRepeat, withSequence, withDelay, runOnUISync, runOnUIAsync } from "@alfayez/svelte-native/animation";
+  import { Gesture, GestureDetector } from "@alfayez/svelte-native/gestures";
+  import { turboModule, nativeModule } from "@alfayez/svelte-native/native-modules";
   import { FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";
-  import { checkForUpdateAsync, fetchUpdateAsync, reloadAsync, isEnabled } from "@rasheed/svelte-native/updates";
+  import { checkForUpdateAsync, fetchUpdateAsync, reloadAsync, isEnabled } from "@alfayez/svelte-native/updates";
 
   let name = $state("");
   let on = $state(false);

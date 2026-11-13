@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Pressable, SafeAreaView, ScrollView, Text, View, useRouter } from "@rasheed/svelte-native";
+  import { Pressable, SafeAreaView, ScrollView, Text, View, useRouter } from "@alfayez/svelte-native";
   import { nativeLabEnabled, t, theme } from "#lib/native/state.svelte.ts";
   import Page from "#lib/native/components/Page.svelte";
   import { screenLab } from "#lib/native/dev/model.svelte.ts";

@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Text } from "@rasheed/svelte-native";
-  import { MapView, Marker, type MapHandle } from "@rasheed/svelte-native/foreign";
+  import { Text } from "@alfayez/svelte-native";
+  import { MapView, Marker, type MapHandle } from "@alfayez/svelte-native/foreign";
   import Button from "#lib/components/Button.svelte";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";

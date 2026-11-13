@@ -3,7 +3,7 @@ title: Updates
 video: updates
 ---
 
-An over-the-air update replaces your app's JavaScript without a new build from the store. Svelte Native has its own updates client, `@rasheed/svelte-native/updates`, which speaks the same protocol as `expo-updates`. You publish with `eas update` as you would for any Expo app, and an installed release build downloads the update.
+An over-the-air update replaces your app's JavaScript without a new build from the store. Svelte Native has its own updates client, `@alfayez/svelte-native/updates`, which speaks the same protocol as `expo-updates`. You publish with `eas update` as you would for any Expo app, and an installed release build downloads the update.
 
 An update can change JavaScript and assets only. A change to native code (a new library, a plugin, a new version of Svelte Native) needs a new build.
 
@@ -52,7 +52,7 @@ An update can be bad. A start counts as healthy once the app has run for three s
 To control when the app checks, use the module's functions. This checks, downloads and restarts into the new update at once:
 
 ```ts
-import { checkForUpdateAsync, fetchUpdateAsync, isEnabled, reloadAsync } from '@rasheed/svelte-native/updates';
+import { checkForUpdateAsync, fetchUpdateAsync, isEnabled, reloadAsync } from '@alfayez/svelte-native/updates';
 
 export async function updateNow() {
 	if (!isEnabled) return;
@@ -82,4 +82,4 @@ Restarting while the user is in the middle of something is abrupt. A gentler pat
 
 ## Not supported
 
-`checkAutomatically: 'WIFI_ONLY'` and `'ON_ERROR_RECOVERY'` don't check at launch; the functions above still work in those builds. The `expo-updates` package itself, and its React hooks, aren't used: import from `@rasheed/svelte-native/updates` instead.
+`checkAutomatically: 'WIFI_ONLY'` and `'ON_ERROR_RECOVERY'` don't check at launch; the functions above still work in those builds. The `expo-updates` package itself, and its React hooks, aren't used: import from `@alfayez/svelte-native/updates` instead.

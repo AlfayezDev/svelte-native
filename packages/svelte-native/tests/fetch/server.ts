@@ -1,5 +1,6 @@
 // The HTTP server the fetch checks run against: the host checks of the native module, and the device checks of the showcase's Web APIs screen. Plain node:http
-// (it runs under Bun and Node alike), no dependencies. Usage: bun tests/fetch/server.ts [--port 8787]. An Android emulator reaches it after
+// (Node strips its types), no dependencies. Usage: node tests/fetch/server.ts [--port 8787]. Run it with Node, not Bun: Bun 1.3's node:http stalls the
+// third request on a kept-alive connection, and the platforms' clients reuse connections. An Android emulator reaches it after
 // `adb reverse tcp:8787 tcp:8787`; the iOS Simulator reaches the Mac's localhost, so it runs there too.
 //
 // Routes (every response carries `Cache-Control: no-store`):
@@ -12,7 +13,7 @@
 //   GET  /stream?chunks=N&size=B&delay=MS  N chunks of B bytes of `seededBytes(N*B, 7)`, MS apart (chunked transfer encoding).
 //   GET  /utf8                   The bytes EF BB BF (a BOM), "héllo ", C3 28 (invalid), " wörld ✓": a client's UTF-8 decode reads "héllo �( wörld ✓".
 //   GET  /gzip                   "compressed ".repeat(1000), gzip-encoded (Content-Encoding: gzip).
-//   GET  /headers                Response headers: X-One: 1, X-Multi: a and b (Bun joins them into one line "a, b"), Set-Cookie: a=1 and Set-Cookie: b=2 (two lines).
+//   GET  /headers                Response headers: X-One: 1, X-Multi: a and X-Multi: b, Set-Cookie: a=1 and Set-Cookie: b=2 (each on a line of its own).
 //   GET  /hang                   Sends the head, then one byte, then never ends (for abort checks).
 //   GET  /no-head                Never answers (for abort-before-head checks).
 //   GET  /large?mb=M             M MiB (default 8) of `seededBytes(M*1MiB, 11)`, sent in 64 KiB writes (for backpressure and memory checks).
@@ -96,6 +97,9 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   const query = url.searchParams;
   const int = (name: string, fallback: number) => (query.has(name) ? Number.parseInt(query.get(name)!, 10) : fallback);
   const path = url.pathname;
+  // A HEAD response has no body. Node's http drops one; Bun's node:http sends it, and on a kept-alive connection those bytes would be read as the
+  // start of the next response. Closing the connection after a HEAD keeps the next request on a fresh one.
+  if (req.method === "HEAD") res.setHeader("Connection", "close");
 
   if (path === "/bytes") {
     const bytes = seededBytes(int("n", 1024), int("seed", 1));

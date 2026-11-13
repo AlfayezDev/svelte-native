@@ -42,15 +42,18 @@ const { smokeOnlyBundlePackages } = createRequire(import.meta.url)("../smoke-pac
  * split is not exact to the byte). The production variant has no lab and no `css` option: 4,207,070 bytes in 906 modules, +209 over main's 4,206,861 at eda5a64, which is the `mergeHostProps` export of the library's
  * renderer entry that the checks read the host's props through (0.1 % over its own baseline below). Both were measured in a checkout whose installed Svelte had the library's patch applied to a scratch copy of the
  * compiler (`patches/svelte@5.56.7.patch`, which lets the compiler accept transitions with a custom renderer), the same bytes an install with the patch gives, because the patch changes the compiler and not what it emits.
+ *
+ * Moved on 13 November 2026 (feat/exports-grouped), from 6,003,584 to 6,007,156 bytes (+3,572, 1,205 to 1,206 modules): the generated entry imports `@alfayez/svelte-native/app` (one module that imports the boot modules and the Fabric host in the order it
+ * imported them), and the main entry exports the animation, the gestures and the SVG components, which the QA app carried already for its lab. The product variant moved far more (see `productBaseline`): it is the variant that did not carry them.
  */
-const baseline = { commit: "the lab's coverage of BlurView, classes, HTML elements and transitions on feat/qa-coverage, with main's HTML elements, span press and transitions (+135,824 bytes, 2.3 %, over the 5,867,760 that main measured at eda5a64)", bytes: 6_003_584 };
+const baseline = { commit: "the main entry that exports the animation, the gestures and the SVG components, and the `/app` entry (feat/exports-grouped: +3,572 bytes, 0.06 %, over the 6,003,584 of feat/qa-coverage, which already carried the SVG and animation modules for the lab)", bytes: 6_007_156 };
 
 /**
  * The production variant's bundle without the lab, built with the same recipe. It may grow by 1 % before a test says so. Measured again at 727bded, which makes the library's
  * polyfills load Expo's WinterCG runtime (a standard `URL`, `fetch`, `TextDecoder`, ... that the router needs): 4,074,366 bytes, 120,873 (3.1 %) over the 3,953,493 of 1bbbec6 without
  * it (the QA app, which imported the runtime already, did not move).
  */
-const productBaseline = { commit: "Svelte's transitions and animate:flip on top of HTML elements (4,204,439 bytes, +51,561, 1.2 %, over the 4,152,878 of HTML elements; the same transitions code as in the QA app's, which every app carries), measured again on feat/qa-coverage at 4,207,070 (+209 over main's 4,206,861 at eda5a64: the renderer's mergeHostProps export)", bytes: 4_207_070 };
+const productBaseline = { commit: "the main entry that exports the animation, the gestures and the SVG components (feat/exports-grouped: 4,505,761 bytes in 980 modules, +298,691 bytes and 74 modules, 7.1 %, over the 4,207,070 of feat/qa-coverage, which only the apps that imported `/animation`, `/gestures` or `/svg` carried: every app has the 45 SVG components, the host modules that mount them, react-native-svg's extraction code and the gesture and animation modules now)", bytes: 4_505_761 };
 
 /** What this run made: the bundle directories (about 15 to 34 MB each) and the Metro caches of their own. All removed when the tests end. */
 const made: string[] = [];
@@ -188,10 +191,12 @@ describe("the development lab", () => {
 		expect(lab.filter((module) => !labModule.test(module) && !labDependency.test(module))).toEqual([]);
 		expect(lab.filter((module) => labModule.test(module)).length).toBe([...qa].filter((module) => labModule.test(module)).length);
 		// The libraries only the lab imports are out of the product with it.
-		for (const library of ["react-native-svg/", "expo-video/", "expo-keep-awake/"]) {
+		for (const library of ["expo-video/", "expo-keep-awake/"]) {
 			expect([library, [...qa].some((module) => module.includes(library))]).toEqual([library, true]);
 			expect([library, [...product].some((module) => module.includes(library))]).toEqual([library, false]);
 		}
+		// react-native-svg is not one of them: it is a required peer, and the main entry exports its components, so every app has its extraction code.
+		expect(["react-native-svg/", [...product].some((module) => module.includes("react-native-svg/"))]).toEqual(["react-native-svg/", true]);
 		expect(lab.length).toBeGreaterThan(100);
 	}, 120_000);
 	test("a route table synced for another variant changes nothing: each variant bundles its own", () => {

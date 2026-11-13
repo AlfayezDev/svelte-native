@@ -22,7 +22,7 @@ function configuredExclude(variant: "production" | "qa" | "smoke"): string[] {
 	const run = spawnSync(process.execPath, ["-e", "import('./app.config.ts').then((m) => console.log(JSON.stringify(m.default.plugins)))"], { cwd: app, env, encoding: "utf8" });
 	if (run.status !== 0) throw new Error(`app.config.ts did not evaluate: ${run.stderr}`);
 	const plugins = JSON.parse(run.stdout) as (string | [string, { autolinkingExclude?: string[] }])[];
-	const entry = plugins.find((plugin): plugin is [string, { autolinkingExclude?: string[] }] => Array.isArray(plugin) && plugin[0] === "@alfayez/svelte-native/expo");
+	const entry = plugins.find((plugin): plugin is [string, { autolinkingExclude?: string[] }] => Array.isArray(plugin) && plugin[0] === "@alfayez/svelte-native");
 	if (!entry) throw new Error("app.config.ts does not configure the svelte-native plugin");
 	return entry[1].autolinkingExclude ?? [];
 }

@@ -88,21 +88,21 @@ jobs:
         with:
           host-tools: "true"
 
-      # Route discovery, Metro stubs, gestures, svg, the app-tree mounts, the updates client, the Kotlin host checks and the dist test
-      # (dist/node must be what the build writes). Some tests start Metro or esbuild, so Bun's 5 s per test is too short on a hosted runner.
+      # Route discovery, Metro stubs, gestures, svg, the app-tree mounts, the updates client, the Kotlin host checks and the dist and types tests
+      # (dist/node and dist/types must be what the build writes). Some tests start Metro or esbuild, so Bun's 5 s per test is too short on a hosted runner.
       - name: Library tests
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         working-directory: packages/svelte-native
         run: bun test --timeout 60000
 
       # After the tests, so that the dist test judged the committed files; the build then writes the same bytes, or the commit forgot it.
-      - name: Build dist/node and compare it with the commit
+      - name: Build dist/node and dist/types and compare them with the commit
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: |
           pnpm --dir packages/svelte-native build
           changed=$(git status --porcelain -- packages/svelte-native/dist)
           if [ -n "$changed" ]; then
-            echo "::error title=dist/node is stale::run 'pnpm --dir packages/svelte-native build' and commit packages/svelte-native/dist/node"
+            echo "::error title=dist is stale::run 'pnpm --dir packages/svelte-native build' and commit packages/svelte-native/dist"
             echo "$changed"
             git --no-pager diff --stat -- packages/svelte-native/dist
             exit 1

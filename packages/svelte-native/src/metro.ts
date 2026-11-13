@@ -234,8 +234,8 @@ export function withSvelteNative(config: ConfigT, options: SvelteNativeMetroOpti
     if (moduleName.startsWith("$env/") && moduleName.includes("private") || moduleName === "$app/server" || moduleName === "$app/env/private") {
       throw new Error(`Server-only import in native bundle: ${moduleName}`);
     }
-    // SvelteKit's `$app/*` modules and `svelte/motion` on the device (`kit/modules.ts`).
-    const kit = kitResolution(moduleName, context.originModulePath);
+    // SvelteKit's `$app/*` modules on the device (`kit/modules.ts`).
+    const kit = kitResolution(moduleName);
     if (kit !== undefined) return { type: "sourceFile", filePath: kit };
     // Svelte's reactive window values read the DOM's `window`; on the device they are `Dimensions`' (`reactivity-window.ts`).
     if (moduleName === "svelte/reactivity/window") return { type: "sourceFile", filePath: sourceFile("reactivity-window.ts") };

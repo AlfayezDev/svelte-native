@@ -57,7 +57,7 @@ describe("the feature registries", () => {
 });
 
 describe("the screens", () => {
-  /** The library's entries an app is meant to import (`packages/svelte-native/README.md`): not `/app`, `/core`, `/renderer` or the deprecated `/animation`, `/gestures`, `/svg`, `/native-modules`, which are its inside or on their way out. */
+  /** The library's entries an app is meant to import (`packages/svelte-native/README.md`): not `/app`, `/core` or `/renderer`, which are its inside. */
   const publicEntries = ["@alfayez/svelte-native", "@alfayez/svelte-native/router", "@alfayez/svelte-native/foreign", "@alfayez/svelte-native/updates", "@alfayez/svelte-native/remote", "@alfayez/svelte-native/platform"];
   const sourceFiles = (): string[] => readdirSync(join(app, "src"), { recursive: true, withFileTypes: true })
     .filter((entry) => entry.isFile() && /\.(?:svelte|ts)$/.test(entry.name))

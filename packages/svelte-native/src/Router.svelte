@@ -4,13 +4,14 @@
   import RouteView from "./RouteView.svelte";
   import { IN_STACK_CONTEXT, SCREEN_CONTEXT } from "./fabric/navigation.ts";
   import { PLACEHOLDER_CONTEXT, STACK_CONTEXT, type PlaceholderContext, type StackContext } from "./navigator-context.ts";
-  import { connectHost, type NativeLocation, type Router } from "./router.svelte.ts";
+  // (`type Router as RouterHandle`: the component is named `Router` by its file, and its declaration may not import another `Router`.)
+  import { connectHost, type NativeLocation, type Router as RouterHandle } from "./router.svelte.ts";
   /**
    * The native stack of a stack router: a screen per entry. `loading` is what a screen shows while its route's modules load;
    * without it the `loading` of the `<Stack>` around this router is used, and without that the screen is empty until they arrive.
    * The `animation` of that `<Stack>` is the default of its push screens: a modal or a sheet keeps the platform's.
    */
-  let { router, loading }: { router: Router; loading?: Snippet<[NativeLocation]> } = $props();
+  let { router, loading }: { router: RouterHandle; loading?: Snippet<[NativeLocation]> } = $props();
   // The router's screens are real screens of its own stack, wherever the router sits (inside a tab pane, a sheet, a page).
   setContext(SCREEN_CONTEXT, undefined);
   setContext(IN_STACK_CONTEXT, true);

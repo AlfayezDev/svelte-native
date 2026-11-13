@@ -221,8 +221,9 @@ function integration(context: Context, name: string): Check[] {
   };
   const plugin = (finding: Finding): Check => {
     const file = finding.file ?? "";
-    // The package's own name finds `app.plugin.js`, which is the plugin (`<name>/app.plugin` is the same file; `<name>/expo` is a deprecated name for it).
-    if (finding.state === "found") return { group: "build integration", status: "pass", message: `${file} lists the ${finding.name ?? name} plugin${finding.name === `${name}/expo` ? ` (the ${name}/expo path is deprecated: list ${name})` : ""}` };
+    // The package's own name finds `app.plugin.js`, which is the plugin (`<name>/app.plugin` is the same file). `<name>/expo` was removed in 0.4.0-rc.7: expo prebuild cannot resolve it.
+    if (finding.state === "found") return { group: "build integration", status: "pass", message: `${file} lists the ${finding.name ?? name} plugin` };
+    if (finding.state === "removed") return { group: "build integration", status: "fail", message: `${file} lists ${finding.name}, a path removed in 0.4.0-rc.7 that no longer resolves: expo prebuild fails on it`, fix: `write "${name}" in plugins in ${file}, in place of "${finding.name}"` };
     if (finding.state === "unclear") return { group: "build integration", status: "unknown", message: `could not tell: ${file} does not name ${name} (a config that builds its plugins in code may add it)`, fix: `plugins: ["${name}"] in the Expo config` };
     if (finding.state === "absent") return { group: "build integration", status: "fail", message: `${file} does not list the ${name} plugin`, fix: `add "${name}" to plugins in ${file}` };
     return { group: "build integration", status: "fail", message: "no app.json or app.config.* in the app", fix: `create an Expo config with plugins: ["${name}"]` };

@@ -16,6 +16,11 @@
         "name": "svelte-blur",
         "path": "native/svelte-blur/android",
         "modules": ["expo.modules.svelteblur.SvelteBlurModule"]
+      },
+      {
+        "name": "svelte-core",
+        "path": "native/svelte-core/android",
+        "modules": ["expo.modules.sveltecore.SvelteFetchModule"]
       }
     ]
   },
@@ -26,10 +31,11 @@
       "native/svelte-navigation-ios/ios/SvelteNavigation.podspec",
       "native/svelte-screens-ios/native/SvelteScreensIOS.podspec",
       "native/svelte-updates/ios/SvelteUpdates.podspec",
-      "native/svelte-blur/ios/SvelteBlur.podspec"
+      "native/svelte-blur/ios/SvelteBlur.podspec",
+      "native/svelte-core/ios/SvelteCore.podspec"
     ],
-    "swiftModuleName": ["SvelteCapture", "SvelteInsets", "SvelteNavigation", "SvelteUpdates", "SvelteBlur"],
-    "modules": ["SvelteInsetsModule", "SvelteNavigationModule", "SvelteUpdatesModule", "SvelteBlurModule"],
+    "swiftModuleName": ["SvelteCapture", "SvelteInsets", "SvelteNavigation", "SvelteUpdates", "SvelteBlur", "SvelteCore"],
+    "modules": ["SvelteInsetsModule", "SvelteNavigationModule", "SvelteUpdatesModule", "SvelteBlurModule", "SvelteFetchModule"],
     "appDelegateSubscribers": ["SvelteCaptureSubscriber"],
     "reactDelegateHandlers": ["SvelteUpdatesReactDelegateHandler"]
   }

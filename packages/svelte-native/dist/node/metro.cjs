@@ -2465,6 +2465,29 @@ function watchClasses(options, stylesheets = [], debounceMs = 100) {
   };
 }
 
+// src/kit/modules.ts
+var KIT_MODULES = {
+  "$app/navigation": "kit/navigation.ts",
+  "$app/state": "kit/state.ts",
+  "$app/env": "kit/env.ts",
+  "$app/environment": "kit/env.ts",
+  "$app/paths": "kit/paths.ts"
+};
+var MOTION_MODULE = "kit/motion.ts";
+var KIT_UNAVAILABLE = {
+  "$app/forms": "forms submit to a SvelteKit server's actions; use remote functions' `form` (docs: Loading data)",
+  "$app/manifest": "the manifest lists the web build's files",
+  "$app/service-worker": "a device has no service worker",
+  "$app/stores": "SvelteKit 3 removed the stores; use `page` from `$app/state`",
+  "$app/env/public": "the app has no SvelteKit environment; read what it needs from the app config (`extra`) with expo-constants"
+};
+function kitResolution(moduleName, origin) {
+  if (Object.hasOwn(KIT_MODULES, moduleName)) return sourceFile(KIT_MODULES[moduleName]);
+  if (Object.hasOwn(KIT_UNAVAILABLE, moduleName)) throw new Error(`${moduleName} is not available on the device (svelte-native): ${KIT_UNAVAILABLE[moduleName]}. The guide's "SvelteKit modules" page lists what is.`);
+  if (moduleName === "svelte/motion" && origin !== sourceFile(MOTION_MODULE)) return sourceFile(MOTION_MODULE);
+  return void 0;
+}
+
 // src/remote/transform.ts
 var import_node_path7 = require("node:path");
 var import_parser = require("@babel/parser");
@@ -2694,9 +2717,11 @@ function withSvelteNative(config, options = {}) {
       if (stub !== null) return { type: "sourceFile", filePath: stub };
       const remote = remoteResolution(moduleName, context.originModulePath);
       if (remote !== void 0) return { type: "sourceFile", filePath: remote };
-      if (moduleName.startsWith("$env/") && moduleName.includes("private") || moduleName === "$app/server") {
+      if (moduleName.startsWith("$env/") && moduleName.includes("private") || moduleName === "$app/server" || moduleName === "$app/env/private") {
         throw new Error(`Server-only import in native bundle: ${moduleName}`);
       }
+      const kit = kitResolution(moduleName, context.originModulePath);
+      if (kit !== void 0) return { type: "sourceFile", filePath: kit };
       if (moduleName === "svelte/reactivity/window") return { type: "sourceFile", filePath: sourceFile("reactivity-window.ts") };
       if (moduleName === "svelte" || moduleName.startsWith("svelte/")) {
         const nativeContext = { ...context, originModulePath: (0, import_node_path9.resolve)(nativeSvelte, "native-entry.js"), unstable_conditionNames: ["browser", "require"] };

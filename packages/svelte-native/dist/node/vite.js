@@ -385,6 +385,32 @@ async function exportNative(root, platform, options = {}) {
   if (result !== 0) throw new Error(`Native ${platform} export exited with ${result}`);
 }
 
+// src/web-env.ts
+var MODULE = /^\$app\/env(?:ironment)?$|[\\/]@sveltejs[\\/]kit[\\/]src[\\/]runtime[\\/]app[\\/]env(?:ironment)?(?:[\\/]index\.js)?$/;
+var PREFIX = "\0svelte-native:mobile:";
+function mobileFlag() {
+  return {
+    name: "svelte-native:mobile",
+    enforce: "pre",
+    resolveId: {
+      filter: { id: MODULE },
+      async handler(id, importer, options) {
+        if (importer?.startsWith(PREFIX)) return void 0;
+        const real = await this.resolve(id, importer, { ...options, skipSelf: true });
+        return real && !real.external ? `${PREFIX}${real.id}` : real;
+      }
+    },
+    load: {
+      filter: { id: { include: [new RegExp(`^${PREFIX.replace("\0", "\\0")}`)] } },
+      handler(id) {
+        return `export * from ${JSON.stringify(id.slice(PREFIX.length))};
+export const mobile = false;
+`;
+      }
+    }
+  };
+}
+
 // src/remote/kit.ts
 import { createRequire as createRequire2 } from "node:module";
 var require3 = createRequire2(import.meta.url);
@@ -443,6 +469,7 @@ async function loadSvelteKit() {
 }
 function svelteNative(options = {}) {
   if (options.target !== "native") return loadSvelteKit().then((kit) => [
+    mobileFlag(),
     { name: "svelte-native:web", config: () => ({ optimizeDeps: { entries: ["!src/routes/**/+mobile.svelte", "!src/routes/**/*.mobile.svelte", "!src/lib/native/**"] } }) },
     kit(withWebAsync(withWebRunes(options.kit, options.runes), options.async))
   ]);

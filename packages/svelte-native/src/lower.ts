@@ -55,6 +55,7 @@ function collectImports(program: Node | null | undefined, locals: Map<string, st
       const imported = specifier.imported.name ?? specifier.imported.value;
       if (Object.hasOwn(LOWERED_TAGS, imported)) locals.set(specifier.local.name, imported);
       // `use:gesture` (from `@alfayez/svelte-native`, or the deprecated `@alfayez/svelte-native/gestures`) is an action the host tag does run: it sets the `gesture` attribute.
+      if (["drag", "swipe"].includes(imported) && (statement.source?.value === PACKAGE || statement.source?.value === `${PACKAGE}/interactions`)) actions.add(specifier.local.name);
       if (imported === "gesture" && (statement.source?.value === PACKAGE || statement.source?.value === GESTURES)) actions.add(specifier.local.name);
     }
   }
@@ -232,7 +233,7 @@ export function lowerPrimitives(content: string, options: LowerOptions = {}): st
       if (attribute.type === "Attribute" && attribute.value === true) {
         edits.push({ start: attribute.end, end: attribute.end, text: "={true}" });
       }
-      // `transition:`, `in:`, `out:` and `animate:` stay as they are: the host tag plays them (`fabric/transitions.ts`). An action other than `use:gesture` is passed on unchanged, but nothing runs it against a DOM.
+      // `transition:`, `in:`, `out:` and `animate:` stay as they are: the host tag plays them (`fabric/transitions.ts`). An action other than the known native actions is passed on unchanged, but nothing runs it against a DOM.
       if (attribute.type === "UseDirective" && !actions.has(attribute.name)) {
         warn(`${options.filename ?? "component"}: use:${attribute.name} on <${node.name}> is passed to <${tag}> unchanged; native elements do not run DOM actions`);
       }

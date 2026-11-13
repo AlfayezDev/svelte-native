@@ -4,6 +4,8 @@ export * from "./core.ts";
 // since `Text` and `Image` are the views. `runOnJS` and `scheduleOnRN` come from `animation.ts` and `gestures/index.ts` both: the same bindings.
 export * from "./animation.ts";
 export * from "./gestures/index.ts";
+export { drag, draggable, swipe } from "./interactions.ts";
+export type { DragPoint, DragOptions, SwipeDirection, SwipeOptions } from "./interactions.ts";
 export * from "./svg.ts";
 // The library's own native blur (`native/svelte-blur`), not a third-party view: `/foreign` exports it too.
 export { default as BlurView } from "./components/BlurView.svelte";

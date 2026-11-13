@@ -38,6 +38,11 @@
       "default": "./dist/node/routes.js"
     },
     "./animation": "./src/deprecated/animation.ts",
+    "./interactions": {
+      "react-native": "./src/interactions.ts",
+      "browser": "./src/interactions.web.ts",
+      "default": "./src/interactions.ts"
+    },
     "./gestures": "./src/deprecated/gestures.ts",
     "./expo": {
       "types": "./src/expo.ts",
@@ -197,3 +202,4 @@
     "vite": "catalog:"
   }
 }
+

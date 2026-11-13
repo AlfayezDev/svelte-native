@@ -191,25 +191,34 @@ React Native has no `window.matchMedia`, which Svelte's `MediaQuery` and a lot o
 <p>{wide.current ? 'Wide' : 'Narrow'}, {portrait.current ? 'portrait' : 'landscape'}, {dark.current ? 'dark' : 'light'}</p>
 ```
 
-`window.matchMedia(query)` is the browser's: a `MediaQueryList` with `matches` (read from the system each time), `media` (the query as a browser writes it: lower case, `(min-width: 600px)`), `onchange`, `addEventListener('change', listener)` and `removeEventListener`, the older `addListener` and `removeListener`, and `dispatchEvent`. A `change` event has `matches` and `media`, and comes only when the answer flips: a window that gets wider while the query still matches says nothing. A list listens to the system while it has a listener and not before or after, so a `MediaQuery` that no effect reads costs nothing.
+`window.matchMedia(query)` is the browser's: a `MediaQueryList` with `matches` (read from the system each time), `media` (the query as a browser writes it: lower case, `(min-width: 600px)`), `onchange`, `addEventListener('change', listener, { once, signal })` and `removeEventListener`, the older `addListener` and `removeListener`, and `dispatchEvent`. A `change` event has `matches` and `media`, and comes only when the answer flips: a window that gets wider while the query still matches says nothing. A list listens to the system while it has a listener and not before or after, so a `MediaQuery` that no effect reads costs nothing.
 
 The queries are the browser's: a comma is `or`, and `not`, `only`, `and`, `or` and parentheses work as in CSS, as does the range syntax: `(width >= 600px)`, `(400px <= width < 700px)`. The media types `all` and `screen` match, and `print` and every other type don't. The features, and what each reads on the device:
 
 | Feature | On the device |
 | --- | --- |
-| `width`, `height` (`min-` and `max-`) | The window's size in points (dp, the `px` of CSS): `Dimensions`' `window`. It changes when the device turns, a foldable opens, or the window is split. `em` and `rem` are 16px; `pt`, `pc`, `in`, `cm`, `mm` and `q` are converted; viewport units are not understood. A unitless `0` is allowed. |
+| `width`, `height` (`min-` and `max-`) | The window's size in points (dp, the `px` of CSS): `Dimensions`' `window`. It changes when the device turns, a foldable opens, or the window is split. `em` and `rem` are 16px; `pt`, `pc`, `in`, `cm`, `mm` and `q` are converted; `vw`, `vh`, `vmin` and `vmax` are percents of the window. A unitless `0` is allowed, and so is a negative length (it compares). |
+| `device-width`, `device-height` (`min-` and `max-`), `device-aspect-ratio` | The screen's size, `Dimensions`' `screen`: the window and the bars. |
 | `orientation` | `portrait` when the window is at least as tall as it is wide, `landscape` otherwise. |
 | `aspect-ratio` (`min-` and `max-`) | The window's width over its height, written `16/9` or `16 / 9`. |
 | `resolution` (`min-` and `max-`), `-webkit-device-pixel-ratio` (`-webkit-min-` and `-webkit-max-`) | The window's pixel ratio, `PixelRatio.get()`: `2` is `2dppx`, `2x`, `192dpi` and `-webkit-device-pixel-ratio: 2`. |
 | `prefers-color-scheme` | `dark` or `light`, from `Appearance`; a system that reports none is light. `Appearance.setColorScheme` overrides it. |
 | `prefers-reduced-motion` | `reduce` when the system's Reduce Motion is on (Android: animations turned off), from `AccessibilityInfo`. React Native answers that question asynchronously, so a query made before the answer is `no-preference`, and its `change` event comes when the answer is `reduce`. |
 | `prefers-contrast` | `more` when iOS's Increase Contrast (darker system colors) or Android's high contrast text is on, from `AccessibilityInfo`; `no-preference` otherwise. `less` and `custom` never match. It answers like `prefers-reduced-motion`. |
+| `prefers-reduced-transparency` | `reduce` when iOS's Reduce Transparency is on, from `AccessibilityInfo`; `no-preference` on Android, which has no such setting. It answers like `prefers-reduced-motion`. |
+| `inverted-colors` | `inverted` when the system's color inversion is on (iOS Smart Invert, Android color inversion), from `AccessibilityInfo`; `none` otherwise. It answers like `prefers-reduced-motion`. |
+| `forced-colors` | `none`: the app's colors are never forced. |
+| `update` | `fast`: the screen redraws at once. |
+| `scripting` | `enabled`. |
+| `color-gamut` | `srgb`: React Native cannot say that a display shows more, so `p3` and `rec2020` do not match. |
 | `hover`, `any-hover` | `none`: a phone has no hover. |
 | `pointer`, `any-pointer` | `coarse`: a finger. |
 | `display-mode` | `standalone`: the app is not in a browser. |
 | `color` (`min-` and `max-`) | `8`, bits per color component. |
 
-A feature written alone, `(hover)`, `(color)`, `(prefers-reduced-motion)`, is true when its value is not `none`, `no-preference` or zero. A feature that is not in the table (`device-width`, `forced-colors`, `update`, `monochrome`, `color-gamut`, ...), a value it does not take (`(min-width: red)`, `(hover: sideways)`) and a query that does not parse (`(min-width: 600px`, `screen and`) are `not all`, as in a browser: the query is false, `media` says `not all`, and nothing throws. Of a comma-separated list, only the part that doesn't parse is `not all`; the others still decide. So `matchMedia('(forced-colors)').media === 'not all'` tells you the device does not have the feature, as it does on the web.
+A feature written alone, `(hover)`, `(color)`, `(prefers-reduced-motion)`, is true when its value is not `none`, `no-preference` or zero.
+
+What the device does not know is not an error, and it does not make the whole query false. As in a browser that follows Media Queries 4, a feature that is not in the table (`monochrome`, `dynamic-range`, ...), or a value it does not take (`(min-width: red)`, `(hover: sideways)`), is *unknown* inside a condition: unknown is false on its own, and `not` leaves it unknown, so `not (monochrome)` is false too. But `and` is false when any part is false, and `or` is true when any part is true, so `(monochrome) or (min-width: 600px)` is what the width says, and `(monochrome) and (min-width: 600px)` is false. The query matches only when it is true. A query that does not parse (`(min-width: 600px`, `()`, `screen and`) is `not all`; in a comma-separated list the other queries still decide. `media` says `not all` for a query that can never be true because of what it does not know (`matchMedia('(monochrome)').media === 'not all'`, which is how a page tests for support), and keeps the text of one the known parts can decide. Nothing throws.
 
 The window and the scheme are the same values as `windowSize` and `colorScheme` ([Platform APIs](platform-apis#window-size)). Use those for a number or a scheme; use a media query for code shared with the web, or for a condition that is more than one comparison.
 

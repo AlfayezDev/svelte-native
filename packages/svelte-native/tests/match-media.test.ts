@@ -28,7 +28,7 @@ describe("the polyfill", () => {
     expect(typeof window.matchMedia).toBe("function");
     expect(world.loaded).toBe(0);
     expect(world.reads).toEqual({ dimensions: 0, appearance: 0 });
-    expect(world.asked).toEqual({ motion: 0, contrast: 0 });
+    expect(world.asked).toEqual({ motion: 0, contrast: 0, inverted: 0, transparency: 0 });
     expect(world.added).toBe(0);
     mm("(min-width: 100px)");
     expect(world.loaded).toBe(1);
@@ -64,7 +64,7 @@ describe("the polyfill", () => {
       expect(events).toEqual([]);
     }
     expect(world.reads).toEqual({ dimensions: 0, appearance: 0 });
-    expect(world.asked).toEqual({ motion: 0, contrast: 0 });
+    expect(world.asked).toEqual({ motion: 0, contrast: 0, inverted: 0, transparency: 0 });
     expect(world.added).toBe(0);
   });
 });
@@ -98,7 +98,7 @@ describe("MediaQueryList", () => {
     expect(world.reads).toEqual({ dimensions: 1, appearance: 0 });
     expect(mm("(prefers-color-scheme: dark)").matches).toBe(false);
     expect(world.reads).toEqual({ dimensions: 1, appearance: 1 });
-    expect(world.asked).toEqual({ motion: 0, contrast: 0 });
+    expect(world.asked).toEqual({ motion: 0, contrast: 0, inverted: 0, transparency: 0 });
   });
 
   test("it reads the window in points, the pixel ratio and the scheme from the system", () => {
@@ -325,6 +325,93 @@ describe("listeners", () => {
   });
 });
 
+describe("addEventListener options", () => {
+  test("a signal that aborts removes the listener, and the system's listener with it", () => {
+    const list = mm("(min-width: 600px)");
+    const controller = new AbortController();
+    const calls: boolean[] = [];
+    list.addEventListener("change", (event) => calls.push(event.matches), { signal: controller.signal });
+    expect(world.listeners.dimensions.size).toBe(1);
+    resize(world, { width: 700 });
+    expect(calls).toEqual([true]);
+    controller.abort();
+    expect(world.listeners.dimensions.size).toBe(0);
+    resize(world, { width: 300 });
+    expect(calls).toEqual([true]);
+    expect(world.added).toBe(world.removed);
+  });
+
+  test("a signal that has aborted already adds nothing", () => {
+    const list = mm("(min-width: 600px)");
+    const controller = new AbortController();
+    controller.abort();
+    const calls: boolean[] = [];
+    list.addEventListener("change", (event) => calls.push(event.matches), { signal: controller.signal });
+    expect(world.added).toBe(0);
+    resize(world, { width: 700 });
+    expect(calls).toEqual([]);
+  });
+
+  test("one signal for several lists and listeners ends them all; another listener of the list stays", () => {
+    const controller = new AbortController();
+    const a = mm("(min-width: 600px)");
+    const b = mm("(orientation: landscape)");
+    const heard: string[] = [];
+    a.addEventListener("change", () => heard.push("a signal"), { signal: controller.signal });
+    a.addEventListener("change", () => heard.push("a free"));
+    b.addEventListener("change", () => heard.push("b signal"), { signal: controller.signal });
+    controller.abort();
+    resize(world, { width: 891, height: 411 });
+    expect(heard).toEqual(["a free"]);
+    expect(world.listeners.dimensions.size).toBe(1);
+  });
+
+  test("removing the listener takes the abort listener off the signal; once does too", () => {
+    const list = mm("(min-width: 600px)");
+    const abort = new Set<unknown>();
+    const signal = {
+      aborted: false,
+      addEventListener: (type: string, listener: unknown) => { if (type === "abort") abort.add(listener); },
+      removeEventListener: (type: string, listener: unknown) => { if (type === "abort") abort.delete(listener); },
+    } as unknown as AbortSignal;
+    const listener = () => {};
+    list.addEventListener("change", listener, { signal });
+    expect(abort.size).toBe(1);
+    list.removeEventListener("change", listener);
+    expect(abort.size).toBe(0);
+    list.addEventListener("change", () => {}, { signal, once: true });
+    expect(abort.size).toBe(1);
+    resize(world, { width: 700 }); // heard once, and gone
+    expect(abort.size).toBe(0);
+    expect(world.listeners.dimensions.size).toBe(0);
+    // An abort after the listener is gone does nothing.
+    list.addEventListener("change", listener, { signal });
+    list.removeListener(listener);
+    for (const abortListener of abort) (abortListener as () => void)();
+    expect(world.listeners.dimensions.size).toBe(0);
+  });
+
+  test("a listener added twice with a signal is added once, and its abort listener once", () => {
+    const list = mm("(min-width: 600px)");
+    const abort = new Set<unknown>();
+    const signal = { aborted: false, addEventListener: (_type: string, listener: unknown) => { abort.add(listener); }, removeEventListener: (_type: string, listener: unknown) => { abort.delete(listener); } } as unknown as AbortSignal;
+    const listener = () => {};
+    list.addEventListener("change", listener, { signal });
+    list.addEventListener("change", listener, { signal });
+    expect(abort.size).toBe(1);
+  });
+
+  test("once is heard once, and the system is let go with it", () => {
+    const list = mm("(min-width: 600px)");
+    const calls: boolean[] = [];
+    list.addEventListener("change", (event) => calls.push(event.matches), { once: true });
+    resize(world, { width: 700 });
+    resize(world, { width: 300 });
+    expect(calls).toEqual([true]);
+    expect(world.listeners.dimensions.size).toBe(0);
+  });
+});
+
 describe("what a list listens to", () => {
   test("nothing until it has a listener, and one native listener per source however many lists and listeners", () => {
     const a = mm("(min-width: 600px)");
@@ -530,5 +617,89 @@ describe("prefers-contrast", () => {
     expect(list.matches).toBe(true);
     expect(events.map((event) => event.matches)).toEqual([true]);
     expect(world.asked.motion).toBe(0); // a contrast query does not ask about motion
+  });
+});
+
+describe("inverted-colors and prefers-reduced-transparency", () => {
+  test("inverted-colors is the system's color inversion: asked when the query is made, and its change event flips the list", async () => {
+    world.settings.inverted = true;
+    const list = mm("(inverted-colors: inverted)");
+    expect(world.asked.inverted).toBe(1);
+    expect(list.matches).toBe(false);
+    const events = record(list);
+    expect(world.listeners.invertColorsChanged.size).toBe(1);
+    answer(world);
+    await settle();
+    expect(list.matches).toBe(true);
+    setting(world, "invertColorsChanged", false);
+    expect(events.map((event) => event.matches)).toEqual([true, false]);
+    expect(mm("(inverted-colors: none)").matches).toBe(true);
+    expect(world.asked.motion).toBe(0);
+    list.removeEventListener("change", () => {});
+  });
+
+  test("prefers-reduced-transparency is iOS's Reduce Transparency: its answer and its change event", async () => {
+    world.settings.transparency = true;
+    const list = mm("(prefers-reduced-transparency: reduce)");
+    expect(world.asked.transparency).toBe(1);
+    const events = record(list);
+    expect(world.listeners.reduceTransparencyChanged.size).toBe(1);
+    answer(world);
+    await settle();
+    expect(events.map((event) => event.matches)).toEqual([true]);
+    setting(world, "reduceTransparencyChanged", false);
+    expect(list.matches).toBe(false);
+    expect(mm("(prefers-reduced-transparency: no-preference)").matches).toBe(true);
+  });
+
+  test("the last listener removes the system's listeners of both", () => {
+    const first = mm("(inverted-colors: inverted)");
+    const second = mm("(prefers-reduced-transparency: reduce)");
+    const one = () => {};
+    const two = () => {};
+    first.addEventListener("change", one);
+    second.addEventListener("change", two);
+    first.removeEventListener("change", one);
+    second.removeEventListener("change", two);
+    expect(world.listeners.invertColorsChanged.size + world.listeners.reduceTransparencyChanged.size).toBe(0);
+    expect(world.added).toBe(world.removed);
+  });
+});
+
+describe("what a phone is, and the screen", () => {
+  test("forced-colors, update, scripting and color-gamut read nothing from the system, and never fire", () => {
+    for (const query of ["(forced-colors: none)", "(update: fast)", "(scripting: enabled)", "(color-gamut: srgb)", "(hover: none)"]) {
+      const list = mm(query);
+      expect([query, list.matches]).toEqual([query, true]);
+      record(list);
+    }
+    expect(mm("(forced-colors: active)").matches).toBe(false);
+    expect(mm("(color-gamut: p3)").matches).toBe(false);
+    expect(world.reads).toEqual({ dimensions: 0, appearance: 0 });
+    expect(world.asked).toEqual({ motion: 0, contrast: 0, inverted: 0, transparency: 0 });
+    expect(world.added).toBe(0);
+  });
+
+  test("device-width and device-height are the screen's, which Dimensions has apart from the window", () => {
+    // The stand-in's screen is the window and 48 points of bars.
+    expect(mm("(device-height: 939px)").matches).toBe(true);
+    expect(mm("(min-device-height: 900px)").matches).toBe(true);
+    expect(mm("(min-height: 900px)").matches).toBe(false);
+    expect(mm("(device-width: 411px)").matches).toBe(true);
+    expect(mm("(max-device-aspect-ratio: 1/2)").matches).toBe(true);
+    const list = mm("(min-device-width: 600px)");
+    const events = record(list);
+    expect(world.listeners.dimensions.size).toBe(1); // a turn changes the screen too, and Dimensions says so
+    resize(world, { width: 891, height: 411 });
+    expect(events.map((event) => event.matches)).toEqual([true]);
+  });
+
+  test("a viewport unit follows the window, and a turn flips it", () => {
+    const list = mm("(min-height: 100vw)");
+    const events = record(list);
+    expect(list.matches).toBe(true);
+    resize(world, { width: 891, height: 411 });
+    expect(events.map((event) => event.matches)).toEqual([false]);
+    expect(mm("(min-width: -1px)").matches).toBe(true);
   });
 });

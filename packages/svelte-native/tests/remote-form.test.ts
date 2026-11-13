@@ -196,6 +196,73 @@ describe("fields.x.as(type)", () => {
 });
 
 describe("state around a submission", () => {
+  test("failed submit focuses the first mounted field with an error in render order", async () => {
+    const form = m.form("h/focus");
+    const focused: string[] = [];
+    form.fields.first.as("text").ref({ focus: () => focused.push("first") });
+    form.fields.second.as("text").ref({ focus: () => focused.push("second") });
+    form.preflight({ "~standard": { version: 1, vendor: "test", validate: () => ({ issues: [{ message: "second", path: ["second"] }, { message: "first", path: ["first"] }] }) } });
+    await form.validate({ preflightOnly: true, all: true });
+    expect(focused).toEqual([]); // Background validation must not steal focus.
+    expect(await form.submit()).toBe(false);
+    expect(focused).toEqual(["first"]);
+    expect(form.pending).toBe(0);
+  });
+  test("failed submit skips detached and non-focusable hosts", async () => {
+    const form = m.form("h/focus");
+    const focused: string[] = [];
+    const first = form.fields.first.as("text");
+    first.ref({ focus: () => focused.push("detached") });
+    first.ref(null);
+    form.fields.second.as("text").ref({});
+    form.fields.third.as("text").ref({ focus: () => focused.push("third") });
+    form.preflight({ "~standard": { version: 1, vendor: "test", validate: () => ({ issues: ["first", "second", "third"].map((name) => ({ message: name, path: [name] })) }) } });
+    await form.submit();
+    expect(focused).toEqual(["third"]);
+  });
+  test("a disappearing native focus handle does not turn validation into a transport error", async () => {
+    const form = m.form("h/focus");
+    form.fields.first.as("text").ref({ focus: () => { throw new Error("view gone"); } });
+    form.preflight({ "~standard": { version: 1, vendor: "test", validate: () => ({ issues: [{ message: "required", path: ["first"] }] }) } });
+    expect(await form.submit()).toBe(false);
+    expect(form.error).toBeUndefined();
+    expect(form.pending).toBe(0);
+  });
+  test("reset during submit preflight clears errors and prevents stale focus or sending", async () => {
+    const form = m.form("h/reset-preflight");
+    let finish!: (result: unknown) => void;
+    let started!: () => void;
+    let focused = false;
+    const ready = new Promise<void>((resolve) => { started = resolve; });
+    form.fields.name.as("text").ref({ focus: () => { focused = true; } });
+    form.preflight({ "~standard": { version: 1, vendor: "test", validate: () => { started(); return new Promise((resolve) => { finish = resolve; }); } } });
+    const submission = form.submit();
+    await ready;
+    form.reset();
+    finish({ issues: [{ message: "stale", path: ["name"] }] });
+    expect(await submission).toBe(false);
+    expect(form.fields.name.issues()).toBeUndefined();
+    expect(form.submitted).toBe(false);
+    expect(focused).toBe(false);
+    expect(form.pending).toBe(0);
+  });
+  test("reset invalidates pending async validation", async () => {
+    const form = m.form("h/reset-validation");
+    let finish!: (result: unknown) => void;
+    let started!: () => void;
+    const ready = new Promise<void>((resolve) => { started = resolve; });
+    form.fields.name.as("text").onChangeText("old");
+    form.preflight({ "~standard": { version: 1, vendor: "test", validate: () => { started(); return new Promise((resolve) => { finish = resolve; }); } } });
+    const validating = form.validate({ preflightOnly: true, all: true });
+    await ready;
+    form.reset();
+    finish({ issues: [{ message: "stale", path: ["name"] }] });
+    await validating;
+    expect(form.fields.name.issues()).toBeUndefined();
+    expect(form.fields.name.as("text").value).toBe("");
+    expect(form.fields.name.dirty()).toBe(false);
+  });
+
   test("issues of the preflight are the fields', in the order the fields were rendered; pending covers the preflight", async () => {
     const form = m.form("h/f");
     form.fields.second.as("text");

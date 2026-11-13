@@ -33,3 +33,10 @@ limits, filenames, MIME types, and metadata are not security guarantees: validat
 authorization, size, actual content, and storage names on the server. Never trust
 the supplied filename as a storage path. Background transfer, upload progress,
 resumable uploads, and direct filesystem streaming are not implemented here.
+
+A failed submission now focuses the first mounted invalid field using the same
+`ref` supplied by the field adapter; validation on blur does not move focus.
+Keep the generated ref when composing picker/input props. Reset invalidates
+pending client validation and preflight, but does not cancel a request already
+sent to the server or undo its writes. Repeated mounts sharing a single field
+adapter should not be used as a focus-management strategy.

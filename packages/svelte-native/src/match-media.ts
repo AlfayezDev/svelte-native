@@ -107,6 +107,17 @@ const highContrast = new Setting(
   (changed) => (Platform.OS === "android" ? accessibility().addEventListener("highTextContrastChanged", changed) : accessibility().addEventListener("darkerSystemColorsChanged", changed)),
 );
 
+// iOS's Smart Invert and Android's color inversion, and iOS's Reduce Transparency (Android has no such setting: React Native answers `false`, and the event never comes).
+const invertedColors = new Setting(
+  () => accessibility().isInvertColorsEnabled(),
+  (changed) => accessibility().addEventListener("invertColorsChanged", changed),
+);
+
+const reducedTransparency = new Setting(
+  () => accessibility().isReduceTransparencyEnabled(),
+  (changed) => accessibility().addEventListener("reduceTransparencyChanged", changed),
+);
+
 const sources: Record<MediaSource, Source> = {
   window: new Source(() => {
     const subscription = Dimensions.addEventListener("change", () => sources.window.notify());
@@ -118,15 +129,26 @@ const sources: Record<MediaSource, Source> = {
   }),
   motion: reducedMotion.source,
   contrast: highContrast.source,
+  inverted: invertedColors.source,
+  transparency: reducedTransparency.source,
 };
 
-/** The device's state, read when a query asks for a field and not before. The window's `scale` is `PixelRatio.get()`: that reads it from `Dimensions`. */
+/** The settings a query may read, by source: one is asked about when a list for a query that reads it is made. */
+const settings: Partial<Record<MediaSource, Setting>> = { motion: reducedMotion, contrast: highContrast, inverted: invertedColors, transparency: reducedTransparency };
+
+/** The device's state, read when a query asks for a field and not before. The window's `scale` is `PixelRatio.get()`: that reads it from `Dimensions`, as does the screen's size. */
 const state: MediaState = {
   get width() {
     return Dimensions.get("window").width;
   },
   get height() {
     return Dimensions.get("window").height;
+  },
+  get screenWidth() {
+    return Dimensions.get("screen").width;
+  },
+  get screenHeight() {
+    return Dimensions.get("screen").height;
   },
   get scale() {
     return Dimensions.get("window").scale;
@@ -139,6 +161,12 @@ const state: MediaState = {
   },
   get highContrast() {
     return highContrast.read();
+  },
+  get invertedColors() {
+    return invertedColors.read();
+  },
+  get reducedTransparency() {
+    return reducedTransparency.read();
   },
 };
 
@@ -179,6 +207,8 @@ interface Entry {
   readonly once: boolean;
   /** The one that `onchange` holds. */
   readonly property: boolean;
+  /** Takes the entry's abort listener off its signal, for an entry that was added with one. */
+  release?: () => void;
 }
 
 /**
@@ -201,8 +231,7 @@ export class MediaQueryList {
   constructor(query: ParsedMediaQuery) {
     this.#query = query;
     // Asked for now, so the answer is there by the time something reads it.
-    if (query.sources.has("motion")) reducedMotion.refresh();
-    if (query.sources.has("contrast")) highContrast.refresh();
+    for (const name of query.sources) settings[name]?.refresh();
   }
 
   get media(): string {
@@ -230,18 +259,26 @@ export class MediaQueryList {
     }
   }
 
-  addEventListener(type: string, listener: Listener | null, options?: boolean | { once?: boolean }): void {
+  addEventListener(type: string, listener: Listener | null, options?: boolean | { once?: boolean; signal?: AbortSignal }): void {
     if (type !== "change" || listener === null || listener === undefined || this.#entries.some((entry) => entry.listener === listener)) return;
-    this.#entries.push({ listener, once: typeof options === "object" && options !== null && options.once === true, property: false });
+    const given = typeof options === "object" && options !== null ? options : undefined;
+    const signal = given?.signal;
+    // A signal that has aborted already adds nothing; one that aborts later takes the listener away (and the system's listeners, if it was the last).
+    if (signal?.aborted) return;
+    const entry: Entry = { listener, once: given?.once === true, property: false };
+    if (signal) {
+      const abort = () => this.#remove(entry);
+      signal.addEventListener("abort", abort, { once: true });
+      entry.release = () => signal.removeEventListener("abort", abort);
+    }
+    this.#entries.push(entry);
     this.#wake();
   }
 
   removeEventListener(type: string, listener: Listener | null): void {
     if (type !== "change") return;
-    const at = this.#entries.findIndex((entry) => entry.listener === listener && !entry.property);
-    if (at < 0) return;
-    this.#entries.splice(at, 1);
-    this.#sleep();
+    const entry = this.#entries.find((candidate) => candidate.listener === listener && !candidate.property);
+    if (entry) this.#remove(entry);
   }
 
   /** Deprecated, and what older code and libraries still call: `addEventListener("change", listener)`. */
@@ -261,10 +298,7 @@ export class MediaQueryList {
     }
     for (const entry of [...this.#entries]) {
       if (!this.#entries.includes(entry)) continue;
-      if (entry.once) {
-        this.#entries.splice(this.#entries.indexOf(entry), 1);
-        this.#sleep();
-      }
+      if (entry.once) this.#remove(entry);
       try {
         if (typeof entry.listener === "function") entry.listener.call(this, event);
         else entry.listener.handleEvent(event);
@@ -279,6 +313,14 @@ export class MediaQueryList {
 
   get [Symbol.toStringTag](): string {
     return "MediaQueryList";
+  }
+
+  #remove(entry: Entry): void {
+    const at = this.#entries.indexOf(entry);
+    if (at < 0) return;
+    this.#entries.splice(at, 1);
+    entry.release?.();
+    this.#sleep();
   }
 
   #wake(): void {

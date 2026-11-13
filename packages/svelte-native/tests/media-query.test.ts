@@ -2,9 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { evaluateMediaQuery, parseMediaQuery, type MediaSource, type MediaState } from "../src/media-query.ts";
 
 // The evaluator is pure: a query and a state in, a boolean out. Every feature it knows, against states of a phone.
-const phone: MediaState = { width: 411, height: 891, scale: 2.625, colorScheme: "light", reducedMotion: false, highContrast: false };
+// The screen is the window and the status and navigation bars (a phone's `Dimensions.get("screen")` is taller than its window).
+const phone: MediaState = { width: 411, height: 891, screenWidth: 411, screenHeight: 960, scale: 2.625, colorScheme: "light", reducedMotion: false, highContrast: false, invertedColors: false, reducedTransparency: false };
 const state = (patch: Partial<MediaState> = {}): MediaState => ({ ...phone, ...patch });
-const landscape = state({ width: 891, height: 411 });
+const landscape = state({ width: 891, height: 411, screenWidth: 960, screenHeight: 411 });
 const tablet = state({ width: 820, height: 1180, scale: 2 });
 
 const matches = (query: string, on: MediaState = phone) => evaluateMediaQuery(query, on);
@@ -209,6 +210,86 @@ describe("what a phone is: hover, pointer, display-mode and color", () => {
   ])("%s is %p", (query, expected) => expect(matches(query)).toBe(expected));
 });
 
+describe("features of a phone that are fixed or the screen's", () => {
+  test.each([
+    ["(forced-colors: none)", true], ["(forced-colors: active)", false], ["(forced-colors)", false], ["(update: fast)", true], ["(update: slow)", false], ["(update: none)", false], ["(update)", true],
+    ["(scripting: enabled)", true], ["(scripting: none)", false], ["(scripting: initial-only)", false], ["(scripting)", true],
+    // The gamut is sRGB: React Native cannot say more, so wider gamuts are not claimed.
+    ["(color-gamut: srgb)", true], ["(color-gamut: p3)", false], ["(color-gamut: rec2020)", false], ["(color-gamut)", true],
+    ["(inverted-colors: none)", true], ["(inverted-colors: inverted)", false], ["(inverted-colors)", false],
+    ["(prefers-reduced-transparency: no-preference)", true], ["(prefers-reduced-transparency: reduce)", false], ["(prefers-reduced-transparency)", false],
+    ["(FORCED-COLORS: NONE)", true], ["(forced-colors: sideways)", false], ["(min-forced-colors: none)", false],
+  ])("%s is %p", (query, expected) => expect(matches(query)).toBe(expected));
+
+  test("inverted colors and reduced transparency follow the system's settings", () => {
+    const on = state({ invertedColors: true, reducedTransparency: true });
+    expect(matches("(inverted-colors: inverted)", on)).toBe(true);
+    expect(matches("(inverted-colors: none)", on)).toBe(false);
+    expect(matches("(inverted-colors)", on)).toBe(true);
+    expect(matches("(prefers-reduced-transparency: reduce)", on)).toBe(true);
+    expect(matches("(prefers-reduced-transparency: no-preference)", on)).toBe(false);
+    expect(matches("(prefers-reduced-transparency)", on)).toBe(true);
+  });
+
+  test("an unknown feature next to the settings: the settings decide", () => {
+    expect(matches("(forced-colors: active) or (prefers-contrast: more)")).toBe(false);
+    expect(matches("(forced-colors: active) or (prefers-contrast: more)", state({ highContrast: true }))).toBe(true);
+    expect(matches("(foo: bar) or (prefers-contrast: more)", state({ highContrast: true }))).toBe(true);
+    expect(matches("(foo: bar) or (prefers-contrast: more)")).toBe(false);
+  });
+
+  test("device-width, device-height and device-aspect-ratio are the screen's", () => {
+    expect(matches("(device-width: 411px)")).toBe(true);
+    expect(matches("(min-device-width: 400px)")).toBe(true);
+    expect(matches("(min-device-width: 412px)")).toBe(false);
+    expect(matches("(max-device-width: 411px)")).toBe(true);
+    expect(matches("(max-device-width: 410px)")).toBe(false);
+    expect(matches("(device-height: 960px)")).toBe(true); // the window is 891 tall: the screen has the bars
+    expect(matches("(min-device-height: 900px)")).toBe(true);
+    expect(matches("(max-device-height: 900px)")).toBe(false);
+    expect(matches("(min-height: 900px)")).toBe(false);
+    expect(matches("(min-device-width: 600px)", landscape)).toBe(true); // a turn: 960 x 411
+    expect(matches("(device-width >= 600px)", landscape)).toBe(true);
+    expect(matches("(400px <= device-width < 500px)")).toBe(true);
+    expect(matches("(device-width)")).toBe(true);
+    expect(matches("(device-aspect-ratio: 411/960)")).toBe(true);
+    expect(matches("(min-device-aspect-ratio: 1/2)")).toBe(false); // 0.428 < 0.5
+    expect(matches("(max-device-aspect-ratio: 1/2)")).toBe(true);
+    expect(matches("(min-device-aspect-ratio: 1/1)", landscape)).toBe(true);
+    expect(matches("(device-aspect-ratio)")).toBe(true);
+    expect(matches("(min-device-width: 25.6875em)")).toBe(true);
+  });
+});
+
+describe("viewport units and negative lengths", () => {
+  test.each([
+    ["(width: 100vw)", true], ["(min-width: 100vw)", true], ["(max-width: 100vw)", true], ["(min-width: 101vw)", false], ["(max-width: 99vw)", false], ["(min-width: 50vw)", true],
+    ["(height: 100vh)", true], ["(min-height: 100vh)", true], ["(min-height: 101vh)", false], ["(max-height: 50vh)", false],
+    ["(width: 100vmin)", true], ["(height: 100vmax)", true], ["(height: 100vmin)", false], ["(min-height: 150vmax)", false], ["(max-height: 100vmax)", true],
+    ["(min-width: 20vmin)", true], ["(min-width: 50vmax)", false],
+    ["(width >= 100vw)", true], ["(width > 100vw)", false], ["(50vw <= width <= 100vw)", true], ["(min-device-width: 50vw)", true], ["(min-device-height: 100vh)", true],
+    ["(MIN-WIDTH: 50VW)", true], ["(min-width: 10 vw)", false],
+    // Negative lengths are valid, and compare.
+    ["(min-width: -1px)", true], ["(max-width: -1px)", false], ["(width: -1px)", false], ["(min-width: -1em)", true], ["(-10px < width)", true], ["(width > -10px)", true], ["(width < -10px)", false],
+    ["(min-height: -100vh)", true],
+  ])("%s is %p", (query, expected) => expect(matches(query)).toBe(expected));
+
+  test("a viewport unit follows the window: the answer changes with a turn", () => {
+    expect(matches("(min-width: 50vw)", state({ width: 100 }))).toBe(true);
+    expect(matches("(width: 100vw)", landscape)).toBe(true);
+    expect(matches("(width: 100vmin)", landscape)).toBe(false);
+    expect(matches("(height: 100vmin)", landscape)).toBe(true);
+    expect(matches("(min-width: 100vh)", landscape)).toBe(true);
+    expect(matches("(min-width: 100vh)")).toBe(false);
+  });
+
+  test("the media text keeps the unit, and a negative length its sign", () => {
+    expect(parseMediaQuery("(MIN-WIDTH:50VW)").media).toBe("(min-width: 50vw)");
+    expect(parseMediaQuery("(min-width:-1px)").media).toBe("(min-width: -1px)");
+    expect(parseMediaQuery("(-10px<width)").media).toBe("(-10px < width)");
+  });
+});
+
 describe("not, and, or, lists and parentheses", () => {
   test("not negates a feature or a group", () => {
     expect(matches("not (min-width: 600px)")).toBe(true);
@@ -268,10 +349,10 @@ describe("not, and, or, lists and parentheses", () => {
 describe("what is not understood is false, and nothing throws", () => {
   const unknown = [
     // Features this device does not have, or a browser does not know.
-    "(foo)", "(foo: bar)", "(min-foo: 1px)", "(device-width: 411px)", "(min-device-width: 100px)", "(forced-colors: none)", "(update: fast)", "(scripting: enabled)", "(monochrome)", "(color-gamut: srgb)", "(grid)",
-    "(prefers-reduced-transparency: reduce)", "(inverted-colors: none)", "(overflow-block: scroll)", "(dynamic-range: standard)", "(-webkit-transform-3d)", "(min--moz-device-pixel-ratio: 2)",
+    "(foo)", "(foo: bar)", "(min-foo: 1px)", "(monochrome)", "(grid)",
+    "(overflow-block: scroll)", "(dynamic-range: standard)", "(-webkit-transform-3d)", "(min--moz-device-pixel-ratio: 2)",
     // A known feature with a value it does not take.
-    "(min-width: red)", "(min-width: 10)", "(min-width: -1px)", "(min-width: 10%)", "(min-width: 10vw)", "(min-width: 10 px)", "(min-width: 1px 2px)", "(min-width:)", "(min-width)", "(max-width)", "(min-aspect-ratio)", "(min-orientation: portrait)",
+    "(min-width: red)", "(min-width: 10)", "(min-width: 10%)", "(min-width: 10 px)", "(min-width: 1px 2px)", "(min-width:)", "(min-width)", "(max-width)", "(min-aspect-ratio)", "(min-orientation: portrait)",
     "(max-hover: none)", "(hover: sideways)", "(hover: 1px)", "(hover: none hover)", "(pointer: fine coarse)", "(prefers-color-scheme: sepia)", "(orientation: 1)", "(min-resolution)", "(min-aspect-ratio: 16/0/9)", "(min-aspect-ratio: 0/0)", "(min-aspect-ratio: -1)",
     "(aspect-ratio: 16 9)", "(aspect-ratio: /9)", "(aspect-ratio: 16/)", "(color: 1.5)", "(color: -1)", "(color: eight)", "(width: )", "(: 400px)", "(:)", "(width: 1px,)",
     // Not a query.
@@ -287,14 +368,50 @@ describe("what is not understood is false, and nothing throws", () => {
     expect(matches(query, state({ colorScheme: "dark", reducedMotion: true, highContrast: true }))).toBe(false);
   });
 
-  test("not of an unknown feature is false too, as in a browser: the whole query is `not all`", () => {
-    expect(matches("not (foo)")).toBe(false);
+  test("an unknown feature is `unknown` (false) inside a condition, and `not`, `and` and `or` decide as Media Queries 4 says: false beats unknown in `and`, true beats it in `or`, `not` leaves it unknown", () => {
+    // `or`: a known true condition decides.
+    expect(matches("(foo: bar) or (min-width: 1px)")).toBe(true);
+    expect(matches("(min-width: 1px) or (foo: bar)")).toBe(true);
+    expect(matches("(foo) or (orientation: portrait)")).toBe(true);
+    expect(matches("(min-width: red) or (hover: none)")).toBe(true);
+    expect(matches("(foo: bar) or (bar: foo) or (hover: none)")).toBe(true);
+    expect(matches("(foo: bar) or (min-width: 9999px)")).toBe(false); // unknown or false is unknown
+    expect(matches("(foo) or (bar)")).toBe(false);
+    // `and`: unknown with true is unknown, and a false decides.
+    expect(matches("(foo: bar) and (min-width: 1px)")).toBe(false);
+    expect(matches("(min-width: 1px) and (foo: bar)")).toBe(false);
+    expect(matches("screen and (foo)")).toBe(false);
+    // `not`: of unknown is unknown, of the false that `and` makes of unknown and false is true.
+    expect(matches("not (foo: bar)")).toBe(false);
     expect(matches("not (min-width: red)")).toBe(false);
     expect(matches("screen and not (foo)")).toBe(false);
-    expect(matches("(foo) or (min-width: 0px)")).toBe(false);
-    expect(matches("(min-width: 0px) or (foo)")).toBe(false);
-    expect(matches("not screen and (foo)")).toBe(false);
-    expect(matches("not all and (foo)")).toBe(false);
+    expect(matches("not ((foo: bar) or (min-width: 9999px))")).toBe(false);
+    expect(matches("not ((foo: bar) and (min-width: 9999px))")).toBe(true);
+    expect(matches("not ((foo: bar) or (min-width: 1px))")).toBe(false);
+    expect(matches("not ((foo) and (min-width: 1px))")).toBe(false);
+    // Nested.
+    expect(matches("screen and ((foo) or (min-width: 1px))")).toBe(true);
+    expect(matches("screen and ((foo) or (min-width: 9999px))")).toBe(false);
+    expect(matches("((foo) or (hover: none)) and (pointer: coarse)")).toBe(true);
+    // A function token is `<general-enclosed>` too: unknown, and `not(` is one.
+    expect(matches("foo(bar) or (min-width: 1px)")).toBe(true);
+    expect(matches("(min-width: 1px) and foo(bar)")).toBe(false);
+    expect(matches("not(min-width: 1px) or (hover: none)")).toBe(true);
+    // A list: the unknown query is false and the others decide.
+    expect(matches("(foo), (min-width: 1px)")).toBe(true);
+    // The unknown and a range with a feature that is not there: unknown too.
+    expect(matches("(600px <= foo) or (hover: none)")).toBe(true);
+    expect(matches("(foo >= 3) or (hover: none)")).toBe(true);
+    expect(matches("(width >= ) or (hover: none)")).toBe(true);
+  });
+
+  test("a query that does not parse is false whatever surrounds it in the list, and is not an unknown feature", () => {
+    expect(matches("(min-width: 1px) or ()")).toBe(false);
+    expect(matches("() or (min-width: 1px)")).toBe(false);
+    expect(matches("(foo) or (: 400px)")).toBe(false);
+    expect(matches("(min-width: 1px) or (hover: none) and (pointer: coarse)")).toBe(false); // `or` and `and` are not mixed
+    expect(matches("((min-width: 1px)")).toBe(false);
+    expect(matches("(1px)")).toBe(false);
   });
 
   test("an empty query between commas, deep nesting and long text are handled", () => {
@@ -325,6 +442,9 @@ describe("media, as a browser serialises it", () => {
     ["screen, print", "screen, print"], ["screen,print", "screen, print"], ["(min-width:400px),(max-width:300px)", "(min-width: 400px), (max-width: 300px)"],
     ["(foo)", "not all"], ["(min-width: red)", "not all"], ["foo bar", "not all"], ["screen, (foo), print", "screen, not all, print"], ["screen and", "not all"], [",", "not all, not all"],
     ["(prefers-reduced-motion)", "(prefers-reduced-motion)"], ["(width)", "(width)"],
+    // An unknown feature next to a known one stays in the text; one that can only be unknown is `not all`.
+    ["(foo: bar) or (min-width:1px)", "(foo: bar) or (min-width: 1px)"], ["(MIN-WIDTH:1px) or (Foo:Bar)", "(min-width: 1px) or (foo: bar)"], ["screen and ((foo) or (min-width: 1px))", "screen and ((foo) or (min-width: 1px))"],
+    ["not (foo)", "not all"], ["(foo) or (bar)", "not all"], ["screen and (foo)", "not all"], ["foo(bar)", "not all"], ["(foo), (min-width:1px)", "not all, (min-width: 1px)"],
   ])("%p is %p", (query, media) => expect(parseMediaQuery(query).media).toBe(media));
 
   test("a serialised query means what it did", () => {
@@ -341,11 +461,14 @@ describe("sources: what a query listens to", () => {
     ["screen", []], ["(hover: none)", []], ["(pointer: coarse)", []], ["(display-mode: standalone)", []], ["(color)", []], ["print and (hover: none)", []],
     ["(min-width: 400px)", ["window"]], ["(height > 400px)", ["window"]], ["(orientation: portrait)", ["window"]], ["(min-aspect-ratio: 1/1)", ["window"]], ["(min-resolution: 2dppx)", ["window"]],
     ["(-webkit-min-device-pixel-ratio: 2)", ["window"]], ["(400px <= width < 700px)", ["window"]],
+    ["(device-width: 411px)", ["window"]], ["(min-device-aspect-ratio: 1/1)", ["window"]], ["(min-width: 50vw)", ["window"]], ["(min-device-width: 50vh)", ["window"]],
+    ["(forced-colors: none)", []], ["(update: fast)", []], ["(scripting: enabled)", []], ["(color-gamut: srgb)", []],
+    ["(inverted-colors: inverted)", ["inverted"]], ["(prefers-reduced-transparency: reduce)", ["transparency"]],
     ["(prefers-color-scheme: dark)", ["appearance"]], ["(prefers-reduced-motion: reduce)", ["motion"]], ["(prefers-contrast: more)", ["contrast"]],
     ["(min-width: 400px) and (prefers-color-scheme: dark)", ["appearance", "window"]],
     ["(prefers-reduced-motion) or (prefers-contrast) or (orientation: landscape), (prefers-color-scheme)", ["appearance", "contrast", "motion", "window"]],
-    // A query that is `not all` listens to nothing, and neither does what sits in it.
-    ["(foo)", []], ["(prefers-color-scheme: dark) and (foo)", []], ["(prefers-color-scheme: dark), (min-width: red)", ["appearance"]], ["", []],
+    // A query that can only be `not all` listens to nothing; an unknown feature next to a known one leaves the known one's source.
+    ["(foo)", []], ["(foo) or (prefers-color-scheme: dark)", ["appearance"]], ["(prefers-color-scheme: dark), (min-width: red)", ["appearance"]], ["(min-width: red)", []], ["not (foo)", []], ["", []],
   ] as [string, MediaSource[]][])("%p reads %p", (query, expected) => expect(sourcesOf(query)).toEqual(expected));
 });
 
@@ -359,10 +482,14 @@ describe("a query reads only what it needs", () => {
       state: {
         get width() { return log("width"); },
         get height() { return log("height"); },
+        get screenWidth() { return log("screenWidth"); },
+        get screenHeight() { return log("screenHeight"); },
         get scale() { return log("scale"); },
         get colorScheme() { return log("colorScheme"); },
         get reducedMotion() { return log("reducedMotion"); },
         get highContrast() { return log("highContrast"); },
+        get invertedColors() { return log("invertedColors"); },
+        get reducedTransparency() { return log("reducedTransparency"); },
       },
     };
   }
@@ -370,6 +497,9 @@ describe("a query reads only what it needs", () => {
   test.each([
     ["screen", []], ["print", []], ["(hover: none)", []], ["(min-width: 400px)", ["width"]], ["(orientation: portrait)", ["height", "width"]], ["(min-resolution: 2dppx)", ["scale"]],
     ["(prefers-color-scheme: dark)", ["colorScheme"]], ["(prefers-reduced-motion: reduce)", ["reducedMotion"]], ["(prefers-contrast: more)", ["highContrast"]],
+    ["(device-width: 411px)", ["screenWidth"]], ["(device-aspect-ratio: 1/1)", ["screenHeight", "screenWidth"]], ["(forced-colors: none)", []], ["(inverted-colors: inverted)", ["invertedColors"]], ["(prefers-reduced-transparency: reduce)", ["reducedTransparency"]],
+    ["(min-width: 50vw)", ["width"]], ["(min-height: 50vmax)", ["height", "width"]],
+    ["(foo) or (min-width: 1px)", ["width"]], ["(foo) and (min-width: 1px)", ["width"]],
     ["(min-width: 600px) and (prefers-reduced-motion: reduce)", ["width"]], ["(min-width: 600px), (prefers-contrast: more)", ["highContrast", "width"]],
   ] as [string, string[]][])("%p reads %p", (query, fields) => {
     const { state: recorded, read } = recording();

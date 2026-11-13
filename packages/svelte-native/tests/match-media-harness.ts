@@ -16,13 +16,13 @@ export type World = {
   scheme: "light" | "dark" | null;
   os: "android" | "ios";
   /** What the system answers when it is asked about an accessibility setting. */
-  settings: { motion: boolean; contrast: boolean };
+  settings: { motion: boolean; contrast: boolean; inverted: boolean; transparency: boolean };
   /** The questions the system has been asked and has not answered: `answer()` answers them. */
-  questions: { name: "motion" | "contrast"; respond: (value: boolean) => void; fail: (error: Error) => void }[];
-  asked: { motion: number; contrast: number };
+  questions: { name: "motion" | "contrast" | "inverted" | "transparency"; respond: (value: boolean) => void; fail: (error: Error) => void }[];
+  asked: { motion: number; contrast: number; inverted: number; transparency: number };
   /** Reads of the window's size and of the scheme. */
   reads: { dimensions: number; appearance: number };
-  listeners: Record<"dimensions" | "appearance" | "reduceMotionChanged" | "highTextContrastChanged" | "darkerSystemColorsChanged", Set<(...args: never[]) => void>>;
+  listeners: Record<"dimensions" | "appearance" | "reduceMotionChanged" | "highTextContrastChanged" | "darkerSystemColorsChanged" | "invertColorsChanged" | "reduceTransparencyChanged", Set<(...args: never[]) => void>>;
   added: number;
   removed: number;
   /** How many times `match-media.ts` was evaluated: it is loaded when `matchMedia` is first called. */
@@ -37,11 +37,11 @@ export function resetWorld(): World {
     window: { width: 411, height: 891, scale: 2.625, fontScale: 1 },
     scheme: "light",
     os: "android",
-    settings: { motion: false, contrast: false },
+    settings: { motion: false, contrast: false, inverted: false, transparency: false },
     questions: [],
-    asked: { motion: 0, contrast: 0 },
+    asked: { motion: 0, contrast: 0, inverted: 0, transparency: 0 },
     reads: { dimensions: 0, appearance: 0 },
-    listeners: { dimensions: new Set(), appearance: new Set(), reduceMotionChanged: new Set(), highTextContrastChanged: new Set(), darkerSystemColorsChanged: new Set() },
+    listeners: { dimensions: new Set(), appearance: new Set(), reduceMotionChanged: new Set(), highTextContrastChanged: new Set(), darkerSystemColorsChanged: new Set(), invertColorsChanged: new Set(), reduceTransparencyChanged: new Set() },
     added: 0,
     removed: 0,
     loaded: 0,
@@ -68,7 +68,7 @@ export function switchScheme(world: World, scheme: World["scheme"]): void {
 }
 
 /** The system sends the change event of an accessibility setting. */
-export function setting(world: World, name: "reduceMotionChanged" | "highTextContrastChanged" | "darkerSystemColorsChanged", value: boolean): void {
+export function setting(world: World, name: "reduceMotionChanged" | "highTextContrastChanged" | "darkerSystemColorsChanged" | "invertColorsChanged" | "reduceTransparencyChanged", value: boolean): void {
   for (const listener of [...world.listeners[name]]) (listener as (value: boolean) => void)(value);
 }
 
@@ -101,6 +101,8 @@ export default {
   isReduceMotionEnabled: () => ask("motion"),
   isHighTextContrastEnabled: () => ask("contrast"),
   isDarkerSystemColorsEnabled: () => ask("contrast"),
+  isInvertColorsEnabled: () => ask("inverted"),
+  isReduceTransparencyEnabled: () => ask("transparency"),
   addEventListener: (name, handler) => {
     if (!Object.hasOwn(world().listeners, name)) return { remove() {} };
     return world().subscribe(name, handler);

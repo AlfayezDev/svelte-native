@@ -26,7 +26,7 @@ import { dirname, join, resolve } from "node:path";
  *   2. If the growth is wanted (a new dependency's types, a feature), measure again with `KEEP_TYPE_BUDGET_FIXTURE=1 bun test tests/type-budget.test.ts` and put the new numbers
  *      here, rounded up by 15 %.
  */
-// Measured 2026-11-13 (TypeScript 6.0.3, React Native 0.86.3, Reanimated 4.5.1): 601 files and 1,146 instantiations; 601 and 2,997; 228 and 1,146. Sources, for the same
+// Measured 2026-11-13 (TypeScript 6.0.3, React Native 0.86.3, Reanimated 4.5.1): 600 files and 1,146 instantiations; 600 and 2,997; 227 and 1,146. Sources, for the same
 // first app: 613 files and 12,997 instantiations.
 const budget = {
   "view-text": { files: 690, instantiations: 1320 },

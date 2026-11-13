@@ -46,9 +46,11 @@ describe("the manifest holds nothing that only resolves inside this repository",
     for (const target of entryFiles) expect([target, existsSync(join(root, target))]).toEqual([target, true]);
   });
 
-  test("the config plugin is reachable by the package's own name (app.plugin.js, which Expo looks for first) and by its path, both at the built file", () => {
-    expect(manifest.exports["./expo"]).toEqual({ "svelte-native-source": "./src/expo.ts", types: "./dist/types/expo.d.ts", default: "./dist/node/expo.cjs" });
+  test("the config plugin is reachable by the package's own name (app.plugin.js, which Expo looks for first) and by its path `/app.plugin`, both at the built file; `/expo`, which named that file up to 0.4.0-rc.6, is not an entry", () => {
+    expect(manifest.exports["./expo"]).toBeUndefined();
     expect(manifest.exports["./app.plugin"]).toEqual({ "svelte-native-source": "./src/expo.ts", types: "./dist/types/expo.d.ts", default: "./app.plugin.js" });
+    expect(manifest.files).toContain("dist/node");
+    expect(manifest.files).toContain("dist/types");
     expect(manifest.files).toContain("app.plugin.js");
     expect(read("app.plugin.js")).toContain('from "./dist/node/expo.cjs"');
   });

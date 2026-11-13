@@ -136,15 +136,15 @@ These entry points run in Node, in your build configuration, not in the app.
 
 The other entry points (`/app`, `/core`, `/router`, `/routes`, `/renderer`, `/elements`, `/lower`, `/transformer`, `/remote/runtime`, `/remote/globals`) are used by the generated entry, Metro and the library itself. An app doesn't import them.
 
-## Deprecated entry points
+## Removed entry points
 
-These still work in 0.4.0-rc.6 and are removed in 0.4.0-rc.7. Your editor strikes through the deprecated names.
+These paths no longer resolve: they were removed in 0.4.0-rc.7. An app that upgrades from 0.4.0-rc.5 or earlier changes the imports as the table says.
 
-| Entry | Use instead |
+| Removed in 0.4.0-rc.7 | Use |
 | --- | --- |
 | `@alfayez/svelte-native/animation` | `@alfayez/svelte-native` |
 | `@alfayez/svelte-native/gestures` | `@alfayez/svelte-native` |
 | `@alfayez/svelte-native/svg` | `@alfayez/svelte-native`, where its `Text`, `Image`, `LinearGradient` and `Marker` are `SvgText`, `SvgImage`, `SvgLinearGradient` and `SvgMarker` |
 | `@alfayez/svelte-native/native-modules` | `@alfayez/svelte-native/platform` |
-| `@alfayez/svelte-native/expo` | `@alfayez/svelte-native` in `plugins` |
+| `@alfayez/svelte-native/expo` | `@alfayez/svelte-native` in `plugins` (`svelte-native init` rewrites it; `svelte-native doctor` reports it) |
 | `@alfayez/svelte-native/init`, `/polyfills`, `/fabric` | `@alfayez/svelte-native/app`: run `svelte-native sync` and the generated entry imports it |

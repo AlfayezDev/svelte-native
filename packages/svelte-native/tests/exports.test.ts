@@ -2,11 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import ts from "typescript";
+import { animation as removedAnimation, fabric as removedFabric, gestures as removedGestures, keptEntries, nativeModules as removedNativeModules, removedEntries, removedSpecifiers, svg as removedSvg, svgRenamed } from "./removed-entries.ts";
 
 /**
- * What the package's entries export, read from the sources (no bundler, no device): the main entry carries what `/animation`, `/gestures` and `/svg` exported, the
- * deprecated entries still export what they did (each name marked `@deprecated`, so an editor strikes it through), `/platform` has the two native module lookups, and
- * `/app` is the one import of the generated entry. `exports-runtime.test.ts` loads the entries and compares what they export.
+ * What the package's entries export, read from the sources (no bundler, no device): the main entry carries what `/animation`, `/gestures` and `/svg` exported (and
+ * 0.4.0-rc.7 removed), `/platform` has the two native module lookups, and `/app` is the one import of the generated entry. `removed-entries.ts` lists the removed paths and
+ * their names; `exports-runtime.test.ts` loads the entries and compares what they export.
  */
 const root = resolve(import.meta.dirname, "..");
 const src = (path: string) => join(root, "src", path);
@@ -47,8 +48,7 @@ function exportsOf(file: string, skip: readonly string[] = []): Names {
   return found;
 }
 
-const without = (names: string[], leave: readonly string[]) => names.filter((name) => !leave.includes(name));
-/** The SVG elements the main entry names differently from react-native-svg (and from the deprecated `/svg` entry): the views' names, and the names of `/foreign`'s components. */
+/** The SVG elements the main entry names differently from react-native-svg (and from the `/svg` entry that was removed): the views' names, and the names of `/foreign`'s components. */
 const renamed = { SvgText: "Text", SvgImage: "Image", SvgLinearGradient: "LinearGradient", SvgMarker: "Marker" } as const;
 const main = exportsOf(src("index.ts"));
 const animation = exportsOf(src("animation.ts"));
@@ -103,43 +103,62 @@ describe("the main entry exports the animation, the gestures, the SVG components
   });
 });
 
-describe("the entries that were folded in are deprecated aliases that keep their names", () => {
-  const entry = (name: string) => {
-    const target = manifest.exports[name];
-    return join(root, typeof target === "string" ? target : (target["svelte-native-source"] ?? target.types as string));
-  };
+describe("the entries 0.4.0-rc.6 deprecated are removed, and what they exported is exported by the entries that stay", () => {
+  const app = exportsOf(src("app.ts"));
+  const platform = exportsOf(src("platform.ts"));
+  const has = (names: Names, wanted: { values: readonly string[]; types: readonly string[] }) =>
+    [...wanted.values.filter((name) => !names.values.has(name)), ...wanted.types.filter((name) => !names.types.has(name)).map((name) => `type ${name}`)];
 
-  test("each is still in the exports map, and exports what it did", () => {
-    expect(Object.keys(manifest.exports)).toEqual(expect.arrayContaining(["./animation", "./gestures", "./svg", "./native-modules", "./expo", "./init", "./polyfills", "./fabric", "./app", "./app.plugin", "./remote/runtime", "./remote/globals"]));
-    expect(all(exportsOf(entry("./animation")))).toEqual(all(animation));
-    // `types.ts` also lists some of RNGH's internals (`BaseGesture`, `MountRegistry`, ...) as type exports that the checker does not resolve: nothing imports them from the entry.
-    const internals = ["BaseGesture", "BaseGestureConfig", "CALLBACK_TYPE", "GestureObjects", "HandlerCallbacks", "MountRegistry", "findHandler", "registerHandler", "unregisterHandler"];
-    expect(all(exportsOf(entry("./gestures")))).toEqual(without(all(gestures), internals));
-    // The svg entry has the old names: its Text and Image, and Svg as its default.
-    expect(all(exportsOf(entry("./svg")))).toEqual([...without(all(svg), Object.keys(renamed)), ...Object.values(renamed), "default"].sort());
-    expect(all(exportsOf(entry("./native-modules")))).toEqual(["nativeModule", "turboModule"]);
-    expect(all(exportsOf(entry("./fabric")))).toEqual(["createFabricApp", "fabricStats", "flush", "remountSurfaces", "showError"]);
+  test("none of them is in the exports map, and an import of one does not resolve (from the package and from an app that depends on it)", () => {
+    expect(removedEntries).toHaveLength(8);
+    for (const name of removedEntries) expect([name, Object.keys(manifest.exports).includes(name)]).toEqual([name, false]);
+    expect(existsSync(src("deprecated"))).toBe(false);
+    for (const dir of [root, resolve(root, "../../apps/example")]) {
+      for (const specifier of removedSpecifiers) expect(() => Bun.resolveSync(specifier, dir), specifier).toThrow(/Cannot find module/);
+    }
   });
 
-  test("`/native-modules` is folded into `/platform`: the same two functions", () => {
+  test("the other entries are all still there", () => {
+    expect(Object.keys(manifest.exports)).toEqual(expect.arrayContaining([...keptEntries]));
+    for (const name of keptEntries) expect(() => Bun.resolveSync(name === "." ? "@alfayez/svelte-native" : `@alfayez/svelte-native/${name.slice(2)}`, root), name).not.toThrow();
+  });
+
+  test("`/animation`, `/gestures` and `/svg` are the main entry: every name they exported is there, under the same name and kind", () => {
+    expect(has(main, removedAnimation)).toEqual([]);
+    expect(has(main, removedGestures)).toEqual([]);
+    expect(has(main, removedSvg)).toEqual([]);
+    // The four SVG elements whose names clash with the views' and `/foreign`'s, and the default export, are `SvgText`, `SvgImage`, `SvgLinearGradient`, `SvgMarker` and `Svg`.
+    expect(Object.values(svgRenamed).filter((name) => !main.values.has(name))).toEqual([]);
+    expect(Object.keys(svgRenamed).filter((name) => name !== "default" && !["Text", "Image"].includes(name) && main.values.has(name))).toEqual([]);
+    // The lists are what the sources export, not a subset of them: a name added to `animation.ts` or `svg.ts` is added to the list.
+    expect(removedAnimation.values.length + removedAnimation.types.length).toBe(animation.values.size + animation.types.size);
+    expect(removedSvg.values.length + removedSvg.types.length + Object.keys(svgRenamed).length - 1).toBe(svg.values.size + svg.types.size);
+  });
+
+  test("`/native-modules` is `/platform`: the same two functions", () => {
+    expect(has(platform, removedNativeModules)).toEqual([]);
     expect(readFileSync(src("platform.ts"), "utf8")).toContain('export { nativeModule, turboModule } from "./native-modules.ts";');
-    expect(exportsOf(src("platform.ts")).values.has("turboModule")).toBe(true);
-    expect(exportsOf(src("platform.ts")).values.has("nativeModule")).toBe(true);
-    expect(readFileSync(src("deprecated/native-modules.ts"), "utf8")).toContain('from "../native-modules.ts"');
   });
 
-  test("`/init` and `/polyfills` are the modules the entry runs, and `/app` runs them in order before the Fabric host, then exports what the entry calls", () => {
-    expect(manifest.exports["./init"]).toBe("./src/init.ts");
-    expect(manifest.exports["./polyfills"]).toBe("./src/polyfills.ts");
+  test("`/fabric` is `/app`: the generated entry's import, which exports the five names", () => {
+    expect(has(app, removedFabric)).toEqual([]);
+    expect(all(app)).toEqual(all({ values: new Set(removedFabric.values), types: new Set(removedFabric.types) }));
+  });
+
+  test("`/init` and `/polyfills` are the modules `/app` runs, in order before the Fabric host, and are not entries of their own", () => {
     expect(manifest.exports["./app"]).toEqual({ "svelte-native-source": "./src/app.ts", types: "./dist/types/app.d.ts", default: "./src/app.ts" });
+    expect(existsSync(src("init.ts")) && existsSync(src("polyfills.ts"))).toBe(true);
     const imports = readFileSync(src("app.ts"), "utf8").split("\n").filter((line) => line.startsWith("import "));
     expect(imports).toEqual(['import "./init.ts";', 'import "./polyfills.ts";', expect.stringMatching(/^import \{ .* \} from "\.\/fabric\/index\.ts";$/)]);
-    expect(all(exportsOf(src("app.ts")))).toEqual(["createFabricApp", "fabricStats", "flush", "remountSurfaces", "showError"]);
+    expect(manifest.exports["./init"]).toBeUndefined();
+    expect(manifest.exports["./polyfills"]).toBeUndefined();
   });
 
-  test("`/expo` and the package's own name are the config plugin: app.plugin.js, built at dist/node/expo.cjs", () => {
+  test("`/expo` is gone, and the package's own name and `/app.plugin` are the config plugin: app.plugin.js, which imports the built dist/node/expo.cjs", () => {
     expect(manifest.exports["./app.plugin"]).toEqual({ "svelte-native-source": "./src/expo.ts", types: "./dist/types/expo.d.ts", default: "./app.plugin.js" });
-    expect(manifest.exports["./expo"]).toEqual({ "svelte-native-source": "./src/expo.ts", types: "./dist/types/expo.d.ts", default: "./dist/node/expo.cjs" });
+    expect(manifest.exports["./expo"]).toBeUndefined();
+    expect(readFileSync(join(root, "app.plugin.js"), "utf8")).toContain('import plugin from "./dist/node/expo.cjs";');
+    expect(existsSync(join(root, "dist/node/expo.cjs")) && existsSync(src("expo.ts"))).toBe(true);
   });
 
   test("the remote runtime and its globals stay two entries: the SvelteKit files that import the globals are imported by the runtime", () => {
@@ -154,45 +173,4 @@ describe("react-native-svg is a required peer", () => {
     expect(manifest.peerDependencies["react-native-svg"]).toBe("15.15.4");
     expect(manifest.peerDependenciesMeta["react-native-svg"]).toBeUndefined();
   });
-});
-
-describe("an editor strikes through the deprecated names", () => {
-  // The suggestion diagnostic 6385 ("'x' is deprecated") the TypeScript language service raises for a use of a name whose declaration has `@deprecated`.
-  function deprecatedUses(statements: string): string[] {
-    const consumer = src("consumer-of-entries.ts");
-    const ambient = src("svelte-modules-ambient.d.ts");
-    const options: ts.CompilerOptions = { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler, allowImportingTsExtensions: true, noEmit: true, strict: true, skipLibCheck: true, types: ["node"] };
-    const virtual: Record<string, string> = { [consumer]: statements, [ambient]: 'declare module "*.svelte" { const component: unknown; export default component; }\n' };
-    const service = ts.createLanguageService({
-      getScriptFileNames: () => [consumer, ambient],
-      getScriptVersion: () => "1",
-      getScriptSnapshot: (file) => { const text = virtual[file] ?? (existsSync(file) ? readFileSync(file, "utf8") : undefined); return text === undefined ? undefined : ts.ScriptSnapshot.fromString(text); },
-      getCurrentDirectory: () => root,
-      getCompilationSettings: () => options,
-      getDefaultLibFileName: (settings) => ts.getDefaultLibFilePath(settings),
-      fileExists: (file) => file in virtual || ts.sys.fileExists(file),
-      readFile: (file) => virtual[file] ?? ts.sys.readFile(file),
-      directoryExists: ts.sys.directoryExists,
-      getDirectories: ts.sys.getDirectories,
-    });
-    const found = service.getSuggestionDiagnostics(consumer).filter((diagnostic) => diagnostic.code === 6385 && diagnostic.reportsDeprecated);
-    service.dispose();
-    return [...new Set(found.map((diagnostic) => String(diagnostic.messageText).replace(/^'(.*)' is deprecated\.?$/, "$1")))].sort();
-  }
-  const importAll = (specifier: string, names: string[], kind = "") => `import ${kind}{ ${names.join(", ")} } from "${specifier}";\n`;
-
-  test("every name of the deprecated entries is flagged, and the same names from the main entry are not", () => {
-    const animationNames = [...animation.values];
-    const gestureNames = [...gestures.values, "ComposedGesture", "GestureType", "GestureRef", "GestureProps"];
-    const svgNames = [...svg.values].filter((name) => !(name in renamed));
-    const deprecated = deprecatedUses([
-      importAll("./deprecated/animation.ts", animationNames),
-      importAll("./deprecated/gestures.ts", gestureNames.filter((name) => !["runOnJS", "scheduleOnRN"].includes(name))),
-      importAll("./deprecated/svg.ts", [...svgNames, ...Object.values(renamed)]),
-      importAll("./deprecated/native-modules.ts", ["nativeModule", "turboModule"]),
-      importAll("./deprecated/fabric.ts", ["createFabricApp", "remountSurfaces"]),
-    ].join(""));
-    expect(deprecated).toEqual([...new Set([...animationNames, ...gestureNames.filter((name) => !["runOnJS", "scheduleOnRN"].includes(name)), ...svgNames, ...Object.values(renamed), "nativeModule", "turboModule", "createFabricApp", "remountSurfaces"])].sort());
-    expect(deprecatedUses(importAll("./index.ts", [...animationNames, ...gestureNames, ...svgNames, ...Object.keys(renamed), "BlurView"]))).toEqual([]);
-  }, 60_000);
 });

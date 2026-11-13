@@ -3,8 +3,7 @@
  * own mounting. The main entry re-exports all of them (`@alfayez/svelte-native`). The library's React components are not used.
  *
  * Four elements take another name than react-native-svg's, because the main entry (or `/foreign`) has a component of that name: `SvgText` and `SvgImage` (the views `Text`
- * and `Image`), `SvgLinearGradient` and `SvgMarker` (`/foreign`'s expo-linear-gradient and maps `LinearGradient` and `Marker`). The deprecated `@alfayez/svelte-native/svg` entry
- * (`deprecated/svg.ts`) keeps the old names until the next release candidate.
+ * and `Image`), `SvgLinearGradient` and `SvgMarker` (`/foreign`'s expo-linear-gradient and maps `LinearGradient` and `Marker`).
  */
 export { default as Svg } from "./components/svg/Svg.svelte";
 export { default as G } from "./components/svg/G.svelte";

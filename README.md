@@ -82,7 +82,7 @@ The times are estimates until the first runs: the job commands took 28 s (lint a
 
 Run the same commands from a checkout: `pnpm install --frozen-lockfile`, then the commands of `ci.yml` (`AGENTS.md`, "Checks"). With `CI=1`, as the workflow sets it, the Kotlin and C++ host checks fail instead of skipping when a tool is missing; `eval "$(bash apps/qa/qa/ci/host-tools.sh)"` puts the pinned kotlinc and the `org.json` jar in the shell. `scripts/consumer-check.sh all` is the consumer build (it caps its heavy commands with `systemd-run` when it can; `CAP=` turns that off, as on a runner of its own). Node (`engines.node`), pnpm (`packageManager`) and Bun (`.github/actions/setup/action.yml`) are pinned once and read from there by every job, except that `consumer.yml` runs on Node 24 (see its row above); the third-party actions are pinned by commit SHA.
 
-A failed run: the job log names the step; `ci.yml` runs every check of a job even when an earlier one failed, so one run lists everything that is wrong. A stale `dist/node/` is fixed with `pnpm --dir packages/svelte-native build` and a commit of `packages/svelte-native/dist/node/`. The stage logs of a failed consumer build are the `consumer-<mode>-logs` artifact. Branch rules (the status to require is `CI`) and the repository settings are in the RUNBOOK, step 10.
+A failed run: the job log names the step; `ci.yml` runs every check of a job even when an earlier one failed, so one run lists everything that is wrong. A stale `dist/node/` or `dist/types/` is fixed with `pnpm --dir packages/svelte-native build` and a commit of `packages/svelte-native/dist/`. The stage logs of a failed consumer build are the `consumer-<mode>-logs` artifact. Branch rules (the status to require is `CI`) and the repository settings are in the RUNBOOK, step 10.
 
 ## Release
 
@@ -90,7 +90,7 @@ A release is a tag `v<version>` on a commit of `main` that is green in `ci.yml` 
 
 1. Set `"version"` in `packages/svelte-native/package.json` (`0.3.0`; a pre-release is `0.3.0-rc.1`, which the release marks as a pre-release).
 2. In `packages/svelte-native/CHANGELOG.md`, move what is under `## Unreleased` under a new heading `## 0.3.0 - YYYY-MM-DD` and leave `## Unreleased` empty. The text under the version's heading is the release notes verbatim (`scripts/release-notes.sh 0.3.0` prints it).
-3. If the Node-side code changed, `pnpm --dir packages/svelte-native build` and commit `dist/node/` (CI fails on a stale one).
+3. If the Node-side code or a public type changed, `pnpm --dir packages/svelte-native build` and commit `dist/node/` and `dist/types/` (CI fails on a stale one).
 4. Commit (`Release 0.3.0`), push `main`, and wait for `CI` and `Consumer` to go green on that commit.
 5. Tag that commit and push the tag:
 

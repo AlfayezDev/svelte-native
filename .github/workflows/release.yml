@@ -56,7 +56,7 @@ jobs:
           }
           echo "release notes: $(wc -l < "$RUNNER_TEMP/notes.md") lines"
 
-      # What `files` in package.json packs: src/, dist/node/, native/, patches/, the module config and the documents.
+      # What `files` in package.json packs: src/, dist/node/, dist/types/, native/, patches/, the module config and the documents.
       - name: Pack the library
         run: |
           mkdir "$RUNNER_TEMP/assets"

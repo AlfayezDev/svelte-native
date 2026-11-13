@@ -105,7 +105,7 @@ module.exports = withSvelteNative(getDefaultConfig(__dirname));
 plugins: [["@alfayez/svelte-native", { autolinkingExclude: [], androidOnDemandViewManagers: {} }]]
 ```
 
-Name the plugin by the package's own name, as for any Expo library: the package has an `app.plugin.js` at its root, which Expo looks for before the package's main entry. `@alfayez/svelte-native/app.plugin` is that file by its path. (`@alfayez/svelte-native/expo`, which named the built file up to 0.4.0-rc.6, no longer resolves: write the package's name in its place; `svelte-native init` does it in an `app.json`, and `svelte-native doctor` reports it.) No `babel.config.js` is needed: Expo's default preset gives the same bundle (checked byte for byte). The app needs `src/routes/+layout.mobile.svelte` (the generated entry imports it as the app shell) and at least one `+mobile.svelte`.
+Name the plugin by the package's own name, as for any Expo library: the package has an `app.plugin.js` at its root, which Expo looks for before the package's main entry. `@alfayez/svelte-native/app.plugin` is that file by its path. (`@alfayez/svelte-native/expo`, which named the built file up to 0.4.0-rc.7, no longer resolves: write the package's name in its place; `svelte-native init` does it in an `app.json`, and `svelte-native doctor` reports it.) No `babel.config.js` is needed: Expo's default preset gives the same bundle (checked byte for byte). The app needs `src/routes/+layout.mobile.svelte` (the generated entry imports it as the app shell) and at least one `+mobile.svelte`.
 
 Run the commands as `pnpm exec svelte-native <command>`, or from `package.json` scripts (`"android": "svelte-native android"`):
 
@@ -484,7 +484,7 @@ patches
         fix: copy node_modules/@alfayez/svelte-native/patches/react-native-pdf@7.0.3.patch into your repository (patches/svelte-native/), declare "react-native-pdf@7.0.3: patches/svelte-native/react-native-pdf@7.0.3.patch" under patchedDependencies in pnpm-workspace.yaml, then pnpm install (README: "Apply the patches")
 
 build integration
-  pass  @alfayez/svelte-native 0.4.0-rc.6 is a dependency of the app
+  pass  @alfayez/svelte-native 0.4.0-rc.7 is a dependency of the app
   ????  could not tell: metro.config.cjs does not mention withSvelteNative (a config that applies it from a file it imports is fine)
         fix: module.exports = withSvelteNative(getDefaultConfig(__dirname)), with withSvelteNative from require("@alfayez/svelte-native/metro")
   pass  app.json lists the @alfayez/svelte-native plugin

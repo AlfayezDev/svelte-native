@@ -33,7 +33,7 @@ const alwaysPatched = ["expo-modules-core", "react-native-gesture-handler", "rea
 // The package's own name: Expo finds the package's `app.plugin.js`, the same plugin as `@alfayez/svelte-native/app.plugin`.
 const plugin = "@alfayez/svelte-native";
 const pluginNames: readonly string[] = [plugin, `${plugin}/app.plugin`];
-// The path of the plugin's built file, which was a name for it up to 0.4.0-rc.6 and no longer resolves.
+// The path of the plugin's built file, which was a name for it up to 0.4.0-rc.7 and no longer resolves.
 const removedPluginName = `${plugin}/expo`;
 const scripts: Readonly<Record<string, string>> = { native: "svelte-native dev", android: "svelte-native android", ios: "svelte-native ios", "check-setup": "svelte-native doctor" };
 const gitignore = [".svelte-native", ".expo", "/android", "/ios"];

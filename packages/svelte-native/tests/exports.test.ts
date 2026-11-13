@@ -103,7 +103,7 @@ describe("the main entry exports the animation, the gestures, the SVG components
   });
 });
 
-describe("the entries 0.4.0-rc.6 deprecated are removed, and what they exported is exported by the entries that stay", () => {
+describe("the entries 0.4.0-rc.7 deprecated are removed, and what they exported is exported by the entries that stay", () => {
   const app = exportsOf(src("app.ts"));
   const platform = exportsOf(src("platform.ts"));
   const has = (names: Names, wanted: { values: readonly string[]; types: readonly string[] }) =>

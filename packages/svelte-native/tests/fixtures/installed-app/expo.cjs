@@ -17,7 +17,7 @@ const names = { bare: "@alfayez/svelte-native", appPlugin: "@alfayez/svelte-nati
 const result = Object.fromEntries(Object.entries(names).map(([key, name]) => [key, summary(name)]));
 // What the bare name resolves to is the same plugin function as the path's.
 result.sameAppPlugin = resolveConfigPluginFunctionWithInfo(process.cwd(), names.bare).plugin === resolveConfigPluginFunctionWithInfo(process.cwd(), names.appPlugin).plugin;
-// `@alfayez/svelte-native/expo` was a third name up to 0.4.0-rc.6: the package's `exports` map no longer has it, and `@expo/config-plugins` says what it makes of it.
+// `@alfayez/svelte-native/expo` was a third name up to 0.4.0-rc.7: the package's `exports` map no longer has it, and `@expo/config-plugins` says what it makes of it.
 try {
   resolveConfigPluginFunctionWithInfo(process.cwd(), "@alfayez/svelte-native/expo");
   result.removed = "resolved";

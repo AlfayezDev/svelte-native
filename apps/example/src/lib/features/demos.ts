@@ -52,6 +52,7 @@ export const demos: readonly Demo[] = [
   { doc: "20-core-concepts/40-state-management.md", route: "/state", durationMs: 11500, notes: "Counts up ($state, $derived), runs the timer ($effect), ticks a todo and adds one by typing it, asks again ({#await}), then puts it all back." },
   { doc: "20-core-concepts/50-html-elements.md", route: "/html", durationMs: 10100, notes: "Types a name and an address into the form, adds the contact to the list, then removes it through the dialog." },
   { doc: "20-core-concepts/60-sveltekit-modules.md", route: "/sveltekit", durationMs: 10400, notes: "Types a word, goes through the filters with goto('?filter=...') (the url line and the page section follow, the word stays: the screen is not built again), moves the Spring ball twice, then opens item 7 with goto(resolve(...)), which pushes a screen." },
+  { doc: null, route: "/web-apis", durationMs: 9000, notes: "Downloads a docs video as a body stream (the bar fills chunk by chunk), hashes it with crypto.subtle, shows a picture through response.blob() and an object URL, then makes two new UUIDs." },
 
   // Components
   { doc: "30-components/10-view.md", route: "/layout", durationMs: 11700, notes: "Walks through the values of justifyContent (the row moves), then scrolls down to alignItems, flexWrap, flex and absolute position, and back." },

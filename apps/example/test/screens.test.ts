@@ -78,6 +78,21 @@ const fake = {
 (globalThis as { nativeFabricUIManager?: unknown }).nativeFabricUIManager = fake;
 // React Native's global object is also `window`, and it has `requestAnimationFrame` (Svelte's `Spring` and `Tween` run on it); the runtime of this test has neither. React Native has no `matchMedia`, which Svelte's `svelte/motion` and `MediaQuery` call: the library's polyfills install it, and the bundle below imports them first.
 (globalThis as { window?: unknown }).window ??= globalThis;
+// React Native has no `localStorage` either: on the device the library's polyfills put MMKV behind it (the Web APIs screen counts its visits there). Bun has none, so a map stands in.
+const stored = new Map<string, string>();
+(globalThis as { localStorage?: unknown }).localStorage ??= {
+  getItem: (key: string) => stored.get(key) ?? null,
+  setItem: (key: string, value: string) => void stored.set(key, String(value)),
+  removeItem: (key: string) => void stored.delete(key),
+  clear: () => stored.clear(),
+  key: (index: number) => [...stored.keys()][index] ?? null,
+  get length() { return stored.size; },
+};
+// The Web APIs screen downloads from the docs site; here it gets a few bytes without the network.
+const realFetch = globalThis.fetch;
+globalThis.fetch = Object.assign((input: string | URL | Request, init?: RequestInit) => String(input instanceof Request ? input.url : input).startsWith("https://svelte-native.alfayez.dev/")
+  ? Promise.resolve(new Response(new Uint8Array(16), { headers: { "content-length": "16" } }))
+  : realFetch(input, init), realFetch);
 (globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame ??= (callback: (time: number) => void) => setTimeout(() => callback(performance.now()), 16);
 (globalThis as { __DEV__?: boolean }).__DEV__ = false;
 (globalThis as { __navigationInsets?: unknown }).__navigationInsets = { top: 24, right: 0, bottom: 34, left: 0, keyboardHeight: 0, keyboardVisible: false, frame: { x: 0, y: 0, width: 400, height: 800 } };

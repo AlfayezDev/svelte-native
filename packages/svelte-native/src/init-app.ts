@@ -30,9 +30,11 @@ export const appDependencies: Readonly<Record<string, string>> = {
 
 /** Packages whose patch every app needs; the others are declared when the app has the package (SvelteKit) or lists it at the patch's version (the view libraries). */
 const alwaysPatched = ["expo-modules-core", "react-native-gesture-handler", "react-native-reanimated", "react-native-worklets"];
-// The package's own name: Expo finds the package's `app.plugin.js`, the same plugin as `@alfayez/svelte-native/app.plugin` and the deprecated `@alfayez/svelte-native/expo`.
+// The package's own name: Expo finds the package's `app.plugin.js`, the same plugin as `@alfayez/svelte-native/app.plugin`.
 const plugin = "@alfayez/svelte-native";
-const pluginNames: readonly string[] = [plugin, `${plugin}/app.plugin`, `${plugin}/expo`];
+const pluginNames: readonly string[] = [plugin, `${plugin}/app.plugin`];
+// The path of the plugin's built file, which was a name for it up to 0.4.0-rc.6 and no longer resolves.
+const removedPluginName = `${plugin}/expo`;
 const scripts: Readonly<Record<string, string>> = { native: "svelte-native dev", android: "svelte-native android", ios: "svelte-native ios", "check-setup": "svelte-native doctor" };
 const gitignore = [".svelte-native", ".expo", "/android", "/ios"];
 
@@ -675,8 +677,16 @@ function planAppJson(root: string, names: ReturnType<typeof appNames>, plan: Pla
       done.push(`${block}.${key}`);
     }
   }
-  const plugins = Array.isArray(expo.plugins) ? (expo.plugins as unknown[]) : [];
-  const has = plugins.some((entry) => pluginNames.includes((Array.isArray(entry) ? entry[0] : entry) as string));
+  const listed = Array.isArray(expo.plugins) ? (expo.plugins as unknown[]) : [];
+  const nameOf = (entry: unknown) => (Array.isArray(entry) ? entry[0] : entry) as string;
+  // The removed path becomes the package's name, with the entry's options.
+  const renamed = listed.some((entry) => nameOf(entry) === removedPluginName);
+  const plugins = renamed ? listed.map((entry) => (nameOf(entry) !== removedPluginName ? entry : Array.isArray(entry) ? [plugin, ...entry.slice(1)] : plugin)) : listed;
+  if (renamed) {
+    expo.plugins = plugins;
+    done.push(`the plugin's name (${removedPluginName} no longer resolves)`);
+  }
+  const has = plugins.some((entry) => pluginNames.includes(nameOf(entry)));
   if (!has) {
     expo.plugins = [...plugins, plugin];
     done.push("the plugin");

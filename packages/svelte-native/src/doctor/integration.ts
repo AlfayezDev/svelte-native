@@ -3,10 +3,10 @@ import { join } from "node:path";
 import { readJson } from "./resolve.ts";
 
 /**
- * What a look at a config file can say: it names the library's entry (`found`, and `name`, how it names it), it does not and nothing else could add it (`absent`), or it is
- * code and the answer depends on running it (`unclear`).
+ * What a look at a config file can say: it names the library's entry (`found`, and `name`, how it names it), it names the path `<library>/expo` that no longer resolves
+ * (`removed`), it does not name the entry and nothing else could add it (`absent`), or it is code and the answer depends on running it (`unclear`).
  */
-export type Finding = { state: "found" | "absent" | "unclear" | "no-file"; file?: string; name?: string };
+export type Finding = { state: "found" | "removed" | "absent" | "unclear" | "no-file"; file?: string; name?: string };
 
 const METRO_FILES = ["metro.config.js", "metro.config.cjs", "metro.config.mjs", "metro.config.ts", "metro.config.mts", "metro.config.cts"];
 const APP_CONFIG_FILES = ["app.config.ts", "app.config.js", "app.config.cjs", "app.config.mjs", "app.config.mts", "app.config.cts"];
@@ -29,24 +29,29 @@ export function metroFinding(appRoot: string): Finding {
 const pluginName = (entry: unknown): string | undefined => (typeof entry === "string" ? entry : Array.isArray(entry) && typeof entry[0] === "string" ? entry[0] : undefined);
 
 /**
- * Whether the app's Expo config lists the library's config plugin, by any of its names: the package's own name (its `app.plugin.js`, which Expo finds for a bare
- * package name), that file's path `<library>/app.plugin`, or the deprecated `<library>/expo`. In `app.json`'s `plugins`, or by name in an `app.config.*`.
+ * Whether the app's Expo config lists the library's config plugin, by either of its names: the package's own name (its `app.plugin.js`, which Expo finds for a bare
+ * package name), or that file's path `<library>/app.plugin`. In `app.json`'s `plugins`, or by name in an `app.config.*`. `<library>/expo` was a third name up to 0.4.0-rc.6;
+ * it is not in the package's `exports` any more, so a config that lists it is `removed`, whatever else it lists.
  */
 export function expoPluginFinding(appRoot: string, library: string): Finding {
-  const names = [library, `${library}/app.plugin`, `${library}/expo`];
+  const names = [library, `${library}/app.plugin`];
+  const removed = `${library}/expo`;
   const json = firstExisting(appRoot, ["app.json"]);
   const code = firstExisting(appRoot, APP_CONFIG_FILES);
-  if (json) {
-    const parsed = readJson(join(appRoot, json));
-    const expo = (parsed?.expo ?? parsed) as { plugins?: unknown } | undefined;
-    const plugins = Array.isArray(expo?.plugins) ? expo.plugins : [];
-    const listed = names.find((name) => plugins.some((entry) => pluginName(entry) === name));
-    if (listed) return { state: "found", file: json, name: listed };
-  }
+  const parsed = json ? readJson(join(appRoot, json)) : undefined;
+  const expo = (parsed?.expo ?? parsed) as { plugins?: unknown } | undefined;
+  const plugins = Array.isArray(expo?.plugins) ? expo.plugins : [];
+  const listedInJson = (name: string) => plugins.some((entry) => pluginName(entry) === name);
+  // The name in the file, however the list is built: a dynamic config may add it in a way the doctor cannot see, so a miss is unclear. A name is a whole string, not the start of
+  // `<library>/app.plugin` or of another package.
+  const source = code ? withoutJsComments(readFileSync(join(appRoot, code), "utf8")) : "";
+  const namedInCode = (name: string) => ["\"", "'", "`"].some((quote) => source.includes(`${quote}${name}${quote}`));
+  if (json && listedInJson(removed)) return { state: "removed", file: json, name: removed };
+  if (code && namedInCode(removed)) return { state: "removed", file: code, name: removed };
+  const listed = json ? names.find(listedInJson) : undefined;
+  if (listed) return { state: "found", file: json, name: listed };
   if (code) {
-    // The name in the file, however the list is built: a dynamic config may add it in a way the doctor cannot see, so a miss is unclear. The bare name is a whole string, not the start of `<library>/app.plugin` or of another package.
-    const source = withoutJsComments(readFileSync(join(appRoot, code), "utf8"));
-    const named = names.find((name) => ["\"", "'", "`"].some((quote) => source.includes(`${quote}${name}${quote}`)));
+    const named = names.find(namedInCode);
     return named ? { state: "found", file: code, name: named } : { state: "unclear", file: code };
   }
   return json ? { state: "absent", file: json } : { state: "no-file" };

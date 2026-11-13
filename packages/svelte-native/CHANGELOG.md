@@ -13,6 +13,10 @@ Notable changes to `@alfayez/svelte-native` (named `@rasheed/svelte-native` up t
 
 - On Android the `SvelteFetch` module is registered lazily and prewarmed off the JavaScript thread (the expo-modules-core patch), in the place of Expo's fetch module, which the app no longer loads.
 
+### Fixed
+
+- A `Text` (or `<p>`, `<span>` and the other text tags) with `numberOfLines` and no `ellipsizeMode` no longer draws past its lines on Android. React Native's Text sends `ellipsizeMode: "tail"` when none is given, and the library's did not: Fabric measured the paragraph with its own default, `clip`, and Android's text view drew it with `END`, so a text too long for its lines was laid out at its line count and painted on more, over what came below it. The library now sends `"tail"` too, as React Native does; an explicit `ellipsizeMode` stands.
+
 ## 0.4.0-rc.7 - 2026-11-13
 
 ### Added

@@ -270,6 +270,27 @@ describe("init in a project that already has things", () => {
     expect(result.out).toContain('plugins: ["@alfayez/svelte-native"]');
   });
 
+  test("an app configured in code that names the removed /expo plugin is told to replace it, not to add the plugin", () => {
+    for (const quoted of ['"@alfayez/svelte-native/expo"', "'@alfayez/svelte-native/expo'"]) {
+      const root = project((dir) => writeFileSync(join(dir, "app.config.ts"), `export default { plugins: ["expo-font", [${quoted}, { androidProfileable: true }]] };\n`));
+      const result = run(root);
+      expect(existsSync(join(root, "app.json"))).toBe(false);
+      expect(result.out).toContain("app.config.ts");
+      expect(result.out).toContain("@alfayez/svelte-native/expo");
+      expect(result.out).toMatch(/Replace .*@alfayez\/svelte-native\/expo.* with .*"@alfayez\/svelte-native"/);
+      expect(result.out).toContain("no longer resolves");
+      expect(result.out).not.toContain("Add the library's plugin");
+    }
+  });
+
+  test("an app configured in code that names the plugin by its package name is not told to replace anything", () => {
+    const root = project((dir) => writeFileSync(join(dir, "app.config.ts"), 'export default { plugins: ["@alfayez/svelte-native"] };\n'));
+    const result = run(root);
+    expect(result.out).toContain("app.config.ts");
+    expect(result.out).not.toContain("@alfayez/svelte-native/expo");
+    expect(result.out).not.toMatch(/Replace /);
+  });
+
   test("a different version of SvelteKit that has no patch is pinned to the newest one that has; an installed one that has a patch is kept", () => {
     const kitPatches = patchFiles().filter((patch) => patch.package === "@sveltejs/kit");
     const root = project((dir) => {

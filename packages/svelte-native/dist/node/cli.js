@@ -421,6 +421,16 @@ export const lab = ${lab};
 export const tree: StackNode = ${nodeOf(tree, "").trimStart()};
 `;
 }
+function staleEntry(source) {
+  const manifest = JSON.parse(readFileSync(resolve3(packageRoot, "package.json"), "utf8"));
+  const literal = (text2) => text2.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+  const patterns = Object.keys(manifest.exports);
+  const exported = (key) => patterns.some((pattern) => pattern.includes("*") ? new RegExp(`^${pattern.split("*").map(literal).join(".*")}$`).test(key) : pattern === key);
+  for (const [, , name, subpath] of source.matchAll(new RegExp(`(['"])(${literal(manifest.name)}|${literal(FORMER_NAME)})((?:/[^'"]*)?)\\1`, "g"))) {
+    if (name === FORMER_NAME || !exported(subpath ? `.${subpath}` : ".")) return true;
+  }
+  return false;
+}
 function syncRoutes(root2, options = {}) {
   const variant = options.variant ?? variantName();
   const lab = options.lab ?? labIncludedFor(variant);
@@ -438,7 +448,8 @@ import { tree } from './routes';
 createFabricApp(App, { tree });
 ${hot}`;
   const files = [[routesTableFile(variant), manifest]];
-  if (options.entry !== "keep" || customRoot !== void 0 || !existsSync2(resolve3(output, "entry.ts"))) files.push(["entry.ts", entry]);
+  const entryPath = resolve3(output, "entry.ts");
+  if (options.entry !== "keep" || customRoot !== void 0 || !existsSync2(entryPath) || staleEntry(readFileSync(entryPath, "utf8"))) files.push(["entry.ts", entry]);
   for (const [file, content] of files) {
     const destination = resolve3(output, file);
     let current = "";
@@ -496,11 +507,12 @@ async function exportNative(root2, platform, options = {}) {
   });
   if (result !== 0) throw new Error(`Native ${platform} export exited with ${result}`);
 }
-var require2, posix, PRESENTATIONS, NAVIGATORS, labIncluded, LAB_DIRECTORY;
+var require2, posix, PRESENTATIONS, NAVIGATORS, labIncluded, LAB_DIRECTORY, FORMER_NAME;
 var init_build = __esm({
   "src/build.ts"() {
     "use strict";
     init_compile_options();
+    init_package_root();
     init_route_tree();
     init_variant();
     init_watch_tree();
@@ -510,6 +522,7 @@ var init_build = __esm({
     NAVIGATORS = ["stack", "tabs"];
     labIncluded = (env = process.env) => labIncludedFor(variantName(env));
     LAB_DIRECTORY = "__dev";
+    FORMER_NAME = "@example/svelte-native";
   }
 });
 
@@ -1206,9 +1219,14 @@ function planAppJson(root2, names, plan) {
   if (text2 === void 0) {
     const config = ["app.config.ts", "app.config.js", "app.config.mjs", "app.config.cjs"].find((file) => existsSync3(join3(root2, file)));
     if (config !== void 0) {
-      plan.changes.push({ path: config, action: "manual", summary: "the app is configured in code", instructions: `Add the library's plugin to \`plugins\` in ${config}:
+      const configText = read(join3(root2, config)) ?? "";
+      const names2 = [`"${removedPluginName}"`, `'${removedPluginName}'`, `\`${removedPluginName}\``].some((quoted) => configText.includes(quoted));
+      const instructions = names2 ? `Replace "${removedPluginName}" in \`plugins\` in ${config} with "${plugin}" (that path no longer resolves and the package's name is the plugin's; keep its options):
   plugins: ["${plugin}"]
-and give the app an \`android.package\` and \`ios.bundleIdentifier\`.` });
+and give the app an \`android.package\` and \`ios.bundleIdentifier\`.` : `Add the library's plugin to \`plugins\` in ${config}:
+  plugins: ["${plugin}"]
+and give the app an \`android.package\` and \`ios.bundleIdentifier\`.`;
+      plan.changes.push({ path: config, action: "manual", summary: "the app is configured in code", instructions });
       return;
     }
     plan.changes.push({ path: "app.json", action: "create", summary: `${names.title}, ${names.androidPackage}`, text: `${JSON.stringify({ expo: wanted() }, null, "	")}

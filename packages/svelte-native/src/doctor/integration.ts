@@ -30,7 +30,7 @@ const pluginName = (entry: unknown): string | undefined => (typeof entry === "st
 
 /**
  * Whether the app's Expo config lists the library's config plugin, by either of its names: the package's own name (its `app.plugin.js`, which Expo finds for a bare
- * package name), or that file's path `<library>/app.plugin`. In `app.json`'s `plugins`, or by name in an `app.config.*`. `<library>/expo` was a third name up to 0.4.0-rc.7;
+ * package name), or that file's path `<library>/app.plugin`. In `app.json`'s `plugins`, or by name in an `app.config.*`. `<library>/expo` was a third name up to 0.4.0-rc.6;
  * it is not in the package's `exports` any more, so a config that lists it is `removed`, whatever else it lists.
  */
 export function expoPluginFinding(appRoot: string, library: string): Finding {

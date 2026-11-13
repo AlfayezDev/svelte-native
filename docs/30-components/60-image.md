@@ -19,7 +19,7 @@ video: pressable
 	<View style={{ padding: 20, gap: 12 }}>
 		<Image source={photo} resizeMode="cover" accessibilityLabel="A sunset over hills" style={{ height: 160, borderRadius: 12 }} />
 		<Image
-			source={{ uri: 'https://picsum.photos/id/1015/600/400' }}
+			source={{ uri: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=600&h=400&fit=crop&fm=jpg&q=70' }}
 			resizeMode="cover"
 			accessibilityLabel="A river between mountains"
 			onLoad={() => (status = 'loaded')}

@@ -48,9 +48,9 @@
       </View>
       <View style={{ flex: 1, gap: 6 }}>
         <Image
-          source={{ uri: "https://picsum.photos/id/1015/300/200" }}
+          source={{ uri: "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=600&h=400&fit=crop&fm=jpg&q=70" }}
           resizeMode="cover"
-          accessibilityLabel="A river between mountains"
+          accessibilityLabel="Mountains above the clouds at sunset"
           onLoad={() => (photoStatus = "loaded")}
           onError={() => (photoStatus = "failed (offline?)")}
           style={{ height: 100, borderRadius: 8, backgroundColor: theme.colors.border }}

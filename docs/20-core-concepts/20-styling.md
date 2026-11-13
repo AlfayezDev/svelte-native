@@ -51,8 +51,6 @@ To share styles across screens, export the objects from a module in `src/lib`.
 </View>
 ```
 
-> **warning** Classes come after 0.4.0-rc.3: in that release, `class` does nothing. Until the next release, install from `main` with `#main&path:packages/svelte-native` in place of the tag.
-
 ### Set up classes
 
 Install Tailwind, at the version Svelte Native is made for:

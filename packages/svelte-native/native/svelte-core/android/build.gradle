@@ -1,0 +1,19 @@
+apply plugin: 'com.android.library'
+apply plugin: 'expo-module-gradle-plugin'
+
+group = 'expo.modules.sveltecore'
+version = '0.1.0'
+
+android {
+  namespace "expo.modules.sveltecore"
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+  }
+  lintOptions { abortOnError false }
+}
+
+dependencies {
+  // React Native's own dependency list carries OkHttp and Okio as `api`, at the versions its networking is built against.
+  implementation 'com.facebook.react:react-android'
+}

@@ -17,7 +17,7 @@ The types are SvelteKit's own, so install `@sveltejs/kit` in the project and not
 
 ## Navigation
 
-`goto(url, options?)` from `$app/navigation` goes to a route of the app, through the root router, from any code. [Routing](routing#navigating) has what it does, its options and what rejects it.
+`goto(url, options?)` from `$app/navigation` goes to a route of the app, through the root router, from any code. [Routing](routing#navigating) has what it does, its options and what rejects it. Called in an `$effect`, it doesn't make the effect depend on the screens: `$effect(() => { if (!signedIn) goto('/sign-in', { replace: true }) })` runs again when `signedIn` changes and not when the user opens another screen.
 
 ```ts
 /// file: src/lib/session.ts
@@ -43,16 +43,33 @@ The error reads `` `beforeNavigate` is not available on the device yet (svelte-n
 
 ## Page state
 
-`page` from `$app/state` is a reactive object, like SvelteKit's, and it follows the screen the user sees: the deepest one through the stacks, tabs and modals of the app. A tab switch, a push, a modal and a back each change it, and a `$derived` or `$effect` that reads it runs again. It works in any component and in any module, not only below a navigator, and before the app has a router it is the page of nothing (`url` is `/`, `params` is `{}`, `route.id` is `null`).
+`page` from `$app/state` is a reactive object, like SvelteKit's, and it describes the screen the user sees now: the deepest one through the stacks, tabs and modals of the app. A tab switch, a push, a modal and a back each change it, and a `$derived` or `$effect` that reads it runs again. It works in any component and in any module, not only below a navigator, and before the app has a router it is the page of nothing (`url` is `/`, `params` is `{}`, `route.id` is `null`).
+
+On the web there is one page at a time, so every component can read its own data from `page`. A phone keeps the screens below the top one mounted, so `page` is the top screen's wherever it is read: a screen that is covered by another one and reads `page.params.id` sees the id of the screen on top of it, and it changes when that screen opens. A screen reads its own data from the `params` and `url` props that SvelteKit gives a page, which are its own however many screens are above it. Use `page` for what concerns the whole app, such as highlighting the current tab in a bar, below, or reporting the screen to analytics.
 
 ```svelte
+<!--- file: src/routes/posts/[id]/+mobile.svelte --->
+<script lang="ts">
+	let { params }: { params: { id: string } } = $props();
+</script>
+
+<p>Post {params.id}</p>
+```
+
+```svelte
+<!--- file: src/lib/TabBar.svelte --->
 <script lang="ts">
 	import { page } from '$app/state';
 
-	const id = $derived(page.params.id);
+	const tabs = [
+		{ href: '/home', label: 'Home' },
+		{ href: '/inbox', label: 'Inbox' }
+	];
 </script>
 
-<p>{page.route.id} at {page.url.pathname}</p>
+{#each tabs as tab (tab.href)}
+	<a href={tab.href} aria-current={page.url.pathname.startsWith(tab.href) ? 'page' : undefined}>{tab.label}</a>
+{/each}
 ```
 
 | Property | On the device |

@@ -143,28 +143,55 @@ A modal or sheet belongs to the stack of its page. One that must cover the tab b
 
 ## Navigating
 
-SvelteKit navigates with `<a href>`. Native has no links, so a screen asks its router. `useRouter()` returns the router of the nearest navigator:
+A screen navigates the way a SvelteKit page does. `<a href>` and `goto` from `$app/navigation` go to any route of the app, so a page shared with the web needs no native code. `useRouter()` gives the router of the navigator a screen is in, for what only a navigator can do: going back, replacing its first screen, preparing a navigation.
 
 ```svelte
 <!--- file: src/routes/+mobile.svelte --->
+<script lang="ts">
+	import { goto } from '$app/navigation';
+	import { Screen } from '@alfayez/svelte-native';
+</script>
+
+<Screen title="Home">
+	<a href="/posts/42">Read post 42</a>
+	<button onclick={() => goto('/posts/42')}>Read post 42</button>
+</Screen>
+```
+
+A press on an `<a href>` goes to the route of its path, and one on a link to another site, `mailto:` or `tel:` is opened by the system ([HTML elements](html-elements)).
+
+`goto` works from any code: a component, a `.svelte.ts` module, a timer, the code that runs when a remote function answers. It drives the app's root router, which selects the right tab, closes a modal that is in the way, and pushes the screen on the stack it belongs to. If that stack already has the screen, it goes back to it instead of pushing it twice. The promise it returns resolves once the navigation is made. It rejects when no screen has the path, and when the app has no router yet. A relative URL (`goto('edit')`) is read against the screen the user sees, as a browser would, and a URL of another site is opened by the system, as `<a href>` does.
+
+| Option of `goto(url, options)` | Effect |
+| --- | --- |
+| `replace: true` (or `replaceState: true`, SvelteKit's older name) | replace the top screen instead of pushing a new one |
+| `reset`, `refreshAll`, `invalidate`, `invalidateAll`, `persistState` | ignored: they scroll and focus, and run `load` functions again, and a phone screen has none of them |
+| `shallow`, `state` | the promise rejects: they need `page.state`, which is always empty here |
+
+What a screen reads about where it is, `page` from `$app/state`, and the rest of `$app/navigation` are in [SvelteKit modules](sveltekit-modules).
+
+`useRouter()` returns the router of the nearest navigator. Call it while the component initialises, like `getContext`:
+
+```svelte
+<!--- file: src/routes/compose/+mobile.svelte --->
 <script lang="ts">
 	import { Pressable, Screen, Text, useRouter } from '@alfayez/svelte-native';
 
 	const router = useRouter();
 </script>
 
-<Screen title="Home">
-	<Pressable onPress={() => router.goto('/posts/42')} accessibilityRole="button">
-		<Text>Read post 42</Text>
+<Screen title="Compose">
+	<Pressable onPress={() => router.back()} accessibilityRole="button">
+		<Text>Discard</Text>
 	</Pressable>
 </Screen>
 ```
 
-Call `useRouter()` while the component initialises, like `getContext`. The router has:
+The router has:
 
 | Member | What it does |
 | --- | --- |
-| `goto(href, options?)` | Goes to any route of the app. It selects the right tab, closes a modal that is in the way, and pushes the screen on the stack it belongs to. If that stack already has the screen, it goes back to it instead of pushing it twice. |
+| `goto(href, options?)` | Goes to any route of the app, as `goto` does, with the options below. |
 | `back()` | Goes back one screen. Returns `false` when there is nowhere to go back to. |
 | `current` | The screen the user sees: its `url`, `params` and `presentation`. |
 | `entries` | The screens of this navigator's stack, first one first. |
@@ -172,7 +199,7 @@ Call `useRouter()` while the component initialises, like `getContext`. The route
 | `openURL(url)` | Opens a link to the app (see [Deep links](#deep-links)). Returns `false` when no route matches. |
 | `prepare(href, options?)` | Gets a `goto` ready while the finger is still down (experimental, see [Preparing a screen](#preparing-a-screen-experimental)). |
 
-`goto` takes these options:
+`router.goto` takes these options:
 
 | Option | Effect |
 | --- | --- |

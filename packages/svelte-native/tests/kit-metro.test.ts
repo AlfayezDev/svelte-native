@@ -3,11 +3,11 @@ import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ConfigT } from "@expo/metro/metro-config";
-import { KIT_MODULES, KIT_UNAVAILABLE, MOTION_MODULE } from "../src/kit/modules.ts";
+import { KIT_MODULES, KIT_UNAVAILABLE, kitResolution } from "../src/kit/modules.ts";
 import { withSvelteNative } from "../src/metro.ts";
 import { sourceFile } from "../src/package-root.ts";
 
-/** SvelteKit's modules on the device: the imports Metro resolves to the library's files (`withSvelteNative`), the ones it refuses, and the one import of Svelte's that stays Svelte's. */
+/** SvelteKit's modules on the device: the imports Metro resolves to the library's files (`withSvelteNative`) and the ones it refuses; `svelte/motion` is not among them: it is Svelte's own. */
 function fakeConfig(projectRoot: string): ConfigT {
   return { projectRoot, resolver: { sourceExts: ["ts"], resolveRequest: undefined }, serializer: { getModulesRunBeforeMainModule: () => [] }, transformer: {} } as unknown as ConfigT;
 }
@@ -53,13 +53,13 @@ describe("SvelteKit's modules resolve to the library's files", () => {
 });
 
 describe("svelte/motion", () => {
-  test("is the library's module for every importer but that module itself, which gets Svelte's own", () => {
-    const motion = sourceFile(MOTION_MODULE);
-    expect(resolveFrom(app, "svelte/motion")).toBe(motion);
-    expect(resolveFrom(join(root, "node_modules/svelte-sonner/dist/Toast.svelte"), "svelte/motion")).toBe(motion);
-    // Svelte's: Metro resolves it from Svelte's own directory, as it does every other `svelte/*` import.
-    expect(resolveFrom(motion, "svelte/motion")).toBe("/real/svelte/motion");
+  test("is Svelte's own, from an app's code and from a library's: it builds prefersReducedMotion from window.matchMedia, which the polyfills install", () => {
+    // Metro resolves it from Svelte's own directory, as it does every other `svelte/*` import.
+    expect(resolveFrom(app, "svelte/motion")).toBe("/real/svelte/motion");
+    expect(resolveFrom(join(root, "node_modules/svelte-sonner/dist/Toast.svelte"), "svelte/motion")).toBe("/real/svelte/motion");
     expect(resolveFrom(app, "svelte/transition")).toBe("/real/svelte/transition");
     expect(resolveFrom(app, "svelte/reactivity")).toBe("/real/svelte/reactivity");
+    expect(kitResolution("svelte/motion")).toBeUndefined();
+    expect(Object.keys(KIT_MODULES)).not.toContain("svelte/motion");
   });
 });

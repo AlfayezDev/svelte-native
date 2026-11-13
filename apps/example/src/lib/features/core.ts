@@ -6,7 +6,7 @@ export const coreFeatures: Feature[] = [
   { title: "HTML elements", summary: "div, p, button, a, img, input, form and dialog as native views", group: "Basics", route: "/html" },
   { title: "Text and fonts", summary: "Size, weight, spans, truncation, system and bundled fonts", group: "Basics", route: "/text" },
   { title: "State and reactivity", summary: "Runes driving native views: $state, $derived, $effect, await", group: "Basics", route: "/state" },
-  { title: "SvelteKit modules", summary: "goto, page, env with mobile, paths, svelte/motion", group: "Basics", route: "/sveltekit" },
+  { title: "SvelteKit modules", summary: "goto, page, env with mobile, paths, svelte/motion, media queries", group: "Basics", route: "/sveltekit" },
   { title: "Layout", summary: "Flexbox: rows, columns, wrap, alignment, flex, absolute", group: "Layout and style", route: "/layout" },
   { title: "Styling", summary: "Style objects, theme colours, dark mode, shadows, transforms", group: "Layout and style", route: "/styling" },
   { title: "Classes", summary: "Tailwind classes: utilities, dark:, breakpoints, your own CSS classes", group: "Layout and style", route: "/classes" },

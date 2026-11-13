@@ -2473,7 +2473,6 @@ var KIT_MODULES = {
   "$app/environment": "kit/env.ts",
   "$app/paths": "kit/paths.ts"
 };
-var MOTION_MODULE = "kit/motion.ts";
 var KIT_UNAVAILABLE = {
   "$app/forms": "forms submit to a SvelteKit server's actions; use remote functions' `form` (docs: Loading data)",
   "$app/manifest": "the manifest lists the web build's files",
@@ -2481,10 +2480,9 @@ var KIT_UNAVAILABLE = {
   "$app/stores": "SvelteKit 3 removed the stores; use `page` from `$app/state`",
   "$app/env/public": "the app has no SvelteKit environment; read what it needs from the app config (`extra`) with expo-constants"
 };
-function kitResolution(moduleName, origin) {
+function kitResolution(moduleName) {
   if (Object.hasOwn(KIT_MODULES, moduleName)) return sourceFile(KIT_MODULES[moduleName]);
   if (Object.hasOwn(KIT_UNAVAILABLE, moduleName)) throw new Error(`${moduleName} is not available on the device (svelte-native): ${KIT_UNAVAILABLE[moduleName]}. The guide's "SvelteKit modules" page lists what is.`);
-  if (moduleName === "svelte/motion" && origin !== sourceFile(MOTION_MODULE)) return sourceFile(MOTION_MODULE);
   return void 0;
 }
 
@@ -2720,7 +2718,7 @@ function withSvelteNative(config, options = {}) {
       if (moduleName.startsWith("$env/") && moduleName.includes("private") || moduleName === "$app/server" || moduleName === "$app/env/private") {
         throw new Error(`Server-only import in native bundle: ${moduleName}`);
       }
-      const kit = kitResolution(moduleName, context.originModulePath);
+      const kit = kitResolution(moduleName);
       if (kit !== void 0) return { type: "sourceFile", filePath: kit };
       if (moduleName === "svelte/reactivity/window") return { type: "sourceFile", filePath: sourceFile("reactivity-window.ts") };
       if (moduleName === "svelte" || moduleName.startsWith("svelte/")) {

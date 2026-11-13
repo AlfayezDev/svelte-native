@@ -244,11 +244,21 @@ describe("init in a project that already has things", () => {
     expect(run(root).out).toContain("Nothing to change");
   });
 
-  test("an app.json that lists the plugin by another of its names (the path of app.plugin.js, or the deprecated /expo) keeps it", () => {
-    for (const name of ["@alfayez/svelte-native/app.plugin", "@alfayez/svelte-native/expo"]) {
-      const root = project((dir) => writeFileSync(join(dir, "app.json"), `${JSON.stringify({ expo: { name: "Mine", slug: "mine", scheme: "mine", version: "1.0.0", android: { package: "dev.example.myapp" }, ios: { bundleIdentifier: "dev.example.myapp" }, plugins: [name] } }, null, 2)}\n`));
-      run(root);
-      expect(readJson(root, "app.json").expo.plugins).toEqual([name]);
+  test("an app.json that lists the plugin by the path of app.plugin.js keeps it", () => {
+    const name = "@alfayez/svelte-native/app.plugin";
+    const root = project((dir) => writeFileSync(join(dir, "app.json"), `${JSON.stringify({ expo: { name: "Mine", slug: "mine", scheme: "mine", version: "1.0.0", android: { package: "dev.example.myapp" }, ios: { bundleIdentifier: "dev.example.myapp" }, plugins: [name] } }, null, 2)}\n`));
+    run(root);
+    expect(readJson(root, "app.json").expo.plugins).toEqual([name]);
+  });
+
+  test("an app.json that lists @alfayez/svelte-native/expo, which 0.4.0-rc.7 removed, gets the package's name in its place, with the entry's options", () => {
+    const expo = { name: "Mine", slug: "mine", scheme: "mine", version: "1.0.0", android: { package: "dev.example.myapp" }, ios: { bundleIdentifier: "dev.example.myapp" } };
+    for (const [listed, wanted] of [["@alfayez/svelte-native/expo", "@alfayez/svelte-native"], [["@alfayez/svelte-native/expo", { androidProfileable: true }], ["@alfayez/svelte-native", { androidProfileable: true }]]] as const) {
+      const root = project((dir) => writeFileSync(join(dir, "app.json"), `${JSON.stringify({ expo: { ...expo, plugins: ["expo-font", listed] } }, null, 2)}\n`));
+      const result = run(root);
+      expect(readJson(root, "app.json").expo.plugins).toEqual(["expo-font", wanted]);
+      expect(result.out).toContain("@alfayez/svelte-native/expo no longer resolves");
+      expect(run(root).out).toContain("Nothing to change");
     }
   });
 

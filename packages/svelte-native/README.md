@@ -105,7 +105,7 @@ module.exports = withSvelteNative(getDefaultConfig(__dirname));
 plugins: [["@alfayez/svelte-native", { autolinkingExclude: [], androidOnDemandViewManagers: {} }]]
 ```
 
-Name the plugin by the package's own name, as for any Expo library: the package has an `app.plugin.js` at its root, which Expo looks for before the package's main entry. `@alfayez/svelte-native/app.plugin` is that file by its path, and `@alfayez/svelte-native/expo`, the same plugin, is a deprecated alias that is removed in 0.4.0-rc.7 (an `app.json` or `app.config` that names it works until then). No `babel.config.js` is needed: Expo's default preset gives the same bundle (checked byte for byte). The app needs `src/routes/+layout.mobile.svelte` (the generated entry imports it as the app shell) and at least one `+mobile.svelte`.
+Name the plugin by the package's own name, as for any Expo library: the package has an `app.plugin.js` at its root, which Expo looks for before the package's main entry. `@alfayez/svelte-native/app.plugin` is that file by its path. (`@alfayez/svelte-native/expo`, which named the built file up to 0.4.0-rc.6, no longer resolves: write the package's name in its place; `svelte-native init` does it in an `app.json`, and `svelte-native doctor` reports it.) No `babel.config.js` is needed: Expo's default preset gives the same bundle (checked byte for byte). The app needs `src/routes/+layout.mobile.svelte` (the generated entry imports it as the app shell) and at least one `+mobile.svelte`.
 
 Run the commands as `pnpm exec svelte-native <command>`, or from `package.json` scripts (`"android": "svelte-native android"`):
 
@@ -124,13 +124,13 @@ svelte-native sync              # only regenerate .svelte-native/
 | `svelte-native` (the bin) | the shell, `pnpm exec`, an npm script | `dist/node/cli.js` (ES module, shebang) |
 | `@alfayez/svelte-native/metro` | `metro.config.cjs`, which `require`s it | `dist/node/metro.cjs` |
 | `@alfayez/svelte-native/transformer` | Metro's workers (`babelTransformerPath`, which `withSvelteNative` sets) | `dist/node/transformer.cjs` |
-| the bare `@alfayez/svelte-native` (Expo's lookup of a package's `app.plugin.js`), `@alfayez/svelte-native/app.plugin`, and the deprecated `@alfayez/svelte-native/expo` | `@expo/config` and `expo prebuild`, which `require` the plugin | `dist/node/expo.cjs` (`app.plugin.js` re-exports it) |
+| the bare `@alfayez/svelte-native` (Expo's lookup of a package's `app.plugin.js`), and `@alfayez/svelte-native/app.plugin` | `@expo/config` and `expo prebuild`, which `require` the plugin | `dist/node/expo.cjs` (`app.plugin.js` re-exports it) |
 | `@alfayez/svelte-native/vite` | Vite, which imports the plugin from `node_modules` natively | `dist/node/vite.js` (ES module) |
 | `@alfayez/svelte-native/lower` | Node, for a tool that lowers `.svelte` files | `dist/node/lower.js` (ES module) |
 | `@alfayez/svelte-native/routes` | the web build (the table is empty there); Metro resolves it to the generated table | `dist/node/routes.js` (empty) |
 | `.` and every other entry | Metro, which compiles them with the app (they import `react-native`) | `src/*.ts` |
 
-The entries an app imports are `.` (components, navigation, animation, gestures and SVG), `/foreign`, `/platform`, `/router`, `/remote` and `/updates`. `/app` is the one the generated entry imports: it runs `init`, then `polyfills`, then loads the Fabric host. `/core`, `/renderer`, `/elements`, `/classes-table`, `/remote/runtime` and `/remote/globals` are the library's own inside (the lowering, the Metro transformer and the generated route table import them). Until 0.4.0-rc.7, `/animation`, `/gestures`, `/svg`, `/native-modules`, `/expo`, `/init`, `/polyfills` and `/fabric` stay as deprecated aliases (an editor strikes their names through); each is replaced by `.`, `/platform`, the plugin's package name or `/app` ([CHANGELOG](CHANGELOG.md)).
+The entries an app imports are `.` (components, navigation, animation, gestures and SVG), `/foreign`, `/platform`, `/router`, `/remote` and `/updates`. `/app` is the one the generated entry imports: it runs `init`, then `polyfills`, then loads the Fabric host. `/core`, `/renderer`, `/elements`, `/classes-table`, `/remote/runtime` and `/remote/globals` are the library's own inside (the lowering, the Metro transformer and the generated route table import them). `/animation`, `/gestures`, `/svg`, `/native-modules`, `/expo`, `/init`, `/polyfills` and `/fabric` were removed in 0.4.0-rc.7; each is replaced by `.`, `/platform`, the plugin's package name or `/app` ([CHANGELOG](CHANGELOG.md)).
 
 The built files are bundles of the Node-side code (the command line, the route generator, the Metro integration, the remote function transform, the doctor) with every package left as an import: they use the app's `svelte`, `expo`, `@sveltejs/kit` and the package's own dependencies, and name the runtime files Metro compiles (`src/fabric/…`) by path into the installed package.
 

@@ -37,11 +37,10 @@ function installFabric(): void {
   fabric.calls.length = 0;
   fabric.roots = {};
   (globalThis as { nativeFabricUIManager?: unknown }).nativeFabricUIManager = fake;
+  // React Native has `requestAnimationFrame`, which `tick()` waits for in async mode; bun has none. Set for every load and not once: a test file that runs between two users of this
+  // harness may delete it (`kit-motion.test.ts` does, after each test).
+  (globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame ??= (callback: () => void) => setTimeout(callback, 16);
 }
-// React Native has `requestAnimationFrame`, which `tick()` waits for in async mode; bun has none. Put back on every load: a test file that ran in between (`kit-motion.test.ts` sets
-// its own and deletes it afterwards) may have taken it away, and the order the files run in is the file system's.
-const ensureFrame = (): void => { (globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame ??= (callback: () => void) => setTimeout(callback, 16); };
-ensureFrame();
 
 const stubs: Record<string, string> = {
   ...reanimatedStubs,
@@ -80,7 +79,6 @@ const flags = resolve(dirname(createRequire(import.meta.url).resolve("svelte/pac
 
 /** Bundles the fixture with async mode on (`async: false` is the control: the same bundle without the flag). */
 export async function loadFork(fixture: string, { async = true, compiled = false, realConfigs = false }: { async?: boolean; compiled?: boolean | ((path: string) => boolean); realConfigs?: boolean } = {}): Promise<ForkModule> {
-  ensureFrame();
   const bundle = await build({
     stdin: {
       contents: `${async ? "import 'svelte/internal/flags/async';" : ""}

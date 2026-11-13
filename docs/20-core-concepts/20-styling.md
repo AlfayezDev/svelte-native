@@ -81,7 +81,7 @@ There is nothing to import. Metro writes the compiled classes to `.svelte-native
 ### Writing classes
 
 - `class` takes what it takes on a DOM element in Svelte: a string, an array or an object (`class={['card', selected && 'border-4']}`). On `View`, `Text`, `ScrollView`, `Image`, `ActivityIndicator` and `Pressable`, which a page compiles to native elements, `class:name={condition}` works too; Svelte allows no directive on other components, so write `class={{ name: condition }}` there.
-- `dark:` follows the system's light or dark mode, and the views that use it change when the user switches. Breakpoints (`sm:`, `md:`, `max-md:`, ...) follow the window's width, so they change when the device turns.
+- `dark:` follows the system's light or dark mode, and the views that use it change when the user switches. Breakpoints (`sm:`, `md:`, `max-md:`, ...) follow the window's width, so they change when the device turns. For a condition in script, such as a different layout and not only different styles, `new MediaQuery('(min-width: 600px)')` from `svelte/reactivity` reads the same window and scheme ([Media queries](sveltekit-modules#media-queries)).
 - `style` wins over the classes, as an inline style wins over a stylesheet on the web: `<View class="bg-zinc-400" style={{ backgroundColor: '#f97316' }} />` is orange.
 - Layout is React Native's: `flex` doesn't make a row, because a view is already a flex column. Add `flex-row` for a row.
 - Safe areas: `pt-[env(safe-area-inset-top)]` and the other `env(safe-area-inset-*)` values use the device's insets, the ones `<SafeAreaView>` adds.

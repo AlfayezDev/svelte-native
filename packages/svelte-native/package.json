@@ -15,7 +15,6 @@
       "types": "./dist/types/core.d.ts",
       "default": "./src/core.ts"
     },
-    "./init": "./src/init.ts",
     "./app": {
       "svelte-native-source": "./src/app.ts",
       "types": "./dist/types/app.d.ts",
@@ -31,14 +30,11 @@
       "types": "./dist/types/elements.d.ts",
       "default": "./src/elements.d.ts"
     },
-    "./fabric": "./src/deprecated/fabric.ts",
     "./foreign": {
       "svelte-native-source": "./src/foreign.ts",
       "types": "./dist/types/foreign.d.ts",
       "default": "./src/foreign.ts"
     },
-    "./svg": "./src/deprecated/svg.ts",
-    "./polyfills": "./src/polyfills.ts",
     "./platform": {
       "svelte-native-source": "./src/platform.ts",
       "types": "./dist/types/platform.d.ts",
@@ -74,13 +70,6 @@
       "types": "./dist/types/routes-table.d.ts",
       "default": "./dist/node/routes.js"
     },
-    "./animation": "./src/deprecated/animation.ts",
-    "./gestures": "./src/deprecated/gestures.ts",
-    "./expo": {
-      "svelte-native-source": "./src/expo.ts",
-      "types": "./dist/types/expo.d.ts",
-      "default": "./dist/node/expo.cjs"
-    },
     "./updates": {
       "svelte-native-source": "./src/updates/index.ts",
       "types": "./dist/types/updates/index.d.ts",
@@ -91,7 +80,6 @@
       "types": "./dist/types/css/empty-table.d.ts",
       "default": "./src/css/empty-table.ts"
     },
-    "./native-modules": "./src/deprecated/native-modules.ts",
     "./remote": {
       "svelte-native-source": "./src/remote/index.ts",
       "types": "./dist/types/remote/index.d.ts",

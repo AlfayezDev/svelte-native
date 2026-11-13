@@ -190,11 +190,7 @@ test("valueless attributes stay boolean true on lowered tags", () => {
   expect(lowerPrimitives(source)).toContain(`<native-scroll nestedScrollEnabled={true} horizontal={false}>x</native-scroll>`);
 });
 
-test("what the svg entry exports as Text and Image is not lowered: they are SVG elements, not the primitives", () => {
-  const header = `<script>\n  import { View } from "@alfayez/svelte-native";\n  import { Svg, Text, Image as SvgImage, Text as Label } from "@alfayez/svelte-native/svg";\n</script>\n`;
-  const markup = `<View><Svg><Text x={1}>a</Text><SvgImage href="x" /><Label>b</Label></Svg></View>`;
-  expect(run(markup, header)).toBe(`<native-view><Svg><Text x={1}>a</Text><SvgImage href="x" /><Label>b</Label></Svg></native-view>`);
-  // The other entries still lower: a subpath that exports a primitive is the package's own.
+test("a subpath that exports a primitive is the package's own: its Text is lowered", () => {
   const core = `<script>\n  import { Text } from "@alfayez/svelte-native/core";\n</script>\n`;
   expect(run(`<Text>a</Text>`, core)).toBe(`<native-text>a</native-text>`);
 });
@@ -205,12 +201,10 @@ test("the main entry's SvgText and SvgImage are SVG elements and stay components
   expect(run(markup, header)).toBe(`<native-view><native-text>a</native-text><native-image source={1} ></native-image><Svg><SvgText x={1}>b</SvgText><SvgImage href="x" /></Svg></native-view>`);
 });
 
-test("`use:gesture` of the main entry (and of the deprecated /gestures entry) is not warned about on a lowered tag; any other action is", () => {
+test("`use:gesture` of the main entry is not warned about on a lowered tag; any other action is", () => {
   const warnings: string[] = [];
   const lowered = (source: string) => lowerPrimitives(source, { filename: "a.svelte", warn: (message) => warnings.push(message) });
-  for (const entry of ["@alfayez/svelte-native", "@alfayez/svelte-native/gestures"]) {
-    expect(lowered(`<script>\n  import { View } from "@alfayez/svelte-native";\n  import { gesture } from "${entry}";\n  const pan = {};\n</script>\n<View use:gesture={pan} />`)).toContain("<native-view");
-  }
+  expect(lowered(`<script>\n  import { View, gesture } from "@alfayez/svelte-native";\n  const pan = {};\n</script>\n<View use:gesture={pan} />`)).toContain("<native-view");
   expect(warnings).toEqual([]);
   lowered(`<script>\n  import { View } from "@alfayez/svelte-native";\n  import { gesture } from "./my-actions.ts";\n</script>\n<View use:gesture={{}} />`);
   expect(warnings).toHaveLength(1);

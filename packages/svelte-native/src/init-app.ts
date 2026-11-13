@@ -33,7 +33,7 @@ const alwaysPatched = ["expo-modules-core", "react-native-gesture-handler", "rea
 // The package's own name: Expo finds the package's `app.plugin.js`, the same plugin as `@alfayez/svelte-native/app.plugin`.
 const plugin = "@alfayez/svelte-native";
 const pluginNames: readonly string[] = [plugin, `${plugin}/app.plugin`];
-// The path of the plugin's built file, which was a name for it up to 0.4.0-rc.7 and no longer resolves.
+// The path of the plugin's built file, which was a name for it up to 0.4.0-rc.6 and was removed in 0.4.0-rc.7: it no longer resolves.
 const removedPluginName = `${plugin}/expo`;
 const scripts: Readonly<Record<string, string>> = { native: "svelte-native dev", android: "svelte-native android", ios: "svelte-native ios", "check-setup": "svelte-native doctor" };
 const gitignore = [".svelte-native", ".expo", "/android", "/ios"];
@@ -651,7 +651,13 @@ function planAppJson(root: string, names: ReturnType<typeof appNames>, plan: Pla
   if (text === undefined) {
     const config = ["app.config.ts", "app.config.js", "app.config.mjs", "app.config.cjs"].find((file) => existsSync(join(root, file)));
     if (config !== undefined) {
-      plan.changes.push({ path: config, action: "manual", summary: "the app is configured in code", instructions: `Add the library's plugin to \`plugins\` in ${config}:\n  plugins: ["${plugin}"]\nand give the app an \`android.package\` and \`ios.bundleIdentifier\`.` });
+      // A config from before 0.4.0-rc.7 names the plugin by a path that is gone: that is a replacement, not an addition.
+      const configText = read(join(root, config)) ?? "";
+      const names = [`"${removedPluginName}"`, `'${removedPluginName}'`, `\`${removedPluginName}\``].some((quoted) => configText.includes(quoted));
+      const instructions = names
+        ? `Replace "${removedPluginName}" in \`plugins\` in ${config} with "${plugin}" (that path no longer resolves and the package's name is the plugin's; keep its options):\n  plugins: ["${plugin}"]\nand give the app an \`android.package\` and \`ios.bundleIdentifier\`.`
+        : `Add the library's plugin to \`plugins\` in ${config}:\n  plugins: ["${plugin}"]\nand give the app an \`android.package\` and \`ios.bundleIdentifier\`.`;
+      plan.changes.push({ path: config, action: "manual", summary: "the app is configured in code", instructions });
       return;
     }
     plan.changes.push({ path: "app.json", action: "create", summary: `${names.title}, ${names.androidPackage}`, text: `${JSON.stringify({ expo: wanted() }, null, "\t")}\n` });

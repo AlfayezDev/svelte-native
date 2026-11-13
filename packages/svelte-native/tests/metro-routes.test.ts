@@ -150,6 +150,95 @@ describe("the entry", () => {
   });
 });
 
+describe("an entry from an earlier release", () => {
+  /** What `svelte-native sync` wrote in 0.4.0-rc.5 and before: the three boot imports of paths that 0.4.0-rc.7 removed. */
+  const old = `import '@alfayez/svelte-native/init';
+import '@alfayez/svelte-native/polyfills';
+import { createFabricApp, remountSurfaces } from '@alfayez/svelte-native/fabric';
+import App from '../src/routes/+layout.mobile.svelte';
+import { tree } from './routes';
+createFabricApp(App, { tree });
+declare const module: { hot?: { accept(callback?: () => void): void } };
+if (__DEV__) module.hot?.accept(() => remountSurfaces());
+`;
+  const current = "import { createFabricApp, remountSurfaces } from '@alfayez/svelte-native/app';";
+  const entryFile = (root: string) => join(root, ".svelte-native/entry.ts");
+
+  test("a Metro that keeps the entry rewrites one that imports a path the library removed, so an upgraded app starts", () => {
+    const root = project();
+    delete process.env.SVELTE_NATIVE_ROOT;
+    syncRoutes(root, { variant: "qa" });
+    writeFileSync(entryFile(root), old);
+    withSvelteNative(fakeConfig(root), { variant: "qa" });
+    const entry = readFileSync(entryFile(root), "utf8");
+    expect(entry).toContain(current);
+    expect(entry).toContain("import App from '../src/routes/+layout.mobile.svelte';");
+    for (const removed of ["/init", "/polyfills", "/fabric"]) expect(entry).not.toContain(`@alfayez/svelte-native${removed}`);
+  });
+
+  test("each removed path is enough: /animation, /gestures, /svg, /native-modules and /expo, and a path the package never had", () => {
+    for (const path of ["animation", "gestures", "svg", "native-modules", "expo", "init", "polyfills", "fabric", "nothing/here"]) {
+      const root = project();
+      delete process.env.SVELTE_NATIVE_ROOT;
+      syncRoutes(root, { variant: "qa" });
+      writeFileSync(entryFile(root), `${readFileSync(entryFile(root), "utf8")}import "@alfayez/svelte-native/${path}";\n`);
+      withSvelteNative(fakeConfig(root), { variant: "qa" });
+      expect([path, readFileSync(entryFile(root), "utf8").includes(`svelte-native/${path}`)]).toEqual([path, false]);
+    }
+  });
+
+  test("a specifier in double quotes or a require is found, and an entry from before the package's rename too", () => {
+    for (const stale of [`import "@alfayez/svelte-native/init";\n`, `require("@alfayez/svelte-native/fabric");\n`, `import '@rasheed/svelte-native/init';\n`, `import { x } from "@rasheed/svelte-native";\n`]) {
+      const root = project();
+      delete process.env.SVELTE_NATIVE_ROOT;
+      syncRoutes(root, { variant: "qa" });
+      writeFileSync(entryFile(root), `${stale}${readFileSync(entryFile(root), "utf8")}`);
+      withSvelteNative(fakeConfig(root), { variant: "qa" });
+      expect([stale, readFileSync(entryFile(root), "utf8").includes(stale.trim())]).toEqual([stale, false]);
+    }
+  });
+
+  test("an entry that imports only what the package exports stays as it is, edited or not", () => {
+    const root = project();
+    delete process.env.SVELTE_NATIVE_ROOT;
+    syncRoutes(root, { variant: "qa" });
+    const edited = `import '@alfayez/svelte-native/platform';\nimport { gesture } from "@alfayez/svelte-native";\nimport "@alfayez/svelte-native-extras/thing";\n${readFileSync(entryFile(root), "utf8")}// mine\n`;
+    writeFileSync(entryFile(root), edited);
+    withSvelteNative(fakeConfig(root), { variant: "qa" });
+    expect(readFileSync(entryFile(root), "utf8")).toBe(edited);
+    // The same for the root a sync with SVELTE_NATIVE_ROOT wrote.
+    process.env.SVELTE_NATIVE_ROOT = "src/lib/Spike.svelte";
+    syncRoutes(root, { variant: "qa" });
+    delete process.env.SVELTE_NATIVE_ROOT;
+    const spike = readFileSync(entryFile(root), "utf8");
+    withSvelteNative(fakeConfig(root), { variant: "qa" });
+    expect(readFileSync(entryFile(root), "utf8")).toBe(spike);
+  });
+
+  test("the rewrite is once: the next Metro finds an entry that is current and leaves it", () => {
+    const root = project();
+    delete process.env.SVELTE_NATIVE_ROOT;
+    syncRoutes(root, { variant: "qa" });
+    writeFileSync(entryFile(root), old);
+    withSvelteNative(fakeConfig(root), { variant: "qa" });
+    const rewritten = statSync(entryFile(root)).mtimeMs;
+    const content = readFileSync(entryFile(root), "utf8");
+    withSvelteNative(fakeConfig(root), { variant: "qa" });
+    expect(statSync(entryFile(root)).mtimeMs).toBe(rewritten);
+    expect(readFileSync(entryFile(root), "utf8")).toBe(content);
+  });
+
+  test("a stale entry written for a custom root is rewritten for what the environment names", () => {
+    const root = project();
+    process.env.SVELTE_NATIVE_ROOT = "src/lib/Spike.svelte";
+    syncRoutes(root, { variant: "qa" });
+    writeFileSync(entryFile(root), old.replace("import App from '../src/routes/+layout.mobile.svelte';", "import App from '../src/lib/Spike.svelte';"));
+    delete process.env.SVELTE_NATIVE_ROOT;
+    withSvelteNative(fakeConfig(root), { variant: "qa" });
+    expect(readFileSync(entryFile(root), "utf8")).toContain(current); // the default, which is what the environment asks for
+  });
+});
+
 describe("in development the table follows the route files", () => {
   test("under NODE_ENV=development the config watches src/routes: a route added is in the variant's table a moment later, and in no other", async () => {
     const root = project();

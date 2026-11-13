@@ -1,3 +1,4 @@
+import { untrack } from "svelte";
 import type * as Kit from "$app/paths";
 import { BASE, resolve as resolveHref } from "../route-tree.ts";
 import { rootRouter } from "../router.svelte.ts";
@@ -29,11 +30,12 @@ export const resolve = ((...args: [string, Record<string, ParamValue | undefined
 }) as typeof Kit.resolve;
 
 /** The route of `href`'s path: its id (SvelteKit's, with the groups: `/(app)/blog/[slug]`) and its parameters, or `null` when no screen of the app has that path. Rejects before the app has created its router. */
-export const match: typeof Kit.match = async (url) => {
-  const router = rootRouter();
-  if (!router) throw new Error("match needs the app's router, which does not exist yet: it is made by createRouter in the app shell");
-  const { node } = router; // the root router's tree, a stack
-  const target = node.kind === "stack" ? resolveHref(node, new URL(String(url), BASE).pathname) : null;
-  return (target ? { id: routeIdOf(target.page), params: target.params } : null) as Awaited<ReturnType<typeof Kit.match>>;
-};
-
+export const match: typeof Kit.match = (url) =>
+  // Untracked: called in an effect, it must not run again for every screen the user pushes.
+  untrack(async () => {
+    const router = rootRouter();
+    if (!router) throw new Error("match needs the app's router, which does not exist yet: it is made by createRouter in the app shell");
+    const { node } = router; // the root router's tree, a stack
+    const target = node.kind === "stack" ? resolveHref(node, new URL(String(url), BASE).pathname) : null;
+    return (target ? { id: routeIdOf(target.page), params: target.params } : null) as Awaited<ReturnType<typeof Kit.match>>;
+  });

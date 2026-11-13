@@ -1,0 +1,14 @@
+{
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"strict": true,
+		"skipLibCheck": true,
+		"allowImportingTsExtensions": true,
+		"noEmit": true,
+		// A SvelteKit project has SvelteKit's declarations in every program (its generated tsconfig loads `$app/types`, which imports them).
+		"types": ["node", "@sveltejs/kit"]
+	},
+	"include": ["vite.config.ts", "src/**/*.ts"]
+}

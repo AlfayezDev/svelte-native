@@ -1,4 +1,5 @@
 /// <reference path="./fabric/react-native-internals.d.ts" />
+/// <reference path="./kit/modules.d.ts" />
 import { flushSync, fork, getContext, onDestroy, setContext, untrack } from "svelte";
 import { SvelteMap, SvelteURL } from "svelte/reactivity";
 import Platform from "react-native/Libraries/Utilities/Platform";
@@ -77,6 +78,8 @@ export interface Router {
   select(key: string): void;
   /** Starts loading a route's modules unless they are loaded or loading (a screen calls it when it renders). */
   load(route: PageRoute | RouteNode): void;
+  /** `load`, and settles when the modules are loaded; rejects with what a failed load threw (`preloadCode` of `$app/navigation`). */
+  preload(route: PageRoute | RouteNode): Promise<void>;
   /** The route's page and layouts once loaded, `undefined` while loading; throws what a failed load threw. */
   modules(route: PageRoute | RouteNode): RouteModules | undefined;
   /** Navigates anywhere in the tree: the plan selects tabs, pops covering screens and pushes where the route belongs. */
@@ -283,6 +286,12 @@ function createStore(tree: StackNode) {
     const pending = loader(); // a route whose load failed tries again on its next navigation
     slots.set(route, { pending: true });
     loads.set(route, pending.then((modules) => { slots.set(route, { modules }); }, (error: unknown) => { slots.set(route, { error }); }));
+  }
+  /** `load`, then waits for it: settles when the route's modules are loaded, rejects with what a failed load threw. */
+  async function preload(route: PageRoute | RouteNode): Promise<void> {
+    load(route);
+    await loads.get(route);
+    modules(route);
   }
   function modules(route: PageRoute | RouteNode): RouteModules | undefined {
     const slot = slots.get(route);
@@ -561,7 +570,7 @@ function createStore(tree: StackNode) {
   }
 
   return {
-    tree, root, load, modules, snapshot: () => snapshot(root), state: (): NavigationState => ({ stack: snapshot(root), launch: launched }), resolved,
+    tree, root, load, preload, modules, snapshot: () => snapshot(root), state: (): NavigationState => ({ stack: snapshot(root), launch: launched }), resolved,
     navigate,
     prepare,
     /**
@@ -666,6 +675,7 @@ function makeRouter({ store, node, scope, above, navigator, active, entry }: Spe
       tabs.select(key);
     },
     load: store.load,
+    preload: store.preload,
     modules: store.modules,
     goto(href, navigation = {}) { store.navigate(href, navigation); },
     prepare(href, navigation = {}) { return store.prepare(href, navigation); },
@@ -741,6 +751,11 @@ export function openLaunchURL(router: Router, accept?: (url: string) => boolean)
   return !binding || router.nested ? Promise.resolve(null) : binding.store.openLaunchURL(router, accept);
 }
 
+/** The app's root router while the component that created it lives. Reactive: what `page` (`$app/state`) follows, and `goto` (`$app/navigation`) drives, from any code. */
+let appRoot = $state.raw<Router | undefined>(undefined);
+/** The app's root router (the one `createRouter` made with the scope `"root"`), or `undefined` before the app creates it and after its component is gone. A read inside an effect or a template follows it. */
+export const rootRouter = (): Router | undefined => appRoot;
+
 /**
  * The router of a tree: its root navigator's, which opens links and answers the back key. It registers in the component context
  * under `options.scope` (`"root"` for the outermost router, unnamed for a nested one) so `useRouter(scope)` finds it from any
@@ -789,7 +804,13 @@ export function createRouter(tree: StackNode, initial = "/", options: RouterScop
       hot.save?.(json);
     });
   } else if (scope !== undefined) scopes.set(scope, store.snapshot);
-  return makeRouter({ store, node: tree, scope, above, navigator: { kind: "stack", stack: store.root }, active: options.active ?? (() => true) });
+  const router = makeRouter({ store, node: tree, scope, above, navigator: { kind: "stack", stack: store.root }, active: options.active ?? (() => true) });
+  if (scope === "root") {
+    appRoot = router;
+    // A router made in its place (a remount of the app shell) may already have taken the registration.
+    onDestroy(() => { if (appRoot === router) appRoot = undefined; });
+  }
+  return router;
 }
 
 function routerAbove(): RouterContext {

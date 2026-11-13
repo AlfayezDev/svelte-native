@@ -122,7 +122,8 @@ internal class BodyBuffer(
       if (!pumping) releaseNow = markReleasedLocked()
     }
     pending?.reject(FetchError.aborted())
-    if (releaseNow) release()
+    // Closing a response can read what is left of it (OkHttp tries for 100 ms), so not on the thread that aborted, which may be JavaScript's.
+    if (releaseNow) executor.execute { release() }
     return true
   }
 

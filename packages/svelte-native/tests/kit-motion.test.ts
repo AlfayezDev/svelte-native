@@ -20,7 +20,7 @@ const info = () => world.__kitInfo;
 
 const accessibilityModule = `export default {
   // The system answers when a test says so (answer() below).
-  isReduceMotionEnabled: () => { const info = globalThis.__kitInfo; info.asked++; return new Promise((resolve) => { info.answers.push(() => resolve(info.reduced)); }); },
+  isReduceMotionEnabled: () => { const info = globalThis.__kitInfo; info.asked++; const value = info.reduced; return new Promise((resolve) => { info.answers.push(() => resolve(value)); }); },
   addEventListener: (name, handler) => {
     if (name !== 'reduceMotionChanged') throw new Error('unexpected event ' + name);
     globalThis.__kitInfo.handlers.push(handler);
@@ -131,6 +131,47 @@ describe("svelte/motion on the device", () => {
     expect(info().handlers).toHaveLength(0);
   });
 
+  test("a late query cannot overwrite a newer native reduce-motion event", async () => {
+    const m = await load();
+    const watcher = m.watch();
+    info().handlers[0]?.(true);
+    await settle();
+    expect(watcher.seen.at(-1)).toBe(true);
+    answer(); // both queries captured false before the event
+    await settle();
+    expect(m.prefersReducedMotion.current).toBe(true);
+    expect(watcher.seen.at(-1)).toBe(true);
+    watcher.stop();
+  });
+
+  test("an older query resolving last cannot overwrite the new subscriber's answer", async () => {
+    const m = await load();
+    const oldAnswer = info().answers.shift()!;
+    info().reduced = true;
+    const watcher = m.watch();
+    answer();
+    await settle();
+    oldAnswer();
+    await settle();
+    expect(m.prefersReducedMotion.current).toBe(true);
+    expect(watcher.seen.at(-1)).toBe(true);
+    watcher.stop();
+  });
+
+  test("a detached subscriber's pending query is ignored", async () => {
+    const m = await load();
+    answer();
+    await settle();
+    info().reduced = true;
+    const watcher = m.watch();
+    watcher.stop();
+    await settle(); // createSubscriber detaches after a microtask
+    answer();
+    await settle();
+    expect(m.prefersReducedMotion.current).toBe(false);
+    expect(info().handlers).toHaveLength(0);
+  });
+
   test("a setting that was off when the module loaded and on when a reader subscribed reaches the reader", async () => {
     const m = await load();
     answer();
@@ -150,3 +191,4 @@ test("the module Metro resolves is the one the table names", () => {
   expect(KIT_MODULES).not.toHaveProperty("svelte/motion");
   expect(sourceFile(MOTION_MODULE)).toBe(resolve(import.meta.dirname, "../src/kit/motion.ts"));
 });
+

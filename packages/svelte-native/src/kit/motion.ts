@@ -28,8 +28,12 @@ const accessibility = () => (require("react-native/Libraries/Components/Accessib
 
 // The setting is asked for once as the module loads, so the first read in a screen has an answer; a reader asks again when it subscribes, and the system's change event keeps it current.
 let reduced = false;
+// Queries cross the native bridge: an older answer must not undo a newer event or subscription.
+let revision = 0;
 const ask = (done?: () => void) => {
+  const requested = ++revision;
   accessibility().isReduceMotionEnabled().then((value) => {
+    if (requested !== revision) return;
     reduced = value;
     done?.();
   }, () => {});
@@ -37,12 +41,16 @@ const ask = (done?: () => void) => {
 ask();
 
 const subscribe = createSubscriber((update) => {
-  ask(update);
   const subscription = accessibility().addEventListener("reduceMotionChanged", (value) => {
+    revision++;
     reduced = value;
     update();
   });
-  return () => subscription.remove();
+  ask(update);
+  return () => {
+    revision++; // Ignore any answer belonging to the reader that just went away.
+    subscription.remove();
+  };
 });
 
 /**

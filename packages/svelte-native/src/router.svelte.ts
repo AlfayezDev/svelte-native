@@ -36,10 +36,11 @@ export type RouterScreen = { entry: NativeLocation; canGoBack: boolean; leaving:
  *
  * `discard()` gives the navigation up: the screen that was rendered is released and `commit()` does nothing any more. It takes effect a task later, and a `commit()` made before then wins:
  * `Pressable` reports a press that lasted 130 ms or more as `onPressOut` and then `onPress` in one task, and `onPressOut` is where the navigation is discarded. After `commit()` or
- * `discard()` has taken effect, further calls do nothing.
+ * `discard()` has taken effect, further calls do nothing. Disposing the router also makes all its handles inert, including superseded ones.
  *
  * Only forward navigations are prepared: the ones whose operations are pushes and tab selections. One that pops, replaces or resets removes screens, which a fork cannot
  * do for the native stack (the exit timer would be armed for a navigation that may never happen), so `ready` is `false` and `commit()` is a plain `goto`.
+ * This is not an interactive or predictive-back API: native back progress and cancellation are not driven by a Svelte fork.
  *
  * `prepare` reads the stacks untracked and renders the screen in a timer task, so it may be called from an event handler, a timer or an effect. The rendering happens on the JavaScript thread, so
  * it can delay the next touch event by as long as the screen takes to render: prepare when the thread is otherwise idle. A prepared navigation that is neither committed nor discarded keeps
@@ -497,6 +498,7 @@ function createStore(tree: StackNode) {
     return page ? [page] : [];
   });
   function prepare(href: string, navigation: Navigation = {}): PreparedNavigation {
+    if (disposed) return { ready: Promise.resolve(false), commit() {}, discard() {} };
     const target = resolved(href);
     preparing?.supersede();
     // Untracked: an effect that calls `prepare` must not depend on the stacks it reads.
@@ -551,6 +553,8 @@ function createStore(tree: StackNode) {
     }
     function commit(): void {
       if (settled) return;
+      // Superseded handles are no longer `preparing`, but must not outlive their store.
+      if (disposed) { handle.drop(); return; }
       clearTimeout(pendingDiscard);
       pendingDiscard = undefined;
       settle();
@@ -571,7 +575,7 @@ function createStore(tree: StackNode) {
       await Promise.all(routes.map((route) => loads.get(route)));
       // A task later: what the touch itself changed (a pressed state) reaches the screen before the JavaScript thread renders a screen.
       await new Promise<void>((done) => setTimeout(done, 0));
-      if (settled || superseded || navigations !== base || !routes.every((route) => { const slot = slots.get(route); return slot !== undefined && "modules" in slot; })) return resolveReady(false);
+      if (disposed || settled || superseded || navigations !== base || !routes.every((route) => { const slot = slots.get(route); return slot !== undefined && "modules" in slot; })) return resolveReady(false);
       try {
         flushSync(); // a fork needs no change pending
         const before = navigations;

@@ -39,7 +39,8 @@ type Edit = { start: number; end: number; text: string };
  */
 const PRESS_HANDLERS = new Set(["onPress", "onPressIn", "onPressOut", "onLongPress", "onPressChange"]);
 
-// The entry of react-native-svg exports a `Text` and an `Image` of its own (SVG elements, not the primitives): nothing imported from it is lowered.
+// The deprecated `/svg` entry exports a `Text` and an `Image` of its own (SVG elements, not the primitives): nothing imported from it is lowered. (The main entry names
+// them `SvgText` and `SvgImage`, which are not in `LOWERED_TAGS`.)
 const NOT_PRIMITIVES = `${PACKAGE}/svg`;
 
 function fromPackage(source: unknown): boolean {
@@ -53,8 +54,8 @@ function collectImports(program: Node | null | undefined, locals: Map<string, st
       if (specifier.type !== "ImportSpecifier" || specifier.importKind === "type") continue;
       const imported = specifier.imported.name ?? specifier.imported.value;
       if (Object.hasOwn(LOWERED_TAGS, imported)) locals.set(specifier.local.name, imported);
-      // `use:gesture` (from `@alfayez/svelte-native/gestures`) is an action the host tag does run: it sets the `gesture` attribute.
-      if (imported === "gesture" && statement.source?.value === GESTURES) actions.add(specifier.local.name);
+      // `use:gesture` (from `@alfayez/svelte-native`, or the deprecated `@alfayez/svelte-native/gestures`) is an action the host tag does run: it sets the `gesture` attribute.
+      if (imported === "gesture" && (statement.source?.value === PACKAGE || statement.source?.value === GESTURES)) actions.add(specifier.local.name);
     }
   }
 }

@@ -4,18 +4,9 @@
  * Without the `SvelteUpdates` native module, or in a build where updates are off (development builds), every call resolves
  * without doing anything and `isEnabled` is false.
  */
-import { createUpdates } from "./client.ts";
-import { loadNative } from "./device.ts";
-import { nativeFetch } from "./native.ts";
+import { updates } from "./instance.ts";
 
 export type { NotAvailableReason, UpdateCheckResult, UpdateFetchResult } from "./client.ts";
-
-const native = loadNative();
-const updates = createUpdates({
-  native,
-  fetch: native ? nativeFetch(native) : () => Promise.reject(new Error("SvelteUpdates is not installed")),
-  log: (message, error) => (error === undefined ? console.log(`[Svelte updates] ${message}`) : console.warn(`[Svelte updates] ${message}`, error)),
-});
 
 /** Whether this build checks for and launches updates. False in development builds. */
 export const isEnabled: boolean = updates.isEnabled;

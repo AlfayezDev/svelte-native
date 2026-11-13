@@ -1,8 +1,12 @@
 // biome-ignore-all lint/suspicious/noTsIgnore: `@sveltejs/kit` may be absent (an optional peer), and `@ts-expect-error` would fail where it is installed
+// `mobile` of `$app/env` (kit/modules.d.ts): an app's type check reaches the declaration through the plugin its `vite.config.ts` imports.
+// eslint-disable-next-line @typescript-eslint/triple-slash-reference -- a script of `declare module`s: it cannot be imported, only referenced
+/// <reference path="./kit/modules.d.ts" />
 import { resolve } from "node:path";
 import type { PluginOption } from "vite";
 import { exportNative, syncNative } from "./build.ts";
 import { withWebAsync, withWebRunes } from "./compile-options.ts";
+import { mobileFlag } from "./web-env.ts";
 import { kitMissingMessage } from "./remote/kit.ts";
 import { assertCustomRenderer } from "./svelte-build.ts";
 
@@ -43,6 +47,7 @@ export function svelteNative(options: {
   kit?: Parameters<typeof sveltekit>[0];
 } = {}): PluginOption {
   if (options.target !== "native") return loadSvelteKit().then((kit) => [
+    mobileFlag(),
     { name: "svelte-native:web", config: () => ({ optimizeDeps: { entries: ["!src/routes/**/+mobile.svelte", "!src/routes/**/*.mobile.svelte", "!src/lib/native/**"] } }) },
     kit(withWebAsync(withWebRunes(options.kit, options.runes), options.async)),
   ]);

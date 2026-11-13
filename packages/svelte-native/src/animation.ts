@@ -4,6 +4,7 @@ import type * as Worklets from "react-native-worklets";
 import { lazyObject } from "./lazy-object.ts";
 import { loadReanimated, onReanimatedLoaded } from "./fabric/reanimated-load.ts";
 
+// The main entry (`@alfayez/svelte-native`) re-exports everything here; `@alfayez/svelte-native/animation` is a deprecated alias (`deprecated/animation.ts`).
 export { default as AnimatedView } from "./components/AnimatedView.svelte";
 export type { SharedValue } from "react-native-reanimated";
 

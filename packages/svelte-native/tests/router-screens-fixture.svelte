@@ -6,7 +6,7 @@
   import { page, stackOf } from "./tree.ts";
   let { nested = false } = $props();
   const load = () => Promise.resolve({ component: Page, layouts: [] });
-  const router = createRouter(stackOf([page("home", "/", load), page("section", "/a", load), page("item", "/b/[id]", load, "modal")]), "/");
+  const router = createRouter(stackOf([page("home", "/", load), page("section", "/a", load), page("other", "/c", load), page("item", "/b/[id]", load, "modal")]), "/");
   export function goto(href, options) { router.goto(href, options); }
   export function back() { return router.back(); }
   export function screens() { return router.screens.map(({ entry, canGoBack, leaving }) => `${entry.url.pathname}:${canGoBack ? "back" : "root"}:${leaving ? "leaving" : "live"}`); }

@@ -6,7 +6,7 @@
   import { File, Paths } from "expo-file-system";
   import StressTile from "./StressTile.svelte";
   import { estimatePeriod, startFrameMonitor, stopFrameMonitor, summarizeFrames } from "./frames.ts";
-  import { AnimatedView, createSharedValue } from "@alfayez/svelte-native/animation";
+  import { AnimatedView, createSharedValue } from "@alfayez/svelte-native";
   import { FadeIn, FadeOut } from "react-native-reanimated";
   import { ActivityIndicator, Image, Modal, Pressable, ScrollView, Switch, Text, TextInput, View } from "@alfayez/svelte-native/core";
   import LeanText from "./lean/LeanText.svelte";

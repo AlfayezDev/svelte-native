@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url";
 import { compile, compileModule } from "svelte/compiler";
 import { componentOptions } from "../src/compile-options.ts";
 import { reanimatedStubs } from "./reanimated-stubs.ts";
+import { svgLibraryStubs } from "./svg-library-stubs.ts";
 import { hmrState } from "../src/hmr-state.ts";
 
 type FakeNode = { tag: number; name: string; props: Record<string, unknown>; children: FakeNode[] };
@@ -30,6 +31,7 @@ const runnables: Record<string, (parameters: { rootTag: number; initialProps?: R
 
 const stubs: Record<string, string> = {
   ...reanimatedStubs,
+  ...svgLibraryStubs,
   "react-native/Libraries/ReactNative/ReactFabricPublicInstance/ReactNativeAttributePayload": "export const create = (props) => ({ ...props }); export const diff = (prev, next) => ({ ...next });",
   "react-native/Libraries/Renderer/shims/ReactNativeViewConfigRegistry": "export const get = (name) => ({ uiViewClassName: name, validAttributes: {}, bubblingEventTypes: {}, directEventTypes: {} });",
   "react-native/Libraries/Utilities/Platform": "export default { OS: 'android', Version: 34 };",

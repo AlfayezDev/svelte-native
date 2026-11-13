@@ -320,7 +320,7 @@ function syncRoutes(root, options = {}) {
   mkdirSync(output, { recursive: true });
   const manifest = treeModule(buildTree(routeFilesSync(routesRoot, { lab })), routesRoot, output, variant, lab);
   const customRoot = process.env.SVELTE_NATIVE_ROOT;
-  const prelude = "import '@alfayez/svelte-native/init';\nimport '@alfayez/svelte-native/polyfills';\nimport { createFabricApp, remountSurfaces } from '@alfayez/svelte-native/fabric';\n";
+  const prelude = "import { createFabricApp, remountSurfaces } from '@alfayez/svelte-native/app';\n";
   const hot = "declare const module: { hot?: { accept(callback?: () => void): void } };\nif (__DEV__) module.hot?.accept(() => remountSurfaces());\n";
   const entry = customRoot ? `${prelude}import App from ${JSON.stringify(posix(relative(output, resolve2(root, customRoot))))};
 createFabricApp(App, {});
@@ -385,6 +385,32 @@ async function exportNative(root, platform, options = {}) {
   if (result !== 0) throw new Error(`Native ${platform} export exited with ${result}`);
 }
 
+// src/web-env.ts
+var MODULE = /^\$app\/env(?:ironment)?$|[\\/]@sveltejs[\\/]kit[\\/]src[\\/]runtime[\\/]app[\\/]env(?:ironment)?(?:[\\/]index\.js)?$/;
+var PREFIX = "\0svelte-native:mobile:";
+function mobileFlag() {
+  return {
+    name: "svelte-native:mobile",
+    enforce: "pre",
+    resolveId: {
+      filter: { id: MODULE },
+      async handler(id, importer, options) {
+        if (importer?.startsWith(PREFIX)) return void 0;
+        const real = await this.resolve(id, importer, { ...options, skipSelf: true });
+        return real && !real.external ? `${PREFIX}${real.id}` : real;
+      }
+    },
+    load: {
+      filter: { id: { include: [new RegExp(`^${PREFIX.replace("\0", "\\0")}`)] } },
+      handler(id) {
+        return `export * from ${JSON.stringify(id.slice(PREFIX.length))};
+export const mobile = false;
+`;
+      }
+    }
+  };
+}
+
 // src/remote/kit.ts
 import { createRequire as createRequire2 } from "node:module";
 var require3 = createRequire2(import.meta.url);
@@ -443,6 +469,7 @@ async function loadSvelteKit() {
 }
 function svelteNative(options = {}) {
   if (options.target !== "native") return loadSvelteKit().then((kit) => [
+    mobileFlag(),
     { name: "svelte-native:web", config: () => ({ optimizeDeps: { entries: ["!src/routes/**/+mobile.svelte", "!src/routes/**/*.mobile.svelte", "!src/lib/native/**"] } }) },
     kit(withWebAsync(withWebRunes(options.kit, options.runes), options.async))
   ]);

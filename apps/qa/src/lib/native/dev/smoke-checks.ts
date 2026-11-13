@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- every library is required inside its own check: nothing of the smoke test is evaluated until it runs, and only the smoke app links the libraries */
-import { nativeModule, turboModule } from "@alfayez/svelte-native/native-modules";
+import { nativeModule, turboModule } from "@alfayez/svelte-native/platform";
 import { ascii, decodeBase64, encodeBase64, hex, looksRandom } from "./smoke-bytes.ts";
 import { skipName, type Os, type SmokePath } from "./smoke-log.ts";
 import { hmsNativeModules, hmsOutcome } from "./smoke-rules.ts";

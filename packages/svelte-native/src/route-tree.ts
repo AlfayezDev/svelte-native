@@ -257,7 +257,8 @@ export type ChainStep = { node: RouteNode; select?: string };
 export type Resolution = { page: PageRoute; params: Record<string, string>; chain: ChainStep[]; href: string };
 
 type Hit = { page: PageRoute; params: Record<string, string>; chain: ChainStep[]; canonical?: boolean };
-const BASE = "https://native.invalid";
+/** The origin every route URL of the app is built on (`page.url`, `NativeLocation.url`): a native screen has no real one. */
+export const BASE = "https://native.invalid";
 
 const baseOf = (stack: StackNode) => stack.routes.find((route): route is PageRoute => route.kind === "page" && route.path === stack.path);
 

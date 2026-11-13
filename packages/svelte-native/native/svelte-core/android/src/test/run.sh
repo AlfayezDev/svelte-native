@@ -31,7 +31,7 @@ kotlinc -nowarn -cp "$okhttp:$okio" \
 bun "$here/vectors.ts" > "$work/vectors.txt"
 
 port="$(node -e 'const s=require("net").createServer().listen(0,"127.0.0.1",()=>{console.log(s.address().port);s.close()})')"
-bun "$package/tests/fetch/server.ts" --port "$port" > "$work/server.log" 2>&1 &
+node "$package/tests/fetch/server.ts" --port "$port" > "$work/server.log" 2>&1 &
 server=$!
 
 java -cp "$work/fetch-check.jar:$okhttp:$okio" expo.modules.sveltecore.FetchCheckKt "http://127.0.0.1:$port" "$work/vectors.txt" "$work/scratch"

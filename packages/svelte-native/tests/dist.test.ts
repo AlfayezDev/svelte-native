@@ -88,7 +88,7 @@ describe("package.json points at the built files", () => {
   });
 
   test("a runtime entry stays the TypeScript Metro compiles: a path, not built", () => {
-    for (const entry of [".", "./core", "./init", "./renderer", "./fabric", "./foreign", "./svg", "./polyfills", "./router", "./animation", "./gestures", "./updates", "./native-modules", "./remote", "./remote/runtime", "./remote/globals"])
+    for (const entry of [".", "./core", "./init", "./app", "./renderer", "./fabric", "./foreign", "./svg", "./polyfills", "./router", "./animation", "./gestures", "./updates", "./native-modules", "./remote", "./remote/runtime", "./remote/globals"])
       expect([entry, typeof manifest.exports[entry]]).toEqual([entry, "string"]);
   });
 });

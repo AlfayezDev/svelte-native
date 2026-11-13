@@ -1,15 +1,13 @@
 <script lang="ts">
-  import { View } from "@alfayez/svelte-native";
-  import { createSharedValue, withRepeat, withTiming } from "@alfayez/svelte-native/animation";
-  import { Circle, Defs, LinearGradient, Path, Rect, Stop, Svg, SvgXml, Text as SvgText } from "@alfayez/svelte-native/svg";
+  import { View, createSharedValue, withRepeat, withTiming, Circle, Defs, Path, Rect, Stop, Svg, SvgLinearGradient, SvgXml, SvgText } from "@alfayez/svelte-native";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
   import { scroller, useDemo } from "#lib/demo.ts";
   import { theme } from "#lib/theme.svelte.ts";
 
-  // `@alfayez/svelte-native/svg` is react-native-svg as Svelte components: the same elements and props (`Svg`, `Rect`, `Circle`, `Path`, the
+  // The main entry has react-native-svg as Svelte components: the same elements and props (`Svg`, `Rect`, `Circle`, `Path`, the
   // gradients, ...). `animatedProps` on any element is a worklet that writes native props on the UI thread, here the circle's radius from a
-  // shared value. `SvgXml` draws a whole SVG document from a string. `Text` is imported as `SvgText`, the primitive keeps the name.
+  // shared value. `SvgXml` draws a whole SVG document from a string. The SVG `Text` is `SvgText`, the primitive keeps the name.
   const radius = createSharedValue(6); // first: it loads Reanimated, so the worklet below captures the real functions
   radius.value = withRepeat(withTiming(14, { duration: 900 }), -1, true);
   const pulse = () => { "worklet"; return { r: radius.value }; };
@@ -29,10 +27,10 @@
     <View style={{ alignItems: "center" }}>
       <Svg width={200} height={100} viewBox="0 0 200 100" accessibilityLabel="A gradient card with a pulsing dot">
         <Defs>
-          <LinearGradient id="card" x1="0" y1="0" x2="1" y2="1">
+          <SvgLinearGradient id="card" x1="0" y1="0" x2="1" y2="1">
             <Stop offset="0" stopColor="#ff7a18" />
             <Stop offset="1" stopColor="#319197" />
-          </LinearGradient>
+          </SvgLinearGradient>
         </Defs>
         <Rect width="200" height="100" rx="16" fill="url(#card)" />
         <Circle cx="40" cy="50" r="6" fill="#ffffff" animatedProps={pulse} />

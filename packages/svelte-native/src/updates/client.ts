@@ -54,6 +54,14 @@ const DEFAULT_CONCURRENCY = 4;
 export function createUpdates({ native, fetch, log = () => undefined, concurrency = DEFAULT_CONCURRENCY }: UpdatesDeps) {
   const enabled = native?.isEnabled === true ? native : null;
   const channel = enabled?.requestHeaders["expo-channel-name"] ?? null;
+  // Whether an update that has not launched yet is known: one a check found or a fetch downloaded, or a rollback to the embedded bundle. Every evaluation of the server's answer sets it.
+  let pending = false;
+  const listeners = new Set<() => void>();
+  const setPending = (value: boolean) => {
+    if (value === pending) return;
+    pending = value;
+    for (const listener of [...listeners]) listener();
+  };
 
   /** One request, one decision. Rejects when the request or the response is invalid. */
   async function evaluate(active: SvelteUpdatesNative): Promise<{ evaluation: Evaluation; response: UpdateResponse; store: StoreSnapshot }> {
@@ -95,6 +103,7 @@ export function createUpdates({ native, fetch, log = () => undefined, concurrenc
   async function checkForUpdateAsync(): Promise<UpdateCheckResult> {
     if (!enabled) return { isAvailable: false, manifest: undefined, isRollBackToEmbedded: false, reason: "updatesDisabled" };
     const { evaluation } = await evaluate(enabled);
+    setPending(evaluation.kind !== "none");
     switch (evaluation.kind) {
       case "update": return { isAvailable: true, manifest: evaluation.manifest.raw, isRollBackToEmbedded: false, reason: undefined };
       case "rollback": return { isAvailable: false, manifest: undefined, isRollBackToEmbedded: true, reason: undefined };
@@ -158,6 +167,7 @@ export function createUpdates({ native, fetch, log = () => undefined, concurrenc
       if (!evaluation.downloaded) await download(active, evaluation.manifest);
       result = { isNew: true, manifest: evaluation.manifest.raw, isRollBackToEmbedded: false };
     }
+    setPending(evaluation.kind !== "none");
     // Even a response that only says "no update" can carry new filters or server-defined headers; a header it lacks keeps the stored value.
     const metadata: StoredMetadata = { serverDefinedHeaders: response.headers.serverDefinedHeaders, manifestFilters: response.headers.manifestFilters };
     if (metadata.serverDefinedHeaders || metadata.manifestFilters) await active.saveMetadata(JSON.stringify(metadata));
@@ -205,6 +215,13 @@ export function createUpdates({ native, fetch, log = () => undefined, concurrenc
     fetchUpdateAsync,
     reloadAsync,
     checkOnLaunch,
+    /** Whether an update is waiting for the next start: a check found one, a fetch downloaded one, or the server asked for a rollback to the embedded bundle. Always false when updates are off. */
+    get pending(): boolean { return pending; },
+    /** Calls `listener` whenever `pending` changes; returns what stops it. */
+    onPending(listener: () => void): () => void {
+      listeners.add(listener);
+      return () => { listeners.delete(listener); };
+    },
   };
 }
 

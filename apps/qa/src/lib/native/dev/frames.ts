@@ -1,4 +1,4 @@
-import { runOnUIAsync } from "@alfayez/svelte-native/animation";
+import { runOnUIAsync } from "@alfayez/svelte-native";
 
 /** UI-runtime frame intervals, bucketed by whole milliseconds up to 200 ms. */
 export type FrameStats = {

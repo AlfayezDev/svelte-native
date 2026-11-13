@@ -26,6 +26,7 @@ What `svelte-native init` writes, file by file, and the options of the Vite, Met
 		"react-native": "0.86.3",
 		"react-native-gesture-handler": "2.32.0",
 		"react-native-reanimated": "4.5.1",
+		"react-native-svg": "15.15.4",
 		"react-native-worklets": "0.10.1"
 	},
 	"devDependencies": {
@@ -45,6 +46,7 @@ What `svelte-native init` writes, file by file, and the options of the Vite, Met
 - `@sveltejs/kit` is exact, because a patch is made for that version. A native-only app doesn't need SvelteKit at all.
 - The other versions are exact for the same reason. `react` is there because React Native needs it; your code doesn't use it.
 - `hermes-intl` adds the `Intl` APIs Hermes lacks. It must be a dependency of the app itself, so that its native code is linked.
+- `react-native-svg` draws the [SVG components](svg) the main entry exports. It is a required dependency, with native code, so it must be one of the app itself too.
 - `main` points at the entry point Svelte Native generates. Without it, Expo looks for `expo/AppEntry.js`.
 - The `reanimated` flag turns on the fast path Svelte Native uses for animations on Android.
 - `dev`, `build`, `preview` and `check` stay the web app's. Don't name a script `doctor`: `pnpm doctor` is pnpm's own command.
@@ -158,12 +160,12 @@ export default defineConfig(({ mode }) => ({
 		"version": "1.0.0",
 		"android": { "package": "dev.example.myapp" },
 		"ios": { "bundleIdentifier": "dev.example.myapp" },
-		"plugins": ["@alfayez/svelte-native/expo"]
+		"plugins": ["@alfayez/svelte-native"]
 	}
 }
 ```
 
-The plugin is also known by the package's own name, `@alfayez/svelte-native`. If your app is configured in code, `app.config.ts`, add it there. It takes options as a second element:
+The plugin is named by the package's own name: Expo loads the package's `app.plugin.js`. (`@alfayez/svelte-native/app.plugin` is that same file. `@alfayez/svelte-native/expo` still works and is removed in 0.4.0-rc.7.) If your app is configured in code, `app.config.ts`, add it there. It takes options as a second element:
 
 ```ts
 /// file: app.config.ts

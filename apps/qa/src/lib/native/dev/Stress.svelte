@@ -3,8 +3,7 @@
   import { SvelteMap } from "svelte/reactivity";
   import type { ScrollView as NativeScrollView, TextInput as NativeTextInput } from "react-native";
   import type {} from "@alfayez/svelte-native/elements";
-  import { List, Modal, ScrollView, Tabs, Text, TextInput, View, useRouter, type TabHandle, type TabItem } from "@alfayez/svelte-native";
-  import { createSharedValue, runOnUIAsync, type SharedValue } from "@alfayez/svelte-native/animation";
+  import { List, Modal, ScrollView, Tabs, Text, TextInput, View, useRouter, type TabHandle, type TabItem, createSharedValue, runOnUIAsync, type SharedValue } from "@alfayez/svelte-native";
   import { requireOptionalNativeModule } from "expo-modules-core";
   import Dimensions from "react-native/Libraries/Utilities/Dimensions";
   import Platform from "react-native/Libraries/Utilities/Platform";

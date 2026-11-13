@@ -73,6 +73,9 @@ describe("init in a fresh sv project", () => {
     expect(manifest.devDependencies.svelte).toBe(requiredSvelte.preview);
     expect(manifest.dependencies["@alfayez/svelte-native"]).toBe(library);
     for (const [name, version] of Object.entries(appDependencies)) expect(manifest.dependencies[name], name).toBe(version);
+    // react-native-svg is a required peer (the main entry exports its components), so init installs it, at the version the peer names.
+    expect(manifest.dependencies["react-native-svg"]).toBe("15.15.4");
+    expect(appDependencies["react-native-svg"]).toBe((JSON.parse(readFileSync(join(import.meta.dirname, "../package.json"), "utf8")) as { peerDependencies: Record<string, string> }).peerDependencies["react-native-svg"]);
     // The SvelteKit sv installed is pinned to a version the library has a patch for, exactly.
     const kitVersions = patchFiles().filter((patch) => patch.package === "@sveltejs/kit").map((patch) => patch.version);
     expect(kitVersions).toContain(manifest.devDependencies["@sveltejs/kit"]);
@@ -112,7 +115,7 @@ describe("init in a fresh sv project", () => {
     run(root);
     expect(readFileSync(join(root, "metro.config.cjs"), "utf8")).toContain("withSvelteNative(getDefaultConfig(__dirname))");
     const app = readJson(root, "app.json").expo;
-    expect(app).toMatchObject({ name: "my-app", slug: "my-app", scheme: "my-app", android: { package: "dev.example.myapp" }, ios: { bundleIdentifier: "dev.example.myapp" }, plugins: ["@alfayez/svelte-native/expo"] });
+    expect(app).toMatchObject({ name: "my-app", slug: "my-app", scheme: "my-app", android: { package: "dev.example.myapp" }, ios: { bundleIdentifier: "dev.example.myapp" }, plugins: ["@alfayez/svelte-native"] });
     const vite = readFileSync(join(root, "vite.config.ts"), "utf8");
     expect(vite).toContain("import { svelteNative } from '@alfayez/svelte-native/vite';");
     expect(vite).toContain("defineConfig(({ mode }) => ({");
@@ -235,10 +238,18 @@ describe("init in a project that already has things", () => {
     const root = project((dir) => writeFileSync(join(dir, "app.json"), `${JSON.stringify({ expo: { name: "Mine", slug: "mine", icon: "./icon.png", plugins: ["expo-font"] } }, null, 2)}\n`));
     run(root);
     const app = readJson(root, "app.json").expo;
-    expect(app).toMatchObject({ name: "Mine", slug: "mine", icon: "./icon.png", plugins: ["expo-font", "@alfayez/svelte-native/expo"] });
+    expect(app).toMatchObject({ name: "Mine", slug: "mine", icon: "./icon.png", plugins: ["expo-font", "@alfayez/svelte-native"] });
     expect(app.android.package).toBe("dev.example.myapp");
     expect(readFileSync(join(root, "app.json"), "utf8").startsWith('{\n  "expo"')).toBe(true);
     expect(run(root).out).toContain("Nothing to change");
+  });
+
+  test("an app.json that lists the plugin by another of its names (the path of app.plugin.js, or the deprecated /expo) keeps it", () => {
+    for (const name of ["@alfayez/svelte-native/app.plugin", "@alfayez/svelte-native/expo"]) {
+      const root = project((dir) => writeFileSync(join(dir, "app.json"), `${JSON.stringify({ expo: { name: "Mine", slug: "mine", scheme: "mine", version: "1.0.0", android: { package: "dev.example.myapp" }, ios: { bundleIdentifier: "dev.example.myapp" }, plugins: [name] } }, null, 2)}\n`));
+      run(root);
+      expect(readJson(root, "app.json").expo.plugins).toEqual([name]);
+    }
   });
 
   test("an app configured in code gets instructions, and nothing is written for it", () => {
@@ -246,7 +257,7 @@ describe("init in a project that already has things", () => {
     const result = run(root);
     expect(existsSync(join(root, "app.json"))).toBe(false);
     expect(result.out).toContain("app.config.ts");
-    expect(result.out).toContain('plugins: ["@alfayez/svelte-native/expo"]');
+    expect(result.out).toContain('plugins: ["@alfayez/svelte-native"]');
   });
 
   test("a different version of SvelteKit that has no patch is pinned to the newest one that has; an installed one that has a patch is kept", () => {

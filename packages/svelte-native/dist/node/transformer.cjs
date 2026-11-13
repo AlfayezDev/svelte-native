@@ -1510,8 +1510,8 @@ var HINTS = {
   caption: table,
   colgroup: table,
   col: table,
-  canvas: "there is no canvas: draw with the SVG components of `@alfayez/svelte-native/svg` (react-native-svg)",
-  svg: "SVG is react-native-svg here: import `Svg`, `Path`, ... from `@alfayez/svelte-native/svg`",
+  canvas: "there is no canvas: draw with the SVG components of `@alfayez/svelte-native` (react-native-svg)",
+  svg: "SVG is react-native-svg here: import `Svg`, `Path`, ... from `@alfayez/svelte-native`",
   video: "use `Video` (react-native-video) or `VideoView` (expo-video) from `@alfayez/svelte-native/foreign`",
   audio: "there is no audio element: play sound with a native module such as expo-audio",
   iframe: web,
@@ -1562,7 +1562,7 @@ var UNSUPPORTED_TYPES = {
   button: "use a `button`",
   image: "use a `button` around an `img`",
   file: "there is no file input: pick files with a native module such as expo-document-picker",
-  range: "there is no slider here: build one with gestures (`@alfayez/svelte-native/gestures`)",
+  range: "there is no slider here: build one with gestures (`Gesture` from `@alfayez/svelte-native`)",
   color: "there is no color picker",
   hidden: "keep the value in a variable",
   date: "use `DateTimePicker` from `@alfayez/svelte-native/foreign`",
@@ -2147,7 +2147,7 @@ function collectImports(program, locals, actions) {
       if (specifier.type !== "ImportSpecifier" || specifier.importKind === "type") continue;
       const imported = specifier.imported.name ?? specifier.imported.value;
       if (Object.hasOwn(LOWERED_TAGS, imported)) locals.set(specifier.local.name, imported);
-      if (imported === "gesture" && statement.source?.value === GESTURES) actions.add(specifier.local.name);
+      if (imported === "gesture" && (statement.source?.value === PACKAGE2 || statement.source?.value === GESTURES)) actions.add(specifier.local.name);
     }
   }
 }

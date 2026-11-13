@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { View } from "@alfayez/svelte-native";
-  import { createSharedValue, withTiming } from "@alfayez/svelte-native/animation";
+  import { View, createSharedValue, withTiming } from "@alfayez/svelte-native";
   import { AnimateableText } from "@alfayez/svelte-native/foreign";
   import Button from "#lib/components/Button.svelte";
   import Page from "#lib/components/Page.svelte";

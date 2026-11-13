@@ -50,6 +50,9 @@ for (const platform of ["android", "ios"] as const) {
       expect(modules.filter((module) => /packages\/svelte-native\/src\/(?:lower|lower-html|transformer|css\/(?:inline|convert|properties|parse|values|color))\.ts$/.test(module))).toEqual([]);
       // The list of style keys the development warning of `html-style.ts` checks names against is loaded only when `__DEV__` is true: a release build leaves it out.
       expect(modules.filter((module) => /packages\/svelte-native\/src\/html-style(?:-known)?\.ts$/.test(module)).map((module) => module.split("/").pop())).toEqual(["html-style.ts"]);
+      // The /sveltekit screen's imports of `$app/navigation`, `$app/state`, `$app/env`, `$app/paths` and `svelte/motion` are the library's files for the device, and SvelteKit's own implementation of them is not in the bundle (the remote functions stub imports other parts of SvelteKit's client).
+      expect(["navigation", "state", "env", "paths", "motion"].filter((file) => !modules.includes(`packages/svelte-native/src/kit/${file}.ts`))).toEqual([]);
+      expect(modules.filter((module) => /node_modules\/@sveltejs\/kit\/src\/runtime\/app\/(?:navigation|state|env|environment|paths)\//.test(module))).toEqual([]);
       // No React renderer: the library renders Svelte to Fabric directly. (React itself is there: some of React Native's modules import it.)
       expect(modules.filter((module) => /react-dom|react-reconciler|\/scheduler\//.test(module))).toEqual([]);
       // A standard URL: the router builds every location as a `SvelteURL`, which React Native's own `URL` cannot construct, so the library's

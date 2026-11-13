@@ -3,13 +3,12 @@ title: Animation
 video: animation
 ---
 
-Animations in Svelte Native run on the UI thread, with [Reanimated](https://docs.swmansion.com/react-native-reanimated/), so they stay smooth while JavaScript is busy. `@alfayez/svelte-native/animation` gives you an `AnimatedView`, shared values to animate, and Reanimated's helpers that move them.
+Animations in Svelte Native run on the UI thread, with [Reanimated](https://docs.swmansion.com/react-native-reanimated/), so they stay smooth while JavaScript is busy. `@alfayez/svelte-native` gives you an `AnimatedView`, shared values to animate, and Reanimated's helpers that move them.
 
 ```svelte
 <!--- file: src/routes/+mobile.svelte --->
 <script lang="ts">
-	import { Pressable, Screen, Text } from '@alfayez/svelte-native';
-	import { AnimatedView, createSharedValue, withSpring } from '@alfayez/svelte-native/animation';
+	import { AnimatedView, Pressable, Screen, Text, createSharedValue, withSpring } from '@alfayez/svelte-native';
 
 	const x = createSharedValue(0);
 	let right = $state(false);
@@ -40,7 +39,7 @@ There are three parts:
 - An **animation helper** such as `withSpring` or `withTiming` moves a shared value to a target over time, on the UI thread.
 - A **worklet** turns shared values into style. `animatedStyle` is a function marked `'worklet'`, which runs on the UI thread every frame the values change.
 
-Reanimated and its worklets are part of every Svelte Native app. They load the first time you call `createSharedValue` or another function from this module.
+Reanimated and its worklets are part of every Svelte Native app. They load the first time you call `createSharedValue` or another animation function.
 
 ## AnimatedView
 
@@ -83,8 +82,7 @@ A worklet runs on the UI thread, where Svelte's state doesn't exist, so a workle
 
 ```svelte
 <script lang="ts">
-	import { Switch } from '@alfayez/svelte-native';
-	import { AnimatedView, createSharedValue, withTiming } from '@alfayez/svelte-native/animation';
+	import { AnimatedView, Switch, createSharedValue, withTiming } from '@alfayez/svelte-native';
 
 	let big = $state(false);
 	const grow = createSharedValue(0);

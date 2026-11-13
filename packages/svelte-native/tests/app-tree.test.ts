@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url";
 import { compile, compileModule } from "svelte/compiler";
 import { componentOptions } from "../src/compile-options.ts";
 import { reanimatedStubs } from "./reanimated-stubs.ts";
+import { svgLibraryStubs } from "./svg-library-stubs.ts";
 import { parseNativeID } from "../src/fabric/navigation.ts";
 import { routeFiles, syncNative } from "../src/build.ts";
 import { stubCoreSource, stubSource } from "../src/metro.ts";
@@ -50,6 +51,7 @@ const fake = {
 
 const stubs: Record<string, string> = {
   ...reanimatedStubs,
+  ...svgLibraryStubs,
   "react-native/Libraries/ReactNative/ReactFabricPublicInstance/ReactNativeAttributePayload": "export const create = (props) => ({ ...props }); export const diff = (prev, next) => { const out = {}; let changed = false; for (const k of new Set([...Object.keys(prev), ...Object.keys(next)])) { if (prev[k] !== next[k]) { out[k] = k in next ? next[k] : null; changed = true; } } return changed ? out : null; };",
   "react-native/Libraries/Renderer/shims/ReactNativeViewConfigRegistry": "export const register = (name) => name; export const get = (name) => ({ uiViewClassName: name, validAttributes: {}, bubblingEventTypes: { topChange: { phasedRegistrationNames: { bubbled: 'onChange', captured: 'onChangeCapture' } } }, directEventTypes: { topLayout: { registrationName: 'onLayout' }, topScroll: { registrationName: 'onScroll' } } });",
   "react-native/Libraries/Utilities/Platform": "export default { get OS() { return globalThis.__navigationOS ?? 'android'; }, Version: 34 };",

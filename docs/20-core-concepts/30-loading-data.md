@@ -1,5 +1,6 @@
 ---
 title: Loading data
+video: state-management
 ---
 
 A native screen is not rendered on a server and has no `load` function. It loads its own data when it appears, in one of two ways: with `fetch`, or with SvelteKit's remote functions, which call your SvelteKit server from the phone with types end to end.

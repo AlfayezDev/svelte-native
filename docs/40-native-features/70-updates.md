@@ -1,5 +1,6 @@
 ---
 title: Updates
+video: updates
 ---
 
 An over-the-air update replaces your app's JavaScript without a new build from the store. Svelte Native has its own updates client, `@rasheed/svelte-native/updates`, which speaks the same protocol as `expo-updates`. You publish with `eas update` as you would for any Expo app, and an installed release build downloads the update.

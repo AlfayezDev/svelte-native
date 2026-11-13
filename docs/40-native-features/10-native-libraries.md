@@ -1,5 +1,6 @@
 ---
 title: Native libraries
+video: native-views
 ---
 
 The Expo and React Native ecosystem has libraries for most of what a phone can do: sensors, notifications, location, secure storage, haptics. Svelte Native can use the ones whose API is plain JavaScript functions. This page shows how to add one, and what to do when a library's API is React.

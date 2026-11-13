@@ -90,7 +90,7 @@ patches
   …
 
 build integration
-  pass  @alfayez/svelte-native 0.4.0-rc.6 is a dependency of the app
+  pass  @alfayez/svelte-native 0.4.0-rc.7 is a dependency of the app
   pass  metro.config.cjs uses withSvelteNative
   pass  app.json lists the @alfayez/svelte-native plugin
 

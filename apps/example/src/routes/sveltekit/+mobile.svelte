@@ -4,6 +4,7 @@
   import { browser, dev, mobile, version } from "$app/env";
   import { resolve } from "$app/paths";
   import { page } from "$app/state";
+  import { MediaQuery } from "svelte/reactivity";
   import { Spring, prefersReducedMotion } from "svelte/motion";
   import Button from "#lib/components/Button.svelte";
   import Page from "#lib/components/Page.svelte";
@@ -16,6 +17,8 @@
   // again, and a screen reads its own data from `url` and `params` (`page` is the screen on top, for the whole app).
   const row = { flexDirection: "row", justifyContent: "space-between" } as const;
   const environment = [["mobile", mobile], ["browser", browser], ["dev", dev], ["version", version || "(none)"]] as const;
+  // `MediaQuery` is Svelte's own, as on the web: the library gives the device a `window.matchMedia`, so a media query reads the window and the system. Turn the phone, or switch to dark mode, and the row changes.
+  const queries = [["(orientation: portrait)", new MediaQuery("(orientation: portrait)")], ["(prefers-color-scheme: dark)", new MediaQuery("(prefers-color-scheme: dark)")]] as const;
   const filters = [["All", "all"], ["Open", "open"], ["Done", "done"]] as const;
   let { url }: { url: URL } = $props();
   const filter = $derived(url.searchParams.get("filter") ?? "all");
@@ -44,9 +47,12 @@
 </script>
 
 <Page title="SvelteKit modules" scrollRef={view.ref} intro="A page written for SvelteKit imports goto, page, resolve and spring from SvelteKit's modules. On the device Metro answers each import with a version that reads the app's router and the system.">
-  <Section title="Environment" note="$app/env: browser is false on a phone, and mobile, which the library adds, is true.">
+  <Section title="Environment" note="$app/env: browser is false on a phone, and mobile, which the library adds, is true. The two media queries are new MediaQuery(...) from svelte/reactivity.">
     {#each environment as [name, value] (name)}
       <View style={row}><Text style={text.body}>{name}</Text><Text style={text.body}>{String(value)}</Text></View>
+    {/each}
+    {#each queries as [query, media] (query)}
+      <View style={row}><Text style={text.body}>{query}</Text><Text style={text.body}>{String(media.current)}</Text></View>
     {/each}
   </Section>
 

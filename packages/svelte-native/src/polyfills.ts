@@ -26,4 +26,16 @@ if (typeof window.addEventListener !== "function") {
     },
   });
 }
+// `window.matchMedia`, which Svelte's `MediaQuery` and `svelte/motion`'s `prefersReducedMotion` call and so does code shared with the web (React Native has none). What is installed is a function
+// that loads the implementation (`match-media.ts`: the query parser and the system sources) on its first call, so the boot reads nothing from the system and loads none of it.
+if (typeof window.matchMedia !== "function") {
+  let implementation: typeof import("./match-media.ts") | undefined;
+  Object.assign(window, {
+    matchMedia(...args: [query: string]) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- required on the first call
+      implementation ??= require("./match-media.ts") as typeof import("./match-media.ts");
+      return implementation.matchMedia(...args);
+    },
+  });
+}
 mark("polyfills");

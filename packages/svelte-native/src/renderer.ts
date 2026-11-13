@@ -628,7 +628,9 @@ const renderer = createRenderer<{
   insert,
   remove: unlink,
   getParent: (node) => node.parent,
-  addEventListener: (node, type, handler: Listener) => {
+  addEventListener: (node, type, handler: Listener, options) => {
+    // A target that is no node of the tree (the `MediaQueryList` that Svelte's `MediaQuery` listens to) keeps its listeners itself.
+    if (!(node instanceof NativeNode)) return (node as EventTarget).addEventListener(type, handler, options);
     const handlers = node.listeners.get(type);
     if (handlers) handlers.add(handler);
     else {
@@ -637,7 +639,8 @@ const renderer = createRenderer<{
       node.invalidate();
     }
   },
-  removeEventListener: (node, type, handler: Listener) => {
+  removeEventListener: (node, type, handler: Listener, options) => {
+    if (!(node instanceof NativeNode)) return (node as EventTarget).removeEventListener(type, handler, options);
     const handlers = node.listeners.get(type);
     if (!handlers?.delete(handler) || handlers.size) return;
     node.listeners.delete(type);

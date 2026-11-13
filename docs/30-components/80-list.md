@@ -9,7 +9,7 @@ video: scroll-view
 ```svelte
 <!--- file: src/routes/people/+mobile.svelte --->
 <script lang="ts">
-	import { List, Screen, Text, View } from '@example/svelte-native';
+	import { List, Screen, Text, View } from '@alfayez/svelte-native';
 
 	type Person = { id: number; name: string };
 	const people: Person[] = Array.from({ length: 5000 }, (_, index) => ({ id: index, name: `Person ${index + 1}` }));
@@ -77,7 +77,7 @@ Bind the list with `bind:this` and call its methods:
 
 ```svelte
 <script lang="ts">
-	import { List, Pressable, Text } from '@example/svelte-native';
+	import { List, Pressable, Text } from '@alfayez/svelte-native';
 
 	const items = Array.from({ length: 1000 }, (_, index) => index);
 	let list: { scrollToIndex(index: number, animated?: boolean): void } | undefined = $state();

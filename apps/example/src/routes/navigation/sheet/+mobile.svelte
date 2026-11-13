@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import { Screen, Text, View, useRouter } from "@example/svelte-native";
+  import { Screen, Text, View, useRouter } from "@alfayez/svelte-native";
   import Button from "#lib/components/Button.svelte";
   import { useDemo } from "#lib/demo.ts";
   import { text, theme } from "#lib/theme.svelte.ts";

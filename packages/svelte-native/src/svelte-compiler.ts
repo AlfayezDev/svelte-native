@@ -46,12 +46,12 @@ export function acceptDirectives(file: string, source: string): string {
   if (block === undefined) throw new Error(`${file} is not one of the Svelte files whose refusal of the transition directives is removed (${Object.keys(REFUSALS).join(", ")})`);
   if (!source.includes(block)) {
     throw new Error(
-      `@example/svelte-native: ${file} of the installed Svelte refuses \`transition:\`, \`in:\`, \`out:\` and \`animate:\` on a custom renderer in a form this version of the library does not know how to remove ` +
+      `@alfayez/svelte-native: ${file} of the installed Svelte refuses \`transition:\`, \`in:\`, \`out:\` and \`animate:\` on a custom renderer in a form this version of the library does not know how to remove ` +
         "(Svelte was updated: the library is written against the custom-renderer build 5.56.7 at commit 216f258, which the guide installs).",
     );
   }
   const accepted = source.replace(block, "");
-  if (accepted.includes(`${REFUSAL}(`)) throw new Error(`@example/svelte-native: ${file} of the installed Svelte refuses a directive in more than one place`);
+  if (accepted.includes(`${REFUSAL}(`)) throw new Error(`@alfayez/svelte-native: ${file} of the installed Svelte refuses a directive in more than one place`);
   return accepted;
 }
 
@@ -69,7 +69,7 @@ function acceptDirectivesIn(root: string): void {
   const register = (nodeModule as unknown as { registerHooks?: (hooks: Hooks) => unknown }).registerHooks;
   if (typeof register !== "function") {
     throw new Error(
-      `@example/svelte-native: Svelte's compiler refuses \`transition:\`, \`in:\`, \`out:\` and \`animate:\` on native elements, and the Metro transformer removes the refusal as the compiler loads ` +
+      `@alfayez/svelte-native: Svelte's compiler refuses \`transition:\`, \`in:\`, \`out:\` and \`animate:\` on native elements, and the Metro transformer removes the refusal as the compiler loads ` +
         `(\`module.registerHooks\`), which Node ${process.version} does not have: use Node 22.15 or newer (the library asks for 22.17, 24.3 or 26).`,
     );
   }

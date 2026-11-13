@@ -40,8 +40,8 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/Image/resolveAssetSource": "export default (source) => source && typeof source === 'object' && 'uri' in source ? { scale: 1, ...source } : null;",
   "expo-modules-core": "export const requireOptionalNativeModule = () => null;",
   "react-native": "export const AppRegistry = { registerRunnable() {} };",
-  // The fixture's `import { Text } from "@example/svelte-native"` is lowered to `<native-text>` and the import is then unused.
-  "@example/svelte-native": "export const Text = null;",
+  // The fixture's `import { Text } from "@alfayez/svelte-native"` is lowered to `<native-text>` and the import is then unused.
+  "@alfayez/svelte-native": "export const Text = null;",
 };
 
 async function load() {
@@ -57,9 +57,9 @@ async function load() {
     plugins: [...reactNativeConverters("android"), {
       name: "text-whitespace",
       setup(builder) {
-        builder.onResolve({ filter: /^(react-native|expo-modules-core|@example\/svelte-native$)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
+        builder.onResolve({ filter: /^(react-native|expo-modules-core|@alfayez\/svelte-native$)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
         builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? "export {};", loader: "js" }));
-        builder.onResolve({ filter: /^@example\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
+        builder.onResolve({ filter: /^@alfayez\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
         builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../src/environment.ts") }));
         // The way Metro's transformer does it: the primitives are lowered to host tags first.
         builder.onLoad({ filter: /\.svelte$/ }, async ({ path }) => ({

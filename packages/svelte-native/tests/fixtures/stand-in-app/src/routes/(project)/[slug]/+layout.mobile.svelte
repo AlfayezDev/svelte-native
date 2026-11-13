@@ -3,7 +3,7 @@
 </script>
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import { Tabs, type TabItem } from "@example/svelte-native";
+  import { Tabs, type TabItem } from "@alfayez/svelte-native";
   /** A project: a tabs navigator whose panes are the directories below, `home/` and `settings/`, in this order. */
   let { panes, children }: { panes: readonly { key: string }[]; children: Snippet } = $props();
   const titles: Record<string, string> = { home: "Home", settings: "Settings" };

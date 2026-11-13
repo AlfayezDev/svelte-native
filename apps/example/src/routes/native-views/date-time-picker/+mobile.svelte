@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Text } from "@example/svelte-native";
-  import { DateTimePicker, openDatePicker } from "@example/svelte-native/foreign";
+  import { Text } from "@alfayez/svelte-native";
+  import { DateTimePicker, openDatePicker } from "@alfayez/svelte-native/foreign";
   import Platform from "react-native/Libraries/Utilities/Platform";
   import Button from "#lib/components/Button.svelte";
   import Page from "#lib/components/Page.svelte";

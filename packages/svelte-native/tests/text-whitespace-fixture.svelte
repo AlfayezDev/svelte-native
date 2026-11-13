@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Text } from "@example/svelte-native";
+  import { Text } from "@alfayez/svelte-native";
   import TextComponent from "../src/components/Text.svelte";
   let name = $state("Ada");
   export function rename(next: string) { name = next; }

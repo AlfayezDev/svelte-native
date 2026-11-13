@@ -70,7 +70,7 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          flags=(--title "@example/svelte-native $VERSION" --notes-file "$RUNNER_TEMP/notes.md")
+          flags=(--title "@alfayez/svelte-native $VERSION" --notes-file "$RUNNER_TEMP/notes.md")
           # 0.3.0-rc.1 is a pre-release; it is never the "latest" release.
           case "$VERSION" in *-*) flags+=(--prerelease) ;; esac
           if gh release view "$TAG" >/dev/null 2>&1; then

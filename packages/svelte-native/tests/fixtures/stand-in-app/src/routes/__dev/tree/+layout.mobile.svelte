@@ -3,7 +3,7 @@
 </script>
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import { Tabs, type TabItem } from "@example/svelte-native";
+  import { Tabs, type TabItem } from "@alfayez/svelte-native";
   let { panes, children }: { panes: readonly { key: string }[]; children: Snippet } = $props();
   const items = $derived<TabItem[]>(panes.map((pane) => ({ key: pane.key, title: pane.key })));
 </script>

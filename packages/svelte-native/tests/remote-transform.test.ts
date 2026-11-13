@@ -102,12 +102,12 @@ describe("stubs", () => {
   test("what SvelteKit's plugin generates: one declaration per export, calling the client function of its kind with `<hash>/<name>`", () => {
     const source = `import { query, command } from "$app/server";\nexport const a = query(async () => 1);\nexport const b = command(async () => 1);`;
     expect(transformRemoteModule(source, `${ROOT}/src/lib/api.remote.ts`, ROOT)).toBe(
-      `import * as __remote from "@example/svelte-native/remote/runtime";\n\nexport const a = __remote.query("1ic5y8r/a");\nexport const b = __remote.command("1ic5y8r/b");\n`,
+      `import * as __remote from "@alfayez/svelte-native/remote/runtime";\n\nexport const a = __remote.query("1ic5y8r/a");\nexport const b = __remote.command("1ic5y8r/b");\n`,
     );
   });
   test("reserved words are declared under an alias and exported by name; the namespace avoids the export names", () => {
     expect(remoteStub([{ name: "delete", kind: "command" }, { name: "__remote", kind: "query" }, { name: "_0", kind: "query" }, { name: "class", kind: "query_live" }, { name: "odd-name", kind: "form" }], "h")).toBe(
-      `import * as __remote0 from "@example/svelte-native/remote/runtime";\n\n` +
+      `import * as __remote0 from "@alfayez/svelte-native/remote/runtime";\n\n` +
       `const _1 = __remote0.command("h/delete");\nexport const __remote = __remote0.query("h/__remote");\nexport const _0 = __remote0.query("h/_0");\n` +
       `const _2 = __remote0.query_live("h/class");\nconst _3 = __remote0.form("h/odd-name");\nexport { _1 as delete, _2 as class, _3 as "odd-name" };\n`,
     );
@@ -126,9 +126,9 @@ describe("SvelteKit's client files", () => {
 
   test("the globals a file uses that a native lacks are given to it, as names of that module only", async () => {
     const prelude = kitGlobalsImport(join(functions, "shared.svelte.js"));
-    expect(prelude).toBe(`\nimport { fetch, location, navigator, window, FinalizationRegistry, WeakRef, __SVELTEKIT_DEV__ } from "@example/svelte-native/remote/globals";\n`);
-    expect(kitGlobalsImport(join(kit, "src/runtime/form-utils.js"))).toBe(`\nimport { Blob } from "@example/svelte-native/remote/globals";\n`);
-    expect(kitGlobalsImport(join(kit, "src/runtime/utils.js"))).toBe(`\nimport { btoa, atob } from "@example/svelte-native/remote/globals";\n`);
+    expect(prelude).toBe(`\nimport { fetch, location, navigator, window, FinalizationRegistry, WeakRef, __SVELTEKIT_DEV__ } from "@alfayez/svelte-native/remote/globals";\n`);
+    expect(kitGlobalsImport(join(kit, "src/runtime/form-utils.js"))).toBe(`\nimport { Blob } from "@alfayez/svelte-native/remote/globals";\n`);
+    expect(kitGlobalsImport(join(kit, "src/runtime/utils.js"))).toBe(`\nimport { btoa, atob } from "@alfayez/svelte-native/remote/globals";\n`);
     expect(kitGlobalsImport(join(kit, "src/runtime/shared.js"))).toBeUndefined();
     expect(kitGlobalsImport("/app/src/routes/page.svelte")).toBeUndefined();
     // Appended, so no line of the file moves; and it still compiles (no file declares one of these names itself).

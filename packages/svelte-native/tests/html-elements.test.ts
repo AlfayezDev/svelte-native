@@ -921,7 +921,7 @@ test("a view rebuilt for a change below it does not clone the runs of text it ho
 
 test("nested decorations add up, a style that is text beside style: directives is parsed, a dynamic svelte:element is a span in the line, and an undefined prop does not undo the default of an input type", async () => {
   const t = await mountSource(`<script>
-    import { TextInput } from "@example/svelte-native/core";
+    import { TextInput } from "@alfayez/svelte-native/core";
     let css = $state("padding: 4px; color: red");
     let w = $state("10px");
     let tag = $state("b");

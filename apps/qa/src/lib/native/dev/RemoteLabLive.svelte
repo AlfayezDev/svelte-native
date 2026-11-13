@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { Text, View } from "@example/svelte-native";
-  import { refreshAll } from "@example/svelte-native/remote";
+  import { Text, View } from "@alfayez/svelte-native";
+  import { refreshAll } from "@alfayez/svelte-native/remote";
   import { theme } from "#lib/native/state.svelte.ts";
   import Button from "#lib/native/components/Button.svelte";
   import { labClock, labStats } from "#lib/native/dev/remote-lab.remote.ts";

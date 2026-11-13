@@ -21,7 +21,7 @@ A `+mobile.svelte` file is a screen. Its directory is its route:
 ```svelte
 <!--- file: src/routes/posts/[id]/+mobile.svelte --->
 <script lang="ts">
-	import { Screen, Text, View } from '@example/svelte-native';
+	import { Screen, Text, View } from '@alfayez/svelte-native';
 
 	let { params }: { params: { id: string } } = $props();
 </script>
@@ -45,7 +45,7 @@ A `+layout.mobile.svelte` wraps every screen below its directory. It receives `p
 <!--- file: src/routes/(account)/+layout.mobile.svelte --->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { View } from '@example/svelte-native';
+	import { View } from '@alfayez/svelte-native';
 
 	let { children }: { children: Snippet } = $props();
 </script>
@@ -61,7 +61,7 @@ The layout at the root, `src/routes/+layout.mobile.svelte`, is the _app shell_. 
 <!--- file: src/routes/+layout.mobile.svelte --->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { Stack } from '@example/svelte-native';
+	import { Stack } from '@alfayez/svelte-native';
 
 	let { children }: { children: Snippet } = $props();
 </script>
@@ -86,7 +86,7 @@ A _navigator_ decides how screens relate to each other. The root is a stack: eac
 
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { Tabs } from '@example/svelte-native';
+	import { Tabs } from '@alfayez/svelte-native';
 
 	let { children }: { children: Snippet } = $props();
 </script>
@@ -148,7 +148,7 @@ SvelteKit navigates with `<a href>`. Native has no links, so a screen asks its r
 ```svelte
 <!--- file: src/routes/+mobile.svelte --->
 <script lang="ts">
-	import { Pressable, Screen, Text, useRouter } from '@example/svelte-native';
+	import { Pressable, Screen, Text, useRouter } from '@alfayez/svelte-native';
 
 	const router = useRouter();
 </script>
@@ -199,7 +199,7 @@ Then prepare on the finger going down, commit on the tap and discard when the fi
 
 ```svelte
 <script lang="ts">
-	import { Pressable, Text, useRouter, type PreparedNavigation } from '@example/svelte-native';
+	import { Pressable, Text, useRouter, type PreparedNavigation } from '@alfayez/svelte-native';
 
 	const router = useRouter();
 	let prepared: PreparedNavigation | undefined;
@@ -233,7 +233,7 @@ A link to your app opens the screen of its route. The app's scheme is `scheme` i
 
 The link the app was started with becomes the first screen, with no back button. Links that arrive while the app runs are opened with `goto`.
 
-If your app shell must know the launch link before it renders, for instance to choose between a sign-in screen and the app, await `openLaunchURL(router)` from `@example/svelte-native` before rendering `children`.
+If your app shell must know the launch link before it renders, for instance to choose between a sign-in screen and the app, await `openLaunchURL(router)` from `@alfayez/svelte-native` before rendering `children`.
 
 ## Navigation state
 

@@ -1,4 +1,4 @@
-import { openLaunchURL, type NativeRouter } from "@example/svelte-native";
+import { openLaunchURL, type NativeRouter } from "@alfayez/svelte-native";
 import { labOnly, launchKind } from "./launch-link.ts";
 
 /** Whether the root stack of `router` holds lab screens only. Reactive: it reads the router's entries. */

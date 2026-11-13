@@ -10,8 +10,8 @@ import { libraryChanged, withSvelteNative } from "../src/metro.ts";
 
 test("the caches are reset the first time, when the library moves, and not when it stays", () => {
   const root = mkdtempSync(join(tmpdir(), "metro-library-"));
-  const rc1 = "/app/node_modules/.pnpm/@example+svelte-native@git+dcb073f/node_modules/@example/svelte-native";
-  const rc2 = "/app/node_modules/.pnpm/@example+svelte-native@git+c7200da/node_modules/@example/svelte-native";
+  const rc1 = "/app/node_modules/.pnpm/@alfayez+svelte-native@git+dcb073f/node_modules/@alfayez/svelte-native";
+  const rc2 = "/app/node_modules/.pnpm/@alfayez+svelte-native@git+c7200da/node_modules/@alfayez/svelte-native";
   // A project whose Metro ran before the record existed may hold a stale cache: reset once.
   expect(libraryChanged(root, rc1)).toBe(true);
   expect(readFileSync(join(root, ".svelte-native/metro-library"), "utf8")).toBe(`${rc1}\n`);

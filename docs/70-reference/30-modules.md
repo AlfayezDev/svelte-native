@@ -4,7 +4,7 @@ title: Modules
 
 Svelte Native's code is split into entry points, so an app loads only what it uses. This page lists each entry point and what it exports, with a link to the page that explains it.
 
-## @example/svelte-native
+## @alfayez/svelte-native
 
 The main entry: components, navigation and the app's state.
 
@@ -38,7 +38,7 @@ The main entry: components, navigation and the app's state.
 
 The types of the options are exported too: `ScreenOptions`, `HeaderOptions`, `SheetOptions`, `ToolbarOptions`, `ToolbarItem`, `TabItem`, `StatusBarOptions`, `NavigationBarOptions`, `SearchOptions`, `Presentation`, `Detent`, `BarStyle`, `ScreenAnimation`, `NavigateOptions`, `NativeLocation`, `NativeRouter` and `HostHandle`.
 
-## @example/svelte-native/animation
+## @alfayez/svelte-native/animation
 
 Animations on the UI thread, with Reanimated. [Animation](animation)
 
@@ -53,7 +53,7 @@ Animations on the UI thread, with Reanimated. [Animation](animation)
 | `runOnJS`, `scheduleOnRN` | From a worklet, call a function on the JavaScript thread. |
 | `SharedValue` | The type of a shared value. |
 
-## @example/svelte-native/gestures
+## @alfayez/svelte-native/gestures
 
 Native gesture recognisers, with react-native-gesture-handler. [Gestures](gestures)
 
@@ -66,7 +66,7 @@ Native gesture recognisers, with react-native-gesture-handler. [Gestures](gestur
 | `State`, `Directions`, `PointerType`, `TouchEventType` | The library's constants. |
 | `runOnJS`, `scheduleOnRN` | The same as in `/animation`. |
 
-## @example/svelte-native/foreign
+## @alfayez/svelte-native/foreign
 
 Native views of other libraries. [Native views](native-views)
 
@@ -93,15 +93,15 @@ Native views of other libraries. [Native views](native-views)
 
 The handle and option types (`VideoHandle`, `LottieHandle`, `MapHandle`, `WebViewHandle`, `RiveHandle`, `PdfHandle`, `ExpoViewHandle`, `CaptureOptions`, ...) are exported with them.
 
-## @example/svelte-native/svg
+## @alfayez/svelte-native/svg
 
 SVG with react-native-svg: `Svg` (also the default export), `G`, `Path`, `Rect`, `Circle`, `Ellipse`, `Line`, `Polygon`, `Polyline`, `Text`, `TSpan`, `TextPath`, `Use`, `Image`, `Defs`, `ClipPath`, `LinearGradient`, `RadialGradient`, `Stop`, `Pattern`, `Mask`, `Marker`, `Symbol`, `ForeignObject`, the filters (`Filter`, `FeBlend`, `FeColorMatrix`, `FeComposite`, `FeDropShadow`, `FeFlood`, `FeGaussianBlur`, `FeMerge`, `FeMergeNode`, `FeOffset`), `SvgXml` and `SvgUri`, and the handle types `SvgHandle` and `SvgRootHandle`. [SVG](svg)
 
-## @example/svelte-native/platform
+## @alfayez/svelte-native/platform
 
 React Native's platform modules, typed: `Platform`, `Appearance`, `Dimensions`, `PixelRatio`, `Linking`, `Keyboard`, `AppState`, `BackHandler`, `Share`, `Vibration` and `Alert`. Each loads the first time it's used. [Platform APIs](platform-apis)
 
-## @example/svelte-native/remote
+## @alfayez/svelte-native/remote
 
 SvelteKit's remote functions on the device. [Loading data](loading-data#remote-functions)
 
@@ -115,11 +115,11 @@ SvelteKit's remote functions on the device. [Loading data](loading-data#remote-f
 | `normalizeOrigin(origin)` | Checks and normalises an origin. |
 | `RemoteConfigError` | Thrown by a remote function call when no server is configured. |
 
-## @example/svelte-native/updates
+## @alfayez/svelte-native/updates
 
 Over-the-air updates, compatible with `eas update`: `isEnabled`, `updateId`, `channel`, `runtimeVersion`, `checkForUpdateAsync`, `fetchUpdateAsync`, `reloadAsync` and `checkOnLaunch`. [Updates](updates)
 
-## @example/svelte-native/native-modules
+## @alfayez/svelte-native/native-modules
 
 `turboModule<T>(name)` returns a TurboModule by name and throws when the build doesn't have it. `nativeModule<T>(name)` returns a legacy NativeModule by name, or `undefined`. [Native libraries](native-libraries#calling-a-native-module-directly)
 
@@ -129,9 +129,9 @@ These entry points run in Node, in your build configuration, not in the app.
 
 | Entry | Export | Used in |
 | --- | --- | --- |
-| `@example/svelte-native/vite` | `svelteNative(options)`: SvelteKit's Vite plugin, wrapped. | `vite.config.ts` |
-| `@example/svelte-native/metro` | `withSvelteNative(config, options?)`: Expo's Metro config, extended to compile Svelte and find your routes. | `metro.config.cjs` |
-| `@example/svelte-native/expo` | The Expo config plugin. `@example/svelte-native` names the same plugin. | `app.json` or `app.config.ts` |
+| `@alfayez/svelte-native/vite` | `svelteNative(options)`: SvelteKit's Vite plugin, wrapped. | `vite.config.ts` |
+| `@alfayez/svelte-native/metro` | `withSvelteNative(config, options?)`: Expo's Metro config, extended to compile Svelte and find your routes. | `metro.config.cjs` |
+| `@alfayez/svelte-native/expo` | The Expo config plugin. `@alfayez/svelte-native` names the same plugin. | `app.json` or `app.config.ts` |
 
 [Configuration](configuration) shows each one with its options. The `svelte-native` command is the package's binary: see [Command line](cli).
 

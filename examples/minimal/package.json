@@ -12,7 +12,7 @@
 		"ios": "svelte-native ios"
 	},
 	"dependencies": {
-		"@example/svelte-native": "git+ssh://git@github.com/AlfayezDev/svelte-native.git#<tag>&path:packages/svelte-native",
+		"@alfayez/svelte-native": "git+ssh://git@github.com/AlfayezDev/svelte-native.git#<tag>&path:packages/svelte-native",
 		"@sveltejs/kit": "3.1.1",
 		"expo": "57.0.30",
 		"expo-constants": "57.0.22",

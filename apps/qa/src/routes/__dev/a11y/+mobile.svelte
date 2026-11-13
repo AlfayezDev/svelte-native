@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, tick, untrack } from "svelte";
   import { requireOptionalNativeModule } from "expo-modules-core";
-  import { Pressable, Text, View } from "@example/svelte-native";
+  import { Pressable, Text, View } from "@alfayez/svelte-native";
   import { nativeLabEnabled, theme } from "#lib/native/state.svelte.ts";
   import Page from "#lib/native/components/Page.svelte";
 

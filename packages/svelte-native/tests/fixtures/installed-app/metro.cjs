@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- CommonJS is the point: this is how Metro and Expo load the library */
 // Loaded by plain `node` from an app whose `node_modules` holds the packed library (tests/node-modules.test.ts): the way `metro.config.cjs` loads it.
 const { readFileSync } = require("node:fs");
-const { withSvelteNative } = require("@example/svelte-native/metro");
+const { withSvelteNative } = require("@alfayez/svelte-native/metro");
 
 const root = process.cwd();
 const found = (filePath) => ({ type: "sourceFile", filePath });
@@ -23,7 +23,7 @@ console.log(
     rendererStub: throughStub("react-native/Libraries/ReactNative/RendererProxy.js", `${root}/src/a.ts`),
     initializeCore: throughStub("react-native/Libraries/Core/InitializeCore.js", `${root}/src/a.ts`),
     svelte: resolveRequest(context(`${root}/src/a.ts`), "svelte/internal/client", "android").filePath,
-    routes: resolveRequest(context(`${root}/src/a.ts`), "@example/svelte-native/routes", "android").filePath,
+    routes: resolveRequest(context(`${root}/src/a.ts`), "@alfayez/svelte-native/routes", "android").filePath,
     table: readFileSync(`${root}/.svelte-native/routes.app.ts`, "utf8"),
     entry: readFileSync(`${root}/.svelte-native/entry.ts`, "utf8"),
   }),

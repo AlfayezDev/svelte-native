@@ -26,7 +26,7 @@ Nothing is imported, and the file means the same in both places. In the browser 
 
 The change happens in the build for the device. The web build never sees it, so a file is HTML there, exactly as you wrote it.
 
-It applies to the files of your app: routes (`+page.svelte`, `+mobile.svelte`), components in `src/lib`, and packages of your own workspace. It doesn't apply to Svelte libraries in `node_modules`, which keep their markup as written. A native-only file can mix both ways: `import { ScrollView } from '@example/svelte-native'` beside `<div>` works.
+It applies to the files of your app: routes (`+page.svelte`, `+mobile.svelte`), components in `src/lib`, and packages of your own workspace. It doesn't apply to Svelte libraries in `node_modules`, which keep their markup as written. A native-only file can mix both ways: `import { ScrollView } from '@alfayez/svelte-native'` beside `<div>` works.
 
 ## The elements
 
@@ -210,10 +210,10 @@ An element with no native equivalent is a build error, naming the element, the f
 | Element | Use |
 | --- | --- |
 | `table`, `tr`, `td`, ... | `div`s with flex classes |
-| `svg` | [`@example/svelte-native/svg`](svg) |
+| `svg` | [`@alfayez/svelte-native/svg`](svg) |
 | `canvas` | the SVG components |
-| `video` | [`Video` or `VideoView`](native-views#video) from `@example/svelte-native/foreign` |
-| `iframe` | [`WebView`](native-views#webview) from `@example/svelte-native/foreign` |
+| `video` | [`Video` or `VideoView`](native-views#video) from `@alfayez/svelte-native/foreign` |
+| `iframe` | [`WebView`](native-views#webview) from `@alfayez/svelte-native/foreign` |
 | `select`, `option` | a list of buttons, or a `Modal` |
 | `input type="radio"`, `range`, `date`, `file`, ... | a `button` per choice, a gesture, [`DateTimePicker`](native-views#datetimepicker-and-opendatepicker) |
 | `bind:clientWidth` and the other size bindings | `onLayout` |

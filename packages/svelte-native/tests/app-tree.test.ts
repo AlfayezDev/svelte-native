@@ -83,7 +83,7 @@ async function load(fixture = "navigation-fixture.svelte", options: LoadOptions 
         builder.onResolve({ filter: /^(react-native|expo-modules-core)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
         builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? "export {};", loader: "js" }));
         builder.onResolve({ filter: /\/view-configs\.ts$/ }, () => ({ path: resolve(import.meta.dirname, "view-configs-stub.ts") }));
-        builder.onResolve({ filter: /^@example\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
+        builder.onResolve({ filter: /^@alfayez\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
         builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../src/environment.ts") }));
         builder.onLoad({ filter: /\.svelte$/ }, async ({ path }) => ({
           contents: compile(await readFile(path, "utf8"), componentOptions(path)).js.code,
@@ -575,8 +575,8 @@ async function standInApp(variant: string, applicationId: string, options: { lab
   const plugin: Plugin = {
     name: "stand-in-app",
     setup(builder) {
-      builder.onResolve({ filter: /^@example\/svelte-native$/ }, () => ({ path: resolve(import.meta.dirname, "../src/index.ts") }));
-      builder.onResolve({ filter: /^@example\/svelte-native\/routes$/ }, () => ({ path: table }));
+      builder.onResolve({ filter: /^@alfayez\/svelte-native$/ }, () => ({ path: resolve(import.meta.dirname, "../src/index.ts") }));
+      builder.onResolve({ filter: /^@alfayez\/svelte-native\/routes$/ }, () => ({ path: table }));
       builder.onResolve({ filter: new RegExp(`^(${Object.keys(host).join("|")})$`) }, (args) => ({ path: args.path, namespace: "stand-in-host" }));
       builder.onLoad({ filter: /.*/, namespace: "stand-in-host" }, (args) => ({ contents: host[args.path], loader: "js" }));
       // The stub of a store build, byte for byte, behind a Proxy that lists the bindings this importer names, so that esbuild's namespace copy

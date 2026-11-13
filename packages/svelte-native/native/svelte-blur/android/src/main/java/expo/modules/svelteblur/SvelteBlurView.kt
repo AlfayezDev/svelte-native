@@ -11,7 +11,7 @@ import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.views.ExpoView
 
 /**
- * The view of `BlurView` (`@example/svelte-native/foreign`): it blurs what is drawn behind it, and what a view draws inside it (a child of an Expo view is a child
+ * The view of `BlurView` (`@alfayez/svelte-native/foreign`): it blurs what is drawn behind it, and what a view draws inside it (a child of an Expo view is a child
  * of this one) comes above the blur. Props: `intensity` (0 to 100, see [BlurRules]) and `tint` (`default`, `light`, `dark`, `extraLight`, `regular`, `prominent`,
  * the `system...Material` names; the same strings as `expo-blur`, all of them mapped by [BlurRules.group]).
  *

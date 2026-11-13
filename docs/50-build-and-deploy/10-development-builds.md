@@ -61,7 +61,7 @@ Run it after you:
 
 - add or remove a package with native code, such as `npx expo install expo-camera`
 - change a config plugin or its options, or the native parts of `app.json`: identifiers, permissions, icon, splash screen, `scheme`
-- upgrade `@example/svelte-native`, whose plugin writes into the native project
+- upgrade `@alfayez/svelte-native`, whose plugin writes into the native project
 
 You don't need it for:
 

@@ -2,7 +2,7 @@
   import { onDestroy, onMount, untrack } from "svelte";
   import { requireOptionalNativeModule } from "expo-modules-core";
   import Dimensions from "react-native/Libraries/Utilities/Dimensions";
-  import { Screen, Text, View, insets } from "@example/svelte-native";
+  import { Screen, Text, View, insets } from "@alfayez/svelte-native";
   import { nativeLabEnabled, theme } from "#lib/native/state.svelte.ts";
   import {
     GESTURE_TAG, Session, expectedTwoFinger, lab, pxPath, scenarioFor,

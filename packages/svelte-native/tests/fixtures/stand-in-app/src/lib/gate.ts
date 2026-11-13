@@ -1,4 +1,4 @@
-import type { NativeRouter } from "@example/svelte-native";
+import type { NativeRouter } from "@alfayez/svelte-native";
 
 /** What the gate reads of the visitor (the stand-in for a signed-in account). */
 export type Visitor = {

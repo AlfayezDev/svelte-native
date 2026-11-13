@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SafeAreaView, Screen, ScrollView, Text, View, useToolbar, type ToolbarItem } from "@example/svelte-native";
+  import { SafeAreaView, Screen, ScrollView, Text, View, useToolbar, type ToolbarItem } from "@alfayez/svelte-native";
   import { useDemo } from "#lib/demo.ts";
   import { text, theme } from "#lib/theme.svelte.ts";
 

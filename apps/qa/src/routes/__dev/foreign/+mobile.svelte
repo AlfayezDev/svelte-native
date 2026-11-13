@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { List, Screen, ScrollView, Text, View, useRouter } from "@example/svelte-native";
+  import { List, Screen, ScrollView, Text, View, useRouter } from "@alfayez/svelte-native";
   import { nativeLabEnabled, theme } from "#lib/native/state.svelte.ts";
   import ForeignSet, { type Kind } from "#lib/native/dev/ForeignSet.svelte";
   import LibrarySet, { libraryKinds, type LibraryKind } from "#lib/native/dev/LibrarySet.svelte";

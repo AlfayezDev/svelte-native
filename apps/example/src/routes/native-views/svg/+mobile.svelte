@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { View } from "@example/svelte-native";
-  import { createSharedValue, withRepeat, withTiming } from "@example/svelte-native/animation";
-  import { Circle, Defs, LinearGradient, Path, Rect, Stop, Svg, SvgXml, Text as SvgText } from "@example/svelte-native/svg";
+  import { View } from "@alfayez/svelte-native";
+  import { createSharedValue, withRepeat, withTiming } from "@alfayez/svelte-native/animation";
+  import { Circle, Defs, LinearGradient, Path, Rect, Stop, Svg, SvgXml, Text as SvgText } from "@alfayez/svelte-native/svg";
   import Page from "#lib/components/Page.svelte";
   import Section from "#lib/components/Section.svelte";
   import { scroller, useDemo } from "#lib/demo.ts";
   import { theme } from "#lib/theme.svelte.ts";
 
-  // `@example/svelte-native/svg` is react-native-svg as Svelte components: the same elements and props (`Svg`, `Rect`, `Circle`, `Path`, the
+  // `@alfayez/svelte-native/svg` is react-native-svg as Svelte components: the same elements and props (`Svg`, `Rect`, `Circle`, `Path`, the
   // gradients, ...). `animatedProps` on any element is a worklet that writes native props on the UI thread, here the circle's radius from a
   // shared value. `SvgXml` draws a whole SVG document from a string. `Text` is imported as `SvgText`, the primitive keeps the name.
   const radius = createSharedValue(6); // first: it loads Reanimated, so the worklet below captures the real functions

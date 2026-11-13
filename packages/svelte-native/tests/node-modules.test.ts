@@ -6,7 +6,7 @@ import { findPackage } from "../src/doctor/resolve.ts";
 
 // The package is installed by apps outside this repository, so its code runs from a `node_modules`, where Node refuses to load TypeScript
 // (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`, Node 25 and 26). In this repository it works whatever is wrong, because the workspace link is
-// not under `node_modules`. So this packs the package the way `files` ships it, unpacks it into `node_modules/@example/svelte-native` of a scratch app
+// not under `node_modules`. So this packs the package the way `files` ships it, unpacks it into `node_modules/@alfayez/svelte-native` of a scratch app
 // and loads every entry a Node process loads with plain `node` (no Bun, no loader): the command line, the Metro config and transformer, the Expo
 // config plugin (under both of its names) and Vite's config. Two more apps hold the same package: a native-only one, which has neither SvelteKit nor Vite
 // (it bundles with Metro and type-checks with svelte-check), and one in pnpm's default layout, where `@expo/metro-config` is only beside `expo`.
@@ -22,7 +22,7 @@ const manifest = JSON.parse(readFileSync(join(packageDirectory, "package.json"),
 const node = Bun.which("node");
 const scratch = realpathSync(mkdtempSync(join(tmpdir(), "svelte-native-installed-")));
 const app = join(scratch, "app");
-const installed = join(app, "node_modules/@example/svelte-native");
+const installed = join(app, "node_modules/@alfayez/svelte-native");
 /** The native-only app: no `@sveltejs/kit`, no `vite`, and no app that is above it that has them. */
 const bare = join(scratch, "bare");
 /** An app in pnpm's default layout: `expo` is a link to a directory of its own, and `@expo/metro-config` is only in that directory's `node_modules`. */
@@ -43,8 +43,8 @@ const installedNames = (skip: readonly string[] = []): string[] => [...Object.ke
 
 /** Puts the unpacked package into `into`'s `node_modules` and the fixture's files in `into`. */
 function install(into: string, from = fixture): void {
-  mkdirSync(join(into, "node_modules/@example"), { recursive: true });
-  cpSync(installed, join(into, "node_modules/@example/svelte-native"), { recursive: true });
+  mkdirSync(join(into, "node_modules/@alfayez"), { recursive: true });
+  cpSync(installed, join(into, "node_modules/@alfayez/svelte-native"), { recursive: true });
   cpSync(from, into, { recursive: true });
 }
 
@@ -152,7 +152,7 @@ describe("with plain node, from node_modules", () => {
     expect(result.stderr).not.toContain(NOT_TYPESCRIPT);
   });
 
-  test("@example/svelte-native/metro: require, withSvelteNative on a minimal config, the route table written, the runtime files found in the package's src/", () => {
+  test("@alfayez/svelte-native/metro: require, withSvelteNative on a minimal config, the route table written, the runtime files found in the package's src/", () => {
     const result = probe("metro.cjs") as Record<string, string>;
     expect(result.transformerPath).toBe(join(installed, "dist/node/transformer.cjs"));
     expect(result.lite).toBe(join(installed, "src/fabric/react-native-lite.ts"));
@@ -170,16 +170,16 @@ describe("with plain node, from node_modules", () => {
   test("control: the app's Svelte is the stock build, and its compiler refuses a transition directive on a custom renderer", () => {
     const refusals = ["TransitionDirective.js", "AnimateDirective.js"].map((file) => readFileSync(join(app, "node_modules/svelte/src/compiler/phases/2-analyze/visitors", file), "utf8").includes("incompatible_with_custom_renderer"));
     expect(refusals).toEqual([true, true]);
-    const result = run(["-e", `const { compile } = require(${JSON.stringify(join(app, "node_modules/svelte/src/compiler/index.js"))}); compile("<native-view in:fade></native-view>", { generate: "client", experimental: { customRenderer: "@example/svelte-native/renderer" } });`]);
+    const result = run(["-e", `const { compile } = require(${JSON.stringify(join(app, "node_modules/svelte/src/compiler/index.js"))}); compile("<native-view in:fade></native-view>", { generate: "client", experimental: { customRenderer: "@alfayez/svelte-native/renderer" } });`]);
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toContain("not compatible with `customRenderer`");
   });
 
-  test("@example/svelte-native/transformer compiles in:, out:, transition: and animate: with that stock Svelte: its hook removes the refusals as the compiler loads", () => {
+  test("@alfayez/svelte-native/transformer compiles in:, out:, transition: and animate: with that stock Svelte: its hook removes the refusals as the compiler loads", () => {
     const script = join(app, "directives.cjs");
     writeFileSync(
       script,
-      `const transformer = require(require.resolve("@example/svelte-native/transformer"));
+      `const transformer = require(require.resolve("@alfayez/svelte-native/transformer"));
 const options = { dev: false, projectRoot: process.cwd(), platform: "android", hot: false, inlineRequires: false, minify: false, type: "module", unstable_transformProfile: "default", publicPath: "/assets", customTransformOptions: {} };
 const source = '<script lang="ts">import { fade, fly } from "svelte/transition"; import { flip } from "svelte/animate"; let items: number[] = $state([1]);</script>\\n<div in:fly out:fade></div><section transition:fade></section>{#each items as item (item)}<p animate:flip>{item}</p>{/each}\\n';
 const { traverseFast } = require("@babel/types");
@@ -200,7 +200,7 @@ console.log(JSON.stringify({ transition: names.has("transition"), animation: nam
     const script = join(app, "no-hooks-probe.cjs");
     writeFileSync(
       script,
-      `const transformer = require(require.resolve("@example/svelte-native/transformer"));
+      `const transformer = require(require.resolve("@alfayez/svelte-native/transformer"));
 const options = { dev: false, projectRoot: process.cwd(), platform: "android", hot: false, inlineRequires: false, minify: false, type: "module", unstable_transformProfile: "default", publicPath: "/assets", customTransformOptions: {} };
 try { transformer.transform({ filename: process.cwd() + "/src/Plain.svelte", src: "<native-view in:fade></native-view>", options, plugins: [] }); console.log("compiled"); } catch (error) { console.log(error.message); }
 `,
@@ -211,16 +211,16 @@ try { transformer.transform({ filename: process.cwd() + "/src/Plain.svelte", src
     expect(result.stdout).toContain("22.15");
   });
 
-  test("@example/svelte-native/transformer: the path Metro's worker requires compiles a .svelte file and a remote module", () => {
+  test("@alfayez/svelte-native/transformer: the path Metro's worker requires compiles a .svelte file and a remote module", () => {
     const result = probe("transformer.cjs") as { exports: string[]; svelteImports: string[]; svelteModule: string[]; remote: string; modes: Record<string, string>; cacheKey: string; resolvedFrom: string };
     expect(result.resolvedFrom).toBe(join(installed, "dist/node/transformer.cjs"));
     expect(result.exports).toEqual(["getCacheKey", "sourceOf", "transform", "upstreamTransformerPath"]);
     // A `.svelte.ts` module at the path an install puts the library's own (`router.svelte.ts`, `insets.svelte.ts`) at: compiled by Svelte as JavaScript.
     expect(result.svelteModule).toContain("svelte/internal/client");
-    expect(result.svelteImports).toContain("@example/svelte-native/renderer");
+    expect(result.svelteImports).toContain("@alfayez/svelte-native/renderer");
     expect(result.svelteImports).toContain("svelte/internal/client");
     expect(result.svelteImports).toContain("svelte/transition");
-    expect(result.remote).toContain("@example/svelte-native/remote/runtime");
+    expect(result.remote).toContain("@alfayez/svelte-native/remote/runtime");
     expect(result.cacheKey).toMatch(/^[0-9a-f]{64}$/);
     // Runes mode by default (D17): the app's components and the library's own, at the path an install puts them at; a Svelte library below node_modules keeps Svelte's own default.
     expect(result.modes).toEqual({
@@ -232,7 +232,7 @@ try { transformer.transform({ filename: process.cwd() + "/src/Plain.svelte", src
     });
   });
 
-  test("@example/svelte-native/transformer with withSvelteNative(config, { async: true }): the built transformer compiles every Svelte file with Svelte's async mode, and without the option none", () => {
+  test("@alfayez/svelte-native/transformer with withSvelteNative(config, { async: true }): the built transformer compiles every Svelte file with Svelte's async mode, and without the option none", () => {
     type Mode = { env: string | null; app: boolean; library: boolean; own: boolean; awaitedModule: string; cacheKey: string };
     const { asyncMode } = probe("transformer.cjs") as { asyncMode: Record<"default" | "on" | "off", Mode> };
     // With the option the environment says so, and the component's compiled code imports the flag: the app's, a library's below node_modules and the package's own.
@@ -246,7 +246,7 @@ try { transformer.transform({ filename: process.cwd() + "/src/Plain.svelte", src
     expect(asyncMode.off.cacheKey).toBe(asyncMode.default.cacheKey);
   });
 
-  test("@example/svelte-native/expo and the bare package name: @expo/config-plugins loads the config plugin by either and runs it", () => {
+  test("@alfayez/svelte-native/expo and the bare package name: @expo/config-plugins loads the config plugin by either and runs it", () => {
     type Summary = { mods: string[]; remote: { origin: string }; pluginFile: string; isPluginFile: boolean; kind: string };
     const result = probe("expo.cjs") as { path: Summary; bare: Summary; same: boolean };
     for (const summary of [result.path, result.bare]) {
@@ -260,7 +260,7 @@ try { transformer.transform({ filename: process.cwd() + "/src/Plain.svelte", src
     expect(result.same).toBe(true);
   });
 
-  test("@example/svelte-native/vite: imported, and loaded by Vite's own config loader", () => {
+  test("@alfayez/svelte-native/vite: imported, and loaded by Vite's own config loader", () => {
     const result = probe("vite.mjs") as { config: string; plugins: string[]; direct: string[]; web: string[] };
     expect(result.config).toBe("native.vite.config.ts");
     expect(result.plugins).toEqual(["svelte-native"]);
@@ -270,7 +270,7 @@ try { transformer.transform({ filename: process.cwd() + "/src/Plain.svelte", src
     expect(result.web.some((name) => name?.startsWith("vite-plugin-sveltekit"))).toBe(true);
   });
 
-  test("@example/svelte-native/lower and /routes are importable", () => {
+  test("@alfayez/svelte-native/lower and /routes are importable", () => {
     const result = probe("lower.mjs") as { routes: string[]; lowered: string };
     expect(result.routes).toEqual([]);
     expect(result.lowered).toContain("native-view");
@@ -282,7 +282,7 @@ describe("in pnpm's default layout, where @expo/metro-config is only beside expo
     const fromApp = run(["-e", 'require("@expo/metro-config/babel-transformer")'], strict);
     expect(fromApp.exitCode).not.toBe(0);
     expect(fromApp.stderr).toContain("Cannot find module '@expo/metro-config/babel-transformer'");
-    const fromPackage = run(["-e", 'require("module").createRequire(process.cwd() + "/node_modules/@example/svelte-native/package.json")("@expo/metro-config/babel-transformer")'], strict);
+    const fromPackage = run(["-e", 'require("module").createRequire(process.cwd() + "/node_modules/@alfayez/svelte-native/package.json")("@expo/metro-config/babel-transformer")'], strict);
     expect(fromPackage.exitCode).not.toBe(0);
   });
 
@@ -290,19 +290,19 @@ describe("in pnpm's default layout, where @expo/metro-config is only beside expo
     const result = probe("transformer.cjs", strict) as { cacheKey: string; svelteImports: string[] };
     expect(result.cacheKey).toMatch(/^[0-9a-f]{64}$/);
     expect(result.svelteImports).toContain("svelte/internal/client");
-    const path = run(["-e", 'console.log(require("@example/svelte-native/transformer").upstreamTransformerPath())'], strict).stdout.trim();
+    const path = run(["-e", 'console.log(require("@alfayez/svelte-native/transformer").upstreamTransformerPath())'], strict).stdout.trim();
     expect(path).toBe(join(findPackage("@expo/metro-config", packageDirectory)?.directory ?? "", "build/babel-transformer.js"));
   });
 
   test("without expo it says so, by name", () => {
-    const result = run(["-e", 'try { require("@example/svelte-native/transformer").upstreamTransformerPath(["/nonexistent"]); } catch (error) { console.log(error.message); }'], strict);
+    const result = run(["-e", 'try { require("@alfayez/svelte-native/transformer").upstreamTransformerPath(["/nonexistent"]); } catch (error) { console.log(error.message); }'], strict);
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("needs `expo`");
   });
 });
 
 describe("an app that builds for native only: no @sveltejs/kit, no vite", () => {
-  const bareInstalled = join(bare, "node_modules/@example/svelte-native");
+  const bareInstalled = join(bare, "node_modules/@alfayez/svelte-native");
 
   test("control: neither package can be resolved from the app or from the package", () => {
     for (const name of optionalPeers) {
@@ -340,11 +340,11 @@ describe("an app that builds for native only: no @sveltejs/kit, no vite", () => 
   test("the Vite plugin's native target loads and works; its web target says SvelteKit is missing", () => {
     const result = probe("probe-vite.mjs", bare) as { native: string; web: string };
     expect(result.native).toBe("svelte-native");
-    expect(result.web).toContain("The web target of svelteNative() (@example/svelte-native/vite) needs `@sveltejs/kit`, which is not installed");
+    expect(result.web).toContain("The web target of svelteNative() (@alfayez/svelte-native/vite) needs `@sveltejs/kit`, which is not installed");
   });
 
   test("the config plugin and the command line load", () => {
-    const plugin = run(["-e", 'const { withPlugins } = require("@expo/config-plugins"); const config = withPlugins({ name: "a", slug: "a", android: { package: "io.e.a" }, ios: { bundleIdentifier: "io.e.a" }, _internal: { projectRoot: process.cwd() } }, ["@example/svelte-native"]); console.log(Object.keys(config.mods).sort().join())'], bare);
+    const plugin = run(["-e", 'const { withPlugins } = require("@expo/config-plugins"); const config = withPlugins({ name: "a", slug: "a", android: { package: "io.e.a" }, ios: { bundleIdentifier: "io.e.a" }, _internal: { projectRoot: process.cwd() } }, ["@alfayez/svelte-native"]); console.log(Object.keys(config.mods).sort().join())'], bare);
     // `@expo/config-plugins` is not linked into this app: the plugin's own `expo/config-plugins` is what it needs, and `expo` brings it.
     expect(plugin.stderr).not.toContain("@sveltejs/kit");
     const sync = run([join(bareInstalled, "dist/node/cli.js"), "sync"], bare);
@@ -379,8 +379,8 @@ describe("an app that builds for native only: no @sveltejs/kit, no vite", () => 
     const has = (pattern: RegExp) => sources.some((source) => pattern.test(source));
     expect(has(/^\/src\/routes\/\+mobile\.svelte$/)).toBe(true);
     expect(has(/^\/\.svelte-native\/routes\.app\.ts$/)).toBe(true);
-    expect(has(/node_modules\/@example\/svelte-native\/src\/router\.svelte\.ts$/)).toBe(true);
-    expect(has(/node_modules\/@example\/svelte-native\/src\/insets\.svelte\.ts$/)).toBe(true);
+    expect(has(/node_modules\/@alfayez\/svelte-native\/src\/router\.svelte\.ts$/)).toBe(true);
+    expect(has(/node_modules\/@alfayez\/svelte-native\/src\/insets\.svelte\.ts$/)).toBe(true);
     expect(has(/hermes-intl\//)).toBe(true);
     expect(sources.filter((source) => /@sveltejs\/kit|\/vite\//.test(source))).toEqual([]);
   }, 240_000);

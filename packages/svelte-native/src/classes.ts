@@ -77,7 +77,7 @@ export function classStyle(value: unknown, style?: unknown, defer?: boolean): un
   if (resolver === undefined) {
     if (dev() && !warned) {
       warned = true;
-      console.warn(`svelte-native: class="${className}" has no effect: no class table is loaded. The app's entry loads it through "@example/svelte-native/fabric" (docs: styling#classes).`);
+      console.warn(`svelte-native: class="${className}" has no effect: no class table is loaded. The app's entry loads it through "@alfayez/svelte-native/fabric" (docs: styling#classes).`);
     }
     return undefined;
   }

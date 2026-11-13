@@ -18,12 +18,12 @@ Svelte Native is a way to write Android and iOS apps as Svelte 5 components that
 ```sh
 npx sv create my-app
 cd my-app
-pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#v0.4.0-rc.4&path:packages/svelte-native"
+pnpm add "git+ssh://git@github.com/AlfayezDev/svelte-native.git#v0.4.0-rc.5&path:packages/svelte-native"
 pnpm exec svelte-native init
 pnpm android        # or: pnpm ios
 ```
 
-`npx sv create` makes a SvelteKit project (minimal, TypeScript, pnpm). `pnpm add` installs the library from a release tag (`v0.4.0-rc.4` here; use the newest). `svelte-native init` then turns the project into a Svelte Native one: the dependencies, the patches, the Metro and Expo config, the Vite plugin and a first native screen, followed by `pnpm install` and the doctor. Run it with `--dry-run` first to see the plan, and again whenever you like: it changes nothing a second time. The first `pnpm android` / `pnpm ios` builds the native app, which can take ten minutes or more the first time. The web app is still there: `pnpm dev`.
+`npx sv create` makes a SvelteKit project (minimal, TypeScript, pnpm). `pnpm add` installs the library from a release tag (`v0.4.0-rc.5` here; use the newest). `svelte-native init` then turns the project into a Svelte Native one: the dependencies, the patches, the Metro and Expo config, the Vite plugin and a first native screen, followed by `pnpm install` and the doctor. Run it with `--dry-run` first to see the plan, and again whenever you like: it changes nothing a second time. The first `pnpm android` / `pnpm ios` builds the native app, which can take ten minutes or more the first time. The web app is still there: `pnpm dev`.
 
 If `pnpm add` stops with `ERR_PNPM_GIT_RESOLVE_FAILED` (pnpm fetches GitHub dependencies over HTTPS even for an SSH address), tell git once to use SSH for this account: `git config --global url."git@github.com:AlfayezDev/".insteadOf "https://github.com/AlfayezDev/"`.
 
@@ -40,7 +40,7 @@ If `pnpm add` stops with `ERR_PNPM_GIT_RESOLVE_FAILED` (pnpm fetches GitHub depe
 - EAS Build on Expo's servers is not tried, and push notification delivery is not tested end to end.
 - The Svelte compiler is an unmerged pull request, [pinned](https://github.com/sveltejs/svelte/pull/18042) to one commit; the Svelte you install is that build, not the registry's, and the web side of the app runs on a pinned SvelteKit prerelease (3.1.1).
 - Expo SDK 57 and React Native 0.86 only.
-- `@example/svelte-native` is a placeholder name and will change before a public release.
+- `@alfayez/svelte-native` is a placeholder name and will change before a public release.
 
 **Found a bug?** [Open an issue](https://github.com/AlfayezDev/svelte-native/issues/new?template=bug.yml); the form asks for what is needed, including the output of `pnpm exec svelte-native doctor`. If an install fails, start with [troubleshooting](docs/60-appendix/20-troubleshooting.md).
 
@@ -48,8 +48,8 @@ If `pnpm add` stops with `ERR_PNPM_GIT_RESOLVE_FAILED` (pnpm fetches GitHub depe
 
 | Path | What it is |
 | ---- | ---------- |
-| `packages/svelte-native` | The library, `@example/svelte-native`: renderer, router, Metro and Vite integration, Expo config plugin, gestures, view-library wrappers, updates client, remote functions, and its six native modules in `native/` (the Android engine, the iOS screens, insets, navigation and capture modules, the updates module), linked by the package's one `expo-module.config.json`. Apps install it as a git dependency of this repository ([its README](packages/svelte-native/README.md), "Install in an app"). Its tests are in `tests/`. Start with [its README](packages/svelte-native/README.md). |
-| `apps/qa` | The QA app (the development lab) and the QA harness (`node qa/native-qa.ts`). It depends on the library through the workspace (`@example/svelte-native`), as an app outside the repository would, and links its native modules from `node_modules/@example/svelte-native`. It has the development lab (`src/lib/native/dev`, `src/routes/__dev`), the three QA-only local Expo modules in `modules/` (the touch injector, the iOS QA module, the view bench), and the QA harness in `qa/` (`node qa/native-qa.ts`, see [qa/README.md](apps/qa/qa/README.md)). |
+| `packages/svelte-native` | The library, `@alfayez/svelte-native`: renderer, router, Metro and Vite integration, Expo config plugin, gestures, view-library wrappers, updates client, remote functions, and its six native modules in `native/` (the Android engine, the iOS screens, insets, navigation and capture modules, the updates module), linked by the package's one `expo-module.config.json`. Apps install it as a git dependency of this repository ([its README](packages/svelte-native/README.md), "Install in an app"). Its tests are in `tests/`. Start with [its README](packages/svelte-native/README.md). |
+| `apps/qa` | The QA app (the development lab) and the QA harness (`node qa/native-qa.ts`). It depends on the library through the workspace (`@alfayez/svelte-native`), as an app outside the repository would, and links its native modules from `node_modules/@alfayez/svelte-native`. It has the development lab (`src/lib/native/dev`, `src/routes/__dev`), the three QA-only local Expo modules in `modules/` (the touch injector, the iOS QA module, the view bench), and the QA harness in `qa/` (`node qa/native-qa.ts`, see [qa/README.md](apps/qa/qa/README.md)). |
 | `apps/example` | The showcase app (`@svelte-native/example`, "Svelte Native"): a readable tour of the library, one short screen per feature, written like an app that installs the library and importing only its public entries. It has no lab, no QA modules and no harness. Run it with `pnpm --dir apps/example android\|ios`; [its README](apps/example/README.md) lists the features and their routes. |
 | `patches/` | pnpm patches of the third-party libraries the QA app links (listed in `pnpm-workspace.yaml`). The SvelteKit patch is in `packages/svelte-native/patches/`. |
 | `vendor/` | The Svelte build the library needs (an unmerged custom-renderer pull request, commit `216f258`, 5.56.7), vendored so installs do not depend on a preview registry. The package names `svelte` as a peer dependency; this repository's example and package install the tarball by `file:`. |
@@ -95,8 +95,8 @@ A release is a tag `v<version>` on a commit of `main` that is green in `ci.yml` 
 5. Tag that commit and push the tag:
 
    ```sh
-   git tag -a v0.3.0 -m "@example/svelte-native 0.3.0"
+   git tag -a v0.3.0 -m "@alfayez/svelte-native 0.3.0"
    git push origin v0.3.0
    ```
 
-`release.yml` then runs the CI checks, refuses a tag that is not `v` plus the package's version or whose version has no changelog section, and creates the Release with the notes and `example-svelte-native-0.3.0.tgz`. A re-run of the workflow for the same tag replaces the notes and the files. A release made by mistake: `gh release delete v0.3.0 --cleanup-tag`, fix, tag again (do not move a tag an app may have installed: release `0.3.1` instead).
+`release.yml` then runs the CI checks, refuses a tag that is not `v` plus the package's version or whose version has no changelog section, and creates the Release with the notes and `alfayez-svelte-native-0.3.0.tgz`. A re-run of the workflow for the same tag replaces the notes and the files. A release made by mistake: `gh release delete v0.3.0 --cleanup-tag`, fix, tag again (do not move a tag an app may have installed: release `0.3.1` instead).

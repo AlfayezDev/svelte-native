@@ -3,13 +3,13 @@ title: Animation
 video: animation
 ---
 
-Animations in Svelte Native run on the UI thread, with [Reanimated](https://docs.swmansion.com/react-native-reanimated/), so they stay smooth while JavaScript is busy. `@example/svelte-native/animation` gives you an `AnimatedView`, shared values to animate, and Reanimated's helpers that move them.
+Animations in Svelte Native run on the UI thread, with [Reanimated](https://docs.swmansion.com/react-native-reanimated/), so they stay smooth while JavaScript is busy. `@alfayez/svelte-native/animation` gives you an `AnimatedView`, shared values to animate, and Reanimated's helpers that move them.
 
 ```svelte
 <!--- file: src/routes/+mobile.svelte --->
 <script lang="ts">
-	import { Pressable, Screen, Text } from '@example/svelte-native';
-	import { AnimatedView, createSharedValue, withSpring } from '@example/svelte-native/animation';
+	import { Pressable, Screen, Text } from '@alfayez/svelte-native';
+	import { AnimatedView, createSharedValue, withSpring } from '@alfayez/svelte-native/animation';
 
 	const x = createSharedValue(0);
 	let right = $state(false);
@@ -83,8 +83,8 @@ A worklet runs on the UI thread, where Svelte's state doesn't exist, so a workle
 
 ```svelte
 <script lang="ts">
-	import { Switch } from '@example/svelte-native';
-	import { AnimatedView, createSharedValue, withTiming } from '@example/svelte-native/animation';
+	import { Switch } from '@alfayez/svelte-native';
+	import { AnimatedView, createSharedValue, withTiming } from '@alfayez/svelte-native/animation';
 
 	let big = $state(false);
 	const grow = createSharedValue(0);

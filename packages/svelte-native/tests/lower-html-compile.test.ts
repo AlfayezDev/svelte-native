@@ -7,10 +7,10 @@ import { lowerPrimitives } from "../src/lower.ts";
  * compile, or into text whose line numbers moved (a compiler error then points at the wrong line), is a bug, whatever the markup. A property test writes many random files (elements nested
  * in elements, blocks, attributes, expressions that span lines), and the cases below are the ones it found and the ones a review did.
  */
-const compiled = (lowered: string) => compile(lowered, { filename: "/app/page.svelte", generate: "client", runes: true, experimental: { customRenderer: "@example/svelte-native/renderer" } }).js.code;
+const compiled = (lowered: string) => compile(lowered, { filename: "/app/page.svelte", generate: "client", runes: true, experimental: { customRenderer: "@alfayez/svelte-native/renderer" } }).js.code;
 const lower = (source: string) => lowerPrimitives(source, { filename: "page.svelte", html: true, warn: () => {} });
 const prelude = `<script lang="ts">
-  import { View, Text } from "@example/svelte-native";
+  import { View, Text } from "@alfayez/svelte-native";
   import { fade, fly, slide } from "svelte/transition";
   import { flip } from "svelte/animate";
   let a = $state(""); let b = $state(true); let n = $state(1); let c = $state("red"); let w = $state("10px");
@@ -70,7 +70,7 @@ test("an expression that spans lines is where it was, whichever way the lowering
 
 test("edits that start at the same place apply the longer one first: an insertion lands in front of what replaces the text it is in front of", () => {
   // `class:loud` is the first attribute of a View with a spread: the `nativeClass` written there and the directive that is taken out start at the same place.
-  const source = `<script>\n  import { View } from "@example/svelte-native";\n  let { rest } = $props();\n  let on = $state(true);\n</script>\n<View class:loud={on} {...rest} />`;
+  const source = `<script>\n  import { View } from "@alfayez/svelte-native";\n  let { rest } = $props();\n  let on = $state(true);\n</script>\n<View class:loud={on} {...rest} />`;
   const out = lowerPrimitives(source, { warn: () => {} });
   expect(out).toContain(`<native-view nativeClass={__svelteNativeClass({ "loud": on })}  {...__svelteNativeSpread(rest, { "loud": on })} ></native-view>`);
   compiled(out);

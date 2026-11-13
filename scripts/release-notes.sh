@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prints the CHANGELOG section of one version of @example/svelte-native: the notes of its GitHub Release (.github/workflows/release.yml).
+# Prints the CHANGELOG section of one version of @alfayez/svelte-native: the notes of its GitHub Release (.github/workflows/release.yml).
 #
 #   scripts/release-notes.sh <version> [changelog]      (default: packages/svelte-native/CHANGELOG.md)
 #

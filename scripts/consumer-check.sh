@@ -175,7 +175,7 @@ st_source_tarball() {
   cd "$package"
   cap pnpm pack --pack-destination "$tarballs"
   local tgz
-  tgz=$(ls "$tarballs"/example-svelte-native-*.tgz)
+  tgz=$(ls "$tarballs"/alfayez-svelte-native-*.tgz)
   echo "packed: $tgz ($(stat -c %s "$tgz") bytes, $(tar tzf "$tgz" | wc -l) files)"
   local listing
   listing=$(tar tzf "$tgz")
@@ -222,13 +222,13 @@ st_template() {
 st_install() {
   cd "$app"
   local library
-  if [ "$mode" = tarball ]; then library=$(ls "$tarballs"/example-svelte-native-*.tgz); else library="$git_url#$git_ref&path:packages/svelte-native"; fi
+  if [ "$mode" = tarball ]; then library=$(ls "$tarballs"/alfayez-svelte-native-*.tgz); else library="$git_url#$git_ref&path:packages/svelte-native"; fi
   echo "+ pnpm add $library $(ls "$tarballs"/svelte-*.tgz)"
   cap pnpm add "${pnpm_flags[@]}" "$library" "$(ls "$tarballs"/svelte-*.tgz)"
-  echo "package.json: \"@example/svelte-native\": \"$(spec_of @example/svelte-native)\""
+  echo "package.json: \"@alfayez/svelte-native\": \"$(spec_of @alfayez/svelte-native)\""
   echo "package.json: \"svelte\": \"$(spec_of svelte)\""
-  [ -f node_modules/@example/svelte-native/package.json ] || die "node_modules/@example/svelte-native is missing"
-  [ -f node_modules/@example/svelte-native/expo-module.config.json ] || die "the installed library has no expo-module.config.json"
+  [ -f node_modules/@alfayez/svelte-native/package.json ] || die "node_modules/@alfayez/svelte-native is missing"
+  [ -f node_modules/@alfayez/svelte-native/expo-module.config.json ] || die "the installed library has no expo-module.config.json"
   if [ "$mode" = git ]; then grep -m1 "resolution: {commit" pnpm-lock.yaml | sed 's/^ */lockfile: /'; fi
 }
 
@@ -236,7 +236,7 @@ st_patches() {
   cd "$app"
   # README, "Apply the patches": copy the files, declare them, install again.
   mkdir -p patches/svelte-native
-  cp node_modules/@example/svelte-native/patches/*.patch patches/svelte-native/
+  cp node_modules/@alfayez/svelte-native/patches/*.patch patches/svelte-native/
   echo "copied $(ls patches/svelte-native | wc -l) patch files"
   cat "$mode_dir/patched-dependencies.yaml" >>pnpm-workspace.yaml
   # Declaring the patches changes the lockfile; with CI=1 pnpm would refuse ("frozen installation"), so the first install after the declaration is not frozen.
@@ -276,7 +276,7 @@ st_add() {
   local library="$git_url#$git_ref&path:packages/svelte-native"
   echo "+ pnpm add $library"
   cap pnpm add "${pnpm_flags[@]}" "$library"
-  [ -f node_modules/@example/svelte-native/package.json ] || die "node_modules/@example/svelte-native is missing"
+  [ -f node_modules/@alfayez/svelte-native/package.json ] || die "node_modules/@alfayez/svelte-native is missing"
   # init has to run in a project that is not set up yet: no Svelte renderer, no Metro, no patches.
   cap pnpm exec svelte-native init --dry-run | sed -n '1,6p'
   [ -z "$(cd "$app" && ls patches 2>/dev/null)" ] || die "init --dry-run wrote patches"
@@ -341,7 +341,7 @@ const sources = JSON.parse(fs.readFileSync(map, "utf8")).sources;
 const text = fs.readFileSync(map, "utf8");
 const inRepo = sources.filter((source) => source.includes(`${repo}/`));
 if (text.includes(`${repo}/`)) { console.error(`the source map mentions ${repo}`); process.exit(1); }
-const need = ["src/routes/+mobile.svelte", "src/routes/+layout.mobile.svelte", "src/routes/details/+mobile.svelte", "@example/svelte-native/src/router.svelte.ts", "@example/svelte-native/src/fabric/index.ts"];
+const need = ["src/routes/+mobile.svelte", "src/routes/+layout.mobile.svelte", "src/routes/details/+mobile.svelte", "@alfayez/svelte-native/src/router.svelte.ts", "@alfayez/svelte-native/src/fabric/index.ts"];
 const missing = need.filter((suffix) => !sources.some((source) => source.endsWith(suffix)));
 if (missing.length) { console.error(`not in the bundle: ${missing.join(", ")}`); process.exit(1); }
 console.log(`bundle: ${fs.statSync(bundle).size} bytes, ${sources.length} modules, none from ${repo} (${inRepo.length})`);

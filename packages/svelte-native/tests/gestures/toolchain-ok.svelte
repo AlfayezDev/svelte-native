@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { View } from "@example/svelte-native";
-  import { Gesture } from "@example/svelte-native/gestures";
+  import { View } from "@alfayez/svelte-native";
+  import { Gesture } from "@alfayez/svelte-native/gestures";
   // A SharedValue stand-in: what an inline UI-thread callback may capture.
   const x = { value: 0, _isReanimatedSharedValue: true };
   export const pan = Gesture.Pan()

@@ -19,7 +19,7 @@
 import { convertInlineStyle } from "./css/inline.ts";
 import { ELEMENTS, INLINE, USER_AGENT_STYLES, hostTagOf, type Kind } from "./html-tags.ts";
 
-const PACKAGE = "@example/svelte-native";
+const PACKAGE = "@alfayez/svelte-native";
 const CORE = `${PACKAGE}/core`;
 const ROUTER = `${PACKAGE}/router`;
 
@@ -93,30 +93,30 @@ export type HtmlLowering = {
 
 const table = "tables have no native equivalent: lay the rows out with flex `div`s (`flex flex-row`)";
 const select = "there is no native select: show the choices as a list of `button`s, in a `Modal` if they should cover the screen";
-const web = "use `WebView` from `@example/svelte-native/foreign`";
+const web = "use `WebView` from `@alfayez/svelte-native/foreign`";
 const textLike = "use a `span` (or `p`)";
 const blockLike = "use a `div`";
 /** What to use instead of an HTML element that has no native one. */
 const HINTS: Record<string, string> = {
   table, thead: table, tbody: table, tfoot: table, tr: table, td: table, th: table, caption: table, colgroup: table, col: table,
-  canvas: "there is no canvas: draw with the SVG components of `@example/svelte-native/svg` (react-native-svg)",
-  svg: "SVG is react-native-svg here: import `Svg`, `Path`, ... from `@example/svelte-native/svg`",
-  video: "use `Video` (react-native-video) or `VideoView` (expo-video) from `@example/svelte-native/foreign`",
+  canvas: "there is no canvas: draw with the SVG components of `@alfayez/svelte-native/svg` (react-native-svg)",
+  svg: "SVG is react-native-svg here: import `Svg`, `Path`, ... from `@alfayez/svelte-native/svg`",
+  video: "use `Video` (react-native-video) or `VideoView` (expo-video) from `@alfayez/svelte-native/foreign`",
   audio: "there is no audio element: play sound with a native module such as expo-audio",
   iframe: web, embed: web, object: web,
   select, option: select, optgroup: select, datalist: select,
   progress: "use `ActivityIndicator`, or a `div` whose width follows the value",
   meter: "use a `div` whose width follows the value",
   picture: "use an `img`",
-  source: "use `img`, or `Video` from `@example/svelte-native/foreign`",
+  source: "use `img`, or `Video` from `@alfayez/svelte-native/foreign`",
   details: blockLike, summary: blockLike, menu: "use a `ul`", legend: textLike, address: blockLike, hgroup: blockLike, search: blockLike,
   bdi: textLike, bdo: textLike, rp: textLike, rt: textLike, ruby: textLike, wbr: textLike, output: textLike,
   map: "image maps have no native equivalent", area: "image maps have no native equivalent",
-  track: "use `Video` from `@example/svelte-native/foreign`",
+  track: "use `Video` from `@alfayez/svelte-native/foreign`",
   template: "there is no template element: use a snippet (`{#snippet}`)", noscript: "there is no noscript on a device",
-  link: "there is nothing to link on a device", meta: "there is nothing to describe on a device", base: "there is no base URL on a device", param: "use `WebView` from `@example/svelte-native/foreign`",
+  link: "there is nothing to link on a device", meta: "there is nothing to describe on a device", base: "there is no base URL on a device", param: "use `WebView` from `@alfayez/svelte-native/foreign`",
 };
-const DEFAULT_HINT = "use a `div` (View) or a `span` (Text), or a component of `@example/svelte-native`";
+const DEFAULT_HINT = "use a `div` (View) or a `span` (Text), or a component of `@alfayez/svelte-native`";
 const HTML_NAMES = new Set([...Object.keys(ELEMENTS), ...Object.keys(HINTS)]);
 // What the gate looks for: a tag in lower case that is not a host tag (`native-view`), a `script` or a `style` (every file has those), which is any element of the markup that is not
 // a component (`<center>` and a custom element are errors, so they are looked for too), and the special elements Svelte's custom renderer refuses.
@@ -131,10 +131,10 @@ const UNSUPPORTED_TYPES: Record<string, string> = {
   radio: "there is no native radio: use a `button` per choice and keep the chosen one in state",
   submit: "use a `button`", reset: "use a `button`", button: "use a `button`", image: "use a `button` around an `img`",
   file: "there is no file input: pick files with a native module such as expo-document-picker",
-  range: "there is no slider here: build one with gestures (`@example/svelte-native/gestures`)",
+  range: "there is no slider here: build one with gestures (`@alfayez/svelte-native/gestures`)",
   color: "there is no color picker", hidden: "keep the value in a variable",
-  date: "use `DateTimePicker` from `@example/svelte-native/foreign`", time: "use `DateTimePicker` from `@example/svelte-native/foreign`",
-  "datetime-local": "use `DateTimePicker` from `@example/svelte-native/foreign`", month: "use `DateTimePicker` from `@example/svelte-native/foreign`", week: "use `DateTimePicker` from `@example/svelte-native/foreign`",
+  date: "use `DateTimePicker` from `@alfayez/svelte-native/foreign`", time: "use `DateTimePicker` from `@alfayez/svelte-native/foreign`",
+  "datetime-local": "use `DateTimePicker` from `@alfayez/svelte-native/foreign`", month: "use `DateTimePicker` from `@alfayez/svelte-native/foreign`", week: "use `DateTimePicker` from `@alfayez/svelte-native/foreign`",
 };
 
 /** The events Svelte's transitions send the element they play on (`element.dispatchEvent`: `NativeNode.dispatchEvent` calls the listeners), so `onintroend={...}` runs on a device. */

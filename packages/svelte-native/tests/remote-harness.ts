@@ -168,8 +168,8 @@ export async function loadClient(entry: string, root: string = fixtureRoot, serv
       name: "remote-client",
       setup(builder) {
         builder.onResolve({ filter: /^svelte(\/|$)/ }, (args) => (args.pluginData === "inner" ? undefined : builder.resolve(args.path, { resolveDir: import.meta.dirname, kind: args.kind, pluginData: "inner" })));
-        builder.onResolve({ filter: /^@example\/svelte-native\/remote\/(runtime|globals)$/ }, (args) => ({ path: resolve(import.meta.dirname, `../src/remote/${args.path.split("/").pop()}.ts`) }));
-        builder.onResolve({ filter: /^@example\/svelte-native\/remote$/ }, () => ({ path: resolve(import.meta.dirname, "../src/remote/index.ts") }));
+        builder.onResolve({ filter: /^@alfayez\/svelte-native\/remote\/(runtime|globals)$/ }, (args) => ({ path: resolve(import.meta.dirname, `../src/remote/${args.path.split("/").pop()}.ts`) }));
+        builder.onResolve({ filter: /^@alfayez\/svelte-native\/remote$/ }, () => ({ path: resolve(import.meta.dirname, "../src/remote/index.ts") }));
         builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../src/environment.ts") }));
         builder.onResolve({ filter: /^(react-native|expo-constants|expo\/fetch)/ }, (args) => ({ path: args.path, namespace: "stub" }));
         builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? "export {};", loader: "js" }));

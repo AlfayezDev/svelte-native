@@ -23,7 +23,7 @@ export class RemoteConfigError extends Error {
 /** The key of `extra` the Expo plugin and `app.config.ts` write the host under: `extra.svelteNative.remote`. */
 export const EXTRA_KEY = "svelteNative";
 
-export const HOW = "Set `extra.svelteNative.remote.origin` in app.config.ts (the \"@example/svelte-native/expo\" plugin's `remote` option writes it), or call `configureRemote({ origin })` before the first remote function.";
+export const HOW = "Set `extra.svelteNative.remote.origin` in app.config.ts (the \"@alfayez/svelte-native/expo\" plugin's `remote` option writes it), or call `configureRemote({ origin })` before the first remote function.";
 
 /** `https://host[:port]` of a URL string. Throws `RemoteConfigError` for anything that is not an http(s) origin: a path, a query, credentials or another protocol. */
 export function normalizeOrigin(value: unknown): string {

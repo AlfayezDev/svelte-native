@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, type Snippet } from "svelte";
-  import { ActivityIndicator, bootSummary, useRouter } from "@example/svelte-native";
+  import { ActivityIndicator, bootSummary, useRouter } from "@alfayez/svelte-native";
   import * as Font from "expo-font";
   import regularFont from "../../assets/native/fonts/IBMPlexSansArabic-Regular.ttf";
   import mediumFont from "../../assets/native/fonts/IBMPlexSansArabic-Medium.ttf";

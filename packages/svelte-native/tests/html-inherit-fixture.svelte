@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Text, View } from "@example/svelte-native";
+  import { Text, View } from "@alfayez/svelte-native";
   const probe = globalThis as unknown as { __htmlInherit: Record<string, unknown> };
   let color = $state("white");
   let big = $state(true);

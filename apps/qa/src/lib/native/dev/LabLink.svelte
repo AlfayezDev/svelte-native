@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { useRouter } from "@example/svelte-native";
+  import { useRouter } from "@alfayez/svelte-native";
   import Button from "#lib/native/components/Button.svelte";
   /** The way into the lab from the screens that offer it; the product has neither this module nor the route (shared code renders it only behind `nativeLabEnabled`). */
   const router = useRouter();

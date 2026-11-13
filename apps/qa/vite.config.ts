@@ -1,5 +1,5 @@
 import { defineConfig } from "vite";
-import { svelteNative } from "@example/svelte-native/vite";
+import { svelteNative } from "@alfayez/svelte-native/vite";
 import { remoteLabModule, remoteLabServed } from "./remote-lab.ts";
 
 // The library's default variant (no `APP_VARIANT`) is `app`; this app's is `qa`.

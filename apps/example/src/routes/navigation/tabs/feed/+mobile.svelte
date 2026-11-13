@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Pressable, SafeAreaView, Screen, ScrollView, Text, useRouter } from "@example/svelte-native";
+  import { Pressable, SafeAreaView, Screen, ScrollView, Text, useRouter } from "@alfayez/svelte-native";
   import { useDemo } from "#lib/demo.ts";
   import { text, theme } from "#lib/theme.svelte.ts";
 

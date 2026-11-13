@@ -6,7 +6,7 @@ allowBuilds:
 overrides:
   expo-modules-core: 57.0.23
   "@react-native/metro-config": 0.86.3
-# The library's patches, copied from node_modules/@example/svelte-native/patches/ into patches/svelte-native/ (README, "Apply the patches").
+# The library's patches, copied from node_modules/@alfayez/svelte-native/patches/ into patches/svelte-native/ (README, "Apply the patches").
 # Only the libraries this app installs; the view libraries' patches (lottie, maps, pdf, video) are declared when the app installs them.
 patchedDependencies:
   "@sveltejs/kit@3.1.1": patches/svelte-native/@sveltejs__kit@3.1.1.patch

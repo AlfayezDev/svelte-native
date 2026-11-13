@@ -1351,7 +1351,7 @@ function hostTagOf(name) {
 var USER_AGENT_STYLES = new Set("b strong em i cite dfn var u ins s del code kbd samp pre small sub sup mark h1 h2 h3 h4 h5 h6".split(" "));
 
 // src/lower-html.ts
-var PACKAGE = "@example/svelte-native";
+var PACKAGE = "@alfayez/svelte-native";
 var CORE = `${PACKAGE}/core`;
 var ROUTER = `${PACKAGE}/router`;
 var SOURCE_HELPER = "__svelteNativeSource";
@@ -1385,7 +1385,7 @@ var LINK = "__svelteNativeLink";
 var COMPONENTS = { TextInput: "SvelteNativeTextInput", Switch: "SvelteNativeSwitch", Modal: "SvelteNativeModal" };
 var table = "tables have no native equivalent: lay the rows out with flex `div`s (`flex flex-row`)";
 var select = "there is no native select: show the choices as a list of `button`s, in a `Modal` if they should cover the screen";
-var web = "use `WebView` from `@example/svelte-native/foreign`";
+var web = "use `WebView` from `@alfayez/svelte-native/foreign`";
 var textLike = "use a `span` (or `p`)";
 var blockLike = "use a `div`";
 var HINTS = {
@@ -1399,9 +1399,9 @@ var HINTS = {
   caption: table,
   colgroup: table,
   col: table,
-  canvas: "there is no canvas: draw with the SVG components of `@example/svelte-native/svg` (react-native-svg)",
-  svg: "SVG is react-native-svg here: import `Svg`, `Path`, ... from `@example/svelte-native/svg`",
-  video: "use `Video` (react-native-video) or `VideoView` (expo-video) from `@example/svelte-native/foreign`",
+  canvas: "there is no canvas: draw with the SVG components of `@alfayez/svelte-native/svg` (react-native-svg)",
+  svg: "SVG is react-native-svg here: import `Svg`, `Path`, ... from `@alfayez/svelte-native/svg`",
+  video: "use `Video` (react-native-video) or `VideoView` (expo-video) from `@alfayez/svelte-native/foreign`",
   audio: "there is no audio element: play sound with a native module such as expo-audio",
   iframe: web,
   embed: web,
@@ -1413,7 +1413,7 @@ var HINTS = {
   progress: "use `ActivityIndicator`, or a `div` whose width follows the value",
   meter: "use a `div` whose width follows the value",
   picture: "use an `img`",
-  source: "use `img`, or `Video` from `@example/svelte-native/foreign`",
+  source: "use `img`, or `Video` from `@alfayez/svelte-native/foreign`",
   details: blockLike,
   summary: blockLike,
   menu: "use a `ul`",
@@ -1430,15 +1430,15 @@ var HINTS = {
   output: textLike,
   map: "image maps have no native equivalent",
   area: "image maps have no native equivalent",
-  track: "use `Video` from `@example/svelte-native/foreign`",
+  track: "use `Video` from `@alfayez/svelte-native/foreign`",
   template: "there is no template element: use a snippet (`{#snippet}`)",
   noscript: "there is no noscript on a device",
   link: "there is nothing to link on a device",
   meta: "there is nothing to describe on a device",
   base: "there is no base URL on a device",
-  param: "use `WebView` from `@example/svelte-native/foreign`"
+  param: "use `WebView` from `@alfayez/svelte-native/foreign`"
 };
-var DEFAULT_HINT = "use a `div` (View) or a `span` (Text), or a component of `@example/svelte-native`";
+var DEFAULT_HINT = "use a `div` (View) or a `span` (Text), or a component of `@alfayez/svelte-native`";
 var HTML_NAMES = /* @__PURE__ */ new Set([...Object.keys(ELEMENTS), ...Object.keys(HINTS)]);
 var OPENING = /<(?!native-|script[\s>]|style[\s>])[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?=[\s/>])|<svelte:(?:head|window|document|body|element)(?=[\s/>])/;
 function mayHaveHtml(content) {
@@ -1451,14 +1451,14 @@ var UNSUPPORTED_TYPES = {
   button: "use a `button`",
   image: "use a `button` around an `img`",
   file: "there is no file input: pick files with a native module such as expo-document-picker",
-  range: "there is no slider here: build one with gestures (`@example/svelte-native/gestures`)",
+  range: "there is no slider here: build one with gestures (`@alfayez/svelte-native/gestures`)",
   color: "there is no color picker",
   hidden: "keep the value in a variable",
-  date: "use `DateTimePicker` from `@example/svelte-native/foreign`",
-  time: "use `DateTimePicker` from `@example/svelte-native/foreign`",
-  "datetime-local": "use `DateTimePicker` from `@example/svelte-native/foreign`",
-  month: "use `DateTimePicker` from `@example/svelte-native/foreign`",
-  week: "use `DateTimePicker` from `@example/svelte-native/foreign`"
+  date: "use `DateTimePicker` from `@alfayez/svelte-native/foreign`",
+  time: "use `DateTimePicker` from `@alfayez/svelte-native/foreign`",
+  "datetime-local": "use `DateTimePicker` from `@alfayez/svelte-native/foreign`",
+  month: "use `DateTimePicker` from `@alfayez/svelte-native/foreign`",
+  week: "use `DateTimePicker` from `@alfayez/svelte-native/foreign`"
 };
 var TRANSITION_EVENTS = ["introstart", "introend", "outrostart", "outroend"];
 var INPUT_EVENTS = ["input", "change", "focus", "blur", "keydown", "keyup"];
@@ -2009,7 +2009,7 @@ ${problems.map((problem) => `  ${problem}`).join("\n")}`);
 }
 
 // src/lower.ts
-var PACKAGE2 = "@example/svelte-native";
+var PACKAGE2 = "@alfayez/svelte-native";
 var GESTURES = `${PACKAGE2}/gestures`;
 var RENDERER = `${PACKAGE2}/renderer`;
 var SPREAD_HELPER = "__svelteNativeSpread";

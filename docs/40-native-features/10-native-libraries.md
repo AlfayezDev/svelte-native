@@ -14,7 +14,7 @@ Import the library's functions and call them, as you would in any JavaScript pro
 ```svelte
 <!--- file: src/routes/+mobile.svelte --->
 <script lang="ts">
-	import { Pressable, Screen, Text } from '@example/svelte-native';
+	import { Pressable, Screen, Text } from '@alfayez/svelte-native';
 	import * as Haptics from 'expo-haptics';
 </script>
 
@@ -46,7 +46,7 @@ There is no React in a Svelte Native app, so a library's React hooks can't run. 
 ```svelte
 <!--- file: src/routes/location/+mobile.svelte --->
 <script lang="ts">
-	import { Screen, Text } from '@example/svelte-native';
+	import { Screen, Text } from '@alfayez/svelte-native';
 	import * as Location from 'expo-location';
 
 	let position = $state<Location.LocationObject | null>(null);
@@ -67,11 +67,11 @@ To keep a value up to date, put the library's subscription in an `$effect` and r
 
 ## Calling a native module directly
 
-When a library has no plain-JavaScript entry, or you wrote a native module yourself, call the module by name. `@example/svelte-native/native-modules` has the two lookups React Native uses, and Expo modules work through `expo-modules-core` as usual:
+When a library has no plain-JavaScript entry, or you wrote a native module yourself, call the module by name. `@alfayez/svelte-native/native-modules` has the two lookups React Native uses, and Expo modules work through `expo-modules-core` as usual:
 
 ```ts
 /// file: src/lib/native.ts
-import { nativeModule, turboModule } from '@example/svelte-native/native-modules';
+import { nativeModule, turboModule } from '@alfayez/svelte-native/native-modules';
 import { requireNativeModule } from 'expo-modules-core';
 
 // A TurboModule, by name. Throws when the build doesn't have it.

@@ -16,7 +16,7 @@ Svelte Native lets you write Android and iOS apps as Svelte 5 components. Your c
 ```svelte
 <!--- file: src/routes/+mobile.svelte --->
 <script lang="ts">
-	import { Pressable, Screen, Text, View } from '@example/svelte-native';
+	import { Pressable, Screen, Text, View } from '@alfayez/svelte-native';
 
 	let taps = $state(0);
 </script>
@@ -63,7 +63,7 @@ Not there yet:
 - No Svelte transitions, no DOM libraries, no React components, and no Expo dev client.
 - Building on Expo's servers (EAS Build) is untested.
 - Svelte Native needs a build of Svelte from an [open pull request](https://github.com/sveltejs/svelte/pull/18042), and SvelteKit 3.1.1 exactly. `init` installs both.
-- `@example/svelte-native` is a working name. The repository is private for now, and you install from it over SSH.
+- `@alfayez/svelte-native` is a working name. The repository is private for now, and you install from it over SSH.
 
 ## Next steps
 

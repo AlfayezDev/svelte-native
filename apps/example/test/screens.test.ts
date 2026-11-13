@@ -124,6 +124,9 @@ beforeAll(async () => {
   // The library loads Reanimated when a screen first animates, and its bundle always names it: the library's own stand-ins for it.
   const { reanimatedStubs } = (await import(join(libraryTests, "reanimated-stubs.ts"))) as { reanimatedStubs: Record<string, string> };
   Object.assign(stubs, reanimatedStubs);
+  // The main entry exports the SVG components: the library's host modules for them import react-native-svg's extraction code, which these bundles stub.
+  const { svgLibraryStubs } = (await import(join(libraryTests, "svg-library-stubs.ts"))) as { svgLibraryStubs: Record<string, string> };
+  Object.assign(stubs, svgLibraryStubs);
   // The library's stand-in knows `withTiming` only; the animation and gestures screens also spring and repeat, which the stand-in treats like a timing: the animation is recorded, not played.
   stubs["react-native-reanimated"] += "\nexport const withSpring = (to, config, callback) => withTiming(to, config, callback); export const withRepeat = (animation) => animation;";
   directory = await mkdtemp(join(process.env.TMPDIR ?? tmpdir(), "example-screens-"));

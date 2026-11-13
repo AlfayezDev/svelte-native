@@ -76,6 +76,10 @@ const fake = {
   registerEventHandler: () => {},
 };
 (globalThis as { nativeFabricUIManager?: unknown }).nativeFabricUIManager = fake;
+// React Native's global object is also `window`, and it has `requestAnimationFrame` (Svelte's `Spring` and `Tween` run on it, and `svelte/motion` reads `window.matchMedia`, which React Native lacks); the runtime of this test has neither.
+(globalThis as { window?: unknown }).window ??= globalThis;
+(globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame ??= (callback: (time: number) => void) => setTimeout(() => callback(performance.now()), 16);
+(globalThis as { __DEV__?: boolean }).__DEV__ = false;
 (globalThis as { __navigationInsets?: unknown }).__navigationInsets = { top: 24, right: 0, bottom: 34, left: 0, keyboardHeight: 0, keyboardVisible: false, frame: { x: 0, y: 0, width: 400, height: 800 } };
 
 /** What the screens import from React Native and Expo, as the smallest modules that do the job; the rest of `react-native` is an empty module. */
@@ -93,9 +97,15 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/Components/Keyboard/Keyboard": "export default { isVisible: () => false, dismiss() {} };",
   "react-native/Libraries/EventEmitter/RCTDeviceEventEmitter": "export default { addListener: () => ({ remove() {} }) };",
   "react-native/Libraries/NativeComponent/ViewConfig": "export const createViewConfig = (partial) => partial;",
+  // `$app/env` reads the app's version from the config embedded in the build; `svelte/motion` asks the system whether it should reduce motion.
+  "expo-constants": "export default { expoConfig: { version: '1.0.0' } };",
+  "react-native/Libraries/Components/AccessibilityInfo/AccessibilityInfo": "export default { isReduceMotionEnabled: () => Promise.resolve(false), addEventListener: () => ({ remove() {} }) };",
   "expo-modules-core": "export const EventEmitter = class {}; export const requireOptionalNativeModule = (name) => name === 'SvelteEngine' ? { install: () => false, getInsets: () => globalThis.__navigationInsets, addListener: () => ({ remove() {} }) } : null;",
   "react-native": "export const AppRegistry = { registerRunnable() {} };",
 };
+
+// What Metro resolves SvelteKit's modules to (`withSvelteNative`): the same function, so the bundle below imports the library's files for them.
+const { kitResolution } = (await import(join(library, "src/kit/modules.ts"))) as { kitResolution(moduleName: string, origin: string): string | undefined };
 
 // The options the library's transformer compiles a component with (runes mode for the app's own components), as the library's tests use them.
 const { componentOptions, lowersHtml } = (await import(join(library, "src/compile-options.ts"))) as { componentOptions(filename: string): CompileOptions; lowersHtml(filename: string): boolean };
@@ -119,6 +129,8 @@ const svelteCompiler: Plugin = {
 type Mounted = { startSurface(surface: number, component: unknown, props: Record<string, unknown>): unknown; tick(): Promise<void>; Fixture: unknown };
 let mounted: Mounted;
 let directory: string;
+/** The files the screens' bundle holds (esbuild's metafile: paths from the working directory, so `../../packages/svelte-native/src/...`). */
+let inputs: string[] = [];
 
 beforeAll(async () => {
   // The library loads Reanimated when a screen first animates, and its bundle always names it: the library's own stand-ins for it.
@@ -158,20 +170,26 @@ beforeAll(async () => {
       contents: `import Fixture from "./Fixture.svelte"; import { startSurface } from ${JSON.stringify(join(library, "src/fabric/host.ts"))}; import { tick } from "svelte"; export { Fixture, startSurface, tick };`,
       resolveDir: join(directory, "fixture"),
     },
-    bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], write: false, nodePaths: [join(app, "node_modules"), join(app, "../../node_modules")],
+    bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], write: false, metafile: true, nodePaths: [join(app, "node_modules"), join(app, "../../node_modules")],
     loader: { ".png": "dataurl" },
     plugins: [svelteCompiler, {
       name: "fabric-fixture",
       setup(builder) {
-        builder.onResolve({ filter: /^(react-native|expo-modules-core)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
+        builder.onResolve({ filter: /^(react-native|expo-modules-core|expo-constants)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
         builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? "export {};", loader: "js" }));
         builder.onResolve({ filter: /\/view-configs\.ts$/ }, () => ({ path: join(libraryTests, "view-configs-stub.ts") }));
         builder.onResolve({ filter: /^@alfayez\/svelte-native\/renderer$/ }, () => ({ path: join(library, "src/renderer.ts") }));
         builder.onResolve({ filter: /^@alfayez\/svelte-native\/routes$/ }, () => ({ path: join(directory, ".svelte-native/routes.test.ts") }));
         builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: join(library, "src/environment.ts") }));
+        // SvelteKit's `$app/*` and `svelte/motion`, as Metro answers them; anything else the function leaves to esbuild.
+        builder.onResolve({ filter: /^(?:\$app\/|svelte\/motion$)/ }, (args) => {
+          const path = kitResolution(args.path, args.importer);
+          return path === undefined ? undefined : { path };
+        });
       },
     }],
   });
+  inputs = Object.keys(bundle.metafile?.inputs ?? {});
   const file = join(directory, "bundle.mjs");
   await writeFile(file, bundle.outputFiles[0]?.contents ?? "");
   mounted = (await import(pathToFileURL(file).href)) as Mounted;
@@ -241,7 +259,7 @@ async function play(route: string, from?: string) {
     Object.assign(console, logged);
   }
   const end = log.map((entry) => /^\[demo\] end \S+ after (\d+) ms$/.exec(entry)).find((match) => match !== null);
-  return { log, problems, ms: end ? Number(end[1]) : undefined };
+  return { surface, log, problems, ms: end ? Number(end[1]) : undefined };
 }
 
 const routes = coreFeatures.flatMap((feature) => [feature.route, ...(feature.also ?? [])]).map((route) => route.replace("[id]", "7"));
@@ -294,6 +312,28 @@ describe("every screen of the core tour mounts", () => {
     expect(texts(surface)).toContain("Push item 8");
   });
 
+  test("the SvelteKit modules screen: imports resolve to the library's files, and the page, env and url prop answer from the device", async () => {
+    // Metro's answer for each import (`kitResolution`, the function of `withSvelteNative`) is the library's file for it, and SvelteKit's own implementation of them is not bundled.
+    for (const file of ["navigation", "state", "env", "paths", "motion"]) expect([file, inputs.some((input) => input.endsWith(`packages/svelte-native/src/kit/${file}.ts`))]).toEqual([file, true]);
+    expect(inputs.filter((input) => /node_modules\/@sveltejs\/kit\/src\/runtime\/app\//.test(input))).toEqual([]);
+    const { surface, problems } = await mount("/sveltekit?filter=open");
+    expect(problems).toEqual([]);
+    expect(titles(surface)).toContain("SvelteKit modules");
+    const lines = texts(surface);
+    // `$app/env`: mobile true, browser false, the version of the app config; `page`: the pathname, the search and the route id of this screen.
+    for (const line of ["mobile", "true", "browser", "false", "1.0.0", "/sveltekit", "?filter=open", "url.searchParams.get(\"filter\") is open", "/navigation/stack/7", "prefersReducedMotion.current is false"]) expect([line, lines.includes(line)]).toEqual([line, true]);
+  });
+
+  test("a link with another search to the visible /sveltekit screen changes its url prop and `page` in place", async () => {
+    const { surface } = await mount("/sveltekit");
+    expect(texts(surface)).toContain("(empty)");
+    (globalThis as { __linkHandlers?: ((event: { url: string }) => void)[] }).__linkHandlers?.at(-1)?.({ url: "svelte-native:///sveltekit?filter=done" });
+    await turns();
+    expect(texts(surface)).toContain("?filter=done");
+    expect(texts(surface)).toContain("url.searchParams.get(\"filter\") is done");
+    expect(titles(surface)).toEqual(["SvelteKit modules"]);
+  });
+
   test("the tab bar opens on its first tab, with its own header", async () => {
     const { surface } = await mount("/navigation/tabs");
     expect(titles(surface)).toContain("Feed");
@@ -314,6 +354,17 @@ describe("every demo script plays to its end", () => {
       expect([route, ms, ms !== undefined && ms <= recorded + 50 && ms >= recorded - 1000]).toEqual([route, ms, true]);
     });
   }
+
+  test("/sveltekit: goto with another search changes the url in place (the typed word stays), and the last step pushes the screen resolve built", async () => {
+    const { surface, problems } = await play("/sveltekit");
+    expect(problems).toEqual([]);
+    const lines = texts(surface);
+    expect(lines).toContain("url.searchParams.get(\"filter\") is all");
+    // `page` is the screen on top, which is item 7 now, while this screen keeps reading its own `url`.
+    expect(lines).toContain("/navigation/stack/[id]");
+    expect(JSON.stringify(find(roots[surface] ?? [], "AndroidTextInput").map((node) => node.props))).toContain("Groceries");
+    expect(titles(surface)).toEqual(["SvelteKit modules", "Item 7"]);
+  });
 
   test("a screen that has a script is played here, or is listed with the library that stops it", () => {
     expect(scripted.length).toBe(playable.length + Object.keys(needsNativeLibrary).length);

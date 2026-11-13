@@ -5,7 +5,7 @@ import { load, anim } from "./harness.ts";
 test("the entry exports the builders, the sugar, the constants and worklets' runOnJS and scheduleOnRN", async () => {
   const m = await load({ fixture: "gesture-fixture.svelte" });
   const entry = m.gestures;
-  expect(Object.keys(entry).sort()).toEqual(["ActionType", "Directions", "Gesture", "GestureDetector", "GestureStateManager", "PointerType", "State", "TouchEventType", "gesture", "runOnJS", "scheduleOnRN"]);
+  expect(Object.keys(entry).sort()).toEqual(["ActionType", "Directions", "Gesture", "GestureDetector", "GestureStateManager", "PointerType", "State", "TouchEventType", "gesture", "gestureAttachment", "runOnJS", "scheduleOnRN"]);
   expect(anim()).toBeUndefined(); // listing them read nothing lazy
 
   expect(Object.keys(entry.Gesture).sort()).toEqual(["Exclusive", "Fling", "Hover", "LongPress", "Manual", "Native", "Pan", "Pinch", "Race", "Rotation", "Simultaneous", "Tap"]);
@@ -17,6 +17,7 @@ test("the entry exports the builders, the sugar, the constants and worklets' run
   expect(entry.PointerType.STYLUS).toBe(1);
   expect(typeof entry.GestureDetector).toBe("function");
   expect(typeof entry.gesture).toBe("function");
+  expect(typeof entry.gestureAttachment).toBe("function");
 
   // The two worklets exports are the stub-then-real bindings of `animation.ts`: once Reanimated is loaded they are its own.
   const callback = () => 1;
@@ -40,3 +41,4 @@ test("a Gesture object builds RNGH's gestures: composition, relations and config
   expect(composed.toGestureArray().map((gesture) => gesture.handlerName)).toEqual(["TapGestureHandler", "TapGestureHandler"]);
   expect(G.Pan().activeOffsetX([-3, 3]).config).toEqual({ activeOffsetXStart: -3, activeOffsetXEnd: 3 });
 });
+

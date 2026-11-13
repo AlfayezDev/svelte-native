@@ -42,7 +42,7 @@ export const GestureStateManager: typeof import("./animated.ts").GestureStateMan
 });
 
 export { default as GestureDetector } from "../components/GestureDetector.svelte";
-export { gesture } from "./action.ts";
+export { gesture, gestureAttachment } from "./action.ts";
 export { State, Directions, PointerType, TouchEventType, ActionType } from "./constants.js";
 export { runOnJS, scheduleOnRN } from "../animation.ts";
 export type * from "./types.ts";

@@ -60,3 +60,36 @@ handling are retained. This draft does not replace them, promise automatic
 keyboard avoidance for every layout, or claim native device validation. A full
 parity gate still needs iOS/Android QA for nested scroll gestures, screen readers,
 keyboard focus, interrupted transitions and interactive system back.
+
+## Follow-through and verification boundaries
+
+This PR also normalizes ordinary HTML ARIA boolean/numeric literals for Fabric,
+accepts whitespace-separated `aria-labelledby` IDs, and keeps explicit native
+accessibility props when an alias is null. Keyboard avoidance now compares
+window-space coordinates consistently for overlays below headers and clamps a
+shrunk view to zero rather than producing negative height.
+
+The remaining platform work is not hidden behind this API:
+
+| Area | Current implementation | What still needs validation or design |
+| --- | --- | --- |
+| Basic drag/swipe | JS-state callbacks, axis arbitration, web pointer capture | Nested native scroll views, platform latency, physical-device cancellation |
+| Gesture composition | Existing RNGH builders and relationships | No automatic inference of simultaneous/exclusive intent from arbitrary Svelte markup |
+| Accessibility | HTML ARIA normalization and visible alternative controls | VoiceOver/TalkBack gestures, focus announcements, hardware keyboard ordering |
+| Motion | Existing Svelte motion/transition bridges, reduced-motion race fix | Full transition fixture validation with a compiler build supporting custom-renderer transitions |
+| Navigation | Existing forward forks and disposal guards | Interactive back progress/cancel/history contract and platform device QA |
+| Keyboard/safe area | Existing components plus coordinate correction | Rotation, floating keyboards and keyboard animation on iOS/Android |
+| Remote files | Explicit immutable bytes in Kit's binary form format | Streaming/resumable/background upload transport and server/device round trip |
+
+A framework cannot safely infer destructive swipe intent, request filesystem
+permissions, or turn arbitrary commands into speculative side effects. Those
+remain explicit application decisions. Server commands must still enforce
+identity and authorization; speculative UI preparation is not authorization to
+execute writes.
+
+For an existing native Gesture builder or composition, use
+`{@attach gestureAttachment(pan)}` from `@alfayez/svelte-native` on a native host
+(or a lowered primitive). Svelte reattaches when the gesture expression changes.
+Teardown only removes the gesture that attachment still owns, so it cannot erase
+a newer attachment's gesture. This native attachment is not a browser Gesture
+builder; use the portable interaction subpath for basic web/native drags.

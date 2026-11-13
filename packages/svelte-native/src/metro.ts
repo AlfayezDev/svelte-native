@@ -6,6 +6,7 @@ import type { MetroConfig as ConfigT } from "expo/metro-config";
 import { syncRoutes, watchRoutes } from "./build.ts";
 import { buildClassesSync, reportSkipped, reportUnsupported, watchClasses } from "./css/build.ts";
 import { asyncEnvironment, runesEnvironment } from "./compile-options.ts";
+import { kitResolution } from "./kit/modules.ts";
 import { packageRoot, sourceFile } from "./package-root.ts";
 import { remoteResolution } from "./remote/transform.ts";
 import { assertCustomRenderer } from "./svelte-build.ts";
@@ -230,9 +231,12 @@ export function withSvelteNative(config: ConfigT, options: SvelteNativeMetroOpti
     const remote = remoteResolution(moduleName, context.originModulePath);
     if (remote !== undefined) return { type: "sourceFile", filePath: remote };
     // A `*.remote.ts` module is replaced by client stubs before its imports are read (the transformer), so `$app/server` is only reached by code that is not one.
-    if (moduleName.startsWith("$env/") && moduleName.includes("private") || moduleName === "$app/server") {
+    if (moduleName.startsWith("$env/") && moduleName.includes("private") || moduleName === "$app/server" || moduleName === "$app/env/private") {
       throw new Error(`Server-only import in native bundle: ${moduleName}`);
     }
+    // SvelteKit's `$app/*` modules and `svelte/motion` on the device (`kit/modules.ts`).
+    const kit = kitResolution(moduleName, context.originModulePath);
+    if (kit !== undefined) return { type: "sourceFile", filePath: kit };
     // Svelte's reactive window values read the DOM's `window`; on the device they are `Dimensions`' (`reactivity-window.ts`).
     if (moduleName === "svelte/reactivity/window") return { type: "sourceFile", filePath: sourceFile("reactivity-window.ts") };
     if (moduleName === "svelte" || moduleName.startsWith("svelte/")) {

@@ -25,6 +25,11 @@ describe("byte-backed native uploads", () => {
       expect(() => new NativeFile(new Uint8Array(), name)).toThrow(TypeError);
     }
     expect(() => new NativeFile("file:///secret" as unknown as Uint8Array, "a")).toThrow(TypeError);
+    for (const lastModified of [NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(() => new NativeFile(new Uint8Array(), "a", { lastModified })).toThrow(/safe integer/);
+    }
+    expect(new NativeFile(new Uint8Array(), "a", { lastModified: 123.9 }).lastModified).toBe(123);
+    expect(() => new NativeFile(new Uint8Array(), 123 as unknown as string)).toThrow(TypeError);
     expect(new NativeFile(new Uint8Array(), "empty", { maxBytes: 0 }).size).toBe(0);
   });
   test("binary form adapter appends exact bytes, including zero bytes", () => {

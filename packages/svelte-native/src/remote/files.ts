@@ -12,9 +12,9 @@ export class NativeFile {
     if (bytes.byteLength > limit) throw new RangeError(`NativeFile exceeds the ${limit} byte upload limit`);
     // Control characters are intentionally rejected from upload filenames.
     // eslint-disable-next-line no-control-regex
-    if (!name || /[\\/\u0000-\u001f]/.test(name)) throw new TypeError("NativeFile requires a filename without path separators or control characters");
+    if (typeof name !== "string" || !name || /[\\/\u0000-\u001f]/.test(name)) throw new TypeError("NativeFile requires a filename without path separators or control characters");
     const modified = options.lastModified ?? Date.now();
-    if (!Number.isFinite(modified)) throw new TypeError("lastModified must be finite");
+    if (!Number.isSafeInteger(Math.trunc(modified))) throw new TypeError("lastModified must truncate to a safe integer");
     this.#data = Uint8Array.from(bytes);
     this.name = name;
     this.type = /^[\x20-\x7e]*$/.test(options.type ?? "") ? (options.type ?? "").toLowerCase() : "";

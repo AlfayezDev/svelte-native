@@ -51,9 +51,11 @@ authorization, upload limits or content validation.
 `router.prepare()` already integrates Svelte forks for forward navigation when
 async compilation is enabled. The new lifecycle guards make prepared handles
 inert after router disposal, including handles superseded by another prepare.
-This is not Android predictive back: native progress, cancellation, history and
-commit ownership still require a device-verified platform contract before adding
-a speculative back API.
+This is not a Svelte-visible predictive-back API. Android already handles native
+predictive back in `EngineStack` (start/progress/cancel/commit), and iOS uses the
+navigation controller's interactive pop. A previous mounted screen needs no new
+fork simply to be revealed. Exposing native progress to speculative Svelte work
+would need a separate event/ownership contract and device validation.
 
 Existing transitions, focus handles, safe-area/keyboard primitives and back
 handling are retained. This draft does not replace them, promise automatic
@@ -77,7 +79,7 @@ The remaining platform work is not hidden behind this API:
 | Gesture composition | Existing RNGH builders and relationships | No automatic inference of simultaneous/exclusive intent from arbitrary Svelte markup |
 | Accessibility | HTML ARIA normalization and visible alternative controls | VoiceOver/TalkBack gestures, focus announcements, hardware keyboard ordering |
 | Motion | Existing Svelte motion/transition bridges, reduced-motion race fix | Full transition fixture validation with a compiler build supporting custom-renderer transitions |
-| Navigation | Existing forward forks and disposal guards | Interactive back progress/cancel/history contract and platform device QA |
+| Navigation | Forward forks, disposal guards, existing Android predictive back and iOS interactive pop | Optional Svelte-visible progress/fork integration and platform device QA |
 | Keyboard/safe area | Existing components plus coordinate correction | Rotation, floating keyboards and keyboard animation on iOS/Android |
 | Remote files | Explicit immutable bytes in Kit's binary form format | Streaming/resumable/background upload transport and server/device round trip |
 

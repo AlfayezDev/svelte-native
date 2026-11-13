@@ -14,7 +14,7 @@
  * - `submit()` is what pressing a submit button is on the web: preflight, then the `enhance` callback (default: send, and reset on success).
  *   There is no `element`, no attachment, no `action`, and no browser file picker. File fields accept explicitly loaded NativeFile bytes.
  * - `reset()` returns the fields to their defaults (the web's `<form>.reset()`), and is what the default `enhance` does after a successful send.
- *   It invalidates pending validation/preflight, but does not cancel a request already sent to the server.
+ *   It invalidates pending validation/preflight, but does not cancel a request already sent to the server; that response can still update result/errors.
  * - Failed submissions focus the first rendered invalid field whose mounted host exposes `focus()`. Background validation never moves focus.
  *   If props are shared by multiple hosts, detaching any host clears the saved focus handle to avoid focusing a possibly stale native view.
  * - What a submission carries is what the inputs show: SvelteKit reads it from the DOM (`new FormData(form)`: the inputs that are there, with the value

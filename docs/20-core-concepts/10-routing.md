@@ -160,7 +160,7 @@ A screen navigates the way a SvelteKit page does. `<a href>` and `goto` from `$a
 
 A press on an `<a href>` goes to the route of its path, and one on a link to another site, `mailto:` or `tel:` is opened by the system ([HTML elements](html-elements)).
 
-`goto` works from any code: a component, a `.svelte.ts` module, a timer, the code that runs when a remote function answers. It drives the app's root router, which selects the right tab, closes a modal that is in the way, and pushes the screen on the stack it belongs to. If that stack already has the screen, it goes back to it instead of pushing it twice. The promise it returns resolves once the navigation is made. It rejects when no screen has the path, and when the app has no router yet. A relative URL (`goto('edit')`) is read against the screen the user sees, as a browser would, and a URL of another site is opened by the system, as `<a href>` does.
+`goto` works from any code: a component, a `.svelte.ts` module, a timer, the code that runs when a remote function answers. It drives the app's root router, which selects the right tab, closes a modal that is in the way, and pushes the screen on the stack it belongs to. If that stack already has the screen, it goes back to it instead of pushing it twice. The promise it returns resolves once the navigation is made. It rejects when no screen has the path, and when the app has no router yet. A relative URL (`goto('edit')`) is read against the screen the user sees, as a browser would, and a URL of another site is opened by the system, as `<a href>` does. A `goto` to the screen the user is already on with another search or hash (`goto('?tab=3')`, `goto('#top')`) changes that screen's `url` in place: no screen is pushed or replaced, so the page is not built again, whether or not the `goto` replaces. The same holds for `router.goto`, except with `reset: true`, which makes a new first screen.
 
 | Option of `goto(url, options)` | Effect |
 | --- | --- |
@@ -168,7 +168,7 @@ A press on an `<a href>` goes to the route of its path, and one on a link to ano
 | `reset`, `refreshAll`, `invalidate`, `invalidateAll`, `persistState` | ignored: they scroll and focus, and run `load` functions again, and a phone screen has none of them |
 | `shallow`, `state` | the promise rejects: they need `page.state`, which is always empty here |
 
-What a screen reads about where it is, `page` from `$app/state`, and the rest of `$app/navigation` are in [SvelteKit modules](sveltekit-modules).
+`page` from `$app/state` and the rest of `$app/navigation` are in [SvelteKit modules](sveltekit-modules). A screen reads its own `params` and `url` from its props, as any SvelteKit page does; `page` is the screen on top of the app, for what concerns all of it.
 
 `useRouter()` returns the router of the nearest navigator. Call it while the component initialises, like `getContext`:
 

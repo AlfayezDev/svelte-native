@@ -1,3 +1,4 @@
+import { untrack } from "svelte";
 import type * as Kit from "$app/navigation";
 import { BASE, type PageRoute, type RouteNode, type StackNode, type TabsNode } from "../route-tree.ts";
 import { rootRouter } from "../router.svelte.ts";
@@ -28,18 +29,22 @@ function here(): URL {
  * ignored (they scroll, focus and rerun `load` functions, none of which exists here); `shallow` and `state` reject, since the device has no `page.state` to put them in.
  * The promise resolves once the navigation is made, and rejects when no screen of the app has the path, or the app has no router yet.
  */
-export const goto: typeof Kit.goto = async (url, options = {}) => {
-  if (options.shallow) throw unavailable("`shallow` in the options of goto", "shallow routing (a URL change that navigates nowhere) needs `page.state`, which the device does not have");
-  if (options.state !== undefined) throw unavailable("`state` in the options of goto", "`page.state` is always empty on the device");
-  const router = rootRouter();
-  if (!router) throw new Error("goto needs the app's router, which does not exist yet: it is made by createRouter in the app shell");
-  const target = typeof url === "string" ? new URL(url, here()) : url;
-  if (target.origin !== ORIGIN) {
-    await Linking.openURL(target.href);
-    return;
-  }
-  router.goto(`${target.pathname}${target.search}${target.hash}`, options.replace || options.replaceState ? { replaceState: true } : {});
-};
+export const goto: typeof Kit.goto = (url, options = {}) =>
+  // Untracked, as SvelteKit's is: `$effect(() => { if (!signedIn) goto("/sign-in") })` must not run again for every screen the user pushes. (The body of an async function runs
+  // synchronously up to its first `await`, inside the effect, so it is a function that returns a promise.)
+  untrack(async () => {
+    if (options.shallow) throw unavailable("`shallow` in the options of goto", "shallow routing (a URL change that navigates nowhere) needs `page.state`, which the device does not have");
+    if (options.state !== undefined) throw unavailable("`state` in the options of goto", "`page.state` is always empty on the device");
+    const router = rootRouter();
+    if (!router) throw new Error("goto needs the app's router, which does not exist yet: it is made by createRouter in the app shell");
+    const target = typeof url === "string" ? new URL(url, here()) : url;
+    if (target.origin !== ORIGIN) {
+      await Linking.openURL(target.href);
+      return;
+    }
+    // `replace` is the option and `replaceState` its deprecated name; the first that is given wins, as in SvelteKit.
+    router.goto(`${target.pathname}${target.search}${target.hash}`, (options.replace ?? options.replaceState ?? false) ? { replaceState: true } : {});
+  });
 
 /** The route of a tree with this SvelteKit id: a page, or the screen of a navigator (its layout), looked for through the stacks and the tabs' panes. */
 function routeWithId(node: StackNode | TabsNode, id: string): PageRoute | RouteNode | undefined {
@@ -58,13 +63,14 @@ function routeWithId(node: StackNode | TabsNode, id: string): PageRoute | RouteN
  * navigator (a tabs or a stack layout has an id of its own), once, as a navigation would. Resolves when it is loaded, and rejects with what a failed load threw, or for an id no route has.
  * It loads code only: no `load` function exists to run.
  */
-export const preloadCode: typeof Kit.preloadCode = async (id) => {
-  const router = rootRouter();
-  if (!router) throw new Error("preloadCode needs the app's router, which does not exist yet: it is made by createRouter in the app shell");
-  const route = routeWithId(router.node, id);
-  if (!route) throw new Error(`No route of the app has the id ${id}`);
-  return router.preload(route);
-};
+export const preloadCode: typeof Kit.preloadCode = (id) =>
+  untrack(async () => {
+    const router = rootRouter();
+    if (!router) throw new Error("preloadCode needs the app's router, which does not exist yet: it is made by createRouter in the app shell");
+    const route = routeWithId(router.node, id);
+    if (!route) throw new Error(`No route of the app has the id ${id}`);
+    return router.preload(route);
+  });
 
 /** What a part of SvelteKit's API the device does not have fails with: the name of the feature, then why. */
 function unavailable(what: string, why: string): Error {

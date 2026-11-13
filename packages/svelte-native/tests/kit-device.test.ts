@@ -39,7 +39,7 @@ const fake = {
 };
 (globalThis as { nativeFabricUIManager?: unknown }).nativeFabricUIManager = fake;
 
-const world = globalThis as unknown as { __DEV__?: boolean; __kitConstants?: unknown; __kitOpened: string[]; __kitSeen: string[]; __kitReads: string[]; __kitUpdates: unknown; __backHandlers: unknown[]; __linkHandlers: unknown[]; __treeRouters?: unknown };
+const world = globalThis as unknown as { __treeLog?: string[]; __DEV__?: boolean; __kitConstants?: unknown; __kitOpened: string[]; __kitSeen: string[]; __kitReads: string[]; __kitUpdates: unknown; __backHandlers: unknown[]; __linkHandlers: unknown[]; __treeRouters?: unknown };
 const stubs: Record<string, string> = {
   ...reanimatedStubs,
   "react-native/Libraries/ReactNative/ReactFabricPublicInstance/ReactNativeAttributePayload": "export const create = (props) => ({ ...props }); export const diff = (prev, next) => { const out = {}; let changed = false; for (const k of new Set([...Object.keys(prev), ...Object.keys(next)])) { if (prev[k] !== next[k]) { out[k] = k in next ? next[k] : null; changed = true; } } return changed ? out : null; };",
@@ -70,6 +70,7 @@ async function load() {
         export * as paths from '../src/kit/paths.ts';
         export * as env from '../src/kit/env.ts';
         export * as updates from '../src/updates/index.ts';
+        export { rootRouter } from '../src/router.svelte.ts';
         export { startSurface, stopSurface, tick, Fixture, Reader };`,
       resolveDir: import.meta.dirname,
     },
@@ -106,6 +107,7 @@ type Module = {
   paths: { base: string; assets: string; asset(file: string): string; resolve(...args: unknown[]): string; match(url: string | URL): Promise<{ id: string; params: Record<string, string> } | null> };
   env: Record<string, unknown>;
   updates: { fetchUpdateAsync(): Promise<{ isNew: boolean }>; checkForUpdateAsync(): Promise<{ isAvailable: boolean }> };
+  rootRouter(): Router | undefined;
   startSurface(tag: number, component: unknown, props: Record<string, unknown>): Record<string, () => Router>;
   stopSurface(tag: number): void;
   tick(): Promise<void>;
@@ -121,7 +123,7 @@ async function mountApp(m: Module, props: Record<string, unknown> = {}) {
   const app = m.startSurface(tag, m.Fixture, props);
   surfaces.push({ m, tag });
   await turn(m);
-  return { router: (app.root as () => Router)(), tag, settle: () => turn(m) };
+  return { router: (app.root as () => Router)(), tag, settle: () => turn(m), inEffect: app.inEffect as unknown as (fn: () => unknown) => { runs(): number; stop(): void } };
 }
 function reset() {
   jest.useFakeTimers(); // the exit timer of a screen a navigation leaves must not fire into another test
@@ -133,6 +135,7 @@ function reset() {
   world.__DEV__ = true;
   world.__backHandlers = [];
   world.__linkHandlers = [];
+  delete world.__treeLog;
 }
 afterEach(() => {
   for (const { m, tag } of surfaces.splice(0)) m.stopSurface(tag);
@@ -204,6 +207,21 @@ describe("goto drives the app's root router from any code", () => {
     expect(pathsOf(router)).toEqual(["/workspaces"]);
   });
 
+  test("`replace` wins over `replaceState`, its deprecated name, as in SvelteKit: a pushed screen when `replace` is false, a replaced one when only `replaceState` is given", async () => {
+    reset();
+    const m = await load();
+    const { router, settle } = await mountApp(m, { initial: "/workspaces" });
+    await m.navigation.goto("/account", { replace: false, replaceState: true });
+    await settle();
+    expect(pathsOf(router)).toEqual(["/workspaces", "/account"]);
+    await m.navigation.goto("/workspaces", { replace: undefined, replaceState: true });
+    await settle();
+    expect(pathsOf(router)).toEqual(["/workspaces", "/workspaces"]);
+    await m.navigation.goto("/account", { replace: true, replaceState: false });
+    await settle();
+    expect(pathsOf(router)).toEqual(["/workspaces", "/account"]);
+  });
+
   test("it rejects for what the device cannot do: no screen for the path, `shallow`, `state`, and an app that has no router (yet, or any more)", async () => {
     reset();
     const m = await load();
@@ -228,6 +246,115 @@ describe("goto drives the app's root router from any code", () => {
     await settle();
     expect(world.__kitOpened).toEqual(["https://example.com/docs?a=1", "mailto:someone@example.com", "tel:+15550100"]);
     expect(pathsOf(router)).toEqual(["/workspaces"]);
+  });
+});
+
+describe("what an effect that navigates does not depend on", () => {
+  test("goto, match and preloadCode called in an effect do not make it run again for the screens the user pushes, as SvelteKit's do not; nor does the router's own goto", async () => {
+    reset();
+    const m = await load();
+    const { router, settle, inEffect } = await mountApp(m, { initial: "/workspaces" });
+    const ignore = (promise: unknown) => void (promise as Promise<unknown>).catch(() => {});
+    const effects = {
+      goto: inEffect(() => ignore(m.navigation.goto("/workspaces", { replace: true }))),
+      match: inEffect(() => ignore(m.paths.match("/workspaces"))),
+      preload: inEffect(() => ignore(m.navigation.preloadCode("/workspaces"))),
+      router: inEffect(() => router.goto("/workspaces", { replaceState: true })),
+    };
+    await settle();
+    expect(Object.values(effects).map((effect) => effect.runs())).toEqual([1, 1, 1, 1]);
+    // The user pushes screens: nothing the effects read has changed for them.
+    router.goto("/account");
+    await settle();
+    router.goto("/acme/home/thread/7");
+    await settle();
+    expect(Object.values(effects).map((effect) => effect.runs())).toEqual([1, 1, 1, 1]);
+    expect(pathsOf(router)).toEqual(["/workspaces", "/account", "/acme"]);
+    for (const effect of Object.values(effects)) effect.stop();
+  });
+});
+
+describe("the app's root router is the newest one that is alive", () => {
+  test("a surface that starts before another one stops, in the same turn, keeps the registration; goto and page are the new surface's", async () => {
+    reset();
+    const m = await load();
+    const first = await mountApp(m, { initial: "/workspaces" });
+    expect(m.rootRouter()).toBe(first.router);
+    const tag = ++surface;
+    const second = m.startSurface(tag, m.Fixture, { initial: "/workspaces" });
+    surfaces.push({ m, tag });
+    m.stopSurface(first.tag); // no turn in between: the teardown runs in the batch that registered the new router
+    await turn(m);
+    const router = (second.root as () => Router)();
+    expect(m.rootRouter()).toBe(router);
+    await m.navigation.goto("/account");
+    await turn(m);
+    expect(pathsOf(router)).toEqual(["/workspaces", "/account"]);
+    expect(where(m)).toBe("/account {} /(account)/account");
+  });
+
+  test("with two alive, stopping the newer one falls back to the older one, and stopping that leaves none", async () => {
+    reset();
+    const m = await load();
+    const older = await mountApp(m, { initial: "/workspaces" });
+    const newer = await mountApp(m, { initial: "/account" });
+    expect(m.rootRouter()).toBe(newer.router);
+    // Stopping the older one while the newer is alive changes nothing.
+    const third = await mountApp(m, { initial: "/workspaces" });
+    m.stopSurface(newer.tag);
+    await turn(m);
+    expect(m.rootRouter()).toBe(third.router);
+    m.stopSurface(third.tag);
+    await turn(m);
+    expect(m.rootRouter()).toBe(older.router);
+    expect(where(m)).toBe("/workspaces {} /workspaces");
+    m.stopSurface(older.tag);
+    await turn(m);
+    expect(m.rootRouter()).toBeUndefined();
+    expect(where(m)).toBe("/ {} null");
+  });
+});
+
+describe("a goto to the screen the user is on, with another search or hash", () => {
+  test("changes its url in place: no new screen, no remount, whether or not it replaces; a path that differs is a navigation as before", async () => {
+    reset();
+    const log: string[] = [];
+    world.__treeLog = log;
+    const m = await load();
+    const { router, settle } = await mountApp(m, { initial: "/workspaces" });
+    const entry = router.entries[0];
+    expect(log).toEqual(["init /workspaces", "effect /workspaces", "mount /workspaces"]);
+    const go = async (url: string, options?: object) => { await m.navigation.goto(url, options); await settle(); };
+
+    await go("?tab=3", { replaceState: true });
+    expect(router.entries).toHaveLength(1);
+    expect(router.entries[0]).toBe(entry);
+    expect(entry.url.search).toBe("?tab=3");
+    expect(m.state.page.url.search).toBe("?tab=3");
+    // A hash only keeps the search, as a browser's relative URL does, and goes to the same screen too; so does a push that was not asked to replace.
+    await go("#top");
+    expect(entry.url.search + entry.url.hash).toBe("?tab=3#top");
+    await go("/workspaces?tab=4");
+    expect(entry.url.search + entry.url.hash).toBe("?tab=4");
+    await go("/workspaces");
+    expect(entry.url.search + entry.url.hash).toBe("");
+    expect(pathsOf(router)).toEqual(["/workspaces"]);
+    expect(log).toEqual(["init /workspaces", "effect /workspaces", "mount /workspaces"]); // the page was not built again, and no cleanup ran
+
+    // The router's own goto does it too, and a screen in a tab's stack is the visible one.
+    await go("/acme");
+    router.goto("/acme/home?x=1");
+    await settle();
+    expect(m.state.page.url.pathname + m.state.page.url.search).toBe("/acme/home?x=1");
+    expect(pathsOf(router)).toEqual(["/workspaces", "/acme"]);
+
+    // Another path is a navigation, and a reset is a new root: neither is in place.
+    await go("/account");
+    expect(pathsOf(router)).toEqual(["/workspaces", "/acme", "/account"]);
+    router.goto("/account?x=2", { reset: true }); // the router's reset (SvelteKit's `reset` is not it, and goto ignores that)
+    await settle();
+    expect(pathsOf(router)).toEqual(["/account"]);
+    expect(router.entries[0]).not.toBe(entry);
   });
 });
 

@@ -13,9 +13,15 @@ const summary = (name) => {
   const resolved = resolveConfigPluginFunctionWithInfo(process.cwd(), name);
   return { mods: Object.keys(config.mods ?? {}).sort(), remote: config.extra?.svelteNative?.remote, pluginFile: resolved.pluginFile, isPluginFile: resolved.isPluginFile, kind: typeof resolved.plugin };
 };
-const names = { path: "@alfayez/svelte-native/expo", bare: "@alfayez/svelte-native", appPlugin: "@alfayez/svelte-native/app.plugin" };
+const names = { bare: "@alfayez/svelte-native", appPlugin: "@alfayez/svelte-native/app.plugin" };
 const result = Object.fromEntries(Object.entries(names).map(([key, name]) => [key, summary(name)]));
 // What the bare name resolves to is the same plugin function as the path's.
-result.same = resolveConfigPluginFunctionWithInfo(process.cwd(), names.bare).plugin === resolveConfigPluginFunctionWithInfo(process.cwd(), names.path).plugin;
 result.sameAppPlugin = resolveConfigPluginFunctionWithInfo(process.cwd(), names.bare).plugin === resolveConfigPluginFunctionWithInfo(process.cwd(), names.appPlugin).plugin;
+// `@alfayez/svelte-native/expo` was a third name up to 0.4.0-rc.6: the package's `exports` map no longer has it, and `@expo/config-plugins` says what it makes of it.
+try {
+  resolveConfigPluginFunctionWithInfo(process.cwd(), "@alfayez/svelte-native/expo");
+  result.removed = "resolved";
+} catch (error) {
+  result.removed = error.code ?? error.message;
+}
 console.log(JSON.stringify(result));

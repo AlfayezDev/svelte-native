@@ -1,8 +1,7 @@
 <script>
   // `gesture` on every primitive, lowered to its host tag (`View`, `Text`, ...) and as the component (`AnimatedView`, a View
   // that is not lowered), through `<GestureDetector>`, and through the `use:gesture` action.
-  import { View, Text, Pressable, ScrollView, Image } from "@alfayez/svelte-native";
-  import { gesture } from "@alfayez/svelte-native/gestures";
+  import { View, Text, Pressable, ScrollView, Image, gesture } from "@alfayez/svelte-native";
   import AnimatedView from "../../src/components/AnimatedView.svelte";
   import ViewComponent from "../../src/components/View.svelte";
   import GestureDetector from "../../src/components/GestureDetector.svelte";

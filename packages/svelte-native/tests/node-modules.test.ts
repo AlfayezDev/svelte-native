@@ -266,8 +266,8 @@ try { transformer.transform({ filename: process.cwd() + "/src/Plain.svelte", src
     expect(result.config).toBe("native.vite.config.ts");
     expect(result.plugins).toEqual(["svelte-native"]);
     expect(result.direct).toEqual(["svelte-native"]);
-    // The web target, in an app that has SvelteKit: the library's plugin and SvelteKit's.
-    expect(result.web[0]).toBe("svelte-native:web");
+    // The web target, in an app that has SvelteKit: the library's plugins (`mobile` of `$app/env`, then the web options) and SvelteKit's.
+    expect(result.web.slice(0, 2)).toEqual(["svelte-native:mobile", "svelte-native:web"]);
     expect(result.web.some((name) => name?.startsWith("vite-plugin-sveltekit"))).toBe(true);
   });
 

@@ -358,3 +358,63 @@ describe("image sources of an update", () => {
     expect(transform("android")(resolver({ scales: [1] }))).toBe("default");
   });
 });
+
+describe("pending: whether an update is waiting for the next start (what `updated` of $app/state reads)", () => {
+  const seen = (updates: ReturnType<typeof createUpdates>) => { const log: boolean[] = []; updates.onPending(() => log.push(updates.pending)); return log; };
+
+  test("it is false until a check finds an update, then true, and the listener hears the change once", async () => {
+    const { native } = fakeNative();
+    const updates = createUpdates({ native, fetch: respond(manifestResponse(), manifestResponse()).fetch });
+    const log = seen(updates);
+    expect(updates.pending).toBe(false);
+    await updates.checkForUpdateAsync();
+    expect(updates.pending).toBe(true);
+    await updates.checkForUpdateAsync(); // still there: no change to report
+    expect(log).toEqual([true]);
+  });
+
+  test("a check that finds nothing, or an update that cannot launch, leaves it false; a rollback to the embedded bundle is an update to wait for", async () => {
+    for (const response of [directiveResponse(noUpdateDirective), manifestResponse({ ...manifest, runtimeVersion: "0.2.0" })]) {
+      const updates = createUpdates({ native: fakeNative().native, fetch: respond(response).fetch });
+      await updates.checkForUpdateAsync();
+      expect(updates.pending).toBe(false);
+    }
+    const rollback = createUpdates({ native: fakeNative().native, fetch: respond(directiveResponse(rollBackDirective)).fetch });
+    await rollback.checkForUpdateAsync();
+    expect(rollback.pending).toBe(true);
+  });
+
+  test("a fetch that downloaded an update (or the check at launch, which fetches) sets it, with no check before", async () => {
+    const updates = createUpdates({ native: fakeNative().native, fetch: respond(manifestResponse()).fetch });
+    const log = seen(updates);
+    await updates.fetchUpdateAsync();
+    expect(updates.pending).toBe(true);
+    expect(log).toEqual([true]);
+
+    const launch = createUpdates({ native: fakeNative({ checkOnLaunch: "ALWAYS" }).native, fetch: respond(manifestResponse()).fetch });
+    await launch.checkOnLaunch();
+    expect(launch.pending).toBe(true);
+  });
+
+  test("a fetch that fails (an asset's hash is wrong, the server is down) leaves it as it was", async () => {
+    const tampered = createUpdates({ native: fakeNative({}, {}, () => "wrong").native, fetch: respond(manifestResponse()).fetch });
+    await expect(tampered.fetchUpdateAsync()).rejects.toThrow();
+    expect(tampered.pending).toBe(false);
+    const down = createUpdates({ native: fakeNative().native, fetch: async () => { throw new Error("offline"); } });
+    await expect(down.checkForUpdateAsync()).rejects.toThrow("offline");
+    expect(down.pending).toBe(false);
+  });
+
+  test("with updates off it is false, and a listener that stopped is not called", async () => {
+    const off = createUpdates({ native: null, fetch: async () => { throw new Error("no request expected"); } });
+    await off.checkForUpdateAsync();
+    await off.fetchUpdateAsync();
+    expect(off.pending).toBe(false);
+    const updates = createUpdates({ native: fakeNative().native, fetch: respond(manifestResponse()).fetch });
+    const calls: number[] = [];
+    const stop = updates.onPending(() => calls.push(1));
+    stop();
+    await updates.checkForUpdateAsync();
+    expect(calls).toEqual([]);
+  });
+});

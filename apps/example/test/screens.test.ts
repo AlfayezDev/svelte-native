@@ -196,8 +196,8 @@ beforeAll(async () => {
         builder.onResolve({ filter: /^@alfayez\/svelte-native\/renderer$/ }, () => ({ path: join(library, "src/renderer.ts") }));
         builder.onResolve({ filter: /^@alfayez\/svelte-native\/routes$/ }, () => ({ path: join(directory, ".svelte-native/routes.test.ts") }));
         builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: join(library, "src/environment.ts") }));
-        // The polyfills' Expo runtime and Hermes' Intl are not what a screen test is about.
-        builder.onResolve({ filter: /^(?:expo\/src\/winter|hermes-intl)$/ }, (args) => ({ path: args.path, namespace: "stub" }));
+        // The polyfills' Expo runtime, Hermes' Intl and the libraries behind `crypto` and `localStorage` are not what a screen test is about.
+        builder.onResolve({ filter: /^(?:expo\/src\/winter|hermes-intl|react-native-quick-crypto|react-native-mmkv)$/ }, (args) => ({ path: args.path, namespace: "stub" }));
         // SvelteKit's `$app/*`, as Metro answers them; anything else the function leaves to esbuild.
         builder.onResolve({ filter: /^\$app\// }, (args) => {
           const path = kitResolution(args.path);

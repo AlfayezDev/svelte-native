@@ -11,6 +11,9 @@ import { patchFiles, patchKey, patchSpecs } from "../src/doctor/patches.ts";
  * found, a file the patch creates left out): the shape of the package before pnpm applied anything.
  */
 export const repository = resolve(import.meta.dirname, "../../..");
+/** The required peers React Native's autolinking links only from the app's own dependencies (`AUTOLINKED_PEERS` in `src/doctor/checks.ts`). */
+export const nativePeers = ["hermes-intl", "react-native-mmkv", "react-native-nitro-modules", "react-native-quick-base64", "react-native-quick-crypto"] as const;
+
 export const library = JSON.parse(readFileSync(join(repository, "packages/svelte-native/package.json"), "utf8")) as { name: string; peerDependencies: Record<string, string>; peerDependenciesMeta: Record<string, { optional?: boolean }> };
 
 /** `text` as it was before the patch's hunks: each hunk's result found in the lines and replaced by what the hunk found. */
@@ -82,8 +85,8 @@ export function makeFakeApp(options: FakeApp = {}): string {
     if (spec?.via) put(`node_modules/${patch.package}/package.json`, JSON.stringify({ name: patch.package, version: version(patch.package, patch.version) }));
   }
 
-  // `hermes-intl` is a required peer with a native module, which React Native's autolinking links only when the app depends on it itself.
-  put("package.json", JSON.stringify({ name: "fake-app", version: "1.0.0", dependencies: { [library.name]: "*", "hermes-intl": "*" } }));
+  // The required peers with a native module (`hermes-intl`, and the four `crypto` and `localStorage` are made of) are linked by React Native's autolinking only when the app depends on them itself.
+  put("package.json", JSON.stringify({ name: "fake-app", version: "1.0.0", dependencies: { [library.name]: "*", ...Object.fromEntries(nativePeers.map((name) => [name, "*"])) } }));
   put("metro.config.cjs", `const { getDefaultConfig } = require("expo/metro-config");\nconst { withSvelteNative } = require("${library.name}/metro");\nmodule.exports = withSvelteNative(getDefaultConfig(__dirname));\n`);
   put("app.json", JSON.stringify({ expo: { name: "fake", plugins: [[library.name, {}]] } }));
   if (options.declared !== false) {

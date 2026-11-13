@@ -14,7 +14,7 @@ video: blur-view
 </script>
 
 <View style={{ height: 200 }}>
-	<Image source={{ uri: 'https://picsum.photos/800/400' }} style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 }} />
+	<Image source={{ uri: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&h=400&fit=crop&fm=jpg&q=70' }} style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 }} />
 	<BlurView intensity={60} tint="light" style={{ margin: 24, padding: 16, borderRadius: 16, overflow: 'hidden' }}>
 		<Text style={{ fontSize: 18, fontWeight: '600' }}>Frosted</Text>
 	</BlurView>

@@ -37,9 +37,10 @@ function installFabric(): void {
   fabric.calls.length = 0;
   fabric.roots = {};
   (globalThis as { nativeFabricUIManager?: unknown }).nativeFabricUIManager = fake;
+  // React Native has `requestAnimationFrame`, which `tick()` waits for in async mode; bun has none. Set for every load and not once: a test file that runs between two users of this
+  // harness may delete it (`kit-motion.test.ts` does, after each test).
+  (globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame ??= (callback: () => void) => setTimeout(callback, 16);
 }
-// React Native has `requestAnimationFrame`, which `tick()` waits for in async mode; bun has none.
-(globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame ??= (callback: () => void) => setTimeout(callback, 16);
 
 const stubs: Record<string, string> = {
   ...reanimatedStubs,

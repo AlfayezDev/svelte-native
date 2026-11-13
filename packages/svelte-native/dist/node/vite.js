@@ -312,6 +312,17 @@ export const lab = ${lab};
 export const tree: StackNode = ${nodeOf(tree, "").trimStart()};
 `;
 }
+var FORMER_NAME = "@example/svelte-native";
+function staleEntry(source) {
+  const manifest = JSON.parse(readFileSync(resolve2(packageRoot, "package.json"), "utf8"));
+  const literal = (text) => text.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+  const patterns = Object.keys(manifest.exports);
+  const exported = (key) => patterns.some((pattern) => pattern.includes("*") ? new RegExp(`^${pattern.split("*").map(literal).join(".*")}$`).test(key) : pattern === key);
+  for (const [, , name, subpath] of source.matchAll(new RegExp(`(['"])(${literal(manifest.name)}|${literal(FORMER_NAME)})((?:/[^'"]*)?)\\1`, "g"))) {
+    if (name === FORMER_NAME || !exported(subpath ? `.${subpath}` : ".")) return true;
+  }
+  return false;
+}
 function syncRoutes(root, options = {}) {
   const variant = options.variant ?? variantName();
   const lab = options.lab ?? labIncludedFor(variant);
@@ -329,7 +340,8 @@ import { tree } from './routes';
 createFabricApp(App, { tree });
 ${hot}`;
   const files = [[routesTableFile(variant), manifest]];
-  if (options.entry !== "keep" || customRoot !== void 0 || !existsSync2(resolve2(output, "entry.ts"))) files.push(["entry.ts", entry]);
+  const entryPath = resolve2(output, "entry.ts");
+  if (options.entry !== "keep" || customRoot !== void 0 || !existsSync2(entryPath) || staleEntry(readFileSync(entryPath, "utf8"))) files.push(["entry.ts", entry]);
   for (const [file, content] of files) {
     const destination = resolve2(output, file);
     let current = "";

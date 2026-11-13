@@ -16,7 +16,7 @@ const manifest = JSON.parse(read("package.json")) as {
   optionalDependencies?: Record<string, string>;
   peerDependenciesMeta?: Record<string, { optional?: boolean }>;
 };
-/** Every file the exports map and `bin` point at (an entry is a path, or a path per condition: `types` the sources, `default` the built JavaScript). */
+/** Every file the exports map and `bin` point at (an entry is a path, or a path per condition: `svelte-native-source` the sources, `types` the declarations in `dist/types`, `default` what runs). */
 const entryFiles = [...Object.values(manifest.exports).flatMap((target) => (typeof target === "string" ? [target] : Object.values(target))), ...Object.values(manifest.bin)];
 const config = JSON.parse(read("expo-module.config.json")) as {
   platforms: string[];
@@ -46,9 +46,11 @@ describe("the manifest holds nothing that only resolves inside this repository",
     for (const target of entryFiles) expect([target, existsSync(join(root, target))]).toEqual([target, true]);
   });
 
-  test("the config plugin is reachable by the package's own name (app.plugin.js, which Expo looks for first) and by its path, both at the built file", () => {
-    expect(manifest.exports["./expo"]).toEqual({ types: "./src/expo.ts", default: "./dist/node/expo.cjs" });
-    expect(manifest.exports["./app.plugin"]).toBe("./app.plugin.js");
+  test("the config plugin is reachable by the package's own name (app.plugin.js, which Expo looks for first) and by its path `/app.plugin`, both at the built file; `/expo`, which named that file up to 0.4.0-rc.6, is not an entry", () => {
+    expect(manifest.exports["./expo"]).toBeUndefined();
+    expect(manifest.exports["./app.plugin"]).toEqual({ "svelte-native-source": "./src/expo.ts", types: "./dist/types/expo.d.ts", default: "./app.plugin.js" });
+    expect(manifest.files).toContain("dist/node");
+    expect(manifest.files).toContain("dist/types");
     expect(manifest.files).toContain("app.plugin.js");
     expect(read("app.plugin.js")).toContain('from "./dist/node/expo.cjs"');
   });

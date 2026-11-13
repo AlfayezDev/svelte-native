@@ -167,3 +167,9 @@ test("the modules the bundle evaluates at load include none that read every view
   const reached = [...graph.keys()].filter((path) => Object.keys(forbidden).some((suffix) => path.endsWith(`/node_modules/${suffix}`)));
   expect(reached.map((path) => `${forbidden[Object.keys(forbidden).find((suffix) => path.endsWith(suffix)) as string]} is evaluated at load:\n  ${chain(graph, path)}`)).toEqual([]);
 });
+
+test("window.matchMedia is a function the polyfills install, and the media query parser and the system sources behind it are not evaluated at load", () => {
+  const graph = walk();
+  expect(graph.has(join(root, "src/polyfills.ts"))).toBe(true);
+  expect([...graph.keys()].filter((path) => /\/src\/(?:match-media|media-query)\.ts$/.test(path))).toEqual([]);
+});

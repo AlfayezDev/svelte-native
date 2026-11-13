@@ -354,13 +354,11 @@ describe("the app's configs", () => {
     expect(find(listed, `app.json lists the ${library.name} plugin`)?.status).toBe("pass");
     const bare = check({ files: { "app.json": JSON.stringify({ expo: { plugins: ["expo-font"] } }) } }).checks;
     expect(find(bare, `app.json does not list the ${library.name} plugin`)?.status).toBe("fail");
-    // `<library>/app.plugin` is the same file; `<library>/expo` is a deprecated name for it, which passes with a note.
+    // `<library>/app.plugin` is the same file.
     const path = check({ files: { "app.json": JSON.stringify({ expo: { plugins: [`${library.name}/app.plugin`] } }) } }).checks;
     expect(find(path, `app.json lists the ${library.name}/app.plugin plugin`)?.status).toBe("pass");
-    const deprecated = check({ files: { "app.json": JSON.stringify({ expo: { plugins: [`${library.name}/expo`] } }) } }).checks;
-    expect(find(deprecated, `app.json lists the ${library.name}/expo plugin (the ${library.name}/expo path is deprecated: list ${library.name})`)?.status).toBe("pass");
-    const code = check({ files: { "app.json": JSON.stringify({ expo: { plugins: [] } }), "app.config.ts": `export default ({ config }) => ({ ...config, plugins: [["${library.name}/expo", {}]] });\n` } }).checks;
-    expect(find(code, `app.config.ts lists the ${library.name}/expo plugin (the ${library.name}/expo path is deprecated: list ${library.name})`)?.status).toBe("pass");
+    const code = check({ files: { "app.json": JSON.stringify({ expo: { plugins: [] } }), "app.config.ts": `export default ({ config }) => ({ ...config, plugins: [["${library.name}", {}]] });\n` } }).checks;
+    expect(find(code, `app.config.ts lists the ${library.name} plugin`)?.status).toBe("pass");
     const dynamic = check({ files: { "app.json": JSON.stringify({ expo: { plugins: [] } }), "app.config.ts": "export default ({ config }) => ({ ...config, plugins: pluginsFor(process.env) });\n" } }).checks;
     expect(find(dynamic, "could not tell: app.config.ts does not name")?.status).toBe("unknown");
     const none = check({ files: { "app.json": null } }).checks;
@@ -368,6 +366,24 @@ describe("the app's configs", () => {
     // The bare form of app.json, without the `expo` key, is Expo's too.
     const unwrapped = check({ files: { "app.json": JSON.stringify({ plugins: [[library.name, {}]] }) } }).checks;
     expect(find(unwrapped, `app.json lists the ${library.name} plugin`)?.status).toBe("pass");
+  });
+
+  test("`<library>/expo`, removed in 0.4.0-rc.7, is an error that says to write the package's name in plugins: in app.json, as a tuple, in app.config, and beside the right name", () => {
+    const removed = `${library.name}/expo`;
+    const expected = (file: string) => ({ status: "fail", message: `${file} lists ${removed}, a path removed in 0.4.0-rc.7 that no longer resolves: expo prebuild fails on it`, fix: `write "${library.name}" in plugins in ${file}, in place of "${removed}"` });
+    const asString = check({ files: { "app.json": JSON.stringify({ expo: { plugins: [removed] } }) } }).checks;
+    expect(find(asString, removed)).toMatchObject(expected("app.json"));
+    const tuple = check({ files: { "app.json": JSON.stringify({ expo: { plugins: ["expo-font", [removed, { androidProfileable: true }]] } }) } }).checks;
+    expect(find(tuple, removed)).toMatchObject(expected("app.json"));
+    const code = check({ files: { "app.json": JSON.stringify({ expo: { plugins: [] } }), "app.config.ts": `export default ({ config }) => ({ ...config, plugins: [["${removed}", {}]] });\n` } }).checks;
+    expect(find(code, removed)).toMatchObject(expected("app.config.ts"));
+    // The right name does not make the removed one resolve: expo prebuild still fails on it.
+    const both = check({ files: { "app.json": JSON.stringify({ expo: { plugins: [library.name, removed] } }) } }).checks;
+    expect(find(both, removed)?.status).toBe("fail");
+    expect(find(both, `lists the ${library.name} plugin`)).toBeUndefined();
+    // Nothing else of the build integration changes, and a config that does not list the removed path is as before.
+    expect(find(asString, "uses withSvelteNative")?.status).toBe("pass");
+    expect(find(check().checks, removed)).toBeUndefined();
   });
 
   test("the package's own name is the plugin as well (its app.plugin.js), in app.json and in app.config", () => {

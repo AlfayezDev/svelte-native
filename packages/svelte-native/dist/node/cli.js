@@ -421,6 +421,16 @@ export const lab = ${lab};
 export const tree: StackNode = ${nodeOf(tree, "").trimStart()};
 `;
 }
+function staleEntry(source) {
+  const manifest = JSON.parse(readFileSync(resolve3(packageRoot, "package.json"), "utf8"));
+  const literal = (text2) => text2.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+  const patterns = Object.keys(manifest.exports);
+  const exported = (key) => patterns.some((pattern) => pattern.includes("*") ? new RegExp(`^${pattern.split("*").map(literal).join(".*")}$`).test(key) : pattern === key);
+  for (const [, , name, subpath] of source.matchAll(new RegExp(`(['"])(${literal(manifest.name)}|${literal(FORMER_NAME)})((?:/[^'"]*)?)\\1`, "g"))) {
+    if (name === FORMER_NAME || !exported(subpath ? `.${subpath}` : ".")) return true;
+  }
+  return false;
+}
 function syncRoutes(root2, options = {}) {
   const variant = options.variant ?? variantName();
   const lab = options.lab ?? labIncludedFor(variant);
@@ -438,7 +448,8 @@ import { tree } from './routes';
 createFabricApp(App, { tree });
 ${hot}`;
   const files = [[routesTableFile(variant), manifest]];
-  if (options.entry !== "keep" || customRoot !== void 0 || !existsSync2(resolve3(output, "entry.ts"))) files.push(["entry.ts", entry]);
+  const entryPath = resolve3(output, "entry.ts");
+  if (options.entry !== "keep" || customRoot !== void 0 || !existsSync2(entryPath) || staleEntry(readFileSync(entryPath, "utf8"))) files.push(["entry.ts", entry]);
   for (const [file, content] of files) {
     const destination = resolve3(output, file);
     let current = "";
@@ -496,11 +507,12 @@ async function exportNative(root2, platform, options = {}) {
   });
   if (result !== 0) throw new Error(`Native ${platform} export exited with ${result}`);
 }
-var require2, posix, PRESENTATIONS, NAVIGATORS, labIncluded, LAB_DIRECTORY;
+var require2, posix, PRESENTATIONS, NAVIGATORS, labIncluded, LAB_DIRECTORY, FORMER_NAME;
 var init_build = __esm({
   "src/build.ts"() {
     "use strict";
     init_compile_options();
+    init_package_root();
     init_route_tree();
     init_variant();
     init_watch_tree();
@@ -510,6 +522,7 @@ var init_build = __esm({
     NAVIGATORS = ["stack", "tabs"];
     labIncluded = (env = process.env) => labIncludedFor(variantName(env));
     LAB_DIRECTORY = "__dev";
+    FORMER_NAME = "@example/svelte-native";
   }
 });
 
@@ -1206,9 +1219,14 @@ function planAppJson(root2, names, plan) {
   if (text2 === void 0) {
     const config = ["app.config.ts", "app.config.js", "app.config.mjs", "app.config.cjs"].find((file) => existsSync3(join3(root2, file)));
     if (config !== void 0) {
-      plan.changes.push({ path: config, action: "manual", summary: "the app is configured in code", instructions: `Add the library's plugin to \`plugins\` in ${config}:
+      const configText = read(join3(root2, config)) ?? "";
+      const names2 = [`"${removedPluginName}"`, `'${removedPluginName}'`, `\`${removedPluginName}\``].some((quoted) => configText.includes(quoted));
+      const instructions = names2 ? `Replace "${removedPluginName}" in \`plugins\` in ${config} with "${plugin}" (that path no longer resolves and the package's name is the plugin's; keep its options):
   plugins: ["${plugin}"]
-and give the app an \`android.package\` and \`ios.bundleIdentifier\`.` });
+and give the app an \`android.package\` and \`ios.bundleIdentifier\`.` : `Add the library's plugin to \`plugins\` in ${config}:
+  plugins: ["${plugin}"]
+and give the app an \`android.package\` and \`ios.bundleIdentifier\`.`;
+      plan.changes.push({ path: config, action: "manual", summary: "the app is configured in code", instructions });
       return;
     }
     plan.changes.push({ path: "app.json", action: "create", summary: `${names.title}, ${names.androidPackage}`, text: `${JSON.stringify({ expo: wanted() }, null, "	")}
@@ -1238,8 +1256,15 @@ and give the app an \`android.package\` and \`ios.bundleIdentifier\`.` });
       done.push(`${block2}.${key}`);
     }
   }
-  const plugins = Array.isArray(expo.plugins) ? expo.plugins : [];
-  const has2 = plugins.some((entry) => pluginNames.includes(Array.isArray(entry) ? entry[0] : entry));
+  const listed = Array.isArray(expo.plugins) ? expo.plugins : [];
+  const nameOf = (entry) => Array.isArray(entry) ? entry[0] : entry;
+  const renamed = listed.some((entry) => nameOf(entry) === removedPluginName);
+  const plugins = renamed ? listed.map((entry) => nameOf(entry) !== removedPluginName ? entry : Array.isArray(entry) ? [plugin, ...entry.slice(1)] : plugin) : listed;
+  if (renamed) {
+    expo.plugins = plugins;
+    done.push(`the plugin's name (${removedPluginName} no longer resolves)`);
+  }
+  const has2 = plugins.some((entry) => pluginNames.includes(nameOf(entry)));
   if (!has2) {
     expo.plugins = [...plugins, plugin];
     done.push("the plugin");
@@ -1334,7 +1359,7 @@ Next: the first \`pnpm android\` (or \`pnpm ios\`, on a Mac) builds the native a
 First, the ${plural(manual, "change")} listed above for you to make.` : ""}`);
   return manual > 0 ? 1 : 0;
 }
-var appDependencies, alwaysPatched, plugin, pluginNames, scripts, gitignore, read, plural, quoteOf, exactVersion, keyOf, viteInstructions, metroConfig, themeModule, layoutRoute, homeRoute, detailsRoute, USAGE, processIo, WORD;
+var appDependencies, alwaysPatched, plugin, pluginNames, removedPluginName, scripts, gitignore, read, plural, quoteOf, exactVersion, keyOf, viteInstructions, metroConfig, themeModule, layoutRoute, homeRoute, detailsRoute, USAGE, processIo, WORD;
 var init_init_app = __esm({
   "src/init-app.ts"() {
     "use strict";
@@ -1354,7 +1379,8 @@ var init_init_app = __esm({
     };
     alwaysPatched = ["expo-modules-core", "react-native-gesture-handler", "react-native-reanimated", "react-native-worklets"];
     plugin = "@alfayez/svelte-native";
-    pluginNames = [plugin, `${plugin}/app.plugin`, `${plugin}/expo`];
+    pluginNames = [plugin, `${plugin}/app.plugin`];
+    removedPluginName = `${plugin}/expo`;
     scripts = { native: "svelte-native dev", android: "svelte-native android", ios: "svelte-native ios", "check-setup": "svelte-native doctor" };
     gitignore = [".svelte-native", ".expo", "/android", "/ios"];
     read = (file) => existsSync3(file) ? readFileSync2(file, "utf8") : void 0;
@@ -1587,19 +1613,22 @@ function metroFinding(appRoot) {
   return { state: /\bwithSvelteNative\b/.test(code) ? "found" : "unclear", file };
 }
 function expoPluginFinding(appRoot, library2) {
-  const names = [library2, `${library2}/app.plugin`, `${library2}/expo`];
+  const names = [library2, `${library2}/app.plugin`];
+  const removed = `${library2}/expo`;
   const json = firstExisting(appRoot, ["app.json"]);
   const code = firstExisting(appRoot, APP_CONFIG_FILES);
-  if (json) {
-    const parsed = readJson(join6(appRoot, json));
-    const expo = parsed?.expo ?? parsed;
-    const plugins = Array.isArray(expo?.plugins) ? expo.plugins : [];
-    const listed = names.find((name) => plugins.some((entry) => pluginName(entry) === name));
-    if (listed) return { state: "found", file: json, name: listed };
-  }
+  const parsed = json ? readJson(join6(appRoot, json)) : void 0;
+  const expo = parsed?.expo ?? parsed;
+  const plugins = Array.isArray(expo?.plugins) ? expo.plugins : [];
+  const listedInJson = (name) => plugins.some((entry) => pluginName(entry) === name);
+  const source = code ? withoutJsComments(readFileSync5(join6(appRoot, code), "utf8")) : "";
+  const namedInCode = (name) => ['"', "'", "`"].some((quote) => source.includes(`${quote}${name}${quote}`));
+  if (json && listedInJson(removed)) return { state: "removed", file: json, name: removed };
+  if (code && namedInCode(removed)) return { state: "removed", file: code, name: removed };
+  const listed = json ? names.find(listedInJson) : void 0;
+  if (listed) return { state: "found", file: json, name: listed };
   if (code) {
-    const source = withoutJsComments(readFileSync5(join6(appRoot, code), "utf8"));
-    const named = names.find((name) => ['"', "'", "`"].some((quote) => source.includes(`${quote}${name}${quote}`)));
+    const named = names.find(namedInCode);
     return named ? { state: "found", file: code, name: named } : { state: "unclear", file: code };
   }
   return json ? { state: "absent", file: json } : { state: "no-file" };
@@ -1858,7 +1887,8 @@ function integration(context, name) {
   };
   const plugin2 = (finding) => {
     const file = finding.file ?? "";
-    if (finding.state === "found") return { group: "build integration", status: "pass", message: `${file} lists the ${finding.name ?? name} plugin${finding.name === `${name}/expo` ? ` (the ${name}/expo path is deprecated: list ${name})` : ""}` };
+    if (finding.state === "found") return { group: "build integration", status: "pass", message: `${file} lists the ${finding.name ?? name} plugin` };
+    if (finding.state === "removed") return { group: "build integration", status: "fail", message: `${file} lists ${finding.name}, a path removed in 0.4.0-rc.7 that no longer resolves: expo prebuild fails on it`, fix: `write "${name}" in plugins in ${file}, in place of "${finding.name}"` };
     if (finding.state === "unclear") return { group: "build integration", status: "unknown", message: `could not tell: ${file} does not name ${name} (a config that builds its plugins in code may add it)`, fix: `plugins: ["${name}"] in the Expo config` };
     if (finding.state === "absent") return { group: "build integration", status: "fail", message: `${file} does not list the ${name} plugin`, fix: `add "${name}" to plugins in ${file}` };
     return { group: "build integration", status: "fail", message: "no app.json or app.config.* in the app", fix: `create an Expo config with plugins: ["${name}"]` };

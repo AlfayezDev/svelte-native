@@ -6,6 +6,7 @@
     "strict": true,
     "skipLibCheck": true,
     "allowImportingTsExtensions": true,
+    "customConditions": ["svelte-native-source"],
     "noEmit": true,
     "types": ["node"]
   },

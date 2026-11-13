@@ -42,7 +42,7 @@ test("writes and key listings go to the module", () => {
   expect(seen.keys).toEqual(["addEventListener", "currentState"]);
 });
 
-test("turboModule and nativeModule, which `@alfayez/svelte-native/native-modules` used to export, are exports of the entry and load React Native's registries on their first call", () => {
+test("turboModule and nativeModule are exports of the entry (`@alfayez/svelte-native/native-modules` exported them up to 0.4.0-rc.6) and load React Native's registries on their first call", () => {
   expect(seen.turbo).toEqual({ turbo: "Blob" });
   expect(seen.turboMissing).toBe("no module Missing");
   expect(seen.legacy).toEqual({ ping: true });

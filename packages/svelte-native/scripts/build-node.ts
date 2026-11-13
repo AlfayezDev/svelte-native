@@ -1,5 +1,6 @@
 /**
- * Builds the JavaScript of the entries Node itself loads, into `dist/node/` (committed: `pnpm --dir packages/svelte-native build`).
+ * Builds the JavaScript of the entries Node itself loads, into `dist/node/` (committed: `pnpm --dir packages/svelte-native build`), and then the type
+ * declarations of the public entries, into `dist/types/` (`build-types.ts`).
  *
  * The package ships TypeScript, which is right for the code Metro and Vite compile (the React Native runtime) and wrong for the code a Node process
  * loads: Node refuses to strip types from a file under `node_modules` (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`), and the tools that load a
@@ -107,4 +108,9 @@ export function filesUnder(directory: string): string[] {
 if (import.meta.main) {
   const names = await writeNode();
   for (const name of names) console.log(`dist/node/${name}  ${readFileSync(join(outputDirectory, name)).length} bytes`);
+  // The type declarations (`dist/types/`) are the other half of the build: `pnpm build` writes both, and `tests/types.test.ts` checks them. Loaded here so that
+  // a test that imports this file for `writeNode` does not load TypeScript and svelte2tsx.
+  const { writeTypes } = await import("./build-types.ts");
+  const declarations = await writeTypes();
+  console.log(`dist/types/  ${declarations.length} files`);
 }

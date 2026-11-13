@@ -421,6 +421,17 @@ export const lab = ${lab};
 export const tree: StackNode = ${nodeOf(tree, "").trimStart()};
 `;
 }
+var FORMER_NAME = "@example/svelte-native";
+function staleEntry(source) {
+  const manifest = JSON.parse((0, import_node_fs3.readFileSync)((0, import_node_path4.resolve)(packageRoot, "package.json"), "utf8"));
+  const literal = (text) => text.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+  const patterns = Object.keys(manifest.exports);
+  const exported = (key) => patterns.some((pattern) => pattern.includes("*") ? new RegExp(`^${pattern.split("*").map(literal).join(".*")}$`).test(key) : pattern === key);
+  for (const [, , name, subpath] of source.matchAll(new RegExp(`(['"])(${literal(manifest.name)}|${literal(FORMER_NAME)})((?:/[^'"]*)?)\\1`, "g"))) {
+    if (name === FORMER_NAME || !exported(subpath ? `.${subpath}` : ".")) return true;
+  }
+  return false;
+}
 function syncRoutes(root, options = {}) {
   const variant = options.variant ?? variantName();
   const lab = options.lab ?? labIncludedFor(variant);
@@ -438,7 +449,8 @@ import { tree } from './routes';
 createFabricApp(App, { tree });
 ${hot}`;
   const files = [[routesTableFile(variant), manifest]];
-  if (options.entry !== "keep" || customRoot !== void 0 || !(0, import_node_fs3.existsSync)((0, import_node_path4.resolve)(output, "entry.ts"))) files.push(["entry.ts", entry]);
+  const entryPath = (0, import_node_path4.resolve)(output, "entry.ts");
+  if (options.entry !== "keep" || customRoot !== void 0 || !(0, import_node_fs3.existsSync)(entryPath) || staleEntry((0, import_node_fs3.readFileSync)(entryPath, "utf8"))) files.push(["entry.ts", entry]);
   for (const [file, content] of files) {
     const destination = (0, import_node_path4.resolve)(output, file);
     let current = "";
@@ -2473,7 +2485,6 @@ var KIT_MODULES = {
   "$app/environment": "kit/env.ts",
   "$app/paths": "kit/paths.ts"
 };
-var MOTION_MODULE = "kit/motion.ts";
 var KIT_UNAVAILABLE = {
   "$app/forms": "forms submit to a SvelteKit server's actions; use remote functions' `form` (docs: Loading data)",
   "$app/manifest": "the manifest lists the web build's files",
@@ -2481,10 +2492,9 @@ var KIT_UNAVAILABLE = {
   "$app/stores": "SvelteKit 3 removed the stores; use `page` from `$app/state`",
   "$app/env/public": "the app has no SvelteKit environment; read what it needs from the app config (`extra`) with expo-constants"
 };
-function kitResolution(moduleName, origin) {
+function kitResolution(moduleName) {
   if (Object.hasOwn(KIT_MODULES, moduleName)) return sourceFile(KIT_MODULES[moduleName]);
   if (Object.hasOwn(KIT_UNAVAILABLE, moduleName)) throw new Error(`${moduleName} is not available on the device (svelte-native): ${KIT_UNAVAILABLE[moduleName]}. The guide's "SvelteKit modules" page lists what is.`);
-  if (moduleName === "svelte/motion" && origin !== sourceFile(MOTION_MODULE)) return sourceFile(MOTION_MODULE);
   return void 0;
 }
 
@@ -2720,7 +2730,7 @@ function withSvelteNative(config, options = {}) {
       if (moduleName.startsWith("$env/") && moduleName.includes("private") || moduleName === "$app/server" || moduleName === "$app/env/private") {
         throw new Error(`Server-only import in native bundle: ${moduleName}`);
       }
-      const kit = kitResolution(moduleName, context.originModulePath);
+      const kit = kitResolution(moduleName);
       if (kit !== void 0) return { type: "sourceFile", filePath: kit };
       if (moduleName === "svelte/reactivity/window") return { type: "sourceFile", filePath: sourceFile("reactivity-window.ts") };
       if (moduleName === "svelte" || moduleName.startsWith("svelte/")) {

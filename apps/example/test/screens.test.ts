@@ -76,7 +76,7 @@ const fake = {
   registerEventHandler: () => {},
 };
 (globalThis as { nativeFabricUIManager?: unknown }).nativeFabricUIManager = fake;
-// React Native's global object is also `window`, and it has `requestAnimationFrame` (Svelte's `Spring` and `Tween` run on it, and `svelte/motion` reads `window.matchMedia`, which React Native lacks); the runtime of this test has neither.
+// React Native's global object is also `window`, and it has `requestAnimationFrame` (Svelte's `Spring` and `Tween` run on it); the runtime of this test has neither. React Native has no `matchMedia`, which Svelte's `svelte/motion` and `MediaQuery` call: the library's polyfills install it, and the bundle below imports them first.
 (globalThis as { window?: unknown }).window ??= globalThis;
 (globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame ??= (callback: (time: number) => void) => setTimeout(() => callback(performance.now()), 16);
 (globalThis as { __DEV__?: boolean }).__DEV__ = false;
@@ -88,7 +88,7 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/Renderer/shims/ReactNativeViewConfigRegistry": "export const register = (name) => name; export const get = (name) => ({ uiViewClassName: name, validAttributes: {}, bubblingEventTypes: {}, directEventTypes: {} });",
   "react-native/Libraries/Utilities/Platform": "export default { get OS() { return globalThis.__exampleOS ?? 'android'; }, Version: 34 };",
   "react-native/Libraries/Utilities/Appearance": "export const getColorScheme = () => 'light'; export const addChangeListener = () => ({ remove() {} });",
-  "react-native/Libraries/Utilities/Dimensions": "export default { get: () => ({ width: 400, height: 800, scale: 2, fontScale: 1 }) };",
+  "react-native/Libraries/Utilities/Dimensions": "export default { get: () => ({ width: 400, height: 800, scale: 2, fontScale: 1 }), addEventListener: () => ({ remove() {} }) };",
   "react-native/Libraries/Utilities/BackHandler": "export default { addEventListener: () => ({ remove() {} }) };",
   // A link that arrives while the app is open (`play`'s `from`) goes to the newest router: the screens of earlier tests are still mounted.
   "react-native/Libraries/Linking/Linking": "const handlers = (globalThis.__linkHandlers ??= []); export default { addEventListener: (type, handler) => { handlers.push(handler); return { remove() { handlers.splice(handlers.indexOf(handler), 1); } }; }, getInitialURL: () => Promise.resolve(null) };",
@@ -97,15 +97,15 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/Components/Keyboard/Keyboard": "export default { isVisible: () => false, dismiss() {} };",
   "react-native/Libraries/EventEmitter/RCTDeviceEventEmitter": "export default { addListener: () => ({ remove() {} }) };",
   "react-native/Libraries/NativeComponent/ViewConfig": "export const createViewConfig = (partial) => partial;",
-  // `$app/env` reads the app's version from the config embedded in the build; `svelte/motion` asks the system whether it should reduce motion.
+  // `$app/env` reads the app's version from the config embedded in the build; `svelte/motion` (`window.matchMedia`) asks the system whether it should reduce motion.
   "expo-constants": "export default { expoConfig: { version: '1.0.0' } };",
   "react-native/Libraries/Components/AccessibilityInfo/AccessibilityInfo": "export default { isReduceMotionEnabled: () => Promise.resolve(false), addEventListener: () => ({ remove() {} }) };",
   "expo-modules-core": "export const EventEmitter = class {}; export const requireOptionalNativeModule = (name) => name === 'SvelteEngine' ? { install: () => false, getInsets: () => globalThis.__navigationInsets, addListener: () => ({ remove() {} }) } : null;",
   "react-native": "export const AppRegistry = { registerRunnable() {} };",
 };
 
-// What Metro resolves SvelteKit's modules to (`withSvelteNative`): the same function, so the bundle below imports the library's files for them.
-const { kitResolution } = (await import(join(library, "src/kit/modules.ts"))) as { kitResolution(moduleName: string, origin: string): string | undefined };
+// What Metro resolves SvelteKit's `$app/*` modules to (`withSvelteNative`): the same function, so the bundle below imports the library's files for them.
+const { kitResolution } = (await import(join(library, "src/kit/modules.ts"))) as { kitResolution(moduleName: string): string | undefined };
 
 // The options the library's transformer compiles a component with (runes mode for the app's own components), as the library's tests use them.
 const { componentOptions, lowersHtml } = (await import(join(library, "src/compile-options.ts"))) as { componentOptions(filename: string): CompileOptions; lowersHtml(filename: string): boolean };
@@ -167,7 +167,7 @@ beforeAll(async () => {
   <Root shell={Shell} {tree} {initial} />`);
   const bundle = await build({
     stdin: {
-      contents: `import Fixture from "./Fixture.svelte"; import { startSurface } from ${JSON.stringify(join(library, "src/fabric/host.ts"))}; import { tick } from "svelte"; export { Fixture, startSurface, tick };`,
+      contents: `import ${JSON.stringify(join(library, "src/polyfills.ts"))}; import Fixture from "./Fixture.svelte"; import { startSurface } from ${JSON.stringify(join(library, "src/fabric/host.ts"))}; import { tick } from "svelte"; export { Fixture, startSurface, tick };`,
       resolveDir: join(directory, "fixture"),
     },
     bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], write: false, metafile: true, nodePaths: [join(app, "node_modules"), join(app, "../../node_modules")],
@@ -181,9 +181,11 @@ beforeAll(async () => {
         builder.onResolve({ filter: /^@alfayez\/svelte-native\/renderer$/ }, () => ({ path: join(library, "src/renderer.ts") }));
         builder.onResolve({ filter: /^@alfayez\/svelte-native\/routes$/ }, () => ({ path: join(directory, ".svelte-native/routes.test.ts") }));
         builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: join(library, "src/environment.ts") }));
-        // SvelteKit's `$app/*` and `svelte/motion`, as Metro answers them; anything else the function leaves to esbuild.
-        builder.onResolve({ filter: /^(?:\$app\/|svelte\/motion$)/ }, (args) => {
-          const path = kitResolution(args.path, args.importer);
+        // The polyfills' Expo runtime and Hermes' Intl are not what a screen test is about.
+        builder.onResolve({ filter: /^(?:expo\/src\/winter|hermes-intl)$/ }, (args) => ({ path: args.path, namespace: "stub" }));
+        // SvelteKit's `$app/*`, as Metro answers them; anything else the function leaves to esbuild.
+        builder.onResolve({ filter: /^\$app\// }, (args) => {
+          const path = kitResolution(args.path);
           return path === undefined ? undefined : { path };
         });
       },
@@ -314,7 +316,7 @@ describe("every screen of the core tour mounts", () => {
 
   test("the SvelteKit modules screen: imports resolve to the library's files, and the page, env and url prop answer from the device", async () => {
     // Metro's answer for each import (`kitResolution`, the function of `withSvelteNative`) is the library's file for it, and SvelteKit's own implementation of them is not bundled.
-    for (const file of ["navigation", "state", "env", "paths", "motion"]) expect([file, inputs.some((input) => input.endsWith(`packages/svelte-native/src/kit/${file}.ts`))]).toEqual([file, true]);
+    for (const file of ["navigation", "state", "env", "paths"]) expect([file, inputs.some((input) => input.endsWith(`packages/svelte-native/src/kit/${file}.ts`))]).toEqual([file, true]);
     expect(inputs.filter((input) => /node_modules\/@sveltejs\/kit\/src\/runtime\/app\//.test(input))).toEqual([]);
     const { surface, problems } = await mount("/sveltekit?filter=open");
     expect(problems).toEqual([]);
@@ -322,6 +324,9 @@ describe("every screen of the core tour mounts", () => {
     const lines = texts(surface);
     // `$app/env`: mobile true, browser false, the version of the app config; `page`: the pathname, the search and the route id of this screen.
     for (const line of ["mobile", "true", "browser", "false", "1.0.0", "/sveltekit", "?filter=open", "url.searchParams.get(\"filter\") is open", "/navigation/stack/7", "prefersReducedMotion.current is false"]) expect([line, lines.includes(line)]).toEqual([line, true]);
+    // `new MediaQuery(...)` from `svelte/reactivity`, through the polyfilled `window.matchMedia`: the window here is 400 x 800 and the scheme light.
+    const after = (line: string) => lines[lines.indexOf(line) + 1];
+    expect([after("(orientation: portrait)"), after("(prefers-color-scheme: dark)")]).toEqual(["true", "false"]);
   });
 
   test("a link with another search to the visible /sveltekit screen changes its url prop and `page` in place", async () => {

@@ -4,6 +4,8 @@
 		"sourceMap": true,
 		"target": "ES2022",
 		"strict": true,
+		// The library is checked against its source here (the `svelte-native-source` condition of its exports map), so an edit to it needs no rebuild.
+		"customConditions": ["svelte-native-source"],
 		"paths": {
 			"#lib/*": ["./src/lib/*"]
 		}

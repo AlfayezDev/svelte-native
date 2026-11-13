@@ -39,7 +39,7 @@
     <Pressable accessibilityRole="button" accessibilityLabel="Close" accessibilityHint="Closes the message list" onPress={() => (closed = true)} style={{ width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", backgroundColor: theme.colors.border }}>
       <Text style={text.heading}>✕</Text>
     </Pressable>
-    <Image source={photo} accessibilityLabel="A sunset over hills" style={{ height: 64, borderRadius: 8 }} />
+    <Image source={photo} accessibilityLabel="A sunset over hills" style={{ width: "100%", height: 64, borderRadius: 8 }} />
   </Section>
 
   <Section title="State" note="A switch says on or off, and a disclosure says whether it is open. Visible colours alone are not enough.">

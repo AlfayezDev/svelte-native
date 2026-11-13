@@ -67,11 +67,11 @@ To keep a value up to date, put the library's subscription in an `$effect` and r
 
 ## Calling a native module directly
 
-When a library has no plain-JavaScript entry, or you wrote a native module yourself, call the module by name. `@alfayez/svelte-native/native-modules` has the two lookups React Native uses, and Expo modules work through `expo-modules-core` as usual:
+When a library has no plain-JavaScript entry, or you wrote a native module yourself, call the module by name. `@alfayez/svelte-native/platform` has the two lookups React Native uses, and Expo modules work through `expo-modules-core` as usual:
 
 ```ts
 /// file: src/lib/native.ts
-import { nativeModule, turboModule } from '@alfayez/svelte-native/native-modules';
+import { nativeModule, turboModule } from '@alfayez/svelte-native/platform';
 import { requireNativeModule } from 'expo-modules-core';
 
 // A TurboModule, by name. Throws when the build doesn't have it.

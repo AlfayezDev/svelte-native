@@ -429,7 +429,7 @@ function syncRoutes(root2, options = {}) {
   mkdirSync(output, { recursive: true });
   const manifest = treeModule(buildTree(routeFilesSync(routesRoot, { lab })), routesRoot, output, variant, lab);
   const customRoot = process.env.SVELTE_NATIVE_ROOT;
-  const prelude = "import '@alfayez/svelte-native/init';\nimport '@alfayez/svelte-native/polyfills';\nimport { createFabricApp, remountSurfaces } from '@alfayez/svelte-native/fabric';\n";
+  const prelude = "import { createFabricApp, remountSurfaces } from '@alfayez/svelte-native/app';\n";
   const hot = "declare const module: { hot?: { accept(callback?: () => void): void } };\nif (__DEV__) module.hot?.accept(() => remountSurfaces());\n";
   const entry = customRoot ? `${prelude}import App from ${JSON.stringify(posix(relative(output, resolve3(root2, customRoot))))};
 createFabricApp(App, {});
@@ -1239,7 +1239,7 @@ and give the app an \`android.package\` and \`ios.bundleIdentifier\`.` });
     }
   }
   const plugins = Array.isArray(expo.plugins) ? expo.plugins : [];
-  const has2 = plugins.some((entry) => (Array.isArray(entry) ? entry[0] : entry) === plugin || (Array.isArray(entry) ? entry[0] : entry) === "@alfayez/svelte-native");
+  const has2 = plugins.some((entry) => pluginNames.includes(Array.isArray(entry) ? entry[0] : entry));
   if (!has2) {
     expo.plugins = [...plugins, plugin];
     done.push("the plugin");
@@ -1334,7 +1334,7 @@ Next: the first \`pnpm android\` (or \`pnpm ios\`, on a Mac) builds the native a
 First, the ${plural(manual, "change")} listed above for you to make.` : ""}`);
   return manual > 0 ? 1 : 0;
 }
-var appDependencies, alwaysPatched, plugin, scripts, gitignore, read, plural, quoteOf, exactVersion, keyOf, viteInstructions, metroConfig, themeModule, layoutRoute, homeRoute, detailsRoute, USAGE, processIo, WORD;
+var appDependencies, alwaysPatched, plugin, pluginNames, scripts, gitignore, read, plural, quoteOf, exactVersion, keyOf, viteInstructions, metroConfig, themeModule, layoutRoute, homeRoute, detailsRoute, USAGE, processIo, WORD;
 var init_init_app = __esm({
   "src/init-app.ts"() {
     "use strict";
@@ -1349,10 +1349,12 @@ var init_init_app = __esm({
       "react-native": "0.86.3",
       "react-native-gesture-handler": "2.32.0",
       "react-native-reanimated": "4.5.1",
+      "react-native-svg": "15.15.4",
       "react-native-worklets": "0.10.1"
     };
     alwaysPatched = ["expo-modules-core", "react-native-gesture-handler", "react-native-reanimated", "react-native-worklets"];
-    plugin = "@alfayez/svelte-native/expo";
+    plugin = "@alfayez/svelte-native";
+    pluginNames = [plugin, `${plugin}/app.plugin`, `${plugin}/expo`];
     scripts = { native: "svelte-native dev", android: "svelte-native android", ios: "svelte-native ios", "check-setup": "svelte-native doctor" };
     gitignore = [".svelte-native", ".expo", "/android", "/ios"];
     read = (file) => existsSync3(file) ? readFileSync2(file, "utf8") : void 0;
@@ -1585,7 +1587,7 @@ function metroFinding(appRoot) {
   return { state: /\bwithSvelteNative\b/.test(code) ? "found" : "unclear", file };
 }
 function expoPluginFinding(appRoot, library2) {
-  const names = [`${library2}/expo`, library2];
+  const names = [library2, `${library2}/app.plugin`, `${library2}/expo`];
   const json = firstExisting(appRoot, ["app.json"]);
   const code = firstExisting(appRoot, APP_CONFIG_FILES);
   if (json) {
@@ -1856,10 +1858,10 @@ function integration(context, name) {
   };
   const plugin2 = (finding) => {
     const file = finding.file ?? "";
-    if (finding.state === "found") return { group: "build integration", status: "pass", message: `${file} lists the ${finding.name ?? `${name}/expo`} plugin` };
-    if (finding.state === "unclear") return { group: "build integration", status: "unknown", message: `could not tell: ${file} does not name ${name}/expo (a config that builds its plugins in code may add it)`, fix: `plugins: [["${name}/expo", {}]] in the Expo config` };
-    if (finding.state === "absent") return { group: "build integration", status: "fail", message: `${file} does not list the ${name}/expo plugin`, fix: `add "${name}/expo" to plugins in ${file}` };
-    return { group: "build integration", status: "fail", message: "no app.json or app.config.* in the app", fix: `create an Expo config with plugins: [["${name}/expo", {}]]` };
+    if (finding.state === "found") return { group: "build integration", status: "pass", message: `${file} lists the ${finding.name ?? name} plugin${finding.name === `${name}/expo` ? ` (the ${name}/expo path is deprecated: list ${name})` : ""}` };
+    if (finding.state === "unclear") return { group: "build integration", status: "unknown", message: `could not tell: ${file} does not name ${name} (a config that builds its plugins in code may add it)`, fix: `plugins: ["${name}"] in the Expo config` };
+    if (finding.state === "absent") return { group: "build integration", status: "fail", message: `${file} does not list the ${name} plugin`, fix: `add "${name}" to plugins in ${file}` };
+    return { group: "build integration", status: "fail", message: "no app.json or app.config.* in the app", fix: `create an Expo config with plugins: ["${name}"]` };
   };
   return [metro(metroFinding(context.appRoot)), plugin2(expoPluginFinding(context.appRoot, name))];
 }

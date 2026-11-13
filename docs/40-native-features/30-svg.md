@@ -3,22 +3,21 @@ title: SVG
 video: svg
 ---
 
-`@alfayez/svelte-native/svg` draws vector graphics with [react-native-svg](https://github.com/software-mansion/react-native-svg), as Svelte components. The elements and their props are the ones you know from SVG on the web, written in camelCase (`strokeWidth`, `stopColor`).
+`@alfayez/svelte-native` draws vector graphics with [react-native-svg](https://github.com/software-mansion/react-native-svg), as Svelte components. The elements and their props are the ones you know from SVG on the web, written in camelCase (`strokeWidth`, `stopColor`).
 
 ```svelte
 <!--- file: src/routes/+mobile.svelte --->
 <script lang="ts">
-	import { Screen } from '@alfayez/svelte-native';
-	import { Circle, Defs, LinearGradient, Rect, Stop, Svg, Text as SvgText } from '@alfayez/svelte-native/svg';
+	import { Circle, Defs, Rect, Screen, Stop, Svg, SvgLinearGradient, SvgText } from '@alfayez/svelte-native';
 </script>
 
 <Screen title="SVG">
 	<Svg width={96} height={64} viewBox="0 0 96 64">
 		<Defs>
-			<LinearGradient id="card" x1="0" y1="0" x2="1" y2="1">
+			<SvgLinearGradient id="card" x1="0" y1="0" x2="1" y2="1">
 				<Stop offset="0" stopColor="#ff7a18" />
 				<Stop offset="1" stopColor="#319197" />
-			</LinearGradient>
+			</SvgLinearGradient>
 		</Defs>
 		<Rect width="96" height="64" rx="12" fill="url(#card)" />
 		<Circle cx="24" cy="32" r="6" fill="#fff" />
@@ -27,27 +26,21 @@ video: svg
 </Screen>
 ```
 
-Install the library and build again, as for any [native view](native-views):
-
-```sh
-npx expo install react-native-svg
-pnpm exec expo prebuild --platform android
-pnpm android
-```
+react-native-svg is a required peer dependency of Svelte Native, so every app has it: `svelte-native init` adds it (version 15.15.4) and `svelte-native doctor` checks it. Unlike the other [native views](native-views), it needs no separate install.
 
 ## Elements
 
 | Kind | Components |
 | --- | --- |
-| Root | `Svg` (also the default export) |
+| Root | `Svg` |
 | Shapes | `Rect`, `Circle`, `Ellipse`, `Line`, `Polygon`, `Polyline`, `Path` |
-| Text | `Text`, `TSpan`, `TextPath` |
-| Structure | `G`, `Defs`, `Use`, `Symbol`, `Image`, `ForeignObject` |
-| Paint | `LinearGradient`, `RadialGradient`, `Stop`, `Pattern`, `Mask`, `ClipPath`, `Marker` |
+| Text | `SvgText`, `TSpan`, `TextPath` |
+| Structure | `G`, `Defs`, `Use`, `Symbol`, `SvgImage`, `ForeignObject` |
+| Paint | `SvgLinearGradient`, `RadialGradient`, `Stop`, `Pattern`, `Mask`, `ClipPath`, `SvgMarker` |
 | Filters | `Filter`, `FeBlend`, `FeColorMatrix`, `FeComposite`, `FeDropShadow`, `FeFlood`, `FeGaussianBlur`, `FeMerge`, `FeMergeNode`, `FeOffset` |
 | Documents | `SvgXml`, `SvgUri` |
 
-`Text` and `Image` here are the SVG elements, and their names clash with the primitives of `@alfayez/svelte-native`. Import them under another name when you use both: `import { Text as SvgText } from '@alfayez/svelte-native/svg'`.
+react-native-svg calls its text and image elements `Text` and `Image`, which are the names of the [`Text`](text) and [`Image`](image) views. Here they are `SvgText` and `SvgImage`. Two more get an `Svg` prefix because [`@alfayez/svelte-native/foreign`](native-views) has components of the same names (expo-linear-gradient's `LinearGradient` and the map's `Marker`): react-native-svg's are `SvgLinearGradient` and `SvgMarker`. Every other element keeps its name.
 
 Inside a `Text` or `TextPath`, a string is a text span of its own. Whitespace between elements counts as text, as in HTML.
 
@@ -57,7 +50,7 @@ Inside a `Text` or `TextPath`, a string is a text span of its own. Whitespace be
 
 ```svelte
 <script lang="ts">
-	import { SvgXml } from '@alfayez/svelte-native/svg';
+	import { SvgXml } from '@alfayez/svelte-native';
 
 	const check = `<svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" fill="none" stroke="#191b1e" stroke-width="2"/></svg>`;
 </script>
@@ -73,7 +66,7 @@ An element's `ref` gets a handle with the library's geometry functions: `getBBox
 
 ```svelte
 <script lang="ts">
-	import { Path, Svg, type SvgHandle } from '@alfayez/svelte-native/svg';
+	import { Path, Svg, type SvgHandle } from '@alfayez/svelte-native';
 
 	let length = $state(0);
 </script>
@@ -89,8 +82,7 @@ An element's `ref` gets a handle with the library's geometry functions: `getBBox
 
 ```svelte
 <script lang="ts">
-	import { createSharedValue, withRepeat, withTiming } from '@alfayez/svelte-native/animation';
-	import { Circle, Svg } from '@alfayez/svelte-native/svg';
+	import { Circle, Svg, createSharedValue, withRepeat, withTiming } from '@alfayez/svelte-native';
 
 	const radius = createSharedValue(6);
 	radius.value = withRepeat(withTiming(12, { duration: 800 }), -1, true);

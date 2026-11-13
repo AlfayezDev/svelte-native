@@ -3,8 +3,7 @@
  *
  * ```svelte
  * <script>
- *   import { AnimatedView, createSharedValue, withSpring } from "@alfayez/svelte-native/animation";
- *   import { Gesture } from "@alfayez/svelte-native/gestures";
+ *   import { AnimatedView, Gesture, createSharedValue, withSpring } from "@alfayez/svelte-native";
  *   const x = createSharedValue(0);
  *   const pan = Gesture.Pan().onUpdate((e) => { x.value = e.translationX; }).onEnd(() => { x.value = withSpring(0); });
  * </script>
@@ -13,7 +12,7 @@
  *
  * Importing this module loads nothing: not the builders, not Reanimated. The first read of a `Gesture` property loads the
  * builders and Reanimated with worklets (so a worklet created afterwards captures the real functions), and the first node with a
- * `gesture` attribute loads the host (`fabric/gestures.ts`). An app that never imports this entry pays nothing at boot.
+ * `gesture` attribute loads the host (`fabric/gestures.ts`). The main entry re-exports all of it; `@alfayez/svelte-native/gestures` is a deprecated alias.
  */
 import { loadReanimated } from "../fabric/reanimated-load.ts";
 import { lazyObject } from "../lazy-object.ts";

@@ -91,7 +91,7 @@ export default {
     },
   },
   plugins: [
-    ["@alfayez/svelte-native/expo", {
+    ["@alfayez/svelte-native", {
       variant,
       androidProfileable: !production,
       autolinkingExclude,

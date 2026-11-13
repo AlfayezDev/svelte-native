@@ -2,7 +2,8 @@
 // `localStorage` (MMKV). They run against the library's test server (packages/svelte-native/tests/fetch/server.ts) when the Web APIs screen opens with
 // `?checks=<origin>`: `svelte-native://web-apis?checks=http://localhost:8787` (an Android emulator after `adb reverse tcp:8787 tcp:8787`; the iOS
 // Simulator reaches the Mac's localhost). A release build talks plain HTTP only when it was built with SVELTE_NATIVE_REMOTE_ORIGIN=http://localhost:8787,
-// which makes the plugin allow it. Every result is logged as `[web-apis] …`, the last line `[web-apis] done pass=N fail=N skip=N`.
+// which makes the plugin allow it. Every result is logged as `[web-apis] …`, the last line `[web-apis] done pass=N fail=N skip=N`,
+// and the lines are posted to the server's /report at the end, which prints them.
 
 export type CheckResult = { name: string; status: "pass" | "fail" | "skip"; detail: string; ms: number };
 
@@ -282,6 +283,8 @@ export const checkCount = checks.length;
 
 export async function runChecks(origin: string, report: (result: CheckResult) => void): Promise<{ pass: number; fail: number; skip: number }> {
   const totals = { pass: 0, fail: 0, skip: 0 };
+  const lines: string[] = [];
+  const log = (line: string) => { lines.push(line); console.log(line); };
   for (const [name, run] of checks) {
     const started = Date.now();
     let result: CheckResult;
@@ -291,9 +294,11 @@ export async function runChecks(origin: string, report: (result: CheckResult) =>
       result = { name, status: error instanceof Skip ? "skip" : "fail", detail: error instanceof Error ? error.message : String(error), ms: Date.now() - started };
     }
     totals[result.status]++;
-    console.log(`[web-apis] ${result.status} ${name}: ${result.detail} (${result.ms} ms)`);
+    log(`[web-apis] ${result.status} ${name}: ${result.detail} (${result.ms} ms)`);
     report(result);
   }
-  console.log(`[web-apis] done pass=${totals.pass} fail=${totals.fail} skip=${totals.skip}`);
+  log(`[web-apis] done pass=${totals.pass} fail=${totals.fail} skip=${totals.skip}`);
+  // The same lines to the test server, which prints them: a Release iOS build sends console.log nowhere a script can read.
+  await fetch(`${origin}/report`, { method: "POST", body: lines.join("\n") }).catch(() => undefined);
   return totals;
 }

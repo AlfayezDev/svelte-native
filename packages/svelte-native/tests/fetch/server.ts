@@ -17,6 +17,7 @@
 //   GET  /hang                   Sends the head, then one byte, then never ends (for abort checks).
 //   GET  /no-head                Never answers (for abort-before-head checks).
 //   GET  /large?mb=M             M MiB (default 8) of `seededBytes(M*1MiB, 11)`, sent in 64 KiB writes (for backpressure and memory checks).
+//   POST /report                 Prints the body to standard output, line by line: the device checks send their results here (a Release iOS build logs no console.log).
 import { createHash } from "node:crypto";
 import { createServer, STATUS_CODES, type IncomingMessage, type ServerResponse } from "node:http";
 import { gzipSync } from "node:zlib";
@@ -168,6 +169,9 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       res.end();
     };
     pump();
+  } else if (path === "/report") {
+    for (const line of (await readBody(req)).toString("utf8").split("\n")) if (line) console.log(line);
+    json(res, { ok: true });
   } else {
     json(res, { error: `no route ${path}` }, 404);
   }

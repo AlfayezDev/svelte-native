@@ -25,6 +25,10 @@ What `svelte-native init` writes, file by file, and the options of the Vite, Met
 		"react": "19.2.7",
 		"react-native": "0.86.3",
 		"react-native-gesture-handler": "2.32.0",
+		"react-native-mmkv": "4.3.1",
+		"react-native-nitro-modules": "0.35.10",
+		"react-native-quick-base64": "2.2.2",
+		"react-native-quick-crypto": "1.1.3",
 		"react-native-reanimated": "4.5.1",
 		"react-native-svg": "15.15.4",
 		"react-native-worklets": "0.10.1"
@@ -47,6 +51,7 @@ What `svelte-native init` writes, file by file, and the options of the Vite, Met
 - The other versions are exact for the same reason. `react` is there because React Native needs it; your code doesn't use it.
 - `hermes-intl` adds the `Intl` APIs Hermes lacks. It must be a dependency of the app itself, so that its native code is linked.
 - `react-native-svg` draws the [SVG components](svg) the main entry exports. It is a required dependency, with native code, so it must be one of the app itself too.
+- `react-native-quick-crypto` and `react-native-mmkv` are what the web's [`crypto` and `localStorage`](platform-apis#crypto) are made of on the device. They share the Nitro runtime (`react-native-nitro-modules`), and quick-crypto asks for `react-native-quick-base64`. All four are required, with native code, so they must be dependencies of the app itself.
 - `main` points at the entry point Svelte Native generates. Without it, Expo looks for `expo/AppEntry.js`.
 - The `reanimated` flag turns on the fast path Svelte Native uses for animations on Android.
 - `dev`, `build`, `preview` and `check` stay the web app's. Don't name a script `doctor`: `pnpm doctor` is pnpm's own command.

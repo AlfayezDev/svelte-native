@@ -479,10 +479,11 @@ async function loadSvelteKit() {
     throw cause;
   }
 }
+var webExtensions = [".web.mjs", ".web.js", ".web.mts", ".web.ts", ".web.jsx", ".web.tsx", ".mjs", ".js", ".mts", ".ts", ".jsx", ".tsx", ".json"];
 function svelteNative(options = {}) {
   if (options.target !== "native") return loadSvelteKit().then((kit) => [
     mobileFlag(),
-    { name: "svelte-native:web", config: () => ({ optimizeDeps: { entries: ["!src/routes/**/+mobile.svelte", "!src/routes/**/*.mobile.svelte", "!src/lib/native/**"] } }) },
+    { name: "svelte-native:web", config: () => ({ optimizeDeps: { entries: ["!src/routes/**/+mobile.svelte", "!src/routes/**/*.mobile.svelte", "!src/lib/native/**"] }, resolve: { extensions: webExtensions } }) },
     kit(withWebAsync(withWebRunes(options.kit, options.runes), options.async))
   ]);
   assertCustomRenderer("The native target of svelteNative() (@alfayez/svelte-native/vite)");

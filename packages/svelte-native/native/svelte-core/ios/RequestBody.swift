@@ -44,7 +44,7 @@ final class SegmentInputStream: InputStream {
   private var descriptor: Int32 = -1
   private var state = Stream.Status.notOpen
   private var failure: Error?
-  private var streamDelegate: StreamDelegate?
+  private weak var streamDelegate: StreamDelegate?
 
   init(segments: [BlobSegment]) {
     self.segments = segments

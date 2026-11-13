@@ -3,15 +3,14 @@ import Foundation
 
 /// The native half of `fetch` and `Blob` (`packages/svelte-native/src/fetch`): the Expo module `SvelteFetch` with the classes `NativeBlob` and `NativeRequest`
 /// and the contract in `src/fetch/native.ts`, on URLSession. The Android module has the same names. Network, file and byte-copying work never runs on the
-/// JavaScript thread: `workers` does it, and a promise settles from wherever its work ends.
+/// JavaScript thread: `FetchWork.queue` does it, and a promise settles from wherever its work ends.
 public final class SvelteFetchModule: Module {
   private let client = FetchClient()
   /// Receives each call and passes it on, so a call never waits behind another module's work on Expo's shared queue.
   private let calls = DispatchQueue(label: "svelte.fetch.calls", qos: .userInitiated)
-  private let workers = DispatchQueue(label: "svelte.fetch.workers", qos: .userInitiated, attributes: .concurrent)
 
   private func work<Result: AnyArgument>(_ promise: Promise, _ job: @escaping () throws -> Result) {
-    workers.async {
+    FetchWork.queue.async {
       do {
         promise.resolve(try job())
       } catch {
@@ -22,6 +21,10 @@ public final class SvelteFetchModule: Module {
 
   public func definition() -> ModuleDefinition {
     Name("SvelteFetch")
+
+    OnCreate {
+      BlobFiles.sweepLeftovers(on: FetchWork.queue)
+    }
 
     OnDestroy {
       self.client.shutdown()

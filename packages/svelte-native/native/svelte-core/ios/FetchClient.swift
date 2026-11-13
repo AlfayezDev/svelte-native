@@ -1,5 +1,11 @@
 import Foundation
 
+/// Where the heavy work of this module runs: copying, decoding and file reads, whatever the size, so that no request waits behind another's 100 MB body. Not the
+/// JavaScript thread, and not a serial queue (the session's delegate queue and the module's call queue must stay free for the callbacks and calls of other requests).
+enum FetchWork {
+  static let queue = DispatchQueue(label: "svelte.fetch.workers", qos: .userInitiated, attributes: .concurrent)
+}
+
 /// One URLSession and the table of its transfers. The session's delegate queue is serial, so the callbacks of every request arrive in order; each hands its
 /// work to the request's `Transfer`.
 final class FetchSession: NSObject, URLSessionDataDelegate, @unchecked Sendable {
@@ -93,7 +99,7 @@ final class FetchSession: NSObject, URLSessionDataDelegate, @unchecked Sendable 
 }
 
 /// The sessions and queues of one module instance. Cookies are a property of the session, not only of the request, so `credentials: "omit"` has a session of
-/// its own that has no cookie store: no Cookie is sent and no Set-Cookie is kept, whatever URLSession does with a request's own cookie flag.
+/// its own that is anonymous: no Cookie is sent and no Set-Cookie is kept, whatever URLSession does with a request's own cookie flag.
 final class FetchClient {
   /// The longest a request may be idle (React Native's own networking sets no timeout; URLSession's 60 seconds would end a quiet stream).
   static let timeout: TimeInterval = 600
@@ -138,9 +144,13 @@ final class FetchClient {
       configuration.httpShouldSetCookies = true
       configuration.httpCookieAcceptPolicy = .always
     } else {
+      // Anonymous: no cookies, no stored credentials, and no cache (a cached response could carry what an earlier credentialed request fetched).
       configuration.httpCookieStorage = nil
       configuration.httpShouldSetCookies = false
       configuration.httpCookieAcceptPolicy = .never
+      configuration.urlCredentialStorage = nil
+      configuration.urlCache = nil
+      configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
     }
     // The same switch React Native's networking and expo/fetch honor.
     if Bundle.main.infoDictionary?["ReactNetworkForceWifiOnly"] as? Bool == true {

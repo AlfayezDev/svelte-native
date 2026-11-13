@@ -45,6 +45,8 @@ final class Transfer: @unchecked Sendable {
   /// Set before the request launches, and read afterwards only on the session's delegate queue.
   var redirectMode: RedirectMode = .follow
   var bodyStream: (() -> InputStream)?
+  /// The method of the request in flight (it changes with a redirect that turns a POST into a GET).
+  var method = "GET"
   private var redirects = 0
 
   private let lock = NSLock()
@@ -176,8 +178,26 @@ final class Transfer: @unchecked Sendable {
         task.cancel()
         return nil
       }
-      return request
+      let next = Self.redirectRequest(request, from: response, method: method)
+      method = next.httpMethod ?? "GET"
+      return next
     }
+  }
+
+  /// The Fetch standard's redirect rule: a 301 or 302 of a POST, and a 303 of anything but GET and HEAD, becomes a GET without the body or the headers that
+  /// describe it. (Whatever URLSession made of the request, the method and the body are set here.)
+  static func redirectRequest(_ request: URLRequest, from response: HTTPURLResponse, method: String?) -> URLRequest {
+    let before = (method ?? "GET").uppercased()
+    let status = response.statusCode
+    guard ((status == 301 || status == 302) && before == "POST") || (status == 303 && before != "GET" && before != "HEAD") else { return request }
+    var next = request
+    next.httpMethod = "GET"
+    next.httpBody = nil
+    next.httpBodyStream = nil
+    for name in ["Content-Type", "Content-Length", "Content-Encoding", "Content-Language", "Content-Location"] {
+      next.setValue(nil, forHTTPHeaderField: name)
+    }
+    return next
   }
 
   // MARK: JavaScript's side
@@ -290,18 +310,22 @@ final class Transfer: @unchecked Sendable {
       case .failed(let failure):
         whole = nil
         finished = true
+        chunks.removeAll()
+        firstChunk = 0
+        buffered = 0
         actions.append { waiting.promise.reject(failure) }
       case .completed:
         whole = nil
         finished = true
         let parts = take(upTo: buffered)
+        // Joining, decoding and building a Blob take time in proportion to the body: not on the delegate queue or the call queue, which other requests share.
         switch waiting.kind {
         case .arrayBuffer:
-          actions.append { waiting.promise.resolve(ByteBuffers.make(joining: parts)) }
+          actions.append { FetchWork.queue.async { waiting.promise.resolve(ByteBuffers.make(joining: parts)) } }
         case .text:
-          actions.append { waiting.promise.resolve(decodeUTF8(Self.join(parts))) }
+          actions.append { FetchWork.queue.async { waiting.promise.resolve(decodeUTF8(Self.join(parts))) } }
         case .blob(let type):
-          actions.append { waiting.promise.resolve(NativeBlob(segments: parts.map { BlobSegment.bytes($0) }, type: type)) }
+          actions.append { FetchWork.queue.async { waiting.promise.resolve(NativeBlob(segments: parts.map { BlobSegment.bytes($0) }, type: type)) } }
         }
       }
     }

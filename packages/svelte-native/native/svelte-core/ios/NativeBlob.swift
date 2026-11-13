@@ -57,7 +57,7 @@ final class NativeBlob: SharedObject, @unchecked Sendable {
     let path: String
     if uri.hasPrefix("/") {
       path = uri
-    } else if let url = URL(string: uri), url.scheme?.lowercased() == "file" {
+    } else if let url = FetchURL.parse(uri), url.scheme?.lowercased() == "file" {
       path = url.path
     } else {
       throw FetchException.url("Not a file: URL: \(uri)")
@@ -164,7 +164,7 @@ final class NativeBlob: SharedObject, @unchecked Sendable {
   }
 
   private func write(to url: URL) throws {
-    BlobFiles.prepare()
+    BlobFiles.ensureDirectory()
     let path = url.path
     let descriptor = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0o644)
     guard descriptor >= 0 else { throw FetchException.network("Cannot create \(path): \(String(cString: strerror(errno)))") }
@@ -191,26 +191,47 @@ final class NativeBlob: SharedObject, @unchecked Sendable {
 enum BlobFiles {
   static let directory: URL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("svelte-native-blobs", isDirectory: true)
 
-  /// Creates the directory, and the first time in this process empties it: a file left there by an earlier run belongs to a URL that no longer exists.
-  static func prepare() {
-    _ = once
+  private static let lock = NSLock()
+  /// The names of the files this process has made: the sweep leaves them alone.
+  private static var made = Set<String>()
+  private static var swept = false
+
+  /// The system may purge Caches while the app runs, so every write makes sure the directory is there.
+  static func ensureDirectory() {
+    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
   }
 
-  private static let once: Void = {
-    let manager = FileManager.default
-    if let leftovers = try? manager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) {
-      for file in leftovers { try? manager.removeItem(at: file) }
+  /// Once per process, at module load and off the JavaScript thread: deletes the files an earlier run left (their URLs no longer exist). A file made in this
+  /// process is in `made` before it exists, so a sweep that races with a first write cannot delete it.
+  static func sweepLeftovers(on queue: DispatchQueue) {
+    lock.lock()
+    let first = !swept
+    swept = true
+    lock.unlock()
+    guard first else { return }
+    queue.async {
+      let manager = FileManager.default
+      guard let leftovers = try? manager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else { return }
+      for file in leftovers {
+        lock.lock()
+        let mine = made.contains(file.lastPathComponent)
+        lock.unlock()
+        if !mine { try? manager.removeItem(at: file) }
+      }
     }
-    try? manager.createDirectory(at: directory, withIntermediateDirectories: true)
-  }()
+  }
 
   static func newFileURL() -> URL {
-    directory.appendingPathComponent(UUID().uuidString.lowercased(), isDirectory: false)
+    let name = UUID().uuidString.lowercased()
+    lock.lock()
+    made.insert(name)
+    lock.unlock()
+    return directory.appendingPathComponent(name, isDirectory: false)
   }
 
   /// Deletes the file behind `url` when it is a file in the blobs directory; anything else is left alone.
   static func revoke(_ url: String) {
-    guard let target = URL(string: url), target.isFileURL else { return }
+    guard let target = FetchURL.parse(url), target.isFileURL else { return }
     let file = target.standardizedFileURL.resolvingSymlinksInPath()
     guard file.deletingLastPathComponent().path == directory.resolvingSymlinksInPath().path else { return }
     try? FileManager.default.removeItem(at: file)

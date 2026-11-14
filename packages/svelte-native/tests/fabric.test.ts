@@ -184,6 +184,8 @@ test("native elements take React Native props as direct attributes and merge the
   for (const key of ["class", "id", "data-row", "children", "nativeProps", "nativeStyle", "ref"]) expect(key in rows[0].props).toBe(false);
   expect("style" in rows[0].props).toBe(false); // styles are flattened into the payload; the stringified `style="color: red"` never reaches it
   expect(find(roots[12], "RCTText").filter((n) => n.props.fontSize === 12)).toHaveLength(3);
+  // React Native's Text sends `ellipsizeMode: "tail"` unless told otherwise: without it Fabric measures a paragraph as `clip` and Android draws it as `END`.
+  expect(find(roots[12], "RCTText").map((n) => n.props.ellipsizeMode)).toEqual(find(roots[12], "RCTText").map(() => "tail"));
 
   expect(app.layoutLog()).toEqual([]);
   emit(rows[1].target, "topLayout", { layout: { height: 42 } });

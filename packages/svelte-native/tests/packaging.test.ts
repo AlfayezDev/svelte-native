@@ -71,8 +71,8 @@ describe("the manifest holds nothing that only resolves inside this repository",
 describe("expo-module.config.json links every native module of the package, once", () => {
   const modules = readdirSync(join(root, "native"), { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
 
-  test("the seven modules are there, and none of them carries a config of its own (autolinking reads only the package's: a second one would be dead or link twice)", () => {
-    expect(modules.sort()).toEqual(["svelte-blur", "svelte-capture-ios", "svelte-engine", "svelte-insets-ios", "svelte-navigation-ios", "svelte-screens-ios", "svelte-updates"]);
+  test("the eight modules are there, and none of them carries a config of its own (autolinking reads only the package's: a second one would be dead or link twice)", () => {
+    expect(modules.sort()).toEqual(["svelte-blur", "svelte-capture-ios", "svelte-core", "svelte-engine", "svelte-insets-ios", "svelte-navigation-ios", "svelte-screens-ios", "svelte-updates"]);
     expect(filesUnder("native").filter((file) => file.endsWith("/expo-module.config.json"))).toEqual([]);
   });
 
@@ -80,7 +80,7 @@ describe("expo-module.config.json links every native module of the package, once
     const withGradle = modules.filter((name) => existsSync(join(root, "native", name, "android/build.gradle"))).sort();
     expect(config.android.projects.map((project) => project.name).sort()).toEqual(withGradle);
     for (const project of config.android.projects) expect(project.path).toBe(`native/${project.name}/android`);
-    expect(config.android.projects.map((project) => project.name)).toEqual(["svelte-engine", "svelte-updates", "svelte-blur"]);
+    expect(config.android.projects.map((project) => project.name)).toEqual(["svelte-engine", "svelte-updates", "svelte-blur", "svelte-core"]);
     expect(config.platforms).toEqual(["android", "apple"]);
   });
 
@@ -140,9 +140,11 @@ describe("what `files` packs", () => {
       "native/svelte-engine/android/src/main/java/expo/modules/svelteengine/SvelteEngineModule.kt",
       "native/svelte-updates/android/build.gradle",
       "native/svelte-blur/android/build.gradle",
+      "native/svelte-core/android/build.gradle",
       "native/svelte-capture-ios/ios/SvelteCapture.podspec",
       "native/svelte-insets-ios/ios/SvelteInsets.podspec",
       "native/svelte-blur/ios/SvelteBlur.podspec",
+      "native/svelte-core/ios/SvelteCore.podspec",
       "native/svelte-navigation-ios/ios/SvelteNavigation.podspec",
       "native/svelte-screens-ios/native/SvelteScreensIOS.podspec",
       "native/svelte-screens-ios/native/Views/SvelteStackView.mm",

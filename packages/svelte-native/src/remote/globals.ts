@@ -3,7 +3,6 @@
  * transformer adds an import of these names to each of them; nothing is installed on the global object). See `transform.ts`, `kitGlobalsImport`.
  */
 import AppState from "react-native/Libraries/AppState/AppState";
-import { fetch as expoFetch } from "expo/fetch";
 import { requireOrigin, transportOptions } from "./config.ts";
 import { currentUrl } from "./link.ts";
 import { base64Decode, base64Encode, makeFinalizationRegistry, setSweepLifecycle, WeakRefFallback } from "./environment.ts";
@@ -31,7 +30,8 @@ const BODYLESS = new Set(["GET", "HEAD"]);
  * `fetch` for the SvelteKit server: a path is made absolute on the configured origin; cookies are the platform's (`credentials: "include"`:
  * on Android the cookie jar React Native's networking and the WebView share, on iOS `HTTPCookieStorage`); and a request that is not a GET
  * carries `Origin: <the configured origin>`, which is what SvelteKit's remote function CSRF check compares with the origin it serves
- * (`is_remote_forbidden`, `src/runtime/server/csrf.js`). Expo's `fetch` is the one that streams a response body on both platforms (`query.live`).
+ * (`is_remote_forbidden`, `src/runtime/server/csrf.js`). It sends through the global `fetch`, read at each call: the library's own, which streams a
+ * response body on both platforms (`query.live`), or Expo's on a binary without the library's native module.
  * Redirects are errors.
  * Throws `RemoteConfigError` when no origin is configured.
  */
@@ -42,7 +42,7 @@ export function fetch(input: string | URL, init: RequestInit = {}): Promise<Resp
   const method = (init.method ?? "GET").toUpperCase();
   const headers = new Headers(init.headers);
   if (!BODYLESS.has(method) && !headers.has("origin") && (url === origin || url.startsWith(`${origin}/`))) headers.set("origin", origin);
-  const send = (transportOptions().fetch ?? expoFetch) as typeof globalThis.fetch;
+  const send = transportOptions().fetch ?? globalThis.fetch;
   // A redirect is not followed: the server answers a remote call itself (SvelteKit's `redirect()` is a JSON answer), and a 3xx from a proxy or a hook would
   // carry the session cookie to wherever it points. It fails the call instead.
   return send(url, { credentials: "include", redirect: "error", ...init, headers });
@@ -95,5 +95,5 @@ export const window = {
   },
 };
 
-// Scoped shims: preserve native/global Blob and File behavior outside SvelteKit form utilities.
+// Scoped serializer adapters, distinct from the platform global Blob/File and their asynchronous readers.
 export { BinaryFormBlob as Blob, NativeFile as File } from "./files.ts";

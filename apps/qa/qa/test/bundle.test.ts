@@ -18,7 +18,7 @@ import { platformDir, svelteNativeCli } from "../lib/paths.ts";
  * which Metro writes when its config loads, so a bundle never touches another variant's table, and the tests below can run beside a live
  * development server of the QA app.
  */
-const { smokeOnlyBundlePackages } = createRequire(import.meta.url)("../smoke-packages.cjs") as { smokeOnlyBundlePackages: string[] };
+const { smokeOnlyBundlePackages, libraryPeerPackages } = createRequire(import.meta.url)("../smoke-packages.cjs") as { smokeOnlyBundlePackages: string[]; libraryPeerPackages: string[] };
 
 /**
  * The size of the same bundle at a reference commit (JavaScript before Hermes, bytes), built with this recipe: the QA app may grow by
@@ -45,15 +45,23 @@ const { smokeOnlyBundlePackages } = createRequire(import.meta.url)("../smoke-pac
  *
  * Moved on 13 November 2026 (feat/exports-grouped), from 6,003,584 to 6,007,156 bytes (+3,572, 1,205 to 1,206 modules): the generated entry imports `@alfayez/svelte-native/app` (one module that imports the boot modules and the Fabric host in the order it
  * imported them), and the main entry exports the animation, the gestures and the SVG components, which the QA app carried already for its lab. The product variant moved far more (see `productBaseline`): it is the variant that did not carry them.
+ *
+ * Moved on 14 November 2026 (feat/native-fetch), from 6,007,156 to 7,085,004 bytes (+1,077,848, 17.9 %; 1,206 to 1,403 modules), in two parts, both measured with this recipe on the same tree. The library's own `fetch`, `Blob`, `FormData`, `crypto` and
+ * `localStorage` (the JavaScript layer over the `SvelteFetch` module, the web `crypto` and `Storage` objects, `/mmkv`) and the lab's Web APIs screen and checks: 6,146,358 bytes in 1,239 modules (+139,202, 2.3 %). Then the four packages the library now requires
+ * as peers, react-native-quick-crypto, react-native-mmkv, react-native-nitro-modules and react-native-quick-base64: they were the smoke test's libraries, which Metro stubbed in this variant, and `crypto` and `localStorage` read them, so the QA app
+ * bundles the real ones (+938,646 bytes, 164 modules; quick-crypto's implementation of Node's crypto API and the modules it needs are most of it). The smoke app carried them already and does not move (9,173,998 bytes in 1,938 modules).
  */
-const baseline = { commit: "the main entry that exports the animation, the gestures and the SVG components, and the `/app` entry (feat/exports-grouped: +3,572 bytes, 0.06 %, over the 6,003,584 of feat/qa-coverage, which already carried the SVG and animation modules for the lab)", bytes: 6_007_156 };
+const baseline = { commit: "the library's own fetch, Blob, crypto and localStorage with the Web APIs lab (+139,202 bytes, 2.3 %), and the four packages the library requires as peers, which every app bundles now (+938,646 bytes; feat/native-fetch: 7,085,004 bytes in 1,403 modules, +17.9 % over the 6,007,156 of feat/exports-grouped)", bytes: 7_085_004 };
 
 /**
  * The production variant's bundle without the lab, built with the same recipe. It may grow by 1 % before a test says so. Measured again at 727bded, which makes the library's
  * polyfills load Expo's WinterCG runtime (a standard `URL`, `fetch`, `TextDecoder`, ... that the router needs): 4,074,366 bytes, 120,873 (3.1 %) over the 3,953,493 of 1bbbec6 without
  * it (the QA app, which imported the runtime already, did not move).
+ *
+ * Moved on 14 November 2026 (feat/native-fetch), from 4,505,761 to 5,586,438 bytes (+1,080,677, 24.0 %; 980 to 1,180 modules): the library's own `fetch`, `Blob`, `FormData`, `crypto` and `localStorage` (4,645,130 bytes in 1,014 modules, +139,369, 3.1 %: the
+ * product has no lab, so this is the library's code alone), and the four required peers, which the product bundled as stubs before and bundles for real now (+941,308 bytes, 166 modules).
  */
-const productBaseline = { commit: "the main entry that exports the animation, the gestures and the SVG components (feat/exports-grouped: 4,505,761 bytes in 980 modules, +298,691 bytes and 74 modules, 7.1 %, over the 4,207,070 of feat/qa-coverage, which only the apps that imported `/animation`, `/gestures` or `/svg` carried: every app has the 45 SVG components, the host modules that mount them, react-native-svg's extraction code and the gesture and animation modules now)", bytes: 4_505_761 };
+const productBaseline = { commit: "the library's own fetch, Blob, crypto and localStorage (+139,369 bytes, 3.1 %), and the four packages the library requires as peers, which every app bundles now (+941,308 bytes; feat/native-fetch: 5,586,438 bytes in 1,180 modules, +24.0 % over the 4,505,761 of feat/exports-grouped)", bytes: 5_586_438 };
 
 /** What this run made: the bundle directories (about 15 to 34 MB each) and the Metro caches of their own. All removed when the tests end. */
 const made: string[] = [];
@@ -108,7 +116,9 @@ const bundled = (variant: string, syncedFirst: readonly string[] = []) => {
 };
 
 /** Strings that belong to the libraries' own code and to nothing else in the app. */
-const libraryCode = ["RNFBAppModule", "MixpanelReactNative", "IntercomEventEmitter", "RNCNetInfo", "RNCAsyncStorage", "SslPublicKeyPinning", "QuickBase64", "HybridObject", "StatsigClient", "RNSentry"];
+const libraryCode = ["RNFBAppModule", "MixpanelReactNative", "IntercomEventEmitter", "RNCNetInfo", "RNCAsyncStorage", "SslPublicKeyPinning", "StatsigClient", "RNSentry"];
+/** Strings of the four packages the library requires (react-native-quick-crypto, react-native-mmkv, react-native-nitro-modules, react-native-quick-base64), which every app carries: the Nitro runtime's hybrid objects and quick-base64's native module. */
+const peerCode = ["QuickBase64", "HybridObject"];
 
 describe("the JavaScript bundles", () => {
 	for (const [name, variant] of [["QA", ""], ["product", "production"]] as const) {
@@ -126,6 +136,17 @@ describe("the JavaScript bundles", () => {
 			expect(text.includes("smoke-checks")).toBe(variant === "");
 		}, 120_000);
 	}
+	test("every app bundles the four packages the library requires (crypto and localStorage are made of them), the real ones and no stub", () => {
+		for (const variant of ["", "production", "smoke"]) {
+			const { modules, text } = bundled(variant);
+			for (const library of libraryPeerPackages) {
+				expect([variant, library, modules.some((module) => module.includes(`node_modules/${library}/`))]).toEqual([variant, library, true]);
+				// Metro's stub for a package is a file named after it (`.svelte-native/stubs/<variant>/<package>.js`): there is none for these.
+				expect([variant, library, modules.filter((module) => stubModule.test(module) && module.includes(library))]).toEqual([variant, library, []]);
+			}
+			for (const code of peerCode) expect([variant, code, text.includes(code)]).toEqual([variant, code, true]);
+		}
+	}, 120_000);
 	test("the smoke app's bundle has them, so the stubs are what keeps them out", () => {
 		const { text, bytes } = bundled("smoke");
 		for (const code of libraryCode) expect([code, text.includes(code)]).toEqual([code, true]);

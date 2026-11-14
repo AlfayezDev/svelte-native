@@ -9,6 +9,10 @@ export declare class NativeFile {
         lastModified?: number;
         maxBytes?: number;
     });
+    /** Explicitly buffer a platform File for the synchronous SvelteKit form serializer. This is not a streaming upload. */
+    static from(file: Pick<File, "name" | "type" | "size" | "lastModified" | "arrayBuffer">, options?: {
+        maxBytes?: number;
+    }): Promise<NativeFile>;
     get size(): number;
     bytes(): Uint8Array;
 }

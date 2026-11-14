@@ -2,6 +2,19 @@ import { describe, expect, test } from "bun:test";
 import { BinaryFormBlob, NativeFile } from "../src/remote/files.ts";
 
 describe("byte-backed native uploads", () => {
+  test("async adaptation checks declared size and metadata before reading, then checks actual size", async () => {
+    let reads = 0;
+    const file = { name: "a.bin", type: "application/octet-stream", size: 2, lastModified: 123, arrayBuffer: async () => { reads++; return new Uint8Array([1, 2]).buffer; } };
+    await expect(NativeFile.from(file, { maxBytes: 1 })).rejects.toThrow(/upload limit/);
+    await expect(NativeFile.from({ ...file, name: "../a" })).rejects.toThrow(/filename/);
+    await expect(NativeFile.from({ ...file, size: NaN })).rejects.toThrow(/size/);
+    expect(reads).toBe(0);
+    const adapted = await NativeFile.from(file);
+    expect(adapted.bytes()).toEqual(new Uint8Array([1, 2]));
+    expect(reads).toBe(1);
+    await expect(NativeFile.from({ ...file, size: 1 })).rejects.toThrow(/declared size/);
+    await expect(NativeFile.from({ ...file, arrayBuffer: async () => { throw new Error("read failed"); } })).rejects.toThrow("read failed");
+  });
   test("snapshots Buffer subclasses whose slice shares storage", () => {
     const bytes = Buffer.from([1, 2]);
     const file = new NativeFile(bytes, "buffer.bin");

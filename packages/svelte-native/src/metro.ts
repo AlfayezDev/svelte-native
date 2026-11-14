@@ -15,7 +15,15 @@ import { classesTableFile, labIncludedFor, routesTableFile, variantName } from "
 const require = createRequire(import.meta.url);
 const nativeSvelte = dirname(require.resolve("svelte/package.json"));
 
-export const LITE_ORIGINS = /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?(?:hermes-intl|expo|expo-modules-core|expo-file-system|react-native-reanimated|react-native-worklets|react-native-is-edge-to-edge|expo-secure-store|expo-image-picker|expo-localization|expo-crypto|expo-constants|expo-font|expo-asset|expo-splash-screen|expo-status-bar|expo-system-ui|expo-keep-awake|expo-application|react-native-svg)[\\/]/;
+export const LITE_ORIGINS = /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?(?:hermes-intl|expo|expo-modules-core|expo-file-system|react-native-reanimated|react-native-worklets|react-native-is-edge-to-edge|expo-secure-store|expo-image-picker|expo-localization|expo-crypto|expo-constants|expo-font|expo-asset|expo-splash-screen|expo-status-bar|expo-system-ui|expo-keep-awake|expo-application|react-native-nitro-modules|react-native-mmkv|react-native-quick-crypto|react-native-quick-base64|react-native-svg)[\\/]/;
+
+/**
+ * The names under which Node's `crypto` is imported. A library written for Node (`jose`, an AWS or a Stripe client, ...) imports one of them; on the device they resolve to
+ * react-native-quick-crypto, which implements Node's API (`createHash`, `createHmac`, `randomBytes`, ciphers, key pairs, `subtle`, ...) over OpenSSL. `crypto` the global is the web's
+ * (`polyfills.ts`), and is made of the same library.
+ */
+export const NODE_CRYPTO: ReadonlySet<string> = new Set(["crypto", "node:crypto"]);
+export const QUICK_CRYPTO = "react-native-quick-crypto";
 
 export const INITIALIZE_CORE = /react-native[\\/]Libraries[\\/]Core[\\/]InitializeCore\.js$/;
 
@@ -222,7 +230,12 @@ export function withSvelteNative(config: ConfigT, options: SvelteNativeMetroOpti
   const resolver: ConfigT["resolver"] = {
     ...config.resolver,
     sourceExts: [...new Set([...config.resolver.sourceExts, "svelte"])],
-    resolveRequest: (context, moduleName, platform) => {
+    resolveRequest: (given, requested, platform) => {
+    // `crypto` and `node:crypto` are react-native-quick-crypto, resolved as the app's own import of it would be (from the app's directory: a library written for Node does not depend on it, the app does)
+    // and by the rest of this resolver, so an app that stubs the package gets its stub for them too.
+    const aliased = NODE_CRYPTO.has(requested);
+    const moduleName = aliased ? QUICK_CRYPTO : requested;
+    const context = aliased ? { ...given, originModulePath: join(config.projectRoot, "package.json") } : given;
     if (moduleName === "@alfayez/svelte-native/routes" || (moduleName === "./routes" && context.originModulePath === entryFile)) return { type: "sourceFile", filePath: routesTable };
     if (moduleName === "@alfayez/svelte-native/classes-table") return { type: "sourceFile", filePath: classesTable };
     const stub = stubFor(moduleName, context.originModulePath);

@@ -13,6 +13,22 @@ photo.onValueChange(new NativeFile(bytes, 'photo.jpg', { type: 'image/jpeg' }));
 await form.submit();
 ```
 
+When a picker or the native Fetch layer gives you a standard `File`, explicitly
+adapt it before setting the field:
+
+```ts
+photo.onValueChange(await NativeFile.from(file, { maxBytes: 8 * 1024 * 1024 }));
+```
+
+`NativeFile.from` supports Svelte Native's native-backed `File` and standard web
+Files through `arrayBuffer()`. It checks declared size and metadata before reading,
+then verifies the byte count. Read errors reject the promise. It deliberately
+buffers and copies the whole file into JavaScript; it does not preserve the
+native file handle or provide streaming/background transfer. The scoped form
+serializer still requires `NativeFile`, so passing the global/native `File`
+directly to a file field is rejected. This explicit boundary avoids confusing
+asynchronous platform `File.bytes()` with synchronous form `NativeFile.bytes()`.
+
 `as('file multiple')` accepts an array of `NativeFile`; pass an empty array to clear
 it. A single file field accepts `undefined` to clear. Picker adapters have the
 same `ref` and `onBlur` lifecycle as other native fields. Reset clears selections.
@@ -21,10 +37,12 @@ The existing SvelteKit binary-form serializer sends file metadata and exact byte
 the server receives ordinary File values. Client preflight schemas must accept
 NativeFile rather than checking the platform global `File`; server schemas can
 continue validating ordinary `File` values. This is not multipart FormData and does
-not install global File or Blob polyfills. Browser code continues using browser
+not replace global File or Blob. The runtime's native-backed globals remain independent. Browser code continues using browser
 file inputs. Image-submit coordinates are not supported.
 
-Uploads are buffered in memory, not streamed. Each NativeFile defaults to a
+Remote-form uploads are buffered in memory, not streamed. The transport uses the
+current global fetch (or `configureRemote({ fetch })` when supplied); changing
+transport does not remove the form serializer's buffering. Each NativeFile defaults to a
 16 MiB limit, adjustable with `maxBytes`; keep limits small because serialization
 copies bytes and several files can multiply memory use. The constructor checks
 this after the caller has read the bytes, so the picker/file reader should also

@@ -40,18 +40,27 @@ the complete request has been allocated. Swapping fetch alone cannot make this
 path streaming or restart-safe.
 
 The installed Kit server can consume the binary form body incrementally and use
-lazy file values. A streaming client can preserve that protocol, but requires a
-file-backed encoder preserving exact offsets/order and a native upload transport
-that actually consumes files/streams without rebuilding the body in JS memory.
-No such client transport is currently wired into this repository. A generic
-ReadableStream helper that still calls `.bytes()` would only disguise buffering.
+lazy file values. Main now supplies a SvelteFetch native transport with native
+Blob/File handles, native segment-based request bodies and streaming response
+reads. Those capabilities do not automatically change remote form encoding:
+remote forms still call the scoped binary serializer and send a complete byte
+array. `NativeFile.from(file)` deliberately reads and snapshots a native File's
+contents before that encoding. It is compatible, but not a memory optimization.
 
-Background delivery additionally requires durable private payload staging,
-native task identity/progress/cancellation, process-restart recovery, credential
-expiry handling, result reconciliation and server idempotency. The current
-in-memory remote form result/refresh/redirect lifecycle cannot stand in for those
-contracts. The next implementation gate is a chosen native transfer backend and
-an authenticated, idempotent test upload endpoint, followed by Android/iOS
+A binary-form encoder that preserves native file handles alongside metadata
+could use the new transport, but it must retain Kit's exact ordering/offsets and
+validate on both native platforms. Passing a ReadableStream is not a shortcut:
+`src/fetch/body.ts` StreamSource.upload drains it with readAll before sending.
+Generic native Blob upload and buffered remote binary-form upload are separate
+paths; do not claim their allocation behavior is the same.
+
+Background delivery still requires durable private payload staging, native task
+identity/progress/cancellation, process-restart recovery, credential expiry
+handling, result reconciliation and server idempotency. Current iOS FetchClient
+uses URLSessionConfiguration.default, not a persistent background-session
+contract. The in-memory remote form result/refresh/redirect lifecycle cannot
+supply restart handling. The next gate is a tested native-handle binary encoder
+and authenticated, idempotent test upload endpoint, followed by Android/iOS
 background/relaunch/cancel tests. Do not silently persist credentials or payloads
 while trying to emulate this with JavaScript retries.
 

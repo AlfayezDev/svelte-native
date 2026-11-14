@@ -21,6 +21,19 @@ export class NativeFile {
     this.lastModified = Math.trunc(modified);
     Object.freeze(this);
   }
+  /** Explicitly buffer a platform File for the synchronous SvelteKit form serializer. This is not a streaming upload. */
+  static async from(file: Pick<File, "name" | "type" | "size" | "lastModified" | "arrayBuffer">, options: { maxBytes?: number } = {}): Promise<NativeFile> {
+    const { name, type, size, lastModified } = file;
+    const maxBytes = options.maxBytes ?? 16 * 1024 * 1024;
+    // Validate metadata and the limit before calling an asynchronous native reader.
+    const metadata = new NativeFile(new Uint8Array(), name, { type, lastModified, maxBytes });
+    if (!Number.isSafeInteger(size) || size < 0) throw new TypeError("File size must be a non-negative safe integer");
+    if (size > maxBytes) throw new RangeError(`NativeFile exceeds the ${maxBytes} byte upload limit`);
+    const buffer = await file.arrayBuffer();
+    if (!(buffer instanceof ArrayBuffer)) throw new TypeError("File.arrayBuffer() must return an ArrayBuffer");
+    if (buffer.byteLength !== size) throw new TypeError("File contents do not match its declared size");
+    return new NativeFile(new Uint8Array(buffer), metadata.name, { type: metadata.type, lastModified: metadata.lastModified, maxBytes });
+  }
   get size(): number { return this.#data.byteLength; }
   bytes(): Uint8Array { return this.#data.slice(); }
 }

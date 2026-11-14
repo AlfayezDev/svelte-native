@@ -550,14 +550,14 @@
     { name: "navigation-8", label: "Push and pop a screen without a native header 8 times, over another one", async run(signal) {
       const depth = router.entries.length;
       // The lab page's own screen has a native header: a pop that reveals it shows the navigation bar again, which is header-8's cost.
-      // The screens pushed and popped here lie over a bare one, so the scenario measures the stack alone. The bare one has an href of its own:
-      // a goto to the href on top of the stack does nothing (Expo Router's `navigate`), so with one href every cycle's push was skipped and
-      // its back() popped the bare screen, revealing the lab page and its header.
+      // The screens pushed and popped here lie over a bare one, so the scenario measures the stack alone. Each cycle's screen is that page
+      // with another query, which a plain goto changes in place: it asks for a push, or its back() pops the bare screen and the lab page's
+      // header comes back.
       router.goto("/__dev/screen?header=none&base=1");
       await pause(900, signal);
       const { frames } = await measure(async () => {
         for (let cycle = 0; cycle < 8 && !signal.aborted; cycle++) {
-          router.goto("/__dev/screen?header=none");
+          router.goto("/__dev/screen?header=none", { presentation: "push" });
           await pause(800, signal);
           router.back();
           await pause(800, signal);
@@ -576,8 +576,9 @@
       await pause(600, signal);
       screenLab.appears = 0; screenLab.disappears = 0;
       const { frames } = await measure(async () => {
+        // Each level is the same page with another query: a plain goto would change the screen on top in place.
         for (let level = 1; level <= 8 && !signal.aborted; level++) {
-          router.goto(`/__dev/screens?mode=header&depth=${level}`);
+          router.goto(`/__dev/screens?mode=header&depth=${level}`, { presentation: "push" });
           await pause(700, signal);
         }
         for (let level = 8; level >= 1 && !signal.aborted; level--) {
@@ -693,7 +694,7 @@
           }
           if (soakParts.has("header")) {
             router.goto("/__dev/screens?mode=header&depth=1"); await pause(700, signal);
-            router.goto("/__dev/screens?mode=header&depth=2"); await pause(700, signal);
+            router.goto("/__dev/screens?mode=header&depth=2", { presentation: "push" }); await pause(700, signal);
             router.back(); await pause(600, signal);
             router.back(); await pause(600, signal);
           }

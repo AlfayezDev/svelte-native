@@ -142,9 +142,14 @@ const waitFor = (text: Localized): Step => ({ wait: label(text) });
 /** The menu's own button for a screen it pushes: the lab menu is the base (the launch link), the tap pushes the screen onto it. */
 const pushFromMenu = (button: string): Step[] => [tapLabel(button), { pause: 600 }];
 
-/** For the screens the menu has no button for (a button would move the rows the menu's references show): the link opened onto the menu. */
+/**
+ * For the screens the menu has no button for (a button would move the rows the menu's references show): the link opened onto a screen
+ * pushed from the menu. A link to the page the user is on with another query changes that screen in place, so one opened onto the menu
+ * would turn the base into the toolbar screen, with nothing to go back to; opened onto screen 1, it keeps the menu below.
+ */
 const openFromMenu = (mode: string): Step[] => [
-	waitFor("Push eight screens with headers"),
+	tapLabel("Push eight screens with headers"),
+	waitFor("Screen 1, Native header"),
 	{ open: `${screens}?mode=${mode}` },
 	{ pause: 600 },
 ];

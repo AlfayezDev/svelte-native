@@ -3,8 +3,10 @@ const { getDefaultConfig } = require("expo/metro-config");
 const { withSvelteNative } = require("@alfayez/svelte-native/metro");
 const { smokeOnlyBundlePackages } = require("./qa/smoke-packages.cjs");
 
-// The libraries of the native module smoke test are in the smoke app only (APP_VARIANT=smoke). The product and the QA app do not link
-// them (app.config.ts excludes them from autolinking), so their bundles must not carry their JavaScript either: Metro resolves them to
+// The libraries of the native module smoke test are in the smoke app only (APP_VARIANT=smoke), but for the four the library itself requires
+// (react-native-quick-crypto, react-native-mmkv, react-native-nitro-modules, react-native-quick-base64: the device's `crypto` and `localStorage`
+// are made of them), which every variant links and bundles (qa/smoke-packages.cjs: `shared` in smoke-modules.json). The product and the QA app
+// do not link the rest (app.config.ts excludes them from autolinking), so their bundles must not carry their JavaScript either: Metro resolves them to
 // a stub that throws when used. The smoke page keeps its static requires and refuses to run outside the smoke app.
 // The checks themselves (smoke-checks.ts) go the same way: the page and the runner stay, the 36 checks are the smoke app's.
 // The product (APP_VARIANT=production) does not carry the development lab either: `svelte-native sync` leaves the `/__dev` routes out of

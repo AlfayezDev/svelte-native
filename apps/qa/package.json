@@ -98,7 +98,7 @@
 		"react-native-live-direction": "0.1.1",
 		"react-native-maps": "1.27.2",
 		"react-native-mmkv": "4.3.1",
-		"react-native-nitro-modules": "^0.35.6",
+		"react-native-nitro-modules": "0.35.10",
 		"react-native-pdf": "7.0.3",
 		"react-native-quick-base64": "2.2.2",
 		"react-native-quick-crypto": "1.1.3",

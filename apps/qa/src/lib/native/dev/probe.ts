@@ -120,7 +120,8 @@ const probes: Record<string, (context: Context) => Promise<void>> = {
       ["form sheet", `${screens}?mode=form`, "formSheet"],
       ["modal", `${screens}?mode=header&depth=1`, "modal"],
       ["sheet", `${screens}?mode=sheet`, "sheet"],
-      ["pushed screen", `${screens}?mode=header&depth=2`, undefined],
+      // The menu's own page with another query: a plain goto would change the menu in place, leaving nothing to dismiss to.
+      ["pushed screen", `${screens}?mode=header&depth=2`, "push"],
     ] as const) {
       await open(context, screens, goto, presentation);
       const before = context.router.entries.length;

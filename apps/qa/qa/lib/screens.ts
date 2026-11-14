@@ -20,7 +20,8 @@ export type Selector = { label?: Localized; className?: string; account?: "email
 
 /**
  * `open` is a link opened into the running app (`am start` of a deep link without stopping it): the router treats it as a
- * plain goto, so it pushes the screen onto the stack the launch link made. `tap` pushes from a screen's own button. `scrollToEnd` swipes the
+ * plain goto, so it pushes a screen of another page onto the stack, and changes the screen on top in place when the link is to that
+ * screen's own page with another query. `tap` pushes from a screen's own button. `scrollToEnd` swipes the
  * page up twice, for a control the largest text pushes below the first screen (the tree lists only what is on screen).
  */
 export type Step =
@@ -41,7 +42,8 @@ export type ScreenCase = {
 	/**
 	 * A deep link opened with `am start`; null starts the launcher activity (the startup screen). The router makes the launch link
 	 * the base of the stack (no back arrow), so a screen the lab pushes from another is reached with that other screen as the
-	 * link and a step that pushes it: a tap on the menu's button, or an `open` of the screen's own link where the menu has none.
+	 * link and a step that pushes it: a tap on the menu's button, or, where the menu has none, a tap that pushes screen 1 and an
+	 * `open` of the screen's own link, which changes screen 1 into it in place.
 	 */
 	deepLink: string | null;
 	/** What the app's network sees while the screen is open. */
@@ -142,9 +144,15 @@ const waitFor = (text: Localized): Step => ({ wait: label(text) });
 /** The menu's own button for a screen it pushes: the lab menu is the base (the launch link), the tap pushes the screen onto it. */
 const pushFromMenu = (button: string): Step[] => [tapLabel(button), { pause: 600 }];
 
-/** For the screens the menu has no button for (a button would move the rows the menu's references show): the link opened onto the menu. */
+/**
+ * For the screens the menu has no button for (a button would move the rows the menu's references show): the link opened onto a screen
+ * pushed from the menu. A link to the page the user is on with another query changes that screen in place, so one opened onto the menu
+ * would turn the base into the toolbar screen, with nothing to go back to; opened onto screen 1, it keeps the menu below.
+ */
 const openFromMenu = (mode: string): Step[] => [
-	waitFor("Push eight screens with headers"),
+	tapLabel("Push eight screens with headers"),
+	waitFor("Screen 1, Native header"),
+	{ pause: 600 },
 	{ open: `${screens}?mode=${mode}` },
 	{ pause: 600 },
 ];

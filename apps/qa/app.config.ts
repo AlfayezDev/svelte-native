@@ -8,6 +8,9 @@ import { productApplicationId, qaApplicationId, smokeApplicationId } from "./src
 // smoke test (qa/smoke-modules.json; SPEC.md, "Native modules (smoke test)"). `smokeOnlyPackages` are the libraries the product does not
 // have: the product and the QA app exclude them from both autolinkers (and from React Native's, in react-native.config.js); only the
 // smoke app links them, and only it gets the config plugins in `smokePlugins`, the fake Firebase files and the Huawei repository.
+// The four packages the library itself requires (react-native-quick-crypto, react-native-mmkv, react-native-nitro-modules and
+// react-native-quick-base64: the device's `crypto` and `localStorage` are made of them) are not in that list: every app links them, and the
+// smoke test still checks them (`shared` in smoke-modules.json).
 const { smokeOnlyPackages } = createRequire(import.meta.url)("./qa/smoke-packages.cjs") as { smokeOnlyPackages: string[] };
 // The library's default variant (no `APP_VARIANT`) is `app`; this app's is `qa`, whose route table the library's plugin writes (`routes.qa.ts`, as Metro's config does).
 const variant = process.env.APP_VARIANT || "qa";

@@ -59,19 +59,16 @@
 
   // navigator: the clipboard (the library's native module), the system share sheet and the device's language.
   let copied = $state("");
+  const report = (error: unknown) => (failure = error instanceof Error ? error.message : String(error));
   async function copy() {
-    try {
-      await navigator.clipboard.writeText(uuid);
-      copied = await navigator.clipboard.readText();
-    } catch (error) {
-      failure = error instanceof Error ? error.message : String(error);
-    }
+    // On a build without the native module `navigator.clipboard` is undefined: the failure is shown, not thrown.
+    await Promise.resolve().then(() => navigator.clipboard.writeText(uuid)).then(async () => (copied = await navigator.clipboard.readText())).catch(report);
   }
   async function shareDocs() {
     try {
       await navigator.share({ title: "Svelte Native", text: "Web APIs on the device", url: "https://svelte-native.alfayez.dev/docs/web-apis" });
     } catch (error) {
-      if (!(error instanceof Error && error.name === "AbortError")) failure = error instanceof Error ? error.message : String(error);
+      if (!(error instanceof Error && error.name === "AbortError")) report(error);
     }
   }
 

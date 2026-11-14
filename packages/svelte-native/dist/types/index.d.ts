@@ -16,3 +16,4 @@ export { windowSize } from "./window-size.js";
 export type { HostHandle } from "./fabric/host.js";
 export type { BarStyle, Detent, DetentChange, HeaderMetrics, HeaderOptions, NavigationBarOptions, Presentation, RouterScopeOptions, ScreenAnimation, ScreenOptions, SearchOptions, SheetOptions, StatusBarOptions, TabHandle, TabIconSource, TabItem, ToolbarItem, ToolbarOptions, } from "./fabric/navigation.js";
 export type { StackDefaults } from "./navigator-context.js";
+export type { MobileHooks } from "./app-hooks.js";

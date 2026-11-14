@@ -58,9 +58,9 @@ class Insets(private val root: EngineRoot, private val emit: (Map<String, Any?>)
   /**
    * The overlay moved into a recreated Activity keeps the frame it had in the old window, and is attached before the new window has
    * been laid out: the insets read then are measured against a 0 x 0 window (the whole frame looked covered: the right inset was the
-   * width and the bottom one more than the height, and a safe area view padded its content away). They are not published
-   * ([compute] waits for a laid-out window), and every layout pass of the window publishes what changed, so the first pass of the new
-   * window sends the real values even though the overlay's own frame did not change.
+   * width and the bottom one more than the height, and a safe area view padded its content away). Until the window is laid out
+   * [compute] takes the overlay to fill it, and every layout pass of the window publishes what changed, so the first pass of the new
+   * window sends the measured values even though the overlay's own frame did not change.
    */
   private val globalLayout = android.view.ViewTreeObserver.OnGlobalLayoutListener { if (!animating) publish() }
   private var watched: android.view.ViewTreeObserver? = null
@@ -82,8 +82,8 @@ class Insets(private val root: EngineRoot, private val emit: (Map<String, Any?>)
   }
 
   /**
-   * The current record (main thread), or null while the overlay has no laid-out window. What it returns is what JavaScript holds now:
-   * after a null the next value is published even when it equals the one published before (a reader that subscribes then would
+   * The current record (main thread), or null before the overlay is attached to a window. What it returns is what JavaScript holds
+   * now: after a null the next value is published even when it equals the one published before (a reader that subscribes then would
    * otherwise wait for the next change).
    */
   fun read(): Map<String, Any?>? = compute().also { last = it }
@@ -103,12 +103,15 @@ class Insets(private val root: EngineRoot, private val emit: (Map<String, Any?>)
     root.getLocationInWindow(location)
     val windowWidth = root.rootView.width
     val windowHeight = root.rootView.height
-    // A window that has not been laid out yet (see [watchLayouts]): nothing to measure against.
-    if (windowWidth <= 0 || windowHeight <= 0 || width <= 0 || height <= 0) return null
-    val gapLeft = location[0]
-    val gapTop = location[1]
-    val gapRight = windowWidth - (location[0] + width)
-    val gapBottom = windowHeight - (location[1] + height)
+    // A window, or an overlay, that has not been laid out yet has nothing to measure the overlay against (a cold start's first read,
+    // or the overlay moved into a recreated Activity: see [watchLayouts]). The overlay is taken to fill the window, as it does once
+    // laid out, so the first record already has the system bars (a screen's first layout has its header's inset); the window's first
+    // layout pass publishes the measured values if they differ.
+    val laidOut = windowWidth > 0 && windowHeight > 0 && width > 0 && height > 0
+    val gapLeft = if (laidOut) location[0] else 0
+    val gapTop = if (laidOut) location[1] else 0
+    val gapRight = if (laidOut) windowWidth - (location[0] + width) else 0
+    val gapBottom = if (laidOut) windowHeight - (location[1] + height) else 0
     val bars: GraphicsInsets = all.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
     val ime = all.getInsets(WindowInsetsCompat.Type.ime())
     val visible = all.isVisible(WindowInsetsCompat.Type.ime())

@@ -45,19 +45,48 @@ class Insets(private val root: EngineRoot, private val emit: (Map<String, Any?>)
     })
     root.addOnLayoutChangeListener { _, l, t, r, b, ol, ot, or, ob -> if (r - l != or - ol || b - t != ob - ot || l != ol || t != ot) publish() }
     root.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
-      override fun onViewAttachedToWindow(v: View) { v.requestApplyInsets(); publish() }
-      override fun onViewDetachedFromWindow(v: View) {}
+      override fun onViewAttachedToWindow(v: View) { watchLayouts(); v.requestApplyInsets(); publish() }
+      // A window that goes during an IME animation does not deliver its end: the next window starts with none running.
+      override fun onViewDetachedFromWindow(v: View) { unwatchLayouts(); animating = false }
     })
-    if (root.isAttachedToWindow) root.requestApplyInsets()
+    if (root.isAttachedToWindow) {
+      watchLayouts()
+      root.requestApplyInsets()
+    }
+  }
+
+  /**
+   * The overlay moved into a recreated Activity keeps the frame it had in the old window, and is attached before the new window has
+   * been laid out: the insets read then are measured against a 0 x 0 window (the whole frame looked covered: the right inset was the
+   * width and the bottom one more than the height, and a safe area view padded its content away). They are not published
+   * ([compute] waits for a laid-out window), and every layout pass of the window publishes what changed, so the first pass of the new
+   * window sends the real values even though the overlay's own frame did not change.
+   */
+  private val globalLayout = android.view.ViewTreeObserver.OnGlobalLayoutListener { if (!animating) publish() }
+  private var watched: android.view.ViewTreeObserver? = null
+
+  private fun watchLayouts() {
+    unwatchLayouts()
+    watched = root.viewTreeObserver.also { it.addOnGlobalLayoutListener(globalLayout) }
+  }
+
+  private fun unwatchLayouts() {
+    watched?.takeIf { it.isAlive }?.removeOnGlobalLayoutListener(globalLayout)
+    watched = null
   }
 
   fun uninstall() {
+    unwatchLayouts()
     ViewCompat.setOnApplyWindowInsetsListener(root, null)
     ViewCompat.setWindowInsetsAnimationCallback(root, null)
   }
 
-  /** The current record (main thread), or null before the overlay is attached to a window. */
-  fun read(): Map<String, Any?>? = compute()
+  /**
+   * The current record (main thread), or null while the overlay has no laid-out window. What it returns is what JavaScript holds now:
+   * after a null the next value is published even when it equals the one published before (a reader that subscribes then would
+   * otherwise wait for the next change).
+   */
+  fun read(): Map<String, Any?>? = compute().also { last = it }
 
   private fun publish() {
     val next = compute() ?: return
@@ -74,6 +103,8 @@ class Insets(private val root: EngineRoot, private val emit: (Map<String, Any?>)
     root.getLocationInWindow(location)
     val windowWidth = root.rootView.width
     val windowHeight = root.rootView.height
+    // A window that has not been laid out yet (see [watchLayouts]): nothing to measure against.
+    if (windowWidth <= 0 || windowHeight <= 0 || width <= 0 || height <= 0) return null
     val gapLeft = location[0]
     val gapTop = location[1]
     val gapRight = windowWidth - (location[0] + width)

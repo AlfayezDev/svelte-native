@@ -2658,7 +2658,9 @@ var INITIALIZE_CORE = /react-native[\\/]Libraries[\\/]Core[\\/]InitializeCore\.j
 var RENDERER_STUBS = {
   "react-native/Libraries/ReactNative/RendererProxy.js": "./fabric/renderer-stub.ts",
   "react-native/Libraries/Renderer/shims/ReactFabric.js": "./fabric/react-fabric-stub.ts",
-  "react-native/Libraries/Renderer/shims/createReactNativeComponentClass.js": "./fabric/component-class-stub.ts"
+  "react-native/Libraries/Renderer/shims/createReactNativeComponentClass.js": "./fabric/component-class-stub.ts",
+  "react-native/Libraries/ReactNative/AppRegistry.js": "./fabric/app-registry.ts",
+  "react-native/Libraries/ReactNative/AppRegistryImpl.js": "./fabric/app-registry.ts"
 };
 var watchers = /* @__PURE__ */ new Set();
 function closeWatchers() {

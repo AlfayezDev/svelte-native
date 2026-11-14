@@ -11,3 +11,4 @@ import "./init.js";
 import "./polyfills.js";
 import { createFabricApp, fabricStats, flush, remountSurfaces, showError } from "./fabric/index.js";
 export { createFabricApp, fabricStats, flush, remountSurfaces, showError };
+export { registerHooks, type MobileHooks } from "./app-hooks.js";

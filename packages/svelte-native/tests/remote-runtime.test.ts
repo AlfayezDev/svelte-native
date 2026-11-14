@@ -98,6 +98,25 @@ describe("the host", () => {
 });
 
 describe("the transport", () => {
+  test("the current global fetch is used unless a custom transport overrides it", async () => {
+    const previous = globalThis.fetch;
+    const used: string[] = [];
+    const send = (name: string): typeof fetch => (async () => { used.push(name); return new Response("ok"); }) as typeof fetch;
+    try {
+      m.configureRemote({ origin: "https://a.example" });
+      globalThis.fetch = send("global-one");
+      await m.transportFetch("/one");
+      globalThis.fetch = send("global-two");
+      await m.transportFetch("/two");
+      m.configureRemote({ fetch: send("custom") });
+      await m.transportFetch("/three");
+      m.configureRemote({ fetch: null });
+      await m.transportFetch("/four");
+      expect(used).toEqual(["global-one", "global-two", "custom", "global-two"]);
+    } finally {
+      globalThis.fetch = previous;
+    }
+  });
   const record = () => {
     const sent: { url: string; init: RequestInit }[] = [];
     m.configureRemote({ origin: "https://a.example", fetch: async (url: string, init: RequestInit) => { sent.push({ url, init }); return new Response("{}"); } });
@@ -137,8 +156,11 @@ describe("the transport", () => {
     const expected = new Uint8Array(await kit.serialize_binary_form(data, meta).blob.arrayBuffer());
     expect(m.serialize_binary_form(data, meta).blob.bytes()).toEqual(expected);
     expect(expected[0]).toBe(0);
-    expect(() => new m.Blob([new Uint16Array(1)])).toThrow(/files are not supported/);
+    // Without files the body is the bytes, as before; with one it is the platform's Blob of the parts (the file's bytes stay where they are).
     expect(new m.Blob(["ab", new Uint8Array([1, 2])]).bytes()).toEqual(new Uint8Array([97, 98, 1, 2]));
+    const withFile = new m.Blob([new Uint8Array([1]), "x", new File([new Uint8Array([7, 8])], "f.bin")]);
+    expect(withFile).toBeInstanceOf(Blob);
+    expect(new Uint8Array(await withFile.arrayBuffer())).toEqual(new Uint8Array([1, 120, 7, 8]));
   });
 });
 
@@ -277,6 +299,8 @@ describe("a query object that outlives the effect that made it", () => {
     export * from "../src/remote/index.ts";
     export { query, query_live, command } from "../src/remote/runtime.ts";
     export { inOwner, sharedDerived } from "./remote-owner.svelte.ts";
+    export { query_map } from "../src/remote/shims/client.ts";
+    export { tick } from "svelte";
   `;
   const settle = (ms = 30) => new Promise((resolve) => setTimeout(resolve, ms));
   for (const hermes of [true, false]) {
@@ -285,11 +309,14 @@ describe("a query object that outlives the effect that made it", () => {
       let calls = 0;
       beforeAll(async () => { client = await loadClient(entry, undefined, undefined, { hermes }); });
       afterEach(() => { client.resetRemoteConfig(); calls = 0; });
-      const serve = (value = "v") => client.configureRemote({
+      const serve = (value = "v", updateKey = "hash/name/", commandResponse?: () => Promise<void>) => client.configureRemote({
         origin: "https://a.example",
         fetch: async (url: string) => {
           calls++;
-          if (url.includes("/hash/command")) return Response.json({ type: "result", data: stringify({ _: 1, q: { "hash/name/": { v: "from the command" } } }) });
+          if (url.includes("/hash/command")) {
+            await commandResponse?.();
+            return Response.json({ type: "result", data: stringify({ _: 1, q: { [updateKey]: { v: "from the command" } } }) });
+          }
           const target = new URL(url);
           return ok(`${target.pathname.replace("/_app/remote/", "")}/${target.searchParams.get("payload") ?? ""}`, value);
         },
@@ -327,20 +354,33 @@ describe("a query object that outlives the effect that made it", () => {
         scenario.destroy();
       });
       test("a read that continues after the screen is gone, and a command that finishes after it, find a query to read", async () => {
-        serve();
-        const owner = client.inOwner(() => client.query("hash/name")());
+        // A unique key isolates this cache from proxies retained by earlier tests until engine GC.
+        const key = "hash/after-destroy";
+        let respond!: () => void;
+        let started!: () => void;
+        const response = new Promise<void>((resolve) => { respond = resolve; });
+        const requestStarted = new Promise<void>((resolve) => { started = resolve; });
+        serve("v", `${key}/`, () => { started(); return response; });
+        const owner = client.inOwner(() => client.query(key)());
         const query = owner.value;
         await query;
-        // The command is on its way when the screen goes; the response carries the refreshed value.
+        // Hold the response until the owner and its cache entry are actually gone.
         const finishing = client.command("hash/command")().updates(query);
+        await requestStarted;
         owner.destroy();
-        await settle();
+        await client.tick();
+        expect(client.query_map.has(key)).toBe(false);
+        respond();
         await finishing;
         expect(await query).toBe("from the command");
-        // An await that was in flight when the effect went.
-        const second = client.inOwner(() => client.query("hash/name")());
-        const reading = (async () => { await second.value; second.destroy(); await settle(10); return second.value.current; })();
-        expect(await reading).toBeDefined();
+        // An await that is already in flight when the effect goes retains its query until it resolves.
+        const second = client.inOwner(() => client.query("hash/reading-after-destroy")());
+        const reading = second.value.then((value: string) => value);
+        second.destroy();
+        expect(await reading).toBe("v");
+        // A later read reacquires an evicted entry. Wait for it, rather than relying on a GC-retained cache.
+        expect(await second.value).toBe("v");
+        expect(second.value.current).toBe("v");
       });
       test("released objects are dropped from the cache: the next one fetches again", async () => {
         serve();

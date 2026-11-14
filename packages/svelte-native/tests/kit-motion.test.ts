@@ -91,3 +91,24 @@ describe("svelte/motion on the device", () => {
     watcher.stop();
   });
 });
+
+test("real svelte/motion ignores queries and native callbacks from a previous reader lifetime", async () => {
+  const m = await load<Module>(motion);
+  const first = m.watch();
+  const oldQuestions = world.questions.splice(0);
+  const oldEvent = [...world.listeners.reduceMotionChanged][0]! as (value: boolean) => void;
+  first.stop();
+  await settle();
+  const next = m.watch();
+  expect(world.questions).toHaveLength(1);
+  world.questions.shift()!.respond(true);
+  await settle();
+  expect(next.seen.at(-1)).toBe(true);
+  oldEvent(false);
+  for (const question of oldQuestions) question.respond(false);
+  await settle();
+  expect(next.seen.at(-1)).toBe(true);
+  next.stop();
+  await settle();
+  expect(world.listeners.reduceMotionChanged.size).toBe(0);
+});

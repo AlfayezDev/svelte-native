@@ -49,20 +49,34 @@ class Setting {
   value = false;
   readonly source: Source;
   readonly #ask: () => Promise<boolean>;
-  #pending = false;
-  /** Counts the events: an answer to a question asked before an event is older than the event. */
+  #pending: number | undefined;
+  /** Queries, native events and listener lifetimes share an order: only the newest may publish. */
   #version = 0;
 
   constructor(ask: () => Promise<boolean>, listen: (changed: (value: boolean) => void) => { remove(): void }) {
     this.#ask = ask;
     this.source = new Source(() => {
+      // A read made while nothing listened may still be pending (or never settle).
+      // Do not let it suppress the fresh query for this subscription.
+      this.#invalidate();
+      let active = true;
       const subscription = listen((value) => {
-        this.#version++;
+        if (!active) return; // A native event may already have been queued before removal.
+        this.#invalidate();
         this.#set(value);
       });
       this.refresh();
-      return () => subscription.remove();
+      return () => {
+        active = false;
+        this.#invalidate();
+        subscription.remove();
+      };
     });
+  }
+
+  #invalidate(): void {
+    this.#version++;
+    this.#pending = undefined;
   }
 
   #set(value: boolean): void {
@@ -72,21 +86,21 @@ class Setting {
   }
 
   refresh(): void {
-    if (this.#pending) return;
-    const version = this.#version;
+    if (this.#pending !== undefined) return;
+    const version = ++this.#version;
     let answer: Promise<boolean>;
     try {
       answer = this.#ask();
     } catch {
       return;
     }
-    this.#pending = true;
+    this.#pending = version;
     answer.then(
       (value) => {
-        this.#pending = false;
+        if (this.#pending === version) this.#pending = undefined;
         if (version === this.#version) this.#set(value === true);
       },
-      () => { this.#pending = false; },
+      () => { if (this.#pending === version) this.#pending = undefined; },
     );
   }
 
@@ -325,8 +339,10 @@ export class MediaQueryList {
 
   #wake(): void {
     if (this.#listening !== undefined || this.#entries.length === 0) return;
-    this.#last = this.matches;
     this.#listening = [...this.#query.sources].map((name) => sources[name].add(this.#recheck));
+    // Sources are active before the baseline read, so it does not start a second
+    // unobserved accessibility query. Promise answers notify on the next microtask.
+    this.#last = this.matches;
   }
 
   #sleep(): void {

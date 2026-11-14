@@ -8,4 +8,4 @@ export { normalizeOrigin, RemoteConfigError } from "./host.ts";
 export type { RemoteHostConfig } from "./host.ts";
 export { refreshAll } from "./shims/client.ts";
 export { native } from "./types.ts";
-export type { NativeForm, NativeFieldProps, NativeFormFields } from "./types.ts";
+export type { NativeForm, NativeFieldProps, NativeFileProps, NativeFormFields } from "./types.ts";

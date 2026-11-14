@@ -40,7 +40,7 @@ __export(expo_exports, {
 });
 module.exports = __toCommonJS(expo_exports);
 var import_promises = require("node:fs/promises");
-var import_node_path4 = require("node:path");
+var import_node_path5 = require("node:path");
 var import_config_plugins2 = require("expo/config-plugins");
 
 // src/build.ts
@@ -378,6 +378,67 @@ ${hot}`;
 }
 async function syncNative(root, options = {}) {
   syncRoutes(root, options);
+}
+
+// src/capabilities.ts
+var import_node_fs3 = require("node:fs");
+var import_node_module2 = require("node:module");
+var import_node_path4 = require("node:path");
+var CapabilityConfigError = class extends Error {
+  name = "CapabilityConfigError";
+};
+function locationPluginProps(location) {
+  const { whenInUse, background } = typeof location === "string" ? { whenInUse: location, background: void 0 } : location;
+  if (typeof whenInUse !== "string" || whenInUse.trim() === "")
+    throw new CapabilityConfigError('capabilities.location needs the reason the app uses the location, as the user will read it: `capabilities: { location: "Shows the stores near you." }`');
+  if (background !== void 0 && (typeof background !== "string" || background.trim() === ""))
+    throw new CapabilityConfigError("capabilities.location.background needs the reason the app uses the location in the background, as the user will read it");
+  return {
+    locationWhenInUsePermission: whenInUse,
+    locationAlwaysAndWhenInUsePermission: background ?? false,
+    locationAlwaysPermission: background ?? false,
+    isIosBackgroundLocationEnabled: background !== void 0,
+    isAndroidBackgroundLocationEnabled: background !== void 0
+  };
+}
+function dependenciesOf(projectRoot) {
+  try {
+    const manifest = JSON.parse((0, import_node_fs3.readFileSync)((0, import_node_path4.join)(projectRoot, "package.json"), "utf8"));
+    return /* @__PURE__ */ new Set([...Object.keys(manifest.dependencies ?? {}), ...Object.keys(manifest.devDependencies ?? {})]);
+  } catch {
+    return /* @__PURE__ */ new Set();
+  }
+}
+function listsPlugin(config, name) {
+  return (config.plugins ?? []).some((entry) => (Array.isArray(entry) ? entry[0] : entry) === name);
+}
+function withCapabilities(config, capabilities, options = {}) {
+  const projectRoot = options.projectRoot ?? config._internal?.projectRoot ?? process.cwd();
+  const load = options.load ?? ((request) => (0, import_node_module2.createRequire)((0, import_node_path4.join)(projectRoot, "package.json"))(request));
+  const location = capabilities?.location;
+  const installed = dependenciesOf(projectRoot).has("expo-location") && !(options.excluded ?? []).includes("expo-location");
+  if (listsPlugin(config, "expo-location")) {
+    if (location !== void 0 && location !== null)
+      throw new CapabilityConfigError("The app config sets capabilities.location and also lists expo-location's own plugin: keep one. capabilities.location gives expo-location its texts; its own plugin entry takes all of its options.");
+    return config;
+  }
+  if (location === void 0 || location === null) {
+    if (installed)
+      throw new CapabilityConfigError(
+        'expo-location is installed, but the location capability is off. Say why the app uses the location (the text iOS shows when it asks) in the @alfayez/svelte-native plugin: `plugins: [["@alfayez/svelte-native", { capabilities: { location: "Shows the stores near you." } }]]`, or uninstall expo-location.'
+      );
+    return config;
+  }
+  const props = locationPluginProps(location);
+  let plugin;
+  try {
+    plugin = load("expo-location/app.plugin.js");
+  } catch {
+    throw new CapabilityConfigError("capabilities.location needs expo-location, which is not installed: `npx expo install expo-location`, then prebuild again.");
+  }
+  const apply = plugin.default ?? plugin;
+  if (typeof apply !== "function") throw new CapabilityConfigError("expo-location's config plugin (expo-location/app.plugin.js) is not a function: is the installed expo-location the one this Expo SDK uses?");
+  return apply(config, props);
 }
 
 // src/remote/plugin.ts
@@ -822,6 +883,7 @@ function leaveOutOfAutoPlugins(config, names) {
 }
 var withSvelteNative = (config, options) => {
   config = leaveOutOfAutoPlugins(config, options?.autolinkingExclude ?? []);
+  config = withCapabilities(config, options?.capabilities, { excluded: options?.autolinkingExclude });
   if (options?.remote) config = withRemoteHost(config, options.remote);
   for (const platform of ["android", "ios"]) {
     config = (0, import_config_plugins2.withDangerousMod)(config, [platform, async (config2) => {
@@ -832,11 +894,11 @@ var withSvelteNative = (config, options) => {
   config = (0, import_config_plugins2.withDangerousMod)(config, ["android", async (config2) => {
     const applicationId = config2.android?.package;
     if (!applicationId) throw new Error("Svelte native needs android.package in the Expo config");
-    const directory = (0, import_node_path4.join)(config2.modRequest.platformProjectRoot, "app/src/main/java", ...applicationId.split("."));
-    const file = (0, import_node_path4.join)(directory, `${headlessPackageName}.kt`);
+    const directory = (0, import_node_path5.join)(config2.modRequest.platformProjectRoot, "app/src/main/java", ...applicationId.split("."));
+    const file = (0, import_node_path5.join)(directory, `${headlessPackageName}.kt`);
     await (0, import_promises.mkdir)(directory, { recursive: true });
     await (0, import_promises.writeFile)(file, headlessPackageSource(applicationId));
-    await (0, import_promises.writeFile)((0, import_node_path4.join)(directory, `${onDemandPackageName}.kt`), onDemandPackageSource(applicationId));
+    await (0, import_promises.writeFile)((0, import_node_path5.join)(directory, `${onDemandPackageName}.kt`), onDemandPackageSource(applicationId));
     return config2;
   }]);
   config = (0, import_config_plugins2.withAndroidManifest)(config, (config2) => {
@@ -870,9 +932,9 @@ var withSvelteNative = (config, options) => {
     });
   }
   config = (0, import_config_plugins2.withDangerousMod)(config, ["android", async (config2) => {
-    const dir = (0, import_node_path4.join)(config2.modRequest.platformProjectRoot, "app", "src", "main");
+    const dir = (0, import_node_path5.join)(config2.modRequest.platformProjectRoot, "app", "src", "main");
     await (0, import_promises.mkdir)(dir, { recursive: true });
-    await (0, import_promises.writeFile)((0, import_node_path4.join)(dir, "baseline-prof.txt"), baselineProfile());
+    await (0, import_promises.writeFile)((0, import_node_path5.join)(dir, "baseline-prof.txt"), baselineProfile());
     return config2;
   }]);
   config = (0, import_config_plugins2.withMainActivity)(config, (config2) => {

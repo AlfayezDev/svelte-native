@@ -190,5 +190,6 @@ export default {
 | `remote` | `{ origin, base?, appDir? }`: the SvelteKit server your [remote functions](loading-data#remote-functions) call. An `http:` origin also allows plain HTTP to it. |
 | `androidOnDemandViewManagers` | Android: create a package's views on first use instead of at startup, by the package's class name: `{ "com.brentvatne.react.ReactVideoPackage": ["RCTVideo"] }`. Shortens startup when you link libraries with many views. |
 | `autolinkingExclude` | Packages and local modules to leave out of this build's native code. |
+| `capabilities` | The web APIs that need a permission, each on once you say why the app uses it: `{ location: 'Shows the stores near you.' }` turns on `navigator.geolocation`, with expo-location installed ([Geolocation](web-apis#geolocation)). |
 
 Run `expo prebuild` after changing the plugin's options ([Development builds](development-builds#when-to-run-expo-prebuild)).

@@ -4,7 +4,9 @@
  * - `clipboard` (and the global `ClipboardItem`): the system clipboard, through the library's native module (`clipboard.ts`);
  * - `share()` and `canShare()`: the Web Share API, on the system share sheet (React Native's `Share`);
  * - `vibrate()`: the Vibration API (React Native's `Vibration`);
- * - `language` and `languages`: the device's language, as a BCP 47 tag.
+ * - `language` and `languages`: the device's language, as a BCP 47 tag;
+ * - `geolocation` and `permissions` (and the globals `GeolocationPositionError`, `GeolocationPosition`, `GeolocationCoordinates`, `PermissionStatus`): the
+ *   Geolocation API over expo-location's native module, in a build with the location capability (`geolocation.ts`).
  *
  * `polyfills.ts` installs them on the `navigator` React Native's start-up made. Nothing is loaded until it is used: `clipboard` and `ClipboardItem` are
  * lazy globals, and the others require their React Native module on the first call or read. A member the platform or a library defined already is kept.
@@ -159,4 +161,10 @@ export function installNavigator(scope: { navigator?: object }): void {
   defineLazyGlobal(navigator, "clipboard", () => (require("./clipboard.ts") as typeof import("./clipboard.ts")).loadClipboard());
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- required on the first read
   defineLazyGlobal(scope, "ClipboardItem", () => (require("./clipboard.ts") as typeof import("./clipboard.ts")).ClipboardItem);
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- required on the first read
+  const geolocation = () => require("./geolocation.ts") as typeof import("./geolocation.ts");
+  defineLazyGlobal(navigator, "geolocation", () => geolocation().loadGeolocation());
+  defineLazyGlobal(navigator, "permissions", () => new (geolocation().Permissions)(geolocation().optionalGeolocation));
+  for (const name of ["GeolocationPositionError", "GeolocationPosition", "GeolocationCoordinates", "PermissionStatus"] as const)
+    defineLazyGlobal(scope, name, () => geolocation()[name]);
 }

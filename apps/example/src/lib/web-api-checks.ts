@@ -1,5 +1,5 @@
 // The device checks of the web APIs Svelte Native backs with native code: `fetch` and `Blob` (the SvelteFetch module), `crypto` (react-native-quick-crypto),
-// `localStorage` (MMKV) and `navigator` (the clipboard through the SvelteClipboard module, the language, `canShare`, `vibrate`). They run against the library's test server (packages/svelte-native/tests/fetch/server.ts) when the Web APIs screen opens with
+// `localStorage` (MMKV) and `navigator` (the clipboard through the SvelteClipboard module, the language, `canShare`, `vibrate`, and the geolocation over expo-location's). They run against the library's test server (packages/svelte-native/tests/fetch/server.ts) when the Web APIs screen opens with
 // `?checks=<origin>`: `svelte-native://web-apis?checks=http://localhost:8787` (an Android emulator after `adb reverse tcp:8787 tcp:8787`; the iOS
 // Simulator reaches the Mac's localhost). A release build talks plain HTTP only when it was built with SVELTE_NATIVE_REMOTE_ORIGIN=http://localhost:8787,
 // which makes the plugin allow it. Every result is logged as `[web-apis] …`, the last line `[web-apis] done pass=N fail=N skip=N`,
@@ -336,6 +336,23 @@ const checks: [name: string, run: (origin: string) => Promise<string>][] = [
     expect(navigator.canShare({ url: "https://svelte.dev" }) && !navigator.canShare({ url: "relative" }), "canShare");
     expect(navigator.vibrate(0) === true, "vibrate(0)");
     return `language ${navigator.language}`;
+  }],
+  // The location capability (expo-location, `capabilities.location` in app.config.ts). The permission is asked for on the first call: grant it ahead
+  // (`adb shell pm grant … android.permission.ACCESS_FINE_LOCATION`, `xcrun simctl privacy … grant location …`) for a run nobody watches.
+  ["geolocation: a position, a watch, the permission", async () => {
+    if (typeof navigator.geolocation === "undefined") throw new Skip("no navigator.geolocation");
+    const options = { enableHighAccuracy: true, timeout: 20_000 };
+    const position = await new Promise<GeolocationPosition>((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, options));
+    const { latitude, longitude, accuracy } = position.coords;
+    expect(Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180 && accuracy >= 0, `coords ${JSON.stringify(position.coords)}`);
+    expect(position.timestamp > Date.now() - 24 * 3600_000, `timestamp ${position.timestamp}`);
+    const watched = await new Promise<GeolocationPosition>((resolve, reject) => {
+      const id = navigator.geolocation.watchPosition((next) => { navigator.geolocation.clearWatch(id); resolve(next); }, (error) => { navigator.geolocation.clearWatch(id); reject(error); }, { ...options, maximumAge: 60_000 });
+    });
+    expect(Number.isFinite(watched.coords.latitude), "watched position");
+    const status = await navigator.permissions.query({ name: "geolocation" });
+    expect(status.state === "granted", `permission ${status.state}`);
+    return `${latitude.toFixed(4)}, ${longitude.toFixed(4)} ±${Math.round(accuracy)} m, permission ${status.state}`;
   }],
 ];
 

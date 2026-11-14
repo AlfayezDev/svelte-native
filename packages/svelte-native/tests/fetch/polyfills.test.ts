@@ -17,7 +17,9 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/Network/FormData": "export default class RnFormData { _parts = []; getParts() { return []; } };",
   "react-native/Libraries/Blob/Blob": "export default class RnBlob {};",
   "react-native/Libraries/Blob/FileReader": "export default class RnFileReader {};",
-  "react-native/Libraries/Network/XMLHttpRequest": "export default class RnXhr { send() {} }; globalThis.__RnXhr = RnXhr;",
+  // React Native's XMLHttpRequest reads the Blob global when it loads (`blob: typeof global.Blob === 'function'`), so loading it from the layer's activation reads one
+  // of the globals the activation is settling (and quick-crypto's dependencies read Blob while they load, which starts that activation).
+  "react-native/Libraries/Network/XMLHttpRequest": "globalThis.__xhrSawBlob = typeof globalThis.Blob; export default class RnXhr { send() {} }; globalThis.__RnXhr = RnXhr;",
   "expo-modules-core": "export const requireOptionalNativeModule = (name) => globalThis.__natives[name] ?? null;",
 };
 

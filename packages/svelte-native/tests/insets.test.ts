@@ -132,6 +132,10 @@ test("padding math", async () => {
   expect(keyboardOverlap({ viewY: 0, viewHeight: 500, rootHeight: 800, keyboardHeight: 300, behavior: "height", previous: 200 })).toBe(200);
   expect(avoidingStyle("height", { flex: 1 }, 0, 700)).toEqual({ flex: 1 });
   expect(avoidingStyle("height", { flex: 1 }, 200, 700)).toEqual([{ flex: 1 }, { height: 500, flex: 0 }]);
+  // Overlay roots can start below a native header; both frames must use window coordinates.
+  expect(keyboardOverlap({ viewY: 100, viewHeight: 700, rootY: 100, rootHeight: 800, keyboardHeight: 300 })).toBe(200);
+  expect(keyboardOverlap({ viewY: 100, viewHeight: 400, rootY: 100, rootHeight: 800, keyboardHeight: 300 })).toBe(0);
+  expect(avoidingStyle("height", { flex: 1 }, 800, 700)).toEqual([{ flex: 1 }, { height: 0, flex: 0 }]);
   expect(avoidingStyle(undefined, { flex: 1 }, 200, 700)).toEqual({ flex: 1 });
 });
 
@@ -151,3 +155,4 @@ test("the insets come from the engine module on Android and from SvelteInsets on
     expect(m.subscribeInsets(() => {})).toBeNull();
   } finally { stub.available = ["SvelteEngine"]; stub.current = null; }
 });
+

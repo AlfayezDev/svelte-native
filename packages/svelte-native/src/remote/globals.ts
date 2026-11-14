@@ -96,18 +96,14 @@ export const window = {
 };
 
 /**
- * `Blob` for `serialize_binary_form` (SvelteKit's form-utils.js), which builds the body of a form submission from `Uint8Array` and string parts;
- * React Native's `Blob` refuses `ArrayBuffer` parts. This one only collects bytes, and `bytes()` is what the request sends.
+ * The bytes of a form submission without files: `serialize_binary_form` (SvelteKit's form-utils.js) builds the body from `Uint8Array` and string
+ * parts, which React Native's `Blob` refuses. This one only collects them, and `bytes()` is what the request sends.
  */
-export class Blob {
+export class FormBytes {
   readonly #bytes: Uint8Array;
-  constructor(parts: ReadonlyArray<Uint8Array | string> = []) {
+  constructor(parts: ReadonlyArray<Uint8Array | string>) {
     const encoder = new TextEncoder();
-    const chunks = parts.map((part) => {
-      if (typeof part === "string") return encoder.encode(part);
-      if (part instanceof Uint8Array) return part;
-      throw new Error("A native form can carry text, numbers and booleans; files are not supported.");
-    });
+    const chunks = parts.map((part) => (typeof part === "string" ? encoder.encode(part) : part));
     this.#bytes = new Uint8Array(chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0));
     let offset = 0;
     for (const chunk of chunks) {
@@ -118,3 +114,23 @@ export class Blob {
   get size(): number { return this.#bytes.byteLength; }
   bytes(): Uint8Array { return this.#bytes; }
 }
+
+let standardBlob: boolean | undefined;
+/** Whether the global `Blob` takes byte parts (the library's own, or any standard one); React Native's, on a build without the library's fetch module, does not. */
+function blobTakesBytes(): boolean {
+  if (standardBlob === undefined) {
+    try { standardBlob = new globalThis.Blob([new Uint8Array(1)]).size === 1; } catch { standardBlob = false; }
+  }
+  return standardBlob;
+}
+
+/**
+ * `Blob` as `serialize_binary_form` sees it. A submission with files (parts that are `File`s: the platform's, the library's own native ones on the
+ * device) is the global `Blob` of its parts, so the files' bytes stay where they are and `fetch` sends them; one without is `FormBytes`, as before files.
+ */
+export const Blob = function FormBlob(parts: ReadonlyArray<Uint8Array | string | globalThis.Blob> = []): FormBytes | globalThis.Blob {
+  const files = parts.some((part) => typeof part !== "string" && !(part instanceof Uint8Array));
+  if (!files) return new FormBytes(parts as ReadonlyArray<Uint8Array | string>);
+  if (!blobTakesBytes()) throw new TypeError("A form with a file needs a build of the app that has Svelte Native's fetch module (0.4.0-rc.8 or later)");
+  return new globalThis.Blob(parts as BlobPart[]);
+} as unknown as new (parts?: ReadonlyArray<Uint8Array | string | globalThis.Blob>) => FormBytes | globalThis.Blob;

@@ -13,6 +13,7 @@ beforeAll(async () => {
   m = await loadClient(`
     export * from "../src/remote/index.ts";
     export { form } from "../src/remote/runtime.ts";
+    export { serialize_binary_form as serializeBinary } from "@sveltejs/kit/src/runtime/form-utils.js";
   `);
 });
 // A host, and a fetch that fails the test: every submission here stops at a preflight schema, so nothing may be sent.
@@ -151,16 +152,120 @@ describe("fields.x.as(type)", () => {
     await keyed.submit();
     expect(sent[0]).toEqual({ name: "x", id: "k-1" });
   });
-  test("files and unknown types are refused", () => {
+  test("file fields take Files, keep them as given, reset, and refuse anything else (a picker's { uri })", async () => {
+    const { form, submit } = recording();
+    const single = form.fields.photo.as("file");
+    const many = form.fields.attachments.as("file multiple");
+    const file = new File([new Uint8Array([0, 255, 42])], "photo.png", { type: "image/png" });
+    single.onValueChange(file);
+    many.onValueChange([file]);
+    expect(single.value).toBe(file);
+    expect(form.fields.photo.dirty()).toBe(true);
+    const copy = many.value;
+    copy.length = 0;
+    expect(many.value).toEqual([file]);
+    const data = await submit();
+    expect(data.photo).toBe(file);
+    expect(data.attachments).toEqual([file]);
+    expect(() => single.onValueChange({ uri: "file:///private/photo.png" })).toThrow(/give a `File`/);
+    expect(() => single.onValueChange(new Blob(["no name"]))).toThrow(/give a `File`/);
+    expect(() => many.onValueChange([file, "file:///photo.png"])).toThrow(/give an array of `File`s/);
+    single.onValueChange(undefined);
+    expect(single.value).toBeUndefined();
+    form.reset();
+    expect(many.value).toEqual([]);
+  });
+  test("SvelteKit's binary serialization of files: their metadata in the header, their bytes after it, the smaller first", async () => {
+    const large = new File([new Uint8Array([1, 0, 255])], "large.bin", { lastModified: 123 });
+    const small = new File([new Uint8Array([42])], "small.bin", { lastModified: 456 });
+    const blob = m.serializeBinary({ files: [large, small] }, {}).blob;
+    expect(blob).toBeInstanceOf(Blob); // the platform's: the files' bytes are not copied into JavaScript
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const headerLength = view.getUint32(1, true);
+    const offsetsLength = view.getUint16(5, true);
+    const header = new TextDecoder().decode(bytes.subarray(7, 7 + headerLength));
+    const offsets = new TextDecoder().decode(bytes.subarray(7 + headerLength, 7 + headerLength + offsetsLength));
+    expect(header).toContain("large.bin");
+    expect(header).toContain("small.bin");
+    expect(JSON.parse(offsets)).toEqual([1, 0]);
+    expect([...bytes.subarray(7 + headerLength + offsetsLength)]).toEqual([42, 1, 0, 255]);
+  });
+  test("image submit buttons and unknown types are refused", () => {
     const { fields } = m.form("h/f");
-    expect(() => fields.photo.as("file")).toThrow(/files are not supported/);
-    expect(() => fields.photo.as("file multiple")).toThrow(/files are not supported/);
-    expect(() => fields.photo.as("image")).toThrow(/files are not supported/);
+    expect(() => fields.photo.as("image")).toThrow(/Image submit buttons/);
     expect(() => fields.photo.as("datetime")).toThrow(/not a field type a native form knows/);
   });
 });
 
 describe("state around a submission", () => {
+  test("failed submit focuses the first mounted field with an error in render order", async () => {
+    const form = m.form("h/focus");
+    const focused: string[] = [];
+    form.fields.first.as("text").ref({ focus: () => focused.push("first") });
+    form.fields.second.as("text").ref({ focus: () => focused.push("second") });
+    form.preflight({ "~standard": { version: 1, vendor: "test", validate: () => ({ issues: [{ message: "second", path: ["second"] }, { message: "first", path: ["first"] }] }) } });
+    await form.validate({ preflightOnly: true, all: true });
+    expect(focused).toEqual([]); // Background validation must not steal focus.
+    expect(await form.submit()).toBe(false);
+    expect(focused).toEqual(["first"]);
+    expect(form.pending).toBe(0);
+  });
+  test("failed submit skips detached and non-focusable hosts", async () => {
+    const form = m.form("h/focus");
+    const focused: string[] = [];
+    const first = form.fields.first.as("text");
+    first.ref({ focus: () => focused.push("detached") });
+    first.ref(null);
+    form.fields.second.as("text").ref({});
+    form.fields.third.as("text").ref({ focus: () => focused.push("third") });
+    form.preflight({ "~standard": { version: 1, vendor: "test", validate: () => ({ issues: ["first", "second", "third"].map((name) => ({ message: name, path: [name] })) }) } });
+    await form.submit();
+    expect(focused).toEqual(["third"]);
+  });
+  test("a disappearing native focus handle does not turn validation into a transport error", async () => {
+    const form = m.form("h/focus");
+    form.fields.first.as("text").ref({ focus: () => { throw new Error("view gone"); } });
+    form.preflight({ "~standard": { version: 1, vendor: "test", validate: () => ({ issues: [{ message: "required", path: ["first"] }] }) } });
+    expect(await form.submit()).toBe(false);
+    expect(form.error).toBeUndefined();
+    expect(form.pending).toBe(0);
+  });
+  test("reset during submit preflight clears errors and prevents stale focus or sending", async () => {
+    const form = m.form("h/reset-preflight");
+    let finish!: (result: unknown) => void;
+    let started!: () => void;
+    let focused = false;
+    const ready = new Promise<void>((resolve) => { started = resolve; });
+    form.fields.name.as("text").ref({ focus: () => { focused = true; } });
+    form.preflight({ "~standard": { version: 1, vendor: "test", validate: () => { started(); return new Promise((resolve) => { finish = resolve; }); } } });
+    const submission = form.submit();
+    await ready;
+    form.reset();
+    finish({ issues: [{ message: "stale", path: ["name"] }] });
+    expect(await submission).toBe(false);
+    expect(form.fields.name.issues()).toBeUndefined();
+    expect(form.submitted).toBe(false);
+    expect(focused).toBe(false);
+    expect(form.pending).toBe(0);
+  });
+  test("reset invalidates pending async validation", async () => {
+    const form = m.form("h/reset-validation");
+    let finish!: (result: unknown) => void;
+    let started!: () => void;
+    const ready = new Promise<void>((resolve) => { started = resolve; });
+    form.fields.name.as("text").onChangeText("old");
+    form.preflight({ "~standard": { version: 1, vendor: "test", validate: () => { started(); return new Promise((resolve) => { finish = resolve; }); } } });
+    const validating = form.validate({ preflightOnly: true, all: true });
+    await ready;
+    form.reset();
+    finish({ issues: [{ message: "stale", path: ["name"] }] });
+    await validating;
+    expect(form.fields.name.issues()).toBeUndefined();
+    expect(form.fields.name.as("text").value).toBe("");
+    expect(form.fields.name.dirty()).toBe(false);
+  });
+
   test("issues of the preflight are the fields', in the order the fields were rendered; pending covers the preflight", async () => {
     const form = m.form("h/f");
     form.fields.second.as("text");

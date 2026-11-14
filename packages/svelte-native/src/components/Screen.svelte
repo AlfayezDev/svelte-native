@@ -26,14 +26,22 @@
    */
   let { children, ...own }: ScreenOptions & { children?: Snippet } & ClassProps = $props();
 
-  const parent = getContext<{ set(options: ScreenOptions): void; clear(): void } | undefined>(SCREEN_CONTEXT);
+  const parent = getContext<{ set(options: ScreenOptions, owner: symbol): void; clear(owner: symbol): void } | undefined>(SCREEN_CONTEXT);
   // The outermost screen of a subtree no stack holds (the app shell, a `Modal`'s content) is a one-entry stack of its own.
   const inStack = getContext<boolean | undefined>(IN_STACK_CONTEXT) === true;
   if (!parent && !inStack) setContext(IN_STACK_CONTEXT, true);
   let nested = $state.raw<ScreenOptions>({});
   const options = $derived(mergeScreenOptions(own, nested));
-  setContext(SCREEN_CONTEXT, { set(value: ScreenOptions) { nested = value; }, clear() { nested = {}; } });
-  if (parent) $effect.pre(() => { parent.set(options); return () => parent.clear(); });
+  // A replacement branch can register before the old branch's effect is destroyed.
+  // Ownership is plain (not reactive): cleanup must see the latest registration,
+  // not the state snapshot from the batch in which its old branch was rendered.
+  const owner = Symbol("screen options");
+  let registered: symbol | undefined;
+  setContext(SCREEN_CONTEXT, {
+    set(value: ScreenOptions, token: symbol) { registered = token; nested = value; },
+    clear(token: symbol) { if (registered === token) { registered = undefined; nested = {}; } },
+  });
+  if (parent) $effect.pre(() => { parent.set(options, owner); return () => parent.clear(owner); });
 
   const platform: NavigationPlatform = Platform.OS === "ios" ? "ios" : "android";
   connectInsets();

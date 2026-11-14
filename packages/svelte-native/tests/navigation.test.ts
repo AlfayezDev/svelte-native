@@ -2434,3 +2434,24 @@ test("a reset that keeps a nested stack navigator's screen moves it to the root'
     expect(arrows(flow)).toEqual([false, true]);
   } finally { reset(); }
 });
+
+
+test("replacement nested Screen retains its header and toolbar after the old branch cleanup", async () => {
+  const m = await load("screen-ownership-fixture.svelte");
+  roots = {};
+  const app = m.startSurface(901, m.Fixture, {}) as { change(mode: string): void };
+  const ids = () => find(roots[901], "RCTView").map(node => String(node.props.nativeID ?? ""));
+  await settle(m);
+  expect(ids()).toContain("svelte:header;t=Native%20screens");
+  app.change("header"); await settle(m);
+  expect(ids()).toContain("svelte:header;t=Screen%201;st=Native%20header");
+  app.change("toolbar"); await settle(m);
+  expect(ids()).toContain("svelte:header;t=Toolbar");
+  expect(ids().some(id => id === "svelte:toolbar" || id.startsWith("svelte:toolbar;"))).toBe(true);
+  app.change("plain"); await settle(m);
+  expect(ids().some(id => id.startsWith("svelte:header") || id.startsWith("svelte:toolbar"))).toBe(false);
+  app.change("header"); await settle(m);
+  expect(ids()).toContain("svelte:header;t=Screen%201;st=Native%20header");
+  app.change("none"); await settle(m);
+  expect(ids().some(id => id.startsWith("svelte:header"))).toBe(false);
+});

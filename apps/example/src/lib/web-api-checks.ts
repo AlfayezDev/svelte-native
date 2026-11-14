@@ -1,5 +1,5 @@
-// The device checks of the web APIs Svelte Native backs with native code: `fetch` and `Blob` (the SvelteFetch module), `crypto` (react-native-quick-crypto) and
-// `localStorage` (MMKV). They run against the library's test server (packages/svelte-native/tests/fetch/server.ts) when the Web APIs screen opens with
+// The device checks of the web APIs Svelte Native backs with native code: `fetch` and `Blob` (the SvelteFetch module), `crypto` (react-native-quick-crypto),
+// `localStorage` (MMKV) and `navigator` (the clipboard through the SvelteClipboard module, the language, `canShare`, `vibrate`). They run against the library's test server (packages/svelte-native/tests/fetch/server.ts) when the Web APIs screen opens with
 // `?checks=<origin>`: `svelte-native://web-apis?checks=http://localhost:8787` (an Android emulator after `adb reverse tcp:8787 tcp:8787`; the iOS
 // Simulator reaches the Mac's localhost). A release build talks plain HTTP only when it was built with SVELTE_NATIVE_REMOTE_ORIGIN=http://localhost:8787,
 // which makes the plugin allow it. Every result is logged as `[web-apis] …`, the last line `[web-apis] done pass=N fail=N skip=N`,
@@ -309,6 +309,33 @@ const checks: [name: string, run: (origin: string) => Promise<string>][] = [
     const runs = Number(localStorage.getItem("checks.runs") ?? 0) + 1;
     localStorage.setItem("checks.runs", String(runs));
     return `run ${runs} on this install (a number above 1 means it survived a restart)`;
+  }],
+  ["clipboard: writeText, readText", async () => {
+    if (typeof navigator.clipboard === "undefined") throw new Skip("no navigator.clipboard");
+    const text = `svelte-native ✓ ${Date.now()}`;
+    await navigator.clipboard.writeText(text);
+    const read = await navigator.clipboard.readText();
+    expect(read === text, `read ${JSON.stringify(read)}`);
+    return `${text.length} characters back`;
+  }],
+  ["clipboard: text/html item", async () => {
+    if (typeof navigator.clipboard === "undefined") throw new Skip("no navigator.clipboard");
+    await navigator.clipboard.write([new ClipboardItem({ "text/plain": "Bold", "text/html": "<b>Bold</b>" })]);
+    const [item] = await navigator.clipboard.read();
+    expect(item !== undefined, "nothing read back");
+    expect(item.types.includes("text/plain"), `types ${item.types.join(", ")}`);
+    expect((await (await item.getType("text/plain")).text()) === "Bold", "plain text");
+    if (!item.types.includes("text/html")) return `types ${item.types.join(", ")} (the system kept no HTML)`;
+    const html = await (await item.getType("text/html")).text();
+    expect(html.includes("<b>Bold</b>"), `html ${JSON.stringify(html)}`);
+    return `types ${item.types.join(", ")}`;
+  }],
+  ["navigator: language, canShare, vibrate", async () => {
+    expect(/^[a-z]{2,3}(-[A-Za-z0-9]+)*$/.test(navigator.language), `language ${navigator.language}`);
+    expect(navigator.languages[0] === navigator.language, "languages[0]");
+    expect(navigator.canShare({ url: "https://svelte.dev" }) && !navigator.canShare({ url: "relative" }), "canShare");
+    expect(navigator.vibrate(0) === true, "vibrate(0)");
+    return `language ${navigator.language}`;
   }],
 ];
 

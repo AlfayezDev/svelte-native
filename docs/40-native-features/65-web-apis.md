@@ -3,7 +3,7 @@ title: Web APIs
 video: web-apis
 ---
 
-On the device, `fetch`, `Blob`, `crypto` and `localStorage` are the web's own, with nothing to import. Code you share with a SvelteKit app runs unchanged, and underneath each one is native code: the bytes of a download, the hashing and the storage happen outside JavaScript.
+On the device, `fetch`, `Blob`, `crypto`, `localStorage` and `navigator`'s clipboard and share are the web's own, with nothing to import. Code you share with a SvelteKit app runs unchanged, and underneath each one is native code: the bytes of a download, the hashing and the storage happen outside JavaScript.
 
 ## fetch
 
@@ -111,6 +111,42 @@ localStorage.getItem('onboarded'); // null: localStorage reads strings
 
 react-native-mmkv is a required dependency of the app, with react-native-nitro-modules.
 
+## navigator
+
+`navigator` has the members of the web's that a phone has, each on the system's own feature.
+
+### Clipboard
+
+`navigator.clipboard` is the system clipboard, through a native module of Svelte Native's:
+
+```ts
+await navigator.clipboard.writeText('Copied from Svelte Native');
+const text = await navigator.clipboard.readText();
+
+await navigator.clipboard.write([
+	new ClipboardItem({ 'text/plain': 'Bold', 'text/html': '<b>Bold</b>' })
+]);
+const [item] = await navigator.clipboard.read();
+const html = await (await item.getType('text/html')).text();
+```
+
+It holds text: `text/plain` and `text/html`. Writing another type, such as an image, is refused with a `NotAllowedError`, as Chrome refuses a type it doesn't support. The system clipboard holds one item, so `write()` takes one. On iOS, reading shows the system's paste prompt, as it does in Safari. On Android, the clipboard reads as empty while none of the app's windows has the focus.
+
+### Share
+
+`navigator.share()` opens the system share sheet with a title, a text and a link:
+
+```ts
+await navigator.share({ title: 'Svelte Native', text: 'Have a look', url: 'https://svelte-native.alfayez.dev' });
+```
+
+`navigator.canShare(data)` says whether `share` takes it: a title, a text or an absolute URL. Files can't be shared. When the user dismisses the sheet, the promise rejects with an `AbortError` on iOS. Android doesn't report a dismissal, so there it resolves once the sheet is shown.
+
+### Vibration, language
+
+- `navigator.vibrate(200)` vibrates for a duration, and `navigator.vibrate([100, 50, 100])` plays a pattern of vibrations and pauses; `0` or `[]` stops it, and a new call replaces the pattern that plays. iOS has one fixed vibration, so each vibration of a pattern starts one at its time, whatever its length.
+- `navigator.language` is the device's language as a tag such as `en-US` or `zh-Hans-CN`, and `navigator.languages` lists it. On Android it is the device's language when the app started; on iOS, the language and region the app runs in.
+
 ## An update to an older build
 
-An over-the-air update can reach a build made before these APIs existed. There, `fetch` and `Blob` are Expo's and React Native's as before, and `crypto` and `localStorage` read as `undefined` (with one warning in the console), so a check like `typeof crypto !== 'undefined'` takes its fallback instead of throwing.
+An over-the-air update can reach a build made before these APIs existed. There, `fetch` and `Blob` are Expo's and React Native's as before, and `crypto`, `localStorage` and `navigator.clipboard` read as `undefined` (with one warning in the console), so a check like `typeof crypto !== 'undefined'` takes its fallback instead of throwing.

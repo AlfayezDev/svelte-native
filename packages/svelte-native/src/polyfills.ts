@@ -5,6 +5,7 @@ import "./expo-runtime.ts"; // Expo's WinterCG runtime: the standard `URL` the r
 import "./intl.ts"; // lazy: `mark("intl")` fires on the first Intl.PluralRules/RelativeTimeFormat/ListFormat/Locale access
 import { defineLazyGlobal } from "./lazy-global.ts";
 import { loadLocalStorage } from "./local-storage.ts";
+import { installNavigator } from "./navigator.ts";
 import { loadCrypto } from "./web-crypto.ts";
 import { createStorage, memoryBackend } from "./web-storage.ts";
 import AppState from "react-native/Libraries/AppState/AppState";
@@ -72,4 +73,6 @@ for (const name of ["fetch", "Headers", "Request", "Response", "Blob", "File", "
 defineLazyGlobal(globalThis, "crypto", loadCrypto);
 defineLazyGlobal(globalThis, "localStorage", loadLocalStorage);
 defineLazyGlobal(globalThis, "sessionStorage", () => createStorage(memoryBackend()));
+// `navigator.clipboard` (and `ClipboardItem`), `share`, `canShare`, `vibrate`, `language` and `languages` (`navigator.ts`): each loads what it is made of on first use.
+installNavigator(globalThis as { navigator?: object });
 mark("polyfills");

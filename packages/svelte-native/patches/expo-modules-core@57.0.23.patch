@@ -383,7 +383,7 @@ index d1e5b3952b08accb1dee87aeb5819f5427c1f325..d15061b0535e0065391244cd71b1ccc3
      registry.clear()
      logger.info("✅ ModuleRegistry was destroyed")
    }
-@@ -190,4 +327,117 @@ class ModuleRegistry(
+@@ -190,4 +327,118 @@ class ModuleRegistry(
        moduleHolder.post(eventName)
      }
    }
@@ -461,6 +461,7 @@ index d1e5b3952b08accb1dee87aeb5819f5427c1f325..d15061b0535e0065391244cd71b1ccc3
 +      "expo.modules.localization.LocalizationModule" to "ExpoLocalization",
 +      "expo.modules.securestore.SecureStoreModule" to "ExpoSecureStore",
 +      "expo.modules.splashscreen.SplashScreenModule" to "ExpoSplashScreen",
++      "expo.modules.sveltecore.SvelteClipboardModule" to "SvelteClipboard",
 +      "expo.modules.sveltecore.SvelteFetchModule" to "SvelteFetch",
 +      "expo.modules.svelteengine.SvelteEngineModule" to "SvelteEngine",
 +      "expo.modules.svelteupdates.SvelteUpdatesModule" to "SvelteUpdates",

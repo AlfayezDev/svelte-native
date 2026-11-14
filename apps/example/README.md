@@ -89,6 +89,7 @@ Things a build or a device must provide:
 
 - **React Native's JavaScript modules are imported by path** (`react-native/Libraries/Utilities/Platform`, `Appearance`, `Dimensions`, `Linking`): the library has none of its own, and the `react-native` index would load React's components. React Native ships no types for these paths, so `src/lib/modules.d.ts` declares the few members the app uses. It also declares two modules the library's own source imports, because a workspace link is type-checked with the app.
 - **`hermes-intl` is a dependency of the app** although it is not a peer of the library: the library's polyfills require it, and Metro cannot bundle without it.
+- **`react-native-quick-crypto`, `react-native-mmkv`, `react-native-nitro-modules` and `react-native-quick-base64` are dependencies of the app** because they are required peers of the library: `crypto` and `localStorage` are made of them (a native rebuild adds their modules).
 - **`@sveltejs/kit` and `vite` are dependencies too**, because the library lists them as peers (the web target and remote functions use them). A native-only app like this one does not run either.
 - **`expo-system-ui`** makes `userInterfaceStyle: "automatic"` in `app.config.ts` apply on Android, so the app follows the system's dark mode there (Expo warns at prebuild without it).
 - **Dark mode** is the theme's: `src/lib/theme.svelte.ts` keeps the system's colour scheme in `$state` (React Native's `Appearance`), and a screen reads `theme.colors`. There is no in-app switch; change the phone's appearance.

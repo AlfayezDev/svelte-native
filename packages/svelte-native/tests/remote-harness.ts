@@ -147,7 +147,6 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/AppState/AppState": "const handlers = (globalThis.__remoteAppStateHandlers ??= new Set()); globalThis.__remoteAppState ??= (state) => { for (const handler of [...globalThis.__remoteAppStateHandlers]) handler(state); }; export default { addEventListener(_type, handler) { handlers.add(handler); return { remove() { handlers.delete(handler); } }; } };",
   "react-native/Libraries/Linking/Linking": "export default { openURL: async (url) => { (globalThis.__opened ??= []).push(url); } };",
   "expo-constants": "export default { get expoConfig() { return globalThis.__expoConfig; } };",
-  "expo/fetch": "export const fetch = (...args) => globalThis.__transport ? globalThis.__transport(...args) : globalThis.fetch(...args);",
 };
 
 const clientOf = (path: string) => path.includes("/node_modules/@sveltejs/kit/src/");

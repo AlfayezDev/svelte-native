@@ -174,3 +174,24 @@ describe("react-native-svg is a required peer", () => {
     expect(manifest.peerDependenciesMeta["react-native-svg"]).toBeUndefined();
   });
 });
+
+describe("the web's `crypto` and `localStorage` are made of required peers", () => {
+  test("react-native-quick-crypto, react-native-mmkv, the Nitro runtime they share and quick-crypto's base64 module are peers with a version and not optional", () => {
+    for (const name of ["react-native-quick-crypto", "react-native-mmkv", "react-native-nitro-modules", "react-native-quick-base64"]) {
+      expect([name, typeof manifest.peerDependencies[name]]).toEqual([name, "string"]);
+      expect([name, manifest.peerDependenciesMeta[name]]).toEqual([name, undefined]);
+    }
+  });
+
+  test("`/mmkv` is an entry with the three conditions, a declaration and a source that exports react-native-mmkv's createMMKV and types and localStorageMMKV", () => {
+    expect(manifest.exports["./mmkv"]).toEqual({ "svelte-native-source": "./src/mmkv.ts", types: "./dist/types/mmkv.d.ts", default: "./src/mmkv.ts" });
+    expect(existsSync(join(root, "dist/types/mmkv.d.ts"))).toBe(true);
+    const names = exportsOf(src("mmkv.ts"));
+    expect([...names.values].sort()).toEqual(["createMMKV", "localStorageMMKV"]);
+    expect([...names.types].sort()).toEqual(["Configuration", "MMKV", "Mode"]);
+    expect(readFileSync(src("mmkv.ts"), "utf8")).toContain('from "react-native-mmkv"');
+    // The main entry and the primitives export nothing of it: an app that does not use MMKV directly does not load its types.
+    expect(JSON.stringify(manifest.exports["."])).not.toContain("mmkv");
+    for (const entry of [src("index.ts"), src("core.ts"), src("app.ts")]) expect(readFileSync(entry, "utf8")).not.toMatch(/mmkv|quick-crypto/);
+  });
+});

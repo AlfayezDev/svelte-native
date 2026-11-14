@@ -104,6 +104,18 @@ React Native's platform modules, typed: `Platform`, `Appearance`, `Dimensions`, 
 
 It also has the two lookups of native modules: `turboModule<T>(name)` returns a TurboModule by name and throws when the build doesn't have it, and `nativeModule<T>(name)` returns a legacy NativeModule by name, or `undefined`. [Native libraries](native-libraries#calling-a-native-module-directly)
 
+## @alfayez/svelte-native/mmkv
+
+react-native-mmkv, for storage of the app's own, and the instance behind `localStorage`. [Web APIs](web-apis#storage)
+
+| Export | Description |
+| --- | --- |
+| `createMMKV(configuration?)` | react-native-mmkv's: a storage with typed values, encryption and an id of your choosing. |
+| `localStorageMMKV()` | The MMKV instance `localStorage` keeps its data in, created on the first call. |
+| `MMKV`, `Configuration`, `Mode` | react-native-mmkv's types. |
+
+A page that both the web and the phone import can use it: for the web build, `svelteNative()` tells Vite to pick react-native-mmkv's web implementation, which keeps its data in the browser's `localStorage`, under keys that start with the instance's id.
+
 ## @alfayez/svelte-native/remote
 
 SvelteKit's remote functions on the device. [Loading data](loading-data#remote-functions)

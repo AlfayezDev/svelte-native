@@ -25,6 +25,13 @@ async function loadSvelteKit(): Promise<typeof sveltekit> {
   }
 }
 
+/**
+ * Vite's default extensions with React Native web's convention in front: a package that has a web implementation of one of its modules names the file `<module>.web.js`,
+ * and an import of `./createMMKV` finds it first. It is what lets `@alfayez/svelte-native/mmkv` build for the web: react-native-mmkv's `createMMKV` is native (Nitro, and an import of
+ * `react-native`, which Vite cannot parse) unless its `createMMKV.web.js` is the file found, and that one keeps its data in the browser's `localStorage`.
+ */
+const webExtensions = [".web.mjs", ".web.js", ".web.mts", ".web.ts", ".web.jsx", ".web.tsx", ".mjs", ".js", ".mts", ".ts", ".jsx", ".tsx", ".json"];
+
 export function svelteNative(options: {
   target?: "web" | "native";
   platform?: "android" | "ios";
@@ -48,7 +55,7 @@ export function svelteNative(options: {
 } = {}): PluginOption {
   if (options.target !== "native") return loadSvelteKit().then((kit) => [
     mobileFlag(),
-    { name: "svelte-native:web", config: () => ({ optimizeDeps: { entries: ["!src/routes/**/+mobile.svelte", "!src/routes/**/*.mobile.svelte", "!src/lib/native/**"] } }) },
+    { name: "svelte-native:web", config: () => ({ optimizeDeps: { entries: ["!src/routes/**/+mobile.svelte", "!src/routes/**/*.mobile.svelte", "!src/lib/native/**"] }, resolve: { extensions: webExtensions } }) },
     kit(withWebAsync(withWebRunes(options.kit, options.runes), options.async)),
   ]);
   assertCustomRenderer("The native target of svelteNative() (@alfayez/svelte-native/vite)");

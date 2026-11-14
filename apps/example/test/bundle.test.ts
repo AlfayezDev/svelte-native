@@ -58,6 +58,10 @@ for (const platform of ["android", "ios"] as const) {
       // A standard URL: the router builds every location as a `SvelteURL`, which React Native's own `URL` cannot construct, so the library's
       // polyfills load Expo's WinterCG runtime. Without it the app started blank (9 Nov 2026, the first run of this app on an emulator).
       expect(modules.some((module) => /node_modules\/expo\/src\/winter\/runtime\.native\.ts$/.test(module))).toBe(true);
+      // `crypto` and `localStorage` are react-native-quick-crypto and react-native-mmkv, with the Nitro runtime they share: required when first used, so Metro bundles them. Their import of `react-native`
+      // is the library's lite shim (`LITE_ORIGINS`): the index that lists every component of React Native (and the 238 modules it brings) is not in the bundle.
+      for (const name of ["react-native-quick-crypto", "react-native-mmkv", "react-native-nitro-modules", "react-native-quick-base64"]) expect([name, modules.some((module) => module.includes(`node_modules/${name}/`))]).toEqual([name, true]);
+      expect(modules.some((module) => /node_modules\/react-native\/index\.js$/.test(module))).toBe(false);
     }, 300_000);
   });
 }

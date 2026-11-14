@@ -1,4 +1,4 @@
-// Run by web-apis.test.ts in a process of its own (with the argument `missing`, as an app whose build does not have react-native-quick-crypto): `mock.module` is global to a Bun test process. Puts fakes of react-native-quick-crypto and react-native-mmkv (and of what
+// Run by web-apis.test.ts in a process of its own (with the argument `missing`, or `missing-mmkv`, as an app whose build does not have react-native-quick-crypto, or react-native-mmkv's native module): `mock.module` is global to a Bun test process. Puts fakes of react-native-quick-crypto and react-native-mmkv (and of what
 // `polyfills.ts` imports besides) in the module registry, imports the library's polyfills as the Fabric entry does, and prints what the two web APIs did as JSON: what loaded
 // at import, on the first read of each global, and on the first call that needs the native side.
 import { mock } from "bun:test";
@@ -9,6 +9,9 @@ scope.window = globalThis;
 delete scope.crypto;
 
 const missing = process.argv[2] === "missing";
+const missingMMKV = process.argv[2] === "missing-mmkv";
+const warnings: string[] = [];
+console.warn = (message: unknown) => { warnings.push(String(message)); };
 const events: string[] = [];
 const bufferBefore = scope.Buffer;
 
@@ -43,6 +46,7 @@ class FakeMMKV {
   getAllKeys() { return [...this.data.keys()]; }
 }
 mock.module("react-native-mmkv", () => {
+  if (missingMMKV) throw new Error("Nitro module \"MMKVFactory\" is not in this app");
   events.push("mmkv loaded");
   return {
     createMMKV: (configuration: { id: string }) => {
@@ -67,10 +71,16 @@ const descriptor = (name: string) => {
 await import("../src/polyfills.ts");
 result.atImport = { events: [...events], created: created.length, crypto: descriptor("crypto"), localStorage: descriptor("localStorage"), sessionStorage: descriptor("sessionStorage") };
 
-// An app without the library: the first read says what to do, and the accessor stays (`defineLazyGlobal` tries again on the next read; Bun's mock does not throw twice).
+// An app without the library (an update of the JavaScript delivered to a binary built before it was added): the read answers undefined, as a platform without the global would, so that a
+// feature probe works; what to do is logged once; the accessor stays (`defineLazyGlobal` tries again on the next read; Bun's mock does not throw twice, so the probe reads once).
 if (missing) {
-  const attempt = () => { try { return String(globalThis.crypto); } catch (error) { return { message: (error as Error).message, cause: ((error as Error).cause as Error).message }; } };
-  console.log(JSON.stringify({ first: attempt(), accessor: descriptor("crypto")?.accessor }));
+  const first = typeof (globalThis as { crypto?: unknown }).crypto;
+  console.log(JSON.stringify({ first, warnings, accessor: descriptor("crypto")?.accessor, session: typeof (globalThis as { sessionStorage?: unknown }).sessionStorage }));
+  process.exit(0);
+}
+if (missingMMKV) {
+  const first = typeof (globalThis as { localStorage?: unknown }).localStorage;
+  console.log(JSON.stringify({ first, warnings, accessor: descriptor("localStorage")?.accessor, session: typeof (globalThis as { sessionStorage?: unknown }).sessionStorage, created: created.length }));
   process.exit(0);
 }
 
@@ -91,7 +101,7 @@ result.cryptoCalls = {
   processUntouched: scope.process !== "installed",
 };
 
-// `localStorage` and `sessionStorage`: the global is an object before the library is touched, and MMKV is created by the first call.
+// `localStorage` and `sessionStorage`: MMKV is loaded, and the instance created, by the first read of `localStorage`, which is when a binary without it is found out.
 const local = globals.localStorage;
 result.localRead = { type: typeof local, events: [...events], created: created.length, descriptor: descriptor("localStorage") };
 result.localLength = { length: local.length, events: [...events], created: created.map((entry) => entry.id) };

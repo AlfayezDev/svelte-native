@@ -1,5 +1,5 @@
 import { followSignal, isAbortSignal } from "./abort.ts";
-import { Body, BodyState, bodyStateOf, cloneBodyState, extractBody, isReadableStream, setBodyState, takeBodyState, type BodyInit } from "./body.ts";
+import { applyBodyType, Body, BodyState, bodyStateOf, cloneBodyState, extractBody, isReadableStream, setBodyState, takeBodyState, type BodyInit } from "./body.ts";
 import { Headers, isToken, type HeadersInit } from "./headers.ts";
 
 /**
@@ -128,7 +128,7 @@ export class Request extends Body {
     if (given) {
       const extracted = extractBody(bag.body);
       if (isReadableStream(bag.body) && bag.duplex !== "half") throw new TypeError("RequestInit: duplex option is required when sending a body.");
-      if (extracted.type !== null && !state.headers.has("content-type")) state.headers.append("content-type", extracted.type);
+      applyBodyType(state.headers, extracted.type);
       body = new BodyState(extracted.source);
     } else {
       body = inputBody === null ? new BodyState(null) : takeBodyState(inputBody);

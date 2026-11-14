@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { defineLazyGlobal } from "../src/lazy-global.ts";
 import { decodeKey, encodeKey } from "../src/local-storage.ts";
 import { createStorage, memoryBackend, type StorageBackend } from "../src/web-storage.ts";
@@ -230,16 +230,24 @@ describe("defineLazyGlobal", () => {
     expect(scope.after).toBe("assigned");
   });
 
-  test("when making the value throws the accessor stays and the next read tries again", () => {
-    const scope: Record<string, unknown> = {};
-    let attempts = 0;
-    defineLazyGlobal(scope, "flaky", () => {
-      if (++attempts === 1) throw new Error("not yet");
-      return "ready";
-    });
-    expect(() => scope.flaky).toThrow("not yet");
-    expect(scope.flaky).toBe("ready");
-    expect(attempts).toBe(2);
+  test("when making the value throws the read is undefined (a feature probe works), once warned, the accessor stays and the next read tries again", () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      const scope: Record<string, unknown> = {};
+      let attempts = 0;
+      defineLazyGlobal(scope, "flaky", () => {
+        if (++attempts === 1) throw new Error("not yet");
+        return "ready";
+      });
+      expect(typeof scope.flaky).toBe("undefined");
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0]![0])).toBe("svelte-native: `flaky` is not available: not yet");
+      expect(scope.flaky).toBe("ready");
+      expect(attempts).toBe(2);
+      expect(warn).toHaveBeenCalledTimes(1);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
 

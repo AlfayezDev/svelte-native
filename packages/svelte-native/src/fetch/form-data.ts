@@ -100,7 +100,11 @@ export class FormData extends Base {
     return this.entries();
   }
 
-  /** What React Native's networking reads: React Native's own parts, and for each of our Blobs the `uri` of the file native code keeps its bytes in. */
+  /**
+   * What React Native's networking reads: React Native's own parts, and for each of our Blobs the `uri` of the file native code keeps its bytes in. Writing that file is
+   * synchronous (`objectURL` is), so the first call costs a write of every Blob's bytes on the JavaScript thread. `XMLHttpRequest.send` is wrapped (`xhr.ts`) to delete the files when
+   * the request ends; a caller of `getParts()` on its own owns them (`URL.revokeObjectURL`).
+   */
   getParts(): RnFormDataPart[] {
     const parts = super.getParts();
     this._parts.forEach(([, value], index) => {

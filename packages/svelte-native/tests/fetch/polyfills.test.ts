@@ -17,6 +17,7 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/Network/FormData": "export default class RnFormData { _parts = []; getParts() { return []; } };",
   "react-native/Libraries/Blob/Blob": "export default class RnBlob {};",
   "react-native/Libraries/Blob/FileReader": "export default class RnFileReader {};",
+  "react-native/Libraries/Network/XMLHttpRequest": "export default class RnXhr { send() {} }; globalThis.__RnXhr = RnXhr;",
   "expo-modules-core": "export const requireOptionalNativeModule = (name) => globalThis.__natives[name] ?? null;",
 };
 
@@ -55,12 +56,14 @@ const out = {};
 out.accessorsAtBoot = names.map((name) => typeof Object.getOwnPropertyDescriptor(g, name).get);
 out.loadedAtBoot = g.__fetchLoaded ?? [];
 out.expoReadsAtBoot = [...g.__expoReads];
+out.xhrPatchedAtBoot = g.__RnXhr?.prototype.send[Symbol.for("svelte-native.xhr-send")] === true;
 out.first = typeof g.Blob;
 out.loadedAfterFirst = [...(g.__fetchLoaded ?? [])];
 out.types = names.map((name) => typeof g[name]);
 out.settled = names.map((name) => typeof Object.getOwnPropertyDescriptor(g, name).get);
 out.expoReads = [...g.__expoReads];
 out.sameAfter = g.Blob === g.Blob;
+out.xhrPatched = g.__RnXhr?.prototype.send[Symbol.for("svelte-native.xhr-send")] === true;
 if (out.first === "function") {
   out.blobSize = new g.Blob(["abc", "de"]).size;
   out.objectURL = URL.createObjectURL(new g.Blob(["x"]));
@@ -99,6 +102,12 @@ describe("polyfills.ts and the fetch globals", () => {
     expect(seen.settled).toEqual(NAMES.map(() => "undefined"));
     expect(seen.sameAfter).toBe(true);
     expect(seen.blobSize).toBe(5);
+  });
+
+  test("with the native module the first read also wraps React Native's XMLHttpRequest.send (xhr.send of our Blob), and not before", async () => {
+    const seen = await run("present");
+    expect([seen.xhrPatchedAtBoot, seen.xhrPatched]).toEqual([false, true]);
+    expect((await run("absent")).xhrPatched).toBe(false);
   });
 
   test("URL.createObjectURL and revokeObjectURL are ours for our Blobs", async () => {

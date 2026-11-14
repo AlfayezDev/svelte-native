@@ -167,9 +167,19 @@ export class Headers {
   }
 }
 
-/** What `fetch` sends: the entries in the order they were added, names lower case. */
+/** The entries in the order they were added, names lower case, a repeated name as repeated entries. */
 export function headerPairs(headers: Headers): HeaderList {
   return stateOf(headers).list.map(([name, value]) => [name, value]);
+}
+
+/**
+ * What `fetch` sends: one entry per name, at the place the name first appeared, a repeated name's values joined with ", " (as a browser sends a header added twice: HTTP
+ * allows it, and native clients differ in whether they repeat the line or keep the last).
+ */
+export function combinedHeaderPairs(headers: Headers): HeaderList {
+  const combined = new Map<string, string>();
+  for (const [name, value] of stateOf(headers).list) combined.set(name, combined.has(name) ? `${combined.get(name)}, ${value}` : value);
+  return [...combined];
 }
 
 /** A copy that keeps the guard (a cloned response's headers are as immutable as the original's). */

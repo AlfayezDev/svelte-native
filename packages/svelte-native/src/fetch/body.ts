@@ -167,7 +167,11 @@ class BlobSource implements BodySource {
   }
 }
 
-/** A ReadableStream a caller made. It is the body's stream as it is, and a request drains it to bytes before sending: uploads are not streamed. */
+/**
+ * A ReadableStream a caller made. The body's stream is a stream of ours over it, so that a read, or a cancel, of the body is what makes the body used (the standard's "disturbed",
+ * which a caller's stream gives no way to ask): `new Response(stream)`, a read of `response.body` and `response.bodyUsed` is true. The caller's stream is locked only once the first
+ * read comes, as a body's own is. A request drains the stream to bytes before sending: uploads are not streamed.
+ */
 class StreamSource implements BodySource {
   readonly replayable = false;
   constructor(readonly source: ReadableStream<Uint8Array>) {}
@@ -184,8 +188,13 @@ class StreamSource implements BodySource {
     return new Blob([await readAll(this.source)], { type });
   }
 
-  stream(): ReadableStream<Uint8Array> {
-    return this.source;
+  stream(usage: Usage): ReadableStream<Uint8Array> {
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+    return pullStream(usage, async () => {
+      reader ??= this.source.getReader();
+      const { done, value } = await reader.read();
+      return done ? null : value;
+    }, (reason) => (reader ?? this.source).cancel(reason));
   }
 
   upload(): Promise<Uint8Array> {
@@ -385,6 +394,19 @@ export function extractBody(value: unknown): ExtractedBody {
     return { source: new BlobSource(once(async () => new (native().NativeBlob)([new Uint8Array(await readReactNativeBlob(value))], type))), type: type === "" ? null : type };
   }
   return { source: new StringSource(toUSVString(String(value))), type: "text/plain;charset=UTF-8" };
+}
+
+const isMultipart = (type: string): boolean => type.split(";")[0]!.trim().toLowerCase() === "multipart/form-data";
+
+/**
+ * Gives `headers` the Content-Type its body brings, as the standard says: when the caller set none. The one exception is a caller who set `multipart/form-data` without the
+ * boundary of the body (a header written by habit, which no server can parse a body with): that one is replaced by the body's own, as React Native's XMLHttpRequest and expo/fetch
+ * replace it. Any other Content-Type the caller set stays, and so does one that names the body's boundary.
+ */
+export function applyBodyType(headers: { get(name: string): string | null; set(name: string, value: string): void }, type: string | null): void {
+  if (type === null) return;
+  const given = headers.get("content-type");
+  if (given === null || (isMultipart(type) && isMultipart(given) && boundaryOf(given) !== boundaryOf(type))) headers.set("content-type", type);
 }
 
 async function consume<T>(owner: Body, direct: (source: BodySource) => Promise<T>, fromBytes: (bytes: Uint8Array) => T | Promise<T>, empty: () => T): Promise<T> {

@@ -30,8 +30,8 @@ test("reading `crypto` loads react-native-quick-crypto, once, and makes the web'
   });
 });
 
-test("reading `localStorage` makes the storage and starts nothing: react-native-mmkv is loaded, and the instance created, by the first call that reads or writes", () => {
-  expect(seen.localRead).toEqual({ type: "object", events: ["quick-crypto loaded"], created: 0, descriptor: { accessor: false, enumerable: false, configurable: true } });
+test("reading `localStorage` loads react-native-mmkv and creates its instance, once: a binary without the native module is found out by the read, not by a later call", () => {
+  expect(seen.localRead).toEqual({ type: "object", events: ["quick-crypto loaded", "mmkv loaded"], created: 1, descriptor: { accessor: false, enumerable: false, configurable: true } });
   expect(seen.localLength).toEqual({ length: 0, events: ["quick-crypto loaded", "mmkv loaded"], created: ["svelte-native.local-storage"] });
 });
 
@@ -60,12 +60,31 @@ test("`@alfayez/svelte-native/mmkv` exports createMMKV and localStorageMMKV, and
   expect(seen.entry).toEqual({ names: ["createMMKV", "localStorageMMKV"], id: "svelte-native.local-storage", getString: "dark", sameInstance: true, created: 1, typed: ["custom", 2, 1] });
 });
 
-test("an app whose build lacks react-native-quick-crypto gets an error that says what to do when it reads `crypto`, and the global stays an accessor", () => {
-  const missing = Bun.spawnSync([process.execPath, join(import.meta.dirname, "web-apis-probe.ts"), "missing"], { stdout: "pipe", stderr: "pipe" });
-  if (missing.exitCode !== 0) throw new Error(`the probe failed:\n${missing.stderr.toString().slice(-2000)}`);
-  const result = JSON.parse(missing.stdout.toString().trim().split("\n").at(-1) ?? "") as { first: { message: string; cause: string }; accessor: boolean };
-  expect(result.first.message).toContain("`crypto` needs react-native-quick-crypto");
-  expect(result.first.message).toContain("svelte-native doctor");
-  expect(result.first.cause).toBe('Requiring unknown module "react-native-quick-crypto"');
+/** Runs the probe as an app whose binary lacks a native library (`missing` is react-native-quick-crypto, `missing-mmkv` is react-native-mmkv's native module). */
+function without(which: "missing" | "missing-mmkv"): { first: string; warnings: string[]; accessor: boolean; session: string; created?: number } {
+  const run = Bun.spawnSync([process.execPath, join(import.meta.dirname, "web-apis-probe.ts"), which], { stdout: "pipe", stderr: "pipe" });
+  if (run.exitCode !== 0) throw new Error(`the probe failed:\n${run.stderr.toString().slice(-2000)}`);
+  return JSON.parse(run.stdout.toString().trim().split("\n").at(-1) ?? "") as ReturnType<typeof without>;
+}
+
+test("an app whose build lacks react-native-quick-crypto reads `crypto` as undefined (a feature probe works), is told once what to do, and the global stays an accessor for the next read", () => {
+  const result = without("missing");
+  expect(result.first).toBe("undefined");
+  expect(result.warnings.length).toBe(1);
+  expect(result.warnings[0]).toContain("`crypto` is not available");
+  expect(result.warnings[0]).toContain("`crypto` needs react-native-quick-crypto");
+  expect(result.warnings[0]).toContain("svelte-native doctor");
   expect(result.accessor).toBe(true);
+  expect(result.session).toBe("object");
+});
+
+test("an app whose binary lacks react-native-mmkv's native module reads `localStorage` as undefined, is told once, and keeps sessionStorage", () => {
+  const result = without("missing-mmkv");
+  expect(result.first).toBe("undefined");
+  expect(result.warnings.length).toBe(1);
+  expect(result.warnings[0]).toContain("`localStorage` is not available");
+  expect(result.warnings[0]).toContain("MMKVFactory");
+  expect(result.accessor).toBe(true);
+  expect(result.session).toBe("object");
+  expect(result.created).toBe(0);
 });

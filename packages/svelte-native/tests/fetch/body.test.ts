@@ -199,6 +199,53 @@ describe("consuming a body", () => {
     await expect(response.text()).rejects.toBeInstanceOf(TypeError);
   });
 
+  test("a caller's stream is the body's, and a read of `response.body` uses the body up (the standard's \"disturbed\"), where it used to leave bodyUsed false and text() returning the rest", async () => {
+    const source = stream("a", "b", "c");
+    const response = new Response(source);
+    expect(response.bodyUsed).toBe(false);
+    // The caller's stream is locked by a read, not by being given.
+    expect(source.locked).toBe(false);
+    void response.body;
+    expect(source.locked).toBe(false);
+    const reader = response.body!.getReader();
+    expect(response.bodyUsed).toBe(false);
+    expect(new TextDecoder().decode((await reader.read()).value)).toBe("a");
+    expect(response.bodyUsed).toBe(true);
+    reader.releaseLock();
+    expect(response.bodyUsed).toBe(true);
+    await expect(response.text()).rejects.toBeInstanceOf(TypeError);
+  });
+
+  test("cancelling the body of a caller's stream cancels the stream and uses the body up", async () => {
+    let cancelled: unknown;
+    const source = new ReadableStream<Uint8Array>({ pull(controller) { controller.enqueue(new Uint8Array([1])); }, cancel(reason) { cancelled = reason; } });
+    const response = new Response(source);
+    await response.body!.cancel("done with it");
+    expect([cancelled, response.bodyUsed]).toEqual(["done with it", true]);
+    await expect(response.text()).rejects.toBeInstanceOf(TypeError);
+    // Cancelled before anything was read, so the stream was never locked by the body.
+    const early = stream("x");
+    const unread = new Response(early);
+    await unread.body!.cancel();
+    expect([unread.bodyUsed, early.locked]).toEqual([true, false]);
+  });
+
+  test("a stream read in whole by a consumer is used up too, a request's likewise, and a stream another reader holds makes the body unusable", async () => {
+    const response = new Response(stream("x", "y"));
+    expect(await response.text()).toBe("xy");
+    expect(response.bodyUsed).toBe(true);
+    const request = new Request("https://example.com/", { method: "POST", body: stream("r", "q"), duplex: "half" });
+    const reader = request.body!.getReader();
+    await reader.read();
+    reader.releaseLock();
+    expect(request.bodyUsed).toBe(true);
+    await expect(request.text()).rejects.toBeInstanceOf(TypeError);
+    const source = stream("held");
+    const held = new Response(source);
+    source.getReader();
+    await expect(held.text()).rejects.toBeInstanceOf(TypeError);
+  });
+
   test("cancelling the stream uses the body up", async () => {
     const response = new Response("abc");
     await response.body!.cancel();

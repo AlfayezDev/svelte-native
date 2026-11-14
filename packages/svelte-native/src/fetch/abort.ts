@@ -27,12 +27,64 @@ export function isAbortSignal(value: unknown): value is AbortSignal {
   return typeof signal === "object" && signal !== null && typeof signal.aborted === "boolean" && typeof signal.addEventListener === "function" && typeof signal.removeEventListener === "function";
 }
 
-/** A signal that aborts, with the same reason, when `source` does (`request.signal` is one: the caller's signal is not the request's). */
+type Listening = { target: { deref(): object | undefined }; remove(): void };
+const listening = new WeakMap<AbortSignal, Set<Listening>>();
+/** Removes the listener of a target that was collected, where the engine has a FinalizationRegistry (Hermes may not). */
+const finalizer = typeof FinalizationRegistry === "function" ? new FinalizationRegistry<() => void>((remove) => remove()) : null;
+
+/**
+ * A weak reference to `target`, or, in an engine without WeakRef, a strong one. It is made by a function of its own so that no closure of `listenWhileAlive` captures `target`: an
+ * engine gives the closures of a function one shared scope, and a variable any of them captures is held by all of them.
+ */
+function weakly(target: object): Listening["target"] {
+  return typeof WeakRef === "function" ? new WeakRef(target) : { deref: () => target };
+}
+
+/**
+ * Calls `onAbort(target)` when `signal` aborts, for as long as `target` is alive and has not called the returned `remove`. A signal outlives the requests made with it (one controller
+ * for a screen's requests), and a listener that holds what it acts on keeps every unread response, and the transfer behind it, alive until the signal dies. This one holds the
+ * target weakly, takes itself off the signal when the target is collected (at once with a FinalizationRegistry; otherwise the next time a listener is added to the same signal
+ * sweeps the ones whose target is gone), and when it has fired.
+ */
+export function listenWhileAlive<T extends object>(signal: AbortSignal, target: T, onAbort: (target: T) => void): () => void {
+  let entries = listening.get(signal);
+  if (entries === undefined) listening.set(signal, (entries = new Set()));
+  for (const entry of entries) if (entry.target.deref() === undefined) entry.remove();
+  const held = entries;
+  const weak = weakly(target);
+  const entry: Listening = { target: weak, remove };
+  function listener(): void {
+    const alive = weak.deref() as T | undefined;
+    remove();
+    if (alive !== undefined) onAbort(alive);
+  }
+  function remove(): void {
+    signal.removeEventListener("abort", listener);
+    held.delete(entry);
+    finalizer?.unregister(entry);
+  }
+  signal.addEventListener("abort", listener);
+  held.add(entry);
+  finalizer?.register(target, remove, entry);
+  return remove;
+}
+
+const followers = new WeakMap<AbortSignal, AbortController>();
+
+/**
+ * A signal that aborts, with the same reason, when `source` does (`request.signal` is one: the caller's signal is not the request's). It is listened for weakly: a request whose
+ * signal is read and then dropped does not leave a listener on a long-lived `source`.
+ */
 export function followSignal(source: AbortSignal): AbortSignal {
   const controller = new AbortController();
-  if (source.aborted) abortWithReason(controller, abortReason(source));
-  else source.addEventListener("abort", () => abortWithReason(controller, abortReason(source)), { once: true });
-  return controller.signal;
+  if (source.aborted) {
+    abortWithReason(controller, abortReason(source));
+    return controller.signal;
+  }
+  const follower = controller.signal;
+  followers.set(follower, controller);
+  listenWhileAlive(source, follower, (signal) => abortWithReason(followers.get(signal)!, abortReason(source)));
+  return follower;
 }
 
 const MAX_TIMER = 2 ** 31 - 1;

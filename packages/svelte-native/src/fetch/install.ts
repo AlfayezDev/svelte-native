@@ -12,19 +12,24 @@ export type FetchGlobal = (typeof FETCH_GLOBALS)[number];
 
 let ours: Record<FetchGlobal, unknown> | null | undefined;
 
+// The values are settled before anything else of the activation runs. Loading React Native's XMLHttpRequest (for `patchXHRSend`) reads `global.Blob` while that module
+// initializes, which is a read of one of these globals in the middle of their activation: with nothing settled yet it activated again, required the half-loaded XHR
+// module and threw, and the throw went out through whatever had read the first global. quick-crypto's dependencies read `Blob` while they load, so on the device the
+// first read of `crypto` failed this way (14 Nov 2026). A read during the activation now gets the library's values.
 function activate(): Record<FetchGlobal, unknown> | null {
   if (optionalNative() === null) return null;
   /* eslint-disable @typescript-eslint/no-require-imports -- required on first use */
   const layer = require("./index.ts") as typeof import("./index.ts");
+  ours = { fetch: layer.fetch, Headers: layer.Headers, Request: layer.Request, Response: layer.Response, Blob: layer.Blob, File: layer.File, FileReader: layer.FileReader, FormData: layer.FormData };
   (require("./url.ts") as typeof import("./url.ts")).patchObjectURLs();
   (require("./xhr.ts") as typeof import("./xhr.ts")).patchXHRSend();
   /* eslint-enable @typescript-eslint/no-require-imports */
   installAbortStatics();
-  return { fetch: layer.fetch, Headers: layer.Headers, Request: layer.Request, Response: layer.Response, Blob: layer.Blob, File: layer.File, FileReader: layer.FileReader, FormData: layer.FormData };
+  return ours;
 }
 
 export function resolveGlobal(name: FetchGlobal, previous: PropertyDescriptor | undefined): unknown {
-  ours ??= activate();
+  if (ours === undefined) ours = activate();
   if (ours !== null) return ours[name];
   return previous?.get ? previous.get.call(globalThis) : previous?.value;
 }

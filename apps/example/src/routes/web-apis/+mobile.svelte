@@ -60,8 +60,12 @@
   // navigator: the clipboard (the library's native module), the system share sheet and the device's language.
   let copied = $state("");
   async function copy() {
-    await navigator.clipboard.writeText(uuid);
-    copied = await navigator.clipboard.readText();
+    try {
+      await navigator.clipboard.writeText(uuid);
+      copied = await navigator.clipboard.readText();
+    } catch (error) {
+      failure = error instanceof Error ? error.message : String(error);
+    }
   }
   async function shareDocs() {
     try {

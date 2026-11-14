@@ -30,11 +30,15 @@ export const INITIALIZE_CORE = /react-native[\\/]Libraries[\\/]Core[\\/]Initiali
 /**
  * React Native modules that reach the React renderer (118 KB, plus React and the public-instance/DOM classes), keyed by
  * file suffix. Their only Fabric-entry users are view-config registration and command helpers, which need none of it.
+ * `AppRegistry` (with `AppRegistryImpl`, which imports `renderApplication`) is the library's own: a library that imports it from
+ * `react-native` (expo-task-manager registers a headless task with it) gets the registry native code calls (`fabric/app-registry.ts`).
  */
 export const RENDERER_STUBS: Record<string, string> = {
   "react-native/Libraries/ReactNative/RendererProxy.js": "./fabric/renderer-stub.ts",
   "react-native/Libraries/Renderer/shims/ReactFabric.js": "./fabric/react-fabric-stub.ts",
   "react-native/Libraries/Renderer/shims/createReactNativeComponentClass.js": "./fabric/component-class-stub.ts",
+  "react-native/Libraries/ReactNative/AppRegistry.js": "./fabric/app-registry.ts",
+  "react-native/Libraries/ReactNative/AppRegistryImpl.js": "./fabric/app-registry.ts",
 };
 
 export type SvelteNativeMetroOptions = {

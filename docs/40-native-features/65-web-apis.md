@@ -79,7 +79,7 @@ const id = crypto.randomUUID();
 const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('hello'));
 ```
 
-Nothing loads until `crypto` is first read, so an app that never uses it pays nothing at start. Only `crypto` is defined: not `Buffer`, and not `process`. The library behind it adds a few things of its own when it loads, on the first read of `crypto`: `process.nextTick`, and the functions `base64FromArrayBuffer` and `base64ToArrayBuffer`.
+Nothing loads until `crypto` is first read, so an app that never uses it pays nothing at start. A library that reads it while it starts loads it then: Sentry's SDK does, from `src/hooks.mobile.ts`. Only `crypto` is defined: not `Buffer`, and not `process`. The library behind it adds a few things of its own when it loads, on the first read of `crypto`: `process.nextTick`, and the functions `base64FromArrayBuffer` and `base64ToArrayBuffer`.
 
 A library written for Node that imports `crypto` or `node:crypto` gets react-native-quick-crypto itself, which has Node's API (`createHash`, `createHmac`, `randomBytes`, ciphers, key pairs) as well as `subtle`. Metro does the substitution, so nothing needs configuring. The package is a required dependency of the app: `svelte-native init` installs it and `svelte-native doctor` checks it.
 

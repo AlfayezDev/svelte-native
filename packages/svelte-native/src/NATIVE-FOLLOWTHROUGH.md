@@ -66,3 +66,27 @@ while trying to emulate this with JavaScript retries.
 
 Current buffered uploads remain usable with explicit byte limits and server
 validation. They now reject timestamp metadata the Kit parser cannot represent.
+
+## Android parity investigation (2026-11-14)
+
+PR head `3772a6d` ran the Android emulator lane (run `43544491618`): release
+builds succeeded, 26 blocking gates passed, and `parity.diffPixels` failed at
+2,385,720 pixels. Gesture functional checks passed 12/12; this is not a complete
+platform-parity pass. The 106 selected pixel cases were 74 pass, 28 fail and
+4 error. The 106 incomplete-case informational count also includes unselected
+cases from the 208-case full matrix; it does not mean all selected cases failed.
+
+Downloaded artifacts from main `b4d470f` (run `43473258700`) have identical
+verdict, differing-pixel count, masked-pixel count and bounds for every selected
+case. The earlier main `e24da9a` has the same failure pattern; main `ed5db02`
+(run `43420539380`) passed all 106 cases on the same SDK 36 emulator. Exact base
+`3ba874b` was canceled before producing artifacts, so there is no executed
+current-base comparison. These failures predate this PR's changes.
+
+The source investigation found two interacting issues exposed by same-page query
+navigation: explicit sheet/modal presentation was swallowed by the in-place URL
+update, and cleanup from an old conditional nested Screen cleared a newer
+Screen's registered options. A host reproduction confirmed the latter removes
+the native header configuration. Goldens and native Kotlin were not changed to
+hide the failure. Any repair still needs a new emulator parity report before
+claiming the visual failures are resolved on device.

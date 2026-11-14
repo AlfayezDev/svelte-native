@@ -459,11 +459,11 @@ function createStore(tree: StackNode) {
   }
 
   /**
-   * The screen the user sees when `target` is that same screen with another search or hash (the same page at the same path, so the same parameters), unless the navigation is a `reset`,
-   * which makes a new root. Going there does not add a screen: `navigate` changes that screen's `url` in place. A new screen for `?tab=2` would be a remount of the very page the user is on.
+   * The screen the user sees when `target` is that same screen with another search or hash (the same page at the same path, so the same parameters), unless the navigation is a `reset`
+   * or explicitly chooses a presentation: those go through the normal navigation plan. Otherwise going there does not add a screen: `navigate` changes that screen's `url` in place. A new screen for `?tab=2` would be a remount of the very page the user is on.
    */
   function inPlace(target: Resolution, navigation: Navigation): NativeLocation | undefined {
-    if (navigation.reset) return undefined;
+    if (navigation.reset || navigation.presentation !== undefined) return undefined;
     const top = root.entries.at(-1);
     const shown = top && deepest(top);
     return shown && shown.route === target.page && shown.url.pathname === new URL(target.href, BASE).pathname ? shown : undefined;

@@ -347,7 +347,8 @@ const checks: [name: string, run: (origin: string) => Promise<string>][] = [
     expect(Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180 && accuracy >= 0, `coords ${JSON.stringify(position.coords)}`);
     expect(position.timestamp > Date.now() - 24 * 3600_000, `timestamp ${position.timestamp}`);
     const watched = await new Promise<GeolocationPosition>((resolve, reject) => {
-      const id = navigator.geolocation.watchPosition((next) => { navigator.geolocation.clearWatch(id); resolve(next); }, (error) => { navigator.geolocation.clearWatch(id); reject(error); }, { ...options, maximumAge: 60_000 });
+      // `maximumAge: 0`: the position comes from the native watch (`Expo.locationChanged`), not from the one just read.
+      const id = navigator.geolocation.watchPosition((next) => { navigator.geolocation.clearWatch(id); resolve(next); }, (error) => { navigator.geolocation.clearWatch(id); reject(error); }, { ...options, maximumAge: 0 });
     });
     expect(Number.isFinite(watched.coords.latitude), "watched position");
     const status = await navigator.permissions.query({ name: "geolocation" });

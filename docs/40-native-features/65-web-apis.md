@@ -162,9 +162,9 @@ export default {
 };
 ```
 
-The text is what iOS shows when the app asks. Then prebuild and rebuild the native app. For expo-location's background APIs (`startLocationUpdatesAsync`, geofencing), give the reason for the background too: `location: { whenInUse: '…', background: '…' }`. `navigator.geolocation` needs only the first.
+The text is what iOS shows when the app asks. Then prebuild and rebuild the native app. For expo-location's background APIs (`startLocationUpdatesAsync`, geofencing), give the reason for the background too: `location: { whenInUse: '…', background: '…' }`. `navigator.geolocation` needs only the first. Without `background`, the app has no background location: the Always texts are left out of `Info.plist`, even one you wrote in `ios.infoPlist`. expo-location also brings CoreMotion on iOS, so `Info.plist` always has a motion text: give yours with `motion: '…'` if the app uses expo-location's motion APIs; otherwise it is expo-location's, which iOS never shows, since `navigator.geolocation` doesn't ask for motion.
 
-The prebuild stops when the two halves don't match: the capability without expo-location installed, or expo-location installed without the capability. The second is so that Expo's generic text ("Allow $(PRODUCT_NAME) to access your location") never reaches App Review. An app that lists expo-location's own plugin with its options has configured it there and doesn't set the capability as well.
+The prebuild stops when the two halves don't match: the capability without expo-location installed, expo-location installed without the capability, or the capability on while expo-location is left out of autolinking. The second is so that Expo's generic location text ("Allow $(PRODUCT_NAME) to access your location") never reaches App Review. An app that lists expo-location's own plugin with its options has configured it there and doesn't set the capability as well.
 
 ```ts
 navigator.geolocation.getCurrentPosition(
@@ -181,11 +181,12 @@ navigator.geolocation.clearWatch(id);
 const status = await navigator.permissions.query({ name: 'geolocation' }); // 'granted', 'prompt' or 'denied'
 ```
 
-It behaves as in a browser: the first call asks for the permission, the callbacks come later, never during the call, and an error is a `GeolocationPositionError` with `PERMISSION_DENIED`, `POSITION_UNAVAILABLE` (location services off, no fix) or `TIMEOUT`. `timeout` counts from when the permission is granted. `maximumAge` answers from the last position the app or the system has, when it is young enough. `enableHighAccuracy` turns on the GPS, and without it the position comes from the network and Wi-Fi, to about a city block. A `PermissionStatus`'s `state` changes, with a `change` event, when the user answers and when the app comes back from the settings.
+It behaves as in a browser: the first call asks for the permission, the callbacks come later, never during the call, and an error is a `GeolocationPositionError` with `PERMISSION_DENIED`, `POSITION_UNAVAILABLE` (location services off, no fix) or `TIMEOUT`. `timeout` counts from when the permission is granted; for a watch, from when it runs, with one `TIMEOUT` each time that long passes without a position, and the watch going on. `maximumAge` answers from the last position the app or the system has, when it is young enough. `enableHighAccuracy` turns on the GPS, and without it the position comes from the network and Wi-Fi, to about a city block. A watch reports every position, however small the move. A `PermissionStatus`'s `state` changes, with a `change` event, when the user answers and when the app comes back from the settings. What a callback throws is reported as an uncaught error, after the call, and the watch goes on.
 
 A few things differ from a browser:
 
-- What the platform doesn't know reads as `null`: altitude, heading and speed. Android reports 0 for an altitude it doesn't have; one whose accuracy is 0 is read as unknown.
+- What the platform doesn't know reads as `null`: altitude, heading and speed. Android reports 0 for an altitude it doesn't have; one whose accuracy is 0 is read as unknown. Android also reports a speed of 0 when it has none, so a position without a speed reads as standing still, with the heading `NaN`.
+- A watch that fails once it runs: iOS reports it, as `POSITION_UNAVAILABLE` (the watch goes on) or, when the permission was taken away, `PERMISSION_DENIED` (the watch ends). Android reports only a watch that can't start; one that loses its fix goes quiet, and a `timeout` is how you hear of it.
 - The permission is the system's. After a refusal the app can ask again where the system still allows it: Android asks twice, then answers for the user.
 - `navigator.permissions.query` knows `geolocation`, and refuses other names with a `TypeError`, as a browser refuses one it doesn't know.
 - Watch with `navigator.geolocation` or with expo-location's `watchPositionAsync`, not both at once: they share the native module's watches, and expo-location stops a watch it didn't start.

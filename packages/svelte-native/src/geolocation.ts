@@ -29,7 +29,7 @@ export type NativeLocationModule = {
   requestForegroundPermissionsAsync(): Promise<NativePermission>;
   getCurrentPositionAsync(options: { accuracy: number }): Promise<NativeLocation>;
   getLastKnownPositionAsync(options: { maxAge?: number }): Promise<NativeLocation | null>;
-  watchPositionImplAsync(watchId: number, options: { accuracy: number }): Promise<void>;
+  watchPositionImplAsync(watchId: number, options: { accuracy: number; distanceInterval: number }): Promise<void>;
   removeWatchAsync(watchId: number): Promise<void>;
   addListener(event: string, listener: (event: Record<string, unknown>) => void): Subscription;
 };
@@ -130,7 +130,7 @@ type PositionOptions = { enableHighAccuracy?: boolean; timeout?: number; maximum
 type SuccessCallback = (position: GeolocationPosition) => void;
 type ErrorCallback = (error: GeolocationPositionError) => void;
 
-/** `[EnforceRange] unsigned long`, clamped as the browsers do for what is out of range. */
+/** `[Clamp] unsigned long`: out of range is clamped, NaN is 0 (and a fraction is cut, where the web rounds it half to even). */
 function milliseconds(value: unknown, fallback: number): number {
   if (value === undefined) return fallback;
   const number = Number(value);
@@ -146,15 +146,29 @@ function readOptions(options: PositionOptions | null | undefined) {
   };
 }
 
-function requireCallback(value: unknown, method: string): asserts value is SuccessCallback {
-  if (typeof value !== "function") throw new TypeError(`Failed to execute '${method}' on 'Geolocation': parameter 1 is not of type 'Function'.`);
+function requireCallbacks(success: unknown, error: unknown, method: string): asserts success is SuccessCallback {
+  if (typeof success !== "function") throw new TypeError(`Failed to execute '${method}' on 'Geolocation': parameter 1 is not of type 'Function'.`);
+  if (error !== undefined && error !== null && typeof error !== "function") throw new TypeError(`Failed to execute '${method}' on 'Geolocation': parameter 2 is not of type 'Function'.`);
 }
 
-/** The code of a rejection of the native module: a permission refused, or a position it could not get. */
+/** Calls the app's callback; what it throws is reported as an uncaught error (as the web reports it) instead of breaking the caller's bookkeeping. */
+function invoke<Value>(callback: ((value: Value) => void) | null | undefined, value: Value): void {
+  if (!callback) return;
+  try {
+    callback(value);
+  } catch (error) {
+    setTimeout(() => { throw error; }, 0);
+  }
+}
+
+/**
+ * The code of a rejection of the native module: a permission refused (Android's `ERR_LOCATION_UNAUTHORIZED`, iOS's `ERR_DENIED_FOREGROUND_LOCATION_PERMISSION`),
+ * or a position it could not get.
+ */
 function failure(error: unknown): GeolocationPositionError {
   const code = typeof error === "object" && error !== null ? String((error as { code?: unknown }).code ?? "") : "";
   const message = error instanceof Error ? error.message : String(error);
-  return /UNAUTHORIZED/.test(code) ? positionError(1, message || "User denied Geolocation") : positionError(2, message || "Position unavailable");
+  return /UNAUTHORIZED|DENIED/.test(code) ? positionError(1, message || "User denied Geolocation") : positionError(2, message || "Position unavailable");
 }
 
 /** The permission state the web names: `granted`, `denied` once the system will not ask again, else `prompt`. */
@@ -190,22 +204,39 @@ export class PermissionStatus {
     if (state === this.state) return;
     this.state = state;
     const event = { type: "change" as const, target: this };
-    this.onchange?.(event);
-    for (const listener of [...this.#listeners]) listener(event);
+    if (typeof this.onchange === "function") invoke(this.onchange, event);
+    for (const listener of [...this.#listeners]) invoke(listener, event);
   }
 }
 Object.defineProperty(PermissionStatus.prototype, Symbol.toStringTag, { value: "PermissionStatus", configurable: true });
 
 type Watch = { success: SuccessCallback; error?: ErrorCallback; options: ReturnType<typeof readOptions>; timer?: ReturnType<typeof setTimeout>; started: boolean };
 
+/** A set of the statuses `query` gave out that does not keep them alive: a page that queries again and again leaks none (a plain set where the runtime has no `WeakRef`). */
+class Statuses {
+  readonly #refs = new Set<{ deref(): PermissionStatus | undefined }>();
+
+  add(status: PermissionStatus): void {
+    this.#refs.add(typeof WeakRef === "function" ? new WeakRef(status) : { deref: () => status });
+  }
+
+  update(state: "granted" | "denied" | "prompt"): void {
+    for (const ref of [...this.#refs]) {
+      const status = ref.deref();
+      if (status) status.update(state);
+      else this.#refs.delete(ref);
+    }
+  }
+}
+
 /** The web's `Geolocation` over the native module. `onForeground` subscribes to the app returning to the foreground, when a permission changed in the settings shows. */
 export class Geolocation {
   readonly #native: NativeLocationModule;
   readonly #watches = new Map<number, Watch>();
-  readonly #statuses = new Set<PermissionStatus>();
+  readonly #statuses = new Statuses();
   readonly #onForeground: (listener: () => void) => void;
   #nextWatch = FIRST_WATCH;
-  #subscription: Subscription | null = null;
+  #subscriptions: Subscription[] | null = null;
   #asking: Promise<boolean> | null = null;
   #last: NativeLocation | null = null;
   #foregroundSubscribed = false;
@@ -216,16 +247,16 @@ export class Geolocation {
   }
 
   getCurrentPosition(success: SuccessCallback, error?: ErrorCallback | null, options?: PositionOptions | null): void {
-    requireCallback(success, "getCurrentPosition");
+    requireCallbacks(success, error, "getCurrentPosition");
     const read = readOptions(options);
     void this.#once(read).then(
-      (position) => success(position),
-      (reason: GeolocationPositionError) => error?.(reason),
+      (position) => invoke(success, position),
+      (reason: GeolocationPositionError) => invoke(error, reason),
     );
   }
 
   watchPosition(success: SuccessCallback, error?: ErrorCallback | null, options?: PositionOptions | null): number {
-    requireCallback(success, "watchPosition");
+    requireCallbacks(success, error, "watchPosition");
     const id = this.#nextWatch++;
     const watch: Watch = { success, error: error ?? undefined, options: readOptions(options), started: false };
     this.#watches.set(id, watch);
@@ -233,15 +264,16 @@ export class Geolocation {
     return id;
   }
 
-  clearWatch(id: number): void {
+  clearWatch(watchId: number): void {
+    const id = Number(watchId);
     const watch = this.#watches.get(id);
     if (!watch) return;
     this.#watches.delete(id);
     clearTimeout(watch.timer);
     if (watch.started) this.#native.removeWatchAsync(id).catch(() => {});
     if (this.#watches.size === 0) {
-      this.#subscription?.remove();
-      this.#subscription = null;
+      for (const subscription of this.#subscriptions ?? []) subscription.remove();
+      this.#subscriptions = null;
     }
   }
 
@@ -251,40 +283,46 @@ export class Geolocation {
     this.#statuses.add(status);
     if (!this.#foregroundSubscribed) {
       this.#foregroundSubscribed = true;
-      this.#onForeground(() => void this.#refresh());
+      this.#onForeground(() => { this.#refresh().catch(() => {}); });
     }
     return status;
   }
 
   async #refresh(): Promise<"granted" | "denied" | "prompt"> {
     const state = permissionState(await this.#native.getForegroundPermissionsAsync());
-    for (const status of this.#statuses) status.update(state);
+    this.#statuses.update(state);
     return state;
   }
 
   /** Whether the app may use the location, asking the user when the system still lets it ask. One question at a time, whatever the number of callers. */
   #permitted(): Promise<boolean> {
-    this.#asking ??= (async () => {
-      try {
-        let permission = await this.#native.getForegroundPermissionsAsync();
-        if (permissionState(permission) === "prompt") permission = await this.#native.requestForegroundPermissionsAsync();
-        const state = permissionState(permission);
-        for (const status of this.#statuses) status.update(state);
-        return state === "granted";
-      } finally {
-        this.#asking = null;
-      }
-    })();
-    return this.#asking;
+    if (this.#asking) return this.#asking;
+    // Assigned before it can settle: `finally` runs later, so a call that fails at once does not leave a settled question in place for good.
+    const asking = this.#ask().finally(() => {
+      if (this.#asking === asking) this.#asking = null;
+    });
+    this.#asking = asking;
+    return asking;
   }
 
-  /** The newest of the app's last position and the system's, when it is no older than `maximumAge`. */
-  async #cached(maximumAge: number): Promise<NativeLocation | null> {
+  async #ask(): Promise<boolean> {
+    let permission = await this.#native.getForegroundPermissionsAsync();
+    if (permissionState(permission) === "prompt") permission = await this.#native.requestForegroundPermissionsAsync();
+    const state = permissionState(permission);
+    this.#statuses.update(state);
+    return state === "granted";
+  }
+
+  /** The app's last position, when it is no older than `maximumAge`. */
+  #young(location: NativeLocation | null, maximumAge: number): location is NativeLocation {
+    return maximumAge > 0 && location !== null && Date.now() - location.timestamp <= maximumAge;
+  }
+
+  /** The system's last known position, when it is no older than `maximumAge`. */
+  async #lastKnown(maximumAge: number): Promise<NativeLocation | null> {
     if (maximumAge <= 0) return null;
-    const young = (location: NativeLocation | null) => location !== null && Date.now() - location.timestamp <= maximumAge;
-    if (young(this.#last)) return this.#last;
     const system = await this.#native.getLastKnownPositionAsync({ maxAge: maximumAge }).catch(() => null);
-    return young(system) ? system : null;
+    return this.#young(system, maximumAge) ? system : null;
   }
 
   #remember(location: NativeLocation): GeolocationPosition {
@@ -298,45 +336,85 @@ export class Geolocation {
     } catch (error) {
       throw error instanceof GeolocationPositionError ? error : failure(error);
     }
-    const cached = await this.#cached(options.maximumAge);
-    if (cached) return this.#remember(cached);
-    if (options.timeout === 0) throw positionError(3, "Timeout expired");
+    if (this.#young(this.#last, options.maximumAge)) return this.#remember(this.#last);
+    if (options.timeout === 0) {
+      // Only a cached position can answer in no time.
+      const system = await this.#lastKnown(options.maximumAge);
+      if (system) return this.#remember(system);
+      throw positionError(3, "Timeout expired");
+    }
+    // The timeout covers the system's cache too: its last known position is a native call that may not answer.
     let timer: ReturnType<typeof setTimeout> | undefined;
     const expired = options.timeout >= NO_TIMEOUT ? null : new Promise<never>((_, reject) => {
       timer = setTimeout(() => reject(positionError(3, "Timeout expired")), options.timeout);
     });
+    const located = (async () => {
+      const system = await this.#lastKnown(options.maximumAge);
+      if (system) return this.#remember(system);
+      try {
+        return this.#remember(await this.#native.getCurrentPositionAsync({ accuracy: options.accuracy }));
+      } catch (error) {
+        throw failure(error);
+      }
+    })();
     try {
-      const located = this.#native.getCurrentPositionAsync({ accuracy: options.accuracy }).then((location) => this.#remember(location), (error: unknown) => { throw failure(error); });
       return await (expired ? Promise.race([located, expired]) : located);
     } finally {
       clearTimeout(timer);
     }
   }
 
+  /** The module's watch events: a position (`Expo.locationChanged`), and on iOS a watch that failed (`Expo.locationError`; Android reports none once a watch runs). */
   #listen(): void {
-    this.#subscription ??= this.#native.addListener("Expo.locationChanged", (event) => {
-      const watch = this.#watches.get(event.watchId as number);
-      if (!watch) return;
-      const position = this.#remember(event.location as NativeLocation);
-      this.#arm(event.watchId as number, watch);
-      watch.success(position);
-    });
+    this.#subscriptions ??= [
+      this.#native.addListener("Expo.locationChanged", (event) => {
+        const id = event.watchId as number;
+        const watch = this.#watches.get(id);
+        if (!watch) return;
+        const position = this.#remember(event.location as NativeLocation);
+        this.#arm(id, watch);
+        invoke(watch.success, position);
+      }),
+      this.#native.addListener("Expo.locationError", (event) => {
+        const id = event.watchId as number;
+        if (!this.#watches.has(id)) return;
+        void this.#watchFailed(id, String(event.reason ?? "Position unavailable"));
+      }),
+    ];
   }
 
-  /** The watch's `timeout`: an error each time that long passes without a position, the watch going on. */
+  /** A running watch failed: a permission taken away ends it with `PERMISSION_DENIED`, as on the web; anything else is `POSITION_UNAVAILABLE`, and it goes on. */
+  async #watchFailed(id: number, reason: string): Promise<void> {
+    const permission = await this.#native.getForegroundPermissionsAsync().catch(() => null);
+    const watch = this.#watches.get(id);
+    if (!watch) return;
+    const state = permission ? permissionState(permission) : "granted";
+    if (permission) this.#statuses.update(state);
+    if (state === "granted") {
+      invoke(watch.error, positionError(2, reason));
+      return;
+    }
+    invoke(watch.error, positionError(1, "User denied Geolocation"));
+    this.clearWatch(id);
+  }
+
+  /**
+   * The watch's `timeout`: once that long passes without a position, one `TIMEOUT` error, and the clock starts again with the next position (a `timeout` of 0
+   * reports one error, not one per tick). The watch goes on.
+   */
   #arm(id: number, watch: Watch): void {
     clearTimeout(watch.timer);
     if (watch.options.timeout >= NO_TIMEOUT) return;
     watch.timer = setTimeout(() => {
       if (this.#watches.get(id) !== watch) return;
-      watch.error?.(positionError(3, "Timeout expired"));
-      this.#arm(id, watch);
+      invoke(watch.error, positionError(3, "Timeout expired"));
     }, watch.options.timeout);
   }
 
   async #startWatch(id: number, watch: Watch): Promise<void> {
+    const current = () => this.#watches.get(id) === watch;
     const fail = (error: GeolocationPositionError) => {
-      if (this.#watches.get(id) === watch) watch.error?.(error);
+      if (current()) invoke(watch.error, error);
     };
     try {
       if (!(await this.#permitted())) {
@@ -349,20 +427,27 @@ export class Geolocation {
       this.clearWatch(id);
       return;
     }
-    if (this.#watches.get(id) !== watch) return;
-    const cached = await this.#cached(watch.options.maximumAge);
-    if (this.#watches.get(id) !== watch) return;
-    if (cached) watch.success(this.#remember(cached));
+    if (!current()) return;
+    const cached = this.#young(this.#last, watch.options.maximumAge) ? this.#last : await this.#lastKnown(watch.options.maximumAge);
+    if (!current()) return;
+    if (cached) invoke(watch.success, this.#remember(cached));
+    // The first callback may have cleared the watch.
+    if (!current()) return;
     this.#listen();
-    this.#arm(id, watch);
     try {
       watch.started = true;
-      await this.#native.watchPositionImplAsync(id, { accuracy: watch.options.accuracy });
+      // Every position, not one each 50 to 100 m (Android's default for these accuracies; iOS's is 0), as a browser reports them.
+      await this.#native.watchPositionImplAsync(id, { accuracy: watch.options.accuracy, distanceInterval: 0 });
       // Cleared while the native watch was starting: stop it now that it exists.
-      if (this.#watches.get(id) !== watch) this.#native.removeWatchAsync(id).catch(() => {});
+      if (!current()) {
+        this.#native.removeWatchAsync(id).catch(() => {});
+        return;
+      }
+      // The timeout counts from when the watch runs: not while Android's dialog that asks to turn on better accuracy is up.
+      this.#arm(id, watch);
     } catch (error) {
       fail(failure(error));
-      if (this.#watches.get(id) === watch) this.clearWatch(id);
+      if (current()) this.clearWatch(id);
     }
   }
 }

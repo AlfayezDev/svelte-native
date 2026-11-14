@@ -7,9 +7,15 @@ export type LocationCapability = string | {
      * its foreground service): for expo-location's own background APIs (`startLocationUpdatesAsync`, geofencing). `navigator.geolocation` needs only `whenInUse`.
      */
     background?: string;
+    /**
+     * Why the app uses the motion activity (`NSMotionUsageDescription`), for expo-location's `getMotionActivityAsync`. iOS links CoreMotion with expo-location, so
+     * the key is always written; without this text it is expo-location's default. `navigator.geolocation` never asks for it, so iOS never shows that one.
+     */
+    motion?: string;
 };
+/** `false` (or leaving it out) is off. */
 export type Capabilities = {
-    location?: LocationCapability;
+    location?: LocationCapability | false;
 };
 export declare class CapabilityConfigError extends Error {
     name: string;

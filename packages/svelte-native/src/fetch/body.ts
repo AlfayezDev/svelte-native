@@ -30,6 +30,8 @@ export interface BodySource {
   stream(usage: Usage): ReadableStream<Uint8Array>;
   /** What a request sends: a string, bytes or a NativeBlob, whichever the source holds. A caller's stream that `signal` aborts the reading of is cancelled with the signal's reason. */
   upload(signal?: AbortSignal | null): Promise<NativeBlob | Uint8Array | string>;
+  /** Cancels a caller's stream (the one source a producer stands behind) with `reason`, for a request aborted before it is sent; a locked stream is left as it is. */
+  cancel?(reason: unknown): void;
 }
 
 const CHUNK = 65536;
@@ -209,6 +211,10 @@ class StreamSource implements BodySource {
 
   upload(signal?: AbortSignal | null): Promise<Uint8Array> {
     return readAll(this.source, signal);
+  }
+
+  cancel(reason: unknown): void {
+    this.source.cancel(reason).catch(() => undefined);
   }
 }
 

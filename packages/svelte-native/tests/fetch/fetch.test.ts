@@ -5,7 +5,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { followSignal, installAbortStatics, listenWhileAlive } from "../../src/fetch/abort.ts";
+import { abortReason, abortWithReason, followSignal, installAbortStatics, listenWhileAlive } from "../../src/fetch/abort.ts";
 import { Blob } from "../../src/fetch/blob.ts";
 import { Headers } from "../../src/fetch/headers.ts";
 import { setNativeModule } from "../../src/fetch/module.ts";
@@ -549,6 +549,86 @@ describe("aborting", () => {
     await fetch(`${base}/status/204`, { signal: controller.signal });
     await fetch("http://127.0.0.1:1/", { signal: controller.signal }).catch(() => undefined);
     expect(removed).toEqual(["abort", "abort"]);
+  });
+
+  describe("an abort while a ReadableStream body is drained", () => {
+    /** A caller's stream that enqueues `chunks` and then waits, never closing; what its source was cancelled with. */
+    function stalled(chunks: number[][]): { stream: ReadableStream<Uint8Array>; pulls(): number; cancelled: unknown[] } {
+      const cancelled: unknown[] = [];
+      let pulls = 0;
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) { for (const chunk of chunks) controller.enqueue(new Uint8Array(chunk)); },
+        pull() { pulls++; return new Promise(() => undefined); },
+        cancel(reason) { cancelled.push(reason); },
+      });
+      return { stream, pulls: () => pulls, cancelled };
+    }
+    const soon = <T>(promise: Promise<T>): Promise<T | "still pending"> => Promise.race([promise, new Promise<"still pending">((resolve) => setTimeout(() => resolve("still pending"), 150))]);
+
+    for (const [name, chunks] of [["before its first chunk", []], ["after some chunks", [[97], [98, 99]]]] as const) {
+      test(`${name}: rejects with the reason at once, cancels the stream with it, and starts no native request`, async () => {
+        const reason = new Error("user canceled");
+        const controller = new AbortController();
+        const body = stalled(chunks.map((chunk) => [...chunk]));
+        const started = fake.starts.length;
+        const pending = fetch(`${base}/echo`, { method: "POST", body: body.stream, duplex: "half", signal: controller.signal } as RequestInit).catch((caught: unknown) => caught);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(body.pulls()).toBeGreaterThan(0);
+        controller.abort(reason);
+        expect(await soon(pending)).toBe(reason);
+        expect(body.cancelled).toEqual([reason]);
+        expect(fake.starts.length).toBe(started);
+      });
+    }
+
+    test("the default reason is an AbortError, for the fetch and the stream's cancel", async () => {
+      const controller = new AbortController();
+      const body = stalled([]);
+      const pending = fetch(`${base}/echo`, { method: "POST", body: body.stream, duplex: "half", signal: controller.signal } as RequestInit).catch((caught: unknown) => caught);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      controller.abort();
+      const error = await soon(pending) as DOMException;
+      expect([error.name, (body.cancelled[0] as DOMException | undefined)?.name]).toEqual(["AbortError", "AbortError"]);
+    });
+
+    test("a signal that is already aborted cancels the stream body with its reason (the standard's abort of the fetch call)", async () => {
+      const reason = new Error("before it started");
+      const controller = new AbortController();
+      controller.abort(reason);
+      const body = stalled([]);
+      const started = fake.starts.length;
+      await expect(fetch(`${base}/echo`, { method: "POST", body: body.stream, duplex: "half", signal: controller.signal } as RequestInit)).rejects.toBe(reason);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect([body.cancelled, fake.starts.length]).toEqual([[reason], started]);
+    });
+
+    test("a stream body that was sent whole is left alone by a later abort", async () => {
+      const cancelled: unknown[] = [];
+      const controller = new AbortController();
+      const stream = new ReadableStream<Uint8Array>({ start(c) { c.enqueue(new Uint8Array([120])); c.close(); }, cancel(reason) { cancelled.push(reason); } });
+      const response = await fetch(`${base}/echo`, { method: "POST", body: stream, duplex: "half", signal: controller.signal } as RequestInit);
+      expect((await echoOf(response)).bodyText).toBe("x");
+      controller.abort();
+      expect(cancelled).toEqual([]);
+    });
+  });
+
+  test("a signal without `reason` (React Native's abort-controller) has the reason before the abort's listeners run", () => {
+    /** React Native's AbortController: `abort()` takes no reason and the signal has no `reason` property. */
+    class ReasonlessController {
+      readonly signal = Object.assign(new EventTarget(), { aborted: false });
+      abort(): void {
+        if (this.signal.aborted) return;
+        this.signal.aborted = true;
+        this.signal.dispatchEvent(new Event("abort"));
+      }
+    }
+    const controller = new ReasonlessController() as unknown as AbortController;
+    const seen: unknown[] = [];
+    controller.signal.addEventListener("abort", () => seen.push(abortReason(controller.signal)));
+    const reason = new DOMException("The operation timed out.", "TimeoutError");
+    abortWithReason(controller, reason);
+    expect([seen, abortReason(controller.signal)]).toEqual([[reason], reason]);
   });
 
   describe("AbortSignal.timeout and AbortSignal.any", () => {

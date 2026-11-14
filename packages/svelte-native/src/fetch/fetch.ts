@@ -1,4 +1,4 @@
-import { abortReason, listenWhileAlive } from "./abort.ts";
+import { abortReason, listenWhileAlive, untilAborted } from "./abort.ts";
 import { BytesSource, bodyStateOf, NativeBodySource } from "./body.ts";
 import { parseDataURL } from "./data-url.ts";
 import { fetchError } from "./errors.ts";
@@ -20,13 +20,19 @@ const NULL_BODY_STATUSES = [101, 103, 204, 205, 304];
  * - The body goes to native code as a string, bytes or a NativeBlob; a ReadableStream body is drained to bytes first (uploads are not streamed).
  * - `credentials: "same-origin"` is "include": there is no other origin in an app. `mode`, `cache`, `referrer` and `integrity` are accepted and ignored.
  * - A signal that is aborted rejects with its reason; one that aborts later cancels the transfer and rejects, or errors the body, with the reason (the default AbortError when it has none).
+ *   One that aborts while a ReadableStream body is drained cancels that stream with the reason and rejects, and no native request starts.
  * - A failure of native code is a TypeError ("Network request failed: ...") whose `cause` is what native code threw.
  */
 export async function fetch(input: RequestInfo, init?: RequestInit): Promise<Response> {
   const request = new Request(input, init);
   const state = requestStateOf(request);
   const signal = state.signal;
-  if (signal?.aborted) throw abortReason(signal);
+  if (signal?.aborted) {
+    // The standard's "abort the fetch() call": a caller's stream body is cancelled with the reason, so its producer stops.
+    const reason = abortReason(signal);
+    bodyStateOf(request).source?.cancel?.(reason);
+    throw reason;
+  }
 
   const url = new URL(state.url);
   if (url.protocol === "data:") return dataURLResponse(state.url);
@@ -36,7 +42,8 @@ export async function fetch(input: RequestInfo, init?: RequestInit): Promise<Res
 
   const bodyState = bodyStateOf(request);
   bodyState.consumed = true;
-  const body = bodyState.source === null ? null : await bodyState.source.upload();
+  // The body is ready before anything native starts; an abort meanwhile (a caller's stream whose producer may never write) rejects at once, and cancels that stream with the reason.
+  const body = bodyState.source === null ? null : await untilAborted(bodyState.source.upload(signal), signal);
   if (signal?.aborted) throw abortReason(signal);
 
   const nativeRequest = new (native().NativeRequest)();

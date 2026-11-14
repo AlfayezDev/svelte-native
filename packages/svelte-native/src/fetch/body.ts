@@ -1,3 +1,4 @@
+import { abortReason } from "./abort.ts";
 import { blobFromNative, Blob, isBlob, nativeBlobOf, normalizeType } from "./blob.ts";
 import { concatBytes, decodeUtf8, encodeUtf8, isArrayBuffer, toArrayBuffer, toUSVString, viewOf } from "./encoding.ts";
 import { fetchError } from "./errors.ts";
@@ -27,8 +28,10 @@ export interface BodySource {
   text(): Promise<string>;
   blob(type: string): Promise<Blob>;
   stream(usage: Usage): ReadableStream<Uint8Array>;
-  /** What a request sends: a string, bytes or a NativeBlob, whichever the source holds. */
-  upload(): Promise<NativeBlob | Uint8Array | string>;
+  /** What a request sends: a string, bytes or a NativeBlob, whichever the source holds. A caller's stream that `signal` aborts the reading of is cancelled with the signal's reason. */
+  upload(signal?: AbortSignal | null): Promise<NativeBlob | Uint8Array | string>;
+  /** Cancels a caller's stream (the one source a producer stands behind) with `reason`, for a request aborted before it is sent; a locked stream is left as it is. */
+  cancel?(reason: unknown): void;
 }
 
 const CHUNK = 65536;
@@ -49,18 +52,27 @@ export function pullStream(usage: Usage, next: () => Promise<Uint8Array | null>,
   }, { highWaterMark: 0 });
 }
 
-/** Every chunk of a stream as one byte array; a chunk that is not a Uint8Array is a TypeError. */
-async function readAll(stream: ReadableStream<Uint8Array>): Promise<Uint8Array> {
+/**
+ * Every chunk of a stream as one byte array; a chunk that is not a Uint8Array is a TypeError. When `signal` aborts, the stream is cancelled with the signal's reason (which also ends a
+ * read that waits on a producer that never writes) and the promise rejects with it.
+ */
+async function readAll(stream: ReadableStream<Uint8Array>, signal?: AbortSignal | null): Promise<Uint8Array> {
   const reader = stream.getReader();
   const chunks: Uint8Array[] = [];
+  const cancel = (): void => {
+    reader.cancel(abortReason(signal)).catch(() => undefined);
+  };
+  signal?.addEventListener("abort", cancel);
   try {
     for (;;) {
       const { done, value } = await reader.read();
+      if (signal?.aborted) throw abortReason(signal);
       if (done) break;
       if (!(value instanceof Uint8Array)) throw new TypeError("Received a chunk that is not a Uint8Array");
       chunks.push(value);
     }
   } finally {
+    signal?.removeEventListener("abort", cancel);
     reader.releaseLock();
   }
   return concatBytes(chunks);
@@ -197,8 +209,12 @@ class StreamSource implements BodySource {
     }, (reason) => (reader ?? this.source).cancel(reason));
   }
 
-  upload(): Promise<Uint8Array> {
-    return readAll(this.source);
+  upload(signal?: AbortSignal | null): Promise<Uint8Array> {
+    return readAll(this.source, signal);
+  }
+
+  cancel(reason: unknown): void {
+    this.source.cancel(reason).catch(() => undefined);
   }
 }
 

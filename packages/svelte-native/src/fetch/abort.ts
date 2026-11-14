@@ -14,8 +14,30 @@ export function abortReason(signal: AbortSignal | null | undefined): unknown {
   return reason === undefined ? abortError() : reason;
 }
 
-/** Aborts with a reason even where the controller drops it: the reason is then attached to the signal by hand. */
+/**
+ * `promise`, or a rejection with the signal's reason as soon as the signal aborts, whichever comes first. What the promise stands for is not stopped: it finishes, or fails, unwatched,
+ * so whatever can be stopped must listen to the signal itself.
+ */
+export function untilAborted<T>(promise: Promise<T>, signal: AbortSignal | null | undefined): Promise<T> {
+  if (!signal) return promise;
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => {
+      signal.removeEventListener("abort", onAbort);
+      promise.catch(() => undefined);
+      reject(abortReason(signal));
+    };
+    if (signal.aborted) return onAbort();
+    signal.addEventListener("abort", onAbort);
+    promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
+}
+
+/**
+ * Aborts with a reason even where the controller drops it. A signal without `reason` (React Native's) is given it before the abort, so the abort's listeners already see it
+ * (a timeout's TimeoutError, not the default AbortError); one that dropped it anyway gets it after.
+ */
 export function abortWithReason(controller: AbortController, reason: unknown): void {
+  if (!("reason" in controller.signal)) Object.defineProperty(controller.signal, "reason", { value: reason, configurable: true });
   controller.abort(reason);
   if ((controller.signal as { reason?: unknown }).reason !== reason) {
     Object.defineProperty(controller.signal, "reason", { value: reason, configurable: true });

@@ -26,6 +26,7 @@ final class NativeRequest: SharedObject, @unchecked Sendable {
       transfer.attach(source)
       source.begin(path: target.path, url: target.absoluteString)
     case "http", "https":
+      if requestInit.method == "POST" { ContentTypeProbe.runOnce(for: target) }
       send(client: client, target: target, requestInit: requestInit, body: RequestBody(body))
     default:
       transfer.ended(FetchException.url("Unsupported URL scheme \"\(scheme)\""))

@@ -14,6 +14,23 @@ export function abortReason(signal: AbortSignal | null | undefined): unknown {
   return reason === undefined ? abortError() : reason;
 }
 
+/**
+ * `promise`, or a rejection with the signal's reason as soon as the signal aborts, whichever comes first. What the promise stands for is not stopped: it finishes, or fails, unwatched,
+ * so whatever can be stopped must listen to the signal itself.
+ */
+export function untilAborted<T>(promise: Promise<T>, signal: AbortSignal | null | undefined): Promise<T> {
+  if (!signal) return promise;
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => {
+      promise.catch(() => undefined);
+      reject(abortReason(signal));
+    };
+    if (signal.aborted) return onAbort();
+    signal.addEventListener("abort", onAbort);
+    promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
+}
+
 /** Aborts with a reason even where the controller drops it: the reason is then attached to the signal by hand. */
 export function abortWithReason(controller: AbortController, reason: unknown): void {
   controller.abort(reason);

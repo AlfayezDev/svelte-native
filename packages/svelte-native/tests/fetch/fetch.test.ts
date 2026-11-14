@@ -551,6 +551,57 @@ describe("aborting", () => {
     expect(removed).toEqual(["abort", "abort"]);
   });
 
+  describe("an abort while a ReadableStream body is drained", () => {
+    /** A caller's stream that enqueues `chunks` and then waits, never closing; what its source was cancelled with. */
+    function stalled(chunks: number[][]): { stream: ReadableStream<Uint8Array>; pulls(): number; cancelled: unknown[] } {
+      const cancelled: unknown[] = [];
+      let pulls = 0;
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) { for (const chunk of chunks) controller.enqueue(new Uint8Array(chunk)); },
+        pull() { pulls++; return new Promise(() => undefined); },
+        cancel(reason) { cancelled.push(reason); },
+      });
+      return { stream, pulls: () => pulls, cancelled };
+    }
+    const soon = <T>(promise: Promise<T>): Promise<T | "still pending"> => Promise.race([promise, new Promise<"still pending">((resolve) => setTimeout(() => resolve("still pending"), 150))]);
+
+    for (const [name, chunks] of [["before its first chunk", []], ["after some chunks", [[97], [98, 99]]]] as const) {
+      test(`${name}: rejects with the reason at once, cancels the stream with it, and starts no native request`, async () => {
+        const reason = new Error("user canceled");
+        const controller = new AbortController();
+        const body = stalled(chunks.map((chunk) => [...chunk]));
+        const started = fake.starts.length;
+        const pending = fetch(`${base}/echo`, { method: "POST", body: body.stream, duplex: "half", signal: controller.signal } as RequestInit).catch((caught: unknown) => caught);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(body.pulls()).toBeGreaterThan(0);
+        controller.abort(reason);
+        expect(await soon(pending)).toBe(reason);
+        expect(body.cancelled).toEqual([reason]);
+        expect(fake.starts.length).toBe(started);
+      });
+    }
+
+    test("the default reason is an AbortError, for the fetch and the stream's cancel", async () => {
+      const controller = new AbortController();
+      const body = stalled([]);
+      const pending = fetch(`${base}/echo`, { method: "POST", body: body.stream, duplex: "half", signal: controller.signal } as RequestInit).catch((caught: unknown) => caught);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      controller.abort();
+      const error = await soon(pending) as DOMException;
+      expect([error.name, (body.cancelled[0] as DOMException | undefined)?.name]).toEqual(["AbortError", "AbortError"]);
+    });
+
+    test("a stream body that was sent whole is left alone by a later abort", async () => {
+      const cancelled: unknown[] = [];
+      const controller = new AbortController();
+      const stream = new ReadableStream<Uint8Array>({ start(c) { c.enqueue(new Uint8Array([120])); c.close(); }, cancel(reason) { cancelled.push(reason); } });
+      const response = await fetch(`${base}/echo`, { method: "POST", body: stream, duplex: "half", signal: controller.signal } as RequestInit);
+      expect((await echoOf(response)).bodyText).toBe("x");
+      controller.abort();
+      expect(cancelled).toEqual([]);
+    });
+  });
+
   describe("AbortSignal.timeout and AbortSignal.any", () => {
     const original = { timeout: (AbortSignal as unknown as { timeout?: unknown }).timeout, any: (AbortSignal as unknown as { any?: unknown }).any };
     afterAll(() => {

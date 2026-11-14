@@ -73,6 +73,7 @@ for (const name of ["fetch", "Headers", "Request", "Response", "Blob", "File", "
 defineLazyGlobal(globalThis, "crypto", loadCrypto);
 defineLazyGlobal(globalThis, "localStorage", loadLocalStorage);
 defineLazyGlobal(globalThis, "sessionStorage", () => createStorage(memoryBackend()));
-// `navigator.clipboard` (and `ClipboardItem`), `share`, `canShare`, `vibrate`, `language` and `languages` (`navigator.ts`): each loads what it is made of on first use.
+// `navigator.clipboard` (and `ClipboardItem`), `share`, `canShare`, `vibrate`, `language`, `languages`, `geolocation` and `permissions` (`navigator.ts`): each loads what it is
+// made of on first use.
 installNavigator(globalThis as { navigator?: object });
 mark("polyfills");

@@ -57,6 +57,20 @@
   localStorage.setItem("web-apis.opens", String(opens));
   let uuid = $state(crypto.randomUUID());
 
+  // navigator: the clipboard (the library's native module), the system share sheet and the device's language.
+  let copied = $state("");
+  async function copy() {
+    await navigator.clipboard.writeText(uuid);
+    copied = await navigator.clipboard.readText();
+  }
+  async function shareDocs() {
+    try {
+      await navigator.share({ title: "Svelte Native", text: "Web APIs on the device", url: "https://svelte-native.alfayez.dev/docs/web-apis" });
+    } catch (error) {
+      if (!(error instanceof Error && error.name === "AbortError")) failure = error instanceof Error ? error.message : String(error);
+    }
+  }
+
   // `?checks=<origin>`: the device checks against the library's test server (#lib/web-api-checks.ts).
   const checksOrigin = $derived(url.searchParams.get("checks"));
   let results = $state<CheckResult[]>([]);
@@ -76,10 +90,12 @@
     [() => view.glide(700, 900), 600],
     [() => (uuid = crypto.randomUUID()), 900],
     [() => (uuid = crypto.randomUUID()), 900],
+    [() => view.glide(1100, 600), 600],
+    [() => void copy(), 1200],
   ], { hold: 1200 });
 </script>
 
-<Page title="Web APIs" scrollRef={view.ref} intro="fetch, Blob, crypto and localStorage are the web's own, with nothing to import. On the device they are native code: a download stays native bytes until the code reads it, and a Blob or an object URL never copies them through JavaScript.">
+<Page title="Web APIs" scrollRef={view.ref} intro="fetch, Blob, crypto, localStorage and navigator's clipboard and share are the web's own, with nothing to import. On the device they are native code: a download stays native bytes until the code reads it, and a Blob or an object URL never copies them through JavaScript.">
   <Section title="fetch and Blob" note="The video's bytes arrive as a stream, chunk by chunk; crypto.subtle hashes them. The picture is response.blob() shown through URL.createObjectURL.">
     <Button label={busy ? "Downloading…" : "Download"} onPress={download} disabled={busy} />
     <View style={{ height: 8, borderRadius: 4, overflow: "hidden", backgroundColor: theme.colors.border }}>
@@ -98,6 +114,13 @@
     <View style={row}><Text style={text.body}>Opened</Text><Text style={text.body}>{opens} {opens === 1 ? "time" : "times"}</Text></View>
     <Text style={text.caption}>{uuid}</Text>
     <Button label="New UUID" variant="secondary" onPress={() => (uuid = crypto.randomUUID())} />
+  </Section>
+
+  <Section title="navigator" note="The clipboard is the system's, through a native module of the library's. share opens the system share sheet.">
+    <View style={row}><Text style={text.body}>Language</Text><Text style={text.body}>{navigator.language}</Text></View>
+    <Button label="Copy the UUID" variant="secondary" onPress={copy} />
+    {#if copied}<Text style={text.caption} numberOfLines={1}>Clipboard: {copied}</Text>{/if}
+    <Button label="Share" variant="secondary" onPress={shareDocs} />
   </Section>
 
   {#if checksOrigin}

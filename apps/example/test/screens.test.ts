@@ -115,7 +115,8 @@ const stubs: Record<string, string> = {
   // `$app/env` reads the app's version from the config embedded in the build; `svelte/motion` (`window.matchMedia`) asks the system whether it should reduce motion.
   "expo-constants": "export default { expoConfig: { version: '1.0.0' } };",
   "react-native/Libraries/Components/AccessibilityInfo/AccessibilityInfo": "export default { isReduceMotionEnabled: () => Promise.resolve(false), addEventListener: () => ({ remove() {} }) };",
-  "expo-modules-core": "export const EventEmitter = class {}; export const requireOptionalNativeModule = (name) => name === 'SvelteEngine' ? { install: () => false, getInsets: () => globalThis.__navigationInsets, addListener: () => ({ remove() {} }) } : null;",
+  // The engine module for the insets, and a clipboard in memory for `navigator.clipboard` (the Web APIs screen copies a UUID).
+  "expo-modules-core": "export const EventEmitter = class {}; const clipboard = { content: {}, async read() { return { ...this.content }; }, async write(text, html) { this.content = html == null ? { 'text/plain': text } : { 'text/plain': text, 'text/html': html }; } }; export const requireOptionalNativeModule = (name) => name === 'SvelteEngine' ? { install: () => false, getInsets: () => globalThis.__navigationInsets, addListener: () => ({ remove() {} }) } : name === 'SvelteClipboard' ? clipboard : null;",
   "react-native": "export const AppRegistry = { registerRunnable() {} };",
 };
 

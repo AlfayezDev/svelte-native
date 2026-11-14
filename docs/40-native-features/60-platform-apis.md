@@ -3,7 +3,7 @@ title: Platform APIs
 video: safe-area-view
 ---
 
-The device is more than a screen. It has an operating system, a window size, a light and dark mode, a safe area around the notch, a keyboard, and links that open your app. This page covers how to read and use them, and the two web APIs the device has because every app needs them: `crypto` and `localStorage`.
+The device is more than a screen. It has an operating system, a window size, a light and dark mode, a safe area around the notch, a keyboard, and links that open your app. This page covers how to read and use them. The web's own APIs on the device (`fetch`, `Blob`, `crypto`, `localStorage`) have a page of their own: [Web APIs](web-apis).
 
 `@alfayez/svelte-native/platform` exports React Native's platform modules, typed, for an app without React. They are React Native's own objects, so a library that imports them from `react-native` sees the same state. Each one loads the first time you use it.
 
@@ -160,48 +160,6 @@ Android's back button already goes back in your app's navigation, through the ro
 	});
 </script>
 ```
-
-## Crypto
-
-`crypto` is the web's: `crypto.getRandomValues(array)`, `crypto.randomUUID()` and `crypto.subtle`, the Web Crypto API (digests, HMAC, AES, RSA, ECDSA, key derivation). It is backed by [react-native-quick-crypto](https://github.com/margelo/react-native-quick-crypto), so the work is native.
-
-```ts
-const bytes = crypto.getRandomValues(new Uint8Array(16));
-const id = crypto.randomUUID();
-const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('hello'));
-```
-
-Nothing loads until `crypto` is first read, so an app that never uses it pays nothing at start. Only `crypto` is defined: not `Buffer`, and not `process`. The library behind it adds a few things of its own when it loads, on the first read of `crypto`: `process.nextTick`, and the functions `base64FromArrayBuffer` and `base64ToArrayBuffer`.
-
-A library written for Node that imports `crypto` or `node:crypto` gets react-native-quick-crypto itself, which has Node's API (`createHash`, `createHmac`, `randomBytes`, ciphers, key pairs) as well as `subtle`. Metro does the substitution, so nothing needs configuring. The package is a required dependency of the app: `svelte-native init` installs it and `svelte-native doctor` checks it.
-
-## Storage
-
-`localStorage` and `sessionStorage` are the web's `Storage`: `getItem`, `setItem`, `removeItem`, `clear`, `key` and `length`, with keys and values turned into strings. A key is also a property, as it is in a browser.
-
-```ts
-localStorage.setItem('theme', 'dark');
-localStorage.getItem('theme'); // 'dark'
-localStorage.visits = 3;
-localStorage.visits; // '3'
-Object.keys(localStorage); // ['theme', 'visits']
-```
-
-`localStorage` keeps its data in the app's files, so it survives a restart. It is an [MMKV](https://github.com/mrousavy/react-native-mmkv) instance, which makes reads and writes synchronous and fast. `sessionStorage` lives in memory for as long as the app's process does.
-
-Nothing is created until the first call that reads or writes, and an app that never uses storage never loads MMKV. There are no `storage` events, and no quota.
-
-For more than strings (numbers, booleans, bytes, encryption, change listeners, other instances), `@alfayez/svelte-native/mmkv` has react-native-mmkv's `createMMKV` and its types, and `localStorageMMKV()`, the instance behind `localStorage`:
-
-```ts
-import { createMMKV, localStorageMMKV } from '@alfayez/svelte-native/mmkv';
-
-const secrets = createMMKV({ id: 'secrets', encryptionKey: 'a key' });
-localStorageMMKV().set('onboarded', true);
-localStorage.getItem('onboarded'); // null: localStorage reads strings
-```
-
-react-native-mmkv is a required dependency of the app, with react-native-nitro-modules.
 
 ## Alerts, sharing and vibration
 

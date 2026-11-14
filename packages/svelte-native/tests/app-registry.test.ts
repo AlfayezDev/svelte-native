@@ -130,9 +130,19 @@ describe("headless tasks", () => {
     expect(typeof m.AppRegistry.getRunnable("main")).toBe("function");
     expect(() => m.AppRegistry.runApplication("other", { rootTag: 12 })).toThrow('"other" has not been registered');
     for (const hook of ["setWrapperComponentProvider", "setRootViewStyleProvider", "setComponentProviderInstrumentationHook"]) expect(m.AppRegistry[hook](() => null)).toBeUndefined();
-    // React Native's AppRegistryImpl is a module of named functions: the same names are exported here.
+    // `react-native`'s `index.js` reads `require('./Libraries/ReactNative/AppRegistry').AppRegistry`, and AppRegistryImpl is a module of named functions: both shapes are here.
     for (const name of Object.keys(m.AppRegistry)) expect(m[name]).toBe(m.AppRegistry[name]);
   });
+});
+
+test("without the native support module (iOS has none), a task still runs and nothing is notified", async () => {
+  (globalThis as any).__support = undefined;
+  const m = await registry();
+  let ran = false;
+  m.AppRegistry.registerHeadlessTask("ios", () => async () => { ran = true; });
+  m.AppRegistry.startHeadlessTask(1, "ios", null);
+  await settle();
+  expect(ran).toBe(true);
 });
 
 describe("Metro gives `react-native`'s AppRegistry the library's", () => {

@@ -140,9 +140,9 @@ describe("the entries 0.4.0-rc.7 deprecated are removed, and what they exported 
     expect(readFileSync(src("platform.ts"), "utf8")).toContain('export { nativeModule, turboModule } from "./native-modules.ts";');
   });
 
-  test("`/fabric` is `/app`: the generated entry's import, which exports the five names", () => {
+  test("`/fabric` is `/app`: the generated entry's import, which exports the five names, and what the generated hooks module calls", () => {
     expect(has(app, removedFabric)).toEqual([]);
-    expect(all(app)).toEqual(all({ values: new Set(removedFabric.values), types: new Set(removedFabric.types) }));
+    expect(all(app)).toEqual(all({ values: new Set([...removedFabric.values, "registerHooks"]), types: new Set([...removedFabric.types, "MobileHooks"]) }));
   });
 
   test("`/init` and `/polyfills` are the modules `/app` runs, in order before the Fabric host, and are not entries of their own", () => {

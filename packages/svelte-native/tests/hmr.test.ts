@@ -1,4 +1,4 @@
-import { test, expect } from "bun:test";
+import { describe, test, expect } from "bun:test";
 import { build, transformSync } from "esbuild";
 import { readFile, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -48,7 +48,8 @@ async function load(fixture = "hmr-fixture.svelte") {
         import { createFabricApp, remountSurfaces, showError } from '../src/fabric/index.ts';
         import { appTree, collidingFiles } from './tree-app.ts';
         import { tick } from 'svelte';
-        export { createFabricApp, remountSurfaces, showError, tick, Fixture, appTree, collidingFiles };`,
+        import { registerHooks } from '../src/app-hooks.ts';
+        export { createFabricApp, remountSurfaces, showError, tick, Fixture, appTree, collidingFiles, registerHooks };`,
       resolveDir: import.meta.dirname,
     },
     bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], write: false,
@@ -671,4 +672,125 @@ test("the launch link: a state restored with the intent that opened it is not op
       expect(hrefs(treeScope.__shellRouter)).toEqual(expected);
     }
   } finally { delete environment.__nativeModules; delete environment.__initialURL; }
+});
+
+/** A promise and the functions that settle it. */
+function deferred() {
+  let resolve!: () => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<void>((done, fail) => { resolve = done; reject = fail; });
+  return { promise, resolve, reject };
+}
+
+describe("src/hooks.mobile.ts", () => {
+  test("init runs once when the hooks register, before any surface; a surface the host starts meanwhile waits for its promise", async () => {
+    delete (globalThis as { __svelteNativeHmrState?: unknown }).__svelteNativeHmrState;
+    const m = await load();
+    roots = {}; commits.length = 0;
+    const gate = deferred();
+    let runs = 0;
+    m.registerHooks({ init: () => { runs += 1; return gate.promise; } });
+    expect(runs).toBe(1);
+    m.createFabricApp(m.Fixture, { label: "after init" });
+    runnables.main({ rootTag: 51 });
+    await settle(m);
+    expect(commits.filter((commit) => commit.root === 51)).toEqual([]); // nothing on the surface: the splash screen stays up
+    // A hot update of the file while it is in flight keeps that one.
+    m.registerHooks({ init: () => { runs += 1; } });
+    gate.resolve();
+    await settle(m);
+    expect(texts(51)).toEqual(["after init:/:1"]);
+    // Once it has run, a hot update of the file does not run it again, and a new surface starts at once.
+    m.registerHooks({ init: () => { runs += 1; } });
+    runnables.main({ rootTag: 52 });
+    expect(texts(52)).toEqual(["after init:/:1"]);
+    expect(runs).toBe(1);
+  });
+
+  test("an app without init, or with a synchronous one, starts its surfaces at once", async () => {
+    delete (globalThis as { __svelteNativeHmrState?: unknown }).__svelteNativeHmrState;
+    const m = await load();
+    roots = {}; commits.length = 0;
+    const order: string[] = [];
+    m.registerHooks({ init: () => { order.push("init"); } });
+    m.createFabricApp(m.Fixture, { label: "sync" });
+    runnables.main({ rootTag: 53 });
+    expect(texts(53)).toEqual(["sync:/:1"]);
+    expect(order).toEqual(["init"]);
+  });
+
+  test("a surface the host stops while it waits for init never starts", async () => {
+    delete (globalThis as { __svelteNativeHmrState?: unknown }).__svelteNativeHmrState;
+    const m = await load();
+    roots = {}; commits.length = 0;
+    const gate = deferred();
+    m.registerHooks({ init: () => gate.promise });
+    m.createFabricApp(m.Fixture, { label: "x" });
+    runnables.main({ rootTag: 54 });
+    stopSurface(54);
+    runnables.main({ rootTag: 55 });
+    gate.resolve();
+    await settle(m);
+    expect(commits.filter((commit) => commit.root === 54)).toEqual([]);
+    expect(texts(55)).toEqual(["x:/:1"]);
+  });
+
+  test("in development a failed init is the error screen, and the next evaluation of the file runs it again", async () => {
+    delete (globalThis as { __svelteNativeHmrState?: unknown }).__svelteNativeHmrState;
+    const m = await load();
+    roots = {}; commits.length = 0;
+    const logged = console.error;
+    const errors: unknown[][] = [];
+    console.error = (...args: unknown[]) => { errors.push(args); };
+    try {
+      const gate = deferred();
+      m.registerHooks({ init: () => gate.promise });
+      m.createFabricApp(m.Fixture, { label: "x" });
+      runnables.main({ rootTag: 56 });
+      gate.reject(new Error("no DSN"));
+      await settle(m);
+      expect(texts(56)).toContain("no DSN");
+      expect(texts(56)).toContain("Reload");
+      expect(errors.map((args) => args[0])).toContain("src/hooks.mobile: init failed");
+      // Reload alone does not run the app without its init.
+      m.remountSurfaces();
+      expect(texts(56)).toContain("no DSN");
+      // A throw is a failure too.
+      m.registerHooks({ init: () => { throw new Error("thrown at once"); } });
+      m.remountSurfaces();
+      expect(texts(56)).toContain("thrown at once");
+      // The fix: the hot update registers the file again (init runs), and the entry's accept remounts.
+      let runs = 0;
+      m.registerHooks({ init: async () => { runs += 1; } });
+      m.createFabricApp(m.Fixture, { label: "fixed" });
+      m.remountSurfaces();
+      await settle(m);
+      expect(runs).toBe(1);
+      expect(texts(56)).toEqual(["fixed:/:1"]);
+    } finally { console.error = logged; }
+  });
+
+  test("in a release build a failed init is a fatal error, and no surface starts", async () => {
+    delete (globalThis as { __svelteNativeHmrState?: unknown }).__svelteNativeHmrState;
+    const m = await load();
+    roots = {}; commits.length = 0;
+    const scope = globalThis as { __DEV__?: boolean; ErrorUtils?: unknown };
+    const fatal: unknown[] = [];
+    scope.__DEV__ = false;
+    scope.ErrorUtils = { reportFatalError: (error: unknown) => { fatal.push(error); } };
+    try {
+      const gate = deferred();
+      m.registerHooks({ init: () => gate.promise });
+      m.createFabricApp(m.Fixture, { label: "x" });
+      runnables.main({ rootTag: 57 });
+      const error = new Error("init failed in release");
+      gate.reject(error);
+      await settle(m);
+      expect(fatal).toEqual([error]);
+      expect(commits.filter((commit) => commit.root === 57)).toEqual([]);
+    } finally {
+      scope.__DEV__ = true;
+      delete scope.ErrorUtils;
+    }
+  });
 });

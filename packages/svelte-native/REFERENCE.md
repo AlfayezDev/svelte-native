@@ -326,8 +326,8 @@ Resolution (`remoteResolution`, used by `metro.ts` and the tests): `@sveltejs/ki
 | `configureRemote` | |
 |---|---|
 | `origin`, `base`, `appDir` | the host, validated before anything is changed |
-| `transport` | the app's universal-hooks `transport` object |
-| `handleError` | the client `handleError` hook: `({ kind, error, event }) => Partial<App.Error> \| void`, kind `app`, `framework` or `unknown` |
+| `transport` | the app's universal-hooks `transport` object; replaces the one of `src/hooks.mobile.ts` |
+| `handleError` | the client `handleError` hook: `({ kind, error, event }) => Partial<App.Error> \| void`, kind `app`, `framework` or `unknown`; replaces the one of `src/hooks.mobile.ts` |
 | `fetch` | replaces the global `fetch`; `null` restores it |
 | `goto` | what a `redirect()` does; `null` restores the router / `Linking.openURL` |
 
@@ -422,6 +422,8 @@ vite build --mode native
 # Or export iOS bytecode without building its native host:
 svelte-native build --platform ios
 ```
+
+The app's hooks are `src/hooks.mobile.ts` (or `.js`; `hooksFile`). `syncRoutes` writes `.svelte-native/hooks.ts` (`syncHooks`), which imports the file and calls `registerHooks` (`app-hooks.ts`, exported by `/app`) with its exports, or is `export {}` without one; the entry imports it as `./hooks` between `/app` and the layout, whether or not the file exists, so adding or removing the file changes that module alone (a development Metro's `watchRoutes` also watches `src`, not recursively, for it) and an entry without the import is stale (`staleEntry`). `registerHooks` calls `init` the first time (a throw or a rejection: `__DEV__` logs it and `launchSurface` mounts the error screen in place of the app until a registration runs `init` again; release reports it through `ErrorUtils.reportFatalError`); while the promise `init` returned is pending, `launchSurface` holds the surface (`stopApplication` drops a held one) and starts it when the promise settles. `remote/config.ts` reads `handleError` and `transport` through `watchHooks`, under what `configureRemote` set. Tests: `tests/hmr.test.ts` ("src/hooks.mobile.ts"), `tests/entry.test.ts`, `tests/metro-routes.test.ts`, `tests/remote-runtime.test.ts`.
 
 Generated entries and exports live under ignored `.svelte-native/`. Android export produces `dist/android/index.hbc`, its composed source map and assets there. A native host must still be built with Expo/Gradle or Xcode. Release host builds use the same Metro transformer and generated entry. The native dev server reloads changed Svelte files; preserving component state across edits is not guaranteed.
 

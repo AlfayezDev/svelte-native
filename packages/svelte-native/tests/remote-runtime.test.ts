@@ -23,6 +23,8 @@ const ENTRY = `
   export { handle_error } from "../src/remote/shims/client.ts";
   export { serialize_binary_form } from "@sveltejs/kit/src/runtime/form-utils.js";
   export { HttpError, HandledHttpError, SvelteKitError } from "@sveltejs/kit/internal";
+  export { parse as kitParse } from "@sveltejs/kit/src/runtime/app/internal/transport.js";
+  export { registerHooks, resetHooks } from "../src/app-hooks.ts";
 `;
 
 beforeAll(async () => { m = await loadClient(ENTRY); });
@@ -228,6 +230,35 @@ describe("errors", () => {
     expect(await m.handle_error(new m.SvelteKitError(404, "Not Found", "no such remote function"), {})).toEqual({ status: 404, message: "Not Found" });
     expect(await m.handle_error(new TypeError("Network request failed"), {})).toEqual({ status: 500, message: "Something broke", code: "E1" });
     expect(seen).toEqual(["app", "framework", "unknown"]);
+  });
+
+  test("src/hooks.mobile.ts gives the handleError and the transport, and configureRemote's replace them until resetRemoteConfig", async () => {
+    class Point { constructor(readonly x: number) {} }
+    const encoded = stringify(new Point(3), { Point: (value: unknown) => value instanceof Point && [value.x] });
+    try {
+      // Before any hooks: SvelteKit's default handleError (500, Internal Error), and no decoder for Point.
+      expect(await m.handle_error(new TypeError("offline"), {})).toEqual({ status: 500, message: "Internal Error" });
+      expect(() => m.kitParse(encoded)).toThrow();
+      m.registerHooks({
+        handleError: () => ({ message: "from the hooks file" }),
+        transport: { Point: { encode: (value: unknown) => value instanceof Point && [value.x], decode: ([x]: [number]) => new Point(x) } },
+      });
+      expect(await m.handle_error(new TypeError("offline"), {})).toEqual({ status: 500, message: "from the hooks file" });
+      expect(m.kitParse(encoded)).toBeInstanceOf(Point);
+      expect(m.kitParse(encoded).x).toBe(3);
+      // A hot update of the file registers its new exports.
+      m.registerHooks({ handleError: () => ({ message: "edited" }) });
+      expect(await m.handle_error(new TypeError("offline"), {})).toEqual({ status: 500, message: "edited" });
+      expect(() => m.kitParse(encoded)).toThrow();
+      m.configureRemote({ handleError: () => ({ message: "from configureRemote" }) });
+      m.registerHooks({ handleError: () => ({ message: "edited again" }) });
+      expect(await m.handle_error(new TypeError("offline"), {})).toEqual({ status: 500, message: "from configureRemote" });
+      m.resetRemoteConfig();
+      expect(await m.handle_error(new TypeError("offline"), {})).toEqual({ status: 500, message: "edited again" });
+    } finally {
+      m.resetHooks();
+    }
+    expect(await m.handle_error(new TypeError("offline"), {})).toEqual({ status: 500, message: "Internal Error" });
   });
 });
 

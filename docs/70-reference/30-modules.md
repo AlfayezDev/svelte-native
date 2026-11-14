@@ -37,7 +37,7 @@ The main entry: components, navigation, the app's state, animation, gestures and
 | `Router`, `createRouter` | The router's building blocks. The generated entry uses them; an app doesn't need to. |
 | `bootSummary()` | How long each phase of the app's start took, as one line of text, for profiling. |
 
-The types of the options are exported too: `ScreenOptions`, `HeaderOptions`, `SheetOptions`, `ToolbarOptions`, `ToolbarItem`, `TabItem`, `StatusBarOptions`, `NavigationBarOptions`, `SearchOptions`, `Presentation`, `Detent`, `BarStyle`, `ScreenAnimation`, `NavigateOptions`, `NativeLocation`, `NativeRouter` and `HostHandle`.
+The types of the options are exported too: `ScreenOptions`, `HeaderOptions`, `SheetOptions`, `ToolbarOptions`, `ToolbarItem`, `TabItem`, `StatusBarOptions`, `NavigationBarOptions`, `SearchOptions`, `Presentation`, `Detent`, `BarStyle`, `ScreenAnimation`, `NavigateOptions`, `NativeLocation`, `NativeRouter` and `HostHandle`, and `MobileHooks`, the exports of [`src/hooks.mobile.ts`](hooks).
 
 ### Animation
 
@@ -123,7 +123,7 @@ SvelteKit's remote functions on the device. [Loading data](loading-data#remote-f
 | Export | Description |
 | --- | --- |
 | `native(form)` | Types a remote `form` for native inputs: `fields.x.as(type)` returns the props of a `TextInput`, `Switch` or `Pressable`. |
-| `configureRemote(options)` | Sets the server, `transport`, `handleError`, `fetch` and `goto` from code, overriding the app config. |
+| `configureRemote(options)` | Sets the server, `transport`, `handleError`, `fetch` and `goto` from code, overriding the app config and `src/hooks.mobile.ts`. |
 | `remoteHost()` | The server in effect. |
 | `refreshAll()` | Refetches every query and reconnects every live query the screens hold. |
 | `resetRemoteConfig()` | Drops what `configureRemote` set. |

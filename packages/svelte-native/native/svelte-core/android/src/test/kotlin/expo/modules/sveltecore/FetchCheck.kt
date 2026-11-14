@@ -19,11 +19,13 @@ import kotlin.system.exitProcess
 
 // Host checks of the plain classes behind the SvelteFetch module (Fetcher, FetchCall, BodyBuffer, BlobData, ObjectUrls, Utf8, the file handles), against the
 // repository's test server (tests/fetch/server.ts) and the Encoding standard's own results (vectors.ts). No device, no Expo runtime, no Android SDK.
-// Usage: FetchCheckKt <server base URL> <vectors file> <scratch directory>
+// Usage: FetchCheckKt <server base URL> <vectors file> <scratch directory> [lowmem]
+// "lowmem" runs only the checks of large bodies and is meant for a JVM with a small heap (run.sh starts one with -Xmx64m): what must not exhaust memory.
 
 private var passed = 0
 private var failed = 0
 private val settlements = AtomicInteger()
+private val uncaught = AtomicInteger()
 
 private fun check(name: String, ok: Boolean, detail: () -> String = { "" }) {
   if (ok) {
@@ -188,13 +190,20 @@ fun main(args: Array<String>) {
   val base = args[0]
   val vectors = File(args[1])
   val scratch = File(args[2]).also { it.mkdirs() }
+  val lowMemory = args.getOrNull(3) == "lowmem"
+  // An exception that escapes a worker or OkHttp thread ends the app on Android; here it must not happen either.
+  Thread.setDefaultUncaughtExceptionHandler { thread, error ->
+    uncaught.incrementAndGet()
+    println("UNCAUGHT in ${thread.name}: $error")
+  }
   val executor = Executors.newCachedThreadPool { task -> Thread(task).apply { isDaemon = true } }
   val jar = MemoryCookies()
   // The client React Native builds: no timeouts, a cookie jar.
   val client = OkHttpClient.Builder().connectTimeout(0, TimeUnit.MILLISECONDS).readTimeout(0, TimeUnit.MILLISECONDS).writeTimeout(0, TimeUnit.MILLISECONDS).cookieJar(jar).build()
   val files = LocalFiles()
   // Direct buffers, as the module allocates them.
-  val env = Fetcher({ client }, files, executor) { ByteBuffer.allocateDirect(it) }
+  val temps = TempFiles(File(scratch, "spill"))
+  val env = Fetcher(client = { client }, files = files, executor = executor, alloc = { ByteBuffer.allocateDirect(it) }, temps = temps)
   val fx = Fx(base, env)
 
   // The server may still be starting.
@@ -205,6 +214,13 @@ fun main(args: Array<String>) {
       exitProcess(1)
     }
     Thread.sleep(100)
+  }
+
+  if (lowMemory) {
+    lowMemoryChecks(fx, scratch)
+    check("no exception escaped a thread", uncaught.get() == 0) { "${uncaught.get()}" }
+    println("fetch low-memory checks (heap ${Runtime.getRuntime().maxMemory() shr 20} MiB): $passed passed, $failed failed")
+    exitProcess(if (failed == 0) 0 else 1)
   }
 
   utf8Checks(vectors)
@@ -223,7 +239,12 @@ fun main(args: Array<String>) {
   localFetchChecks(fx, scratch)
   errorChecks(fx)
   cookieChecks(fx, jar)
+  spillChecks(fx, scratch)
+  knownLengthChecks(fx, executor, scratch)
+  exceptionChecks(fx, executor, scratch)
+  contentChecks(fx, executor, scratch, temps)
 
+  check("no exception escaped a thread", uncaught.get() == 0) { "${uncaught.get()}" }
   check("every reply settled exactly once", settlements.get() == 0) { "${settlements.get()} extra settlements" }
   println("  everything but the UTF-8 vectors: ${passed - afterUtf8} passed")
   println("fetch host checks: $passed passed, $failed failed")
@@ -276,7 +297,7 @@ private fun fileHandleChecks(scratch: File) {
   check("stream handle reads back", readAt(10, 100).contentEquals(expected.copyOfRange(10, 110)))
   check("stream handle reads at the end", readAt(99990, 100).contentEquals(expected.copyOfRange(99990, 100000)))
   check("stream handle past the end is -1", handle.read(100000, ByteBuffer.allocate(10)) == -1 && handle.read(200000, ByteBuffer.allocate(10)) == -1)
-  check("stream handle counts its size", handle.size == 100000L)
+  check("stream handle does not count its size", handle.size == -1L && !handle.seekable)
   handle.close()
   val sized = StreamHandle({ FileInputStream(file) }, 100000)
   check("stream handle uses a declared size", sized.size == 100000L)
@@ -367,8 +388,11 @@ private fun blobChecks(scratch: File, files: LocalFiles) {
   val first = urls.create(bytesOf(1).blob())
   val second = urls.create(bytesOf(2).blob())
   check("each create makes its own file", first != second)
-  urls.sweep()
-  check("sweep empties the directory", dir.listFiles()!!.isEmpty())
+  val old = File(dir, "old").also { it.writeBytes(bytesOf(1)); it.setLastModified(System.currentTimeMillis() - 60000) }
+  urls.sweep(System.currentTimeMillis() - 1000)
+  check("sweep deletes what is older than the cutoff and keeps the rest", !old.exists() && urls.exists(first) && urls.exists(second))
+  urls.sweep(System.currentTimeMillis() + 60000)
+  check("sweep past every file empties the directory", dir.listFiles()!!.isEmpty())
 }
 
 private fun bytesChecks(fx: Fx) {
@@ -446,7 +470,8 @@ private fun largeChecks(fx: Fx) {
     val started = fx.start("/large?mb=8")
     val got = fx.bytes(started.call)
     check("8 MiB arrayBuffer", got.value != null && got.value!!.size == expected.size && sha256(got.value!!) == sha256(expected))
-    check("arrayBuffer was not held to 1 MiB", started.call.peakUnread > BodyBuffer.HIGH_WATER) { "peak ${started.call.peakUnread}" }
+    // The length is known, so the body is read straight into the buffer that is handed over: no heap chunks beyond what was read ahead before it was asked for.
+    check("arrayBuffer fills its buffer directly, without collecting chunks", started.call.peakUnread <= BodyBuffer.HIGH_WATER + 65536L) { "peak ${started.call.peakUnread}" }
   }
   run {
     val started = fx.start("/large?mb=8")
@@ -557,6 +582,15 @@ private fun redirectChecks(fx: Fx) {
   check("manual: the redirect response itself resolves", head != null && head.status == 302 && !head.redirected && fx.header(head, "location") == listOf("/redirect?n=1&status=302")) { "${head?.status} ${head?.headers}" }
   check("manual: its body is empty", started.head.value != null && fx.bytes(started.call).value?.isEmpty() == true)
 
+  for (target in listOf("ftp://example.com/x", "custom-scheme://open/it", "data:text/plain,hi", "http://")) {
+    for (status in listOf(301, 302, 307)) {
+      val error = fx.start("/redirect?to=${java.net.URLEncoder.encode(target, "UTF-8")}&status=$status").head.error
+      check("follow: $status to $target is a network error", error?.code == FetchCodes.NETWORK) { "${error?.code} ${error?.message}" }
+    }
+  }
+  val manualFtp = fx.start("/redirect?to=ftp%3A%2F%2Fexample.com%2Fx&status=302", redirect = RedirectMode.MANUAL).head.value
+  check("manual: a redirect to ftp:// is still the 302", manualFtp?.status == 302 && fx.header(manualFtp, "location") == listOf("ftp://example.com/x"))
+  check("follow: a 302 without a Location is the 302", fx.start("/status/302").head.value?.status == 302)
   check("follow: 20 redirects are followed", fx.start("/redirect?n=20").head.value?.status == 200)
   val tooMany = fx.start("/redirect?n=21").head.error
   check("follow: 21 redirects reject with ERR_FETCH_REDIRECT", tooMany?.code == FetchCodes.REDIRECT) { "${tooMany?.code} ${tooMany?.message}" }
@@ -804,4 +838,309 @@ private fun cookieChecks(fx: Fx, jar: MemoryCookies) {
   answer = fx.start("/cookies", credentials = false).let { fx.bytes(it.call).value?.toString(Charsets.UTF_8) }
   check("omit: no Cookie is sent", answer != null && field(answer, "cookie") == "null") { answer ?: "" }
   check("the shared jar saw only the include request's cookie", jar.loadForRequest(HttpUrl.Builder().scheme("http").host("localhost").build()).map { it.name } == listOf("a"))
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// Memory: a body that does not fit is an error or a file, never a dead thread; a Blob that is too big to keep goes to a file that goes away with the Blob.
+
+private fun seededDigest(length: Long, seed: Int): String {
+  val digest = MessageDigest.getInstance("SHA-256")
+  var x = if (seed == 0) 1 else seed
+  val buffer = ByteArray(1 shl 20)
+  var left = length
+  while (left > 0) {
+    val n = minOf(left, buffer.size.toLong()).toInt()
+    for (i in 0 until n) {
+      x = x xor (x shl 13)
+      x = x xor (x ushr 17)
+      x = x xor (x shl 5)
+      buffer[i] = (x and 0xFF).toByte()
+    }
+    digest.update(buffer, 0, n)
+    left -= n
+  }
+  return hex(digest.digest())
+}
+
+/** The SHA-256 of a Blob, read a MiB at a time, so a Blob larger than the heap can be checked. */
+private fun blobDigest(blob: BlobData): String {
+  val digest = MessageDigest.getInstance("SHA-256")
+  var offset = 0L
+  while (offset < blob.size) {
+    val piece = blob.read(offset, 1L shl 20) { ByteBuffer.allocateDirect(it) }
+    digest.update(piece.toBytes())
+    offset += piece.remaining()
+  }
+  return hex(digest.digest())
+}
+
+private fun waitUntil(timeoutMs: Long, condition: () -> Boolean): Boolean {
+  val end = System.currentTimeMillis() + timeoutMs
+  while (System.currentTimeMillis() < end) {
+    if (condition()) return true
+    System.gc()
+    Thread.sleep(100)
+  }
+  return condition()
+}
+
+private fun spillChecks(fx: Fx, scratch: File) {
+  val spillDir = File(scratch, "spill")
+  fun spillFiles() = spillDir.listFiles()?.size ?: 0
+
+  // Under 16 MiB the bytes stay in memory.
+  val before = spillFiles()
+  val small = await<BlobData> { fx.start("/large?mb=8").call.blob(it) }.value
+  check("an 8 MiB body as a Blob stays in memory", small != null && small.size == 8L * 1024 * 1024 && small.memoryBytes == 8 * 1024 * 1024 && spillFiles() == before)
+
+  // Past it they go to a file: the Blob is a file range plus what had arrived since the last write. Everything that refers to the Blob stays inside this
+  // function, so what is left afterwards is the slice in `held`, and the garbage collector can tell when the file is not needed.
+  fun spilledSlice(held: Array<BlobData?>): File? {
+    val whole = await<BlobData> { fx.start("/large?mb=20").call.blob(it) }.value
+    val file = spillDir.listFiles()?.maxByOrNull { it.lastModified() }
+    if (whole == null || file == null) {
+      check("a 20 MiB body as a Blob arrives", false)
+      return null
+    }
+    check("a 20 MiB body as a Blob: size", whole.size == 20L * 1024 * 1024) { "${whole.size}" }
+    check("a 20 MiB body as a Blob: bytes intact", blobDigest(whole) == seededDigest(20L * 1024 * 1024, 11))
+    check("a 20 MiB body as a Blob went to a file and left little in memory", file.length() >= 16L * 1024 * 1024 && whole.memoryBytes < 2 * 1024 * 1024) { "file ${file.length()}, memory ${whole.memoryBytes}" }
+    val slice = whole.slice(3_000_000, 4_000_000)
+    check("a slice of a spilled Blob reads right", slice.bytes().contentEquals(seeded(4_000_000, 11).copyOfRange(3_000_000, 4_000_000)))
+    held[0] = slice
+    return file
+  }
+  val held = arrayOfNulls<BlobData>(1)
+  val file = spilledSlice(held) ?: return
+  check("the file is kept while a slice of it is reachable", !waitUntil(1500) { !file.exists() })
+  check("the slice still reads", held[0]!!.bytes().size == 1_000_000)
+  held[0] = null
+  check("the file is deleted once nothing refers to it", waitUntil(20000) { !file.exists() }) { "still there" }
+}
+
+private fun knownLengthChecks(fx: Fx, executor: java.util.concurrent.Executor, scratch: File) {
+  // A body longer than one buffer holds is refused up front, without trying to allocate it.
+  // (The source is more than the pump reads ahead: a body that has already arrived whole needs no buffer to be filled.)
+  val tooLong = BodyBuffer(okio.Buffer().write(ByteArray(2 shl 20)), {}, executor, { ByteBuffer.allocate(it) }, expectedLength = 3L shl 30)
+  tooLong.start()
+  val refusal = await<ByteBuffer> { tooLong.readAllBytes({ ByteBuffer.allocate(it) }, it) }.error
+  check("a body of 3 GiB is ERR_FETCH_NETWORK, not an overflow", refusal?.code == FetchCodes.NETWORK && refusal.message!!.contains("more than one buffer")) { "${refusal?.code} ${refusal?.message}" }
+
+  // An unknown length stops collecting at the limit.
+  val limited = BodyBuffer(okio.Buffer().write(ByteArray(300_000)), {}, executor, { ByteBuffer.allocate(it) }, highWater = 65536, maxBuffer = 100_000)
+  limited.start()
+  val limit = await<ByteBuffer> { limited.readAllBytes({ ByteBuffer.allocate(it) }, it) }.error
+  check("a body past the buffer limit is ERR_FETCH_NETWORK", limit?.code == FetchCodes.NETWORK) { "${limit?.code} ${limit?.message}" }
+  val within = BodyBuffer(okio.Buffer().write(ByteArray(50_000) { 7 }), {}, executor, { ByteBuffer.allocate(it) }, maxBuffer = 100_000)
+  check("a body within the limit is collected", await<ByteBuffer> { within.readAllBytes({ ByteBuffer.allocate(it) }, it) }.value?.remaining() == 50_000)
+
+  // A body that falls short of its declared length, without an error from the transport: the buffer handed over has the length that arrived.
+  val short = Fetcher(client = { OkHttpClient() }, files = FilesThat(1000, 600), executor = executor, alloc = { ByteBuffer.allocateDirect(it) })
+  val shortCall = short.newCall()
+  val head = await<ResponseHead> { shortCall.start("file:///short", RequestSpec("GET", emptyList(), true, RedirectMode.FOLLOW), null, it) }
+  val answer = await<ByteBuffer> { shortCall.arrayBuffer(it) }.value
+  check("a file shorter than its size is an exact buffer of what arrived", head.value?.headers == listOf("Content-Length" to "1000") && answer != null && answer.remaining() == 600 && answer.capacity() == 600) { "${answer?.remaining()} of ${answer?.capacity()}" }
+
+  // Spill, with the limits made small so that a MiB-sized body shows it.
+  val spillDir = File(scratch, "unit-spill")
+  val temps = TempFiles(spillDir)
+  val payload = seeded(5 * 1024 * 1024, 41)
+  val spilling = BodyBuffer(okio.Buffer().write(payload), {}, executor, { ByteBuffer.allocateDirect(it) }, temps = temps, spillAfter = 1024 * 1024)
+  spilling.start()
+  val spilled = await<BlobData> { spilling.readAllBlob(it) }.value
+  check("a Blob past the spill limit is intact", spilled != null && spilled.size == payload.size.toLong() && spilled.bytes().contentEquals(payload))
+  check("a Blob past the spill limit keeps only a tail in memory", spilled != null && spilled.memoryBytes <= BodyBuffer.SPILL_STEP + 65536 && spillDir.listFiles()!!.size == 1) { "${spilled?.memoryBytes} in memory" }
+  val keeping = BodyBuffer(okio.Buffer().write(payload), {}, executor, { ByteBuffer.allocateDirect(it) }, temps = null, spillAfter = 1024 * 1024)
+  keeping.start()
+  check("without a place to spill the Blob stays in memory", await<BlobData> { keeping.readAllBlob(it) }.value?.memoryBytes == payload.size)
+  val broken = BodyBuffer(okio.Buffer().write(payload), {}, executor, { ByteBuffer.allocateDirect(it) }, temps = TempFiles(File("/proc/no/such/directory")), spillAfter = 1024 * 1024)
+  broken.start()
+  check("a spill that cannot be written is ERR_FETCH_NETWORK", await<BlobData> { broken.readAllBlob(it) }.error?.code == FetchCodes.NETWORK)
+}
+
+/** Files whose handle says `declared` bytes and yields `actual`: the shrunk-file case without a race. */
+private class FilesThat(private val declared: Long, private val actual: Int) : FileAccess {
+  override fun open(uri: String): FileHandle = object : FileHandle {
+    override val size = declared
+
+    override fun read(position: Long, dst: ByteBuffer): Int {
+      if (position >= actual) return -1
+      val n = minOf(dst.remaining().toLong(), actual - position).toInt()
+      dst.put(ByteArray(n) { 9 })
+      return n
+    }
+
+    override fun close() {}
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// Exceptions from providers and replies: each ends in the contract's error (or is swallowed where nobody can be told), none on a thread that dies.
+
+private class ThrowingFiles(private val openFails: () -> RuntimeException?, private val readFails: () -> RuntimeException? = { null }, private val inner: FileAccess? = null) : FileAccess {
+  var opens = 0
+
+  override fun open(uri: String): FileHandle {
+    opens++
+    openFails()?.let { throw it }
+    val real = inner?.open(uri)
+    return object : FileHandle {
+      override val size: Long = real?.size ?: 10
+
+      override fun read(position: Long, dst: ByteBuffer): Int {
+        readFails()?.let { throw it }
+        return real?.read(position, dst) ?: -1
+      }
+
+      override fun close() {
+        real?.close()
+      }
+    }
+  }
+}
+
+private fun exceptionChecks(fx: Fx, executor: java.util.concurrent.Executor, scratch: File) {
+  val request = RequestSpec("GET", emptyList(), true, RedirectMode.FOLLOW)
+
+  // A provider that throws something other than an IOException when opened.
+  for ((name, error) in listOf("IllegalStateException" to IllegalStateException("provider bug"), "SecurityException" to SecurityException("no permission"), "NullPointerException" to NullPointerException(), "UnsupportedOperationException" to UnsupportedOperationException())) {
+    val env = Fetcher(client = { OkHttpClient() }, files = ThrowingFiles({ error }), executor = executor, alloc = { ByteBuffer.allocateDirect(it) })
+    val call = env.newCall()
+    val answer = await<ResponseHead> { call.start("content://provider/item", request, null, it) }.error
+    check("a provider's $name on open is ERR_FETCH_NETWORK", answer?.code == FetchCodes.NETWORK && answer.message!!.contains("Cannot open")) { "${answer?.code} ${answer?.message}" }
+    check("a provider's $name on open is an IOException for a Blob", try {
+      BlobData.ofFile(ThrowingFiles({ error }), "content://provider/item")
+      false
+    } catch (_: java.io.IOException) {
+      true
+    })
+  }
+
+  // A provider that fails while reading, mid-body.
+  val readFails = ThrowingFiles({ null }, { IllegalStateException("provider died") })
+  val reading = Fetcher(client = { OkHttpClient() }, files = readFails, executor = executor, alloc = { ByteBuffer.allocateDirect(it) }).newCall()
+  check("a provider that throws on read is a rejected body", await<ResponseHead> { reading.start("content://provider/item", request, null, it) }.ok && await<ByteBuffer> { reading.arrayBuffer(it) }.error?.code == FetchCodes.NETWORK)
+
+  // A Blob over a file that opened once and then does not: uploaded, the failure comes on OkHttp's own thread, where it must become the head's error.
+  val file = File(scratch, "flaky.bin").also { it.writeBytes(seeded(100000, 6)) }
+  var failNow = false
+  val flaky = ThrowingFiles({ if (failNow) SecurityException("revoked") else null }, inner = LocalFiles())
+  val flakyBlob = BlobData.ofFile(flaky, FileUrls.urlOf(file))
+  failNow = true
+  val upload = fx.start("/echo", "POST", body = flakyBlob).head.error
+  check("a file that cannot be opened while uploading is ERR_FETCH_NETWORK", upload?.code == FetchCodes.NETWORK) { "${upload?.code} ${upload?.message}" }
+
+  // A stream that cannot be reopened (a revoked permission), asked for an earlier position.
+  var reopens = 0
+  val stream = StreamHandle({
+    if (reopens++ > 0) throw SecurityException("revoked") else java.io.FileInputStream(file)
+  })
+  stream.read(0, ByteBuffer.allocate(1000))
+  check("a stream that cannot be reopened is an IOException", try {
+    stream.read(10, ByteBuffer.allocate(10))
+    false
+  } catch (_: java.io.IOException) {
+    true
+  })
+
+  // A source that fails to close, and replies that throw: nothing may take the pump thread down.
+  val closing = BodyBuffer(okio.Buffer().write(ByteArray(5000) { 3 }), { throw IllegalStateException("cannot close") }, executor, { ByteBuffer.allocateDirect(it) })
+  closing.start()
+  var total = 0
+  while (true) {
+    val piece = await<ByteBuffer?> { closing.read(1000, it) }.value ?: break
+    total += piece.remaining()
+  }
+  check("a release that throws does not stop the body", total == 5000) { "$total" }
+  val replying = BodyBuffer(okio.Buffer().write(ByteArray(4000) { 5 }), {}, executor, { ByteBuffer.allocateDirect(it) })
+  replying.start()
+  replying.read(10, object : Reply<ByteBuffer?> {
+    override fun resolve(value: ByteBuffer?) = throw IllegalStateException("the promise is gone")
+
+    override fun reject(error: FetchError) = throw IllegalStateException("the promise is gone")
+  })
+  Thread.sleep(100)
+  check("a reply that throws does not stop the body", await<ByteBuffer?> { replying.read(100000, it) }.value?.remaining() == 3990)
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// content:// through a provider that gives only a stream.
+
+private fun contentChecks(fx: Fx, executor: java.util.concurrent.Executor, scratch: File, temps: TempFiles) {
+  val data = seeded(300_000, 52)
+  val source = File(scratch, "pipe.bin").also { it.writeBytes(data) }
+  var opens = 0
+  val pipes = object : FileAccess {
+    override fun open(uri: String): FileHandle {
+      opens++
+      return StreamHandle({ java.io.FileInputStream(source) })
+    }
+  }
+  val blob = BlobData.ofFile(pipes, "content://provider/pipe", temps)
+  check("a stream with no size is copied once into a Blob of the right size", blob.size == 300_000L && blob.bytes().contentEquals(data)) { "${blob.size}" }
+  val openedForCopy = opens
+  check("the stream was opened once for the copy", openedForCopy == 1) { "$openedForCopy" }
+  val random = Random(11)
+  var allRight = true
+  repeat(200) {
+    val offset = random.nextInt(300_000)
+    val length = 1 + random.nextInt(20_000)
+    if (!blob.read(offset.toLong(), length.toLong()) { ByteBuffer.allocate(it) }.toBytes().contentEquals(data.copyOfRange(offset, minOf(300_000, offset + length)))) allRight = false
+  }
+  check("200 reads at random positions are right", allRight)
+  check("reading the Blob never reopens the provider's stream", opens == openedForCopy) { "$opens opens" }
+  check("without a place for the copy a pipe cannot be a Blob", try {
+    BlobData.ofFile(pipes, "content://provider/pipe")
+    false
+  } catch (_: java.io.IOException) {
+    true
+  })
+
+  // Fetched, the stream is read forward once, with no Content-Length as the size is unknown.
+  opens = 0
+  val env = Fetcher(client = { OkHttpClient() }, files = pipes, executor = executor, alloc = { ByteBuffer.allocateDirect(it) }, temps = temps)
+  val call = env.newCall()
+  val head = await<ResponseHead> { call.start("content://provider/pipe", RequestSpec("GET", emptyList(), true, RedirectMode.FOLLOW), null, it) }.value
+  val body = await<ByteBuffer> { call.arrayBuffer(it) }.value
+  check("a content:// stream is fetched once, forward, without a size", head?.status == 200 && head.headers.isEmpty() && body != null && body.toBytes().contentEquals(data) && opens == 1) { "${head?.headers} opens $opens" }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// Run with a 64 MiB heap: what is too big to hold fails the one fetch (or goes to a file), and the process carries on.
+
+private fun lowMemoryChecks(fx: Fx, scratch: File) {
+  val mib = 1024L * 1024
+  val spillDir = File(scratch, "spill")
+  check("the heap is small", Runtime.getRuntime().maxMemory() < 100 * mib) { "${Runtime.getRuntime().maxMemory() shr 20} MiB" }
+
+  var started = fx.start("/large?mb=200")
+  var error = fx.bytes(started.call).error
+  check("200 MiB as arrayBuffer: ERR_FETCH_NETWORK, not out of memory", error?.code == FetchCodes.NETWORK && error.message!!.contains("memory")) { "${error?.code} ${error?.message}" }
+
+  started = fx.start("/large?mb=200")
+  error = fx.text(started.call).error
+  check("200 MiB as text: ERR_FETCH_NETWORK, not out of memory", error?.code == FetchCodes.NETWORK && error.message!!.contains("memory")) { "${error?.code} ${error?.message}" }
+
+  // No Content-Length (chunked): the pump collects chunks until it cannot, and says so.
+  started = fx.start("/stream?chunks=100&size=2097152&delay=0")
+  error = fx.bytes(started.call).error
+  check("200 MiB of unknown length as arrayBuffer: ERR_FETCH_NETWORK from the pump, which lives", error?.code == FetchCodes.NETWORK && error.message!!.contains("memory")) { "${error?.code} ${error?.message}" }
+  started = fx.start("/stream?chunks=100&size=2097152&delay=0")
+  error = fx.text(started.call).error
+  check("200 MiB of unknown length as text: ERR_FETCH_NETWORK", error?.code == FetchCodes.NETWORK) { "${error?.code} ${error?.message}" }
+
+  // As a Blob the same bodies are fine: they go to files.
+  started = fx.start("/large?mb=200")
+  val blob = await<BlobData> { started.call.blob(it) }
+  check("200 MiB as a Blob arrives", blob.ok && blob.value!!.size == 200 * mib) { "${blob.error?.code} ${blob.error?.message}" }
+  check("200 MiB as a Blob is intact", blob.value != null && blobDigest(blob.value!!) == seededDigest(200 * mib, 11))
+  check("200 MiB as a Blob left little in memory", blob.value != null && blob.value!!.memoryBytes < 2 * mib && (spillDir.listFiles()?.size ?: 0) >= 1) { "${blob.value?.memoryBytes}" }
+
+  started = fx.start("/stream?chunks=100&size=2097152&delay=0")
+  val chunked = await<BlobData> { started.call.blob(it) }
+  check("200 MiB of unknown length as a Blob is intact", chunked.ok && chunked.value!!.size == 200 * mib && blobDigest(chunked.value!!) == seededDigest(200 * mib, 7)) { "${chunked.error?.message}" }
+
+  // And the process still fetches.
+  val small = fx.get("/bytes?n=1000&seed=3")
+  check("an ordinary fetch works afterwards", small != null && small.second.contentEquals(seeded(1000, 3)))
 }

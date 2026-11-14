@@ -26,9 +26,9 @@ internal class MemorySegment(val bytes: ByteArray, val offset: Int, val count: I
   override fun slice(start: Long, end: Long) = MemorySegment(bytes, offset + start.toInt(), (end - start).toInt())
 }
 
-/** A range of a file, read when its bytes are needed. */
-internal class FileSegment(val files: FileAccess, val uri: String, val offset: Long, override val length: Long) : Segment() {
-  override fun slice(start: Long, end: Long) = FileSegment(files, uri, offset + start, end - start)
+/** A range of a file, read when its bytes are needed. `owner` is kept alive for as long as the segment is: the [TempFile] whose file this is, if it is one. */
+internal class FileSegment(val files: FileAccess, val uri: String, val offset: Long, override val length: Long, val owner: Any? = null) : Segment() {
+  override fun slice(start: Long, end: Long) = FileSegment(files, uri, offset + start, end - start, owner)
 }
 
 /**
@@ -86,10 +86,21 @@ internal class BlobData private constructor(private val segments: List<Segment>)
 
   /**
    * Hands the bytes in [offset, offset + length) to `out` in pieces, in order. A file shorter than it was when the Blob was made is an `IOException`, as is
-   * anything the file system says.
+   * anything the file system or a content provider throws.
    */
   @Throws(IOException::class)
   fun copyTo(offset: Long, length: Long, out: ByteSink) {
+    try {
+      copySegments(offset, length, out)
+    } catch (e: IOException) {
+      throw e
+    } catch (e: RuntimeException) {
+      // A provider's own exceptions must not reach OkHttp's dispatcher thread, where they end the app.
+      throw IOException("Cannot read the Blob's bytes: ${e.message}", e)
+    }
+  }
+
+  private fun copySegments(offset: Long, length: Long, out: ByteSink) {
     val end = minOf(offset + length, size)
     if (offset >= end) return
     var i = segmentAt(offset)
@@ -107,7 +118,7 @@ internal class BlobData private constructor(private val segments: List<Segment>)
   }
 
   private fun copyFile(segment: FileSegment, from: Long, to: Long, out: ByteSink) {
-    segment.files.open(segment.uri).use { handle ->
+    segment.files.openChecked(segment.uri).use { handle ->
       val scratch = ByteArray(minOf(to - from, CHUNK.toLong()).toInt())
       val buffer = ByteBuffer.wrap(scratch)
       var position = segment.offset + from
@@ -151,11 +162,22 @@ internal class BlobData private constructor(private val segments: List<Segment>)
       return if (all.isEmpty()) EMPTY else BlobData(all)
     }
 
-    /** The whole of the file `uri` names, at its size now. */
+    fun ofSegment(segment: Segment): BlobData = if (segment.length == 0L) EMPTY else BlobData(listOf(segment))
+
+    /**
+     * The whole of the file `uri` names, at its size now. A source that cannot be read at any position (a content provider's pipe) is copied once, to a
+     * [TempFiles] file, so that reading the Blob does not reread the stream from its start each time.
+     */
     @Throws(IOException::class)
-    fun ofFile(files: FileAccess, uri: String): BlobData {
-      val size = files.open(uri).use { it.size }
-      return if (size == 0L) EMPTY else BlobData(listOf(FileSegment(files, uri, 0, size)))
+    fun ofFile(files: FileAccess, uri: String, temps: TempFiles? = null): BlobData {
+      files.openChecked(uri).use { handle ->
+        if (!handle.seekable) {
+          return (temps ?: throw IOException("$uri cannot be read at random positions")).copyOf(handle)
+        }
+        val size = handle.size
+        if (size < 0) throw IOException("$uri has no size")
+        return ofSegment(FileSegment(files, uri, 0, size))
+      }
     }
 
     /** Chunks of a body kept as they arrived, without copying them. */

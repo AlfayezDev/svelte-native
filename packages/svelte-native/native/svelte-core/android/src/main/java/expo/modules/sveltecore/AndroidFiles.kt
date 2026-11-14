@@ -15,17 +15,22 @@ import java.nio.ByteBuffer
 internal class AndroidFiles(private val context: Context) : LocalFiles() {
   override fun open(uri: String): FileHandle {
     if (!uri.startsWith("content:", ignoreCase = true)) return super.open(uri)
+    try {
+      return openContent(uri)
+    } catch (e: IOException) {
+      throw e
+    } catch (e: Exception) {
+      // A content provider is another app's code: a SecurityException for a permission missing, an NPE or IllegalStateException for whatever else.
+      throw IOException("Cannot open $uri: ${e.message}", e)
+    }
+  }
+
+  private fun openContent(uri: String): FileHandle {
     val parsed = Uri.parse(uri)
     val resolver = context.contentResolver
-    val descriptor = try {
-      resolver.openAssetFileDescriptor(parsed, "r")
-    } catch (e: SecurityException) {
-      throw IOException("No permission to read $uri", e)
-    } catch (e: IllegalArgumentException) {
-      throw IOException("Cannot open $uri: ${e.message}", e)
-    } ?: throw FileNotFoundException(uri)
+    val descriptor = resolver.openAssetFileDescriptor(parsed, "r") ?: throw FileNotFoundException(uri)
     if (isSeekable(descriptor)) return DescriptorHandle(descriptor)
-    // A provider that hands out a pipe: positional reads are impossible, so the stream is read forward (and reopened to go back).
+    // A provider that hands out a pipe: positional reads are impossible, so the stream is read forward (Blob.ofFile copies such a file once).
     val declared = descriptor.length
     descriptor.close()
     return StreamHandle({ resolver.openInputStream(parsed) ?: throw FileNotFoundException(uri) }, declared)

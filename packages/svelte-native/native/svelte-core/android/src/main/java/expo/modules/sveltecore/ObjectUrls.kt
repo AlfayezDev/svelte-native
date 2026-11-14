@@ -39,8 +39,6 @@ internal class ObjectUrls(private val directory: File) {
     }
   }
 
-  /** Deletes whatever an earlier run of the app left: no Blob outlives the process that made it, so no URL of this directory is live at startup. */
-  fun sweep() {
-    directory.listFiles()?.forEach { it.delete() }
-  }
+  /** Deletes what is older than `before`; see [sweepOlderThan]. */
+  fun sweep(before: Long) = sweepOlderThan(directory, before)
 }

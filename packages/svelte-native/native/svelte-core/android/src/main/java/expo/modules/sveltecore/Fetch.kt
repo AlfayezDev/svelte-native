@@ -18,13 +18,15 @@ import java.util.Collections
 import java.util.WeakHashMap
 import java.util.concurrent.Executor
 
-/** What every fetch shares: where the HTTP client comes from, how local files open, the threads that do the work, and how buffers handed to JavaScript are made. */
+/** What every fetch shares: where the HTTP client comes from, how local files open, the threads that do the work, how buffers handed to JavaScript are made. */
 internal class Fetcher(
-  /** React Native's own client in the module: its cookie jar and interceptors are the app's. Asked per request, so a client the app replaces is picked up. */
+  /** In the module a client derived from React Native's own, so its interceptors are the app's. Asked per request, so a client the app replaces is picked up. */
   val client: () -> OkHttpClient,
   val files: FileAccess,
   val executor: Executor,
-  val alloc: Alloc
+  val alloc: Alloc,
+  /** Where bytes go that should not stay on the Java heap (a downloaded Blob too big to keep); without it, they stay. */
+  val temps: TempFiles? = null
 ) {
   private val live: MutableSet<FetchCall> = Collections.synchronizedSet(Collections.newSetFromMap(WeakHashMap<FetchCall, Boolean>()))
 
@@ -100,7 +102,18 @@ internal class FetchCall(private val env: Fetcher) {
         failHead(if (tooManyRedirects) FetchError(FetchCodes.REDIRECT, "More than 20 redirects", e) else FetchError.network(e))
       }
 
-      override fun onResponse(call: Call, response: Response) = onHttpResponse(response, spec)
+      override fun onResponse(call: Call, response: Response) {
+        // This runs on OkHttp's dispatcher thread, where an exception that escapes ends the app.
+        try {
+          onHttpResponse(response, spec)
+        } catch (e: Exception) {
+          try {
+            response.close()
+          } catch (_: Exception) {
+          }
+          failHead(FetchError.network(e))
+        }
+      }
     })
   }
 
@@ -126,6 +139,14 @@ internal class FetchCall(private val env: Fetcher) {
       failHead(FetchError(FetchCodes.REDIRECT, "The server answered ${response.code}, a redirect, and redirects are not allowed"))
       return
     }
+    // OkHttp follows every redirect it can resolve, so one that is still a redirect here points where it cannot go (not an http or https URL, or not a URL at
+    // all). The Fetch standard makes that a network error, where OkHttp hands back the 3xx.
+    val location = response.header("Location")
+    if (spec.redirect == RedirectMode.FOLLOW && response.code in REDIRECT_STATUSES && location != null) {
+      response.close()
+      failHead(FetchError(FetchCodes.NETWORK, "The server redirected to $location, which is not an http or https URL"))
+      return
+    }
     val head = ResponseHead(
       status = response.code,
       statusText = response.message,
@@ -133,32 +154,39 @@ internal class FetchCall(private val env: Fetcher) {
       url = response.request.url.toString(),
       redirected = generateSequence(response.priorResponse) { it.priorResponse }.any { it.isRedirect }
     )
-    val source = response.body?.source()
-    if (source == null) {
+    val responseBody = response.body
+    if (responseBody == null) {
       response.close()
       failHead(FetchError(FetchCodes.NETWORK, "The response has no body"))
       return
     }
-    attach(BodyBuffer(source, { response.close() }, env.executor, env.alloc), head)
+    // A HEAD answer reports the length of the body it does not have.
+    val length = if (response.request.method == "HEAD") 0L else responseBody.contentLength()
+    attach(BodyBuffer(responseBody.source(), { response.close() }, env.executor, env.alloc, length, env.temps), head)
   }
 
   /** `file://` and `content://`: a 200 with the file's bytes and its length, read through the same buffer as a network body. */
   private fun startLocal(url: String) {
-    val handle = try {
-      env.files.open(url)
+    val opened = try {
+      env.files.openChecked(url)
     } catch (e: IOException) {
-      failHead(FetchError(FetchCodes.NETWORK, "Cannot open $url: ${e.message}", e))
-      return
+      return failHead(FetchError(FetchCodes.NETWORK, "Cannot open $url: ${e.message}", e))
     }
     val size = try {
-      handle.size
-    } catch (e: IOException) {
-      handle.close()
-      failHead(FetchError(FetchCodes.NETWORK, "Cannot read $url: ${e.message}", e))
-      return
+      opened.size
+    } catch (e: Exception) {
+      closeQuietly(opened)
+      return failHead(FetchError(FetchCodes.NETWORK, "Cannot read $url: ${e.message}", e))
     }
     val headers = if (size >= 0) listOf("Content-Length" to size.toString()) else emptyList()
-    attach(BodyBuffer(HandleSource(handle).buffer(), { handle.close() }, env.executor, env.alloc), ResponseHead(200, "", headers, url, false))
+    attach(BodyBuffer(HandleSource(opened, size).buffer(), { opened.close() }, env.executor, env.alloc, size, env.temps), ResponseHead(200, "", headers, url, false))
+  }
+
+  private fun closeQuietly(handle: FileHandle) {
+    try {
+      handle.close()
+    } catch (_: Exception) {
+    }
   }
 
   /** The head is in: from now on the body is read ahead, and the caller learns the head. */
@@ -177,7 +205,7 @@ internal class FetchCall(private val env: Fetcher) {
       return
     }
     buffer.start()
-    reply?.resolve(head)
+    reply.resolve(head)
   }
 
   private fun failHead(error: FetchError) {
@@ -221,33 +249,26 @@ internal class FetchCall(private val env: Fetcher) {
   }
 
   fun arrayBuffer(reply: Reply<ByteBuffer>) {
-    consumeAll(reply) { chunks -> chunks.assemble(env.alloc) }
+    bodyOrReject(reply)?.readAllBytes(env.alloc, reply)
   }
 
   fun text(reply: Reply<String>) {
-    consumeAll(reply) { chunks ->
-      val bytes = chunks.assemble { ByteBuffer.wrap(ByteArray(it)) }
-      Utf8.decode(bytes.array(), 0, bytes.limit())
-    }
-  }
-
-  fun blob(reply: Reply<BlobData>) {
-    consumeAll(reply) { chunks -> BlobData.ofChunks(chunks) }
-  }
-
-  private fun <T> consumeAll(reply: Reply<T>, convert: (List<Chunk>) -> T) {
-    bodyOrReject(reply)?.readAll(object : Reply<List<Chunk>> {
-      override fun resolve(value: List<Chunk>) {
-        val converted = try {
-          convert(value)
+    bodyOrReject(reply)?.readAllBytes({ ByteBuffer.wrap(ByteArray(it)) }, object : Reply<ByteBuffer> {
+      override fun resolve(value: ByteBuffer) {
+        val decoded = try {
+          Utf8.decode(value.array(), 0, value.limit())
         } catch (e: OutOfMemoryError) {
-          return reply.reject(FetchError(FetchCodes.NETWORK, "Not enough memory for the body", e))
+          return reply.reject(FetchError(FetchCodes.NETWORK, "Not enough memory for the text", e))
         }
-        reply.resolve(converted)
+        reply.resolve(decoded)
       }
 
       override fun reject(error: FetchError) = reply.reject(error)
     })
+  }
+
+  fun blob(reply: Reply<BlobData>) {
+    bodyOrReject(reply)?.readAllBlob(reply)
   }
 
   private fun bodyOrReject(reply: Reply<*>): BodyBuffer? {

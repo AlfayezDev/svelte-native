@@ -17,6 +17,9 @@ internal interface FileHandle : Closeable {
   /** The size in bytes, or -1 when the provider does not say. */
   val size: Long
 
+  /** Whether `read` can start anywhere cheaply. A stream that must be reopened to go back is not: such a file is copied before a Blob is made over it. */
+  val seekable: Boolean get() = true
+
   /** Reads into `dst` from `position`; the count read, or -1 at the end of the file. */
   @Throws(IOException::class)
   fun read(position: Long, dst: ByteBuffer): Int
@@ -26,6 +29,16 @@ internal interface FileHandle : Closeable {
 internal interface FileAccess {
   @Throws(IOException::class)
   fun open(uri: String): FileHandle
+}
+
+/** Opens `uri`, whatever the provider throws: a provider's own exceptions (it is third-party code) surface as the `IOException` every caller handles. */
+@Throws(IOException::class)
+internal fun FileAccess.openChecked(uri: String): FileHandle = try {
+  open(uri)
+} catch (e: IOException) {
+  throw e
+} catch (e: RuntimeException) {
+  throw IOException("Cannot open $uri: ${e.message}", e)
 }
 
 /** `file://` URLs through `java.io`. */
@@ -46,34 +59,29 @@ internal open class LocalFiles : FileAccess {
 
 /**
  * A provider that only hands out a stream (a content provider may not give a seekable descriptor): forward reads continue the stream, a read before its
- * position reopens it. `size` is unknown until asked, then counted by reading the stream to its end once.
+ * position reopens it. Its size is what the provider declared, or unknown: counting would read the whole stream a second time.
  */
-internal class StreamHandle(private val reopen: () -> InputStream, private val declaredSize: Long = -1) : FileHandle {
-  private var stream: InputStream = reopen()
+internal class StreamHandle(private val reopen: () -> InputStream, declaredSize: Long = -1) : FileHandle {
+  private var stream: InputStream = open()
   private var position = 0L
-  private var counted = declaredSize
 
-  override val size: Long
-    @Synchronized get() {
-      if (counted < 0) {
-        counted = 0
-        reopen().use { input ->
-          val scratch = ByteArray(8192)
-          while (true) {
-            val n = input.read(scratch)
-            if (n < 0) break
-            counted += n
-          }
-        }
-      }
-      return counted
-    }
+  override val size: Long = declaredSize
+
+  override val seekable: Boolean get() = false
+
+  private fun open(): InputStream = try {
+    reopen()
+  } catch (e: IOException) {
+    throw e
+  } catch (e: RuntimeException) {
+    throw IOException("Cannot open the stream: ${e.message}", e)
+  }
 
   @Synchronized
   override fun read(position: Long, dst: ByteBuffer): Int {
     if (position < this.position) {
       stream.close()
-      stream = reopen()
+      stream = open()
       this.position = 0
     }
     while (this.position < position) {
@@ -98,18 +106,21 @@ internal class StreamHandle(private val reopen: () -> InputStream, private val d
   override fun close() = stream.close()
 }
 
-/** A file as an Okio source, so a file response flows through the same body buffer as a network one. */
-internal class HandleSource(private val handle: FileHandle) : Source {
+/** A file as an Okio source, so a file response flows through the same body buffer as a network one. It yields at most `limit` bytes when that is known. */
+internal class HandleSource(private val handle: FileHandle, limit: Long = -1) : Source {
   private var position = 0L
+  private var left = if (limit >= 0) limit else Long.MAX_VALUE
   private val scratch = ByteBuffer.wrap(ByteArray(8192))
 
   override fun read(sink: Buffer, byteCount: Long): Long {
     if (byteCount == 0L) return 0
+    if (left <= 0) return -1
     scratch.clear()
-    scratch.limit(minOf(byteCount, scratch.capacity().toLong()).toInt())
+    scratch.limit(minOf(byteCount, scratch.capacity().toLong(), left).toInt())
     val n = handle.read(position, scratch)
     if (n < 0) return -1
     position += n
+    left -= n
     sink.write(scratch.array(), 0, n)
     return n.toLong()
   }

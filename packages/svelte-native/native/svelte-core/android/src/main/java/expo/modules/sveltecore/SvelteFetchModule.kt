@@ -1,6 +1,8 @@
 package expo.modules.sveltecore
 
 import android.content.Context
+import android.os.Process
+import android.os.SystemClock
 import com.facebook.react.modules.network.CookieJarContainer
 import com.facebook.react.modules.network.ForwardingCookieHandler
 import com.facebook.react.modules.network.OkHttpClientProvider
@@ -123,26 +125,31 @@ class SvelteFetchModule : Module() {
   private val context: Context
     get() = appContext.reactContext?.applicationContext ?: throw Exceptions.ReactContextLost()
 
-  private var cookieJars: CookieJarContainer? = null
+  private var sharedClient: OkHttpClient? = null
+  private var fetchClient: OkHttpClient? = null
 
   /**
-   * React Native's shared client, with the system cookie store plugged in. React Native's own networking does that when it first starts, but an app on this
-   * `fetch` may never start it, and cookies would then silently go nowhere. Both put the same store behind the same container.
+   * The client the fetches go through: React Native's shared one (so the app's interceptors and settings apply) with the system cookie store as its jar. React
+   * Native's own networking builds a client of its own and puts that same store (Android's CookieManager) behind it, so cookies are shared with it through the
+   * store, not through a jar object. The shared client itself is left as it is: other users of it (web sockets, the dev tools) get no cookies from us.
+   * An app that gave the shared client a jar of its own, not React Native's container, keeps it.
    */
   @Synchronized
-  private fun sharedClient(): OkHttpClient {
-    val client = OkHttpClientProvider.getOkHttpClient()
-    if (cookieJars == null) {
-      val container = client.cookieJar as? CookieJarContainer
-      container?.setCookieJar(JavaNetCookieJar(ForwardingCookieHandler()))
-      cookieJars = container
+  private fun client(): OkHttpClient {
+    val shared = OkHttpClientProvider.getOkHttpClient()
+    if (shared !== sharedClient) {
+      sharedClient = shared
+      fetchClient = if (shared.cookieJar is CookieJarContainer) shared.newBuilder().cookieJar(JavaNetCookieJar(ForwardingCookieHandler())).build() else shared
     }
-    return client
+    return fetchClient!!
   }
 
-  private val fetcherDelegate = lazy { Fetcher({ sharedClient() }, AndroidFiles(context), executor) { ByteBuffer.allocateDirect(it) } }
+  private val fetcherDelegate = lazy {
+    Fetcher(client = { client() }, files = AndroidFiles(context), executor = executor, alloc = { ByteBuffer.allocateDirect(it) }, temps = temps)
+  }
   private val fetcher by fetcherDelegate
   private val objectUrls by lazy { ObjectUrls(File(context.cacheDir, "svelte-native-blobs")) }
+  private val temps by lazy { TempFiles(File(context.cacheDir, "svelte-native-spill")) }
 
   /** Runs `work` on the executor and settles the promise with what it returns, or with the contract's error for what it throws. */
   private fun background(promise: Promise, work: () -> Any?) {
@@ -182,10 +189,13 @@ class SvelteFetchModule : Module() {
     Name("SvelteFetch")
 
     OnCreate {
-      // No Blob outlives the process that made it, so whatever object URLs an earlier run left are garbage.
+      // No Blob outlives the process that made it, so what an earlier run left (object URL files, spilled bodies) is garbage. Only what is older than this
+      // process is deleted: the sweep runs on another thread, and a file made since the process began may be in use.
+      val before = System.currentTimeMillis() - (SystemClock.elapsedRealtime() - Process.getStartElapsedRealtime())
       executor.execute {
         try {
-          objectUrls.sweep()
+          objectUrls.sweep(before)
+          temps.sweep(before)
         } catch (_: Exception) {
           // Best effort: the files are cache.
         }
@@ -194,13 +204,12 @@ class SvelteFetchModule : Module() {
 
     OnDestroy {
       if (fetcherDelegate.isInitialized()) fetcher.cancelAll()
-      cookieJars?.removeCookieJar()
     }
 
     AsyncFunction("blobFromURI") { uri: String, type: String, promise: Promise ->
       background(promise) {
         try {
-          NativeBlob(BlobData.ofFile(fetcher.files, uri), type)
+          NativeBlob(BlobData.ofFile(fetcher.files, uri, fetcher.temps), type)
         } catch (e: IOException) {
           throw FetchError(FetchCodes.NETWORK, "Cannot open $uri: ${e.message}", e)
         }
@@ -242,7 +251,7 @@ class SvelteFetchModule : Module() {
       Function("objectURL") { blob: NativeBlob ->
         try {
           blob.objectURL(objectUrls)
-        } catch (e: IOException) {
+        } catch (e: Exception) {
           throw CodedException(FetchCodes.NETWORK, "Cannot write the Blob to a file: ${e.message}", e)
         }
       }

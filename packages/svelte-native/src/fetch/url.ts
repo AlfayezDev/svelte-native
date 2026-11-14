@@ -1,6 +1,9 @@
 import { nativeBlobOf } from "./blob.ts";
 import { native } from "./module.ts";
 
+/** The URLs `URL.createObjectURL` gave out, until they are revoked: the files behind them belong to the app, and nothing else may revoke them. */
+export const handedOut = new Set<string>();
+
 type UrlStatics = { createObjectURL?: (blob: unknown) => string; revokeObjectURL?: (url: unknown) => void };
 
 /**
@@ -17,7 +20,11 @@ export function patchObjectURLs(): void {
     writable: true,
     value(blob: unknown): string {
       const handle = nativeBlobOf(blob);
-      if (handle !== undefined) return handle.objectURL();
+      if (handle !== undefined) {
+        const url = handle.objectURL();
+        handedOut.add(url);
+        return url;
+      }
       if (createObjectURL === undefined) throw new TypeError("Failed to execute 'createObjectURL' on 'URL': Overload resolution failed.");
       return createObjectURL.call(URLClass, blob);
     },
@@ -26,6 +33,7 @@ export function patchObjectURLs(): void {
     configurable: true,
     writable: true,
     value(url: unknown): void {
+      handedOut.delete(String(url));
       native().revokeObjectURL(String(url));
       revokeObjectURL?.call(URLClass, url);
     },

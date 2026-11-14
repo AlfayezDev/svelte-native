@@ -9,6 +9,7 @@ import { Blob, File } from "../../src/fetch/blob.ts";
 import { fetch } from "../../src/fetch/fetch.ts";
 import { FormData } from "../../src/fetch/form-data.ts";
 import { Request } from "../../src/fetch/request.ts";
+import { Response } from "../../src/fetch/response.ts";
 import { seededBytes } from "./server.ts";
 
 beforeEach(() => { fake.log.length = 0; rnReads.length = 0; });
@@ -195,15 +196,45 @@ describe("as a fetch body (multipart/form-data)", () => {
     expect(part!.text).toBe("x\r\ny\r\nz\r\nw");
   });
 
-  test("the Content-Type is multipart/form-data with a boundary, and a given one is not overridden", async () => {
+  test("the Content-Type is multipart/form-data with a boundary", async () => {
     const form = new FormData();
     form.append("a", "1");
     const response = await fetch(`${fake.base}/echo`, { method: "POST", body: form });
     const seen = await response.json() as { headers: [string, string][] };
     const type = seen.headers.find(([name]) => name === "content-type")![1];
     expect(type).toMatch(/^multipart\/form-data; boundary=----SvelteNativeFormBoundary[A-Za-z0-9]{16}$/);
-    const custom = await (await fetch(`${fake.base}/echo`, { method: "POST", body: form, headers: { "content-type": "multipart/form-data; boundary=zzz" } })).json() as { headers: [string, string][] };
-    expect(custom.headers.find(([name]) => name === "content-type")![1]).toBe("multipart/form-data; boundary=zzz");
+  });
+
+  test("a multipart/form-data Content-Type the caller set without the body's boundary, or with another one, is replaced by the body's: the server can then parse the body", async () => {
+    const form = new FormData();
+    form.append("a", "1");
+    form.append("f", new File(["file text"], "f.txt", { type: "text/plain" }));
+    for (const given of ["multipart/form-data", "Multipart/Form-Data; charset=utf-8", "multipart/form-data; boundary=zzz", 'multipart/form-data; boundary=""']) {
+      const request = new Request(`${fake.base}/multipart`, { method: "POST", body: form, headers: { "Content-Type": given } });
+      expect(request.headers.get("content-type")).toMatch(/^multipart\/form-data; boundary=----SvelteNativeFormBoundary[A-Za-z0-9]{16}$/);
+      const sent = await (await fetch(`${fake.base}/multipart`, { method: "POST", body: form, headers: { "content-type": given } })).json() as { parts?: Part[]; error?: string };
+      expect([given, sent.error, sent.parts?.map((part) => part.name)]).toEqual([given, undefined, ["a", "f"]]);
+      const response = new Response(form, { headers: { "content-type": given } });
+      expect(response.headers.get("content-type")).toMatch(/^multipart\/form-data; boundary=----SvelteNativeFormBoundary/);
+      expect((await response.formData()).get("a")).toBe("1");
+    }
+  });
+
+  test("a Content-Type that is not multipart/form-data, or that names the body's own boundary (a Blob typed with one), is the caller's", () => {
+    const form = new FormData();
+    for (const given of ["application/x-custom", "text/plain", "multipart/mixed; boundary=x"]) {
+      expect(new Request(`${fake.base}/echo`, { method: "POST", body: form, headers: { "content-type": given } }).headers.get("content-type")).toBe(given);
+    }
+    const blob = new Blob(["--b--\r\n"], { type: "multipart/form-data; boundary=b" });
+    for (const given of ["multipart/form-data; boundary=b", 'Multipart/Form-Data; charset=utf-8; boundary="b"']) {
+      expect(new Request(`${fake.base}/echo`, { method: "POST", body: blob, headers: { "content-type": given } }).headers.get("content-type")).toBe(given);
+    }
+  });
+
+  test("a Blob whose own type is multipart/form-data with a boundary replaces a bare one the same way", () => {
+    const blob = new Blob(["--b--\r\n"], { type: "multipart/form-data; boundary=b" });
+    expect(new Request(`${fake.base}/echo`, { method: "POST", body: blob, headers: { "content-type": "multipart/form-data" } }).headers.get("content-type")).toBe("multipart/form-data; boundary=b");
+    expect(new Request(`${fake.base}/echo`, { method: "POST", body: blob, headers: { "content-type": "application/json" } }).headers.get("content-type")).toBe("application/json");
   });
 
   test("the entries are those at the time the body was made", async () => {

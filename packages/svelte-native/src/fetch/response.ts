@@ -1,4 +1,4 @@
-import { Body, BodyState, bodyStateOf, cloneBodyState, extractBody, setBodyState, type BodyInit, type BodySource } from "./body.ts";
+import { applyBodyType, Body, BodyState, bodyStateOf, cloneBodyState, extractBody, setBodyState, type BodyInit, type BodySource } from "./body.ts";
 import { copyHeaders, Headers, headersFromNative, setHeadersGuard, type HeadersInit } from "./headers.ts";
 import type { NativeResponseHead } from "./native.ts";
 
@@ -54,7 +54,7 @@ export class Response extends Body {
     } else {
       if (NULL_BODY_STATUSES.includes(status)) throw new TypeError(`Response with null body status cannot have body`);
       const extracted = extractBody(body);
-      if (extracted.type !== null && !headers.has("content-type")) headers.append("content-type", extracted.type);
+      applyBodyType(headers, extracted.type);
       state = new BodyState(extracted.source);
     }
     responses.set(this, { type: "default", status, statusText, headers, url: "", redirected: false });

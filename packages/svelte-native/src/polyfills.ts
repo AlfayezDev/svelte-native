@@ -4,7 +4,7 @@ import { mark } from "./boot-marks.ts";
 import "./expo-runtime.ts"; // Expo's WinterCG runtime: the standard `URL` the router needs
 import "./intl.ts"; // lazy: `mark("intl")` fires on the first Intl.PluralRules/RelativeTimeFormat/ListFormat/Locale access
 import { defineLazyGlobal } from "./lazy-global.ts";
-import { mmkvBackend } from "./local-storage.ts";
+import { loadLocalStorage } from "./local-storage.ts";
 import { loadCrypto } from "./web-crypto.ts";
 import { createStorage, memoryBackend } from "./web-storage.ts";
 import AppState from "react-native/Libraries/AppState/AppState";
@@ -70,6 +70,6 @@ for (const name of ["fetch", "Headers", "Request", "Response", "Blob", "File", "
 // `crypto` (react-native-quick-crypto), `localStorage` (MMKV) and `sessionStorage` (memory), each made when it is first read: the boot loads neither library, starts neither Nitro module
 // and creates no file. A platform or a library that has defined one of the names already keeps it.
 defineLazyGlobal(globalThis, "crypto", loadCrypto);
-defineLazyGlobal(globalThis, "localStorage", () => createStorage(mmkvBackend()));
+defineLazyGlobal(globalThis, "localStorage", loadLocalStorage);
 defineLazyGlobal(globalThis, "sessionStorage", () => createStorage(memoryBackend()));
 mark("polyfills");

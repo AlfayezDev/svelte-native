@@ -1,12 +1,14 @@
-import { fake } from "./setup.ts";
+import { fake, makeRnBlob, rnReads } from "./setup.ts";
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { installAbortStatics } from "../../src/fetch/abort.ts";
+import { followSignal, installAbortStatics, listenWhileAlive } from "../../src/fetch/abort.ts";
 import { Blob } from "../../src/fetch/blob.ts";
+import { Headers } from "../../src/fetch/headers.ts";
+import { setNativeModule } from "../../src/fetch/module.ts";
 import { fetch } from "../../src/fetch/fetch.ts";
 import { Request } from "../../src/fetch/request.ts";
 import { Response } from "../../src/fetch/response.ts";
@@ -370,10 +372,69 @@ describe("data: URLs", () => {
     expect(fake.log).toEqual([]);
   });
 
-  test("an invalid URL, invalid base64, or any method but GET is a network error", async () => {
+  test("an invalid URL or invalid base64 is a network error; the method does not matter (the standard has no method rule for data: URLs)", async () => {
     await expect(fetch("data:text/plain")).rejects.toBeInstanceOf(TypeError);
     await expect(fetch("data:text/plain;base64,a")).rejects.toBeInstanceOf(TypeError);
-    await expect(fetch("data:,x", { method: "POST", body: "y" })).rejects.toBeInstanceOf(TypeError);
+    for (const method of ["POST", "PUT", "DELETE", "PATCH"]) {
+      const response = await fetch("data:text/plain,payload", { method, body: "sent" });
+      expect([response.status, await response.text()]).toEqual([200, "payload"]);
+    }
+    expect((await fetch("data:,x", { method: "OPTIONS" })).status).toBe(200);
+  });
+
+  test("the MIME part is read as written, not percent-decoded: an encoded `;base64` is not base64", async () => {
+    const encoded = await fetch("data:text/plain%3Bbase64,SGk=");
+    // `%` is a token character: the MIME type is `text/plain%3bbase64`, whatever it means to anyone.
+    expect([await encoded.text(), encoded.headers.get("content-type")]).toEqual(["SGk=", "text/plain%3bbase64"]);
+    expect(await (await fetch("data:text/plain;base64,SGk=")).text()).toBe("Hi");
+    // `base64` counts only as the last parameter.
+    const notLast = await fetch("data:text/plain;base64;charset=utf-8,SGk=");
+    expect([await notLast.text(), notLast.headers.get("content-type")]).toEqual(["SGk=", "text/plain;charset=utf-8"]);
+  });
+
+  test("the Content-Type is the serialized MIME type: lower-cased essence and parameter names, values kept, whitespace and repeats dropped", async () => {
+    const type = async (href: string) => (await fetch(href)).headers.get("content-type");
+    expect(await type("data:text/plain;charset=UTF-8,x")).toBe("text/plain;charset=UTF-8");
+    expect(await type('data:TEXT/Plain ; Charset="UTF-8" ;X=1;x=2,hi')).toBe("text/plain;charset=UTF-8;x=1");
+    expect(await type('data:text/plain;a="b c";q="x\\"y",x')).toBe('text/plain;a="b c";q="x\\"y"');
+    expect(await type("data:text/plain;broken;ok=1;empty=;=noname,x")).toBe("text/plain;ok=1");
+    expect(await type("data:text/plain;base64,SGk=")).toBe("text/plain");
+    expect(await type("data:text,x")).toBe("text/plain;charset=US-ASCII");
+    expect(await type("data:;base64,SGk=")).toBe("text/plain;charset=US-ASCII");
+    expect(await type("data:;charset=utf-8,x")).toBe("text/plain;charset=utf-8");
+    expect(await type("data:text/bad type,x")).toBe("text/plain;charset=US-ASCII");
+  });
+});
+
+describe("blob: URLs of React Native's own createObjectURL", () => {
+  test("are read through React Native's FileReader: the bytes of the range, with their length", async () => {
+    const data = seededBytes(3000, 41);
+    const rn = makeRnBlob(data, "image/png");
+    rnReads.length = 0;
+    const response = await fetch(`blob:${rn.data.blobId}?offset=0&size=3000`);
+    expect([response.status, response.url, response.headers.get("content-length")]).toEqual([200, `blob:${rn.data.blobId}?offset=0&size=3000`, "3000"]);
+    expect(Buffer.from(await response.arrayBuffer()).equals(data)).toBe(true);
+    const part = await fetch(`blob:${rn.data.blobId}?offset=10&size=5`);
+    expect([...(await part.bytes())]).toEqual([...data.subarray(10, 15)]);
+    expect(rnReads.length).toBe(2);
+    expect(fake.log).toEqual([]);
+  });
+
+  test("an unknown Blob, a malformed URL and a method but GET are network errors that say what is wrong", async () => {
+    await expect(fetch("blob:no-such-blob?offset=0&size=1")).rejects.toThrow(/Network request failed/);
+    await expect(fetch("blob:x?offset=a&size=1")).rejects.toThrow(/not a blob: URL of React Native's/);
+    await expect(fetch("blob:x")).rejects.toThrow(/not a blob: URL of React Native's/);
+    await expect(fetch("blob:x?offset=0&size=1", { method: "POST", body: "y" })).rejects.toThrow(/only be fetched with GET/);
+  });
+});
+
+describe("repeated request headers", () => {
+  test("are sent as one header, the values joined with a comma and a space, at the place the name first appeared", async () => {
+    const headers = new Headers([["x-a", "1"], ["x-b", "3"], ["X-A", "2"], ["x-a", "again"]]);
+    await fetch(`${base}/echo`, { headers });
+    expect(fake.starts.at(-1)!.init.headers).toEqual([["x-a", "1, 2, again"], ["x-b", "3"]]);
+    const echo = await fetch(`${base}/echo`, { headers }).then(echoOf);
+    expect(echo.headers.filter(([name]) => name === "x-a")).toEqual([["x-a", "1, 2, again"]]);
   });
 });
 
@@ -527,5 +588,118 @@ describe("aborting", () => {
       installAbortStatics();
       expect(AbortSignal.timeout).toBe(timeout);
     });
+  });
+});
+
+describe("what an abort leaves behind", () => {
+  /** Counts the abort listeners a signal holds (add minus remove), as the signal's own listener list is not visible. */
+  function counting(signal: AbortSignal): { active(): number } {
+    let active = 0;
+    const add = signal.addEventListener.bind(signal);
+    const remove = signal.removeEventListener.bind(signal);
+    const listeners = new Set<unknown>();
+    signal.addEventListener = ((type: string, listener: never, options?: never) => { if (type === "abort") { listeners.add(listener); active++; } add(type, listener, options); }) as never;
+    signal.removeEventListener = ((type: string, listener: never, options?: never) => { if (type === "abort" && listeners.delete(listener)) active--; remove(type, listener, options); }) as never;
+    return { active: () => active };
+  }
+  /** Collects garbage until `check` holds (a collected object's finalizer runs on the event loop, after the collection). */
+  async function collectedUntil(check: () => boolean): Promise<boolean> {
+    for (let waited = 0; !check() && waited < 4000; waited += 25) {
+      Bun.gc(true);
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    return check();
+  }
+
+  test("a response whose body is never read, and which is dropped, takes its listener off the caller's signal", async () => {
+    const controller = new AbortController();
+    const listeners = counting(controller.signal);
+    await (async () => { await fetch(`${base}/bytes?n=10`, { signal: controller.signal }); })();
+    expect(listeners.active()).toBe(1);
+    expect(await collectedUntil(() => listeners.active() === 0)).toBe(true);
+    controller.abort();
+  });
+
+  test("a response that is kept still listens, and an abort reaches it", async () => {
+    const reason = new Error("kept");
+    const controller = new AbortController();
+    const listeners = counting(controller.signal);
+    const response = await fetch(`${base}/hang`, { signal: controller.signal });
+    Bun.gc(true);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(listeners.active()).toBe(1);
+    const pending = response.text();
+    controller.abort(reason);
+    await expect(pending).rejects.toBe(reason);
+    expect(listeners.active()).toBe(0);
+  });
+
+  test("request.signal, read and dropped, leaves no listener on the caller's signal: one per request would pile up on a screen's signal", async () => {
+    const controller = new AbortController();
+    const listeners = counting(controller.signal);
+    (() => {
+      for (let i = 0; i < 20; i++) {
+        const request = new Request(`${base}/echo`, { signal: controller.signal });
+        void request.signal;
+        void request.clone().signal;
+      }
+    })();
+    expect(listeners.active()).toBe(40);
+    expect(await collectedUntil(() => listeners.active() === 0)).toBe(true);
+  });
+
+  test("a request's signal still follows the caller's with its reason, and the listener goes when it has fired", () => {
+    const reason = new Error("followed");
+    const controller = new AbortController();
+    const listeners = counting(controller.signal);
+    const follower = followSignal(controller.signal);
+    expect(listeners.active()).toBe(1);
+    controller.abort(reason);
+    expect([follower.aborted, (follower as { reason?: unknown }).reason, listeners.active()]).toEqual([true, reason, 0]);
+  });
+
+  test("where the engine has no FinalizationRegistry, the next listener on the signal sweeps the ones whose target was collected", async () => {
+    const registry = globalThis.FinalizationRegistry;
+    // @ts-expect-error -- the module under test reads it when it is evaluated
+    delete globalThis.FinalizationRegistry;
+    let sweeping: typeof import("../../src/fetch/abort.ts");
+    try {
+      sweeping = await import("../../src/fetch/abort.ts?without-a-registry");
+    } finally {
+      globalThis.FinalizationRegistry = registry;
+    }
+    const signal = new AbortController().signal;
+    const listeners = counting(signal);
+    (() => { for (let i = 0; i < 10; i++) sweeping.listenWhileAlive(signal, {}, () => undefined); })();
+    expect(listeners.active()).toBe(10);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    Bun.gc(true);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const kept = {};
+    sweeping.listenWhileAlive(signal, kept, () => undefined);
+    expect([listeners.active(), typeof listenWhileAlive]).toEqual([1, "function"]);
+  });
+
+  test("an aborted signal's reason wins whatever error native code reports for the cancelled request, and without an abort that error is the network error", async () => {
+    const reason = new Error("raced");
+    class Racing {
+      async start(): Promise<never> {
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        throw Object.assign(new Error("socket closed under the request"), { code: "ERR_FETCH_NETWORK" });
+      }
+      cancel(): void {}
+    }
+    setNativeModule({ ...fake.module, NativeRequest: Racing } as never);
+    try {
+      const controller = new AbortController();
+      const listeners = counting(controller.signal);
+      const pending = fetch(`${base}/echo`, { signal: controller.signal });
+      setTimeout(() => controller.abort(reason), 5);
+      await expect(pending).rejects.toBe(reason);
+      expect(listeners.active()).toBe(0);
+      await expect(fetch(`${base}/echo`)).rejects.toMatchObject({ message: expect.stringMatching(/Network request failed: socket closed/) });
+    } finally {
+      setNativeModule(fake.module);
+    }
   });
 });

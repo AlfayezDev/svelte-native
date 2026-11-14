@@ -39,3 +39,15 @@ export function readReactNativeBlob(blob: unknown): Promise<ArrayBuffer> {
     reader.readAsArrayBuffer(blob);
   });
 }
+
+type RnXhrPrototype = {
+  _headers: Record<string, string>;
+  setRequestHeader(name: string, value: string): void;
+  addEventListener(type: "loadend", listener: () => void): void;
+  send(body?: unknown): void;
+};
+
+/** The prototype of React Native's XMLHttpRequest (axios, and every library on XHR, runs on it). */
+export function reactNativeXHRPrototype(): RnXhrPrototype {
+  return (require("react-native/Libraries/Network/XMLHttpRequest") as { default: { prototype: RnXhrPrototype } }).default.prototype;
+}

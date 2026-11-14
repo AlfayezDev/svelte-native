@@ -27,6 +27,8 @@ export type Fake = {
   blobDirectory: string;
   /** The requests `start` is running (not yet ended or cancelled). */
   live: Set<unknown>;
+  /** What each `start` was given, in order: the headers as native code received them from JavaScript, before the fake's own HTTP client joins them. */
+  starts: { url: string; init: NativeRequestInit }[];
 };
 
 export async function startFake(): Promise<Fake> {
@@ -35,6 +37,7 @@ export async function startFake(): Promise<Fake> {
   mkdirSync(blobDirectory, { recursive: true });
   const cookies = new Map<string, Map<string, string>>();
   const live = new Set<unknown>();
+  const starts: Fake["starts"] = [];
   let objectCount = 0;
 
   function readSegment(segment: Segment, from: number, to: number): Uint8Array {
@@ -111,11 +114,10 @@ export async function startFake(): Promise<Fake> {
 
     objectURL(): string {
       log.push("blob.objectURL");
-      if (this.#objectURL === undefined) {
-        const path = join(blobDirectory, `${++objectCount}.bin`);
-        writeFileSync(path, this.all());
-        this.#objectURL = pathToFileURL(path).href;
-      }
+      // As both native implementations: written on the first call, and written again at the same URL when it was revoked since.
+      if (this.#objectURL === undefined) this.#objectURL = pathToFileURL(join(blobDirectory, `${++objectCount}.bin`)).href;
+      const path = fileURLToPath(this.#objectURL);
+      if (!existsSync(path)) writeFileSync(path, this.all());
       return this.#objectURL;
     }
   }
@@ -173,6 +175,7 @@ export async function startFake(): Promise<Fake> {
 
     async start(url: string, init: NativeRequestInit, body: FakeNativeBlob | Uint8Array | string | null): Promise<NativeResponseHead> {
       log.push("request.start");
+      starts.push({ url, init });
       const bytes = body === null ? null : typeof body === "string" ? new TextEncoder().encode(body) : body instanceof FakeNativeBlob ? body.all() : body.slice();
       let method = init.method;
       let payload = bytes;
@@ -358,5 +361,5 @@ export async function startFake(): Promise<Fake> {
     },
   } as unknown as SvelteFetchModule;
 
-  return { module, base, log, cookies, blobDirectory, live };
+  return { module, base, log, cookies, blobDirectory, live, starts };
 }

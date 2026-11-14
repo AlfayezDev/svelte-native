@@ -46,7 +46,8 @@ class Insets(private val root: EngineRoot, private val emit: (Map<String, Any?>)
     root.addOnLayoutChangeListener { _, l, t, r, b, ol, ot, or, ob -> if (r - l != or - ol || b - t != ob - ot || l != ol || t != ot) publish() }
     root.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
       override fun onViewAttachedToWindow(v: View) { watchLayouts(); v.requestApplyInsets(); publish() }
-      override fun onViewDetachedFromWindow(v: View) { unwatchLayouts() }
+      // A window that goes during an IME animation does not deliver its end: the next window starts with none running.
+      override fun onViewDetachedFromWindow(v: View) { unwatchLayouts(); animating = false }
     })
     if (root.isAttachedToWindow) {
       watchLayouts()
@@ -80,8 +81,12 @@ class Insets(private val root: EngineRoot, private val emit: (Map<String, Any?>)
     ViewCompat.setWindowInsetsAnimationCallback(root, null)
   }
 
-  /** The current record (main thread), or null before the overlay is attached to a window. */
-  fun read(): Map<String, Any?>? = compute()
+  /**
+   * The current record (main thread), or null while the overlay has no laid-out window. What it returns is what JavaScript holds now:
+   * after a null the next value is published even when it equals the one published before (a reader that subscribes then would
+   * otherwise wait for the next change).
+   */
+  fun read(): Map<String, Any?>? = compute().also { last = it }
 
   private fun publish() {
     val next = compute() ?: return

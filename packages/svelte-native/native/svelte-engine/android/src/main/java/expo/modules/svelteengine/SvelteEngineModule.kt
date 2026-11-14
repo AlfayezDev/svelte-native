@@ -114,7 +114,7 @@ class SvelteEngineModule : Module() {
     Function("saveNavigation") { json: String? -> NavigationState.save(json) }
     Function("finishing") { NavigationState.finishing }
 
-    // Safe-area and keyboard insets of the overlay (SPEC.md, "Insets and keyboard"); null while the overlay has no laid-out window.
+    // Safe-area and keyboard insets of the overlay (SPEC.md, "Insets and keyboard"); null before the overlay is attached to a window.
     Function("getInsets") { onMainBlocking { insets?.read() } }
 
     // Commands for engine tags. Fire-and-forget on the main thread, queued behind mounting batches already posted.

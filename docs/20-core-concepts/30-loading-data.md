@@ -97,6 +97,8 @@ What you get back is SvelteKit's own client API: a query has `.current`, `.loadi
 
 A call made by a build without an origin throws a `RemoteConfigError` saying so.
 
+Your `transport` and client `handleError` hooks go in `src/hooks.mobile.ts` ([Hooks](hooks)).
+
 The app talks to the server with the platform's cookie jar, so a session cookie that a command sets reaches the next call. Each request carries the screen's path, so `getRequestEvent().url` is the screen's URL.
 
 ### Forms

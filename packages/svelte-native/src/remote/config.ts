@@ -7,6 +7,7 @@
  * Expo plugin's `remote` option writes), read at runtime from the manifest embedded in the build, and overridden by `configureRemote`.
  */
 import Constants from "expo-constants";
+import { watchHooks, type MobileHooks } from "../app-hooks.ts";
 import { init_transport } from "@sveltejs/kit/src/runtime/app/internal/transport.js";
 import { hostFromExtra, HOW, normalizeAppDir, normalizeBase, normalizeOrigin, RemoteConfigError, type RemoteHostConfig } from "./host.ts";
 import { provideHost } from "./link.ts";
@@ -16,9 +17,9 @@ import { resetApp, setApp, type ClientHooks } from "./shims/client.ts";
 export type Transport = Record<string, { encode: (value: unknown) => unknown; decode: (data: unknown) => unknown }>;
 
 export type RemoteOptions = Partial<RemoteHostConfig> & {
-  /** The `transport` export of the app's universal hooks (`src/hooks.ts`): the custom types the server and the client pass between them. Pass the same object the browser uses. */
+  /** The `transport` export of the app's universal hooks (`src/hooks.ts`): the custom types the server and the client pass between them. Pass the same object the browser uses. Replaces the `transport` of `src/hooks.mobile.ts`. */
   transport?: Transport;
-  /** The app's client `handleError` hook: what an error from a remote function becomes (`App.Error`), as in the browser. */
+  /** The app's client `handleError` hook: what an error from a remote function becomes (`App.Error`), as in the browser. Replaces the `handleError` of `src/hooks.mobile.ts`. */
   handleError?: ClientHooks["handleError"];
   /** A `fetch` to use instead of Expo's (tests, a proxy). It must return a response whose `body` streams for `query.live`. `null` goes back to Expo's. */
   fetch?: typeof globalThis.fetch | null;
@@ -27,6 +28,9 @@ export type RemoteOptions = Partial<RemoteHostConfig> & {
 };
 
 let configured: Partial<RemoteHostConfig> = {};
+/** What `configureRemote` set of the hooks: it wins over the app's `src/hooks.mobile.ts`. */
+let explicit: { transport?: Transport; handleError?: ClientHooks["handleError"] } = {};
+let fromHooks: MobileHooks = {};
 let options: { fetch?: typeof globalThis.fetch; goto?: (location: string) => void | Promise<void> } = {};
 let fromManifest: { value: Required<RemoteHostConfig> | undefined } | undefined;
 
@@ -63,8 +67,9 @@ export function configureRemote(next: RemoteOptions = {}): void {
   const merged = { ...configured, ...(origin !== undefined ? { origin: normalizeOrigin(origin) } : {}), ...(base !== undefined ? { base: normalizeBase(base) } : {}), ...(appDir !== undefined ? { appDir: normalizeAppDir(appDir) } : {}) };
   configured = merged;
   options = { fetch: fetch === null ? undefined : (fetch ?? options.fetch), goto: goto === null ? undefined : (goto ?? options.goto) };
-  if (transport) init_transport(transport as never);
-  if (handleError) setApp({ handleError });
+  if (transport) explicit.transport = transport;
+  if (handleError) explicit.handleError = handleError;
+  if (transport || handleError) applyHooks();
   try {
     const host = currentHost();
     setPaths(host.base, host.appDir);
@@ -78,11 +83,24 @@ export function resetRemoteConfig(): void {
   configured = {};
   options = {};
   fromManifest = undefined;
-  init_transport({});
-  resetApp();
+  explicit = {};
+  applyHooks();
   setPaths("", "_app");
   applyManifestPaths();
 }
+
+/** The transport and error hook in effect: `configureRemote`'s, or else the app's hooks file's, or else none (SvelteKit's default `handleError`). */
+function applyHooks(): void {
+  init_transport((explicit.transport ?? fromHooks.transport ?? {}) as never);
+  resetApp();
+  const handleError = explicit.handleError ?? (fromHooks.handleError as ClientHooks["handleError"] | undefined);
+  if (handleError) setApp({ handleError });
+}
+
+watchHooks((hooks) => {
+  fromHooks = hooks;
+  applyHooks();
+});
 
 provideHost(() => ({ ...currentHost(), goto: options.goto }));
 

@@ -12,3 +12,5 @@ import "./polyfills.ts";
 import { createFabricApp, fabricStats, flush, remountSurfaces, showError } from "./fabric/index.ts";
 
 export { createFabricApp, fabricStats, flush, remountSurfaces, showError };
+// What the generated `.svelte-native/hooks.ts` calls with the exports of `src/hooks.mobile.ts`.
+export { registerHooks, type MobileHooks } from "./app-hooks.ts";

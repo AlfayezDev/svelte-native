@@ -134,9 +134,19 @@ There is no `<form>` and no `<input>`, so a `form` function is used through its 
 | `'select'` | your own picker: `value` and `onValueChange` |
 | `'hidden', value` | nothing: sent with every submission |
 | `'submit', value` | `Pressable`: sets the field and submits |
+| `'file'`, `'file multiple'` | your own picker: `value` and `onValueChange`, which takes `File`s |
 
-What is submitted is what the inputs show, as in a browser. `form.submit()` validates, sends, and resets the form when the server accepts it. It never throws for a failed submission: the error goes to `form.error`, and `submit()` resolves `false`. If you pass your own `ref` to an input, call the one `as()` gave you from it.
+What is submitted is what the inputs show, as in a browser. `form.submit()` validates, sends, and resets the form when the server accepts it. It never throws for a failed submission: the error goes to `form.error`, and `submit()` resolves `false`. When it fails on the fields' issues, the first input with an issue gets the focus. If you pass your own `ref` to an input, call the one `as()` gave you from it.
+
+A file field takes a [`File`](web-apis#blob-file-and-formdata), from a picker of your choice. Make one from the picker's `uri` with `fetch`, and the bytes stay in native code from the file to the request:
+
+```ts
+const blob = await (await fetch(asset.uri)).blob();
+form.fields.photo.as('file').onValueChange(new File([blob], asset.fileName, { type: asset.mimeType }));
+```
+
+The server gets an ordinary `File`, as it would from a browser. Uploading a file needs a build of the app made with Svelte Native 0.4.0-rc.8 or later. On an older build, which an over-the-air update can reach, a submission with a file fails: `form.error` is the usual error, and the error your `handleError` gets says which build is needed. `validate()` sends the files too, as SvelteKit's form does.
 
 ### Not supported
 
-File fields; restoring data from a server-rendered page (screens aren't server-rendered); `load` invalidation (`refreshAll()` from `@alfayez/svelte-native/remote` refreshes remote queries only); remote modules inside `node_modules`; `export *` in a remote module.
+Restoring data from a server-rendered page (screens aren't server-rendered); `load` invalidation (`refreshAll()` from `@alfayez/svelte-native/remote` refreshes remote queries only); remote modules inside `node_modules`; `export *` in a remote module.

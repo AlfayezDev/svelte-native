@@ -375,7 +375,8 @@ There is no `<form>` or `<input>`, so `form` is a native port of SvelteKit's cli
 | `"select"`, `"select multiple"` (`initial?`, `options?`) | your picker | `value`, `multiple`, `onValueChange(next)` |
 | `"hidden", value` | – | `value`; sent with every submission |
 | `"submit", value` | `Pressable` | `value`, `onPress`: sets the field and submits |
-| `"file"`, `"image"` | – | throws: files are not supported |
+| `"file"`, `"file multiple"` | your picker | `value`, `multiple`, `onValueChange(next)`, which takes `File`s (the device's own: `new File([await (await fetch(uri)).blob()], name, { type })`) |
+| `"image"` | – | throws |
 
 **What is submitted is what is shown**, as a browser posts a form. A field that has an input on screen is submitted with the value its input shows: a text input as its text (`""` when empty), a number input as its number (`undefined` when empty), a checked box as `true` (an unchecked one is not posted at all, as on the web), a list of boxes as the checked ones, the chosen radio, the select's choice, the hidden values; and the defaults count: `as("text", "Dr")`, `as("number", 3)`, `as("checkbox", true)`, `as("radio", "s", true)` and a select's `initial` (or, without it, the first of `as("select", undefined, options)`, which is what a browser's select starts on) are posted until the user changes them, and a change, even to empty, wins. Fields set from code with `fields.x.set(...)` and never given an input are posted too. A field none of whose inputs is on screen any more (a row of a virtualized `List` that scrolled away, an input in a closed `Modal` or sheet, a step of a wizard that went) keeps what was typed or set, because on a phone that is not the user taking a value back; what its inputs would have shown (defaults, the empty `""`) is not added for it. The host tells each input's `ref`, which `as()` puts in the props (spread them; if you pass your own `ref`, call `props.ref(handle)` from it), so that a field is known to be gone. Of several submit buttons only the one pressed last is posted.
 
@@ -385,7 +386,7 @@ There is no `<form>` or `<input>`, so `form` is a native port of SvelteKit's cli
 
 ### Not supported
 
-File fields; `<select>`'s option list (a native picker is yours: pass the options for the starting choice); `prerender` results are not cached across launches (no Cache API; the server answers from its prerendered files when it has them); a server-rendered payload to hydrate from (a screen is not server-rendered); `load`-function invalidation (`refreshAll()` refetches remote queries only); remote modules inside `node_modules`; `export *` and re-exports in a remote module; a Metro project root that is not the Vite root.
+`<select>`'s option list (a native picker is yours: pass the options for the starting choice); `prerender` results are not cached across launches (no Cache API; the server answers from its prerendered files when it has them); a server-rendered payload to hydrate from (a screen is not server-rendered); `load`-function invalidation (`refreshAll()` refetches remote queries only); remote modules inside `node_modules`; `export *` and re-exports in a remote module; a Metro project root that is not the Vite root.
 
 ### Checking on a device
 

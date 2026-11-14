@@ -703,3 +703,75 @@ describe("what a phone is, and the screen", () => {
     expect(mm("(min-width: -1px)").matches).toBe(true);
   });
 });
+
+describe("accessibility query lifetimes", () => {
+  const cases = [
+    ["(prefers-reduced-motion: reduce)", "reduceMotionChanged", "motion"],
+    ["(prefers-contrast: more)", "highTextContrastChanged", "contrast"],
+    ["(inverted-colors: inverted)", "invertColorsChanged", "inverted"],
+    ["(prefers-reduced-transparency: reduce)", "reduceTransparencyChanged", "transparency"],
+  ] as const;
+
+  for (const [query, event, name] of cases) {
+    test(`${name}: subscribing replaces an older query, even if it never settles`, async () => {
+      const list = mm(query);
+      const old = world.questions.shift()!;
+      const events = record(list);
+      expect(world.asked[name]).toBe(2);
+      const fresh = world.questions.shift()!;
+      fresh.respond(true);
+      await settle();
+      expect(list.matches).toBe(true);
+      old.respond(false);
+      await settle();
+      expect(list.matches).toBe(true);
+      expect(events.map(change => change.matches)).toEqual([true]);
+    });
+
+    test(`${name}: detached queries and queued events cannot overwrite a replacement subscription`, async () => {
+      const list = mm(query);
+      const listener = () => {};
+      list.addEventListener("change", listener);
+      const oldQuestions = world.questions.splice(0);
+      const oldEvent = [...world.listeners[event]][0]! as (value: boolean) => void;
+      list.removeEventListener("change", listener);
+      const events = record(list);
+      expect(world.questions).toHaveLength(1);
+      world.questions.shift()!.respond(true);
+      await settle();
+      oldEvent(false);
+      for (const question of oldQuestions) question.respond(false);
+      await settle();
+      expect(list.matches).toBe(true);
+      expect(events.map(change => change.matches)).toEqual([true]);
+    });
+
+    test(`${name}: stale query rejection does not clear the new pending request`, async () => {
+      const list = mm(query);
+      const old = world.questions.shift()!;
+      record(list);
+      const count = world.asked[name];
+      old.fail(new Error("stale bridge failure"));
+      await settle();
+      mm(query);
+      expect(world.asked[name]).toBe(count);
+      world.questions.shift()!.respond(true);
+      await settle();
+      expect(list.matches).toBe(true);
+    });
+  }
+
+  test("an answer from a detached reader is ignored until a fresh read answers", async () => {
+    const list = mm("(prefers-reduced-motion: reduce)");
+    const listener = () => {};
+    list.addEventListener("change", listener);
+    list.removeEventListener("change", listener);
+    for (const question of world.questions.splice(0)) question.respond(true);
+    await settle();
+    expect(list.matches).toBe(false);
+    expect(world.questions).toHaveLength(1);
+    world.questions.shift()!.respond(true);
+    await settle();
+    expect(list.matches).toBe(true);
+  });
+});

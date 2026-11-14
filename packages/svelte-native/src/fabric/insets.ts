@@ -69,6 +69,6 @@ export function keyboardOverlap(args: { viewY: number; viewHeight: number; rootH
 /** The style a KeyboardAvoidingView wraps its content in for `bottom` px of overlap (the outer view of "padding" and "height"; the inner container of "position" uses `{ bottom }`). */
 export function avoidingStyle(behavior: AvoidBehavior, style: StyleValue, bottom: number, initialHeight: number): StyleValue {
   if (behavior === "padding") return [style, { paddingBottom: bottom }];
-  if (behavior === "height" && bottom > 0) return [style, { height: initialHeight - bottom, flex: 0 }];
+  if (behavior === "height" && bottom > 0) return [style, { height: Math.max(0, initialHeight - bottom), flex: 0 }];
   return style;
 }

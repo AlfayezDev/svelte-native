@@ -26,7 +26,6 @@ final class NativeRequest: SharedObject, @unchecked Sendable {
       transfer.attach(source)
       source.begin(path: target.path, url: target.absoluteString)
     case "http", "https":
-      if requestInit.method == "POST" { ContentTypeProbe.runOnce(for: target) }
       send(client: client, target: target, requestInit: requestInit, body: RequestBody(body))
     default:
       transfer.ended(FetchException.url("Unsupported URL scheme \"\(scheme)\""))
@@ -41,6 +40,9 @@ final class NativeRequest: SharedObject, @unchecked Sendable {
     request.httpShouldHandleCookies = include
     if include { request.mainDocumentURL = target }
     // Headers go as given: no Content-Type is added here. (A repeated name becomes one header with the values joined by ", ", as URLRequest has no other way.)
+    // Known limit, measured on iOS 26: CFNetwork gives a POST body that has no Content-Type the type "application/x-www-form-urlencoded", for a Data body, an
+    // httpBody and a stream alike. Nothing in URLSession turns that off: an empty Content-Type value is sent as an empty header, an upload from a file is typed
+    // "application/octet-stream", and only POST is affected (a PUT body goes out untyped).
     for pair in requestInit.headers where pair.count >= 2 {
       request.addValue(pair[1], forHTTPHeaderField: pair[0])
     }

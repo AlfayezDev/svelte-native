@@ -5,6 +5,8 @@
 // which makes the plugin allow it. Every result is logged as `[web-apis] …`, the last line `[web-apis] done pass=N fail=N skip=N`,
 // and the lines are posted to the server's /report at the end, which prints them.
 
+import { Platform } from "@alfayez/svelte-native/platform";
+
 export type CheckResult = { name: string; status: "pass" | "fail" | "skip"; detail: string; ms: number };
 
 class Skip extends Error {}
@@ -149,11 +151,12 @@ const checks: [name: string, run: (origin: string) => Promise<string>][] = [
     expect(parts[1]!.name === "file" && parts[1]!.filename === "f.bin" && parts[1]!.sha256 === sha256(file), JSON.stringify({ ...parts[1], text: undefined }));
     return "2 parts";
   }],
-  ["POST bytes: no Content-Type", async (o) => {
+  ["POST bytes: not typed as a form", async (o) => {
     const body = await echo(o, { method: "POST", body: seeded(64, 8) });
     const type = header(body, "content-type");
-    expect(type === null, `Content-Type: ${type}`);
-    return "none, as the standard says";
+    // The standard sends no Content-Type. On iOS URLSession would call such a POST body a form; the library sends application/octet-stream instead.
+    expect(type === null || (Platform.OS === "ios" && type === "application/octet-stream"), `Content-Type: ${type}`);
+    return type ?? "none, as the standard says";
   }],
   ["POST a 9 MiB Blob (a streamed upload)", async (o) => {
     const bytes = seeded(9 * 1024 * 1024, 13);

@@ -48,8 +48,8 @@ async function load(fixture = "hmr-fixture.svelte") {
         import { createFabricApp, remountSurfaces, showError } from '../src/fabric/index.ts';
         import { appTree, collidingFiles } from './tree-app.ts';
         import { tick } from 'svelte';
-        import { registerHooks } from '../src/app-hooks.ts';
-        export { createFabricApp, remountSurfaces, showError, tick, Fixture, appTree, collidingFiles, registerHooks };`,
+        import { registerHooks, retryInit } from '../src/app-hooks.ts';
+        export { createFabricApp, remountSurfaces, showError, tick, Fixture, appTree, collidingFiles, registerHooks, retryInit };`,
       resolveDir: import.meta.dirname,
     },
     bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], write: false,
@@ -695,7 +695,7 @@ describe("src/hooks.mobile.ts", () => {
     runnables.main({ rootTag: 51 });
     await settle(m);
     expect(commits.filter((commit) => commit.root === 51)).toEqual([]); // nothing on the surface: the splash screen stays up
-    // A hot update of the file while it is in flight keeps that one.
+    // A hot update of the file while it is in flight keeps that one (its own init would run only if that one failed).
     m.registerHooks({ init: () => { runs += 1; } });
     gate.resolve();
     await settle(m);
@@ -752,7 +752,7 @@ describe("src/hooks.mobile.ts", () => {
       expect(texts(56)).toContain("no DSN");
       expect(texts(56)).toContain("Reload");
       expect(errors.map((args) => args[0])).toContain("src/hooks.mobile: init failed");
-      // Reload alone does not run the app without its init.
+      // A remount alone does not run the app without its init.
       m.remountSurfaces();
       expect(texts(56)).toContain("no DSN");
       // A throw is a failure too.
@@ -767,6 +767,105 @@ describe("src/hooks.mobile.ts", () => {
       await settle(m);
       expect(runs).toBe(1);
       expect(texts(56)).toEqual(["fixed:/:1"]);
+    } finally { console.error = logged; }
+  });
+
+  test("the error screen's Reload runs a failed init again, and the screens wait for it", async () => {
+    delete (globalThis as { __svelteNativeHmrState?: unknown }).__svelteNativeHmrState;
+    const m = await load();
+    roots = {}; commits.length = 0;
+    const logged = console.error;
+    console.error = () => {};
+    try {
+      let attempts = 0;
+      const gates = [deferred(), deferred()];
+      m.registerHooks({ init: () => gates[attempts++].promise });
+      m.createFabricApp(m.Fixture, { label: "online" });
+      runnables.main({ rootTag: 58 });
+      gates[0].reject(new Error("offline"));
+      await settle(m);
+      expect(texts(58)).toContain("offline");
+      // What Reload does: retry, then remount. The error screen stays until the second attempt settles.
+      expect(m.retryInit()).toBe(true);
+      expect(m.retryInit()).toBe(false); // one at a time
+      m.remountSurfaces();
+      expect(texts(58)).toContain("offline");
+      gates[1].resolve();
+      await settle(m);
+      expect(attempts).toBe(2);
+      expect(texts(58)).toEqual(["online:/:1"]);
+      expect(m.retryInit()).toBe(false); // nothing failed
+    } finally { console.error = logged; }
+  });
+
+  test("an edit made while init is in flight runs once that init has failed", async () => {
+    delete (globalThis as { __svelteNativeHmrState?: unknown }).__svelteNativeHmrState;
+    const m = await load();
+    roots = {}; commits.length = 0;
+    const logged = console.error;
+    console.error = () => {};
+    try {
+      const slow = deferred();
+      m.registerHooks({ init: () => slow.promise });
+      m.createFabricApp(m.Fixture, { label: "x" });
+      runnables.main({ rootTag: 59 });
+      let fixed = 0;
+      m.registerHooks({ init: () => { fixed += 1; } }); // the fix, saved while the first is still running
+      m.createFabricApp(m.Fixture, { label: "fixed" });
+      m.remountSurfaces();
+      expect(fixed).toBe(0);
+      slow.reject(new Error("bad key"));
+      await settle(m);
+      expect(fixed).toBe(1);
+      expect(texts(59)).toEqual(["fixed:/:1"]);
+    } finally { console.error = logged; }
+  });
+
+  test("a hot update that runs init for the first time (the file was just added) keeps the screens and their navigation until it settles", async () => {
+    delete (globalThis as { __svelteNativeHmrState?: unknown }).__svelteNativeHmrState;
+    const m = await load();
+    roots = {}; commits.length = 0;
+    m.registerHooks({});
+    m.createFabricApp(m.Fixture, { label: "v1" });
+    runnables.main({ rootTag: 60 });
+    expect(texts(60)).toEqual(["v1:/:1"]);
+    const state = hmrState() as { navigation?: () => unknown };
+    const before = JSON.stringify(state.navigation?.());
+    // The file appears: the generated module registers it (its init starts), the entry runs again and accepts the update.
+    const gate = deferred();
+    m.registerHooks({ init: () => gate.promise });
+    m.createFabricApp(m.Fixture, { label: "v2" });
+    m.remountSurfaces();
+    expect(texts(60)).toEqual(["v1:/:1"]); // still the running app, not a blank surface
+    gate.resolve();
+    await settle(m);
+    expect(texts(60)).toEqual(["v2:/:1"]);
+    expect(JSON.stringify(state.navigation?.())).toBe(before);
+  });
+
+  test("a surface the host stops while it waits leaves nothing behind for the next remount", async () => {
+    delete (globalThis as { __svelteNativeHmrState?: unknown }).__svelteNativeHmrState;
+    const m = await load();
+    roots = {}; commits.length = 0;
+    const logged = console.error;
+    console.error = () => {};
+    try {
+      const first = deferred();
+      m.registerHooks({ init: () => first.promise });
+      m.createFabricApp(m.Fixture, { label: "x" });
+      runnables.main({ rootTag: 61 });
+      first.reject(new Error("failed"));
+      await settle(m);
+      expect(texts(61)).toContain("failed"); // the error screen: the surface is a running one now
+      const second = deferred();
+      m.registerHooks({ init: () => second.promise });
+      stopSurface(61); // the Activity goes while the fix's init runs
+      second.resolve();
+      await settle(m);
+      expect(hmrState().surfaces.has(61)).toBe(false);
+      const committed = commits.length;
+      m.remountSurfaces();
+      expect(commits.length).toBe(committed);
     } finally { console.error = logged; }
   });
 

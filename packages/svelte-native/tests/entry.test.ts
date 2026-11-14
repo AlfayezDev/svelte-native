@@ -77,10 +77,10 @@ test("the hooks module registers the exports of src/hooks.mobile.ts, .ts before 
   expect(lines(await hooksFor({ "src/hooks.mobile.ts": "export const init = () => {};" }))).toEqual(registers("../src/hooks.mobile"));
   expect(lines(await hooksFor({ "src/hooks.mobile.js": "export const init = () => {};" }))).toEqual(registers("../src/hooks.mobile"));
   expect(await hooksFor({ "src/hooks.mobile.ts": "", "src/hooks.mobile.js": "" })).toContain("(src/hooks.mobile.ts)");
-  // SvelteKit's own hooks files are not the app's: only the mobile one is.
+  // SvelteKit's own hooks files are not the app's: only the mobile one is. Without it the module registers none (so a removed file's hooks go).
   const none = await hooksFor({ "src/hooks.client.ts": "export const init = () => {};", "src/hooks.ts": "export const transport = {};" });
-  expect(none).not.toContain("import");
-  expect(none).toContain("export {};");
+  expect(none).not.toContain("import * as hooks");
+  expect(lines(none).slice(0, 3)).toEqual(["import { registerHooks } from '@alfayez/svelte-native/app';", "", "registerHooks({});"]);
 });
 
 test("the bundled hooks module runs the file's top level after the boot modules and registers what it exports", async () => {

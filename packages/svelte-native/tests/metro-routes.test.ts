@@ -294,13 +294,13 @@ describe("src/hooks.mobile.ts", () => {
     withSvelteNative(fakeConfig(root), { variant: "qa" });
     const entry = readFileSync(join(root, ".svelte-native/entry.ts"), "utf8");
     expect(entry).toContain("import './hooks';");
-    expect(hooksModule(root)).toContain("export {};");
+    expect(hooksModule(root)).toContain("registerHooks({});");
     writeFileSync(join(root, "src/hooks.mobile.ts"), "export const init = () => {};\n");
     await until(() => hooksModule(root).includes("registerHooks(hooks);"));
     expect(hooksModule(root)).toContain('import * as hooks from "../src/hooks.mobile";');
     rmSync(join(root, "src/hooks.mobile.ts"));
-    await until(() => hooksModule(root).includes("export {};"));
-    expect(hooksModule(root)).not.toContain("registerHooks");
+    await until(() => hooksModule(root).includes("registerHooks({});"));
+    expect(hooksModule(root)).not.toContain("import * as hooks");
     expect(readFileSync(join(root, ".svelte-native/entry.ts"), "utf8")).toBe(entry);
   });
 

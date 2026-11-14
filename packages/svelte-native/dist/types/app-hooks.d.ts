@@ -17,15 +17,17 @@ export type MobileHooks = {
         decode(data: unknown): unknown;
     }>;
 };
-/** Called by the generated `.svelte-native/hooks.ts` with the exports of `src/hooks.mobile.ts`, on every evaluation of it. */
+/** Called by the generated `.svelte-native/hooks.ts` with the exports of `src/hooks.mobile.ts` (or none, for an app without the file), on every evaluation of it. */
 export declare function registerHooks(hooks: MobileHooks): void;
+/** Runs the registered `init` again after it failed (the error screen's Reload). Returns whether it did. */
+export declare function retryInit(): boolean;
 /** The app's hooks as last registered (none until the generated module has run, and in an app without the file). */
 export declare const appHooks: () => MobileHooks;
 /** Calls `watcher` with the hooks now and on every registration; returns what stops it. */
 export declare function watchHooks(watcher: (hooks: MobileHooks) => void): () => void;
 /** While `init` is in flight, a promise that resolves (never rejects) when it has settled; `undefined` otherwise. */
 export declare const initSettling: () => Promise<void> | undefined;
-/** What the last `init` failed with, until a registration runs it again. */
+/** What the last `init` failed with, until a registration or `retryInit` runs it again. */
 export declare const initFailure: () => {
     error: unknown;
 } | undefined;

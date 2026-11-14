@@ -1,7 +1,8 @@
 /**
  * The app's hooks: `src/hooks.mobile.ts` (or `.js`), the native app's counterpart of SvelteKit's `hooks.client.ts`. The generated
- * `.svelte-native/hooks.ts` imports the file and calls `registerHooks` with its exports; the entry imports that module after the boot
- * modules and before the app's layout and routes, so the file's top level runs before any of the app's own code.
+ * `.svelte-native/hooks.ts` imports the file and calls `registerHooks` with its exports (with none for an app without the file, so removing it drops
+ * them); the entry imports that module after the boot modules and before the app's layout and routes, so the file's top level runs before them
+ * (the modules the file imports itself run just before it, as imports do).
  *
  * - `init` runs once, when the app's JavaScript starts. The first screen mounts when the promise it returns has resolved (the splash screen
  *   stays up meanwhile). It runs in a launch without a screen too (a background task), since that launch evaluates the same entry.
@@ -9,7 +10,8 @@
  *   loads nothing of SvelteKit for them).
  *
  * A hot update of the file registers its new exports; `init` does not run again, unless it failed (development shows the failure on the
- * screen, and the fix runs it again). In a release build a failed `init` is a fatal error, as a throw at the top of the entry would be.
+ * screen, and the fix or the screen's Reload runs it again; an edit made while it is still in flight runs once it has failed). In a release
+ * build a failed `init` is a fatal error, as a throw at the top of the entry would be.
  */
 import { mark } from "./boot-marks.ts";
 
@@ -29,12 +31,14 @@ export type MobileHooks = {
 let current: MobileHooks = {};
 let registered = false;
 const watchers = new Set<(hooks: MobileHooks) => void>();
-/** Whether `init` has run to its end in this runtime (or the first registration had none). */
+/** Whether an `init` has run to its end in this runtime. */
 let started = false;
 /** The `init` in flight: a promise that resolves when it has settled, whichever way. */
 let settling: Promise<void> | undefined;
 /** What the last `init` failed with. */
 let failure: { error: unknown } | undefined;
+/** Whether a registration came while `init` was in flight: its `init` runs when that one fails (the edit that fixes it). */
+let queued = false;
 
 const dev = () => typeof __DEV__ !== "undefined" && __DEV__;
 const thenable = (value: unknown): value is PromiseLike<unknown> => typeof (value as { then?: unknown } | null)?.then === "function";
@@ -51,19 +55,10 @@ function fail(error: unknown): void {
   else queueMicrotask(() => { throw error; });
 }
 
-/** Called by the generated `.svelte-native/hooks.ts` with the exports of `src/hooks.mobile.ts`, on every evaluation of it. */
-export function registerHooks(hooks: MobileHooks): void {
-  current = hooks;
-  for (const watcher of watchers) watcher(hooks);
-  if (!registered) mark("hooks");
-  registered = true;
-  // A hot update while an earlier `init` is still in flight keeps that one.
-  if (started || settling !== undefined) return;
+function runInit(hooks: MobileHooks): void {
   failure = undefined;
-  if (typeof hooks.init !== "function") {
-    started = true;
-    return;
-  }
+  // No `init` yet: the first registration that has one runs it (a development app whose file gains one).
+  if (typeof hooks.init !== "function") return;
   let result: unknown;
   try {
     result = hooks.init();
@@ -75,14 +70,38 @@ export function registerHooks(hooks: MobileHooks): void {
     started = true;
     return;
   }
-  const run: Promise<void> = Promise.resolve(result).then(
+  settling = Promise.resolve(result).then(
     () => { started = true; },
     (error: unknown) => { fail(error); },
   ).finally(() => {
-    if (settling === run) settling = undefined;
+    settling = undefined;
     mark("hooks init");
+    const rerun = queued && failure !== undefined;
+    queued = false;
+    if (rerun) runInit(current);
   });
-  settling = run;
+}
+
+/** Called by the generated `.svelte-native/hooks.ts` with the exports of `src/hooks.mobile.ts` (or none, for an app without the file), on every evaluation of it. */
+export function registerHooks(hooks: MobileHooks): void {
+  current = hooks;
+  // A watcher that throws (a `transport` SvelteKit refuses) does not keep `init` from running: its error is thrown once `init` has started.
+  let refused: { error: unknown } | undefined;
+  for (const watcher of watchers) {
+    try { watcher(hooks); } catch (error) { refused ??= { error }; }
+  }
+  if (!registered) mark("hooks");
+  registered = true;
+  if (settling !== undefined) queued = true;
+  else if (!started) runInit(hooks);
+  if (refused !== undefined) throw refused.error;
+}
+
+/** Runs the registered `init` again after it failed (the error screen's Reload). Returns whether it did. */
+export function retryInit(): boolean {
+  if (failure === undefined || settling !== undefined) return false;
+  runInit(current);
+  return true;
 }
 
 /** The app's hooks as last registered (none until the generated module has run, and in an app without the file). */
@@ -98,7 +117,7 @@ export function watchHooks(watcher: (hooks: MobileHooks) => void): () => void {
 /** While `init` is in flight, a promise that resolves (never rejects) when it has settled; `undefined` otherwise. */
 export const initSettling = (): Promise<void> | undefined => settling;
 
-/** What the last `init` failed with, until a registration runs it again. */
+/** What the last `init` failed with, until a registration or `retryInit` runs it again. */
 export const initFailure = (): { error: unknown } | undefined => failure;
 
 /** Forgets every registration and the state of `init` (tests). */
@@ -108,5 +127,6 @@ export function resetHooks(): void {
   started = false;
   settling = undefined;
   failure = undefined;
+  queued = false;
   for (const watcher of watchers) watcher(current);
 }

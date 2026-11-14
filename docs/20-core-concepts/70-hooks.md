@@ -25,13 +25,13 @@ Every export is optional, and the file is optional too. A `.js` file works as we
 
 ## The top level
 
-The file's top level runs right after Svelte Native's own start-up and before any of your modules: the layout, the routes, `src/lib`. Put code there that has to come before everything else, such as setting up a crash reporter, or a `TaskManager.defineTask(...)` call for a background task, which Expo needs at the top level of the bundle.
+The file's top level runs right after Svelte Native's own start-up and before your layout and routes, so before everything they import. The modules the file imports itself run just before it, as imports always do. Put code there that has to come before the rest of the app, such as setting up a crash reporter, or a `TaskManager.defineTask(...)` call for a background task, which Expo needs at the top level of the bundle.
 
 ## init
 
 `init` runs once, when the app's JavaScript starts. The first screen waits for the promise it returns, and the splash screen stays up while it does, so keep it short. `init` also runs when the app starts without a screen, as it does for a background task.
 
-If `init` throws or rejects, a release build treats it as a fatal error, as it would a crash at start. In development the error screen shows it, and your next edit to the file runs `init` again.
+If `init` throws or rejects, a release build treats it as a fatal error, as it would a crash at start. In development the error screen shows it, and its Reload button, or your next edit to the file, runs `init` again.
 
 ## handleError
 
@@ -47,4 +47,4 @@ It doesn't see other errors, such as a throw in a component or an event handler.
 
 ## While you develop
 
-When you save the file, its new exports take effect at once and the screens remount. `init` doesn't run again: reload the app to run it. The development server notices when you add or remove the file.
+When you save the file, its new exports take effect at once and the screens remount. `init` doesn't run again: reload the app to run it. The development server notices when you add or remove the file. Adding it to a running app runs its `init`, and the screens remount once `init` has finished.

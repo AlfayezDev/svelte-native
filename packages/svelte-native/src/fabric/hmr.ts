@@ -6,7 +6,7 @@
  * which calls `createFabricApp` again with the fresh root component, and its accept handler calls `remountSurfaces()`:
  * every running surface is unmounted and started again on the same root tag with the same props and navigation state.
  */
-import { initFailure, initSettling } from "../app-hooks.ts";
+import { initFailure, initSettling, retryInit } from "../app-hooks.ts";
 import { hmrState } from "../hmr-state.ts";
 import { hostFinishing, hostNavigation, navigationAdopted, startSurface, stopSurface } from "./host.ts";
 import ErrorScreen from "./ErrorScreen.svelte";
@@ -94,16 +94,36 @@ export function launchSurface(rootTag: number, initialProps?: Record<string, unk
  * launch starts from its own first screen.
  */
 export function stopApplication(rootTag: number): void {
-  // A surface that was still waiting for `init` never started.
-  if (waiting.delete(rootTag)) return;
   const state = hmrState();
+  // A surface that was still waiting for `init` never started.
+  if (waiting.delete(rootTag)) {
+    state.surfaces.delete(rootTag);
+    return;
+  }
   state.surfaces.delete(rootTag);
   if (state.surfaces.size === 0) state.restore = hostFinishing() ? undefined : state.navigation?.();
   stopSurface(rootTag);
 }
 
-/** Unmounts every surface and starts it again with the latest registered app, keeping the navigation state (every stack and tabs selection). */
+let remountOn: Promise<void> | undefined;
+
+/**
+ * Unmounts every surface and starts it again with the latest registered app, keeping the navigation state (every stack and tabs selection).
+ * While the app's `init` is in flight (a hot update that runs it: the file was added, or fixed after a failure) the screens stay as they are
+ * and the remount waits for it.
+ */
 export function remountSurfaces(): void {
+  const settling = initSettling();
+  if (settling !== undefined) {
+    if (remountOn !== settling) {
+      remountOn = settling;
+      void settling.then(() => {
+        if (remountOn === settling) remountOn = undefined;
+        remountSurfaces();
+      });
+    }
+    return;
+  }
   const state = hmrState();
   const surfaces = [...state.surfaces];
   if (surfaces.length === 0) return;
@@ -136,7 +156,8 @@ export function showError(error: unknown, rootTags: number[] = [...hmrState().su
   for (const rootTag of rootTags) {
     try {
       stopSurface(rootTag);
-      startSurface(rootTag, ErrorScreen, { ...details, onReload: () => { setTimeout(remountSurfaces, 0); } });
+      // Reload runs a failed `init` again before it remounts.
+      startSurface(rootTag, ErrorScreen, { ...details, onReload: () => { setTimeout(() => { retryInit(); remountSurfaces(); }, 0); } });
       shown = true;
     } catch (inner) {
       console.error("Svelte Native could not mount the error screen", inner);

@@ -260,6 +260,16 @@ describe("errors", () => {
     }
     expect(await m.handle_error(new TypeError("offline"), {})).toEqual({ status: 500, message: "Internal Error" });
   });
+
+  test("a transport SvelteKit refuses is thrown by the registration, after init has started", () => {
+    let ran = false;
+    try {
+      expect(() => m.registerHooks({ transport: { Broken: null }, init: () => { ran = true; } })).toThrow(TypeError);
+      expect(ran).toBe(true);
+    } finally {
+      m.resetHooks();
+    }
+  });
 });
 
 describe("a query object that outlives the effect that made it", () => {

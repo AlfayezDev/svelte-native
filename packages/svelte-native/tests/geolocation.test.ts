@@ -16,7 +16,7 @@ const fix = (latitude: number, longitude: number, extra: Record<string, unknown>
 function fake(options: { permission?: Permission; answer?: Permission; position?: () => Promise<any>; lastKnown?: any; watch?: (id: number) => Promise<void> } = {}) {
   const calls: string[] = [];
   let permission = options.permission ?? UNDETERMINED;
-  const listeners = new Map<number, (event: any) => void>();
+  const listeners = new Map<number, { event: string; listener: (event: any) => void }>();
   let nextListener = 0;
   const native: NativeLocationModule & { permission: Permission } = {
     get permission() { return permission; },
@@ -25,19 +25,21 @@ function fake(options: { permission?: Permission; answer?: Permission; position?
     requestForegroundPermissionsAsync: async () => { calls.push("request"); permission = options.answer ?? GRANTED; return permission; },
     getCurrentPositionAsync: async (request) => { calls.push(`current ${request.accuracy}`); return (options.position ?? (async () => fix(24.7, 46.7)))(); },
     getLastKnownPositionAsync: async (request) => { calls.push(`last ${request.maxAge}`); return options.lastKnown ?? null; },
-    watchPositionImplAsync: async (id, request) => { calls.push(`watch ${id} ${request.accuracy}`); await options.watch?.(id); },
+    watchPositionImplAsync: async (id, request) => { calls.push(`watch ${id} ${request.accuracy} distance ${request.distanceInterval}`); await options.watch?.(id); },
     removeWatchAsync: async (id) => { calls.push(`remove ${id}`); },
     addListener: (event, listener) => {
       calls.push(`listen ${event}`);
       const key = nextListener++;
-      listeners.set(key, listener);
+      listeners.set(key, { event, listener });
       return { remove: () => { calls.push("unlisten"); listeners.delete(key); } };
     },
   };
-  const emit = (watchId: number, location: any) => { for (const listener of [...listeners.values()]) listener({ watchId, location }); };
+  const dispatch = (name: string, payload: any) => { for (const { event, listener } of [...listeners.values()]) if (event === name) listener(payload); };
+  const emit = (watchId: number, location: any) => dispatch("Expo.locationChanged", { watchId, location });
+  const emitError = (watchId: number, reason: string) => dispatch("Expo.locationError", { watchId, reason });
   let foreground: (() => void) | undefined;
   const geolocation = new Geolocation(native, (listener) => { foreground = listener; });
-  return { native, calls, emit, geolocation, listeners, foreground: () => foreground?.() };
+  return { native, calls, emit, emitError, geolocation, listeners, foreground: () => foreground?.() };
 }
 
 const settle = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -92,6 +94,9 @@ describe("getCurrentPosition", () => {
     const coded = (code: string, message: string) => Object.assign(new Error(message), { code });
     const unauthorized = fake({ permission: GRANTED, position: async () => { throw coded("ERR_LOCATION_UNAUTHORIZED", "Not authorized to use location services"); } });
     expect((await current(unauthorized.geolocation)).error?.code).toBe(1);
+    // iOS's: `DeniedForegroundLocationPermission`.
+    const deniedOnIos = fake({ permission: GRANTED, position: async () => { throw coded("ERR_DENIED_FOREGROUND_LOCATION_PERMISSION", "Location permission was denied"); } });
+    expect((await current(deniedOnIos.geolocation)).error?.code).toBe(1);
     const off = fake({ permission: GRANTED, position: async () => { throw coded("ERR_CURRENT_LOCATION_IS_UNAVAILABLE", "Current location is unavailable. Make sure that location services are enabled"); } });
     const { error } = await current(off.geolocation);
     expect([error?.code, error?.message]).toEqual([2, "Current location is unavailable. Make sure that location services are enabled"]);
@@ -133,10 +138,26 @@ describe("getCurrentPosition", () => {
     expect(calls.filter((call) => call === "request")).toHaveLength(1);
   });
 
+  test("a question that fails at once is not kept: the next call asks again", async () => {
+    const { geolocation, native } = fake({ permission: GRANTED });
+    const working = native.getForegroundPermissionsAsync;
+    native.getForegroundPermissionsAsync = (() => { throw new Error("the module went away"); }) as any;
+    expect((await current(geolocation)).error?.code).toBe(2);
+    native.getForegroundPermissionsAsync = working;
+    expect((await current(geolocation)).position).toBeInstanceOf(GeolocationPosition);
+  });
+
+  test("the timeout covers the system's last known position too, which may never answer", async () => {
+    const { geolocation, native } = fake({ permission: GRANTED });
+    native.getLastKnownPositionAsync = () => new Promise(() => {});
+    expect((await current(geolocation, { maximumAge: 60_000, timeout: 40 })).error?.code).toBe(3);
+  });
+
   test("the success callback is required, and the classes cannot be constructed, as on the web", () => {
     const { geolocation } = fake();
     expect(() => geolocation.getCurrentPosition(undefined as any)).toThrow("Failed to execute 'getCurrentPosition' on 'Geolocation': parameter 1 is not of type 'Function'.");
     expect(() => geolocation.watchPosition(null as any)).toThrow(TypeError);
+    expect(() => geolocation.getCurrentPosition(() => {}, "not a function" as any)).toThrow("parameter 2 is not of type 'Function'.");
     for (const Class of [GeolocationPositionError, GeolocationPosition, GeolocationCoordinates, PermissionStatus] as any[]) expect(() => new Class()).toThrow("Illegal constructor");
     expect([GeolocationPositionError.POSITION_UNAVAILABLE, GeolocationPositionError.TIMEOUT]).toEqual([2, 3]);
   });
@@ -150,21 +171,26 @@ describe("watchPosition", () => {
     // Far from expo-location's own ids, which count from 1.
     expect(id).toBeGreaterThanOrEqual(1_000_000);
     await settle();
-    expect(calls).toEqual(["get", "listen Expo.locationChanged", `watch ${id} 3`]);
+    // Every position: distance filter 0 (Android's default would skip all under 50 to 100 m).
+    expect(calls).toEqual(["get", "listen Expo.locationChanged", "listen Expo.locationError", `watch ${id} 3 distance 0`]);
     emit(id, fix(1, 1));
     emit(id + 1, fix(2, 2));
     emit(id, fix(3, 3));
     expect(seen).toEqual([1, 3]);
     geolocation.clearWatch(id);
     await settle();
-    expect(calls.slice(3)).toEqual([`remove ${id}`, "unlisten"]);
+    expect(calls.slice(4)).toEqual([`remove ${id}`, "unlisten", "unlisten"]);
     expect(listeners.size).toBe(0);
     emit(id, fix(4, 4));
     expect(seen).toEqual([1, 3]);
-    // A second clear, or one of an id never given, does nothing.
+    // A second clear, or one of an id never given, does nothing; an id as a string is the same id.
     geolocation.clearWatch(id);
     geolocation.clearWatch(42);
-    expect(calls.slice(5)).toEqual([]);
+    expect(calls.slice(7)).toEqual([]);
+    const other = geolocation.watchPosition(() => {});
+    await settle();
+    geolocation.clearWatch(String(other) as any);
+    expect(calls.at(-3)).toBe(`remove ${other}`);
   });
 
   test("two watches share one subscription, which goes with the last", async () => {
@@ -172,11 +198,56 @@ describe("watchPosition", () => {
     const a = geolocation.watchPosition(() => {});
     const b = geolocation.watchPosition(() => {});
     await settle();
-    expect(calls.filter((call) => call.startsWith("listen"))).toHaveLength(1);
+    expect(calls.filter((call) => call.startsWith("listen"))).toEqual(["listen Expo.locationChanged", "listen Expo.locationError"]);
     geolocation.clearWatch(a);
     expect(calls.includes("unlisten")).toBe(false);
     geolocation.clearWatch(b);
-    expect(calls.at(-1)).toBe("unlisten");
+    expect(calls.slice(-2)).toEqual(["unlisten", "unlisten"]);
+  });
+
+  test("a watch its first, cached, callback clears never starts natively and leaves no subscription", async () => {
+    const { geolocation, calls, listeners } = fake({ permission: GRANTED, lastKnown: fix(5, 5, {}, Date.now() - 1000) });
+    let calledBack = 0;
+    const id = geolocation.watchPosition(() => { calledBack++; geolocation.clearWatch(id); }, null, { maximumAge: 5000 });
+    await settle();
+    expect(calledBack).toBe(1);
+    expect(calls.some((call) => call.startsWith("watch") || call.startsWith("listen"))).toBe(false);
+    expect(listeners.size).toBe(0);
+  });
+
+  test("iOS's watch error: POSITION_UNAVAILABLE with the reason, the watch going on; a permission taken away ends it with PERMISSION_DENIED", async () => {
+    const { geolocation, native, emitError, emit } = fake({ permission: GRANTED });
+    const events: string[] = [];
+    const id = geolocation.watchPosition((position) => events.push(`position ${position.coords.latitude}`), (error) => events.push(`error ${error.code} ${error.message}`));
+    await settle();
+    emitError(id, "The operation couldn't be completed. (kCLErrorDomain error 0.)");
+    await settle();
+    emit(id, fix(1, 1));
+    native.permission = DENIED;
+    emitError(id, "denied");
+    await settle();
+    emit(id, fix(2, 2));
+    expect(events).toEqual(["error 2 The operation couldn't be completed. (kCLErrorDomain error 0.)", "position 1", "error 1 User denied Geolocation"]);
+  });
+
+  test("a callback that throws does not break the watch or the next call; what it threw is reported later as uncaught", async () => {
+    const { geolocation, emit } = fake({ permission: GRANTED });
+    const reported: unknown[] = [];
+    const { setTimeout: realSetTimeout } = globalThis;
+    (globalThis as any).setTimeout = (callback: () => void, ms?: number) => realSetTimeout(() => { try { callback(); } catch (error) { reported.push(error); } }, ms);
+    try {
+      let seen = 0;
+      const id = geolocation.watchPosition(() => { seen++; throw new Error(`callback ${seen}`); });
+      await settle();
+      expect(() => emit(id, fix(1, 1))).not.toThrow();
+      emit(id, fix(2, 2));
+      geolocation.getCurrentPosition(() => { throw new Error("once"); });
+      await settle(5);
+      expect([seen, reported.map((error) => (error as Error).message)]).toEqual([2, ["callback 1", "callback 2", "once"]]);
+      geolocation.clearWatch(id);
+    } finally {
+      globalThis.setTimeout = realSetTimeout;
+    }
   });
 
   test("a watch cleared before the permission answers never starts", async () => {
@@ -211,7 +282,19 @@ describe("watchPosition", () => {
     const id = failing.geolocation.watchPosition(() => {}, (error) => failures.push([error.code, error.message]));
     await settle();
     expect(failures).toEqual([[2, "Location request failed due to unsatisfied device settings"]]);
-    expect(failing.calls.slice(-2)).toEqual([`remove ${id}`, "unlisten"]);
+    expect(failing.calls.slice(-3)).toEqual([`remove ${id}`, "unlisten", "unlisten"]);
+  });
+
+  test("a timeout of 0 is one TIMEOUT error, not one per tick; the next position starts the clock again", async () => {
+    const { geolocation, emit } = fake({ permission: GRANTED });
+    const events: string[] = [];
+    const id = geolocation.watchPosition(() => events.push("position"), (error) => events.push(`error ${error.code}`), { timeout: 0 });
+    await settle(30);
+    expect(events).toEqual(["error 3"]);
+    emit(id, fix(1, 1));
+    await settle(30);
+    expect(events).toEqual(["error 3", "position", "error 3"]);
+    geolocation.clearWatch(id);
   });
 
   test("timeout: an error each time that long passes without a position, the watch going on", async () => {

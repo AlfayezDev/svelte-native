@@ -5,7 +5,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { followSignal, installAbortStatics, listenWhileAlive } from "../../src/fetch/abort.ts";
+import { abortReason, abortWithReason, followSignal, installAbortStatics, listenWhileAlive } from "../../src/fetch/abort.ts";
 import { Blob } from "../../src/fetch/blob.ts";
 import { Headers } from "../../src/fetch/headers.ts";
 import { setNativeModule } from "../../src/fetch/module.ts";
@@ -591,6 +591,17 @@ describe("aborting", () => {
       expect([error.name, (body.cancelled[0] as DOMException | undefined)?.name]).toEqual(["AbortError", "AbortError"]);
     });
 
+    test("a signal that is already aborted cancels the stream body with its reason (the standard's abort of the fetch call)", async () => {
+      const reason = new Error("before it started");
+      const controller = new AbortController();
+      controller.abort(reason);
+      const body = stalled([]);
+      const started = fake.starts.length;
+      await expect(fetch(`${base}/echo`, { method: "POST", body: body.stream, duplex: "half", signal: controller.signal } as RequestInit)).rejects.toBe(reason);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect([body.cancelled, fake.starts.length]).toEqual([[reason], started]);
+    });
+
     test("a stream body that was sent whole is left alone by a later abort", async () => {
       const cancelled: unknown[] = [];
       const controller = new AbortController();
@@ -600,6 +611,24 @@ describe("aborting", () => {
       controller.abort();
       expect(cancelled).toEqual([]);
     });
+  });
+
+  test("a signal without `reason` (React Native's abort-controller) has the reason before the abort's listeners run", () => {
+    /** React Native's AbortController: `abort()` takes no reason and the signal has no `reason` property. */
+    class ReasonlessController {
+      readonly signal = Object.assign(new EventTarget(), { aborted: false });
+      abort(): void {
+        if (this.signal.aborted) return;
+        this.signal.aborted = true;
+        this.signal.dispatchEvent(new Event("abort"));
+      }
+    }
+    const controller = new ReasonlessController() as unknown as AbortController;
+    const seen: unknown[] = [];
+    controller.signal.addEventListener("abort", () => seen.push(abortReason(controller.signal)));
+    const reason = new DOMException("The operation timed out.", "TimeoutError");
+    abortWithReason(controller, reason);
+    expect([seen, abortReason(controller.signal)]).toEqual([[reason], reason]);
   });
 
   describe("AbortSignal.timeout and AbortSignal.any", () => {

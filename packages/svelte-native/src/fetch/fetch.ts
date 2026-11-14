@@ -27,7 +27,12 @@ export async function fetch(input: RequestInfo, init?: RequestInit): Promise<Res
   const request = new Request(input, init);
   const state = requestStateOf(request);
   const signal = state.signal;
-  if (signal?.aborted) throw abortReason(signal);
+  if (signal?.aborted) {
+    // The standard's "abort the fetch() call": a caller's stream body is cancelled with the reason, so its producer stops.
+    const reason = abortReason(signal);
+    bodyStateOf(request).source?.cancel?.(reason);
+    throw reason;
+  }
 
   const url = new URL(state.url);
   if (url.protocol === "data:") return dataURLResponse(state.url);

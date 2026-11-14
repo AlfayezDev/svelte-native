@@ -13,7 +13,7 @@ Notable changes to `@alfayez/svelte-native` (named `@example/svelte-native` up t
 
 ### Changed
 
-- react-native-quick-crypto 1.1.3, react-native-mmkv 4.3.1, react-native-nitro-modules 0.35.10 and react-native-quick-base64 2.2.2 are required peers: `svelte-native init` installs them and `svelte-native doctor` fails without them. They are native code, so an app needs a new build. A clean Android release build of the showcase (x86_64 and arm64-v8a) took about 105 s longer with them (react-native-quick-crypto's C++ the most of it), and its APK grew about 12 MB per ABI (OpenSSL and quick-crypto's library).
+- react-native-quick-crypto 1.1.3, react-native-mmkv 4.3.1, react-native-nitro-modules 0.35.10 and react-native-quick-base64 2.2.2 are required peers: `svelte-native init` installs them and `svelte-native doctor` fails without them. They are native code, so an app needs a new build. A clean Android release build of the showcase (x86_64 and arm64-v8a) took about 105 s longer with them (react-native-quick-crypto's C++ the most of it), its APK grew about 12 MB per ABI (OpenSSL and quick-crypto's library), and the JavaScript bundle about 940 KB (the four libraries' JavaScript, of which nothing runs before `crypto` or `localStorage` is first read).
 - Remote functions send their requests through the global `fetch` (the library's own, which streams a response body on both platforms; Expo's on a binary without the native module), not `expo/fetch`.
 - On Android the `SvelteFetch` module is registered lazily and prewarmed off the JavaScript thread (the expo-modules-core patch), in the place of Expo's fetch module, which the app no longer loads.
 

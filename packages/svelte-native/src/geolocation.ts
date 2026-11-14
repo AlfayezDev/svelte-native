@@ -51,19 +51,17 @@ function illegal(name: string): TypeError {
   return new TypeError(`Failed to construct '${name}': Illegal constructor`);
 }
 
-/** The constants on the prototype (set below), typed by declaration merging: an app's Babel compiles no `declare` field without `allowDeclareFields`. */
-export interface GeolocationPositionError {
-  readonly PERMISSION_DENIED: 1;
-  readonly POSITION_UNAVAILABLE: 2;
-  readonly TIMEOUT: 3;
-}
-
-/** The web's `GeolocationPositionError`: `code` is `PERMISSION_DENIED` (1), `POSITION_UNAVAILABLE` (2) or `TIMEOUT` (3). Not constructible, as on the web. */
-// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging -- the interface only types the prototype's constants
+/**
+ * The web's `GeolocationPositionError`: `code` is `PERMISSION_DENIED` (1), `POSITION_UNAVAILABLE` (2) or `TIMEOUT` (3), constants of the class and, through
+ * getters on the prototype, of each error. Not constructible, as on the web.
+ */
 export class GeolocationPositionError {
   static readonly PERMISSION_DENIED = 1;
   static readonly POSITION_UNAVAILABLE = 2;
   static readonly TIMEOUT = 3;
+  get PERMISSION_DENIED(): 1 { return 1; }
+  get POSITION_UNAVAILABLE(): 2 { return 2; }
+  get TIMEOUT(): 3 { return 3; }
   readonly code: 1 | 2 | 3;
   readonly message: string;
 
@@ -73,8 +71,6 @@ export class GeolocationPositionError {
     this.message = message;
   }
 }
-for (const [name, value] of [["PERMISSION_DENIED", 1], ["POSITION_UNAVAILABLE", 2], ["TIMEOUT", 3]] as const)
-  Object.defineProperty(GeolocationPositionError.prototype, name, { value, enumerable: true });
 Object.defineProperty(GeolocationPositionError.prototype, Symbol.toStringTag, { value: "GeolocationPositionError", configurable: true });
 
 const positionError = (code: 1 | 2 | 3, message: string) => new GeolocationPositionError(ILLEGAL, code, message);

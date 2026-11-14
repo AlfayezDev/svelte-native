@@ -8,4 +8,4 @@ export { normalizeOrigin, RemoteConfigError } from "./host.js";
 export type { RemoteHostConfig } from "./host.js";
 export { refreshAll } from "./shims/client.js";
 export { native } from "./types.js";
-export type { NativeForm, NativeFieldProps, NativeFormFields } from "./types.js";
+export type { NativeForm, NativeFieldProps, NativeFileProps, NativeFormFields } from "./types.js";

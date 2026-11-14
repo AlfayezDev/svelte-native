@@ -12,8 +12,11 @@
  * - The values are set by `fields.x.set(value)` or by the props `fields.x.as(type)` returns (`value` and `onChangeText`/`onValueChange`), not
  *   read from inputs when the form is submitted. SvelteKit keeps a mirror of the DOM in `input`; here `input` is the source.
  * - `submit()` is what pressing a submit button is on the web: preflight, then the `enhance` callback (default: send, and reset on success).
- *   There is no `element`, no attachment, no `action`, and no file fields.
+ *   There is no `element`, no attachment, no `action`, and no file picker: a file field (`as("file")`) takes the `File`s a picker of the app's gives it.
  * - `reset()` returns the fields to their defaults (the web's `<form>.reset()`), and is what the default `enhance` does after a successful send.
+ *   It invalidates pending validation/preflight, but does not cancel a request already sent to the server; that response can still update result/errors.
+ * - Failed submissions focus the first rendered invalid field whose mounted host exposes `focus()`. Background validation never moves focus.
+ *   If props are shared by multiple hosts, detaching any host clears the saved focus handle to avoid focusing a possibly stale native view.
  * - What a submission carries is what the inputs show: SvelteKit reads it from the DOM (`new FormData(form)`: the inputs that are there, with the value
  *   they show, an unchecked box not at all), and so does this, from the inputs `as(type)` made and the host has on screen (`variants` below).
  * - A submission that fails is not thrown at the caller (the web's submit event has nobody to throw to): it goes through `handle_error` (the app's
@@ -25,7 +28,7 @@ import {
   BINARY_FORM_CONTENT_TYPE, build_path_string, create_field_proxy, DELETE_KEY, deep_get, deep_set, flatten_issues, normalize_issue, serialize_binary_form,
 } from "@sveltejs/kit/src/runtime/form-utils.js";
 import { categorize_updates, fail_unhandled_refreshes, remote_request } from "@sveltejs/kit/src/runtime/client/remote-functions/shared.svelte.js";
-import { location } from "./globals.ts";
+import { FormBytes, location } from "./globals.ts";
 import { currentUrl } from "./link.ts";
 import { parseLocalizedNumber } from "./number.ts";
 import { assertReady } from "./ready.ts";
@@ -37,6 +40,9 @@ import { _goto, handle_error, refreshAll, set_nearest_error_page, type ClientErr
 type Path = (string | number)[];
 type Issue = { name: string; path: Path; message: string; server: boolean };
 type StandardSchema = { "~standard": { validate(value: unknown): { issues?: readonly { message: string; path?: readonly unknown[] }[] } | Promise<{ issues?: readonly { message: string; path?: readonly unknown[] }[] }> } };
+/** What a submission sends: the bytes of one without files, or the `Blob` of its parts (the files' bytes stay where they are; `globals.ts`). */
+const bodyOf = (blob: unknown): BodyInit => (blob instanceof FormBytes ? blob.bytes() : blob) as BodyInit;
+
 type Submission = Promise<boolean> & { updates: (...updates: unknown[]) => Promise<boolean> };
 /**
  * One input `as(type)` made: what it shows and what it contributes to a submission. The host tells `ref` when it has the element and when it is gone
@@ -46,7 +52,7 @@ type Submission = Promise<boolean> & { updates: (...updates: unknown[]) => Promi
 type Variant = {
   name: string;
   path: Path;
-  kind: "text" | "number" | "checkbox" | "list" | "radio" | "select" | "hidden";
+  kind: "text" | "number" | "checkbox" | "list" | "radio" | "select" | "hidden" | "file";
   /** The value or choice the input is written with (`as("radio", "s")`: "s"), for the kinds that have one. */
   option: unknown;
   /** The value the input shows until it is edited. */
@@ -54,6 +60,8 @@ type Variant = {
   options?: readonly unknown[];
   props: Record<string, unknown>;
   mounted: number;
+  /** Last attached host. Cleared on every detach, even if another host shares these props. */
+  handle?: { focus?: () => void };
   seen: boolean;
   /** What the input shows now. */
   shown: () => unknown;
@@ -103,6 +111,7 @@ export function form(id: string) {
     let dirty = $state<Record<string, boolean>>({});
     let can_validate: Record<string, boolean> = {};
     let submitted = $state(false);
+    let reset_id = 0;
     /** The text a number field shows while it is typed ("1." is the number 1 and must stay "1."). */
     let texts = $state<Record<string, string>>({});
     /** The order fields were first rendered in (issues are listed in it), and every input `as(type)` made. */
@@ -137,6 +146,7 @@ export function form(id: string) {
           switch (variant.kind) {
             case "text": if (deep_get(data, path) === undefined) set(value ?? ""); break;
             case "number": if (deep_get(data, path) === undefined) set(value); break;
+            case "file":
             case "select": if (deep_get(data, path) === undefined && value !== undefined) set(value); break;
             case "hidden": set(value); break;
             case "checkbox": set(value === true ? true : DELETE_KEY); break;
@@ -153,6 +163,9 @@ export function form(id: string) {
     }
 
     function reset(): void {
+      // A validation started before reset must not repopulate the cleared errors.
+      validate_id++;
+      reset_id++;
       input = {};
       raw_issues = [];
       touched = {};
@@ -197,8 +210,10 @@ export function form(id: string) {
     const kit_fields = create_field_proxy(context) as any;
 
     async function preflight(data: Record<string, any>): Promise<boolean> {
+      const reset_epoch = reset_id;
       const schema = preflight_schema ?? shared_preflight_schema;
       const validated = await schema?.["~standard"].validate(data);
+      if (reset_epoch !== reset_id) return false;
       if (validated?.issues) {
         raw_issues = merge_with_server_issues(order, raw_issues, validated.issues.map((issue) => normalize_issue(issue as any, false)));
         return false;
@@ -225,7 +240,7 @@ export function form(id: string) {
           const { blob } = serialize_binary_form(data, { remote_refreshes: Array.from(refreshes ?? []) });
           const response = await remote_request(
             `${base}/${app_dir}/remote/${action_id_without_key}`,
-            { method: "POST", headers: { "Content-Type": BINARY_FORM_CONTENT_TYPE, "x-sveltekit-pathname": location.pathname, "x-sveltekit-search": location.search }, body: blob.bytes() as unknown as BodyInit },
+            { method: "POST", headers: { "Content-Type": BINARY_FORM_CONTENT_TYPE, "x-sveltekit-pathname": location.pathname, "x-sveltekit-search": location.search }, body: bodyOf(blob) },
             refreshes,
           );
           ({ issues: raw_issues = [], result } = response._ ?? {});
@@ -291,6 +306,7 @@ export function form(id: string) {
           const self = found;
           found.props.ref = (handle: unknown) => {
             self.seen = true;
+            self.handle = handle && typeof handle === "object" ? handle as { focus?: () => void } : undefined;
             self.mounted = Math.max(0, self.mounted + (handle ? 1 : -1));
           };
           variants.set(id, found);
@@ -306,7 +322,23 @@ export function form(id: string) {
       const handlers = { onBlur: () => blur(path) };
 
       return (type: string, option?: unknown, third?: unknown): Record<string, unknown> => {
-        if (type === "file" || type === "file multiple" || type === "image") throw new Error(`form.fields.${name}.as('${type}'): files are not supported by native forms`);
+        if (type === "image") throw new Error("Image submit buttons are not supported by native forms");
+        if (type === "file" || type === "file multiple") {
+          const multiple = type === "file multiple";
+          return variant("file", type, undefined, undefined, () => {
+            const shown = () => read(multiple ? [] : undefined);
+            return {
+              props: reactive({ multiple, ...handlers, onValueChange: (value: unknown) => {
+                const isFile = (item: unknown) => typeof File !== "undefined" && item instanceof File;
+                if (multiple ? !Array.isArray(value) || !value.every(isFile) : value !== undefined && !isFile(value)) {
+                  throw new TypeError(`form.fields.${name}.as('${type}'): give ${multiple ? "an array of `File`s" : "a `File` (or undefined)"}, such as new File([await (await fetch(uri)).blob()], name, { type })`);
+                }
+                edit(path, Array.isArray(value) ? [...value] : value);
+              } }, () => { const value = shown(); return Array.isArray(value) ? [...value] : value; }),
+              shown,
+            };
+          }).props;
+        }
         if (type === "submit") {
           return reactive({
             onPress: () => {
@@ -412,6 +444,17 @@ export function form(id: string) {
       });
     }
 
+    /** A failed submission should put the user at the first editable error, without screen-level ref plumbing. */
+    function focus_invalid(): void {
+      const invalid = raw_issues.map((issue) => issue.name);
+      // Iterate field/render order, not the server schema's issue order. Only focus a known live host.
+      for (const variant of variants.values()) {
+        if (!invalid.includes(variant.name) || !onScreen(variant) || typeof variant.handle?.focus !== "function") continue;
+        try { variant.handle.focus(); } catch { /* A native view may have disappeared during the focus call. */ }
+        return;
+      }
+    }
+
     let validate_id = 0;
     const api: any = { method: "POST" };
     Object.defineProperties(api, {
@@ -430,6 +473,7 @@ export function form(id: string) {
       submit: {
         value: (): Submission => {
           assertReady();
+          const reset_epoch = reset_id;
           submitted = true;
           error = undefined;
           pending_count++;
@@ -463,7 +507,13 @@ export function form(id: string) {
           }
           const finished = attempt;
           const outcome = attempt.then(
-            (ok) => ok,
+            async (ok) => {
+              if (!ok && raw_issues.length > 0) {
+                await tick();
+                if (reset_epoch === reset_id) focus_invalid();
+              }
+              return ok;
+            },
             async (caught: unknown) => {
               // As SvelteKit's submit handler does: the app's `handleError` turns it into an `App.Error`, which is shown. A `handleError` that throws is the
               // app's bug and is reported as such; the submission still ends, with a plain 500.
@@ -507,7 +557,7 @@ export function form(id: string) {
             const response = await remote_request(`${base}/${app_dir}/remote/${action_id_without_key}`, {
               method: "POST",
               headers: { "Content-Type": BINARY_FORM_CONTENT_TYPE, "x-sveltekit-pathname": location.pathname, "x-sveltekit-search": location.search },
-              body: serialize_binary_form(data, { validate_only: true }).blob.bytes() as unknown as BodyInit,
+              body: bodyOf(serialize_binary_form(data, { validate_only: true }).blob),
             });
             if (validate_id !== validation) return;
             array = response._ as Issue[];

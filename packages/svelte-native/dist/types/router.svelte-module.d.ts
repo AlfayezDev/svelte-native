@@ -27,10 +27,11 @@ export type RouterScreen = {
  *
  * `discard()` gives the navigation up: the screen that was rendered is released and `commit()` does nothing any more. It takes effect a task later, and a `commit()` made before then wins:
  * `Pressable` reports a press that lasted 130 ms or more as `onPressOut` and then `onPress` in one task, and `onPressOut` is where the navigation is discarded. After `commit()` or
- * `discard()` has taken effect, further calls do nothing.
+ * `discard()` has taken effect, further calls do nothing. Disposing the router also makes all its handles inert, including superseded ones.
  *
  * Only forward navigations are prepared: the ones whose operations are pushes and tab selections. One that pops, replaces or resets removes screens, which a fork cannot
  * do for the native stack (the exit timer would be armed for a navigation that may never happen), so `ready` is `false` and `commit()` is a plain `goto`.
+ * This is not an interactive or predictive-back API: native back progress and cancellation are not driven by a Svelte fork.
  *
  * `prepare` reads the stacks untracked and renders the screen in a timer task, so it may be called from an event handler, a timer or an effect. The rendering happens on the JavaScript thread, so
  * it can delay the next touch event by as long as the screen takes to render: prepare when the thread is otherwise idle. A prepared navigation that is neither committed nor discarded keeps

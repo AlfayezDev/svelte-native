@@ -15,10 +15,15 @@ export type NativeToggleProps = Handlers & { readonly value: boolean; onValueCha
 /** What `as("select")` and `as("select multiple")` return: the value and the setter for a picker of your own. */
 export type NativeSelectProps<T = string | string[] | undefined> = Handlers & { readonly value: T; readonly multiple: boolean; onValueChange: (next: T) => void };
 
+/** What `as("file")` and `as("file multiple")` return: the value and the setter for a picker of your own, which passes `File`s. */
+export type NativeFileProps<T = File | undefined> = Handlers & { readonly value: T; readonly multiple: boolean; onValueChange: (next: T) => void };
+
 export type NativeTextType = "text" | "email" | "password" | "tel" | "url" | "search" | "number" | "range" | "date" | "time" | "datetime-local" | "month" | "week" | "color" | "textarea";
 
 /** The `as` of a native field. */
 export interface NativeFieldProps {
+  (type: "file"): NativeFileProps;
+  (type: "file multiple"): NativeFileProps<File[]>;
   (type: NativeTextType, initial?: string | number): NativeTextProps;
   (type: "checkbox", checked?: boolean): NativeToggleProps;
   (type: "checkbox", option: string, checked?: boolean): NativeToggleProps;

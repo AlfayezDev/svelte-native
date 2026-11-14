@@ -6,6 +6,7 @@
  * which calls `createFabricApp` again with the fresh root component, and its accept handler calls `remountSurfaces()`:
  * every running surface is unmounted and started again on the same root tag with the same props and navigation state.
  */
+import { initFailure, initSettling, retryInit } from "../app-hooks.ts";
 import { hmrState } from "../hmr-state.ts";
 import { hostFinishing, hostNavigation, navigationAdopted, startSurface, stopSurface } from "./host.ts";
 import ErrorScreen from "./ErrorScreen.svelte";
@@ -24,10 +25,52 @@ function withHostNavigation(initialProps?: Record<string, unknown>): { props: Re
   return navigation === undefined ? { props: initialProps, hosted: false } : { props: { ...initialProps, navigation }, hosted: true };
 }
 
-/** Starts the registered app on a surface. In development a throw during mount or the first flush becomes the error screen; in release it propagates. */
+/** Surfaces the host started while the app's `init` (`src/hooks.mobile.ts`) was in flight: root tag to its `initialProps`. They start when it settles. */
+const waiting = new Map<number, Record<string, unknown> | undefined>();
+let waitingOn: Promise<void> | undefined;
+
+function startWaiting(): void {
+  const launches = [...waiting];
+  waiting.clear();
+  for (const [rootTag, initialProps] of launches) {
+    try {
+      launchSurface(rootTag, initialProps);
+    } catch (error) {
+      // Out of the host's call, so a throw here would be an unhandled rejection: report it as the host would have.
+      const errorUtils = (globalThis as { ErrorUtils?: { reportFatalError(error: unknown): void } }).ErrorUtils;
+      if (errorUtils) errorUtils.reportFatalError(error);
+      else throw error;
+    }
+  }
+}
+
+/**
+ * Starts the registered app on a surface. In development a throw during mount or the first flush becomes the error screen; in release it propagates.
+ * While the app's `init` is in flight the surface waits for it (the splash screen stays up); after a failed `init` development shows its error, and a
+ * release build, where the failure is already a fatal error, starts nothing.
+ */
 export function launchSurface(rootTag: number, initialProps?: Record<string, unknown>): void {
   const state = hmrState();
   if (!state.app) throw new Error("No Fabric app is registered: createFabricApp has not run");
+  const settling = initSettling();
+  if (settling !== undefined) {
+    waiting.set(rootTag, initialProps);
+    if (waitingOn !== settling) {
+      waitingOn = settling;
+      void settling.then(() => {
+        if (waitingOn === settling) waitingOn = undefined;
+        startWaiting();
+      });
+    }
+    return;
+  }
+  const failed = initFailure();
+  if (failed !== undefined) {
+    if (!dev()) return;
+    state.surfaces.set(rootTag, initialProps);
+    showError(failed.error, [rootTag]);
+    return;
+  }
   // A surface that starts while another still runs (a recreated Activity whose old surface stops after the new one starts): the new root router takes the running one's navigation, as it does after a stop.
   if ([...state.surfaces.keys()].some((running) => running !== rootTag)) state.restore ??= state.navigation?.();
   const { props, hosted } = withHostNavigation(initialProps);
@@ -52,13 +95,35 @@ export function launchSurface(rootTag: number, initialProps?: Record<string, unk
  */
 export function stopApplication(rootTag: number): void {
   const state = hmrState();
+  // A surface that was still waiting for `init` never started.
+  if (waiting.delete(rootTag)) {
+    state.surfaces.delete(rootTag);
+    return;
+  }
   state.surfaces.delete(rootTag);
   if (state.surfaces.size === 0) state.restore = hostFinishing() ? undefined : state.navigation?.();
   stopSurface(rootTag);
 }
 
-/** Unmounts every surface and starts it again with the latest registered app, keeping the navigation state (every stack and tabs selection). */
+let remountOn: Promise<void> | undefined;
+
+/**
+ * Unmounts every surface and starts it again with the latest registered app, keeping the navigation state (every stack and tabs selection).
+ * While the app's `init` is in flight (a hot update that runs it: the file was added, or fixed after a failure) the screens stay as they are
+ * and the remount waits for it.
+ */
 export function remountSurfaces(): void {
+  const settling = initSettling();
+  if (settling !== undefined) {
+    if (remountOn !== settling) {
+      remountOn = settling;
+      void settling.then(() => {
+        if (remountOn === settling) remountOn = undefined;
+        remountSurfaces();
+      });
+    }
+    return;
+  }
   const state = hmrState();
   const surfaces = [...state.surfaces];
   if (surfaces.length === 0) return;
@@ -91,7 +156,8 @@ export function showError(error: unknown, rootTags: number[] = [...hmrState().su
   for (const rootTag of rootTags) {
     try {
       stopSurface(rootTag);
-      startSurface(rootTag, ErrorScreen, { ...details, onReload: () => { setTimeout(remountSurfaces, 0); } });
+      // Reload runs a failed `init` again before it remounts.
+      startSurface(rootTag, ErrorScreen, { ...details, onReload: () => { setTimeout(() => { retryInit(); remountSurfaces(); }, 0); } });
       shown = true;
     } catch (inner) {
       console.error("Svelte Native could not mount the error screen", inner);

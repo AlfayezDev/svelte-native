@@ -5,9 +5,9 @@ export type Transport = Record<string, {
     decode: (data: unknown) => unknown;
 }>;
 export type RemoteOptions = Partial<RemoteHostConfig> & {
-    /** The `transport` export of the app's universal hooks (`src/hooks.ts`): the custom types the server and the client pass between them. Pass the same object the browser uses. */
+    /** The `transport` export of the app's universal hooks (`src/hooks.ts`): the custom types the server and the client pass between them. Pass the same object the browser uses. Replaces the `transport` of `src/hooks.mobile.ts`. */
     transport?: Transport;
-    /** The app's client `handleError` hook: what an error from a remote function becomes (`App.Error`), as in the browser. */
+    /** The app's client `handleError` hook: what an error from a remote function becomes (`App.Error`), as in the browser. Replaces the `handleError` of `src/hooks.mobile.ts`. */
     handleError?: ClientHooks["handleError"];
     /** A `fetch` to use instead of Expo's (tests, a proxy). It must return a response whose `body` streams for `query.live`. `null` goes back to Expo's. */
     fetch?: typeof globalThis.fetch | null;

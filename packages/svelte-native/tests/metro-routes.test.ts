@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ConfigT } from "@expo/metro/metro-config";
@@ -281,5 +281,37 @@ describe("in development the table follows the route files", () => {
     writeFileSync(join(root, "src/routes/inbox/+mobile.svelte"), "");
     await new Promise((done) => setTimeout(done, 300));
     expect(table(root, "production")).not.toContain("/inbox");
+  });
+});
+
+describe("src/hooks.mobile.ts", () => {
+  const hooksModule = (root: string) => readFileSync(join(root, ".svelte-native/hooks.ts"), "utf8");
+
+  test("a development Metro writes the hooks module again when the file appears or goes; the entry stays as it is", async () => {
+    const root = project();
+    process.env.NODE_ENV = "development";
+    delete process.env.SVELTE_NATIVE_ROOT;
+    withSvelteNative(fakeConfig(root), { variant: "qa" });
+    const entry = readFileSync(join(root, ".svelte-native/entry.ts"), "utf8");
+    expect(entry).toContain("import './hooks';");
+    expect(hooksModule(root)).toContain("registerHooks({});");
+    writeFileSync(join(root, "src/hooks.mobile.ts"), "export const init = () => {};\n");
+    await until(() => hooksModule(root).includes("registerHooks(hooks);"));
+    expect(hooksModule(root)).toContain('import * as hooks from "../src/hooks.mobile";');
+    rmSync(join(root, "src/hooks.mobile.ts"));
+    await until(() => hooksModule(root).includes("registerHooks({});"));
+    expect(hooksModule(root)).not.toContain("import * as hooks");
+    expect(readFileSync(join(root, ".svelte-native/entry.ts"), "utf8")).toBe(entry);
+  });
+
+  test("a Metro that keeps the entry rewrites one from before the hooks module (it would leave the file unloaded)", () => {
+    const root = project();
+    delete process.env.SVELTE_NATIVE_ROOT;
+    syncRoutes(root, { variant: "qa" });
+    const entryFile = join(root, ".svelte-native/entry.ts");
+    const current = readFileSync(entryFile, "utf8");
+    writeFileSync(entryFile, current.replace("import './hooks';\n", ""));
+    withSvelteNative(fakeConfig(root), { variant: "qa" });
+    expect(readFileSync(entryFile, "utf8")).toBe(current);
   });
 });

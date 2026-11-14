@@ -247,7 +247,9 @@ describe("the development lab", () => {
 		bundle("");
 		const before = watched();
 		expect(Object.values(before).filter((time) => time === null)).toEqual([]);
-		expect(Object.keys(before).filter((file) => file.includes("/stubs/")).length).toBeGreaterThan(30); // the packages' stubs, the smoke checks' and the core, per variant
+		// The packages' stubs, the smoke checks' and the core, per variant whose Metro has run here (29 for the QA app since the library's four
+		// required peers are linked in every variant; a checkout where the smoke app was bundled before has its stubs too).
+		expect(Object.keys(before).filter((file) => file.includes("/stubs/")).length).toBeGreaterThan(20);
 		bundle("production");
 		expect(watched()).toEqual(before);
 		bundle("smoke");

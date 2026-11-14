@@ -30,7 +30,12 @@ test("the entry boots the app layout as the shell of the generated tree and acce
   // One import for the boot modules and the host: `/app` runs `init`, then `polyfills`, then loads the Fabric host (the order is pinned in exports.test.ts).
   expect(entry).toContain("import { createFabricApp, remountSurfaces } from '@alfayez/svelte-native/app';");
   for (const folded of ["@alfayez/svelte-native/init", "@alfayez/svelte-native/polyfills", "@alfayez/svelte-native/fabric"]) expect(entry).not.toContain(folded);
-  expect(entry.split("\n").filter((line) => line.startsWith("import ")).slice(0, 1)).toEqual(["import { createFabricApp, remountSurfaces } from '@alfayez/svelte-native/app';"]);
+  // Then the app's hooks (`.svelte-native/hooks.ts`), before the layout and the routes: the file's top level runs before any of the app's own modules.
+  expect(entry.split("\n").filter((line) => line.startsWith("import ")).slice(0, 3)).toEqual([
+    "import { createFabricApp, remountSurfaces } from '@alfayez/svelte-native/app';",
+    "import './hooks';",
+    "import App from '../src/routes/+layout.mobile.svelte';",
+  ]);
   expect(entry).toContain("import App from '../src/routes/+layout.mobile.svelte';");
   expect(entry).toContain("import { tree } from './routes';");
   expect(entry).toContain("createFabricApp(App, { tree });");
@@ -43,6 +48,71 @@ test("SVELTE_NATIVE_ROOT selects a custom root component", async () => {
   expect(entry).toContain("import { createFabricApp, remountSurfaces } from '@alfayez/svelte-native/app';");
   expect(entry).toContain('import App from "../src/lib/Spike.svelte";');
   expect(entry).toContain("createFabricApp(App, {});");
+  expect(entry).toContain("import './hooks';");
+});
+
+/** Syncs a project with these files besides a home screen (path under the project to source), and gives `.svelte-native/hooks.ts`. */
+async function hooksFor(files: Record<string, string>): Promise<string> {
+  const directory = await mkdtemp(resolve(tmpdir(), "svelte-native-hooks-"));
+  try {
+    await mkdir(resolve(directory, "src/routes"), { recursive: true });
+    await writeFile(resolve(directory, "src/routes/+mobile.svelte"), "");
+    for (const [path, source] of Object.entries(files)) await writeFile(resolve(directory, path), source);
+    delete process.env.SVELTE_NATIVE_ROOT;
+    await syncNative(directory);
+    return await readFile(resolve(directory, ".svelte-native/hooks.ts"), "utf8");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
+test("the hooks module registers the exports of src/hooks.mobile.ts, .ts before .js, and is empty without one", async () => {
+  const registers = (specifier: string) => [
+    "import { registerHooks } from '@alfayez/svelte-native/app';",
+    `import * as hooks from "${specifier}";`,
+    "",
+    "registerHooks(hooks);",
+  ];
+  const lines = (source: string) => source.split("\n").filter((line) => !line.startsWith("//")).slice(0, 4);
+  expect(lines(await hooksFor({ "src/hooks.mobile.ts": "export const init = () => {};" }))).toEqual(registers("../src/hooks.mobile"));
+  expect(lines(await hooksFor({ "src/hooks.mobile.js": "export const init = () => {};" }))).toEqual(registers("../src/hooks.mobile"));
+  expect(await hooksFor({ "src/hooks.mobile.ts": "", "src/hooks.mobile.js": "" })).toContain("(src/hooks.mobile.ts)");
+  // SvelteKit's own hooks files are not the app's: only the mobile one is. Without it the module registers none (so a removed file's hooks go).
+  const none = await hooksFor({ "src/hooks.client.ts": "export const init = () => {};", "src/hooks.ts": "export const transport = {};" });
+  expect(none).not.toContain("import * as hooks");
+  expect(lines(none).slice(0, 3)).toEqual(["import { registerHooks } from '@alfayez/svelte-native/app';", "", "registerHooks({});"]);
+});
+
+test("the bundled hooks module runs the file's top level after the boot modules and registers what it exports", async () => {
+  const directory = await mkdtemp(resolve(tmpdir(), "svelte-native-hooks-run-"));
+  try {
+    await mkdir(resolve(directory, "src/routes"), { recursive: true });
+    await writeFile(resolve(directory, "src/routes/+mobile.svelte"), "");
+    await writeFile(resolve(directory, "src/hooks.mobile.ts"), "globalThis.__order.push('hooks file');\nexport const init = () => { globalThis.__order.push('init'); };\nexport const handleError = () => ({ message: 'x' });\n");
+    delete process.env.SVELTE_NATIVE_ROOT;
+    await syncNative(directory);
+    const bundle = await build({
+      entryPoints: [resolve(directory, ".svelte-native/hooks.ts")], bundle: true, format: "esm", platform: "neutral", write: false,
+      plugins: [{
+        name: "app",
+        setup(builder) {
+          builder.onResolve({ filter: /^@alfayez\/svelte-native\/app$/ }, () => ({ path: "app", namespace: "app" }));
+          builder.onLoad({ filter: /.*/, namespace: "app" }, () => ({
+            contents: "globalThis.__order.push('boot'); export function registerHooks(hooks) { globalThis.__order.push('register ' + Object.keys(hooks).sort().join(',')); hooks.init(); }",
+            loader: "js",
+          }));
+        },
+      }],
+    });
+    const file = resolve(directory, "bundle.mjs");
+    await writeFile(file, bundle.outputFiles[0].contents);
+    (globalThis as { __order?: string[] }).__order = [];
+    await import(pathToFileURL(file).href);
+    expect((globalThis as { __order?: string[] }).__order).toEqual(["boot", "hooks file", "register handleError,init", "init"]);
+  } finally {
+    delete (globalThis as { __order?: string[] }).__order;
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 /** Syncs a project whose `src/routes` holds these files (path to source) and hands the project directory and the route table to `check`. */

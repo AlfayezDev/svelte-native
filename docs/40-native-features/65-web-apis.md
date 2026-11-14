@@ -67,6 +67,7 @@ A few things differ from a browser:
 - A request body is sent whole: a `ReadableStream` body is read to its end before the request starts.
 - `mode`, `cache`, `referrer` and `integrity` are accepted and ignored.
 - On iOS, a response header that arrives more than once is one value joined with `, `, and `statusText` is the standard phrase for the status code, not the server's own.
+- On iOS, a POST body that has no type of its own (bytes, or a `Blob` without one) is sent as `application/octet-stream`: iOS would otherwise label it a form.
 
 ## Crypto
 

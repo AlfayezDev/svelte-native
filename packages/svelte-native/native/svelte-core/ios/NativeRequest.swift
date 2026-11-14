@@ -40,11 +40,15 @@ final class NativeRequest: SharedObject, @unchecked Sendable {
     request.httpShouldHandleCookies = include
     if include { request.mainDocumentURL = target }
     // Headers go as given: no Content-Type is added here. (A repeated name becomes one header with the values joined by ", ", as URLRequest has no other way.)
-    // Known limit, measured on iOS 26: CFNetwork gives a POST body that has no Content-Type the type "application/x-www-form-urlencoded", for a Data body, an
-    // httpBody and a stream alike. Nothing in URLSession turns that off: an empty Content-Type value is sent as an empty header, an upload from a file is typed
-    // "application/octet-stream", and only POST is affected (a PUT body goes out untyped).
+    // Measured on iOS 26: CFNetwork gives a POST body that has no Content-Type the type "application/x-www-form-urlencoded", for a Data body, an httpBody and
+    // a stream alike, and nothing in URLSession turns that off (an empty value is sent as an empty header; only POST is affected, a PUT body goes out untyped).
+    // A form parser on the server would then read binary bytes as fields. Such a body (bytes, or a Blob without a type: JavaScript types every other kind) is
+    // sent as "application/octet-stream" instead, the type URLSession itself gives an upload from a file. The Fetch standard sends none; this is the nearest.
     for pair in requestInit.headers where pair.count >= 2 {
       request.addValue(pair[1], forHTTPHeaderField: pair[0])
+    }
+    if requestInit.method.uppercased() == "POST", request.value(forHTTPHeaderField: "Content-Type") == nil {
+      if case .none = body {} else { request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type") }
     }
     if case .stream(let length, _) = body {
       // Without a length URLSession sends a stream chunked.

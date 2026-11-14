@@ -128,6 +128,27 @@ describe("the way a screen is reached decides whether it has a back button", () 
 		expect(byId("screens-toolbar-center").steps.map((step) => JSON.stringify(step))).toContain(JSON.stringify({ open: "example-svelte:///__dev/screens?mode=toolbar-center" }));
 	});
 
+	// A goto or a link to the page the user is on with another query changes that screen in place (the router's rule since rc.6). Every
+	// page of the screens lab is the one page with another `?mode=`: a button of it that pushes must say so, or the screen it opens has no
+	// screen under it and no "Navigate up" (#49).
+	test("the screens lab's own buttons that open another of its pages ask for a push or a presentation", () => {
+		const menu = readFileSync(join(platformDir, "src/routes/__dev/screens/+mobile.svelte"), "utf8");
+		const ownPage = [...menu.matchAll(/router\.goto\((["`])\/__dev\/screens\?[^"`]*\1([^)]*)\)/g)];
+		expect(ownPage.length).toBe(10);
+		for (const [call, , options] of ownPage) expect([call, /^, (push|\{ presentation: "\w+" \})$/.test(options)]).toEqual([call, true]);
+		expect(menu).toContain('const push = { presentation: "push" } as const;');
+	});
+
+	test("a link opened onto the menu would change it in place, so the toolbar screens open theirs onto the screen the menu's button pushes", () => {
+		for (const id of ["screens-toolbar", "screens-toolbar-center"]) {
+			const steps = (cases.find((entry) => entry.id === id) as ScreenCase).steps.map((step) => JSON.stringify(step));
+			const pushed = steps.indexOf(JSON.stringify({ tap: { label: "Push eight screens with headers" } }));
+			const landed = steps.indexOf(JSON.stringify({ wait: { label: "Screen 1, Native header" } }));
+			const opened = steps.findIndex((step) => step.startsWith('{"open":'));
+			expect([pushed >= 0, pushed < landed, landed < opened]).toEqual([true, true, true]);
+		}
+	});
+
 	test("a button the case taps is on the lab menu's page", () => {
 		const menu = readFileSync(join(platformDir, "src/routes/__dev/screens/+mobile.svelte"), "utf8");
 		for (const screen of cases)

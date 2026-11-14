@@ -8,11 +8,15 @@
   /**
    * The native screens lab: `?mode=` picks the page. The menu opens the others; the stress scenarios header-8 and sheet-8
    * open `header` and `sheet` directly. Sheets and modals are presented by the caller (`goto(..., { presentation })`).
+   * Every page is this one with another query, and a `goto` to the page the user is on with another query changes it in place,
+   * so the buttons that push a screen say so (`push`): without it, there is no screen to go back to.
    * `toolbar` and `toolbar-center` are reached by link only (`/__dev/screens?mode=toolbar`): a menu button for them would
-   * move the rows the parity references of the menu, the sheets and the modal show.
+   * move the rows the parity references of the menu, the sheets and the modal show. A link changes the screen it lands on in
+   * place too, so the harness pushes screen 1 and opens the link onto it.
    */
   let { url }: { url?: URL } = $props();
   const router = useRouter();
+  const push = { presentation: "push" } as const;
   const mode = $derived(url?.searchParams.get("mode") ?? "menu");
   const depth = $derived(Number(url?.searchParams.get("depth") ?? "1"));
   const rows = Array.from({ length: 24 }, (_, index) => index + 1);
@@ -103,14 +107,14 @@
     <Screen title="Native screens" subtitle="Header, sheet, tabs" header={{ large: true }} headerRight={bell} style={{ backgroundColor: theme.background }}>
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12, direction: theme.direction }}>
         <Text style={{ color: theme.muted, fontSize: 14 }}>Each page below is a real screen: the engine draws its header, sheet and tab bar.</Text>
-        {@render button("Push eight screens with headers", () => router.goto("/__dev/screens?mode=header&depth=1"), "primary")}
-        {@render button("Header slots and search", () => router.goto("/__dev/screens?mode=slots"))}
-        {@render button("Translucent header over content", () => router.goto("/__dev/screens?mode=translucent"))}
+        {@render button("Push eight screens with headers", () => router.goto("/__dev/screens?mode=header&depth=1", push), "primary")}
+        {@render button("Header slots and search", () => router.goto("/__dev/screens?mode=slots", push))}
+        {@render button("Translucent header over content", () => router.goto("/__dev/screens?mode=translucent", push))}
         {@render button("Sheet with two detents", () => router.goto("/__dev/screens?mode=sheet", { presentation: "sheet" }))}
         {@render button("Sheet that fits its content", () => router.goto("/__dev/screens?mode=auto", { presentation: "sheet" }))}
         {@render button("Form sheet", () => router.goto("/__dev/screens?mode=form", { presentation: "formSheet" }))}
         {@render button("Modal", () => router.goto("/__dev/screens?mode=header&depth=1", { presentation: "modal" }))}
-        {@render button("Bottom tabs, a stack in each", () => router.goto("/__dev/screens?mode=tabs"))}
+        {@render button("Bottom tabs, a stack in each", () => router.goto("/__dev/screens?mode=tabs", push))}
         {#each rows as row (row)}{@render card(`Row ${row}`)}{/each}
       </ScrollView>
     </Screen>
@@ -119,7 +123,7 @@
       <SafeAreaView edges={["bottom", "left", "right"]} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={{ padding: 16, gap: 10, direction: theme.direction }}>
           {#each rows as row (row)}{@render card(`Screen ${depth} · row ${row}`)}{/each}
-          {@render button(`Push screen ${depth + 1}`, () => router.goto(`/__dev/screens?mode=header&depth=${depth + 1}`), "primary")}
+          {@render button(`Push screen ${depth + 1}`, () => router.goto(`/__dev/screens?mode=header&depth=${depth + 1}`, push), "primary")}
         </ScrollView>
       </SafeAreaView>
     </Screen>

@@ -53,14 +53,19 @@ test("a form with a File sends the file's native bytes through the library's fet
   }
 });
 
-test("on a build without the library's fetch module (React Native's Blob, which takes no bytes), a form with a file says so; one without files is sent as before", async () => {
+test("on a build without the library's fetch module (React Native's Blob, which takes no bytes), a form with a file fails with a reason that names the build; one without files is sent as before", async () => {
   const client = await loadClient(`export * from "../src/remote/index.ts"; export { form } from "../src/remote/runtime.ts";`);
   const saved = globalThis.Blob;
   class RnLikeBlob { constructor(parts: unknown[] = []) { if (parts.some((part) => ArrayBuffer.isView(part))) throw new Error("Creating blobs from 'ArrayBuffer' and 'ArrayBufferView' are not supported"); } }
   (globalThis as any).Blob = RnLikeBlob;
   try {
     const bodies: unknown[] = [];
-    client.configureRemote({ origin: "https://upload.example", fetch: async (_url: string, init: RequestInit) => { bodies.push(init.body); return Response.json({ type: "result", data: stringify({ _: { issues: [], result: "ok" } }) }); } });
+    const caught: unknown[] = [];
+    client.configureRemote({
+      origin: "https://upload.example",
+      fetch: async (_url: string, init: RequestInit) => { bodies.push(init.body); return Response.json({ type: "result", data: stringify({ _: { issues: [], result: "ok" } }) }); },
+      handleError: ({ error }: { error: unknown }) => { caught.push(error); },
+    });
     const plain = client.form("h/plain");
     plain.fields.title.as("text").onChangeText("a");
     expect(await plain.submit()).toBe(true);
@@ -68,7 +73,11 @@ test("on a build without the library's fetch module (React Native's Blob, which 
     const upload = client.form("h/upload");
     upload.fields.photo.as("file").onValueChange(new File([new Uint8Array([1])], "a.bin"));
     expect(await upload.submit()).toBe(false);
-    expect(String(upload.error?.message ?? "")).toBe("Internal Error");
+    // The user sees SvelteKit's default App.Error; the app's handleError (and so the log) gets the reason, which names the build it needs.
+    expect(upload.error?.message).toBe("Internal Error");
+    expect(caught).toHaveLength(1);
+    expect(caught[0]).toBeInstanceOf(TypeError);
+    expect(String((caught[0] as Error).message)).toContain("a build of the app that has Svelte Native's fetch module (0.4.0-rc.8 or later)");
     expect(bodies).toHaveLength(1);
   } finally {
     globalThis.Blob = saved;

@@ -16,7 +16,7 @@
  * - `reset()` returns the fields to their defaults (the web's `<form>.reset()`), and is what the default `enhance` does after a successful send.
  *   It invalidates pending validation/preflight, but does not cancel a request already sent to the server; that response can still update result/errors.
  * - Failed submissions focus the first rendered invalid field whose mounted host exposes `focus()`. Background validation never moves focus.
- *   If props are shared by multiple hosts, detaching any host clears the saved focus handle to avoid focusing a possibly stale native view.
+ *   An input whose host is replaced (an `{#if}` that swaps it) is focused through the newest host.
  * - What a submission carries is what the inputs show: SvelteKit reads it from the DOM (`new FormData(form)`: the inputs that are there, with the value
  *   they show, an unchecked box not at all), and so does this, from the inputs `as(type)` made and the host has on screen (`variants` below).
  * - A submission that fails is not thrown at the caller (the web's submit event has nobody to throw to): it goes through `handle_error` (the app's
@@ -60,7 +60,7 @@ type Variant = {
   options?: readonly unknown[];
   props: Record<string, unknown>;
   mounted: number;
-  /** Last attached host. Cleared on every detach, even if another host shares these props. */
+  /** The newest host's handle, while any host has these props (`mounted`). */
   handle?: { focus?: () => void };
   seen: boolean;
   /** What the input shows now. */
@@ -306,8 +306,11 @@ export function form(id: string) {
           const self = found;
           found.props.ref = (handle: unknown) => {
             self.seen = true;
-            self.handle = handle && typeof handle === "object" ? handle as { focus?: () => void } : undefined;
             self.mounted = Math.max(0, self.mounted + (handle ? 1 : -1));
+            // The newest host's handle. A host that replaces another is told before the old one's `null` (the renderer sweeps refs after the flush),
+            // so the handle goes only with the last host.
+            if (handle && typeof handle === "object") self.handle = handle as { focus?: () => void };
+            else if (self.mounted === 0) self.handle = undefined;
           };
           variants.set(id, found);
         }
@@ -509,8 +512,11 @@ export function form(id: string) {
           const outcome = attempt.then(
             async (ok) => {
               if (!ok && raw_issues.length > 0) {
-                await tick();
-                if (reset_epoch === reset_id) focus_invalid();
+                // Focus is a courtesy: nothing in it may turn the submission into a rejection.
+                try {
+                  await tick();
+                  if (reset_epoch === reset_id) focus_invalid();
+                } catch (error) { console.error(error); }
               }
               return ok;
             },

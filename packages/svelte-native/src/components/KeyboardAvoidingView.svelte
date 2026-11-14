@@ -34,7 +34,7 @@
     const keyboard = insets.keyboardVisible ? insets.keyboardHeight : 0;
     if (keyboard === 0) { bottom = 0; return; }
     if (!frame) { measure(); return; }
-    bottom = keyboardOverlap({ viewY: frame.y, viewHeight: frame.height, rootHeight: insets.frame.height, rootY: insets.frame.y, keyboardHeight: keyboard, offset: keyboardVerticalOffset, behavior: behavior as AvoidBehavior, previous: untrack(() => bottom) });
+    bottom = keyboardOverlap({ viewY: frame.y, viewHeight: frame.height, rootHeight: insets.frame.height, keyboardHeight: keyboard, offset: keyboardVerticalOffset, behavior: behavior as AvoidBehavior, previous: untrack(() => bottom) });
   });
   // One function for the life of the component: a new `ref` each time the props are built would be called with null and then the handle again.
   const keep = (value: typeof handle) => { handle = value; };

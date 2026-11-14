@@ -145,7 +145,7 @@ const blob = await (await fetch(asset.uri)).blob();
 form.fields.photo.as('file').onValueChange(new File([blob], asset.fileName, { type: asset.mimeType }));
 ```
 
-The server gets an ordinary `File`, as it would from a browser. Uploading a file needs a build of the app made with Svelte Native 0.4.0-rc.8 or later; on an older build, an over-the-air update's submission with a file fails with an error that says so.
+The server gets an ordinary `File`, as it would from a browser. Uploading a file needs a build of the app made with Svelte Native 0.4.0-rc.8 or later. On an older build, which an over-the-air update can reach, a submission with a file fails: `form.error` is the usual error, and the error your `handleError` gets says which build is needed. `validate()` sends the files too, as SvelteKit's form does.
 
 ### Not supported
 

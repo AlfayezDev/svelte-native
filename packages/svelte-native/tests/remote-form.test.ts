@@ -249,6 +249,32 @@ describe("state around a submission", () => {
     expect(focused).toBe(false);
     expect(form.pending).toBe(0);
   });
+  test("reset during a submission's preflight that then passes: nothing is sent", async () => {
+    const form = m.form("h/reset-pass");
+    let finish!: (result: unknown) => void;
+    let started!: () => void;
+    const ready = new Promise<void>((resolve) => { started = resolve; });
+    form.fields.name.as("text").onChangeText("x");
+    form.preflight({ "~standard": { version: 1, vendor: "test", validate: () => { started(); return new Promise((resolve) => { finish = resolve; }); } } });
+    const submission = form.submit();
+    await ready;
+    form.reset();
+    finish({ value: { name: "x" } });
+    expect(await submission).toBe(false);
+    expect(form.error).toBeUndefined(); // the fetch of this file fails the test's submission if anything is sent
+    expect(form.pending).toBe(0);
+  });
+  test("an input whose host is replaced is focused through the new host (the renderer tells the new one before the old one's null)", async () => {
+    const form = m.form("h/focus");
+    const focused: string[] = [];
+    const props = form.fields.first.as("text");
+    props.ref({ focus: () => focused.push("old") });
+    props.ref({ focus: () => focused.push("new") });
+    props.ref(null);
+    form.preflight({ "~standard": { version: 1, vendor: "test", validate: () => ({ issues: [{ message: "required", path: ["first"] }] }) } });
+    expect(await form.submit()).toBe(false);
+    expect(focused).toEqual(["new"]);
+  });
   test("reset invalidates pending async validation", async () => {
     const form = m.form("h/reset-validation");
     let finish!: (result: unknown) => void;

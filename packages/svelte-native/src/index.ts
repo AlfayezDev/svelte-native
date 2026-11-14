@@ -23,3 +23,4 @@ export type {
   ScreenAnimation, ScreenOptions, SearchOptions, SheetOptions, StatusBarOptions, TabHandle, TabIconSource, TabItem, ToolbarItem, ToolbarOptions,
 } from "./fabric/navigation.ts";
 export type { StackDefaults } from "./navigator-context.ts";
+export type { MobileHooks } from "./app-hooks.ts";

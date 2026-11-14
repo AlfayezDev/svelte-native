@@ -17,7 +17,8 @@ my-app/
 │ │ ├ +mobile.svelte
 │ │ └ [your routes]
 │ ├ app.d.ts
-│ └ app.html
+│ ├ app.html
+│ └ hooks.mobile.ts
 ├ static/
 ├ patches/
 │ └ svelte-native/
@@ -50,6 +51,10 @@ Web and native routes share the directory. SvelteKit reads the `+page` and `+lay
 Shared code, as in any SvelteKit project. A `.ts` or `.svelte.ts` module that doesn't use the DOM works in the web app and on the phone. Components don't carry over: a web component renders `div`s, a native one renders [`View`](view)s.
 
 `init` adds `src/lib/theme.ts`, the light and dark colours of the first screens ([Light and dark mode](styling#light-and-dark-mode)). If you already have a `theme.ts`, it writes `native-theme.ts` instead.
+
+### src/hooks.mobile.ts
+
+The native app's counterpart of `hooks.client.ts`, and optional: code that runs when the app starts, before any screen, and the hooks remote functions use. [Hooks](hooks) explains it.
 
 ### app.json
 
@@ -86,7 +91,7 @@ These are build output. Git ignores them, you can delete them at any time, and t
 
 ### .svelte-native
 
-The generated entry point and route table of the native app, the counterpart of SvelteKit's `.svelte-kit`.
+The generated entry point, route table and hooks module of the native app, the counterpart of SvelteKit's `.svelte-kit`.
 
 ### android and ios
 

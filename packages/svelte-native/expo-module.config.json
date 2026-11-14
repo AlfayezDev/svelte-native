@@ -20,7 +20,7 @@
       {
         "name": "svelte-core",
         "path": "native/svelte-core/android",
-        "modules": ["expo.modules.sveltecore.SvelteFetchModule"]
+        "modules": ["expo.modules.sveltecore.SvelteFetchModule", "expo.modules.sveltecore.SvelteClipboardModule"]
       }
     ]
   },
@@ -35,7 +35,7 @@
       "native/svelte-core/ios/SvelteCore.podspec"
     ],
     "swiftModuleName": ["SvelteCapture", "SvelteInsets", "SvelteNavigation", "SvelteUpdates", "SvelteBlur", "SvelteCore"],
-    "modules": ["SvelteInsetsModule", "SvelteNavigationModule", "SvelteUpdatesModule", "SvelteBlurModule", "SvelteFetchModule"],
+    "modules": ["SvelteInsetsModule", "SvelteNavigationModule", "SvelteUpdatesModule", "SvelteBlurModule", "SvelteFetchModule", "SvelteClipboardModule"],
     "appDelegateSubscribers": ["SvelteCaptureSubscriber"],
     "reactDelegateHandlers": ["SvelteUpdatesReactDelegateHandler"]
   }

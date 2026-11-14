@@ -160,7 +160,7 @@ A screen navigates the way a SvelteKit page does. `<a href>` and `goto` from `$a
 
 A press on an `<a href>` goes to the route of its path, and one on a link to another site, `mailto:` or `tel:` is opened by the system ([HTML elements](html-elements)).
 
-`goto` works from any code: a component, a `.svelte.ts` module, a timer, the code that runs when a remote function answers. It drives the app's root router, which selects the right tab, closes a modal that is in the way, and pushes the screen on the stack it belongs to. If that stack already has the screen, it goes back to it instead of pushing it twice. The promise it returns resolves once the navigation is made. It rejects when no screen has the path, and when the app has no router yet. A relative URL (`goto('edit')`) is read against the screen the user sees, as a browser would, and a URL of another site is opened by the system, as `<a href>` does. A `goto` to the screen the user is already on with another search or hash (`goto('?tab=3')`, `goto('#top')`) changes that screen's `url` in place: no screen is pushed or replaced, so the page is not built again, whether or not the `goto` replaces. The same holds for `router.goto`, except with `reset: true`, which makes a new first screen.
+`goto` works from any code: a component, a `.svelte.ts` module, a timer, the code that runs when a remote function answers. It drives the app's root router, which selects the right tab, closes a modal that is in the way, and pushes the screen on the stack it belongs to. If that stack already has the screen, it goes back to it instead of pushing it twice. The promise it returns resolves once the navigation is made. It rejects when no screen has the path, and when the app has no router yet. A relative URL (`goto('edit')`) is read against the screen the user sees, as a browser would, and a URL of another site is opened by the system, as `<a href>` does. A `goto` to the screen the user is already on with another search or hash (`goto('?tab=3')`, `goto('#top')`) changes that screen's `url` in place: no screen is pushed or replaced, so the page is not built again, whether or not the `goto` replaces. So does a link that arrives while the app is on that screen. The same holds for `router.goto`, except with `reset: true`, which makes a new first screen, and with a `presentation`: on `/items?id=7`, `router.goto('/items?id=8', { presentation: 'push' })` pushes another screen of the same page, with a back button to this one (`goto` has no `presentation` option, and `router.goto` takes paths, not relative URLs). A URL the stack already has is still not pushed twice.
 
 | Option of `goto(url, options)` | Effect |
 | --- | --- |
@@ -205,7 +205,7 @@ The router has:
 | --- | --- |
 | `replaceState: true` | replace the top screen instead of pushing a new one |
 | `reset: true` | make the target the first screen, with no history: after signing in, for example |
-| `presentation` | present this screen as `'modal'`, `'sheet'`, ... this time, whatever the page says |
+| `presentation` | present this screen as `'push'`, `'modal'`, `'sheet'`, ... this time, whatever the page says; for the page the user is on, a new screen instead of a change in place |
 
 The header's back button, the iOS edge swipe and Android's back button go back without any code. Android's back button goes to the innermost navigator the user sees.
 

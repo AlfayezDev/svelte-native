@@ -117,7 +117,7 @@ describe("the way a screen is reached decides whether it has a back button", () 
 		expect(detail?.deepLink).toBe("rasheed-svelte:///__dev/tree/home/detail/7");
 	});
 
-	test("the base is the lab's own screen for the menu and the menu for the screens it pushes, by its button where it has one", () => {
+	test("the base is the lab's own screen for the menu and the menu for the screens it pushes, by its button where it has one (the toolbar screens over screen 1)", () => {
 		const byId = (id: string) => cases.find((entry) => entry.id === id) as ScreenCase;
 		expect(byId("screens-menu").deepLink).toBe("rasheed-svelte:///__dev");
 		for (const id of ["screens-header", "screens-translucent", "screens-toolbar", "screens-toolbar-center"])
@@ -126,6 +126,36 @@ describe("the way a screen is reached decides whether it has a back button", () 
 		expect(byId("screens-translucent").steps.map((step) => JSON.stringify(step))).toContain(JSON.stringify({ tap: { label: "Translucent header over content" } }));
 		expect(byId("screens-toolbar").steps.map((step) => JSON.stringify(step))).toContain(JSON.stringify({ open: "rasheed-svelte:///__dev/screens?mode=toolbar" }));
 		expect(byId("screens-toolbar-center").steps.map((step) => JSON.stringify(step))).toContain(JSON.stringify({ open: "rasheed-svelte:///__dev/screens?mode=toolbar-center" }));
+	});
+
+	// A goto or a link to the page the user is on with another query changes that screen in place (the router's rule since rc.6). Every
+	// page of the screens lab is the one page with another `?mode=`: a button of it that pushes must say so, or the screen it opens has no
+	// screen under it and no "Navigate up" (#49).
+	test("the screens lab's own buttons that open another of its pages ask for a push or a presentation", () => {
+		const menu = readFileSync(join(platformDir, "src/routes/__dev/screens/+mobile.svelte"), "utf8");
+		const ownPage = [...menu.matchAll(/router\.goto\((["`])\/__dev\/screens\?[^"`]*\1([^)]*)\)/g)];
+		expect(ownPage.length).toBeGreaterThanOrEqual(10);
+		for (const [call, , options] of ownPage) expect([call, /^, (push|\{ presentation: "\w+" \})$/.test(options ?? "")]).toEqual([call, true]);
+		expect(menu).toMatch(/const push = \{ presentation: "push" \}/);
+	});
+
+	test("the lab's stress scenarios and the iOS probe that push the page they are on ask for a push", () => {
+		const stress = readFileSync(join(platformDir, "src/lib/native/dev/Stress.svelte"), "utf8");
+		expect(stress).toContain('router.goto("/__dev/screen?header=none", { presentation: "push" });'); // navigation-8, over its bare base screen
+		expect(stress).toContain('router.goto(`/__dev/screens?mode=header&depth=${level}`, { presentation: "push" });'); // header-8
+		expect(stress).toContain('router.goto("/__dev/screens?mode=header&depth=2", { presentation: "push" });'); // the soak's header part
+		const probe = readFileSync(join(platformDir, "src/lib/native/dev/probe.ts"), "utf8");
+		expect(probe).toContain('["pushed screen", `${screens}?mode=header&depth=2`, "push"]'); // dismissal, over the menu
+	});
+
+	test("a link opened onto the menu would change it in place, so the toolbar screens open theirs onto the screen the menu's button pushes", () => {
+		for (const id of ["screens-toolbar", "screens-toolbar-center"]) {
+			const steps = (cases.find((entry) => entry.id === id) as ScreenCase).steps.map((step) => JSON.stringify(step));
+			const pushed = steps.indexOf(JSON.stringify({ tap: { label: "Push eight screens with headers" } }));
+			const landed = steps.indexOf(JSON.stringify({ wait: { label: "Screen 1, Native header" } }));
+			const opened = steps.findIndex((step) => step.startsWith('{"open":'));
+			expect([pushed >= 0, pushed < landed, landed < opened]).toEqual([true, true, true]);
+		}
 	});
 
 	test("a button the case taps is on the lab menu's page", () => {

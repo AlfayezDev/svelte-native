@@ -11,6 +11,8 @@ export declare const INITIALIZE_CORE: RegExp;
 /**
  * React Native modules that reach the React renderer (118 KB, plus React and the public-instance/DOM classes), keyed by
  * file suffix. Their only Fabric-entry users are view-config registration and command helpers, which need none of it.
+ * `AppRegistry` (with `AppRegistryImpl`, which imports `renderApplication`) is the library's own: a library that imports it from
+ * `react-native` (expo-task-manager registers a headless task with it) gets the registry native code calls (`fabric/app-registry.ts`).
  */
 export declare const RENDERER_STUBS: Record<string, string>;
 export type SvelteNativeMetroOptions = {

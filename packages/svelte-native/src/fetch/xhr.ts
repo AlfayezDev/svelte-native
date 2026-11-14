@@ -26,7 +26,10 @@ export function patchXHRSend(): void {
   const patched = function (this: typeof prototype, body?: unknown): void {
     const handle = nativeBlobOf(body);
     const sources = handle !== undefined ? [handle] : isFormData(body) ? (body as unknown as { _parts: [string, unknown][] })._parts.flatMap(([, value]) => nativeBlobOf(value) ?? []) : [];
-    if (sources.length === 0) return send.call(this, body);
+    if (sources.length === 0) {
+      send.call(this, body);
+      return;
+    }
     const urls = [...new Set(sources.map((source) => source.objectURL()))].filter((url) => !handedOut.has(url));
     for (const url of urls) inUse.set(url, (inUse.get(url) ?? 0) + 1);
     let released = false;

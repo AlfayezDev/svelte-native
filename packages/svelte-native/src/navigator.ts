@@ -64,7 +64,7 @@ export async function share(data?: ShareData): Promise<void> {
     // iOS shares a message and a URL as two items; Android's sheet takes one text, so the URL follows the message on a line of its own.
     const content = platformOS() === "ios"
       ? { title: titleText, message: body ?? (link === undefined ? titleText : undefined), url: link }
-      : { title: titleText, message: [body, link].filter((part) => part !== undefined && part !== "").join("\n") || titleText };
+      : { title: titleText, message: [body, link].filter((part) => part !== undefined && part !== "").join("\n") || (titleText ?? "") };
     const result = await module.share(content, { dialogTitle: titleText, subject: titleText });
     if (result.action === module.dismissedAction) throw domException("Share canceled", "AbortError");
   } finally {
@@ -76,8 +76,9 @@ export async function share(data?: ShareData): Promise<void> {
 const MAX_DURATION = 10_000;
 
 /**
- * The Vibration API: a duration, or a pattern of vibrations and the pauses between them; `0` or `[]` stops it. On Android the pattern plays as given; iOS has
- * one fixed vibration, so each vibration of the pattern is that one. Returns `false` for a value that is not a duration (the web's conversion would throw).
+ * The Vibration API: a duration, or a pattern of vibrations and the pauses between them; `0` or `[]` stops it, and a call replaces the pattern playing. On Android
+ * the pattern plays as given; iOS has one fixed vibration, so each vibration of the pattern starts one, at its time. Returns `false` for a value that is not a duration
+ * (the web's conversion would throw).
  */
 export function vibrate(pattern: number | Iterable<number>): boolean {
   const list = typeof pattern === "number" ? [pattern] : [...pattern].map(Number);
@@ -86,17 +87,45 @@ export function vibrate(pattern: number | Iterable<number>): boolean {
   // A pattern's last pause does nothing.
   if (durations.length % 2 === 0) durations.pop();
   const module = vibration();
-  if (durations.length === 0 || durations.every((value) => value === 0)) {
-    module.cancel();
-    return true;
-  }
-  // React Native's pattern starts with a pause; the web's with a vibration.
+  // A new call replaces the pattern that is playing, as on the web (React Native's iOS ignores a call while one plays).
+  module.cancel();
+  if (durations.length === 0 || durations.every((value) => value === 0)) return true;
   if (durations.length === 1) module.vibrate(durations[0]);
-  else module.vibrate([0, ...durations]);
+  else if (platformOS() === "ios") {
+    // iOS's pattern is the waits before each of its fixed vibrations: one at the start of each of the web's, after the vibration and pause before it.
+    const starts = [0];
+    for (let i = 0; i + 2 < durations.length; i += 2) starts.push(durations[i] + durations[i + 1]);
+    module.vibrate(starts);
+  } else {
+    // Android's pattern starts with a pause; the web's with a vibration.
+    module.vibrate([0, ...durations]);
+  }
   return true;
 }
 
-/** The device's language as a BCP 47 tag (`en-US`, `ar-SA`, `zh-Hans-CN`), from the locale React Native reports. */
+/**
+ * A locale identifier as React Native reports it, as a BCP 47 tag: Android's is Java's `Locale.toString()` (`en_US`, `zh_CN_#Hans`,
+ * `ar_SA_#u-nu-latn`, `sr_RS_#Latn`: language, country, variant, then `#` and the script and extensions), an older form an ICU one
+ * (`en_US@calendar=gregorian`). Undefined when it is not one.
+ */
+export function bcp47(identifier: string): string | undefined {
+  const [base = "", extra = ""] = identifier.replace(/@.*$/, "").split("_#");
+  const [language, country, variant] = base.split("_");
+  if (!language) return undefined;
+  const script = /^[A-Z][a-z]{3}/.exec(extra)?.[0];
+  const extensions = (script ? extra.slice(script.length) : extra).replace(/^[_-]/, "");
+  const tag = [language, script, country, variant, extensions].filter((part) => part !== undefined && part !== "").join("-");
+  try {
+    return Intl.getCanonicalLocales(tag)[0];
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The device's language as a BCP 47 tag (`en-US`, `ar-SA`, `zh-Hans-CN`): on Android the locale React Native reports when the app starts; on iOS
+ * (React Native reports none there) and for an identifier that is not a locale, the runtime's default locale, which is the language and region the app runs in.
+ */
 export function deviceLanguage(): string {
   let identifier: string | undefined;
   try {
@@ -104,15 +133,7 @@ export function deviceLanguage(): string {
   } catch {
     identifier = undefined;
   }
-  const tag = identifier?.replace(/@.*$/, "").replace(/_/g, "-");
-  if (tag) {
-    try {
-      return Intl.getCanonicalLocales(tag)[0] ?? tag;
-    } catch {
-      return tag;
-    }
-  }
-  return new Intl.DateTimeFormat().resolvedOptions().locale;
+  return (identifier && bcp47(identifier)) || new Intl.DateTimeFormat().resolvedOptions().locale;
 }
 
 /** Adds what `navigator` lacks: the members above, and the global `ClipboardItem`. */

@@ -139,6 +139,9 @@ describe("navigator.share and canShare", () => {
     expect(android.native.shares[0].content).toEqual({ title: "Svelte", message: "Read this\nhttps://svelte.dev/" });
     await android.scope.navigator.share({ url: "https://svelte.dev" });
     expect(android.native.shares[1].content).toEqual({ title: undefined, message: "https://svelte.dev/" });
+    // An empty text is a text (canShare says yes): React Native's Android share needs a string message.
+    await android.scope.navigator.share({ text: "" });
+    expect(android.native.shares[2].content).toEqual({ title: undefined, message: "" });
   });
 
   test("a dismissed sheet is an AbortError, invalid data a TypeError, and a second share while one is open an InvalidStateError", async () => {
@@ -163,9 +166,18 @@ describe("navigator.vibrate", () => {
     expect(scope.navigator.vibrate([])).toBe(true);
     expect(scope.navigator.vibrate(0)).toBe(true);
     expect(scope.navigator.vibrate([20_000, -5, 1.9])).toBe(true);
-    expect(native.vibrations).toEqual([200, [0, 100, 50, 200], [0, 100, 50, 200], "cancel", "cancel", [0, 10_000, 0, 1]]);
+    // Each call first stops the pattern that plays (React Native's iOS would ignore a call while one plays).
+    expect(native.vibrations).toEqual(["cancel", 200, "cancel", [0, 100, 50, 200], "cancel", [0, 100, 50, 200], "cancel", "cancel", "cancel", [0, 10_000, 0, 1]]);
     expect(scope.navigator.vibrate([100, Number.NaN])).toBe(false);
-    expect(native.vibrations).toHaveLength(6);
+    expect(native.vibrations).toHaveLength(10);
+  });
+
+  test("iOS: one fixed vibration at the start of each of the web's, after the vibration and the pause before it", async () => {
+    const { scope, native } = await install({ os: "ios" });
+    scope.navigator.vibrate([100, 50, 200]);
+    scope.navigator.vibrate([100, 50, 200, 300, 400, 30]);
+    scope.navigator.vibrate(500);
+    expect(native.vibrations).toEqual(["cancel", [0, 150], "cancel", [0, 150, 500], "cancel", 500]);
   });
 });
 
@@ -179,6 +191,17 @@ describe("navigator.language and languages", () => {
     expect(scope.navigator.language).toBe("zh-Hans-CN");
     native.locale = "en_US@calendar=gregorian";
     expect(scope.navigator.language).toBe("en-US");
+    // Android's identifier is Java's Locale.toString(): the script and the extensions after "_#".
+    native.locale = "zh_CN_#Hans";
+    expect(scope.navigator.language).toBe("zh-Hans-CN");
+    native.locale = "sr_RS_#Latn";
+    expect(scope.navigator.language).toBe("sr-Latn-RS");
+    native.locale = "ar_SA_#u-nu-latn";
+    expect(scope.navigator.language).toBe("ar-SA-u-nu-latn");
+    native.locale = "en";
+    expect(scope.navigator.language).toBe("en");
+    native.locale = "not a locale";
+    expect(scope.navigator.language).toBe(new Intl.DateTimeFormat().resolvedOptions().locale);
     native.locale = undefined;
     expect(scope.navigator.language).toBe(new Intl.DateTimeFormat().resolvedOptions().locale);
   });
@@ -186,10 +209,17 @@ describe("navigator.language and languages", () => {
   test("what the platform or a library defined already is kept", async () => {
     const { m } = await install();
     const own = () => true;
-    const scope: any = { navigator: { language: "fr-FR", vibrate: own } };
+    const clipboard = {};
+    const scope: any = { navigator: { language: "fr-FR", languages: ["fr-FR"], vibrate: own, share: own, canShare: own, clipboard } };
     m.installNavigator(scope);
-    expect(scope.navigator.language).toBe("fr-FR");
-    expect(scope.navigator.vibrate).toBe(own);
-    expect(typeof scope.navigator.share).toBe("function");
+    expect(scope.navigator).toEqual({ language: "fr-FR", languages: ["fr-FR"], vibrate: own, share: own, canShare: own, clipboard });
+  });
+
+  test("installing loads nothing of React Native or the native module", async () => {
+    const { scope, native } = await install({ clipboard: null });
+    // The stand-ins record every call; none was made, and the clipboard's lookup has not happened (it would warn).
+    expect(native.shares).toEqual([]);
+    expect(native.vibrations).toEqual([]);
+    expect(Object.getOwnPropertyDescriptor(scope.navigator, "clipboard")?.get).toBeDefined();
   });
 });

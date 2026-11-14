@@ -144,8 +144,8 @@ await navigator.share({ title: 'Svelte Native', text: 'Have a look', url: 'https
 
 ### Vibration, language
 
-- `navigator.vibrate(200)` vibrates for a duration, and `navigator.vibrate([100, 50, 100])` plays a pattern of vibrations and pauses; `0` or `[]` stops it. iOS has one fixed vibration, so each vibration of a pattern is that one.
-- `navigator.language` is the device's language as a tag such as `en-US`, and `navigator.languages` lists it.
+- `navigator.vibrate(200)` vibrates for a duration, and `navigator.vibrate([100, 50, 100])` plays a pattern of vibrations and pauses; `0` or `[]` stops it, and a new call replaces the pattern that plays. iOS has one fixed vibration, so each vibration of a pattern starts one at its time, whatever its length.
+- `navigator.language` is the device's language as a tag such as `en-US` or `zh-Hans-CN`, and `navigator.languages` lists it. On Android it is the device's language when the app started; on iOS, the language and region the app runs in.
 
 ## An update to an older build
 

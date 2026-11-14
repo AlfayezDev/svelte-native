@@ -1,5 +1,12 @@
 import type { MetroConfig as ConfigT } from "expo/metro-config";
 export declare const LITE_ORIGINS: RegExp;
+/**
+ * The names under which Node's `crypto` is imported. A library written for Node (`jose`, an AWS or a Stripe client, ...) imports one of them; on the device they resolve to
+ * react-native-quick-crypto, which implements Node's API (`createHash`, `createHmac`, `randomBytes`, ciphers, key pairs, `subtle`, ...) over OpenSSL. `crypto` the global is the web's
+ * (`polyfills.ts`), and is made of the same library.
+ */
+export declare const NODE_CRYPTO: ReadonlySet<string>;
+export declare const QUICK_CRYPTO = "react-native-quick-crypto";
 export declare const INITIALIZE_CORE: RegExp;
 /**
  * React Native modules that reach the React renderer (118 KB, plus React and the public-instance/DOM classes), keyed by

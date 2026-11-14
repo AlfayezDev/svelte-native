@@ -11,6 +11,7 @@
     "src/core.ts",
     "src/platform.ts",
     "src/foreign.ts",
+    "src/mmkv.ts",
     "src/router.svelte.ts",
     "src/remote/index.ts",
     "src/updates/index.ts",

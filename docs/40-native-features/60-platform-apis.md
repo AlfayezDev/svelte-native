@@ -3,7 +3,7 @@ title: Platform APIs
 video: safe-area-view
 ---
 
-The device is more than a screen. It has an operating system, a window size, a light and dark mode, a safe area around the notch, a keyboard, and links that open your app. This page covers how to read and use them.
+The device is more than a screen. It has an operating system, a window size, a light and dark mode, a safe area around the notch, a keyboard, and links that open your app. This page covers how to read and use them. The web's own APIs on the device (`fetch`, `Blob`, `crypto`, `localStorage`) have a page of their own: [Web APIs](web-apis).
 
 `@alfayez/svelte-native/platform` exports React Native's platform modules, typed, for an app without React. They are React Native's own objects, so a library that imports them from `react-native` sees the same state. Each one loads the first time you use it.
 

@@ -44,8 +44,8 @@ const qaOnly = ["svelte-qa-android", "svelte-qa-ios", "view-bench"];
 /** The library's own native modules are linked from the installed package, as an app outside this repository gets them (packages/svelte-native/expo-module.config.json). */
 const library = "@alfayez/svelte-native";
 const libraryDirectory = dirname(require.resolve("@alfayez/svelte-native/package.json"));
-const libraryPods = ["SvelteBlur", "SvelteCapture", "SvelteInsets", "SvelteNavigation", "SvelteScreensIOS", "SvelteUpdates"];
-const libraryProjects = ["svelte-engine", "svelte-updates", "svelte-blur"];
+const libraryPods = ["SvelteBlur", "SvelteCapture", "SvelteCore", "SvelteInsets", "SvelteNavigation", "SvelteScreensIOS", "SvelteUpdates"];
+const libraryProjects = ["svelte-engine", "svelte-updates", "svelte-blur", "svelte-core"];
 const { smokeOnlyPackages } = require("./qa/smoke-packages.cjs") as { smokeOnlyPackages: string[] };
 
 describe("the product build leaves the QA-only modules out of autolinking", () => {
@@ -66,9 +66,10 @@ describe("the product build leaves the QA-only modules out of autolinking", () =
 		expect(product).toContain("expo.modules.svelteengine.SvelteEngineModule");
 		expect(product).toContain("expo.modules.svelteupdates.SvelteUpdatesModule");
 		expect(product).toContain("expo.modules.svelteblur.SvelteBlurModule");
+		expect(product).toContain("expo.modules.sveltecore.SvelteFetchModule");
 	});
 
-	test("iOS: the QA build links SvelteQA, the product's pods do not, and keep the library's screens, insets, navigation, capture and updates pods", () => {
+	test("iOS: the QA build links SvelteQA, the product's pods do not, and keep the library's screens, insets, navigation, capture, updates, blur and core (fetch) pods", () => {
 		expect(packages(resolved("apple", configuredExclude("qa")))).toContain("svelte-qa-ios");
 		const product = resolved("apple", configuredExclude("production"));
 		expect(packages(product)).not.toContain("svelte-qa-ios");
@@ -90,7 +91,7 @@ describe("the product build leaves the QA-only modules out of autolinking", () =
 			} else {
 				for (const pod of own[0]?.pods ?? []) expect(pod.podspecDir.startsWith(`${libraryDirectory}/native/`)).toBe(true);
 			}
-			// nothing else in the app's list carries a library module: the QA modules are the app's own, and the six directories of the package are not local modules any more
+			// nothing else in the app's list carries a library module: the QA modules are the app's own, and the directories of the package are not local modules any more
 			const others = result.modules.filter((module) => module.packageName !== library && /^svelte-/.test(module.packageName));
 			expect(others.map((module) => module.packageName).sort()).toEqual(platform === "android" ? ["svelte-qa-android"] : ["svelte-qa-ios"]);
 		}
@@ -103,7 +104,7 @@ describe("the product build leaves the QA-only modules out of autolinking", () =
 			const sweep = resolved("apple", configuredExclude(variant)).modules.find((module) => module.packageName === library) as { appDelegateSubscribers?: string[]; swiftModuleNames?: string[] } | undefined;
 			expect(sweep?.appDelegateSubscribers).toEqual(["SvelteCaptureSubscriber"]);
 			// the Swift modules the generated provider imports: SvelteScreensIOS is Objective-C++ with no module of its own (`DEFINES_MODULE` is NO), so it is not in the list
-			expect(sweep?.swiftModuleNames).toEqual(["SvelteCapture", "SvelteInsets", "SvelteNavigation", "SvelteUpdates", "SvelteBlur"]);
+			expect(sweep?.swiftModuleNames).toEqual(["SvelteCapture", "SvelteInsets", "SvelteNavigation", "SvelteUpdates", "SvelteBlur", "SvelteCore"]);
 		}
 	});
 

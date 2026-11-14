@@ -1373,6 +1373,10 @@ var init_init_app = __esm({
       react: "19.2.7",
       "react-native": "0.86.3",
       "react-native-gesture-handler": "2.32.0",
+      "react-native-mmkv": "4.3.1",
+      "react-native-nitro-modules": "0.35.10",
+      "react-native-quick-base64": "2.2.2",
+      "react-native-quick-crypto": "1.1.3",
       "react-native-reanimated": "4.5.1",
       "react-native-svg": "15.15.4",
       "react-native-worklets": "0.10.1"
@@ -1929,7 +1933,7 @@ var init_checks = __esm({
     record = (value) => typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
     text = (value) => typeof value === "string" ? value : void 0;
     EXPO_RUNTIME_FILES = ["src/winter/index.ts", "src/winter/runtime.native.ts"];
-    AUTOLINKED_PEERS = ["hermes-intl"];
+    AUTOLINKED_PEERS = ["hermes-intl", "react-native-mmkv", "react-native-nitro-modules", "react-native-quick-base64", "react-native-quick-crypto"];
   }
 });
 

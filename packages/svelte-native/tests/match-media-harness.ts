@@ -131,8 +131,8 @@ function bundled(entry: string): Promise<string> {
       setup(builder) {
         builder.onResolve({ filter: /^react-native\/Libraries\// }, (args) => ({ path: args.path, namespace: "stub" }));
         builder.onResolve({ filter: /^(react-native|expo-modules-core)$/ }, (args) => ({ path: args.path, namespace: "stub" }));
-        // What polyfills.ts loads besides `matchMedia` is not under test.
-        builder.onResolve({ filter: /^(?:expo\/src\/winter|hermes-intl)$/ }, (args) => ({ path: args.path, namespace: "stub" }));
+        // What polyfills.ts loads besides `matchMedia` is not under test (the libraries behind `crypto` and `localStorage` are required when those are first read).
+        builder.onResolve({ filter: /^(?:expo\/src\/winter|hermes-intl|react-native-quick-crypto|react-native-mmkv)$/ }, (args) => ({ path: args.path, namespace: "stub" }));
         builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? "export {};", loader: "js" }));
         builder.onResolve({ filter: /^@alfayez\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
         builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../src/environment.ts") }));

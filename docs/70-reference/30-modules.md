@@ -106,7 +106,7 @@ It also has the two lookups of native modules: `turboModule<T>(name)` returns a 
 
 ## @alfayez/svelte-native/mmkv
 
-react-native-mmkv, for storage of the app's own, and the instance behind `localStorage`. [Platform APIs](platform-apis#storage)
+react-native-mmkv, for storage of the app's own, and the instance behind `localStorage`. [Web APIs](web-apis#storage)
 
 | Export | Description |
 | --- | --- |

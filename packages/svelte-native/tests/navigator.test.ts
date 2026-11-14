@@ -16,6 +16,8 @@ type Native = {
   shares: { content: any; options: any }[];
   shareResult: string;
   vibrations: (number | number[] | "cancel")[];
+  location?: ReturnType<typeof locationModule> | null;
+  appState?: (state: string) => void;
 };
 
 const STUBS: Record<string, string> = {
@@ -23,11 +25,26 @@ const STUBS: Record<string, string> = {
   "react-native/Libraries/Vibration/Vibration": `export default { vibrate: (pattern) => { globalThis.__native.vibrations.push(pattern); }, cancel: () => { globalThis.__native.vibrations.push("cancel"); } };`,
   "react-native/Libraries/Utilities/Platform": `export default { get OS() { return globalThis.__native.os; } };`,
   "react-native/Libraries/ReactNative/I18nManager": `export default { getConstants: () => ({ isRTL: false, localeIdentifier: globalThis.__native.locale }) };`,
-  "expo-modules-core": `export const requireOptionalNativeModule = (name) => name !== "SvelteClipboard" || globalThis.__native.clipboard === null ? null : {
-    read: async () => ({ ...globalThis.__native.clipboard }),
-    write: async (text, html) => { globalThis.__native.writes.push([text, html]); globalThis.__native.clipboard = html === null ? { "text/plain": text } : { "text/plain": text, "text/html": html }; },
+  "react-native/Libraries/AppState/AppState": `export default { addEventListener: (type, listener) => { globalThis.__native.appState = listener; return { remove() {} }; } };`,
+  "expo-modules-core": `export const requireOptionalNativeModule = (name) => {
+    if (name === "ExpoLocation") return globalThis.__native.location ?? null;
+    return name !== "SvelteClipboard" || globalThis.__native.clipboard === null ? null : {
+      read: async () => ({ ...globalThis.__native.clipboard }),
+      write: async (text, html) => { globalThis.__native.writes.push([text, html]); globalThis.__native.clipboard = html === null ? { "text/plain": text } : { "text/plain": text, "text/html": html }; },
+    };
   };`,
 };
+
+/** A stand-in for expo-location's native module: the permission granted, one position. */
+const locationModule = () => ({
+  getForegroundPermissionsAsync: async () => ({ status: "granted", granted: true, canAskAgain: true }),
+  requestForegroundPermissionsAsync: async () => ({ status: "granted", granted: true, canAskAgain: true }),
+  getCurrentPositionAsync: async () => ({ coords: { latitude: 24.71, longitude: 46.67, accuracy: 12 }, timestamp: 1_800_000_000_000 }),
+  getLastKnownPositionAsync: async () => null,
+  watchPositionImplAsync: async () => {},
+  removeWatchAsync: async () => {},
+  addListener: () => ({ remove() {} }),
+});
 
 /** A fresh copy of `navigator.ts`, installed on a scope of its own with the stand-ins above. */
 async function install(native: Partial<Native> = {}): Promise<{ scope: any; native: Native; m: any }> {
@@ -215,11 +232,46 @@ describe("navigator.language and languages", () => {
     expect(scope.navigator).toEqual({ language: "fr-FR", languages: ["fr-FR"], vibrate: own, share: own, canShare: own, clipboard });
   });
 
-  test("installing loads nothing of React Native or the native module", async () => {
+  test("installing loads nothing of React Native or the native modules", async () => {
     const { scope, native } = await install({ clipboard: null });
     // The stand-ins record every call; none was made, and the clipboard's lookup has not happened (it would warn).
     expect(native.shares).toEqual([]);
     expect(native.vibrations).toEqual([]);
     expect(Object.getOwnPropertyDescriptor(scope.navigator, "clipboard")?.get).toBeDefined();
+    expect(Object.getOwnPropertyDescriptor(scope.navigator, "geolocation")?.get).toBeDefined();
+    expect(Object.getOwnPropertyDescriptor(scope.navigator, "permissions")?.get).toBeDefined();
+  });
+});
+
+describe("navigator.geolocation and navigator.permissions", () => {
+  test("in a build with the location capability: one Geolocation over expo-location's module, and the web's classes as globals", async () => {
+    const { scope } = await install({ location: locationModule() });
+    const geolocation = scope.navigator.geolocation;
+    expect(Object.prototype.toString.call(geolocation)).toBe("[object Geolocation]");
+    expect(scope.navigator.geolocation).toBe(geolocation);
+    const position: any = await new Promise((resolve, reject) => geolocation.getCurrentPosition(resolve, reject));
+    expect([position.coords.latitude, position.coords.longitude, position.coords.accuracy, position.timestamp]).toEqual([24.71, 46.67, 12, 1_800_000_000_000]);
+    expect(position).toBeInstanceOf(scope.GeolocationPosition);
+    expect(position.coords).toBeInstanceOf(scope.GeolocationCoordinates);
+    expect(scope.GeolocationPositionError.TIMEOUT).toBe(3);
+    const status = await scope.navigator.permissions.query({ name: "geolocation" });
+    expect([status.state, status instanceof scope.PermissionStatus]).toEqual(["granted", true]);
+    // The status follows the app coming back to the foreground, through AppState.
+    expect(typeof (globalThis as any).__native.appState).toBe("function");
+  });
+
+  test("in a build without it: navigator.geolocation is undefined with one warning that says how to turn it on, and the permission reads denied", async () => {
+    const { warn } = console;
+    const warnings: unknown[] = [];
+    console.warn = (...args: unknown[]) => { warnings.push(args[0]); };
+    try {
+      const { scope } = await install({ location: null });
+      expect(scope.navigator.geolocation).toBeUndefined();
+      expect(scope.navigator.geolocation).toBeUndefined();
+      expect((await scope.navigator.permissions.query({ name: "geolocation" })).state).toBe("denied");
+      expect(typeof scope.GeolocationPositionError).toBe("function");
+    } finally { console.warn = warn; }
+    expect(warnings).toHaveLength(1);
+    expect(String(warnings[0])).toContain("the location capability is not part of this app's build: install expo-location, add `capabilities: { location:");
   });
 });

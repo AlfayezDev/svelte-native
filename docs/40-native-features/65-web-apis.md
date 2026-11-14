@@ -3,7 +3,7 @@ title: Web APIs
 video: web-apis
 ---
 
-On the device, `fetch`, `Blob`, `crypto`, `localStorage` and `navigator`'s clipboard and share are the web's own, with nothing to import. Code you share with a SvelteKit app runs unchanged, and underneath each one is native code: the bytes of a download, the hashing and the storage happen outside JavaScript.
+On the device, `fetch`, `Blob`, `crypto`, `localStorage` and `navigator`'s clipboard, share and geolocation are the web's own, with nothing to import. Code you share with a SvelteKit app runs unchanged, and underneath each one is native code: the bytes of a download, the hashing and the storage happen outside JavaScript.
 
 ## fetch
 
@@ -147,6 +147,49 @@ await navigator.share({ title: 'Svelte Native', text: 'Have a look', url: 'https
 - `navigator.vibrate(200)` vibrates for a duration, and `navigator.vibrate([100, 50, 100])` plays a pattern of vibrations and pauses; `0` or `[]` stops it, and a new call replaces the pattern that plays. iOS has one fixed vibration, so each vibration of a pattern starts one at its time, whatever its length.
 - `navigator.language` is the device's language as a tag such as `en-US` or `zh-Hans-CN`, and `navigator.languages` lists it. On Android it is the device's language when the app started; on iOS, the language and region the app runs in.
 
+### Geolocation
+
+`navigator.geolocation` is the web's Geolocation API. It needs a permission of the system, so it is a capability: off until the app says why it uses it. Install [expo-location](https://docs.expo.dev/versions/latest/sdk/location/), whose native module it runs on, and give the reason in the plugin's options:
+
+```sh
+npx expo install expo-location
+```
+
+```ts
+/// file: app.config.ts
+export default {
+	plugins: [['@alfayez/svelte-native', { capabilities: { location: 'Shows the stores near you.' } }]]
+};
+```
+
+The text is what iOS shows when the app asks. Then prebuild and rebuild the native app. For expo-location's background APIs (`startLocationUpdatesAsync`, geofencing), give the reason for the background too: `location: { whenInUse: '…', background: '…' }`. `navigator.geolocation` needs only the first.
+
+The prebuild stops when the two halves don't match: the capability without expo-location installed, or expo-location installed without the capability. The second is so that Expo's generic text ("Allow $(PRODUCT_NAME) to access your location") never reaches App Review. An app that lists expo-location's own plugin with its options has configured it there and doesn't set the capability as well.
+
+```ts
+navigator.geolocation.getCurrentPosition(
+	(position) => console.log(position.coords.latitude, position.coords.longitude),
+	(error) => {
+		if (error.code === GeolocationPositionError.PERMISSION_DENIED) showWhyWeAsk();
+	},
+	{ enableHighAccuracy: true, timeout: 10_000, maximumAge: 60_000 }
+);
+
+const id = navigator.geolocation.watchPosition((position) => follow(position.coords));
+navigator.geolocation.clearWatch(id);
+
+const status = await navigator.permissions.query({ name: 'geolocation' }); // 'granted', 'prompt' or 'denied'
+```
+
+It behaves as in a browser: the first call asks for the permission, the callbacks come later, never during the call, and an error is a `GeolocationPositionError` with `PERMISSION_DENIED`, `POSITION_UNAVAILABLE` (location services off, no fix) or `TIMEOUT`. `timeout` counts from when the permission is granted. `maximumAge` answers from the last position the app or the system has, when it is young enough. `enableHighAccuracy` turns on the GPS, and without it the position comes from the network and Wi-Fi, to about a city block. A `PermissionStatus`'s `state` changes, with a `change` event, when the user answers and when the app comes back from the settings.
+
+A few things differ from a browser:
+
+- What the platform doesn't know reads as `null`: altitude, heading and speed. Android reports 0 for an altitude it doesn't have; one whose accuracy is 0 is read as unknown.
+- The permission is the system's. After a refusal the app can ask again where the system still allows it: Android asks twice, then answers for the user.
+- `navigator.permissions.query` knows `geolocation`, and refuses other names with a `TypeError`, as a browser refuses one it doesn't know.
+- Watch with `navigator.geolocation` or with expo-location's `watchPositionAsync`, not both at once: they share the native module's watches, and expo-location stops a watch it didn't start.
+
 ## An update to an older build
 
-An over-the-air update can reach a build made before these APIs existed. There, `fetch` and `Blob` are Expo's and React Native's as before, and `crypto`, `localStorage` and `navigator.clipboard` read as `undefined` (with one warning in the console), so a check like `typeof crypto !== 'undefined'` takes its fallback instead of throwing.
+An over-the-air update can reach a build made before these APIs existed. There, `fetch` and `Blob` are Expo's and React Native's as before, and `crypto`, `localStorage`, `navigator.clipboard` and `navigator.geolocation` read as `undefined` (with one warning in the console), so a check like `typeof crypto !== 'undefined'` takes its fallback instead of throwing. The same goes for `navigator.geolocation` in a build without the location capability: the warning says how to turn it on, and `navigator.permissions.query({ name: 'geolocation' })` answers `denied`.

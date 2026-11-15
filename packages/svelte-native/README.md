@@ -390,7 +390,7 @@ There is no `<form>` or `<input>`, so `form` is a native port of SvelteKit's cli
 
 ### Checking on a device
 
-The development lab has a page for it, `/__dev/remote` (QA and smoke builds), with a host field, the lab's own checks (one per kind: query, devalue types, `error()`, batch, live, command with single-flight, `.updates` with an override, request/Origin/cookie, prerender, `redirect()`, form issues then success), a form built from `TextInput` and `Switch`, and a live clock. The checks are the ones `tests/remote-lab.test.ts` runs against the lab's server module on the host; a device adds Hermes, the platform's networking and the screen.
+The development lab has a page for it, `/__dev/remote` (QA and smoke builds), with a host field, the lab's own checks (one per kind: query, devalue types, `error()`, batch, live, command with single-flight, `.updates` with an override, request/Origin/cookie, prerender, `redirect()`, form issues then success), a form built from `TextInput` and `Switch`, and a live clock. The checks are the ones `tests/kit/remote-lab.test.ts` runs against the lab's server module on the host; a device adds Hermes, the platform's networking and the screen.
 
 ```sh
 cd apps/qa && pnpm dev                                  # the SvelteKit dev server, port 3000, serves src/lib/native/dev/remote-lab.remote.ts
@@ -509,7 +509,7 @@ A debug build loads the bundle from Metro. A save re-runs the changed module and
 
 ```sh
 cd packages/svelte-native
-bun run test             # bun test --timeout 60000, then the HTML differential test in a process of its own (tests/html-differential.own-process.ts): renderer, host against a fake Fabric binding, router, lowering, gestures, foreign libraries, updates, remote functions (a real SvelteKit server); a plain `bun test` keeps Bun's 5 s default, which the server and bundling tests can exceed on a busy machine, and leaves the differential test out
+bun run test             # bun test --timeout 60000, then the HTML differential test in a process of its own (tests/components/html-differential.own-process.ts): renderer, host against a fake Fabric binding, router, lowering, gestures, foreign libraries, updates, remote functions (a real SvelteKit server); a plain `bun test` keeps Bun's 5 s default, which the server and bundling tests can exceed on a busy machine, and leaves the differential test out
 pnpm build               # the JavaScript of the Node-side entries into dist/node/ and the type declarations into dist/types/ (both committed): run it after changing the code they are built from or a type an entry exports
 pnpm typecheck           # svelte-check
 pnpm lint                # eslint

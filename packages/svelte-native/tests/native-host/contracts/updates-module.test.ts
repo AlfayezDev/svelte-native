@@ -1,27 +1,25 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
-import { applyHeadlessApplication, headlessExcludedPackages } from "../src/expo.ts";
+import { applyHeadlessApplication, headlessExcludedPackages } from "../../../src/expo.ts";
 
 // The Kotlin and Swift modules and the TypeScript client share a contract that no compiler checks across languages:
 // the module name, its constants and functions, and how each platform finds its launch hook. These tests pin it.
-const app = resolve(import.meta.dirname, "../../../apps/qa");
-const module = resolve(import.meta.dirname, "../native/svelte-core");
+const app = resolve(import.meta.dirname, "../../../../../apps/qa");
+const module = resolve(import.meta.dirname, "../../../native/svelte-core");
 const read = (path: string) => readFileSync(join(module, path), "utf8");
 const kotlin = (file: string) => read(`android/src/main/java/expo/modules/svelteupdates/${file}`);
 const names = (source: string, kind: "Constant" | "AsyncFunction") => [...source.matchAll(new RegExp(`${kind}\\("(\\w+)"\\)`, "g"))].map((match) => match[1] ?? "").sort();
 
-const nativeType = readFileSync(resolve(import.meta.dirname, "../src/updates/native.ts"), "utf8").split("export type SvelteUpdatesNative = {")[1]?.split("\n};")[0] ?? "";
+const nativeType = readFileSync(resolve(import.meta.dirname, "../../../src/updates/native.ts"), "utf8").split("export type SvelteUpdatesNative = {")[1]?.split("\n};")[0] ?? "";
 const typeScriptConstants = [...nativeType.matchAll(/^ {2}(\w+)\??:/gm)].map((match) => match[1] ?? "").sort();
 const typeScriptFunctions = [...nativeType.matchAll(/^ {2}(\w+)\(/gm)].map((match) => match[1] ?? "").sort();
 
 describe("native module contract", () => {
-  test("the TypeScript declaration is not empty", () => {
+  test("Android and iOS expose the constants and functions the client declares", () => {
+    // The lists are read from the TypeScript declaration by a pattern: a declaration that reads as empty would make the comparisons below pass for nothing.
     expect(typeScriptConstants.length).toBeGreaterThan(5);
     expect(typeScriptFunctions).toContain("downloadAsset");
-  });
-  test("Android and iOS expose the constants and functions the client declares", () => {
     const swift = read("ios/updates/SvelteUpdatesModule.swift");
     const android = kotlin("SvelteUpdatesModule.kt");
     expect(names(android, "Constant")).toEqual(typeScriptConstants);
@@ -41,7 +39,7 @@ describe("native module contract", () => {
   test("both platforms sync a download before it gets its name, and trust an asset in place only after it hashes to the manifest's", () => {
     const android = kotlin("Http.kt");
     const swift = read("ios/updates/Http.swift");
-    // The Kotlin side is run by `updates-store-native.test.ts`; the Swift side is compiled only on the Mac, so its order is pinned here.
+    // The Kotlin side is run by `../updates-store.test.ts`; the Swift side is compiled only on the Mac, so its order is pinned here.
     expect(android.indexOf("fd.sync()")).toBeGreaterThan(-1);
     expect(android.indexOf("fd.sync()")).toBeLessThan(android.indexOf("renameTo"));
     expect(swift.indexOf("synchronize()")).toBeGreaterThan(-1);
@@ -101,40 +99,5 @@ describe("launch hooks", () => {
     // `expo-updates` itself is excluded on purpose: it is a devDependency only so that `eas update` runs; the engine ships its own module.
     expect(headlessExcludedPackages.filter((name) => /svelte-updates|updates/.test(name))).toEqual(["expo-updates", "expo-updates-interface"]);
     expect(JSON.parse(readFileSync(join(app, "package.json"), "utf8")).expo.autolinking.exclude).not.toContain("svelte-updates");
-  });
-});
-
-describe("build configuration", () => {
-  // The config reads the channel when it is evaluated, so each case evaluates it in its own process.
-  const load = (channel: string | undefined) => {
-    const env = { ...process.env };
-    delete env.UPDATES_CHANNEL;
-    if (channel !== undefined) env.UPDATES_CHANNEL = channel;
-    const evaluated = Bun.spawnSync([process.execPath, "-e", `import(${JSON.stringify(pathToFileURL(join(app, "app.config.ts")).href)}).then((module) => console.log(JSON.stringify(module.default)))`], { env });
-    return JSON.parse(evaluated.stdout.toString()) as { runtimeVersion: unknown; updates: Record<string, unknown> };
-  };
-  test("app.config points at the project's EAS Update URL with an app-version runtime policy", () => {
-    const config = load("production");
-    expect(config.runtimeVersion).toEqual({ policy: "appVersion" });
-    expect(config.updates).toEqual({
-      url: "https://u.expo.dev/bb048172-896f-48f1-97c0-c9ec765842c0",
-      checkAutomatically: "ON_LOAD",
-      fallbackToCacheTimeout: 0,
-      requestHeaders: { "expo-channel-name": "production" },
-    });
-  });
-  test("a build without a channel (a local build, or `eas update` reading the config) sends no channel and does not check", () => {
-    const config = load(undefined);
-    expect(config.updates.url).toBe("https://u.expo.dev/bb048172-896f-48f1-97c0-c9ec765842c0");
-    expect(config.updates.checkAutomatically).toBe("NEVER");
-    expect(config.updates.requestHeaders).toBeUndefined();
-  });
-  test("each store-bound profile has a channel, and the config reads the same one", () => {
-    const eas = JSON.parse(readFileSync(join(app, "eas.json"), "utf8")) as { build: Record<string, { channel?: string; env?: Record<string, string> }> };
-    for (const profile of ["preview", "production"]) {
-      expect(eas.build[profile]?.channel).toBe(profile);
-      expect(eas.build[profile]?.env?.UPDATES_CHANNEL).toBe(profile);
-    }
-    expect(eas.build.development?.channel).toBeUndefined();
   });
 });

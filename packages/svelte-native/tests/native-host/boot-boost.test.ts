@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
-import { hostTools, kotlinHost } from "./support/native-host.ts";
+import { hostTools, kotlinHost } from "../support/native-host.ts";
 
 /**
  * The rules of the boot boost (BootBoostCore.kt: the pin to the big cores, its release at the first mount, after the timeout, or when no
@@ -8,8 +8,8 @@ import { hostTools, kotlinHost } from "./support/native-host.ts";
  * gives these rules the platform (Handler, SoLoader, sched_setaffinity), so it is the part this test cannot see. Skipped when `kotlinc` or
  * `java` is not on the path.
  */
-const engine = resolve(import.meta.dirname, "../native/svelte-core/android/src/main/java/expo/modules/svelteengine");
-const sources = { core: resolve(engine, "BootBoostCore.kt"), host: resolve(import.meta.dirname, "native/BootBoostHost.kt") };
+const engine = resolve(import.meta.dirname, "../../native/svelte-core/android/src/main/java/expo/modules/svelteengine");
+const sources = { core: resolve(engine, "BootBoostCore.kt"), host: resolve(import.meta.dirname, "fixtures/BootBoostHost.kt") };
 const tools = hostTools("kotlinc", "java");
 const { run } = kotlinHost({ name: "boot-boost", sources: [sources.host, sources.core] });
 
@@ -32,9 +32,18 @@ const processes = ["main-process io.example.app io.example.app", "main-process i
 const pinned = "set self c0 | info BootBoost: pinned to c0";
 const released = "reopen c0 ff | info BootBoost: released | released";
 
+/** One JVM answers every scenario and process: started by the first test that asks, and not again. */
+let answered: { by: Record<string, string>; processes: string[] } | undefined;
+function answers() {
+  if (!answered) {
+    const out = run([...scenarios, ...processes]);
+    answered = { by: Object.fromEntries(scenarios.map((name, i) => [name, out[i] ?? ""])), processes: out.slice(scenarios.length) };
+  }
+  return answered;
+}
+
 test.skipIf(!tools)("the boot boost's rules", () => {
-  const out = run([...scenarios, ...processes]);
-  const by = Object.fromEntries(scenarios.map((name, i) => [name, out[i] ?? ""]));
+  const { by } = answers();
 
   // A start for the screen: pinned, the Activity says so 180 ms later (logged, for the series that sets the headless timer), the first mount
   // releases, and the timers armed at the start find nothing left to do.
@@ -52,8 +61,8 @@ test.skipIf(!tools)("the boot boost's rules", () => {
 });
 
 test.skipIf(!tools)("the library preload", () => {
-  const out = run(scenarios.slice(7));
-  const [preload, twice, alike, loaderFails, libraryFails] = out;
+  const { by } = answers();
+  const [preload, twice, alike, loaderFails, libraryFails] = scenarios.slice(7).map((name) => by[name]);
   // One thread for all of them, held to the big cores, loading in order (the linker lets one load at a time anyway): the main thread waits for the first two.
   expect(preload).toBe("init | thread svelte-boot-load | set self c0 | load a | load b | load c");
   expect(twice).toBe("init");
@@ -64,7 +73,6 @@ test.skipIf(!tools)("the library preload", () => {
 });
 
 test.skipIf(!tools)("only the process the screen lives in boosts", () => {
-  const out = run(processes);
   // The process named after the package; a service process of the app (`:sync`); a name that cannot be read counts as the main one.
-  expect(out).toEqual(["true", "false", "true"]);
+  expect(answers().processes).toEqual(["true", "false", "true"]);
 });

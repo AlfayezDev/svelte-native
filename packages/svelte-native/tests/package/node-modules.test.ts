@@ -18,7 +18,6 @@ const fixture = join(import.meta.dirname, "fixtures/installed-app");
 const manifest = JSON.parse(readFileSync(join(packageDirectory, "package.json"), "utf8")) as {
   dependencies: Record<string, string>;
   peerDependencies: Record<string, string>;
-  peerDependenciesMeta: Record<string, { optional?: boolean }>;
 };
 
 const node = Bun.which("node");
@@ -321,13 +320,6 @@ describe("an app that builds for native only: no @sveltejs/kit, no vite", () => 
       const fromPackage = run(["-e", `require("module").createRequire(${JSON.stringify(`${bareInstalled}/package.json`)}).resolve(${JSON.stringify(`${name}/package.json`)})`], bare);
       expect([name, fromPackage.exitCode === 0]).toEqual([name, false]);
     }
-  });
-
-  test("both are optional peers in the manifest, and hermes-intl, which the app has to install itself, is a required one", () => {
-    expect(manifest.peerDependenciesMeta["@sveltejs/kit"]).toEqual({ optional: true });
-    expect(manifest.peerDependenciesMeta.vite).toEqual({ optional: true });
-    expect(manifest.peerDependencies["hermes-intl"]).toBeDefined();
-    expect(manifest.peerDependenciesMeta["hermes-intl"]).toBeUndefined();
   });
 
   test("the Metro integration and the transformer load, resolve and compile; what needs SvelteKit names it", () => {

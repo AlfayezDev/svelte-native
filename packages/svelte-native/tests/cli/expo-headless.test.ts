@@ -161,6 +161,8 @@ describe("headless Android config", () => {
     const once = applyHeadlessApplication(application);
     expect(once).toContain("SvelteNativeHeadlessMainPackage()");
     expect(once).toContain("add(expo.modules.svelteengine.ExpoViewsPackage())");
+    // The updates module's bundle handler (`native-host/contracts/updates-module.test.ts`) works only while the host is still built through Expo's factory.
+    expect(once).toContain("ExpoReactHostFactory.getDefaultReactHost(");
     expect(once.indexOf("reactHost.start()")).toBeGreaterThan(once.indexOf("onApplicationCreate(this)"));
     // The start-up threads are pinned to the big cores around the host start: begin before it, hand the main thread back after it.
     expect(once.indexOf("BootBoost.begin()")).toBeLessThan(once.indexOf("reactHost.start()"));

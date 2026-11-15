@@ -7,7 +7,7 @@ import { fakeHost } from "../support/fake-host.ts";
 const host = fakeHost();
 const byId = (rootTag: number, id: string): FakeNode | undefined => host.nodes(rootTag).find((node) => node.props.testID === id);
 
-/** `{...probe(name)}` is the lab pages' spread: `ref`, `testID` and `collapsable` on a lowered primitive. */
+/** The ref contract of `refs.test.ts` through a spread: `{...probe(name)}` is the lab pages' spread, `ref`, `testID` and `collapsable` on a lowered primitive. */
 test("a function-valued ref in a spread (and next to one) reaches the host, as a plain attribute does", async () => {
   const m = await load<{ startSurface(rootTag: number, App: unknown, props: Record<string, unknown>): unknown; tick(): Promise<void>; Fixture: unknown }>({
     entry: `import Fixture from ${JSON.stringify(resolve(import.meta.dirname, "fixtures/spread-fixture.svelte"))};

@@ -1,5 +1,6 @@
 import { test, expect } from "bun:test";
 import { loadReference, withReactNativeGlobals, type Platform, type RegisteredConfig } from "../support/rn-reference.ts";
+import { random } from "../support/random.ts";
 
 type Table = Record<string, unknown>;
 type Payload = Record<string, unknown> | null;
@@ -193,11 +194,6 @@ test("an update carries only what changed, null for what went away, and nothing 
   expect(configs.createPayload({ style: [{ padding: 1 }, false, { padding: 2, flex: 1 }], class: "x", activityState: 2 }, config)).toEqual({ padding: 2, flex: 1 });
   expect(configs.createPayload({ class: "x" }, config)).toBeNull();
 });
-
-function random(seed: number) {
-  let state = seed >>> 0;
-  return () => { state = (state + 0x6d2b79f5) >>> 0; let t = state; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
-}
 
 const values: Record<string, () => unknown[]> = {
   opacity: () => [0, 0.5, 1, undefined, null],

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { applyHeadlessApplication, headlessExcludedPackages } from "../../../src/expo.ts";
+import { headlessExcludedPackages } from "../../../src/expo.ts";
 
 // The Kotlin and Swift modules and the TypeScript client share a contract that no compiler checks across languages:
 // the module name, its constants and functions, and how each platform finds its launch hook. These tests pin it.
@@ -75,25 +75,6 @@ describe("launch hooks", () => {
     expect(source).toMatch(/^package expo\.modules\.svelteupdates$/m);
     expect(source).toContain("class SvelteUpdatesPackage : Package");
     expect(source).toContain("override fun getJSBundleFile(useDeveloperSupport: Boolean)");
-  });
-  test("the bundle handler only works if the generated MainApplication builds its host through ExpoReactHostFactory", () => {
-    const application = `class MainApplication {
-  override val reactHost: ReactHost by lazy {
-    ExpoReactHostFactory.getDefaultReactHost(
-      context = applicationContext,
-      packageList =
-        PackageList(this).packages.apply {
-          // add(MyReactNativePackage())
-        }
-    )
-  }
-  override fun onCreate() {
-    loadReactNative(this)
-    ApplicationLifecycleDispatcher.onApplicationCreate(this)
-  }
-}
-`;
-    expect(applyHeadlessApplication(application)).toContain("ExpoReactHostFactory.getDefaultReactHost(");
   });
   test("the module stays autolinked: it is not on the headless exclusion list", () => {
     // `expo-updates` itself is excluded on purpose: it is a devDependency only so that `eas update` runs; the engine ships its own module.

@@ -192,7 +192,7 @@ test("SharedValues in style: first payload carries their values, Reanimated's in
   expect(A.inline).toContain("detached");
 });
 
-test("every payload the host builds for these fixture trees is identical to React Native's, key order included", () => {
+test("every payload the host builds for the animation fixtures is identical to React Native's, key order included", () => {
   expect(tap.checks.length).toBeGreaterThan(5);
   expect(new Set(tap.checks.map((check) => check.kind))).toEqual(new Set(["create", "diff"]));
   expect(tap.checks.filter((check) => check.mine !== check.reactNative)).toEqual([]);

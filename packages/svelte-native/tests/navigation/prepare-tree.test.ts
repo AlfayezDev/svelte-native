@@ -50,6 +50,7 @@ async function mount(initial: string) {
 
 type Case = { name: string; start: string; from: string | ((x: Mounted) => R); href: string; navigation?: object };
 const cases: Case[] = [
+  { name: "push a page onto the root stack", start: "/projects", from: (x) => x.root, href: "/projects/new" },
   { name: "select a tab", start: "/acme", from: "/acme/home", href: "/acme/settings" },
   { name: "push in an unvisited pane, with params", start: "/acme", from: "/acme/home", href: "/acme/settings/devices" },
   { name: "a modal over the tabs", start: "/acme", from: "/acme/home", href: "/preferences" },

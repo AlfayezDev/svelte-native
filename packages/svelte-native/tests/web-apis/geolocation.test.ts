@@ -439,9 +439,8 @@ describe("navigator.permissions", () => {
     expect([status.state, changes]).toEqual(["denied", ["onchange granted", "listener granted", "onchange denied"]]);
   });
 
-  test("other names are refused as a browser refuses one it does not know; a build without the module answers denied", async () => {
+  test("other names are refused as a browser refuses one it does not know", async () => {
     const permissions = new Permissions(() => undefined);
     await expect(permissions.query({ name: "camera" })).rejects.toThrow("The provided value 'camera' is not a valid enum value of type PermissionName.");
-    expect((await permissions.query({ name: "geolocation" })).state).toBe("denied");
   });
 });

@@ -334,11 +334,17 @@ describe("failures", () => {
 
   test("a body cut short fails the read with a network error (and the stream errors)", async () => {
     const { createServer } = await import("node:http");
-    const server = createServer((_request, response) => { response.writeHead(200, { "content-length": "100" }); response.write("short"); setTimeout(() => response.destroy(), 20); });
+    // The server cuts the connection only once fetch() has resolved: a timer could fire before the head reaches the client, and then fetch() itself
+    // fails, which is a different case.
+    let cut = (): void => {};
+    const server = createServer((_request, response) => { response.writeHead(200, { "content-length": "100" }); response.write("short"); cut = () => response.destroy(); });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const url = `http://127.0.0.1:${(server.address() as { port: number }).port}/`;
-    await expect((await fetch(url)).text()).rejects.toMatchObject({ message: expect.stringMatching(/^Network request failed/), cause: { code: "ERR_FETCH_NETWORK" } });
+    const first = await fetch(url);
+    cut();
+    await expect(first.text()).rejects.toMatchObject({ message: expect.stringMatching(/^Network request failed/), cause: { code: "ERR_FETCH_NETWORK" } });
     const response = await fetch(url);
+    cut();
     const reader = response.body!.getReader();
     await expect((async () => { for (;;) if ((await reader.read()).done) return; })()).rejects.toMatchObject({ message: expect.stringMatching(/^Network request failed/) });
     server.close();

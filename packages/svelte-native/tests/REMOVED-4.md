@@ -44,6 +44,31 @@ Every test ran twice, as components and lowered to host tags; only five depend o
 - html-harness-isolation.test.ts "a fake binding another file installed after the harness loaded does not take the host": removed because it checks nothing the other tests of the HTML harness do not: every `load()` installs the harness's fake after the preload hooks of support restored the last test's, and `install()` assigns over whatever the global object has (support/host.test.ts "a fake installed over another one gives it back, and the first restores what was there before both")
 - responder.test.ts "a nested Text unmounted while it is pressed, whose end never arrives (native drops the touches of a deleted node), does not wedge the next gesture": merged into gestures/host-responder.test.ts "a nested Text unmounted while it is pressed is not pressed, and the next touches work (the end of its gesture arrives: true / false)" (a `test.each` with both cases; the other test was the same one without the end)
 
+### compiler/runes-default.test.ts, cli/runes-environment.test.ts
+
+- runes-default.test.ts "every component the package ships compiles in runes mode, the ones with no rune in them included": the control line no longer pins the two legacy components by name (`["TabPaneList.svelte", "TabPanes.svelte"]`): it asks that some are inferred as legacy without the default, so a new legacy-looking component does not fail the control
+- runes-default.test.ts "the Vite plugin's native target runs the export with the setting in the environment of the Metro it starts": its last assertion, that `expoEnvironment(["start", "--localhost"])` puts `--dns-result-order=ipv4first` in NODE_OPTIONS, has nothing to do with runes: it is its own test, "a Metro the CLI starts resolves names IPv4-first, whatever the setting", in cli/runes-environment.test.ts
+
+### kit/
+
+- remote-e2e.test.ts `suite("dev", true)` (19 tests, in an engine with no FinalizationRegistry, with a server of its own): removed because only "a query object made by an effect is released when the effect is torn down..." depends on the engine; it is now kit/remote-e2e.test.ts "the same in an engine with no FinalizationRegistry, where the package's own registry releases it", a second client of the dev server's suite. The other 18 tests are duplicates of the same tests in `suite("dev")` (the engine does not reach the server or the rest of the client), and `remote-runtime.test.ts` "a query object that outlives the effect that made it" also runs with hermes true and false against a fake fetch. One server start less.
+- remote-e2e.test.ts "form: issues, then success; the native props, pending, submitted, result and reset": three assertions removed (`keyboardType` of a number input, `dirty`, `touched`): remote-form.test.ts "text-like types are a TextInput's props..." and "the value is live, and typing is an edit: dirty, but touched only once the input is left" pin them without a server
+- remote-harness.test.ts "a stopped server is not reported as dead": merged into "only one fixture server runs at a time: ... a server that was stopped is not reported dead; ..." (the server that test stops anyway), which saves one full server start
+- remote-harness.test.ts "only one fixture server runs at a time", last part: the lock whose owner is gone is taken over, shown by a start that has no time to finish (`ServerStartTimeout`, not the lock's error) instead of by a full server start
+- remote-transform.test.ts "the on-device files are found as a closure of imports, not a list...", "they use no browser global that this package does not provide...", "the browser globals the files use are exactly the ones the transformer gives them, and the platform's", "SvelteKit's form.svelte.js, which remote/form.svelte.ts is ported from, is the file that was reviewed...", "the peer dependency on SvelteKit is the version that was reviewed, and Expo's constants are a peer", "every import of the on-device files is a relative file, a package, or one of the specifiers that is redirected": moved to upstream/sveltekit-client-files.test.ts (pins of SvelteKit's text; the peer test reads the range with support/versions.ts)
+
+### foreign/svg/
+
+- svg-xml.test.ts "the parser's tree of the <icon> icon is the library's", 6 icons: run on Android only (the parser does not depend on the platform; the other 6 runs were identical)
+- svg-extract.test.ts "extractFont is the library's on font strings, font objects and the font props", "extractText is the library's, without the children", "extractFeMerge names the `in` of each node, empty when it has none": run on Android only; the stops of a gradient and the flood of a filter keep both platforms because the colour they carry is the platform's integer (`processColorValue(..., platform)`), so the audit's "none of these depend on the platform" holds for these three only
+- svg-bundle.test.ts "no source of the svg entry imports React, the library's index or one of its components": its React check is removed because "the svg entry bundles no React, and of the library only the extractors of src/lib that need none" shows it from the bundle's graph (and a file that imported the library's index would add files to that exact list); what only this test checked, that the library is imported only by deep path into src/lib and only from svg-library.js, stays, renamed "the library is imported only by deep path into src/lib, and only from svg-library.js"
+- svg-bundle.test.ts: the first two tests built the same esbuild bundle twice; it is built once for the file
+- svg-colors.test.ts "the native views take that integer: RenderableView.setFill/setStroke and FeFlood.setFloodColor read a number, ...": moved to upstream/react-native-svg-colors.test.ts (a pin of the library's Java and Objective-C text)
+
+### upstream/
+
+- worklets-frame-loop.test.ts: moved unchanged to upstream/worklets-frame-loop.test.ts (it checks a patch of react-native-worklets in node_modules)
+
 ### web-apis
 
 - web-storage.test.ts `describe("defineLazyGlobal")` (3 tests): kept; see Cross-group (its twin `fetch/lazy-global.test.ts` is another group's file)
@@ -53,6 +78,9 @@ Every test ran twice, as components and lowered to host tags; only five depend o
 - accessibility.test.ts "View.js maps the aliases as accessibility.ts does, and the native transformation is off": moved to upstream/react-native-aria.test.ts (a pin of React Native's text)
 
 ## Cross-group
+
+- compiler/runes-default.test.ts and cli/runes-environment.test.ts (runes) and `async-option.test.ts` (async, group 2) test the plumbing of two compile options through the same code twice: `RUNES_ENVIRONMENT_VARIABLE` / `runesEnvironment` / `runesDefaultEnabled` and `ASYNC_ENVIRONMENT_VARIABLE` / `asyncEnvironment` / `asyncEnabled`, and `withSvelteNative(config, { runes })` / `{ async }` and `expoEnvironment(..., environment)`: parallel tests ("`runes` is read from the environment..." ~ "the setting"; "withSvelteNative(config, { runes }) hands the setting to the workers it starts..." ~ the same for async; "the Vite plugin's native target runs the export with the setting in the environment..." ~ async-option's `expoEnvironment` assertions). One parametrized test over the two options would cover both.
+- cli/runes-environment.test.ts "the transformer's cache key follows the setting, so a changed option never reads a cached component" and `cache-key.test.ts` (group 3) "the cache key holds every module the lowering of a .svelte file is made of": different aspects of the same key (the environment, the modules); no duplicate.
 
 - gestures/responder-native.test.ts (a unit test of `createResponder` with a fake tree) and `gestures/responder.test.ts` (group 1, through the real react-native-gesture-handler module) pin the same three behaviours: "a grant that answers true tells the module with the node's tag, and the release clears it" ~ "a grant that answers true blocks the native responders, and the release gives them back" + "a termination gives them back too"; "a grant that answers nothing, or false, calls nothing" ~ "a grant that does not answer true calls nothing, on grant or on release". The unit file is the stronger (takeover, no hooks): `gestures/responder.test.ts` should keep "never touches RNGH's module" and one end-to-end blocking case.
 

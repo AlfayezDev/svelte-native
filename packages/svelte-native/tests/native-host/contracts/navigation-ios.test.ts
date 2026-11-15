@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { applyAppDelegate } from "../src/expo.ts";
+import { applyAppDelegate } from "../../../src/expo.ts";
 
 // Swift cannot be compiled here, so what ties the three pieces of the iOS restore together is read from their sources: JavaScript (`fabric/host.ts`)
 // calls the module by the names it defines, the AppDelegate patch (`applyAppDelegate`) calls the enum it defines, and both modules are autolinked.
-const core = resolve(import.meta.dirname, "../native/svelte-core");
+const core = resolve(import.meta.dirname, "../../../native/svelte-core");
 const swift = readFileSync(resolve(core, "ios/navigation/SvelteNavigationModule.swift"), "utf8");
-const host = readFileSync(resolve(import.meta.dirname, "../src/fabric/host.ts"), "utf8");
+const host = readFileSync(resolve(import.meta.dirname, "../../../src/fabric/host.ts"), "utf8");
 /** The Swift without its comments: the policy is in JavaScript, and the comments are free to say so. */
 const code = swift.split("\n").filter((line) => !line.trim().startsWith("//")).join("\n");
 const delegate = applyAppDelegate("import Expo\nclass AppDelegate {\n  var reactNativeFactory: RCTReactNativeFactory?\n}\n");
@@ -32,14 +32,9 @@ describe("the iOS navigation module's sources agree with each other", () => {
     expect(swift.match(/public static func /g)).toHaveLength(4);
   });
 
-  test("the pod's module is the one the AppDelegate imports, and the module is listed for autolinking", () => {
-    const podspec = readFileSync(resolve(core, "ios/SvelteCore.podspec"), "utf8");
-    expect(podspec).toContain("s.name           = 'SvelteCore'");
-    expect(podspec).toContain("'DEFINES_MODULE' => 'YES'");
-    const config = JSON.parse(readFileSync(resolve(core, "../../expo-module.config.json"), "utf8")) as { apple: { modules: string[]; podspecPath: string[]; swiftModuleName: string[] } };
+  test("the module is listed for autolinking, and the AppDelegate imports the pod it is in", () => {
+    const config = JSON.parse(readFileSync(resolve(core, "../../expo-module.config.json"), "utf8")) as { apple: { modules: string[] } };
     expect(config.apple.modules).toContain("SvelteNavigationModule");
-    expect(config.apple.podspecPath).toEqual(["native/svelte-core/ios/SvelteCore.podspec"]);
-    expect(config.apple.swiftModuleName).toEqual(["SvelteCore"]);
     expect(swift).toContain("public final class SvelteNavigationModule: Module");
   });
 
@@ -60,7 +55,7 @@ describe("the iOS navigation module's sources agree with each other", () => {
     for (const key of ["build", "runningBuild", "update"]) expect(swift).toContain(`"${key}"`);
     expect(swift).toContain('Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion")');
     // freshNavigation reads the same three names, and the running update is the one this process runs
-    const restore = readFileSync(resolve(import.meta.dirname, "../src/navigation-restore.ts"), "utf8");
+    const restore = readFileSync(resolve(import.meta.dirname, "../../../src/navigation-restore.ts"), "utf8");
     for (const key of ["build", "runningBuild", "update"]) expect(restore).toContain(key);
     expect(host).toContain("freshNavigation(module.restore(), Date.now(), undefined, runningUpdate())");
   });

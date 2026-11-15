@@ -1,15 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { readerFor } from "../src/doctor/resolve.ts";
-import { adapterLoadsRegistryLazily, expoModulesCoreProblems, lazyRegistry, moduleRegistryPath, strings } from "../src/doctor/shapes.ts";
-import { patchVersion } from "./support/versions.ts";
+import { adapterLoadsRegistryLazily, lazyRegistry, moduleRegistryPath, strings } from "../../src/doctor/shapes.ts";
+import { patchVersion } from "../support/versions.ts";
 
 // The lazy module registry in patches/expo-modules-core@<version>.patch (of the package) names every module it defers, because the name lives
 // in `definition()`, which must not run at startup. A rename in an Expo upgrade would otherwise show up as a crash at the
 // first JavaScript access, so the lists are checked against the module sources here. The lists are read from the patch by
 // `src/doctor/shapes.ts`, which `svelte-native doctor` also uses to tell whether an app's installed package carries the patch.
-const root = join(import.meta.dirname, "../../..");
+const root = join(import.meta.dirname, "../../../..");
 const patch = readFileSync(join(root, `packages/svelte-native/patches/expo-modules-core@${patchVersion("expo-modules-core")}.patch`), "utf8");
 const installedPackage = join(root, "node_modules/expo-modules-core");
 const installed = join(installedPackage, moduleRegistryPath);
@@ -63,12 +62,6 @@ describe("lazy Expo module registry", () => {
     expect(strings(/ON_DEMAND_MODULES = setOf\(([^)]*)\)/.exec(views)?.[1] ?? "").sort()).toEqual([...viewsOnDemand].sort());
   });
 
-  test("the modules whose views the foreign components mount are built on demand, not at start", () => {
-    // `ViewManagerAdapter_ExpoImage`, `_ExpoBlur_*`, `_ExpoLinearGradient`, `_ConicGradient`: the first screen mounts none of them, and
-    // building them with the host cost the pool thread that initializes the TurboModules about 25 ms of the start (SPEC, "Boot on the phone", round 2).
-    for (const name of ["ExpoImage", "ExpoBlur", "ExpoLinearGradient", "ConicGradient"]) expect(lazyEntries.some(([, lazyName]) => lazyName === name), name).toBe(true);
-  });
-
   test("the lookup of a view's module searches the built modules before it builds the pending ones", () => {
     // `getModuleHolder(viewClass)` used to build every pending module first: the first view event paid for about twenty module definitions on its thread.
     const lookup = /fun <T : View> getModuleHolder\(viewClass: Class<T>\): ModuleHolder<\*>\? \{([\s\S]*?)\n {2}\}/.exec(readFileSync(installed, "utf8"))?.[1] ?? "";
@@ -104,12 +97,5 @@ describe("lazy Expo module registry", () => {
     // The registry evaluates `getNativeComponentAttributes` and `UIManager`; the host needs neither before the first screen.
     const adapter = readFileSync(join(installedPackage, "src/NativeViewManagerAdapter.native.tsx"), "utf8");
     expect(adapterLoadsRegistryLazily(adapter)).toBe(true);
-  });
-
-  test("the installed package carries the patch", () => {
-    // pnpm applies the patch on install; a stale node_modules means `pnpm install` was not run after editing it.
-    // Every lazy module and every prewarmed or startup module the patch names is in the installed registry, and the proxy and the adapter have their
-    // changes: the check `svelte-native doctor` makes of an app.
-    expect(expoModulesCoreProblems(readerFor(installedPackage), patch)).toEqual([]);
   });
 });

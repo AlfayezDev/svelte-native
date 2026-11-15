@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createRunOncePlugin } from "expo/config-plugins";
-import { applyAppDelegate, applyHeadlessApplication, applyHeadlessSettings, applyMainActivity, applyPodfileAutolinkingExclude, leaveOutOfAutoPlugins, headlessExcludedPackages, headlessPackageSource, onDemandPackageSource } from "../src/expo.ts";
+import { applyAppDelegate, applyHeadlessApplication, applyHeadlessSettings, applyMainActivity, applyPodfileAutolinkingExclude, leaveOutOfAutoPlugins, headlessExcludedPackages, headlessPackageSource, onDemandPackageSource } from "../../src/expo.ts";
 
 const application = `class MainApplication {
   override val reactHost: ReactHost by lazy {
@@ -349,7 +349,7 @@ describe("headless Android config", () => {
 
 describe("the React Native flags every app gets", () => {
   test("view preallocation is off and prepared text layouts are on without any option, and an app can still override either", async () => {
-    const { androidFeatureFlagsFor, defaultAndroidFeatureFlags } = await import("../src/expo.ts");
+    const { androidFeatureFlagsFor, defaultAndroidFeatureFlags } = await import("../../src/expo.ts");
     expect(defaultAndroidFeatureFlags).toEqual({ disableViewPreallocationAndroid: true, enablePreparedTextLayout: true });
     expect(androidFeatureFlagsFor()).toEqual({ disableViewPreallocationAndroid: true, enablePreparedTextLayout: true });
     expect(androidFeatureFlagsFor({ androidFeatureFlags: { enablePreparedTextLayout: false } })).toEqual({ disableViewPreallocationAndroid: true, enablePreparedTextLayout: false });

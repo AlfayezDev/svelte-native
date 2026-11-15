@@ -27,8 +27,8 @@ import type { BuildIdentity, CrashReport, GestureInjection, GestureLaunch, Gestu
  * `[Svelte stress]` results into `Documents/lab-results.json`, which this driver reads: the verdicts are the lab's own.
  *
  * Signing needs the login keychain of the logged-in user, so the runner is built the way the app is (`commands/ios-build.ts`): by a
- * script the GUI Terminal opens (`build-for-testing`, once per change of the test sources, and again when its provisioning profile has expired or
- * expires within two hours: a Personal Team's lasts 7 days); the tests then run over `ssh`.
+ * script the GUI Terminal opens (`build-for-testing`, once per change of the test sources, and again when its provisioning profile has expired:
+ * a Personal Team's lasts 7 days); the tests then run over `ssh`.
  * Run on the iPhone SE 3 (iOS 26.6, 28 Oct to 1 Nov 2026; SPEC.md, "iOS status (lane G5)"): the project `make-project.rb` generates builds, the
  * runner installs and starts, and the scenarios run (12 scenarios, 23 touch actions per full run, three full runs). What the phone needs is in
  * the SPEC: on USB, unlocked and awake, with Settings > Developer > Enable UI Automation on, and no `devicectl` call while the
@@ -181,7 +181,7 @@ export function launchFromIos(capture: {
 		harnessErrors.push(...output.failures);
 		for (const action of output.actions) if (action.error) harnessErrors.push(`${action.scenario} step ${action.step + 1}: ${action.error}`);
 		if (output.actions.length === 0) harnessErrors.push(`the test performed no action: ${capture.testText.trim().split("\n").slice(-4).join(" | ").slice(0, 400)}`);
-		if (capture.testText.includes("This provisioning profile has expired")) harnessErrors.push("the phone refused the XCUITest runner: its provisioning profile has expired (run again with --rebuild)");
+		if (capture.testText.includes("This provisioning profile has expired")) harnessErrors.push("the phone refused the XCUITest runner: its provisioning profile has expired (the next run builds it again)");
 	}
 	return {
 		input: "xctest",
@@ -206,19 +206,18 @@ async function remoteDigest(mac: Mac): Promise<string | null> {
 	return result.code === 0 ? result.stdout.trim() : null;
 }
 
-/** How long the runner's profile must still be valid for a run to use it: a long run (`--repeat 10`) takes about an hour. */
-export const profileMarginMs = 2 * 60 * 60_000;
-
 /**
- * Why the built runner must be signed again, or `null` when its profile lasts past the run. A Personal Team's provisioning profile expires
- * 7 days after it was made, and the phone then refuses to install the runner ("This provisioning profile has expired", 0xe8008011) although its
- * sources have not changed. `expiry` is the profile's `ExpirationDate` as `plutil -extract … raw` prints it, `null` when it could not be read.
+ * Why the built runner must be signed again, or `null` while its profile is valid. A Personal Team's provisioning profile expires 7 days after it
+ * was made, and the phone then refuses to install the runner ("This provisioning profile has expired", 0xe8008011) although its sources have not
+ * changed. Only an expired or unreadable profile counts: Xcode may keep a profile that is still valid, so building again earlier need not renew
+ * it, and the build deletes the runner that still works. A profile that expires during a long run fails the launches after that moment, which say so
+ * (`launchFromIos`), and the next run builds again. `expiry` is the profile's `ExpirationDate` as `plutil -extract … raw` prints it, `null` when it
+ * could not be read.
  */
-export function profileStale(expiry: string | null, now: Date, marginMs = profileMarginMs): string | null {
+export function profileStale(expiry: string | null, now: Date): string | null {
 	const at = expiry === null ? Number.NaN : Date.parse(expiry);
 	if (Number.isNaN(at)) return "its provisioning profile could not be read";
 	if (at <= now.getTime()) return `its provisioning profile expired at ${new Date(at).toISOString()}`;
-	if (at - now.getTime() < marginMs) return `its provisioning profile expires at ${new Date(at).toISOString()}, before the run would end`;
 	return null;
 }
 

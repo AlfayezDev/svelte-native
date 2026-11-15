@@ -128,6 +128,10 @@ test("a page that is changed is what a fresh page of the same state is: random p
     } finally {
       await rm(directory, { recursive: true });
     }
+    if (Date.now() > deadline) {
+      failures.push(`stopped during seed ${seed} of ${seeds}: building its page reached the ${DIFFERENTIAL_BUDGET_MS / 1000} s budget (a slow or loaded machine)`);
+      break;
+    }
     const state: State = JSON.parse(JSON.stringify(INITIAL));
     const globals = globalThis as unknown as { __init: State; __api: { set(key: string, value: unknown): void; tags(): Record<string, number | null> } };
     globals.__init = JSON.parse(JSON.stringify(state));

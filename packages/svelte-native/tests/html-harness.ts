@@ -9,7 +9,7 @@ import { lowerPrimitives } from "../src/lower.ts";
 import { reanimatedStubs } from "./reanimated-stubs.ts";
 
 /**
- * The harness of the tests of HTML elements (`html-elements.test.ts`, `html-differential.test.ts`): a page is lowered as the Metro transformer lowers a file of an app (`lowerPrimitives` with
+ * The harness of the tests of HTML elements (`html-elements.test.ts`, `html-differential.own-process.ts`): a page is lowered as the Metro transformer lowers a file of an app (`lowerPrimitives` with
  * `html`, for the files `lowersHtml` names), compiled with the options of the library, bundled with the host, and mounted on a fake Fabric binding, so what a test reads is the tree and the
  * props the platform would be given, and an event goes through the host's own path.
  */

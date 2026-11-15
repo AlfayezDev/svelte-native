@@ -26,7 +26,7 @@ describe("what `build --platform ios` copies to the Mac", () => {
 		const source = mkdtempSync(join(tmpdir(), "mac-sync-source-"));
 		const target = mkdtempSync(join(tmpdir(), "mac-sync-"));
 		try {
-			for (const file of ["packages/svelte-native/native/svelte-engine/android/.cxx/RelWithDebInfo/x86_64/a.o", "apps/qa/android/.gradle/8.14/cache.bin", "examples/app/android/.gradle/b.lock", "packages/svelte-native/src/index.ts"]) {
+			for (const file of ["packages/svelte-native/native/svelte-core/android/.cxx/RelWithDebInfo/x86_64/a.o", "apps/qa/android/.gradle/8.14/cache.bin", "examples/app/android/.gradle/b.lock", "packages/svelte-native/src/index.ts"]) {
 				mkdirSync(dirname(join(source, file)), { recursive: true });
 				writeFileSync(join(source, file), "x");
 			}

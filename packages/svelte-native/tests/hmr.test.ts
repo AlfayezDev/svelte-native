@@ -432,7 +432,7 @@ test("process death: the router writes its state through the engine module after
   }
 });
 
-/** iOS's navigation module (`native/svelte-navigation-ios`) as far as JavaScript sees it: `save` after every change, `restore` once with a record or null. */
+/** iOS's navigation module (`native/svelte-core/ios/navigation`) as far as JavaScript sees it: `save` after every change, `restore` once with a record or null. */
 function navigationModule(record: unknown = null, updates?: { updateId: string | null }) {
   const module = { saved: [] as string[], updates: [] as (string | null | undefined)[], restores: 0, forgotten: 0, told: [] as [string, string][] };
   environment.__nativeModules = { ...(updates ? { SvelteUpdates: updates } : {}), SvelteNavigation: { save: (json: string, update?: string | null) => { module.saved.push(json); module.updates.push(update); }, restore: () => { module.restores++; return module.restores === 1 ? record : null; }, restored: (outcome: string, reason: string) => { module.forgotten++; module.told.push([outcome, reason]); } } };

@@ -70,7 +70,7 @@ export type SvelteNativeOptions = {
 export const headlessExcludedPackages = [
   "react-native-screens",
   "react-native-safe-area-context",
-  "expo-updates", // the engine host ships its own updates module (native/svelte-updates); this package only lets `eas update` run
+  "expo-updates", // the engine host ships its own updates module (native/svelte-core); this package only lets `eas update` run
   "expo-dev-client",
   "expo-dev-launcher",
   "expo-dev-menu",
@@ -108,7 +108,9 @@ const launchEnd = "            // Svelte native: end of launch options";
 const delegateBegin = "  // Svelte native: navigation state restoration (generated, do not edit)";
 const delegateEnd = "  // Svelte native: end of navigation state restoration";
 // `internal`: Expo's generated ExpoModulesProvider imports every module as `internal import`, and Swift refuses a plain import of the same module in the app target as ambiguous ("ambiguous implicit access level").
-const delegateImport = "internal import SvelteNavigation // Svelte native: navigation state restoration (generated, do not edit)";
+const delegateImport = "internal import SvelteCore // Svelte native: navigation state restoration (generated, do not edit)";
+// The generated import of any module, so a prebuild replaces the one an older version wrote (`SvelteNavigation`, before the native code was one pod).
+const delegateImportLine = /^internal import \w+ \/\/ Svelte native: navigation state restoration \(generated, do not edit\)\n/m;
 const gradleBegin = "// Svelte native: headless autolinking excludes (generated, do not edit)";
 const gradleEnd = "// Svelte native: end of headless autolinking excludes";
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -278,7 +280,7 @@ export function applyMainActivity(contents: string): string {
 
 /**
  * `AppDelegate.swift` (iOS): the four state restoration callbacks of `UIApplicationDelegate`, which Expo's `ExpoAppDelegate` does not forward, call
- * `SvelteNavigationRestoration` (`native/svelte-navigation-ios`). UIKit saves the application's restorable state when the app enters the background,
+ * `SvelteNavigationRestoration` (`native/svelte-core/ios/navigation`). UIKit saves the application's restorable state when the app enters the background,
  * asks `shouldRestore` at the next launch only if it still has that state, and has deleted it when the user swiped the app away: that call is how the
  * navigation module tells a process the system ended (restore) from one the user ended (start from the first screen), as Android's saved instance
  * state does. The methods keep the protocol's Objective-C selectors under names of their own, so a later `ExpoAppDelegate` that forwards them is a
@@ -287,7 +289,7 @@ export function applyMainActivity(contents: string): string {
 export function applyAppDelegate(contents: string): string {
   const stripped = contents
     .replace(blockPattern(delegateBegin, delegateEnd), "")
-    .replace(new RegExp(`^${escapeRegExp(delegateImport)}\\n`, "m"), "");
+    .replace(delegateImportLine, "");
   const imports = [...stripped.matchAll(/^(?:(?:internal|public|package|private|fileprivate) |@_exported |@preconcurrency )*import [\w.]+[ \t]*$/gm)];
   const lastImport = imports.at(-1);
   const property = /^[ \t]*var reactNativeFactory: RCTReactNativeFactory\?[ \t]*$/m.exec(stripped);

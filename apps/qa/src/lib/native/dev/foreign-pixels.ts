@@ -66,7 +66,7 @@ export const edgeHard = (read: EdgeRead): boolean => read.near >= 100 && read.ne
 /** A hard edge, tinted or not: the line is there (the outer pair shows 60 or more of the 145) and the inner pair sees nearly all of what the outer one does. The edge of a view that is not blurring. */
 export const edgeSharp = (read: EdgeRead): boolean => read.far >= 60 && read.near >= read.far * 0.85;
 /**
- * The bounds of the ratio at intensity 100, by platform. Android's is 0.35, from `BlurRules.kt` (`native/svelte-blur`): `MAX_RADIUS_DP = 25` and `radius(intensity, density, scale) = intensity / 100 * MAX_RADIUS_DP
+ * The bounds of the ratio at intensity 100, by platform. Android's is 0.35, from `BlurRules.kt` (`native/svelte-core`): `MAX_RADIUS_DP = 25` and `radius(intensity, density, scale) = intensity / 100 * MAX_RADIUS_DP
  * * density * scale` with `scale = 1 / DIVISOR` (`DIVISOR = 4`: the picture of what is behind the view is a quarter of its size and drawn four times larger), so the render effect blurs by 25 dp at intensity 100
  * (12.5 at 50; at 1 it is 0.16 px of the picture, under `MIN_EFFECT_RADIUS = 0.5`, and there is no effect). `RenderEffect.createBlurEffect` takes the radius as the Gaussian's standard deviation, which
  * gives a ratio of 0.20 in a box of 360 dp (0.19 to 0.22 from 300 to 400); 0.35 is what a blur of 8 dp would give, a third of the blur the rules ask for, which the check must not accept. (If the platform

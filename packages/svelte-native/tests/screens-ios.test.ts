@@ -13,10 +13,10 @@ import * as ios from "../src/fabric/navigation.ios.ts";
 import { decodeRecords, navigationProps, parseNativeID } from "../src/fabric/navigation.ts";
 import { colorToWire, encodeNativeID, headerHeight, mergeScreenOptions, navigationTags, normalizeDetents, sheetStyle } from "../src/fabric/navigation.ios.ts";
 
-// The iOS bridges of packages/svelte-native/native/svelte-screens-ios: the wire they share with the engine, the view names the
-// host picks per platform, and the pure C++ parts of the module (native/Core) built and run here.
+// The iOS bridges of packages/svelte-native/native/svelte-core/ios/screens: the wire they share with the engine, the view names the
+// host picks per platform, and the pure C++ parts of the module (Core/) built and run here.
 
-const module = resolve(import.meta.dirname, "../native/svelte-screens-ios");
+const module = resolve(import.meta.dirname, "../native/svelte-core/ios/screens");
 
 test("the iOS module re-exports the shared encoders and the reference decoder unchanged", () => {
   expect(ios.navigationProps).toBe(shared.navigationProps);
@@ -271,7 +271,7 @@ async function run(mode: "records" | "plan" | "detent", lines: string[]): Promis
   if (!driver) {
     const directory = await mkdtemp(resolve(tmpdir(), "svelte-screens-ios-core-"));
     driver = resolve(directory, "records_dump");
-    const build = spawnSync(compiler as string, ["-std=c++20", "-Wall", "-Wextra", "-Werror", "-O1", "-o", driver, resolve(module, "test/records_dump.cpp"), resolve(module, "native/Core/SvelteNativeID.cpp")], { encoding: "utf8" });
+    const build = spawnSync(compiler as string, ["-std=c++20", "-Wall", "-Wextra", "-Werror", "-O1", "-o", driver, resolve(module, "../../test/ios/records_dump.cpp"), resolve(module, "Core/SvelteNativeID.cpp")], { encoding: "utf8" });
     expect(build.stderr).toBe("");
     expect(build.status).toBe(0);
   }

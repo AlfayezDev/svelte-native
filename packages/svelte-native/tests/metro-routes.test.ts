@@ -11,7 +11,7 @@ import { routesTableFile } from "../src/variant.ts";
  * The route table is per variant (the product's leaves the development lab out): each variant has a file of its own under
  * `.svelte-native/`, Metro writes its variant's when its config loads and resolves `./routes` (the generated entry's import) and
  * `@alfayez/svelte-native/routes` (the app's read of `variant` and `lab`) to it. No file is shared, so a sync for another variant, in
- * a script or beside a running Metro, changes nothing it serves (packages/svelte-native/native/svelte-engine/SPEC.md, "What the product contains: no development lab (JavaScript)").
+ * a script or beside a running Metro, changes nothing it serves (packages/svelte-native/native/svelte-core/SPEC.md, "What the product contains: no development lab (JavaScript)").
  */
 const fakeConfig = (projectRoot: string): ConfigT => ({
   projectRoot,

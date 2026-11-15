@@ -534,7 +534,7 @@ var headlessExcludedPackages = [
   "react-native-screens",
   "react-native-safe-area-context",
   "expo-updates",
-  // the engine host ships its own updates module (native/svelte-updates); this package only lets `eas update` run
+  // the engine host ships its own updates module (native/svelte-core); this package only lets `eas update` run
   "expo-dev-client",
   "expo-dev-launcher",
   "expo-dev-menu",
@@ -569,7 +569,8 @@ var launchBegin = "            // Svelte native: the saved navigation reaches Ja
 var launchEnd = "            // Svelte native: end of launch options";
 var delegateBegin = "  // Svelte native: navigation state restoration (generated, do not edit)";
 var delegateEnd = "  // Svelte native: end of navigation state restoration";
-var delegateImport = "internal import SvelteNavigation // Svelte native: navigation state restoration (generated, do not edit)";
+var delegateImport = "internal import SvelteCore // Svelte native: navigation state restoration (generated, do not edit)";
+var delegateImportLine = /^internal import \w+ \/\/ Svelte native: navigation state restoration \(generated, do not edit\)\n/m;
 var gradleBegin = "// Svelte native: headless autolinking excludes (generated, do not edit)";
 var gradleEnd = "// Svelte native: end of headless autolinking excludes";
 var escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -710,7 +711,7 @@ function applyMainActivity(contents) {
 ${members}${stripped.slice(classEnd, createAnchor.index)}${saved}${stripped.slice(createAnchor.index, delegateAnchor.index)}${launch}${stripped.slice(delegateEnd2)}`;
 }
 function applyAppDelegate(contents) {
-  const stripped = contents.replace(blockPattern(delegateBegin, delegateEnd), "").replace(new RegExp(`^${escapeRegExp(delegateImport)}\\n`, "m"), "");
+  const stripped = contents.replace(blockPattern(delegateBegin, delegateEnd), "").replace(delegateImportLine, "");
   const imports = [...stripped.matchAll(/^(?:(?:internal|public|package|private|fileprivate) |@_exported |@preconcurrency )*import [\w.]+[ \t]*$/gm)];
   const lastImport = imports.at(-1);
   const property = /^[ \t]*var reactNativeFactory: RCTReactNativeFactory\?[ \t]*$/m.exec(stripped);

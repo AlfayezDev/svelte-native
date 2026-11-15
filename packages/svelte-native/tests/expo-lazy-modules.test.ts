@@ -54,7 +54,7 @@ describe("lazy Expo module registry", () => {
   }
 
   test("the modules with views served on demand are the ones the engine's ExpoViews builds", () => {
-    const views = readFileSync(join(root, "packages/svelte-native/native/svelte-engine/android/src/main/java/expo/modules/svelteengine/ExpoViews.kt"), "utf8");
+    const views = readFileSync(join(root, "packages/svelte-native/native/svelte-core/android/src/main/java/expo/modules/svelteengine/ExpoViews.kt"), "utf8");
     expect(views).toContain("class ExpoViews(");
     for (const name of viewsOnDemand) expect(lazyEntries.map(([, lazyName]) => lazyName)).toContain(name);
     // The engine builds views only for those modules: Expo exports the views of every module that is not lazy when the host starts, so

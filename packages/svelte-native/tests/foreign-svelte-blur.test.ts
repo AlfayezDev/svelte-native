@@ -4,11 +4,11 @@ import { resolve } from "node:path";
 import { createHarness, expoViewConfigs, find, settle } from "./foreign-harness.ts";
 
 /**
- * The library's own blur (`BlurView`, the `SvelteBlur` module in `native/svelte-blur`; SPEC.md, "Foreign views"): a container `View` with the native `SvelteBlurView` filling
+ * The library's own blur (`BlurView`, the `SvelteBlur` module in `native/svelte-core`; SPEC.md, "Foreign views"): a container `View` with the native `SvelteBlurView` filling
  * it behind the children, which stay the engine's views. `ExpoBlurView` is expo-blur's (`foreign-blur.test.ts`); both are in the `foreign` entry.
  */
 const view = "ViewManagerAdapter_SvelteBlur_SvelteBlurView";
-const kotlin = "../packages/svelte-native/native/svelte-blur/android/src/main/java/expo/modules/svelteblur/SvelteBlurModule.kt";
+const kotlin = "../packages/svelte-native/native/svelte-core/android/src/main/java/expo/modules/svelteblur/SvelteBlurModule.kt";
 const configs = expoViewConfigs(kotlin);
 type App = { setIntensity(next: number): void; setTint(next: string): void; wrapperHandle(): { tag: number } | null };
 

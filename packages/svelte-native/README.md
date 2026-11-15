@@ -2,7 +2,7 @@
 
 Svelte 5 components that run as native Android and iOS apps. The components are compiled by a pinned Svelte compiler, run in Hermes, and drive React Native's Fabric shadow tree and Yoga directly. There is no React reconciler, no React Native component layer and no WebView. The build and release pipeline stays Expo: `expo prebuild`, config plugins, autolinking, Gradle and CocoaPods, EAS Build, EAS Submit and EAS Update.
 
-On Android the mounting is the package's own engine: Fabric's C++ transaction goes to typed Kotlin views instead of React Native's Java mounting. On iOS React Native's mounting is kept and the package adds its own UIKit navigation, sheets, tabs and toolbar. The engine is specified in [native/svelte-engine/SPEC.md](native/svelte-engine/SPEC.md); this file is the way in, [REFERENCE.md](REFERENCE.md) holds the detail of the JavaScript side, [CHANGELOG.md](CHANGELOG.md) what changed, and [PLAN.md](PLAN.md) what was measured and what is open.
+On Android the mounting is the package's own engine: Fabric's C++ transaction goes to typed Kotlin views instead of React Native's Java mounting. On iOS React Native's mounting is kept and the package adds its own UIKit navigation, sheets, tabs and toolbar. The engine is specified in [native/svelte-core/SPEC.md](native/svelte-core/SPEC.md); this file is the way in, [REFERENCE.md](REFERENCE.md) holds the detail of the JavaScript side, [CHANGELOG.md](CHANGELOG.md) what changed, and [PLAN.md](PLAN.md) what was measured and what is open.
 
 ## Supported platforms
 
@@ -78,7 +78,7 @@ A release is a tag with its [changelog](CHANGELOG.md) entry. What `pnpm install`
   Without the first override a fresh install takes 57.0.25 and pnpm stops with `ERR_PNPM_UNUSED_PATCH`; `svelte-native doctor` reports a different version of `expo-modules-core` with this fix. The second is React Native's version (the one in `dependencies`): without it the install takes `@react-native/metro-config` 0.88 and Metro 0.87, whose engines exclude Node 25 (see "Node" above).
 
   The `patchedDependencies` entries go in the same file ("Apply the patches").
-- **Native modules.** Nothing is copied into the app. The package's `expo-module.config.json` links six native projects through Expo's autolinking (Android Gradle projects `:svelte-engine` and `:svelte-updates`; iOS pods `SvelteScreensIOS`, `SvelteInsets`, `SvelteNavigation`, `SvelteCapture`, `SvelteUpdates`), so `expo prebuild` and `pod install` find them in `node_modules/@alfayez/svelte-native/native/`. Keep the app's own Expo modules in its `modules/` directory as usual.
+- **Native modules.** Nothing is copied into the app. The package's `expo-module.config.json` links its one native module through Expo's autolinking (the Android Gradle project `:svelte-core` and the iOS pod `SvelteCore`, both in `native/svelte-core`), so `expo prebuild` and `pod install` find it in `node_modules/@alfayez/svelte-native/native/`. Keep the app's own Expo modules in its `modules/` directory as usual.
 - **Patches.** The patches the library relies on are in the package's `patches/` directory; "Apply the patches" below says how an app copies and registers them (`patchedDependencies`), and `pnpm exec svelte-native doctor` checks the result.
 - **App config.** The Metro, Vite and Expo wiring is the one in "Set up an app" below; run `npx expo prebuild` after the first install and after a native dependency or a plugin option changes.
 - **CI.** Declaring the patches changes the lockfile, and with `CI=1` pnpm refuses a frozen install of a lockfile that does not match: run `pnpm install --no-frozen-lockfile` once and commit `pnpm-lock.yaml`.
@@ -272,7 +272,7 @@ A stack layout renders `<Stack header={{ large: true }} animation="slide_from_ri
 | react-native-fast-shadow, react-native-animateable-text | `ShadowedView`, `shadowStyle`; `AnimateableText` |
 | react-native-svg 15.15.4 (required; the main entry exports them, not `/foreign`) | `Svg`, shapes, `SvgText`, gradients, filters, `SvgXml`, `SvgUri` (36 components) |
 
-The library has its own blur, `BlurView`, which needs no package (a native module of the library, `native/svelte-blur`): `intensity` and `tint`, children on top. The main entry exports it; `/foreign` does too. `ExpoBlurView` is expo-blur's.
+The library has its own blur, `BlurView`, which needs no package (a native module of the library, `native/svelte-core`): `intensity` and `tint`, children on top. The main entry exports it; `/foreign` does too. `ExpoBlurView` is expo-blur's.
 | any other Expo module's view | `ExpoView`, `defineExpoView` mount it by the module's name, with the module's own props |
 | anything else | `ForeignView` mounts a Fabric component by name |
 

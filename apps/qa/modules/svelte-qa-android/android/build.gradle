@@ -16,5 +16,5 @@ android {
 dependencies {
   // The QA touch injector dispatches to the engine's root view (`EngineRoot`) and nothing else of it. The engine is in every app
   // that has this module, so the dependency is compile time only.
-  compileOnly project(':svelte-engine')
+  compileOnly project(':svelte-core')
 }

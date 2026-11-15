@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { createResponder, type ResponderTree } from "../src/fabric/responder.ts";
+import { createResponder, type ResponderTree } from "../../src/fabric/responder.ts";
 
 // A responder that blocks the native ones (React Native: `onResponderGrant` answers true, and `UIManager.setJSResponder(tag, true)` follows; with
 // react-native-gesture-handler patching that call into `handleSetJSResponder`) must reach the native side; one that does not must not.

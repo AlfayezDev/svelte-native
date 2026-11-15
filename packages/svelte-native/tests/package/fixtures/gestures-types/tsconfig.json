@@ -1,0 +1,4 @@
+{
+  "extends": "../../../../tsconfig.json",
+  "include": ["types-fixture.svelte", "types-errors-fixture.svelte", "../../../../src/elements.d.ts"]
+}

@@ -1,9 +1,24 @@
-import { test, expect } from "bun:test";
-import { load, settle, byId } from "./harness.ts";
+import { expect, test } from "bun:test";
+import { resolve } from "node:path";
+import { baseStubs, load, src } from "../support/bundle.ts";
+import { type FakeNode, settle } from "../support/host.ts";
+import { fakeHost } from "../support/fake-host.ts";
+
+const host = fakeHost();
+const byId = (rootTag: number, id: string): FakeNode | undefined => host.nodes(rootTag).find((node) => node.props.testID === id);
 
 /** `{...probe(name)}` is the lab pages' spread: `ref`, `testID` and `collapsable` on a lowered primitive. */
 test("a function-valued ref in a spread (and next to one) reaches the host, as a plain attribute does", async () => {
-  const m = await load({ fixture: "spread-fixture.svelte" });
+  const m = await load<{ startSurface(rootTag: number, App: unknown, props: Record<string, unknown>): unknown; tick(): Promise<void>; Fixture: unknown }>({
+    entry: `import Fixture from ${JSON.stringify(resolve(import.meta.dirname, "fixtures/spread-fixture.svelte"))};
+      import { startSurface } from ${JSON.stringify(src("fabric/host.ts"))};
+      import { tick } from 'svelte';
+      export { startSurface, tick, Fixture };`,
+    // The primitives the fixture imports are lowered away to host tags.
+    stubs: { ...baseStubs(), "@alfayez/svelte-native": "export const View = null, Text = null, ScrollView = null;" },
+    converters: false,
+    lower: {},
+  });
   const handles: Record<string, unknown[]> = {};
   const probe = (name: string) => ({
     ref: (handle: unknown) => { handles[name] ??= []; handles[name].push(handle); },

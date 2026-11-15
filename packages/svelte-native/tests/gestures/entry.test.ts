@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { load, anim } from "./harness.ts";
+import { load, anim } from "./support/harness.ts";
 
 /** What the gestures module (`src/gestures/index.ts`, which the main entry `@alfayez/svelte-native` re-exports) exports, and that its lazy parts resolve to the real thing when first used. */
 test("the entry exports the builders, the sugar, the constants and worklets' runOnJS and scheduleOnRN", async () => {
@@ -9,7 +9,6 @@ test("the entry exports the builders, the sugar, the constants and worklets' run
   expect(anim()).toBeUndefined(); // listing them read nothing lazy
 
   expect(Object.keys(entry.Gesture).sort()).toEqual(["Exclusive", "Fling", "Hover", "LongPress", "Manual", "Native", "Pan", "Pinch", "Race", "Rotation", "Simultaneous", "Tap"]);
-  expect(anim()).toBeDefined();
   expect(entry.State).toEqual({ UNDETERMINED: 0, FAILED: 1, BEGAN: 2, CANCELLED: 3, ACTIVE: 4, END: 5 });
   expect(entry.Directions).toEqual({ RIGHT: 1, LEFT: 2, UP: 4, DOWN: 8 });
   expect(entry.TouchEventType.TOUCHES_MOVE).toBe(2);

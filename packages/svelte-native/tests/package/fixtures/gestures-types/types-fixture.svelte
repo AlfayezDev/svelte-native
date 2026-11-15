@@ -2,18 +2,18 @@
   /* eslint-disable @typescript-eslint/no-unused-expressions -- reading a property is how this fixture checks that it exists and has its type */
   // Type-checked by `types.test.ts` (svelte-check): every builder method, the `gesture` attribute on each primitive and on host tags,
   // the sugar, and the exported types. Never run.
-  import View from "../../src/components/View.svelte";
-  import Text from "../../src/components/Text.svelte";
-  import Pressable from "../../src/components/Pressable.svelte";
-  import ScrollView from "../../src/components/ScrollView.svelte";
-  import Image from "../../src/components/Image.svelte";
-  import AnimatedView from "../../src/components/AnimatedView.svelte";
+  import View from "../../../../src/components/View.svelte";
+  import Text from "../../../../src/components/Text.svelte";
+  import Pressable from "../../../../src/components/Pressable.svelte";
+  import ScrollView from "../../../../src/components/ScrollView.svelte";
+  import Image from "../../../../src/components/Image.svelte";
+  import AnimatedView from "../../../../src/components/AnimatedView.svelte";
   import {
     Gesture, GestureDetector, GestureStateManager, gesture, State, Directions, PointerType, TouchEventType, ActionType, runOnJS, scheduleOnRN,
     type ComposedGesture, type GestureAttribute, type GestureStateChangeEvent, type GestureTouchEvent, type GestureUpdateEvent, type GestureStateManagerType, type GestureType,
     type PanGestureHandlerEventPayload, type TapGestureHandlerEventPayload, type PinchGestureHandlerEventPayload, type RotationGestureHandlerEventPayload,
     type LongPressGestureHandlerEventPayload, type FlingGestureHandlerEventPayload,
-  } from "../../src/gestures/index.ts";
+  } from "../../../../src/gestures/index.ts";
 
   const ref = { current: undefined as GestureType | undefined };
   const scroll = Gesture.Native().shouldActivateOnStart(true).disallowInterruption(true);

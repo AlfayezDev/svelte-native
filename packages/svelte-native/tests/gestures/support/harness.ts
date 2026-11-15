@@ -6,9 +6,9 @@
  */
 import type { Plugin } from "esbuild";
 import { resolve } from "node:path";
-import { reanimatedStubs, type AnimLog } from "../reanimated-stubs.ts";
-import { type HostPluginOptions, hostPlugin as supportHostPlugin, load as loadBundle } from "../support/bundle.ts";
-import { type FakeNode, type Installed, createHost } from "../support/host.ts";
+import { reanimatedStubs, type AnimLog } from "../../reanimated-stubs.ts";
+import { type HostPluginOptions, hostPlugin as supportHostPlugin, load as loadBundle, src } from "../../support/bundle.ts";
+import { type FakeNode, type Installed, createHost } from "../../support/host.ts";
 
 export type { FakeNode };
 /** One call to the fake gesture-handler module, as the native side receives it: the method name, then its arguments. */
@@ -59,7 +59,7 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/TurboModule/TurboModuleRegistry": recorderSource,
   "react-native/Libraries/EventEmitter/RCTDeviceEventEmitter": emitterSource,
   // The main entry: the primitives (lowered away) and the gestures it re-exports (`src/index.ts`).
-  "@alfayez/svelte-native": `export const View = null, Text = null, Pressable = null, ScrollView = null, Image = null; export * from ${JSON.stringify(resolve(import.meta.dirname, "../../src/gestures/index.ts"))};`,
+  "@alfayez/svelte-native": `export const View = null, Text = null, Pressable = null, ScrollView = null, Image = null; export * from ${JSON.stringify(src("gestures/index.ts"))};`,
   "expo-modules-core": "export const requireOptionalNativeModule = (name) => (name === 'SvelteEngine' ? globalThis.__gh.engine : null);",
   "react-native": "export const AppRegistry = { registerRunnable() {} };",
 };
@@ -104,21 +104,21 @@ export type Loaded = {
   tick(): Promise<void>;
   Fixture: unknown;
   /** The bundle's own copy of the gestures the main entry (`@alfayez/svelte-native`) exports. */
-  gestures: typeof import("../../src/gestures/index.ts");
+  gestures: typeof import("../../../src/gestures/index.ts");
   bootSummary(): string;
   /** The bundle's own copies of what a test inspects: the JS receiver's memory, RNGH's mount registry and handler registry. */
   probe: {
     receiverSize(): { stateManagers: number; lastUpdates: number };
     /** The numbers `src/gestures/animated.ts` copies, by RNGH's names; the module is evaluated by this call and not before. */
     copiedConstants(): Promise<{ State: Record<string, number>; TouchEventType: Record<string, number>; CALLBACK_TYPE: Record<string, number> }>;
-    MountRegistry: typeof import("../../src/gestures/rngh.js").MountRegistry;
-    findHandler: typeof import("../../src/gestures/rngh.js").findHandler;
+    MountRegistry: typeof import("../../../src/gestures/rngh.js").MountRegistry;
+    findHandler: typeof import("../../../src/gestures/rngh.js").findHandler;
     findHandlerByTestID(testID: string): { handlerTag: number } | null;
   };
 };
 
 type LoadOptions = {
-  /** The Svelte fixture, relative to `tests/gestures`. */
+  /** The Svelte fixture, relative to `tests/gestures/fixtures` (or an absolute path). */
   fixture: string;
   /** `__DEV__` in the bundle; the development guards depend on it. Default true. */
   dev?: boolean;
@@ -126,6 +126,8 @@ type LoadOptions = {
   plugins?: Plugin[];
   /** Names the bundle when it has plugins, so it is built once (`support/bundle.ts`). */
   cacheKey?: string;
+  /** Where a fixture that is not an absolute path is looked for. Default: `tests/gestures/fixtures`. */
+  fixtures?: string;
   os?: "android" | "ios";
 };
 
@@ -133,16 +135,16 @@ type LoadOptions = {
 export async function load(options: LoadOptions): Promise<Loaded> {
   installWorld(options.os ?? "android");
   return loadBundle<Loaded>({
-    entry: `import Fixture from ${JSON.stringify(`./${options.fixture}`)};
-        import { startSurface, stopSurface, fabricStats, flush } from '../../src/fabric/host.ts';
-        import { bootSummary } from '../../src/boot-marks.ts';
-        import * as gestures from '../../src/gestures/index.ts';
-        import { receiverSize } from '../../src/gestures/events.ts';
-        import { MountRegistry, findHandler } from '../../src/gestures/rngh.js';
+    entry: `import Fixture from ${JSON.stringify(resolve(options.fixtures ?? resolve(import.meta.dirname, "../fixtures"), options.fixture))};
+        import { startSurface, stopSurface, fabricStats, flush } from ${JSON.stringify(src("fabric/host.ts"))};
+        import { bootSummary } from ${JSON.stringify(src("boot-marks.ts"))};
+        import * as gestures from ${JSON.stringify(src("gestures/index.ts"))};
+        import { receiverSize } from ${JSON.stringify(src("gestures/events.ts"))};
+        import { MountRegistry, findHandler } from ${JSON.stringify(src("gestures/rngh.js"))};
         import { findHandlerByTestID } from 'react-native-gesture-handler/src/handlers/handlersRegistry';
         import { tick, flushSync } from 'svelte';
         // animated.ts evaluates Reanimated, which a test about the app that never uses a gesture must not see: it is read on demand.
-        const copiedConstants = async () => (await import('../../src/gestures/animated.ts')).copiedConstants;
+        const copiedConstants = async () => (await import(${JSON.stringify(src("gestures/animated.ts"))})).copiedConstants;
         const probe = { receiverSize, copiedConstants, MountRegistry, findHandler, findHandlerByTestID };
         export { startSurface, stopSurface, fabricStats, flush, tick, flushSync, Fixture, gestures, bootSummary, probe };`,
     resolveDir: import.meta.dirname,

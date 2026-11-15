@@ -1,10 +1,10 @@
 import { test, expect, spyOn } from "bun:test";
 import { readFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import type { Plugin } from "esbuild";
 import generate from "@babel/generator";
 import { transform } from "../../src/transformer.ts";
-import { load, settle, callsOf } from "./harness.ts";
+import { load, settle, callsOf } from "../gestures/support/harness.ts";
 
 /**
  * The real toolchain: `.svelte` fixtures go through `src/transformer.ts` (Svelte's compile, then Metro's Babel transformer with
@@ -28,17 +28,15 @@ function babelled(): Plugin {
   return {
     name: "babelled",
     setup(builder) {
-      builder.onLoad({ filter: /tests\/gestures\/toolchain-[a-z]+\.svelte$/ }, ({ path }) => run(path));
+      builder.onLoad({ filter: /gesture-worklets-[a-z]+\.svelte$/ }, ({ path }) => run(path));
       builder.onLoad({ filter: /src\/gestures\/guards\.ts$/ }, ({ path }) => run(path));
     },
   };
 }
-(globalThis as { global?: unknown }).global ??= globalThis;
-
-const start = (fixture: string, props: Record<string, unknown> = {}) => load({ fixture, plugins: [babelled()] }).then((m) => ({ m, run: () => m.startSurface(91, m.Fixture, props) }));
+const start = (fixture: string, props: Record<string, unknown> = {}) => load({ fixture, fixtures: resolve(import.meta.dirname, "fixtures"), plugins: [babelled()] }).then((m) => ({ m, run: () => m.startSurface(91, m.Fixture, props) }));
 
 test("an inline callback of a Gesture.X().onY(...) chain is workletized, and its closure holds exactly what it captured", async () => {
-  const { m, run } = await start("toolchain-ok.svelte");
+  const { m, run } = await start("gesture-worklets-ok.svelte");
   const surface = run() as unknown as { pan: { handlers: Record<string, { __workletHash?: number; __closure?: Record<string, unknown> }>; shouldUseReanimated: boolean } };
   await settle(m);
   const { onUpdate, onEnd } = surface.pan.handlers;
@@ -47,14 +45,14 @@ test("an inline callback of a Gesture.X().onY(...) chain is workletized, and its
   expect(Object.keys(onEnd?.__closure ?? {})).toEqual(["x"]);
   expect(surface.pan.shouldUseReanimated).toBe(true);
   expect(callsOf("attachGestureHandler")[0]?.[3]).toBe(1);
-  expect(outputs.get("toolchain-ok.svelte")).toMatch(/__workletHash/);
+  expect(outputs.get("gesture-worklets-ok.svelte")).toMatch(/__workletHash/);
 });
 
 test("a UI-thread callback that reads $state is refused in development, naming the callback, the variable and the way out", async () => {
-  const { run } = await start("toolchain-state.svelte");
+  const { run } = await start("gesture-worklets-state.svelte");
   let message = "";
   try { run(); } catch (error) { message = (error as Error).message; }
-  expect(outputs.get("toolchain-state.svelte")).toMatch(/__closure = \{\s*\$,\s*count\s*\}/);
+  expect(outputs.get("gesture-worklets-state.svelte")).toMatch(/__closure = \{\s*\$,\s*count\s*\}/);
   expect(message).toContain("The onEnd callback of Gesture.Pan() runs on the UI thread but reads the state \"count\"");
   expect(message).toContain("SharedValue");
   expect(message).toContain(".runOnJS(true)");
@@ -62,13 +60,13 @@ test("a UI-thread callback that reads $state is refused in development, naming t
 });
 
 test("a UI-thread callback that reads a prop is refused too", async () => {
-  const { run } = await start("toolchain-props.svelte", { limit: 10 });
+  const { run } = await start("gesture-worklets-props.svelte", { limit: 10 });
   expect(run).toThrow("reads the component's props ($props)");
-  expect(outputs.get("toolchain-props.svelte")).toMatch(/__closure = \{\s*\$\$props/);
+  expect(outputs.get("gesture-worklets-props.svelte")).toMatch(/__closure = \{\s*\$\$props/);
 });
 
 test("with .runOnJS(true) the same read is fine: the callback runs on the JS thread and reads live state", async () => {
-  const { m, run } = await start("toolchain-runonjs.svelte");
+  const { m, run } = await start("gesture-worklets-runonjs.svelte");
   run();
   await settle(m);
   expect(callsOf("attachGestureHandler")[0]?.[3]).toBe(4);
@@ -77,7 +75,7 @@ test("with .runOnJS(true) the same read is fine: the callback runs on the JS thr
 test("Gesture imported under another name is not workletized: the gesture runs on the JS thread and development says so", async () => {
   const warn = spyOn(console, "warn").mockImplementation(() => {});
   try {
-    const { m, run } = await start("toolchain-alias.svelte");
+    const { m, run } = await start("gesture-worklets-alias.svelte");
     const surface = run() as unknown as { pan: { handlers: { onUpdate: { __workletHash?: number } } } };
     await settle(m);
     expect(surface.pan.handlers.onUpdate.__workletHash).toBeUndefined();

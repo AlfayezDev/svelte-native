@@ -2,7 +2,7 @@
  * Captures what react-native-gesture-handler's own detector code sends to its native module for a set of gesture objects:
  * `createGestureHandler`, `attachGestureHandler`, `updateGestureHandler` (config plus relation arrays), `dropGestureHandler`
  * and `flushOperations`, in order. The files in `golden/` are the expected output of the Svelte detector (SPEC.md,
- * "Gestures (react-native-gesture-handler)", "Test plan"); regenerate them with `node tests/gestures/capture-golden.mjs`
+ * "Gestures (react-native-gesture-handler)", "Test plan"); regenerate them with `node tests/gestures/fixtures/capture-golden.mjs`
  * after upgrading the package and read the diff: it is what the native side will see differently.
  *
  * RNGH's `GestureDetector/*` files import React components and `react-native`, so they are bundled with esbuild against a

@@ -1,51 +1,42 @@
 import { expect, test } from "bun:test";
-import { build, transform } from "esbuild";
-import { readFile, mkdtemp, writeFile, rm } from "node:fs/promises";
-import { resolve } from "node:path";
-import { tmpdir } from "node:os";
-import { pathToFileURL } from "node:url";
+import type { Plugin } from "esbuild";
+import { readFile } from "node:fs/promises";
+import { transform } from "esbuild";
 import { compileModule } from "svelte/compiler";
-import type { StackNode } from "../src/route-tree.ts";
-import type { PreparedNavigation, NavigateOptions } from "../src/router.svelte.ts";
+import type { StackNode } from "../../src/route-tree.ts";
+import type { PreparedNavigation, NavigateOptions } from "../../src/router.svelte.ts";
+import { src } from "../support/bundle.ts";
+import { loadRouter } from "../support/router.ts";
 
 // Exercise the real reactive store without mounting a Fabric surface. The private store is
 // exported only in this test bundle, so disposal can be tested while callers retain handles.
-async function load() {
-  const bundle = await build({
-    stdin: { contents: "import 'svelte/internal/flags/async'; export { createStore } from '../src/router.svelte.ts';", resolveDir: import.meta.dirname },
-    bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], write: false,
-    plugins: [{ name: "router-store", setup(builder) {
-      builder.onResolve({ filter: /^react-native\// }, (args) => ({ path: args.path, namespace: "native" }));
-      builder.onLoad({ filter: /.*/, namespace: "native" }, () => ({ contents: "export default { OS: 'android' };" }));
-      builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../src/environment.ts") }));
-      builder.onLoad({ filter: /\.svelte\.ts$/ }, async ({ path }) => {
-        let source = await readFile(path, "utf8");
-        if (path.endsWith("/router.svelte.ts")) source += "\nexport { createStore };";
-        const { code } = await transform(source, { loader: "ts" });
-        return { contents: compileModule(code, { filename: path, experimental: { async: true } }).js.code, loader: "js" };
-      });
-    } }],
-  });
-  const directory = await mkdtemp(resolve(tmpdir(), "svelte-native-prepare-"));
-  try {
-    const file = resolve(directory, "bundle.mjs");
-    await writeFile(file, bundle.outputFiles[0]!.contents);
-    return await import(pathToFileURL(file).href) as { createStore(tree: StackNode): {
-      start(href: string): void;
-      snapshot(): { entries: { href: string; presentation: string }[] };
-      navigate(href: string, navigation: NavigateOptions): void;
-      root: { entries: { key: number }[] };
-      prepare(href: string, navigation?: NavigateOptions): PreparedNavigation;
-      dispose(): void;
-    } };
-  } finally { await rm(directory, { recursive: true }); }
-}
+const exportStore: Plugin = {
+  name: "router-store",
+  setup(builder) {
+    builder.onLoad({ filter: /\.svelte\.ts$/ }, async ({ path }) => {
+      let source = await readFile(path, "utf8");
+      if (path.endsWith("/router.svelte.ts")) source += "\nexport { createStore };";
+      const { code } = await transform(source, { loader: "ts" });
+      return { contents: compileModule(code, { filename: path, experimental: { async: true } }).js.code, loader: "js" };
+    });
+  },
+};
+
+type Store = {
+  start(href: string): void;
+  snapshot(): { entries: { href: string; presentation: string }[] };
+  navigate(href: string, navigation: NavigateOptions): void;
+  root: { entries: { key: number }[] };
+  prepare(href: string, navigation?: NavigateOptions): PreparedNavigation;
+  dispose(): void;
+};
+const load = () => loadRouter<{ createStore(tree: StackNode): Store }>(`import 'svelte/internal/flags/async'; export { createStore } from ${JSON.stringify(src("router.svelte.ts"))};`, { plugins: [exportStore], cacheKey: "prepare-lifecycle" });
 
 const tree = (): StackNode => ({ kind: "stack", id: "root", path: "/", routes: ["/", "/a", "/b"].map((path) => ({
   kind: "page", id: path, path, presentation: "push", load: async () => ({ component: (() => {}) as never, layouts: [] }),
 })) });
 
-test("disposing makes both current and superseded prepare handles inert", async () => {
+test("disposing makes every prepare handle inert: the current one, a superseded one, and a ready fork that is committed twice", async () => {
   const { createStore } = await load();
   const store = createStore(tree());
   store.start("/");
@@ -58,6 +49,17 @@ test("disposing makes both current and superseded prepare handles inert", async 
   expect(await older.ready).toBe(false);
   expect(await newer.ready).toBe(false);
   expect(store.snapshot()).toEqual(before);
+
+  const ready = createStore(tree());
+  ready.start("/");
+  const prepared = ready.prepare("/a");
+  expect(await prepared.ready).toBe(true);
+  const kept = ready.snapshot();
+  ready.dispose();
+  prepared.commit();
+  prepared.commit();
+  prepared.discard();
+  expect(ready.snapshot()).toEqual(kept);
 });
 
 test("preparing after disposal is inert and does not even load modules", async () => {
@@ -88,21 +90,6 @@ test("a superseded handle still falls back to normal navigation while alive", as
   expect(store.snapshot().entries.map((entry) => entry.href)).toEqual(["/", "/a"]);
   store.dispose();
 });
-
-test("disposing discards a ready fork and repeated commits remain inert", async () => {
-  const { createStore } = await load();
-  const store = createStore(tree());
-  store.start("/");
-  const prepared = store.prepare("/a");
-  expect(await prepared.ready).toBe(true);
-  const before = store.snapshot();
-  store.dispose();
-  prepared.commit();
-  prepared.commit();
-  prepared.discard();
-  expect(store.snapshot()).toEqual(before);
-});
-
 
 test("query-only navigation stays in place, while reset makes a fresh root", async () => {
   const { createStore } = await load();

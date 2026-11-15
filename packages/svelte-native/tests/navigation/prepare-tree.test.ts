@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import { resolve } from "node:path";
-import { routeFiles } from "../src/build.ts";
-import { fabric, find, loadFork } from "./fork-harness.ts";
+import { routeFiles } from "../../src/build.ts";
+import { fabric, find, loadFork } from "../fork-harness.ts";
+import { standInRoutes } from "./support/world.ts";
 
 /**
  * `router.prepare(href)` then `commit()` against `goto(href)`, on the tree of the stand-in app (`tree-fixture.svelte`: tabs, nested stacks, params, layouts, a modal and a sheet): the
@@ -17,7 +17,7 @@ type R = {
   prepare(href: string, navigation?: object): { ready: Promise<boolean>; commit(): void; discard(): void };
 };
 const g = globalThis as Record<string, unknown>;
-const appRoutes = resolve(import.meta.dirname, "fixtures/stand-in-app/src/routes");
+const files = routeFiles(standInRoutes, { lab: true });
 const tabs = [{ key: "home", title: "Home" }, { key: "settings", title: "Settings" }];
 const sleep = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
 const settle = async (m: { tick(): Promise<void> }) => { for (let turn = 0; turn < 6; turn++) { await m.tick(); await sleep(0); } };
@@ -31,14 +31,13 @@ type Mounted = Awaited<ReturnType<typeof mount>>;
 let surface = 400;
 async function mount(initial: string) {
   const tag = surface++;
-  const files = await routeFiles(appRoutes, { lab: true });
-  const m = await loadFork("tree-fixture.svelte");
+  const m = await loadFork("navigation/fixtures/tree-fixture.svelte");
   g.__treeRouters = {};
   g.__treeRoots = {};
   g.__treeTabs = tabs;
   delete g.__treeLayouts;
   const log: string[] = [];
-  const app = m.startSurface(tag, m.Fixture, { initial, files, tabs }) as unknown as { root(): R };
+  const app = m.startSurface(tag, m.Fixture, { initial, files: await files, tabs }) as unknown as { root(): R };
   await settle(m);
   log.length = 0;
   g.__treeLog = log;

@@ -1,6 +1,6 @@
 <script>
-  import { windowSize } from "../src/window-size.ts";
-  import { devicePixelRatio, innerWidth, scrollY } from "../src/reactivity-window.ts";
+  import { windowSize } from "../../../src/window-size.ts";
+  import { devicePixelRatio, innerWidth, scrollY } from "../../../src/reactivity-window.ts";
   let { readers = 1 } = $props();
   const indexes = $derived(Array.from({ length: readers }, (_, index) => index));
   const wide = $derived(windowSize.width >= 768);

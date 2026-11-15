@@ -2,7 +2,7 @@
 // `svelte-native:web` plugin of `svelteNative()` (its `config` is all that is used of it) and once without, and prints what each build did as JSON.
 import { stripVTControlCharacters } from "node:util";
 import { build } from "vite";
-import { svelteNative } from "../src/vite.ts";
+import { svelteNative } from "../../../src/vite.ts";
 
 const plugins = (await svelteNative() as unknown as { name?: string }[]).filter((plugin) => plugin?.name === "svelte-native:web");
 

@@ -1,8 +1,5 @@
 import { expect, test } from "bun:test";
-import { createHarness, settle } from "./foreign-harness.ts";
-
-// A `ViewShot` cancels its frame loop when it is destroyed; the test runtime has no such function.
-(globalThis as { cancelAnimationFrame?: unknown }).cancelAnimationFrame ??= () => {};
+import { createHarness, settle } from "../foreign-harness.ts";
 
 /**
  * `ref` follows React's contract (SPEC.md, "Refs"): the handle when the element is built, `ref(null)` when it is destroyed, and when the
@@ -12,7 +9,9 @@ import { createHarness, settle } from "./foreign-harness.ts";
 type App = { set(values: { show?: boolean; which?: number; order?: string[]; shotWhich?: number; shotShown?: boolean }): void; events(): unknown[][]; clear(): void };
 async function mount(root: number) {
   const harness = createHarness("android");
-  const loaded = await harness.load("refs-fixture.svelte");
+  // A `ViewShot` cancels its frame loop when it is destroyed; the test runtime has no such function. Set after the harness took its snapshot of the global object, so its restore takes it away.
+  (globalThis as { cancelAnimationFrame?: unknown }).cancelAnimationFrame ??= () => {};
+  const loaded = await harness.load("renderer/fixtures/refs-fixture.svelte");
   const app = loaded.startSurface(root, loaded.Fixture, {}) as App;
   return { app, loaded, harness };
 }

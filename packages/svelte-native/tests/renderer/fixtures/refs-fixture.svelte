@@ -1,6 +1,6 @@
 <script>
-  import View from "../src/components/View.svelte";
-  import ViewShot from "../src/components/ViewShot.svelte";
+  import View from "../../../src/components/View.svelte";
+  import ViewShot from "../../../src/components/ViewShot.svelte";
   let show = $state(true);
   let which = $state(0);
   let order = $state(["x", "y", "z"]);

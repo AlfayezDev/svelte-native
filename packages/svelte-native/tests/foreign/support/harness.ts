@@ -1,4 +1,3 @@
-import { expect } from "bun:test";
 import { resolve } from "node:path";
 import { reanimatedStubs } from "../../reanimated-stubs.ts";
 import type { Platform } from "../../rn-reference.ts";
@@ -134,8 +133,9 @@ export function createHarness(platform: Platform, options: {
     expectToldFirst(...names: string[]) {
       for (const name of names) {
         const told = calls.indexOf(`engine.registerForeign ${name}`);
-        expect(told, `${name} is told to the engine`).toBeGreaterThanOrEqual(0);
-        expect(told, `${name} is told before it is created`).toBeLessThan(calls.indexOf(`create ${name}`));
+        const made = calls.indexOf(`create ${name}`);
+        if (told < 0) throw new Error(`${name} was not told to the engine`);
+        if (made < 0 || told > made) throw new Error(`${name} was not told to the engine before it was created`);
       }
     },
     load,

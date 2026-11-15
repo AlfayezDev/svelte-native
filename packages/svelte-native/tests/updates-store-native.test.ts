@@ -1,9 +1,8 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { findHostJars } from "./native/host-tools.ts";
+import { hostTools, kotlinHost } from "./support/native-host.ts";
 
 /**
  * The Android updates store (`UpdateStore.kt`), the QA reset decision (`QaReset.kt`) and the asset download (`Http.kt`) compiled for the
@@ -18,30 +17,11 @@ const sources = ["UpdateStore.kt", "UpdatesConfig.kt", "QaReset.kt", "Http.kt"].
 const { androidJar, jsonJar } = findHostJars();
 // The first test compiles the host (about ten seconds).
 setDefaultTimeout(120_000);
-const tools = Bun.which("kotlinc") && Bun.which("java") && androidJar && jsonJar;
-
-const digest = createHash("sha1");
-for (const file of sources) digest.update(readFileSync(file));
-const cache = join(tmpdir(), `svelte-native-updates-store-${digest.digest("hex").slice(0, 12)}`);
-
-function jar() {
-  const path = join(cache, "store-host.jar");
-  if (existsSync(path)) return path;
-  mkdirSync(cache, { recursive: true });
-  // Built under another name and renamed, so a compile that is cut short never leaves a jar that looks finished.
-  const building = join(cache, `store-host-${process.pid}.jar`);
-  const result = Bun.spawnSync(["kotlinc", ...sources, "-cp", `${jsonJar}:${androidJar}`, "-include-runtime", "-d", building], { stderr: "pipe" });
-  if (result.exitCode !== 0) throw new Error(`kotlinc failed: ${result.stderr.toString()}`);
-  renameSync(building, path);
-  return path;
-}
+const tools = hostTools("kotlinc", "java") && androidJar && jsonJar;
+const host = tools ? kotlinHost({ name: "updates-store", sources, classpath: [jsonJar, androidJar], mainClass: "expo.modules.svelteupdates.UpdateStoreHostKt" }) : null;
 
 /** Runs the commands in one fresh store directory and returns one answer per command. */
-function run(lines: string[]): string[] {
-  const result = Bun.spawnSync(["java", "-cp", `${jar()}:${jsonJar}:${androidJar}`, "expo.modules.svelteupdates.UpdateStoreHostKt"], { stdin: new TextEncoder().encode(`${lines.join("\n")}\n`), stderr: "pipe" });
-  if (result.exitCode !== 0) throw new Error(`host failed: ${result.stderr.toString()}`);
-  return result.stdout.toString().trim().split("\n");
-}
+const run = (lines: string[]): string[] => (host as NonNullable<typeof host>).run(lines);
 
 const EMBEDDED = 1000;
 const select = (markFailure = 1, token = "-") => `select ${EMBEDDED} ${markFailure} ${token}`;

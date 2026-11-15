@@ -1,9 +1,7 @@
 import { expect, test } from "bun:test";
-import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import { decodeRecords, navigationProps, type NavRecord } from "../src/fabric/navigation.ts";
+import { cppHost, hostTools, kotlinHost } from "./support/native-host.ts";
 
 /**
  * The native decoders against the reference decoder. `decodeRecords` is the contract's executable form; the engine's C++
@@ -20,7 +18,9 @@ const sources = {
   host: resolve(native, "NavRecordsHost.kt"),
   stub: resolve(native, "DoNotStripStub.kt"),
 };
-const tools = Bun.which("g++") && Bun.which("kotlinc") && Bun.which("java");
+const tools = hostTools("g++", "kotlinc", "java");
+const encoder = cppHost({ name: "nav-records-host", sources: [sources.cpp], dependencies: [sources.header], flags: ["-std=c++20", "-Wall", "-Wextra", "-Werror", "-I", resolve(engine, "cpp")] });
+const decoder = kotlinHost({ name: "nav-records-host", sources: [sources.host, sources.stub, sources.props] });
 
 const ids: string[] = [];
 const add = (name: string, attributes: Record<string, unknown>) => ids.push(String(navigationProps(name, attributes).nativeID));
@@ -80,24 +80,6 @@ ids.push(
   "svelte:",
 );
 
-const digest = createHash("sha1");
-for (const file of Object.values(sources)) digest.update(readFileSync(file));
-const hash = digest.digest("hex").slice(0, 12);
-const cache = join(tmpdir(), `svelte-native-nav-host-${hash}`);
-function run(command: string[], stdin?: string) {
-  const result = Bun.spawnSync(command, { stdin: stdin === undefined ? undefined : new TextEncoder().encode(stdin), stderr: "pipe" });
-  if (result.exitCode !== 0) throw new Error(`${command[0]} failed: ${result.stderr.toString()}`);
-  return result.stdout.toString();
-}
-function build() {
-  const cpp = join(cache, "nav-records-host");
-  const jar = join(cache, "nav-records-host.jar");
-  if (existsSync(cpp) && existsSync(jar)) return { cpp, jar };
-  mkdirSync(cache, { recursive: true });
-  run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-I", resolve(engine, "cpp"), sources.cpp, "-o", cpp]);
-  run(["kotlinc", sources.host, sources.stub, sources.props, "-include-runtime", "-d", jar]);
-  return { cpp, jar };
-}
 
 /** The ints and strings the engine batch carries for the records: strings are table indices (-1 absent), the detents of record 122 floats. */
 function expectedBatch(records: NavRecord[]) {
@@ -155,9 +137,8 @@ function expectedFields(records: NavRecord[]): Fields {
 }
 
 test.skipIf(!tools)("the engine's C++ encoder writes the records decodeRecords lists, and its Kotlin decoder reads them back", () => {
-  const { cpp, jar } = build();
-  const batch = run([cpp], `${ids.join("\n")}\n`).split("\n");
-  const decoded = run(["java", "-jar", jar], batch.join("\n")).trim().split("\n");
+  const batch = encoder.run(`${ids.join("\n")}\n`).split("\n");
+  const decoded = decoder.runRaw(batch.join("\n")).trim().split("\n");
   expect(decoded).toHaveLength(ids.length);
 
   ids.forEach((id, node) => {

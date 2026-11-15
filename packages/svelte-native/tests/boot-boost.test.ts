@@ -1,8 +1,6 @@
 import { expect, test } from "bun:test";
-import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
+import { hostTools, kotlinHost } from "./support/native-host.ts";
 
 /**
  * The rules of the boot boost (BootBoostCore.kt: the pin to the big cores, its release at the first mount, after the timeout, or when no
@@ -12,26 +10,8 @@ import { join, resolve } from "node:path";
  */
 const engine = resolve(import.meta.dirname, "../native/svelte-core/android/src/main/java/expo/modules/svelteengine");
 const sources = { core: resolve(engine, "BootBoostCore.kt"), host: resolve(import.meta.dirname, "native/BootBoostHost.kt") };
-const tools = Bun.which("kotlinc") && Bun.which("java");
-
-const digest = createHash("sha1");
-for (const file of Object.values(sources)) digest.update(readFileSync(file));
-const cache = join(tmpdir(), `svelte-native-boot-boost-${digest.digest("hex").slice(0, 12)}`);
-
-function jar() {
-  const path = join(cache, "boot-boost.jar");
-  if (existsSync(path)) return path;
-  mkdirSync(cache, { recursive: true });
-  const result = Bun.spawnSync(["kotlinc", sources.host, sources.core, "-include-runtime", "-d", path], { stderr: "pipe" });
-  if (result.exitCode !== 0) throw new Error(`kotlinc failed: ${result.stderr.toString()}`);
-  return path;
-}
-
-function run(lines: string[]): string[] {
-  const result = Bun.spawnSync(["java", "-jar", jar()], { stdin: new TextEncoder().encode(`${lines.join("\n")}\n`), stderr: "pipe" });
-  if (result.exitCode !== 0) throw new Error(`host failed: ${result.stderr.toString()}`);
-  return result.stdout.toString().trim().split("\n");
-}
+const tools = hostTools("kotlinc", "java");
+const { run } = kotlinHost({ name: "boot-boost", sources: [sources.host, sources.core] });
 
 const scenarios = [
   "screen",

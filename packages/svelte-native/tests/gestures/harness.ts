@@ -4,17 +4,13 @@
  * `tests/reanimated-stubs.ts`, and react-native-gesture-handler's real pure modules (the ones `src/gestures/rngh.js` reuses).
  * What a test sees of the world is on `globalThis.__gh`, reset by `load()`.
  */
-import { build, type Plugin } from "esbuild";
-import { readFile, mkdtemp, writeFile, rm } from "node:fs/promises";
+import type { Plugin } from "esbuild";
 import { resolve } from "node:path";
-import { tmpdir } from "node:os";
-import { pathToFileURL } from "node:url";
-import { compile } from "svelte/compiler";
-import { componentOptions } from "../../src/compile-options.ts";
-import { lowerPrimitives } from "../../src/lower.ts";
 import { reanimatedStubs, type AnimLog } from "../reanimated-stubs.ts";
+import { type HostPluginOptions, hostPlugin as supportHostPlugin, load as loadBundle } from "../support/bundle.ts";
+import { type FakeNode, type Installed, createHost } from "../support/host.ts";
 
-export type FakeNode = { tag: number; name: string; props: Record<string, unknown>; children: FakeNode[]; target?: unknown };
+export type { FakeNode };
 /** One call to the fake gesture-handler module, as the native side receives it: the method name, then its arguments. */
 export type NativeCall = [method: string, ...args: unknown[]];
 export type World = {
@@ -63,50 +59,39 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/TurboModule/TurboModuleRegistry": recorderSource,
   "react-native/Libraries/EventEmitter/RCTDeviceEventEmitter": emitterSource,
   // The main entry: the primitives (lowered away) and the gestures it re-exports (`src/index.ts`).
-  primitives: `export const View = null, Text = null, Pressable = null, ScrollView = null, Image = null; export * from ${JSON.stringify(resolve(import.meta.dirname, "../../src/gestures/index.ts"))};`,
+  "@alfayez/svelte-native": `export const View = null, Text = null, Pressable = null, ScrollView = null, Image = null; export * from ${JSON.stringify(resolve(import.meta.dirname, "../../src/gestures/index.ts"))};`,
   "expo-modules-core": "export const requireOptionalNativeModule = (name) => (name === 'SvelteEngine' ? globalThis.__gh.engine : null);",
   "react-native": "export const AppRegistry = { registerRunnable() {} };",
 };
 
-function installWorld(): void {
-  const roots: Record<number, FakeNode[]> = {};
-  const g = globalThis as unknown as { __gh: World; __anim?: unknown; RN$Bridgeless?: boolean; nativeFabricUIManager?: unknown; global?: unknown };
-  const previous = g.__gh;
-  g.__gh = { calls: [], log: [], roots, listeners: new Map(), engine: { install: () => false, enableGestures: () => { g.__gh.log.push("enableGestures"); return true; } }, os: previous?.os ?? "android", dispatch: null };
-  delete g.__anim;
-  g.RN$Bridgeless = true; // RNGH's remote-debugging check, which turns worklets off, reads this
-  g.global ??= globalThis;
-  g.nativeFabricUIManager = {
-    createNode: (tag: number, name: string, _root: number, props: Record<string, unknown>, target: unknown): FakeNode => ({ tag, name, props: { ...props }, children: [], target }),
-    cloneNodeWithNewChildren: (node: FakeNode): FakeNode => ({ ...node, children: [] }),
-    cloneNodeWithNewProps: (node: FakeNode, props: Record<string, unknown>): FakeNode => ({ ...node, props: { ...node.props, ...props }, children: [...node.children] }),
-    cloneNodeWithNewChildrenAndProps: (node: FakeNode, props: Record<string, unknown>): FakeNode => ({ ...node, props: { ...node.props, ...props }, children: [] }),
-    appendChild: (parent: FakeNode, child: FakeNode) => { parent.children.push(child); },
-    createChildSet: (root: number) => ({ root, children: [] as FakeNode[] }),
-    appendChildToSet: (set: { children: FakeNode[] }, child: FakeNode) => { set.children.push(child); },
-    completeRoot: (root: number, set: { children: FakeNode[] }) => { g.__gh.log.push("completeRoot"); roots[root] = set.children; },
-    registerEventHandler: (handler: (target: unknown, type: string, event: object) => void) => { g.__gh.dispatch = handler; },
+/** What each load put on the global object, newest last: the globals stay for the rest of the file, and `restoreWorld()` puts them back. */
+const installs: Installed[] = [];
+
+function installWorld(os: World["os"]): void {
+  const log: string[] = [];
+  const host = createHost({ calls: log, describe: (call) => (call.op === "completeRoot" ? "completeRoot" : undefined) });
+  const world: World = {
+    calls: [], log, roots: host.roots, listeners: new Map(),
+    engine: { install: () => false, enableGestures: () => { log.push("enableGestures"); return true; } },
+    os,
+    get dispatch() { return host.handler ?? null; },
   };
+  installs.push(host.install({
+    __gh: world,
+    RN$Bridgeless: true, // RNGH's remote-debugging check, which turns worklets off, reads this
+    ...("global" in globalThis ? {} : { global: globalThis }),
+  }));
+  delete (globalThis as { __anim?: unknown }).__anim;
+}
+
+/** Puts the global object back as it was before the first `load()`. */
+export function restoreWorld(): void {
+  for (const installed of installs.splice(0).reverse()) installed.restore();
 }
 
 /** Resolves the world the host runs in: `react-native*` and `expo-modules-core` to the fakes above (RNGH's own sources are real), Svelte fixtures compiled for the custom renderer. */
-export function hostPlugin(options: { openStubs?: boolean } = {}): Plugin {
-  return {
-    name: "gesture-fixture",
-    setup(builder) {
-      builder.onResolve({ filter: /^(react-native|expo-modules-core)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
-      // `openStubs` (the import-graph tests) lets any module import any name from a stub, as a CommonJS module does.
-      builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: options.openStubs ? "module.exports = new Proxy({}, { get: () => () => {} });" : stubs[args.path] ?? "export {};", loader: "js", resolveDir: import.meta.dirname }));
-      builder.onResolve({ filter: /^@alfayez\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../../src/renderer.ts") }));
-      builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../../src/environment.ts") }));
-      // A fixture that imports primitives from the package is lowered as the transformer does; the import itself is then unused.
-      builder.onResolve({ filter: /^@alfayez\/svelte-native$/ }, () => ({ path: "primitives", namespace: "stub" }));
-      builder.onLoad({ filter: /\.svelte$/ }, async ({ path }) => ({
-        contents: compile(lowerPrimitives(await readFile(path, "utf8"), { filename: path, warn: () => {} }), componentOptions(path)).js.code,
-        loader: "js",
-      }));
-    },
-  };
+export function hostPlugin(options: Pick<HostPluginOptions, "openStubs"> = {}): Plugin {
+  return supportHostPlugin({ ...options, stubs, lower: {} });
 }
 
 export type Loaded = {
@@ -139,16 +124,16 @@ type LoadOptions = {
   dev?: boolean;
   /** Extra esbuild plugins, ahead of the built-in ones (the toolchain test adds the real Babel transform for `.svelte` files). */
   plugins?: Plugin[];
+  /** Names the bundle when it has plugins, so it is built once (`support/bundle.ts`). */
+  cacheKey?: string;
   os?: "android" | "ios";
 };
 
-/** A fresh world and a fresh bundle: module state (handler tags, records, listeners) starts from zero on every call. */
+/** A fresh world and a fresh evaluation of the bundle: module state (handler tags, records, listeners) starts from zero on every call. */
 export async function load(options: LoadOptions): Promise<Loaded> {
-  installWorld();
-  world().os = options.os ?? "android";
-  const bundle = await build({
-    stdin: {
-      contents: `import Fixture from ${JSON.stringify(`./${options.fixture}`)};
+  installWorld(options.os ?? "android");
+  return loadBundle<Loaded>({
+    entry: `import Fixture from ${JSON.stringify(`./${options.fixture}`)};
         import { startSurface, stopSurface, fabricStats, flush } from '../../src/fabric/host.ts';
         import { bootSummary } from '../../src/boot-marks.ts';
         import * as gestures from '../../src/gestures/index.ts';
@@ -160,18 +145,14 @@ export async function load(options: LoadOptions): Promise<Loaded> {
         const copiedConstants = async () => (await import('../../src/gestures/animated.ts')).copiedConstants;
         const probe = { receiverSize, copiedConstants, MountRegistry, findHandler, findHandlerByTestID };
         export { startSurface, stopSurface, fabricStats, flush, tick, flushSync, Fixture, gestures, bootSummary, probe };`,
-      resolveDir: import.meta.dirname,
-    },
-    bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], mainFields: ["main"], write: false,
+    resolveDir: import.meta.dirname,
+    stubs,
+    converters: false,
+    lower: {},
     define: { __DEV__: options.dev === false ? "false" : "true" },
-    plugins: [...(options.plugins ?? []), hostPlugin()],
+    plugins: options.plugins,
+    cacheKey: options.cacheKey,
   });
-  const directory = await mkdtemp(resolve(tmpdir(), "svelte-native-gestures-"));
-  const file = resolve(directory, "bundle.mjs");
-  await writeFile(file, bundle.outputFiles[0]?.contents ?? "");
-  const loaded = await import(`${pathToFileURL(file).href}?${Math.random()}`);
-  await rm(directory, { recursive: true });
-  return loaded as Loaded;
 }
 
 /** Lets the host's flush (a microtask) and the gesture batch (a `setImmediate`) run. */

@@ -1,10 +1,5 @@
-import { build, transform } from "esbuild";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
-import { compile, compileModule } from "svelte/compiler";
-import { componentOptions } from "../src/compile-options.ts";
+import { load as loadBundle } from "./support/bundle.ts";
+import { snapshotGlobals } from "./support/globals.ts";
 
 /**
  * A device for `window.matchMedia`: the library's own code bundled against stand-ins for the React Native modules it reads (`Dimensions`, `Appearance`, `Platform` and `AccessibilityInfo`), which a
@@ -115,74 +110,35 @@ const stubs: Record<string, string> = {
   "react-native/Libraries/Utilities/Platform": platformModule,
   "react-native/Libraries/Components/AccessibilityInfo/AccessibilityInfo": accessibilityModule,
   "react-native/Libraries/AppState/AppState": "export default { addEventListener: () => ({ remove() {} }) };",
+  // What polyfills.ts loads besides `matchMedia` is not under test (the libraries behind `crypto` and `localStorage` are required when those are first read).
+  "expo/src/winter": "export {};",
+  "hermes-intl": "export {};",
 };
 
-const sources = new Map<string, Promise<string>>();
-
-/** Bundles `entry` (the source of a module that imports what it needs; its imports resolve from `tests/`) with Svelte's `browser` build and the stand-ins above. */
-function bundled(entry: string): Promise<string> {
-  const known = sources.get(entry);
-  if (known) return known;
-  const made = build({
-    stdin: { contents: entry, resolveDir: import.meta.dirname },
-    bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], write: false,
-    plugins: [{
-      name: "match-media-harness",
-      setup(builder) {
-        builder.onResolve({ filter: /^react-native\/Libraries\// }, (args) => ({ path: args.path, namespace: "stub" }));
-        builder.onResolve({ filter: /^(react-native|expo-modules-core)$/ }, (args) => ({ path: args.path, namespace: "stub" }));
-        // What polyfills.ts loads besides `matchMedia` is not under test (the libraries behind `crypto` and `localStorage` are required when those are first read).
-        builder.onResolve({ filter: /^(?:expo\/src\/winter|hermes-intl|react-native-quick-crypto|react-native-mmkv)$/ }, (args) => ({ path: args.path, namespace: "stub" }));
-        builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? "export {};", loader: "js" }));
-        builder.onResolve({ filter: /^@alfayez\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
-        builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../src/environment.ts") }));
-        // A bundle evaluates a module it `require`s when the `require` runs: the count says when `match-media.ts` was loaded.
-        builder.onLoad({ filter: /src\/match-media\.ts$/ }, async ({ path }) => {
-          const { code } = await transform(await readFile(path, "utf8"), { loader: "ts" });
-          return { contents: `globalThis.__mediaWorld.loaded++;\n${code}`, loader: "js" };
-        });
-        builder.onLoad({ filter: /\.svelte$/ }, async ({ path }) => ({ contents: compile(await readFile(path, "utf8"), componentOptions(path)).js.code, loader: "js" }));
-        builder.onLoad({ filter: /\.svelte\.ts$/ }, async ({ path }) => {
-          const { code } = await transform(await readFile(path, "utf8"), { loader: "ts" });
-          return { contents: compileModule(code, { filename: path }).js.code, loader: "js" };
-        });
-      },
-    }],
-  }).then((result) => result.outputFiles[0]?.text ?? "");
-  sources.set(entry, made);
-  return made;
-}
-
-/** Evaluates the bundle of `entry` once more, with module state of its own. */
-export async function load<T = Record<string, unknown>>(entry: string): Promise<T> {
-  const code = await bundled(entry);
-  const directory = await mkdtemp(resolve(tmpdir(), "svelte-native-match-media-"));
-  try {
-    const file = resolve(directory, "bundle.mjs");
-    await writeFile(file, code);
-    return (await import(`${pathToFileURL(file).href}?${Math.random()}`)) as T;
-  } finally {
-    await rm(directory, { recursive: true });
-  }
+/**
+ * Evaluates the bundle of `entry` (the source of a module that imports what it needs; its imports resolve from `tests/`) with Svelte's `browser` build and the stand-ins above, with module
+ * state of its own. The bundle is built once per entry (`support/bundle.ts`). A bundle evaluates a module it `require`s when the `require` runs: `world.loaded` counts when `match-media.ts` was.
+ */
+export function load<T = Record<string, unknown>>(entry: string): Promise<T> {
+  return loadBundle<T>({
+    entry, stubs, converters: false, esbuild: { mainFields: [] },
+    patches: [{ file: "src/match-media\\.ts$", prepend: "globalThis.__mediaWorld.loaded++;\n" }],
+  });
 }
 
 /** What a test file puts on the global object for the bundle, and takes off again: React Native's `window` is the global object, and it has no `matchMedia`. */
 export function hostGlobals() {
-  const keys = ["window", "matchMedia", "addEventListener", "removeEventListener", "requestAnimationFrame", "__mediaWorld"] as const;
-  const saved = new Map(keys.map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  const snapshot = snapshotGlobals();
   return {
     install(): World {
-      for (const key of ["matchMedia"] as const) delete (globalThis as Record<string, unknown>)[key];
+      delete (globalThis as Record<string, unknown>).matchMedia;
       Object.defineProperty(globalThis, "window", { value: globalThis, configurable: true, writable: true });
       (globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame = (callback: (time: number) => void) => setTimeout(() => callback(performance.now()), 1);
       return resetWorld();
     },
+    /** Puts the global object back as it was when `hostGlobals()` was called: `window`, `matchMedia`, the frame functions, the world, and whatever the bundles defined. */
     restore(): void {
-      for (const key of keys) {
-        const descriptor = saved.get(key);
-        if (descriptor) Object.defineProperty(globalThis, key, descriptor);
-        else delete (globalThis as Record<string, unknown>)[key];
-      }
+      snapshot.restore();
     },
   };
 }

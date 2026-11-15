@@ -1,7 +1,8 @@
-import { afterEach, beforeAll, expect, jest, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, expect, jest, test } from "bun:test";
 import { find, type FakeNode } from "./foreign-harness.ts";
 import { settle, svgHarness, type SvgLoaded } from "./svg-harness.ts";
 import type { AnimLog } from "./reanimated-stubs.ts";
+import { restoreStrays } from "./support/host.ts";
 
 /**
  * What an `Svg` does with the native side of the library (SPEC.md, "react-native-svg"): the methods of its refs are the library's TurboModule calls with the view's
@@ -180,3 +181,6 @@ test("an animated node's mapper and descriptors go with the node", async () => {
   await settle(loaded);
   expect(A.mappers.slice(ownFrom.mappers).filter((entry) => !entry.stopped)).toHaveLength(0);
 });
+
+// The harness is created in `beforeAll`, outside the per-test restore of `support/preload.ts`: the file puts the global object back itself.
+afterAll(restoreStrays);

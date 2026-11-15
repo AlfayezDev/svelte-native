@@ -42,6 +42,7 @@ export async function svgHarness(platform: Platform, options: { natives?: Partia
         export { processColor };
         export const PanResponder = { create: () => ({ panHandlers: Object.fromEntries(${JSON.stringify(keys)}.map((key) => [key, () => undefined])) }) };`,
     },
+    cacheKey: `svg-harness ${options.colors === true}`,
     plugins: [...(options.colors ? [{
       name: "reanimated-colors",
       setup(builder: import("esbuild").PluginBuild) {

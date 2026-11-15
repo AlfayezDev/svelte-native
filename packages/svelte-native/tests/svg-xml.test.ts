@@ -1,9 +1,10 @@
-import { beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { FakeNode } from "./foreign-harness.ts";
 import { loadOracle, type Oracle } from "./svg-oracle.ts";
 import { describeOurs, describeTheirs, settle, svgHarness, type Described, type SvgLoaded } from "./svg-harness.ts";
 import { icons } from "./svg-icons.ts";
 import type { Platform } from "./rn-reference.ts";
+import { restoreStrays } from "./support/host.ts";
 
 /**
  * `SvgXml` and `SvgUri` (SPEC.md, "react-native-svg"): the document is parsed by the port of the library's parser and drawn by the Svelte components. For six
@@ -217,3 +218,6 @@ describe("SvgUri", () => {
     (globalThis as { fetch: unknown }).fetch = fetched;
   });
 });
+
+// The harnesses are created in `beforeAll`, outside the per-test restore of `support/preload.ts`: the file puts the global object back itself.
+afterAll(restoreStrays);

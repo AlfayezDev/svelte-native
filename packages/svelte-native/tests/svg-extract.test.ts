@@ -1,7 +1,8 @@
-import { beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { loadOracle, type Oracle } from "./svg-oracle.ts";
 import { svgHarness, type SvgLoaded } from "./svg-harness.ts";
 import type { Platform } from "./rn-reference.ts";
+import { restoreStrays } from "./support/host.ts";
 
 /**
  * What the port keeps of the extractors that are written against React children (`foreign-svg-extract.ts`: fonts and text, gradient stops, filter
@@ -95,3 +96,6 @@ for (const platform of platforms) {
     });
   });
 }
+
+// The harnesses are created in `beforeAll`, outside the per-test restore of `support/preload.ts`: the file puts the global object back itself.
+afterAll(restoreStrays);

@@ -1,14 +1,8 @@
-import { build, transform } from "esbuild";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { resolve } from "node:path";
 import { createRequire } from "node:module";
-import { dirname } from "node:path";
-import { pathToFileURL } from "node:url";
-import { compile, compileModule } from "svelte/compiler";
-import { componentOptions } from "../src/compile-options.ts";
+import { dirname, resolve } from "node:path";
 import { reanimatedStubs } from "./reanimated-stubs.ts";
-import { reactNativeConverters } from "./rn-reference.ts";
+import { appStubs, bundle, evaluate } from "./support/bundle.ts";
+import { type FakeNode, createHost } from "./support/host.ts";
 
 /**
  * The harness of `fork.test.ts`: a bundle of the renderer, the Fabric host and a fixture, with Svelte's async mode on, which `fork()` needs and which the library leaves off unless the app
@@ -16,45 +10,39 @@ import { reactNativeConverters } from "./rn-reference.ts";
  * the one thing the option adds to a component without an `await`; `compiled: true` compiles every component with `experimental.async`, which is what the option does (the same output but for
  * that import, `fork.test.ts`), and a function chooses the files, for a bundle in which only some are. The bundle carries its own copy of Svelte's runtime, so the flag stays in that bundle
  * and no other test's runtime sees it. */
-export type FakeNode = { tag: number; name: string; props: Record<string, unknown>; children: FakeNode[]; target?: unknown };
-export const fabric = { calls: [] as string[], roots: {} as Record<number, FakeNode[]> };
-const fake = {
-  createNode(tag: number, name: string, _root: number, props: Record<string, unknown>, target: unknown): FakeNode { fabric.calls.push(`create ${name}`); return { tag, name, props: { ...props }, children: [], target }; },
-  cloneNodeWithNewChildren(node: FakeNode): FakeNode { fabric.calls.push(`cloneChildren ${node.name}`); return { ...node, children: [] }; },
-  cloneNodeWithNewProps(node: FakeNode, props: Record<string, unknown>): FakeNode { fabric.calls.push(`cloneProps ${node.name}`); return { ...node, props: { ...node.props, ...props }, children: [...node.children] }; },
-  cloneNodeWithNewChildrenAndProps(node: FakeNode, props: Record<string, unknown>): FakeNode { fabric.calls.push(`cloneBoth ${node.name}`); return { ...node, props: { ...node.props, ...props }, children: [] }; },
-  appendChild(parent: FakeNode, child: FakeNode) { parent.children.push(child); },
-  createChildSet(root: number) { return { root, children: [] as FakeNode[] }; },
-  appendChildToSet(set: { children: FakeNode[] }, child: FakeNode) { set.children.push(child); },
-  completeRoot(root: number, set: { children: FakeNode[] }) { fabric.calls.push("completeRoot"); fabric.roots[root] = set.children; },
-  registerEventHandler() {},
+export type { FakeNode };
+const binding = createHost();
+/** What the last `loadFork()` made the host do: the calls it made and the surfaces it committed. */
+export const fabric = {
+  get calls(): string[] { return binding.calls; },
+  get roots(): Record<number, FakeNode[]> { return binding.roots; },
 };
+
 /**
  * The host reads `nativeFabricUIManager` when its module is evaluated, and other test files put a fake of their own in its place, so every `loadFork()` installs this one again (and
- * empties what it recorded) before it evaluates a bundle: a test then sees the calls of its own bundle and no other.
+ * empties what it recorded) before it evaluates a bundle: a test then sees the calls of its own bundle and no other. React Native has `requestAnimationFrame`, which `tick()` waits for in
+ * async mode; Bun has none, so one is put in place for every load and not once: a test file that runs between two users of this harness may delete it (`kit-motion.test.ts` does, after each test).
  */
 function installFabric(): void {
-  fabric.calls.length = 0;
-  fabric.roots = {};
-  (globalThis as { nativeFabricUIManager?: unknown }).nativeFabricUIManager = fake;
-  // React Native has `requestAnimationFrame`, which `tick()` waits for in async mode; bun has none. Set for every load and not once: a test file that runs between two users of this
-  // harness may delete it (`kit-motion.test.ts` does, after each test).
-  (globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame ??= (callback: () => void) => setTimeout(callback, 16);
+  binding.reset();
+  binding.install(typeof globalThis.requestAnimationFrame === "function" ? {} : { requestAnimationFrame: (callback: () => void) => setTimeout(callback, 16) });
+}
+
+/** Puts the global object back as it was before the first `loadFork()`. */
+export function restoreFabric(): void {
+  binding.install().restore();
 }
 
 const stubs: Record<string, string> = {
   ...reanimatedStubs,
+  ...appStubs,
   "react-native/Libraries/Utilities/Platform": "export default { OS: 'android', Version: 34 };",
-  "react-native/Libraries/Utilities/BackHandler": "export default { addEventListener: () => ({ remove() {} }) };",
   "react-native/Libraries/AppState/AppState": "export default { currentState: 'active', addEventListener: () => ({ remove() {} }) };",
   "react-native/Libraries/Linking/Linking": "export default { addEventListener: () => ({ remove() {} }), getInitialURL: () => Promise.resolve(null) };",
   "react-native/Libraries/Image/resolveAssetSource": "export default () => null;",
-  "react-native/Libraries/Components/Keyboard/Keyboard": "export default { isVisible: () => false, dismiss() {} };",
-  "react-native/Libraries/NativeComponent/ViewConfig": "export const createViewConfig = (partial) => partial;",
   "react-native/Libraries/Components/View/ViewNativeComponent": "export {};",
   "react-native/Libraries/Text/TextNativeComponent": "export {};",
   "react-native/Libraries/Components/ScrollView/ScrollViewNativeComponent": "export {};",
-  "expo-modules-core": "export const EventEmitter = class {}; export const requireOptionalNativeModule = () => null;",
   "react-native": "export const AppRegistry = { registerRunnable() {} };",
 };
 
@@ -79,9 +67,9 @@ const flags = resolve(dirname(createRequire(import.meta.url).resolve("svelte/pac
 
 /** Bundles the fixture with async mode on (`async: false` is the control: the same bundle without the flag). */
 export async function loadFork(fixture: string, { async = true, compiled = false, realConfigs = false }: { async?: boolean; compiled?: boolean | ((path: string) => boolean); realConfigs?: boolean } = {}): Promise<ForkModule> {
-  const bundle = await build({
-    stdin: {
-      contents: `${async ? "import 'svelte/internal/flags/async';" : ""}
+  // The stand-in passes every prop through as it is; `realConfigs` runs the host's own payload builder (React Native's style converters included), which is what a device pays.
+  const built = await bundle({
+    entry: `${async ? "import 'svelte/internal/flags/async';" : ""}
         import Fixture from './${fixture}';
         import renderer, { NativeNode } from '../src/renderer.ts';
         import { mergeHostProps } from '../src/native-props.ts';
@@ -90,37 +78,10 @@ export async function loadFork(fixture: string, { async = true, compiled = false
         import { async_mode_flag } from '${flags}';
         export const asyncFlag = () => async_mode_flag;
         export { Fixture, renderer, NativeNode, mergeHostProps, mount, unmount, tick, flushSync, fork, startSurface, flush, fabricStats };`,
-      resolveDir: import.meta.dirname,
-    },
-    bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], mainFields: ["main"], write: false,
-    plugins: [...(realConfigs ? reactNativeConverters("android") : []), {
-      name: "fork-fixture",
-      setup(builder) {
-        builder.onResolve({ filter: /^(react-native|expo-modules-core)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
-        builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? "export {};", loader: "js" }));
-        // The stand-in passes every prop through as it is; `realConfigs` runs the host's own payload builder (React Native's style converters included), which is what a device pays.
-        if (!realConfigs) builder.onResolve({ filter: /\/view-configs\.ts$/ }, () => ({ path: resolve(import.meta.dirname, "view-configs-stub.ts") }));
-        builder.onResolve({ filter: /^@alfayez\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
-        builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../src/environment.ts") }));
-        builder.onLoad({ filter: /\.svelte$/ }, async ({ path }) => {
-          const options = componentOptions(path);
-          const experimental = (typeof compiled === "function" ? compiled(path) : compiled) ? { ...options.experimental, async: true } : options.experimental;
-          return { contents: compile(await readFile(path, "utf8"), { ...options, experimental }).js.code, loader: "js" };
-        });
-        builder.onLoad({ filter: /\.svelte\.ts$/ }, async ({ path }) => {
-          const { code } = await transform(await readFile(path, "utf8"), { loader: "ts" });
-          return { contents: compileModule(code, { filename: path }).js.code, loader: "js" };
-        });
-      },
-    }],
+    stubs, viewConfigs: realConfigs ? "real" : "pass-through", converters: realConfigs, compiled,
   });
-  const directory = await mkdtemp(resolve(tmpdir(), "svelte-native-fork-"));
-  const file = resolve(directory, "bundle.mjs");
-  await writeFile(file, bundle.outputFiles[0]?.contents ?? "");
   installFabric();
-  const loaded = await import(pathToFileURL(file).href);
-  await rm(directory, { recursive: true });
-  return loaded;
+  return evaluate<ForkModule>(built.code);
 }
 
 export const find = (nodes: FakeNode[], name: string): FakeNode[] => nodes.flatMap((n) => [...(n.name === name ? [n] : []), ...find(n.children, name)]);

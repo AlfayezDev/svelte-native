@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { droppedReasons, freshNavigation, navigationAttemptsAllowed, navigationClockSkewMs, navigationRestoreWindowMs } from "../src/navigation-restore.ts";
+import { droppedReasons, freshNavigation, navigationAttemptsAllowed, navigationClockSkewMs, navigationRestoreWindowMs } from "../../src/navigation-restore.ts";
 
 const state = JSON.stringify({ stack: { entries: [{ route: "r1", href: "/acme", presentation: "push" }, { href: "/account", presentation: "modal" }] }, launch: "example://acme" });
 const now = Date.UTC(2026, 10, 1, 12, 0, 0);

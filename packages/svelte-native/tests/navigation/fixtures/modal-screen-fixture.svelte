@@ -1,8 +1,8 @@
 <script>
-  import Host from "../src/components/Host.svelte";
-  import Screen from "../src/components/Screen.svelte";
-  import Tabs from "../src/components/Tabs.svelte";
-  import Modal from "../src/components/Modal.svelte";
+  import Host from "../../../src/components/Host.svelte";
+  import Screen from "../../../src/components/Screen.svelte";
+  import Tabs from "../../../src/components/Tabs.svelte";
+  import Modal from "../../../src/components/Modal.svelte";
   import PaneProbe from "./pane-probe.svelte";
   let open = $state(true);
   export function setOpen(value) { open = value; }

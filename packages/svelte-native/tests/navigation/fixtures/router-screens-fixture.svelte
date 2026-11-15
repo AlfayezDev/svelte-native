@@ -1,9 +1,9 @@
 <script>
-  import Router from "../src/Router.svelte";
-  import { createRouter } from "../src/router.svelte.ts";
+  import Router from "../../../src/Router.svelte";
+  import { createRouter } from "../../../src/router.svelte.ts";
   import Page from "./route-screen-page.svelte";
   import Nested from "./router-nested.svelte";
-  import { page, stackOf } from "./tree.ts";
+  import { page, stackOf } from "../../tree.ts";
   let { nested = false } = $props();
   const load = () => Promise.resolve({ component: Page, layouts: [] });
   const router = createRouter(stackOf([page("home", "/", load), page("section", "/a", load), page("other", "/c", load), page("item", "/b/[id]", load, "modal")]), "/");

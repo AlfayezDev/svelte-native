@@ -1,7 +1,7 @@
 <script>
-  import Router from "../src/Router.svelte";
-  import { createRouter } from "../src/router.svelte.ts";
-  import { appTree } from "./tree-app.ts";
+  import Router from "../../../src/Router.svelte";
+  import { createRouter } from "../../../src/router.svelte.ts";
+  import { appTree } from "../../tree-app.ts";
   let { initial = "/workspaces", bareTabs = false, logLoads, hold, boundary = false, outerLoading = false, files, tabs, mounted = true } = $props();
   // `files` is another app's route files (the platform app's), `tabs` the items its tabs layout shows.
   if (tabs) globalThis.__treeTabs = tabs;

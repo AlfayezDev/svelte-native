@@ -1,5 +1,5 @@
 <script>
-  import Screen from "../src/components/Screen.svelte";
+  import Screen from "../../../src/components/Screen.svelte";
   let mode = $state("menu");
   export function change(value) { mode = value; }
 </script>

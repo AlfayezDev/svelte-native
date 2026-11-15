@@ -7,6 +7,7 @@ import type { FetchLike } from "../../src/updates/protocol.ts";
 import {
   CREATED_AT, UPDATE_ID, directiveResponse, emptyResponse, launchAsset, logo, logo2x, manifest, manifestResponse, noUpdateDirective, rollBackDirective, multipart, responseHeaders,
 } from "./support/eas.ts";
+import { nativeUpdates } from "./support/native.ts";
 
 const embeddedAt = Date.parse("2026-10-01T00:00:00.000Z");
 const emptyMetadata: StoredMetadata = { serverDefinedHeaders: null, manifestFilters: null };
@@ -17,21 +18,12 @@ type Fake = { native: SvelteUpdatesNative; calls: string[]; downloads: AssetDown
 /** A native module that records what it is asked and hashes nothing: `downloadAsset` answers with the hash it was given unless told otherwise. */
 function fakeNative(overrides: Partial<SvelteUpdatesNative> = {}, store: Partial<StoreSnapshot> = {}, tamper: (download: AssetDownload) => string = (download) => download.hash): Fake {
   const fake = { calls: [] as string[], downloads: [] as AssetDownload[], commits: [] as CommittedUpdate[], metadata: [] as StoredMetadata[], rollbacks: [] as number[], store: { ...emptyStore, ...store } };
-  const native: SvelteUpdatesNative = {
-    isEnabled: true,
-    platform: "android",
-    updateId: null,
-    runtimeVersion: "0.1.0",
+  const native = nativeUpdates({
     updateUrl: "https://u.expo.dev/bb048172-896f-48f1-97c0-c9ec765842c0",
-    requestHeaders: { "expo-channel-name": "production" },
     checkOnLaunch: "ALWAYS",
     launchWaitMs: 0,
-    hasEmbeddedUpdate: true,
-    isEmbeddedLaunch: true,
     createdAt: embeddedAt,
-    localAssets: {},
     clientId: "client-1",
-    request: async () => { throw new Error("the protocol client goes through fetch"); },
     downloadAsset: async (download) => { fake.downloads.push(download); return { key: download.key, hash: tamper(download) }; },
     commitUpdate: async (json) => { fake.commits.push(JSON.parse(json)); },
     saveMetadata: async (json) => { fake.metadata.push(JSON.parse(json)); },
@@ -40,7 +32,7 @@ function fakeNative(overrides: Partial<SvelteUpdatesNative> = {}, store: Partial
     markLaunched: async () => { fake.calls.push("markLaunched"); },
     reload: async () => { fake.calls.push("reload"); },
     ...overrides,
-  };
+  });
   return { ...fake, native };
 }
 

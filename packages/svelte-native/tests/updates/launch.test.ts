@@ -4,6 +4,7 @@ import { load as loadBundle } from "../support/bundle.ts";
 import { type GlobalSnapshot, snapshotGlobals } from "../support/globals.ts";
 import type { SvelteUpdatesNative } from "../../src/updates/native.ts";
 import { UPDATE_ID, directiveResponse, noUpdateDirective } from "./support/eas.ts";
+import { nativeUpdates } from "./support/native.ts";
 
 // The host's launch hook and the module entry load React Native modules; both are replaced by stubs that report to `globalThis.__updates`.
 type World = {
@@ -25,9 +26,8 @@ const stubs: Record<string, string> = {
 /** The module at `entry` (a path from this directory) with the stubs, as a module of its own: the bundle of each entry is built once for the run. */
 const load = <T>(entry: string): Promise<T> => loadBundle<T>({ entry: `export * from ${JSON.stringify(resolve(import.meta.dirname, entry))};`, stubs, converters: false });
 
-const native = (overrides: Partial<SvelteUpdatesNative> = {}): Partial<SvelteUpdatesNative> => ({
-  isEnabled: true, platform: "android", updateId: null, runtimeVersion: "0.1.0", updateUrl: "https://u.expo.dev/p", requestHeaders: { "expo-channel-name": "production" },
-  checkOnLaunch: "ALWAYS", hasEmbeddedUpdate: true, isEmbeddedLaunch: true, createdAt: 0, localAssets: {}, clientId: "c", readStore: async () => JSON.stringify({ embeddedCreatedAt: 0, updates: {}, failedIds: [], metadata: { serverDefinedHeaders: null, manifestFilters: null } }),
+const native = (overrides: Partial<SvelteUpdatesNative> = {}): SvelteUpdatesNative => nativeUpdates({
+  checkOnLaunch: "ALWAYS",
   markLaunched: async () => { requests.push("markLaunched"); },
   request: async () => { requests.push("request"); return { status: 200, headers: { "content-type": 'multipart/mixed; boundary=formdata-6bd8f2c7ef0b1e3ad4f9b1f4b2c8d3e6', "expo-protocol-version": "1", "expo-manifest-filters": 'branchname="production"' }, body: await directiveResponse(noUpdateDirective).text() }; },
   saveMetadata: async () => { requests.push("saveMetadata"); },

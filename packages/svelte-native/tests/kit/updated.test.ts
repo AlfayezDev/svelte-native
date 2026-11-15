@@ -1,29 +1,23 @@
 import { describe, expect, jest, test } from "bun:test";
+import type { SvelteUpdatesNative } from "../../src/updates/native.ts";
 import { directiveResponse, manifestResponse, noUpdateDirective } from "../updates/support/eas.ts";
+import { nativeUpdates } from "../updates/support/native.ts";
 import { turn, kitWorld } from "./support/kit.ts";
 
 /** `updated` of `$app/state` is the library's over-the-air updates. */
 const { world, load, freshWorld, startOn } = kitWorld();
 
 describe("updated is the library's over-the-air updates", () => {
-  const native = (overrides: Record<string, unknown> = {}, response: () => Response = () => directiveResponse(noUpdateDirective)) => {
+  const native = (overrides: Partial<SvelteUpdatesNative> = {}, response: () => Response = () => directiveResponse(noUpdateDirective)) => {
     const calls: string[] = [];
-    const store = { embeddedCreatedAt: 0, updates: {}, failedIds: [], metadata: { serverDefinedHeaders: null, manifestFilters: null } };
     return {
       calls,
-      module: {
-        isEnabled: true, platform: "android", updateId: null, runtimeVersion: "0.1.0", updateUrl: "https://u.expo.dev/p", requestHeaders: { "expo-channel-name": "production" },
-        checkOnLaunch: "NEVER", hasEmbeddedUpdate: true, isEmbeddedLaunch: true, createdAt: 0, localAssets: {}, clientId: "c",
-        readStore: async () => JSON.stringify(store),
+      module: nativeUpdates({
         request: async () => { calls.push("request"); const answer = response(); return { status: answer.status, headers: Object.fromEntries(answer.headers), body: await answer.text() }; },
-        downloadAsset: async (download: { key: string; hash: string }) => { calls.push("download"); return { key: download.key, hash: download.hash }; },
+        downloadAsset: async (download) => { calls.push("download"); return { key: download.key, hash: download.hash }; },
         commitUpdate: async () => { calls.push("commit"); },
-        saveMetadata: async () => {},
-        rollBackToEmbedded: async () => {},
-        markLaunched: async () => {},
-        reload: async () => {},
         ...overrides,
-      },
+      }),
     };
   };
 

@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { createUpdates } from "../src/updates/client.ts";
-import { createAssetTransformer, type SourceResolver } from "../src/updates/assets.ts";
-import type { AssetDownload, CommittedUpdate, StoredMetadata, StoreSnapshot, SvelteUpdatesNative } from "../src/updates/native.ts";
-import { nativeFetch } from "../src/updates/native.ts";
-import type { FetchLike } from "../src/updates/protocol.ts";
+import { createUpdates } from "../../src/updates/client.ts";
+import { createAssetTransformer, type SourceResolver } from "../../src/updates/assets.ts";
+import type { AssetDownload, CommittedUpdate, StoredMetadata, StoreSnapshot, SvelteUpdatesNative } from "../../src/updates/native.ts";
+import { nativeFetch } from "../../src/updates/native.ts";
+import type { FetchLike } from "../../src/updates/protocol.ts";
 import {
   CREATED_AT, UPDATE_ID, directiveResponse, emptyResponse, launchAsset, logo, logo2x, manifest, manifestResponse, noUpdateDirective, rollBackDirective, multipart, responseHeaders,
-} from "./updates-fixtures/eas.ts";
+} from "../updates-fixtures/eas.ts";
 
 const embeddedAt = Date.parse("2026-10-01T00:00:00.000Z");
 const emptyMetadata: StoredMetadata = { serverDefinedHeaders: null, manifestFilters: null };
@@ -121,21 +121,18 @@ describe("checkForUpdateAsync", () => {
       expect(await check(response)).toMatchObject({ isAvailable: false, isRollBackToEmbedded: false, reason: "noUpdateAvailableOnServer" });
     }
   });
-  test("an update that is not newer than the embedded bundle is rejected", async () => {
-    expect(await check(manifestResponse(), {}, { embeddedCreatedAt: Date.parse(CREATED_AT) + 1 })).toMatchObject({ isAvailable: false, reason: "updateRejectedBySelectionPolicy" });
-    expect(await check(manifestResponse(), {}, { embeddedCreatedAt: Date.parse(CREATED_AT) })).toMatchObject({ reason: "updateRejectedBySelectionPolicy" });
-  });
-  test("an update that is not newer than the running update is rejected, even when the embedded bundle is older", async () => {
-    const running = "22222222-2222-2222-2222-222222222222";
-    const store = { updates: { [running]: { id: running, createdAt: Date.parse(CREATED_AT) + 1000, runtimeVersion: "0.1.0", status: "ready" as const, metadata: {} } } };
-    expect(await check(manifestResponse(), { updateId: running, isEmbeddedLaunch: false }, store)).toMatchObject({ isAvailable: false, reason: "updateRejectedBySelectionPolicy" });
-  });
-  test("an update for another runtime version is rejected", async () => {
-    expect(await check(manifestResponse({ ...manifest, runtimeVersion: "0.2.0" }))).toMatchObject({ reason: "updateRejectedBySelectionPolicy" });
-  });
-  test("the server's filters reject an update whose metadata disagrees", async () => {
-    const filtered = new Response(multipart([{ name: "manifest", json: { ...manifest, metadata: { branchName: "staging" } } }]), { headers: responseHeaders });
-    expect(await check(filtered)).toMatchObject({ reason: "updateRejectedBySelectionPolicy" });
+  // The selection policy itself is `protocol.test.ts`'s ("selection"); here is what the client hands it: the embedded bundle's date and the running update from the store, the
+  // runtime version, and the filters of the response.
+  const running = "22222222-2222-2222-2222-222222222222";
+  const rejected: [string, () => Promise<unknown>][] = [
+    ["is not newer than the embedded bundle", () => check(manifestResponse(), {}, { embeddedCreatedAt: Date.parse(CREATED_AT) + 1 })],
+    ["is as old as the embedded bundle", () => check(manifestResponse(), {}, { embeddedCreatedAt: Date.parse(CREATED_AT) })],
+    ["is not newer than the running update, even when the embedded bundle is older", () => check(manifestResponse(), { updateId: running, isEmbeddedLaunch: false }, { updates: { [running]: { id: running, createdAt: Date.parse(CREATED_AT) + 1000, runtimeVersion: "0.1.0", status: "ready" as const, metadata: {} } } })],
+    ["is for another runtime version", () => check(manifestResponse({ ...manifest, runtimeVersion: "0.2.0" }))],
+    ["has metadata the server's filters disagree with", () => check(new Response(multipart([{ name: "manifest", json: { ...manifest, metadata: { branchName: "staging" } } }]), { headers: responseHeaders }))],
+  ];
+  test.each(rejected)("an update that %s is rejected by the selection policy", async (_name, run) => {
+    expect(await run()).toMatchObject({ isAvailable: false, reason: "updateRejectedBySelectionPolicy" });
   });
   test("an update that already failed to launch here is not offered again", async () => {
     expect(await check(manifestResponse(), {}, { failedIds: [UPDATE_ID] })).toMatchObject({ isAvailable: false, reason: "updatePreviouslyFailed" });

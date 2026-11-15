@@ -1,7 +1,7 @@
 package expo.modules.svelteengine
 
 /**
- * What [BootBoostCore] needs from the platform, so that the rules run on the host in a test (`tests/boot-boost.test.ts`): no Android type
+ * What [BootBoostCore] needs from the platform, so that the rules run on the host in a test (`tests/native-host/boot-boost.test.ts`): no Android type
  * appears in this file.
  */
 internal interface BootEnvironment {

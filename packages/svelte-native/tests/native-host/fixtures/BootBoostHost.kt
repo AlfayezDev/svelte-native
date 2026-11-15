@@ -2,7 +2,7 @@ import expo.modules.svelteengine.BootBoostCore
 import expo.modules.svelteengine.BootEnvironment
 
 // Host-side check of the boot boost's rules (BootBoostCore.kt, no Android types) against a fake platform. One scenario name per line on
-// stdin, one line of events per scenario on stdout; tests/boot-boost.test.ts holds the expectations.
+// stdin, one line of events per scenario on stdout; tests/native-host/boot-boost.test.ts holds the expectations.
 
 /** A platform that records what the rules ask of it. Threads run at once on the caller; timers wait for [fire]. */
 internal class FakePlatform(

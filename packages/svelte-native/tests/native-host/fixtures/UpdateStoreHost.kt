@@ -11,7 +11,8 @@ import kotlin.concurrent.thread
 
 // Host-side check of the Android updates store (UpdateStore.kt), the QA reset decision (QaReset.kt) and the download of an asset
 // (Http.kt, against a local HTTP server): runs scripted commands from stdin against a real directory and prints one line per command.
-// tests/updates-store-native.test.ts scripts the cases. Lives in the store's package because the classes are internal.
+// tests/native-host/updates-store.test.ts scripts the cases, all in one run: `fresh` starts each in a new directory with an empty server.
+// Lives in the store's package because the classes are internal.
 
 private val config = UpdatesConfig(
   enabled = true, updateUrl = "https://u.expo.dev/p", runtimeVersion = "0.1.0", requestHeaders = mapOf("expo-channel-name" to "qa"),
@@ -52,16 +53,27 @@ private class Server {
 }
 
 fun main() {
-  val root = File(Files.createTempDirectory("svelte-updates-host").toFile(), "svelte-updates")
+  fun scratch() = File(Files.createTempDirectory("svelte-updates-host").toFile(), "svelte-updates")
+  var root = scratch()
   var store = UpdateStore(root)
   val server = Server()
-  val files = root.parentFile
+  var files = root.parentFile
   val name = { s: String? -> s?.let { if (it == "embedded" || it == "-") it else it.trimStart('0', '-') } ?: "-" }
   while (true) {
     val line = readLine() ?: break
     val words = line.trim().split(" ")
     val out: String = try {
       when (words[0]) {
+        // A new scenario: an empty store directory and a server with nothing registered; the one before is removed.
+        "fresh" -> {
+          files.deleteRecursively()
+          root = scratch()
+          store = UpdateStore(root)
+          files = root.parentFile
+          server.bodies.clear()
+          server.requests.set(0)
+          "ok"
+        }
         // commit <n> <createdAt>
         "commit" -> { store.commit(update(store, words[1], words[2].toLong())); "ok" }
         // select <buildTime> <markFailure 0|1> [<reset token>|-]: the chosen update (or embedded), the reason, what a reset forgot
@@ -145,5 +157,6 @@ fun main() {
     }
     println(out)
   }
+  files.deleteRecursively()
   server.stop()
 }

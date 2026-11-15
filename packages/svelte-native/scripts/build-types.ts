@@ -14,7 +14,7 @@
  * mode reads as the `.d.ts` beside it (`.svelte` ones stay: `Foo.svelte.d.ts` is what `./Foo.svelte` finds). No two files differ only in case (`renamedForCase`).
  *
  * Deterministic: the same sources and the same TypeScript and svelte2tsx give the same bytes (no timestamps, no absolute paths, sorted files).
- * `tests/types.test.ts` fails when `dist/types/` is not what this script writes for the sources.
+ * `tests/package/types.test.ts` fails when `dist/types/` is not what this script writes for the sources.
  */
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";

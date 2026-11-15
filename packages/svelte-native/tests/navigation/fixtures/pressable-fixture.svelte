@@ -1,7 +1,7 @@
 <script>
-  import View from "../src/components/View.svelte";
-  import Text from "../src/components/Text.svelte";
-  import Pressable from "../src/components/Pressable.svelte";
+  import View from "../../../src/components/View.svelte";
+  import Text from "../../../src/components/Text.svelte";
+  import Pressable from "../../../src/components/Pressable.svelte";
 </script>
 <View style={{ flex: 1 }}>
   <Pressable testID="plain" accessibilityRole="button" accessibilityLabel="Go" onPress={() => {}}><Text>Go</Text></Pressable>

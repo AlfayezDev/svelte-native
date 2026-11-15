@@ -1,6 +1,6 @@
 /**
  * What `@alfayez/svelte-native` stopped exporting in 0.4.0-rc.7: the entries 0.4.0-rc.6 deprecated, and every name each of them exported (as `src/deprecated/*.ts` listed
- * them), by the entry that exports it now. `exports.test.ts` checks the names in the sources and `exports-runtime.test.ts` in the loaded entries; neither can lose a name
+ * them), by the entry that exports it now. `package/exports.test.ts` checks the names in the sources and `package/exports-runtime.test.ts` in the loaded entries; neither can lose a name
  * without a line here changing.
  */
 

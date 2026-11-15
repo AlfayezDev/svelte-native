@@ -12,7 +12,7 @@ import { compareVersions, parseVersion, satisfies } from "../../src/doctor/semve
 import { patchVersion, peerVersion } from "../support/versions.ts";
 import { library, makeFakeApp, nativePeers, repository, type FakeApp } from "./support/doctor-fixture.ts";
 
-// `svelte-native doctor` against fake apps: node_modules stubs with patched and unpatched copies of the files the patches change (doctor-fixture.ts),
+// `svelte-native doctor` against fake apps: node_modules stubs with patched and unpatched copies of the files the patches change (support/doctor-fixture.ts),
 // the configs it reads, and the tools it asks about. The repository's own install is checked in doctor-repository.test.ts.
 
 const apps: string[] = [];

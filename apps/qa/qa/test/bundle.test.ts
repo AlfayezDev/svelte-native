@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { platformDir, svelteNativeCli } from "../lib/paths.ts";
 
 /**
- * The JavaScript bundle of each app (packages/svelte-native/native/svelte-engine/SPEC.md, "Native modules (smoke test)" and "What the product contains: no development lab (JavaScript)"). The smoke test's libraries are in the smoke app only,
+ * The JavaScript bundle of each app (packages/svelte-native/native/svelte-core/SPEC.md, "Native modules (smoke test)" and "What the product contains: no development lab (JavaScript)"). The smoke test's libraries are in the smoke app only,
  * so Metro resolves them, and the smoke checks, to a stub in the product and the QA app: the bundle the JavaScript boot gate
  * measures must not carry thirty libraries it never calls. Bundled the way React Native's Gradle plugin does it (`expo export:embed`,
  * release, not minified: Hermes compiles it), without the Hermes step.

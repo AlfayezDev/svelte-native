@@ -240,16 +240,21 @@ describe("headless Android config", () => {
     for (const [, selector, parameters] of once.matchAll(/@objc\(([^)]+)\)\n {2}func \w+\(([^)]*)\)/g)) expect([selector, (parameters as string).split(",").length]).toEqual([selector, (selector as string).split(":").length - 1]);
     // The import follows the others, the methods are inside AppDelegate (before `class ReactNativeDelegate`), after the stored properties.
     // Expo's generated ExpoModulesProvider imports the module as `internal import`; a plain import in the app target is "ambiguous" to the compiler (the first iPhone build said so).
-    expect(once).toContain("\ninternal import SvelteNavigation //");
-    expect(once.indexOf("import SvelteNavigation")).toBeGreaterThan(once.indexOf("import ReactAppDependencyProvider"));
-    expect(once.indexOf("import SvelteNavigation")).toBeLessThan(once.indexOf("@main"));
+    expect(once).toContain("\ninternal import SvelteCore //");
+    expect(once.indexOf("import SvelteCore")).toBeGreaterThan(once.indexOf("import ReactAppDependencyProvider"));
+    expect(once.indexOf("import SvelteCore")).toBeLessThan(once.indexOf("@main"));
     expect(once.indexOf("var reactNativeFactory")).toBeLessThan(once.indexOf("@objc(application:shouldSaveSecureApplicationState:)"));
     expect(once.indexOf("@objc(application:didDecodeRestorableStateWithCoder:)")).toBeLessThan(once.indexOf("didFinishLaunchingWithOptions"));
     expect(once.indexOf("@objc(application:didDecodeRestorableStateWithCoder:)")).toBeLessThan(once.indexOf("class ReactNativeDelegate"));
     // What was there is still there, once, and applying again changes nothing.
-    expect(once.replace(/\n {2}\/\/ Svelte native: navigation state restoration[\s\S]*?end of navigation state restoration/, "").replace(/^internal import SvelteNavigation.*\n/m, "")).toBe(appDelegate);
+    expect(once.replace(/\n {2}\/\/ Svelte native: navigation state restoration[\s\S]*?end of navigation state restoration/, "").replace(/^internal import SvelteCore.*\n/m, "")).toBe(appDelegate);
     expect(applyAppDelegate(once)).toBe(once);
-    expect(once.match(/import SvelteNavigation/g)).toHaveLength(1);
+    expect(once.match(/import SvelteCore/g)).toHaveLength(1);
+  });
+  test("AppDelegate: the import an older version wrote (the module was the pod SvelteNavigation) is replaced, not kept beside the new one", () => {
+    const once = applyAppDelegate(appDelegate);
+    const older = once.replace("internal import SvelteCore //", "internal import SvelteNavigation //");
+    expect(applyAppDelegate(older)).toBe(once);
   });
   test("AppDelegate: a template without the expected shape fails with a message", () => {
     expect(() => applyAppDelegate("import UIKit\n@main class AppDelegate: UIResponder {}")).toThrow("could not find the imports and `var reactNativeFactory: RCTReactNativeFactory?` in AppDelegate.swift");

@@ -12,7 +12,7 @@ import { basename, dirname, relative, resolve } from "node:path";
 const repository = resolve(import.meta.dirname, "../../..");
 const roots = ["README.md", "docs", "packages/svelte-native", "apps/qa/qa"];
 const skipped = new Set(["node_modules", "out", "runs", "build", ".gradle", "Pods", ".svelte-native"]);
-const specFile = resolve(repository, "packages/svelte-native/native/svelte-engine/SPEC.md");
+const specFile = resolve(repository, "packages/svelte-native/native/svelte-core/SPEC.md");
 
 function markdownFiles(path: string): string[] {
   const absolute = resolve(repository, path);

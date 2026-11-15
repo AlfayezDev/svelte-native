@@ -179,7 +179,7 @@ st_source_tarball() {
   echo "packed: $tgz ($(stat -c %s "$tgz") bytes, $(tar tzf "$tgz" | wc -l) files)"
   local listing
   listing=$(tar tzf "$tgz")
-  for required in package/package.json package/expo-module.config.json package/README.md package/patches/expo-modules-core@57.0.23.patch package/native/svelte-engine/android/build.gradle package/native/svelte-updates/android/build.gradle; do
+  for required in package/package.json package/expo-module.config.json package/README.md package/patches/expo-modules-core@57.0.23.patch package/native/svelte-core/android/build.gradle package/native/svelte-core/android/build.gradle; do
     grep -qx "$required" <<<"$listing" || die "the tarball has no $required"
   done
   grep -q '^package/native/.*/test/' <<<"$listing" && die "the tarball carries a native test directory"

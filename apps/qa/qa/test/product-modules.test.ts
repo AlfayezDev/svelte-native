@@ -44,8 +44,9 @@ const qaOnly = ["svelte-qa-android", "svelte-qa-ios", "view-bench"];
 /** The library's own native modules are linked from the installed package, as an app outside this repository gets them (packages/svelte-native/expo-module.config.json). */
 const library = "@alfayez/svelte-native";
 const libraryDirectory = dirname(require.resolve("@alfayez/svelte-native/package.json"));
-const libraryPods = ["SvelteBlur", "SvelteCapture", "SvelteCore", "SvelteInsets", "SvelteNavigation", "SvelteScreensIOS", "SvelteUpdates"];
-const libraryProjects = ["svelte-engine", "svelte-updates", "svelte-blur", "svelte-core"];
+/** The library's native code is one pod and one Gradle project (packages/svelte-native/native/svelte-core). */
+const libraryPods = ["SvelteCore"];
+const libraryProjects = ["svelte-core"];
 const { smokeOnlyPackages } = require("./qa/smoke-packages.cjs") as { smokeOnlyPackages: string[] };
 
 describe("the product build leaves the QA-only modules out of autolinking", () => {
@@ -103,15 +104,16 @@ describe("the product build leaves the QA-only modules out of autolinking", () =
 		for (const variant of ["production", "qa"] as const) {
 			const sweep = resolved("apple", configuredExclude(variant)).modules.find((module) => module.packageName === library) as { appDelegateSubscribers?: string[]; swiftModuleNames?: string[] } | undefined;
 			expect(sweep?.appDelegateSubscribers).toEqual(["SvelteCaptureSubscriber"]);
-			// the Swift modules the generated provider imports: SvelteScreensIOS is Objective-C++ with no module of its own (`DEFINES_MODULE` is NO), so it is not in the list
-			expect(sweep?.swiftModuleNames).toEqual(["SvelteCapture", "SvelteInsets", "SvelteNavigation", "SvelteUpdates", "SvelteBlur", "SvelteCore"]);
+			// the Swift module the generated provider imports: the library's one pod (its Objective-C++ screens are in it too, outside the module's headers)
+			expect(sweep?.swiftModuleNames).toEqual(["SvelteCore"]);
 		}
 	});
 
-	test("the engine's own module list does not carry the injector, so excluding svelte-qa-android is enough", () => {
+	test("the library's module list does not carry the injector, so excluding svelte-qa-android is enough", () => {
 		const config = JSON.parse(readFileSync(resolve(libraryDirectory, "expo-module.config.json"), "utf8")) as { android: { projects: { name: string; modules: string[] }[] } };
-		expect(config.android.projects.find((project) => project.name === "svelte-engine")?.modules).toEqual(["expo.modules.svelteengine.SvelteEngineModule"]);
-		expect(existsSync(resolve(libraryDirectory, "native/svelte-engine/android/src/main/java/expo/modules/svelteengine/views/QaTouch.kt"))).toBe(false);
+		expect(config.android.projects.find((project) => project.name === "svelte-core")?.modules).not.toContain("expo.modules.svelteqa.SvelteQaTouchModule");
+		expect(config.android.projects.flatMap((project) => project.modules)).toContain("expo.modules.svelteengine.SvelteEngineModule");
+		expect(existsSync(resolve(libraryDirectory, "native/svelte-core/android/src/main/java/expo/modules/svelteengine/views/QaTouch.kt"))).toBe(false);
 		const qa = JSON.parse(readFileSync(resolve(app, "modules/svelte-qa-android/expo-module.config.json"), "utf8")) as { android: { modules: string[] } };
 		expect(qa.android.modules).toEqual(["expo.modules.svelteqa.SvelteQaTouchModule", "expo.modules.svelteqa.SvelteQaPixelsModule"]);
 		// every module the QA package lists is a class one of its files defines (a name no file defines links nothing and fails at run time)
@@ -133,7 +135,7 @@ describe("the product build leaves the QA-only modules out of autolinking", () =
 		// two hints with no content: the commits JavaScript makes next belong together (a layout read and the first frames of an animation), so the engine applies them in one message
 		"holdMounts", "releaseMounts",
 	];
-	const engineSource = () => readFileSync(resolve(libraryDirectory, "native/svelte-engine/android/src/main/java/expo/modules/svelteengine/SvelteEngineModule.kt"), "utf8");
+	const engineSource = () => readFileSync(resolve(libraryDirectory, "native/svelte-core/android/src/main/java/expo/modules/svelteengine/SvelteEngineModule.kt"), "utf8");
 	/** Every `Function(...)` and `AsyncFunction(...)` the module defines, and the lab check it opens with (the first statement after the lambda's parameters), if any. */
 	function engineFunctions(source: string): { name: string; guard: string | null }[] {
 		const head = /\b(?:Async)?Function\("(\w+)"\)\s*\{\s*(?:[\w\s:,?<>.]+->\s*)?(?:requireLab\("(\w+)"\))?/g;
@@ -158,7 +160,7 @@ describe("the product build leaves the QA-only modules out of autolinking", () =
 	});
 
 	test("the lab rule is the QA package or a debuggable build, and the module applies it", () => {
-		const rule = readFileSync(resolve(libraryDirectory, "native/svelte-engine/android/src/main/java/expo/modules/svelteengine/LabSwitches.kt"), "utf8");
+		const rule = readFileSync(resolve(libraryDirectory, "native/svelte-core/android/src/main/java/expo/modules/svelteengine/LabSwitches.kt"), "utf8");
 		expect(rule).toContain("fun allowed(packageName: String, debuggable: Boolean): Boolean = debuggable || packageName == QA_PACKAGE");
 		expect(engineSource()).toContain("LabSwitches.allowed(context.packageName, debuggable)");
 	});

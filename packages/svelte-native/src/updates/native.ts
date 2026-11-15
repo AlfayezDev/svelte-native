@@ -1,5 +1,5 @@
 /**
- * The `SvelteUpdates` native module (`native/svelte-updates`), as the JavaScript side sees it. The module is the
+ * The `SvelteUpdates` native module (`native/svelte-core`), as the JavaScript side sees it. The module is the
  * store and the launcher: it keeps the downloaded updates on disk, picks the bundle the next start launches, and downloads
  * and hashes files. Everything the protocol decides (what to ask for, what counts as newer) happens here, in JavaScript.
  */

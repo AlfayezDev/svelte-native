@@ -258,7 +258,7 @@ async function blur(c: Ctx): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------------
-// BlurView, the library's own (SvelteBlur, `native/svelte-blur`): the stripes of expo-blur's section sit behind it (an earlier sibling) with a near-black band across them (30 % to 42 % of the height), its box is
+// BlurView, the library's own (SvelteBlur, `native/svelte-core`): the stripes of expo-blur's section sit behind it (an earlier sibling) with a near-black band across them (30 % to 42 % of the height), its box is
 // inset 24 dp at the sides and 14 dp at the top and bottom, and a solid label chip is its child. A capture of the box is what the blur's contract looks like: a stripe edge under the view is a gradual transition
 // and one above it a line, `intensity` and `tint` change what is read, the view follows what is behind it, the picture it shows is where the box is, and the child is on top. On Android 12 and up the capture is the GPU
 // frame of the box, which holds the blur (a RenderEffect); below it the view draws a tint and nothing is blurred.

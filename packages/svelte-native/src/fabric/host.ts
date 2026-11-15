@@ -272,7 +272,7 @@ let profile = false;
 const now = () => performance.now();
 
 /** Timings of the most recent flush, for the lab; also published on `globalThis.__svelteFabric` so app code needs no import. */
-/** iOS's navigation module (`native/svelte-navigation-ios`): keeps the router's state for the next start of the process and gives it back once. Android has the engine module's `saveNavigation` and `initialProps` instead. */
+/** iOS's navigation module (`native/svelte-core/ios/navigation`): keeps the router's state for the next start of the process and gives it back once. Android has the engine module's `saveNavigation` and `initialProps` instead. */
 type NavigationHost = { save?: (json: string, update: string | null) => void; restore?: () => unknown; restored?: (outcome: string, reason: string) => void };
 let navigationHost: NavigationHost | null | undefined;
 /** `SvelteEngine` is Android's: it is looked up once, by `startSurface` and before it by `navigationModule`, which asks nobody else on a phone that has it (a lookup of a module that is not there goes through the lazy registry, on the way to the first commit). */

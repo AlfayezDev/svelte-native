@@ -4,6 +4,10 @@ Notable changes to `@alfayez/svelte-native` (named `@rasheed/svelte-native` up t
 
 ## Unreleased
 
+### Changed
+
+- The library's native code is one module, `native/svelte-core`: one Android Gradle project, `:svelte-core` (the engine's Kotlin and C++, the update store, the blur view, fetch and Blob, the clipboard; each keeps its Kotlin package), and one iOS pod, `SvelteCore` (a folder per area under `ios/`: fetch, clipboard, insets, navigation, updates, blur, the capture sweep, and the Objective-C++ screens). They were eight directories, four Gradle projects and seven pods. The Expo modules, their names and what JavaScript reads from them are unchanged. An app needs a new native build (`expo prebuild`, `pod install`); an app whose own Gradle files name `:svelte-engine`, `:svelte-updates` or `:svelte-blur` (a local module that compiles against the engine) names `:svelte-core` instead.
+
 ## 0.4.0-rc.8 - 2026-11-15
 
 ### Added

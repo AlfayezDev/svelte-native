@@ -108,7 +108,7 @@ export function filesUnder(directory: string): string[] {
 if (import.meta.main) {
   const names = await writeNode();
   for (const name of names) console.log(`dist/node/${name}  ${readFileSync(join(outputDirectory, name)).length} bytes`);
-  // The type declarations (`dist/types/`) are the other half of the build: `pnpm build` writes both, and `tests/types.test.ts` checks them. Loaded here so that
+  // The type declarations (`dist/types/`) are the other half of the build: `pnpm build` writes both, and `tests/package/types.test.ts` checks them. Loaded here so that
   // a test that imports this file for `writeNode` does not load TypeScript and svelte2tsx.
   const { writeTypes } = await import("./build-types.ts");
   const declarations = await writeTypes();

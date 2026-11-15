@@ -10,7 +10,7 @@ const require = nodeModule.createRequire(import.meta.url);
  * Svelte's compiler, as the Metro transformer uses it (`transformer.ts`). Two things are done to load it.
  *
  * It is loaded from its sources. Metro loads the transformer as CommonJS, and under `require` the `svelte/compiler` export is Svelte's prebuilt bundle (`compiler/index.js`), which this
- * file's second step cannot reach; `import` resolves the export to the sources, so only a CommonJS load shows the difference (`tests/node-modules.test.ts`). Node `require`s an ES module from 22.12.
+ * file's second step cannot reach; `import` resolves the export to the sources, so only a CommonJS load shows the difference (`tests/package/node-modules.test.ts`). Node `require`s an ES module from 22.12.
  *
  * The custom-renderer build refuses `transition:`, `in:`, `out:` and `animate:` on any element (`e.incompatible_with_custom_renderer`, in the two visitors that analyse them), and the
  * library plays them on native elements, so the two refusals are removed from the sources as Node loads them (`acceptDirectives`, through a synchronous module hook). This does not depend on

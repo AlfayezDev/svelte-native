@@ -1,5 +1,5 @@
 <script>
-  import { colorScheme } from "../src/color-scheme.ts";
+  import { colorScheme } from "../../../src/color-scheme.ts";
   let { readers = 1 } = $props();
   const indexes = $derived(Array.from({ length: readers }, (_, index) => index));
 </script>

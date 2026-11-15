@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Text } from "@alfayez/svelte-native";
-  import TextComponent from "../src/components/Text.svelte";
+  import TextComponent from "../../../src/components/Text.svelte";
   let name = $state("Ada");
   export function rename(next: string) { name = next; }
 </script>

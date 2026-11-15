@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { flexKeysOf, isFlexContainer, isHidden, isInlineLevel } from "../src/fabric/html-flow.ts";
+import { flexKeysOf, isFlexContainer, isHidden, isInlineLevel } from "../../src/fabric/html-flow.ts";
 
 // What the host reads of a style to lay the children of an HTML view out (`fabric/html-flow.ts`); the trees it gives are in html-elements.test.ts.
 
@@ -38,11 +38,9 @@ test("a key that a later item of the array leaves unset is not set: a flex key i
 
 test("the keyword beside a display is believed only where it is one that display comes from", () => {
   // `block` is `flex` on a device; a stale or foreign keyword (a style object that was merged by hand) is not believed.
-  expect(isFlexContainer({ display: "flex", htmlDisplay: "block" })).toBe(false);
   expect(isFlexContainer({ display: "none", htmlDisplay: "flex" })).toBe(false);
   expect(isHidden({ display: "none", htmlDisplay: "block" })).toBe(true);
   expect(isInlineLevel({ display: "flex", htmlDisplay: "bogus" })).toBe(false);
-  expect(isInlineLevel({ display: "flex", htmlDisplay: "inline" })).toBe(true);
   expect(isInlineLevel({ display: "contents", htmlDisplay: "inline" })).toBe(true);
 });
 

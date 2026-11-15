@@ -1,5 +1,6 @@
 
-import { isAbsolute, resolve } from "node:path";
+import { createRequire } from "node:module";
+import { dirname, isAbsolute, resolve } from "node:path";
 import type { Plugin } from "esbuild";
 import { reanimatedStubs } from "./reanimated-stubs.ts";
 import { bundle, evaluate } from "./support/bundle.ts";
@@ -68,6 +69,12 @@ const classTable = {
 
 const components = ["TextInput", "Switch", "Modal"];
 
+/**
+ * The directory the tests' own `svelte` comes from: a page written in a test (`html-elements.test.ts`, `html-differential.own-process.ts`) lives in a temporary directory outside the
+ * package, where what the compiler's output imports (`svelte/internal/client`) is found only through this.
+ */
+const nodeModules = dirname(dirname(createRequire(import.meta.url).resolve("svelte/package.json")));
+
 
 /** The aliases the lowered code imports from, and the class table the class resolver reads. */
 const aliases: Plugin = {
@@ -85,7 +92,8 @@ const aliases: Plugin = {
   },
 };
 
-export async function load(fixture = "html-root-fixture.svelte") {
+/** `fixture` is the path of a page (absolute, or relative to `tests/`); without one, the page of `components/fixtures/html-root-fixture.svelte` under a router. */
+export async function load(fixture = resolve(import.meta.dirname, "components/fixtures/html-root-fixture.svelte")) {
   const built = await bundle({
     entry: `import Fixture from ${JSON.stringify(isAbsolute(fixture) ? fixture : `./${fixture}`)};
         import '../src/css/load-table.ts';
@@ -93,7 +101,7 @@ export async function load(fixture = "html-root-fixture.svelte") {
         import { tick } from 'svelte';
         export { startSurface, stopSurface, tick, Fixture };`,
     stubs, viewConfigs: "pass-through", converters: false, lower: { html: true }, plugins: [aliases], cacheKey: "html-harness",
-    esbuild: { mainFields: [] },
+    esbuild: { mainFields: [], nodePaths: [nodeModules] },
   });
   host.warnings = [...built.warnings];
   // The bundled host reads the binding when the bundle is evaluated; another file's fake may have been put in its place since the last load.

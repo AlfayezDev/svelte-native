@@ -381,7 +381,8 @@ describe("watchPosition", () => {
     zero.native.getLastKnownPositionAsync = slow(5);
     const events: string[] = [];
     const id = zero.geolocation.watchPosition((position) => events.push(`position ${position.coords.latitude}`), (error) => events.push(`error ${error.code}`), { maximumAge: 60_000, timeout: 0 });
-    await settle(30);
+    // Waited for, not slept for: on a busy machine a timer of a few milliseconds is late.
+    for (const deadline = Date.now() + 2000; events.length < 3 && Date.now() < deadline;) await settle(5);
     // A cached position starts the clock again, as any position does: with timeout 0, one more TIMEOUT.
     expect(events).toEqual(["error 3", "position 5", "error 3"]);
     zero.geolocation.clearWatch(id);

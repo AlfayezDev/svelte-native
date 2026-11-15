@@ -2,8 +2,8 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
-import { convertCss } from "../src/css/convert.ts";
-import type { ClassRule, ClassTable, StyleValue, Unsupported } from "../src/css/table.ts";
+import { convertCss } from "../../src/css/convert.ts";
+import type { ClassRule, ClassTable, StyleValue, Unsupported } from "../../src/css/table.ts";
 
 // The CSS converter against what Tailwind 4 really emits: the tests compile a file that imports Tailwind (and has a few classes of its
 // own) for a list of candidate classes with the package's `tailwindcss`, and read the class table the converter makes of it.

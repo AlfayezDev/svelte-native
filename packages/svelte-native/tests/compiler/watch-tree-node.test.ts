@@ -10,7 +10,7 @@ import { pathToFileURL } from "node:url";
 const prelude = `
 import { appendFileSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { watchTree } from ${JSON.stringify(pathToFileURL(resolve(import.meta.dirname, "../src/watch-tree.ts")).href)};
+import { watchTree } from ${JSON.stringify(pathToFileURL(resolve(import.meta.dirname, "../../src/watch-tree.ts")).href)};
 const root = process.argv[1];
 const pause = (ms) => new Promise((done) => setTimeout(done, ms));
 const saveByRename = (file, text) => { writeFileSync(file + ".tmp", text); renameSync(file + ".tmp", file); };

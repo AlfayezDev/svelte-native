@@ -1,14 +1,14 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { cacheKeyFiles } from "../src/transformer-cache.ts";
+import { cacheKeyFiles } from "../../src/transformer-cache.ts";
 
 /**
  * Metro keeps what the transformer made of a file until the cache key changes, so every module the lowering reads (what turns an HTML element into native ones, and the
  * converter of `css/` that turns a `style="..."` string into a style) has to be in the key, or an edit to it would leave the old output in the cache. The modules are found
  * from `lower.ts` by their imports, so a new one is caught.
  */
-const source = resolve(import.meta.dirname, "../src");
+const source = resolve(import.meta.dirname, "../../src");
 
 /** The files `entry` imports by a relative path, and what they import, in the package's source. */
 function imported(entry: string, found = new Set<string>()): Set<string> {

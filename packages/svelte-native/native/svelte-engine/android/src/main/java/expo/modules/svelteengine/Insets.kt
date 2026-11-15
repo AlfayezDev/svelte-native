@@ -59,7 +59,7 @@ class Insets(private val root: EngineRoot, private val emit: (Map<String, Any?>)
    * The overlay moved into a recreated Activity keeps the frame it had in the old window, and is attached before the new window has
    * been laid out: the insets read then are measured against a 0 x 0 window (the whole frame looked covered: the right inset was the
    * width and the bottom one more than the height, and a safe area view padded its content away). Until it is laid out
-   * [compute] measures against the box the overlay is about to get ([overlayBox]), and every layout pass of the window publishes what
+   * [compute] takes the overlay to fill it, and every layout pass of the window publishes what
    * changed, so the first pass of the new window sends the measured values even though the overlay's own frame did not change.
    */
   private val globalLayout = android.view.ViewTreeObserver.OnGlobalLayoutListener { if (!animating) publish() }
@@ -101,18 +101,29 @@ class Insets(private val root: EngineRoot, private val emit: (Map<String, Any?>)
   private fun compute(): Map<String, Any?>? {
     if (!root.isAttachedToWindow) return null
     val all = ViewCompat.getRootWindowInsets(root) ?: return null
+    val width = root.width
+    val height = root.height
+    root.getLocationInWindow(location)
     val windowWidth = root.rootView.width
     val windowHeight = root.rootView.height
-    val (x, y, width, height) = overlayBox(windowWidth, windowHeight)
-    val gapLeft = x
-    val gapTop = y
-    val gapRight = windowWidth - (x + width)
-    val gapBottom = windowHeight - (y + height)
+    // Before the window and the overlay are laid out (a cold start's first read, or the overlay moved into a recreated Activity: see
+    // [watchLayouts]) there is nothing to measure the overlay against. It is taken to fill the window, as it does once laid out (the
+    // library runs edge-to-edge; in the legacy layout the bars read until the first pass are the decor's), so the first record has the
+    // system bars and a screen's first layout has its header's inset. Its frame reads 0 x 0, "not measured yet" (JavaScript waits for a
+    // height before it uses one), and it has no keyboard. The window's first layout pass publishes the measured values. Measuring against
+    // a window or an overlay with no size gave nonsense (the blank screens after Back and reopen); reporting nothing until then laid the
+    // first screen out without the bars and again a few frames later, with its half-pixel edges rounded the other way.
+    val laidOut = windowWidth > 0 && windowHeight > 0 && width > 0 && height > 0
+    val gapLeft = if (laidOut) location[0] else 0
+    val gapTop = if (laidOut) location[1] else 0
+    val gapRight = if (laidOut) windowWidth - (location[0] + width) else 0
+    val gapBottom = if (laidOut) windowHeight - (location[1] + height) else 0
     val bars: GraphicsInsets = all.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
     val ime = all.getInsets(WindowInsetsCompat.Type.ime())
-    // A box of no height (a window not laid out at all) has no edge for the keyboard to cover: no keyboard until the first layout pass.
-    val visible = all.isVisible(WindowInsetsCompat.Type.ime()) && height > 0
+    val visible = laidOut && all.isVisible(WindowInsetsCompat.Type.ime())
     val keyboardPx = if (visible) (ime.bottom - gapBottom).coerceAtLeast(0) else 0
+    val frame = if (laidOut) mapOf("x" to dp(gapLeft), "y" to dp(gapTop), "width" to dp(width), "height" to dp(height))
+      else mapOf("x" to 0.0, "y" to 0.0, "width" to 0.0, "height" to 0.0)
     return mapOf(
       "top" to dp((bars.top - gapTop).coerceAtLeast(0)),
       "right" to dp((bars.right - gapRight).coerceAtLeast(0)),
@@ -120,32 +131,8 @@ class Insets(private val root: EngineRoot, private val emit: (Map<String, Any?>)
       "left" to dp((bars.left - gapLeft).coerceAtLeast(0)),
       "keyboardHeight" to dp(keyboardPx),
       "keyboardVisible" to (keyboardPx > 0),
-      "frame" to mapOf("x" to dp(x), "y" to dp(y), "width" to dp(width), "height" to dp(height)),
+      "frame" to frame,
     )
-  }
-
-  /**
-   * The overlay's box in the window, `[x, y, width, height]` in px. Once the overlay is laid out, its own. Before that (a cold start's
-   * first read, or the overlay moved into a recreated Activity: see [watchLayouts]) the box it is about to get: it fills the content
-   * view (`MATCH_PARENT`), so the content view's padded box when that is laid out, or else the whole window (0 x 0 while the window has
-   * no size either). The window's layout passes then publish the measured values if they differ. Measuring against a window or an
-   * overlay that had no size gave nonsense (the blank screens after Back and reopen); reporting nothing until then laid the first
-   * screen out without the system bars and again a few frames later, with its half-pixel edges rounded the other way.
-   */
-  private fun overlayBox(windowWidth: Int, windowHeight: Int): IntArray {
-    val windowSized = windowWidth > 0 && windowHeight > 0
-    if (windowSized && root.width > 0 && root.height > 0) {
-      root.getLocationInWindow(location)
-      return intArrayOf(location[0], location[1], root.width, root.height)
-    }
-    val parent = root.parent as? View
-    if (windowSized && parent != null && parent.width > 0 && parent.height > 0) {
-      parent.getLocationInWindow(location)
-      val width = parent.width - parent.paddingLeft - parent.paddingRight
-      val height = parent.height - parent.paddingTop - parent.paddingBottom
-      if (width > 0 && height > 0) return intArrayOf(location[0] + parent.paddingLeft, location[1] + parent.paddingTop, width, height)
-    }
-    return intArrayOf(0, 0, windowWidth.coerceAtLeast(0), windowHeight.coerceAtLeast(0))
   }
 
   private fun dp(px: Int): Double = Math.round(px / density * 100.0) / 100.0

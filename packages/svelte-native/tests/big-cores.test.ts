@@ -1,8 +1,6 @@
 import { expect, test } from "bun:test";
-import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
+import { hostTools, kotlinHost } from "./support/native-host.ts";
 
 /**
  * Which cores `BootBoost` and `MountBoost` pin to (BigCores.kt: pure functions of numbers read off the device), compiled for the
@@ -10,26 +8,8 @@ import { join, resolve } from "node:path";
  */
 const engine = resolve(import.meta.dirname, "../native/svelte-core/android/src/main/java/expo/modules/svelteengine");
 const sources = { cores: resolve(engine, "BigCores.kt"), host: resolve(import.meta.dirname, "native/BigCoresHost.kt") };
-const tools = Bun.which("kotlinc") && Bun.which("java");
-
-const digest = createHash("sha1");
-for (const file of Object.values(sources)) digest.update(readFileSync(file));
-const cache = join(tmpdir(), `svelte-native-big-cores-${digest.digest("hex").slice(0, 12)}`);
-
-function jar() {
-  const path = join(cache, "big-cores.jar");
-  if (existsSync(path)) return path;
-  mkdirSync(cache, { recursive: true });
-  const result = Bun.spawnSync(["kotlinc", sources.host, sources.cores, "-include-runtime", "-d", path], { stderr: "pipe" });
-  if (result.exitCode !== 0) throw new Error(`kotlinc failed: ${result.stderr.toString()}`);
-  return path;
-}
-
-function run(lines: string[]): string[] {
-  const result = Bun.spawnSync(["java", "-jar", jar()], { stdin: new TextEncoder().encode(`${lines.join("\n")}\n`), stderr: "pipe" });
-  if (result.exitCode !== 0) throw new Error(`host failed: ${result.stderr.toString()}`);
-  return result.stdout.toString().trim().split("\n");
-}
+const tools = hostTools("kotlinc", "java");
+const { run } = kotlinHost({ name: "big-cores", sources: [sources.host, sources.cores] });
 
 const times = (n: number, value: number) => Array<number>(n).fill(value);
 

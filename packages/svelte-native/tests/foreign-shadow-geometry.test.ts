@@ -1,9 +1,8 @@
-import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { expect, test } from "bun:test";
 import { createHarness, find, settle } from "./foreign-harness.ts";
+import { cppHost } from "./support/native-host.ts";
 
 /**
  * `ShadowedView` on Android (SPEC.md, "Six more native-view libraries"): the container keeps the border widths, so the native `FastShadowView` that paints the
@@ -18,18 +17,8 @@ const sources = (directory: string): string[] => readdirSync(directory).flatMap(
   return statSync(path).isDirectory() ? sources(path) : path.endsWith(".cpp") ? [path] : [];
 });
 
-function build(): string {
-  const files = sources(join(yoga, "yoga"));
-  const digest = createHash("sha1");
-  for (const file of [driver, ...files]) digest.update(readFileSync(file));
-  const cache = join(tmpdir(), `svelte-native-yoga-host-${digest.digest("hex").slice(0, 12)}`);
-  const binary = join(cache, "yoga-host");
-  if (existsSync(binary)) return binary;
-  mkdirSync(cache, { recursive: true });
-  const result = Bun.spawnSync(["g++", "-std=c++20", "-O0", "-I", yoga, ...files, driver, "-o", binary], { stderr: "pipe" });
-  if (result.exitCode !== 0) throw new Error(`g++ failed: ${result.stderr.toString()}`);
-  return binary;
-}
+let host: ReturnType<typeof cppHost> | undefined;
+const yogaHost = () => (host ??= cppHost({ name: "yoga-host", sources: [...sources(join(yoga, "yoga")), driver], flags: ["-std=c++20", "-O0", "-I", yoga] }));
 
 const borderKeys = ["borderWidth", "borderLeftWidth", "borderRightWidth", "borderTopWidth", "borderBottomWidth", "borderStartWidth", "borderEndWidth"] as const;
 const size = { width: 100, height: 50 };
@@ -66,7 +55,7 @@ for (const { name, style, rtl = false } of cases) {
     // What Yoga lays the container out with: the widths the payload carries, in Yoga's order of edges.
     const widths = borderKeys.map((key) => number(container?.props[key]));
     const line = [rtl ? "rtl" : "ltr", size.width, size.height, ...widths, ...(["left", "top", "right", "bottom"] as const).map((edge) => number(box?.props[edge]))].join(" ");
-    const [left, top, width, height] = Bun.spawnSync([build()], { stdin: new TextEncoder().encode(`${line}\n`), stderr: "pipe" }).stdout.toString().trim().split(" ").map(Number);
+    const [left, top, width, height] = yogaHost().run(`${line}\n`).trim().split(" ").map(Number);
     expect({ left, top, width, height }, line).toEqual({ left: 0, top: 0, width: size.width, height: size.height });
   }, 60_000);
 }

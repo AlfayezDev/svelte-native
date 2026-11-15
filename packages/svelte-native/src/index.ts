@@ -5,7 +5,7 @@ export * from "./core.ts";
 export * from "./animation.ts";
 export * from "./gestures/index.ts";
 export * from "./svg.ts";
-// The library's own native blur (`native/svelte-blur`), not a third-party view: `/foreign` exports it too.
+// The library's own native blur (`native/svelte-core`), not a third-party view: `/foreign` exports it too.
 export { default as BlurView } from "./components/BlurView.svelte";
 export { default as Native } from "./components/Host.svelte";
 export { default as Router } from "./Router.svelte";

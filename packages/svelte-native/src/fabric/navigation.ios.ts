@@ -1,4 +1,4 @@
-// The iOS wire is the shared one: the Fabric components of native/svelte-screens-ios read the same
+// The iOS wire is the shared one: the Fabric components of native/svelte-core/ios/screens read the same
 // `nativeID` strings and records as the engine (SPEC.md, "Screen API contract"), so the encoders and the reference decoder
 // are re-exported unchanged. What only iOS has is below: the Fabric component each tag mounts as, and their view configs.
 export * from "./navigation.ts";

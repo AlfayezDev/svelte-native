@@ -10,7 +10,7 @@ import { join, resolve } from "node:path";
  * overlay layer"). Skipped when `kotlinc` or `java` is not on the path.
  */
 const native = resolve(import.meta.dirname, "native");
-const engine = resolve(import.meta.dirname, "../native/svelte-engine/android/src/main/java/expo/modules/svelteengine/views");
+const engine = resolve(import.meta.dirname, "../native/svelte-core/android/src/main/java/expo/modules/svelteengine/views");
 const sources = { layout: resolve(engine, "ModalLayout.kt"), host: resolve(native, "ModalHost.kt") };
 const tools = Bun.which("kotlinc") && Bun.which("java");
 

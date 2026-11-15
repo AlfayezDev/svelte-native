@@ -163,12 +163,12 @@ jobs:
       # own Pan source. g++ with the address and undefined-behaviour sanitizers, kotlinc 2.1.20.
       - name: Engine host checks
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        run: bash packages/svelte-native/native/svelte-engine/android/src/test/run.sh
+        run: bash packages/svelte-native/native/svelte-core/android/src/test/engine.sh
 
       # The blur view's rules (intensity, tints, colours, radius, the size of its backdrop picture), kotlinc only.
       - name: Blur view host checks
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        run: bash packages/svelte-native/native/svelte-blur/android/src/test/run.sh
+        run: bash packages/svelte-native/native/svelte-core/android/src/test/blur.sh
 
   docs:
     name: Documentation site

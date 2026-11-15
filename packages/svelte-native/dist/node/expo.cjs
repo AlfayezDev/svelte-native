@@ -534,7 +534,7 @@ var headlessExcludedPackages = [
   "react-native-screens",
   "react-native-safe-area-context",
   "expo-updates",
-  // the engine host ships its own updates module (native/svelte-updates); this package only lets `eas update` run
+  // the engine host ships its own updates module (native/svelte-core); this package only lets `eas update` run
   "expo-dev-client",
   "expo-dev-launcher",
   "expo-dev-menu",

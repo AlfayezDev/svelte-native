@@ -3,7 +3,7 @@ import { parseNavigation } from "./hmr-state.ts";
 /**
  * Whether a navigation state a host kept for a process that died is worth restoring (SPEC.md, "Navigation state across
  * recreation and process death"). Android hands the state over as `initialProps.navigation` and the system decides how long it
- * lives and whether the user removed the task; iOS keeps the state in a file of its own (`native/svelte-navigation-ios`), so the host
+ * lives and whether the user removed the task; iOS keeps the state in a file of its own (`native/svelte-core/ios/navigation`), so the host
  * gives JavaScript the record with what only it knows (whether the system offered its own state) and the policy is here, in one place
  * that the unit tests reach: the native side only stores and returns.
  */

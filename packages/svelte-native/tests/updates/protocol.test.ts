@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { dispositionName, multipartBoundary, parseMultipart } from "../src/updates/multipart.ts";
+import { dispositionName, multipartBoundary, parseMultipart } from "../../src/updates/multipart.ts";
 import {
   assetsToDownload,
   buildAssetRequestHeaders,
@@ -13,12 +13,12 @@ import {
   shouldLoadNewUpdate,
   verifyDownloadedAssets,
   type RequestContext,
-} from "../src/updates/protocol.ts";
-import { parseDictionary, serializeStringDictionary, serializeStringList } from "../src/updates/structured-headers.ts";
+} from "../../src/updates/protocol.ts";
+import { parseDictionary, serializeStringDictionary, serializeStringList } from "../../src/updates/structured-headers.ts";
 import {
   BOUNDARY, CREATED_AT, UPDATE_ID, bundleBytes, directiveResponse, emptyResponse, extensions, imageBytes, launchAsset, logo, logo2x, manifest, manifestResponse,
   md5, multipart, noUpdateDirective, responseHeaders, rollBackDirective, sha256,
-} from "./updates-fixtures/eas.ts";
+} from "../updates-fixtures/eas.ts";
 
 describe("structured headers", () => {
   test("a dictionary keeps strings, numbers and booleans and drops the rest", () => {

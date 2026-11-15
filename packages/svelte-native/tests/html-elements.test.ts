@@ -177,7 +177,7 @@ const textsOf = (nodes: FakeNode[]): string[][] => nodes.flatMap((node) => {
   return textsOf(node.children);
 });
 
-test("the text of a div reaches the native text as the text of a Text written the same way does, whitespace included (tests/text-whitespace.test.ts)", async () => {
+test("the text of a div reaches the native text as the text of a Text written the same way does, whitespace included (tests/components/text-whitespace.test.ts)", async () => {
   const m = await load("html-text-fixture.svelte");
   host.roots = {};
   const app = m.startSurface(601, m.Fixture, {}) as { rename(next: string): void };

@@ -1,105 +1,48 @@
-import { test, expect } from "bun:test";
-import { build } from "esbuild";
-import { readFile, mkdtemp, writeFile, rm } from "node:fs/promises";
+import { expect, test } from "bun:test";
 import { resolve } from "node:path";
-import { tmpdir } from "node:os";
-import { pathToFileURL } from "node:url";
-import { compile } from "svelte/compiler";
-import { componentOptions } from "../src/compile-options.ts";
-import { reanimatedStubs } from "./reanimated-stubs.ts";
-import { loadReference, reactNativeConverters } from "./rn-reference.ts";
-import type { PayloadTap } from "./payload-tap.ts";
+import { loadReference } from "../rn-reference.ts";
+import type { AnimLog } from "../reanimated-stubs.ts";
+import { baseStubs, load, src } from "../support/bundle.ts";
+import { type FakeNode, flatten, settle } from "../support/host.ts";
+import { fakeHost } from "../support/fake-host.ts";
+import type { PayloadTap } from "../support/payload-tap.ts";
 
-type FakeNode = { tag: number; name: string; props: Record<string, unknown>; children: FakeNode[]; sealed: boolean; target?: unknown };
-const calls: string[] = [];
-let roots: Record<number, FakeNode[]> = {};
-const fake = {
-  createNode(tag: number, name: string, _root: number, props: Record<string, unknown>, target: unknown) { calls.push(`create ${name}`); return { tag, name, props: { ...props }, children: [], sealed: false, target }; },
-  cloneNodeWithNewChildren(node: FakeNode) { calls.push(`cloneChildren ${node.name}`); return { ...node, children: [], sealed: false }; },
-  cloneNodeWithNewProps(node: FakeNode, props: Record<string, unknown>) { calls.push(`cloneProps ${node.name}`); return { ...node, props: { ...node.props, ...props }, children: [...node.children], sealed: false }; },
-  cloneNodeWithNewChildrenAndProps(node: FakeNode, props: Record<string, unknown>) { calls.push(`cloneBoth ${node.name}`); return { ...node, props: { ...node.props, ...props }, children: [], sealed: false }; },
-  appendChild(parent: FakeNode, child: FakeNode) {
-    if (parent.sealed) throw new Error(`appendChild on sealed ${parent.name}`);
-    if (parent.name === "RCTScrollView" && parent.children.length >= 1) throw new Error("ScrollView can host only one direct child");
-    parent.children.push(child);
-  },
-  createChildSet(root: number) { return { root, children: [] as FakeNode[] }; },
-  appendChildToSet(set: { children: FakeNode[] }, child: FakeNode) { set.children.push(child); },
-  completeRoot(root: number, set: { children: FakeNode[] }) {
-    calls.push("completeRoot");
-    const seal = (n: FakeNode) => { n.sealed = true; n.children.forEach(seal); };
-    set.children.forEach(seal);
-    roots[root] = set.children;
-  },
-  measure(node: FakeNode, callback: (...args: number[]) => void) { calls.push(`measure ${node.tag}`); callback(1, 2, 3, 4, 5, 6); },
-  measureInWindow(node: FakeNode, callback: (...args: number[]) => void) { calls.push(`measureInWindow ${node.tag}`); callback(5, 6, 3, 4); },
-  dispatchCommand(node: FakeNode, name: string, args: unknown[]) { calls.push(`dispatchCommand ${node.tag} ${name} ${JSON.stringify(args)}`); },
-  registerEventHandler(handler: unknown) { (fake as { handler?: unknown }).handler = handler; },
-};
-(globalThis as { nativeFabricUIManager?: unknown }).nativeFabricUIManager = fake;
+/**
+ * The animation layer of the Fabric host (`fabric/animation.ts`) with Reanimated's fakes (`reanimated-stubs.ts`, recorded on `globalThis.__anim`): which nodes it takes, what it is
+ * told when they are cloned, hidden and removed, and what never reaches the native payload.
+ */
 const tap: PayloadTap = { reference: await loadReference("android"), checks: [] };
-(globalThis as { __payloadTap?: PayloadTap }).__payloadTap = tap;
-import type { AnimLog } from "./reanimated-stubs.ts";
+const host = fakeHost({ globals: { __payloadTap: tap } });
 const log = () => (globalThis as unknown as { __anim: AnimLog }).__anim;
 
-const stubs: Record<string, string> = {
-  ...reanimatedStubs,
-  "react-native/Libraries/Utilities/Platform": "export default { OS: 'android', Version: 34 };",
-  "react-native/Libraries/Image/resolveAssetSource": "export default (source) => source && typeof source === 'object' && 'uri' in source ? { scale: 1, ...source } : null;",
-  "react-native/Libraries/Components/View/ViewNativeComponent": "export {};",
-  "react-native/Libraries/Text/TextNativeComponent": "export {};",
-  "react-native/Libraries/Components/ScrollView/ScrollViewNativeComponent": "export {};",
-  "expo-modules-core": "export const requireOptionalNativeModule = (name) => (name === 'SvelteEngine' ? (globalThis.__testEngine ?? null) : null);",
-  "react-native": "export const AppRegistry = { registerRunnable() {} };",
+/** A spy on the animation layer's entry: which nodes the host sent through it. */
+const spy = {
+  file: "fabric/animation\\.ts$",
+  find: "export function animationProps(node: object, target: AnimationTarget, props: Record<string, unknown>): Record<string, unknown> {",
+  replace: "$&\n  ((globalThis as { __animationPropsCalls?: unknown[] }).__animationPropsCalls ??= []).push(props.testID);",
 };
 
-async function load(fixture = "animation-fixture.svelte") {
-  const bundle = await build({
-    stdin: {
-      contents: `import Fixture from './${fixture}';
-        import { startSurface, flush, fabricStats } from '../src/fabric/host.ts';
-        import { tick } from 'svelte';
-        export { startSurface, flush, fabricStats, tick, Fixture };`,
-      resolveDir: import.meta.dirname,
-    },
-    bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], mainFields: ["main"], write: false,
-    plugins: [...reactNativeConverters("android"), {
-      name: "animation-fixture",
-      setup(builder) {
-        builder.onResolve({ filter: /^(react-native|expo-modules-core)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
-        builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? "export {};", loader: "js" }));
-        builder.onResolve({ filter: /\/view-configs\.ts$/ }, (args) => (args.importer.endsWith("/fabric/host.ts") ? { path: resolve(import.meta.dirname, "payload-tap.ts") } : undefined));
-        builder.onResolve({ filter: /^@alfayez\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
-        builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../src/environment.ts") }));
-        // A spy on the animation layer's entry: which nodes the host sent through it.
-        builder.onLoad({ filter: /fabric\/animation\.ts$/ }, async ({ path }) => ({
-          contents: (await readFile(path, "utf8")).replace("export function animationProps(node: object, target: AnimationTarget, props: Record<string, unknown>): Record<string, unknown> {", "$&\n  ((globalThis as { __animationPropsCalls?: unknown[] }).__animationPropsCalls ??= []).push(props.testID);"),
-          loader: "ts",
-        }));
-        builder.onLoad({ filter: /\.svelte$/ }, async ({ path }) => ({
-          contents: compile(await readFile(path, "utf8"), componentOptions(path)).js.code,
-          loader: "js",
-        }));
-      },
-    }],
+/** The fixture mounted on the fake binding; the engine module of a test is whatever it puts on `globalThis.__testEngine`. */
+async function mount(fixture = "animation-fixture.svelte") {
+  return load<{ startSurface: typeof import("../../src/fabric/host.ts").startSurface; fabricStats: typeof import("../../src/fabric/host.ts").fabricStats; tick: () => Promise<void>; Fixture: never }>({
+    entry: `import Fixture from ${JSON.stringify(resolve(import.meta.dirname, "fixtures", fixture))};
+      import { startSurface, fabricStats } from ${JSON.stringify(src("fabric/host.ts"))};
+      import { tick } from 'svelte';
+      export { startSurface, fabricStats, tick, Fixture };`,
+    viewConfigs: "payload-tap",
+    stubs: { ...baseStubs(), "expo-modules-core": "export const requireOptionalNativeModule = (name) => (name === 'SvelteEngine' ? (globalThis.__testEngine ?? null) : null);" },
+    patches: [spy],
   });
-  const directory = await mkdtemp(resolve(tmpdir(), "svelte-native-anim-"));
-  const file = resolve(directory, "bundle.mjs");
-  await writeFile(file, bundle.outputFiles[0].contents);
-  const m = await import(pathToFileURL(file).href);
-  await rm(directory, { recursive: true });
-  return m;
 }
-const find = (nodes: FakeNode[], name: string): FakeNode[] => nodes.flatMap((n) => [...(n.name === name ? [n] : []), ...find(n.children, name)]);
-const byId = (root: number, id: string) => find(roots[root] ?? [], "RCTView").find((n) => n.props.testID === id) as FakeNode;
-const settle = async (m: { tick: () => Promise<void> }) => { await m.tick(); await Promise.resolve(); await Promise.resolve(); };
+
+const find = (nodes: FakeNode[], name: string): FakeNode[] => flatten(nodes).filter((node) => node.name === name);
+const byId = (root: number, id: string) => find(host.roots[root] ?? [], "RCTView").find((n) => n.props.testID === id) as FakeNode;
 type App = { hide: () => void; show: () => void; pad: (n: number) => void; dropCss: () => void; useInline: () => void; two: () => void; useProps: () => void; stopAnim: () => void; useShorthand: () => void };
 const sentThroughLayer = () => ((globalThis as { __animationPropsCalls?: unknown[] }).__animationPropsCalls ?? []) as unknown[];
 const animationKeys = ["animationName", "animationDuration", "transitionProperty", "transitionDuration", "animatedStyle", "animatedProps"];
-const fresh = async (fixture?: string) => { delete (globalThis as { __anim?: unknown }).__anim; (globalThis as { __animationPropsCalls?: unknown[] }).__animationPropsCalls = []; roots = {}; return load(fixture); };
 
 test("animatedStyle: initial values in the first payload, one descriptor and one mapper, re-pointed after a clone, stopped on removal", async () => {
-  const m = await fresh();
+  const m = await mount();
   const app = m.startSurface(31, m.Fixture, {}) as App;
   const anim = byId(31, "anim");
   expect(m.fabricStats().animationLoaded).toBe(true); // the first animated node loaded the layer
@@ -155,7 +98,7 @@ test("animatedStyle: initial values in the first payload, one descriptor and one
 });
 
 test("animatedProps: first-run values in the node's props, a descriptor set and a mapper of its own that write as animated props, stopped with the node", async () => {
-  const m = await fresh();
+  const m = await mount();
   const app = m.startSurface(34, m.Fixture, {}) as App;
   app.useProps();
   await settle(m);
@@ -194,7 +137,7 @@ test("animatedProps: first-run values in the node's props, a descriptor set and 
 });
 
 test("Reanimated CSS keys go to a CSSManager built from the node, and never reach the native payload", async () => {
-  const m = await fresh();
+  const m = await mount();
   const app = m.startSurface(32, m.Fixture, {}) as App;
   const node = byId(32, "css");
   for (const key of animationKeys) expect(key in node.props).toBe(false);
@@ -222,7 +165,7 @@ test("Reanimated CSS keys go to a CSSManager built from the node, and never reac
 });
 
 test("SharedValues in style: first payload carries their values, Reanimated's inline-prop manager is attached and detached", async () => {
-  const m = await fresh();
+  const m = await mount();
   const app = m.startSurface(33, m.Fixture, {}) as App;
   app.useInline();
   await settle(m);
@@ -245,7 +188,7 @@ test("every payload the host builds for these fixture trees is identical to Reac
 });
 
 test("a node that went through the animation layer keeps going through it, so the layer detaches it when its animated prop goes", async () => {
-  const m = await fresh();
+  const m = await mount();
   const app = m.startSurface(35, m.Fixture, {}) as App;
   const anim = byId(35, "anim");
   const A = log();
@@ -267,7 +210,7 @@ test("a node that went through the animation layer keeps going through it, so th
 });
 
 test("once the animation layer is loaded, plain nodes are not sent through it", async () => {
-  const m = await fresh();
+  const m = await mount();
   const app = m.startSurface(36, m.Fixture, {}) as App;
   expect(m.fabricStats().animationLoaded).toBe(true);
   const seen = new Set(sentThroughLayer());
@@ -284,7 +227,7 @@ test("once the animation layer is loaded, plain nodes are not sent through it", 
 });
 
 test("the CSS `transition` shorthand reaches a CSSManager like the longhand keys, and never the native payload", async () => {
-  const m = await fresh();
+  const m = await mount();
   const app = m.startSurface(37, m.Fixture, {}) as App;
   const A = log();
   const before = A.css.length;
@@ -300,36 +243,33 @@ test("the CSS `transition` shorthand reaches a CSSManager like the longhand keys
 
 test("a commit that attaches eight animated nodes for the first time tells the engine; fewer, and the nodes that only refresh, do not", async () => {
   const told: string[] = [];
+  // The harness puts the global object back after the test, so the engine goes with it.
   (globalThis as { __testEngine?: unknown }).__testEngine = { install: () => true, reanimatedLoaded: () => {}, animatedBatch: () => told.push("batch") };
-  try {
-    const m = await fresh("animation-many-fixture.svelte");
-    const app = m.startSurface(36, m.Fixture, {}) as { keep: (n: number) => void; pad: (n: number) => void };
-    expect(find(roots[36] ?? [], "RCTView")).toHaveLength(20);
-    expect(log().mappers).toHaveLength(20);
-    expect(told).toEqual(["batch"]); // twenty new nodes in one commit
+  const m = await mount("animation-many-fixture.svelte");
+  const app = m.startSurface(36, m.Fixture, {}) as { keep: (n: number) => void; pad: (n: number) => void };
+  expect(find(host.roots[36] ?? [], "RCTView")).toHaveLength(20);
+  expect(log().mappers).toHaveLength(20);
+  expect(told).toEqual(["batch"]); // twenty new nodes in one commit
 
-    // Twenty attached nodes that only refresh (a style change clones every one of them, and each re-points its descriptor at the clone): no new node, no word.
-    const adds = () => log().descriptors.reduce((count, entry) => count + entry.adds.length, 0);
-    const before = adds();
-    app.pad(3);
-    await settle(m);
-    expect(adds()).toBeGreaterThanOrEqual(before + 20); // the refresh really happened for all twenty
-    expect(log().mappers).toHaveLength(20); // and started no mapper
-    expect(told).toEqual(["batch"]);
+  // Twenty attached nodes that only refresh (a style change clones every one of them, and each re-points its descriptor at the clone): no new node, no word.
+  const adds = () => log().descriptors.reduce((count, entry) => count + entry.adds.length, 0);
+  const before = adds();
+  app.pad(3);
+  await settle(m);
+  expect(adds()).toBeGreaterThanOrEqual(before + 20); // the refresh really happened for all twenty
+  expect(log().mappers).toHaveLength(20); // and started no mapper
+  expect(told).toEqual(["batch"]);
 
-    app.keep(19); // a commit that leaves: nothing new
-    await settle(m);
-    app.keep(0);
-    await settle(m);
-    app.keep(7); // seven new nodes: below the bulk
-    await settle(m);
-    expect(told).toEqual(["batch"]);
-    app.keep(0);
-    await settle(m);
-    app.keep(8); // eight: the bulk
-    await settle(m);
-    expect(told).toEqual(["batch", "batch"]);
-  } finally {
-    delete (globalThis as { __testEngine?: unknown }).__testEngine;
-  }
+  app.keep(19); // a commit that leaves: nothing new
+  await settle(m);
+  app.keep(0);
+  await settle(m);
+  app.keep(7); // seven new nodes: below the bulk
+  await settle(m);
+  expect(told).toEqual(["batch"]);
+  app.keep(0);
+  await settle(m);
+  app.keep(8); // eight: the bulk
+  await settle(m);
+  expect(told).toEqual(["batch", "batch"]);
 });

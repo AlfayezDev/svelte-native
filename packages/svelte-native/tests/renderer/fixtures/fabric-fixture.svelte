@@ -1,7 +1,7 @@
 <script>
-  import ScrollView from "../src/components/ScrollView.svelte";
-  import View from "../src/components/View.svelte";
-  import Text from "../src/components/Text.svelte";
+  import ScrollView from "../../../src/components/ScrollView.svelte";
+  import View from "../../../src/components/View.svelte";
+  import Text from "../../../src/components/Text.svelte";
   let rows = $state([]);
   let label = $state("before");
   export function fill(n) { rows = Array.from({ length: n }, (_, i) => i); }

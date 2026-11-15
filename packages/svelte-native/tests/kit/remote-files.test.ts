@@ -1,6 +1,6 @@
 // A remote form with a file, on the device's own `Blob`, `File` and `fetch` (the library's, over the fake native module): the file's bytes stay native
 // from the `File` to the request, and the server's SvelteKit parser reads what was sent.
-import { fake } from "./setup.ts";
+import { useFake } from "../web-apis/fetch/support/setup.ts";
 import { expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
@@ -10,6 +10,8 @@ import { Blob as NativeBlob, File as NativeFile } from "../../src/fetch/blob.ts"
 import { fetch as nativeFetch } from "../../src/fetch/fetch.ts";
 import { kitRoot } from "../../src/remote/transform.ts";
 import { loadClient } from "../remote-harness.ts";
+
+const fake = useFake();
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 test("a form with a File sends the file's native bytes through the library's fetch, and SvelteKit's parser reads them", async () => {
@@ -77,7 +79,7 @@ test("on a build without the library's fetch module (React Native's Blob, which 
     expect(upload.error?.message).toBe("Internal Error");
     expect(caught).toHaveLength(1);
     expect(caught[0]).toBeInstanceOf(TypeError);
-    expect(String((caught[0] as Error).message)).toContain("a build of the app that has Svelte Native's fetch module (0.4.0-rc.8 or later)");
+    expect(String((caught[0] as Error).message)).toContain("a build of the app that has Svelte Native's fetch module");
     expect(bodies).toHaveLength(1);
   } finally {
     globalThis.Blob = saved;

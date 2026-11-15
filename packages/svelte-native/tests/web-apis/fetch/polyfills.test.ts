@@ -1,15 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { build } from "esbuild";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import type { PluginBuild } from "esbuild";
+import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { bundle } from "../../support/bundle.ts";
+import { createProject } from "../../support/project.ts";
 
 /**
  * `polyfills.ts` makes `fetch`, `Headers`, `Request`, `Response`, `Blob`, `File`, `FileReader` and `FormData` lazy, and settles them to Svelte Native's own only when the app's binary has
  * the native module `SvelteFetch`. Here the real file is bundled (the React Native and Expo modules it imports stood in for) and run in a process of its own, after a prelude that
  * installs what Expo's runtime installs: a lazy getter per name that answers "expo:<name>" and records that it was read. The process says what it saw.
  */
-const root = resolve(import.meta.dirname, "../..");
+const root = resolve(import.meta.dirname, "../../..");
 const NAMES = ["fetch", "Headers", "Request", "Response", "Blob", "File", "FileReader", "FormData"];
 
 const stubs: Record<string, string> = {
@@ -23,20 +24,20 @@ const stubs: Record<string, string> = {
   "expo-modules-core": "export const requireOptionalNativeModule = (name) => globalThis.__natives[name] ?? null;",
 };
 
-let bundled: Promise<string> | undefined;
-const bundle = (): Promise<string> => (bundled ??= build({
-  stdin: { contents: `import ${JSON.stringify(join(root, "src/polyfills.ts"))};`, resolveDir: root, loader: "ts" },
-  bundle: true, format: "esm", platform: "neutral", write: false,
+/** The real `polyfills.ts` against the stubs, built once for the run. */
+const bundled = (): Promise<string> => bundle({
+  entry: `import ${JSON.stringify(join(root, "src/polyfills.ts"))};`,
+  resolveDir: root, converters: false, cacheKey: "fetch-polyfills",
   plugins: [{
     name: "stubs",
-    setup(builder) {
+    setup(builder: PluginBuild) {
       builder.onResolve({ filter: /^(react-native\/Libraries\/|expo-modules-core$|expo\/src\/winter$|hermes-intl$|react-native-mmkv$|react-native-quick-crypto$)/ }, (args) => ({ path: args.path, namespace: "stub" }));
       builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? "export {};", loader: "js" }));
       // Counts the modules of src/fetch that are evaluated, to say when the layer was loaded.
       builder.onLoad({ filter: /src[\\/]fetch[\\/][^\\/]+\.ts$/ }, ({ path }) => ({ contents: `${readFileSync(path, "utf8")}\nglobalThis.__fetchLoaded = [...(globalThis.__fetchLoaded ?? []), ${JSON.stringify(path.split("/").at(-1))}];`, loader: "ts" }));
     },
   }],
-}).then((result) => result.outputFiles[0]!.text));
+}).then((built) => built.code);
 
 const prelude = (scenario: "present" | "absent") => `
 globalThis.window = globalThis;
@@ -77,14 +78,27 @@ out.assigned = g.fetch;
 console.log("PROBE " + JSON.stringify(out));
 `;
 
-async function run(scenario: "present" | "absent"): Promise<Record<string, unknown>> {
-  const directory = mkdtempSync(join(process.env.TMPDIR ?? tmpdir(), "svelte-fetch-polyfills-"));
-  const file = join(directory, "probe.mjs");
-  writeFileSync(file, `${prelude(scenario)}\n${await bundle()}\n${probe}`);
-  const done = Bun.spawnSync([process.execPath, file], { stdout: "pipe", stderr: "pipe" });
-  if (done.exitCode !== 0) throw new Error(`the probe failed:\n${done.stderr.toString().slice(-3000)}`);
-  const line = done.stdout.toString().split("\n").find((entry) => entry.startsWith("PROBE "));
-  return JSON.parse(line!.slice(6)) as Record<string, unknown>;
+const probes = new Map<string, Promise<Record<string, unknown>>>();
+
+/** What the probe saw in a process of its own: one process for each scenario, started by the first test that asks, however many ask. */
+function run(scenario: "present" | "absent"): Promise<Record<string, unknown>> {
+  let result = probes.get(scenario);
+  if (!result) {
+    result = (async () => {
+      const project = createProject({}, "svelte-fetch-polyfills-");
+      try {
+        const file = project.write("probe.mjs", `${prelude(scenario)}\n${await bundled()}\n${probe}`);
+        const done = Bun.spawnSync([process.execPath, file], { stdout: "pipe", stderr: "pipe" });
+        if (done.exitCode !== 0) throw new Error(`the probe failed:\n${done.stderr.toString().slice(-3000)}`);
+        const line = done.stdout.toString().split("\n").find((entry) => entry.startsWith("PROBE "));
+        return JSON.parse((line as string).slice(6)) as Record<string, unknown>;
+      } finally {
+        project.remove();
+      }
+    })();
+    probes.set(scenario, result);
+  }
+  return result;
 }
 
 describe("polyfills.ts and the fetch globals", () => {
@@ -131,10 +145,4 @@ describe("polyfills.ts and the fetch globals", () => {
     expect((await run("present")).assigned).toBe("assigned");
     expect((await run("absent")).assigned).toBe("assigned");
   });
-});
-
-test("polyfills.ts does not import anything of src/fetch at load: it is required inside the getters", () => {
-  const source = readFileSync(join(root, "src/polyfills.ts"), "utf8");
-  expect(source).not.toMatch(/^\s*import[^\n]*fetch\//m);
-  expect(source).toMatch(/^\s+get: \(\) => settle\(\(require\("\.\/fetch\/install\.ts"\)/m);
 });

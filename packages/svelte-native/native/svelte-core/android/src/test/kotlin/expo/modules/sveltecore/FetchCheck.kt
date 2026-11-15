@@ -18,7 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.system.exitProcess
 
 // Host checks of the plain classes behind the SvelteFetch module (Fetcher, FetchCall, BodyBuffer, BlobData, ObjectUrls, Utf8, the file handles), against the
-// repository's test server (tests/fetch/server.ts) and the Encoding standard's own results (vectors.ts). No device, no Expo runtime, no Android SDK.
+// repository's test server (tests/web-apis/fetch/support/server.ts) and the Encoding standard's own results (vectors.ts). No device, no Expo runtime, no Android SDK.
 // Usage: FetchCheckKt <server base URL> <vectors file> <scratch directory> [lowmem]
 // "lowmem" runs only the checks of large bodies and is meant for a JVM with a small heap (run.sh starts one with -Xmx64m): what must not exhaust memory.
 

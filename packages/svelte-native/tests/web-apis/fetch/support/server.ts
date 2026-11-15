@@ -1,5 +1,5 @@
 // The HTTP server the fetch checks run against: the host checks of the native module, and the device checks of the showcase's Web APIs screen. Plain node:http
-// (Node strips its types), no dependencies. Usage: node tests/fetch/server.ts [--port 8787]. Run it with Node, not Bun: Bun 1.3's node:http stalls the
+// (Node strips its types), no dependencies. Usage: node tests/web-apis/fetch/support/server.ts [--port 8787]. Run it with Node, not Bun: Bun 1.3's node:http stalls the
 // third request on a kept-alive connection, and the platforms' clients reuse connections. An Android emulator reaches it after
 // `adb reverse tcp:8787 tcp:8787`; the iOS Simulator reaches the Mac's localhost, so it runs there too.
 //

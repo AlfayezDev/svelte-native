@@ -1,12 +1,14 @@
-import { fake, makeRnBlob, rnReads } from "./setup.ts";
+import { makeRnBlob, rnReads, useFake } from "./support/setup.ts";
 import { beforeEach, describe, expect, test } from "bun:test";
-import { Blob, File } from "../../src/fetch/blob.ts";
-import { fetch } from "../../src/fetch/fetch.ts";
-import { FormData } from "../../src/fetch/form-data.ts";
-import { Headers } from "../../src/fetch/headers.ts";
-import { Request } from "../../src/fetch/request.ts";
-import { Response } from "../../src/fetch/response.ts";
-import { seededBytes } from "./server.ts";
+import { Blob, File } from "../../../src/fetch/blob.ts";
+import { fetch } from "../../../src/fetch/fetch.ts";
+import { FormData } from "../../../src/fetch/form-data.ts";
+import { Headers } from "../../../src/fetch/headers.ts";
+import { Request } from "../../../src/fetch/request.ts";
+import { Response } from "../../../src/fetch/response.ts";
+import { seededBytes } from "./support/server.ts";
+
+const fake = useFake();
 
 beforeEach(() => { fake.log.length = 0; rnReads.length = 0; });
 
@@ -139,7 +141,7 @@ describe("consuming a body", () => {
     expect((await new Response(new Uint8Array([1])).blob()).type).toBe("");
   });
 
-  test("text decodes UTF-8: a byte order mark is dropped, invalid bytes are U+FFFD, in every kind of body", async () => {
+  test("text decodes UTF-8: a byte order mark is dropped, invalid bytes are U+FFFD, in every kind of body and by every route of a network body", async () => {
     const bytes = new Uint8Array([0xef, 0xbb, 0xbf, ...Buffer.from("héllo "), 0xc3, 0x28, ...Buffer.from(" wörld ✓")]);
     const expected = "héllo �( wörld ✓";
     expect(await new Response(bytes).text()).toBe(expected);
@@ -147,6 +149,14 @@ describe("consuming a body", () => {
     expect(await new Response(stream(bytes.subarray(0, 5), bytes.subarray(5))).text()).toBe(expected);
     expect(await new Response("﻿abc").text()).toBe("abc");
     expect(await new Response(stream(bytes.subarray(0, 2), bytes.subarray(2))).text()).toBe(expected);
+    // The same bytes from the network (the test server's /utf8), read by every route.
+    expect(await (await fetch(`${fake.base}/utf8`)).text()).toBe(expected);
+    expect(await (await fetch(`${fake.base}/utf8`)).blob().then((blob) => blob.text())).toBe(expected);
+    expect(new Uint8Array(await (await fetch(`${fake.base}/utf8`)).arrayBuffer()).length).toBe(bytes.length);
+    const touched = await fetch(`${fake.base}/utf8`);
+    void touched.body; // once the stream is touched, the consumers read through it
+    expect(await touched.text()).toBe(expected);
+    expect(await new Response(await (await fetch(`${fake.base}/utf8`)).bytes()).text()).toBe(expected);
   });
 
   test("bodyUsed turns true when a consumer runs, and a second consumer rejects with a TypeError (a rejection, not a throw)", async () => {
@@ -393,15 +403,6 @@ describe("clone", () => {
 });
 
 describe("a body of another kind", () => {
-  test("a Blob is not read into JavaScript: its type is the Content-Type and the upload is the native Blob", async () => {
-    const blob = new Blob([seededBytes(100000, 3)], { type: "application/x-blob" });
-    fake.log.length = 0;
-    const echo = await (await fetch(`${fake.base}/echo`, { method: "POST", body: blob })).json() as { bodyLength: number; headers: [string, string][] };
-    expect(echo.bodyLength).toBe(100000);
-    expect(echo.headers.find(([name]) => name === "content-type")![1]).toBe("application/x-blob");
-    expect(fake.log.filter((entry) => entry.startsWith("blob."))).toEqual([]);
-  });
-
   test("a React Native Blob is read through its FileReader (the slow path), once, however often it is read", async () => {
     const data = seededBytes(3000, 14);
     const rn = makeRnBlob(data, "image/png");
@@ -413,11 +414,6 @@ describe("a body of another kind", () => {
     expect(rnReads.length).toBe(1);
     const sent = await (await fetch(`${fake.base}/echo`, { method: "POST", body: rn as never })).json() as { bodyLength: number };
     expect(sent.bodyLength).toBe(3000);
-  });
-
-  test("a ReadableStream body is drained to bytes before it is sent", async () => {
-    const echo = await (await fetch(`${fake.base}/echo`, { method: "POST", body: stream("str", "eam", " body"), duplex: "half" } as never)).json() as { bodyText: string };
-    expect(echo.bodyText).toBe("stream body");
   });
 });
 

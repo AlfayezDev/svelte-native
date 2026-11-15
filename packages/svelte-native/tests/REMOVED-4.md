@@ -96,3 +96,29 @@ Every test ran twice, as components and lowered to host tags; only five depend o
 
 - web-storage.test.ts `describe("defineLazyGlobal")`, 3 tests, and `fetch/lazy-global.test.ts` `describe("defineLazyGlobal")`, 4 tests, check `src/lazy-global.ts` twice: "makes nothing until the name is read, then once: the accessor is replaced by the value" ~ "a loader that works is called once; a name the scope has already is left alone; an assignment replaces the accessor"; "a name the scope has keeps its value, whatever it is; an assignment replaces the global as for any other, before the first read or after it" ~ the same test's last lines; "when making the value throws the read is undefined (a feature probe works), once warned, the accessor stays and the next read tries again" ~ "a loader that throws: the read is undefined..." + "the loader is tried again on a later read...". Only here: assignment before the first read; only there: warns once on repeated failure, a thrown value that is not an Error. One file should hold the union.
 - web-apis/web-apis.test.ts "importing the polyfills defines the three names as accessors and loads neither library, creates no MMKV instance and writes nothing" is the runtime twin of `boot-graph.test.ts` "crypto, localStorage and sessionStorage are accessors the polyfills define, and react-native-quick-crypto, react-native-mmkv and the Nitro runtime are not evaluated at load" (the static import graph). Different method, same rule.
+
+## Moves
+
+Old file (tests/) to new file; fixtures, probes and helpers moved with their tests (`fixtures/` next to a test, `support/` for a helper of an area).
+
+- accessibility.test.ts, accessibility-html.test.ts: components/accessibility.test.ts (+ upstream/react-native-aria.test.ts)
+- capabilities.test.ts, remote-plugin.test.ts: cli/
+- classes.test.ts: compiler/classes.test.ts
+- docs-links.test.ts: package/docs-links.test.ts
+- hmr.test.ts: renderer/surfaces.test.ts (the surfaces' life, `init`) and navigation/surface-restore.test.ts (what the navigation keeps)
+- html-differential.own-process.ts, html-elements.test.ts, html-flow.test.ts: components/ (the differential test keeps its own process; `package.json` runs it from there)
+- html-press.test.ts, responder.test.ts, responder-native.test.ts: gestures/html-press.test.ts, gestures/host-responder.test.ts, gestures/responder-native.test.ts (`responder.test.ts` of gestures/ is group 1's)
+- insets.test.ts, keyboard-boot.test.ts: components/
+- layout-animation.test.ts: animation/layout-animation.test.ts
+- native-tools.test.ts: native-host/native-tools.test.ts
+- navigator.test.ts, web-apis.test.ts, web-mmkv.test.ts, web-storage.test.ts, window-size.test.ts: web-apis/
+- remote-e2e, remote-form, remote-harness, remote-lab, remote-number, remote-runtime, remote-transform, remote-transformer, web-mobile: kit/ (+ upstream/sveltekit-client-files.test.ts); the fixture server is kit/fixtures/kit-app
+- runes-default.test.ts: compiler/runes-default.test.ts and cli/runes-environment.test.ts
+- screens-ios.test.ts: navigation/screens-ios.test.ts and native-host/screens-ios-records.test.ts
+- svg-bundle, svg-colors, svg-configs, svg-dynamic, svg-elements, svg-extract, svg-native, svg-xml: foreign/svg/ (the oracle, harness, cases and icons are foreign/svg/support/; svg-colors' Java/ObjC pin is upstream/react-native-svg-colors.test.ts)
+- worklets-frame-loop.test.ts: upstream/worklets-frame-loop.test.ts
+- New helpers: support/app-surface.ts (an app started through the app registry, for renderer/ and navigation/), gestures/support/touches.ts (touch events, for gestures/, components/ and foreign/svg/)
+
+## Left for the final pass
+
+Still at the root of tests/ because another group's files use them: html-harness.ts (`transitions-html.test.ts`), remote-harness.ts (`fetch/remote-files.test.ts`), foreign-harness.ts, rn-reference.ts, reanimated-stubs.ts, svg-library-stubs.ts (`app-tree.test.ts`, `exports-runtime.test.ts`), view-configs-stub.ts, tree-app.ts, tree.ts, route-empty.svelte, route-page.svelte, screen-fixture.svelte, tabs-fixture.svelte and toolbar-fixture.svelte (`navigation.test.ts`), native/host-tools.ts. The comments of other groups' files that still name a file of this group by its old name: async-option.test.ts (`runes-default.test.ts`), lower.test.ts and text-inherit.test.ts (`html-elements.test.ts`), updates-store-native.test.ts and support/native-host.ts (`native-tools.test.ts`).

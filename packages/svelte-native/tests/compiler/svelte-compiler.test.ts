@@ -6,7 +6,7 @@ import { acceptDirectives } from "../../src/svelte-compiler.ts";
 import { repoRoot } from "../support/paths.ts";
 
 // The Metro transformer removes the refusal of `transition:`, `in:`, `out:` and `animate:` from Svelte's compiler as Node loads the two files that have it (`svelte-compiler.ts`; the hook
-// itself runs under Node, in `tests/node-modules.test.ts`, with a stock Svelte). What it does to the text of those files is checked here against the custom-renderer build as it is
+// itself runs under Node, in `tests/package/node-modules.test.ts`, with a stock Svelte). What it does to the text of those files is checked here against the custom-renderer build as it is
 // published (the vendored tarball) and against this repository's Svelte, which `patches/svelte@5.56.7.patch` has changed for Bun, which runs no Node hooks.
 const visitors = "src/compiler/phases/2-analyze/visitors";
 const files = ["TransitionDirective.js", "AnimateDirective.js"];

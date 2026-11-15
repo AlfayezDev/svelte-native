@@ -21,10 +21,10 @@ import { packageRoot as packageDirectory } from "../support/paths.ts";
  * Counts, not times: a count is the same on every machine (given the lockfile's versions of React Native, Reanimated and the rest, which are most of the files), a time is not.
  * The budget is what was measured with 15 % to spare. When this fails:
  *
- *   1. Find what grew: `cd packages/svelte-native && bun test tests/type-budget.test.ts` prints the numbers in the failure, and `tsc -p <fixture> --explainFiles` (the fixture's
+ *   1. Find what grew: `cd packages/svelte-native && bun test tests/package/type-budget.test.ts` prints the numbers in the failure, and `tsc -p <fixture> --explainFiles` (the fixture's
  *      directory is printed too, with `KEEP_TYPE_BUDGET_FIXTURE=1`) says which declaration imported each file. A new `import` of a package in `dist/types` is the usual cause: a
  *      type of the library that names another package's types makes every app load them.
- *   2. If the growth is wanted (a new dependency's types, a feature), measure again with `KEEP_TYPE_BUDGET_FIXTURE=1 bun test tests/type-budget.test.ts` and put the new numbers
+ *   2. If the growth is wanted (a new dependency's types, a feature), measure again with `KEEP_TYPE_BUDGET_FIXTURE=1 bun test tests/package/type-budget.test.ts` and put the new numbers
  *      here, rounded up by 15 %.
  */
 // Measured 2026-11-13 (TypeScript 6.0.3, React Native 0.86.3, Reanimated 4.5.1): 600 files and 1,146 instantiations; 600 and 2,997; 227 and 1,146. Sources, for the same

@@ -101,7 +101,7 @@ export default {
       ...(remote ? { remote } : {}),
       androidFeatureFlags: { disableViewPreallocationAndroid: true, enablePreparedTextLayout: true },
       // Foreign views (SPEC.md, "Foreign views"): the packages' view managers are created when a component is first mounted,
-      // not when the host starts. `packages/svelte-native/tests/foreign.test.ts` checks the names against the packages' sources.
+      // not when the host starts. `packages/svelte-native/tests/upstream/foreign-view-configs.test.ts` checks the names against the packages' sources.
       androidOnDemandViewManagers: {
         "com.rnmaps.maps.MapsPackage": ["RNMapsMapView", "RNMapsMarker", "RNMapsCallout", "RNMapsGooglePolygon", "RNMapsPolyline", "RNMapsCircle", "RNMapsOverlay", "RNMapsUrlTile", "RNMapsWMSTile"],
         "com.reactnativecommunity.webview.RNCWebViewPackage": ["RNCWebView"],

@@ -1,7 +1,7 @@
 import expo.modules.svelteengine.BigCores
 
 // Host-side check of which cores count as big (BigCores.kt, no Android types). One command per line on stdin, one result per line;
-// tests/big-cores.test.ts holds the expectations.
+// tests/native-host/big-cores.test.ts holds the expectations.
 //
 //   possible TEXT          ->  the number of CPU indexes in the text of /sys/devices/system/cpu/possible
 //   mask C0 C1 C2 ...      ->  the big cores as a hex bit set (capacities by cpu index, 0 for offline), or `none`

@@ -3,7 +3,7 @@ import { answer, hostGlobals, load, resize, setting, settle, switchScheme, type 
 
 /**
  * `window.matchMedia` on the device, from the library's own polyfills: the `MediaQueryList` it returns, what it listens to and when, and what the boot does (nothing). The system is the
- * stand-ins of `match-media-harness.ts`; the table of queries is `media-query.test.ts`.
+ * stand-ins of `match-media-harness.ts`; the table of queries is `web-apis/media-query.test.ts`.
  */
 const host = hostGlobals();
 let world: World;

@@ -1,10 +1,10 @@
 import { afterAll, afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { buildClasses, buildClassesSync, candidatesIn, candidatesOf, reportSkipped, reportUnsupported, resetReports, sourceFiles, TAILWIND_VERSION, unsupportedReasons, watchClasses, type ClassBuildOptions, type Converter } from "../src/css/build.ts";
-import type { ClassTable } from "../src/css/table.ts";
-import { classesTableFile } from "../src/variant.ts";
-import { cssProject, removeCssProjects, tailwindDirectory } from "./css-project.ts";
+import { buildClasses, buildClassesSync, candidatesIn, candidatesOf, reportSkipped, reportUnsupported, resetReports, sourceFiles, TAILWIND_VERSION, unsupportedReasons, watchClasses, type ClassBuildOptions, type Converter } from "../../src/css/build.ts";
+import type { ClassTable } from "../../src/css/table.ts";
+import { classesTableFile } from "../../src/variant.ts";
+import { cssProject, removeCssProjects, tailwindDirectory } from "../css-project.ts";
 
 // The build step of `class`: the class names the sources use, Tailwind (the app's own) compiling the app's CSS for them, the converter, and the
 // table file Metro serves as `@alfayez/svelte-native/classes-table`.
@@ -206,12 +206,13 @@ describe("what the build refuses, with what to do", () => {
     expect(error).toBeInstanceOf(Error);
     expect((error as Error).message).toContain(`pnpm add -D tailwindcss@${TAILWIND_VERSION}`);
     expect((error as Error).message).toContain("the css option needs Tailwind CSS");
-    expect(TAILWIND_VERSION).toBe("4.3.3");
+    // The version the message tells the app to install is the one the tests link into their projects (the repository's own Tailwind): a bump of one without the other fails here.
+    expect(TAILWIND_VERSION).toBe((JSON.parse(readFileSync(join(tailwindDirectory, "package.json"), "utf8")) as { version: string }).version);
   });
 
   test("Tailwind is not version 4", async () => {
     const root = cssProject({ "node_modules/tailwindcss/package.json": JSON.stringify({ name: "tailwindcss", version: "3.4.17" }) }, { tailwind: false });
-    await expect(buildClasses(options(root))).rejects.toThrow(/needs Tailwind CSS 4, the app has 3\.4\.17: pnpm add -D tailwindcss@4\.3\.3/);
+    await expect(buildClasses(options(root))).rejects.toThrow(new RegExp(`needs Tailwind CSS 4, the app has 3\\.4\\.17: pnpm add -D tailwindcss@${TAILWIND_VERSION.replaceAll(".", "\\.")}`));
   });
 
   test("the CSS entry is not a file", async () => {

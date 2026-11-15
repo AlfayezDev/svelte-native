@@ -1,7 +1,7 @@
 // Run by worklet-state.test.ts under Node (the Babel transformer Metro's workers load cannot run under Bun): transforms the sources named on the command line with the
 // package's transformer, as Metro would, and prints for each the names the worklets of the output capture (`__closure`), or the error the transform threw.
 import { isAssignmentExpression, isIdentifier, isMemberExpression, isObjectExpression, isObjectProperty, traverseFast, type Node } from "@babel/types";
-import { transform } from "../src/transformer.ts";
+import { transform } from "../../../src/transformer.ts";
 
 type Case = { filename: string; src: string; root: string };
 const cases = JSON.parse(process.argv[2]) as Case[];

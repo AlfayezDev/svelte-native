@@ -1,9 +1,9 @@
 import { test, expect } from "bun:test";
 import { resolve } from "node:path";
 import { compile } from "svelte/compiler";
-import { lowersHtml } from "../src/compile-options.ts";
-import lowerDefault, { lower, lowerPrimitives } from "../src/lower.ts";
-import { mayHaveHtml, oneLine } from "../src/lower-html.ts";
+import { lowersHtml } from "../../src/compile-options.ts";
+import lowerDefault, { lower, lowerPrimitives } from "../../src/lower.ts";
+import { mayHaveHtml, oneLine } from "../../src/lower-html.ts";
 
 const imp = `<script>\n  import { View, Text, Pressable, ScrollView, Image, ActivityIndicator, SafeAreaView, TextInput } from "@alfayez/svelte-native";\n</script>\n`;
 const run = (markup: string, header = imp) => lowerPrimitives(header + markup, { filename: "x.svelte", warn: () => {} }).slice(header.length);
@@ -620,7 +620,7 @@ test("the files that are lowered: the app's own, not libraries below node_module
   expect(lowersHtml("/work/packages/ui/src/Button.svelte")).toBe(true);
   expect(lowersHtml("/work/app/node_modules/some-ui/Button.svelte")).toBe(false);
   expect(lowersHtml("C:\\work\\app\\node_modules\\some-ui\\Button.svelte")).toBe(false);
-  expect(lowersHtml(resolve(import.meta.dirname, "../src/components/View.svelte"))).toBe(false);
+  expect(lowersHtml(resolve(import.meta.dirname, "../../src/components/View.svelte"))).toBe(false);
 });
 
 test("a file with HTML the mapping does not touch, or only in a string, is returned as it is", () => {

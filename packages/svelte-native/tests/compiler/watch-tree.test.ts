@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync, appendFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { watchTree } from "../src/watch-tree.ts";
+import { watchTree } from "../../src/watch-tree.ts";
 
 // A recursive `fs.watch` on Linux stops reporting a file once it is replaced by a rename (how sed -i, vim and many editors save); `watchTree`
 // keeps a watch per directory, which reports every change of an entry.

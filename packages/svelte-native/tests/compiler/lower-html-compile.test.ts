@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { compile } from "svelte/compiler";
-import { lowerPrimitives } from "../src/lower.ts";
+import { lowerPrimitives } from "../../src/lower.ts";
 
 /**
  * What the lowering of HTML (`lower-html.ts`) writes is compiled by the real Svelte compiler, with the custom renderer, and its lines are counted: a file that lowers into text that does not

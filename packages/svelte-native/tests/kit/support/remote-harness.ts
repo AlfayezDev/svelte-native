@@ -10,9 +10,11 @@ import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { build, stop as stopEsbuild, transform } from "esbuild";
 import { compileModule } from "svelte/compiler";
-import { isRemoteModule, kitGlobalsImport, remoteHash, remoteResolution, transformRemoteModule } from "../src/remote/transform.ts";
+import { isRemoteModule, kitGlobalsImport, remoteHash, remoteResolution, transformRemoteModule } from "../../../src/remote/transform.ts";
 
-export const fixtureRoot = resolve(import.meta.dirname, "kit/fixtures/kit-app");
+export const fixtureRoot = resolve(import.meta.dirname, "../fixtures/kit-app");
+/** Where the entries of `loadClient` resolve their imports from: `tests/`, so a test writes `../src/remote/index.ts`. */
+const entryRoot = resolve(import.meta.dirname, "../..");
 
 /** A running fixture server. `died()` says how it ended when it was not stopped on purpose; `assertAlive()` throws that. */
 export type Server = { origin: string; pid: number | undefined; stop(): void; died(): string | undefined; assertAlive(): void };
@@ -27,6 +29,13 @@ export class ServerStartTimeout extends Error {
 
 const sleep = (ms: number) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
 const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+
+/**
+ * The server this process started while it holds the lock. Bun kills every child of the test process when a test times out, and the lock is released by the child's `exit`
+ * event: a lock that is this process's own while that server is gone belongs to nobody, and the next start takes it instead of waiting for itself.
+ */
+let serving: ChildProcess | undefined;
+const running = (child: ChildProcess | undefined): boolean => child?.pid !== undefined && alive(child.pid);
 
 /**
  * One fixture server at a time across test runs: SvelteKit writes its generated files and Vite its dependency cache into the fixture's directory, which two
@@ -52,7 +61,7 @@ async function lockFixture(until: number): Promise<() => void> {
     }
     let owner = 0;
     try { owner = Number(readFileSync(join(directory, "pid"), "utf8")); } catch { /* the owner is between mkdir and writing its pid */ }
-    if (owner > 0 && owner !== process.pid && !alive(owner)) {
+    if (owner > 0 && (owner === process.pid ? !running(serving) : !alive(owner))) {
       rmSync(directory, { recursive: true, force: true });
       continue;
     }
@@ -100,7 +109,11 @@ async function startOnce(mode: "dev" | "preview", timeoutMs: number): Promise<Se
   // (The lock is the start's too: the time spent waiting for another run is not the server's.)
   const release = await lockFixture(Date.now() + timeoutMs);
   const child: ChildProcess = spawn("node", ["serve.ts", mode], { cwd: fixtureRoot, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, NODE_ENV: mode === "dev" ? "development" : "production" } });
-  child.once("exit", release);
+  serving = child;
+  const free = () => { if (serving === child) serving = undefined; release(); };
+  // (A server that could not be spawned never exits.)
+  child.once("exit", free);
+  child.once("error", free);
   const started = Date.now();
   let output = "";
   let stopping = false;
@@ -161,19 +174,19 @@ export async function loadClient(entry: string, root: string = fixtureRoot, serv
   // esbuild's service is a child process of the tests, and Bun kills those when a test times out: the build after that finds no service. It is started
   // again once; any other failure is the build's.
   const run = async () => build({
-    stdin: { contents: entry, resolveDir: import.meta.dirname, loader: "ts" },
+    stdin: { contents: entry, resolveDir: entryRoot, loader: "ts" },
     bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], write: false, logLevel: "error",
     plugins: [{
       name: "remote-client",
       setup(builder) {
-        builder.onResolve({ filter: /^svelte(\/|$)/ }, (args) => (args.pluginData === "inner" ? undefined : builder.resolve(args.path, { resolveDir: import.meta.dirname, kind: args.kind, pluginData: "inner" })));
-        builder.onResolve({ filter: /^@alfayez\/svelte-native\/remote\/(runtime|globals)$/ }, (args) => ({ path: resolve(import.meta.dirname, `../src/remote/${args.path.split("/").pop()}.ts`) }));
-        builder.onResolve({ filter: /^@alfayez\/svelte-native\/remote$/ }, () => ({ path: resolve(import.meta.dirname, "../src/remote/index.ts") }));
-        builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../src/environment.ts") }));
+        builder.onResolve({ filter: /^svelte(\/|$)/ }, (args) => (args.pluginData === "inner" ? undefined : builder.resolve(args.path, { resolveDir: entryRoot, kind: args.kind, pluginData: "inner" })));
+        builder.onResolve({ filter: /^@alfayez\/svelte-native\/remote\/(runtime|globals)$/ }, (args) => ({ path: resolve(entryRoot, `../src/remote/${args.path.split("/").pop()}.ts`) }));
+        builder.onResolve({ filter: /^@alfayez\/svelte-native\/remote$/ }, () => ({ path: resolve(entryRoot, "../src/remote/index.ts") }));
+        builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(entryRoot, "../src/environment.ts") }));
         builder.onResolve({ filter: /^(react-native|expo-constants|expo\/fetch)/ }, (args) => ({ path: args.path, namespace: "stub" }));
         builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? "export {};", loader: "js" }));
         builder.onResolve({ filter: /.*/ }, (args) => {
-          const origin = args.importer || resolve(import.meta.dirname, "x.ts");
+          const origin = args.importer || resolve(entryRoot, "x.ts");
           const redirected = remoteResolution(args.path, origin);
           if (redirected !== undefined) return { path: redirected };
           return undefined;

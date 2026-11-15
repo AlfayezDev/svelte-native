@@ -1,4 +1,4 @@
-<!-- What the library's README and REFERENCE document, as an app would write it. `tests/node-modules.test.ts` type-checks this file with svelte-check in an
+<!-- What the library's README and REFERENCE document, as an app would write it. `tests/package/node-modules.test.ts` type-checks this file with svelte-check in an
      app that has the packed package in its node_modules and no declaration of its own: it has to pass, and so does everything the library's own source imports. -->
 <script lang="ts">
   import {

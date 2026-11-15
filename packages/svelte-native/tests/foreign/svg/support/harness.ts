@@ -1,8 +1,8 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { createHarness, find, settle, type FakeNode, type Natives } from "../../../foreign-harness.ts";
+import { createHarness, find, settle, type FakeNode, type Natives } from "../../support/harness.ts";
 import { flattenFragments, panResponderKeys, type Oracle, type OracleNode } from "./oracle.ts";
-import type { Platform } from "../../../rn-reference.ts";
+import type { Platform } from "../../../support/rn-reference.ts";
 
 /**
  * The Svelte components against the library's own elements (`oracle.ts`): the same element tree is mounted by both and the nodes,

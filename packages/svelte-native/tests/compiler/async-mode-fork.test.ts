@@ -3,8 +3,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { compile } from "svelte/compiler";
 import { componentOptions } from "../../src/compile-options.ts";
-import { asyncRun } from "../async-run.ts";
-import { loadFork } from "../fork-harness.ts";
+import { asyncRun } from "../support/async-run.ts";
+import { loadFork } from "../support/fork-harness.ts";
 import type { RouterApp } from "../navigation/support/fork-router.ts";
 import { type Panel, restoreGlobalsAfterEach, settle } from "../renderer/support/fork.ts";
 

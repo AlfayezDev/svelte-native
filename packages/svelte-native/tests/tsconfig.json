@@ -1,5 +1,5 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": { "types": ["node"], "noImplicitAny": false },
-  "include": ["foreign-harness.ts", "foreign/svg/support/harness.ts", "foreign/svg/support/cases.ts", "foreign/svg/support/icons.ts", "../src/**/*.d.ts"]
+  "include": ["foreign/support/harness.ts", "foreign/svg/support/harness.ts", "foreign/svg/support/cases.ts", "foreign/svg/support/icons.ts", "../src/**/*.d.ts"]
 }

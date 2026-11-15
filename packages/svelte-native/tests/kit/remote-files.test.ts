@@ -9,7 +9,7 @@ import { stringify } from "devalue";
 import { Blob as NativeBlob, File as NativeFile } from "../../src/fetch/blob.ts";
 import { fetch as nativeFetch } from "../../src/fetch/fetch.ts";
 import { kitRoot } from "../../src/remote/transform.ts";
-import { loadClient } from "../remote-harness.ts";
+import { loadClient } from "./support/remote-harness.ts";
 
 const fake = useFake();
 

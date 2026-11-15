@@ -25,7 +25,7 @@ export type Reference = {
   create(props: object, validAttributes: object): object | null;
   diff(previous: object, next: object, validAttributes: object): object | null;
   /** The static view configs, built into the same bundle so their lazy `require`s reach React Native's real modules. */
-  configs: typeof import("../src/fabric/view-configs.ts");
+  configs: typeof import("../../src/fabric/view-configs.ts");
 };
 
 const require = createRequire(import.meta.url);
@@ -33,7 +33,7 @@ const hermesParser = require.resolve("babel-plugin-syntax-hermes-parser");
 const stripFlow = require.resolve("@babel/plugin-transform-flow-strip-types");
 const flowEnums = require.resolve("babel-plugin-transform-flow-enums");
 const codegen = require.resolve("@react-native/babel-plugin-codegen");
-const fabricDirectory = resolve(import.meta.dirname, "../src/fabric");
+const fabricDirectory = resolve(import.meta.dirname, "../../src/fabric");
 const reactNative = /[\\/]node_modules[\\/]react-native[\\/]/;
 
 /** The native components whose registration `ReactNativeViewConfigRegistry.get` needs: one import per view name the host maps. */

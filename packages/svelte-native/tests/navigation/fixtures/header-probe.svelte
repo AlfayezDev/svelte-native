@@ -1,5 +1,5 @@
 <script>
-  import { useHeader } from "../src/components/Screen.svelte";
+  import { useHeader } from "../../../src/components/Screen.svelte";
   const header = useHeader();
 </script>
 

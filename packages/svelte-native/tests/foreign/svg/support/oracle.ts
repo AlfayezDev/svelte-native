@@ -4,13 +4,13 @@ import { resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
-import { importWithReactNative, reactNativeConverters, type Platform } from "../../../rn-reference.ts";
+import { importWithReactNative, reactNativeConverters, type Platform } from "../../../support/rn-reference.ts";
 
 /**
  * react-native-svg's own element classes, bundled with React and run without a renderer, as the oracle for the Svelte components: the
  * library's `render()` of an element is what it hands its native component, and resolving the classes below it down to the Fabric components
  * (the library's `*NativeComponent` modules are replaced by their view names) is the tree it would mount. The Svelte components must send
- * the same nodes, view names and props for the same inputs (`svg.test.ts`).
+ * the same nodes, view names and props for the same inputs (`elements.test.ts`, `xml.test.ts`).
  */
 const require = createRequire(import.meta.url);
 

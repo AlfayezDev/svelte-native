@@ -5,7 +5,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } fr
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { base64Decode, base64Encode, makeFinalizationRegistry, missingGlobals, releaseNow, setSweepLifecycle, sweepRegistry, sweepTimerRunning, WeakRefFallback } from "../../src/remote/environment.ts";
-import { loadClient } from "../remote-harness.ts";
+import { loadClient } from "./support/remote-harness.ts";
 import { type GlobalSnapshot, snapshotGlobals } from "../support/globals.ts";
 
 // What the client bundles and their stand-ins leave on the global object (`__remoteAppState`, `__opened`, `__expoConfig`...) goes when the file is done.

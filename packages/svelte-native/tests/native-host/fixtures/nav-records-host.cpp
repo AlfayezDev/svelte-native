@@ -1,6 +1,6 @@
 // Host-side check of the engine's navigation record encoder (PropsEncoderNavRecords.h): reads one nativeID per line on
 // standard input and writes, per line, `ops <ints…>` and `strings <hex of each UTF-8 string>`, the batch the engine would
-// hand to Kotlin for that node. tests/navigation-native.test.ts compares it with `decodeRecords`.
+// hand to Kotlin for that node. tests/native-host/navigation-native.test.ts compares it with `decodeRecords`.
 #include <cstdio>
 #include <cstring>
 #include <iostream>

@@ -7,7 +7,7 @@ import expoPlugin from "../../src/expo.ts";
 import { closeWatchers, withSvelteNative } from "../../src/metro.ts";
 import { svelteNative } from "../../src/vite.ts";
 import { DEFAULT_VARIANT, routesTableFile, variantName } from "../../src/variant.ts";
-import { cssProject, removeCssProjects } from "../css-project.ts";
+import { cssProject, removeCssProjects } from "../support/css-project.ts";
 import { fakeConfig } from "../support/metro.ts";
 import { type Project, createProject } from "../support/project.ts";
 

@@ -9,7 +9,7 @@ import { appDependencies, appNames, mergeWorkspaceYaml, parseInitArguments, plan
 import { compile } from "svelte/compiler";
 import { requiredSvelte } from "../../src/svelte-build.ts";
 
-// `svelte-native init`: what it does to a project `npx sv create` made (tests/fixtures/sv-minimal is what sv 1.3.0 writes for the minimal template with
+// `svelte-native init`: what it does to a project `npx sv create` made (tests/cli/fixtures/sv-minimal is what sv 1.3.0 writes for the minimal template with
 // TypeScript, no add-ons and pnpm), and that running it again changes nothing.
 /** The versions init pins that follow the package: the patched expo-modules-core and SvelteKit (`patches/`), and the React Native init writes. */
 const coreVersion = patchVersion("expo-modules-core");

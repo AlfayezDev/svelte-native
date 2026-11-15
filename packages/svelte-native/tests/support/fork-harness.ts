@@ -1,14 +1,14 @@
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { reanimatedStubs } from "./reanimated-stubs.ts";
-import { appStubs, bundle, evaluate } from "./support/bundle.ts";
-import { type FakeNode, createHost } from "./support/host.ts";
+import { appStubs, bundle, evaluate } from "./bundle.ts";
+import { type FakeNode, createHost } from "./host.ts";
 
 /**
- * The harness of `fork.test.ts`: a bundle of the renderer, the Fabric host and a fixture, with Svelte's async mode on, which `fork()` needs and which the library leaves off unless the app
+ * The harness of `renderer/fork.test.ts`: a bundle of the renderer, the Fabric host and a fixture, with Svelte's async mode on, which `fork()` needs and which the library leaves off unless the app
  * asks (`withSvelteNative(config, { async: true })`, `compile-options.ts`). By default the components are compiled with the library's own options and the bundle imports the flag module first,
  * the one thing the option adds to a component without an `await`; `compiled: true` compiles every component with `experimental.async`, which is what the option does (the same output but for
- * that import, `fork.test.ts`), and a function chooses the files, for a bundle in which only some are. The bundle carries its own copy of Svelte's runtime, so the flag stays in that bundle
+ * that import, `compiler/async-mode-fork.test.ts`), and a function chooses the files, for a bundle in which only some are. The bundle carries its own copy of Svelte's runtime, so the flag stays in that bundle
  * and no other test's runtime sees it. */
 export type { FakeNode };
 const binding = createHost();
@@ -21,16 +21,11 @@ export const fabric = {
 /**
  * The host reads `nativeFabricUIManager` when its module is evaluated, and other test files put a fake of their own in its place, so every `loadFork()` installs this one again (and
  * empties what it recorded) before it evaluates a bundle: a test then sees the calls of its own bundle and no other. React Native has `requestAnimationFrame`, which `tick()` waits for in
- * async mode; Bun has none, so one is put in place for every load and not once: a test file that runs between two users of this harness may delete it (`kit-motion.test.ts` does, after each test).
+ * async mode; Bun has none, so one is put in place for every load and not once: a test file that runs between two users of this harness may delete it (`components/list.test.ts` does, after each test).
  */
 function installFabric(): void {
   binding.reset();
   binding.install(typeof globalThis.requestAnimationFrame === "function" ? {} : { requestAnimationFrame: (callback: () => void) => setTimeout(callback, 16) });
-}
-
-/** Puts the global object back as it was before the first `loadFork()`. */
-export function restoreFabric(): void {
-  binding.install().restore();
 }
 
 const stubs: Record<string, string> = {
@@ -50,16 +45,16 @@ const stubs: Record<string, string> = {
 export type ForkModule = {
   Fixture: import("svelte").Component<Record<string, unknown>, Record<string, unknown>>;
   renderer: import("svelte/renderer").Renderer<never, never, never, never>;
-  NativeNode: typeof import("../src/renderer.ts").NativeNode;
-  mergeHostProps: typeof import("../src/native-props.ts").mergeHostProps;
+  NativeNode: typeof import("../../src/renderer.ts").NativeNode;
+  mergeHostProps: typeof import("../../src/native-props.ts").mergeHostProps;
   mount: typeof import("svelte").mount;
   unmount: typeof import("svelte").unmount;
   tick: typeof import("svelte").tick;
   flushSync: typeof import("svelte").flushSync;
   fork: (fn: () => void) => { commit(): Promise<void>; discard(): void };
-  startSurface: typeof import("../src/fabric/host.ts").startSurface;
-  flush: typeof import("../src/fabric/host.ts").flush;
-  fabricStats: typeof import("../src/fabric/host.ts").fabricStats;
+  startSurface: typeof import("../../src/fabric/host.ts").startSurface;
+  flush: typeof import("../../src/fabric/host.ts").flush;
+  fabricStats: typeof import("../../src/fabric/host.ts").fabricStats;
   asyncFlag: () => boolean;
 };
 

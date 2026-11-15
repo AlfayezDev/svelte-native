@@ -1,8 +1,8 @@
 import { afterAll, afterEach, beforeAll, expect, jest, test } from "bun:test";
-import { find, type FakeNode } from "../../foreign-harness.ts";
+import { find, type FakeNode } from "../support/harness.ts";
 import { touchSender } from "../../gestures/support/touches.ts";
 import { settle, svgWorld, type SvgLoaded } from "./support/harness.ts";
-import type { AnimLog } from "../../reanimated-stubs.ts";
+import type { AnimLog } from "../../support/reanimated-stubs.ts";
 import { resolve } from "node:path";
 
 // The harnesses are made in `beforeAll`, outside the per-test restore of `support/preload.ts`: the file puts the global object back when it is done.

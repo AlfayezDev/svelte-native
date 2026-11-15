@@ -7,11 +7,11 @@ import { syncNative } from "../../../src/build.ts";
 import { stubCoreSource, stubSource } from "../../../src/metro.ts";
 import { src } from "../../support/bundle.ts";
 import type { RouterBundleOptions } from "../../support/router.ts";
-import { svgLibraryStubs } from "../../svg-library-stubs.ts";
+import { svgLibraryStubs } from "../../support/svg-library-stubs.ts";
 import { type TreeRouter, type navigationWorld, handlersOf, standInRoutes } from "./world.ts";
 
 /**
- * The stand-in app (`tests/fixtures/stand-in-app`) built and mounted the way a build runs it: the whole library bundled with the route table the Metro integration generates for
+ * The stand-in app (`tests/support/fixtures/stand-in-app`) built and mounted the way a build runs it: the whole library bundled with the route table the Metro integration generates for
  * a variant, the lab's directories either real (a lab build) or replaced by the stub a store build has (`stubSource` over `stubCoreSource`: a Proxy that throws on any property read
  * and on a call), and the application id the host reports chosen per test. A lab call that is not behind the flag then fails the test instead of a phone.
  *
@@ -20,7 +20,7 @@ import { type TreeRouter, type navigationWorld, handlersOf, standInRoutes } from
  * `undefined === "mount"` here, and a read of a lab binding that was not behind the flag passed this test and crashed a root layout. So each import of a stubbed directory goes through
  * a module that names the bindings the importer imports from it (`ownKeys`), and esbuild's copy then reads them through the stub's `get` when they are used, which throws.
  */
-export const appRoot = resolve(import.meta.dirname, "../../fixtures/stand-in-app");
+export const appRoot = resolve(import.meta.dirname, "../../support/fixtures/stand-in-app");
 export const appRoutes = standInRoutes;
 const labDirectories = [`${resolve(appRoot, "src/lib/lab")}/`, `${resolve(appRoot, "src/routes/__dev")}/`];
 /** The application ids the host can report (`expo-application`): the store build never runs the lab, the lab build may. */

@@ -6,7 +6,7 @@ import { loadRouter } from "../../support/router.ts";
 
 /**
  * SvelteKit's modules on the device (`src/kit`): bundled the way Metro would resolve them (the library's file for each import) and run against the fake Fabric host, with the app shape
- * of `tests/tree-app.ts` (a root stack, a modal, a project's tabs with a stack in one pane). What the bundle's React Native stand-ins answer is chosen through globals
+ * of `tests/support/tree-app.ts` (a root stack, a modal, a project's tabs with a stack in one pane). What the bundle's React Native stand-ins answer is chosen through globals
  * (`support/router.ts`): `__kitConstants` is the app's Expo config, `__kitUpdates` the `SvelteUpdates` native module, and `__kitOpened` collects what `Linking.openURL` was asked for.
  */
 export type Entry = { url: URL; params: Record<string, string>; presentation: string };

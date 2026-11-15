@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
-import { baseStubs, load, src, tests } from "../support/bundle.ts";
+import { baseStubs, load, src } from "../support/bundle.ts";
 import { type FakeNode, flatten, settle } from "../support/host.ts";
 import { fakeHost } from "../support/fake-host.ts";
 import { parseNativeID } from "../../src/fabric/navigation.ts";
@@ -34,8 +34,6 @@ const loadFixture = (path: string) => load<{ startSurface: typeof import("../../
   viewConfigs: "pass-through",
   converters: false,
 });
-/** Screens, tabs and toolbars are fixtures of the navigation tests (`navigation.test.ts`); the Modal and the pressable ones are this file's. */
-const shared = (name: string) => resolve(tests, name);
 const own = (name: string) => resolve(import.meta.dirname, "fixtures", name);
 
 const environment = globalThis as { __navigationOS?: string; __registeredViewConfigs?: Map<string, () => unknown> };
@@ -127,8 +125,8 @@ const bridges: { name: string; fixture: string; android: number; ios: number; na
 
 for (const { name, fixture, android: androidSurface, ios: iosSurface, names, counts } of bridges) {
   test(name, async () => {
-    const android = await mount(shared(fixture), "android", androidSurface);
-    const phone = await mount(shared(fixture), "ios", iosSurface);
+    const android = await mount(own(fixture), "android", androidSurface);
+    const phone = await mount(own(fixture), "ios", iosSurface);
     expect(new Set(android.pairs.map(([, component]) => component))).toEqual(new Set(["RCTView"]));
     expect(phone.pairs).toEqual(android.pairs.map(([kind]) => [kind, names[String(kind)]]));
     const kinds = phone.pairs.map(([kind]) => kind);
@@ -139,10 +137,10 @@ for (const { name, fixture, android: androidSurface, ios: iosSurface, names, cou
 }
 
 test("the first iOS navigation node registers the view configs of the nine components, once, with their events", async () => {
-  const android = await mount(shared("screen-fixture.svelte"), "android", 65);
+  const android = await mount(own("screen-fixture.svelte"), "android", 65);
   expect(android.pairs.length).toBeGreaterThan(0);
   expect(environment.__registeredViewConfigs?.size).toBe(0);
-  await mount(shared("screen-fixture.svelte"), "ios", 66);
+  await mount(own("screen-fixture.svelte"), "ios", 66);
   const configs = environment.__registeredViewConfigs ?? new Map();
   expect([...configs.keys()].sort()).toEqual(["SvelteHeader", "SvelteHeaderSlot", "SvelteScreen", "SvelteStack", "SvelteTab", "SvelteTabs", "SvelteToolbar", "SvelteToolbarCenter", "SvelteToolbarItem"]);
   const configOf = (name: string) => {

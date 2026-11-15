@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { find, turns, shared, activityOf, navigationWorld } from "./support/world.ts";
+import { find, turns, activityOf, navigationWorld } from "./support/world.ts";
 
 /** The router loads each route's modules on its first navigation and shows what its screens say while they load, fail, or wait. */
 const { host, load, texts } = navigationWorld();
@@ -15,7 +15,7 @@ type RouterApp = {
 };
 
 test("the router loads the first screen's route when it is created and every other route on its first navigation", async () => {
-  const m = await load(shared("router-fixture.svelte"));
+  const m = await load("router-fixture.svelte");
   const app = m.startSurface(41, m.Fixture, {}) as RouterApp;
   expect(app.loadLog()).toEqual(["home"]);
   expect(app.modulesOf("home")).toBe("loading");
@@ -46,7 +46,7 @@ test("the router loads the first screen's route when it is created and every oth
 });
 
 test("a screen is empty until its route loads, shows the loading snippet when given one, and keeps its presentation", async () => {
-  const bare = await load(shared("router-fixture.svelte"));
+  const bare = await load("router-fixture.svelte");
   const plain = bare.startSurface(42, bare.Fixture, {}) as RouterApp;
   const screen = () => host.roots[42][0].children[0];
   expect(screen().props.nativeID).toBe("svelte:screen;a=2;p=push;g=1;s=default;b=1");
@@ -56,7 +56,7 @@ test("a screen is empty until its route loads, shows the loading snippet when gi
   await turns(bare);
   expect(texts(42)).toEqual(["page /"]);
 
-  const m = await load(shared("router-fixture.svelte"));
+  const m = await load("router-fixture.svelte");
   host.reset();
   const app = m.startSurface(43, m.Fixture, { withLoading: true, initial: "/b/9" }) as RouterApp;
   expect(texts(43)).toEqual(["loading item"]);
@@ -68,7 +68,7 @@ test("a screen is empty until its route loads, shows the loading snippet when gi
 });
 
 test("layouts render around the page once the route's modules are in, outermost first", async () => {
-  const m = await load(shared("router-fixture.svelte"));
+  const m = await load("router-fixture.svelte");
   const app = m.startSurface(44, m.Fixture, { initial: "/a" }) as RouterApp;
   expect(find(host.roots[44], "RCTView").filter((node) => node.props.testID === "layout")).toHaveLength(0);
   app.release("section");
@@ -90,7 +90,7 @@ test("createRouter takes the route tree: the array of routes it took before fail
 });
 
 test("a route that fails to load throws where it renders and loads again on its next navigation", async () => {
-  const m = await load(shared("router-fixture.svelte"));
+  const m = await load("router-fixture.svelte");
   const app = m.startSurface(45, m.Fixture, {}) as RouterApp;
   app.release("home");
   app.goto("/a");

@@ -5,10 +5,10 @@ import { runInit } from "../../../src/init-app.ts";
 import { createProject, type Project } from "../../support/project.ts";
 
 /**
- * The projects `svelte-native init` is run on (`cli/init-app.test.ts`, `package/docs-examples.test.ts`): a copy of `tests/fixtures/sv-minimal`, which is what sv 1.3.0 writes for the
+ * The projects `svelte-native init` is run on (`cli/init-app.test.ts`, `package/docs-examples.test.ts`): a copy of `tests/cli/fixtures/sv-minimal`, which is what sv 1.3.0 writes for the
  * minimal template with TypeScript, no add-ons and pnpm.
  */
-export const fixture = join(import.meta.dirname, "../../fixtures/sv-minimal");
+export const fixture = join(import.meta.dirname, "../fixtures/sv-minimal");
 export const library = "git+ssh://git@github.com/AlfayezDev/svelte-native.git#v0.3.0&path:packages/svelte-native";
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- parsed JSON of a project's files, read by path in the assertions */

@@ -1,5 +1,5 @@
 <script>
-  import { useToolbar } from "../src/components/Screen.svelte";
+  import { useToolbar } from "../../../src/components/Screen.svelte";
   const toolbar = useToolbar();
 </script>
 

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { NativeNode } from "../../src/renderer.ts";
-import { asyncRun } from "../async-run.ts";
-import { fabric, loadFork } from "../fork-harness.ts";
+import { asyncRun } from "../support/async-run.ts";
+import { fabric, loadFork } from "../support/fork-harness.ts";
 import type { Router } from "../navigation/support/fork-router.ts";
 import { collected, mountPanel, reachable, recordElements, restoreGlobalsAfterEach, settle, shape, sleep, surfacePanel, top } from "./support/fork.ts";
 

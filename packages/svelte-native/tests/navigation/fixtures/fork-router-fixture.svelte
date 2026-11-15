@@ -3,7 +3,7 @@
   import { createRouter } from "../../../src/router.svelte.ts";
   import Page from "./fork-route-page.svelte";
   import Heavy from "./fork-route-heavy.svelte";
-  import { page, stackOf } from "../../tree.ts";
+  import { page, stackOf } from "../../support/tree.ts";
   // `globalThis.__forkHold`: a route id whose loader waits for `release(id)`; the others resolve at once.
   const waiting = {};
   const loads = [];

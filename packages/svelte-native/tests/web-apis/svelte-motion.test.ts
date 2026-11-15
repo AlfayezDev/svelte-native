@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { src } from "../support/bundle.ts";
-import { answer, hostGlobals, load, setting, settle, type World } from "../match-media-harness.ts";
+import { answer, hostGlobals, load, setting, settle, type World } from "./support/match-media-harness.ts";
 
 /**
  * `svelte/motion` on the device is Svelte's own module (Metro leaves the import alone). It builds `prefersReducedMotion` from `window.matchMedia` as it loads, which the polyfills

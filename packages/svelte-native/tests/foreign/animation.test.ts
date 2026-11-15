@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { createHarness, expoViewConfigs, find, settle } from "./support/harness.ts";
-import type { AnimLog } from "../reanimated-stubs.ts";
+import type { AnimLog } from "../support/reanimated-stubs.ts";
 
 /**
  * A foreign view's own props are not Reanimated's (SPEC.md, "Foreign views", "Device verification of the libraries"). The host treats a top-level prop that

@@ -1,6 +1,6 @@
 <script>
-  import Tabs from "../src/components/Tabs.svelte";
-  import { useRouter } from "../src/router.svelte.ts";
+  import Tabs from "../../../src/components/Tabs.svelte";
+  import { useRouter } from "../../../src/router.svelte.ts";
   let { panes, children } = $props();
   globalThis.__treePanes = panes;
   globalThis.__treeTabsRouter = useRouter(); // the tabs navigator's own router, as a layout sees it

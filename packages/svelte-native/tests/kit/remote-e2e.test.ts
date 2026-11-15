@@ -4,7 +4,7 @@
 // production build, where SvelteKit's CSRF check for remote calls is on. React Native 0.86's Hermes has no FinalizationRegistry (the package supplies one,
 // `src/remote/environment.ts`), so the query objects of an effect are also released by an engine without it: a second client of the dev server, in an environment without one.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { cookieFetch, fixtureRoot, loadClient, startServer, type Server } from "../remote-harness.ts";
+import { cookieFetch, fixtureRoot, loadClient, startServer, type Server } from "./support/remote-harness.ts";
 import { remoteHash } from "../../src/remote/transform.ts";
 import { type GlobalSnapshot, snapshotGlobals } from "../support/globals.ts";
 

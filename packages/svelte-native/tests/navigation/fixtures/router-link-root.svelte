@@ -1,8 +1,8 @@
 <script>
   import Router from "../../../src/Router.svelte";
   import { createRouter } from "../../../src/router.svelte.ts";
-  import Page from "../../route-page.svelte";
-  import { page, stackOf } from "../../tree.ts";
+  import Page from "../../support/fixtures/route-page.svelte";
+  import { page, stackOf } from "../../support/tree.ts";
   import { roots } from "router-link-probe";
   let { name } = $props();
   // A root router of its own: this component is not below another router.

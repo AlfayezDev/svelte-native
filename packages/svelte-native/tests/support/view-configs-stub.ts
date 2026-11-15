@@ -1,4 +1,4 @@
-import type { Payload, ViewConfig } from "../src/fabric/view-configs.ts";
+import type { Payload, ViewConfig } from "../../src/fabric/view-configs.ts";
 
 /**
  * Stands in for `src/fabric/view-configs.ts` in bundles that test the host's own behaviour (navigation, screens) and want

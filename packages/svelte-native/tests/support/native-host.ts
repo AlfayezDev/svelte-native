@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 /**
- * Compiles native code for the host and runs it, for the tests of rules that live in Kotlin or C++ (`tests/native/*Host.kt`, `*.cpp`): a build is cached in the temp directory by a
+ * Compiles native code for the host and runs it, for the tests of rules that live in Kotlin or C++ (`tests/native-host/fixtures/*Host.kt`, `*.cpp`): a build is cached in the temp directory by a
  * digest of its input files, so a run compiles only what changed, and a build that is cut short never leaves a file that looks finished. Where the tools are found is
- * `tests/native/host-tools.ts`'s business (`native-tools.test.ts` fails on CI when one is missing); a test that needs `kotlinc` and `java` says
+ * `tests/support/host-tools.ts`'s business (`native-tools.test.ts` fails on CI when one is missing); a test that needs `kotlinc` and `java` says
  * `test.skipIf(!hostTools("kotlinc", "java"))`.
  */
 export const hostTools = (...names: string[]): boolean => names.every((name) => Bun.which(name) !== null);

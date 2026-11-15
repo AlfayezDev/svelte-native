@@ -1,6 +1,6 @@
 <script>
-  import Host from "../src/components/Host.svelte";
-  import Screen from "../src/components/Screen.svelte";
+  import Host from "../../../src/components/Host.svelte";
+  import Screen from "../../../src/components/Screen.svelte";
   import HeaderProbe from "./header-probe.svelte";
   let options = $state({ title: "Inbox" });
   let slots = $state({ left: false, center: false, right: false, results: false });

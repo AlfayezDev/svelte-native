@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { buildClasses, buildClassesSync, candidatesIn, candidatesOf, reportSkipped, reportUnsupported, resetReports, sourceFiles, TAILWIND_VERSION, unsupportedReasons, watchClasses, type ClassBuildOptions, type Converter } from "../../src/css/build.ts";
 import type { ClassTable } from "../../src/css/table.ts";
 import { classesTableFile } from "../../src/variant.ts";
-import { cssProject, removeCssProjects, tailwindDirectory } from "../css-project.ts";
+import { cssProject, removeCssProjects, tailwindDirectory } from "../support/css-project.ts";
+import { until as waitFor } from "../support/metro.ts";
 
 // The build step of `class`: the class names the sources use, Tailwind (the app's own) compiling the app's CSS for them, the converter, and the
 // table file Metro serves as `@alfayez/svelte-native/classes-table`.
@@ -15,10 +16,7 @@ const tableFile = (root: string, variant = "app") => join(root, ".svelte-native"
 /** The table a project's build wrote, loaded the way an app does (the file is TypeScript data). */
 const loadTable = async (root: string, variant = "app"): Promise<ClassTable> => ((await import(`${tableFile(root, variant)}?${statSync(tableFile(root, variant)).mtimeMs}`)) as { default: ClassTable }).default;
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
-const until = async (condition: () => boolean, ms = 10_000) => {
-  const deadline = Date.now() + ms;
-  while (!condition() && Date.now() < deadline) await sleep(25);
-};
+const until = (condition: () => boolean) => waitFor(condition, 10_000);
 
 describe("the class names the sources use", () => {
   const names = (source: string) => [...candidatesIn(source)].sort();

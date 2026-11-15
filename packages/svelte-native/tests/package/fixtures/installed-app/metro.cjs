@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- CommonJS is the point: this is how Metro and Expo load the library */
-// Loaded by plain `node` from an app whose `node_modules` holds the packed library (tests/node-modules.test.ts): the way `metro.config.cjs` loads it.
+// Loaded by plain `node` from an app whose `node_modules` holds the packed library (tests/package/node-modules.test.ts): the way `metro.config.cjs` loads it.
 const { readFileSync } = require("node:fs");
 const { withSvelteNative } = require("@alfayez/svelte-native/metro");
 

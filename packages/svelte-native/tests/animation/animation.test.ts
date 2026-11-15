@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
-import { loadReference } from "../rn-reference.ts";
-import type { AnimLog } from "../reanimated-stubs.ts";
+import { loadReference } from "../support/rn-reference.ts";
+import type { AnimLog } from "../support/reanimated-stubs.ts";
 import { baseStubs, load, src } from "../support/bundle.ts";
 import { type FakeNode, flatten, settle } from "../support/host.ts";
 import { fakeHost } from "../support/fake-host.ts";

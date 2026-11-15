@@ -3,9 +3,8 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, 
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { findPackage } from "../../src/doctor/resolve.ts";
-import { removedSpecifiers } from "../removed-entries.ts";
+import { removedSpecifiers } from "./support/removed-entries.ts";
 import { packageRoot, repoRoot } from "../support/paths.ts";
-import { tests } from "../support/bundle.ts";
 
 // The package is installed by apps outside this repository, so its code runs from a `node_modules`, where Node refuses to load TypeScript
 // (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`, Node 25 and 26). In this repository it works whatever is wrong, because the workspace link is
@@ -15,7 +14,7 @@ import { tests } from "../support/bundle.ts";
 // (it bundles with Metro and type-checks with svelte-check), and one in pnpm's default layout, where `@expo/metro-config` is only beside `expo`.
 const packageDirectory = packageRoot;
 const repositoryRoot = repoRoot;
-const fixture = join(tests, "fixtures/installed-app");
+const fixture = join(import.meta.dirname, "fixtures/installed-app");
 const manifest = JSON.parse(readFileSync(join(packageDirectory, "package.json"), "utf8")) as {
   dependencies: Record<string, string>;
   peerDependencies: Record<string, string>;
@@ -72,7 +71,7 @@ beforeAll(() => {
 
   // The native-only app. `expo-modules-core` and the two `@types` packages are what a hoisted install has at the top: the library's source imports the first (a dependency of `expo`),
   // and the app's tsconfig names the others.
-  install(bare, join(tests, "fixtures/bare-app"));
+  install(bare, join(import.meta.dirname, "fixtures/bare-app"));
   for (const name of [...installedNames(optionalPeers), "expo-modules-core", "@types/react", "@types/node"]) link(name, bare);
 
   // The default layout of pnpm: `node_modules/expo` is a link to a directory of its own, and the packages `expo` depends on are linked inside that directory and nowhere else.

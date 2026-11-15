@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { createHarness, find, settle } from "./support/harness.ts";
-import type { AnimLog } from "../reanimated-stubs.ts";
+import type { AnimLog } from "../support/reanimated-stubs.ts";
 
 /**
  * react-native-animateable-text (SPEC.md, "Foreign views"): `JBAnimatedText` is a text view whose string is the `text` prop, so a

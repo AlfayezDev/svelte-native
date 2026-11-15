@@ -1,5 +1,5 @@
-import { reanimatedStubs } from "../reanimated-stubs.ts";
-import { svgLibraryStubs } from "../svg-library-stubs.ts";
+import { reanimatedStubs } from "./reanimated-stubs.ts";
+import { svgLibraryStubs } from "./svg-library-stubs.ts";
 import { load as bundle, src, tests } from "./bundle.ts";
 import { fakeHost } from "./fake-host.ts";
 import { type FakeNode, flatten, settle } from "./host.ts";
@@ -12,7 +12,7 @@ import { type FakeNode, flatten, settle } from "./host.ts";
  */
 export type AppModule = Pick<typeof import("../../src/fabric/index.ts"), "createFabricApp" | "remountSurfaces" | "showError"> &
   Pick<typeof import("../../src/app-hooks.ts"), "registerHooks" | "retryInit"> &
-  Pick<typeof import("../tree-app.ts"), "appTree" | "collidingFiles"> & { tick: () => Promise<void>; Fixture: never };
+  Pick<typeof import("./tree-app.ts"), "appTree" | "collidingFiles"> & { tick: () => Promise<void>; Fixture: never };
 
 export type Runnable = (parameters: { rootTag: number; initialProps?: Record<string, unknown> }) => void;
 

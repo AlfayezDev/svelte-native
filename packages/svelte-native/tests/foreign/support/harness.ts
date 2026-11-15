@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
-import { reanimatedStubs } from "../../reanimated-stubs.ts";
-import type { Platform } from "../../rn-reference.ts";
+import { reanimatedStubs } from "../../support/reanimated-stubs.ts";
+import type { Platform } from "../../support/rn-reference.ts";
 import { load as loadBundle, src } from "../../support/bundle.ts";
 import { type FakeNode, type HostCall, createHost, describeCall, flatten, settle as settleHost } from "../../support/host.ts";
 import type { ExpoViewConfig } from "../../upstream/support/specs.ts";

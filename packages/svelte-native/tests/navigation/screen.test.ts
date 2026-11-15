@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { parseNativeID } from "../../src/fabric/navigation.ts";
-import { type FakeNode, find, ofKind, ofTestID, withInsets, onPlatform, settle, shared, flat, navigationWorld } from "./support/world.ts";
+import { type FakeNode, find, ofKind, ofTestID, withInsets, onPlatform, settle, flat, navigationWorld } from "./support/world.ts";
 
 /** `Screen` through the Fabric host: the tags reach the engine as RCTView nodes carrying the encoded nativeID (SPEC.md "Screen API contract"). */
 const { host, load, texts } = navigationWorld();
@@ -48,7 +48,7 @@ test("topDismissed on a screen reaches its onDismissed handler", async () => {
 
 type ScreenApp = { set: (patch: object) => void; show: (patch: object) => void; nest: (value: object | null) => void; events: () => string[] };
 async function mountScreen(surface: number) {
-  const m = await load(shared("screen-fixture.svelte"));
+  const m = await load("screen-fixture.svelte");
   const app = m.startSurface(surface, m.Fixture, {}) as ScreenApp;
   await settle(m);
   const screen = () => ofKind(host.roots[surface], "screen")[0];

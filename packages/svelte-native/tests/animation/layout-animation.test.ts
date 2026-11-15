@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
-import type { AnimLog } from "../reanimated-stubs.ts";
+import type { AnimLog } from "../support/reanimated-stubs.ts";
 import { baseStubs, load, src } from "../support/bundle.ts";
 import { type FakeNode, flatten } from "../support/host.ts";
 import { fakeHost } from "../support/fake-host.ts";

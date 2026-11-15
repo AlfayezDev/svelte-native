@@ -1,4 +1,4 @@
-import type { AnimLog } from "../reanimated-stubs.ts";
+import type { AnimLog } from "./reanimated-stubs.ts";
 import { type FabricHost, type FakeNode, flatten } from "./host.ts";
 
 /**

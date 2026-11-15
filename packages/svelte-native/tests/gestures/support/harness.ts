@@ -1,12 +1,12 @@
 /**
  * The Fabric host with the gesture host loaded, in a bundle of its own per call: a fake `nativeFabricUIManager`, a fake
  * `RNGestureHandlerModule` that records every call (`calls`), a fake `RCTDeviceEventEmitter`, the Reanimated fakes of
- * `tests/reanimated-stubs.ts`, and react-native-gesture-handler's real pure modules (the ones `src/gestures/rngh.js` reuses).
+ * `tests/support/reanimated-stubs.ts`, and react-native-gesture-handler's real pure modules (the ones `src/gestures/rngh.js` reuses).
  * What a test sees of the world is on `globalThis.__gh`, reset by `load()`.
  */
 import type { Plugin } from "esbuild";
 import { resolve } from "node:path";
-import { reanimatedStubs, type AnimLog } from "../../reanimated-stubs.ts";
+import { reanimatedStubs, type AnimLog } from "../../support/reanimated-stubs.ts";
 import { type HostPluginOptions, hostPlugin as supportHostPlugin, load as loadBundle, src } from "../../support/bundle.ts";
 import { type FakeNode, type Installed, createHost } from "../../support/host.ts";
 

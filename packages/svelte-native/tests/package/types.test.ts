@@ -129,9 +129,9 @@ describe("this repository checks the library against its sources", () => {
     });
 
   test("no tsconfig of a fixture that stands for an app outside the repository sets it", () => {
-    for (const fixture of ["bare-app", "installed-app", "kit-app", "web-mobile-app", "sv-minimal"]) {
-      const directory = join(import.meta.dirname, "../fixtures", fixture);
-      for (const file of existsSync(directory) ? readdirSync(directory).filter((name) => /^tsconfig.*\.json$/.test(name)) : [])
+    for (const fixture of ["package/fixtures/bare-app", "package/fixtures/installed-app", "kit/fixtures/kit-app", "kit/fixtures/web-mobile-app", "cli/fixtures/sv-minimal"]) {
+      const directory = join(import.meta.dirname, "..", fixture);
+      for (const file of readdirSync(directory).filter((name) => /^tsconfig.*\.json$/.test(name)))
         expect([fixture, file, readFileSync(join(directory, file), "utf8").includes("customConditions")]).toEqual([fixture, file, false]);
     }
   });

@@ -1,9 +1,9 @@
 <script>
-  import Router from "../src/Router.svelte";
-  import { createRouter } from "../src/router.svelte.ts";
-  import Page from "./route-page.svelte";
-  import Layout from "./route-layout.svelte";
-  import { page, stackOf } from "./tree.ts";
+  import Router from "../../../src/Router.svelte";
+  import { createRouter } from "../../../src/router.svelte.ts";
+  import Page from "../../support/fixtures/route-page.svelte";
+  import Layout from "../../support/fixtures/route-layout.svelte";
+  import { page, stackOf } from "../../support/tree.ts";
   let { withLoading = false, initial = "/" } = $props();
   const definitions = [
     { id: "home", path: "/", layouts: 0 },

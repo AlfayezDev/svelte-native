@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import type { NativeNode } from "../../src/renderer.ts";
 import { load as loadBundle, src } from "../support/bundle.ts";
 
-// The async-mode run (`async-mode-setup.ts`) puts a `requestAnimationFrame` on the global object for the whole process. The windowing tests assume none unless they
+// The async-mode run (`support/async-mode-setup.ts`) puts a `requestAnimationFrame` on the global object for the whole process. The windowing tests assume none unless they
 // install their own (as the frame-driven ones below do), so each test starts without one and the previous value is put back after it.
 const frameScope = globalThis as { requestAnimationFrame?: unknown; cancelAnimationFrame?: unknown };
 let framesBefore: [unknown, unknown] = [undefined, undefined];

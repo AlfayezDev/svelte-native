@@ -1,5 +1,5 @@
 <script>
-  import Stack from "../src/components/Stack.svelte";
+  import Stack from "../../../src/components/Stack.svelte";
   let { children, params, url } = $props();
   (globalThis.__treeLayouts ??= []).push({ path: url?.pathname, params }); // what the layout was given, for the tests
 </script>

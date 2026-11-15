@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { parseNativeID } from "../../src/fabric/navigation.ts";
-import { type FakeNode, ofKind, ofTestID, withInsets, onPlatform, settle, shared, flat, navigationWorld } from "./support/world.ts";
+import { type FakeNode, ofKind, ofTestID, withInsets, onPlatform, settle, flat, navigationWorld } from "./support/world.ts";
 
 /** The toolbar of a `Screen` (SPEC.md "Toolbar") through the Fabric host. */
 const { host, load } = navigationWorld();
@@ -17,7 +17,7 @@ const itemIds = [
 ];
 
 async function mountToolbar(surface: number) {
-  const m = await load(shared("toolbar-fixture.svelte"));
+  const m = await load("toolbar-fixture.svelte");
   const app = m.startSurface(surface, m.Fixture, {}) as ToolbarApp;
   await settle(m);
   const screen = () => ofKind(host.roots[surface], "screen")[0];

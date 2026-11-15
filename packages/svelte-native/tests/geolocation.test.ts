@@ -169,6 +169,14 @@ describe("getCurrentPosition", () => {
     expect((await current(geolocation, { maximumAge: 60_000, timeout: 0 })).position?.coords.latitude).toBe(2);
   });
 
+  test("a timeout that expires during the cache lookup leaves no native request behind", async () => {
+    const { geolocation, native, calls } = fake({ permission: GRANTED });
+    native.getLastKnownPositionAsync = () => new Promise(() => {});
+    expect((await current(geolocation, { maximumAge: 60_000, timeout: 20, enableHighAccuracy: true })).error?.code).toBe(3);
+    await settle(150);
+    expect(calls.some((call) => call.startsWith("current"))).toBe(false);
+  });
+
   test("a cache lookup that never answers gives way to a current position when there is no timeout", async () => {
     const { geolocation, native, calls } = fake({ permission: GRANTED });
     native.getLastKnownPositionAsync = () => new Promise(() => {});
@@ -228,13 +236,24 @@ describe("watchPosition", () => {
     expect(calls.slice(-2)).toEqual(["unlisten", "unlisten"]);
   });
 
-  test("a watch its first, cached, callback clears never starts natively and leaves no subscription", async () => {
-    const { geolocation, calls, listeners } = fake({ permission: GRANTED, lastKnown: fix(5, 5, {}, Date.now() - 1000) });
+  test("a watch its first callback clears, from the app's last position, never starts natively and leaves no subscription", async () => {
+    const { geolocation, calls, listeners } = fake({ permission: GRANTED });
+    await current(geolocation);
     let calledBack = 0;
     const id = geolocation.watchPosition(() => { calledBack++; geolocation.clearWatch(id); }, null, { maximumAge: 5000 });
     await settle();
     expect(calledBack).toBe(1);
     expect(calls.some((call) => call.startsWith("watch") || call.startsWith("listen"))).toBe(false);
+    expect(listeners.size).toBe(0);
+  });
+
+  test("the system's last known position comes alongside the native watch; a watch its callback clears stops the native one and leaves no subscription", async () => {
+    const { geolocation, calls, listeners } = fake({ permission: GRANTED, lastKnown: fix(5, 5, {}, Date.now() - 1000) });
+    let calledBack = 0;
+    const id = geolocation.watchPosition(() => { calledBack++; geolocation.clearWatch(id); }, null, { maximumAge: 5000 });
+    await settle();
+    expect(calledBack).toBe(1);
+    expect(calls.filter((call) => call.startsWith("watch") || call.startsWith("remove"))).toEqual([`watch ${id} 3 distance 0`, `remove ${id}`]);
     expect(listeners.size).toBe(0);
   });
 
@@ -349,11 +368,40 @@ describe("watchPosition", () => {
     geolocation.clearWatch(id);
     await settle(40);
     expect(events).toEqual(["error 3", "position 1"]);
-    // Without a timeout the watch starts once the lookup's bound has passed.
+    // Without a timeout the watch starts at once too.
     const late = geolocation.watchPosition(() => {}, null, { maximumAge: 60_000 });
-    await settle(150);
+    await settle();
     expect(calls).toContain(`watch ${late} 3 distance 0`);
     geolocation.clearWatch(late);
+  });
+
+  test("a cached position that comes after a macrotask still reaches a watch with timeout 0, but not one that has had a position, nor one cleared", async () => {
+    const slow = (ms: number) => async () => { await settle(ms); return fix(5, 5, {}, Date.now() - 1000); };
+    const zero = fake({ permission: GRANTED });
+    zero.native.getLastKnownPositionAsync = slow(5);
+    const events: string[] = [];
+    const id = zero.geolocation.watchPosition((position) => events.push(`position ${position.coords.latitude}`), (error) => events.push(`error ${error.code}`), { maximumAge: 60_000, timeout: 0 });
+    await settle(30);
+    // A cached position starts the clock again, as any position does: with timeout 0, one more TIMEOUT.
+    expect(events).toEqual(["error 3", "position 5", "error 3"]);
+    zero.geolocation.clearWatch(id);
+    // The watch's own position came first: the cache is not used.
+    const fixed = fake({ permission: GRANTED });
+    fixed.native.getLastKnownPositionAsync = slow(20);
+    const seen: number[] = [];
+    const first = fixed.geolocation.watchPosition((position) => seen.push(position.coords.latitude), null, { maximumAge: 60_000 });
+    await settle();
+    fixed.emit(first, fix(1, 1));
+    await settle(40);
+    expect(seen).toEqual([1]);
+    fixed.geolocation.clearWatch(first);
+    // Cleared while the lookup was on its way.
+    const cleared = fake({ permission: GRANTED });
+    cleared.native.getLastKnownPositionAsync = slow(10);
+    const gone = cleared.geolocation.watchPosition(() => { throw new Error("no callback expected"); }, null, { maximumAge: 60_000 });
+    await settle();
+    cleared.geolocation.clearWatch(gone);
+    await settle(30);
   });
 
   test("maximumAge: a young enough last position is the first one the watch reports", async () => {

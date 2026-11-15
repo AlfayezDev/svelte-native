@@ -1,4 +1,4 @@
-import { test, expect } from "bun:test";
+import { afterAll, test, expect } from "bun:test";
 import { build } from "esbuild";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { createHarness, expoViewConfigs, find, settle } from "./foreign-harness.ts";
 import { expoImageHandlers, expoImageProps, resolveContentFit, resolveContentPosition, resolveSfEffect, resolveSource, resolveSources, resolveTransition } from "../src/fabric/foreign-image.ts";
+import { restoreStrays } from "./support/host.ts";
 
 /**
  * expo-image (SPEC.md, "Foreign views"): the Svelte component mounts the module's `ExpoImage` view by the name the Expo
@@ -180,3 +181,6 @@ test("the native event handlers: load, progress and error always, display only w
   handlers.onDisplay?.({ nativeEvent: {} });
   expect(log).toEqual(["load", "end", "display"]);
 });
+
+// The harness is created at module scope, outside the per-test restore of `support/preload.ts`: the file puts the global object back itself.
+afterAll(restoreStrays);

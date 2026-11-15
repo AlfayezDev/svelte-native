@@ -1,9 +1,10 @@
-import { beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { FakeNode } from "./foreign-harness.ts";
 import { loadOracle, type Oracle } from "./svg-oracle.ts";
 import { describeOurs, describeTheirs, hasPress, pressHostProps, settle, svgHarness, toNode, toReact, type Spec, type SvgLoaded } from "./svg-harness.ts";
 import type { Platform } from "./rn-reference.ts";
 import { cases, svgRoot } from "./svg-cases.ts";
+import { restoreStrays } from "./support/host.ts";
 
 /**
  * Every element of react-native-svg against the library's own element class (SPEC.md, "react-native-svg"): the same props go to the Svelte
@@ -48,3 +49,6 @@ for (const platform of platforms) {
     }
   });
 }
+
+// The harnesses are created in `beforeAll`, outside the per-test restore of `support/preload.ts`: the file puts the global object back itself.
+afterAll(restoreStrays);

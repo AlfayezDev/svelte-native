@@ -1,5 +1,6 @@
-import { expect, test } from "bun:test";
+import { afterAll, expect, test } from "bun:test";
 import { createHarness, expoViewConfigs, find, settle } from "./foreign-harness.ts";
+import { restoreStrays } from "./support/host.ts";
 
 /**
  * A foreign view's own props are not Reanimated's (SPEC.md, "Foreign views", "Device verification of the libraries"). The host treats a top-level prop that
@@ -50,3 +51,6 @@ test("a Modal keeps its animationType once an animated node has loaded the layer
   const [modal] = find(harness.roots()[203], "RCTModalHostView");
   expect(modal?.props.animationType).toBe("slide");
 });
+
+// The harness is created at module scope, outside the per-test restore of `support/preload.ts`: the file puts the global object back itself.
+afterAll(restoreStrays);

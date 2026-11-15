@@ -1,7 +1,8 @@
-import { beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
 import { find, type FakeNode } from "./foreign-harness.ts";
 import { describeOurs, describeTheirs, settle, svgHarness, toNode, type Spec, type SvgLoaded } from "./svg-harness.ts";
 import { loadOracle } from "./svg-oracle.ts";
+import { restoreStrays } from "./support/host.ts";
 
 /**
  * What changes after the first commit (SPEC.md, "react-native-svg"): a prop is a clone of the same Fabric node that carries the changed props only, text is
@@ -203,3 +204,6 @@ test("a drawing that animates nothing does not load the animation layer", async 
   expect(text.roots().length).toBeGreaterThan(0);
   expect((globalThis as { __svelteFabric?: { stats(): { animationLoaded: boolean } } }).__svelteFabric?.stats().animationLoaded).toBe(false);
 });
+
+// The harness is created in `beforeAll`, outside the per-test restore of `support/preload.ts`: the file puts the global object back itself.
+afterAll(restoreStrays);

@@ -1,7 +1,7 @@
 <script>
-  import View from "../src/components/View.svelte";
-  import Text from "../src/components/Text.svelte";
-  import ScrollView from "../src/components/ScrollView.svelte";
+  import View from "../../../src/components/View.svelte";
+  import Text from "../../../src/components/Text.svelte";
+  import ScrollView from "../../../src/components/ScrollView.svelte";
   let { url } = $props();
   const log = globalThis.__forkLog;
   log?.push(`heavy${url.pathname}:init`);

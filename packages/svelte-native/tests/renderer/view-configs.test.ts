@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { loadReference, withReactNativeGlobals, type Platform, type RegisteredConfig } from "./rn-reference.ts";
+import { loadReference, withReactNativeGlobals, type Platform, type RegisteredConfig } from "../rn-reference.ts";
 
 type Table = Record<string, unknown>;
 type Payload = Record<string, unknown> | null;

@@ -4,7 +4,7 @@
 #   packages/svelte-native/native/svelte-core/android/src/test/engine.sh   g++ (C++20, sanitizers), kotlinc, java (gesture rules, capture, animated wire)
 #   packages/svelte-native/tests/*Host.kt, under `bun test`        kotlinc, java, and for the updates store the Android SDK's android.jar and org.json
 #
-# Without them those tests skip themselves, so the unit job fails on a missing tool instead (this script, and tests/native-tools.test.ts under CI=1).
+# Without them those tests skip themselves, so the unit job fails on a missing tool instead (this script, and tests/native-host/native-tools.test.ts under CI=1).
 #
 # A JDK is not installed here (actions/setup-java in the workflow, openjdk-17-jdk-headless on the OVH runner), nor g++ (the hosted image has
 # it; qa/ci/setup-runner.sh installs it on the OVH host). Each download is checked against the sha256 below and kept in the cache

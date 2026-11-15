@@ -3,7 +3,7 @@ import { error, invalid, redirect } from "@sveltejs/kit";
 import * as v from "valibot";
 import { Money } from "./money.ts";
 
-// A small SvelteKit server with one of each kind of remote function, for the package's end-to-end test (tests/remote-e2e.test.ts).
+// A small SvelteKit server with one of each kind of remote function, for the package's end-to-end test (tests/kit/remote-e2e.test.ts).
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 let count = 0;
 let counterRuns = 0;
@@ -64,7 +64,7 @@ export const endless = query.live(async function* () {
   }
 });
 
-// Like `endless`, counted apart: the one test that watches a stream close by itself (tests/remote-e2e.test.ts, "released when the effect is torn down").
+// Like `endless`, counted apart: the one test that watches a stream close by itself (tests/kit/remote-e2e.test.ts, "released when the effect is torn down").
 export const watched = query.live(async function* () {
   watchedOpen++;
   try {

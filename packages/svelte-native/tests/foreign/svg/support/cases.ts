@@ -1,6 +1,6 @@
 import type { Spec } from "./harness.ts";
 
-/** Element trees for the tests that compare the Svelte components with the library's own elements (`svg-elements.test.ts`, `svg-configs.test.ts`). */
+/** Element trees for the tests that compare the Svelte components with the library's own elements (`elements.test.ts`, `configs.test.ts`). */
 export const handlers = { onPress() {}, onLongPress() {} };
 
 export const cases: Record<string, Spec> = {

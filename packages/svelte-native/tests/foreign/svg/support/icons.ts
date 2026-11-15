@@ -1,4 +1,4 @@
-/** Six small SVG documents of the kinds apps ship: what `SvgXml` is compared on (`svg-xml.test.ts`) and what the lab draws. */
+/** Six small SVG documents of the kinds apps ship: what `SvgXml` is compared on (`xml.test.ts`) and what the lab draws. */
 export const icons: Record<string, string> = {
   // An icon of paths: strokes, caps and joins on a 24 x 24 box, as icon sets write them.
   paths: `<?xml version="1.0" encoding="UTF-8"?>

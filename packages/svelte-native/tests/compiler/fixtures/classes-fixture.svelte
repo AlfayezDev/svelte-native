@@ -1,7 +1,7 @@
 <script lang="ts">
-  import Text from "../src/components/Text.svelte";
-  import View from "../src/components/View.svelte";
-  import SafeAreaView from "../src/components/SafeAreaView.svelte";
+  import Text from "../../../src/components/Text.svelte";
+  import View from "../../../src/components/View.svelte";
+  import SafeAreaView from "../../../src/components/SafeAreaView.svelte";
 
   let { inline = false, unknown = false }: { inline?: boolean; unknown?: boolean } = $props();
   let size = $state(30);

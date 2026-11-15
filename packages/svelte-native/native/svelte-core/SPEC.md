@@ -1007,7 +1007,7 @@ The plan asked for the boot-time Expo calls as direct JSI host functions. With t
 
 ### Checking a change
 
-Take a boot trace (`.example/native-qa/2026-10-25/tools/boot_trace.sh`) and look for: no `[ExpoModulesCore] ModuleRegistry.register` slice inside `ReactInstance.initialize#initTurboModules`; `ModuleRegistry.prewarm` on `expo-modules-prewarm`; `MainRuntime...install` on `mqt_v_js`; no "Prewarm" error in logcat. After an Expo upgrade, regenerate the patch against the new files, run `pnpm install`, then `bun test tests/upstream/expo-lazy-modules.test.ts`: it fails when a name in the lists no longer matches the source, or when `node_modules` does not carry the patch.
+Take a boot trace (`.example/native-qa/2026-10-25/tools/boot_trace.sh`) and look for: no `[ExpoModulesCore] ModuleRegistry.register` slice inside `ReactInstance.initialize#initTurboModules`; `ModuleRegistry.prewarm` on `expo-modules-prewarm`; `MainRuntime...install` on `mqt_v_js`; no "Prewarm" error in logcat. After an Expo upgrade, regenerate the patch against the new files, run `pnpm install`, then `bun test tests/upstream/expo-modules-core-patch.test.ts`: it fails when a name in the lists no longer matches the source, or when `node_modules` does not carry the patch.
 
 ## Boot on the phone: the slow launches, `BootBoost`, what the JavaScript thread still pays (28 October 2026, Samsung A16)
 

@@ -3,12 +3,12 @@ import { transformSync } from "esbuild";
 import { parseSync } from "@babel/core";
 import { parse as parseHermes } from "hermes-parser";
 import { compile, compileModule } from "svelte/compiler";
-import { componentOptions } from "../src/compile-options.ts";
+import { componentOptions } from "../../src/compile-options.ts";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
-import { lowerPrimitives } from "../src/lower.ts";
-import { INITIALIZE_CORE, LITE_ORIGINS, RENDERER_STUBS } from "../src/metro.ts";
+import { lowerPrimitives } from "../../src/lower.ts";
+import { INITIALIZE_CORE, LITE_ORIGINS, RENDERER_STUBS } from "../../src/metro.ts";
 
 /**
  * Modules that cost the JavaScript thread before the first commit if anything evaluates them while the bundle loads, and what each
@@ -26,7 +26,7 @@ const forbidden: Record<string, string> = {
   "react-native/Libraries/Components/Keyboard/Keyboard.js": "Keyboard",
 };
 
-const root = resolve(import.meta.dirname, "..");
+const root = resolve(import.meta.dirname, "../..");
 const platform = resolve(root, "../../apps/qa");
 const entries = ["src/app.ts", "src/init.ts", "src/polyfills.ts", "src/fabric/index.ts"].map((file) => join(root, file)).concat(join(platform, "src/routes/+layout.mobile.svelte"));
 const lite = join(root, "src/fabric/react-native-lite.ts");
@@ -153,6 +153,10 @@ function walk(): Map<string, string | null> {
   return parent;
 }
 
+/** The walk takes a second or more (every module is compiled and parsed) and gives the same graph each time, so the three tests share one. */
+let walked: Map<string, string | null> | undefined;
+const graphOfBundle = () => (walked ??= walk());
+
 const chain = (graph: Map<string, string | null>, end: string) => {
   const names: string[] = [];
   for (let path: string | null | undefined = end; path; path = graph.get(path)) names.unshift(path.replace(/^.*\/node_modules\//, "").replace(`${resolve(root, "../..")}/`, ""));
@@ -160,7 +164,7 @@ const chain = (graph: Map<string, string | null>, end: string) => {
 };
 
 test("the modules the bundle evaluates at load include none that read every view manager", () => {
-  const graph = walk();
+  const graph = graphOfBundle();
   expect(graph.size).toBeGreaterThan(150);
   expect([...graph.keys()].some((path) => path.endsWith("src/fabric/host.ts"))).toBe(true);
   expect([...graph.keys()].some((path) => path.endsWith("src/lib/native/state.svelte.ts"))).toBe(true);
@@ -169,13 +173,13 @@ test("the modules the bundle evaluates at load include none that read every view
 });
 
 test("window.matchMedia is a function the polyfills install, and the media query parser and the system sources behind it are not evaluated at load", () => {
-  const graph = walk();
+  const graph = graphOfBundle();
   expect(graph.has(join(root, "src/polyfills.ts"))).toBe(true);
   expect([...graph.keys()].filter((path) => /\/src\/(?:match-media|media-query)\.ts$/.test(path))).toEqual([]);
 });
 
 test("crypto, localStorage and sessionStorage are accessors the polyfills define, and react-native-quick-crypto, react-native-mmkv and the Nitro runtime are not evaluated at load", () => {
-  const graph = walk();
+  const graph = graphOfBundle();
   // The small modules that define the globals are in the graph; the libraries behind them are required on first use.
   for (const file of ["src/lazy-global.ts", "src/web-crypto.ts", "src/web-storage.ts", "src/local-storage.ts"]) expect(graph.has(join(root, file)), file).toBe(true);
   const reached = [...graph.keys()].filter((path) => /\/node_modules\/(?:react-native-(?:quick-crypto|mmkv|nitro-modules|quick-base64)|@craftzdog\/react-native-buffer)\//.test(path));

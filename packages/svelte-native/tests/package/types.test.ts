@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import ts from "typescript";
-import { buildTypes, declarationOf, packageRoot, renamedForCase, typeEntries, typesDirectory } from "../scripts/build-types.ts";
+import { buildTypes, declarationOf, packageRoot, renamedForCase, typeEntries, typesDirectory } from "../../scripts/build-types.ts";
 
 // `dist/types/` is committed: a git dependency is not built when an app installs it, and an app's type checker reads these declarations instead of the sources
 // (`types` condition of each entry in `package.json`). So it has to be what `pnpm --dir packages/svelte-native build` writes for the sources, and this fails when it
@@ -130,7 +130,7 @@ describe("this repository checks the library against its sources", () => {
 
   test("no tsconfig of a fixture that stands for an app outside the repository sets it", () => {
     for (const fixture of ["bare-app", "installed-app", "kit-app", "web-mobile-app", "sv-minimal"]) {
-      const directory = join(import.meta.dirname, "fixtures", fixture);
+      const directory = join(import.meta.dirname, "../fixtures", fixture);
       for (const file of existsSync(directory) ? readdirSync(directory).filter((name) => /^tsconfig.*\.json$/.test(name)) : [])
         expect([fixture, file, readFileSync(join(directory, file), "utf8").includes("customConditions")]).toEqual([fixture, file, false]);
     }

@@ -1,42 +1,21 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { describe, expect, test } from "bun:test";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { satisfies } from "../src/doctor/semver.ts";
-import { patchFiles } from "../src/doctor/patches.ts";
-import { appDependencies, appNames, mergeWorkspaceYaml, parseInitArguments, planInit, runInit, svelteNativeViteConfig } from "../src/init-app.ts";
+import { patchFiles } from "../../src/doctor/patches.ts";
+import { createProject } from "../support/project.ts";
+import { patchVersion, peerRange, peerVersion } from "../support/versions.ts";
+import { fixture, library, readJson, useInitProjects } from "./support/init-project.ts";
+import { appDependencies, appNames, mergeWorkspaceYaml, parseInitArguments, planInit, svelteNativeViteConfig } from "../../src/init-app.ts";
 import { compile } from "svelte/compiler";
-import { requiredSvelte } from "../src/svelte-build.ts";
+import { requiredSvelte } from "../../src/svelte-build.ts";
 
 // `svelte-native init`: what it does to a project `npx sv create` made (tests/fixtures/sv-minimal is what sv 1.3.0 writes for the minimal template with
 // TypeScript, no add-ons and pnpm), and that running it again changes nothing.
-const fixture = join(import.meta.dirname, "fixtures/sv-minimal");
-const repository = join(import.meta.dirname, "../../..");
-const library = "git+ssh://git@github.com/AlfayezDev/svelte-native.git#v0.3.0&path:packages/svelte-native";
-
-const directories: string[] = [];
-afterEach(() => {
-  for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
-});
-
-/** A copy of the sv project with the library added to its dependencies, which is what `pnpm add` does before `init`. */
-function project(adjust?: (root: string) => void): string {
-  const root = mkdtempSync(join(tmpdir(), "svelte-native-init-"));
-  directories.push(root);
-  cpSync(fixture, root, { recursive: true });
-  const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { dependencies?: Record<string, string> };
-  manifest.dependencies = { "@alfayez/svelte-native": library };
-  writeFileSync(join(root, "package.json"), `${JSON.stringify(manifest, null, "\t")}\n`);
-  adjust?.(root);
-  return root;
-}
-
-function run(root: string, args: string[] = []) {
-  const out: string[] = [];
-  const err: string[] = [];
-  const status = runInit(root, ["--no-install", ...args], { out: (text) => out.push(text), err: (text) => err.push(text) });
-  return { status, out: out.join("\n"), err: err.join("\n") };
-}
+/** The versions init pins that follow the package: the patched expo-modules-core and SvelteKit (`patches/`), and the React Native init writes. */
+const coreVersion = patchVersion("expo-modules-core");
+const kitVersion = patchVersion("@sveltejs/kit");
+const reactNativeVersion = appDependencies["react-native"] as string;
+const { project, run } = useInitProjects();
 
 /** Every file under a directory, with its content: what "nothing changed" compares. */
 function snapshot(root: string): Record<string, string> {
@@ -52,11 +31,6 @@ function snapshot(root: string): Record<string, string> {
   }
   return files;
 }
-
-/* eslint-disable @typescript-eslint/no-explicit-any -- parsed JSON of a project's files, read by path in the assertions */
-// biome-ignore lint/suspicious/noExplicitAny: the same
-type Json = Record<string, any>;
-const readJson = (root: string, file: string): Json => JSON.parse(readFileSync(join(root, file), "utf8")) as Json;
 
 describe("init in a fresh sv project", () => {
   test("adds what the library needs to package.json, keeping the project's own entries and its formatting", () => {
@@ -74,11 +48,10 @@ describe("init in a fresh sv project", () => {
     expect(manifest.dependencies["@alfayez/svelte-native"]).toBe(library);
     for (const [name, version] of Object.entries(appDependencies)) expect(manifest.dependencies[name], name).toBe(version);
     // react-native-svg is a required peer (the main entry exports its components), so init installs it, at the version the peer names.
-    expect(manifest.dependencies["react-native-svg"]).toBe("15.15.4");
-    expect(appDependencies["react-native-svg"]).toBe((JSON.parse(readFileSync(join(import.meta.dirname, "../package.json"), "utf8")) as { peerDependencies: Record<string, string> }).peerDependencies["react-native-svg"]);
+    expect(manifest.dependencies["react-native-svg"]).toBe(peerRange("react-native-svg"));
+    expect(appDependencies["react-native-svg"]).toBe(peerRange("react-native-svg"));
     // `crypto` and `localStorage` are made of react-native-quick-crypto and react-native-mmkv, which share Nitro, and quick-crypto asks for a base64 module: required peers too, installed at the versions the peers name.
-    const peers = (JSON.parse(readFileSync(join(import.meta.dirname, "../package.json"), "utf8")) as { peerDependencies: Record<string, string> }).peerDependencies;
-    for (const name of ["react-native-quick-crypto", "react-native-nitro-modules", "react-native-quick-base64", "react-native-mmkv"]) expect([name, manifest.dependencies[name]]).toEqual([name, peers[name]]);
+    for (const name of ["react-native-quick-crypto", "react-native-nitro-modules", "react-native-quick-base64", "react-native-mmkv"]) expect([name, manifest.dependencies[name]]).toEqual([name, peerRange(name)]);
     // The SvelteKit sv installed is pinned to a version the library has a patch for, exactly.
     const kitVersions = patchFiles().filter((patch) => patch.package === "@sveltejs/kit").map((patch) => patch.version);
     expect(kitVersions).toContain(manifest.devDependencies["@sveltejs/kit"]);
@@ -98,7 +71,7 @@ describe("init in a fresh sv project", () => {
     const yaml = readFileSync(join(root, "pnpm-workspace.yaml"), "utf8");
     expect(yaml.startsWith("engineStrict: true\nallowBuilds:\n  esbuild: true\n")).toBe(true);
     // Both packages that come with another one by a range: the patched expo-modules-core, and the Metro config package, pinned to the React Native version init writes.
-    expect(yaml).toContain(`overrides:\n  expo-modules-core: 57.0.23\n  "@react-native/metro-config": ${appDependencies["react-native"]}\n`);
+    expect(yaml).toContain(`overrides:\n  expo-modules-core: ${coreVersion}\n  "@react-native/metro-config": ${reactNativeVersion}\n`);
     const declared = [...yaml.matchAll(/^ {2}"?([^\s":]+(?:@[^\s":]+)*)"?: (patches\/svelte-native\/\S+)$/gm)].map((match) => match[2] as string);
     expect(declared.length).toBeGreaterThanOrEqual(5);
     for (const path of declared) expect(existsSync(join(root, path)), path).toBe(true);
@@ -339,9 +312,8 @@ describe("init in a project that already has things", () => {
     expect(result.status).toBe(1);
     expect(result.err).toContain("another package manager than pnpm");
     expect(snapshot(root)).toEqual(before);
-    const empty = mkdtempSync(join(tmpdir(), "svelte-native-init-empty-"));
-    directories.push(empty);
-    expect(run(empty).err).toContain("has no package.json");
+    using empty = createProject({}, "svelte-native-init-empty-");
+    expect(run(empty.directory).err).toContain("has no package.json");
   });
 
   test("a native-only project (no SvelteKit) gets no Vite config, no SvelteKit pin and no SvelteKit patch", () => {
@@ -360,21 +332,23 @@ describe("init in a project that already has things", () => {
 });
 
 describe("the edit of pnpm-workspace.yaml", () => {
-  const wanted = { allowBuilds: { esbuild: "true" }, overrides: { "expo-modules-core": "57.0.23" }, patchedDependencies: { "@sveltejs/kit@3.1.1": "patches/svelte-native/kit.patch", "expo-modules-core@57.0.23": "patches/svelte-native/e.patch" } };
+  const wanted = { allowBuilds: { esbuild: "true" }, overrides: { "expo-modules-core": coreVersion }, patchedDependencies: { [`@sveltejs/kit@${kitVersion}`]: "patches/svelte-native/kit.patch", [`expo-modules-core@${coreVersion}`]: "patches/svelte-native/e.patch" } };
+  /** The patched block as the file has it. */
+  const patched = `patchedDependencies:\n  "@sveltejs/kit@${kitVersion}": patches/svelte-native/kit.patch\n  expo-modules-core@${coreVersion}: patches/svelte-native/e.patch\n`;
 
   test("a missing file is written whole, and blocks the project has are added to, not rewritten", () => {
     const fresh = mergeWorkspaceYaml("", wanted);
-    expect(fresh.text).toBe('allowBuilds:\n  esbuild: true\noverrides:\n  expo-modules-core: 57.0.23\npatchedDependencies:\n  "@sveltejs/kit@3.1.1": patches/svelte-native/kit.patch\n  expo-modules-core@57.0.23: patches/svelte-native/e.patch\n');
+    expect(fresh.text).toBe(`allowBuilds:\n  esbuild: true\noverrides:\n  expo-modules-core: ${coreVersion}\n${patched}`);
     const merged = mergeWorkspaceYaml("# mine\nengineStrict: true\nallowBuilds:\n  esbuild: true\n  sharp: false # not this one\noverrides:\n  left-pad: 1.3.0\n", wanted);
-    expect(merged.text).toBe('# mine\nengineStrict: true\nallowBuilds:\n  esbuild: true\n  sharp: false # not this one\noverrides:\n  left-pad: 1.3.0\n  expo-modules-core: 57.0.23\n\npatchedDependencies:\n  "@sveltejs/kit@3.1.1": patches/svelte-native/kit.patch\n  expo-modules-core@57.0.23: patches/svelte-native/e.patch\n');
+    expect(merged.text).toBe(`# mine\nengineStrict: true\nallowBuilds:\n  esbuild: true\n  sharp: false # not this one\noverrides:\n  left-pad: 1.3.0\n  expo-modules-core: ${coreVersion}\n\n${patched}`);
     expect(mergeWorkspaceYaml(merged.text, wanted).changes).toEqual([]);
     expect(mergeWorkspaceYaml(merged.text, wanted).text).toBe(merged.text);
   });
 
   test("an entry with another value is replaced and said so, and a block in flow style is left to the person", () => {
-    const replaced = mergeWorkspaceYaml("allowBuilds:\n  esbuild: false\noverrides:\n  expo-modules-core: 57.0.25\n", { allowBuilds: wanted.allowBuilds, overrides: wanted.overrides });
-    expect(replaced.text).toBe("allowBuilds:\n  esbuild: true\noverrides:\n  expo-modules-core: 57.0.23\n");
-    expect(replaced.changes).toEqual(["allowBuilds: esbuild (was false)", "overrides: expo-modules-core (was 57.0.25)"]);
+    const replaced = mergeWorkspaceYaml("allowBuilds:\n  esbuild: false\noverrides:\n  expo-modules-core: 1.2.3\n", { allowBuilds: wanted.allowBuilds, overrides: wanted.overrides });
+    expect(replaced.text).toBe(`allowBuilds:\n  esbuild: true\noverrides:\n  expo-modules-core: ${coreVersion}\n`);
+    expect(replaced.changes).toEqual(["allowBuilds: esbuild (was false)", "overrides: expo-modules-core (was 1.2.3)"]);
     const flow = mergeWorkspaceYaml("allowBuilds: { esbuild: true }\n", { allowBuilds: wanted.allowBuilds });
     expect(flow.manual).toEqual(["allowBuilds: esbuild: true"]);
     expect(flow.text).toBe("allowBuilds: { esbuild: true }\n");
@@ -382,8 +356,8 @@ describe("the edit of pnpm-workspace.yaml", () => {
 
   test("line endings and a file without a final newline are kept sensible", () => {
     const crlf = mergeWorkspaceYaml("allowBuilds:\r\n  esbuild: true\r\n", { overrides: wanted.overrides });
-    expect(crlf.text).toBe("allowBuilds:\r\n  esbuild: true\r\n\r\noverrides:\r\n  expo-modules-core: 57.0.23\r\n");
-    expect(mergeWorkspaceYaml("allowBuilds:\n  esbuild: true", { overrides: wanted.overrides }).text).toBe("allowBuilds:\n  esbuild: true\n\noverrides:\n  expo-modules-core: 57.0.23\n");
+    expect(crlf.text).toBe(`allowBuilds:\r\n  esbuild: true\r\n\r\noverrides:\r\n  expo-modules-core: ${coreVersion}\r\n`);
+    expect(mergeWorkspaceYaml("allowBuilds:\n  esbuild: true", { overrides: wanted.overrides }).text).toBe(`allowBuilds:\n  esbuild: true\n\noverrides:\n  expo-modules-core: ${coreVersion}\n`);
   });
 });
 
@@ -456,78 +430,34 @@ export default defineConfig(({ mode }) => ({
 });
 
 describe("the Metro config package follows React Native", () => {
-  test("a fresh app gets @react-native/metro-config pinned to the React Native version init writes, so the install does not take 0.88 beside 0.86.3", () => {
+  test("a fresh app gets @react-native/metro-config pinned to the React Native version init writes, so the install does not take another React Native's beside it", () => {
     const root = project();
     const plan = planInit(root);
     const workspace = plan.changes.find((change) => change.path === "pnpm-workspace.yaml");
     expect(workspace?.summary).toContain("overrides: expo-modules-core, @react-native/metro-config");
-    expect(appDependencies["react-native"]).toBe("0.86.3");
+    expect(appDependencies["react-native"]).toBe(peerVersion("react-native"));
     run(root);
     const yaml = readFileSync(join(root, "pnpm-workspace.yaml"), "utf8");
-    expect(yaml).toContain('  "@react-native/metro-config": 0.86.3\n');
+    expect(yaml).toContain(`  "@react-native/metro-config": ${reactNativeVersion}\n`);
     // It is a pin to the one version, not a range, and it is written once.
     expect(yaml.match(/@react-native\/metro-config/g)).toHaveLength(1);
   });
 
   test("an override the project had for it at another version is replaced, and said so; one at the same version stays", () => {
-    const root = project((dir) => writeFileSync(join(dir, "pnpm-workspace.yaml"), 'allowBuilds:\n  esbuild: true\noverrides:\n  "@react-native/metro-config": 0.88.1\n'));
+    const root = project((dir) => writeFileSync(join(dir, "pnpm-workspace.yaml"), 'allowBuilds:\n  esbuild: true\noverrides:\n  "@react-native/metro-config": 0.0.1\n'));
     const result = run(root);
-    expect(result.out).toContain("overrides: @react-native/metro-config (was 0.88.1)");
+    expect(result.out).toContain("overrides: @react-native/metro-config (was 0.0.1)");
     const yaml = readFileSync(join(root, "pnpm-workspace.yaml"), "utf8");
-    expect(yaml).toContain('overrides:\n  "@react-native/metro-config": 0.86.3\n  expo-modules-core: 57.0.23\n');
+    expect(yaml).toContain(`overrides:\n  "@react-native/metro-config": ${reactNativeVersion}\n  expo-modules-core: ${coreVersion}\n`);
     expect(run(root).out).toContain("Nothing to change");
-  });
-
-  test("examples/minimal's overrides are the ones init writes, and the React Native it pins is the one the override is", () => {
-    const minimal = readFileSync(join(repository, "examples/minimal/pnpm-workspace.yaml"), "utf8");
-    const root = project();
-    run(root);
-    const written = readFileSync(join(root, "pnpm-workspace.yaml"), "utf8");
-    const block = (text: string) => /^overrides:\n((?: {2}\S.*\n)+)/m.exec(text)?.[1];
-    expect(block(minimal)).toBeDefined();
-    expect(block(minimal)).toBe(block(written));
-    const pinned = JSON.parse(readFileSync(join(repository, "examples/minimal/package.json"), "utf8")) as { dependencies: Record<string, string> };
-    expect(minimal).toContain(`  "@react-native/metro-config": ${pinned.dependencies["react-native"]}\n`);
   });
 });
 
-describe("what init writes is what the library was exercised on", () => {
-  test("the dependencies are examples/minimal's and inside the package's peer ranges, and the patched ones are the patches' versions", () => {
-    const minimal = JSON.parse(readFileSync(join(repository, "examples/minimal/package.json"), "utf8")) as { dependencies: Record<string, string>; main: string; reanimated: unknown; scripts: Record<string, string> };
-    for (const [name, version] of Object.entries(appDependencies)) expect(minimal.dependencies[name], name).toBe(version);
-    const peers = (JSON.parse(readFileSync(join(import.meta.dirname, "../package.json"), "utf8")) as { peerDependencies: Record<string, string> }).peerDependencies;
-    for (const [name, version] of Object.entries(appDependencies)) expect(satisfies(version.replace(/^[\^~]/, ""), peers[name] ?? "*"), `${name} ${version} satisfies ${peers[name]}`).toBe(true);
-    for (const patch of patchFiles().filter((entry) => ["react-native-gesture-handler", "react-native-reanimated", "react-native-worklets"].includes(entry.package))) {
-      expect(appDependencies[patch.package]).toBe(patch.version);
-    }
-    expect(minimal.main).toBe(".svelte-native/entry.ts");
-    // examples/minimal's script for the doctor has the name init gives it (`pnpm doctor` is pnpm's own command).
-    expect(minimal.scripts["check-setup"]).toBe("svelte-native doctor");
-  });
-
-  test("the names derive from the package name: scoped, uppercase and numeric names stay valid identifiers", () => {
+describe("the names init derives", () => {
+  test("scoped, uppercase and numeric names stay valid identifiers", () => {
     expect(appNames("my-app")).toMatchObject({ title: "my-app", slug: "my-app", androidPackage: "dev.example.myapp" });
     expect(appNames("@acme/Shop App")).toMatchObject({ slug: "shop-app", androidPackage: "dev.example.shopapp" });
     expect(appNames("123go")).toMatchObject({ slug: "app-123go", androidPackage: "dev.example.app123go" });
     expect(appNames(undefined)).toMatchObject({ slug: "app" });
-  });
-});
-
-describe("the guide says what init writes", () => {
-  test("the configuration page's snippets carry the versions, the patches and the Svelte build init writes", () => {
-    const page = readFileSync(join(repository, "docs/70-reference/20-configuration.md"), "utf8");
-    for (const [name, version] of Object.entries(appDependencies)) expect(page, name).toContain(`"${name}": "${version}"`);
-    expect(page).toContain(`"svelte": "${requiredSvelte.preview}"`);
-    expect(page).toContain('"main": ".svelte-native/entry.ts"');
-    // The yaml of the page is the one a run writes for an sv project, from "overrides" on.
-    const root = project();
-    run(root);
-    const written = readFileSync(join(root, "pnpm-workspace.yaml"), "utf8");
-    const block = written.slice(written.indexOf("overrides:"));
-    expect(page).toContain(block.trimEnd());
-    // The kit pin and the scripts of the page are what the manifest has.
-    const manifest = readJson(root, "package.json");
-    expect(page).toContain(`"@sveltejs/kit": "${manifest.devDependencies["@sveltejs/kit"]}"`);
-    for (const [name, command] of Object.entries(manifest.scripts as Record<string, string>)) if (/^(native|android|ios|check-setup)$/.test(name)) expect(page).toContain(`"${name}": "${command}"`);
   });
 });

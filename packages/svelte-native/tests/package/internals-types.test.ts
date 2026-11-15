@@ -12,7 +12,7 @@ import { dirname, join, relative, resolve } from "node:path";
  * This is the static side of it (the import graph of each entry, read from the source); `node-modules.test.ts` runs `svelte-check` on an app that has the packed
  * package in its `node_modules`, which is the proof that the declarations arrive.
  */
-const root = resolve(import.meta.dirname, "..");
+const root = resolve(import.meta.dirname, "../..");
 const internals = join(root, "src/fabric/react-native-internals.d.ts");
 const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { exports: Record<string, string | Record<string, string>> };
 

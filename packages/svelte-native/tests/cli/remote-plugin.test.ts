@@ -2,8 +2,8 @@
 // reach an http: development server.
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { allowAndroidCleartext, allowIosCleartext, atsExceptionDomain, isCleartext, remoteExtra, withRemoteHost } from "../src/remote/plugin.ts";
-import { hostFromExtra } from "../src/remote/host.ts";
+import { allowAndroidCleartext, allowIosCleartext, atsExceptionDomain, isCleartext, remoteExtra, withRemoteHost } from "../../src/remote/plugin.ts";
+import { hostFromExtra } from "../../src/remote/host.ts";
 
 const config = (extra?: Record<string, unknown>) => ({ name: "app", slug: "app", ...(extra ? { extra } : {}) });
 const thrown = (call: () => unknown): Error => { try { call(); } catch (error) { return error as Error; } throw new Error("did not throw"); };
@@ -71,7 +71,7 @@ describe("loading", () => {
   test("what the config plugin imports from its own files is loaded by Node's module loader, which wants `expo/config-plugins.js` spelled out", () => {
     // (`expo.ts` is transpiled by Expo's config loader, which turns its imports into requires; the files it requires are Node's to load.)
     for (const file of ["remote/plugin.ts", "remote/host.ts"]) {
-      const done = spawnSync("node", ["--input-type=module", "-e", `const loaded = await import(${JSON.stringify(new URL(`../src/${file}`, import.meta.url).href)}); if (Object.keys(loaded).length === 0) process.exit(2);`], { encoding: "utf8" });
+      const done = spawnSync("node", ["--input-type=module", "-e", `const loaded = await import(${JSON.stringify(new URL(`../../src/${file}`, import.meta.url).href)}); if (Object.keys(loaded).length === 0) process.exit(2);`], { encoding: "utf8" });
       expect([file, done.status, done.stderr.slice(0, 300)]).toEqual([file, 0, ""]);
     }
   });

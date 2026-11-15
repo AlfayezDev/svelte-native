@@ -1,18 +1,19 @@
 // The `capabilities` option of the Expo config plugin (`src/capabilities.ts`): a capability gives its library's plugin the app's texts, and the half-made states
 // (on without the library, the library without the capability, the capability and the library's own plugin entry both) stop the prebuild.
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { CapabilityConfigError, locationPluginProps, withCapabilities } from "../src/capabilities.ts";
+import { resolve } from "node:path";
+import { CapabilityConfigError, locationPluginProps, withCapabilities } from "../../src/capabilities.ts";
+import { createProject } from "../support/project.ts";
+import { peerRange } from "../support/versions.ts";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-function app(dependencies: Record<string, string>): { root: string; [Symbol.dispose](): void } {
-  const root = mkdtempSync(join(process.env.TMPDIR ?? tmpdir(), "svelte-native-capabilities-"));
-  writeFileSync(join(root, "package.json"), JSON.stringify({ name: "app", dependencies }));
-  return { root, [Symbol.dispose]: () => rmSync(root, { recursive: true, force: true }) };
-}
+/** An app whose package.json lists `dependencies`, in a directory that is removed when the test's block ends. */
+const app = (dependencies: Record<string, string>, manifest: Record<string, unknown> = {}) => {
+  const project = createProject({ "package.json": JSON.stringify({ name: "app", dependencies, ...manifest }) }, "svelte-native-capabilities-");
+  return { root: project.directory, [Symbol.dispose]: () => project.remove() };
+};
+const expoLocation = { "expo-location": peerRange("expo-location") };
 
 const thrown = (call: () => unknown): Error => { try { call(); } catch (error) { return error as Error; } throw new Error("did not throw"); };
 
@@ -51,11 +52,10 @@ describe("capabilities.location", () => {
   });
 
   test("on, while expo-location is left out of autolinking: refused, since its plugin would silently do nothing", () => {
-    using project = app({ "expo-location": "~57.0.21" });
+    using project = app(expoLocation);
     expect(thrown(() => withCapabilities({ name: "app" }, { location: "Shows the stores near you." }, { projectRoot: project.root, load: fakePlugin().load, excluded: ["expo-location"] })).message)
       .toContain("expo-location is left out of autolinking");
-    using inManifest = app({ "expo-location": "~57.0.21" });
-    writeFileSync(join(inManifest.root, "package.json"), JSON.stringify({ name: "app", dependencies: { "expo-location": "~57.0.21" }, expo: { autolinking: { ios: { exclude: ["expo-location"] } } } }));
+    using inManifest = app(expoLocation, { expo: { autolinking: { ios: { exclude: ["expo-location"] } } } });
     expect(thrown(() => withCapabilities({ name: "app" }, { location: "Shows the stores near you." }, { projectRoot: inManifest.root, load: fakePlugin().load })).message).toContain("left out of autolinking");
     // Off, the package.json's exclusion is honored like the plugin's: nothing to say.
     const config = { name: "app" };
@@ -63,13 +63,13 @@ describe("capabilities.location", () => {
   });
 
   test("an expo-location whose plugin fails to load is reported as that, not as missing", () => {
-    using project = app({ "expo-location": "~57.0.21" });
+    using project = app(expoLocation);
     const load = (request: string) => { if (request.endsWith("package.json")) return {}; throw new Error("Cannot find module '@expo/image-utils'"); };
     expect(thrown(() => withCapabilities({ name: "app" }, { location: "Shows the stores near you." }, { projectRoot: project.root, load })).message).toBe("expo-location's config plugin (expo-location/app.plugin.js) failed to load: Cannot find module '@expo/image-utils'");
   });
 
   test("on, with expo-location installed: its plugin is applied with the texts", () => {
-    using project = app({ "expo-location": "~57.0.21" });
+    using project = app(expoLocation);
     const { applied, load } = fakePlugin();
     const result = withCapabilities({ name: "app" }, { location: "Shows the stores near you." }, { projectRoot: project.root, load }) as any;
     expect(result.applied).toBe(true);
@@ -83,7 +83,7 @@ describe("capabilities.location", () => {
   });
 
   test("expo-location installed, the capability off: the prebuild stops instead of shipping Expo's default text", () => {
-    using project = app({ "expo-location": "~57.0.21" });
+    using project = app(expoLocation);
     const error = thrown(() => withCapabilities({ name: "app" }, undefined, { projectRoot: project.root, load: fakePlugin().load }));
     expect(error).toBeInstanceOf(CapabilityConfigError);
     expect(error.message).toContain("expo-location is installed, but the location capability is off");
@@ -93,15 +93,15 @@ describe("capabilities.location", () => {
   });
 
   test("off, and expo-location not installed or left out of autolinking: nothing changes", () => {
-    using bare = app({ expo: "~57.0.27" });
+    using bare = app({ expo: peerRange("expo") });
     const config = { name: "app" };
     expect(withCapabilities(config, undefined, { projectRoot: bare.root })).toBe(config);
-    using excluded = app({ "expo-location": "~57.0.21" });
+    using excluded = app(expoLocation);
     expect(withCapabilities(config, undefined, { projectRoot: excluded.root, excluded: ["expo-location"] })).toBe(config);
   });
 
   test("expo-location's own plugin entry configures it: no capability is needed, and both at once are refused", () => {
-    using project = app({ "expo-location": "~57.0.21" });
+    using project = app(expoLocation);
     for (const entry of ["expo-location", ["expo-location", { locationWhenInUsePermission: "Shows the stores near you." }]]) {
       const config = { name: "app", plugins: [entry] };
       expect(withCapabilities(config, undefined, { projectRoot: project.root })).toBe(config);
@@ -111,9 +111,9 @@ describe("capabilities.location", () => {
   });
 
   test("the real expo-location plugin writes the texts into Info.plist, and none for the background unless asked", async () => {
-    using project = app({ "expo-location": "~57.0.21" });
+    using project = app(expoLocation);
     // The optional peer, installed with the library's development dependencies.
-    const library = createRequire(resolve(import.meta.dirname, "../package.json"));
+    const library = createRequire(resolve(import.meta.dirname, "../../package.json"));
     const { compileModsAsync } = library("expo/config-plugins") as typeof import("expo/config-plugins");
     const plist = async (location: any) => {
       const base = { name: "app", slug: "app", _internal: { projectRoot: project.root }, ios: { infoPlist: { NSLocationAlwaysUsageDescription: "stale" } } };

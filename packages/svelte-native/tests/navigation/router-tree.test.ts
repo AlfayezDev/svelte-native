@@ -210,9 +210,13 @@ test("links open through the root and select the pane; a link no route matches i
   expect(pathsOf(router)).toEqual(["/workspaces", "/acme"]);
   expect(pathsOf(paneRouter("/acme/home"))).toEqual(["/acme/home"]);
   expect(selectedIndex(87)).toBe("0");
+  const [base, above] = router.entries;
   router.replaceBase("/account");
   await settled();
   expect(pathsOf(router)).toEqual(["/account", "/acme"]);
+  expect(router.entries[0]).not.toBe(base);
+  expect(router.entries[1]).toBe(above); // what was above the base is the same screen, not rebuilt
+  expect(router.screens.filter((screen) => !screen.leaving).map((screen) => screen.canGoBack)).toEqual([false, true]);
   expect(() => router.replaceBase("/acme/home")).toThrow("not a page of this navigator");
   expect(() => router.goto("/nowhere/at/all")).toThrow("No native screen for /nowhere/at/all");
 });

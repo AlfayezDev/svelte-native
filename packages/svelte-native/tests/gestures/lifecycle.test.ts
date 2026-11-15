@@ -1,5 +1,5 @@
 import { test, expect, spyOn } from "bun:test";
-import { load, settle, world, anim, byId, callsOf, type Loaded, type NativeCall } from "./harness.ts";
+import { load, settle, world, anim, byId, callsOf, type Loaded, type NativeCall } from "./support/harness.ts";
 
 /** Mount, update, destroy and remount of nodes with `gesture` attributes: what the native module and Reanimated are told, and when. */
 type App = { set(items: { id: string; gesture?: unknown; collapsable?: boolean }[]): void };
@@ -168,21 +168,6 @@ test("one gesture object on two views throws RNGH's message and attaches nothing
   expect(() => m.startSurface(62, m.Fixture, { initial: [{ id: "a", gesture: shared }, { id: "b", gesture: shared }] })).toThrow("Handler with tag 1 already exists. Please ensure that no Gesture instance is used across multiple GestureDetectors.");
   expect(callsOf("createGestureHandler")).toHaveLength(1);
   expect(callsOf("attachGestureHandler")).toHaveLength(1);
-});
-
-test("a gesture object handed from a node that left to a new one is not shared", async () => {
-  const { m, app, G } = await mount();
-  const gesture = G.Pan().onUpdate(w());
-  app.set([{ id: "a", gesture }]);
-  await settle(m);
-  const first = tagOf();
-  take();
-  app.set([{ id: "b", gesture }]);
-  await settle(m);
-  const calls = take();
-  expect(names(calls)).toEqual(["dropGestureHandler", "createGestureHandler", "attachGestureHandler", "updateGestureHandler", "flushOperations"]);
-  expect(calls[0]).toEqual(["dropGestureHandler", first]);
-  expect(calls[2]?.[2]).toBe(byId(61, "b")?.tag);
 });
 
 test("a hot remount drops every handler before the next surface creates its own; handler tags are fresh each time", async () => {
@@ -366,22 +351,32 @@ test("an update that changes the test id registers the handler under the new id"
   expect(m.probe.findHandlerByTestID("second")?.handlerTag).toBe(tag);
 });
 
-test("a gesture object handed from a node that dropped its attribute to a node earlier in the tree is free in the same commit", async () => {
-  const { m, app, G } = await mount({ initial: [{ id: "b" }, { id: "a", gesture: undefined }] });
-  const gesture = G.Pan().onUpdate(w());
-  app.set([{ id: "b" }, { id: "a", gesture }]);
-  await settle(m);
-  const first = tagOf();
-  take();
-  // `b` comes first in the tree and takes the object `a` held until this commit: the removal must run before the attach.
-  app.set([{ id: "b", gesture }, { id: "a", gesture: undefined }]);
-  await settle(m);
-  const calls = take();
-  expect(names(calls)).toEqual(["dropGestureHandler", "createGestureHandler", "attachGestureHandler", "updateGestureHandler", "flushOperations"]);
-  expect(calls[0]).toEqual(["dropGestureHandler", first]);
-  expect(calls[2]?.[2]).toBe(byId(61, "b")?.tag);
-  expect(m.fabricStats().gestures).toEqual({ records: 1, handlers: 1, eventHandlers: 1 });
-});
+// A gesture object belongs to one node at a time. When a node lets go of it, the next node that holds it gets handlers of its own: the old ones are dropped before the new
+// ones are created, whether the first node left (or lost the attribute) in an earlier commit or in the same one as a node that comes before it in the tree takes the object.
+const handOvers: { name: string; initial?: { id: string }[]; before: (gesture: unknown) => { id: string; gesture?: unknown }[]; after: (gesture: unknown) => { id: string; gesture?: unknown }[]; to: string }[] = [
+  { name: "from a node that left to a new one", before: (gesture) => [{ id: "a", gesture }], after: (gesture) => [{ id: "b", gesture }], to: "b" },
+  {
+    name: "from a node that dropped its attribute to a node earlier in the tree, in the same commit", initial: [{ id: "b" }, { id: "a" }],
+    before: (gesture) => [{ id: "b" }, { id: "a", gesture }], after: (gesture) => [{ id: "b", gesture }, { id: "a", gesture: undefined }], to: "b",
+  },
+];
+for (const { name, initial, before, after, to } of handOvers) {
+  test(`a gesture object handed ${name} is not shared`, async () => {
+    const { m, app, G } = await mount({ initial });
+    const gesture = G.Pan().onUpdate(w());
+    app.set(before(gesture));
+    await settle(m);
+    const first = tagOf();
+    take();
+    app.set(after(gesture));
+    await settle(m);
+    const calls = take();
+    expect(names(calls)).toEqual(["dropGestureHandler", "createGestureHandler", "attachGestureHandler", "updateGestureHandler", "flushOperations"]);
+    expect(calls[0]).toEqual(["dropGestureHandler", first]);
+    expect(calls[2]?.[2]).toBe(byId(61, to)?.tag);
+    expect(m.fabricStats().gestures).toEqual({ records: 1, handlers: 1, eventHandlers: 1 });
+  });
+}
 
 test("attaching again a composition that keeps its gesture objects sends each handler's config once: no handler reacts to its own mount", async () => {
   const { m, app, G } = await mount();

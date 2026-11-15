@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { load, settle, world, byId, callsOf } from "./harness.ts";
+import { load, settle, world, byId, callsOf } from "./support/harness.ts";
 
 // A JS responder that blocks the native ones reaches react-native-gesture-handler's module (`handleSetJSResponder`), as React Native's
 // UIManager.setJSResponder does once RNGH has patched it, and only when the gesture host is loaded.

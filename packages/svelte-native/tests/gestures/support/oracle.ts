@@ -1,14 +1,16 @@
 /**
  * react-native-gesture-handler's own detector code as an oracle: the modules the Svelte host replaces (`GestureDetector/utils`,
- * `needsToReattach`, `handlers/utils`, `eventReceiver`), bundled against the same `react-native` stub `capture-golden.mjs` uses,
+ * `needsToReattach`, `handlers/utils`, `eventReceiver`), bundled against the same `react-native` stub `fixtures/capture-golden.mjs` uses,
  * with their own copy of RNGH's registries and builders. A test feeds the oracle and the Svelte host the same input and compares.
  */
 import { build } from "esbuild";
+import { afterAll, beforeAll } from "bun:test";
 import { createRequire } from "node:module";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import { pathToFileURL } from "node:url";
+import { evaluate } from "../../support/bundle.ts";
+import { snapshotGlobals } from "../../support/globals.ts";
 
 const require = createRequire(import.meta.url);
 const root = join(dirname(require.resolve("react-native-gesture-handler/package.json")), "src");
@@ -56,12 +58,12 @@ export type Oracle = {
   TouchEventType: Record<string, number>;
 };
 
-export async function loadOracle(): Promise<Oracle> {
+/** RNGH's modules bundled once per run: building them is most of the oracle's cost, and each file that uses it evaluates the text afresh. */
+let built: Promise<string> | undefined;
+async function bundleOracle(): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "svelte-native-gestures-oracle-"));
   try {
     await writeFile(join(directory, "entry.ts"), entry);
-    const globals = globalThis as { RN$Bridgeless?: boolean };
-    globals.RN$Bridgeless = true; // RNGH's remote-debugging check, which turns worklets off, reads this
     await build({
       entryPoints: [join(directory, "entry.ts")], bundle: true, format: "esm", platform: "node", outfile: join(directory, "out.mjs"), logLevel: "warning",
       define: { __DEV__: "true" },
@@ -75,8 +77,30 @@ export async function loadOracle(): Promise<Oracle> {
         b.onLoad({ filter: /.*/, namespace: "no-reanimated" }, () => ({ contents: "throw new Error('react-native-reanimated is not available in the oracle');", loader: "js" }));
       } }],
     });
-    return await import(`${pathToFileURL(join(directory, "out.mjs")).href}?${Math.random()}`) as Oracle;
+    return await readFile(join(directory, "out.mjs"), "utf8");
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+}
+
+/** A fresh evaluation of the oracle. RNGH's modules read `global.RN$Bridgeless` (its remote-debugging check, which turns worklets off) when they run, so it is set for as long as the oracle is used. */
+export async function loadOracle(): Promise<Oracle> {
+  (globalThis as { RN$Bridgeless?: boolean }).RN$Bridgeless = true;
+  built ??= bundleOracle();
+  return evaluate<Oracle>(await built);
+}
+
+/**
+ * The oracle for the tests of a file: loaded before the first and put away, with the global it sets, after the last. Call it at the top level of the file; the function it returns is
+ * the oracle once the tests run.
+ */
+export function useOracle(): () => Oracle {
+  let oracle: Oracle | undefined;
+  let snapshot: ReturnType<typeof snapshotGlobals> | undefined;
+  beforeAll(async () => {
+    snapshot = snapshotGlobals();
+    oracle = await loadOracle();
+  });
+  afterAll(() => snapshot?.restore());
+  return () => oracle as Oracle;
 }

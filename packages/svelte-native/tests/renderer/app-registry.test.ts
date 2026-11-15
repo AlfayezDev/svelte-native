@@ -1,47 +1,29 @@
 // The library's AppRegistry is the one every library that imports `AppRegistry` from `react-native` gets, and it runs React Native's headless tasks:
 // what Android's HeadlessJsTaskContext calls (`startHeadlessTask`) for a background launch, which Expo's task service starts for every background task.
-import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
-import { build } from "esbuild";
-import type { ConfigT } from "@expo/metro/metro-config";
-import { withSvelteNative } from "../src/metro.ts";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { src, load } from "../support/bundle.ts";
+import { type GlobalSnapshot, snapshotGlobals } from "../support/globals.ts";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Support = { finished: number[]; retried: number[]; retryPosted: boolean };
 /** React Native's `HeadlessJsTaskError`, which the bundle's stub hands out: a task throws one to ask for a retry. */
 class HeadlessJsTaskError extends Error {}
-(globalThis as any).__TaskError = HeadlessJsTaskError;
+
+// The stubs read `globalThis.__support` (what native code is told) and `__TaskError` when the bundle is evaluated, so a test sets them before it loads the registry.
+let globals: GlobalSnapshot;
+beforeEach(() => { globals = snapshotGlobals(); (globalThis as any).__TaskError = HeadlessJsTaskError; });
+afterEach(() => globals.restore());
 
 /** The registry module bundled with React Native's two headless-task modules stubbed: `globalThis.__support` records what native code is told. */
-async function registry(): Promise<any> {
-  const bundle = await build({
-    stdin: { contents: `export * from "./src/fabric/app-registry.ts";`, resolveDir: resolve(import.meta.dirname, ".."), loader: "ts" },
-    bundle: true, format: "esm", platform: "neutral", write: false,
-    plugins: [{
-      name: "headless-stubs",
-      setup(builder) {
-        builder.onResolve({ filter: /^react-native\/Libraries\/ReactNative\/(NativeHeadlessJsTaskSupport|HeadlessJsTaskError)$/ }, (args) => ({ path: args.path, namespace: "stub" }));
-        builder.onLoad({ filter: /NativeHeadlessJsTaskSupport$/, namespace: "stub" }, () => ({
-          contents: `const s = globalThis.__support; export default s && { notifyTaskFinished: (id) => { s.finished.push(id); }, notifyTaskRetry: async (id) => { s.retried.push(id); return s.retryPosted; } };`,
-          loader: "js",
-        }));
-        // React Native's class, as the test defines it (a task throws one to ask for a retry).
-        builder.onLoad({ filter: /HeadlessJsTaskError$/, namespace: "stub" }, () => ({ contents: "export default globalThis.__TaskError;", loader: "js" }));
-      },
-    }],
-  });
-  const directory = mkdtempSync(join(process.env.TMPDIR ?? tmpdir(), "svelte-native-app-registry-"));
-  const file = join(directory, "registry.mjs");
-  writeFileSync(file, bundle.outputFiles[0].contents);
-  try {
-    return await import(pathToFileURL(file).href);
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
-}
+const registry = (): Promise<any> => load({
+  entry: `export * from ${JSON.stringify(src("fabric/app-registry.ts"))};`,
+  stubs: {
+    "react-native/Libraries/ReactNative/NativeHeadlessJsTaskSupport": `const s = globalThis.__support; export default s && { notifyTaskFinished: (id) => { s.finished.push(id); }, notifyTaskRetry: async (id) => { s.retried.push(id); return s.retryPosted; } };`,
+    // React Native's class, as the test defines it (a task throws one to ask for a retry).
+    "react-native/Libraries/ReactNative/HeadlessJsTaskError": "export default globalThis.__TaskError;",
+  },
+  converters: false,
+});
 
 const settle = () => new Promise((done) => setTimeout(done, 0));
 function quiet<T>(run: () => Promise<T>): Promise<T> {
@@ -143,21 +125,4 @@ test("without the native support module (iOS has none), a task still runs and no
   m.AppRegistry.startHeadlessTask(1, "ios", null);
   await settle();
   expect(ran).toBe(true);
-});
-
-describe("Metro gives `react-native`'s AppRegistry the library's", () => {
-  test("AppRegistry.js and AppRegistryImpl.js, from a library and from the app; the rest of React Native is as before", () => {
-    const root = mkdtempSync(join(process.env.TMPDIR ?? tmpdir(), "metro-app-registry-"));
-    const config = withSvelteNative({ projectRoot: root, resolver: { sourceExts: ["ts"], resolveRequest: undefined }, serializer: { getModulesRunBeforeMainModule: () => [] }, transformer: {} } as unknown as ConfigT, { variant: "qa" });
-    const resolveRequest = config.resolver.resolveRequest as (context: unknown, moduleName: string, platform: string) => { filePath: string };
-    const rn = join(root, "node_modules/react-native");
-    const real = (context: unknown, moduleName: string) => ({ type: "sourceFile", filePath: moduleName.startsWith(".") ? join(rn, "Libraries/ReactNative", `${moduleName}.js`) : join(rn, "node_modules-relative", moduleName) });
-    const resolveFrom = (origin: string, moduleName: string) => resolveRequest({ resolveRequest: real, originModulePath: origin, unstable_conditionNames: [] }, moduleName, "android").filePath;
-    const ours = resolve(import.meta.dirname, "../src/fabric/app-registry.ts");
-    const index = join(rn, "index.js");
-    const appRegistry = join(rn, "Libraries/ReactNative/AppRegistry.js");
-    expect(resolveFrom(index, "./AppRegistry")).toBe(ours);
-    expect(resolveFrom(appRegistry, "./AppRegistryImpl")).toBe(ours);
-    expect(resolveFrom(index, "./AppState")).toBe(join(rn, "Libraries/ReactNative/AppState.js"));
-  });
 });

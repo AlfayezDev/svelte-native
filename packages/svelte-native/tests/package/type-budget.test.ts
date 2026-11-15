@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { packageRoot as packageDirectory } from "../support/paths.ts";
 
 /**
  * What the library costs an app's type checker. The package ships declarations (`dist/types`, the `types` condition of each entry) so that an app's `tsc`, `svelte-check` and
@@ -34,7 +35,7 @@ const budget = {
   core: { files: 262, instantiations: 1320 },
 } as const;
 
-const packageRoot = realpathSync(resolve(import.meta.dirname, ".."));
+const packageRoot = realpathSync(packageDirectory);
 /** `tsc --listFiles` prints real paths: these name the package's sources and its declarations. */
 const sourceFiles = `${join(packageRoot, "src")}/`;
 const declarationFiles = `${join(packageRoot, "dist/types")}/`;
@@ -78,7 +79,18 @@ writeConfig("tsconfig.source.json", "view-text", { customConditions: ["svelte-na
 
 type Measure = { files: number; instantiations: number; listed: string[]; errors: string[]; seconds: number };
 
+/** One `tsc` run per program: three tests read the main entry's. */
+const measured = new Map<string, Measure>();
 function measure(config: string): Measure {
+  let result = measured.get(config);
+  if (!result) {
+    result = run(config);
+    measured.set(config, result);
+  }
+  return result;
+}
+
+function run(config: string): Measure {
   if (!node) throw new Error("node is not on the PATH: tsc runs under it");
   const done = Bun.spawnSync([node, tsc, "-p", join(app, config), "--extendedDiagnostics", "--listFiles"], { cwd: app, stdout: "pipe", stderr: "pipe" });
   const lines = done.stdout.toString().split("\n");
@@ -93,7 +105,7 @@ function measure(config: string): Measure {
 }
 
 const budgetMessage = (name: string, what: string, got: number, limit: number) =>
-  `${name}: ${what} ${got} is over the budget of ${limit} (tests/type-budget.test.ts: what an app's type checker loads of the package and its peers; its header says how to find what grew and how to re-measure)`;
+  `${name}: ${what} ${got} is over the budget of ${limit} (tests/package/type-budget.test.ts: what an app's type checker loads of the package and its peers; its header says how to find what grew and how to re-measure)`;
 
 describe("an app that has the package installed type-checks against dist/types, and the program stays small", () => {
   for (const [name, limit] of Object.entries(budget)) {

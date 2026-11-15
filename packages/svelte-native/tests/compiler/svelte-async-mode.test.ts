@@ -3,7 +3,8 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { compile } from "svelte/compiler";
-import { ASYNC_ENVIRONMENT_VARIABLE, componentOptions, moduleOptions } from "../src/compile-options.ts";
+import { ASYNC_ENVIRONMENT_VARIABLE, componentOptions, moduleOptions } from "../../src/compile-options.ts";
+import { repoRoot } from "../support/paths.ts";
 
 /**
  * Native bundles are compiled without Svelte's async mode (`experimental.async`) unless the app asks for it (`withSvelteNative(config, { async: true })`, which sets `SVELTE_NATIVE_ASYNC`
@@ -12,7 +13,7 @@ import { ASYNC_ENVIRONMENT_VARIABLE, componentOptions, moduleOptions } from "../
  * waits for `requestAnimationFrame` or a timer instead, a turn of the event loop in which the load's events could be delivered before the hold. The web build does turn the flag on
  * (`apps/qa/vite.config.ts`, `kit.compilerOptions`), so this pins that the native path does not by default: the Metro transformer's compile options, what the Vite plugin forwards, and Svelte's runtime.
  */
-const root = resolve(import.meta.dirname, "../../..");
+const root = repoRoot;
 // The Svelte copy the native bundle uses: Metro resolves every `svelte` import to the one next to the package (`metro.ts`, `nativeSvelte`).
 const svelte = dirname(createRequire(import.meta.url).resolve("svelte/package.json"));
 const read = (...path: string[]): string => readFileSync(join(root, ...path), "utf8");

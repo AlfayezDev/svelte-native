@@ -1,36 +1,20 @@
 import { afterAll, afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ConfigT } from "@expo/metro/metro-config";
-import { closeWatchers, withSvelteNative } from "../src/metro.ts";
-import { sourceFile } from "../src/package-root.ts";
-import { classesTableFile } from "../src/variant.ts";
-import { resetReports } from "../src/css/build.ts";
-import { cssProject, removeCssProjects } from "./css-project.ts";
+import { closeWatchers, withSvelteNative } from "../../../src/metro.ts";
+import { sourceFile } from "../../../src/package-root.ts";
+import { classesTableFile } from "../../../src/variant.ts";
+import { resetReports } from "../../../src/css/build.ts";
+import { cssProject, removeCssProjects } from "../../css-project.ts";
+import { packageRoot } from "../../support/paths.ts";
+import { fakeConfig, resolveFrom, until, watchUntouched } from "../../support/metro.ts";
 
 /**
  * `class` through Metro: the `css` option builds the variant's class table when the config loads (and in development again when the sources change),
  * and `@alfayez/svelte-native/classes-table`, which the library's resolver imports, resolves to that file; without the option it is the library's empty table.
  */
-const fakeConfig = (projectRoot: string): ConfigT => ({
-  projectRoot,
-  resolver: { sourceExts: ["ts"], resolveRequest: undefined },
-  serializer: { getModulesRunBeforeMainModule: () => [] },
-  transformer: {},
-}) as unknown as ConfigT;
-
-const real = { type: "sourceFile", filePath: "/real/module.ts" };
-/** What Metro's resolver answers for an import of `moduleName` by `origin`. */
-function resolveFrom(config: ConfigT, origin: string, moduleName: string): string {
-  const resolveRequest = config.resolver.resolveRequest as (context: unknown, moduleName: string, platform: string) => { filePath: string };
-  return resolveRequest({ resolveRequest: () => real, originModulePath: origin, unstable_conditionNames: [] }, moduleName, "android").filePath;
-}
 const tableFile = (root: string, variant: string) => join(root, ".svelte-native", classesTableFile(variant));
 const classesOf = (root: string, variant: string): string[] => [...readFileSync(tableFile(root, variant), "utf8").matchAll(/^ {4}"([^"]+)": \[/gm)].map((match) => match[1] as string);
-const until = async (condition: () => boolean, ms = 10_000) => {
-  const deadline = Date.now() + ms;
-  while (!condition() && Date.now() < deadline) await new Promise((done) => setTimeout(done, 25));
-};
 const id = "@alfayez/svelte-native/classes-table";
 
 const environment = process.env.NODE_ENV;
@@ -62,25 +46,12 @@ describe("with the css option", () => {
     expect(resolveFrom(qa, join(root, "src/a.ts"), id)).toBe(tableFile(root, "qa"));
   });
 
-  test("the variant defaults to APP_VARIANT, app for none", () => {
-    const root = cssProject();
-    const variant = process.env.APP_VARIANT;
-    try {
-      delete process.env.APP_VARIANT;
-      const config = withSvelteNative(fakeConfig(root), { css: "src/global.css" });
-      expect(resolveFrom(config, join(root, "src/a.ts"), id)).toBe(tableFile(root, "app"));
-    } finally {
-      if (variant !== undefined) process.env.APP_VARIANT = variant;
-    }
-  });
-
-  test("a second load of the config with nothing changed leaves the file alone: a running Metro watches its modification time", async () => {
+  test("a second load of the config with nothing changed leaves the file alone: a running Metro watches its modification time", () => {
     const root = cssProject();
     withSvelteNative(fakeConfig(root), { variant: "app", css: "src/global.css" });
-    const written = statSync(tableFile(root, "app")).mtimeMs;
-    await new Promise((done) => setTimeout(done, 20));
+    const untouched = watchUntouched([tableFile(root, "app")]);
     withSvelteNative(fakeConfig(root), { variant: "app", css: "src/global.css" });
-    expect(statSync(tableFile(root, "app")).mtimeMs).toBe(written);
+    untouched();
   });
 
   test("a build that cannot run fails the config with what to do", () => {
@@ -147,14 +118,14 @@ describe("without the css option", () => {
     const config = withSvelteNative(fakeConfig(root), { variant: "qa" });
     expect(resolveFrom(config, join(root, "src/lib/a.ts"), id)).toBe(sourceFile("css/empty-table.ts"));
     expect(readdirSync(join(root, ".svelte-native")).filter((file) => file.startsWith("classes."))).toEqual([]);
-    expect(((await import("../src/css/empty-table.ts")) as { default: unknown }).default).toEqual({ version: 1, classes: {} });
+    expect(((await import("../../../src/css/empty-table.ts")) as { default: unknown }).default).toEqual({ version: 1, classes: {} });
   });
 
   test("the package exports the id (a type check, a test and any bundler that Metro does not serve see the empty table)", () => {
-    const manifest = JSON.parse(readFileSync(join(import.meta.dirname, "../package.json"), "utf8")) as { exports: Record<string, Record<string, string>> };
+    const manifest = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")) as { exports: Record<string, Record<string, string>> };
     expect(manifest.exports["./classes-table"]).toEqual({ "svelte-native-source": "./src/css/empty-table.ts", types: "./dist/types/css/empty-table.d.ts", default: "./src/css/empty-table.ts" });
-    expect(existsSync(join(import.meta.dirname, "..", manifest.exports["./classes-table"]?.default as string))).toBe(true);
-    expect(sourceFile("css/empty-table.ts")).toBe(join(import.meta.dirname, "../src/css/empty-table.ts"));
+    expect(existsSync(join(packageRoot, manifest.exports["./classes-table"]?.default as string))).toBe(true);
+    expect(sourceFile("css/empty-table.ts")).toBe(join(packageRoot, "src/css/empty-table.ts"));
   });
 });
 

@@ -1,30 +1,20 @@
 import { describe, expect, test } from "bun:test";
 import { createRequire } from "node:module";
-import { mkdtempSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ConfigT } from "@expo/metro/metro-config";
-import { isInPackage, stubCoreSource, stubSource, withSvelteNative } from "../src/metro.ts";
+import { isInPackage, stubCoreSource, stubSource, withSvelteNative } from "../../../src/metro.ts";
+import { type RealResolver, fakeConfig, resolveFrom, watchUntouched } from "../../support/metro.ts";
+import { createProject } from "../../support/project.ts";
 
-/** The part of Metro's config `withSvelteNative` reads. */
-function fakeConfig(projectRoot: string): ConfigT {
-  return {
-    projectRoot,
-    resolver: { sourceExts: ["ts"], resolveRequest: undefined },
-    serializer: { getModulesRunBeforeMainModule: () => [] },
-    transformer: {},
-  } as unknown as ConfigT;
-}
-
-const real = { resolveRequest: (_context: unknown, moduleName: string) => ({ type: "sourceFile", filePath: `/real/${moduleName}` }) };
-const resolve = (config: ConfigT, moduleName: string, origin = "/app/src/a.ts") => {
-  const resolveRequest = config.resolver.resolveRequest as (context: unknown, moduleName: string, platform: string) => { filePath: string };
-  return resolveRequest({ ...real, originModulePath: origin, unstable_conditionNames: [] }, moduleName, "android").filePath;
-};
+/** What Metro's own resolver answers: a file named after the module. */
+const real: RealResolver = (_context, moduleName) => ({ type: "sourceFile", filePath: `/real/${moduleName}` });
+const resolve = (config: ConfigT, moduleName: string, origin = "/app/src/a.ts") => resolveFrom(config, origin, moduleName, real);
 
 describe("Metro resolves the packages an app does not link to stubs", () => {
   test("a package and every path inside it, and nothing else", () => {
-    const root = mkdtempSync(join(tmpdir(), "metro-stubs-"));
+    using project = createProject({}, "metro-stubs-");
+    const root = project.directory;
     const config = withSvelteNative(fakeConfig(root), { stubbedPackages: ["react-native-mmkv", "@react-native-firebase/app", "expo-haptics"], variant: "qa" });
     const stub = (name: string) => resolve(config, name);
     expect(stub("react-native-mmkv")).toBe(join(root, ".svelte-native/stubs/qa/react-native-mmkv.js"));
@@ -41,7 +31,8 @@ describe("Metro resolves the packages an app does not link to stubs", () => {
     expect(isInPackage("ab", "a")).toBe(false);
   });
   test("the stub files are written when the config is made, one core and one line per package", () => {
-    const root = mkdtempSync(join(tmpdir(), "metro-stubs-"));
+    using project = createProject({}, "metro-stubs-");
+    const root = project.directory;
     withSvelteNative(fakeConfig(root), { stubbedPackages: ["react-native-mmkv", "expo-haptics"], variant: "production" });
     const directory = join(root, ".svelte-native/stubs/production");
     expect(readdirSync(directory).toSorted()).toEqual(["_core.js", "expo-haptics.js", "react-native-mmkv.js"]);
@@ -50,22 +41,21 @@ describe("Metro resolves the packages an app does not link to stubs", () => {
     expect(stubSource("expo-haptics", "production")).toContain('require("./_core.js")("expo-haptics", "production")');
   });
   test("each variant's stubs are files of their own, and a stub that is current is not written again: a bundle leaves a running Metro's files alone", () => {
-    const root = mkdtempSync(join(tmpdir(), "metro-stubs-"));
+    using project = createProject({}, "metro-stubs-");
+    const root = project.directory;
     withSvelteNative(fakeConfig(root), { stubbedPackages: ["react-native-mmkv"], stubbedFiles: [join(root, "src/lib/smoke-checks.ts")], variant: "qa" });
     const files = ["_core.js", "react-native-mmkv.js", "src_lib_smoke-checks.js"].map((name) => join(root, ".svelte-native/stubs/qa", name));
-    const before = files.map((file) => statSync(file).mtimeMs);
     const text = files.map((file) => readFileSync(file, "utf8"));
-    const start = Date.now();
-    while (Date.now() - start < 20) { /* the clock moves on, so a rewrite shows in the modification time */ }
+    const untouched = watchUntouched(files);
     withSvelteNative(fakeConfig(root), { stubbedPackages: ["react-native-mmkv"], stubbedFiles: [join(root, "src/lib/smoke-checks.ts")], variant: "production" });
     withSvelteNative(fakeConfig(root), { stubbedPackages: ["react-native-mmkv"], stubbedFiles: [join(root, "src/lib/smoke-checks.ts")], variant: "qa" });
-    expect(files.map((file) => statSync(file).mtimeMs)).toEqual(before);
-    expect(files.map((file) => readFileSync(file, "utf8"))).toEqual(text);
+    untouched();
     expect(readFileSync(join(root, ".svelte-native/stubs/production/react-native-mmkv.js"), "utf8")).toContain('"production"');
     expect(text[1]).toContain('"qa"');
   });
   test("with nothing to stub the config is as it was: no files, no change to the cache key", () => {
-    const root = mkdtempSync(join(tmpdir(), "metro-stubs-"));
+    using project = createProject({}, "metro-stubs-");
+    const root = project.directory;
     const plain = withSvelteNative(fakeConfig(root));
     expect(readdirSync(root)).toEqual([]);
     expect(plain.cacheVersion).toBe("+svelte-native-2");
@@ -74,7 +64,8 @@ describe("Metro resolves the packages an app does not link to stubs", () => {
     expect(withSvelteNative(fakeConfig(root), { stubbedPackages: ["x"], variant: "production" }).cacheVersion).toBe("+svelte-native-2+stubs-production");
   });
   test("a source file of the app can be stubbed the same way, by the import that reaches it", () => {
-    const root = mkdtempSync(join(tmpdir(), "metro-stubs-"));
+    using project = createProject({}, "metro-stubs-");
+    const root = project.directory;
     const checks = join(root, "src/lib/smoke-checks.ts");
     const config = withSvelteNative(fakeConfig(root), { stubbedFiles: [checks], variant: "qa" });
     const stubbed = join(root, ".svelte-native/stubs/qa/src_lib_smoke-checks.js");
@@ -89,21 +80,17 @@ describe("Metro resolves the packages an app does not link to stubs", () => {
 
 describe("Metro resolves a directory the app does not carry to the directory's stub", () => {
   /** The real resolver finds a file: a `#lib/…` alias under the app's `src/lib`, a relative import from the origin, anything else under node_modules. */
-  const resolving = (root: string) => ({
-    resolveRequest: (context: { originModulePath: string }, moduleName: string) => ({
-      type: "sourceFile",
-      filePath: moduleName.startsWith("#lib/") ? join(root, "src/lib", moduleName.slice("#lib/".length))
-        : moduleName.startsWith(".") ? join(dirname(context.originModulePath), moduleName)
-        : join(root, "node_modules", moduleName),
-    }),
+  const resolving = (root: string): RealResolver => (context, moduleName) => ({
+    type: "sourceFile",
+    filePath: moduleName.startsWith("#lib/") ? join(root, "src/lib", moduleName.slice("#lib/".length))
+      : moduleName.startsWith(".") ? join(dirname(context.originModulePath), moduleName)
+      : join(root, "node_modules", moduleName),
   });
-  const resolveIn = (config: ConfigT, root: string, moduleName: string, origin: string) => {
-    const resolveRequest = config.resolver.resolveRequest as (context: unknown, moduleName: string, platform: string) => { filePath: string };
-    return resolveRequest({ ...resolving(root), originModulePath: origin, unstable_conditionNames: [] }, moduleName, "android").filePath;
-  };
+  const resolveIn = (config: ConfigT, root: string, moduleName: string, origin: string) => resolveFrom(config, origin, moduleName, resolving(root));
 
   test("every import that lands in it, by alias or by path, and nothing beside it", () => {
-    const root = mkdtempSync(join(tmpdir(), "metro-stubs-"));
+    using project = createProject({}, "metro-stubs-");
+    const root = project.directory;
     const config = withSvelteNative(fakeConfig(root), { stubbedDirectories: [join(root, "src/lib/native/dev"), join(root, "src/routes/__dev/")], variant: "production" });
     const lab = join(root, ".svelte-native/stubs/production/src_lib_native_dev_.js");
     const routes = join(root, ".svelte-native/stubs/production/src_routes___dev_.js");
@@ -121,7 +108,8 @@ describe("Metro resolves a directory the app does not carry to the directory's s
     expect(readFileSync(routes, "utf8")).toBe(stubSource("src/routes/__dev/", "production"));
   });
   test("a stubbed file is stubbed by any import of it, and the cache key tells the variants apart", () => {
-    const root = mkdtempSync(join(tmpdir(), "metro-stubs-"));
+    using project = createProject({}, "metro-stubs-");
+    const root = project.directory;
     const config = withSvelteNative(fakeConfig(root), { stubbedFiles: [join(root, "src/lib/smoke-checks.ts")], variant: "qa" });
     expect(resolveIn(config, root, "#lib/smoke-checks.ts", join(root, "src/routes/a.ts"))).toBe(join(root, ".svelte-native/stubs/qa/src_lib_smoke-checks.js"));
     expect(resolveIn(config, root, "#lib/smoke.ts", join(root, "src/routes/a.ts"))).toBe(join(root, "src/lib/smoke.ts"));
@@ -129,7 +117,8 @@ describe("Metro resolves a directory the app does not carry to the directory's s
     expect(withSvelteNative(fakeConfig(root), { stubbedDirectories: [] }).cacheVersion).toBe("+svelte-native-2");
   });
   test("what is in the directory is never read: a stub throws when a lab module's export is used", () => {
-    const root = mkdtempSync(join(tmpdir(), "metro-stubs-"));
+    using project = createProject({}, "metro-stubs-");
+    const root = project.directory;
     withSvelteNative(fakeConfig(root), { stubbedDirectories: [join(root, "src/lib/native/dev")], variant: "production" });
     const stub = createRequire(import.meta.url)(join(root, ".svelte-native/stubs/production/src_lib_native_dev_.js")) as Record<string, unknown>;
     expect(stub.__esModule).toBe(false);
@@ -139,7 +128,8 @@ describe("Metro resolves a directory the app does not carry to the directory's s
 
 describe("what a stub does", () => {
   const load = (name: string, variant: string): unknown => {
-    const root = mkdtempSync(join(tmpdir(), "metro-stub-run-"));
+    using project = createProject({}, "metro-stub-run-");
+    const root = project.directory;
     withSvelteNative(fakeConfig(root), { stubbedPackages: [name], variant });
     return createRequire(import.meta.url)(join(root, ".svelte-native/stubs", variant, `${name.replace(/[^A-Za-z0-9_.-]/g, "_")}.js`));
   };

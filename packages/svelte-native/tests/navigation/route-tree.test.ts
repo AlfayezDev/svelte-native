@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildTree, plan, resolve, type RouteNode, type RouteFile } from "../src/route-tree.ts";
+import { buildTree, plan, resolve, type RouteNode, type RouteFile } from "../../src/route-tree.ts";
 
 /**
  * Golden vectors of the route tree contract (SPEC.md "Route tree: layouts as navigators"). `buildTree` takes the route files

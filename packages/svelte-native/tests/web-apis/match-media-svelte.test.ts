@@ -1,6 +1,8 @@
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
-import type { NativeNode } from "../src/renderer.ts";
-import { hostGlobals, load, resize, settle, switchScheme, type World } from "./match-media-harness.ts";
+import { resolve } from "node:path";
+import { src } from "../support/bundle.ts";
+import type { NativeNode } from "../../src/renderer.ts";
+import { hostGlobals, load, resize, settle, switchScheme, type World } from "./support/match-media-harness.ts";
 
 /**
  * Svelte's own `MediaQuery` (`svelte/reactivity`) on the device: it calls `window.matchMedia` and listens with `svelte/events`' `on`, which a component reaches through the library's renderer.
@@ -9,13 +11,14 @@ import { hostGlobals, load, resize, settle, switchScheme, type World } from "./m
 const host = hostGlobals();
 let world: World;
 
-const entry = `import "../src/polyfills.ts";
+const fixtures = resolve(import.meta.dirname, "fixtures");
+const entry = `import ${JSON.stringify(src("polyfills.ts"))};
   import { MediaQuery } from "svelte/reactivity";
-  import Fixture from "./match-media-fixture.svelte";
-  import renderer, { NativeNode } from "../src/renderer.ts";
-  import { mergeHostProps } from "../src/native-props.ts";
+  import Fixture from ${JSON.stringify(resolve(fixtures, "match-media-fixture.svelte"))};
+  import renderer, { NativeNode } from ${JSON.stringify(src("renderer.ts"))};
+  import { mergeHostProps } from ${JSON.stringify(src("native-props.ts"))};
   import { flushSync, mount, tick, unmount } from "svelte";
-  export { watch } from "./match-media-fixture.svelte.ts";
+  export { watch } from ${JSON.stringify(resolve(fixtures, "match-media-fixture.svelte.ts"))};
   export { MediaQuery, Fixture, renderer, NativeNode, mergeHostProps, flushSync, mount, tick, unmount };`;
 
 type Module = {

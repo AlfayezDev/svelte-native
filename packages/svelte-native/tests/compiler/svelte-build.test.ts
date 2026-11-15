@@ -2,7 +2,8 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { assertCustomRenderer, customRendererMessage, inspectSvelte, requiredSvelte } from "../src/svelte-build.ts";
+import { assertCustomRenderer, customRendererMessage, inspectSvelte, requiredSvelte } from "../../src/svelte-build.ts";
+import { packageRoot, repoRoot } from "../support/paths.ts";
 
 // The library compiles with the custom-renderer build of Svelte (an unmerged pull request) whose version string is the release's, so an app that
 // installs `svelte` from the registry gets the wrong compiler and nothing says so until the compiler rejects an option. The Metro integration,
@@ -35,13 +36,13 @@ describe("the Svelte build this library needs", () => {
   });
 
   test("the vendored tarball, the pinned commit and the peer range name one build", () => {
-    const vendored = resolve(import.meta.dirname, "../../..", requiredSvelte.vendored);
+    const vendored = resolve(repoRoot, requiredSvelte.vendored);
     expect(vendored).toContain(requiredSvelte.commit.slice(0, 7));
     expect(requiredSvelte.preview.endsWith(requiredSvelte.commit)).toBe(true);
     const manifest = JSON.parse(Bun.spawnSync(["tar", "-xzOf", vendored, "package/package.json"]).stdout.toString()) as { version: string; exports: Record<string, unknown> };
     expect(manifest.version).toBe(requiredSvelte.version);
     expect(Object.keys(manifest.exports)).toContain("./renderer");
-    const own = JSON.parse(readFileSync(resolve(import.meta.dirname, "../package.json"), "utf8")) as { peerDependencies: Record<string, string>; devDependencies: Record<string, string> };
+    const own = JSON.parse(readFileSync(resolve(packageRoot, "package.json"), "utf8")) as { peerDependencies: Record<string, string>; devDependencies: Record<string, string> };
     expect(own.peerDependencies.svelte).toBe(requiredSvelte.version);
     expect(own.devDependencies.svelte).toBe(`file:../../${requiredSvelte.vendored}`);
   });
@@ -76,7 +77,7 @@ describe("the Svelte build this library needs", () => {
   });
 
   test("the Metro integration, the transformer and the native Vite target check before they need the renderer", () => {
-    const source = (file: string) => readFileSync(resolve(import.meta.dirname, "../src", file), "utf8");
+    const source = (file: string) => readFileSync(resolve(packageRoot, "src", file), "utf8");
     expect(source("metro.ts")).toContain('assertCustomRenderer("withSvelteNative (@alfayez/svelte-native/metro)")');
     expect(source("transformer.ts")).toMatch(/requireCustomRenderer\(\);\s+const result = svelteCompiler\(\)\.compile\(/);
     expect(source("vite.ts")).toContain("assertCustomRenderer(");

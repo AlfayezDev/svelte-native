@@ -1,27 +1,25 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { createRequire } from "node:module";
-import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { ConfigT } from "@expo/metro/metro-config";
-import { LITE_ORIGINS, NODE_CRYPTO, QUICK_CRYPTO, withSvelteNative } from "../src/metro.ts";
+import { LITE_ORIGINS, NODE_CRYPTO, QUICK_CRYPTO, withSvelteNative } from "../../../src/metro.ts";
+import { packageRoot } from "../../support/paths.ts";
+import { type RealResolver, fakeConfig, resolveFrom as resolveWith } from "../../support/metro.ts";
+import { createProject } from "../../support/project.ts";
 
 /**
  * Node-style libraries import `crypto` or `node:crypto`; Metro resolves both to react-native-quick-crypto, from the app's directory. And the four packages `crypto` and
  * `localStorage` are made of get the React Native shim the other native-module packages get (`LITE_ORIGINS`), which must export what they import from `react-native`.
  */
-function fakeConfig(projectRoot: string): ConfigT {
-  return { projectRoot, resolver: { sourceExts: ["ts"], resolveRequest: undefined }, serializer: { getModulesRunBeforeMainModule: () => [] }, transformer: {} } as unknown as ConfigT;
-}
 // What Metro's own resolver would answer: the file name, with the directory it was asked from, so a test sees where an import was resolved from.
-const real = { resolveRequest: (context: { originModulePath: string }, moduleName: string) => ({ type: "sourceFile", filePath: `/real/${moduleName} (from ${context.originModulePath})` }) };
-const resolveFrom = (config: ConfigT, origin: string, moduleName: string): string => {
-  const resolveRequest = config.resolver.resolveRequest as (context: unknown, moduleName: string, platform: string) => { filePath: string };
-  return resolveRequest({ ...real, originModulePath: origin, unstable_conditionNames: [] }, moduleName, "android").filePath;
-};
+const real: RealResolver = (context, moduleName) => ({ type: "sourceFile", filePath: `/real/${moduleName} (from ${context.originModulePath})` });
+const resolveFrom = (config: ConfigT, origin: string, moduleName: string): string => resolveWith(config, origin, moduleName, real);
 
 describe("`crypto` and `node:crypto` are react-native-quick-crypto", () => {
-  const root = mkdtempSync(join(tmpdir(), "metro-crypto-"));
+  const project = createProject({}, "metro-crypto-");
+  afterAll(() => project.remove());
+  const root = project.directory;
   const config = withSvelteNative(fakeConfig(root), { variant: "qa" });
   const library = join(root, "node_modules/jose/dist/browser/index.js");
   const wanted = `/real/react-native-quick-crypto (from ${join(root, "package.json")})`;
@@ -43,7 +41,8 @@ describe("`crypto` and `node:crypto` are react-native-quick-crypto", () => {
   });
 
   test("an app that stubs the package gets its stub for `crypto` as well: the alias goes through the rest of the resolver", () => {
-    const stubbed = withSvelteNative(fakeConfig(mkdtempSync(join(tmpdir(), "metro-crypto-"))), { stubbedPackages: [QUICK_CRYPTO], variant: "smoke" });
+    using other = createProject({}, "metro-crypto-");
+    const stubbed = withSvelteNative(fakeConfig(other.directory), { stubbedPackages: [QUICK_CRYPTO], variant: "smoke" });
     const stub = resolveFrom(stubbed, library, QUICK_CRYPTO);
     expect(stub).toContain(".svelte-native/stubs/smoke/react-native-quick-crypto.js");
     expect(resolveFrom(stubbed, library, "crypto")).toBe(stub);
@@ -85,7 +84,7 @@ describe("the React Native shim of the packages `crypto` and `localStorage` are 
   }
 
   /** What `react-native-lite.ts` exports. */
-  const lite = readFileSync(join(import.meta.dirname, "../src/fabric/react-native-lite.ts"), "utf8");
+  const lite = readFileSync(join(packageRoot, "src/fabric/react-native-lite.ts"), "utf8");
   const exported = new Set([
     ...[...lite.matchAll(/^export (?:const|class|function) (\w+)/gm)].map((match) => match[1]),
     ...[...lite.matchAll(/^export \{ default as (\w+) \}/gm)].map((match) => match[1]),

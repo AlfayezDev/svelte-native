@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildTree, fillPath, locate, matchPath, plan, resolve, type RouteFile, type StackNode } from "../src/route-tree.ts";
+import { buildTree, fillPath, locate, matchPath, plan, resolve, type RouteFile, type StackNode } from "../../src/route-tree.ts";
 
 /** What the golden vectors (route-tree.test.ts) leave open: nested stack navigators, the other build errors, parameters, ordering. */
 const file = (path: string, exports: RouteFile["exports"] = {}): RouteFile => ({ path, exports });

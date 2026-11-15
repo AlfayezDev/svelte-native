@@ -1,5 +1,5 @@
 <script lang="ts">
-  import List from "../src/components/List.svelte";
+  import List from "../../../src/components/List.svelte";
   let { count = 300, onEnd = () => {}, rowHeight = 40 as number | null, horizontal = false, recycle = false, initialScrollIndex, onViewable, heightOf, none = false, height }: {
     count?: number; onEnd?: () => void; rowHeight?: number | null; horizontal?: boolean; recycle?: boolean;
     initialScrollIndex?: number; onViewable?: (info: never) => void; heightOf?: (item: unknown, index: number) => number; none?: boolean; height?: number;

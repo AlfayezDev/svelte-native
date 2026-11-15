@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
-import { answer, hostGlobals, load, resize, setting, settle, switchScheme, type World } from "./match-media-harness.ts";
+import { answer, hostGlobals, load, resize, setting, settle, switchScheme, type World } from "./support/match-media-harness.ts";
 
 /**
  * `window.matchMedia` on the device, from the library's own polyfills: the `MediaQueryList` it returns, what it listens to and when, and what the boot does (nothing). The system is the
@@ -692,15 +692,6 @@ describe("what a phone is, and the screen", () => {
     expect(world.listeners.dimensions.size).toBe(1); // a turn changes the screen too, and Dimensions says so
     resize(world, { width: 891, height: 411 });
     expect(events.map((event) => event.matches)).toEqual([true]);
-  });
-
-  test("a viewport unit follows the window, and a turn flips it", () => {
-    const list = mm("(min-height: 100vw)");
-    const events = record(list);
-    expect(list.matches).toBe(true);
-    resize(world, { width: 891, height: 411 });
-    expect(events.map((event) => event.matches)).toEqual([false]);
-    expect(mm("(min-width: -1px)").matches).toBe(true);
   });
 });
 

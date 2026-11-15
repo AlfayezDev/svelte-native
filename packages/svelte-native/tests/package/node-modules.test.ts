@@ -2,8 +2,10 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { findPackage } from "../src/doctor/resolve.ts";
-import { removedSpecifiers } from "./removed-entries.ts";
+import { findPackage } from "../../src/doctor/resolve.ts";
+import { removedSpecifiers } from "../removed-entries.ts";
+import { packageRoot, repoRoot } from "../support/paths.ts";
+import { tests } from "../support/bundle.ts";
 
 // The package is installed by apps outside this repository, so its code runs from a `node_modules`, where Node refuses to load TypeScript
 // (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`, Node 25 and 26). In this repository it works whatever is wrong, because the workspace link is
@@ -11,9 +13,9 @@ import { removedSpecifiers } from "./removed-entries.ts";
 // and loads every entry a Node process loads with plain `node` (no Bun, no loader): the command line, the Metro config and transformer, the Expo
 // config plugin (under both of its names) and Vite's config. Two more apps hold the same package: a native-only one, which has neither SvelteKit nor Vite
 // (it bundles with Metro and type-checks with svelte-check), and one in pnpm's default layout, where `@expo/metro-config` is only beside `expo`.
-const packageDirectory = resolve(import.meta.dirname, "..");
-const repositoryRoot = resolve(packageDirectory, "../..");
-const fixture = join(import.meta.dirname, "fixtures/installed-app");
+const packageDirectory = packageRoot;
+const repositoryRoot = repoRoot;
+const fixture = join(tests, "fixtures/installed-app");
 const manifest = JSON.parse(readFileSync(join(packageDirectory, "package.json"), "utf8")) as {
   dependencies: Record<string, string>;
   peerDependencies: Record<string, string>;
@@ -70,7 +72,7 @@ beforeAll(() => {
 
   // The native-only app. `expo-modules-core` and the two `@types` packages are what a hoisted install has at the top: the library's source imports the first (a dependency of `expo`),
   // and the app's tsconfig names the others.
-  install(bare, join(import.meta.dirname, "fixtures/bare-app"));
+  install(bare, join(tests, "fixtures/bare-app"));
   for (const name of [...installedNames(optionalPeers), "expo-modules-core", "@types/react", "@types/node"]) link(name, bare);
 
   // The default layout of pnpm: `node_modules/expo` is a link to a directory of its own, and the packages `expo` depends on are linked inside that directory and nowhere else.

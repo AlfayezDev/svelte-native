@@ -1,8 +1,8 @@
 <script>
-  import Router from "../src/Router.svelte";
-  import { createRouter } from "../src/router.svelte.ts";
-  import Page from "./route-page.svelte";
-  import { page, stackOf } from "./tree.ts";
+  import Router from "../../../src/Router.svelte";
+  import { createRouter } from "../../../src/router.svelte.ts";
+  import Page from "../../route-page.svelte";
+  import { page, stackOf } from "../../tree.ts";
   const tree = (name) => stackOf(["/", "/a", "/b"].map((path) => page(`${name}${path}`, path, () => Promise.resolve({ component: Page, layouts: [] }))));
   // The app's root router, and one created below it (another router is then above, as for a tab pane or a nested navigator): that one is nested.
   const router = createRouter(tree("root"), "/a");

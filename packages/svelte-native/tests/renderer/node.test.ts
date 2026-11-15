@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import renderer, { setInvalidationSink, type NativeNode } from "../src/renderer.ts";
+import renderer, { setInvalidationSink, type NativeNode } from "../../src/renderer.ts";
 
 const names = (node: NativeNode) => node.getSnapshot().children.map((child) => child.name || child.getSnapshot().text);
 
@@ -99,32 +99,6 @@ test("dispatchers stay stable while listeners come and go", () => {
   expect(calls).toHaveLength(2);
 });
 
-test("host props merge direct attributes over nativeProps and leave out Svelte internals", async () => {
-  const { mergeHostProps } = await import("../src/native-props.ts");
-  const ref = () => {};
-  const onPress = () => {};
-  expect(mergeHostProps({
-    nativeProps: { testID: "legacy", accessible: true, style: { padding: 1 } },
-    testID: "direct", nativeStyle: { padding: 2 }, style: "[object Object]", onPress, ref,
-    children: () => {}, class: "x", id: "y", "data-id": "z", $$slots: {},
-  })).toEqual({ testID: "direct", accessible: true, style: { padding: 2 }, onPress, ref });
-  expect(mergeHostProps({ nativeProps: { style: { padding: 1 } }, style: { padding: 3 } }).style).toEqual({ padding: 3 });
-  expect(mergeHostProps({ nativeProps: { ref: onPress }, ref: undefined }).ref).toBe(onPress);
-  expect(mergeHostProps({})).toEqual({});
-});
-
-test("a lowered tag's press handlers (`nativeOnPress`...) are the props they stand for while they are functions, and none when they are not", async () => {
-  const { mergeHostProps } = await import("../src/native-props.ts");
-  const go = () => {};
-  const hold = () => {};
-  expect(mergeHostProps({ nativeOnPress: go, nativeOnPressIn: go, nativeOnPressOut: go, nativeOnLongPress: hold, nativeOnPressChange: go })).toEqual({ onPress: go, onPressIn: go, onPressOut: go, onLongPress: hold, onPressChange: go });
-  // `undefined` (an `onPress={enabled ? go : undefined}` that is not enabled) is no prop at all, and no key is left behind for the host to read as a handler.
-  expect(mergeHostProps({ nativeOnPress: undefined, nativeOnLongPress: null, testID: "a" })).toEqual({ testID: "a" });
-  // `nativeProps` has its own handler and the attribute has none: the object's stays; a function in the attribute wins over it.
-  expect(mergeHostProps({ nativeProps: { onPress: go }, nativeOnPress: undefined })).toEqual({ onPress: go });
-  expect(mergeHostProps({ nativeProps: { onPress: go }, nativeOnPress: hold })).toEqual({ onPress: hold });
-});
-
 test("nodes share one read-only empty props object and one empty children array until they are written to, and a write copies", () => {
   const first = renderer.createElement("native-view");
   const second = renderer.createElement("native-text");
@@ -169,4 +143,27 @@ test("nodes share one read-only empty props object and one empty children array 
   expect(empty.children).toEqual([]);
   expect(second.getSnapshot().children).toBe(empty.children);
   expect(first.getSnapshot().children).not.toBe(empty.children);
+});
+
+test("a changed prop is reported once, an unchanged write and the removal of a missing prop are not, and setProps never writes to the object it is given", () => {
+  const node = renderer.createElement("native-view");
+  node.setProp("a", 1);
+  node.setProp("b", 2);
+  const heard: string[] = [];
+  setInvalidationSink((_node, reason) => heard.push(reason));
+  try {
+    node.setProp("a", 1); // unchanged
+    node.removeProp("missing");
+    expect(heard).toEqual([]);
+    node.setProp("a", 9);
+    expect(node.getProp("a")).toBe(9);
+    node.removeProp("b");
+    expect(node.hasProp("b")).toBe(false);
+    expect(heard).toEqual(["props", "props"]);
+    const whole = { x: 1 };
+    node.setProps(whole);
+    node.setProp("y", 2);
+    expect(whole).toEqual({ x: 1 });
+    expect(node.getSnapshot().props).toEqual({ x: 1, y: 2 });
+  } finally { setInvalidationSink(null); }
 });

@@ -1,15 +1,10 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { build } from "esbuild";
-import { readFile, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { resolve } from "node:path";
-import { tmpdir } from "node:os";
-import { pathToFileURL } from "node:url";
-import { compile } from "svelte/compiler";
-import { componentOptions } from "../src/compile-options.ts";
-import type { NativeNode } from "../src/renderer.ts";
+import type { NativeNode } from "../../src/renderer.ts";
+import { load as loadBundle, src } from "../support/bundle.ts";
 
-// Bun runs every test file in one process, and a file before this one may have left a \`requestAnimationFrame\` behind. The windowing tests assume none unless
-// they install their own (as the frame-driven ones below do), so each test starts without one and the previous value is put back after it.
+// The async-mode run (`async-mode-setup.ts`) puts a `requestAnimationFrame` on the global object for the whole process. The windowing tests assume none unless they
+// install their own (as the frame-driven ones below do), so each test starts without one and the previous value is put back after it.
 const frameScope = globalThis as { requestAnimationFrame?: unknown; cancelAnimationFrame?: unknown };
 let framesBefore: [unknown, unknown] = [undefined, undefined];
 beforeEach(() => {
@@ -23,38 +18,16 @@ afterEach(() => {
   if (framesBefore[1] === undefined) delete frameScope.cancelAnimationFrame;
 });
 
-async function load() {
-  const bundle = await build({
-    stdin: {
-      contents: `import Fixture from './list-fixture.svelte';
-        import renderer, {NativeNode} from '../src/renderer.ts';
-        import {mount,tick} from 'svelte';
-        export const root = new NativeNode('fragment');
-        export const start = (props) => mount(Fixture, {target:root,renderer,props});
-        export {tick};`,
-      resolveDir: import.meta.dirname,
-    },
-    bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], write: false,
-    external: ["react-native"],
-    plugins: [{
-      name: "native-fixture",
-      setup(builder) {
-        builder.onResolve({ filter: /^@alfayez\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
-        builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../src/environment.ts") }));
-        builder.onLoad({ filter: /\.svelte$/ }, async ({ path }) => ({
-          contents: compile(await readFile(path, "utf8"), componentOptions(path)).js.code,
-          loader: "js",
-        }));
-      },
-    }],
-  });
-  const directory = await mkdtemp(resolve(tmpdir(), "svelte-native-list-"));
-  const file = resolve(directory, "list.mjs");
-  await writeFile(file, bundle.outputFiles[0].contents);
-  const result = await import(pathToFileURL(file).href);
-  await rm(directory, { recursive: true });
-  return result;
-}
+/** The list mounted on the renderer alone (no Fabric host): a bundle built once, and evaluated afresh for each test. */
+const load = () => loadBundle<any>({
+  entry: `import Fixture from ${JSON.stringify(resolve(import.meta.dirname, "fixtures/list-fixture.svelte"))};
+    import renderer, {NativeNode} from ${JSON.stringify(src("renderer.ts"))};
+    import {mount,tick} from 'svelte';
+    export const root = new NativeNode('fragment');
+    export const start = (props) => mount(Fixture, {target:root,renderer,props});
+    export {tick};`,
+  converters: false,
+});
 
 const nodes = (node: NativeNode): NativeNode[] => [node, ...node.getSnapshot().children.flatMap(nodes)];
 

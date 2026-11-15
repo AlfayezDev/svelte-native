@@ -1,0 +1,58 @@
+import { test, expect } from "bun:test";
+import { resolve } from "node:path";
+import type { NativeNode } from "../../src/renderer.ts";
+import { load, src } from "../support/bundle.ts";
+
+test("compiled Svelte updates text, moves keyed nodes, removes branches and disposes effects", async () => {
+  const result = await load<{ root: NativeNode; app: { redrawStyle(): void; moveStyle(): void; update(): void; removeRows(): void; cleanups(): number }; tick(): Promise<void>; unmount(app: unknown): Promise<void> }>({
+    entry: `import Fixture from ${JSON.stringify(resolve(import.meta.dirname, "fixtures/renderer-fixture.svelte"))};
+      import renderer, {NativeNode} from ${JSON.stringify(src("renderer.ts"))};
+      import {mount,tick,unmount} from 'svelte';
+      export const root = new NativeNode('fragment');
+      export const app = mount(Fixture, {target:root,renderer});
+      export {tick,unmount};`,
+    converters: false,
+  });
+  const { root } = result;
+  function nodes(node: NativeNode): NativeNode[] { return [node, ...node.getSnapshot().children.flatMap(nodes)]; }
+  function tagged(id: string): NativeNode {
+    const node = nodes(root).find((node) => node.getSnapshot().props["data-id"] === id);
+    if (!node) throw new Error(`Missing fixture node ${id}`);
+    return node;
+  }
+  const a = tagged("a");
+  const b = tagged("b");
+  const conditional = tagged("conditional");
+  const styled = nodes(root).find((node) => node.name === "native-view");
+  if (!styled) throw new Error("Missing styled fixture view");
+  const beforeStyle = styled.getSnapshot();
+  result.app.redrawStyle();
+  await result.tick();
+  expect(styled.getSnapshot()).toBe(beforeStyle);
+  result.app.moveStyle();
+  await result.tick();
+  expect(styled.getSnapshot().props.nativeProps).toEqual({ testID: "styled", style: { opacity: 1, transform: [{ translateX: 40 }] } });
+  expect(beforeStyle.props.nativeProps).toEqual({ testID: "styled", style: { opacity: 1, transform: [{ translateX: 0 }] } });
+  result.app.update();
+  await result.tick();
+  const ordered = nodes(root).filter((node) => ["a", "b"].includes(String(node.getSnapshot().props["data-id"])));
+  expect(ordered).toEqual([b, a]);
+  expect(conditional.parent).toBeNull();
+  expect(tagged("value").getSnapshot().children[0].getSnapshot().text).toBe("second");
+  expect(b.getSnapshot().children[0].getSnapshot().text).toBe("Updated");
+  const button = nodes(root).find((node) => node.name === "pressable");
+  expect(button).toBeDefined();
+  for (const handler of button?.listeners.get("press") ?? []) handler({});
+  await result.tick();
+  expect(tagged("value").getSnapshot().children[0].getSnapshot().text).toBe("pressed");
+  result.app.removeRows();
+  await result.tick();
+  expect(a.parent).toBeNull();
+  expect(b.parent).toBeNull();
+  await result.unmount(result.app);
+  expect(root.getSnapshot().children).toHaveLength(0);
+  expect(result.app.cleanups()).toBe(1);
+  result.app.redrawStyle();
+  await result.tick();
+  expect(root.getSnapshot().children).toHaveLength(0);
+});

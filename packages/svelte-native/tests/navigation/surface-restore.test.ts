@@ -325,7 +325,7 @@ test("iOS: the router writes its state through the navigation module, and a new 
   } finally { delete environment.__nativeModules; }
 });
 
-test("iOS: a record that is old, from the future, malformed or no state starts the app on its first screen, and an explicit initialProps.navigation is not overridden", async () => {
+test("iOS: a record that is old, was ended by the user, was restored twice or is no state starts the app on its first screen, and an explicit initialProps.navigation is not overridden", async () => {
   freshRuntime();
   const first = navigationModule();
   let saved: string;
@@ -338,12 +338,11 @@ test("iOS: a record that is old, from the future, malformed or no state starts t
   } finally { delete environment.__nativeModules; }
 
   const day = 24 * 60 * 60 * 1000;
+  // One refusal for each field the host's record carries (`savedAt`, `systemKept`, `attempts`) and one the router makes: the rules themselves, a record from the future and a malformed one included, are unit tests.
   const refused: [string, unknown][] = [
     ["expired", { json: saved, savedAt: Date.now() - day - 60_000 }],
     ["the user ended the process", { json: saved, savedAt: Date.now(), attempts: 1, systemKept: false }],
     ["restored twice already", { json: saved, savedAt: Date.now(), attempts: 3, systemKept: true }],
-    ["from the future", { json: saved, savedAt: Date.now() + 10 * 60_000 }],
-    ["malformed", { json: saved }],
     ["not a state", { json: "not json", savedAt: Date.now() }],
   ];
   for (const [name, record] of refused) {

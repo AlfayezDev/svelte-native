@@ -1,5 +1,4 @@
-import { describe, expect, spyOn, test } from "bun:test";
-import { defineLazyGlobal } from "../../src/lazy-global.ts";
+import { describe, expect, test } from "bun:test";
 import { decodeKey, encodeKey } from "../../src/local-storage.ts";
 import { createStorage, memoryBackend, type StorageBackend } from "../../src/web-storage.ts";
 
@@ -196,58 +195,6 @@ describe("a backend of its own", () => {
     // Creating the storage and asking the global for it reads nothing: a typeof does not start the backend.
     expect(typeof createStorage(backend)).toBe("object");
     expect(calls).toHaveLength(6);
-  });
-});
-
-describe("defineLazyGlobal", () => {
-  test("makes nothing until the name is read, then once: the accessor is replaced by the value", () => {
-    const scope: Record<string, unknown> = {};
-    let made = 0;
-    defineLazyGlobal(scope, "thing", () => { made++; return { n: made }; });
-    expect(made).toBe(0);
-    expect(Object.keys(scope)).toEqual([]);
-    expect(typeof Object.getOwnPropertyDescriptor(scope, "thing")?.get).toBe("function");
-    const first = scope.thing;
-    expect(first).toEqual({ n: 1 });
-    expect(scope.thing).toBe(first);
-    expect(made).toBe(1);
-    expect(Object.getOwnPropertyDescriptor(scope, "thing")).toEqual({ value: first, writable: true, enumerable: false, configurable: true });
-  });
-
-  test("a name the scope has keeps its value, whatever it is; an assignment replaces the global as for any other, before the first read or after it", () => {
-    const scope: Record<string, unknown> = { had: undefined, other: 1 };
-    let made = 0;
-    defineLazyGlobal(scope, "had", () => { made++; return 1; });
-    defineLazyGlobal(scope, "other", () => { made++; return 2; });
-    expect([scope.had, scope.other, made]).toEqual([undefined, 1, 0]);
-
-    defineLazyGlobal(scope, "before", () => { made++; return "made"; });
-    scope.before = "assigned";
-    expect([scope.before, made]).toEqual(["assigned", 0]);
-    defineLazyGlobal(scope, "after", () => { made++; return "made"; });
-    expect(scope.after).toBe("made");
-    scope.after = "assigned";
-    expect(scope.after).toBe("assigned");
-  });
-
-  test("when making the value throws the read is undefined (a feature probe works), once warned, the accessor stays and the next read tries again", () => {
-    const warn = spyOn(console, "warn").mockImplementation(() => undefined);
-    try {
-      const scope: Record<string, unknown> = {};
-      let attempts = 0;
-      defineLazyGlobal(scope, "flaky", () => {
-        if (++attempts === 1) throw new Error("not yet");
-        return "ready";
-      });
-      expect(typeof scope.flaky).toBe("undefined");
-      expect(warn).toHaveBeenCalledTimes(1);
-      expect(String(warn.mock.calls[0]![0])).toBe("svelte-native: `flaky` is not available: not yet");
-      expect(scope.flaky).toBe("ready");
-      expect(attempts).toBe(2);
-      expect(warn).toHaveBeenCalledTimes(1);
-    } finally {
-      warn.mockRestore();
-    }
   });
 });
 

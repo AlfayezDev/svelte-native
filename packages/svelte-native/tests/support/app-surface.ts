@@ -1,6 +1,6 @@
 import { reanimatedStubs } from "./reanimated-stubs.ts";
 import { svgLibraryStubs } from "./svg-library-stubs.ts";
-import { load as bundle, src, tests } from "./bundle.ts";
+import { load as bundle, src } from "./bundle.ts";
 import { fakeHost } from "./fake-host.ts";
 import { type FakeNode, flatten, settle } from "./host.ts";
 
@@ -43,7 +43,7 @@ export function appSurface() {
     return bundle<AppModule>({
       entry: `import Fixture from ${JSON.stringify(fixture)};
         import { createFabricApp, remountSurfaces, showError } from ${JSON.stringify(src("fabric/index.ts"))};
-        import { appTree, collidingFiles } from ${JSON.stringify(`${tests}/tree-app.ts`)};
+        import { appTree, collidingFiles } from ${JSON.stringify(`${import.meta.dirname}/tree-app.ts`)};
         import { tick } from 'svelte';
         import { registerHooks, retryInit } from ${JSON.stringify(src("app-hooks.ts"))};
         export { createFabricApp, remountSurfaces, showError, tick, Fixture, appTree, collidingFiles, registerHooks, retryInit };`,

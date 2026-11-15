@@ -1,7 +1,7 @@
 import { expect, jest, test } from "bun:test";
-import type { NativeNode } from "../../src/renderer.ts";
 import { asyncRun } from "../support/async-run.ts";
 import { fabric, loadFork, type ForkModule } from "../support/fork-harness.ts";
+import { shape } from "../renderer/support/fork.ts";
 
 /**
  * What an app sees of Svelte's async mode, apart from `tick()`: the same component (an `{#if}` chain, a keyed `{#each}` with an `{:else}`, a `{#key}`, snippets, `$effect.pre`, `$effect`
@@ -9,11 +9,6 @@ import { fabric, loadFork, type ForkModule } from "../support/fork-harness.ts";
  * call must be identical after each step. The flag is a runtime switch and the compiled components are the same but for one import (`compiler/async-mode-fork.test.ts`), so this pins the runtime half:
  * the offscreen branches async mode builds for every `{#if}`, `{#each}` and `{#key}` update, and the commit that attaches them.
  */
-function shape(node: NativeNode, depth = 0): string {
-  const { props, children, text } = node.getSnapshot();
-  const own = Object.entries(props).map(([key, value]) => `${key}=${typeof value === "function" ? "fn" : JSON.stringify(value)}`).join(" ");
-  return [`${" ".repeat(depth)}${node.kind}:${node.name} ${own} ${node.kind === "text" ? JSON.stringify(text) : ""}`.trimEnd(), ...children.map((child) => shape(child, depth + 1))].join("\n");
-}
 type Parity = Record<"bump" | "bumpTwice" | "toggle" | "reverse" | "removeFirst" | "replaceAll" | "rename" | "batch", () => void> & { add(id: string): void };
 type Step = [name: string, run: (app: Parity) => void];
 const steps: Step[] = [

@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { type FakeNode, all, flat, host, load, settle } from "../support/html-harness.ts";
 import { createProject } from "../support/project.ts";
+import { random } from "../support/random.ts";
 
 /**
  * What the host builds when a page changes must be what it builds for the page as it ended up: a differential test. A random page (text, inline elements, `{#if}`, keyed and unkeyed
@@ -14,17 +15,6 @@ import { createProject } from "../support/project.ts";
  * piles up on the global object: under `--isolate` it is not slower). On the OVH host it took about 30 s alone, about 110 s for 130 seeds
  * after 47 other files and 99 seeds after 95, and passed in 44 s after the same 95 files under `--isolate`.
  */
-
-/** A small deterministic generator (mulberry32): the same seed is the same page and the same changes. */
-function random(seed: number): () => number {
-  let state = seed;
-  return () => {
-    state = (state + 0x6d2b79f5) | 0;
-    let t = Math.imul(state ^ (state >>> 15), 1 | state);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 const INLINE_CLASSES = ["", "text-lg", "text-white", "block", "inline", "hidden", "inline-flex", "flex", "gap-2", "inline-block", "contents"];
 const CONTAINER_CLASSES = ["", "flex", "flex-row gap-2", "block", "text-lg", "items-center", "text-sm", "hidden", "contents", "inline-flex"];

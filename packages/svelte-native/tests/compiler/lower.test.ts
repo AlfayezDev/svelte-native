@@ -201,14 +201,20 @@ test("the main entry's SvgText and SvgImage are SVG elements and stay components
   expect(run(markup, header)).toBe(`<native-view><native-text>a</native-text><native-image source={1} ></native-image><Svg><SvgText x={1}>b</SvgText><SvgImage href="x" /></Svg></native-view>`);
 });
 
-test("`use:gesture` of the main entry is not warned about on a lowered tag; any other action is", () => {
+test("`use:gesture` of the main entry, under its own name or an alias, is not warned about on a lowered tag; any other action is, a `gesture` imported from elsewhere included", () => {
   const warnings: string[] = [];
   const lowered = (source: string) => lowerPrimitives(source, { filename: "a.svelte", warn: (message) => warnings.push(message) });
   expect(lowered(`<script>\n  import { View, gesture } from "@alfayez/svelte-native";\n  const pan = {};\n</script>\n<View use:gesture={pan} />`)).toContain("<native-view");
   expect(warnings).toEqual([]);
+  expect(lowered(`<script>\n  import { View, gesture as drag } from "@alfayez/svelte-native";\n</script>\n<View use:drag={pan}>a</View>`)).toContain("<native-view");
+  expect(warnings).toEqual([]);
   lowered(`<script>\n  import { View } from "@alfayez/svelte-native";\n  import { gesture } from "./my-actions.ts";\n</script>\n<View use:gesture={{}} />`);
   expect(warnings).toHaveLength(1);
   expect(warnings[0]).toContain("use:gesture on <View>");
+  warnings.length = 0;
+  expect(lowered(`<script>\n  import { View, gesture } from "@alfayez/svelte-native";\n  import { tap } from "./actions";\n</script>\n<View use:gesture={pan}>a</View><View use:tap>b</View>`)).toContain("<native-view use:gesture={pan}>a</native-view>");
+  expect(warnings).toHaveLength(1);
+  expect(warnings[0]).toContain("use:tap");
 });
 
 // HTML elements ------------------------------------------------------------------------------------------------------------------------------------------------------

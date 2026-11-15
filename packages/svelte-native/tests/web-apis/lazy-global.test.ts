@@ -56,4 +56,34 @@ describe("defineLazyGlobal", () => {
     scope.assigned = "the library's own";
     expect([scope.assigned, warn.mock.calls.length]).toEqual(["the library's own", 0]);
   });
+
+  test("makes nothing until the name is read, then once: the accessor is replaced by the value", () => {
+    const scope: Record<string, unknown> = {};
+    let made = 0;
+    defineLazyGlobal(scope, "thing", () => { made++; return { n: made }; });
+    expect(made).toBe(0);
+    expect(Object.keys(scope)).toEqual([]);
+    expect(typeof Object.getOwnPropertyDescriptor(scope, "thing")?.get).toBe("function");
+    const first = scope.thing;
+    expect(first).toEqual({ n: 1 });
+    expect(scope.thing).toBe(first);
+    expect(made).toBe(1);
+    expect(Object.getOwnPropertyDescriptor(scope, "thing")).toEqual({ value: first, writable: true, enumerable: false, configurable: true });
+  });
+
+  test("a name the scope has keeps its value, whatever it is; an assignment replaces the global as for any other, before the first read or after it", () => {
+    const scope: Record<string, unknown> = { had: undefined, other: 1 };
+    let made = 0;
+    defineLazyGlobal(scope, "had", () => { made++; return 1; });
+    defineLazyGlobal(scope, "other", () => { made++; return 2; });
+    expect([scope.had, scope.other, made]).toEqual([undefined, 1, 0]);
+
+    defineLazyGlobal(scope, "before", () => { made++; return "made"; });
+    scope.before = "assigned";
+    expect([scope.before, made]).toEqual(["assigned", 0]);
+    defineLazyGlobal(scope, "after", () => { made++; return "made"; });
+    expect(scope.after).toBe("made");
+    scope.after = "assigned";
+    expect(scope.after).toBe("assigned");
+  });
 });

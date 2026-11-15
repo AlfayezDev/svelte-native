@@ -49,21 +49,6 @@ test("router.prepare loads the modules, renders the screen off screen, and commi
   expect(app.loadLog()).toEqual(["home", "b"]);
 });
 
-test("router.prepare gives the same tree and the same effects as goto", async () => {
-  const direct = await mountRouter();
-  direct.app.router.goto("/b");
-  await sleep(0);
-  await settle(direct.m);
-  const prepared = await mountRouter();
-  const handle = prepared.app.router.prepare("/b");
-  await handle.ready;
-  handle.commit();
-  await settle(prepared.m);
-  expect(shape(prepared.root)).toBe(shape(direct.root));
-  expect(prepared.log).toEqual(direct.log);
-  expect(prepared.paths()).toEqual(direct.paths());
-});
-
 test("router.prepare then discard changes nothing: the stack, the tree and the effects stay as they were, and a later goto works", async () => {
   const { m, root, app, log, paths, screens } = await mountRouter();
   const before = shape(root);

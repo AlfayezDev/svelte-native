@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { compile } from "svelte/compiler";
 import { lowerPrimitives } from "../../src/lower.ts";
+import { random } from "../support/random.ts";
 
 /**
  * What the lowering of HTML (`lower-html.ts`) writes is compiled by the real Svelte compiler, with the custom renderer, and its lines are counted: a file that lowers into text that does not
@@ -79,17 +80,6 @@ test("edits that start at the same place apply the longer one first: an insertio
 });
 
 // --- A property test: random files ---
-
-/** A small deterministic generator (mulberry32): the same seed is the same files. */
-function random(seed: number): () => number {
-  let state = seed;
-  return () => {
-    state = (state + 0x6d2b79f5) | 0;
-    let t = Math.imul(state ^ (state >>> 15), 1 | state);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 /**
  * A random file: elements nested in elements (what Svelte allows in what), blocks, snippets, `{#await}`, `<svelte:element>`, spreads, and attributes whose values span lines. Each

@@ -1,7 +1,7 @@
 import { expect, jest, test } from "bun:test";
-import type { NativeNode } from "../src/renderer.ts";
-import { asyncRun } from "./async-run.ts";
-import { fabric, loadFork, type ForkModule } from "./fork-harness.ts";
+import type { NativeNode } from "../../src/renderer.ts";
+import { asyncRun } from "../async-run.ts";
+import { fabric, loadFork, type ForkModule } from "../fork-harness.ts";
 
 /**
  * What an app sees of Svelte's async mode, apart from `tick()`: the same component (an `{#if}` chain, a keyed `{#each}` with an `{:else}`, a `{#key}`, snippets, `$effect.pre`, `$effect`
@@ -32,7 +32,7 @@ const steps: Step[] = [
 ];
 
 async function run(async: boolean) {
-  const m: ForkModule = await loadFork("parity-fixture.svelte", { async });
+  const m: ForkModule = await loadFork("compiler/fixtures/parity-fixture.svelte", { async });
   const log: string[] = [];
   const root = new m.NativeNode("fragment");
   const app = m.mount(m.Fixture, { target: root, renderer: m.renderer, props: { log } }) as unknown as Parity;
@@ -97,7 +97,7 @@ test.skipIf(asyncRun)("what async mode reorders in a flush: a new branch is buil
 
 test.skipIf(asyncRun)("a write reaches the tree after the same number of microtasks with and without async mode, and flushSync applies it at once in both", async () => {
   const turns = async (async: boolean, flush: boolean) => {
-    const m: ForkModule = await loadFork("parity-fixture.svelte", { async });
+    const m: ForkModule = await loadFork("compiler/fixtures/parity-fixture.svelte", { async });
     const log: string[] = [];
     const root = new m.NativeNode("fragment");
     const app = m.mount(m.Fixture, { target: root, renderer: m.renderer, props: { log } }) as unknown as Parity;
@@ -126,7 +126,7 @@ test.skipIf(asyncRun)("a write reaches the tree after the same number of microta
 test.skipIf(asyncRun)("an update the host sees: a write is in Fabric after the same microtasks with and without async mode", async () => {
   // The host flushes from a microtask queued when its nodes are invalidated (`fabric/host.ts`), so what matters is that the Svelte flush that invalidates them is not later.
   const lag = async (async: boolean) => {
-    const m: ForkModule = await loadFork("parity-fixture.svelte", { async });
+    const m: ForkModule = await loadFork("compiler/fixtures/parity-fixture.svelte", { async });
     const log: string[] = [];
     const app = m.startSurface(77, m.Fixture, { log }) as unknown as Parity;
     await m.tick();
@@ -147,7 +147,7 @@ test.skipIf(asyncRun)("tick() is a microtask without async mode and waits for a 
   jest.useFakeTimers();
   try {
     const pending = async (async: boolean) => {
-      const m: ForkModule = await loadFork("parity-fixture.svelte", { async });
+      const m: ForkModule = await loadFork("compiler/fixtures/parity-fixture.svelte", { async });
       let done = false;
       void m.tick().then(() => { done = true; });
       for (let turn = 0; turn < 50; turn++) await Promise.resolve();

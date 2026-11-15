@@ -1,30 +1,31 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import { EventEmitter } from "node:events";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { compile, compileModule } from "svelte/compiler";
-import type { ConfigT } from "@expo/metro/metro-config";
-import { expoEnvironment, exportNative } from "../src/build.ts";
-import { ASYNC_ENVIRONMENT_VARIABLE, RUNES_ENVIRONMENT_VARIABLE, asyncEnabled, asyncEnvironment, componentOptions, moduleOptions, withWebAsync } from "../src/compile-options.ts";
-import { withSvelteNative } from "../src/metro.ts";
-import { sourceDirectory } from "../src/package-root.ts";
-import { svelteNative } from "../src/vite.ts";
-import { asyncRun } from "./async-run.ts";
+import { expoEnvironment, exportNative } from "../../src/build.ts";
+import { ASYNC_ENVIRONMENT_VARIABLE, RUNES_ENVIRONMENT_VARIABLE, asyncEnabled, asyncEnvironment, componentOptions, moduleOptions, withWebAsync } from "../../src/compile-options.ts";
+import { withSvelteNative } from "../../src/metro.ts";
+import { sourceDirectory } from "../../src/package-root.ts";
+import { svelteNative } from "../../src/vite.ts";
+import { asyncRun } from "../async-run.ts";
+import { fakeConfig } from "../support/metro.ts";
+import { createProject } from "../support/project.ts";
 
 /**
  * `withSvelteNative(config, { async: true })` (and `svelteNative({ async: true })`): Svelte's async mode, which `router.prepare` needs, as an option of the library instead of an import of Svelte's
  * private flag module. It reaches the transformer through the environment, as `runes` does (`runes-default.test.ts`), is part of Metro's cache key, and compiles every Svelte file the
  * transformer sees with `experimental.async`. `node-modules.test.ts` runs the built transformer with it under plain Node.
  */
-const root = resolve(import.meta.dirname, "../../..");
+const root = resolve(import.meta.dirname, "../../../..");
 const app = "/work/app/src/routes/counter/+mobile.svelte";
 const library = "/work/app/node_modules/some-svelte-lib/Counter.svelte";
 const own = join(sourceDirectory, "Router.svelte");
 
-const saved = process.env[ASYNC_ENVIRONMENT_VARIABLE];
+const saved = { async: process.env[ASYNC_ENVIRONMENT_VARIABLE], runes: process.env[RUNES_ENVIRONMENT_VARIABLE] };
 afterEach(() => {
-  if (saved === undefined) delete process.env[ASYNC_ENVIRONMENT_VARIABLE]; else process.env[ASYNC_ENVIRONMENT_VARIABLE] = saved;
+  for (const [name, value] of [[ASYNC_ENVIRONMENT_VARIABLE, saved.async], [RUNES_ENVIRONMENT_VARIABLE, saved.runes]] as const) {
+    if (value === undefined) delete process.env[name]; else process.env[name] = value;
+  }
 });
 
 describe("the setting", () => {
@@ -39,24 +40,20 @@ describe("the setting", () => {
   });
 
   test("withSvelteNative(config, { async }) hands it to the workers it starts, and leaves the environment alone without it", () => {
-    const config = (projectRoot: string) => ({ projectRoot, resolver: { sourceExts: ["ts"] }, serializer: { getModulesRunBeforeMainModule: () => [] }, transformer: {} }) as unknown as ConfigT;
     delete process.env[ASYNC_ENVIRONMENT_VARIABLE];
-    const projectRoot = mkdtempSync(join(tmpdir(), "async-metro-"));
-    try {
-      withSvelteNative(config(projectRoot), { syncRoutes: false });
-      expect(process.env[ASYNC_ENVIRONMENT_VARIABLE]).toBeUndefined();
-      expect(asyncEnabled()).toBe(false);
-      expect(componentOptions(app).experimental).toEqual({ customRenderer: "@alfayez/svelte-native/renderer" });
-      withSvelteNative(config(projectRoot), { syncRoutes: false, async: true });
-      expect(process.env[ASYNC_ENVIRONMENT_VARIABLE]).toBe("1");
-      expect(componentOptions(app).experimental).toEqual({ customRenderer: "@alfayez/svelte-native/renderer", async: true });
-      expect(moduleOptions("/work/app/src/lib/state.svelte.ts")).toEqual({ filename: "/work/app/src/lib/state.svelte.ts", dev: false, generate: "client", experimental: { async: true } });
-      withSvelteNative(config(projectRoot), { syncRoutes: false, async: false });
-      expect(process.env[ASYNC_ENVIRONMENT_VARIABLE]).toBe("0");
-      expect(componentOptions(app).experimental).toEqual({ customRenderer: "@alfayez/svelte-native/renderer" });
-    } finally {
-      rmSync(projectRoot, { recursive: true, force: true });
-    }
+    using project = createProject();
+    const config = () => fakeConfig(project.directory);
+    withSvelteNative(config(), { syncRoutes: false });
+    expect(process.env[ASYNC_ENVIRONMENT_VARIABLE]).toBeUndefined();
+    expect(asyncEnabled()).toBe(false);
+    expect(componentOptions(app).experimental).toEqual({ customRenderer: "@alfayez/svelte-native/renderer" });
+    withSvelteNative(config(), { syncRoutes: false, async: true });
+    expect(process.env[ASYNC_ENVIRONMENT_VARIABLE]).toBe("1");
+    expect(componentOptions(app).experimental).toEqual({ customRenderer: "@alfayez/svelte-native/renderer", async: true });
+    expect(moduleOptions("/work/app/src/lib/state.svelte.ts")).toEqual({ filename: "/work/app/src/lib/state.svelte.ts", dev: false, generate: "client", experimental: { async: true } });
+    withSvelteNative(config(), { syncRoutes: false, async: false });
+    expect(process.env[ASYNC_ENVIRONMENT_VARIABLE]).toBe("0");
+    expect(componentOptions(app).experimental).toEqual({ customRenderer: "@alfayez/svelte-native/renderer" });
   });
 
   test("the Vite plugin's native target runs the export with it in the environment of the Metro it starts", async () => {
@@ -77,9 +74,8 @@ describe("the setting", () => {
         return child;
       },
     }));
-    const projectRoot = mkdtempSync(join(tmpdir(), "async-export-"));
-    mkdirSync(join(projectRoot, "src/routes"), { recursive: true });
-    writeFileSync(join(projectRoot, "src/routes/+mobile.svelte"), "<native-text>home</native-text>\n");
+    using project = createProject({ "src/routes/+mobile.svelte": "<native-text>home</native-text>\n" });
+    const projectRoot = project.directory;
     try {
       delete process.env[ASYNC_ENVIRONMENT_VARIABLE];
       delete process.env[RUNES_ENVIRONMENT_VARIABLE];
@@ -98,18 +94,19 @@ describe("the setting", () => {
       expect(started).toHaveLength(3);
     } finally {
       mock.module("node:child_process", () => childProcess);
-      rmSync(projectRoot, { recursive: true, force: true });
     }
   });
 
   test("the transformer's cache key follows it, so a changed option never reads a cached component", () => {
-    const key = (value: string | undefined) => {
-      const env = { ...process.env };
-      if (value === undefined) delete env[ASYNC_ENVIRONMENT_VARIABLE]; else env[ASYNC_ENVIRONMENT_VARIABLE] = value;
-      const done = Bun.spawnSync(["node", "--input-type=module", "-e", "const { getCacheKey } = await import(process.argv[1]); console.log(getCacheKey({ projectRoot: process.cwd() }))", join(sourceDirectory, "transformer.ts")], { env, stdout: "pipe", stderr: "pipe" });
-      return done.exitCode === 0 ? done.stdout.toString().trim() : done.stderr.toString();
-    };
-    const [unset, on, off, again] = [key(undefined), key("1"), key("0"), key("1")];
+    // One process asks for the key under each setting in turn: the key is computed on every call, from the environment as it is then.
+    const script = `const { getCacheKey } = await import(process.argv[1]);
+      for (const value of [undefined, "1", "0", "1"]) {
+        if (value === undefined) delete process.env.${ASYNC_ENVIRONMENT_VARIABLE}; else process.env.${ASYNC_ENVIRONMENT_VARIABLE} = value;
+        console.log(getCacheKey({ projectRoot: process.cwd() }));
+      }`;
+    const done = Bun.spawnSync(["node", "--input-type=module", "-e", script, join(sourceDirectory, "transformer.ts")], { env: process.env, stdout: "pipe", stderr: "pipe" });
+    if (done.exitCode !== 0) throw new Error(`the transformer failed to load:\n${done.stderr.toString()}`);
+    const [unset, on, off, again] = done.stdout.toString().trim().split("\n");
     expect(on).toMatch(/^[0-9a-f]{64}$/);
     expect(on).not.toBe(unset);
     expect(off).toBe(unset);
@@ -156,7 +153,7 @@ describe("the web target of the Vite plugin", () => {
 
   test("svelteNative({ target: 'web', async }) hands SvelteKit the option, and vite-plugin-svelte applies it", () => {
     const ask = (input: { async?: boolean; kit?: object }) => {
-      const done = Bun.spawnSync(["node", join(import.meta.dirname, "web-async-probe.ts"), JSON.stringify(input)], { cwd: join(root, "apps/qa"), stdout: "pipe", stderr: "pipe" });
+      const done = Bun.spawnSync(["node", join(import.meta.dirname, "fixtures/web-async-probe.ts"), JSON.stringify(input)], { cwd: join(root, "apps/qa"), stdout: "pipe", stderr: "pipe" });
       if (done.exitCode !== 0) throw new Error(`the web probe failed:\n${done.stderr.toString().slice(-2000)}`);
       return (JSON.parse(done.stdout.toString().trim().split("\n").at(-1) as string) as { experimental: Record<string, unknown> | null }).experimental;
     };

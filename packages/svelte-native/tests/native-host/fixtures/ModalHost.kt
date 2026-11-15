@@ -1,7 +1,7 @@
 import expo.modules.svelteengine.views.ModalLayout
 
 // Host-side check of the modal overlay's rules (ModalLayout.kt, no Android types). Reads one command per line from
-// stdin and prints one result line per command; tests/modal-native.test.ts holds the expectations.
+// stdin and prints one result line per command; tests/native-host/modal.test.ts holds the expectations.
 //
 //   insets L T R B KEYBOARD STATUS_TRANSLUCENT NAVIGATION_TRANSLUCENT   ->  left top right bottom
 //   pose TYPE PROGRESS HEIGHT DIM                                       ->  layerAlpha contentOffset scrimAlpha

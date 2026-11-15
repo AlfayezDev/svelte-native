@@ -27,7 +27,7 @@ test("Android: the native view fills a container of the engine's views and takes
   expect(shadow.props).toMatchObject({
     shadowColor: 0xff112233 | 0, shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 5, height: 3 }, cornerRadii: radii, pointerEvents: "none",
     backgroundColor: 0xffffffff | 0, borderRadius: 10, borderTopLeftRadius: 2, borderWidth: 1, borderColor: 0xffcccccc | 0,
-    // The container keeps the border width (1), so the native view reaches out of its padding box by it and covers the border box (`foreign-shadow-geometry.test.ts` asks Yoga).
+    // The container keeps the border width (1), so the native view reaches out of its padding box by it and covers the border box (`native-host/shadow-geometry.test.ts` asks Yoga).
     position: "absolute", left: -1, top: -1, right: -1, bottom: -1,
   });
   for (const key of ["padding", "margin", "opacity", "width", "style", "nativeProps", "component", "ref", "children"]) expect(key in shadow.props, key).toBe(false);

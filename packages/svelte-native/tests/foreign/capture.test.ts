@@ -227,30 +227,43 @@ test("a capture in flight when its ViewShot goes away still answers its caller, 
 test("captureMode mount captures once after the first layout; continuous captures again whenever the last capture is new", async () => {
   const mounted = await mount("ios", 116, {}, "mount");
   mounted.harness.emit(mounted.shot.target, "topLayout", layout);
-  await new Promise((resolveWait) => setTimeout(resolveWait, 30));
+  await until(() => mounted.app.eventLog().length > 0);
   expect(mounted.app.eventLog()).toEqual([["capture", "file:///module-1.png"]]);
 
   const scope = globalThis as { requestAnimationFrame?: unknown; cancelAnimationFrame?: unknown };
   const saved = [scope.requestAnimationFrame, scope.cancelAnimationFrame];
   scope.requestAnimationFrame = (callback: (time: number) => void) => setTimeout(() => callback(Date.now()), 4);
   scope.cancelAnimationFrame = (handle: ReturnType<typeof setTimeout>) => clearTimeout(handle);
+  let stop: (() => void) | undefined;
   try {
     const running = await mount("ios", 117, {}, "continuous");
+    stop = () => { stop = undefined; running.loaded.stopSurface(117); };
     running.harness.emit(running.shot.target, "topLayout", layout);
-    await new Promise((resolveWait) => setTimeout(resolveWait, 80));
+    // The frames are 4 ms timers: wait for the third capture rather than for a time, which a busy machine stretches.
+    await until(() => running.app.eventLog().length > 2);
     expect(running.app.eventLog().length).toBeGreaterThan(2);
     // Leaving stops the loop.
-    running.loaded.stopSurface(117);
+    stop?.();
+    await new Promise((resolveWait) => setTimeout(resolveWait, 10));
     const count = running.app.eventLog().length;
     await new Promise((resolveWait) => setTimeout(resolveWait, 40));
     expect(running.app.eventLog().length).toBe(count);
     // Every capture after the first released the one before it, half a second later: let those finish with this test's module.
-    await new Promise((resolveWait) => setTimeout(resolveWait, 520));
-    expect(running.viewShot.log.filter((line) => line.startsWith("release")).length).toBe(count - 1);
+    const released = () => running.viewShot.log.filter((line) => line.startsWith("release")).length;
+    await until(() => released() === count - 1);
+    expect(released()).toBe(count - 1);
   } finally {
+    // A failed assertion must not leave the frame loop and the release timers running into the next tests.
+    stop?.();
     [scope.requestAnimationFrame, scope.cancelAnimationFrame] = saved;
   }
 });
+
+/** Polls `condition` every 10 ms for at most five seconds. */
+async function until(condition: () => boolean): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (!condition() && Date.now() < deadline) await new Promise((done) => setTimeout(done, 10));
+}
 
 // The library's own `captureRef`, bundled with React Native stubbed, normalises the options as ours does. The module it calls is a stand-in that records what it was given
 // in `calls`, which the bundle exports for the test to read; `__DEV__` is true in the bundle, so the library reports bad options.

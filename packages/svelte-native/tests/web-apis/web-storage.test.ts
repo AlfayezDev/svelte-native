@@ -1,7 +1,7 @@
 import { describe, expect, spyOn, test } from "bun:test";
-import { defineLazyGlobal } from "../src/lazy-global.ts";
-import { decodeKey, encodeKey } from "../src/local-storage.ts";
-import { createStorage, memoryBackend, type StorageBackend } from "../src/web-storage.ts";
+import { defineLazyGlobal } from "../../src/lazy-global.ts";
+import { decodeKey, encodeKey } from "../../src/local-storage.ts";
+import { createStorage, memoryBackend, type StorageBackend } from "../../src/web-storage.ts";
 
 /**
  * The web's `Storage` on a backend that keeps strings (`src/web-storage.ts`): what `localStorage` and `sessionStorage` are on the device. The expectations are the browser's, the

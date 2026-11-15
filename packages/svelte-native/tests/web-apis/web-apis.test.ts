@@ -1,14 +1,26 @@
-import { expect, test } from "bun:test";
+import { beforeAll, expect, test } from "bun:test";
 import { join } from "node:path";
 
 /**
  * `crypto`, `localStorage` and `sessionStorage` on the device, from the library's own polyfills (`src/polyfills.ts`, imported as the Fabric entry imports it): defined without loading
- * anything, made when first read, and backed by react-native-quick-crypto and react-native-mmkv, which `web-apis-probe.ts` replaces by recording fakes in a process of its own
+ * anything, made when first read, and backed by react-native-quick-crypto and react-native-mmkv, which `fixtures/web-apis-probe.ts` replaces by recording fakes in a process of its own
  * (`mock.module` is global to a test process). The storage object itself is in web-storage.test.ts.
  */
-const done = Bun.spawnSync([process.execPath, join(import.meta.dirname, "web-apis-probe.ts")], { stdout: "pipe", stderr: "pipe" });
-if (done.exitCode !== 0) throw new Error(`the probe failed:\n${done.stderr.toString().slice(-2000)}`);
-const seen = JSON.parse(done.stdout.toString().trim().split("\n").at(-1) ?? "") as Record<string, Record<string, unknown>>;
+type Seen = Record<string, Record<string, unknown>>;
+type Without = { first: string; warnings: string[]; accessor: boolean; session: string; created?: number };
+
+/** Runs the probe (`missing` is an app whose binary lacks react-native-quick-crypto, `missing-mmkv` one without react-native-mmkv's native module) and parses the last line it prints. */
+async function probe<T>(...mode: ("missing" | "missing-mmkv")[]): Promise<T> {
+  const run = Bun.spawn([process.execPath, join(import.meta.dirname, "fixtures/web-apis-probe.ts"), ...mode], { stdout: "pipe", stderr: "pipe" });
+  const [out, err] = await Promise.all([new Response(run.stdout).text(), new Response(run.stderr).text()]);
+  if ((await run.exited) !== 0) throw new Error(`the probe failed:\n${err.slice(-2000)}`);
+  return JSON.parse(out.trim().split("\n").at(-1) ?? "") as T;
+}
+
+let seen: Seen;
+let noCrypto: Without;
+let noMmkv: Without;
+beforeAll(async () => { [seen, noCrypto, noMmkv] = await Promise.all([probe<Seen>(), probe<Without>("missing"), probe<Without>("missing-mmkv")]); });
 
 test("importing the polyfills defines the three names as accessors and loads neither library, creates no MMKV instance and writes nothing", () => {
   const accessor = { accessor: true, enumerable: false, configurable: true };
@@ -60,15 +72,8 @@ test("`@alfayez/svelte-native/mmkv` exports createMMKV and localStorageMMKV, and
   expect(seen.entry).toEqual({ names: ["createMMKV", "localStorageMMKV"], id: "svelte-native.local-storage", getString: "dark", sameInstance: true, created: 1, typed: ["custom", 2, 1] });
 });
 
-/** Runs the probe as an app whose binary lacks a native library (`missing` is react-native-quick-crypto, `missing-mmkv` is react-native-mmkv's native module). */
-function without(which: "missing" | "missing-mmkv"): { first: string; warnings: string[]; accessor: boolean; session: string; created?: number } {
-  const run = Bun.spawnSync([process.execPath, join(import.meta.dirname, "web-apis-probe.ts"), which], { stdout: "pipe", stderr: "pipe" });
-  if (run.exitCode !== 0) throw new Error(`the probe failed:\n${run.stderr.toString().slice(-2000)}`);
-  return JSON.parse(run.stdout.toString().trim().split("\n").at(-1) ?? "") as ReturnType<typeof without>;
-}
-
 test("an app whose build lacks react-native-quick-crypto reads `crypto` as undefined (a feature probe works), is told once what to do, and the global stays an accessor for the next read", () => {
-  const result = without("missing");
+  const result = noCrypto;
   expect(result.first).toBe("undefined");
   expect(result.warnings.length).toBe(1);
   expect(result.warnings[0]).toContain("`crypto` is not available");
@@ -79,7 +84,7 @@ test("an app whose build lacks react-native-quick-crypto reads `crypto` as undef
 });
 
 test("an app whose binary lacks react-native-mmkv's native module reads `localStorage` as undefined, is told once, and keeps sessionStorage", () => {
-  const result = without("missing-mmkv");
+  const result = noMmkv;
   expect(result.first).toBe("undefined");
   expect(result.warnings.length).toBe(1);
   expect(result.warnings[0]).toContain("`localStorage` is not available");

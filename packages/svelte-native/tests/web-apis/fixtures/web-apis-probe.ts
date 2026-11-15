@@ -68,7 +68,7 @@ const descriptor = (name: string) => {
   return found && { accessor: typeof found.get === "function", enumerable: found.enumerable, configurable: found.configurable };
 };
 
-await import("../src/polyfills.ts");
+await import("../../../src/polyfills.ts");
 result.atImport = { events: [...events], created: created.length, crypto: descriptor("crypto"), localStorage: descriptor("localStorage"), sessionStorage: descriptor("sessionStorage") };
 
 // An app without the library (an update of the JavaScript delivered to a binary built before it was added): the read answers undefined, as a platform without the global would, so that a
@@ -125,7 +125,7 @@ session.setItem("theme", "light");
 result.session = { theme: session.getItem("theme"), localTheme: local.getItem("theme"), created: created.length, files: [...files.keys()] };
 
 // The `/mmkv` entry: the same createMMKV, and the instance localStorage keeps its data in.
-const entry = await import("../src/mmkv.ts");
+const entry = await import("../../../src/mmkv.ts");
 const behind = entry.localStorageMMKV();
 result.entry = {
   names: Object.keys(entry).sort(),

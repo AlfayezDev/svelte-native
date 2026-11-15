@@ -1,11 +1,8 @@
 // `navigator.clipboard`, `ClipboardItem`, `share`, `canShare`, `vibrate`, `language` and `languages` on the device, against stand-ins for React Native's modules and the
-// library's SvelteClipboard native module (`globalThis.__native` records what each was asked).
+// library's SvelteClipboard native module. The stand-ins are one module of the bundle, which records what each was asked and is exported with `installNavigator`, so each test
+// has a state of its own.
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
-import { build } from "esbuild";
+import { load, src } from "../support/bundle.ts";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Native = {
@@ -20,17 +17,18 @@ type Native = {
   appState?: (state: string) => void;
 };
 
-const STUBS: Record<string, string> = {
-  "react-native/Libraries/Share/Share": `export default { dismissedAction: "dismissedAction", sharedAction: "sharedAction", share: async (content, options) => { globalThis.__native.shares.push({ content, options }); return { action: globalThis.__native.shareResult }; } };`,
-  "react-native/Libraries/Vibration/Vibration": `export default { vibrate: (pattern) => { globalThis.__native.vibrations.push(pattern); }, cancel: () => { globalThis.__native.vibrations.push("cancel"); } };`,
-  "react-native/Libraries/Utilities/Platform": `export default { get OS() { return globalThis.__native.os; } };`,
-  "react-native/Libraries/ReactNative/I18nManager": `export default { getConstants: () => ({ isRTL: false, localeIdentifier: globalThis.__native.locale }) };`,
-  "react-native/Libraries/AppState/AppState": `export default { addEventListener: (type, listener) => { globalThis.__native.appState = listener; return { remove() {} }; } };`,
-  "expo-modules-core": `export const requireOptionalNativeModule = (name) => {
-    if (name === "ExpoLocation") return globalThis.__native.location ?? null;
-    return name !== "SvelteClipboard" || globalThis.__native.clipboard === null ? null : {
-      read: async () => ({ ...globalThis.__native.clipboard }),
-      write: async (text, html) => { globalThis.__native.writes.push([text, html]); globalThis.__native.clipboard = html === null ? { "text/plain": text } : { "text/plain": text, "text/html": html }; },
+const stubs: Record<string, string> = {
+  "navigator-test-state": "export const native = { os: 'android', locale: 'en_US', clipboard: {}, writes: [], shares: [], shareResult: 'sharedAction', vibrations: [] };",
+  "react-native/Libraries/Share/Share": `import { native } from "navigator-test-state"; export default { dismissedAction: "dismissedAction", sharedAction: "sharedAction", share: async (content, options) => { native.shares.push({ content, options }); return { action: native.shareResult }; } };`,
+  "react-native/Libraries/Vibration/Vibration": `import { native } from "navigator-test-state"; export default { vibrate: (pattern) => { native.vibrations.push(pattern); }, cancel: () => { native.vibrations.push("cancel"); } };`,
+  "react-native/Libraries/Utilities/Platform": `import { native } from "navigator-test-state"; export default { get OS() { return native.os; } };`,
+  "react-native/Libraries/ReactNative/I18nManager": `import { native } from "navigator-test-state"; export default { getConstants: () => ({ isRTL: false, localeIdentifier: native.locale }) };`,
+  "react-native/Libraries/AppState/AppState": `import { native } from "navigator-test-state"; export default { addEventListener: (type, listener) => { native.appState = listener; return { remove() {} }; } };`,
+  "expo-modules-core": `import { native } from "navigator-test-state"; export const requireOptionalNativeModule = (name) => {
+    if (name === "ExpoLocation") return native.location ?? null;
+    return name !== "SvelteClipboard" || native.clipboard === null ? null : {
+      read: async () => ({ ...native.clipboard }),
+      write: async (text, html) => { native.writes.push([text, html]); native.clipboard = html === null ? { "text/plain": text } : { "text/plain": text, "text/html": html }; },
     };
   };`,
 };
@@ -46,29 +44,17 @@ const locationModule = () => ({
   addListener: () => ({ remove() {} }),
 });
 
-/** A fresh copy of `navigator.ts`, installed on a scope of its own with the stand-ins above. */
-async function install(native: Partial<Native> = {}): Promise<{ scope: any; native: Native; m: any }> {
-  const state: Native = { os: "android", locale: "en_US", clipboard: {}, writes: [], shares: [], shareResult: "sharedAction", vibrations: [], ...native };
-  (globalThis as any).__native = state;
-  const bundle = await build({
-    stdin: { contents: `export * from "./src/navigator.ts";`, resolveDir: resolve(import.meta.dirname, ".."), loader: "ts" },
-    bundle: true, format: "esm", platform: "neutral", write: false,
-    plugins: [{
-      name: "navigator-stubs",
-      setup(builder) {
-        builder.onResolve({ filter: /^(react-native\/|expo-modules-core$)/ }, (args) => ({ path: args.path, namespace: "stub" }));
-        builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: STUBS[args.path] ?? "export default {};", loader: "js" }));
-      },
-    }],
+/** A fresh copy of `navigator.ts`, installed on a scope of its own with the stand-ins above and `native` as the state the stand-ins start from, over what the test gives. */
+async function install(given: Partial<Native> = {}): Promise<{ scope: any; native: Native; m: any }> {
+  const m = await load<any>({
+    entry: `export * from ${JSON.stringify(src("navigator.ts"))}; export { native } from "navigator-test-state";`,
+    stubs,
+    converters: false,
   });
-  const directory = mkdtempSync(join(process.env.TMPDIR ?? tmpdir(), "svelte-native-navigator-"));
-  const file = join(directory, "navigator.mjs");
-  writeFileSync(file, bundle.outputFiles[0].contents);
-  let m: any;
-  try { m = await import(pathToFileURL(file).href); } finally { rmSync(directory, { recursive: true, force: true }); }
+  const native: Native = Object.assign(m.native, given);
   const scope: any = { navigator: { product: "ReactNative" } };
   m.installNavigator(scope);
-  return { scope, native: state, m };
+  return { scope, native, m };
 }
 
 describe("navigator.clipboard", () => {
@@ -245,7 +231,7 @@ describe("navigator.language and languages", () => {
 
 describe("navigator.geolocation and navigator.permissions", () => {
   test("in a build with the location capability: one Geolocation over expo-location's module, and the web's classes as globals", async () => {
-    const { scope } = await install({ location: locationModule() });
+    const { scope, native } = await install({ location: locationModule() });
     const geolocation = scope.navigator.geolocation;
     expect(Object.prototype.toString.call(geolocation)).toBe("[object Geolocation]");
     expect(scope.navigator.geolocation).toBe(geolocation);
@@ -257,7 +243,7 @@ describe("navigator.geolocation and navigator.permissions", () => {
     const status = await scope.navigator.permissions.query({ name: "geolocation" });
     expect([status.state, status instanceof scope.PermissionStatus]).toEqual(["granted", true]);
     // The status follows the app coming back to the foreground, through AppState.
-    expect(typeof (globalThis as any).__native.appState).toBe("function");
+    expect(typeof native.appState).toBe("function");
   });
 
   test("in a build without it: navigator.geolocation is undefined with one warning that says how to turn it on, and the permission reads denied", async () => {

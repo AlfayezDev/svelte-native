@@ -3,7 +3,7 @@ package expo.modules.svelteengine.views
 import kotlin.math.max
 
 /**
- * The rules of the modal overlay layer that need no Android type, so the host test (`tests/modal-native.test.ts`) runs
+ * The rules of the modal overlay layer that need no Android type, so the host test (`tests/native-host/modal.test.ts`) runs
  * them as they are: where the content sits, how the layer looks at a point of its animation, and what a show or a hide
  * asks the view to do.
  */

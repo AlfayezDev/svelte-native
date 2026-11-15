@@ -229,7 +229,7 @@ export type Kind = {
 /**
  * Third-party native components the engine mounts through React Native's own mounting (SPEC.md, "Foreign views"). `plain`
  * and `colors` are the props the library's codegen spec declares (its generated view config validates exactly those, plus a
- * view's own), `events` the events its native emitter sends (`tests/foreign.test.ts` compares both with the specs). The
+ * view's own), `events` the events its native emitter sends (`tests/upstream/foreign-view-configs.test.ts` compares both with the specs). The
  * event handler props (`onPress`) are not attributes, as in the generated configs: handlers stay in JavaScript. The exception is
  * a `legacy` kind on iOS, whose view manager only emits an event it was given a handler prop for (`Kind.legacy`).
  */

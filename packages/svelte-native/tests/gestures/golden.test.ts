@@ -1,14 +1,14 @@
 import { test, expect } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { load, settle, world, byId, type Loaded, type NativeCall } from "./harness.ts";
+import { load, settle, world, byId, type Loaded, type NativeCall } from "./support/harness.ts";
 
 /**
  * The native call sequence of react-native-gesture-handler's own detector for twelve gesture shapes, captured by
- * `capture-golden.mjs`, against the Svelte host's: a compiled fixture with `gesture` attributes and a fake native module.
+ * `fixtures/capture-golden.mjs`, against the Svelte host's: a compiled fixture with `gesture` attributes and a fake native module.
  */
 type Vector = { name: string; attach: NativeCall[]; update?: NativeCall[]; drop: NativeCall[] };
-const golden = JSON.parse(readFileSync(resolve(import.meta.dirname, "golden/rngh-2.32.0-native-calls.json"), "utf8")) as { version: string; vectors: Vector[] };
+const golden = JSON.parse(readFileSync(resolve(import.meta.dirname, "fixtures/golden/rngh-2.32.0-native-calls.json"), "utf8")) as { version: string; vectors: Vector[] };
 
 /** Handler tags and view tags in order of first appearance, so two runs with different counters compare. */
 function normalise(calls: readonly NativeCall[]): NativeCall[] {

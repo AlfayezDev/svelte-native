@@ -6,7 +6,7 @@
  * loads: Node refuses to strip types from a file under `node_modules` (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`), and the tools that load a
  * plugin or a config (Metro, `@expo/config`, Vite) hand the file to Node. So the entries below are bundled to plain JavaScript: each is one file
  * with its relative imports inlined and every package left as an import (the app installs them). `tests/package/dist.test.ts` fails when `dist/node/` is
- * not what this script writes for the sources, and `tests/node-modules.test.ts` loads the built files from a `node_modules`.
+ * not what this script writes for the sources, and `tests/package/node-modules.test.ts` loads the built files from a `node_modules`.
  *
  * Deterministic: the same sources and the same esbuild give the same bytes (no timestamps, no absolute paths, sorted files).
  */

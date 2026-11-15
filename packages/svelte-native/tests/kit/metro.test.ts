@@ -5,14 +5,16 @@ import { KIT_MODULES, KIT_UNAVAILABLE, kitResolution } from "../../src/kit/modul
 import { withSvelteNative } from "../../src/metro.ts";
 import { sourceFile } from "../../src/package-root.ts";
 import { createProject } from "../support/project.ts";
-import { fakeConfig, resolveFrom as resolveWith } from "../support/metro.ts";
+import { type RealResolver, fakeConfig, resolveFrom as resolveWith } from "../support/metro.ts";
 
 /** SvelteKit's modules on the device: the imports Metro resolves to the library's files (`withSvelteNative`) and the ones it refuses; `svelte/motion` is not among them: it is Svelte's own. */
 const project = createProject();
 afterAll(() => project.remove());
 const root = project.directory;
 const config = withSvelteNative(fakeConfig(root), { variant: "qa" });
-const resolveFrom = (origin: string, moduleName: string): string => resolveWith(config, origin, moduleName);
+// What Metro's own resolver would answer is the module's name under /real/, so a test sees which imports fell through to it.
+const byName: RealResolver = (_context, moduleName) => ({ type: "sourceFile", filePath: `/real/${moduleName}` });
+const resolveFrom = (origin: string, moduleName: string): string => resolveWith(config, origin, moduleName, byName);
 const app = join(root, "src/routes/+mobile.svelte");
 
 describe("SvelteKit's modules resolve to the library's files", () => {

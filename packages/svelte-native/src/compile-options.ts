@@ -92,7 +92,7 @@ export const CUSTOM_RENDERER = "@alfayez/svelte-native/renderer";
 /**
  * The options the library compiles a native component with: external CSS (a style block is refused by the transformer), production output, the custom renderer, and the runes
  * default. Async mode (`experimental.async`) is on only when the app asked for it (`asyncEnabled`): the native path otherwise depends on `tick()` being a microtask flush
- * (`tests/svelte-async-mode.test.ts`).
+ * (`tests/compiler/svelte-async-mode.test.ts`).
  */
 export function componentOptions(filename: string, enabled: boolean = runesDefaultEnabled(), async: boolean = asyncEnabled()) {
   return {

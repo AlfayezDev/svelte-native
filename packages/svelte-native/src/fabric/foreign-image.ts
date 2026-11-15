@@ -2,7 +2,7 @@
  * The props normalisation of `expo-image`'s React component (`Image.tsx`, `ExpoImage.tsx`, `utils.ts`,
  * `utils/resolveSources.tsx`), without React: sources become the arrays of `{ uri, ... }` the native view reads, the
  * deprecated React Native props map to the current ones, and the native view gets its colour and style props the way the
- * library's component hands them over. `tests/foreign-image.test.ts` runs the library's own functions on the same
+ * library's component hands them over. `tests/foreign/image.test.ts` runs the library's own functions on the same
  * inputs. Nothing here imports `expo-image`: the native view is mounted by name (`expoViewName("ExpoImage")`).
  */
 import { flattenStyle } from "./foreign.ts";

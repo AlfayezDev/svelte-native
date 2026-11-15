@@ -1,7 +1,7 @@
-// Run by async-option.test.ts under Node, from the QA app's directory (SvelteKit resolves vite-plugin-svelte from the working directory): builds the plugins `svelteNative({ target: "web", async })`
+// Run by compiler/async-option.test.ts under Node, from the QA app's directory (SvelteKit resolves vite-plugin-svelte from the working directory): builds the plugins `svelteNative({ target: "web", async })`
 // returns, lets Vite resolve its config, and prints the compiler options vite-plugin-svelte ended up with, for the `async` option and the `kit` options the test gives.
 import { resolveConfig } from "vite";
-import { svelteNative } from "../src/vite.ts";
+import { svelteNative } from "../../../src/vite.ts";
 
 const { async, kit } = JSON.parse(process.argv[2] ?? "{}") as { async?: boolean; kit?: object };
 const plugins = (await svelteNative({ target: "web", async, kit: kit as never })) as never;

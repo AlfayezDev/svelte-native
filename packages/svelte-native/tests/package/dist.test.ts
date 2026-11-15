@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { entries, extensionOf, filesUnder, outputDirectory, packageRoot, writeNode } from "../scripts/build-node.ts";
+import { entries, extensionOf, filesUnder, outputDirectory, packageRoot, writeNode } from "../../scripts/build-node.ts";
 
 // `dist/node/` is committed: a git dependency is not built when an app installs it, and Node cannot load the package's TypeScript from under
 // `node_modules`. So it has to be what `pnpm --dir packages/svelte-native build` writes for the sources, and this fails when it is not.
@@ -73,7 +73,6 @@ describe("package.json points at the built files", () => {
 
   test("every built entry is the `default` of an export (or the bin, or the config plugin's file), with the TypeScript source as its `svelte-native-source` and its declarations as its `types`", () => {
     // `expo.cjs` is not an export of its own (`@alfayez/svelte-native/expo` was removed in 0.4.0-rc.7): `app.plugin.js`, the `./app.plugin` export, imports it.
-    expect(readFileSync(join(packageRoot, "app.plugin.js"), "utf8")).toContain('import plugin from "./dist/node/expo.cjs";');
     const targets = [...built.map(([, target]) => target.default), manifest.bin["svelte-native"], "./dist/node/expo.cjs"].sort();
     expect(targets).toEqual([...files].sort());
     for (const [entry, target] of built) {

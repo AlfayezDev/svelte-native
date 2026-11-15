@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
-import { decodeRecords, navigationProps, type NavRecord } from "../src/fabric/navigation.ts";
-import { cppHost, hostTools, kotlinHost } from "./support/native-host.ts";
+import { decodeRecords, navigationProps, type NavRecord } from "../../src/fabric/navigation.ts";
+import { cppHost, hostTools, kotlinHost } from "../support/native-host.ts";
 
 /**
  * The native decoders against the reference decoder. `decodeRecords` is the contract's executable form; the engine's C++
@@ -9,8 +9,8 @@ import { cppHost, hostTools, kotlinHost } from "./support/native-host.ts";
  * `nativeID`s, and must produce exactly the records it lists: the same ints, float bits and strings out of C++, the same
  * fields out of Kotlin. Skipped when `g++`, `kotlinc` or `java` is not on the path.
  */
-const native = resolve(import.meta.dirname, "native");
-const engine = resolve(import.meta.dirname, "../native/svelte-core/android/src/main");
+const native = resolve(import.meta.dirname, "fixtures");
+const engine = resolve(import.meta.dirname, "../../native/svelte-core/android/src/main");
 const sources = {
   header: resolve(engine, "cpp/PropsEncoderNavRecords.h"),
   cpp: resolve(native, "nav-records-host.cpp"),

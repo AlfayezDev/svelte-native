@@ -5,7 +5,7 @@ import { join, relative, resolve } from "node:path";
 // The package is installed by apps outside this repository, as a git dependency (`git+ssh://…#<tag>&path:packages/svelte-native`). What such an
 // app gets is the package directory as `files` packs it: the JavaScript, the library's native modules and the one `expo-module.config.json`
 // that links them. Nothing of the repository around it is there, so nothing in the manifest may point at it.
-const root = resolve(import.meta.dirname, "..");
+const root = resolve(import.meta.dirname, "../..");
 const read = (path: string) => readFileSync(join(root, path), "utf8");
 const manifest = JSON.parse(read("package.json")) as {
   files: string[];
@@ -53,12 +53,18 @@ describe("the manifest holds nothing that only resolves inside this repository",
     expect(manifest.files).toContain("dist/types");
     expect(manifest.files).toContain("app.plugin.js");
     expect(read("app.plugin.js")).toContain('from "./dist/node/expo.cjs"');
+    expect([existsSync(join(root, "dist/node/expo.cjs")), existsSync(join(root, "src/expo.ts"))]).toEqual([true, true]);
   });
 
-  test("an app installs hermes-intl itself (React Native's autolinking links only its own dependencies); SvelteKit and Vite it may leave out", () => {
-    expect(manifest.peerDependencies["hermes-intl"]).toBeDefined();
-    expect(manifest.peerDependenciesMeta?.["hermes-intl"]).toBeUndefined();
-    expect(manifest.dependencies["hermes-intl"]).toBeUndefined();
+  // React Native's autolinking links a native module only from the app's own dependencies, so an app installs these itself: they are required peers, at an exact version where several of
+  // them share a runtime (Nitro), and not dependencies of the package. SvelteKit and Vite it may leave out.
+  test("hermes-intl, the SVG library and the four the web's crypto and localStorage are made of are required peers, not dependencies; SvelteKit and Vite are optional", () => {
+    for (const name of ["hermes-intl", "react-native-svg", "react-native-quick-crypto", "react-native-nitro-modules", "react-native-quick-base64", "react-native-mmkv"]) {
+      expect([name, typeof manifest.peerDependencies[name]]).toEqual([name, "string"]);
+      expect([name, manifest.peerDependenciesMeta?.[name]]).toEqual([name, undefined]);
+      expect([name, manifest.dependencies[name]]).toEqual([name, undefined]);
+    }
+    for (const name of ["react-native-quick-crypto", "react-native-nitro-modules", "react-native-quick-base64", "react-native-mmkv"]) expect([name, manifest.peerDependencies[name]]).toEqual([name, expect.stringMatching(/^\d+\.\d+\.\d+$/)]);
     expect(manifest.peerDependenciesMeta?.["@sveltejs/kit"]).toEqual({ optional: true });
     expect(manifest.peerDependenciesMeta?.vite).toEqual({ optional: true });
   });

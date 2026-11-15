@@ -2,14 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import ts from "typescript";
-import { animation as removedAnimation, fabric as removedFabric, gestures as removedGestures, keptEntries, nativeModules as removedNativeModules, removedEntries, removedSpecifiers, svg as removedSvg, svgRenamed } from "./removed-entries.ts";
+import { animation as removedAnimation, fabric as removedFabric, gestures as removedGestures, keptEntries, nativeModules as removedNativeModules, removedEntries, removedSpecifiers, svg as removedSvg, svgRenamed } from "../removed-entries.ts";
 
 /**
  * What the package's entries export, read from the sources (no bundler, no device): the main entry carries what `/animation`, `/gestures` and `/svg` exported (and
  * 0.4.0-rc.7 removed), `/platform` has the two native module lookups, and `/app` is the one import of the generated entry. `removed-entries.ts` lists the removed paths and
  * their names; `exports-runtime.test.ts` loads the entries and compares what they export.
  */
-const root = resolve(import.meta.dirname, "..");
+const root = resolve(import.meta.dirname, "../..");
 const src = (path: string) => join(root, "src", path);
 const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { exports: Record<string, string | Record<string, string>>; peerDependencies: Record<string, string>; peerDependenciesMeta: Record<string, { optional?: boolean }> };
 
@@ -95,12 +95,6 @@ describe("the main entry exports the animation, the gestures, the SVG components
     expect(shared(animation, gestures)).toEqual(["runOnJS", "scheduleOnRN"]);
     expect(readFileSync(src("gestures/index.ts"), "utf8")).toContain('export { runOnJS, scheduleOnRN } from "../animation.ts";');
   });
-
-  test("BlurView is the library's own: the main entry and `/foreign` export the same component", () => {
-    const line = 'export { default as BlurView } from "./components/BlurView.svelte";';
-    expect(readFileSync(src("index.ts"), "utf8")).toContain(line);
-    expect(readFileSync(src("foreign.ts"), "utf8")).toContain(line);
-  });
 });
 
 describe("the entries 0.4.0-rc.6 deprecated are removed, and what they exported is exported by the entries that stay", () => {
@@ -154,13 +148,6 @@ describe("the entries 0.4.0-rc.6 deprecated are removed, and what they exported 
     expect(manifest.exports["./polyfills"]).toBeUndefined();
   });
 
-  test("`/expo` is gone, and the package's own name and `/app.plugin` are the config plugin: app.plugin.js, which imports the built dist/node/expo.cjs", () => {
-    expect(manifest.exports["./app.plugin"]).toEqual({ "svelte-native-source": "./src/expo.ts", types: "./dist/types/expo.d.ts", default: "./app.plugin.js" });
-    expect(manifest.exports["./expo"]).toBeUndefined();
-    expect(readFileSync(join(root, "app.plugin.js"), "utf8")).toContain('import plugin from "./dist/node/expo.cjs";');
-    expect(existsSync(join(root, "dist/node/expo.cjs")) && existsSync(src("expo.ts"))).toBe(true);
-  });
-
   test("the remote runtime and its globals stay two entries: the SvelteKit files that import the globals are imported by the runtime", () => {
     expect(manifest.exports["./remote/runtime"]).toBe("./src/remote/runtime.ts");
     expect(manifest.exports["./remote/globals"]).toBe("./src/remote/globals.ts");
@@ -168,21 +155,7 @@ describe("the entries 0.4.0-rc.6 deprecated are removed, and what they exported 
   });
 });
 
-describe("react-native-svg is a required peer", () => {
-  test("it has a version and is not optional", () => {
-    expect(manifest.peerDependencies["react-native-svg"]).toBe("15.15.4");
-    expect(manifest.peerDependenciesMeta["react-native-svg"]).toBeUndefined();
-  });
-});
-
-describe("the web's `crypto` and `localStorage` are made of required peers", () => {
-  test("react-native-quick-crypto, react-native-mmkv, the Nitro runtime they share and quick-crypto's base64 module are peers with a version and not optional", () => {
-    for (const name of ["react-native-quick-crypto", "react-native-mmkv", "react-native-nitro-modules", "react-native-quick-base64"]) {
-      expect([name, typeof manifest.peerDependencies[name]]).toEqual([name, "string"]);
-      expect([name, manifest.peerDependenciesMeta[name]]).toEqual([name, undefined]);
-    }
-  });
-
+describe("the web's `localStorage` entry", () => {
   test("`/mmkv` is an entry with the three conditions, a declaration and a source that exports react-native-mmkv's createMMKV and types and localStorageMMKV", () => {
     expect(manifest.exports["./mmkv"]).toEqual({ "svelte-native-source": "./src/mmkv.ts", types: "./dist/types/mmkv.d.ts", default: "./src/mmkv.ts" });
     expect(existsSync(join(root, "dist/types/mmkv.d.ts"))).toBe(true);

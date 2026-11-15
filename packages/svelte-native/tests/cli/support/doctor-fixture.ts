@@ -1,8 +1,9 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { indexOfBlock, parsePatch } from "../src/doctor/hunks.ts";
-import { patchFiles, patchKey, patchSpecs } from "../src/doctor/patches.ts";
+import { indexOfBlock, parsePatch } from "../../../src/doctor/hunks.ts";
+import { patchFiles, patchKey, patchSpecs } from "../../../src/doctor/patches.ts";
+import { peerVersion } from "../../support/versions.ts";
 
 /**
  * A fake app for `svelte-native doctor`: a directory with a package.json, Metro and Expo configs, and a `node_modules` that holds stubs of the
@@ -10,7 +11,7 @@ import { patchFiles, patchKey, patchSpecs } from "../src/doctor/patches.ts";
  * pnpm patched), or, for an unpatched package, the same files with the patch taken out again (each hunk's result replaced by what the hunk
  * found, a file the patch creates left out): the shape of the package before pnpm applied anything.
  */
-export const repository = resolve(import.meta.dirname, "../../..");
+export const repository = resolve(import.meta.dirname, "../../../../..");
 /** The required peers React Native's autolinking links only from the app's own dependencies (`AUTOLINKED_PEERS` in `src/doctor/checks.ts`). */
 export const nativePeers = ["hermes-intl", "react-native-mmkv", "react-native-nitro-modules", "react-native-quick-base64", "react-native-quick-crypto"] as const;
 
@@ -67,7 +68,7 @@ export function makeFakeApp(options: FakeApp = {}): string {
   }
   // The runtime `polyfills.ts` imports from expo by path.
   if (!without.has("expo")) for (const file of ["index.ts", "runtime.native.ts"]) put(`node_modules/expo/src/winter/${file}`, "export {};\n");
-  stub("svelte", "5.56.7", options.stockSvelte ? { exports: { ".": "./src/index.js" } } : { exports: { ".": "./src/index.js", "./renderer": { default: "./src/renderer/index.js" } } });
+  stub("svelte", peerVersion("svelte"), options.stockSvelte ? { exports: { ".": "./src/index.js" } } : { exports: { ".": "./src/index.js", "./renderer": { default: "./src/renderer/index.js" } } });
   put("node_modules/svelte/src/compiler/validate-options.js", options.stockSvelte ? "export const options = {};\n" : "export const options = { experimental: { customRenderer: true } };\n");
   if (!options.stockSvelte) put("node_modules/svelte/src/renderer/index.js", "export {};\n");
 

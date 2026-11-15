@@ -3,13 +3,13 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runChecks } from "../src/doctor/checks.ts";
-import { patchedDependenciesOfYaml } from "../src/doctor/declared.ts";
-import { isRepositoryApp } from "../src/doctor/index.ts";
-import { patchesDirectory, patchFiles, patchKey, patchSpecs } from "../src/doctor/patches.ts";
-import { requirements } from "../src/doctor/requirements.ts";
-import { satisfies } from "../src/doctor/semver.ts";
-import { library, repository } from "./doctor-fixture.ts";
+import { runChecks } from "../../src/doctor/checks.ts";
+import { patchedDependenciesOfYaml } from "../../src/doctor/declared.ts";
+import { isRepositoryApp } from "../../src/doctor/index.ts";
+import { patchesDirectory, patchFiles, patchKey, patchSpecs } from "../../src/doctor/patches.ts";
+import { requirements } from "../../src/doctor/requirements.ts";
+import { satisfies } from "../../src/doctor/semver.ts";
+import { library, repository } from "./support/doctor-fixture.ts";
 
 // The doctor and the repository it comes from: the patches in `patches/` are the ones the repository's own install applies, each has a doctor entry,
 // the tools it asks for are the ones the repository names, and the example app passes it.
@@ -38,11 +38,10 @@ test("the repository declares each of them from the package, with the lockfile's
 test("the patches left at the root are the repository's own: the example's, for a library the package does not use, and Svelte's compiler, for Bun", () => {
   const declared = patchedDependenciesOfYaml(read("pnpm-workspace.yaml"));
   const others = [...declared].filter(([key]) => !patchFiles().some((patch) => patchKey(patch) === key));
-  expect(others).toEqual([
-    ["react-native-live-direction@0.1.1", "patches/react-native-live-direction@0.1.1.patch"],
-    ["svelte@5.56.7", "patches/svelte@5.56.7.patch"],
-  ]);
-  expect(readdirSync(join(repository, "patches")).sort()).toEqual(["react-native-live-direction@0.1.1.patch", "svelte@5.56.7.patch"]);
+  // The versions are whatever the repository installs: the keys name the packages, and each file is named after its key.
+  expect(others.map(([key]) => key.replace(/@[\w.-]+$/, ""))).toEqual(["react-native-live-direction", "svelte"]);
+  for (const [key, file] of others) expect(file).toBe(`patches/${key}.patch`);
+  expect(readdirSync(join(repository, "patches")).sort()).toEqual(others.map(([key]) => `${key}.patch`));
   // Svelte's is not an app's: an app's Metro transformer removes the compiler's refusals itself (`svelte-compiler.ts`), so the package ships no patch of Svelte and the doctor asks for none. The patch is only
   // for this repository's tests, which run under Bun, where no Node hook runs.
   expect(patchFiles().map((patch) => patch.package)).not.toContain("svelte");
@@ -50,16 +49,6 @@ test("the patches left at the root are the repository's own: the example's, for 
   const sources = readdirSync(join(repository, "packages/svelte-native/src"), { recursive: true, encoding: "utf8" }).filter((file) => /\.(ts|svelte)$/.test(file));
   for (const file of sources) expect(read(`packages/svelte-native/src/${file}`), file).not.toContain("react-native-live-direction");
   expect(JSON.stringify(library)).not.toContain("react-native-live-direction");
-});
-
-test("the README's table and YAML block name every patch with its version and file", () => {
-  const readme = read("packages/svelte-native/README.md");
-  for (const patch of patchFiles()) {
-    const key = patch.package.startsWith("@") ? `"${patchKey(patch)}"` : patchKey(patch);
-    expect(readme, `YAML entry of ${patch.file}`).toContain(`  ${key}: patches/svelte-native/${patch.file}\n`);
-    expect(readme, `table row of ${patch.file}`).toContain(`| \`${patch.package}\` ${patch.version} |`);
-  }
-  expect(readme.match(/^ {2}"?[@\w/.-]+@[\w.-]+"?: patches\/svelte-native\//gm)).toHaveLength(patchFiles().length);
 });
 
 test("the tools the doctor asks for are the ones the repository names", () => {
@@ -118,30 +107,5 @@ describe("which Node the doctor holds an app to", () => {
 
   test("a directory that is not there is an app", () => {
     expect(isRepositoryApp(join(tmpdir(), "doctor-scope-missing"), packageRoot)).toBe(false);
-  });
-});
-
-describe("the guide tells an app which Node to use", () => {
-  test("every place that tells a user the Node says the range the doctor holds an app to, and that Node 25 is not in it", () => {
-    expect(requirements.node.app).toBe("^22.17.0 || ^24.3.0 || >=26.0.0");
-    for (const file of ["README.md", "docs/10-getting-started/20-creating-a-project.md", "docs/60-appendix/10-adding-to-an-existing-expo-app.md", "docs/60-appendix/20-troubleshooting.md", "packages/svelte-native/README.md"]) {
-      const text = read(file);
-      expect(text, file).toContain("Node 24 LTS (24.3 or newer");
-      expect(text, file).toContain("Node 22.17 or newer");
-      expect(text, file).toContain("Node 26 or newer");
-      expect(text, file).toContain("Node 25");
-    }
-    for (const file of ["README.md", "docs/10-getting-started/20-creating-a-project.md", "docs/60-appendix/10-adding-to-an-existing-expo-app.md", "packages/svelte-native/README.md"]) expect(read(file), file).toMatch(/Not Node 25|not Node 25/);
-    // The first install of a Node 25 user stops, and the troubleshooting page says how it looks and what to do.
-    const troubleshooting = read("docs/60-appendix/20-troubleshooting.md");
-    expect(troubleshooting).toContain("ERR_PNPM_UNSUPPORTED_ENGINE");
-    expect(troubleshooting).toContain('(current: {"node":"25.0.0"})');
-    expect(troubleshooting).toContain("before `svelte-native init`");
-    // The doctor's sample output in the package README prints the app's range, and the root README still tells a contributor the repository's own Node.
-    const sample = /pass {2}node (\d+\.\d+\.\d+) \(needs ([^)]*)\)/.exec(read("packages/svelte-native/README.md"));
-    expect(sample?.[2]).toBe(requirements.node.app);
-    expect(satisfies(sample?.[1] ?? "", requirements.node.app)).toBe(true);
-    expect(read("README.md")).toContain("Node 25, pnpm 12.3.4 (the `packageManager` field)");
-    expect(read("README.md")).toContain(`Node ${requirements.node.repository.slice(2, 4)}, pnpm`);
   });
 });

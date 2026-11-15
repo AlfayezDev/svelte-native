@@ -1,15 +1,16 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { runChecks, type Check, type Context } from "../src/doctor/checks.ts";
-import { patchedDependenciesOfYaml } from "../src/doctor/declared.ts";
-import { parsePatch } from "../src/doctor/hunks.ts";
-import { formatReport, runDoctor } from "../src/doctor/index.ts";
-import { findPackage } from "../src/doctor/resolve.ts";
-import { expoPluginFinding, metroFinding, withoutJsComments } from "../src/doctor/integration.ts";
-import { patchFiles, patchKey, patchSpecs } from "../src/doctor/patches.ts";
-import { compareVersions, parseVersion, satisfies } from "../src/doctor/semver.ts";
-import { library, makeFakeApp, nativePeers, repository, type FakeApp } from "./doctor-fixture.ts";
+import { runChecks, type Check, type Context } from "../../src/doctor/checks.ts";
+import { patchedDependenciesOfYaml } from "../../src/doctor/declared.ts";
+import { parsePatch } from "../../src/doctor/hunks.ts";
+import { formatReport, runDoctor } from "../../src/doctor/index.ts";
+import { findPackage } from "../../src/doctor/resolve.ts";
+import { expoPluginFinding, metroFinding, withoutJsComments } from "../../src/doctor/integration.ts";
+import { patchFiles, patchKey, patchSpecs } from "../../src/doctor/patches.ts";
+import { compareVersions, parseVersion, satisfies } from "../../src/doctor/semver.ts";
+import { patchVersion, peerVersion } from "../support/versions.ts";
+import { library, makeFakeApp, nativePeers, repository, type FakeApp } from "./support/doctor-fixture.ts";
 
 // `svelte-native doctor` against fake apps: node_modules stubs with patched and unpatched copies of the files the patches change (doctor-fixture.ts),
 // the configs it reads, and the tools it asks about. The repository's own install is checked in doctor-repository.test.ts.
@@ -44,10 +45,10 @@ describe("an app that is set up", () => {
   });
 
   test("names the versions it found, the renderer build of Svelte among them", () => {
-    expect(find(checks, "svelte 5.56.7 has the ./renderer export")?.status).toBe("pass");
-    expect(find(checks, "react-native 0.86.3 satisfies 0.86.3")?.status).toBe("pass");
-    expect(find(checks, "expo 57.0.27 satisfies ~57.0.27")?.status).toBe("pass");
-    expect(find(checks, "react 19.2.7 satisfies 19.2.7")?.status).toBe("pass");
+    expect(find(checks, `svelte ${peerVersion("svelte")} has the ./renderer export`)?.status).toBe("pass");
+    expect(find(checks, `react-native ${peerVersion("react-native")} satisfies ${peerVersion("react-native")}`)?.status).toBe("pass");
+    expect(find(checks, `expo ${peerVersion("expo")} satisfies ~${peerVersion("expo")}`)?.status).toBe("pass");
+    expect(find(checks, `react ${peerVersion("react")} satisfies ${peerVersion("react")}`)?.status).toBe("pass");
     expect(find(checks, "node 26.0.0")?.status).toBe("pass");
     expect(find(checks, "pnpm 12.3.4")?.status).toBe("pass");
   });
@@ -75,13 +76,13 @@ describe("a patch that is not applied", () => {
 
   test("one that the app does not declare is told how to declare it", () => {
     const { checks } = check({ unpatched: ["react-native-pdf"], declared: false });
-    const failure = find(checks, "react-native-pdf@7.0.3 is not applied");
-    expect(failure?.fix).toContain('declare "react-native-pdf@7.0.3: patches/svelte-native/react-native-pdf@7.0.3.patch" under patchedDependencies');
+    const failure = find(checks, `react-native-pdf@${patchVersion("react-native-pdf")} is not applied`);
+    expect(failure?.fix).toContain(`declare "react-native-pdf@${patchVersion("react-native-pdf")}: patches/svelte-native/react-native-pdf@${patchVersion("react-native-pdf")}.patch" under patchedDependencies`);
   });
 
   test("a patch declared at a file that is not there is told so", () => {
-    const { checks } = check({ unpatched: ["react-native-pdf"], files: { "patches/svelte-native/react-native-pdf@7.0.3.patch": null } });
-    expect(find(checks, "react-native-pdf@7.0.3 is not applied")?.fix).toContain("which does not exist");
+    const { checks } = check({ unpatched: ["react-native-pdf"], files: { [`patches/svelte-native/react-native-pdf@${patchVersion("react-native-pdf")}.patch`]: null } });
+    expect(find(checks, `react-native-pdf@${patchVersion("react-native-pdf")} is not applied`)?.fix).toContain("which does not exist");
   });
 
   test("a package patched with an older copy of the patch is not applied as this version of the library has it", () => {
@@ -90,7 +91,7 @@ describe("a patch that is not applied", () => {
     const file = join(root, "node_modules/react-native-worklets/lib/module/runLoop/uiRuntime/requestAnimationFrame.js");
     writeFileSync(file, readFileSync(file, "utf8").replace("queuedCallbacks.length > 0 || queuedFinalizers.length > 0", "queuedCallbacks.length > 0"));
     const again = runChecks({ appRoot: root, packageRoot: join(repository, "packages/svelte-native"), ...tools });
-    const failure = find(again, "react-native-worklets@0.10.1 is patched, but not with this version of the library's patch");
+    const failure = find(again, `react-native-worklets@${patchVersion("react-native-worklets")} is patched, but not with this version of the library's patch`);
     expect(failure?.status).toBe("fail");
     expect(failure?.details?.[0]).toContain("lib/module/runLoop/uiRuntime/requestAnimationFrame.js: hunk");
     expect(failed(again)).toHaveLength(1);
@@ -98,85 +99,47 @@ describe("a patch that is not applied", () => {
 
   test("a patch for another version of the package cannot apply", () => {
     const { checks } = check({ versions: { "react-native-video": "6.19.4" } });
-    expect(find(checks, "react-native-video 6.19.4 is installed, the patch is for exactly 6.19.3")?.status).toBe("fail");
-    expect(find(checks, "react-native-video 6.19.4 does not satisfy 6.19.3")?.status).toBe("fail");
+    expect(find(checks, `react-native-video 6.19.4 is installed, the patch is for exactly ${patchVersion("react-native-video")}`)?.status).toBe("fail");
+    expect(find(checks, `react-native-video 6.19.4 does not satisfy ${patchVersion("react-native-video")}`)?.status).toBe("fail");
   });
 
   test("a package that comes with expo is pinned by an override, not added as a dependency", () => {
     const { checks } = check({ versions: { "expo-modules-core": "57.0.25" } });
-    const failure = find(checks, "expo-modules-core 57.0.25 is installed, the patch is for exactly 57.0.23");
+    const failure = find(checks, `expo-modules-core 57.0.25 is installed, the patch is for exactly ${patchVersion("expo-modules-core")}`);
     expect(failure?.status).toBe("fail");
-    expect(failure?.fix).toContain("`overrides:` with `expo-modules-core: 57.0.23` in pnpm-workspace.yaml");
+    expect(failure?.fix).toContain(`\`overrides:\` with \`expo-modules-core: ${patchVersion("expo-modules-core")}\` in pnpm-workspace.yaml`);
     expect(failure?.fix).toContain("ERR_PNPM_UNUSED_PATCH");
     expect(failed(checks)).toHaveLength(1);
     // A package the app depends on itself is added the usual way.
-    expect(find(check({ versions: { "react-native-video": "6.19.4" } }).checks, "react-native-video 6.19.4 is installed, the patch is for exactly 6.19.3")?.fix).toBe("pnpm add react-native-video@6.19.3");
+    expect(find(check({ versions: { "react-native-video": "6.19.4" } }).checks, `react-native-video 6.19.4 is installed, the patch is for exactly ${patchVersion("react-native-video")}`)?.fix).toBe(`pnpm add react-native-video@${patchVersion("react-native-video")}`);
   });
 
   test("a library the app does not use needs no patch; one it must have is a failure when it is missing", () => {
     const optional = check({ without: ["react-native-pdf", "react-native-video", "lottie-react-native", "react-native-maps"] }).checks;
     expect(failed(optional)).toEqual([]);
-    expect(find(optional, "react-native-pdf@7.0.3: react-native-pdf is not installed (optional)")?.status).toBe("skip");
+    expect(find(optional, `react-native-pdf@${patchVersion("react-native-pdf")}: react-native-pdf is not installed (optional)`)?.status).toBe("skip");
     expect(find(optional, "optional peer dependencies not installed, nothing to check:")?.message).toContain("react-native-pdf");
     const required = check({ without: ["react-native-worklets", "react-native-reanimated"] }).checks;
     expect(failed(required).map((entry) => entry.message).sort()).toEqual([
-      "react-native-reanimated is not installed (needs 4.5.1)",
-      "react-native-reanimated@4.5.1: react-native-reanimated is not installed",
-      "react-native-worklets is not installed (needs 0.10.1)",
-      "react-native-worklets@0.10.1: react-native-worklets is not installed",
+      `react-native-reanimated is not installed (needs ${peerVersion("react-native-reanimated")})`,
+      `react-native-reanimated@${peerVersion("react-native-reanimated")}: react-native-reanimated is not installed`,
+      `react-native-worklets is not installed (needs ${patchVersion("react-native-worklets")})`,
+      `react-native-worklets@${patchVersion("react-native-worklets")}: react-native-worklets is not installed`,
     ]);
   });
 
   test("expo-modules-core is found through expo, which the app depends on and it does not", () => {
     const { checks } = check({ without: ["expo", "expo-modules-core"] });
-    expect(find(checks, "expo-modules-core@57.0.23: expo-modules-core is not installed (expo is not either)")?.status).toBe("fail");
-    expect(find(checks, "expo is not installed (needs ~57.0.27)")?.status).toBe("fail");
+    expect(find(checks, `expo-modules-core@${patchVersion("expo-modules-core")}: expo-modules-core is not installed (expo is not either)`)?.status).toBe("fail");
+    expect(find(checks, `expo is not installed (needs ~${peerVersion("expo")})`)?.status).toBe("fail");
   });
 });
 
-describe("hermes-intl", () => {
-  test("is a required peer of the library: the Intl constructors Hermes lacks come from it", () => {
-    expect(library.peerDependencies["hermes-intl"]).toBe("^0.1.2");
-    expect(library.peerDependenciesMeta["hermes-intl"]).toBeUndefined();
-  });
+describe("the required peers with a native module", () => {
+  // React Native's autolinking links a native module only from the app's own dependencies, so the doctor asks for each of them there, and not only in node_modules.
+  const installed = (name: string) => library.peerDependencies[name]?.replace(/^[~^]/, "");
 
-  test("an app that has it as a dependency passes, and the check says why it has to be a dependency", () => {
-    const { checks } = check();
-    expect(find(checks, "hermes-intl 0.1.2 satisfies ^0.1.2")?.status).toBe("pass");
-    expect(find(checks, "hermes-intl is a dependency of the app: React Native's autolinking links its native module")?.status).toBe("pass");
-  });
-
-  test("an app without it fails, with the command that adds it", () => {
-    const { checks } = check({ without: ["hermes-intl"], files: { "package.json": manifestWith(nativePeers.filter((name) => name !== "hermes-intl")) } });
-    expect(failed(checks).map((entry) => entry.message)).toEqual(["hermes-intl is not installed (needs ^0.1.2)"]);
-    expect(find(checks, "hermes-intl is not installed")?.fix).toBe("pnpm add hermes-intl@^0.1.2");
-  });
-
-  test("one that only has it installed (hoisted from another package) fails: React Native's autolinking reads the app's own dependencies", () => {
-    const { checks } = check({ files: { "package.json": manifestWith(nativePeers.filter((name) => name !== "hermes-intl")) } });
-    const failure = find(checks, "hermes-intl is installed but is not a dependency of the app");
-    expect(failure?.status).toBe("fail");
-    expect(failure?.fix).toBe("pnpm add hermes-intl@^0.1.2, then npx expo prebuild");
-    expect(failed(checks)).toHaveLength(1);
-  });
-
-  test("a version outside the range fails", () => {
-    expect(find(check({ versions: { "hermes-intl": "0.2.0" } }).checks, "hermes-intl 0.2.0 does not satisfy ^0.1.2")?.status).toBe("fail");
-  });
-});
-
-describe("what `crypto` and `localStorage` are made of", () => {
-  const needed = ["react-native-quick-crypto", "react-native-nitro-modules", "react-native-quick-base64", "react-native-mmkv"] as const;
-
-  test("react-native-quick-crypto, react-native-nitro-modules, react-native-quick-base64 and react-native-mmkv are required peers of the library, at versions that agree (Nitro is shared)", () => {
-    expect(library.peerDependencies).toMatchObject({
-      "react-native-quick-crypto": "1.1.3",
-      "react-native-nitro-modules": "0.35.10",
-      "react-native-quick-base64": "2.2.2",
-      "react-native-mmkv": "4.3.1",
-    });
-    for (const name of needed) expect([name, library.peerDependenciesMeta[name]]).toEqual([name, undefined]);
-    // Their own peer ranges, from the installed copies, are satisfied by the versions the library names.
+  test("the Nitro runtime and quick-base64 that quick-crypto and mmkv ask for are satisfied by the versions the library names", () => {
     for (const name of ["react-native-quick-crypto", "react-native-mmkv"]) {
       const peers = (findPackage(name, repository)?.json.peerDependencies ?? {}) as Record<string, string>;
       for (const dependency of ["react-native-nitro-modules", "react-native-quick-base64"]) if (peers[dependency] !== undefined) expect(satisfies(library.peerDependencies[dependency] ?? "", peers[dependency]), `${name} asks for ${dependency} ${peers[dependency]}`).toBe(true);
@@ -185,23 +148,23 @@ describe("what `crypto` and `localStorage` are made of", () => {
 
   test("an app that has them as dependencies passes, each said to be linked by autolinking", () => {
     const { checks } = check();
-    for (const name of needed) {
-      expect(find(checks, `${name} ${library.peerDependencies[name]} satisfies ${library.peerDependencies[name]}`)?.status, name).toBe("pass");
+    for (const name of nativePeers) {
+      expect(find(checks, `${name} ${installed(name)} satisfies ${library.peerDependencies[name]}`)?.status, name).toBe("pass");
       expect(find(checks, `${name} is a dependency of the app: React Native's autolinking links its native module`)?.status, name).toBe("pass");
     }
   });
 
   test("an app without one fails, naming it and the command that adds it", () => {
-    for (const name of needed) {
-      const { checks } = check({ without: [name], files: { "package.json": manifestWith(["hermes-intl", ...needed.filter((other) => other !== name)]) } });
+    for (const name of nativePeers) {
+      const { checks } = check({ without: [name], files: { "package.json": manifestWith(nativePeers.filter((other) => other !== name)) } });
       expect(failed(checks).map((entry) => entry.message), name).toEqual([`${name} is not installed (needs ${library.peerDependencies[name]})`]);
       expect(find(checks, `${name} is not installed`)?.fix).toBe(`pnpm add ${name}@${library.peerDependencies[name]}`);
     }
   });
 
   test("one that only has them installed (hoisted from another package) fails: autolinking reads the app's own dependencies", () => {
-    for (const name of needed) {
-      const { checks } = check({ files: { "package.json": manifestWith(["hermes-intl", ...needed.filter((other) => other !== name)]) } });
+    for (const name of nativePeers) {
+      const { checks } = check({ files: { "package.json": manifestWith(nativePeers.filter((other) => other !== name)) } });
       const failure = find(checks, `${name} is installed but is not a dependency of the app`);
       expect([name, failure?.status]).toEqual([name, "fail"]);
       expect(failure?.fix).toBe(`pnpm add ${name}@${library.peerDependencies[name]}, then npx expo prebuild`);
@@ -210,18 +173,18 @@ describe("what `crypto` and `localStorage` are made of", () => {
   });
 
   test("a version outside the range fails", () => {
-    for (const name of needed) expect(find(check({ versions: { [name]: "0.0.1" } }).checks, `${name} 0.0.1 does not satisfy ${library.peerDependencies[name]}`)?.status, name).toBe("fail");
+    for (const name of nativePeers) expect(find(check({ versions: { [name]: "0.0.1" } }).checks, `${name} 0.0.1 does not satisfy ${library.peerDependencies[name]}`)?.status, name).toBe("fail");
   });
 });
 
 describe("expo's runtime", () => {
   test("an expo that has src/winter passes: the library's polyfills import it for the standard URL", () => {
-    expect(find(check().checks, "expo 57.0.27 has src/winter, the runtime (URL, fetch, TextDecoder) that the library's polyfills import")?.status).toBe("pass");
+    expect(find(check().checks, `expo ${peerVersion("expo")} has src/winter, the runtime (URL, fetch, TextDecoder) that the library's polyfills import`)?.status).toBe("pass");
   });
 
   test("an expo without it fails, with the files and the fix", () => {
     const { checks } = check({ files: { "node_modules/expo/src/winter/runtime.native.ts": null } });
-    const failure = find(checks, "expo 57.0.27 has no src/winter/runtime.native.ts");
+    const failure = find(checks, `expo ${peerVersion("expo")} has no src/winter/runtime.native.ts`);
     expect(failure?.status).toBe("fail");
     expect(failure?.fix).toContain("npx expo install expo");
     expect(failed(checks)).toHaveLength(1);
@@ -233,22 +196,17 @@ describe("expo's runtime", () => {
 });
 
 describe("SvelteKit and Vite are optional", () => {
-  test("they are optional peers of the library", () => {
-    expect(library.peerDependenciesMeta["@sveltejs/kit"]).toEqual({ optional: true });
-    expect(library.peerDependenciesMeta.vite).toEqual({ optional: true });
-  });
-
   test("a native-only app, which has neither, passes: both are skipped, and so is SvelteKit's patch", () => {
     const { checks } = check({ without: ["@sveltejs/kit", "vite"] });
     expect(failed(checks)).toEqual([]);
     expect(find(checks, "optional peer dependencies not installed, nothing to check:")?.message).toContain("@sveltejs/kit, ");
     expect(find(checks, "optional peer dependencies not installed, nothing to check:")?.message).toContain("vite");
-    expect(find(checks, "@sveltejs/kit@3.1.1: @sveltejs/kit is not installed (optional), nothing to patch")?.status).toBe("skip");
+    expect(find(checks, `@sveltejs/kit@${peerVersion("@sveltejs/kit")}: @sveltejs/kit is not installed (optional), nothing to patch`)?.status).toBe("skip");
   });
 
   test("an app that has SvelteKit must have the version and the patch", () => {
-    expect(find(check({ versions: { "@sveltejs/kit": "3.1.2" } }).checks, "@sveltejs/kit 3.1.2 does not satisfy 3.1.1")?.status).toBe("fail");
-    expect(failed(check({ unpatched: ["@sveltejs/kit"] }).checks).map((entry) => entry.message)).toEqual([expect.stringContaining("@sveltejs/kit@3.1.1 is not applied")]);
+    expect(find(check({ versions: { "@sveltejs/kit": "3.1.2" } }).checks, `@sveltejs/kit 3.1.2 does not satisfy ${peerVersion("@sveltejs/kit")}`)?.status).toBe("fail");
+    expect(failed(check({ unpatched: ["@sveltejs/kit"] }).checks).map((entry) => entry.message)).toEqual([expect.stringContaining(`@sveltejs/kit@${peerVersion("@sveltejs/kit")} is not applied`)]);
   });
 });
 
@@ -256,14 +214,14 @@ describe("finding an installed package", () => {
   test("in a hoisted install, in a workspace's root and, from a package's real directory, among the dependencies pnpm links beside it", () => {
     const root = makeFakeApp();
     apps.push(root);
-    expect(findPackage("react-native", root)?.version).toBe("0.86.3");
-    expect(findPackage("react-native", join(root, "apps/deep/inside"))?.version).toBe("0.86.3");
+    expect(findPackage("react-native", root)?.version).toBe(`${peerVersion("react-native")}`);
+    expect(findPackage("react-native", join(root, "apps/deep/inside"))?.version).toBe(`${peerVersion("react-native")}`);
     expect(findPackage("not-installed", root)).toBeUndefined();
     // pnpm's own layout: the app links `expo`; `expo-modules-core` is only beside the real `expo`, in `.pnpm/expo@1/node_modules`.
     const isolated = makeFakeApp({ without: ["expo", "expo-modules-core"] });
     apps.push(isolated);
     const store = join(isolated, "node_modules/.pnpm/expo@1/node_modules");
-    for (const [name, version] of [["expo", "57.0.30"], ["expo-modules-core", "57.0.23"]] as const) {
+    for (const [name, version] of [["expo", "57.0.30"], ["expo-modules-core", `${patchVersion("expo-modules-core")}`]] as const) {
       mkdirSync(join(store, name), { recursive: true });
       writeFileSync(join(store, name, "package.json"), JSON.stringify({ name, version }));
     }
@@ -271,7 +229,7 @@ describe("finding an installed package", () => {
     const expo = findPackage("expo", isolated);
     expect(expo?.directory).toBe(join(store, "expo"));
     expect(findPackage("expo-modules-core", isolated)).toBeUndefined();
-    expect(findPackage("expo-modules-core", expo?.directory ?? "")?.version).toBe("57.0.23");
+    expect(findPackage("expo-modules-core", expo?.directory ?? "")?.version).toBe(`${patchVersion("expo-modules-core")}`);
   });
 });
 
@@ -279,11 +237,11 @@ describe("versions", () => {
   test("react-native, expo and react must satisfy the library's peers", () => {
     const { checks } = check({ versions: { "react-native": "0.85.1", expo: "57.1.0", react: "19.2.6" } });
     expect(failed(checks).map((entry) => entry.message).sort()).toEqual([
-      "expo 57.1.0 does not satisfy ~57.0.27",
-      "react 19.2.6 does not satisfy 19.2.7",
-      "react-native 0.85.1 does not satisfy 0.86.3",
+      `expo 57.1.0 does not satisfy ~${peerVersion("expo")}`,
+      `react 19.2.6 does not satisfy ${peerVersion("react")}`,
+      `react-native 0.85.1 does not satisfy ${peerVersion("react-native")}`,
     ]);
-    expect(find(checks, "react-native 0.85.1")?.fix).toBe("pnpm add react-native@0.86.3");
+    expect(find(checks, "react-native 0.85.1")?.fix).toBe(`pnpm add react-native@${peerVersion("react-native")}`);
   });
 
   test("an optional view library that is installed must match too", () => {
@@ -292,9 +250,9 @@ describe("versions", () => {
   });
 
   test("a peer that is not installed is a failure unless it is optional", () => {
-    expect(find(check({ without: ["react"] }).checks, "react is not installed (needs 19.2.7)")?.status).toBe("fail");
+    expect(find(check({ without: ["react"] }).checks, `react is not installed (needs ${peerVersion("react")})`)?.status).toBe("fail");
     // react-native-svg is a required peer (the main entry exports its components); a view library such as react-native-pdf is not.
-    expect(find(check({ without: ["react-native-svg"] }).checks, "react-native-svg is not installed (needs 15.15.4)")?.status).toBe("fail");
+    expect(find(check({ without: ["react-native-svg"] }).checks, `react-native-svg is not installed (needs ${peerVersion("react-native-svg")})`)?.status).toBe("fail");
     expect(find(check({ without: ["react-native-pdf"] }).checks, "react-native-pdf")?.status).not.toBe("fail");
   });
 
@@ -321,14 +279,14 @@ describe("versions", () => {
 describe("Svelte", () => {
   test("the stock build, without the renderer export, is a failure that names it", () => {
     const { checks } = check({ stockSvelte: true });
-    const failure = find(checks, "svelte 5.56.7 is the stock Svelte: it has no ./renderer export");
+    const failure = find(checks, `svelte ${peerVersion("svelte")} is the stock Svelte: it has no ./renderer export`);
     expect(failure?.status).toBe("fail");
     expect(failure?.fix).toContain("custom-renderer build of Svelte");
   });
 
   test("an export that points at a file that is not there does not count", () => {
     const { checks } = check({ files: { "node_modules/svelte/src/renderer/index.js": null } });
-    expect(find(checks, "svelte 5.56.7 is the stock Svelte")?.status).toBe("fail");
+    expect(find(checks, `svelte ${peerVersion("svelte")} is the stock Svelte`)?.status).toBe("fail");
   });
 
   test("a compiler without the customRenderer option does not count", () => {
@@ -472,11 +430,11 @@ describe("the app's configs", () => {
 describe("what is declared", () => {
   test("patchedDependencies of a pnpm-workspace.yaml, quoted or not, and what follows it", () => {
     const yaml = [
-      "packages:", "  - apps/*", "patchedDependencies:", "# the library's patches", '  "@sveltejs/kit@3.0.0-next.27": packages/svelte-native/patches/kit.patch  # a comment', "  expo-modules-core@57.0.23: 'patches/a b.patch'",
-      "  react-native-pdf@7.0.3: \"patches/pdf.patch\"", "overrides:", "  other@1.0.0: patches/not-a-patch", "",
+      "packages:", "  - apps/*", "patchedDependencies:", "# the library's patches", '  "@sveltejs/kit@3.0.0-next.27": packages/svelte-native/patches/kit.patch  # a comment', `  expo-modules-core@${patchVersion("expo-modules-core")}: 'patches/a b.patch'`,
+      `  react-native-pdf@${patchVersion("react-native-pdf")}: \"patches/pdf.patch\"`, "overrides:", "  other@1.0.0: patches/not-a-patch", "",
     ].join("\n");
     expect([...patchedDependenciesOfYaml(yaml)]).toEqual([
-      ["@sveltejs/kit@3.0.0-next.27", "packages/svelte-native/patches/kit.patch"], ["expo-modules-core@57.0.23", "patches/a b.patch"], ["react-native-pdf@7.0.3", "patches/pdf.patch"],
+      ["@sveltejs/kit@3.0.0-next.27", "packages/svelte-native/patches/kit.patch"], [`expo-modules-core@${patchVersion("expo-modules-core")}`, "patches/a b.patch"], [`react-native-pdf@${patchVersion("react-native-pdf")}`, "patches/pdf.patch"],
     ]);
     expect(patchedDependenciesOfYaml("packages: []\n").size).toBe(0);
   });
@@ -484,9 +442,9 @@ describe("what is declared", () => {
   test("pnpm.patchedDependencies of the app's package.json counts too", () => {
     const { checks } = check({
       unpatched: ["react-native-pdf"], declared: false,
-      files: { "package.json": JSON.stringify({ name: "fake-app", dependencies: { [library.name]: "*" }, pnpm: { patchedDependencies: { "react-native-pdf@7.0.3": "patches/pdf.patch" } } }), "patches/pdf.patch": "" },
+      files: { "package.json": JSON.stringify({ name: "fake-app", dependencies: { [library.name]: "*" }, pnpm: { patchedDependencies: { [`react-native-pdf@${patchVersion("react-native-pdf")}`]: "patches/pdf.patch" } } }), "patches/pdf.patch": "" },
     });
-    expect(find(checks, "react-native-pdf@7.0.3 is not applied")?.fix).toContain("package.json declares react-native-pdf@7.0.3 (patches/pdf.patch)");
+    expect(find(checks, `react-native-pdf@${patchVersion("react-native-pdf")} is not applied`)?.fix).toContain(`package.json declares react-native-pdf@${patchVersion("react-native-pdf")} (patches/pdf.patch)`);
   });
 });
 
@@ -521,7 +479,7 @@ describe("the report and the exit status", () => {
     const text = out.text();
     expect(text).toContain(`svelte-native doctor: ${root}`);
     for (const group of ["environment", "svelte", "peer dependencies", "patches", "build integration"]) expect(text).toContain(`\n${group}\n`);
-    expect(text).toContain("  pass  react-native-pdf@7.0.3 applied: the pdf view's one event");
+    expect(text).toContain(`  pass  react-native-pdf@${patchVersion("react-native-pdf")} applied: the pdf view's one event`);
     expect(text).toMatch(/\d+ passed, 0 failed, 0 could not tell, 0 skipped\n$/);
     expect(text).not.toContain("\u001b[");
   });
@@ -543,7 +501,7 @@ describe("the report and the exit status", () => {
     const out = output();
     expect(runDoctor(root, [], out, { ...tools })).toBe(0);
     expect(out.text()).toContain("  ????  could not tell: metro.config.cjs");
-    expect(out.text()).toContain("  skip  react-native-pdf@7.0.3: react-native-pdf is not installed (optional)");
+    expect(out.text()).toContain(`  skip  react-native-pdf@${patchVersion("react-native-pdf")}: react-native-pdf is not installed (optional)`);
   });
 
   test("--json prints the checks and whether they all hold", () => {

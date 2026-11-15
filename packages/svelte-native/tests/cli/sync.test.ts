@@ -107,6 +107,7 @@ async function withRoutes<T>(files: Record<string, string>, check: (directory: s
 }
 
 /** Bundles the route table of a synced project with every page replaced by a module that logs its own evaluation into one `evaluated` module the bundle exports. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- the table is a bundle loaded at run time
 async function bundledTable(directory: string): Promise<{ tree: any; evaluated: string[] }> {
   const bundle = await build({
     stdin: { contents: `export * from ${JSON.stringify(resolve(directory, ".svelte-native", routesTableFile("qa")))}; export { evaluated } from 'evaluated';`, resolveDir: directory },

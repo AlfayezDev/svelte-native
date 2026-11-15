@@ -8,7 +8,6 @@ import { patchedDependenciesOfYaml } from "../../src/doctor/declared.ts";
 import { isRepositoryApp } from "../../src/doctor/index.ts";
 import { patchesDirectory, patchFiles, patchKey, patchSpecs } from "../../src/doctor/patches.ts";
 import { requirements } from "../../src/doctor/requirements.ts";
-import { satisfies } from "../../src/doctor/semver.ts";
 import { library, repository } from "./support/doctor-fixture.ts";
 
 // The doctor and the repository it comes from: the patches in `patches/` are the ones the repository's own install applies, each has a doctor entry,

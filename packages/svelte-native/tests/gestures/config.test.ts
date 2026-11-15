@@ -1,6 +1,6 @@
 import { test, expect } from "bun:test";
 import { readFile } from "node:fs/promises";
-import { useOracle } from "./support/oracle.ts";
+import { gestureOracle } from "./support/oracle.ts";
 import { src } from "../support/bundle.ts";
 import { load } from "./support/harness.ts";
 import { ALLOWED_PROPS, extractGestureRelations, filterConfig, needsToReattach } from "../../src/gestures/config.ts";
@@ -8,7 +8,7 @@ import { GestureObjects } from "../../src/gestures/rngh.js";
 
 // The detector's pure helpers are copies of RNGH's (it cannot be imported: `GestureDetector/utils` loads `react-native` and the
 // `*GestureHandler` components). Each is run against RNGH's own, bundled as the oracle, so an upgrade that changes one fails here.
-const oracle = useOracle();
+const oracle = gestureOracle();
 const callback = () => {};
 
 test("ALLOWED_PROPS is RNGH's list, in RNGH's order", () => {

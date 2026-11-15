@@ -3,7 +3,7 @@ import { parseNativeID } from "../../src/fabric/navigation.ts";
 import { type FakeNode, find, ofKind, ofTestID, withInsets, onPlatform, settle, flat, navigationWorld } from "./support/world.ts";
 
 /** `Screen` through the Fabric host: the tags reach the engine as RCTView nodes carrying the encoded nativeID (SPEC.md "Screen API contract"). */
-const { host, load, texts } = navigationWorld();
+const { host, load } = navigationWorld();
 
 test("native-stack and native-screen mount as RCTView nodes the engine recognises by nativeID, with absolute screen styles", async () => {
   const m = await load();

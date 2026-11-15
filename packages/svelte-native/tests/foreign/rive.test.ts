@@ -66,7 +66,7 @@ test("the events reach the callbacks with the library's arguments; an error of a
   const app = loaded.startSurface(122, loaded.Fixture, {}) as App;
   const [view] = find(harness.roots()[122], name);
   const warn = spyOn(console, "warn").mockImplementation(() => {});
-  let warnings: unknown[][] = [];
+  let warnings: unknown[][];
   try {
     harness.emit(view.target, "topPlay", { animationName: "idle", isStateMachine: false });
     harness.emit(view.target, "topPause", { animationName: "idle", isStateMachine: false });

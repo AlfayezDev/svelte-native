@@ -11,7 +11,7 @@ import { importedNames, labApplication, standInBundle, standInWorld, storeApplic
  * (`navigation/support/stand-in.ts`), so that a lab call that is not behind the flag fails the test instead of a phone.
  */
 const world = navigationWorld();
-const { texts, mountTree } = world;
+const { mountTree } = world;
 const { mountStandIn } = standInWorld(world);
 const probe = resolve(import.meta.dirname, "fixtures/lab-stub-probe.svelte");
 

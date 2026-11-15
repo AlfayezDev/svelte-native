@@ -1,4 +1,4 @@
-import { makeRnBlob, rnReads, useFake } from "./support/setup.ts";
+import { makeRnBlob, rnReads, fetchFake } from "./support/setup.ts";
 import { beforeEach, describe, expect, test } from "bun:test";
 import { Blob, File } from "../../../src/fetch/blob.ts";
 import { fetch } from "../../../src/fetch/fetch.ts";
@@ -8,7 +8,7 @@ import { Request } from "../../../src/fetch/request.ts";
 import { Response } from "../../../src/fetch/response.ts";
 import { seededBytes } from "./support/server.ts";
 
-const fake = useFake();
+const fake = fetchFake();
 
 beforeEach(() => { fake.log.length = 0; rnReads.length = 0; });
 

@@ -1,5 +1,5 @@
 import { test, expect, spyOn } from "bun:test";
-import { useOracle } from "./support/oracle.ts";
+import { gestureOracle } from "./support/oracle.ts";
 import { load, settle, world, anim, byId, callsOf } from "./support/harness.ts";
 
 /**
@@ -7,7 +7,7 @@ import { load, settle, world, anim, byId, callsOf } from "./support/harness.ts";
  * Reanimated in a worklet. Both are checked against react-native-gesture-handler's own `onGestureHandlerEvent` (bundled as the
  * oracle): the same event sequence must call the same callbacks with the same arguments in the same order.
  */
-const oracle = useOracle();
+const oracle = gestureOracle();
 type Entry = [name: string, ...args: unknown[]];
 const clone = (value: unknown): unknown => JSON.parse(JSON.stringify(value) ?? "null");
 /** The handler tag is a counter of its own module instance: both sides log it as "T". */

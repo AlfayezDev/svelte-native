@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import type { AnimLog } from "../support/reanimated-stubs.ts";
-import { type FakeNode as HarnessNode, all, fake as base, flat, host, load, settle, textOf } from "../support/html-harness.ts";
+import { all, fake as base, flat, host, load, settle, textOf } from "../support/html-harness.ts";
 import { type Layout, type LayoutNode as FakeNode, attachLayout } from "../support/layout-host.ts";
 import { resolve } from "node:path";
 

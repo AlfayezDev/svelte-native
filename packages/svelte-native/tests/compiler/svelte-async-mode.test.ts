@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { compile } from "svelte/compiler";
 import { ASYNC_ENVIRONMENT_VARIABLE, componentOptions, moduleOptions } from "../../src/compile-options.ts";
 import { repoRoot } from "../support/paths.ts";

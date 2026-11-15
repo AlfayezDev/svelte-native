@@ -3,7 +3,7 @@ import { EXIT_TIMEOUT_MS, parseNativeID } from "../../src/fabric/navigation.ts";
 import { type TreeRouter, type TreeApp, ofKind, ofTestID, turns, withInsets, handlersOf, treeGlobals, pathsOf, paneRouter, tabScreens, activityOf, navigationWorld } from "./support/world.ts";
 
 /** The route tree through the router: navigators as routes, tabs with a stack per pane (SPEC.md "Route tree: layouts as navigators"), on `fixtures/tree-fixture.svelte`. */
-const { host, load, texts, selectedIndex, mountTree } = navigationWorld();
+const { host, load, selectedIndex, mountTree } = navigationWorld();
 
 test("a deep link into the tabs puts the tabs screen on the root stack, selects the pane and stacks its route there; only the selected pane mounts", async () => {
   withInsets(24);

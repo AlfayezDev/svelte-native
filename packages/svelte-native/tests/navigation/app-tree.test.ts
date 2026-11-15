@@ -15,7 +15,7 @@ import { appRoutes, neverAnswers, sendLink, trouble, standInWorld } from "./supp
  * the lab, a restart on it, a link while it runs). That a store build's Metro stub fails a lab call that is not behind the flag is `compiler/lab-stub.test.ts`.
  */
 const world = navigationWorld();
-const { host, selectedIndex, mountTree } = world;
+const { selectedIndex, mountTree } = world;
 const { labStart } = standInWorld(world);
 
 const appFiles = () => routeFiles(appRoutes, { lab: true });

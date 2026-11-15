@@ -1,4 +1,4 @@
-import { makeRnBlob, restoreObjectURLs, RnFormData, RnXhr, useFake } from "./support/setup.ts";
+import { makeRnBlob, restoreObjectURLs, RnFormData, RnXhr, fetchFake } from "./support/setup.ts";
 import { beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -8,7 +8,7 @@ import { patchObjectURLs } from "../../../src/fetch/url.ts";
 import { patchXHRSend } from "../../../src/fetch/xhr.ts";
 import { seededBytes } from "./support/server.ts";
 
-const fake = useFake();
+const fake = fetchFake();
 
 /**
  * `xhr.send` of our Blob, File and FormData. React Native's `convertRequestBody` recognises only its own Blob, so before the wrap an object of ours was handed to networking as it

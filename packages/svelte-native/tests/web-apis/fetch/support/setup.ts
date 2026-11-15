@@ -1,6 +1,6 @@
 // Imported first by every file of tests/web-apis/fetch: the device's parts that the JavaScript layer borrows (React Native's FormData, Blob, FileReader and XMLHttpRequest, whose sources
 // are Flow and cannot be loaded by Bun) and the fake native module. `mock.module` is global to the test process and Bun cannot take a mock back: only these four specifiers are
-// mocked, and no other test loads them. What is not global is the native module: a file that uses it says `useFake()`, which sets it for the file and forgets it afterwards.
+// mocked, and no other test loads them. What is not global is the native module: a file that uses it says `fetchFake()`, which sets it for the file and forgets it afterwards.
 import { afterAll, beforeAll, mock } from "bun:test";
 import { readFileSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -123,7 +123,7 @@ process.on("exit", () => rmSync(fake.blobDirectory, { recursive: true, force: tr
  * Makes the fake the library's native module for the file that calls it (at the top level), and takes it away when the file is done. It is set when the file loads, for the Blobs a
  * `describe` builds while the tests are collected, and again before the file's first test.
  */
-export function useFake(): typeof fake {
+export function fetchFake(): typeof fake {
   setNativeModule(fake.module);
   beforeAll(() => setNativeModule(fake.module));
   afterAll(() => setNativeModule(undefined));

@@ -101,11 +101,19 @@ function textFaults(nodes: FakeNode[], inText = false): string[] {
   return faults;
 }
 
+const DIFFERENTIAL_BUDGET_MS = 120_000;
+
 test("a page that is changed is what a fresh page of the same state is: random pages, random changes, the host's tree compared, and the bind:this handles", async () => {
   const seeds = Number(process.env.SEEDS ?? 150);
   const failures: string[] = [];
   let surface = 3000;
+  // Stops short of the test's timeout: a loop that ran past it would go on in the background and reset the shared host under the files after it.
+  const deadline = Date.now() + DIFFERENTIAL_BUDGET_MS - 10_000;
   for (let seed = 1; seed <= seeds; seed++) {
+    if (Date.now() > deadline) {
+      failures.push(`stopped after ${seed - 1} of ${seeds} seeds: the run reached its ${DIFFERENTIAL_BUDGET_MS / 1000} s budget (a slow or loaded machine)`);
+      break;
+    }
     const next = random(seed);
     const { source, bound } = generate(next);
     const directory = await mkdtemp(resolve(import.meta.dirname, ".differential-"));
@@ -119,6 +127,10 @@ test("a page that is changed is what a fresh page of the same state is: random p
       continue;
     } finally {
       await rm(directory, { recursive: true });
+    }
+    if (Date.now() > deadline) {
+      failures.push(`stopped during seed ${seed} of ${seeds}: building its page reached the ${DIFFERENTIAL_BUDGET_MS / 1000} s budget (a slow or loaded machine)`);
+      break;
     }
     const state: State = JSON.parse(JSON.stringify(INITIAL));
     const globals = globalThis as unknown as { __init: State; __api: { set(key: string, value: unknown): void; tags(): Record<string, number | null> } };
@@ -168,7 +180,7 @@ test("a page that is changed is what a fresh page of the same state is: random p
     m.stopSurface(fresh);
   }
   expect(failures.slice(0, 2)).toEqual([]);
-}, 120_000);
+}, DIFFERENTIAL_BUDGET_MS);
 
 function pick<T>(next: () => number, items: readonly T[]): T {
   return items[Math.floor(next() * items.length)] as T;

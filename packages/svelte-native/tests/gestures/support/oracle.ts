@@ -94,7 +94,7 @@ export async function loadOracle(): Promise<Oracle> {
  * The oracle for the tests of a file: loaded before the first and put away, with the global it sets, after the last. Call it at the top level of the file; the function it returns is
  * the oracle once the tests run.
  */
-export function useOracle(): () => Oracle {
+export function gestureOracle(): () => Oracle {
   let oracle: Oracle | undefined;
   let snapshot: ReturnType<typeof snapshotGlobals> | undefined;
   beforeAll(async () => {

@@ -17,7 +17,7 @@ export type Json = Record<string, any>;
 export const readJson = (root: string, file: string): Json => JSON.parse(readFileSync(join(root, file), "utf8")) as Json;
 
 /** Call it at the top level of a file: the projects its tests make are removed after each test. */
-export function useInitProjects() {
+export function initProjects() {
   const projects: Project[] = [];
   afterEach(() => { for (const made of projects.splice(0)) made.remove(); });
   return {

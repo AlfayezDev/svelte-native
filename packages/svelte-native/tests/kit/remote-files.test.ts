@@ -1,6 +1,6 @@
 // A remote form with a file, on the device's own `Blob`, `File` and `fetch` (the library's, over the fake native module): the file's bytes stay native
 // from the `File` to the request, and the server's SvelteKit parser reads what was sent.
-import { useFake } from "../web-apis/fetch/support/setup.ts";
+import { fetchFake } from "../web-apis/fetch/support/setup.ts";
 import { expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
@@ -11,7 +11,7 @@ import { fetch as nativeFetch } from "../../src/fetch/fetch.ts";
 import { kitRoot } from "../../src/remote/transform.ts";
 import { loadClient } from "./support/remote-harness.ts";
 
-const fake = useFake();
+const fake = fetchFake();
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 test("a form with a File sends the file's native bytes through the library's fetch, and SvelteKit's parser reads them", async () => {

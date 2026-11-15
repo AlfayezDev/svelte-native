@@ -3,7 +3,7 @@ import { transformSync } from "@babel/core";
 import { createRequire } from "node:module";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { packageRoot } from "../support/paths.ts";
 
 /**

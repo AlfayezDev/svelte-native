@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { findPackage } from "../../src/doctor/resolve.ts";
 import { removedSpecifiers } from "./support/removed-entries.ts";
 import { packageRoot, repoRoot } from "../support/paths.ts";

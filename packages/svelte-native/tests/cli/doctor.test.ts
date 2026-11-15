@@ -431,7 +431,7 @@ describe("what is declared", () => {
   test("patchedDependencies of a pnpm-workspace.yaml, quoted or not, and what follows it", () => {
     const yaml = [
       "packages:", "  - apps/*", "patchedDependencies:", "# the library's patches", '  "@sveltejs/kit@3.0.0-next.27": packages/svelte-native/patches/kit.patch  # a comment', `  expo-modules-core@${patchVersion("expo-modules-core")}: 'patches/a b.patch'`,
-      `  react-native-pdf@${patchVersion("react-native-pdf")}: \"patches/pdf.patch\"`, "overrides:", "  other@1.0.0: patches/not-a-patch", "",
+      `  react-native-pdf@${patchVersion("react-native-pdf")}: "patches/pdf.patch"`, "overrides:", "  other@1.0.0: patches/not-a-patch", "",
     ].join("\n");
     expect([...patchedDependenciesOfYaml(yaml)]).toEqual([
       ["@sveltejs/kit@3.0.0-next.27", "packages/svelte-native/patches/kit.patch"], [`expo-modules-core@${patchVersion("expo-modules-core")}`, "patches/a b.patch"], [`react-native-pdf@${patchVersion("react-native-pdf")}`, "patches/pdf.patch"],

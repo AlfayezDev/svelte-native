@@ -4,7 +4,7 @@ import { parseNativeID } from "../../src/fabric/navigation.ts";
 import { type FakeNode, type TreeRouter, ofKind, withInsets, handlersOf, treeGlobals, pathsOf, paneRouter, tabScreens, navigationWorld, standInRoutes } from "./support/world.ts";
 
 /** The launch link: read once and bounded, opened ahead of the <Router> or by it, and what a restart does with it. */
-const { host, load, texts, selectedIndex, mountTree } = navigationWorld();
+const { host, selectedIndex, mountTree } = navigationWorld();
 
 test("the launch link is the stack's base: no back arrow on /__dev; later links are plain gotos", async () => {
   withInsets(24);

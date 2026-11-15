@@ -19,6 +19,7 @@ afterEach(() => {
 });
 
 /** The list mounted on the renderer alone (no Fabric host): a bundle built once, and evaluated afresh for each test. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- the list is a bundle loaded at run time
 const load = () => loadBundle<any>({
   entry: `import Fixture from ${JSON.stringify(resolve(import.meta.dirname, "fixtures/list-fixture.svelte"))};
     import renderer, {NativeNode} from ${JSON.stringify(src("renderer.ts"))};

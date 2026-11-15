@@ -5,14 +5,14 @@ import { patchFiles } from "../../src/doctor/patches.ts";
 import { satisfies } from "../../src/doctor/semver.ts";
 import { appDependencies } from "../../src/init-app.ts";
 import { requiredSvelte } from "../../src/svelte-build.ts";
-import { readJson, useInitProjects } from "../cli/support/init-project.ts";
+import { readJson, initProjects } from "../cli/support/init-project.ts";
 
 /**
  * What `svelte-native init` writes against what the repository says about it: `examples/minimal` (the app the library is exercised on) and the configuration page of the guide carry the
  * versions, the pnpm overrides and the scripts init writes, so a change to one that is not made to the others fails here. (`cli/init-app.test.ts` is init itself.)
  */
 const repository = join(import.meta.dirname, "../../../..");
-const { project, run } = useInitProjects();
+const { project, run } = initProjects();
 
 describe("examples/minimal is what init writes", () => {
   test("examples/minimal's overrides are the ones init writes, and the React Native it pins is the one the override is", () => {

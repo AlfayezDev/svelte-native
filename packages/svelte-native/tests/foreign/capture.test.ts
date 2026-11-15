@@ -67,7 +67,7 @@ test("Android: a tag the engine does not own goes to the library's module with t
   // harness's globals when the test ends.
   const warn = spyOn(console, "warn").mockImplementation(() => {});
   (globalThis as { __DEV__?: boolean }).__DEV__ = true;
-  let warnings: unknown[] = [];
+  let warnings: unknown[];
   try {
     viewShot.log.length = 0;
     await app.captureHandle(app.plainHandle(), { width: 20, height: 10, quality: 0.5, format: "gif" as never, result: "data-uri" });

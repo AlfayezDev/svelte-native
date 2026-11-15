@@ -1,4 +1,4 @@
-import { makeRnBlob, restoreObjectURLs, rnReads, useFake } from "./support/setup.ts";
+import { makeRnBlob, restoreObjectURLs, rnReads, fetchFake } from "./support/setup.ts";
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, writeFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -8,7 +8,7 @@ import { patchObjectURLs } from "../../../src/fetch/url.ts";
 import { createProject } from "../../support/project.ts";
 import { seededBytes } from "./support/server.ts";
 
-const fake = useFake();
+const fake = fetchFake();
 const project = createProject();
 afterAll(() => project.remove());
 

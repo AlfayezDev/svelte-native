@@ -1,4 +1,4 @@
-import { makeRnBlob, rnReads, useFake } from "./support/setup.ts";
+import { makeRnBlob, rnReads, fetchFake } from "./support/setup.ts";
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { writeFileSync } from "node:fs";
@@ -13,7 +13,7 @@ import { Response } from "../../../src/fetch/response.ts";
 import { createProject } from "../../support/project.ts";
 import { seededBytes } from "./support/server.ts";
 
-const fake = useFake();
+const fake = fetchFake();
 const project = createProject();
 afterAll(() => project.remove());
 

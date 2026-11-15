@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { patchFiles } from "../../src/doctor/patches.ts";
 import { createProject } from "../support/project.ts";
 import { patchVersion, peerRange, peerVersion } from "../support/versions.ts";
-import { fixture, library, readJson, useInitProjects } from "./support/init-project.ts";
+import { fixture, library, readJson, initProjects } from "./support/init-project.ts";
 import { appDependencies, appNames, mergeWorkspaceYaml, parseInitArguments, planInit, svelteNativeViteConfig } from "../../src/init-app.ts";
 import { compile } from "svelte/compiler";
 import { requiredSvelte } from "../../src/svelte-build.ts";
@@ -15,7 +15,7 @@ import { requiredSvelte } from "../../src/svelte-build.ts";
 const coreVersion = patchVersion("expo-modules-core");
 const kitVersion = patchVersion("@sveltejs/kit");
 const reactNativeVersion = appDependencies["react-native"] as string;
-const { project, run } = useInitProjects();
+const { project, run } = initProjects();
 
 /** Every file under a directory, with its content: what "nothing changed" compares. */
 function snapshot(root: string): Record<string, string> {

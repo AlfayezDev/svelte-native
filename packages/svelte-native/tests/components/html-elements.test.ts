@@ -1,9 +1,11 @@
-import { test, expect, jest, afterEach, beforeEach } from "bun:test";
+import { afterAll, afterEach, beforeAll, expect, jest, test } from "bun:test";
 import { resolve } from "node:path";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
-import { htmlTextInput } from "../src/html-input.ts";
-import { hostBind, hostClick, hostHref, hostInputEvent, hostKeyEvent, hostSource, hostStyleProps, hostSubmit, hostTag, hostWebClickSpread, hostWebSpread } from "../src/renderer.ts";
-import { type FakeNode, type Module, all, emit, fake, flat, host, load, settle, textOf } from "./html-harness.ts";
+import { htmlTextInput } from "../../src/html-input.ts";
+import { hostBind, hostClick, hostHref, hostInputEvent, hostKeyEvent, hostSource, hostStyleProps, hostSubmit, hostTag, hostWebClickSpread, hostWebSpread } from "../../src/renderer.ts";
+import { type FakeNode, type Module, all, emit, fake, flat, host, load, settle, textOf } from "../html-harness.ts";
+import { touchSender } from "../gestures/support/touches.ts";
+import { type GlobalSnapshot, snapshotGlobals } from "../support/globals.ts";
+import { createProject } from "../support/project.ts";
 
 /**
  * A page written with HTML elements and nothing imported from the package (`html-page-fixture.svelte`), lowered as the Metro transformer lowers it (`lowerPrimitives` with `html`, for the
@@ -13,13 +15,21 @@ import { type FakeNode, type Module, all, emit, fake, flat, host, load, settle, 
 type Page = { snapshot(): { name: string; agreed: boolean; showDialog: boolean; boxed: boolean; sectioned: boolean }; setDialog(value: boolean): void; setName(value: string): void; toggleSecret(): void };
 const globals = globalThis as unknown as { __htmlLog: (entry: string) => void; __htmlPage: Page; __opened?: string[] };
 
+// What the pages of this file leave on the global object (`__log`, `__api`, `__htmlLog`...) goes when the file is done; the fake host the harness installs is put back after each test.
+let world: GlobalSnapshot;
+beforeAll(() => { world = snapshotGlobals(); });
+afterAll(() => world.restore());
+
+/** A page of this file: `components/fixtures/<name>`. The harness takes a path. */
+const fixture = (name: string) => resolve(import.meta.dirname, "fixtures", name);
+
 let surface = 500;
-beforeEach(() => { (globalThis as unknown as { __log: string[] }).__log = []; });
 let started: { m: Module; tag: number } | undefined;
 async function mount() {
   const m = await load();
   jest.useFakeTimers();
   host.roots = {};
+  (globalThis as unknown as { __log: string[] }).__log = [];
   globals.__opened = [];
   const log: string[] = [];
   globals.__htmlLog = (entry) => log.push(entry);
@@ -126,14 +136,11 @@ test("a press runs onclick as onPress, an <a href> goes to the router or the pla
   expect(t.app.current()).toBe("/a");
 });
 
-test("an inline <a> in a <p> is a press on the text; a role and a link role come from the elements", async () => {
+test("a link that is all of its view is a pressable view with the role link, and one among the text of a paragraph goes to the router when it is pressed", async () => {
   const t = await mount();
-  const terms = t.byID("terms");
-  expect(terms.props.accessibilityRole).toBe("link");
-  expect(terms.props.onClick).toBe(true);
   expect(t.byID("go").props.accessibilityRole).toBe("link");
   expect(t.byID("go").name).toBe("RCTView");
-  emit(terms.target, "topClick", {});
+  emit(t.byID("terms").target, "topClick", {});
   await t.settle();
   expect(t.app.current()).toBe("/a");
 });
@@ -178,7 +185,7 @@ const textsOf = (nodes: FakeNode[]): string[][] => nodes.flatMap((node) => {
 });
 
 test("the text of a div reaches the native text as the text of a Text written the same way does, whitespace included (tests/components/text-whitespace.test.ts)", async () => {
-  const m = await load("html-text-fixture.svelte");
+  const m = await load(fixture("html-text-fixture.svelte"));
   host.roots = {};
   const app = m.startSurface(601, m.Fixture, {}) as { rename(next: string): void };
   const texts = textsOf(host.roots[601] ?? []);
@@ -198,7 +205,7 @@ test("the text of a div reaches the native text as the text of a Text written th
 });
 
 test("a link has the platform open another site or app, ignores a hash, and needs a router for a screen of the app", async () => {
-  const m = await load("html-link-fixture.svelte");
+  const m = await load(fixture("html-link-fixture.svelte"));
   host.roots = {};
   globals.__opened = [];
   m.startSurface(602, m.Fixture, {});
@@ -210,7 +217,7 @@ test("a link has the platform open another site or app, ignores a hash, and need
   expect(() => press("screen")).toThrow('<a href="/settings"> goes to a screen of the app, which needs a router above it');
 });
 
-test("what the lowered code calls: a source from a string or an asset, the props of a type, the event of an input, a spread's onclick", () => {
+test("what the lowered code calls: a source from a string or an asset, the props of a type, the event of an input, a bind that nulls only its own handle, the href of the element pressed, what a spread's onclick becomes", () => {
   expect(hostSource("/a.png")).toEqual({ uri: "/a.png" });
   expect(hostSource(12)).toBe(12);
   const source = { uri: "https://x.dev/a.png" };
@@ -223,11 +230,36 @@ test("what the lowered code calls: a source from a string or an asset, the props
   const press = () => {};
   expect(hostWebSpread({ onclick: press, id: "a" })).toEqual({ onPress: press, id: "a" });
   expect(hostWebSpread({ onclick: press, onPress: go })).toEqual({ onPress: go });
+  const store: Record<string, unknown> = {};
+  const set = (keys: unknown[], value: unknown) => { store[String(keys[0])] = value; };
+  const get = (keys: unknown[]) => store[String(keys[0])];
+  const first = { name: "first" };
+  const second = { name: "second" };
+  const refOne = hostBind(set, get, ["a"]);
+  const refTwo = hostBind(set, get, ["a"]);
+  refOne(first);
+  expect(store.a).toBe(first);
+  // Another element took the slot: the first one going away leaves it.
+  refTwo(second);
+  refOne(null);
+  expect(store.a).toBe(second);
+  refTwo(null);
+  expect(store.a).toBeNull();
+  // A ref made again for another key nulls the key it had.
+  const old = hostBind(set, get, ["x"]);
+  old(first);
+  hostBind(set, get, ["y"])(first);
+  old(null);
+  expect(store).toMatchObject({ x: null, y: first });
+  // The `onclick` of a spread: the press's own `onPress` stays for a button and a link, and is the handler of any other element.
+  expect(hostWebClickSpread({ onclick: press, onPress: go, id: "a" })).toEqual({ onHtmlClick: press, onPress: go, id: "a" });
+  expect(hostHref(undefined)).toBeUndefined();
+  expect(hostHref({ currentTarget: {} })).toBeUndefined();
 });
 function go() {}
 
 test("a <pre> keeps its spaces and newlines, a <br> is a newline of its text, and an <hr> is a hairline that its class or style can change", async () => {
-  const m = await load("html-text-fixture.svelte");
+  const m = await load(fixture("html-text-fixture.svelte"));
   host.roots = {};
   m.startSurface(604, m.Fixture, {});
   const texts = textsOf(host.roots[604] ?? []);
@@ -241,7 +273,7 @@ test("a <pre> keeps its spaces and newlines, a <br> is a newline of its text, an
 });
 
 test("a single-line input sends no line height, its own or inherited, so its text stays centred (iOS laid it out above the text); a textarea keeps it", async () => {
-  const m = await load("html-input-lineheight-fixture.svelte");
+  const m = await load(fixture("html-input-lineheight-fixture.svelte"));
   host.roots = {};
   m.startSurface(611, m.Fixture, {});
   await settle(m);
@@ -258,7 +290,7 @@ test("a single-line input sends no line height, its own or inherited, so its tex
 });
 
 test("a submit button anywhere below a <form> (in a component of its own too) and Enter in a single-line input make the form hear submit; preventDefault on the click stops it", async () => {
-  const m = await load("html-form-fixture.svelte");
+  const m = await load(fixture("html-form-fixture.svelte"));
   host.roots = {};
   const log: string[] = [];
   globals.__htmlLog = (entry) => log.push(entry);
@@ -291,12 +323,12 @@ test("a submit button anywhere below a <form> (in a component of its own too) an
 });
 
 test("a web handler that can never run on a device is a warning with the file and line, once; the ones that run are not", async () => {
-  await load("html-form-fixture.svelte");
-  expect(host.warnings).toEqual([`${resolve(import.meta.dirname, "html-form-fixture.svelte")}:26:27 onmouseover on <div> never runs on a device: a native element has no "mouseover" event (the web still calls it)`]);
+  await load(fixture("html-form-fixture.svelte"));
+  expect(host.warnings).toEqual([`${fixture("html-form-fixture.svelte")}:26:27 onmouseover on <div> never runs on a device: a native element has no "mouseover" event (the web still calls it)`]);
 });
 
 test("onkeydown and onkeyup of an input are its key press, with the key", async () => {
-  const m = await load("html-form-fixture.svelte");
+  const m = await load(fixture("html-form-fixture.svelte"));
   host.roots = {};
   const log: string[] = [];
   globals.__htmlLog = (entry) => log.push(entry);
@@ -307,7 +339,7 @@ test("onkeydown and onkeyup of an input are its key press, with the key", async 
 });
 
 test("style as a string is converted when the file is built, and style:property directives follow their values", async () => {
-  const m = await load("html-form-fixture.svelte");
+  const m = await load(fixture("html-form-fixture.svelte"));
   host.roots = {};
   m.startSurface(606, m.Fixture, {});
   const byID = (testID: string) => {
@@ -328,7 +360,7 @@ test("style as a string is converted when the file is built, and style:property 
 });
 
 test("text style of an HTML element reaches the text and the inputs below it, through a View, and the text's own style wins", async () => {
-  const m = await load("html-inherit-fixture.svelte");
+  const m = await load(fixture("html-inherit-fixture.svelte"));
   host.roots = {};
   m.startSurface(607, m.Fixture, {});
   const byID = (testID: string) => {
@@ -352,7 +384,7 @@ test("text style of an HTML element reaches the text and the inputs below it, th
 });
 
 test("a change to an element's text style reaches the text below it, and a font size it inherits is what a relative line height is made from", async () => {
-  const m = await load("html-inherit-fixture.svelte");
+  const m = await load(fixture("html-inherit-fixture.svelte"));
   host.roots = {};
   m.startSurface(608, m.Fixture, {});
   const byID = (testID: string) => {
@@ -442,11 +474,14 @@ test("a click runs the handler with a preventDefault that works, then what the p
   expect(hostKeyEvent("keyup", undefined)).toMatchObject({ type: "keyup", key: undefined });
 });
 
+const probe = globalThis as unknown as { __log: string[]; __focused: string[]; __htmlRun: { setN(value: number): void }; __htmlBind: { reverse(): void; remove(id: number): void; show(): void; tags(): (number | null)[] }; __htmlMisc: { setCss(value: string): void; setTag(value: string): void; amount(): number; note(): string } };
+
 /** A fixture on a surface of its own (no router), with a finder by `testID`. */
-async function mountFixture(fixture: string, surface: number) {
-  const m = await load(fixture);
+async function mountFixture(path: string, surface: number) {
+  const m = await load(path);
   host.roots = {};
   globals.__opened = [];
+  probe.__log = [];
   m.startSurface(surface, m.Fixture, {});
   await settle(m);
   const byID = (testID: string) => {
@@ -456,38 +491,33 @@ async function mountFixture(fixture: string, surface: number) {
   };
   return { m, byID, nodes: () => all(host.roots[surface] ?? []), settle: () => settle(m) };
 }
-const probe = globalThis as unknown as { __log: string[]; __focused: string[]; __htmlRun: { setN(value: number): void }; __htmlBind: { reverse(): void; remove(id: number): void; show(): void; tags(): (number | null)[] }; __htmlMisc: { setCss(value: string): void; setTag(value: string): void; amount(): number; note(): string } };
 /** The names of the children of a node, with a text's string: the shape of what the platform is given. */
 const shape = (node: FakeNode): string[] => node.children.map((child) => (child.name === "RCTRawText" ? `"${child.props.text}"` : `${child.name}(${textOf(child)})`));
 
 /**
  * A fixture written in the test: `source` is the page (it calls `globalThis.__api = { ... }` for what the test drives), `files` the components it imports. It is lowered and mounted as a file of an app is.
+ * The page is built, and its directory removed, before the page is mounted.
  */
 async function mountSource(source: string, files: Record<string, string> = {}) {
-  // Inside the package, so the imports of the page find `svelte`; the directory is gone when the page is built.
-  const directory = await mkdtemp(resolve(import.meta.dirname, ".source-"));
-  try {
-    for (const [name, text] of Object.entries(files)) await writeFile(resolve(directory, name), text);
-    await writeFile(resolve(directory, "Fixture.svelte"), source);
-    const m = await load(resolve(directory, "Fixture.svelte"));
-    host.roots = {};
-    globals.__opened = [];
-    probe.__log = [];
-    (globalThis as { __api?: unknown }).__api = undefined;
-    const tag = ++surface;
-    m.startSurface(tag, m.Fixture, {});
-    await settle(m);
-    const nodes = () => all(host.roots[tag] ?? []);
-    const byID = (testID: string) => {
-      const found = nodes().find((candidate) => candidate.props.testID === testID);
-      if (!found) throw new Error(`no node ${testID}`);
-      return found;
-    };
-    started = { m, tag };
-    return { m, byID, nodes, settle: () => settle(m), api: (globalThis as { __api: Record<string, (...args: unknown[]) => unknown> }).__api, tree: () => host.roots[tag] ?? [] };
-  } finally {
-    await rm(directory, { recursive: true });
-  }
+  const m = await (async () => {
+    using project = createProject({ ...files, "Fixture.svelte": source }, "svelte-native-html-source-");
+    return await load(project.path("Fixture.svelte"));
+  })();
+  host.roots = {};
+  globals.__opened = [];
+  probe.__log = [];
+  (globalThis as { __api?: unknown }).__api = undefined;
+  const tag = ++surface;
+  m.startSurface(tag, m.Fixture, {});
+  await settle(m);
+  const nodes = () => all(host.roots[tag] ?? []);
+  const byID = (testID: string) => {
+    const found = nodes().find((candidate) => candidate.props.testID === testID);
+    if (!found) throw new Error(`no node ${testID}`);
+    return found;
+  };
+  started = { m, tag };
+  return { m, byID, nodes, settle: () => settle(m), api: (globalThis as { __api: Record<string, (...args: unknown[]) => unknown> }).__api, tree: () => host.roots[tag] ?? [] };
 }
 /** What is wrong with the text of a tree of the platform, if anything: a span outside a text, a text in a text, a string outside a text. React Native's own rules. */
 function textFaults(nodes: FakeNode[], inText = false): string[] {
@@ -508,7 +538,7 @@ test("text that reaches an HTML view through children, a snippet or a block is d
   (globalThis as { __DEV__?: boolean }).__DEV__ = true;
   let t: Awaited<ReturnType<typeof mountFixture>>;
   try {
-    t = await mountFixture("html-run-fixture.svelte", 610);
+    t = await mountFixture(fixture("html-run-fixture.svelte"), 610);
   } finally {
     delete (globalThis as { __DEV__?: boolean }).__DEV__;
     console.warn = warn;
@@ -549,7 +579,7 @@ test("bind:this gives the handle before onMount, and a handle asked to focus bef
   fake.dispatchCommand = ((node: FakeNode, name: string) => { commands.push(`${name} ${node.props.testID}`); }) as never;
   try {
     probe.__focused = [];
-    const t = await mountFixture("html-bind-fixture.svelte", 611);
+    const t = await mountFixture(fixture("html-bind-fixture.svelte"), 611);
     probe.__htmlBind.show();
     await t.settle();
     // The handles were there when `onMount` ran, for the input (a component, which hands its `ref` to the view) and the div.
@@ -562,7 +592,7 @@ test("bind:this gives the handle before onMount, and a handle asked to focus bef
 });
 
 test("bind:this={els[i]} follows its row: a handle is nulled only if the variable still holds it, and a moved row rebinds", async () => {
-  const t = await mountFixture("html-bind-fixture.svelte", 612);
+  const t = await mountFixture(fixture("html-bind-fixture.svelte"), 612);
   const tag = (id: number) => t.byID(`row-${id}`).tag;
   expect(probe.__htmlBind.tags()).toEqual([tag(1), tag(2), tag(3)]);
   probe.__htmlBind.reverse();
@@ -575,7 +605,7 @@ test("bind:this={els[i]} follows its row: a handle is nulled only if the variabl
 });
 
 test("a component that passes its props down keeps HTML semantics: a button's type and onclick, an input's type, events, disabled and maxlength all come through the spread", async () => {
-  const t = await mountFixture("html-wrap-fixture.svelte", 613);
+  const t = await mountFixture(fixture("html-wrap-fixture.svelte"), 613);
   const log = probe.__log;
   const press = (testID: string) => emit(t.byID(testID).target, "topClick", {});
   press("cancel");
@@ -602,38 +632,8 @@ test("a component that passes its props down keeps HTML semantics: a button's ty
   expect(log.splice(0)).toEqual(["link prevented"]);
 });
 
-test("what the lowered code calls on a handle and an event: a bind that nulls only its own handle, the href of the element pressed, a spread that leaves a press its own", () => {
-  const store: Record<string, unknown> = {};
-  const set = (keys: unknown[], value: unknown) => { store[String(keys[0])] = value; };
-  const get = (keys: unknown[]) => store[String(keys[0])];
-  const first = { name: "first" };
-  const second = { name: "second" };
-  const refOne = hostBind(set, get, ["a"]);
-  const refTwo = hostBind(set, get, ["a"]);
-  refOne(first);
-  expect(store.a).toBe(first);
-  // Another element took the slot: the first one going away leaves it.
-  refTwo(second);
-  refOne(null);
-  expect(store.a).toBe(second);
-  refTwo(null);
-  expect(store.a).toBeNull();
-  // A ref made again for another key nulls the key it had.
-  const old = hostBind(set, get, ["x"]);
-  old(first);
-  hostBind(set, get, ["y"])(first);
-  old(null);
-  expect(store).toMatchObject({ x: null, y: first });
-  // The `onclick` of a spread: the press's own `onPress` stays for a button and a link, and is the handler of any other element.
-  const press = () => {};
-  expect(hostWebClickSpread({ onclick: press, onPress: go, id: "a" })).toEqual({ onHtmlClick: press, onPress: go, id: "a" });
-  expect(hostWebSpread({ onclick: press })).toEqual({ onPress: press });
-  expect(hostHref(undefined)).toBeUndefined();
-  expect(hostHref({ currentTarget: {} })).toBeUndefined();
-});
-
 test("a link without an href does nothing, a style that is text when the app runs is parsed, a number is the text of its input, and an input's event has its name, id and type", async () => {
-  const t = await mountFixture("html-misc-fixture.svelte", 614);
+  const t = await mountFixture(fixture("html-misc-fixture.svelte"), 614);
   const log = probe.__log;
   emit(t.byID("nolink").target, "topClick", {});
   expect(log.splice(0)).toEqual(["no link clicked"]);
@@ -651,7 +651,7 @@ test("a link without an href does nothing, a style that is text when the app run
 });
 
 test("preventDefault on the key press of Enter stops the submission; Enter submits otherwise", async () => {
-  const t = await mountFixture("html-misc-fixture.svelte", 615);
+  const t = await mountFixture(fixture("html-misc-fixture.svelte"), 615);
   const log = probe.__log;
   log.length = 0;
   emit(t.byID("enter-free").target, "topSubmitEditing", { text: "" });
@@ -666,7 +666,7 @@ test("preventDefault on the key press of Enter stops the submission; Enter submi
 });
 
 test("<svelte:element this={tag}> draws the host tag of the tag, and one with no host tag fails where it is chosen", async () => {
-  const t = await mountFixture("html-misc-fixture.svelte", 616);
+  const t = await mountFixture(fixture("html-misc-fixture.svelte"), 616);
   // `h2` is a text, `div` a view; the web's `testID` here is just an attribute.
   expect(t.byID("dynamic").name).toBe("RCTText");
   probe.__htmlMisc.setTag("div");
@@ -682,7 +682,7 @@ test("<svelte:element this={tag}> draws the host tag of the tag, and one with no
 });
 
 test("the default style of an element is a browser's, under its class and style: bold, italic, underline, monospace, sizes of the font it inherits", async () => {
-  const t = await mountFixture("html-ua-fixture.svelte", 617);
+  const t = await mountFixture(fixture("html-ua-fixture.svelte"), 617);
   const style = (testID: string) => flat(t.byID(testID).props.style);
   expect(style("b")).toMatchObject({ fontWeight: "700" });
   expect(style("em")).toMatchObject({ fontStyle: "italic" });
@@ -1044,7 +1044,7 @@ test("a tap on an element chosen when the app runs presses it: onclick and on:cl
   </script>
   <svelte:element this={tag} testID="a" onclick={() => globalThis.__log.push("onclick")}>one</svelte:element>
   <svelte:element this={tag} testID="b" on:click={() => globalThis.__log.push("on:click")}>two</svelte:element>`);
-  const touch = (target: unknown, type: string) => emit(target, type, { pageX: 5, pageY: 5, locationX: 5, locationY: 5, identifier: 0, target: 1, timestamp: 1, touches: type === "topTouchEnd" ? [] : [{ pageX: 5, pageY: 5, identifier: 0 }], changedTouches: [{ pageX: 5, pageY: 5, identifier: 0 }] });
+  const touch = touchSender(emit);
   const tap = (testID: string) => { const { target } = t.byID(testID); touch(target, "topTouchStart"); touch(target, "topTouchEnd"); jest.advanceTimersByTime(200); };
   for (const kind of ["div", "span"]) {
     t.api.tag(kind);

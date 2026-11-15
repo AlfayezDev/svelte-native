@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
-import { type FakeNode, all, flat, host, load, settle } from "./html-harness.ts";
+import { type FakeNode, all, flat, host, load, settle } from "../html-harness.ts";
+import { createProject } from "../support/project.ts";
 
 /**
  * What the host builds when a page changes must be what it builds for the page as it ended up: a differential test. A random page (text, inline elements, `{#if}`, keyed and unkeyed
@@ -121,17 +120,13 @@ test("a page that is changed is what a fresh page of the same state is: random p
     }
     const next = random(seed);
     const { source, bound } = generate(next);
-    const directory = await mkdtemp(resolve(import.meta.dirname, ".differential-"));
     let m: Awaited<ReturnType<typeof load>>;
     try {
-      await writeFile(resolve(directory, "W.svelte"), WRAPPER);
-      await writeFile(resolve(directory, "Fixture.svelte"), source);
-      m = await load(resolve(directory, "Fixture.svelte"));
+      using project = createProject({ "W.svelte": WRAPPER, "Fixture.svelte": source }, "svelte-native-differential-");
+      m = await load(project.path("Fixture.svelte"));
     } catch (error) {
       failures.push(`seed ${seed}: the page does not build: ${(error as Error).message.split("\n")[0]}\n${source}`);
       continue;
-    } finally {
-      await rm(directory, { recursive: true });
     }
     if (Date.now() > deadline) {
       failures.push(`stopped during seed ${seed} of ${seeds}: building its page reached the ${DIFFERENTIAL_BUDGET_MS / 1000} s budget (a slow or loaded machine)`);

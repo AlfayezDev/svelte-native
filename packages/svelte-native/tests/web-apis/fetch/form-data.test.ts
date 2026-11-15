@@ -1,16 +1,17 @@
-import { fake, makeRnBlob, RnFormData, rnReads } from "./setup.ts";
-import { beforeEach, describe, expect, test } from "bun:test";
+import { makeRnBlob, RnFormData, rnReads, useFake } from "./support/setup.ts";
+import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { writeFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { Blob, File } from "../../src/fetch/blob.ts";
-import { fetch } from "../../src/fetch/fetch.ts";
-import { FormData } from "../../src/fetch/form-data.ts";
-import { Request } from "../../src/fetch/request.ts";
-import { Response } from "../../src/fetch/response.ts";
-import { seededBytes } from "./server.ts";
+import { Blob, File } from "../../../src/fetch/blob.ts";
+import { fetch } from "../../../src/fetch/fetch.ts";
+import { FormData } from "../../../src/fetch/form-data.ts";
+import { Request } from "../../../src/fetch/request.ts";
+import { Response } from "../../../src/fetch/response.ts";
+import { createProject } from "../../support/project.ts";
+import { seededBytes } from "./support/server.ts";
+
+const fake = useFake();
 
 beforeEach(() => { fake.log.length = 0; rnReads.length = 0; });
 
@@ -22,7 +23,8 @@ const echo = async (body: unknown): Promise<Part[]> => {
   if (json.parts === undefined) throw new Error(json.error);
   return json.parts;
 };
-const scratch = mkdtempSync(join(process.env.TMPDIR ?? tmpdir(), "svelte-fetch-form-"));
+const project = createProject();
+afterAll(() => project.remove());
 
 describe("the standard's API", () => {
   test("append keeps duplicates in order; get, getAll and has", () => {
@@ -247,7 +249,7 @@ describe("as a fetch body (multipart/form-data)", () => {
   });
 
   test("a React Native file object is opened by native code (blobFromURI) and sent as a file", async () => {
-    const path = join(scratch, "rn-file.bin");
+    const path = project.path("rn-file.bin");
     const data = seededBytes(70000, 8);
     writeFileSync(path, data);
     const form = new FormData();
@@ -281,7 +283,7 @@ describe("as a fetch body (multipart/form-data)", () => {
   test("a FormData of React Native's own class (a library imported it) is sent too", async () => {
     const plain = new RnFormData();
     plain.append("a", "1");
-    plain.append("f", { uri: pathToFileURL(join(scratch, "rn-file.bin")).href, name: "f.bin", type: "application/octet-stream" });
+    plain.append("f", { uri: pathToFileURL(project.path("rn-file.bin")).href, name: "f.bin", type: "application/octet-stream" });
     const parts = await echo(plain);
     expect(parts.map((part) => [part.name, part.filename])).toEqual([["a", null], ["f", "f.bin"]]);
   });

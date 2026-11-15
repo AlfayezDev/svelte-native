@@ -1,7 +1,5 @@
-import "./setup.ts";
 import { describe, expect, test } from "bun:test";
-import { Headers } from "../../src/fetch/headers.ts";
-import { headersFromNative, headerPairs, setHeadersGuard } from "../../src/fetch/headers.ts";
+import { Headers, headersFromNative, headerPairs, setHeadersGuard } from "../../../src/fetch/headers.ts";
 
 describe("Headers construction", () => {
   test("from pairs, a record, another Headers, and any iterable of pairs", () => {

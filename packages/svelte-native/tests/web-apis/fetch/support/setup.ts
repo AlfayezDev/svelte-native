@@ -1,9 +1,10 @@
-// Imported first by every file of tests/fetch: the device's parts that the JavaScript layer borrows (React Native's FormData, Blob and FileReader, whose sources are Flow and cannot be
-// loaded by Bun) and the fake native module. `mock.module` is global to the test process: only these three specifiers are mocked, and no other test loads them.
-import { mock } from "bun:test";
-import { readFileSync } from "node:fs";
+// Imported first by every file of tests/web-apis/fetch: the device's parts that the JavaScript layer borrows (React Native's FormData, Blob, FileReader and XMLHttpRequest, whose sources
+// are Flow and cannot be loaded by Bun) and the fake native module. `mock.module` is global to the test process and Bun cannot take a mock back: only these four specifiers are
+// mocked, and no other test loads them. What is not global is the native module: a file that uses it says `useFake()`, which sets it for the file and forgets it afterwards.
+import { afterAll, beforeAll, mock } from "bun:test";
+import { readFileSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { setNativeModule } from "../../src/fetch/module.ts";
+import { setNativeModule } from "../../../../src/fetch/module.ts";
 import { startFake } from "./fake-native.ts";
 
 /** React Native's FormData as it is in `Libraries/Network/FormData.js` (the class XHR recognises), without the Flow annotations. */
@@ -115,5 +116,28 @@ mock.module("react-native/Libraries/Blob/Blob", () => ({ default: RnBlob }));
 mock.module("react-native/Libraries/Blob/FileReader", () => ({ default: RnFileReader }));
 
 export const fake = await startFake();
-setNativeModule(fake.module);
+// The fake's directory of object-URL files lives for the run: the process removes it when it ends.
+process.on("exit", () => rmSync(fake.blobDirectory, { recursive: true, force: true }));
+
+/**
+ * Makes the fake the library's native module for the file that calls it (at the top level), and takes it away when the file is done. It is set when the file loads, for the Blobs a
+ * `describe` builds while the tests are collected, and again before the file's first test.
+ */
+export function useFake(): typeof fake {
+  setNativeModule(fake.module);
+  beforeAll(() => setNativeModule(fake.module));
+  afterAll(() => setNativeModule(undefined));
+  return fake;
+}
+
+/**
+ * Puts back `URL.createObjectURL` and `revokeObjectURL` when the file is done: `patchObjectURLs()` replaces them with the library's, which a test of Blob URLs or of `xhr.send` calls.
+ * Call it at the top level, before the patch.
+ */
+export function restoreObjectURLs(): void {
+  const URLClass = URL as unknown as { createObjectURL: (blob: unknown) => string; revokeObjectURL: (url: string) => void };
+  const originals = { create: URLClass.createObjectURL, revoke: URLClass.revokeObjectURL };
+  afterAll(() => { URLClass.createObjectURL = originals.create; URLClass.revokeObjectURL = originals.revoke; });
+}
+
 export { RnFormData, RnBlob, RnXhr };

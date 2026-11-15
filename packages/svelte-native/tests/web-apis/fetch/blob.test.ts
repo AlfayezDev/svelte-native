@@ -1,13 +1,16 @@
-import { fake, makeRnBlob, rnReads } from "./setup.ts";
+import { makeRnBlob, restoreObjectURLs, rnReads, useFake } from "./support/setup.ts";
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { existsSync, writeFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { Blob, File, blobFromNative } from "../../src/fetch/blob.ts";
-import { FileReader } from "../../src/fetch/file-reader.ts";
-import { patchObjectURLs } from "../../src/fetch/url.ts";
-import { seededBytes } from "./server.ts";
+import { Blob, File, blobFromNative } from "../../../src/fetch/blob.ts";
+import { FileReader } from "../../../src/fetch/file-reader.ts";
+import { patchObjectURLs } from "../../../src/fetch/url.ts";
+import { createProject } from "../../support/project.ts";
+import { seededBytes } from "./support/server.ts";
+
+const fake = useFake();
+const project = createProject();
+afterAll(() => project.remove());
 
 beforeEach(() => { fake.log.length = 0; rnReads.length = 0; });
 
@@ -149,7 +152,7 @@ describe("reading", () => {
   });
 
   test("a Blob over a file (blobFromURI) reads its range, slices, and joins with strings", async () => {
-    const path = join(mkdtempSync(join(process.env.TMPDIR ?? tmpdir(), "svelte-fetch-file-")), "f.bin");
+    const path = project.path("f.bin");
     const data = seededBytes(5000, 3);
     writeFileSync(path, data);
     const handle = await fake.module.blobFromURI(pathToFileURL(path).href, "application/x-test");
@@ -297,8 +300,7 @@ describe("FileReader", () => {
 
 describe("object URLs", () => {
   const URLClass = URL as unknown as { createObjectURL: (blob: unknown) => string; revokeObjectURL: (url: string) => void };
-  const originals = { create: URLClass.createObjectURL, revoke: URLClass.revokeObjectURL };
-  afterAll(() => { URLClass.createObjectURL = originals.create; URLClass.revokeObjectURL = originals.revoke; });
+  restoreObjectURLs();
 
   test("createObjectURL is a file URL of the Blob's bytes, stable for the same Blob; revokeObjectURL deletes the file", async () => {
     patchObjectURLs();

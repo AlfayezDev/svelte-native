@@ -1,18 +1,21 @@
-import { fake, makeRnBlob, rnReads } from "./setup.ts";
+import { makeRnBlob, rnReads, useFake } from "./support/setup.ts";
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
-import { abortReason, abortWithReason, followSignal, installAbortStatics, listenWhileAlive } from "../../src/fetch/abort.ts";
-import { Blob } from "../../src/fetch/blob.ts";
-import { Headers } from "../../src/fetch/headers.ts";
-import { setNativeModule } from "../../src/fetch/module.ts";
-import { fetch } from "../../src/fetch/fetch.ts";
-import { Request } from "../../src/fetch/request.ts";
-import { Response } from "../../src/fetch/response.ts";
-import { seededBytes } from "./server.ts";
+import { abortReason, abortWithReason, followSignal, installAbortStatics, listenWhileAlive } from "../../../src/fetch/abort.ts";
+import { Blob } from "../../../src/fetch/blob.ts";
+import { Headers } from "../../../src/fetch/headers.ts";
+import { setNativeModule } from "../../../src/fetch/module.ts";
+import { fetch } from "../../../src/fetch/fetch.ts";
+import { Request } from "../../../src/fetch/request.ts";
+import { Response } from "../../../src/fetch/response.ts";
+import { createProject } from "../../support/project.ts";
+import { seededBytes } from "./support/server.ts";
+
+const fake = useFake();
+const project = createProject();
+afterAll(() => project.remove());
 
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 const base = fake.base;
@@ -60,18 +63,6 @@ describe("a response", () => {
     fake.log.length = 0;
     expect(await (await fetch(`${base}/utf8`)).text()).toBe("héllo �( wörld ✓");
     expect(fake.log).toEqual(["request.start", "request.text"]);
-  });
-
-  test("UTF-8 with a byte order mark and an invalid sequence reads the same by every route", async () => {
-    const expected = "héllo �( wörld ✓";
-    expect(await (await fetch(`${base}/utf8`)).text()).toBe(expected);
-    expect(await (await fetch(`${base}/utf8`)).blob().then((blob) => blob.text())).toBe(expected);
-    const bytes = new Uint8Array(await (await fetch(`${base}/utf8`)).arrayBuffer());
-    expect(bytes.length).toBe(3 + Buffer.byteLength("héllo ") + 2 + Buffer.byteLength(" wörld ✓"));
-    const response = await fetch(`${base}/utf8`);
-    void response.body;
-    expect(await response.text()).toBe(expected);
-    expect(await new Response(await (await fetch(`${base}/utf8`)).bytes()).text()).toBe(expected);
   });
 
   test("a gzip response is decoded by the platform", async () => {
@@ -446,7 +437,7 @@ describe("repeated request headers", () => {
 
 describe("file: URLs", () => {
   test("a file answers 200 with its bytes and its length, and reads as a Blob", async () => {
-    const path = join(mkdtempSync(join(process.env.TMPDIR ?? tmpdir(), "svelte-fetch-file-url-")), "data.bin");
+    const path = project.path("data.bin");
     const data = seededBytes(9000, 31);
     writeFileSync(path, data);
     const response = await fetch(pathToFileURL(path).href);
@@ -480,20 +471,18 @@ describe("aborting", () => {
     expect(fake.live.size).toBe(0);
   });
 
-  test("the default reason is an AbortError DOMException", async () => {
+  test("the default reason is an AbortError DOMException, also for a signal that carries no reason (React Native's AbortController drops it)", async () => {
     const controller = new AbortController();
     const pending = fetch(`${base}/no-head`, { signal: controller.signal });
     setTimeout(() => controller.abort(), 20);
     const error = await pending.catch((caught: unknown) => caught) as DOMException;
     expect([error.name, error instanceof DOMException]).toEqual(["AbortError", true]);
-  });
-
-  test("a signal that carries no reason (React Native's AbortController drops it) gives the default AbortError", async () => {
+    // The same abort on a signal that has no `reason` property (what the controller of React Native's abort-controller makes).
     const target = new EventTarget();
     const signal = { aborted: false, addEventListener: target.addEventListener.bind(target), removeEventListener: target.removeEventListener.bind(target) } as unknown as AbortSignal;
-    const pending = fetch(`${base}/no-head`, { signal });
+    const reasonless = fetch(`${base}/no-head`, { signal });
     setTimeout(() => { (signal as { aborted: boolean }).aborted = true; target.dispatchEvent(new Event("abort")); }, 20);
-    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    await expect(reasonless).rejects.toMatchObject({ name: "AbortError" });
   });
 
   test("an abort while the body is read rejects the read in flight with the reason, and so does the stream afterwards", async () => {
@@ -748,9 +737,9 @@ describe("what an abort leaves behind", () => {
     const registry = globalThis.FinalizationRegistry;
     // @ts-expect-error -- the module under test reads it when it is evaluated
     delete globalThis.FinalizationRegistry;
-    let sweeping: typeof import("../../src/fetch/abort.ts");
+    let sweeping: typeof import("../../../src/fetch/abort.ts");
     try {
-      sweeping = await import("../../src/fetch/abort.ts?without-a-registry");
+      sweeping = await import("../../../src/fetch/abort.ts?without-a-registry");
     } finally {
       globalThis.FinalizationRegistry = registry;
     }

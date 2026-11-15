@@ -1,6 +1,6 @@
 // `navigator.geolocation` and `navigator.permissions` (`src/geolocation.ts`) against a stand-in for expo-location's native module that records what it was asked.
 import { describe, expect, test } from "bun:test";
-import { Geolocation, GeolocationCoordinates, GeolocationPosition, GeolocationPositionError, Permissions, PermissionStatus, permissionState, type NativeLocationModule } from "../src/geolocation.ts";
+import { Geolocation, GeolocationCoordinates, GeolocationPosition, GeolocationPositionError, Permissions, PermissionStatus, permissionState, type NativeLocationModule } from "../../src/geolocation.ts";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Permission = { status: "granted" | "denied" | "undetermined"; granted: boolean; canAskAgain: boolean };

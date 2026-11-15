@@ -1,21 +1,22 @@
-import { fake, makeRnBlob, RnFormData, RnXhr } from "./setup.ts";
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { makeRnBlob, restoreObjectURLs, RnFormData, RnXhr, useFake } from "./support/setup.ts";
+import { beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { Blob, File } from "../../src/fetch/blob.ts";
-import { FormData } from "../../src/fetch/form-data.ts";
-import { patchObjectURLs } from "../../src/fetch/url.ts";
-import { patchXHRSend } from "../../src/fetch/xhr.ts";
-import { seededBytes } from "./server.ts";
+import { Blob, File } from "../../../src/fetch/blob.ts";
+import { FormData } from "../../../src/fetch/form-data.ts";
+import { patchObjectURLs } from "../../../src/fetch/url.ts";
+import { patchXHRSend } from "../../../src/fetch/xhr.ts";
+import { seededBytes } from "./support/server.ts";
+
+const fake = useFake();
 
 /**
  * `xhr.send` of our Blob, File and FormData. React Native's `convertRequestBody` recognises only its own Blob, so before the wrap an object of ours was handed to networking as it
  * was and an empty body went out. `RnXhr` (setup.ts) converts a body as RN does and reads the file a `{ uri }` body names at the moment of the send, as native code would.
  */
 const URLClass = URL as unknown as { createObjectURL: (blob: unknown) => string; revokeObjectURL: (url: string) => void };
-const originals = { create: URLClass.createObjectURL, revoke: URLClass.revokeObjectURL };
+restoreObjectURLs();
 beforeAll(() => patchXHRSend());
-afterAll(() => { URLClass.createObjectURL = originals.create; URLClass.revokeObjectURL = originals.revoke; });
 beforeEach(() => { fake.log.length = 0; });
 
 const sent = (body: unknown): RnXhr => {

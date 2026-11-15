@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createGunzip } from "node:zlib";
-import type { HeaderList, NativeRequestInit, NativeResponseHead, SvelteFetchModule } from "../../src/fetch/native.ts";
+import type { HeaderList, NativeRequestInit, NativeResponseHead, SvelteFetchModule } from "../../../../src/fetch/native.ts";
 import { handle } from "./server.ts";
 
 type Segment = { kind: "bytes"; bytes: Uint8Array } | { kind: "file"; path: string; start: number; end: number };

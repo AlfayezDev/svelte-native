@@ -1,37 +1,12 @@
 import { afterEach, expect, test } from "bun:test";
-import { compile } from "svelte/compiler";
-import { componentOptions } from "../src/compile-options.ts";
-import { lowerPrimitives } from "../src/lower.ts";
-import { NativeNode, setAnimationDriver, setInvalidationSink, type AnimationDriver } from "../src/renderer.ts";
+import { NativeNode, setAnimationDriver, setInvalidationSink, type AnimationDriver } from "../../src/renderer.ts";
 
 // What a native element offers the code Svelte compiles for `transition:`, `in:`, `out:` and `animate:` (element.style, dispatchEvent, getComputedStyle, getBoundingClientRect,
-// element.animate), without a host; and that the compiled component reaches for them on a lowered tag.
+// element.animate), without a host. That the compiled component reaches for them on a lowered tag is `compiler/lowering-boundaries.test.ts`.
 
 afterEach(() => {
   setAnimationDriver(null);
   setInvalidationSink(null);
-});
-
-const imports = `<script>\n  import { View, Text, Image } from "@alfayez/svelte-native";\n  import { fade, fly, scale } from "svelte/transition";\n  import { flip } from "svelte/animate";\n  let { rows = [] } = $props();\n</script>\n`;
-
-test("a custom renderer's compiler takes every one of the directives (this repository's Svelte has the refusals patched out for Bun, which runs no Node hooks: `patches/svelte@5.56.7.patch`; an app's transformer does it as it loads the compiler)", () => {
-  for (const directive of ["in:fade", "out:fade", "transition:fade", "animate:flip"]) {
-    const each = directive.startsWith("animate") ? "{#each [1] as item (item)}<native-view animate:flip>{item}</native-view>{/each}" : `<native-view ${directive}></native-view>`;
-    expect(() => compile(`<script>\n  import { fade } from "svelte/transition";\n  import { flip } from "svelte/animate";\n</script>\n${each}`, componentOptions("directive.svelte")), directive).not.toThrow();
-  }
-});
-
-test("a lowered View, Text and Image take the directives through to the compiled host tags", () => {
-  const source = `${imports}<View in:fly={{ y: 20 }} out:fade style={{ padding: 4 }}><Text transition:scale={{ start: 0.5 }}>x</Text></View>\n{#each rows as row (row)}<Image animate:flip={{ duration: 200 }} in:fade source={row} />{/each}`;
-  const lowered = lowerPrimitives(source);
-  expect(lowered).toContain("<native-view in:fly={{ y: 20 }} out:fade nativeStyle={{ padding: 4 }}>");
-  const code = compile(lowered, componentOptions("transitions.svelte")).js.code;
-  expect(code).toContain("$.transition(1, native_view, () => fly, () => ({ y: 20 }));");
-  expect(code).toContain("$.transition(2, native_view, () => fade);");
-  expect(code).toContain("$.transition(3, native_text, () => scale, () => ({ start: 0.5 }));");
-  expect(code).toContain("$.animation(native_image, () => flip, () => ({ duration: 200 }));");
-  expect(code).toContain("$.transition(1, native_image, () => fade);");
-  expect(code).not.toMatch(/\bView\(|\bText\(|\bImage\(/);
 });
 
 test("node.style keeps what Svelte writes (overflow, position, size, transform) and tells the host once per change; an empty value removes it", () => {

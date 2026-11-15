@@ -1,6 +1,6 @@
 <script>
-  import SafeAreaView from "../src/components/SafeAreaView.svelte";
-  import KeyboardAvoidingView from "../src/components/KeyboardAvoidingView.svelte";
+  import SafeAreaView from "../../../src/components/SafeAreaView.svelte";
+  import KeyboardAvoidingView from "../../../src/components/KeyboardAvoidingView.svelte";
   let { behavior = "padding", offset = 0, edges = undefined } = $props();
 </script>
 <SafeAreaView style={{ flex: 1, paddingTop: 4 }} {edges}>

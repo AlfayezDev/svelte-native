@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { build } from "esbuild";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
-import { tmpdir } from "node:os";
-import { pathToFileURL } from "node:url";
+import type { PluginBuild } from "esbuild";
+import { bundle, evaluate, src } from "../support/bundle.ts";
 
 // Every React Native module the shim imports is replaced by a stub that records the moment it is evaluated, so the tests can
 // tell which ones the first screen pays for and which wait for their first use.
@@ -45,35 +42,26 @@ const stubs: Record<string, string> = {
 // `Appearance` is the module namespace, not a default export.
 const appearance = "react-native/Libraries/Utilities/Appearance";
 
+/** The shim bundled once for the run, against stubs that record the moment each is evaluated (in `recorded`, a module of the bundle, so a load leaves nothing on the global object). */
+const stubbed = {
+  name: "react-native-stubs",
+  setup(builder: PluginBuild) {
+    builder.onResolve({ filter: /^react-native\// }, (args) => ({ path: args.path, namespace: "stub" }));
+    builder.onResolve({ filter: /^recorded$/ }, () => ({ path: "recorded", namespace: "recorded" }));
+    builder.onLoad({ filter: /.*/, namespace: "recorded" }, () => ({ contents: "export const evaluated = [];", loader: "js" }));
+    builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => {
+      const value = args.path === appearance ? "{ getColorScheme: () => 'light' }" : (stubs[args.path] ?? "{}");
+      const body = args.path === appearance ? `export const getColorScheme = ${value}.getColorScheme;` : `export default ${value};`;
+      return { contents: `import { evaluated } from "recorded"; evaluated.push(${JSON.stringify(args.path)}); ${body}`, loader: "js" };
+    });
+  },
+};
+const built = () => bundle({ entry: `export * from ${JSON.stringify(src("fabric/react-native-lite.ts"))}; export { evaluated } from "recorded";`, plugins: [stubbed], cacheKey: "react-native-lite", converters: false });
+
+/** The shim as a module of its own: nothing is evaluated until a test imports it. */
 async function load(): Promise<{ lite: Lite; evaluated: string[] }> {
-  const bundle = await build({
-    entryPoints: [resolve(import.meta.dirname, "../src/fabric/react-native-lite.ts")],
-    bundle: true,
-    format: "esm",
-    platform: "neutral",
-    write: false,
-    plugins: [
-      {
-        name: "react-native-stubs",
-        setup(builder) {
-          builder.onResolve({ filter: /^react-native\// }, (args) => ({ path: args.path, namespace: "stub" }));
-          builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => {
-            const value = args.path === appearance ? "{ getColorScheme: () => 'light' }" : (stubs[args.path] ?? "{}");
-            const body = args.path === appearance ? `export const getColorScheme = ${value}.getColorScheme;` : `export default ${value};`;
-            return { contents: `globalThis.__evaluated.push(${JSON.stringify(args.path)}); ${body}`, loader: "js" };
-          });
-        },
-      },
-    ],
-  });
-  const directory = await mkdtemp(resolve(tmpdir(), "svelte-native-lite-"));
-  const file = resolve(directory, "lite.mjs");
-  await writeFile(file, bundle.outputFiles[0]?.contents ?? "");
-  const evaluated: string[] = [];
-  (globalThis as { __evaluated?: string[] }).__evaluated = evaluated;
-  const lite = (await import(pathToFileURL(file).href)) as Lite;
-  await rm(directory, { recursive: true });
-  return { lite, evaluated };
+  const module = await evaluate<Lite & { evaluated: string[] }>((await built()).code);
+  return { lite: module, evaluated: module.evaluated };
 }
 
 describe("react-native-lite", () => {

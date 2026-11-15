@@ -31,7 +31,7 @@ for (const [path, module] of Object.entries(modules)) {
   });
 }
 
-const platform = await import("./../src/platform.ts");
+const platform = await import("../../../src/platform.ts");
 const result: Record<string, unknown> = {};
 result.exports = Object.keys(platform).sort();
 result.afterImport = [...loads];

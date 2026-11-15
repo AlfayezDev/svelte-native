@@ -11,7 +11,8 @@
   // bytes stay native until the code reads them; `response.blob()` and `URL.createObjectURL` never copy them through JavaScript.
   let { url }: { url: URL } = $props();
   const row = { flexDirection: "row", justifyContent: "space-between", gap: 12 } as const;
-  const site = "https://svelte-native.alfayez.dev/videos";
+  // `?site=<origin>`: where the two files come from (the docs site, or a copy for a machine that cannot reach it, as when recording the docs video).
+  const site = $derived(url.searchParams.get("site") ?? "https://svelte-native.alfayez.dev/videos");
   const hex = (buffer: ArrayBuffer) => Array.from(new Uint8Array(buffer), (byte) => byte.toString(16).padStart(2, "0")).join("");
 
   // Download: the response body as a stream, chunk by chunk, for the progress bar; then its SHA-256 with crypto.subtle. The picture is

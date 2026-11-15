@@ -77,9 +77,9 @@ export function svgWorld() {
 }
 
 export type SvgLoaded = Awaited<ReturnType<ReturnType<typeof createHarness>["load"]>> & {
-  svg: typeof import("../src/fabric/foreign-svg.ts");
-  extract: typeof import("../src/fabric/foreign-svg-extract.ts");
-  xml: typeof import("../src/fabric/foreign-svg-xml.ts");
+  svg: typeof import("../../../../src/fabric/foreign-svg.ts");
+  extract: typeof import("../../../../src/fabric/foreign-svg-extract.ts");
+  xml: typeof import("../../../../src/fabric/foreign-svg-xml.ts");
   /** Only from `svgHarness(platform, { colors: true })`. */
   colors: { processColorsInProps(props: Record<string, unknown>): void };
 };

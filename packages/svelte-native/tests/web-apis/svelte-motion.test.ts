@@ -1,5 +1,7 @@
-import { afterAll, beforeEach, describe, expect, test } from "bun:test";
-import { answer, hostGlobals, load, setting, settle, type World } from "./match-media-harness.ts";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { resolve } from "node:path";
+import { src } from "../support/bundle.ts";
+import { answer, hostGlobals, load, setting, settle, type World } from "../match-media-harness.ts";
 
 /**
  * `svelte/motion` on the device is Svelte's own module (Metro leaves the import alone). It builds `prefersReducedMotion` from `window.matchMedia` as it loads, which the polyfills
@@ -9,7 +11,7 @@ import { answer, hostGlobals, load, setting, settle, type World } from "./match-
 const host = hostGlobals();
 let world: World;
 
-const motion = `import "../src/polyfills.ts"; export * from "svelte/motion"; export { watch } from "./kit-motion-fixture.svelte.ts";`;
+const motion = `import ${JSON.stringify(src("polyfills.ts"))}; export * from "svelte/motion"; export { watch } from ${JSON.stringify(resolve(import.meta.dirname, "fixtures/svelte-motion-fixture.svelte.ts"))};`;
 
 type Spring = { target: number; current: number; set(value: number): Promise<void> };
 type Module = {
@@ -22,7 +24,7 @@ type Module = {
 };
 
 beforeEach(() => { world = host.install(); });
-afterAll(() => host.restore());
+afterEach(() => host.restore());
 
 describe("svelte/motion on the device", () => {
   test("Svelte's own module needs a matchMedia when it loads: without the polyfills it throws, which is why the entry runs them first", async () => {

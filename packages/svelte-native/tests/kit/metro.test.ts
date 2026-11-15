@@ -1,24 +1,18 @@
-import { describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { afterAll, describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
-import type { ConfigT } from "@expo/metro/metro-config";
-import { KIT_MODULES, KIT_UNAVAILABLE, kitResolution } from "../src/kit/modules.ts";
-import { withSvelteNative } from "../src/metro.ts";
-import { sourceFile } from "../src/package-root.ts";
+import { KIT_MODULES, KIT_UNAVAILABLE, kitResolution } from "../../src/kit/modules.ts";
+import { withSvelteNative } from "../../src/metro.ts";
+import { sourceFile } from "../../src/package-root.ts";
+import { createProject } from "../support/project.ts";
+import { fakeConfig, resolveFrom as resolveWith } from "../support/metro.ts";
 
 /** SvelteKit's modules on the device: the imports Metro resolves to the library's files (`withSvelteNative`) and the ones it refuses; `svelte/motion` is not among them: it is Svelte's own. */
-function fakeConfig(projectRoot: string): ConfigT {
-  return { projectRoot, resolver: { sourceExts: ["ts"], resolveRequest: undefined }, serializer: { getModulesRunBeforeMainModule: () => [] }, transformer: {} } as unknown as ConfigT;
-}
-// What Metro's own resolver would answer: the file name, so a test sees an import that fell through to it.
-const real = { resolveRequest: (_context: unknown, moduleName: string) => ({ type: "sourceFile", filePath: `/real/${moduleName}` }) };
-const root = mkdtempSync(join(tmpdir(), "kit-metro-"));
+const project = createProject();
+afterAll(() => project.remove());
+const root = project.directory;
 const config = withSvelteNative(fakeConfig(root), { variant: "qa" });
-const resolveFrom = (origin: string, moduleName: string): string => {
-  const resolveRequest = config.resolver.resolveRequest as (context: unknown, moduleName: string, platform: string) => { filePath: string };
-  return resolveRequest({ ...real, originModulePath: origin, unstable_conditionNames: [] }, moduleName, "android").filePath;
-};
+const resolveFrom = (origin: string, moduleName: string): string => resolveWith(config, origin, moduleName);
 const app = join(root, "src/routes/+mobile.svelte");
 
 describe("SvelteKit's modules resolve to the library's files", () => {

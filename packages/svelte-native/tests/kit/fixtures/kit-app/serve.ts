@@ -1,4 +1,4 @@
-// Starts the fixture's SvelteKit server for tests/remote-e2e.test.ts and prints `READY <origin>` once it listens.
+// Starts the fixture's SvelteKit server for tests/kit/remote-e2e.test.ts and prints `READY <origin>` once it listens.
 //   node serve.ts dev       the Vite dev server (no CSRF check)
 //   node serve.ts preview   a production build served by `vite preview` (the CSRF check, the prebuilt manifest)
 import { createServer as listen } from "node:net";

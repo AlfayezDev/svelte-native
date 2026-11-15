@@ -390,7 +390,7 @@ There is no `<form>` or `<input>`, so `form` is a native port of SvelteKit's cli
 
 ### Checking on a device
 
-The development lab has a page for it, `/__dev/remote` (QA and smoke builds), with a host field, the lab's own checks (one per kind: query, devalue types, `error()`, batch, live, command with single-flight, `.updates` with an override, request/Origin/cookie, prerender, `redirect()`, form issues then success), a form built from `TextInput` and `Switch`, and a live clock. The checks are the ones `tests/remote-lab.test.ts` runs against the lab's server module on the host; a device adds Hermes, the platform's networking and the screen.
+The development lab has a page for it, `/__dev/remote` (QA and smoke builds), with a host field, the lab's own checks (one per kind: query, devalue types, `error()`, batch, live, command with single-flight, `.updates` with an override, request/Origin/cookie, prerender, `redirect()`, form issues then success), a form built from `TextInput` and `Switch`, and a live clock. The checks are the ones `tests/kit/remote-lab.test.ts` runs against the lab's server module on the host; a device adds Hermes, the platform's networking and the screen.
 
 ```sh
 cd apps/qa && pnpm dev                                  # the SvelteKit dev server, port 3000, serves src/lib/native/dev/remote-lab.remote.ts

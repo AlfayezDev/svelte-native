@@ -2,7 +2,7 @@ import type { Reader } from "./resolve.ts";
 
 /**
  * What the library's patches leave in the packages they patch, read from the installed files: the shape the package's tests pin
- * (`tests/foreign-libraries.test.ts`, `tests/expo-lazy-modules.test.ts`, `tests/rngh-patch.test.ts`, `tests/worklets-frame-loop.test.ts`)
+ * (`tests/foreign-libraries.test.ts`, `tests/expo-lazy-modules.test.ts`, `tests/rngh-patch.test.ts`, `tests/upstream/worklets-frame-loop.test.ts`)
  * and `svelte-native doctor` reports on in an app. Each function takes a `Reader` over one package's directory and returns the problems
  * it finds, so an empty list means the patch is in; none of them reads anything but the files they name.
  */

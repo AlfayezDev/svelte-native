@@ -56,7 +56,7 @@ export const reanimatedStubs: Record<string, string> = {
     export const startMapper = (worklet, inputs) => { const id = A.mappers.length + 1; A.mappers.push({ id, worklet, inputs, stopped: false }); return id; };
     export const stopMapper = (id) => { A.mappers.find((m) => m.id === id).stopped = true; };`,
   "react-native-reanimated/src/commonTypes": "export const LayoutAnimationType = { ENTERING: 1, EXITING: 2, LAYOUT: 3 };",
-  // The colours of animated props are Reanimated's own function in the tests that look at them (`svg-colors.test.ts`).
+  // The colours of animated props are Reanimated's own function in the tests that look at them (`foreign/svg/colors.test.ts`).
   "react-native-reanimated/src/common/style/processors/colors": "export const processColorsInProps = () => {};",
   "react-native-reanimated/src/animationBuilder": "export const maybeBuild = (c) => (typeof c?.build === 'function' ? c.build() : c);",
   "react-native-reanimated/src/UpdateLayoutAnimations": `${head} export const updateLayoutAnimations = (viewTag, type, config) => { (A.layoutConfigs ??= []).push({ viewTag, type, config }); };`,

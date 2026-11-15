@@ -23,7 +23,7 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
-  # CI=1 exactly: tests/native-tools.test.ts fails (instead of skipping the Kotlin and C++ checks) only when it is "1", not GitHub's "true".
+  # CI=1 exactly: tests/native-host/native-tools.test.ts fails (instead of skipping the Kotlin and C++ checks) only when it is "1", not GitHub's "true".
   CI: "1"
   EXPO_NO_TELEMETRY: "1"
 

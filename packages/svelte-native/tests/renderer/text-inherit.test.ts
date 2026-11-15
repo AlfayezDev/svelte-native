@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { DEFAULT_FONT_SIZE, TEXT_KEYS, fontSizeOf, hasTextKeys, inheritedStyle, resolveRelative, textStyleOf } from "../src/fabric/text-inherit.ts";
+import { DEFAULT_FONT_SIZE, TEXT_KEYS, fontSizeOf, hasTextKeys, inheritedStyle, resolveRelative, textStyleOf } from "../../src/fabric/text-inherit.ts";
 
 // The rules of text style that inherits (`fabric/text-inherit.ts`); the host tree they give is in html-elements.test.ts.
 

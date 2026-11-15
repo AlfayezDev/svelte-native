@@ -39,7 +39,7 @@ export function runesDefaultEnabled(env: NodeJS.ProcessEnv = process.env): boole
  * Svelte's async mode (`experimental.async`, which `router.prepare` needs and which also allows `await` in `$derived`, in the markup and at the top of a component) is off, and an app
  * turns it on with `withSvelteNative(config, { async: true })` (`svelteNative({ async: true })` for the Vite plugin). It reaches the transformer the way `runes` does, through the environment,
  * and is a compile option for every Svelte file the transformer compiles, the library's own and a library's below `node_modules` included: Svelte's flag is one switch for the whole
- * process, turned on by the first module that imports `svelte/internal/flags/async`, which is all a component compiled with the option adds when it has no `await` (`tests/fork.test.ts`).
+ * process, turned on by the first module that imports `svelte/internal/flags/async`, which is all a component compiled with the option adds when it has no `await` (`tests/compiler/async-mode-fork.test.ts`).
  * Compiling some files with it and others without would change nothing at run time, so the option is all or none. A precompiled Svelte package that was built with `experimental.async`
  * imports the flag itself, and turns the mode on for an app that did not ask for it.
  */

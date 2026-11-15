@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
-import renderer, { NativeNode, setRefSink } from "../src/renderer.ts";
+import renderer, { NativeNode, setRefSink } from "../../src/renderer.ts";
 
 /**
  * The host hears of a `ref` when its element is in a tree on a surface (`setRefSink`, `fabric/host.ts` `earlyRef`): at once for an element that is, and when the subtree it is in gets there for

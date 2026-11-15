@@ -1,9 +1,9 @@
 <script>
-  import Router from "../src/Router.svelte";
-  import { createRouter } from "../src/router.svelte.ts";
+  import Router from "../../../src/Router.svelte";
+  import { createRouter } from "../../../src/router.svelte.ts";
   import Page from "./fork-route-page.svelte";
   import Heavy from "./fork-route-heavy.svelte";
-  import { page, stackOf } from "./tree.ts";
+  import { page, stackOf } from "../../tree.ts";
   // `globalThis.__forkHold`: a route id whose loader waits for `release(id)`; the others resolve at once.
   const waiting = {};
   const loads = [];

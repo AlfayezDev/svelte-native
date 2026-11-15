@@ -5,7 +5,8 @@
  *
  * What it follows of the web: `getCurrentPosition`, `watchPosition` and `clearWatch` call back asynchronously, with a `GeolocationPosition` or a
  * `GeolocationPositionError` (`PERMISSION_DENIED`, `POSITION_UNAVAILABLE`, `TIMEOUT`); the first use asks for the permission, and `timeout` counts from when it is
- * granted; `maximumAge` answers from the last position, the app's or the system's, when it is young enough; `enableHighAccuracy` asks for the GPS. Where it differs: a
+ * granted; `maximumAge` answers from the last position, the app's or the system's, when it is young enough (the system's is a native lookup that may not answer: it is
+ * waited for at most `CACHE_LOOKUP_MS`, and for a watch at most its `timeout`, and is otherwise not used); `enableHighAccuracy` asks for the GPS. Where it differs: a
  * position the platform cannot place in altitude, heading or speed reports `null` for them (Android reports 0 when it does not know, and it is read as unknown when its
  * accuracy is 0); and the permission is the system's, so a user who denied it can be asked again where the system still allows it (Android asks twice).
  */
@@ -39,6 +40,11 @@ const BALANCED = 3;
 const HIGH = 4;
 /** The web's default `timeout`: none (2^32 - 1 ms, as `[EnforceRange] unsigned long` allows). */
 const NO_TIMEOUT = 0xffffffff;
+/**
+ * How long the system's last known position is waited for: a cache answers in no time, but it is a native call that may not answer at all, and a position that never
+ * comes from it must not hold up a `timeout: 0` answer, a current position or a watch. A `getCurrentPosition` with `timeout: 0` answers from it only within this.
+ */
+const CACHE_LOOKUP_MS = 100;
 /**
  * Watch ids start far from expo-location's own (its JavaScript counts from 1): both share the module's watches and its `Expo.locationChanged` events. expo-location's
  * listener stops a watch it does not know when it hears one of its events, so an app should not watch through both at once.
@@ -319,11 +325,25 @@ export class Geolocation {
     return maximumAge > 0 && location !== null && Date.now() - location.timestamp <= maximumAge;
   }
 
-  /** The system's last known position, when it is no older than `maximumAge`. */
-  async #lastKnown(maximumAge: number): Promise<NativeLocation | null> {
+  /** The system's last known position, when it is no older than `maximumAge` and the native lookup answers within `bound` ms (later, it is not used). */
+  async #lastKnown(maximumAge: number, bound: number): Promise<NativeLocation | null> {
     if (maximumAge <= 0) return null;
-    const system = await this.#native.getLastKnownPositionAsync({ maxAge: maximumAge }).catch(() => null);
-    return this.#young(system, maximumAge) ? system : null;
+    let lookup: Promise<NativeLocation | null>;
+    try {
+      lookup = this.#native.getLastKnownPositionAsync({ maxAge: maximumAge }).catch(() => null);
+    } catch {
+      return null;
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), bound);
+    });
+    try {
+      const system = await Promise.race([lookup, late]);
+      return this.#young(system, maximumAge) ? system : null;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   #remember(location: NativeLocation): GeolocationPosition {
@@ -339,18 +359,18 @@ export class Geolocation {
     }
     if (this.#young(this.#last, options.maximumAge)) return this.#remember(this.#last);
     if (options.timeout === 0) {
-      // Only a cached position can answer in no time.
-      const system = await this.#lastKnown(options.maximumAge);
+      // Only a cached position can answer in no time: the system's, if its lookup answers within CACHE_LOOKUP_MS.
+      const system = await this.#lastKnown(options.maximumAge, CACHE_LOOKUP_MS);
       if (system) return this.#remember(system);
       throw positionError(3, "Timeout expired");
     }
-    // The timeout covers the system's cache too: its last known position is a native call that may not answer.
+    // The timeout covers the system's cache too, and a lookup that does not answer in CACHE_LOOKUP_MS gives way to a current position.
     let timer: ReturnType<typeof setTimeout> | undefined;
     const expired = options.timeout >= NO_TIMEOUT ? null : new Promise<never>((_, reject) => {
       timer = setTimeout(() => reject(positionError(3, "Timeout expired")), options.timeout);
     });
     const located = (async () => {
-      const system = await this.#lastKnown(options.maximumAge);
+      const system = await this.#lastKnown(options.maximumAge, CACHE_LOOKUP_MS);
       if (system) return this.#remember(system);
       try {
         return this.#remember(await this.#native.getCurrentPositionAsync({ accuracy: options.accuracy }));
@@ -429,7 +449,10 @@ export class Geolocation {
       return;
     }
     if (!current()) return;
-    const cached = this.#young(this.#last, watch.options.maximumAge) ? this.#last : await this.#lastKnown(watch.options.maximumAge);
+    // The system's cache is waited for no longer than the watch's timeout: the watch starts, and its clock runs, without it.
+    const cached = this.#young(this.#last, watch.options.maximumAge)
+      ? this.#last
+      : await this.#lastKnown(watch.options.maximumAge, Math.min(watch.options.timeout, CACHE_LOOKUP_MS));
     if (!current()) return;
     if (cached) invoke(watch.success, this.#remember(cached));
     // The first callback may have cleared the watch.

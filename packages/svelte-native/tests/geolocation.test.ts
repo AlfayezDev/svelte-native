@@ -153,6 +153,29 @@ describe("getCurrentPosition", () => {
     expect((await current(geolocation, { maximumAge: 60_000, timeout: 40 })).error?.code).toBe(3);
   });
 
+  test("timeout 0: the system's cache answers only within the lookup's bound; one that never answers, or answers later, is TIMEOUT, called back once", async () => {
+    const { geolocation, native } = fake({ permission: GRANTED });
+    let answer!: (location: unknown) => void;
+    native.getLastKnownPositionAsync = () => new Promise((resolve) => { answer = resolve; });
+    const results: string[] = [];
+    geolocation.getCurrentPosition(() => results.push("position"), (error) => results.push(`error ${error.code}`), { maximumAge: 60_000, timeout: 0 });
+    await settle(150);
+    expect(results).toEqual(["error 3"]);
+    answer(fix(1, 1, {}, Date.now() - 1000));
+    await settle(10);
+    expect(results).toEqual(["error 3"]);
+    // A cache that answers within the bound is the answer.
+    native.getLastKnownPositionAsync = async () => { await settle(10); return fix(2, 2, {}, Date.now() - 1000); };
+    expect((await current(geolocation, { maximumAge: 60_000, timeout: 0 })).position?.coords.latitude).toBe(2);
+  });
+
+  test("a cache lookup that never answers gives way to a current position when there is no timeout", async () => {
+    const { geolocation, native, calls } = fake({ permission: GRANTED });
+    native.getLastKnownPositionAsync = () => new Promise(() => {});
+    expect((await current(geolocation, { maximumAge: 60_000 })).position?.coords.latitude).toBe(24.7);
+    expect(calls).toContain("current 3");
+  });
+
   test("the success callback is required, and the classes cannot be constructed, as on the web", () => {
     const { geolocation } = fake();
     expect(() => geolocation.getCurrentPosition(undefined as any)).toThrow("Failed to execute 'getCurrentPosition' on 'Geolocation': parameter 1 is not of type 'Function'.");
@@ -311,6 +334,26 @@ describe("watchPosition", () => {
     geolocation.clearWatch(id);
     await settle(45);
     expect(events).toHaveLength(3);
+  });
+
+  test("a cache lookup that never answers holds the watch up no longer than its timeout: it starts, reports TIMEOUT, and goes on", async () => {
+    const { geolocation, native, calls, emit } = fake({ permission: GRANTED });
+    native.getLastKnownPositionAsync = () => new Promise(() => {});
+    const events: string[] = [];
+    const id = geolocation.watchPosition((position) => events.push(`position ${position.coords.latitude}`), (error) => events.push(`error ${error.code}`), { maximumAge: 60_000, timeout: 20 });
+    await settle(100);
+    expect(calls).toContain(`watch ${id} 3 distance 0`);
+    expect(events).toEqual(["error 3"]);
+    emit(id, fix(1, 1));
+    expect(events).toEqual(["error 3", "position 1"]);
+    geolocation.clearWatch(id);
+    await settle(40);
+    expect(events).toEqual(["error 3", "position 1"]);
+    // Without a timeout the watch starts once the lookup's bound has passed.
+    const late = geolocation.watchPosition(() => {}, null, { maximumAge: 60_000 });
+    await settle(150);
+    expect(calls).toContain(`watch ${late} 3 distance 0`);
+    geolocation.clearWatch(late);
   });
 
   test("maximumAge: a young enough last position is the first one the watch reports", async () => {

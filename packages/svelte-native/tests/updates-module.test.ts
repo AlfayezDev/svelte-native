@@ -7,7 +7,7 @@ import { applyHeadlessApplication, headlessExcludedPackages } from "../src/expo.
 // The Kotlin and Swift modules and the TypeScript client share a contract that no compiler checks across languages:
 // the module name, its constants and functions, and how each platform finds its launch hook. These tests pin it.
 const app = resolve(import.meta.dirname, "../../../apps/qa");
-const module = resolve(import.meta.dirname, "../native/svelte-updates");
+const module = resolve(import.meta.dirname, "../native/svelte-core");
 const read = (path: string) => readFileSync(join(module, path), "utf8");
 const kotlin = (file: string) => read(`android/src/main/java/expo/modules/svelteupdates/${file}`);
 const names = (source: string, kind: "Constant" | "AsyncFunction") => [...source.matchAll(new RegExp(`${kind}\\("(\\w+)"\\)`, "g"))].map((match) => match[1] ?? "").sort();
@@ -22,7 +22,7 @@ describe("native module contract", () => {
     expect(typeScriptFunctions).toContain("downloadAsset");
   });
   test("Android and iOS expose the constants and functions the client declares", () => {
-    const swift = read("ios/SvelteUpdatesModule.swift");
+    const swift = read("ios/updates/SvelteUpdatesModule.swift");
     const android = kotlin("SvelteUpdatesModule.kt");
     expect(names(android, "Constant")).toEqual(typeScriptConstants);
     expect(names(swift, "Constant")).toEqual(typeScriptConstants);
@@ -32,30 +32,30 @@ describe("native module contract", () => {
     expect(swift).toContain('Name("SvelteUpdates")');
   });
   test("both platforms read and write the same store layout", () => {
-    for (const source of [kotlin("UpdateStore.kt"), read("ios/UpdateStore.swift")]) {
+    for (const source of [kotlin("UpdateStore.kt"), read("ios/updates/UpdateStore.swift")]) {
       for (const field of ["clientId", "buildTime", "embeddedCreatedAt", "pending", "failedIds", "serverDefinedHeaders", "manifestFilters", "updates"]) expect(source).toContain(`"${field}"`);
     }
     expect(kotlin("UpdateStore.kt")).toContain('"index.android.bundle"');
-    expect(read("ios/UpdateStore.swift")).toContain('"main.jsbundle"');
+    expect(read("ios/updates/UpdateStore.swift")).toContain('"main.jsbundle"');
   });
   test("both platforms sync a download before it gets its name, and trust an asset in place only after it hashes to the manifest's", () => {
     const android = kotlin("Http.kt");
-    const swift = read("ios/Http.swift");
+    const swift = read("ios/updates/Http.swift");
     // The Kotlin side is run by `updates-store-native.test.ts`; the Swift side is compiled only on the Mac, so its order is pinned here.
     expect(android.indexOf("fd.sync()")).toBeGreaterThan(-1);
     expect(android.indexOf("fd.sync()")).toBeLessThan(android.indexOf("renameTo"));
     expect(swift.indexOf("synchronize()")).toBeGreaterThan(-1);
     expect(swift.indexOf("synchronize()")).toBeLessThan(swift.indexOf(".moveItem(at: temporary"));
     expect(kotlin("SvelteUpdatesModule.kt")).toContain("Http.ensure(");
-    expect(read("ios/SvelteUpdatesModule.swift")).toContain("Http.ensure(");
+    expect(read("ios/updates/SvelteUpdatesModule.swift")).toContain("Http.ensure(");
     expect(kotlin("SvelteUpdatesModule.kt")).not.toContain("Http.sha256(");
-    expect(read("ios/SvelteUpdatesModule.swift")).not.toContain("Http.sha256(");
+    expect(read("ios/updates/SvelteUpdatesModule.swift")).not.toContain("Http.sha256(");
   });
   test("the config keys are the ones Expo's config plugin writes", () => {
     const keys = ["ENABLED", "EXPO_UPDATE_URL", "EXPO_RUNTIME_VERSION", "UPDATES_CONFIGURATION_REQUEST_HEADERS_KEY", "EXPO_UPDATES_CHECK_ON_LAUNCH", "EXPO_UPDATES_LAUNCH_WAIT_MS", "HAS_EMBEDDED_UPDATE"];
     const android = kotlin("UpdatesConfig.kt");
     for (const key of keys) expect(android).toContain(`"${key}"`);
-    const ios = read("ios/UpdatesConfig.swift");
+    const ios = read("ios/updates/UpdatesConfig.swift");
     for (const key of ["EXUpdatesEnabled", "EXUpdatesURL", "EXUpdatesRuntimeVersion", "EXUpdatesRequestHeaders", "EXUpdatesCheckOnLaunch", "EXUpdatesLaunchWaitMs", "EXUpdatesHasEmbeddedUpdate"]) expect(ios).toContain(`"${key}"`);
   });
 });
@@ -63,11 +63,12 @@ describe("native module contract", () => {
 describe("launch hooks", () => {
   test("the package's module config registers the module and the iOS bundle handler", () => {
     const config = JSON.parse(readFileSync(join(module, "../../expo-module.config.json"), "utf8")) as { android: { projects: { name: string; path: string; modules: string[] }[] }; apple: { podspecPath: string[]; modules: string[]; reactDelegateHandlers: string[] } };
-    expect(config.android.projects.find((project) => project.name === "svelte-updates")).toEqual({ name: "svelte-updates", path: "native/svelte-updates/android", modules: ["expo.modules.svelteupdates.SvelteUpdatesModule"] });
-    expect(config.apple.podspecPath).toContain("native/svelte-updates/ios/SvelteUpdates.podspec");
+    expect(config.android.projects.find((project) => project.name === "svelte-core")?.path).toBe("native/svelte-core/android");
+    expect(config.android.projects.find((project) => project.name === "svelte-core")?.modules).toContain("expo.modules.svelteupdates.SvelteUpdatesModule");
+    expect(config.apple.podspecPath).toContain("native/svelte-core/ios/SvelteCore.podspec");
     expect(config.apple.modules).toContain("SvelteUpdatesModule");
     expect(config.apple.reactDelegateHandlers).toEqual(["SvelteUpdatesReactDelegateHandler"]);
-    expect(read("ios/Launch.swift")).toContain("public final class SvelteUpdatesReactDelegateHandler: ExpoReactDelegateHandler");
+    expect(read("ios/updates/Launch.swift")).toContain("public final class SvelteUpdatesReactDelegateHandler: ExpoReactDelegateHandler");
   });
   test("Expo autolinking finds the Android bundle handler: a *Package file that imports expo.modules.core.interfaces.Package", () => {
     const source = kotlin("SvelteUpdatesPackage.kt");

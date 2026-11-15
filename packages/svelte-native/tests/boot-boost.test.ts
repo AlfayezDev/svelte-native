@@ -10,7 +10,7 @@ import { join, resolve } from "node:path";
  * gives these rules the platform (Handler, SoLoader, sched_setaffinity), so it is the part this test cannot see. Skipped when `kotlinc` or
  * `java` is not on the path.
  */
-const engine = resolve(import.meta.dirname, "../native/svelte-engine/android/src/main/java/expo/modules/svelteengine");
+const engine = resolve(import.meta.dirname, "../native/svelte-core/android/src/main/java/expo/modules/svelteengine");
 const sources = { core: resolve(engine, "BootBoostCore.kt"), host: resolve(import.meta.dirname, "native/BootBoostHost.kt") };
 const tools = Bun.which("kotlinc") && Bun.which("java");
 

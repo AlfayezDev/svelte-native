@@ -4,7 +4,7 @@ import type { NavigationState } from "../hmr-state.ts";
 /**
  * The navigation tags on the Fabric host. They are plain `RCTView` nodes: the engine tells them apart by `nativeID`
  * and reads their configuration from it, because `RCTView` has no codegen props for them and Fabric keeps no raw
- * props it could rely on. The contract (API, grammar, records, events) is `native/svelte-engine/SPEC.md`,
+ * props it could rely on. The contract (API, grammar, records, events) is `native/svelte-core/SPEC.md`,
  * "Screen API contract (header, sheet, tabs)"; this module is its executable form: pure encoders, a reference decoder
  * (`decodeRecords`) that native decoders are tested against, and the layout constants JavaScript and native share.
  *

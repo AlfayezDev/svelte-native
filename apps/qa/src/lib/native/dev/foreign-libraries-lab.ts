@@ -264,7 +264,7 @@ export async function runForeignLeftovers(expected = 0): Promise<LibrariesOutcom
   record("a previous launch's tmpfile captures are gone after its process died", alive.length === 0, `${known.length} left by the last launch, ${alive.length} still there`);
   // Android's view-shot names its files `ReactNative-snapshot-image*` in the internal or the external cache directory. iOS's writes `<uuid>.<ext>` to `tmp/ReactNative` (`RCTTempFilePath`), a
   // directory of the app's data container that the system empties when it likes and React Native only when a process makes its first temporary file: every file in it is the captures' own.
-  // Both platforms delete what an earlier process left when the next one starts (Android's engine module, `packages/svelte-native/native/svelte-capture-ios` on iOS), and this is the check that they do.
+  // Both platforms delete what an earlier process left when the next one starts (Android's engine module, `packages/svelte-native/native/svelte-core/ios/capture` on iOS), and this is the check that they do.
   const snapshot = (name: string) => name.startsWith("ReactNative-snapshot-image");
   const listings: { uri: string; wanted: (name: string) => boolean }[] = android
     ? [{ uri: Paths.cache.uri, wanted: snapshot }, { uri: `file:///storage/emulated/0/Android/data/${applicationId}/cache`, wanted: snapshot }]

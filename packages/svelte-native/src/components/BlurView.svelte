@@ -9,7 +9,7 @@
   import type { ViewProps } from "react-native";
 
   /**
-   * The library's own blur: it blurs what is drawn behind it and needs no package (`SvelteBlur`, `native/svelte-blur`; the blur of `expo-blur` is
+   * The library's own blur: it blurs what is drawn behind it and needs no package (`SvelteBlur`, `native/svelte-core`; the blur of `expo-blur` is
    * `ExpoBlurView`). It is a `View` with the blur filling it and the children on top, so the children are the engine's views and take touches, and
    * `borderRadius` with `overflow: "hidden"` rounds the blur.
    *

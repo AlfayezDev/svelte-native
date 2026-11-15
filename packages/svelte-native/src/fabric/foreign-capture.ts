@@ -4,7 +4,7 @@
  *
  * - iOS: React Native's own mounting makes every view (the engine does not replace it there), and the module finds it by tag, so the
  *   host's handles work as they are. What the module answers is passed on as it is (see `result` and `width` below), and the files of a
- *   `tmpfile` result that a process left are deleted when the next one starts (`native/svelte-capture-ios`).
+ *   `tmpfile` result that a process left are deleted when the next one starts (`native/svelte-core/ios/capture`).
  * - Android: the module resolves the tag through `FabricUIManager.addUIBlock` and React Native's mounting manager, which never saw the
  *   engine's views (SPEC.md, "How it hooks in": the delegate returns no mutations for them). A foreign view and what is inside it
  *   is React Native's, so the module resolves those; for every other tag the engine draws the view itself (`SvelteEngine.captureView`,

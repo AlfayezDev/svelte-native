@@ -91,7 +91,7 @@ export declare function applyHeadlessApplication(contents: string, onDemand?: Re
 export declare function applyMainActivity(contents: string): string;
 /**
  * `AppDelegate.swift` (iOS): the four state restoration callbacks of `UIApplicationDelegate`, which Expo's `ExpoAppDelegate` does not forward, call
- * `SvelteNavigationRestoration` (`native/svelte-navigation-ios`). UIKit saves the application's restorable state when the app enters the background,
+ * `SvelteNavigationRestoration` (`native/svelte-core/ios/navigation`). UIKit saves the application's restorable state when the app enters the background,
  * asks `shouldRestore` at the next launch only if it still has that state, and has deleted it when the user swiped the app away: that call is how the
  * navigation module tells a process the system ended (restore) from one the user ended (start from the first screen), as Android's saved instance
  * state does. The methods keep the protocol's Objective-C selectors under names of their own, so a later `ExpoAppDelegate` that forwards them is a

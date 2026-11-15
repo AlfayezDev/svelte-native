@@ -11,14 +11,14 @@ import { dirname, resolve } from "node:path";
 const require = createRequire(import.meta.url);
 const library = dirname(require.resolve("react-native-view-shot/package.json"));
 const reactNative = dirname(require.resolve("react-native/package.json"));
-const sweepModule = resolve(import.meta.dirname, "../native/svelte-capture-ios");
+const core = resolve(import.meta.dirname, "../native/svelte-core");
 const viewShot = readFileSync(resolve(library, "ios/RNViewShot.mm"), "utf8");
 const tempFilePath = (() => {
   const source = readFileSync(resolve(reactNative, "React/Base/RCTUtils.mm"), "utf8");
   return source.slice(source.indexOf("RCT_EXTERN NSString *__nullable RCTTempFilePath(NSString *extension, NSError **error)"));
 })();
-const files = readFileSync(resolve(sweepModule, "ios/SvelteCaptureFiles.swift"), "utf8");
-const subscriber = readFileSync(resolve(sweepModule, "ios/SvelteCaptureSubscriber.swift"), "utf8");
+const files = readFileSync(resolve(core, "ios/capture/SvelteCaptureFiles.swift"), "utf8");
+const subscriber = readFileSync(resolve(core, "ios/capture/SvelteCaptureSubscriber.swift"), "utf8");
 
 describe("what the library's iOS module answers, which the wrapper passes on untouched", () => {
   test("a tmpfile result is the plain path React Native made, not a URI; releaseCapture deletes only a path inside tmp/ReactNative", () => {
@@ -56,18 +56,18 @@ describe("React Native clears tmp/ReactNative late, which is why the module swee
 
 describe("the module that sweeps is a product module wired the way Expo autolinks it", () => {
   test("the package's config lists a subscriber that a Swift file defines and its pod, and its pod is the one the Swift files are in", () => {
-    const config = JSON.parse(readFileSync(resolve(sweepModule, "../../expo-module.config.json"), "utf8")) as { apple: { appDelegateSubscribers: string[]; podspecPath: string[]; swiftModuleName: string[] } };
+    const config = JSON.parse(readFileSync(resolve(core, "../../expo-module.config.json"), "utf8")) as { apple: { appDelegateSubscribers: string[]; podspecPath: string[]; swiftModuleName: string[] } };
     expect(config.apple.appDelegateSubscribers).toEqual(["SvelteCaptureSubscriber"]);
-    expect(config.apple.podspecPath).toContain("native/svelte-capture-ios/ios/SvelteCapture.podspec");
-    expect(config.apple.swiftModuleName).toContain("SvelteCapture");
+    expect(config.apple.podspecPath).toEqual(["native/svelte-core/ios/SvelteCore.podspec"]);
+    expect(config.apple.swiftModuleName).toEqual(["SvelteCore"]);
     expect(subscriber).toContain("public final class SvelteCaptureSubscriber: ExpoAppDelegateSubscriber");
-    const podspec = readFileSync(resolve(sweepModule, "ios/SvelteCapture.podspec"), "utf8");
-    expect(podspec).toContain("s.name           = 'SvelteCapture'");
+    const podspec = readFileSync(resolve(core, "ios/SvelteCore.podspec"), "utf8");
+    expect(podspec).toContain("s.name           = 'SvelteCore'");
     expect(podspec).toContain("'DEFINES_MODULE' => 'YES'");
-    expect(podspec).toContain("s.source_files = '**/*.swift'");
-    // The host check sits outside the pod's source glob, so the app does not compile a second `main`.
-    expect(existsSync(resolve(sweepModule, "ios/SvelteCaptureFilesCheck.swift"))).toBe(false);
-    expect(existsSync(resolve(sweepModule, "test/SvelteCaptureFilesCheck.swift"))).toBe(true);
+    expect(podspec).toContain("s.source_files = '**/*.{h,m,mm,cpp,swift}'");
+    // The host check sits outside the pod's directory (ios/), so the app does not compile a second `main`.
+    expect(existsSync(resolve(core, "ios/capture/SvelteCaptureFilesCheck.swift"))).toBe(false);
+    expect(existsSync(resolve(core, "test/ios/SvelteCaptureFilesCheck.swift"))).toBe(true);
   });
 
   test("it sweeps in the delegate's launch call, off the main thread, with the moment of the call as the cut-off, so a capture of this process is never deleted", () => {
@@ -87,7 +87,7 @@ describe("the module that sweeps is a product module wired the way Expo autolink
 const hasSwift = spawnSync("swiftc", ["--version"], { encoding: "utf8" }).status === 0;
 describe("the sweep's own behaviour", () => {
   test.skipIf(!hasSwift)("test/run.sh compiles SvelteCaptureFiles.swift with its check and every check passes", () => {
-    const run = spawnSync("bash", [resolve(sweepModule, "test/run.sh")], { encoding: "utf8", timeout: 240_000 });
+    const run = spawnSync("bash", [resolve(core, "test/ios/capture.sh")], { encoding: "utf8", timeout: 240_000 });
     expect(run.stderr).toContain("SvelteCaptureFilesCheck: 11 checks passed");
     expect(run.status).toBe(0);
   });

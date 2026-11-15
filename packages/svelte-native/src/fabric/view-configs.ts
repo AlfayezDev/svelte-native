@@ -428,7 +428,7 @@ const kinds: Record<Platform, Record<string, Kind>> = {
   },
   ios: {
     RCTView: {},
-    // The iOS screen components (native/svelte-screens-ios) take the same props as a view plus their own events, so the
+    // The iOS screen components (native/svelte-core/ios/screens) take the same props as a view plus their own events, so the
     // first screen does not need React Native's view-config registry at boot.
     SvelteStack: {},
     SvelteScreen: { events: "topAppear topDisappear topDismissed topDetentChange" },

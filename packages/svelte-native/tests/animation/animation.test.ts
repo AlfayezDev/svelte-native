@@ -88,7 +88,7 @@ test("animatedStyle: initial values in the first payload, one descriptor and one
   expect(A.removable.filter((entry) => entry === removed)).toHaveLength(1);
   // A mapper batch collected before the node left is flushed into Reanimated's registry one frame later, after the mark was
   // handled: the node is marked once more so that the next mount removes that late entry too.
-  await new Promise((resolve) => setTimeout(resolve, 600));
+  for (const deadline = Date.now() + 2000; A.removable.filter((entry) => entry === removed).length < 2 && Date.now() < deadline;) await new Promise((resolve) => setTimeout(resolve, 10));
   expect(A.removable.filter((entry) => entry === removed)).toHaveLength(2);
 
   app.show(); // a node that comes back attaches afresh
@@ -136,7 +136,7 @@ test("animatedProps: first-run values in the node's props, a descriptor set and 
   for (const entry of own) expect(entry.removes).toEqual([node.tag]);
 });
 
-test("Reanimated CSS keys go to a CSSManager built from the node, and never reach the native payload", async () => {
+test("Reanimated CSS keys, the longhand ones and the `transition` shorthand, go to a CSSManager built from the node, and never reach the native payload", async () => {
   const m = await mount();
   const app = m.startSurface(32, m.Fixture, {}) as App;
   const node = byId(32, "css");
@@ -162,6 +162,17 @@ test("Reanimated CSS keys go to a CSSManager built from the node, and never reac
   await settle(m);
   expect(byId(32, "css")).toBeUndefined();
   expect(A.css[0].cleaned).toBe(true);
+
+  // The `transition` shorthand is a key of the same kind: it reaches a CSSManager like the longhand ones, and never the native payload.
+  const before = A.css.length;
+  app.useShorthand();
+  await settle(m);
+  expect(A.css).toHaveLength(before + 1);
+  const shorthand = A.css.at(-1);
+  expect(shorthand?.updates[0]).toMatchObject({ padding: 2, transition: "opacity 300ms" });
+  const shorthandNode = byId(32, "shorthand");
+  expect(shorthand?.viewTag).toBe(shorthandNode.tag);
+  expect(shorthandNode.props).toEqual({ testID: "shorthand", padding: 2 });
 });
 
 test("SharedValues in style: first payload carries their values, Reanimated's inline-prop manager is attached and detached", async () => {
@@ -224,21 +235,6 @@ test("once the animation layer is loaded, plain nodes are not sent through it", 
   expect(byId(36, "plain2").props.padding).toBe(5);
   expect(sentThroughLayer()).not.toContain("plain");
   expect(sentThroughLayer()).not.toContain("plain2");
-});
-
-test("the CSS `transition` shorthand reaches a CSSManager like the longhand keys, and never the native payload", async () => {
-  const m = await mount();
-  const app = m.startSurface(37, m.Fixture, {}) as App;
-  const A = log();
-  const before = A.css.length;
-  app.useShorthand();
-  await settle(m);
-  expect(A.css).toHaveLength(before + 1);
-  const entry = A.css.at(-1);
-  expect(entry?.updates[0]).toMatchObject({ padding: 2, transition: "opacity 300ms" });
-  const node = byId(37, "shorthand");
-  expect(entry?.viewTag).toBe(node.tag);
-  expect(node.props).toEqual({ testID: "shorthand", padding: 2 });
 });
 
 test("a commit that attaches eight animated nodes for the first time tells the engine; fewer, and the nodes that only refresh, do not", async () => {

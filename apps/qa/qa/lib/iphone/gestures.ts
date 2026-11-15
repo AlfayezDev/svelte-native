@@ -27,7 +27,8 @@ import type { BuildIdentity, CrashReport, GestureInjection, GestureLaunch, Gestu
  * `[Svelte stress]` results into `Documents/lab-results.json`, which this driver reads: the verdicts are the lab's own.
  *
  * Signing needs the login keychain of the logged-in user, so the runner is built the way the app is (`commands/ios-build.ts`): by a
- * script the GUI Terminal opens (`build-for-testing`, once per change of the test sources); the tests then run over `ssh`.
+ * script the GUI Terminal opens (`build-for-testing`, once per change of the test sources, and again when its provisioning profile has expired or
+ * expires within two hours: a Personal Team's lasts 7 days); the tests then run over `ssh`.
  * Run on the iPhone SE 3 (iOS 26.6, 28 Oct to 1 Nov 2026; SPEC.md, "iOS status (lane G5)"): the project `make-project.rb` generates builds, the
  * runner installs and starts, and the scenarios run (12 scenarios, 23 touch actions per full run, three full runs). What the phone needs is in
  * the SPEC: on USB, unlocked and awake, with Settings > Developer > Enable UI Automation on, and no `devicectl` call while the
@@ -180,6 +181,7 @@ export function launchFromIos(capture: {
 		harnessErrors.push(...output.failures);
 		for (const action of output.actions) if (action.error) harnessErrors.push(`${action.scenario} step ${action.step + 1}: ${action.error}`);
 		if (output.actions.length === 0) harnessErrors.push(`the test performed no action: ${capture.testText.trim().split("\n").slice(-4).join(" | ").slice(0, 400)}`);
+		if (capture.testText.includes("This provisioning profile has expired")) harnessErrors.push("the phone refused the XCUITest runner: its provisioning profile has expired (run again with --rebuild)");
 	}
 	return {
 		input: "xctest",
@@ -204,7 +206,33 @@ async function remoteDigest(mac: Mac): Promise<string | null> {
 	return result.code === 0 ? result.stdout.trim() : null;
 }
 
-/** Copies the test project to the Mac and, when its sources changed since the runner was built (or `rebuild`), builds the runner in the GUI Terminal. */
+/** How long the runner's profile must still be valid for a run to use it: a long run (`--repeat 10`) takes about an hour. */
+export const profileMarginMs = 2 * 60 * 60_000;
+
+/**
+ * Why the built runner must be signed again, or `null` when its profile lasts past the run. A Personal Team's provisioning profile expires
+ * 7 days after it was made, and the phone then refuses to install the runner ("This provisioning profile has expired", 0xe8008011) although its
+ * sources have not changed. `expiry` is the profile's `ExpirationDate` as `plutil -extract … raw` prints it, `null` when it could not be read.
+ */
+export function profileStale(expiry: string | null, now: Date, marginMs = profileMarginMs): string | null {
+	const at = expiry === null ? Number.NaN : Date.parse(expiry);
+	if (Number.isNaN(at)) return "its provisioning profile could not be read";
+	if (at <= now.getTime()) return `its provisioning profile expired at ${new Date(at).toISOString()}`;
+	if (at - now.getTime() < marginMs) return `its provisioning profile expires at ${new Date(at).toISOString()}, before the run would end`;
+	return null;
+}
+
+/**
+ * The `ExpirationDate` of the built runner's embedded provisioning profile, or `null`. The system's LibreSSL reads the signed plist without
+ * verifying it: `security cms -D` fails over `ssh` ("cert import failed: Write permissions error", the login keychain is locked there).
+ */
+async function remoteProfileExpiry(mac: Mac): Promise<string | null> {
+	const profile = `${uiTestsRemote}/DerivedData/Build/Products/Debug-iphoneos/GesturesUITests-Runner.app/embedded.mobileprovision`;
+	const result = await remote(mac, `/usr/bin/openssl smime -inform der -verify -noverify -in ${shellQuote(profile)} 2>/dev/null | plutil -extract ExpirationDate raw -o - - 2>/dev/null`);
+	return result.code === 0 && result.stdout.trim() !== "" ? result.stdout.trim() : null;
+}
+
+/** Copies the test project to the Mac and, when its sources changed since the runner was built, its profile is stale (`profileStale`) or `rebuild` is set, builds the runner in the GUI Terminal. */
 export async function prepareUiTests(session: IosSession, options: { team: string | undefined; rebuild: boolean }): Promise<void> {
 	const { mac } = session.target;
 	const digest = sourcesDigest(await Promise.all(sourceFiles.map((file) => readFile(join(uiTestsLocal, file), "utf8"))));
@@ -212,8 +240,12 @@ export async function prepareUiTests(session: IosSession, options: { team: strin
 	const synced = await exec("rsync", ["-rlpc", "-e", "ssh -o BatchMode=yes", "--exclude", "DerivedData", "--exclude", ".built", "--exclude", "*.xcodeproj", `${uiTestsLocal}/`, `${mac.target}:${uiTestsRemote}/`], { timeoutMs: 120_000 });
 	if (synced.code !== 0) throw new Error(`rsync of qa/ios-ui-tests exited with ${synced.code}: ${synced.stderr.trim().slice(0, 400)}`);
 	if (!options.rebuild && (await remoteDigest(mac)) === digest) {
-		console.log(`the XCUITest runner on the Mac is current (${digest})`);
-		return;
+		const stale = profileStale(await remoteProfileExpiry(mac), new Date());
+		if (stale === null) {
+			console.log(`the XCUITest runner on the Mac is current (${digest})`);
+			return;
+		}
+		console.log(`the XCUITest runner on the Mac is built from the current sources (${digest}), but ${stale}: building it again`);
 	}
 	const team = options.team ?? process.env.NATIVE_QA_IOS_TEAM;
 	if (!team) throw new Error("--team <development team id> (or NATIVE_QA_IOS_TEAM) is required to build the XCUITest runner");

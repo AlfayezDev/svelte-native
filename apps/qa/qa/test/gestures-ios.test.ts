@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { buildScript, defaultEdgeX, inBackground, onUsb, injectionsFrom, launchFromIos, launchesWithCrashes, parseUiTestOutput, sourcesDigest, testCommand, uiTestLeftovers, uiTestsLocal, coreDeviceDaemons, describeUiTestLeftovers } from "../lib/iphone/gestures.ts";
+import { buildScript, defaultEdgeX, inBackground, onUsb, injectionsFrom, launchFromIos, launchesWithCrashes, parseUiTestOutput, profileStale, sourcesDigest, testCommand, uiTestLeftovers, uiTestsLocal, coreDeviceDaemons, describeUiTestLeftovers } from "../lib/iphone/gestures.ts";
 import { describeStories, storiesFrom, type TraceFile } from "../lib/iphone/gesture-trace.ts";
 import { macFrom } from "../lib/iphone/mac.ts";
 import type { IosLabResults } from "../lib/iphone/lab-results.ts";
@@ -20,6 +20,16 @@ describe("the XCUITest bundle on the Mac", () => {
 		expect(sourcesDigest(["a", "b"])).toBe(sourcesDigest(["a", "b"]));
 		expect(sourcesDigest(["a", "b"])).not.toBe(sourcesDigest(["ab", ""]));
 		expect(sourcesDigest(["a", "b"])).toHaveLength(16);
+	});
+
+	test("a runner whose profile has expired, expires before the run would end or cannot be read is built again", () => {
+		const now = new Date("2026-11-15T10:00:00Z");
+		expect(profileStale("2026-11-20T09:00:00Z", now)).toBeNull();
+		expect(profileStale("2026-11-15T09:59:59Z", now)).toBe("its provisioning profile expired at 2026-11-15T09:59:59.000Z");
+		expect(profileStale("2026-11-15T11:00:00Z", now)).toBe("its provisioning profile expires at 2026-11-15T11:00:00.000Z, before the run would end");
+		expect(profileStale("2026-11-15T12:00:01Z", now)).toBeNull();
+		expect(profileStale(null, now)).toBe("its provisioning profile could not be read");
+		expect(profileStale("not a date", now)).toBe("its provisioning profile could not be read");
 	});
 
 	test("the build script goes to the project, generates it, builds for testing and records its status", () => {
@@ -128,6 +138,13 @@ describe("a launch from what the app wrote", () => {
 		const launch = launchFromIos(capture({ output: parseUiTestOutput("xcodebuild: error: Failed to find a device"), testText: "xcodebuild: error: Failed to find a device" }));
 		expect(launch.harnessErrors.join(" ")).toMatch(/performed no action: xcodebuild: error: Failed to find a device/);
 		expect(launchFromIos(capture({ output: null, testText: "" })).harnessErrors).toContain("the test run produced no output");
+	});
+
+	test("a runner the phone refused for its expired profile says so", () => {
+		const text = "Recovery Suggestion: Failed to install embedded profile for io.rasheed.svelteqa.gesturesuitests.xctrunner : 0xe8008011 (This provisioning profile has expired.)\n** TEST EXECUTE FAILED **";
+		const launch = launchFromIos(capture({ output: parseUiTestOutput(text), testText: text }));
+		expect(launch.harnessErrors).toContain("the phone refused the XCUITest runner: its provisioning profile has expired (run again with --rebuild)");
+		expect(launchFromIos(capture()).harnessErrors.join(" ")).not.toMatch(/provisioning profile/);
 	});
 });
 

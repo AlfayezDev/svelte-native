@@ -1,121 +1,23 @@
-import { test, expect } from "bun:test";
-import { build } from "esbuild";
-import { readFile, mkdtemp, writeFile, rm } from "node:fs/promises";
+import { expect, test } from "bun:test";
 import { resolve } from "node:path";
-import { tmpdir } from "node:os";
-import { pathToFileURL } from "node:url";
-import { compile } from "svelte/compiler";
-import { componentOptions } from "../src/compile-options.ts";
-import { reanimatedStubs } from "./reanimated-stubs.ts";
-import type { AnimLog } from "./reanimated-stubs.ts";
-import { reactNativeConverters } from "./rn-reference.ts";
+import type { AnimLog } from "../reanimated-stubs.ts";
+import { baseStubs, load as loadBundle, src } from "../support/bundle.ts";
+import { fakeHost } from "../support/fake-host.ts";
+import { type LayoutNode as FakeNode, attachLayout } from "../support/layout-host.ts";
 
 // Svelte's `in:`, `out:`, `transition:` and `animate:flip` on a host tag, through the real Fabric host with Reanimated's stand-ins: what reaches `element.animate`, how it is played
 // (a shared value animated `withTiming`, a mapper that samples the keyframes), what the node looks like in each commit, and when Svelte is told the animation is over.
-/** `family` is what the clones of one node share (React Native's shadow node family); `shown` is what the commit carries once Reanimated's registry was put over `props` (its commit hook). */
-type FakeNode = { tag: number; name: string; props: Record<string, unknown>; children: FakeNode[]; sealed: boolean; target?: unknown; family: object; shown?: Record<string, unknown> };
-let roots: Record<number, FakeNode[]> = {};
-const calls: string[] = [];
-const ROW = 50;
-/** The scroll offset of a scroll view by tag: React Native moves what is inside a scroll view by it, and not the scroll view itself. */
-const scrolled: Record<number, { x: number; y: number }> = {};
-/** The layout of the committed tree: a node is as wide as 100 and as high as 50 and sits at its index among its siblings times 50; a node with `position: absolute` is out of the flow, at the top. */
-function locate(target: FakeNode): { rect: number[]; path: FakeNode[] } | undefined {
-  const search = (nodes: FakeNode[], path: FakeNode[]): { rect: number[]; path: FakeNode[] } | undefined => {
-    let index = 0;
-    for (const node of nodes) {
-      const absolute = node.props.position === "absolute";
-      if (node === target) return { rect: [0, absolute ? 0 : index * ROW, 100, ROW], path: [...path, node] };
-      if (!absolute) index++;
-      const found = search(node.children, [...path, node]);
-      if (found) return found;
-    }
-    return undefined;
-  };
-  for (const root of Object.values(roots)) { const found = search(root, []); if (found) return found; }
-  return undefined;
-}
-/**
- * The box of the last node of `path` with the committed transforms of the chain applied, from the node up: each one scales and moves everything in it about the centre of its own layout box (a
- * scroll view moves what is inside it by its scroll offset, and not itself).
- */
-function transformed(path: FakeNode[], rect: number[]): number[] {
-  let [x, y, width, height] = rect as [number, number, number, number];
-  for (let at = path.length - 1; at >= 0; at--) {
-    const node = path[at] as FakeNode;
-    const own = locate(node)?.rect as [number, number, number, number];
-    const centre = { x: own[0] + own[2] / 2, y: own[1] + own[3] / 2 };
-    let sx = 1;
-    let sy = 1;
-    let tx = 0;
-    let ty = 0;
-    for (const entry of (node.props.transform as Record<string, number>[] | null | undefined) ?? []) {
-      sx *= entry.scale ?? entry.scaleX ?? 1;
-      sy *= entry.scale ?? entry.scaleY ?? 1;
-      tx += entry.translateX ?? 0;
-      ty += entry.translateY ?? 0;
-    }
-    x = centre.x + sx * (x - centre.x) + tx;
-    y = centre.y + sy * (y - centre.y) + ty;
-    width *= sx;
-    height *= sy;
-    if (at < path.length - 1 && scrolled[node.tag]) { x -= scrolled[node.tag]?.x ?? 0; y -= scrolled[node.tag]?.y ?? 0; }
-  }
-  return [x, y, width, height];
-}
-/** Whether the animation layer was loaded at each layout read the host made. */
-const reads: boolean[] = [];
-const fake = {
-  createNode(tag: number, name: string, _root: number, props: Record<string, unknown>, target: unknown) { calls.push(`create ${name}`); return { tag, name, props: { ...props }, children: [], sealed: false, target, family: {} }; },
-  cloneNodeWithNewChildren(node: FakeNode) { calls.push(`cloneChildren ${node.name}`); return { ...node, children: [], sealed: false }; },
-  cloneNodeWithNewProps(node: FakeNode, props: Record<string, unknown>) { calls.push(`cloneProps ${node.name}`); return { ...node, props: { ...node.props, ...props }, children: [...node.children], sealed: false }; },
-  cloneNodeWithNewChildrenAndProps(node: FakeNode, props: Record<string, unknown>) { calls.push(`cloneBoth ${node.name}`); return { ...node, props: { ...node.props, ...props }, children: [], sealed: false }; },
-  appendChild(parent: FakeNode, child: FakeNode) { if (parent.sealed) throw new Error(`appendChild on sealed ${parent.name}`); parent.children.push(child); },
-  createChildSet(root: number) { return { root, children: [] as FakeNode[] }; },
-  appendChildToSet(set: { children: FakeNode[] }, child: FakeNode) { set.children.push(child); },
-  completeRoot(root: number, set: { children: FakeNode[] }) {
-    calls.push("completeRoot");
-    const anim = (globalThis as { __anim?: AnimLog }).__anim;
-    const registry = anim?.registry;
-    // The commit hook: what Reanimated's registry holds for a tag is put over the props of every commit of it. Then the mount: a shadow node that was marked removable and is in no tree
-    // lets the registry of its tag go.
-    const seal = (n: FakeNode) => { n.sealed = true; n.shown = { ...n.props, ...registry?.get(n.tag) }; n.children.forEach(seal); };
-    set.children.forEach(seal);
-    roots[root] = set.children;
-    const marked = anim?.marked ?? [];
-    if (anim) anim.marked = [];
-    for (const wrapper of marked as FakeNode[]) {
-      const mounted = Object.values(roots).some((children) => find(children, wrapper.name, (n) => n.family === wrapper.family).length > 0);
-      if (!mounted) registry?.delete(wrapper.tag);
-    }
-  },
-  getBoundingClientRect(node: FakeNode, includeTransform: boolean) {
-    calls.push(`rect ${node.tag} ${includeTransform}`);
-    reads.push((globalThis as { __loaded?: () => boolean }).__loaded?.() ?? false);
-    const found = locate(node);
-    if (!found) return undefined;
-    return includeTransform ? transformed(found.path, found.rect) : found.rect;
-  },
-  measure() {},
-  measureInWindow() {},
-  dispatchCommand() {},
-  registerEventHandler() {},
-};
-(globalThis as { nativeFabricUIManager?: unknown }).nativeFabricUIManager = fake;
-(globalThis as { __DEV__?: boolean }).__DEV__ = true;
+const host = fakeHost({ globals: { __DEV__: true } });
+const layout = attachLayout(host);
 const log = () => (globalThis as unknown as { __anim: AnimLog }).__anim;
 
-const stubs: Record<string, string> = {
-  ...reanimatedStubs,
-  "react-native/Libraries/Utilities/Platform": "export default { OS: 'android', Version: 34 };",
-  "react-native/Libraries/Image/resolveAssetSource": "export default () => null;",
-  "react-native/Libraries/Components/View/ViewNativeComponent": "export {};",
-  "react-native/Libraries/Text/TextNativeComponent": "export {};",
-  "react-native/Libraries/Components/ScrollView/ScrollViewNativeComponent": "export {};",
-  // The Android engine, for the tests that give it a stand-in (`globalThis.__testEngine`).
-  "expo-modules-core": "export const requireOptionalNativeModule = (name) => (name === 'SvelteEngine' ? (globalThis.__testEngine ?? null) : null);",
-  "react-native": "export const AppRegistry = { registerRunnable() {} };",
-};
+/** The Android engine, for the tests that give it a stand-in (`globalThis.__testEngine`). */
+const stubs = { ...baseStubs(), "expo-modules-core": "export const requireOptionalNativeModule = (name) => (name === 'SvelteEngine' ? (globalThis.__testEngine ?? null) : null);" };
+const entry = `import Fixture from ${JSON.stringify(resolve(import.meta.dirname, "fixtures/transitions-fixture.svelte"))};
+  import { startSurface, fabricStats } from ${JSON.stringify(src("fabric/host.ts"))};
+  import { NativeNode } from ${JSON.stringify(src("renderer.ts"))};
+  import { tick } from 'svelte';
+  export { startSurface, fabricStats, tick, Fixture, NativeNode };`;
 
 type Animate = { node: unknown; keyframes: Record<string, unknown>[]; options: { duration?: number; delay?: number; fill?: string }; animation: Animation };
 type Animation = { onfinish: (() => void) | null; effect: unknown; playState: string; currentTime: number | null; cancel(): void };
@@ -123,46 +25,17 @@ type NodeClass = { prototype: { animate(this: unknown, keyframes: unknown, optio
 type App = { setIntro(value: boolean): void; setOutro(value: boolean): void; setReversible(value: boolean): void; setBlurred(value: boolean): void; setItems(value: number[]): void; setRows(value: number[]): void; setSlid(value: boolean): void; setSliding(value: boolean): void; setDrawing(value: boolean): void; setDelayed(value: boolean): void; setLists(left: number[], right: number[]): void; setAnimated(value: boolean): void; setCss(value: boolean): void; setScrolling(value: number[]): void; seen(): string[] };
 type Loaded = { startSurface(root: number, component: unknown, props: object): App; tick(): Promise<void>; fabricStats(): { animationLoaded: boolean }; Fixture: unknown; NativeNode: NodeClass };
 
-async function load(): Promise<Loaded> {
-  const bundle = await build({
-    stdin: {
-      contents: `import Fixture from './transitions-fixture.svelte';
-        import { startSurface, fabricStats } from '../src/fabric/host.ts';
-        import { NativeNode } from '../src/renderer.ts';
-        import { tick } from 'svelte';
-        export { startSurface, fabricStats, tick, Fixture, NativeNode };`,
-      resolveDir: import.meta.dirname,
-    },
-    bundle: true, format: "esm", platform: "neutral", conditions: ["browser"], mainFields: ["main"], write: false,
-    plugins: [...reactNativeConverters("android"), {
-      name: "transitions-fixture",
-      setup(builder) {
-        builder.onResolve({ filter: /^(react-native|expo-modules-core)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
-        builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? "export {};", loader: "js" }));
-        builder.onResolve({ filter: /^@alfayez\/svelte-native\/renderer$/ }, () => ({ path: resolve(import.meta.dirname, "../src/renderer.ts") }));
-        builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: resolve(import.meta.dirname, "../src/environment.ts") }));
-        builder.onLoad({ filter: /\.svelte$/ }, async ({ path }) => ({ contents: compile(await readFile(path, "utf8"), componentOptions(path)).js.code, loader: "js" }));
-      },
-    }],
-  });
-  const directory = await mkdtemp(resolve(tmpdir(), "svelte-native-transitions-"));
-  const file = resolve(directory, "bundle.mjs");
-  await writeFile(file, bundle.outputFiles[0]?.contents ?? "");
-  const m = await import(pathToFileURL(file).href);
-  await rm(directory, { recursive: true });
-  return m;
-}
+const load = () => loadBundle<Loaded>({ entry, stubs });
 
 const animates: Animate[] = [];
 /** A fresh bundle, with a spy on `element.animate` that records what Svelte asked for and the animation it got. */
 async function fresh(): Promise<Loaded> {
   delete (globalThis as { __anim?: unknown }).__anim;
-  roots = {};
-  calls.length = 0;
-  reads.length = 0;
+  host.reset();
+  layout.reads.length = 0;
   animates.length = 0;
   const m = await load();
-  (globalThis as { __loaded?: () => boolean }).__loaded = () => m.fabricStats().animationLoaded;
+  layout.loaded = () => m.fabricStats().animationLoaded;
   const original = m.NativeNode.prototype.animate;
   m.NativeNode.prototype.animate = function (this: unknown, keyframes: unknown, options: unknown) {
     const animation = original.call(this, keyframes, options);
@@ -171,8 +44,10 @@ async function fresh(): Promise<Loaded> {
   };
   return m;
 }
+/** What the host's binding answers for the box of a node. */
+const rectOf = (node: FakeNode, includeTransform: boolean) => (host.fake as unknown as { getBoundingClientRect(node: FakeNode, includeTransform: boolean): number[] }).getBoundingClientRect(node, includeTransform);
 const find = (nodes: FakeNode[], name: string, accept: (node: FakeNode) => boolean = () => true): FakeNode[] => nodes.flatMap((n) => [...(n.name === name && accept(n) ? [n] : []), ...find(n.children, name, accept)]);
-const byId = (root: number, id: string) => find(roots[root] ?? [], "RCTView").find((n) => n.props.testID === id) as FakeNode;
+const byId = (root: number, id: string) => find(host.roots[root] ?? [], "RCTView").find((n) => n.props.testID === id) as FakeNode;
 /** Lets every microtask that is queued, and the ones those queue, run. */
 const realSetTimeout = globalThis.setTimeout;
 const settle = async (m: Loaded) => { await m.tick(); await new Promise((done) => realSetTimeout(done, 0)); };
@@ -283,7 +158,7 @@ test("in:fly plays when its element appears: first commit at the first keyframe,
   expect(app.seen()).toEqual(["introstart"]);
 });
 
-test("onfinish is called when the shared value's animation ends, playState follows, and cancel() puts the node's own values back and never calls onfinish", async () => {
+test("onfinish is called when the shared value's animation ends, playState follows, and cancel() puts the node's own values back and never host.calls onfinish", async () => {
   const m = await fresh();
   const app = m.startSurface(52, m.Fixture, {});
   app.setIntro(true);
@@ -403,7 +278,7 @@ test("animate:flip on a reordered keyed list animates each moved item from where
   const tagOf = (id: string) => byId(55, id).tag;
   expect(byId(55, "item-1").tag).toBeLessThan(tagOf("item-3"));
   animates.length = 0;
-  calls.length = 0;
+  host.calls.length = 0;
   app.setItems([3, 1, 2]);
   await settle(m);
   // Item 3 was third (y = 100) and is first (y = 0); items 1 and 2 moved down one row.
@@ -416,11 +291,11 @@ test("animate:flip on a reordered keyed list animates each moved item from where
   const flip1 = moved("item-1")[1] as Animate;
   expect(flip1.keyframes[0]?.transform).toBe("translate(0px, -50px) scale(1, 1)");
   expect(moved("item-2")[1]?.keyframes[0]?.transform).toBe("translate(0px, -50px) scale(1, 1)");
-  expect(calls.filter((call) => call.startsWith("rect "))).not.toHaveLength(0);
+  expect(host.calls.filter((call) => call.startsWith("rect "))).not.toHaveLength(0);
   // The first layout read commits the new order; the next commit starts every moved item's animation at once. A layout read does not commit what only
   // paints, or the list would mount an item at a time: a frame of the new order with some items still in their old places.
-  const commits = calls.flatMap((call, at) => (call === "completeRoot" ? [at] : []));
-  const started = calls.slice((commits[0] as number) + 1, commits[1]);
+  const commits = host.calls.flatMap((call, at) => (call === "completeRoot" ? [at] : []));
+  const started = host.calls.slice((commits[0] as number) + 1, commits[1]);
   expect(started.filter((call) => call.startsWith("cloneProps"))).toHaveLength(3);
 
   // On the UI thread the node moves by the transform list: translate, then scale.
@@ -466,14 +341,14 @@ test("an interrupted flip starts from where the item is drawn: the layout box pl
   // Halfway through the time of its animation (frame 9 of 18), flip's ease has taken 87.5 % of the way: 12.5 px of the 100 are left.
   (first.animation as unknown as { progress: { _value: number } }).progress._value = 0.5;
   animates.length = 0;
-  calls.length = 0;
+  host.calls.length = 0;
   app.setItems([1, 2, 3]);
   await settle(m);
   const second = animates.filter((entry) => (entry.node as { getProp(key: string): unknown }).getProp("testID") === "item-3").at(-1) as Animate;
   // It was measured at y = 0 (its place in the committed tree, where the transform is not) plus the 12.5 the animation draws it at, and goes to y = 100.
   expect(second.keyframes[0]?.transform).toBe("translate(0px, -87.5px) scale(1, 1)");
   expect(first.animation.playState).toBe("idle"); // aborted by the new one
-  expect(calls).toContain(`rect ${byId(57, "item-3").tag} false`); // with a transform animating it, the box is asked for without the committed transform
+  expect(host.calls).toContain(`rect ${byId(57, "item-3").tag} false`); // with a transform animating it, the box is asked for without the committed transform
 });
 
 test("a leaving item is taken out of the flow and held where it was (node.style), the others move up, and it is removed when its outro ends", async () => {
@@ -508,7 +383,7 @@ test("transition:slide reads the node's layout (the host commits what is pending
   // The height came from the layout read (50), the padding from the node's own style (4).
   expect(main.keyframes[0]).toMatchObject({ height: "0px", paddingTop: "0px", paddingBottom: "0px", overflow: "hidden" });
   expect(main.keyframes.at(-1)).toMatchObject({ height: "50px", paddingTop: "4px", paddingBottom: "4px" });
-  expect(calls.some((call) => call.startsWith("rect "))).toBe(true);
+  expect(host.calls.some((call) => call.startsWith("rect "))).toBe(true);
   // `overflow: hidden` is what Svelte wrote to element.style, and the node applies it while the transition runs; it is not one of the animated values.
   const node = byId(59, "slid");
   expect(node.props.overflow).toBe("hidden");
@@ -565,7 +440,7 @@ test("when the UI thread has written a node's own values back, its committed pro
   // The ghost carries no props: a prop that makes it a node of another kind makes React Native delete the live view of the tag when the ghost is collected.
   expect((forgotten(own.tag)[0] as FakeNode).props).toEqual({});
   expect(A().registry?.get(own.tag)).toBeUndefined(); // and the mount that followed has let the registry of the tag go
-  expect(calls.filter((call) => call === "create RCTView").length).toBeGreaterThan(0);
+  expect(host.calls.filter((call) => call === "create RCTView").length).toBeGreaterThan(0);
 });
 
 test("the registry is not forgotten while another animation of the node plays", async () => {
@@ -752,14 +627,14 @@ test("the first layout read loads the animation layer before the tree it measure
   const m = await fresh();
   const app = m.startSurface(68, m.Fixture, {});
   expect(m.fabricStats().animationLoaded).toBe(false);
-  expect(reads).toEqual([]);
+  expect(layout.reads).toEqual([]);
   app.setItems([3, 1, 2]);
   await settle(m);
-  expect(reads.length).toBeGreaterThan(0);
-  expect(reads[0]).toBe(true); // already loaded when the first box was read, before the reorder was committed
+  expect(layout.reads.length).toBeGreaterThan(0);
+  expect(layout.reads[0]).toBe(true); // already loaded when the first box was read, before the reorder was committed
 });
 
-test("getBoundingClientRect counts the ancestors' transforms and the node's own once (the animation's when one draws, the style's otherwise); clientWidth ignores transforms", async () => {
+test("getBoundingClientRect counts the ancestors' transforms, scale included and a scroll view's offset for what is directly in it, and the node's own once (the animation's when one draws, the style's otherwise); clientWidth ignores transforms", async () => {
   const m = await fresh();
   const app = m.startSurface(69, m.Fixture, {});
   await settle(m);
@@ -783,6 +658,18 @@ test("getBoundingClientRect counts the ancestors' transforms and the node's own 
   expect(box(inner)).toEqual([25, 22.5, 50, 25]);
   centre.cancel();
   void app;
+
+  // A scaled parent: the child is drawn twice as large, about the parent's centre.
+  m.startSurface(75, m.Fixture, {});
+  await settle(m);
+  const scaledInner = byId(75, "scaled-inner");
+  expect(box(measured(75, "scaled-inner"))).toEqual(rectOf(scaledInner, true));
+  expect(box(measured(75, "scaled-inner"))[2]).toBe(200);
+  // A scrolled scroll view: React Native moves what is inside it by the offset, and not the scroll view itself.
+  const scroller = find(host.roots[75] ?? [], "RCTScrollView")[0] as FakeNode;
+  layout.scrolled[scroller.tag] = { x: 0, y: 30 };
+  expect(box(measured(75, "scroll-2"))).toEqual([0, 50 - 30, 100, 50]);
+  delete layout.scrolled[scroller.tag];
 });
 
 test("an element with an animatedStyle of its own stays whole after its in:fade: the commit that ends the transition carries the node's own first frame, and the registry is left to the node", async () => {
@@ -897,33 +784,17 @@ test("an app without Reanimated measures with no warning, and is told once that 
   }
 });
 
-test("the ancestors' transforms take a child where it is drawn, scale included, and a scroll view's offset moves its direct children", async () => {
-  const m = await fresh();
-  const app = m.startSurface(75, m.Fixture, {});
-  await settle(m);
-  // A scaled parent: the child is drawn twice as large, about the parent's centre.
-  const scaledInner = byId(75, "scaled-inner");
-  expect(box(measured(75, "scaled-inner"))).toEqual(fake.getBoundingClientRect(scaledInner, true));
-  expect(box(measured(75, "scaled-inner"))[2]).toBe(200);
-  // A scrolled scroll view: React Native moves what is inside it by the offset, and not the scroll view itself.
-  const scroller = find(roots[75] ?? [], "RCTScrollView")[0] as FakeNode;
-  scrolled[scroller.tag] = { x: 0, y: 30 };
-  expect(box(measured(75, "scroll-2"))).toEqual([0, 50 - 30, 100, 50]);
-  delete scrolled[scroller.tag];
-  void app;
-});
-
 test("a list of items under one parent reads the parent's transforms once for the task, not once for each item", async () => {
   const m = await fresh();
   const app = m.startSurface(76, m.Fixture, {});
   await settle(m);
-  const parent = find(roots[76] ?? [], "RCTView").find((node) => node.props.testID === "list") as FakeNode;
-  calls.length = 0;
+  const parent = find(host.roots[76] ?? [], "RCTView").find((node) => node.props.testID === "list") as FakeNode;
+  host.calls.length = 0;
   app.setItems([3, 1, 2]);
   await settle(m);
   // One pair of reads before the reorder (the items' old boxes) and one after (the new ones), not three pairs of each.
-  expect(calls.filter((call) => call === `rect ${parent.tag} true`).length).toBeLessThanOrEqual(2);
-  expect(calls.filter((call) => call === `rect ${parent.tag} false`).length).toBeLessThanOrEqual(2);
+  expect(host.calls.filter((call) => call === `rect ${parent.tag} true`).length).toBeLessThanOrEqual(2);
+  expect(host.calls.filter((call) => call === `rect ${parent.tag} false`).length).toBeLessThanOrEqual(2);
 });
 
 test("animations that start one another are committed together: the commit that follows the holds of a list has the first frame of every item's move, not of the first one's", async () => {
@@ -932,7 +803,7 @@ test("animations that start one another are committed together: the commit that 
   await settle(m);
   const first = measured(77, "inner");
   const second = measured(77, "scaled-inner");
-  calls.length = 0;
+  host.calls.length = 0;
   // Svelte's `animate:` plays a hold of no length for each item, and the item's move starts in the hold's `onfinish`, a microtask later. A commit queued by the first hold's change must not come
   // between the first move and the second: the second item would be committed, in its new place, without its first frame, and drawn so until the next commit.
   for (const node of [first, second]) {
@@ -940,18 +811,18 @@ test("animations that start one another are committed together: the commit that 
     hold.onfinish = () => { node.animate([{ opacity: "0.25" }, { opacity: "0.75" }], { duration: 100, fill: "forwards" }); };
   }
   await settle(m);
-  expect(calls.filter((call) => call === "completeRoot")).toHaveLength(1);
+  expect(host.calls.filter((call) => call === "completeRoot")).toHaveLength(1);
   expect(byId(77, "inner").props.opacity).toBe(0.25);
   expect(byId(77, "scaled-inner").props.opacity).toBe(0.25);
   void app;
 });
 
-/** An Android engine that says what it is told, in the order of `calls` (the commits, `completeRoot`, are in it too). */
+/** An Android engine that says what it is told, in the order of `host.calls` (the commits, `completeRoot`, are in it too). */
 function engineStandIn() {
   (globalThis as { __testEngine?: unknown }).__testEngine = {
     install: () => true,
-    holdMounts: () => { calls.push("holdMounts"); },
-    releaseMounts: () => { calls.push("releaseMounts"); },
+    holdMounts: () => { host.calls.push("holdMounts"); },
+    releaseMounts: () => { host.calls.push("releaseMounts"); },
   };
 }
 const withoutEngine = () => { delete (globalThis as { __testEngine?: unknown }).__testEngine; };
@@ -962,10 +833,10 @@ test("the engine is asked to hold its mounts at a flip's first layout read and t
     const m = await fresh();
     const app = m.startSurface(78, m.Fixture, {});
     await settle(m);
-    calls.length = 0;
+    host.calls.length = 0;
     app.setItems([3, 1, 2]);
     await settle(m);
-    const order = calls.filter((call) => call === "holdMounts" || call === "releaseMounts" || call === "completeRoot");
+    const order = host.calls.filter((call) => call === "holdMounts" || call === "releaseMounts" || call === "completeRoot");
     // Held when Svelte measures where the items are, before it moves them; the new order is the first commit, the items' first frames the second, and the hold ends after it: the engine
     // applies the two together.
     expect(order.slice(0, 4)).toEqual(["holdMounts", "completeRoot", "completeRoot", "releaseMounts"]);
@@ -983,13 +854,13 @@ test("a layout read that no animation follows holds the engine's mounts only unt
     const app = m.startSurface(79, m.Fixture, {});
     await settle(m);
     const inner = measured(79, "inner");
-    calls.length = 0;
+    host.calls.length = 0;
     inner.style.setProperty("width", "10px"); // a change that can move layout, not committed yet
     inner.getBoundingClientRect(); // the host commits it before it answers
-    expect(calls.filter((call) => call === "holdMounts" || call === "completeRoot")).toEqual(["holdMounts", "completeRoot"]);
-    expect(calls).not.toContain("releaseMounts"); // the tick is not over
+    expect(host.calls.filter((call) => call === "holdMounts" || call === "completeRoot")).toEqual(["holdMounts", "completeRoot"]);
+    expect(host.calls).not.toContain("releaseMounts"); // the tick is not over
     await new Promise((done) => setImmediate(done));
-    expect(calls.filter((call) => call === "holdMounts" || call === "releaseMounts")).toEqual(["holdMounts", "releaseMounts"]);
+    expect(host.calls.filter((call) => call === "holdMounts" || call === "releaseMounts")).toEqual(["holdMounts", "releaseMounts"]);
     void app;
   } finally {
     withoutEngine();
@@ -1002,12 +873,12 @@ test("a read with nothing pending commits nothing, and holds the engine's mounts
     const m = await fresh();
     const app = m.startSurface(80, m.Fixture, {});
     await settle(m);
-    calls.length = 0;
+    host.calls.length = 0;
     box(measured(80, "inner"));
-    expect(calls.filter((call) => call === "holdMounts" || call === "completeRoot" || call === "releaseMounts")).toEqual(["holdMounts"]);
+    expect(host.calls.filter((call) => call === "holdMounts" || call === "completeRoot" || call === "releaseMounts")).toEqual(["holdMounts"]);
     box(measured(80, "inner")); // a second read of the same tick holds nothing more
     await new Promise((done) => setImmediate(done));
-    expect(calls.filter((call) => call === "holdMounts" || call === "completeRoot" || call === "releaseMounts")).toEqual(["holdMounts", "releaseMounts"]);
+    expect(host.calls.filter((call) => call === "holdMounts" || call === "completeRoot" || call === "releaseMounts")).toEqual(["holdMounts", "releaseMounts"]);
     void app;
   } finally {
     withoutEngine();

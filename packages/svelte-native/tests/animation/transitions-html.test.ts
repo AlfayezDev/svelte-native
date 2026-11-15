@@ -1,67 +1,28 @@
 import { afterEach, expect, test } from "bun:test";
-import type { AnimLog } from "./reanimated-stubs.ts";
-import { type FakeNode as HarnessNode, all, fake as base, flat, host, load, settle, textOf } from "./html-harness.ts";
+import type { AnimLog } from "../reanimated-stubs.ts";
+import { type FakeNode as HarnessNode, all, fake as base, flat, host, load, settle, textOf } from "../html-harness.ts";
+import { type Layout, type LayoutNode as FakeNode, attachLayout } from "../support/layout-host.ts";
+import { resolve } from "node:path";
 
 // Svelte's transitions on HTML elements: the lowering turns `<div in:fly>` into a native view that keeps the directive, and the host plays it. What the two do together: an element that is made
 // again as another component while its transition runs, an outro on a span of a paragraph, `animate:flip` on `<li>`, and the text style an element gives its children while it fades.
-type FakeNode = HarnessNode & { family: object; shown?: Record<string, unknown> };
-const ROW = 50;
-/** The layout of the committed tree: a node is as wide as 100 and as high as 50 and sits at its index among its siblings times 50. */
-function locate(target: FakeNode): number[] | undefined {
-  const search = (nodes: FakeNode[]): number[] | undefined => {
-    let index = 0;
-    for (const node of nodes) {
-      if (node === target) return [0, index * ROW, 100, ROW];
-      const found = search(node.children as FakeNode[]);
-      if (found) return found;
-      index++;
-    }
-    return undefined;
-  };
-  for (const children of Object.values(host.roots)) { const found = search(children as FakeNode[]); if (found) return found; }
-  return undefined;
-}
 const A = () => (globalThis as unknown as { __anim: AnimLog }).__anim;
 /**
- * The Fabric binding of these tests: the harness's, with a layout read, and Reanimated's registry put over every commit (its commit hook) and emptied for a tag that was marked removable and is in
- * no tree (its mount hook). The harness installs its `fake` again right before it imports a bundle, so the methods are replaced on that object for the length of a test.
+ * The harness's binding with a layout read, and Reanimated's registry put over every commit (its commit hook) and emptied for a tag that was marked removable and is in no tree (its mount
+ * hook). The harness shares its binding with other files, so the layout is taken off again when a test ends.
  */
-const layoutMethods = {
-  createNode(tag: number, name: string, _root: number, props: Record<string, unknown>, target: unknown) { return { tag, name, props: { ...props }, children: [], sealed: false, target, family: {} }; },
-  completeRoot(root: number, set: { children: FakeNode[] }) {
-    const registry = A()?.registry;
-    const seal = (node: FakeNode) => { node.sealed = true; node.shown = { ...node.props, ...registry?.get(node.tag) }; for (const child of node.children) seal(child as FakeNode); };
-    for (const child of set.children) seal(child);
-    host.roots[root] = set.children;
-    const marked = A()?.marked ?? [];
-    if (A()) A().marked = [];
-    for (const wrapper of marked as FakeNode[]) {
-      const mounted = Object.values(host.roots).some((children) => all(children).some((node) => (node as FakeNode).family === wrapper.family));
-      if (!mounted) registry?.delete(wrapper.tag);
-    }
-  },
-  getBoundingClientRect(node: FakeNode) { return locate(node); },
-};
-type Methods = Record<string, unknown>;
-const kept: Methods = {};
-function installLayout(): void {
-  for (const name of Object.keys(layoutMethods)) { kept[name] = (base as unknown as Methods)[name]; (base as unknown as Methods)[name] = (layoutMethods as unknown as Methods)[name]; }
-}
-(globalThis as { __DEV__?: boolean }).__DEV__ = true;
-afterEach(() => {
-  for (const name of Object.keys(layoutMethods)) {
-    if (kept[name] === undefined) delete (base as unknown as Methods)[name];
-    else (base as unknown as Methods)[name] = kept[name];
-  }
-});
+let layout: Layout | undefined;
+afterEach(() => { layout?.detach(); layout = undefined; });
 
 type Tx = { setOn(value: boolean): void; setShown(value: boolean): void; setBold(value: boolean): void; setItems(value: number[]): void; setFaded(value: boolean): void; setColor(value: string): void; setEvented(value: boolean): void; heard(): string[] };
 let surface = 700;
 async function mount(fixture = "transitions-html-fixture.svelte") {
   delete (globalThis as { __anim?: unknown }).__anim;
   host.roots = {};
-  installLayout();
-  const m = await load(fixture);
+  layout = attachLayout({ fake: base, get roots() { return host.roots; }, calls: [] }, { absolute: false, transforms: false });
+  const m = await load(resolve(import.meta.dirname, "fixtures", fixture));
+  // The host warns in development. Set after the harness took its snapshot of the global object, so its restore takes it away again.
+  (globalThis as { __DEV__?: boolean }).__DEV__ = true;
   const tag = ++surface;
   m.startSurface(tag, m.Fixture, {});
   await settle(m);
@@ -203,18 +164,14 @@ async function flips(fixture?: string) {
   }
 }
 
-test("animate:flip on <li> in a keyed each moves each item from where it was: a view with its transform in the first commit and a worklet for it", async () => {
-  await flips();
-});
-
 // Svelte's `<svelte:element>` hands the `animate:` of everything that renders with it (the first render of its children) to the effect around it, so a keyed each that renders inside one never measures its items.
-// What the library renders itself is written with its elements for that: these two put a page in the `native-stack` of a screen and of a router, in the first render of both.
-test("animate:flip on the first render of a page in a screen of its own plays: the screen's native-stack is not a <svelte:element>", async () => {
-  await flips("transitions-screen-fixture.svelte");
-});
-
-test("animate:flip on the first render of a page in the router's stack plays: the router's native-stack is not a <svelte:element>", async () => {
-  await flips("transitions-router-fixture.svelte");
+// What the library renders itself is written with its elements for that: the last two put a page in the `native-stack` of a screen and of a router, in the first render of both.
+test.each([
+  ["<li> in a keyed each", undefined],
+  ["the first render of a page in a screen of its own (the screen's native-stack is not a <svelte:element>)", "transitions-screen-fixture.svelte"],
+  ["the first render of a page in the router's stack (the router's native-stack is not a <svelte:element>)", "transitions-router-fixture.svelte"],
+] as const)("animate:flip on %s moves each item from where it was: a view with its transform in the first commit and a worklet for it", async (_where, fixture) => {
+  await flips(fixture);
 });
 
 test("the text style an element gives its children stays theirs while it fades in, follows the element when it changes meanwhile, and the fade's values never reach the children", async () => {

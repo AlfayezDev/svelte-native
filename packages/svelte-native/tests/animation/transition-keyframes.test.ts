@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { applyInlineStyle, computedStyleOf, effectiveStyle, entriesToOps, parseLength, parseOrigin, parseTransform, transformRect, transformToCss } from "../src/fabric/dom-style.ts";
-import { parseKeyframes, restoreValues, sampleSpec, type Keyframe, type Spec } from "../src/fabric/keyframes.ts";
+import { applyInlineStyle, computedStyleOf, effectiveStyle, entriesToOps, parseLength, parseOrigin, parseTransform, transformRect, transformToCss } from "../../src/fabric/dom-style.ts";
+import { parseKeyframes, restoreValues, sampleSpec, type Keyframe, type Spec } from "../../src/fabric/keyframes.ts";
 
 // Svelte's keyframes (what `element.animate` receives) as tracks, and the sampling of tracks: opacity, every transform form, px lengths, colours, what is dropped.
 const spec = (keyframes: Keyframe[], options = { duration: 100, fill: "forwards" as const }) => {

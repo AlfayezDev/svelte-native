@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Screen from "../src/components/Screen.svelte";
+  import Screen from "../../../src/components/Screen.svelte";
   import Page from "./transitions-flip-page.svelte";
 </script>
 

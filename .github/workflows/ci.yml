@@ -95,6 +95,12 @@ jobs:
         working-directory: packages/svelte-native
         run: bun test --timeout 60000
 
+      # In a Bun process of its own (the file says why), as `pnpm test` runs it; a step of its own so that it runs when the library tests failed.
+      - name: HTML differential test
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        working-directory: packages/svelte-native
+        run: bun test --timeout 60000 ./tests/html-differential.own-process.ts
+
       # After the tests, so that the dist test judged the committed files; the build then writes the same bytes, or the commit forgot it.
       - name: Build dist/node and dist/types and compare them with the commit
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}

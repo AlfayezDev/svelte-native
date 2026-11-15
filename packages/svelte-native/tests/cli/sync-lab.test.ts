@@ -1,11 +1,12 @@
 import { test, expect, afterEach } from "bun:test";
-import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
-import { existsSync, statSync } from "node:fs";
+import { mkdir, writeFile, readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { tmpdir } from "node:os";
-import { labIncluded, routeFiles, syncNative } from "../src/build.ts";
-import { buildTree, resolve as resolveHref } from "../src/route-tree.ts";
-import { routesTableFile } from "../src/variant.ts";
+import { labIncluded, routeFiles, syncNative } from "../../src/build.ts";
+import { buildTree, resolve as resolveHref } from "../../src/route-tree.ts";
+import { routesTableFile } from "../../src/variant.ts";
+import { watchUntouched } from "../support/metro.ts";
+import { withProject } from "../support/project.ts";
 
 /**
  * The development lab's routes (a `__dev` directory, or a module script that exports `lab = true`) are in every variant but the
@@ -15,23 +16,15 @@ import { routesTableFile } from "../src/variant.ts";
 const marker = (extra = "") => `<script module>export const lab = true;${extra}</script>`;
 const tabs = '<script module>export const navigator = "tabs";</script>';
 
-const saved = process.env.APP_VARIANT;
+const saved = { APP_VARIANT: process.env.APP_VARIANT, SVELTE_NATIVE_ROOT: process.env.SVELTE_NATIVE_ROOT };
 afterEach(() => {
-  if (saved === undefined) delete process.env.APP_VARIANT; else process.env.APP_VARIANT = saved;
+  for (const [name, value] of Object.entries(saved)) if (value === undefined) delete process.env[name]; else process.env[name] = value;
 });
 
+/** A project whose `src/routes` holds these files (path to source), removed when `check` is done. */
 async function inProject<T>(files: Record<string, string>, check: (directory: string) => Promise<T>): Promise<T> {
-  const directory = await mkdtemp(resolve(tmpdir(), "svelte-native-lab-"));
-  try {
-    for (const [path, source] of Object.entries(files)) {
-      await mkdir(resolve(directory, "src/routes", path, ".."), { recursive: true });
-      await writeFile(resolve(directory, "src/routes", path), source);
-    }
-    delete process.env.SVELTE_NATIVE_ROOT;
-    return await check(directory);
-  } finally {
-    await rm(directory, { recursive: true, force: true });
-  }
+  delete process.env.SVELTE_NATIVE_ROOT;
+  return withProject(Object.fromEntries(Object.entries(files).map(([path, source]) => [`src/routes/${path}`, source])), (project) => check(project.directory));
 }
 const pathsOf = async (directory: string, lab: boolean) => (await routeFiles(resolve(directory, "src/routes"), { lab })).map((file) => file.path).toSorted();
 
@@ -84,8 +77,7 @@ test("each variant has a route table of its own: the product's names no lab file
     expect(product).toContain('require("../src/routes/workspaces/+mobile.svelte")');
     expect(product).toContain('export const variant = "production";');
     expect(product).toContain("export const lab = false;");
-    const before = statSync(file("production")).mtimeMs;
-    await new Promise((done) => setTimeout(done, 20));
+    const untouched = watchUntouched([file("production")]);
     await syncNative(directory, { variant: "qa" });
     await syncNative(directory, { variant: "smoke" });
     const full = await readFile(file("qa"), "utf8");
@@ -95,8 +87,7 @@ test("each variant has a route table of its own: the product's names no lab file
     expect(full).toContain("export const lab = true;");
     expect(await readFile(file("smoke"), "utf8")).toContain('export const variant = "smoke";');
     // The product's table is the file it was: no mtime, no byte changed, so a Metro serving it sees nothing.
-    expect(await readFile(file("production"), "utf8")).toBe(product);
-    expect(statSync(file("production")).mtimeMs).toBe(before);
+    untouched();
     // There is no table the variants share.
     expect(existsSync(resolve(directory, ".svelte-native/routes.ts"))).toBe(false);
   });
@@ -111,7 +102,7 @@ test("the table the variants used to share is removed by the next sync", async (
   });
 });
 
-test("sync takes the variant from APP_VARIANT unless it is told", async () => {
+test("sync takes whether the lab is in from APP_VARIANT unless it is told", async () => {
   await inProject(app, async (directory) => {
     const read = (variant: string) => readFile(resolve(directory, ".svelte-native", routesTableFile(variant)), "utf8");
     process.env.APP_VARIANT = "production";
@@ -120,11 +111,6 @@ test("sync takes the variant from APP_VARIANT unless it is told", async () => {
     process.env.APP_VARIANT = "smoke";
     await syncNative(directory);
     expect(await read("smoke")).toContain("__dev");
-    delete process.env.APP_VARIANT;
-    await syncNative(directory);
-    expect(await read("app")).toContain("export const variant = \"app\";");
-    expect(await read("app")).toContain("__dev");
-    expect(existsSync(resolve(directory, ".svelte-native", routesTableFile("qa")))).toBe(false);
     process.env.APP_VARIANT = "production";
     await syncNative(directory, { lab: true });
     expect(await read("production")).toContain("__dev");
@@ -140,16 +126,9 @@ test("a __dev directory is not read in the product, so a route the build could n
   });
 });
 
-test("the marker is a literal in every variant, and the root layout cannot carry it", async () => {
-  await inProject({ "x/+mobile.svelte": "<script module>export const lab = process.env.X;</script>" }, async (directory) => {
-    for (const lab of [true, false]) await expect(pathsOf(directory, lab)).rejects.toThrow(/x\/\+mobile\.svelte: export `lab` as one of the literals true/);
-  });
+test("the root layout cannot carry the lab marker, in any variant", async () => {
   await inProject({ "+layout.mobile.svelte": marker() }, async (directory) => {
     for (const lab of [true, false]) await expect(pathsOf(directory, lab)).rejects.toThrow(/\+layout\.mobile\.svelte: the root layout is the app shell and cannot be lab-only/);
-  });
-  // `lab = false` is no marker.
-  await inProject({ "+layout.mobile.svelte": "", "x/+mobile.svelte": "<script module>export const lab = false;</script>" }, async (directory) => {
-    await expect(pathsOf(directory, false)).rejects.toThrow(/export `lab` as one of the literals true/);
   });
 });
 

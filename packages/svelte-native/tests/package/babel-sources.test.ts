@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
+import { packageRoot } from "../support/paths.ts";
 
 /**
  * An app that installs the library (a tarball, a git dependency) has its sources under `node_modules`, and Metro's transformer leaves the TypeScript of a file there to Babel
@@ -13,7 +14,7 @@ import { dirname, join, relative, resolve } from "node:path";
  * cannot take fails here and not in a consumer's `bundle`.
  */
 const require = createRequire(import.meta.url);
-const root = resolve(import.meta.dirname, "..");
+const root = packageRoot;
 const preset = (() => {
   try {
     return require.resolve("babel-preset-expo", { paths: [dirname(require.resolve("expo/package.json"))] });

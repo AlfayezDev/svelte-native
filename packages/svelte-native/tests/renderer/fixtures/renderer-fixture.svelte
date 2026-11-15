@@ -1,6 +1,6 @@
 <script>
   import { onDestroy } from "svelte";
-  import Host from "../src/components/Host.svelte";
+  import Host from "../../../src/components/Host.svelte";
   let rows = $state([{ id: "a", label: "A" }, { id: "b", label: "B" }]);
   let value = $state("first");
   let visible = $state(true);

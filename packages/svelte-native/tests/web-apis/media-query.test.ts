@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { evaluateMediaQuery, parseMediaQuery, type MediaSource, type MediaState } from "../src/media-query.ts";
+import { evaluateMediaQuery, parseMediaQuery, type MediaSource, type MediaState } from "../../src/media-query.ts";
 
 // The evaluator is pure: a query and a state in, a boolean out. Every feature it knows, against states of a phone.
 // The screen is the window and the status and navigation bars (a phone's `Dimensions.get("screen")` is taller than its window).

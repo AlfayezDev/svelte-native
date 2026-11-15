@@ -75,14 +75,9 @@ test("no native source imports the async flag module or asks for the flag, but t
   expect(asking.map((file) => file.slice(root.length + 1))).toEqual(["packages/svelte-native/src/compile-options.ts"]);
 });
 
-test("Svelte's runtime turns the flag on from nowhere but the module that compiled components import, and tick() is a microtask flush while it is off", () => {
-  // Only `internal/flags/async.js` (imported by components compiled with `experimental.async`) calls `enable_async_mode_flag`.
+test("Svelte's runtime turns the flag on from nowhere but the module that compiled components import", () => {
+  // Only `internal/flags/async.js` (imported by components compiled with `experimental.async`) calls `enable_async_mode_flag`. (What `tick()` does with the flag off and on is `async-mode-parity.test.ts`'s.)
   const enablers = sources(join(svelte, "src")).filter((file) => !file.includes(`${join(svelte, "src")}/compiler/`) && /enable_async_mode_flag\(\)/.test(readFileSync(file, "utf8")) && !/function enable_async_mode_flag/.test(readFileSync(file, "utf8")));
   expect(enablers.map((file) => file.slice(svelte.length + 1))).toEqual(["src/internal/flags/async.js"]);
   expect(readFileSync(join(svelte, "src/internal/flags/index.js"), "utf8")).toContain("export let async_mode_flag = false;");
-  // `tick()`: with the flag off, one microtask and a synchronous flush of the pending effects, then it resolves.
-  const runtime = readFileSync(join(svelte, "src/internal/client/runtime.js"), "utf8");
-  const tick = /export async function tick\(\) \{([\s\S]*?)\n\}/.exec(runtime)?.[1] ?? "";
-  expect(tick).toMatch(/if \(async_mode_flag\) \{\s*return new Promise\(\(f\) => \{[\s\S]*?requestAnimationFrame\(\(\) => f\(\)\);\s*setTimeout\(\(\) => f\(\)\);\s*\}\);\s*\}/);
-  expect(tick.replace(/\/\/.*$/gm, "").replace(/if \(async_mode_flag\) \{[\s\S]*?\n\t\}/, "").replace(/\s+/g, " ").trim()).toBe("await Promise.resolve(); flushSync();");
 });

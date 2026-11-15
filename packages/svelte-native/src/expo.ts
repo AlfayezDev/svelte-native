@@ -108,7 +108,9 @@ const launchEnd = "            // Svelte native: end of launch options";
 const delegateBegin = "  // Svelte native: navigation state restoration (generated, do not edit)";
 const delegateEnd = "  // Svelte native: end of navigation state restoration";
 // `internal`: Expo's generated ExpoModulesProvider imports every module as `internal import`, and Swift refuses a plain import of the same module in the app target as ambiguous ("ambiguous implicit access level").
-const delegateImport = "internal import SvelteNavigation // Svelte native: navigation state restoration (generated, do not edit)";
+const delegateImport = "internal import SvelteCore // Svelte native: navigation state restoration (generated, do not edit)";
+// The generated import of any module, so a prebuild replaces the one an older version wrote (`SvelteNavigation`, before the native code was one pod).
+const delegateImportLine = /^internal import \w+ \/\/ Svelte native: navigation state restoration \(generated, do not edit\)\n/m;
 const gradleBegin = "// Svelte native: headless autolinking excludes (generated, do not edit)";
 const gradleEnd = "// Svelte native: end of headless autolinking excludes";
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -287,7 +289,7 @@ export function applyMainActivity(contents: string): string {
 export function applyAppDelegate(contents: string): string {
   const stripped = contents
     .replace(blockPattern(delegateBegin, delegateEnd), "")
-    .replace(new RegExp(`^${escapeRegExp(delegateImport)}\\n`, "m"), "");
+    .replace(delegateImportLine, "");
   const imports = [...stripped.matchAll(/^(?:(?:internal|public|package|private|fileprivate) |@_exported |@preconcurrency )*import [\w.]+[ \t]*$/gm)];
   const lastImport = imports.at(-1);
   const property = /^[ \t]*var reactNativeFactory: RCTReactNativeFactory\?[ \t]*$/m.exec(stripped);

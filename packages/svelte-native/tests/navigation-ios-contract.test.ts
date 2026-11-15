@@ -5,8 +5,8 @@ import { applyAppDelegate } from "../src/expo.ts";
 
 // Swift cannot be compiled here, so what ties the three pieces of the iOS restore together is read from their sources: JavaScript (`fabric/host.ts`)
 // calls the module by the names it defines, the AppDelegate patch (`applyAppDelegate`) calls the enum it defines, and both modules are autolinked.
-const modules = resolve(import.meta.dirname, "../native/svelte-core/ios/navigation");
-const swift = readFileSync(resolve(modules, "ios/SvelteNavigationModule.swift"), "utf8");
+const core = resolve(import.meta.dirname, "../native/svelte-core");
+const swift = readFileSync(resolve(core, "ios/navigation/SvelteNavigationModule.swift"), "utf8");
 const host = readFileSync(resolve(import.meta.dirname, "../src/fabric/host.ts"), "utf8");
 /** The Swift without its comments: the policy is in JavaScript, and the comments are free to say so. */
 const code = swift.split("\n").filter((line) => !line.trim().startsWith("//")).join("\n");
@@ -28,18 +28,18 @@ describe("the iOS navigation module's sources agree with each other", () => {
       expect(enumBody).toMatch(new RegExp(`public static func ${name}\\(_ coder: NSCoder\\)`));
       expect(delegate).toContain(`SvelteNavigationRestoration.${name}(coder)`);
     }
-    expect(delegate).toContain("internal import SvelteNavigation");
+    expect(delegate).toContain("internal import SvelteCore");
     expect(swift.match(/public static func /g)).toHaveLength(4);
   });
 
-  test("the pod's module is the one the Swift file imports as, and the module is listed for autolinking", () => {
-    const podspec = readFileSync(resolve(modules, "ios/SvelteNavigation.podspec"), "utf8");
-    expect(podspec).toContain("s.name           = 'SvelteNavigation'");
+  test("the pod's module is the one the AppDelegate imports, and the module is listed for autolinking", () => {
+    const podspec = readFileSync(resolve(core, "ios/SvelteCore.podspec"), "utf8");
+    expect(podspec).toContain("s.name           = 'SvelteCore'");
     expect(podspec).toContain("'DEFINES_MODULE' => 'YES'");
-    const config = JSON.parse(readFileSync(resolve(modules, "../../expo-module.config.json"), "utf8")) as { apple: { modules: string[]; podspecPath: string[]; swiftModuleName: string[] } };
+    const config = JSON.parse(readFileSync(resolve(core, "../../expo-module.config.json"), "utf8")) as { apple: { modules: string[]; podspecPath: string[]; swiftModuleName: string[] } };
     expect(config.apple.modules).toContain("SvelteNavigationModule");
-    expect(config.apple.podspecPath).toContain("native/svelte-core/ios/SvelteCore.podspec");
-    expect(config.apple.swiftModuleName).toContain("SvelteNavigation");
+    expect(config.apple.podspecPath).toEqual(["native/svelte-core/ios/SvelteCore.podspec"]);
+    expect(config.apple.swiftModuleName).toEqual(["SvelteCore"]);
     expect(swift).toContain("public final class SvelteNavigationModule: Module");
   });
 
@@ -80,7 +80,7 @@ describe("the iOS navigation module's sources agree with each other", () => {
 
   test("the bounds and the age of a state are the same on both sides of the module", () => {
     expect(swift).toContain("static let limit = 100_000"); // Android's NavigationState.LIMIT
-    expect(readFileSync(resolve(modules, "../svelte-engine/android/src/main/java/expo/modules/svelteengine/NavigationState.kt"), "utf8")).toContain("private const val LIMIT = 100_000");
+    expect(readFileSync(resolve(core, "android/src/main/java/expo/modules/svelteengine/NavigationState.kt"), "utf8")).toContain("private const val LIMIT = 100_000");
     // The age is not judged in Swift: the module hands the time over and JavaScript decides (navigation-restore.ts).
     expect(code).not.toMatch(/expire|window/i);
   });

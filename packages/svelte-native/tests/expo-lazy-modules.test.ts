@@ -3,13 +3,14 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { readerFor } from "../src/doctor/resolve.ts";
 import { adapterLoadsRegistryLazily, expoModulesCoreProblems, lazyRegistry, moduleRegistryPath, strings } from "../src/doctor/shapes.ts";
+import { patchVersion } from "./support/versions.ts";
 
-// The lazy module registry in patches/expo-modules-core@57.0.23.patch (of the package) names every module it defers, because the name lives
+// The lazy module registry in patches/expo-modules-core@<version>.patch (of the package) names every module it defers, because the name lives
 // in `definition()`, which must not run at startup. A rename in an Expo upgrade would otherwise show up as a crash at the
 // first JavaScript access, so the lists are checked against the module sources here. The lists are read from the patch by
 // `src/doctor/shapes.ts`, which `svelte-native doctor` also uses to tell whether an app's installed package carries the patch.
 const root = join(import.meta.dirname, "../../..");
-const patch = readFileSync(join(root, "packages/svelte-native/patches/expo-modules-core@57.0.23.patch"), "utf8");
+const patch = readFileSync(join(root, `packages/svelte-native/patches/expo-modules-core@${patchVersion("expo-modules-core")}.patch`), "utf8");
 const installedPackage = join(root, "node_modules/expo-modules-core");
 const installed = join(installedPackage, moduleRegistryPath);
 

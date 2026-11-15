@@ -44,14 +44,19 @@ describe("the remote functions lab", () => {
     m.configureRemote({ origin: server.origin, fetch: cookieFetch().send });
     const unlink = m.linkRouter({ goto: () => {}, current: { url: new URL("https://native.invalid/__dev/remote") } });
     const results: Record<string, string> = {};
+    // A check that hangs (a stream that never ends, a server that stopped answering) is reported by its name, and does not take the others' time.
+    const within = async <T,>(ms: number, run: Promise<T>): Promise<T> => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try { return await Promise.race([run, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`no answer in ${ms / 1000} s`)), ms); })]); } finally { clearTimeout(timer); }
+    };
     for (const check of m.checks) {
-      try { results[check.id] = `pass: ${await check.run()}`; } catch (error) { results[check.id] = `fail: ${(error as Error).message}`; }
+      try { results[check.id] = `pass: ${await within(25_000, check.run())}`; } catch (error) { results[check.id] = `fail: ${(error as Error).message}`; }
     }
     unlink();
     expect(Object.keys(results)).toEqual(["query", "types", "error", "batch", "live", "command", "updates", "probe", "prerender", "redirect", "form"]);
     expect(Object.entries(results).filter(([, result]) => !result.startsWith("pass"))).toEqual([]);
     expect(results.probe).toStartWith(`pass: Origin ${server.origin}, /__dev/remote`);
-  }, 60_000);
+  }, 150_000);
 
   test("the page's origin override (?origin=, the host field) changes the host only in a build with the lab on", () => {
     m.resetRemoteConfig();

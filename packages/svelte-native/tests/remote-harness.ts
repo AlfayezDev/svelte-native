@@ -12,7 +12,7 @@ import { build, stop as stopEsbuild, transform } from "esbuild";
 import { compileModule } from "svelte/compiler";
 import { isRemoteModule, kitGlobalsImport, remoteHash, remoteResolution, transformRemoteModule } from "../src/remote/transform.ts";
 
-export const fixtureRoot = resolve(import.meta.dirname, "fixtures/kit-app");
+export const fixtureRoot = resolve(import.meta.dirname, "kit/fixtures/kit-app");
 
 /** A running fixture server. `died()` says how it ended when it was not stopped on purpose; `assertAlive()` throws that. */
 export type Server = { origin: string; pid: number | undefined; stop(): void; died(): string | undefined; assertAlive(): void };

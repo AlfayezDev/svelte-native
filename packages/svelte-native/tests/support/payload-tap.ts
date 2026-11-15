@@ -1,6 +1,6 @@
 import * as real from "../../src/fabric/view-configs.ts";
 import type { Payload, Platform, ViewConfig } from "../../src/fabric/view-configs.ts";
-import type { Reference } from "../rn-reference.ts";
+import type { Reference } from "./rn-reference.ts";
 
 /**
  * Stands in for `src/fabric/view-configs.ts` in a fixture bundle. It runs the real static view configs and, for every

@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { join, resolve } from "node:path";
-import type { ConfigT } from "@expo/metro/metro-config";
 import { expoEnvironment } from "../../src/build.ts";
 import { componentOptions, RUNES_ENVIRONMENT_VARIABLE, runesDefaultEnabled, runesEnvironment, runesOption } from "../../src/compile-options.ts";
 import { withSvelteNative } from "../../src/metro.ts";
+import { fakeConfig } from "../support/metro.ts";
 import { withProject } from "../support/project.ts";
 
 /**
@@ -38,20 +38,19 @@ describe("the Metro integration and the native target of the Vite plugin", () =>
   afterEach(() => {
     if (saved === undefined) delete process.env[RUNES_ENVIRONMENT_VARIABLE]; else process.env[RUNES_ENVIRONMENT_VARIABLE] = saved;
   });
-  const config = (projectRoot: string) => ({ projectRoot, resolver: { sourceExts: ["ts"] }, serializer: { getModulesRunBeforeMainModule: () => [] }, transformer: {} }) as unknown as ConfigT;
 
   test("withSvelteNative(config, { runes }) hands the setting to the workers it starts, and leaves the environment alone without it", async () => {
     delete process.env[RUNES_ENVIRONMENT_VARIABLE];
     await withProject({}, ({ directory: projectRoot }) => {
-      withSvelteNative(config(projectRoot), { syncRoutes: false });
+      withSvelteNative(fakeConfig(projectRoot), { syncRoutes: false });
       expect(process.env[RUNES_ENVIRONMENT_VARIABLE]).toBeUndefined();
       expect(runesDefaultEnabled()).toBe(true);
-      withSvelteNative(config(projectRoot), { syncRoutes: false, runes: false });
+      withSvelteNative(fakeConfig(projectRoot), { syncRoutes: false, runes: false });
       expect(process.env[RUNES_ENVIRONMENT_VARIABLE]).toBe("0");
       expect(runesDefaultEnabled()).toBe(false);
       expect(runesOption(app)).toBeUndefined();
       expect(componentOptions(app).runes).toBeUndefined();
-      withSvelteNative(config(projectRoot), { syncRoutes: false, runes: true });
+      withSvelteNative(fakeConfig(projectRoot), { syncRoutes: false, runes: true });
       expect(runesDefaultEnabled()).toBe(true);
       expect(componentOptions(app).runes).toBe(true);
     });

@@ -1,5 +1,5 @@
 import type { NativeNode } from "../../../src/renderer.ts";
-import { loadFork } from "../../fork-harness.ts";
+import { loadFork } from "../../support/fork-harness.ts";
 import { recordElements, settle } from "../../renderer/support/fork.ts";
 
 /** The router fixture of the fork tests (`navigation/fixtures/fork-router-fixture.svelte`): a home page, `/b`, `/c` and a heavy one, with loaders a test can hold. */

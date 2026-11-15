@@ -1,5 +1,5 @@
 import { describe, expect, jest, test } from "bun:test";
-import { directiveResponse, manifestResponse, noUpdateDirective } from "../updates-fixtures/eas.ts";
+import { directiveResponse, manifestResponse, noUpdateDirective } from "../updates/support/eas.ts";
 import { turn, kitWorld } from "./support/kit.ts";
 
 /** `updated` of `$app/state` is the library's over-the-air updates. */

@@ -3,8 +3,8 @@ import { createRequire } from "node:module";
 import { dirname, isAbsolute, resolve } from "node:path";
 import type { Plugin } from "esbuild";
 import { reanimatedStubs } from "./reanimated-stubs.ts";
-import { bundle, evaluate } from "./support/bundle.ts";
-import { type FakeNode, createHost, flatten } from "./support/host.ts";
+import { bundle, evaluate, src, tests } from "./bundle.ts";
+import { type FakeNode, createHost, flatten } from "./host.ts";
 
 /**
  * The harness of the tests of HTML elements (`components/html-elements.test.ts`, `components/html-differential.own-process.ts`): a page is lowered as the Metro transformer lowers a file of an app (`lowerPrimitives` with
@@ -82,18 +82,18 @@ const aliases: Plugin = {
   setup(builder) {
     builder.onResolve({ filter: /^@alfayez\/svelte-native\/classes-table$/ }, (args) => ({ path: args.path, namespace: "classes-table" }));
     builder.onLoad({ filter: /.*/, namespace: "classes-table" }, () => ({ contents: `export default ${JSON.stringify(classTable)};`, loader: "js" }));
-    builder.onResolve({ filter: /^@alfayez\/svelte-native\/router$/ }, () => ({ path: resolve(import.meta.dirname, "../src/router.svelte.ts") }));
+    builder.onResolve({ filter: /^@alfayez\/svelte-native\/router$/ }, () => ({ path: src("router.svelte.ts") }));
     // What the lowering imports the components from; the entry holds more (lists, keyboards) than the page needs.
     builder.onResolve({ filter: /^@alfayez\/svelte-native\/core$/ }, () => ({ path: "core", namespace: "package" }));
     builder.onLoad({ filter: /.*/, namespace: "package" }, () => ({
-      contents: components.map((name) => `export { default as ${name} } from ${JSON.stringify(resolve(import.meta.dirname, `../src/components/${name}.svelte`))};`).join("\n"),
-      loader: "js", resolveDir: import.meta.dirname,
+      contents: components.map((name) => `export { default as ${name} } from ${JSON.stringify(src(`components/${name}.svelte`))};`).join("\n"),
+      loader: "js", resolveDir: tests,
     }));
   },
 };
 
 /** `fixture` is the path of a page (absolute, or relative to `tests/`); without one, the page of `components/fixtures/html-root-fixture.svelte` under a router. */
-export async function load(fixture = resolve(import.meta.dirname, "components/fixtures/html-root-fixture.svelte")) {
+export async function load(fixture = resolve(tests, "components/fixtures/html-root-fixture.svelte")) {
   const built = await bundle({
     entry: `import Fixture from ${JSON.stringify(isAbsolute(fixture) ? fixture : `./${fixture}`)};
         import '../src/css/load-table.ts';
@@ -107,11 +107,6 @@ export async function load(fixture = resolve(import.meta.dirname, "components/fi
   // The bundled host reads the binding when the bundle is evaluated; another file's fake may have been put in its place since the last load.
   binding.install();
   return evaluate<{ startSurface: (rootTag: number, app: unknown, props: Record<string, unknown>) => Record<string, unknown>; stopSurface: (rootTag: number) => void; tick: () => Promise<void>; Fixture: unknown }>(built.code);
-}
-
-/** Puts the global object back as it was before the first `load()`. */
-export function restoreHost(): void {
-  binding.install().restore();
 }
 
 export type Module = Awaited<ReturnType<typeof load>>;

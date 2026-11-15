@@ -1,4 +1,4 @@
-import type { Platform } from "../../rn-reference.ts";
+import type { Platform } from "../../support/rn-reference.ts";
 import { load, src } from "../../support/bundle.ts";
 
 /**

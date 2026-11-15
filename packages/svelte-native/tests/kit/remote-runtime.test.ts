@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { stringify } from "devalue";
 import { pathToFileURL } from "node:url";
 import { kitRoot } from "../../src/remote/transform.ts";
-import { loadClient } from "../remote-harness.ts";
+import { loadClient } from "./support/remote-harness.ts";
 import { type GlobalSnapshot, snapshotGlobals } from "../support/globals.ts";
 
 // What the client bundles and their stand-ins leave on the global object (`__remoteAppState`, `__opened`, `__expoConfig`...) goes when the file is done.

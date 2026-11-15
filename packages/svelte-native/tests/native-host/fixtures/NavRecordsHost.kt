@@ -3,7 +3,7 @@ import expo.modules.svelteengine.PropsNav
 
 // Host-side check of the engine's Kotlin record decoder (PropsNav.kt): reads what nav-records-host.cpp wrote (per node
 // `kind`, `count`, `ops`, `strings` lines), decodes it into NavProps the way MountingManager does, and prints the
-// result as one JSON object per node. tests/navigation-native.test.ts compares it with `decodeRecords`.
+// result as one JSON object per node. tests/native-host/navigation-native.test.ts compares it with `decodeRecords`.
 
 private fun json(value: Any?): String = when (value) {
   null -> "null"

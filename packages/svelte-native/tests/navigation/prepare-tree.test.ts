@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { routeFiles } from "../../src/build.ts";
-import { fabric, find, loadFork } from "../fork-harness.ts";
+import { fabric, find, loadFork } from "../support/fork-harness.ts";
 import { standInRoutes } from "./support/world.ts";
 
 /**

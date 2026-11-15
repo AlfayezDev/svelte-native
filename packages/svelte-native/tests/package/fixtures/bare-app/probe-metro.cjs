@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- CommonJS is the point: this is how Metro and Expo load the library */
-// Loaded by plain `node` in an app that has neither `@sveltejs/kit` nor `vite` (tests/node-modules.test.ts): the Metro integration and the transformer load, resolve and
+// Loaded by plain `node` in an app that has neither `@sveltejs/kit` nor `vite` (tests/package/node-modules.test.ts): the Metro integration and the transformer load, resolve and
 // compile without them, and what does need SvelteKit says so by name.
 const { traverseFast } = require("@babel/types");
 const { withSvelteNative } = require("@alfayez/svelte-native/metro");

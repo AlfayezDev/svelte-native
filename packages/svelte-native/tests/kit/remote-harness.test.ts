@@ -1,9 +1,9 @@
-// The test harness itself (`../remote-harness.ts`): a fixture server that does not start in time is killed, not left running behind the tests; one that dies is reported by how; one at a time.
+// The test harness itself (`support/remote-harness.ts`): a fixture server that does not start in time is killed, not left running behind the tests; one that dies is reported by how; one at a time.
 import { expect, test } from "bun:test";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { remoteHash } from "../../src/remote/transform.ts";
-import { fixtureRoot, loadClient, ServerStartTimeout, startServer } from "../remote-harness.ts";
+import { fixtureRoot, loadClient, ServerStartTimeout, startServer } from "./support/remote-harness.ts";
 
 const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 
@@ -46,7 +46,7 @@ test("a bundle is made again when esbuild's service was killed with the test pro
   expect(again.second).toBe(2);
 });
 
-test("only one fixture server runs at a time: a second start waits for the first and says who holds it; a server that was stopped is not reported dead; a lock whose owner is gone is taken over", async () => {
+test("only one fixture server runs at a time: a second start waits for the first and says who holds it; a server that was stopped is not reported dead; a lock whose owner is gone, or that is this process's own while no server of it runs, is taken over", async () => {
   const first = await startServer("dev");
   try {
     const waiting = await startServer("dev", { timeoutMs: 1200 }).then(() => undefined, (caught: unknown) => caught);
@@ -59,12 +59,15 @@ test("only one fixture server runs at a time: a second start waits for the first
   for (let wait = 0; wait < 100 && existsSync(lock); wait++) await new Promise((resolve) => setTimeout(resolve, 50));
   expect(existsSync(lock)).toBe(false);
   expect(first.died()).toBeUndefined();
-  // A run that was killed left its lock behind: the next start takes it over (and, with no time to start, is killed for that and not for the lock).
+  // A run that was killed left its lock behind, and so did this process when Bun killed its server at a test's timeout and the server's exit was never heard: the lock names
+  // this process and no server of it runs. The next start takes either over (and, with no time to start, is killed for that and not for the lock).
   const gone = Bun.spawnSync(["true"]);
-  mkdirSync(lock);
-  writeFileSync(join(lock, "pid"), String(gone.pid));
-  const takenOver = await startServer("dev", { timeoutMs: 50 }).then(() => undefined, (caught: unknown) => caught);
-  expect(takenOver).toBeInstanceOf(ServerStartTimeout);
-  for (let wait = 0; wait < 100 && existsSync(lock); wait++) await new Promise((resolve) => setTimeout(resolve, 50));
-  expect(existsSync(lock)).toBe(false);
+  for (const owner of [gone.pid, process.pid]) {
+    mkdirSync(lock);
+    writeFileSync(join(lock, "pid"), String(owner));
+    const takenOver = await startServer("dev", { timeoutMs: 50 }).then(() => undefined, (caught: unknown) => caught);
+    expect(takenOver).toBeInstanceOf(ServerStartTimeout);
+    for (let wait = 0; wait < 100 && existsSync(lock); wait++) await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(existsSync(lock)).toBe(false);
+  }
 }, 180_000);

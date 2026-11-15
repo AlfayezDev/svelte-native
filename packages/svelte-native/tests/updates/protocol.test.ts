@@ -18,7 +18,7 @@ import { parseDictionary, serializeStringDictionary, serializeStringList } from 
 import {
   BOUNDARY, CREATED_AT, UPDATE_ID, bundleBytes, directiveResponse, emptyResponse, extensions, imageBytes, launchAsset, logo, logo2x, manifest, manifestResponse,
   md5, multipart, noUpdateDirective, responseHeaders, rollBackDirective, sha256,
-} from "../updates-fixtures/eas.ts";
+} from "./support/eas.ts";
 
 describe("structured headers", () => {
   test("a dictionary keeps strings, numbers and booleans and drops the rest", () => {

@@ -1,11 +1,11 @@
 import { afterEach } from "bun:test";
 import type { NativeNode } from "../../../src/renderer.ts";
 import { snapshotGlobals } from "../../support/globals.ts";
-import { fabric, find, loadFork, type ForkModule } from "../../fork-harness.ts";
+import { fabric, find, loadFork, type ForkModule } from "../../support/fork-harness.ts";
 
 /**
  * What the tests of Svelte's `fork()` on this library's renderer share (`renderer/fork.test.ts`, `navigation/prepare.test.ts`, `compiler/async-mode-fork.test.ts`): waiting for a commit,
- * comparing trees, watching the garbage collector, and the panel fixture mounted on a node tree or on the fake Fabric binding. The harness is `tests/fork-harness.ts`.
+ * comparing trees, watching the garbage collector, and the panel fixture mounted on a node tree or on the fake Fabric binding. The harness is `tests/support/fork-harness.ts`.
  */
 
 /** For a file whose tests set globals the fixtures read (`__forkLog`, `__forkHold`, `__forkRows`) and whose loads may add `requestAnimationFrame`: the global object goes back to what it was when the file loaded after each test. */

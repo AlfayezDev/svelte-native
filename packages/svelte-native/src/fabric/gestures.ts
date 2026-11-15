@@ -12,7 +12,7 @@
  *   `flushOperations` that makes the native module run everything queued.
  * - `sweepGestures` drops the handlers of nodes that left the tree (a removed block, a popped screen, a hot remount).
  *
- * The native calls, their order and their payloads are RNGH's own (`tests/gestures/golden`). Callbacks that are all worklets run
+ * The native calls, their order and their payloads are RNGH's own (`tests/gestures/fixtures/golden`). Callbacks that are all worklets run
  * on the UI thread through Reanimated (`gestures/animated.ts`); the others run here on the JS thread (`gestures/events.ts`).
  */
 import { mark } from "../boot-marks.ts";

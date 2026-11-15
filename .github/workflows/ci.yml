@@ -82,7 +82,7 @@ jobs:
         with:
           persist-credentials: false
 
-      # kotlinc, a JDK, g++, android.jar and the org.json jar: the package tests that compile tests/native/*Host.kt fail without them.
+      # kotlinc, a JDK, g++, android.jar and the org.json jar: the package tests that compile tests/native-host/fixtures/*Host.kt fail without them.
       - id: setup
         uses: ./.github/actions/setup
         with:

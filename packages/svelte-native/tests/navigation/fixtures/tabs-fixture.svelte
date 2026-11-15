@@ -1,7 +1,7 @@
 <script>
-  import Host from "../src/components/Host.svelte";
-  import Screen from "../src/components/Screen.svelte";
-  import Tabs from "../src/components/Tabs.svelte";
+  import Host from "../../../src/components/Host.svelte";
+  import Screen from "../../../src/components/Screen.svelte";
+  import Tabs from "../../../src/components/Tabs.svelte";
   let selected = $state("home");
   let lazy = $state(true);
   let items = $state([

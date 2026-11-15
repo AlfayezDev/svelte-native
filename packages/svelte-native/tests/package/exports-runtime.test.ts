@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { load as loadBundle, src } from "../support/bundle.ts";
 import { routerStubs } from "../support/router.ts";
-import { svgLibraryStubs } from "../svg-library-stubs.ts";
-import { animation, gestures, nativeModules, svg, svgRenamed } from "../removed-entries.ts";
+import { svgLibraryStubs } from "../support/svg-library-stubs.ts";
+import { animation, gestures, nativeModules, svg, svgRenamed } from "./support/removed-entries.ts";
 
 /**
  * The main entry and `/platform`, bundled together and evaluated (React Native's modules are stubs, as in the other bundle tests): they export every name the entries

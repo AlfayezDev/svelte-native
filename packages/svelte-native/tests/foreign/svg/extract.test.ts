@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { loadOracle, type Oracle } from "./support/oracle.ts";
 import { svgWorld, type SvgLoaded } from "./support/harness.ts";
-import type { Platform } from "../../rn-reference.ts";
+import type { Platform } from "../../support/rn-reference.ts";
 import { resolve } from "node:path";
 
 // The harnesses are made in `beforeAll`, outside the per-test restore of `support/preload.ts`: the file puts the global object back when it is done.

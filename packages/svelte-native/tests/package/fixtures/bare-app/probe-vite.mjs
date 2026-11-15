@@ -1,4 +1,4 @@
-// Run by plain `node` in an app that has neither `@sveltejs/kit` nor `vite` (tests/node-modules.test.ts): the native target of the plugin does not need either,
+// Run by plain `node` in an app that has neither `@sveltejs/kit` nor `vite` (tests/package/node-modules.test.ts): the native target of the plugin does not need either,
 // and the web target says which package it needs.
 import { svelteNative } from "@alfayez/svelte-native/vite";
 

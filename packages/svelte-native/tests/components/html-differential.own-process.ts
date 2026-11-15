@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { type FakeNode, all, flat, host, load, settle } from "../html-harness.ts";
+import { type FakeNode, all, flat, host, load, settle } from "../support/html-harness.ts";
 import { createProject } from "../support/project.ts";
 
 /**

@@ -6,7 +6,7 @@ import { nativeFetch } from "../../src/updates/native.ts";
 import type { FetchLike } from "../../src/updates/protocol.ts";
 import {
   CREATED_AT, UPDATE_ID, directiveResponse, emptyResponse, launchAsset, logo, logo2x, manifest, manifestResponse, noUpdateDirective, rollBackDirective, multipart, responseHeaders,
-} from "../updates-fixtures/eas.ts";
+} from "./support/eas.ts";
 
 const embeddedAt = Date.parse("2026-10-01T00:00:00.000Z");
 const emptyMetadata: StoredMetadata = { serverDefinedHeaders: null, manifestFilters: null };

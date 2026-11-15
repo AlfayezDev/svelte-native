@@ -5,7 +5,7 @@ import { closeWatchers, withSvelteNative } from "../../../src/metro.ts";
 import { sourceFile } from "../../../src/package-root.ts";
 import { classesTableFile } from "../../../src/variant.ts";
 import { resetReports } from "../../../src/css/build.ts";
-import { cssProject, removeCssProjects } from "../../css-project.ts";
+import { cssProject, removeCssProjects } from "../../support/css-project.ts";
 import { packageRoot } from "../../support/paths.ts";
 import { fakeConfig, resolveFrom, until, watchUntouched } from "../../support/metro.ts";
 

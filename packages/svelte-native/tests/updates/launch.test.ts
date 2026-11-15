@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { load as loadBundle } from "../support/bundle.ts";
 import { type GlobalSnapshot, snapshotGlobals } from "../support/globals.ts";
 import type { SvelteUpdatesNative } from "../../src/updates/native.ts";
-import { UPDATE_ID, directiveResponse, noUpdateDirective } from "../updates-fixtures/eas.ts";
+import { UPDATE_ID, directiveResponse, noUpdateDirective } from "./support/eas.ts";
 
 // The host's launch hook and the module entry load React Native modules; both are replaced by stubs that report to `globalThis.__updates`.
 type World = {

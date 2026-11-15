@@ -8,14 +8,12 @@ import { type RouterBundleOptions, loadRouterApp } from "../../support/router.ts
 /**
  * What the navigation tests share: the fake host with the router's React Native stand-ins (`support/router.ts`), the fixtures of this directory, and the helpers that read a
  * committed tree (the nodes of a kind, a test id, the texts) and drive the router (insets, settling, the stand-ins' hardware back key). The route-tree tests mount
- * `fixtures/tree-fixture.svelte` through `mountTree`, which also hands back what the pages and layouts of `tests/tree-app.ts` recorded on `globalThis.__tree*`.
+ * `fixtures/tree-fixture.svelte` through `mountTree`, which also hands back what the pages and layouts of `tests/support/tree-app.ts` recorded on `globalThis.__tree*`.
  */
 export type { FakeNode };
 export { settle };
 
 const fixtures = resolve(import.meta.dirname, "../fixtures");
-/** A fixture of the suite's top directory that other areas' tests mount too. */
-export const shared = (name: string): string => resolve(import.meta.dirname, "../..", name);
 
 export const find = (nodes: FakeNode[], name: string): FakeNode[] => flatten(nodes).filter((node) => node.name === name);
 export const ofKind = (nodes: FakeNode[], kind: string): FakeNode[] => flatten(nodes).filter((node) => parseNativeID(String(node.props.nativeID ?? ""))?.kind === kind);
@@ -32,8 +30,8 @@ export const onPlatform = (os: "ios" | "android"): void => { (globalThis as { __
 export const activityOf = (screen: FakeNode): string | undefined => String(screen.props.nativeID).match(/;a=(\d)/)?.[1];
 /** The merged style of a node: a style array, flattened. */
 export const flat = (style: unknown): Record<string, unknown> => Object.assign({}, ...(Array.isArray(style) ? style : [style]).filter(Boolean));
-/** The route files of the stand-in app (`tests/fixtures/stand-in-app`). */
-export const standInRoutes: string = resolve(import.meta.dirname, "../../fixtures/stand-in-app/src/routes");
+/** The route files of the stand-in app (`tests/support/fixtures/stand-in-app`). */
+export const standInRoutes: string = resolve(import.meta.dirname, "../../support/fixtures/stand-in-app/src/routes");
 export const handlersOf = (key: "__backHandlers" | "__linkHandlers") => (globalThis as unknown as Record<string, ((...args: never[]) => unknown)[]>)[key];
 
 export type TreeRouter = {
@@ -54,7 +52,7 @@ export function navigationWorld() {
   // A popped screen's exit timer must not fire into the test that runs after this one.
   afterEach(() => { jest.useRealTimers(); });
 
-  /** A fixture of `tests/navigation/fixtures` by name, or one at a path (`shared(...)`), mounted through the host. */
+  /** A fixture of `tests/navigation/fixtures` by name, or one at an absolute path, mounted through the host. */
   const load = (fixture = "navigation-fixture.svelte", options?: RouterBundleOptions) => loadRouterApp(fixture.startsWith("/") ? fixture : resolve(fixtures, fixture), options);
   const texts = (root: number): string[] => find(host.roots[root] ?? [], "RCTRawText").map((node) => String(node.props.text));
   const selectedIndex = (surface: number) => parseNativeID(String(ofKind(host.roots[surface], "tabs")[0].props.nativeID))?.pairs.sel;

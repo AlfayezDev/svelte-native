@@ -127,7 +127,7 @@ test("iOS: React Native mounts every view, so the module takes the handle's tag 
 });
 
 test("iOS: the module's answers reach the caller as they are (a plain path, not a URI), the release is given the same string, and width and height are not scaled", async () => {
-  // What RNViewShot.mm answers on iOS: React Native's temporary path, no scheme (`capture-ios-contract.test.ts` reads that from the library's source).
+  // What RNViewShot.mm answers on iOS: React Native's temporary path, no scheme (`native-host/contracts/capture-ios.test.ts` reads that from the library's source).
   const directory = "/var/mobile/Containers/Data/Application/6F1A2B3C-0000-4000-8000-000000000001/tmp/ReactNative";
   const { harness, app, shot, viewShot } = await mount("ios", 121);
   jest.useFakeTimers();

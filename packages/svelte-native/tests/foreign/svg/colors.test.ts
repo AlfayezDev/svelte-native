@@ -1,9 +1,9 @@
 import { resolve } from "node:path";
 import { expect, test } from "bun:test";
-import { find, type FakeNode } from "../../foreign-harness.ts";
+import { find, type FakeNode } from "../support/harness.ts";
 import { svgHarness, type SvgLoaded } from "./support/harness.ts";
-import type { AnimLog } from "../../reanimated-stubs.ts";
-import { importWithReactNative, type Platform } from "../../rn-reference.ts";
+import type { AnimLog } from "../../support/reanimated-stubs.ts";
+import { importWithReactNative, type Platform } from "../../support/rn-reference.ts";
 
 /**
  * A colour in `animatedProps` (SPEC.md, "react-native-svg", Animation). Reanimated 4.5.1's `updateProps` runs `processColorsInProps` on animated props

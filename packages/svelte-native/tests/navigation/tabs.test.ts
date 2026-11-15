@@ -1,12 +1,12 @@
 import { expect, test } from "bun:test";
-import { ofKind, ofTestID, withInsets, onPlatform, settle, shared, flat, navigationWorld } from "./support/world.ts";
+import { ofKind, ofTestID, withInsets, onPlatform, settle, flat, navigationWorld } from "./support/world.ts";
 
 /** `Tabs` through the Fabric host: one pane per item, the selection, the bar's metrics and the events that come back. */
 const { host, load } = navigationWorld();
 
 type TabsApp = { select: (key: string) => void; setItems: (items: object[]) => void; setLazy: (value: boolean) => void; selection: () => string; events: () => string[]; handle: (key: string) => { key: string; selected: boolean } };
 async function mountTabs(surface: number) {
-  const m = await load(shared("tabs-fixture.svelte"));
+  const m = await load("tabs-fixture.svelte");
   const app = m.startSurface(surface, m.Fixture, {}) as TabsApp;
   await settle(m);
   const tabs = () => ofKind(host.roots[surface], "tabs")[0];

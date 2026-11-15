@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import type { FakeNode } from "../../foreign-harness.ts";
+import type { FakeNode } from "../support/harness.ts";
 import { loadOracle, type Oracle } from "./support/oracle.ts";
 import { describeOurs, describeTheirs, hasPress, pressHostProps, settle, svgWorld, toNode, toReact, type Spec, type SvgLoaded } from "./support/harness.ts";
-import type { Platform } from "../../rn-reference.ts";
+import type { Platform } from "../../support/rn-reference.ts";
 import { cases, svgRoot } from "./support/cases.ts";
 import { resolve } from "node:path";
 

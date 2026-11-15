@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, expect, jest, test } from "bun:test";
 import { resolve } from "node:path";
-import { type FakeNode, all, emit, fake, host, load, settle } from "../html-harness.ts";
+import { type FakeNode, all, emit, fake, host, load, settle } from "../support/html-harness.ts";
 import { type GlobalSnapshot, snapshotGlobals } from "../support/globals.ts";
 import { touchSender } from "./support/touches.ts";
 

@@ -7,7 +7,7 @@ import { ASYNC_ENVIRONMENT_VARIABLE, RUNES_ENVIRONMENT_VARIABLE, asyncEnabled, a
 import { withSvelteNative } from "../../src/metro.ts";
 import { sourceDirectory } from "../../src/package-root.ts";
 import { svelteNative } from "../../src/vite.ts";
-import { asyncRun } from "../async-run.ts";
+import { asyncRun } from "../support/async-run.ts";
 import { fakeConfig } from "../support/metro.ts";
 import { createProject } from "../support/project.ts";
 
@@ -126,7 +126,7 @@ describe("what it compiles", () => {
       expect(compile(plain, componentOptions(file, undefined, true)).js.code, file).toContain(flag);
       expect(compile(plain, componentOptions(file, undefined, false)).js.code, file).not.toContain(flag);
     }
-    // The only thing the option adds to a component that has no `await` is the import of the flag (`fork.test.ts` compares the rest of the output).
+    // The only thing the option adds to a component that has no `await` is the import of the flag (`async-mode-fork.test.ts` compares the rest of the output).
     const module = "let count = $state(0); export const bump = () => { count++; };";
     expect(compileModule(module, moduleOptions("/work/app/src/lib/state.svelte.ts", true)).js.code).toBe(compileModule(module, moduleOptions("/work/app/src/lib/state.svelte.ts", false)).js.code);
   });

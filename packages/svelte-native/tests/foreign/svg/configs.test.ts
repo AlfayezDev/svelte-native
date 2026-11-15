@@ -4,7 +4,7 @@ import { transformSync } from "@babel/core";
 import { createRequire } from "node:module";
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { importWithReactNative, withReactNativeGlobals, type Platform, type Reference } from "../../rn-reference.ts";
+import { importWithReactNative, withReactNativeGlobals, type Platform, type Reference } from "../../support/rn-reference.ts";
 import { loadOracle } from "./support/oracle.ts";
 import { flattenFragments, type OracleNode } from "./support/oracle.ts";
 import { toReact } from "./support/harness.ts";
@@ -65,7 +65,7 @@ function sameAttributes(path: string, reference: Table, mine: Table, converters:
     else if (typeof (expected as { process?: unknown }).process === "function") {
       const process = (expected as { process: (value: unknown) => unknown }).process;
       expect(typeof actual, `${path}.${key}`).toBe("function");
-      // The converters of a view's own style are compared on their samples in `view-configs.test.ts`; these are the ones the library's props add.
+      // The converters of a view's own style are compared on their samples in `renderer/view-configs.test.ts`; these are the ones the library's props add.
       if (process.name !== "processColor" && process.name !== "resolveAssetSource") continue;
       converters.add(process.name);
       for (const sample of process.name === "resolveAssetSource" ? sources : colors) expect(outcome(() => (actual as (value: unknown) => unknown)(sample)), `${path}.${key}(${JSON.stringify(sample)})`).toEqual(outcome(() => process(sample)));

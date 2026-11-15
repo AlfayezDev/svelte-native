@@ -1,4 +1,4 @@
-<!-- The control of the type check (tests/node-modules.test.ts): two mistakes, each of which must be reported, and only these. The check reaches the library's source in
+<!-- The control of the type check (tests/package/node-modules.test.ts): two mistakes, each of which must be reported, and only these. The check reaches the library's source in
      node_modules; if it reported nothing here it would be reporting nothing anywhere. -->
 <script lang="ts">
   import { Pressable, Text } from "@alfayez/svelte-native";

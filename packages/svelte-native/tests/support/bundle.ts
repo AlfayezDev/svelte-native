@@ -6,8 +6,8 @@ import { pathToFileURL } from "node:url";
 import { compile, compileModule } from "svelte/compiler";
 import { componentOptions, lowersHtml } from "../../src/compile-options.ts";
 import { lowerPrimitives } from "../../src/lower.ts";
-import { reanimatedStubs } from "../reanimated-stubs.ts";
-import { reactNativeConverters, type Platform } from "../rn-reference.ts";
+import { reanimatedStubs } from "./reanimated-stubs.ts";
+import { reactNativeConverters, type Platform } from "./rn-reference.ts";
 
 /**
  * The one loader of the suite's host tests: a Svelte fixture (and the library's own sources it reaches) bundled with esbuild against stand-ins for React Native, and
@@ -114,7 +114,7 @@ export function hostPlugin(options: HostPluginOptions = {}): Plugin {
       builder.onResolve({ filter: /^(react-native|expo-modules-core)/ }, (args) => (args.path.startsWith("react-native-gesture-handler") ? undefined : { path: args.path, namespace: "stub" }));
       if (named.length) builder.onResolve({ filter: new RegExp(`^(${named.map(escapeRegExp).join("|")})$`) }, (args) => ({ path: args.path, namespace: "stub" }));
       builder.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: options.openStubs ? "module.exports = new Proxy({}, { get: () => () => {} });" : stubs[args.path] ?? "export {};", loader: "js", resolveDir: tests }));
-      if (viewConfigs === "pass-through") builder.onResolve({ filter: /\/view-configs\.ts$/ }, () => ({ path: resolve(import.meta.dirname, "../view-configs-stub.ts") }));
+      if (viewConfigs === "pass-through") builder.onResolve({ filter: /\/view-configs\.ts$/ }, () => ({ path: resolve(import.meta.dirname, "view-configs-stub.ts") }));
       if (viewConfigs === "payload-tap") builder.onResolve({ filter: /\/view-configs\.ts$/ }, (args) => (args.importer.endsWith("/fabric/host.ts") ? { path: resolve(import.meta.dirname, "payload-tap.ts") } : undefined));
       builder.onResolve({ filter: /^@alfayez\/svelte-native\/renderer$/ }, () => ({ path: src("renderer.ts") }));
       builder.onResolve({ filter: /^esm-env$/ }, () => ({ path: src("environment.ts") }));

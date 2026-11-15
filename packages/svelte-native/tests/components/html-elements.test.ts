@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, expect, jest, test } from "bun:test";
 import { resolve } from "node:path";
 import { htmlTextInput } from "../../src/html-input.ts";
 import { hostBind, hostClick, hostHref, hostInputEvent, hostKeyEvent, hostSource, hostStyleProps, hostSubmit, hostTag, hostWebClickSpread, hostWebSpread } from "../../src/renderer.ts";
-import { type FakeNode, type Module, all, emit, fake, flat, host, load, settle, textOf } from "../html-harness.ts";
+import { type FakeNode, type Module, all, emit, fake, flat, host, load, settle, textOf } from "../support/html-harness.ts";
 import { touchSender } from "../gestures/support/touches.ts";
 import { type GlobalSnapshot, snapshotGlobals } from "../support/globals.ts";
 import { createProject } from "../support/project.ts";

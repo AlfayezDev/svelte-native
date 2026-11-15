@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { Pressability, type PressEvent, type ResponderHandlers } from "../../src/fabric/pressability.ts";
-import { asyncRun } from "../async-run.ts";
-import { fabric, find, loadFork } from "../fork-harness.ts";
+import { asyncRun } from "../support/async-run.ts";
+import { fabric, find, loadFork } from "../support/fork-harness.ts";
 import { collected, restoreGlobalsAfterEach, settle, shape, sleep } from "../renderer/support/fork.ts";
 import { type Router, type RouterApp, mountRouter } from "./support/fork-router.ts";
 

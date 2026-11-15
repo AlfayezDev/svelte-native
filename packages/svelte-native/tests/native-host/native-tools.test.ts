@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { findHostJars, missingHostTools } from "../native/host-tools.ts";
+import { findHostJars, missingHostTools } from "../support/host-tools.ts";
 import { createProject } from "../support/project.ts";
 
 // The host checks of the native code skip themselves when kotlinc, java, g++ or a jar is missing, which is right on a machine without

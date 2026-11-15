@@ -2,7 +2,7 @@
  * The XML half of react-native-svg (`xml.tsx`) without React: the library's parser, line for line, producing a plain tree of
  * `{ tag, props, children }` where the library produces React elements (`astToReact`), and `fetchText` of `utils/fetchData.ts`
  * for `SvgUri`. `SvgXml.svelte` renders the tree with the Svelte components. `xml.tsx` itself imports React and every element
- * class, so it cannot be bundled; `tests/svg.test.ts` bundles it with a stand-in for React as the oracle and compares the trees.
+ * class, so it cannot be bundled; `tests/foreign/svg/support/oracle.ts` bundles it with a stand-in for React as the oracle and compares the trees.
  */
 import { Platform } from "./deps-rn.ts";
 

@@ -1,14 +1,14 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
-import { findHostJars } from "../native/host-tools.ts";
+import { findHostJars } from "../support/host-tools.ts";
 import { hostTools, kotlinHost } from "../support/native-host.ts";
 
 /**
  * The Android updates store (`UpdateStore.kt`), the QA reset decision (`QaReset.kt`) and the asset download (`Http.kt`) compiled for the
  * host and driven by scripted commands against a real directory (the download against a local HTTP server): launch selection, the
  * launch marker and its failure rules, clean-up, reset, a corrupt index, the per-directory lock, and which asset file is trusted. Skipped when `kotlinc`, `java`, an Android SDK `android.jar` (compile-time types only) or the `org.json`
- * jar (the real implementation Android provides) is not found (`native/host-tools.ts` says where they are looked for; under CI=1
+ * jar (the real implementation Android provides) is not found (`support/host-tools.ts` says where they are looked for; under CI=1
  * `native-tools.test.ts` fails instead of letting this skip).
  *
  * One JVM runs every scenario (a JVM start is most of what a scenario costs): each starts with `fresh`, which gives the host an empty store directory and an empty server, and the

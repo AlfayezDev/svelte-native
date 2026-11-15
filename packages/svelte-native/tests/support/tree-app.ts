@@ -1,10 +1,10 @@
 import type { Component } from "svelte";
-import { buildTree, type PageRoute, type RouteFile, type RouteNode, type StackNode } from "../src/route-tree.ts";
-import Page from "./tree-page.svelte";
-import ContentLayout from "./tree-content-layout.svelte";
-import TabsLayout from "./tree-tabs-layout.svelte";
-import BareTabsLayout from "./tree-bare-tabs-layout.svelte";
-import StackLayout from "./tree-stack-layout.svelte";
+import { buildTree, type PageRoute, type RouteFile, type RouteNode, type StackNode } from "../../src/route-tree.ts";
+import Page from "./fixtures/tree-page.svelte";
+import ContentLayout from "./fixtures/tree-content-layout.svelte";
+import TabsLayout from "./fixtures/tree-tabs-layout.svelte";
+import BareTabsLayout from "./fixtures/tree-bare-tabs-layout.svelte";
+import StackLayout from "./fixtures/tree-stack-layout.svelte";
 
 const file = (path: string, exports: RouteFile["exports"] = {}): RouteFile => ({ path, exports });
 

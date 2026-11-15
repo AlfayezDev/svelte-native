@@ -5,7 +5,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { cpSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { cookieFetch, fixtureRoot, loadClient, startServer, type Server } from "../remote-harness.ts";
+import { cookieFetch, fixtureRoot, loadClient, startServer, type Server } from "./support/remote-harness.ts";
 import { type GlobalSnapshot, snapshotGlobals } from "../support/globals.ts";
 
 // What the client bundles and their stand-ins leave on the global object (`__remoteAppState`, `__opened`, `__expoConfig`...) goes when the file is done.

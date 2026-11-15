@@ -1,6 +1,6 @@
 <script>
-  import Host from "../src/components/Host.svelte";
-  import Screen from "../src/components/Screen.svelte";
+  import Host from "../../../src/components/Host.svelte";
+  import Screen from "../../../src/components/Screen.svelte";
   import ToolbarProbe from "./toolbar-probe.svelte";
   const log = [];
   const press = (key) => log.push(`press ${key}`);

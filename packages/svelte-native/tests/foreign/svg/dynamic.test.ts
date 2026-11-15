@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { find, type FakeNode } from "../../foreign-harness.ts";
+import { find, type FakeNode } from "../support/harness.ts";
 import { describeOurs, describeTheirs, settle, svgWorld, toNode, type Spec, type SvgLoaded } from "./support/harness.ts";
 import { loadOracle } from "./support/oracle.ts";
 import { resolve } from "node:path";

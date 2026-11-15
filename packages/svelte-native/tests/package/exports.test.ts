@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import ts from "typescript";
-import { animation as removedAnimation, fabric as removedFabric, gestures as removedGestures, keptEntries, nativeModules as removedNativeModules, removedEntries, removedSpecifiers, svg as removedSvg, svgRenamed } from "../removed-entries.ts";
+import { animation as removedAnimation, fabric as removedFabric, gestures as removedGestures, keptEntries, nativeModules as removedNativeModules, removedEntries, removedSpecifiers, svg as removedSvg, svgRenamed } from "./support/removed-entries.ts";
 
 /**
  * What the package's entries export, read from the sources (no bundler, no device): the main entry carries what `/animation`, `/gestures` and `/svg` exported (and

@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync, appendFileSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { watchTree } from "../../src/watch-tree.ts";
+import { until as waitFor } from "../support/metro.ts";
 
 // A recursive `fs.watch` on Linux stops reporting a file once it is replaced by a rename (how sed -i, vim and many editors save); `watchTree`
 // keeps a watch per directory, which reports every change of an entry.
@@ -13,10 +14,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 const pause = (ms: number) => new Promise((done) => setTimeout(done, ms));
-async function until(condition: () => boolean, ms = 3000) {
-  const deadline = Date.now() + ms;
-  while (!condition() && Date.now() < deadline) await pause(20);
-}
+const until = (condition: () => boolean) => waitFor(condition, 3000);
 function tree() {
   const root = mkdtempSync(join(tmpdir(), "svelte-native-watch-"));
   roots.push(root);

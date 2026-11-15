@@ -2,12 +2,12 @@ import { expect, test } from "bun:test";
 import { routeFiles } from "../../src/build.ts";
 import { parseNativeID } from "../../src/fabric/navigation.ts";
 import { type PageRoute, type RouteNode, buildTree, resolve as resolveHref } from "../../src/route-tree.ts";
-import { type Visitor, enforceGate } from "../fixtures/stand-in-app/src/lib/gate.ts";
+import { type Visitor, enforceGate } from "../support/fixtures/stand-in-app/src/lib/gate.ts";
 import { type FakeNode, type TreeRouter, handlersOf, ofKind, pathsOf, paneRouter, treeGlobals, withInsets, navigationWorld } from "./support/world.ts";
 import { appRoutes, neverAnswers, sendLink, trouble, standInWorld } from "./support/stand-in.ts";
 
 /**
- * The route tree of the stand-in app (`tests/fixtures/stand-in-app`, an app of this package's own): the files under its `src/routes`, built by
+ * The route tree of the stand-in app (`tests/support/fixtures/stand-in-app`, an app of this package's own): the files under its `src/routes`, built by
  * the generator's reader, linked to the test components of the fixtures (a tabs bar, a stack, a page that registers its router). The app has
  * the shape the router was built for: a root stack with pages, a modal and a tabs navigator (a project, with a home pane and a settings pane),
  * behind a gate that keeps the root navigator on a screen the visitor may see, and a development lab under `/__dev`. The tests pin that shape,

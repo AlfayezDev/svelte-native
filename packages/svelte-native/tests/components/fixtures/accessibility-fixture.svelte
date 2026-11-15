@@ -1,5 +1,5 @@
 <script>
-  import View from "../src/components/View.svelte";
+  import View from "../../../src/components/View.svelte";
   let checked = $state(true);
   let label = $state("Terms");
   let hidden = $state(false);

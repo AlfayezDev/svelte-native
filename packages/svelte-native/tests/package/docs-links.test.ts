@@ -9,7 +9,7 @@ import { basename, dirname, relative, resolve } from "node:path";
  * links page to page by slug, `[Routing](routing#deep-links)`, as the documentation site resolves it: a page's slug is its
  * file name without the order prefix.
  */
-const repository = resolve(import.meta.dirname, "../../..");
+const repository = resolve(import.meta.dirname, "../../../..");
 const roots = ["README.md", "docs", "packages/svelte-native", "apps/qa/qa"];
 const skipped = new Set(["node_modules", "out", "runs", "build", ".gradle", "Pods", ".svelte-native"]);
 const specFile = resolve(repository, "packages/svelte-native/native/svelte-core/SPEC.md");

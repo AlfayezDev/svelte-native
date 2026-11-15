@@ -486,7 +486,7 @@ patches
         fix: copy node_modules/@alfayez/svelte-native/patches/react-native-pdf@7.0.3.patch into your repository (patches/svelte-native/), declare "react-native-pdf@7.0.3: patches/svelte-native/react-native-pdf@7.0.3.patch" under patchedDependencies in pnpm-workspace.yaml, then pnpm install (README: "Apply the patches")
 
 build integration
-  pass  @alfayez/svelte-native 0.4.0-rc.7 is a dependency of the app
+  pass  @alfayez/svelte-native 0.4.0-rc.8 is a dependency of the app
   ????  could not tell: metro.config.cjs does not mention withSvelteNative (a config that applies it from a file it imports is fine)
         fix: module.exports = withSvelteNative(getDefaultConfig(__dirname)), with withSvelteNative from require("@alfayez/svelte-native/metro")
   pass  app.json lists the @alfayez/svelte-native plugin

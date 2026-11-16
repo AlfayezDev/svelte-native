@@ -57,11 +57,8 @@ describe("the relinked config", () => {
   test("everything else is kept: the other fields of the relinked packages, the other packages, the rest of the config", () => {
     const before = config();
     const result = deferNitroLibraries(before);
-    for (const name of ["react-native-mmkv", "react-native-quick-crypto", "react-native-nitro-modules"]) {
-      const { packageImportPath: _import, packageInstance: _instance, ...rest } = androidOf(result, name);
-      const { packageImportPath: _was, packageInstance: _wasInstance, ...restBefore } = androidOf(before, name);
-      expect(rest).toEqual(restBefore);
-    }
+    const withoutLinks = (platform: Platform) => Object.fromEntries(Object.entries(platform).filter(([key]) => key !== "packageImportPath" && key !== "packageInstance"));
+    for (const name of ["react-native-mmkv", "react-native-quick-crypto", "react-native-nitro-modules"]) expect(withoutLinks(androidOf(result, name))).toEqual(withoutLinks(androidOf(before, name)));
     expect(result.dependencies?.["react-native-quick-base64"]).toEqual(before.dependencies?.["react-native-quick-base64"]);
     expect({ ...result, dependencies: undefined }).toEqual({ ...before, dependencies: undefined });
     // The input is not changed.

@@ -2,9 +2,10 @@ import XCTest
 
 /// Drives the gesture lab (`/__dev/gestures`, SPEC.md "Gestures") on the iPhone the way a person would. The harness gives it the lab's link `rasheed-svelte:///__dev?run=gestures-...,drive:xctest`; this test opens it (which launches the app) and
 /// loops: read the lab's `ready` line from the element `gestures.status` (its accessibility label is the line's JSON), find the view the
-/// step aims at by its accessibility identifier (`gesture.<name>`, the page's `testID`), perform the input with XCUITest's own gestures,
-/// and wait for the next line. The verdicts are the lab's: it counts what its recognisers report and writes `Documents/lab-results.json`,
-/// which the harness reads. Every action is printed as `GESTURES-ACTION {json}` so the harness can record what was injected.
+/// step aims at by its accessibility identifier (`gesture.<name>`, the page's `testID`), perform the input with XCUITest's own gestures
+/// (the pushed-edge swipe with `SvelteQAEvents`, a drag that lifts while moving), and wait for the next line. The verdicts are the lab's:
+/// it counts what its recognisers report and writes `Documents/lab-results.json`, which the harness reads. Every action is printed as
+/// `GESTURES-ACTION {json}` so the harness can record what was injected.
 ///
 /// Environment (as `TEST_RUNNER_*` variables of the xcodebuild call): `GESTURES_BUNDLE_ID` (the lab app), `GESTURES_URL` (the lab's link, which the test opens), `GESTURES_TRACE` (1: the app records its gesture recognizers), `GESTURES_SECONDS` (give up after).
 ///
@@ -64,13 +65,15 @@ final class GesturesUITests: XCTestCase {
             if let text = ProcessInfo.processInfo.environment["GESTURES_EDGE_X"], let x = Double(text), key.hasPrefix("gestures-pushed-edge#0#"), var from = input["from"] as? [String: Any] {
                 from["dx"] = x
                 sent["from"] = from
-                // UIKit completes an interactive pop on progress and the finger's velocity when it lifts, and XCUITest's finger arrives at rest: a swipe that stops at
-                // about half the width is cancelled one run in two (205 pt of 375 was), so the swipe goes to 300 pt.
+                // UIKit completes an interactive pop on progress and the finger's velocity when it lifts: a swipe that stops at about half the width is
+                // cancelled one run in two (205 pt of 375 was), so the swipe goes to 300 pt.
                 sent["by"] = [Double(ProcessInfo.processInfo.environment["GESTURES_EDGE_BY"] ?? "") ?? 300, 0]
-                // `GESTURES_EDGE_RELEASE`: `rest` holds the finger at the end for 0.4 s, `fling` drags without the 50 ms press first and lifts at the end of a fast drag (UIKit's
-                // edge swipe failed such a touch at touch-down, from 2 pt); anything else is the plain drag.
+                // `GESTURES_EDGE_RELEASE`: by default (`moving`) the finger moves at one speed and lifts while moving (`SvelteQAEvents`): XCUITest's own drag
+                // slows down over its last frames, and UIKit cancelled the pop at 68 to 71 % when its last move fell short (2 runs in 8, 16 Nov 2026).
+                // `eased` is XCUITest's drag, `rest` holds the finger at the end for 0.4 s, `fling` drags without the 50 ms press first and lifts at the
+                // end of a fast drag (UIKit's edge swipe failed such a touch at touch-down, from 2 pt).
                 let release = ProcessInfo.processInfo.environment["GESTURES_EDGE_RELEASE"] ?? ""
-                if release == "rest" || release == "fling" { sent["release"] = release }
+                sent["release"] = ["eased", "rest", "fling"].contains(release) ? release : "moving"
             }
             var failure: String? = nil
             let began = Date()
@@ -177,7 +180,10 @@ final class GesturesUITests: XCTestCase {
             let speed = hypot(dx, dy) / duration
             aimed["from"] = [start.screenPoint.x, start.screenPoint.y]
             aimed["to"] = [end.screenPoint.x, end.screenPoint.y]
+            if let release = input["release"] as? String { aimed["release"] = release }
             switch input["release"] as? String {
+            case "moving":
+                try SvelteQAEvents.drag(from: start.screenPoint, to: end.screenPoint, press: 0.05, duration: duration)
             case "fling":
                 start.press(forDuration: 0, thenDragTo: end, withVelocity: .fast, thenHoldForDuration: 0)
             case "rest":

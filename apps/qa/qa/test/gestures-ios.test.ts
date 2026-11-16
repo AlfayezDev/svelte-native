@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { buildScript, defaultEdgeX, inBackground, onUsb, injectionsFrom, launchFromIos, launchesWithCrashes, parseUiTestOutput, profileStale, sourcesDigest, testCommand, uiTestLeftovers, uiTestsLocal, coreDeviceDaemons, describeUiTestLeftovers } from "../lib/iphone/gestures.ts";
+import { buildScript, defaultEdgeX, edgeReleaseFrom, edgeReleases, inBackground, onUsb, injectionsFrom, launchFromIos, launchesWithCrashes, parseUiTestOutput, profileStale, sourceFiles, sourcesDigest, testCommand, uiTestLeftovers, uiTestsLocal, coreDeviceDaemons, describeUiTestLeftovers } from "../lib/iphone/gestures.ts";
 import { describeStories, storiesFrom, type TraceFile } from "../lib/iphone/gesture-trace.ts";
 import { macFrom } from "../lib/iphone/mac.ts";
 import type { IosLabResults } from "../lib/iphone/lab-results.ts";
@@ -80,6 +80,32 @@ describe("the XCUITest bundle on the Mac", () => {
 		const ruby = readFileSync(join(uiTestsLocal, "make-project.rb"), "utf8");
 		expect(ruby).toContain("'GesturesUITests'");
 		expect(ruby).toContain("DEVELOPMENT_TEAM");
+	});
+
+	test("every source of the runner is in the digest, so that a change to any of them builds the runner again", () => {
+		const sources = readdirSync(join(uiTestsLocal, "GesturesUITests")).filter((file) => /\.(swift|m|h)$/.test(file)).map((file) => `GesturesUITests/${file}`);
+		expect(sources).toContain("GesturesUITests/SvelteQAEvents.m");
+		for (const file of [...sources, "make-project.rb"]) expect(sourceFiles).toContain(file);
+		const contents = sourceFiles.map((file) => readFileSync(join(uiTestsLocal, file), "utf8"));
+		const index = sourceFiles.indexOf("GesturesUITests/SvelteQAEvents.m");
+		expect(sourcesDigest(contents.map((content, at) => (at === index ? `${content} ` : content)))).not.toBe(sourcesDigest(contents));
+	});
+
+	test("the Objective-C drag is compiled into the runner and the Swift test reaches it through the bridging header", () => {
+		const ruby = readFileSync(join(uiTestsLocal, "make-project.rb"), "utf8");
+		const swift = readFileSync(join(uiTestsLocal, "GesturesUITests/GesturesUITests.swift"), "utf8");
+		expect(ruby).toContain("group.new_file('SvelteQAEvents.m')");
+		expect(ruby).toContain("settings['SWIFT_OBJC_BRIDGING_HEADER'] = 'GesturesUITests/SvelteQAEvents.h'");
+		expect(swift).toContain("SvelteQAEvents.drag(from:");
+	});
+
+	test("--edge-release takes the four ways a swipe can end and refuses anything else, which the test would take for the default", () => {
+		expect([...edgeReleases]).toEqual(["moving", "eased", "rest", "fling"]);
+		for (const release of edgeReleases) expect(edgeReleaseFrom(release)).toBe(release);
+		expect(edgeReleaseFrom(undefined)).toBeUndefined();
+		expect(() => edgeReleaseFrom("esaed")).toThrow('--edge-release is one of moving, eased, rest, fling, not "esaed"');
+		const swift = readFileSync(join(uiTestsLocal, "GesturesUITests/GesturesUITests.swift"), "utf8");
+		expect(swift).toContain('["eased", "rest", "fling"].contains(release) ? release : "moving"');
 	});
 });
 

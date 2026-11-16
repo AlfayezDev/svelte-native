@@ -23,7 +23,8 @@ import type { BuildIdentity, CrashReport, GestureInjection, GestureLaunch, Gestu
  * installed app by bundle id) reads the lab's `ready` line from an element of the page (`gestures.status`, whose accessibility label is
  * the line's JSON), finds the views a step aims at by their `testID` (`gesture.<name>`, so no pixel handshake is needed) and performs the
  * input with `XCUICoordinate.press(forDuration:thenDragTo:withVelocity:thenHoldForDuration:)`, `pinch(withScale:velocity:)` and
- * `rotate(_:withVelocity:)`. It runs with `xcodebuild test-without-building` over `ssh` to the Mac while the app logs, as it does for `lab`,
+ * `rotate(_:withVelocity:)` (the pushed-edge swipe with `SvelteQAEvents`, XCTest's own event record, so that the finger lifts while moving:
+ * README, "Gestures"). It runs with `xcodebuild test-without-building` over `ssh` to the Mac while the app logs, as it does for `lab`,
  * `[Svelte stress]` results into `Documents/lab-results.json`, which this driver reads: the verdicts are the lab's own.
  *
  * Signing needs the login keychain of the logged-in user, so the runner is built the way the app is (`commands/ios-build.ts`): by a
@@ -39,7 +40,7 @@ import type { BuildIdentity, CrashReport, GestureInjection, GestureLaunch, Gestu
 
 export const uiTestsLocal = join(qaDir, "ios-ui-tests");
 export const uiTestsRemote = "/tmp/native-qa-ios/gestures-ui-tests";
-export const sourceFiles = ["make-project.rb", "GesturesUITests/GesturesUITests.swift", "GesturesUITests/ResilienceUITests.swift"];
+export const sourceFiles = ["make-project.rb", "GesturesUITests/GesturesUITests.swift", "GesturesUITests/ResilienceUITests.swift", "GesturesUITests/SvelteQAEvents.h", "GesturesUITests/SvelteQAEvents.m"];
 
 /** The digest of the test sources: the runner is built again only when it changes. */
 export function sourcesDigest(contents: readonly string[]): string {
@@ -276,6 +277,19 @@ export async function prepareUiTests(session: IosSession, options: { team: strin
 /** Where the pushed-edge swipe starts on the iPhone, in points from the edge: the lab asks for 8 (Android's zone is 24 dp), UIKit's edge swipe takes touches within about 3 (SPEC.md, iOS contract item 3). `--edge-x` overrides it. */
 export const defaultEdgeX = "2";
 
+/**
+ * How the first round's pushed-edge swipe leaves the glass (`--edge-release`): `moving` (the default) at one speed, lifting while moving
+ * (`SvelteQAEvents`); `eased`, XCUITest's own drag, which slows down over its last frames; `rest`, held still for 0.4 s at the end; `fling`,
+ * without the 50 ms press first.
+ */
+export const edgeReleases = ["moving", "eased", "rest", "fling"] as const;
+
+/** The `--edge-release` value, refused when it is not one of `edgeReleases` (the test would take it for the default). */
+export function edgeReleaseFrom(value: string | undefined): string | undefined {
+	if (value === undefined || (edgeReleases as readonly string[]).includes(value)) return value;
+	throw new Error(`--edge-release is one of ${edgeReleases.join(", ")}, not ${JSON.stringify(value)}`);
+}
+
 /** Writes `1` or `0` to the app's `Documents/gesture-trace.on`: the QA app records its recognizers at its next launch when it reads `1` (an app that XCUITest opens by link takes no launch argument). */
 async function setTraceFlag(target: IosSession["target"], on: boolean): Promise<void> {
 	const file = "/tmp/native-qa-ios/trace-flag";
@@ -454,6 +468,7 @@ export async function iosGestures(argv: string[]): Promise<void> {
 	const { values } = parseFlags(argv, { ...iosOptions, run: { type: "string" }, repeat: { type: "string" }, timeout: { type: "string" }, team: { type: "string" }, rebuild: { type: "boolean" }, input: { type: "string" }, trace: { type: "boolean" }, calibrate: { type: "string" }, "edge-x": { type: "string" }, "edge-release": { type: "string" }, "edge-by": { type: "string" }, link: { type: "string" }, collect: { type: "string" }, "build-only": { type: "boolean" } });
 	const input = flagString(values.input) ?? "xctest";
 	if (input !== "xctest") throw new Error("--input is xctest on iOS (touches cannot be synthesized from inside the app)");
+	const edgeRelease = edgeReleaseFrom(flagString(values["edge-release"]));
 	const session = await startIosSuite("gestures", argv, values, "qa", { uiTest: true });
 	const names = namesFor(scenarioNamesFrom(flagString(values.run)), "xctest");
 	const repeat = integerFlag(values.repeat, "repeat", 1);
@@ -473,7 +488,7 @@ export async function iosGestures(argv: string[]): Promise<void> {
 	for (let index = 1; index <= repeat; index++) {
 		console.log(`gestures xctest ${index}/${repeat}: ${names.map((name) => name.slice("gestures-".length)).join(", ")}`);
 		const logPath = join(runsDir, `gestures-${slug(session.device.serial)}-${stamp(session.startedAt)}-xctest-${index}.log`);
-		const { launch, results } = await iosGesturesOnce(session, names, timeoutMs, logPath, { trace: values.trace === true, calibrate: flagString(values.calibrate), edgeX: flagString(values["edge-x"]), edgeRelease: flagString(values["edge-release"]), edgeBy: flagString(values["edge-by"]), link: flagString(values.link), collect: flagString(values.collect) });
+		const { launch, results } = await iosGesturesOnce(session, names, timeoutMs, logPath, { trace: values.trace === true, calibrate: flagString(values.calibrate), edgeX: flagString(values["edge-x"]), edgeRelease, edgeBy: flagString(values["edge-by"]), link: flagString(values.link), collect: flagString(values.collect) });
 		launches.push(launch);
 		// A run that did not finish measured nothing to compare. Every one that did must be the recorded build.
 		if (launch.complete && results) reports.push(results.build);

@@ -23,7 +23,8 @@ import type { BuildIdentity, CrashReport, GestureInjection, GestureLaunch, Gestu
  * installed app by bundle id) reads the lab's `ready` line from an element of the page (`gestures.status`, whose accessibility label is
  * the line's JSON), finds the views a step aims at by their `testID` (`gesture.<name>`, so no pixel handshake is needed) and performs the
  * input with `XCUICoordinate.press(forDuration:thenDragTo:withVelocity:thenHoldForDuration:)`, `pinch(withScale:velocity:)` and
- * `rotate(_:withVelocity:)`. It runs with `xcodebuild test-without-building` over `ssh` to the Mac while the app logs, as it does for `lab`,
+ * `rotate(_:withVelocity:)` (the pushed-edge swipe with `SvelteQAEvents`, XCTest's own event record, so that the finger lifts while moving:
+ * README, "Gestures"). It runs with `xcodebuild test-without-building` over `ssh` to the Mac while the app logs, as it does for `lab`,
  * `[Svelte stress]` results into `Documents/lab-results.json`, which this driver reads: the verdicts are the lab's own.
  *
  * Signing needs the login keychain of the logged-in user, so the runner is built the way the app is (`commands/ios-build.ts`): by a
@@ -39,7 +40,7 @@ import type { BuildIdentity, CrashReport, GestureInjection, GestureLaunch, Gestu
 
 export const uiTestsLocal = join(qaDir, "ios-ui-tests");
 export const uiTestsRemote = "/tmp/native-qa-ios/gestures-ui-tests";
-export const sourceFiles = ["make-project.rb", "GesturesUITests/GesturesUITests.swift", "GesturesUITests/ResilienceUITests.swift"];
+export const sourceFiles = ["make-project.rb", "GesturesUITests/GesturesUITests.swift", "GesturesUITests/ResilienceUITests.swift", "GesturesUITests/SvelteQAEvents.h", "GesturesUITests/SvelteQAEvents.m"];
 
 /** The digest of the test sources: the runner is built again only when it changes. */
 export function sourcesDigest(contents: readonly string[]): string {

@@ -1,8 +1,7 @@
 import { build, transform, type BuildOptions, type Plugin } from "esbuild";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 import { compile, compileModule } from "svelte/compiler";
 import { componentOptions, lowersHtml } from "../../src/compile-options.ts";
 import { lowerPrimitives } from "../../src/lower.ts";
@@ -166,18 +165,35 @@ export function bundle(options: BundleOptions): Promise<Bundle> {
   return built;
 }
 
+/**
+ * The bundles that were run lately, as the text `evaluate` runs: converting one is a pass of esbuild, and a file evaluates the bundle of its harness for each test. Not every bundle
+ * is kept (the differential test builds one for each page), only the ones used last.
+ */
+const scripts = new Map<string, string>();
+const KEPT_SCRIPTS = 16;
+const nodeRequire = createRequire(import.meta.url);
 let evaluations = 0;
 
-/** Evaluates bundled text as a module of its own: its module state is new. */
+/**
+ * Evaluates bundled text as a module of its own: its module state is new.
+ *
+ * The text runs as a function, not as an `import()` of a file: Bun keeps every module it has imported until the process ends, and with it the functions and scopes of the bundle (the
+ * renderer, Svelte's runtime and the fixture: about 1,200 functions) and its code, whatever the test does with the result. After a few hundred of them every garbage collection of
+ * the process takes several times as long (in a measurement, 250 imported bundles made the 20 seeds of the HTML differential test, which builds and runs a bundle for each seed,
+ * take four times as long, almost all of it collections; the same bundles run as functions and kept alive took as long as none), so the files late in a run were the slowest. A bundle
+ * run this way is garbage when its test lets go of it.
+ */
 export async function evaluate<T = Record<string, unknown>>(code: string): Promise<T> {
-  const directory = await mkdtemp(resolve(tmpdir(), "svelte-native-bundle-"));
-  try {
-    const file = resolve(directory, "bundle.mjs");
-    await writeFile(file, code);
-    return (await import(`${pathToFileURL(file).href}?${++evaluations}`)) as T;
-  } finally {
-    await rm(directory, { recursive: true, force: true });
+  let script = scripts.get(code);
+  if (script === undefined) {
+    const converted = await transform(code, { format: "iife", globalName: "__bundle", target: "esnext", logLevel: "silent" });
+    script = `"use strict";\n${converted.code}\nreturn __bundle;`;
   }
+  // The map is in the order of use, so what goes when it is full is the one used longest ago.
+  scripts.delete(code);
+  scripts.set(code, script);
+  if (scripts.size > KEPT_SCRIPTS) scripts.delete(scripts.keys().next().value as string);
+  return new Function("require", `${script}\n//# sourceURL=svelte-native-bundle-${++evaluations}.js`)(nodeRequire) as T;
 }
 
 /** Bundles (or takes the kept bundle of) `options` and evaluates it. */
